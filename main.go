@@ -4,10 +4,12 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -15,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,6 +52,11 @@ func run(args []string) int {
 	}
 	if err := opts.readStdin(os.Stdin); err != nil {
 		fmt.Fprintf(os.Stderr, "zemi: %v\nRun 'zemi --help' for usage.\n", err)
+		return 2
+	}
+	// bubbletea draws to stdout: redirected, the TUI would run the agent unseen
+	if fi, err := os.Stdout.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 && !opts.print && !opts.health {
+		fmt.Fprintln(os.Stderr, "zemi: stdout is not a terminal; use -p to print the answer\nRun 'zemi --help' for usage.")
 		return 2
 	}
 	if opts.print && opts.prompt == "" {
@@ -212,7 +220,11 @@ func run(args []string) int {
 	// closing does not reach them: stop them here. Exit even if some cleanup
 	// hangs.
 	proc.KillAll()
-	fmt.Print("\x1b]22;default\x07") // hand the terminal its normal pointer back (hover sets OSC 22)
+	// hand the terminal its normal pointer back (hover sets OSC 22); an error
+	// that is not ErrProgramKilled means the program never started
+	if err == nil || errors.Is(err, tea.ErrProgramKilled) {
+		fmt.Print("\x1b]22;default\x07")
+	}
 	time.AfterFunc(3*time.Second, func() { os.Exit(0) })
 	if err != nil {
 		return fail(err)
@@ -227,10 +239,11 @@ func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
 	fingerprint := func() (string, bool) {
 		// a sandboxed command that created project config turns trust off first
 		h.CheckSandboxed()
+		roots := append([]string{dirs.ConfigHome}, dirs.UserTrees()...)
 		if h.ProjectTrusted() {
-			return configFingerprint(dirs.ConfigHome, dirs.ProjectConfigDir()), true
+			return configFingerprint(append(roots, dirs.ProjectConfigDir())...), true
 		}
-		return configFingerprint(dirs.ConfigHome), false
+		return configFingerprint(roots...), false
 	}
 	last, trusted := fingerprint()
 	for range time.Tick(time.Second) {
@@ -251,20 +264,28 @@ func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
 // plugin's dependency tree would make every walk cost milliseconds.
 func configFingerprint(roots ...string) string {
 	sum := sha256.New()
-	for _, root := range roots {
-		if root == "" {
-			continue
+	// resolved, so a symlinked config home or user tree (dotfiles) is walked:
+	// WalkDir follows no link below its root
+	var walk []string
+	for _, r := range roots {
+		if r == "" {
+			continue // EvalSymlinks would make it "."
 		}
+		if r, err := filepath.EvalSymlinks(r); err == nil && !slices.Contains(walk, r) {
+			walk = append(walk, r)
+		}
+	}
+	for _, root := range walk {
 		_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 			switch {
 			case err != nil:
 				return nil
-			case d.IsDir() && p != root && (d.Name()[0] == '.' || d.Name() == "node_modules" || p == filepath.Join(root, "worktrees")):
-				return filepath.SkipDir // checkouts in .zemi/worktrees are not config
+			case d.IsDir() && p != root && (d.Name()[0] == '.' || d.Name() == "node_modules" || p == filepath.Join(root, "worktrees") || slices.Contains(walk, p)):
+				return filepath.SkipDir // checkouts in .zemi/worktrees are not config; a root is walked once
 			case d.IsDir():
 				return nil
 			}
-			if info, err := d.Info(); err == nil {
+			if info, err := os.Stat(p); err == nil && !info.IsDir() {
 				fmt.Fprintf(sum, "%s|%d|%d\n", p, info.Size(), info.ModTime().UnixNano())
 			}
 			return nil
@@ -293,7 +314,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			}
 			return h.OpenSessions()
 		}},
-		{Name: "resume", Hidden: true, Desc: "resume the latest session", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "resume", Hidden: true, NArgs: "?", Desc: "resume the latest session, or the one with this id", GoFn: func(h *hostapi.Host, args string) error {
 			return h.ResumeSession(strings.TrimSpace(args))
 		}},
 		{Name: "rewind", NArgs: "?", Desc: "go back to an earlier prompt and undo its file changes", GoFn: func(h *hostapi.Host, args string) error {
@@ -317,9 +338,10 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				if _, err := h.Screen(); err != nil {
 					return err
 				}
-				cur := h.Effort()
-				if cur == "" {
-					cur = "default"
+				pick := h.Settings.Str("agent.effort")
+				cur := cmp.Or(pick, "default")
+				if eff := h.Effort(h.AgentStream().Model); eff != pick {
+					cur += " (" + cmp.Or(eff, "none") + " on this model)"
 				}
 				h.Notify("info", "Reasoning effort is "+cur, "/effort low, medium, high or default sets it")
 				return nil
@@ -382,7 +404,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "health", Desc: "check zemi's setup", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.OpenHealth()
 		}},
-		{Name: "compact", NArgs: "*", Desc: "summarize the conversation to free context", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "compact", NArgs: "*", Desc: "summarize the conversation to free context; text after it says what to keep", GoFn: func(h *hostapi.Host, args string) error {
 			return h.CompactNow(args)
 		}},
 		{Name: "btw", NArgs: "+", Desc: "ask a side question the conversation does not keep", GoFn: func(h *hostapi.Host, args string) error {
@@ -394,13 +416,13 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			}
 			return h.SetModel(args, true)
 		}},
-		{Name: "permissions", NArgs: "*", Desc: "see what is allowed and take an always answer back", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "permissions", NArgs: "*", Desc: "see the rules and remove one you allowed", GoFn: func(h *hostapi.Host, args string) error {
 			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "forget "); ok {
 				return h.ForgetRule(rest)
 			}
 			return h.OpenPermissions()
 		}},
-		{Name: "mode", NArgs: "?", Desc: "choose who approves actions", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "mode", NArgs: "?", Desc: "choose the permission mode", GoFn: func(h *hostapi.Host, args string) error {
 			if args = strings.TrimSpace(args); args == "" {
 				return h.OpenModePicker()
 			}

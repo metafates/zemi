@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -88,6 +89,12 @@ func act(verb, arg string) error {
 		c, err := net.DialTimeout("tcp", arg, 3*time.Second)
 		if err == nil {
 			c.Close()
+		}
+		return err
+	case "https":
+		resp, err := (&http.Client{Timeout: 10 * time.Second}).Get(arg)
+		if err == nil {
+			resp.Body.Close()
 		}
 		return err
 	case "unix":
@@ -279,7 +286,7 @@ func TestNetworkDenied(t *testing.T) {
 	dial(l.Addr().String(), false)
 }
 
-// TestNetworkGranted: the middle tier hands the command sockets and keeps
+// TestNetworkGranted: the middle tier hands the command IP sockets and keeps
 // every file rule, so "it needs the network" costs a socket, not the machine.
 func TestNetworkGranted(t *testing.T) {
 	probeOrSkip(t)
@@ -297,15 +304,42 @@ func TestNetworkGranted(t *testing.T) {
 			c.Close()
 		}
 	}()
-	if out, err := run(t, Policy{Network: true}, "dial", l.Addr().String()); err != nil {
-		t.Fatalf("dial with Network: %v\n%s", err, out)
-	}
 	hidden := filepath.Join(t.TempDir(), "secret")
 	if err := os.WriteFile(hidden, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := run(t, Policy{Network: true, Hide: []string{filepath.Dir(hidden)}}, "read", hidden); err == nil {
-		t.Fatalf("Network must not open hidden files: %s", out)
+	// a short dir: socket paths are capped near 100 bytes
+	sockDir, err := os.MkdirTemp("/tmp", "zs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+	sock, err := net.Listen("unix", filepath.Join(sockDir, "s"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.Close()
+	const site = "https://example.com"
+	offline := runtime.GOOS != "darwin" || act("https", site) != nil
+	for _, c := range []struct {
+		name, verb, arg string
+		allowed, skip   bool
+	}{
+		{"dial another host", "dial", l.Addr().String(), true, false},
+		{"read a hidden file", "read", hidden, false, false},
+		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},
+		{"read the system CA bundle", "read", "/etc/ssl/cert.pem", true, runtime.GOOS != "darwin"},
+		{"verify TLS through the system", "https", site, true, offline},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if c.skip {
+				t.Skip("not on this machine")
+			}
+			out, err := run(t, Policy{Network: true, Hide: []string{filepath.Dir(hidden)}}, c.verb, c.arg)
+			if (err == nil) != c.allowed {
+				t.Fatalf("allowed %v, got %v\n%s", c.allowed, err, out)
+			}
+		})
 	}
 }
 

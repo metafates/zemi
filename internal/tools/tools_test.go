@@ -166,8 +166,8 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 		call(t, read, `{"path":"`+path+`","limit":0}`)
 		first := fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path)
 		second := fmt.Sprintf(`{"path":%q,"old_string":"b","new_string":"c"}`, path)
-		CallStart("c1", "edit", first)
-		CallStart("c2", "edit", second)
+		CallStart(context.Background(), "c1", "edit", first)
+		CallStart(context.Background(), "c2", "edit", second)
 		var wg sync.WaitGroup
 		var r1, r2 fantasy.ToolResponse
 		wg.Go(func() {
@@ -185,7 +185,7 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 // TestCallOrderReleases: a recorded call nothing runs must not hold the
 // next call on its file: fantasy answers an invalid call without Run and the
 // runner reports it through CallDone; another runner's CallDone releases
-// its own ids only; a cancelled ctx gives up the wait.
+// its own ids only, the same id included; a cancelled ctx gives up the wait.
 func TestCallOrderReleases(t *testing.T) {
 	p, _ := testPipeline(t, false,
 		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
@@ -206,7 +206,8 @@ func TestCallOrderReleases(t *testing.T) {
 			return fantasy.ToolResponse{}
 		}
 	}
-	cancelled, cancel := context.WithCancel(context.Background())
+	bg := context.Background()
+	cancelled, cancel := context.WithCancel(bg)
 	cancel()
 	for _, c := range []struct {
 		name    string
@@ -216,23 +217,24 @@ func TestCallOrderReleases(t *testing.T) {
 		want    string
 	}{
 		{"invalid first call answered", func() {
-			CallStart("c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a"}`, path))
-			CallStart("c2", "edit", second)
-			CallDone("c1")
+			CallStart(bg, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a"}`, path))
+			CallStart(bg, "c2", "edit", second)
+			CallDone(bg, "c1")
 		}, context.Background(), true, "a\n"},
 		{"another runner's step done keeps the order", func() {
-			CallStart("c1", "edit", first)
-			CallStart("c2", "edit", second)
-			CallStart("b1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path+".other"))
-			CallDone("b1")
+			CallStart(bg, "c1", "edit", first)
+			CallStart(bg, "c2", "edit", second)
+			other := CallScope(bg)
+			CallStart(other, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path+".other"))
+			CallDone(other, "c1")
 			go func() {
 				time.Sleep(50 * time.Millisecond)
 				edit.Run(context.Background(), fantasy.ToolCall{ID: "c1", Name: "edit", Input: first})
 			}()
 		}, context.Background(), false, "c\n"},
 		{"cancelled ctx gives up", func() {
-			CallStart("c1", "edit", first)
-			CallStart("c2", "edit", second)
+			CallStart(bg, "c1", "edit", first)
+			CallStart(bg, "c2", "edit", second)
 		}, cancelled, true, "a\n"},
 	} {
 		os.WriteFile(path, []byte("a\n"), 0o644)
@@ -243,7 +245,7 @@ func TestCallOrderReleases(t *testing.T) {
 		if r.IsError != c.wantErr || string(got) != c.want {
 			t.Errorf("%s: %+v file %q", c.name, r, got)
 		}
-		CallDone("c1", "c2")
+		CallDone(bg, "c1", "c2")
 	}
 }
 
@@ -283,11 +285,11 @@ func TestSandboxHintForPlanner(t *testing.T) {
 	if !sandbox.LikelyDenied(out, denied) {
 		t.Skip("no denial pattern on this platform")
 	}
-	if hint := p.sandboxHint(out, denied); !strings.Contains(hint, "sandbox: false") {
+	if hint := p.sandboxHint(nil, out, denied); !strings.Contains(hint, "sandbox: false") {
 		t.Fatalf("plain hint: %q", hint)
 	}
 	p.Plan = func() bool { return true }
-	if hint := p.sandboxHint(out, denied); strings.Contains(hint, "sandbox: false") || !strings.Contains(hint, "network: true") || !strings.Contains(hint, "read-only while planning") {
+	if hint := p.sandboxHint(nil, out, denied); strings.Contains(hint, "sandbox: false") || !strings.Contains(hint, "network: true") || !strings.Contains(hint, "read-only while planning") {
 		t.Fatalf("planner hint: %q", hint)
 	}
 }
@@ -306,28 +308,6 @@ func TestAskDenialText(t *testing.T) {
 		if !resp.IsError || !strings.HasSuffix(resp.Content, "echo j > out.txt: "+c.want) {
 			t.Errorf("%s: %q", c.by, resp.Content)
 		}
-	}
-}
-
-func TestJobLineChecksWhatRuns(t *testing.T) {
-	for _, c := range []struct {
-		command string
-		args    []string
-		env     map[string]any
-		segs    []string
-	}{
-		{"echo ready && sleep 30", nil, nil, []string{"echo ready", "sleep 30"}},
-		{"sh", []string{"-c", "cat ~/.ssh/id_rsa"}, nil, []string{"cat ~/.ssh/id_rsa"}},
-		{"echo", []string{"a;b", "it's"}, nil, []string{"echo a;b it's"}},
-		{"go test ./...", nil, map[string]any{"GOFLAGS": "-toolexec=./x.sh"}, []string{"go test ./..."}},
-	} {
-		line := jobLine(c.command, c.args, c.env)
-		if got := perm.Normalize(line).Segments; !slices.Equal(got, c.segs) {
-			t.Errorf("%q %q %v: %q checks as %q, want %q", c.command, c.args, c.env, line, got, c.segs)
-		}
-	}
-	if perm.ReadCommand(jobLine("rg foo", nil, map[string]any{"RIPGREP_CONFIG_PATH": "x"}), nil) {
-		t.Error("an env extra must keep job_start from settling as a read command")
 	}
 }
 
@@ -401,26 +381,6 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 	}
 }
 
-func TestMultieditSequential(t *testing.T) {
-	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
-	dir := t.TempDir()
-	file := filepath.Join(dir, "a.txt")
-	os.WriteFile(file, []byte("aaa bbb ccc"), 0o644)
-	multiedit := All(p)[4]
-	resp := call(t, multiedit, `{"path":"`+file+`","edits":[
-		{"old_string":"aaa","new_string":"AAA"},
-		{"old_string":"bbb","new_string":"BBB"},
-		{"old_string":"ccc","new_string":"CCC"}
-	]}`)
-	if resp.IsError || !strings.HasPrefix(resp.Content, "edited ") || !strings.Contains(resp.Content, "/a.txt (3 replacements)") {
-		t.Fatalf("multiedit: %+v", resp)
-	}
-	data, _ := os.ReadFile(file)
-	if string(data) != "AAA BBB CCC" {
-		t.Fatalf("multiedit result: %q", data)
-	}
-}
-
 // TestGlobAndGrep runs every case through ripgrep and the Go fallback.
 func TestGlobAndGrep(t *testing.T) {
 	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
@@ -431,11 +391,16 @@ func TestGlobAndGrep(t *testing.T) {
 	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(dir, "private", "*"), Decision: perm.Deny})
 	for name, body := range map[string]string{
 		"main.go": "package main\n", "notes.txt": "notes\n", ".env": "package secret\n", "private/k.go": "package priv\n", "call.go": "x := sub(1)\n",
-		".gitignore": "node_modules/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n", ".git/HEAD": "ref\n",
+		".gitignore": "node_modules/\ngen/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n", ".git/HEAD": "ref\n",
+		"src/credential.ts": "export function loadCredential() {}\n", "src/a.txt": "needle\n", "gen/b.txt": "needle\n", "locked/c.txt": "needle\n",
 	} {
+		os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755)
 		os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
 	}
-	glob, grep := All(p)[5], All(p)[6]
+	// rg reports the unreadable dir and exits 2 after searching the rest
+	os.Chmod(filepath.Join(dir, "locked"), 0)
+	t.Cleanup(func() { os.Chmod(filepath.Join(dir, "locked"), 0o755) })
+	glob, grep := toolNamed(t, "glob", p), toolNamed(t, "grep", p)
 	saved := rgBin
 	t.Cleanup(func() { rgBin = saved })
 	for _, bin := range []string{saved, ""} {
@@ -451,7 +416,10 @@ func TestGlobAndGrep(t *testing.T) {
 			{glob, `{"pattern":"*.{go,txt}"}`, "notes.txt", "node_modules"},
 			{grep, `{"pattern":"package sub"}`, "x.go:1", "main.go"},
 			{grep, `{"pattern":"package","include":"[m]*.go"}`, "main.go:1", "x.go"},
-			{grep, `{"pattern":"package (y|secret)"}`, "no matches", ".env"},
+			{grep, `{"pattern":"package (y|secret)"}`, "(no matches; secret-shaped", "y.go"},
+			{grep, `{"pattern":"loadCredential|package secret"}`, "src/credential.ts:1", "package secret"},
+			{grep, `{"pattern":"needle"}`, "src/a.txt:1", "gen/"},
+			{glob, `{"pattern":"**/*.txt"}`, "src/a.txt", "gen/"},
 			{glob, `{"pattern":"**/*.go"}`, "main.go", "private"},
 			{grep, `{"pattern":"package priv"}`, "no matches", "k.go"},
 			{grep, `{"pattern":"package","path":"sub/x.go"}`, "sub/x.go:1: package sub", "main.go"},
@@ -464,6 +432,9 @@ func TestGlobAndGrep(t *testing.T) {
 			{glob, `{"pattern":"**"}`, "sub/x.go", "node_modules"},
 			{glob, `{"pattern":"**/*"}`, "sub/x.go", ".git/"},
 		} {
+			if bin == "" && c.not == "gen/" {
+				continue // the walker reads no .gitignore
+			}
 			input := strings.Replace(strings.ReplaceAll(c.input, "DIR", dir), "{", `{"path":"`+dir+`",`, 1)
 			if strings.Contains(c.input, `"path":`) {
 				input = strings.Replace(c.input, `"path":"`, `"path":"`+dir+`/`, 1)
@@ -473,10 +444,14 @@ func TestGlobAndGrep(t *testing.T) {
 				t.Errorf("rg=%q %s: want %q, not %q, got %q", bin, c.input, c.want, c.not, resp.Content)
 			}
 		}
+		// a hit in .env must not change the answer
+		if a, b := call(t, grep, `{"path":"`+dir+`","pattern":"package (y|secret)"}`), call(t, grep, `{"path":"`+dir+`","pattern":"package (y|zzz)"}`); a.Content != b.Content {
+			t.Errorf("rg=%q grep answers on .env content: %q vs %q", bin, a.Content, b.Content)
+		}
 		// a mistyped path must say so instead of reading as an empty tree
 		for _, tool := range []fantasy.AgentTool{glob, grep} {
 			resp := call(t, tool, `{"path":"`+filepath.Join(dir, "nope")+`","pattern":"x"}`)
-			if !resp.IsError || !strings.Contains(resp.Content, "no such directory") {
+			if !resp.IsError || !strings.Contains(resp.Content, "no such file or directory") {
 				t.Errorf("rg=%q missing root: %+v", bin, resp)
 			}
 		}
@@ -493,14 +468,14 @@ func TestGlobChecksOnlyShownHits(t *testing.T) {
 	for i := range 1000 {
 		os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d.go", i)), nil, 0o644)
 	}
-	resp := call(t, All(p)[5], `{"path":"`+dir+`","pattern":"*.go"}`)
+	resp := call(t, toolNamed(t, "glob", p), `{"path":"`+dir+`","pattern":"*.go"}`)
 	if !strings.Contains(resp.Content, "up to 800 more") || checks > globMaxFiles+1 {
 		t.Errorf("%d checks, got %q", checks, resp.Content[max(0, len(resp.Content)-80):])
 	}
 	// a scan that hit its cap has no count to give
 	defer func(n int) { globMaxScan = n }(globMaxScan)
 	globMaxScan = 500
-	if resp := call(t, All(p)[5], `{"path":"`+dir+`","pattern":"*.go"}`); !strings.Contains(resp.Content, "scan stopped at 500 files") {
+	if resp := call(t, toolNamed(t, "glob", p), `{"path":"`+dir+`","pattern":"*.go"}`); !strings.Contains(resp.Content, "scan stopped at 500 files") {
 		t.Errorf("capped scan: %q", resp.Content[max(0, len(resp.Content)-80):])
 	}
 }
@@ -514,7 +489,7 @@ func TestEditSafety(t *testing.T) {
 		perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
 	p.Seen = &sync.Map{}
 	all := All(p)
-	read, edit, multiedit := all[1], all[3], all[4]
+	read, edit := all[1], all[3]
 	dir := t.TempDir()
 	js := func(m map[string]any) string { b, _ := json.Marshal(m); return string(b) }
 	for _, c := range []struct {
@@ -532,12 +507,8 @@ func TestEditSafety(t *testing.T) {
 			"Written as:\n     1\t\tif x {\n     2\t\t\treturn 1\n     3\t\t}", "\tif x {\n\t\treturn 1\n\t}\n"},
 		{"same text", "a\n", false, map[string]any{"old_string": "a", "new_string": "a"}, "are the same; nothing to change", "a\n"},
 		{"diverges", "a\nb\nc\n", false, map[string]any{"old_string": "b\nX", "new_string": "y"}, "     2\tb\n     3\tc", "a\nb\nc\n"},
-		{"diverges at a common line", "}\na\n}\nb\n", false, map[string]any{"old_string": "}\nX", "new_string": "y"}, "matches line 1, so a later line differs: read", "}\na\n}\nb\n"},
-		{"nested field", "a\n", false, map[string]any{"edits": []any{map[string]any{"old_string": "a"}}}, `edits[0].new_string`, "a\n"},
-		{"the failed edit is named as the model wrote it", "a\n", false, map[string]any{"edits": []any{
-			map[string]any{"old_string": "a", "new_string": "b"},
-			map[string]any{"old_string": "zz", "new_string": "c"},
-		}}, "edit 2 (nothing was written)", "a\n"},
+		{"diverges at a common line", "}\na\n}\n}\n}\n", false, map[string]any{"old_string": "}\nX", "new_string": "y"}, "matches lines 1, 3, 4, ..., so a later line differs: read", "}\na\n}\n}\n}\n"},
+		{"whole line beats a partial one", "return nil, err\nreturn nil\nx\nreturn nil, err\n", false, map[string]any{"old_string": "return nil\nX", "new_string": "y"}, "     2\treturn nil\n     3\tx", "return nil, err\nreturn nil\nx\nreturn nil, err\n"},
 	} {
 		path := filepath.Join(dir, c.name)
 		os.WriteFile(path, []byte(c.file), 0o644)
@@ -545,11 +516,7 @@ func TestEditSafety(t *testing.T) {
 			call(t, read, js(map[string]any{"path": path, "limit": 0}))
 		}
 		c.input["path"] = path
-		tl := edit
-		if c.input["edits"] != nil {
-			tl = multiedit
-		}
-		resp := call(t, tl, js(c.input))
+		resp := call(t, edit, js(c.input))
 		if got, _ := os.ReadFile(path); !strings.Contains(resp.Content, c.want) || string(got) != c.result {
 			t.Errorf("%s: want %q, got %q, file %q", c.name, c.want, resp.Content, got)
 		}
@@ -562,13 +529,10 @@ func TestEditSafety(t *testing.T) {
 	for _, in := range []map[string]any{
 		{"path": sub, "content": "x"},
 		{"path": sub, "old_string": "a", "new_string": "b"},
-		{"path": sub, "edits": []any{map[string]any{"old_string": "a", "new_string": "b"}}},
 	} {
 		tl := all[2]
 		if in["old_string"] != nil {
 			tl = edit
-		} else if in["edits"] != nil {
-			tl = multiedit
 		}
 		if resp := call(t, tl, js(in)); !resp.IsError || !strings.HasSuffix(resp.Content, "sub is a directory") {
 			t.Errorf("%s on a directory: %q", tl.Info().Name, resp.Content)
@@ -679,7 +643,7 @@ func TestValidationErrors(t *testing.T) {
 		"command": map[string]any{"type": "string"}, "timeout_ms": map[string]any{"type": "number"},
 		"all": map[string]any{"type": "boolean"}, "n": map[string]any{"type": "integer"},
 		// an array whose items admit extra fields, under a root that does not
-		"env": map[string]any{"type": "array", "items": map[string]any{"properties": map[string]any{"name": map[string]any{"type": "string"}}, "additionalProperties": true}},
+		"env": map[string]any{"type": "array", "items": map[string]any{"properties": map[string]any{"name": map[string]any{"type": "string"}}, "required": []string{"name"}, "additionalProperties": true}},
 	}}
 	for _, c := range []struct {
 		input string
@@ -690,6 +654,7 @@ func TestValidationErrors(t *testing.T) {
 		{`{"command":"ls","timeout":null}`, false, ""},
 		{`{"command":"ls","timeout":1}`, true, ""},
 		{`{"command":"ls","env":[{"name":"a","value":1}]}`, false, ""},
+		{`{"env":[{"value":1}]}`, false, `missing required field "env[0].name"`},
 		{`{"all":"true","n":"2","timeout_ms":"1.5"}`, false, `{"all":true,"n":2,"timeout_ms":1.5}`},
 		{`{"n":"2.5"}`, false, `field "n" must be integer`},
 		{`{"timeout_ms":"Inf"}`, false, `field "timeout_ms" must be number`},
@@ -880,8 +845,24 @@ func TestReadPagesAHugeFile(t *testing.T) {
 	if !strings.Contains(res.Content, "100000\tx") || !strings.Contains(res.Content, "... (more lines; continue with offset") {
 		t.Fatalf("page: %q", res.Content[:min(len(res.Content), 120)])
 	}
-	res, _ = editFile(p, path, []any{map[string]any{"old_string": "x", "new_string": "y"}})
-	if !strings.Contains(res.Content, "too large to edit") {
+	res, _ = editFile(p, path, map[string]any{"old_string": "x", "new_string": "y"})
+	if !strings.Contains(res.Content, "over edit's 10 MB limit") {
 		t.Fatalf("edit of a huge file: %q", res.Content)
+	}
+}
+
+func TestFindSymbol(t *testing.T) {
+	text := "import \"net/http\"\nr, _ := http.Get(u)\n"
+	for _, c := range []struct {
+		name, at string
+		line     int
+	}{
+		{"http", "http.Get(u)", 2},
+		{"http.Get", "Get(u)", 0},
+	} {
+		off, _, err := findSymbol(text, c.name, c.line)
+		if err != nil || !strings.HasPrefix(text[off:], c.at) {
+			t.Errorf("%s: at %q, %v", c.name, text[off:], err)
+		}
 	}
 }

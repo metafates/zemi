@@ -76,8 +76,12 @@ func profile(p Policy) (string, []string) {
 	b.WriteString(baseProfile)
 	switch {
 	case p.Network:
-		// the file rules still hold, so this is a socket, not the machine
-		b.WriteString("(allow network*)\n")
+		// the file rules still hold, so this is a socket, not the machine; IP
+		// only, since a unix socket (docker.sock, ssh-agent) is the machine.
+		// mDNSResponder answers DNS and trustd verifies TLS.
+		b.WriteString("(allow network-outbound (remote ip))\n(allow network-bind network-inbound (local ip))\n")
+		b.WriteString("(allow network-outbound (remote unix-socket (path-literal \"/private/var/run/mDNSResponder\")))\n")
+		b.WriteString("(allow mach-lookup (global-name \"com.apple.trustd\" \"com.apple.trustd.agent\"))\n")
 	case p.Loopback:
 		// NOTE: seatbelt's localhost also matches this machine's LAN addresses,
 		// so a service bound to them is reachable too.
@@ -157,5 +161,8 @@ func profile(p Policy) (string, []string) {
 		}
 	}
 	b.WriteString("(deny file-read* file-write* " + secretShapes + ")\n")
+	if p.Network { // CA bundles end in .pem
+		b.WriteString(`(allow file-read* (subpath "/private/etc/ssl") (regex #"/certifi/cacert\.pem$" #"^/(opt/homebrew|usr/local)/etc/(ca-certificates|openssl@3)/cert\.pem$"))` + "\n")
+	}
 	return b.String(), defs
 }

@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -29,6 +30,7 @@ import (
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
+	"github.com/yuin/gopher-lua/parse"
 )
 
 // UIHooks is what the host API needs from the UI layer. Implemented by
@@ -220,8 +222,7 @@ type Host struct {
 
 	gen atomic.Int64
 
-	renderMu  sync.Mutex
-	rendering bool
+	rendering atomic.Bool
 
 	tMu     sync.Mutex
 	session *Session
@@ -307,7 +308,7 @@ type Host struct {
 	todosStale atomic.Bool
 
 	// luaApproved holds the chunk names of Lua tool runs the user approved
-	// (guardModelLua); luaRuns numbers them.
+	// (guardLua); luaRuns numbers them.
 	luaApproved sync.Map
 	luaRuns     atomic.Int64
 
@@ -325,7 +326,7 @@ type Host struct {
 	// permissions file registered: a reload replays the config that adds them.
 	// PurgeGeneration moves them to staleRules, which stay in Perm until the
 	// replay is done so no call runs without them; ForceReload then drops those
-	// the replay did not add again.
+	// the replay did not add again, or on a failed replay only the allows.
 	luaRulesMu sync.Mutex
 	luaRules   []perm.Rule
 	staleRules []perm.Rule
@@ -343,6 +344,7 @@ type Host struct {
 	// config, instructions and language servers load only when it is set,
 	// and auto mode settles less without it.
 	projectTrusted atomic.Bool
+	trustDropped   atomic.Bool // trust went off: the next reload must run to drop project config
 	// trustRoot is the repository the session belongs to (a worktree maps to
 	// its main checkout), found once: it keys the store, the scratchpad and
 	// the sandbox cache, and finding it walks the disk. project is the same
@@ -374,6 +376,9 @@ type Host struct {
 // skills.
 func (h *Host) SetProjectTrusted(ok bool) {
 	prev := h.projectTrusted.Swap(ok)
+	if prev && !ok {
+		h.trustDropped.Store(true)
+	}
 	var found []skills.Skill
 	if ok {
 		found = h.discoverProjectSkills()
@@ -870,9 +875,14 @@ func setHandlerContext(L *glua.LState, deadline time.Duration) (context.Context,
 	}
 }
 
+// eventTable sets name and from after the payload, so no emitter can pose
+// as another event or origin.
 func eventTable(name, from string, payload map[string]any) map[string]any {
-	ev := map[string]any{"name": name, "from": from}
-	maps.Copy(ev, payload)
+	ev := maps.Clone(payload)
+	if ev == nil {
+		ev = map[string]any{}
+	}
+	ev["name"], ev["from"] = name, from
 	return ev
 }
 
@@ -944,14 +954,8 @@ func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, s
 		// while render runs: raised before Do, it also refused Lua that ran
 		// while this render merely waited in the queue (boot code behind
 		// the trust prompt).
-		h.renderMu.Lock()
-		h.rendering = true
-		h.renderMu.Unlock()
-		defer func() {
-			h.renderMu.Lock()
-			h.rendering = false
-			h.renderMu.Unlock()
-		}()
+		h.rendering.Store(true)
+		defer h.rendering.Store(false)
 		defer h.RT.PushFrame(L, w.Origin, w.Path)()
 		base := L.GetTop()
 		L.Push(w.Render)
@@ -1241,7 +1245,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("profile", glua.LString(stream.Profile))
 	tb.RawSetString("profile_read_only", glua.LBool(h.readOnly()))
 	tb.RawSetString("model", glua.LString(stream.Model))
-	tb.RawSetString("effort", glua.LString(h.Effort()))
+	tb.RawSetString("effort", glua.LString(h.Effort(stream.Model)))
 	tb.RawSetString("agent_active", glua.LBool(stream.Active))
 	mode := h.permModeDef()
 	tb.RawSetString("permission_mode", glua.LString(mode.Name))
@@ -1488,18 +1492,6 @@ func (h *Host) callOverlay(ctx context.Context, o Overlay, what string, fn *glua
 	})
 }
 
-// ---------------------------------------------------------------------------
-// registration guard (mutators refuse during widget render)
-
-func (h *Host) refuseDuringRender(L *glua.LState, what string) {
-	h.renderMu.Lock()
-	rendering := h.rendering
-	h.renderMu.Unlock()
-	if rendering {
-		L.RaiseError("zemi: %s is not allowed during widget render (render must be pure)", what)
-	}
-}
-
 // refuseBelowUser raises unless user config or shipped code is calling:
 // the call acts with the user's authority, like command.run's Go commands.
 // hint, when given, says what lower-trust code can do instead.
@@ -1538,7 +1530,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 	h.syncTypes()
 	h.GoSafe("git status", func() { h.gitStatus() })
 
-	g.SB.SetGuard(h.guardModelLua)
+	g.SB.SetGuard(h.guardLua)
 	register := func(name string, tbl *glua.LTable, call *glua.LFunction) error {
 		if call != nil {
 			return g.SB.RegisterCallableNamespace(name, tbl, call)
@@ -1587,7 +1579,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.80.0"))
+	api.RawSetString("version", glua.LString("0.81.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -1635,19 +1627,60 @@ func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
 
 	h.reloadRun.Lock()
 	defer h.reloadRun.Unlock()
+	// a reload after trust went off still runs, so the project config goes
+	if !h.trustDropped.Swap(false) {
+		if err := h.checkInits(); err != nil {
+			return err
+		}
+	}
 	err := h.RT.ForceReload(ctx, steps, h.PurgeGeneration)
-	// a failed replay keeps the old rules: the last whole config beats part of one
+	h.mcp.stopParked()
+	if err == nil && h.InitError() != "" {
+		err = errors.New(h.InitError())
+	}
+	// A failed replay keeps the old deny and ask rules and the settings it
+	// did not write: part of a config never loosens what the whole one set.
+	h.luaRulesMu.Lock()
+	h.staleRules = slices.DeleteFunc(h.staleRules, func(r perm.Rule) bool {
+		drop := err == nil || r.Decision == perm.Allow
+		if drop {
+			h.Perm.Remove(r)
+		}
+		return drop
+	})
+	h.luaRulesMu.Unlock()
 	if err == nil {
 		h.cfgSettle()
 		h.dropStaleLayout()
-		h.luaRulesMu.Lock()
-		for _, r := range h.staleRules {
-			h.Perm.Remove(r)
-		}
-		h.staleRules = nil
-		h.luaRulesMu.Unlock()
 	}
 	return err
+}
+
+// checkInits parses the init files a reload runs, so a half-saved one
+// fails the reload before it retires the working generation.
+func (h *Host) checkInits() error {
+	dirs := []string{h.Dirs.ConfigHome}
+	if h.ProjectTrusted() {
+		dirs = append(dirs, h.Dirs.ProjectConfigDir())
+	}
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		p := filepath.Join(dir, "init.lua")
+		src, err := os.ReadFile(p)
+		if err != nil {
+			continue // the boot step skips or reports it
+		}
+		_, err = parse.Parse(bytes.NewReader(src), p)
+		if pe, ok := errors.AsType[*parse.Error](err); ok {
+			if pe.Pos.Line == parse.EOF {
+				return fmt.Errorf("%s:%d: %s at end of file", TildePath(p), bytes.Count(bytes.TrimRight(src, "\n"), []byte("\n"))+1, pe.Message)
+			}
+			return fmt.Errorf("%s:%d: %s near '%s'", TildePath(p), pe.Pos.Line, pe.Message, pe.Token)
+		}
+	}
+	return nil
 }
 
 // claimStale reports whether r is a rule the replaced generation added,
@@ -1728,7 +1761,7 @@ func (h *Host) PurgeGeneration() {
 	h.completions.purge()
 	h.luaTools.purge(h.currentGen())
 	h.stops.purge()
-	h.mcp.stopAll()
+	h.mcp.park()
 	h.lsp.stopAll()
 	// An overlay left open would keep drawing with callbacks that are now
 	// dropped (submitOverlay), which reads as a frozen picker.

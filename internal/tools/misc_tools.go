@@ -26,37 +26,13 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	if p.TodosRead == nil {
 		return fantasy.NewTextErrorResponse("todos unavailable"), nil
 	}
-	if list, ok := input["todos"].([]any); ok {
+	if out, cancelled, ok, err := ParseTodos(input); ok {
 		note := ""
 		if p.TodosWrite == nil {
 			return fantasy.NewTextErrorResponse("todos unavailable"), nil
 		}
-		var out []store.Todo
-		cancelled := 0
-		for i, v := range list {
-			m, ok := v.(map[string]any)
-			if !ok {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: not an object", i+1)), nil
-			}
-			content := str(m["content"])
-			status := str(m["status"])
-			// the names other harnesses taught models
-			switch status {
-			case "completed":
-				status = "done"
-			case "cancelled":
-				cancelled++
-				continue
-			}
-			if content == "" {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: content is required", i+1)), nil
-			}
-			if !todoStatuses[status] {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: status must be pending, in_progress or done", i+1)), nil
-			}
-			out = append(out, store.Todo{
-				Content: content, Status: status, ActiveForm: str(m["active_form"]), Ord: len(out),
-			})
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		if err := p.TodosWrite(out); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -90,18 +66,42 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	return fantasy.NewTextResponse(TodoList(rows)), nil
 }
 
+// ParseTodos reads the list a todos call sets, dropping the cancelled items it
+// counts; ok is false for a call that only reads the list.
+func ParseTodos(input map[string]any) (out []store.Todo, cancelled int, ok bool, err error) {
+	list, ok := input["todos"].([]any)
+	for i, v := range list {
+		m, isObj := v.(map[string]any)
+		if !isObj {
+			return nil, 0, true, fmt.Errorf("todo %d: not an object", i+1)
+		}
+		content := str(m["content"])
+		status := str(m["status"])
+		// the names other harnesses taught models
+		switch status {
+		case "completed":
+			status = "done"
+		case "cancelled":
+			cancelled++
+			continue
+		}
+		if content == "" {
+			return nil, 0, true, fmt.Errorf("todo %d: content is required", i+1)
+		}
+		if !todoStatuses[status] {
+			return nil, 0, true, fmt.Errorf("todo %d: status must be pending, in_progress or done", i+1)
+		}
+		out = append(out, store.Todo{Content: content, Status: status, ActiveForm: str(m["active_form"]), Ord: len(out)})
+	}
+	return out, cancelled, ok, nil
+}
+
 // TodoList is the list as the todos tool reports it.
 func TodoList(rows []store.Todo) string {
 	var b strings.Builder
 	for _, td := range rows {
-		mark := " "
-		switch td.Status {
-		case "done":
-			mark = "x"
-		case "in_progress":
-			mark = ">"
-		}
-		fmt.Fprintf(&b, "[%s] %s\n", mark, td.Content)
+		// the enum words: the model sends them back, after compaction too
+		fmt.Fprintf(&b, "- [%s] %s\n", td.Status, td.Content)
 	}
 	return b.String()
 }
@@ -113,6 +113,9 @@ type PlanVerdict struct {
 	Feedback string // what to change, when not approved
 	Path     string // where the plan was saved, "" when not saved
 }
+
+// ImplementPlan is what an approved plan's result tells the agent to do.
+const ImplementPlan = "Implement it; track its steps with todos if it has several."
 
 func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	plan := strings.TrimSpace(str(input["plan"]))
@@ -127,7 +130,7 @@ func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if v.Path != "" {
 		saved = "\nThe plan is saved at " + v.Path + "."
 	}
-	implement := " Implement it now (track its steps with todos when it has several), verify, and report." + saved
+	implement := " " + ImplementPlan + saved
 	switch {
 	case !ok:
 		return stopTurn("The user dismissed the plan without approving it. Stop and wait for them to say how to proceed."), nil
@@ -254,7 +257,7 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 	for i, q := range qs {
 		ans := strings.ReplaceAll(answers[i], " (Recommended)", "")
 		if ans == "" {
-			ans = "(not answered)"
+			ans = "(not answered: use your recommended option, or your best judgment if you gave none)"
 		}
 		fmt.Fprintf(&b, "\n- %q: %s", q.Question, ans)
 	}

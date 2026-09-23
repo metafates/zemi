@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -105,6 +106,29 @@ func (r *Runner) CutShort() bool {
 // ErrTurnActive is returned when a turn is already running.
 var ErrTurnActive = errors.New("agent: a turn is already active")
 
+// AttachMarker starts what zemi appends to a user message for the model:
+// attachments, shell output, agent reports and notes. Everything that shows,
+// stores or recalls the user's words cuts the text there.
+const AttachMarker = "\n\n<attached-files>"
+
+// Attached puts text the user did not type (piped stdin, a command file's
+// body, a note from zemi) behind AttachMarker as one element, so it never
+// reads as the user's words or as unlabeled attachment text.
+func Attached(tag, text string) string {
+	return AttachMarker + "\n<" + tag + ">\n" + text + "\n</" + tag + ">\n</attached-files>"
+}
+
+// CutAttached splits a message into what was typed and its trailer.
+func CutAttached(s string) (typed, trailer string) {
+	if i := strings.Index(s, AttachMarker); i >= 0 {
+		return s[:i], s[i:]
+	}
+	return s, ""
+}
+
+// Note wraps text zemi itself sends the model (a nag, a plan handoff).
+func Note(text string) string { return Attached("zemi-note", text) }
+
 // ErrReplyCut ends a turn whose last reply hit the output token limit.
 var ErrReplyCut = errors.New("the reply hit the output token limit (the model's max_output) and was cut off")
 
@@ -201,7 +225,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		return ErrTurnActive
 	}
 	r.active, r.cut, r.live = true, false, nil
-	tctx, cancel := context.WithCancel(ctx)
+	tctx, cancel := context.WithCancel(tools.CallScope(ctx))
 	r.cancel = cancel
 	hooks := r.Hooks
 	persist := r.Persist
@@ -243,7 +267,9 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	if full != nil {
 		stops = append(stops, func(steps []fantasy.StepResult) bool {
 			last := steps[len(steps)-1]
-			stop := full(ContextUsed(last.Usage)) && last.FinishReason == fantasy.FinishReasonToolCalls
+			// a tool that ends the turn (a plan or question answered) is not cut
+			stop := full(ContextUsed(last.Usage)) && last.FinishReason == fantasy.FinishReasonToolCalls &&
+				!slices.ContainsFunc(last.Content.ToolResults(), func(r fantasy.ToolResultContent) bool { return r.StopTurn })
 			cut = cut || stop
 			return stop
 		})
@@ -263,7 +289,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	// what a step recorded and never ran (a finish that was no tool call, a
 	// callback that failed the step) is released when the turn is over
 	var recorded []string
-	defer func() { tools.CallDone(recorded...) }()
+	defer func() { tools.CallDone(tctx, recorded...) }()
 	// the tool whose arguments the step was streaming: a reply cut there
 	// may leave no tool call behind for closeToolCalls to answer
 	pending := ""
@@ -283,7 +309,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			return nil
 		},
 		OnToolCall: func(tc fantasy.ToolCallContent) error {
-			if tools.CallStart(tc.ToolCallID, tc.ToolName, tc.Input) {
+			if tools.CallStart(tctx, tc.ToolCallID, tc.ToolName, tc.Input) {
 				recorded = append(recorded, tc.ToolCallID)
 			}
 			hooks.ToolCallStart(tc.ToolCallID, tc.ToolName, tc.Input)
@@ -291,7 +317,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		},
 		OnToolResult: func(res fantasy.ToolResultContent) error {
 			// fires for a call fantasy refused to run too, which Run never releases
-			tools.CallDone(res.ToolCallID)
+			tools.CallDone(tctx, res.ToolCallID)
 			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result), res.ClientMetadata)
 			return nil
 		},
@@ -361,12 +387,23 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	if err == nil {
 		err = persistErr
 	}
-	if err == nil && len(steps) > 0 && steps[len(steps)-1].FinishReason == fantasy.FinishReasonLength {
-		err = ErrReplyCut
+	if err == nil && len(steps) > 0 {
+		// fantasy runs a step's calls only on a tool-calls finish and records
+		// the rest unrun; on plain text a gateway may send no reason or "other"
+		last, note := steps[len(steps)-1], "The reply hit the output limit while writing the "+pending+" call, so it never ran. Resend the work in smaller calls: for a large file, write the first part, then add the rest with edit."
+		calls := pending != "" || len(last.Content.ToolCalls()) > 0
+		switch reason := last.FinishReason; {
+		case reason == fantasy.FinishReasonLength:
+			err = ErrReplyCut
+		case reason == fantasy.FinishReasonError || reason == fantasy.FinishReasonContentFilter ||
+			reason != fantasy.FinishReasonToolCalls && calls:
+			err = fmt.Errorf("the provider ended the reply early (%s)", reason)
+			note = "The provider ended the reply (" + string(reason) + ") while writing the " + pending + " call, so it never ran."
+		}
 		// some providers drop a call cut mid-arguments from the step, so the
 		// history would show nothing and the model repeats the same call
-		if last := steps[len(steps)-1]; pending != "" && len(last.Content.ToolCalls()) == 0 {
-			m := r.compose("the reply was cut at the output limit while calling " + pending + "; split the work into smaller calls")
+		if err != nil && pending != "" && len(last.Content.ToolCalls()) == 0 {
+			m := r.compose(Note(note))
 			steered = append(steered, steeredMsg{at: len(stepMessages(steps)), msg: m})
 			save(m)
 		}
@@ -410,6 +447,8 @@ func (r *Runner) Snapshot() []fantasy.Message {
 // this runner's system prompt, tools and cache breakpoints, so the provider's
 // prefix cache holds. Tool choice stays as a turn sends it, since Anthropic
 // drops the message cache when it changes; the tools refuse to run instead.
+// It streams: Anthropic's SDK refuses a large max_tokens otherwise, and the
+// idle timer covers only a stream.
 func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text string) (*fantasy.AgentResult, error) {
 	msgs := append(closeToolCalls(history), UserMessage(text))
 	if r.TextOnly {
@@ -419,12 +458,14 @@ func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text stri
 	for i, t := range r.tools {
 		inert[i] = inertTool{t}
 	}
-	call := fantasy.AgentCall{
+	call := fantasy.AgentStreamCall{
 		Messages:        msgs,
 		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
 		Temperature:     r.Temperature,
 		MaxRetries:      &maxRetries,
 		ProviderOptions: r.ProviderOptions,
+		// past lastErr, which the turn this may run beside writes
+		ModelProvider: func() fantasy.LanguageModel { return r.last.LanguageModel },
 		PrepareStep: func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
 			res := fantasy.PrepareStepResult{Messages: withCacheBreakpoints(o.Messages), Tools: inert}
 			if r.ActiveTools != nil {
@@ -436,7 +477,7 @@ func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text stri
 	if n := r.MaxOutputTokens; n > 0 {
 		call.MaxOutputTokens = &n
 	}
-	return r.agent.Generate(ctx, call)
+	return r.agent.Stream(ctx, call)
 }
 
 // inertTool sends a tool's schema and refuses to run it.
@@ -493,8 +534,7 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 			continue // waiting on a job says nothing about progress
 		}
 		for _, res := range s.Content.ToolResults() {
-			txt, _ := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](res.Result)
-			sig += txt.Text + "\x00"
+			sig += ToolOutput(res.Result) + "\x00"
 		}
 		sigs = append(sigs, sig)
 	}

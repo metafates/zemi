@@ -83,15 +83,11 @@ func (d Dirs) Ensure() error {
 // StarterInit is the file a first run leaves behind: everything is
 // commented, so zemi registers nothing the user did not ask for, and a
 // block only needs uncommenting.
-const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
--- Nothing here is on: uncomment what you want. What you register takes
--- add/del/list, what holds a value takes set/get.
+const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. Nothing here is on:
+-- uncomment what you want, or ask zemi to change this file for you.
 
--- Models: zemi knows the usual providers (anthropic, openai, gemini,
--- deepseek, openrouter, ... /model lists them). Export a key and that
--- provider is on: export ANTHROPIC_API_KEY=... in your shell, then /model.
--- One you add here comes first; among builtin ones the catalog order does.
-
+-- Models: export a provider's key in your shell (ANTHROPIC_API_KEY,
+-- OPENAI_API_KEY, DEEPSEEK_API_KEY, ...; /model lists them) and it is on.
 -- A provider zemi does not know, a local server, or a gateway in front of
 -- a known one (reuse its id: yours replaces it whole):
 -- zemi.provider.add({
@@ -108,17 +104,18 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 
 -- Model tiers: main runs everything, small the short jobs (session titles,
 -- compaction summaries, the reflector, the web subagent), smart the main
--- conversation. Unset, main and small are the first usable provider's
--- defaults and smart is main.
+-- conversation. Unset, main is the default of the first provider you add
+-- here, else of the first builtin one with a key; small is main when you set
+-- main, else that provider's small default; smart is main.
 -- zemi.config.set("models.main", "anthropic/claude-sonnet-4-6")
 -- zemi.config.set("models.small", "anthropic/claude-haiku-4-5-20251001")
 
 -- Settings: zemi.config.schema() lists every one with its default.
--- zemi.config.set("ui.theme", "default")
+-- zemi.config.set("ui.theme", "default-light")
 
--- Keys: <leader> is keymap.leader, ctrl+g unless you change it. The
--- right-hand side is a command name ("review", "/review"), a host action
--- (zemi.HostAction in the type annotations lists them) or a function.
+-- Keys: <leader> is keymap.leader (ctrl+x). The right-hand side is a
+-- command name ("review", "/review"), a host action (zemi.HostAction in
+-- the type annotations lists them) or a function.
 -- zemi.keymap.set("<leader>r", "review", { desc = "review the diff" })
 -- zemi.keymap.set("<leader>m", "zemi.model.pick", { desc = "switch model" })
 
@@ -131,20 +128,18 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file.
 -- returns lines of { text, hl } segments. Reuse a builtin id to replace it.
 -- zemi.ui.widget.add({
 --   id = "msgs", region = "statusline.right", priority = 5,
---   render = function(ctx) return { { { text = ctx.transcript_count .. " msgs", hl = "Comment" } } } end,
+--   render = function(ctx) return { { { text = ctx.transcript_count .. " msgs", hl = "Dim" } } } end,
 -- })
 
--- Permissions: deny and ask rules come from any config, allow rules only
--- from this file. Every rule carries an argument it must catch, checked
--- here, so a pattern that matches nothing you meant fails at startup.
+-- Permissions: allow rules come only from your own config. Each rule needs
+-- match, an argument its pattern must match, so a typo fails at startup.
 -- zemi.permission.rule.add({
 --   subject = "tool.bash", pattern = "git push *", decision = "ask",
 --   match = "git push origin main",
 -- })
 
--- Editing this file: zemi ships type annotations for the whole zemi.* API
--- and a .luarc.json beside this file, so a lua-language-server gives
--- completion, signatures and warnings here the way it does for vim.*.
+-- zemi writes type annotations for the whole zemi.* API and a .luarc.json
+-- beside this file, so lua-language-server completes and checks it.
 
 -- /help lists the keys and commands, /health says what is missing.
 `

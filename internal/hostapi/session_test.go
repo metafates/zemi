@@ -261,3 +261,24 @@ func TestSeedReadsUsesTheRowThatReadIt(t *testing.T) {
 		t.Fatal("seeded a file changed after the row that read it")
 	}
 }
+
+// TestForkKeepsTodos: /fork carries the todo list its history set.
+func TestForkKeepsTodos(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.reflectMu.Lock() // no detached reflect run racing the teardown
+	defer h.reflectMu.Unlock()
+	parts, _ := json.Marshal(fantasy.NewUserMessage("plan it"))
+	h.DB.CreateSession("s", "", "t", "")
+	h.DB.AddMessage(&store.Message{SessionID: "s", Role: "user", PartsJSON: string(parts)})
+	h.DB.SetTodos("s", []store.Todo{{Content: "a", Status: "pending"}})
+	if err := h.ResumeSession("s"); err != nil {
+		t.Fatal(err)
+	}
+	id, err := h.ForkSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if todos := h.todoSnapshot(); h.AgentSessionID() != id || len(todos) != 1 || todos[0].Content != "a" {
+		t.Fatalf("fork %s has todos %+v", h.AgentSessionID(), todos)
+	}
+}

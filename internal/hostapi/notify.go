@@ -30,7 +30,6 @@ func (h *Host) notifyCall(L *glua.LState) *glua.LFunction {
 
 func (h *Host) notifyFn(level logging.Level) glua.LGFunction {
 	return func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.notify")
 		v := luaToGoChecked(L, 1, "zemi.notify")
 		m, isSpec := v.(map[string]any)
 		title := strField(m, "title")

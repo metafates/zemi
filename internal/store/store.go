@@ -24,17 +24,28 @@ type DB struct {
 }
 
 // Open creates the parent directory if needed and opens the database with
-// WAL journalling.
+// WAL journalling. Every transaction takes the write lock at BEGIN, so one
+// that reads first waits on busy_timeout for another process instead of
+// failing its upgrade with SQLITE_BUSY.
 func Open(path string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("store: create dir: %w", err)
 	}
-	d, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	d, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate")
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
 	d.SetMaxOpenConns(1)
 	s := &DB{db: d, path: path}
+	// switching to WAL takes an exclusive lock that busy_timeout does not wait
+	// for, so a second process creating the same store retries; the mode sticks
+	// to the file, and one that never gets it runs with a rollback journal
+	for range 100 {
+		if _, err = d.Exec(`PRAGMA journal_mode = WAL`); err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if err := s.migrate(); err != nil {
 		d.Close()
 		return nil, err
@@ -97,6 +108,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 	session_id TEXT NOT NULL,
 	path TEXT NOT NULL,
 	existed INTEGER NOT NULL,
+	link INTEGER NOT NULL DEFAULT 0,
 	content BLOB,
 	created_at INTEGER NOT NULL,
 	PRIMARY KEY (message_id, path)
@@ -139,70 +151,35 @@ CREATE TABLE IF NOT EXISTS memory (
 CREATE INDEX IF NOT EXISTS memory_scope_updated ON memory(scope, updated_at);
 `
 
-// migrations[i] upgrades a database at user_version i to i+1. The schema
-// const only ever creates what is missing, so a column added to an existing
-// table needs its ALTER here as well as its place in schema: fresh databases
-// get it from schema, existing ones from the migration. Append only, never
-// edit or reorder a shipped entry.
-var migrations = [][]string{
-	{`ALTER TABLE tool_calls DROP COLUMN input_json`,
-		`ALTER TABLE tool_calls DROP COLUMN error_kind`,
-		`ALTER TABLE tool_calls DROP COLUMN latency_ms`,
-		`ALTER TABLE tool_calls DROP COLUMN denied`,
-		`ALTER TABLE tool_calls DROP COLUMN decided_by`,
-		`ALTER TABLE sessions DROP COLUMN summary_message_id`},
-	{`DROP TRIGGER IF EXISTS memory_ai`,
-		`DROP TRIGGER IF EXISTS memory_ad`,
-		`DROP TRIGGER IF EXISTS memory_au`,
-		`DROP TABLE IF EXISTS memory_fts`,
-		`DROP INDEX IF EXISTS memory_scope_hit`,
-		`ALTER TABLE memory DROP COLUMN kind`,
-		`ALTER TABLE memory DROP COLUMN tags`,
-		`ALTER TABLE memory DROP COLUMN hit_count`,
-		`ALTER TABLE memory DROP COLUMN last_hit_at`,
-		`ALTER TABLE memory ADD COLUMN quote TEXT NOT NULL DEFAULT ''`},
-}
+// schemaVersion stamps every store. zemi keeps no migrations before its
+// first release: a schema change bumps this, and a store another version made
+// is refused with its path, for the developer to delete.
+const schemaVersion = 3
 
 func (s *DB) migrate() error {
-	// A database this call creates gets every column from schema, so it is
-	// current by construction and must be stamped: otherwise the first
-	// migration ever added would run its ALTER against a table that already
-	// has the column, and no new project could open its store.
-	var name string
-	fresh := errors.Is(s.db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1`).Scan(&name), sql.ErrNoRows)
-	if _, err := s.db.Exec(schema); err != nil {
-		return fmt.Errorf("store: migrate: %w", err)
-	}
-	if fresh {
-		if _, err := s.db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations))); err != nil {
-			return fmt.Errorf("store: stamp user_version: %w", err)
-		}
-		return nil
-	}
-	var version int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
-		return fmt.Errorf("store: read user_version: %w", err)
-	}
-	if version > len(migrations) {
-		return fmt.Errorf("store: %s is at schema version %d, this zemi knows %d; upgrade zemi", s.path, version, len(migrations))
-	}
-	if version == len(migrations) {
-		return nil
-	}
+	// one transaction, so a second process opening the same file waits and
+	// then reads the version this one stamped
 	tx, err := s.db.Begin()
 	if err != nil {
-		return err
+		return fmt.Errorf("store: open schema: %w", err)
 	}
 	defer tx.Rollback()
-	for i := version; i < len(migrations); i++ {
-		for _, stmt := range migrations[i] {
-			if _, err := tx.Exec(stmt); err != nil {
-				return fmt.Errorf("store: migration %d: %w", i+1, err)
-			}
+	var name string
+	fresh := errors.Is(tx.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1`).Scan(&name), sql.ErrNoRows)
+	if !fresh {
+		var version int
+		if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+			return fmt.Errorf("store: read user_version: %w", err)
+		}
+		if version != schemaVersion {
+			return fmt.Errorf("store: %s has schema %d, this zemi needs %d: delete the file (zemi keeps no migrations yet)", s.path, version, schemaVersion)
 		}
 	}
+	if _, err := tx.Exec(schema); err != nil {
+		return fmt.Errorf("store: schema: %w", err)
+	}
 	// PRAGMA takes no placeholder
-	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations))); err != nil {
+	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion)); err != nil {
 		return fmt.Errorf("store: set user_version: %w", err)
 	}
 	return tx.Commit()
@@ -221,27 +198,25 @@ const (
 	sessionTTL = 0
 )
 
-// sweep drops aged rows and reclaims their pages when it removed any.
+// sweep drops aged rows and reclaims their pages once enough are free.
 func (s *DB) sweep() error {
-	cps, err := s.db.Exec(`DELETE FROM checkpoints WHERE created_at < ?`,
-		time.Now().Add(-CheckpointTTL).UnixMilli())
-	if err != nil {
+	if _, err := s.db.Exec(`DELETE FROM checkpoints WHERE created_at < ?`,
+		time.Now().Add(-CheckpointTTL).UnixMilli()); err != nil {
 		return fmt.Errorf("store: sweep checkpoints: %w", err)
 	}
-	var m int64
 	if sessionTTL > 0 {
-		sess, err := s.db.Exec(`DELETE FROM sessions WHERE updated_at < ?`,
-			time.Now().Add(-sessionTTL).UnixMilli())
-		if err != nil {
+		if _, err := s.db.Exec(`DELETE FROM sessions WHERE updated_at < ?`,
+			time.Now().Add(-sessionTTL).UnixMilli()); err != nil {
 			return fmt.Errorf("store: sweep sessions: %w", err)
 		}
-		m, _ = sess.RowsAffected()
 	}
-	n, _ := cps.RowsAffected()
-	if n+m == 0 {
-		return nil
+	// NOTE: VACUUM rewrites the whole file before the UI starts, so it waits
+	// until a quarter of the pages are free; SQLite reuses the rest, and
+	// DeleteSession vacuums on its own so a deleted conversation is gone.
+	var free, pages int64
+	if err := s.db.QueryRow(`SELECT * FROM pragma_freelist_count(), pragma_page_count()`).Scan(&free, &pages); err != nil || free*4 <= pages {
+		return err
 	}
-	// VACUUM rewrites the whole file; only the rare open that deleted pays it
 	if _, err := s.db.Exec(`VACUUM`); err != nil {
 		return fmt.Errorf("store: vacuum: %w", err)
 	}

@@ -19,20 +19,20 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-const lspToolDesc = `Ask the file's language server about code by symbol name instead of grepping: it understands scopes, so it skips comments, strings and same-named identifiers elsewhere. Prefer it wherever it applies.
+const lspToolDesc = `Ask the file's language server about a symbol by name. Unlike grep it resolves scopes, so it skips comments, strings and other identifiers with the same name.
 - definition: where the symbol is defined, as path:line:col and the line.
-- implementation: what implements it (a Go interface, an abstract method); no text search answers this.
-- references: every use across the project, grouped by file.
+- implementation: what implements an interface or abstract method.
+- references: every use across the project, sorted by file.
 - workspace_symbols: find a declaration by name when you do not know its file.
-- rename: a true semantic rename everywhere, imports and other files included.
+- rename: rename it everywhere, imports and other files included; the changed files count as read.
 - symbols: the file's outline, cheaper than reading a large file for its shape.
-- call_hierarchy: the call graph for a symbol: who calls it (incoming) and what it calls (outgoing).`
+- call_hierarchy: who calls the symbol (incoming) and what it calls (outgoing).`
 
 var lspToolProps = map[string]any{
 	"action":    map[string]any{"type": "string", "enum": []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols", "call_hierarchy"}},
-	"path":      map[string]any{"type": "string", "description": "file the symbol is in, or to outline; for workspace_symbols any file of the language"},
+	"path":      map[string]any{"type": "string", "description": "a file where the symbol appears (a use is enough for definition); the file to outline for symbols; any file of the language for workspace_symbols"},
 	"symbol":    map[string]any{"type": "string", "description": "the identifier as written, or the query for workspace_symbols; not for symbols"},
-	"line":      map[string]any{"type": "number", "description": "1-based line, when the name appears more than once"},
+	"line":      map[string]any{"type": "integer", "description": "1-based line, when the name appears more than once"},
 	"new_name":  map[string]any{"type": "string", "description": "rename only"},
 	"direction": map[string]any{"type": "string", "enum": []string{"incoming", "outgoing"}, "description": "call_hierarchy only; who calls the symbol or what it calls, omitted = both"},
 }
@@ -279,7 +279,8 @@ func findSymbol(text, name string, line int) (off int, lines []int, err error) {
 	re := regexp.MustCompile(`(^|[^\pL\pN_])(` + regexp.QuoteMeta(name) + `)($|[^\pL\pN_])`)
 	var offs []int
 	for _, m := range re.FindAllStringSubmatchIndex(text, -1) {
-		offs = append(offs, m[4])
+		// the last segment of http.Get: the first would ask about the package
+		offs = append(offs, m[4]+strings.LastIndexAny(name, ".:>")+1)
 	}
 	if len(offs) == 0 {
 		return 0, nil, errors.New(name + " does not appear in the file as a whole word")

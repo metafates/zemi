@@ -42,9 +42,11 @@ const (
 )
 
 const (
-	compactPrefix       = "The earlier part of this session was compacted into the summary below. Recent messages follow verbatim. Treat the summary as background: the latest user message is the active request. Continue the current task without recapping or acknowledging the summary.\n\n<summary>\n"
-	compactSuffix       = "\n</summary>"
-	legacyCompactPrefix = "Summary of the conversation so far:\n\n"
+	// compactLead is what every summary row starts with, whatever wording
+	// follows it, so summaryOf reads rows an older zemi stored too.
+	compactLead   = "The earlier part of this session was compacted into the summary below"
+	compactPrefix = compactLead + "; messages after this one are verbatim. The user's latest request is the active one: continue it without recapping or acknowledging the summary.\n\n<summary>\n"
+	compactSuffix = "\n</summary>"
 )
 
 const compactSystem = `You write a handoff summary of a coding session so another agent can continue it in a fresh context. You are not in the conversation: do not answer questions in it, do not call tools, output only the summary.
@@ -61,7 +63,7 @@ Use exactly these sections, keep all of them, write "(none)" when empty, terse b
 ## Files
 (path: what changed or why it matters)
 ## Facts
-(exact commands, error messages, identifiers, URLs worth keeping)
+(exact commands, error messages, identifiers, URLs worth keeping; approaches that failed and why, so they are not retried)
 
 If a <previous-summary> is given, merge it: keep everything still relevant, move finished work to Done, and where it conflicts with the conversation, the conversation wins.`
 
@@ -400,6 +402,12 @@ func (h *Host) storeCompaction(summary fantasy.Message, tail []fantasy.Message) 
 // context-too-long refusal, up to three times. An empty or cut-off reply is
 // errNoSummary.
 func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focus string, window int64) (string, error) {
+	// the budget is the smaller window: the call runs on the compact model
+	if _, id, err := h.modelFor("compact.model", "models.small"); err == nil {
+		if w := h.contextWindow(id); w > 0 && (window <= 0 || w < window) {
+			window = w
+		}
+	}
 	maxOut := int64(summaryMaxOut)
 	transcript := transcriptText(head)
 	budget := len(transcript)
@@ -451,12 +459,11 @@ func summaryOf(m fantasy.Message) (string, bool) {
 		return "", false
 	}
 	p, ok := m.Content[0].(fantasy.TextPart)
-	switch {
-	case ok && strings.HasPrefix(p.Text, compactPrefix):
-		s, _, _ := strings.Cut(strings.TrimPrefix(p.Text, compactPrefix), compactSuffix)
-		return s, true
-	case ok && strings.HasPrefix(p.Text, legacyCompactPrefix):
-		return strings.TrimPrefix(p.Text, legacyCompactPrefix), true
+	if ok && strings.HasPrefix(p.Text, compactLead) {
+		if _, rest, found := strings.Cut(p.Text, "\n\n<summary>\n"); found {
+			s, _, _ := strings.Cut(rest, compactSuffix)
+			return s, true
+		}
 	}
 	return "", false
 }
@@ -587,7 +594,19 @@ func transcriptText(history []fantasy.Message) string {
 		for _, part := range m.Content {
 			switch p := part.(type) {
 			case fantasy.TextPart:
-				fmt.Fprintf(&b, "%s: %s\n", m.Role, p.Text)
+				if m.Role != fantasy.MessageRoleUser {
+					fmt.Fprintf(&b, "%s: %s\n", m.Role, p.Text)
+					break
+				}
+				// attachments, notes and reports are not the user's words,
+				// and the summarizer is told to quote those
+				typed, extra, _ := strings.Cut(p.Text, agent.AttachMarker)
+				if typed != "" {
+					fmt.Fprintf(&b, "user: %s\n", typed)
+				}
+				if extra != "" {
+					fmt.Fprintf(&b, "attached, not typed by the user: %s\n", truncRunes(strings.TrimSpace(strings.TrimSuffix(extra, "</attached-files>")), 2000))
+				}
 			case fantasy.FilePart:
 				// the summarizer only reads this text: name what it cannot see
 				fmt.Fprintf(&b, "%s: [attached %s]\n", m.Role, p.MediaType)

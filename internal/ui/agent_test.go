@@ -596,7 +596,7 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 	ran := ""
 	host.Commands.Add(&hostapi.Command{
-		Name: "greet", GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+		Name: "greet", NArgs: "?", GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
 		GoComplete: func(*hostapi.Host, string, string) []string { return []string{"alice", "bob"} },
 		Origin:     lua.OriginBuiltin, Gen: hostapi.Gen(1),
 	})
@@ -961,13 +961,13 @@ func TestLuaInput(t *testing.T) {
 	}
 }
 
-// TestKeySequence: ctrl+g then t runs a <leader>t binding without typing
+// TestKeySequence: ctrl+x then t runs a <leader>t binding without typing
 // the t; a key that breaks the sequence reaches the composer.
 func TestKeySequence(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 20)
 	runLua(t, app, `zemi.keymap.set("<leader>t", function() zemi.notify({ title = "seq", body = "ran" }) end)`)
-	ctrlG := tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}
-	app.Update(ctrlG)
+	leader := tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl}
+	app.Update(leader)
 	if len(app.keySeq) != 1 {
 		t.Fatalf("pending = %v", app.keySeq)
 	}
@@ -975,9 +975,9 @@ func TestKeySequence(t *testing.T) {
 	if lastToast(app) != "ran" || app.composer.text != "" {
 		t.Fatalf("toasts=%v composer=%q", app.toasts, app.composer.text)
 	}
-	app.Update(ctrlG)
-	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
-	if len(app.keySeq) != 0 || app.composer.text != "x" {
+	app.Update(leader)
+	app.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
+	if len(app.keySeq) != 0 || app.composer.text != "b" {
 		t.Fatalf("broken sequence: pending=%v composer=%q", app.keySeq, app.composer.text)
 	}
 }

@@ -68,7 +68,7 @@ make check              # go vet + go test + make luals + a gofmt check, all mus
 make luals              # lua-language-server over runtime/; prints a skip line without the binary
                         # not on PATH? make check LUALS=/path/to/lua-language-server
 make build / make run   # go build -o bin/zemi . / run the TUI against your real ~/.config/zemi
-make test               # full suite (~20s, pure Go, no network, no CGO)
+make test               # full suite (~20s, pure Go, no CGO; network only for one macOS TLS check)
 make race               # go test -race ./internal/...
 make golden             # regenerate internal/ui/testdata/*.golden, then read the diff
 make fmt                # gofmt -w over the tracked Go files
@@ -87,24 +87,28 @@ or settled builds.
 
 `zemi` opens the TUI; a prompt argument is sent as the first message, or run as a command when
 it names one (`sendPrompt`, TUI and `-p` alike, so `/review` works from a git hook). `--help`
-lists the flags. Piped stdin is appended to the prompt and is a usage error without `-p`. Flags
-apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
-reads. `-m` and `/model` write the tier the conversation reads (`Host.ConversationKey`:
-`models.smart` when config set it, else `models.main`). Both, and `zemi.model.set`, refuse
-while the active profile sets its own model (`Host.ProfileModelErr`; `--profile` applies
-before `-m`), since the tier would change and the conversation would not. `--profile` and
-`/profile` (`Host.SetProfile`; no argument opens the picker, which the statusline's profile
-segment clicks into) write `agent.profile` for the next send: a switch changes the prompt
-and the tool set, so it busts the provider's prompt cache once; ctrl+t and ctrl+shift+t cycle it.
+lists the flags. Piped stdin (1 MiB at most) is attached behind the typed prompt and is a usage
+error without `-p`. Flags apply after boot so they win over `init.lua`, except `--trust`, which
+the trust boot step reads. `-m` and `/model` write the tier the conversation reads
+(`Host.ConversationKey`: `models.smart` when config set it, else `models.main`). Both, and
+`zemi.model.set`, refuse while the active profile sets its own model (`Host.ProfileModelErr`;
+`--profile` applies before `-m`), since the tier would change and the conversation would not.
+`--profile` and `/profile` (`Host.SetProfile`; no argument opens the picker, which the
+statusline's profile segment clicks into) write `agent.profile` for the next send: a switch
+changes the prompt and the tool set, so it busts the provider's prompt cache once; ctrl+t and
+ctrl+shift+t cycle it.
 
 `--health` and `-p` boot the same step list and skip only the TUI. `-p` runs one turn, then
-reports on stderr how many tool calls the gate denied - nobody can answer an ask headless, so
-`deniedHint` points at `--trust` or at an allow rule. It also drops what needs a user
-(`headlessExcluded`), the agent tool's `background` and `send_to` (a detached report would
-outlive the run), and the prompt lines naming them. A headless run with no saved trust decision
-runs untrusted and says so. With no UI `Host.Notify` prints a warning or an error to
-`Host.Stderr` as "zemi: <title>: <body>", so `-p` never swallows one, and a command that opens a
-screen gets `Host.Screen`'s `ErrNeedsTUI`, which `RunCommand` names ("/memory needs the TUI").
+reports on stderr how many asks nobody could approve (`Host.HeadlessDenials`, subagents' too;
+`deniedHint` points at `--trust` or at an allow rule) and, on its own line, how many calls a
+rule, the mode or the profile denied. It also drops what needs a user (`headlessExcluded`), the
+agent tool's `background` and `send_to` (a detached report would outlive the run), and the
+prompt lines naming them. A headless run with no saved trust decision runs untrusted and says
+so. With no UI `Host.Notify` prints a warning or an error to `Host.Stderr` as "zemi: <title>:
+<body>", so `-p` never swallows one. A command that opens a screen gets `Host.Screen`'s
+`ErrNeedsTUI` there, which `RunCommand` names ("/help needs the TUI", status 1; `/trust`
+points at `--trust`); `/btw` claims the agent like `/compact`, so `-p` waits on it and ctrl+c
+cancels it, and appends its answer as a transcript row, which `-p` prints.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`). Builtin
 providers come from the embedded catwalk catalog (`agent.Builtin`, converted once per process
@@ -158,9 +162,11 @@ command can plant a nested repo whose config zemi would run.
    runtime goes "hot" - every Lua request fails fast until force-reload builds a fresh `LState`
    (generation). All registrations (keymaps, widgets, events, timers, jobs, Lua tools, a
    permission mode's `decide`) are generation-tagged (`hostapi.Gen`) and purged before replay,
-   so never keep a pointer into an old generation. `ForceReload` keeps the old Lua permission
-   rules (`staleRules`) until the replay succeeds, and `tool.pre` and `permission.request`
-   vetoes wait out a reload, so a turn is never checked against half a config.
+   so never keep a pointer into an old generation. `ForceReload` refuses an init.lua that does
+   not parse and keeps the old Lua permission rules (`staleRules`) until the replay succeeds (a
+   failed one, an init.lua error included, keeps the deny and ask ones and skips `cfgSettle`),
+   and `tool.pre` and `permission.request` vetoes wait out a reload, so a turn is never checked
+   against half a config.
 3. **UI single-writer.** All `ui.App` state mutates on the bubbletea Update goroutine; work
    from other goroutines is funneled through a hook channel (internal/ui/hooks.go). hostapi
    never imports internal/ui - it defines `UIHooks` and the App implements it; keep that
@@ -182,8 +188,9 @@ command can plant a nested repo whose config zemi would run.
    `MaxOpenConns(1)`. Two handles: a global DB (memory, kv, skills) and a per-project one under
    `<state>/projects/<hash of Dirs.TrustRoot()>/`, so a subdirectory and a worktree share the
    repository's sessions and memories. Schema is one `schema` const of `CREATE TABLE IF NOT
-   EXISTS` run on open - add tables there; a new column on an existing table
-   also needs an ALTER in `migrations`, since `IF NOT EXISTS` skips it on old databases.
+   EXISTS` run on open - add tables and columns there. There are no migrations before the
+   first release: a schema change bumps `schemaVersion`, and a store stamped with another one
+   is refused with its path, to delete (the owner is the only user).
 
 ### Tool pipeline (internal/tools/tools.go)
 
@@ -209,7 +216,7 @@ into an ask (`expandsToDotDot`). A deny, ask or not_match rule also meets the se
 by base name, its leading options dropped), so `git -C . push` meets a `git push*` rule; an
 allow is judged as written, and a git alias still slips past (NOTE in the code).
 
-File tools (internal/tools/fs_tools.go): `write`, `edit` and `multiedit` refuse a file the
+File tools (internal/tools/fs_tools.go): `write` and `edit` refuse a file the
 model has not read, or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get
 their own), and hold a per-path lock, so a concurrent agent or the user's editor cannot lose
 changes; within one step the lock is taken in call order (`tools.CallStart` from fantasy's
@@ -224,20 +231,23 @@ files touched after the last message. `tool.Run` runs the same check before the 
 (`tool.edits`), so nobody approves a change the tool would then refuse, and resolves the path
 (`perm.RealPath`) before the gate; the tools open exactly that path through `openGated` (an
 `openat` walk with `O_NOFOLLOW`), so a sandboxed command cannot swap a directory for a symlink
-between check and open. The three writers refuse a path whose last component is a symbolic link
+between check and open. Both writers refuse a path whose last component is a symbolic link
 and name the target to edit instead. `glob` and `grep` are gated on their root only, so neither
-shows a hit a deny or ask `fs.read` rule covers, and grep hides secret-shaped files. Output too
-long for a result is cut head and tail at line breaks, the marker naming the cut lines, and
-saved to the scratchpad (`tools.Spill`); command output, `!command` included, goes through
-`tools.CmdOut`, which also counts what the 1 MB buffer dropped. A
-bash command still running at its timeout is handed to `Jobs.Adopt` instead of being killed
+shows a hit a deny or ask `fs.read` rule covers. grep and a directory listing leave out the
+strict secret shapes (`perm.PathIsStrictSecret`: not `*secret*`, `*credential*` or a
+`.env.example`): a listing names what it hid, and grep's answer never depends on them, since a
+count of their hits would leak a key one bit per call. Output too long for a result is cut
+head and tail at line breaks, the marker naming the cut lines, and saved to the scratchpad
+(`tools.Spill`); command output, `!command` included, goes through `tools.CmdOut`, which also
+counts what the 1 MB buffer dropped. A bash command still running at its timeout is handed to `Jobs.Adopt` instead of being killed
 (which is why it is not bound to the turn's context; an interrupt still kills it). A bash row
 shows what the command changed (hostapi/snapshot.go, `Pipeline.Changes`): a git tree of the
-repository before and after, written through a warm temp index so the user's index is never
-touched, diffed into the result's `Metadata`; the model gets one line of paths and
-`tool.post` every path as `ev.changed`, next to the file tools' own. `read` carries
-the nearest instruction file not already in the prompt, once per session, so a monorepo
-package's own AGENTS.md reaches the model.
+repository before and after, written through a warm temp index and object directory so the
+user's index and object store are never touched; it leaves out the secret shapes the sandbox
+hides. The two are diffed into the result's `Metadata`; the model gets one line of paths and `tool.post`
+every path as `ev.changed`, next to the file tools' own. `read` carries the nearest
+instruction file not already in the prompt, once per session, so a monorepo package's own
+AGENTS.md reaches the model.
 
 ### Permission engine (internal/perm)
 
@@ -260,7 +270,7 @@ read-only - and hands the rest to the user with a reason naming why (`askHook`; 
 included).
 A read-only agent (`Profile.ReadOnly`, see below) denies writes and runs commands with the
 project unwritable in the sandbox, whatever the mode; without trust or a sandbox, a changing
-command asks.
+command asks (under yolo, only without a sandbox), as does an MCP tool not marked read-only.
 Network requests are never settled: the URL is the model's. A mode from config may carry
 `decide`, a Lua function answering one ask ("allow", "deny", anything else sends it to the user
 whatever the base would settle, which is how a user gets every ask); it holds the interpreter
@@ -436,8 +446,10 @@ lua-language-server is installed.
 
 - **Models are tiers.** `models.main` runs everything; `models.small` (session titles,
   compaction summaries, the reflector, the builtin `web` agent) and `models.smart` (the main
-  conversation) fall back to it. Anything that takes a model - an agent definition, the `agent` tool, a
-  workflow - takes a tier name or a `provider/model` id (`modelRef`).
+  conversation) fall back to it, an unset small first to the catalog's small model of main's
+  provider (`tierModel`), so a `/model` pick of a big model leaves the short jobs cheap.
+  Anything that takes a model - an agent definition, the `agent` tool, a workflow - takes a
+  tier name or a `provider/model` id (`modelRef`).
 - **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
   live tally when that session is still open. Calls outside a runner (summary, title,
   reflector) go through `Host.generate`, which bills them and sends the provider's body fields
@@ -462,7 +474,7 @@ lua-language-server is installed.
   `OnStepFinish`, so a cancelled or crashed turn keeps what it did; the next send runs
   `closeToolCalls` over the history first, inserting an error result after any tool call left
   unanswered (providers refuse a dangling call); a reply cut mid-arguments by a provider that
-  then drops the call (openai-compatible) gets a user note naming the pending tool instead, so
+  then drops the call (openai-compatible) gets a note naming the pending tool instead, so
   the model does not repeat the same oversized call. Every resolved model is wrapped in `idleModel`
   (providers.go): a call that makes no progress for 5 minutes is cancelled, since the HTTP
   header timeout stops counting once the status line arrives and a stalled stream would hold
@@ -476,7 +488,7 @@ lua-language-server is installed.
 - **Side questions.** `/btw` (`Host.btw`) sends `Runner.Snapshot` (mid-turn, the running
   step's input) plus the question on the runner the next send would build, one step through
   `Runner.Aside`: same tools and tool choice, since Anthropic drops the message cache when
-  tool choice changes, with every tool refusing to run. Billed, never persisted; `-p` refuses it.
+  tool choice changes, with every tool refusing to run. Billed, never persisted.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
   anything that does not decode as a fantasy message, and reads a file tool's or a bash call's
@@ -496,26 +508,26 @@ lua-language-server is installed.
 - **Reflector timing.** It runs on session close (`/new`, `/resume`) and in a startup sweep
   (`ReflectSweep`, once per process, not on a reload) over the newest sessions idle for ten
   minutes, at most three, never on quit. `reflectDue` reads the delta past kv
-  `reflector.seen.<sid>` (`RewindTo` clamps it) and is due only when the delta has two user
-  messages that are not compaction summaries and a tool call, or one failed tool call: one
-  exchange that went fine would cost a model call at every launch; `/reflect` skips the floor.
-  `claimReflect` takes an atomic kv claim per session (`reflector.claim.<sid>`, leased), so
-  two windows never reflect it at once, and `reflectClaimed` runs it (one at a time; a
-  skipped run releases its claim). It runs on `reflector.model`, then the small tier; a reply that is not the JSON
-  document asked for marks the delta seen and is the `/health` reflector row's news, never an
-  `/errors` entry, and a second failed try (kv `reflector.tries.<sid>`) marks it seen too. Its
-  prompt carries the scrubbed delta (`reflectLine`), the newest failed tool results
-  (`failedCalls`, read from the history rows: the telemetry rows keep no text), the
-  instruction files (`instructionSections`, shared with `systemWith`), the whole memory index
-  with budget use and quotes, and the project's skills and recipes by name, so it leaves a
-  repository's procedure to a recipe. It proposes memories only, no skills: each entry passes
-  `learn.Intake` with its `quote` and `gateMemory` like the `memory` tool's (stored at once
-  under `memory.autonomy = "auto"` when policy-clean, queued for `/memory` otherwise, a quote
-  not in the session dropped, DESIGN §10.4); an entry with empty text and `replaces` queues a
-  forget proposal, never auto-applied. There is no config-patch pipeline and no `/config`
-  command, the agent edits config files directly.
-  `digestFor()` renders every live memory, newest first per scope, under `learn.ScopeBudget`
-  (3 KB per scope); no search, no ranking.
+  `reflector.seen.<sid>` (`RewindTo` clamps it, `ForkSession` starts it at the copied history)
+  and is due only when the delta has two user messages that are not compaction summaries and a
+  tool call, or one failed tool call: one exchange that went fine would cost a model call at
+  every launch; `/reflect` skips the floor. `claimReflect` takes an atomic kv claim per session
+  (`reflector.claim.<sid>`, leased), so two windows never reflect it at once, and
+  `reflectClaimed` runs it (one at a time; a skipped run releases its claim). It runs on
+  `reflector.model`, then the small tier; a reply that is not the JSON document asked for marks
+  the delta seen and is the `/health` reflector row's news, never an `/errors` entry, and a
+  second failed try (kv `reflector.tries.<sid>`) marks it seen too. Its prompt carries the
+  scrubbed delta (`reflectLine`), the newest failed tool results (`failedCalls`, read from the
+  history rows: the telemetry rows keep no text), the instruction files (`instructionSections`,
+  shared with `systemWith`), the whole memory index with budget use and quotes, and the
+  project's skills and recipes by name, so it leaves a repository's procedure to a recipe. It
+  proposes memories only, no skills: each entry passes `learn.Intake` with its `quote` and
+  `gateMemory` like the `memory` tool's (stored at once under `memory.autonomy = "auto"` when
+  policy-clean, queued for `/memory` otherwise, a quote not in the session dropped, DESIGN
+  §10.4); an entry with empty text and `replaces` queues a forget proposal, never auto-applied.
+  There is no config-patch pipeline and no `/config` command, the agent edits config files
+  directly. `digestFor()` renders every live memory, newest first per scope, under
+  `learn.ScopeBudget` (3 KB per scope); no search, no ranking.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides real
   provider bugs (this once made the reflector read empty output everywhere).
@@ -548,11 +560,12 @@ lua-language-server is installed.
   its `Runner.Steer`; what arrives after its last step boundary becomes one more `Send`
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a
   message is never accepted and then dropped. Background runs report through `AgentSend` behind
-  `attachMarker`, which the live transcript and resume cut off; the notice row is drawn from
+  `agent.AttachMarker`, which the live transcript and resume cut off; the notice row is drawn from
   the message wherever the model reads it (`appendUserRows`: a new turn, a step boundary, a
   drained queue, a resume), so it sits under the rows of the turn it arrived in. A report an
   esc leaves queued gets a toast saying it waits for the next message, and one a closing
-  session drops (`/new`, `/resume`) is notified whole, like one for a session that moved on.
+  session drops (`/new`, `/resume`) is stored in its own session and toasted (`notifyReport`),
+  like one for a session that moved on.
   `/agents` lists the live session's runs and, under Running, the live runs of every other session (`runningElsewhere`,
   named by that session's title): they block `/rewind`, so their stop must be reachable.
 - **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, pads idle a week
@@ -560,21 +573,24 @@ lua-language-server is installed.
   agent; a program may read it, never run from it.
 - **Lua tool** (luatool.go, tool name `lua`): model Lua runs through `Runtime.Eval` as `user`
   origin, default-deny: without approval it may call only `luaReadOnly` members. Every Go
-  function in a namespace passes the sandbox guard (`Sandbox.SetGuard` -> `guardModelLua`),
-  which raises for tool code (frame path `lua-tool*`) unless the innermost tool code is an
-  approved run. `luaUnlisted` tokenizes the script first: any zemi path off the list, a
-  non-read handle method call, or dynamic access (`_G`, `load`, `require`, ...) asks `tool.lua`
-  once, as `Request.Unsandboxed` so no mode settles it, and the approved run evaluates as chunk
-  `lua-tool#<n>`. In an untrusted project or a read-only agent's run every script asks. A new API member is
-  guarded until added to `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new
+  function in a namespace passes the sandbox guard (`Sandbox.SetGuard` -> `guardLua`), which
+  raises for tool code (frame path `lua-tool*`) unless the innermost tool code is an approved
+  run, and, while a widget render runs, for anything but the `luaReadOnly` members other than
+  `zemi.fs.*` and a handle's `wait`. `luaUnlisted` tokenizes the script first: any zemi path
+  off the list, a non-read handle method call, or dynamic access (`_G`, `load`, `require`,
+  ...) asks `tool.lua` once, as `Request.Unsandboxed` so no mode settles it, and the approved
+  run evaluates as chunk `lua-tool#<n>`. In an untrusted project or a read-only agent's run
+  every script asks. A new API member is guarded until added to `luaReadOnly`;
+  `TestLuaToolDefaultDeny` checks every member. Not a new
   origin: the gate is a flag on the chunk name. A `path` script is a `.lua` file read through
   the read tool's `fs.read` check. Runs on the interpreter (10s ceiling), main agent only.
-- **Model memory writes**: the one `memory` tool goes through `memoryTool` -> `gateMemory`:
-  a near-duplicate (`learn.Similar` over both scopes and the pending proposals) is refused
-  with the id to pass as `replaces`; a learned user-scope memory needs a `quote`, checked
-  against the typed part of the session's user rows (`quoteInSession`, cut at `attachMarker`),
-  and a quote not found drops it; a scope over `learn.ScopeBudget` queues with the oldest ids
-  to replace, and `acceptProposal` and `moveMemory` refuse with them. Text with `replaces`
+- **Model memory writes**: the one `memory` tool goes through `memoryTool` -> `gateMemory`: a
+  near-duplicate (`learn.Similar` over both scopes and the pending proposals) is refused with
+  its id and text to merge through `replaces` (a pending one only as queued); a learned
+  user-scope memory needs a `quote`, checked against the typed part of the session's user rows
+  (`quoteInSession`, cut at `agent.AttachMarker`), and a quote not found drops it; a scope over
+  `learn.ScopeBudget` queues with the oldest ids to replace, and `acceptProposal`, `moveMemory`
+  and `rewriteMemory` refuse, pointing at the oldest in `/memory`. Text with `replaces`
   supersedes, empty text with it forgets (`forgetMemory`): a memory the user saved asks
   (`memory.write` as `Unsandboxed`, so no mode settles it), a learned one goes at once when
   `memoryAuto` holds (autonomy auto, a trusted project, no `fetch`, `web_search`, `lua` or
@@ -583,9 +599,10 @@ lua-language-server is installed.
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
   `callback_port` for one without dynamic registration). Servers come from `zemi.mcp.add` (user
-  origin only); they stop on `PurgeGeneration` and run unconfined in `DataHome` with
-  `ZEMI_PROJECT_DIR` set, trusted project or not: `npx` and `uv` read config from the working
-  directory, and most servers need the network a sandbox refuses. Tools are
+  origin only); `PurgeGeneration` parks them, the replay keeps a live one it adds with the same
+  spec and the rest stop. They run unconfined in `DataHome` with `ZEMI_PROJECT_DIR` set,
+  trusted project or not: `npx` and `uv` read config from the working directory, and most
+  servers need the network a sandbox refuses. Tools are
   `mcp_<server>_<tool>`, gated as subject `mcp.<server>` with the tool name as argument. Past
   `mcpDeferAt` (10) MCP tools in a set, `deferMCP` adds `tool_search` and `Runner.ActiveTools`
   offers each step only the other tools, `tool_search` and the loaded ones: a search loads at
@@ -636,9 +653,12 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
 - **Rewind** (rewind.go, store/checkpoints.go): the pipeline's `Checkpoint` hook saves a file's
   pre-turn content (keyed by the turn's user message, first write wins) before a write tool
   touches it. `RewindTo` restores files first and only then truncates messages, so a failed
-  restore leaves the conversation intact. A bash call's changes are checkpointed from the
+  restore leaves the conversation intact; then it drops what the session learned between the
+  prompt and the last row (`forgetLearned`: a reflector run or an accept after it stays) and
+  rebuilds the todo list from the kept rows. A bash call's changes are checkpointed from the
   before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
-  a repository, and not once two slow snapshots switched the snapshot off).
+  a repository, no submodule or secret-shaped file, and not once two slow snapshots switched the
+  snapshot off); a symbolic link comes back as a link.
 - **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
   `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even under allow rules, `mcp.*`
   allows and a rule's bash allow other than `ReadCommand` flip to ask; the sandbox keeps the
@@ -661,7 +681,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   of each Lua tool in the tool set), skills, digest. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index and the zemi-* sentence, no `read`
-  or `todos` drops its "Using tools" line, and a read-only agent without the `plan` tool
+  drops its "Using tools" line, and a read-only agent without the `plan` tool
   (headless, a profile) ends in `planHeadless`. No kept tool's description names a dropped tool
   (`TestPromptFollowsToolSet`). Anything that varies per turn must be
   pinned per session or it busts the provider's prompt cache - which is why `gitStatusSection`
@@ -699,14 +719,16 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   `rawset`/`rawequal` are stripped, and Go re-verifies namespace contents per request class. A
   runtime-mutable member must go through the Go side, and each Go function exposed to Lua runs
   under `recover` (a panic becomes a catchable Lua error, logged as a zemi bug).
-- **Error convention (DESIGN §6.0):** misuse (bad arguments, masked mutator) raises; runtime
-  failure of a sync op returns `nil, err`; async ops deliver through their handle.
+- **Error convention (DESIGN §6.0):** misuse (bad arguments, a call a render may not make)
+  raises; runtime failure of a sync op returns `nil, err`; async ops deliver through their
+  handle.
 - **Sanitize at boundaries.** Model-influenced strings pass through `internal/sanitize` before
   reaching widgets, overlays or the log. Secrets are scrubbed by the learn intake scrubber at
   the memory/store boundary - don't log raw tool output or memory text.
-- **Memory intake policy** (`internal/learn`): text cap 300 and quote 160, provenance
-  required, `learn.Similar` refuses a near-duplicate, `origin` (`user` or `learned`) gates
-  autonomy and the replacement guard, no kind. `memory.autonomy` is user config only.
+- **Memory intake policy** (`internal/learn`): text cap 300 and quote 160, provenance required,
+  `learn.Similar` refuses a near-duplicate (the user's own text only a word-for-word repeat),
+  `origin` (`user` or `learned`) gates autonomy and the replacement guard, no kind.
+  `memory.autonomy` is user config only.
 - **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema; only
   user config sets them. Providers ship none; user config registers them, keys included
   (`api_key = zemi.env.get("NAME")`; `zemi.env.get` reads secret-shaped names for user and

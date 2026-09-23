@@ -1,12 +1,18 @@
 package hostapi
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"image"
+	"image/png"
+	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"charm.land/fantasy"
@@ -18,14 +24,23 @@ import (
 )
 
 // TestMCPBridge registers a fake server from Lua and drives its tool the
-// way the model does: filtered by disabled_tools, asking (and failing
-// closed without a UI) until a rule allows it.
+// way the model does: filtered by enabled_tools and disabled_tools, asking
+// (and failing closed without a UI) until a rule allows it, through a
+// reload, a restart and an expired sign-in.
 func TestMCPBridge(t *testing.T) {
-	srv := httptest.NewServer(mcptest.Handler())
+	var expired atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if expired.Load() {
+			http.Error(w, "sign in", http.StatusUnauthorized)
+			return
+		}
+		mcptest.Handler().ServeHTTP(w, r)
+	}))
 	defer srv.Close()
 	h, r := newTestHostDB(t)
-	defer h.mcp.stopAll()
-	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("fake", { url = %q, disabled_tools = { "fail" } })`, srv.URL))
+	defer h.mcp.stopParked()
+	defer h.mcp.park()
+	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("fake", { url = %q, enabled_tools = { "echo", "shot", "fail", "serach" }, disabled_tools = { "fail" } })`, srv.URL))
 	if err := r.ExecuteChunk(context.Background(), `zemi.mcp.add("evil", { command = "sh" })`, "p.lua", lua.OriginProject); err == nil {
 		t.Fatal("project config must not add MCP servers")
 	}
@@ -43,6 +58,14 @@ func TestMCPBridge(t *testing.T) {
 	}
 	if !slices.Equal(names, []string{"mcp_fake_echo", "mcp_fake_shot"}) {
 		t.Fatalf("tools = %v", names)
+	}
+	if !slices.ContainsFunc(h.errs.entries, func(e errEntry) bool { return strings.Contains(e.msg, "serach") }) {
+		t.Errorf("the enabled_tools typo was not reported: %v", h.errs.entries)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.openMCP(); err != nil || ui.opened[0].Items[0].(map[string]any)["desc"] != "ready · 2 of 3 tools · init.lua" {
+		t.Errorf("/mcp row = %v, %v", ui.opened, err)
 	}
 	run := func(i int, input string) fantasy.ToolResponse {
 		resp, err := list[i].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: names[i], Input: input})
@@ -71,6 +94,79 @@ func TestMCPBridge(t *testing.T) {
 	if resp.Type != "image" || resp.MediaType != "image/png" || len(resp.Data) == 0 || resp.Content != "the screen\n[image image/png]" {
 		t.Fatalf("screenshot = %+v", resp)
 	}
+
+	first, _ := h.mcpServerNamed("fake")
+	readd := lua.BootStep{Name: "mcp", Run: func(context.Context, *lua.Runtime, *lua.Generation) error { return h.addMCP("fake", first.spec) }}
+	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), readd}); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := h.mcpServerNamed("fake"); s != first || s.currentClient() == nil {
+		t.Fatal("a reload with the same spec restarted the server")
+	}
+	// a tool from the snapshot before the restart calls the new server
+	if err := h.restartMCP("fake"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if s, _ := h.mcpServerNamed("fake"); s == first || s.currentClient() == nil {
+			return errors.New("the restarted server never became ready")
+		}
+		return nil
+	})
+	if resp := run(0, `{"text":"hi"}`); resp.IsError {
+		t.Fatalf("call after a restart = %+v", resp)
+	}
+	expired.Store(true)
+	if resp := run(0, `{"text":"hi"}`); !resp.IsError || !strings.Contains(resp.Content, "sign in again") {
+		t.Fatalf("call after the sign-in expired = %+v", resp)
+	}
+	if s, _ := h.mcpServerNamed("fake"); s.currentClient() != nil || s.status != "needs sign-in" {
+		t.Fatalf("status after the sign-in expired = %q", s.status)
+	}
+	// a reload that disables echo stops the snapshot's echo too
+	expired.Store(false)
+	spec := first.spec
+	spec.DisabledTools = []string{"echo"}
+	readd.Run = func(context.Context, *lua.Runtime, *lua.Generation) error { return h.addMCP("fake", spec) }
+	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), readd}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if s, _ := h.mcpServerNamed("fake"); s.currentClient() == nil {
+			return errors.New("the reloaded server never became ready")
+		}
+		return nil
+	})
+	if resp := run(0, `{"text":"hi"}`); !resp.IsError || !strings.Contains(resp.Content, "no longer offers echo") {
+		t.Fatalf("disabled tool call = %+v", resp)
+	}
+}
+
+// TestMCPMedia: an image goes out the size the read tool's would, and one
+// no provider takes stays out with the reason in the text.
+func TestMCPMedia(t *testing.T) {
+	var wide bytes.Buffer
+	if err := png.Encode(&wide, image.NewRGBA(image.Rect(0, 0, 3000, 1000))); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, mime string
+		data       []byte
+		want       string
+	}{
+		{"a big png is shrunk", "image/png", wide.Bytes(), "image/png 2000x666"},
+		{"an svg is refused with a reason", "image/svg+xml", []byte("<svg/>"), "x\n(the image is not shown: not a readable image: image: unknown format)"},
+	} {
+		resp := mcpMedia("x", c.data, c.mime, nil)
+		got := resp.Content
+		if resp.Type == "image" {
+			cfg, _, _ := image.DecodeConfig(bytes.NewReader(resp.Data))
+			got = fmt.Sprintf("%s %dx%d", resp.MediaType, cfg.Width, cfg.Height)
+		}
+		if got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
 }
 
 // TestMCPStoppedStartSilent: a server replaced or reloaded while it starts
@@ -92,6 +188,9 @@ type toolsModel struct {
 }
 
 func (m *toolsModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	if sideCall(call) {
+		return m.scriptModel.Stream(ctx, call)
+	}
 	var names []string
 	for _, tl := range call.Tools {
 		if n := tl.GetName(); strings.HasPrefix(n, mcpToolPrefix) || n == tools.ToolSearch {
@@ -124,6 +223,11 @@ func TestMCPDeferred(t *testing.T) {
 		{"an exact name wins over more keyword hits", 4, []string{"search:text the screenshot mcp_d_fail"}, []string{
 			"tool_search",
 			"mcp_a_echo mcp_a_shot mcp_b_echo mcp_b_shot mcp_d_fail tool_search"}},
+		{"a repeated search loads the next matches", 4, []string{"search:text", "search:text"}, []string{
+			"tool_search",
+			"mcp_a_echo mcp_a_fail mcp_a_shot mcp_b_echo mcp_b_shot tool_search",
+			"mcp_a_echo mcp_a_fail mcp_a_shot mcp_b_echo mcp_b_shot tool_search",
+			"mcp_a_echo mcp_a_fail mcp_a_shot mcp_b_echo mcp_b_fail mcp_b_shot mcp_c_echo mcp_c_fail mcp_c_shot mcp_d_echo tool_search"}},
 		{"new drops them and resume reseeds the called ones", 4, []string{"search:shot", "call:mcp_c_shot", "new", "hi", "resume", "hi"}, []string{
 			"tool_search", "mcp_a_shot mcp_b_shot mcp_c_shot mcp_d_shot tool_search",
 			"mcp_a_shot mcp_b_shot mcp_c_shot mcp_d_shot tool_search", "mcp_a_shot mcp_b_shot mcp_c_shot mcp_d_shot tool_search",
@@ -135,7 +239,8 @@ func TestMCPDeferred(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h, r := newTestHostDB(t)
-			defer h.mcp.stopAll()
+			defer h.mcp.stopParked()
+			defer h.mcp.park()
 			h.reflectMu.Lock() // a session close must not start a reflect run
 			defer h.reflectMu.Unlock()
 			for _, name := range []string{"a", "b", "c", "d"}[:tc.servers] {

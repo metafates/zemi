@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
 )
 
 // TestExpandAttachments: project files referenced with @ attach; secret-
@@ -36,7 +38,7 @@ func TestExpandAttachments(t *testing.T) {
 	}
 
 	got, _ := h.expandAttachments("look at @main.go, @.env, @notes.md and @missing.go")
-	if !strings.HasPrefix(got, "look at @main.go, @.env, @notes.md and @missing.go"+attachMarker) {
+	if !strings.HasPrefix(got, "look at @main.go, @.env, @notes.md and @missing.go"+agent.AttachMarker) {
 		t.Fatalf("typed text must lead, then the marker: %q", got)
 	}
 	if !strings.Contains(got, `<file path="main.go">`) || !strings.Contains(got, "package main // attached") {
@@ -74,10 +76,10 @@ func TestExpandAttachments(t *testing.T) {
 	}
 
 	// zemi's own notes are an element of the trailer, like files and reports
-	if note := modelNote("tick it"); !strings.HasPrefix(note, attachMarker) || !strings.Contains(note, "<zemi-note>\ntick it\n</zemi-note>\n</attached-files>") {
-		t.Fatalf("modelNote = %q", note)
+	if note := agent.Note("tick it"); !strings.HasPrefix(note, agent.AttachMarker) || !strings.Contains(note, "<zemi-note>\ntick it\n</zemi-note>\n</attached-files>") {
+		t.Fatalf("agent.Note = %q", note)
 	}
-	report := "Background agent a1 finished." + attachMarker + "\nsee @main.go\n</attached-files>"
+	report := "Background agent a1 finished." + agent.AttachMarker + "\nsee @main.go\n</attached-files>"
 	if got, _ := h.expandAttachments(report); got != report {
 		t.Fatalf("model-written text behind the marker must not attach: %q", got)
 	}
@@ -132,7 +134,7 @@ func TestImageAttachment(t *testing.T) {
 		t.Fatalf("parts = %d", len(msg.Content))
 	}
 	text, ok := msg.Content[0].(fantasy.TextPart)
-	if !ok || !strings.HasPrefix(text.Text, "what is wrong in @shot.png"+attachMarker) || !strings.Contains(text.Text, `<image path="shot.png">`) {
+	if !ok || !strings.HasPrefix(text.Text, "what is wrong in @shot.png"+agent.AttachMarker) || !strings.Contains(text.Text, `<image path="shot.png">`) {
 		t.Fatalf("text part = %#v", msg.Content[0])
 	}
 	img, ok := msg.Content[1].(fantasy.FilePart)

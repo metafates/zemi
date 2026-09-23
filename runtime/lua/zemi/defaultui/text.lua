@@ -63,7 +63,7 @@ end
 --- What a tool call does, as its row and the working rule say it.
 ---@type table<string, string>
 M.VERB = {
-  read = "Read", write = "Write", edit = "Edit", multiedit = "Edit", glob = "Find", grep = "Search",
+  read = "Read", write = "Write", edit = "Edit", glob = "Find", grep = "Search",
   fetch = "Fetch", web_search = "Search web", bash = "Run", job_start = "Start", job_read = "Check job",
   job_list = "List jobs", job_kill = "Stop job", memory = "Remember",
   diagnostics = "Check", todos = "Update todos", question = "Ask", plan = "Plan", skill = "Load skill",

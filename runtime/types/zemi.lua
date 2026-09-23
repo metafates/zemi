@@ -307,9 +307,9 @@ zemi.keymap = {}
 --- argument after a space ("zemi.ui.scroll.up sidebar" scrolls the layout
 --- node with that id; without one, the stage's scrolled region). Keys may be
 --- sequences that start with a non-printable key: "ctrl+x s", "<leader>gs"
---- (`<leader>` is the `keymap.leader` setting, ctrl+g by default). A key the
---- terminal never reports ("ctrl-q", "control+q") raises rather than binding
---- something nothing can press. Setting
+--- (`<leader>` is the `keymap.leader` setting, ctrl+x by default). A key the
+--- terminal never reports ("ctrl-q", "control+q") or zemi keeps (ctrl+c)
+--- raises rather than binding something nothing can press. Setting
 --- the same key again from the same origin rebinds it; a key (or a prefix
 --- or extension of a key sequence) a more trusted origin bound raises.
 --- With `opts.focus` the binding is scoped to a focusable node: while it has
@@ -349,8 +349,8 @@ function zemi.keymap.list() end
 -- ---------------------------------------------------------------------------
 -- zemi.command
 
---- What a command handler receives: the raw argument string and it split
---- into words.
+--- What a command handler receives: the raw argument string, with piped
+--- stdin attached behind what was typed, and the typed words.
 ---@class zemi.CommandArgs
 ---@field args string
 ---@field list string[]
@@ -400,7 +400,7 @@ function zemi.command.list() end
 ---| "agent.text_delta" | "agent.reasoning_delta"
 ---| "tool.pre" | "tool.post" | "tool.denied"
 ---| "permission.request" | "permission.resolved"
----| "ui.resize" | "ui.theme" | "overlay.open" | "overlay.close"
+---| "ui.resize" | "ui.theme"
 ---| "composer.change" | "composer.submit"
 ---| "memory.written" | "reflector.start" | "reflector.done"
 ---| "job.exit" | "lsp.request"
@@ -442,7 +442,7 @@ function zemi.command.list() end
 ---@field input table
 ---@field ok boolean
 ---@field output string At most 4096 characters.
----@field changed string[] Absolute paths of the files the call changed: the file a write, edit or multiedit wrote, and what a bash command changed in its repository (ignored files and other tools are not tracked). Commands running at the same time each list the other's changes too.
+---@field changed string[] Absolute paths of the files the call changed: the file a write or edit wrote, and what a bash command changed in its repository (ignored files and other tools are not tracked). Commands running at the same time each list the other's changes too.
 
 ---@class zemi.ev.ToolDenied: zemi.Event
 ---@field tool string
@@ -469,10 +469,6 @@ function zemi.command.list() end
 
 ---@class zemi.ev.Theme: zemi.Event
 ---@field theme string
-
----@class zemi.ev.Overlay: zemi.Event
----@field id string
----@field title? string overlay.open only.
 
 ---@class zemi.ev.ComposerChange: zemi.Event
 ---@field text string
@@ -544,7 +540,6 @@ zemi.event = {}
 ---@overload fun(name: "app.quit", fn: (fun(ev: zemi.Event): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "ui.resize", fn: (fun(ev: zemi.ev.Resize): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "ui.theme", fn: (fun(ev: zemi.ev.Theme): any), opts?: zemi.EventOpts): string
----@overload fun(name: "overlay.open"|"overlay.close", fn: (fun(ev: zemi.ev.Overlay): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "composer.change", fn: (fun(ev: zemi.ev.ComposerChange): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "composer.submit", fn: (fun(ev: zemi.ev.ComposerSubmit): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "memory.written", fn: (fun(ev: zemi.ev.MemoryWritten): any), opts?: zemi.EventOpts): string
@@ -559,6 +554,8 @@ function zemi.event.on(name, fn, opts) end
 function zemi.event.off(id) end
 
 --- Emit a `user.*` event, the only names Lua may emit from any origin.
+--- Handlers get a copy made the way JSON copies: a table that is not a
+--- sequence arrives with string keys (`{ [7] = "x" }` reads as `ev["7"]`).
 ---@param name string
 ---@param payload? table
 function zemi.event.emit(name, payload) end
@@ -650,11 +647,12 @@ function zemi.event.stats() end
 ---@field pct number
 
 --- What a widget's render function is given. Everything is a snapshot:
---- render must be pure and finish in about 10 ms: a `zemi.*` call that
---- changes anything raises inside it. `transcript`, `agent`,
---- `todos` and `recent` are built on first read, so a widget that does not
---- read them does not pay for them; kept past the render, a ctx reads nil
---- for the ones render did not read.
+--- render must be pure and finish in about 10 ms: only the read-only
+--- `zemi.*` calls other than `zemi.fs.*` and a handle's `wait` work inside
+--- it, any other raises. `transcript`, `agent`, `todos` and `recent` are
+--- built on first read, so a widget that does not read them does not pay
+--- for them; kept past the render, a ctx reads nil for the ones render did
+--- not read.
 ---@class zemi.WidgetCtx
 ---@field width integer Cells of the layout node drawing the widget's region.
 ---@field height integer Rows of that node; for a content-sized node, the most it could get.
@@ -669,7 +667,7 @@ function zemi.event.stats() end
 ---@field model string
 ---@field profile string
 ---@field profile_read_only boolean Whether the active agent is read-only (plans, presents for approval).
----@field effort string
+---@field effort string The reasoning level `model` runs at: the /effort pick fitted to the model, or its catalog default; "" sends none.
 ---@field permission_mode string
 ---@field permission_mode_base string
 ---@field agent_active boolean
@@ -1927,7 +1925,7 @@ zemi.skills = {}
 ---@return zemi.Skill[]
 function zemi.skills.list() end
 
---- A skill is inert until it is enabled. User or builtin origin only.
+--- Enable a disabled skill. User or builtin origin only.
 ---@param name string
 ---@return true|nil ok
 ---@return string|nil err
@@ -1959,7 +1957,7 @@ function zemi.skills.disable(name) end
 ---@field status string "starting", "ready", "needs sign-in", "failed" or "stopped".
 ---@field error string
 ---@field source string
----@field tools string[]
+---@field tools string[] The tools the model gets, after enabled_tools and disabled_tools.
 
 ---@class zemi.mcp
 zemi.mcp = {}

@@ -51,8 +51,8 @@ neovim's Lua architecture, pi, opencode, codex, hermes-agent.
 
 Added since: `modernc.org/sqlite` (pure-Go SQLite, keeps
 `CGO_ENABLED=0`; the schema is one const of `CREATE TABLE IF NOT
-EXISTS` plus an append-only `migrations` list keyed on `PRAGMA
-user_version`, so no migration library came with it), `charm.land/glamour/v2`
+EXISTS` stamped with `PRAGMA user_version`; no migrations before the
+first release, so no migration library came with it), `charm.land/glamour/v2`
 (markdown in chat, with `alecthomas/chroma/v2` for the code block
 formatter that marks glamour's own margins), `charmbracelet/x/exp/golden` (golden-file assertions
 for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty`
@@ -115,7 +115,7 @@ Layers and ownership:
   reflector and the skill manager live in `internal/hostapi`.
 - **Store** (`internal/store`): SQLite (sessions, messages, memory, skills,
   checkpoints, proposals, config revisions, telemetry), one schema const; a
-  new column on an existing table also needs an ALTER in `migrations`.
+  schema change bumps `schemaVersion` and an older store is refused, to delete.
 
 ## 4. Concurrency model
 
@@ -173,8 +173,8 @@ Contracts that make this safe:
   registration of the dead generation (keymaps, widgets, event handlers,
   overrides, timers, jobs) before replay, so no callback can fire into a
   dropped `LState`. Lua-added permission rules are the exception: they stay
-  in force until the replay succeeds (then those it did not add again are
-  dropped), and `tool.pre` and `permission.request` vetoes wait for a
+  in force until the replay succeeds (a failed one keeps the deny and ask
+  ones; then those it did not add again are dropped), and `tool.pre` and `permission.request` vetoes wait for a
   running reload, so no tool call is checked against half a config.
 - **Vetoable events never block.** `permission.request`, `app.quit`, and
   `composer.submit` handlers must answer without waiting on async work. At
@@ -224,14 +224,16 @@ Contracts that make this safe:
   new requests run normally, requests that arrived while hot got the
   "reloading" error immediately, stale timer/job callbacks are dropped and
   logged, and replay is safe because all registrations are declarative.
-- **Widget render is pure.** `render(ctx)` must not call mutating APIs; it
-  runs against a capability-masked namespace where mutators raise (caught,
-  logged, widget keeps its last-good lines). Go caches rendered lines keyed
-  by `(widget id, width, height, generation)`; the generation is a global frame
-  counter bumped at most once per renderer tick, so in v1 "invalidated"
-  means any generation change: each visible widget renders once per frame
-  and the cache only dedupes repeat `View` calls within a frame (per-widget
-  dependency invalidation is a later optimization, §8).
+- **Widget render is pure.** `render(ctx)` may call only the read-only
+  members (`luaReadOnly`) other than `zemi.fs.*` and a handle's `wait`;
+  the sandbox guard (`guardLua`) raises on any other call, naming it
+  (caught, logged, widget keeps its last-good lines). Go caches rendered
+  lines keyed by `(widget id, width, height, generation)`; the generation
+  is a global frame counter bumped at most once per renderer tick, so in
+  v1 "invalidated" means any generation change: each visible widget
+  renders once per frame and the cache only dedupes repeat `View` calls
+  within a frame (per-widget dependency invalidation is a later
+  optimization, §8).
 - **Deltas are not batched.** `agent.text_delta` and
   `agent.reasoning_delta` are emitted once per streamed chunk, each its own
   async request, and carry the incremental chunk only, so a subscriber
@@ -459,8 +461,8 @@ in which milestone.
   (`zemi.fs.read`/`write`, `zemi.state.get`/`set`, `zemi.json.decode`,
   `zemi.job.start`, the memory, learn and skills calls) return
   `nil, err` instead of raising. The split is mechanical: runtime
-  failures never raise; misuse (bad arguments, a masked mutator in a
-  render, an origin that may not make the call) and a permission gate
+  failures never raise; misuse (bad arguments, a call a render may not
+  make, an origin that may not make the call) and a permission gate
   that does not allow always raise. One exception: `zemi.command.run`
   returns `nil, err` when the caller's origin may not run the command.
 - **One verb per job**: `add` registers (`zemi.command`, `zemi.tool`,
@@ -595,10 +597,9 @@ composer submit before any Lua-visible command lookup) are fixed
 in v1 (no origin, user included, rebinds them), so a compromised config
 cannot relocate the panic button or put a decoy on it (case-variant
 command names are refused by the §11 collision rules). `<leader>`
-expands to `ctrl+g` (the `keymap.leader` setting); multi-key sequences arm a
+expands to `ctrl+x` (the `keymap.leader` setting); multi-key sequences arm a
 pending state (shown in the statusline) until the next key or timeout; a held
-prefix the next key breaks or the timeout ends replays as plain keys, so
-`ctrl+g` alone still opens the editor.
+prefix the next key breaks or the timeout ends replays as plain keys.
 Command `nargs` follows Vim's spec strings (`?` = 0 or 1, `+` = 1 or more,
 `*` = 0 or more).
 
@@ -612,8 +613,7 @@ Event catalogue (v1, each emitted on the interpreter thread):
 - stream: `agent.text_delta`, `agent.reasoning_delta`
 - tools: `tool.pre` (vetoable: `deny|rewrite|halt`), `tool.post`, `tool.denied`
 - permission: `permission.request` (vetoable), `permission.resolved`
-- ui: `ui.resize`, `ui.theme`, `overlay.open`, `overlay.close`,
-  `composer.change`, `composer.submit` (vetoable)
+- ui: `ui.resize`, `ui.theme`, `composer.change`, `composer.submit` (vetoable)
 - learn: `memory.written`, `reflector.start`,
   `reflector.done` (counts, or `error` on failure)
 - io: `job.exit`, `lsp.request`
@@ -717,7 +717,8 @@ zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes the conversation's tie
 zemi.model.pick()                    -- open the picker (returns at once)
 -- Models are three config tiers: models.main runs everything, models.small the
 -- short jobs (titles, compaction summaries, the builtin web agent), models.smart
--- the main conversation; an unset tier falls back to main. Anywhere a model can
+-- the main conversation; an unset tier falls back to main, small first to the
+-- small model of main's provider. Anywhere a model can
 -- be named (a profile, an agent definition, the agent tool, a workflow) a tier
 -- name works too.
 
@@ -748,7 +749,8 @@ run that fails or is cancelled cannot read what is still queued, so its
 report says how many messages it never read. A finished run is not gone:
 `send_to` runs it once more on the history it ended with (its kept runner,
 or its child session's rows), so a follow-up question costs no fresh
-exploration.
+exploration. It keeps the run's model, and a run another session started
+refuses it.
 
 Builtin providers come from catwalk's embedded catalog: every generation
 seeds the registry with the providers whose key env var is exported
@@ -813,7 +815,7 @@ names it `view`; it returns images as image content, lists a directory
 one level deep in place of crush's `ls`, and carries the
 nearest instruction file not already in the prompt, once per session),
 `write`, `edit` (incl. whitespace-tolerant variant),
-`multiedit`, `glob`, `grep` (both Go-exec'd async against `rg` with a Go
+`glob`, `grep` (both Go-exec'd async against `rg` with a Go
 walker fallback, §2), `fetch` (readability picks the article out of the
 page, converted to markdown),
 `todos`, `question` (1-4 questions in one overlay, options or a typed
@@ -828,7 +830,7 @@ question or a report is no plan to approve),
 `job_start`/`job_read`/`job_list`/`job_kill`,
 `memory` (one durable line, `replaces` rewrites or drops one, §10.4),
 `diagnostics` (language
-server errors for any file), `lsp` (definition, implementation,
+server errors and warnings for any file), `lsp` (definition, implementation,
 references, rename, file symbols and project-wide symbol search by name), `skill` (loads a SKILL.md body on demand), plus the
 three the host adds: `agent` (delegate to a subagent), `workflow` (write
 or run a workflow script), and `lua` (run Lua inside zemi, main agent only, as user origin:
@@ -915,11 +917,10 @@ a child inherits the parent env minus the §9 secret denylist; extra vars
 are opt-in per job (`env = { ... }`, Lua-supplied values only, never
 looked up from the parent by name); every `env`-extras key runs the §9
 environment gates: a secret-shaped or environment-affecting name is
-refused when the job starts (`perm.ChildEnv`), and for model `job_start`
-calls the extras also lead the gated command line as assignments, so
-rules match them and the ask overlay previews them; jobs never inherit the controlling
-tty (each runs in its own session through `internal/proc`; stdin is
-closed unless the job asks for a pipe with `stdin = true`).
+refused when the job starts (`perm.ChildEnv`); model `job_start` takes
+none, since its shell line sets them (`FOO=1 cmd`); jobs never inherit the
+controlling tty (each runs in its own session through `internal/proc`;
+stdin is closed unless the job asks for a pipe with `stdin = true`).
 
 ### 6.6 UI
 
@@ -1120,8 +1121,8 @@ todos(id, session_id, content, status, active_form, ord, created_at)
 tool_calls(id, message_id, tool, ok, created_at)                -- per-tool counts for the reflector
 memory(id, scope, text, quote, provenance_session_id,
        created_at, updated_at, superseded_by, origin)
-checkpoints(message_id, session_id, path, existed, content, created_at)
-                                                                -- pre-turn file content for rewind (§8)
+checkpoints(message_id, session_id, path, existed, link, content, created_at)
+                                                                -- pre-turn file content (a link's target) for rewind (§8)
 proposals(id, kind, payload, created_at)                        -- pending, until reviewed
 skills(name, path, source, enabled, created_at)                 -- source: authored|builtin
 kv(key, value_json, updated_at)                                 -- zemi.state
@@ -1292,14 +1293,16 @@ provenance string.
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter offers Resume and Delete), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/btw <question>` (a side question
-  answered in an overlay from the conversation so far, never stored), `/health` (one row per
-  check, problems first: store, model key, context window, git, ripgrep,
+  answered in an overlay, on stdout under `-p`, from the conversation so far,
+  never stored), `/health` (one row per check, problems first: store, model
+  key, context window, git, ripgrep,
   reflector, pending reviews, skills, recent errors, project trust, MCP
   servers, language servers, Lua runtime),
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/workflow`, `/review`, `/mcp`,
   `/lsp`, `/win`) and `/trust` (§5). Enter on a help command row fills the composer.
+  Under `-p` a command that opens a screen fails with "/<name> needs the TUI".
   The menus share one list: a row that only a closer look should act on
   (an error, a server, a skill, a workflow, a rewind) opens a detail view
   in place of the list with its full text and the actions as a list, so a restart, a
@@ -1559,7 +1562,7 @@ provenance string.
   the user's approval a run may call only the read-only members in
   `luaReadOnly` (hostapi `luatool.go`). Every Go function a namespace
   exposes, and every handle method (`lua.GuardFuncs`), runs the sandbox
-  guard (`Sandbox.SetGuard`, `guardModelLua`), which raises for any other
+  guard (`Sandbox.SetGuard`, `guardLua`), which raises for any other
   member when the tool's code is calling (its chunk, functions it defined,
   callbacks it registered, found by frame path and call stack) and the
   innermost tool code on the stack is not an approved run. Before running,
@@ -1641,7 +1644,7 @@ provenance string.
   wrap that fails is a tool error, never an unconfined run.
   While a backend is live, bash and `job_start` take two escapes,
   fixed per process so the prompt cache holds. `network: true`
-  (`Request.Network`) keeps the sandbox and adds sockets (`Policy.Network`),
+  (`Request.Network`) keeps the sandbox and adds IP sockets, no unix one (`Policy.Network`),
   which is all a dependency fetch or a `gh` call needs, and it stays confined
   whichever verdict allowed it, the user's ask included; `sandbox: false`
   (`Request.Unsandboxed`) drops the policy whole, credential hiding included.
@@ -1676,11 +1679,11 @@ provenance string.
   write roots, so an approved `fs.write` cannot plant plugin code that
   auto-loads at the next boot. The config dir is read-only to Lua: of
   zemi's own code only Go writes there, so `zemi.fs.write` cannot
-  author `init.lua`. The model's `read`, `write`, `edit` and `multiedit` get their
+  author `init.lua`. The model's `read`, `write` and `edit` get their
   path resolved once before the gate and open exactly that path, walking
   it with `openat` and `O_NOFOLLOW` (`openGated`), so a directory a
   sandboxed command swaps for a symlink after the check fails the open.
-  `write`, `edit` and `multiedit` refuse a path whose last component is a
+  `write` and `edit` refuse a path whose last component is a
   symbolic link and name the target to edit instead.
   Residual race: `zemi.fs` opens the checked path plainly, so a component
   swapped between check and open is not caught there (the Linux endgame
@@ -1751,23 +1754,24 @@ session summaries. Additional signals: explicit user teaching
 
 ### 10.3 Distillation: the reflector
 
-The reflector is Go (`internal/hostapi/reflector.go`), not a Lua plugin
-and not a profile: one tool-less model call over a closed session. With
-no tools it cannot act at all, so its only output is the proposal
-document below. Triggered on `session.close` (`/new`, `/resume`) and by a
-startup sweep (once per process, not on a reload) over the newest sessions
-nothing has touched for ten minutes, at most three, so quitting never waits
-on a model call and a session a quit, a crash or a `-p` run left behind is
-still read; `/reflect` runs it by hand. It reads the delta since the seen
-count (kv `reflector.seen.<sid>`, clamped when a rewind cuts below it), and
-only when that delta holds two user messages (compaction summaries do not
-count) and a tool call, or one failed tool call; `/reflect` skips that
-floor. One run per session across windows: an atomic kv claim keyed by the
-session, leased for the run's timeout plus a minute, so a second window's
-delta waits for its next close or sweep instead of a run over the same rows. A reply that is
-not the JSON asked for marks the delta seen, as does a second failed try
-(kv `reflector.tries.<sid>`), so a delta a provider refuses does not cost a
-call at every close; `/health` shows the last outcome.
+The reflector is Go (`internal/hostapi/reflector.go`), not a Lua plugin and
+not a profile: one tool-less model call over a closed session. With no tools
+it cannot act at all, so its only output is the proposal document below.
+Triggered on `session.close` (`/new`, `/resume`) and by a startup sweep
+(once per process, not on a reload) over the newest sessions nothing has
+touched for ten minutes, at most three, so quitting never waits on a model
+call and a session a quit, a crash or a `-p` run left behind is still read;
+`/reflect` runs it by hand. It reads the delta since the seen count (kv
+`reflector.seen.<sid>`, clamped when a rewind cuts below it, a fork starting
+past its copied history), and only when that delta holds two user messages
+(compaction summaries do not count) and a tool call, or one failed tool
+call; `/reflect` skips that floor. One run per session across windows: an
+atomic kv claim keyed by the session, leased for the run's timeout plus a
+minute, so a second window's delta waits for its next close or sweep instead
+of a run over the same rows. A reply that is not the JSON asked for marks
+the delta seen, as does a second failed try (kv `reflector.tries.<sid>`), so
+a delta a provider refuses does not cost a call at every close; `/health`
+shows the last outcome.
 
 Input, in this order: the delta since the seen count (its last 120 user
 and assistant messages, each truncated to 400 runes, a compaction summary
@@ -1834,37 +1838,37 @@ by the next startup sweep, since the session still has unseen messages.
   opens a row with those keys as its buttons, and esc closes the screen and
   applies the marks. Stored rows show their
   age.
-- **Memory intake is host-side**, regardless of autonomy: a length cap
-  (300 chars, and 160 for the quote), provenance required, the quote
-  scrubbed like the text, and
-  intake-time secret scrubbing (a span matching a key shape or above an
-  entropy threshold in the quote is redacted with a `[redacted n chars]`
-  marker; one in the text refuses the memory, since a redacted row would
-  never load, and the error says to name the env var instead). Text phrased as instructions ("always run X", "ignore previous
+- **Memory intake is host-side**, regardless of autonomy: a length cap (300
+  chars, and 160 for the quote), provenance required, the quote scrubbed
+  like the text, and intake-time secret scrubbing (a span matching a key
+  shape or above an entropy threshold in the quote is redacted with a
+  `[redacted n chars]` marker; one in the text refuses the memory, since a
+  redacted row would never load, and the error says to name the env var
+  instead). Text phrased as instructions ("always run X", "ignore previous
   instructions") is flagged by a recall-biased heuristic pass (imperative
   verbs, second person, instruction-override phrasings) and routes to the
   review queue even under `memory.autonomy = auto`; false positives only
   cost a review click. Auto-applied memories are capped per session. A
   near-duplicate of a live memory or a pending proposal in either scope
-  (`learn.Similar`: 60% of the content tokens shared) is refused with the
-  id it repeats, so the model passes `replaces` instead. Anything about
-  the user carries `quote`, the user's own words: a learned user-scope
-  memory without one waits for review, and a quote that is not in the
-  session's user rows (compaction summaries aside) drops the memory. Each
-  scope has a 3 KB prompt budget (§10.7): a write that would pass it
-  queues for review with the oldest ids to replace, and `/memory <note>`,
-  accepting a queued one and a move into that scope refuse with them,
-  since the user is there. The
-  digest (§10.7) sits behind a
-  Go-inserted data boundary the prompt tells the model to treat as
-  quoted, untrusted material. Residual
-  risk is stated plainly: a fenced quote can still sway a credulous
-  model; the cap, provenance, scrubbing, and the review queue
+  (`learn.Similar`: 75% of the content tokens shared) is refused with the id
+  and text it repeats, so the model merges the two through `replaces` (a
+  pending one is named as queued; the user's own text is refused only word
+  for word). Anything about the user carries `quote`, the user's own words:
+  a learned user-scope memory without one waits for review, and a quote that
+  is not in the session's user rows (compaction summaries aside) drops the
+  memory. Each scope has a 3 KB prompt budget (§10.7): a write that would
+  pass it queues for review with the oldest ids to replace, and `/memory
+  <note>`, accepting a queued one, a move into that scope and an edit that
+  grows past it refuse and point at the oldest in `/memory`, since the user
+  is there. The digest (§10.7) tells the model to follow a preference the
+  user stated and to check what any other line names before relying on it.
+  Residual risk is stated plainly: a learned line can still sway a credulous
+  model; the cap, provenance, quote check, scrubbing and the review queue
   narrow that window. `replaces` is the one edit: text with it supersedes
   the old memory, empty text with it forgets. `/memory forget <id>` is the
-  other review action: model proposals may
-  never silently drop a user-attested (`/memory <note>`) memory, and a
-  reflector retirement (§10.3) never drops any memory without review.
+  other review action: model proposals may never silently drop a
+  user-attested (`/memory <note>`) memory, and a reflector retirement
+  (§10.3) never drops any memory without review.
 - A recipe (§10.5) is written with the file tools, and every write asks:
   the dir is under zemi's state, so auto mode never settles it, no
   "always" is offered, and the ask says when the session read text from
@@ -2010,10 +2014,11 @@ tail after it (`/resume` scans for the last summary row and starts from
 it), and re-runs digest assembly, §7, with the environment section and the
 recipes list (§10.5) pinned again; three failed or
 ineffective auto compactions in a row stop it for the session), which keeps
-provider prompt caches warm; it is framed as quoted data under "# Memory"
-(§10.4), with a cue that a
-memory is what held when it was written, so a file, command or flag it
-names is checked before the model relies on it. Digest lines are
+provider prompt caches warm; under "# Memory" a preference the user
+stated holds unless the conversation or project instructions say
+otherwise, and any other line carries the cue that it held when it was
+written, so a file, command or flag it names is checked before the model
+relies on it. Digest lines are
 labeled `user` or `learned` from `memory.origin`, so users can audit
 what the model was told and which of it the agent wrote itself. Context
 files are injected verbatim, and only in a trusted project (§5); an
@@ -2095,7 +2100,7 @@ internal/ui/                program, regions, widgets, themes, palette, overlays
                             composer, mouse
 internal/learn/             memory intake policy: caps, scrubber, near-duplicate check, digest
 internal/skills/            SKILL.md discovery and parsing
-internal/store/             sqlite schema, user_version migrations and queries
+internal/store/             sqlite schema, its version stamp and queries
 internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server
 internal/proc/              every child process (own session and process group)
@@ -2133,7 +2138,7 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
 - **M1, chat that codes**: providers (anthropic, openai, openai_compat, google),
   `zemi.model.pick` over the registered models, sessions + messages in
   SQLite, streaming into chat widget, composer,
-  bash/read/write/edit/multiedit/glob/grep tools, permission overlays,
+  bash/read/write/edit/glob/grep tools, permission overlays,
   `:` commands, themes in Lua.
   Namespaces: `zemi.env`, `zemi.state`, `zemi.timer`, `zemi.fs`,
   `zemi.http`, `zemi.job`, `zemi.tool`, `zemi.model`, `zemi.provider`,

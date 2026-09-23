@@ -156,13 +156,13 @@ func TestMemoryReviewDropAccepted(t *testing.T) {
 }
 
 // TestMemoryReviewForgetAndWrap: a forget suggestion offers "a forget",
-// keeping it leaves Remembered alone, and keeping the last suggestion goes
-// back to the first one left.
+// keeping it takes the memory it forgets off the screen, u brings both
+// back, and keeping the last suggestion goes back to the first one left.
 func TestMemoryReviewForgetAndWrap(t *testing.T) {
-	app, _ := bootAgentApp(t, 70, 16)
+	app, _ := bootAgentApp(t, 70, 24)
 	done := openReview(t, app, []hostapi.MemoryRow{
 		{ID: "s1", Scope: "project", Origin: "learned", Text: "idea", Queued: true},
-		{ID: "f1", Scope: "project", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
+		{ID: "f1", Scope: "project", Origin: "learned", Text: "forget: note", Queued: true, Forget: true, Supersedes: "m1"},
 		{ID: "m1", Scope: "project", Origin: "user", Text: "note"},
 	})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
@@ -170,10 +170,13 @@ func TestMemoryReviewForgetAndWrap(t *testing.T) {
 	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "a forget · d keep") {
 		t.Fatalf("forget hints:\n%s", frame)
 	}
-	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "forget: note") || !strings.Contains(frame, "Remembered (1)") {
-		t.Fatalf("a kept forget shows under Remembered:\n%s", frame)
+	for _, key := range []rune{'a', 'u', 'a'} {
+		app.Update(tea.KeyPressMsg{Code: key, Text: string(key)})
+		app.renderSync(t)
+		frame := ansi.Strip(app.Frame())
+		if kept := key == 'a'; strings.Contains(frame, "forget: note") == kept || strings.Contains(frame, "Remembered (1)") == kept {
+			t.Fatalf("after %c the forget and its memory show wrong:\n%s", key, frame)
+		}
 	}
 	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"}) // back on s1
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})

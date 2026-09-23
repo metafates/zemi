@@ -216,7 +216,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			// the highlighted argument replaces a typed or picked one, so a
 			// bare "/name " runs as typed, and a typed name that is not a
 			// command runs the highlighted one
-			name, args := splitCommand(strings.TrimPrefix(c.text, "/"))
+			name, args := SplitCommand(strings.TrimPrefix(c.text, "/"))
 			switch {
 			case p.args != nil && p.selected < len(p.args) && (p.moved || c.cursor > p.argStart):
 				c.replace(p.argStart, p.args[p.selected].Text)
@@ -339,7 +339,7 @@ func moveSel(sel *int, n, page int, key string) bool {
 
 const keySeqTimeout = 1500 * time.Millisecond
 
-// keySequence runs bindings for focus, including multi-key ones ("ctrl+g
+// keySequence runs bindings for focus, including multi-key ones ("ctrl+x
 // s"): a key that starts or continues a bound sequence is held until the
 // sequence completes, esc cancels it, and when a key breaks or outlives it
 // the held keys replay as plain ones before the key is handled on its own.

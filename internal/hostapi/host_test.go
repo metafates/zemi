@@ -12,6 +12,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
@@ -88,7 +89,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.80.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.81.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
@@ -345,8 +346,9 @@ func TestKeymapFromLua(t *testing.T) {
 		zemi.keymap.del("tab")
 		assert(zemi.keymap.get("tab") == nil, "user could not remove a shipped key")
 		assert(zemi.keymap.del("tab") == false, "unbinding twice reports false, not an error")
-		for _, bad in ipairs({ "control+q", "ctrl-q", "ctrl+", "pgupp" }) do
+		for _, bad in ipairs({ "control+q", "ctrl-q", "ctrl+", "pgupp", "Ctrl+C", "ctrl+c x", "ctrl+x ctrl+c" }) do
 			assert(not pcall(zemi.keymap.set, bad, function() end), "bound " .. bad)
+			assert(not pcall(zemi.keymap.set, bad, function() end, { focus = "sidebar" }), "bound focused " .. bad)
 		end
 		for _, good in ipairs({ "shift+pgup", "alt+f12", "ctrl+alt+x", "esc" }) do
 			zemi.keymap.set(good, function() end)
@@ -397,9 +399,7 @@ func TestRenderGuardOnlyWhileRendering(t *testing.T) {
 			h.RenderWidget(ctx, w, 40, 10, UIState{})
 		}()
 		<-ctx.waited // the render is now queued behind this request
-		h.renderMu.Lock()
-		defer h.renderMu.Unlock()
-		if h.rendering {
+		if h.rendering.Load() {
 			t.Error("render guard raised while the render only waited in the queue")
 		}
 		return nil, nil
@@ -409,62 +409,43 @@ func TestRenderGuardOnlyWhileRendering(t *testing.T) {
 	<-rendered
 }
 
-// TestRenderRefusesMutations pins the render-purity guard (DESIGN §6.6):
-// a widget render that mutates state fails with the guard error and leaves
-// no side effects, while a clean render comes back sanitized.
-func TestRenderRefusesMutations(t *testing.T) {
+// TestRenderAllowlist pins the render guard (DESIGN §4): a widget render
+// may call the luaReadOnly readers, and any other call, a wait or a disk
+// read raises naming it; a clean render comes back sanitized.
+func TestRenderAllowlist(t *testing.T) {
 	h, r := newTestHost(t)
-	runUser(t, r, `
-		zemi.ui.widget.add({
-			id = "mutating", region = "header",
-			render = function(ctx)
-				zemi.keymap.set("ctrl+z", function() end)
-				return {}
-			end,
-		})
-		zemi.ui.widget.add({
-			id = "writing", region = "header",
-			render = function(ctx)
-				zemi.state.set("x", 1)
-				return {}
-			end,
-		})
-		zemi.ui.widget.add({
-			id = "clean", region = "header",
-			render = function(ctx)
-				return {{{text = "a\27[31mb", hl = "Comment"}, {text = "chrome", hl = "Host:BtnSel"}}}
-			end,
-		})
-	`)
-	var mutating, writing, clean *Widget
+	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
+	cases := []struct{ call, refused string }{
+		{`zemi.config.get("ui.mouse")`, ""},
+		{`zemi.permission.mode.set("yolo")`, "permission.mode.set"},
+		{`zemi.agent.run({ prompt = "x" })`, "agent.run"},
+		{`zemi.memory.add("x")`, "memory.add"},
+		{`zemi.skills.enable("x")`, "skills.enable"},
+		{`zemi.config.watch("ui.mouse", function() end)`, "config.watch"},
+		{`zemi.fs.read("x")`, "fs.read"},
+		{`job:wait(1000)`, "job:wait"},
+	}
+	src := `local job = zemi.job.start({ cmd = "true" })` + "\n"
+	for i, c := range cases {
+		src += fmt.Sprintf("zemi.ui.widget.add({ id = %q, region = \"header\", render = function() %s return {} end })\n", fmt.Sprint(i), c.call)
+	}
+	src += `zemi.ui.widget.add({ id = "clean", region = "header", render = function()
+		return {{{text = "a\27[31mb", hl = "Comment"}, {text = "chrome", hl = "Host:BtnSel"}}}
+	end })`
+	runUser(t, r, src)
+	widgets := map[string]*Widget{}
 	for _, w := range h.Widgets.List() {
-		switch w.ID {
-		case "mutating":
-			mutating = w
-		case "writing":
-			writing = w
-		case "clean":
-			clean = w
+		widgets[w.ID] = w
+	}
+	for i, c := range cases {
+		_, _, err := h.RenderWidget(context.Background(), widgets[fmt.Sprint(i)], 40, 10, UIState{})
+		if want := "zemi." + c.refused + " is not allowed during widget render"; c.refused == "" && err != nil ||
+			c.refused != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("%s: err = %v", c.call, err)
 		}
 	}
-	if mutating == nil || writing == nil || clean == nil {
-		t.Fatalf("widgets not registered (mutating=%v writing=%v clean=%v)", mutating, writing, clean)
-	}
 
-	if _, _, err := h.RenderWidget(context.Background(), mutating, 40, 10, UIState{}); err == nil ||
-		!strings.Contains(err.Error(), "not allowed during widget render") {
-		t.Fatalf("mutation during render: err = %v", err)
-	}
-	if h.Keymaps.Lookup("", "ctrl+z") != nil {
-		t.Fatal("refused bind still landed in the keymap registry")
-	}
-	// the store is the mutation a widget author reaches for first
-	if _, _, err := h.RenderWidget(context.Background(), writing, 40, 10, UIState{}); err == nil ||
-		!strings.Contains(err.Error(), "not allowed during widget render") {
-		t.Fatalf("zemi.state.set during render: err = %v", err)
-	}
-
-	lines, _, err := h.RenderWidget(context.Background(), clean, 40, 10, UIState{})
+	lines, _, err := h.RenderWidget(context.Background(), widgets["clean"], 40, 10, UIState{})
 	if err != nil {
 		t.Fatalf("clean render: %v", err)
 	}
@@ -679,7 +660,7 @@ func TestClickWidget(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h, r := newTestHost(t)
 			ran := make(chan string, 1)
-			h.Commands.Add(&Command{Name: "probe", GoFn: func(_ *Host, args string) error { ran <- args; return nil }, Origin: lua.OriginBuiltin})
+			h.Commands.Add(&Command{Name: "probe", NArgs: "?", GoFn: func(_ *Host, args string) error { ran <- args; return nil }, Origin: lua.OriginBuiltin})
 			if err := r.ExecuteChunk(t.Context(), widget, "w.lua", tc.origin); err != nil {
 				t.Fatal(err)
 			}

@@ -17,6 +17,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -32,16 +33,17 @@ const memoryAutoApplyCap = 20
 // MemoryRow is one review-overlay row: a queued proposal or a stored
 // memory from either scope.
 type MemoryRow struct {
-	ID      string
-	Scope   string // "user" or "project"
-	Origin  string // "user" or "learned"
-	Text    string
-	Quote   string // the user's words behind a memory about them
-	Queued  bool   // proposal awaiting review, not yet stored
-	Forget  bool   // proposal to forget a stored memory, which stays in its scope
-	Updated int64  // last write of a stored memory, unix ms
-	Action  string // set by the review screen: accept, reject, delete or ""
-	Edit    bool   // set by the review screen: open this row in the editor, then reopen
+	ID         string
+	Scope      string // "user" or "project"
+	Origin     string // "user" or "learned"
+	Text       string
+	Quote      string // the user's words behind a memory about them
+	Queued     bool   // proposal awaiting review, not yet stored
+	Forget     bool   // proposal to forget a stored memory, which stays in its scope
+	Supersedes string // the stored memory a forget or a replacement retires
+	Updated    int64  // last write of a stored memory, unix ms
+	Action     string // set by the review screen: accept, reject, delete or ""
+	Edit       bool   // set by the review screen: open this row in the editor, then reopen
 }
 
 // memoryDB returns the store owning a scope: user scope in the global DB,
@@ -69,7 +71,7 @@ func (h *Host) storeMemory(sid, scope, origin, text, quote string) (*learn.Resul
 // store, reporting whether it added one. The id is assigned here so review
 // decisions travel by id.
 func (h *Host) queueProposal(res *learn.Result) bool {
-	if _, _, dup := h.duplicateMemory(res.Memory, res.Supersedes); dup {
+	if dup, _ := h.duplicateMemory(res.Memory, res.Supersedes); dup != nil {
 		h.Log.Debug("memory", "duplicate proposal dropped", nil)
 		return false
 	}
@@ -143,8 +145,8 @@ func (h *Host) applyProposal(res *learn.Result) error {
 type memoryOutcome struct {
 	ID        string
 	Queued    string
-	Duplicate string
-	DupScope  string
+	Duplicate *store.Memory
+	DupQueued bool // Duplicate is a pending proposal, which replaces cannot name
 	Dropped   bool
 }
 
@@ -153,9 +155,11 @@ func (o memoryOutcome) String() string {
 	switch {
 	case o.ID != "":
 		return "saved as " + learn.Truncate(o.ID, 8) + "; shows from the next session"
-	case o.Duplicate != "":
-		id := learn.Truncate(o.Duplicate, 8)
-		return fmt.Sprintf("near-duplicate of %s (%s); pass replaces=%s to rewrite it", id, o.DupScope, id)
+	case o.Duplicate != nil && o.DupQueued:
+		return fmt.Sprintf("already queued for the user's review as %s: %q", learn.Truncate(o.Duplicate.ID, 8), o.Duplicate.Text)
+	case o.Duplicate != nil:
+		id := learn.Truncate(o.Duplicate.ID, 8)
+		return fmt.Sprintf("near-duplicate of %s (%s): %q; to keep both facts, pass replaces=%s with one line that says both", id, o.Duplicate.Scope, o.Duplicate.Text, id)
 	case o.Dropped:
 		return "dropped: quote not found in this session's messages"
 	case o.Queued != "":
@@ -177,22 +181,27 @@ var (
 )
 
 // duplicateMemory finds a live memory in either scope, or a pending
-// proposal, that says what m says (learn.Similar); m itself and the row
-// it replaces are no candidates.
+// proposal (queued), that says what m says; m itself and the row it
+// replaces are no candidates. The user's own text is refused only when it
+// repeats one word for word: learn.Similar would refuse a distinct fact.
 // NOTE: scans both scopes; fine for the dozens of rows a budget holds.
-func (h *Host) duplicateMemory(m store.Memory, replaces string) (id, scope string, found bool) {
+func (h *Host) duplicateMemory(m store.Memory, replaces string) (dup *store.Memory, queued bool) {
+	same := learn.Similar
+	if m.Origin == learn.OriginUser {
+		same = strings.EqualFold
+	}
 	live, _ := h.memoryList(false)
 	for _, o := range live {
-		if o.ID != m.ID && o.ID != replaces && learn.Similar(o.Text, m.Text) {
-			return o.ID, o.Scope, true
+		if o.ID != m.ID && o.ID != replaces && same(o.Text, m.Text) {
+			return o, false
 		}
 	}
 	for _, o := range h.memoryProposals() {
-		if !o.Forget && o.ID != m.ID && learn.Similar(o.Text, m.Text) {
-			return o.ID, o.Scope, true
+		if !o.Forget && o.ID != m.ID && same(o.Text, m.Text) {
+			return &o.Memory, true
 		}
 	}
-	return "", "", false
+	return nil, false
 }
 
 // storeProposal writes a policy-clean memory to its scope's DB.
@@ -202,8 +211,8 @@ func (h *Host) storeProposal(res *learn.Result) error {
 		return errors.New("memory store unavailable")
 	}
 	m := &res.Memory
-	if id, _, dup := h.duplicateMemory(*m, res.Supersedes); dup {
-		return fmt.Errorf("%w as %s", errDuplicateMemory, learn.Truncate(id, 8))
+	if dup, _ := h.duplicateMemory(*m, res.Supersedes); dup != nil {
+		return fmt.Errorf("%w: %q", errDuplicateMemory, dup.Text)
 	}
 	if err := db.AddMemory(m); err != nil {
 		return err
@@ -219,7 +228,7 @@ func (h *Host) storeProposal(res *learn.Result) error {
 
 // Remember stores a user-typed /memory <note> text (origin user, project
 // scope): the keystroke bypasses the autonomy gate (DESIGN §10.4), and a
-// full scope is refused with the ids to forget, since the user is there.
+// full scope is refused, since the user is there to make room.
 func (h *Host) Remember(text string) error {
 	if strings.TrimSpace(text) == "" {
 		return Usagef("usage: /memory <note>")
@@ -228,13 +237,13 @@ func (h *Host) Remember(text string) error {
 	if err != nil {
 		return err
 	}
-	if oldest, over := h.scopeOver(res); over {
-		return errScopeFull(res.Memory.Scope, oldest)
+	if _, over := h.scopeOver(res); over {
+		return errScopeFull(res.Memory.Scope)
 	}
 	if err := h.storeProposal(res); err != nil {
 		return err
 	}
-	h.Notify("info", "Memory saved for this project", "s in /memory makes it apply everywhere"+redactNote(res.Scrubbed))
+	h.Notify("info", "Memory saved for this project", "press s on it in /memory to keep it for every project"+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -261,7 +270,11 @@ func (h *Host) memoryCommand(args string) error {
 		if err != nil {
 			return err
 		}
-		return db.DeleteMemory(m.ID)
+		if err := db.DeleteMemory(m.ID); err != nil {
+			return err
+		}
+		h.Notify("info", "Forgotten", m.Text)
+		return nil
 	case fields[0] == "forget":
 		return Usagef("usage: /memory forget <id>")
 	default:
@@ -421,7 +434,7 @@ func (h *Host) editableMemory(id string) (string, error) {
 // rewriteMemory saves the user's edit of a memory: intake runs again as
 // user origin with the same scope and quote, and the memory keeps its
 // id. An edited suggestion is stored as the user's own. Empty or unchanged
-// text changes nothing, and so does a refusal.
+// text changes nothing, and so does a refusal, a full scope included.
 func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	if strings.TrimSpace(text) == "" {
 		return false, nil
@@ -435,6 +448,9 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 			return false, err
 		}
 		res.Memory.ID, res.Supersedes = p.ID, p.Supersedes
+		if _, over := h.scopeOver(res); over {
+			return false, errScopeFull(p.Scope)
+		}
 		if h.takeProposal(id) == nil {
 			return false, fmt.Errorf("no such proposal %q", id)
 		}
@@ -455,8 +471,12 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 		return false, err
 	}
 	res.Memory.ID = m.ID
-	if id, _, dup := h.duplicateMemory(res.Memory, ""); dup {
-		return false, fmt.Errorf("%w as %s", errDuplicateMemory, learn.Truncate(id, 8))
+	// a shorter edit is always taken, so a scope already over can shrink
+	if _, over := h.scopeOver(res); over && len(res.Memory.Text) > len(m.Text) {
+		return false, errScopeFull(m.Scope)
+	}
+	if dup, _ := h.duplicateMemory(res.Memory, ""); dup != nil {
+		return false, fmt.Errorf("%w: %q", errDuplicateMemory, dup.Text)
 	}
 	return res.Scrubbed, db.UpdateMemoryText(m.ID, res.Memory.Text, learn.OriginUser)
 }
@@ -503,8 +523,8 @@ func (h *Host) moveMemory(id, from, to string) error {
 	i := slices.IndexFunc(live, func(o *store.Memory) bool { return strings.EqualFold(o.Text, m.Text) })
 	switch {
 	case i < 0:
-		if oldest, over := h.scopeOver(&learn.Result{Memory: *m}); over {
-			return errScopeFull(to, oldest)
+		if _, over := h.scopeOver(&learn.Result{Memory: *m}); over {
+			return errScopeFull(to)
 		}
 		err = dst.AddMemory(m)
 	case m.Origin == learn.OriginUser && live[i].Origin != learn.OriginUser:
@@ -554,8 +574,8 @@ func (h *Host) acceptProposal(id, scope string) (*memoryProposal, error) {
 	} else {
 		p.Memory.Scope = cmp.Or(scope, p.Memory.Scope)
 		res := &learn.Result{Memory: p.Memory, Supersedes: p.Supersedes}
-		if oldest, over := h.scopeOver(res); over {
-			err = errScopeFull(p.Memory.Scope, oldest)
+		if _, over := h.scopeOver(res); over {
+			err = errScopeFull(p.Memory.Scope)
 		} else {
 			err = h.storeProposal(res)
 		}
@@ -617,15 +637,22 @@ func (h *Host) memoryRows() []MemoryRow {
 		case m.Forget:
 			text = "forget: " + text
 		case m.Supersedes != "":
-			what := ""
-			if _, old, err := h.locateMemory(m.Supersedes); err == nil && old.Scope != m.Scope {
-				what = old.Scope + " memory "
+			// the screen shows no ids, so the row names the memory by its text
+			what := "a memory since deleted"
+			if _, old, err := h.locateMemory(m.Supersedes); err == nil {
+				what = `"` + old.Text + `"`
+				if short := learn.Truncate(old.Text, 40); short != old.Text {
+					what = `"` + short + `..."`
+				}
+				if old.Scope != m.Scope {
+					what = old.Scope + " memory " + what
+				}
 			}
-			text += " (replaces " + what + learn.Truncate(m.Supersedes, 8) + ")"
+			text += " (replaces " + what + ")"
 		}
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Origin: m.Origin,
-			Text: text, Quote: m.Quote, Queued: true, Forget: m.Forget,
+			Text: text, Quote: m.Quote, Queued: true, Forget: m.Forget, Supersedes: m.Supersedes,
 		})
 	}
 	list, _ := h.memoryList(false)
@@ -759,8 +786,8 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		case res.ID != "":
 			out.RawSetString("stored", glua.LTrue)
 			out.RawSetString("id", glua.LString(res.ID))
-		case res.Duplicate != "":
-			out.RawSetString("duplicate", glua.LString(res.Duplicate))
+		case res.Duplicate != nil:
+			out.RawSetString("duplicate", glua.LString(res.Duplicate.ID))
 		case res.Dropped:
 			out.RawSetString("dropped", glua.LTrue)
 		default:
@@ -863,8 +890,8 @@ func (h *Host) forgetMemory(sid, id string) (string, error) {
 // memoryReview finds no reason to hold is stored, the rest queued.
 func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 	m := &res.Memory
-	if id, scope, dup := h.duplicateMemory(*m, res.Supersedes); dup {
-		return memoryOutcome{Duplicate: id, DupScope: scope}, nil
+	if dup, queued := h.duplicateMemory(*m, res.Supersedes); dup != nil {
+		return memoryOutcome{Duplicate: dup, DupQueued: queued}, nil
 	}
 	if m.Origin == learn.OriginLearned && m.Quote != "" && !h.quoteInSession(m.ProvenanceSessionID, m.Quote) {
 		h.Log.Info("memory", "dropped: quote not in the session", map[string]any{"text": m.Text, "quote": m.Quote})
@@ -899,8 +926,8 @@ func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 	return "", false
 }
 
-func errScopeFull(scope string, oldest []string) error {
-	return fmt.Errorf("%s memory is full; /memory forget one of %s first", scope, strings.Join(oldest, ", "))
+func errScopeFull(scope string) error {
+	return fmt.Errorf("%s memory is full; forget one of its oldest in /memory first", scope)
 }
 
 // scopeOver reports whether storing res would push its scope past
@@ -950,7 +977,7 @@ func (h *Host) quoteInSession(sid, quote string) bool {
 			continue
 		}
 		// only what was typed: an attached file or a command's output is not the user's word
-		typed, _, _ := strings.Cut(concatText(fm.Content), attachMarker)
+		typed, _, _ := strings.Cut(concatText(fm.Content), agent.AttachMarker)
 		if strings.Contains(foldSpace(typed), want) {
 			return true
 		}

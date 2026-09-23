@@ -67,14 +67,16 @@ func TestJobReadAfterBufferDrop(t *testing.T) {
 }
 
 // TestJobReadSandboxHint: a sandboxed job's denial read while it ran still
-// gets the hint once it exits, naming the directories it may write, and the
+// gets the hint once, after it exits, naming the directories it may write, and the
 // sandbox: false retry is offered only where someone can answer the ask.
 func TestJobReadSandboxHint(t *testing.T) {
 	for _, param := range []bool{true, false} {
-		p := &Pipeline{Jobs: NewJobs(), SandboxParam: param, Sandboxed: &sandbox.Policy{Write: []string{"/pad/s1"}}}
+		// job_read's own pipeline is unconfined: the job keeps its policy
+		p := &Pipeline{Jobs: NewJobs(), SandboxParam: param}
+		pol := &sandbox.Policy{Write: []string{"/pad/s1"}}
 		out := &proc.Buffer{Max: 1 << 20}
 		wait := make(chan error, 1)
-		id := p.Jobs.Adopt("touch x", nil, out, 0, wait, func() string { return "\nguard note" })
+		id := p.Jobs.Adopt("touch x", nil, out, 0, wait, pol, func() string { return "\nguard note" })
 		out.Write([]byte("touch: x: Operation not permitted\n"))
 		read := func() string {
 			res, _ := runJobRead(context.Background(), p, map[string]any{"id": id})
@@ -91,6 +93,42 @@ func TestJobReadSandboxHint(t *testing.T) {
 			strings.Contains(got, "sandbox: false") != param || !strings.Contains(got, "guard note") {
 			t.Errorf("param %v: after exit %q", param, got)
 		}
+		if got := read(); strings.Contains(got, "sandbox may") || strings.Contains(got, "guard note") {
+			t.Errorf("param %v: the hint came twice: %q", param, got)
+		}
+	}
+}
+
+// TestSandboxHintFollowsPolicy: a run that had the network is not told to
+// ask for it again, and a project left out of the write roots reads as read-only.
+func TestSandboxHintFollowsPolicy(t *testing.T) {
+	denied := errors.New("exit status 1")
+	out := "curl: (6) Could not resolve host: example.com"
+	if !sandbox.LikelyDenied(out, denied) {
+		t.Skip("no denial pattern on this platform")
+	}
+	for _, c := range []struct {
+		name           string
+		plan           bool
+		want, unwanted []string
+	}{
+		{"network already given", false, []string{"sandbox: false", "the project read-only"}, []string{"no network", "network: true"}},
+		{"network already given while planning", true, []string{"the project read-only"}, []string{"no network", "network: true", "sandbox: false"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := &Pipeline{SandboxParam: true, Plan: func() bool { return c.plan }}
+			hint := p.sandboxHint(&sandbox.Policy{Network: true, Write: []string{"/tmp/x"}}, out, denied)
+			for _, w := range c.want {
+				if !strings.Contains(hint, w) {
+					t.Errorf("hint lacks %q: %s", w, hint)
+				}
+			}
+			for _, w := range c.unwanted {
+				if strings.Contains(hint, w) {
+					t.Errorf("hint says %q: %s", w, hint)
+				}
+			}
+		})
 	}
 }
 

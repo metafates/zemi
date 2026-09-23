@@ -190,7 +190,7 @@ func TestLuaToolCeiling(t *testing.T) {
 	t.Cleanup(func() { luaToolCeiling = old })
 	tool := h.luaEvalTool()
 	for _, c := range []struct{ script, want string }{
-		{"while true do end", "error: stopped after 50ms: the script must finish quickly"},
+		{"while true do end", "error: stopped after its 50ms ceiling"},
 		{"error({ code = 1 })", `error: lua-tool: {"code":1}`},
 	} {
 		input, _ := json.Marshal(map[string]string{"description": "x", "script": c.script})

@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	openai "charm.land/fantasy/providers/openai"
 )
 
 // mockModel replays scripted stream parts; steps, when set, scripts one
@@ -350,55 +353,88 @@ func TestCutOffToolCallGetsResult(t *testing.T) {
 		t.Fatalf("tool message: %+v", m.lastCall.Prompt[2])
 	}
 
-	// a provider that drops the cut call leaves only its input start: the
-	// history gets a note naming the tool instead of nothing
-	m = &mockModel{steps: [][]fantasy.StreamPart{
-		{
-			{Type: fantasy.StreamPartTypeToolInputStart, ID: "c1", ToolCallName: "echo"},
-			{Type: fantasy.StreamPartTypeToolInputDelta, ID: "c1", Delta: "{"},
-			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonLength},
-		},
-		textParts("done"),
-	}}
-	r = NewRunner(m, nil, "")
-	r.Hooks = newRecHooks()
-	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrReplyCut) {
-		t.Fatalf("dropped cut call: %v, want ErrReplyCut", err)
-	}
-	r.Hooks = newRecHooks()
-	if err := r.Send(context.Background(), "go on"); err != nil {
-		t.Fatal(err)
-	}
-	var texts []string
-	for _, msg := range m.lastCall.Prompt {
-		for _, p := range msg.Content {
-			if tp, ok := p.(fantasy.TextPart); ok && msg.Role == fantasy.MessageRoleUser {
-				texts = append(texts, tp.Text)
+	// an abnormal finish fails the turn, and a call dropped mid-arguments,
+	// which leaves only its input start, gets a note naming the tool; unknown
+	// on plain text is a gateway that sent no reason
+	for _, c := range []struct {
+		finish fantasy.FinishReason
+		call   bool
+		err    string
+	}{
+		{fantasy.FinishReasonLength, true, "output token limit"},
+		{fantasy.FinishReasonError, true, "ended the reply early (error)"},
+		{fantasy.FinishReasonContentFilter, false, "ended the reply early (content-filter)"},
+		{fantasy.FinishReasonOther, true, "ended the reply early (other)"},
+		{fantasy.FinishReasonUnknown, false, ""},
+	} {
+		step := textParts("partial")
+		step = step[:len(step)-1]
+		if c.call {
+			step = append(step, fantasy.StreamPart{Type: fantasy.StreamPartTypeToolInputStart, ID: "c1", ToolCallName: "echo"},
+				fantasy.StreamPart{Type: fantasy.StreamPartTypeToolInputDelta, ID: "c1", Delta: "{"})
+		}
+		m = &mockModel{steps: [][]fantasy.StreamPart{append(step, fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, FinishReason: c.finish}), textParts("done")}}
+		r = NewRunner(m, nil, "")
+		r.Hooks = newRecHooks()
+		if err := r.Send(context.Background(), "hi"); (err != nil) != (c.err != "") || err != nil && !strings.Contains(err.Error(), c.err) {
+			t.Errorf("finish %s, call %v: err %v, want %q", c.finish, c.call, err, c.err)
+			continue
+		}
+		r.Hooks = newRecHooks()
+		if err := r.Send(context.Background(), "go on"); err != nil {
+			t.Fatal(err)
+		}
+		var texts []string
+		for _, msg := range m.lastCall.Prompt {
+			for _, p := range msg.Content {
+				if tp, ok := p.(fantasy.TextPart); ok && msg.Role == fantasy.MessageRoleUser {
+					texts = append(texts, tp.Text)
+				}
 			}
 		}
-	}
-	if !slices.ContainsFunc(texts, func(s string) bool { return strings.Contains(s, "cut at the output limit while calling echo") }) {
-		t.Fatalf("no note about the cut call in the prompt: %q", texts)
+		if noted := slices.ContainsFunc(texts, func(s string) bool {
+			return strings.HasPrefix(s, AttachMarker) && strings.Contains(s, "while writing the echo call")
+		}); noted != c.call {
+			t.Errorf("finish %s: note about the cut call %v, want %v: %q", c.finish, noted, c.call, texts)
+		}
 	}
 }
 
 // TestToolLoopEndsTurn: the same tool call with the same result, step after
-// step, ends the turn on its sixth repeat with ErrToolLoop.
+// step, ends the turn on its sixth repeat with ErrToolLoop; a failing poll
+// whose error text moves is progress.
 func TestToolLoopEndsTurn(t *testing.T) {
-	m := &mockModel{parts: []fantasy.StreamPart{
-		{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
-		{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
-	}}
-	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		return fantasy.NewTextResponse("same"), nil
-	})
-	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
-	r.Hooks = newRecHooks()
-	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrToolLoop) {
-		t.Fatalf("err = %v, want ErrToolLoop", err)
-	}
-	if n := len(r.History); n != 1+2*loopMinSteps {
-		t.Fatalf("history has %d messages, want the user message and %d steps", n, loopMinSteps)
+	for _, c := range []struct {
+		name string
+		res  func(n int) fantasy.ToolResponse
+		loop bool
+	}{
+		{"same result", func(int) fantasy.ToolResponse { return fantasy.NewTextResponse("same") }, true},
+		{"error text moves", func(n int) fantasy.ToolResponse {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("jobs done: %d/9", n))
+		}, false},
+	} {
+		// the text reply is the fallback: without it a missed loop would hang
+		m := &mockModel{parts: textParts("done")}
+		for range loopMinSteps {
+			m.steps = append(m.steps, []fantasy.StreamPart{
+				{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
+				{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
+			})
+		}
+		n := 0
+		echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			n++
+			return c.res(n), nil
+		})
+		r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+		r.Hooks = newRecHooks()
+		if err := r.Send(context.Background(), "hi"); errors.Is(err, ErrToolLoop) != c.loop {
+			t.Errorf("%s: err = %v, want a loop %v", c.name, err, c.loop)
+		}
+		if n := len(r.History); c.loop && n != 1+2*loopMinSteps {
+			t.Errorf("%s: history has %d messages, want the user message and %d steps", c.name, n, loopMinSteps)
+		}
 	}
 }
 
@@ -429,7 +465,8 @@ func TestToolLoopCatchesTwoStepCycle(t *testing.T) {
 
 // TestFullCutsAtStepBoundary: Full sees each step's own context (cache reads
 // included, not a sum over steps), a full context ends the turn after the
-// tool result, and an empty Send continues without a second user message.
+// tool result, an empty Send continues without a second user message, and a
+// tool that ends the turn itself is not cut.
 func TestFullCutsAtStepBoundary(t *testing.T) {
 	m := &mockModel{steps: [][]fantasy.StreamPart{
 		{
@@ -439,8 +476,12 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 		},
 		textParts("done"),
 	}}
+	m.steps = append(m.steps, m.steps[0])
+	stop := false
 	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		return fantasy.NewTextResponse("ok"), nil
+		res := fantasy.NewTextResponse("ok")
+		res.StopTurn = stop
+		return res, nil
 	})
 	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
 	var used []int64
@@ -452,11 +493,13 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 	}
 	for _, c := range []struct {
 		text, roles string
-		cut         bool
+		cut, stop   bool
 	}{
-		{"hi", "user,assistant,tool", true},
-		{"", "user,assistant,tool,assistant", false},
+		{"hi", "user,assistant,tool", true, false},
+		{"", "user,assistant,tool,assistant", false, false},
+		{"plan", "user,assistant,tool,assistant,user,assistant,tool", false, true},
 	} {
+		stop = c.stop
 		r.Hooks = newRecHooks()
 		if err := r.Send(context.Background(), c.text); err != nil {
 			t.Fatal(err)
@@ -465,8 +508,19 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 			t.Fatalf("send %q persisted roles: %s, cut %v; want %s, cut %v", c.text, got, r.CutShort(), c.roles, c.cut)
 		}
 	}
-	if got := fmt.Sprint(used); got != "[105 15]" {
-		t.Fatalf("Full saw %s, want [105 15]", got)
+	if got := fmt.Sprint(used); got != "[105 15 105]" {
+		t.Fatalf("Full saw %s, want [105 15 105]", got)
+	}
+}
+
+// TestAsideStreams: /btw streams, since Anthropic's SDK refuses a large
+// max_tokens without streaming (the mock's Generate always fails).
+func TestAsideStreams(t *testing.T) {
+	r := NewRunner(&mockModel{parts: textParts("answer")}, nil, "sys")
+	r.MaxOutputTokens = 128_000
+	res, err := r.Aside(context.Background(), nil, "what did I say")
+	if err != nil || res.Response.Content.Text() != "answer" {
+		t.Fatalf("aside = %+v, %v", res, err)
 	}
 }
 
@@ -634,5 +688,114 @@ func TestProviderHeadersRideRequests(t *testing.T) {
 		}
 	default:
 		t.Fatal("the provider never reached the gateway")
+	}
+}
+
+// promptRec keeps the prompt of the last model call.
+type promptRec struct {
+	fantasy.LanguageModel
+	prompt fantasy.Prompt
+}
+
+func (p *promptRec) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	p.prompt = call.Prompt
+	return p.LanguageModel.Stream(ctx, call)
+}
+
+// TestOpenAIResponses: an openai model fantasy knows as a Responses model
+// goes to /responses, a reasoning one asking for a summary and none for
+// encrypted reasoning, which a model that does not reason is refused; the
+// stored reasoning carries its item through JSON into the next session's
+// call. Any other model goes to /chat/completions.
+func TestOpenAIResponses(t *testing.T) {
+	sse := func(w http.ResponseWriter, events ...string) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, e := range events {
+			fmt.Fprintf(w, "data: %s\n\n", e)
+		}
+	}
+	var mu sync.Mutex
+	var paths, bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		paths, bodies = append(paths, r.URL.Path), append(bodies, string(body))
+		mu.Unlock()
+		if r.URL.Path == "/responses" {
+			sse(w, `{"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":[]}}`,
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":[]}}`,
+				`{"type":"response.output_item.added","output_index":1,"item":{"type":"message","id":"msg_1","role":"assistant","status":"in_progress","content":[]}}`,
+				`{"type":"response.output_text.delta","output_index":1,"content_index":0,"delta":"ok"}`,
+				`{"type":"response.output_item.done","output_index":1,"item":{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok","annotations":[]}]}}`,
+				`{"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`)
+			return
+		}
+		sse(w, `{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}`,
+			`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`, "[DONE]")
+	}))
+	defer srv.Close()
+	reg := NewRegistry()
+	if err := reg.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: srv.URL}, "k"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		model, path, item string
+		summary           bool
+	}{
+		{"o/gpt-5-codex", "/responses", "rs_1", true},
+		{"o/gpt-4o", "/responses", "rs_1", false},
+		{"o/gpt-3.5-turbo-16k", "/chat/completions", "", false},
+	} {
+		m, err := reg.Resolve(c.model)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stored []string
+		rec := &promptRec{LanguageModel: m}
+		var history []fantasy.Message
+		for _, text := range []string{"hi", "again"} {
+			r := NewRunner(rec, nil, "sys")
+			r.History, r.Hooks, r.ProviderOptions = history, newRecHooks(), reg.CallOptions(c.model, "")
+			r.Persist = func(_ string, msg fantasy.Message) error {
+				b, err := json.Marshal(msg)
+				stored = append(stored, string(b))
+				return err
+			}
+			if err := r.Send(t.Context(), text); err != nil {
+				t.Fatal(err)
+			}
+			waitDone(t, r.Hooks.(*recHooks))
+			history = nil // a resumed session reads the store
+			for _, s := range stored {
+				var msg fantasy.Message
+				if err := json.Unmarshal([]byte(s), &msg); err != nil {
+					t.Fatal(err)
+				}
+				history = append(history, msg)
+			}
+		}
+		mu.Lock()
+		got, first := paths, bodies[0]
+		paths, bodies = nil, nil
+		mu.Unlock()
+		if len(got) != 2 || got[0] != c.path || got[1] != c.path {
+			t.Fatalf("%s: paths %v, want %s", c.model, got, c.path)
+		}
+		if strings.Contains(first, "encrypted_content") || strings.Contains(first, `"summary":"auto"`) != c.summary {
+			t.Fatalf("%s: want summary %v and no encrypted reasoning: %s", c.model, c.summary, first)
+		}
+		item := ""
+		for _, msg := range rec.prompt {
+			for _, part := range msg.Content {
+				if rp, ok := part.(fantasy.ReasoningPart); ok {
+					if md := openai.GetReasoningMetadata(rp.ProviderOptions); md != nil {
+						item = md.ItemID
+					}
+				}
+			}
+		}
+		if item != c.item {
+			t.Fatalf("%s: turn 2 carried reasoning item %q, want %q", c.model, item, c.item)
+		}
 	}
 }

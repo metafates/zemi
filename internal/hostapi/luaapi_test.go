@@ -7,12 +7,17 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 )
 
 // TestLuaAPIAdditions pins the 0.5.0 surface through Lua: json round trip,
@@ -190,11 +195,11 @@ func TestKeySequences(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.keymap.set("<leader>gs", "zemi.ui.help")
-		assert(zemi.keymap.get("ctrl+g g s") ~= nil, "leader expands")
+		assert(zemi.keymap.get("ctrl+x g s") ~= nil, "leader expands")
 		assert(zemi.keymap.get("<leader>gs") ~= nil, "get takes the leader form")
 		assert(not pcall(zemi.keymap.set, "g s", "zemi.ui.help"), "printable start refused")
 	`)
-	if !h.Keymaps.IsPrefix("", "ctrl+g g") || h.Keymaps.IsPrefix("", "ctrl+g x") {
+	if !h.Keymaps.IsPrefix("", "ctrl+x g") || h.Keymaps.IsPrefix("", "ctrl+x x") {
 		t.Fatal("prefix lookup")
 	}
 }
@@ -325,5 +330,67 @@ func TestToolPromptFollowsTheTool(t *testing.T) {
 		if strings.Contains(sys, want) != c.want || strings.Contains(sys, "ignore the user") {
 			t.Errorf("%s:\n%s", c.name, sys)
 		}
+	}
+}
+
+// TestReloadBrokenInit: a reload of an init.lua that fails partway returns
+// an error and keeps the deny rules, the mode and the model; only a syntax
+// error keeps the whole old config, allow rules included, unless trust went
+// off, when the reload still runs.
+func TestReloadBrokenInit(t *testing.T) {
+	const whole = `
+		zemi.permission.mode.add("strict", { base = "auto" })
+		zemi.permission.rule.add({ subject = "tool.bash", pattern = "curl *", decision = "deny", match = "curl x" })
+		zemi.permission.rule.add({ subject = "tool.bash", pattern = "ls *", decision = "allow", match = "ls x" })
+		zemi.config.set("permissions.mode", "strict")
+		zemi.config.set("models.main", "fake/m")`
+	for _, c := range []struct {
+		name, init string
+		untrust    bool
+		want       string
+	}{
+		{"a runtime error keeps what it did not reach", `zemi.permission.mode.add("strict", { base = "auto" }) error("half saved")` + whole, false,
+			"curl deny, ls ask, model fake/m, mode strict"},
+		{"a syntax error keeps the working generation", whole + `zemi.keymap.set("ctrl+q", function() end`, false,
+			"curl deny, ls allow, model fake/m, mode strict"},
+		{"a syntax error after trust went off still reloads", whole + `zemi.keymap.set("ctrl+q", function() end`, true,
+			"curl deny, ls ask, model fake/m"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir, log := t.TempDir(), logging.New(t.TempDir())
+			r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
+			h := NewHost(r, log, config.NewStore(), config.Dirs{ConfigHome: dir, ProjectDir: t.TempDir()})
+			initLua := filepath.Join(dir, "init.lua")
+			load := lua.LoadFileStep("init", initLua, lua.OriginUser)
+			steps := []lua.BootStep{h.NamespacesStep(), {Name: "init", Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
+				msg := "" // what main's softStep records
+				if err := load.Run(ctx, r, g); err != nil {
+					msg = err.Error()
+				}
+				h.SetInitError(msg)
+				return nil
+			}}}
+			h.SetProjectTrusted(true)
+			for i, src := range []string{whole, c.init} {
+				if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if i == 1 && c.untrust {
+					h.SetProjectTrusted(false)
+				}
+				if err := h.ForceReload(t.Context(), steps); (err != nil) != (i == 1) {
+					t.Fatalf("reload %d: %v", i, err)
+				}
+			}
+			model, _ := h.Settings.Get("models.main")
+			decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.bash", cmd, "model").Decision }
+			got := fmt.Sprintf("curl %v, ls %v, model %v", decision("curl x"), decision("ls x"), model)
+			if !c.untrust { // which mode runs once strict is gone is permModeDef's to pin
+				got += ", mode " + h.PermMode()
+			}
+			if got != c.want {
+				t.Fatalf("got  %s\nwant %s", got, c.want)
+			}
+		})
 	}
 }

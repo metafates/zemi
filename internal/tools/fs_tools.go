@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/metafates/zemi/internal/glob"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/sandbox"
 )
 
 // progress shows the command's last output line under its row while it
@@ -102,8 +104,8 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	// one buffer keeps stdout and stderr in the order they were written
 	buf := &proc.Buffer{Max: 1 << 20}
 	c.Stdout, c.Stderr = buf, buf
-	if wrap := p.wrap(); wrap != nil {
-		if err := wrap(c); err != nil {
+	if p.Sandboxed != nil {
+		if err := sandbox.Wrap(c, *p.Sandboxed); err != nil {
 			return fantasy.NewTextErrorResponse("the sandbox failed, so the command did not run: " + err.Error()), nil
 		}
 	}
@@ -155,7 +157,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 		// the work so far is not thrown away: it keeps running as a job
 		if p != nil && p.Jobs != nil {
-			id := p.Jobs.Adopt(cmd, c, buf, written, wait, after)
+			id := p.Jobs.Adopt(cmd, c, buf, written, wait, p.Sandboxed, after)
 			fmt.Fprintf(&b, "still running after %s, so it %s%s: read the rest with job_read (wait_ms blocks until it exits or goes quiet), stop it with job_kill.", timeout, JobHandoff, id)
 			return changed(fantasy.NewTextResponse(b.String()))
 		}
@@ -181,7 +183,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		} else {
 			b.WriteString(err.Error())
 			if p != nil && p.Sandboxed != nil {
-				b.WriteString(p.sandboxHint(raw, err))
+				b.WriteString(p.sandboxHint(p.Sandboxed, raw, err))
 			}
 		}
 		b.WriteString(note)
@@ -474,7 +476,7 @@ func readLine(br *bufio.Reader, max int) (string, error) {
 
 // listDir lists a directory one level deep, sorted, directories ending in
 // "/". Like glob and grep it hides entries a deny or ask read rule covers,
-// and secret-shaped names.
+// and like grep the strict secret shapes, which it names.
 func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 	f, err := openGated(path, os.O_RDONLY, 0)
 	if err != nil {
@@ -486,18 +488,29 @@ func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 		return fantasy.NewTextErrorResponse(relErr(err).Error())
 	}
 	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
-	ruledOut, shown := p.ruledOut(), []string{}
+	ruledOut, shown, secret := p.ruledOut(), []string{}, []string{}
 	for i, e := range entries {
 		if len(shown) == globMaxFiles {
 			shown = append(shown, fmt.Sprintf("... (up to %d more; narrow it with glob)", len(entries)-i))
 			break
 		}
-		if name := e.Name(); !perm.PathIsSecret(name) && !ruledOut(filepath.Join(path, name)) {
+		switch name := e.Name(); {
+		case ruledOut(filepath.Join(path, name)):
+		case perm.PathIsStrictSecret(name):
+			secret = append(secret, name)
+		default:
 			if e.IsDir() {
 				name += "/"
 			}
 			shown = append(shown, name)
 		}
+	}
+	if len(secret) > 0 {
+		n := len(secret)
+		if n > 5 {
+			secret = append(secret[:5:5], "...")
+		}
+		shown = append(shown, fmt.Sprintf("(%d secret-shaped entries hidden: %s; read them to ask)", n, strings.Join(secret, ", ")))
 	}
 	if len(shown) == 0 {
 		return fantasy.NewTextResponse("(empty directory)")
@@ -522,9 +535,8 @@ func OpenRegular(path string) (f *os.File, fi os.FileInfo, err error) {
 	return f, fi, nil
 }
 
-// readGated reads a whole file, for the tools that need all of it (edit,
-// multiedit). A file over editMaxBytes is refused rather than allocated:
-// the edit would have to hold it twice over.
+// readGated reads a whole file for edit. A file over editMaxBytes is refused
+// rather than allocated: the edit would have to hold it twice over.
 func readGated(path string) (data []byte, fi os.FileInfo, err error) {
 	f, fi, err := OpenRegular(path)
 	if err != nil {
@@ -532,7 +544,7 @@ func readGated(path string) (data []byte, fi os.FileInfo, err error) {
 	}
 	defer f.Close()
 	if fi.Size() > editMaxBytes {
-		return nil, fi, fmt.Errorf("%s is %d bytes, too large to edit; narrow the change or split the file", workRel(path), fi.Size())
+		return nil, fi, fmt.Errorf("%s is %d bytes, over edit's %d MB limit; make this change with a command in bash", workRel(path), fi.Size(), editMaxBytes>>20)
 	}
 	data, err = io.ReadAll(f)
 	return data, fi, err
@@ -574,7 +586,7 @@ func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	t, ok := p.Seen.Load(absPath(path))
 	switch {
 	case !ok:
-		return "read " + rel + " with the read tool first: this session has not read it, and cat or grep in bash does not count. Then repeat this edit."
+		return "read " + rel + " with the read tool first (the lines you change are enough), then repeat this call: this session has not read it, and cat, sed or grep in bash does not count."
 	case !t.(time.Time).Equal(fi.ModTime()):
 		return rel + " changed since you read it (a command you ran, the user's editor, a formatter or another agent). Read it again and redo the edit against the current content."
 	}
@@ -598,26 +610,42 @@ func lockFile(path string) func() {
 // to write. Ids arrive from CallStart, which fantasy fires for every call of
 // a step before it dispatches any; Run waits until its id leads its file.
 // The maps are shared by every runner, so nothing here clears more than the
-// ids a caller names.
+// ids a caller names, and ids are keyed by the turn's CallScope: a provider
+// that numbers calls per conversation (functions.edit:0) repeats them
+// across agents.
 var callOrder = struct {
 	mu    sync.Mutex
 	cond  *sync.Cond
-	path  map[string]string   // call id -> file key
-	ahead map[string][]string // file key -> call ids, in call order
+	path  map[string]string   // call key -> file key
+	ahead map[string][]string // file key -> call keys, in call order
 }{path: map[string]string{}, ahead: map[string][]string{}}
+
+type callScopeKey struct{}
+
+var callScopes atomic.Uint64
+
+// CallScope gives the calls a turn makes under ctx their own keys.
+func CallScope(ctx context.Context) context.Context {
+	return context.WithValue(ctx, callScopeKey{}, callScopes.Add(1))
+}
+
+func callKey(ctx context.Context, id string) string {
+	n, _ := ctx.Value(callScopeKey{}).(uint64)
+	return strconv.FormatUint(n, 10) + "\x00" + id
+}
 
 // CallStart records a write tool's call as the model made it and reports
 // whether it did; other tools are ignored. The agent runner calls it from
 // fantasy's OnToolCall and owes a CallDone for every recorded id.
-func CallStart(id, tool, input string) bool {
-	if tool != ToolWrite && tool != ToolEdit && tool != ToolMultiedit {
+func CallStart(ctx context.Context, id, tool, input string) bool {
+	if tool != ToolWrite && tool != ToolEdit {
 		return false
 	}
 	var in struct{ Path string }
 	if json.Unmarshal([]byte(input), &in) != nil || in.Path == "" {
 		return false
 	}
-	key := absPath(in.Path)
+	key, id := absPath(in.Path), callKey(ctx, id)
 	callOrder.mu.Lock()
 	callOrder.path[id] = key
 	callOrder.ahead[key] = append(callOrder.ahead[key], id)
@@ -629,10 +657,11 @@ func CallStart(id, tool, input string) bool {
 // answered without running it (invalid input, a tool the profile dropped)
 // and, at the end of a turn, whatever a step recorded and never dispatched.
 // Ids Run already released are no-ops.
-func CallDone(ids ...string) {
+func CallDone(ctx context.Context, ids ...string) {
 	c := &callOrder
 	c.mu.Lock()
 	for _, id := range ids {
+		id = callKey(ctx, id)
 		if key, ok := c.path[id]; ok {
 			delete(c.path, id)
 			c.ahead[key] = slices.DeleteFunc(c.ahead[key], func(x string) bool { return x == id })
@@ -651,12 +680,13 @@ func turn(ctx context.Context, id string) func() {
 	defer context.AfterFunc(ctx, func() { c.mu.Lock(); c.mu.Unlock(); c.cond.Broadcast() })()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	key, ok := c.path[id]
-	for ok && c.ahead[key][0] != id && ctx.Err() == nil {
+	k := callKey(ctx, id)
+	key, ok := c.path[k]
+	for ok && c.ahead[key][0] != k && ctx.Err() == nil {
 		c.cond.Wait()
-		key, ok = c.path[id]
+		key, ok = c.path[k]
 	}
-	return func() { CallDone(id) }
+	return func() { CallDone(ctx, id) }
 }
 
 func init() { callOrder.cond = sync.NewCond(&callOrder.mu) }
@@ -706,20 +736,12 @@ func (p *Pipeline) checkpoint(path string) {
 }
 
 func runEdit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	return editFile(p, str(input["path"]), []any{input})
+	return editFile(p, str(input["path"]), input)
 }
 
-func runMultiedit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	edits, ok := input["edits"].([]any)
-	if !ok || len(edits) == 0 {
-		return fantasy.NewTextErrorResponse("edits must be a non-empty array"), nil
-	}
-	return editFile(p, str(input["path"]), edits)
-}
-
-// editFile applies edits to a file under its lock, all or nothing. Matching
-// runs on LF text and a CRLF file is written back with CRLF.
-func editFile(p *Pipeline, path string, edits []any) (fantasy.ToolResponse, error) {
+// editFile applies an edit to a file under its lock. Matching runs on LF
+// text and a CRLF file is written back with CRLF.
+func editFile(p *Pipeline, path string, in map[string]any) (fantasy.ToolResponse, error) {
 	defer lockFile(path)()
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -733,7 +755,7 @@ func editFile(p *Pipeline, path string, edits []any) (fantasy.ToolResponse, erro
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	rel := workRel(path)
-	out, n, tolerant, msg := applyEdits(lf(string(data)), edits, rel)
+	out, n, tolerant, msg := editText(lf(string(data)), in, rel)
 	if msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
@@ -831,38 +853,26 @@ func relErr(err error) error {
 
 func lf(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
 
-// region is where a whitespace-tolerant edit put its new lines: the last
-// such edit's, in the text as it is once every edit applied.
-// NOTE: an exact edit above it in a later multiedit step shifts the lines.
+// region is where a whitespace-tolerant edit put its new lines.
 type region struct{ at, count int }
 
-// applyEdits applies edits in order to LF text. msg explains the first edit
-// that does not apply, and then nothing changes.
-func applyEdits(src string, edits []any, where string) (out string, n int, tolerant region, msg string) {
-	for i, e := range edits {
-		em, _ := e.(map[string]any)
-		old, new := lf(str(em["old_string"])), lf(str(em["new_string"]))
-		all, _ := em["replace_all"].(bool)
-		res, c := applyEdit(src, old, new, all)
-		if c == 0 && old != "" {
-			var at int
-			if res, c, at = applyTolerant(src, old, new, all); c > 0 {
-				tolerant = region{at, strings.Count(strings.Trim(new, "\n"), "\n") + 1}
-			}
+// editText applies an edit's old_string and new_string to LF text; msg
+// explains why it does not apply, and then out is to be ignored.
+func editText(src string, in map[string]any, where string) (out string, n int, tolerant region, msg string) {
+	old, new := lf(str(in["old_string"])), lf(str(in["new_string"]))
+	all, _ := in["replace_all"].(bool)
+	out, n = applyEdit(src, old, new, all)
+	if n == 0 && old != "" {
+		var at int
+		if out, n, at = applyTolerant(src, old, new, all); n > 0 {
+			tolerant = region{at, strings.Count(strings.Trim(new, "\n"), "\n") + 1}
 		}
-		m := editError(src, old, c, all, where)
-		if old != "" && old == new {
-			m = "old_string and new_string are the same; nothing to change"
-		}
-		if m != "" {
-			if len(edits) > 1 {
-				m = fmt.Sprintf("edit %d (nothing was written): %s", i+1, m)
-			}
-			return src, 0, region{}, m
-		}
-		src, n = res, n+c
 	}
-	return src, n, tolerant, ""
+	msg = editError(src, old, n, all, where)
+	if old != "" && old == new {
+		msg = "old_string and new_string are the same; nothing to change"
+	}
+	return out, n, tolerant, msg
 }
 
 // applyEdit replaces old with new in s and returns the match count. With
@@ -889,21 +899,35 @@ func editError(src, old string, n int, all bool, where string) string {
 	first, _, _ := strings.Cut(strings.TrimLeft(old, "\n"), "\n")
 	if first = strings.TrimSpace(first); first != "" {
 		lines := strings.Split(src, "\n")
-		at, hits := 0, 0
-		for i, l := range lines {
-			if strings.TrimSpace(l) == first {
-				if hits == 0 {
-					at = i
+		var hits []string
+		at := 0
+		// whole lines first; Contains only when none match, since the model
+		// may start old_string mid-line
+		for _, match := range []func(string) bool{
+			func(l string) bool { return strings.TrimSpace(l) == first },
+			func(l string) bool { return strings.Contains(l, first) },
+		} {
+			for i, l := range lines {
+				if match(l) {
+					if len(hits) == 0 {
+						at = i
+					}
+					if hits = append(hits, strconv.Itoa(i+1)); len(hits) == 4 {
+						hits[3] = "..."
+						break
+					}
 				}
-				hits++
+			}
+			if len(hits) > 0 {
+				break
 			}
 		}
 		// the file's lines only when the hit is unique: a common first line
 		// like "}" would show the wrong block
-		if hits > 1 {
-			return fmt.Sprintf("old_string not found in %s; its first line matches line %d, so a later line differs: read from there and copy the text exactly", where, at+1)
+		if len(hits) > 1 {
+			return fmt.Sprintf("old_string not found in %s; its first line matches lines %s, so a later line differs: read the block you meant and copy it exactly", where, strings.Join(hits, ", "))
 		}
-		if hits == 1 {
+		if len(hits) == 1 {
 			var b strings.Builder
 			fmt.Fprintf(&b, "old_string not found in %s; its first line matches line %d, so a later line differs. The file there reads (copy it without the line numbers):", where, at+1)
 			n := min(strings.Count(strings.Trim(old, "\n"), "\n")+1, 30)
@@ -1060,7 +1084,8 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 }
 
 // runGrep searches file contents under root, optionally only in files
-// matching the include glob. Secret-shaped files are never searched. A
+// matching the include glob. Strict secret-shaped files are left out whole:
+// a count or a name of the ones that matched leaks a key one bit per call. A
 // pattern that is no regexp (an unbalanced paren) is searched as text.
 func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	pattern, root, include := str(input["pattern"]), searchRoot(input), str(input["include"])
@@ -1081,7 +1106,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		path := filepath.Join(root, rel)
 		h, ok := hidden[rel]
 		if !ok {
-			h = perm.PathIsSecret(rel) || ruledOut(path)
+			h = perm.PathIsStrictSecret(rel) || ruledOut(path)
 			hidden[rel] = h
 		}
 		if !h {
@@ -1115,7 +1140,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			}
 		}
 		visit := func(path, rel string) error {
-			if !match(rel) || !isTextFile(path) {
+			if !match(rel) || perm.PathIsStrictSecret(rel) || !isTextFile(path) {
 				return nil
 			}
 			data, err := os.ReadFile(path)
@@ -1138,18 +1163,18 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}
-	out := ""
+	var out []string
 	if literal {
-		out = "(pattern taken literally)\n"
+		out = append(out, "(pattern taken literally)")
+	}
+	out = append(out, hits...)
+	if len(hits) >= grepMaxMatches {
+		out = append(out, fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches))
 	}
 	if len(hits) == 0 {
-		return fantasy.NewTextResponse(out + "(no matches)"), nil
+		out = append(out, "(no matches; secret-shaped files like .env are not searched, read one to ask)")
 	}
-	out += strings.Join(hits, "\n") + "\n"
-	if len(hits) >= grepMaxMatches {
-		out += fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches)
-	}
-	return fantasy.NewTextResponse(out), nil
+	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
 }
 
 // ListFiles lists up to limit files under root, relative to it, in no
@@ -1191,7 +1216,8 @@ func (p *Pipeline) ruledOut() func(path string) bool {
 var rgBin, _ = exec.LookPath("rg")
 
 // ripgrep streams rg's output lines, run in root, to fn until fn returns
-// false. false means rg is missing or failed and the caller falls back.
+// false. false means rg is missing or refused the pattern or a glob, and the
+// caller falls back; an unreadable path (exit 2 after the search) is not.
 func ripgrep(ctx context.Context, root string, fn func(line string) bool, args ...string) bool {
 	if rgBin == "" {
 		return false
@@ -1200,10 +1226,13 @@ func ripgrep(ctx context.Context, root string, fn func(line string) bool, args .
 	defer cancel()
 	// the exclusions go last: rg's last matching glob wins. NOTE: a grep
 	// include that matches a directory name ("*") still un-ignores gitignored
-	// trees; rg has no glob for files only
-	args = append(append([]string{"--hidden", "--no-require-git"}, args...), "--glob", "!.git", "--glob", "!.zemi/worktrees")
+	// trees; rg has no glob for files only. --no-config: a user's
+	// RIPGREP_CONFIG_PATH (--smart-case, --glob) must not change what matches
+	args = append(append([]string{"--no-config", "--hidden", "--no-require-git"}, args...), "--glob", "!.git", "--glob", "!.zemi/worktrees")
 	c := proc.CommandContext(cctx, rgBin, args...)
 	c.Dir = root
+	var stderr bytes.Buffer
+	c.Stderr = &stderr
 	out, err := c.StdoutPipe()
 	if err != nil || proc.Start(c) != nil {
 		return false
@@ -1223,7 +1252,8 @@ func ripgrep(ctx context.Context, root string, fn func(line string) bool, args .
 	}
 	err = proc.Wait(c)
 	var exit *exec.ExitError
-	return stopped || err == nil || (errors.As(err, &exit) && exit.ExitCode() == 1)
+	refused := bytes.Contains(stderr.Bytes(), []byte("regex parse error")) || bytes.Contains(stderr.Bytes(), []byte("error parsing glob"))
+	return stopped || err == nil || (errors.As(err, &exit) && (exit.ExitCode() == 1 || exit.ExitCode() == 2 && !refused))
 }
 
 // walk visits the regular files under root for the Go fallback, which skips
@@ -1236,7 +1266,7 @@ func walk(ctx context.Context, root string, fn func(path, rel string) error) err
 	// the handler below drops errors so an unreadable subdirectory is skipped,
 	// and a missing root would read as no matches
 	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
-		return fmt.Errorf("no such directory: %s", root)
+		return fmt.Errorf("no such file or directory: %s", root)
 	}
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if ctx.Err() != nil {

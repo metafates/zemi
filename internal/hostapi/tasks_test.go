@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
 )
 
 // TestTaskRegEviction: a full registry forgets its oldest finished run, never
@@ -105,7 +107,7 @@ func TestReportNoticeWhereRead(t *testing.T) {
 	h.agents.mu.Lock()
 	h.agents.active = true
 	h.agents.textBuf = "so far"
-	h.agents.steering = []string{attachMarker + "\n<agent-report run=\"r1\" agent=\"explore\" status=\"finished\" description=\"x\">\nfound\n</agent-report>\n</attached-files>"}
+	h.agents.steering = []string{agent.AttachMarker + "\n<agent-report run=\"r1\" agent=\"explore\" status=\"finished\" description=\"x\">\nfound\n</agent-report>\n</attached-files>"}
 	h.agents.mu.Unlock()
 	if msgs := h.deliverSteering(); len(msgs) != 1 {
 		t.Fatalf("delivered %d messages", len(msgs))
@@ -137,6 +139,7 @@ func TestMessageAgent(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
 			h.SetUIHooks(&fakeUI{}) // background agents are a TUI feature
+			sid := seedSession(t, h)
 			started, release := make(chan struct{}), make(chan struct{})
 			h.modelFn = func() (fantasy.LanguageModel, error) {
 				return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
@@ -164,7 +167,7 @@ func TestMessageAgent(t *testing.T) {
 				t.Fatalf("start: %v %s", err, resp.Content)
 			}
 			<-started
-			id := h.tasks.list("")[0].id
+			id := h.tasks.list(sid)[0].id
 			out, err := send(h, id, "also this")
 			if err != nil || (out != "" && !strings.Contains(out, "Queued")) {
 				t.Fatalf("send: %q %v", out, err)
@@ -181,11 +184,11 @@ func TestMessageAgent(t *testing.T) {
 			if len(tr) < 3 || tr[len(tr)-2].Text != "also this" || tr[len(tr)-1].Text != "got it" {
 				t.Fatalf("transcript: %+v", tr)
 			}
-			_, _, _, sid := r.state()
+			_, _, _, rsid := r.state()
 			// a run the process forgot is read back by the id the model saw
 			forgetRun(h, id)
 			stored, err := h.loadRun(id)
-			if err != nil || stored.sessionID != sid || !strings.Contains(fmt.Sprint(stored.transcript()), "{user  also this") {
+			if err != nil || stored.sessionID != rsid || !strings.Contains(fmt.Sprint(stored.transcript()), "{user  also this") {
 				t.Fatalf("stored run: %v %+v", err, stored)
 			}
 			// the tool continues a finished run on its history; the view only
@@ -203,7 +206,7 @@ func TestMessageAgent(t *testing.T) {
 					t.Fatalf("continued transcript: %+v", tr)
 				}
 				forgetRun(h, id)
-				stored, _ := h.loadRun(sid)
+				stored, _ := h.loadRun(rsid)
 				if !strings.Contains(fmt.Sprint(stored.transcript()), "{user  too late") {
 					t.Fatalf("continuation not stored: %+v", stored.transcript())
 				}
@@ -306,5 +309,112 @@ func TestAgentSendsWhileBackground(t *testing.T) {
 	}
 	if all := strings.Join(texts, "\n"); !strings.Contains(all, "user msg") || !strings.Contains(all, "Background agent finished: report") {
 		t.Fatalf("transcript missing the msg or the report: %q", all)
+	}
+}
+
+// TestReportStoredWhenSessionMoved: a background report that finishes after
+// the user moved on is stored in the session that started the run, so a
+// resume shows it and the next send carries it.
+func TestReportStoredWhenSessionMoved(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	release := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, _ bool) []fantasy.StreamPart {
+			if strings.Contains(system, "a subagent of zemi") {
+				<-release
+				return textParts("found it")
+			}
+			return textParts("ok: " + last)
+		}}, nil
+	}
+	parent := seedSession(t, h)
+	def, _ := h.agentDef("explore")
+	id, err := h.startBackgroundAgent(def, "left behind", "look")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	waitFor(t, func() error {
+		rows, _ := h.DB.Messages(parent)
+		if len(rows) == 0 || !strings.Contains(rows[len(rows)-1].PartsJSON, "agent-report") {
+			return errors.New("report never stored")
+		}
+		return nil
+	})
+	if err := h.ResumeSession(parent); err != nil {
+		t.Fatal(err)
+	}
+	if tr := h.Session().Transcript; len(tr) == 0 || tr[len(tr)-1].Text != reportHead(id, "explore", "finished") {
+		t.Fatalf("resume lacks the report: %+v", tr)
+	}
+	if err := h.AgentSend("next"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	if tr := h.Session().Transcript; tr[len(tr)-1].Text != "ok: next" {
+		t.Fatalf("send after the stored report: %+v", tr)
+	}
+}
+
+// TestSendTo: a continuation keeps the run's model and its row counts only
+// its own calls; a model change and another session's run are refused.
+func TestSendTo(t *testing.T) {
+	h, r := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{}) // send_to is a TUI feature
+	runUser(t, r, `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "https://llm.internal/v1", api_key = "k", models = { { id = "a", max_output = 1000 }, { id = "b", max_output = 2000 } } })`)
+	h.Settings.SetQuiet("models.main", "p/a")
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, toolResult bool) []fantasy.StreamPart {
+			if (last == "work" || last == "more") && !toolResult {
+				return toolCallParts("g1", "glob", `{"pattern":"*.none"}`)
+			}
+			return textParts("done: " + last)
+		}}, nil
+	}
+	sid := seedSession(t, h)
+	def, _ := h.agentDef("explore")
+	def.Model = "p/b"
+	id, _, err := h.runSubagent(t.Context(), def, "d", "work", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := h.tasks.find(id)
+	var lines []string
+	if _, err := h.continueRun(t.Context(), run, "more", func(l string) { lines = append(lines, l) }); err != nil || len(lines) != 2 ||
+		!strings.HasPrefix(lines[0], "explore · 1 tool call · glob") || lines[1] != "explore · 1 tool call" || run.runner.MaxOutputTokens != 2000 {
+		t.Fatalf("continuation: %v, rows %q, max output %d", err, lines, run.runner.MaxOutputTokens)
+	}
+	for _, c := range []struct{ name, extra, session, want string }{
+		{"a model change", `,"model":"p/a"`, sid, "model cannot change"},
+		{"another session's run", "", "other", "belongs to another session"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h.agents.mu.Lock()
+			h.agents.sessionID = c.session
+			h.agents.mu.Unlock()
+			resp, err := h.agentTool().Run(t.Context(), fantasy.ToolCall{ID: "c1", Input: fmt.Sprintf(`{"prompt":"again","send_to":%q%s}`, id, c.extra)})
+			if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) {
+				t.Fatalf("%v %q", err, resp.Content)
+			}
+		})
+	}
+}
+
+// TestStopWording: a stop the user asked for reads as theirs to the model,
+// and /agents stop with nothing to stop says how to name one.
+func TestStopWording(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	resp, _ := (&agentTool{h: h}).foreground(t.Context(), "c1", &agentRun{id: "r1", agent: "explore"}, "p", func(context.Context, func(string)) (string, error) {
+		return "", context.Canceled
+	})
+	if !strings.Contains(resp.Content, "the user stopped this agent") {
+		t.Errorf("foreground stop: %q", resp.Content)
+	}
+	if err := h.stopRun(""); err == nil || !strings.Contains(err.Error(), "name the run to stop") {
+		t.Errorf("stop without an id: %v", err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
@@ -221,4 +222,48 @@ func TestHealthModelRow(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestHealthMCPRow: only ready servers read as ready; a starting one is
+// named, and one that failed or stopped warns.
+func TestHealthMCPRow(t *testing.T) {
+	for _, c := range []struct {
+		statuses      []string
+		level, detail string
+	}{
+		{[]string{"ready", "ready"}, "ok", "2 servers ready"},
+		{[]string{"ready", "starting"}, "ok", "2 servers: 1 ready, 1 starting"},
+		{[]string{"failed", "ready", "stopped"}, "warn", "3 servers: 1 failed, 1 ready, 1 stopped"},
+	} {
+		h, _ := newTestHostDB(t)
+		for i, st := range c.statuses {
+			h.mcp.servers[fmt.Sprint(i)] = &mcpServer{status: st}
+		}
+		i := slices.IndexFunc(h.goHealthRows(), func(r healthCheck) bool { return r.name == "mcp" })
+		if row := h.goHealthRows()[i]; row.level != c.level || row.detail != c.detail {
+			t.Errorf("%v: mcp row = %+v", c.statuses, row)
+		}
+	}
+}
+
+// TestWaitMCP: the wait ends when the last server leaves "starting", or
+// when its context ends.
+func TestWaitMCP(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	s := &mcpServer{status: "starting"}
+	h.mcp.servers["a"] = s
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	h.WaitMCP(ctx) // returns: ctx is done
+	done := make(chan struct{})
+	go func() { h.WaitMCP(context.Background()); close(done) }()
+	select {
+	case <-done:
+		t.Fatal("returned while a server is starting")
+	case <-time.After(50 * time.Millisecond):
+	}
+	s.mu.Lock()
+	s.status = "failed"
+	s.mu.Unlock()
+	<-done
 }

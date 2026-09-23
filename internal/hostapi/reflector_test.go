@@ -23,8 +23,9 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// reflectStubModel answers Generate and Stream with a fixed text (Stream
-// backs agent turns and records the prompt size); object calls refuse.
+// reflectStubModel answers side calls through Generate and turns through
+// Stream with a fixed text (Stream records the prompt size); object calls
+// refuse.
 type reflectStubModel struct {
 	resp       string
 	err        error
@@ -67,7 +68,14 @@ func (m *reflectStubModel) Generate(ctx context.Context, call fantasy.Call) (*fa
 	}, nil
 }
 
-func (m *reflectStubModel) Stream(_ context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+func (m *reflectStubModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	if sideCall(call) {
+		res, err := m.Generate(ctx, call)
+		if err != nil {
+			return nil, err
+		}
+		return streamOf(res), nil
+	}
 	m.streams.Add(1)
 	m.lastPrompt.Store(int32(len(call.Prompt)))
 	if used := m.toolStep.Swap(0); used > 0 {
@@ -95,6 +103,33 @@ func (m *reflectStubModel) Stream(_ context.Context, call fantasy.Call) (fantasy
 			}
 		}
 	}, nil
+}
+
+// sideCall reports a title, summary or reflector call, which a turn's script
+// does not answer.
+func sideCall(call fantasy.Call) bool {
+	return len(call.Prompt) > 0 && slices.Contains([]string{titleSystem, compactSystem, reflectorSystem}, concatText(call.Prompt[0].Content))
+}
+
+// streamOf replays a reply as the stream a side call reads.
+func streamOf(res *fantasy.Response) fantasy.StreamResponse {
+	return func(yield func(fantasy.StreamPart) bool) {
+		for _, c := range res.Content {
+			switch c := c.(type) {
+			case fantasy.TextContent:
+				if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeTextStart, ID: "t"}) ||
+					!yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeTextDelta, ID: "t", Delta: c.Text}) ||
+					!yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeTextEnd, ID: "t"}) {
+					return
+				}
+			case fantasy.ToolCallContent:
+				if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeToolCall, ID: c.ToolCallID, ToolCallName: c.ToolName, ToolCallInput: c.Input}) {
+					return
+				}
+			}
+		}
+		yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, FinishReason: res.FinishReason, Usage: res.Usage})
+	}
 }
 
 func (m *reflectStubModel) GenerateObject(context.Context, fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
@@ -348,6 +383,10 @@ func TestReflectPrompt(t *testing.T) {
 		{name: "a secret in a user line is redacted", seed: func(t *testing.T, h *Host, sid string) {
 			addText(t, h, sid, "user", "the "+secret+" lives in deploy")
 		}, want: []string{"user: the [redacted"}, absent: []string{"sk-abcdefghijklmnopqrs"}},
+		{name: "a user line keeps only what was typed", seed: func(t *testing.T, h *Host, sid string) {
+			addText(t, h, sid, "user", "read @notes.md"+agent.AttachMarker+"\nattached notes\n</attached-files>")
+			addText(t, h, sid, "user", agent.Note("mark it done"))
+		}, want: []string{"user: read @notes.md\n"}, absent: []string{"attached notes", "mark it done"}},
 		{name: "this session's pending proposals only", seed: func(t *testing.T, h *Host, sid string) {
 			for _, m := range []store.Memory{
 				{Scope: "project", Text: "ours to review", ProvenanceSessionID: sid},
@@ -361,7 +400,7 @@ func TestReflectPrompt(t *testing.T) {
 		{name: "the index with budget use and quotes", seed: func(t *testing.T, h *Host, sid string) {
 			learnedMemory(t, h, "project", "deploy needs the labels sequence bumped", "")
 			learnedMemory(t, h, "user", "the user prefers short replies", "keep it short")
-		}, want: []string{"# Memory index (every memory the prompt carries, as [id scope origin age]; project 0.1/3 KB, user 0.1/3 KB)", " project learned] deploy needs the labels sequence bumped", " user learned] the user prefers short replies\n  quote: \"keep it short\""}},
+		}, want: []string{"# Memory index (project 0.1/3 KB, user 0.1/3 KB)", " project learned] deploy needs the labels sequence bumped", " user learned] the user prefers short replies\n  quote: \"keep it short\""}},
 		{name: "a scope past 80% of its budget is marked full", seed: func(t *testing.T, h *Host, sid string) {
 			for i := range 9 {
 				learnedMemory(t, h, "project", strings.Repeat(string(rune('a'+i)), 280), "")
@@ -659,6 +698,19 @@ func TestReflectTrigger(t *testing.T) {
 				return nil
 			})
 		}, calls: 1},
+		{name: "a fork reflects only what it adds", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			setSeen(t, h, sid)
+			fork, err := h.ForkSession()
+			if err != nil || h.reflectDue(fork) != 0 {
+				t.Fatalf("fork %v due %d", err, h.reflectDue(fork))
+			}
+			addText(t, h, fork, "user", "and now")
+			addText(t, h, fork, "user", "this too")
+			addTool(t, h, fork, true)
+			if h.reflectDue(fork) == 0 {
+				t.Fatal("what the fork added is not due")
+			}
+		}},
 		{name: "/reflect with nothing new says so", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
 			setSeen(t, h, sid)
 			if err := h.reflectCommand(); err == nil || !strings.Contains(err.Error(), "nothing new") {

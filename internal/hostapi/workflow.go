@@ -26,6 +26,7 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skills"
@@ -136,10 +137,12 @@ func (h *Host) workflowSource(name string) (string, error) {
 }
 
 // WorkflowResult is a finished run: the script's return value (strings as
-// is, anything else JSON) and its log lines.
+// is, anything else JSON), its log lines, and one "<run id> <agent>
+// <status>: <description>" line per agent that finished.
 type WorkflowResult struct {
-	Value string
-	Log   []string
+	Value  string
+	Log    []string
+	Agents []string
 }
 
 // wfTask is one coroutine: the script body or a parallel() branch.
@@ -165,6 +168,8 @@ type wfAgentReq struct {
 
 type wfDone struct {
 	task *wfTask
+	req  *wfAgentReq
+	id   string
 	text string
 	err  error
 }
@@ -181,6 +186,7 @@ type wfRun struct {
 	done     chan wfDone
 	phase    string
 	log      []string
+	agents   []string // WorkflowResult.Agents
 	progress func(string)
 
 	ready []*wfTask // parents whose parallel() branches all finished
@@ -230,13 +236,16 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 			break
 		}
 		if run.running == 0 && len(run.queue) == 0 {
-			return WorkflowResult{}, errors.New("workflow stalled: every branch is waiting (was agent() called inside pcall?)")
+			return WorkflowResult{Log: run.log, Agents: run.agents}, errors.New("workflow stalled: every branch is waiting (was agent() called inside pcall?)")
 		}
 		select {
 		case d := <-run.done:
 			run.running--
 			run.finished++
 			run.dispatch()
+			if d.id != "" { // a crashed agent returned none
+				run.agents = append(run.agents, fmt.Sprintf("%s %s %s: %s", d.id, d.req.def.Name, map[bool]string{true: "done", false: "failed"}[d.err == nil], d.req.description))
+			}
 			if d.err != nil {
 				run.resume(d.task, glua.LNil, glua.LString(h.friendlyError(d.err)))
 			} else {
@@ -244,7 +253,7 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 			}
 		case <-ctx.Done():
 			run.drainAgents()
-			return WorkflowResult{}, ctx.Err()
+			return WorkflowResult{Log: run.log, Agents: run.agents}, ctx.Err()
 		}
 		run.report()
 	}
@@ -252,7 +261,7 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 		cancel()
 		run.drainAgents()
 	}
-	res := WorkflowResult{Log: run.log}
+	res := WorkflowResult{Log: run.log, Agents: run.agents}
 	if run.resultErr != nil {
 		return res, run.resultErr
 	}
@@ -469,7 +478,15 @@ func (r *wfRun) resume(t *wfTask, args ...glua.LValue) {
 	case glua.ResumeError:
 		r.finish(t, glua.LNil, err)
 	case glua.ResumeOK:
-		r.finish(t, vals[0], nil)
+		// `return agent(...)` hands back agent's nil, err: a failure, not a nil result
+		val, err := glua.LValue(glua.LNil), error(nil)
+		if len(vals) > 0 {
+			val = vals[0]
+		}
+		if val == glua.LNil && len(vals) > 1 && vals[1] != glua.LNil {
+			err = errors.New(vals[1].String())
+		}
+		r.finish(t, val, err)
 	default:
 		switch {
 		case t.req != nil:
@@ -511,9 +528,9 @@ func (r *wfRun) dispatch() {
 		r.running++
 		r.h.GoSafe("workflow agent", func() {
 			// deferred so a panicking agent still reports: the run waits on done
-			d := wfDone{task: t, err: errors.New("the agent crashed")}
+			d := wfDone{task: t, req: req, err: errors.New("the agent crashed")}
 			defer func() { r.done <- d }()
-			d.text, d.err = r.h.runSubagent(r.ctx, req.def, req.description, req.prompt, nil)
+			d.id, d.text, d.err = r.h.runSubagent(r.ctx, req.def, req.description, req.prompt, nil)
 		})
 	}
 }
@@ -567,7 +584,7 @@ type workflowTool struct {
 
 func (h *Host) workflowTool() fantasy.AgentTool { return &workflowTool{h: h, saved: h.workflows()} }
 
-const workflowToolDesc = `Run a Lua workflow that coordinates subagents: fan out independent work, chain stages, verify results. One task is a single agent call; a workflow is for several agents with logic between them. Pass a saved workflow's name to run it, or a script to write one - load the zemi-customize skill first for the script API and where to save it.`
+const workflowToolDesc = `Run a Lua script that coordinates subagents when code has to sit between them: stages that feed each other, loops, checking results. Independent tasks need no workflow. Pass a saved workflow's name, or a new script after loading the zemi-customize skill for the API.`
 
 func (t *workflowTool) Info() fantasy.ToolInfo {
 	var desc strings.Builder
@@ -638,10 +655,15 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 		out += "\n\nlog:\n" + strings.Join(res.Log, "\n")
 	}
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			return fantasy.NewTextErrorResponse("workflow cancelled"), nil
+		// the reports are lost with the script, the runs are not
+		if len(res.Agents) > 0 && h.hooks() != nil { // headless has no send_to
+			out += "\n\nagents that finished (continue one with the agent tool's send_to):\n" + strings.Join(res.Agents, "\n")
 		}
-		return fantasy.NewTextErrorResponse(h.truncOutput("workflow", "workflow failed: "+err.Error()+"\n"+out)), nil
+		msg := "workflow failed: " + err.Error()
+		if errors.Is(err, context.Canceled) {
+			msg = "workflow cancelled"
+		}
+		return fantasy.NewTextErrorResponse(h.truncOutput("workflow", strings.TrimSpace(msg+"\n"+out))), nil
 	}
 	if strings.TrimSpace(out) == "" {
 		out = "(the workflow returned nothing)"
@@ -668,7 +690,8 @@ func (h *Host) workflowCommands() []*Command {
 	return []*Command{{
 		Name: "workflow", NArgs: "*", Desc: "run a saved workflow",
 		GoFn: func(h *Host, args string) error {
-			name, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
+			typed, attached := agent.CutAttached(args)
+			name, rest, _ := strings.Cut(strings.TrimSpace(typed), " ")
 			if name == "" {
 				return h.openWorkflows()
 			}
@@ -681,7 +704,7 @@ func (h *Host) workflowCommands() []*Command {
 			if rest = strings.TrimSpace(rest); rest != "" {
 				msg += " and args " + strconv.Quote(rest)
 			}
-			return h.AgentSend(msg + ", then relay its result.")
+			return h.AgentSend(msg + ", then relay its result." + attached)
 		},
 		GoComplete: func(h *Host, _, _ string) []string {
 			var names []string
@@ -777,7 +800,7 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 			cancel()
 			return 0
 		}))
-		lua.GuardFuncs(L, handle, "workflow:", h.guardModelLua)
+		lua.GuardFuncs(L, handle, "workflow:", h.guardLua)
 		L.Push(handle)
 		return 1
 	}))

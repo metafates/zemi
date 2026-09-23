@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,9 +16,10 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// TestRewind runs two turns that write files, then rewinds the second and
-// the first: each rewind restores the files as they were before that turn
-// and cuts the conversation back to the prompt before it.
+// TestRewind runs turns that write files and todo lists, then rewinds them
+// one by one: each rewind restores the files and the todo list as they were
+// before that turn, cuts the conversation back to the prompt before it and
+// undoes what the session learned since.
 func TestRewind(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
@@ -40,12 +42,16 @@ func TestRewind(t *testing.T) {
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, toolResult bool) []fantasy.StreamPart {
 			switch {
-			// writing over a file means reading it first
 			case last == "first":
+				return toolCallParts("c-todo1", "todos", `{"todos":[{"content":"a","status":"pending"}]}`)
+			// writing over a file means reading it first
+			case strings.HasPrefix(last, "updated todos: 0/1"):
 				return toolCallParts("c-read", "read", fmt.Sprintf(`{"path":%q,"limit":0}`, edited))
 			case strings.Contains(last, "v1"):
 				return write(edited, "v2")
 			case last == "second":
+				return toolCallParts("c-todo2", "todos", `{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`)
+			case strings.HasPrefix(last, "updated todos: 1/2"):
 				return write(created, "x")
 			// a command deletes one file and overwrites another: rewind restores both
 			case last == "third":
@@ -91,15 +97,38 @@ func TestRewind(t *testing.T) {
 		}
 	}
 
+	// what the session learned in the rewound turns goes; the user's own and
+	// what was learned after the last row (a reflector run, an accept) stay
+	sid := h.AgentSessionID()
+	rows, _ := h.DB.Messages(sid)
+	last := rows[len(rows)-1].CreatedAt
+	old := &store.Memory{Scope: "project", Text: "old", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: 1}
+	learned := &store.Memory{Scope: "project", Text: "learned", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last}
+	reflected := &store.Memory{Scope: "project", Text: "reflected", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last + 1}
+	mine := &store.Memory{Scope: "project", Text: "mine", Origin: "user", ProvenanceSessionID: sid}
+	for _, m := range []*store.Memory{old, learned, reflected, mine} {
+		if err := h.DB.AddMemory(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.DB.SupersedeMemory(old.ID, learned.ID)
+	for _, at := range []int64{last, last + 1} {
+		payload, _ := json.Marshal(memoryProposal{Memory: store.Memory{Scope: "project", Text: fmt.Sprint(at), Origin: "learned", ProvenanceSessionID: sid}})
+		if err := h.DB.AddProposal(&store.Proposal{Kind: "memory", Payload: string(payload), CreatedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	for _, c := range []struct {
 		prompt           int
 		files            int
 		edited, created  string
+		todos            int
 		transcriptBefore int // user messages left
 	}{
-		{prompt: 2, files: 2, edited: "v2", created: "x", transcriptBefore: 2},
-		{prompt: 1, files: 1, edited: "v2", created: "<missing>", transcriptBefore: 1},
-		{prompt: 0, files: 1, edited: "v1", created: "<missing>", transcriptBefore: 0},
+		{prompt: 2, files: 2, edited: "v2", created: "x", todos: 2, transcriptBefore: 2},
+		{prompt: 1, files: 1, edited: "v2", created: "<missing>", todos: 1, transcriptBefore: 1},
+		{prompt: 0, files: 1, edited: "v1", created: "<missing>", todos: 0, transcriptBefore: 0},
 	} {
 		n, err := h.RewindTo(prompts[c.prompt])
 		if err != nil {
@@ -107,6 +136,13 @@ func TestRewind(t *testing.T) {
 		}
 		if n != c.files || read(edited) != c.edited || read(created) != c.created {
 			t.Fatalf("rewind %d: restored %d, files %q %q", c.prompt, n, read(edited), read(created))
+		}
+		if todos := h.todoSnapshot(); len(todos) != c.todos {
+			t.Fatalf("rewind %d: todos %+v, want %d", c.prompt, todos, c.todos)
+		}
+		// the next send's compaction check reads it
+		if h.AgentStream().LastIn == 0 {
+			t.Fatalf("rewind %d: no context estimate", c.prompt)
 		}
 		users := 0
 		for _, m := range h.Session().Transcript {
@@ -124,6 +160,14 @@ func TestRewind(t *testing.T) {
 		if users != c.transcriptBefore || left != c.transcriptBefore {
 			t.Fatalf("rewind %d: transcript users %d, stored prompts %d, want %d", c.prompt, users, left, c.transcriptBefore)
 		}
+	}
+	live, _ := h.DB.ListMemory("project", false)
+	var texts []string
+	for _, m := range live {
+		texts = append(texts, m.Text)
+	}
+	if slices.Sort(texts); !slices.Equal(texts, []string{"mine", "old", "reflected"}) || len(h.memoryProposals()) != 1 {
+		t.Fatalf("memories %q and %d proposals, want mine, old and reflected and one", texts, len(h.memoryProposals()))
 	}
 	if _, err := h.RewindTo(prompts[0]); err == nil {
 		t.Fatal("rewinding to a removed prompt must fail")
@@ -239,5 +283,60 @@ func TestRestoreRefusesSwappedSymlink(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outside, "a.sh")); err == nil {
 		t.Fatal("wrote outside the project")
+	}
+}
+
+// TestRewindBashSymlink: a rewind puts back a symbolic link a command
+// deleted or retargeted and removes one it created.
+func TestRewindBashSymlink(t *testing.T) {
+	for _, c := range []struct {
+		name, path string
+		run        func(dir string) error
+		want       string // the link's target after the rewind, "" for no file there
+	}{
+		{name: "deleted", path: "link", want: "a.txt", run: func(dir string) error { return os.Remove(filepath.Join(dir, "link")) }},
+		{name: "retargeted", path: "link", want: "a.txt", run: func(dir string) error {
+			os.Remove(filepath.Join(dir, "link"))
+			return os.Symlink("b.txt", filepath.Join(dir, "link"))
+		}},
+		{name: "created", path: "new", run: func(dir string) error { return os.Symlink("a.txt", filepath.Join(dir, "new")) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			dir := h.Dirs.ProjectDir
+			os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644)
+			os.WriteFile(filepath.Join(dir, "b.txt"), []byte("b"), 0o644)
+			if err := os.Symlink("a.txt", filepath.Join(dir, "link")); err != nil {
+				t.Fatal(err)
+			}
+			for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"}} {
+				if out, err := h.runGit(dir, nil, args...); err != nil {
+					t.Fatalf("git %v: %v %s", args, err, out)
+				}
+			}
+			h.DB.CreateSession("s", "", "s", "")
+			parts, _ := json.Marshal(fantasy.NewUserMessage("go"))
+			m := &store.Message{SessionID: "s", Role: "user", PartsJSON: string(parts)}
+			h.DB.AddMessage(m)
+			if err := h.ResumeSession("s"); err != nil {
+				t.Fatal(err)
+			}
+			h.agents.turnMsgID = m.ID
+			done := h.bashChanges(dir)
+			if err := c.run(dir); err != nil {
+				t.Fatal(err)
+			}
+			done()
+			if _, err := h.RewindTo(m.ID); err != nil {
+				t.Fatal(err)
+			}
+			got, err := os.Readlink(filepath.Join(dir, c.path))
+			if _, missing := os.Lstat(filepath.Join(dir, c.path)); err != nil && missing == nil {
+				got = "<not a link>"
+			}
+			if got != c.want {
+				t.Fatalf("%s is %q, want %q", c.path, got, c.want)
+			}
+		})
 	}
 }

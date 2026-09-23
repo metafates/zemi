@@ -9,6 +9,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -26,7 +27,8 @@ func TestExpandPromptArgs(t *testing.T) {
 }
 
 // TestMarkdownCommandSends: a commands/<name>.md file becomes /<name>, and
-// running it sends the expanded body to the agent.
+// running it sends the expanded body behind the typed line, so only what
+// the user typed reads as their words; piped stdin stays behind it too.
 func TestMarkdownCommandSends(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.Dirs.ConfigHome = t.TempDir()
@@ -52,12 +54,18 @@ func TestMarkdownCommandSends(t *testing.T) {
 	if cmd == nil || cmd.Desc != "fix a file <file>" || cmd.Origin != lua.OriginUser {
 		t.Fatalf("command = %+v", cmd)
 	}
-	if err := h.RunCommand(context.Background(), "fix", "main.go"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	if got, _ := sent.Load().(string); got != "Fix the bug in main.go." {
-		t.Fatalf("sent %q", got)
+	body = agent.Attached("command", "Fix the bug in main.go.")
+	for _, c := range []struct{ args, want string }{
+		{"main.go", "/fix main.go" + body},
+		{"main.go" + agent.Attached("stdin", "panic: x"), "/fix main.go" + body + agent.Attached("stdin", "panic: x")},
+	} {
+		if err := h.RunCommand(context.Background(), "fix", c.args); err != nil {
+			t.Fatal(err)
+		}
+		waitIdle(t, h)
+		if got, _ := sent.Load().(string); got != c.want {
+			t.Fatalf("sent %q, want %q", got, c.want)
+		}
 	}
 }
 

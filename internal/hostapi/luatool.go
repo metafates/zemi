@@ -2,7 +2,7 @@
 // interpreter as user origin, so the agent can inspect and change zemi's own
 // state (this session, agent runs, memories, settings, skills, errors)
 // through the API every Lua caller uses. Without the user's approval a run
-// may only call read-only members (luaReadOnly, enforced by guardModelLua);
+// may only call read-only members (luaReadOnly, enforced by guardLua);
 // a script that names anything else asks once up front, and so does every
 // run in an untrusted project or by a read-only agent. The tool.pre events always run
 // so user hooks can deny or halt a script.
@@ -149,9 +149,10 @@ func (h *Host) luaEvalTool() fantasy.AgentTool { return &luaEvalTool{h: h} }
 func (t *luaEvalTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
 		Name: tools.ToolLua,
-		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors. Load the zemi-lua skill for the API first." +
+		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors." +
 			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, for at most 10s: no waiting loops, start slow work with zemi.job or zemi.timer." +
-			" A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) runs at once; one that changes anything asks the user once, so write every call out by name." +
+			" A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) runs at once; one that changes anything needs the user's approval once, so write every call out by name." +
+			" For calls not named here load the zemi-lua skill; a member a namespace lacks raises with the list it has." +
 			" Keep scripts you reuse in the scratchpad and pass path instead of script.",
 		Parameters: map[string]any{
 			"description": map[string]any{"type": "string", "description": "what the script does in 3-6 words, shown to the user"},
@@ -244,11 +245,6 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	out, err := h.runModelLua(ctx, src, rel)
 	if err != nil {
 		msg := err.Error()
-		// the ceiling, not an interrupt: the model can tell them apart and
-		// move the work, as the bash tool's timeout line lets it
-		if ctx.Err() == nil && errors.Is(err, context.Canceled) {
-			msg = fmt.Sprintf("stopped after %s: the script must finish quickly; move long work to zemi.job or a bash command", luaToolCeiling)
-		}
 		if in.Path != "" {
 			// the chunk keeps its tool name, which the sandbox guard reads;
 			// the error names the file the model can edit
@@ -264,7 +260,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 
 // runModelLua runs src as a user-origin chunk named rel (the model can do
 // what a user init.lua can once the user approves the run, see
-// guardModelLua) and returns what it printed, then its return values as JSON.
+// guardLua) and returns what it printed, then its return values as JSON.
 func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error) {
 	var b strings.Builder
 	vals, err := h.RT.Eval(ctx, src, rel, lua.OriginUser, luaToolCeiling, func(line string) {
@@ -284,9 +280,14 @@ func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error)
 	return strings.TrimRight(b.String(), "\n"), err
 }
 
-// guardModelLua is the sandbox guard every Go function exposed to Lua runs
-// through: code from an unapproved Lua tool run may call only luaReadOnly.
-func (h *Host) guardModelLua(L *glua.LState, member string) {
+// guardLua is the sandbox guard every Go function exposed to Lua runs
+// through: code from an unapproved Lua tool run may call only luaReadOnly,
+// and a widget render, which runs every frame, only the luaReadOnly members
+// other than fs.* and a handle's wait.
+func (h *Host) guardLua(L *glua.LState, member string) {
+	if h.rendering.Load() && (!luaReadOnly[member] || strings.HasPrefix(member, "fs.") || strings.HasSuffix(member, ":wait")) {
+		L.RaiseError("zemi.%s is not allowed during widget render (render must be pure)", member)
+	}
 	if luaReadOnly[member] {
 		return
 	}

@@ -8,12 +8,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	glua "github.com/yuin/gopher-lua"
@@ -250,7 +252,7 @@ func (h *Host) goHealthRows() []healthCheck {
 
 	switch s := h.sandbox.Load(); {
 	case s.err != nil:
-		add("warn", "sandbox", "unavailable: "+s.err.Error()+"; settled commands limited to readers")
+		add("warn", "sandbox", "unavailable: "+s.err.Error()+"; auto mode runs only read-only commands without asking")
 	case !s.backend.EnforcesProtect:
 		add("ok", "sandbox", s.backend.Name+" confines the commands auto mode and read-only agents run; it cannot keep .git read-only, so the project is read-only to them")
 	default:
@@ -270,7 +272,7 @@ func (h *Host) goHealthRows() []healthCheck {
 	}
 
 	if mem := h.pendingMemory.Load(); mem > 0 {
-		add("warn", "learning", fmt.Sprintf("%d %s to review in /memory", mem, plural(int(mem), "suggestion", "suggestions")))
+		add("warn", "learning", fmt.Sprintf("%d %s to review in /memory", mem, plural(int(mem), "memory", "memories")))
 		out[len(out)-1].run = "memory"
 	} else {
 		add("ok", "learning", "nothing to review")
@@ -361,21 +363,27 @@ func (h *Host) goHealthRows() []healthCheck {
 	}
 	out[len(out)-1].run = "trust"
 
-	failed, servers := 0, h.mcp.list()
+	counts, servers := map[string]int{}, h.mcp.list()
 	for _, s := range servers {
 		s.mu.Lock()
-		if s.status == "failed" || s.status == "needs sign-in" {
-			failed++
-		}
+		counts[s.status]++
 		s.mu.Unlock()
 	}
 	switch {
 	case len(servers) == 0:
 		add("ok", "mcp", "no servers added")
-	case failed > 0:
-		add("warn", "mcp", fmt.Sprintf("%d %s, %d not working", len(servers), plural(len(servers), "server", "servers"), failed))
-	default:
+	case counts["ready"] == len(servers):
 		add("ok", "mcp", fmt.Sprintf("%d %s ready", len(servers), plural(len(servers), "server", "servers")))
+	default:
+		var parts []string
+		for _, st := range slices.Sorted(maps.Keys(counts)) {
+			parts = append(parts, fmt.Sprintf("%d %s", counts[st], st))
+		}
+		level := "warn"
+		if counts["ready"]+counts["starting"] == len(servers) {
+			level = "ok"
+		}
+		add(level, "mcp", fmt.Sprintf("%d %s: %s", len(servers), plural(len(servers), "server", "servers"), strings.Join(parts, ", ")))
 	}
 	if len(servers) > 0 {
 		out[len(out)-1].run = "mcp"
@@ -434,6 +442,25 @@ func (h *Host) HealthRows() []HealthRow {
 		out = append(out, HealthRow{Level: c.level, Name: c.name, Detail: c.detail})
 	}
 	return out
+}
+
+// WaitMCP returns once no MCP server is starting, or when ctx ends. A
+// command-line run calls it first: its one send builds the tool set, and a
+// server that is not ready then has no tools in it.
+func (h *Host) WaitMCP(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second) // startMCP's own cap
+	defer cancel()
+	for slices.ContainsFunc(h.mcp.list(), func(s *mcpServer) bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.status == "starting"
+	}) {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
 }
 
 // healthActions labels the command a check's detail view runs.

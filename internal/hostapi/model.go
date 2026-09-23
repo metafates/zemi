@@ -74,8 +74,8 @@ func (h *Host) modelErr(id string) error {
 	return nil
 }
 
-// modelFor resolves the model the first set key names, the session's model
-// when none is set, and returns its id for pricing.
+// modelFor resolves the model the first set key names, the small tier when
+// none is set, and returns its id for pricing.
 func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, string, error) {
 	for _, key := range keys {
 		if id := h.Settings.Str(key); id != "" && h.modelFn == nil {
@@ -83,7 +83,7 @@ func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, string, error) {
 			return m, id, err
 		}
 	}
-	id := h.sessionModelID()
+	id := cmp.Or(h.tierModel("small"), h.sessionModelID())
 	m, err := h.resolveModel(&Profile{Model: id})
 	return m, id, err
 }
@@ -91,14 +91,16 @@ func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, string, error) {
 // generate runs one tool-less, single-step call (summaries, titles, the
 // reflector) on the model the first set key names and bills it to sid. The
 // spec's body fields ride it (a gateway's routing, service_tier), the
-// reasoning effort not: a short job on a small tier need not think. A turn's
-// job passes retry, so the working rule counts down its provider retries.
+// reasoning effort not: a short job on a small tier need not think. It
+// streams: Anthropic's SDK refuses a large max_tokens otherwise, and the
+// idle timer covers only a stream. A turn's job passes retry, so the working
+// rule counts down its provider retries.
 func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, retry func(error, time.Duration), keys ...string) (*fantasy.AgentResult, error) {
 	model, id, err := h.modelFor(keys...)
 	if err != nil {
 		return nil, err
 	}
-	call := fantasy.AgentCall{
+	call := fantasy.AgentStreamCall{
 		Messages:        []fantasy.Message{agent.UserMessage(prompt)},
 		MaxOutputTokens: maxOut,
 		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
@@ -114,7 +116,7 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 			h.agents.mu.Unlock()
 		}()
 	}
-	res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(system)).Generate(ctx, call)
+	res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(system)).Stream(ctx, call)
 	if err == nil {
 		h.bill(sid, id, res.TotalUsage)
 	}
@@ -142,9 +144,10 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 
 // Tiers are the model tiers config names, in the order a picker shows them:
 // small runs the short jobs (session titles, compaction summaries, the
-// builtin web subagent), main everything else, and smart the main
-// conversation, which orchestrates and delegates. A tier nothing set falls
-// back to main.
+// reflector, the builtin web subagent), main everything else, and smart the
+// main conversation, which orchestrates and delegates. A tier nothing set
+// falls back to main, small first to the small model of main's provider, so
+// a /model pick of a big model leaves the short jobs cheap.
 var Tiers = []string{"small", "main", "smart"}
 
 // tierModel resolves a tier name to the model id config gave it, falling
@@ -156,7 +159,13 @@ func (h *Host) tierModel(tier string) string {
 	if !slices.Contains(Tiers, tier) {
 		return ""
 	}
-	return cmp.Or(h.Settings.Str("models."+tier), h.Settings.Str("models.main"), h.Providers.Default(tier == "small"))
+	id, main := h.Settings.Str("models."+tier), h.Settings.Str("models.main")
+	if prov, _, _ := strings.Cut(main, "/"); id == "" && tier == "small" && prov != "" {
+		if spec, ok := h.Providers.Lookup(prov); ok && spec.DefaultSmall != "" {
+			id = prov + "/" + spec.DefaultSmall
+		}
+	}
+	return cmp.Or(id, main, h.Providers.Default(tier == "small"))
 }
 
 // modelRef resolves a model reference: a tier name, a provider/model id, or

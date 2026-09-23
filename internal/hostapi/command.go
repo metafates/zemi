@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	glua "github.com/yuin/gopher-lua"
@@ -42,8 +43,10 @@ func validNargs(n string) bool {
 }
 
 // nargsOK validates a raw argument string against command name's nargs spec.
+// Attached text (piped stdin) is no argument.
 func nargsOK(name, nargs, args string) error {
-	fields := strings.Fields(args)
+	typed, _ := agent.CutAttached(args)
+	fields := strings.Fields(typed)
 	switch nargs {
 	case "":
 		if len(fields) != 0 {
@@ -65,7 +68,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.command.add")
 		name := L.CheckString(1)
 		fn := L.CheckFunction(2)
 		cmd := &Command{
@@ -91,7 +93,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 	// del(name) removes a command registered by this origin or a
 	// lower-trust one; it returns whether one was removed.
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.command.del")
 		ok, err := h.Commands.Remove(L.CheckString(1), h.RT.CurrentOrigin(L))
 		if err != nil {
 			L.RaiseError("zemi.command.del: %v", err)
@@ -104,11 +105,13 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 	// right here under its own origin; a host command runs off the
 	// interpreter (it may start a turn), so run returns before it finishes.
 	tb.RawSetString("run", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.command.run")
 		name, args := L.CheckString(1), L.OptString(2, "")
 		cmd := h.Commands.Lookup(name)
 		if cmd == nil {
 			return luaResult(L, fmt.Errorf("not a command: %s", name))
+		}
+		if err := nargsOK(name, cmd.NArgs, args); err != nil {
+			return luaResult(L, err)
 		}
 		if cmd.GoFn != nil {
 			// a Go-owned command acts with the user's authority (/export
@@ -124,9 +127,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 				}
 			})
 			return luaResult(L, nil)
-		}
-		if err := nargsOK(name, cmd.NArgs, args); err != nil {
-			return luaResult(L, err)
 		}
 		// the body runs under the command's origin, so a lower caller would
 		// borrow that authority with arguments it picks
@@ -231,6 +231,9 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 	if cmd == nil {
 		return fmt.Errorf("not a command: %s", name)
 	}
+	if err := nargsOK(name, cmd.NArgs, argString); err != nil {
+		return err
+	}
 	if cmd.GoFn != nil {
 		err := cmd.GoFn(h, argString)
 		if errors.Is(err, ErrNeedsTUI) {
@@ -242,9 +245,6 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 }
 
 func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string) error {
-	if err := nargsOK(cmd.Name, cmd.NArgs, argString); err != nil {
-		return err
-	}
 	_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 		if h.currentGen() != cmd.Gen {
 			return nil, lua.ErrReloaded
@@ -267,7 +267,8 @@ func commandArgs(L *glua.LState, argString string) *glua.LTable {
 	args := L.NewTable()
 	args.RawSetString("args", glua.LString(argString))
 	list := L.NewTable()
-	for i, f := range strings.Fields(argString) {
+	typed, _ := agent.CutAttached(argString)
+	for i, f := range strings.Fields(typed) {
 		list.RawSetInt(i+1, glua.LString(f))
 	}
 	args.RawSetString("list", list)

@@ -93,14 +93,16 @@ type agentHost struct {
 	active    bool
 	textBuf   string
 	reasonBuf string
-	// stepText and stepReason are the buffer lengths when the current step
-	// began; a provider retry streams the step again from there.
-	stepText   int
-	stepReason int
-	tools      []StreamTool
-	steering   []string
-	modelSeed  string
-	turnModel  string // model id the running turn was built with, for its price
+	// the stream state and transcript length when the current step began: a
+	// provider retry streams the step again from there
+	stepText, stepReason string
+	stepTools            []StreamTool
+	stepRows             int
+	stepThought          time.Duration
+	tools                []StreamTool
+	steering             []string
+	modelSeed            string
+	turnModel            string // model id the running turn was built with, for its price
 
 	// session usage (DESIGN §8 statusline tally): sessIn/sessOut accumulate
 	// every turn's counts, lastIn is the context the latest step used
@@ -138,12 +140,12 @@ type agentHost struct {
 
 	// turn timing: turnStart pins the wall clock at AgentSend, thinking
 	// tracks the open reasoning block, thought accumulates closed ones
-	// since the last flush and stepThought those of the current step.
-	turnStart   time.Time
-	thinkStart  time.Time
-	thinking    bool
-	thought     time.Duration
-	stepThought time.Duration
+	// since the last flush and stepThinking those of the current step.
+	turnStart    time.Time
+	thinkStart   time.Time
+	thinking     bool
+	thought      time.Duration
+	stepThinking time.Duration
 
 	// retryAt is when the next provider retry fires, zero again once the
 	// retried call streams; retries counts them this turn (the working row
@@ -212,12 +214,14 @@ func newAgentHost() *agentHost {
 // ---------------------------------------------------------------------------
 // host wiring
 
-// Effort is the configured reasoning effort ("" = provider default).
-func (h *Host) Effort() string { return h.Settings.Str("agent.effort") }
+// Effort is the reasoning level modelID runs at under the agent.effort pick.
+func (h *Host) Effort(modelID string) string {
+	return h.Providers.Effort(modelID, h.Settings.Str("agent.effort"))
+}
 
 // resolveProfile returns the profile to run: explicit name, else the
-// agent.profile key. default is the implicit shipped shape (nil); planner
-// is the shipped read-only agent. Any other name must be defined.
+// agent.profile key. A defined profile wins; else default is the implicit
+// shipped shape (nil) and planner the shipped read-only agent.
 func (h *Host) resolveProfile(name string) (*Profile, error) {
 	ag := h.agents
 	ag.mu.Lock()
@@ -225,11 +229,11 @@ func (h *Host) resolveProfile(name string) (*Profile, error) {
 	if name == "" {
 		name = h.Settings.Str("agent.profile")
 	}
-	if name == "planner" {
-		return &Profile{Name: "planner", ReadOnly: true}, nil
-	}
 	if p, ok := ag.profiles[name]; ok {
 		return p, nil
+	}
+	if name == "planner" {
+		return &Profile{Name: "planner", ReadOnly: true}, nil
 	}
 	if name != "default" {
 		return nil, fmt.Errorf("agent: unknown profile %q", name)
@@ -334,8 +338,9 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	h.agents.mu.Lock()
 	h.agents.promptParts, h.agents.promptTokens, h.agents.promptText = sizes, int64(chars/4), sys
 	h.agents.mu.Unlock()
-	r.ProviderOptions = h.Providers.CallOptions(h.currentModelID(p), h.Effort())
-	r.MaxOutputTokens = h.maxOutput(h.currentModelID(p))
+	id := h.currentModelID(p)
+	r.ProviderOptions = h.Providers.CallOptions(id, h.Effort(id))
+	r.MaxOutputTokens = h.maxOutput(id)
 	if p != nil {
 		r.Temperature = p.Temperature
 	}
@@ -559,10 +564,10 @@ func (h *Host) startTurn(text string) {
 }
 
 // appendUserRows shows one message as the model reads it: the notice row
-// of each background report behind attachMarker, then what was typed, the
+// of each background report behind agent.AttachMarker, then what was typed, the
 // same cut a resumed transcript makes. Reports whether anything was typed.
 func (h *Host) appendUserRows(text string) bool {
-	shown, tail, _ := strings.Cut(text, attachMarker)
+	shown, tail, _ := strings.Cut(text, agent.AttachMarker)
 	for _, head := range reportHeads(tail) {
 		h.AppendChat(ChatMessage{Role: "assistant", Kind: "notice", Text: head})
 	}
@@ -588,7 +593,7 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	var waiting []string // reports a cancel left for the next message
 	if done.ctx.Err() != nil {
 		for _, m := range ag.steering {
-			_, tail, _ := strings.Cut(m, attachMarker)
+			_, tail, _ := strings.Cut(m, agent.AttachMarker)
 			waiting = append(waiting, reportHeads(tail)...)
 		}
 	} else {
@@ -663,7 +668,7 @@ func (h *Host) AgentTakeQueue() []string {
 	ag.mu.Lock()
 	var q, reports []string
 	for _, m := range ag.steering {
-		if strings.Contains(m, attachMarker) {
+		if strings.Contains(m, agent.AttachMarker) {
 			// a background report is for the model, not the composer: it
 			// waits for the next turn
 			reports = append(reports, m)
@@ -680,14 +685,14 @@ func (h *Host) AgentTakeQueue() []string {
 }
 
 // joinQueue makes queued messages one message with every shown part ahead
-// of the first attachMarker, where each reader cuts the text.
+// of the first agent.AttachMarker, where each reader cuts the text.
 func joinQueue(msgs []string) string {
 	shown := make([]string, len(msgs))
 	tails := ""
 	for i, m := range msgs {
-		s, tail, ok := strings.Cut(m, attachMarker)
+		s, tail, ok := strings.Cut(m, agent.AttachMarker)
 		if ok {
-			tails += attachMarker + tail
+			tails += agent.AttachMarker + tail
 		}
 		shown[i] = s
 	}
@@ -751,27 +756,48 @@ func (s *streamAdapter) TextDelta(text string) {
 }
 
 func (s *streamAdapter) StepStart() {
+	rows := len(s.h.Session().Transcript)
 	ag := s.h.agents
 	ag.mu.Lock()
-	ag.stepText, ag.stepReason, ag.stepThought = len(ag.textBuf), len(ag.reasonBuf), 0
+	// capped, so a pending row appended later cannot write into the saved slice
+	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought = ag.textBuf, ag.reasonBuf, slices.Clip(ag.tools), rows, ag.thought
+	ag.stepThinking = 0
 	ag.mu.Unlock()
 }
 
+// Retrying also takes back what a call opened in the failed attempt moved
+// into the transcript (openToolRow), or its text shows twice above a failed row.
 func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag := s.h.agents
 	ag.mu.Lock()
-	ag.textBuf = ag.textBuf[:min(ag.stepText, len(ag.textBuf))]
-	ag.reasonBuf = ag.reasonBuf[:min(ag.stepReason, len(ag.reasonBuf))]
+	ag.textBuf, ag.reasonBuf, ag.tools, ag.thought, ag.thinking, ag.stepThinking = ag.stepText, ag.stepReason, ag.stepTools, ag.stepThought, false, 0
+	rows := ag.stepRows
 	ag.retries++
 	ag.retryAt = time.Now().Add(delay)
 	ag.retryWhy, _ = s.h.explain(err) // the advice is to wait, which the countdown says
 	why := ag.retryWhy
 	ag.mu.Unlock()
+	s.h.cutAssistantRows(rows)
 	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
 	if s.h.hooks() == nil { // print mode: the countdown is on no screen
 		fmt.Fprintf(s.h.Stderr, "zemi: retrying in %s: %s\n", fmtDuration(delay), why)
 	}
 	s.h.agentStream()
+}
+
+// cutAssistantRows drops the assistant rows past the first n. A !command row
+// that landed meanwhile stays.
+func (h *Host) cutAssistantRows(n int) {
+	h.tMu.Lock()
+	if t := h.session.Transcript; len(t) > n {
+		kept := slices.DeleteFunc(slices.Clone(t[n:]), func(m ChatMessage) bool { return m.Role == "assistant" })
+		// replaced whole, like setTranscript: readers share the old array
+		// (Host.Session) and the chat widget caches rows by index
+		h.session.Transcript = append(slices.Clip(t[:n]), kept...)
+		h.trEpoch.Add(1)
+	}
+	h.tMu.Unlock()
+	h.refresh()
 }
 
 func (s *streamAdapter) ReasoningDelta(text string) {
@@ -802,7 +828,7 @@ func (s *streamAdapter) ToolCallPending(id, name string) {
 // inputDiff is a file tool's change as its input describes it, before it
 // runs. It reads the file: call it outside the locks UI readers share.
 func inputDiff(name, input string) string {
-	if name != tools.ToolWrite && name != tools.ToolEdit && name != tools.ToolMultiedit {
+	if name != tools.ToolWrite && name != tools.ToolEdit {
 		return ""
 	}
 	var in map[string]any
@@ -969,11 +995,13 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	if hold {
 		return
 	}
-	if ui := h.hooks(); ui != nil {
+	ui := h.hooks()
+	if ui != nil {
 		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == "stopped" })
 		ui.TurnDone(h.friendlyError(err), stopped)
 	}
-	if err == nil && strings.TrimSpace(text) != "" {
+	// a print run exits before a title call answers: no UI, no title
+	if err == nil && strings.TrimSpace(text) != "" && ui != nil {
 		ag.mu.Lock()
 		first := !ag.titled && ag.sessionID == sid
 		ag.titled = true
@@ -1030,7 +1058,6 @@ func (h *Host) flushOutput(stat TurnStat) {
 		rows = append(rows, ChatMessage{Role: "assistant", Text: ag.textBuf, Stat: &stat})
 	}
 	ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", slices.Clone(ag.tools[done:]), "", 0
-	ag.stepText, ag.stepReason = 0, 0
 	h.tMu.Lock()
 	h.session.Transcript = append(h.session.Transcript, rows...)
 	h.tMu.Unlock()
@@ -1178,7 +1205,11 @@ func toolSummary(input string) string {
 	}
 	// the agent tool's description is optional; without it the row reads
 	// the agent and the task instead of the input JSON
-	if a, ok := m["agent"].(string); ok && a != "" {
+	a, _ := m["agent"].(string)
+	if to, _ := m["send_to"].(string); to != "" {
+		a = "to " + to
+	}
+	if a != "" {
 		if d, _ := m["description"].(string); d != "" {
 			return d
 		}
@@ -1231,7 +1262,7 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 	if slices.ContainsFunc(msg.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeReasoning }) {
 		ag := h.agents
 		ag.mu.Lock()
-		d := ag.stepThought
+		d := ag.stepThinking
 		if ag.thinking {
 			d += time.Since(ag.thinkStart)
 		}
@@ -1271,7 +1302,7 @@ func (h *Host) recordToolCall(sid string, t StreamTool, ok bool) {
 }
 
 // todoNagAfter is how many of the main agent's steps an in_progress todo
-// may stay static before zemi nudges the model to tick it (a "force live
+// may stay static before zemi nudges the model to mark it done (a "force live
 // todos" remind). Steps, not calls: the prompt asks for independent calls
 // in one batch, so one step may be eight reads.
 // NOTE: a fixed knob, not config; every todos write resets the count.
@@ -1280,7 +1311,7 @@ const todoNagAfter = 4
 // maybeNagTodos counts a main-runner step against a stale in_progress
 // todo and nudges once per todos write: the model is free to forget, and
 // the next write re-arms the remind. It rides the model-only steering
-// channel (attachMarker), so it never reads as the user's own message.
+// channel (agent.AttachMarker), so it never reads as the user's own message.
 // Only the main agent's steps during its turn count: a subagent's would
 // arm the nag while nobody can be nudged.
 func (h *Host) maybeNagTodos() {
@@ -1300,8 +1331,8 @@ func (h *Host) maybeNagTodos() {
 		return
 	}
 	ag.todoPending = true
-	ag.todoNag = modelNote(fmt.Sprintf(
-		"Some todos are still unfinished: %q has been in_progress for %d steps. If that step is done, tick it now with the todos tool and set the next one in_progress; otherwise keep it in_progress and continue.",
+	ag.todoNag = agent.Note(fmt.Sprintf(
+		"%q has been in_progress for %d steps. If it is done, mark it done with the todos tool and set the next item in_progress; if not, carry on.",
 		ag.todoInProgress, ag.todoSteps))
 }
 
@@ -1343,7 +1374,12 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	if p != nil {
 		name = p.Name
 	}
-	first, _, _ := strings.Cut(strings.TrimSpace(firstText), "\n")
+	typed, attached := agent.CutAttached(firstText)
+	if strings.TrimSpace(typed) == "" {
+		// piped stdin alone: its first line, past the element's tag
+		_, typed, _ = strings.Cut(strings.TrimPrefix(attached, agent.AttachMarker+"\n"), "\n")
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(typed), "\n")
 	title := truncRunes(first, 60)
 	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
 		ag.mu.Unlock()
@@ -1363,16 +1399,37 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 
 // btwPrompt frames a side question, after maki's: nothing it says is kept,
 // so the answer has to come from what the conversation already holds.
-const btwPrompt = `This is a side question. Answer it directly in a single response. You have NO tools: answer ONLY from the existing conversation context. Never say "Let me...". If you do not know, say so; do not offer to look it up.
+const btwPrompt = `Side question. Answer only it, in this one reply, from what the conversation already shows. Call no tools: none will run. If the conversation does not tell you, say so.
 
-`
+Question: `
 
 // Btw runs /btw: a side question answered in an overlay from the
-// conversation so far, a running turn included, and never stored.
+// conversation so far, a running turn included, and never stored. Headless
+// the answer is a transcript row, which -p prints; the call claims the agent
+// like /compact, so -p waits on it and its ctrl+c cancels it.
 func (h *Host) Btw(question string) error {
-	ui, err := h.Screen()
-	if err != nil {
-		return err
+	ui := h.hooks()
+	if ui == nil {
+		ag := h.agents
+		ag.mu.Lock()
+		if ag.active {
+			ag.mu.Unlock()
+			return errors.New("a turn is running; ask after it")
+		}
+		ag.active = true
+		scope := h.beginScope()
+		ag.mu.Unlock()
+		h.GoSafe("btw", func() {
+			defer h.endTurnAfterPanic()
+			answer, err := h.btw(scope.ctx, question)
+			row := ChatMessage{Role: "assistant", Text: answer}
+			if err != nil {
+				row = ChatMessage{Role: "assistant", Kind: "error", Text: sanitize.String(h.errorRowText(err))}
+			}
+			h.AppendChat(row)
+			h.handOff(scope)
+		})
+		return nil
 	}
 	h.GoSafe("btw", func() {
 		answer, err := h.btw(context.Background(), question)
@@ -1436,7 +1493,7 @@ type StreamSnapshot struct {
 	Tools      []StreamTool
 	Model      string
 	Profile    string
-	Steering   []string      // queued messages as shown (cut at attachMarker), oldest first
+	Steering   []string      // queued messages as shown (cut at agent.AttachMarker), oldest first
 	Reports    int           // background reports in Steering, which AgentTakeQueue leaves queued
 	Thought    time.Duration // wall time spent in reasoning blocks
 	Elapsed    time.Duration // whole-turn wall time (0 outside a turn)
@@ -1504,7 +1561,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 		out.CtxWindow = h.contextWindow(out.Model)
 	}
 	for _, m := range ag.steering {
-		shown, _, report := strings.Cut(m, attachMarker)
+		shown, _, report := strings.Cut(m, agent.AttachMarker)
 		out.Steering = append(out.Steering, shown)
 		if report {
 			out.Reports++
@@ -1561,7 +1618,7 @@ func (ag *agentHost) endThinking() {
 	if ag.thinking {
 		d := time.Since(ag.thinkStart)
 		ag.thought += d
-		ag.stepThought += d
+		ag.stepThinking += d
 		ag.thinking = false
 	}
 }
@@ -1713,7 +1770,6 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.model.pick")
 		_ = h.OpenModelPicker() // headless there is nothing to pick with
 		return 0
 	}))
@@ -1875,7 +1931,13 @@ func (h *Host) setWatched(path, val string) error {
 func (h *Host) ProfileNames() []string {
 	h.agents.mu.Lock()
 	defer h.agents.mu.Unlock()
-	return append([]string{"default", "planner"}, slices.Sorted(maps.Keys(h.agents.profiles))...)
+	names := []string{"default", "planner"}
+	for _, n := range slices.Sorted(maps.Keys(h.agents.profiles)) {
+		if n != "default" && n != "planner" {
+			names = append(names, n)
+		}
+	}
+	return names
 }
 
 // SetProfile switches the profile the next send runs as (/profile <name>).
@@ -1910,7 +1972,7 @@ func (h *Host) cycleProfile(step int) error {
 
 // implementNow is the message a fresh send carries to the restored agent after
 // its plan is approved; the plan itself stays in history.
-var implementNow = modelNote("The user approved the plan above. Implement it (track its steps with todos when it has several), verify, and report.")
+var implementNow = agent.Note("The user approved the plan above. " + tools.ImplementPlan)
 
 func (h *Host) setPlanApproved(msg string) {
 	h.agents.mu.Lock()
@@ -1931,9 +1993,9 @@ func (h *Host) takePlanApproved() string {
 // instead of the question or plan tool: the text is not a plan to approve
 // (a question, a report or a refusal would get an approve key), and only
 // the tools give the user something to answer in place.
-var planNudge = modelNote(planNudgeText)
+var planNudge = agent.Note(planNudgeText)
 
-const planNudgeText = "Your reply ended in plain text, which the user cannot approve or answer in place. If it asked something, ask it with the question tool; if it was the plan, present it with the plan tool; if it answered a question, do not repeat the answer: ask with the question tool what to plan next."
+const planNudgeText = "Your reply ended in plain text, which the user cannot approve or answer. If it asked something, ask it with the question tool; if it was a plan, present it with the plan tool; if it answered a question, do not repeat the answer: ask with the question tool what to plan next."
 
 // nudgesPlan reports whether a turn run as p is nudged for ending in plain
 // text: a read-only agent with the plan tool. Headless drops the tool and
@@ -2009,7 +2071,10 @@ func (h *Host) OpenProfilePicker() error {
 	var items []any
 	for i, name := range h.ProfileNames() {
 		item := map[string]any{"text": name, "run": "profile " + name, "desc": "the shipped prompt and every tool"}
-		if name == "planner" {
+		h.agents.mu.Lock()
+		_, defined := h.agents.profiles[name]
+		h.agents.mu.Unlock()
+		if name == "planner" && !defined {
 			item["desc"] = "read-only: plan and present for approval"
 		} else if p, _ := h.resolveProfile(name); p != nil {
 			item["desc"] = profileDesc(p)
@@ -2090,7 +2155,6 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	// interpreter (DESIGN §4), so what it reports here is what can be known
 	// before it starts; later failures reach the transcript.
 	tb.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.agent.send")
 		text := L.CheckString(1)
 		h.refuseBelowUser(L, "agent.send")
 		p, err := h.resolveProfile("")
@@ -2340,7 +2404,7 @@ func (h *Host) seedReadsInto(seen *sync.Map, rows []*store.Message) {
 		}
 		for _, part := range m.Content {
 			call, ok := part.(fantasy.ToolCallPart)
-			if !ok || !slices.Contains([]string{tools.ToolRead, tools.ToolWrite, tools.ToolEdit, tools.ToolMultiedit}, call.ToolName) {
+			if !ok || !slices.Contains([]string{tools.ToolRead, tools.ToolWrite, tools.ToolEdit}, call.ToolName) {
 				continue
 			}
 			var in struct {

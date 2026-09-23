@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/url"
@@ -8,13 +9,25 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"charm.land/catwalk/pkg/catwalk"
+	"charm.land/fantasy"
+	"charm.land/fantasy/providers/anthropic"
+	"charm.land/fantasy/providers/google"
+	"charm.land/fantasy/providers/openai"
 	"charm.land/fantasy/providers/openaicompat"
 )
 
 func TestCallOptions(t *testing.T) {
 	r := NewRegistry()
+	r.Reset(Catalog{Specs: []Spec{
+		{ID: "b", Kind: KindAnthropic, Builtin: true, Models: []Model{{ID: "haiku"},
+			{ID: "opus", Efforts: []string{"low", "medium", "high", "xhigh", "max"}, Effort: "high"},
+			{ID: "pro", Efforts: []string{"low", "high"}, Effort: "high"}}},
+		{ID: "bo", Kind: KindOpenAI, Builtin: true, Models: []Model{{ID: "gpt-4o"}, {ID: "gpt-5.5", Efforts: []string{"low", "medium", "high"}, Effort: "medium"}}},
+		{ID: "bg", Kind: KindGoogle, Builtin: true, Models: []Model{{ID: "gemini-2.5-pro"}, {ID: "lite", Efforts: []string{"minimal", "low"}, Effort: "minimal"}}},
+	}})
 	for _, s := range []Spec{{ID: "a", Kind: "anthropic"}, {ID: "o", Kind: "openai"}, {ID: "c", Kind: "openai_compat", BaseURL: "http://127.0.0.1:1/v1"}, {ID: "g", Kind: "google"}} {
 		if err := r.Register(s, "k"); err != nil {
 			t.Fatal(err)
@@ -24,27 +37,61 @@ func TestCallOptions(t *testing.T) {
 		t.Fatalf("openai_compat without base_url: %v", err)
 	}
 	for _, c := range []struct {
-		model, effort, key string
+		model, pick, key, sent string
 	}{
-		{"a/claude", "high", "anthropic"},
-		{"o/gpt", "low", "openai"},
-		{"c/deepseek", "medium", "openai-compat"},
-		{"g/gemini-3-pro", "high", "google"},
-		{"a/claude", "", ""},
-		{"a/claude", "extreme", ""},
-		{"missing/x", "high", ""},
+		{"a/claude", "high", "anthropic", "high"},
+		{"o/gpt", "low", "openai", "low"},
+		{"c/deepseek", "medium", "openai-compat", "medium"},
+		{"g/gemini-3-pro", "high", "google", "high"},
+		{"a/claude", "", "", ""},
+		{"a/claude", "extreme", "", ""},
+		{"missing/x", "high", "", ""},
+		{"b/haiku", "high", "", ""},
+		{"b/opus", "", "anthropic", "high"},
+		{"b/opus", "low", "anthropic", "low"},
+		{"b/pro", "medium", "anthropic", "low"},
+		{"b/unlisted", "medium", "anthropic", "medium"},
+		{"bo/gpt-4o", "high", "openai", ""},
+		{"bo/gpt-5.5", "", "openai", "medium"},
+		{"bg/gemini-2.5-pro", "high", "", ""},
+		{"bg/lite", "", "google", "minimal"},
+		{"bg/lite", "high", "google", "low"},
 	} {
-		opts := r.CallOptions(c.model, c.effort)
+		opts := r.CallOptions(c.model, r.Effort(c.model, c.pick))
 		if c.key == "" {
 			if opts != nil {
-				t.Fatalf("%s %q: want no options, got %v", c.model, c.effort, opts)
+				t.Fatalf("%s %q: want no options, got %v", c.model, c.pick, opts)
 			}
 			continue
 		}
 		if _, ok := opts[c.key]; !ok || len(opts) != 1 {
-			t.Fatalf("%s %q: options %v, want key %s", c.model, c.effort, opts, c.key)
+			t.Fatalf("%s %q: options %v, want key %s", c.model, c.pick, opts, c.key)
+		}
+		if got := sentEffort(opts[c.key]); got != c.sent {
+			t.Fatalf("%s %q: sent %q, want %q", c.model, c.pick, got, c.sent)
 		}
 	}
+}
+
+// sentEffort reads the reasoning level out of any kind's options.
+func sentEffort(o fantasy.ProviderOptionsData) string {
+	var e *string
+	switch o := o.(type) {
+	case *anthropic.ProviderOptions:
+		e = (*string)(o.Effort)
+	case *openai.ProviderOptions:
+		e = (*string)(o.ReasoningEffort)
+	case *openai.ResponsesProviderOptions:
+		e = (*string)(o.ReasoningEffort)
+	case *openaicompat.ProviderOptions:
+		e = (*string)(o.ReasoningEffort)
+	case *google.ProviderOptions:
+		e = o.ThinkingConfig.ThinkingLevel
+	}
+	if e == nil {
+		return ""
+	}
+	return strings.ToLower(*e)
 }
 
 // TestCallOptionsBody: a spec's extra body fields ride every request, with
@@ -61,6 +108,50 @@ func TestCallOptionsBody(t *testing.T) {
 		}
 		if (po.ReasoningEffort != nil) != (effort != "") {
 			t.Fatalf("effort %q: reasoning effort %v", effort, po.ReasoningEffort)
+		}
+	}
+}
+
+// generateStub answers Generate with a fixed usage.
+type generateStub struct {
+	fantasy.LanguageModel
+	usage fantasy.Usage
+}
+
+func (s generateStub) Generate(context.Context, fantasy.Call) (*fantasy.Response, error) {
+	return &fantasy.Response{Usage: s.usage}, nil
+}
+
+func (s generateStub) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse, error) {
+	return func(yield func(fantasy.StreamPart) bool) {
+		yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, Usage: s.usage})
+	}, nil
+}
+
+// TestGoogleUsage: Gemini's prompt count includes its cached tokens and its
+// output count leaves out the thinking; a 180k-of-200k cached prompt bills
+// 20k input and counts 200k of context plus the whole reply.
+func TestGoogleUsage(t *testing.T) {
+	raw := fantasy.Usage{InputTokens: 200_000, CacheReadTokens: 180_000, OutputTokens: 100, ReasoningTokens: 50}
+	for _, c := range []struct {
+		kind          string
+		input, output int64
+	}{{KindGoogle, 20_000, 150}, {KindAnthropic, 200_000, 100}} {
+		m := idleModel{LanguageModel: generateStub{usage: raw}, idle: time.Minute, kind: c.kind}
+		res, err := m.Generate(t.Context(), fantasy.Call{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		seq, _ := m.Stream(t.Context(), fantasy.Call{})
+		for part := range seq {
+			for _, u := range []fantasy.Usage{res.Usage, part.Usage} {
+				if u.InputTokens != c.input || u.OutputTokens != c.output || u.CacheReadTokens != 180_000 {
+					t.Errorf("%s: %+v", c.kind, u)
+				}
+			}
+			if c.kind == KindGoogle && ContextUsed(part.Usage) != 200_150 {
+				t.Errorf("context used %d", ContextUsed(part.Usage))
+			}
 		}
 	}
 }

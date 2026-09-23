@@ -89,6 +89,8 @@ func (h *Host) askHook() tools.Asker {
 			base = ""
 		}
 		switch {
+		case base == "yolo" && req.ReadOnly && (req.Subject == "tool.bash" && !h.sandboxLive() || strings.HasPrefix(req.Subject, "mcp.")) && !h.autoLocal(req):
+			note("read-only agent: nothing confines this call")
 		case base == "yolo":
 			return resolved(true, "mode:"+def.Name)
 		case req.Unsandboxed:
@@ -146,6 +148,7 @@ func (h *Host) askHook() tools.Asker {
 		}
 		ui := h.hooks()
 		if ui == nil {
+			h.modes.noteHeadless(req)
 			// only a command's sandbox escape is a sandbox matter; a Lua
 			// script or a memory edit is Unsandboxed for another reason and
 			// must not be reported as one

@@ -1,25 +1,22 @@
 ---
 name: zemi-debug
-description: Diagnose zemi itself - crashes, errors, a silent model, missing providers, broken or unloaded config, no learning. Load when zemi misbehaves or fails.
+description: "Load when zemi misbehaves: a crash, an error in /errors, a silent model, a missing provider, config that does not load, or no learning."
 ---
 
 # Debugging zemi
 
 ## First look
 
-1. Read the `/health` rows yourself with the Lua tool (read-only, no ask):
+1. Read the `/health` rows yourself with the Lua tool:
 
    ```lua
    return zemi.health.list()   -- { level, name, detail } per check
    ```
 
-   They cover the model and its API key, its context window, the stores, git, ripgrep, the
-   sandbox, the reflector, pending reviews, skills, trust, plugins, widget regions, recent
-   errors, MCP servers, language servers and the Lua runtime, plus any rows config added with
-   `zemi.health.add`. `/health` shows the same rows to the user, problems first.
-2. `/errors` lists recent errors: boot and reload failures, widget, keymap, click,
-   command and event-handler errors, and recovered panics; a command's bad argument is a
-   warning toast only. The red `errors /errors` statusline badge means
+   `/health` shows the same rows to the user, problems first.
+2. `/errors` lists recent errors: boot and reload failures, widget, keymap, click, command
+   and event-handler errors, and recovered panics; a command's bad argument is a warning
+   toast only. The red `errors /errors` statusline badge means
    there are unseen ones. Enter opens one in full, with "Ask zemi to fix it" (and
    "Restart <name>" for an MCP server). In every list `/` filters, `y` copies the selected
    row (in a detail view, the whole text) and `Y` copies the whole list, so the user can
@@ -53,8 +50,8 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
    It is the frame the user is looking at, at their real terminal width, with styling and
    padding dropped. Save one before a change and one after and diff them; that is the whole
    loop for UI work: edit config, `zemi.config.reload()`, screenshot, compare. Colors and
-   attributes do not survive it, so for a highlight question read the theme with
-   `zemi.ui.theme.get()` instead. For a layout question, `zemi.ui.layout.rects()` says
+   attributes do not survive it, so for a highlight question read the group with
+   `zemi.ui.hl.get(group)` instead. For a layout question, `zemi.ui.layout.rects()` says
    where each node with an id, the stage and the composer landed, and `/health` names
    widgets whose region the layout does not draw.
 
@@ -62,7 +59,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
    event handler) is in `/messages` and `zemi.log.list()`, the last 100, newest first.
    Headless (`-p`, `--health`) it goes only to the log file, as `print: ...` lines.
 
-6. Read the log of the run (reading the log directory asks: MCP and LSP server output is
+6. Read the log of the run (reading the log directory needs the user's approval: MCP and LSP server output is
    logged as written and may hold tokens). One file per start:
 
    ```sh
@@ -79,21 +76,19 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 
 | Symptom | Cause and fix |
 | --- | --- |
-| "no model yet" | no key exported and no provider in init.lua; `/model` lists the builtin providers with their variables, zemi-config has `zemi.provider.add` |
+| "no model yet", or `/model` shows "No models yet" | no key exported and no provider in init.lua, or init.lua failed before `zemi.provider.add` (statusline `boot failed`, `/errors` has why); `/model` lists the builtin providers with their variables, zemi-config has `zemi.provider.add` |
 | 401 / unauthorized | the provider's key is empty or wrong: the exported builtin key, or the variable read with `zemi.env.get`, is not right in the shell that started zemi |
 | "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
-| boot error `scope "permanent" was removed` | drop `scope = "permanent"` from that `zemi.permission.rule.add` call in init.lua; the rule applies on every start without it |
-| `/model` shows "no models registered" but a provider is in init.lua | `init.lua` failed before or at `zemi.provider.add` (for example the removed `api_key_env` field); the statusline shows `boot failed`, `/errors` has the message |
 | statusline `boot failed` | init.lua, a plugin or project config raised during startup; `/errors` or the log (source `boot`) has the error |
 | statusline `stuck /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
 | "does not take images; going on without them" | the provider refused image input; set `images = false` on the model entry, or pick a multimodal model for screenshots |
 | context percent missing, no auto compaction | the model has no `context_window` (`/health` context row); add it to the model entry or set `agent.context_window` |
-| project `.zemi/` config, AGENTS.md or language servers ignored; auto mode asks for every build, edit and git command | the project is not trusted (`/health` trust row); `/trust` asks again. Decisions live in `~/.local/state/zemi/trust.json` by repository root; a linked worktree uses its main checkout's |
-| auto mode asks for every command that is not a plain read in a trusted project ("no sandbox") | no sandbox backend (`/health` sandbox row: `sandbox-exec` missing, zemi itself already inside a sandbox, or no Landlock); without one only reading commands settle |
-| "operation not permitted" or "could not resolve host" from a command auto mode ran | the sandbox blocked it (writes outside the project, scratchpad and temp dirs, `.git`, network, reads of zemi's own dirs; on Linux with `landlock + seccomp` any project write and localhost too); the agent retries with `network: true` (sandbox kept, sockets added) or, as a last resort, `sandbox: false`; both ask |
+| project `.zemi/` config, AGENTS.md or language servers ignored; auto mode needs approval for every build, edit and git command | the project is not trusted (`/health` trust row); `/trust` shows the prompt again. Decisions live in `~/.local/state/zemi/trust.json` by repository root; a linked worktree uses its main checkout's |
+| auto mode needs approval for every command that is not a plain read in a trusted project ("no sandbox") | no sandbox backend (`/health` sandbox row: `sandbox-exec` missing, zemi itself already inside a sandbox, or no Landlock); without one only reading commands run on their own |
+| "operation not permitted" or "could not resolve host" from a command auto mode ran | the sandbox blocked it (writes outside the project, scratchpad and temp dirs, `.git`, network, reads of zemi's own dirs; on Linux with `landlock + seccomp` any project write and localhost too); the agent retries with `network: true` (sandbox kept, sockets added) or, as a last resort, `sandbox: false`; both need the user's approval |
 | "connection refused" to a local server from a command auto mode ran, on Linux | `landlock + namespaces` gives the sandbox a localhost of its own, so servers already running on the machine are unreachable; retry with `network: true`, which shares zemi's own network |
 | "a sandboxed command created ...; project trust is off until /trust" | a sandboxed command made `.zemi` or `.git` where there was none (only the Linux namespace sandbox lets it); zemi stops loading project config until `/trust` is answered. Look at what it created first |
-| reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and the next start, only for sessions with new messages; `/reflect` runs it now |
+| reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and at start for sessions idle ten minutes, once one has two new user messages and a tool call or a failed call; `/reflect` runs it now |
 | `module "x" not found on runtimepath` from a plugin | the module is not at `site/pack/<any>/start/<name>/lua/x.lua` (or `x/init.lua`); plugin directories are listed once per boot, so a new one needs `/reload` |
 | `zemi -p "..."` from a script sits 3 seconds before it starts | stdin is an open pipe nobody writes to, and zemi waits that long for piped input; add `</dev/null` |
 | one plugin fails at boot | the others still load; `/errors` has the message and the `/health` plugins row counts the failed files |
@@ -108,7 +103,8 @@ SQLite, safe to inspect read-only (`sqlite3 -readonly <file>`):
 - `~/.local/state/zemi/projects/<hash of the repository root>/zemi.db` (per project,
   shared by its subdirectories and worktrees): `sessions`, `messages`,
   project memories and proposals, `todos`, `tool_calls`, `checkpoints` (file contents
-  `/rewind` restores).
+  `/rewind` restores). The same directory holds the project's `permissions` file and
+  `skills/` (recipes).
 
 Useful tables: `memory` (text, quote, origin, superseded_by), `proposals` (pending review,
 JSON payload), `sessions` (title, prompt_tokens, completion_tokens, cost),

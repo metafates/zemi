@@ -485,7 +485,7 @@ func TestSteeringQueue(t *testing.T) {
 
 	// a report's markup stays out of the composer, and joined messages keep
 	// every typed part ahead of the marker readers cut at
-	report := "Background agent x finished." + attachMarker + "\n<agent-report>\nr\n</agent-report>\n</attached-files>"
+	report := "Background agent x finished." + agent.AttachMarker + "\n<agent-report>\nr\n</agent-report>\n</attached-files>"
 	scope = claim()
 	send(report, "d")
 	if st := h.AgentStream(); len(st.Steering) != 2 || st.Steering[0] != "Background agent x finished." || st.Reports != 1 {
@@ -495,7 +495,7 @@ func TestSteeringQueue(t *testing.T) {
 		t.Fatalf("queue with a report = %q", q)
 	}
 	send("e")
-	if _, text := h.nextTurn(scope); !strings.HasPrefix(text, "Background agent x finished.\n\ne"+attachMarker) || !strings.Contains(text, "<agent-report>") {
+	if _, text := h.nextTurn(scope); !strings.HasPrefix(text, "Background agent x finished.\n\ne"+agent.AttachMarker) || !strings.Contains(text, "<agent-report>") {
 		t.Fatalf("follow-up with a report = %q", text)
 	}
 
@@ -511,7 +511,7 @@ func TestSteeringQueue(t *testing.T) {
 		return b.String()
 	}
 	scope = claim()
-	send(attachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>")
+	send(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>")
 	h.AgentCancel()
 	h.nextTurn(scope)
 	if !strings.Contains(notes(), "Background report waiting: Background agent a1 (explore) finished\nit goes with your next message") {
@@ -1214,8 +1214,8 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 
 // TestIdleStreamUsesProfileModel: between turns the context window, the
 // image check and zemi.agent.current follow the default profile's model,
-// not models.main, and so does compaction; a subagent without one takes the
-// main tier, which is the worker tier whatever the conversation runs on.
+// not models.main; compaction and a subagent without a model take a tier,
+// whatever the conversation runs on.
 func TestIdleStreamUsesProfileModel(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
@@ -1234,8 +1234,8 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 		t.Fatal("the profile's model is text-only")
 	}
 	runUser(t, r, `assert(zemi.agent.current().model == "a/big")`)
-	if m, _, err := h.modelFor("compact.model"); err != nil || m.Model() != "big" {
-		t.Fatalf("summary model %v, err %v, want the profile's", m, err)
+	if _, id, err := h.modelFor("compact.model"); err != nil || id != "a/small" {
+		t.Fatalf("summary model %q, err %v, want the small tier", id, err)
 	}
 	if id := h.subagentModelID(AgentDef{}); id != "a/small" {
 		t.Fatalf("subagent model %q, want the main tier", id)
@@ -1249,9 +1249,11 @@ func TestActiveProfileKey(t *testing.T) {
 	for _, c := range []struct {
 		name, src string
 		want      string // the resolved profile, "" for the shipped one
+		system    string
 		wantErr   bool
 	}{
 		{name: "unset runs the shipped profile"},
+		{name: "a defined planner replaces the shipped one", src: `zemi.agent.profile("planner", { system = "PLAN HARDER" }) zemi.config.set("agent.profile", "planner")`, want: "planner", system: "PLAN HARDER"},
 		{name: "the key selects", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile("p", {})`, want: "p"},
 		{name: "default resets", src: `zemi.agent.profile("p", {}) zemi.config.set("agent.profile", "p") zemi.config.set("agent.profile", "default")`},
 		{name: "an unknown name errors", src: `zemi.config.set("agent.profile", "nope")`, wantErr: true},
@@ -1259,16 +1261,27 @@ func TestActiveProfileKey(t *testing.T) {
 		h, r := newTestHost(t)
 		runUser(t, r, c.src)
 		p, err := h.resolveProfile("")
-		got := ""
+		got, system := "", ""
 		if p != nil {
-			got = p.Name
+			got, system = p.Name, p.System
 		}
-		if (err != nil) != c.wantErr || got != c.want {
-			t.Errorf("%s: profile %q, err %v", c.name, got, err)
+		if (err != nil) != c.wantErr || got != c.want || system != c.system {
+			t.Errorf("%s: profile %q system %q, err %v", c.name, got, system, err)
 		}
 	}
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.agent.profile("p", {})`)
+	runUser(t, r, `zemi.agent.profile("p", {}) zemi.agent.profile("planner", { model = "x/big" }) zemi.agent.profile("default", {})`)
+	if names := h.ProfileNames(); !slices.Equal(names, []string{"default", "planner", "p"}) {
+		t.Errorf("names %v", names)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if h.OpenProfilePicker() != nil || ui.opened[0].Items[1].(map[string]any)["desc"] != "x/big - every tool" {
+		t.Errorf("the defined planner's picker row %v", ui.opened)
+	}
+	if h.SetProfile("planner") != nil || h.cycleProfile(1) != nil || h.Settings.Str("agent.profile") != "p" {
+		t.Errorf("cycling from planner went to %q", h.Settings.Str("agent.profile"))
+	}
 	h.PurgeGeneration()
 	if _, err := h.resolveProfile("p"); err == nil {
 		t.Error("a purge kept the definition")
@@ -1418,30 +1431,49 @@ func TestConcurrentSendsQueue(t *testing.T) {
 }
 
 // TestRetryRestreamsStep: a provider retry streams the step again from its
-// start, so the failed attempt's text is dropped instead of shown twice.
+// start, so the failed attempt's text and tool rows are dropped instead of
+// shown twice or as a failed call that never ran.
 func TestRetryRestreamsStep(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
-	type hooks interface {
-		TextDelta(string)
-		StepStart()
-		Retrying(error, time.Duration)
-	}
+	epoch := h.trEpoch.Load()
 	for name, c := range map[string]struct {
-		hooks hooks
+		hooks agent.StreamHooks
 		text  func() string
+		rows  func() int // transcript rows plus live tool rows
 	}{
-		"main":     {h.streamHooks().(*streamAdapter), func() string { return h.AgentStream().Text }},
-		"subagent": {&subagentHooks{h: h, def: builtinAgents[0], run: run}, func() string { run.mu.Lock(); defer run.mu.Unlock(); return run.text }},
+		"main": {h.streamHooks(), func() string { return h.AgentStream().Text },
+			func() int { return len(h.Session().Transcript) + len(h.AgentStream().Tools) }},
+		"subagent": {&subagentHooks{h: h, def: builtinAgents[0], run: run},
+			func() string { run.mu.Lock(); defer run.mu.Unlock(); return run.text },
+			func() int { run.mu.Lock(); defer run.mu.Unlock(); return len(run.tr) }},
 	} {
+		base := c.rows()
+		c.hooks.ToolCallStart("c0", "read", `{"path":"a"}`)
+		c.hooks.ToolCallEnd("c0", "read", true, "", "")
 		c.hooks.TextDelta("before ")
 		c.hooks.StepStart()
+		// the stream breaks while a call's arguments stream in
 		c.hooks.TextDelta("partial")
+		c.hooks.ToolCallPending("c1", "glob")
 		c.hooks.Retrying(nil, 0)
 		c.hooks.TextDelta("full")
-		if got := c.text(); got != "before full" {
-			t.Errorf("%s: text %q, want %q", name, got, "before full")
+		if got, rows := c.text(), c.rows(); got != "before full" || rows != base+1 {
+			t.Errorf("%s: text %q and %d rows, want %q and the one earlier call", name, got, rows, "before full")
 		}
+	}
+	if h.trEpoch.Load() == epoch {
+		t.Error("the cut kept the transcript epoch, so the chat widget draws its cached rows")
+	}
+	main := h.streamHooks()
+	h.agents.mu.Lock()
+	h.agents.thought = time.Second
+	h.agents.mu.Unlock()
+	main.StepStart()
+	main.ToolCallPending("c2", "glob") // flushes the text row, taking the thought time with it
+	main.Retrying(nil, 0)
+	if h.agents.thought != time.Second {
+		t.Errorf("the retry left thought at %v, want the step start's 1s", h.agents.thought)
 	}
 }
 
@@ -1683,21 +1715,24 @@ func TestModelDesc(t *testing.T) {
 	}
 }
 
-// btwModel records the one Generate call /btw makes and answers it with a
-// tool call along with the text; turns stream from the script.
+// btwModel records the one call /btw makes and answers it with a tool call
+// along with the text; turns stream from the script.
 type btwModel struct {
 	*scriptModel
 	call fantasy.Call
 }
 
-func (m *btwModel) Generate(_ context.Context, call fantasy.Call) (*fantasy.Response, error) {
+func (m *btwModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	if !strings.HasSuffix(concatText(call.Prompt[len(call.Prompt)-1].Content), "what failed?") {
+		return m.scriptModel.Stream(ctx, call)
+	}
 	m.call = call
-	return &fantasy.Response{
+	return streamOf(&fantasy.Response{
 		Content: fantasy.ResponseContent{fantasy.TextContent{Text: "the build"},
 			fantasy.ToolCallContent{ToolCallID: "b1", ToolName: "todos", Input: `{"todos":[{"content":"x","status":"pending"}]}`}},
 		FinishReason: fantasy.FinishReasonToolCalls,
 		Usage:        fantasy.Usage{InputTokens: 100, OutputTokens: 7},
-	}, nil
+	}), nil
 }
 
 // TestBtw: a side question asked mid-turn sees the turn's finished steps on

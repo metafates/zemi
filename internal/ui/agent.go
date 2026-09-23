@@ -746,7 +746,7 @@ func permTitle(req hostapi.PermRequest, root string) (title, target string) {
 		return "Run this command?", ""
 	case req.Tool == "write":
 		title = "Write this file?"
-	case req.Tool == "edit" || req.Tool == "multiedit":
+	case req.Tool == "edit":
 		title = "Edit this file?"
 	case req.Subject == "fs.write":
 		title = "Change this file?"

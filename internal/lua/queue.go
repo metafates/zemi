@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	glua "github.com/yuin/gopher-lua"
@@ -242,6 +243,7 @@ func (g *Generation) execute(r *request) {
 		grace = AbandonGrace
 	}
 
+	var fired atomic.Bool
 	go func() {
 		slow := time.AfterFunc(SoftBudget, func() {
 			g.rt.log.Warn("lua", "handler exceeded soft budget", map[string]any{
@@ -249,7 +251,7 @@ func (g *Generation) execute(r *request) {
 			})
 		})
 		defer slow.Stop()
-		hard := time.AfterFunc(ceiling, cancel)
+		hard := time.AfterFunc(ceiling, func() { fired.Store(true); cancel() })
 		defer hard.Stop()
 		select {
 		case <-r.done:
@@ -301,13 +303,27 @@ func (g *Generation) execute(r *request) {
 	case reqCtx.Err() != nil:
 		// A reply arriving after cancellation is canceled, whatever the Lua
 		// returned (DESIGN §4).
-		r.reply <- result{err: reqCtx.Err()}
+		err := reqCtx.Err()
+		if fired.Load() && r.caller.Err() == nil {
+			err = ceilingError(ceiling)
+		}
+		r.reply <- result{err: err}
 	case err != nil:
 		r.reply <- result{err: err}
 	default:
 		r.reply <- result{vals: vals}
 	}
 }
+
+// ceilingError is a request the hard ceiling stopped: it says so, and is
+// still context.Canceled to errors.Is.
+type ceilingError time.Duration
+
+func (e ceilingError) Error() string {
+	return fmt.Sprintf("stopped after its %s ceiling: move slow work to zemi.job or zemi.timer", time.Duration(e))
+}
+
+func (ceilingError) Unwrap() error { return context.Canceled }
 
 // finish marks the request finished; it returns false if the watchdog
 // already abandoned it.

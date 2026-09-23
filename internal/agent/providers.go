@@ -39,9 +39,11 @@ type Model struct {
 	CostPer1MIn   float64 `json:"cost_per_1m_in,omitempty"`  // USD per million prompt tokens
 	CostPer1MOut  float64 `json:"cost_per_1m_out,omitempty"` // USD per million completion tokens
 	// prompt cache prices, billed apart from the prompt tokens
-	CostPer1MInCached  float64 `json:"cost_per_1m_in_cached,omitempty"`  // USD per million tokens written to the cache
-	CostPer1MOutCached float64 `json:"cost_per_1m_out_cached,omitempty"` // USD per million tokens read from it
-	TextOnly           bool    `json:"text_only,omitempty"`              // the model refuses image parts
+	CostPer1MInCached  float64  `json:"cost_per_1m_in_cached,omitempty"`  // USD per million tokens written to the cache
+	CostPer1MOutCached float64  `json:"cost_per_1m_out_cached,omitempty"` // USD per million tokens read from it
+	TextOnly           bool     `json:"text_only,omitempty"`              // the model refuses image parts
+	Efforts            []string `json:"-"`                                // a builtin's reasoning levels; empty takes no effort
+	Effort             string   `json:"-"`                                // a builtin's level when /effort is unset
 }
 
 // Provider kinds: which fantasy implementation talks to the provider.
@@ -109,8 +111,7 @@ var builtinKinds = map[catwalk.Type]string{
 // first, then the rest), which is the order Default prefers. Catalog
 // default_headers are dropped: they attribute requests to crush, and zemi
 // sends no header the user did not write. NOTE: model options
-// (temperature, top_p) and reasoning levels are not carried; /effort sends
-// its level to every model.
+// (temperature, top_p) are not carried.
 func Builtin(getenv func(string) string) Catalog {
 	return builtin(embedded.GetAll(), getenv)
 }
@@ -144,7 +145,7 @@ func builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		for _, m := range p.Models {
 			spec.Models = append(spec.Models, Model{ID: m.ID, Display: m.Name, ContextWindow: m.ContextWindow, MaxOutput: m.DefaultMaxTokens,
 				CostPer1MIn: m.CostPer1MIn, CostPer1MOut: m.CostPer1MOut, CostPer1MInCached: m.CostPer1MInCached, CostPer1MOutCached: m.CostPer1MOutCached,
-				TextOnly: !m.SupportsImages})
+				TextOnly: !m.SupportsImages, Efforts: m.ReasoningLevels, Effort: m.DefaultReasoningEffort})
 		}
 		c.Specs = append(c.Specs, spec)
 		c.Keys[spec.ID] = key
@@ -322,24 +323,51 @@ func (r *Registry) apiKey(providerID string) string {
 	return r.keys[providerID]
 }
 
-// Efforts are the reasoning effort levels zemi offers ("" = provider
+// Efforts are the reasoning effort levels /effort offers ("" = the model's
 // default).
 var Efforts = []string{"low", "medium", "high"}
 
+// Effort is the reasoning level modelID runs at for the /effort pick ("" =
+// unset): a catalog model gets its default level when unset, else the level
+// it lists nearest the pick, and none when it lists none; any other model
+// gets the pick.
+func (r *Registry) Effort(modelID, pick string) string {
+	if !slices.Contains(Efforts, pick) {
+		pick = ""
+	}
+	providerID, model, _ := strings.Cut(modelID, "/")
+	spec, _ := r.Lookup(providerID)
+	i := slices.IndexFunc(spec.Models, func(m Model) bool { return m.ID == model })
+	switch {
+	case !spec.Builtin || i < 0:
+		return pick
+	case len(spec.Models[i].Efforts) == 0:
+		return ""
+	case pick == "":
+		return spec.Models[i].Effort
+	}
+	return nearestEffort(spec.Models[i].Efforts, pick)
+}
+
 // CallOptions are the provider options a turn runs with: the reasoning
-// effort and the spec's extra body fields, in the model's provider kind;
-// nil when neither applies to the kind. A model that does not support an
-// option fails its turn with the provider's error.
+// effort ("" sends none; see Effort) and the spec's extra body fields, in
+// the model's provider kind, and for an OpenAI Responses model that reasons
+// a reasoning summary; nil when none applies. A model that does not support
+// an option fails its turn with the provider's error.
 func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
-	providerID, _, _ := strings.Cut(modelID, "/")
+	providerID, model, _ := strings.Cut(modelID, "/")
 	spec, ok := r.Lookup(providerID)
 	if !ok {
 		return nil
 	}
 	var re *openai.ReasoningEffort
-	if slices.Contains(Efforts, effort) {
+	if effort != "" {
 		e := openai.ReasoningEffort(effort)
 		re = &e
+	}
+	if spec.Kind == KindOpenAI && openai.IsResponsesModel(model) {
+		// fantasy drops both reasoning fields for a model it knows does not reason
+		return openai.NewResponsesProviderOptions(&openai.ResponsesProviderOptions{ReasoningEffort: re, ReasoningSummary: new("auto")})
 	}
 	if re == nil && len(spec.Body) == 0 {
 		return nil
@@ -367,6 +395,22 @@ func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
 	return nil
 }
 
+// effortRank orders the catalog's reasoning levels.
+var effortRank = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+
+// nearestEffort is the listed level closest to effort, the lower on a tie
+// (lists are ascending); "" when the model lists none.
+func nearestEffort(levels []string, effort string) string {
+	if len(levels) == 0 {
+		return ""
+	}
+	dist := func(l string) int {
+		d := slices.Index(effortRank, l) - slices.Index(effortRank, effort)
+		return max(d, -d)
+	}
+	return slices.MinFunc(levels, func(a, b string) int { return dist(a) - dist(b) })
+}
+
 // Resolve turns "provider/model" into a fantasy language model; a missing
 // key surfaces as an error at send time.
 func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
@@ -384,7 +428,12 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 		return languageModel(spec, key, model, anthropic.New, anthropic.WithBaseURL, anthropic.WithAPIKey, anthropic.WithHeaders,
 			func(c *http.Client) anthropic.Option { return anthropic.WithHTTPClient(c) })
 	case KindOpenAI:
-		return languageModel(spec, key, model, openai.New, openai.WithBaseURL, openai.WithAPIKey, openai.WithHeaders,
+		// fantasy sends only the models openai.IsResponsesModel accepts to
+		// /responses, the rest to /chat/completions
+		responses := func(o ...openai.Option) (fantasy.Provider, error) {
+			return openai.New(append(o, openai.WithUseResponsesAPI())...)
+		}
+		return languageModel(spec, key, model, responses, openai.WithBaseURL, openai.WithAPIKey, openai.WithHeaders,
 			func(c *http.Client) openai.Option { return openai.WithHTTPClient(c) })
 	case KindOpenAICompat:
 		return languageModel(spec, key, model, openaicompat.New, openaicompat.WithBaseURL, openaicompat.WithAPIKey, openaicompat.WithHeaders,
@@ -428,7 +477,7 @@ func languageModel[O any](spec Spec, key, model string, newProvider func(...O) (
 	if err != nil {
 		return nil, err
 	}
-	return idleModel{LanguageModel: m, idle: modelIdleTimeout, provider: spec.ID}, nil
+	return idleModel{LanguageModel: m, idle: modelIdleTimeout, provider: spec.ID, kind: spec.Kind}, nil
 }
 
 // ModelError tags a model failure with its provider, so the advice can
@@ -471,6 +520,18 @@ type idleModel struct {
 	fantasy.LanguageModel
 	idle     time.Duration
 	provider string
+	kind     string
+}
+
+// usage brings Gemini's counts to the shape billing and ContextUsed read:
+// its prompt count includes the cached tokens and its output count leaves
+// out the thinking, which is billed as output.
+func (m idleModel) usage(u fantasy.Usage) fantasy.Usage {
+	if m.kind == KindGoogle {
+		u.InputTokens = max(0, u.InputTokens-u.CacheReadTokens)
+		u.OutputTokens += u.ReasoningTokens
+	}
+	return u
 }
 
 func (m idleModel) wrap(err error) error {
@@ -484,6 +545,9 @@ func (m idleModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Re
 	ctx, cancel := context.WithTimeoutCause(ctx, m.idle, errModelIdle)
 	defer cancel()
 	res, err := m.LanguageModel.Generate(ctx, call)
+	if res != nil {
+		res.Usage = m.usage(res.Usage)
+	}
 	return res, m.wrap(err)
 }
 
@@ -509,6 +573,9 @@ func (m idleModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 			}
 			if part.Type == fantasy.StreamPartTypeError {
 				part.Error = m.wrap(part.Error)
+			}
+			if part.Type == fantasy.StreamPartTypeFinish {
+				part.Usage = m.usage(part.Usage)
 			}
 			sawErr = sawErr || part.Type == fantasy.StreamPartTypeError
 			if !yield(part) {

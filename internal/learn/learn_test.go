@@ -93,6 +93,8 @@ func TestSimilar(t *testing.T) {
 		{"the user wants short replies", "the user wants commits without being asked", false},
 		{"a b c", "A b c", true},
 		{"a b c", "a b d", false}, // no content tokens
+		{"the dev server listens on port 3000", "the api server listens on port 8080", false},
+		{"go test ./internal/... needs CGO_ENABLED=0", "go vet ./internal/... needs CGO_ENABLED=0", false},
 	} {
 		if got := Similar(tc.a, tc.b); got != tc.want {
 			t.Errorf("Similar(%q, %q) = %v", tc.a, tc.b, got)
@@ -101,7 +103,8 @@ func TestSimilar(t *testing.T) {
 }
 
 func TestScrubKnownShapes(t *testing.T) {
-	cases := []struct{ in, mustNotContain string }{
+	// secret is what must not survive; "" means the line must come back untouched
+	cases := []struct{ in, secret string }{
 		{"key AKIAIOSFODNN7EXAMPLE in aws", "AKIA"},
 		{"openai sk-proj-abcdefghij0123456789 done", "sk-proj"},
 		{"recurs sk-aaaaaaaaaaaaaaaaaaaa glued xsk-aaaaaaaaaaaaaaaaaaaa", "sk-a"},
@@ -114,25 +117,25 @@ func TestScrubKnownShapes(t *testing.T) {
 		{"redis redis://:hunter2@cache:6379 and mysql://u:p@ss@h/db", "hunter2"},
 		{"mysql://u:p@ss@h/db", "p@ss"},
 		{"see https://x:pw@example.com/a", ":pw@"},
+		{`curl -H "Authorization: Bearer abc123def456" https://api.example.com`, "abc123def456"},
+		{`curl -H "Authorization: Bearer $API_TOKEN" https://api.example.com`, ""},
+		{`psql "password=$DB_PASSWORD host=localhost"`, ""},
+		{"export API_KEY=${OPENAI_API_KEY}", ""},
+		{"set token: {{deploy_token}} in the template", ""},
+		{"see https://example.com:8080/a@b", ""},
+		{"clone git@github.com:org/repo.git", ""},
+		{"https://user@host/x", ""},
 	}
 	for _, tc := range cases {
 		out, scrubbed := ScrubSecrets(tc.in)
-		if !scrubbed {
-			t.Fatalf("%q: not scrubbed", tc.in)
-		}
-		if strings.Contains(out, tc.mustNotContain) {
-			t.Fatalf("%q: secret survived: %q", tc.in, out)
-		}
-		if !strings.Contains(out, "[redacted") {
-			t.Fatalf("%q: no marker: %q", tc.in, out)
-		}
-	}
-}
-
-func TestScrubKeepsURLsWithoutPassword(t *testing.T) {
-	for _, in := range []string{"see https://example.com:8080/a@b", "clone git@github.com:org/repo.git", "https://user@host/x"} {
-		if out, scrubbed := ScrubSecrets(in); scrubbed {
-			t.Errorf("%q scrubbed to %q", in, out)
+		switch {
+		case tc.secret == "" && scrubbed:
+			t.Errorf("%q scrubbed to %q", tc.in, out)
+		case tc.secret == "":
+		case !scrubbed || !strings.Contains(out, "[redacted"):
+			t.Errorf("%q: not scrubbed: %q", tc.in, out)
+		case strings.Contains(out, tc.secret):
+			t.Errorf("%q: secret survived: %q", tc.in, out)
 		}
 	}
 }

@@ -2,7 +2,6 @@ package store
 
 import (
 	"errors"
-	"path/filepath"
 	"testing"
 )
 
@@ -64,52 +63,6 @@ func TestMemorySupersedeAndDelete(t *testing.T) {
 	if _, err := db.GetMemory(old.ID); err != nil {
 		t.Fatalf("supersede target deleted: %v", err)
 	}
-}
-
-// oldMemoryShape turns a fresh memory table into the one before schema
-// version 2: kind, tags, hit counts and an FTS index.
-var oldMemoryShape = []string{
-	`ALTER TABLE memory DROP COLUMN quote`,
-	`ALTER TABLE memory ADD COLUMN kind TEXT NOT NULL DEFAULT 'fact'`,
-	`ALTER TABLE memory ADD COLUMN tags TEXT NOT NULL DEFAULT ''`,
-	`ALTER TABLE memory ADD COLUMN hit_count INTEGER NOT NULL DEFAULT 0`,
-	`ALTER TABLE memory ADD COLUMN last_hit_at INTEGER NOT NULL DEFAULT 0`,
-	`CREATE INDEX memory_scope_hit ON memory(scope, last_hit_at)`,
-	`CREATE VIRTUAL TABLE memory_fts USING fts5(text, content='memory', content_rowid='rowid')`,
-	`CREATE TRIGGER memory_ai AFTER INSERT ON memory BEGIN INSERT INTO memory_fts(rowid, text) VALUES (new.rowid, new.text); END`,
-}
-
-// TestMigrateMemoryColumns: a store with the old memory shape opens, keeps
-// its text and gains quote.
-func TestMigrateMemoryColumns(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "zemi.db")
-	db, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range append(oldMemoryShape,
-		`INSERT INTO memory (id, scope, kind, text, tags, created_at, updated_at, origin) VALUES ('m1', 'project', 'gotcha', 'old text', 'a,b', 1, 1, 'user')`,
-		`PRAGMA user_version = 1`) {
-		if _, err := db.db.Exec(stmt); err != nil {
-			t.Fatalf("%s: %v", stmt, err)
-		}
-	}
-	db.Close()
-
-	db, err = Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	m, err := db.GetMemory("m1")
-	if err != nil || m.Text != "old text" || m.Quote != "" {
-		t.Fatalf("migrated row: %+v, %v", m, err)
-	}
-	var cols int
-	if err := db.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('memory')`).Scan(&cols); err != nil || cols != 9 {
-		t.Fatalf("memory columns = %d, %v; want 9", cols, err)
-	}
-	addMem(t, db, "project", "new text") // no trigger left to write the dropped index
 }
 
 func TestMemoryValidation(t *testing.T) {

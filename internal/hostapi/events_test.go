@@ -66,6 +66,19 @@ func TestHostToolEvents(t *testing.T) {
 	})
 }
 
+// TestEmitKeepsNameAndFrom: a payload cannot rename an event or claim
+// another origin.
+func TestEmitKeepsNameAndFrom(t *testing.T) {
+	h, r := newTestHostDB(t)
+	runUser(t, r, `zemi.event.on("user.y", function(ev) zemi.state.set("ev", ev.from .. " " .. ev.name) end)`)
+	if err := r.ExecuteChunk(t.Context(), `zemi.event.emit("user.y", { from = "host", name = "x" })`, "p.lua", lua.OriginProject); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := h.GlobalDB.GetKV("ev"); v != `"project user.y"` {
+		t.Fatalf("handler saw %s", v)
+	}
+}
+
 // TestLuaAgentsNeedUserConfig: project code cannot act with
 // the user's authority from Lua.
 func TestLuaAgentsNeedUserConfig(t *testing.T) {
