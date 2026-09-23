@@ -154,8 +154,9 @@ type agentHost struct {
 	compactFails int
 	compacted    bool
 	holdOverflow bool
-	holdImages   bool // a 400 over image parts is resent without them, not reported
-	holdCap      bool // a refused output cap is resent without it, not reported
+	holdImages   bool          // a 400 over image parts is resent without them, not reported
+	holdCap      bool          // a refused output cap is resent without it, not reported
+	cutUsage     fantasy.Usage // the steps before a Full cut, billed with the turn's end
 
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
 	// at compaction; memAuto counts auto-applied memories against the
@@ -844,6 +845,15 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	// still ran, so their usage and rows are kept
 	hold := ag.holdOverflow && contextTooLarge(err) || ag.holdImages && imagesRefused(err) || ag.holdCap && maxTokensRefused(err)
 	ag.holdOverflow, ag.holdImages, ag.holdCap = false, false, false
+	// a Full cut ends the send, not the turn: sendCompacting compacts and
+	// sends again, so the finish, the notification and the title wait, and
+	// the cut steps' usage joins the final payload
+	if err == nil && ag.runner != nil && ag.runner.CutShort() {
+		ag.cutUsage = addUsage(ag.cutUsage, usage)
+		hold = true
+	} else {
+		usage, ag.cutUsage = addUsage(usage, ag.cutUsage), fantasy.Usage{}
+	}
 	model := ag.turnModel
 	ag.mu.Unlock()
 	if model == "" {
@@ -926,6 +936,15 @@ func (h *Host) appendTurnOutput(reason string, reasonStat TurnStat, tools []Stre
 	if strings.TrimSpace(text) != "" {
 		h.AppendTurnResult(text, textStat)
 	}
+}
+
+func addUsage(a, b fantasy.Usage) fantasy.Usage {
+	a.InputTokens += b.InputTokens
+	a.OutputTokens += b.OutputTokens
+	a.TotalTokens += b.TotalTokens
+	a.CacheReadTokens += b.CacheReadTokens
+	a.CacheCreationTokens += b.CacheCreationTokens
+	return a
 }
 
 // capLines keeps the first n lines and notes how many were cut.

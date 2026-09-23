@@ -576,6 +576,7 @@ type fakeUI struct {
 	closed       []string
 	closedLua    int
 	reloads      atomic.Int32
+	turnsDone    atomic.Int32
 	onReload     func()
 	screenshot   string
 	copied       string
@@ -596,7 +597,7 @@ func (f *fakeUI) Refresh()                         {}
 func (f *fakeUI) Scroll(kind, id string)           {}
 func (f *fakeUI) LayoutRects() map[string]Rect     { return nil }
 func (f *fakeUI) AgentStream()                     {}
-func (f *fakeUI) TurnDone(err string)              {}
+func (f *fakeUI) TurnDone(err string)              { f.turnsDone.Add(1) }
 func (f *fakeUI) ComposerEdit(string, string, int) {}
 func (f *fakeUI) EditFile(_ context.Context, req EditRequest) error {
 	if f.edit != nil {

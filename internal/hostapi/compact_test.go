@@ -156,9 +156,15 @@ func TestCompactionMidTurn(t *testing.T) {
 	h.agents.ctxWin = 100_000
 	h.agents.mu.Unlock()
 	m.toolStep.Store(90_000)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
 	sender(t, h)("go")
 	if n := m.streams.Load(); n != 2 {
 		t.Fatalf("model streamed %d times, want 2", n)
+	}
+	// the cut ends a send, not the turn: one finish for the user
+	if n := ui.turnsDone.Load(); n != 1 {
+		t.Fatalf("TurnDone ran %d times, want 1", n)
 	}
 	if n := m.lastPrompt.Load(); n != 2 {
 		t.Fatalf("continued prompt has %d messages, want 2 (system, summary)", n)
