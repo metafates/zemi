@@ -152,7 +152,7 @@ var permRank = map[perm.Decision]int{perm.Deny: 0, perm.Ask: 1, perm.Allow: 2}
 func (h *Host) permItems() []any {
 	mode := h.permModeDef()
 	items := []any{map[string]any{
-		"text": "mode: " + mode.Name, "desc": mode.Description, "key": "mode",
+		"text": mode.Name, "desc": mode.Description,
 		"section": "Mode", "actions": []any{map[string]any{"text": "Change", "run": "mode"}},
 	}}
 	rules := h.Perm.Rules()
@@ -170,7 +170,7 @@ func (h *Host) permItems() []any {
 		}
 		item := map[string]any{
 			"text": r.Subject + " " + r.Pattern, "desc": desc,
-			"section": string(r.Decision) + " rules",
+			"section": sourceSection(string(r.Decision)) + " rules",
 		}
 		if r.Principal == "model" {
 			// an answer writes p and "p *" (a host and its paths): one row,

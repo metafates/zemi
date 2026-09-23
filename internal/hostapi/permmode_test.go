@@ -364,8 +364,8 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 	if strings.Count(rows, "text:tool.bash git push") != 1 || !strings.Contains(rows, "text:tool.bash git push *") || !strings.Contains(rows, "run:permissions forget tool.bash git push ") {
 		t.Fatalf("the answer is not one row with a way back:\n%s", rows)
 	}
-	// each rule says where to edit it
-	for _, want := range []string{"/permissions; edit that file", "from the project's .zemi/init.lua", "from config; edit permissions in your init.lua"} {
+	// each rule says where to edit it, under a section named like every other
+	for _, want := range []string{"section:Allow rules", "section:Deny rules", "section:Mode text:auto", "/permissions; edit that file", "from the project's .zemi/init.lua", "from config; edit permissions in your init.lua"} {
 		if !strings.Contains(rows, want) {
 			t.Fatalf("missing %q:\n%s", want, rows)
 		}
