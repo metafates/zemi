@@ -4,11 +4,14 @@ package hostapi
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/metafates/zemi/internal/perm"
@@ -25,8 +28,11 @@ const (
 )
 
 type snapshots struct {
-	mu   sync.Mutex // one snapshot at a time: they share the warm index
-	slow int        // slow snapshots in a row; two turn snapshots off
+	mu    sync.Mutex // one snapshot at a time: they share the warm index
+	slow  int        // slow snapshots in a row; two turn snapshots off
+	swept bool       // the stores of gone processes are removed
+
+	skipped sync.Map // turn and path a rewind was said not to restore
 
 	state sync.Mutex
 	open  int                 // bash calls between their two snapshots
@@ -34,52 +40,105 @@ type snapshots struct {
 	wrote map[string][32]byte // what file tools wrote meanwhile, by content
 }
 
+// snapPathspec is what a snapshot adds: every file but the secret shapes the
+// sandbox hides, whose blobs a confined command could read in the object
+// store. The broad *secret* and *credential* are no kernel rule, so they stay.
+// NOTE: a command's change to a hidden file shows in no row and no rewind.
+var snapPathspec = func() []string {
+	out := []string{"--", "."}
+	for _, p := range perm.SecretPathShape {
+		if !strings.HasPrefix(p, "*") || !strings.HasSuffix(p, "*") {
+			out = append(out, ":(exclude,icase,glob)**/"+p)
+		}
+	}
+	return out
+}()
+
 // snapshot writes the working tree of dir's repository as a git tree, through
-// a temp index of its own, so the user's index and stash are never touched.
-// The index stays warm per repository: a later snapshot hashes only what
-// changed. "" when there is no repository or snapshots are off.
-func (h *Host) snapshot(dir string) (root, tree string) {
+// a temp index and object directory of this process's own, so the user's
+// index, stash and object store are never touched. The index stays warm per
+// repository: a later snapshot hashes only what changed. env is what reads
+// the tree back.
+// "" when there is no repository or snapshots are off.
+func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 	s := &h.snaps
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.slow >= 2 {
-		return "", ""
+		return "", nil, ""
 	}
 	tmp, err := h.TempDir()
 	if err != nil {
-		return "", ""
+		return "", nil, ""
 	}
 	start := time.Now()
-	out, err := h.git(dir, "rev-parse", "--show-toplevel", "--git-path", "index")
-	root, index, _ := strings.Cut(strings.TrimSpace(out), "\n")
-	if err != nil || index == "" {
-		return "", ""
+	out, err := h.git(dir, "rev-parse", "--show-toplevel", "--git-path", "index", "--git-path", "objects")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if err != nil || len(lines) != 3 {
+		return "", nil, ""
+	}
+	root, index, objects := lines[0], lines[1], lines[2]
+	for _, p := range []*string{&index, &objects} {
+		if !filepath.IsAbs(*p) {
+			*p = filepath.Join(dir, *p)
+		}
 	}
 	sum := sha256.Sum256([]byte(root))
-	warm := filepath.Join(tmp, fmt.Sprintf("snap-%x.index", sum[:8]))
-	env := []string{"GIT_INDEX_FILE=" + warm}
-	if _, err := os.Stat(warm); err != nil {
-		if !filepath.IsAbs(index) {
-			index = filepath.Join(dir, index)
-		}
-		// a repository with no index yet starts from an empty one
-		if data, err := os.ReadFile(index); err == nil {
-			os.WriteFile(warm, data, 0o600)
-		}
+	base := filepath.Join(tmp, fmt.Sprintf("snap-%d-%x", os.Getpid(), sum[:8]))
+	warm, objs := base+".index", base+".objects"
+	env = []string{"GIT_INDEX_FILE=" + warm, "GIT_OBJECT_DIRECTORY=" + objs, "GIT_ALTERNATE_OBJECT_DIRECTORIES=" + objects}
+	if !s.swept {
+		sweepSnaps(tmp)
+		s.swept = true
 	}
-	if _, err = h.gitEnv(root, env, "add", "-A"); err == nil {
-		out, err = h.gitEnv(root, env, "write-tree")
+	os.MkdirAll(objs, 0o700)
+	for retry := false; ; retry = true {
+		if _, err := os.Stat(warm); err != nil {
+			// a repository with no index yet starts from an empty one
+			if data, err := os.ReadFile(index); err == nil {
+				os.WriteFile(warm, data, 0o600)
+			}
+		}
+		if _, err = h.gitEnv(root, env, append([]string{"add", "-A"}, snapPathspec...)...); err == nil {
+			out, err = h.gitEnv(root, env, "write-tree")
+		}
+		if err == nil || retry {
+			break
+		}
+		// a gc may have pruned a blob the warm index names: start from the user's
+		os.Remove(warm)
 	}
 	if err != nil {
 		h.Log.Warn("snapshot", "snapshot failed", map[string]any{"error": err.Error()})
-		return "", ""
+		return "", nil, ""
 	}
 	if time.Since(start) < snapSlow {
 		s.slow = 0
 	} else if s.slow++; s.slow == 2 {
 		h.Log.Warn("snapshot", "snapshots are slow in this repository; bash rows show no diff", map[string]any{"ms": time.Since(start).Milliseconds()})
 	}
-	return root, strings.TrimSpace(out)
+	return root, env, strings.TrimSpace(out)
+}
+
+// sweepSnaps removes the snapshot stores of processes that are gone, and the
+// ones an earlier process with this pid left: nothing prunes their objects.
+// NOTE: a dead zemi's store stays while a live process holds its pid.
+func sweepSnaps(tmp string) {
+	entries, _ := os.ReadDir(tmp)
+	for _, e := range entries {
+		rest, ok := strings.CutPrefix(e.Name(), "snap-")
+		if !ok {
+			continue
+		}
+		if pid, err := strconv.Atoi(strings.Split(rest, "-")[0]); err != nil || pid == os.Getpid() || processGone(pid) {
+			os.RemoveAll(filepath.Join(tmp, e.Name()))
+		}
+	}
+}
+
+func processGone(pid int) bool {
+	p, err := os.FindProcess(pid)
+	return err != nil || errors.Is(p.Signal(syscall.Signal(0)), os.ErrProcessDone)
 }
 
 // bashChanges is the pipeline's Changes hook: it snapshots dir now, and the
@@ -92,10 +151,10 @@ func (h *Host) bashChanges(dir string) func() (note, diff string, paths []string
 	s.mixed = s.mixed || s.open > 1
 	s.state.Unlock()
 	jobs := h.jobsRunning()
-	root, before := h.snapshot(dir)
+	root, env, before := h.snapshot(dir)
 	mid := h.turnMsgID()
 	return func() (string, string, []string) {
-		_, after := h.snapshot(dir)
+		_, _, after := h.snapshot(dir)
 		// a command adopted as a job reports after its turn: its changes
 		// belong to no later prompt's rewind
 		ckpt := mid != "" && mid == h.turnMsgID()
@@ -108,7 +167,7 @@ func (h *Host) bashChanges(dir string) func() (note, diff string, paths []string
 		if before == "" || after == "" || before == after {
 			return "", "", nil
 		}
-		return h.treeDiff(root, before, after, mixed, ckpt, wrote)
+		return h.treeDiff(root, env, before, after, mixed, ckpt, wrote)
 	}
 }
 
@@ -139,15 +198,20 @@ func (h *Host) noteWrite(path string) {
 	}
 }
 
-func (h *Host) treeDiff(root, before, after string, mixed, ckpt bool, wrote map[string][32]byte) (note, diff string, changed []string) {
-	out, err := h.git(root, "diff", "--name-status", "--no-renames", "-z", before, after)
+func (h *Host) treeDiff(root string, env []string, before, after string, mixed, ckpt bool, wrote map[string][32]byte) (note, diff string, changed []string) {
+	out, err := h.gitEnv(root, env, "diff", "--raw", "--no-renames", "-z", before, after)
 	if err != nil {
 		return "", "", nil
 	}
+	// ":<old mode> <new mode> <old id> <new id> <status>", then the path
 	fields := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
 	var paths, shown, lines []string
 	for i := 0; i+1 < len(fields); i += 2 {
-		abs := filepath.Join(root, fields[i+1])
+		meta, path := strings.Fields(fields[i]), fields[i+1]
+		if len(meta) != 5 {
+			continue
+		}
+		status, abs := meta[4], filepath.Join(root, path)
 		if sum, ok := wrote[abs]; ok {
 			if data, err := os.ReadFile(abs); err == nil && sha256.Sum256(data) == sum {
 				continue
@@ -155,24 +219,20 @@ func (h *Host) treeDiff(root, before, after string, mixed, ckpt bool, wrote map[
 		}
 		// NOTE: changed is uncapped; a branch switch in a huge repo marshals every
 		// path once per tool.post handler. Cap it here if that shows up.
-		paths, changed = append(paths, fields[i+1]), append(changed, abs)
+		paths, changed = append(paths, path), append(changed, abs)
 		// rewind: what the command deleted or changed, as the before tree
-		// holds it (one git process per path, so capped); an ignored file is
+		// holds it (git processes per path, so capped); an ignored file is
 		// in no tree and stays as the command left it
 		if ckpt && len(changed) <= snapCheckpoints {
-			if fields[i] == "A" {
-				h.checkpoint(abs, false, nil)
-			} else if data, err := h.runGit(root, nil, "cat-file", "-p", before+":"+fields[i+1]); err == nil {
-				h.checkpoint(abs, true, []byte(data))
-			}
+			h.checkpointBlob(root, env, before+":"+path, abs, meta[0][1:], meta[1])
 		}
 		switch {
 		case len(paths) > snapFiles:
 		case h.secretPath(abs):
-			lines = append(lines, fields[i]+" "+fields[i+1]+snapSecretAs)
+			lines = append(lines, status+" "+path+snapSecretAs)
 		default:
-			shown = append(shown, fields[i+1])
-			lines = append(lines, fields[i]+" "+fields[i+1])
+			shown = append(shown, path)
+			lines = append(lines, status+" "+path)
 		}
 	}
 	if len(paths) == 0 {
@@ -186,7 +246,7 @@ func (h *Host) treeDiff(root, before, after string, mixed, ckpt bool, wrote map[
 	if len(shown) > 0 {
 		// no textconv or external diff: a repository's config names those programs
 		args := append([]string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", before, after, "--"}, shown...)
-		out, _ = h.gitEnv(root, []string{"GIT_LITERAL_PATHSPECS=1"}, args...)
+		out, _ = h.gitEnv(root, append([]string{"GIT_LITERAL_PATHSPECS=1"}, env...), args...)
 		// blocks come in path order, like the names above
 		for i, block := range strings.Split("\n"+out, "\ndiff --git ")[1:] {
 			if i >= len(shown) {
@@ -223,4 +283,26 @@ func (h *Host) treeDiff(root, before, after string, mixed, ckpt bool, wrote map[
 		fmt.Fprintf(&b, "%d more %s\n", more, plural(more, "file", "files"))
 	}
 	return note, strings.TrimRight(b.String(), "\n"), changed
+}
+
+// checkpointBlob checkpoints abs as blob (a before-tree path) holds it.
+// NOTE: the store keeps no file mode, so a symbolic link or a submodule is
+// not restored and a deleted executable comes back without its exec bit.
+func (h *Host) checkpointBlob(root string, env []string, blob, abs, oldMode, newMode string) {
+	switch {
+	case oldMode == "120000":
+		h.uncheckpointed(abs, "is a symbolic link")
+	case oldMode == "160000" || newMode == "160000":
+		h.uncheckpointed(abs, "is a submodule")
+	case oldMode == "000000":
+		h.checkpoint(abs, false, nil)
+	default:
+		// the size first: a large file is never read whole
+		size, _ := h.runGit(root, env, "cat-file", "-s", blob)
+		if n, _ := strconv.Atoi(strings.TrimSpace(size)); n > maxCheckpointBytes {
+			h.uncheckpointed(abs, "is too large to checkpoint")
+		} else if data, err := h.runGit(root, env, "cat-file", "-p", blob); err == nil {
+			h.checkpoint(abs, true, []byte(data))
+		}
+	}
 }

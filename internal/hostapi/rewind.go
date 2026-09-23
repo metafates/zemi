@@ -1,9 +1,10 @@
 // rewind.go undoes turns: before a write tool first changes a file in a
 // turn, its content is checkpointed against that turn's user message.
 // Rewinding to a message restores every file changed since, drops the
-// message and the rest of the conversation, and hands its text back to the
-// composer. A bash call's changes are rewound only for repository files git
-// does not ignore, at most snapCheckpoints of them per call.
+// message and the rest of the conversation with what it learned and its todo
+// list, and hands its text back to the composer. A bash call's changes are
+// rewound only for repository files git does not ignore and the sandbox does
+// not hide, at most snapCheckpoints of them per call.
 package hostapi
 
 import (
@@ -23,6 +24,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // NOTE: larger files are not checkpointed (a rewind leaves them as they
@@ -64,15 +66,23 @@ func (h *Host) checkpoint(abs string, existed bool, data []byte) {
 		return
 	}
 	if len(data) > maxCheckpointBytes {
-		h.Log.Warn("rewind", "file too large to checkpoint", map[string]any{"path": abs, "bytes": len(data)})
-		// say it now: a later rewind reports only the files it restored, and
-		// this one would quietly stay changed
-		h.Notify("warn", "Rewind", filepath.Base(abs)+" is too large to checkpoint; a rewind will not restore it")
+		h.uncheckpointed(abs, "is too large to checkpoint")
 		return
 	}
 	if err := h.DB.AddCheckpoint(sid, mid, abs, existed, data); err != nil {
 		h.Log.Warn("rewind", "checkpoint failed", map[string]any{"path": abs, "error": err.Error()})
 	}
+}
+
+// uncheckpointed says, once per file and turn, that a rewind will not restore
+// abs: a later rewind reports only the files it restored, and this one would
+// quietly stay changed.
+func (h *Host) uncheckpointed(abs, why string) {
+	if _, said := h.snaps.skipped.LoadOrStore(h.turnMsgID()+"\x00"+abs, true); said {
+		return
+	}
+	h.Log.Warn("rewind", "file not checkpointed", map[string]any{"path": abs, "why": why})
+	h.Notify("warn", "Rewind", filepath.Base(abs)+" "+why+"; a rewind will not restore it")
 }
 
 // userText returns what the user typed in a stored user message; compaction
@@ -161,6 +171,13 @@ func (h *Host) RewindTo(id string) (int, error) {
 		return 0, err
 	}
 	h.clampReflectSeen(sid, cut)
+	h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt)
+	todos := todosIn(rows[:cut])
+	if err := h.DB.SetTodos(sid, todos); err != nil {
+		h.Log.Warn("rewind", "todo list not rewound", map[string]any{"error": err.Error()})
+	}
+	h.todosStale.Store(true)
+	h.resetTodoNag(todos)
 	sess, err := h.DB.GetSession(sid)
 	if err != nil {
 		return 0, err
@@ -168,7 +185,8 @@ func (h *Host) RewindTo(id string) (int, error) {
 	history, tr := resumeHistory(rows[:cut])
 	ag.mu.Lock()
 	ag.runner = &agent.Runner{History: history}
-	ag.lastIn, ag.turnMsgID = 0, ""
+	// the stored rows keep tool output a prune cleared, so compactDue must see them
+	ag.lastIn, ag.turnMsgID = estTokens(history...)+ag.promptTokens, ""
 	ag.mu.Unlock()
 	h.forgetInstructions()
 	h.setTranscript(sess.Title, tr)
@@ -178,16 +196,80 @@ func (h *Host) RewindTo(id string) (int, error) {
 	return len(cps), nil
 }
 
+// forgetLearned undoes what session sid learned from its rows from to until:
+// its learned memories and pending proposals go, and what they replaced is
+// live again. The user's own memories stay, and a learned forget cannot come
+// back. A memory tool write lands before its step's rows; a reflector run or
+// an accepted proposal after the last row is kept.
+// NOTE: an accept or a reflector run between two rewound rows goes too.
+func (h *Host) forgetLearned(sid string, from, until int64) {
+	var gone []string
+	dbs := []*store.DB{h.DB, h.GlobalDB}
+	for _, db := range dbs {
+		if db == nil {
+			continue
+		}
+		ids, err := db.DeleteLearnedBetween(sid, from, until)
+		if err = errors.Join(err, db.DeleteProposalsBetween(sid, from, until)); err != nil {
+			h.Log.Warn("rewind", "learned memories not rewound", map[string]any{"error": err.Error()})
+		}
+		gone = append(gone, ids...)
+	}
+	for _, db := range dbs {
+		if db != nil && len(gone) > 0 {
+			if err := db.Unsupersede(gone); err != nil {
+				h.Log.Warn("rewind", "replaced memories not restored", map[string]any{"error": err.Error()})
+			}
+		}
+	}
+	h.refreshPending()
+}
+
+// todosIn is the todo list the last todos call in rows that ran set.
+func todosIn(rows []*store.Message) []store.Todo {
+	calls := map[string]string{} // tool call id -> input
+	var list []store.Todo
+	for _, row := range rows {
+		var m fantasy.Message
+		if json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
+			continue
+		}
+		for _, part := range m.Content {
+			switch p := part.(type) {
+			case fantasy.ToolCallPart:
+				if p.ToolName == tools.ToolTodos {
+					calls[p.ToolCallID] = p.Input
+				}
+			case fantasy.ToolResultPart:
+				var in map[string]any
+				input, ok := calls[p.ToolCallID]
+				// a refused call set nothing
+				if !ok || p.Output == nil || p.Output.GetType() == fantasy.ToolResultContentTypeError ||
+					json.Unmarshal([]byte(input), &in) != nil {
+					continue
+				}
+				if todos, _, set, err := tools.ParseTodos(in); set && err == nil {
+					list = todos
+				}
+			}
+		}
+	}
+	return list
+}
+
 func restoreCheckpoint(cp store.Checkpoint) error {
-	// the key was resolved when saved: a symlink swapped in since for the file
-	// or a parent would send the content somewhere never checked
-	if perm.RealPath(cp.Path) != cp.Path {
+	// the key was resolved when saved: a parent swapped for a symlink since
+	// would send the content somewhere never checked
+	if dir := filepath.Dir(cp.Path); perm.RealPath(dir) != dir {
 		return errors.New("the path now leads through a symlink")
 	}
-	if !cp.Existed {
+	// a link at the file itself is replaced, never written through
+	if fi, err := os.Lstat(cp.Path); err == nil && fi.Mode()&fs.ModeSymlink != 0 || !cp.Existed {
 		if err := os.Remove(cp.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
+	}
+	if !cp.Existed {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(cp.Path), 0o755); err != nil {
@@ -225,7 +307,7 @@ func (h *Host) OpenRewind() error {
 			desc += " · " + files
 			restore = ", restores " + files + " to " + plural(n, "how it was", "how they were") + " before it,"
 		}
-		effect := "Rewinding removes this prompt and everything after it" + restore + " and puts the prompt back in the composer. Files a command changed go back too when they are in the repository and not ignored."
+		effect := "Rewinding removes this prompt and everything after it" + restore + " and puts the prompt back in the composer. Files a command changed go back too when they are in the repository, not ignored, not a symbolic link and not secret-shaped."
 		first, _, _ := strings.Cut(text, "\n")
 		items = append(items, map[string]any{
 			"text":   first,

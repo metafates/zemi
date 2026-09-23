@@ -26,37 +26,13 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	if p.TodosRead == nil {
 		return fantasy.NewTextErrorResponse("todos unavailable"), nil
 	}
-	if list, ok := input["todos"].([]any); ok {
+	if out, cancelled, ok, err := ParseTodos(input); ok {
 		note := ""
 		if p.TodosWrite == nil {
 			return fantasy.NewTextErrorResponse("todos unavailable"), nil
 		}
-		var out []store.Todo
-		cancelled := 0
-		for i, v := range list {
-			m, ok := v.(map[string]any)
-			if !ok {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: not an object", i+1)), nil
-			}
-			content := str(m["content"])
-			status := str(m["status"])
-			// the names other harnesses taught models
-			switch status {
-			case "completed":
-				status = "done"
-			case "cancelled":
-				cancelled++
-				continue
-			}
-			if content == "" {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: content is required", i+1)), nil
-			}
-			if !todoStatuses[status] {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: status must be pending, in_progress or done", i+1)), nil
-			}
-			out = append(out, store.Todo{
-				Content: content, Status: status, ActiveForm: str(m["active_form"]), Ord: len(out),
-			})
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		if err := p.TodosWrite(out); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -88,6 +64,36 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		return fantasy.NewTextResponse("(no todos)"), nil
 	}
 	return fantasy.NewTextResponse(TodoList(rows)), nil
+}
+
+// ParseTodos reads the list a todos call sets, dropping the cancelled items it
+// counts; ok is false for a call that only reads the list.
+func ParseTodos(input map[string]any) (out []store.Todo, cancelled int, ok bool, err error) {
+	list, ok := input["todos"].([]any)
+	for i, v := range list {
+		m, isObj := v.(map[string]any)
+		if !isObj {
+			return nil, 0, true, fmt.Errorf("todo %d: not an object", i+1)
+		}
+		content := str(m["content"])
+		status := str(m["status"])
+		// the names other harnesses taught models
+		switch status {
+		case "completed":
+			status = "done"
+		case "cancelled":
+			cancelled++
+			continue
+		}
+		if content == "" {
+			return nil, 0, true, fmt.Errorf("todo %d: content is required", i+1)
+		}
+		if !todoStatuses[status] {
+			return nil, 0, true, fmt.Errorf("todo %d: status must be pending, in_progress or done", i+1)
+		}
+		out = append(out, store.Todo{Content: content, Status: status, ActiveForm: str(m["active_form"]), Ord: len(out)})
+	}
+	return out, cancelled, ok, nil
 }
 
 // TodoList is the list as the todos tool reports it.
