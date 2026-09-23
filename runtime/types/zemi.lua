@@ -1905,7 +1905,7 @@ zemi.skills = {}
 ---@return zemi.Skill[]
 function zemi.skills.list() end
 
---- A skill is inert until it is enabled. User or builtin origin only.
+--- Enable a disabled skill. User or builtin origin only.
 ---@param name string
 ---@return true|nil ok
 ---@return string|nil err
