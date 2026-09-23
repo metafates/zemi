@@ -252,8 +252,9 @@ read-only - and hands the rest to the user with a reason naming why (`askHook`; 
 `.git`, `.zemi` or zemi's own dirs and to a `.gitattributes` or `.gitmodules` are
 `protectedWrite`, checkouts in `.zemi/worktrees` aside, which no rule settles, a mode's own
 included).
-A read-only agent (`Profile.ReadOnly`, see below) denies writes and forces asks on changing
-commands, with the project unwritable in the sandbox, whatever the mode.
+A read-only agent (`Profile.ReadOnly`, see below) denies writes and runs commands with the
+project unwritable in the sandbox, whatever the mode; without trust or a sandbox, a changing
+command asks.
 Network requests are never settled: the URL is the model's. A mode from config may carry
 `decide`, a Lua function answering one ask ("allow", "deny", anything else sends it to the user
 whatever the base would settle, which is how a user gets every ask); it holds the interpreter
@@ -609,8 +610,8 @@ how many rows the frame takes, so nothing above it reflows.
   a repository, and not once two slow snapshots switched the snapshot off).
 - **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
   `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even under allow rules, `mcp.*`
-  allows and bash allows other than `ReadCommand` flip to ask; the sandbox keeps the project
-  unwritable. Approving the plan returns to the agent and mode that ran before: the read-only
+  allows and a rule's bash allow other than `ReadCommand` flip to ask; the sandbox keeps the
+  project unwritable. Approving the plan returns to the agent and mode that ran before: the read-only
   turn ends (the read-only pipeline cannot implement) and `nextTurn` hands the claim to a
   fresh send as the restored agent (`planApproved`, the plan already in history), so the
   agent never passes through idle. A read-only turn that ends in plain text instead of the

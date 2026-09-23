@@ -689,7 +689,7 @@ zemi.agent.profile("coder", {
   temperature = 0.2,
 })
 -- read_only makes a profile a planning agent: the project is read-only to it
--- and the pipeline denies writes and forces asks; "planner" ships that way.
+-- and the pipeline denies writes and confines commands; "planner" ships that way.
 zemi.agent.profile("planner", { read_only = true })
 
 zemi.config.set("agent.profile", "coder")  -- the active one; "default" is the shipped shape,

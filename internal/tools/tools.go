@@ -291,7 +291,8 @@ func (p *Pipeline) Check(req Request) Verdict {
 		// mode-settled, so dropping the sandbox reaches them
 		case req.Unsandboxed && rule != nil && rule.Network:
 			return p.resolveAsk(req, "the rule keeps the sandbox; sandbox: false drops it")
-		// rule-allowed commands run unconfined, so only readers skip the ask
+		// the rule was written for an agent that may change things; a reader
+		// keeps the allow
 		case plan && req.Subject == "tool.bash" && perm.ReadCommand(req.Arg, nil):
 		case plan && (req.Subject == "tool.bash" || strings.HasPrefix(req.Subject, "mcp.")):
 			return p.resolveAsk(req, "read-only agent: commands that change things ask")

@@ -33,7 +33,7 @@ import (
 
 // Profile is one named agent shape: model, system prompt, tools.
 // ReadOnly makes it a planning agent: the project is read-only to it and
-// the pipeline denies file changes and forces asks (see h.readOnly).
+// the pipeline denies file changes and confines commands (see h.readOnly).
 type Profile struct {
 	Name         string   `json:"name"`
 	Model        string   `json:"model"`

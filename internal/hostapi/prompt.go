@@ -175,7 +175,7 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string
 const planPrompt = `
 
 # Planning
-You are planning: work out the plan with the user and do not do it until they approve one. The project is read-only and commands that could change anything ask, so read, search and run read-only commands. If the user asks for a change, plan that change.
+You are planning: work out the plan with the user and do not do it until they approve one. The project is read-only: commands run in a sandbox that keeps it so, and without trust or a sandbox those that change things ask. Read, search and run read-only commands. If the user asks for a change, plan that change.
 1. Read the code the task touches first. Never ask what reading it would tell you. For anything more than a focused fix, delegate the reading and plan drafting to the plan subagent (agent, name "plan"): it is a read-only architect who reports a concrete plan with a Critical Files section. Use its report as the plan.`
 
 // planAsking is the rest of the planning prompt for a run with the plan tool; a

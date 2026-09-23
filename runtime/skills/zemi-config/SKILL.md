@@ -154,7 +154,8 @@ guessing. Common keys:
   like `rm -rf`, `git clean` or `find -delete`, git commands that write `.git` and everything
   else go to the user) or `yolo` (every ask is allowed; deny rules still apply). Planning is
   not a mode but the read-only `planner` profile (`/profile planner`, or any profile with
-  `read_only`): file writes are refused, commands that change things and MCP calls ask, so
+  `read_only`): file writes are refused, commands run in a sandbox that keeps the project
+  read-only (without trust or a sandbox, those that change things ask) and MCP calls ask, so
   the agent investigates and proposes a plan, whatever the mode.
   In a project the user has not trusted (`/trust`), auto runs only commands
   that just read (no builds, tests or git), edits nothing, and the Lua tool asks. In any project the Lua tool asks before a script calls
