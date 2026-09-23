@@ -770,10 +770,13 @@ func TestTodoNag(t *testing.T) {
 			h.maybeNagTodos()
 		}
 	}
-	steering := func(h *Host) []string {
+	// takeNag delivers the armed nag the way a step boundary does
+	takeNag := func(h *Host) string {
 		h.agents.mu.Lock()
 		defer h.agents.mu.Unlock()
-		return append([]string(nil), h.agents.steering...)
+		nag := h.agents.todoNag
+		h.agents.todoNag = ""
+		return nag
 	}
 
 	t.Run("nags once past the threshold, not again without an update", func(t *testing.T) {
@@ -781,15 +784,15 @@ func TestTodoNag(t *testing.T) {
 		seedSession(t, h)
 		set(h, both)
 		engage(h, todoNagAfter-1)
-		if got := steering(h); len(got) != 0 {
-			t.Fatalf("pre-threshold steering = %q", got)
+		if got := takeNag(h); got != "" {
+			t.Fatalf("pre-threshold nag = %q", got)
 		}
 		engage(h, 1)
-		if got := steering(h); len(got) != 1 || !strings.Contains(got[0], "in_progress") {
-			t.Fatalf("post-threshold steering = %q", got)
+		if got := takeNag(h); !strings.Contains(got, "in_progress") {
+			t.Fatalf("post-threshold nag = %q", got)
 		}
 		engage(h, 5)
-		if got := steering(h); len(got) != 1 {
+		if got := takeNag(h); got != "" {
 			t.Fatalf("nag must not repeat without an update: %q", got)
 		}
 	})
@@ -803,29 +806,35 @@ func TestTodoNag(t *testing.T) {
 		for i := range todoNagAfter * 2 {
 			s.ToolCallEnd(fmt.Sprint(i), "read", true, "", "")
 		}
-		s.StepDone(fantasy.Usage{}, true)
+		s.StepDone(fantasy.Usage{})
 		s.ToolCallEnd("t", tools.ToolTodos, true, "", "")
-		s.StepDone(fantasy.Usage{}, true)
+		s.StepDone(fantasy.Usage{})
 		for range todoNagAfter - 2 {
-			s.StepDone(fantasy.Usage{}, true)
+			s.StepDone(fantasy.Usage{})
 		}
-		if got := steering(h); len(got) != 0 {
+		if got := takeNag(h); got != "" {
 			t.Fatalf("a batch of calls is one step: %q", got)
 		}
-		s.StepDone(fantasy.Usage{}, true)
-		if got := steering(h); len(got) != 1 || !strings.Contains(got[0], fmt.Sprintf("for %d steps", todoNagAfter)) {
-			t.Fatalf("steering after the threshold: %q", got)
+		s.StepDone(fantasy.Usage{})
+		if got := takeNag(h); !strings.Contains(got, fmt.Sprintf("for %d steps", todoNagAfter)) {
+			t.Fatalf("nag after the threshold: %q", got)
 		}
 	})
 
-	t.Run("the step that ends the turn queues nothing", func(t *testing.T) {
+	t.Run("a nag the turn ended before delivering starts no turn", func(t *testing.T) {
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, both)
-		engage(h, todoNagAfter-1)
-		h.streamHooks().StepDone(fantasy.Usage{}, false)
-		if got := steering(h); len(got) != 0 {
-			t.Fatalf("a nag after the reply starts a turn of its own: %q", got)
+		engage(h, todoNagAfter) // a StopTurn step (a dismissed question) past the threshold
+		if next, text := h.nextTurn(h.beginScope()); next != nil || text != "" || h.AgentActive() {
+			t.Fatalf("the nag started a turn: %q", text)
+		}
+		if got := takeNag(h); got != "" {
+			t.Fatalf("the next turn's first step would carry the stale nag: %q", got)
+		}
+		engage(h, 1)
+		if got := takeNag(h); got == "" {
+			t.Fatal("a dropped nag must re-arm, the model never saw it")
 		}
 	})
 
@@ -834,25 +843,25 @@ func TestTodoNag(t *testing.T) {
 		seedSession(t, h)
 		set(h, both)
 		engage(h, todoNagAfter)
-		if len(steering(h)) != 1 {
+		if takeNag(h) == "" {
 			t.Fatal("expected one nag before re-arm")
 		}
 		set(h, both) // any update re-arms
 		engage(h, todoNagAfter)
-		if got := steering(h); len(got) != 2 {
-			t.Fatalf("after re-arm expect a second nag, got %d: %q", len(got), got)
+		if takeNag(h) == "" {
+			t.Fatal("after re-arm expect a second nag")
 		}
 	})
 
-	t.Run("a call while idle leaves the nag armed", func(t *testing.T) {
+	t.Run("a call while idle does not count", func(t *testing.T) {
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, both)
 		for i := 0; i < todoNagAfter; i++ {
 			h.maybeNagTodos() // a background agent's calls, the main agent idle
 		}
-		engage(h, todoNagAfter)
-		if got := steering(h); len(got) != 1 {
+		engage(h, todoNagAfter-1)
+		if got := takeNag(h); got != "" {
 			t.Fatalf("idle calls must not count or arm: %q", got)
 		}
 	})
@@ -865,7 +874,7 @@ func TestTodoNag(t *testing.T) {
 		cancel()
 		h.turn.Store(&turnScope{ctx: ctx, cancel: cancel})
 		engage(h, todoNagAfter)
-		if got := steering(h); len(got) != 0 {
+		if got := takeNag(h); got != "" {
 			t.Fatalf("a nag for a cancelled turn would lead the next message: %q", got)
 		}
 	})
@@ -883,7 +892,7 @@ func TestTodoNag(t *testing.T) {
 		}
 		seedSession(t, h)
 		engage(h, 1)
-		if got := steering(h); len(got) != 0 {
+		if got := takeNag(h); got != "" {
 			t.Fatalf("the old session's item nagged the new one: %q", got)
 		}
 	})
@@ -893,12 +902,12 @@ func TestTodoNag(t *testing.T) {
 		seedSession(t, h)
 		set(h, []store.Todo{{Content: "solo", Status: "in_progress"}})
 		engage(h, todoNagAfter+2)
-		if got := steering(h); len(got) != 0 {
+		if got := takeNag(h); got != "" {
 			t.Fatalf("single item must not nag: %q", got)
 		}
 		set(h, []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "done"}})
 		engage(h, todoNagAfter+2)
-		if got := steering(h); len(got) != 0 {
+		if got := takeNag(h); got != "" {
 			t.Fatalf("all done must not nag: %q", got)
 		}
 	})

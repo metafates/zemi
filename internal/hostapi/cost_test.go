@@ -47,7 +47,7 @@ func TestAgentFinishUsage(t *testing.T) {
 		end)`)
 	for range 2 {
 		u := fantasy.Usage{InputTokens: 1_000_000, CacheReadTokens: 5, OutputTokens: 500_000}
-		h.streamHooks().(*streamAdapter).StepDone(u, true)
+		h.streamHooks().(*streamAdapter).StepDone(u)
 		h.streamHooks().TurnDone(nil, u)
 	}
 	want := `"` + sid + ` p/m 1000005 500000 1500005 2 4 3000010 0"`
@@ -67,7 +67,7 @@ func TestUsageCountsCache(t *testing.T) {
 	sid := seedSession(t, h)
 	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
 	u := fantasy.Usage{InputTokens: 1, CacheReadTokens: 10, CacheCreationTokens: 100, OutputTokens: 5}
-	h.streamHooks().(*streamAdapter).StepDone(u, true)
+	h.streamHooks().(*streamAdapter).StepDone(u)
 	(&subagentHooks{h: h, def: builtinAgents[0], run: run}).TurnDone(nil, u)
 	if got := h.AgentStream().SessionIn; got != 222 {
 		t.Errorf("live input tally = %d, want 222", got)
@@ -89,7 +89,7 @@ func TestUsageCountsCache(t *testing.T) {
 func TestStepBillsLiveTally(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
-	h.streamHooks().(*streamAdapter).StepDone(fantasy.Usage{InputTokens: 10, OutputTokens: 5, CacheReadTokens: 3}, true)
+	h.streamHooks().(*streamAdapter).StepDone(fantasy.Usage{InputTokens: 10, OutputTokens: 5, CacheReadTokens: 3})
 	if got := h.AgentStream().SessionIn; got != 13 {
 		t.Fatalf("live input tally after one step = %d, want 13", got)
 	}

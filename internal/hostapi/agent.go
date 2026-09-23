@@ -179,6 +179,9 @@ type agentHost struct {
 	todoSteps      int  // main-runner steps since the last todos write
 	todoTouched    bool // a todos call ran this step
 	todoPending    bool
+	// todoNag waits for the next step boundary of the running turn, outside
+	// steering: a turn that ends first drops it instead of starting another.
+	todoNag string
 
 	// planApproved is set when a read-only agent's plan is approved; the ended
 	// turn's planFollowup starts implementation as the restored agent. Cleared
@@ -574,6 +577,9 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 		text = joinQueue(ag.steering)
 		ag.steering = nil
 	}
+	if ag.todoNag != "" {
+		ag.todoNag, ag.todoPending = "", false
+	}
 	var next *turnScope
 	switch {
 	case text == "":
@@ -608,10 +614,13 @@ func (h *Host) deliverSteering() []string {
 	ag := h.agents
 	ag.mu.Lock()
 	msgs, text, reason, tools := ag.steering, ag.textBuf, ag.reasonBuf, ag.tools
+	if ag.todoNag != "" {
+		msgs = append(msgs, ag.todoNag)
+	}
 	ag.endThinking()
 	stat := TurnStat{ThoughtMS: ag.thought.Milliseconds()}
 	if len(msgs) > 0 {
-		ag.steering, ag.textBuf, ag.reasonBuf, ag.tools, ag.thought = nil, "", "", nil, 0
+		ag.steering, ag.todoNag, ag.textBuf, ag.reasonBuf, ag.tools, ag.thought = nil, "", "", "", nil, 0
 	}
 	ag.mu.Unlock()
 	if len(msgs) == 0 {
@@ -834,9 +843,8 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 
 // StepDone bills a completed step's usage to the live session tally, so the
 // token count moves during the turn instead of only at TurnDone, and counts
-// the step for the todo nag unless a todos call ran in it. The last step
-// arms nothing: a nag queued after the reply would start a turn of its own.
-func (s *streamAdapter) StepDone(usage fantasy.Usage, more bool) {
+// the step for the todo nag unless a todos call ran in it.
+func (s *streamAdapter) StepDone(usage fantasy.Usage) {
 	h := s.h
 	ag := h.agents
 	ag.mu.Lock()
@@ -847,7 +855,7 @@ func (s *streamAdapter) StepDone(usage fantasy.Usage, more bool) {
 		model = h.currentModelID(nil) // a turn the host did not start (tests)
 	}
 	h.bill(sid, model, usage)
-	if more && !touched {
+	if !touched {
 		h.maybeNagTodos()
 	}
 }
@@ -1175,9 +1183,9 @@ func (h *Host) maybeNagTodos() {
 		return
 	}
 	ag.todoPending = true
-	ag.steering = append(ag.steering, modelNote(fmt.Sprintf(
+	ag.todoNag = modelNote(fmt.Sprintf(
 		"Some todos are still unfinished: %q has been in_progress for %d steps. If that step is done, tick it now with the todos tool and set the next one in_progress; otherwise keep it in_progress and continue.",
-		ag.todoInProgress, ag.todoSteps)))
+		ag.todoInProgress, ag.todoSteps))
 }
 
 // resetTodoNag re-arms the staleness tracker from a fresh todo write. A

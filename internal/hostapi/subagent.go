@@ -512,7 +512,7 @@ func (s *subagentHooks) Retrying(err error, delay time.Duration) {
 }
 
 // StepDone is unused: a subagent's whole run bills once at TurnDone.
-func (s *subagentHooks) StepDone(fantasy.Usage, bool) {}
+func (s *subagentHooks) StepDone(fantasy.Usage) {}
 
 func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
