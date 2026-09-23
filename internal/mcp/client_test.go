@@ -3,12 +3,14 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -111,6 +113,75 @@ func TestHTTPStreamHeldOpen(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Fatalf("the call waited %s for a stream the server held open", elapsed)
+	}
+}
+
+// TestHTTPSessionExpired: a server that forgets the session answers 404;
+// the client starts a new one once and resends, and ends when it cannot.
+func TestHTTPSessionExpired(t *testing.T) {
+	for _, c := range []struct {
+		name       string
+		refuseInit bool
+	}{{"new session", false}, {"handshake refused", true}} {
+		t.Run(c.name, func(t *testing.T) {
+			var (
+				mu    sync.Mutex
+				live  = ""
+				inits = 0
+				gone  = false
+			)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				var m struct {
+					Method string `json:"method"`
+				}
+				_ = json.Unmarshal(body, &m)
+				mu.Lock()
+				defer mu.Unlock()
+				switch {
+				case m.Method == "initialize" && gone && c.refuseInit:
+					http.Error(w, "down", http.StatusServiceUnavailable)
+					return
+				case m.Method == "initialize":
+					inits++
+					live, gone = fmt.Sprint("s", inits), false
+					w.Header().Set("Mcp-Session-Id", live)
+				case r.Header.Get("Mcp-Session-Id") != live || gone:
+					http.Error(w, "session not found", http.StatusNotFound)
+					return
+				}
+				resp := mcptest.Respond(body)
+				if resp == nil {
+					w.WriteHeader(http.StatusAccepted)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Write(resp)
+			}))
+			defer srv.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			cl, err := Start(ctx, Config{URL: srv.URL})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cl.Close()
+			mu.Lock()
+			gone = true
+			mu.Unlock()
+			res, err := cl.CallTool(ctx, "echo", map[string]any{"text": "hi"})
+			if c.refuseInit {
+				if err == nil || cl.Err() == nil {
+					t.Fatalf("a failed handshake left the client open: %v", err)
+				}
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil || res.Text() != "hi" || inits != 2 {
+				t.Fatalf("echo = %+v, %v after %d handshakes", res, err, inits)
+			}
+		})
 	}
 }
 
