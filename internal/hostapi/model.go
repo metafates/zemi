@@ -84,10 +84,11 @@ func (h *Host) modelErr(id string) error {
 }
 
 // modelFor resolves the model the first set key names, the session's model
-// when none is set, and returns its id for pricing.
+// when none is set, and returns its id for pricing. A tier name as a key
+// resolves as tierModel does, fallbacks included.
 func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, string, error) {
 	for _, key := range keys {
-		if id := h.Settings.Str(key); id != "" && h.modelFn == nil {
+		if id := cmp.Or(h.tierModel(key), h.Settings.Str(key)); id != "" && h.modelFn == nil {
 			m, err := h.Providers.Resolve(id)
 			return m, id, err
 		}
@@ -140,11 +141,12 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 }
 
 // Tiers are the model tiers config names, in the order a picker shows them:
-// small runs the short jobs (session titles, compaction summaries, the
-// builtin web subagent), main everything else, and smart the main
-// conversation, which orchestrates and delegates. A tier nothing set falls
-// back to main, small first to the small model of main's provider, so a
-// /model pick of a big model leaves the short jobs cheap.
+// small runs the short jobs (titles, compaction summaries, the reflector,
+// the builtin web subagent), main everything else, and smart the main
+// conversation. A tier nothing set falls back to main, small first to the
+// small model of main's provider, so a /model pick of a big model leaves the
+// short jobs cheap; compaction alone stays on the session's model then,
+// since summarize budgets by its window.
 var Tiers = []string{"small", "main", "smart"}
 
 // tierModel resolves a tier name to the model id config gave it, falling

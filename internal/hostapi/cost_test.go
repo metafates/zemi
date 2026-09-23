@@ -123,7 +123,7 @@ func TestGenerateStreams(t *testing.T) {
 }
 
 // TestSmallTierAfterPick: a /model pick moves the conversation, and the
-// small tier stays on the catalog's small model of that provider, or on the
+// short jobs stay on the catalog's small model of that provider, or on the
 // pick when the provider names none.
 func TestSmallTierAfterPick(t *testing.T) {
 	h, _ := newTestHost(t)
@@ -142,7 +142,7 @@ func TestSmallTierAfterPick(t *testing.T) {
 		if err := h.SetModel(c.pick); err != nil {
 			t.Fatal(err)
 		}
-		if got := h.tierModel("small"); got != c.small {
+		if _, got, _ := h.modelFor("reflector.model", "small"); got != c.small {
 			t.Errorf("small after /model %s = %s, want %s", c.pick, got, c.small)
 		}
 	}

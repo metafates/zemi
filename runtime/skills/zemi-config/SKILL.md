@@ -103,7 +103,8 @@ init.lua now sets that key to a different value.
 guessing. Common keys:
 
 - Model tiers, each a `provider/model`; a tier nothing sets falls back to `models.main`
-  (`models.small` first to the catalog's small model of main's provider):
+  (an unset `models.small` runs titles, the reflector and the `web` agent on the catalog's
+  small model of main's provider, and compaction on the conversation's model):
   - `models.main`: the model everything runs on unless a tier or a definition names another.
   - `models.small`: the short jobs (session titles, compaction summaries, the reflector, the
     builtin `web` agent), e.g.

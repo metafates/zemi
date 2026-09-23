@@ -714,8 +714,9 @@ zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes the conversation's tie
 zemi.model.pick()                    -- open the picker (returns at once)
 -- Models are three config tiers: models.main runs everything, models.small the
 -- short jobs (titles, compaction summaries, the builtin web agent), models.smart
--- the main conversation; an unset tier falls back to main (small first to the
--- small model of main's provider). Anywhere a model can
+-- the main conversation; an unset tier falls back to main, but an unset small
+-- runs titles, the reflector and the web agent on the small model of main's
+-- provider. Anywhere a model can
 -- be named (a profile, an agent definition, the agent tool, a workflow) a tier
 -- name works too.
 

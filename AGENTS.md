@@ -437,7 +437,9 @@ lua-language-server is installed.
 
 - **Models are tiers.** `models.main` runs everything; `models.small` (session titles,
   compaction summaries, the reflector, the builtin `web` agent) and `models.smart` (the main
-  conversation) fall back to it, small first to the catalog's small model of main's provider. Anything that takes a model - an agent definition, the `agent` tool, a
+  conversation) fall back to it, except that an unset small runs titles, the reflector and
+  `web` on the catalog's small model of main's provider (`tierModel`), so a `/model` pick
+  of a big model leaves them cheap. Anything that takes a model - an agent definition, the `agent` tool, a
   workflow - takes a tier name or a `provider/model` id (`modelRef`).
 - **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
   live tally when that session is still open. Calls outside a runner (summary, title,
