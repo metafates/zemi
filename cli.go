@@ -37,7 +37,7 @@ Flags:
   -r, --resume id     resume the session with this id
   -m, --model id      model to use (provider/model)
       --mode mode     permission mode: auto or yolo
-      --profile name  agent profile: one init.lua defines
+      --profile name  agent profile: default, planner or one from init.lua
       --output fmt    with -p: text (the reply) or json (reply, tools, compactions, usage)
       --trust         trust this project for this run (--trust=false: do not)
       --health        run the /health checks on stdout and exit (1 if any failed)
@@ -205,10 +205,7 @@ func applyOptions(h *hostapi.Host, o options) error {
 		}
 	}
 	if o.model != "" {
-		if err := h.ProfileModelErr(); err != nil {
-			return err
-		}
-		if err := h.Settings.SetHost(h.ConversationKey(), o.model); err != nil {
+		if err := h.SetModel(o.model); err != nil {
 			return err
 		}
 	}
@@ -241,7 +238,7 @@ func printHealth(h *hostapi.Host, stdout io.Writer) int {
 // --output json gets the same report shape it gets for a failed turn.
 func failPrint(err error, jsonOut bool, stdout, stderr io.Writer) int {
 	if !jsonOut {
-		fmt.Fprintln(stderr, "zemi:", err)
+		fmt.Fprintln(stderr, "zemi:", hostapi.Headline(err.Error()))
 		return 1
 	}
 	enc := json.NewEncoder(stdout)
@@ -276,6 +273,7 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 		if !jsonOut && errors.Is(err, hostapi.ErrNoModel) && h.InitError() != "" {
 			return 1 // the init failure on stderr is the cause
 		}
+		h.Log.Error("print", err.Error(), nil) // stderr gets the headline, the log the traceback
 		return failPrint(err, jsonOut, stdout, stderr)
 	}
 	interrupted := false

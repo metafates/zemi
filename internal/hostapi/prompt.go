@@ -3,7 +3,6 @@
 package hostapi
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -468,13 +467,14 @@ func (h *Host) forgetInstructions() {
 // OpenPrompt shows the system prompt the last send assembled, which /usage
 // only measures.
 func (h *Host) OpenPrompt() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	sys := h.SystemPrompt()
 	if sys == "" {
-		return errors.New("the prompt is assembled on the first send; send a message first")
+		h.Notify("warn", "Nothing to show yet", "the prompt is assembled on the first send")
+		return nil
 	}
 	ui.OpenOverlay(Overlay{ID: "prompt", Title: "System prompt", Origin: lua.OriginBuiltin, Body: sys})
 	return nil

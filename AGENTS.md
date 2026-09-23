@@ -102,13 +102,15 @@ reports on stderr how many tool calls the gate denied - nobody can answer an ask
 `deniedHint` points at `--trust` or at an allow rule. It also drops what needs a user
 (`headlessExcluded`), the agent tool's `background` and `send_to` (a detached report would
 outlive the run), and the prompt lines naming them. A headless run with no saved trust decision
-runs untrusted and says so.
+runs untrusted and says so. With no UI `Host.Notify` prints a warning or an error to
+`Host.Stderr` as "zemi: <title>: <body>", so `-p` never swallows one, and a command that opens a
+screen gets `Host.Screen`'s `ErrNeedsTUI`, which `RunCommand` names ("/memory needs the TUI").
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`). Builtin
 providers come from the embedded catwalk catalog (`agent.Builtin`, converted once per process
 with the key env vars resolved in Go, never stored in config): each is on only while its key is
 exported, one without is in `Registry.Missing` (minus the ids config deleted or added) so the
-no-model hint and `/model` can name the variable, `Registry.Reset` seeds every generation
+no-model hint (`noModelHint`, one sentence everywhere) and `/model` can name the variable, `Registry.Reset` seeds every generation
 before `init.lua`, a `zemi.provider.add` under a builtin id replaces it
 whole, `zemi.provider.del` drops one and `providers.builtin = false` (read once in `readyStep`)
 all of them. A tier config leaves unset runs `Registry.Default`: the first user-added provider's

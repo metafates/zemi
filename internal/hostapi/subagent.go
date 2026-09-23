@@ -914,9 +914,9 @@ func (h *Host) agentsCommands() []*Command {
 }
 
 func (h *Host) openAgents() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	defs := h.agentDefs()
 	slices.SortStableFunc(defs, func(a, b AgentDef) int { return cmp.Compare(a.Source, b.Source) })

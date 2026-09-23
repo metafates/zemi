@@ -614,7 +614,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		// a target of thousands of characters keeps its first and last rows,
 		// so the choices below still fit
 		if n := max(h/3, 3); len(head) > n {
-			more := []hostapi.Segment{{Text: fmt.Sprintf("… %d more rows …", len(head)-n+1), HL: "Host:Hint"}}
+			more := []hostapi.Segment{{Text: hostapi.MoreLines(len(head) - n + 1), HL: "Host:Hint"}}
 			head = append(append(head[:n-2:n-2], more), head[len(head)-1])
 		}
 	}
@@ -772,8 +772,8 @@ func permTitle(req hostapi.PermRequest, root string) (title, target string) {
 	return title, target
 }
 
-// permNote turns a request reason into a line worth reading: generic tool
-// reasons say nothing the title does not, subagent and auto-mode reasons do.
+// permNote is the line a request's reason reads as under the title, and its
+// group: a subagent's reason says which agent asked.
 func permNote(reason string) (string, string) {
 	switch {
 	case reason == "":

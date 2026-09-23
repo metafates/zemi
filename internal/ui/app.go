@@ -311,7 +311,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		text := "zemi finished"
 		if msg.err != "" {
-			text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "...")
+			text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "…")
 		}
 		return a, a.notifyIfAway(text)
 	case hookMsg:
@@ -357,7 +357,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case editorMsg:
 		if msg.err != nil {
-			a.pushToast("error", "Editor failed", msg.err.Error())
+			a.pushToast("error", "Could not open the editor", msg.err.Error())
 			return a, nil
 		}
 		text := sanitize.String(msg.text)
@@ -372,7 +372,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.updateCompletion()
 	case clipboardMsg:
 		if msg.err != nil {
-			a.pushToast("warn", "Paste failed", msg.err.Error())
+			a.pushToast("error", "Could not paste", msg.err.Error())
 			return a, nil
 		}
 		a.insertToken(msg.token)
@@ -457,7 +457,7 @@ func (a *App) notifyIfAway(text string) tea.Cmd {
 // test harness (DESIGN §8 golden tests).
 func (a *App) Frame() string {
 	if a.width <= 0 || a.height <= 0 {
-		return "zemi starting..."
+		return "zemi starting…"
 	}
 	return a.compose(a.width, a.height)
 }
@@ -685,7 +685,7 @@ func (a *App) widgetLines(id string) [][]hostapi.Segment {
 type toast struct {
 	level, title, body string
 	expires            time.Time
-	recorded           bool // the whole error is in /errors
+	recorded           bool // its caller recorded the whole error in /errors
 }
 
 // toastRows caps a toast's body: a long error or a stack trace would cover
@@ -702,12 +702,9 @@ func (a *App) pushToast(level, title, body string) {
 		ttl = 4 * time.Second
 	}
 	t := toast{level: level, title: title, body: body, expires: time.Now().Add(ttl)}
-	short, _, trace := strings.Cut(body, "stack traceback:")
+	short, _, _ := strings.Cut(body, "stack traceback:")
 	t.body = hostapi.ShortChunk(strings.TrimRight(short, " \t\n"))
-	if level == "error" && (trace || strings.Count(t.body, "\n") >= toastRows || len(t.body) > 150) {
-		a.host.RecordError(title, body)
-		t.recorded = true
-	}
+	t.recorded = level == "error" && a.host.Recorded(body)
 	// the same failure again (a second send with no model) restarts the
 	// toast instead of stacking a twin under it
 	if n := len(a.toasts); n > 0 && a.toasts[n-1].level == level && a.toasts[n-1].title == title && a.toasts[n-1].body == t.body {
@@ -1240,13 +1237,11 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 		rows = wrapText(t.body, "Normal", inner)
 	}
 	if len(rows) > toastRows {
-		room, more := inner, []hostapi.Segment(nil)
+		more := []hostapi.Segment{{Text: hostapi.MoreLines(len(rows) - toastRows + 1), HL: "Host:Hint"}}
 		if t.recorded {
-			room, more = inner-8, []hostapi.Segment{{Text: " /errors", HL: "Host:Hint"}}
+			more = append(more, hostapi.Segment{Text: " /errors", HL: "Host:Hint"})
 		}
-		// the cut row ends in "…" whether it was full or a short line
-		last := ellipsizeSegs(append(slices.Clip(rows[toastRows-1]), hostapi.Segment{Text: "…", HL: "Normal"}), room)
-		rows = append(rows[:toastRows-1], append(last, more...))
+		rows = append(rows[:toastRows-1], more)
 	}
 	return hostBoxW(t.title, level, "", rows, w, 60, 0)
 }

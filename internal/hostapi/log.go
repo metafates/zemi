@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -92,9 +91,9 @@ func (h *Host) messages() []msgEntry {
 // OpenMessages runs /messages: the recent print and zemi.log lines,
 // newest first.
 func (h *Host) OpenMessages() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI attached")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	var b strings.Builder
 	for _, e := range slices.Backward(h.messages()) {

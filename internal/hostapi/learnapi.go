@@ -41,14 +41,14 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 			if h.takeProposal(id) == nil {
 				return luaResult(L, fmt.Errorf("no such proposal %q", id))
 			}
-			h.Notify("info", "Suggestion dropped", "")
+			h.Notify("info", "Suggestion rejected", "")
 			return luaResult(L, nil)
 		}
 		p, err := h.acceptProposal(id, "")
 		if err != nil {
 			return luaResult(L, err)
 		}
-		h.Notify("info", map[bool]string{false: "Remembered", true: "Forgotten"}[p.Forget], p.Text)
+		h.Notify("info", map[bool]string{false: "Memory saved", true: "Memory forgotten"}[p.Forget], p.Text)
 		return luaResult(L, nil)
 	}))
 

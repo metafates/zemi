@@ -67,6 +67,9 @@ If a <previous-summary> is given, merge it: keep everything still relevant, move
 
 var errNoSummary = errors.New("compaction returned no usable summary")
 
+// errNothingToCompact is a history too short to summarize: a warn, never a failure.
+var errNothingToCompact = errors.New("nothing to compact yet")
+
 // compactThreshold is the context size that triggers compaction: room for
 // a reply plus slack, but never below half the window, so small windows are
 // not compacted every turn. 0 when the window is unknown.
@@ -172,11 +175,11 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 			ag.mu.Unlock()
 			if imageTooLarge(err) {
 				runner.DropImages("too large to send")
-				h.Notify("info", "Image left out", "an image was too large for "+model+"; going on without it")
+				h.Notify("info", "Image left out", "too large for "+model+"; the turn goes on without it")
 			} else {
 				runner.TextOnly = true
 				imagesRejected.Store(model, true)
-				h.Notify("info", "Images left out", model+" does not take images; going on without them (set images = false on its model entry)")
+				h.Notify("info", "Images left out", model+" takes no images; images = false on its model entry skips this")
 			}
 			continue
 		}
@@ -219,7 +222,8 @@ func (h *Host) CompactNow(focus string) error {
 		return errors.New("a turn is running; compact after it")
 	case runner == nil || len(runner.History) < 2:
 		ag.mu.Unlock()
-		return errors.New("nothing to compact yet")
+		h.Notify("warn", "Nothing to compact yet", "")
+		return nil
 	}
 	ag.active = true
 	ag.beginTurn()
@@ -245,9 +249,12 @@ func (h *Host) compactReporting(ctx context.Context, runner *agent.Runner, reaso
 	}
 	if !errors.Is(err, context.Canceled) {
 		h.Log.Warn("agent", "compaction failed", map[string]any{"error": err.Error(), "reason": reason})
-		if reason == compactManual {
+		switch {
+		case errors.Is(err, errNothingToCompact):
+			h.Notify("warn", "Nothing to compact yet", "")
+		case reason == compactManual:
 			h.Notify("error", "Could not compact", h.friendlyError(err))
-		} else {
+		default:
 			// the turn goes on, or ends on its own error
 			if cause := h.friendlyError(err); !h.compactFailed(cause) {
 				h.Notify("warn", "Could not compact", cause)
@@ -304,7 +311,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	}
 	head, tail := body[:start], body[start:]
 	if len(head) == 0 {
-		return errors.New("nothing to compact yet")
+		return errNothingToCompact
 	}
 	out, err := h.summarize(ctx, head, prev, focus, window)
 	switch {

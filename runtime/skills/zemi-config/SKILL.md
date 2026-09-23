@@ -220,7 +220,9 @@ prompt), `-c` continues the last session, `-r <id>` resumes one, `-m provider/mo
 A prompt starting with a registered command runs it instead of reaching the model, so
 `zemi -p "/review HEAD~1"` or a `commands/*.md` name works from a script or a git hook.
 `zemi --help` has the full list. With `-p` nobody answers asks, so an ask the mode does not
-settle is denied; a run that had calls denied says so on stderr.
+settle is denied; a run that had calls denied says so on stderr, as does every warning or
+error ("zemi: <title>: <body>"). A command that opens a screen fails there with "/<name>
+needs the TUI".
 
 ## Keymaps, commands, UI
 
@@ -386,10 +388,10 @@ The same `agents/`, `commands/` and `workflows/` directories work under
 from `.agents/` and `.claude/` at the repository root, so files written for another
 harness load unchanged; the nearest `.zemi` wins a name clash.
 
-It loads only in a project the user trusts. The first start in a repository asks once
+It loads only in a project the user trusts. The first start in a project asks once
 (`y` trust, `n` don't trust, both saved; `l` later, esc or ctrl+c: asked again next start;
 the cursor starts on Later, so enter alone trusts nothing),
-and `/trust` asks again any time. The decision covers the whole repository, its linked
+and `/trust` asks again any time. The decision covers the whole project (its repository), linked
 worktrees included, and later changes to `.zemi/` do not ask again. Project code
 cannot register providers, MCP or LSP servers, allow rules, permission modes,
 `tool.pre` rewrites, builtin tool names or `agent.assemble` sections, cannot set settings,

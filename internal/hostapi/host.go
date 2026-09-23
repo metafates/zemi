@@ -1,9 +1,11 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -148,6 +150,11 @@ type ChatMessage struct {
 
 var cutLines = regexp.MustCompile(`^\.\.\. \(lines (\d+)-(\d+) of \d+ cut\) \.\.\.$`)
 
+// MoreLines is the one wording of what a cut left out: "… 3 more lines".
+func MoreLines(n int) string {
+	return fmt.Sprintf("… %d more %s", n, plural(n, "line", "lines"))
+}
+
 // shortOutput keeps 10 lines of a tool result for the transcript row, each
 // capped at 300 runes and sanitized: the first three, which say what went
 // wrong, and the last six, with a row counting what fell out between them.
@@ -162,7 +169,7 @@ func shortOutput(s string) string {
 				n += b - a
 			}
 		}
-		cut := append([]string{fmt.Sprintf("… %d more lines", n)}, lines[len(lines)-6:]...)
+		cut := append([]string{MoreLines(n)}, lines[len(lines)-6:]...)
 		lines = append(lines[:3:3], cut...)
 	}
 	for i, l := range lines {
@@ -279,6 +286,8 @@ type Host struct {
 
 	// Version is the zemi build version for the splash screen.
 	Version string
+	// Stderr is where a run with no UI prints its warnings and errors.
+	Stderr io.Writer
 
 	composerMu     sync.Mutex
 	composerText   string
@@ -421,6 +430,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		Log:       log,
 		Settings:  settings,
 		Dirs:      dirs,
+		Stderr:    os.Stderr,
 		Keymaps:   NewKeymapRegistry(),
 		Commands:  NewCommandRegistry(),
 		Widgets:   NewWidgetRegistry(),
@@ -451,7 +461,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, h.trustRoot())
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
-		"zemi.ui.help": func(h *Host, _ string) error { h.OpenHelp(); return nil },
+		"zemi.ui.help": func(h *Host, _ string) error { return h.OpenHelp() },
 		"zemi.ui.reasoning.toggle": func(h *Host, _ string) error {
 			h.ToggleReasoning()
 			return nil
@@ -504,6 +514,14 @@ func (h *Host) hooks() UIHooks {
 	return h.ui
 }
 
+// Screen is the UI to open a screen on; headless it is ErrNeedsTUI.
+func (h *Host) Screen() (UIHooks, error) {
+	if ui := h.hooks(); ui != nil {
+		return ui, nil
+	}
+	return nil, ErrNeedsTUI
+}
+
 func (h *Host) SetUIHooks(ui UIHooks) {
 	h.uiMu.Lock()
 	h.ui = ui
@@ -544,11 +562,22 @@ func (h *Host) refresh() {
 	}
 }
 
+// Notify shows a toast; with no UI a warning or an error goes to Stderr
+// instead, so a headless run never swallows one.
 func (h *Host) Notify(level, title, body string) {
 	h.recordNotify(level, title, body)
 	if ui := h.hooks(); ui != nil {
 		ui.Notify(level, title, body)
+		return
 	}
+	if level != "warn" && level != "error" {
+		return
+	}
+	line := "zemi: " + cmp.Or(title, map[string]string{"warn": "Warning", "error": "Error"}[level])
+	if body = strings.TrimSpace(ShortChunk(body)); body != "" {
+		line += ": " + strings.ReplaceAll(body, "\n", "\n  ")
+	}
+	fmt.Fprintln(h.Stderr, line)
 }
 
 // scroll routes a zemi.ui.scroll.* action to the UI (no-op before the UI
@@ -617,10 +646,10 @@ var listKeys = [][2]string{
 
 // OpenHelp opens the help overlay listing keys and slash commands. A
 // command row runs it, unless it needs an argument, which it fills in.
-func (h *Host) OpenHelp() {
-	ui := h.hooks()
-	if ui == nil {
-		return
+func (h *Host) OpenHelp() error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	var items []any
 	for _, k := range goKeys {
@@ -650,6 +679,7 @@ func (h *Host) OpenHelp() {
 		items = append(items, item)
 	}
 	ui.OpenOverlay(Overlay{ID: "help", Title: "Help", Origin: lua.OriginBuiltin, Items: items, Verb: "run"})
+	return nil
 }
 
 func describeRHS(rhs RHS) string {
@@ -1202,7 +1232,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("trusted", glua.LBool(h.ProjectTrusted()))
 	tb.RawSetString("init_error", glua.LString(h.InitError()))
 	tb.RawSetString("init_path", glua.LString(h.initPath()))
-	tb.RawSetString("model_hint", glua.LString(h.noModelHint(true)))
+	tb.RawSetString("model_hint", glua.LString(h.noModelHint()))
 	tb.RawSetString("profile", glua.LString(stream.Profile))
 	tb.RawSetString("profile_read_only", glua.LBool(h.readOnly()))
 	tb.RawSetString("model", glua.LString(stream.Model))
@@ -1565,9 +1595,9 @@ func (h *Host) ReloadConfig() error {
 	if h.RT.Booting() {
 		return errors.New("config is still loading; a reload from config would repeat forever")
 	}
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("reload needs the TUI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	h.GoSafe("reload", func() {
 		// a reload cancels what the interpreter runs, which is the caller when

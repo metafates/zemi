@@ -11,7 +11,7 @@ below is a file you write with your file tools; show the user what you wrote and
 | Scope | Directory | Loads |
 | --- | --- | --- |
 | every project | the user config directory (the system prompt names it; usually `~/.config/zemi`) | at once for workflows and agents, when the files change for Lua and commands |
-| this repository | `<repo>/.zemi/` | only in a project the user trusts: a prompt at the first start there, or `/trust` |
+| this project | `<repo>/.zemi/` | only in a project the user trusts: a prompt at the first start there, or `/trust` |
 
 Always use the exact directories from the system prompt: `ZEMI_CONFIG_HOME` can move the
 user directory, and writing to a guessed `~/.config/zemi` changes the wrong config.

@@ -148,6 +148,7 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	if got := runs[0].transcript(); status != "done" || fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("status %s, transcript %+v", status, got)
 	}
+	h.SetUIHooks(&fakeUI{})
 	if err := h.ViewAgent(runs[0].id); err != nil || h.viewedRun() != runs[0] {
 		t.Fatalf("view: %v", err)
 	}

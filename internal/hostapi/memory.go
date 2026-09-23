@@ -132,7 +132,7 @@ func (h *Host) applyProposal(res *learn.Result) error {
 		ag.memAuto++
 	}
 	ag.mu.Unlock()
-	h.Notify("info", "Remembered", res.Memory.Text+redactNote(res.Scrubbed))
+	h.Notify("info", "Memory saved", res.Memory.Text+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -234,7 +234,7 @@ func (h *Host) Remember(text string) error {
 	if err := h.storeProposal(res); err != nil {
 		return err
 	}
-	h.Notify("info", "Remembered for this project"+redactNote(res.Scrubbed), "s in /memory makes it apply everywhere")
+	h.Notify("info", "Memory saved for this project", "s in /memory makes it apply everywhere"+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -244,10 +244,14 @@ func (h *Host) memoryCommand(args string) error {
 	fields := strings.Fields(args)
 	switch {
 	case len(fields) == 0:
+		ui, err := h.Screen()
+		if err != nil {
+			return err
+		}
 		if h.memReview.TryLock() {
 			h.GoSafe("memory review", func() {
 				defer h.memReview.Unlock()
-				h.openMemoryReview()
+				h.openMemoryReview(ui)
 			})
 			return nil
 		}
@@ -271,12 +275,7 @@ func (h *Host) memoryCommand(args string) error {
 // memories removed from their scope's DB. A row marked for editing opens
 // in the user's editor after the other decisions apply, then the screen
 // opens again.
-func (h *Host) openMemoryReview() {
-	ui := h.hooks()
-	if ui == nil {
-		h.Notify("warn", "Memory review unavailable", "")
-		return
-	}
+func (h *Host) openMemoryReview(ui UIHooks) {
 	for h.reviewMemoriesOnce(ui) {
 	}
 }
@@ -312,7 +311,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 			}
 		case old.Queued && r.Action == "accept":
 			if _, err := h.acceptProposal(r.ID, r.Scope); err != nil {
-				h.Notify("warn", "Not accepted", err.Error())
+				h.Notify("warn", "Could not accept a memory", err.Error())
 				continue
 			}
 			accepted++
@@ -332,7 +331,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 			if err := h.addProposal(*p); err != nil {
 				h.Log.Warn("memory", "move rollback failed", map[string]any{"id": r.ID, "error": err.Error()})
 			}
-			h.Notify("warn", "Not moved", "the "+r.Scope+" scope already has that text")
+			h.Notify("warn", "Could not move a memory", "the "+r.Scope+" scope already has that text")
 		case old.Queued:
 		case r.Action == "delete":
 			if db := h.memoryDB(old.Scope); db != nil && db.DeleteMemory(r.ID) == nil {
@@ -340,7 +339,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 			}
 		case r.Scope != old.Scope:
 			if err := h.moveMemory(r.ID, old.Scope, r.Scope); err != nil {
-				h.Notify("warn", "Not moved", err.Error())
+				h.Notify("warn", "Could not move a memory", err.Error())
 				continue
 			}
 			moved++
@@ -399,7 +398,7 @@ func (h *Host) editMemory(ui UIHooks, id string) {
 	}()
 	switch {
 	case err != nil:
-		h.Notify("warn", "Memory not changed", err.Error())
+		h.Notify("error", "Could not edit the memory", err.Error())
 	case scrubbed:
 		h.Notify("info", "Memory updated", "secrets redacted")
 	}

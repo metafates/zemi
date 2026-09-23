@@ -198,7 +198,7 @@ func (a *App) runSlashCommand(text string) {
 	name, args := splitCommand(raw)
 	cmd := a.host.Commands.Lookup(name)
 	if cmd == nil {
-		a.pushToast("warn", "Not a command", "/"+name)
+		a.pushToast("warn", "Unknown command", "/"+name+"; /help lists them")
 		return
 	}
 	a.clearComposer()

@@ -173,9 +173,7 @@ func TestHealthProvidersRow(t *testing.T) {
 		missing       []agent.MissingKey
 		level, detail string
 	}{
-		{"nothing", ``, nil, "warn", "none usable: add a provider in "},
-		{"key missing", ``, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "warn", "none usable: export X_API_KEY, or add a provider in "},
-		{"deleted", `zemi.provider.del("x")`, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "warn", "none usable: add a provider in "},
+		{"key missing", ``, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "warn", "none usable"},
 		{"registered", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })`, []agent.MissingKey{{ID: "x", Env: "X_API_KEY"}}, "ok", "a; 1 builtin without a key exported"},
 		{"keyless", `zemi.provider.add({ id = "d", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })`, nil, "ok", "d (no key)"},
 	} {
@@ -198,8 +196,8 @@ func TestHealthProvidersRow(t *testing.T) {
 // same words, before any provider SDK gets to complain in its own.
 func TestHealthModelRow(t *testing.T) {
 	for _, c := range []struct{ name, lua, level, detail string }{
-		{"none", ``, "error", "no model yet: export OPENAI_API_KEY or init.lua, more in /model"},
-		{"unknown provider", `zemi.config.set("models.main", "nobody/m")`, "error", `provider "nobody" is not registered: add a provider in `},
+		{"none", ``, "error", "no model yet: export OPENAI_API_KEY or add a provider to init.lua"},
+		{"unknown provider", `zemi.config.set("models.main", "nobody/m")`, "error", `provider "nobody" is not registered: add a provider to `},
 		{"builtin without key", `zemi.config.set("models.main", "openai/gpt-5")`, "error", `builtin provider "openai" needs its key: export OPENAI_API_KEY`},
 		{"empty key", `zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "m" } } })`, "error", "a: api_key is empty in "},
 		{"unlisted model", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })

@@ -215,10 +215,10 @@ type Pipeline struct {
 	// Sandboxed is this run's policy, set on the per-run copy once the gate
 	// settled a command by mode; nil = unconfined.
 	Sandboxed *sandbox.Policy
-	// Protected reports a write to .git, a .zemi or zemi's own dirs: a rule
-	// allow for it still asks, since broad "always" globs cannot exclude
-	// every such path; nil = none.
-	Protected func(path string) bool
+	// Protected says why a write to .git, a .zemi or zemi's own dirs is
+	// protected, "" for any other: a rule allow for it still asks, since
+	// broad "always" globs cannot exclude every such path; nil = none.
+	Protected func(path string) string
 	// Secret reports a secret-shaped path (.env, *.pem, id_rsa): an
 	// "always" answer allows a whole directory, and its label does not say
 	// "including every secret in it"; nil = none.
@@ -283,8 +283,8 @@ func (p *Pipeline) Check(req Request) Verdict {
 		case v.Decision != perm.Allow:
 		case p.RewriteLoosened:
 			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
-		case req.Subject == "fs.write" && p.Protected != nil && p.Protected(req.Arg):
-			return p.resolveAsk(req, "this changes what git or zemi runs (.git, .gitattributes, .gitmodules, .zemi, zemi's own files)")
+		case req.Subject == "fs.write" && p.Protected != nil && p.Protected(req.Arg) != "":
+			return p.resolveAsk(req, p.Protected(req.Arg))
 		// an "always" answer allows the file's whole directory, or names the
 		// one secret the user saw; a rule the user wrote in init.lua says
 		// what it means and stays authoritative

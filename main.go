@@ -153,7 +153,7 @@ func run(args []string) int {
 		if err := host.ForceReload(ctx, steps); err != nil {
 			log.Error("reload", "force reload failed", map[string]any{"error": err.Error()})
 			host.RecordError("reload", err.Error())
-			app.Notify("error", "Reload failed", err.Error())
+			app.Notify("error", "Could not reload the config", err.Error())
 			return
 		}
 		app.SignalBoot(nil)
@@ -186,11 +186,11 @@ func run(args []string) int {
 		// failure: the TUI is still usable.
 		if err := applyOptions(host, opts); err != nil {
 			host.RecordError("flag", err.Error())
-			app.Notify("error", "A flag did not apply", err.Error())
+			app.Notify("error", "Could not apply a flag", err.Error())
 		}
 		if opts.prompt != "" {
 			if err := sendPrompt(host, opts.prompt); err != nil {
-				app.Notify("error", "Could not send the prompt", err.Error())
+				app.Notify("error", "Could not send", err.Error())
 			}
 		}
 	}()
@@ -282,8 +282,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			return nil
 		}},
 		{Name: "help", Desc: "list keys and commands", GoFn: func(h *hostapi.Host, args string) error {
-			h.OpenHelp()
-			return nil
+			return h.OpenHelp()
 		}},
 		{Name: "new", Desc: "start a new session", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.NewSession()
@@ -307,7 +306,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				if n == 1 {
 					files = "file"
 				}
-				h.Notify("info", "Rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
+				h.Notify("info", "Session rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
 			}
 			return err
 		}},
@@ -318,7 +317,8 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				if cur == "" {
 					cur = "default"
 				}
-				return fmt.Errorf("reasoning effort is %s (want low, medium, high or default)", cur)
+				h.Notify("info", "Reasoning effort is "+cur, "/effort low, medium, high or default sets it")
+				return nil
 			case "default":
 				args = ""
 			case "low", "medium", "high":
@@ -343,13 +343,13 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "messages", Desc: "show recent print and zemi.log lines", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.OpenMessages()
 		}},
-		{Name: "init", Desc: "write AGENTS.md for this repository", GoFn: func(h *hostapi.Host, _ string) error {
+		{Name: "init", Desc: "write AGENTS.md for this project", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.InitProject()
 		}},
 		{Name: "export", Hidden: true, NArgs: "?", Desc: "save this session as markdown", GoFn: func(h *hostapi.Host, args string) error {
 			path, err := h.ExportSession(strings.TrimSpace(args))
 			if err == nil {
-				h.Notify("info", "Exported", "wrote "+path)
+				h.Notify("info", "Session exported", "saved to "+path)
 			}
 			return err
 		}},
@@ -368,7 +368,10 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "errors", NArgs: "*", Desc: "show errors zemi recorded", GoFn: func(h *hostapi.Host, args string) error {
 			return h.OpenErrors(args)
 		}},
-		{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(*hostapi.Host, string) error {
+		{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(h *hostapi.Host, _ string) error {
+			if _, err := h.Screen(); err != nil {
+				return fmt.Errorf("%w; --trust trusts the project for one run", err)
+			}
 			trust()
 			return nil
 		}},
@@ -531,7 +534,7 @@ func (tg *trustGate) command(reload func()) func() {
 			tg.h.ReleaseTrust()
 			ok, err := tg.record(root, answer)
 			if err != nil {
-				tg.h.Notify("error", "Could not save trust", err.Error())
+				tg.h.Notify("error", "Could not save the trust decision", err.Error())
 			}
 			// set before the reload: a boot that fails before the trust step
 			// must not leave the old decision in force

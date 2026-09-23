@@ -314,6 +314,43 @@ func TestSendPromptRunsCommands(t *testing.T) {
 	}
 }
 
+// TestHeadlessNotices: with no UI a warning or an error reaches stderr, the
+// -m warning included, info stays quiet, and a command that opens a screen
+// names itself.
+func TestHeadlessNotices(t *testing.T) {
+	_, h, r := newTrustGate(t)
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ExecuteChunk(context.Background(), `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })`, "init.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Commands.Add(&hostapi.Command{Name: "screen", Desc: "d", Origin: lua.OriginUser,
+		GoFn: func(h *hostapi.Host, _ string) error { _, err := h.Screen(); return err }}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, want string
+		do         func() error
+	}{
+		{"-m unlisted", "zemi: Model not in the provider's list: a/unlisted: the provider decides whether it exists\n", func() error { return applyOptions(h, options{model: "a/unlisted"}) }},
+		{"info", "", func() error { h.Notify("info", "Copied", "3 chars"); return nil }},
+		{"untitled error", "zemi: Error: first\n  second\n", func() error { h.Notify("error", "", "first\nsecond"); return nil }},
+		{"screen command", "", func() error {
+			if err := sendPrompt(h, "/screen"); err == nil || err.Error() != "/screen needs the TUI" {
+				return fmt.Errorf("got %v", err)
+			}
+			return nil
+		}},
+	} {
+		var out strings.Builder
+		h.Stderr = &out
+		if err := c.do(); err != nil || out.String() != c.want {
+			t.Errorf("%s: err %v, stderr %q", c.name, err, out.String())
+		}
+	}
+}
+
 // TestModelFlagUnderProfile: -m is refused when --profile names a profile
 // with its own model, since the run would measure the profile's.
 func TestModelFlagUnderProfile(t *testing.T) {

@@ -82,9 +82,9 @@ func modeIndex(list []PermModeDef, name string) int {
 
 // OpenModePicker lists the modes with what they mean; enter switches.
 func (h *Host) OpenModePicker() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	cur, sel := h.PermMode(), 0
 	var items []any
@@ -105,9 +105,9 @@ func (h *Host) OpenModePicker() error {
 // removable; config rules come back on the next reload, so they show
 // read-only.
 func (h *Host) OpenPermissions() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	ui.OpenOverlay(Overlay{
 		ID: "permissions", Title: "Permissions", Origin: lua.OriginBuiltin,
@@ -446,6 +446,25 @@ func (h *Host) protectedWrite(p string) bool {
 		gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git")))
 }
 
+// protectedWhy names the one protected thing a write changes, "" when
+// protectedWrite does not hold.
+func (h *Host) protectedWhy(p string) string {
+	if !h.protectedWrite(p) {
+		return ""
+	}
+	d, base := h.Dirs, filepath.Base(p)
+	name, runs := ".git", "git"
+	switch {
+	case inDirNamed(p, ".zemi"):
+		name, runs = ".zemi", "zemi"
+	case strings.EqualFold(base, ".gitattributes"), strings.EqualFold(base, ".gitmodules"):
+		name = base
+	case h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome):
+		return "this changes zemi's own files"
+	}
+	return "this changes " + name + ", which decides what " + runs + " runs"
+}
+
 // unsettled says why auto mode leaves a bash command to the user, or ""
 // when it runs. In a trusted project with a sandbox every command runs,
 // confined (Pipeline.SandboxFor), but the few that delete in bulk; a
@@ -485,7 +504,7 @@ func (h *Host) unsettled(cmd string, readOnly bool) string {
 				a = filepath.Join(h.Dirs.ProjectDir, a)
 			}
 			if _, err := os.Lstat(a); err == nil && perm.PathIsSecret(a) {
-				return a + " is secret-shaped and this sandbox cannot hide it"
+				return filepath.Base(a) + " looks like it holds secrets, and this sandbox cannot hide it"
 			}
 		}
 	}

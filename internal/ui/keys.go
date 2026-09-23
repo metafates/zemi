@@ -445,7 +445,7 @@ func (a *App) runRHS(b *hostapi.KeyBinding) {
 		default:
 			a.host.RecordError("keymap "+b.Key, err.Error())
 			a.host.Log.Error("ui", "keymap rhs failed", map[string]any{"keys": b.Key, "error": err.Error()})
-			a.Notify("error", "Keymap "+b.Key+" failed", err.Error())
+			a.Notify("error", "Could not run "+b.Key, err.Error())
 		}
 	})
 }
@@ -477,7 +477,7 @@ func (a *App) background(fn func()) {
 	select {
 	case a.work <- fn:
 	default:
-		a.pushToast("warn", "Busy", "still running an earlier key or command")
+		a.pushToast("warn", "Key dropped", "an earlier key or command is still running")
 	}
 }
 
@@ -487,13 +487,15 @@ func (a *App) runCommand(name, args string) {
 	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn == nil {
 		a.background(func() {
 			if err := a.host.RunCommand(context.Background(), name, args); err != nil {
-				a.Notify("error", "/"+name+" failed", err.Error())
+				a.host.RecordError("command "+name, err.Error())
+				a.Notify("error", "Could not run /"+name, err.Error())
 			}
 		})
 		return
 	}
+	// a Go command's error is how it was asked: a bad argument or nothing to act on
 	if err := a.host.RunCommand(context.Background(), name, args); err != nil {
-		a.pushToast("error", "/"+name+" failed", err.Error())
+		a.pushToast("warn", "Could not run /"+name, err.Error())
 	}
 }
 

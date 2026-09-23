@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -119,7 +120,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 			}
 			h.GoSafe("command "+name, func() {
 				if err := cmd.GoFn(h, args); err != nil {
-					h.Notify("error", "/"+name+" failed", err.Error())
+					h.Notify("warn", "Could not run /"+name, err.Error())
 				}
 			})
 			return luaResult(L, nil)
@@ -220,7 +221,11 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 		return fmt.Errorf("not a command: %s", name)
 	}
 	if cmd.GoFn != nil {
-		return cmd.GoFn(h, argString)
+		err := cmd.GoFn(h, argString)
+		if errors.Is(err, ErrNeedsTUI) {
+			err = fmt.Errorf("/%s %w", name, err)
+		}
+		return err
 	}
 	return h.runLuaCommand(ctx, cmd, argString)
 }

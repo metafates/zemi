@@ -367,7 +367,7 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 		// head as a notice row where the model reads it (appendUserRows), so
 		// it never lands above the rows of the turn it arrives in
 		if err := h.AgentSend(attachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", run.id, def.Name, status, description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"); err != nil {
-			h.Notify("error", "Background agent "+run.id+" failed", err.Error())
+			h.Notify("error", "Could not send the report of "+run.id, h.friendlyError(err))
 		}
 	})
 	return run.id, nil
@@ -380,7 +380,8 @@ func reportHead(id, agent, status string) string {
 
 // notifyReport tells the user of a report no conversation will read.
 func (h *Host) notifyReport(id, agent, status, description, report string) {
-	h.Notify("info", reportHead(id, agent, status), description+"\n"+truncRunes(report, 300))
+	level := map[bool]string{true: "info", false: "warn"}[status == "finished"]
+	h.Notify(level, reportHead(id, agent, status), description+"\n"+truncRunes(strings.TrimPrefix(report, "the agent failed: "), 300))
 }
 
 var reportBody = regexp.MustCompile(`(?s)<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")>\n(.*?)\n</agent-report>`)
@@ -435,6 +436,9 @@ func (h *Host) ViewedAgent() string {
 // "" shows the session again. A run this process no longer holds (an
 // earlier zemi, or evicted) is read from its child session.
 func (h *Host) ViewAgent(id string) error {
+	if _, err := h.Screen(); err != nil {
+		return err
+	}
 	if id != "" {
 		run := h.tasks.find(id)
 		if run == nil {

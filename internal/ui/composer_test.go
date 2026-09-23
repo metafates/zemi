@@ -174,7 +174,7 @@ func TestComposerHiddenRows(t *testing.T) {
 	app.composer.text = strings.Repeat("line\n", 9) + "end"
 	app.composer.cursor = len(app.composer.text)
 	rows := app.composerRows(40)
-	if len(rows) != composerMaxRows+1 || plainSegs(rows[len(rows)-1]) != "  +2 lines" {
+	if len(rows) != composerMaxRows+1 || plainSegs(rows[len(rows)-1]) != "  … 2 more lines" {
 		t.Fatalf("rows %d, last %q", len(rows), plainSegs(rows[len(rows)-1]))
 	}
 }

@@ -561,8 +561,8 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 		switch {
 		case err == nil, errors.Is(err, lua.ErrHot), errors.Is(err, lua.ErrReloaded):
 		default:
-			a.host.RecordError("click on widget "+s.Widget, err.Error())
-			a.Notify("error", "Click on "+s.Widget+" failed", err.Error())
+			a.host.RecordError("click "+s.Widget, err.Error())
+			a.Notify("error", "Could not handle the click on "+s.Widget, err.Error())
 		}
 	})
 }

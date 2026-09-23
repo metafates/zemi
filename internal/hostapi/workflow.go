@@ -699,9 +699,9 @@ func (h *Host) workflowCommands() []*Command {
 }
 
 func (h *Host) openWorkflows() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	var items []any
 	for _, w := range h.workflows() {

@@ -225,26 +225,24 @@ func TestProfileSegment(t *testing.T) {
 	}
 }
 
-// TestToastCap: a long error keeps a few rows, drops its stack trace and
-// sends the reader to /errors, where the whole text was recorded.
+// TestToastCap: a long error keeps a few rows, drops its stack trace, says
+// how much it cut and sends the reader to /errors when its caller recorded
+// it there; a toast records nothing itself.
 func TestToastCap(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	home, _ := os.UserHomeDir()
 	body := "@user:" + home + "/.config/zemi/init.lua:10: " + strings.Repeat("something went wrong ", 12) + "\nstack traceback:\n\t[G]: in function 'error'"
-	app.pushToast("error", "Keymap ctrl+t failed", body)
+	host.RecordError("keymap ctrl+t", body)
+	app.pushToast("error", "Could not run ctrl+t", body)
 	var rows []string
 	for _, r := range toastBox(app.toasts[0], 80) {
 		rows = append(rows, strings.TrimSpace(plainSegs(r)))
 	}
-	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Keymap ctrl+t failed ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasSuffix(rows[toastRows], "went… /errors │") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
+	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Could not run ctrl+t ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasPrefix(rows[toastRows], "│ … 4 more lines /errors ") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
 		t.Fatalf("toast rows: %q", rows)
 	}
-	if !host.HasUnseenErrors() {
-		t.Fatal("the long error was not recorded")
-	}
-	// a short last line gets the "…" too, and never merges with the next
 	app.pushToast("warn", "", "line one\nline two\nline three\nline four\nline five")
-	if r := plainSegs(toastBox(app.toasts[1], 80)[toastRows]); !strings.Contains(r, "│ line three… ") {
+	if r := plainSegs(toastBox(app.toasts[1], 80)[toastRows]); !strings.HasPrefix(strings.TrimSpace(r), "│ … 3 more lines ") || strings.Contains(r, "/errors") {
 		t.Fatalf("multi-line cut: %q", r)
 	}
 	// an untitled failure still says it is one

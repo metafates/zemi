@@ -210,7 +210,7 @@ func (h *Host) goHealthRows() []healthCheck {
 		}
 	}
 	if len(names) == 0 {
-		add("warn", "providers", "none usable: "+h.noModelHint(false))
+		add("warn", "providers", "none usable")
 	} else if n := len(h.Providers.Missing()); n > 0 {
 		add("ok", "providers", fmt.Sprintf("%s; %d builtin without a key exported", strings.Join(names, ", "), n))
 	} else {
@@ -273,7 +273,7 @@ func (h *Host) goHealthRows() []healthCheck {
 		add("warn", "learning", fmt.Sprintf("%d %s to review in /memory", mem, plural(int(mem), "suggestion", "suggestions")))
 		out[len(out)-1].run = "memory"
 	} else {
-		add("ok", "learning", "nothing waiting for review")
+		add("ok", "learning", "nothing to review")
 	}
 
 	// the project's own skills are always on and never in the registry, so
@@ -419,14 +419,6 @@ func unlistedDetail(id string) string {
 	return id + ": not in the provider's models list; the provider decides whether it exists"
 }
 
-// ModelWarning is the model row's detail when it is not ok, "" when it is.
-func (h *Host) ModelWarning() string {
-	if row := h.modelRow(); row.level != "ok" {
-		return row.detail
-	}
-	return ""
-}
-
 func (h *Host) healthChecks() []healthCheck {
 	return append(h.goHealthRows(), h.luaHealthRows()...)
 }
@@ -449,9 +441,9 @@ var healthActions = map[string]string{"errors": "Show errors", "trust": "Change 
 
 // OpenHealth shows the checks in the list overlay.
 func (h *Host) OpenHealth() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI attached")
+	ui, err := h.Screen()
+	if err != nil {
+		return fmt.Errorf("%w; --health prints the checks", err)
 	}
 	// A Go command runs on the key loop, and the checks do file IO and call
 	// Lua under the veto deadline: collect them off it, then open.

@@ -245,7 +245,7 @@ func TestPromptCommandShowsTheText(t *testing.T) {
 	reflectStub(t, h, "")
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if err := h.OpenPrompt(); err == nil || len(ui.opened) != 0 {
+	if err := h.OpenPrompt(); err != nil || len(ui.opened) != 0 || h.evlog.notes[len(h.evlog.notes)-1].title != "Nothing to show yet" {
 		t.Fatalf("before the first send: %v %+v", err, ui.opened)
 	}
 	if _, err := h.ensureRunner(nil); err != nil {

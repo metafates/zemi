@@ -109,7 +109,7 @@ func (h *Host) askHook() tools.Asker {
 			}
 			switch {
 			case req.Subject == "fs.write" && h.protectedWrite(req.Arg):
-				note("this changes what git or zemi runs (.git, .gitattributes, .gitmodules, .zemi, zemi's own files)")
+				note(h.protectedWhy(req.Arg))
 			case tools.PathSubject(req.Subject) && h.secretPath(req.Arg):
 				note("this file looks like it holds secrets")
 			case strings.HasPrefix(req.Subject, "net."):

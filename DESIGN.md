@@ -1154,7 +1154,7 @@ provenance string.
 ## 8. UI core detail
 
 - **Layout**: header (no default widget; the region stays for Lua), chat
-  (flex), then the composer (1..8 rows plus a "+n lines" row) inside a
+  (flex), then the composer (1..8 rows plus a "… n more lines" row) inside a
   square frame two rows taller, whose rules carry regions: the `working`
   one on top, which gets the whole rule between the corners (the shipped
   `working` widget: the snail mascot fixed in the left corner on a plain
@@ -2045,9 +2045,13 @@ the host-only proposal channel (§10.3), the user-only config.set and allow rule
 - Every Go->Lua boundary is a `pcall`; errors are logged and show as a
   statusline flag; a `/errors` overlay lists recent handler failures with
   file:line (from Lua `debug.traceback`). A failed reflector run is
-  recorded there instead of toasting. Toasts show at most three body rows
-  and never a stack trace; an error toast cut short is recorded whole in
-  `/errors` and says so.
+  recorded there instead of toasting. Lua code and runtime failures are
+  recorded by their callers under a slug source (`command boom`, `keymap
+  ctrl+t`); a Go command's bad argument is a warn toast only. Toasts show
+  at most three body rows and never a stack trace; a cut body ends in
+  "… N more lines", and "/errors" after it when the error is recorded
+  there. With no UI a warning or an error prints to stderr as
+  "zemi: <title>: <body>".
 - Registration conflicts (duplicate widget id, keymap collision) warn at
   load with origin path, last-writer-wins within one origin, like nvim's
   plugin loading noise but structured. Cross-origin id collisions are

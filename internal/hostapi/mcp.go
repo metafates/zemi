@@ -124,7 +124,7 @@ func (h *Host) startMCP(s *mcpServer) {
 		if errors.Is(err, mcp.ErrAuthRequired) {
 			s.status, s.err = "needs sign-in", ""
 			s.mu.Unlock()
-			h.Notify("info", s.name+" needs sign-in", "open /mcp")
+			h.Notify("warn", s.name+" needs sign-in", "open /mcp")
 			h.refresh()
 			return
 		}
@@ -583,7 +583,7 @@ func (h *Host) mcpCommands() []*Command {
 				if err := h.restartMCP(name); err != nil {
 					return err
 				}
-				h.Notify("info", "Restarting "+name, "")
+				h.Notify("info", name+" is restarting", "")
 				return nil
 			case "sign-in":
 				return h.signInMCP(strings.TrimSpace(name))
@@ -611,9 +611,9 @@ func (h *Host) restartMCP(name string) error {
 }
 
 func (h *Host) openMCP() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	var items []any
 	for _, s := range h.mcp.list() {
@@ -640,7 +640,7 @@ func (h *Host) openMCP() error {
 			detail += "\nerror: " + strings.TrimPrefix(errText, "mcp: ")
 		}
 		if len(tools) > 20 {
-			tools = append(tools[:20], "...")
+			tools = append(tools[:20], "…")
 		}
 		if len(tools) > 0 {
 			detail += "\ntools: " + strings.Join(tools, ", ")
@@ -703,13 +703,14 @@ func (h *Host) signInMCP(name string) error {
 			s.mu.Lock()
 			s.signIn = u
 			s.mu.Unlock()
-			h.Notify("info", "Sign in to "+name, "finish in your browser, or open /mcp for the link")
+			h.Notify("info", "Browser opened", "sign in to "+name+" there, or open /mcp for the link")
 			h.openBrowser(u)
 		})
 		s.mu.Lock()
 		s.signIn = ""
 		s.mu.Unlock()
 		if err != nil {
+			h.RecordError("mcp "+name, err.Error())
 			h.Notify("error", "Could not sign in to "+name, err.Error())
 			return
 		}

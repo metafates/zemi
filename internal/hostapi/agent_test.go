@@ -1283,7 +1283,7 @@ func TestModelPickerOdd(t *testing.T) {
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	h.Providers.Reset(agent.Catalog{Missing: []agent.MissingKey{{ID: "deepseek", Env: "DEEPSEEK_API_KEY"}}})
-	if h.ModelWarning() == "" || h.OpenModelPicker() != nil {
+	if h.modelRow().level == "ok" || h.OpenModelPicker() != nil {
 		t.Fatal("no model: no warning or the picker did not open")
 	}
 	// an id naming the keyless builtin gets the same listing, not a "current" row
@@ -1307,7 +1307,7 @@ func TestModelPickerOdd(t *testing.T) {
 	if o.Selected != 0 || len(o.Items) != 2 || row["text"] != "a/typo" || row["run"] != "model a/typo" || row["key"] != "current, not in the list" {
 		t.Fatalf("unlisted id: %+v", o.Items)
 	}
-	if w := h.ModelWarning(); !strings.HasPrefix(w, "a/typo: not in the provider's models list") {
+	if w := h.modelRow().detail; !strings.HasPrefix(w, "a/typo: not in the provider's models list") {
 		t.Fatalf("warning %q", w)
 	}
 }
@@ -1330,14 +1330,14 @@ func TestProfileSwitch(t *testing.T) {
 	}{
 		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, planner, cheap"},
 		{"model under default", func() error { return h.SetModel("a/cheap") }, ""},
-		{"unregistered provider", func() error { return h.SetModel("nope/m") }, `provider "nope" is not registered: add a provider in `},
+		{"unregistered provider", func() error { return h.SetModel("nope/m") }, `provider "nope" is not registered: add a provider to `},
 		{"unlisted model under a registered provider is taken and warned about, mid-turn too", func() error {
 			h.agents.active, h.agents.turnModel = true, "a/main"
 			defer func() { h.agents.active, h.agents.turnModel = false, "" }()
 			if err := h.SetModel("a/nope"); err != nil {
 				return err
 			}
-			runUser(t, r, `local n = zemi.notify.list()[1]; assert(n.title == "Model" and n.body:match("^a/nope: not in the provider's models list"), tostring(n and n.body))`)
+			runUser(t, r, `local n = zemi.notify.list()[1]; assert(n.title == "Model not in the provider's list" and n.body:match("^a/nope: the provider decides"), tostring(n and n.body))`)
 			return nil
 		}, ""},
 		{"switch", func() error { return h.SetProfile("cheap") }, ""},

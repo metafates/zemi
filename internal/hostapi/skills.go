@@ -372,15 +372,14 @@ func (h *Host) skillsCommand(args string) error {
 	fields := strings.Fields(args)
 	switch {
 	case len(fields) == 0:
-		h.openSkills()
-		return nil
+		return h.openSkills()
 	case len(fields) >= 2 && fields[0] == "use":
 		return h.useSkill(fields[1], strings.Join(fields[2:], " "))
 	case len(fields) == 2 && (fields[0] == "enable" || fields[0] == "disable"):
 		if err := h.setSkillEnabled(fields[1], fields[0] == "enable"); err != nil {
 			return err
 		}
-		h.Notify("info", "Skills", fields[0]+"d "+fields[1])
+		h.Notify("info", "Skill "+fields[0]+"d", fields[1])
 		return nil
 	case len(fields) == 2 && fields[0] == "toggle": // the /skills list, whose marks show the state
 		return h.setSkillEnabled(fields[1], !h.skillsReg.isEnabled(fields[1]))
@@ -405,7 +404,7 @@ func (h *Host) deleteRecipe(name string) error {
 			return err
 		}
 		h.pinRecipes()
-		h.Notify("info", "Skills", "deleted "+name)
+		h.Notify("info", "Recipe deleted", name)
 		return nil
 	}
 	return fmt.Errorf("no recipe %q: only a recipe can be deleted here", name)
@@ -414,9 +413,9 @@ func (h *Host) deleteRecipe(name string) error {
 // openSkillFile opens a skill's SKILL.md in the user's editor, so its
 // instructions can be read and fixed before it is enabled.
 func (h *Host) openSkillFile(name string) error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 		if s.Name != name {
@@ -426,7 +425,7 @@ func (h *Host) openSkillFile(name string) error {
 		// the editor blocks and a Go command runs on the key loop
 		h.GoSafe("skills open", func() {
 			if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: "the skill"}); err != nil {
-				h.Notify("warn", "Skill not opened", err.Error())
+				h.Notify("error", "Could not open the skill", err.Error())
 			}
 		})
 		return nil
@@ -469,12 +468,15 @@ func skillMessage(s skills.Skill, request string) (string, error) {
 // openSkills lists discovered skills with their state; space toggles the
 // selected one through the same enable/disable path as the command and the
 // list stays open, enter opens its detail.
-func (h *Host) openSkills() {
-	if ui := h.hooks(); ui != nil {
-		ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true,
-			Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
-			Empty:  "No skills found. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + "."})
+func (h *Host) openSkills() error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
+	ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true,
+		Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
+		Empty:  "No skills found. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + "."})
+	return nil
 }
 
 // sourceSection names a list section after where its rows come from.

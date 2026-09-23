@@ -44,7 +44,8 @@ func (h *Host) ResumeSession(id string) error {
 			return err
 		}
 		if len(list) == 0 {
-			return errors.New("no sessions to resume")
+			h.Notify("warn", "Nothing to resume", "no sessions in this project yet")
+			return nil
 		}
 		id = list[0].ID
 	}
@@ -52,6 +53,9 @@ func (h *Host) ResumeSession(id string) error {
 		return nil
 	}
 	sess, err := h.DB.GetSession(id)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("no session %q; /sessions lists them", id)
+	}
 	if err != nil {
 		return fmt.Errorf("session %s: %w", id, err)
 	}
@@ -94,8 +98,11 @@ func (h *Host) ResumeSession(id string) error {
 
 // OpenSessions lists recent sessions; enter on a row resumes it.
 func (h *Host) OpenSessions() error {
-	ui := h.hooks()
-	if h.DB == nil || ui == nil {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	if h.DB == nil {
 		return errors.New("session store unavailable")
 	}
 	list, err := h.DB.ListSessions(50)

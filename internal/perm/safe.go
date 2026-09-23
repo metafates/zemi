@@ -939,7 +939,7 @@ func destructive(cmd string, repeated bool) string {
 			default:
 				continue
 			}
-			return strings.Join(f, " ") + " may delete many files"
+			return "this may delete many files"
 		}
 	}
 	return ""

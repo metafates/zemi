@@ -35,29 +35,15 @@ var ErrNoModel = errors.New("no model yet")
 
 func (h *Host) initPath() string { return TildePath(filepath.Join(h.Dirs.ConfigHome, "init.lua")) }
 
-func (h *Host) addProvider() string { return "add a provider in " + h.initPath() }
+func (h *Host) addProvider() string { return "add a provider to " + h.initPath() }
 
-// noModelHint says how to get a model: the keys to export when builtin
-// providers wait for one (the first three in catalog order, anthropic and
-// openai first), else init.lua. The short form fits the splash's model row
-// (52 cells) and a toast: the first key and where the rest are.
-func (h *Host) noModelHint(short bool) string {
-	missing := h.Providers.Missing()
-	if len(missing) == 0 {
-		return h.addProvider()
+// noModelHint is the one sentence that says how to get a model: the first
+// builtin provider's key to export, or where to add a provider.
+func (h *Host) noModelHint() string {
+	if missing := h.Providers.Missing(); len(missing) > 0 {
+		return "export " + missing[0].Env + " or add a provider to init.lua"
 	}
-	if short {
-		return "export " + missing[0].Env + " or init.lua, more in /model"
-	}
-	var names []string
-	for _, m := range missing[:min(3, len(missing))] {
-		names = append(names, m.Env)
-	}
-	hint := "export " + strings.Join(names, ", ")
-	if len(missing) > len(names) {
-		hint += fmt.Sprintf(" (or another of the %d builtin providers' keys, /model lists them)", len(missing))
-	}
-	return hint + ", or " + h.addProvider()
+	return h.addProvider()
 }
 
 // modelErr says why id cannot run, before a provider is built: an SDK
@@ -65,7 +51,11 @@ func (h *Host) noModelHint(short bool) string {
 // and a failed send share it.
 func (h *Host) modelErr(id string) error {
 	if id == "" {
-		return fmt.Errorf("%w: %s", ErrNoModel, h.noModelHint(true))
+		hint := h.noModelHint()
+		if len(h.Providers.Missing()) > 1 && h.hooks() != nil {
+			hint += "; /model lists every key"
+		}
+		return fmt.Errorf("%w: %s", ErrNoModel, hint)
 	}
 	prov, _, _ := strings.Cut(id, "/")
 	spec, ok := h.Providers.Lookup(prov)

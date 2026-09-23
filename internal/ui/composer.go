@@ -405,7 +405,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 		out = append(out, segs)
 	}
 	if hidden := len(rows) - len(out); hidden > 0 {
-		out = append(out, []hostapi.Segment{{Text: fmt.Sprintf("  +%d %s", hidden, map[bool]string{true: "line", false: "lines"}[hidden == 1]), HL: "Comment", NoCopy: true}})
+		out = append(out, []hostapi.Segment{{Text: "  " + hostapi.MoreLines(hidden), HL: "Comment", NoCopy: true}})
 	}
 	return out
 }
@@ -551,12 +551,12 @@ type editorMsg struct {
 func (a *App) openEditor() tea.Cmd {
 	dir, err := a.host.TempDir()
 	if err != nil {
-		a.pushToast("error", "Editor failed", err.Error())
+		a.pushToast("error", "Could not open the editor", err.Error())
 		return nil
 	}
 	f, err := os.CreateTemp(dir, "zemi-*.md")
 	if err != nil {
-		a.pushToast("error", "Editor failed", err.Error())
+		a.pushToast("error", "Could not open the editor", err.Error())
 		return nil
 	}
 	path := f.Name()
@@ -566,7 +566,7 @@ func (a *App) openEditor() tea.Cmd {
 	}
 	if err != nil {
 		_ = os.Remove(path)
-		a.pushToast("error", "Editor failed", err.Error())
+		a.pushToast("error", "Could not open the editor", err.Error())
 		return nil
 	}
 	go func() {

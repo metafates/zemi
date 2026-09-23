@@ -1303,8 +1303,8 @@ func TestPermBoxFitsShortScreen(t *testing.T) {
 func TestPermNote(t *testing.T) {
 	for _, c := range []struct{ reason, want string }{
 		{"", ""},
-		{"rm -rf build may delete many files", "rm -rf build may delete many files"},
-		{"agent general; rm -rf build may delete many files", "asked by the general agent: rm -rf build may delete many files"},
+		{"this may delete many files", "this may delete many files"},
+		{"agent general; this may delete many files", "asked by the general agent: this may delete many files"},
 		{"agent general: read diagnostics; this project is not trusted", "asked by the general agent: read diagnostics; this project is not trusted"},
 		{"agent web", "asked by the web agent"},
 	} {

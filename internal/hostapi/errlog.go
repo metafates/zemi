@@ -4,7 +4,6 @@
 package hostapi
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -33,8 +32,7 @@ type errLog struct {
 }
 
 // RecordError keeps one error (sanitized) and raises the badge. The same
-// message twice in a row is kept once, at the later time: a failure recorded where it happens
-// also reaches the UI as a toast, which records a long one.
+// message twice in a row is kept once, at the later time.
 func (h *Host) RecordError(source, msg string) {
 	l := &h.errs
 	l.mu.Lock()
@@ -50,6 +48,15 @@ func (h *Host) RecordError(source, msg string) {
 	l.unseen = true
 	l.mu.Unlock()
 	h.refresh()
+}
+
+// Recorded reports whether msg is the newest recorded error: a toast of it
+// can point at /errors for the rest.
+func (h *Host) Recorded(msg string) bool {
+	l := &h.errs
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.entries) > 0 && l.entries[len(l.entries)-1].msg == sanitize.String(msg)
 }
 
 // RecordErrorOnce logs and records an error unless the list already holds
@@ -100,16 +107,16 @@ func (h *Host) HasUnseenErrors() bool {
 // clears the badge; "<n>" selects one, "ask <n>" hands it to the agent to
 // explain and fix.
 func (h *Host) OpenErrors(args string) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
 	l := &h.errs
 	l.mu.Lock()
 	entries := append([]errEntry(nil), l.entries...)
 	l.unseen = false
 	l.mu.Unlock()
 	h.refresh()
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI attached")
-	}
 	f := strings.Fields(args)
 	sel := 0
 	if len(f) > 0 {
@@ -123,7 +130,7 @@ func (h *Host) OpenErrors(args string) error {
 				e.at.Format("15:04:05"), e.source, e.msg)
 			h.GoSafe("errors ask", func() {
 				if err := h.AgentSend(prompt); err != nil {
-					h.Notify("error", "Could not send", err.Error())
+					h.Notify("error", "Could not send", h.friendlyError(err))
 				}
 			})
 			return nil
@@ -144,7 +151,7 @@ func (h *Host) OpenErrors(args string) error {
 		items = append(items, map[string]any{
 			"text":    e.source,
 			"desc":    at + " · " + Headline(e.msg),
-			"detail":  at + "\n" + e.msg,
+			"detail":  at + "\n" + ShortChunk(e.msg),
 			"actions": actions,
 		})
 	}

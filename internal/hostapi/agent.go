@@ -434,7 +434,7 @@ func (h *Host) drainQueue() {
 	scope := h.beginScope()
 	ag.mu.Unlock()
 	if err := h.sendClaimed(scope, text); err != nil {
-		h.Notify("error", "Could not send", err.Error())
+		h.Notify("error", "Could not send", h.friendlyError(err))
 	}
 }
 
@@ -528,7 +528,7 @@ func (h *Host) handOff(scope *turnScope) {
 	// sending waits on the interpreter, and rewind may be called from Lua
 	h.GoSafe("agent send", func() {
 		if err := h.sendClaimed(scope, queued); err != nil {
-			h.Notify("error", "Could not send", err.Error())
+			h.Notify("error", "Could not send", h.friendlyError(err))
 		}
 	})
 }
@@ -624,7 +624,7 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 		h.refresh()
 	case handoff:
 		if err := h.sendClaimed(next, text); err != nil {
-			h.Notify("error", "Could not start the implementation", err.Error())
+			h.Notify("error", "Could not start the implementation", h.friendlyError(err))
 		}
 		return nil, ""
 	default:
@@ -769,7 +769,7 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag.mu.Unlock()
 	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
 	if s.h.hooks() == nil { // print mode: the countdown is on no screen
-		fmt.Fprintf(os.Stderr, "zemi: retrying in %s: %s\n", fmtDuration(delay), why)
+		fmt.Fprintf(s.h.Stderr, "zemi: retrying in %s: %s\n", fmtDuration(delay), why)
 	}
 	s.h.agentStream()
 }
@@ -971,7 +971,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	}
 	if ui := h.hooks(); ui != nil {
 		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == "stopped" })
-		ui.TurnDone(errString(err), stopped)
+		ui.TurnDone(h.friendlyError(err), stopped)
 	}
 	if err == nil && strings.TrimSpace(text) != "" {
 		ag.mu.Lock()
@@ -1065,7 +1065,7 @@ func capLines(s string, n int) string {
 	if len(lines) <= n+1 {
 		return s
 	}
-	return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n… %d more lines", len(lines)-n)
+	return strings.Join(lines[:n], "\n") + "\n" + MoreLines(len(lines)-n)
 }
 
 // toolLabel is what a model says a call is about, shown in place of its
@@ -1370,20 +1370,25 @@ const btwPrompt = `This is a side question. Answer it directly in a single respo
 // Btw runs /btw: a side question answered in an overlay from the
 // conversation so far, a running turn included, and never stored.
 func (h *Host) Btw(question string) error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("/btw shows its answer in the TUI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	h.GoSafe("btw", func() {
 		answer, err := h.btw(context.Background(), question)
-		if err != nil {
-			h.Notify("error", "Side question failed", err.Error())
-		} else {
-			ui.OpenOverlay(Overlay{ID: "btw", Title: "btw", Origin: lua.OriginBuiltin, Body: answer, BodyMD: true})
+		switch {
+		case errors.Is(err, errNothingToAsk):
+			h.Notify("warn", "Nothing to ask about yet", "")
+		case err != nil:
+			h.Notify("error", "Could not answer the side question", h.friendlyError(err))
+		default:
+			ui.OpenOverlay(Overlay{ID: "btw", Title: "Side question", Origin: lua.OriginBuiltin, Body: answer, BodyMD: true})
 		}
 	})
 	return nil
 }
+
+var errNothingToAsk = errors.New("no conversation to ask about yet")
 
 // btw sends the question on the prefix the next send would use (profile,
 // prompt, tools), so it reads the provider's cache, and bills it.
@@ -1396,7 +1401,7 @@ func (h *Host) btw(ctx context.Context, question string) (string, error) {
 	case compacting:
 		return "", errors.New("compacting the conversation; ask after it")
 	case live == nil:
-		return "", errors.New("no conversation to ask about yet")
+		return "", errNothingToAsk
 	}
 	history := live.Snapshot()
 	p, err := h.resolveProfile("")
@@ -1717,9 +1722,9 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 
 // OpenModelPicker lists the registered models; enter runs /model <id>.
 func (h *Host) OpenModelPicker() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	p, _ := h.resolveProfile("")
 	cur, sel := h.currentModelID(p), 0 // what the next send reads, not the running turn's
@@ -1740,7 +1745,7 @@ func (h *Host) OpenModelPicker() error {
 			items = append(items, item)
 		}
 	}
-	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom-right", Verb: "pick", Empty: "No models yet: " + h.noModelHint(false)}
+	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom-right", Verb: "pick", Empty: "No models yet: " + h.noModelHint() + "."}
 	prov, _, _ := strings.Cut(cur, "/")
 	_, registered := h.Providers.Lookup(prov)
 	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
@@ -1753,7 +1758,7 @@ func (h *Host) OpenModelPicker() error {
 			o.Items = append(o.Items, map[string]any{"text": m.ID, "desc": "export " + m.Env, "copy": "export " + m.Env})
 		}
 		if len(o.Items) > 0 {
-			o.Body = "No model yet: export one of these keys, or " + h.addProvider()
+			o.Body = "No model yet: export one of these keys, or " + h.addProvider() + "."
 		}
 	}
 	ui.OpenOverlay(o)
@@ -1805,7 +1810,7 @@ func (h *Host) SetModel(id string) error {
 // not the model row: mid-turn the row is the running turn's model.
 func (h *Host) warnUnlisted(id string) {
 	if _, ok := h.modelSpec(id); !ok {
-		h.Notify("warn", "Model", unlistedDetail(id))
+		h.Notify("warn", "Model not in the provider's list", id+": the provider decides whether it exists")
 	}
 }
 
@@ -1813,20 +1818,28 @@ func (h *Host) warnUnlisted(id string) {
 // one the active profile would hide. An id the provider does not list is
 // taken and warned about, like -m and config: the provider decides.
 func (h *Host) modelSetErr(id string) error {
+	if err := h.ProfileModelErr(); err != nil {
+		return err
+	}
 	prov, _, _ := strings.Cut(id, "/")
 	if _, ok := h.Providers.Lookup(prov); !ok {
 		return h.modelErr(id)
 	}
-	return h.ProfileModelErr()
+	return nil
 }
 
 // WarnModel toasts the model row's warning after a reload, if any: a
 // config the provider does not list would otherwise run silently until the
 // provider refuses it.
 func (h *Host) WarnModel() {
-	if w := h.ModelWarning(); w != "" {
-		h.Notify("warn", "Model", w)
+	h.agents.mu.Lock()
+	id := h.liveModelID()
+	h.agents.mu.Unlock()
+	if err := h.modelErr(id); err != nil {
+		h.Notify("warn", "Model unavailable", err.Error())
+		return
 	}
+	h.warnUnlisted(id)
 }
 
 // ProfileModelErr refuses a tier write the active profile would hide: the
@@ -1987,9 +2000,9 @@ func plainTextEnd(runner *agent.Runner) string {
 
 // OpenProfilePicker lists the profiles with what each changes; enter switches.
 func (h *Host) OpenProfilePicker() error {
-	ui := h.hooks()
-	if ui == nil {
-		return errors.New("no UI")
+	ui, err := h.Screen()
+	if err != nil {
+		return err
 	}
 	cur, sel := h.Settings.Str("agent.profile"), 0
 	var items []any
@@ -2091,7 +2104,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		h.GoSafe("zemi.agent.send", func() {
 			if err := h.AgentSend(text); err != nil {
 				h.Log.Warn("agent", "zemi.agent.send failed", map[string]any{"error": err.Error()})
-				h.Notify("error", "Could not send", err.Error())
+				h.Notify("error", "Could not send", h.friendlyError(err))
 			}
 		})
 		L.Push(glua.LTrue)
@@ -2410,8 +2423,13 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Remember: func(scope, text, quote, replaces string) (string, error) {
 			return h.memoryTool(h.AgentSessionID(), scope, text, quote, replaces)
 		},
-		Scratch:      h.inScratch,
-		Protected:    func(p string) bool { return !h.inScratch(p) && h.protectedWrite(p) },
+		Scratch: h.inScratch,
+		Protected: func(p string) string {
+			if h.inScratch(p) {
+				return ""
+			}
+			return h.protectedWhy(p)
+		},
 		Secret:       h.secretPath,
 		ScratchDir:   h.ScratchDir,
 		SearchURL:    func() string { return h.Settings.Str("web.search_url") },
