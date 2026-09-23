@@ -315,7 +315,7 @@ type Host struct {
 	// permissions file registered: a reload replays the config that adds them.
 	// PurgeGeneration moves them to staleRules, which stay in Perm until the
 	// replay is done so no call runs without them; ForceReload then drops those
-	// the replay did not add again.
+	// the replay did not add again, or on a failed replay only the allows.
 	luaRulesMu sync.Mutex
 	luaRules   []perm.Rule
 	staleRules []perm.Rule
