@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
@@ -258,6 +259,11 @@ func TestWaitMCP(t *testing.T) {
 	h.WaitMCP(ctx) // returns: ctx is done
 	done := make(chan struct{})
 	go func() { h.WaitMCP(context.Background()); close(done) }()
+	select {
+	case <-done:
+		t.Fatal("returned while a server is starting")
+	case <-time.After(50 * time.Millisecond):
+	}
 	s.mu.Lock()
 	s.status = "failed"
 	s.mu.Unlock()
