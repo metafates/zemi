@@ -217,7 +217,7 @@ func (h *Host) treeDiff(root, before, after string, mixed, ckpt bool, wrote map[
 		}
 	}
 	if cut {
-		b.WriteString("... diff cut\n")
+		b.WriteString("… diff cut\n")
 	}
 	if more := len(paths) - snapFiles; more > 0 {
 		fmt.Fprintf(&b, "%d more %s\n", more, plural(more, "file", "files"))
