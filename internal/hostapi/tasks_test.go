@@ -268,6 +268,12 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "look (from Other work)") || !strings.Contains(rows, "agents view agent-9") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
+	// enter on a run opens its transcript, and the footer says so
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.openAgents(); err != nil || ui.opened[0].Verb != "open" {
+		t.Fatalf("agents verb %q, %v", ui.opened[0].Verb, err)
+	}
 }
 
 func TestAgentSendsWhileBackground(t *testing.T) {

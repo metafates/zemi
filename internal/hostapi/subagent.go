@@ -956,7 +956,7 @@ func (h *Host) openAgents() error {
 				d.Description, d.Source, model, tools, TildePath(h.Dirs.ConfigHome)),
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Verb: "open"})
 	return nil
 }
 
