@@ -32,16 +32,17 @@ const memoryAutoApplyCap = 20
 // MemoryRow is one review-overlay row: a queued proposal or a stored
 // memory from either scope.
 type MemoryRow struct {
-	ID      string
-	Scope   string // "user" or "project"
-	Origin  string // "user" or "learned"
-	Text    string
-	Quote   string // the user's words behind a memory about them
-	Queued  bool   // proposal awaiting review, not yet stored
-	Forget  bool   // proposal to forget a stored memory, which stays in its scope
-	Updated int64  // last write of a stored memory, unix ms
-	Action  string // set by the review screen: accept, reject, delete or ""
-	Edit    bool   // set by the review screen: open this row in the editor, then reopen
+	ID         string
+	Scope      string // "user" or "project"
+	Origin     string // "user" or "learned"
+	Text       string
+	Quote      string // the user's words behind a memory about them
+	Queued     bool   // proposal awaiting review, not yet stored
+	Forget     bool   // proposal to forget a stored memory, which stays in its scope
+	Supersedes string // the stored memory a forget or a replacement retires
+	Updated    int64  // last write of a stored memory, unix ms
+	Action     string // set by the review screen: accept, reject, delete or ""
+	Edit       bool   // set by the review screen: open this row in the editor, then reopen
 }
 
 // memoryDB returns the store owning a scope: user scope in the global DB,
@@ -647,7 +648,7 @@ func (h *Host) memoryRows() []MemoryRow {
 		}
 		rows = append(rows, MemoryRow{
 			ID: m.ID, Scope: m.Scope, Origin: m.Origin,
-			Text: text, Quote: m.Quote, Queued: true, Forget: m.Forget,
+			Text: text, Quote: m.Quote, Queued: true, Forget: m.Forget, Supersedes: m.Supersedes,
 		})
 	}
 	list, _ := h.memoryList(false)

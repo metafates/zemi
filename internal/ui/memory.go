@@ -28,10 +28,11 @@ type memReviewPrompt struct {
 	answer chan []hostapi.MemoryRow
 }
 
-// memUndo is a row as it was before a key changed it, and where it was.
+// memUndo is a row as it was before a key changed it, and where it was,
+// plus the memory keeping it took off the screen, if any.
 type memUndo struct {
-	at   int
-	item hostapi.MemoryRow
+	at, hidAt int
+	item, hid hostapi.MemoryRow
 }
 
 // ReviewMemories implements hostapi.UIHooks: blocks the caller (the
@@ -87,7 +88,7 @@ func (a *App) markMemory(key string) {
 	if key == "keep" && !suggested(it) || key == "scope" && it.Forget {
 		return
 	}
-	mr.undo = append(mr.undo, memUndo{mr.sel, it})
+	mr.undo = append(mr.undo, memUndo{at: mr.sel, item: it})
 	switch key {
 	case "scope":
 		mr.items[mr.sel].Scope = map[bool]string{true: "project", false: "user"}[it.Scope == "user"]
@@ -95,6 +96,13 @@ func (a *App) markMemory(key string) {
 	case "keep":
 		it.Action = "accept"
 		mr.items = slices.Delete(mr.items, mr.sel, mr.sel+1)
+		// the memory it forgets or replaces leaves the screen, and the answer:
+		// the host retires it when it stores this row
+		if i := slices.IndexFunc(mr.items, func(r hostapi.MemoryRow) bool { return !r.Queued && r.ID == it.Supersedes }); i >= 0 {
+			u := &mr.undo[len(mr.undo)-1]
+			u.hidAt, u.hid = i, mr.items[i]
+			mr.items = slices.Delete(mr.items, i, i+1)
+		}
 		if it.Forget {
 			mr.gone = append(mr.gone, it) // a kept forget remembers nothing
 		} else if at := rememberedAt(mr.items); at <= mr.sel {
@@ -135,6 +143,9 @@ func (a *App) undoMemory() {
 	other := func(r hostapi.MemoryRow) bool { return r.ID == u.item.ID }
 	mr.items = slices.DeleteFunc(mr.items, other)
 	mr.gone = slices.DeleteFunc(mr.gone, other)
+	if u.hid.ID != "" {
+		mr.items = slices.Insert(mr.items, u.hidAt, u.hid)
+	}
 	mr.items = slices.Insert(mr.items, min(u.at, len(mr.items)), u.item)
 	mr.sel = u.at
 }
