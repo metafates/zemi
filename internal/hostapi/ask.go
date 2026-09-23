@@ -90,6 +90,9 @@ func (h *Host) askHook() tools.Asker {
 			base = ""
 		}
 		switch {
+		case base == "yolo" && req.ReadOnly && (req.Subject == "tool.bash" && !h.sandboxLive() || strings.HasPrefix(req.Subject, "mcp.") && !h.autoLocal(req)):
+			// read-only holds under yolo: nothing confines this call
+			note("read-only agent: nothing confines this call")
 		case base == "yolo":
 			return resolved(true, "mode:"+def.Name)
 		case req.Unsandboxed:

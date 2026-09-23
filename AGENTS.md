@@ -258,7 +258,7 @@ read-only - and hands the rest to the user with a reason naming why (`askHook`; 
 included).
 A read-only agent (`Profile.ReadOnly`, see below) denies writes and runs commands with the
 project unwritable in the sandbox, whatever the mode; without trust or a sandbox, a changing
-command asks.
+command asks (under yolo, only without a sandbox), as does an MCP tool not marked read-only.
 Network requests are never settled: the URL is the model's. A mode from config may carry
 `decide`, a Lua function answering one ask ("allow", "deny", anything else sends it to the user
 whatever the base would settle, which is how a user gets every ask); it holds the interpreter

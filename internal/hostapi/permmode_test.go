@@ -159,6 +159,34 @@ func TestUntrustedModes(t *testing.T) {
 	}
 }
 
+// TestReadOnlyUnderYolo: yolo settles a read-only agent's changing command
+// only when the sandbox confines it, and never an MCP tool not marked
+// read-only.
+func TestReadOnlyUnderYolo(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
+	if err := h.SetProfile("planner"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.SetPermMode("yolo"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		live         bool
+		subject, arg string
+		want         bool
+	}{
+		{true, "tool.bash", "sed -i s/a/b/ main.go", true},
+		{false, "tool.bash", "sed -i s/a/b/ main.go", false},
+		{true, "mcp.gitlab", "create_merge_request", false},
+	} {
+		fakeSandbox(h, c.live)
+		if v := h.PipelineFor().Check(tools.Request{Subject: c.subject, Arg: c.arg}); (v.Decision == perm.Allow) != c.want {
+			t.Errorf("live=%v %s %q: %+v", c.live, c.subject, c.arg, v)
+		}
+	}
+}
+
 // TestAutoModeReadCommands: with no sandbox only readers settle, never
 // from the scratchpad's directory, and a recursive search only over trees
 // without secret-shaped files.
