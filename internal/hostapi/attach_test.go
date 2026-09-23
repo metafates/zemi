@@ -49,6 +49,10 @@ func TestExpandAttachments(t *testing.T) {
 			t.Fatalf("%q must not attach: %q", leak, got)
 		}
 	}
+	// the user row shows the reference, so the user hears it did not attach
+	if n := h.evlog.notes; len(n) != 1 || n[0].level != "warn" || n[0].title != "Could not attach .env" || n[0].body != "reading it needs your approval" {
+		t.Fatalf("refused attachment said nothing: %+v", n)
+	}
 	pipe := filepath.Join(proj, "pipe")
 	if exec.Command("mkfifo", pipe).Run() == nil {
 		done := make(chan string)

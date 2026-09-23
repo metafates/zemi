@@ -62,6 +62,7 @@ func overLimit(limit int64) string {
 func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 	var b strings.Builder
 	var images []fantasy.FilePart
+	var refused []string // "path: why", which the user hears too
 	seen := map[string]bool{}
 	// what follows the marker is host-composed from model output (agent
 	// reports), and an @ there must not attach anything
@@ -94,7 +95,10 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 		}
 		// say why instead of dropping the reference: the model is told the
 		// file was meant to be there and can still read it itself
-		note := func(why string) { fmt.Fprintf(&b, "\n<%s path=%q>not attached: %s</%s>", tag, rel, why, tag) }
+		note := func(why string) {
+			fmt.Fprintf(&b, "\n<%s path=%q>not attached: %s</%s>", tag, rel, why, tag)
+			refused = append(refused, rel+": "+why)
+		}
 		// a FIFO blocks the turn, and an @word naming no file is just prose
 		fi, err := os.Stat(abs)
 		if err != nil || !fi.Mode().IsRegular() {
@@ -128,6 +132,14 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 		default:
 			fmt.Fprintf(&b, "\n<file path=%q>\n%s\n</file>", rel, data)
 		}
+	}
+	switch len(refused) {
+	case 0:
+	case 1:
+		rel, why, _ := strings.Cut(refused[0], ": ")
+		h.Notify("warn", "Could not attach "+rel, why)
+	default:
+		h.Notify("warn", fmt.Sprintf("Could not attach %d files", len(refused)), strings.Join(refused, "\n"))
 	}
 	b.WriteString(h.takeShellNotes())
 	if b.Len() == 0 {
