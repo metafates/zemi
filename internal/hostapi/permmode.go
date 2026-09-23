@@ -192,7 +192,7 @@ func (h *Host) ForgetRule(arg string) error {
 		}
 	}
 	if !gone {
-		return fmt.Errorf("no session rule allows %s %s", subject, pattern)
+		return Usagef("no session rule allows %s %s", subject, pattern)
 	}
 	h.Log.Info("permissions", "session rule removed", map[string]any{"subject": subject, "pattern": pattern})
 	h.refresh()
@@ -225,7 +225,7 @@ func (h *Host) SetPermMode(mode string) error {
 		for j, d := range list {
 			names[j] = d.Name
 		}
-		return fmt.Errorf("unknown permission mode %q (want %s)", mode, strings.Join(names, ", "))
+		return Usagef("unknown permission mode %q (want %s)", mode, strings.Join(names, ", "))
 	}
 	if err := h.Settings.SetHost("permissions.mode", mode); err != nil {
 		return err
@@ -435,34 +435,31 @@ func (h *Host) autoLocal(req tools.Request) bool {
 	return false
 }
 
-// protectedWrite reports a write under any .git or .zemi (checkouts in
-// .zemi/worktrees aside), to a .gitattributes or .gitmodules, the git dir a
-// project .git file names (git init --separate-git-dir) or zemi's own dirs:
-// git runs what those name, and the rest changes what zemi allows.
-func (h *Host) protectedWrite(p string) bool {
-	d := h.Dirs
-	base := filepath.Base(p)
-	return inDirNamed(p, ".git", ".zemi") || strings.EqualFold(base, ".gitattributes") || strings.EqualFold(base, ".gitmodules") || !h.inJail(p, d.WorktreesDir()) && h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome, d.ProjectConfigDir(),
-		gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git")))
-}
+func (h *Host) protectedWrite(p string) bool { return h.protectedWhy(p) != "" }
 
-// protectedWhy names the one protected thing a write changes, "" when
-// protectedWrite does not hold.
+// protectedWhy says why a write under any .git or .zemi (checkouts in
+// .zemi/worktrees aside), to a .gitattributes or .gitmodules, the git dir a
+// project .git file names (git init --separate-git-dir) or zemi's own dirs
+// needs the user, "" for any other path: git runs what those name, and the
+// rest changes what zemi allows.
 func (h *Host) protectedWhy(p string) string {
-	if !h.protectedWrite(p) {
-		return ""
-	}
 	d, base := h.Dirs, filepath.Base(p)
-	name, runs := ".git", "git"
+	const git = "which decides what git runs"
 	switch {
 	case inDirNamed(p, ".zemi"):
-		name, runs = ".zemi", "zemi"
+		return "this changes .zemi, which decides what zemi runs"
+	case inDirNamed(p, ".git"):
+		return "this changes .git, " + git
 	case strings.EqualFold(base, ".gitattributes"), strings.EqualFold(base, ".gitmodules"):
-		name = base
-	case h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome):
+		return "this changes " + base + ", " + git
+	case h.inJail(p, d.WorktreesDir()):
+		return ""
+	case h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome, d.ProjectConfigDir()):
 		return "this changes zemi's own files"
+	case h.inJail(p, gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git"))):
+		return "this changes .git, " + git
 	}
-	return "this changes " + name + ", which decides what " + runs + " runs"
+	return ""
 }
 
 // unsettled says why auto mode leaves a bash command to the user, or ""

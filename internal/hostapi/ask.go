@@ -107,9 +107,13 @@ func (h *Host) askHook() tools.Asker {
 			if h.autoLocal(req) {
 				return resolved(true, "mode:"+def.Name)
 			}
+			why := ""
+			if req.Subject == "fs.write" {
+				why = h.protectedWhy(req.Arg)
+			}
 			switch {
-			case req.Subject == "fs.write" && h.protectedWrite(req.Arg):
-				note(h.protectedWhy(req.Arg))
+			case why != "":
+				note(why)
 			case tools.PathSubject(req.Subject) && h.secretPath(req.Arg):
 				note("this file looks like it holds secrets")
 			case strings.HasPrefix(req.Subject, "net."):

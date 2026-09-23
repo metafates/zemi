@@ -279,12 +279,16 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	// rule is the one that allowed the request, nil when a default did
 	loosen := func(v Verdict, rule *perm.Rule) Verdict {
+		protected := ""
+		if v.Decision == perm.Allow && req.Subject == "fs.write" && p.Protected != nil {
+			protected = p.Protected(req.Arg)
+		}
 		switch {
 		case v.Decision != perm.Allow:
 		case p.RewriteLoosened:
 			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
-		case req.Subject == "fs.write" && p.Protected != nil && p.Protected(req.Arg) != "":
-			return p.resolveAsk(req, p.Protected(req.Arg))
+		case protected != "":
+			return p.resolveAsk(req, protected)
 		// an "always" answer allows the file's whole directory, or names the
 		// one secret the user saw; a rule the user wrote in init.lua says
 		// what it means and stays authoritative
