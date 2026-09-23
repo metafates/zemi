@@ -237,7 +237,9 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	if full != nil {
 		stops = append(stops, func(steps []fantasy.StepResult) bool {
 			last := steps[len(steps)-1]
-			stop := full(ContextUsed(last.Usage)) && last.FinishReason == fantasy.FinishReasonToolCalls
+			// a tool that ends the turn (a plan or question answered) is not cut
+			stop := full(ContextUsed(last.Usage)) && last.FinishReason == fantasy.FinishReasonToolCalls &&
+				!slices.ContainsFunc(last.Content.ToolResults(), func(r fantasy.ToolResultContent) bool { return r.StopTurn })
 			cut = cut || stop
 			return stop
 		})
@@ -355,12 +357,22 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	if err == nil {
 		err = persistErr
 	}
-	if err == nil && len(steps) > 0 && steps[len(steps)-1].FinishReason == fantasy.FinishReasonLength {
-		err = ErrReplyCut
+	if err == nil && len(steps) > 0 {
+		// fantasy records the calls of an abnormal finish and never runs them;
+		// some gateways omit the reason on plain text, so unknown fails only there
+		last, cut, advice := steps[len(steps)-1], "at the output limit", "; split the work into smaller calls"
+		switch reason := last.FinishReason; {
+		case reason == fantasy.FinishReasonLength:
+			err = ErrReplyCut
+		case reason == fantasy.FinishReasonError || reason == fantasy.FinishReasonContentFilter ||
+			reason == fantasy.FinishReasonUnknown && (pending != "" || len(last.Content.ToolCalls()) > 0):
+			err = fmt.Errorf("the provider ended the reply early (%s)", reason)
+			cut, advice = "by the provider ("+string(reason)+")", ""
+		}
 		// some providers drop a call cut mid-arguments from the step, so the
 		// history would show nothing and the model repeats the same call
-		if last := steps[len(steps)-1]; pending != "" && len(last.Content.ToolCalls()) == 0 {
-			m := r.compose("the reply was cut at the output limit while calling " + pending + "; split the work into smaller calls")
+		if err != nil && pending != "" && len(last.Content.ToolCalls()) == 0 {
+			m := r.compose("the reply was cut " + cut + " while calling " + pending + advice)
 			steered = append(steered, steeredMsg{at: len(stepMessages(steps)), msg: m})
 			save(m)
 		}
@@ -487,8 +499,7 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 			continue // waiting on a job says nothing about progress
 		}
 		for _, res := range s.Content.ToolResults() {
-			txt, _ := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentText](res.Result)
-			sig += txt.Text + "\x00"
+			sig += ToolOutput(res.Result) + "\x00"
 		}
 		sigs = append(sigs, sig)
 	}
