@@ -9,11 +9,11 @@ local M = {}
 ---@param ctx zemi.WidgetCtx
 ---@return zemi.Line[]
 function M.render(ctx)
-  -- the block is at most 72 cells wide, so long paths clip instead of
-  -- pushing the logo against the left edge
+  -- the block is at most 72 cells wide and keeps a 2-cell gutter, so long
+  -- paths clip instead of pushing the logo against the edge
   ---@type integer, zemi.Line[]
   local width, rows = ctx.width or 80, {}
-  local maxw = math.min(width, 72)
+  local maxw = math.min(width - 4, 72)
   ---@param segs zemi.Line
   local function row(segs) rows[#rows + 1] = segs end
   -- a short chat drops the recent sessions first, then the mascot, so
@@ -69,10 +69,16 @@ function M.render(ctx)
   end
   row({ { text = "" } })
   local tips = { { "/", "commands" }, { "@", "attach or drop files" }, { "!", "shell" }, { "/help", "keys" } }
+  -- whole tips only: as many as fit
   ---@type zemi.Line
   local tip = {}
+  local used = 0
   for i, t in ipairs(tips) do
-    if i > 1 then tip[#tip + 1] = { text = "   " } end
+    local sep = i > 1 and "   " or ""
+    local w = fmt.cells(sep .. t[1] .. " " .. t[2])
+    if used + w > maxw then break end
+    used = used + w
+    if sep ~= "" then tip[#tip + 1] = { text = sep } end
     tip[#tip + 1] = { text = t[1], hl = "SplashKey" }
     tip[#tip + 1] = { text = " " .. t[2], hl = "Comment" }
   end
