@@ -871,15 +871,25 @@ func editError(src, old string, n int, all bool, where string) string {
 		lines := strings.Split(src, "\n")
 		var hits []string
 		at := 0
-		for i, l := range lines {
-			// Contains: the model may start old_string mid-line
-			if strings.Contains(l, first) {
-				if len(hits) == 0 {
-					at = i
+		// whole lines first; Contains only when none match, since the model
+		// may start old_string mid-line
+		for _, match := range []func(string) bool{
+			func(l string) bool { return strings.TrimSpace(l) == first },
+			func(l string) bool { return strings.Contains(l, first) },
+		} {
+			for i, l := range lines {
+				if match(l) {
+					if len(hits) == 0 {
+						at = i
+					}
+					if hits = append(hits, strconv.Itoa(i+1)); len(hits) == 4 {
+						hits[3] = "..."
+						break
+					}
 				}
-				if hits = append(hits, strconv.Itoa(i+1)); len(hits) == 3 {
-					break
-				}
+			}
+			if len(hits) > 0 {
+				break
 			}
 		}
 		// the file's lines only when the hit is unique: a common first line
