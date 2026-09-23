@@ -11,7 +11,6 @@ import (
 	"maps"
 	"math"
 	"os"
-	"os/exec"
 	"runtime"
 	"slices"
 	"strconv"
@@ -335,15 +334,6 @@ func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
 		pol.Network = true
 	}
 	return pol
-}
-
-// wrap confines a command this run starts; nil when the run is unconfined.
-func (p *Pipeline) wrap() func(*exec.Cmd) error {
-	if p == nil || p.Sandboxed == nil {
-		return nil
-	}
-	pol := *p.Sandboxed
-	return func(c *exec.Cmd) error { return sandbox.Wrap(c, pol) }
 }
 
 // guard starts Guard for a sandboxed run: nil when the run is unconfined,

@@ -32,6 +32,7 @@ import (
 	"github.com/metafates/zemi/internal/glob"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/sandbox"
 )
 
 // progress shows the command's last output line under its row while it
@@ -103,8 +104,8 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	// one buffer keeps stdout and stderr in the order they were written
 	buf := &proc.Buffer{Max: 1 << 20}
 	c.Stdout, c.Stderr = buf, buf
-	if wrap := p.wrap(); wrap != nil {
-		if err := wrap(c); err != nil {
+	if p.Sandboxed != nil {
+		if err := sandbox.Wrap(c, *p.Sandboxed); err != nil {
 			return fantasy.NewTextErrorResponse("the sandbox failed, so the command did not run: " + err.Error()), nil
 		}
 	}
