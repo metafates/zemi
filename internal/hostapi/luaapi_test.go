@@ -347,11 +347,11 @@ func TestReloadBrokenInit(t *testing.T) {
 		want       string
 	}{
 		{"a runtime error keeps what it did not reach", `zemi.permission.mode.add("strict", { base = "auto" }) error("half saved")` + whole, false,
-			"curl deny, ls ask, mode strict, model fake/m"},
+			"curl deny, ls ask, model fake/m, mode strict"},
 		{"a syntax error keeps the working generation", whole + `zemi.keymap.set("ctrl+q", function() end`, false,
-			"curl deny, ls allow, mode strict, model fake/m"},
+			"curl deny, ls allow, model fake/m, mode strict"},
 		{"a syntax error after trust went off still reloads", whole + `zemi.keymap.set("ctrl+q", function() end`, true,
-			"curl deny, ls ask, mode auto, model fake/m"},
+			"curl deny, ls ask, model fake/m"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir, log := t.TempDir(), logging.New(t.TempDir())
@@ -381,7 +381,11 @@ func TestReloadBrokenInit(t *testing.T) {
 			}
 			model, _ := h.Settings.Get("models.main")
 			decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.bash", cmd, "model").Decision }
-			if got := fmt.Sprintf("curl %v, ls %v, mode %s, model %v", decision("curl x"), decision("ls x"), h.PermMode(), model); got != c.want {
+			got := fmt.Sprintf("curl %v, ls %v, model %v", decision("curl x"), decision("ls x"), model)
+			if !c.untrust { // which mode runs once strict is gone is permModeDef's to pin
+				got += ", mode " + h.PermMode()
+			}
+			if got != c.want {
 				t.Fatalf("got  %s\nwant %s", got, c.want)
 			}
 		})
