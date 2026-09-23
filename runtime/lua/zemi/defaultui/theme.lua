@@ -72,7 +72,7 @@ local function theme(palette)
     PromptCommand = { fg = "accent", bold = true },
     Queued = { link = "Dim" },
     SplashKey = { link = "Button" },
-    ScrollbarTrack = { link = "Dim" },
+    ScrollbarTrack = { link = "Rule" },
     ScrollbarThumb = { link = "Accent" },
     -- hover draws over the text's own style: keys left out keep it. A row
     -- header takes the accent and nothing else; body rows opt out entirely
