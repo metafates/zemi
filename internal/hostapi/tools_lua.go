@@ -139,7 +139,6 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.tool.add")
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.tool.add: spec must be a table")
@@ -207,7 +206,6 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("override", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.tool.override")
 		if o := h.RT.CurrentOrigin(L); o.Rank() <= lua.OriginProject.Rank() {
 			L.RaiseError("zemi.tool.override: %s origin may not register rewrites (DESIGN §5)", o)
 		}

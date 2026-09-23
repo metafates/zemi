@@ -213,8 +213,7 @@ type Host struct {
 
 	gen atomic.Int64
 
-	renderMu  sync.Mutex
-	rendering bool
+	rendering atomic.Bool
 
 	tMu     sync.Mutex
 	session *Session
@@ -297,7 +296,7 @@ type Host struct {
 	todosStale atomic.Bool
 
 	// luaApproved holds the chunk names of Lua tool runs the user approved
-	// (guardModelLua); luaRuns numbers them.
+	// (guardLua); luaRuns numbers them.
 	luaApproved sync.Map
 	luaRuns     atomic.Int64
 
@@ -913,14 +912,8 @@ func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, s
 		// while render runs: raised before Do, it also refused Lua that ran
 		// while this render merely waited in the queue (boot code behind
 		// the trust prompt).
-		h.renderMu.Lock()
-		h.rendering = true
-		h.renderMu.Unlock()
-		defer func() {
-			h.renderMu.Lock()
-			h.rendering = false
-			h.renderMu.Unlock()
-		}()
+		h.rendering.Store(true)
+		defer h.rendering.Store(false)
 		defer h.RT.PushFrame(L, w.Origin, w.Path)()
 		base := L.GetTop()
 		L.Push(w.Render)
@@ -1452,18 +1445,6 @@ func (h *Host) callOverlay(ctx context.Context, o Overlay, what string, fn *glua
 	})
 }
 
-// ---------------------------------------------------------------------------
-// registration guard (mutators refuse during widget render)
-
-func (h *Host) refuseDuringRender(L *glua.LState, what string) {
-	h.renderMu.Lock()
-	rendering := h.rendering
-	h.renderMu.Unlock()
-	if rendering {
-		L.RaiseError("zemi: %s is not allowed during widget render (render must be pure)", what)
-	}
-}
-
 // refuseBelowUser raises unless user config or shipped code is calling:
 // the call acts with the user's authority, like command.run's Go commands.
 // hint, when given, says what lower-trust code can do instead.
@@ -1502,7 +1483,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 	h.syncTypes()
 	h.GoSafe("git status", func() { h.gitStatus() })
 
-	g.SB.SetGuard(h.guardModelLua)
+	g.SB.SetGuard(h.guardLua)
 	register := func(name string, tbl *glua.LTable, call *glua.LFunction) error {
 		if call != nil {
 			return g.SB.RegisterCallableNamespace(name, tbl, call)
@@ -1551,7 +1532,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.73.0"))
+	api.RawSetString("version", glua.LString("0.74.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

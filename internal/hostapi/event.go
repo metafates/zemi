@@ -41,7 +41,6 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	tb.RawSetString("on", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.event.on")
 		name := L.CheckString(1)
 		fn := L.CheckFunction(2)
 		if !knownEvent(name) {
@@ -68,7 +67,6 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 	// off(id) removes a handler registered by this origin or a lower-trust
 	// one; it returns whether a handler was removed.
 	tb.RawSetString("off", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.event.off")
 		ok, err := h.Events.Remove(L.CheckString(1), h.RT.CurrentOrigin(L))
 		if err != nil {
 			L.RaiseError("zemi.event.off: %v", err)
@@ -78,7 +76,6 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("emit", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.event.emit")
 		name := L.CheckString(1)
 		if !strings.HasPrefix(name, "user.") {
 			L.RaiseError("zemi.event.emit: only user.* events can be emitted from Lua")

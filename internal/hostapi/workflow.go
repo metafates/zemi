@@ -801,7 +801,7 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 			cancel()
 			return 0
 		}))
-		lua.GuardFuncs(L, handle, "workflow:", h.guardModelLua)
+		lua.GuardFuncs(L, handle, "workflow:", h.guardLua)
 		L.Push(handle)
 		return 1
 	}))

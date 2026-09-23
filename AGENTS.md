@@ -563,13 +563,15 @@ lua-language-server is installed.
   agent; a program may read it, never run from it.
 - **Lua tool** (luatool.go, tool name `lua`): model Lua runs through `Runtime.Eval` as `user`
   origin, default-deny: without approval it may call only `luaReadOnly` members. Every Go
-  function in a namespace passes the sandbox guard (`Sandbox.SetGuard` -> `guardModelLua`),
-  which raises for tool code (frame path `lua-tool*`) unless the innermost tool code is an
-  approved run. `luaUnlisted` tokenizes the script first: any zemi path off the list, a
-  non-read handle method call, or dynamic access (`_G`, `load`, `require`, ...) asks `tool.lua`
-  once, as `Request.Unsandboxed` so no mode settles it, and the approved run evaluates as chunk
-  `lua-tool#<n>`. In an untrusted project or a read-only agent's run every script asks. A new API member is
-  guarded until added to `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new
+  function in a namespace passes the sandbox guard (`Sandbox.SetGuard` -> `guardLua`), which
+  raises for tool code (frame path `lua-tool*`) unless the innermost tool code is an approved
+  run, and, while a widget render runs, for anything but the `luaReadOnly` members other than
+  `zemi.fs.*` and a handle's `wait`. `luaUnlisted` tokenizes the script first: any zemi path
+  off the list, a non-read handle method call, or dynamic access (`_G`, `load`, `require`,
+  ...) asks `tool.lua` once, as `Request.Unsandboxed` so no mode settles it, and the approved
+  run evaluates as chunk `lua-tool#<n>`. In an untrusted project or a read-only agent's run
+  every script asks. A new API member is guarded until added to `luaReadOnly`;
+  `TestLuaToolDefaultDeny` checks every member. Not a new
   origin: the gate is a flag on the chunk name. A `path` script is a `.lua` file read through
   the read tool's `fs.read` check. Runs on the interpreter (10s ceiling), main agent only.
 - **Model memory writes**: the one `memory` tool goes through `memoryTool` -> `gateMemory`: a
@@ -705,8 +707,9 @@ how many rows the frame takes, so nothing above it reflows.
   `rawset`/`rawequal` are stripped, and Go re-verifies namespace contents per request class. A
   runtime-mutable member must go through the Go side, and each Go function exposed to Lua runs
   under `recover` (a panic becomes a catchable Lua error, logged as a zemi bug).
-- **Error convention (DESIGN §6.0):** misuse (bad arguments, masked mutator) raises; runtime
-  failure of a sync op returns `nil, err`; async ops deliver through their handle.
+- **Error convention (DESIGN §6.0):** misuse (bad arguments, a call a render may not make)
+  raises; runtime failure of a sync op returns `nil, err`; async ops deliver through their
+  handle.
 - **Sanitize at boundaries.** Model-influenced strings pass through `internal/sanitize` before
   reaching widgets, overlays or the log. Secrets are scrubbed by the learn intake scrubber at
   the memory/store boundary - don't log raw tool output or memory text.

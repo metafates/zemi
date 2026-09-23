@@ -1662,7 +1662,6 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.model.pick")
 		_ = h.OpenModelPicker() // headless there is nothing to pick with
 		return 0
 	}))
@@ -2039,7 +2038,6 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	// interpreter (DESIGN §4), so what it reports here is what can be known
 	// before it starts; later failures reach the transcript.
 	tb.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.agent.send")
 		text := L.CheckString(1)
 		h.refuseBelowUser(L, "agent.send")
 		p, err := h.resolveProfile("")

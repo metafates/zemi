@@ -107,7 +107,7 @@ Shipped ids: `splash` and `chat` (region `chat`); `working` (the composer frame'
 Rules for `render(ctx)`:
 
 - It returns lines of segments `{ text, hl }`, `{}` for none. A segment may add `click = "id"` (the widget's `on_click(ev)` gets it as `ev.id`), `effect = "shimmer"`, `copy = false` (decoration a selection skips) and `soft_wrap = true` (the line continues on the next row).
-- It is pure and fast: registering, `config.set`, `state.set`, `fs` writes, jobs, http and `agent.send` raise in it, and it has about 10 ms. Slow work runs in a `zemi.job` or `zemi.timer` callback that sets a local the render reads; job, http and one-shot timer callbacks redraw when they return.
+- It is pure and fast: only read-only calls (`config.get`, `state.get`, `ui.width`, `session.messages`, ...) work in it, and not `zemi.fs` or a handle's `wait`; anything else raises, and it has about 10 ms. Slow work runs in a `zemi.job` or `zemi.timer` callback that sets a local the render reads; job, http and one-shot timer callbacks redraw when they return.
 - A widget redraws only when something else does. One that changes on its own calls `zemi.ui.redraw` from `zemi.timer.every`.
 - Returning the same line table again is free; never change one after returning it. With more work than fits, return what is ready and `true` as a second result, and zemi renders it again next frame (the chat fills a long session this way, 30 ms a render at most).
 - Colors are theme groups: `Accent`, `Dim`, `Rule`, `Title`, `Selected`, `Button`, `Danger`, `Ok`, and the rest in `theme.lua`.

@@ -2,7 +2,7 @@
 // interpreter as user origin, so the agent can inspect and change zemi's own
 // state (this session, agent runs, memories, settings, skills, errors)
 // through the API every Lua caller uses. Without the user's approval a run
-// may only call read-only members (luaReadOnly, enforced by guardModelLua);
+// may only call read-only members (luaReadOnly, enforced by guardLua);
 // a script that names anything else asks once up front, and so does every
 // run in an untrusted project or by a read-only agent. The tool.pre events always run
 // so user hooks can deny or halt a script.
@@ -261,7 +261,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 
 // runModelLua runs src as a user-origin chunk named rel (the model can do
 // what a user init.lua can once the user approves the run, see
-// guardModelLua) and returns what it printed, then its return values as JSON.
+// guardLua) and returns what it printed, then its return values as JSON.
 func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error) {
 	var b strings.Builder
 	vals, err := h.RT.Eval(ctx, src, rel, lua.OriginUser, luaToolCeiling, func(line string) {
@@ -281,9 +281,14 @@ func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error)
 	return strings.TrimRight(b.String(), "\n"), err
 }
 
-// guardModelLua is the sandbox guard every Go function exposed to Lua runs
-// through: code from an unapproved Lua tool run may call only luaReadOnly.
-func (h *Host) guardModelLua(L *glua.LState, member string) {
+// guardLua is the sandbox guard every Go function exposed to Lua runs
+// through: code from an unapproved Lua tool run may call only luaReadOnly,
+// and a widget render, which runs every frame, only the luaReadOnly members
+// other than fs.* and a handle's wait.
+func (h *Host) guardLua(L *glua.LState, member string) {
+	if h.rendering.Load() && (!luaReadOnly[member] || strings.HasPrefix(member, "fs.") || strings.HasSuffix(member, ":wait")) {
+		L.RaiseError("zemi.%s is not allowed during widget render (render must be pure)", member)
+	}
 	if luaReadOnly[member] {
 		return
 	}

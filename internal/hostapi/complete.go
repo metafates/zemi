@@ -122,7 +122,6 @@ func completionItems(v any) []CompletionItem {
 
 // addCompletion is zemi.composer.complete(spec).
 func (h *Host) addCompletion(L *glua.LState) int {
-	h.refuseDuringRender(L, "zemi.composer.complete")
 	spec := L.CheckTable(1)
 	fn, _ := spec.RawGetString("items").(*glua.LFunction)
 	s := completionSource{

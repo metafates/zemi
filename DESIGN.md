@@ -224,14 +224,16 @@ Contracts that make this safe:
   new requests run normally, requests that arrived while hot got the
   "reloading" error immediately, stale timer/job callbacks are dropped and
   logged, and replay is safe because all registrations are declarative.
-- **Widget render is pure.** `render(ctx)` must not call mutating APIs; it
-  runs against a capability-masked namespace where mutators raise (caught,
-  logged, widget keeps its last-good lines). Go caches rendered lines keyed
-  by `(widget id, width, height, generation)`; the generation is a global frame
-  counter bumped at most once per renderer tick, so in v1 "invalidated"
-  means any generation change: each visible widget renders once per frame
-  and the cache only dedupes repeat `View` calls within a frame (per-widget
-  dependency invalidation is a later optimization, §8).
+- **Widget render is pure.** `render(ctx)` may call only the read-only
+  members (`luaReadOnly`) other than `zemi.fs.*` and a handle's `wait`;
+  the sandbox guard (`guardLua`) raises on any other call, naming it
+  (caught, logged, widget keeps its last-good lines). Go caches rendered
+  lines keyed by `(widget id, width, height, generation)`; the generation
+  is a global frame counter bumped at most once per renderer tick, so in
+  v1 "invalidated" means any generation change: each visible widget
+  renders once per frame and the cache only dedupes repeat `View` calls
+  within a frame (per-widget dependency invalidation is a later
+  optimization, §8).
 - **Deltas are not batched.** `agent.text_delta` and
   `agent.reasoning_delta` are emitted once per streamed chunk, each its own
   async request, and carry the incremental chunk only, so a subscriber
@@ -458,8 +460,8 @@ in which milestone.
   (`zemi.fs.read`/`write`, `zemi.state.get`/`set`, `zemi.json.decode`,
   `zemi.job.start`, the memory, learn and skills calls) return
   `nil, err` instead of raising. The split is mechanical: runtime
-  failures never raise; misuse (bad arguments, a masked mutator in a
-  render, an origin that may not make the call) and a permission gate
+  failures never raise; misuse (bad arguments, a call a render may not
+  make, an origin that may not make the call) and a permission gate
   that does not allow always raise. One exception: `zemi.command.run`
   returns `nil, err` when the caller's origin may not run the command.
 - **One verb per job**: `add` registers (`zemi.command`, `zemi.tool`,
@@ -1539,7 +1541,7 @@ provenance string.
   the user's approval a run may call only the read-only members in
   `luaReadOnly` (hostapi `luatool.go`). Every Go function a namespace
   exposes, and every handle method (`lua.GuardFuncs`), runs the sandbox
-  guard (`Sandbox.SetGuard`, `guardModelLua`), which raises for any other
+  guard (`Sandbox.SetGuard`, `guardLua`), which raises for any other
   member when the tool's code is calling (its chunk, functions it defined,
   callbacks it registered, found by frame path and call stack) and the
   innermost tool code on the stack is not an approved run. Before running,

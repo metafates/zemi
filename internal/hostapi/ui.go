@@ -24,7 +24,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 
 	widget := L.NewTable()
 	widget.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.widget.add")
 		tb, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.ui.widget.add: expected a spec table")
@@ -53,7 +52,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 	widget.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.widget.del")
 		ok, err := h.Widgets.Remove(L.CheckString(1), h.RT.CurrentOrigin(L))
 		if err != nil {
 			L.RaiseError("zemi.ui.widget.del: %v", err)
@@ -77,7 +75,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 
 	theme := L.NewTable()
 	theme.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.theme.add")
 		name := L.CheckString(1)
 		m := tableArg(L, 2, "zemi.ui.theme.add")
 		t := &Theme{
@@ -110,7 +107,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 	theme.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.theme.set")
 		h.refuseBelowUser(L, "ui.theme.set") // it also writes the user-only ui.theme setting
 		name := L.CheckString(1)
 		if h.Themes.Get(name) == nil {
@@ -141,7 +137,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 
 	overlay := L.NewTable()
 	overlay.RawSetString("open", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.overlay.open")
 		tb, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.ui.overlay.open: expected a spec table")
@@ -232,7 +227,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 	overlay.RawSetString("close", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
-		h.refuseDuringRender(L, "zemi.ui.overlay.close")
 		if ui := h.hooks(); ui != nil {
 			ui.CloseOverlay(id, h.RT.CurrentOrigin(L))
 		}
@@ -245,7 +239,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// over the overlay stack. on_choice(item) runs on enter, on_choice(nil)
 	// on cancel; opts.prompt titles it, opts.format_item renders rows.
 	tb.RawSetString("select", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.select")
 		itemsV := L.CheckTable(1)
 		opts := L.OptTable(2, L.NewTable())
 		cb := L.CheckFunction(3)
@@ -283,7 +276,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// vim.ui.input. on_confirm(text) runs on enter, on_confirm(nil) on esc;
 	// opts.prompt titles it, opts.default prefills it.
 	tb.RawSetString("input", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.input")
 		opts := L.OptTable(1, L.NewTable())
 		cb := L.CheckFunction(2)
 		o := Overlay{
@@ -307,7 +299,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// on_done() once it closes, or on_done(err). Never blocks the
 	// interpreter. The gate is a read: the writing is the user's own.
 	tb.RawSetString("edit", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.edit")
 		path := L.CheckString(1)
 		opts := L.OptTable(2, L.NewTable())
 		cb := L.CheckFunction(3)
@@ -369,7 +360,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// reverse, brighten, replace }, colors as hex or palette names, or
 	// { link = "Group" }. theme.add builds a whole theme.
 	hl.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.hl.set")
 		// an override sits above every theme, the user's own included
 		h.refuseBelowUser(L, "ui.hl.set")
 		group := L.CheckString(1)
@@ -433,7 +423,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 
 	reasoning := L.NewTable()
 	reasoning.RawSetString("toggle", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.reasoning.toggle")
 		h.ToggleReasoning()
 		return 0
 	}))
@@ -457,7 +446,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// redraw() renders every widget again on the next frame: for state a
 	// repeating timer or code outside a callback changed.
 	tb.RawSetString("redraw", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.redraw")
 		h.refresh()
 		return 0
 	}))
@@ -465,7 +453,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	// title(text?) sets the terminal tab's title; nil gives it back to the
 	// session. A reload that does not set it again gives it back too.
 	tb.RawSetString("title", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.title")
 		h.refuseBelowUser(L, "ui.title")
 		text := sanitize.Line(L.OptString(1, ""))
 		if text == "" {
@@ -478,7 +465,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 
 	tb.RawSetString("help", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.ui.help")
 		h.OpenHelp()
 		return 0
 	}))

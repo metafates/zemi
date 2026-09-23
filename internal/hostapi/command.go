@@ -68,7 +68,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.command.add")
 		name := L.CheckString(1)
 		fn := L.CheckFunction(2)
 		cmd := &Command{
@@ -94,7 +93,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 	// del(name) removes a command registered by this origin or a
 	// lower-trust one; it returns whether one was removed.
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.command.del")
 		ok, err := h.Commands.Remove(L.CheckString(1), h.RT.CurrentOrigin(L))
 		if err != nil {
 			L.RaiseError("zemi.command.del: %v", err)
@@ -107,7 +105,6 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 	// right here under its own origin; a host command runs off the
 	// interpreter (it may start a turn), so run returns before it finishes.
 	tb.RawSetString("run", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.command.run")
 		name, args := L.CheckString(1), L.OptString(2, "")
 		cmd := h.Commands.Lookup(name)
 		if cmd == nil {

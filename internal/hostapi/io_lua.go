@@ -264,7 +264,6 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.state.set")
 		key := h.stateScope(L) + L.CheckString(1)
 		v := luaToGoChecked(L, 2, "zemi.state.set")
 		if h.GlobalDB == nil {
@@ -279,7 +278,6 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	// del(key) -> whether there was one; a config that writes state can
 	// clear it again
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.state.del")
 		key := h.stateScope(L) + L.CheckString(1)
 		if h.GlobalDB == nil {
 			return luaResult(L, errors.New("store unavailable"))
@@ -362,7 +360,6 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	once := func(repeat bool) *glua.LFunction {
 		return L.NewFunction(func(L *glua.LState) int {
-			h.refuseDuringRender(L, "zemi.timer")
 			ms := L.CheckNumber(1)
 			fn := L.CheckFunction(2)
 			// after(0, fn) runs fn on the next queue turn (vim.schedule); a
@@ -415,7 +412,7 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 				handle.stopIt()
 				return 0
 			}))
-			lua.GuardFuncs(L, handleTb, "timer:", h.guardModelLua)
+			lua.GuardFuncs(L, handleTb, "timer:", h.guardLua)
 			L.Push(handleTb)
 			return 1
 		})
@@ -436,7 +433,6 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		subject := "lua.fs.read"
 		if write {
 			subject = "lua.fs.write"
-			h.refuseDuringRender(L, "zemi.fs."+api)
 		}
 		resolved, err := h.resolveJailed(L.CheckString(1), h.luaJails(L, write))
 		if err != nil {
@@ -661,7 +657,6 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 	// with wait(); the result is { status, body, headers } or, from wait(),
 	// nil, err. Each method is its own gate subject (lua.http.<method>).
 	tb.RawSetString("request", L.NewFunction(func(L *glua.LState) int {
-		h.refuseDuringRender(L, "zemi.http.request")
 		spec := L.CheckTable(1)
 		req := httpReq{
 			method:  strings.ToUpper(rawString(spec, "method")),
@@ -754,7 +749,7 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 		L.Push(lua.FromGo(L, hnd.res))
 		return 1
 	}))
-	lua.GuardFuncs(L, handle, "http:", h.guardModelLua)
+	lua.GuardFuncs(L, handle, "http:", h.guardLua)
 	L.Push(handle)
 	return 1
 }
@@ -976,7 +971,6 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 	// on_exit(result) }; output is also buffered (1 MiB) for wait(). Misuse
 	// raises; a process that cannot start is the returned error.
 	start := func(L *glua.LState) (*jobHandle, error) {
-		h.refuseDuringRender(L, "zemi.job.start")
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.job.start: spec must be a table")
@@ -1131,7 +1125,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			}
 			return 0
 		}))
-		lua.GuardFuncs(L, handle, "job:", h.guardModelLua)
+		lua.GuardFuncs(L, handle, "job:", h.guardLua)
 		L.Push(handle)
 		return 1
 	}))
