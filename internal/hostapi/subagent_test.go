@@ -523,7 +523,7 @@ func TestFilterToolsNamesTheUnknown(t *testing.T) {
 		gone    []string
 		unknown []string
 	}{
-		{name: "allowlist", want: []string{"read", "Grep", "agent"}, kept: []string{"read"}, unknown: []string{"Grep"}},
+		{name: "allowlist", want: []string{"read", "Grep", "agent", "lua"}, kept: []string{"read"}, unknown: []string{"Grep"}},
 		{name: "removal keeps the rest", want: []string{"-read", "-Grep"}, gone: []string{"read"}, unknown: []string{"Grep"}},
 		{name: "removal wins over the allowlist", want: []string{"read", "grep", "-grep"}, kept: []string{"read"}},
 	} {

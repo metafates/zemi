@@ -45,8 +45,9 @@ type AgentDef struct {
 }
 
 // subagentExcluded never reaches a subagent: nesting, the parent session's
-// todo list, and the user's attention (questions, plan approval).
-var subagentExcluded = map[string]bool{tools.ToolAgent: true, tools.ToolWorkflow: true, tools.ToolTodos: true, tools.ToolQuestion: true, tools.ToolPlan: true}
+// todo list, the user's attention (questions, plan approval) and the main
+// agent's lua tool. Listing one in an agent file drops it.
+var subagentExcluded = map[string]bool{tools.ToolAgent: true, tools.ToolWorkflow: true, tools.ToolTodos: true, tools.ToolQuestion: true, tools.ToolPlan: true, tools.ToolLua: true}
 
 var builtinAgents = []AgentDef{
 	{
