@@ -50,7 +50,7 @@ M.MARK = {
 
 --- A pointer to what deals with something: the noun in Title (hl overrides
 --- it, Danger for a failure), then the command or key in Comment ("errors
---- /errors", "↓ 25 ctrl+end", "ctrl+c quit"). Both segments click as click.
+--- /errors", "↓ 25 ctrl+end"). Both segments click as click.
 ---@param noun string
 ---@param cmd string
 ---@param click string?

@@ -121,7 +121,7 @@ zemi.ui.widget.add({
   ---@return zemi.Line[]
   render = function(ctx)
     if not ctx.quit_armed then return {} end
-    return { fmt.hint("ctrl+c", "quit") }
+    return { { { text = "ctrl+c quit", hl = "Comment" } } }
   end,
 })
 
@@ -157,7 +157,7 @@ zemi.event.on("reflector.done", function(ev)
   zemi.notify({ title = "Learned from the last session", body = table.concat(parts, ", ") })
 end)
 
--- Statusline right, drawn from the right edge: "$0.12 · 24.5k/200k ctx · 45%
+-- Statusline right, drawn from the right edge: "$0.12 · 45% · 24.5k/200k ctx
 -- · planner · model", the context meter falling back to the session token total when
 -- the model's context window is unknown. The percent colors by threshold:
 -- muted, warn at 80%, err at 95%. A click on the model opens the model
@@ -174,19 +174,22 @@ local right = {
     if ctx.profile_read_only then return ctx.profile, "ModePlan", "profile" end
     if ctx.profile ~= "default" then return ctx.profile, "Comment", "profile" end
   end },
-  { "percent", 40, function(ctx)
-    local pct = tonumber((ctx.context or {}).pct or 0) or 0
-    if pct < 1 then return end
-    return string.format("%d%%", pct), pct >= 95 and "StatusUsageErr" or pct >= 80 and "StatusUsageWarn" or "StatusUsage"
-  end },
   -- how much of the window is in use, not the running session total: the
   -- total says nothing about how much room is left.
-  { "context", 41, function(ctx)
+  { "context", 40, function(ctx)
     local cx = ctx.context or {}
     local used, window = fmt.tokens(cx.tokens), fmt.tokens(cx.window)
     local total = fmt.tokens((ctx.usage or {}).total)
     if used and window then return used .. "/" .. window .. " ctx" end
     return total and total .. " tok"
+  end },
+  -- inside the meter, so it drops first and never stands without its unit;
+  -- it draws whenever the meter does, 0% included, so it moves nothing
+  { "percent", 41, function(ctx)
+    local cx = ctx.context or {}
+    if (cx.tokens or 0) <= 0 or (cx.window or 0) <= 0 then return end
+    local pct = math.floor(tonumber(cx.pct) or 0)
+    return string.format("%d%%", pct), pct >= 95 and "StatusUsageErr" or pct >= 80 and "StatusUsageWarn" or "StatusUsage"
   end },
   { "cost", 42, function(ctx)
     local cost = tonumber((ctx.usage or {}).cost or 0) or 0

@@ -256,10 +256,12 @@ zemi.ui.widget.add({
   end,
 })
 
--- A clock. ctx.time is already "15:04", and a widget only redraws when
--- something else does, so one that changes on its own drives the redraw.
+-- A clock, inside the shipped widgets (priority past theirs), so a short row
+-- drops it before the model. ctx.time is already "15:04", and a widget only
+-- redraws when something else does, so one that changes on its own drives
+-- the redraw.
 zemi.ui.widget.add({
-  id = "statusline.clock", region = "statusline.right", priority = 1,
+  id = "statusline.clock", region = "statusline.right", priority = 50,
   render = function(ctx) return { { { text = ctx.time, hl = "Comment" } } } end,
 })
 zemi.timer.every(30000, zemi.ui.redraw)
@@ -274,7 +276,7 @@ zemi.permission.rule.add({
 })
 local branch = ""
 zemi.ui.widget.add({
-  id = "statusline.branch", region = "statusline.right", priority = 2,
+  id = "statusline.branch", region = "statusline.right", priority = 51,
   render = function(ctx) return { { { text = branch, hl = "Comment" } } } end,
 })
 zemi.timer.every(30000, function()
@@ -287,7 +289,7 @@ end)
 
 -- Change a few colors: override just those groups. theme.add below
 -- builds a complete theme, and groups it leaves out lose their colors.
-zemi.ui.hl.set("ModePlan", { fg = "green", bold = true })
+zemi.ui.hl.set("ModePlan", { fg = "#9ccfd8", bold = true })
 zemi.ui.hl.set("ModeAuto", { fg = "#c4a7e7", bold = true })
 
 -- A whole theme (define every group the UI uses, or copy the default's).
