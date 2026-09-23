@@ -41,9 +41,10 @@ func (s *Store) CheckCommandFor(subject, cmd, principal string) Outcome {
 			}
 		}
 		// a deny, ask or not_match written for the program also meets the
-		// spellings that hide it; an allow stays judged as written
+		// spellings that hide it, so a mode cannot settle them as unruled;
+		// an allow stays judged as written
 		if c := canonical(n.Args[i]); c != seg {
-			if oc := eval(c); oc.Decision != Allow && oc.Ruled() && (oc.Decision == Deny || o.Decision == Allow) {
+			if oc := eval(c); oc.Decision != Allow && oc.Ruled() && (oc.Decision == Deny || o.Decision == Allow || !o.Ruled()) {
 				o = oc
 			}
 		}

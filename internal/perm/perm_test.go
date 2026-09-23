@@ -90,6 +90,7 @@ func TestDenyMeetsEverySpelling(t *testing.T) {
 		Rule{Subject: "tool.bash", Pattern: "make deploy*", Decision: Ask},
 		Rule{Subject: "tool.bash", Pattern: "env *", Decision: Allow},
 		Rule{Subject: "tool.bash", Pattern: "make *", Decision: Allow},
+		Rule{Subject: "tool.bash", Pattern: "docker push*", Decision: Ask},
 	)
 	for _, c := range []struct {
 		cmd  string
@@ -107,9 +108,11 @@ func TestDenyMeetsEverySpelling(t *testing.T) {
 		{"! /opt/bin/curl x", Deny},
 		{"env A=1 make -j4 deploy", Ask},
 		{"env A=1 make test", Allow},
+		{"/usr/bin/docker push x", Ask},
 	} {
-		if o := s.CheckCommand(c.cmd, ""); o.Decision != c.want {
-			t.Errorf("%q: got %v (%s), want %v", c.cmd, o.Decision, o.Reason, c.want)
+		// an ask must stay ruled, or a mode settles it as a default ask
+		if o := s.CheckCommand(c.cmd, ""); o.Decision != c.want || o.Decision == Ask && !o.Ruled() {
+			t.Errorf("%q: got %v (%s, ruled %v), want %v", c.cmd, o.Decision, o.Reason, o.Ruled(), c.want)
 		}
 	}
 }
