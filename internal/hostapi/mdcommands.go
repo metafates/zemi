@@ -1,7 +1,7 @@
 // mdcommands.go registers prompt commands from markdown: commands/<name>.md
 // under the config dir (user origin) or a trusted repository's .zemi,
 // .agents and .claude dirs (project origin), the same three skills read. Running /<name> args sends the body to the agent with $ARGUMENTS
-// and $1..$9 filled in. Files are read at boot; /reload picks up changes.
+// and $1..$9 filled in, behind the typed "/<name> args". Files are read at boot; /reload picks up changes.
 package hostapi
 
 import (
@@ -106,7 +106,11 @@ func (h *Host) addMarkdownCommands(dir string, origin lua.Origin, gen Gen, seen 
 		}
 		_, err = h.Commands.Add(&Command{
 			Name: name, NArgs: "*", Desc: desc, Path: path, Origin: origin, Gen: gen,
-			GoFn: func(h *Host, args string) error { return h.AgentSend(expandPromptArgs(body, args)) },
+			// the typed line stays the user's words; the body is the file's
+			GoFn: func(h *Host, args string) error {
+				typed, stdin := CutAttached(args)
+				return h.AgentSend(strings.TrimSpace("/"+name+" "+typed) + Attached("command", expandPromptArgs(body, typed)) + stdin)
+			},
 		})
 		if err != nil {
 			warn(err.Error())

@@ -30,13 +30,23 @@ const (
 	dropTTL        = 7 * 24 * time.Hour // idle copies age out, like scratchpads
 )
 
-// modelNote wraps text zemi itself sends the model (a nag, a plan handoff)
-// so nothing shows it, stores it or recalls it as the user's own words.
-// Files, images, shell output and agent reports each get an element in the
-// trailer, so a note gets its own too, or it reads as unlabeled attachment text.
-func modelNote(text string) string {
-	return attachMarker + "\n<zemi-note>\n" + text + "\n</zemi-note>\n</attached-files>"
+// Attached puts text the user did not type (piped stdin, a command file's
+// body, a note from zemi) behind attachMarker as one element of the
+// trailer, so nothing shows, stores or recalls it as the user's own words.
+func Attached(tag, text string) string {
+	return attachMarker + "\n<" + tag + ">\n" + text + "\n</" + tag + ">\n</attached-files>"
 }
+
+// CutAttached splits a message into what was typed and its trailer.
+func CutAttached(s string) (typed, trailer string) {
+	if i := strings.Index(s, attachMarker); i >= 0 {
+		return s[:i], s[i:]
+	}
+	return s, ""
+}
+
+// modelNote wraps text zemi itself sends the model (a nag, a plan handoff).
+func modelNote(text string) string { return Attached("zemi-note", text) }
 
 var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 
