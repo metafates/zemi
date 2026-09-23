@@ -126,13 +126,13 @@ func (h *Host) workflowSource(name string) (string, error) {
 	}
 	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && !h.ProjectTrusted() {
 		if _, err := os.Stat(filepath.Join(pdir, "workflows", name+".lua")); err == nil {
-			return "", fmt.Errorf("workflow %q is in %s, and this project is not trusted: the user runs /trust to load it (or it can be saved under %s)", name, pdir, filepath.Join(h.Dirs.ConfigHome, "workflows"))
+			return "", Usagef("workflow %q is in %s, and this project is not trusted: the user runs /trust to load it (or it can be saved under %s)", name, pdir, filepath.Join(h.Dirs.ConfigHome, "workflows"))
 		}
 	}
 	if len(names) == 0 {
-		return "", fmt.Errorf("no saved workflow %q (save one as workflows/%s.lua)", name, name)
+		return "", Usagef("no saved workflow %q (save one as workflows/%s.lua)", name, name)
 	}
-	return "", fmt.Errorf("no saved workflow %q (have %s)", name, strings.Join(names, ", "))
+	return "", Usagef("no saved workflow %q (have %s)", name, strings.Join(names, ", "))
 }
 
 // WorkflowResult is a finished run: the script's return value (strings as

@@ -55,9 +55,9 @@ func (h *Host) CopyReply(args string) error {
 	case len(f) == 0:
 		ui.OpenOverlay(copyPicker(blocks))
 	case f[0] != "code" || len(f) > 2:
-		return errors.New("usage: /copy [reply | code [n]]")
+		return Usagef("usage: /copy [reply | code [n]]")
 	case len(blocks) == 0:
-		return errors.New("the last reply has no code blocks")
+		return Usagef("the last reply has no code blocks")
 	case len(f) == 1:
 		parts := make([]string, len(blocks))
 		for i, b := range blocks {
@@ -67,7 +67,7 @@ func (h *Host) CopyReply(args string) error {
 	default:
 		n, err := strconv.Atoi(f[1])
 		if err != nil || n < 1 || n > len(blocks) {
-			return fmt.Errorf("no code block %s: the last reply has %d", f[1], len(blocks))
+			return Usagef("no code block %s: the last reply has %d", f[1], len(blocks))
 		}
 		ui.Copy(blocks[n-1].text)
 	}
@@ -157,7 +157,7 @@ func codeBlocks(md string) []codeBlock {
 func (h *Host) ExportSession(path string) (string, error) {
 	sid := h.AgentSessionID()
 	if sid == "" || h.DB == nil {
-		return "", errors.New("no session to export")
+		return "", Usagef("no session to export")
 	}
 	sess, err := h.DB.GetSession(sid)
 	if err != nil {
@@ -176,7 +176,7 @@ func (h *Host) ExportSession(path string) (string, error) {
 	// target is still refused, and only user or builtin code reaches here
 	// (zemi.command.run gates Go commands by origin)
 	if h.secretPath(path) {
-		return "", fmt.Errorf("refusing to write over %s", path)
+		return "", Usagef("refusing to write over %s", path)
 	}
 	title := sanitize.String(sess.Title)
 	if title == "" {
@@ -226,13 +226,13 @@ func (h *Host) ExportSession(path string) (string, error) {
 func (h *Host) ForkSession() (string, error) {
 	sid := h.AgentSessionID()
 	if sid == "" || h.DB == nil {
-		return "", errors.New("no session to fork")
+		return "", Usagef("no session to fork")
 	}
 	if h.AgentActive() {
-		return "", errors.New("a turn is running; esc twice interrupts it")
+		return "", Usagef("a turn is running; esc twice interrupts it")
 	}
 	if n := h.tasks.runningFor(sid); n > 0 {
-		return "", fmt.Errorf("%d background %s still running; stop them from /agents first", n, plural(n, "agent", "agents"))
+		return "", Usagef("%d background %s still running; stop them from /agents first", n, plural(n, "agent", "agents"))
 	}
 	sess, err := h.DB.GetSession(sid)
 	if err != nil {

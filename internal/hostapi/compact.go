@@ -175,11 +175,11 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 			ag.mu.Unlock()
 			if imageTooLarge(err) {
 				runner.DropImages("too large to send")
-				h.Notify("info", "Image left out", "too large for "+model+"; the turn goes on without it")
+				h.Notify("warn", "Image left out", "too large for "+model+"; the turn goes on without it")
 			} else {
 				runner.TextOnly = true
 				imagesRejected.Store(model, true)
-				h.Notify("info", "Images left out", model+" takes no images; images = false on its model entry skips this")
+				h.Notify("warn", "Images left out", model+" takes no images; images = false on its model entry skips this")
 			}
 			continue
 		}
@@ -219,7 +219,7 @@ func (h *Host) CompactNow(focus string) error {
 	switch {
 	case ag.active:
 		ag.mu.Unlock()
-		return errors.New("a turn is running; compact after it")
+		return Usagef("a turn is running; compact after it")
 	case runner == nil || len(runner.History) < 2:
 		ag.mu.Unlock()
 		h.Notify("warn", "Nothing to compact yet", "")

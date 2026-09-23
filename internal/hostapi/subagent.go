@@ -908,7 +908,7 @@ func (h *Host) agentsCommands() []*Command {
 			case "kill":
 				return h.jobs.Kill(id)
 			}
-			return fmt.Errorf("unknown /agents subcommand %q (view <id>, stop [id], kill <job id>)", sub)
+			return Usagef("unknown /agents subcommand %q (view <id>, stop [id], kill <job id>)", sub)
 		},
 	}}
 }

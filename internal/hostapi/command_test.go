@@ -96,3 +96,23 @@ func TestStaleKeymapAndCommandDoNotRun(t *testing.T) {
 		t.Fatalf("stale function ran: called=%d", called)
 	}
 }
+
+// TestCommandFailed: an error that is how the command was asked warns, one
+// wrapped on the way up included; any other did not happen and is recorded.
+func TestCommandFailed(t *testing.T) {
+	h, _ := newTestHost(t)
+	for _, c := range []struct {
+		err      error
+		level    string
+		recorded bool
+	}{
+		{fmt.Errorf("resume: %w", Usagef("no session %q", "x")), "warn", false},
+		{errors.New("open /nonexistent/x.md: no such file or directory"), "error", true},
+	} {
+		h.CommandFailed("x", c.err)
+		n := h.evlog.notes[len(h.evlog.notes)-1]
+		if n.level != c.level || n.body != c.err.Error() || h.Recorded(c.err.Error()) != c.recorded {
+			t.Errorf("%v: toast %+v, recorded %v", c.err, n, h.Recorded(c.err.Error()))
+		}
+	}
+}

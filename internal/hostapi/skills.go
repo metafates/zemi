@@ -320,9 +320,9 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 		if errors.Is(err, store.ErrNotFound) {
 			// project skills are not stored, so there is no flag to flip
 			if slices.ContainsFunc(h.projectOnlySkills(), func(s skills.Skill) bool { return s.Name == name }) {
-				return fmt.Errorf("skill %q belongs to this project and is on for as long as the project is trusted (/trust)", name)
+				return Usagef("skill %q belongs to this project and is on for as long as the project is trusted (/trust)", name)
 			}
-			return fmt.Errorf("no such skill %q", name)
+			return Usagef("no such skill %q", name)
 		}
 		return err
 	}
@@ -388,7 +388,7 @@ func (h *Host) skillsCommand(args string) error {
 	case len(fields) == 2 && fields[0] == "delete":
 		return h.deleteRecipe(fields[1])
 	default:
-		return errors.New("usage: /skills | /skills enable|disable|open|delete <name> | /skills use <name> [request]")
+		return Usagef("usage: /skills | /skills enable|disable|open|delete <name> | /skills use <name> [request]")
 	}
 }
 
@@ -407,7 +407,7 @@ func (h *Host) deleteRecipe(name string) error {
 		h.Notify("info", "Recipe deleted", name)
 		return nil
 	}
-	return fmt.Errorf("no recipe %q: only a recipe can be deleted here", name)
+	return Usagef("no recipe %q: only a recipe can be deleted here", name)
 }
 
 // openSkillFile opens a skill's SKILL.md in the user's editor, so its
@@ -430,7 +430,7 @@ func (h *Host) openSkillFile(name string) error {
 		})
 		return nil
 	}
-	return fmt.Errorf("no skill %q", name)
+	return Usagef("no skill %q", name)
 }
 
 // useSkill sends a skill's body as the next user message, the
@@ -448,7 +448,7 @@ func (h *Host) useSkill(name, request string) error {
 		}
 		return h.AgentSend(msg)
 	}
-	return fmt.Errorf("no skill %q", name)
+	return Usagef("no skill %q", name)
 }
 
 // skillMessage is the user message /skills use sends: the body first, so

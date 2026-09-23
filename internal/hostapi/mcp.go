@@ -590,7 +590,7 @@ func (h *Host) mcpCommands() []*Command {
 			case "sign-out":
 				return h.signOutMCP(strings.TrimSpace(name))
 			}
-			return fmt.Errorf("unknown /mcp subcommand %q", sub)
+			return Usagef("unknown /mcp subcommand %q", sub)
 		},
 		GoComplete: subcommandCompleter([]string{"restart", "sign-in", "sign-out"}, func(h *Host, _ string) []string {
 			var names []string
@@ -679,7 +679,7 @@ func (h *Host) mcpServerNamed(name string) (*mcpServer, error) {
 	s := h.mcp.servers[name]
 	h.mcp.mu.Unlock()
 	if s == nil {
-		return nil, fmt.Errorf("no MCP server %q", name)
+		return nil, Usagef("no MCP server %q", name)
 	}
 	return s, nil
 }
@@ -692,7 +692,7 @@ func (h *Host) signInMCP(name string) error {
 		return err
 	}
 	if s.spec.URL == "" {
-		return fmt.Errorf("%s runs a local command; only HTTP servers sign in", name)
+		return Usagef("%s runs a local command; only HTTP servers sign in", name)
 	}
 	auth := h.mcpAuth(s)
 	h.GoSafe("mcp sign-in "+name, func() {

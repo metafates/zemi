@@ -205,7 +205,7 @@ func applyOptions(h *hostapi.Host, o options) error {
 		}
 	}
 	if o.model != "" {
-		if err := h.SetModel(o.model); err != nil {
+		if err := h.SetModel(o.model, !o.health); err != nil {
 			return err
 		}
 	}

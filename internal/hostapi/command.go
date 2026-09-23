@@ -120,7 +120,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 			}
 			h.GoSafe("command "+name, func() {
 				if err := cmd.GoFn(h, args); err != nil {
-					h.Notify("warn", "Could not run /"+name, err.Error())
+					h.CommandFailed(name, err)
 				}
 			})
 			return luaResult(L, nil)
@@ -212,6 +212,17 @@ func subcommandCompleter(subs []string, next func(h *Host, sub string) []string)
 		}
 		return nil
 	}
+}
+
+// CommandFailed reports a command's error: one of how it was asked
+// (ErrUsage) is a warn, anything else did not happen and is recorded.
+func (h *Host) CommandFailed(name string, err error) {
+	if errors.Is(err, ErrUsage) {
+		h.Notify("warn", "Could not run /"+name, err.Error())
+		return
+	}
+	h.RecordError("command "+name, err.Error())
+	h.Notify("error", "Could not run /"+name, err.Error())
 }
 
 // RunCommand runs a command by name as if typed.

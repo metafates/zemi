@@ -64,7 +64,7 @@ zemi.event.on("user.tick", function() zemi.timer.after(0, function() n = 10 end)
 	}
 }
 
-// TestIdleDrawsNothing: the 30fps frame loop re-renders nothing while zemi
+// TestIdleDrawsNothing: the 50 ms frame clock re-renders nothing while zemi
 // sits idle, and the animation tick alone never does. A running turn ticks
 // the readouts, and the mascot's done frame comes and goes once each.
 func TestIdleDrawsNothing(t *testing.T) {

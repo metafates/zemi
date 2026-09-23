@@ -2047,7 +2047,8 @@ the host-only proposal channel (§10.3), the user-only config.set and allow rule
   file:line (from Lua `debug.traceback`). A failed reflector run is
   recorded there instead of toasting. Lua code and runtime failures are
   recorded by their callers under a slug source (`command boom`, `keymap
-  ctrl+t`); a Go command's bad argument is a warn toast only. Toasts show
+  ctrl+t`); a command error that is how it was asked (`ErrUsage`: a bad
+  argument, nothing to act on) is a warn toast only. Toasts show
   at most three body rows and never a stack trace; a cut body ends in
   "… N more lines", and "/errors" after it when the error is recorded
   there. With no UI a warning or an error prints to stderr as

@@ -657,7 +657,7 @@ func (h *Host) lspCommands() []*Command {
 				delete(h.lsp.attempts, name)
 				h.lsp.mu.Unlock()
 				if p == nil && tries == 0 {
-					return fmt.Errorf("no language server %q", name)
+					return Usagef("no language server %q", name)
 				}
 				if p != nil { // else it capped out earlier; the counter is clear now
 					p.close()

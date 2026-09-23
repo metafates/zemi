@@ -122,7 +122,7 @@ func (h *Host) OpenErrors(args string) error {
 	if len(f) > 0 {
 		i, err := strconv.Atoi(f[len(f)-1])
 		if err != nil || i < 0 || i >= len(entries) {
-			return fmt.Errorf("no error %q; /errors lists them", args)
+			return Usagef("no error %q; /errors lists them", args)
 		}
 		if f[0] == "ask" {
 			e := entries[i]

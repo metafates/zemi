@@ -574,23 +574,23 @@ func (h *Host) reflectorCommands() []*Command {
 func (h *Host) reflectCommand() error {
 	sid := h.AgentSessionID()
 	if sid == "" {
-		return errors.New("no session to reflect on")
+		return Usagef("no session to reflect on")
 	}
 	msgs, seen, _, err := h.reflectDelta(sid)
 	if err != nil {
 		return err
 	}
 	if seen == len(msgs) {
-		return errors.New("nothing new to reflect")
+		return Usagef("nothing new to reflect")
 	}
 	// the claim alone would let this run start, then skip under the lock
 	// with only a log; a stale read here costs nothing but a repeat
 	if h.reflecting.Load() {
-		return errors.New("a reflect run is already active")
+		return Usagef("a reflect run is already active")
 	}
 	n, claim := h.claimReflect(sid, len(msgs))
 	if claim == "" {
-		return errors.New("a reflect run is already active")
+		return Usagef("a reflect run is already active")
 	}
 	h.GoSafe("reflector", func() { h.reflectClaimed(sid, claim, n) })
 	return nil

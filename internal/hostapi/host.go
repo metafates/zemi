@@ -562,6 +562,11 @@ func (h *Host) refresh() {
 	}
 }
 
+// ToastTitle is a toast's title, Warning or Error for an untitled one.
+func ToastTitle(level, title string) string {
+	return cmp.Or(title, map[string]string{"warn": "Warning", "error": "Error"}[level])
+}
+
 // Notify shows a toast; with no UI a warning or an error goes to Stderr
 // instead, so a headless run never swallows one.
 func (h *Host) Notify(level, title, body string) {
@@ -573,7 +578,7 @@ func (h *Host) Notify(level, title, body string) {
 	if level != "warn" && level != "error" {
 		return
 	}
-	line := "zemi: " + cmp.Or(title, map[string]string{"warn": "Warning", "error": "Error"}[level])
+	line := "zemi: " + ToastTitle(level, title)
 	if body = strings.TrimSpace(ShortChunk(body)); body != "" {
 		line += ": " + strings.ReplaceAll(body, "\n", "\n  ")
 	}

@@ -98,7 +98,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	ag.mu.Lock()
 	if ag.active {
 		ag.mu.Unlock()
-		return 0, errors.New("a turn is running; esc twice interrupts it")
+		return 0, Usagef("a turn is running; esc twice interrupts it")
 	}
 	// claimed like a turn, so no send starts on the history being cut
 	ag.active = true
@@ -107,10 +107,10 @@ func (h *Host) RewindTo(id string) (int, error) {
 	defer h.handOff(scope)
 	// a detached run writing files would undo the restore right after it
 	if n := h.tasks.running(); n > 0 {
-		return 0, fmt.Errorf("%d background %s still running; stop them from /agents first", n, plural(n, "agent", "agents"))
+		return 0, Usagef("%d background %s still running; stop them from /agents first", n, plural(n, "agent", "agents"))
 	}
 	if sid == "" || h.DB == nil {
-		return 0, errors.New("no session to rewind")
+		return 0, Usagef("no session to rewind")
 	}
 	rows, err := h.DB.Messages(sid)
 	if err != nil {
@@ -122,7 +122,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 		text, ok = userText(rows[cut])
 	}
 	if !ok {
-		return 0, fmt.Errorf("no prompt %q in this session", id)
+		return 0, Usagef("no prompt %q in this session", id)
 	}
 	cps, err := h.DB.CheckpointsFrom(sid, id)
 	if err != nil {
@@ -205,7 +205,7 @@ func (h *Host) OpenRewind() error {
 	}
 	sid := h.AgentSessionID()
 	if h.DB == nil {
-		return errors.New("no session to rewind")
+		return Usagef("no session to rewind")
 	}
 	rows, err := h.DB.Messages(sid)
 	if err != nil {

@@ -479,8 +479,8 @@ func (a *App) wakeTick() {
 	}
 }
 
-// frameTickCmd ticks on the next frameMS wall boundary at least d away, or
-// the next one after a wake: frame() then advances by exactly one per tick.
+// frameTickCmd ticks on the last frame boundary within d, or the next one
+// after a wake: frame() then advances by exactly one per tick.
 func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
 	at := time.Now().Add(d).Truncate(frameInterval)
 	return func() tea.Msg {
@@ -693,9 +693,7 @@ type toast struct {
 const toastRows = 3
 
 func (a *App) pushToast(level, title, body string) {
-	if title == "" {
-		title = map[string]string{"warn": "Warning", "error": "Error"}[level]
-	}
+	title = hostapi.ToastTitle(level, title)
 	// news goes quickly, what needs reading or acting on stays
 	ttl := 8 * time.Second
 	if level == "info" {

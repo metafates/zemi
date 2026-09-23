@@ -1795,22 +1795,28 @@ func (h *Host) ConversationKey() string {
 
 // SetModel switches the conversation's tier (/model <id>) from any
 // goroutine: the config watches it fires run later on the interpreter queue.
-func (h *Host) SetModel(id string) error {
+// warn toasts an id the provider does not list; --health leaves that to its
+// model row.
+func (h *Host) SetModel(id string, warn bool) error {
 	if err := h.modelSetErr(id); err != nil {
 		return err
 	}
 	if err := h.setWatched(h.ConversationKey(), id); err != nil {
 		return err
 	}
-	h.warnUnlisted(id)
+	if warn {
+		h.warnUnlisted(id)
+	}
 	return nil
 }
+
+const unlistedTitle = "Model not listed"
 
 // warnUnlisted toasts a pick the provider does not list. It reads the pick,
 // not the model row: mid-turn the row is the running turn's model.
 func (h *Host) warnUnlisted(id string) {
 	if _, ok := h.modelSpec(id); !ok {
-		h.Notify("warn", "Model not in the provider's list", id+": the provider decides whether it exists")
+		h.Notify("warn", unlistedTitle, unlistedDetail(id))
 	}
 }
 
@@ -1823,7 +1829,7 @@ func (h *Host) modelSetErr(id string) error {
 	}
 	prov, _, _ := strings.Cut(id, "/")
 	if _, ok := h.Providers.Lookup(prov); !ok {
-		return h.modelErr(id)
+		return usageError{h.modelErr(id)}
 	}
 	return nil
 }
@@ -1832,21 +1838,16 @@ func (h *Host) modelSetErr(id string) error {
 // config the provider does not list would otherwise run silently until the
 // provider refuses it.
 func (h *Host) WarnModel() {
-	h.agents.mu.Lock()
-	id := h.liveModelID()
-	h.agents.mu.Unlock()
-	if err := h.modelErr(id); err != nil {
-		h.Notify("warn", "Model unavailable", err.Error())
-		return
+	if row := h.modelRow(); row.level != "ok" {
+		h.Notify("warn", map[string]string{"error": "Model unavailable", "warn": unlistedTitle}[row.level], row.detail)
 	}
-	h.warnUnlisted(id)
 }
 
 // ProfileModelErr refuses a tier write the active profile would hide: the
 // tier would change and the conversation would not.
 func (h *Host) ProfileModelErr() error {
 	if p, _ := h.resolveProfile(""); p != nil && p.Model != "" {
-		return fmt.Errorf("profile %s sets its model; /profile default or drop model from it", p.Name)
+		return Usagef("profile %s sets its model; /profile default or drop model from it", p.Name)
 	}
 	return nil
 }
@@ -1882,7 +1883,7 @@ func (h *Host) ProfileNames() []string {
 // plan can return to it (approvePlan).
 func (h *Host) SetProfile(name string) error {
 	if _, err := h.resolveProfile(name); err != nil {
-		return fmt.Errorf("unknown profile %q (want %s)", name, strings.Join(h.ProfileNames(), ", "))
+		return Usagef("unknown profile %q (want %s)", name, strings.Join(h.ProfileNames(), ", "))
 	}
 	next, _ := h.resolveProfile(name)
 	if next != nil && next.ReadOnly && !h.readOnly() {

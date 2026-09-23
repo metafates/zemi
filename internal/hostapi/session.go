@@ -54,7 +54,10 @@ func (h *Host) ResumeSession(id string) error {
 	}
 	sess, err := h.DB.GetSession(id)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("no session %q; /sessions lists them", id)
+		if h.hooks() == nil {
+			return Usagef("no session %q", id)
+		}
+		return Usagef("no session %q; /sessions lists them", id)
 	}
 	if err != nil {
 		return fmt.Errorf("session %s: %w", id, err)
@@ -149,11 +152,11 @@ func (h *Host) DeleteSession(id string) error {
 		return errors.New("session store unavailable")
 	}
 	if id == "" || id == h.AgentSessionID() {
-		return errors.New("the current session cannot be deleted; /new first")
+		return Usagef("the current session cannot be deleted; /new first")
 	}
 	for _, run := range h.tasks.list(id) {
 		if run.isRunning() {
-			return errors.New("an agent from that session is still running; /agents stops it")
+			return Usagef("an agent from that session is still running; /agents stops it")
 		}
 	}
 	h.GoSafe("delete session", func() {

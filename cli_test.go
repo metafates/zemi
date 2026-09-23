@@ -333,7 +333,8 @@ func TestHeadlessNotices(t *testing.T) {
 		name, want string
 		do         func() error
 	}{
-		{"-m unlisted", "zemi: Model not in the provider's list: a/unlisted: the provider decides whether it exists\n", func() error { return applyOptions(h, options{model: "a/unlisted"}) }},
+		{"-m unlisted", "zemi: Model not listed: a/unlisted: not in the provider's models list; the provider decides whether it exists\n", func() error { return applyOptions(h, options{model: "a/unlisted"}) }},
+		{"-m unlisted --health", "", func() error { return applyOptions(h, options{model: "a/unlisted", health: true}) }},
 		{"info", "", func() error { h.Notify("info", "Copied", "3 chars"); return nil }},
 		{"untitled error", "zemi: Error: first\n  second\n", func() error { h.Notify("error", "", "first\nsecond"); return nil }},
 		{"screen command", "", func() error {

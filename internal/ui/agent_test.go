@@ -1308,7 +1308,7 @@ func TestPermNote(t *testing.T) {
 		{"agent general: read diagnostics; this project is not trusted", "asked by the general agent: read diagnostics; this project is not trusted"},
 		{"agent web", "asked by the web agent"},
 	} {
-		if got, _ := permNote(c.reason); got != c.want {
+		if got := permNote(c.reason); got != c.want {
 			t.Errorf("permNote(%q) = %q, want %q", c.reason, got, c.want)
 		}
 	}

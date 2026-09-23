@@ -579,7 +579,7 @@ func TestSetModelFiresWatches(t *testing.T) {
 		}
 		t.Fatalf("models.main watch never saw %q", want)
 	}
-	if err := h.SetModel("p/m"); err != nil {
+	if err := h.SetModel("p/m", true); err != nil {
 		t.Fatal(err)
 	}
 	check("p/m")

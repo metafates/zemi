@@ -222,7 +222,7 @@ func (h *Host) storeProposal(res *learn.Result) error {
 // full scope is refused with the ids to forget, since the user is there.
 func (h *Host) Remember(text string) error {
 	if strings.TrimSpace(text) == "" {
-		return errors.New("usage: /memory <note>")
+		return Usagef("usage: /memory <note>")
 	}
 	res, err := h.storeMemory(h.AgentSessionID(), "project", learn.OriginUser, text, "")
 	if err != nil {
@@ -255,7 +255,7 @@ func (h *Host) memoryCommand(args string) error {
 			})
 			return nil
 		}
-		return errors.New("memory review already open")
+		return Usagef("memory review already open")
 	case fields[0] == "forget" && len(fields) == 2:
 		db, m, err := h.locateMemory(fields[1])
 		if err != nil {
@@ -263,7 +263,7 @@ func (h *Host) memoryCommand(args string) error {
 		}
 		return db.DeleteMemory(m.ID)
 	case fields[0] == "forget":
-		return errors.New("usage: /memory forget <id>")
+		return Usagef("usage: /memory forget <id>")
 	default:
 		return h.Remember(args)
 	}

@@ -643,8 +643,8 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		said = append(said, capRows(wrapText(`"`+req.Description+`"`, "Host:Hint", inner), 3, inner)...)
 	}
 	// the banner carries the sandbox escape, so the dim reason note is skipped
-	if note, hl := permNote(req.Reason); note != "" && !req.Outside {
-		said = append(said, capRows(wrapText(note, hl, inner), 3, inner)...)
+	if note := permNote(req.Reason); note != "" && !req.Outside {
+		said = append(said, capRows(wrapText(note, "Host:Hint", inner), 3, inner)...)
 	}
 	choices := pa.choices()
 	btns := make([]promptChoice, 0, len(choices))
@@ -772,23 +772,20 @@ func permTitle(req hostapi.PermRequest, root string) (title, target string) {
 	return title, target
 }
 
-// permNote is the line a request's reason reads as under the title, and its
-// group: a subagent's reason says which agent asked.
-func permNote(reason string) (string, string) {
-	switch {
-	case reason == "":
-		return "", ""
-	case strings.HasPrefix(reason, "agent "):
-		// "agent <name>: <its reason>; <why it asked>"
-		head, why, _ := strings.Cut(strings.TrimPrefix(reason, "agent "), "; ")
-		who, own, _ := strings.Cut(head, ": ")
-		note := "asked by the " + who + " agent"
-		if rest := strings.Trim(strings.Join([]string{own, why}, "; "), "; "); rest != "" {
-			note += ": " + rest
-		}
-		return note, "Host:Hint"
+// permNote is the line a request's reason reads as under the title: a
+// subagent's reason says which agent asked.
+func permNote(reason string) string {
+	if !strings.HasPrefix(reason, "agent ") {
+		return reason
 	}
-	return reason, "Host:Hint"
+	// "agent <name>: <its reason>; <why it asked>"
+	head, why, _ := strings.Cut(strings.TrimPrefix(reason, "agent "), "; ")
+	who, own, _ := strings.Cut(head, ": ")
+	note := "asked by the " + who + " agent"
+	if rest := strings.Trim(strings.Join([]string{own, why}, "; "), "; "); rest != "" {
+		note += ": " + rest
+	}
+	return note
 }
 
 // hintPair is one key of a footer hint and the verb it does.

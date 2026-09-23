@@ -313,6 +313,10 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "effort", Hidden: true, NArgs: "?", Desc: "set reasoning effort", GoFn: func(h *hostapi.Host, args string) error {
 			switch args = strings.TrimSpace(args); args {
 			case "":
+				// the readout is a toast, which a headless run drops
+				if _, err := h.Screen(); err != nil {
+					return err
+				}
 				cur := h.Effort()
 				if cur == "" {
 					cur = "default"
@@ -323,7 +327,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				args = ""
 			case "low", "medium", "high":
 			default:
-				return fmt.Errorf("unknown effort %q (want low, medium, high or default)", args)
+				return hostapi.Usagef("unknown effort %q (want low, medium, high or default)", args)
 			}
 			_, err := h.Settings.SetQuiet("agent.effort", args)
 			return err
@@ -388,7 +392,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			if args = strings.TrimSpace(args); args == "" {
 				return h.OpenModelPicker()
 			}
-			return h.SetModel(args)
+			return h.SetModel(args, true)
 		}},
 		{Name: "permissions", NArgs: "*", Desc: "see what is allowed and take an always answer back", GoFn: func(h *hostapi.Host, args string) error {
 			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "forget "); ok {

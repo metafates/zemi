@@ -354,7 +354,7 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 		}
 		report := text
 		if err != nil {
-			report = strings.TrimSpace("the agent failed: " + h.friendlyError(err) + "\n\n" + text)
+			report = strings.TrimSpace(reportFailed + h.friendlyError(err) + "\n\n" + text)
 		}
 		status := map[bool]string{true: "finished", false: "failed"}[err == nil]
 		if h.AgentSessionID() != run.parent {
@@ -378,10 +378,15 @@ func reportHead(id, agent, status string) string {
 	return fmt.Sprintf("Background agent %s (%s) %s", id, agent, status)
 }
 
-// notifyReport tells the user of a report no conversation will read.
+// reportFailed heads a failed run's report for the model; the toast of one
+// leaves it out, since the title says failed.
+const reportFailed = "the agent failed: "
+
+// notifyReport tells the user of a report no conversation will read: a run's
+// own, or one a closing session dropped from its queue.
 func (h *Host) notifyReport(id, agent, status, description, report string) {
 	level := map[bool]string{true: "info", false: "warn"}[status == "finished"]
-	h.Notify(level, reportHead(id, agent, status), description+"\n"+truncRunes(strings.TrimPrefix(report, "the agent failed: "), 300))
+	h.Notify(level, reportHead(id, agent, status), description+"\n"+truncRunes(strings.TrimPrefix(report, reportFailed), 300))
 }
 
 var reportBody = regexp.MustCompile(`(?s)<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")>\n(.*?)\n</agent-report>`)
@@ -419,7 +424,7 @@ func (h *Host) stopRun(id string) error {
 	}
 	run := h.tasks.find(id)
 	if run == nil || !run.isRunning() {
-		return fmt.Errorf("no running agent %q", id)
+		return Usagef("no running agent %q", id)
 	}
 	run.cancel()
 	return nil
@@ -481,7 +486,7 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 	}
 	sess, err := h.DB.FindSession(id)
 	if err != nil || sess.ParentID == "" {
-		return nil, fmt.Errorf("no agent run %q", id)
+		return nil, Usagef("no agent run %q", id)
 	}
 	sid := sess.ID
 	rows, err := h.DB.Messages(sid)

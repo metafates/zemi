@@ -487,15 +487,13 @@ func (a *App) runCommand(name, args string) {
 	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn == nil {
 		a.background(func() {
 			if err := a.host.RunCommand(context.Background(), name, args); err != nil {
-				a.host.RecordError("command "+name, err.Error())
-				a.Notify("error", "Could not run /"+name, err.Error())
+				a.host.CommandFailed(name, err)
 			}
 		})
 		return
 	}
-	// a Go command's error is how it was asked: a bad argument or nothing to act on
 	if err := a.host.RunCommand(context.Background(), name, args); err != nil {
-		a.pushToast("warn", "Could not run /"+name, err.Error())
+		a.host.CommandFailed(name, err)
 	}
 }
 
