@@ -132,7 +132,7 @@ func TestProjectChoice(t *testing.T) {
 		req  tools.Request
 		want string
 	}{
-		{"safe bash", tools.Request{Subject: "tool.bash", Arg: "git push origin main"}, "allow `git push`"},
+		{"safe bash", tools.Request{Subject: "tool.bash", Arg: "git push origin main"}, "allow git push"},
 		{"wrapper", tools.Request{Subject: "tool.bash", Arg: "sh -c 'x'"}, ""},
 		{"file write", tools.Request{Subject: "fs.write", Arg: "/x"}, ""},
 		{"destructive", tools.Request{Subject: "tool.bash", Arg: "rm -rf /tmp/x"}, "allow this exact command"},
@@ -148,7 +148,7 @@ func TestProjectChoice(t *testing.T) {
 	// segment the session answer skipped (a model rule allows it already)
 	// would persist a command the label never named
 	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "curl *", Decision: perm.Allow, Principal: "model"})
-	if label, _ := always(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example/a && go vet ./..."}); label != "allow `go vet`" {
+	if label, _ := always(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example/a && go vet ./..."}); label != "allow go vet" {
 		t.Fatalf("session label = %q", label)
 	}
 	if got := choice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example/a && go vet ./..."}); got != "" {

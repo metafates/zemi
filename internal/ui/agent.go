@@ -636,7 +636,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	choices := pa.choices()
 	btns := make([]promptChoice, 0, len(choices))
 	for _, c := range choices {
-		btns = append(btns, promptChoice{key: c.key, label: bareNames(c.label, inner-6)})
+		btns = append(btns, promptChoice{key: c.key, label: c.label})
 	}
 	hints := []hintPair{{"enter", "answer"}, {"esc", "deny"}} // one verb for every button: a changing one shifts the row
 	placeholder := oneRow
@@ -667,10 +667,10 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	if len(content) > pa.view.viewH {
 		bar = 1 // a scrolled panel's text keeps its cells beside the bar
 	}
-	for _, r := range content {
+	for _, r := range slices.Concat(content, banner) {
 		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " "))+bar)
 	}
-	for _, r := range slices.Concat(banner, head, words, list, [][]hostapi.Segment{hintRow}) {
+	for _, r := range slices.Concat(head, words, list, [][]hostapi.Segment{hintRow}) {
 		fit = max(fit, segsWidth(r))
 	}
 	fit = min(fit, inner)
@@ -691,29 +691,6 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	}
 	body := stack(tight, banner, head, content, words, list, [][]hostapi.Segment{hintRow})
 	return promptBox(title, badge, body, w, h, maxW, &pa.size)
-}
-
-// bareNames draws an always label's backticked names bare, sharing what one
-// w-cell row leaves them; a long one loses its middle, never the program or
-// the word the rule ends on.
-func bareNames(label string, w int) string {
-	parts := strings.Split(label, "`")
-	fixed := 0
-	for i := 0; i < len(parts); i += 2 {
-		fixed += ansi.StringWidth(parts[i])
-	}
-	room := max((w-fixed)/max(len(parts)/2, 1), 12)
-	for i := 1; i < len(parts); i += 2 {
-		f := strings.Fields(parts[i])
-		if ansi.StringWidth(parts[i]) <= room || len(f) < 3 {
-			parts[i] = ansi.Truncate(parts[i], room, "…")
-			continue
-		}
-		head, last := f[0], f[len(f)-1]
-		mid := ansi.Truncate(strings.Join(f[1:len(f)-1], " "), max(room-ansi.StringWidth(head+last)-2, 1), "…")
-		parts[i] = head + " " + mid + " " + last
-	}
-	return strings.Join(parts, "")
 }
 
 // capRows keeps the first n of wrapped rows, ending the last kept one in

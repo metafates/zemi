@@ -696,7 +696,7 @@ func TestAskHookAlwaysStoresRules(t *testing.T) {
 	if v.Decision != perm.Allow || v.DecidedBy != "user:always" {
 		t.Fatalf("always bash: %v by %q", v.Decision, v.DecidedBy)
 	}
-	if len(ui.asked) != 1 || ui.asked[0].Arg != "git push origin main" || ui.asked[0].Always != "allow `git push` outside the sandbox" {
+	if len(ui.asked) != 1 || ui.asked[0].Arg != "git push origin main" || ui.asked[0].Always != "allow git push outside the sandbox" {
 		t.Fatalf("asked: %+v", ui.asked)
 	}
 	rules := h.Perm.Rules()
@@ -1014,10 +1014,10 @@ func TestAlwaysChoice(t *testing.T) {
 		label    string
 		patterns []string
 	}{
-		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && git diff"}, "allow `go test` and `git diff`", []string{"go test", "go test *", "git diff", "git diff *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "allow `ls`", []string{"ls", "ls *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "allow `cat`", []string{"cat", "cat *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow `go vet`, `git diff` and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "ls", "ls *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && git diff"}, "allow go test and git diff", []string{"go test", "go test *", "git diff", "git diff *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "allow ls", []string{"ls", "ls *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "allow cat", []string{"cat", "cat *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow go vet, git diff and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "ls", "ls *"}},
 		// a deleter stays exact: the rule runs unconfined and has no write path to ask on
 		{tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"}, "allow this exact command", []string{"rm build.tmp"}},
 		{tools.Request{Subject: "tool.bash", Arg: "/bin/rm old"}, "allow this exact command", []string{"/bin/rm old"}},
@@ -1028,16 +1028,16 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "git clean -n"}, "allow this exact command", []string{"git clean -n"}},
 		{tools.Request{Subject: "tool.bash", Arg: "PATH=/tmp ls"}, "", nil},
 		// a leading option keeps the subcommand pair, never the bare program
-		{tools.Request{Subject: "tool.bash", Arg: "git --no-pager log -5"}, "allow `git --no-pager log`", []string{"git --no-pager log", "git --no-pager log *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "git -C sub status"}, "allow `git -C sub status`", []string{"git -C sub status", "git -C sub status *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "cargo +nightly build"}, "allow `cargo +nightly build`", []string{"cargo +nightly build", "cargo +nightly build *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "git -C /other/repo status"}, "allow `git -C /other/repo status`", []string{"git -C /other/repo status", "git -C /other/repo status *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "git --no-pager log -5"}, "allow git --no-pager log", []string{"git --no-pager log", "git --no-pager log *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "git -C sub status"}, "allow git -C sub status", []string{"git -C sub status", "git -C sub status *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "cargo +nightly build"}, "allow cargo +nightly build", []string{"cargo +nightly build", "cargo +nightly build *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "git -C /other/repo status"}, "allow git -C /other/repo status", []string{"git -C /other/repo status", "git -C /other/repo status *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "git --version"}, "allow this exact command", []string{"git --version"}},
 		// kubectl's -s takes a value, so prod is not its subcommand
 		{tools.Request{Subject: "tool.bash", Arg: "kubectl -s prod get pods"}, "allow this exact command", []string{"kubectl -s prod get pods"}},
 		// a path or capitalized spelling is the same program: `/usr/bin/git *` would be every subcommand
-		{tools.Request{Subject: "tool.bash", Arg: "/usr/bin/git push"}, "allow `/usr/bin/git push`", []string{"/usr/bin/git push", "/usr/bin/git push *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "Git push"}, "allow `Git push`", []string{"Git push", "Git push *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "/usr/bin/git push"}, "allow /usr/bin/git push", []string{"/usr/bin/git push", "/usr/bin/git push *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "Git push"}, "allow Git push", []string{"Git push", "Git push *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "/usr/bin/git"}, "allow this exact command", []string{"/usr/bin/git"}},
 		// a bare subcommand program stays exact too: `git *` is every subcommand
 		{tools.Request{Subject: "tool.bash", Arg: "git"}, "allow this exact command", []string{"git"}},
@@ -1076,7 +1076,7 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "uv --directory sub run pytest"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "busybox ls"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "awk '{print}' f"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "npm run build"}, "allow `npm run`", []string{"npm run", "npm run *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "npm run build"}, "allow npm run", []string{"npm run", "npm run *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "sed -n 1p f"}, "allow this exact command", []string{"sed -n 1p f"}},
 		{tools.Request{Subject: "net.*", Arg: "https://pkg.go.dev/fmt"}, "allow pkg.go.dev", []string{"https://pkg.go.dev", "https://pkg.go.dev/*"}},
 		{tools.Request{Subject: "tool.workflow", Arg: "script"}, "", nil},
@@ -1151,7 +1151,7 @@ func TestAlwaysChoice(t *testing.T) {
 	// re-ruled: only the still-new programs get a name and a rule
 	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "go test *", Decision: perm.Allow, Principal: "model"})
 	label, rules = h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "go test ./x && go vet"})
-	if label != "allow `go vet`" {
+	if label != "allow go vet" {
 		t.Errorf("already-allowed segment must not be listed: %q", label)
 	}
 	var pats []string
@@ -1169,9 +1169,9 @@ func TestAlwaysChoice(t *testing.T) {
 	// the label says where the allowed command will run
 	fakeSandbox(h, true)
 	for req, want := range map[tools.Request]string{
-		{Subject: "tool.bash", Arg: "ls -la"}:                 "allow `ls` outside the sandbox",
-		{Subject: "tool.bash", Arg: "ls -la", Network: true}:  "allow `ls` with the network",
-		{Subject: "tool.bash", Arg: "ls -la", ReadOnly: true}: "allow `ls`",
+		{Subject: "tool.bash", Arg: "ls -la"}:                 "allow ls outside the sandbox",
+		{Subject: "tool.bash", Arg: "ls -la", Network: true}:  "allow ls with the network",
+		{Subject: "tool.bash", Arg: "ls -la", ReadOnly: true}: "allow ls outside the sandbox",
 	} {
 		if label, _ := h.alwaysChoice(req); label != want {
 			t.Errorf("%+v: label %q, want %q", req, label, want)

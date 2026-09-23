@@ -216,7 +216,7 @@ func (h *Host) launchDirInRepo() string {
 }
 
 // alwaysChoice is the "for this session" option for a request: what it
-// allows, as the prompt shows it ("allow `go test`"), and the session rules
+// allows, as the prompt shows it ("allow go test"), and the session rules
 // (model principal) accepting it adds. A command is allowed as a whole (its
 // program, plus the subcommand when it has one) whatever the arguments,
 // since arguments differ every run; file access its directory, fetches
@@ -264,19 +264,20 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 			p := patterns[0]
 			if !seen[p] {
 				seen[p] = true
-				names = append(names, "`"+p+"`")
+				names = append(names, p)
 			}
 		}
 		if len(rules) == 0 {
 			return "", nil // every segment is allowed already
 		}
 		// a rule-allowed command runs unconfined, a network one keeps the
-		// sandbox and adds sockets; the label says which
+		// sandbox and adds sockets; the label says which, under a read-only
+		// agent too, since the rule outlives its turn
 		effect := ""
 		switch {
 		case req.Network:
 			effect = " with the network"
-		case !req.ReadOnly && h.sandboxLive():
+		case h.sandboxLive():
 			effect = " outside the sandbox"
 		}
 		// long lists name two programs and count the rest, so the label

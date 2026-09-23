@@ -86,7 +86,7 @@ func TestUnsettled(t *testing.T) {
 	if len(rules) != 2 || !rules[0].Network || !rules[1].Network {
 		t.Fatalf("network always rules: %+v", rules)
 	}
-	if label, _ := h.projectChoice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example", Network: true}, "allow `curl`", rules); label != "" {
+	if label, _ := h.projectChoice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example", Network: true}, "allow curl", rules); label != "" {
 		t.Errorf("a network ask offers a project line: %q", label)
 	}
 	for _, r := range rules {
