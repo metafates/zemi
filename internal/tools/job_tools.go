@@ -23,6 +23,11 @@ import (
 // timeout; the chat widget keeps such a row by this phrase.
 const JobHandoff = "moved to the background as "
 
+// jobSettle is how long new job output must stay quiet before a job_read
+// wait returns.
+// NOTE: a build that pauses longer returns early and costs another read.
+const jobSettle = 2 * time.Second
+
 // Job is one managed background process.
 type Job struct {
 	ID     string
@@ -52,13 +57,13 @@ func (j *Job) Running() bool {
 	}
 }
 
-// hasNew reports output since the last read without taking it.
-func (j *Job) hasNew() bool {
+// unread counts the bytes written since the last read without taking them.
+func (j *Job) unread() int64 {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	_, out := j.stdout.Snapshot()
 	_, errOut := j.stderr.Snapshot()
-	return out > j.sent[0] || errOut > j.sent[1]
+	return out - j.sent[0] + errOut - j.sent[1]
 }
 
 // Status renders one list line.
@@ -296,16 +301,24 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	// wait_ms blocks for new output or the exit, so a poll costs no model
-	// round trip; the turn's cancel still wins
+	// wait_ms blocks until the exit or until new output goes quiet, so a
+	// chatty build costs one model step, not one per burst; the turn's
+	// cancel still wins
 	if v, ok := input["wait_ms"].(float64); ok && v > 0 {
 		deadline := time.After(time.Duration(min(v, 600_000)) * time.Millisecond)
 		tick := time.NewTicker(250 * time.Millisecond)
 		defer tick.Stop()
-		for !j.hasNew() && j.Running() {
+		seen, moved := j.unread(), time.Now()
+		for j.Running() {
 			select {
-			case <-tick.C:
-				continue
+			case now := <-tick.C:
+				if n := j.unread(); n != seen {
+					seen, moved = n, now
+					continue
+				}
+				if seen == 0 || now.Sub(moved) < jobSettle {
+					continue
+				}
 			case <-j.done:
 			case <-ctx.Done():
 			case <-deadline:

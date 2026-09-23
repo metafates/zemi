@@ -1023,7 +1023,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			return err
 		}),
 
-		mk(ToolJobStart, "Start a process that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, it is the program. Read its output with job_read (wait_ms blocks until a server's ready line prints, so never sleep) and job_kill what you no longer need.",
+		mk(ToolJobStart, "Start a process that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, it is the program. Read its output with job_read (wait_ms returns once a server's ready line prints and goes quiet, so never sleep) and job_kill what you no longer need.",
 			true,
 			withSandbox(map[string]any{
 				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server; with network: true or sandbox: false, also what it needs that for"},
@@ -1042,7 +1042,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			true,
 			map[string]any{
 				"id":      map[string]any{"type": "string"},
-				"wait_ms": map[string]any{"type": "number", "description": "block until the job prints or exits, at most this long (max 600000); default 0 returns at once"},
+				"wait_ms": map[string]any{"type": "number", "description": "block until the job exits or its output has been quiet for 2s, at most this long (max 600000); default 0 returns at once"},
 			},
 			[]string{"id"},
 			func(in map[string]any) []Request { return nil },

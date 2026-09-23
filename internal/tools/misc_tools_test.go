@@ -306,7 +306,7 @@ func TestJobToolsLifecycle(t *testing.T) {
 		t.Fatalf("read sh: %+v", resp)
 	}
 
-	// wait_ms returns as soon as the job prints, well before it elapses
+	// wait_ms returns once new output goes quiet, well before it elapses
 	resp = call(t, start, `{"command":"sh","args":["-c","sleep 0.3; echo late; sleep 30"]}`)
 	if resp.IsError {
 		t.Fatalf("start late: %+v", resp)
@@ -323,11 +323,22 @@ func TestJobToolsLifecycle(t *testing.T) {
 	}
 	waitJobDone(t, j)
 
+	// a chatty job is read whole in one wait, not one call per line
+	resp = call(t, start, `{"command":"sh","args":["-c","for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do echo line$i; sleep 0.1; done"]}`)
+	if resp.IsError {
+		t.Fatalf("start chatty: %+v", resp)
+	}
+	j = p.Jobs.List()[3]
+	resp = call(t, read, `{"id":"`+j.ID+`","wait_ms":10000}`)
+	if !strings.Contains(resp.Content, "exited (0)") || !strings.Contains(resp.Content, "line1\n") || !strings.Contains(resp.Content, "line15") {
+		t.Fatalf("read chatty: %+v", resp)
+	}
+
 	resp = call(t, start, `{"command":"sleep","args":["30"]}`)
 	if resp.IsError {
 		t.Fatalf("start sleep: %+v", resp)
 	}
-	j = p.Jobs.List()[3]
+	j = p.Jobs.List()[4]
 	resp = call(t, kill, `{"id":"`+j.ID+`"}`)
 	if resp.IsError || !strings.Contains(resp.Content, "killed") {
 		t.Fatalf("kill: %+v", resp)
