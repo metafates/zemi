@@ -1207,13 +1207,18 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 // hlStyle resolves a highlight name. "Host:*" names are Go-owned security
 // chrome (DESIGN §8): they resolve to fixed styles and never consult the theme.
 func (a *App) hlStyle(hl string) uv.Style {
-	if st, ok := fixedStyle(hl, a.thm.light); ok {
-		if st.Bg == nil { // chrome sits on the theme's canvas like any group
-			st.Bg = appBG(a.thm, a.thm.active())
-		}
-		return st
+	st, ok := fixedStyle(hl, a.thm.light)
+	if !ok {
+		st = a.thm.style(hl)
+	} else if st.Bg == nil { // chrome sits on the theme's canvas like any group
+		st.Bg = appBG(a.thm, a.thm.active())
 	}
-	return a.thm.style(hl)
+	// with 16 colors the rule grey and a dark canvas both land on black,
+	// and every frame would vanish
+	if a.colors == colorprofile.ANSI && st.Fg != nil && st.Bg != nil && a.colors.Convert(st.Fg) == a.colors.Convert(st.Bg) {
+		st.Fg = ansi.BrightBlack
+	}
+	return st
 }
 
 func (a *App) segStyle(hl, over string) uv.Style {
