@@ -531,8 +531,10 @@ zemi.ui.widget.add({
         head[#head + 1] = { text = "━", hl = td.status == "done" and "TodoDone" or td.status == "in_progress" and "TodoMark" or "Rule", copy = false }
       end
       lines[#lines + 1] = head
-      -- at most 12 rows, the live ones first: in progress, then pending,
-      -- then done, so a long list never hides the item being worked on
+      -- at most 12 rows and a third of the chat, the live ones first: in
+      -- progress, then pending, then done, so a long list never hides the
+      -- item being worked on
+      local cap = math.min(12, math.max(3, math.floor((ctx.height or 36) / 3)))
       local rank = { in_progress = 1, pending = 2, done = 3 }
       ---@type { td: zemi.Todo, n: integer }[]
       local shown = {}
@@ -544,9 +546,9 @@ zemi.ui.widget.add({
       end)
       for n, it in ipairs(shown) do
         local td = it.td
-        if n > 12 then
-          local hidden, done = #shown - 12, 0
-          for i = 13, #shown do
+        if n > cap then
+          local hidden, done = #shown - cap, 0
+          for i = cap + 1, #shown do
             if shown[i].td.status == "done" then done = done + 1 end
           end
           if done == hidden then

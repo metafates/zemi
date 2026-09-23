@@ -1166,7 +1166,20 @@ func TestToolRows(t *testing.T) {
 // TestTodoRowsKeepTheLiveItem: a list longer than 12 items shows the item in
 // progress and the pending ones first, and folds the done tail into one row.
 func TestTodoRowsKeepTheLiveItem(t *testing.T) {
-	app, host := bootAgentApp(t, 100, 40)
+	for _, c := range []struct {
+		h    int
+		want []string
+	}{
+		{40, []string{"▸ step 13", "○ step 14", "✓ step 01", "✓ 2 done"}},
+		// a short screen keeps a third of the chat for the list
+		{14, []string{"▸ step 13", "○ step 14", "✓ step 01", "✓ 11 done"}},
+	} {
+		t.Run(fmt.Sprint(c.h), func(t *testing.T) { todoRows(t, c.h, c.want) })
+	}
+}
+
+func todoRows(t *testing.T, h int, want []string) {
+	app, host := bootAgentApp(t, 100, h)
 	// the test host has no project dir, so no project store came with it
 	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
 	if err != nil {
@@ -1193,7 +1206,7 @@ func TestTodoRowsKeepTheLiveItem(t *testing.T) {
 	host.AppendMessage("user", "do it")
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"▸ step 13", "○ step 14", "✓ step 01", "✓ 2 done"} {
+	for _, want := range want {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
