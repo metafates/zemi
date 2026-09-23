@@ -154,7 +154,7 @@ type Command struct {
 	// GoComplete offers argument candidates for Go-owned commands (lead is
 	// the argument under the cursor, line the text up to it).
 	GoComplete func(h *Host, lead, line string) []string
-	// Hidden commands run when typed but stay out of the palette and help.
+	// Hidden commands run when typed but stay out of the bare "/" palette list.
 	Hidden bool
 	Origin lua.Origin
 	Path   string
