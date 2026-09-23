@@ -6,7 +6,6 @@
 package tools
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -208,7 +207,7 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	switch {
 	case strings.Contains(ct, "text/html"):
 		text = htmlToText(text, resp.Request.URL)
-	case bytes.IndexByte(body[:min(len(body), 8000)], 0) >= 0:
+	case looksBinary(body):
 		// like read: bytes the model cannot act on are worse than an error
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("%s answered with %d bytes of binary (%s); fetch reads text", raw, len(body), cmp.Or(ct, "no content type"))), nil
 	}

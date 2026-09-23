@@ -196,10 +196,19 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	return changed(fantasy.NewTextResponse(b.String()))
 }
 
+// sniffBytes is how much of a body looksBinary reads.
+const sniffBytes = 8000
+
+// looksBinary is the sniff read, fetch and command output share: a NUL near
+// the start, as git decides.
+func looksBinary[T string | []byte](b T) bool {
+	return strings.IndexByte(string(b[:min(len(b), sniffBytes)]), 0) >= 0
+}
+
 // cmdText is command output as the model reads it: like read and fetch,
 // binary is named instead of sent as control bytes the model cannot use.
 func cmdText(raw string) string {
-	if strings.IndexByte(raw[:min(len(raw), 8000)], 0) >= 0 {
+	if looksBinary(raw) {
 		return fmt.Sprintf("(binary output, %d bytes)", len(raw))
 	}
 	return strings.TrimRight(ansi.Strip(raw), "\n")
@@ -262,7 +271,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	p.markRead(path, fi)
 	rel := workRel(path)
 	br := bufio.NewReaderSize(f, 64<<10)
-	head, _ := br.Peek(8000)
+	head, _ := br.Peek(sniffBytes)
 	switch mt := http.DetectContentType(head); {
 	case mt == "image/png" || mt == "image/jpeg" || mt == "image/gif" || mt == "image/webp":
 		if fi.Size() > readMaxImage {
@@ -276,7 +285,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		return fantasy.NewImageResponse(data, mt), nil
-	case bytes.IndexByte(head, 0) >= 0:
+	case looksBinary(head):
 		return fantasy.NewTextErrorResponse(rel + " is a binary file"), nil
 	}
 	start := 0
@@ -1115,7 +1124,8 @@ func truncLine(s string) string {
 	return s
 }
 
-// isTextFile rejects obviously binary files by NUL in the first 512 bytes.
+// isTextFile rejects obviously binary files; grep opens every file, so it
+// sniffs only the first 512 bytes.
 func isTextFile(path string) bool {
 	f, err := os.Open(path)
 	if err != nil {
@@ -1124,7 +1134,7 @@ func isTextFile(path string) bool {
 	defer f.Close()
 	buf := make([]byte, 512)
 	n, _ := f.Read(buf)
-	return !bytes.ContainsRune(buf[:n], 0)
+	return !looksBinary(buf[:n])
 }
 
 func skipDir(name string) bool {
