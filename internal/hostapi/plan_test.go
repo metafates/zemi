@@ -41,6 +41,16 @@ func TestPlanMode(t *testing.T) {
 	if v := check("tool.bash", "make deploy"); v.Decision != perm.Ask {
 		t.Fatalf("read-only bash = %v", v.Decision)
 	}
+	// the sandbox is what keeps the project read-only, so leaving it is denied
+	// before any mode (yolo would settle it) or the user sees the ask
+	for _, mode := range []string{"auto", "yolo"} {
+		h.Settings.SetHost("permissions.mode", mode)
+		pipe := h.PipelineFor()
+		pipe.Ask = func(tools.Request) (bool, string, string) { return true, "user", "" }
+		if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "make deploy", Unsandboxed: true}); v.Decision != perm.Deny || v.DecidedBy != "profile:readonly" {
+			t.Fatalf("%s: sandbox: false for a planner = %v by %s: %s", mode, v.Decision, v.DecidedBy, v.Reason)
+		}
+	}
 	p, _ := h.resolveProfile("planner")
 	if !strings.Contains(h.buildSystem(p), "# Planning") {
 		t.Fatal("system prompt misses the planning section")

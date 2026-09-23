@@ -60,7 +60,7 @@ func (h *Host) projectPermissions() {
 		}
 		for _, ps := range patterns {
 			for _, p := range ps {
-				h.addPermissionRule(perm.Rule{Subject: "tool.bash", Pattern: p, Decision: perm.Allow})
+				h.addPermissionRule(perm.Rule{Subject: "tool.bash", Pattern: p, Decision: perm.Allow, Source: "permissions"})
 			}
 		}
 	}
@@ -114,6 +114,7 @@ func (h *Host) projectAllow(cmd string, rules []perm.Rule) {
 		f.Close()
 	}
 	for _, r := range rules {
+		r.Source = "permissions"
 		h.addPermissionRule(r)
 	}
 }

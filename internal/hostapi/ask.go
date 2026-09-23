@@ -98,6 +98,10 @@ func (h *Host) askHook() tools.Asker {
 			switch {
 			case req.Subject == "fs.write" && h.protectedWrite(req.Arg):
 				note("not settled: this changes .git, .zemi or zemi's own files")
+			case tools.PathSubject(req.Subject) && h.secretPath(req.Arg):
+				note("not settled: this file looks like it holds secrets")
+			case strings.HasPrefix(req.Subject, "net."):
+				note("not settled: the URL is the model's")
 			case req.Subject == "fs.write" && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...):
 				// the sandbox cannot confine the write tool, and a file outside the
 				// project (~/.gitconfig, a shell rc) can name what runs next
@@ -234,9 +238,9 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		if abs == "" || strings.ContainsAny(abs, globMeta) {
 			return "", nil
 		}
-		// Pipeline.Check sends every such write back to the ask, so the rule
-		// would do nothing
-		if req.Subject == "fs.write" && !h.inScratch(abs) && h.protectedWrite(abs) {
+		// Pipeline.Check sends every such write, and a secret-shaped file a
+		// model rule covers, back to the ask, so the rule would do nothing
+		if req.Subject == "fs.write" && !h.inScratch(abs) && h.protectedWrite(abs) || h.secretPath(abs) {
 			return "", nil
 		}
 		dir := filepath.Dir(abs)
@@ -292,7 +296,11 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	if len(f) == 0 {
 		return nil, false
 	}
-	if wrapperProgram(filepath.Base(f[0])) {
+	if wrapperProgram(f[0]) {
+		return nil, false
+	}
+	// npm exec, uv run and the like run a package named after them, as npx does
+	if i := perm.Subcommand(f); i > 0 && wrapperSubcommands[strings.ToLower(filepath.Base(f[0]))+" "+f[i]] {
 		return nil, false
 	}
 	// a program or subcommand that can delete or overwrite must not broaden
@@ -350,7 +358,7 @@ func (h *Host) repoChoice(req tools.Request) (string, []perm.Rule) {
 		return "", nil
 	}
 	abs := perm.RealPath(req.Arg)
-	if abs == "" || strings.ContainsAny(abs, globMeta) {
+	if abs == "" || strings.ContainsAny(abs, globMeta) || h.secretPath(abs) {
 		return "", nil
 	}
 	root := config.Dirs{ProjectDir: filepath.Dir(abs)}.RepoRoot()
@@ -383,21 +391,15 @@ var subcommandPrograms = map[string]bool{
 	"make": true, "docker": true, "kubectl": true, "gh": true, "uv": true,
 }
 
-// wrapperPrograms run whatever is handed to them, as code (node -e) or as
-// another command (sudo, xargs), so no rule written from such a segment
-// says what a later call would run. An always answer offers nothing for them.
-var wrapperPrograms = map[string]bool{
-	"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "ash": true, "fish": true, "csh": true, "tcsh": true,
-	"node": true, "nodejs": true, "deno": true, "python": true, "python2": true, "python3": true,
-	"perl": true, "ruby": true, "php": true, "lua": true, "luajit": true, "julia": true, "rscript": true, "osascript": true,
-	"env": true, "sudo": true, "doas": true, "su": true, "xargs": true, "eval": true, "exec": true, "source": true, ".": true,
-	"nohup": true, "time": true, "timeout": true, "watch": true, "setsid": true, "stdbuf": true, "script": true,
-	"nice": true, "parallel": true, "ssh": true, "command": true, "builtin": true,
-	"npx": true, "pnpx": true, "bunx": true, "uvx": true, "pipx": true,
+// wrapperSubcommands are the subcommand spellings of npx and uvx: the pair
+// runs whatever package follows, so an always answer offers nothing for it
+var wrapperSubcommands = map[string]bool{
+	"npm exec": true, "npm x": true, "pnpm exec": true, "pnpm dlx": true, "yarn dlx": true, "bun x": true,
+	"uv run": true, "uv tool": true,
 }
 
 func wrapperProgram(prog string) bool {
-	return wrapperPrograms[strings.ToLower(filepath.Base(prog))]
+	return perm.WrapperPrograms[strings.ToLower(filepath.Base(prog))]
 }
 
 // destructivePrograms are programs that, with one more argument, can delete
@@ -408,6 +410,7 @@ var destructivePrograms = map[string]bool{
 	"rm": true, "rmdir": true, "unlink": true, "mv": true, "cp": true, "install": true,
 	"find": true, "tar": true, "rsync": true, "shred": true, "truncate": true, "dd": true,
 	"ln": true, "tee": true, "chmod": true, "chown": true, "chgrp": true,
+	"sed": true, // -i and the w command overwrite, like tee
 }
 
 func destructiveProgram(prog string) bool {

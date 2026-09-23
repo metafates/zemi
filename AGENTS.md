@@ -319,12 +319,19 @@ offered the wider `repoChoice` ("allow reads anywhere in <repo>", answered as `u
 because in a deep tree the directory rule is the same ask again one package over. No always
 option is offered at all for a gate-forced ask (heredoc, env assignment), a pattern holding a
 glob wildcard, an opaque segment (an inner `sh -c`, a stripped assignment) or a wrapper program
-that runs what it is handed (`wrapperPrograms`: shells, interpreters, `sudo`, `xargs`, ...) - no
-rule written from such a segment says what the next call would run - nor for a `protectedWrite`,
-which `Pipeline.Check` asks about whatever rule allows it. A directory glob cannot exclude the
-secret shapes either, so `Pipeline.Check`'s loosen sends a file request a `model` rule allowed
-back to the ask when `Secret` matches; a user-config rule has no principal, stays authoritative,
-and shows read-only in `/permissions`, while a `model` rule gets a Remove action.
+that runs what it is handed (`perm.WrapperPrograms`: shells, interpreters, `sudo`, `xargs`,
+`busybox`, `awk`, ..., the list `perm.Destructive` and `perm.GitWrites` look past too, and
+`wrapperSubcommands` for the `npm exec`/`uv run` spellings of `npx`) - no rule written from such
+a segment says what the next call would run - nor for a `protectedWrite`, which
+`Pipeline.Check` asks about whatever rule allows it, nor for a secret-shaped file. A directory
+glob cannot exclude the secret shapes either, so `Pipeline.Check`'s loosen sends a file
+request a `model` rule allowed back to the ask when `Secret` matches, and a command whose
+reader names one (`perm.ReadsSecret`: `cat .env`, `cat .e*`) when a `model` rule or a
+`.zemi/permissions` line allowed it (`perm.Rule.Source`); a user-config rule has no principal,
+stays authoritative, and shows read-only in `/permissions` with its source (init.lua, the
+permissions file, a project's `.zemi/init.lua`), while a `model` rule gets a Remove action.
+`sandbox: false` is denied outright for a read-only agent (`Pipeline.Check`, before any mode
+could settle it), and its sandbox hint offers only `network: true`.
 
 ### require and the origin model (internal/lua/runtime.go, origin.go, registries)
 

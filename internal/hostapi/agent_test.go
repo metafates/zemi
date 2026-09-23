@@ -943,7 +943,17 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}, "allow edits in internal/", []string{filepath.Join(proj, "internal", "*")}},
 		// the gate asks about a protected write whatever the rules say
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, ".zemi", "init.lua")}, "", nil},
-		{tools.Request{Subject: "fs.read", Arg: ".env"}, "allow reads anywhere in the project", []string{filepath.Join(proj, "*")}},
+		// Pipeline.Check sends a secret-shaped file back to the ask whatever a model rule says
+		{tools.Request{Subject: "fs.read", Arg: ".env"}, "", nil},
+		{tools.Request{Subject: "fs.read", Arg: "main.go"}, "allow reads anywhere in the project", []string{filepath.Join(proj, "*")}},
+		// the subcommand spellings of npx and uvx, and a wrapper name, offer nothing
+		{tools.Request{Subject: "tool.bash", Arg: "npm exec prettier -- --check ."}, "", nil},
+		{tools.Request{Subject: "tool.bash", Arg: "pnpm dlx x"}, "", nil},
+		{tools.Request{Subject: "tool.bash", Arg: "uv run x.py"}, "", nil},
+		{tools.Request{Subject: "tool.bash", Arg: "busybox ls"}, "", nil},
+		{tools.Request{Subject: "tool.bash", Arg: "awk '{print}' f"}, "", nil},
+		{tools.Request{Subject: "tool.bash", Arg: "npm run build"}, "allow `npm run`", []string{"npm run", "npm run *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "sed -n 1p f"}, "allow this exact command", []string{"sed -n 1p f"}},
 		{tools.Request{Subject: "net.*", Arg: "https://pkg.go.dev/fmt"}, "allow pkg.go.dev", []string{"https://pkg.go.dev", "https://pkg.go.dev/*"}},
 		{tools.Request{Subject: "tool.workflow", Arg: "script"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "rm *.tmp"}, "", nil},
@@ -1366,6 +1376,33 @@ func TestAlwaysRuleSkipsSecrets(t *testing.T) {
 	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(proj, ".env"), Decision: perm.Allow})
 	if v := pipe.Check(tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, ".env")}); v.Decision != perm.Allow {
 		t.Errorf("a user rule for .env: %s (%s)", v.Decision, v.Reason)
+	}
+	// "allow cat" was answered for a file the user saw; a later cat of a
+	// secret-shaped file, or of a glob that may expand to one, asks again
+	t.Chdir(proj)
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "cat *", Decision: perm.Allow, Principal: "model"})
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "make *", Decision: perm.Allow, Source: "permissions"})
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "head *", Decision: perm.Allow, Source: "permissions"})
+	for _, c := range []struct {
+		cmd  string
+		want perm.Decision
+	}{
+		{"cat main.go", perm.Allow},
+		{"cat .env", perm.Deny},
+		{"cat ~/.ssh/id_rsa", perm.Deny},
+		{"cat .e*", perm.Deny},
+		{"grep -r secret .", perm.Allow},
+		{"make .env", perm.Allow},
+		{"head deploy/prod.pem", perm.Deny},
+		{"cat main.go && head .npmrc", perm.Deny},
+	} {
+		if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: c.cmd}); v.Decision != c.want {
+			t.Errorf("%s: %s (%s), want %s", c.cmd, v.Decision, v.Reason, c.want)
+		}
+	}
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "cat .env", Decision: perm.Allow})
+	if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "cat .env"}); v.Decision != perm.Allow {
+		t.Errorf("a user rule for cat: %s (%s)", v.Decision, v.Reason)
 	}
 }
 

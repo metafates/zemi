@@ -25,6 +25,9 @@ func (s *Store) CheckCommandFor(subject, cmd, principal string) Outcome {
 		return Outcome{Decision: Ask, Reason: n.ForceAsk}
 	}
 	eval := s.evaluator(subject, principal, true)
+	// the rule an allow rests on: the first that is not the user's own
+	// (a model always answer, a project file), else the last one
+	var weak *Rule
 	for i, seg := range n.Segments {
 		o := eval(seg)
 		// judged as written and with climbing words cleaned, the stricter
@@ -41,6 +44,9 @@ func (s *Store) CheckCommandFor(subject, cmd, principal string) Outcome {
 		if o.Decision != Allow {
 			o.Reason = joinReason("segment "+seg, o.Reason)
 			return o
+		}
+		if weak == nil || weak.Principal == "" && weak.Source == "" {
+			weak = o.Rule
 		}
 	}
 	for _, p := range n.ReadPaths {
@@ -60,7 +66,7 @@ func (s *Store) CheckCommandFor(subject, cmd, principal string) Outcome {
 	if n.Assign != "" {
 		return Outcome{Decision: Ask, Reason: n.Assign}
 	}
-	return Outcome{Decision: Allow}
+	return Outcome{Decision: Allow, Rule: weak}
 }
 
 // cleanDotDot is the segment with every word that climbs out of a directory

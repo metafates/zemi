@@ -145,7 +145,16 @@ func (h *Host) permItems() []any {
 			item["actions"] = []any{map[string]any{"text": "Remove", "run": forget}}
 			item["detail"] = "an always answer this session; removing it makes the next call ask again"
 		} else {
-			item["detail"] = "from config; edit permissions in your init.lua"
+			switch r.Source {
+			case "":
+				item["detail"] = "from config; edit permissions in your init.lua"
+			case "permissions":
+				item["detail"] = "from .zemi/permissions; edit that file"
+			case "project":
+				item["detail"] = "from the project's .zemi/init.lua"
+			default:
+				item["detail"] = "from " + r.Source + " config"
+			}
 		}
 		items = append(items, item)
 	}

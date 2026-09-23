@@ -253,6 +253,11 @@ func (p *Pipeline) Check(req Request) Verdict {
 	if plan && req.Subject == "fs.write" && (p.Scratch == nil || !p.Scratch(req.Arg)) {
 		return Verdict{Decision: perm.Deny, Reason: "the user is planning: describe this change in the plan instead of making it", DecidedBy: "profile:readonly"}
 	}
+	// read-only holds under every mode: yolo would settle the escape and
+	// run the command unconfined, with the project writable
+	if plan && req.Subject == "tool.bash" && req.Unsandboxed {
+		return Verdict{Decision: perm.Deny, Reason: "the user is planning: commands stay in the sandbox, which keeps the project read-only", DecidedBy: "profile:readonly"}
+	}
 	// rule is the one that allowed the request, nil when a default did
 	loosen := func(v Verdict, rule *perm.Rule) Verdict {
 		switch {
@@ -264,6 +269,10 @@ func (p *Pipeline) Check(req Request) Verdict {
 		// an "always" answer allows the file's whole directory; a rule the
 		// user wrote in init.lua says what it means and stays authoritative
 		case PathSubject(req.Subject) && rule != nil && rule.Principal == "model" && p.Secret != nil && p.Secret(req.Arg):
+			return p.resolveAsk(req, "this file looks like it holds secrets")
+		// "allow cat" was answered for a file the user saw; a project file
+		// line names the program alone. The user's init.lua rule stays.
+		case req.Subject == "tool.bash" && rule != nil && (rule.Principal == "model" || rule.Source == "permissions") && p.Secret != nil && perm.ReadsSecret(req.Arg, p.Secret):
 			return p.resolveAsk(req, "this file looks like it holds secrets")
 		// rule-allowed commands run unconfined, so only readers skip the ask
 		case plan && req.Subject == "tool.bash" && perm.ReadCommand(req.Arg, nil):
@@ -344,6 +353,10 @@ func (p *Pipeline) sandboxHint(out string, err error) string {
 	if !p.SandboxParam {
 		return "\nThe sandbox may have blocked this: " + limits + "."
 	}
+	if p.Plan != nil && p.Plan() {
+		// sandbox: false is denied for a read-only agent, so it is not offered
+		return "\nThe sandbox may have blocked this: " + limits + ". The project stays read-only while planning; network: true (which asks the user) adds only the network."
+	}
 	retry := " If the command needs the network, call it again with network: true, which keeps the sandbox and asks the user; sandbox: false, which drops every limit, is the last resort."
 	if !sandbox.LikelyNetwork(out, err) {
 		retry = " If the command needs more, call it again with network: true (the network, sandbox kept) or sandbox: false (no limits at all); both ask the user."
@@ -377,12 +390,12 @@ func sandboxLimits() string {
 // sockets. It is the answer to almost every sandbox denial, since the file
 // rules are the ones a settled command is meant to keep.
 func NetworkProp() map[string]any {
-	return map[string]any{"type": "boolean", "description": "keeps the sandbox and adds the network (go mod download, npm install, curl); asks the user. Try this before sandbox: false, which drops every limit."}
+	return map[string]any{"type": "boolean", "description": "keeps the sandbox and adds the network (go mod download, npm install, curl); asks the user, so say why in about. Try this before sandbox: false, which drops every limit."}
 }
 
 // SandboxProp is the escape bash and job_start take while a backend is live.
 func SandboxProp() map[string]any {
-	return map[string]any{"type": "boolean", "description": "a command zemi settles on its own runs sandboxed (" + sandboxLimits() + "); false runs it unconfined and asks the user. Only after network: true was not enough."}
+	return map[string]any{"type": "boolean", "description": "a command zemi settles on its own runs sandboxed (" + sandboxLimits() + "); false runs it unconfined and asks the user, so say why in about. Only after network: true was not enough."}
 }
 
 func decidedBy(o perm.Outcome) string {
@@ -511,7 +524,11 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 		v := pipe.CheckDenied(req)
 		run.verdict = v
 		if v.Decision == perm.Deny {
-			return t.post(pipe, input, fantasy.NewTextErrorResponse(DeniedText(v, req.Subject+" "+req.Arg))), nil
+			what := req.Arg
+			if PathSubject(req.Subject) {
+				what = workRel(what) // as the ask showed it
+			}
+			return t.post(pipe, input, fantasy.NewTextErrorResponse(DeniedText(v, req.Subject+" "+what))), nil
 		}
 		if v.Decision == perm.Ask {
 			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission unresolved (ask failed): "+req.Subject+" "+req.Arg+": "+v.Reason)), nil
@@ -759,7 +776,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			withSandbox(map[string]any{
 				// "about", not "description": a schema's properties reach the model
 				// sorted by name, and this one has to stream before the command
-				"about":      map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user in place of the command, e.g. Run the unit tests"},
+				"about":      map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user in place of the command, e.g. Run the unit tests; with network: true or sandbox: false, also what it needs that for"},
 				"command":    map[string]any{"type": "string"},
 				"timeout_ms": map[string]any{"type": "number", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
 			}),
@@ -937,7 +954,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 		mk(ToolJobStart, "Start a process that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, it is the program. Read its output with job_read (a server's ready line, not sleep) and job_kill what you no longer need.",
 			true,
 			withSandbox(map[string]any{
-				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server"},
+				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server; with network: true or sandbox: false, also what it needs that for"},
 				"command": map[string]any{"type": "string"},
 				"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				"env":     map[string]any{"type": "object", "description": "extra environment variables"},

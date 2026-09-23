@@ -112,7 +112,19 @@ func TestUntrustedModes(t *testing.T) {
 			t.Errorf("%s %q: ask reason %q", c.subject, c.arg, why)
 		}
 	}
+	// the reason names what kept the mode from settling it
+	h.SetProjectTrusted(true)
 	fakeSandbox(h, true)
+	h.SetPermMode("auto")
+	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, ".env"), []byte("K=1"), 0o600)
+	for _, c := range []struct{ subject, arg, why string }{
+		{"fs.read", filepath.Join(h.Dirs.ProjectDir, ".env"), "not settled: this file looks like it holds secrets"},
+		{"net.example.com", "https://example.com/", "not settled: the URL is the model's"},
+	} {
+		if ok, _, why := ask(tools.Request{Subject: c.subject, Arg: c.arg}); ok || why != c.why {
+			t.Errorf("%s %s: allowed %v, reason %q", c.subject, c.arg, ok, why)
+		}
+	}
 	lua := h.luaEvalTool()
 	for _, c := range []struct {
 		mode     string
@@ -286,12 +298,20 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 	always := perm.Rule{Subject: "tool.bash", Pattern: "git push *", Decision: perm.Allow, Principal: "model"}
 	h.Perm.Add(always)
 	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "rm -rf *", Decision: perm.Deny})
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "make *", Decision: perm.Allow, Source: "permissions"})
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "curl *", Decision: perm.Ask, Source: "project"})
 	if err := h.OpenPermissions(); err != nil || len(ui.opened) != 1 {
 		t.Fatalf("open: %v %+v", err, ui.opened)
 	}
 	rows := fmt.Sprint(ui.opened[0].Items)
 	if !strings.Contains(rows, "tool.bash git push *") || !strings.Contains(rows, "run:permissions forget tool.bash git push *") {
 		t.Fatalf("rules not listed with a way back:\n%s", rows)
+	}
+	// each rule says where to edit it
+	for _, want := range []string{"from .zemi/permissions; edit that file", "from the project's .zemi/init.lua", "from config; edit permissions in your init.lua"} {
+		if !strings.Contains(rows, want) {
+			t.Fatalf("missing %q:\n%s", want, rows)
+		}
 	}
 	if err := h.ForgetRule("tool.bash rm -rf *"); err == nil {
 		t.Error("a config rule must not be removable: a reload brings it back")

@@ -42,6 +42,10 @@ type Rule struct {
 	Decision  Decision `json:"decision"`  // allow | ask | deny
 	NotMatch  string   `json:"not_match"` // optional exclusion glob
 	Principal string   `json:"principal"` // empty = any principal
+	// Source is where a principal-less rule came from, so /permissions can
+	// say what to edit: "" for user config, "permissions" for a project's
+	// .zemi/permissions file, else the Lua origin that added it
+	Source string `json:"source,omitempty"`
 }
 
 // Store holds rules in evaluation order; lookups re-sort by specificity.

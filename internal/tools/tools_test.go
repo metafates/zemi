@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sandbox"
 )
 
 func TestResolveSchemaRefs(t *testing.T) {
@@ -142,6 +144,25 @@ func TestBashGate(t *testing.T) {
 				t.Fatalf("asks = %q, want %q", args, c.wantAsks)
 			}
 		})
+	}
+}
+
+// TestSandboxHintForPlanner: a read-only agent is denied sandbox: false, so
+// its hint does not offer it; network: true stays.
+func TestSandboxHintForPlanner(t *testing.T) {
+	p, _ := testPipeline(t, true)
+	p.SandboxParam = true
+	denied := errors.New("exit status 1")
+	out := "open x: operation not permitted"
+	if !sandbox.LikelyDenied(out, denied) {
+		t.Skip("no denial pattern on this platform")
+	}
+	if hint := p.sandboxHint(out, denied); !strings.Contains(hint, "sandbox: false") {
+		t.Fatalf("plain hint: %q", hint)
+	}
+	p.Plan = func() bool { return true }
+	if hint := p.sandboxHint(out, denied); strings.Contains(hint, "sandbox: false") || !strings.Contains(hint, "network: true") || !strings.Contains(hint, "read-only while planning") {
+		t.Fatalf("planner hint: %q", hint)
 	}
 }
 
