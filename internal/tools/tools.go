@@ -37,7 +37,6 @@ const (
 	ToolRead        = "read"
 	ToolWrite       = "write"
 	ToolEdit        = "edit"
-	ToolMultiedit   = "multiedit"
 	ToolGlob        = "glob"
 	ToolGrep        = "grep"
 	ToolFetch       = "fetch"
@@ -172,9 +171,9 @@ type Pipeline struct {
 	// just read, when it is not already in the prompt; nil = none.
 	Instructions func(path string) string
 
-	// AfterWrite returns text to append to a successful write, edit or
-	// multiedit result (language server diagnostics) and may rewrite the
-	// file (a recipe's scrub); nil = nothing.
+	// AfterWrite returns text to append to a successful write or edit
+	// result (language server diagnostics) and may rewrite the file (a
+	// recipe's scrub); nil = nothing.
 	AfterWrite func(path string) string
 
 	// Diagnostics backs the diagnostics tool; nil = unavailable.
@@ -481,7 +480,7 @@ type tool struct {
 	// exactly that path (openGated)
 	gated bool
 	// edits: the tool changes a file it must have read unchanged (write,
-	// edit, multiedit), checked before the gate
+	// edit), checked before the gate
 	edits bool
 	// check refuses input the tool could not act on (a URL that is no
 	// URL) before the gate, so the user is never asked about it; nil = none
@@ -625,7 +624,7 @@ func SchemaOpen(schema map[string]any) bool {
 
 // validateFields checks required fields, the type of every field sent, then
 // the fields of every object in an array: a lax provider can drop a nested
-// field, and a multiedit without new_string would delete the matched text.
+// field.
 // A field the schema does not declare is refused unless open: a misspelt
 // one would otherwise run the call with its default and report success.
 func validateFields(props map[string]any, required []string, input map[string]any, at string, open bool) error {
@@ -892,26 +891,7 @@ Chain dependent steps with &&.`,
 			},
 			runEdit))),
 
-		gated(edits(mk(ToolMultiedit, "Apply several edits to one file in order, each seeing the result of the one before, under edit's rules. Prefer it over several edit calls to one file. If any edit fails, nothing is written.", true,
-			map[string]any{
-				"path": map[string]any{"type": "string"},
-				"edits": map[string]any{"type": "array", "items": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"old_string":  map[string]any{"type": "string"},
-						"new_string":  map[string]any{"type": "string"},
-						"replace_all": map[string]any{"type": "boolean"},
-					},
-					"required": []string{"old_string", "new_string"},
-				}},
-			},
-			[]string{"path", "edits"},
-			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Preview: ChangeDiff("multiedit", in)}}
-			},
-			runMultiedit))),
-
-		mk(ToolGlob, "List files matching a glob under path, newest first, skipping .gitignored ones. A pattern without / matches names at any depth.", true,
+		mk(ToolGlob, "List files matching a glob under path, newest first, skipping .gitignored ones. A pattern without / matches names at any depth; one with / is relative to path.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "glob such as *.go, src/**/*.ts or *.{ts,tsx}"},
 				"path":    map[string]any{"type": "string", "description": "directory to search under; default the project root"},
@@ -1125,7 +1105,7 @@ func runMemory(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolR
 	return fantasy.NewTextResponse(msg), nil
 }
 
-// ChangeDiff renders what write, edit or multiedit would do to its file as
+// ChangeDiff renders what write or edit would do to its file as
 // a unified diff against the current content. When an edit does not apply
 // (the tool will report that), it falls back to ChangePreview.
 func ChangeDiff(tool string, in map[string]any) string {
@@ -1142,13 +1122,9 @@ func ChangeDiff(tool string, in map[string]any) string {
 	switch tool {
 	case "write":
 		updated = lf(str(in["content"]))
-	case "edit", "multiedit":
-		edits := []any{in}
-		if tool == "multiedit" {
-			edits, _ = in["edits"].([]any)
-		}
+	case "edit":
 		var msg string
-		if updated, _, _, msg = applyEdits(old, edits, workRel(path)); msg != "" {
+		if updated, _, _, msg = editText(old, in, workRel(path)); msg != "" {
 			return ChangePreview(in)
 		}
 	default:
@@ -1173,14 +1149,6 @@ func ChangePreview(in map[string]any) string {
 	add("+ ", str(in["content"]))
 	add("- ", str(in["old_string"]))
 	add("+ ", str(in["new_string"]))
-	if edits, ok := in["edits"].([]any); ok {
-		for _, e := range edits {
-			if m, ok := e.(map[string]any); ok {
-				add("- ", str(m["old_string"]))
-				add("+ ", str(m["new_string"]))
-			}
-		}
-	}
 	return strings.Join(lines, "\n")
 }
 

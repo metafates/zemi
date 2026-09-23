@@ -523,8 +523,7 @@ func OpenRegular(path string) (f *os.File, fi os.FileInfo, err error) {
 	return f, fi, nil
 }
 
-// readGated reads a whole file, for the tools that need all of it (edit,
-// multiedit). A file over editMaxBytes is refused rather than allocated:
+// readGated reads a whole file, for edit, which needs all of it. A file over editMaxBytes is refused rather than allocated:
 // the edit would have to hold it twice over.
 func readGated(path string) (data []byte, fi os.FileInfo, err error) {
 	f, fi, err := OpenRegular(path)
@@ -533,7 +532,7 @@ func readGated(path string) (data []byte, fi os.FileInfo, err error) {
 	}
 	defer f.Close()
 	if fi.Size() > editMaxBytes {
-		return nil, fi, fmt.Errorf("%s is %d bytes, too large to edit; narrow the change or split the file", workRel(path), fi.Size())
+		return nil, fi, fmt.Errorf("%s is %d bytes, over edit's %d MB limit; make this change with a command in bash", workRel(path), fi.Size(), editMaxBytes>>20)
 	}
 	data, err = io.ReadAll(f)
 	return data, fi, err
@@ -575,7 +574,7 @@ func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	t, ok := p.Seen.Load(absPath(path))
 	switch {
 	case !ok:
-		return "read " + rel + " with the read tool first: this session has not read it, and cat or grep in bash does not count. Then repeat this edit."
+		return "read " + rel + " with the read tool first (the lines you change are enough), then repeat this call: this session has not read it, and cat, sed or grep in bash does not count."
 	case !t.(time.Time).Equal(fi.ModTime()):
 		return rel + " changed since you read it (a command you ran, the user's editor, a formatter or another agent). Read it again and redo the edit against the current content."
 	}
@@ -611,7 +610,7 @@ var callOrder = struct {
 // whether it did; other tools are ignored. The agent runner calls it from
 // fantasy's OnToolCall and owes a CallDone for every recorded id.
 func CallStart(id, tool, input string) bool {
-	if tool != ToolWrite && tool != ToolEdit && tool != ToolMultiedit {
+	if tool != ToolWrite && tool != ToolEdit {
 		return false
 	}
 	var in struct{ Path string }
@@ -707,20 +706,12 @@ func (p *Pipeline) checkpoint(path string) {
 }
 
 func runEdit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	return editFile(p, str(input["path"]), []any{input})
+	return editFile(p, str(input["path"]), input)
 }
 
-func runMultiedit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	edits, ok := input["edits"].([]any)
-	if !ok || len(edits) == 0 {
-		return fantasy.NewTextErrorResponse("edits must be a non-empty array"), nil
-	}
-	return editFile(p, str(input["path"]), edits)
-}
-
-// editFile applies edits to a file under its lock, all or nothing. Matching
-// runs on LF text and a CRLF file is written back with CRLF.
-func editFile(p *Pipeline, path string, edits []any) (fantasy.ToolResponse, error) {
+// editFile applies an edit to a file under its lock. Matching runs on LF
+// text and a CRLF file is written back with CRLF.
+func editFile(p *Pipeline, path string, in map[string]any) (fantasy.ToolResponse, error) {
 	defer lockFile(path)()
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -734,7 +725,7 @@ func editFile(p *Pipeline, path string, edits []any) (fantasy.ToolResponse, erro
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	rel := workRel(path)
-	out, n, tolerant, msg := applyEdits(lf(string(data)), edits, rel)
+	out, n, tolerant, msg := editText(lf(string(data)), in, rel)
 	if msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
@@ -832,38 +823,26 @@ func relErr(err error) error {
 
 func lf(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
 
-// region is where a whitespace-tolerant edit put its new lines: the last
-// such edit's, in the text as it is once every edit applied.
-// NOTE: an exact edit above it in a later multiedit step shifts the lines.
+// region is where a whitespace-tolerant edit put its new lines.
 type region struct{ at, count int }
 
-// applyEdits applies edits in order to LF text. msg explains the first edit
-// that does not apply, and then nothing changes.
-func applyEdits(src string, edits []any, where string) (out string, n int, tolerant region, msg string) {
-	for i, e := range edits {
-		em, _ := e.(map[string]any)
-		old, new := lf(str(em["old_string"])), lf(str(em["new_string"]))
-		all, _ := em["replace_all"].(bool)
-		res, c := applyEdit(src, old, new, all)
-		if c == 0 && old != "" {
-			var at int
-			if res, c, at = applyTolerant(src, old, new, all); c > 0 {
-				tolerant = region{at, strings.Count(strings.Trim(new, "\n"), "\n") + 1}
-			}
+// editText applies an edit's old_string and new_string to LF text; msg
+// explains why it does not apply, and then out is to be ignored.
+func editText(src string, in map[string]any, where string) (out string, n int, tolerant region, msg string) {
+	old, new := lf(str(in["old_string"])), lf(str(in["new_string"]))
+	all, _ := in["replace_all"].(bool)
+	out, n = applyEdit(src, old, new, all)
+	if n == 0 && old != "" {
+		var at int
+		if out, n, at = applyTolerant(src, old, new, all); n > 0 {
+			tolerant = region{at, strings.Count(strings.Trim(new, "\n"), "\n") + 1}
 		}
-		m := editError(src, old, c, all, where)
-		if old != "" && old == new {
-			m = "old_string and new_string are the same; nothing to change"
-		}
-		if m != "" {
-			if len(edits) > 1 {
-				m = fmt.Sprintf("edit %d (nothing was written): %s", i+1, m)
-			}
-			return src, 0, region{}, m
-		}
-		src, n = res, n+c
 	}
-	return src, n, tolerant, ""
+	msg = editError(src, old, n, all, where)
+	if old != "" && old == new {
+		msg = "old_string and new_string are the same; nothing to change"
+	}
+	return out, n, tolerant, msg
 }
 
 // applyEdit replaces old with new in s and returns the match count. With
@@ -890,21 +869,25 @@ func editError(src, old string, n int, all bool, where string) string {
 	first, _, _ := strings.Cut(strings.TrimLeft(old, "\n"), "\n")
 	if first = strings.TrimSpace(first); first != "" {
 		lines := strings.Split(src, "\n")
-		at, hits := 0, 0
+		var hits []string
+		at := 0
 		for i, l := range lines {
-			if strings.TrimSpace(l) == first {
-				if hits == 0 {
+			// Contains: the model may start old_string mid-line
+			if strings.Contains(l, first) {
+				if len(hits) == 0 {
 					at = i
 				}
-				hits++
+				if hits = append(hits, strconv.Itoa(i+1)); len(hits) == 3 {
+					break
+				}
 			}
 		}
 		// the file's lines only when the hit is unique: a common first line
 		// like "}" would show the wrong block
-		if hits > 1 {
-			return fmt.Sprintf("old_string not found in %s; its first line matches line %d, so a later line differs: read from there and copy the text exactly", where, at+1)
+		if len(hits) > 1 {
+			return fmt.Sprintf("old_string not found in %s; its first line matches lines %s, so a later line differs: read the block you meant and copy it exactly", where, strings.Join(hits, ", "))
 		}
-		if hits == 1 {
+		if len(hits) == 1 {
 			var b strings.Builder
 			fmt.Fprintf(&b, "old_string not found in %s; its first line matches line %d, so a later line differs. The file there reads (copy it without the line numbers):", where, at+1)
 			n := min(strings.Count(strings.Trim(old, "\n"), "\n")+1, 30)

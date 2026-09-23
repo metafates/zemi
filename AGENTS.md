@@ -207,7 +207,7 @@ into an ask (`expandsToDotDot`). A deny, ask or not_match rule also meets the se
 by base name, its leading options dropped), so `git -C . push` meets a `git push*` rule; an
 allow is judged as written, and a git alias still slips past (NOTE in the code).
 
-File tools (internal/tools/fs_tools.go): `write`, `edit` and `multiedit` refuse a file the
+File tools (internal/tools/fs_tools.go): `write` and `edit` refuse a file the
 model has not read, or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get
 their own), and hold a per-path lock, so a concurrent agent or the user's editor cannot lose
 changes; within one step the lock is taken in call order (`tools.CallStart` from fantasy's

@@ -156,7 +156,7 @@ zemi.ui.widget.add({
     -- own rows, and ctrl+o shows every call.
     ---@type table<string, string>
     local VERB = {
-      read = "Read", write = "Write", edit = "Edit", multiedit = "Edit", glob = "Find", grep = "Search",
+      read = "Read", write = "Write", edit = "Edit", glob = "Find", grep = "Search",
       fetch = "Fetch", web_search = "Search web", bash = "Run", job_start = "Start", job_read = "Check job",
       job_list = "List jobs", job_kill = "Stop job", memory = "Remember",
       diagnostics = "Check", todos = "Update todos", question = "Ask", plan = "Plan", skill = "Load skill",

@@ -810,7 +810,7 @@ names it `view`; it returns images as image content, lists a directory
 one level deep in place of crush's `ls`, and carries the
 nearest instruction file not already in the prompt, once per session),
 `write`, `edit` (incl. whitespace-tolerant variant),
-`multiedit`, `glob`, `grep` (both Go-exec'd async against `rg` with a Go
+`glob`, `grep` (both Go-exec'd async against `rg` with a Go
 walker fallback, §2), `fetch` (readability picks the article out of the
 page, converted to markdown),
 `todos`, `question` (1-4 questions in one overlay, options or a typed
@@ -1653,11 +1653,11 @@ provenance string.
   write roots, so an approved `fs.write` cannot plant plugin code that
   auto-loads at the next boot. The config dir is read-only to Lua: of
   zemi's own code only Go writes there, so `zemi.fs.write` cannot
-  author `init.lua`. The model's `read`, `write`, `edit` and `multiedit` get their
+  author `init.lua`. The model's `read`, `write` and `edit` get their
   path resolved once before the gate and open exactly that path, walking
   it with `openat` and `O_NOFOLLOW` (`openGated`), so a directory a
   sandboxed command swaps for a symlink after the check fails the open.
-  `write`, `edit` and `multiedit` refuse a path whose last component is a
+  `write` and `edit` refuse a path whose last component is a
   symbolic link and name the target to edit instead.
   Residual race: `zemi.fs` opens the checked path plainly, so a component
   swapped between check and open is not caught there (the Linux endgame
@@ -2104,7 +2104,7 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
 - **M1, chat that codes**: providers (anthropic, openai, openai_compat, google),
   `zemi.model.pick` over the registered models, sessions + messages in
   SQLite, streaming into chat widget, composer,
-  bash/read/write/edit/multiedit/glob/grep tools, permission overlays,
+  bash/read/write/edit/glob/grep tools, permission overlays,
   `:` commands, themes in Lua.
   Namespaces: `zemi.env`, `zemi.state`, `zemi.timer`, `zemi.fs`,
   `zemi.http`, `zemi.job`, `zemi.tool`, `zemi.model`, `zemi.provider`,

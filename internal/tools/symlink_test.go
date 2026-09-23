@@ -24,7 +24,6 @@ func TestFileToolsRefuseSymlink(t *testing.T) {
 	}{
 		{all[2], `{"path":"` + link + `","content":"x"}`},
 		{all[3], `{"path":"` + link + `","old_string":"one","new_string":"x"}`},
-		{all[4], `{"path":"` + link + `","edits":[{"old_string":"one","new_string":"x"}]}`},
 	} {
 		if resp := call(t, c.tool, c.input); !resp.IsError || resp.Content != want {
 			t.Errorf("%s: %+v", c.tool.Info().Name, resp)

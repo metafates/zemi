@@ -791,7 +791,7 @@ func (s *streamAdapter) ToolCallPending(id, name string) {
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	// the diff reads the file: outside the lock, which UI readers share
 	diff := ""
-	if name == tools.ToolWrite || name == tools.ToolEdit || name == tools.ToolMultiedit {
+	if name == tools.ToolWrite || name == tools.ToolEdit {
 		var in map[string]any
 		if json.Unmarshal([]byte(input), &in) == nil {
 			diff = capLines(tools.ChangeDiff(name, in), 24)
@@ -2223,7 +2223,7 @@ func (h *Host) seedReadsInto(seen *sync.Map, rows []*store.Message) {
 		}
 		for _, part := range m.Content {
 			call, ok := part.(fantasy.ToolCallPart)
-			if !ok || !slices.Contains([]string{tools.ToolRead, tools.ToolWrite, tools.ToolEdit, tools.ToolMultiedit}, call.ToolName) {
+			if !ok || !slices.Contains([]string{tools.ToolRead, tools.ToolWrite, tools.ToolEdit}, call.ToolName) {
 				continue
 			}
 			var in struct {

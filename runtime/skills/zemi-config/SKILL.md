@@ -30,7 +30,7 @@ Rules when editing:
   (`<state>/projects/<hash>/permissions`, the path `/permissions` shows; one bash command per
   line, written there by a prompt's `p` answer or by hand) allows them without a prompt in
   that project. A repository cannot ship one: a `.zemi/permissions` file is not read.
-- File writes ask first and show the diff, and write, edit and multiedit
+- File writes ask first and show the diff, and write and edit
   refuse a file the model has not read or that changed since it read it, and a symbolic
   link (edit its target). A bash row shows a diff of the files the command changed. zemi reloads when
   config files change; `/reload` forces it.
@@ -277,7 +277,7 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
 
 - `/sessions`: enter on an earlier session offers Resume and Delete. Delete removes its
   messages, subagent runs and scratchpad from disk; memories learned from it stay.
-- `/rewind [id]`: back to an earlier prompt. Files changed by write, edit and multiedit
+- `/rewind [id]`: back to an earlier prompt. Files changed by write and edit
   return to their state before it, the conversation is cut there and the prompt comes back
   in the composer. Files a command changed go back too when they are in the repository and
   not ignored. Lua: `zemi.session.rewind(id)`.
@@ -323,7 +323,7 @@ as itself, not as a placeholder.
 
 ## Tools and permission rules
 
-Model tools: `bash`, `read`, `write`, `edit`, `multiedit`, `glob`, `grep`, `fetch`,
+Model tools: `bash`, `read`, `write`, `edit`, `glob`, `grep`, `fetch`,
 `web_search`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`,
 `memory`, `skill`, `diagnostics`, `lsp`,
 `agent`, `workflow`, `lua` (runs Lua inside zemi as user origin; read-only calls run at

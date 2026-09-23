@@ -401,26 +401,6 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 	}
 }
 
-func TestMultieditSequential(t *testing.T) {
-	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
-	dir := t.TempDir()
-	file := filepath.Join(dir, "a.txt")
-	os.WriteFile(file, []byte("aaa bbb ccc"), 0o644)
-	multiedit := All(p)[4]
-	resp := call(t, multiedit, `{"path":"`+file+`","edits":[
-		{"old_string":"aaa","new_string":"AAA"},
-		{"old_string":"bbb","new_string":"BBB"},
-		{"old_string":"ccc","new_string":"CCC"}
-	]}`)
-	if resp.IsError || !strings.HasPrefix(resp.Content, "edited ") || !strings.Contains(resp.Content, "/a.txt (3 replacements)") {
-		t.Fatalf("multiedit: %+v", resp)
-	}
-	data, _ := os.ReadFile(file)
-	if string(data) != "AAA BBB CCC" {
-		t.Fatalf("multiedit result: %q", data)
-	}
-}
-
 // TestGlobAndGrep runs every case through ripgrep and the Go fallback.
 func TestGlobAndGrep(t *testing.T) {
 	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
@@ -435,7 +415,7 @@ func TestGlobAndGrep(t *testing.T) {
 	} {
 		os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
 	}
-	glob, grep := All(p)[5], All(p)[6]
+	glob, grep := toolNamed(t, "glob", p), toolNamed(t, "grep", p)
 	saved := rgBin
 	t.Cleanup(func() { rgBin = saved })
 	for _, bin := range []string{saved, ""} {
@@ -493,14 +473,14 @@ func TestGlobChecksOnlyShownHits(t *testing.T) {
 	for i := range 1000 {
 		os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d.go", i)), nil, 0o644)
 	}
-	resp := call(t, All(p)[5], `{"path":"`+dir+`","pattern":"*.go"}`)
+	resp := call(t, toolNamed(t, "glob", p), `{"path":"`+dir+`","pattern":"*.go"}`)
 	if !strings.Contains(resp.Content, "up to 800 more") || checks > globMaxFiles+1 {
 		t.Errorf("%d checks, got %q", checks, resp.Content[max(0, len(resp.Content)-80):])
 	}
 	// a scan that hit its cap has no count to give
 	defer func(n int) { globMaxScan = n }(globMaxScan)
 	globMaxScan = 500
-	if resp := call(t, All(p)[5], `{"path":"`+dir+`","pattern":"*.go"}`); !strings.Contains(resp.Content, "scan stopped at 500 files") {
+	if resp := call(t, toolNamed(t, "glob", p), `{"path":"`+dir+`","pattern":"*.go"}`); !strings.Contains(resp.Content, "scan stopped at 500 files") {
 		t.Errorf("capped scan: %q", resp.Content[max(0, len(resp.Content)-80):])
 	}
 }
@@ -514,7 +494,7 @@ func TestEditSafety(t *testing.T) {
 		perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
 	p.Seen = &sync.Map{}
 	all := All(p)
-	read, edit, multiedit := all[1], all[3], all[4]
+	read, edit := all[1], all[3]
 	dir := t.TempDir()
 	js := func(m map[string]any) string { b, _ := json.Marshal(m); return string(b) }
 	for _, c := range []struct {
@@ -532,12 +512,7 @@ func TestEditSafety(t *testing.T) {
 			"Written as:\n     1\t\tif x {\n     2\t\t\treturn 1\n     3\t\t}", "\tif x {\n\t\treturn 1\n\t}\n"},
 		{"same text", "a\n", false, map[string]any{"old_string": "a", "new_string": "a"}, "are the same; nothing to change", "a\n"},
 		{"diverges", "a\nb\nc\n", false, map[string]any{"old_string": "b\nX", "new_string": "y"}, "     2\tb\n     3\tc", "a\nb\nc\n"},
-		{"diverges at a common line", "}\na\n}\nb\n", false, map[string]any{"old_string": "}\nX", "new_string": "y"}, "matches line 1, so a later line differs: read", "}\na\n}\nb\n"},
-		{"nested field", "a\n", false, map[string]any{"edits": []any{map[string]any{"old_string": "a"}}}, `edits[0].new_string`, "a\n"},
-		{"the failed edit is named as the model wrote it", "a\n", false, map[string]any{"edits": []any{
-			map[string]any{"old_string": "a", "new_string": "b"},
-			map[string]any{"old_string": "zz", "new_string": "c"},
-		}}, "edit 2 (nothing was written)", "a\n"},
+		{"diverges at a common line", "}\na\n}\nb\n", false, map[string]any{"old_string": "}\nX", "new_string": "y"}, "matches lines 1, 3, so a later line differs: read", "}\na\n}\nb\n"},
 	} {
 		path := filepath.Join(dir, c.name)
 		os.WriteFile(path, []byte(c.file), 0o644)
@@ -545,11 +520,7 @@ func TestEditSafety(t *testing.T) {
 			call(t, read, js(map[string]any{"path": path, "limit": 0}))
 		}
 		c.input["path"] = path
-		tl := edit
-		if c.input["edits"] != nil {
-			tl = multiedit
-		}
-		resp := call(t, tl, js(c.input))
+		resp := call(t, edit, js(c.input))
 		if got, _ := os.ReadFile(path); !strings.Contains(resp.Content, c.want) || string(got) != c.result {
 			t.Errorf("%s: want %q, got %q, file %q", c.name, c.want, resp.Content, got)
 		}
@@ -562,13 +533,10 @@ func TestEditSafety(t *testing.T) {
 	for _, in := range []map[string]any{
 		{"path": sub, "content": "x"},
 		{"path": sub, "old_string": "a", "new_string": "b"},
-		{"path": sub, "edits": []any{map[string]any{"old_string": "a", "new_string": "b"}}},
 	} {
 		tl := all[2]
 		if in["old_string"] != nil {
 			tl = edit
-		} else if in["edits"] != nil {
-			tl = multiedit
 		}
 		if resp := call(t, tl, js(in)); !resp.IsError || !strings.HasSuffix(resp.Content, "sub is a directory") {
 			t.Errorf("%s on a directory: %q", tl.Info().Name, resp.Content)
@@ -679,7 +647,7 @@ func TestValidationErrors(t *testing.T) {
 		"command": map[string]any{"type": "string"}, "timeout_ms": map[string]any{"type": "number"},
 		"all": map[string]any{"type": "boolean"}, "n": map[string]any{"type": "integer"},
 		// an array whose items admit extra fields, under a root that does not
-		"env": map[string]any{"type": "array", "items": map[string]any{"properties": map[string]any{"name": map[string]any{"type": "string"}}, "additionalProperties": true}},
+		"env": map[string]any{"type": "array", "items": map[string]any{"properties": map[string]any{"name": map[string]any{"type": "string"}}, "required": []string{"name"}, "additionalProperties": true}},
 	}}
 	for _, c := range []struct {
 		input string
@@ -690,6 +658,7 @@ func TestValidationErrors(t *testing.T) {
 		{`{"command":"ls","timeout":null}`, false, ""},
 		{`{"command":"ls","timeout":1}`, true, ""},
 		{`{"command":"ls","env":[{"name":"a","value":1}]}`, false, ""},
+		{`{"env":[{"value":1}]}`, false, `missing required field "env[0].name"`},
 		{`{"all":"true","n":"2","timeout_ms":"1.5"}`, false, `{"all":true,"n":2,"timeout_ms":1.5}`},
 		{`{"n":"2.5"}`, false, `field "n" must be integer`},
 		{`{"timeout_ms":"Inf"}`, false, `field "timeout_ms" must be number`},
@@ -880,8 +849,8 @@ func TestReadPagesAHugeFile(t *testing.T) {
 	if !strings.Contains(res.Content, "100000\tx") || !strings.Contains(res.Content, "... (more lines; continue with offset") {
 		t.Fatalf("page: %q", res.Content[:min(len(res.Content), 120)])
 	}
-	res, _ = editFile(p, path, []any{map[string]any{"old_string": "x", "new_string": "y"}})
-	if !strings.Contains(res.Content, "too large to edit") {
+	res, _ = editFile(p, path, map[string]any{"old_string": "x", "new_string": "y"})
+	if !strings.Contains(res.Content, "over edit's 10 MB limit") {
 		t.Fatalf("edit of a huge file: %q", res.Content)
 	}
 }

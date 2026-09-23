@@ -440,7 +440,7 @@ function zemi.command.list() end
 ---@field input table
 ---@field ok boolean
 ---@field output string At most 4096 characters.
----@field changed string[] Absolute paths of the files the call changed: the file a write, edit or multiedit wrote, and what a bash command changed in its repository (ignored files and other tools are not tracked). Commands running at the same time each list the other's changes too.
+---@field changed string[] Absolute paths of the files the call changed: the file a write or edit wrote, and what a bash command changed in its repository (ignored files and other tools are not tracked). Commands running at the same time each list the other's changes too.
 
 ---@class zemi.ev.ToolDenied: zemi.Event
 ---@field tool string
