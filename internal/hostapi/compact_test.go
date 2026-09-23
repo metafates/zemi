@@ -148,33 +148,51 @@ func TestCompaction(t *testing.T) {
 // the model reads its tool result; the history is compacted and the same
 // turn continues from the summary.
 func TestCompactionMidTurn(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	m := reflectStub(t, h, "ok")
-	h.reflectMu.Lock()
-	defer h.reflectMu.Unlock()
-	h.agents.mu.Lock()
-	h.agents.ctxWin = 100_000
-	h.agents.mu.Unlock()
-	m.toolStep.Store(90_000)
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-	sender(t, h)("go")
-	if n := m.streams.Load(); n != 2 {
-		t.Fatalf("model streamed %d times, want 2", n)
-	}
-	// the cut ends a send, not the turn: one finish for the user
-	if n := ui.turnsDone.Load(); n != 1 {
-		t.Fatalf("TurnDone ran %d times, want 1", n)
-	}
-	if n := m.lastPrompt.Load(); n != 2 {
-		t.Fatalf("continued prompt has %d messages, want 2 (system, summary)", n)
-	}
-	var kinds []string
-	for _, row := range h.Session().Transcript {
-		kinds = append(kinds, row.Kind)
-	}
-	if got := strings.Join(kinds, ","); !strings.Contains(got, "compact") || strings.Contains(got, "error") {
-		t.Fatalf("transcript kinds: %s", got)
+	for _, c := range []struct {
+		name       string
+		summaryErr error
+		streams    int32
+	}{
+		{"continues after the summary", nil, 2},
+		{"ends the turn when the summary fails", errors.New("summary down"), 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			m := reflectStub(t, h, "ok")
+			m.err = c.summaryErr
+			h.reflectMu.Lock()
+			defer h.reflectMu.Unlock()
+			h.agents.mu.Lock()
+			h.agents.ctxWin = 100_000
+			h.agents.mu.Unlock()
+			m.toolStep.Store(90_000)
+			ui := &fakeUI{}
+			h.SetUIHooks(ui)
+			sender(t, h)("go")
+			if n := m.streams.Load(); n != c.streams {
+				t.Fatalf("model streamed %d times, want %d", n, c.streams)
+			}
+			// the cut ends a send, not the turn: one finish for the user,
+			// also when the compaction it waits for fails
+			if n := ui.turnsDone.Load(); n != 1 {
+				t.Fatalf("TurnDone ran %d times, want 1", n)
+			}
+			if c.summaryErr == nil {
+				if n := m.lastPrompt.Load(); n != 2 {
+					t.Fatalf("continued prompt has %d messages, want 2 (system, summary)", n)
+				}
+			}
+			var kinds []string
+			for _, row := range h.Session().Transcript {
+				kinds = append(kinds, row.Kind)
+			}
+			if got := strings.Join(kinds, ","); strings.Contains(got, "compact") != (c.summaryErr == nil) || strings.Contains(got, "error") {
+				t.Fatalf("transcript kinds: %s", got)
+			}
+			if u := h.agents.cutUsage; u != (fantasy.Usage{}) {
+				t.Fatalf("cut usage still banked: %+v", u)
+			}
+		})
 	}
 }
 

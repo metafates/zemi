@@ -156,6 +156,7 @@ type agentHost struct {
 	holdOverflow bool
 	holdImages   bool          // a 400 over image parts is resent without them, not reported
 	holdCap      bool          // a refused output cap is resent without it, not reported
+	holdCut      bool          // a Full cut is compacted and resent, not reported; off once the compaction failed
 	cutUsage     fantasy.Usage // the steps before a Full cut, billed with the turn's end
 
 	// digest is pinned at session start (DESIGN §10.7) and refreshed only
@@ -848,12 +849,13 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	// a Full cut ends the send, not the turn: sendCompacting compacts and
 	// sends again, so the finish, the notification and the title wait, and
 	// the cut steps' usage joins the final payload
-	if err == nil && ag.runner != nil && ag.runner.CutShort() {
+	if err == nil && ag.holdCut && ag.runner != nil && ag.runner.CutShort() {
 		ag.cutUsage = addUsage(ag.cutUsage, usage)
 		hold = true
 	} else {
 		usage, ag.cutUsage = addUsage(usage, ag.cutUsage), fantasy.Usage{}
 	}
+	ag.holdCut = false
 	model := ag.turnModel
 	ag.mu.Unlock()
 	if model == "" {

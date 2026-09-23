@@ -139,6 +139,7 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 		ag.holdOverflow = !retried && ag.compactFails < compactMaxFails
 		ag.holdImages = !imagesDropped && !runner.TextOnly
 		ag.holdCap = !capDropped && runner.MaxOutputTokens > 0
+		ag.holdCut = true
 		hold := ag.holdOverflow
 		ag.mu.Unlock()
 		err := runner.Send(ctx, text)
@@ -180,9 +181,8 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 			return
 		}
 		if !h.compactReporting(ctx, runner, reason, "") {
-			if err != nil {
-				h.streamHooks().TurnDone(err, fantasy.Usage{}) // the held error
-			}
+			// the held finish: the error, or a cut that stays cut
+			h.streamHooks().TurnDone(err, fantasy.Usage{})
 			return
 		}
 		ag.mu.Lock()
