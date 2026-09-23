@@ -14,6 +14,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -475,7 +476,7 @@ func readLine(br *bufio.Reader, max int) (string, error) {
 
 // listDir lists a directory one level deep, sorted, directories ending in
 // "/". Like glob and grep it hides entries a deny or ask read rule covers,
-// and secret-shaped names.
+// and like grep the strict secret shapes, which it names.
 func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 	f, err := openGated(path, os.O_RDONLY, 0)
 	if err != nil {
@@ -487,23 +488,39 @@ func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 		return fantasy.NewTextErrorResponse(relErr(err).Error())
 	}
 	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
-	ruledOut, shown := p.ruledOut(), []string{}
+	ruledOut, shown, secret := p.ruledOut(), []string{}, []string{}
 	for i, e := range entries {
 		if len(shown) == globMaxFiles {
 			shown = append(shown, fmt.Sprintf("... (up to %d more; narrow it with glob)", len(entries)-i))
 			break
 		}
-		if name := e.Name(); !perm.PathIsSecret(name) && !ruledOut(filepath.Join(path, name)) {
+		switch name := e.Name(); {
+		case ruledOut(filepath.Join(path, name)):
+		case perm.PathIsStrictSecret(name):
+			secret = append(secret, name)
+		default:
 			if e.IsDir() {
 				name += "/"
 			}
 			shown = append(shown, name)
 		}
 	}
+	if len(secret) > 0 {
+		shown = append(shown, hiddenSecrets(fmt.Sprintf("(%d secret-shaped entries hidden", len(secret)), secret))
+	}
 	if len(shown) == 0 {
 		return fantasy.NewTextResponse("(empty directory)")
 	}
 	return fantasy.NewTextResponse(strings.Join(shown, "\n"))
+}
+
+// hiddenSecrets is the line grep and a listing add for the secret-shaped
+// files they hid, so an answer is never a false "no matches".
+func hiddenSecrets(lead string, names []string) string {
+	if len(names) > 5 {
+		names = append(names[:5:5], "...")
+	}
+	return lead + ": " + strings.Join(names, ", ") + "; read them to ask)"
 }
 
 // OpenRegular opens a file for reading through openGated. fi is set once
@@ -1061,8 +1078,9 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 }
 
 // runGrep searches file contents under root, optionally only in files
-// matching the include glob. Secret-shaped files are never searched. A
-// pattern that is no regexp (an unbalanced paren) is searched as text.
+// matching the include glob. Hits in strict secret-shaped files are hidden
+// and counted. A pattern that is no regexp (an unbalanced paren) is searched
+// as text.
 func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	pattern, root, include := str(input["pattern"]), searchRoot(input), str(input["include"])
 	re, err := regexp.Compile(pattern)
@@ -1077,15 +1095,21 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		root, file = filepath.Dir(root), filepath.Base(root)
 	}
 	var hits []string
-	hidden, ruledOut := map[string]bool{}, p.ruledOut()
+	// secret counts the hidden matches of each secret-shaped file
+	hidden, secret, ruledOut := map[string]bool{}, map[string]int{}, p.ruledOut()
 	add := func(rel string, line int, text string) bool {
 		path := filepath.Join(root, rel)
 		h, ok := hidden[rel]
 		if !ok {
-			h = perm.PathIsSecret(rel) || ruledOut(path)
+			h = ruledOut(path)
 			hidden[rel] = h
+			if !h && perm.PathIsStrictSecret(rel) {
+				secret[rel] = 0
+			}
 		}
-		if !h {
+		if n, ok := secret[rel]; ok {
+			secret[rel] = n + 1
+		} else if !h {
 			hits = append(hits, fmt.Sprintf("%s:%d: %s", filepath.ToSlash(path), line, truncLine(text)))
 		}
 		return len(hits) < grepMaxMatches
@@ -1109,6 +1133,9 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}, args...)
 	if !ok {
 		hits = hits[:0]
+		for rel := range secret {
+			secret[rel] = 0
+		}
 		match := func(string) bool { return true }
 		if include != "" {
 			if match, err = glob.Match(include); err != nil {
@@ -1139,18 +1166,25 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}
-	out := ""
+	var out []string
 	if literal {
-		out = "(pattern taken literally)\n"
+		out = append(out, "(pattern taken literally)")
 	}
-	if len(hits) == 0 {
-		return fantasy.NewTextResponse(out + "(no matches)"), nil
-	}
-	out += strings.Join(hits, "\n") + "\n"
+	out = append(out, hits...)
 	if len(hits) >= grepMaxMatches {
-		out += fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches)
+		out = append(out, fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches))
 	}
-	return fantasy.NewTextResponse(out), nil
+	if len(secret) > 0 {
+		n, names := 0, []string{}
+		for _, rel := range slices.Sorted(maps.Keys(secret)) {
+			n += secret[rel]
+			names = append(names, filepath.ToSlash(filepath.Join(root, rel)))
+		}
+		out = append(out, hiddenSecrets(fmt.Sprintf("(%d matches hidden in secret-shaped files", n), names))
+	} else if len(hits) == 0 {
+		out = append(out, "(no matches)")
+	}
+	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
 }
 
 // ListFiles lists up to limit files under root, relative to it, in no

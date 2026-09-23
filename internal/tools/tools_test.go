@@ -432,7 +432,9 @@ func TestGlobAndGrep(t *testing.T) {
 	for name, body := range map[string]string{
 		"main.go": "package main\n", "notes.txt": "notes\n", ".env": "package secret\n", "private/k.go": "package priv\n", "call.go": "x := sub(1)\n",
 		".gitignore": "node_modules/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n", ".git/HEAD": "ref\n",
+		"src/credential.ts": "export function loadCredential() {}\n",
 	} {
+		os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755)
 		os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
 	}
 	glob, grep := All(p)[5], All(p)[6]
@@ -451,7 +453,8 @@ func TestGlobAndGrep(t *testing.T) {
 			{glob, `{"pattern":"*.{go,txt}"}`, "notes.txt", "node_modules"},
 			{grep, `{"pattern":"package sub"}`, "x.go:1", "main.go"},
 			{grep, `{"pattern":"package","include":"[m]*.go"}`, "main.go:1", "x.go"},
-			{grep, `{"pattern":"package (y|secret)"}`, "no matches", ".env"},
+			{grep, `{"pattern":"package (y|secret)"}`, "(1 matches hidden in secret-shaped files: ", "y.go"},
+			{grep, `{"pattern":"loadCredential|package secret"}`, "src/credential.ts:1", "package secret"},
 			{glob, `{"pattern":"**/*.go"}`, "main.go", "private"},
 			{grep, `{"pattern":"package priv"}`, "no matches", "k.go"},
 			{grep, `{"pattern":"package","path":"sub/x.go"}`, "sub/x.go:1: package sub", "main.go"},

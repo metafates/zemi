@@ -224,7 +224,7 @@ files touched after the last message. `tool.Run` runs the same check before the 
 `openat` walk with `O_NOFOLLOW`), so a sandboxed command cannot swap a directory for a symlink
 between check and open. The three writers refuse a path whose last component is a symbolic link
 and name the target to edit instead. `glob` and `grep` are gated on their root only, so neither
-shows a hit a deny or ask `fs.read` rule covers, and grep hides secret-shaped files. Output too
+shows a hit a deny or ask `fs.read` rule covers; grep and a directory listing hide the strict secret shapes (`perm.PathIsStrictSecret`: not `*secret*`, `*credential*` or a `.env.example`) and say how many. Output too
 long for a result is cut head and tail at line breaks, the marker naming the cut lines, and
 saved to the scratchpad (`tools.Spill`); command output, `!command` included, goes through
 `tools.CmdOut`, which also counts what the 1 MB buffer dropped. A
