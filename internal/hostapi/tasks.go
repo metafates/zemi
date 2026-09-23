@@ -412,6 +412,9 @@ func (h *Host) stopRun(id string) error {
 	if id == "" {
 		id = h.ViewedAgent()
 	}
+	if id == "" {
+		return errors.New("name the run to stop: /agents stop <id> (ids are in /agents)")
+	}
 	run := h.tasks.find(id)
 	if run == nil || !run.isRunning() {
 		return fmt.Errorf("no running agent %q", id)

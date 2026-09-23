@@ -787,7 +787,8 @@ func (t *agentTool) foreground(ctx context.Context, callID string, run *agentRun
 		// the chat draws a failure's output, so the id rides its first line rather than a [run] head
 		msg := "agent " + run.id + " failed: " + t.h.friendlyError(err)
 		if errors.Is(err, context.Canceled) {
-			msg = "agent " + run.id + " cancelled"
+			// only the user cancels a run: /agents stop, or esc
+			msg = "agent " + run.id + ": the user stopped this agent; do not start it again unless they ask"
 		}
 		if text != "" {
 			msg += "\n\nIts last message before that:\n" + text

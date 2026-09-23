@@ -310,3 +310,18 @@ func TestAgentSendsWhileBackground(t *testing.T) {
 		t.Fatalf("transcript missing the msg or the report: %q", all)
 	}
 }
+
+// TestStopWording: a stop the user asked for reads as theirs to the model,
+// and /agents stop with nothing to stop says how to name one.
+func TestStopWording(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	resp, _ := (&agentTool{h: h}).foreground(t.Context(), "c1", &agentRun{id: "r1", agent: "explore"}, "p", func(context.Context, func(string)) (string, error) {
+		return "", context.Canceled
+	})
+	if !strings.Contains(resp.Content, "the user stopped this agent") {
+		t.Errorf("foreground stop: %q", resp.Content)
+	}
+	if err := h.stopRun(""); err == nil || !strings.Contains(err.Error(), "name the run to stop") {
+		t.Errorf("stop without an id: %v", err)
+	}
+}
