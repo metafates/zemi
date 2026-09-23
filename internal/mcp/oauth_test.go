@@ -151,6 +151,45 @@ func TestOAuthSignIn(t *testing.T) {
 	}
 }
 
+// TestOAuthRefreshRotation: two windows share one grant with a server that
+// takes each refresh token once; each refreshes from the newest stored one.
+func TestOAuthRefreshRotation(t *testing.T) {
+	var (
+		mu sync.Mutex
+		n  int
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		mu.Lock()
+		defer mu.Unlock()
+		if r.Form.Get("refresh_token") != fmt.Sprint("r", n) {
+			w.WriteHeader(400)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid_grant"})
+			return
+		}
+		n++
+		// expiring at once, so every call refreshes
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": fmt.Sprint("a", n), "refresh_token": fmt.Sprint("r", n), "expires_in": 1})
+	}))
+	defer srv.Close()
+	path := filepath.Join(t.TempDir(), "grant.json")
+	grant := &Auth{ServerURL: "https://mcp", Path: path}
+	if err := grant.save(&Token{ServerURL: "https://mcp", AccessToken: "a0", RefreshToken: "r0", Expiry: time.Now(), ClientID: "c", TokenURL: srv.URL}); err != nil {
+		t.Fatal(err)
+	}
+	windows := []*Auth{{ServerURL: "https://mcp", Path: path}, {ServerURL: "https://mcp", Path: path}}
+	for _, w := range windows {
+		w.mu.Lock()
+		w.load()
+		w.mu.Unlock()
+	}
+	for i := range 4 {
+		if _, err := windows[i%2].bearer(t.Context()); err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+	}
+}
+
 // TestOAuthPreRegisteredClient: a server with no dynamic client
 // registration says so, and takes a client_id set in the config instead.
 func TestOAuthPreRegisteredClient(t *testing.T) {
