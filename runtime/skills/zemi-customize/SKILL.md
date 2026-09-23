@@ -139,8 +139,9 @@ zemi.permission.mode.add("judged", {
 ```
 
 Returning anything but `"allow"` or `"deny"` (nil, an error, a timeout) leaves the request
-to the user whatever the base settles, and `"allow"` never covers `sandbox: false` or
-`network: true`, which always ask. zemi ships no such mode: `auto` settles reads, project
+to the user whatever the base settles, and `"allow"` never covers `sandbox: false`,
+`network: true`, an ask a rule asked for or a write to `.git`, `.zemi` or zemi's own files,
+which always ask, as they do for the mode's `rules`. zemi ships no such mode: `auto` settles reads, project
 edits and build, test and read-only commands by fixed rules and sends everything else to
 the user. A `decide` that answers nothing is how a user gets every ask:
 

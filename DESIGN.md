@@ -1519,7 +1519,8 @@ provenance string.
   A mode added from config may carry a `decide` function that answers one
   ask from Lua ("allow", "deny", anything else leaves it to the user); it
   runs on the interpreter with a 60s ceiling, long enough for a model call
-  of its own, and may not allow an unsandboxed or network request.
+  of its own, and like the mode's rules may not allow an unsandboxed or
+  network request, an ask a rule asked for or a protected write.
   A script the model's Lua tool gets by `path` must be a `.lua` file and is
   read through the `fs.read` gate the read tool uses, since a Lua error
   echoes tokens of what it ran.

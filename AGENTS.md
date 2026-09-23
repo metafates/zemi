@@ -262,8 +262,8 @@ command asks.
 Network requests are never settled: the URL is the model's. A mode from config may carry
 `decide`, a Lua function answering one ask ("allow", "deny", anything else sends it to the user
 whatever the base would settle, which is how a user gets every ask); it holds the interpreter
-with a 60s ceiling, long enough for a model call of its own, and cannot allow an `Unsandboxed`
-or `Network` request. In a trusted project with a live sandbox `unsettled` parses nothing:
+with a 60s ceiling, long enough for a model call of its own, and, like the mode's own rules,
+cannot allow an `Unsandboxed` or `Network` request, an `Explicit` one or a `protectedWrite`. In a trusted project with a live sandbox `unsettled` parses nothing:
 every command runs confined, except the short `perm.Destructive` list (forced or recursive
 `rm`, or one with a glob operand, `git clean`, `find -delete`, `shred`, `truncate`, `dd`,
 `rsync --delete`, also behind `xargs`, `find -exec`, `sh -c`, `eval` or a shell keyword, and a

@@ -287,16 +287,28 @@ func TestAutoResolvesPaths(t *testing.T) {
 func TestPermModeDecide(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.permission.mode.add("review", { base = "auto", decide = function(req)
-		if req.arg == "ls" then return "allow" end
 		if req.arg == "rm -rf /" then return "deny" end
+		if req.arg ~= "cat x" then return "allow" end
 	end })`)
 	if err := h.SetPermMode("review"); err != nil {
 		t.Fatal(err)
 	}
 	ask := h.askHook()
-	for cmd, want := range map[string]bool{"ls": true, "rm -rf /": false, "cat x": false} {
-		if ok, by, _ := ask(tools.Request{Subject: "tool.bash", Arg: cmd}); ok != want {
-			t.Errorf("%q: allowed %v by %s", cmd, ok, by)
+	for _, c := range []struct {
+		name string
+		req  tools.Request
+		want bool
+	}{
+		{"allowed", tools.Request{Subject: "tool.bash", Arg: "ls"}, true},
+		{"denied", tools.Request{Subject: "tool.bash", Arg: "rm -rf /"}, false},
+		{"left to the user", tools.Request{Subject: "tool.bash", Arg: "cat x"}, false},
+		// what the mode's own rules may not settle, decide may not either
+		{"a rule asked for it", tools.Request{Subject: "tool.bash", Arg: "ls", Explicit: true}, false},
+		{"a protected write", tools.Request{Subject: "fs.write", Arg: filepath.Join(h.Dirs.ProjectDir, ".git", "hooks", "pre-commit")}, false},
+		{"unsandboxed", tools.Request{Subject: "tool.bash", Arg: "ls", Unsandboxed: true}, false},
+	} {
+		if ok, by, _ := ask(c.req); ok != c.want {
+			t.Errorf("%s: allowed %v by %s", c.name, ok, by)
 		}
 	}
 }

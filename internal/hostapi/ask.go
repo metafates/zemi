@@ -51,16 +51,19 @@ func (h *Host) askHook() tools.Asker {
 			return resolved(false, "event")
 		}
 		def := h.permModeDef()
+		// what a mode's rules and decide may never allow, only yolo or the user:
+		// a command leaving the sandbox or reaching the network, an ask a rule
+		// asked for, and a protected write, which Pipeline.Check re-asks
+		// whatever rule allowed it
+		settleable := !req.Unsandboxed && !req.Network && !req.Explicit &&
+			!(req.Subject == "fs.write" && !h.inScratch(req.Arg) && h.protectedWrite(req.Arg))
 		if def.Rules != nil {
 			o := def.Rules.Evaluate(req.Subject, req.Arg, "")
 			if req.Subject == "tool.bash" {
 				o = def.Rules.CheckCommand(req.Arg, "")
 			}
-			// Pipeline.Check re-asks a protected write whatever rule allowed it,
-			// so a mode's own rule must not settle that ask
-			protected := req.Subject == "fs.write" && !h.inScratch(req.Arg) && h.protectedWrite(req.Arg)
 			switch {
-			case o.Decision == perm.Allow && !req.Unsandboxed && !req.Network && !req.Explicit && !protected:
+			case o.Decision == perm.Allow && settleable:
 				return resolved(true, "mode:"+def.Name)
 			case o.Decision == perm.Deny:
 				return resolved(false, "mode:"+def.Name)
@@ -76,7 +79,7 @@ func (h *Host) askHook() tools.Asker {
 		if def.Decide != nil {
 			switch h.modeDecide(def, req) {
 			case "allow":
-				if !req.Unsandboxed && !req.Network {
+				if settleable {
 					return resolved(true, "mode:"+def.Name)
 				}
 			case "deny":
