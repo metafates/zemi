@@ -431,7 +431,7 @@ func (r *EventRegistry) Purge() {
 // matter to the hover groups, which draw over the text's own style: nil
 // attributes and empty colors keep what is under them.
 type HLSpec struct {
-	Link         string // another group this one draws as; the other fields are ignored
+	Link         string // another group this one draws as; of the other fields only Bold and Italic apply
 	Fg, Bg, Sp   string // hex, a palette name, or "NONE" (no color, clearing one under a hover)
 	Bold, Italic *bool
 	Reverse      *bool
@@ -474,17 +474,23 @@ func (r *ThemeRegistry) SetHL(group string, spec HLSpec) {
 const maxHLLinks = 8
 
 // Group resolves a highlight group, following links: an override first,
-// then the theme's (t may be nil).
+// then the theme's (t may be nil). The first link's bold and italic apply
+// over the group it draws as.
 func (r *ThemeRegistry) Group(t *Theme, group string) (HLSpec, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	for range maxHLLinks {
+	var over HLSpec
+	for i := range maxHLLinks {
 		s, ok := r.overrides[group]
 		if !ok && t != nil {
 			s, ok = t.HL[group]
 		}
 		if !ok || s.Link == "" {
+			s.Bold, s.Italic = cmp.Or(over.Bold, s.Bold), cmp.Or(over.Italic, s.Italic)
 			return s, ok
+		}
+		if i == 0 {
+			over = s
 		}
 		group = s.Link
 	}

@@ -350,7 +350,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 		for _, k := range l.kids {
 			if k.sep {
 				for j := range rows {
-					rows[j] = slices.Concat(padSegs(rows[j], x), []hostapi.Segment{{Text: "│", HL: "Host:Rule", NoCopy: true}})
+					rows[j] = slices.Concat(padSegs(rows[j], x), []hostapi.Segment{{Text: "│", HL: "Rule", NoCopy: true}})
 				}
 				x++
 			}
@@ -362,7 +362,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	case n.Kind == "box":
 		for i, k := range l.kids {
 			if i > 0 && n.Sep {
-				rows = append(rows, []hostapi.Segment{{Text: strings.Repeat("─", w), HL: "Host:Rule", NoCopy: true}})
+				rows = append(rows, []hostapi.Segment{{Text: strings.Repeat("─", w), HL: "Rule", NoCopy: true}})
 			}
 			rows = append(rows, a.paint(k)...)
 		}

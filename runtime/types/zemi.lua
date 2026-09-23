@@ -730,7 +730,7 @@ function zemi.event.stats() end
 --- statusline pills) and `HoverItem` (list rows) draw
 --- over the text's own style: keys left out keep it, false and "NONE" clear it.
 ---@class zemi.HLSpec
----@field link? string Draw as this group instead; the other fields are then ignored. Chains longer than 8 or cycles draw unstyled.
+---@field link? string Draw as this group instead; of the other fields only bold and italic then apply, over it. Chains longer than 8 or cycles draw unstyled.
 ---@field fg? string Hex ("#9aa5f2"), a palette name, an ANSI color name ("red", "green", ...), or "NONE".
 ---@field bg? string
 ---@field sp? string Underline color.

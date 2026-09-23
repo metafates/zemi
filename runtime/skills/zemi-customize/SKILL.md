@@ -284,7 +284,7 @@ end)
 
 -- Change a few colors: override just those groups. theme.add below
 -- builds a complete theme, and groups it leaves out lose their colors.
-zemi.ui.hl.set("ModePlan", { fg = "yellow", bold = true })
+zemi.ui.hl.set("ModePlan", { fg = "green", bold = true })
 zemi.ui.hl.set("ModeAuto", { fg = "#c4a7e7", bold = true })
 
 -- A whole theme (define every group the UI uses, or copy the default's).

@@ -375,7 +375,7 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 	start := max(0, cursorRow-composerMaxRows+1)
 	// The prompt takes the permission mode's color; a shell draft (!) says so
 	// with its own glyph, since it never reaches the model.
-	prefix, promptHL := "> ", map[string]string{"auto": "PromptAuto", "yolo": "PromptYolo"}[a.modeBase()]
+	prefix, promptHL := "> ", map[string]string{"auto": "ModeAuto", "yolo": "ModeYolo"}[a.modeBase()]
 	if promptHL == "" {
 		promptHL = "Comment"
 	}

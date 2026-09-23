@@ -2,7 +2,8 @@
 -- red, green and yellow so the user's palette decides those.
 --
 -- Widgets should reach for the semantic groups - Accent, Dim, Rule, Title,
--- Selected, Button, Danger, Ok - and everything else links to one of them.
+-- Selected, Button, Danger, Warn, Ok - and everything else links to one of
+-- them. Red means a failure or danger, yellow a warning.
 -- That way a widget cannot pick a color that is off the identity, and
 -- retinting the UI is a matter of changing the palette.
 
@@ -18,19 +19,20 @@ local function theme(palette)
     Dim = { fg = "dim" },
     Rule = { fg = "rule" },
     -- the composer frame while the draft goes to the shell, not the model
-    RuleShell = { fg = "yellow" },
+    RuleShell = { link = "Warn" },
     RuleCommand = { fg = "accent" },
     Title = { fg = "accent", bold = true },
     Selected = { fg = "accent", bold = true },
     Button = { fg = "accent" },
     Danger = { fg = "red" },
+    Warn = { fg = "yellow" },
     Ok = { fg = "green" },
 
     Comment = { link = "Dim" },
     UserMsg = { link = "Accent" },
-    ToastInfo = { fg = "accent", bold = true },
-    ToastWarn = { fg = "yellow", bold = true },
-    ToastErr = { fg = "red", bold = true },
+    ToastInfo = { link = "Title" },
+    ToastWarn = { link = "Warn", bold = true },
+    ToastErr = { link = "Danger", bold = true },
     MarkdownHeading = { link = "Title" },
     -- an inline span reads by its color: a filled background would hang
     -- off the text as a stray block where it wraps
@@ -55,18 +57,16 @@ local function theme(palette)
     TodoDone = { link = "Ok" },
     TodoActive = { fg = "fg", bold = true },
     StatusUsage = { link = "Dim" },
-    StatusUsageWarn = { fg = "yellow" },
-    StatusUsageErr = { fg = "red", bold = true },
+    StatusUsageWarn = { link = "Warn" },
+    StatusUsageErr = { link = "Danger", bold = true },
+    -- the statusline's mode and the composer prompt: a read-only agent
+    -- plans; yolo answers every ask by itself, so nothing else on screen
+    -- shows it is on, and it is the only red in the statusline
     ModePlan = { link = "Ok" },
     ModeAuto = { link = "Accent" },
-    -- yolo answers every ask by itself, so nothing else on screen shows it
-    -- is on: it is the only red in the statusline
-    ModeYolo = { fg = "red", bold = true },
-    PromptPlan = { link = "Ok" },
-    PromptAuto = { link = "Accent" },
-    PromptYolo = { fg = "red", bold = true },
+    ModeYolo = { link = "Danger", bold = true },
     -- the shell glyph: what follows goes to the shell, not to the model
-    PromptShell = { fg = "yellow", bold = true },
+    PromptShell = { link = "Warn", bold = true },
     PromptCommand = { fg = "accent", bold = true },
     Queued = { link = "Dim" },
     SplashKey = { link = "Button" },
