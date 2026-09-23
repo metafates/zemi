@@ -95,7 +95,7 @@ while the active profile sets its own model (`Host.ProfileModelErr`; `--profile`
 before `-m`), since the tier would change and the conversation would not. `--profile` and
 `/profile` (`Host.SetProfile`; no argument opens the picker, which the statusline's profile
 segment clicks into) write `agent.profile` for the next send: a switch changes the prompt
-and the tool set, so it busts the provider's prompt cache once and has no cycle key.
+and the tool set, so it busts the provider's prompt cache once; ctrl+t and ctrl+shift+t cycle it.
 
 `--health` and `-p` boot the same step list and skip only the TUI. `-p` runs one turn, then
 reports on stderr how many tool calls the gate denied - nobody can answer an ask headless, so
@@ -504,7 +504,7 @@ lua-language-server is installed.
 
 - **Subagents** (subagent.go) are fresh `agent.Runner`s over `PipelineFor()` (same permission
   gate; asks are prefixed with the agent name). Definitions: builtin `explore`, `web` (on the
-  small tier) and `general`, plus `agents/*.md` (user over builtin over a trusted repo's
+  small tier), `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over a trusted repo's
   `.zemi`, `.agents`, `.claude`). They never get `agent`, `workflow`, `todos`, `question`,
   `plan` or `lua` (nesting depth 1). A run is a child session (`parent_id`);
   `ListSessions` hides children. They have no summarizer: `sendPruning` clears their own old
