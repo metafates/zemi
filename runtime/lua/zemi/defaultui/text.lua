@@ -123,7 +123,8 @@ end
 ---@type string
 M.UTF8_CHAR = "[%z\1-\127\194-\244][\128-\191]*"
 
---- Text cut to room cells, ending with an ellipsis when it cuts.
+--- Text cut to room cells, ending with an ellipsis when it cuts, never
+--- after a space.
 ---@param text string
 ---@param room integer
 ---@return string
@@ -139,7 +140,7 @@ function M.clip(text, room)
     chars[#chars + 1] = ch
     w = w + cw
   end
-  return table.concat(chars) .. "…"
+  return (table.concat(chars):gsub("%s+$", "")) .. "…"
 end
 
 return M
