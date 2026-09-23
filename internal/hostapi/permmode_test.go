@@ -178,6 +178,7 @@ func TestReadOnlyUnderYolo(t *testing.T) {
 	}{
 		{true, "tool.bash", "sed -i s/a/b/ main.go", true},
 		{false, "tool.bash", "sed -i s/a/b/ main.go", false},
+		{false, "tool.bash", "ls", true},
 		{true, "mcp.gitlab", "create_merge_request", false},
 	} {
 		fakeSandbox(h, c.live)
