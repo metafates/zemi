@@ -217,12 +217,12 @@ func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW in
 		{Text: "┐", HL: "Host:Rule", NoCopy: true},
 	}}
 	for _, r := range body {
-		line := ellipsizeSegs(r, bw-4)
 		var bar []hostapi.Segment
-		if n := len(line); n > 0 && strings.HasPrefix(line[n-1].HL, "Scrollbar") {
-			line, bar = line[:n-1], line[n-1:]
+		if n := len(r); n > 0 && r[n-1].Bar {
+			r, bar = r[:n-1], r[n-1:]
 		}
-		pad := bw - 4 - segsWidth(line) - segsWidth(bar)
+		line := ellipsizeSegs(r, bw-4-len(bar))
+		pad := bw - 4 - segsWidth(line) - len(bar)
 		row := []hostapi.Segment{{Text: "│ ", HL: "Host:Rule", NoCopy: true}}
 		row = append(row, line...)
 		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, pad)), NoCopy: true})
@@ -395,8 +395,10 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 		k, ok := keys[y]
 		kw := map[bool]int{true: 2 + ansi.StringWidth(k.Text)}[ok]
 		if maxW > 0 && segsWidth(r)+kw > maxW {
-			r = ellipsizeSegs(r, maxW-kw)
-			rows[y] = r
+			// a cut row still wants every cell, so the list keeps them all
+			// where the word-boundary cut would leave a few
+			rows[y], widest = ellipsizeSegs(r, maxW-kw), maxW
+			continue
 		}
 		widest = max(widest, segsWidth(r)+kw)
 	}

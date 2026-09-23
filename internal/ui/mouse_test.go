@@ -311,11 +311,15 @@ func TestClickScrolledListOpensSameItem(t *testing.T) {
 }
 
 // TestBoxEllipsisOnlyOnLongRows: a long row ends in an ellipsis, a short row
-// padded to its width does not.
+// padded to its width does not, and a long row keeps its scrollbar cell.
 func TestBoxEllipsisOnlyOnLongRows(t *testing.T) {
 	box := hostBox("", "", "", listRows([]listItem{{label: "short"}, {label: strings.Repeat("long ", 20)}}, 0, nil, 10, 0), 40)
 	if short, long := plainSegs(box[1]), plainSegs(box[2]); strings.Contains(short, "…") || !strings.Contains(long, "…") {
 		t.Fatalf("short %q, long %q", short, long)
+	}
+	barred := hostBox("", "", "", [][]hostapi.Segment{{{Text: strings.Repeat("long ", 20)}, {Text: "█", Bar: true}}}, 40)
+	if row := plainSegs(barred[1]); !strings.Contains(row, "…") || !strings.HasSuffix(row, "█ │") {
+		t.Fatalf("barred %q", row)
 	}
 }
 

@@ -881,6 +881,7 @@ type Segment struct {
 	// Soft ends a row that wraps onto the next: a copy joins the two rows
 	// without a newline and drops the row's cells after this segment
 	Soft bool
+	Bar  bool // Go only: a viewport's scrollbar cell, kept to a box's right edge
 }
 
 // RenderWidget runs a widget's Lua render at the cells its layout node gives

@@ -573,7 +573,7 @@ func (b scrollbar) row(row []hostapi.Segment, i int) []hostapi.Segment {
 	}
 	out := make([]hostapi.Segment, len(row), len(row)+1)
 	copy(out, row)
-	return append(out, hostapi.Segment{Text: mark, HL: hl, NoCopy: true})
+	return append(out, hostapi.Segment{Text: mark, HL: hl, NoCopy: true, Bar: true})
 }
 
 // reanchor puts the viewport back on the content it was showing after the
