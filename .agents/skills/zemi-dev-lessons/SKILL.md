@@ -21,6 +21,19 @@ description: Hard-won rules for changing zemi that AGENTS.md does not spell out 
 6. Work on a branch, then `git merge --ff-only` into main and delete the branch. Never push.
 7. Comments say why, never what the diff did. Commit lines are one lowercase sentence.
 
+## Every commit boots
+
+- A store migration runs against every database a user ever had, not only the shape the
+  test builds. Before landing one, open copies of the real databases (`cp` the `.db`,
+  `-wal` and `-shm` files from `~/.local/state/zemi` into a scratch dir and `store.Open`
+  them); an old index or column the current schema forgot fails a `DROP COLUMN`, and the
+  whole boot with it.
+- Never `go install` or write `~/go/bin/zemi` from a branch: that is the owner's daily
+  binary. Build into a scratch dir and run it through `zemi-safe`.
+- After a merge to main, boot the merged binary once against a copy of the real config and
+  state (`zemi-safe <tree> --health`, the tree holding copies of `~/.config/zemi` and
+  `~/.local/state/zemi`): `make check` cannot see a user's data.
+
 ## Prompt cache
 
 Anything that varies per request in the prefix busts the provider cache for the rest of the
