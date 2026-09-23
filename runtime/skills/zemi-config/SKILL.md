@@ -102,7 +102,8 @@ init.lua now sets that key to a different value.
 `zemi.config.schema()` lists every key with kind, default and description; prefer it over
 guessing. Common keys:
 
-- Model tiers, each a `provider/model`; a tier nothing sets falls back to `models.main`:
+- Model tiers, each a `provider/model`; a tier nothing sets falls back to `models.main`
+  (`models.small` first to the catalog's small model of main's provider):
   - `models.main`: the model everything runs on unless a tier or a definition names another.
   - `models.small`: the short jobs (session titles, compaction summaries, the reflector, the
     builtin `web` agent), e.g.

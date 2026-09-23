@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
 )
 
 // TestTurnCost: prices registered from Lua price a turn, cache writes and
@@ -117,5 +119,31 @@ func TestGenerateStreams(t *testing.T) {
 	res, err := h.generate(t.Context(), "", titleSystem, "hi", &maxOut, "models.small")
 	if err != nil || res.Response.Content.Text() != "a title" {
 		t.Fatalf("generate = %+v, %v", res, err)
+	}
+}
+
+// TestSmallTierAfterPick: a /model pick moves the conversation, and the
+// small tier stays on the catalog's small model of that provider, or on the
+// pick when the provider names none.
+func TestSmallTierAfterPick(t *testing.T) {
+	h, _ := newTestHost(t)
+	for _, s := range []agent.Spec{
+		{ID: "a", Kind: agent.KindAnthropic, DefaultLarge: "big", DefaultSmall: "tiny", Models: []agent.Model{{ID: "big"}, {ID: "huge"}, {ID: "tiny"}}},
+		{ID: "p", Kind: agent.KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Models: []agent.Model{{ID: "m"}}},
+	} {
+		if err := h.Providers.Register(s, "k"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct{ pick, small string }{
+		{"a/huge", "a/tiny"},
+		{"p/m", "p/m"},
+	} {
+		if err := h.SetModel(c.pick); err != nil {
+			t.Fatal(err)
+		}
+		if got := h.tierModel("small"); got != c.small {
+			t.Errorf("small after /model %s = %s, want %s", c.pick, got, c.small)
+		}
 	}
 }

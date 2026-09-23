@@ -143,7 +143,8 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 // small runs the short jobs (session titles, compaction summaries, the
 // builtin web subagent), main everything else, and smart the main
 // conversation, which orchestrates and delegates. A tier nothing set falls
-// back to main.
+// back to main, small first to the small model of main's provider, so a
+// /model pick of a big model leaves the short jobs cheap.
 var Tiers = []string{"small", "main", "smart"}
 
 // tierModel resolves a tier name to the model id config gave it, falling
@@ -155,7 +156,13 @@ func (h *Host) tierModel(tier string) string {
 	if !slices.Contains(Tiers, tier) {
 		return ""
 	}
-	return cmp.Or(h.Settings.Str("models."+tier), h.Settings.Str("models.main"), h.Providers.Default(tier == "small"))
+	id, main := h.Settings.Str("models."+tier), h.Settings.Str("models.main")
+	if prov, _, _ := strings.Cut(main, "/"); id == "" && tier == "small" && prov != "" {
+		if spec, ok := h.Providers.Lookup(prov); ok && spec.DefaultSmall != "" {
+			id = prov + "/" + spec.DefaultSmall
+		}
+	}
+	return cmp.Or(id, main, h.Providers.Default(tier == "small"))
 }
 
 // modelRef resolves a model reference: a tier name, a provider/model id, or
