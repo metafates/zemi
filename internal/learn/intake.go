@@ -17,14 +17,17 @@ import (
 // autonomy gate needs.
 type Result struct {
 	Memory            store.Memory
-	Scrubbed          bool   // a secret span was redacted
+	Scrubbed          bool   // a secret span of the quote was redacted
 	InstructionShaped bool   // routes to the review queue even under auto
 	Supersedes        string // id of the memory this one replaces, linked when stored
 }
 
 // Intake validates and cleans one memory (DESIGN §10.4). Errors are
-// ErrRefused (empty text, one-blob secrets), ErrBadOrigin or
-// ErrNoProvenance; everything else is cleaned into the result.
+// ErrRefused (empty text, a secret in the text), ErrBadOrigin or
+// ErrNoProvenance; everything else is cleaned into the result. A text
+// with a secret is refused rather than stored redacted: the digest never
+// loads a redacted row, so storing one only says "saved" for a memory
+// nobody will read.
 func Intake(scope, origin, text, quote, provenance string) (*Result, error) {
 	if origin != OriginUser && origin != OriginLearned {
 		return nil, ErrBadOrigin
@@ -40,6 +43,9 @@ func Intake(scope, origin, text, quote, provenance string) (*Result, error) {
 	if IsOneBlob(clean) {
 		return nil, fmt.Errorf("%w: text is one secret blob", ErrRefused)
 	}
+	if scrubbed {
+		return nil, fmt.Errorf("%w: a secret was redacted and a redacted memory never loads; name the env var that holds it instead", ErrRefused)
+	}
 	q, qs := scrubCapped(quote, MaxQuoteLen)
 
 	return &Result{
@@ -50,7 +56,7 @@ func Intake(scope, origin, text, quote, provenance string) (*Result, error) {
 			ProvenanceSessionID: provenance,
 			Origin:              origin,
 		},
-		Scrubbed:          scrubbed || qs,
+		Scrubbed:          qs,
 		InstructionShaped: InstructionShaped(clean),
 	}, nil
 }

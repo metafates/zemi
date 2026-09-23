@@ -27,40 +27,20 @@ func TestIntakeCleansAndFlags(t *testing.T) {
 }
 
 func TestIntakeScrubsSecrets(t *testing.T) {
-	res, err := Intake("project", OriginUser, "deploy token is ghp_0123456789abcdefghijklmnopqrstuv ok", "", "s1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !res.Scrubbed {
-		t.Fatal("not scrubbed")
-	}
-	if !strings.Contains(res.Memory.Text, "[redacted") {
-		t.Fatalf("text = %q", res.Memory.Text)
-	}
-	if strings.Contains(res.Memory.Text, "ghp_") {
-		t.Fatalf("token survived: %q", res.Memory.Text)
+	// a secret in the text refuses the memory: a redacted row never loads
+	for _, text := range []string{
+		"deploy token is ghp_0123456789abcdefghijklmnopqrstuv ok",
+		"api_key = supersecretvalue123 is set in CI",
+		// a token cut by the length cap is still recognized whole
+		strings.Repeat("a ", MaxTextLen/2-6) + "ghp_0123456789abcdefghijklmnopqrstuv",
+	} {
+		if _, err := Intake("project", OriginUser, text, "", "s1"); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "env var") {
+			t.Fatalf("%q: %v", text, err)
+		}
 	}
 
-	// key=value assignment
-	res, err = Intake("project", OriginUser, "api_key = supersecretvalue123 is set in CI", "", "s1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(res.Memory.Text, "supersecretvalue123") {
-		t.Fatalf("assignment survived: %q", res.Memory.Text)
-	}
-
-	// a token cut by the length cap is still recognized whole
-	res, err = Intake("project", OriginUser, strings.Repeat("a ", MaxTextLen/2-6)+"ghp_0123456789abcdefghijklmnopqrstuv", "", "s1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(res.Memory.Text, "ghp_") {
-		t.Fatalf("cut token survived: %q", res.Memory.Text)
-	}
-
-	// the quote is scrubbed like the text
-	res, err = Intake("user", OriginLearned, "the user keeps the token in CI", "use ghp_0123456789abcdefghijklmnopqrstuv", "s1")
+	// the quote is scrubbed, not refused: it is provenance, not what loads
+	res, err := Intake("user", OriginLearned, "the user keeps the token in CI", "use ghp_0123456789abcdefghijklmnopqrstuv", "s1")
 	if err != nil || !res.Scrubbed || strings.Contains(res.Memory.Quote, "ghp_") {
 		t.Fatalf("quote: %+v %v", res, err)
 	}

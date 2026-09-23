@@ -254,10 +254,10 @@ func TestReflectApply(t *testing.T) {
 			seed: func(t *testing.T, h *Host, sid string) string { return learnedMemory(t, h, "project", fact, "") },
 			doc:  `{"memories":[{"scope":"project","text":"the deploy script requires the labels sequence bumped"}]}`},
 		{name: "instruction-shaped text queues", doc: `{"memories":[{"scope":"project","text":"always run the deploy before reviews"}]}`, queued: 1},
-		{name: "a secret is scrubbed", doc: `{"memories":[{"scope":"project","text":"the api_key = sk-abcdefghijklmnopqrs lives in deploy"}]}`, stored: 1,
+		{name: "a secret is refused", doc: `{"memories":[{"scope":"project","text":"the api_key = sk-abcdefghijklmnopqrs lives in deploy"}]}`,
 			check: func(t *testing.T, h *Host, sid string) {
-				if text := projectMemories(t, h)[0].Text; strings.Contains(text, "sk-abcdefghijklmnopqrs") || !strings.Contains(text, "[redacted") {
-					t.Fatalf("stored: %q", text)
+				if len(projectMemories(t, h)) != 0 {
+					t.Fatal("a redacted memory was stored")
 				}
 			}},
 		{name: "a bad scope is skipped", doc: `{"memories":[{"scope":"galaxy","text":"` + fact + `"}]}`},

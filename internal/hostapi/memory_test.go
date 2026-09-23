@@ -51,10 +51,13 @@ func TestRememberStoresUserOrigin(t *testing.T) {
 	if err := h.Remember("AKIAIOSFODNN7EXAMPLE"); err == nil || !strings.Contains(err.Error(), "blob") {
 		t.Fatalf("one-blob remember: %v", err)
 	}
-	if err := h.Remember("deploy script lives in bin/deploy, api_key = sk-abcdefghijklmnopqrs"); err != nil {
+	if err := h.Remember("deploy script lives in bin/deploy, api_key = sk-abcdefghijklmnopqrs"); !errors.Is(err, learn.ErrRefused) {
+		t.Fatalf("secret remember: %v", err)
+	}
+	if err := h.Remember("deploy script lives in bin/deploy"); err != nil {
 		t.Fatalf("remember: %v", err)
 	}
-	if err := h.Remember("Deploy script lives in bin/deploy, api_key = sk-abcdefghijklmnopqrs"); !errors.Is(err, errDuplicateMemory) {
+	if err := h.Remember("Deploy script lives in bin/deploy"); !errors.Is(err, errDuplicateMemory) {
 		t.Fatalf("duplicate remember: %v", err)
 	}
 	rows := projectMemories(t, h)
@@ -64,12 +67,6 @@ func TestRememberStoresUserOrigin(t *testing.T) {
 	m := rows[0]
 	if m.Origin != learn.OriginUser || m.Scope != "project" {
 		t.Fatalf("row: %+v", m)
-	}
-	if strings.Contains(m.Text, "sk-abcdefghijklmnopqrs") {
-		t.Fatalf("secret survived: %q", m.Text)
-	}
-	if !strings.Contains(m.Text, "[redacted") {
-		t.Fatalf("scrubbed text: %q", m.Text)
 	}
 }
 

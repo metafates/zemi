@@ -28,7 +28,8 @@ var scopeTitles = [][2]string{{"project", "## this project"}, {"user", "## every
 
 // Digest renders rows, given newest first, into the framed section: the
 // project scope first, each scope cut once its lines reach budget bytes.
-// Scrubbed memories (secret-redacted text) never reach it (DESIGN §10.4).
+// A redacted row, stored before intake refused them, never reaches it
+// (DESIGN §10.4).
 // No line at all yields "".
 func Digest(rows []*store.Memory, at time.Time, budget int) string {
 	var b strings.Builder

@@ -1785,10 +1785,10 @@ by the next startup sweep, since the session still has unseen messages.
 - **Memory intake is host-side**, regardless of autonomy: a length cap
   (300 chars, and 160 for the quote), provenance required, the quote
   scrubbed like the text, and
-  intake-time secret scrubbing (spans matching key shapes or above an
-  entropy threshold are redacted with a `[redacted n chars]` marker, or
-  the text is refused if it is one blob; scrubbed hits never reach the
-  digest). Text phrased as instructions ("always run X", "ignore previous
+  intake-time secret scrubbing (a span matching a key shape or above an
+  entropy threshold in the quote is redacted with a `[redacted n chars]`
+  marker; one in the text refuses the memory, since a redacted row would
+  never load, and the error says to name the env var instead). Text phrased as instructions ("always run X", "ignore previous
   instructions") is flagged by a recall-biased heuristic pass (imperative
   verbs, second person, instruction-override phrasings) and routes to the
   review queue even under `memory.autonomy = auto`; false positives only
