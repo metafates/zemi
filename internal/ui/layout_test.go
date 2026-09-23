@@ -125,3 +125,17 @@ func TestViewport(t *testing.T) {
 		})
 	}
 }
+
+// TestViewportWrapGap: text wrapped for an overflowing view keeps a blank
+// cell before the bar, as a list does, so its widest row never touches it.
+func TestViewportWrapGap(t *testing.T) {
+	v := viewport{viewH: 2}
+	full := func(w int) [][]hostapi.Segment {
+		return [][]hostapi.Segment{{{Text: strings.Repeat("x", w)}}, {{Text: strings.Repeat("y", w)}}, {{Text: "z"}}}
+	}
+	for _, r := range v.window(v.wrap(full, 12), 12) {
+		if row := []rune(plainSegs(r)); len(row) != 12 || row[10] != ' ' {
+			t.Fatalf("row %q: want a blank cell before the bar", string(row))
+		}
+	}
+}

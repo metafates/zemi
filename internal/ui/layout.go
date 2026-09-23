@@ -439,12 +439,13 @@ func barInner(width int) int {
 	return width
 }
 
-// wrap builds content at width, again a cell narrower when it overflows the
-// view, so the bar never covers a character. viewH must be set.
+// wrap builds content at width, again two cells narrower when it overflows
+// the view: the bar's and a blank before it, so the widest row never touches
+// the bar, as in a list. viewH must be set.
 func (v *viewport) wrap(build func(width int) [][]hostapi.Segment, width int) [][]hostapi.Segment {
 	lines := build(width)
 	if len(lines) > v.viewH && barInner(width) < width {
-		lines = build(barInner(width))
+		lines = build(barInner(width) - 1)
 	}
 	return lines
 }
