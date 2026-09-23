@@ -443,6 +443,9 @@ type tool struct {
 	// edits: the tool changes a file it must have read unchanged (write,
 	// edit, multiedit), checked before the gate
 	edits bool
+	// check refuses input the tool could not act on (a URL that is no
+	// URL) before the gate, so the user is never asked about it; nil = none
+	check func(p *Pipeline, input map[string]any) error
 }
 
 func (t *tool) Info() fantasy.ToolInfo                     { return t.info }
@@ -495,6 +498,11 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 			if msg := pipe.stale(str(input["path"]), fi); msg != "" {
 				return t.post(pipe, input, fantasy.NewTextErrorResponse(msg)), nil
 			}
+		}
+	}
+	if t.check != nil {
+		if err := t.check(pipe, input); err != nil {
+			return t.post(pipe, input, fantasy.NewTextErrorResponse(err.Error())), nil
 		}
 	}
 	run := *pipe
@@ -712,6 +720,11 @@ func edits(t fantasy.AgentTool) fantasy.AgentTool {
 	return t
 }
 
+func checked(t fantasy.AgentTool, check func(*Pipeline, map[string]any) error) fantasy.AgentTool {
+	t.(*tool).check = check
+	return t
+}
+
 // All returns the builtin tools bound to a pipeline.
 func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name, desc string, parallel bool, props map[string]any, required []string,
@@ -834,7 +847,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			},
 			runGrep),
 
-		mk(ToolFetch, "Fetch a URL over http/https and return the body as text (an HTML page becomes its readable article as markdown, without the navigation and boilerplate). Private addresses are refused unless the user's config allows the host.",
+		checked(mk(ToolFetch, "Fetch a URL over http/https and return the body as text (an HTML page becomes its readable article as markdown, without the navigation and boilerplate). Private addresses are refused unless the user's config allows the host.",
 			true,
 			map[string]any{
 				"url": map[string]any{"type": "string"},
@@ -842,14 +855,14 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 			[]string{"url"},
 			func(in map[string]any) []Request {
 				// the real host, so a rule (or an "always allow") matches the
-				// per-hop check runFetch makes later
-				host := "invalid"
-				if u, err := ParseNetURL(str(in["url"])); err == nil {
-					host = u.Hostname()
-				}
-				return []Request{{Subject: "net." + host, Arg: str(in["url"])}}
+				// per-hop check runFetch makes later; check refused a bad URL
+				u, _ := ParseNetURL(str(in["url"]))
+				return []Request{{Subject: "net." + u.Hostname(), Arg: str(in["url"])}}
 			},
-			runFetch),
+			runFetch), func(_ *Pipeline, in map[string]any) error {
+			_, err := ParseNetURL(str(in["url"]))
+			return err
+		}),
 
 		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees. Never a single-step list. Pass the whole list every time; keep exactly one item in_progress while work remains; mark each done the moment it finishes, as the very next tool call, never batching the updates, so the visible list always equals your current state - never report a step done in your reply before the list shows it. Without todos it returns the list.",
 			false,
@@ -903,7 +916,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			func(in map[string]any) []Request { return nil },
 			runPlan),
 
-		mk(ToolWebSearch, "Search the web: up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short; fetch the results worth reading. A question needing several searches and pages goes to the web agent instead.",
+		checked(mk(ToolWebSearch, "Search the web: up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short; fetch the results worth reading. A question needing several searches and pages goes to the web agent instead.",
 			true,
 			map[string]any{
 				"query":       map[string]any{"type": "string"},
@@ -911,13 +924,15 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			},
 			[]string{"query"},
 			func(in map[string]any) []Request {
-				u, _, err := searchURL(p, str(in["query"]))
-				if err != nil {
-					return []Request{{Subject: "net.invalid", Arg: err.Error(), Reason: "web search"}}
-				}
+				// check refused a bad web.search_url
+				u, _, _ := searchURL(p, str(in["query"]))
 				return []Request{{Subject: "net." + u.Hostname(), Arg: u.String(), Reason: "web search"}}
 			},
-			runWebSearch),
+			runWebSearch), func(p *Pipeline, in map[string]any) error {
+			// a bad search URL is the user's config, not a request to gate
+			_, _, err := searchURL(p, str(in["query"]))
+			return err
+		}),
 
 		mk(ToolJobStart, "Start a process that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. Without args, command is a shell line run with sh -c; with args, it is the program. Read its output with job_read (a server's ready line, not sleep) and job_kill what you no longer need.",
 			true,

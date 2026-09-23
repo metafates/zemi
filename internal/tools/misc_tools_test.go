@@ -6,7 +6,6 @@
 package tools
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http/httptest"
@@ -356,15 +355,18 @@ func TestFetchGates(t *testing.T) {
 		t.Fatalf("denied net gate must stop fetch before dialing: %+v", resp)
 	}
 
-	past, _ := testPipeline(t, true)
-	for _, raw := range []string{"ftp://example.com/", "http://user:pass@example.com/"} {
-		res, err := runFetch(context.Background(), past, map[string]any{"url": raw})
-		if err != nil {
-			t.Fatalf("runFetch(%q) go error: %v", raw, err)
+	// a URL the tool cannot fetch is its own error, never an ask
+	past, pastAsked := testPipeline(t, true)
+	for _, raw := range []string{"ftp://example.com/", "http://user:pass@example.com/", "not a url"} {
+		res := call(t, toolNamed(t, "fetch", past), fmt.Sprintf(`{"url":%q}`, raw))
+		if !res.IsError || strings.Contains(res.Content, "permission") || len(*pastAsked) != 0 {
+			t.Fatalf("fetch(%q) must refuse before the gate: %+v asked %+v", raw, res, *pastAsked)
 		}
-		if !res.IsError {
-			t.Fatalf("runFetch(%q) must refuse: %+v", raw, res)
-		}
+	}
+	bad, badAsked := testPipeline(t, true)
+	bad.SearchURL = func() string { return "ftp://x" }
+	if res := call(t, toolNamed(t, "web_search", bad), `{"query":"x"}`); !res.IsError || !strings.Contains(res.Content, "web.search_url") || len(*badAsked) != 0 {
+		t.Fatalf("a bad search url is a config error: %+v asked %+v", res, *badAsked)
 	}
 
 	allowed, asked := testPipeline(t, true)
