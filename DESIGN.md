@@ -1207,7 +1207,8 @@ provenance string.
   pills, and without a bar the pills float at the bottom-left. A scrolled region
   keeps its last column for a thin scrollbar and its widgets render one cell narrower,
   so the bar appearing covers and rewraps nothing; every other scrolling box (overlay
-  bodies and lists, prompts, popups) scrolls through the same viewport and bar.
+  bodies and lists, prompts, popups) scrolls through the same viewport and bar, and every
+  bar drags, found by its cells in the last frame.
   Widgets render at their node's width and height; a content-sized node gets
   the most rows it could take (its max or the box's cells), not its last height, which
   would never let it shrink.

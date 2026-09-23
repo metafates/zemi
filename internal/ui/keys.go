@@ -463,9 +463,23 @@ func (a *App) topChrome() string {
 // popup, else the scrolled region under the pointer. In a box, text that
 // overflows takes the wheel before the list; a list moves one item.
 func (a *App) wheel(x, y, step int) {
-	var text *viewport
-	var sel *int
-	n := 0
+	text, sel, n, ok := a.boxScroll()
+	switch {
+	case !ok:
+		a.scrollRows(a.scrollAt(x, y), step*chatWheelStep)
+		return
+	case text != nil && text.overflows():
+		text.scroll(step * chatWheelStep)
+	case sel != nil:
+		*sel = max(0, min(*sel+step, n-1))
+	}
+	a.bump()
+}
+
+// boxScroll is what scrolls in the box on top, the modal chrome else an
+// open composer popup: its text, and its list's selection of n items. ok is
+// false with no box on top.
+func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 	switch a.topChrome() {
 	case "perm":
 		text, sel, n = &a.permAsk.view, &a.permAsk.sel, len(a.permAsk.choices())
@@ -486,21 +500,14 @@ func (a *App) wheel(x, y, step int) {
 	default:
 		switch {
 		case a.popRect.Empty():
-			a.scrollRows(a.scrollAt(x, y), step*chatWheelStep)
-			return
+			return nil, nil, 0, false
 		case a.palette.open:
 			sel, n = &a.palette.selected, a.palette.count()
 		default:
 			sel, n = &a.completion.selected, a.completion.count()
 		}
 	}
-	switch {
-	case text != nil && text.overflows():
-		text.scroll(step * chatWheelStep)
-	case sel != nil:
-		*sel = max(0, min(*sel+step, n-1))
-	}
-	a.bump()
+	return text, sel, n, true
 }
 
 // pasteChrome sends a paste to the topmost filter or input instead of the

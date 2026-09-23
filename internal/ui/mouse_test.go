@@ -469,3 +469,50 @@ func TestToolRowClickExpands(t *testing.T) {
 		t.Fatal("a second click should collapse the row again")
 	}
 }
+
+// TestScrollbarDrag: a box's bar drags like the chat's, to either end.
+func TestScrollbarDrag(t *testing.T) {
+	for name, c := range map[string]struct {
+		open func(*App, *hostapi.Host)
+		down bool
+		done func(*App) bool
+	}{
+		"chat": {func(_ *App, host *hostapi.Host) { fillChat(host) }, false,
+			func(app *App) bool { return app.scrolls["chat"].top == 0 }},
+		"help list": {func(_ *App, host *hostapi.Host) { host.OpenHelp() }, true,
+			func(app *App) bool { st := &app.overlays[0]; return st.selected == len(st.visible)-1 }},
+	} {
+		t.Run(name, func(t *testing.T) {
+			app, host := bootAgentApp(t, 80, 24)
+			c.open(app, host)
+			for app.Pump() {
+			}
+			app.renderSync(t)
+			app.Frame()
+			x, top, bottom := -1, -1, -1
+			for y, row := range app.lastRows {
+				cx := 0
+				for _, s := range row {
+					if s.Bar {
+						x, bottom = cx, y
+						if top < 0 {
+							top = y
+						}
+					}
+					cx += ansi.StringWidth(s.Text)
+				}
+			}
+			if x < 0 {
+				t.Fatal("no scrollbar on screen")
+			}
+			if c.down {
+				dragTo(app, x, top, x, bottom)
+			} else {
+				dragTo(app, x, bottom, x, top)
+			}
+			if !c.done(app) {
+				t.Fatalf("the drag from row %d to %d did not reach the end", top, bottom)
+			}
+		})
+	}
+}

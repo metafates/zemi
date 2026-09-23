@@ -79,16 +79,15 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 			}
 			return nil
 		}
-		if id := a.scrollbarAt(m.X, m.Y); id != "" {
-			a.barDrag = id
-			a.dragScrollbar(id, m.Y)
+		if a.barDrag = a.barAt(m.X, m.Y); a.barDrag.h > 0 {
+			a.dragBar(m.Y)
 			return nil
 		}
 		a.mouse = mouseSel{pressed: true, x0: m.X, y0: m.Y, x1: m.X, y1: m.Y}
 		a.bump()
 	case tea.MouseMotionMsg:
-		if a.barDrag != "" {
-			a.dragScrollbar(a.barDrag, m.Y)
+		if a.barDrag.h > 0 {
+			a.dragBar(m.Y)
 			return nil
 		}
 		if !a.mouse.pressed {
@@ -99,8 +98,8 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 			a.bump()
 		}
 	case tea.MouseReleaseMsg:
-		if a.barDrag != "" {
-			a.barDrag = ""
+		if a.barDrag.h > 0 {
+			a.barDrag = barHold{}
 			return nil
 		}
 		if !a.mouse.pressed {
@@ -126,29 +125,57 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-// scrollbarAt is the scrolled region whose scrollbar column is at (x, y),
-// "" for none. Chrome on top owns the pointer first.
-func (a *App) scrollbarAt(x, y int) string {
-	if a.topChrome() != "" {
-		return ""
-	}
-	for _, id := range a.scrollIDs {
-		st := a.scrolls[id]
-		if st != nil && st.rows > st.viewH && x == st.rect.Max.X-1 && y >= st.rect.Min.Y && y < st.rect.Max.Y {
-			return id
-		}
-	}
-	return ""
+// barHold is a scrollbar the pointer holds: the screen rows of its column,
+// and the scrolled region it scrolls, "" for the box on top.
+type barHold struct {
+	region string
+	top, h int
 }
 
-// dragScrollbar puts a region's viewport where the pointer holds the bar.
-func (a *App) dragScrollbar(id string, y int) {
-	st := a.scrolls[id]
-	if st == nil || st.viewH <= 1 {
+// barAt is the scrollbar drawn at (x, y), h 0 for none. It reads the last
+// frame, where only a live bar is a Bar cell: dimmed chrome drops it.
+func (a *App) barAt(x, y int) barHold {
+	bar := func(y int) bool {
+		if y < 0 || y >= len(a.lastRows) {
+			return false
+		}
+		rest := dropCells(a.lastRows[y], x)
+		return len(rest) > 0 && rest[0].Bar
+	}
+	if !bar(y) {
+		return barHold{}
+	}
+	b := barHold{top: y, h: 1}
+	for bar(b.top - 1) {
+		b.top, b.h = b.top-1, b.h+1
+	}
+	for bar(b.top + b.h) {
+		b.h++
+	}
+	if _, _, _, box := a.boxScroll(); !box {
+		b.region = a.scrollAt(x, y)
+	}
+	return b
+}
+
+// dragBar puts the held bar's viewport where the pointer is along the bar:
+// a text's top row, or a list's selection.
+func (a *App) dragBar(y int) {
+	b := a.barDrag
+	rel, span := max(0, min(y-b.top, b.h-1)), max(b.h-1, 1)
+	if b.region != "" {
+		if st := a.scrolls[b.region]; st != nil {
+			a.scrollRows(b.region, rel*(st.rows-st.viewH)/span-max(st.top, 0))
+		}
 		return
 	}
-	rel := max(0, min(y-st.rect.Min.Y, st.viewH-1))
-	a.scrollRows(id, rel*(st.rows-st.viewH)/(st.viewH-1)-max(st.top, 0))
+	switch text, sel, n, _ := a.boxScroll(); {
+	case text != nil && text.overflows():
+		text.scroll(rel*(text.rows-text.viewH)/span - max(text.top, 0))
+	case sel != nil:
+		*sel = rel * (n - 1) / span
+	}
+	a.bump()
 }
 
 // dismissOutside closes a menu or popup a click landed outside of, and
