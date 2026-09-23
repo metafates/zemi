@@ -64,7 +64,7 @@ func TestMouseDragCopies(t *testing.T) {
 func TestMouseClicks(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 	host.AppendMessage("user", "why?")
-	host.AppendReasoning("first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
+	appendReasoning(host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
 	app.renderSync(t)
 	x, y := findCell(t, app, "Thought for")
 	clickAt(app, x+1, y)
@@ -213,7 +213,7 @@ func TestHoverTargets(t *testing.T) {
 	}
 	thought := func(app *App) {
 		app.host.AppendMessage("user", "why?")
-		app.host.AppendReasoning("first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
+		appendReasoning(app.host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
 	}
 	widgets := func(app *App) {
 		src := `zemi.ui.widget.add({ id = "a", region = "statusline.left", priority = 90, on_click = function() end,
@@ -446,7 +446,7 @@ func TestMouseQuestion(t *testing.T) {
 // output) without expanding the rest of the transcript.
 func TestToolRowClickExpands(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
-	host.AppendReasoning("first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
+	appendReasoning(host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
 	long := "go test ./internal/hostapi -run TestSomethingWithAVeryLongName -count=1 -race"
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
 		{ID: "1", Name: "bash", Label: "run the hostapi tests", Input: long, Status: "ok", Output: "ok  github.com/metafates/zemi/internal/hostapi"},

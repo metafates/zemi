@@ -16,7 +16,7 @@ import (
 func fillChat(host *hostapi.Host) {
 	for i := 1; i <= 30; i++ {
 		host.AppendMessage("user", fmt.Sprintf("message %d", i))
-		host.AppendTurnResult(fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
+		appendReply(host, fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
 	}
 }
 
@@ -207,8 +207,8 @@ func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 14)
 	for i := 1; i <= 20; i++ {
 		host.AppendMessage("user", fmt.Sprintf("message %d", i))
-		host.AppendReasoning(fmt.Sprintf("thought %d line one\nthought %d line two\n", i, i), hostapi.TurnStat{ThoughtMS: 4200})
-		host.AppendTurnResult(fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
+		appendReasoning(host, fmt.Sprintf("thought %d line one\nthought %d line two\n", i, i), hostapi.TurnStat{ThoughtMS: 4200})
+		appendReply(host, fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
 	}
 	app.renderSync(t)
 	app.Frame()
@@ -236,7 +236,7 @@ func TestChatScrollAnchorsThroughFill(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 	for i := 1; i <= 30; i++ {
 		host.AppendMessage("user", fmt.Sprintf("message %d", i))
-		host.AppendTurnResult("line a\n\nline b\n\nline c\n\nline d\n\nline e", hostapi.TurnStat{Out: 100, ElapsedMS: 1500})
+		appendReply(host, "line a\n\nline b\n\nline c\n\nline d\n\nline e", hostapi.TurnStat{Out: 100, ElapsedMS: 1500})
 	}
 	app.renderSync(t)
 	app.Frame()

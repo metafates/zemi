@@ -153,7 +153,7 @@ var cutLines = regexp.MustCompile(`^\.\.\. \(lines (\d+)-(\d+) of \d+ cut\) \.\.
 // wrong, and the last six, with a row counting what fell out between them.
 func shortOutput(s string) string {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
-	if n := len(lines) - 9; n > 0 {
+	if n := len(lines) - 9; n > 1 {
 		// a tools.TruncOut marker stands for the lines it cut
 		for _, l := range lines[3 : len(lines)-6] {
 			if m := cutLines.FindStringSubmatch(l); m != nil {
@@ -162,7 +162,7 @@ func shortOutput(s string) string {
 				n += b - a
 			}
 		}
-		cut := append([]string{fmt.Sprintf("... %d more lines", n)}, lines[len(lines)-6:]...)
+		cut := append([]string{fmt.Sprintf("… %d more lines", n)}, lines[len(lines)-6:]...)
 		lines = append(lines[:3:3], cut...)
 	}
 	for i, l := range lines {
@@ -580,19 +580,6 @@ func (h *Host) AppendChat(m ChatMessage) {
 	h.session.Transcript = append(h.session.Transcript, m)
 	h.tMu.Unlock()
 	h.refresh()
-}
-
-// AppendTurnResult adds the assistant reply with its turn stats (tokens,
-// thought time, elapsed time) for the chat widget to render.
-func (h *Host) AppendTurnResult(text string, stat TurnStat) {
-	h.AppendChat(ChatMessage{Role: "assistant", Text: text, Stat: &stat})
-}
-
-// AppendReasoning adds the persisted thinking block of a finished turn:
-// the chat widget collapses it to a one-line summary unless the reasoning
-// toggle is on (§8). Called by the agent loop's TurnDone.
-func (h *Host) AppendReasoning(text string, stat TurnStat) {
-	h.AppendChat(ChatMessage{Role: "assistant", Kind: "reasoning", Text: text, Stat: &stat})
 }
 
 // goKeys are the bindings the key router owns (internal/ui/keys.go): they

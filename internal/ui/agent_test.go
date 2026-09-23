@@ -24,6 +24,14 @@ import (
 	zemiRuntime "github.com/metafates/zemi/runtime"
 )
 
+func appendReply(h *hostapi.Host, text string, stat hostapi.TurnStat) {
+	h.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: text, Stat: &stat})
+}
+
+func appendReasoning(h *hostapi.Host, text string, stat hostapi.TurnStat) {
+	h.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "reasoning", Text: text, Stat: &stat})
+}
+
 // bootAgentApp boots a full host + app with the default UI, mirroring the
 // golden_test harness.
 func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
@@ -68,10 +76,10 @@ func seedLongChat(host *hostapi.Host, turns int) {
 	const diff = "--- a/x.go\n+++ b/x.go\n@@ -1,6 +1,7 @@\n package x\n \n-func a() {}\n+func a() int { return 1 }\n+func b() {}\n \n // tail\n"
 	for i := range turns {
 		host.AppendMessage("user", fmt.Sprintf("question %d about the build", i))
-		host.AppendReasoning("thinking about it for a while", hostapi.TurnStat{})
+		appendReasoning(host, "thinking about it for a while", hostapi.TurnStat{})
 		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "internal/ui/app.go", Status: "ok"})
 		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "internal/ui/x.go", Status: "ok", Diff: diff})
-		host.AppendTurnResult(reply, hostapi.TurnStat{Out: 200})
+		appendReply(host, reply, hostapi.TurnStat{Out: 200})
 	}
 }
 
@@ -103,7 +111,7 @@ func TestColdChatRender(t *testing.T) {
 	app, host := bootAgentApp(t, 140, 40)
 	for i := range 500 {
 		host.AppendMessage("user", fmt.Sprintf("question %d", i))
-		host.AppendTurnResult(strings.Repeat(fmt.Sprintf("A paragraph of reply %d with `code` and **bold** that wraps across the chat width.\n\n", i), 28), hostapi.TurnStat{})
+		appendReply(host, strings.Repeat(fmt.Sprintf("A paragraph of reply %d with `code` and **bold** that wraps across the chat width.\n\n", i), 28), hostapi.TurnStat{})
 	}
 	chat := host.Widgets.Get("chat")
 	var lines [][]hostapi.Segment
@@ -147,7 +155,7 @@ func TestChatExpandSettledRow(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
 	host.AppendMessage("user", "run it")
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "bash", Text: "make", Status: "ok", Output: "built\nok"})
-	host.AppendTurnResult("done", hostapi.TurnStat{})
+	appendReply(host, "done", hostapi.TurnStat{})
 	rows := func() int {
 		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
 		if err != nil {
@@ -392,7 +400,7 @@ func TestGoldenAgentStream(t *testing.T) {
 
 	// the user's own text is plain; a reply keeps a generic that is no HTML
 	host.AppendMessage("user", "why does Vec<String> in __init__ fail?")
-	host.AppendTurnResult("Read the build log: Vec<String> moved.", hostapi.TurnStat{
+	appendReply(host, "Read the build log: Vec<String> moved.", hostapi.TurnStat{
 		In: 12340, Out: 1234, ThoughtMS: 4200, ElapsedMS: 38000,
 	})
 	host.SeedStream(hostapi.StreamSnapshot{
@@ -767,7 +775,7 @@ func TestLuaUtil(t *testing.T) {
 func TestReasoningExpanded(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	host.AppendMessage("user", "why?")
-	host.AppendReasoning("first idea\nsecond idea\n", hostapi.TurnStat{ThoughtMS: 4200})
+	appendReasoning(host, "first idea\nsecond idea\n", hostapi.TurnStat{ThoughtMS: 4200})
 	host.ToggleReasoning()
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
@@ -827,7 +835,7 @@ func TestWorkingRowRetry(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, RetryIn: 4 * time.Second, Retries: 1})
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(` Retrying · attempt 2 · next try in \d\.\ds · esc interrupt ─`).MatchString(frame) {
+	if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(` Retrying · attempt 2 · next try in \ds · esc interrupt ─`).MatchString(frame) {
 		t.Fatalf("retry row missing:\n%s", frame)
 	}
 	// the label shimmers: every rune gets its own color
@@ -1095,7 +1103,7 @@ func TestFileRowClickIDs(t *testing.T) {
 // line, edits and failures keep their rows, a command shows the model's
 // description with the command under it, and ctrl+o shows every call.
 func TestToolRows(t *testing.T) {
-	app, host := bootAgentApp(t, 100, 48)
+	app, host := bootAgentApp(t, 100, 64)
 	host.AppendMessage("user", "fix it")
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
 		{Name: "read", Input: "a.go", Status: "ok"},
@@ -1107,6 +1115,9 @@ func TestToolRows(t *testing.T) {
 		{Name: "bash", Input: "cat > n.txt <<EOT\nfirst line\nEOT", Label: "Write notes", Status: "err"},
 		{Name: "bash", Input: "printf a\nprintf b", Status: "err"},
 		{Name: "bash", Input: "make slow", Label: "Build it", Status: "bg", Output: "still running, so it " + tools.JobHandoff + "job-1"},
+		{Name: "job_start", Input: "npm run dev", Label: "Dev server", Status: "bg", Output: "started job-2 (npm run dev)"},
+		// a collapsed failure counts every line it hides, the host's cut included
+		{Name: "bash", Input: "go build", Label: "Build the binary", Status: "err", Output: "e1\ne2\ne3\n… 21 more lines\nl1\nl2\nl3\nl4\nl5\nl6"},
 		// a verdict the user gave shows as one line under a stop mark; the model keeps the reason and the instructions
 		{Name: "question", Input: "Name?", Status: "stopped", Output: "The user dismissed the questions. Stop and wait for them to say how to proceed."},
 		{Name: "write", Input: "b.go", Status: "stopped", Output: "permission denied (user): fs.write /p/b.go: it asked because this project is not trusted (/trust)"},
@@ -1115,7 +1126,7 @@ func TestToolRows(t *testing.T) {
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"Read 2 files, ran 1 command: Vet the code", "⧗ Build it", "    still running as job-1", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "    --- FAIL: TestX",
+	for _, want := range []string{"Read 2 files, ran 1 command: vet the code", "⧗ Build it", "    running as job-1", "⧗ Start dev server", "    running as job-2", "    … 27 more lines", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "    --- FAIL: TestX",
 		"⎿ cat > n.txt <<EOT first line EOT", "✗ Run printf a printf b",
 		"■ Write b.go", "  ⎿ denied by you", "  ⎿ dismissed by you", "  ⎿ approved, saved to /data/plans/s1.md", "  ⎿ changes requested: use go"} {
 		if !strings.Contains(frame, want) {
@@ -1199,7 +1210,7 @@ func TestReasoningWrapKeepsWords(t *testing.T) {
 		words = append(words, fmt.Sprintf("w%02d", i))
 	}
 	host.AppendMessage("user", "why?")
-	host.AppendReasoning(strings.Join(words, " ")+"\n\nsecond paragraph", hostapi.TurnStat{ThoughtMS: 1000})
+	appendReasoning(host, strings.Join(words, " ")+"\n\nsecond paragraph", hostapi.TurnStat{ThoughtMS: 1000})
 	host.ToggleReasoning()
 	app.renderSync(t)
 	var got []string

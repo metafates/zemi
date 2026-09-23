@@ -704,7 +704,7 @@ func TestShortOutput(t *testing.T) {
 		lines = append(lines, fmt.Sprintf("line %d", i))
 	}
 	got := shortOutput(strings.Join(lines, "\n") + "\n")
-	want := "line 0\nline 1\nline 2\n... 21 more lines\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29"
+	want := "line 0\nline 1\nline 2\n… 21 more lines\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29"
 	if got != want {
 		t.Errorf("got:\n%s", got)
 	}
@@ -714,7 +714,7 @@ func TestShortOutput(t *testing.T) {
 	for i := 30; i < 3000; i++ {
 		lines = append(lines, fmt.Sprintf("line %d", i))
 	}
-	if got := shortOutput(tools.TruncOut(strings.Join(lines, "\n"), 10_000)); !strings.Contains(got, "\n... 2991 more lines\n") {
+	if got := shortOutput(tools.TruncOut(strings.Join(lines, "\n"), 10_000)); !strings.Contains(got, "\n… 2991 more lines\n") {
 		t.Errorf("a cut result counts the lines it cut:\n%s", got)
 	}
 }

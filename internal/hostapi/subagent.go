@@ -354,7 +354,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		run.mu.Unlock()
 	}
 	seedLoaded(loaded, runner.History)
-	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid}
+	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid, ctx: ctx}
 	runner.Hooks = hooks
 	if sid != "" {
 		runner.Persist = func(role string, msg fantasy.Message) error {
@@ -456,7 +456,9 @@ type subagentHooks struct {
 	modelID  string
 	progress func(string)
 	sid      string
-	stepText int // len(run.text) when the step began, where a retry restarts
+	ctx      context.Context // the run's: cancelled, a call cut off was stopped
+	stepText int             // len(run.text) when the step began, where a retry restarts
+	thinkAt  time.Time       // when the Thought row being streamed began
 }
 
 func (s *subagentHooks) report(line string) {
@@ -473,15 +475,19 @@ func (s *subagentHooks) TextDelta(text string) {
 }
 
 // ReasoningDelta keeps one collapsed Thought row per stretch of thinking,
-// under what streamed before it.
+// under what streamed before it, timed from its first delta to its last.
 func (s *subagentHooks) ReasoningDelta(text string) {
 	run := s.run
 	run.mu.Lock()
 	run.flush()
 	if n := len(run.tr); n == 0 || run.tr[n-1].Kind != "reasoning" {
 		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "reasoning"})
+		s.thinkAt = time.Now()
 	}
-	run.tr[len(run.tr)-1].Text += text
+	m := &run.tr[len(run.tr)-1]
+	m.Text += text
+	// a new Stat, never a write through the old one a reader may hold
+	m.Stat = &TurnStat{ThoughtMS: time.Since(s.thinkAt).Milliseconds()}
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
 }
@@ -521,7 +527,7 @@ func (s *subagentHooks) ToolCallEnd(id, name string, ok bool, out, diff string) 
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
 		t := &run.tr[i]
-		t.Status, t.Output = toolStatus(name, ok, out), shortOutput(out)
+		t.Status, t.Output = toolStatus(name, ok, out, s.ctx != nil && s.ctx.Err() != nil), shortOutput(out)
 		switch {
 		case diff != "":
 			t.Diff = diff // bash: what the command changed
@@ -546,7 +552,7 @@ func (s *subagentHooks) Retrying(err error, delay time.Duration) {
 	s.run.mu.Lock()
 	s.run.text = s.run.text[:min(s.stepText, len(s.run.text))]
 	s.run.mu.Unlock()
-	s.report(fmt.Sprintf("%s · retrying in %s", s.def.Name, delay.Round(time.Second)))
+	s.report(fmt.Sprintf("%s · retrying in %s", s.def.Name, fmtDuration(delay)))
 }
 
 // StepDone is unused: a subagent's whole run bills once at TurnDone.

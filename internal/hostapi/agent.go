@@ -618,7 +618,7 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	case text == "":
 		// its notice row is drawn when the model reads it; say now that it waits
 		if len(waiting) > 0 {
-			h.Notify("info", "Background report waiting", strings.Join(waiting, " ")+" It goes with your next message.")
+			h.Notify("info", "Background report waiting", strings.Join(waiting, "\n")+"\nit goes with your next message")
 		}
 		h.refresh()
 	case handoff:
@@ -767,7 +767,7 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag.mu.Unlock()
 	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
 	if s.h.hooks() == nil { // print mode: the countdown is on no screen
-		fmt.Fprintf(os.Stderr, "zemi: retrying in %s: %s\n", delay.Round(time.Second), why)
+		fmt.Fprintf(os.Stderr, "zemi: retrying in %s: %s\n", fmtDuration(delay), why)
 	}
 	s.h.agentStream()
 }
@@ -821,8 +821,8 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	s.h.agentStream()
 }
 
-// ToolCallRunning starts a row's clock: until then it waits, drawn with no
-// timer, so a call queued behind a serial one does not read as running.
+// ToolCallRunning starts a row's clock: until then it draws no timer, so a
+// call queued behind a serial one does not count time it has not run.
 func (s *streamAdapter) ToolCallRunning(id string) {
 	ag := s.h.agents
 	ag.mu.Lock()
@@ -851,10 +851,8 @@ func (s *streamAdapter) openToolRow(row StreamTool) {
 
 func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed string) {
 	ag := s.h.agents
-	status := toolStatus(name, ok, output)
-	if t := s.h.turn.Load(); !ok && t != nil && t.ctx.Err() != nil {
-		status = "stopped" // esc cut it off
-	}
+	t := s.h.turn.Load()
+	status := toolStatus(name, ok, output, t != nil && t.ctx.Err() != nil)
 	row := StreamTool{ID: id, Name: name}
 	ag.mu.Lock()
 	for i := len(ag.tools) - 1; i >= 0; i-- {
@@ -885,16 +883,17 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 }
 
 // toolStatus is a finished call's row status: "stopped" when the user
-// denied or dismissed it, so the row does not read as a failure, and "bg"
-// when its work goes on in the background.
-func toolStatus(name string, ok bool, output string) string {
+// denied, dismissed or interrupted it (cancelled), so the row does not read
+// as a failure, and "bg" when its work goes on in the background.
+func toolStatus(name string, ok bool, output string, cancelled bool) string {
 	switch {
 	case name == tools.ToolAgent && strings.HasPrefix(output, bgAgentStarted),
-		name == tools.ToolBash && strings.Contains(output, "so it "+tools.JobHandoff):
+		name == tools.ToolBash && strings.Contains(output, "so it "+tools.JobHandoff),
+		name == tools.ToolJobStart && ok:
 		return "bg"
 	case ok:
 		return "ok"
-	case tools.UserStopped(output):
+	case cancelled || tools.UserStopped(output):
 		return "stopped"
 	}
 	return "err"
@@ -949,6 +948,13 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		stat.ElapsedMS = time.Since(ag.turnStart).Milliseconds()
 	}
 	ag.turnStart = time.Time{}
+	// a call still open here was cut off: by the user, or by the error that
+	// ended the turn
+	for i, t := range ag.tools {
+		if t.Status == "run" || t.Status == "wait" {
+			ag.tools[i].Status, ag.tools[i].Diff = map[bool]string{true: "stopped", false: "err"}[errors.Is(err, context.Canceled)], ""
+		}
+	}
 	h.flushOutput(stat)
 	sid := ag.sessionID
 	ag.mu.Unlock()
@@ -995,10 +1001,10 @@ func billedInput(u fantasy.Usage) int64 {
 }
 
 // flushOutput moves the live output into the transcript in the order it
-// streamed: the reasoning, the tool rows, then the reply with stat. Both
-// change under ag.mu, which liveView reads them under, so no frame draws a
-// row twice or not at all (ag.mu held). A tool still running here was cut
-// off by a cancel.
+// streamed: the reasoning, the tool rows that finished, then the reply with
+// stat. Calls still running or waiting stay live, so a flush never settles
+// one early or draws it twice. Both change under ag.mu, which liveView reads
+// them under, so no frame draws a row twice or not at all (ag.mu held).
 func (h *Host) flushOutput(stat TurnStat) {
 	ag := h.agents
 	ag.endThinking()
@@ -1006,16 +1012,17 @@ func (h *Host) flushOutput(stat TurnStat) {
 	if strings.TrimSpace(ag.reasonBuf) != "" {
 		rows = append(rows, ChatMessage{Role: "assistant", Kind: "reasoning", Text: ag.reasonBuf, Stat: &TurnStat{ThoughtMS: ag.thought.Milliseconds()}})
 	}
-	for _, t := range ag.tools {
-		if t.Status == "run" || t.Status == "wait" {
-			t.Status, t.Diff = "stopped", ""
-		}
+	done := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.Status == "run" || t.Status == "wait" })
+	if done < 0 {
+		done = len(ag.tools)
+	}
+	for _, t := range ag.tools[:done] {
 		rows = append(rows, ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
 	}
 	if strings.TrimSpace(ag.textBuf) != "" {
 		rows = append(rows, ChatMessage{Role: "assistant", Text: ag.textBuf, Stat: &stat})
 	}
-	ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", nil, "", 0
+	ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", slices.Clone(ag.tools[done:]), "", 0
 	ag.stepText, ag.stepReason = 0, 0
 	h.tMu.Lock()
 	h.session.Transcript = append(h.session.Transcript, rows...)
@@ -1028,14 +1035,7 @@ func (h *Host) flushOutput(stat TurnStat) {
 func (h *Host) appendAfterLive(m ChatMessage) {
 	ag := h.agents
 	ag.mu.Lock()
-	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.Status == "run" || t.Status == "wait" })
-	if i < 0 {
-		i = len(ag.tools)
-	}
-	running := slices.Clone(ag.tools[i:])
-	ag.tools = ag.tools[:i]
 	h.flushOutput(TurnStat{})
-	ag.tools = running
 	h.tMu.Lock()
 	h.session.Transcript = append(h.session.Transcript, m)
 	h.tMu.Unlock()
@@ -1055,10 +1055,10 @@ func addUsage(a, b fantasy.Usage) fantasy.Usage {
 // capLines keeps the first n lines and notes how many were cut.
 func capLines(s string, n int) string {
 	lines := strings.Split(s, "\n")
-	if len(lines) <= n {
+	if len(lines) <= n+1 {
 		return s
 	}
-	return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n... %d more lines", len(lines)-n)
+	return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n… %d more lines", len(lines)-n)
 }
 
 // toolLabel is what a model says a call is about, shown in place of its

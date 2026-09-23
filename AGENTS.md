@@ -483,9 +483,11 @@ lua-language-server is installed.
 - **Live equals settled.** The live turn holds one stretch in stream order (reasoning, calls,
   reply); `flushOutput` moves it into the transcript whenever the next part would break that
   order (reasoning after a call or a reply, a call after a reply), so a step's reasoning lands
-  under the calls before it, and it moves both sides under `ag.mu`, which the widget ctx reads
-  them under (`liveView`), so no frame draws a row twice or not at all. `historyFrom` merges
-  reasoning the same way, so a resume draws the rows the live turn drew.
+  under the calls before it. It moves only the calls that finished, so none settles early, and
+  moves both sides under `ag.mu`, which the widget ctx reads them under (`liveView`), so no
+  frame draws a row twice or not at all; `TurnDone` settles a call still open as stopped after
+  an interrupt and as failed after an error. `historyFrom` splits text and merges reasoning the
+  same way, so a resume draws the rows the live turn drew.
 - **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`; `e` opens the
   raw text through `EditFile` after the other marks apply, re-running intake as user origin and
   keeping the id.

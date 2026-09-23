@@ -375,12 +375,12 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 
 // reportHead is the one line the user sees of a background report.
 func reportHead(id, agent, status string) string {
-	return fmt.Sprintf("Background agent %s (%s) %s.", id, agent, status)
+	return fmt.Sprintf("Background agent %s (%s) %s", id, agent, status)
 }
 
 // notifyReport tells the user of a report no conversation will read.
 func (h *Host) notifyReport(id, agent, status, description, report string) {
-	h.Notify("info", "Background agent "+id, reportHead(id, agent, status)+" "+description+"\n"+truncRunes(report, 300))
+	h.Notify("info", reportHead(id, agent, status), description+"\n"+truncRunes(report, 300))
 }
 
 var reportBody = regexp.MustCompile(`(?s)<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")>\n(.*?)\n</agent-report>`)

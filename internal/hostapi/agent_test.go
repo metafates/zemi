@@ -506,7 +506,7 @@ func TestSteeringQueue(t *testing.T) {
 		defer h.evlog.mu.Unlock()
 		var b strings.Builder
 		for _, n := range h.evlog.notes {
-			b.WriteString(n.body + "\n")
+			b.WriteString(n.title + ": " + n.body + "\n")
 		}
 		return b.String()
 	}
@@ -514,13 +514,13 @@ func TestSteeringQueue(t *testing.T) {
 	send(attachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>")
 	h.AgentCancel()
 	h.nextTurn(scope)
-	if !strings.Contains(notes(), "Background agent a1 (explore) finished. It goes with your next message.") {
+	if !strings.Contains(notes(), "Background report waiting: Background agent a1 (explore) finished\nit goes with your next message") {
 		t.Fatalf("no waiting notice: %q", notes())
 	}
 	if err := h.closeSession(nil); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(notes(), "Background agent a1 (explore) finished. find \"x\"\nx is in y.go") {
+	if !strings.Contains(notes(), "Background agent a1 (explore) finished: find \"x\"\nx is in y.go") {
 		t.Fatalf("closing dropped the report: %q", notes())
 	}
 

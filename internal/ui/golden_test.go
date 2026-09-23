@@ -163,8 +163,8 @@ func TestGoldenReasoningCollapse(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 
 	host.AppendMessage("user", "why does the build fail?")
-	host.AppendReasoning("checked go.mod, then the fixture dir", hostapi.TurnStat{ThoughtMS: 4200, ElapsedMS: 38000})
-	host.AppendTurnResult("The test binary exits 1 because the fixture path moved.", hostapi.TurnStat{
+	appendReasoning(host, "checked go.mod, then the fixture dir", hostapi.TurnStat{ThoughtMS: 4200, ElapsedMS: 38000})
+	appendReply(host, "The test binary exits 1 because the fixture path moved.", hostapi.TurnStat{
 		In: 12340, Out: 1234, ThoughtMS: 4200, ElapsedMS: 38000,
 	})
 

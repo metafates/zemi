@@ -78,7 +78,7 @@ func TestBackgroundAgent(t *testing.T) {
 			if m.Role == "user" && strings.HasPrefix(m.Text, "Background agent ") {
 				t.Fatalf("report head drawn as a user row: %+v", m)
 			}
-			if m.Kind == "notice" && strings.HasPrefix(m.Text, "Background agent ") && strings.HasSuffix(m.Text, "(explore) finished.") {
+			if m.Kind == "notice" && strings.HasPrefix(m.Text, "Background agent ") && strings.HasSuffix(m.Text, "(explore) finished") {
 				n++
 			}
 		}

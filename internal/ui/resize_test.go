@@ -110,7 +110,7 @@ func TestOverlayWidthStableWhileScrolling(t *testing.T) {
 func TestResizeSweep(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "show me")
-	host.AppendTurnResult("# Heading\n\nsome **bold** and `code` with a verylongunbreakableidentifierthatneverfits\n\n```go\nfunc main() { println(\"a long line of code that overflows\") }\n```\n\n- item one\n- item two\n", hostapi.TurnStat{Out: 10})
+	appendReply(host, "# Heading\n\nsome **bold** and `code` with a verylongunbreakableidentifierthatneverfits\n\n```go\nfunc main() { println(\"a long line of code that overflows\") }\n```\n\n- item one\n- item two\n", hostapi.TurnStat{Out: 10})
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: time.Second, Tools: []hostapi.StreamTool{
 		{Name: "bash", Input: strings.Repeat("ёж ", 60), Status: "run"},
 	}})
@@ -120,7 +120,7 @@ func TestResizeSweep(t *testing.T) {
 	app.renderSync(t)
 	var toolRows []string
 	for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
-		if strings.Contains(row, "ёж") {
+		if strings.Contains(row, "ёж") && !strings.HasPrefix(row, "┌") { // the rule names the call too
 			toolRows = append(toolRows, row)
 		}
 	}

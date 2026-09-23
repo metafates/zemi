@@ -177,8 +177,7 @@ zemi.ui.widget.add({
       grep = { "searched for", "pattern", "patterns" }, web_search = { "searched the web for", "query", "queries" },
       bash = { "ran", "command", "commands" }, fetch = { "fetched", "page", "pages" },
       skill = { "loaded", "skill", "skills" }, memory = { "saved", "memory", "memories" },
-      diagnostics = { "checked", "file", "files" },
-      job_start = { "started", "job", "jobs" }, job_read = { "checked", "job", "jobs" },
+      diagnostics = { "checked", "file", "files" }, job_read = { "checked", "job", "jobs" },
       job_list = { "listed jobs" }, job_kill = { "stopped", "job", "jobs" }, todos = { "updated todos" },
     }
     ---@param t zemi.defaultui.Tool
@@ -193,11 +192,7 @@ zemi.ui.widget.add({
     end
     ---@param s string
     ---@return string
-    local function relpath(s)
-      local cwd = ctx.cwd or ""
-      if cwd == "" then return s end
-      return (s:gsub(cwd:gsub("%p", "%%%0") .. "/", ""))
-    end
+    local function relpath(s) return fmt.relpath(s, ctx.cwd) end
     ---@param group zemi.defaultui.Tool[]
     ---@param click string The id a click on the summary row carries.
     local function add_group(group, click)
@@ -215,7 +210,7 @@ zemi.ui.widget.add({
         end
         seen[key].n = seen[key].n + 1
         if tool_name(t) == "bash" then
-          commands[#commands + 1] = (t.label or "") ~= "" and t.label or relpath(t.text or t.input or ""):gsub("%s+", " ")
+          commands[#commands + 1] = (t.label or "") ~= "" and fmt.lower(t.label) or relpath(t.text or t.input or ""):gsub("%s+", " ")
         end
       end
       ---@type string[]
@@ -239,10 +234,11 @@ zemi.ui.widget.add({
       ok.click = click
       lines[#lines + 1] = { ok, { text = fmt.clip(summary, width - 4), hl = "Normal", click = click } }
     end
-    -- How a row's status marks it; a running call the open prompt asks
-    -- about waits on the user, so it neither spins nor counts.
+    -- How a finished row's status marks it. A call running or not started
+    -- yet spins, unless the open prompt asks about it: that one waits on the
+    -- user, so it neither spins nor counts.
     ---@type table<string, string>
-    local MARK_OF = { run = "spin", wait = "wait", ok = "ok", err = "err", stopped = "stop", bg = "bg" }
+    local MARK_OF = { ok = "ok", err = "err", stopped = "stop", bg = "bg" }
     ---@param t zemi.defaultui.Tool
     ---@param idx integer Transcript index, negative for a live-turn call.
     local function add_tool(t, idx)
@@ -276,7 +272,7 @@ zemi.ui.widget.add({
       local head = { mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = "AgentToolName" } }
       if rest ~= "" then head[3] = { text = fit(rest, width - fmt.cells(verb) - 12), hl = "Normal" } end
       if t.status == "run" and not asked and (t.elapsed or 0) >= 1 then
-        head[#head + 1] = { text = " · " .. fmt.duration(t.elapsed), hl = "Comment" }
+        head[#head + 1] = { text = " · " .. fmt.duration(t.elapsed, true), hl = "Comment" }
       end
       for _, sg in ipairs(head) do sg.click = click end
       lines[#lines + 1] = head
@@ -293,8 +289,8 @@ zemi.ui.widget.add({
       if label ~= "" and input ~= "" then detail(fit(input, width - 6), "Comment") end
       for _, l in ipairs(more) do detail(l, "Comment") end
       if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), width - 6), "Comment") end
-      local job = t.status == "bg" and (t.output or ""):match("moved to the background as (job%-%d+)")
-      if job then detail("still running as " .. job, "Comment") end
+      local job = t.status == "bg" and ((t.output or ""):match("moved to the background as (job%-%d+)") or (t.output or ""):match("^started (job%-%d+)"))
+      if job then detail("running as " .. job, "Comment") end
       -- File tools show what they changed as numbered, tinted rows.
       local old, new, hunks, numbered = 0, 0, 0, true
       for dl in ((t.diff or "") .. "\n"):gmatch("(.-)\n") do
@@ -356,7 +352,15 @@ zemi.ui.widget.add({
         local err = t.status == "err"
         local shown = (err and not open) and math.min(#out, 3) or #out
         for i = 1, shown do detail(out[i], err and i == 1 and "Danger" or "Comment") end
-        if shown < #out then detail("… " .. fmt.count(#out - shown, "more line", "more lines"), "Comment") end
+        if shown < #out then
+          -- the host's own cut stands for the lines it dropped
+          local hidden = #out - shown
+          for i = shown + 1, #out do
+            local n = out[i]:match("^… (%d+) more lines$")
+            if n then hidden = hidden - 1 + tonumber(n) end
+          end
+          detail("… " .. fmt.count(hidden, "more line", "more lines"), "Comment")
+        end
       end
     end
     -- rows from i on: a collapsed group or one call; returns the next index

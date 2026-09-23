@@ -3,6 +3,10 @@ local snail = require("zemi.defaultui.snail")
 
 ---@type table<string, boolean>
 local READS = { read = true, grep = true, glob = true, fetch = true, web_search = true, skill = true }
+-- a retry countdown keeps the width it started at, so what follows it
+-- never moves left as it counts down
+---@type integer?, integer
+local retry_attempt, retry_w = nil, 0
 
 -- The composer frame's top rule, all ctx.width cells of it: the mascot in the
 -- left corner in the state of the turn and, right after it, a shimmering
@@ -34,18 +38,24 @@ zemi.ui.widget.add({
       for _, t in ipairs(ag.tools or {}) do
         if t.status == "run" then
           local verb, rest = fmt.head(t.name, t.label)
+          -- an unlabelled call reads as its row does: the verb and its input
+          if t.label == "" and t.input ~= "" then rest = " " .. fmt.relpath(t.input, ctx.cwd):gsub("%s+", " ") end
           label = verb .. rest
           if READS[t.name] then state = "reading" end
           break
         end
       end
       if label == "Working" and ag.reasoning ~= "" and ag.text == "" then label, state = "Thinking", "thinking" end
-      parts = { fmt.duration(ag.elapsed) }
+      parts = { fmt.duration(ag.elapsed, true) }
       if ag.retry then
         label, state = "Retrying", "error"
         parts = { "attempt " .. ag.retry.attempt }
         if ag.retry.why ~= "" then parts[#parts + 1] = ag.retry.why end
-        parts[#parts + 1] = "next try in " .. fmt.duration(ag.retry.next_in)
+        local next_in = fmt.duration(math.ceil(ag.retry.next_in), true)
+        if retry_attempt ~= ag.retry.attempt then retry_attempt, retry_w = ag.retry.attempt, #next_in end
+        parts[#parts + 1] = "next try in " .. string.rep(" ", retry_w - #next_in) .. next_in
+      else
+        retry_attempt = nil
       end
       if ag.compacting then label, state = "Compacting", "reading" end
       if ctx.cancelling then label = "Cancelling" end
@@ -65,8 +75,10 @@ zemi.ui.widget.add({
       local queued = #ag.steering - ag.reports
       if queued > 0 then parts[#parts + 1] = queued .. " queued · up edit" end
     end
-    -- a narrow rule keeps the label and the snail at least 8 cells, dropping
-    -- the queue depth first and the elapsed time last
+    -- a narrow rule clips the label to 16 cells first, then drops the queue
+    -- depth first and the elapsed time last, keeping the snail 8 cells of rule
+    local after = #parts > 0 and zemi.ui.width(" · " .. table.concat(parts, " · ")) or 0
+    label = fmt.clip(label, math.max(ctx.width - 10 - after, 16))
     while #parts > 0 and zemi.ui.width(label .. " · " .. table.concat(parts, " · ")) + 10 > ctx.width do
       parts[#parts] = nil
     end

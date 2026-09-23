@@ -18,11 +18,13 @@ function M.tokens(n)
 end
 
 --- A duration as "4.2s" under ten seconds, then "42s", "3m 05s", "1h 02m".
+--- A clock that ticks passes whole: its seconds only grow in width.
 ---@param s number seconds
+---@param whole boolean? Whole seconds under ten too ("4s").
 ---@return string
-function M.duration(s)
-  if s < 9.95 then return string.format("%.1fs", math.max(s, 0)) end
-  s = math.floor(s + 0.5)
+function M.duration(s, whole)
+  if s < 9.95 and not whole then return string.format("%.1fs", math.max(s, 0)) end
+  s = math.floor(math.max(s, 0) + (whole and 0 or 0.5))
   if s < 60 then return s .. "s" end
   if s < 3600 then return string.format("%dm %02ds", math.floor(s / 60), s % 60) end
   return string.format("%dh %02dm", math.floor(s / 3600), math.floor(s / 60) % 60)
@@ -77,7 +79,25 @@ function M.head(name, label)
     local verb, rest = label:match("^(%S+)(.*)$")
     return verb:sub(1, 1):upper() .. verb:sub(2), rest
   end
-  return M.VERB[name] or M.title(name), label ~= "" and " " .. label or ""
+  return M.VERB[name] or M.title(name), label ~= "" and " " .. M.lower(label) or ""
+end
+
+--- Text with its first letter lowercased, so it reads on after a verb,
+--- unless that letter starts an acronym ("README").
+---@param s string
+---@return string
+function M.lower(s)
+  if s:match("^%u%u") then return s end
+  return (s:gsub("^%u", string.lower))
+end
+
+--- Text with every path under cwd written relative to it.
+---@param s string
+---@param cwd string?
+---@return string
+function M.relpath(s, cwd)
+  if not cwd or cwd == "" then return s end
+  return (s:gsub(cwd:gsub("%p", "%%%0") .. "/", ""))
 end
 
 --- Display width of a string in terminal cells.
