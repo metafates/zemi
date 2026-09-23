@@ -515,9 +515,13 @@ func (t *mcpTool) shortName() string {
 	return strings.TrimPrefix(mcpToolName(t.srv.name, t.tool.Name), mcpToolPrefix+t.srv.name+"_")
 }
 
-// mcpMaxMedia is the ceiling on one forwarded image or audio part, the
-// same the read tool holds itself to.
-const mcpMaxMedia = 5 << 20
+// mcpMaxImage is the read tool's ceiling on an image read at all;
+// tools.FitImage sizes what is sent. mcpMaxMedia caps an audio part, which
+// nothing shrinks.
+const (
+	mcpMaxImage = 20 << 20
+	mcpMaxMedia = 5 << 20
+)
 
 type mcpTool struct {
 	h     *Host
@@ -592,21 +596,39 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 	if strings.TrimSpace(text) == "" {
 		text = "(no output)"
 	}
-	if data, mime, ok := res.Media(); ok && len(data) <= mcpMaxMedia {
-		switch {
-		case !strings.HasPrefix(mime, "image/"):
-			out := fantasy.NewMediaResponse(data, mime)
-			out.Content = text
-			return out, nil
-		case t.pipe.Images == nil || t.pipe.Images():
-			out := fantasy.NewImageResponse(data, mime)
-			out.Content = text
-			return out, nil
-		default:
-			text += "\n(the image is not shown: this model takes no images)"
-		}
+	if data, mime, ok := res.Media(); ok {
+		return mcpMedia(text, data, mime, t.pipe.Images), nil
 	}
 	return fantasy.NewTextResponse(text), nil
+}
+
+// mcpMedia sends a result's image or audio part with its text. An image
+// goes through tools.FitImage like the read tool's: one a provider refuses
+// would drop every image in the history, or all images for the process.
+func mcpMedia(text string, data []byte, mime string, images func() bool) fantasy.ToolResponse {
+	kind, _, _ := strings.Cut(mime, "/")
+	limit := mcpMaxMedia
+	if kind == "image" {
+		limit = mcpMaxImage
+	}
+	var err error
+	switch {
+	case len(data) > limit:
+		err = fmt.Errorf("a %d byte %s, over the %d byte limit", len(data), kind, limit)
+	case kind != "image":
+		out := fantasy.NewMediaResponse(data, mime)
+		out.Content = text
+		return out
+	case images != nil && !images():
+		err = errors.New("this model takes no images")
+	default:
+		if data, mime, err = tools.FitImage(data, mime); err == nil {
+			out := fantasy.NewImageResponse(data, mime)
+			out.Content = text
+			return out
+		}
+	}
+	return fantasy.NewTextResponse(text + "\n(the " + kind + " is not shown: " + err.Error() + ")")
 }
 
 // ---------------------------------------------------------------------------

@@ -1,9 +1,12 @@
 package hostapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -118,6 +121,33 @@ func TestMCPBridge(t *testing.T) {
 	}
 	if s, _ := h.mcpServerNamed("fake"); s.currentClient() != nil || s.status != "needs sign-in" {
 		t.Fatalf("status after the sign-in expired = %q", s.status)
+	}
+}
+
+// TestMCPMedia: an image goes out the size the read tool's would, and one
+// no provider takes stays out with the reason in the text.
+func TestMCPMedia(t *testing.T) {
+	var wide bytes.Buffer
+	if err := png.Encode(&wide, image.NewRGBA(image.Rect(0, 0, 3000, 1000))); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, mime string
+		data       []byte
+		want       string
+	}{
+		{"a big png is shrunk", "image/png", wide.Bytes(), "image/png 2000x666"},
+		{"an svg is refused with a reason", "image/svg+xml", []byte("<svg/>"), "x\n(the image is not shown: not a readable image: image: unknown format)"},
+	} {
+		resp := mcpMedia("x", c.data, c.mime, nil)
+		got := resp.Content
+		if resp.Type == "image" {
+			cfg, _, _ := image.DecodeConfig(bytes.NewReader(resp.Data))
+			got = fmt.Sprintf("%s %dx%d", resp.MediaType, cfg.Width, cfg.Height)
+		}
+		if got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 
