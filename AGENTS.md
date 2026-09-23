@@ -445,7 +445,9 @@ lua-language-server is installed.
 - **A turn's work survives the turn.** `Runner.Persist` writes each step's messages from
   `OnStepFinish`, so a cancelled or crashed turn keeps what it did; the next send runs
   `closeToolCalls` over the history first, inserting an error result after any tool call left
-  unanswered (providers refuse a dangling call). Every resolved model is wrapped in `idleModel`
+  unanswered (providers refuse a dangling call); a reply cut mid-arguments by a provider that
+  then drops the call (openai-compatible) gets a user note naming the pending tool instead, so
+  the model does not repeat the same oversized call. Every resolved model is wrapped in `idleModel`
   (providers.go): a call that makes no progress for 5 minutes is cancelled, since the HTTP
   header timeout stops counting once the status line arrives and a stalled stream would hold
   the turn forever; the timer resets on each stream part and tools run between model calls, so

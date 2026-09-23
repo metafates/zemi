@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -341,6 +342,37 @@ func TestCutOffToolCallGetsResult(t *testing.T) {
 	res, ok := m.lastCall.Prompt[2].Content[0].(fantasy.ToolResultPart)
 	if !ok || res.ToolCallID != "c1" || res.Output.GetType() != fantasy.ToolResultContentTypeError {
 		t.Fatalf("tool message: %+v", m.lastCall.Prompt[2])
+	}
+
+	// a provider that drops the cut call leaves only its input start: the
+	// history gets a note naming the tool instead of nothing
+	m = &mockModel{steps: [][]fantasy.StreamPart{
+		{
+			{Type: fantasy.StreamPartTypeToolInputStart, ID: "c1", ToolCallName: "echo"},
+			{Type: fantasy.StreamPartTypeToolInputDelta, ID: "c1", Delta: "{"},
+			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonLength},
+		},
+		textParts("done"),
+	}}
+	r = NewRunner(m, nil, "")
+	r.Hooks = newRecHooks()
+	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrReplyCut) {
+		t.Fatalf("dropped cut call: %v, want ErrReplyCut", err)
+	}
+	r.Hooks = newRecHooks()
+	if err := r.Send(context.Background(), "go on"); err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	for _, msg := range m.lastCall.Prompt {
+		for _, p := range msg.Content {
+			if tp, ok := p.(fantasy.TextPart); ok && msg.Role == fantasy.MessageRoleUser {
+				texts = append(texts, tp.Text)
+			}
+		}
+	}
+	if !slices.ContainsFunc(texts, func(s string) bool { return strings.Contains(s, "cut at the output limit while calling echo") }) {
+		t.Fatalf("no note about the cut call in the prompt: %q", texts)
 	}
 }
 

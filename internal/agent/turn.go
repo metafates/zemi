@@ -226,13 +226,17 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	// callback that failed the step) is released when the turn is over
 	var recorded []string
 	defer func() { tools.CallDone(recorded...) }()
+	// the tool whose arguments the step was streaming: a reply cut there
+	// may leave no tool call behind for closeToolCalls to answer
+	pending := ""
 	call := fantasy.AgentStreamCall{
 		Messages:         history,
 		StopWhen:         stops,
-		OnStepStart:      func(int) error { hooks.StepStart(); return nil },
+		OnStepStart:      func(int) error { pending = ""; hooks.StepStart(); return nil },
 		OnTextDelta:      func(id, text string) error { hooks.TextDelta(text); return nil },
 		OnReasoningDelta: func(id, text string) error { hooks.ReasoningDelta(text); return nil },
 		OnToolInputStart: func(id, name string) error {
+			pending = name
 			hooks.ToolCallPending(id, name)
 			return nil
 		},
@@ -310,6 +314,13 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	}
 	if err == nil && len(steps) > 0 && steps[len(steps)-1].FinishReason == fantasy.FinishReasonLength {
 		err = ErrReplyCut
+		// some providers drop a call cut mid-arguments from the step, so the
+		// history would show nothing and the model repeats the same call
+		if last := steps[len(steps)-1]; pending != "" && len(last.Content.ToolCalls()) == 0 {
+			m := r.compose("the reply was cut at the output limit while calling " + pending + "; split the work into smaller calls")
+			steered = append(steered, steeredMsg{at: len(stepMessages(steps)), msg: m})
+			save(m)
+		}
 	}
 	if err == nil {
 		err = stopErr
