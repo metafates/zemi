@@ -466,6 +466,17 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 
+	// scroll(action, id?) is the zemi.ui.scroll.* host actions for a click.
+	tb.RawSetString("scroll", L.NewFunction(func(L *glua.LState) int {
+		h.refuseDuringRender(L, "zemi.ui.scroll")
+		kind := L.CheckString(1)
+		if _, ok := h.hostActions["zemi.ui.scroll."+kind]; !ok {
+			L.ArgError(1, "up, down, top, bottom, line_up or line_down")
+		}
+		h.scroll(kind, L.OptString(2, ""))
+		return 0
+	}))
+
 	// title(text?) sets the terminal tab's title; nil gives it back to the
 	// session. A reload that does not set it again gives it back too.
 	tb.RawSetString("title", L.NewFunction(func(L *glua.LState) int {

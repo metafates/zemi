@@ -48,6 +48,18 @@ M.MARK = {
   wait = { "·", "Dim" }, thought = { "✻", "ThinkingMark" }, note = { "◦", "Dim" },
 }
 
+--- A pointer to what deals with something: the noun in Title (hl overrides
+--- it, Danger for a failure), then the command or key in Comment ("errors
+--- /errors", "↓ 25 ctrl+end", "ctrl+c quit"). Both segments click as click.
+---@param noun string
+---@param cmd string
+---@param click string?
+---@param hl string?
+---@return zemi.Line
+function M.hint(noun, cmd, click, hl)
+  return { { text = noun, hl = hl or "Title", click = click }, { text = " " .. cmd, hl = "Comment", click = click } }
+end
+
 --- What a tool call does, as its row and the working rule say it.
 ---@type table<string, string>
 M.VERB = {

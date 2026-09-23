@@ -109,7 +109,7 @@ type App struct {
 	activeBump time.Time
 	turnActive bool             // what onFrame last saw of the agent
 	turnEnd    time.Time        // when it last stopped, so the mascot can bow
-	turnOK     bool             // it finished: not failed, interrupted or dismissed
+	turnEnded  string           // how it ended: "ok", "error" or "cancelled"
 	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
@@ -300,7 +300,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.streamPending.Store(false)
 	case turnDoneMsg:
 		a.bump()
-		a.turnOK = msg.err == "" && !msg.stopped
+		a.turnEnded = "ok"
+		if msg.stopped {
+			a.turnEnded = "cancelled"
+		} else if msg.err != "" {
+			a.turnEnded = "error"
+		}
 		text := "zemi finished"
 		if msg.err != "" {
 			text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "...")
@@ -487,7 +492,7 @@ func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
 // a turn's readouts, a toast's or the done frame's expiry. Everything else bumps.
 func (a *App) tickInterval() time.Duration {
 	st := a.lastState
-	if a.turnActive || a.host.Reflecting() || st.Done || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 {
+	if a.turnActive || a.host.Reflecting() || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 {
 		return frameInterval
 	}
 	return idleInterval
@@ -513,7 +518,9 @@ func (a *App) onFrame() tea.Cmd {
 	}
 	if active != a.turnActive {
 		a.turnActive, a.turnEnd = active, now
-		a.turnOK = a.turnOK && !active
+		if active {
+			a.turnEnded = ""
+		}
 	}
 	// widgets read these flags, so a change re-renders them; the animation
 	// tick alone does not, it only matters while a turn bumps the frame
@@ -548,9 +555,12 @@ func (a *App) termBackground() color.Color {
 
 func (a *App) uiState() hostapi.UIState {
 	st := hostapi.UIState{
-		Time: a.timeStr, Frame: a.frame(), Done: a.turnOK && !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger,
+		Time: a.timeStr, Frame: a.frame(),
 		QuitArmed: a.isArmed("ctrl+c"), InterruptArmed: a.isArmed("esc"), RowsBelow: a.rowsBelow(),
 		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(),
+	}
+	if !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger {
+		st.Ended = a.turnEnded
 	}
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
 		st.KeySeq = strings.Join(a.keySeq, " ")
@@ -786,7 +796,7 @@ func (a *App) compose(w, h int) string {
 	}
 	if pills := a.pills(); !lay.bar && len(pills) > 0 {
 		// without a statusline the alarms still show
-		rows = placeBox(rows, [][]hostapi.Segment{pills}, 0, h-1, w)
+		rows = placeBox(rows, [][]hostapi.Segment{joinItems(pills, false)}, 0, h-1, w)
 	}
 
 	// Modal chrome goes over everything: Lua overlays, then the Go-owned
@@ -1117,20 +1127,21 @@ func expandTabs(lines [][]hostapi.Segment) [][]hostapi.Segment {
 }
 
 // pills are the Go-drawn statusline notes: what reports a broken Lua layer
-// (DESIGN §8), as plain text after a dot like the rest of the rule.
-func (a *App) pills() []hostapi.Segment {
-	var out []hostapi.Segment
-	pill := func(text, click string) {
-		out = append(out, hostapi.Segment{Text: " · ", HL: "Comment"}, hostapi.Segment{Text: text, HL: "Danger", Click: click})
+// (DESIGN §8), each a pointer to the command that deals with it. They sit
+// innermost in the left cluster and go last when the row is short.
+func (a *App) pills() []statusItem {
+	var out []statusItem
+	pill := func(noun, cmd string) {
+		out = append(out, statusItem{segs: []hostapi.Segment{{Text: noun, HL: "Danger", Click: cmd}, {Text: " /" + cmd, HL: "Comment", Click: cmd}}})
 	}
 	// a failed boot step also leaves the runtime hot: one pill is enough
 	if a.bootErr != nil {
 		pill("boot failed", "errors")
 	} else if a.host.RT.IsHot() {
-		pill("stuck: /reload", "reload")
+		pill("stuck", "reload")
 	}
 	if a.host.HasUnseenErrors() {
-		pill("errors: /errors", "errors")
+		pill("errors", "errors")
 	}
 	return out
 }
@@ -1146,47 +1157,71 @@ func (a *App) statusRow(w int, leftRegion, rightRegion string) []hostapi.Segment
 	return append(out, right...)
 }
 
-// statusClusters are the statusline's two sides fitted into w cells: the
-// left region's widgets followed by the pills that report a broken Lua
-// layer, then the right region's widgets.
-func (a *App) statusClusters(w int, leftRegion, rightRegion string) (left, right []hostapi.Segment) {
-	left, right = a.statuslineSegments(leftRegion), a.statuslineSegments(rightRegion)
-	pills := a.pills()
-	if len(pills) > 0 && pills[0].HL == "Host:BtnSel" {
-		if len(left) > 0 {
-			left = append([]hostapi.Segment{statusDot}, left...)
-		}
-		left = append([]hostapi.Segment{pills[0]}, left...)
-		pills = pills[1:]
-	}
-	left = append(left, pills...)
-	if segsWidth(left)+segsWidth(right) < w {
-		return left, right
-	}
-	// Overflow truncates the right cluster first (lowest priority of the
-	// row's real estate goes last, §8); under four cells it would show a
-	// stray letter or two, so it goes whole.
-	if room := w - segsWidth(left) - 1; room >= 4 {
-		return left, fitSegs(right, room)
-	}
-	return truncateSegs(left, w), nil
+// statusItem is one statusline widget's row and its priority.
+type statusItem struct {
+	segs []hostapi.Segment
+	pri  int
 }
 
-var statusDot = hostapi.Segment{Text: " · ", HL: "Comment", NoCopy: true}
+// statusClusters are the statusline's two sides fitted into w cells, each
+// drawn from its outer edge in priority order, so a lasting widget sits
+// outermost and one that comes and goes never moves it: the left region's
+// widgets and the pills left to right, the right region's right to left.
+func (a *App) statusClusters(w int, leftRegion, rightRegion string) (left, right []hostapi.Segment) {
+	return fitClusters(append(a.statusItems(leftRegion), a.pills()...), a.statusItems(rightRegion), w)
+}
 
-func (a *App) statuslineSegments(region string) []hostapi.Segment {
+// fitClusters joins the clusters, dropping the highest priority widget (the
+// inner one of a tie) until they and a cell between them fit w. A last
+// widget still too wide ends in "…".
+func fitClusters(left, right []statusItem, w int) ([]hostapi.Segment, []hostapi.Segment) {
+	for {
+		l, r := joinItems(left, false), joinItems(right, true)
+		if segsWidth(l)+segsWidth(r) < w || len(left)+len(right) == 1 {
+			return ellipsizeSegs(l, w), ellipsizeSegs(r, w)
+		}
+		side, at := &left, -1
+		for _, c := range []*[]statusItem{&left, &right} {
+			for i := len(*c) - 1; i >= 0; i-- {
+				if at < 0 || (*c)[i].pri > (*side)[at].pri {
+					side, at = c, i
+				}
+			}
+		}
+		*side = slices.Delete(slices.Clone(*side), at, at+1)
+	}
+}
+
+// joinItems puts statusDot between items, in reverse for the right cluster.
+func joinItems(items []statusItem, reverse bool) []hostapi.Segment {
 	var out []hostapi.Segment
-	for _, wgt := range a.host.Widgets.InRegion(region) {
-		lines := a.widgetLines(wgt.ID)
-		if len(lines) == 0 || segsWidth(lines[0]) == 0 {
-			continue
+	for i := range items {
+		if reverse {
+			i = len(items) - 1 - i
 		}
 		if len(out) > 0 {
 			out = append(out, statusDot)
 		}
-		out = append(out, lines[0]...)
+		out = append(out, items[i].segs...)
 	}
 	return out
+}
+
+var statusDot = hostapi.Segment{Text: " · ", HL: "Comment", NoCopy: true}
+
+// statusItems are the widgets of region that draw, by priority.
+func (a *App) statusItems(region string) []statusItem {
+	var out []statusItem
+	for _, wgt := range a.host.Widgets.InRegion(region) {
+		if lines := a.widgetLines(wgt.ID); len(lines) > 0 && segsWidth(lines[0]) > 0 {
+			out = append(out, statusItem{lines[0], wgt.Priority})
+		}
+	}
+	return out
+}
+
+func (a *App) statuslineSegments(region string) []hostapi.Segment {
+	return joinItems(a.statusItems(region), false)
 }
 
 // toastBox lays a toast out in the frame every other box uses, the title in
@@ -1291,21 +1326,6 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 		out = ansi.Truncate(out, w, "")
 	}
 	return out
-}
-
-// fitSegs drops whole segments from the end, and a " · " left dangling,
-// until segs fit w cells; a first segment alone too wide ends in "…".
-func fitSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
-	for len(segs) > 1 && segsWidth(segs) > w {
-		segs = segs[:len(segs)-1]
-		if n := len(segs); n > 1 && strings.TrimSpace(segs[n-1].Text) == "·" {
-			segs = segs[:n-1]
-		}
-	}
-	if segsWidth(segs) > w {
-		return ellipsizeSegs(segs, w)
-	}
-	return segs
 }
 
 func truncateSegs(segs []hostapi.Segment, w int) []hostapi.Segment {

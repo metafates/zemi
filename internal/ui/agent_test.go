@@ -457,7 +457,7 @@ func TestInterruptKeys(t *testing.T) {
 		{"esc in an agent view goes back and disarms", true, true, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, "", "esc again"},
 		{"ctrl+c interrupts at once", true, false, "", []tea.KeyPressMsg{ctrlC}, true, "also this", "Cancelling"},
 		{"ctrl+c clears a draft, up restores it", false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, "draft", ""},
-		{"ctrl+c on an empty composer arms quit", false, false, "", []tea.KeyPressMsg{ctrlC}, false, "", "ctrl+c again to quit"},
+		{"ctrl+c on an empty composer arms quit", false, false, "", []tea.KeyPressMsg{ctrlC}, false, "", "ctrl+c quit"},
 		{"a broken prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlK, x}, false, "x", ""},
 		{"a timed out prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlK, wait}, false, "", ""},
 		{"ctrl+c drops a held prefix", false, false, "abc", []tea.KeyPressMsg{ctrlK, ctrlC}, false, "", ""},
@@ -833,10 +833,15 @@ func TestReasoningLiveTail(t *testing.T) {
 // with a countdown so the turn does not look stuck.
 func TestWorkingRowRetry(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, RetryIn: 4 * time.Second, Retries: 1})
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(` Retrying · attempt 2 · next try in \ds · esc interrupt ─`).MatchString(frame) {
-		t.Fatalf("retry row missing:\n%s", frame)
+	for _, c := range []struct {
+		in   time.Duration
+		want string
+	}{{0, ` Retrying · attempt 2 · retrying now +· esc interrupt ─`}, {4 * time.Second, ` Retrying · attempt 2 · next try in \ds · esc interrupt ─`}} {
+		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Retrying: true, RetryIn: c.in, Retries: 1})
+		app.renderSync(t)
+		if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(c.want).MatchString(frame) {
+			t.Fatalf("retry row missing %q:\n%s", c.want, frame)
+		}
 	}
 	// the label shimmers: every rune gets its own color
 	segs := app.widgetLines("working")[0]
@@ -904,9 +909,14 @@ func TestWorkingRowMascot(t *testing.T) {
 	if r := row(2500); !strings.HasPrefix(r, "@··─") {
 		t.Fatalf("a turn that did not finish bows: %q", r)
 	}
-	app.Update(turnDoneMsg{})
-	if r := row(2500); !strings.HasPrefix(r, "@^^─") {
-		t.Fatalf("no done frame after the turn: %q", r)
+	for _, c := range []struct {
+		msg  turnDoneMsg
+		eyes string
+	}{{turnDoneMsg{}, "@^^─"}, {turnDoneMsg{err: "boom"}, "@><─"}, {turnDoneMsg{stopped: true}, "@··─"}} {
+		app.Update(c.msg)
+		if r := row(2500); !strings.HasPrefix(r, c.eyes) {
+			t.Fatalf("after %+v the snail reads %q, want %q", c.msg, r, c.eyes)
+		}
 	}
 	// thinking blinks in place
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Reasoning: "hm"})

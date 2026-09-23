@@ -598,7 +598,7 @@ function zemi.event.stats() end
 ---@field elapsed number Seconds since the turn started.
 ---@field reports integer Background agent reports among steering; they stay queued, so the rule does not count them as queued.
 ---@field compacting boolean History is being summarized.
----@field retry? { attempt: integer, why: string, next_in: number } Set while a provider retry waits.
+---@field retry? { attempt: integer, why: string, next_in: number } Set while a provider retry waits or is under way (next_in 0).
 
 ---@class zemi.ToolCall
 ---@field name string
@@ -684,7 +684,7 @@ function zemi.event.stats() end
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean
 ---@field frame integer The shared animation tick: one step every 50 ms; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
----@field done boolean A turn finished a moment ago (it did not fail and nobody interrupted or dismissed it), so the mascot can show its done frame while the working row is otherwise gone.
+---@field ended ""|"ok"|"error"|"cancelled" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
 ---@field reflecting boolean
 ---@field pending_memory integer
 ---@field agents_running integer Background agents of this session still running; their reports arrive as messages.
@@ -706,7 +706,7 @@ function zemi.event.stats() end
 ---@field id string
 ---@field region zemi.Region
 ---@field render fun(ctx: zemi.WidgetCtx): zemi.Line[], boolean?
----@field priority? integer Lower draws first within a region.
+---@field priority? integer Lower draws first within a region; `statusline.right` draws from its right edge, and a statusline too short for its widgets drops the highest first.
 ---@field wrap? boolean Word-wrap instead of truncating.
 ---@field on_click? fun(ev: zemi.WidgetClick) Runs under the widget's origin when a segment with a `click` id is clicked.
 
@@ -948,6 +948,13 @@ function zemi.ui.title(text) end
 --- on their own when they return; a repeating timer or a widget fed by
 --- other state calls this. Raises inside render.
 function zemi.ui.redraw() end
+
+--- Scroll a layout node, or the stage's scrolled region (the chat) without
+--- `id`, as the zemi.ui.scroll.* host actions do: for a click. Raises inside
+--- render.
+---@param action "up"|"down"|"top"|"bottom"|"line_up"|"line_down"
+---@param id? string
+function zemi.ui.scroll(action, id) end
 
 --- Give the keys to a focusable node of the layout, or to the composer with
 --- nil. Raises when the layout has no focusable node with that id. User or

@@ -156,11 +156,14 @@ zemi.permission.mode.add("ask", {
 Everything on screen except the composer and the Go-drawn prompts is a Lua widget.
 Registering a widget with a builtin id replaces it; a new id adds one. Builtin ids:
 `splash`, `chat`, `working` (the composer frame's whole top rule, `ctx.width` cells: the mascot in its left corner, its eyes showing the turn state, and the turn status right after it), `statusline.quit`,
-`statusline.mode`, `statusline.cwd`, `statusline.reflect`, `statusline.agents`, `statusline.view`,
+`statusline.mode`, `statusline.cwd`, `statusline.agents`, `statusline.view`,
 `statusline.learn`, `statusline.keys`, `statusline.scroll`, and on the right `statusline.profile`,
 `statusline.model`, `statusline.context`, `statusline.percent`, `statusline.cost`. zemi puts a dim
-` · ` between the statusline widgets that draw, so a widget returns its text alone. Regions: `header`,
-`chat`, `working`, `statusline.left`, `statusline.right`, or any name a layout draws. zemi reloads config on its own when these files
+` · ` between the statusline widgets that draw, so a widget returns its text alone. Each side
+draws from its outer edge by priority (`statusline.right` from the right edge) and a short row
+drops the highest priority first, so a lasting widget takes a low one and one that comes and
+goes a high one, where it moves nothing. A pointer reads `<noun> /cmd`:
+`require("zemi.defaultui.text").hint`. Regions: `header`, `chat`, `working`, `statusline.left`, `statusline.right`, or any name a layout draws. zemi reloads config on its own when these files
 change; `/reload` forces it.
 
 Where things go is a layout tree, `defaultui/layout.lua` by default. `zemi.ui.layout.set`

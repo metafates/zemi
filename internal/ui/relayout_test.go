@@ -146,7 +146,7 @@ zemi.ui.layout.set({
 	if !strings.Contains(lines[0], "hello") || !strings.Contains(lines[1], "####") {
 		t.Fatalf("the float should cover row 1 and leave the composer:\n%s", frame)
 	}
-	if !strings.Contains(lines[len(lines)-1], "errors: /errors") {
+	if !strings.Contains(lines[len(lines)-1], "errors /errors") {
 		t.Fatalf("no statusline, yet the error pill is missing:\n%s", frame)
 	}
 }

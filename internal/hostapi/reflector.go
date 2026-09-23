@@ -281,7 +281,7 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	if err != nil {
 		return err
 	}
-	res, err := h.generate(ctx, sid, reflectorSystem, prompt, nil, "reflector.model", "models.small")
+	res, err := h.generate(ctx, sid, reflectorSystem, prompt, nil, nil, "reflector.model", "models.small")
 	if err != nil {
 		return err
 	}

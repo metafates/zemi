@@ -242,8 +242,11 @@ func (h *Host) compactReporting(ctx context.Context, runner *agent.Runner, reaso
 	}
 	if !errors.Is(err, context.Canceled) {
 		h.Log.Warn("agent", "compaction failed", map[string]any{"error": err.Error(), "reason": reason})
-		h.Notify("error", "Compaction failed", err.Error())
-		if reason != compactManual {
+		if reason == compactManual {
+			h.Notify("error", "Could not compact", h.friendlyError(err))
+		} else {
+			// the turn goes on, or ends on its own error
+			h.Notify("warn", "Could not compact", h.friendlyError(err))
 			h.compactFailed()
 		}
 	}
@@ -410,7 +413,7 @@ func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focu
 		if focus != "" {
 			fmt.Fprintf(&b, "\n\nAdditional focus: %s", focus)
 		}
-		res, err := h.generate(ctx, h.AgentSessionID(), compactSystem, b.String(), &maxOut, "compact.model", "models.small")
+		res, err := h.generate(ctx, h.AgentSessionID(), compactSystem, b.String(), &maxOut, h.streamHooks().Retrying, "compact.model", "models.small")
 		switch {
 		case contextTooLarge(err) && tries < 3:
 			budget = len(text) * 4 / 5

@@ -1169,8 +1169,9 @@ provenance string.
   never moves with agent state, so no turn adds or removes a row.
   Statusline
   (`statusline.left` / `statusline.right` widgets ordered by
-  `priority` ascending, Go joins the ones that draw with a dim " · ",
-  overflow truncates the lowest-priority ones; the
+  `priority` ascending from each side's outer edge, the right one from the
+  right edge, Go joins the ones that draw with a dim " · ",
+  overflow drops the highest priority first; the
   shipped left widgets also show an armed quit (`ctx.quit_armed`), a
   pending key sequence (`key_seq`) and the rows below a scrolled chat
   (`rows_below`); only the boot failed, stuck and errors pills are Go-drawn; the

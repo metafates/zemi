@@ -13,7 +13,8 @@ local retry_attempt, retry_w = nil, 0
 -- label naming what the agent does, the elapsed time, the interrupt key and
 -- the queue depth. Left-anchored, so ticking and changing text grows into the
 -- rule and never moves the label. The label stays away for the first 300ms so
--- instant turns do not flash it, and the done mark stays a few seconds after.
+-- instant turns do not flash it, and the eyes say how the turn ended for a
+-- few seconds after.
 zemi.ui.widget.add({
   id = "working",
   region = "working",
@@ -22,14 +23,19 @@ zemi.ui.widget.add({
   ---@return zemi.Line[]
   render = function(ctx)
     local ag = ctx.agent or {}
-    ---@type string[]
+    -- each part with its worth: a narrow rule sheds the least worth first;
+    -- the elapsed time also has the cells it grows to in ten minutes, so the
+    -- label is clipped once and not again each time it gains a digit
+    ---@type { [1]: string, [2]: integer, [3]: integer? }[]
     local parts = {}
     local label, state = "", "idle"
     if not ctx.agent_active then
       if ctx.reflecting then
         label, state = "Reflecting", "reading"
-      elseif ctx.done then
+      elseif ctx.ended == "ok" then
         state = "done"
+      elseif ctx.ended == "error" then
+        state = "error"
       end
     elseif (ag.elapsed or 0) >= 0.3 or ctx.cancelling then
       label, state = "Working", "working"
@@ -46,48 +52,63 @@ zemi.ui.widget.add({
         end
       end
       if label == "Working" and ag.reasoning ~= "" and ag.text == "" then label, state = "Thinking", "thinking" end
-      parts = { fmt.duration(ag.elapsed, true) }
+      parts = { { fmt.duration(ag.elapsed, true), 5, 6 } }
+      if ag.compacting then label, state = "Compacting", "reading" end
       if ag.retry then
         label, state = "Retrying", "error"
-        parts = { "attempt " .. ag.retry.attempt }
-        if ag.retry.why ~= "" then parts[#parts + 1] = ag.retry.why end
+        parts = { { "attempt " .. ag.retry.attempt, 3 } }
+        if ag.retry.why ~= "" then parts[#parts + 1] = { ag.retry.why, 2 } end
         local next_in = fmt.duration(math.ceil(ag.retry.next_in), true)
         if retry_attempt ~= ag.retry.attempt then retry_attempt, retry_w = ag.retry.attempt, #next_in end
-        parts[#parts + 1] = "next try in " .. string.rep(" ", retry_w - #next_in) .. next_in
+        local countdown = "next try in " .. string.rep(" ", retry_w - #next_in) .. next_in
+        if ag.retry.next_in <= 0 then countdown = "retrying now" .. string.rep(" ", #countdown - 12) end
+        parts[#parts + 1] = { countdown, 5 }
       else
         retry_attempt = nil
       end
-      if ag.compacting then label, state = "Compacting", "reading" end
       if ctx.cancelling then label = "Cancelling" end
       if ctx.editing ~= "" then
         label, state = "Editing " .. ctx.editing, "idle"
-        parts = { "save and close the editor to continue" }
+        parts = { { "save and close the editor to continue", 5 } }
       end
       -- the open prompt says what answers it, so the rule shrinks to the
       -- mascot alone rather than repeating it; in an agent view esc goes back
       if ctx.waiting ~= "" then
         label, state, parts = "", "asking", {}
       elseif ctx.cancelling then
-        parts[#parts + 1] = "ctrl+c quit"
+        parts[#parts + 1] = { "ctrl+c quit", 4 }
       elseif not ctx.view then
-        parts[#parts + 1] = ctx.interrupt_armed and "esc again" or "esc interrupt"
+        parts[#parts + 1] = { ctx.interrupt_armed and "esc again" or "esc interrupt", 4 }
       end
       local queued = #ag.steering - ag.reports
-      if queued > 0 then parts[#parts + 1] = queued .. " queued · up edit" end
+      if queued > 0 then parts[#parts + 1] = { queued .. " queued · up edit", 1 } end
     end
-    -- a narrow rule clips the label to 16 cells first, then drops the queue
-    -- depth first and the elapsed time last, keeping the snail 8 cells of rule
-    local after = #parts > 0 and zemi.ui.width(" · " .. table.concat(parts, " · ")) or 0
-    label = fmt.clip(label, math.max(ctx.width - 10 - after, 16))
-    while #parts > 0 and zemi.ui.width(label .. " · " .. table.concat(parts, " · ")) + 10 > ctx.width do
-      parts[#parts] = nil
+    ---@return integer
+    local function room()
+      local n = 0
+      for _, p in ipairs(parts) do n = n + 3 + math.max(fmt.cells(p[1]), p[3] or 0) end
+      return n
     end
-    local tail = #parts > 0 and " · " .. table.concat(parts, " · ") or ""
-    local text = label .. tail ~= "" and zemi.ui.width(label .. tail) + 2 or 0
+    -- the snail keeps 8 cells of rule; the label gives way down to 16 cells
+    -- before a part goes, then clips into what the parts leave
+    local keep = math.min(fmt.cells(label), 16)
+    while #parts > 0 and keep + room() + 10 > ctx.width do
+      local least = 1
+      for i, p in ipairs(parts) do
+        if p[2] < parts[least][2] then least = i end
+      end
+      table.remove(parts, least)
+    end
+    label = fmt.clip(label, ctx.width - 10 - room())
+    ---@type string[]
+    local texts = {}
+    for i, p in ipairs(parts) do texts[i] = p[1] end
+    local after = #texts > 0 and " · " .. table.concat(texts, " · ") or ""
+    local text = label .. after ~= "" and fmt.cells(label .. after) + 2 or 0
     local row = snail.rule(state, ctx.frame, ctx.width - text)
     if text > 0 then
       table.insert(row, 3, { text = " " .. label, hl = "Comment", effect = "shimmer" })
-      table.insert(row, 4, { text = tail .. " ", hl = "Comment" })
+      table.insert(row, 4, { text = after .. " ", hl = "Comment" })
     end
     return { row }
   end,

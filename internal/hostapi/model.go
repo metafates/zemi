@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -100,18 +101,35 @@ func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, string, error) {
 // generate runs one tool-less, single-step call (summaries, titles, the
 // reflector) on the model the first set key names and bills it to sid. The
 // spec's body fields ride it (a gateway's routing, service_tier), the
-// reasoning effort not: a short job on a small tier need not think.
-func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, keys ...string) (*fantasy.AgentResult, error) {
+// reasoning effort not: a short job on a small tier need not think. A turn's
+// job passes retry, so the working rule counts down its provider retries.
+func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, retry func(error, time.Duration), keys ...string) (*fantasy.AgentResult, error) {
 	model, id, err := h.modelFor(keys...)
 	if err != nil {
 		return nil, err
 	}
-	res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(system)).Generate(ctx, fantasy.AgentCall{
+	call := fantasy.AgentCall{
 		Messages:        []fantasy.Message{agent.UserMessage(prompt)},
 		MaxOutputTokens: maxOut,
 		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
 		ProviderOptions: h.Providers.CallOptions(id, ""),
-	})
+	}
+	if retry != nil {
+		call.OnRetry = func(pe *fantasy.ProviderError, delay time.Duration) {
+			// nil when a network failure caused the retry
+			err := errors.New("network: the connection failed")
+			if pe != nil {
+				err = pe
+			}
+			retry(err, delay)
+		}
+		defer func() {
+			h.agents.mu.Lock()
+			h.agents.retryAt = time.Time{}
+			h.agents.mu.Unlock()
+		}()
+	}
+	res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(system)).Generate(ctx, call)
 	if err == nil {
 		h.bill(sid, id, res.TotalUsage)
 	}

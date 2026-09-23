@@ -84,7 +84,7 @@ func TestMouseClicks(t *testing.T) {
 	}
 
 	app.reload = func() { ran <- "reload" }
-	app.lastRows = [][]hostapi.Segment{{{Text: " stuck: /reload ", Click: "reload"}}}
+	app.lastRows = [][]hostapi.Segment{{{Text: " stuck /reload ", Click: "reload"}}}
 	if _, act, ok := app.target(2, 0); ok {
 		act()
 	}

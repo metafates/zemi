@@ -145,8 +145,9 @@ type agentHost struct {
 	thought     time.Duration
 	stepThought time.Duration
 
-	// retryAt is when the next provider retry fires; retries counts them
-	// this turn (the working row counts down instead of looking stuck).
+	// retryAt is when the next provider retry fires, zero again once the
+	// retried call streams; retries counts them this turn (the working row
+	// counts down instead of looking stuck).
 	retryAt    time.Time
 	retries    int
 	retryWhy   string // friendlyError of the failure being retried
@@ -740,6 +741,7 @@ func (s *streamAdapter) TextDelta(text string) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	ag.endThinking()
+	ag.retryAt = time.Time{}
 	ag.textBuf += text
 	ag.mu.Unlock()
 	s.h.agentStream()
@@ -783,6 +785,7 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 		s.h.flushOutput(TurnStat{})
 	}
 	ag.beginThinking()
+	ag.retryAt = time.Time{}
 	ag.reasonBuf += text
 	ag.mu.Unlock()
 	s.h.agentStream()
@@ -844,6 +847,7 @@ func (s *streamAdapter) openToolRow(row StreamTool) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	ag.endThinking()
+	ag.retryAt = time.Time{}
 	if strings.TrimSpace(ag.textBuf) != "" {
 		s.h.flushOutput(TurnStat{})
 	}
@@ -966,7 +970,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		return
 	}
 	if ui := h.hooks(); ui != nil {
-		stopped := text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == "stopped" })
+		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == "stopped" })
 		ui.TurnDone(errString(err), stopped)
 	}
 	if err == nil && strings.TrimSpace(text) != "" {
@@ -1431,7 +1435,8 @@ type StreamSnapshot struct {
 	Reports    int           // background reports in Steering, which AgentTakeQueue leaves queued
 	Thought    time.Duration // wall time spent in reasoning blocks
 	Elapsed    time.Duration // whole-turn wall time (0 outside a turn)
-	RetryIn    time.Duration // time until the next provider retry (0 when none waits)
+	Retrying   bool          // a provider retry waits or is under way
+	RetryIn    time.Duration // time until the next provider retry, 0 once it is under way
 	Retries    int           // provider retries this turn
 	RetryWhy   string        // what failed, for the retry countdown
 	Compacting bool          // history is being summarized before the turn
@@ -1502,8 +1507,8 @@ func (h *Host) streamLocked() StreamSnapshot {
 	}
 	out.Tools = append(out.Tools, ag.tools...)
 	out.Retries, out.Compacting, out.SessionCost = ag.retries, ag.compacting, ag.sessCost
-	if d := time.Until(ag.retryAt); d > 0 {
-		out.RetryIn, out.RetryWhy = d, ag.retryWhy
+	if !ag.retryAt.IsZero() {
+		out.Retrying, out.RetryIn, out.RetryWhy = true, max(time.Until(ag.retryAt), 0), ag.retryWhy
 	}
 	return out
 }
@@ -1533,7 +1538,7 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	}
 	ag.steering = append([]string(nil), s.Steering...)
 	ag.retries, ag.retryAt, ag.compacting = s.Retries, time.Time{}, s.Compacting
-	if s.RetryIn > 0 {
+	if s.Retrying {
 		ag.retryAt = time.Now().Add(s.RetryIn)
 	}
 }

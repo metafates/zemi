@@ -1152,7 +1152,7 @@ type UIState struct {
 	Time  string
 	Frame int // 500ms animation tick, the mascot's cadence; 0 with ui.animations off
 
-	Done           bool   // a turn finished a moment ago, not failed or stopped, so the mascot can bow
+	Ended          string // how the turn that ended a moment ago ended: "ok", "error" or "cancelled"; "" after that
 	QuitArmed      bool   // a second ctrl+c quits
 	InterruptArmed bool   // a second esc interrupts the turn
 	KeySeq         string // keys of a bound sequence typed so far
@@ -1182,7 +1182,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
 	tb.RawSetString("frame", glua.LNumber(state.Frame))
-	tb.RawSetString("done", glua.LBool(state.Done))
+	tb.RawSetString("ended", glua.LString(state.Ended))
 	tb.RawSetString("height", glua.LNumber(height))
 	tb.RawSetString("quit_armed", glua.LBool(state.QuitArmed))
 	tb.RawSetString("interrupt_armed", glua.LBool(state.InterruptArmed))
@@ -1304,7 +1304,7 @@ func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
 	at.RawSetString("elapsed", glua.LNumber(stream.Elapsed.Seconds()))
 	at.RawSetString("reports", glua.LNumber(stream.Reports))
 	at.RawSetString("compacting", glua.LBool(stream.Compacting))
-	if stream.RetryIn > 0 {
+	if stream.Retrying {
 		retry := L.CreateTable(0, 3)
 		retry.RawSetString("attempt", glua.LNumber(stream.Retries+1))
 		retry.RawSetString("why", glua.LString(sanitize.String(stream.RetryWhy)))
@@ -1548,7 +1548,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.79.0"))
+	api.RawSetString("version", glua.LString("0.80.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

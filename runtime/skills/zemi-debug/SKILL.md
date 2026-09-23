@@ -18,7 +18,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
    errors, MCP servers, language servers and the Lua runtime, plus any rows config added with
    `zemi.health.add`. `/health` shows the same rows to the user, problems first.
 2. `/errors` lists recent errors: boot and reload failures, widget, keymap and
-   event-handler errors, and recovered panics. The red `errors: /errors` statusline badge means
+   event-handler errors, and recovered panics. The red `errors /errors` statusline badge means
    there are unseen ones. Enter opens one in full, with "Ask zemi to fix it" (and
    "Restart <name>" for an MCP server). In every list `/` filters, `y` copies the selected
    row (in a detail view, the whole text) and `Y` copies the whole list, so the user can
@@ -84,7 +84,7 @@ description: Diagnose zemi itself - crashes, errors, a silent model, missing pro
 | boot error `scope "permanent" was removed` | drop `scope = "permanent"` from that `zemi.permission.rule.add` call in init.lua; the rule applies on every start without it |
 | `/model` shows "no models registered" but a provider is in init.lua | `init.lua` failed before or at `zemi.provider.add` (for example the removed `api_key_env` field); the statusline shows `boot failed`, `/errors` has the message |
 | statusline `boot failed` | init.lua, a plugin or project config raised during startup; `/errors` or the log (source `boot`) has the error |
-| statusline `stuck: /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
+| statusline `stuck /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
 | "does not take images; going on without them" | the provider refused image input; set `images = false` on the model entry, or pick a multimodal model for screenshots |
 | context percent missing, no auto compaction | the model has no `context_window` (`/health` context row); add it to the model entry or set `agent.context_window` |
 | project `.zemi/` config, AGENTS.md or language servers ignored; auto mode asks for every build, edit and git command | the project is not trusted (`/health` trust row); `/trust` asks again. Decisions live in `~/.local/state/zemi/trust.json` by repository root; a linked worktree uses its main checkout's |
