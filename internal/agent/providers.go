@@ -43,6 +43,7 @@ type Model struct {
 	CostPer1MOutCached float64  `json:"cost_per_1m_out_cached,omitempty"` // USD per million tokens read from it
 	TextOnly           bool     `json:"text_only,omitempty"`              // the model refuses image parts
 	Efforts            []string `json:"-"`                                // a builtin's reasoning levels; empty takes no effort
+	Effort             string   `json:"-"`                                // a builtin's level when /effort is unset
 }
 
 // Provider kinds: which fantasy implementation talks to the provider.
@@ -144,7 +145,7 @@ func builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		for _, m := range p.Models {
 			spec.Models = append(spec.Models, Model{ID: m.ID, Display: m.Name, ContextWindow: m.ContextWindow, MaxOutput: m.DefaultMaxTokens,
 				CostPer1MIn: m.CostPer1MIn, CostPer1MOut: m.CostPer1MOut, CostPer1MInCached: m.CostPer1MInCached, CostPer1MOutCached: m.CostPer1MOutCached,
-				TextOnly: !m.SupportsImages, Efforts: m.ReasoningLevels})
+				TextOnly: !m.SupportsImages, Efforts: m.ReasoningLevels, Effort: m.DefaultReasoningEffort})
 		}
 		c.Specs = append(c.Specs, spec)
 		c.Keys[spec.ID] = key
@@ -322,27 +323,42 @@ func (r *Registry) apiKey(providerID string) string {
 	return r.keys[providerID]
 }
 
-// Efforts are the reasoning effort levels zemi offers ("" = provider
+// Efforts are the reasoning effort levels /effort offers ("" = the model's
 // default).
 var Efforts = []string{"low", "medium", "high"}
 
+// Effort is the reasoning level modelID runs at for the /effort pick ("" =
+// unset): a catalog model gets its default level when unset, else the level
+// it lists nearest the pick, and none when it lists none; any other model
+// gets the pick.
+func (r *Registry) Effort(modelID, pick string) string {
+	if !slices.Contains(Efforts, pick) {
+		pick = ""
+	}
+	providerID, model, _ := strings.Cut(modelID, "/")
+	spec, _ := r.Lookup(providerID)
+	i := slices.IndexFunc(spec.Models, func(m Model) bool { return m.ID == model })
+	switch {
+	case !spec.Builtin || i < 0:
+		return pick
+	case len(spec.Models[i].Efforts) == 0:
+		return ""
+	case pick == "":
+		return spec.Models[i].Effort
+	}
+	return nearestEffort(spec.Models[i].Efforts, pick)
+}
+
 // CallOptions are the provider options a turn runs with: the reasoning
-// effort and the spec's extra body fields, in the model's provider kind,
-// and for an OpenAI Responses model that reasons a reasoning summary; nil
-// when none applies. A catalog model gets the nearest level it lists, or
-// none; any other model that does not support an option fails its turn
-// with the provider's error.
+// effort ("" sends none; see Effort) and the spec's extra body fields, in
+// the model's provider kind, and for an OpenAI Responses model that reasons
+// a reasoning summary; nil when none applies. A model that does not support
+// an option fails its turn with the provider's error.
 func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
 	providerID, model, _ := strings.Cut(modelID, "/")
 	spec, ok := r.Lookup(providerID)
 	if !ok {
 		return nil
-	}
-	if !slices.Contains(Efforts, effort) {
-		effort = ""
-	}
-	if i := slices.IndexFunc(spec.Models, func(m Model) bool { return m.ID == model }); effort != "" && spec.Builtin && i >= 0 {
-		effort = nearestEffort(spec.Models[i].Efforts, effort)
 	}
 	var re *openai.ReasoningEffort
 	if effort != "" {

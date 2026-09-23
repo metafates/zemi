@@ -14,12 +14,20 @@ import (
 	"charm.land/catwalk/pkg/catwalk"
 	"charm.land/fantasy"
 	"charm.land/fantasy/providers/anthropic"
+	"charm.land/fantasy/providers/google"
+	"charm.land/fantasy/providers/openai"
 	"charm.land/fantasy/providers/openaicompat"
 )
 
 func TestCallOptions(t *testing.T) {
 	r := NewRegistry()
-	r.Reset(Catalog{Specs: []Spec{{ID: "b", Kind: KindAnthropic, Builtin: true, Models: []Model{{ID: "haiku"}, {ID: "pro", Efforts: []string{"low", "high"}}}}}})
+	r.Reset(Catalog{Specs: []Spec{
+		{ID: "b", Kind: KindAnthropic, Builtin: true, Models: []Model{{ID: "haiku"},
+			{ID: "opus", Efforts: []string{"low", "medium", "high", "xhigh", "max"}, Effort: "high"},
+			{ID: "pro", Efforts: []string{"low", "high"}, Effort: "high"}}},
+		{ID: "bo", Kind: KindOpenAI, Builtin: true, Models: []Model{{ID: "gpt-4o"}, {ID: "gpt-5.5", Efforts: []string{"low", "medium", "high"}, Effort: "medium"}}},
+		{ID: "bg", Kind: KindGoogle, Builtin: true, Models: []Model{{ID: "gemini-2.5-pro"}, {ID: "lite", Efforts: []string{"minimal", "low"}, Effort: "minimal"}}},
+	}})
 	for _, s := range []Spec{{ID: "a", Kind: "anthropic"}, {ID: "o", Kind: "openai"}, {ID: "c", Kind: "openai_compat", BaseURL: "http://127.0.0.1:1/v1"}, {ID: "g", Kind: "google"}} {
 		if err := r.Register(s, "k"); err != nil {
 			t.Fatal(err)
@@ -29,33 +37,61 @@ func TestCallOptions(t *testing.T) {
 		t.Fatalf("openai_compat without base_url: %v", err)
 	}
 	for _, c := range []struct {
-		model, effort, key, sent string
+		model, pick, key, sent string
 	}{
 		{"a/claude", "high", "anthropic", "high"},
-		{"o/gpt", "low", "openai", ""},
-		{"c/deepseek", "medium", "openai-compat", ""},
-		{"g/gemini-3-pro", "high", "google", ""},
+		{"o/gpt", "low", "openai", "low"},
+		{"c/deepseek", "medium", "openai-compat", "medium"},
+		{"g/gemini-3-pro", "high", "google", "high"},
 		{"a/claude", "", "", ""},
 		{"a/claude", "extreme", "", ""},
 		{"missing/x", "high", "", ""},
 		{"b/haiku", "high", "", ""},
+		{"b/opus", "", "anthropic", "high"},
+		{"b/opus", "low", "anthropic", "low"},
 		{"b/pro", "medium", "anthropic", "low"},
 		{"b/unlisted", "medium", "anthropic", "medium"},
+		{"bo/gpt-4o", "high", "openai", ""},
+		{"bo/gpt-5.5", "", "openai", "medium"},
+		{"bg/gemini-2.5-pro", "high", "", ""},
+		{"bg/lite", "", "google", "minimal"},
+		{"bg/lite", "high", "google", "low"},
 	} {
-		opts := r.CallOptions(c.model, c.effort)
+		opts := r.CallOptions(c.model, r.Effort(c.model, c.pick))
 		if c.key == "" {
 			if opts != nil {
-				t.Fatalf("%s %q: want no options, got %v", c.model, c.effort, opts)
+				t.Fatalf("%s %q: want no options, got %v", c.model, c.pick, opts)
 			}
 			continue
 		}
 		if _, ok := opts[c.key]; !ok || len(opts) != 1 {
-			t.Fatalf("%s %q: options %v, want key %s", c.model, c.effort, opts, c.key)
+			t.Fatalf("%s %q: options %v, want key %s", c.model, c.pick, opts, c.key)
 		}
-		if o, ok := opts[c.key].(*anthropic.ProviderOptions); ok && string(*o.Effort) != c.sent {
-			t.Fatalf("%s %q: sent %q, want %q", c.model, c.effort, *o.Effort, c.sent)
+		if got := sentEffort(opts[c.key]); got != c.sent {
+			t.Fatalf("%s %q: sent %q, want %q", c.model, c.pick, got, c.sent)
 		}
 	}
+}
+
+// sentEffort reads the reasoning level out of any kind's options.
+func sentEffort(o fantasy.ProviderOptionsData) string {
+	var e *string
+	switch o := o.(type) {
+	case *anthropic.ProviderOptions:
+		e = (*string)(o.Effort)
+	case *openai.ProviderOptions:
+		e = (*string)(o.ReasoningEffort)
+	case *openai.ResponsesProviderOptions:
+		e = (*string)(o.ReasoningEffort)
+	case *openaicompat.ProviderOptions:
+		e = (*string)(o.ReasoningEffort)
+	case *google.ProviderOptions:
+		e = o.ThinkingConfig.ThinkingLevel
+	}
+	if e == nil {
+		return ""
+	}
+	return strings.ToLower(*e)
 }
 
 // TestCallOptionsBody: a spec's extra body fields ride every request, with

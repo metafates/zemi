@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -334,9 +335,10 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "effort", Hidden: true, NArgs: "?", Desc: "set reasoning effort", GoFn: func(h *hostapi.Host, args string) error {
 			switch args = strings.TrimSpace(args); args {
 			case "":
-				cur := h.Effort()
-				if cur == "" {
-					cur = "default"
+				pick := h.Settings.Str("agent.effort")
+				cur := cmp.Or(pick, "default")
+				if eff := h.Effort(h.AgentStream().Model); eff != pick {
+					cur += " (" + cmp.Or(eff, "none") + " on this model)"
 				}
 				h.Notify("info", "Effort: "+cur, "/effort low, medium, high or default sets it")
 				return nil

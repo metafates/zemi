@@ -52,8 +52,8 @@ Tiers: `models.main` runs everything; `models.small` (titles, compaction summari
 `zemi.config.set(path, value)` in init.lua. `zemi.config.schema()` returns every key with kind, default and description; read it with the Lua tool instead of guessing. A runtime pick (`/model`, `/effort`, `/profile`, the mode) survives a reload until init.lua changes that key. The keys that need more than the schema says:
 
 - `agent.profile`: `default`, `planner`, or a profile defined with `zemi.agent.profile` (zemi-customize); `/profile` or ctrl+t switches.
-- `agent.effort`: `low`, `medium`, `high`, or empty for the provider default; `/effort`.
-  A builtin catalog model gets the nearest level it lists, or none when it lists none.
+- `agent.effort`: `low`, `medium`, `high`, or empty for the model's default; `/effort`.
+  A builtin catalog model runs at its catalog default when unset, else the nearest level it lists, and gets none when it lists none; any other model gets the pick, or no effort when unset.
 - `reflector.model`, `compact.model`: a model for those jobs instead of the small tier.
 - `web.search_url`: a SearXNG endpoint with the json format on; empty uses DuckDuckGo Lite, which some networks answer with a bot check.
 - `memory.autonomy`: `auto` stores policy-clean memories at once, `ask` queues every one for `/memory` (zemi-learning).

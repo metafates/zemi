@@ -209,8 +209,10 @@ func newAgentHost() *agentHost {
 // ---------------------------------------------------------------------------
 // host wiring
 
-// Effort is the configured reasoning effort ("" = provider default).
-func (h *Host) Effort() string { return h.Settings.Str("agent.effort") }
+// Effort is the reasoning level modelID runs at under the agent.effort pick.
+func (h *Host) Effort(modelID string) string {
+	return h.Providers.Effort(modelID, h.Settings.Str("agent.effort"))
+}
 
 // resolveProfile returns the profile to run: explicit name, else the
 // agent.profile key. A defined profile wins; else default is the implicit
@@ -331,8 +333,9 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	h.agents.mu.Lock()
 	h.agents.promptParts, h.agents.promptTokens, h.agents.promptText = sizes, int64(chars/4), sys
 	h.agents.mu.Unlock()
-	r.ProviderOptions = h.Providers.CallOptions(h.currentModelID(p), h.Effort())
-	r.MaxOutputTokens = h.maxOutput(h.currentModelID(p))
+	id := h.currentModelID(p)
+	r.ProviderOptions = h.Providers.CallOptions(id, h.Effort(id))
+	r.MaxOutputTokens = h.maxOutput(id)
 	if p != nil {
 		r.Temperature = p.Temperature
 	}

@@ -318,7 +318,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	kept, active := h.deferMCP(kept, loaded)
 	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), nil, kept))
 	runner.ActiveTools = active
-	runner.ProviderOptions = h.Providers.CallOptions(modelID, h.Effort())
+	runner.ProviderOptions = h.Providers.CallOptions(modelID, h.Effort(modelID))
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)
 	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }

@@ -669,7 +669,7 @@ function zemi.event.stats() end
 ---@field model string
 ---@field profile string
 ---@field profile_read_only boolean Whether the active agent is read-only (plans, presents for approval).
----@field effort string
+---@field effort string The reasoning level `model` runs at: the /effort pick fitted to the model, or its catalog default; "" sends none.
 ---@field permission_mode string
 ---@field permission_mode_base string
 ---@field agent_active boolean
