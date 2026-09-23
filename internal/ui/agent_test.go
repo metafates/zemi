@@ -905,15 +905,19 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	app.permAsk = nil
 	host.SeedStream(hostapi.StreamSnapshot{})
-	app.turnEnd = time.UnixMilli(2000)
 	if r := row(2500); !strings.HasPrefix(r, "@··─") {
-		t.Fatalf("a turn that did not finish bows: %q", r)
+		t.Fatalf("a turn with no outcome (/compact) bows: %q", r)
 	}
 	for _, c := range []struct {
 		msg  turnDoneMsg
 		eyes string
 	}{{turnDoneMsg{}, "@^^─"}, {turnDoneMsg{err: "boom"}, "@><─"}, {turnDoneMsg{stopped: true}, "@··─"}} {
+		// the host can still read active a frame after the turn reported
+		host.SeedStream(hostapi.StreamSnapshot{Active: true})
 		app.Update(c.msg)
+		app.Update(frameTickMsg{})
+		host.SeedStream(hostapi.StreamSnapshot{})
+		app.Update(frameTickMsg{})
 		if r := row(2500); !strings.HasPrefix(r, c.eyes) {
 			t.Fatalf("after %+v the snail reads %q, want %q", c.msg, r, c.eyes)
 		}
@@ -1219,7 +1223,7 @@ func TestReasoningWrapKeepsWords(t *testing.T) {
 }
 
 func TestStreamEventsCoalesce(t *testing.T) {
-	app := &App{testQueue: make(chan tea.Msg, hookQueueSize), log: logging.New(""), focused: true}
+	app := &App{testQueue: make(chan tea.Msg, hookQueueSize), log: logging.New(""), focused: true, now: time.Now}
 	for range 3 * hookQueueSize {
 		app.AgentStream()
 	}

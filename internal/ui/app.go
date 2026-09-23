@@ -108,7 +108,7 @@ type App struct {
 	timeStr    string
 	activeBump time.Time
 	turnActive bool             // what onFrame last saw of the agent
-	turnEnd    time.Time        // when it last stopped, so the mascot can bow
+	turnEnd    time.Time        // when the last turn reported its end, so the mascot can bow
 	turnEnded  string           // how it ended: "ok", "error" or "cancelled"
 	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
 	now        func() time.Time // animation clock; tests pin it
@@ -300,7 +300,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.streamPending.Store(false)
 	case turnDoneMsg:
 		a.bump()
-		a.turnEnded = "ok"
+		a.turnEnd, a.turnEnded = a.now(), "ok"
 		if msg.stopped {
 			a.turnEnded = "cancelled"
 		} else if msg.err != "" {
@@ -516,15 +516,12 @@ func (a *App) onFrame() tea.Cmd {
 		a.activeBump = now
 		a.frameGen++
 	}
-	if active != a.turnActive {
-		a.turnActive, a.turnEnd = active, now
-		if active {
-			a.turnEnded = ""
-		}
-	}
+	// the outcome is stamped by turnDoneMsg alone: the host can still read
+	// active a moment after it, and uiState hides Ended while active
+	a.turnActive = active
 	// widgets read these flags, so a change re-renders them; the animation
 	// tick alone does not, it only matters while a turn bumps the frame
-	// anyway, and Done turning on and off bumps at both ends by itself
+	// anyway, and Ended turning on and off bumps at both ends by itself
 	var replay tea.Cmd
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) > keySeqTimeout {
 		replay = a.replayKeys(a.keySeq, a.focusedNode())

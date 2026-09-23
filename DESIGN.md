@@ -1159,10 +1159,11 @@ provenance string.
   one on top, which gets the whole rule between the corners (the shipped
   `working` widget: the snail mascot fixed in the left corner on a plain
   rule, the state in its eyes alone: swapping while the model thinks or
-  tools run, `??` while the user is asked, `^^` once the turn ends,
-  `><` on an error; right after it a shimmering
+  tools run, `??` while the user is asked, then for a few seconds `^^`
+  when the turn finished ok, `><` when it failed and idle eyes when it was
+  cancelled; right after it a shimmering
   label naming the current activity, elapsed
-  time, interrupt key, queue depth; it reads `ctx.frame`, `ctx.done`,
+  time, interrupt key, queue depth; it reads `ctx.frame`, `ctx.ended`,
   `ctx.cancelling`, `interrupt_armed`, `view`, `editing`, `waiting` and
   `agent.retry`/`compacting`),
   the statusline below. The mascot is always drawn and the frame's height
