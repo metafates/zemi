@@ -242,9 +242,14 @@ func TestToastCap(t *testing.T) {
 	if !host.HasUnseenErrors() {
 		t.Fatal("the long error was not recorded")
 	}
+	// a short last line gets the "…" too, and never merges with the next
+	app.pushToast("warn", "", "line one\nline two\nline three\nline four\nline five")
+	if r := plainSegs(toastBox(app.toasts[1], 80)[toastRows]); !strings.Contains(r, "│ line three… ") {
+		t.Fatalf("multi-line cut: %q", r)
+	}
 	// an untitled failure still says it is one
 	app.pushToast("error", "", "x")
-	if top := plainSegs(toastBox(app.toasts[1], 80)[0]); !strings.HasPrefix(top, "┌ Error ─") {
+	if top := plainSegs(toastBox(app.toasts[2], 80)[0]); !strings.HasPrefix(top, "┌ Error ─") {
 		t.Fatalf("untitled error toast: %q", top)
 	}
 }

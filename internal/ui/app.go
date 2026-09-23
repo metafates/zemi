@@ -1234,12 +1234,12 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 		rows = wrapText(t.body, "Normal", inner)
 	}
 	if len(rows) > toastRows {
-		// the next row joins the last so the cut always ends in "…"
 		room, more := inner, []hostapi.Segment(nil)
 		if t.recorded {
 			room, more = inner-8, []hostapi.Segment{{Text: " /errors", HL: "Host:Hint"}}
 		}
-		last := ellipsizeSegs(slices.Concat(rows[toastRows-1], []hostapi.Segment{{Text: " "}}, rows[toastRows]), room)
+		// the cut row ends in "…" whether it was full or a short line
+		last := ellipsizeSegs(append(slices.Clip(rows[toastRows-1]), hostapi.Segment{Text: "…", HL: "Normal"}), room)
 		rows = append(rows[:toastRows-1], append(last, more...))
 	}
 	return hostBoxW(t.title, level, "", rows, w, 60, 0)
