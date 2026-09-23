@@ -404,8 +404,11 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 		segs[len(segs)-1].Soft = soft[i] // a wrapped row copies as one line
 		out = append(out, segs)
 	}
-	if hidden := len(rows) - len(out); hidden > 0 {
-		out = append(out, []hostapi.Segment{{Text: "  " + hostapi.MoreLines(hidden), HL: "Comment", NoCopy: true}})
+	// the lines below the view, else those above it: the side the cursor left
+	if below := len(rows) - start - len(out); below > 0 {
+		out = append(out, []hostapi.Segment{{Text: "  " + hostapi.MoreLines(below), HL: "Comment", NoCopy: true}})
+	} else if start > 0 {
+		out = append(out, []hostapi.Segment{{Text: "  " + hostapi.MoreLines(start) + " above", HL: "Comment", NoCopy: true}})
 	}
 	return out
 }

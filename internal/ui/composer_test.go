@@ -169,13 +169,17 @@ func TestWrapComposer(t *testing.T) {
 	}
 }
 
+// TestComposerHiddenRows: the row under a tall draft counts the lines on the
+// side the cursor left out of view.
 func TestComposerHiddenRows(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.composer.text = strings.Repeat("line\n", 9) + "end"
-	app.composer.cursor = len(app.composer.text)
-	rows := app.composerRows(40)
-	if len(rows) != composerMaxRows+1 || plainSegs(rows[len(rows)-1]) != "  … 2 more lines" {
-		t.Fatalf("rows %d, last %q", len(rows), plainSegs(rows[len(rows)-1]))
+	for cursor, want := range map[int]string{0: "  … 2 more lines", len(app.composer.text): "  … 2 more lines above"} {
+		app.composer.cursor = cursor
+		rows := app.composerRows(40)
+		if len(rows) != composerMaxRows+1 || plainSegs(rows[len(rows)-1]) != want {
+			t.Fatalf("cursor %d: rows %d, last %q", cursor, len(rows), plainSegs(rows[len(rows)-1]))
+		}
 	}
 }
 
