@@ -537,8 +537,8 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 	return nil
 }
 
-// renew replaces the session old unless another call already did. A failed
-// handshake ends the client, so the server shows as failed with a restart.
+// renew replaces the session old unless another call already did. A handshake
+// the server fails ends the client, so the server shows as failed with a restart.
 func (t *httpTransport) renew(ctx context.Context, old string) error {
 	t.renewMu.Lock()
 	defer t.renewMu.Unlock()
@@ -551,11 +551,18 @@ func (t *httpTransport) renew(ctx context.Context, old string) error {
 	if !stale {
 		return nil
 	}
-	if err := t.c.initialize(context.WithValue(ctx, renewing{}, true)); err != nil {
-		t.c.end(err)
+	err := t.c.initialize(context.WithValue(ctx, renewing{}, true))
+	if err != nil && ctx.Err() != nil {
+		// the caller gave up, not the server: the next call renews again
+		t.mu.Lock()
+		t.session = old
+		t.mu.Unlock()
 		return err
 	}
-	return nil
+	if err != nil {
+		t.c.end(err)
+	}
+	return err
 }
 
 // post sends one request with the session headers and, when signed in,

@@ -117,13 +117,21 @@ func TestHTTPStreamHeldOpen(t *testing.T) {
 }
 
 // TestHTTPSessionExpired: a server that forgets the session answers 404;
-// the client starts a new one once and resends, and ends when it cannot.
+// the client starts a new one once and resends, ends when the server refuses
+// one, and stays open when the caller gives up mid-handshake.
 func TestHTTPSessionExpired(t *testing.T) {
 	for _, c := range []struct {
 		name       string
 		refuseInit bool
-	}{{"new session", false}, {"handshake refused", true}} {
+		cancelInit bool
+	}{
+		{"new session", false, false},
+		{"handshake refused", true, false},
+		{"caller gives up mid-handshake", false, true},
+	} {
 		t.Run(c.name, func(t *testing.T) {
+			callCtx, giveUp := context.WithCancel(context.Background())
+			defer giveUp()
 			var (
 				mu    sync.Mutex
 				live  = ""
@@ -141,6 +149,10 @@ func TestHTTPSessionExpired(t *testing.T) {
 				switch {
 				case m.Method == "initialize" && gone && c.refuseInit:
 					http.Error(w, "down", http.StatusServiceUnavailable)
+					return
+				case m.Method == "initialize" && gone && c.cancelInit && callCtx.Err() == nil:
+					giveUp()
+					<-r.Context().Done()
 					return
 				case m.Method == "initialize":
 					inits++
@@ -169,6 +181,11 @@ func TestHTTPSessionExpired(t *testing.T) {
 			mu.Lock()
 			gone = true
 			mu.Unlock()
+			if c.cancelInit {
+				if _, err := cl.CallTool(callCtx, "echo", map[string]any{"text": "hi"}); err == nil || cl.Err() != nil {
+					t.Fatalf("a cancelled handshake: call err %v, client err %v", err, cl.Err())
+				}
+			}
 			res, err := cl.CallTool(ctx, "echo", map[string]any{"text": "hi"})
 			if c.refuseInit {
 				if err == nil || cl.Err() == nil {
