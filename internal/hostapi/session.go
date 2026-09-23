@@ -126,7 +126,6 @@ func (h *Host) OpenSessions() error {
 			item["actions"] = []any{
 				map[string]any{"text": "Resume", "run": "resume " + s.ID},
 				map[string]any{"text": "Delete", "run": "sessions delete " + s.ID},
-				map[string]any{"text": "Cancel"},
 			}
 		}
 		items = append(items, item)

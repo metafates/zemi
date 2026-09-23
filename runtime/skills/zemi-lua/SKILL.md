@@ -164,7 +164,7 @@ zemi.ui.overlay.open({
   id = "deploys", title = "Deploys", empty = "Nothing deployed yet.",
   items = {
     { text = "api", desc = "failed · 2m ago", section = "Failed", detail = "exit 1: migration timed out",
-      actions = { { text = "Retry", run = "deploy api" }, { text = "Drop", id = "drop", hl = "Danger" }, { text = "Cancel" } } },
+      actions = { { text = "Retry", run = "deploy api" }, { text = "Drop", id = "drop", hl = "Danger" } } },
     { text = "web", desc = "live · 1h ago", section = "Live", fill = "/deploy web " },
   },
   on_action = function(item, action) zemi.notify({ body = action.id .. " " .. item.text }) end,

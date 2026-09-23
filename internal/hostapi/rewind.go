@@ -233,7 +233,6 @@ func (h *Host) OpenRewind() error {
 			"detail": text + "\n\n" + effect,
 			"actions": []any{
 				map[string]any{"text": "Rewind", "run": "rewind " + row.ID},
-				map[string]any{"text": "Cancel"},
 			},
 		})
 	}
