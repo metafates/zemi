@@ -706,7 +706,7 @@ how many rows the frame takes, so nothing above it reflows.
   (`Host.Focus`, counted only while the last frame drew it); commands are slash commands typed
   in the composer. Keymaps are keys or key sequences (`<leader>` is `keymap.leader`; a key name
   the terminal never reports raises, `checkKey`). Printable and composer editing keys stay with
-  the composer - scrolling is on `pgup`/`pgdown`/`ctrl+home`/`ctrl+end` - and chrome, an open
+  the composer - scrolling is on `pgup`/`pgdown`/`shift+up`/`shift+down`/`ctrl+home`/`ctrl+end` - and chrome, an open
   palette and completion popups keep their keys before keymaps are consulted. A focused node
   takes every key but ctrl+c through `Keymaps.Lookup(focus, key)`: `{ focus = id }` bindings
   first unless a more trusted global binding holds the key; unbound keys drop and an unbound

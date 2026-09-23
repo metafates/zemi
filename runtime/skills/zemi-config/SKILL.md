@@ -233,7 +233,8 @@ zemi.keymap.del("tab")                 -- unbind, also a shipped default
 for _, k in ipairs(zemi.keymap.list()) do print(k.key, k.action, k.origin) end
 local k = zemi.keymap.get("ctrl+o")    -- nil when unbound
 -- host actions: zemi.ui.help, zemi.ui.reasoning.toggle, zemi.ui.scroll.up, zemi.ui.scroll.down,
--- zemi.ui.scroll.top, zemi.ui.scroll.bottom (each takes a node id after a space),
+-- zemi.ui.scroll.top, zemi.ui.scroll.bottom, zemi.ui.scroll.line_up, zemi.ui.scroll.line_down
+-- (each takes a node id after a space),
 -- zemi.ui.focus.set [id], zemi.ui.focus.next, zemi.ui.focus.prev, zemi.model.pick,
 -- zemi.composer.submit, zemi.composer.insert <text>, zemi.composer.history_prev,
 -- zemi.composer.history_next, zemi.composer.paste, zemi.composer.edit,

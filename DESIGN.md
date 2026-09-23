@@ -1239,7 +1239,8 @@ provenance string.
   (cached per block id and width; a frame never re-runs glamour). The
   view word-wraps (the widget sets `wrap`) and is bottom-anchored: long
   lines stay visible instead of truncating. Scrollback (`pgup`/`pgdown`,
-  `ctrl+home`/`ctrl+end`, mouse wheel) moves the viewport off the tail;
+  `shift+up`/`shift+down`, `ctrl+home`/`ctrl+end`, mouse wheel) moves the viewport
+  off the tail;
   a scrolled view stays anchored while new lines fill underneath, and
   sending a message (or a `!command`) snaps back to the tail, a slash
   command does not. Persisted reasoning blocks
@@ -1264,8 +1265,8 @@ provenance string.
   Go-reserved cancel and reload triggers, §6.2): `enter`/`alt+enter`
   send/newline, `esc`/`ctrl+c` interrupt the turn (idle, `ctrl+c`
   twice within 2s quits), `ctrl+o` toggle reasoning,
-  `pgup`/`pgdown` and `ctrl+home`/`ctrl+end` scroll the transcript (the
-  wheel too: mouse cell motion is captured because the altscreen has no
+  `pgup`/`pgdown`, `shift+up`/`shift+down` and `ctrl+home`/`ctrl+end` scroll the
+  transcript (the wheel too: mouse cell motion is captured because the altscreen has no
   native scrollback). A scrolled-back viewport is anchored on the rows it
   shows, not on a row number, so a resize, an expanded thought or a new
   turn leaves the same content in view.

@@ -43,8 +43,9 @@ type UIHooks interface {
 	// Reload replays the boot steps on a fresh generation (/reload).
 	Reload()
 	Refresh()
-	// Scroll moves a scrolled region of the layout ("up", "down", "top" or
-	// "bottom"): the node id, or the stage's when id is "".
+	// Scroll moves a scrolled region of the layout ("up", "down", "top",
+	// "bottom", "line_up" or "line_down"): the node id, or the stage's when
+	// id is "".
 	Scroll(kind, id string)
 	// LayoutRects is where the last frame drew each node with an id, plus
 	// "stage" and "composer"; safe from any goroutine.
@@ -457,6 +458,8 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		"zemi.ui.scroll.down":        func(h *Host, id string) error { h.scroll("down", id); return nil },
 		"zemi.ui.scroll.top":         func(h *Host, id string) error { h.scroll("top", id); return nil },
 		"zemi.ui.scroll.bottom":      func(h *Host, id string) error { h.scroll("bottom", id); return nil },
+		"zemi.ui.scroll.line_up":     func(h *Host, id string) error { h.scroll("line_up", id); return nil },
+		"zemi.ui.scroll.line_down":   func(h *Host, id string) error { h.scroll("line_down", id); return nil },
 		"zemi.model.pick":            func(h *Host, _ string) error { return h.OpenModelPicker() },
 		"zemi.composer.submit":       composerAction("submit"),
 		"zemi.composer.insert":       composerAction("insert"),
@@ -1532,7 +1535,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.72.0"))
+	api.RawSetString("version", glua.LString("0.73.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

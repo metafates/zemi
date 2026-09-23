@@ -997,7 +997,8 @@ func (a *App) followStage() {
 
 // applyScroll maps the zemi.ui.scroll.* host actions onto a scrolled
 // region, the default one when id is "": up and down move a page with a
-// one-row overlap, top and bottom go to the ends.
+// one-row overlap, top and bottom go to the ends, line_up and line_down a
+// row.
 func (a *App) applyScroll(kind, id string) {
 	id = cmp.Or(id, a.scrollDef)
 	st := a.scrolls[id]
@@ -1014,6 +1015,10 @@ func (a *App) applyScroll(kind, id string) {
 		a.scrollRows(id, -max(st.rows, 1))
 	case "bottom":
 		a.scrollRows(id, max(st.rows, 1))
+	case "line_up":
+		a.scrollRows(id, -1)
+	case "line_down":
+		a.scrollRows(id, 1)
 	}
 }
 

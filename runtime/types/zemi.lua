@@ -281,6 +281,8 @@ function zemi.config.reload() end
 ---| "zemi.ui.scroll.down"
 ---| "zemi.ui.scroll.top"
 ---| "zemi.ui.scroll.bottom"
+---| "zemi.ui.scroll.line_up"
+---| "zemi.ui.scroll.line_down"
 ---| "zemi.ui.focus.set"
 ---| "zemi.ui.focus.next"
 ---| "zemi.ui.focus.prev"
