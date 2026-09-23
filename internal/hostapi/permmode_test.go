@@ -327,3 +327,34 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 		t.Error("the removed rule still allows")
 	}
 }
+
+// TestExplicitAskReachesUser: an ask rule and a not_match exclusion are the
+// user's under auto, where the mode would settle the same request.
+func TestExplicitAskReachesUser(t *testing.T) {
+	h, _ := newTestHost(t)
+	fakeSandbox(h, true)
+	h.SetProjectTrusted(true)
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	proj := h.Dirs.ProjectDir
+	os.MkdirAll(filepath.Join(proj, "vendor"), 0o755)
+	os.WriteFile(filepath.Join(proj, "vendor", "x.go"), []byte("package x"), 0o644)
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "go test*", Decision: perm.Ask})
+	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(proj, "*"), Decision: perm.Allow, NotMatch: filepath.Join(proj, "vendor", "*")})
+	p := h.PipelineFor()
+	for _, c := range []struct {
+		subject, arg string
+		settled      bool
+	}{
+		{"tool.bash", "go test ./...", false},
+		{"tool.bash", "go vet ./...", true},
+		{"fs.read", filepath.Join(proj, "vendor", "x.go"), false},
+	} {
+		v := p.Check(tools.Request{Subject: c.subject, Arg: c.arg})
+		// no UI: an ask the mode leaves to the user is denied by default
+		if got := v.Decision == perm.Allow; got != c.settled || !c.settled && !strings.Contains(v.Reason, "a rule asks for this") {
+			t.Errorf("%s %q: %+v", c.subject, c.arg, v)
+		}
+	}
+}

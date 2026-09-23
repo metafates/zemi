@@ -1464,7 +1464,9 @@ provenance string.
   fail-open path.
 - Permission modes answer what is left: a mode sees only the asks that
   survive the rules above and the `permission.request` veto (§6.2), and
-  it can never overrule a `deny`. Two ship: `auto` and `yolo` (every surviving ask allows). A read-only agent
+  it can never overrule a `deny`. An ask a rule asked for (an `ask` rule, a
+  `not_match` exclusion; `Request.Explicit`) is the user's under `auto`,
+  so a project or plugin rule can tighten it. Two ship: `auto` and `yolo` (every surviving ask allows, an explicit one too). A read-only agent
   (the shipped `planner` profile, `Profile.ReadOnly`) is the old `plan` in the agent axis:
   `fs.write` is denied even under an allow rule, bash and `mcp.*` allows flip to `ask` unless
   the bash command is a `perm.ReadCommand`, and commands run sandboxed with the project

@@ -75,6 +75,10 @@ type Request struct {
 	// Network is the model's network: true, which keeps the sandbox and adds
 	// outbound sockets. The URL is the model's, so no mode settles it either.
 	Network bool
+	// Explicit marks an ask a rule asked for (an ask rule, a not_match
+	// exclusion): auto settles nothing here, the user answers; set by the
+	// pipeline
+	Explicit bool
 }
 
 // Verdict is the pipeline outcome for one permission request.
@@ -296,6 +300,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	case perm.Deny:
 		return Verdict{perm.Deny, o.Reason, decidedBy(o), o.Rule}
 	}
+	req.Explicit = o.Rule != nil || strings.Contains(o.Reason, "excluded by not_match")
 	return p.resolveAsk(req, o.Reason)
 }
 

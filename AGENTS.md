@@ -242,7 +242,8 @@ is no fail-open path. New host-API side effects need the same `lua.` subject.
 
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules and
 the `permission.request` veto, and it is deterministic: no model screens anything. `yolo`
-allows. `auto` settles what `autoLocal` covers - reads and edits **inside the jail** that are
+allows, an ask a rule asked for included (an `ask` rule, a `not_match` exclusion:
+`Request.Explicit`, which `auto` and a mode's own rules leave to the user). `auto` settles what `autoLocal` covers - reads and edits **inside the jail** that are
 not secret-shaped, `tool.workflow` scripts (each agent they start is gated), bash commands
 (`unsettled`), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under

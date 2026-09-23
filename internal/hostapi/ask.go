@@ -18,8 +18,9 @@ import (
 )
 
 // askHook is the tools.Pipeline asker: veto event, then the permission
-// mode (yolo allows, auto settles what autoLocal covers), then the
-// Go-owned overlay and the "always" rule storage (DESIGN §6.2, §8).
+// mode (yolo allows, auto settles what autoLocal covers, and neither its
+// rules nor auto settle an ask a rule asked for), then the Go-owned
+// overlay and the "always" rule storage (DESIGN §6.2, §8).
 func (h *Host) askHook() tools.Asker {
 	return func(req tools.Request) (bool, string, string) {
 		askedFor := req.Reason
@@ -55,7 +56,7 @@ func (h *Host) askHook() tools.Asker {
 				o = def.Rules.CheckCommand(req.Arg, "")
 			}
 			switch {
-			case o.Decision == perm.Allow && !req.Unsandboxed && !req.Network:
+			case o.Decision == perm.Allow && !req.Unsandboxed && !req.Network && !req.Explicit:
 				return resolved(true, "mode:"+def.Name)
 			case o.Decision == perm.Deny:
 				return resolved(false, "mode:"+def.Name)
@@ -91,6 +92,9 @@ func (h *Host) askHook() tools.Asker {
 		case req.Network:
 			// the host is the model's, like a fetch URL, so no mode settles it
 			req.Reason = "needs the network, staying sandboxed"
+		case req.Explicit:
+			// whoever wrote the rule wanted to see this; only yolo overrides it
+			note("not settled: a rule asks for this")
 		case base == "auto":
 			if h.autoLocal(req) {
 				return resolved(true, "mode:"+def.Name)
