@@ -136,16 +136,13 @@ func (h *Host) startMCP(s *mcpServer) {
 	defer cancel()
 	// a stopped server was replaced or reloaded away: its failure is no news
 	fail := func(err error) {
+		if errors.Is(err, mcp.ErrAuthRequired) {
+			s.needsSignIn(h)
+			return
+		}
 		s.mu.Lock()
 		if s.stopped {
 			s.mu.Unlock()
-			return
-		}
-		if errors.Is(err, mcp.ErrAuthRequired) {
-			s.status, s.err = "needs sign-in", ""
-			s.mu.Unlock()
-			h.Notify("info", "MCP", s.name+" needs you to sign in: open /mcp")
-			h.refresh()
 			return
 		}
 		s.status, s.err = "failed", err.Error()
@@ -212,6 +209,20 @@ func (h *Host) checkToolNames(s *mcpServer, list []mcp.Tool) {
 	if len(unknown) > 0 {
 		h.RecordErrorOnce("mcp "+s.name, "enabled_tools or disabled_tools names no tool the server lists: "+strings.Join(unknown, ", "))
 	}
+}
+
+// needsSignIn marks s as waiting for the user to sign in, unless it was
+// stopped (replaced or reloaded away) or already waits.
+func (s *mcpServer) needsSignIn(h *Host) {
+	s.mu.Lock()
+	if s.stopped || s.status == "needs sign-in" {
+		s.mu.Unlock()
+		return
+	}
+	s.status, s.err = "needs sign-in", ""
+	s.mu.Unlock()
+	h.Notify("info", "MCP", s.name+" needs you to sign in: open /mcp")
+	h.refresh()
 }
 
 // offered reports whether enabled_tools and disabled_tools give the model
@@ -536,17 +547,26 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 	if v := t.pipe.CheckDenied(req); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "mcp."+name+" "+t.tool.Name)), nil
 	}
-	client := t.srv.currentClient()
+	// by name, not t.srv: a restart or reload mid-turn replaced the server
+	s, _ := h.mcpServerNamed(name)
+	var client *mcp.Client
+	if s != nil {
+		client = s.currentClient()
+	}
 	if client == nil {
 		return fantasy.NewTextErrorResponse("MCP server " + name + " is not running (/mcp shows why)"), nil
 	}
-	timeout := t.srv.spec.Timeout
+	timeout := s.spec.Timeout
 	if timeout <= 0 {
 		timeout = 2 * time.Minute
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	res, err := client.CallTool(cctx, t.tool.Name, args)
+	if errors.Is(err, mcp.ErrAuthRequired) {
+		s.needsSignIn(h)
+		return fantasy.NewTextErrorResponse("MCP server " + name + " needs the user to sign in again (/mcp)"), nil
+	}
 	if err != nil {
 		return fantasy.NewTextErrorResponse("mcp " + name + ": " + err.Error()), nil
 	}

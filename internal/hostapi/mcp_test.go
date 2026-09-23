@@ -2,11 +2,14 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"charm.land/fantasy"
@@ -18,10 +21,18 @@ import (
 )
 
 // TestMCPBridge registers a fake server from Lua and drives its tool the
-// way the model does: filtered by disabled_tools, asking (and failing
-// closed without a UI) until a rule allows it.
+// way the model does: filtered by enabled_tools and disabled_tools, asking
+// (and failing closed without a UI) until a rule allows it, through a
+// reload, a restart and an expired sign-in.
 func TestMCPBridge(t *testing.T) {
-	srv := httptest.NewServer(mcptest.Handler())
+	var expired atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if expired.Load() {
+			http.Error(w, "sign in", http.StatusUnauthorized)
+			return
+		}
+		mcptest.Handler().ServeHTTP(w, r)
+	}))
 	defer srv.Close()
 	h, r := newTestHostDB(t)
 	defer h.mcp.stopAll()
@@ -87,6 +98,26 @@ func TestMCPBridge(t *testing.T) {
 	}
 	if s, _ := h.mcpServerNamed("fake"); s != first || s.currentClient() == nil {
 		t.Fatal("a reload with the same spec restarted the server")
+	}
+	// a tool from the snapshot before the restart calls the new server
+	if err := h.restartMCP("fake"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if s, _ := h.mcpServerNamed("fake"); s == first || s.currentClient() == nil {
+			return errors.New("the restarted server never became ready")
+		}
+		return nil
+	})
+	if resp := run(0, `{"text":"hi"}`); resp.IsError {
+		t.Fatalf("call after a restart = %+v", resp)
+	}
+	expired.Store(true)
+	if resp := run(0, `{"text":"hi"}`); !resp.IsError || !strings.Contains(resp.Content, "sign in again") {
+		t.Fatalf("call after the sign-in expired = %+v", resp)
+	}
+	if s, _ := h.mcpServerNamed("fake"); s.currentClient() != nil || s.status != "needs sign-in" {
+		t.Fatalf("status after the sign-in expired = %q", s.status)
 	}
 }
 
