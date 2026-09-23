@@ -24,6 +24,7 @@ type fileCompleter struct {
 	extra    []listItem // the Lua sources' items, ahead of matches
 	selected int
 	view     viewport
+	size     boxSize // typing never narrows or shortens the popup
 
 	scanning bool
 	walkGen  int  // bumps so stale scan results are dropped
@@ -120,7 +121,7 @@ func (a *App) onFilesScanned(msg filesScannedMsg) {
 func (f *fileCompleter) close() {
 	f.open = false
 	f.token = ""
-	f.selected, f.view = 0, viewport{}
+	f.selected, f.view, f.size = 0, viewport{}, boxSize{}
 	f.matches, f.extra = f.matches[:0], nil
 }
 
@@ -209,13 +210,10 @@ func (a *App) acceptCompletion() {
 	f.close()
 }
 
-// completionRows renders the popup rows shown above the composer, at most
-// room rows of at most maxW cells.
-func (a *App) completionRows(maxW, room int) [][]hostapi.Segment {
+// completionRows renders the popup's list, at most room rows of at most
+// maxW cells, padded to minW.
+func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	f := &a.completion
-	if !f.shown() {
-		return nil
-	}
 	note := func(text string) []hostapi.Segment {
 		return []hostapi.Segment{{Text: text, HL: "Host:Hint"}}
 	}
@@ -235,7 +233,7 @@ func (a *App) completionRows(maxW, room int) [][]hostapi.Segment {
 	for _, m := range f.matches {
 		items = append(items, listItem{label: m})
 	}
-	rows := listRows(items, f.selected, &f.view, min(a.completionMax(), room), maxW)
+	rows := listRowsW(items, items, f.selected, &f.view, min(a.completionMax(), room), minW, maxW)
 	if f.partial {
 		rows = append(rows, partial)
 	}

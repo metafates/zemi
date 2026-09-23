@@ -759,12 +759,7 @@ func (a *App) compose(w, h int) string {
 	var popup [][]hostapi.Segment
 	var popX int
 	if a.focusedNode() == "" { // the composer's popups follow its keys
-		popup, popX, pop = a.floatPopup(func(maxW, room int) [][]hostapi.Segment {
-			if rows := a.paletteRows(maxW, room); rows != nil {
-				return rows
-			}
-			return a.completionRows(maxW, room)
-		}, lay, len(rows), w)
+		popup, popX, pop = a.floatPopup(lay, len(rows), w)
 	}
 	for i, line := range popup {
 		placeBox(rows, [][]hostapi.Segment{line}, popX, pop.Min.Y+i, w)
@@ -918,13 +913,24 @@ func dimRows(rows [][]hostapi.Segment) {
 	}
 }
 
-// floatPopup frames a composer popup for the bottom rows of the stage,
-// left-aligned with it, when the stage is above the composer; otherwise
-// beside the composer on the side with more rows, aligned with it. It covers
-// only its own cells. render draws the popup's rows for the cells and rows
-// its frame leaves. It returns the rows to draw, their left column and the
-// cells they cover.
-func (a *App) floatPopup(render func(maxW, room int) [][]hostapi.Segment, lay screenLayout, h, w int) ([][]hostapi.Segment, int, uv.Rectangle) {
+// floatPopup frames the open composer popup, the palette or the
+// completion list, for the bottom rows of the stage, left-aligned with it,
+// when the stage is above the composer; otherwise beside the composer on
+// the side with more rows, aligned with it. It covers only its own cells,
+// keeps its size while it stays open and ends in its hint row. It returns
+// the rows to draw, their left column and the cells they cover.
+func (a *App) floatPopup(lay screenLayout, h, w int) ([][]hostapi.Segment, int, uv.Rectangle) {
+	var render func(maxW, room, minW int) [][]hostapi.Segment
+	var size *boxSize
+	var hints []hintPair
+	switch {
+	case a.palette.open:
+		render, size, hints = a.paletteRows, &a.palette.size, []hintPair{{"enter", "run"}, {"tab", "complete"}, {"esc", "close"}}
+	case a.completion.shown():
+		render, size, hints = a.completionRows, &a.completion.size, []hintPair{{"enter", "pick"}, {"esc", "close"}}
+	default:
+		return nil, 0, uv.Rectangle{}
+	}
 	stage, c := lay.stage, lay.rects["composer"]
 	x, width, top, bottom := stage.Min.X, stage.Dx(), stage.Min.Y, min(stage.Max.Y, h)
 	up := true
@@ -934,11 +940,14 @@ func (a *App) floatPopup(render func(maxW, room int) [][]hostapi.Segment, lay sc
 			top, bottom = c.Max.Y, h
 		}
 	}
-	popup := render(boxInner(width), bottom-top-2)
-	if len(popup) == 0 || bottom-top < 3 {
+	// the borders, and the blank row and hint under the list
+	if bottom-top < 5 {
 		return nil, 0, uv.Rectangle{}
 	}
-	box := hostBox("", "", "", popup, width)
+	maxW := boxInner(width)
+	size.w = max(size.w, 56) // a list fits its content, 56 cells at least
+	rows := append(render(maxW, bottom-top-4, size.w), nil, hint(maxW, hints...))
+	box := promptBox("", "", rows, width, bottom-top, 100, size)
 	if up {
 		top = max(top, bottom-len(box))
 	}

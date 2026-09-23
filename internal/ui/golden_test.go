@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -194,6 +196,29 @@ func TestGoldenSlashPalette(t *testing.T) {
 	app.timeStr = "09:41"
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
+}
+
+// TestPopupKeepsSize: both composer popups keep their size and hint while a
+// query narrows them down to no match.
+func TestPopupKeepsSize(t *testing.T) {
+	for _, c := range []struct{ open, narrow string }{{"/mo", "zz"}, {"@ap", "zzzq"}} {
+		app, host := bootAgentApp(t, 80, 14)
+		host.Commands.Add(&hostapi.Command{Name: "model", Desc: "choose the model", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1)})
+		app.completion.files = []string{"internal/ui/app.go", "main.go"}
+		popup := func(keys string) string {
+			for _, k := range keys {
+				app.Update(tea.KeyPressMsg{Code: k, Text: string(k)})
+			}
+			app.renderSync(t)
+			f := ansi.Strip(app.Frame())
+			return f[strings.Index(f, "┌─"):strings.Index(f, "┘")]
+		}
+		want := popup(c.open)
+		if got := popup(c.narrow); !strings.Contains(got, "No matches.") || !strings.Contains(got, "esc close") ||
+			strings.Count(got, "\n") != strings.Count(want, "\n") || strings.Index(got, "┐") != strings.Index(want, "┐") {
+			t.Fatalf("%s%s:\n%s\nwant the size of\n%s", c.open, c.narrow, got, want)
+		}
+	}
 }
 
 // TestGoldenChatScroll pins the transcript scrollback (§8): pgup moves the

@@ -57,6 +57,9 @@ func (a *App) updatePalette() {
 	}
 	name, typed, line := string(r[1:nameEnd]), string(r[start:cur]), string(r[:cur])
 	show := func(cands []hostapi.CompletionItem) {
+		if p := &a.palette; p.args == nil || p.argStart != start { // a new list: the name's gave way, or another argument's
+			p.selected, p.view, p.size = 0, viewport{}, boxSize{}
+		}
 		lead := strings.ToLower(typed)
 		args := []hostapi.CompletionItem{}
 		for _, c := range cands {
@@ -75,8 +78,8 @@ func (a *App) updatePalette() {
 	}
 	// A Lua completer or source runs on the worker, since the key loop never
 	// waits on Lua; its answer is dropped once the line before the cursor
-	// moved on.
-	a.palette.close()
+	// moved on. Until it lands, the rows it gave narrow by prefix.
+	show(a.palette.args)
 	a.background(func() {
 		cands := a.host.CompleteCommand(context.Background(), name, typed, line)
 		if lua {
@@ -129,12 +132,12 @@ func (a *App) acceptPalette() {
 	p.close()
 }
 
-// paletteRows renders the popup rows shown above the composer, at most
-// room rows of at most maxW cells, the hint included.
-func (a *App) paletteRows(maxW, room int) [][]hostapi.Segment {
+// paletteRows renders the popup's list, at most room rows of at most maxW
+// cells, padded to minW.
+func (a *App) paletteRows(maxW, room, minW int) [][]hostapi.Segment {
 	p := &a.palette
-	if !p.open || p.count() == 0 {
-		return nil
+	if p.count() == 0 {
+		return emptyRows("No matches.", maxW)
 	}
 	items := make([]listItem, 0, p.count())
 	for _, c := range p.matches {
@@ -143,16 +146,7 @@ func (a *App) paletteRows(maxW, room int) [][]hostapi.Segment {
 	for _, c := range p.args {
 		items = append(items, listItem{label: c.Text, desc: c.Desc})
 	}
-	rows := listRowsW(items, items, p.selected, &p.view, min(8, room-2), p.size.w, maxW)
-	for len(rows) < min(p.size.h, room-2) {
-		rows = append(rows, nil)
-	}
-	rows = append(rows, nil, hint(maxW, hintPair{"enter", "run"}, hintPair{"tab", "complete"}, hintPair{"esc", "close"}))
-	for _, r := range rows {
-		p.size.w = max(p.size.w, segsWidth(r))
-	}
-	p.size.h = max(p.size.h, len(rows)-2)
-	return rows
+	return listRowsW(items, items, p.selected, &p.view, min(8, room), minW, maxW)
 }
 
 // clearComposer empties the draft and closes both popups. The paste map

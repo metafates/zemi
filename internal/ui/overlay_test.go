@@ -207,6 +207,13 @@ func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 	if len(app.palette.args) != 1 || app.palette.args[0].Text != "bob" {
 		t.Fatalf("palette args %v", app.palette.args)
 	}
+	// the next key keeps the popup and its size until the completer answers
+	app.renderSync(t)
+	size := app.palette.size
+	app.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
+	if !app.palette.open || app.palette.size != size {
+		t.Fatalf("open=%v size %v, was %v", app.palette.open, app.palette.size, size)
+	}
 }
 
 // TestModalDimsBackground: a modal dims what lies under it; a toast and
@@ -237,8 +244,8 @@ func TestModalDimsBackground(t *testing.T) {
 	}
 	app.overlays = nil
 	app.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
-	if got := hl("hello"); got == "Host:Dim" {
-		t.Fatal("the palette dimmed the transcript")
+	if got := hl("untrusted"); got == "Host:Dim" {
+		t.Fatal("the palette dimmed the screen")
 	}
 }
 
