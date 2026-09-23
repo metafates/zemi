@@ -35,26 +35,27 @@ Flags:
   -p, --print         answer the prompt on stdout and exit (no TUI)
   -c, --continue      continue the most recent session
   -r, --resume id     resume the session with this id
-  -m, --model id      model to use (provider/model)
-      --mode mode     permission mode: auto or yolo
-      --profile name  agent profile: one init.lua defines
+  -m, --model id      model for the conversation (provider/model)
+      --mode mode     permission mode: auto, yolo or one init.lua adds
+      --profile name  agent profile: default, planner or one init.lua defines
       --output fmt    with -p: text (the reply) or json (reply, tools, compactions, usage)
       --trust         trust this project for this run (--trust=false: do not)
       --health        run the /health checks on stdout and exit (1 if any failed)
   -v, --version       print the version and exit
   -h, --help          show this help
 
-With -p nobody can answer a permission ask, so an ask the mode does not
-settle is denied. A project you have not trusted in the TUI runs untrusted
-with -p unless --trust is given, and then auto mode settles little.
+With -p nobody can answer a permission ask, so a call the mode would ask
+about is denied. A project not trusted in the TUI runs untrusted with -p,
+where little runs without asking, unless --trust is given.
 
 Environment:
   ZEMI_CONFIG_HOME    config dir (default ~/.config/zemi)
   ZEMI_DATA_HOME      data dir (default ~/.local/share/zemi)
   ZEMI_STATE_HOME     state dir: sessions, memory, logs (default ~/.local/state/zemi)
   ZEMI_CACHE_HOME     cache dir: language server builds (default ~/.cache/zemi)
-  ANTHROPIC_API_KEY   the anthropic builtin provider is on when its key is exported;
-                      OPENAI_API_KEY and the rest likewise (/model lists them)
+                      Each defaults under $XDG_CONFIG_HOME and the like when those are set.
+  ANTHROPIC_API_KEY, OPENAI_API_KEY, ...
+                      a builtin provider is on while its key is exported (/model lists them)
 
 Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 `
@@ -337,14 +338,14 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 
 // deniedHint says what would let print mode's denied calls through.
 func deniedHint(rep report, trusted bool) string {
-	const rule = "an allow rule (zemi.permission.rule.add in init.lua) settles it"
+	const rule = "an allow rule (zemi.permission.rule.add in init.lua) lets it through"
 	switch {
 	case rep.unsandboxed > 0:
 		return "and running outside the sandbox needs the TUI; " + rule
 	case rep.tuiOnly > 0:
 		return "and only the TUI can approve a Lua script or a memory edit; " + rule
 	case !trusted:
-		return "try --trust (auto mode settles little in an untrusted project)"
+		return "try --trust (untrusted, auto mode asks for almost everything)"
 	}
 	return "and the mode left it to the user; " + rule
 }
