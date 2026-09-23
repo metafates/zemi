@@ -285,6 +285,10 @@ func (p *Pipeline) Check(req Request) Verdict {
 		// line names the program alone. The user's init.lua rule stays.
 		case req.Subject == "tool.bash" && rule != nil && (rule.Principal == "model" || rule.Source == "permissions") && p.Secret != nil && perm.ReadsSecret(req.Arg, p.Secret):
 			return p.resolveAsk(req, "this file looks like it holds secrets")
+		// the user allowed the command confined; an Unsandboxed ask is never
+		// mode-settled, so dropping the sandbox reaches them
+		case req.Unsandboxed && rule != nil && rule.Network:
+			return p.resolveAsk(req, "the rule keeps the sandbox; sandbox: false drops it")
 		// rule-allowed commands run unconfined, so only readers skip the ask
 		case plan && req.Subject == "tool.bash" && perm.ReadCommand(req.Arg, nil):
 		case plan && (req.Subject == "tool.bash" || strings.HasPrefix(req.Subject, "mcp.")):

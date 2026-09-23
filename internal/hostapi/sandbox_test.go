@@ -99,6 +99,10 @@ func TestUnsettled(t *testing.T) {
 	if pol := h.PipelineFor().SandboxFor(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example -o /tmp/x"}, tools.Verdict{Decision: perm.Allow, DecidedBy: "rule", Rule: o.Rule}); pol == nil || !pol.Network {
 		t.Errorf("network rule: policy %+v", pol)
 	}
+	// sandbox: false is not what the rule allowed
+	if v := h.PipelineFor().Check(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example -o /tmp/x", Unsandboxed: true}); v.Decision == perm.Allow {
+		t.Errorf("network rule allowed an unsandboxed run: %+v", v)
+	}
 }
 
 // sandboxedBash is a trusted host on the live seatbelt backend and its bash

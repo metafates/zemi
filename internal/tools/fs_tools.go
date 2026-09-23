@@ -249,7 +249,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	// every outcome of opening a file counts as seen, a page included: the
 	// edit guard is about what changed under the model, an exact old_string
 	// is its own proof, and a refused binary is all the model can know of a
-	// file write replaces whole
+	// file that write replaces whole
 	p.markRead(path, fi)
 	rel := workRel(path)
 	br := bufio.NewReaderSize(f, 64<<10)
