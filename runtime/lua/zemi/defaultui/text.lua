@@ -130,22 +130,4 @@ function M.clip(text, room)
   return table.concat(chars) .. "…"
 end
 
---- Text split into pieces of at most room cells (code wraps, never clips).
----@param text string
----@param room integer
----@return string[]
-function M.chunks(text, room)
-  ---@type string[], string[]
-  local out, cur = {}, {}
-  for ch in text:gmatch(M.UTF8_CHAR) do
-    if #cur >= room and #cur > 0 then
-      out[#out + 1] = table.concat(cur)
-      cur = {}
-    end
-    cur[#cur + 1] = ch
-  end
-  if #cur > 0 or #out == 0 then out[#out + 1] = table.concat(cur) end
-  return out
-end
-
 return M

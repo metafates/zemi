@@ -988,7 +988,9 @@ UI extensibility contract:
   `Vec<String>` in prose would vanish. A table renders at the
   width instead: its rows are layout, not prose. Text the user typed is not
   markdown: `zemi.ui.wrap(text, width)` wraps it plain, with the same
-  `soft_wrap` marks. Glamour's styles come from the active theme's groups (`Normal`,
+  `soft_wrap` marks, and `zemi.ui.diff(text, width)` draws a unified diff in
+  the `Diff*` groups, the renderer the permission prompt draws in its own
+  chrome. Glamour's styles come from the active theme's groups (`Normal`,
   `Markdown*`, `Rule`, `Dim`, and `Accent` for code keywords), the theme's
   `-light` variant on a light terminal; its output is parsed back into segments whose `hl`
   is `sgr:<params>`, an inline SGR style that only ever decodes to

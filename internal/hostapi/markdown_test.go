@@ -270,6 +270,49 @@ func TestEscapeHTML(t *testing.T) {
 	}
 }
 
+// TestDiffRows: one number column, the sign on the row's tint, the tint
+// out to the edge on every wrapped row (a wide rune counts two cells), a
+// gap between hunks and a file a command changed as its own row.
+func TestDiffRows(t *testing.T) {
+	cjk := strings.Repeat("漢", 100)
+	for _, c := range []struct {
+		name, diff string
+		width      int
+		want       []string
+	}{
+		{"numbers", "--- a.go\n+++ a.go\n@@ -9,3 +9,3 @@\n one\n-two\n+TWO\n three\n", 40,
+			[]string{"  9   one", " 10 - two", " 10 + TWO", " 11   three"}},
+		{"wrapped", "@@ -1 +1 @@\n+alpha beta gamma delta", 20, []string{" 1 + alpha beta", "     gamma delta"}},
+		{"files and hunks", "M a.go\n@@ -1 +1 @@\n-a\n+b\nM b.go\n@@ -3 +3 @@\n x\n@@ -9 +9 @@\n--- y", 20,
+			[]string{" M a.go", "  1 - a", "  1 + b", " M b.go", "  3   x", "    ⋯", "  9 - -- y"}},
+		{"cjk", "@@ -1 +1 @@\n+" + cjk, 40, []string{" 1 + " + cjk[:3*17], "     " + cjk[3*17:3*34], "     " + cjk[3*34:3*51],
+			"     " + cjk[3*51:3*68], "     " + cjk[3*68:3*85], "     " + cjk[3*85:]}},
+	} {
+		var got []string
+		copied := ""
+		for _, row := range DiffRows(c.diff, c.width) {
+			var drawn strings.Builder
+			for _, s := range row {
+				drawn.WriteString(s.Text)
+			}
+			got = append(got, strings.TrimRight(drawn.String(), " "))
+			if len(row) < 3 {
+				continue
+			}
+			if SegsWidth(row) != c.width || !strings.HasSuffix(row[0].HL, "Num") || row[len(row)-1].HL+"Num" != row[0].HL {
+				t.Errorf("%s: row %q is %d cells in %v, want %d tinted", c.name, drawn.String(), SegsWidth(row), row, c.width)
+			}
+			copied += copyText([][]Segment{row})
+		}
+		if strings.Join(got, "|") != strings.Join(c.want, "|") {
+			t.Errorf("%s: rows = %q", c.name, got)
+		}
+		if c.name == "cjk" && copied != cjk {
+			t.Errorf("cjk: copies as %q", copied)
+		}
+	}
+}
+
 // TestMarkdownTheme: markdown draws only the theme's colors, in the dark
 // and the light variant, blocks sit one blank row apart and a quote keeps
 // its bar on every row it wraps to.

@@ -291,49 +291,12 @@ zemi.ui.widget.add({
       if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), width - 6), "Comment") end
       local job = t.status == "bg" and ((t.output or ""):match("moved to the background as (job%-%d+)") or (t.output or ""):match("^started (job%-%d+)"))
       if job then detail("running as " .. job, "Comment") end
-      -- File tools show what they changed as numbered, tinted rows.
-      local old, new, hunks, numbered = 0, 0, 0, true
-      for dl in ((t.diff or "") .. "\n"):gmatch("(.-)\n") do
-        local a, b = dl:match("^@@ %-(%d+),?%d* %+(%d+),?%d* @@")
-        local kind = dl:sub(1, 1)
-        -- a bare "@@" is a hunk of the input-only preview: no numbers
-        if a or dl == "@@" then
-          if hunks > 0 then lines[#lines + 1] = { { text = "      ⋯", hl = "Comment", copy = false } } end
-          hunks = hunks + 1
-          old, new, numbered = tonumber(a) or 0, tonumber(b) or 0, a ~= nil
-        -- file headers come before the first hunk; after it "---" is a removed "-- " line
-        elseif dl ~= "" and (hunks > 0 or (dl:sub(1, 3) ~= "---" and dl:sub(1, 3) ~= "+++")) then
-          local num, style = 0, ({ ["+"] = "DiffAdd", ["-"] = "DiffDel", [" "] = "DiffCtx" })[kind]
-          -- NOTE: gopher-lua mis-evaluates `a[#a + 1], b = b, x` (a gets x), so
-          -- assignments whose right side names a left-side target stay split.
-          if kind == "-" then
-            num = old
-            old = old + 1
-          elseif style then
-            num = new
-            new = new + 1
-            if kind == " " then old = old + 1 end
-          end
-          if style then
-            local lead = numbered and string.format("  %5d %s ", num, kind) or "        " .. kind .. " "
-            local room = math.max(width - fmt.cells(lead), 1)
-            local blank_lead = string.rep(" ", fmt.cells(lead))
-            -- the number and +/- are decoration: a copy gives the code
-            local parts = fmt.chunks((dl:sub(2):gsub("\t", "    ")), room)
-            for j, part in ipairs(parts) do
-              -- a diff line is body: no hover, but the click expands like the head
-              lines[#lines + 1] = {
-                { text = j == 1 and lead or blank_lead, hl = style .. "Num", copy = false, click = click, hover = false },
-                { text = part, hl = style, soft_wrap = j < #parts, click = click, hover = false },
-                { text = string.rep(" ", math.max(0, room - fmt.cells(part))), hl = style, copy = false, click = click, hover = false },
-              }
-            end
-          else
-            -- a bash row names each file it changed: its hunks count from one
-            hunks = 0
-            lines[#lines + 1] = { { text = "        ", copy = false }, { text = dl, hl = "Comment" } }
-          end
-        end
+      -- File tools show what they changed as numbered, tinted rows, four
+      -- cells in; a diff row is body: no hover, but the click expands like the head
+      for _, row in ipairs(zemi.ui.diff(t.diff or "", width - 4)) do
+        for _, sg in ipairs(row) do sg.click, sg.hover = click, false end
+        table.insert(row, 1, { text = "    ", copy = false, click = click, hover = false })
+        lines[#lines + 1] = row
       end
       -- the result's last lines: always for a failure, for what the user
       -- answered (question, plan), for commands with ctrl+o

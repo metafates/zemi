@@ -1046,25 +1046,6 @@ func TestPermissionWidthKey(t *testing.T) {
 	}
 }
 
-func TestDiffRows(t *testing.T) {
-	d := "--- a.go\n+++ a.go\n@@ -9,3 +9,3 @@\n one\n-two\n+TWO\n three\n"
-	var got []string
-	for _, row := range diffRows(d, 40) {
-		got = append(got, strings.TrimRight(plainSegs(row), " "))
-	}
-	want := []string{"  9  9   one", " 10    - two", "    10 + TWO", " 11 11   three"}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("rows = %q", got)
-	}
-	got = nil
-	for _, row := range diffRows("@@ -1 +1 @@\n+alpha beta gamma delta", 20) {
-		got = append(got, strings.TrimRight(plainSegs(row), " "))
-	}
-	if want := []string{"   1 + alpha beta", "       gamma delta"}; strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("wrapped rows = %q", got)
-	}
-}
-
 // TestFileRowClickIDs: a file tool's rows carry the id that opens the file,
 // the head row at its top and every diff row at its own line; other tools
 // carry none.

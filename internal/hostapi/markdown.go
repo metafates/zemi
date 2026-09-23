@@ -537,6 +537,85 @@ func WrapText(text string, w int) [][]Segment {
 	return rows
 }
 
+var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)`)
+
+// DiffRows renders a unified diff as rows exactly width cells wide
+// (zemi.ui.diff): one number column (the old line on a removed row, the new
+// one otherwise) and the sign in DiffAddNum, DiffDelNum or DiffCtxNum, the
+// text wrapped in DiffAdd, DiffDel or DiffCtx with the tint out to the edge,
+// "⋯" between hunks, and any other line (a file a command changed) in
+// DiffCtxNum. Only the text copies.
+func DiffRows(d string, width int) [][]Segment {
+	type line struct {
+		kind byte // '+', '-', ' ', '~' a hunk gap, 'f' a file
+		num  int
+		text string
+	}
+	var lines []line
+	o, n, hunks := 0, 0, 0
+	for l := range strings.SplitSeq(sanitize.String(d), "\n") {
+		switch {
+		case l == "", strings.HasPrefix(l, `\`):
+		case strings.HasPrefix(l, "@@"):
+			// a bare "@@" (a fragment's preview) numbers nothing: line 0 stays 0
+			o, n = 0, 0
+			if m := hunkHeader.FindStringSubmatch(l); m != nil {
+				o, _ = strconv.Atoi(m[1])
+				n, _ = strconv.Atoi(m[2])
+			}
+			if hunks > 0 {
+				lines = append(lines, line{kind: '~'})
+			}
+			hunks++
+		// after a hunk "---" is a removed "-- " line
+		case hunks == 0 && (strings.HasPrefix(l, "--- ") || strings.HasPrefix(l, "+++ ")):
+		case l[0] == '+':
+			lines = append(lines, line{'+', n, l[1:]})
+			n += min(n, 1)
+		case l[0] == '-':
+			lines = append(lines, line{'-', o, l[1:]})
+			o += min(o, 1)
+		case l[0] == ' ':
+			lines = append(lines, line{' ', n, l[1:]})
+			o, n = o+min(o, 1), n+min(n, 1)
+		default:
+			// each file's hunks count from one
+			lines, hunks = append(lines, line{kind: 'f', text: l}), 0
+		}
+	}
+	nw := len(strconv.Itoa(max(o, n)))
+	var rows [][]Segment
+	for _, l := range lines {
+		switch l.kind {
+		case '~':
+			rows = append(rows, []Segment{{Text: strings.Repeat(" ", nw+2) + "⋯", HL: "DiffCtxNum", NoCopy: true}})
+			continue
+		case 'f':
+			rows = append(rows, WrapSegs([]Segment{{Text: " " + l.text, HL: "DiffCtxNum"}}, width)...)
+			continue
+		}
+		hl := map[byte]string{'+': "DiffAdd", '-': "DiffDel", ' ': "DiffCtx"}[l.kind]
+		num := strings.Repeat(" ", nw)
+		if l.num > 0 {
+			num = fmt.Sprintf("%*d", nw, l.num)
+		}
+		gutter := " " + num + " " + string(l.kind) + " "
+		room := max(width-len(gutter), 1)
+		// wrapped, never cut: the user approves every character
+		for i, r := range WrapSegs([]Segment{{Text: l.text, HL: hl}}, room) {
+			if i == 1 {
+				gutter = strings.Repeat(" ", len(gutter))
+			}
+			for j := range r {
+				r[j].HL = hl // a hanging indent takes the tint too
+			}
+			row := append([]Segment{{Text: gutter, HL: hl + "Num", NoCopy: true}}, r...)
+			rows = append(rows, append(row, Segment{Text: strings.Repeat(" ", max(room-SegsWidth(r), 0)), HL: hl, NoCopy: true}))
+		}
+	}
+	return rows
+}
+
 // escapeHTML backslash-escapes a '<' that would open raw HTML outside code:
 // glamour drops inline HTML, so "Vec<String>" in prose would lose "<String>".
 // An autolink (<https://...>) stays a link. An indented code block is a line

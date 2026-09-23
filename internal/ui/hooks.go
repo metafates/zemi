@@ -36,7 +36,7 @@ func rgb(v uint32) ansi.RGBColor {
 type chrome struct{ fg, dim, rule, accent, panel, add, del color.Color }
 
 var (
-	darkChrome  = chrome{rgb(0xd8d8d8), rgb(0x7a7a7a), rgb(0x3a3a3a), rgb(0x9aa5f2), rgb(0x1e1e1e), rgb(0x1b2417), rgb(0x2a1a1a)}
+	darkChrome  = chrome{rgb(0xd8d8d8), rgb(0x7a7a7a), rgb(0x3a3a3a), rgb(0x9aa5f2), rgb(0x1e1e1e), rgb(0x183018), rgb(0x361010)}
 	lightChrome = chrome{rgb(0x1b1b1b), rgb(0x8e8e8e), rgb(0xcfcfcf), rgb(0x6b78d6), rgb(0xf0f0f0), rgb(0xe7f2e2), rgb(0xfae7e7)}
 	// keyed by "the terminal is light"
 	hostStyles = map[bool]map[string]uv.Style{false: chromeStyles(darkChrome), true: chromeStyles(lightChrome)}
@@ -59,10 +59,12 @@ func chromeStyles(c chrome) map[string]uv.Style {
 		"Host:DangerPanel": {Fg: ansi.Red, Bg: c.panel, Attrs: uv.AttrBold},
 		"Host:Panel":       {Fg: c.fg, Bg: c.panel},
 		"Host:PanelTitle":  {Fg: c.accent, Bg: c.panel, Attrs: uv.AttrBold},
-		"Host:DiffAdd":     {Bg: c.add},
-		"Host:DiffAddSign": {Fg: ansi.Green, Bg: c.add},
-		"Host:DiffDel":     {Bg: c.del},
-		"Host:DiffDelSign": {Fg: ansi.Red, Bg: c.del},
+		"Host:DiffAdd":     {Fg: c.fg, Bg: c.add},
+		"Host:DiffAddNum":  {Fg: ansi.Green, Bg: c.add},
+		"Host:DiffDel":     {Fg: c.fg, Bg: c.del},
+		"Host:DiffDelNum":  {Fg: ansi.Red, Bg: c.del},
+		"Host:DiffCtx":     {Fg: c.fg},
+		"Host:DiffCtxNum":  {Fg: c.dim},
 		"Host:BtnSel":      {Attrs: uv.AttrReverse | uv.AttrBold},
 		"Host:Selection":   {Attrs: uv.AttrReverse},
 		"Host:Hover":       {Underline: uv.UnderlineSingle},

@@ -42,10 +42,11 @@ local function theme(palette)
     ThinkingBar = { link = "Rule" },
     AgentToolName = { fg = "fg", bold = true },
     -- a diff keeps the terminal's green and red on the sign and the line
-    -- number, and tints the row no further than it has to
-    DiffAdd = { bg = "addbg" },
+    -- number, and tints the row no further than it has to; the two tints
+    -- stay apart on a 256-color terminal
+    DiffAdd = { fg = "fg", bg = "addbg" },
     DiffAddNum = { fg = "green", bg = "addbg" },
-    DiffDel = { bg = "delbg" },
+    DiffDel = { fg = "fg", bg = "delbg" },
     DiffDelNum = { fg = "red", bg = "delbg" },
     DiffCtx = { link = "Normal" },
     DiffCtxNum = { link = "Dim" },
@@ -86,8 +87,8 @@ zemi.ui.theme.add("default", theme({
   dim = "#7a7a7a",
   rule = "#3a3a3a",
   accent = "#9aa5f2",
-  addbg = "#1b2417",
-  delbg = "#2a1a1a",
+  addbg = "#183018",
+  delbg = "#361010",
 }))
 
 -- picked automatically when the terminal reports a light background

@@ -9,9 +9,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
-	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -625,7 +623,13 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		case req.Subject == "tool.bash":
 			return codePanel(req.Arg, "Host:Panel", w)
 		case isDiff:
-			return diffRows(req.Preview, w)
+			rows := hostapi.DiffRows(req.Preview, w)
+			for _, r := range rows {
+				for i := range r {
+					r[i].HL = "Host:" + r[i].HL // the fixed chrome's Diff* styles
+				}
+			}
+			return rows
 		case req.Preview != "":
 			return codePanel(req.Preview, "Host:Panel", w)
 		}
@@ -854,81 +858,6 @@ func codePanel(text, hl string, width int) [][]hostapi.Segment {
 			line := plainSegs(wrapped)
 			pad := width - 2 - ansi.StringWidth(line)
 			rows = append(rows, []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, pad)) + " ", HL: hl}})
-		}
-	}
-	return rows
-}
-
-var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)`)
-
-// diffRows renders a unified diff with old and new line numbers, added and
-// removed lines on tinted rows, and a gap marker between hunks.
-func diffRows(d string, width int) [][]hostapi.Segment {
-	type line struct {
-		kind     byte
-		old, new int
-		text     string
-	}
-	var lines []line
-	o, n := 0, 0
-	for l := range strings.SplitSeq(d, "\n") {
-		switch {
-		case l == "", strings.HasPrefix(l, "--- "), strings.HasPrefix(l, "+++ "), strings.HasPrefix(l, "\\ "):
-		case strings.HasPrefix(l, "@@"):
-			// a bare "@@" (a fragment's preview) numbers nothing: line 0 stays 0
-			o, n = 0, 0
-			if m := hunkHeader.FindStringSubmatch(l); m != nil {
-				o, _ = strconv.Atoi(m[1])
-				n, _ = strconv.Atoi(m[2])
-			}
-			if len(lines) > 0 {
-				lines = append(lines, line{kind: '~'})
-			}
-		case l[0] == '+':
-			lines = append(lines, line{'+', 0, n, l[1:]})
-			n += min(n, 1)
-		case l[0] == '-':
-			lines = append(lines, line{'-', o, 0, l[1:]})
-			o += min(o, 1)
-		default:
-			lines = append(lines, line{' ', o, n, strings.TrimPrefix(l, " ")})
-			o, n = o+min(o, 1), n+min(n, 1)
-		}
-	}
-	nw := len(strconv.Itoa(max(o, n)))
-	num := func(v int) string {
-		if v == 0 {
-			return strings.Repeat(" ", nw)
-		}
-		return fmt.Sprintf("%*d", nw, v)
-	}
-	var rows [][]hostapi.Segment
-	for _, l := range lines {
-		if l.kind == '~' {
-			rows = append(rows, []hostapi.Segment{{Text: strings.Repeat(" ", 2*nw+3) + "⋯", HL: "Host:Hint"}})
-			continue
-		}
-		// the sign carries the terminal's own green or red, the row a tint
-		signHL, lineHL, sign := "Host:Hint", "", "  "
-		switch l.kind {
-		case '+':
-			signHL, lineHL, sign = "Host:DiffAddSign", "Host:DiffAdd", "+ "
-		case '-':
-			signHL, lineHL, sign = "Host:DiffDelSign", "Host:DiffDel", "- "
-		}
-		gutter := " " + num(l.old) + " " + num(l.new) + " "
-		room := max(width-ansi.StringWidth(gutter)-2, 1)
-		// wrapped, never cut: the user approves every character
-		for i, wrapped := range hostapi.WrapSegs([]hostapi.Segment{{Text: l.text}}, room) {
-			text := plainSegs(wrapped)
-			if i > 0 {
-				gutter, sign = strings.Repeat(" ", len(gutter)), "  "
-			}
-			rows = append(rows, []hostapi.Segment{
-				{Text: gutter, HL: "Host:Hint"},
-				{Text: sign, HL: signHL},
-				{Text: text + strings.Repeat(" ", max(0, room-ansi.StringWidth(text))), HL: lineHL},
-			})
 		}
 	}
 	return rows

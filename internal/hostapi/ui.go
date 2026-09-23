@@ -362,6 +362,10 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		L.Push(linesTable(L, WrapText(L.CheckString(1), L.CheckInt(2))))
 		return 1
 	}))
+	tb.RawSetString("diff", L.NewFunction(func(L *glua.LState) int {
+		L.Push(linesTable(L, DiffRows(L.CheckString(1), L.CheckInt(2))))
+		return 1
+	}))
 
 	hl := L.NewTable()
 	// hl.set(group, spec) changes one highlight group on top of the active
