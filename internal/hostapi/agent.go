@@ -937,10 +937,12 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	if hold {
 		return
 	}
-	if ui := h.hooks(); ui != nil {
+	ui := h.hooks()
+	if ui != nil {
 		ui.TurnDone(errString(err))
 	}
-	if err == nil && strings.TrimSpace(text) != "" {
+	// a print run exits before a title call answers: no UI, no title
+	if err == nil && strings.TrimSpace(text) != "" && ui != nil {
 		ag.mu.Lock()
 		first := !ag.titled && ag.sessionID == sid
 		ag.titled = true
