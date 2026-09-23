@@ -468,8 +468,14 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 		}
 	}
 	var head [][]hostapi.Segment
+	// the whole target, wrapped at its slashes: a path's file name and a
+	// URL's query are what the user approves
 	if target != "" {
-		head = append(head, ellipsizeSegs([]hostapi.Segment{{Text: target, HL: "Host:Value"}}, inner))
+		var segs []hostapi.Segment
+		for _, part := range strings.SplitAfter(target, "/") {
+			segs = append(segs, hostapi.Segment{Text: part, HL: "Host:Value"})
+		}
+		head = append(head, hostapi.WrapSegs(segs, inner)...)
 	}
 	var content [][]hostapi.Segment
 	switch {

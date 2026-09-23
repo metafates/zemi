@@ -174,12 +174,13 @@ func (h *Host) askHook() tools.Asker {
 }
 
 // shownArg is the request's argument as the user reads it: a path relative
-// to the project when inside it, or to the trusted repository's root.
+// to the project when inside it, or to the trusted repository's root, else
+// with ~ for the home directory.
 func (h *Host) shownArg(req tools.Request) string {
 	if !tools.PathSubject(req.Subject) {
 		return req.Arg
 	}
-	return h.relPath(req.Arg)
+	return TildePath(h.relPath(req.Arg))
 }
 
 // relPath is path relative to the project, else to the trusted

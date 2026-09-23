@@ -448,7 +448,7 @@ func TestInterruptKeys(t *testing.T) {
 // escape sequences from model input stripped.
 func TestPermissionPreview(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 20)
-	done := make(chan struct{})
+	done, done2 := make(chan struct{}), make(chan struct{})
 	go func() {
 		app.AskPermission(hostapi.PermRequest{Subject: "fs.write", Arg: "main.go\x1b[31m", Reason: "edit file",
 			Preview: "- old line\n+ new line"})
@@ -465,6 +465,20 @@ func TestPermissionPreview(t *testing.T) {
 	}
 	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	<-done
+
+	// a long target wraps at its slashes instead of losing its end
+	long := "/opt/src/github.com/example/project/internal/interpreter/starlark/int_test.go"
+	go func() {
+		app.AskPermission(hostapi.PermRequest{Subject: "fs.read", Arg: long, Reason: "read"})
+		close(done2)
+	}()
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.renderSync(t)
+	if plain := ansi.Strip(app.Frame()); !strings.Contains(plain, "int_test.go") || !strings.Contains(plain, "/opt/src/") {
+		t.Fatalf("target cut:\n%s", plain)
+	}
+	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	<-done2
 }
 
 // TestLuaSelect drives zemi.ui.select from Lua: enter hands the chosen item
