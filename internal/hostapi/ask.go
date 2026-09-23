@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -297,11 +298,15 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		what := map[string]string{"fs.write": "edits", "fs.read": "reads"}[req.Subject]
 		// a directory glob would cover the next secret too, and Check re-asks
 		// for it; the one file the user saw is safe to allow
-		if h.secretPath(abs) {
-			return fmt.Sprintf("allow %s of %s", what, h.relPath(abs)), []perm.Rule{rule(req.Subject, abs)}
-		}
 		dir := filepath.Dir(abs)
-		shown := h.relPath(dir)
+		// home, / and the dirs between hold every dotfile, so a directory rule
+		// would cover ~/.ssh and ~/Library/LaunchAgents too
+		home, _ := os.UserHomeDir()
+		_, aboveHome := perm.Under(dir, perm.RealPath(home))
+		if h.secretPath(abs) || dir == "/" || home != "" && aboveHome {
+			return fmt.Sprintf("allow %s of %s", what, TildePath(h.relPath(abs))), []perm.Rule{rule(req.Subject, abs)}
+		}
+		shown := TildePath(h.relPath(dir))
 		// the rule's * spans separators, so the label says so
 		where := "in " + shown + "/ and below"
 		if shown == "." {

@@ -984,6 +984,7 @@ func TestAlwaysChoice(t *testing.T) {
 	h, _ := newTestHost(t)
 	t.Chdir(h.Dirs.ProjectDir)
 	proj := perm.RealPath(h.Dirs.ProjectDir) // rules name the resolved dir
+	home := perm.RealPath(os.Getenv("HOME"))
 	for _, c := range []struct {
 		req      tools.Request
 		label    string
@@ -1031,6 +1032,10 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "time ls"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && sudo ls"}, "", nil},
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}, "allow edits in internal/ and below", []string{filepath.Join(proj, "internal", "*")}},
+		// home, / and above hold every dotfile: only the file, named with ~
+		{tools.Request{Subject: "fs.write", Arg: filepath.Join(home, ".zshrc")}, "allow edits of ~/.zshrc", []string{filepath.Join(home, ".zshrc")}},
+		{tools.Request{Subject: "fs.write", Arg: "/foo.txt"}, "allow edits of /foo.txt", []string{"/foo.txt"}},
+		{tools.Request{Subject: "fs.read", Arg: filepath.Join(home, "notes", "a.md")}, "allow reads in ~/notes/ and below", []string{filepath.Join(home, "notes", "*")}},
 		// the gate asks about a protected write whatever the rules say
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, ".zemi", "init.lua")}, "", nil},
 		// Pipeline.Check sends a secret-shaped file back to the ask whatever a model rule says
