@@ -243,8 +243,8 @@ func (a *App) restoreQueue() bool {
 }
 
 // SplitCommand splits "name arg string" into the command name and the raw
-// argument string. The name ends at any whitespace: piped stdin or a
-// shift+enter line may follow it with a newline.
+// argument string. The name ends at any whitespace: a shift+enter line may
+// follow it.
 func SplitCommand(raw string) (name, args string) {
 	i := strings.IndexFunc(raw, unicode.IsSpace)
 	if i < 0 {

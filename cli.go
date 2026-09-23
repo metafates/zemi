@@ -153,9 +153,8 @@ func normalizeVersion(v string) string {
 }
 
 // readStdin attaches piped stdin to the prompt in print mode, behind the
-// marker that ends what the user typed; --health
-// ignores stdin. The TUI needs
-// the terminal on stdin, so a pipe there is a usage error.
+// marker that ends what the user typed; --health ignores stdin. The TUI
+// needs the terminal on stdin, so a pipe there is a usage error.
 func (o *options) readStdin(stdin *os.File) error {
 	fi, err := stdin.Stat()
 	if o.health || err != nil || fi.Mode()&os.ModeCharDevice != 0 {
