@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
@@ -258,7 +259,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 			p := patterns[0]
 			if !seen[p] {
 				seen[p] = true
-				names = append(names, "`"+truncRunes(p, 24)+"`")
+				names = append(names, "`"+alwaysName(p)+"`")
 			}
 		}
 		if len(rules) == 0 {
@@ -310,6 +311,19 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		return "", nil
 	}
 	return "allow this", []perm.Rule{rule(req.Subject, req.Arg)}
+}
+
+// alwaysName is a pattern as the always label names it: a long one loses
+// its middle, never the program or the subcommand word the rule ends on.
+func alwaysName(p string) string {
+	const n = 24
+	f := strings.Fields(p)
+	if utf8.RuneCountInString(p) <= n || len(f) < 3 {
+		return truncRunes(p, n)
+	}
+	head, last := f[0], f[len(f)-1]
+	room := n - utf8.RuneCountInString(head+last) - len("  ...")
+	return head + " " + truncRunes(strings.Join(f[1:len(f)-1], " "), max(room, 0)) + " " + last
 }
 
 // bashAlwaysPatterns turns one command segment into the allow-lookup patterns

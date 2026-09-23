@@ -972,6 +972,7 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "git --no-pager log -5"}, "allow `git --no-pager log`", []string{"git --no-pager log", "git --no-pager log *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "git -C sub status"}, "allow `git -C sub status`", []string{"git -C sub status", "git -C sub status *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "cargo +nightly build"}, "allow `cargo +nightly build`", []string{"cargo +nightly build", "cargo +nightly build *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "git -C /other/repo status"}, "allow `git -C /other/... status`", []string{"git -C /other/repo status", "git -C /other/repo status *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "git --version"}, "allow this exact command", []string{"git --version"}},
 		// a path or capitalized spelling is the same program: `/usr/bin/git *` would be every subcommand
 		{tools.Request{Subject: "tool.bash", Arg: "/usr/bin/git push"}, "allow `/usr/bin/git push`", []string{"/usr/bin/git push", "/usr/bin/git push *"}},
