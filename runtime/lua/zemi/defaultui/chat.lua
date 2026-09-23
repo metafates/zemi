@@ -312,7 +312,7 @@ zemi.ui.widget.add({
         local kind = dl:sub(1, 1)
         -- a bare "@@" is a hunk of the input-only preview: no numbers
         if a or dl == "@@" then
-          if hunks > 0 then lines[#lines + 1] = { { text = "      ⋮", hl = "Comment", copy = false } } end
+          if hunks > 0 then lines[#lines + 1] = { { text = "      ⋯", hl = "Comment", copy = false } } end
           hunks = hunks + 1
           old, new, numbered = tonumber(a) or 0, tonumber(b) or 0, a ~= nil
         -- file headers come before the first hunk; after it "---" is a removed "-- " line

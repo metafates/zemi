@@ -66,7 +66,7 @@ type Request struct {
 	Subject string // tool.bash, fs.read, fs.write, net.<host>
 	Arg     string // path, url or normalized command segment
 	Reason  string // human-facing description for the overlay
-	Preview string // file tools: the proposed change as a unified diff
+	Preview string // a file tool's unified diff, a script, or a memory's text
 	// Description is the model's own summary of a command; the command is
 	// what gets checked and shown, this only helps the user read it
 	Description string

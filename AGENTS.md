@@ -135,7 +135,7 @@ Boot runs on its own goroutine and may block on the trust prompt.
 `Dirs.TrustRoot()` (the symlink-resolved repo root, searched no higher than below `$HOME` so a
 dotfiles repo is nobody's root; a linked worktree maps to its main checkout by reading the
 `.git` file, never by running git) and saved in `<state>/trust.json`. Order: a decision held
-for this process (`--trust`, an esc answer, `/trust` where saving is impossible), the saved
+for this process (`--trust`, a Later answer, `/trust` where saving is impossible), the saved
 one, then the Go-owned prompt. `$HOME` and `/` are never asked about or saved
 (`hostapi.TrustUnsaved`). `/trust` reopens the prompt off the UI goroutine, saves, calls
 `Host.SetProjectTrusted` and reloads when the decision changed (a reload that fails before the
