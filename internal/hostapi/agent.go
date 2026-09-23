@@ -776,6 +776,9 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	// a new step thinks: what the last one showed goes above it
+	// NOTE: reasoning a provider interleaves after a call still open in the
+	// same step draws above that call live and below it on resume; an
+	// ordered live list would fix it.
 	if len(ag.tools) > 0 || strings.TrimSpace(ag.textBuf) != "" {
 		s.h.flushOutput(TurnStat{})
 	}
