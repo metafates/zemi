@@ -321,8 +321,10 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 	h.Dirs.StateHome = t.TempDir()
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	always := perm.Rule{Subject: "tool.bash", Pattern: "git push *", Decision: perm.Allow, Principal: "model"}
-	h.Perm.Add(always)
+	// one always answer writes both forms
+	for _, p := range []string{"git push", "git push *"} {
+		h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: p, Decision: perm.Allow, Principal: "model"})
+	}
 	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "rm -rf *", Decision: perm.Deny})
 	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "make *", Decision: perm.Allow, Source: "permissions"})
 	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "curl *", Decision: perm.Ask, Source: "project"})
@@ -330,8 +332,8 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 		t.Fatalf("open: %v %+v", err, ui.opened)
 	}
 	rows := fmt.Sprint(ui.opened[0].Items)
-	if !strings.Contains(rows, "tool.bash git push *") || !strings.Contains(rows, "run:permissions forget tool.bash git push *") {
-		t.Fatalf("rules not listed with a way back:\n%s", rows)
+	if strings.Count(rows, "text:tool.bash git push") != 1 || !strings.Contains(rows, "text:tool.bash git push *") || !strings.Contains(rows, "run:permissions forget tool.bash git push ") {
+		t.Fatalf("the answer is not one row with a way back:\n%s", rows)
 	}
 	// each rule says where to edit it
 	for _, want := range []string{"/permissions; edit that file", "from the project's .zemi/init.lua", "from config; edit permissions in your init.lua"} {
@@ -342,11 +344,13 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 	if err := h.ForgetRule("tool.bash rm -rf *"); err == nil {
 		t.Error("a config rule must not be removable: a reload brings it back")
 	}
-	if err := h.ForgetRule("tool.bash git push *"); err != nil {
+	if err := h.ForgetRule("tool.bash git push"); err != nil {
 		t.Fatal(err)
 	}
-	if h.Perm.Evaluate("tool.bash", "git push origin main", "model").Decision != perm.Ask {
-		t.Error("the removed rule still allows")
+	for _, cmd := range []string{"git push", "git push origin main"} {
+		if h.Perm.Evaluate("tool.bash", cmd, "model").Decision != perm.Ask {
+			t.Errorf("%s: half of the removed answer still allows", cmd)
+		}
 	}
 }
 

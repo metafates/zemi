@@ -355,7 +355,8 @@ sends a file request a `model` glob rule allowed back to the ask when `Secret` m
 reader names one (`perm.ReadsSecret`: `cat .env`, `cat .e*`) when a `model` rule or a
 permissions file line allowed it (`perm.Rule.Source`); a user-config rule has no principal,
 stays authoritative, and shows read-only in `/permissions` with its source (init.lua, the
-permissions file, a project's `.zemi/init.lua`), while a `model` rule gets a Remove action.
+permissions file, a project's `.zemi/init.lua`), while each always answer is one row (its
+bare and wildcard rules, `answerKey`) whose Remove drops both.
 `sandbox: false` is denied outright for a read-only agent (`Pipeline.Check`, before any mode
 could settle it), and its sandbox hint offers only `network: true`.
 

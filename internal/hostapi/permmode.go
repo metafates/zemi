@@ -130,6 +130,7 @@ func (h *Host) permItems() []any {
 	slices.SortStableFunc(rules, func(a, b perm.Rule) int {
 		return cmp.Or(cmp.Compare(permRank[a.Decision], permRank[b.Decision]), cmp.Compare(a.Subject, b.Subject), cmp.Compare(a.Pattern, b.Pattern))
 	})
+	answers := map[string]map[string]any{} // one row per always answer
 	for _, r := range rules {
 		desc := ""
 		if r.NotMatch != "" {
@@ -143,7 +144,15 @@ func (h *Host) permItems() []any {
 			"section": string(r.Decision) + " rules",
 		}
 		if r.Principal == "model" {
-			forget := "permissions forget " + r.Subject + " " + r.Pattern
+			// an answer writes p and "p *" (a host and its paths): one row,
+			// named by the pattern that covers the other, removes both
+			id := r.Subject + " " + answerKey(r.Pattern)
+			if row := answers[id]; row != nil {
+				row["text"] = r.Subject + " " + r.Pattern
+				continue
+			}
+			answers[id] = item
+			forget := "permissions forget " + id
 			item["key"], item["run"] = "session", forget
 			item["actions"] = []any{map[string]any{"text": "Remove", "run": forget}}
 			item["detail"] = "an always answer this session; removing it makes the next call ask again"
@@ -164,13 +173,20 @@ func (h *Host) permItems() []any {
 	return items
 }
 
+// answerKey is a session rule's pattern without the " *" or "/*" an always
+// answer adds to the pattern it also writes bare.
+func answerKey(pattern string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(pattern, " *"), "/*")
+}
+
 // ForgetRule drops the session rules an "always" answer wrote for one
-// subject and pattern. Config rules stay: a reload would bring them back.
+// subject and pattern, the bare and the wildcard form alike. Config rules
+// stay: a reload would bring them back.
 func (h *Host) ForgetRule(arg string) error {
 	subject, pattern, _ := strings.Cut(strings.TrimSpace(arg), " ")
 	gone := false
 	for _, r := range h.Perm.Rules() {
-		if r.Principal == "model" && r.Subject == subject && r.Pattern == pattern {
+		if r.Principal == "model" && r.Subject == subject && answerKey(r.Pattern) == answerKey(pattern) {
 			h.Perm.Remove(r)
 			gone = true
 		}
