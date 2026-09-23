@@ -24,17 +24,28 @@ type DB struct {
 }
 
 // Open creates the parent directory if needed and opens the database with
-// WAL journalling.
+// WAL journalling. Every transaction takes the write lock at BEGIN, so one
+// that reads first waits on busy_timeout for another process instead of
+// failing its upgrade with SQLITE_BUSY.
 func Open(path string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("store: create dir: %w", err)
 	}
-	d, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	d, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate")
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
 	d.SetMaxOpenConns(1)
 	s := &DB{db: d, path: path}
+	// switching to WAL takes an exclusive lock that busy_timeout does not wait
+	// for, so a second process creating the same store retries; the mode sticks
+	// to the file, and one that never gets it runs with a rollback journal
+	for range 100 {
+		if _, err = d.Exec(`PRAGMA journal_mode = WAL`); err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if err := s.migrate(); err != nil {
 		d.Close()
 		return nil, err
@@ -164,36 +175,31 @@ var migrations = [][]string{
 }
 
 func (s *DB) migrate() error {
+	// one transaction, so a second process opening the same file waits and
+	// then reads the version this one stamped
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("store: migrate: %w", err)
+	}
+	defer tx.Rollback()
 	// A database this call creates gets every column from schema, so it is
 	// current by construction and must be stamped: otherwise the first
 	// migration ever added would run its ALTER against a table that already
 	// has the column, and no new project could open its store.
 	var name string
-	fresh := errors.Is(s.db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1`).Scan(&name), sql.ErrNoRows)
-	if _, err := s.db.Exec(schema); err != nil {
+	fresh := errors.Is(tx.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1`).Scan(&name), sql.ErrNoRows)
+	if _, err := tx.Exec(schema); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
-	if fresh {
-		if _, err := s.db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations))); err != nil {
-			return fmt.Errorf("store: stamp user_version: %w", err)
+	version := len(migrations)
+	if !fresh {
+		if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+			return fmt.Errorf("store: read user_version: %w", err)
 		}
-		return nil
-	}
-	var version int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
-		return fmt.Errorf("store: read user_version: %w", err)
 	}
 	if version > len(migrations) {
 		return fmt.Errorf("store: %s is at schema version %d, this zemi knows %d; upgrade zemi", s.path, version, len(migrations))
 	}
-	if version == len(migrations) {
-		return nil
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
 	for i := version; i < len(migrations); i++ {
 		for _, stmt := range migrations[i] {
 			if _, err := tx.Exec(stmt); err != nil {

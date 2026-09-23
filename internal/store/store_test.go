@@ -44,10 +44,9 @@ func TestSchemaVersion(t *testing.T) {
 	}
 }
 
-// TestMigrateOldDatabase: a store written before the dead telemetry
-// columns went away opens, drops them and still records tool calls.
-func TestMigrateOldDatabase(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "zemi.db")
+// oldDatabase writes a store at schema version 0 to path.
+func oldDatabase(t *testing.T, path string) {
+	t.Helper()
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -65,8 +64,14 @@ func TestMigrateOldDatabase(t *testing.T) {
 		}
 	}
 	db.Close()
+}
 
-	db, err = Open(path)
+// TestMigrateOldDatabase: a store written before the dead telemetry
+// columns went away opens, drops them and still records tool calls.
+func TestMigrateOldDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zemi.db")
+	oldDatabase(t, path)
+	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +85,41 @@ func TestMigrateOldDatabase(t *testing.T) {
 	var cols int
 	if err := db.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tool_calls')`).Scan(&cols); err != nil || cols != 5 {
 		t.Fatalf("tool_calls columns = %d, %v; want 5", cols, err)
+	}
+}
+
+// TestConcurrentOpen: two processes opening one store at once, as restored
+// terminal panes do after an upgrade, both start.
+func TestConcurrentOpen(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		setup func(t *testing.T, path string)
+	}{
+		{"new path", func(*testing.T, string) {}},
+		{"old schema", oldDatabase},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			for range 30 {
+				path := filepath.Join(t.TempDir(), "zemi.db")
+				c.setup(t, path)
+				// two handles are two connections, which is what two processes hold
+				errs := make(chan error, 2)
+				for range 2 {
+					go func() {
+						db, err := Open(path)
+						if err == nil {
+							db.Close()
+						}
+						errs <- err
+					}()
+				}
+				for range 2 {
+					if err := <-errs; err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+		})
 	}
 }
 
