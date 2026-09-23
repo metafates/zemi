@@ -824,7 +824,7 @@ func GitWrites(cmd string) string {
 			writes = first == "expire" || first == "delete"
 		}
 		if writes {
-			return "git " + sub + " writes to .git, which the sandbox keeps read-only"
+			return "git " + sub + " writes .git, which stays read-only in the sandbox; allowing runs it unconfined"
 		}
 	}
 	return ""

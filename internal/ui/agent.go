@@ -633,7 +633,7 @@ func permNote(reason string) (string, string) {
 	case reason == "":
 		return "", ""
 	case strings.HasPrefix(reason, "agent "):
-		// "agent <name>: <its reason>; not settled: <why it asked>"
+		// "agent <name>: <its reason>; <why it asked>"
 		head, why, _ := strings.Cut(strings.TrimPrefix(reason, "agent "), "; ")
 		who, own, _ := strings.Cut(head, ": ")
 		note := "asked by the " + who + " agent"

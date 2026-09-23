@@ -998,7 +998,7 @@ func TestToolRows(t *testing.T) {
 		{Name: "grep", Input: strings.Repeat("pattern ", 30), Status: "ok"},
 		{Name: "bash", Input: "make slow", Label: "Build it", Status: "ok", Output: "still running, so it " + tools.JobHandoff + "job-1"},
 		// a verdict the user gave shows as one line; the model keeps the reason and the instructions
-		{Name: "write", Input: "b.go", Status: "err", Output: "permission denied (user): fs.write /p/b.go: it asked because not settled: this project is not trusted (/trust)"},
+		{Name: "write", Input: "b.go", Status: "err", Output: "permission denied (user): fs.write /p/b.go: it asked because this project is not trusted (/trust)"},
 		{Name: "plan", Input: "# Plan", Status: "ok", Output: "The user approved the plan. Implement it now: track its steps with todos, carry them through, verify, and report.\nThe plan is saved at /data/plans/s1.md."},
 		{Name: "plan", Input: "# Plan", Status: "ok", Output: "The user has not approved the plan and asked for changes: use go\nRevise the plan, ask with the question tool if something is still unclear, and call plan again."},
 	}})
@@ -1175,9 +1175,9 @@ func TestPermBoxFitsShortScreen(t *testing.T) {
 func TestPermNote(t *testing.T) {
 	for _, c := range []struct{ reason, want string }{
 		{"", ""},
-		{"not settled: rm -rf build may delete many files", "not settled: rm -rf build may delete many files"},
-		{"agent general; not settled: rm -rf build may delete many files", "asked by the general agent: not settled: rm -rf build may delete many files"},
-		{"agent general: read diagnostics; not settled: this project is not trusted", "asked by the general agent: read diagnostics; not settled: this project is not trusted"},
+		{"rm -rf build may delete many files", "rm -rf build may delete many files"},
+		{"agent general; rm -rf build may delete many files", "asked by the general agent: rm -rf build may delete many files"},
+		{"agent general: read diagnostics; this project is not trusted", "asked by the general agent: read diagnostics; this project is not trusted"},
 		{"agent web", "asked by the web agent"},
 	} {
 		if got, _ := permNote(c.reason); got != c.want {

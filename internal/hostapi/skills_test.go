@@ -376,7 +376,7 @@ func TestRecipes(t *testing.T) {
 				t.Errorf("%s: %v %q, want %q", c.name, err, resp.Content, c.out)
 			}
 			// no mode settles a recipe and no rule could: Always stays empty
-			if len(ui.asked) != 1 || ui.asked[0].Always != "" || !strings.Contains(ui.asked[0].Reason, "not settled") ||
+			if len(ui.asked) != 1 || ui.asked[0].Always != "" || !strings.Contains(ui.asked[0].Reason, "zemi's own files") ||
 				strings.Contains(ui.asked[0].Reason, "outside the machine") != c.outside {
 				t.Errorf("%s: asked %+v", c.name, ui.asked)
 			}

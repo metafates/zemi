@@ -108,7 +108,7 @@ func TestUntrustedModes(t *testing.T) {
 		if ok != c.want {
 			t.Errorf("%s trusted=%v live=%v %s %q: got %v", c.mode, c.trusted, c.live, c.subject, c.arg, ok)
 		}
-		if untrusted := "not settled: this project is not trusted (/trust)"; c.mode == "auto" && !c.trusted && !ok && why != untrusted {
+		if untrusted := "this project is not trusted (/trust)"; c.mode == "auto" && !c.trusted && !ok && why != untrusted {
 			t.Errorf("%s %q: ask reason %q", c.subject, c.arg, why)
 		}
 	}
@@ -118,8 +118,8 @@ func TestUntrustedModes(t *testing.T) {
 	h.SetPermMode("auto")
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, ".env"), []byte("K=1"), 0o600)
 	for _, c := range []struct{ subject, arg, why string }{
-		{"fs.read", filepath.Join(h.Dirs.ProjectDir, ".env"), "not settled: this file looks like it holds secrets"},
-		{"net.example.com", "https://example.com/", "not settled: the URL is the model's"},
+		{"fs.read", filepath.Join(h.Dirs.ProjectDir, ".env"), "this file looks like it holds secrets"},
+		{"net.example.com", "https://example.com/", "a fetch always asks: the model chose the address"},
 	} {
 		if ok, _, why := ask(tools.Request{Subject: c.subject, Arg: c.arg}); ok || why != c.why {
 			t.Errorf("%s %s: allowed %v, reason %q", c.subject, c.arg, ok, why)

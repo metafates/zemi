@@ -97,37 +97,37 @@ func (h *Host) askHook() tools.Asker {
 			req.Reason = "needs the network, staying sandboxed"
 		case req.Explicit:
 			// whoever wrote the rule wanted to see this; only yolo overrides it
-			note("not settled: a rule asks for this")
+			note("a rule asks for this")
 		case base == "auto":
 			if h.autoLocal(req) {
 				return resolved(true, "mode:"+def.Name)
 			}
 			switch {
 			case req.Subject == "fs.write" && h.protectedWrite(req.Arg):
-				note("not settled: this changes .git, .zemi or zemi's own files")
+				note("this changes what git or zemi runs (.git, .gitattributes, .gitmodules, .zemi, zemi's own files)")
 			case tools.PathSubject(req.Subject) && h.secretPath(req.Arg):
-				note("not settled: this file looks like it holds secrets")
+				note("this file looks like it holds secrets")
 			case strings.HasPrefix(req.Subject, "net."):
-				note("not settled: the URL is the model's")
+				note("a fetch always asks: the model chose the address")
 			case req.Subject == "fs.write" && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...):
 				// the sandbox cannot confine the write tool, and a file outside the
 				// project (~/.gitconfig, a shell rc) can name what runs next; the
 				// write jail is the launch dir even in a trusted repository (the
 				// sandbox's write root), so a sibling package says which dir
 				if launch := h.launchDirInRepo(); launch != "" && h.inJail(req.Arg, h.Dirs.RepoRoot()) {
-					note("not settled: this changes a file outside " + launch + ", the directory zemi was started in")
+					note("this changes a file outside " + launch + ", the directory zemi was started in")
 				} else {
-					note("not settled: this changes a file outside the project")
+					note("this changes a file outside the project")
 				}
 			case !h.ProjectTrusted():
-				note("not settled: this project is not trusted (/trust)")
+				note("this project is not trusted (/trust)")
 			case req.Subject == "tool.bash" && !h.sandboxLive():
 				// a settled command would run unconfined
-				note("not settled: no sandbox")
+				note("no sandbox")
 			case req.Subject == "tool.bash":
-				note("not settled: " + h.unsettled(req.Arg, req.ReadOnly))
+				note(h.unsettled(req.Arg, req.ReadOnly))
 			default:
-				note("not settled: auto mode settles reads and edits inside the project")
+				note("auto mode settles reads and edits inside the project")
 			}
 		}
 		// a recipe is followed by later sessions, so say when this one could

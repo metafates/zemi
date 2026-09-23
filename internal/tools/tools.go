@@ -276,7 +276,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 		case p.RewriteLoosened:
 			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
 		case req.Subject == "fs.write" && p.Protected != nil && p.Protected(req.Arg):
-			return p.resolveAsk(req, "this changes .git, .zemi or zemi's own files")
+			return p.resolveAsk(req, "this changes what git or zemi runs (.git, .gitattributes, .gitmodules, .zemi, zemi's own files)")
 		// an "always" answer allows the file's whole directory; a rule the
 		// user wrote in init.lua says what it means and stays authoritative
 		case PathSubject(req.Subject) && rule != nil && rule.Principal == "model" && p.Secret != nil && p.Secret(req.Arg):

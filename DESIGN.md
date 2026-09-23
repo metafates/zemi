@@ -1507,7 +1507,7 @@ provenance string.
   tool and no git, which runs programs `.git/config` names) go to the user.
   With no sandbox backend a trusted project also settles only
   `ReadCommand` commands, which run unconfined, and
-  auto mode sends every other command to the user ("not settled: no
+  auto mode sends every other command to the user ("no
   sandbox"), since an approved one would run unconfined.
   A mode added from config may carry a `decide` function that answers one
   ask from Lua ("allow", "deny", anything else leaves it to the user); it
