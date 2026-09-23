@@ -781,7 +781,7 @@ function zemi.event.stats() end
 ---@field items? zemi.OverlayItem[]|any[]
 ---@field render_item? fun(item: any): string|zemi.Line A line's segments keep their `hl` (text, hl only); unstyled ones take the row's.
 ---@field selected? integer 1-based item selected when it opens.
----@field anchor? "bottom" Over the chat's bottom-left, by the statusline; nil centers it.
+---@field anchor? "bottom-left"|"bottom-right" In line with the composer frame's edge, by the statusline pill that opened it; nil centers it.
 ---@field on_select? fun(item: any) Takes enter for every item, so the items' own `fill` and `run` no longer act (a `reload` list runs both).
 ---@field on_action? fun(item: any, action: zemi.OverlayAction) Runs for a detail action with an `id`; the list closes like on on_select, a `reload` list rebuilds.
 ---@field keys? table<string, zemi.OverlayKey> One character each (j, k, /, y and Y are the list's and raise, a row's hotkey wins): a second verb on the selected item, which closes or rebuilds the list like on_action.

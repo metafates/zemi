@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -174,8 +175,9 @@ func TestStaleRenderKeepsNewerLines(t *testing.T) {
 	}
 }
 
-// TestModeSwitchQuiet: tab-style switches only change the pill, and the
-// picker opens at the bottom-left by the statusline instead of mid-chat.
+// TestModeSwitchQuiet: tab-style switches only change the pill, and a
+// picker opens by the statusline instead of mid-chat, its border in line
+// with the composer frame on the side of the pill that opened it.
 func TestModeSwitchQuiet(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 16})
@@ -186,19 +188,20 @@ func TestModeSwitchQuiet(t *testing.T) {
 	if f := a.Frame(); strings.Contains(f, "safe actions run on their own") {
 		t.Fatalf("a switch must not explain itself:\n%s", ansi.Strip(f))
 	}
-	a.openOverlay(hostapi.Overlay{ID: "mode", Title: "Permission mode", Items: []any{"manual", "auto"}, Anchor: "bottom"})
-	rows := strings.Split(ansi.Strip(a.Frame()), "\r\n")
-	bottom := -1
-	for i, row := range rows {
-		if strings.Contains(row, "Permission mode") && !strings.HasPrefix(row, " ┌") {
-			t.Fatalf("picker not at the left edge: %q", row)
+	for _, anchor := range []string{"bottom-left", "bottom-right"} {
+		a.openOverlay(hostapi.Overlay{ID: "mode", Title: "Permission mode", Items: []any{"manual", "auto"}, Anchor: anchor})
+		rows := strings.Split(ansi.Strip(a.Frame()), "\r\n")
+		edge := func(row string) bool {
+			if anchor == "bottom-left" {
+				return strings.HasPrefix(row, "┌ Permission mode") || strings.HasPrefix(row, "└─")
+			}
+			return strings.HasSuffix(row, "┐") || strings.HasSuffix(row, "─┘")
 		}
-		if strings.HasPrefix(row, " └") {
-			bottom = i
+		top := slices.IndexFunc(rows, func(row string) bool { return strings.Contains(row, "Permission mode") })
+		if last := a.stage.Max.Y - 1; top < 0 || !edge(rows[top]) || !edge(rows[last]) {
+			t.Fatalf("%s: picker rows %d and %d not in line with the composer frame:\n%s", anchor, top, last, strings.Join(rows, "\n"))
 		}
-	}
-	if bottom != a.stage.Max.Y-1 {
-		t.Fatalf("picker ends on row %d, want the last chat row %d", bottom, a.stage.Max.Y-1)
+		a.closeOverlayByID("mode")
 	}
 }
 
@@ -231,7 +234,7 @@ func TestToastCap(t *testing.T) {
 	for _, r := range toastBox(app.toasts[0], 80) {
 		rows = append(rows, strings.TrimSpace(plainSegs(r)))
 	}
-	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Keymap ctrl+t failed ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasPrefix(rows[toastRows], "│ ... full error in /errors") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
+	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Keymap ctrl+t failed ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasPrefix(rows[toastRows], "│ … full error in /errors") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
 		t.Fatalf("toast rows: %q", rows)
 	}
 	if !host.HasUnseenErrors() {

@@ -22,6 +22,8 @@ type planAskPrompt struct {
 	typing bool
 	input  composerState
 	mode   string // "in <mode> mode" when a mode switch follows approval
+	size   boxSize
+	text   textRows
 	answer chan planAnswer
 }
 
@@ -84,39 +86,39 @@ func (a *App) planKey(key, text string) {
 		a.finishPlan(tools.PlanVerdict{Approved: true}, true)
 	case "e": // edit: every key, j/k included, types from here on
 		p.typing, p.input = true, composerState{}
-	case "esc", "q":
+	case "esc":
 		a.finishPlan(tools.PlanVerdict{}, false)
 	}
 }
 
 // planBox draws the plan popup: the plan as scrollable markdown, the
 // changes input when typing, and the hints.
-func (a *App) planBox(p *planAskPrompt, w, chatH int) [][]hostapi.Segment {
+func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	inner := boxInner(w)
-	var input [][]hostapi.Segment
-	var hints []string
+	var ask, input [][]hostapi.Segment
+	hints := []hintPair{{"enter", "approve"}, {"e", "request changes"}, {"esc", "dismiss"}}
 	if p.typing {
-		input = [][]hostapi.Segment{
-			{{Text: ""}},
-			{{Text: "What should change?", HL: "Host:Hint"}},
-			{{Text: ""}},
-			p.input.inputRow(inner),
+		ask, input = [][]hostapi.Segment{{{Text: "What should change?", HL: "Host:Hint"}}}, [][]hostapi.Segment{p.input.inputRow(inner)}
+		hints = []hintPair{{"enter", "send changes"}, {"esc", "back"}}
+	}
+	// a text view is 72 cells
+	p.size.w = max(p.size.w, 72)
+	planW := min(inner, p.size.w)
+	md := p.text.at(func(w int) [][]hostapi.Segment { return a.host.Markdown(p.plan, w) })
+	planN := len(md(planW))
+	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
+		tight := level > 0
+		p.view.viewH = max(h-2-len(stack(tight, oneRow, ask, input, oneRow))+1, 1)
+		plan := p.view.window(p.view.wrap(md, planW), planW)
+		if planN == 0 {
+			plan = emptyRows("The plan is empty.", inner)
 		}
-		hints = []string{"enter", "send changes", "esc", "back"}
-	} else {
-		hints = []string{"enter", "approve", "e", "request changes", "esc", "dismiss"}
-	}
-	// borders, the two blanks and the hint hold five rows; the input takes the rest
-	p.view.viewH = max(chatH-len(input)-5, 1)
-	plan := p.view.wrap(func(w int) [][]hostapi.Segment { return a.host.Markdown(p.plan, w) }, inner)
-	if len(plan) == 0 {
-		plan = [][]hostapi.Segment{{{Text: "(empty plan)"}}}
-	}
-	plan = p.view.window(plan, inner)
-	hints = slices.Insert(hints, len(hints)-2, scrolls(p.view)...)
+		hintRow := hint(inner, slices.Concat(hints, scrolls(p.view))...)
+		return stack(tight, plan, ask, input, [][]hostapi.Segment{hintRow}), p.view.viewH < min(planN, 3)
+	})
 	badge := ""
 	if p.mode != "" {
 		badge = "back to " + p.mode + " on approve"
 	}
-	return promptBox(" Plan ", badge, append(append(plan, input...), nil), hintLine(boxInner(w), hints...), w, 100)
+	return promptBox("Plan", badge, body, w, h, 100, &p.size)
 }

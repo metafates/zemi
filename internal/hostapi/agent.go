@@ -1637,7 +1637,7 @@ func (h *Host) OpenModelPicker() error {
 			items = append(items, item)
 		}
 	}
-	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No models yet: " + h.noModelHint(false)}
+	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom-right", Verb: "pick", Empty: "No models yet: " + h.noModelHint(false)}
 	prov, _, _ := strings.Cut(cur, "/")
 	_, registered := h.Providers.Lookup(prov)
 	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
@@ -1902,7 +1902,7 @@ func (h *Host) OpenProfilePicker() error {
 		}
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "profile", Title: "Profile", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom"})
+	ui.OpenOverlay(Overlay{ID: "profile", Title: "Profile", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom-right", Verb: "pick"})
 	return nil
 }
 

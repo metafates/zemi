@@ -22,6 +22,7 @@ type cmdPalette struct {
 	argStart int                      // rune index where the argument under the cursor starts
 	selected int
 	view     viewport
+	size     boxSize // typing never narrows or shortens the popup
 }
 
 func (p *cmdPalette) count() int {
@@ -91,7 +92,7 @@ func (a *App) updatePalette() {
 
 func (p *cmdPalette) close() {
 	p.open = false
-	p.selected, p.view = 0, viewport{}
+	p.selected, p.view, p.size = 0, viewport{}, boxSize{}
 	p.matches, p.args = nil, nil
 }
 
@@ -129,7 +130,7 @@ func (a *App) acceptPalette() {
 }
 
 // paletteRows renders the popup rows shown above the composer, at most
-// room rows of at most maxW cells.
+// room rows of at most maxW cells, the hint included.
 func (a *App) paletteRows(maxW, room int) [][]hostapi.Segment {
 	p := &a.palette
 	if !p.open || p.count() == 0 {
@@ -142,7 +143,16 @@ func (a *App) paletteRows(maxW, room int) [][]hostapi.Segment {
 	for _, c := range p.args {
 		items = append(items, listItem{label: c.Text, desc: c.Desc})
 	}
-	return listRows(items, p.selected, &p.view, min(8, room), maxW)
+	rows := listRowsW(items, items, p.selected, &p.view, min(8, room-2), p.size.w, maxW)
+	for len(rows) < min(p.size.h, room-2) {
+		rows = append(rows, nil)
+	}
+	rows = append(rows, nil, hint(maxW, hintPair{"enter", "run"}, hintPair{"tab", "complete"}, hintPair{"esc", "close"}))
+	for _, r := range rows {
+		p.size.w = max(p.size.w, segsWidth(r))
+	}
+	p.size.h = max(p.size.h, len(rows)-2)
+	return rows
 }
 
 // clearComposer empties the draft and closes both popups. The paste map

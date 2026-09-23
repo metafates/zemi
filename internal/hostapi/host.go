@@ -97,12 +97,12 @@ type Overlay struct {
 	OnClose  *glua.LFunction
 	Keys     []OverlayKey // list-level keys, named in the footer
 	Gen      Gen
-	Anchor   string // "bottom": over the chat's bottom-left, by the statusline; "" centered
+	Anchor   string // "bottom-left" or "bottom-right": in line with the composer frame, by the pill that opened it; "" centered
 
 	// Body is text above the items; with no items the overlay is a
 	// read-only view. Empty is the line shown when there are no items and
 	// no body. Selected is the item selected when it opens. Verb names what
-	// enter does to a row, when "select" does not say it.
+	// enter does to a row, when "confirm" does not say it.
 	Body     string
 	BodyMD   bool        // render Body (and every detail view's) as markdown
 	BodySegs [][]Segment // Body as styled rows, drawn in its place; Body is what y copies
@@ -1536,7 +1536,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.73.0"))
+	api.RawSetString("version", glua.LString("0.74.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

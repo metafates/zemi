@@ -781,8 +781,13 @@ func (a *App) compose(w, h int) string {
 	// It centers over the stage, or the screen when the stage is too small
 	// for a prompt.
 	area := stage
-	if area.Dx() < 40 || area.Dy() < 12 {
+	if area.Dx() < 40 || area.Dy() < 8 {
+		// NOTE: no box fits a stage under 8 rows, so it covers the screen, composer included
 		area = uv.Rect(0, 0, w, h)
+	}
+	frame := lay.rects["composer"]
+	if frame.Empty() {
+		frame = area
 	}
 	var modals []func()
 	a.chromeRect = uv.Rectangle{}
@@ -793,9 +798,9 @@ func (a *App) compose(w, h int) string {
 		if i+1 < len(a.overlays) && a.overlays[i+1].back {
 			continue // a detail view replaces the list it opened from
 		}
-		if ov := &a.overlays[i]; ov.o.Anchor == "bottom" {
-			box := a.overlayBox(ov, area.Dx(), area.Dy())
-			modals = append(modals, func() { rows, a.chromeRect = anchorBottom(rows, box, area, w) })
+		if ov := &a.overlays[i]; ov.o.Anchor != "" {
+			box, right := a.overlayBox(ov, area.Dx(), area.Dy()), ov.o.Anchor == "bottom-right"
+			modals = append(modals, func() { rows, a.chromeRect = anchorBottom(rows, box, area, frame, right, w) })
 		} else {
 			splice(a.overlayBox(ov, area.Dx(), area.Dy()))
 		}
@@ -1168,14 +1173,10 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 		rows = wrapText(t.body, "Normal", inner)
 	}
 	if len(rows) > toastRows {
-		more := map[bool]string{true: "... full error in /errors", false: "..."}[t.recorded]
-		rows = append(rows[:toastRows-1], []hostapi.Segment{{Text: more, HL: "Comment"}})
+		more := map[bool]string{true: "… full error in /errors", false: "…"}[t.recorded]
+		rows = append(rows[:toastRows-1], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
 	}
-	title := ""
-	if t.title != "" {
-		title = " " + ansi.Truncate(t.title, inner, "…") + " "
-	}
-	return hostBoxW(title, level, "", rows, w, 60)
+	return hostBoxW(t.title, level, "", rows, w, 60, 0)
 }
 
 // ---------------------------------------------------------------------------

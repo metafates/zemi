@@ -172,15 +172,17 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		{key: "y", label: "Trust", desc: saved},
 		{key: "n", label: "Don't trust", desc: saved},
 		{key: "esc", label: later, desc: laterDesc},
-	}, -1, width)
-	for drop := 1; drop <= 8 && len(body)+len(list)+2 > h; drop++ {
+	}, -1, width, false)
+	// the borders, and the blank row and hint under the answers
+	for drop := 1; drop <= 8 && len(body)+len(list)+4 > h; drop++ {
 		body = slices.DeleteFunc(body, func(r row) bool { return r.drop == drop })
 	}
 	var rows [][]hostapi.Segment
 	for _, r := range body {
 		rows = append(rows, r.segs)
 	}
-	return promptBox("Trust this "+what+"?", "", append(rows, list...), nil, w, 100)
+	rows = append(append(rows, list...), nil, hint(width, hintPair{"esc", "later"}))
+	return promptBox("Trust this "+what+"?", "", rows, w, h, 100, &boxSize{})
 }
 
 // ---------------------------------------------------------------------------

@@ -52,7 +52,6 @@ func TestPlanApproval(t *testing.T) {
 		{"approve outside plan mode", "", []string{"enter"}, tools.PlanVerdict{Approved: true}, true},
 		{"typing requests changes", "", []string{"e", "u", "s", "e", " ", "s", "q", "l", "enter"}, tools.PlanVerdict{Feedback: "use sql"}, true},
 		{"esc dismisses", "", []string{"esc"}, tools.PlanVerdict{}, false},
-		{"q dismisses", "", []string{"q"}, tools.PlanVerdict{}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -934,7 +934,7 @@ zemi.ui.overlay.open({
   id = "model-picker", title = "Model",
   items = zemi.model.list(),
   render_item = function(m) return m.display end,  -- or a line of segments
-  selected = 2, anchor = "bottom",                 -- 1-based; over the statusline
+  selected = 2, anchor = "bottom-right",           -- 1-based; by its statusline pill
   on_select = function(m) zemi.model.set(m.id) end,
 })
 
@@ -1171,8 +1171,10 @@ provenance string.
   session cost when the model spec carries prices (`cost_per_1m_in` /
   `cost_per_1m_out`), and
   the context-window percent, warning colors past 80%/95%).
-  Overlays float, centered or anchored (`anchor = "bottom"`: bottom-left
-  of the chat, over the statusline that opened it). A Lua overlay has
+  Overlays float, centered or anchored (`anchor = "bottom-left"` or
+  `"bottom-right"`: over the statusline, the border in line with the
+  composer frame on the side of the pill that opened it: `/mode` left,
+  `/profile`, `/model` and `/usage` right). A Lua overlay has
   every field a Go-built menu uses (`anchor`, `selected`, a `body` of
   styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
@@ -1337,9 +1339,10 @@ provenance string.
   as do the completion and palette popups, which are not modal; while a
   modal is open everything outside the top box, plugin overlays and widget
   regions too, is dimmed in a fixed host color; at any other time a plugin
-  overlay carries a Go-stamped `plugin:<path>` origin badge. A menu keeps
-  the height it opened with while a filter narrows it, and a click outside
-  it closes it.
+  overlay carries a Go-stamped `plugin:<path>` origin badge. While a box
+  stays open its width and height only grow (a filter narrowing a menu,
+  a question batch's tabs, a detail view, which opens at its list's size,
+  the palette as you type), and a click outside it closes it.
 - **Sanitization**: every model-influenced string is sanitized by Go at
   the cell boundary before it reaches any widget: tool output, assistant
   and reasoning text (before glamour), overlay diff, command, and env

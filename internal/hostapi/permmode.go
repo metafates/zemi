@@ -95,7 +95,7 @@ func (h *Host) OpenModePicker() error {
 		}
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom"})
+	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom-left", Verb: "pick"})
 	return nil
 }
 

@@ -428,7 +428,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		return list(n, sel, func() { a.questionKey("enter", "") })
 	case top == "memReview":
 		mr := a.memReview
-		return list(len(mr.items), &mr.sel, nil)
+		return list(len(mr.visible), &mr.selected, nil)
 	case top == "overlay":
 		st := &a.overlays[len(a.overlays)-1]
 		var open func()

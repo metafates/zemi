@@ -74,7 +74,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.73.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.74.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
@@ -260,13 +260,13 @@ func TestOverlayItemsRenderOnOpen(t *testing.T) {
 		end })
 		zemi.ui.select({ 1 }, { format_item = function(n) return "#" .. n end }, function() end)
 		zemi.ui.overlay.open({ id = "d", body = "text", empty = "none", items = { { text = "a", actions = { { text = "Go", fill = "x" } } } } })
-		zemi.ui.overlay.open({ id = "s", anchor = "bottom", selected = 2, items = { "x", "y" }, render_item = function(s)
+		zemi.ui.overlay.open({ id = "s", anchor = "bottom-right", selected = 2, items = { "x", "y" }, render_item = function(s)
 			return { { text = s, hl = "Title" }, { text = "!" } }
 		end })
 		assert(not pcall(zemi.ui.overlay.open, { id = "t", anchor = "top" }), "an unknown anchor must raise")
 		assert(not pcall(zemi.ui.select, { prompt = "p" }, {}, function() end), "select with the args swapped must raise")
 	`)
-	if s := ui.opened[3]; s.Anchor != "bottom" || s.Selected != 1 || s.ItemText[0][0].HL != "Title" {
+	if s := ui.opened[3]; s.Anchor != "bottom-right" || s.Selected != 1 || s.ItemText[0][0].HL != "Title" {
 		t.Fatalf("segment overlay: %+v", s)
 	}
 	if d := ui.opened[2]; d.Body != "text" || d.Empty != "none" || len(d.Items[0].(map[string]any)["actions"].([]any)) != 1 {

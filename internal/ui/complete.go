@@ -217,7 +217,7 @@ func (a *App) completionRows(maxW, room int) [][]hostapi.Segment {
 		return nil
 	}
 	note := func(text string) []hostapi.Segment {
-		return []hostapi.Segment{{Text: "  " + text, HL: "Comment"}}
+		return []hostapi.Segment{{Text: text, HL: "Host:Hint"}}
 	}
 	if f.count() == 0 && f.scanning && len(f.files) == 0 {
 		return [][]hostapi.Segment{note("scanning files…")}
@@ -227,7 +227,7 @@ func (a *App) completionRows(maxW, room int) [][]hostapi.Segment {
 	case f.count() == 0 && f.partial:
 		return [][]hostapi.Segment{partial}
 	case f.count() == 0:
-		return [][]hostapi.Segment{note("no matches")}
+		return [][]hostapi.Segment{note("No matches.")}
 	case f.partial:
 		room--
 	}

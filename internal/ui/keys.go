@@ -119,7 +119,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	case "memReview":
 		mr := a.memReview
-		if moveSel(&mr.sel, len(mr.items), mr.view.pageItems(len(mr.items)), key) {
+		if mr.edit(key, keyText(msg), mr.texts()) || moveSel(&mr.selected, len(mr.visible), mr.view.pageItems(len(mr.visible)), key) {
 			return nil
 		}
 		switch key {
@@ -133,7 +133,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.editMemory()
 		case "u":
 			a.undoMemory()
-		case "esc", "q":
+		case "esc":
 			a.answerMemReview()
 		}
 	case "plan":
@@ -486,7 +486,7 @@ func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 	case "plan":
 		text = &a.planAsk.view
 	case "memReview":
-		sel, n = &a.memReview.sel, len(a.memReview.items)
+		sel, n = &a.memReview.selected, len(a.memReview.visible)
 	case "question":
 		if qp := a.question; !qp.reviewing() {
 			text = &qp.states[qp.at].ask

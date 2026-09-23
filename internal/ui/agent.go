@@ -31,6 +31,7 @@ type permAskPrompt struct {
 	opened time.Time // keys typed just before it appeared must not answer it
 	sel    int       // highlighted choice
 	view   viewport  // the command or preview
+	size   boxSize
 }
 
 // permGrace swallows keys right after a prompt opens: someone typing a
@@ -132,21 +133,61 @@ func (a *App) answerPerm(ok bool, by string) {
 // right-aligned badge, body rows padded to one width. The badge (a Lua
 // overlay's origin) wins over the title when space runs out.
 func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w int) [][]hostapi.Segment {
-	return hostBoxW(title, titleHL, badge, body, w, 100)
+	return hostBoxW(title, titleHL, badge, body, w, 100, 0)
 }
 
 // boxInner is the widest row a hostBox on a w-cell screen shows whole.
 func boxInner(w int) int { return max(min(w-4, 100)-4, 1) }
 
-// promptBox is the frame every Go-owned prompt draws in (permission, trust,
-// question): the body, then a blank row and the hint line when there is one
-// (the trust prompt's answers carry their keys).
-func promptBox(title, badge string, body [][]hostapi.Segment, hint []hostapi.Segment, w, maxW int) [][]hostapi.Segment {
-	if len(hint) > 0 {
-		body = append(body, nil, hint)
+// boxSize is how big a modal's box has been while it stays open. It only
+// grows, so filtering, switching tabs or opening a detail view never
+// shrinks or moves the box; w counts the cells inside the padding.
+type boxSize struct{ w, h int }
+
+// promptBox is the frame every modal draws in; body ends in its hint row.
+// Blank rows before the hint pad it to size's height, within h rows, and
+// its rows pad to size's width; size then grows to the box drawn.
+func promptBox(title, badge string, body [][]hostapi.Segment, w, h, maxW int, size *boxSize) [][]hostapi.Segment {
+	if n := min(size.h, h) - len(body) - 2; n > 0 && len(body) > 0 {
+		body = slices.Insert(body, len(body)-1, make([][]hostapi.Segment, n)...)
 	}
-	return hostBoxW(" "+title+" ", "Host:Title", badge, body, w, maxW)
+	box := hostBoxW(title, "Host:Title", badge, body, w, maxW, size.w)
+	size.w, size.h = max(size.w, segsWidth(box[0])-4), max(size.h, len(box))
+	return box
 }
+
+// stack joins a box's non-empty blocks with one blank row between them; a
+// short box (tight) drops those rows before anything else.
+func stack(tight bool, blocks ...[][]hostapi.Segment) [][]hostapi.Segment {
+	var out [][]hostapi.Segment
+	for _, b := range blocks {
+		if len(b) == 0 {
+			continue
+		}
+		if len(out) > 0 && !tight {
+			out = append(out, nil)
+		}
+		out = append(out, b...)
+	}
+	return out
+}
+
+// fitBox builds a box's rows at the loosest level they fit h rows at, the
+// borders included: 0 keeps every row, 1 drops the blank rows between
+// blocks, 2 also cuts each choice to its first row. render reports whether
+// a viewport got fewer rows than it wants; at level 2 the viewports take
+// what is left, one row at least.
+func fitBox(h int, render func(level int) ([][]hostapi.Segment, bool)) [][]hostapi.Segment {
+	for level := 0; ; level++ {
+		if rows, squeezed := render(level); !squeezed && len(rows)+2 <= h || level == 2 {
+			return rows
+		}
+	}
+}
+
+// oneRow is a block's placeholder for a viewport while the rows around it
+// are counted.
+var oneRow = [][]hostapi.Segment{nil}
 
 // wrapText wraps text to w cells. It splits the line breaks text already
 // holds: a newline measures as no cell, so wrapping without splitting leaves
@@ -159,32 +200,60 @@ func wrapText(text, hl string, w int) [][]hostapi.Segment {
 	return rows
 }
 
+// textRows keeps a box's text built per width: a box measures its text
+// before it windows it, and markdown is too slow to render twice a frame.
+type textRows map[int][][]hostapi.Segment
+
+// at is build(w), built once per width.
+func (t *textRows) at(build func(int) [][]hostapi.Segment) func(int) [][]hostapi.Segment {
+	return func(w int) [][]hostapi.Segment {
+		if *t == nil {
+			*t = textRows{}
+		}
+		rows, ok := (*t)[w]
+		if !ok {
+			rows = build(w)
+			(*t)[w] = rows
+		}
+		return rows
+	}
+}
+
 // promptChoice is one answer of a Go-owned prompt.
 type promptChoice struct{ key, label, desc, hl string }
 
 // choiceRows draws a prompt's answers as buttons: "[y] Trust", the key right
-// next to what it does, the selected one marked like a selected list row. Every row carries the
-// choice's 1-based Hit, so a click answers it. sel of -1 selects none.
-func choiceRows(choices []promptChoice, sel, w int) [][]hostapi.Segment {
-	kw := 0
+// next to what it does, descriptions in one column, the selected one marked
+// like a selected list row. Every row carries the choice's 1-based Hit, so
+// a click answers it. sel of -1 selects none. A label wraps, since the user
+// answers what it says, unless short cuts each choice to one row.
+func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segment {
+	kw, lw := 0, 0
 	for _, c := range choices {
 		kw = max(kw, ansi.StringWidth(c.key))
+		if c.desc != "" {
+			lw = max(lw, ansi.StringWidth(c.label))
+		}
 	}
+	textW := max(w-kw-5, 8)
 	var rows [][]hostapi.Segment
 	for i, c := range choices {
 		pad := strings.Repeat(" ", kw-ansi.StringWidth(c.key)+1)
 		btn, textHL := []hostapi.Segment{
 			{Text: "  [", HL: "Host:Hint"}, {Text: c.key, HL: "Host:HintKey"}, {Text: "]" + pad, HL: "Host:Hint"},
-		}, "Normal"
+		}, "Host:Value"
 		if i == sel { // marked like a selected list row
 			btn, textHL = []hostapi.Segment{{Text: "› [" + c.key + "]" + pad, HL: "Host:Title"}}, "Host:Title"
 		}
 		line := []hostapi.Segment{{Text: c.label, HL: cmp.Or(c.hl, textHL)}}
 		if c.desc != "" {
-			line = append(line, hostapi.Segment{Text: "  " + c.desc, HL: "Host:Hint"})
+			line = append(line, hostapi.Segment{Text: strings.Repeat(" ", lw-ansi.StringWidth(c.label)+2) + c.desc, HL: "Host:Hint"})
 		}
-		// a label wraps instead of ending in "…": the user answers what it says
-		for j, r := range hostapi.WrapSegs(line, max(w-kw-5, 8)) {
+		wrapped := hostapi.WrapSegs(line, textW)
+		if short {
+			wrapped = capRows(wrapped, 1, textW)
+		}
+		for j, r := range wrapped {
 			row := slices.Concat(btn, r)
 			if j > 0 {
 				row = append([]hostapi.Segment{{Text: strings.Repeat(" ", kw+5)}}, r...)
@@ -198,16 +267,25 @@ func choiceRows(choices []promptChoice, sel, w int) [][]hostapi.Segment {
 	return rows
 }
 
-// hostBoxW is hostBox with its own width cap.
-func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW int) [][]hostapi.Segment {
-	bw := ansi.StringWidth(title) + ansi.StringWidth(badge) + 4
+// hostBoxW is hostBox with its own width cap and a width its rows pad to.
+// Title and badge come bare: the box pads each with a space and keeps a
+// rule cell before the corner. A body segment with no style is value text,
+// so a box shows one white.
+func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, minW int) [][]hostapi.Segment {
+	label := func(s string, room int) string {
+		if s == "" || room < 3 {
+			return ""
+		}
+		return " " + ansi.Truncate(s, room-2, "…") + " "
+	}
+	bw := max(3+ansi.StringWidth(label(title, 999)+label(badge, 999)), minW+4)
 	for _, r := range body {
 		bw = max(bw, segsWidth(r)+4)
 	}
 	// wide boxes read badly; long rows end in an ellipsis instead
 	bw = max(min(bw, w-4, maxW), min(12, max(w, 4)))
-	badge = ansi.Truncate(badge, bw-2, "…")
-	title = ansi.Truncate(title, bw-2-ansi.StringWidth(badge), "…")
+	badge = label(badge, bw-3)
+	title = label(title, bw-3-ansi.StringWidth(badge))
 	fill := bw - 2 - ansi.StringWidth(title) - ansi.StringWidth(badge)
 	box := [][]hostapi.Segment{{
 		{Text: "┌", HL: "Host:Rule", NoCopy: true},
@@ -222,10 +300,13 @@ func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW in
 			r, bar = r[:n-1], r[n-1:]
 		}
 		line := ellipsizeSegs(r, bw-4-len(bar))
-		pad := bw - 4 - segsWidth(line) - len(bar)
-		row := []hostapi.Segment{{Text: "│ ", HL: "Host:Rule", NoCopy: true}}
-		row = append(row, line...)
-		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, pad)), NoCopy: true})
+		row := make([]hostapi.Segment, 0, len(line)+4)
+		row = append(row, hostapi.Segment{Text: "│ ", HL: "Host:Rule", NoCopy: true})
+		for _, s := range line {
+			s.HL = cmp.Or(s.HL, "Host:Value")
+			row = append(row, s)
+		}
+		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, bw-4-segsWidth(line)-len(bar))), NoCopy: true})
 		row = append(append(row, bar...), hostapi.Segment{Text: " │", HL: "Host:Rule", NoCopy: true})
 		box = append(box, row)
 	}
@@ -243,7 +324,7 @@ func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	if n := len(out); n > 0 {
 		last := out[n-1]
 		if i := strings.LastIndex(last.Text, " "); i > 0 && ansi.StringWidth(last.Text[i:]) <= 12 {
-			last.Text = strings.TrimRight(last.Text[:i], " ,;:-")
+			last.Text = strings.TrimRight(last.Text[:i], " ,;:-·")
 		}
 		dots := last
 		dots.Text = "…"
@@ -274,107 +355,108 @@ func listRows(items []listItem, sel int, v *viewport, room, maxW int) [][]hostap
 	return listRowsW(items, items, sel, v, room, 0, maxW)
 }
 
-// listRowsW is listRows padded to at least minW cells, a long label giving
-// way to its description and a key column always showing. all is the
-// unfiltered list, which sets the description column, so filtering never
-// moves it.
+// listRowsW is listRows padded to at least minW cells, with a key column
+// always showing. Descriptions line up in one column after the widest
+// label that has one, set by all, the unfiltered list, so filtering never
+// moves it; when a row does not fit its description gives way before any
+// label is cut.
 func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int) [][]hostapi.Segment {
-	labelW := 0
-	for _, it := range all {
-		if it.desc != "" { // a row with no description needs no column
-			labelW = max(labelW, ansi.StringWidth(it.label))
-		}
-	}
-	// descriptions line up in one column unless a long label would push them
-	// far out: as far as the widest row leaves room, 24 cells when unbounded
-	column := 24
-	if maxW > 0 {
-		right := 0
-		for _, it := range all {
-			right = max(right, ansi.StringWidth(it.desc)+map[bool]int{true: 2 + ansi.StringWidth(it.key)}[it.key != ""])
-		}
-		column = max(column, maxW-4-right)
-	}
-	labelW = min(labelW, column)
 	var rows [][]hostapi.Segment
-	keys := map[int]hostapi.Segment{} // row -> key column
-	section, selTop, selEnd := "", 0, 0
-	cut, starts := map[int]bool{}, map[int]bool{} // rows a scrolled window may end after, and start at
-	for i, it := range items {
-		if len(rows) > 0 && (it.section != section || len(it.more) > 0 || len(items[i-1].more) > 0) {
-			rows = append(rows, nil)
-		}
-		start := len(rows)
-		starts[start] = true
-		if it.section != section && it.section != "" {
-			rows = append(rows, []hostapi.Segment{{Text: it.section, HL: "Host:Title"}})
-		}
-		section = it.section
-		hit, hl, marker := i+1, "Normal", hostapi.Segment{Text: "  "}
-		if i == sel {
-			hl, marker = "Host:Title", hostapi.Segment{Text: "› ", HL: "Host:Title"}
-		}
-		// segments without hl take the row's, and inline colors bold with it
-		styled := func(r []hostapi.Segment) []hostapi.Segment {
-			row := make([]hostapi.Segment, 0, len(r))
-			for _, s := range r {
-				switch {
-				case s.HL == "":
-					s.HL = hl
-				case i == sel && strings.HasPrefix(s.HL, hostapi.SGRPrefix):
-					s.HL += ";1" // markdown text is colored inline: bold it the same way
-				}
-				row = append(row, s)
-			}
-			return row
-		}
-		var itemRows [][]hostapi.Segment
-		if it.label != "" || len(it.more) == 0 {
-			label, cutW := it.label, -1
-			if maxW > 0 {
-				// the marker and the gap take 2 cells each, a key 2 more
-				room := maxW - 4 - ansi.StringWidth(it.desc) - map[bool]int{true: 2 + ansi.StringWidth(it.key)}[it.key != ""]
-				cutW = max(room, labelW)
-				if it.desc != "" && ansi.StringWidth(label) > room {
-					cutW = labelW // a cut label keeps its description in the column
-				}
-				label = ansi.Truncate(label, cutW, "…")
-			}
-			row := []hostapi.Segment{{Text: label, HL: hl}}
-			if it.segs != nil {
-				row = styled(it.segs)
-				if cutW >= 0 {
-					row = ellipsizeSegs(row, cutW)
-				}
-			}
-			if it.desc != "" {
-				gap := strings.Repeat(" ", max(0, labelW-segsWidth(row))+2)
-				row = append(row, hostapi.Segment{Text: gap + it.desc, HL: "Comment"})
+	var keys map[int]hostapi.Segment // row -> key column
+	var cut, starts map[int]bool     // rows a scrolled window may end after, and start at
+	var selTop, selEnd int
+	// rows at maxW cells; the width depends on the bar, which the row count
+	// decides, so a list that overflows is built again a cell narrower
+	build := func(maxW int) {
+		labelW, keyW := 0, 0
+		for _, it := range all {
+			if it.desc != "" { // a row with no description needs no column
+				labelW = max(labelW, ansi.StringWidth(it.label))
 			}
 			if it.key != "" {
-				keys[len(rows)] = hostapi.Segment{Text: it.key, HL: "Host:HintKey", Hit: hit}
+				keyW = max(keyW, 2+ansi.StringWidth(it.key))
 			}
-			itemRows = append(itemRows, row)
 		}
-		for _, r := range it.more {
-			itemRows = append(itemRows, styled(r))
+		if maxW > 0 {
+			// the marker and the gap before a description take 2 cells each
+			labelW = max(min(labelW, maxW-4-keyW), 1)
 		}
-		for j, r := range itemRows {
-			g := hostapi.Segment{Text: "  "}
-			if j == 0 {
-				g = marker
+		rows, selTop, selEnd = nil, 0, 0
+		section := ""
+		keys, cut, starts = map[int]hostapi.Segment{}, map[int]bool{}, map[int]bool{}
+		for i, it := range items {
+			if len(rows) > 0 && (it.section != section || len(it.more) > 0 || len(items[i-1].more) > 0) {
+				rows = append(rows, nil)
 			}
-			row := append([]hostapi.Segment{g}, r...)
-			for k := range row {
-				row[k].Hit = hit
+			start := len(rows)
+			starts[start] = true
+			if it.section != section && it.section != "" {
+				rows = append(rows, []hostapi.Segment{{Text: it.section, HL: "Host:Title"}})
 			}
-			rows = append(rows, row)
-		}
-		cut[len(rows)-1] = true
-		if i == sel {
-			selTop, selEnd = start, len(rows)
+			section = it.section
+			hit, hl, marker := i+1, "Host:Value", hostapi.Segment{Text: "  "}
+			if i == sel {
+				hl, marker = "Host:Title", hostapi.Segment{Text: "› ", HL: "Host:Title"}
+			}
+			// segments without hl take the row's, and inline colors bold with it
+			styled := func(r []hostapi.Segment) []hostapi.Segment {
+				row := make([]hostapi.Segment, 0, len(r))
+				for _, s := range r {
+					switch {
+					case s.HL == "":
+						s.HL = hl
+					case i == sel && strings.HasPrefix(s.HL, hostapi.SGRPrefix):
+						s.HL += ";1" // markdown text is colored inline: bold it the same way
+					}
+					row = append(row, s)
+				}
+				return row
+			}
+			var itemRows [][]hostapi.Segment
+			if it.label != "" || len(it.more) == 0 {
+				row := []hostapi.Segment{{Text: it.label, HL: hl}}
+				if it.segs != nil {
+					row = styled(it.segs)
+				}
+				descW := -1 // no cut
+				if maxW > 0 && it.desc != "" {
+					row = ellipsizeSegs(row, labelW)
+					descW = maxW - 4 - labelW - map[bool]int{true: 2 + ansi.StringWidth(it.key)}[it.key != ""]
+				}
+				if it.desc != "" && (descW < 0 || descW > 2) {
+					desc := []hostapi.Segment{{Text: it.desc, HL: "Host:Hint"}}
+					if descW > 0 {
+						desc = ellipsizeSegs(desc, descW)
+					}
+					row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, labelW-segsWidth(row))+2)})
+					row = append(row, desc...)
+				}
+				if it.key != "" {
+					keys[len(rows)] = hostapi.Segment{Text: it.key, HL: "Host:HintKey", Hit: hit}
+				}
+				itemRows = append(itemRows, row)
+			}
+			for _, r := range it.more {
+				itemRows = append(itemRows, styled(r))
+			}
+			for j, r := range itemRows {
+				g := hostapi.Segment{Text: "  "}
+				if j == 0 {
+					g = marker
+				}
+				row := append([]hostapi.Segment{g}, r...)
+				for k := range row {
+					row[k].Hit = hit
+				}
+				rows = append(rows, row)
+			}
+			cut[len(rows)-1] = true
+			if i == sel {
+				selTop, selEnd = start, len(rows)
+			}
 		}
 	}
+	build(maxW)
 	if v == nil {
 		v = &viewport{}
 	}
@@ -382,6 +464,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 	bar := 0 // the scrollbar's column
 	if v.overflows() && barInner(maxW) < maxW {
 		bar, maxW = 1, maxW-1
+		build(maxW)
 	} else if v.overflows() && maxW == 0 {
 		bar = 1
 	}
@@ -468,7 +551,7 @@ func (a *App) shimmer(seg hostapi.Segment, now time.Time, animate bool) []hostap
 
 // permBox draws the permission prompt: what the tool wants to do, the
 // command or the diff it would apply, the model's own words and the choices.
-func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
+func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	req := pa.req
 	isDiff := strings.HasPrefix(req.Preview, "--- ")
 	maxW := 96
@@ -476,16 +559,13 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 		maxW = 120
 	}
 	inner := max(min(w-4, maxW)-4, 1)
-	blank := []hostapi.Segment{{Text: ""}}
 
 	title, target := permTitle(req, a.host.Dirs.ProjectDir)
 	// a command that escapes the sandbox gets a full-width warning band above
 	// everything, in red on the panel, so it cannot be missed
 	var banner [][]hostapi.Segment
 	if req.Outside {
-		for _, r := range wrapText("Runs outside the sandbox - this command can reach the whole machine, unconfined", "Host:DangerPanel", inner) {
-			banner = append(banner, r)
-		}
+		banner = wrapText("Runs outside the sandbox - this command can reach the whole machine, unconfined", "Host:DangerPanel", inner)
 	}
 	var head [][]hostapi.Segment
 	// the whole target, wrapped at its slashes: a path's file name and a
@@ -498,7 +578,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 		head = hostapi.WrapSegs(segs, inner)
 		// a target of thousands of characters keeps its first and last rows,
 		// so the choices below still fit
-		if n := max(chatH/3, 3); len(head) > n {
+		if n := max(h/3, 3); len(head) > n {
 			more := []hostapi.Segment{{Text: fmt.Sprintf("… %d more rows …", len(head)-n+1), HL: "Host:Hint"}}
 			head = append(append(head[:n-2:n-2], more), head[len(head)-1])
 		}
@@ -517,46 +597,42 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	content := build(inner)
 	// the model's words sit apart from the chrome, quoted, never in the
 	// title, and a few rows at most so they cannot push the command away
-	var words [][]hostapi.Segment
+	var said [][]hostapi.Segment
 	if req.Description != "" {
-		words = append(words, capRows(wrapText(`"`+req.Description+`"`, "Host:Hint", inner), 3, inner)...)
+		said = append(said, capRows(wrapText(`"`+req.Description+`"`, "Host:Hint", inner), 3, inner)...)
 	}
 	// the banner carries the sandbox escape, so the dim reason note is skipped
 	if note, hl := permNote(req.Reason); note != "" && !req.Outside {
-		words = append(words, capRows(wrapText(note, hl, inner), 3, inner)...)
+		said = append(said, capRows(wrapText(note, hl, inner), 3, inner)...)
 	}
 	choices := pa.choices()
-	btns := make([]promptChoice, len(choices))
-	for i, c := range choices {
-		btns[i] = promptChoice{key: c.key, label: c.label}
+	btns := make([]promptChoice, 0, len(choices))
+	for _, c := range choices {
+		btns = append(btns, promptChoice{key: c.key, label: c.label})
 	}
-	list := choiceRows(btns, pa.sel, inner)
-
-	// the choices and the hint always fit: borders, the blank rows around
-	// the list and the hint come first, then a line of the content, then
-	// the words, then the rest of the content
-	fixed := len(head) + len(list) + 5
-	if len(head) > 0 && len(content) > 0 {
-		fixed++ // the blank row between them
+	hints := []hintPair{{"enter", map[bool]string{true: "allow", false: "deny"}[choices[pa.sel].ok]}, {"esc", "deny"}}
+	placeholder := oneRow
+	if len(content) == 0 {
+		placeholder = nil
 	}
-	if len(banner) > 0 {
-		fixed += len(banner) + 1 // the sandbox band and the blank row after it
-	}
-	words = capRows(words, chatH-fixed-min(len(content), 2)-1, inner)
-	tail := [][]hostapi.Segment{blank}
-	if len(words) > 0 {
-		tail = append(append(tail, words...), blank)
-	}
-	hints := []string{"enter", "confirm"}
-	switch pa.view.viewH = chatH - fixed - len(tail) + 1; {
-	case pa.view.viewH < 1:
-		content = nil // nothing left to show it in: the choices come first
-	case len(content) > pa.view.viewH:
+	var list, words [][]hostapi.Segment
+	var tight bool
+	fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
+		tight, list = level > 0, choiceRows(btns, pa.sel, inner, level > 1)
+		// the rows the preview and the words share; the words give way
+		// first, down to two rows of the preview
+		room := h - 2 - len(stack(tight, banner, head, placeholder, list, oneRow)) + len(placeholder)
+		gap := map[bool]int{true: 0, false: 1}[tight]
+		words = capRows(said, room-min(len(content), 2)-gap, inner)
+		left := room - len(words) - map[bool]int{true: gap}[len(words) > 0]
+		pa.view.viewH = max(left, 1)
+		return nil, left < min(len(content), 2) || len(words) < len(said)
+	})
+	if len(content) > pa.view.viewH {
 		content = build(barInner(inner)) // the bar's column
-		hints = append(hints, "pgup/pgdn", "scroll")
+		hints = append(hints, hintPair{"pgup/pgdn", "scroll"})
 	}
-	hint := hintLine(inner, append(hints, "esc", "deny")...)
-	tail = append(tail, list...)
+	hintRow := hint(inner, hints...)
 	// panels span the box, and the box fits its content (at least 56 wide):
 	// a padded panel counts by its text, other rows whole as hostBoxW counts them
 	fit, bar := 56, 0
@@ -566,7 +642,7 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	for _, r := range content {
 		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " "))+bar)
 	}
-	for _, r := range slices.Concat(banner, head, tail, [][]hostapi.Segment{hint}) {
+	for _, r := range slices.Concat(banner, head, words, list, [][]hostapi.Segment{hintRow}) {
 		fit = max(fit, segsWidth(r))
 	}
 	fit = min(fit, inner)
@@ -581,22 +657,12 @@ func (a *App) permBox(pa *permAskPrompt, w, chatH int) [][]hostapi.Segment {
 	for i := range banner {
 		banner[i] = padPanel(banner[i], fit)
 	}
-	body := banner
-	if len(body) > 0 {
-		body = append(body, blank)
-	}
-	body = append(body, head...)
-	if len(head) > 0 && len(content) > 0 {
-		body = append(body, blank)
-	}
-	body = append(body, content...)
-	body = append(body, tail...)
-
 	badge := ""
 	if n := len(a.permQueue); n > 0 {
-		badge = fmt.Sprintf(" 1 of %d ", n+1)
+		badge = fmt.Sprintf("1 of %d", n+1)
 	}
-	return promptBox(title, badge, body, hint, w, maxW)
+	body := stack(tight, banner, head, content, words, list, [][]hostapi.Segment{hintRow})
+	return promptBox(title, badge, body, w, h, maxW, &pa.size)
 }
 
 // capRows keeps the first n of wrapped rows, ending the last kept one in
@@ -684,28 +750,59 @@ func permNote(reason string) (string, string) {
 	return reason, "Host:Hint"
 }
 
-// hintLine is a footer of key/label pairs: "enter confirm · esc deny". The
-// pairs before the last give way, nearest to it first, until the line fits
-// w cells, so the last one (esc) always shows.
-func hintLine(w int, pairs ...string) []hostapi.Segment {
-	var out []hostapi.Segment
-	for i := 0; i+1 < len(pairs); i += 2 {
-		if i > 0 {
-			out = append(out, hostapi.Segment{Text: " · ", HL: "Host:Hint"})
+// hintPair is one key of a footer hint and the verb it does.
+type hintPair struct{ key, verb string }
+
+// hintSlot is where a pair sits in a footer: moving, enter, space, letter
+// keys, scrolling, copy, then esc.
+func hintSlot(p hintPair) int {
+	switch {
+	case p.verb == "next" || p.verb == "previous":
+		return 0
+	case p.key == "enter":
+		return 1
+	case p.key == "space":
+		return 2
+	case p.key == "pgup/pgdn":
+		return 4
+	case p.key == "y":
+		return 5
+	case p.key == "esc":
+		return 6
+	}
+	return 3
+}
+
+// hint is the one footer row every box draws: "enter confirm · esc deny",
+// the pairs in slot order. Past w cells the middle pairs give way, the last
+// first; enter and esc never do.
+func hint(w int, pairs ...hintPair) []hostapi.Segment {
+	pairs = slices.Clone(pairs)
+	slices.SortStableFunc(pairs, func(a, b hintPair) int { return hintSlot(a) - hintSlot(b) })
+	for {
+		var out []hostapi.Segment
+		for i, p := range pairs {
+			if i > 0 {
+				out = append(out, hostapi.Segment{Text: " · ", HL: "Host:Hint"})
+			}
+			out = append(out, hostapi.Segment{Text: p.key, HL: "Host:HintKey"}, hostapi.Segment{Text: " " + p.verb, HL: "Host:Hint"})
 		}
-		out = append(out, hostapi.Segment{Text: pairs[i], HL: "Host:HintKey"}, hostapi.Segment{Text: " " + pairs[i+1], HL: "Host:Hint"})
+		i := len(pairs) - 1
+		for i >= 0 && (pairs[i].key == "enter" || pairs[i].key == "esc") {
+			i--
+		}
+		if segsWidth(out) <= w || i < 0 {
+			return out
+		}
+		pairs = slices.Delete(pairs, i, i+1)
 	}
-	if n := len(pairs); n >= 4 && segsWidth(out) > w {
-		return hintLine(w, append(pairs[:n-4:n-4], pairs[n-2:]...)...)
-	}
-	return out
 }
 
 // scrolls is the page keys' hint pair while any of views overflows.
-func scrolls(views ...viewport) []string {
+func scrolls(views ...viewport) []hintPair {
 	for _, v := range views {
 		if v.overflows() {
-			return []string{"pgup/pgdn", "scroll"}
+			return []hintPair{{"pgup/pgdn", "scroll"}}
 		}
 	}
 	return nil

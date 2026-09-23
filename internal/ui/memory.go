@@ -20,12 +20,35 @@ import (
 )
 
 type memReviewPrompt struct {
-	items  []hostapi.MemoryRow
-	gone   []hostapi.MemoryRow // dropped rows, still answered
-	sel    int
-	view   viewport
+	items []hostapi.MemoryRow
+	gone  []hostapi.MemoryRow // dropped rows, still answered
+	listFilter
+	size   boxSize
 	undo   []memUndo
 	answer chan []hostapi.MemoryRow
+}
+
+// at is the item under the selection, len(items) with none.
+func (mr *memReviewPrompt) at() int {
+	if mr.selected < len(mr.visible) {
+		return mr.visible[mr.selected]
+	}
+	return len(mr.items)
+}
+
+func (mr *memReviewPrompt) texts() []string {
+	out := make([]string, len(mr.items))
+	for i, it := range mr.items {
+		out[i] = it.Text + "  " + it.Quote
+	}
+	return out
+}
+
+// seek filters the rows again and selects item i, or the first shown after it.
+func (mr *memReviewPrompt) seek(i int) {
+	mr.apply(mr.texts())
+	j, _ := slices.BinarySearch(mr.visible, i)
+	mr.selected = max(0, min(len(mr.visible)-1, j))
 }
 
 // memUndo is a row as it was before a key changed it, and where it was.
@@ -44,7 +67,8 @@ func (a *App) ReviewMemories(items []hostapi.MemoryRow) []hostapi.MemoryRow {
 	a.await(func() tea.Cmd {
 		// the host reopens the screen after an edit, on the edited row
 		sel := max(0, slices.IndexFunc(rows, func(r hostapi.MemoryRow) bool { return r.ID == a.memEdited }))
-		a.memReview, a.memEdited = &memReviewPrompt{items: rows, sel: sel, answer: ch}, ""
+		a.memReview, a.memEdited = &memReviewPrompt{items: rows, answer: ch}, ""
+		a.memReview.seek(sel)
 		return nil
 	})
 	return <-ch
@@ -63,11 +87,11 @@ func (a *App) answerMemReview() {
 // editMemory hands the selected row to the host for editing.
 func (a *App) editMemory() {
 	mr := a.memReview
-	if mr == nil || mr.sel >= len(mr.items) || mr.items[mr.sel].Forget {
+	if mr == nil || mr.at() >= len(mr.items) || mr.items[mr.at()].Forget {
 		return
 	}
-	mr.items[mr.sel].Edit = true
-	a.memEdited = mr.items[mr.sel].ID
+	mr.items[mr.at()].Edit = true
+	a.memEdited = mr.items[mr.at()].ID
 	a.answerMemReview()
 }
 
@@ -80,40 +104,41 @@ func suggested(r hostapi.MemoryRow) bool { return r.Queued && r.Action != "accep
 // list; scope flips between this project and everywhere.
 func (a *App) markMemory(key string) {
 	mr := a.memReview
-	if mr == nil || mr.sel >= len(mr.items) {
+	sel := mr.at()
+	if sel >= len(mr.items) {
 		return
 	}
-	it := mr.items[mr.sel]
+	it := mr.items[sel]
 	if key == "keep" && !suggested(it) || key == "scope" && it.Forget {
 		return
 	}
-	mr.undo = append(mr.undo, memUndo{mr.sel, it})
+	mr.undo = append(mr.undo, memUndo{sel, it})
 	switch key {
 	case "scope":
-		mr.items[mr.sel].Scope = map[bool]string{true: "project", false: "user"}[it.Scope == "user"]
+		mr.items[sel].Scope = map[bool]string{true: "project", false: "user"}[it.Scope == "user"]
 		return
 	case "keep":
 		it.Action = "accept"
-		mr.items = slices.Delete(mr.items, mr.sel, mr.sel+1)
+		mr.items = slices.Delete(mr.items, sel, sel+1)
 		if it.Forget {
 			mr.gone = append(mr.gone, it) // a kept forget remembers nothing
-		} else if at := rememberedAt(mr.items); at <= mr.sel {
+		} else if at := rememberedAt(mr.items); at <= sel {
 			mr.items = slices.Insert(mr.items, at, it)
-			mr.sel++ // the row moved past the cursor
+			sel++ // the row moved past the cursor
 		} else {
 			mr.items = slices.Insert(mr.items, at, it)
 		}
-		if n := rememberedAt(mr.items); mr.sel >= n && n > 0 {
-			mr.sel = 0 // past the last suggestion: back to the first one left
+		if n := rememberedAt(mr.items); sel >= n && n > 0 {
+			sel = 0 // past the last suggestion: back to the first one left
 		}
 	default:
 		// a suggestion kept a moment ago was never stored, so dropping it
 		// rejects it; there is nothing to forget
 		it.Action = map[bool]string{true: "reject", false: "delete"}[it.Queued]
-		mr.items = slices.Delete(mr.items, mr.sel, mr.sel+1)
+		mr.items = slices.Delete(mr.items, sel, sel+1)
 		mr.gone = append(mr.gone, it)
 	}
-	mr.sel = max(0, min(mr.sel, len(mr.items)-1))
+	mr.seek(sel)
 }
 
 // rememberedAt is where the Remembered section starts: suggestions come
@@ -136,15 +161,16 @@ func (a *App) undoMemory() {
 	mr.items = slices.DeleteFunc(mr.items, other)
 	mr.gone = slices.DeleteFunc(mr.gone, other)
 	mr.items = slices.Insert(mr.items, min(u.at, len(mr.items)), u.item)
-	mr.sel = u.at
+	mr.seek(u.at)
 }
 
 // memReviewBox shows every memory whole, as plain text since markdown could
 // hide part of what gets stored, with the quote it rests on and its scope,
 // origin and age under it; the Remembered title says how much of each
 // scope's prompt budget the stored rows take.
-func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
+func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 	mr := a.memReview
+	mr.apply(mr.texts())
 	n := rememberedAt(mr.items)
 	used := map[string]int{}
 	for _, it := range mr.items[n:] {
@@ -159,8 +185,9 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 		true:  fmt.Sprintf("Suggested by zemi (%d)", n),
 		false: fmt.Sprintf("Remembered (%d) · this project %s · everywhere %s", len(mr.items)-n, kb("project"), kb("user")),
 	}
-	items := make([]listItem, 0, len(mr.items))
-	for _, it := range mr.items {
+	items := make([]listItem, 0, len(mr.visible))
+	for _, i := range mr.visible {
+		it := mr.items[i]
 		var meta []hostapi.Segment
 		if it.Action == "accept" {
 			meta = append(meta, hostapi.Segment{Text: "kept · ", HL: "Host:Ok"})
@@ -176,55 +203,63 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 		}
 		items = append(items, listItem{section: sections[suggested(it)], more: append(more, meta)})
 	}
-	// the text wraps beside the marker's two cells, and the bar's one once
-	// the list overflows
-	rows := func(textW int) [][]hostapi.Segment {
-		wrapped := slices.Clone(items)
-		for i, it := range wrapped {
-			wrapped[i].more = nil
-			for _, r := range it.more {
-				wrapped[i].more = append(wrapped[i].more, hostapi.WrapSegs(r, textW)...)
-			}
-		}
-		// borders, the blank row and the hint take four rows
-		return listRows(wrapped, mr.sel, &mr.view, max(chatH-4, 3), boxInner(w))
-	}
-	lines := rows(boxInner(w) - 2)
-	if mr.view.overflows() {
-		lines = rows(barInner(boxInner(w)) - 2)
-	}
-	if len(mr.items) == 0 {
-		lines = hostapi.WrapSegs([]hostapi.Segment{{Text: "Nothing remembered yet. Type /memory <note> to save one.", HL: "Comment"}}, boxInner(w))
-	}
-	// the hint pads to the list, so changing hints never resizes the box
-	widest := 0
-	for _, l := range lines {
-		widest = max(widest, segsWidth(l))
-	}
+	inner := boxInner(w)
+	mr.size.w = max(mr.size.w, 56)
 
-	var hints []string
-	if mr.sel < len(mr.items) {
-		it := mr.items[mr.sel]
+	var hints []hintPair
+	if i := mr.at(); i < len(mr.items) && !mr.active {
+		it := mr.items[i]
 		switch {
 		case suggested(it) && it.Forget:
-			hints = append(hints, "a", "forget", "d", "keep")
+			hints = append(hints, hintPair{"a", "forget"}, hintPair{"d", "keep"})
 		case suggested(it):
-			hints = append(hints, "a", "keep", "d", "drop")
+			hints = append(hints, hintPair{"a", "keep"}, hintPair{"d", "drop"})
 		case it.Queued:
-			hints = append(hints, "d", "drop")
+			hints = append(hints, hintPair{"d", "drop"})
 		default:
-			hints = append(hints, "d", "forget")
+			hints = append(hints, hintPair{"d", "forget"})
 		}
 		if !it.Forget {
-			hints = append(hints, "s", map[bool]string{true: "only this project", false: "use everywhere"}[it.Scope == "user"], "e", "edit")
+			hints = append(hints, hintPair{"s", map[bool]string{true: "only this project", false: "use everywhere"}[it.Scope == "user"]}, hintPair{"e", "edit"})
 		}
 	}
-	if len(mr.undo) > 0 {
-		hints = append(hints, "u", "undo")
+	if len(mr.undo) > 0 && !mr.active {
+		hints = append(hints, hintPair{"u", "undo"})
 	}
-	hints = append(hints, scrolls(mr.view)...)
-	lines = append(lines, nil, padSegs(hintLine(boxInner(w), append(hints, "esc", "close")...), widest))
-	return hostBox(" Memory ", "Host:Title", "", lines, w)
+	esc := map[bool]string{true: "back", false: "close"}[mr.active]
+	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
+		tight := level > 0
+		head := [][]hostapi.Segment{mr.filterRow()}
+		if len(mr.items) == 0 {
+			head = emptyRows("Nothing remembered yet. Type /memory <note> to save one.", inner)
+		}
+		room := h - 2 - len(stack(tight, slices.Concat(head, oneRow), oneRow)) + 1
+		// the text wraps beside the marker's two cells, and the bar's one once
+		// the list overflows
+		rows := func(textW int) [][]hostapi.Segment {
+			wrapped := slices.Clone(items)
+			for i, it := range wrapped {
+				wrapped[i].more = nil
+				for _, r := range it.more {
+					wrapped[i].more = append(wrapped[i].more, hostapi.WrapSegs(r, textW)...)
+				}
+			}
+			return listRows(wrapped, mr.selected, &mr.view, max(room, 1), inner)
+		}
+		var list [][]hostapi.Segment
+		switch {
+		case len(mr.items) == 0:
+		case len(items) == 0:
+			list = emptyRows("No matches.", inner)
+		default:
+			if list = rows(inner - 2); mr.view.overflows() {
+				list = rows(barInner(inner) - 2)
+			}
+		}
+		hintRow := hint(inner, slices.Concat(hints, scrolls(mr.view), []hintPair{{"esc", esc}})...)
+		return stack(tight, slices.Concat(head, list), [][]hostapi.Segment{hintRow}), len(items) > 0 && mr.view.viewH < min(mr.view.rows, 3)
+	})
+	return promptBox("Memory", "", body, w, h, 100, &mr.size)
 }
 
 func memScope(it hostapi.MemoryRow) string {

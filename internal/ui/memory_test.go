@@ -104,8 +104,8 @@ func TestMemoryReviewEdit(t *testing.T) {
 		t.Fatalf("edit rows: %+v", got)
 	}
 	done = openReview(t, app, rows)
-	if app.memReview.sel != 1 {
-		t.Fatalf("reopened on row %d", app.memReview.sel)
+	if app.memReview.at() != 1 {
+		t.Fatalf("reopened on row %d", app.memReview.at())
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	<-done
@@ -222,7 +222,7 @@ func TestMemoryReviewEmpty(t *testing.T) {
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 
-	app.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if got := reviewAnswer(t, done); len(got) != 0 {
 		t.Fatalf("empty review returned %v", got)
 	}

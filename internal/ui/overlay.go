@@ -27,11 +27,10 @@ type overlayState struct {
 	listFilter
 	input composerState // text of an input overlay
 	body  viewport
-	back  bool // a detail view: esc and its actions return to the overlay under it
-	item  any  // a detail view's item: a reload can swap the parent's under it
-	// listH is the rows the unfiltered list took at width listW, which the
-	// box keeps while it is open
-	listH, listW int
+	text  textRows // the body's rows
+	back  bool     // a detail view: esc and its actions return to the overlay under it
+	item  any      // a detail view's item: a reload can swap the parent's under it
+	size  boxSize
 	// the list rows as last built and what they were built from: items live
 	// as long as the state and visible follows query, so a frame that moved
 	// nothing measures no item
@@ -55,7 +54,6 @@ type listFilter struct {
 	visible  []int
 	selected int
 	view     viewport // the list, or a detail view's actions
-	width    int      // the widest the list has been, so filtering never narrows its box
 }
 
 func (f *listFilter) apply(texts []string) {
@@ -113,23 +111,18 @@ func (f *listFilter) edit(key, text string, texts []string) bool {
 	return true
 }
 
-// filterRows renders the query line above rows, a hint while no query is
-// open so opening one adds no row, and a no-match note. rows come from
-// listRowsW with f.width.
-func (f *listFilter) filterRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
-	for _, r := range rows {
-		f.width = max(f.width, segsWidth(r))
-	}
-	query := []hostapi.Segment{{Text: "/", HL: "Host:HintKey"}, {Text: " filter", HL: "Comment"}}
+// filterRow is the query line above a list, a hint while no query is open
+// so opening one adds no row.
+func (f *listFilter) filterRow() []hostapi.Segment {
 	if f.active {
-		query = append([]hostapi.Segment{{Text: "/ ", HL: "Comment"}}, cursorSegs([]rune(f.query), len([]rune(f.query)), "Host:Bold")...)
+		return append([]hostapi.Segment{{Text: "/ ", HL: "Host:Hint"}}, cursorSegs([]rune(f.query), len([]rune(f.query)), "Host:Bold")...)
 	}
-	out := append([][]hostapi.Segment{query}, rows...)
-	if len(f.visible) == 0 {
-		out = append(out, padSegs([]hostapi.Segment{{Text: "  no matches", HL: "Comment"}}, f.width))
-	}
-	return out
+	return []hostapi.Segment{{Text: "/", HL: "Host:HintKey"}, {Text: " filter", HL: "Host:Hint"}}
 }
+
+// emptyRows is how every empty list or view reads: a sentence in the hint
+// grey, wrapped to w.
+func emptyRows(text string, w int) [][]hostapi.Segment { return wrapText(text, "Host:Hint", w) }
 
 // openOverlay pushes an overlay; Lua rendered its items when it opened, so
 // the key loop never calls Lua for them.
@@ -195,7 +188,7 @@ func formatOverlayItem(item any) string {
 }
 
 // enterVerb names what enter does on item idx: "open" its detail view,
-// the overlay's own verb ("select" by default), "back" from a detail view,
+// the overlay's own verb ("confirm" by default), "back" from a detail view,
 // or "" when it does nothing.
 func (st *overlayState) enterVerb(idx int) string {
 	m, _ := st.o.Items[idx].(map[string]any)
@@ -204,7 +197,7 @@ func (st *overlayState) enterVerb(idx int) string {
 	case has("detail") || m["actions"] != nil:
 		return "open"
 	case has("fill") || rowRun(st.o, m) != "" || st.o.OnSelect != nil || st.back && has("id") && st.o.OnAction != nil:
-		return cmp.Or(st.o.Verb, "select")
+		return cmp.Or(st.o.Verb, "confirm")
 	case has("copy"):
 		return "copy"
 	case st.back:
@@ -233,11 +226,11 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 	actions, _ := m["actions"].([]any)
 	title := parent.items[idx].label
 	if parent.o.Title != "" {
-		title = parent.o.Title + " › " + title
+		title = parent.o.Title + " / " + title
 	}
 	p := parent.o
 	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: body, BodyMD: p.BodyMD, Items: actions, OnAction: p.OnAction})
-	st.back, st.item, st.width = true, parent.o.Items[idx], parent.width
+	st.back, st.item, st.size = true, parent.o.Items[idx], parent.size
 	a.overlays = append(a.overlays, st)
 }
 
@@ -474,141 +467,121 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	// the origin badge marks boxes that plugins and project config draw
 	badge := ""
 	if st.o.Origin != lua.OriginBuiltin && st.o.Origin != lua.OriginUser {
-		badge = " " + string(st.o.Origin)
+		badge = string(st.o.Origin)
 		// the file name, not its path: a full path leaves no room for the title
 		if st.o.Path != "" {
 			badge += ":" + filepath.Base(st.o.Path)
 		}
-		badge += " "
 	}
+	inner := boxInner(w)
 	if st.o.Input {
-		body := [][]hostapi.Segment{st.input.inputRow(boxInner(w)), {{Text: ""}}, hintLine(boxInner(w), "enter", "confirm", "esc", "cancel")}
-		return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
+		body := [][]hostapi.Segment{st.input.inputRow(inner), nil, hint(inner, hintPair{"enter", "confirm"}, hintPair{"esc", "close"})}
+		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
-	// borders, the blank row and the hint, the filter line (a detail view's
-	// actions have none), and a body's shortest: 3 rows and a blank row
-	limit := h - 5
-	if st.back {
-		limit++
-	}
+	// a list fits its content, 56 cells at least, and a text view is 72
+	st.size.w = max(st.size.w, map[bool]int{true: 56, false: 72}[len(st.o.Items) > 0])
+	bodyW := min(inner, st.size.w)
+	buildBody := st.text.at(func(w int) (rows [][]hostapi.Segment) {
+		switch {
+		case st.o.BodySegs != nil:
+			for _, row := range st.o.BodySegs {
+				rows = append(rows, hostapi.WrapSegs(row, w)...)
+			}
+		case st.o.BodyMD:
+			rows = a.host.Markdown(strings.TrimRight(st.o.Body, "\n"), w)
+		default:
+			rows = fieldRows(st.o.Body, w)
+		}
+		return rows
+	})
+	bodyN := 0
 	if st.o.Body != "" {
-		limit -= 4
+		bodyN = len(buildBody(bodyW))
 	}
-	limit = max(limit, 3)
-	var list [][]hostapi.Segment
-	var hints []string
-	switch {
-	case st.back && len(st.o.Items) > 0:
-		// a detail view's rows are actions: draw them as the prompts' buttons
-		choices := make([]promptChoice, 0, len(st.visible))
-		for n, i := range st.visible {
-			m, _ := st.o.Items[i].(map[string]any)
-			hl, _ := m["hl"].(string)
-			choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: hostapi.UserHL(hl)})
-		}
-		st.view.viewH = limit
-		list = st.view.wrap(func(w int) [][]hostapi.Segment { return choiceRows(choices, st.selected, w) }, boxInner(w))
-		st.view.rows = len(list)
-		sel, end := len(list), 0 // the selected action's rows
-		for y, r := range list {
-			if len(r) > 0 && r[0].Hit == st.selected+1 {
-				sel, end = min(sel, y), y+1
+	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
+		tight := level > 0
+		var head, list [][]hostapi.Segment // the filter row, and the list's rows
+		var hints []hintPair
+		// the list's and the body's viewports share what the other rows leave
+		bodyPH, listPH, fixed := oneRow[:min(bodyN, 1)], oneRow, [][]hostapi.Segment(nil)
+		switch {
+		case st.back && len(st.o.Items) > 0:
+		case len(st.o.Items) > 0:
+			head = [][]hostapi.Segment{st.filterRow()}
+			if len(st.visible) == 0 {
+				listPH, fixed = nil, emptyRows("No matches.", inner)
 			}
+		case st.o.Body == "" || st.o.Empty != "":
+			listPH, fixed = nil, emptyRows(cmp.Or(st.o.Empty, "Nothing here."), inner)
+		default:
+			listPH = nil
 		}
-		st.view.reveal(sel, end)
-		list = st.view.window(list, boxInner(w))
-		if len(st.visible) > 0 {
-			hints = append(hints, "enter", cmp.Or(st.enterVerb(st.visible[st.selected]), "back"))
-		}
-	case len(st.o.Items) > 0:
-		if key := (listKey{st.query, st.selected, st.view.top, limit, st.width, boxInner(w)}); st.rows == nil || key != st.rowsKey {
-			items := make([]listItem, 0, len(st.visible))
-			for _, i := range st.visible {
-				items = append(items, st.items[i])
+		room := h - 2 - len(stack(tight, bodyPH, slices.Concat(head, listPH, fixed), oneRow)) + len(bodyPH) + len(listPH)
+		limit := max(room-min(bodyN, 3), 1) // the list's rows; the body keeps three
+		switch {
+		case st.back && len(st.o.Items) > 0:
+			// a detail view's rows are actions: draw them as the prompts' buttons
+			choices := make([]promptChoice, 0, len(st.visible))
+			for n, i := range st.visible {
+				m, _ := st.o.Items[i].(map[string]any)
+				hl, _ := m["hl"].(string)
+				choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: hostapi.UserHL(hl)})
 			}
-			st.rows = listRowsW(items, st.items, st.selected, &st.view, limit, st.width, boxInner(w))
-			key.top = st.view.top
-			st.rowsKey = key
-		}
-		list = st.rows
-		if len(st.visible) > 0 {
-			verb := st.enterVerb(st.visible[st.selected])
-			if verb != "" {
-				hints = append(hints, "enter", verb)
+			st.view.viewH = limit
+			list = st.view.wrap(func(w int) [][]hostapi.Segment { return choiceRows(choices, st.selected, w, level > 1) }, inner)
+			st.view.rows = len(list)
+			sel, end := len(list), 0 // the selected action's rows
+			for y, r := range list {
+				if len(r) > 0 && r[0].Hit == st.selected+1 {
+					sel, end = min(sel, y), y+1
+				}
+			}
+			st.view.reveal(sel, end)
+			list = st.view.window(list, inner)
+			if len(st.visible) > 0 {
+				hints = append(hints, hintPair{"enter", cmp.Or(st.enterVerb(st.visible[st.selected]), "back")})
+			}
+		case len(st.visible) > 0:
+			if key := (listKey{st.query, st.selected, st.view.top, limit, st.size.w, inner}); st.rows == nil || key != st.rowsKey {
+				items := make([]listItem, 0, len(st.visible))
+				for _, i := range st.visible {
+					items = append(items, st.items[i])
+				}
+				st.rows = listRowsW(items, st.items, st.selected, &st.view, limit, st.size.w, inner)
+				key.top = st.view.top
+				st.rowsKey = key
+			}
+			list = st.rows
+			if verb := st.enterVerb(st.visible[st.selected]); verb != "" {
+				hints = append(hints, hintPair{"enter", verb})
 			}
 			m, _ := st.o.Items[st.visible[st.selected]].(map[string]any)
 			if st.o.Reload != nil && (st.o.OnSelect != nil || rowRun(st.o, m) != "") {
-				hints = append(hints, "space", "toggle")
+				hints = append(hints, hintPair{"space", "toggle"})
+			}
+			for _, k := range st.o.Keys {
+				hints = append(hints, hintPair{k.Key, k.Desc})
 			}
 		}
-		for _, k := range st.o.Keys {
-			hints = append(hints, k.Key, k.Desc)
+		var body [][]hostapi.Segment
+		if bodyN > 0 {
+			st.body.viewH = max(room-len(list), 1)
+			body = st.body.window(st.body.wrap(buildBody, bodyW), bodyW)
 		}
-		list = st.filterRows(list)
-		// The list keeps the height it had unfiltered, so the box does not
-		// resize under the pointer on every keystroke of a filter; only a
-		// terminal resize measures it again.
-		if st.listH == 0 || st.listW != w {
-			st.listH, st.listW = len(list), w
+		// y types into an open filter
+		if (bodyN > 0 || len(st.visible) > 0) && !st.active {
+			hints = append(hints, hintPair{"y", "copy"})
 		}
-		for n := min(st.listH, limit+1); len(list) < n; {
-			list = append(list, padSegs(nil, st.width))
+		esc := "close"
+		if st.active || st.back { // esc ends an open filter first
+			esc = "back"
 		}
-	case st.o.Body == "" || st.o.Empty != "":
-		for l := range strings.SplitSeq(cmp.Or(st.o.Empty, "Nothing here."), "\n") {
-			list = append(list, hostapi.WrapSegs([]hostapi.Segment{{Text: l, HL: "Comment"}}, boxInner(w))...)
-		}
-	}
-	var body [][]hostapi.Segment
-	if st.o.Body != "" {
-		// a detail view keeps about the width of the list it opened from
-		bodyW, padW := boxInner(w), min(boxInner(w), 72)
-		if st.back {
-			bodyW, padW = min(bodyW, max(st.width, 56)), min(bodyW, st.width)
-		}
-		// borders, the hint line and a blank row before it, and the list
-		st.body.viewH = h - 4
-		if len(list) > 0 {
-			st.body.viewH -= len(list) + 1
-		}
-		st.body.viewH = max(st.body.viewH, 3)
-		body = st.body.window(st.body.wrap(func(w int) (rows [][]hostapi.Segment) {
-			switch {
-			case st.o.BodySegs != nil:
-				for _, row := range st.o.BodySegs {
-					rows = append(rows, hostapi.WrapSegs(row, w)...)
-				}
-			case st.o.BodyMD:
-				rows = a.host.Markdown(strings.TrimRight(st.o.Body, "\n"), w)
-			default:
-				rows = fieldRows(st.o.Body, w)
-			}
-			return rows
-		}, bodyW), bodyW)
-		body[0] = padSegs(body[0], padW)
-		if len(list) > 0 {
-			body = append(body, nil)
-		}
-	}
-	hints = append(hints, scrolls(st.body, st.view)...)
-	if st.o.Body != "" && !st.active { // y types into an open filter
-		hints = append(hints, "y", "copy")
-	}
-	esc := "close"
-	switch {
-	case st.active: // esc clears an open filter first
-		esc = "clear"
-	case st.back:
-		esc = "back"
-	case st.o.OnSelect != nil:
-		esc = "cancel"
-	}
-	// the box keeps the widest hint it showed, so moving between rows with
-	// different hints never resizes it under the pointer
-	hint := hintLine(boxInner(w), append(hints, "esc", esc)...)
-	st.width = max(st.width, segsWidth(hint))
-	body = append(append(body, list...), nil, padSegs(hint, min(st.width, boxInner(w))))
-	return hostBox(" "+st.o.Title+" ", "Host:Title", badge, body, w)
+		hints = append(hints, scrolls(st.body, st.view)...)
+		hints = append(hints, hintPair{"esc", esc})
+		rows := stack(tight, body, slices.Concat(head, list, fixed), [][]hostapi.Segment{hint(inner, hints...)})
+		return rows, bodyN > 0 && st.body.viewH < min(bodyN, 3) || len(listPH) > 0 && st.view.viewH < min(st.view.rows, 3)
+	})
+	return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 }
 
 // fieldLine is a "key: value" line of a detail body.
@@ -672,18 +645,26 @@ func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, area uv.Rectan
 	return rows, uv.Rect(lo, y0, max(hi-lo, 0), bh)
 }
 
-// anchorBottom lays box over the bottom rows of the chat area at the left
-// edge, just above the statusline that opened it; what it does not cover
-// stays visible. It reports the cells the box took.
-func anchorBottom(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hostapi.Segment, uv.Rectangle) {
+// anchorBottom lays box over the bottom rows of area with its border in
+// line with frame's left or right edge: the composer frame whose
+// statusline pill opened it. What it does not cover stays visible, one
+// cell off its inner side. It reports the cells the box took.
+func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, right bool, w int) ([][]hostapi.Segment, uv.Rectangle) {
 	bottom := min(area.Max.Y, len(rows))
 	y0 := max(area.Min.Y, bottom-len(box))
-	width := 0
-	for i := y0; i < bottom; i++ {
-		rows = placeBox(rows, [][]hostapi.Segment{margined(box[i-y0])}, area.Min.X, i, w)
-		width = max(width, segsWidth(box[i-y0])+2)
+	bw := segsWidth(box[0])
+	x := frame.Min.X
+	if right {
+		x = max(frame.Max.X-bw, 0)
 	}
-	return rows, uv.Rect(area.Min.X, y0, width, max(bottom-y0, 0))
+	for i := y0; i < bottom; i++ {
+		if right {
+			rows = placeBox(rows, [][]hostapi.Segment{append([]hostapi.Segment{{Text: " "}}, box[i-y0]...)}, x-1, i, w)
+		} else {
+			rows = placeBox(rows, [][]hostapi.Segment{append(slices.Clip(box[i-y0]), hostapi.Segment{Text: " "})}, x, i, w)
+		}
+	}
+	return rows, uv.Rect(x, y0, bw, max(bottom-y0, 0))
 }
 
 // margined holds what a box does not cover one cell off each border, so it

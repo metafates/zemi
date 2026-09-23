@@ -24,7 +24,7 @@ type questionPrompt struct {
 	at        int // the tab shown: a question, or len(qs) for the review tab
 	reviewSel int // a question row, or len(qs) for submit
 	review    viewport
-	width     int // the widest body so far: the box only grows between tabs
+	size      boxSize
 	answer    chan qAnswer
 }
 
@@ -36,7 +36,8 @@ type qState struct {
 	input    composerState
 	view     viewport // the options
 	ask      viewport // the question text
-	answered string   // "" until answered
+	text     textRows
+	answered string // "" until answered
 }
 
 type qAnswer struct {
@@ -256,24 +257,35 @@ func questionTabs(qp *questionPrompt) []hostapi.Segment {
 	return row
 }
 
-func (a *App) questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment {
-	blank := []hostapi.Segment{{Text: ""}}
-	var body [][]hostapi.Segment
+// questionBox draws the shown tab. The box starts at the size of the
+// largest tab, so switching tabs never resizes or moves it.
+func (a *App) questionBox(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	title := "Question"
-	tabs := []string{}
 	if len(qp.qs) > 1 {
 		title = "Questions"
-		body = append(body, questionTabs(qp), blank)
-		tabs = []string{"tab", "next"}
 	}
-	box := func(hints ...string) [][]hostapi.Segment {
-		hint := hintLine(boxInner(w), hints...)
-		for _, r := range append(body, hint) {
-			qp.width = max(qp.width, segsWidth(r))
+	if qp.size.h == 0 {
+		at := qp.at
+		for qp.at = range len(qp.qs) + map[bool]int{true: 1}[len(qp.qs) > 1] {
+			promptBox(title, "", a.questionRows(qp, w, h), w, h, 100, &qp.size)
 		}
-		body[0] = padSegs(body[0], min(boxInner(w), max(qp.width, 56)))
-		return promptBox(title, "", body, hint, w, 100)
+		qp.at = at
 	}
+	return promptBox(title, "", a.questionRows(qp, w, h), w, h, 100, &qp.size)
+}
+
+func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
+	inner := boxInner(w)
+	var tabs [][]hostapi.Segment
+	var moves []hintPair
+	if len(qp.qs) > 1 {
+		tabs = [][]hostapi.Segment{questionTabs(qp)}
+		moves = []hintPair{{"tab", "next"}}
+		if qp.at == len(qp.qs) {
+			moves = []hintPair{{"shift+tab", "previous"}}
+		}
+	}
+	qp.size.w = max(qp.size.w, 56)
 	if qp.reviewing() {
 		items := make([]listItem, 0, len(qp.qs)+1)
 		for i, q := range qp.qs {
@@ -283,10 +295,15 @@ func (a *App) questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment 
 			}
 			items = append(items, listItem{label: strings.ReplaceAll(q.Question, "\n", " "), more: [][]hostapi.Segment{{ans}}})
 		}
-		// borders, the blank row and the hint take four rows
-		body = append(body, listRows(append(items, listItem{label: "Submit answers"}), qp.reviewSel, &qp.review, max(chatH-len(body)-4, 3), boxInner(w))...)
+		items = append(items, listItem{label: "Submit answers"})
 		enter := map[bool]string{true: "submit", false: "change"}[qp.reviewSel == len(qp.qs)]
-		return box(slices.Concat([]string{"enter", enter, "shift+tab", "back"}, scrolls(qp.review), []string{"esc", "cancel"})...)
+		return fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
+			tight := level > 0
+			room := h - 2 - len(stack(tight, tabs, oneRow, oneRow)) + 1
+			list := listRows(items, qp.reviewSel, &qp.review, max(room, 1), inner)
+			hintRow := hint(inner, slices.Concat(moves, []hintPair{{"enter", enter}}, scrolls(qp.review), []hintPair{{"esc", "dismiss"}})...)
+			return stack(tight, tabs, list, [][]hostapi.Segment{hintRow}), qp.review.viewH < min(qp.review.rows, 3)
+		})
 	}
 
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
@@ -299,8 +316,8 @@ func (a *App) questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment 
 			if l, ok := strings.CutSuffix(it.label, " (Recommended)"); ok {
 				it.label, it.desc = l, strings.TrimSuffix("recommended · "+it.desc, " · ")
 			}
-			if q.Multi() {
-				it.label = map[bool]string{true: "[x] ", false: "[ ] "}[st.picked[i]] + it.label
+			if q.Multi() && st.picked[i] {
+				it.key = "on"
 			}
 			items = append(items, it)
 		}
@@ -308,44 +325,48 @@ func (a *App) questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment 
 			items = append(items, listItem{label: "Type your own answer"})
 		}
 	}
-	// wrapped, never cut: what is asked scrolls when it would push the
-	// first options and the hint off screen. Room is what is left after
-	// the two borders, the blank row under the question, the blank row and
-	// hint below the options, and the options themselves.
-	st.ask.viewH = max(chatH-len(body)-5-min(len(items), 4), 1)
-	if st.typing {
-		st.ask.viewH = max(st.ask.viewH-1, 1)
-	}
-	ask := st.ask.wrap(func(w int) [][]hostapi.Segment {
+	askText := st.text.at(func(w int) [][]hostapi.Segment {
 		var ask [][]hostapi.Segment
 		for l := range strings.SplitSeq(q.Question, "\n") {
 			ask = append(ask, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, w)...)
 		}
 		if q.Description != "" {
-			ask = append(ask, []hostapi.Segment{{Text: "", HL: "Host:Hint"}})
+			ask = append(ask, nil)
 			ask = append(ask, a.host.Markdown(q.Description, w)...)
 		}
 		return ask
-	}, boxInner(w))
-	body = append(append(body, st.ask.window(ask, boxInner(w))...), blank)
-	// borders, the blank row and the hint take four rows, typing one more
-	limit := chatH - len(body) - 4
-	if st.typing {
-		limit--
-	}
-	if len(items) > 0 {
-		body = append(body, listRows(items, st.sel, &st.view, max(limit, 3), boxInner(w))...)
-	}
-	more := scrolls(st.ask, st.view)
-	var hints []string
+	})
+	askN := len(askText(inner))
+	var hints []hintPair
 	switch {
 	case st.typing:
-		body = append(body, st.input.inputRow(boxInner(w)))
-		hints = slices.Concat([]string{"enter", "answer"}, scrolls(st.ask), []string{"esc", "back"})
+		hints = []hintPair{{"enter", "answer"}, {"esc", "back"}}
 	case q.Multi():
-		hints = slices.Concat([]string{"space", "mark", "enter", "answer"}, tabs, more, []string{"esc", "cancel"})
+		hints = slices.Concat(moves, []hintPair{{"space", "toggle"}, {"enter", "answer"}, {"esc", "dismiss"}})
 	default:
-		hints = slices.Concat([]string{fmt.Sprintf("1-%d", min(len(q.Options), 9)), "pick", "enter", "answer"}, tabs, more, []string{"esc", "cancel"})
+		hints = slices.Concat(moves, []hintPair{{fmt.Sprintf("1-%d", min(len(q.Options), 9)), "pick"}, {"enter", "answer"}, {"esc", "dismiss"}})
 	}
-	return box(hints...)
+	return fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
+		tight := level > 0
+		var input [][]hostapi.Segment
+		if st.typing {
+			input = [][]hostapi.Segment{st.input.inputRow(inner)}
+		}
+		optsPH := oneRow[:min(len(items), 1)]
+		// what is asked scrolls when it would push the first options off
+		// screen; the rest goes to the options
+		room := h - 2 - len(stack(tight, tabs, oneRow, slices.Concat(optsPH, input), oneRow)) + 1 + len(optsPH)
+		st.ask.viewH = max(room-min(len(items), 4), 1)
+		ask := st.ask.window(st.ask.wrap(askText, inner), inner)
+		var opts [][]hostapi.Segment
+		if len(items) > 0 {
+			opts = listRows(items, st.sel, &st.view, max(room-len(ask), 1), inner)
+		}
+		views := []viewport{st.ask}
+		if !st.typing { // typing, the page keys scroll only the question
+			views = append(views, st.view)
+		}
+		body := stack(tight, tabs, ask, slices.Concat(opts, input), [][]hostapi.Segment{hint(inner, slices.Concat(hints, scrolls(views...))...)})
+		return body, st.ask.viewH < min(askN, 3) || len(items) > 0 && st.view.viewH < min(st.view.rows, 3)
+	})
 }

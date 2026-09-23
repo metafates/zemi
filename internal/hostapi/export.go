@@ -376,6 +376,6 @@ func (h *Host) OpenUsage() error {
 		}
 		plain.WriteByte('\n')
 	}
-	ui.OpenOverlay(Overlay{ID: "usage", Title: "Usage", Origin: lua.OriginBuiltin, Body: plain.String(), BodySegs: rows})
+	ui.OpenOverlay(Overlay{ID: "usage", Title: "Usage", Origin: lua.OriginBuiltin, Body: plain.String(), BodySegs: rows, Anchor: "bottom-right"})
 	return nil
 }

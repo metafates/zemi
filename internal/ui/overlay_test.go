@@ -136,9 +136,10 @@ func TestTopChromeTakesInput(t *testing.T) {
 
 	a.openOverlay(hostapi.Overlay{Items: []any{"a", "b", "c"}})
 	a.memReview = &memReviewPrompt{items: make([]hostapi.MemoryRow, 3)}
+	a.memReview.seek(0)
 	a.wheel(0, 0, 1)
-	if a.memReview.sel != 1 || a.overlays[0].selected != 0 {
-		t.Fatalf("wheel: memory sel=%d overlay sel=%d", a.memReview.sel, a.overlays[0].selected)
+	if a.memReview.at() != 1 || a.overlays[0].selected != 0 {
+		t.Fatalf("wheel: memory sel=%d overlay sel=%d", a.memReview.at(), a.overlays[0].selected)
 	}
 }
 
@@ -294,7 +295,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{Title: "Errors", Items: []any{detail()}}, []string{"enter"},
 			func(a *App) string {
 				d := a.overlays[len(a.overlays)-1]
-				if len(a.overlays) != 2 || d.o.Title != "Errors › err" || !d.back {
+				if len(a.overlays) != 2 || d.o.Title != "Errors / err" || !d.back {
 					return fmt.Sprintf("%+v", d)
 				}
 				return ""
@@ -306,7 +307,7 @@ func TestOverlayNavigation(t *testing.T) {
 				d.o.Body = strings.Repeat("line\n", 60)
 				before := segsWidth(a.overlayBox(d, 80, 20)[0])
 				a.wheel(0, 0, 1)
-				d.selected = 1 // enter select -> enter back
+				d.selected = 1 // enter confirm -> enter back
 				if after := segsWidth(a.overlayBox(d, 80, 20)[0]); d.body.top != 1 || after != before {
 					return fmt.Sprintf("scroll=%d width %d -> %d", d.body.top, before, after)
 				}
@@ -403,15 +404,13 @@ func TestOverlayHints(t *testing.T) {
 		filtering bool
 		want      string
 	}{
-		{hostapi.Overlay{Items: []any{"inert"}}, false, "esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, false, "enter select · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}}, false, "enter open · esc close"},
+		{hostapi.Overlay{Items: []any{"inert"}}, false, "y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, false, "enter confirm · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}, Verb: "pick"}, false, "enter open · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}, Verb: "pick"}, false, "enter pick · y copy · esc close"},
 		{hostapi.Overlay{Body: "text"}, false, "y copy · esc close"},
-		{hostapi.Overlay{Body: strings.Repeat("line\n", 30), Items: []any{map[string]any{"text": "a", "fill": "x"}}}, false, "enter select · pgup/pgdn scroll · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter select · esc clear"},
-		{hostapi.Overlay{Body: "text", Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter select · esc clear"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "copy": "export X"}}}, false, "enter copy · esc close"},
-		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, false, "enter select · pgup/pgdn scroll · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter confirm · esc back"},
+		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, false, "enter confirm · pgup/pgdn scroll · y copy · esc close"},
 	} {
 		if got := strings.Trim(hints(c.o, c.filtering), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)
@@ -463,7 +462,6 @@ func TestOverlayRowsBuiltOnce(t *testing.T) {
 		built bool
 	}{
 		{"first frame", func() {}, true},
-		{"the width it measured", func() {}, true},
 		{"same frame", func() {}, false},
 		{"move", func() { st.selected = 30 }, true},
 		{"filter", func() { st.query = "item 4"; st.refilter() }, true},
@@ -509,26 +507,43 @@ func TestOverlayClosesOnOutsideClick(t *testing.T) {
 	app.answerPerm(false, "user")
 }
 
-// TestOverlayLongLabelKeepsDescAndKey: a label too long for the box is cut
-// before its description, and the key column stays.
-func TestOverlayLongLabelKeepsDescAndKey(t *testing.T) {
-	app, _ := bootAgentApp(t, 80, 20)
-	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{
-		map[string]any{"text": "Done. The fixture path moved, so the test binary exits 1", "desc": "now · 2 messages", "key": "current"},
-		map[string]any{"text": "please run bash", "desc": "1m ago · 18 messages · and a first line that runs far past the edge"},
-	}})
-	rows := app.overlayBox(&app.overlays[0], 80, 20)
-	box := fmt.Sprint(rows)
-	if !strings.Contains(box, "now") || !strings.Contains(box, "current") || !strings.Contains(box, "…") {
-		t.Fatalf("box: %s", box)
-	}
-	// descriptions start in one column, the cut label's included
-	col := func(row []hostapi.Segment, s string) int {
-		before, _, _ := strings.Cut(plainSegs(row), s)
-		return ansi.StringWidth(before)
-	}
-	if a, b := col(rows[2], "now"), col(rows[3], "1m ago"); a != b {
-		t.Fatalf("descriptions at %d and %d:\n%s\n%s", a, b, plainSegs(rows[2]), plainSegs(rows[3]))
+// TestListDescColumn: descriptions start in one column, and a row that
+// does not fit gives way from its description, never its label or key.
+func TestListDescColumn(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		items []listItem
+	}{
+		{"a long title with a short description", []listItem{
+			{label: "a much longer session title here", desc: "now · short"},
+			{label: "done", desc: "now · 2 messages · hello number 3 with a longer message to title it", key: "current"},
+		}},
+		{"a picker keeps its ids whole", []listItem{
+			{label: "deepseek/deepseek-v4-flash", desc: "DeepSeek-V4-Flash · 1M · $0.14/$0.28"},
+			{label: "fake/m", desc: "128k", key: "current"},
+			{label: "fake/deepseek-v4-flash-long-model-name", desc: "1M"},
+		}},
+	} {
+		col := -1
+		for i, row := range listRows(c.items, 0, nil, 10, 52) {
+			text, it := plainSegs(row), c.items[i]
+			if !strings.Contains(text, it.label) || !strings.HasSuffix(text, it.key) || strings.Contains(text, "·…") {
+				t.Errorf("%s: row %q", c.name, text)
+			}
+			x := 0
+			for _, s := range row {
+				if s.HL == "Host:Hint" {
+					if col < 0 {
+						col = x
+					}
+					if x != col {
+						t.Errorf("%s: description at %d, want %d: %q", c.name, x, col, text)
+					}
+					break
+				}
+				x += ansi.StringWidth(s.Text)
+			}
+		}
 	}
 }
 
@@ -556,7 +571,7 @@ func TestOverlaySegmentLabel(t *testing.T) {
 	}})
 	rows := app.overlayBox(&app.overlays[0], 40, 20)
 	first, second := rows[2], rows[3]
-	if first[2].HL != "ToastErr" || first[2].Click != "" || first[3].HL != "Normal" {
+	if first[2].HL != "ToastErr" || first[2].Click != "" || first[3].HL != "Host:Value" {
 		t.Fatalf("first row: %+v", first)
 	}
 	if !strings.Contains(plainSegs(second), "…") || second[2].HL != "Title" {
@@ -596,7 +611,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { esc = { fn = functio
 assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { e = { desc = "no fn" } } }), "a key with no fn must raise")
 assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function() end } } }), "a key the list takes itself must raise")`)
 	box := app.overlayBox(&app.overlays[0], 60, 16)
-	if hint := plainSegs(box[len(box)-2]); !strings.Contains(hint, "e edit · esc close") {
+	if hint := plainSegs(box[len(box)-2]); !strings.Contains(hint, "e edit · y copy · esc close") {
 		t.Fatalf("footer: %q", hint)
 	}
 	for _, c := range []struct{ keys, want string }{
