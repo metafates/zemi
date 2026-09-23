@@ -502,6 +502,7 @@ func TestPipedStdinIsNotTyped(t *testing.T) {
 	const diff = "diff --git a/x b/x"
 	for _, c := range []struct{ prompt, title string }{
 		{"/review", "Run the saved workflow"},
+		{"", diff},
 	} {
 		h := printHost(t)
 		if err := h.Settings.SetHost("session.auto_title", false); err != nil {
