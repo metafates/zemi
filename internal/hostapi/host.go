@@ -600,7 +600,7 @@ var goKeys = [][2]string{
 	{"ctrl+c", "interrupt; twice while idle quits"},
 	{"ctrl+g", "edit the draft in your editor"},
 	{"ctrl+v", "paste, images included"},
-	{"up, ctrl+p", "earlier prompts (empty: queued messages)"},
+	{"up, ctrl+p", "earlier prompts, or queued ones when empty"},
 	{"down, ctrl+n", "later prompts"},
 	{"ctrl+z", "undo in the composer"},
 	{"alt+left, alt+right", "move by word"},
