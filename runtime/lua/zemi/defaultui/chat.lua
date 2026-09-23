@@ -208,6 +208,9 @@ zemi.ui.widget.add({
     local function add_group(group, click)
       ---@type string[], table<string, { c: { [1]: string, [2]: string?, [3]: string? }, n: integer }>
       local order, seen = {}, {}
+      -- the labels the model wrote for its commands: paid for, so shown
+      ---@type string[]
+      local labels = {}
       for _, t in ipairs(group) do
         local c = COUNT[tool_name(t)]
         local key = c[1] .. "|" .. (c[2] or "")
@@ -216,13 +219,23 @@ zemi.ui.widget.add({
           order[#order + 1] = key
         end
         seen[key].n = seen[key].n + 1
+        if tool_name(t) == "bash" and (t.label or "") ~= "" then labels[#labels + 1] = t.label end
       end
       ---@type string[]
       local parts = {}
+      ---@type string?
+      local commands
       for _, key in ipairs(order) do
         local c, n = seen[key].c, seen[key].n
-        parts[#parts + 1] = c[2] and string.format("%s %d %s", c[1], n, n == 1 and c[2] or c[3]) or c[1]
+        local part = c[2] and string.format("%s %d %s", c[1], n, n == 1 and c[2] or c[3]) or c[1]
+        if c == COUNT.bash and #labels > 0 then
+          -- last, so the labels read as the commands' list
+          commands = part .. ": " .. table.concat(labels, ", ")
+        else
+          parts[#parts + 1] = part
+        end
       end
+      parts[#parts + 1] = commands
       local summary = table.concat(parts, ", ")
       summary = summary:sub(1, 1):upper() .. summary:sub(2)
       lines[#lines + 1] = { { text = "✓ ", hl = "AgentToolOk", copy = false, click = click },

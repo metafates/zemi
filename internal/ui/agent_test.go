@@ -397,6 +397,7 @@ func TestGoldenAgentStream(t *testing.T) {
 		Reasoning: "checked go.mod, then the fixture dir",
 		Tools: []hostapi.StreamTool{
 			{Name: "read", Input: "internal/fixtures/paths.go", Status: "ok"},
+			{Name: "bash", Input: "go vet ./...", Label: "Vet the packages", Status: "ok"},
 			{Name: "bash", Input: "go test ./... 2>&1 | tail -5", Status: "run"},
 		},
 		Steering:   []string{"also check go.mod"},
