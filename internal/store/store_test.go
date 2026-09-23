@@ -44,10 +44,9 @@ func TestSchemaVersion(t *testing.T) {
 	}
 }
 
-// TestMigrateOldDatabase: a store written before the dead telemetry
-// columns went away opens, drops them and still records tool calls.
-func TestMigrateOldDatabase(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "zemi.db")
+// oldDatabase writes a store at schema version 0 to path.
+func oldDatabase(t *testing.T, path string) {
+	t.Helper()
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -65,8 +64,14 @@ func TestMigrateOldDatabase(t *testing.T) {
 		}
 	}
 	db.Close()
+}
 
-	db, err = Open(path)
+// TestMigrateOldDatabase: a store written before the dead telemetry
+// columns went away opens, drops them and still records tool calls.
+func TestMigrateOldDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zemi.db")
+	oldDatabase(t, path)
+	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +85,92 @@ func TestMigrateOldDatabase(t *testing.T) {
 	var cols int
 	if err := db.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tool_calls')`).Scan(&cols); err != nil || cols != 5 {
 		t.Fatalf("tool_calls columns = %d, %v; want 5", cols, err)
+	}
+}
+
+// TestConcurrentOpen: two processes opening one store at once, as restored
+// terminal panes do after an upgrade, both start.
+func TestConcurrentOpen(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		setup func(t *testing.T, path string)
+	}{
+		{"new path", func(*testing.T, string) {}},
+		{"old schema", oldDatabase},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			for range 30 {
+				path := filepath.Join(t.TempDir(), "zemi.db")
+				c.setup(t, path)
+				// two handles are two connections, which is what two processes hold
+				errs := make(chan error, 2)
+				for range 2 {
+					go func() {
+						db, err := Open(path)
+						if err == nil {
+							db.Close()
+						}
+						errs <- err
+					}()
+				}
+				for range 2 {
+					if err := <-errs; err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestSweepVacuum: the open that ages out checkpoints rewrites the file
+// only when they were a quarter of it.
+func TestSweepVacuum(t *testing.T) {
+	for _, c := range []struct {
+		name         string
+		aged, kept   int
+		wantVacuumed bool
+	}{
+		{"a few pages", 1, 20, false},
+		{"most of the file", 20, 1, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "zemi.db")
+			db, err := Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := db.CreateSession("s", "", "t", ""); err != nil {
+				t.Fatal(err)
+			}
+			blob := make([]byte, 16<<10)
+			for i := range c.aged + c.kept {
+				m := &Message{SessionID: "s", Role: "user", PartsJSON: `[]`}
+				if err := db.AddMessage(m); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.AddCheckpoint("s", m.ID, "/f", true, blob); err != nil {
+					t.Fatal(err)
+				}
+				if i < c.aged {
+					if _, err := db.db.Exec(`UPDATE checkpoints SET created_at = 0 WHERE message_id = ?`, m.ID); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			db.Close()
+			if db, err = Open(path); err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			var free int
+			if err := db.db.QueryRow(`PRAGMA freelist_count`).Scan(&free); err != nil {
+				t.Fatal(err)
+			}
+			if (free == 0) != c.wantVacuumed {
+				t.Fatalf("%d free pages, want vacuumed %v", free, c.wantVacuumed)
+			}
+		})
 	}
 }
 

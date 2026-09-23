@@ -173,6 +173,15 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 	default:
 		return nil, errors.New("mcp: command or url is required")
 	}
+	if err := c.initialize(ctx); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return c, nil
+}
+
+// initialize runs the handshake that opens a session.
+func (c *Client) initialize(ctx context.Context) error {
 	var init struct {
 		ProtocolVersion string `json:"protocolVersion"`
 	}
@@ -182,19 +191,14 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 		"clientInfo":      map[string]any{"name": "zemi", "version": "1"},
 	}
 	if err := c.call(ctx, "initialize", params, &init); err != nil {
-		c.Close()
-		return nil, fmt.Errorf("mcp: initialize: %w", err)
+		return fmt.Errorf("mcp: initialize: %w", err)
 	}
 	if ht, ok := c.t.(*httpTransport); ok {
 		ht.mu.Lock()
 		ht.version = init.ProtocolVersion
 		ht.mu.Unlock()
 	}
-	if err := c.send(ctx, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"}); err != nil {
-		c.Close()
-		return nil, err
-	}
-	return c, nil
+	return c.send(ctx, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
 }
 
 // Tools lists every tool, following pagination.
@@ -457,7 +461,11 @@ type httpTransport struct {
 	mu      sync.Mutex
 	session string
 	version string
+	renewMu sync.Mutex // one new session at a time
 }
+
+// renewing marks the handshake renew runs, whose sends must not renew again.
+type renewing struct{}
 
 var httpClient = &http.Client{}
 
@@ -479,6 +487,16 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 		if resp.StatusCode == http.StatusUnauthorized {
 			resp.Body.Close()
 			return ErrAuthRequired
+		}
+	}
+	// the server forgot the session (a redeploy): the spec says start another
+	if old := resp.Request.Header.Get("Mcp-Session-Id"); resp.StatusCode == http.StatusNotFound && old != "" && ctx.Value(renewing{}) == nil {
+		resp.Body.Close()
+		if err := t.renew(ctx, old); err != nil {
+			return err
+		}
+		if resp, _, err = t.post(ctx, msg); err != nil {
+			return err
 		}
 	}
 	if id := resp.Header.Get("Mcp-Session-Id"); id != "" {
@@ -517,6 +535,34 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 	}
 	t.c.handle(body)
 	return nil
+}
+
+// renew replaces the session old unless another call already did. A handshake
+// the server fails ends the client, so the server shows as failed with a restart.
+func (t *httpTransport) renew(ctx context.Context, old string) error {
+	t.renewMu.Lock()
+	defer t.renewMu.Unlock()
+	t.mu.Lock()
+	stale := t.session == old
+	if stale {
+		t.session = ""
+	}
+	t.mu.Unlock()
+	if !stale {
+		return nil
+	}
+	err := t.c.initialize(context.WithValue(ctx, renewing{}, true))
+	if err != nil && ctx.Err() != nil {
+		// the caller gave up, not the server: the next call renews again
+		t.mu.Lock()
+		t.session = old
+		t.mu.Unlock()
+		return err
+	}
+	if err != nil {
+		t.c.end(err)
+	}
+	return err
 }
 
 // post sends one request with the session headers and, when signed in,

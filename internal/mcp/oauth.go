@@ -126,8 +126,22 @@ func (a *Auth) bearer(ctx context.Context) (string, error) {
 	if t == nil {
 		return "", nil
 	}
-	if t.Expiry.IsZero() || time.Until(t.Expiry) > 30*time.Second {
+	fresh := func(t *Token) bool { return t.Expiry.IsZero() || time.Until(t.Expiry) > 30*time.Second }
+	if fresh(t) {
 		return t.AccessToken, nil
+	}
+	// another window may have refreshed already, and a server that rotates
+	// refresh tokens refuses the one it used.
+	// NOTE: two processes refreshing at the same moment still race; an flock
+	// on the grant file around the refresh would close that.
+	a.loaded = false
+	switch ft := a.load(); {
+	case ft.AccessToken == t.AccessToken:
+		a.tok = t // a token reject marked expired stays expired
+	case fresh(ft):
+		return ft.AccessToken, nil
+	default:
+		t = ft
 	}
 	if t.RefreshToken == "" {
 		return "", ErrAuthRequired

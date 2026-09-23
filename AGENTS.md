@@ -68,7 +68,7 @@ make check              # go vet + go test + make luals + a gofmt check, all mus
 make luals              # lua-language-server over runtime/; prints a skip line without the binary
                         # not on PATH? make check LUALS=/path/to/lua-language-server
 make build / make run   # go build -o bin/zemi . / run the TUI against your real ~/.config/zemi
-make test               # full suite (~20s, pure Go, no network, no CGO)
+make test               # full suite (~20s, pure Go, no CGO; network only for one macOS TLS check)
 make race               # go test -race ./internal/...
 make golden             # regenerate internal/ui/testdata/*.golden, then read the diff
 make fmt                # gofmt -w over the tracked Go files
