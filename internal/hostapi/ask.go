@@ -285,14 +285,19 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		if abs == "" || strings.ContainsAny(abs, globMeta) {
 			return "", nil
 		}
-		// Pipeline.Check sends every such write, and a secret-shaped file a
-		// model rule covers, back to the ask, so the rule would do nothing
-		if req.Subject == "fs.write" && !h.inScratch(abs) && h.protectedWrite(abs) || h.secretPath(abs) {
+		// Pipeline.Check sends every such write back to the ask, so the rule
+		// would do nothing
+		if req.Subject == "fs.write" && !h.inScratch(abs) && h.protectedWrite(abs) {
 			return "", nil
+		}
+		what := map[string]string{"fs.write": "edits", "fs.read": "reads"}[req.Subject]
+		// a directory glob would cover the next secret too, and Check re-asks
+		// for it; the one file the user saw is safe to allow
+		if h.secretPath(abs) {
+			return fmt.Sprintf("allow %s of %s", what, h.relPath(abs)), []perm.Rule{rule(req.Subject, abs)}
 		}
 		dir := filepath.Dir(abs)
 		shown := h.relPath(dir)
-		what := map[string]string{"fs.write": "edits", "fs.read": "reads"}[req.Subject]
 		// the rule's * spans separators, so the label says so
 		where := "in " + shown + "/ and below"
 		if shown == "." {

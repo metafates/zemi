@@ -666,11 +666,13 @@ otherwise return a decision table:
   pattern holding a glob wildcard, an opaque segment (an inner `sh -c`,
   a stripped assignment), a wrapper program that runs what it is
   handed (a shell, an interpreter, `sudo`, `xargs`, `busybox`, and the
-  `npm exec`/`uv run` spellings of `npx`) and a secret-shaped file offer
-  no `always` option at all, so they re-ask every time: no rule written
-  from such a segment says what the next call would run. A reader
-  command naming a secret-shaped file (`cat .env`) goes back to the ask
-  even under an `always` rule, as a file read does.
+  `npm exec`/`uv run` spellings of `npx`) offer no `always` option at
+  all, so they re-ask every time: no rule written from such a segment
+  says what the next call would run. A secret-shaped file is offered only
+  its exact path, since a directory rule would cover the next secret
+  too: a file request a `model` glob rule allows goes back to the ask when
+  it is secret-shaped, and so does a reader command naming one (`cat
+  .env`) under an `always` rule.
 - `permission.request`, `app.quit`, `composer.submit`:
   `{ decision = "deny", reason = "..." }` or nil. Lua can deny; it can
   never grant.

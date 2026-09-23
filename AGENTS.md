@@ -338,9 +338,9 @@ that runs what it is handed (`perm.WrapperPrograms`: shells, interpreters, `sudo
 `busybox`, `awk`, ..., the list `perm.Destructive` and `perm.GitWrites` look past too, and
 `wrapperSubcommands` for the `npm exec`/`uv run` spellings of `npx`) - no rule written from such
 a segment says what the next call would run - nor for a `protectedWrite`, which
-`Pipeline.Check` asks about whatever rule allows it, nor for a secret-shaped file. A directory
-glob cannot exclude the secret shapes either, so `Pipeline.Check`'s loosen sends a file
-request a `model` rule allowed back to the ask when `Secret` matches, and a command whose
+`Pipeline.Check` asks about whatever rule allows it. A secret-shaped file is offered only its
+exact path: a directory glob cannot exclude the secret shapes, so `Pipeline.Check`'s loosen
+sends a file request a `model` glob rule allowed back to the ask when `Secret` matches, and a command whose
 reader names one (`perm.ReadsSecret`: `cat .env`, `cat .e*`) when a `model` rule or a
 `.zemi/permissions` line allowed it (`perm.Rule.Source`); a user-config rule has no principal,
 stays authoritative, and shows read-only in `/permissions` with its source (init.lua, the

@@ -277,9 +277,10 @@ func (p *Pipeline) Check(req Request) Verdict {
 			return p.resolveAsk(req, "rewritten input re-checked (allow flipped to ask)")
 		case req.Subject == "fs.write" && p.Protected != nil && p.Protected(req.Arg):
 			return p.resolveAsk(req, "this changes what git or zemi runs (.git, .gitattributes, .gitmodules, .zemi, zemi's own files)")
-		// an "always" answer allows the file's whole directory; a rule the
-		// user wrote in init.lua says what it means and stays authoritative
-		case PathSubject(req.Subject) && rule != nil && rule.Principal == "model" && p.Secret != nil && p.Secret(req.Arg):
+		// an "always" answer allows the file's whole directory, or names the
+		// one secret the user saw; a rule the user wrote in init.lua says
+		// what it means and stays authoritative
+		case PathSubject(req.Subject) && rule != nil && rule.Principal == "model" && strings.ContainsAny(rule.Pattern, "*?") && p.Secret != nil && p.Secret(req.Arg):
 			return p.resolveAsk(req, "this file looks like it holds secrets")
 		// "allow cat" was answered for a file the user saw; a project file
 		// line names the program alone. The user's init.lua rule stays.

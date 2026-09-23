@@ -1000,7 +1000,7 @@ func TestAlwaysChoice(t *testing.T) {
 		// the gate asks about a protected write whatever the rules say
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, ".zemi", "init.lua")}, "", nil},
 		// Pipeline.Check sends a secret-shaped file back to the ask whatever a model rule says
-		{tools.Request{Subject: "fs.read", Arg: ".env"}, "", nil},
+		{tools.Request{Subject: "fs.read", Arg: ".env"}, "allow reads of .env", []string{filepath.Join(proj, ".env")}},
 		{tools.Request{Subject: "fs.read", Arg: "main.go"}, "allow reads anywhere in the project", []string{filepath.Join(proj, "*")}},
 		// the subcommand spellings of npx and uvx, and a wrapper name, offer nothing
 		{tools.Request{Subject: "tool.bash", Arg: "npm exec prettier -- --check ."}, "", nil},
@@ -1431,6 +1431,11 @@ func TestAlwaysRuleSkipsSecrets(t *testing.T) {
 		if v := pipe.Check(tools.Request{Subject: "fs.read", Arg: c.path}); v.Decision != c.want {
 			t.Errorf("%s: %s (%s), want %s", c.path, v.Decision, v.Reason, c.want)
 		}
+	}
+	// an always answer for the one file the user saw names it exactly
+	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(proj, "deploy", "prod.pem"), Decision: perm.Allow, Principal: "model"})
+	if v := pipe.Check(tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, "deploy", "prod.pem")}); v.Decision != perm.Allow {
+		t.Errorf("an exact model rule for prod.pem: %s (%s)", v.Decision, v.Reason)
 	}
 	// the user's own rule means what it says
 	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(proj, ".env"), Decision: perm.Allow})
