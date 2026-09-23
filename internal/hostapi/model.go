@@ -195,6 +195,17 @@ func imagesRefused(err error) bool {
 	return strings.Contains(s, "multimodal") || strings.Contains(s, "image") || strings.Contains(s, "vision")
 }
 
+// imageTooLarge is an imagesRefused refusal of one image's size, not of
+// images: the model still takes them.
+func imageTooLarge(err error) bool {
+	var pe *fantasy.ProviderError
+	if !imagesRefused(err) || !errors.As(err, &pe) {
+		return false
+	}
+	s := strings.ToLower(pe.Message)
+	return strings.Contains(s, "exceed") || strings.Contains(s, "maximum") || strings.Contains(s, "dimension") || strings.Contains(s, "too large")
+}
+
 // modelSpec finds the catalog entry for a "provider/model" id.
 func (h *Host) modelSpec(id string) (agent.Model, bool) {
 	prov, model, ok := strings.Cut(id, "/")

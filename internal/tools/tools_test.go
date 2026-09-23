@@ -1,10 +1,13 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"slices"
@@ -606,7 +609,9 @@ func TestEditSafety(t *testing.T) {
 // colors, and saves cut output to the scratchpad.
 func TestReadAndBashShapes(t *testing.T) {
 	dir := perm.RealPath(t.TempDir())
-	os.WriteFile(filepath.Join(dir, "i.png"), append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 16)...), 0o644)
+	var pngData bytes.Buffer
+	png.Encode(&pngData, image.NewGray(image.Rect(0, 0, 1, 1)))
+	os.WriteFile(filepath.Join(dir, "i.png"), pngData.Bytes(), 0o644)
 	os.WriteFile(filepath.Join(dir, "b.bin"), []byte("a\x00b"), 0o644)
 	os.WriteFile(filepath.Join(dir, "t.txt"), []byte("one\n"), 0o644)
 	os.MkdirAll(filepath.Join(dir, "d", "a"), 0o755)
@@ -759,6 +764,35 @@ func TestOutputLimits(t *testing.T) {
 	res, _ = runGrep(ctx, nil, map[string]any{"pattern": "match", "path": dir})
 	if n := strings.Count(res.Content, "\n"); n != grepMaxMatches || !strings.Contains(res.Content, "stopped at 100 matches") {
 		t.Fatalf("grep lines = %d: %q", n, res.Content[len(res.Content)-120:])
+	}
+}
+
+func TestFitImage(t *testing.T) {
+	encode := func(w, h int) []byte {
+		var b bytes.Buffer
+		png.Encode(&b, image.NewGray(image.Rect(0, 0, w, h)))
+		return b.Bytes()
+	}
+	for _, c := range []struct {
+		name, mt string
+		data     []byte
+		want     string // the size sent, or the error
+	}{
+		{"fits as it is", "image/png", encode(40, 20), "40x20 image/png"},
+		{"a long side is shrunk", "image/png", encode(3000, 150), "2000x100 image/png"},
+		{"garbage", "image/png", []byte("not a png"), "not a readable image"},
+		{"a big webp", "image/webp", make([]byte, imageMaxBytes+1), "over the 3750000 byte limit"},
+	} {
+		got := ""
+		data, mt, err := FitImage(c.data, c.mt)
+		if err != nil {
+			got = err.Error()
+		} else if cfg, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil {
+			got = fmt.Sprintf("%dx%d %s", cfg.Width, cfg.Height, mt)
+		}
+		if !strings.Contains(got, c.want) {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 

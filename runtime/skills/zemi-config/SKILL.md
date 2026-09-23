@@ -69,7 +69,8 @@ you added, else of the first usable builtin one in catalog order (anthropic, ope
 `images = false` marks a model that refuses image input: `read` on an image then returns a
 text error and `@image` attachments are omitted with a note. Without it zemi learns the same
 from the provider's 400 over an image: the turn goes on with notes in place of the images and
-the model stays text-only for the process; the flag makes that permanent.
+the model stays text-only for the process (not when the 400 says one image was too large);
+the flag makes that permanent.
 
 `context_window` (or the `agent.context_window` setting, which overrides it) drives the
 statusline percent and auto compaction. Compaction starts at `max(window - 33k, window/2)`
@@ -264,8 +265,9 @@ zemi.ui.widget.add({
 
 Attaching: `@path` attaches a project file; dragging files onto the terminal attaches them
 (images from anywhere are copied as `@drop:<name>`), and ctrl+v pastes an image from the
-clipboard. Images must be png, jpg, gif or webp up to 5 MB, other dropped files UTF-8 text;
-secret-looking paths are refused. Images reach the model only if it accepts images.
+clipboard. Images must be png, jpg, gif or webp up to 20 MB, other dropped files UTF-8 text;
+secret-looking paths are refused. An image over 2000 px a side or 3.75 MB is shrunk before
+it is sent (a webp over 3.75 MB is refused: zemi cannot decode webp). Images reach the model only if it accepts images.
 
 Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
 `/mode`, `/permissions`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,

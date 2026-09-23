@@ -20,12 +20,13 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 const (
 	attachMarker   = "\n\n<attached-files>"
 	attachMax      = 64 << 10           // bytes per text file
-	attachImageMax = 5 << 20            // bytes per image
+	attachImageMax = 20 << 20           // bytes per image read; tools.FitImage sizes what is sent
 	dropTTL        = 7 * 24 * time.Hour // idle copies age out, like scratchpads
 )
 
@@ -123,7 +124,12 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 		case int64(len(data)) > limit:
 			note(overLimit(limit))
 		case image:
-			images = append(images, fantasy.FilePart{Filename: filepath.Base(abs), Data: data, MediaType: mt})
+			fit, fitMT, err := tools.FitImage(data, mt)
+			if err != nil {
+				note(err.Error())
+				continue
+			}
+			images = append(images, fantasy.FilePart{Filename: filepath.Base(abs), Data: fit, MediaType: fitMT})
 			fmt.Fprintf(&b, "\n<image path=%q>attached below</image>", rel)
 		case !utf8.Valid(data):
 			note("it is not text")

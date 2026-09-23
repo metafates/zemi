@@ -1,7 +1,10 @@
 package hostapi
 
 import (
+	"bytes"
 	"errors"
+	"image"
+	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -117,7 +120,7 @@ func TestDropsSweptAfterTTL(t *testing.T) {
 // note naming it behind the marker.
 func TestImageAttachment(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	png := []byte("\x89PNG\r\n\x1a\nfake")
+	png := tinyPNG()
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), png, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +149,7 @@ func TestAttachPath(t *testing.T) {
 	h.Dirs.DataHome = t.TempDir()
 	out := t.TempDir()
 	shot := filepath.Join(out, "Screen Shot 1.png")
-	os.WriteFile(shot, []byte("\x89PNGfake"), 0o600)
+	os.WriteFile(shot, tinyPNG(), 0o600)
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600)
 	os.WriteFile(filepath.Join(out, ".env"), []byte("TOKEN=x"), 0o600)
 
@@ -174,7 +177,7 @@ func TestAttachPath(t *testing.T) {
 // prompt goes out again.
 func TestImagesRefusedContinues(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), []byte("\x89PNG\r\n\x1a\nfake"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), tinyPNG(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	m := reflectStub(t, h, "ok")
@@ -220,18 +223,27 @@ func TestImagesRefusedContinues(t *testing.T) {
 
 func TestImagesRefused(t *testing.T) {
 	for _, c := range []struct {
-		err  error
-		want bool
+		err          error
+		want, tooBig bool
 	}{
-		{&fantasy.ProviderError{StatusCode: 400, Message: "<path> is not a multimodal model"}, true},
-		{&fantasy.ProviderError{StatusCode: 400, Message: "Invalid content type. image_url is only supported by certain models."}, true},
-		{&fantasy.ProviderError{StatusCode: 400, Message: "max_tokens too large"}, false},
-		{&fantasy.ProviderError{StatusCode: 500, Message: "image service down"}, false},
-		{errors.New("image"), false},
-		{nil, false},
+		{&fantasy.ProviderError{StatusCode: 400, Message: "<path> is not a multimodal model"}, true, false},
+		{&fantasy.ProviderError{StatusCode: 400, Message: "Invalid content type. image_url is only supported by certain models."}, true, false},
+		// a size refusal: the model keeps its images
+		{&fantasy.ProviderError{StatusCode: 400, Message: "messages.0.content.1.image.source.base64: image exceeds 5 MB maximum"}, true, true},
+		{&fantasy.ProviderError{StatusCode: 400, Message: "max_tokens too large"}, false, false},
+		{&fantasy.ProviderError{StatusCode: 500, Message: "image service down"}, false, false},
+		{errors.New("image"), false, false},
+		{nil, false, false},
 	} {
-		if got := imagesRefused(c.err); got != c.want {
-			t.Errorf("%v: %v, want %v", c.err, got, c.want)
+		if got, big := imagesRefused(c.err), imageTooLarge(c.err); got != c.want || big != c.tooBig {
+			t.Errorf("%v: refused %v too large %v, want %v %v", c.err, got, big, c.want, c.tooBig)
 		}
 	}
+}
+
+// tinyPNG is a real 1x1 image: attach decodes what it sends.
+func tinyPNG() []byte {
+	var b bytes.Buffer
+	png.Encode(&b, image.NewGray(image.Rect(0, 0, 1, 1)))
+	return b.Bytes()
 }

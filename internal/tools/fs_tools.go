@@ -8,6 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	_ "image/gif" // FitImage decodes the gifs read and attach send
+	"image/jpeg"
+	"image/png"
 	"io"
 	"net/http"
 	"os"
@@ -190,6 +195,78 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	return changed(fantasy.NewTextResponse(b.String()))
 }
 
+// imageMaxSide and imageMaxBytes are what an image sent to a model may be:
+// Anthropic refuses over 8000 px a side (2000 with more than 20 images) and
+// over 5 MB of base64, about 3.75 MB of bytes.
+const (
+	imageMaxSide  = 2000
+	imageMaxBytes = 3_750_000
+)
+
+// FitImage returns an image a provider takes: as it is when it fits, else
+// shrunk to imageMaxSide with a box filter and re-encoded as PNG, or as
+// JPEG when the PNG is still too big. An error says why none would fit.
+// NOTE: the stdlib decodes no webp (x/image does), so a webp is judged by
+// its bytes alone.
+func FitImage(data []byte, mt string) ([]byte, string, error) {
+	tooBig := fmt.Errorf("a %d byte image, too large to send even shrunk", len(data))
+	if mt == "image/webp" {
+		if len(data) > imageMaxBytes {
+			return nil, "", fmt.Errorf("a %d byte webp image, over the %d byte limit", len(data), imageMaxBytes)
+		}
+		return data, mt, nil
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, "", fmt.Errorf("not a readable image: %w", err)
+	}
+	long := max(cfg.Width, cfg.Height)
+	if long <= imageMaxSide && len(data) <= imageMaxBytes {
+		return data, mt, nil
+	}
+	src, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, "", fmt.Errorf("not a readable image: %w", err)
+	}
+	w, h := cfg.Width, cfg.Height
+	if long > imageMaxSide {
+		w, h = max(w*imageMaxSide/long, 1), max(h*imageMaxSide/long, 1)
+	}
+	small := boxScale(src, w, h)
+	var buf bytes.Buffer
+	if png.Encode(&buf, small) == nil && buf.Len() <= imageMaxBytes {
+		return buf.Bytes(), "image/png", nil
+	}
+	buf.Reset()
+	if jpeg.Encode(&buf, small, &jpeg.Options{Quality: 85}) == nil && buf.Len() <= imageMaxBytes {
+		return buf.Bytes(), "image/jpeg", nil
+	}
+	return nil, "", tooBig
+}
+
+// boxScale averages each w x h cell of src into one pixel.
+// NOTE: At per pixel: a 5K screenshot takes about half a second; a fast path
+// for *image.RGBA is the upgrade.
+func boxScale(src image.Image, w, h int) *image.RGBA64 {
+	b := src.Bounds()
+	dst := image.NewRGBA64(image.Rect(0, 0, w, h))
+	for y := range h {
+		y0, y1 := b.Min.Y+y*b.Dy()/h, b.Min.Y+max((y+1)*b.Dy()/h, y*b.Dy()/h+1)
+		for x := range w {
+			x0, x1 := b.Min.X+x*b.Dx()/w, b.Min.X+max((x+1)*b.Dx()/w, x*b.Dx()/w+1)
+			var r, g, bl, a, n uint64
+			for yy := y0; yy < y1; yy++ {
+				for xx := x0; xx < x1; xx++ {
+					cr, cg, cb, ca := src.At(xx, yy).RGBA()
+					r, g, bl, a, n = r+uint64(cr), g+uint64(cg), bl+uint64(cb), a+uint64(ca), n+1
+				}
+			}
+			dst.SetRGBA64(x, y, color.RGBA64{uint16(r / n), uint16(g / n), uint16(bl / n), uint16(a / n)})
+		}
+	}
+	return dst
+}
+
 // sniffBytes is how much of a body looksBinary reads.
 const sniffBytes = 8000
 
@@ -277,7 +354,7 @@ const (
 	readMaxLines   = 2000
 	readMaxBytes   = 50_000
 	readMaxLineLen = 2000
-	readMaxImage   = 5 << 20
+	readMaxImage   = 20 << 20 // what is read at all; FitImage sizes what is sent
 	editMaxBytes   = 10 << 20
 )
 
@@ -314,6 +391,9 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		data, err := io.ReadAll(br)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if data, mt, err = FitImage(data, mt); err != nil {
+			return fantasy.NewTextErrorResponse(rel + ": " + err.Error()), nil
 		}
 		return fantasy.NewImageResponse(data, mt), nil
 	case looksBinary(head):
