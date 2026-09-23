@@ -520,7 +520,9 @@ lua-language-server is installed.
   its `Runner.Steer`; what arrives after its last step boundary becomes one more `Send`
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a
   message is never accepted and then dropped. Background runs report through `AgentSend` behind
-  `attachMarker`, which the live transcript and resume cut off. `/agents` lists the live
+  `attachMarker`, which the live transcript and resume cut off; the notice row is drawn from
+  the message wherever the model reads it (`appendUserRows`: a new turn, a step boundary, a
+  drained queue, a resume), so it sits under the rows of the turn it arrived in. `/agents` lists the live
   session's runs and, under Running, the live runs of every other session (`runningElsewhere`,
   named by that session's title): they block `/rewind`, so their stop must be reachable.
 - **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, pads idle a week

@@ -529,16 +529,28 @@ func (h *Host) runTurns(runner *agent.Runner, scope *turnScope, text string) {
 }
 
 func (h *Host) startTurn(text string) {
-	// what follows attachMarker is for the model (background reports), the
-	// same cut resumed transcripts make
-	if shown, _, _ := strings.Cut(text, attachMarker); shown != "" {
-		h.AppendMessage("user", shown)
+	if h.appendUserRows(text) {
 		h.agents.mu.Lock()
 		h.agents.planNudged = false
 		h.agents.mu.Unlock()
 	}
 	h.agentStream()
 	h.EmitAsync("agent.start", map[string]any{"text": text})
+}
+
+// appendUserRows shows one message as the model reads it: the notice row
+// of each background report behind attachMarker, then what was typed, the
+// same cut a resumed transcript makes. Reports whether anything was typed.
+func (h *Host) appendUserRows(text string) bool {
+	shown, tail, _ := strings.Cut(text, attachMarker)
+	for _, head := range reportHeads(tail) {
+		h.AppendChat(ChatMessage{Role: "assistant", Kind: "notice", Text: head})
+	}
+	if shown == "" {
+		return false
+	}
+	h.AppendMessage("user", shown)
+	return true
 }
 
 // nextTurn runs after each turn: messages queued after the last step
@@ -597,10 +609,6 @@ func (h *Host) deliverSteering() []string {
 	msgs, text, reason, tools := ag.steering, ag.textBuf, ag.reasonBuf, ag.tools
 	ag.endThinking()
 	stat := TurnStat{ThoughtMS: ag.thought.Milliseconds()}
-	shown := make([]string, len(msgs))
-	for i, m := range msgs {
-		shown[i], _, _ = strings.Cut(m, attachMarker)
-	}
 	if len(msgs) > 0 {
 		ag.steering, ag.textBuf, ag.reasonBuf, ag.tools, ag.thought = nil, "", "", nil, 0
 	}
@@ -609,11 +617,8 @@ func (h *Host) deliverSteering() []string {
 		return nil
 	}
 	h.appendTurnOutput(reason, stat, tools, text, TurnStat{})
-	for _, s := range shown {
-		if s == "" {
-			continue // a model-only message (attachMarker, no shown part)
-		}
-		h.AppendMessage("user", s)
+	for _, m := range msgs {
+		h.appendUserRows(m)
 	}
 	return msgs // Runner.Compose expands them
 }

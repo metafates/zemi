@@ -96,6 +96,26 @@ func TestBackgroundAgent(t *testing.T) {
 	}
 }
 
+// TestReportNoticeWhereRead: a report that reaches a running turn at a step
+// boundary draws its notice under the reply streamed so far, where the
+// model reads it, never above the turn's rows.
+func TestReportNoticeWhereRead(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	seedSession(t, h)
+	h.agents.mu.Lock()
+	h.agents.active = true
+	h.agents.textBuf = "so far"
+	h.agents.steering = []string{attachMarker + "\n<agent-report run=\"r1\" agent=\"explore\" status=\"finished\" description=\"x\">\nfound\n</agent-report>\n</attached-files>"}
+	h.agents.mu.Unlock()
+	if msgs := h.deliverSteering(); len(msgs) != 1 {
+		t.Fatalf("delivered %d messages", len(msgs))
+	}
+	tr := h.Session().Transcript
+	if n := len(tr); n < 2 || tr[n-2].Text != "so far" || tr[n-1].Kind != "notice" || tr[n-1].Text != reportHead("r1", "explore", "finished") {
+		t.Fatalf("transcript tail: %+v", tr)
+	}
+}
+
 // TestMessageAgent: a message to a running background agent reaches it at its
 // next step boundary, or as one more turn when its last step already started,
 // and is stored in its child session; a finished run refuses one.

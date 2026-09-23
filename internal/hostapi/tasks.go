@@ -360,8 +360,8 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 		}
 		// the whole message is for the model, behind the marker where @ refs
 		// do not attach (the description is model text); the user gets the
-		// head as a notice row, and a resume rebuilds it from the element
-		h.AppendChat(ChatMessage{Role: "assistant", Kind: "notice", Text: head})
+		// head as a notice row where the model reads it (appendUserRows), so
+		// it never lands above the rows of the turn it arrives in
 		if err := h.AgentSend(attachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", run.id, def.Name, status, description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"); err != nil {
 			h.Notify("error", "Background agent "+run.id+" failed", err.Error())
 		}
@@ -376,14 +376,14 @@ func reportHead(id, agent, status string) string {
 
 var reportAttrs = regexp.MustCompile(`<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)"`)
 
-// storedReportHead rebuilds the notice row from a stored report message,
-// "" when the message is no report.
-func storedReportHead(tail string) string {
-	m := reportAttrs.FindStringSubmatch(tail)
-	if m == nil {
-		return ""
+// reportHeads rebuilds the notice rows from the reports behind a message's
+// attachMarker (a joined queue may carry several); none for no report.
+func reportHeads(tail string) []string {
+	var heads []string
+	for _, m := range reportAttrs.FindAllStringSubmatch(tail, -1) {
+		heads = append(heads, reportHead(m[1], m[2], m[3]))
 	}
-	return reportHead(m[1], m[2], m[3])
+	return heads
 }
 
 // stopRun cancels a running agent; "" means the one the chat shows.

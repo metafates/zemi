@@ -306,7 +306,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			}
 			var tail string
 			s, tail, _ = strings.Cut(s, attachMarker) // show what was typed
-			if head := storedReportHead(tail); head != "" {
+			for _, head := range reportHeads(tail) {
 				tr = append(tr, ChatMessage{Role: "assistant", Kind: "notice", Text: head})
 			}
 		}
