@@ -249,9 +249,12 @@ func TestNotFoundNamesSiblings(t *testing.T) {
 	p, asked := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
 	p.Seen = &sync.Map{}
 	dir := t.TempDir()
-	for _, name := range []string{"app.go", "apps.go", "apt.go", "main.go", "app.env"} {
+	// dotfiles sort first and a directory is no file to read: neither may
+	// fill the three suggestions
+	for _, name := range []string{".git", ".gitignore", "app.go", "apps.go", "apt.go", "main.go", "app.env"} {
 		os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644)
 	}
+	os.Mkdir(filepath.Join(dir, "ap"), 0o755)
 	for _, c := range []struct{ tool, input string }{
 		{"read", `{"path":"` + filepath.Join(dir, "ap.go") + `"}`},
 		{"edit", `{"path":"` + filepath.Join(dir, "ap.go") + `","old_string":"a","new_string":"b"}`},

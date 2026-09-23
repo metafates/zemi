@@ -589,14 +589,21 @@ func (p *Pipeline) notFound(path string, err error) string {
 		return msg
 	}
 	entries, _ := os.ReadDir(filepath.Dir(path))
-	base := strings.ToLower(filepath.Base(path))
-	stem := strings.TrimSuffix(base, filepath.Ext(base))
+	// a dotfile's stem is its whole name: an empty one would be two edits
+	// from any short name, and dotfiles sort first
+	stemOf := func(name string) string {
+		if ext := filepath.Ext(name); ext != name {
+			return strings.TrimSuffix(name, ext)
+		}
+		return name
+	}
+	stem := stemOf(strings.ToLower(filepath.Base(path)))
 	ruledOut, dir := p.ruledOut(), filepath.Dir(path)
 	var near []string
 	for _, e := range entries {
 		name := strings.ToLower(e.Name())
-		s := strings.TrimSuffix(name, filepath.Ext(name))
-		if len(near) == 3 || perm.PathIsSecret(name) || ruledOut(filepath.Join(dir, e.Name())) {
+		s := stemOf(name)
+		if len(near) == 3 || e.IsDir() || perm.PathIsSecret(name) || ruledOut(filepath.Join(dir, e.Name())) {
 			continue
 		}
 		if s == stem || len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s)) || editDistance(s, stem) <= 2 {
