@@ -786,6 +786,12 @@ func TestReasoningExpanded(t *testing.T) {
 	if !strings.Contains(frame, "  │ first idea") || !strings.Contains(frame, "  │ second idea") {
 		t.Fatalf("expanded reasoning layout:\n%s", frame)
 	}
+	// a thought too short to count says no time
+	appendReasoning(host, "quick", hostapi.TurnStat{ThoughtMS: 20})
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "Thought for 0.0s") {
+		t.Fatalf("a zero thought time:\n%s", frame)
+	}
 }
 
 // TestReasoningLiveTail: while the model thinks, only its last lines show, and

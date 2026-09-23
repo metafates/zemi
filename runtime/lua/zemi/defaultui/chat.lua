@@ -164,7 +164,7 @@ zemi.ui.widget.add({
     end
     ---@param secs number
     ---@return string
-    local function thought(secs) return secs > 0 and "Thought for " .. fmt.duration(secs) or "Thought" end
+    local function thought(secs) return secs >= 0.05 and "Thought for " .. fmt.duration(secs) or "Thought" end
 
     -- Tool calls read as what they did: "Read internal/ui/app.go". Finished
     -- calls that only look around collapse into one line ("Read 3 files,
