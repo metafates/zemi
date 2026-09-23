@@ -979,7 +979,7 @@ Chain dependent steps with &&; independent commands are separate calls in one re
 						"question":    map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
 						"description": map[string]any{"type": "string", "description": "optional markdown shown under the question"},
 						"header":      map[string]any{"type": "string", "description": "a 1-3 word tab label, e.g. Auth method"},
-						"options": map[string]any{"type": "array", "description": "required for yes_no, single_choice and multi_choice", "items": map[string]any{
+						"options": map[string]any{"type": "array", "description": "required for single_choice and multi_choice; yes_no gets Yes and No", "items": map[string]any{
 							"type": "object",
 							"properties": map[string]any{
 								"label":       map[string]any{"type": "string"},

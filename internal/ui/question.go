@@ -58,9 +58,6 @@ func (a *App) AskQuestion(qs []tools.Question) ([]string, bool) {
 		for _, o := range q.Options {
 			clean[i].Options = append(clean[i].Options, tools.QuestionOption{Label: sanitize.String(o.Label), Description: sanitize.String(o.Description)})
 		}
-		if clean[i].Type == tools.TypeYesNo && len(clean[i].Options) == 0 {
-			clean[i].Options = []tools.QuestionOption{{Label: "Yes"}, {Label: "No"}}
-		}
 		states[i] = qState{picked: map[int]bool{}, typing: q.Type == tools.TypeFreeText || len(clean[i].Options) == 0}
 	}
 	ch := make(chan qAnswer, 1)
@@ -363,10 +360,8 @@ func (a *App) questionBox(qp *questionPrompt, w, chatH int) [][]hostapi.Segment 
 		hints = []string{"enter", "answer", "esc", "back"}
 	case q.Multi():
 		hints = slices.Concat([]string{"space", "mark", "enter", "answer"}, tabs, []string{"esc", "cancel"})
-	case q.Type == tools.TypeYesNo:
-		hints = slices.Concat([]string{"1-2", "pick", "enter", "answer"}, tabs, []string{"esc", "cancel"})
 	default:
-		hints = slices.Concat([]string{"1-9", "pick", "enter", "answer"}, tabs, []string{"esc", "cancel"})
+		hints = slices.Concat([]string{fmt.Sprintf("1-%d", min(len(q.Options), 9)), "pick", "enter", "answer"}, tabs, []string{"esc", "cancel"})
 	}
 	return box(hints...)
 }

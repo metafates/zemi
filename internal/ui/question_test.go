@@ -103,7 +103,7 @@ func TestQuestionAnswers(t *testing.T) {
 		{"typed answer on the last row", yes, []string{"j", "enter", "use a flag", "enter"}, questionResult{[]string{"use a flag"}, true}},
 		{"typing on the last row starts the answer", yes, []string{"j", "no", "enter"}, questionResult{[]string{"no"}, true}},
 		{"open question types at once", tools.Question{Type: tools.TypeFreeText, Question: "Name?"}, []string{"zemi", "enter"}, questionResult{[]string{"zemi"}, true}},
-		{"yes_no answered by a digit", tools.Question{Type: tools.TypeYesNo, Question: "Go?"}, []string{"1"}, questionResult{[]string{"Yes"}, true}},
+		{"yes_no answered by a digit", tools.Question{Type: tools.TypeYesNo, Question: "Go?", Options: []tools.QuestionOption{{Label: "Yes"}, {Label: "No"}}}, []string{"1"}, questionResult{[]string{"Yes"}, true}},
 		{"digit picks a single choice", tools.Question{Type: tools.TypeSingle, Question: "Pick?", Options: []tools.QuestionOption{{Label: "one"}, {Label: "two"}}}, []string{"2"}, questionResult{[]string{"two"}, true}},
 		{"esc leaves typing, second esc dismisses", yes, []string{"j", "enter", "x", "esc", "esc"}, questionResult{nil, false}},
 		{"ctrl+c dismisses", yes, []string{"ctrl+c"}, questionResult{nil, false}},
