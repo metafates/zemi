@@ -252,7 +252,17 @@ zemi.ui.widget.add({
       elseif t.status == "err" then
         mark, hl = "✗ ", "AgentToolErr"
       end
-      local input = relpath(((t.text or t.input or ""):gsub("%s+", " ")))
+      local input = relpath(t.text or t.input or "")
+      -- a collapsed row is one line; an open one keeps a heredoc's lines
+      ---@type string[]
+      local more = {}
+      if open then
+        local body = input:gsub("%s+$", "")
+        for l in (body .. "\n"):gmatch("(.-)\n") do more[#more + 1] = l end
+        input = table.remove(more, 1) or ""
+      else
+        input = (input:gsub("%s+", " "))
+      end
       local label = t.label or ""
       -- expanded rows wrap (the widget wraps), collapsed ones stay one line
       ---@param text string
@@ -275,13 +285,21 @@ zemi.ui.widget.add({
       local click = (t.run or "") ~= "" and ("agent:" .. t.run) or ("tool:" .. idx)
       for _, sg in ipairs(head) do sg.click = click end
       lines[#lines + 1] = head
+      ---@param lead string
+      local function add_more(lead)
+        for _, l in ipairs(more) do
+          lines[#lines + 1] = { { text = lead, copy = false }, { text = l, hl = "Comment", click = click, hover = false } }
+        end
+      end
+      if label == "" then add_more(string.rep(" ", 3 + fmt.cells(VERB[name] or title(name)))) end
       -- under the row: the command a description stands for, then progress,
       -- then the job a timed-out command went on as (the ✓ alone would read
       -- as finished; the phrase is tools.JobHandoff)
       local job = name == "bash" and (t.output or ""):match("moved to the background as (job%-%d+)") or ""
-      for _, sub in ipairs({ label ~= "" and input or "", ((t.detail or ""):gsub("%s+", " ")), job ~= "" and "still running as " .. job or "" }) do
+      for i, sub in ipairs({ label ~= "" and input or "", ((t.detail or ""):gsub("%s+", " ")), job ~= "" and "still running as " .. job or "" }) do
         if sub ~= "" then
           lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment", copy = false }, { text = fit(sub, width - 6), hl = "Comment", click = click, hover = false } }
+          if i == 1 then add_more("    ") end
         end
       end
       -- File tools show what they changed as numbered, tinted rows.

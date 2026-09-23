@@ -996,6 +996,8 @@ func TestToolRows(t *testing.T) {
 		{Name: "edit", Input: "a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -7 +7 @@\n-old\n+new"},
 		{Name: "bash", Input: "go test ./...", Label: "Run the unit tests", Status: "err", Output: "--- FAIL: TestX"},
 		{Name: "grep", Input: strings.Repeat("pattern ", 30), Status: "ok"},
+		{Name: "bash", Input: "cat > n.txt <<EOT\nfirst line\nEOT", Label: "Write notes", Status: "err"},
+		{Name: "bash", Input: "printf a\nprintf b", Status: "err"},
 		{Name: "bash", Input: "make slow", Label: "Build it", Status: "ok", Output: "still running, so it " + tools.JobHandoff + "job-1"},
 		// a verdict the user gave shows as one line; the model keeps the reason and the instructions
 		{Name: "write", Input: "b.go", Status: "err", Output: "permission denied (user): fs.write /p/b.go: it asked because this project is not trusted (/trust)"},
@@ -1005,6 +1007,7 @@ func TestToolRows(t *testing.T) {
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
 	for _, want := range []string{"Read 2 files, ran 1 command", "✓ Build it", "⎿ still running as job-1", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX",
+		"⎿ cat > n.txt <<EOT first line EOT", "✗ Run printf a printf b",
 		"✗ Write b.go", "    denied by you", "    approved, saved to /data/plans/s1.md", "    changes requested: use go"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
@@ -1018,6 +1021,15 @@ func TestToolRows(t *testing.T) {
 	frame = ansi.Strip(app.Frame())
 	if !strings.Contains(frame, "✓ Read b.go") || strings.Contains(frame, "Read 2 files") || !strings.Contains(frame, "vet clean") {
 		t.Fatalf("ctrl+o must list every call:\n%s", frame)
+	}
+	// an open row keeps a multi-line command's lines, under its first
+	rows := strings.Split(frame, "\r\n")
+	for _, c := range []struct{ first, next string }{{"cat > n.txt <<EOT", "first line"}, {"printf a", "printf b"}} {
+		col := func(r, s string) int { return ansi.StringWidth(r[:max(strings.Index(r, s), 0)]) }
+		i := slices.IndexFunc(rows, func(r string) bool { return strings.Contains(r, c.first) })
+		if i < 0 || i+1 == len(rows) || !strings.Contains(rows[i+1], c.next) || col(rows[i+1], c.next) != col(rows[i], c.first) {
+			t.Fatalf("%q not under %q:\n%s", c.next, c.first, frame)
+		}
 	}
 	// an expanded long input wraps instead of ending in an ellipsis
 	var words int
