@@ -170,15 +170,29 @@ func (a *App) memReviewBox(w, chatH int) [][]hostapi.Segment {
 			info = append(info, strings.TrimSpace(learn.Age(it.Updated, a.now())))
 		}
 		meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"})
-		// the marker's two cells and the bar's one
-		more := hostapi.WrapSegs([]hostapi.Segment{{Text: sanitize.String(it.Text)}}, boxInner(w)-3)
+		more := [][]hostapi.Segment{{{Text: sanitize.String(it.Text)}}}
 		if it.Quote != "" {
-			more = append(more, hostapi.WrapSegs([]hostapi.Segment{{Text: `"` + sanitize.String(it.Quote) + `"`, HL: "Host:Hint"}}, boxInner(w)-3)...)
+			more = append(more, []hostapi.Segment{{Text: `"` + sanitize.String(it.Quote) + `"`, HL: "Host:Hint"}})
 		}
 		items = append(items, listItem{section: sections[suggested(it)], more: append(more, meta)})
 	}
-	// borders, the blank row and the hint take four rows
-	lines := listRows(items, mr.sel, &mr.view, max(chatH-4, 3), boxInner(w))
+	// the text wraps beside the marker's two cells, and the bar's one once
+	// the list overflows
+	rows := func(textW int) [][]hostapi.Segment {
+		wrapped := slices.Clone(items)
+		for i, it := range wrapped {
+			wrapped[i].more = nil
+			for _, r := range it.more {
+				wrapped[i].more = append(wrapped[i].more, hostapi.WrapSegs(r, textW)...)
+			}
+		}
+		// borders, the blank row and the hint take four rows
+		return listRows(wrapped, mr.sel, &mr.view, max(chatH-4, 3), boxInner(w))
+	}
+	lines := rows(boxInner(w) - 2)
+	if mr.view.overflows() {
+		lines = rows(barInner(boxInner(w)) - 2)
+	}
 	if len(mr.items) == 0 {
 		lines = hostapi.WrapSegs([]hostapi.Segment{{Text: "Nothing remembered yet. Type /memory <note> to save one.", HL: "Comment"}}, boxInner(w))
 	}
