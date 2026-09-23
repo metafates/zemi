@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,11 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/tools"
-	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
 // TestSystemPromptSections: the environment is pinned per session, project
@@ -56,13 +51,8 @@ func TestSystemPromptSections(t *testing.T) {
 // no tool the profile dropped, the shipped lean one included, which must
 // keep the file tools and what bash hands a timed out command to.
 func TestPromptFollowsToolSet(t *testing.T) {
-	log := logging.New(t.TempDir())
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()})
+	h := newTestHostUI(t)
 	h.agents.sessionID = "s1" // a session has a scratchpad, whose line is part of the prompt
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.defaultui")}); err != nil {
-		t.Fatal(err)
-	}
 	h.agents.profiles["lean"] = &Profile{Name: "lean", Tools: []string{"-workflow", "-lua", "-job_start", "-lsp"}}
 	h.SetUIHooks(&fakeUI{})
 	lean, err := h.resolveProfile("lean")

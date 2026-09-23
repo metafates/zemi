@@ -1063,10 +1063,11 @@ function zemi.ui.markdown(text, width) end
 ---@return zemi.Line[]
 function zemi.ui.wrap(text, width) end
 
---- Render a unified diff into widget rows exactly `width` cells wide: one
+--- Render a unified diff into widget rows at most `width` cells wide: one
 --- line-number column and the sign in `DiffAddNum`, `DiffDelNum` or
 --- `DiffCtxNum`, the text wrapped in `DiffAdd`, `DiffDel` or `DiffCtx` with
---- its tint out to the edge, and "⋯" between hunks. Only the text copies.
+--- its tint out to the edge, so a diff line's rows are exactly `width` wide,
+--- and "⋯" between hunks. Only the text copies.
 ---@param text string
 ---@param width integer
 ---@return zemi.Line[]

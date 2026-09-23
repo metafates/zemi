@@ -152,11 +152,15 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 		} else {
 			for _, row := range c.glamour(*cfg, styleKey, chunk.text, 0) {
 				wrapped := WrapSegs(row, width)
-				// a quote keeps its bar on every row it wraps to
+				// a quote keeps its bar on every row it wraps to, but not the
+				// bullet or number of a list inside it
 				if len(row) > 0 && row[0].NoCopy && strings.Contains(row[0].Text, "│") {
+					bar := row[0].Text[:min(strings.LastIndex(row[0].Text, "│")+len("│ "), len(row[0].Text))]
+					w := SegsWidth(row[:1])
 					for _, r := range wrapped[1:] {
-						if r[0].NoCopy && SegsWidth(r[:1]) == SegsWidth(row[:1]) {
+						if r[0].NoCopy && SegsWidth(r[:1]) == w {
 							r[0] = row[0]
+							r[0].Text = bar + strings.Repeat(" ", w-ansi.StringWidth(bar))
 						}
 					}
 				}
@@ -251,10 +255,9 @@ func splitTables(text string) []mdChunk {
 	return out
 }
 
-// Decorations glamour draws (bullets, list numbers, the quote bar) are
-// bracketed by private-use runes that styledLines strips, marking the text
-// between them NoCopy and Dim. A close with no
-// open ends a run that began at the line start or the previous close: a
+// Decorations glamour draws (bullets, list numbers, task marks, the quote
+// bar) are bracketed by private-use runes that styledLines strips, marking
+// the text between them NoCopy and Dim. A close with no open ends a run that began at the line start or the previous close: a
 // list number and code block margins are written before any hook can open.
 const (
 	markOpen     = "\ue000"
@@ -268,6 +271,7 @@ func markDecorations(cfg *gansi.StyleConfig) {
 	cfg.List.IndentToken = new(nc(" "))
 	cfg.Item.BlockPrefix = nc(cfg.Item.BlockPrefix)
 	cfg.Enumeration.BlockPrefix += markClose
+	cfg.Task.Ticked, cfg.Task.Unticked = nc(cfg.Task.Ticked), nc(cfg.Task.Unticked)
 }
 
 // glamour writes a code block's margin itself, so the formatter opens every
@@ -317,7 +321,7 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 		HorizontalRule: gansi.StylePrimitive{Format: "\n────────\n"},
 		Item:           gansi.StylePrimitive{BlockPrefix: "• "},
 		Enumeration:    gansi.StylePrimitive{BlockPrefix: ". "},
-		Task:           gansi.StyleTask{Ticked: "[✓] ", Unticked: "[ ] "},
+		Task:           gansi.StyleTask{Ticked: "✓ ", Unticked: "○ "},
 		ImageText:      gansi.StylePrimitive{Format: "Image: {{.text}}"},
 		CodeBlock:      gansi.StyleCodeBlock{StyleBlock: gansi.StyleBlock{Margin: &margin}},
 	}
@@ -367,15 +371,19 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 	// registers its Chroma config once per process, so a theme switch would
 	// keep the first theme's colors.
 	var code [5]gansi.StylePrimitive
-	for i, g := range []string{"Normal", "Accent", "Dim", "Ok", "Danger"} {
+	for i, g := range []string{"Normal", "Accent", "Dim", "DiffAdd", "DiffDel"} {
 		apply(&code[i], g)
 	}
+	code[0].BackgroundColor = nil // the canvas already paints Normal's
 	entry := func(p gansi.StylePrimitive, italic bool) string {
 		var e []string
 		// chroma takes hex only: a group in the terminal's own colors
 		// falls back to the text color
 		if p.Color != nil && strings.HasPrefix(*p.Color, "#") {
 			e = append(e, *p.Color)
+		}
+		if p.BackgroundColor != nil && strings.HasPrefix(*p.BackgroundColor, "#") {
+			e = append(e, "bg:"+*p.BackgroundColor)
 		}
 		if italic {
 			e = append(e, "italic")
@@ -539,12 +547,12 @@ func WrapText(text string, w int) [][]Segment {
 
 var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)`)
 
-// DiffRows renders a unified diff as rows exactly width cells wide
+// DiffRows renders a unified diff as rows at most width cells wide
 // (zemi.ui.diff): one number column (the old line on a removed row, the new
 // one otherwise) and the sign in DiffAddNum, DiffDelNum or DiffCtxNum, the
 // text wrapped in DiffAdd, DiffDel or DiffCtx with the tint out to the edge,
-// "⋯" between hunks, and any other line (a file a command changed) in
-// DiffCtxNum. Only the text copies.
+// so a diff line's rows are exactly width wide, "⋯" between hunks, and any
+// other line (a file a command changed) in DiffCtxNum. Only the text copies.
 func DiffRows(d string, width int) [][]Segment {
 	type line struct {
 		kind byte // '+', '-', ' ', '~' a hunk gap, 'f' a file
@@ -704,10 +712,9 @@ func fenceRun(t string) string {
 
 // WrapSegs word-wraps one logical line into rows of at most w cells,
 // keeping each piece's fields; words longer than w are hard-split. Every
-// row but the last ends in a Soft segment, a continuation row starts at a
-// word, not at the blanks after a break, and hangs past the line's leading
-// decoration (NoCopy) or a short gutter segment ("  - ") behind a NoCopy
-// indent, so a copy gives back the line.
+// row but the last ends in a Soft segment, and continuation rows hang past
+// the line's leading decoration (NoCopy) or a short gutter segment ("  - ")
+// behind a NoCopy indent, so a copy gives back the line.
 func WrapSegs(line []Segment, w int) [][]Segment {
 	w = max(w, 1)
 	// a tab measures and draws as no cell, so the words around it would
@@ -813,13 +820,6 @@ func WrapSegs(line []Segment, w int) [][]Segment {
 			}
 			if width+ansi.StringWidth(word) > w && width > indent {
 				flush()
-			}
-			// a blank the row break already stands for; a lone one (after
-			// "+" in code) is the only space there and stays
-			if width == indent && len(rows) > 0 && strings.TrimSpace(word) == "" {
-				if prev := rows[len(rows)-1]; len(prev) > 0 && strings.HasSuffix(prev[len(prev)-1].Text, " ") {
-					continue
-				}
 			}
 			seg.Soft = soft && i == len(words)-1
 			add(word, seg)

@@ -2,16 +2,10 @@ package hostapi
 
 import (
 	"cmp"
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
-	"github.com/metafates/zemi/internal/lua"
-	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
 func TestMarkdown(t *testing.T) {
@@ -176,8 +170,7 @@ func TestWrapSegs(t *testing.T) {
 		{"segments wrap apart", []Segment{{Text: "one two "}, {Text: "three", HL: "B"}}, 7, "one |two |three", ""},
 		{"gutter hangs", []Segment{{Text: "  ✗ "}, {Text: "network: cannot resolve the gateway host"}}, 22, "  ✗ network: cannot |    resolve the |    gateway host", ""},
 		{"decoration hangs", []Segment{{Text: "▌ ", NoCopy: true}, {Text: "a user message that wraps"}}, 12, "▌ a user |  message |  that wraps", ""},
-		{"a blank after a break is dropped", []Segment{{Text: "▌ ", NoCopy: true}, {Text: "call it  || now"}}, 10, "▌ call it |  || now", "call it || now"},
-		{"a lone blank after a break stays", []Segment{{Text: "b +"}, {Text: " "}, {Text: "1"}}, 3, "b +| 1", ""},
+		{"a space run at a break is kept", []Segment{{Text: "aaaa bbbb cccc      dddd"}}, 15, "aaaa bbbb cccc |     dddd", ""},
 	} {
 		rows := WrapSegs(c.line, c.w)
 		var got []string
@@ -317,12 +310,7 @@ func TestDiffRows(t *testing.T) {
 // and the light variant, blocks sit one blank row apart and a quote keeps
 // its bar on every row it wraps to.
 func TestMarkdownTheme(t *testing.T) {
-	log := logging.New(t.TempDir())
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.defaultui")}); err != nil {
-		t.Fatal(err)
-	}
+	h := newTestHostUI(t)
 	text := "intro\n\n```go\nfunc f() int {\n\t// why\n\treturn 42 + len(\"s\")\n}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n" +
 		"- one\n  - two\n1. three\n\n> a quote long enough to wrap over more than one row of the pane\n"
 	for _, c := range []struct {
@@ -375,5 +363,25 @@ func TestMarkdownTheme(t *testing.T) {
 		if blank != 5 || quote < 2 {
 			t.Errorf("%s: %d blank rows, %d quote rows", c.theme, blank, quote)
 		}
+	}
+	// a list in a quote marks its first row only and a task mark is a
+	// decoration
+	for _, c := range []struct{ text, mark string }{
+		{"> - a list item in a quote that wraps over rows", "│ • "},
+		{"> 1. a list item in a quote that wraps over rows", "│ 1. "},
+		{"- [x] done task", "✓ "},
+	} {
+		marks := 0
+		for _, row := range h.Markdown(c.text, 20) {
+			if row[0].Text == c.mark && row[0].NoCopy && row[0].HL == "Dim" {
+				marks++
+			}
+		}
+		if marks != 1 {
+			t.Errorf("%q draws %q %d times", c.text, c.mark, marks)
+		}
+	}
+	if rows := h.Markdown("```diff\n+new\n old\n```", 20); rows[0][1].HL == rows[1][1].HL {
+		t.Errorf("a diff fence draws + like context: %v", rows)
 	}
 }

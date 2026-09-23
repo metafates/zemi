@@ -14,6 +14,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
+	zemiruntime "github.com/metafates/zemi/runtime"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -27,6 +28,19 @@ func newTestHost(t *testing.T) (*Host, *lua.Runtime) {
 		t.Fatalf("Boot: %v", err)
 	}
 	return h, r
+}
+
+// newTestHostUI is newTestHost with the shipped theme, widgets and keymaps
+// loaded, and a state dir.
+func newTestHostUI(t *testing.T) *Host {
+	t.Helper()
+	log := logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()})
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.defaultui")}); err != nil {
+		t.Fatal(err)
+	}
+	return h
 }
 
 // runUser executes src as a user-origin chunk and fails the test on error.
