@@ -79,12 +79,12 @@ func ReadCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 		if strings.Contains(f[0], "/") || !safeSegment(f) {
 			return false
 		}
-		use, walkCwd := argUses(f)
+		use, walk, nonPaths := argUses(f)
 		positional := 0
-		if !safeArgs(f[1:], func(pos int, a string) bool {
+		if !safeArgs(f[1:], func(pos int, flag, a string) bool {
 			positional = max(positional, pos+1)
-			return check(a, use(pos))
-		}) || (walkCwd && positional < 2 && !check(".", use(1))) {
+			return check(a, use(pos, flag))
+		}) || (walk != ArgRead && positional-nonPaths < 1 && !check(".", walk)) {
 			return false
 		}
 		if f[0] == "cd" {
@@ -93,7 +93,7 @@ func ReadCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
 			}
 		}
 	}
-	return safeArgs(n.ReadPaths, func(_ int, a string) bool { return check(a, ArgRead) })
+	return safeArgs(n.ReadPaths, func(_ int, _, a string) bool { return check(a, ArgRead) })
 }
 
 func relativeArg(a string, _ ArgUse) bool {
@@ -109,56 +109,146 @@ func inDir(dir, a string) string {
 }
 
 // argUses says how a checked segment's program uses its arguments by
-// position among the operands, and whether it searches the working
-// directory when it has no operand after the pattern.
-func argUses(f []string) (use func(pos int) ArgUse, walkCwd bool) {
+// position among the operands (as safeArgs counts them, a flag's separate
+// value included) or by the flag a value belongs to, how it walks the
+// working directory when given no path (ArgRead: it does not), and how many
+// operand positions are no path: flag values and the pattern.
+func argUses(f []string) (use func(pos int, flag string) ArgUse, walk ArgUse, nonPaths int) {
 	name, rest := f[0], f[1:]
-	// a pattern glued to -e or -f (-eKEY, --regexp=KEY) is not an operand,
-	// so the first operand is already searched; -ie bundles only refuse more
-	first := 1
-	if name != "ag" && slices.ContainsFunc(rest, func(a string) bool {
-		if strings.HasPrefix(a, "--") {
-			return strings.Contains(a, "=") && hasFlag([]string{a}, "--regexp", "--file")
-		}
-		i := strings.IndexAny(a, "ef")
-		return strings.HasPrefix(a, "-") && i > 0 && i < len(a)-1
-	}) {
-		first = 0
-	}
-	search := slices.Contains([]string{"grep", "egrep", "fgrep", "rg", "ag"}, name)
-	// the first operand is the pattern ("//|\* " is no path) unless -f may
-	// have taken it as a pattern file
-	if search && first == 1 && !hasFlag(rest, "-f", "--file", "--files") {
-		defer func() {
-			files := use
-			use = func(pos int) ArgUse {
-				if pos == 0 {
-					return ArgText
-				}
-				return files(pos)
+	byPos := func(u func(pos int) ArgUse) func(pos int, flag string) ArgUse {
+		return func(pos int, flag string) ArgUse {
+			if flag != "" {
+				return ArgRead
 			}
-		}()
+			return u(pos)
+		}
 	}
+	switch {
+	case slices.Contains([]string{"grep", "egrep", "fgrep", "rg", "ag"}, name):
+		return searchOperands(name, rest)
+	// gofmt descends into a directory operand and prints what it parses;
+	// tree, du, find, fd and ls -R walk too but print names, never content
+	case name == "diff", name == "gofmt":
+		return byPos(walkFrom(0, ArgWalk)), ArgRead, 0
+	case name == "cd":
+		return func(int, string) ArgUse { return ArgRun }, ArgRead, 0
+	case name == "sed", name == "awk":
+		return byPos(scriptOperands(name, rest)), ArgRead, 0
+	}
+	return byPos(walkFrom(-1, ArgRead)), ArgRead, 0
+}
+
+// searchFlags are the grep, rg and ag options that take a value, and what
+// the value is: a count, type, glob or pattern is no path (ArgText); a
+// pattern file or ignore file is read. A value the shell passes as its own
+// word takes an operand position, which would otherwise shift the pattern
+// onto a path and judge the pattern itself as a walk.
+var searchFlags = map[string]map[string]ArgUse{
+	"grep": {
+		"-A": ArgText, "-B": ArgText, "-C": ArgText, "-m": ArgText, "-e": ArgText, "-d": ArgText, "-D": ArgText,
+		"--after-context": ArgText, "--before-context": ArgText, "--context": ArgText, "--max-count": ArgText,
+		"--regexp": ArgText, "--exclude": ArgText, "--exclude-dir": ArgText, "--include": ArgText, "--label": ArgText,
+		"--directories": ArgText, "--devices": ArgText, "--binary-files": ArgText, "--color": ArgText, "--colour": ArgText,
+		"-f": ArgRead, "--file": ArgRead, "--exclude-from": ArgRead,
+	},
+	"rg": {
+		"-A": ArgText, "-B": ArgText, "-C": ArgText, "-m": ArgText, "-e": ArgText, "-g": ArgText, "-t": ArgText,
+		"-T": ArgText, "-E": ArgText, "-M": ArgText, "-j": ArgText, "-r": ArgText, "-d": ArgText,
+		"--after-context": ArgText, "--before-context": ArgText, "--context": ArgText, "--max-count": ArgText,
+		"--regexp": ArgText, "--glob": ArgText, "--iglob": ArgText, "--type": ArgText, "--type-not": ArgText,
+		"--type-add": ArgText, "--type-clear": ArgText, "--max-columns": ArgText, "--max-depth": ArgText,
+		"--max-filesize": ArgText, "--replace": ArgText, "--encoding": ArgText, "--color": ArgText, "--colors": ArgText,
+		"--threads": ArgText, "--sort": ArgText, "--sortr": ArgText, "--engine": ArgText, "--dfa-size-limit": ArgText,
+		"--regex-size-limit": ArgText, "--context-separator": ArgText, "--field-context-separator": ArgText,
+		"--field-match-separator": ArgText, "--path-separator": ArgText,
+		"-f": ArgRead, "--file": ArgRead, "--ignore-file": ArgRead,
+	},
+	"ag": {
+		"-A": ArgText, "-B": ArgText, "-C": ArgText, "-m": ArgText, "-G": ArgText, "-g": ArgText,
+		"--after": ArgText, "--before": ArgText, "--context": ArgText, "--max-count": ArgText,
+		"--file-search-regex": ArgText, "--ignore": ArgText, "--ignore-dir": ArgText, "--workers": ArgText,
+		"-p": ArgRead, "--path-to-ignore": ArgRead,
+	},
+}
+
+// searchOperands is argUses for grep, rg and ag: flag values by the flag
+// they belong to, the pattern operand as text (unless a flag gave it), the
+// file operands from there as a walk.
+func searchOperands(name string, rest []string) (func(pos int, flag string) ArgUse, ArgUse, int) {
+	if name == "egrep" || name == "fgrep" {
+		name = "grep"
+	}
+	flags := searchFlags[name]
+	// takes says whether the next word is a's value: a long flag without
+	// =, or a bundle whose last letter takes one (-nA 3; -A3 is glued)
+	takes := func(a string) (ArgUse, bool) {
+		if strings.HasPrefix(a, "--") {
+			u, ok := flags[a]
+			return u, ok
+		}
+		for j := 1; j < len(a); j++ {
+			if u, ok := flags["-"+a[j:j+1]]; ok {
+				return u, j == len(a)-1
+			}
+		}
+		return 0, false
+	}
+	vals, pos := map[int]ArgUse{}, 0
+	for i := 0; i < len(rest); i++ {
+		a := rest[i]
+		if !strings.HasPrefix(a, "-") || a == "-" {
+			pos++
+			continue
+		}
+		if a == "--" {
+			break
+		}
+		if u, ok := takes(a); ok && i+1 < len(rest) {
+			vals[pos] = u
+			pos, i = pos+1, i+1
+		}
+	}
+	// a pattern given by flag (-e, --regexp, -f) makes the first operand a
+	// path; ag has no such flag
+	given := name != "ag" && hasFlag(rest, "-e", "-f", "--regexp", "--file", "--files")
+	walk := ArgWalk
 	switch {
 	// globs, and a whitelist in an --ignore-file, override rg's ignore
 	// rules, so they walk everything too
 	case name == "rg" && !hasFlag(rest, "-u", "-.", "--unrestricted", "--hidden", "--no-ignore", "--no-ignore-dot",
 		"--no-ignore-exclude", "--no-ignore-files", "--no-ignore-global", "--no-ignore-parent", "--no-ignore-vcs",
 		"-g", "--glob", "--iglob", "--ignore-file"):
-		return walkFrom(first, ArgSearch), true
-	case name == "rg", name == "ag", (name == "grep" || name == "egrep" || name == "fgrep") &&
-		hasFlag(rest, "-r", "-R", "--recursive", "--dereference-recursive", "-d", "--directories"):
-		return walkFrom(first, ArgWalk), true
-	// gofmt descends into a directory operand and prints what it parses;
-	// tree, du, find, fd and ls -R walk too but print names, never content
-	case name == "diff", name == "gofmt":
-		return walkFrom(0, ArgWalk), false
-	case name == "cd":
-		return func(int) ArgUse { return ArgRun }, false
-	case name == "sed", name == "awk":
-		return scriptOperands(name, rest), false
+		walk = ArgSearch
+	case name == "grep" && !hasFlag(rest, "-r", "-R", "--recursive", "--dereference-recursive", "-d", "--directories"):
+		walk = ArgRead
 	}
-	return walkFrom(-1, ArgRead), false
+	use := func(pos int, flag string) ArgUse {
+		if flag != "" {
+			if u, ok := flags[flag]; ok {
+				return u
+			}
+			return ArgRead
+		}
+		if u, ok := vals[pos]; ok {
+			return u
+		}
+		// the operand index with the flag values before it left out
+		operand := pos
+		for p := range vals {
+			if p < pos {
+				operand--
+			}
+		}
+		if operand == 0 && !given {
+			return ArgText
+		}
+		return walk
+	}
+	nonPaths := len(vals)
+	if !given {
+		nonPaths++
+	}
+	return use, walk, nonPaths
 }
 
 // scriptOperands marks a sed or awk program text among the operands as
@@ -269,10 +359,10 @@ func wordEnd(cmd string, i int) int {
 
 // safeArgs checks every argument that could name a file: plain arguments,
 // everything after --, the value of --flag=value, and a value glued to a
-// short flag (-f/etc/passwd). pathOK gets the operand's position, or -1 for
-// a flag value.
-func safeArgs(args []string, pathOK func(pos int, a string) bool) bool {
-	ok := func(pos int, a string) bool { return a == "" || pathOK(pos, a) }
+// short flag (-f/etc/passwd). pathOK gets the operand's position, or -1
+// and the flag for a glued value.
+func safeArgs(args []string, pathOK func(pos int, flag, a string) bool) bool {
+	ok := func(pos int, flag, a string) bool { return a == "" || pathOK(pos, flag, a) }
 	flags, pos := true, 0
 	for _, a := range args {
 		if flags && strings.HasPrefix(a, "-") {
@@ -281,15 +371,15 @@ func safeArgs(args []string, pathOK func(pos int, a string) bool) bool {
 				continue
 			}
 			// one glued character is a separator (cut -d/), not a path
-			if !strings.HasPrefix(a, "--") && len(a) > 3 && !ok(-1, a[2:]) {
+			if !strings.HasPrefix(a, "--") && len(a) > 3 && !ok(-1, a[:2], a[2:]) {
 				return false
 			}
-			if _, v, found := strings.Cut(a, "="); found && !ok(-1, v) {
+			if flag, v, found := strings.Cut(a, "="); found && !ok(-1, flag, v) {
 				return false
 			}
 			continue
 		}
-		if !ok(pos, a) {
+		if !ok(pos, "", a) {
 			return false
 		}
 		pos++
@@ -309,9 +399,9 @@ func ReadsSecret(cmd string, secret func(path string) bool) bool {
 		if len(f) == 0 || !readOnlyPrograms[filepath.Base(f[0])] {
 			continue
 		}
-		use, _ := argUses(f)
-		safeArgs(f[1:], func(pos int, a string) bool {
-			if (pos < 0 || use(pos) != ArgText) && (strings.ContainsAny(a, "*?[{") || secret(a)) {
+		use, _, _ := argUses(f)
+		safeArgs(f[1:], func(pos int, flag, a string) bool {
+			if use(pos, flag) != ArgText && (strings.ContainsAny(a, "*?[{") || secret(a)) {
 				found = true
 			}
 			return true
