@@ -230,7 +230,7 @@ func (h *Host) OpenRewind() error {
 		items = append(items, map[string]any{
 			"text":   first,
 			"desc":   desc,
-			"detail": text + "\n\n" + effect,
+			"detail": effect + "\n\n" + text, // what it does first: a long prompt scrolls below
 			"actions": []any{
 				map[string]any{"text": "Rewind", "run": "rewind " + row.ID},
 			},
