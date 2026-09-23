@@ -69,7 +69,7 @@ func (h *Host) storeMemory(sid, scope, origin, text, quote string) (*learn.Resul
 // store, reporting whether it added one. The id is assigned here so review
 // decisions travel by id.
 func (h *Host) queueProposal(res *learn.Result) bool {
-	if _, _, dup := h.duplicateMemory(res.Memory, res.Supersedes); dup {
+	if dup, _ := h.duplicateMemory(res.Memory, res.Supersedes); dup != nil {
 		h.Log.Debug("memory", "duplicate proposal dropped", nil)
 		return false
 	}
@@ -143,8 +143,8 @@ func (h *Host) applyProposal(res *learn.Result) error {
 type memoryOutcome struct {
 	ID        string
 	Queued    string
-	Duplicate string
-	DupScope  string
+	Duplicate *store.Memory
+	DupQueued bool // Duplicate is a pending proposal, which replaces cannot name
 	Dropped   bool
 }
 
@@ -153,9 +153,11 @@ func (o memoryOutcome) String() string {
 	switch {
 	case o.ID != "":
 		return "saved as " + learn.Truncate(o.ID, 8) + "; shows from the next session"
-	case o.Duplicate != "":
-		id := learn.Truncate(o.Duplicate, 8)
-		return fmt.Sprintf("near-duplicate of %s (%s); pass replaces=%s to rewrite it", id, o.DupScope, id)
+	case o.Duplicate != nil && o.DupQueued:
+		return fmt.Sprintf("already queued for the user's review as %s: %q", learn.Truncate(o.Duplicate.ID, 8), o.Duplicate.Text)
+	case o.Duplicate != nil:
+		id := learn.Truncate(o.Duplicate.ID, 8)
+		return fmt.Sprintf("near-duplicate of %s (%s): %q; to keep both facts, pass replaces=%s with one line that says both", id, o.Duplicate.Scope, o.Duplicate.Text, id)
 	case o.Dropped:
 		return "dropped: quote not found in this session's messages"
 	case o.Queued != "":
@@ -177,22 +179,27 @@ var (
 )
 
 // duplicateMemory finds a live memory in either scope, or a pending
-// proposal, that says what m says (learn.Similar); m itself and the row
-// it replaces are no candidates.
+// proposal (queued), that says what m says; m itself and the row it
+// replaces are no candidates. The user's own text is refused only when it
+// repeats one word for word: learn.Similar would refuse a distinct fact.
 // NOTE: scans both scopes; fine for the dozens of rows a budget holds.
-func (h *Host) duplicateMemory(m store.Memory, replaces string) (id, scope string, found bool) {
+func (h *Host) duplicateMemory(m store.Memory, replaces string) (dup *store.Memory, queued bool) {
+	same := learn.Similar
+	if m.Origin == learn.OriginUser {
+		same = strings.EqualFold
+	}
 	live, _ := h.memoryList(false)
 	for _, o := range live {
-		if o.ID != m.ID && o.ID != replaces && learn.Similar(o.Text, m.Text) {
-			return o.ID, o.Scope, true
+		if o.ID != m.ID && o.ID != replaces && same(o.Text, m.Text) {
+			return o, false
 		}
 	}
 	for _, o := range h.memoryProposals() {
-		if !o.Forget && o.ID != m.ID && learn.Similar(o.Text, m.Text) {
-			return o.ID, o.Scope, true
+		if !o.Forget && o.ID != m.ID && same(o.Text, m.Text) {
+			return &o.Memory, true
 		}
 	}
-	return "", "", false
+	return nil, false
 }
 
 // storeProposal writes a policy-clean memory to its scope's DB.
@@ -202,8 +209,8 @@ func (h *Host) storeProposal(res *learn.Result) error {
 		return errors.New("memory store unavailable")
 	}
 	m := &res.Memory
-	if id, _, dup := h.duplicateMemory(*m, res.Supersedes); dup {
-		return fmt.Errorf("%w as %s", errDuplicateMemory, learn.Truncate(id, 8))
+	if dup, _ := h.duplicateMemory(*m, res.Supersedes); dup != nil {
+		return fmt.Errorf("%w as %s", errDuplicateMemory, learn.Truncate(dup.ID, 8))
 	}
 	if err := db.AddMemory(m); err != nil {
 		return err
@@ -456,8 +463,8 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 		return false, err
 	}
 	res.Memory.ID = m.ID
-	if id, _, dup := h.duplicateMemory(res.Memory, ""); dup {
-		return false, fmt.Errorf("%w as %s", errDuplicateMemory, learn.Truncate(id, 8))
+	if dup, _ := h.duplicateMemory(res.Memory, ""); dup != nil {
+		return false, fmt.Errorf("%w as %s", errDuplicateMemory, learn.Truncate(dup.ID, 8))
 	}
 	return res.Scrubbed, db.UpdateMemoryText(m.ID, res.Memory.Text, learn.OriginUser)
 }
@@ -760,8 +767,8 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		case res.ID != "":
 			out.RawSetString("stored", glua.LTrue)
 			out.RawSetString("id", glua.LString(res.ID))
-		case res.Duplicate != "":
-			out.RawSetString("duplicate", glua.LString(res.Duplicate))
+		case res.Duplicate != nil:
+			out.RawSetString("duplicate", glua.LString(res.Duplicate.ID))
 		case res.Dropped:
 			out.RawSetString("dropped", glua.LTrue)
 		default:
@@ -864,8 +871,8 @@ func (h *Host) forgetMemory(sid, id string) (string, error) {
 // memoryReview finds no reason to hold is stored, the rest queued.
 func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 	m := &res.Memory
-	if id, scope, dup := h.duplicateMemory(*m, res.Supersedes); dup {
-		return memoryOutcome{Duplicate: id, DupScope: scope}, nil
+	if dup, queued := h.duplicateMemory(*m, res.Supersedes); dup != nil {
+		return memoryOutcome{Duplicate: dup, DupQueued: queued}, nil
 	}
 	if m.Origin == learn.OriginLearned && m.Quote != "" && !h.quoteInSession(m.ProvenanceSessionID, m.Quote) {
 		h.Log.Info("memory", "dropped: quote not in the session", map[string]any{"text": m.Text, "quote": m.Quote})

@@ -532,7 +532,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 		case err != nil:
 			skipped++
 			h.Log.Warn("reflector", "apply failed", map[string]any{"error": err.Error()})
-		case out.Duplicate != "" || out.Dropped:
+		case out.Duplicate != nil || out.Dropped:
 			skipped++
 		case out.ID == "":
 			queued++

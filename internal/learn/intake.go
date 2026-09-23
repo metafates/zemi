@@ -78,11 +78,14 @@ func Truncate(s string, n int) string {
 	return string(r[:n])
 }
 
-var contentToken = regexp.MustCompile(`[a-z0-9]{4,}`)
+// contentToken is a word of three or more letters or any run with a digit,
+// so a different short name (vet, api) or number keeps two facts apart.
+var contentToken = regexp.MustCompile(`[a-z0-9]*[0-9][a-z0-9]*|[a-z]{3,}`)
 
 // Similar reports whether two memory texts say the same thing: the same
-// text but for case, or 60% of their content tokens (lowercase words of
-// four or more characters) in common. Empty token sets never match.
+// text but for case, or 75% of their content tokens in common, a word
+// compared by its first five letters so "regenerates" matches "regenerated".
+// Empty token sets never match.
 // NOTE: token overlap only; the reflector's full index is the semantic check.
 func Similar(a, b string) bool {
 	if strings.EqualFold(a, b) {
@@ -98,12 +101,15 @@ func Similar(a, b string) bool {
 			both++
 		}
 	}
-	return 10*both >= 6*(len(ta)+len(tb)-both)
+	return 4*both >= 3*(len(ta)+len(tb)-both)
 }
 
 func tokens(s string) map[string]bool {
 	out := map[string]bool{}
 	for _, t := range contentToken.FindAllString(strings.ToLower(s), -1) {
+		if len(t) > 5 && !strings.ContainsAny(t, "0123456789") {
+			t = t[:5]
+		}
 		out[t] = true
 	}
 	return out

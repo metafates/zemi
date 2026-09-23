@@ -1822,8 +1822,8 @@ by the next startup sweep, since the session still has unseen messages.
   review queue even under `memory.autonomy = auto`; false positives only
   cost a review click. Auto-applied memories are capped per session. A
   near-duplicate of a live memory or a pending proposal in either scope
-  (`learn.Similar`: 60% of the content tokens shared) is refused with the
-  id it repeats, so the model passes `replaces` instead. Anything about
+  (`learn.Similar`: 75% of the content tokens shared) is refused with the
+  id and text it repeats, so the model merges the two through `replaces` (a pending one is named as queued; the user's own text is refused only word for word). Anything about
   the user carries `quote`, the user's own words: a learned user-scope
   memory without one waits for review, and a quote that is not in the
   session's user rows (compaction summaries aside) drops the memory. Each

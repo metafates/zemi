@@ -93,6 +93,8 @@ func TestSimilar(t *testing.T) {
 		{"the user wants short replies", "the user wants commits without being asked", false},
 		{"a b c", "A b c", true},
 		{"a b c", "a b d", false}, // no content tokens
+		{"the dev server listens on port 3000", "the api server listens on port 8080", false},
+		{"go test ./internal/... needs CGO_ENABLED=0", "go vet ./internal/... needs CGO_ENABLED=0", false},
 	} {
 		if got := Similar(tc.a, tc.b); got != tc.want {
 			t.Errorf("Similar(%q, %q) = %v", tc.a, tc.b, got)

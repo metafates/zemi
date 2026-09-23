@@ -13,8 +13,8 @@ description: How zemi learns - memories, the reflector, skills and recipes. Load
    characters) naming the file, command or flag it is about and, for anything about the
    user, `quote`: their exact words from this session (a quote that is not in the session
    drops the memory; a user-scope memory without one waits for review). Under the default
-   autonomy it stores at once when policy-clean; the answer names the id, or the id of a
-   near-duplicate to pass as `replaces` instead. `replaces=<id>` (the 8-character id the
+   autonomy it stores at once when policy-clean; the answer names the id, or a near-duplicate's
+   id and text to merge through `replaces` (one still awaiting review is only named). `replaces=<id>` (the 8-character id the
    `# Memory` section shows) rewrites that memory; empty text with `replaces` drops it: at
    once for a `learned` memory under `auto`, proposed for review otherwise, and one the user
    saved asks. Each scope holds 3 KB of lines; a write past that queues for review and

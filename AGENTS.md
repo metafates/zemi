@@ -561,7 +561,7 @@ lua-language-server is installed.
   the read tool's `fs.read` check. Runs on the interpreter (10s ceiling), main agent only.
 - **Model memory writes**: the one `memory` tool goes through `memoryTool` -> `gateMemory`:
   a near-duplicate (`learn.Similar` over both scopes and the pending proposals) is refused
-  with the id to pass as `replaces`; a learned user-scope memory needs a `quote`, checked
+  with its id and text to merge through `replaces` (a pending one only as queued); a learned user-scope memory needs a `quote`, checked
   against the typed part of the session's user rows (`quoteInSession`, cut at `attachMarker`),
   and a quote not found drops it; a scope over `learn.ScopeBudget` queues with the oldest ids
   to replace, and `acceptProposal` and `moveMemory` refuse with them. Text with `replaces`
@@ -693,7 +693,7 @@ how many rows the frame takes, so nothing above it reflows.
   reaching widgets, overlays or the log. Secrets are scrubbed by the learn intake scrubber at
   the memory/store boundary - don't log raw tool output or memory text.
 - **Memory intake policy** (`internal/learn`): text cap 300 and quote 160, provenance
-  required, `learn.Similar` refuses a near-duplicate, `origin` (`user` or `learned`) gates
+  required, `learn.Similar` refuses a near-duplicate (the user's own text only a word-for-word repeat), `origin` (`user` or `learned`) gates
   autonomy and the replacement guard, no kind. `memory.autonomy` is user config only.
 - **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema; only
   user config sets them. Providers ship none; user config registers them, keys included
