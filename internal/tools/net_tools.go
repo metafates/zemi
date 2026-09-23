@@ -138,7 +138,7 @@ func ParseNetURL(raw string) (*url.URL, error) {
 func netGate(p *Pipeline, u *url.URL, reason string) error {
 	v := p.Check(Request{Subject: "net." + u.Hostname(), Arg: u.String(), Reason: reason})
 	if v.Decision != perm.Allow {
-		return fmt.Errorf("permission denied for %s: %s", u.Host, v.Reason)
+		return errors.New(DeniedText(v, "net."+u.Hostname()+" "+u.String()))
 	}
 	return nil
 }

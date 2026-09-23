@@ -394,7 +394,8 @@ func turnReport(rows []hostapi.ChatMessage) report {
 			rt := reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == "ok", Detail: m.Detail}
 			if !rt.OK {
 				rt.Error, _, _ = strings.Cut(strings.TrimSpace(m.Output), "\n")
-				rt.Denied = strings.Contains(m.Output, "permission denied")
+				// the gate's DeniedText; a bare "permission denied" is also EACCES
+				rt.Denied = strings.HasPrefix(strings.TrimSpace(m.Output), "permission denied (")
 			}
 			if rt.Denied {
 				rep.denied++

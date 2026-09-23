@@ -274,7 +274,7 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		if s.Name == name {
 			path := filepath.Join(s.Path, "SKILL.md")
 			if v := p.Check(Request{Subject: "fs.read", Arg: path, Reason: "load skill"}); v.Decision != perm.Allow {
-				return fantasy.NewTextErrorResponse("permission denied: " + v.Reason), nil
+				return fantasy.NewTextErrorResponse(DeniedText(v, "skill "+name)), nil
 			}
 			fi, _ := os.Stat(path)
 			body, err := skills.Body(s.Path)

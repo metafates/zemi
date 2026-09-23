@@ -413,6 +413,8 @@ func lockFile(path string) func() {
 // the second of two edits to one file, run first, finds text the first was
 // to write. Ids arrive from CallStart, which fantasy fires for every call of
 // a step before it dispatches any; Run waits until its id leads its file.
+// The maps are shared by every runner, so nothing here clears more than the
+// ids a caller names.
 var callOrder = struct {
 	mu    sync.Mutex
 	cond  *sync.Cond
@@ -420,54 +422,57 @@ var callOrder = struct {
 	ahead map[string][]string // file key -> call ids, in call order
 }{path: map[string]string{}, ahead: map[string][]string{}}
 
-// CallStart records a write tool's call as the model made it; other tools
-// are ignored. The agent runner calls it from fantasy's OnToolCall.
-func CallStart(id, tool, input string) {
+// CallStart records a write tool's call as the model made it and reports
+// whether it did; other tools are ignored. The agent runner calls it from
+// fantasy's OnToolCall and owes a CallDone for every recorded id.
+func CallStart(id, tool, input string) bool {
 	if tool != ToolWrite && tool != ToolEdit && tool != ToolMultiedit {
-		return
+		return false
 	}
 	var in struct{ Path string }
 	if json.Unmarshal([]byte(input), &in) != nil || in.Path == "" {
-		return
+		return false
 	}
 	key := absPath(in.Path)
 	callOrder.mu.Lock()
 	callOrder.path[id] = key
 	callOrder.ahead[key] = append(callOrder.ahead[key], id)
 	callOrder.mu.Unlock()
+	return true
 }
 
-// StepDone drops what a step recorded and never ran (a finish that was no
-// tool call), so nothing waits on it. The agent runner calls it from
-// fantasy's OnStepFinish, once every call of the step returned.
-func StepDone() {
-	callOrder.mu.Lock()
-	clear(callOrder.path)
-	clear(callOrder.ahead)
-	callOrder.mu.Unlock()
-	callOrder.cond.Broadcast()
-}
-
-// turn blocks until call id leads the calls on its file, or was never
-// recorded, and returns the release the caller runs once its write landed.
-func turn(id string) func() {
+// CallDone releases the calls, so nothing waits on them: a call fantasy
+// answered without running it (invalid input, a tool the profile dropped)
+// and, at the end of a turn, whatever a step recorded and never dispatched.
+// Ids Run already released are no-ops.
+func CallDone(ids ...string) {
 	c := &callOrder
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	key, ok := c.path[id]
-	for ok && c.ahead[key][0] != id {
-		c.cond.Wait()
-		key, ok = c.path[id]
-	}
-	return func() {
-		c.mu.Lock()
+	for _, id := range ids {
 		if key, ok := c.path[id]; ok {
 			delete(c.path, id)
 			c.ahead[key] = slices.DeleteFunc(c.ahead[key], func(x string) bool { return x == id })
 		}
-		c.mu.Unlock()
-		c.cond.Broadcast()
 	}
+	c.mu.Unlock()
+	c.cond.Broadcast()
+}
+
+// turn blocks until call id leads the calls on its file, was never
+// recorded, or ctx ends, and returns the release the caller runs once its
+// write landed.
+func turn(ctx context.Context, id string) func() {
+	c := &callOrder
+	// taking mu first means the waiter is inside Wait when the broadcast lands
+	defer context.AfterFunc(ctx, func() { c.mu.Lock(); c.mu.Unlock(); c.cond.Broadcast() })()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	key, ok := c.path[id]
+	for ok && c.ahead[key][0] != id && ctx.Err() == nil {
+		c.cond.Wait()
+		key, ok = c.path[id]
+	}
+	return func() { CallDone(id) }
 }
 
 func init() { callOrder.cond = sync.NewCond(&callOrder.mu) }

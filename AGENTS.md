@@ -208,8 +208,10 @@ File tools (internal/tools/fs_tools.go): `write`, `edit` and `multiedit` refuse 
 model has not read, or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get
 their own), and hold a per-path lock, so a concurrent agent or the user's editor cannot lose
 changes; within one step the lock is taken in call order (`tools.CallStart` from fantasy's
-`OnToolCall`, which fires for every call before any is dispatched, `tools.StepDone` after), so
-two edits to one file emitted together apply as written. A mistyped path names up to three
+`OnToolCall`, which fires for every call before any is dispatched; `tools.CallDone` from
+`OnToolResult`, which fires for a call fantasy refused to run too, and once more for the
+runner's ids when its turn ends, so a call nothing ran never holds the file), so two edits to
+one file emitted together apply as written. A mistyped path names up to three
 siblings it could have meant (`Pipeline.notFound`), for read and edit alike, before any ask.
 `ResumeSession` rebuilds that map from the stored rows (`seedReads`), leaving out
 files touched after the last message. `tool.Run` runs the same check before the gate

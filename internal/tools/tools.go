@@ -469,8 +469,8 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 	if t.edits {
 		// the calls before this one on the same file land first, so the
 		// stale check and the edit see what they wrote; released on every
-		// return, or the next call on the file would wait out the step
-		defer turn(call.ID)()
+		// return, or the next call on the file would wait out the turn
+		defer turn(ctx, call.ID)()
 	}
 	input, err := ParseInput(t.info, call.Input)
 	if err != nil {
