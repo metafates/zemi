@@ -10,6 +10,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -93,6 +94,23 @@ func TestReadJailCoversRepo(t *testing.T) {
 		h.SetProjectTrusted(c.trusted)
 		if got := h.fsDefault(c.subject, c.arg); got != c.want {
 			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+		// the write jail is the launch dir by design; the ask says so and
+		// shows the sibling's path from the repository root, not absolute
+		if c.subject == "fs.write" {
+			req := tools.Request{Subject: c.subject, Arg: c.arg}
+			ui := &fakeUI{}
+			h.SetUIHooks(ui)
+			h.askHook()(req)
+			if len(ui.asked) != 1 || !strings.Contains(ui.asked[0].Reason, "outside pkg/, the directory zemi was started in") {
+				t.Errorf("%s: ask = %+v", c.name, ui.asked)
+			}
+			if got := h.shownArg(req); got != filepath.Join("other", "main.go") {
+				t.Errorf("%s: shown %q", c.name, got)
+			}
+			if label, _ := h.alwaysChoice(req); label != "allow edits in other/" {
+				t.Errorf("%s: always label %q", c.name, label)
+			}
 		}
 	}
 }

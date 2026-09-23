@@ -104,8 +104,14 @@ func (h *Host) askHook() tools.Asker {
 				note("not settled: the URL is the model's")
 			case req.Subject == "fs.write" && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...):
 				// the sandbox cannot confine the write tool, and a file outside the
-				// project (~/.gitconfig, a shell rc) can name what runs next
-				note("not settled: this changes a file outside the project")
+				// project (~/.gitconfig, a shell rc) can name what runs next; the
+				// write jail is the launch dir even in a trusted repository (the
+				// sandbox's write root), so a sibling package says which dir
+				if launch := h.launchDirInRepo(); launch != "" && h.inJail(req.Arg, h.Dirs.RepoRoot()) {
+					note("not settled: this changes a file outside " + launch + ", the directory zemi was started in")
+				} else {
+					note("not settled: this changes a file outside the project")
+				}
 			case !h.ProjectTrusted():
 				note("not settled: this project is not trusted (/trust)")
 			case req.Subject == "tool.bash" && !h.sandboxLive():
@@ -155,15 +161,45 @@ func (h *Host) askHook() tools.Asker {
 }
 
 // shownArg is the request's argument as the user reads it: a path relative
-// to the project when inside it.
+// to the project when inside it, or to the trusted repository's root.
 func (h *Host) shownArg(req tools.Request) string {
 	if !tools.PathSubject(req.Subject) {
 		return req.Arg
 	}
-	if rel, ok := perm.Under(perm.RealPath(h.Dirs.ProjectDir), req.Arg); ok {
-		return rel
+	return h.relPath(req.Arg)
+}
+
+// relPath is path relative to the project, else to the trusted
+// repository's root ("<root>/pkg/a.go" is "pkg/a.go" from "<root>/other"),
+// else as given.
+func (h *Host) relPath(path string) string {
+	roots := []string{h.Dirs.ProjectDir}
+	if h.ProjectTrusted() {
+		roots = append(roots, h.Dirs.RepoRoot())
 	}
-	return req.Arg
+	for _, root := range roots {
+		// as given, then resolved (/var is /private/var on macOS)
+		for _, p := range []string{path, perm.RealPath(path)} {
+			if rel, ok := perm.Under(perm.RealPath(root), p); ok {
+				return rel
+			}
+		}
+	}
+	return path
+}
+
+// launchDirInRepo is the launch dir relative to the trusted repository's
+// root, with a trailing separator ("pkg/"), or "" when it is the root or
+// the project is untrusted.
+func (h *Host) launchDirInRepo() string {
+	if !h.ProjectTrusted() {
+		return ""
+	}
+	rel, ok := perm.Under(perm.RealPath(h.Dirs.RepoRoot()), perm.RealPath(h.Dirs.ProjectDir))
+	if !ok || rel == "." {
+		return ""
+	}
+	return rel + string(filepath.Separator)
 }
 
 // alwaysChoice is the "for this session" option for a request: what it
@@ -244,10 +280,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 			return "", nil
 		}
 		dir := filepath.Dir(abs)
-		shown := dir
-		if rel, ok := perm.Under(perm.RealPath(h.Dirs.ProjectDir), dir); ok {
-			shown = rel
-		}
+		shown := h.relPath(dir)
 		what := map[string]string{"fs.write": "edits", "fs.read": "reads"}[req.Subject]
 		where := "in " + shown + "/"
 		if shown == "." {
