@@ -32,6 +32,13 @@ func TestExportAndFork(t *testing.T) {
 	if !strings.Contains(string(md), "## You\n\nping") || !strings.Contains(string(md), "## zemi\n\npong") {
 		t.Fatalf("export:\n%s", md)
 	}
+	// the toast names the file as the user finds it, short enough to read whole
+	if _, err := h.ExportSession(""); err != nil {
+		t.Fatal(err)
+	}
+	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.body != "saved to zemi-"+h.AgentSessionID()[:8]+".md" {
+		t.Fatalf("export toast: %q", n.body)
+	}
 
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)

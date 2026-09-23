@@ -373,10 +373,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			return h.InitProject()
 		}},
 		{Name: "export", Hidden: true, NArgs: "?", Desc: "save this session as markdown", GoFn: func(h *hostapi.Host, args string) error {
-			path, err := h.ExportSession(strings.TrimSpace(args))
-			if err == nil {
-				h.Notify("info", "Session exported", "saved to "+path)
-			}
+			_, err := h.ExportSession(strings.TrimSpace(args))
 			return err
 		}},
 		{Name: "copy", NArgs: "*", Desc: "copy the last reply or a code block in it", GoFn: func(h *hostapi.Host, args string) error {

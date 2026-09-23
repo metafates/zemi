@@ -153,7 +153,7 @@ func codeBlocks(md string) []codeBlock {
 }
 
 // ExportSession writes the live session as markdown to path ("" picks
-// zemi-<id>.md in the project) and returns the path written.
+// zemi-<id>.md in the project), says where, and returns the path written.
 func (h *Host) ExportSession(path string) (string, error) {
 	sid := h.AgentSessionID()
 	if sid == "" || h.DB == nil {
@@ -218,6 +218,7 @@ func (h *Host) ExportSession(path string) (string, error) {
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return "", err
 	}
+	h.Notify("info", "Session exported", "saved to "+TildePath(h.relPath(path)))
 	return path, nil
 }
 
