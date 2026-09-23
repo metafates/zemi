@@ -29,7 +29,7 @@ zemi.provider.add({
 ## Use
 
 - zemi asks once per project whether to trust it. Trusted, the project's `.zemi` config,
-  AGENTS.md and language servers load; untrusted, zemi asks before anything but reads.
+  AGENTS.md and language servers load; untrusted, auto mode asks before anything but reads.
   `/trust` changes the answer.
 - `tab` switches the permission mode: `auto` edits the project and runs sandboxed
   commands on its own and asks for the rest, `yolo` asks for nothing. `ctrl+y` toggles yolo.
