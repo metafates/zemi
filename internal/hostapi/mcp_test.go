@@ -122,6 +122,23 @@ func TestMCPBridge(t *testing.T) {
 	if s, _ := h.mcpServerNamed("fake"); s.currentClient() != nil || s.status != "needs sign-in" {
 		t.Fatalf("status after the sign-in expired = %q", s.status)
 	}
+	// a reload that disables echo stops the snapshot's echo too
+	expired.Store(false)
+	spec := first.spec
+	spec.DisabledTools = []string{"echo"}
+	readd.Run = func(context.Context, *lua.Runtime, *lua.Generation) error { return h.addMCP("fake", spec) }
+	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), readd}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if s, _ := h.mcpServerNamed("fake"); s.currentClient() == nil {
+			return errors.New("the reloaded server never became ready")
+		}
+		return nil
+	})
+	if resp := run(0, `{"text":"hi"}`); !resp.IsError || !strings.Contains(resp.Content, "no longer offers echo") {
+		t.Fatalf("disabled tool call = %+v", resp)
+	}
 }
 
 // TestMCPMedia: an image goes out the size the read tool's would, and one

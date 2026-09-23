@@ -569,11 +569,11 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 	// by name, not t.srv: a restart or reload mid-turn replaced the server
 	s, _ := h.mcpServerNamed(name)
 	var client *mcp.Client
-	if s != nil {
+	if s != nil && s.offered(t.tool.Name) {
 		client = s.currentClient()
 	}
 	if client == nil {
-		return fantasy.NewTextErrorResponse("MCP server " + name + " is not running (/mcp shows why)"), nil
+		return fantasy.NewTextErrorResponse("MCP server " + name + " is not running or no longer offers " + t.tool.Name + " (/mcp shows why)"), nil
 	}
 	timeout := s.spec.Timeout
 	if timeout <= 0 {
