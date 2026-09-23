@@ -156,9 +156,11 @@ command can plant a nested repo whose config zemi would run.
    runtime goes "hot" - every Lua request fails fast until force-reload builds a fresh `LState`
    (generation). All registrations (keymaps, widgets, events, timers, jobs, Lua tools, a
    permission mode's `decide`) are generation-tagged (`hostapi.Gen`) and purged before replay,
-   so never keep a pointer into an old generation. `ForceReload` keeps the old Lua permission
-   rules (`staleRules`) until the replay succeeds, and `tool.pre` and `permission.request`
-   vetoes wait out a reload, so a turn is never checked against half a config.
+   so never keep a pointer into an old generation. `ForceReload` refuses an init.lua that does
+   not parse and keeps the old Lua permission rules (`staleRules`) until the replay succeeds (a
+   failed one, an init.lua error included, keeps the deny and ask ones and skips `cfgSettle`),
+   and `tool.pre` and `permission.request` vetoes wait out a reload, so a turn is never checked
+   against half a config.
 3. **UI single-writer.** All `ui.App` state mutates on the bubbletea Update goroutine; work
    from other goroutines is funneled through a hook channel (internal/ui/hooks.go). hostapi
    never imports internal/ui - it defines `UIHooks` and the App implements it; keep that
@@ -574,9 +576,10 @@ lua-language-server is installed.
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
   `callback_port` for one without dynamic registration). Servers come from `zemi.mcp.add` (user
-  origin only); they stop on `PurgeGeneration` and run unconfined in `DataHome` with
-  `ZEMI_PROJECT_DIR` set, trusted project or not: `npx` and `uv` read config from the working
-  directory, and most servers need the network a sandbox refuses. Tools are
+  origin only); `PurgeGeneration` parks them, the replay keeps a live one it adds with the same
+  spec and the rest stop. They run unconfined in `DataHome` with `ZEMI_PROJECT_DIR` set,
+  trusted project or not: `npx` and `uv` read config from the working directory, and most
+  servers need the network a sandbox refuses. Tools are
   `mcp_<server>_<tool>`, gated as subject `mcp.<server>` with the tool name as argument. Past
   `mcpDeferAt` (10) MCP tools in a set, `deferMCP` adds `tool_search` and `Runner.ActiveTools`
   offers each step only the other tools, `tool_search` and the loaded ones: a search loads at
