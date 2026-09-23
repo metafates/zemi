@@ -285,11 +285,28 @@ func TestJobToolsLifecycle(t *testing.T) {
 		t.Fatalf("read sh: %+v", resp)
 	}
 
+	// wait_ms returns as soon as the job prints, well before it elapses
+	resp = call(t, start, `{"command":"sh","args":["-c","sleep 0.3; echo late; sleep 30"]}`)
+	if resp.IsError {
+		t.Fatalf("start late: %+v", resp)
+	}
+	j = p.Jobs.List()[2]
+	began := time.Now()
+	resp = call(t, read, `{"id":"`+j.ID+`","wait_ms":10000}`)
+	if took := time.Since(began); resp.IsError || !strings.Contains(resp.Content, "late") || took > 5*time.Second {
+		t.Fatalf("read with wait_ms: %+v after %s", resp, took)
+	}
+	resp = call(t, kill, `{"id":"`+j.ID+`"}`)
+	if resp.IsError {
+		t.Fatalf("kill late: %+v", resp)
+	}
+	waitJobDone(t, j)
+
 	resp = call(t, start, `{"command":"sleep","args":["30"]}`)
 	if resp.IsError {
 		t.Fatalf("start sleep: %+v", resp)
 	}
-	j = p.Jobs.List()[2]
+	j = p.Jobs.List()[3]
 	resp = call(t, kill, `{"id":"`+j.ID+`"}`)
 	if resp.IsError || !strings.Contains(resp.Content, "killed") {
 		t.Fatalf("kill: %+v", resp)

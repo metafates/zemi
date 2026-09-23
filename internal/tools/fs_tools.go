@@ -158,7 +158,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		// the work so far is not thrown away: it keeps running as a job
 		if p != nil && p.Jobs != nil {
 			id := p.Jobs.Adopt(cmd, c, buf, written, wait, after)
-			fmt.Fprintf(&b, "still running after %s, so it %s%s: read the rest with job_read, stop it with job_kill.", timeout, JobHandoff, id)
+			fmt.Fprintf(&b, "still running after %s, so it %s%s: read the rest with job_read (wait_ms blocks until it prints or exits), stop it with job_kill.", timeout, JobHandoff, id)
 			return changed(fantasy.NewTextResponse(b.String()))
 		}
 		proc.Kill(c)

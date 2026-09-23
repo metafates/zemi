@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -49,6 +50,15 @@ func (j *Job) Running() bool {
 	default:
 		return true
 	}
+}
+
+// hasNew reports output since the last read without taking it.
+func (j *Job) hasNew() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	_, out := j.stdout.Snapshot()
+	_, errOut := j.stderr.Snapshot()
+	return out > j.sent[0] || errOut > j.sent[1]
 }
 
 // Status renders one list line.
@@ -277,6 +287,23 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	j, err := p.Jobs.Get(str(input["id"]))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	// wait_ms blocks for new output or the exit, so a poll costs no model
+	// round trip; the turn's cancel still wins
+	if v, ok := input["wait_ms"].(float64); ok && v > 0 {
+		deadline := time.After(time.Duration(min(v, 600_000)) * time.Millisecond)
+		tick := time.NewTicker(250 * time.Millisecond)
+		defer tick.Stop()
+		for !j.hasNew() && j.Running() {
+			select {
+			case <-tick.C:
+				continue
+			case <-j.done:
+			case <-ctx.Done():
+			case <-deadline:
+			}
+			break
+		}
 	}
 	out, errOut, running, errText := j.since()
 	var b strings.Builder
