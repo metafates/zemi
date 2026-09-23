@@ -177,7 +177,6 @@ zemi.ui.widget.add({
       if t.kind ~= nil and t.kind ~= "tool" then return false end
       -- a command that changed files keeps its row: the diff is the news; so
       -- does one that went on as a job, which the user should know is running
-      -- (the phrase is tools.JobHandoff, pinned by TestToolRows)
       if tool_name(t) == "bash" and (t.output or ""):find("moved to the background as job-", 1, true) then return false end
       return not ctx.show_reasoning and t.status == "ok" and COUNT[tool_name(t)] ~= nil and (t.diff or "") == ""
     end
@@ -247,8 +246,11 @@ zemi.ui.widget.add({
       local click = (t.run or "") ~= "" and ("agent:" .. t.run) or ("tool:" .. idx)
       for _, sg in ipairs(head) do sg.click = click end
       lines[#lines + 1] = head
-      -- under the row: the command a description stands for, then progress
-      for _, sub in ipairs({ label ~= "" and input or "", ((t.detail or ""):gsub("%s+", " ")) }) do
+      -- under the row: the command a description stands for, then progress,
+      -- then the job a timed-out command went on as (the ✓ alone would read
+      -- as finished; the phrase is tools.JobHandoff)
+      local job = name == "bash" and (t.output or ""):match("moved to the background as (job%-%d+)") or ""
+      for _, sub in ipairs({ label ~= "" and input or "", ((t.detail or ""):gsub("%s+", " ")), job ~= "" and "still running as " .. job or "" }) do
         if sub ~= "" then
           lines[#lines + 1] = { { text = "  ⎿ ", hl = "Comment", copy = false }, { text = fit(sub, width - 6), hl = "Comment", click = click, hover = false } }
         end

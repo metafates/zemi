@@ -998,7 +998,7 @@ func TestToolRows(t *testing.T) {
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"Read 2 files, ran 1 command", "✓ Build it", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX"} {
+	for _, want := range []string{"Read 2 files, ran 1 command", "✓ Build it", "⎿ still running as job-1", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
