@@ -1,6 +1,6 @@
 ---
 name: zemi-tui-test
-description: Drive the real zemi binary in tmux against a fake model server, in a throwaway config tree that never touches ~/.config/zemi. Use to verify a UI or agent change end to end, capture screens, or reproduce a bug the Go tests cannot.
+description: "Load to check a UI or agent change end to end, capture a screen, or reproduce a bug Go tests cannot: the real binary in tmux against a fake model, in a throwaway config tree."
 ---
 
 # Testing zemi in a real terminal
@@ -19,7 +19,7 @@ pane, where the caller's environment is not forwarded, and from fish, which does
 
 ```sh
 S=$PWD/.agents/skills/zemi-tui-test; T=/tmp/zt
-mkdir -p $T/proj && (cd $T/proj && git init -q)
+mkdir -p $T/proj $T/config && (cd $T/proj && git init -q)
 make build                       # or: go build -o $T/zemi . && export ZEMI_BIN=$T/zemi
 ```
 
@@ -31,12 +31,13 @@ non-streaming requests (session titles use them), and writes every request body 
 `last_request.json` so you can diff two consecutive requests byte for byte (prompt cache).
 
 ```sh
-(cd $T && python3 /path/to/fake_openai.py 18472 &) ; sleep 0.3
+(cd $T && python3 $S/fake_openai.py 18472 &) ; sleep 0.3
 cat > $T/config/init.lua <<'L'
 zemi.provider.add({ id = "fake", kind = zemi.provider.kind.OPENAI_COMPAT,
   api_key = "x", base_url = "http://127.0.0.1:18472/v1",
   models = { { id = "m", context_window = 128000 } } })
 zemi.config.set("models.main", "fake/m")
+zemi.config.set("session.auto_title", false)  -- else the title request overwrites last_request.json
 L
 ```
 
