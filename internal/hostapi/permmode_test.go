@@ -125,6 +125,15 @@ func TestUntrustedModes(t *testing.T) {
 			t.Errorf("%s %s: allowed %v, reason %q", c.subject, c.arg, ok, why)
 		}
 	}
+	// a mode's own rule does not settle a protected write any store rule re-asks
+	runUser(t, h.RT, `zemi.permission.mode.add("open", { base = "auto", rules = { { "fs.write", "*", "allow" } } })`)
+	h.SetPermMode("open")
+	for _, f := range []string{".git/config", ".gitattributes"} {
+		if ok, _, _ := ask(tools.Request{Subject: "fs.write", Arg: filepath.Join(h.Dirs.ProjectDir, f)}); ok {
+			t.Errorf("mode rule settled a write to %s", f)
+		}
+	}
+	h.SetPermMode("auto")
 	lua := h.luaEvalTool()
 	for _, c := range []struct {
 		mode     string

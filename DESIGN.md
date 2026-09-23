@@ -1472,9 +1472,10 @@ provenance string.
   the bash command is a `perm.ReadCommand`, and commands run sandboxed with the project
   unwritable, which is what keeps a planning session read-only. `auto` settles
   locally first, without a model: reads and writes inside the jail that
-  are not secret-shaped (writes under any `.git` or `.zemi`, the git dir
-  a project `.git` file names, or zemi's own config, data and state dirs
-  excepted), workflow scripts (the
+  are not secret-shaped (writes under any `.git` or `.zemi`, to a
+  `.gitattributes` or `.gitmodules`, the git dir a project `.git` file
+  names, or zemi's own config, data and state dirs excepted: those ask
+  whatever rule allows them, a mode's own included), workflow scripts (the
   script is sandboxed and each agent it starts is gated), and every bash
   command, unparsed, since it runs sandboxed (below). Two kinds still ask
   (`Host.unsettled`): the short `perm.Destructive` list (forced or

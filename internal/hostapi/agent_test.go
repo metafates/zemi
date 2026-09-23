@@ -1056,15 +1056,15 @@ func TestAlwaysChoice(t *testing.T) {
 	if label, _ := h.repoChoice(tools.Request{Subject: "fs.read", Arg: filepath.Join(t.TempDir(), "x.go")}); label != "" {
 		t.Errorf("a file in no repository: %q", label)
 	}
+	// what the pipeline decides: the rule, then the protected-write re-ask
 	for approved, cases := range map[string]map[string]perm.Decision{
 		"main.go": {
-			"main.go": perm.Allow, "internal/a.go": perm.Allow,
-			".git/config": perm.Ask, ".git": perm.Ask, "sub/.git/hooks/pre-commit": perm.Ask, ".gitattributes": perm.Ask,
+			"main.go": perm.Allow, "internal/a.go": perm.Allow, ".gitignore": perm.Allow, ".gitkeep": perm.Allow,
+			".github/workflows/ci.yml": perm.Allow, ".gitlab-ci.yml": perm.Allow,
+			".git/config": perm.Ask, ".git": perm.Ask, "sub/.git/hooks/pre-commit": perm.Ask, ".gitattributes": perm.Ask, "sub/.gitmodules": perm.Ask,
 		},
-		".gitignore":               {".gitignore": perm.Allow, ".gitkeep": perm.Ask, ".git/config": perm.Ask},
-		".github/workflows/ci.yml": {".github/workflows/ci.yml": perm.Allow, ".git/config": perm.Ask},
-		".gitmodules":              {".gitmodules": perm.Ask},
-		"sub/.git":                 {"sub/.git": perm.Ask},
+		".gitmodules": {".gitmodules": perm.Ask},
+		"sub/.git":    {"sub/.git": perm.Ask},
 	} {
 		_, rules := h.alwaysChoice(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, approved)})
 		s := perm.NewStore()
@@ -1072,8 +1072,12 @@ func TestAlwaysChoice(t *testing.T) {
 			s.Add(r)
 		}
 		for arg, want := range cases {
-			if o := s.Evaluate("fs.write", filepath.Join(proj, arg), "model"); o.Decision != want {
-				t.Errorf("always edits for %s: %s = %v, want %v", approved, arg, o.Decision, want)
+			got := s.Evaluate("fs.write", filepath.Join(proj, arg), "model").Decision
+			if got == perm.Allow && h.protectedWrite(filepath.Join(proj, arg)) {
+				got = perm.Ask
+			}
+			if got != want {
+				t.Errorf("always edits for %s: %s = %v, want %v", approved, arg, got, want)
 			}
 		}
 	}

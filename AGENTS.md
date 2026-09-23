@@ -247,7 +247,9 @@ allows, an ask a rule asked for included (an `ask` rule, a `not_match` exclusion
 not secret-shaped, `tool.workflow` scripts (each agent they start is gated), bash commands
 (`unsettled`), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
-`.git`, `.zemi` or zemi's own dirs are `protectedWrite`, checkouts in `.zemi/worktrees` aside).
+`.git`, `.zemi` or zemi's own dirs and to a `.gitattributes` or `.gitmodules` are
+`protectedWrite`, checkouts in `.zemi/worktrees` aside, which no rule settles, a mode's own
+included).
 A read-only agent (`Profile.ReadOnly`, see below) denies writes and forces asks on changing
 commands, with the project unwritable in the sandbox, whatever the mode.
 Network requests are never settled: the URL is the model's. A mode from config may carry

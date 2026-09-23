@@ -55,8 +55,11 @@ func (h *Host) askHook() tools.Asker {
 			if req.Subject == "tool.bash" {
 				o = def.Rules.CheckCommand(req.Arg, "")
 			}
+			// Pipeline.Check re-asks a protected write whatever rule allowed it,
+			// so a mode's own rule must not settle that ask
+			protected := req.Subject == "fs.write" && !h.inScratch(req.Arg) && h.protectedWrite(req.Arg)
 			switch {
-			case o.Decision == perm.Allow && !req.Unsandboxed && !req.Network && !req.Explicit:
+			case o.Decision == perm.Allow && !req.Unsandboxed && !req.Network && !req.Explicit && !protected:
 				return resolved(true, "mode:"+def.Name)
 			case o.Decision == perm.Deny:
 				return resolved(false, "mode:"+def.Name)
@@ -294,20 +297,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		if shown == "." {
 			where = "anywhere in the project"
 		}
-		r := rule(req.Subject, filepath.Join(dir, "*"))
-		if req.Subject == "fs.write" {
-			// git runs programs .git/config and hooks name, and .gitattributes
-			// or .gitmodules point it at them; dir* stands for dir and below
-			r.NotMatch = filepath.Join(dir+"*", ".git*")
-			// NOTE: one glob cannot tell .gitignore or .github/ from .git, so of
-			// those only the approved file itself is allowed
-			base := filepath.Base(abs)
-			if strings.Contains(strings.ToLower(abs), string(filepath.Separator)+".git") && !inDirNamed(abs, ".git") &&
-				!strings.EqualFold(base, ".gitattributes") && !strings.EqualFold(base, ".gitmodules") {
-				return fmt.Sprintf("allow %s %s", what, where), []perm.Rule{r, rule(req.Subject, abs)}
-			}
-		}
-		return fmt.Sprintf("allow %s %s", what, where), []perm.Rule{r}
+		return fmt.Sprintf("allow %s %s", what, where), []perm.Rule{rule(req.Subject, filepath.Join(dir, "*"))}
 	case req.Subject == "tool.workflow" && req.Arg == "script", req.Subject == "tool.lua":
 		return "", nil // a pattern for "script" would allow every future inline script
 	case strings.HasPrefix(req.Subject, "net."):
