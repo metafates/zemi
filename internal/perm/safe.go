@@ -715,7 +715,7 @@ func shellBodies(f []string) []string {
 		if i > 0 && !runner(f[0]) {
 			break
 		}
-		if isShell(filepath.Base(w)) {
+		if isShell(w) {
 			if body, ok := shellBody(f[i+1:]); ok {
 				bodies = append(bodies, body)
 			}

@@ -3,6 +3,7 @@ package perm
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -515,8 +516,10 @@ func (n *Normalized) absorb(inner Normalized) {
 	}
 }
 
-func isShell(s string) bool {
-	switch s {
+// isShell judges a command word by its lowercased base: `/bin/bash` and,
+// on a case-folding filesystem, `BASH` run the same shell.
+func isShell(word string) bool {
+	switch strings.ToLower(filepath.Base(word)) {
 	case "sh", "bash", "zsh", "dash", "ksh", "ash":
 		return true
 	}
@@ -525,11 +528,13 @@ func isShell(s string) bool {
 
 // shellBody is the command a shell's argv runs through -c, alone or in a
 // bundle (-lc, -ec, the spelling most models write): the word after it.
+// A flag that takes a value is stepped over; the first plain word is the
+// script the shell runs instead.
 func shellBody(args []string) (string, bool) {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == "-o" || a == "+o":
+		case a == "-o" || a == "+o" || a == "-O" || a == "+O" || a == "--rcfile" || a == "--init-file":
 			i++
 		case !strings.HasPrefix(a, "-") || a == "-" || a == "--":
 			return "", false
