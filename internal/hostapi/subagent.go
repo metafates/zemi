@@ -312,7 +312,10 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	if len(unknown) > 0 {
 		return "", fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
 	}
+	loaded := new(sync.Map) // what the main agent loaded says nothing about what this run needs
+	kept, active := h.deferMCP(kept, loaded)
 	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), nil, kept))
+	runner.ActiveTools = active
 	runner.ProviderOptions = h.Providers.CallOptions(modelID, h.Effort())
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)
@@ -350,6 +353,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		run.sessionID = sid
 		run.mu.Unlock()
 	}
+	seedLoaded(loaded, runner.History)
 	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid}
 	runner.Hooks = hooks
 	if sid != "" {

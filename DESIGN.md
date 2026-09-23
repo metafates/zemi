@@ -2031,7 +2031,10 @@ the host-only proposal channel (§10.3), the user-only config.set and allow rule
   `mcp_<server>_<tool>` (64 chars max) and gated per call as
   `mcp.<server>`; servers come from user config only. When two tools map
   to one name, the first server's tool is kept and the rest are skipped
-  with a logged warning.
+  with a logged warning. Past ten MCP tools in a run's set, every one stays
+  registered but a step offers only the `tool_search` tool (its
+  description a catalog of names by server) and the tools a search loaded,
+  at most five per search, kept per session and per subagent run.
 - Logs: `zemi.log` to file + optional in-app pane; tool calls (each with
   its decision's source: rule, hook, user, overlay, or default), decisions,
   memory writes, revisions all logged with IDs so the reflector and the user

@@ -113,12 +113,14 @@ type agentHost struct {
 	ctxWin      int64
 	sessCost    float64 // USD, from model spec prices
 
-	// readMu guards reads and instr, the per-session file bookkeeping the
-	// tools pipeline carries (what the model has read, which instruction
-	// files it has been given). Both are dropped when the session changes.
+	// readMu guards reads, instr and loaded, the per-session bookkeeping
+	// the tools carry (what the model has read, which instruction files it
+	// has been given, which MCP tools tool_search loaded). All are dropped
+	// when the session changes.
 	readMu sync.Mutex
 	reads  map[string]*sync.Map
 	instr  map[string]bool
+	loaded *sync.Map
 
 	// promptTokens estimates the system prompt and tool schemas the runner
 	// carries; every prompt holds them, so the context estimate counts them.
@@ -310,10 +312,16 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	toolset := h.profileTools(p)
+	_, loaded := h.sessionLogs()
+	toolset, active := h.deferMCP(h.profileTools(p), loaded)
 	sys, parts := h.buildSystemParts(p, toolset)
 	r := agent.NewRunner(model, toolset, sys)
-	sizes := promptSizes(parts, toolset)
+	r.ActiveTools = active
+	sent := toolset
+	if active != nil {
+		sent, _ = filterTools(toolset, active(), nil)
+	}
+	sizes := promptSizes(parts, sent)
 	chars := 0
 	for _, s := range sizes {
 		chars += s.chars
@@ -343,15 +351,15 @@ type promptPart struct {
 
 // promptSizes breaks down what every prompt carries besides the messages:
 // the system prompt's sections plus the tool schemas sent with it, MCP
-// apart since a server's whole catalog rides every request whether the
-// model calls it or not.
+// (tool_search included) apart since what it sends rides every request
+// whether the model calls it or not.
 func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 	builtin, mcp := 0, 0
 	for _, t := range toolset {
 		info := t.Info()
 		schema, _ := json.Marshal(info.Parameters)
 		n := len(info.Name) + len(info.Description) + len(schema)
-		if strings.HasPrefix(info.Name, mcpToolPrefix) {
+		if strings.HasPrefix(info.Name, mcpToolPrefix) || info.Name == tools.ToolSearch {
 			mcp += n
 		} else {
 			builtin += n
@@ -2129,7 +2137,10 @@ func (h *Host) toolPostHook() func(string, map[string]any, bool, string, []strin
 // turn can be edited in the next. Only the live session is kept: an older
 // one cannot be edited, and holding every path of every session would grow
 // without end.
-func (h *Host) readLog() *sync.Map {
+func (h *Host) readLog() *sync.Map { reads, _ := h.sessionLogs(); return reads }
+
+// sessionLogs is the live session's read log and its loaded MCP tools.
+func (h *Host) sessionLogs() (reads, loaded *sync.Map) {
 	sid := h.AgentSessionID()
 	ag := h.agents
 	ag.readMu.Lock()
@@ -2137,8 +2148,9 @@ func (h *Host) readLog() *sync.Map {
 	if ag.reads[sid] == nil {
 		ag.reads = map[string]*sync.Map{sid: new(sync.Map)}
 		ag.instr = map[string]bool{}
+		ag.loaded = new(sync.Map)
 	}
-	return ag.reads[sid]
+	return ag.reads[sid], ag.loaded
 }
 
 // seedReads refills a resumed session's read log from its stored rows: the

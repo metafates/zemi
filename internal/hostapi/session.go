@@ -85,6 +85,8 @@ func (h *Host) ResumeSession(id string) error {
 		return err
 	}
 	h.seedReads(resumeRows(rows))
+	_, loaded := h.sessionLogs()
+	seedLoaded(loaded, history)
 	h.setTranscript(sess.Title, tr)
 	h.EmitAsync("session.open", map[string]any{"id": id, "title": sess.Title})
 	return nil

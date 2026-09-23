@@ -125,9 +125,10 @@ func (r *toolReg) purge(gen Gen) {
 }
 
 // builtinToolNames are the names Lua tools may not take: the provider would
-// get two tools of one name and fantasy runs the last one.
+// get two tools of one name and fantasy runs the last one. tool_search joins
+// the set only past ten MCP tools, so it is reserved here by name.
 func (h *Host) builtinToolNames() []string {
-	var names []string
+	names := []string{tools.ToolSearch}
 	for _, t := range h.builtinTools(nil) {
 		names = append(names, t.Info().Name)
 	}

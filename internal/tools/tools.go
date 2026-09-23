@@ -57,6 +57,7 @@ const (
 	ToolAgent    = "agent"
 	ToolWorkflow = "workflow"
 	ToolLua      = "lua"
+	ToolSearch   = "tool_search"
 )
 
 // Request is one permission check the pipeline needs answered.

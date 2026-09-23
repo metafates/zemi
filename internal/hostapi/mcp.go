@@ -295,6 +295,145 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	return out
 }
 
+// mcpDeferAt is the most MCP tools whose schemas ride every step: past it
+// only the ones tool_search loaded are sent, since a big catalog costs
+// every request and is rarely called.
+const mcpDeferAt = 10
+
+// mcpSearchMax is the most tools one search loads.
+const mcpSearchMax = 5
+
+// deferMCP adds tool_search to a set holding more than mcpDeferAt MCP tools
+// and returns the names each step offers: every other tool, tool_search and
+// the MCP tools in loaded. A nil func offers every tool.
+func (h *Host) deferMCP(set []fantasy.AgentTool, loaded *sync.Map) ([]fantasy.AgentTool, func() []string) {
+	var deferred []*mcpTool
+	var always []string
+	for _, t := range set {
+		if m, ok := t.(*mcpTool); ok {
+			deferred = append(deferred, m)
+		} else {
+			always = append(always, t.Info().Name)
+		}
+	}
+	if len(deferred) <= mcpDeferAt {
+		return set, nil
+	}
+	always = append(always, tools.ToolSearch)
+	active := func() []string {
+		out := slices.Clone(always)
+		loaded.Range(func(k, _ any) bool { out = append(out, k.(string)); return true })
+		return out
+	}
+	return append(set, newToolSearch(h, deferred, loaded)), active
+}
+
+// seedLoaded marks the MCP tools a history called as loaded, so a resumed
+// conversation keeps their schemas.
+func seedLoaded(loaded *sync.Map, history []fantasy.Message) {
+	for _, m := range history {
+		for _, part := range m.Content {
+			if call, ok := part.(fantasy.ToolCallPart); ok && strings.HasPrefix(call.ToolName, mcpToolPrefix) {
+				loaded.Store(call.ToolName, true)
+			}
+		}
+	}
+}
+
+type toolSearch struct {
+	h      *Host
+	tools  []*mcpTool
+	loaded *sync.Map
+	desc   string
+}
+
+// newToolSearch builds the catalog once: it only changes with the servers,
+// so it keeps the provider's prompt cache for the session.
+func newToolSearch(h *Host, list []*mcpTool, loaded *sync.Map) *toolSearch {
+	byServer := map[string][]string{}
+	for _, m := range list {
+		byServer[m.srv.name] = append(byServer[m.srv.name], m.shortName())
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Search and load deferred MCP tools; they are not callable until loaded, from your next step on. Keywords match tool names, descriptions and parameter names; an exact tool name always wins. One search loads at most %d.\n\nDeferred tools by server, each named mcp_<server>_<tool>:", mcpSearchMax)
+	for _, server := range slices.Sorted(maps.Keys(byServer)) {
+		b.WriteString("\n- " + server + ": " + strings.Join(slices.Sorted(slices.Values(byServer[server])), ", "))
+	}
+	return &toolSearch{h: h, tools: list, loaded: loaded, desc: b.String()}
+}
+
+func (t *toolSearch) Info() fantasy.ToolInfo {
+	return fantasy.ToolInfo{
+		Name:        tools.ToolSearch,
+		Description: t.desc,
+		Parameters:  map[string]any{"query": map[string]any{"type": "string", "description": "keywords, or an exact tool name"}},
+		Required:    []string{"query"},
+	}
+}
+
+func (t *toolSearch) ProviderOptions() fantasy.ProviderOptions   { return nil }
+func (t *toolSearch) SetProviderOptions(fantasy.ProviderOptions) {}
+
+func (t *toolSearch) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
+	var in struct {
+		Query string `json:"query"`
+	}
+	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	if resp, stop, err := t.h.preCheck(tools.ToolSearch, call.Input); stop {
+		return resp, err
+	}
+	defer t.h.postNotify(tools.ToolSearch, call.Input, &reply)
+	names := searchMCP(t.tools, in.Query)
+	if len(names) == 0 {
+		return fantasy.NewTextResponse("No deferred MCP tool matches; this tool's description lists them all."), nil
+	}
+	for _, n := range names {
+		t.loaded.Store(n, true)
+	}
+	return fantasy.NewTextResponse("Loaded, callable from your next step on: " + strings.Join(names, ", ")), nil
+}
+
+// searchMCP ranks tools by how many keywords their name, description and
+// parameter names contain, an exact name above any count, and returns at
+// most mcpSearchMax names.
+func searchMCP(list []*mcpTool, query string) []string {
+	words := strings.Fields(strings.ToLower(query))
+	type hit struct {
+		name  string
+		score int
+	}
+	var hits []hit
+	for _, m := range list {
+		name := mcpToolName(m.srv.name, m.tool.Name)
+		text := strings.ToLower(name + " " + m.tool.Description + " " + strings.Join(slices.Collect(maps.Keys(m.props)), " "))
+		score := 0
+		for _, w := range words {
+			switch {
+			case w == strings.ToLower(name) || w == strings.ToLower(m.shortName()):
+				score += len(words) + 1
+			case strings.Contains(text, w):
+				score++
+			}
+		}
+		if score > 0 {
+			hits = append(hits, hit{name, score})
+		}
+	}
+	slices.SortStableFunc(hits, func(a, b hit) int { return b.score - a.score })
+	var out []string
+	for _, hit := range hits[:min(len(hits), mcpSearchMax)] {
+		out = append(out, hit.name)
+	}
+	return out
+}
+
+// shortName is the tool's name without its mcp_<server>_ prefix.
+func (t *mcpTool) shortName() string {
+	return strings.TrimPrefix(mcpToolName(t.srv.name, t.tool.Name), mcpToolPrefix+t.srv.name+"_")
+}
+
 // mcpMaxMedia is the ceiling on one forwarded image or audio part, the
 // same the read tool holds itself to.
 const mcpMaxMedia = 5 << 20

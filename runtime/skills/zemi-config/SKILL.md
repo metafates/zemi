@@ -311,6 +311,10 @@ the fly; a server that answers 404 to that says so, and needs `client_id` (and
 `zemi.mcp.add("name", { command = ..., args = ... })` or `{ url = ... }` in `init.lua`.
 A command server starts in zemi's data dir, not the project, with the project path in
 `ZEMI_PROJECT_DIR`: pass the project as an absolute path, not `.`.
+Past ten MCP tools (after `enabled_tools` and `disabled_tools`) their schemas stop riding
+every request: the model finds them through `tool_search`, whose description lists them by
+server, and a search loads at most five for the rest of the session. `/usage` counts the
+catalog and the loaded tools in its mcp row.
 In auto mode a tool the server marks `readOnlyHint` runs without asking; every
 other MCP tool asks the user. An image or audio part of a result reaches the model
 as itself, not as a placeholder.
@@ -326,7 +330,8 @@ untrusted project asks for every script), plus
 `mcp_<server>_<tool>` and tools registered from Lua. Agent `tools:` frontmatter and a profile's
 `tools` use these names: a plain name allowlists, `-name` removes one and keeps the rest, so a
 list that only removes still gets whatever a later release adds. A name nothing answers to
-fails an agent file and lands in `/errors` for a profile.
+fails an agent file and lands in `/errors` for a profile. `tool_search` (past ten MCP tools)
+is added after that filter, so no list can name it.
 
 Asking the user: `question` shows 1-4 questions; the user picks an option (space marks several
 in a multi-select) or types an answer on the last row, and esc dismisses, which ends the turn.

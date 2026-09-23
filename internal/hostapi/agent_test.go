@@ -297,6 +297,7 @@ func TestToolRegisterValidation(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
 		{`{ name = "x" }`, "execute callback is required"},
 		{`{ name = "bash", execute = function() end }`, "builtin tool name"},
+		{`{ name = "tool_search", execute = function() end }`, "builtin tool name"},
 		{`{ name = "my tool", execute = function() end }`, "identifier"},
 		{`{ name = "x", execute = function() end }`, "description is required"},
 		{`{ name = "x", description = "d", execute = function() end,

@@ -69,6 +69,10 @@ type Runner struct {
 	// the running turn as user messages (DESIGN §4 steering).
 	Steer func() []string
 
+	// ActiveTools names the tools a step offers, asked before every step; nil
+	// offers them all. Every tool stays registered, so a call still runs.
+	ActiveTools func() []string
+
 	// Compose builds the user message for a sent or steered text (the host
 	// expands attachments and images); nil sends the text as is.
 	Compose func(text string) fantasy.Message
@@ -313,7 +317,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	}
 	// fantasy rebuilds each step's input as initial prompt + step responses,
 	// so steered messages are re-inserted every step at their response offset.
-	steer := r.Steer
+	steer, active := r.Steer, r.ActiveTools
 	call.PrepareStep = func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
 		if persistErr != nil {
 			return ctx, fantasy.PrepareStepResult{}, persistErr
@@ -330,7 +334,11 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		if len(steered) > 0 {
 			msgs = interleave(o.Messages[:len(o.Messages)-len(resp)], resp, steered)
 		}
-		return ctx, fantasy.PrepareStepResult{Messages: withCacheBreakpoints(msgs)}, nil
+		res := fantasy.PrepareStepResult{Messages: withCacheBreakpoints(msgs)}
+		if active != nil {
+			res.ActiveTools = active()
+		}
+		return ctx, res, nil
 	}
 
 	_, err := r.agent.Stream(tctx, call)
