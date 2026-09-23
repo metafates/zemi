@@ -312,7 +312,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	if len(unknown) > 0 {
 		return "", fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
 	}
-	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def), nil, kept))
+	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), nil, kept))
 	runner.ProviderOptions = h.Providers.CallOptions(modelID, h.Effort())
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)
@@ -420,10 +420,15 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 	}
 }
 
-func (h *Host) subagentSystem(def AgentDef) string {
+func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool) string {
+	read := ""
+	if hasTool(toolset, tools.ToolRead) {
+		read = readPrompt
+	}
 	return "You are " + def.Name + ", a subagent of zemi working in " + h.Dirs.ProjectDir + "." +
 		" The caller cannot see your work, only your final message: end with a complete," +
-		" concise report of the facts it needs, with file paths where they matter.\n\n" + def.System
+		" concise report of the facts it needs, with file paths where they matter.\n\n" + def.System +
+		"\n\n# Using tools\n" + parallelPrompt + read
 }
 
 func lastAssistantText(history []fantasy.Message) string {

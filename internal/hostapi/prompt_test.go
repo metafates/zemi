@@ -13,6 +13,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
@@ -75,7 +76,9 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		gone []string
 		once []string
 	}{
-		{"default", nil, []string{"Scratchpad: ", "offset and limit", "Use todos", `"job_start"`}, nil, nil},
+		{"default", nil, []string{"Scratchpad: ", "redirect it", "offset and limit", "Use todos", `"job_start"`, "zemi-config before changing its settings"}, nil, nil},
+		// a subagent: explore reads and searches, and writes nothing
+		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "reads and searches run in parallel", "offset and limit"}, []string{"redirect it", "Put notes", "Use todos"}, nil},
 		{"lean", lean, []string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
 			[]string{"workflow", "Lua tool", "job_start", `"lsp"`}, nil},
 		// the plan's shape lives in the plan tool's description only
@@ -85,6 +88,10 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	} {
 		toolset := h.profileTools(c.p)
 		text, _ := h.buildSystemParts(c.p, toolset)
+		if c.name == "explore" {
+			toolset, _ = filterTools(tools.All(h.PipelineFor()), builtinAgents[0].Tools, h.toolSkip(subagentExcluded))
+			text = h.systemWith(h.subagentSystem(builtinAgents[0], toolset), nil, toolset)
+		}
 		for _, tool := range toolset {
 			text += fmt.Sprintf("\n%q %s", tool.Info().Name, tool.Info().Description)
 		}
