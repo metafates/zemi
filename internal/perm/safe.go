@@ -695,6 +695,11 @@ var WrapperPrograms = map[string]bool{
 	"awk": true, // an inline program, like perl -e
 }
 
+// globOperand reports an operand the shell may expand to many files.
+func globOperand(args []string) bool {
+	return slices.ContainsFunc(args, func(a string) bool { return !strings.HasPrefix(a, "-") && strings.ContainsAny(a, "*?[") })
+}
+
 // runner reports a program Destructive looks past: a wrapper, or find and
 // fd, whose -exec runs what follows.
 func runner(prog string) bool {
@@ -830,6 +835,22 @@ func GitWrites(cmd string) string {
 // Empty when it may run. Normalize already made sh -c bodies and
 // substitutions segments of their own.
 func Destructive(cmd string) string {
+	return destructive(cmd, false)
+}
+
+// repeats are the runners that run what they are handed once per input,
+// so a bare rm in their shell body deletes in bulk.
+func repeats(prog string) bool {
+	switch strings.ToLower(filepath.Base(prog)) {
+	case "xargs", "find", "fd", "parallel":
+		return true
+	}
+	return false
+}
+
+// destructive is Destructive with repeated set for a shell body a
+// repeating runner hands a shell (xargs sh -c 'rm "$@"').
+func destructive(cmd string, repeated bool) string {
 	n := Normalize(cmd)
 	if n.Fail != "" {
 		return n.Fail
@@ -837,7 +858,7 @@ func Destructive(cmd string) string {
 	for _, f := range n.Args {
 		f = program(f)
 		for _, body := range shellBodies(f) {
-			if why := Destructive(body); why != "" {
+			if why := destructive(body, repeated || len(f) > 0 && repeats(f[0])); why != "" {
 				return why
 			}
 		}
@@ -848,11 +869,11 @@ func Destructive(cmd string) string {
 			name, rest := filepath.Base(w), f[i+1:]
 			switch {
 			case name == "eval":
-				if why := Destructive(strings.Join(rest, " ")); why != "" {
+				if why := destructive(strings.Join(rest, " "), repeated); why != "" {
 					return why
 				}
 				continue
-			case name == "rm" && (i > 0 || hasFlag(rest, "-r", "-R", "-f", "--recursive", "--force")):
+			case name == "rm" && (i > 0 || repeated || hasFlag(rest, "-r", "-R", "-f", "--recursive", "--force") || globOperand(rest)):
 			case name == "git" && slices.Contains(rest, "clean"):
 			case name == "find" && hasFlag(rest, "-delete"):
 			case name == "rsync" && slices.ContainsFunc(rest, func(a string) bool { return strings.HasPrefix(a, "--del") || strings.HasPrefix(a, "--remove") }):
