@@ -149,9 +149,10 @@ func (h *Host) luaEvalTool() fantasy.AgentTool { return &luaEvalTool{h: h} }
 func (t *luaEvalTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
 		Name: tools.ToolLua,
-		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors. Load the zemi-lua skill for the API first." +
+		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors." +
 			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, for at most 10s: no waiting loops, start slow work with zemi.job or zemi.timer." +
-			" A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) runs at once; one that changes anything asks the user once, so write every call out by name." +
+			" A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) runs at once; one that changes anything needs the user's approval once, so write every call out by name." +
+			" For calls not named here load the zemi-lua skill; a member a namespace lacks raises with the list it has." +
 			" Keep scripts you reuse in the scratchpad and pass path instead of script.",
 		Parameters: map[string]any{
 			"description": map[string]any{"type": "string", "description": "what the script does in 3-6 words, shown to the user"},
