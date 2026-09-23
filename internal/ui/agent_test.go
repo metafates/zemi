@@ -986,7 +986,7 @@ func TestFileRowClickIDs(t *testing.T) {
 // line, edits and failures keep their rows, a command shows the model's
 // description with the command under it, and ctrl+o shows every call.
 func TestToolRows(t *testing.T) {
-	app, host := bootAgentApp(t, 100, 30)
+	app, host := bootAgentApp(t, 100, 44)
 	host.AppendMessage("user", "fix it")
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
 		{Name: "read", Input: "a.go", Status: "ok"},
@@ -996,16 +996,21 @@ func TestToolRows(t *testing.T) {
 		{Name: "bash", Input: "go test ./...", Label: "Run the unit tests", Status: "err", Output: "--- FAIL: TestX"},
 		{Name: "grep", Input: strings.Repeat("pattern ", 30), Status: "ok"},
 		{Name: "bash", Input: "make slow", Label: "Build it", Status: "ok", Output: "still running, so it " + tools.JobHandoff + "job-1"},
+		// a verdict the user gave shows as one line; the model keeps the reason and the instructions
+		{Name: "write", Input: "b.go", Status: "err", Output: "permission denied (user): fs.write /p/b.go: it asked because not settled: this project is not trusted (/trust)"},
+		{Name: "plan", Input: "# Plan", Status: "ok", Output: "The user approved the plan. Implement it now: track its steps with todos, carry them through, verify, and report.\nThe plan is saved at /data/plans/s1.md."},
+		{Name: "plan", Input: "# Plan", Status: "ok", Output: "The user has not approved the plan and asked for changes: use go\nRevise the plan, ask with the question tool if something is still unclear, and call plan again."},
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"Read 2 files, ran 1 command", "✓ Build it", "⎿ still running as job-1", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX"} {
+	for _, want := range []string{"Read 2 files, ran 1 command", "✓ Build it", "⎿ still running as job-1", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "--- FAIL: TestX",
+		"✗ Write b.go", "    denied by you", "    approved, saved to /data/plans/s1.md", "    changes requested: use go"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
 	}
-	if strings.Contains(frame, "vet clean") {
-		t.Fatalf("command output shows only with ctrl+o:\n%s", frame)
+	if strings.Contains(frame, "vet clean") || strings.Contains(frame, "it asked because") || strings.Contains(frame, "Implement it now") {
+		t.Fatalf("command output shows only with ctrl+o, a verdict row shows only the verdict:\n%s", frame)
 	}
 	host.ToggleReasoning()
 	app.renderSync(t)

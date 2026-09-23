@@ -292,7 +292,7 @@ func TestSandboxHintForPlanner(t *testing.T) {
 // asked, not how the rules failed to match.
 func TestAskDenialText(t *testing.T) {
 	for _, c := range []struct{ by, why, want string }{
-		{"user", "run outside the sandbox", "denied by the user (it asked because run outside the sandbox)"},
+		{"user", "run outside the sandbox", "it asked because run outside the sandbox"},
 		{"default", "not settled: this project is not trusted (/trust)", "nobody could answer the ask: not settled: this project is not trusted (/trust)"},
 		{"mode:auto", "", "denied by permission mode auto"},
 	} {

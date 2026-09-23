@@ -422,11 +422,12 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 	switch {
 	case strings.HasPrefix(by, "user"):
 		// they saw the request and refused it: the ask's reason says why it
-		// asked, which after a no is not why the call was denied
+		// asked, which after a no is not why the call was denied; who said
+		// no is in DecidedBy already
 		if why != "" {
-			return Verdict{Decision: perm.Deny, Reason: "denied by the user (it asked because " + why + ")", DecidedBy: by}
+			return Verdict{Decision: perm.Deny, Reason: "it asked because " + why, DecidedBy: by}
 		}
-		return Verdict{Decision: perm.Deny, Reason: "denied by the user", DecidedBy: by}
+		return Verdict{Decision: perm.Deny, DecidedBy: by}
 	case by == "default" || by == "unsandboxed":
 		who = "nobody could answer the ask"
 		// nobody saw the ask, so the reason it asked is all the caller gets
