@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -220,6 +221,22 @@ func TestQuestionBoxScrolls(t *testing.T) {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("%q missing:\n%s", want, frame)
 		}
+	}
+	pressKeys(app, "esc")
+}
+
+// TestQuestionOptionsWrap: a long option wraps with its description, and a
+// short one keeps its description on its own row.
+func TestQuestionOptionsWrap(t *testing.T) {
+	app, _ := bootAgentApp(t, 60, 20)
+	askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Which storage?", Options: []tools.QuestionOption{
+		{Label: "SQLite with write-ahead logging and a busy timeout (Recommended)", Description: "one file, no server"},
+		{Label: "Postgres", Description: "a server to run"},
+	}})
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	if !strings.Contains(frame, "one file, no server") || !regexp.MustCompile(`\[2\] Postgres +a server to run`).MatchString(frame) {
+		t.Fatalf("a description is lost or pushed off its row:\n%s", frame)
 	}
 	pressKeys(app, "esc")
 }

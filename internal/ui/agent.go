@@ -242,6 +242,9 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 		}
 	}
 	textW := max(w-kw-5, 8)
+	// a label too long to share its row sets no column: its description
+	// follows it, and the short labels keep theirs
+	lw = min(lw, textW/2)
 	var rows [][]hostapi.Segment
 	for i, c := range choices {
 		pad := strings.Repeat(" ", kw-ansi.StringWidth(c.key)+1)
@@ -257,7 +260,7 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 		}
 		line := []hostapi.Segment{{Text: c.label, HL: cmp.Or(c.hl, textHL)}}
 		if c.desc != "" {
-			line = append(line, hostapi.Segment{Text: strings.Repeat(" ", lw-ansi.StringWidth(c.label)+2) + c.desc, HL: "Host:Hint"})
+			line = append(line, hostapi.Segment{Text: strings.Repeat(" ", max(lw-ansi.StringWidth(c.label), 0)+2) + c.desc, HL: "Host:Hint"})
 		}
 		wrapped := hostapi.WrapSegs(line, textW)
 		if short {
