@@ -355,7 +355,7 @@ func newToolSearch(h *Host, list []*mcpTool, loaded *sync.Map) *toolSearch {
 		byServer[m.srv.name] = append(byServer[m.srv.name], m.shortName())
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Search and load deferred MCP tools; they are not callable until loaded, from your next step on. Keywords match tool names, descriptions and parameter names; an exact tool name always wins. One search loads at most %d.\n\nDeferred tools by server, each named mcp_<server>_<tool>:", mcpSearchMax)
+	fmt.Fprintf(&b, "Load deferred MCP tools, callable from your next step on. Pass the names you need, space-separated, up to %d per call, or keywords matched against names, descriptions and parameters.\n\nDeferred tools by server, each named mcp_<server>_<tool>:", mcpSearchMax)
 	for _, server := range slices.Sorted(maps.Keys(byServer)) {
 		b.WriteString("\n- " + server + ": " + strings.Join(slices.Sorted(slices.Values(byServer[server])), ", "))
 	}
@@ -366,7 +366,7 @@ func (t *toolSearch) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
 		Name:        tools.ToolSearch,
 		Description: t.desc,
-		Parameters:  map[string]any{"query": map[string]any{"type": "string", "description": "keywords, or an exact tool name"}},
+		Parameters:  map[string]any{"query": map[string]any{"type": "string", "description": "tool names, or keywords"}},
 		Required:    []string{"query"},
 	}
 }
