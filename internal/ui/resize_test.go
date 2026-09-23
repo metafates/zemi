@@ -275,3 +275,27 @@ func TestFitClusters(t *testing.T) {
 		}
 	}
 }
+
+// TestContextMeter: the meter reads the window in use, and a total of the
+// session's tokens stands in only when the model's window is unknown.
+func TestContextMeter(t *testing.T) {
+	for _, c := range []struct {
+		name       string
+		s          hostapi.StreamSnapshot
+		want, skip string
+	}{
+		{"window and use known", hostapi.StreamSnapshot{SessionIn: 90000, LastIn: 12300, CtxWindow: 64000}, "12.3k/64k ctx", " tok"},
+		{"use not known yet", hostapi.StreamSnapshot{SessionIn: 90000, CtxWindow: 64000}, "", " tok"},
+		{"window unknown", hostapi.StreamSnapshot{SessionIn: 90000, LastIn: 12300}, "90k tok", "ctx"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, host := bootAgentApp(t, 100, 12)
+			host.SeedStream(c.s)
+			app.renderSync(t)
+			frame := ansi.Strip(app.Frame())
+			if !strings.Contains(frame, c.want) || strings.Contains(frame, c.skip) {
+				t.Fatalf("want %q and no %q:\n%s", c.want, c.skip, frame)
+			}
+		})
+	}
+}

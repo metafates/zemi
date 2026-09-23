@@ -179,8 +179,8 @@ local right = {
   { "context", 40, function(ctx)
     local cx = ctx.context or {}
     local used, window = fmt.tokens(cx.tokens), fmt.tokens(cx.window)
+    if window then return used and used .. "/" .. window .. " ctx" end
     local total = fmt.tokens((ctx.usage or {}).total)
-    if used and window then return used .. "/" .. window .. " ctx" end
     return total and total .. " tok"
   end },
   -- inside the meter, so it drops first and never stands without its unit;
