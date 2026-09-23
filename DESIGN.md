@@ -51,8 +51,8 @@ neovim's Lua architecture, pi, opencode, codex, hermes-agent.
 
 Added since: `modernc.org/sqlite` (pure-Go SQLite, keeps
 `CGO_ENABLED=0`; the schema is one const of `CREATE TABLE IF NOT
-EXISTS` plus an append-only `migrations` list keyed on `PRAGMA
-user_version`, so no migration library came with it), `charm.land/glamour/v2`
+EXISTS` stamped with `PRAGMA user_version`; no migrations before the
+first release, so no migration library came with it), `charm.land/glamour/v2`
 (markdown in chat, with `alecthomas/chroma/v2` for the code block
 formatter that marks glamour's own margins), `charmbracelet/x/exp/golden` (golden-file assertions
 for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty`
@@ -115,7 +115,7 @@ Layers and ownership:
   reflector and the skill manager live in `internal/hostapi`.
 - **Store** (`internal/store`): SQLite (sessions, messages, memory, skills,
   checkpoints, proposals, config revisions, telemetry), one schema const; a
-  new column on an existing table also needs an ALTER in `migrations`.
+  schema change bumps `schemaVersion` and an older store is refused, to delete.
 
 ## 4. Concurrency model
 
@@ -2072,7 +2072,7 @@ internal/ui/                program, regions, widgets, themes, palette, overlays
                             composer, mouse
 internal/learn/             memory intake policy: caps, scrubber, near-duplicate check, digest
 internal/skills/            SKILL.md discovery and parsing
-internal/store/             sqlite schema, user_version migrations and queries
+internal/store/             sqlite schema, its version stamp and queries
 internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server
 internal/proc/              every child process (own session and process group)

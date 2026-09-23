@@ -151,66 +151,35 @@ CREATE TABLE IF NOT EXISTS memory (
 CREATE INDEX IF NOT EXISTS memory_scope_updated ON memory(scope, updated_at);
 `
 
-// migrations[i] upgrades a database at user_version i to i+1. The schema
-// const only ever creates what is missing, so a column added to an existing
-// table needs its ALTER here as well as its place in schema: fresh databases
-// get it from schema, existing ones from the migration. Append only, never
-// edit or reorder a shipped entry.
-var migrations = [][]string{
-	{`ALTER TABLE tool_calls DROP COLUMN input_json`,
-		`ALTER TABLE tool_calls DROP COLUMN error_kind`,
-		`ALTER TABLE tool_calls DROP COLUMN latency_ms`,
-		`ALTER TABLE tool_calls DROP COLUMN denied`,
-		`ALTER TABLE tool_calls DROP COLUMN decided_by`,
-		`ALTER TABLE sessions DROP COLUMN summary_message_id`},
-	{`DROP TRIGGER IF EXISTS memory_ai`,
-		`DROP TRIGGER IF EXISTS memory_ad`,
-		`DROP TRIGGER IF EXISTS memory_au`,
-		`DROP TABLE IF EXISTS memory_fts`,
-		`DROP INDEX IF EXISTS memory_scope_hit`,
-		`ALTER TABLE memory DROP COLUMN kind`,
-		`ALTER TABLE memory DROP COLUMN tags`,
-		`ALTER TABLE memory DROP COLUMN hit_count`,
-		`ALTER TABLE memory DROP COLUMN last_hit_at`,
-		`ALTER TABLE memory ADD COLUMN quote TEXT NOT NULL DEFAULT ''`},
-	{`ALTER TABLE checkpoints ADD COLUMN link INTEGER NOT NULL DEFAULT 0`},
-}
+// schemaVersion stamps every store. zemi keeps no migrations before its
+// first release: a schema change bumps this, and a store another version made
+// is refused with its path, for the developer to delete.
+const schemaVersion = 3
 
 func (s *DB) migrate() error {
 	// one transaction, so a second process opening the same file waits and
 	// then reads the version this one stamped
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("store: migrate: %w", err)
+		return fmt.Errorf("store: open schema: %w", err)
 	}
 	defer tx.Rollback()
-	// A database this call creates gets every column from schema, so it is
-	// current by construction and must be stamped: otherwise the first
-	// migration ever added would run its ALTER against a table that already
-	// has the column, and no new project could open its store.
 	var name string
 	fresh := errors.Is(tx.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1`).Scan(&name), sql.ErrNoRows)
-	if _, err := tx.Exec(schema); err != nil {
-		return fmt.Errorf("store: migrate: %w", err)
-	}
-	version := len(migrations)
 	if !fresh {
+		var version int
 		if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 			return fmt.Errorf("store: read user_version: %w", err)
 		}
-	}
-	if version > len(migrations) {
-		return fmt.Errorf("store: %s is at schema version %d, this zemi knows %d; upgrade zemi", s.path, version, len(migrations))
-	}
-	for i := version; i < len(migrations); i++ {
-		for _, stmt := range migrations[i] {
-			if _, err := tx.Exec(stmt); err != nil {
-				return fmt.Errorf("store: migration %d: %w", i+1, err)
-			}
+		if version != schemaVersion {
+			return fmt.Errorf("store: %s has schema %d, this zemi needs %d: delete the file (zemi keeps no migrations yet)", s.path, version, schemaVersion)
 		}
 	}
+	if _, err := tx.Exec(schema); err != nil {
+		return fmt.Errorf("store: schema: %w", err)
+	}
 	// PRAGMA takes no placeholder
-	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations))); err != nil {
+	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion)); err != nil {
 		return fmt.Errorf("store: set user_version: %w", err)
 	}
 	return tx.Commit()

@@ -15,7 +15,7 @@ AGENTS.md has the house rules and `make check`; these are the ones it leaves out
 
 ## Every commit boots
 
-- A store migration runs against every database a user ever had, not only the shape the test builds. Before landing one, copy the real `.db`, `-wal` and `-shm` files from `~/.local/state/zemi` into a scratch dir and `store.Open` them: an old index or column the schema forgot fails a `DROP COLUMN`, and the whole boot with it.
+- zemi keeps no migrations before its first release. A schema change bumps `schemaVersion` in `internal/store/store.go`; after merging it, delete the owner's stores (`~/.local/state/zemi/zemi.db*` and `~/.local/state/zemi/projects/*/zemi.db*`), which the owner allowed, instead of writing an ALTER.
 - Never `go install` or write `~/go/bin/zemi` from a branch: that is the owner's daily binary. Build into a scratch dir and run it through `zemi-safe`.
 - After a merge to main, boot the merged binary once with `zemi-safe <tree> --health`, the tree holding copies of `~/.config/zemi` and `~/.local/state/zemi`: `make check` cannot see a user's data.
 

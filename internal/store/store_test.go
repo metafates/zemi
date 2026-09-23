@@ -19,9 +19,8 @@ func openTest(t *testing.T) *DB {
 	return db
 }
 
-// TestSchemaVersion: an opened database carries the version the migration
-// list ends at, and one written by a newer zemi is refused instead of read
-// with columns this build does not know.
+// TestSchemaVersion: a new store carries schemaVersion, and one another
+// version made is refused, naming the file to delete.
 func TestSchemaVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zemi.db")
 	db, err := Open(path)
@@ -29,97 +28,39 @@ func TestSchemaVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err := db.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
-		t.Fatal(err)
+	if err := db.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != schemaVersion {
+		t.Fatalf("user_version = %d, %v; want %d", version, err, schemaVersion)
 	}
-	if version != len(migrations) {
-		t.Fatalf("user_version = %d, want %d", version, len(migrations))
-	}
-	if _, err := db.db.Exec(`PRAGMA user_version = 99`); err != nil {
+	if _, err := db.db.Exec(`PRAGMA user_version = 2`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
-	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "upgrade zemi") {
-		t.Fatalf("a newer database must be refused, got %v", err)
+	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "delete the file") {
+		t.Fatalf("a store of another schema must be refused, got %v", err)
 	}
 }
 
-// oldDatabase writes a store at schema version 0 to path.
-func oldDatabase(t *testing.T, path string) {
-	t.Helper()
-	db, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range append(oldShape,
-		`ALTER TABLE tool_calls ADD COLUMN input_json TEXT NOT NULL DEFAULT '{}'`,
-		`ALTER TABLE tool_calls ADD COLUMN error_kind TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tool_calls ADD COLUMN latency_ms INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE tool_calls ADD COLUMN denied INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE tool_calls ADD COLUMN decided_by TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE sessions ADD COLUMN summary_message_id TEXT`,
-		`PRAGMA user_version = 0`) {
-		if _, err := db.db.Exec(stmt); err != nil {
-			t.Fatal(err)
-		}
-	}
-	db.Close()
-}
-
-// TestMigrateOldDatabase: a store written before the dead telemetry
-// columns went away opens, drops them and still records tool calls.
-func TestMigrateOldDatabase(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "zemi.db")
-	oldDatabase(t, path)
-	db, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := db.CreateSession("s1", "", "t", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AddToolCall(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`}, &ToolCall{Tool: "bash", OK: true}); err != nil {
-		t.Fatal(err)
-	}
-	var cols int
-	if err := db.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tool_calls')`).Scan(&cols); err != nil || cols != 5 {
-		t.Fatalf("tool_calls columns = %d, %v; want 5", cols, err)
-	}
-}
-
-// TestConcurrentOpen: two processes opening one store at once, as restored
-// terminal panes do after an upgrade, both start.
+// TestConcurrentOpen: two processes creating one store at once, as restored
+// terminal panes do, both start.
 func TestConcurrentOpen(t *testing.T) {
-	for _, c := range []struct {
-		name  string
-		setup func(t *testing.T, path string)
-	}{
-		{"new path", func(*testing.T, string) {}},
-		{"old schema", oldDatabase},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			for range 30 {
-				path := filepath.Join(t.TempDir(), "zemi.db")
-				c.setup(t, path)
-				// two handles are two connections, which is what two processes hold
-				errs := make(chan error, 2)
-				for range 2 {
-					go func() {
-						db, err := Open(path)
-						if err == nil {
-							db.Close()
-						}
-						errs <- err
-					}()
+	for range 30 {
+		path := filepath.Join(t.TempDir(), "zemi.db")
+		// two handles are two connections, which is what two processes hold
+		errs := make(chan error, 2)
+		for range 2 {
+			go func() {
+				db, err := Open(path)
+				if err == nil {
+					db.Close()
 				}
-				for range 2 {
-					if err := <-errs; err != nil {
-						t.Fatal(err)
-					}
-				}
+				errs <- err
+			}()
+		}
+		for range 2 {
+			if err := <-errs; err != nil {
+				t.Fatal(err)
 			}
-		})
+		}
 	}
 }
 
