@@ -246,11 +246,6 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	out, err := h.runModelLua(ctx, src, rel)
 	if err != nil {
 		msg := err.Error()
-		// the ceiling, not an interrupt: the model can tell them apart and
-		// move the work, as the bash tool's timeout line lets it
-		if ctx.Err() == nil && errors.Is(err, context.Canceled) {
-			msg = fmt.Sprintf("stopped after %s: the script must finish quickly; move long work to zemi.job or a bash command", luaToolCeiling)
-		}
 		if in.Path != "" {
 			// the chunk keeps its tool name, which the sandbox guard reads;
 			// the error names the file the model can edit
