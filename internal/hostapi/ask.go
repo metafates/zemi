@@ -146,6 +146,7 @@ func (h *Host) askHook() tools.Asker {
 		}
 		ui := h.hooks()
 		if ui == nil {
+			h.modes.noteHeadless(req)
 			// only a command's sandbox escape is a sandbox matter; a Lua
 			// script or a memory edit is Unsandboxed for another reason and
 			// must not be reported as one
