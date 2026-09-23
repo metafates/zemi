@@ -1986,10 +1986,11 @@ tail after it (`/resume` scans for the last summary row and starts from
 it), and re-runs digest assembly, §7, with the environment section and the
 recipes list (§10.5) pinned again; three failed or
 ineffective auto compactions in a row stop it for the session), which keeps
-provider prompt caches warm; it is framed as quoted data under "# Memory"
-(§10.4), with a cue that a
-memory is what held when it was written, so a file, command or flag it
-names is checked before the model relies on it. Digest lines are
+provider prompt caches warm; under "# Memory" a preference the user
+stated holds unless the conversation or project instructions say
+otherwise, and any other line carries the cue that it held when it was
+written, so a file, command or flag it names is checked before the model
+relies on it. Digest lines are
 labeled `user` or `learned` from `memory.origin`, so users can audit
 what the model was told and which of it the agent wrote itself. Context
 files are injected verbatim, and only in a trusted project (§5); an
