@@ -115,14 +115,9 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 		ProviderOptions: h.Providers.CallOptions(id, ""),
 	}
 	if retry != nil {
-		call.OnRetry = func(pe *fantasy.ProviderError, delay time.Duration) {
-			// nil when a network failure caused the retry
-			err := errors.New("network: the connection failed")
-			if pe != nil {
-				err = pe
-			}
-			retry(err, delay)
-		}
+		last := &agent.LastErr{LanguageModel: model}
+		model = last
+		call.OnRetry = func(_ *fantasy.ProviderError, delay time.Duration) { retry(last.Err, delay) }
 		defer func() {
 			h.agents.mu.Lock()
 			h.agents.retryAt = time.Time{}

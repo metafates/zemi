@@ -53,7 +53,7 @@ type PersistFunc func(role string, msg fantasy.Message) error
 type Runner struct {
 	mu          sync.Mutex
 	agent       fantasy.Agent
-	last        *lastErr
+	last        *LastErr
 	History     []fantasy.Message
 	Hooks       StreamHooks
 	Persist     PersistFunc
@@ -110,7 +110,7 @@ var ErrReplyCut = errors.New("the reply hit the output token limit (the model's 
 
 // NewRunner builds a runner over a resolved model.
 func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system string) *Runner {
-	r := &Runner{last: &lastErr{LanguageModel: model}, tools: tools}
+	r := &Runner{last: &LastErr{LanguageModel: model}, tools: tools}
 	opts := []fantasy.AgentOption{}
 	if system != "" {
 		opts = append(opts, fantasy.WithSystemPrompt(system))
@@ -143,23 +143,29 @@ func (t runningTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 	return t.AgentTool.Run(ctx, call)
 }
 
-// lastErr remembers a model call's failure: fantasy's retry callback gets
+// LastErr remembers a model call's failure: fantasy's retry callback gets
 // only a *ProviderError, nil when a network failure caused the retry.
-type lastErr struct {
+type LastErr struct {
 	fantasy.LanguageModel
-	err error
+	Err error
 }
 
-func (m *lastErr) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+func (m *LastErr) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
+	res, err := m.LanguageModel.Generate(ctx, call)
+	m.Err = err
+	return res, err
+}
+
+func (m *LastErr) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
 	seq, err := m.LanguageModel.Stream(ctx, call)
-	m.err = err
+	m.Err = err
 	if err != nil {
 		return nil, err
 	}
 	return func(yield func(fantasy.StreamPart) bool) {
 		for p := range seq {
 			if p.Type == fantasy.StreamPartTypeError {
-				m.err = p.Error
+				m.Err = p.Error
 			}
 			if !yield(p) {
 				return
@@ -289,7 +295,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result), res.ClientMetadata)
 			return nil
 		},
-		OnRetry:         func(_ *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(r.last.err, delay) },
+		OnRetry:         func(_ *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(r.last.Err, delay) },
 		MaxRetries:      &maxRetries,
 		ProviderOptions: provOpts,
 	}
