@@ -275,7 +275,7 @@ func TestSubagentInstructions(t *testing.T) {
 			if toolResult {
 				return textParts(last)
 			}
-			return toolCallParts("c1", "read", fmt.Sprintf(`{"path":%q}`, file))
+			return toolCallParts("c1", "read", fmt.Sprintf(`{"path":%q,"limit":0}`, file))
 		}}, nil
 	}
 	def, err := h.agentDef("explore")

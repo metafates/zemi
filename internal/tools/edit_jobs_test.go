@@ -230,7 +230,7 @@ func TestFileToolsSymlinkRace(t *testing.T) {
 	for i := range 2000 {
 		run("write", map[string]any{"path": filepath.Join(d, fmt.Sprintf("race%d.txt", i)), "content": "x"})
 		run("edit", map[string]any{"path": filepath.Join(d, "secret.txt"), "old_string": "secret", "new_string": "owned"})
-		leaked = leaked || strings.Contains(run("read", map[string]any{"path": filepath.Join(d, "secret.txt")}), "\tsecret")
+		leaked = leaked || strings.Contains(run("read", map[string]any{"path": filepath.Join(d, "secret.txt"), "limit": 0}), "\tsecret")
 	}
 	close(stop)
 	<-done

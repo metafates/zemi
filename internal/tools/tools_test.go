@@ -163,7 +163,7 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 	path := filepath.Join(perm.RealPath(t.TempDir()), "f.txt")
 	for i := range 20 {
 		os.WriteFile(path, []byte("a\n"), 0o644)
-		call(t, read, `{"path":"`+path+`"}`)
+		call(t, read, `{"path":"`+path+`","limit":0}`)
 		first := fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path)
 		second := fmt.Sprintf(`{"path":%q,"old_string":"b","new_string":"c"}`, path)
 		CallStart("c1", "edit", first)
@@ -236,7 +236,7 @@ func TestCallOrderReleases(t *testing.T) {
 		}, cancelled, true, "a\n"},
 	} {
 		os.WriteFile(path, []byte("a\n"), 0o644)
-		call(t, read, `{"path":"`+path+`"}`)
+		call(t, read, `{"path":"`+path+`","limit":0}`)
 		c.before()
 		r := run(c.ctx, "c2", second)
 		got, _ := os.ReadFile(path)
@@ -260,7 +260,7 @@ func TestNotFoundNamesSiblings(t *testing.T) {
 	}
 	os.Mkdir(filepath.Join(dir, "ap"), 0o755)
 	for _, c := range []struct{ tool, input string }{
-		{"read", `{"path":"` + filepath.Join(dir, "ap.go") + `"}`},
+		{"read", `{"path":"` + filepath.Join(dir, "ap.go") + `","limit":0}`},
 		{"edit", `{"path":"` + filepath.Join(dir, "ap.go") + `","old_string":"a","new_string":"b"}`},
 	} {
 		resp := call(t, toolNamed(t, c.tool, p), c.input)
@@ -268,7 +268,7 @@ func TestNotFoundNamesSiblings(t *testing.T) {
 			t.Errorf("%s: %+v asked %+v", c.tool, resp, *asked)
 		}
 	}
-	if resp := call(t, toolNamed(t, "read", p), `{"path":"`+filepath.Join(dir, "zzz.txt")+`"}`); !resp.IsError || strings.Contains(resp.Content, "did you mean") {
+	if resp := call(t, toolNamed(t, "read", p), `{"path":"`+filepath.Join(dir, "zzz.txt")+`","limit":0}`); !resp.IsError || strings.Contains(resp.Content, "did you mean") {
 		t.Errorf("no near name: %+v", resp)
 	}
 }
@@ -387,7 +387,7 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 	if resp.IsError || resp.Content != "wrote a.txt (14 bytes)" {
 		t.Fatalf("write: %+v", resp)
 	}
-	resp = call(t, read, `{"path":"`+file+`"}`)
+	resp = call(t, read, `{"path":"`+file+`","limit":0}`)
 	if !strings.Contains(resp.Content, "2\ttwo") {
 		t.Fatalf("read: %+v", resp)
 	}
@@ -542,7 +542,7 @@ func TestEditSafety(t *testing.T) {
 		path := filepath.Join(dir, c.name)
 		os.WriteFile(path, []byte(c.file), 0o644)
 		if !c.unread {
-			call(t, read, js(map[string]any{"path": path}))
+			call(t, read, js(map[string]any{"path": path, "limit": 0}))
 		}
 		c.input["path"] = path
 		tl := edit
@@ -577,7 +577,7 @@ func TestEditSafety(t *testing.T) {
 
 	path := filepath.Join(dir, "stale")
 	os.WriteFile(path, []byte("x\n"), 0o644)
-	call(t, read, js(map[string]any{"path": path}))
+	call(t, read, js(map[string]any{"path": path, "limit": 0}))
 	os.WriteFile(path, []byte("y\n"), 0o644)
 	later := time.Now().Add(time.Hour)
 	os.Chtimes(path, later, later)
@@ -588,7 +588,7 @@ func TestEditSafety(t *testing.T) {
 	// a refused binary still counts as read: write replaces it whole
 	bin := filepath.Join(dir, "b.bin")
 	os.WriteFile(bin, []byte("a\x00b"), 0o644)
-	call(t, read, js(map[string]any{"path": bin}))
+	call(t, read, js(map[string]any{"path": bin, "limit": 0}))
 	if resp := call(t, all[2], js(map[string]any{"path": bin, "content": "text\n"})); resp.IsError {
 		t.Fatalf("write over a read binary: %q", resp.Content)
 	}
@@ -663,6 +663,9 @@ func TestValidationErrors(t *testing.T) {
 	resp := call(t, ag, `{"wrong":1}`)
 	if !resp.IsError || !strings.Contains(resp.Content, "missing required field") {
 		t.Fatalf("validation: %+v", resp)
+	}
+	if resp := call(t, toolNamed(t, "read", p), `{"path":"a.txt"}`); !strings.Contains(resp.Content, `missing required field "limit"`) {
+		t.Fatalf("read without limit: %+v", resp)
 	}
 	resp = call(t, ag, `not json`)
 	if !resp.IsError || !strings.Contains(resp.Content, "invalid tool input") {

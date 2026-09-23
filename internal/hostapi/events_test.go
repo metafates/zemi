@@ -27,7 +27,7 @@ func TestToolDeniedEvent(t *testing.T) {
 		if tl.Info().Name != "read" {
 			continue
 		}
-		resp, err := tl.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "read", Input: `{"path":"/p/secret.txt"}`})
+		resp, err := tl.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "read", Input: `{"path":"/p/secret.txt","limit":0}`})
 		if err != nil || !resp.IsError {
 			t.Fatalf("denied read = %+v, %v", resp, err)
 		}

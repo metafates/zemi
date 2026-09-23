@@ -42,7 +42,7 @@ func TestRewind(t *testing.T) {
 			switch {
 			// writing over a file means reading it first
 			case last == "first":
-				return toolCallParts("c-read", "read", fmt.Sprintf(`{"path":%q}`, edited))
+				return toolCallParts("c-read", "read", fmt.Sprintf(`{"path":%q,"limit":0}`, edited))
 			case strings.Contains(last, "v1"):
 				return write(edited, "v2")
 			case last == "second":

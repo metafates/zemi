@@ -41,7 +41,7 @@ const batchPrompt = `- Each step re-sends the whole conversation, so when calls 
 // readPrompt and todosPrompt fill basePrompt's {Read} and {Todos} for a run
 // that has the tool.
 const readPrompt = `
-- Locate with grep, then read that region with offset and limit: one large window beats many small ones. Filter command output.`
+- Every tool result stays in context until compaction: locate with grep, then read that region with offset and limit; one large window beats many small ones. Filter command output.`
 
 const todosPrompt = `
 - Use todos only when several distinct steps could be lost, and do not repeat the list in your reply.`

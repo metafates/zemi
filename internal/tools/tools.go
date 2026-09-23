@@ -855,13 +855,13 @@ Chain dependent steps with &&.`,
 			},
 			runBash),
 
-		gated(mk(ToolRead, "Read a file (text or image), or list a directory one level deep. This is the read that edit and write require; cat in bash does not count. Each line comes prefixed with its 1-based number and a tab, which is not file content: never copy it into edit. One call returns at most 2000 lines or 50000 characters and ends with the offset to continue from; lines over 2000 characters are cut. Once read, do not read a file again unless it changed.", true,
+		gated(mk(ToolRead, "Read a file (text or image), or list a directory one level deep. This is the read that edit and write require; cat in bash does not count. Each line comes prefixed with its 1-based number and a tab, which is not file content: never copy it into edit. A read cut short ends with the offset to continue from; lines over 2000 characters are cut. Once read, do not read a file again unless it changed.", true,
 			map[string]any{
 				"path":   map[string]any{"type": "string", "description": "absolute, or relative to the project root"},
 				"offset": map[string]any{"type": "number", "description": "1-based line to start at"},
-				"limit":  map[string]any{"type": "number", "description": "how many lines to read"},
+				"limit":  map[string]any{"type": "number", "description": "how many lines to read; 0 reads to the end, still at most 2000 lines or 50000 characters"},
 			},
-			[]string{"path"},
+			[]string{"path", "limit"},
 			func(in map[string]any) []Request {
 				return []Request{{Subject: "fs.read", Arg: str(in["path"])}}
 			},
