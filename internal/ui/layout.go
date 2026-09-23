@@ -618,7 +618,8 @@ func reanchor(lines [][]hostapi.Segment, st *scrollState, prevRows int) int {
 }
 
 func anchoredAt(lines [][]hostapi.Segment, i int, want []string) bool {
-	if len(want) == 0 || i+len(want) > len(lines) {
+	// a shrunk transcript puts the guessed row above the first line
+	if len(want) == 0 || i < 0 || i+len(want) > len(lines) {
 		return false
 	}
 	for k, s := range want {

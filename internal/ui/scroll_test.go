@@ -131,6 +131,24 @@ func TestChatScrollStaysAnchored(t *testing.T) {
 	}
 }
 
+// TestChatScrollShrinks: a scrolled view whose rows shrink by more than its
+// offset (a fill restarting, a collapsed block) guesses a row above the
+// first line and must land on the content, not panic.
+func TestChatScrollShrinks(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	st := app.scrolls["chat"]
+	st.top, st.rows = 2, st.rows+400 // the last frame drew 400 rows more
+	app.frameGen++
+	app.renderSync(t)
+	if f := app.Frame(); !strings.Contains(f, "message") {
+		t.Fatalf("the shrunk transcript is not drawn:\n%s", f)
+	}
+}
+
 func withoutStatus(frame string) string {
 	rows := strings.Split(frame, "\r\n")
 	return strings.Join(rows[:len(rows)-1], "\r\n")
