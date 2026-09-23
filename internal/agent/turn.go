@@ -31,8 +31,9 @@ type StreamHooks interface {
 	// streams again from its first delta.
 	StepStart()
 	// StepDone reports a completed step's usage, so the session token tally
-	// can move during the turn instead of only at TurnDone.
-	StepDone(usage fantasy.Usage)
+	// can move during the turn instead of only at TurnDone; more is false on
+	// the step that ends the turn.
+	StepDone(usage fantasy.Usage, more bool)
 	// Retrying reports a provider retry (rate limit, overload) before the
 	// backoff delay.
 	Retrying(err error, delay time.Duration)
@@ -283,7 +284,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	call.OnStepFinish = func(s fantasy.StepResult) error {
 		steps = append(steps, s)
 		save(s.Messages...)
-		hooks.StepDone(s.Usage)
+		hooks.StepDone(s.Usage, s.FinishReason == fantasy.FinishReasonToolCalls)
 		return nil
 	}
 	// fantasy rebuilds each step's input as initial prompt + step responses,

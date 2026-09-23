@@ -803,18 +803,29 @@ func TestTodoNag(t *testing.T) {
 		for i := range todoNagAfter * 2 {
 			s.ToolCallEnd(fmt.Sprint(i), "read", true, "", "")
 		}
-		s.StepDone(fantasy.Usage{})
+		s.StepDone(fantasy.Usage{}, true)
 		s.ToolCallEnd("t", tools.ToolTodos, true, "", "")
-		s.StepDone(fantasy.Usage{})
+		s.StepDone(fantasy.Usage{}, true)
 		for range todoNagAfter - 2 {
-			s.StepDone(fantasy.Usage{})
+			s.StepDone(fantasy.Usage{}, true)
 		}
 		if got := steering(h); len(got) != 0 {
 			t.Fatalf("a batch of calls is one step: %q", got)
 		}
-		s.StepDone(fantasy.Usage{})
+		s.StepDone(fantasy.Usage{}, true)
 		if got := steering(h); len(got) != 1 || !strings.Contains(got[0], fmt.Sprintf("for %d steps", todoNagAfter)) {
 			t.Fatalf("steering after the threshold: %q", got)
+		}
+	})
+
+	t.Run("the step that ends the turn queues nothing", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		seedSession(t, h)
+		set(h, both)
+		engage(h, todoNagAfter-1)
+		h.streamHooks().StepDone(fantasy.Usage{}, false)
+		if got := steering(h); len(got) != 0 {
+			t.Fatalf("a nag after the reply starts a turn of its own: %q", got)
 		}
 	})
 

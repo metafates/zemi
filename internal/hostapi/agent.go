@@ -834,8 +834,9 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 
 // StepDone bills a completed step's usage to the live session tally, so the
 // token count moves during the turn instead of only at TurnDone, and counts
-// the step for the todo nag unless a todos call ran in it.
-func (s *streamAdapter) StepDone(usage fantasy.Usage) {
+// the step for the todo nag unless a todos call ran in it. The last step
+// arms nothing: a nag queued after the reply would start a turn of its own.
+func (s *streamAdapter) StepDone(usage fantasy.Usage, more bool) {
 	h := s.h
 	ag := h.agents
 	ag.mu.Lock()
@@ -846,7 +847,7 @@ func (s *streamAdapter) StepDone(usage fantasy.Usage) {
 		model = h.currentModelID(nil) // a turn the host did not start (tests)
 	}
 	h.bill(sid, model, usage)
-	if !touched {
+	if more && !touched {
 		h.maybeNagTodos()
 	}
 }
