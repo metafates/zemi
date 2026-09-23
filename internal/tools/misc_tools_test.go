@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -503,5 +505,25 @@ func TestSearchParsers(t *testing.T) {
 	}
 	if got := formatHits(nil, 10); got != "(no results)" {
 		t.Fatalf("empty: %q", got)
+	}
+}
+
+// TestMemoryExamplesStore: every example the memory tool's description
+// quotes is stored under auto, not queued as instruction-shaped.
+func TestMemoryExamplesStore(t *testing.T) {
+	var desc string
+	for _, tl := range All(&Pipeline{}) {
+		if tl.Info().Name == ToolMemory {
+			desc = tl.Info().Description
+		}
+	}
+	examples := regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(desc, -1)
+	if len(examples) < 2 {
+		t.Fatalf("examples: %q", desc)
+	}
+	for _, m := range examples {
+		if learn.InstructionShaped(m[1]) {
+			t.Errorf("example reads as an instruction: %q", m[1])
+		}
 	}
 }
