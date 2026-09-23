@@ -190,12 +190,18 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		// like read: bytes the model cannot act on are worse than an error
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("%s answered with %d bytes of binary (%s); fetch reads text", raw, len(body), cmp.Or(ct, "no content type"))), nil
 	}
+	// the status only when it is news (a non-200 body is returned, not an
+	// error) and the type only when the body is still in it
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s %s\n\n", resp.Proto, resp.Status)
-	if ct != "" {
-		fmt.Fprintf(&b, "Content-Type: %s\n", ct)
+	if resp.StatusCode != http.StatusOK {
+		b.WriteString(resp.Status + "\n")
 	}
-	b.WriteString("\n")
+	if ct != "" && !strings.Contains(ct, "text/html") {
+		b.WriteString("Content-Type: " + ct + "\n")
+	}
+	if b.Len() > 0 {
+		b.WriteString("\n")
+	}
 	if cut := TruncOut(text, 10000); cut != text {
 		b.WriteString(cut + p.spill("fetch", text))
 	} else {

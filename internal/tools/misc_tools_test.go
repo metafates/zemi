@@ -7,7 +7,9 @@ package tools
 
 import (
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -238,6 +240,8 @@ func TestJobToolsLifecycle(t *testing.T) {
 	p, _ := testPipeline(t, true)
 	t.Chdir(dir)
 	p.Jobs = NewJobs()
+	exited := make(chan struct{}, 8)
+	p.Jobs.OnExit = func() { exited <- struct{}{} }
 	start := toolNamed(t, "job_start", p)
 	read := toolNamed(t, "job_read", p)
 	list := toolNamed(t, "job_list", p)
@@ -248,7 +252,16 @@ func TestJobToolsLifecycle(t *testing.T) {
 		t.Fatalf("start echo: %+v", resp)
 	}
 	j := p.Jobs.List()[0]
+	// the exit hook fires once the job is done: the statusline redraws on it
+	select {
+	case <-exited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("OnExit did not run")
+	}
 	waitJobDone(t, j)
+	if p.Jobs.Running() != 0 {
+		t.Fatal("OnExit ran before the exit was recorded")
+	}
 	resp = call(t, read, `{"id":"`+j.ID+`"}`)
 	if resp.IsError || !strings.Contains(resp.Content, "exited (0)") || !strings.Contains(resp.Content, "hello-job") {
 		t.Fatalf("read echo: %+v", resp)
@@ -370,7 +383,17 @@ func TestFetchGates(t *testing.T) {
 	}
 
 	allowed, asked := testPipeline(t, true)
-	srv := httptest.NewServer(nil)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/x", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, "<p>hi</p>")
+	})
+	mux.HandleFunc("/j", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTeapot)
+		io.WriteString(w, "{}")
+	})
+	srv := httptest.NewServer(mux)
 	defer srv.Close()
 	res := call(t, toolNamed(t, "fetch", allowed), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x"))
 	if !res.IsError || !strings.Contains(res.Content, "refused: 127.0.0.1 is a private address; only an allow rule for net.127.0.0.1") {
@@ -390,6 +413,15 @@ func TestFetchGates(t *testing.T) {
 		res := call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/x"))
 		if res.IsError != c.wantErr {
 			t.Fatalf("principal %q: %+v", c.principal, res)
+		}
+		// a 200 html page is just its text; a status or type worth saying heads the body
+		if c.principal == "" {
+			if res.Content != "hi" {
+				t.Fatalf("html body = %q", res.Content)
+			}
+			if res = call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/j")); res.Content != "418 I'm a teapot\nContent-Type: application/json\n\n{}" {
+				t.Fatalf("json body = %q", res.Content)
+			}
 		}
 	}
 
