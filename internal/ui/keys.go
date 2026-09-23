@@ -85,7 +85,10 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.program != nil && a.now().Sub(a.trust.opened) < permGrace {
 			return nil
 		}
-		// enter is "not now": trusting runs project code, so it takes an explicit y
+		if scrollKey(&a.trust.view, key, true) {
+			return nil
+		}
+		// enter is "later": trusting runs project code, so it takes an explicit y
 		switch key {
 		case "y":
 			a.answerTrust("trust")
@@ -497,6 +500,7 @@ func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 			text, sel, n = &st.body, &st.selected, len(st.visible)
 		}
 	case "trust":
+		text = &a.trust.view
 	default:
 		switch {
 		case a.popRect.Empty():

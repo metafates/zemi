@@ -296,15 +296,15 @@ outside a repository the key is the working directory. The search for the
 root stops below `$HOME`, so a dotfiles repository there is not the root
 of every directory in home. Boot asks once per
 process when no decision is saved, whether or not `.zemi` exists. The
-prompt shows the root `~`-shortened, what trusting loads and runs, and
-three rows with their keys and no cursor: `y` (or a click on its row)
+prompt shows the root `~`-shortened, what trusting loads and runs
+(scrolling on a short screen), and three rows with their keys and no cursor: `y` (or a click on its row)
 saves trusted, `n` saves untrusted, `esc`, `enter` or `ctrl+c` means
 untrusted until the next start (a reload does not ask again). `--trust` or `--trust=false`
 decides one run without saving; a headless run with nothing saved is
 untrusted and says so on stderr. The home directory and `/` are never
 asked about or saved (their prompt says it applies to this run only).
 `/trust` reopens the prompt at any time, showing the current decision and
-"Keep as is" in place of "Not now", saves the answer, applies it
+"Keep as is" in place of "Later", saves the answer, applies it
 before the reload it triggers when the decision changed, so a revoke holds
 even if that reload stops at an earlier failing step. When a sandboxed
 command creates a protected path that did not exist when it started

@@ -78,6 +78,8 @@ type trustPrompt struct {
 	state     string // the current decision, shown by /trust; "" at boot
 	answer    chan string
 	opened    time.Time // a reload can open it mid-typing (permGrace)
+	view      viewport  // what trusting means
+	size      boxSize
 }
 
 // AskTrust blocks the caller (a boot step or /trust) until the user answers
@@ -108,81 +110,65 @@ var trustAnswers = []string{"trust", "untrust", "later"}
 
 // trustBox draws the Go-owned trust prompt (DESIGN §5, §8) in fixed host
 // styles, with no Lua text inside. It has no cursor: trusting runs project
-// code, so it takes y or a click on its row. On a short screen rows go in
-// drop order, one spacer at a time and the grant that runs code without
-// asking last, so the answers stay visible.
+// code, so it takes y or a click on its row. On a short screen what
+// trusting means scrolls, so the answers stay visible.
 func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	width := min(boxInner(w), 64)
-	type row struct {
-		segs []hostapi.Segment
-		drop int // 0 always shown, else the order rows go in
-	}
-	var body []row
-	add := func(drop int, segs ...hostapi.Segment) {
-		for _, r := range hostapi.WrapSegs(segs, width) {
-			body = append(body, row{r, drop})
-		}
-	}
-	text := func(s, hl string) { add(0, hostapi.Segment{Text: s, HL: hl}) }
-	// a long path wraps at its slashes: the user trusts every character
-	var path []hostapi.Segment
-	for _, part := range strings.SplitAfter(hostapi.TildePath(tp.root), "/") {
-		path = append(path, hostapi.Segment{Text: part, HL: "Host:Bold"})
-	}
-	add(0, path...)
-	// the root is resolved and a linked worktree maps to its main checkout
-	cwd := tp.cwd
-	if real, err := filepath.EvalSymlinks(cwd); err == nil {
-		cwd = real
-	}
-	switch rel, in := perm.Under(tp.root, cwd); {
-	case !in:
-		text("Started in "+hostapi.TildePath(tp.cwd)+", which this answer covers too.", "Host:Hint")
-	case rel != ".":
-		text("Covers the whole repository, not only "+rel+".", "Host:Hint")
-	}
-	saved, what := "saved for this repository", "repository"
+	saved, what := "saved for this project", "project"
 	if hostapi.TrustUnsaved(tp.root) {
 		saved, what = "this run only", "directory"
 	}
-	if tp.state != "" {
-		text("Currently "+tp.state+".", "Host:Hint")
+	explain := func(width int) [][]hostapi.Segment {
+		// a long path wraps at its slashes: the user trusts every character
+		var path []hostapi.Segment
+		for _, part := range strings.SplitAfter(hostapi.TildePath(tp.root), "/") {
+			path = append(path, hostapi.Segment{Text: part, HL: "Host:Bold"})
+		}
+		rows := hostapi.WrapSegs(path, width)
+		// the root is resolved and a linked worktree maps to its main checkout
+		cwd := tp.cwd
+		if real, err := filepath.EvalSymlinks(cwd); err == nil {
+			cwd = real
+		}
+		switch rel, in := perm.Under(tp.root, cwd); {
+		case !in:
+			rows = append(rows, wrapText("Started in "+hostapi.TildePath(tp.cwd)+", which this answer covers too.", "Host:Hint", width)...)
+		case rel != ".":
+			rows = append(rows, wrapText("Covers the whole project, not only "+rel+".", "Host:Hint", width)...)
+		}
+		if tp.state != "" {
+			rows = append(rows, wrapText("Currently "+tp.state+".", "Host:Hint", width)...)
+		}
+		rows = append(rows, nil)
+		rows = append(rows, wrapText("Trusting lets this "+what+" run code and steer zemi:", "", width)...)
+		for _, g := range []string{
+			".zemi config: init.lua, agents, commands and workflows",
+			"AGENTS.md and CLAUDE.md instructions",
+			"language servers, which can build the project",
+			"auto mode edits, builds and tests without asking",
+		} {
+			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: "  - "}, {Text: g, HL: "Host:Value"}}, width)...)
+		}
+		return append(append(rows, nil), wrapText("Without trust, zemi asks before anything but reads.", "Host:Hint", width)...)
 	}
-	add(2)
-	add(8, hostapi.Segment{Text: "Trusting lets this " + what + " run code and steer zemi:"})
-	for _, g := range []struct {
-		drop int
-		text string
-	}{
-		{7, ".zemi config: init.lua, agents, commands and workflows"},
-		{6, "AGENTS.md and CLAUDE.md instructions"},
-		{5, "language servers, which can build the project"},
-		{8, "auto mode edits, builds and tests without asking"},
-	} {
-		add(g.drop, hostapi.Segment{Text: "  - "}, hostapi.Segment{Text: g.text, HL: "Host:Value"})
-	}
-	add(1)
-	add(3, hostapi.Segment{Text: "Without trust, zemi asks before anything but reads.", HL: "Host:Hint"})
-	add(4)
-	later, laterDesc := "Not now", "ask again next start"
+	later, laterDesc := "Later", "ask again next start"
 	if tp.state != "" {
 		later, laterDesc = "Keep as is", ""
 	}
-	list := choiceRows([]promptChoice{
+	choices := []promptChoice{
 		{key: "y", label: "Trust", desc: saved},
 		{key: "n", label: "Don't trust", desc: saved},
 		{key: "esc", label: later, desc: laterDesc},
-	}, -1, width, false)
-	// the borders, and the blank row and hint under the answers
-	for drop := 1; drop <= 8 && len(body)+len(list)+4 > h; drop++ {
-		body = slices.DeleteFunc(body, func(r row) bool { return r.drop == drop })
 	}
-	var rows [][]hostapi.Segment
-	for _, r := range body {
-		rows = append(rows, r.segs)
-	}
-	rows = append(append(rows, list...), nil, hint(width, hintPair{"esc", "later"}))
-	return promptBox("Trust this "+what+"?", "", rows, w, h, 100, &boxSize{})
+	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
+		tight := level > 0
+		list := choiceRows(choices, -1, width, level > 1)
+		tp.view.viewH = max(h-2-len(stack(tight, oneRow, list, oneRow))+1, 1)
+		text := tp.view.window(tp.view.wrap(explain, width), width)
+		hintRow := hint(width, slices.Concat(scrolls(tp.view), []hintPair{{"esc", strings.ToLower(later)}})...)
+		return stack(tight, text, list, [][]hostapi.Segment{hintRow}), tp.view.viewH < min(tp.view.rows, 3)
+	})
+	return promptBox("Trust this "+what+"?", "", body, w, h, 100, &tp.size)
 }
 
 // ---------------------------------------------------------------------------

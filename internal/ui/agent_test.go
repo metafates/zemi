@@ -592,7 +592,7 @@ func TestTrustAnswers(t *testing.T) {
 
 // TestGoldenTrustPrompt pins the trust prompt at boot, started below the
 // repository root, as /trust shows it with the current decision, and
-// started outside the root with too little room for the whole box.
+// started outside the root with too little room, where the text scrolls.
 func TestGoldenTrustPrompt(t *testing.T) {
 	for _, c := range []struct {
 		name, cwd, state string
@@ -608,6 +608,9 @@ func TestGoldenTrustPrompt(t *testing.T) {
 			waitPrompt(t, app, func() bool { return app.trust != nil })
 			app.renderSync(t)
 			golden.RequireEqual(t, app.Frame())
+			if app.Update(tea.KeyPressMsg{Code: tea.KeyPgDown}); app.trust.view.overflows() != (app.trust.view.top > 0) {
+				t.Fatalf("pgdown moved the text to %d of %d rows", app.trust.view.top, app.trust.view.rows)
+			}
 			app.answerTrust("later")
 		})
 	}
