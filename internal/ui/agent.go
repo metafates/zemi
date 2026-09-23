@@ -353,7 +353,7 @@ type listItem struct {
 // whole items with the scrollbar; v keeps it across frames, so it moves only
 // when the selection leaves it and a click never moves the item under the
 // pointer (nil for a list that keeps no position). Rows fit maxW cells when
-// it is set, the bar included.
+// it is set, the bar and the gap before it included.
 func listRows(items []listItem, sel int, v *viewport, room, maxW int) [][]hostapi.Segment {
 	return listRowsW(items, items, sel, v, room, 0, maxW)
 }
@@ -464,12 +464,12 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 		v = &viewport{}
 	}
 	v.rows, v.viewH = len(rows), max(room, 1)
-	bar := 0 // the scrollbar's column
+	bar := 0 // the scrollbar's column and a gap before it, so the widest row never touches it
 	if v.overflows() && barInner(maxW) < maxW {
-		bar, maxW = 1, maxW-1
+		bar, maxW = 2, maxW-2
 		build(maxW)
 	} else if v.overflows() && maxW == 0 {
-		bar = 1
+		bar = 2
 	}
 	// Every row pads to the widest of the whole list, so a box sized from
 	// the visible window keeps its width while scrolling.
