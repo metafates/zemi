@@ -836,7 +836,11 @@ func GitWrites(cmd string) string {
 		}
 		// xargs, find and fd hand git arguments nothing here sees
 		for len(f) > 1 && runner(f[0]) && !slices.Contains([]string{"xargs", "find", "fd"}, filepath.Base(f[0])) {
-			f = f[1:]
+			if g, ok := stepRunner(f); ok {
+				f = g
+			} else {
+				f = f[1:]
+			}
 		}
 		i := Subcommand(f)
 		if len(f) == 0 || filepath.Base(f[0]) != "git" || i < 0 {
