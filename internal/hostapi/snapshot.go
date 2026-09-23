@@ -256,7 +256,11 @@ func (h *Host) treeDiff(root string, env []string, before, after string, mixed, 
 			hunk := false
 			for l := range strings.Lines(block) {
 				hunk = hunk || strings.HasPrefix(l, "@@")
-				if (hunk || strings.HasPrefix(l, "Binary ")) && !strings.HasPrefix(l, `\`) {
+				binary := strings.HasPrefix(l, "Binary ") // git's "Binary files a/x and b/x differ"
+				if binary {
+					l = "binary, no text to show"
+				}
+				if (hunk || binary) && !strings.HasPrefix(l, `\`) {
 					bodies[shown[i]] = append(bodies[shown[i]], strings.TrimRight(l, "\n"))
 				}
 			}

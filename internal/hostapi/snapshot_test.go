@@ -51,6 +51,7 @@ func TestBashChanges(t *testing.T) {
 	done := h.bashChanges(dir)
 	write("a.txt", "one\nTWO\n")
 	write("new.txt", "hi\n")
+	write("blob.bin", "\x00\x01")
 	write(".env", "KEY=hunter2\n")
 	write("api_secret.txt", "shh\n")
 	write("ignored", "x\n")
@@ -58,14 +59,14 @@ func TestBashChanges(t *testing.T) {
 	h.noteWrite(filepath.Join(dir, "tool.txt"))
 	note, diff, paths := done()
 
-	if note != "files changed: a.txt, api_secret.txt, new.txt" {
+	if note != "files changed: a.txt, api_secret.txt, blob.bin, new.txt" {
 		t.Errorf("note: %q", note)
 	}
 	root := perm.RealPath(dir)
-	if want := []string{filepath.Join(root, "a.txt"), filepath.Join(root, "api_secret.txt"), filepath.Join(root, "new.txt")}; !slices.Equal(paths, want) {
+	if want := []string{filepath.Join(root, "a.txt"), filepath.Join(root, "api_secret.txt"), filepath.Join(root, "blob.bin"), filepath.Join(root, "new.txt")}; !slices.Equal(paths, want) {
 		t.Errorf("paths = %v, want %v", paths, want)
 	}
-	for _, want := range []string{"A api_secret.txt (content hidden", "M a.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+TWO", "A new.txt\n@@ -0,0 +1 @@\n+hi"} {
+	for _, want := range []string{"A api_secret.txt (content hidden", "M a.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+TWO", "A new.txt\n@@ -0,0 +1 @@\n+hi", "A blob.bin\nbinary, no text to show"} {
 		if !strings.Contains(diff, want) {
 			t.Errorf("diff lacks %q:\n%s", want, diff)
 		}
