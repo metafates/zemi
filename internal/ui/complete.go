@@ -27,12 +27,16 @@ type fileCompleter struct {
 
 	scanning bool
 	walkGen  int  // bumps so stale scan results are dropped
-	partial  bool // the scan hit scanMaxFiles, so the rest of the repo is missing
+	partial  bool // files match that the list leaves out, hence the note
 }
 
 // scanMaxFiles caps the scan so a walk that never ends cannot eat memory.
 // A repo that passes it loses whatever rg listed last, hence the note.
 const scanMaxFiles = 50000
+
+// listMaxFiles caps the matches the popup lists: every frame builds the
+// whole list, and nobody scrolls past a few hundred paths to find one.
+const listMaxFiles = 200
 
 func (a *App) completionEnabled() bool { return a.host.Settings.Bool("ui.completion.files") }
 
@@ -108,7 +112,6 @@ func (a *App) onFilesScanned(msg filesScannedMsg) {
 	}
 	a.completion.scanning = false
 	a.completion.files = msg.files
-	a.completion.partial = len(msg.files) >= scanMaxFiles
 	if a.completion.open {
 		a.completion.rematch()
 	}
@@ -150,6 +153,8 @@ func (f *fileCompleter) rematch() {
 			f.matches = append(f.matches, c.path)
 		}
 	}
+	f.partial = len(f.matches) > listMaxFiles || len(f.files) >= scanMaxFiles
+	f.matches = f.matches[:min(len(f.matches), listMaxFiles)]
 	f.selected = max(0, min(f.selected, f.count()-1))
 }
 
@@ -205,8 +210,7 @@ func (a *App) acceptCompletion() {
 }
 
 // completionRows renders the popup rows shown above the composer, at most
-// room rows of at most maxW cells. Only the window of matches is built: a
-// bare "@" lists every file of the repository.
+// room rows of at most maxW cells.
 func (a *App) completionRows(maxW, room int) [][]hostapi.Segment {
 	f := &a.completion
 	if !f.shown() {
@@ -216,7 +220,7 @@ func (a *App) completionRows(maxW, room int) [][]hostapi.Segment {
 		return []hostapi.Segment{{Text: "  " + text, HL: "Comment"}}
 	}
 	if f.count() == 0 && f.scanning && len(f.files) == 0 {
-		return [][]hostapi.Segment{note("scanning files...")}
+		return [][]hostapi.Segment{note("scanning files…")}
 	}
 	partial := note("more files than the list holds - type more of the path")
 	switch {
@@ -227,30 +231,11 @@ func (a *App) completionRows(maxW, room int) [][]hostapi.Segment {
 	case f.partial:
 		room--
 	}
-	v := &f.view
-	v.rows, v.viewH = f.count(), max(min(a.completionMax(), room), 1)
-	v.reveal(f.selected, f.selected+1)
-	items := make([]listItem, 0, v.viewH)
-	for i := v.top; i < min(v.top+v.viewH, f.count()); i++ {
-		if i < len(f.extra) {
-			items = append(items, f.extra[i])
-		} else {
-			items = append(items, listItem{label: f.matches[i-len(f.extra)]})
-		}
+	items := append([]listItem(nil), f.extra...)
+	for _, m := range f.matches {
+		items = append(items, listItem{label: m})
 	}
-	if v.overflows() {
-		maxW = barInner(maxW)
-	}
-	rows := listRows(items, f.selected-v.top, nil, len(items), maxW)
-	bar := scrollbar{h: v.viewH, top: v.top, total: v.rows, width: segsWidth(rows[0]) + 1}
-	for i, r := range rows {
-		for k := range r {
-			if r[k].Hit > 0 {
-				r[k].Hit += v.top // the item's place in the whole list
-			}
-		}
-		rows[i] = bar.row(r, i)
-	}
+	rows := listRows(items, f.selected, &f.view, min(a.completionMax(), room), maxW)
 	if f.partial {
 		rows = append(rows, partial)
 	}

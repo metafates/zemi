@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -321,6 +322,24 @@ func TestCompletionPartialNote(t *testing.T) {
 	last := rows[len(rows)-1][0].Text
 	if !strings.Contains(last, "more files") {
 		t.Fatalf("last row = %q, want the partial note", last)
+	}
+}
+
+// TestCompletionListWidth: the popup keeps its width while the selection
+// scrolls away from its widest path, and lists at most listMaxFiles.
+func TestCompletionListWidth(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.composerKey("@", tea.KeyPressMsg{Text: "@"})
+	files := []string{"a/deeply/nested/a_really_long_file_name_here.txt"}
+	for i := range 2 * listMaxFiles {
+		files = append(files, fmt.Sprintf("f%03d.go", i))
+	}
+	app.onFilesScanned(filesScannedMsg{gen: app.completion.walkGen, files: files})
+	first := segsWidth(app.completionRows(76, 10)[0])
+	app.completion.selected = app.completion.count() - 1
+	rows := app.completionRows(76, 10)
+	if w := segsWidth(rows[0]); w != first || app.completion.count() != listMaxFiles || !strings.Contains(plainSegs(rows[len(rows)-1]), "more files") {
+		t.Fatalf("width %d then %d, %d items, last row %q", first, w, app.completion.count(), plainSegs(rows[len(rows)-1]))
 	}
 }
 
