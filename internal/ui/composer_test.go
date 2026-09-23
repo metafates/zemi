@@ -391,9 +391,10 @@ func TestPaletteComplete(t *testing.T) {
 	if !app.palette.open || len(app.palette.matches) != 3 {
 		t.Fatalf("palette after /: open=%v matches=%d", app.palette.open, len(app.palette.matches))
 	}
-	send(k{"q", "q"})
-	if len(app.palette.matches) != 2 {
-		t.Fatalf("matches after /q: %d", len(app.palette.matches))
+	// a narrower query selects its first match, whatever was highlighted
+	send(k{"down", ""}, k{"down", ""}, k{"q", "q"})
+	if len(app.palette.matches) != 2 || app.palette.selected != 0 {
+		t.Fatalf("after /, down, down, q: matches=%d selected=%d", len(app.palette.matches), app.palette.selected)
 	}
 	// Down, then up returns to the first match; tab accepts it.
 	send(k{"down", ""}, k{"up", ""}, k{"tab", ""})

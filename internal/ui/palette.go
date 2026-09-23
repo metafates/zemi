@@ -22,7 +22,8 @@ type cmdPalette struct {
 	args     []hostapi.CompletionItem // argument candidates once the cursor is past "/name "
 	argStart int                      // rune index where the argument under the cursor starts
 	selected int
-	moved    bool // the user moved the highlight in this argument list
+	moved    bool   // the user moved the highlight in this argument list
+	query    string // what the list was narrowed by; a new one selects its first row
 	view     viewport
 	size     boxSize // typing never narrows or shortens the popup
 }
@@ -61,7 +62,10 @@ func (a *App) updatePalette() {
 	show := func(cands []hostapi.CompletionItem) {
 		if p := &a.palette; p.args == nil || p.argStart != start { // a new list: the name's gave way, or another argument's
 			p.selected, p.moved, p.view, p.size = 0, false, viewport{}, boxSize{}
+		} else if p.query != typed {
+			p.selected, p.moved = 0, false
 		}
+		a.palette.query = typed
 		lead := strings.ToLower(typed)
 		args := []hostapi.CompletionItem{}
 		for _, c := range cands {
@@ -97,7 +101,7 @@ func (a *App) updatePalette() {
 
 func (p *cmdPalette) close() {
 	p.open = false
-	p.selected, p.moved, p.view, p.size = 0, false, viewport{}, boxSize{}
+	p.selected, p.moved, p.view, p.size, p.query = 0, false, viewport{}, boxSize{}, ""
 	p.matches, p.args = nil, nil
 }
 
@@ -116,6 +120,10 @@ func (p *cmdPalette) rematch(prefix string, cmds []*hostapi.Command) {
 			p.matches = append(p.matches, c)
 		}
 	}
+	if p.query != prefix {
+		p.selected = 0
+	}
+	p.query = prefix
 	p.selected = max(0, min(p.selected, len(p.matches)-1))
 }
 
