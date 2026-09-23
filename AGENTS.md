@@ -263,9 +263,10 @@ bare `rm` in a shell body `xargs` or `find -exec` repeats), a git command that w
 could only fail, so the ask comes before a wasted run) and, on a backend that cannot hide
 files, one naming an existing secret-shaped file. Known ceiling: the sandbox policy is the only limit, so the model
 can write code and run it unattended, rewrite any project file and read what the policy does
-not hide, outside the project too. In an untrusted project, and in a trusted one with no
-sandbox backend, both modes settle only `ReadCommand` commands (every program only reads, named
-without a path; no builds, no git) and auto settles no writes.
+not hide, outside the project too. In an untrusted project both modes settle only `ReadCommand`
+commands (every program only reads, named without a path; no builds, no git) and auto settles
+no writes. In a trusted project with no sandbox backend auto still settles jail writes, but
+commands settle only when `ReadCommand` holds, since an approved one would run unconfined.
 
 **Sandbox** (internal/sandbox, internal/hostapi/sandbox.go, DESIGN §9): a `tool.bash` verdict a
 mode gave (`DecidedBy` `mode:<name>`, base not yolo) makes `Pipeline.SandboxFor` return
