@@ -17,6 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -175,7 +176,7 @@ func TestSubagentFailureKeepsReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text, err := h.runSubagent(context.Background(), def, "d", "look", nil)
+	_, text, err := h.runSubagent(context.Background(), def, "d", "look", nil)
 	if err == nil {
 		t.Fatal("want the step error")
 	}
@@ -249,7 +250,7 @@ func TestSubagentLuaToolAsksAsAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.runSubagent(context.Background(), def, "d", "look", nil); err != nil {
+	if _, _, err := h.runSubagent(context.Background(), def, "d", "look", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(ui.asked) != 1 || !strings.HasPrefix(ui.asked[0].Reason, "agent general: ") {
@@ -283,7 +284,7 @@ func TestSubagentInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 2 {
-		if text, err := h.runSubagent(context.Background(), def, "d", "look", nil); err != nil || !strings.Contains(text, "use tabs here") {
+		if _, text, err := h.runSubagent(context.Background(), def, "d", "look", nil); err != nil || !strings.Contains(text, "use tabs here") {
 			t.Fatalf("run %d: read result %q, %v", i, text, err)
 		}
 	}
@@ -459,7 +460,7 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.runSubagent(t.Context(), def, "d", "look", nil); err != nil {
+	if _, _, err := h.runSubagent(t.Context(), def, "d", "look", nil); err != nil {
 		t.Fatal(err)
 	}
 	props := h.memoryProposals()
@@ -522,7 +523,7 @@ func TestFilterToolsNamesTheUnknown(t *testing.T) {
 		gone    []string
 		unknown []string
 	}{
-		{name: "allowlist", want: []string{"read", "Grep", "agent"}, kept: []string{"read"}, unknown: []string{"Grep"}},
+		{name: "allowlist", want: []string{"read", "Grep", "agent", "lua"}, kept: []string{"read"}, unknown: []string{"Grep"}},
 		{name: "removal keeps the rest", want: []string{"-read", "-Grep"}, gone: []string{"read"}, unknown: []string{"Grep"}},
 		{name: "removal wins over the allowlist", want: []string{"read", "grep", "-grep"}, kept: []string{"read"}},
 	} {
@@ -544,5 +545,46 @@ func TestFilterToolsNamesTheUnknown(t *testing.T) {
 				t.Errorf("unknown = %q, want %q", unknown, c.unknown)
 			}
 		})
+	}
+}
+
+// TestHaltKeepsTheStep: a tool.pre halt on one call of a parallel step ends
+// the turn after the step, so the write that already ran stays in the
+// history and the store instead of vanishing with a failed step.
+func TestHaltKeepsTheStep(t *testing.T) {
+	h, r := newTestHostDB(t)
+	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
+	runUser(t, r, `zemi.event.on("tool.pre", function(ev) if ev.tool == "glob" then return { decision = "halt", reason = "stop" } end end)`)
+	file := filepath.Join(h.Dirs.ProjectDir, "new.txt")
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
+			if toolResult {
+				return textParts("went on past the halt")
+			}
+			return append(toolCallParts("w1", "write", fmt.Sprintf(`{"path":%q,"content":"x"}`, file))[:4], toolCallParts("g1", "glob", `{"pattern":"*"}`)...)
+		}}, nil
+	}
+	if err := h.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	if _, err := os.Stat(file); err != nil {
+		t.Fatal(err)
+	}
+	h.agents.mu.Lock()
+	history := fmt.Sprint(h.agents.runner.History)
+	h.agents.mu.Unlock()
+	rows, err := h.DB.Messages(h.AgentSessionID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := ""
+	for _, m := range rows {
+		stored += m.PartsJSON
+	}
+	for name, got := range map[string]string{"history": history, "store": stored} {
+		if !strings.Contains(got, "w1") || !strings.Contains(got, "halted by hook: stop") || strings.Contains(got, "went on") {
+			t.Errorf("%s lost the step or ran past the halt: %s", name, got)
+		}
 	}
 }

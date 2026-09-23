@@ -6,7 +6,9 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -38,11 +40,15 @@ const runIDLen = 8
 type agentRun struct {
 	id, agent, description string
 	parent                 string // the session that started the run
-	background             bool
-	started                time.Time
-	cancel                 context.CancelFunc
+	// the model reference it started on
+	// NOTE: "" for a run loadRun rebuilt, which continues on its definition's
+	// model: sessions keep no model column.
+	model      string
+	background bool
+	cancel     context.CancelFunc
 
 	mu        sync.Mutex
+	started   time.Time     // the last start: a continuation counts its own time
 	sessionID string        // the run's child session, "" when not recorded
 	runner    *agent.Runner // kept after the run ends: send_to continues it with its history
 	status    string        // running, done, failed, cancelled
@@ -84,7 +90,7 @@ func (r *taskReg) add(run *agentRun) error {
 		var oldest *agentRun
 		for _, x := range r.runs {
 			// never the run just added: loadRun adds old finished runs to view them
-			if x != run && !x.isRunning() && (oldest == nil || x.started.Before(oldest.started)) {
+			if x != run && !x.isRunning() && (oldest == nil || x.startedAt().Before(oldest.startedAt())) {
 				oldest = x
 			}
 		}
@@ -105,7 +111,7 @@ func (r *taskReg) list(parent string) []*agentRun {
 			out = append(out, x)
 		}
 	}
-	slices.SortFunc(out, func(a, b *agentRun) int { return b.started.Compare(a.started) })
+	slices.SortFunc(out, func(a, b *agentRun) int { return b.startedAt().Compare(a.startedAt()) })
 	return out
 }
 
@@ -120,7 +126,7 @@ func (r *taskReg) runningElsewhere(parent string) []*agentRun {
 			out = append(out, x)
 		}
 	}
-	slices.SortFunc(out, func(a, b *agentRun) int { return b.started.Compare(a.started) })
+	slices.SortFunc(out, func(a, b *agentRun) int { return b.startedAt().Compare(a.startedAt()) })
 	return out
 }
 
@@ -165,10 +171,16 @@ func (r *taskReg) find(id string) *agentRun {
 func (h *Host) newRun(ctx context.Context, def AgentDef, description, prompt string, background bool) (*agentRun, context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &agentRun{
-		id: store.NewID()[:runIDLen], agent: def.Name, description: description, parent: h.AgentSessionID(),
+		id: store.NewID()[:runIDLen], agent: def.Name, description: description, parent: h.AgentSessionID(), model: def.Model,
 		background: background, started: time.Now(), cancel: cancel, status: "running",
 		tr: []ChatMessage{{Role: "user", Text: prompt}}, rows: map[string]int{},
 	}, ctx
+}
+
+func (run *agentRun) startedAt() time.Time {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.started
 }
 
 func (run *agentRun) isRunning() bool {
@@ -280,12 +292,13 @@ func (h *Host) continueRun(ctx context.Context, run *agentRun, prompt string, pr
 	if err != nil {
 		return "", err
 	}
+	def.Model = cmp.Or(run.model, def.Model)
 	run.mu.Lock()
 	if run.status == "running" {
 		run.mu.Unlock()
 		return "", fmt.Errorf("agent %s is running: its queue takes the message", run.id)
 	}
-	run.status, run.closed, run.finished, run.dropped = "running", false, time.Time{}, 0
+	run.status, run.closed, run.started, run.finished, run.dropped = "running", false, time.Now(), time.Time{}, 0
 	run.tr = append(run.tr, ChatMessage{Role: "user", Text: prompt})
 	ctx, run.cancel = context.WithCancel(ctx)
 	run.mu.Unlock()
@@ -358,11 +371,7 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 			h.notifyReport(run.id, def.Name, status, description, report)
 			return
 		}
-		// the whole message is for the model, behind the marker where @ refs
-		// do not attach (the description is model text); the user gets the
-		// head as a notice row where the model reads it (appendUserRows), so
-		// it never lands above the rows of the turn it arrives in
-		if err := h.AgentSend(agent.AttachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", run.id, def.Name, status, description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"); err != nil {
+		if err := h.AgentSend(h.reportMessage(run.id, def.Name, status, description, report)); err != nil {
 			h.Notify("error", "Background agent "+run.id+" failed", err.Error())
 		}
 	})
@@ -374,9 +383,29 @@ func reportHead(id, agent, status string) string {
 	return fmt.Sprintf("Background agent %s (%s) %s.", id, agent, status)
 }
 
-// notifyReport tells the user of a report no conversation will read.
-func (h *Host) notifyReport(id, agent, status, description, report string) {
-	h.Notify("info", "Background agent "+id, reportHead(id, agent, status)+" "+description+"\n"+truncRunes(report, 300))
+// reportMessage is the user message a report reaches the model as. The whole
+// message is for the model, behind the marker where @ refs do not attach (the
+// description is model text); the user gets the head as a notice row where the
+// model reads it (appendUserRows), so it never lands above the rows of the
+// turn it arrives in.
+func (h *Host) reportMessage(id, agentName, status, description, report string) string {
+	return agent.AttachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", id, agentName, status, description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"
+}
+
+// notifyReport tells the user of a report the live conversation will not
+// read, and stores it in the session that started the run, where a resume
+// hands it to the model.
+func (h *Host) notifyReport(id, agentName, status, description, report string) {
+	if run := h.tasks.find(id); run != nil && run.parent != "" && h.DB != nil {
+		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(id, agentName, status, description, report)))
+		if err == nil {
+			err = h.DB.AddMessage(&store.Message{SessionID: run.parent, Role: "user", PartsJSON: string(parts)})
+		}
+		if err != nil {
+			h.Log.Warn("agents", "report not stored", map[string]any{"run": id, "error": err.Error()})
+		}
+	}
+	h.Notify("info", "Background agent "+id, reportHead(id, agentName, status)+" "+description+"\n"+truncRunes(report, 300))
 }
 
 var reportBody = regexp.MustCompile(`(?s)<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")>\n(.*?)\n</agent-report>`)
@@ -411,6 +440,9 @@ func reportHeads(tail string) []string {
 func (h *Host) stopRun(id string) error {
 	if id == "" {
 		id = h.ViewedAgent()
+	}
+	if id == "" {
+		return errors.New("name the run to stop: /agents stop <id> (ids are in /agents)")
 	}
 	run := h.tasks.find(id)
 	if run == nil || !run.isRunning() {

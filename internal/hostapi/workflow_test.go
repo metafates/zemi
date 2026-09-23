@@ -73,6 +73,7 @@ func TestWorkflowRun(t *testing.T) {
 		args         any
 		want         string // result, or the error substring when wantErr
 		wantErr      bool
+		ran          string // an agent line a failed run keeps
 	}{
 		{name: "sequential chain", script: `local a = agent("x") return agent(a .. "y")`, want: "x!y!"},
 		{
@@ -97,6 +98,11 @@ func TestWorkflowRun(t *testing.T) {
 			script: `local out, errs = parallel({function() return agent("ok") end, function() local r, e = agent("fail") return r or error(e) end}) return out[1] .. " " .. tostring(errs ~= nil and errs[2] ~= nil)`,
 			want:   "ok! true",
 		},
+		{
+			name:   "a branch returning agent's nil, err reports through errs",
+			script: `local out, errs = parallel({function() return agent("ok") end, function() return agent("fail") end}) return out[1] .. " " .. tostring(errs ~= nil and errs[2] ~= nil)`,
+			want:   "ok! true",
+		},
 		{name: "crashed agent", script: `local r, e = agent("panic") return e`, want: "the agent crashed"},
 		{name: "agent inside pcall refused", script: `local ok, err = pcall(agent, "x") return tostring(ok) .. " " .. err`, want: "false"},
 		{name: "pcall without a function", script: `return pcall()`, wantErr: true, want: "bad argument #1"},
@@ -105,6 +111,7 @@ func TestWorkflowRun(t *testing.T) {
 		{name: "parallel over the agent cap", script: `local t = {} for i = 1, 101 do t[i] = function() return 1 end end return parallel(t)`, wantErr: true, want: "more than the"},
 		{name: "unknown agent", script: `return agent("x", {agent = "nope"})`, wantErr: true, want: "unknown agent"},
 		{name: "syntax error", script: `return (`, wantErr: true, want: "workflow script"},
+		{name: "a failed script names the agents that ran", script: `local x = agent("quick") local t = nil return t.field`, wantErr: true, want: "attempt to index", ran: "general done: quick"},
 		{name: "string.rep over the cap", script: `return ("x"):rep(1e13)`, wantErr: true, want: "byte cap"},
 		{name: "string.rep under the cap", script: `return string.rep("ab", 2) .. string.rep("x", -1)`, want: "abab"},
 		{name: "no file access", script: `return dofile("/etc/passwd")`, wantErr: true, want: "non-function"},
@@ -114,6 +121,15 @@ func TestWorkflowRun(t *testing.T) {
 			if c.wantErr {
 				if err == nil || !strings.Contains(err.Error(), c.want) {
 					t.Fatalf("err = %v, want %q", err, c.want)
+				}
+				// each line leads with an id send_to continues
+				for _, l := range res.Agents {
+					if h.tasks.find(strings.Fields(l)[0]) == nil || c.ran == "" || !strings.Contains(l, c.ran) {
+						t.Fatalf("agents = %q, want %q", res.Agents, c.ran)
+					}
+				}
+				if c.ran != "" && len(res.Agents) == 0 {
+					t.Fatalf("no agents listed, want %q", c.ran)
 				}
 				return
 			}
