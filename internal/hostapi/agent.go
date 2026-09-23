@@ -554,10 +554,10 @@ func (h *Host) startTurn(text string) {
 }
 
 // appendUserRows shows one message as the model reads it: the notice row
-// of each background report behind attachMarker, then what was typed, the
+// of each background report behind agent.AttachMarker, then what was typed, the
 // same cut a resumed transcript makes. Reports whether anything was typed.
 func (h *Host) appendUserRows(text string) bool {
-	shown, tail, _ := strings.Cut(text, attachMarker)
+	shown, tail, _ := strings.Cut(text, agent.AttachMarker)
 	for _, head := range reportHeads(tail) {
 		h.AppendChat(ChatMessage{Role: "assistant", Kind: "notice", Text: head})
 	}
@@ -583,7 +583,7 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	var waiting []string // reports a cancel left for the next message
 	if done.ctx.Err() != nil {
 		for _, m := range ag.steering {
-			_, tail, _ := strings.Cut(m, attachMarker)
+			_, tail, _ := strings.Cut(m, agent.AttachMarker)
 			waiting = append(waiting, reportHeads(tail)...)
 		}
 	} else {
@@ -661,7 +661,7 @@ func (h *Host) AgentTakeQueue() []string {
 	ag.mu.Lock()
 	var q, reports []string
 	for _, m := range ag.steering {
-		if strings.Contains(m, attachMarker) {
+		if strings.Contains(m, agent.AttachMarker) {
 			// a background report is for the model, not the composer: it
 			// waits for the next turn
 			reports = append(reports, m)
@@ -678,14 +678,14 @@ func (h *Host) AgentTakeQueue() []string {
 }
 
 // joinQueue makes queued messages one message with every shown part ahead
-// of the first attachMarker, where each reader cuts the text.
+// of the first agent.AttachMarker, where each reader cuts the text.
 func joinQueue(msgs []string) string {
 	shown := make([]string, len(msgs))
 	tails := ""
 	for i, m := range msgs {
-		s, tail, ok := strings.Cut(m, attachMarker)
+		s, tail, ok := strings.Cut(m, agent.AttachMarker)
 		if ok {
-			tails += attachMarker + tail
+			tails += agent.AttachMarker + tail
 		}
 		shown[i] = s
 	}
@@ -1195,7 +1195,7 @@ const todoNagAfter = 4
 // maybeNagTodos counts a main-runner step against a stale in_progress
 // todo and nudges once per todos write: the model is free to forget, and
 // the next write re-arms the remind. It rides the model-only steering
-// channel (attachMarker), so it never reads as the user's own message.
+// channel (agent.AttachMarker), so it never reads as the user's own message.
 // Only the main agent's steps during its turn count: a subagent's would
 // arm the nag while nobody can be nudged.
 func (h *Host) maybeNagTodos() {
@@ -1215,7 +1215,7 @@ func (h *Host) maybeNagTodos() {
 		return
 	}
 	ag.todoPending = true
-	ag.todoNag = modelNote(fmt.Sprintf(
+	ag.todoNag = agent.Note(fmt.Sprintf(
 		"Some todos are still unfinished: %q has been in_progress for %d steps. If that step is done, tick it now with the todos tool and set the next one in_progress; otherwise keep it in_progress and continue.",
 		ag.todoInProgress, ag.todoSteps))
 }
@@ -1346,7 +1346,7 @@ type StreamSnapshot struct {
 	Tools      []StreamTool
 	Model      string
 	Profile    string
-	Steering   []string      // queued messages as shown (cut at attachMarker), oldest first
+	Steering   []string      // queued messages as shown (cut at agent.AttachMarker), oldest first
 	Reports    int           // background reports in Steering, which AgentTakeQueue leaves queued
 	Thought    time.Duration // wall time spent in reasoning blocks
 	Elapsed    time.Duration // whole-turn wall time (0 outside a turn)
@@ -1398,7 +1398,7 @@ func (h *Host) AgentStream() StreamSnapshot {
 		out.CtxWindow = h.contextWindow(out.Model)
 	}
 	for _, m := range ag.steering {
-		shown, _, report := strings.Cut(m, attachMarker)
+		shown, _, report := strings.Cut(m, agent.AttachMarker)
 		out.Steering = append(out.Steering, shown)
 		if report {
 			out.Reports++
@@ -1793,7 +1793,7 @@ func (h *Host) cycleProfile(step int) error {
 
 // implementNow is the message a fresh send carries to the restored agent after
 // its plan is approved; the plan itself stays in history.
-var implementNow = modelNote("The user approved the plan above. Implement it (track its steps with todos when it has several), verify, and report.")
+var implementNow = agent.Note("The user approved the plan above. Implement it (track its steps with todos when it has several), verify, and report.")
 
 func (h *Host) setPlanApproved(msg string) {
 	h.agents.mu.Lock()
@@ -1814,7 +1814,7 @@ func (h *Host) takePlanApproved() string {
 // instead of the question or plan tool: the text is not a plan to approve
 // (a question, a report or a refusal would get an approve key), and only
 // the tools give the user something to answer in place.
-var planNudge = modelNote(planNudgeText)
+var planNudge = agent.Note(planNudgeText)
 
 const planNudgeText = "Your reply ended in plain text, which the user cannot approve or answer in place. If it asked something, ask it with the question tool; if it was the plan, present it with the plan tool; if it answered a question, do not repeat the answer: ask with the question tool what to plan next."
 

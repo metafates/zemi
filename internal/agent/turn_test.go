@@ -377,7 +377,9 @@ func TestCutOffToolCallGetsResult(t *testing.T) {
 			}
 		}
 	}
-	if !slices.ContainsFunc(texts, func(s string) bool { return strings.Contains(s, "cut at the output limit while calling echo") }) {
+	if !slices.ContainsFunc(texts, func(s string) bool {
+		return strings.HasPrefix(s, AttachMarker) && strings.Contains(s, "while writing the echo call")
+	}) {
 		t.Fatalf("no note about the cut call in the prompt: %q", texts)
 	}
 }

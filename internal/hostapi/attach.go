@@ -1,5 +1,5 @@
 // attach.go expands @path references in a user message: each referenced
-// project file is appended to what the model receives, behind attachMarker,
+// project file is appended to what the model receives, behind agent.AttachMarker,
 // while the transcript keeps the typed text. Images (png, jpeg, gif, webp)
 // travel as file parts for vision models. Only files inside the project
 // that the permission store allows reading attach; a file that is too big,
@@ -19,24 +19,16 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
 const (
-	attachMarker   = "\n\n<attached-files>"
 	attachMax      = 64 << 10           // bytes per text file
 	attachImageMax = 20 << 20           // bytes per image read; tools.FitImage sizes what is sent
 	dropTTL        = 7 * 24 * time.Hour // idle copies age out, like scratchpads
 )
-
-// modelNote wraps text zemi itself sends the model (a nag, a plan handoff)
-// so nothing shows it, stores it or recalls it as the user's own words.
-// Files, images, shell output and agent reports each get an element in the
-// trailer, so a note gets its own too, or it reads as unlabeled attachment text.
-func modelNote(text string) string {
-	return attachMarker + "\n<zemi-note>\n" + text + "\n</zemi-note>\n</attached-files>"
-}
 
 var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 
@@ -73,7 +65,7 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 	seen := map[string]bool{}
 	// what follows the marker is host-composed from model output (agent
 	// reports), and an @ there must not attach anything
-	typed, _, _ := strings.Cut(text, attachMarker)
+	typed, _, _ := strings.Cut(text, agent.AttachMarker)
 	for _, m := range attachRef.FindAllStringSubmatch(typed, -1) {
 		rel := strings.TrimRight(m[1], ".,;:!?)")
 		if seen[rel] {
@@ -141,7 +133,7 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 	if b.Len() == 0 {
 		return text, images
 	}
-	return text + attachMarker + b.String() + "\n</attached-files>", images
+	return text + agent.AttachMarker + b.String() + "\n</attached-files>", images
 }
 
 // dropsDir holds copies of files the user dropped or pasted from outside the

@@ -460,7 +460,7 @@ lua-language-server is installed.
   `OnStepFinish`, so a cancelled or crashed turn keeps what it did; the next send runs
   `closeToolCalls` over the history first, inserting an error result after any tool call left
   unanswered (providers refuse a dangling call); a reply cut mid-arguments by a provider that
-  then drops the call (openai-compatible) gets a user note naming the pending tool instead, so
+  then drops the call (openai-compatible) gets a note naming the pending tool instead, so
   the model does not repeat the same oversized call. Every resolved model is wrapped in `idleModel`
   (providers.go): a call that makes no progress for 5 minutes is cancelled, since the HTTP
   header timeout stops counting once the status line arrives and a stalled stream would hold

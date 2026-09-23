@@ -85,7 +85,7 @@ func userText(row *store.Message) (string, bool) {
 	if _, ok := summaryOf(m); ok {
 		return "", false
 	}
-	s, _, _ := strings.Cut(concatText(m.Content), attachMarker)
+	s, _, _ := strings.Cut(concatText(m.Content), agent.AttachMarker)
 	s = strings.TrimSpace(s)
 	return s, s != ""
 }

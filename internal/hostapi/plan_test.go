@@ -349,7 +349,7 @@ func TestShellNotes(t *testing.T) {
 	}
 	waitIdle(t, h)
 	got, _ := seen.Load().(string)
-	if !strings.HasPrefix(got, "what did it print?"+attachMarker) || !strings.Contains(got, "\nshell-output\n") {
+	if !strings.HasPrefix(got, "what did it print?"+agent.AttachMarker) || !strings.Contains(got, "\nshell-output\n") {
 		t.Fatalf("model saw %q", got)
 	}
 	if h.takeShellNotes() != "" {

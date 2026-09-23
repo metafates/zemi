@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/agent"
 )
 
 // TestTaskRegEviction: a full registry forgets its oldest finished run, never
@@ -105,7 +107,7 @@ func TestReportNoticeWhereRead(t *testing.T) {
 	h.agents.mu.Lock()
 	h.agents.active = true
 	h.agents.textBuf = "so far"
-	h.agents.steering = []string{attachMarker + "\n<agent-report run=\"r1\" agent=\"explore\" status=\"finished\" description=\"x\">\nfound\n</agent-report>\n</attached-files>"}
+	h.agents.steering = []string{agent.AttachMarker + "\n<agent-report run=\"r1\" agent=\"explore\" status=\"finished\" description=\"x\">\nfound\n</agent-report>\n</attached-files>"}
 	h.agents.mu.Unlock()
 	if msgs := h.deliverSteering(); len(msgs) != 1 {
 		t.Fatalf("delivered %d messages", len(msgs))

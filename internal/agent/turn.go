@@ -105,6 +105,18 @@ func (r *Runner) CutShort() bool {
 // ErrTurnActive is returned when a turn is already running.
 var ErrTurnActive = errors.New("agent: a turn is already active")
 
+// AttachMarker starts what zemi appends to a user message for the model:
+// attachments, shell output, agent reports and notes. Everything that shows,
+// stores or recalls the user's words cuts the text there.
+const AttachMarker = "\n\n<attached-files>"
+
+// Note wraps text zemi itself sends the model (a nag, a plan handoff) behind
+// AttachMarker, in its own element, so it never reads as the user's words or
+// as unlabeled attachment text.
+func Note(text string) string {
+	return AttachMarker + "\n<zemi-note>\n" + text + "\n</zemi-note>\n</attached-files>"
+}
+
 // ErrReplyCut ends a turn whose last reply hit the output token limit.
 var ErrReplyCut = errors.New("the reply hit the output token limit (the model's max_output) and was cut off")
 
@@ -360,7 +372,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		// some providers drop a call cut mid-arguments from the step, so the
 		// history would show nothing and the model repeats the same call
 		if last := steps[len(steps)-1]; pending != "" && len(last.Content.ToolCalls()) == 0 {
-			m := r.compose("the reply was cut at the output limit while calling " + pending + "; split the work into smaller calls")
+			m := r.compose(Note("The reply hit the output limit while writing the " + pending + " call, so it never ran. Resend the work in smaller calls: for a large file, write the first part, then add the rest with edit."))
 			steered = append(steered, steeredMsg{at: len(stepMessages(steps)), msg: m})
 			save(m)
 		}

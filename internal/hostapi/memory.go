@@ -17,6 +17,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -951,7 +952,7 @@ func (h *Host) quoteInSession(sid, quote string) bool {
 			continue
 		}
 		// only what was typed: an attached file or a command's output is not the user's word
-		typed, _, _ := strings.Cut(concatText(fm.Content), attachMarker)
+		typed, _, _ := strings.Cut(concatText(fm.Content), agent.AttachMarker)
 		if strings.Contains(foldSpace(typed), want) {
 			return true
 		}

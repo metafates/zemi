@@ -485,7 +485,7 @@ func TestSteeringQueue(t *testing.T) {
 
 	// a report's markup stays out of the composer, and joined messages keep
 	// every typed part ahead of the marker readers cut at
-	report := "Background agent x finished." + attachMarker + "\n<agent-report>\nr\n</agent-report>\n</attached-files>"
+	report := "Background agent x finished." + agent.AttachMarker + "\n<agent-report>\nr\n</agent-report>\n</attached-files>"
 	scope = claim()
 	send(report, "d")
 	if st := h.AgentStream(); len(st.Steering) != 2 || st.Steering[0] != "Background agent x finished." || st.Reports != 1 {
@@ -495,7 +495,7 @@ func TestSteeringQueue(t *testing.T) {
 		t.Fatalf("queue with a report = %q", q)
 	}
 	send("e")
-	if _, text := h.nextTurn(scope); !strings.HasPrefix(text, "Background agent x finished.\n\ne"+attachMarker) || !strings.Contains(text, "<agent-report>") {
+	if _, text := h.nextTurn(scope); !strings.HasPrefix(text, "Background agent x finished.\n\ne"+agent.AttachMarker) || !strings.Contains(text, "<agent-report>") {
 		t.Fatalf("follow-up with a report = %q", text)
 	}
 
@@ -511,7 +511,7 @@ func TestSteeringQueue(t *testing.T) {
 		return b.String()
 	}
 	scope = claim()
-	send(attachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>")
+	send(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>")
 	h.AgentCancel()
 	h.nextTurn(scope)
 	if !strings.Contains(notes(), "Background agent a1 (explore) finished. It goes with your next message.") {

@@ -310,7 +310,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				continue
 			}
 			var tail string
-			s, tail, _ = strings.Cut(s, attachMarker) // show what was typed
+			s, tail, _ = strings.Cut(s, agent.AttachMarker) // show what was typed
 			for _, head := range reportHeads(tail) {
 				tr = append(tr, ChatMessage{Role: "assistant", Kind: "notice", Text: head})
 			}

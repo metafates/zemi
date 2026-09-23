@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
@@ -186,7 +187,7 @@ func TestMemoryGate(t *testing.T) {
 			quote: "keep replies short", want: "dropped: quote not found"},
 		{name: "quote only in an attachment drops", scope: "user", text: "the user wants short replies",
 			seed: func(t *testing.T, h *Host, sid string) string {
-				addText(t, h, sid, "user", "read @notes.md"+attachMarker+"\nkeep replies short\n</attached-files>")
+				addText(t, h, sid, "user", "read @notes.md"+agent.AttachMarker+"\nkeep replies short\n</attached-files>")
 				return ""
 			},
 			quote: "keep replies short", want: "dropped: quote not found"},

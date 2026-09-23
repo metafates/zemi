@@ -362,7 +362,7 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 		// do not attach (the description is model text); the user gets the
 		// head as a notice row where the model reads it (appendUserRows), so
 		// it never lands above the rows of the turn it arrives in
-		if err := h.AgentSend(attachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", run.id, def.Name, status, description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"); err != nil {
+		if err := h.AgentSend(agent.AttachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", run.id, def.Name, status, description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"); err != nil {
 			h.Notify("error", "Background agent "+run.id+" failed", err.Error())
 		}
 	})
@@ -394,7 +394,7 @@ func (h *Host) notifyReports(queued []string) {
 var reportAttrs = regexp.MustCompile(`<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)"`)
 
 // reportHeads rebuilds the notice rows from the reports behind a message's
-// attachMarker (a joined queue may carry several) and the planner's nudge,
+// agent.AttachMarker (a joined queue may carry several) and the planner's nudge,
 // so a reply that follows no user row says why; none for neither.
 func reportHeads(tail string) []string {
 	var heads []string
