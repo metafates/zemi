@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -401,13 +402,28 @@ func ReadsSecret(cmd string, secret func(path string) bool) bool {
 		}
 		use, _, _ := argUses(f)
 		safeArgs(f[1:], func(pos int, flag, a string) bool {
-			if use(pos, flag) != ArgText && (strings.ContainsAny(a, "*?[{") || secret(a)) {
+			if use(pos, flag) != ArgText && (strings.ContainsAny(a, "*?[{") || secret(expandHome(a))) {
 				found = true
 			}
 			return true
 		})
 	}
 	return found || slices.ContainsFunc(n.ReadPaths, secret)
+}
+
+// expandHome is a path word as the shell hands it over: a leading ~ or
+// $HOME names the home directory.
+func expandHome(w string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return w
+	}
+	for _, p := range []string{"~", "$HOME", "${HOME}"} {
+		if w == p || strings.HasPrefix(w, p+"/") {
+			return home + w[len(p):]
+		}
+	}
+	return w
 }
 
 var readOnlyPrograms = map[string]bool{

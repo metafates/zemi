@@ -310,7 +310,9 @@ dirs and offers `network: true` first.
 unconfined: no shell expansion outside quotes (`$` and backticks inside double quotes count),
 no write redirects (`2>/dev/null` and `2>&1` are none), no program named by a path, and every
 argument must pass `safeCommandPath` (inside the project and not secret-shaped - `h.secretPath`
-matches the resolved path too, so a symlink cannot hide one; a plain read may also reach the
+matches the resolved path too, so a symlink cannot hide one, and every home path the sandbox
+hides (`secretDirs`: `~/.kube`, `~/.config/gh`, shell histories), whose names say nothing, so
+one list drives the sandbox, the re-ask and auto's read check; a plain read may also reach the
 scratchpad and zemi's config tree, but `cd` may not enter them). Readers keep their
 `refusedFlags` and script checks, and `perm.ArgUse` says how an argument is used: a search
 pattern is no path, and a recursive search settles only over a tree with no secret-shaped file

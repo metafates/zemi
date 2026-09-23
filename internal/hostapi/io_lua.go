@@ -35,14 +35,32 @@ import (
 )
 
 // secretPath matches the §9 secret shapes on the path as written and on the
-// resolved one, so an innocently named symlink cannot hide a secret.
+// resolved one, so an innocently named symlink cannot hide a secret, and
+// the home paths the sandbox hides (secretDirs), whose names say nothing.
 func (h *Host) secretPath(p string) bool {
 	if perm.PathIsSecret(p) {
 		return true
 	}
-	real := perm.RealPath(p)
-	return real == "" || perm.PathIsSecret(real)
+	real := perm.CanonPath(p)
+	return real == "" || perm.PathIsSecret(real) || slices.ContainsFunc(homeSecrets(), func(root string) bool {
+		_, ok := perm.Under(root, real)
+		return ok
+	})
 }
+
+// homeSecrets are the secretDirs under $HOME, resolved once: home does not
+// move under a running zemi.
+var homeSecrets = sync.OnceValue(func() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	roots := make([]string, len(secretDirs))
+	for i, s := range secretDirs {
+		roots[i] = perm.CanonPath(filepath.Join(home, s))
+	}
+	return roots
+})
 
 // inJail reports whether path is inside one of the jail roots.
 func (h *Host) inJail(path string, roots ...string) bool {

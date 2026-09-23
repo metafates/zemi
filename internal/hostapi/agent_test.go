@@ -1489,6 +1489,9 @@ func TestAlwaysRuleSkipsSecrets(t *testing.T) {
 		{"cat main.go", perm.Allow},
 		{"cat .env", perm.Deny},
 		{"cat ~/.ssh/id_rsa", perm.Deny},
+		// no secret name, but a path the sandbox hides from confined commands
+		{"cat ~/.kube/config", perm.Deny},
+		{"cat $HOME/.config/gh/hosts.yml", perm.Deny},
 		{"cat .e*", perm.Deny},
 		{"grep -r secret .", perm.Allow},
 		{"make .env", perm.Allow},
