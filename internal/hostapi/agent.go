@@ -1122,6 +1122,11 @@ const todoNagAfter = 8
 // user's own message. Only the main agent's calls during its turn count:
 // a subagent's would arm the nag while nobody can be nudged.
 func (h *Host) maybeNagTodos() {
+	// a call esc ended arms nothing: PrepareStep would persist the nag for
+	// a step that never runs, ahead of the user's next message
+	if t := h.turn.Load(); t != nil && t.ctx.Err() != nil {
+		return
+	}
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()

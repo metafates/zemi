@@ -819,6 +819,19 @@ func TestTodoNag(t *testing.T) {
 		}
 	})
 
+	t.Run("a call the interrupt ended arms nothing", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		seedSession(t, h)
+		set(h, both)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		h.turn.Store(&turnScope{ctx: ctx, cancel: cancel})
+		engage(h, todoNagAfter)
+		if got := steering(h); len(got) != 0 {
+			t.Fatalf("a nag for a cancelled turn would lead the next message: %q", got)
+		}
+	})
+
 	t.Run("a closed session takes its tracker with it", func(t *testing.T) {
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
