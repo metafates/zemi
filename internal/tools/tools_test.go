@@ -742,6 +742,19 @@ func TestOutputLimits(t *testing.T) {
 	}
 }
 
+func TestCmdText(t *testing.T) {
+	for _, c := range []struct{ name, raw, want string }{
+		{"tqdm frames lead with \\r", "\r  0%|   | 0/80\r 50%|#  | 40/80\r100%|###| 80/80\ntrained\n", "100%|###| 80/80\ntrained"},
+		{"curl meter ends frames with \\r", "  % Total\n  0  0\r 40 10\r100 25\r\ndone", "  % Total\n100 25\ndone"},
+		{"crlf line ends", "a\r\nb\r\n", "a\nb"},
+		{"ansi around a frame", "\x1b[32m1/2\x1b[0m\r\x1b[32m2/2\x1b[0m", "2/2"},
+	} {
+		if got := cmdText(c.raw); got != c.want {
+			t.Errorf("%s: cmdText = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // TestToolSchemasAreProperties guards the fantasy contract: Parameters is
 // the properties map (fantasy adds type/properties around it) and arrays
 // declare items, or strict providers refuse every request.

@@ -52,7 +52,7 @@ func (p *Pipeline) progress(ctx context.Context, buf *proc.Buffer) func() {
 			}
 			raw, _ := buf.Snapshot()
 			line := ""
-			for l := range strings.SplitSeq(strings.TrimRight(ansi.Strip(raw), "\n"), "\n") {
+			for l := range strings.SplitSeq(cmdText(raw), "\n") {
 				if strings.TrimSpace(l) != "" {
 					line = l
 				}
@@ -211,7 +211,23 @@ func cmdText(raw string) string {
 	if looksBinary(raw) {
 		return fmt.Sprintf("(binary output, %d bytes)", len(raw))
 	}
-	return strings.TrimRight(ansi.Strip(raw), "\n")
+	return strings.TrimRight(lastFrames(ansi.Strip(raw)), "\n")
+}
+
+// lastFrames keeps what a terminal shows of each line: the text after its
+// last carriage return, so a progress bar is its final frame. NOTE: a frame
+// shorter than the one it overwrites loses the old frame's tail, which a
+// terminal would still show; progress bars pad their frames.
+func lastFrames(s string) string {
+	if !strings.Contains(s, "\r") {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		l = strings.TrimRight(l, "\r")
+		lines[i] = l[strings.LastIndexByte(l, '\r')+1:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // cmdMaxOut is what a command's output may take in a tool result; the rest
