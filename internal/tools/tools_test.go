@@ -645,15 +645,20 @@ func TestValidationErrors(t *testing.T) {
 		t.Fatalf("non-object: %+v", resp)
 	}
 	// a misspelt field would run the call with its default and report success
-	info := fantasy.ToolInfo{Parameters: map[string]any{"command": map[string]any{"type": "string"}, "timeout_ms": map[string]any{"type": "number"}}}
+	info := fantasy.ToolInfo{Parameters: map[string]any{
+		"command": map[string]any{"type": "string"}, "timeout_ms": map[string]any{"type": "number"},
+		// an array whose items admit extra fields, under a root that does not
+		"env": map[string]any{"type": "array", "items": map[string]any{"properties": map[string]any{"name": map[string]any{"type": "string"}}, "additionalProperties": true}},
+	}}
 	for _, c := range []struct {
 		input string
 		open  bool
 		want  string
 	}{
-		{`{"command":"ls","timeout":1}`, false, `unknown field "timeout" (have command, timeout_ms)`},
+		{`{"command":"ls","timeout":1}`, false, `unknown field "timeout" (have command, env, timeout_ms)`},
 		{`{"command":"ls","timeout":null}`, false, ""},
 		{`{"command":"ls","timeout":1}`, true, ""},
+		{`{"command":"ls","env":[{"name":"a","value":1}]}`, false, ""},
 	} {
 		_, err := ParseInput(info, c.input, c.open)
 		if got := fmt.Sprint(err); (err != nil && got != c.want) || (err == nil && c.want != "") {

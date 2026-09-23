@@ -629,7 +629,7 @@ func validateFields(props map[string]any, required []string, input map[string]an
 		for i, e := range list {
 			if m, ok := e.(map[string]any); ok {
 				iprops, _ := items["properties"].(map[string]any)
-				if err := validateFields(iprops, req, m, fmt.Sprintf("%s%s[%d].", at, k, i), open); err != nil {
+				if err := validateFields(iprops, req, m, fmt.Sprintf("%s%s[%d].", at, k, i), open || SchemaOpen(items)); err != nil {
 					return err
 				}
 			}
