@@ -306,6 +306,37 @@ func TestDiffRows(t *testing.T) {
 	}
 }
 
+func TestHighlight(t *testing.T) {
+	h, _ := newTestHost(t)
+	for _, c := range []struct {
+		name, text, lang string
+		width            int
+		want             string // rows joined by /, each segment as [text|hl]
+	}{
+		{"keywords and comments", "for f in a; do cat $f; done # why", "bash", 0,
+			"[for|Accent][ f in a|Normal][;|Dim][ |Normal][do|Accent][ cat $f|Normal][;|Dim][ |Normal][done|Accent][ |Normal][# why|Dim]"},
+		{"a row per line", "cat <<EOF\nhi\nEOF", "bash", 0, "[cat <<EOF|Normal]/[hi|Normal]/[EOF|Normal]"},
+		{"no lexer", "x\t<y>\x1b[31m", "nope", 0, "[x    <y>|]"},
+		{"wraps", "echo alpha beta gamma", "bash", 12, "[echo alpha |Normal]/[beta gamma|Normal]"},
+	} {
+		rows := h.Highlight(c.text, c.lang, c.width)
+		var got []string
+		for _, row := range rows {
+			var b strings.Builder
+			for _, s := range row {
+				fmt.Fprintf(&b, "[%s|%s]", s.Text, s.HL)
+			}
+			got = append(got, b.String())
+		}
+		if g := strings.Join(got, "/"); g != c.want {
+			t.Errorf("%s: %s", c.name, g)
+		}
+		if c.lang == "bash" && copyText(rows) != c.text {
+			t.Errorf("%s: copies %q", c.name, copyText(rows))
+		}
+	}
+}
+
 // TestMarkdownTheme: markdown draws only the theme's colors, in the dark
 // and the light variant, blocks sit one blank row apart and a quote keeps
 // its bar on every row it wraps to.

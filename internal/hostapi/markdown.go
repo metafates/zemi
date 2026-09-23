@@ -16,6 +16,7 @@ import (
 	gansi "charm.land/glamour/v2/ansi"
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/formatters"
+	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -64,6 +65,17 @@ func (c *markdownCache) put(k string, v [][]Segment) {
 			c.bytes += len(s.Text) + len(s.HL) + 32
 		}
 	}
+}
+
+func (c *markdownCache) get(k string) ([][]Segment, bool) {
+	if v, ok := c.lines[k]; ok {
+		return v, true
+	}
+	v, ok := c.prev[k]
+	if ok {
+		c.put(k, v)
+	}
+	return v, ok
 }
 
 // Markdown renders text as styled segment lines at most width cells wide
@@ -117,11 +129,7 @@ func settledPrefix(s string) int {
 // when it holds them. The cache mutex must be held.
 func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, width int) [][]Segment {
 	lk := fmt.Sprintf("%s|%d|%s", styleKey, width, text)
-	if lines, ok := c.lines[lk]; ok {
-		return lines
-	}
-	if lines, ok := c.prev[lk]; ok {
-		c.put(lk, lines)
+	if lines, ok := c.get(lk); ok {
 		return lines
 	}
 	// a tab occupies no cell once drawn into the buffer, so code would lose
@@ -370,39 +378,30 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 	// Code takes the groups through a chroma style of its own: glamour
 	// registers its Chroma config once per process, so a theme switch would
 	// keep the first theme's colors.
-	var code [5]gansi.StylePrimitive
-	for i, g := range []string{"Normal", "Accent", "Dim", "DiffAdd", "DiffDel"} {
-		apply(&code[i], g)
-	}
-	code[0].BackgroundColor = nil // the canvas already paints Normal's
-	entry := func(p gansi.StylePrimitive, italic bool) string {
+	entries := chroma.StyleEntries{}
+	for _, cg := range codeGroups {
+		var p gansi.StylePrimitive
+		apply(&p, cg.group)
 		var e []string
 		// chroma takes hex only: a group in the terminal's own colors
 		// falls back to the text color
 		if p.Color != nil && strings.HasPrefix(*p.Color, "#") {
 			e = append(e, *p.Color)
 		}
-		if p.BackgroundColor != nil && strings.HasPrefix(*p.BackgroundColor, "#") {
+		// the canvas already paints Normal's background
+		if p.BackgroundColor != nil && strings.HasPrefix(*p.BackgroundColor, "#") && cg.tok != chroma.Text {
 			e = append(e, "bg:"+*p.BackgroundColor)
 		}
-		if italic {
+		if cg.tok == chroma.Comment {
 			e = append(e, "italic")
 		}
-		return strings.Join(e, " ")
+		entries[cg.tok] = strings.Join(e, " ")
 	}
 	cfg.CodeBlock.Theme = "zemi:" + key.String()
 	// NOTE: every distinct theme key stays registered for the process; a
 	// session that sets thousands of highlight overrides would grow it.
 	if _, ok := styles.Registry[cfg.CodeBlock.Theme]; !ok {
-		s, err := chroma.NewStyle(cfg.CodeBlock.Theme, chroma.StyleEntries{
-			chroma.Text:            entry(code[0], false),
-			chroma.Keyword:         entry(code[1], false),
-			chroma.Comment:         entry(code[2], true),
-			chroma.Punctuation:     entry(code[2], false),
-			chroma.Operator:        entry(code[2], false),
-			chroma.GenericInserted: entry(code[3], false),
-			chroma.GenericDeleted:  entry(code[4], false),
-		})
+		s, err := chroma.NewStyle(cfg.CodeBlock.Theme, entries)
 		if err != nil {
 			cfg.CodeBlock.Theme = ""
 		} else {
@@ -410,6 +409,79 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 		}
 	}
 	return cfg, key.String()
+}
+
+// codeGroups is how code draws: the chroma style markdownStyle registers
+// for code blocks and the groups Highlight names both come from it.
+var codeGroups = []struct {
+	tok   chroma.TokenType
+	group string
+}{
+	{chroma.Text, "Normal"}, {chroma.Keyword, "Accent"}, {chroma.Comment, "Dim"},
+	{chroma.Punctuation, "Dim"}, {chroma.Operator, "Dim"},
+	{chroma.GenericInserted, "DiffAdd"}, {chroma.GenericDeleted, "DiffDel"},
+}
+
+// Highlight draws code in lang as one row per line in codeGroups' groups,
+// each wrapped to width when it is over 0 (zemi.ui.highlight). A lang chroma
+// has no lexer for draws plain; rows are cached with the markdown ones.
+func (h *Host) Highlight(text, lang string, width int) [][]Segment {
+	c := &h.md
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	k := fmt.Sprintf("\x00%s|%d|%s", lang, width, text)
+	if rows, ok := c.get(k); ok {
+		return rows
+	}
+	rows := highlight(text, lang)
+	if width > 0 {
+		var wrapped [][]Segment
+		for _, r := range rows {
+			wrapped = append(wrapped, WrapSegs(r, width)...)
+		}
+		rows = wrapped
+	}
+	c.put(k, rows)
+	return rows
+}
+
+func highlight(text, lang string) [][]Segment {
+	lexer := lexers.Get(lang)
+	if lexer == nil {
+		return plainLines(text)
+	}
+	text = sanitize.String(strings.ReplaceAll(text, "\t", "    "))
+	it, err := lexer.Tokenise(nil, text)
+	if err != nil {
+		return plainLines(text)
+	}
+	rows := make([][]Segment, 1, strings.Count(text, "\n")+2)
+	for tok := it(); tok != chroma.EOF; tok = it() {
+		group := "Normal"
+	find:
+		for _, t := range []chroma.TokenType{tok.Type, tok.Type.SubCategory(), tok.Type.Category()} {
+			for _, cg := range codeGroups {
+				if cg.tok == t {
+					group = cg.group
+					break find
+				}
+			}
+		}
+		for i, part := range strings.Split(tok.Value, "\n") {
+			if i > 0 {
+				rows = append(rows, nil)
+			}
+			row := rows[len(rows)-1]
+			if n := len(row); n > 0 && row[n-1].HL == group {
+				row[n-1].Text += part
+			} else if part != "" {
+				row = append(row, Segment{Text: part, HL: group})
+			}
+			rows[len(rows)-1] = row
+		}
+	}
+	// a lexer may end the text in a line break it did not have
+	return rows[:min(len(rows), strings.Count(text, "\n")+1)]
 }
 
 // color resolves a color reference for glamour: raw hex, a palette name, or

@@ -251,8 +251,9 @@ zemi.ui.widget.add({
       -- a collapsed row is one line; an open one keeps a heredoc's lines
       ---@type string[]
       local more = {}
+      local body = input
       if open then
-        local body = input:gsub("%s+$", "")
+        body = input:gsub("%s+$", "")
         for l in (body .. "\n"):gmatch("(.-)\n") do more[#more + 1] = l end
         input = table.remove(more, 1) or ""
       else
@@ -266,11 +267,20 @@ zemi.ui.widget.add({
       local function fit(text, room) return open and text or fmt.clip(text, room) end
       local verb, rest = fmt.head(name, label)
       if label == "" and input ~= "" then rest = " " .. input end
+      -- a command is highlighted where it is what the row reads, the head and
+      -- an opened row; collapsed under its label it stays a Comment detail
+      local code = name == "bash" and input ~= "" and (open or label == "")
+        and zemi.ui.highlight(open and body or fit(input, width - fmt.cells(verb) - 13), "bash") or nil
       -- an agent's rows open its transcript (ids must differ between adjacent rows),
       -- every other row (file tools included) expands the call
       local click = (t.run or "") ~= "" and ("agent:" .. t.run) or ("tool:" .. idx)
       local head = { mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = "AgentToolName" } }
-      if rest ~= "" then head[3] = { text = fit(rest, width - fmt.cells(verb) - 12), hl = "Normal" } end
+      if code and label == "" then
+        head[3] = { text = " ", hl = "Normal" }
+        for _, sg in ipairs(code[1] or {}) do head[#head + 1] = sg end
+      elseif rest ~= "" then
+        head[3] = { text = fit(rest, width - fmt.cells(verb) - 12), hl = "Normal" }
+      end
       if t.status == "run" and not asked and (t.elapsed or 0) >= 1 then
         head[#head + 1] = { text = " · " .. fmt.duration(t.elapsed, true), hl = "Comment" }
       end
@@ -278,16 +288,20 @@ zemi.ui.widget.add({
       lines[#lines + 1] = head
       -- under the head one corner, every later row four cells in
       local corner = true
-      ---@param text string
+      ---@param text string|zemi.Line
       ---@param hl string
       local function detail(text, hl)
-        lines[#lines + 1] = { { text = corner and "  ⎿ " or "    ", hl = "Comment", copy = false }, { text = text, hl = hl, click = click, hover = false } }
+        local row = { { text = corner and "  ⎿ " or "    ", hl = "Comment", copy = false } }
+        for _, sg in ipairs(type(text) == "table" and text or { { text = text, hl = hl } }) do
+          row[#row + 1] = { text = sg.text, hl = sg.hl, click = click, hover = false }
+        end
+        lines[#lines + 1] = row
         corner = false
       end
       -- the command a description stands for, then progress, then the job
       -- a timed-out command went on as (the phrase is tools.JobHandoff)
-      if label ~= "" and input ~= "" then detail(fit(input, width - 6), "Comment") end
-      for _, l in ipairs(more) do detail(l, "Comment") end
+      if label ~= "" and input ~= "" then detail(code and code[1] or fit(input, width - 6), "Comment") end
+      for i, l in ipairs(more) do detail(code and code[i + 1] or l, "Comment") end
       if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), width - 6), "Comment") end
       local job = t.status == "bg" and ((t.output or ""):match("moved to the background as (job%-%d+)") or (t.output or ""):match("^started (job%-%d+)"))
       if job then detail("running as " .. job, "Comment") end

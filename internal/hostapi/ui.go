@@ -347,6 +347,10 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		L.Push(linesTable(L, h.Markdown(L.CheckString(1), L.CheckInt(2))))
 		return 1
 	}))
+	tb.RawSetString("highlight", L.NewFunction(func(L *glua.LState) int {
+		L.Push(linesTable(L, h.Highlight(L.CheckString(1), L.CheckString(2), L.OptInt(3, 0))))
+		return 1
+	}))
 	tb.RawSetString("wrap", L.NewFunction(func(L *glua.LState) int {
 		L.Push(linesTable(L, WrapText(L.CheckString(1), L.CheckInt(2))))
 		return 1

@@ -991,7 +991,10 @@ UI extensibility contract:
   markdown: `zemi.ui.wrap(text, width)` wraps it plain, with the same
   `soft_wrap` marks, and `zemi.ui.diff(text, width)` draws a unified diff in
   the `Diff*` groups, the renderer the permission prompt draws in its own
-  chrome. Glamour's styles come from the active theme's groups (`Normal`,
+  chrome. `zemi.ui.highlight(text, lang, width?)` lexes code with chroma
+  into group names from the same table as the code blocks' chroma style
+  (how the chat draws a bash command), plain rows when no lexer matches.
+  Glamour's styles come from the active theme's groups (`Normal`,
   `Markdown*`, `Rule`, `Dim`, `Accent` for code keywords and `DiffAdd`/`DiffDel`
   for a diff fence's lines), the theme's
   `-light` variant on a light terminal; its output is parsed back into segments whose `hl`
