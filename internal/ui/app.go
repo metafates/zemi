@@ -950,8 +950,14 @@ func (a *App) floatPopup(lay screenLayout, h, w int) ([][]hostapi.Segment, int, 
 	switch {
 	case a.palette.open:
 		render, size, hints = a.paletteRows, &a.palette.size, []hintPair{{"enter", "run"}, {"tab", "complete"}, {"esc", "close"}}
+		if a.palette.count() == 0 { // enter still runs the typed line
+			hints = slices.Delete(hints, 1, 2)
+		}
 	case a.completion.shown():
 		render, size, hints = a.completionRows, &a.completion.size, []hintPair{{"enter", "pick"}, {"esc", "close"}}
+		if a.completion.count() == 0 {
+			hints = hints[1:]
+		}
 	default:
 		return nil, 0, uv.Rectangle{}
 	}
