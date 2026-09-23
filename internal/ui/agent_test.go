@@ -900,13 +900,18 @@ func TestWorkingRowMascot(t *testing.T) {
 	if a, b := row(0), row(800); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@..─") {
 		t.Fatalf("the eyes do not read: %q then %q", a, b)
 	}
-	// the status sits at the right end and the label stays put as the clock
-	// gains digits
+	// the status is centered and the label stays put as the clock gains digits
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 5 * time.Second})
 	short := row(500)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 605 * time.Second})
-	if r := row(500); !strings.HasSuffix(r, " Working · esc interrupt · 10m 05s ") || strings.Index(r, "Working") != strings.Index(short, "Working") {
-		t.Fatalf("the status is not at the right end or slid: %q then %q", short, r)
+	r := row(500)
+	const status = " Working · esc interrupt · 10m 05s "
+	at := strings.Index(r, status)
+	if at < 0 || at != strings.Index(short, "Working")-1 {
+		t.Fatalf("the status slid: %q then %q", short, r)
+	}
+	if pre, post := len([]rune(r[:at])), len([]rune(r[at+len(status):])); abs(pre-post) > 1 {
+		t.Fatalf("the status is not centered: %q", r)
 	}
 	// the open prompt says what answers it, so the rule shrinks to the snail
 	// alone: no label, and no esc, which the prompt takes

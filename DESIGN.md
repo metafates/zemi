@@ -1166,10 +1166,10 @@ provenance string.
   rule, the state in its eyes alone: swapping while the model thinks or
   tools run, `??` while the user is asked, then for a few seconds `^^`
   when the turn finished ok, `><` when it failed and idle eyes when it was
-  cancelled; at the right end a shimmering
+  cancelled; centered on the rule a shimmering
   label naming the current activity, interrupt key, queue depth, elapsed
-  time, the ticking part last with the cells it grows to kept as rule, so
-  the label never slides; it reads `ctx.frame`, `ctx.ended`,
+  time, the ticking part keeping the cells it grows to, so the block is
+  centered once and the label never slides; it reads `ctx.frame`, `ctx.ended`,
   `ctx.cancelling`, `interrupt_armed`, `view`, `editing`, `waiting` and
   `agent.retry`/`compacting`),
   the statusline below. The mascot is always drawn and the frame's height

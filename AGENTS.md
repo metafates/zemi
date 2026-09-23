@@ -645,7 +645,7 @@ layout does not draw. A `composer` node with `frame` draws the square frame arou
 and puts the first line of the widgets in its `top`, `left` and `right` regions into the rules
 (`composerFrame`, ui/composer.go; `top` gets the whole rule, whose left corner holds the
 snail of `defaultui/snail.lua`, its eyes showing the state, how a turn ended included
-(`ctx.ended`), and whose right end holds the turn's status), which is where the shipped layout keeps the mascot and the statusline: agent
+(`ctx.ended`), and whose middle holds the turn's status), which is where the shipped layout keeps the mascot and the statusline: agent
 state changes what a rule says, never how many rows the frame takes, so nothing above it
 reflows. The statusline clusters draw from their outer edges by widget priority and a short
 row drops the highest first (`fitClusters`), so what lasts sits outermost and never moves.

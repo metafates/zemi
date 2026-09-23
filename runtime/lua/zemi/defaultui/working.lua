@@ -5,10 +5,10 @@ local snail = require("zemi.defaultui.snail")
 local READS = { read = true, grep = true, glob = true, fetch = true, web_search = true, skill = true }
 
 -- The composer frame's top rule, all ctx.width cells of it: the mascot in the
--- left corner in the state of the turn and, at the right end, a shimmering
+-- left corner in the state of the turn and, centered on the rule, a shimmering
 -- label naming what the agent does, the interrupt key, the queue depth and
--- the elapsed time. The label grows left into the rule; a part that ticks or
--- flips keeps the cells it can grow to, so the label never slides. The label
+-- the elapsed time. A part that ticks or flips keeps the cells it can grow
+-- to, so the block is centered once and the label never slides. The label
 -- stays away for the first 300ms so instant turns do not flash it, and the
 -- eyes say how the turn ended for a few seconds after.
 
@@ -105,11 +105,12 @@ zemi.ui.widget.add({
     local after = #texts > 0 and " · " .. table.concat(texts, " · ") or ""
     local text = label .. after ~= "" and fmt.cells(label) + room() + 2 or 0
     if state ~= shown then shown, since = state, ctx.frame end
-    local row = snail.rule(state, ctx.frame - since, ctx.width - text)
+    local left = text > 0 and math.floor((ctx.width - text) / 2) or ctx.width
+    local row = snail.rule(state, ctx.frame - since, left)
     if text > 0 then
       row[#row + 1] = { text = " " .. label, hl = "Comment", effect = "shimmer" }
       row[#row + 1] = { text = after .. " ", hl = "Comment" }
-      row[#row + 1] = { text = string.rep("─", room() - fmt.cells(after)), hl = "Rule", copy = false }
+      row[#row + 1] = { text = string.rep("─", ctx.width - left - fmt.cells(label .. after) - 2), hl = "Rule", copy = false }
     end
     return { row }
   end,
