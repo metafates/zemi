@@ -123,6 +123,57 @@ func TestConcurrentOpen(t *testing.T) {
 	}
 }
 
+// TestSweepVacuum: the open that ages out checkpoints rewrites the file
+// only when they were a quarter of it.
+func TestSweepVacuum(t *testing.T) {
+	for _, c := range []struct {
+		name         string
+		aged, kept   int
+		wantVacuumed bool
+	}{
+		{"a few pages", 1, 20, false},
+		{"most of the file", 20, 1, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "zemi.db")
+			db, err := Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := db.CreateSession("s", "", "t", ""); err != nil {
+				t.Fatal(err)
+			}
+			blob := make([]byte, 16<<10)
+			for i := range c.aged + c.kept {
+				m := &Message{SessionID: "s", Role: "user", PartsJSON: `[]`}
+				if err := db.AddMessage(m); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.AddCheckpoint("s", m.ID, "/f", true, blob); err != nil {
+					t.Fatal(err)
+				}
+				if i < c.aged {
+					if _, err := db.db.Exec(`UPDATE checkpoints SET created_at = 0 WHERE message_id = ?`, m.ID); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			db.Close()
+			if db, err = Open(path); err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			var free int
+			if err := db.db.QueryRow(`PRAGMA freelist_count`).Scan(&free); err != nil {
+				t.Fatal(err)
+			}
+			if (free == 0) != c.wantVacuumed {
+				t.Fatalf("%d free pages, want vacuumed %v", free, c.wantVacuumed)
+			}
+		})
+	}
+}
+
 // TestRetentionSweep: opening drops checkpoints past CheckpointTTL, keeps
 // the ones inside it, and never deletes a session (sessionTTL is off).
 func TestRetentionSweep(t *testing.T) {

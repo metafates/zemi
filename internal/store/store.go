@@ -227,27 +227,25 @@ const (
 	sessionTTL = 0
 )
 
-// sweep drops aged rows and reclaims their pages when it removed any.
+// sweep drops aged rows and reclaims their pages once enough are free.
 func (s *DB) sweep() error {
-	cps, err := s.db.Exec(`DELETE FROM checkpoints WHERE created_at < ?`,
-		time.Now().Add(-CheckpointTTL).UnixMilli())
-	if err != nil {
+	if _, err := s.db.Exec(`DELETE FROM checkpoints WHERE created_at < ?`,
+		time.Now().Add(-CheckpointTTL).UnixMilli()); err != nil {
 		return fmt.Errorf("store: sweep checkpoints: %w", err)
 	}
-	var m int64
 	if sessionTTL > 0 {
-		sess, err := s.db.Exec(`DELETE FROM sessions WHERE updated_at < ?`,
-			time.Now().Add(-sessionTTL).UnixMilli())
-		if err != nil {
+		if _, err := s.db.Exec(`DELETE FROM sessions WHERE updated_at < ?`,
+			time.Now().Add(-sessionTTL).UnixMilli()); err != nil {
 			return fmt.Errorf("store: sweep sessions: %w", err)
 		}
-		m, _ = sess.RowsAffected()
 	}
-	n, _ := cps.RowsAffected()
-	if n+m == 0 {
-		return nil
+	// NOTE: VACUUM rewrites the whole file before the UI starts, so it waits
+	// until a quarter of the pages are free; SQLite reuses the rest, and
+	// DeleteSession vacuums on its own so a deleted conversation is gone.
+	var free, pages int64
+	if err := s.db.QueryRow(`SELECT * FROM pragma_freelist_count(), pragma_page_count()`).Scan(&free, &pages); err != nil || free*4 <= pages {
+		return err
 	}
-	// VACUUM rewrites the whole file; only the rare open that deleted pays it
 	if _, err := s.db.Exec(`VACUUM`); err != nil {
 		return fmt.Errorf("store: vacuum: %w", err)
 	}
