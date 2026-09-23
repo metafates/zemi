@@ -105,10 +105,11 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	line, _ := input["line"].(float64)
-	off, note, err := findSymbol(string(text), symbol, int(line))
+	off, lines, err := findSymbol(string(text), symbol, int(line))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
+	note := pickNote(lines)
 	params := map[string]any{"textDocument": doc, "position": lsp.Pos(string(text), off)}
 	switch action {
 	case "definition", "implementation":
@@ -130,6 +131,14 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		locs := decodeLocations(raw)
 		if len(locs) == 0 {
 			return fantasy.NewTextResponse("no references to " + symbol + note), nil
+		}
+		// the list already shows every line the note would name
+		if len(lines) > 1 && !slices.ContainsFunc(lines[1:], func(l int) bool {
+			return !slices.ContainsFunc(locs, func(loc lsp.Location) bool {
+				return absPath(loc.Path()) == absPath(path) && loc.Range.Start.Line+1 == l
+			})
+		}) {
+			note = ""
 		}
 		return fantasy.NewTextResponse(fmt.Sprintf("%d references\n%s%s", len(locs), formatLocations(locs, 100), note)), nil
 	case "call_hierarchy":
@@ -239,7 +248,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 				continue
 			}
 			if v := p.Check(Request{Tool: "lsp", Subject: "fs.write", Arg: f, Reason: "rename " + symbol + " to " + newName}); v.Decision != perm.Allow {
-				return fantasy.NewTextErrorResponse(DeniedText(v, "rename touches "+f+"; nothing was changed")), nil
+				return fantasy.NewTextErrorResponse(DeniedText(v, "rename touches "+workRel(f)+"; nothing was changed")), nil
 			}
 		}
 		var b strings.Builder
@@ -247,10 +256,10 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		for _, f := range slices.Sorted(maps.Keys(byPath)) {
 			n, err := applyTextEdits(p, f, byPath[f])
 			if err != nil {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("%s: %v (files before it were changed)", f, err)), nil
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("%s: %v (files before it were changed)", workRel(f), err)), nil
 			}
 			total += n
-			fmt.Fprintf(&b, "%s (%d)\n", f, n)
+			fmt.Fprintf(&b, "%s (%d)\n", workRel(f), n)
 			// the server must see the new text, or the next query (a rename
 			// back, references) answers from the old one
 			if err := s.Open(f); err != nil {
@@ -264,36 +273,44 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 
 // findSymbol returns the byte offset of name in text as a whole word: the
 // occurrence on line when given, else the first outside a comment line (a
-// server finds no identifier in a comment), with a note when there were
-// others to choose from.
-func findSymbol(text, name string, line int) (off int, note string, err error) {
+// server finds no identifier in a comment). lines lists the used line and up
+// to seven others when there was a choice.
+func findSymbol(text, name string, line int) (off int, lines []int, err error) {
 	re := regexp.MustCompile(`(^|[^\pL\pN_])(` + regexp.QuoteMeta(name) + `)($|[^\pL\pN_])`)
 	var offs []int
 	for _, m := range re.FindAllStringSubmatchIndex(text, -1) {
 		offs = append(offs, m[4])
 	}
 	if len(offs) == 0 {
-		return 0, "", errors.New(name + " does not appear in the file as a whole word")
+		return 0, nil, errors.New(name + " does not appear in the file as a whole word")
 	}
 	if line > 0 {
 		for _, o := range offs {
 			if lsp.Pos(text, o).Line+1 == line {
-				return o, "", nil
+				return o, nil, nil
 			}
 		}
-		return 0, "", fmt.Errorf("%s is not on line %d", name, line)
+		return 0, nil, fmt.Errorf("%s is not on line %d", name, line)
 	}
 	if i := slices.IndexFunc(offs, func(o int) bool { return !commentLine(text, o) }); i > 0 {
 		offs = append(offs[i:], offs[:i]...)
 	}
 	if len(offs) > 1 {
-		var lines []string
 		for _, o := range offs[:min(len(offs), 8)] {
-			lines = append(lines, fmt.Sprint(lsp.Pos(text, o).Line+1))
+			lines = append(lines, lsp.Pos(text, o).Line+1)
 		}
-		note = fmt.Sprintf("\n(used the occurrence on line %s; it also appears on lines %s: pass line to pick one)", lines[0], strings.Join(lines[1:], ", "))
 	}
-	return offs[0], note, nil
+	return offs[0], lines, nil
+}
+
+// pickNote tells the model which occurrence findSymbol used and where else
+// the name appears.
+func pickNote(lines []int) string {
+	if len(lines) < 2 {
+		return ""
+	}
+	others := strings.Trim(fmt.Sprint(lines[1:]), "[]")
+	return fmt.Sprintf("\n(used the occurrence on line %d; it also appears on line%s %s: pass line to pick one)", lines[0], plural(len(lines)-1), strings.ReplaceAll(others, " ", ", "))
 }
 
 // commentLine reports whether the line holding off starts like a comment.
