@@ -1628,9 +1628,12 @@ func (h *Host) checkInits() error {
 		dirs = append(dirs, h.Dirs.ProjectConfigDir())
 	}
 	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
 		p := filepath.Join(dir, "init.lua")
 		src, err := os.ReadFile(p)
-		if dir == "" || err != nil {
+		if err != nil {
 			continue // the boot step skips or reports it
 		}
 		_, err = parse.Parse(bytes.NewReader(src), p)
