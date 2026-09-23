@@ -557,6 +557,8 @@ function zemi.event.on(name, fn, opts) end
 function zemi.event.off(id) end
 
 --- Emit a `user.*` event, the only names Lua may emit from any origin.
+--- Handlers get a copy made the way JSON copies: a table that is not a
+--- sequence arrives with string keys (`{ [7] = "x" }` reads as `ev["7"]`).
 ---@param name string
 ---@param payload? table
 function zemi.event.emit(name, payload) end
