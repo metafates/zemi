@@ -904,8 +904,8 @@ func TestWorkingRowMascot(t *testing.T) {
 	// gains digits
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 5 * time.Second})
 	short := row(500)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 65 * time.Second})
-	if r := row(500); !strings.HasSuffix(r, " Working · esc interrupt · 1m 05s ") || strings.Index(r, "Working") != strings.Index(short, "Working") {
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 605 * time.Second})
+	if r := row(500); !strings.HasSuffix(r, " Working · esc interrupt · 10m 05s ") || strings.Index(r, "Working") != strings.Index(short, "Working") {
 		t.Fatalf("the status is not at the right end or slid: %q then %q", short, r)
 	}
 	// the open prompt says what answers it, so the rule shrinks to the snail
@@ -940,9 +940,9 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	// a narrow rule drops the queue depth before the interrupt key
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Steering: []string{"x"}})
-	app.Update(tea.WindowSizeMsg{Width: 44, Height: 16})
+	app.Update(tea.WindowSizeMsg{Width: 45, Height: 16})
 	app.renderSync(t)
-	if r := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 44)); !strings.Contains(r, " Working · esc interrupt · 20s ─") {
+	if r := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 45)); !strings.Contains(r, " Working · esc interrupt · 20s ─") {
 		t.Fatalf("the narrow rule lost the interrupt key: %q", r)
 	}
 }

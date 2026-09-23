@@ -55,13 +55,13 @@ zemi.ui.widget.add({
       end
       if label == "Working" and ag.reasoning ~= "" and ag.text == "" then label, state = "Thinking", "thinking" end
       ---@type { [1]: string, [2]: integer, [3]: integer }?
-      local tick = { fmt.duration(ag.elapsed, true), 5, 6 }
+      local tick = { fmt.duration(ag.elapsed, true), 5, 7 }
       if ag.compacting then label, state = "Compacting", "reading" end
       if ag.retry then
         label, state = "Retrying", "error"
         parts = { { "attempt " .. ag.retry.attempt, 3 } }
         if ag.retry.why ~= "" then parts[#parts + 1] = { ag.retry.why, 2 } end
-        tick = { ag.retry.next_in > 0 and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true) or "retrying now", 5, 15 }
+        tick = { ag.retry.next_in > 0 and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true) or "retrying now", 5, 18 }
       end
       if ctx.cancelling then label = "Cancelling" end
       if ctx.editing ~= "" then
