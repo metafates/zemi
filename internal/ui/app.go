@@ -319,6 +319,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// to OSC 11, so its own background can be repainted to match the theme.
 		a.termBG = msg.Color
 		a.thm.light = msg.Color != nil && luma(msg.Color) > 1<<15
+		a.host.SetLightTerminal(a.thm.light)
+		a.bump()
 	case tea.FocusMsg, tea.BlurMsg:
 		_, a.focused = msg.(tea.FocusMsg)
 	case tea.WindowSizeMsg:

@@ -32,9 +32,9 @@ local function theme(palette)
     ToastWarn = { fg = "yellow", bold = true },
     ToastErr = { fg = "red", bold = true },
     MarkdownHeading = { link = "Title" },
-    -- an inline span reads by its color: glamour pads it with a space either
-    -- side, and a filled background would hang off the text as a stray block
-    MarkdownCode = { fg = "accent", bg = "panel" },
+    -- an inline span reads by its color: a filled background would hang
+    -- off the text as a stray block where it wraps
+    MarkdownCode = { fg = "accent" },
     MarkdownLink = { fg = "accent", underline = true },
     MarkdownQuote = { fg = "dim", italic = true },
     AgentReason = { link = "Dim" },
@@ -86,7 +86,6 @@ zemi.ui.theme.add("default", theme({
   dim = "#7a7a7a",
   rule = "#3a3a3a",
   accent = "#9aa5f2",
-  panel = "#1e1e1e",
   addbg = "#1b2417",
   delbg = "#2a1a1a",
 }))
@@ -98,7 +97,6 @@ zemi.ui.theme.add("default-light", theme({
   dim = "#8e8e8e",
   rule = "#cfcfcf",
   accent = "#6b78d6",
-  panel = "#f0f0f0",
   addbg = "#e7f2e2",
   delbg = "#fae7e7",
 }))

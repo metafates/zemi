@@ -683,10 +683,18 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 	})
 }
 
-// ActiveThemeName returns the configured theme.
+// ActiveThemeName returns the configured theme, or its "-light" variant
+// when the terminal is light and the theme registered one.
 func (h *Host) ActiveThemeName() string {
-	return cmp.Or(h.Settings.Str("ui.theme"), "default")
+	name := cmp.Or(h.Settings.Str("ui.theme"), "default")
+	if h.lightTerm.Load() && h.Themes.Get(name+"-light") != nil {
+		return name + "-light"
+	}
+	return name
 }
+
+// SetLightTerminal records whether the terminal's background is light.
+func (h *Host) SetLightTerminal(light bool) { h.lightTerm.Store(light) }
 
 // linesTable is segment rows as zemi.Line tables.
 func linesTable(L *glua.LState, lines [][]Segment) *glua.LTable {

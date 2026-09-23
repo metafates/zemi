@@ -982,14 +982,15 @@ UI extensibility contract:
   styled segment lines (how the default chat widget renders assistant
   text). Glamour renders unwrapped and zemi wraps the result, so the rows
   carry `soft_wrap`; its decorations (list bullets, quote bars, code
-  block margins, code span padding) come back `copy = false`, so what a
+  block margins) come back `copy = false` in `Dim`, so what a
   selection copies is the text the model wrote. A `<` that would open raw
   HTML outside code is escaped first, since glamour drops inline HTML and a
   `Vec<String>` in prose would vanish. A table renders at the
   width instead: its rows are layout, not prose. Text the user typed is not
   markdown: `zemi.ui.wrap(text, width)` wraps it plain, with the same
-  `soft_wrap` marks. Glamour's styles come from the active theme's `Normal` and
-  `Markdown*` groups; its output is parsed back into segments whose `hl`
+  `soft_wrap` marks. Glamour's styles come from the active theme's groups (`Normal`,
+  `Markdown*`, `Rule`, `Dim`, and `Accent` for code keywords), the theme's
+  `-light` variant on a light terminal; its output is parsed back into segments whose `hl`
   is `sgr:<params>`, an inline SGR style that only ever decodes to
   colors and attributes, never other escapes. `effect = "shimmer"` asks Go
   to sweep a bright band across the text every frame (widgets render at

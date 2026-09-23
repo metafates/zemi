@@ -14,9 +14,9 @@ import (
 
 	"charm.land/glamour/v2"
 	gansi "charm.land/glamour/v2/ansi"
-	"charm.land/glamour/v2/styles"
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/formatters"
+	"github.com/alecthomas/chroma/v2/styles"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -70,10 +70,10 @@ func (c *markdownCache) put(k string, v [][]Segment) {
 // (zemi.ui.markdown, DESIGN §8). Input is sanitized before glamour sees it.
 func (h *Host) Markdown(text string, width int) [][]Segment {
 	width = max(width, 1)
-	cfg, styleKey := h.markdownStyle()
 	c := &h.md
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	cfg, styleKey := h.markdownStyle() // registers a chroma style: under the lock renders read them
 	// A streaming reply is re-rendered on every delta: render its settled
 	// prefix from the cache and only the tail anew. The two halves meet at
 	// a blank line, which is where glamour would put one anyway.
@@ -141,9 +141,26 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 					break
 				}
 			}
+			// glamour draws the grid unstyled
+			for _, row := range rows {
+				for i, s := range row {
+					if !strings.Contains(s.HL, "38;") && strings.ContainsAny(s.Text, "│┼─") && strings.Trim(s.Text, " │┼─") == "" {
+						row[i].HL = "Rule"
+					}
+				}
+			}
 		} else {
 			for _, row := range c.glamour(*cfg, styleKey, chunk.text, 0) {
-				rows = append(rows, WrapSegs(row, width)...)
+				wrapped := WrapSegs(row, width)
+				// a quote keeps its bar on every row it wraps to
+				if len(row) > 0 && row[0].NoCopy && strings.Contains(row[0].Text, "│") {
+					for _, r := range wrapped[1:] {
+						if r[0].NoCopy && SegsWidth(r[:1]) == SegsWidth(row[:1]) {
+							r[0] = row[0]
+						}
+					}
+				}
+				rows = append(rows, wrapped...)
 			}
 		}
 		for len(rows) > 0 && len(rows[0]) == 0 {
@@ -154,8 +171,17 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 		}
 		lines = append(lines, rows...)
 	}
-	c.put(lk, lines)
-	return lines
+	// glamour puts two blank rows between some blocks (a nested list and
+	// the list after it): every block gets one
+	out := lines[:0]
+	for _, l := range lines {
+		if len(l) == 0 && len(out) > 0 && !slices.ContainsFunc(out[len(out)-1], func(s Segment) bool { return strings.TrimSpace(s.Text) != "" }) {
+			continue
+		}
+		out = append(out, l)
+	}
+	c.put(lk, out)
+	return out
 }
 
 // glamour renders text with the renderer for (key, width); width 0 does not
@@ -165,10 +191,9 @@ func (c *markdownCache) glamour(cfg gansi.StyleConfig, key, text string, width i
 	r := c.renderers[rk]
 	if r == nil {
 		// a line break the author typed is kept: a reply copies back as it was written
-		opts := []glamour.TermRendererOption{glamour.WithWordWrap(width), glamour.WithPreservedNewLines()}
+		opts := []glamour.TermRendererOption{glamour.WithWordWrap(width), glamour.WithPreservedNewLines(), glamour.WithChromaFormatter(chromaMarked)}
 		if width == 0 {
 			markDecorations(&cfg)
-			opts = append(opts, glamour.WithChromaFormatter(chromaMarked))
 		}
 		var err error
 		r, err = glamour.NewTermRenderer(append(opts, glamour.WithStyles(cfg))...)
@@ -226,8 +251,9 @@ func splitTables(text string) []mdChunk {
 	return out
 }
 
-// Decorations glamour draws are bracketed by private-use runes that
-// styledLines strips, marking the text between them NoCopy. A close with no
+// Decorations glamour draws (bullets, list numbers, the quote bar) are
+// bracketed by private-use runes that styledLines strips, marking the text
+// between them NoCopy and Dim. A close with no
 // open ends a run that began at the line start or the previous close: a
 // list number and code block margins are written before any hook can open.
 const (
@@ -242,19 +268,18 @@ func markDecorations(cfg *gansi.StyleConfig) {
 	cfg.List.IndentToken = new(nc(" "))
 	cfg.Item.BlockPrefix = nc(cfg.Item.BlockPrefix)
 	cfg.Enumeration.BlockPrefix += markClose
-	cfg.Code.Prefix, cfg.Code.Suffix = nc(cfg.Code.Prefix), nc(cfg.Code.Suffix)
 }
 
 // glamour writes a code block's margin itself, so the formatter opens every
 // code line with a close marker: what stands before it on the row is margin.
 func init() {
-	tty := formatters.Get("terminal256")
+	tty := formatters.Get("terminal16m") // the theme's own colors: the UI downsamples
 	formatters.Register(chromaMarked, chroma.FormatterFunc(func(w io.Writer, style *chroma.Style, it chroma.Iterator) error {
 		return tty.Format(&lineMarker{w: w, start: true}, style, it)
 	}))
 }
 
-// lineMarker writes markClose before the first byte of every line.
+// lineMarker writes markClose at the start of every line, a blank one too.
 type lineMarker struct {
 	w     io.Writer
 	start bool
@@ -263,7 +288,7 @@ type lineMarker struct {
 func (m *lineMarker) Write(p []byte) (int, error) {
 	var b bytes.Buffer
 	for _, c := range p {
-		if m.start && c != '\n' {
+		if m.start {
 			b.WriteString(markClose)
 		}
 		m.start = c == '\n'
@@ -276,24 +301,31 @@ func (m *lineMarker) Write(p []byte) (int, error) {
 }
 
 // markdownStyle builds glamour's style from the active theme's groups and
-// returns a key that changes whenever those groups do.
+// returns a key that changes whenever those groups do. Nothing is left to
+// glamour's stock palette: a block the theme does not color draws in Normal.
 func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
-	cfg := styles.DarkStyleConfig
-	zero := uint(0)
-	cfg.Document.Margin = &zero
-	cfg.Document.BlockPrefix, cfg.Document.BlockSuffix = "", ""
-	// Headings read as bold accent text from the Heading style; the "#"
-	// markers and the H1 badge are noise.
-	for _, hb := range []*gansi.StyleBlock{&cfg.H1, &cfg.H2, &cfg.H3, &cfg.H4, &cfg.H5, &cfg.H6} {
-		*hb = gansi.StyleBlock{}
+	margin, zero := uint(2), uint(0)
+	cfg := gansi.StyleConfig{
+		Document:      gansi.StyleBlock{Margin: &zero},
+		BlockQuote:    gansi.StyleBlock{Indent: new(uint(1)), IndentToken: new("│ ")},
+		List:          gansi.StyleList{LevelIndent: 2},
+		Heading:       gansi.StyleBlock{StylePrimitive: gansi.StylePrimitive{BlockSuffix: "\n", Bold: new(true)}},
+		Strikethrough: gansi.StylePrimitive{CrossedOut: new(true)},
+		Emph:          gansi.StylePrimitive{Italic: new(true)},
+		Strong:        gansi.StylePrimitive{Bold: new(true)},
+		// the rows around it are glamour's, the line is ours
+		HorizontalRule: gansi.StylePrimitive{Format: "\n────────\n"},
+		Item:           gansi.StylePrimitive{BlockPrefix: "• "},
+		Enumeration:    gansi.StylePrimitive{BlockPrefix: ". "},
+		Task:           gansi.StyleTask{Ticked: "[✓] ", Unticked: "[ ] "},
+		ImageText:      gansi.StylePrimitive{Format: "Image: {{.text}}"},
+		CodeBlock:      gansi.StyleCodeBlock{StyleBlock: gansi.StyleBlock{Margin: &margin}},
 	}
-
 	theme := h.Themes.Get(h.ActiveThemeName())
-	if theme == nil {
-		return cfg, ""
-	}
 	var key strings.Builder
-	key.WriteString(theme.Name)
+	if theme != nil {
+		key.WriteString(theme.Name)
+	}
 	apply := func(p *gansi.StylePrimitive, group string) {
 		spec, ok := h.Themes.Group(theme, group)
 		if !ok {
@@ -324,8 +356,51 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 	apply(&cfg.Code.StylePrimitive, "MarkdownCode")
 	apply(&cfg.Link, "MarkdownLink")
 	apply(&cfg.LinkText, "MarkdownLink")
+	apply(&cfg.Image, "MarkdownLink")
+	apply(&cfg.ImageText, "Dim")
 	apply(&cfg.BlockQuote.StylePrimitive, "MarkdownQuote")
-	apply(&cfg.HorizontalRule, "Comment")
+	apply(&cfg.HorizontalRule, "Rule")
+	apply(&cfg.Item, "Dim")
+	apply(&cfg.Enumeration, "Dim")
+
+	// Code takes the groups through a chroma style of its own: glamour
+	// registers its Chroma config once per process, so a theme switch would
+	// keep the first theme's colors.
+	var code [5]gansi.StylePrimitive
+	for i, g := range []string{"Normal", "Accent", "Dim", "Ok", "Danger"} {
+		apply(&code[i], g)
+	}
+	entry := func(p gansi.StylePrimitive, italic bool) string {
+		var e []string
+		// chroma takes hex only: a group in the terminal's own colors
+		// falls back to the text color
+		if p.Color != nil && strings.HasPrefix(*p.Color, "#") {
+			e = append(e, *p.Color)
+		}
+		if italic {
+			e = append(e, "italic")
+		}
+		return strings.Join(e, " ")
+	}
+	cfg.CodeBlock.Theme = "zemi:" + key.String()
+	// NOTE: every distinct theme key stays registered for the process; a
+	// session that sets thousands of highlight overrides would grow it.
+	if _, ok := styles.Registry[cfg.CodeBlock.Theme]; !ok {
+		s, err := chroma.NewStyle(cfg.CodeBlock.Theme, chroma.StyleEntries{
+			chroma.Text:            entry(code[0], false),
+			chroma.Keyword:         entry(code[1], false),
+			chroma.Comment:         entry(code[2], true),
+			chroma.Punctuation:     entry(code[2], false),
+			chroma.Operator:        entry(code[2], false),
+			chroma.GenericInserted: entry(code[3], false),
+			chroma.GenericDeleted:  entry(code[4], false),
+		})
+		if err != nil {
+			cfg.CodeBlock.Theme = ""
+		} else {
+			styles.Register(s)
+		}
+	}
 	return cfg, key.String()
 }
 
@@ -339,10 +414,10 @@ func (t *Theme) color(ref string) string {
 	if c, ok := ANSIColors[ref]; ok {
 		return strconv.Itoa(int(c))
 	}
-	if v := t.Palette[ref]; strings.HasPrefix(v, "#") {
-		return v
+	if t == nil || !strings.HasPrefix(t.Palette[ref], "#") {
+		return ""
 	}
-	return ""
+	return t.Palette[ref]
 }
 
 // styledLines parses glamour's ANSI output into segments: runs of equal
@@ -365,13 +440,16 @@ func styledLines(s string) [][]Segment {
 				continue
 			case markClose:
 				for i := closed; !open && i < len(cells); i++ {
-					cells[i].NoCopy = true
+					cells[i].NoCopy, cells[i].HL = true, "Dim"
 				}
 				open, closed = false, len(cells)
 				continue
 			}
 			hl := ""
-			if !c.Style.IsZero() {
+			switch {
+			case open:
+				hl = "Dim"
+			case !c.Style.IsZero():
 				hl = SGRPrefix + strings.TrimSuffix(strings.TrimPrefix(c.Style.String(), "\x1b["), "m")
 			}
 			cells = append(cells, Segment{Text: c.Content, HL: hl, NoCopy: open})
@@ -404,13 +482,7 @@ var hexColor = regexp.MustCompile(`#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b`)
 // of black and white reads on it.
 func swatchColors(row []Segment) []Segment {
 	var out []Segment
-	// a code span's padding cell beside a swatch takes its color
-	pad := func(s *Segment, hl string) {
-		if s.NoCopy && s.Text == "\u00a0" {
-			s.HL = hl
-		}
-	}
-	for i, seg := range row {
+	for _, seg := range row {
 		at := 0
 		for _, m := range hexColor.FindAllStringIndex(seg.Text, -1) {
 			hex := seg.Text[m[0]+1 : m[1]]
@@ -441,13 +513,8 @@ func swatchColors(row []Segment) []Segment {
 			sw.HL = fmt.Sprintf("%s%s;48;2;%d;%d;%d", SGRPrefix, fg, r, g, b)
 			if pre.Text != "" {
 				out = append(out, pre)
-			} else if len(out) > 0 {
-				pad(&out[len(out)-1], sw.HL)
 			}
 			out = append(out, sw)
-			if m[1] == len(seg.Text) && i+1 < len(row) {
-				pad(&row[i+1], sw.HL)
-			}
 			at = m[1]
 		}
 		if at == 0 {
@@ -558,9 +625,10 @@ func fenceRun(t string) string {
 
 // WrapSegs word-wraps one logical line into rows of at most w cells,
 // keeping each piece's fields; words longer than w are hard-split. Every
-// row but the last ends in a Soft segment, and continuation rows hang past
-// the line's leading decoration (NoCopy) or a short gutter segment ("  ✗ ",
-// "    └ ") behind a NoCopy indent, so a copy gives back the line.
+// row but the last ends in a Soft segment, a continuation row starts at a
+// word, not at the blanks after a break, and hangs past the line's leading
+// decoration (NoCopy) or a short gutter segment ("  - ") behind a NoCopy
+// indent, so a copy gives back the line.
 func WrapSegs(line []Segment, w int) [][]Segment {
 	w = max(w, 1)
 	// a tab measures and draws as no cell, so the words around it would
@@ -581,7 +649,7 @@ func WrapSegs(line []Segment, w int) [][]Segment {
 		}
 		indent += ansi.StringWidth(s.Text)
 	}
-	// an unmarked gutter ("  ✗ ", "    └ ") hangs too, but only when it is
+	// an unmarked gutter ("  - ") hangs too, but only when it is
 	// punctuation: a word of the text itself must not become the indent
 	if g := line[0].Text; indent == 0 && strings.HasSuffix(g, " ") && ansi.StringWidth(g) <= 8 &&
 		strings.IndexFunc(g, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) < 0 {
@@ -666,6 +734,13 @@ func WrapSegs(line []Segment, w int) [][]Segment {
 			}
 			if width+ansi.StringWidth(word) > w && width > indent {
 				flush()
+			}
+			// a blank the row break already stands for; a lone one (after
+			// "+" in code) is the only space there and stays
+			if width == indent && len(rows) > 0 && strings.TrimSpace(word) == "" {
+				if prev := rows[len(rows)-1]; len(prev) > 0 && strings.HasSuffix(prev[len(prev)-1].Text, " ") {
+					continue
+				}
 			}
 			seg.Soft = soft && i == len(words)-1
 			add(word, seg)

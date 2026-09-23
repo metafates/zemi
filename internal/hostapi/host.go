@@ -247,7 +247,8 @@ type Host struct {
 	initFail   atomic.Pointer[string] // headline of the user init.lua failure this boot recorded
 	modelFn    func() (fantasy.LanguageModel, error)
 
-	md markdownCache
+	md        markdownCache
+	lightTerm atomic.Bool // the terminal reported a light background
 
 	// pendingMemory counts proposals awaiting review for the statusline
 	// badge (refreshPending).

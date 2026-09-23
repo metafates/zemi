@@ -977,6 +977,8 @@ function zemi.ui.theme.add(name, spec) end
 ---@param name string
 function zemi.ui.theme.set(name) end
 
+--- The theme drawing now: the set one, or its "-light" variant on a light
+--- terminal when one is registered.
 ---@return string
 function zemi.ui.theme.get() end
 

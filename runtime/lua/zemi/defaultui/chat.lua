@@ -470,7 +470,9 @@ zemi.ui.widget.add({
       return { lines = lines, next = last + 1, hint = hinted }
     end
 
-    local key = table.concat({ epoch, width, tostring(ctx.show_reasoning), ctx.cwd or "" }, "|")
+    -- markdown and code carry the theme's colors: a light terminal's
+    -- variant renders them anew
+    local key = table.concat({ epoch, width, tostring(ctx.show_reasoning), ctx.cwd or "", zemi.ui.theme.get() }, "|")
     if key ~= units_key or epoch == 0 then units, units_key, settled = {}, key, nil end
     -- A long session resumed, a new width or ctrl+o leave every unit to
     -- render, far more than one render may take: the latest come first, and

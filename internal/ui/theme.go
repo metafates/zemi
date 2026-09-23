@@ -53,19 +53,12 @@ func appBG(t themeResolver, theme *hostapi.Theme) color.Color {
 	return colorValue(spec.Bg, theme)
 }
 
-// active resolves the theme in force, the "-light" variant on a light
-// terminal; nil when no theme is set.
+// active resolves the theme in force; nil when no theme is set.
 func (t themeResolver) active() *hostapi.Theme {
 	if t.host == nil {
 		return nil
 	}
-	theme := t.host.Themes.Get(t.host.ActiveThemeName())
-	if t.light {
-		if light := t.host.Themes.Get(t.host.ActiveThemeName() + "-light"); light != nil {
-			theme = light
-		}
-	}
-	return theme
+	return t.host.Themes.Get(t.host.ActiveThemeName())
 }
 
 // group is the active theme's spec for a group. On a light terminal a

@@ -1,9 +1,17 @@
 package hostapi
 
 import (
+	"cmp"
+	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/logging"
+	"github.com/metafates/zemi/internal/lua"
+	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
 func TestMarkdown(t *testing.T) {
@@ -159,14 +167,17 @@ func TestWrapSegs(t *testing.T) {
 		line []Segment
 		w    int
 		want string // rows joined by |, trailing spaces kept
+		copy string // what a selection copies when it is not the line
 	}{
-		{"short line passes through", []Segment{{Text: "hi"}}, 10, "hi"},
-		{"word wrap", []Segment{{Text: "hello world foo"}}, 11, "hello |world foo"},
-		{"hard split", []Segment{{Text: "abcdefgh"}}, 4, "abcd|efgh"},
-		{"hard split over many rows", []Segment{{Text: "  ✗ "}, {Text: "abcdefghijklmnopqrstuvwx"}}, 12, "  ✗ abcdefgh|    ijklmnop|    qrstuvwx"},
-		{"segments wrap apart", []Segment{{Text: "one two "}, {Text: "three", HL: "B"}}, 7, "one |two |three"},
-		{"gutter hangs", []Segment{{Text: "  ✗ "}, {Text: "network: cannot resolve the gateway host"}}, 22, "  ✗ network: cannot |    resolve the |    gateway host"},
-		{"decoration hangs", []Segment{{Text: "▌ ", NoCopy: true}, {Text: "a user message that wraps"}}, 12, "▌ a user |  message |  that wraps"},
+		{"short line passes through", []Segment{{Text: "hi"}}, 10, "hi", ""},
+		{"word wrap", []Segment{{Text: "hello world foo"}}, 11, "hello |world foo", ""},
+		{"hard split", []Segment{{Text: "abcdefgh"}}, 4, "abcd|efgh", ""},
+		{"hard split over many rows", []Segment{{Text: "  ✗ "}, {Text: "abcdefghijklmnopqrstuvwx"}}, 12, "  ✗ abcdefgh|    ijklmnop|    qrstuvwx", ""},
+		{"segments wrap apart", []Segment{{Text: "one two "}, {Text: "three", HL: "B"}}, 7, "one |two |three", ""},
+		{"gutter hangs", []Segment{{Text: "  ✗ "}, {Text: "network: cannot resolve the gateway host"}}, 22, "  ✗ network: cannot |    resolve the |    gateway host", ""},
+		{"decoration hangs", []Segment{{Text: "▌ ", NoCopy: true}, {Text: "a user message that wraps"}}, 12, "▌ a user |  message |  that wraps", ""},
+		{"a blank after a break is dropped", []Segment{{Text: "▌ ", NoCopy: true}, {Text: "call it  || now"}}, 10, "▌ call it |  || now", "call it || now"},
+		{"a lone blank after a break stays", []Segment{{Text: "b +"}, {Text: " "}, {Text: "1"}}, 3, "b +| 1", ""},
 	} {
 		rows := WrapSegs(c.line, c.w)
 		var got []string
@@ -183,7 +194,7 @@ func TestWrapSegs(t *testing.T) {
 		if last := rows[len(rows)-1]; last[len(last)-1].HL != c.line[len(c.line)-1].HL {
 			t.Errorf("%s: style lost: %+v", c.name, rows)
 		}
-		if got := copyText(rows); got != plainText(c.line) {
+		if got := copyText(rows); got != cmp.Or(c.copy, plainText(c.line)) {
 			t.Errorf("%s: copies %q", c.name, got)
 		}
 	}
@@ -226,7 +237,7 @@ func TestMarkdownHexColors(t *testing.T) {
 	h, _ := newTestHost(t)
 	for _, c := range []struct{ name, text, want string }{
 		{"dark text on a light color, the spaces beside it as padding", "use #FFF000 here", " #FFF000  38;2;0;0;0;48;2;255;240;0"},
-		{"a code span's padding joins the swatch", "`#03f`", "\u00a0#03f\u00a0 38;2;255;255;255;48;2;0;51;255"},
+		{"a code span", "`#03f`", "#03f 38;2;255;255;255;48;2;0;51;255"},
 		{"issue number", "see #123", ""},
 		{"after a word", "café#fff", ""},
 		{"url fragment", "https://x.dev/#fff000", ""},
@@ -255,6 +266,71 @@ func TestEscapeHTML(t *testing.T) {
 	} {
 		if got := escapeHTML(c.in); got != c.want {
 			t.Errorf("escapeHTML(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestMarkdownTheme: markdown draws only the theme's colors, in the dark
+// and the light variant, blocks sit one blank row apart and a quote keeps
+// its bar on every row it wraps to.
+func TestMarkdownTheme(t *testing.T) {
+	log := logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.defaultui")}); err != nil {
+		t.Fatal(err)
+	}
+	text := "intro\n\n```go\nfunc f() int {\n\t// why\n\treturn 42 + len(\"s\")\n}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n" +
+		"- one\n  - two\n1. three\n\n> a quote long enough to wrap over more than one row of the pane\n"
+	for _, c := range []struct {
+		light bool
+		theme string
+	}{{false, "default"}, {true, "default-light"}} {
+		h.SetLightTerminal(c.light)
+		theme := h.Themes.Get(h.ActiveThemeName())
+		if theme == nil || theme.Name != c.theme {
+			t.Fatalf("light=%v: theme %v, want %s", c.light, theme, c.theme)
+		}
+		palette := map[string]bool{}
+		for _, hex := range theme.Palette {
+			if v, err := strconv.ParseUint(strings.TrimPrefix(hex, "#"), 16, 32); err == nil {
+				palette[fmt.Sprintf("%d;%d;%d", v>>16, v>>8&0xff, v&0xff)] = true
+			}
+		}
+		var blank, quote int
+		prevBlank := false
+		for _, row := range h.Markdown(text, 30) {
+			isBlank := strings.TrimSpace(plainText(row)) == ""
+			if isBlank && prevBlank {
+				t.Errorf("%s: two blank rows", c.theme)
+			}
+			if isBlank {
+				blank++
+			}
+			prevBlank = isBlank
+			if strings.Contains(plainText(row), "quote") || strings.Contains(plainText(row), "pane") {
+				if !strings.HasPrefix(row[0].Text, "│") {
+					t.Errorf("%s: quote row without its bar: %q", c.theme, plainText(row))
+				}
+				quote++
+			}
+			for _, s := range row {
+				p := strings.Split(strings.TrimPrefix(s.HL, SGRPrefix), ";")
+				for i := 0; i+1 < len(p); i++ {
+					if p[i] != "38" && p[i] != "48" {
+						continue
+					}
+					if p[i+1] != "2" || i+4 >= len(p) || !palette[strings.Join(p[i+2:i+5], ";")] {
+						t.Errorf("%s: %q draws %s, off the palette", c.theme, s.Text, s.HL)
+						break
+					}
+					i += 4
+				}
+			}
+		}
+		// intro, code, table, list, the ordered list, quote
+		if blank != 5 || quote < 2 {
+			t.Errorf("%s: %d blank rows, %d quote rows", c.theme, blank, quote)
 		}
 	}
 }
