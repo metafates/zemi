@@ -30,16 +30,6 @@ const maxCheckpointBytes = 4 << 20
 
 // checkpointFile is the pipeline's Checkpoint hook.
 func (h *Host) checkpointFile(path string) {
-	if h.DB == nil {
-		return
-	}
-	ag := h.agents
-	ag.mu.Lock()
-	sid, mid := ag.sessionID, ag.turnMsgID
-	ag.mu.Unlock()
-	if sid == "" || mid == "" {
-		return
-	}
 	// the file tools' key: a symlink and its target are one file, also before
 	// the file exists (the store folds case where the filesystem does)
 	abs := perm.RealPath(path)
@@ -50,6 +40,23 @@ func (h *Host) checkpointFile(path string) {
 	existed := err == nil
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		h.Log.Warn("rewind", "cannot checkpoint file", map[string]any{"path": abs, "error": err.Error()})
+		return
+	}
+	h.checkpoint(abs, existed, data)
+}
+
+// checkpoint records a file as it was before the running turn changed it:
+// the file tools read it from disk, a bash call's changes come from the
+// tree treeDiff compared against. First write per turn wins in the store.
+func (h *Host) checkpoint(abs string, existed bool, data []byte) {
+	if h.DB == nil {
+		return
+	}
+	ag := h.agents
+	ag.mu.Lock()
+	sid, mid := ag.sessionID, ag.turnMsgID
+	ag.mu.Unlock()
+	if sid == "" || mid == "" {
 		return
 	}
 	if len(data) > maxCheckpointBytes {
@@ -214,7 +221,7 @@ func (h *Host) OpenRewind() error {
 			desc += " · " + files
 			restore = ", restores " + files + " to " + plural(n, "how it was", "how they were") + " before it,"
 		}
-		effect := "Rewinding removes this prompt and everything after it" + restore + " and puts the prompt back in the composer. Changes made by commands are not undone."
+		effect := "Rewinding removes this prompt and everything after it" + restore + " and puts the prompt back in the composer. Files a command changed go back too when they are in the repository and not ignored."
 		first, _, _ := strings.Cut(text, "\n")
 		items = append(items, map[string]any{
 			"text":   first,

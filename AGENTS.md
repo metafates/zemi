@@ -588,7 +588,9 @@ how many rows the frame takes, so nothing above it reflows.
 - **Rewind** (rewind.go, store/checkpoints.go): the pipeline's `Checkpoint` hook saves a file's
   pre-turn content (keyed by the turn's user message, first write wins) before a write tool
   touches it. `RewindTo` restores files first and only then truncates messages, so a failed
-  restore leaves the conversation intact. Bash changes are not tracked.
+  restore leaves the conversation intact. A bash call's changes are checkpointed from the
+  before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
+  a repository, and not once two slow snapshots switched the snapshot off).
 - **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
   `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even under allow rules, `mcp.*`
   allows and bash allows other than `ReadCommand` flip to ask; the sandbox keeps the project

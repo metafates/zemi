@@ -21,10 +21,18 @@ import (
 func TestRewind(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
+	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "*", Decision: perm.Allow})
+	t.Chdir(h.Dirs.ProjectDir) // where bash runs and snapshots
 	edited := filepath.Join(h.Dirs.ProjectDir, "a.txt")
 	created := filepath.Join(h.Dirs.ProjectDir, "sub", "new.txt")
 	if err := os.WriteFile(edited, []byte("v1"), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	// a repository, so a command's changes are snapshotted
+	for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"}} {
+		if out, err := h.runGit(h.Dirs.ProjectDir, nil, args...); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
 	}
 	write := func(path, content string) []fantasy.StreamPart {
 		return toolCallParts("c-"+content, "write", fmt.Sprintf(`{"path":%q,"content":%q}`, path, content))
@@ -39,6 +47,9 @@ func TestRewind(t *testing.T) {
 				return write(edited, "v2")
 			case last == "second":
 				return write(created, "x")
+			// a command deletes one file and overwrites another: rewind restores both
+			case last == "third":
+				return toolCallParts("c-rm", "bash", fmt.Sprintf(`{"command":"rm %s && echo y > %s"}`, edited, created))
 			case toolResult:
 				return textParts("done")
 			}
@@ -46,7 +57,7 @@ func TestRewind(t *testing.T) {
 		}}, nil
 	}
 	var prompts []string
-	for _, text := range []string{"first", "second"} {
+	for _, text := range []string{"first", "second", "third"} {
 		if err := h.AgentSend(text); err != nil {
 			t.Fatal(err)
 		}
@@ -65,7 +76,7 @@ func TestRewind(t *testing.T) {
 		}
 		return string(b)
 	}
-	if read(edited) != "v2" || read(created) != "x" {
+	if read(edited) != "<missing>" || read(created) != "y\n" {
 		t.Fatalf("turns did not write: %q %q", read(edited), read(created))
 	}
 	// each prompt counts the files a rewind to it restores, later turns' too
@@ -74,7 +85,7 @@ func TestRewind(t *testing.T) {
 	if err := h.OpenRewind(); err != nil || len(ui.opened) != 1 {
 		t.Fatal(err)
 	}
-	for i, want := range []string{"1 file", "2 files"} {
+	for i, want := range []string{"2 files", "2 files", "2 files"} {
 		if desc := ui.opened[0].Items[i].(map[string]any)["desc"].(string); !strings.HasSuffix(desc, want) {
 			t.Fatalf("prompt %d: %q, want %s", i, desc, want)
 		}
@@ -86,6 +97,7 @@ func TestRewind(t *testing.T) {
 		edited, created  string
 		transcriptBefore int // user messages left
 	}{
+		{prompt: 2, files: 2, edited: "v2", created: "x", transcriptBefore: 2},
 		{prompt: 1, files: 1, edited: "v2", created: "<missing>", transcriptBefore: 1},
 		{prompt: 0, files: 1, edited: "v1", created: "<missing>", transcriptBefore: 0},
 	} {

@@ -272,7 +272,8 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
   messages, subagent runs and scratchpad from disk; memories learned from it stay.
 - `/rewind [id]`: back to an earlier prompt. Files changed by write, edit and multiedit
   return to their state before it, the conversation is cut there and the prompt comes back
-  in the composer. Bash changes are not undone. Lua: `zemi.session.rewind(id)`.
+  in the composer. Files a command changed go back too when they are in the repository and
+  not ignored. Lua: `zemi.session.rewind(id)`.
 - `/fork` continues in a new session and keeps the original; `/export [path]` writes
   markdown (default `zemi-<id>.md`); `/copy` puts the last reply's raw markdown on
   the clipboard (a drag copies the wrapped screen rows); when the reply has code blocks it

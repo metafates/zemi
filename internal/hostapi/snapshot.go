@@ -15,12 +15,13 @@ import (
 )
 
 const (
-	snapSlow     = 300 * time.Millisecond
-	snapFiles    = 5       // files a row's diff shows
-	snapBytes    = 4 << 10 // and the bytes they may take
-	snapNoteMax  = 10      // paths the model's line names
-	snapOverlap  = "may include changes from concurrent commands"
-	snapSecretAs = " (content hidden: secret-shaped name)"
+	snapSlow        = 300 * time.Millisecond
+	snapFiles       = 5       // files a row's diff shows
+	snapCheckpoints = 100     // files a bash call checkpoints for rewind
+	snapBytes       = 4 << 10 // and the bytes they may take
+	snapNoteMax     = 10      // paths the model's line names
+	snapOverlap     = "may include changes from concurrent commands"
+	snapSecretAs    = " (content hidden: secret-shaped name)"
 )
 
 type snapshots struct {
@@ -151,6 +152,16 @@ func (h *Host) treeDiff(root, before, after string, mixed bool, wrote map[string
 		// NOTE: changed is uncapped; a branch switch in a huge repo marshals every
 		// path once per tool.post handler. Cap it here if that shows up.
 		paths, changed = append(paths, fields[i+1]), append(changed, abs)
+		// rewind: what the command deleted or changed, as the before tree
+		// holds it (one git process per path, so capped); an ignored file is
+		// in no tree and stays as the command left it
+		if len(changed) <= snapCheckpoints {
+			if fields[i] == "A" {
+				h.checkpoint(abs, false, nil)
+			} else if data, err := h.runGit(root, nil, "cat-file", "-p", before+":"+fields[i+1]); err == nil {
+				h.checkpoint(abs, true, []byte(data))
+			}
+		}
 		switch {
 		case len(paths) > snapFiles:
 		case h.secretPath(abs):
