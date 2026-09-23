@@ -257,12 +257,13 @@ func readFrontmatterFile(path string) (block, body string, err error) {
 }
 
 // runSubagent runs def on prompt to completion as a tracked run (/agents)
-// and returns its final message; progress receives live lines for the
-// caller's UI row.
-func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, prompt string, progress func(string)) (string, error) {
+// and returns its id and final message; progress receives live lines for
+// the caller's UI row.
+func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, prompt string, progress func(string)) (string, string, error) {
 	run, ctx := h.newRun(ctx, def, description, prompt, false)
 	_ = h.tasks.add(run) // only background runs are capped
-	return h.runAgent(ctx, run, def, prompt, progress)
+	text, err := h.runAgent(ctx, run, def, prompt, progress)
+	return run.id, text, err
 }
 
 // runAgent runs a registered run, recorded as a child session of the
@@ -951,7 +952,7 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		at := h.callerOf(L)
 		h.GoSafe("zemi.agent.run", func() {
 			defer cancel()
-			text, err := h.runSubagent(ctx, def, desc, prompt, nil)
+			_, text, err := h.runSubagent(ctx, def, desc, prompt, nil)
 			switch {
 			case onDone == nil:
 			case err != nil:

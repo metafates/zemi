@@ -136,10 +136,12 @@ func (h *Host) workflowSource(name string) (string, error) {
 }
 
 // WorkflowResult is a finished run: the script's return value (strings as
-// is, anything else JSON) and its log lines.
+// is, anything else JSON), its log lines, and one "<run id> <agent>
+// <status>: <description>" line per agent that finished.
 type WorkflowResult struct {
-	Value string
-	Log   []string
+	Value  string
+	Log    []string
+	Agents []string
 }
 
 // wfTask is one coroutine: the script body or a parallel() branch.
@@ -165,6 +167,8 @@ type wfAgentReq struct {
 
 type wfDone struct {
 	task *wfTask
+	req  *wfAgentReq
+	id   string
 	text string
 	err  error
 }
@@ -181,6 +185,7 @@ type wfRun struct {
 	done     chan wfDone
 	phase    string
 	log      []string
+	agents   []string // WorkflowResult.Agents
 	progress func(string)
 
 	ready []*wfTask // parents whose parallel() branches all finished
@@ -230,13 +235,16 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 			break
 		}
 		if run.running == 0 && len(run.queue) == 0 {
-			return WorkflowResult{}, errors.New("workflow stalled: every branch is waiting (was agent() called inside pcall?)")
+			return WorkflowResult{Log: run.log, Agents: run.agents}, errors.New("workflow stalled: every branch is waiting (was agent() called inside pcall?)")
 		}
 		select {
 		case d := <-run.done:
 			run.running--
 			run.finished++
 			run.dispatch()
+			if d.id != "" { // a crashed agent returned none
+				run.agents = append(run.agents, fmt.Sprintf("%s %s %s: %s", d.id, d.req.def.Name, map[bool]string{true: "done", false: "failed"}[d.err == nil], d.req.description))
+			}
 			if d.err != nil {
 				run.resume(d.task, glua.LNil, glua.LString(h.friendlyError(d.err)))
 			} else {
@@ -244,7 +252,7 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 			}
 		case <-ctx.Done():
 			run.drainAgents()
-			return WorkflowResult{}, ctx.Err()
+			return WorkflowResult{Log: run.log, Agents: run.agents}, ctx.Err()
 		}
 		run.report()
 	}
@@ -252,7 +260,7 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 		cancel()
 		run.drainAgents()
 	}
-	res := WorkflowResult{Log: run.log}
+	res := WorkflowResult{Log: run.log, Agents: run.agents}
 	if run.resultErr != nil {
 		return res, run.resultErr
 	}
@@ -519,9 +527,9 @@ func (r *wfRun) dispatch() {
 		r.running++
 		r.h.GoSafe("workflow agent", func() {
 			// deferred so a panicking agent still reports: the run waits on done
-			d := wfDone{task: t, err: errors.New("the agent crashed")}
+			d := wfDone{task: t, req: req, err: errors.New("the agent crashed")}
 			defer func() { r.done <- d }()
-			d.text, d.err = r.h.runSubagent(r.ctx, req.def, req.description, req.prompt, nil)
+			d.id, d.text, d.err = r.h.runSubagent(r.ctx, req.def, req.description, req.prompt, nil)
 		})
 	}
 }
@@ -647,10 +655,15 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 		out += "\n\nlog:\n" + strings.Join(res.Log, "\n")
 	}
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			return fantasy.NewTextErrorResponse("workflow cancelled"), nil
+		// the reports are lost with the script, the runs are not
+		if len(res.Agents) > 0 && h.hooks() != nil { // headless has no send_to
+			out += "\n\nagents that finished (continue one with the agent tool's send_to):\n" + strings.Join(res.Agents, "\n")
 		}
-		return fantasy.NewTextErrorResponse(h.truncOutput("workflow", "workflow failed: "+err.Error()+"\n"+out)), nil
+		msg := "workflow failed: " + err.Error()
+		if errors.Is(err, context.Canceled) {
+			msg = "workflow cancelled"
+		}
+		return fantasy.NewTextErrorResponse(h.truncOutput("workflow", strings.TrimSpace(msg+"\n"+out))), nil
 	}
 	if strings.TrimSpace(out) == "" {
 		out = "(the workflow returned nothing)"

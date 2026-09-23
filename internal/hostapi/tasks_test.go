@@ -378,8 +378,7 @@ func TestSendTo(t *testing.T) {
 	sid := seedSession(t, h)
 	def, _ := h.agentDef("explore")
 	def.Model = "p/b"
-	_, err := h.runSubagent(t.Context(), def, "d", "work", nil)
-	id := h.tasks.list(sid)[0].id
+	id, _, err := h.runSubagent(t.Context(), def, "d", "work", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
