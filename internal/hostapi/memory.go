@@ -429,7 +429,7 @@ func (h *Host) editableMemory(id string) (string, error) {
 // rewriteMemory saves the user's edit of a memory: intake runs again as
 // user origin with the same scope and quote, and the memory keeps its
 // id. An edited suggestion is stored as the user's own. Empty or unchanged
-// text changes nothing, and so does a refusal.
+// text changes nothing, and so does a refusal, a full scope included.
 func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	if strings.TrimSpace(text) == "" {
 		return false, nil
@@ -443,6 +443,9 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 			return false, err
 		}
 		res.Memory.ID, res.Supersedes = p.ID, p.Supersedes
+		if oldest, over := h.scopeOver(res); over {
+			return false, errScopeFull(p.Scope, oldest)
+		}
 		if h.takeProposal(id) == nil {
 			return false, fmt.Errorf("no such proposal %q", id)
 		}
@@ -463,6 +466,10 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 		return false, err
 	}
 	res.Memory.ID = m.ID
+	// a shorter edit is always taken, so a scope already over can shrink
+	if oldest, over := h.scopeOver(res); over && len(res.Memory.Text) > len(m.Text) {
+		return false, errScopeFull(m.Scope, oldest)
+	}
 	if dup, _ := h.duplicateMemory(res.Memory, ""); dup != nil {
 		return false, fmt.Errorf("%w as %s", errDuplicateMemory, learn.Truncate(dup.ID, 8))
 	}

@@ -229,6 +229,19 @@ func TestMemoryGate(t *testing.T) {
 					t.Fatal("stored over budget")
 				}
 			}},
+		{name: "an edit past a full scope refuses", autonomy: "ask", text: "the deploy script lives in bin/deploy",
+			seed: func(t *testing.T, h *Host, sid string) string { fill(t, h, 11); return "" },
+			want: "queued for the user's review",
+			check: func(t *testing.T, h *Host, ui *fakeUI, _ string) {
+				for _, id := range []string{h.memoryProposals()[0].ID, projectMemories(t, h)[10].ID} {
+					if _, err := h.rewriteMemory(id, filler(0)+" and more"); err == nil || !strings.Contains(err.Error(), "project memory is full") {
+						t.Fatalf("edit of %s: %v", id, err)
+					}
+				}
+				if len(h.memoryProposals()) != 1 || projectMemories(t, h)[10].Text != filler(0) {
+					t.Fatal("an edit went past the budget")
+				}
+			}},
 		{name: "moving into a full scope refuses", text: "the ci runs on every push",
 			seed: func(t *testing.T, h *Host, sid string) string {
 				fill(t, h, 11)

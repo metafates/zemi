@@ -1829,7 +1829,7 @@ by the next startup sweep, since the session still has unseen messages.
   session's user rows (compaction summaries aside) drops the memory. Each
   scope has a 3 KB prompt budget (§10.7): a write that would pass it
   queues for review with the oldest ids to replace, and `/memory <note>`,
-  accepting a queued one and a move into that scope refuse with them,
+  accepting a queued one, a move into that scope and an edit that grows past it refuse with them,
   since the user is there. The
   digest (§10.7) sits behind a
   Go-inserted data boundary the prompt tells the model to treat as
