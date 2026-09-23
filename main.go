@@ -294,7 +294,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			}
 			return h.OpenSessions()
 		}},
-		{Name: "resume", Hidden: true, Desc: "resume the latest session", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "resume", Hidden: true, NArgs: "?", Desc: "resume the latest session, or the one with this id", GoFn: func(h *hostapi.Host, args string) error {
 			return h.ResumeSession(strings.TrimSpace(args))
 		}},
 		{Name: "rewind", NArgs: "?", Desc: "go back to an earlier prompt and undo its file changes", GoFn: func(h *hostapi.Host, args string) error {
@@ -318,7 +318,8 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				if cur == "" {
 					cur = "default"
 				}
-				return fmt.Errorf("reasoning effort is %s (want low, medium, high or default)", cur)
+				h.Notify("info", "Effort", cur)
+				return nil
 			case "default":
 				args = ""
 			case "low", "medium", "high":
@@ -375,7 +376,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "health", Desc: "check zemi's setup", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.OpenHealth()
 		}},
-		{Name: "compact", NArgs: "*", Desc: "summarize the conversation to free context", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "compact", NArgs: "*", Desc: "summarize the conversation to free context; text after it says what to keep", GoFn: func(h *hostapi.Host, args string) error {
 			return h.CompactNow(args)
 		}},
 		{Name: "btw", NArgs: "+", Desc: "ask a side question the conversation does not keep", GoFn: func(h *hostapi.Host, args string) error {
@@ -387,13 +388,13 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			}
 			return h.SetModel(args)
 		}},
-		{Name: "permissions", NArgs: "*", Desc: "see what is allowed and take an always answer back", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "permissions", NArgs: "*", Desc: "see the rules and remove one you allowed", GoFn: func(h *hostapi.Host, args string) error {
 			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "forget "); ok {
 				return h.ForgetRule(rest)
 			}
 			return h.OpenPermissions()
 		}},
-		{Name: "mode", NArgs: "?", Desc: "choose who approves actions", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "mode", NArgs: "?", Desc: "choose the permission mode", GoFn: func(h *hostapi.Host, args string) error {
 			if args = strings.TrimSpace(args); args == "" {
 				return h.OpenModePicker()
 			}

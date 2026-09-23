@@ -250,7 +250,7 @@ func (h *Host) goHealthRows() []healthCheck {
 
 	switch s := h.sandbox.Load(); {
 	case s.err != nil:
-		add("warn", "sandbox", "unavailable: "+s.err.Error()+"; settled commands limited to readers")
+		add("warn", "sandbox", "unavailable: "+s.err.Error()+"; auto mode runs only read-only commands without asking")
 	case !s.backend.EnforcesProtect:
 		add("ok", "sandbox", s.backend.Name+" confines the commands auto mode and read-only agents run; it cannot keep .git read-only, so the project is read-only to them")
 	default:
@@ -270,7 +270,7 @@ func (h *Host) goHealthRows() []healthCheck {
 	}
 
 	if mem := h.pendingMemory.Load(); mem > 0 {
-		add("warn", "learning", fmt.Sprintf("%d %s to review in /memory", mem, plural(int(mem), "suggestion", "suggestions")))
+		add("warn", "learning", fmt.Sprintf("%d %s to review in /memory", mem, plural(int(mem), "memory", "memories")))
 		out[len(out)-1].run = "memory"
 	} else {
 		add("ok", "learning", "nothing waiting for review")

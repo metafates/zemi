@@ -235,7 +235,7 @@ func (h *Host) Remember(text string) error {
 	if err := h.storeProposal(res); err != nil {
 		return err
 	}
-	h.Notify("info", "Remembered for this project"+redactNote(res.Scrubbed), "s in /memory makes it apply everywhere")
+	h.Notify("info", "Remembered for this project"+redactNote(res.Scrubbed), "press s on it in /memory to keep it for every project")
 	return nil
 }
 
