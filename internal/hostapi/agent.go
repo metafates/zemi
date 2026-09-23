@@ -1779,7 +1779,8 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// OpenModelPicker lists the registered models; enter runs /model <id>.
+// OpenModelPicker lists the registered models, where enter runs /model <id>,
+// then the keyless builtin providers, where it copies the export line.
 func (h *Host) OpenModelPicker() error {
 	ui, err := h.Screen()
 	if err != nil {
@@ -1810,15 +1811,15 @@ func (h *Host) OpenModelPicker() error {
 	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
 		// config named it by hand: shown so the typo is in view
 		o.Items = append([]any{map[string]any{"text": cur, "run": "model " + cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}}, items...)
-	} else if len(items) == 0 {
-		// with nothing usable the rows are the builtin providers and their
-		// keys, so a user of one finds its name here rather than in the catalog
-		for _, m := range h.Providers.Missing() {
-			o.Items = append(o.Items, map[string]any{"text": m.ID, "desc": "export " + m.Env, "copy": "export " + m.Env})
-		}
-		if len(o.Items) > 0 {
-			o.Body = "No model yet: export one of these keys, or " + h.addProvider() + "."
-		}
+	}
+	usable := len(o.Items) > 0
+	// the builtin providers without a key close the list, so a user finds
+	// what else zemi supports and the variable that turns each on
+	for _, m := range h.Providers.Missing() {
+		o.Items = append(o.Items, map[string]any{"text": m.ID, "desc": "export " + m.Env, "copy": "export " + m.Env})
+	}
+	if !usable && len(o.Items) > 0 {
+		o.Body = "No model yet: export one of these keys, or " + h.addProvider() + "."
 	}
 	ui.OpenOverlay(o)
 	return nil

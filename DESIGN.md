@@ -755,8 +755,8 @@ refuses it.
 Builtin providers come from catwalk's embedded catalog: every generation
 seeds the registry with the providers whose key env var is exported
 (resolved once per process in Go, the one place that reads them; a
-provider without its key is absent; `/model` with nothing usable lists
-them with their variables), then user config runs. `zemi.provider.add`
+provider without its key is absent; `/model` lists them with their
+variables after the usable models), then user config runs. `zemi.provider.add`
 under a builtin id replaces it whole, so a gateway `base_url` keeps
 working; `zemi.provider.del` drops one, `providers.builtin = false` all
 of them.

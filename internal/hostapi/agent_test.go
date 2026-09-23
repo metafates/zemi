@@ -1289,9 +1289,9 @@ func TestActiveProfileKey(t *testing.T) {
 	}
 }
 
-// TestModelPickerOdd: with nothing usable the picker lists the builtin
-// providers by env var, and a configured id the provider does not list is
-// the selected row, which the reload toast also names.
+// TestModelPickerOdd: the picker ends with the keyless builtin providers by
+// env var, explained only when nothing is usable, and a configured id the
+// provider does not list is the selected row, which the reload toast also names.
 func TestModelPickerOdd(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
@@ -1318,8 +1318,12 @@ func TestModelPickerOdd(t *testing.T) {
 	}
 	o := ui.opened[2]
 	row := o.Items[0].(map[string]any)
-	if o.Selected != 0 || len(o.Items) != 2 || row["text"] != "a/typo" || row["run"] != "model a/typo" || row["key"] != "current, not in the list" {
+	if o.Selected != 0 || len(o.Items) != 3 || row["text"] != "a/typo" || row["run"] != "model a/typo" || row["key"] != "current, not in the list" {
 		t.Fatalf("unlisted id: %+v", o.Items)
+	}
+	// the keyless builtins still close the list, copy only, with no body
+	if last := o.Items[2].(map[string]any); last["text"] != "deepseek" || last["run"] != nil || last["copy"] != "export DEEPSEEK_API_KEY" || o.Body != "" {
+		t.Fatalf("missing builtins after the models: %+v body %q", o.Items, o.Body)
 	}
 	if w := h.modelRow().detail; !strings.HasPrefix(w, "a/typo: not in the provider's models list") {
 		t.Fatalf("warning %q", w)
