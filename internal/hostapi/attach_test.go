@@ -173,52 +173,63 @@ func TestAttachPath(t *testing.T) {
 }
 
 // TestImagesRefusedContinues: a 400 over image input does not end the
-// turn: images become notes, the model is remembered as text-only and the
-// prompt goes out again.
+// turn: images become notes and the prompt goes out again. Only a model
+// that refuses images is remembered as text-only; one image too large
+// leaves later images alone.
 func TestImagesRefusedContinues(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), tinyPNG(), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	m := reflectStub(t, h, "ok")
-	m.toolStep.Store(50_000)
-	m.noImages.Store(1)
-	h.reflectMu.Lock()
-	defer h.reflectMu.Unlock()
-	sender(t, h)("what is in @shot.png")
-	if n := m.streams.Load(); n != 3 {
-		t.Fatalf("model streamed %d times, want 3", n)
-	}
-	// the step before the refusal keeps its usage and its tool row
-	if in := h.AgentStream().SessionIn; in < 50_000 {
-		t.Fatalf("session input %d, want the first step's 50000", in)
-	}
-	toolRow := false
-	for _, row := range h.Session().Transcript {
-		if row.Kind == "error" {
-			t.Fatalf("error row shown: %+v", row)
-		}
-		toolRow = toolRow || row.Kind == "tool"
-	}
-	if !toolRow {
-		t.Fatal("tool row of the first step lost")
-	}
-	model := h.currentModelID(nil)
-	t.Cleanup(func() { imagesRejected.Delete(model) })
-	if h.takesImages(model) {
-		t.Fatal("model not remembered as text-only")
-	}
-	for _, msg := range h.agents.runner.History {
-		for _, part := range msg.Content {
-			if _, ok := part.(fantasy.FilePart); ok {
-				t.Fatal("image part still in history")
+	for _, c := range []struct {
+		name, refusal, note string
+		textOnly            bool
+	}{
+		{"no images", "<path> is not a multimodal model", "the current model does not take images", true},
+		{"too large", "image exceeds 5 MB maximum", "too large to send", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), tinyPNG(), 0o600); err != nil {
+				t.Fatal(err)
 			}
-			if tp, ok := part.(fantasy.TextPart); ok && strings.Contains(tp.Text, "omitted") {
-				return
+			m := reflectStub(t, h, "ok")
+			m.toolStep.Store(50_000)
+			m.failOnce.Store(&fantasy.ProviderError{StatusCode: 400, Message: c.refusal})
+			h.reflectMu.Lock()
+			defer h.reflectMu.Unlock()
+			sender(t, h)("what is in @shot.png")
+			if n := m.streams.Load(); n != 3 {
+				t.Fatalf("model streamed %d times, want 3", n)
 			}
-		}
+			// the step before the refusal keeps its usage and its tool row
+			if in := h.AgentStream().SessionIn; in < 50_000 {
+				t.Fatalf("session input %d, want the first step's 50000", in)
+			}
+			toolRow := false
+			for _, row := range h.Session().Transcript {
+				if row.Kind == "error" {
+					t.Fatalf("error row shown: %+v", row)
+				}
+				toolRow = toolRow || row.Kind == "tool"
+			}
+			if !toolRow {
+				t.Fatal("tool row of the first step lost")
+			}
+			model := h.currentModelID(nil)
+			t.Cleanup(func() { imagesRejected.Delete(model) })
+			if h.takesImages(model) == c.textOnly || h.agents.runner.TextOnly != c.textOnly {
+				t.Fatalf("text-only: model %v, runner %v, want %v", !h.takesImages(model), h.agents.runner.TextOnly, c.textOnly)
+			}
+			for _, msg := range h.agents.runner.History {
+				for _, part := range msg.Content {
+					if _, ok := part.(fantasy.FilePart); ok {
+						t.Fatal("image part still in history")
+					}
+					if tp, ok := part.(fantasy.TextPart); ok && strings.Contains(tp.Text, "omitted: "+c.note) {
+						return
+					}
+				}
+			}
+			t.Fatal("no omission note in history")
+		})
 	}
-	t.Fatal("no omission note in history")
 }
 
 func TestImagesRefused(t *testing.T) {

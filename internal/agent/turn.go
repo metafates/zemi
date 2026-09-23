@@ -216,7 +216,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	r.mu.Lock()
 	r.History = append(closeToolCalls(r.History), userMsg...)
 	if r.TextOnly {
-		r.History = stripImages(r.History)
+		r.History = stripImages(r.History, noImages)
 	}
 	history := append([]fantasy.Message(nil), r.History...)
 	temp := r.Temperature
@@ -564,17 +564,27 @@ func closeToolCalls(history []fantasy.Message) []fantasy.Message {
 
 var errNotRun = errors.New("not run: the reply was cut off")
 
-// stripImages replaces every image in history with text saying so, for a
-// model that refuses image parts.
-func stripImages(history []fantasy.Message) []fantasy.Message {
+// noImages is why TextOnly strips an image.
+const noImages = "the current model does not take images"
+
+// DropImages replaces every image in the history with a note naming why,
+// for a request the provider refused over one image's size.
+func (r *Runner) DropImages(why string) {
+	r.mu.Lock()
+	r.History = stripImages(r.History, why)
+	r.mu.Unlock()
+}
+
+// stripImages replaces every image in history with text naming why.
+func stripImages(history []fantasy.Message, why string) []fantasy.Message {
 	for i, m := range history {
 		for j, part := range m.Content {
 			switch p := part.(type) {
 			case fantasy.FilePart:
-				history[i].Content[j] = fantasy.TextPart{Text: "[image " + p.Filename + " omitted: the current model does not take images]"}
+				history[i].Content[j] = fantasy.TextPart{Text: "[image " + p.Filename + " omitted: " + why + "]"}
 			case fantasy.ToolResultPart:
 				if p.Output != nil && p.Output.GetType() == fantasy.ToolResultContentTypeMedia {
-					p.Output = fantasy.ToolResultOutputContentError{Error: errNoImages}
+					p.Output = fantasy.ToolResultOutputContentError{Error: errors.New("image omitted: " + why + "; go on without it, or ask the user to describe it")}
 					history[i].Content[j] = p
 				}
 			}
@@ -582,8 +592,6 @@ func stripImages(history []fantasy.Message) []fantasy.Message {
 	}
 	return history
 }
-
-var errNoImages = errors.New("image omitted: the current model does not take images; go on without it, or ask the user to describe it or switch model")
 
 func isErrResult(c fantasy.ToolResultContent) bool {
 	if c.Result == nil {

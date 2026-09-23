@@ -160,17 +160,18 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 		}
 		// a model that refuses image parts: replace them with a note that
 		// says so, remember it, and send again rather than ending the turn;
-		// an image too large leaves the history, not the model's images
+		// an image too large leaves the history, and later ones still go
 		if !imagesDropped && !runner.TextOnly && imagesRefused(err) {
 			imagesDropped = true
 			ag.mu.Lock()
 			model := ag.turnModel
 			ag.beginTurn()
 			ag.mu.Unlock()
-			runner.TextOnly = true
 			if imageTooLarge(err) {
+				runner.DropImages("too large to send")
 				h.Notify("info", "Image left out", "an image was too large for "+model+"; going on without it")
 			} else {
+				runner.TextOnly = true
 				imagesRejected.Store(model, true)
 				h.Notify("info", "Images left out", model+" does not take images; going on without them (set images = false on its model entry)")
 			}

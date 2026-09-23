@@ -34,7 +34,6 @@ type reflectStubModel struct {
 	lastOpts   atomic.Pointer[fantasy.ProviderOptions] // the last Generate call's provider options
 	streams    atomic.Int32
 	overflow   atomic.Int32                          // Stream calls left that fail as context too large
-	noImages   atomic.Int32                          // Stream calls left that fail as a 400 over image input
 	toolStep   atomic.Int64                          // context the next Stream call reports along with a tool call; 0 = text
 	failOnce   atomic.Pointer[fantasy.ProviderError] // the next Stream call's error
 	cutReply   bool                                  // Generate stops at the output limit
@@ -79,9 +78,6 @@ func (m *reflectStubModel) Stream(_ context.Context, call fantasy.Call) (fantasy
 	}
 	if m.overflow.Add(-1) >= 0 {
 		return nil, &fantasy.ProviderError{Message: "prompt is too long", ContextTooLargeErr: true}
-	}
-	if m.noImages.Add(-1) >= 0 {
-		return nil, &fantasy.ProviderError{StatusCode: 400, Message: "<path> is not a multimodal model"}
 	}
 	if pe := m.failOnce.Swap(nil); pe != nil {
 		return nil, pe

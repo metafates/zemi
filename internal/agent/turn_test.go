@@ -583,7 +583,7 @@ func TestStripImages(t *testing.T) {
 	history := stripImages([]fantasy.Message{
 		{Role: fantasy.MessageRoleUser, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi"}, fantasy.FilePart{Filename: "shot.png", MediaType: "image/png", Data: []byte("x")}}},
 		{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{media, text}},
-	})
+	}, noImages)
 	if tp, ok := history[0].Content[1].(fantasy.TextPart); !ok || !strings.Contains(tp.Text, "shot.png omitted") {
 		t.Fatalf("file part = %#v", history[0].Content[1])
 	}
