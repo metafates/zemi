@@ -1,9 +1,9 @@
 // lsp.go feeds language server diagnostics to the model: after write or
 // edit changes a file, its server's errors are appended to the tool result,
-// and the diagnostics tool checks any file. Servers
-// start lazily on the first matching file: the builtin set when its binary
-// is installed and the project has its marker file (lsp.auto), plus servers
-// user config adds with zemi.lsp.add.
+// and the diagnostics tool checks any file. Servers start lazily on the
+// first matching file: the builtin set when its binary is installed and the
+// project has its marker file (lsp.auto), plus servers user config adds with
+// zemi.lsp.add.
 package hostapi
 
 import (

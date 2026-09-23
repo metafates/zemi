@@ -251,7 +251,7 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 	for i, q := range qs {
 		ans := strings.ReplaceAll(answers[i], " (Recommended)", "")
 		if ans == "" {
-			ans = "(not answered: go with your recommendation)"
+			ans = "(not answered: use your recommended option, or your best judgment if you gave none)"
 		}
 		fmt.Fprintf(&b, "\n- %q: %s", q.Question, ans)
 	}

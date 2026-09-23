@@ -368,7 +368,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 		// sandbox: false is denied for a read-only agent, so it is not offered
 		return "\nThe sandbox may have blocked this: " + limits + ". The project stays read-only while planning; network: true (needs approval) adds only the network."
 	}
-	retry := " It looks like the network: call it again with network: true, which keeps the sandbox and needs approval."
+	retry := " It looks like a network failure: call it again with network: true, which keeps the sandbox and needs approval."
 	if !sandbox.LikelyNetwork(out, err) {
 		retry = " If it needs the network, call it again with network: true (sandbox kept); if it needs more, sandbox: false (no limits). Both need approval."
 	}
@@ -867,7 +867,7 @@ Chain dependent steps with &&.`,
 			},
 			runWrite))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read with the read tool (a window around the change is enough; cat or sed in bash does not count) and not changed since except by your edits. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. Whole lines also match when only whitespace differs. Several edits to one file can go in the same response; they apply in order.", true,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read with the read tool (a window around the change is enough; cat or sed in bash does not count) and not changed since except by your edits. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. Whole lines also match when only whitespace differs. Several edit calls to one file sent together apply in order.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
@@ -923,7 +923,7 @@ Chain dependent steps with &&.`,
 			return checkFetchHost(p, u)
 		}),
 
-		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, with exactly one item in_progress while work remains. Mark an item done as soon as it is, in the same response as the next step's first calls, and never call a step done in your reply before the list does. Do not repeat the list in your reply. Without todos it returns the list.",
+		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, with exactly one item in_progress while work remains. Mark an item done as soon as it finishes, in the same response as the next step's first calls, and never call a step done in your reply before the list does. Do not repeat the list in your reply. Without todos it returns the list.",
 			false,
 			map[string]any{
 				"todos": map[string]any{"type": "array", "items": map[string]any{
@@ -966,7 +966,7 @@ Chain dependent steps with &&.`,
 			func(in map[string]any) []Request { return nil },
 			runQuestion),
 
-		mk(ToolPlan, `Present an implementation plan and wait for the user's verdict before changing anything. Call it only before a large or ambiguous change, or as a read-only agent once nothing is left to decide: a clear task is done, not planned, and a question is answered. Ask open questions with the question tool first.
+		mk(ToolPlan, `Present an implementation plan and wait for the user's verdict before changing anything. Call it only before a large or ambiguous change (a clear task is done, not planned, and a question is answered), or as a read-only agent once nothing is left to decide. Ask open questions with the question tool first.
 
 The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most.`,
 			false,

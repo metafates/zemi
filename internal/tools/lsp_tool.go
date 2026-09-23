@@ -24,7 +24,7 @@ const lspToolDesc = `Ask the file's language server about a symbol by name. Unli
 - implementation: what implements an interface or abstract method.
 - references: every use across the project, sorted by file.
 - workspace_symbols: find a declaration by name when you do not know its file.
-- rename: rename it everywhere, imports and other files included; the changed files count as read for edit.
+- rename: rename it everywhere, imports and other files included; the changed files count as read.
 - symbols: the file's outline, cheaper than reading a large file for its shape.
 - call_hierarchy: who calls the symbol (incoming) and what it calls (outgoing).`
 

@@ -912,10 +912,10 @@ a child inherits the parent env minus the §9 secret denylist; extra vars
 are opt-in per job (`env = { ... }`, Lua-supplied values only, never
 looked up from the parent by name); every `env`-extras key runs the §9
 environment gates: a secret-shaped or environment-affecting name is
-refused when the job starts (`perm.ChildEnv`); model `job_start` takes no
-extras, a shell line sets its own; jobs never inherit the controlling
-tty (each runs in its own session through `internal/proc`; stdin is
-closed unless the job asks for a pipe with `stdin = true`).
+refused when the job starts (`perm.ChildEnv`); model `job_start` takes
+none, since its shell line sets them (`FOO=1 cmd`); jobs never inherit the
+controlling tty (each runs in its own session through `internal/proc`;
+stdin is closed unless the job asks for a pipe with `stdin = true`).
 
 ### 6.6 UI
 

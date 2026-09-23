@@ -524,8 +524,8 @@ func OpenRegular(path string) (f *os.File, fi os.FileInfo, err error) {
 	return f, fi, nil
 }
 
-// readGated reads a whole file, for edit, which needs all of it. A file over editMaxBytes is refused rather than allocated:
-// the edit would have to hold it twice over.
+// readGated reads a whole file for edit. A file over editMaxBytes is refused
+// rather than allocated: the edit would have to hold it twice over.
 func readGated(path string) (data []byte, fi os.FileInfo, err error) {
 	f, fi, err := OpenRegular(path)
 	if err != nil {
