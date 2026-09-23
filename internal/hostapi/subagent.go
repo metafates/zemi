@@ -82,7 +82,7 @@ var builtinAgents = []AgentDef{
 		Description: "Read-only: explores the code and drafts an implementation plan with a Critical Files section, for a large or unclear change.",
 		Tools:       []string{"read", "glob", "grep", "lsp", "skill", "fetch", "web_search"},
 		ReadOnly:    true,
-		System:      "Read the code the change touches and the patterns it should reuse; never guess what a read would settle. Then report a plan someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most, then the open questions only the user can answer.",
+		System:      "Read the code the change touches and the patterns it should reuse; never guess what a read would answer. Then report a plan someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most, then the open questions only the user can answer.",
 		Source:      "builtin",
 	},
 }
@@ -660,7 +660,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	// a detached run outlives a headless turn, which exits as soon as the
 	// main agent is idle, so its report would be thrown away
 	if t.h.hooks() != nil {
-		b.WriteString(" Set background for long work you need not wait on. send_to continues a run, running or finished, by the id its report starts with.")
+		b.WriteString(" Set background for long work you need not wait on. send_to continues a run, running or finished, by its run id.")
 	}
 	b.WriteString("\n\nAgents:")
 	for _, d := range t.defs {
@@ -682,7 +682,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	}
 	if t.h.hooks() != nil {
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"}
-		params["send_to"] = map[string]any{"type": "string", "description": "id of a run to continue: a running one reads prompt at its next step, a finished one answers it on its history; agent and description are then ignored"}
+		params["send_to"] = map[string]any{"type": "string", "description": "id of a run to continue: a running one reads prompt at its next step, a finished one answers it with its history kept; agent and description are then ignored"}
 	}
 	return fantasy.ToolInfo{
 		Name:        tools.ToolAgent,
@@ -783,9 +783,10 @@ func (t *agentTool) foreground(ctx context.Context, callID string, run *agentRun
 	}
 	t.h.setToolDetail(callID, summary+" · "+fmtDuration(time.Since(start)))
 	if err != nil {
-		msg := "agent failed: " + t.h.friendlyError(err)
+		// the chat draws a failure's output, so the id rides its first line rather than a [run] head
+		msg := "agent " + run.id + " failed: " + t.h.friendlyError(err)
 		if errors.Is(err, context.Canceled) {
-			msg = "agent cancelled"
+			msg = "agent " + run.id + " cancelled"
 		}
 		if text != "" {
 			msg += "\n\nIts last message before that:\n" + text
