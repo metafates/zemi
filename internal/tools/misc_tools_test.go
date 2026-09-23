@@ -58,7 +58,7 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	}
 
 	resp = call(t, todos, `{}`)
-	if resp.IsError || !strings.Contains(resp.Content, "[x] second") {
+	if resp.IsError || resp.Content != "- [pending] first\n- [done] second\n" {
 		t.Fatalf("absent todos is read-only: %+v", resp)
 	}
 	resp = call(t, todos, `{"todos":[{"content":"a","status":"in_progress"},{"content":"b","status":"in_progress"}]}`)

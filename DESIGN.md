@@ -825,7 +825,7 @@ question or a report is no plan to approve),
 `job_start`/`job_read`/`job_list`/`job_kill`,
 `memory` (one durable line, `replaces` rewrites or drops one, §10.4),
 `diagnostics` (language
-server errors for any file), `lsp` (definition, implementation,
+server errors and warnings for any file), `lsp` (definition, implementation,
 references, rename, file symbols and project-wide symbol search by name), `skill` (loads a SKILL.md body on demand), plus the
 three the host adds: `agent` (delegate to a subagent), `workflow` (write
 or run a workflow script), and `lua` (run Lua inside zemi, main agent only, as user origin:

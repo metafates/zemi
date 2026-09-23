@@ -112,7 +112,7 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("compacted prompt has %d messages, want 4 (system, summary, ok, two)", n)
 	}
 	summary := h.agents.runner.History[0]
-	if prev, _ := summaryOf(summary); !strings.Contains(concatText(summary.Content), "[ ] ship") || strings.Contains(prev, "ship") {
+	if prev, _ := summaryOf(summary); !strings.Contains(concatText(summary.Content), "- [pending] ship") || strings.Contains(prev, "ship") {
 		t.Fatalf("the todo list must follow the summary and stay out of the next merge: %q", concatText(summary.Content))
 	}
 	compacted := false

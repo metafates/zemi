@@ -1184,8 +1184,9 @@ func ripgrep(ctx context.Context, root string, fn func(line string) bool, args .
 	defer cancel()
 	// the exclusions go last: rg's last matching glob wins. NOTE: a grep
 	// include that matches a directory name ("*") still un-ignores gitignored
-	// trees; rg has no glob for files only
-	args = append(append([]string{"--hidden", "--no-require-git"}, args...), "--glob", "!.git", "--glob", "!.zemi/worktrees")
+	// trees; rg has no glob for files only. --no-config: a user's
+	// RIPGREP_CONFIG_PATH (--smart-case, --glob) must not change what matches
+	args = append(append([]string{"--no-config", "--hidden", "--no-require-git"}, args...), "--glob", "!.git", "--glob", "!.zemi/worktrees")
 	c := proc.CommandContext(cctx, rgBin, args...)
 	c.Dir = root
 	out, err := c.StdoutPipe()
@@ -1220,7 +1221,7 @@ func walk(ctx context.Context, root string, fn func(path, rel string) error) err
 	// the handler below drops errors so an unreadable subdirectory is skipped,
 	// and a missing root would read as no matches
 	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
-		return fmt.Errorf("no such directory: %s", root)
+		return fmt.Errorf("no such file or directory: %s", root)
 	}
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if ctx.Err() != nil {

@@ -1,6 +1,6 @@
-// lsp.go feeds language server diagnostics to the model: after write, edit
-// or multiedit changes a file, its server's errors and warnings are appended
-// to the tool result, and the diagnostics tool checks any file. Servers
+// lsp.go feeds language server diagnostics to the model: after write or
+// edit changes a file, its server's errors are appended to the tool result,
+// and the diagnostics tool checks any file. Servers
 // start lazily on the first matching file: the builtin set when its binary
 // is installed and the project has its marker file (lsp.auto), plus servers
 // user config adds with zemi.lsp.add.
@@ -431,9 +431,10 @@ func (h *Host) lspCheck(path string, afterWrite bool) (out string, ok bool) {
 	if !ok {
 		return "", false
 	}
-	maxSeverity, budget := 3, 10*time.Second
+	// LSP severities: 1 error, 2 warning, 3 information, 4 hint
+	maxSeverity, budget, none := 2, 10*time.Second, "problems"
 	if afterWrite {
-		maxSeverity, budget = 2, 3*time.Second
+		maxSeverity, budget, none = 1, 3*time.Second, "errors"
 	}
 	// NOTE: a cold gopls or tsserver can take longer than this on a
 	// big workspace; the edit then returns without diagnostics.
@@ -491,7 +492,7 @@ func (h *Host) lspCheck(path string, afterWrite bool) (out string, ok bool) {
 		lines = append(lines[:30], "...")
 	}
 	if len(lines) == 0 {
-		return fmt.Sprintf("%s reports no problems in %s", def.Name, rel(abs)), true
+		return fmt.Sprintf("%s reports no %s in %s", def.Name, none, rel(abs)), true
 	}
 	return fmt.Sprintf("<diagnostics source=%q>\n%s\n</diagnostics>", def.Name, strings.Join(lines, "\n")), true
 }

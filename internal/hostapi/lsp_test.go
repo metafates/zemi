@@ -53,7 +53,7 @@ func TestLSPDiagnostics(t *testing.T) {
 		for _, c := range []struct{ tool, name, content, want string }{
 			{"write", "a.txt", "ok\nBROKEN", "error a.txt:2:1: broken"},
 			{"diagnostics", "a.txt", "", `<diagnostics source="fake">`},
-			{"write", "a.txt", "fixed", "fake reports no problems in a.txt"},
+			{"write", "a.txt", "fixed", "fake reports no errors in a.txt"},
 			{"write", "b.txt", "BROKEN", "error b.txt:1:1"},
 			{"write", "a.txt", "still fine", "errors in other files (a caller this change broke, or already broken):\nerror b.txt:1:1: broken"},
 			{"diagnostics", "b.zzz", "", "no language server for .zzz"},

@@ -279,7 +279,8 @@ func findSymbol(text, name string, line int) (off int, lines []int, err error) {
 	re := regexp.MustCompile(`(^|[^\pL\pN_])(` + regexp.QuoteMeta(name) + `)($|[^\pL\pN_])`)
 	var offs []int
 	for _, m := range re.FindAllStringSubmatchIndex(text, -1) {
-		offs = append(offs, m[4])
+		// the last segment of http.Get: the first would ask about the package
+		offs = append(offs, m[4]+strings.LastIndexAny(name, ".:>")+1)
 	}
 	if len(offs) == 0 {
 		return 0, nil, errors.New(name + " does not appear in the file as a whole word")

@@ -94,14 +94,8 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 func TodoList(rows []store.Todo) string {
 	var b strings.Builder
 	for _, td := range rows {
-		mark := " "
-		switch td.Status {
-		case "done":
-			mark = "x"
-		case "in_progress":
-			mark = ">"
-		}
-		fmt.Fprintf(&b, "[%s] %s\n", mark, td.Content)
+		// the enum words: the model sends them back, after compaction too
+		fmt.Fprintf(&b, "- [%s] %s\n", td.Status, td.Content)
 	}
 	return b.String()
 }

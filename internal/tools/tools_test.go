@@ -434,7 +434,7 @@ func TestGlobAndGrep(t *testing.T) {
 		// a mistyped path must say so instead of reading as an empty tree
 		for _, tool := range []fantasy.AgentTool{glob, grep} {
 			resp := call(t, tool, `{"path":"`+filepath.Join(dir, "nope")+`","pattern":"x"}`)
-			if !resp.IsError || !strings.Contains(resp.Content, "no such directory") {
+			if !resp.IsError || !strings.Contains(resp.Content, "no such file or directory") {
 				t.Errorf("rg=%q missing root: %+v", bin, resp)
 			}
 		}
@@ -830,5 +830,21 @@ func TestReadPagesAHugeFile(t *testing.T) {
 	res, _ = editFile(p, path, map[string]any{"old_string": "x", "new_string": "y"})
 	if !strings.Contains(res.Content, "over edit's 10 MB limit") {
 		t.Fatalf("edit of a huge file: %q", res.Content)
+	}
+}
+
+func TestFindSymbol(t *testing.T) {
+	text := "import \"net/http\"\nr, _ := http.Get(u)\n"
+	for _, c := range []struct {
+		name, at string
+		line     int
+	}{
+		{"http", "http.Get(u)", 2},
+		{"http.Get", "Get(u)", 0},
+	} {
+		off, _, err := findSymbol(text, c.name, c.line)
+		if err != nil || !strings.HasPrefix(text[off:], c.at) {
+			t.Errorf("%s: at %q, %v", c.name, text[off:], err)
+		}
 	}
 }
