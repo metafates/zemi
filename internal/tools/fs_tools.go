@@ -567,7 +567,7 @@ func (p *Pipeline) checkpoint(path string) {
 }
 
 func runEdit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	return editFile(p, "edited", str(input["path"]), []any{input})
+	return editFile(p, str(input["path"]), []any{input})
 }
 
 func runMultiedit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
@@ -575,12 +575,12 @@ func runMultiedit(ctx context.Context, p *Pipeline, input map[string]any) (fanta
 	if !ok || len(edits) == 0 {
 		return fantasy.NewTextErrorResponse("edits must be a non-empty array"), nil
 	}
-	return editFile(p, "multiedit", str(input["path"]), edits)
+	return editFile(p, str(input["path"]), edits)
 }
 
 // editFile applies edits to a file under its lock, all or nothing. Matching
 // runs on LF text and a CRLF file is written back with CRLF.
-func editFile(p *Pipeline, verb, path string, edits []any) (fantasy.ToolResponse, error) {
+func editFile(p *Pipeline, path string, edits []any) (fantasy.ToolResponse, error) {
 	defer lockFile(path)()
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -607,7 +607,7 @@ func editFile(p *Pipeline, verb, path string, edits []any) (fantasy.ToolResponse
 	if err := writeGated(path, []byte(out), fi.Mode().Perm()); err != nil {
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
-	res := fmt.Sprintf("%s %s (%d replacement%s)", verb, rel, n, plural(n))
+	res := fmt.Sprintf("edited %s (%d replacement%s)", rel, n, plural(n))
 	if tolerant.count > 0 {
 		// the model never re-reads after a success, so what its text became
 		// under the file's indentation has to be in the result

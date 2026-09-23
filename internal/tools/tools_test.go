@@ -408,7 +408,7 @@ func TestMultieditSequential(t *testing.T) {
 		{"old_string":"bbb","new_string":"BBB"},
 		{"old_string":"ccc","new_string":"CCC"}
 	]}`)
-	if resp.IsError {
+	if resp.IsError || !strings.HasPrefix(resp.Content, "edited ") || !strings.Contains(resp.Content, "/a.txt (3 replacements)") {
 		t.Fatalf("multiedit: %+v", resp)
 	}
 	data, _ := os.ReadFile(file)
@@ -784,7 +784,7 @@ func TestReadPagesAHugeFile(t *testing.T) {
 	if !strings.Contains(res.Content, "100000\tx") || !strings.Contains(res.Content, "... (more lines; continue with offset") {
 		t.Fatalf("page: %q", res.Content[:min(len(res.Content), 120)])
 	}
-	res, _ = editFile(p, "edited", path, []any{map[string]any{"old_string": "x", "new_string": "y"}})
+	res, _ = editFile(p, path, []any{map[string]any{"old_string": "x", "new_string": "y"}})
 	if !strings.Contains(res.Content, "too large to edit") {
 		t.Fatalf("edit of a huge file: %q", res.Content)
 	}
