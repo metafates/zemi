@@ -385,17 +385,27 @@ func TestPruneInTurnClearsSubagentOutput(t *testing.T) {
 }
 
 // TestTranscriptTextNotesAttachments: a compacted transcript names attached
-// files, which the summarizer cannot see, instead of dropping them silently.
+// files, which the summarizer cannot see, and sets what zemi appended apart
+// from what the user typed.
 func TestTranscriptTextNotesAttachments(t *testing.T) {
 	got := transcriptText([]fantasy.Message{{
 		Role: fantasy.MessageRoleUser,
 		Content: []fantasy.MessagePart{
-			fantasy.TextPart{Text: "what is wrong here"},
+			fantasy.TextPart{Text: "what is wrong here" + agent.Note("mark it done")},
 			fantasy.FilePart{MediaType: "image/png", Data: []byte("x")},
 		},
 	}})
-	if !strings.Contains(got, "what is wrong here") || !strings.Contains(got, "[attached image/png]") {
+	if !strings.Contains(got, "user: what is wrong here\nattached, not typed by the user: <zemi-note>\nmark it done\n</zemi-note>\n") || !strings.Contains(got, "[attached image/png]") {
 		t.Fatalf("transcript = %q", got)
+	}
+}
+
+// TestSummaryOfOlderWording: a summary row stored under an earlier prefix
+// wording still reads as a summary.
+func TestSummaryOfOlderWording(t *testing.T) {
+	old := agent.UserMessage(compactLead + ". Recent messages follow verbatim.\n\n<summary>\nthe gist" + compactSuffix)
+	if s, ok := summaryOf(old); !ok || s != "the gist" {
+		t.Fatalf("summaryOf = %q, %v", s, ok)
 	}
 }
 
