@@ -125,6 +125,7 @@ guessing. Common keys:
 - `agent.context_window`: tokens, overrides the model's `context_window` (0 = the model's)
 - `compact.model`: model that writes compaction summaries (empty uses `models.small`)
 - `session.auto_title` (true): name sessions from the first exchange with `models.small`
+  (not in a `-p` run, which keeps the first line of the first message as the title)
 - `lsp.auto` (true): start installed gopls, pyright, typescript-language-server, clangd or
   rust-analyzer when their marker file (go.mod, package.json, Cargo.toml, ...) is next to a
   file zemi touches or above it, up to the repo root. typescript starts only with a
