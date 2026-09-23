@@ -327,6 +327,15 @@ func TestOverlayNavigation(t *testing.T) {
 				}
 				return ""
 			}},
+		{"a detail view draws no filter, so typing hides no action",
+			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Ask", "fill": "x"})}}, []string{"enter"},
+			func(a *App) string {
+				for _, k := range []string{"/", "x"} {
+					a.overlayKey(k, k)
+				}
+				d := a.overlays[len(a.overlays)-1]
+				return map[bool]string{false: fmt.Sprintf("visible=%v filtering=%v", d.visible, d.active)}[len(d.visible) == 1 && !d.active]
+			}},
 		{"an action that fills closes the stack",
 			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Use", "fill": "/use "})}}, []string{"enter", "enter"},
 			func(a *App) string {

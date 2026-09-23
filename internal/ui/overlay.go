@@ -324,7 +324,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	if st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) {
 		return nil
 	}
-	if len(o.Items) > 0 && st.edit(key, text, st.texts) || moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
+	if len(o.Items) > 0 && !st.back && st.edit(key, text, st.texts) || moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
 		return nil
 	}
 	// a row's key acts like enter on it; one printable character, so no
