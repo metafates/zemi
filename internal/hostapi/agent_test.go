@@ -1067,6 +1067,8 @@ func TestAlwaysChoice(t *testing.T) {
 		t.Errorf("a file in no repository: %q", label)
 	}
 	// what the pipeline decides: the rule, then the protected-write re-ask
+	pipe := h.PipelineFor()
+	pipe.Ask = nil // an ask comes back as Ask instead of reaching a prompt
 	for approved, cases := range map[string]map[string]perm.Decision{
 		"main.go": {
 			"main.go": perm.Allow, "internal/a.go": perm.Allow, ".gitignore": perm.Allow, ".gitkeep": perm.Allow,
@@ -1077,16 +1079,11 @@ func TestAlwaysChoice(t *testing.T) {
 		"sub/.git":    {"sub/.git": perm.Ask},
 	} {
 		_, rules := h.alwaysChoice(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, approved)})
-		s := perm.NewStore()
 		for _, r := range rules {
-			s.Add(r)
+			h.Perm.Add(r)
 		}
 		for arg, want := range cases {
-			got := s.Evaluate("fs.write", filepath.Join(proj, arg), "model").Decision
-			if got == perm.Allow && h.protectedWrite(filepath.Join(proj, arg)) {
-				got = perm.Ask
-			}
-			if got != want {
+			if got := pipe.Check(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, arg)}).Decision; got != want {
 				t.Errorf("always edits for %s: %s = %v, want %v", approved, arg, got, want)
 			}
 		}
