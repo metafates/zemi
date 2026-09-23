@@ -189,6 +189,24 @@ func TestQueueDroppedOnFailure(t *testing.T) {
 // TestAgentQueuesWhileBackground: a message sent while a background agent runs
 // is queued and starts no turn; once the run finishes the send that follows
 // (the report) starts a turn and the queued text reaches the model.
+// TestAgentItemsListRunsOfOtherSessions: a run left behind by /new still
+// blocks /rewind, so /agents lists it under Running, named by its session.
+func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	seedSession(t, h)
+	if err := h.DB.CreateSession("other", "", "Other work", ""); err != nil {
+		t.Fatal(err)
+	}
+	run := &agentRun{id: "agent-9", agent: "explore", description: "look", parent: "other", status: "running", started: time.Now(), cancel: func() {}}
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	rows := fmt.Sprint(h.agentRunItems())
+	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "look (from Other work)") || !strings.Contains(rows, "agents view agent-9") {
+		t.Fatalf("run of another session not listed:\n%s", rows)
+	}
+}
+
 func TestAgentSendsWhileBackground(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})

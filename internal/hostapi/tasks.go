@@ -101,6 +101,21 @@ func (r *taskReg) list(parent string) []*agentRun {
 	return out
 }
 
+// runningElsewhere returns the live runs other parents started, newest
+// first: /new leaves a background run behind, and its stop is in /agents.
+func (r *taskReg) runningElsewhere(parent string) []*agentRun {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []*agentRun
+	for _, x := range r.runs {
+		if x.parent != parent && x.isRunning() {
+			out = append(out, x)
+		}
+	}
+	slices.SortFunc(out, func(a, b *agentRun) int { return b.started.Compare(a.started) })
+	return out
+}
+
 // running counts every live run; runningFor only those parent started.
 func (r *taskReg) running() int {
 	return r.count(func(*agentRun) bool { return true })
@@ -426,6 +441,16 @@ func (h *Host) agentRunItems() []any {
 		status, calls, took, runSID := run.state()
 		held[runSID] = true
 		row(run.id, status, run.agent, took, run.description, fmt.Sprintf(" · %d %s", calls, plural(calls, "call", "calls")))
+	}
+	// a run another session started still writes files and blocks /rewind,
+	// so it is listed, named by that session
+	for _, run := range h.tasks.runningElsewhere(sid) {
+		status, calls, took, _ := run.state()
+		from := "another session"
+		if sess, err := h.DB.GetSession(run.parent); h.DB != nil && err == nil && sess.Title != "" {
+			from = sess.Title
+		}
+		row(run.id, status, run.agent, took, run.description+" (from "+from+")", fmt.Sprintf(" · %d %s", calls, plural(calls, "call", "calls")))
 	}
 	if h.DB != nil && sid != "" {
 		children, _ := h.DB.ChildSessions(sid)
