@@ -1337,7 +1337,7 @@ provenance string.
   (`t`, which denies, stops the turn and hands the composer back); up and
   down move, enter answers the highlighted one. Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
-  last, an open memory, an overlay's detail view; a multi-select stays a list whose
+  last, a yes/no one's `y` and `n`, an open memory, an overlay's detail view; a multi-select stays a list whose
   marks read `on` in the key column) draws its buttons through one renderer, which puts
   each answer's key in brackets beside its label, the selected answer marked `›` in the accent like a selected list row. The session `always` and `wider`
   answers write allow rules to the rule store (§6.1),

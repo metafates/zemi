@@ -115,7 +115,7 @@ func TestQuestionAnswers(t *testing.T) {
 		{"typed answer on the last row", yes, []string{"j", "enter", "use a flag", "enter"}, questionResult{[]string{"use a flag"}, true}},
 		{"typing on the last row starts the answer, a digit too", yes, []string{"j", "2weeks", "enter"}, questionResult{[]string{"2weeks"}, true}},
 		{"open question types at once", tools.Question{Type: tools.TypeFreeText, Question: "Name?"}, []string{"zemi", "enter"}, questionResult{[]string{"zemi"}, true}},
-		{"yes_no answered by a digit", tools.Question{Type: tools.TypeYesNo, Question: "Go?", Options: []tools.QuestionOption{{Label: "Yes"}, {Label: "No"}}}, []string{"1"}, questionResult{[]string{"Yes"}, true}},
+		{"yes_no answered by n, as every prompt answers no", tools.Question{Type: tools.TypeYesNo, Question: "Go?", Options: []tools.QuestionOption{{Label: "Yes"}, {Label: "No"}}}, []string{"n"}, questionResult{[]string{"No"}, true}},
 		{"digit picks a single choice", tools.Question{Type: tools.TypeSingle, Question: "Pick?", Options: []tools.QuestionOption{{Label: "one"}, {Label: "two"}}}, []string{"2"}, questionResult{[]string{"two"}, true}},
 		{"esc leaves typing, second esc dismisses", yes, []string{"j", "enter", "x", "esc", "esc"}, questionResult{nil, false}},
 		{"the typed answer's digit starts it", yes, []string{"2", "no", "enter"}, questionResult{[]string{"no"}, true}},

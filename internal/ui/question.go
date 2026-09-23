@@ -151,10 +151,16 @@ func (a *App) questionKey(key, text string) {
 	if moveSel(&st.sel, q.ListRows(), st.view.pageItems(q.ListRows()), key) {
 		return
 	}
-	// a digit picks the option directly; yes_no and single answer at once,
-	// and single's last digit starts the typed answer. On the typed answer
-	// row a digit is its first character instead.
-	if n := optionDigit(text); n >= 0 && n < q.ListRows() && (n < len(q.Options) || !q.Multi()) && st.sel != len(q.Options) {
+	// a row's key picks it directly; yes_no and single answer at once, and
+	// single's last digit starts the typed answer. On the typed answer row a
+	// digit is its first character instead.
+	n := -1
+	for i := range q.ListRows() {
+		if text != "" && optionKey(q, i) == text {
+			n = i
+		}
+	}
+	if n >= 0 && (n < len(q.Options) || !q.Multi()) && st.sel != len(q.Options) {
 		st.sel = n
 		switch {
 		case n == len(q.Options):
@@ -189,23 +195,16 @@ func (a *App) questionKey(key, text string) {
 	}
 }
 
-// optionKey is the digit that picks option i, "" past the ninth.
-func optionKey(i int) string {
-	if i < 9 {
+// optionKey is the key that picks row i: y and n on a yes/no question, as
+// every prompt answers yes and no, else its digit, "" past the ninth.
+func optionKey(q tools.Question, i int) string {
+	switch {
+	case q.Type == tools.TypeYesNo && i < 2:
+		return []string{"y", "n"}[i]
+	case i < 9:
 		return strconv.Itoa(i + 1)
 	}
 	return ""
-}
-
-// optionDigit maps a "1".."9" key to its zero-based option index, or -1.
-func optionDigit(text string) int {
-	if len(text) != 1 {
-		return -1
-	}
-	if text[0] >= '1' && text[0] <= '9' {
-		return int(text[0] - '1')
-	}
-	return -1
 }
 
 func (st *qState) marked(q tools.Question) string {
@@ -353,11 +352,11 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 				label, desc = l, strings.TrimSuffix("recommended · "+desc, " · ")
 			}
 			items = append(items, listItem{label: label, desc: desc, key: map[bool]string{true: "on"}[st.picked[i]]})
-			choices = append(choices, promptChoice{key: optionKey(i), label: label, desc: desc})
+			choices = append(choices, promptChoice{key: optionKey(q, i), label: label, desc: desc})
 		}
 		if q.Type != tools.TypeYesNo {
 			items = append(items, listItem{label: "Type your own answer"})
-			choices = append(choices, promptChoice{key: optionKey(len(q.Options)), label: "Type your own answer"})
+			choices = append(choices, promptChoice{key: optionKey(q, len(q.Options)), label: "Type your own answer"})
 		}
 	}
 	askText := st.text.at(func(w int) [][]hostapi.Segment {
