@@ -118,9 +118,13 @@ func LikelyDenied(out string, err error) bool {
 		return false
 	}
 	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
-		switch ee.ExitCode() {
-		case 126, 127: // not executable, not found
+		switch code := ee.ExitCode(); {
+		case code == 126 || code == 127: // not executable, not found
 			return false
+		case code > 1 && strings.TrimSpace(out) == "":
+			// a silent failure (curl -s) has no text to match; exit 1 is
+			// grep or test finding nothing
+			return true
 		}
 	}
 	return denied.MatchString(out[max(0, len(out)-deniedTail):] + "\n" + err.Error())

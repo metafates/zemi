@@ -430,6 +430,8 @@ func TestLikelyDenied(t *testing.T) {
 		{"go cache write denied", "open /Users/u/Library/Caches/go-build/7f/7fe2-d: operation not permitted\nFAIL\te2e [setup failed]", exit(1), true},
 		{"python denied", "PermissionError: [Errno 1] Operation not permitted: 'out.txt'", exit(1), true},
 		{"make over a denied touch", "touch planmade\ntouch: planmade: Operation not permitted\nmake: *** [w] Error 1", exit(2), true},
+		{"silent curl", "", exit(6), true},
+		{"silent grep miss", "", exit(1), false},
 		{"curl dns", "curl: (6) Could not resolve host: example.com", exit(6), true},
 		{"sandbox-exec nested", "sandbox-exec: sandbox_apply: Operation not permitted", exit(71), true},
 		{"helper failure", "zemi sandbox: landlock: landlock unavailable", exit(125), true},

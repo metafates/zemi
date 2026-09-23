@@ -1607,7 +1607,8 @@ provenance string.
   the user with the reason "needs the network, staying sandboxed" or "run
   outside the sandbox" (headless nobody can answer, so the parameters and the
   retry line are left out and the denial is by `network` or `unsandboxed`). A
-  confined run that fails with output that looks like a denial
+  confined run that fails with output that looks like a denial, or with
+  none and an exit status above 1, like a silent `curl -s`
   (`sandbox.LikelyDenied`, a heuristic, over a job's whole retained tail)
   gets one line naming the live backend's limits and the retry, `network: true`
   first when the failure looks like a network one (`sandbox.LikelyNetwork`);
