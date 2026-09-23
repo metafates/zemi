@@ -151,6 +151,9 @@ func promptBox(title, badge string, body [][]hostapi.Segment, w, h, maxW int, si
 	if n := min(size.h, h) - len(body) - 2; n > 0 && len(body) > 0 {
 		body = slices.Insert(body, len(body)-1, make([][]hostapi.Segment, n)...)
 	}
+	if size.h > 0 { // a kept box cuts a longer title (a detail view's breadcrumb) instead of widening
+		title = ansi.Truncate(title, size.w-1-map[bool]int{true: ansi.StringWidth(badge) + 2}[badge != ""], "…")
+	}
 	box := hostBoxW(title, "Host:Title", badge, body, w, maxW, size.w)
 	size.w, size.h = max(size.w, segsWidth(box[0])-4), max(size.h, len(box))
 	return box

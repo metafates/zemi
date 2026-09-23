@@ -18,8 +18,8 @@ import (
 )
 
 // TestToggleOverlayStaysOpen: in a Reload overlay (skills) space and enter
-// run the row and rebuild the list in place, keeping the selection and the
-// filter; ctrl+j moves like j.
+// run the row and rebuild the list in place, keeping the selection, the
+// filter and the box's size; ctrl+j moves like j.
 func TestToggleOverlayStaysOpen(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	on := false
@@ -32,11 +32,12 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 	}
 	a.openOverlay(hostapi.Overlay{ID: "t", Origin: lua.OriginBuiltin, Items: items(), Reload: func() ([]any, [][]hostapi.Segment) { on = !on; return items(), nil }})
 	a.overlayKey("ctrl+j", "")
+	a.overlays[0].size = boxSize{60, 12}
 	for _, key := range []string{"space", "enter"} {
 		wasOn := on
 		a.overlayKey(key, map[string]string{"space": " "}[key])
-		if len(a.overlays) != 1 || a.overlays[0].selected != 1 || on == wasOn {
-			t.Fatalf("%s: overlays=%d selected=%d on=%v", key, len(a.overlays), a.overlays[0].selected, on)
+		if len(a.overlays) != 1 || a.overlays[0].selected != 1 || on == wasOn || a.overlays[0].size != (boxSize{60, 12}) {
+			t.Fatalf("%s: overlays=%d selected=%d on=%v size=%v", key, len(a.overlays), a.overlays[0].selected, on, a.overlays[0].size)
 		}
 	}
 	if got := a.overlays[0].texts[1]; got != "○ b" || a.composer.text != "picked" {
@@ -299,6 +300,12 @@ func TestOverlayNavigation(t *testing.T) {
 					return fmt.Sprintf("%+v", d)
 				}
 				return ""
+			}},
+		{"a breadcrumb longer than the list is cut, never widening the detail view",
+			hostapi.Overlay{Title: "A long parent title", Items: []any{map[string]any{"text": strings.Repeat("x", 50), "detail": "d"}}}, []string{"enter"},
+			func(a *App) string {
+				list, detail := segsWidth(a.overlayBox(&a.overlays[0], 120, 20)[0]), a.overlayBox(&a.overlays[1], 120, 20)[0]
+				return map[bool]string{false: fmt.Sprintf("list %d wide, detail %q", list, plainSegs(detail))}[segsWidth(detail) == list]
 			}},
 		{"the wheel scrolls a detail body with actions, and the box keeps its width",
 			hostapi.Overlay{Title: "Errors", Items: []any{detail(map[string]any{"text": "Ask", "fill": "x"}, map[string]any{"text": "Back"})}}, []string{"enter"},

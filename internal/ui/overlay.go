@@ -288,10 +288,10 @@ func (a *App) reloadOverlay(o hostapi.Overlay, call func()) {
 				return
 			}
 			st := &a.overlays[i]
-			f, next := st.listFilter, st.o
+			old, next := *st, st.o
 			next.Items, next.ItemText = items, text
 			*st = a.overlayState(next)
-			st.listFilter = f
+			st.listFilter, st.size, st.body, st.text = old.listFilter, old.size, old.body, old.text
 			st.refilter()
 		})
 	})
@@ -478,8 +478,11 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		body := [][]hostapi.Segment{st.input.inputRow(inner), nil, hint(inner, hintPair{"enter", "confirm"}, hintPair{"esc", "close"})}
 		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
-	// a list fits its content, 56 cells at least, and a text view is 72
-	st.size.w = max(st.size.w, map[bool]int{true: 56, false: 72}[len(st.o.Items) > 0])
+	// a list fits its content, 56 cells at least, a text view is 72, and a
+	// detail view opens at its parent's size
+	if !st.back {
+		st.size.w = max(st.size.w, map[bool]int{true: 56, false: 72}[len(st.o.Items) > 0])
+	}
 	bodyW := min(inner, st.size.w)
 	buildBody := st.text.at(func(w int) (rows [][]hostapi.Segment) {
 		switch {
