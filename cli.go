@@ -299,8 +299,11 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 		}
 	}
 	// a command that swapped the session (/new, /resume) ran no turn, and
-	// none of the rows or usage it brought are this run's
-	if h.AgentSessionID() != sid && !h.AgentActive() {
+	// none of the rows or usage it brought are this run's.
+	// NOTE: a command whose turn starts a session and ends before this check
+	// (a markdown command's quick reply) reads as a swap and prints nothing;
+	// a swap the command reported itself would tell them apart.
+	if strings.HasPrefix(prompt, "/") && h.AgentSessionID() != sid && !h.AgentActive() {
 		start, before = len(h.Session().Transcript), h.AgentStream()
 	}
 wait:
