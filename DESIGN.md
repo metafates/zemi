@@ -745,7 +745,7 @@ run that fails or is cancelled cannot read what is still queued, so its
 report says how many messages it never read. A finished run is not gone:
 `send_to` runs it once more on the history it ended with (its kept runner,
 or its child session's rows), so a follow-up question costs no fresh
-exploration.
+exploration. It keeps the run's model, and a run another session started refuses it.
 
 Builtin providers come from catwalk's embedded catalog: every generation
 seeds the registry with the providers whose key env var is exported

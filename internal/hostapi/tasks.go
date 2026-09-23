@@ -6,6 +6,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -38,11 +39,15 @@ const runIDLen = 8
 type agentRun struct {
 	id, agent, description string
 	parent                 string // the session that started the run
-	background             bool
-	started                time.Time
-	cancel                 context.CancelFunc
+	// the model reference it started on
+	// NOTE: "" for a run loadRun rebuilt, which continues on its definition's
+	// model: sessions keep no model column.
+	model      string
+	background bool
+	cancel     context.CancelFunc
 
 	mu        sync.Mutex
+	started   time.Time     // the last start: a continuation counts its own time
 	sessionID string        // the run's child session, "" when not recorded
 	runner    *agent.Runner // kept after the run ends: send_to continues it with its history
 	status    string        // running, done, failed, cancelled
@@ -84,7 +89,7 @@ func (r *taskReg) add(run *agentRun) error {
 		var oldest *agentRun
 		for _, x := range r.runs {
 			// never the run just added: loadRun adds old finished runs to view them
-			if x != run && !x.isRunning() && (oldest == nil || x.started.Before(oldest.started)) {
+			if x != run && !x.isRunning() && (oldest == nil || x.startedAt().Before(oldest.startedAt())) {
 				oldest = x
 			}
 		}
@@ -105,7 +110,7 @@ func (r *taskReg) list(parent string) []*agentRun {
 			out = append(out, x)
 		}
 	}
-	slices.SortFunc(out, func(a, b *agentRun) int { return b.started.Compare(a.started) })
+	slices.SortFunc(out, func(a, b *agentRun) int { return b.startedAt().Compare(a.startedAt()) })
 	return out
 }
 
@@ -120,7 +125,7 @@ func (r *taskReg) runningElsewhere(parent string) []*agentRun {
 			out = append(out, x)
 		}
 	}
-	slices.SortFunc(out, func(a, b *agentRun) int { return b.started.Compare(a.started) })
+	slices.SortFunc(out, func(a, b *agentRun) int { return b.startedAt().Compare(a.startedAt()) })
 	return out
 }
 
@@ -165,10 +170,16 @@ func (r *taskReg) find(id string) *agentRun {
 func (h *Host) newRun(ctx context.Context, def AgentDef, description, prompt string, background bool) (*agentRun, context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &agentRun{
-		id: store.NewID()[:runIDLen], agent: def.Name, description: description, parent: h.AgentSessionID(),
+		id: store.NewID()[:runIDLen], agent: def.Name, description: description, parent: h.AgentSessionID(), model: def.Model,
 		background: background, started: time.Now(), cancel: cancel, status: "running",
 		tr: []ChatMessage{{Role: "user", Text: prompt}}, rows: map[string]int{},
 	}, ctx
+}
+
+func (run *agentRun) startedAt() time.Time {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.started
 }
 
 func (run *agentRun) isRunning() bool {
@@ -280,12 +291,13 @@ func (h *Host) continueRun(ctx context.Context, run *agentRun, prompt string, pr
 	if err != nil {
 		return "", err
 	}
+	def.Model = cmp.Or(run.model, def.Model)
 	run.mu.Lock()
 	if run.status == "running" {
 		run.mu.Unlock()
 		return "", fmt.Errorf("agent %s is running: its queue takes the message", run.id)
 	}
-	run.status, run.closed, run.finished, run.dropped = "running", false, time.Time{}, 0
+	run.status, run.closed, run.started, run.finished, run.dropped = "running", false, time.Now(), time.Time{}, 0
 	run.tr = append(run.tr, ChatMessage{Role: "user", Text: prompt})
 	ctx, run.cancel = context.WithCancel(ctx)
 	run.mu.Unlock()

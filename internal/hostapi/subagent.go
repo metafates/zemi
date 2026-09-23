@@ -323,7 +323,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
 
 	run.mu.Lock()
-	prev, sid := run.runner, run.sessionID
+	prev, sid, base := run.runner, run.sessionID, run.calls
 	run.runner = runner
 	run.mu.Unlock()
 	var rows []*store.Message
@@ -355,7 +355,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		run.mu.Unlock()
 	}
 	seedLoaded(loaded, runner.History)
-	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid}
+	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid, base: base}
 	runner.Hooks = hooks
 	if sid != "" {
 		runner.Persist = func(role string, msg fantasy.Message) error {
@@ -458,6 +458,7 @@ type subagentHooks struct {
 	progress func(string)
 	sid      string
 	stepText int // len(run.text) when the step began, where a retry restarts
+	base     int // run.calls before this send: a continuation's row counts its own
 }
 
 func (s *subagentHooks) report(line string) {
@@ -484,7 +485,7 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run.mu.Lock()
 	run.flush()
 	run.calls++
-	n := run.calls
+	n := run.calls - s.base
 	run.rows[id] = len(run.tr)
 	run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: name, Text: toolSummary(input), Label: toolLabel(input), Status: "wait"})
 	run.mu.Unlock()
@@ -541,6 +542,7 @@ func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 		h.bill(s.sid, s.modelID, usage)
 	}
 	_, n, _, _ := s.run.state()
+	n -= s.base
 	s.report(fmt.Sprintf("%s · %d tool %s", s.def.Name, n, plural(n, "call", "calls")))
 	h.refresh()
 }
@@ -723,6 +725,13 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 			if run, err = t.h.loadRun(in.SendTo); err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
+		}
+		// its child session and bill belong to the conversation that started it
+		if run.parent != t.h.AgentSessionID() {
+			return fantasy.NewTextErrorResponse("agent " + run.id + " belongs to another session: start a fresh run"), nil
+		}
+		if in.Model != "" && in.Model != run.model {
+			return fantasy.NewTextErrorResponse("model cannot change on send_to: start a fresh run for another model"), nil
 		}
 		if run.isRunning() {
 			if err := t.h.MessageAgent(run.id, in.Prompt); err != nil {
