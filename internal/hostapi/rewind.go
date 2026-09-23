@@ -1,10 +1,10 @@
 // rewind.go undoes turns: before a write tool first changes a file in a
 // turn, its content is checkpointed against that turn's user message.
 // Rewinding to a message restores every file changed since, drops the
-// message and the rest of the conversation, and hands its text back to the
-// composer. A bash call's changes are rewound only for repository files git
-// does not ignore and the sandbox does not hide, at most snapCheckpoints of
-// them per call.
+// message and the rest of the conversation with what it learned and its todo
+// list, and hands its text back to the composer. A bash call's changes are
+// rewound only for repository files git does not ignore and the sandbox does
+// not hide, at most snapCheckpoints of them per call.
 package hostapi
 
 import (
@@ -24,6 +24,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // NOTE: larger files are not checkpointed (a rewind leaves them as they
@@ -170,6 +171,13 @@ func (h *Host) RewindTo(id string) (int, error) {
 		return 0, err
 	}
 	h.clampReflectSeen(sid, cut)
+	h.forgetLearned(sid, rows[cut].CreatedAt)
+	todos := todosIn(rows[:cut])
+	if err := h.DB.SetTodos(sid, todos); err != nil {
+		h.Log.Warn("rewind", "todo list not rewound", map[string]any{"error": err.Error()})
+	}
+	h.todosStale.Store(true)
+	h.resetTodoNag(todos)
 	sess, err := h.DB.GetSession(sid)
 	if err != nil {
 		return 0, err
@@ -177,7 +185,8 @@ func (h *Host) RewindTo(id string) (int, error) {
 	history, tr := resumeHistory(rows[:cut])
 	ag.mu.Lock()
 	ag.runner = &agent.Runner{History: history}
-	ag.lastIn, ag.turnMsgID = 0, ""
+	// the stored rows keep tool output a prune cleared, so compactDue must see them
+	ag.lastIn, ag.turnMsgID = estTokens(history...)+ag.promptTokens, ""
 	ag.mu.Unlock()
 	h.forgetInstructions()
 	h.setTranscript(sess.Title, tr)
@@ -185,6 +194,77 @@ func (h *Host) RewindTo(id string) (int, error) {
 		ui.ComposerEdit("set", text, -1)
 	}
 	return len(cps), nil
+}
+
+// forgetLearned undoes what session sid learned from since on: its learned
+// memories and pending proposals go, and what they replaced is live again.
+// The user's own memories stay, and a learned forget cannot come back.
+func (h *Host) forgetLearned(sid string, since int64) {
+	var gone []string
+	dbs := []*store.DB{h.DB, h.GlobalDB}
+	for _, db := range dbs {
+		if db == nil {
+			continue
+		}
+		ids, err := db.DeleteLearnedSince(sid, since)
+		if err = errors.Join(err, db.DeleteProposalsSince(sid, since)); err != nil {
+			h.Log.Warn("rewind", "learned memories not rewound", map[string]any{"error": err.Error()})
+		}
+		gone = append(gone, ids...)
+	}
+	for _, db := range dbs {
+		if db != nil && len(gone) > 0 {
+			if err := db.Unsupersede(gone); err != nil {
+				h.Log.Warn("rewind", "replaced memories not restored", map[string]any{"error": err.Error()})
+			}
+		}
+	}
+	h.refreshPending()
+}
+
+// todosIn is the todo list the last todos call in rows that ran set.
+func todosIn(rows []*store.Message) []store.Todo {
+	calls := map[string]string{} // tool call id -> input
+	var list []store.Todo
+	for _, row := range rows {
+		var m fantasy.Message
+		if json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
+			continue
+		}
+		for _, part := range m.Content {
+			switch p := part.(type) {
+			case fantasy.ToolCallPart:
+				if p.ToolName == tools.ToolTodos {
+					calls[p.ToolCallID] = p.Input
+				}
+			case fantasy.ToolResultPart:
+				var in struct {
+					Todos []struct {
+						Content, Status string
+						ActiveForm      string `json:"active_form"`
+					}
+				}
+				input, ok := calls[p.ToolCallID]
+				// a refused call set nothing, and one without a list only read it
+				if !ok || p.Output == nil || p.Output.GetType() == fantasy.ToolResultContentTypeError ||
+					json.Unmarshal([]byte(input), &in) != nil || in.Todos == nil {
+					continue
+				}
+				list = nil
+				for _, td := range in.Todos {
+					// the tool's own mapping of the names other harnesses use
+					switch td.Status {
+					case "cancelled":
+						continue
+					case "completed":
+						td.Status = "done"
+					}
+					list = append(list, store.Todo{Content: td.Content, Status: td.Status, ActiveForm: td.ActiveForm, Ord: len(list)})
+				}
+			}
+		}
+	}
+	return list
 }
 
 func restoreCheckpoint(cp store.Checkpoint) error {

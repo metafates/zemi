@@ -46,3 +46,10 @@ func (s *DB) TakeProposal(id string) (*Proposal, error) {
 	}
 	return &p, err
 }
+
+// DeleteProposalsSince drops the memory proposals a session made from since on.
+func (s *DB) DeleteProposalsSince(sessionID string, since int64) error {
+	_, err := s.db.Exec(`DELETE FROM proposals WHERE kind = 'memory' AND created_at >= ?
+		AND json_extract(payload, '$.ProvenanceSessionID') = ?`, since, sessionID)
+	return err
+}

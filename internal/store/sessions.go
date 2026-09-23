@@ -223,6 +223,10 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 	if err != nil {
 		return fmt.Errorf("store: fork session: %w", err)
 	}
+	todos, err := s.Todos(src.ID)
+	if err != nil {
+		return fmt.Errorf("store: fork session: %w", err)
+	}
 	// every row is read before the transaction: one connection serves both
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -262,6 +266,9 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 			mid, c.Tool, c.OK, c.at); err != nil {
 			return fmt.Errorf("store: fork session: %w", err)
 		}
+	}
+	if err := setTodos(tx, id, todos); err != nil {
+		return fmt.Errorf("store: fork session: %w", err)
 	}
 	return tx.Commit()
 }
@@ -352,6 +359,13 @@ func (s *DB) SetTodos(sessionID string, todos []Todo) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err := setTodos(tx, sessionID, todos); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func setTodos(tx *sql.Tx, sessionID string, todos []Todo) error {
 	if _, err := tx.Exec(`DELETE FROM todos WHERE session_id = ?`, sessionID); err != nil {
 		return err
 	}
@@ -364,7 +378,7 @@ func (s *DB) SetTodos(sessionID string, todos []Todo) error {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // Todos returns a session's todo list in order.

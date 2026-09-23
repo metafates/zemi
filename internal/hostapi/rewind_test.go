@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,9 +16,10 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// TestRewind runs two turns that write files, then rewinds the second and
-// the first: each rewind restores the files as they were before that turn
-// and cuts the conversation back to the prompt before it.
+// TestRewind runs turns that write files and todo lists, then rewinds them
+// one by one: each rewind restores the files and the todo list as they were
+// before that turn, cuts the conversation back to the prompt before it and
+// undoes what the session learned since.
 func TestRewind(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
@@ -40,12 +42,16 @@ func TestRewind(t *testing.T) {
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, toolResult bool) []fantasy.StreamPart {
 			switch {
-			// writing over a file means reading it first
 			case last == "first":
+				return toolCallParts("c-todo1", "todos", `{"todos":[{"content":"a","status":"pending"}]}`)
+			// writing over a file means reading it first
+			case strings.HasPrefix(last, "updated todos: 0/1"):
 				return toolCallParts("c-read", "read", fmt.Sprintf(`{"path":%q,"limit":0}`, edited))
 			case strings.Contains(last, "v1"):
 				return write(edited, "v2")
 			case last == "second":
+				return toolCallParts("c-todo2", "todos", `{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`)
+			case strings.HasPrefix(last, "updated todos: 1/2"):
 				return write(created, "x")
 			// a command deletes one file and overwrites another: rewind restores both
 			case last == "third":
@@ -91,15 +97,31 @@ func TestRewind(t *testing.T) {
 		}
 	}
 
+	// what the session learned in the rewound turns goes, the user's own stays
+	sid := h.AgentSessionID()
+	old := &store.Memory{Scope: "project", Text: "old", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: 1}
+	learned := &store.Memory{Scope: "project", Text: "learned", Origin: "learned", ProvenanceSessionID: sid}
+	mine := &store.Memory{Scope: "project", Text: "mine", Origin: "user", ProvenanceSessionID: sid}
+	for _, m := range []*store.Memory{old, learned, mine} {
+		if err := h.DB.AddMemory(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.DB.SupersedeMemory(old.ID, learned.ID)
+	if err := h.addProposal(memoryProposal{Memory: store.Memory{Scope: "project", Text: "proposed", Origin: "learned", ProvenanceSessionID: sid}}); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, c := range []struct {
 		prompt           int
 		files            int
 		edited, created  string
+		todos            int
 		transcriptBefore int // user messages left
 	}{
-		{prompt: 2, files: 2, edited: "v2", created: "x", transcriptBefore: 2},
-		{prompt: 1, files: 1, edited: "v2", created: "<missing>", transcriptBefore: 1},
-		{prompt: 0, files: 1, edited: "v1", created: "<missing>", transcriptBefore: 0},
+		{prompt: 2, files: 2, edited: "v2", created: "x", todos: 2, transcriptBefore: 2},
+		{prompt: 1, files: 1, edited: "v2", created: "<missing>", todos: 1, transcriptBefore: 1},
+		{prompt: 0, files: 1, edited: "v1", created: "<missing>", todos: 0, transcriptBefore: 0},
 	} {
 		n, err := h.RewindTo(prompts[c.prompt])
 		if err != nil {
@@ -107,6 +129,13 @@ func TestRewind(t *testing.T) {
 		}
 		if n != c.files || read(edited) != c.edited || read(created) != c.created {
 			t.Fatalf("rewind %d: restored %d, files %q %q", c.prompt, n, read(edited), read(created))
+		}
+		if todos := h.todoSnapshot(); len(todos) != c.todos {
+			t.Fatalf("rewind %d: todos %+v, want %d", c.prompt, todos, c.todos)
+		}
+		// the next send's compaction check reads it
+		if h.AgentStream().LastIn == 0 {
+			t.Fatalf("rewind %d: no context estimate", c.prompt)
 		}
 		users := 0
 		for _, m := range h.Session().Transcript {
@@ -124,6 +153,14 @@ func TestRewind(t *testing.T) {
 		if users != c.transcriptBefore || left != c.transcriptBefore {
 			t.Fatalf("rewind %d: transcript users %d, stored prompts %d, want %d", c.prompt, users, left, c.transcriptBefore)
 		}
+	}
+	live, _ := h.DB.ListMemory("project", false)
+	var texts []string
+	for _, m := range live {
+		texts = append(texts, m.Text)
+	}
+	if slices.Sort(texts); !slices.Equal(texts, []string{"mine", "old"}) || len(h.memoryProposals()) != 0 {
+		t.Fatalf("memories %q and %d proposals, want mine and old and none", texts, len(h.memoryProposals()))
 	}
 	if _, err := h.RewindTo(prompts[0]); err == nil {
 		t.Fatal("rewinding to a removed prompt must fail")
