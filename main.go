@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -237,10 +238,11 @@ func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
 	fingerprint := func() (string, bool) {
 		// a sandboxed command that created project config turns trust off first
 		h.CheckSandboxed()
+		roots := append([]string{dirs.ConfigHome}, dirs.UserTrees()...)
 		if h.ProjectTrusted() {
-			return configFingerprint(dirs.ConfigHome, dirs.ProjectConfigDir()), true
+			return configFingerprint(append(roots, dirs.ProjectConfigDir())...), true
 		}
-		return configFingerprint(dirs.ConfigHome), false
+		return configFingerprint(roots...), false
 	}
 	last, trusted := fingerprint()
 	for range time.Tick(time.Second) {
@@ -261,20 +263,28 @@ func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
 // plugin's dependency tree would make every walk cost milliseconds.
 func configFingerprint(roots ...string) string {
 	sum := sha256.New()
-	for _, root := range roots {
-		if root == "" {
-			continue
+	// resolved, so a symlinked config home or user tree (dotfiles) is walked:
+	// WalkDir follows no link below its root
+	var walk []string
+	for _, r := range roots {
+		if r == "" {
+			continue // EvalSymlinks would make it "."
 		}
+		if r, err := filepath.EvalSymlinks(r); err == nil && !slices.Contains(walk, r) {
+			walk = append(walk, r)
+		}
+	}
+	for _, root := range walk {
 		_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 			switch {
 			case err != nil:
 				return nil
-			case d.IsDir() && p != root && (d.Name()[0] == '.' || d.Name() == "node_modules" || p == filepath.Join(root, "worktrees")):
-				return filepath.SkipDir // checkouts in .zemi/worktrees are not config
+			case d.IsDir() && p != root && (d.Name()[0] == '.' || d.Name() == "node_modules" || p == filepath.Join(root, "worktrees") || slices.Contains(walk, p)):
+				return filepath.SkipDir // checkouts in .zemi/worktrees are not config; a root is walked once
 			case d.IsDir():
 				return nil
 			}
-			if info, err := d.Info(); err == nil {
+			if info, err := os.Stat(p); err == nil && !info.IsDir() {
 				fmt.Fprintf(sum, "%s|%d|%d\n", p, info.Size(), info.ModTime().UnixNano())
 			}
 			return nil
