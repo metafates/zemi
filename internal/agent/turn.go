@@ -89,6 +89,9 @@ type Runner struct {
 	active bool
 	cut    bool
 	cancel context.CancelFunc
+	tools  []fantasy.AgentTool
+	// live is the running step's input, which holds the turn's finished steps
+	live []fantasy.Message
 }
 
 // CutShort reports whether the last Send ended because Full said the
@@ -107,7 +110,7 @@ var ErrReplyCut = errors.New("the reply hit the output token limit (the model's 
 
 // NewRunner builds a runner over a resolved model.
 func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system string) *Runner {
-	r := &Runner{last: &lastErr{LanguageModel: model}}
+	r := &Runner{last: &lastErr{LanguageModel: model}, tools: tools}
 	opts := []fantasy.AgentOption{}
 	if system != "" {
 		opts = append(opts, fantasy.WithSystemPrompt(system))
@@ -191,7 +194,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		r.mu.Unlock()
 		return ErrTurnActive
 	}
-	r.active, r.cut = true, false
+	r.active, r.cut, r.live = true, false, nil
 	tctx, cancel := context.WithCancel(ctx)
 	r.cancel = cancel
 	hooks := r.Hooks
@@ -334,6 +337,13 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		if len(steered) > 0 {
 			msgs = interleave(o.Messages[:len(o.Messages)-len(resp)], resp, steered)
 		}
+		live := msgs
+		if live[0].Role == fantasy.MessageRoleSystem {
+			live = live[1:]
+		}
+		r.mu.Lock()
+		r.live = slices.Clone(live) // fantasy appends to the step input
+		r.mu.Unlock()
 		res := fantasy.PrepareStepResult{Messages: withCacheBreakpoints(msgs)}
 		if active != nil {
 			res.ActiveTools = active()
@@ -377,6 +387,57 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	r.mu.Unlock()
 	hooks.TurnDone(err, usage)
 	return err
+}
+
+// Snapshot is the conversation as the model last saw it, the running
+// turn's finished steps included.
+func (r *Runner) Snapshot() []fantasy.Message {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.active && r.live != nil {
+		return r.live
+	}
+	return slices.Clone(r.History)
+}
+
+// Aside answers text after history without joining it (/btw): one step on
+// this runner's system prompt, tools and cache breakpoints, so the provider's
+// prefix cache holds. Tool choice stays as a turn sends it, since Anthropic
+// drops the message cache when it changes; the tools refuse to run instead.
+func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text string) (*fantasy.AgentResult, error) {
+	msgs := append(closeToolCalls(history), UserMessage(text))
+	if r.TextOnly {
+		msgs = stripImages(msgs, noImages)
+	}
+	inert := make([]fantasy.AgentTool, len(r.tools))
+	for i, t := range r.tools {
+		inert[i] = inertTool{t}
+	}
+	call := fantasy.AgentCall{
+		Messages:        msgs,
+		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
+		Temperature:     r.Temperature,
+		MaxRetries:      &maxRetries,
+		ProviderOptions: r.ProviderOptions,
+		PrepareStep: func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
+			res := fantasy.PrepareStepResult{Messages: withCacheBreakpoints(o.Messages), Tools: inert}
+			if r.ActiveTools != nil {
+				res.ActiveTools = r.ActiveTools()
+			}
+			return ctx, res, nil
+		},
+	}
+	if n := r.MaxOutputTokens; n > 0 {
+		call.MaxOutputTokens = &n
+	}
+	return r.agent.Generate(ctx, call)
+}
+
+// inertTool sends a tool's schema and refuses to run it.
+type inertTool struct{ fantasy.AgentTool }
+
+func (inertTool) Run(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	return fantasy.NewTextErrorResponse("a side question runs no tools"), nil
 }
 
 const (
@@ -583,19 +644,30 @@ func (r *Runner) DropImages(why string) {
 	r.mu.Unlock()
 }
 
-// stripImages replaces every image in history with text naming why.
+// stripImages replaces every image in history with text naming why. It
+// copies a message's Content before changing it: a snapshot or a running
+// step may share it.
 func stripImages(history []fantasy.Message, why string) []fantasy.Message {
 	for i, m := range history {
+		copied := false
 		for j, part := range m.Content {
+			var note fantasy.MessagePart
 			switch p := part.(type) {
 			case fantasy.FilePart:
-				history[i].Content[j] = fantasy.TextPart{Text: "[image " + p.Filename + " omitted: " + why + "]"}
+				note = fantasy.TextPart{Text: "[image " + p.Filename + " omitted: " + why + "]"}
 			case fantasy.ToolResultPart:
 				if p.Output != nil && p.Output.GetType() == fantasy.ToolResultContentTypeMedia {
 					p.Output = fantasy.ToolResultOutputContentError{Error: errors.New("image omitted: " + why + "; go on without it, or ask the user to describe it")}
-					history[i].Content[j] = p
+					note = p
 				}
 			}
+			if note == nil {
+				continue
+			}
+			if !copied {
+				history[i].Content, copied = slices.Clone(m.Content), true
+			}
+			history[i].Content[j] = note
 		}
 	}
 	return history

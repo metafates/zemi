@@ -1272,7 +1272,8 @@ provenance string.
   answer wrote can be removed there),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter offers Resume and Delete), `/resume [id]` (latest without an id; history and
-  transcript rebuilt from the store), `/compact`, `/health` (one row per
+  transcript rebuilt from the store), `/compact`, `/btw <question>` (a side question
+  answered in an overlay from the conversation so far, never stored), `/health` (one row per
   check, problems first: store, model key, context window, git, ripgrep,
   reflector, pending reviews, skills, recent errors, project trust, MCP
   servers, language servers, Lua runtime),

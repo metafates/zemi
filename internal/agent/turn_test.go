@@ -580,10 +580,14 @@ func TestRegistryConcurrentReload(t *testing.T) {
 func TestStripImages(t *testing.T) {
 	media := fantasy.ToolResultPart{ToolCallID: "c1", Output: fantasy.ToolResultOutputContentMedia{Data: "AAAA", MediaType: "image/png"}}
 	text := fantasy.ToolResultPart{ToolCallID: "c2", Output: fantasy.ToolResultOutputContentText{Text: "kept"}}
-	history := stripImages([]fantasy.Message{
+	in := []fantasy.Message{
 		{Role: fantasy.MessageRoleUser, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi"}, fantasy.FilePart{Filename: "shot.png", MediaType: "image/png", Data: []byte("x")}}},
 		{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{media, text}},
-	}, noImages)
+	}
+	history := stripImages(slices.Clone(in), noImages)
+	if _, ok := in[0].Content[1].(fantasy.FilePart); !ok {
+		t.Fatalf("stripped the caller's shared content: %#v", in[0].Content[1])
+	}
 	if tp, ok := history[0].Content[1].(fantasy.TextPart); !ok || !strings.Contains(tp.Text, "shot.png omitted") {
 		t.Fatalf("file part = %#v", history[0].Content[1])
 	}

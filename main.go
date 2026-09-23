@@ -378,6 +378,9 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "compact", NArgs: "*", Desc: "summarize the conversation to free context", GoFn: func(h *hostapi.Host, args string) error {
 			return h.CompactNow(args)
 		}},
+		{Name: "btw", NArgs: "+", Desc: "ask a side question the conversation does not keep", GoFn: func(h *hostapi.Host, args string) error {
+			return h.Btw(args)
+		}},
 		{Name: "model", NArgs: "?", Desc: "choose the model", GoFn: func(h *hostapi.Host, args string) error {
 			if args = strings.TrimSpace(args); args == "" {
 				return h.OpenModelPicker()

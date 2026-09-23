@@ -471,6 +471,10 @@ lua-language-server is installed.
   messages are re-inserted every step. Leftovers become one follow-up turn, and `active` stays
   held across that handoff (`nextTurn`) so a submit cannot jump the queue; `/compact` and
   rewind claim `active` and a `turnScope` together for the same reason.
+- **Side questions.** `/btw` (`Host.btw`) sends `Runner.Snapshot` (mid-turn, the running
+  step's input) plus the question on the runner the next send would build, one step through
+  `Runner.Aside`: same tools and tool choice, since Anthropic drops the message cache when
+  tool choice changes, with every tool refusing to run. Billed, never persisted; `-p` refuses it.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
   anything that does not decode as a fantasy message, and reads a file tool's or a bash call's

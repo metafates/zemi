@@ -269,7 +269,7 @@ clipboard. Images must be png, jpg, gif or webp up to 20 MB, other dropped files
 secret-looking paths are refused. An image over 2000 px a side or 3.75 MB is shrunk before
 it is sent (a webp over 3.75 MB is refused: zemi cannot decode webp). Images reach the model only if it accepts images.
 
-Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/model`,
+Slash commands in the palette: `/new`, `/sessions`, `/rewind`, `/compact`, `/btw`, `/model`,
 `/mode`, `/permissions`, `/memory`, `/skills`, `/agents`, `/workflow`, `/review`, `/mcp`, `/init`,
 `/usage`, `/prompt`, `/copy`, `/trust`, `/health`, `/errors`, `/messages`, `/help`, `/quit`. They also run when typed but stay out of the
 palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
@@ -287,6 +287,8 @@ palette: `/resume`, `/fork`, `/export`, `/effort`, `/lsp`, `/reflect`,
   opens a picker instead (1-9 copy that block, then all blocks, then the whole reply), and
   `/copy reply`, `/copy code` and `/copy code <n>` skip it; `/init` writes or updates AGENTS.md.
 - `/effort low|medium|high|default`, `/mode <name>`, `/compact <what to keep>`.
+- `/btw <question>` answers from the conversation so far, a running turn included, in an
+  overlay (not in `-p`); neither the question nor the answer joins the session, the cost does.
 - `/usage` shows tokens and cost per session, day and all time, the share of this run's
   input the prompt cache served, plus what the fixed prompt every request carries (system,
   tools, mcp, instructions, lua, skills, memory). `/prompt` shows that system prompt

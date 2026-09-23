@@ -1276,6 +1276,60 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	return nil
 }
 
+// btwPrompt frames a side question, after maki's: nothing it says is kept,
+// so the answer has to come from what the conversation already holds.
+const btwPrompt = `This is a side question. Answer it directly in a single response. You have NO tools: answer ONLY from the existing conversation context. Never say "Let me...". If you do not know, say so; do not offer to look it up.
+
+`
+
+// Btw runs /btw: a side question answered in an overlay from the
+// conversation so far, a running turn included, and never stored.
+func (h *Host) Btw(question string) error {
+	ui := h.hooks()
+	if ui == nil {
+		return errors.New("/btw shows its answer in the TUI")
+	}
+	h.GoSafe("btw", func() {
+		answer, err := h.btw(context.Background(), question)
+		if err != nil {
+			h.Notify("error", "Side question failed", err.Error())
+		} else {
+			ui.OpenOverlay(Overlay{ID: "btw", Title: "btw", Origin: lua.OriginBuiltin, Body: answer, BodyMD: true})
+		}
+	})
+	return nil
+}
+
+// btw sends the question on the prefix the next send would use (profile,
+// prompt, tools), so it reads the provider's cache, and bills it.
+func (h *Host) btw(ctx context.Context, question string) (string, error) {
+	ag := h.agents
+	ag.mu.Lock()
+	live, sid, compacting := ag.runner, ag.sessionID, ag.compacting
+	ag.mu.Unlock()
+	switch {
+	case compacting:
+		return "", errors.New("compacting the conversation; ask after it")
+	case live == nil:
+		return "", errors.New("no conversation to ask about yet")
+	}
+	history := live.Snapshot()
+	p, err := h.resolveProfile("")
+	if err != nil {
+		return "", err
+	}
+	r, err := h.ensureRunner(p)
+	if err != nil {
+		return "", err
+	}
+	res, err := r.Aside(ctx, history, btwPrompt+question)
+	if err != nil {
+		return "", err
+	}
+	h.bill(sid, h.currentModelID(p), res.TotalUsage)
+	return cmp.Or(strings.TrimSpace(concatText(res.Response.Content)), "(no answer: the model reached for a tool)"), nil
+}
+
 // AgentSessionID returns the live session id ("" before the first send).
 func (h *Host) AgentSessionID() string {
 	ag := h.agents

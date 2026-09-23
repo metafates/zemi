@@ -1669,3 +1669,63 @@ func TestModelDesc(t *testing.T) {
 		}
 	}
 }
+
+// btwModel records the one Generate call /btw makes and answers it with a
+// tool call along with the text; turns stream from the script.
+type btwModel struct {
+	*scriptModel
+	call fantasy.Call
+}
+
+func (m *btwModel) Generate(_ context.Context, call fantasy.Call) (*fantasy.Response, error) {
+	m.call = call
+	return &fantasy.Response{
+		Content: fantasy.ResponseContent{fantasy.TextContent{Text: "the build"},
+			fantasy.ToolCallContent{ToolCallID: "b1", ToolName: "todos", Input: `{"todos":[{"content":"x","status":"pending"}]}`}},
+		FinishReason: fantasy.FinishReasonToolCalls,
+		Usage:        fantasy.Usage{InputTokens: 100, OutputTokens: 7},
+	}, nil
+}
+
+// TestBtw: a side question asked mid-turn sees the turn's finished steps on
+// the conversation's tools, runs none of them, is billed, and leaves no row
+// behind.
+func TestBtw(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	stepped := make(chan struct{})
+	m := &btwModel{scriptModel: &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
+		if toolResult {
+			close(stepped)
+			return nil // the turn waits here until cancelled
+		}
+		return toolCallParts("c1", "nope", "{}")
+	}}}
+	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
+	if err := h.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	<-stepped
+	defer waitIdle(t, h)
+	defer h.AgentCancel()
+
+	sid := h.AgentSessionID()
+	rows, _ := h.DB.MessageCount(sid)
+	s, _ := h.DB.GetSession(sid)
+	answer, err := h.btw(t.Context(), "what failed?")
+	if err != nil || answer != "the build" {
+		t.Fatalf("btw = %q, %v", answer, err)
+	}
+	after, _ := h.DB.MessageCount(sid)
+	billed, _ := h.DB.GetSession(sid)
+	if todos, _ := h.DB.Todos(sid); len(todos) > 0 {
+		t.Fatalf("a side question ran a tool: %+v", todos)
+	}
+	if after != rows || billed.CompletionTokens != s.CompletionTokens+7 {
+		t.Fatalf("rows %d -> %d, completion tokens %d -> %d", rows, after, s.CompletionTokens, billed.CompletionTokens)
+	}
+	p := m.call.Prompt
+	sawResult := slices.ContainsFunc(p, func(msg fantasy.Message) bool { return msg.Role == fantasy.MessageRoleTool })
+	if !sawResult || !strings.HasSuffix(concatText(p[len(p)-1].Content), "what failed?") || len(m.call.Tools) == 0 {
+		t.Fatalf("request: tool result %v, %d tools, last %+v", sawResult, len(m.call.Tools), p[len(p)-1])
+	}
+}
