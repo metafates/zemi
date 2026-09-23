@@ -197,13 +197,12 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 		return err
 	}
 	type checkpoint struct {
-		mid, path string
-		existed   bool
-		content   []byte
+		mid string
+		Checkpoint
 	}
-	rows, err := s.db.Query(`SELECT message_id, path, existed, content FROM checkpoints WHERE session_id = ?`, src.ID)
+	rows, err := s.db.Query(`SELECT message_id, path, existed, link, content FROM checkpoints WHERE session_id = ?`, src.ID)
 	cps, err := collect(rows, err, func(r scanner) (c checkpoint, err error) {
-		err = r.Scan(&c.mid, &c.path, &c.existed, &c.content)
+		err = r.Scan(&c.mid, &c.Path, &c.Existed, &c.Link, &c.Content)
 		return
 	})
 	if err != nil {
@@ -248,8 +247,8 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 	}
 	for _, c := range cps {
 		if mid, ok := ids[c.mid]; ok {
-			if _, err := tx.Exec(`INSERT INTO checkpoints (message_id, session_id, path, existed, content, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-				mid, id, c.path, c.existed, c.content, t); err != nil {
+			if _, err := tx.Exec(`INSERT INTO checkpoints (message_id, session_id, path, existed, link, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				mid, id, c.Path, c.Existed, c.Link, c.Content, t); err != nil {
 				return fmt.Errorf("store: fork session: %w", err)
 			}
 		}

@@ -51,7 +51,7 @@ func oldDatabase(t *testing.T, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, stmt := range append(oldMemoryShape,
+	for _, stmt := range append(oldShape,
 		`ALTER TABLE tool_calls ADD COLUMN input_json TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE tool_calls ADD COLUMN error_kind TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tool_calls ADD COLUMN latency_ms INTEGER NOT NULL DEFAULT 0`,
@@ -149,7 +149,7 @@ func TestSweepVacuum(t *testing.T) {
 				if err := db.AddMessage(m); err != nil {
 					t.Fatal(err)
 				}
-				if err := db.AddCheckpoint("s", m.ID, "/f", true, blob); err != nil {
+				if err := db.AddCheckpoint("s", m.ID, Checkpoint{Path: "/f", Existed: true, Content: blob}); err != nil {
 					t.Fatal(err)
 				}
 				if i < c.aged {
@@ -190,7 +190,7 @@ func TestRetentionSweep(t *testing.T) {
 		if err := db.AddMessage(m); err != nil {
 			t.Fatal(err)
 		}
-		if err := db.AddCheckpoint(id, m.ID, "/tmp/f", true, []byte("x")); err != nil {
+		if err := db.AddCheckpoint(id, m.ID, Checkpoint{Path: "/tmp/f", Existed: true, Content: []byte("x")}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -392,7 +392,7 @@ func TestForkSession(t *testing.T) {
 	if err := db.AddCompaction("s1", summary, []*Message{{Role: "tail", PartsJSON: `{}`}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AddCheckpoint("s1", summary.ID, "/f", true, []byte("x")); err != nil {
+	if err := db.AddCheckpoint("s1", summary.ID, Checkpoint{Path: "/f", Existed: true, Link: true, Content: []byte("x")}); err != nil {
 		t.Fatal(err)
 	}
 	src, _ := db.GetSession("s1")
@@ -425,8 +425,8 @@ func TestForkSession(t *testing.T) {
 	if len(msgs) != 2 || msgs[0].ID == summary.ID || msgs[0].PartsJSON != summary.PartsJSON {
 		t.Fatalf("messages = %+v", msgs)
 	}
-	if counts, err := db.CheckpointPaths("s2"); err != nil || len(counts[msgs[0].ID]) != 1 {
-		t.Fatalf("checkpoints = %+v, %v", counts, err)
+	if cps, err := db.CheckpointsFrom("s2", msgs[0].ID); err != nil || len(cps) != 1 || !cps[0].Link {
+		t.Fatalf("checkpoints = %+v, %v", cps, err)
 	}
 }
 
@@ -450,7 +450,7 @@ func TestDeleteSession(t *testing.T) {
 		if err := db.AddToolCall(m, &ToolCall{Tool: "bash"}); err != nil {
 			t.Fatal(err)
 		}
-		if err := db.AddCheckpoint(sid, m.ID, "/f", true, []byte(secret)); err != nil {
+		if err := db.AddCheckpoint(sid, m.ID, Checkpoint{Path: "/f", Existed: true, Content: []byte(secret)}); err != nil {
 			t.Fatal(err)
 		}
 		if err := db.SetTodos(sid, []Todo{{Content: secret, Status: "pending"}}); err != nil {

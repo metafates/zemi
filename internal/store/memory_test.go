@@ -66,9 +66,11 @@ func TestMemorySupersedeAndDelete(t *testing.T) {
 	}
 }
 
-// oldMemoryShape turns a fresh memory table into the one before schema
-// version 2: kind, tags, hit counts and an FTS index.
-var oldMemoryShape = []string{
+// oldShape turns a fresh memory table into the one before schema version 2
+// (kind, tags, hit counts and an FTS index) and drops checkpoints.link for
+// migration 3.
+var oldShape = []string{
+	`ALTER TABLE checkpoints DROP COLUMN link`,
 	`ALTER TABLE memory DROP COLUMN quote`,
 	`ALTER TABLE memory ADD COLUMN kind TEXT NOT NULL DEFAULT 'fact'`,
 	`ALTER TABLE memory ADD COLUMN tags TEXT NOT NULL DEFAULT ''`,
@@ -87,7 +89,7 @@ func TestMigrateMemoryColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, stmt := range append(oldMemoryShape,
+	for _, stmt := range append(oldShape,
 		`INSERT INTO memory (id, scope, kind, text, tags, created_at, updated_at, origin) VALUES ('m1', 'project', 'gotcha', 'old text', 'a,b', 1, 1, 'user')`,
 		`PRAGMA user_version = 1`) {
 		if _, err := db.db.Exec(stmt); err != nil {

@@ -229,7 +229,7 @@ files touched after the last message. `tool.Run` runs the same check before the 
 (`tool.edits`), so nobody approves a change the tool would then refuse, and resolves the path
 (`perm.RealPath`) before the gate; the tools open exactly that path through `openGated` (an
 `openat` walk with `O_NOFOLLOW`), so a sandboxed command cannot swap a directory for a symlink
-between check and open. The three writers refuse a path whose last component is a symbolic link
+between check and open. Both writers refuse a path whose last component is a symbolic link
 and name the target to edit instead. `glob` and `grep` are gated on their root only, so neither
 shows a hit a deny or ask `fs.read` rule covers. grep and a directory listing leave out the
 strict secret shapes (`perm.PathIsStrictSecret`: not `*secret*`, `*credential*` or a
@@ -550,7 +550,7 @@ lua-language-server is installed.
   its `Runner.Steer`; what arrives after its last step boundary becomes one more `Send`
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a
   message is never accepted and then dropped. Background runs report through `AgentSend` behind
-  `attachMarker`, which the live transcript and resume cut off; the notice row is drawn from
+  `agent.AttachMarker`, which the live transcript and resume cut off; the notice row is drawn from
   the message wherever the model reads it (`appendUserRows`: a new turn, a step boundary, a
   drained queue, a resume), so it sits under the rows of the turn it arrived in. A report an
   esc leaves queued gets a toast saying it waits for the next message, and one a closing
@@ -578,7 +578,7 @@ lua-language-server is installed.
   near-duplicate (`learn.Similar` over both scopes and the pending proposals) is refused with
   its id and text to merge through `replaces` (a pending one only as queued); a learned
   user-scope memory needs a `quote`, checked against the typed part of the session's user rows
-  (`quoteInSession`, cut at `attachMarker`), and a quote not found drops it; a scope over
+  (`quoteInSession`, cut at `agent.AttachMarker`), and a quote not found drops it; a scope over
   `learn.ScopeBudget` queues with the oldest ids to replace, and `acceptProposal`, `moveMemory`
   and `rewriteMemory` refuse, pointing at the oldest in `/memory`. Text with `replaces`
   supersedes, empty text with it forgets (`forgetMemory`): a memory the user saved asks
@@ -645,8 +645,8 @@ how many rows the frame takes, so nothing above it reflows.
   prompt and the last row (`forgetLearned`: a reflector run or an accept after it stays) and
   rebuilds the todo list from the kept rows. A bash call's changes are checkpointed from the
   before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
-  a repository, no symbolic link, submodule or secret-shaped file, and not once two slow
-  snapshots switched the snapshot off).
+  a repository, no submodule or secret-shaped file, and not once two slow snapshots switched the
+  snapshot off); a symbolic link comes back as a link.
 - **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
   `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even under allow rules, `mcp.*`
   allows and a rule's bash allow other than `ReadCommand` flip to ask; the sandbox keeps the

@@ -45,7 +45,7 @@ func (h *Host) checkpointFile(path string) {
 		h.Log.Warn("rewind", "cannot checkpoint file", map[string]any{"path": abs, "error": err.Error()})
 		return
 	}
-	h.checkpoint(abs, existed, data)
+	h.checkpoint(store.Checkpoint{Path: abs, Existed: existed, Content: data})
 }
 
 func (h *Host) turnMsgID() string {
@@ -57,7 +57,7 @@ func (h *Host) turnMsgID() string {
 // checkpoint records a file as it was before the running turn changed it:
 // the file tools read it from disk, a bash call's changes come from the
 // tree treeDiff compared against. First write per turn wins in the store.
-func (h *Host) checkpoint(abs string, existed bool, data []byte) {
+func (h *Host) checkpoint(cp store.Checkpoint) {
 	if h.DB == nil {
 		return
 	}
@@ -65,12 +65,12 @@ func (h *Host) checkpoint(abs string, existed bool, data []byte) {
 	if sid == "" || mid == "" {
 		return
 	}
-	if len(data) > maxCheckpointBytes {
-		h.uncheckpointed(abs, "is too large to checkpoint")
+	if len(cp.Content) > maxCheckpointBytes {
+		h.uncheckpointed(cp.Path, "is too large to checkpoint")
 		return
 	}
-	if err := h.DB.AddCheckpoint(sid, mid, abs, existed, data); err != nil {
-		h.Log.Warn("rewind", "checkpoint failed", map[string]any{"path": abs, "error": err.Error()})
+	if err := h.DB.AddCheckpoint(sid, mid, cp); err != nil {
+		h.Log.Warn("rewind", "checkpoint failed", map[string]any{"path": cp.Path, "error": err.Error()})
 	}
 }
 
@@ -264,7 +264,7 @@ func restoreCheckpoint(cp store.Checkpoint) error {
 		return errors.New("the path now leads through a symlink")
 	}
 	// a link at the file itself is replaced, never written through
-	if fi, err := os.Lstat(cp.Path); err == nil && fi.Mode()&fs.ModeSymlink != 0 || !cp.Existed {
+	if fi, err := os.Lstat(cp.Path); err == nil && fi.Mode()&fs.ModeSymlink != 0 || !cp.Existed || cp.Link {
 		if err := os.Remove(cp.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
@@ -274,6 +274,9 @@ func restoreCheckpoint(cp store.Checkpoint) error {
 	}
 	if err := os.MkdirAll(filepath.Dir(cp.Path), 0o755); err != nil {
 		return err
+	}
+	if cp.Link {
+		return os.Symlink(string(cp.Content), cp.Path)
 	}
 	return os.WriteFile(cp.Path, cp.Content, 0o644)
 }
@@ -310,7 +313,7 @@ func (h *Host) OpenRewind() error {
 			desc += " · " + files
 			restore = ", restores " + files + " to " + plural(n, "how it was", "how they were") + " before it,"
 		}
-		effect := "Rewinding removes this prompt and everything after it" + restore + " and puts the prompt back in the composer. Files a command changed go back too when they are in the repository, not ignored, not a symbolic link and not secret-shaped."
+		effect := "Rewinding removes this prompt and everything after it" + restore + " and puts the prompt back in the composer. Files a command changed go back too when they are in the repository, not ignored and not secret-shaped."
 		first, _, _ := strings.Cut(text, "\n")
 		items = append(items, map[string]any{
 			"text":   first,

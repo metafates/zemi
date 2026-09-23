@@ -1115,8 +1115,8 @@ todos(id, session_id, content, status, active_form, ord, created_at)
 tool_calls(id, message_id, tool, ok, created_at)                -- per-tool counts for the reflector
 memory(id, scope, text, quote, provenance_session_id,
        created_at, updated_at, superseded_by, origin)
-checkpoints(message_id, session_id, path, existed, content, created_at)
-                                                                -- pre-turn file content for rewind (§8)
+checkpoints(message_id, session_id, path, existed, link, content, created_at)
+                                                                -- pre-turn file content (a link's target) for rewind (§8)
 proposals(id, kind, payload, created_at)                        -- pending, until reviewed
 skills(name, path, source, enabled, created_at)                 -- source: authored|builtin
 kv(key, value_json, updated_at)                                 -- zemi.state

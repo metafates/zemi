@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 )
 
 const (
@@ -286,23 +287,22 @@ func (h *Host) treeDiff(root string, env []string, before, after string, mixed, 
 }
 
 // checkpointBlob checkpoints abs as blob (a before-tree path) holds it.
-// NOTE: the store keeps no file mode, so a symbolic link or a submodule is
-// not restored and a deleted executable comes back without its exec bit.
+// NOTE: the store keeps no file mode, so a submodule is not restored and a
+// deleted executable comes back without its exec bit.
 func (h *Host) checkpointBlob(root string, env []string, blob, abs, oldMode, newMode string) {
 	switch {
-	case oldMode == "120000":
-		h.uncheckpointed(abs, "is a symbolic link")
 	case oldMode == "160000" || newMode == "160000":
 		h.uncheckpointed(abs, "is a submodule")
 	case oldMode == "000000":
-		h.checkpoint(abs, false, nil)
+		h.checkpoint(store.Checkpoint{Path: abs})
 	default:
 		// the size first: a large file is never read whole
 		size, _ := h.runGit(root, env, "cat-file", "-s", blob)
 		if n, _ := strconv.Atoi(strings.TrimSpace(size)); n > maxCheckpointBytes {
 			h.uncheckpointed(abs, "is too large to checkpoint")
 		} else if data, err := h.runGit(root, env, "cat-file", "-p", blob); err == nil {
-			h.checkpoint(abs, true, []byte(data))
+			// a link's blob is its target
+			h.checkpoint(store.Checkpoint{Path: abs, Existed: true, Link: oldMode == "120000", Content: []byte(data)})
 		}
 	}
 }

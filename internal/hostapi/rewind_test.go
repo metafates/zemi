@@ -286,16 +286,16 @@ func TestRestoreRefusesSwappedSymlink(t *testing.T) {
 	}
 }
 
-// TestRewindBashSymlink: a command's change to a symbolic link never blocks
-// a rewind or leaves a text file in its place.
+// TestRewindBashSymlink: a rewind puts back a symbolic link a command
+// deleted or retargeted and removes one it created.
 func TestRewindBashSymlink(t *testing.T) {
 	for _, c := range []struct {
 		name, path string
 		run        func(dir string) error
 		want       string // the link's target after the rewind, "" for no file there
 	}{
-		{name: "deleted", path: "link", run: func(dir string) error { return os.Remove(filepath.Join(dir, "link")) }},
-		{name: "retargeted", path: "link", want: "b.txt", run: func(dir string) error {
+		{name: "deleted", path: "link", want: "a.txt", run: func(dir string) error { return os.Remove(filepath.Join(dir, "link")) }},
+		{name: "retargeted", path: "link", want: "a.txt", run: func(dir string) error {
 			os.Remove(filepath.Join(dir, "link"))
 			return os.Symlink("b.txt", filepath.Join(dir, "link"))
 		}},

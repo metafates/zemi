@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 	session_id TEXT NOT NULL,
 	path TEXT NOT NULL,
 	existed INTEGER NOT NULL,
+	link INTEGER NOT NULL DEFAULT 0,
 	content BLOB,
 	created_at INTEGER NOT NULL,
 	PRIMARY KEY (message_id, path)
@@ -172,6 +173,7 @@ var migrations = [][]string{
 		`ALTER TABLE memory DROP COLUMN hit_count`,
 		`ALTER TABLE memory DROP COLUMN last_hit_at`,
 		`ALTER TABLE memory ADD COLUMN quote TEXT NOT NULL DEFAULT ''`},
+	{`ALTER TABLE checkpoints ADD COLUMN link INTEGER NOT NULL DEFAULT 0`},
 }
 
 func (s *DB) migrate() error {
