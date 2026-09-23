@@ -958,7 +958,7 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "nohup ls"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "time ls"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && sudo ls"}, "", nil},
-		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}, "allow edits in internal/", []string{filepath.Join(proj, "internal", "*")}},
+		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}, "allow edits in internal/ and below", []string{filepath.Join(proj, "internal", "*")}},
 		// the gate asks about a protected write whatever the rules say
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, ".zemi", "init.lua")}, "", nil},
 		// Pipeline.Check sends a secret-shaped file back to the ask whatever a model rule says

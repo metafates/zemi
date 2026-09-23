@@ -108,7 +108,7 @@ func TestReadJailCoversRepo(t *testing.T) {
 			if got := h.shownArg(req); got != filepath.Join("other", "main.go") {
 				t.Errorf("%s: shown %q", c.name, got)
 			}
-			if label, _ := h.alwaysChoice(req); label != "allow edits in other/" {
+			if label, _ := h.alwaysChoice(req); label != "allow edits in other/ and below" {
 				t.Errorf("%s: always label %q", c.name, label)
 			}
 		}

@@ -282,7 +282,8 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		dir := filepath.Dir(abs)
 		shown := h.relPath(dir)
 		what := map[string]string{"fs.write": "edits", "fs.read": "reads"}[req.Subject]
-		where := "in " + shown + "/"
+		// the rule's * spans separators, so the label says so
+		where := "in " + shown + "/ and below"
 		if shown == "." {
 			where = "anywhere in the project"
 		}

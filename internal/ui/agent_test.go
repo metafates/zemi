@@ -322,7 +322,7 @@ func TestPermissionBoxFits(t *testing.T) {
 			[]string{"lines 1-", "pgup/pgdn scroll", "esc deny", "[t] No, and tell"}},
 		{"one hidden line shows", 80, 24, hostapi.PermRequest{Subject: "tool.bash", Arg: "cat > notes.txt <<EOT\nfirst line\nsecond line\nEOT"},
 			[]string{"EOT ", "enter confirm · esc deny"}},
-		{"always label wraps", 70, 30, hostapi.PermRequest{Subject: "fs.write", Arg: "/Users/me/.config/some/very/long/directory/name/file.txt", Always: "allow edits in /Users/me/.config/some/very/long/directory/name/"},
+		{"always label wraps", 70, 30, hostapi.PermRequest{Subject: "fs.write", Arg: "/Users/me/.config/some/very/long/directory/name/file.txt", Always: "allow edits in /Users/me/.config/some/very/long/directory/name/ and below"},
 			[]string{"session", "esc deny"}},
 		{"runs outside sandbox", 80, 24, hostapi.PermRequest{Subject: "tool.bash", Arg: "git push origin main", Outside: true, Reason: "run outside the sandbox"},
 			[]string{"Runs outside the sandbox", "Run this command outside the sandbox?"}},
@@ -918,7 +918,7 @@ func TestPermissionWidthKey(t *testing.T) {
 	var ok bool
 	var by string
 	go func() {
-		ok, by = app.AskPermission(hostapi.PermRequest{Subject: "fs.read", Arg: "/repo/pkg/file.go", Always: "allow reads in /repo/pkg/", Wider: "allow reads anywhere in /repo/"})
+		ok, by = app.AskPermission(hostapi.PermRequest{Subject: "fs.read", Arg: "/repo/pkg/file.go", Always: "allow reads in /repo/pkg/ and below", Wider: "allow reads anywhere in /repo/"})
 		close(done)
 	}()
 	waitPrompt(t, app, func() bool { return app.permAsk != nil })
