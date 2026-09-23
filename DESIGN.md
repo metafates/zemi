@@ -594,7 +594,7 @@ composer submit before any Lua-visible command lookup) are fixed
 in v1 (no origin, user included, rebinds them), so a compromised config
 cannot relocate the panic button or put a decoy on it (case-variant
 command names are refused by the §11 collision rules). `<leader>`
-expands to `ctrl+g` (the `keymap.leader` setting); multi-key sequences arm a
+expands to `ctrl+x` (the `keymap.leader` setting); multi-key sequences arm a
 pending state (shown in the statusline) until the next key or timeout.
 Command `nargs` follows Vim's spec strings (`?` = 0 or 1, `+` = 1 or more,
 `*` = 0 or more).

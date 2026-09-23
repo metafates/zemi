@@ -76,7 +76,7 @@ func (h *Host) keySeq(key string, focused bool) (string, error) {
 	key = strings.TrimSpace(key)
 	var tokens []string
 	if rest, ok := strings.CutPrefix(key, "<leader>"); ok {
-		tokens = strings.Fields(cmp.Or(strings.TrimSpace(h.Settings.Str("keymap.leader")), "ctrl+g"))
+		tokens = strings.Fields(cmp.Or(strings.TrimSpace(h.Settings.Str("keymap.leader")), "ctrl+x"))
 		if rest = strings.TrimSpace(rest); strings.Contains(rest, " ") {
 			tokens = append(tokens, strings.Fields(rest)...)
 		} else {
@@ -97,7 +97,7 @@ func (h *Host) keySeq(key string, focused bool) (string, error) {
 		}
 	}
 	if len([]rune(tokens[0])) == 1 && !focused {
-		return "", fmt.Errorf("%q is a printable key and only ever reaches the composer: pass opts.focus to scope it to a node, or start with a non-printable key such as ctrl+g", tokens[0])
+		return "", fmt.Errorf("%q is a printable key and only ever reaches the composer: pass opts.focus to scope it to a node, or start with a non-printable key such as ctrl+x", tokens[0])
 	}
 	return strings.Join(tokens, " "), nil
 }

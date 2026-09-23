@@ -63,7 +63,7 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.chat.reasoning", Kind: "bool", Default: false, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
 		{Path: "lsp.auto", Kind: "bool", Default: true, Desc: "start installed language servers (gopls, pyright, typescript-language-server, clangd) for projects with their marker files"},
 		{Path: "editor.command", Kind: "string", Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
-		{Path: "keymap.leader", Kind: "string", Default: "ctrl+g", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
+		{Path: "keymap.leader", Kind: "string", Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
 		{Path: "ui.mouse", Kind: "bool", Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
 		{Path: "ui.notify", Kind: "bool", Default: true, Desc: "when zemi is not focused, notify through the terminal as a turn ends or a permission prompt waits"},
 		{Path: "ui.progress", Kind: "bool", Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},

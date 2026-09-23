@@ -295,7 +295,7 @@ func moveSel(sel *int, n int, key string) bool {
 
 const keySeqTimeout = 1500 * time.Millisecond
 
-// keySequence runs bindings for focus, including multi-key ones ("ctrl+g
+// keySequence runs bindings for focus, including multi-key ones ("ctrl+x
 // s"): a key that starts or continues a bound sequence is held until the
 // sequence completes, esc cancels it, and a key that breaks or outlives it
 // is handled on its own.

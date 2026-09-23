@@ -305,7 +305,7 @@ zemi.keymap = {}
 --- argument after a space ("zemi.ui.scroll.up sidebar" scrolls the layout
 --- node with that id; without one, the stage's scrolled region). Keys may be
 --- sequences that start with a non-printable key: "ctrl+x s", "<leader>gs"
---- (`<leader>` is the `keymap.leader` setting, ctrl+g by default). A key the
+--- (`<leader>` is the `keymap.leader` setting, ctrl+x by default). A key the
 --- terminal never reports ("ctrl-q", "control+q") raises rather than binding
 --- something nothing can press. Setting
 --- the same key again from the same origin rebinds it; a key (or a prefix

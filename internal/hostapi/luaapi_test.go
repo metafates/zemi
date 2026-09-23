@@ -190,11 +190,11 @@ func TestKeySequences(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.keymap.set("<leader>gs", "zemi.ui.help")
-		assert(zemi.keymap.get("ctrl+g g s") ~= nil, "leader expands")
+		assert(zemi.keymap.get("ctrl+x g s") ~= nil, "leader expands")
 		assert(zemi.keymap.get("<leader>gs") ~= nil, "get takes the leader form")
 		assert(not pcall(zemi.keymap.set, "g s", "zemi.ui.help"), "printable start refused")
 	`)
-	if !h.Keymaps.IsPrefix("", "ctrl+g g") || h.Keymaps.IsPrefix("", "ctrl+g x") {
+	if !h.Keymaps.IsPrefix("", "ctrl+x g") || h.Keymaps.IsPrefix("", "ctrl+x x") {
 		t.Fatal("prefix lookup")
 	}
 }
