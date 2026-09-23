@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -416,6 +417,10 @@ func TestFetchGates(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 		io.WriteString(w, "{}")
 	})
+	mux.HandleFunc("/big", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(fetchMax+10))
+		io.WriteString(w, strings.Repeat("x\n", fetchMax/2+5))
+	})
 	srv := httptest.NewServer(mux)
 	mux.HandleFunc("/r", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, strings.Replace(srv.URL, "127.0.0.1", "localhost", 1)+"/x", http.StatusFound)
@@ -447,6 +452,9 @@ func TestFetchGates(t *testing.T) {
 			}
 			if res = call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/j")); res.Content != "418 I'm a teapot\nContent-Type: application/json\n\n{}" {
 				t.Fatalf("json body = %q", res.Content)
+			}
+			if res = call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/big")); !strings.Contains(res.Content, "\n(only the first 1 MB of the page was read, of 1048586 bytes)\n") {
+				t.Fatalf("a page past the cap says so: %q", res.Content[:200])
 			}
 			// a redirect hop to a private host is refused like a first URL, before any ask
 			if res = call(t, toolNamed(t, "fetch", local), fmt.Sprintf(`{"url":%q}`, srv.URL+"/r")); !res.IsError || !strings.Contains(res.Content, "only an allow rule for net.localhost") || len(*localAsked) != 0 {

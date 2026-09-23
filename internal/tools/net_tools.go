@@ -164,6 +164,9 @@ func netGate(p *Pipeline, u *url.URL, reason string) error {
 	return nil
 }
 
+// fetchMax is how much of a body fetch reads.
+const fetchMax = 1 << 20
+
 func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	// the tool gate already checked this URL; a second check here would ask
 	// the user again
@@ -189,6 +192,9 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	req.Header.Set("User-Agent", "zemi/0.1")
+	// docs sites that serve markdown send it whole, where readability drops
+	// headings and prose
+	req.Header.Set("Accept", "text/markdown, text/plain;q=0.9, text/html;q=0.8, */*;q=0.5")
 	resp, err := client.Do(req)
 	var private *privateAddrError
 	if errors.As(err, &private) {
@@ -198,9 +204,13 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, fetchMax+1))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	cut := len(body) > fetchMax
+	if cut {
+		body = body[:fetchMax]
 	}
 	ct := resp.Header.Get("Content-Type")
 	text := string(body)
@@ -219,6 +229,13 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	}
 	if ct != "" && !strings.Contains(ct, "text/html") {
 		b.WriteString("Content-Type: " + ct + "\n")
+	}
+	if cut {
+		b.WriteString("(only the first 1 MB of the page was read")
+		if resp.ContentLength > 0 {
+			fmt.Fprintf(&b, ", of %d bytes", resp.ContentLength)
+		}
+		b.WriteString(")\n")
 	}
 	if b.Len() > 0 {
 		b.WriteString("\n")
