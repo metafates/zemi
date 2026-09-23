@@ -462,9 +462,12 @@ func (h *Host) sendClaimed(scope *turnScope, text string) error {
 	ag.mu.Unlock()
 	h.startTurn(text)
 
+	// the profile this turn ran as: a switch to the planner mid-turn must not
+	// nudge the reply the replaced agent wrote
+	nudge := h.nudgesPlan(p)
 	h.GoSafe("agent turn", func() {
 		h.runTurns(runner, scope, text)
-		h.planFollowup(runner)
+		h.planFollowup(runner, nudge)
 	})
 	return nil
 }
@@ -1732,21 +1735,25 @@ var planNudge = modelNote(planNudgeText)
 
 const planNudgeText = "Your reply ended in plain text, which the user cannot approve or answer in place. If it asked something, ask it with the question tool; if it was the plan, present it with the plan tool; if it answered a question, do not repeat the answer: ask with the question tool what to plan next."
 
+// nudgesPlan reports whether a turn run as p is nudged for ending in plain
+// text: a read-only agent with the plan tool. Headless drops the tool and
+// planHeadless asks for the plan as the reply, so there is nothing to
+// present it with.
+func (h *Host) nudgesPlan(p *Profile) bool {
+	return p != nil && p.ReadOnly && hasTool(h.profileTools(p), tools.ToolPlan)
+}
+
 // planFollowup runs after a turn goroutine ends. An approved plan left for
 // a cancelled turn (nextTurn hands off an ended one) is sent to the restored
-// agent to implement; otherwise a read-only agent that ended in plain text is
-// nudged once per user message. Runs on the turn goroutine, never the UI one.
-func (h *Host) planFollowup(runner *agent.Runner) {
+// agent to implement; otherwise a turn nudgesPlan held for that ended in
+// plain text is nudged once per user message. Runs on the turn goroutine,
+// never the UI one.
+func (h *Host) planFollowup(runner *agent.Runner, nudge bool) {
 	if msg := h.takePlanApproved(); msg != "" {
 		h.startImplementation(msg)
 		return
 	}
-	if !h.readOnly() || plainTextEnd(runner) == "" {
-		return
-	}
-	// headless drops the plan tool and planHeadless asks for the plan as
-	// the reply, so there is nothing to present it with
-	if p, _ := h.resolveProfile(""); !hasTool(h.profileTools(p), tools.ToolPlan) {
+	if !nudge || plainTextEnd(runner) == "" {
 		return
 	}
 	// a submit that claimed the agent first moves the conversation on

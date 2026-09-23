@@ -152,6 +152,7 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 	if err := h.SetProfile("planner"); err != nil {
 		t.Fatal(err)
 	}
+	planner, _ := h.resolveProfile("")
 	var mu sync.Mutex
 	var sent []string
 	h.modelFn = func() (fantasy.LanguageModel, error) {
@@ -174,7 +175,7 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 		return n
 	}
 	// a text ending is not a plan to approve: the planner is told once
-	h.planFollowup(runner)
+	h.planFollowup(runner, h.nudgesPlan(planner))
 	waitFor(t, func() error {
 		if n := nudges(); n != 1 {
 			return fmt.Errorf("nudges = %d", n)
@@ -194,7 +195,7 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 	h.agents.active = true
 	scope := h.beginScope()
 	h.agents.mu.Unlock()
-	h.planFollowup(runner)
+	h.planFollowup(runner, h.nudgesPlan(planner))
 	h.endScope(scope)
 	if nudges() != 1 {
 		t.Fatal("nudged under another claim")
@@ -208,7 +209,8 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 	headless.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart { headlessSent.Add(1); return textParts("text") }}, nil
 	}
-	headless.planFollowup(runner)
+	headlessPlanner, _ := headless.resolveProfile("")
+	headless.planFollowup(runner, headless.nudgesPlan(headlessPlanner))
 	waitIdle(t, headless)
 	if n := headlessSent.Load(); n != 0 {
 		t.Fatalf("headless planner nudged %d times", n)
@@ -224,6 +226,46 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 		return nil
 	})
 	waitIdle(t, h)
+}
+
+// TestPlanNudgeFollowsTheTurn: picking the planner while the default agent
+// replies does not nudge that reply, which the planner never wrote.
+func TestPlanNudgeFollowsTheTurn(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	var mu sync.Mutex
+	var sent []string
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+			mu.Lock()
+			sent = append(sent, last)
+			mu.Unlock()
+			if last == "fix it" {
+				if err := h.SetProfile("planner"); err != nil {
+					t.Error(err)
+				}
+			}
+			return textParts("Fixed the typo.")
+		}}, nil
+	}
+	if err := h.AgentSend("fix it"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	// a nudge the ended turn sent would reach the model before this message,
+	// which the default agent answers without one
+	if err := h.SetProfile("default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.AgentSend("what next?"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(sent) < 2 || sent[1] != "what next?" {
+		t.Fatalf("the model saw %q", sent)
+	}
 }
 
 // TestNextTurnHandsOffApprovedPlan: an approved plan is sent to the restored
