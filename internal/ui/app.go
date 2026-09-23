@@ -37,8 +37,7 @@ const (
 	progressInterval = 2 * time.Second
 	idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
 	frameMS          = 50                     // one animation tick: the mascot's frames are multiples of it
-	doneLinger       = 3 * time.Second        // how long the mascot bows after a turn
-	toastTTL         = 4 * time.Second
+	doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
 	hookQueueSize    = 64
 	chatWheelStep    = 1
 )
@@ -685,7 +684,15 @@ type toast struct {
 const toastRows = 3
 
 func (a *App) pushToast(level, title, body string) {
-	t := toast{level: level, title: title, body: body, expires: time.Now().Add(toastTTL)}
+	if title == "" {
+		title = map[string]string{"warn": "Warning", "error": "Error"}[level]
+	}
+	// news goes quickly, what needs reading or acting on stays
+	ttl := 8 * time.Second
+	if level == "info" {
+		ttl = 4 * time.Second
+	}
+	t := toast{level: level, title: title, body: body, expires: time.Now().Add(ttl)}
 	short, _, trace := strings.Cut(body, "stack traceback:")
 	t.body = hostapi.ShortChunk(strings.TrimRight(short, " \t\n"))
 	if level == "error" && (trace || strings.Count(t.body, "\n") >= toastRows || len(t.body) > 150) {
@@ -1195,8 +1202,13 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 		rows = wrapText(t.body, "Normal", inner)
 	}
 	if len(rows) > toastRows {
-		more := map[bool]string{true: "… full error in /errors", false: "…"}[t.recorded]
-		rows = append(rows[:toastRows-1], []hostapi.Segment{{Text: more, HL: "Host:Hint"}})
+		// the next row joins the last so the cut always ends in "…"
+		room, more := inner, []hostapi.Segment(nil)
+		if t.recorded {
+			room, more = inner-8, []hostapi.Segment{{Text: " /errors", HL: "Host:Hint"}}
+		}
+		last := ellipsizeSegs(slices.Concat(rows[toastRows-1], []hostapi.Segment{{Text: " "}}, rows[toastRows]), room)
+		rows = append(rows[:toastRows-1], append(last, more...))
 	}
 	return hostBoxW(t.title, level, "", rows, w, 60, 0)
 }

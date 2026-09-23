@@ -236,11 +236,16 @@ func TestToastCap(t *testing.T) {
 	for _, r := range toastBox(app.toasts[0], 80) {
 		rows = append(rows, strings.TrimSpace(plainSegs(r)))
 	}
-	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Keymap ctrl+t failed ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasPrefix(rows[toastRows], "│ … full error in /errors") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
+	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Keymap ctrl+t failed ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasSuffix(rows[toastRows], "went… /errors │") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
 		t.Fatalf("toast rows: %q", rows)
 	}
 	if !host.HasUnseenErrors() {
 		t.Fatal("the long error was not recorded")
+	}
+	// an untitled failure still says it is one
+	app.pushToast("error", "", "x")
+	if top := plainSegs(toastBox(app.toasts[1], 80)[0]); !strings.HasPrefix(top, "┌ Error ─") {
+		t.Fatalf("untitled error toast: %q", top)
 	}
 }
 
