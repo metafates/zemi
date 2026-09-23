@@ -1226,7 +1226,8 @@ func (p *Pipeline) ruledOut() func(path string) bool {
 var rgBin, _ = exec.LookPath("rg")
 
 // ripgrep streams rg's output lines, run in root, to fn until fn returns
-// false. false means rg is missing or failed and the caller falls back.
+// false. false means rg is missing or refused the pattern or a glob, and the
+// caller falls back; an unreadable path (exit 2 after the search) is not.
 func ripgrep(ctx context.Context, root string, fn func(line string) bool, args ...string) bool {
 	if rgBin == "" {
 		return false
@@ -1239,6 +1240,8 @@ func ripgrep(ctx context.Context, root string, fn func(line string) bool, args .
 	args = append(append([]string{"--hidden", "--no-require-git"}, args...), "--glob", "!.git", "--glob", "!.zemi/worktrees")
 	c := proc.CommandContext(cctx, rgBin, args...)
 	c.Dir = root
+	var stderr bytes.Buffer
+	c.Stderr = &stderr
 	out, err := c.StdoutPipe()
 	if err != nil || proc.Start(c) != nil {
 		return false
@@ -1258,7 +1261,8 @@ func ripgrep(ctx context.Context, root string, fn func(line string) bool, args .
 	}
 	err = proc.Wait(c)
 	var exit *exec.ExitError
-	return stopped || err == nil || (errors.As(err, &exit) && exit.ExitCode() == 1)
+	refused := bytes.Contains(stderr.Bytes(), []byte("regex parse error")) || bytes.Contains(stderr.Bytes(), []byte("error parsing glob"))
+	return stopped || err == nil || (errors.As(err, &exit) && (exit.ExitCode() == 1 || exit.ExitCode() == 2 && !refused))
 }
 
 // walk visits the regular files under root for the Go fallback, which skips

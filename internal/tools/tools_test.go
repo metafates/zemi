@@ -431,12 +431,15 @@ func TestGlobAndGrep(t *testing.T) {
 	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(dir, "private", "*"), Decision: perm.Deny})
 	for name, body := range map[string]string{
 		"main.go": "package main\n", "notes.txt": "notes\n", ".env": "package secret\n", "private/k.go": "package priv\n", "call.go": "x := sub(1)\n",
-		".gitignore": "node_modules/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n", ".git/HEAD": "ref\n",
-		"src/credential.ts": "export function loadCredential() {}\n",
+		".gitignore": "node_modules/\ngen/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n", ".git/HEAD": "ref\n",
+		"src/credential.ts": "export function loadCredential() {}\n", "src/a.txt": "needle\n", "gen/b.txt": "needle\n", "locked/c.txt": "needle\n",
 	} {
 		os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755)
 		os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
 	}
+	// rg reports the unreadable dir and exits 2 after searching the rest
+	os.Chmod(filepath.Join(dir, "locked"), 0)
+	t.Cleanup(func() { os.Chmod(filepath.Join(dir, "locked"), 0o755) })
 	glob, grep := All(p)[5], All(p)[6]
 	saved := rgBin
 	t.Cleanup(func() { rgBin = saved })
@@ -455,6 +458,8 @@ func TestGlobAndGrep(t *testing.T) {
 			{grep, `{"pattern":"package","include":"[m]*.go"}`, "main.go:1", "x.go"},
 			{grep, `{"pattern":"package (y|secret)"}`, "(1 matches hidden in secret-shaped files: ", "y.go"},
 			{grep, `{"pattern":"loadCredential|package secret"}`, "src/credential.ts:1", "package secret"},
+			{grep, `{"pattern":"needle"}`, "src/a.txt:1", "gen/"},
+			{glob, `{"pattern":"**/*.txt"}`, "src/a.txt", "gen/"},
 			{glob, `{"pattern":"**/*.go"}`, "main.go", "private"},
 			{grep, `{"pattern":"package priv"}`, "no matches", "k.go"},
 			{grep, `{"pattern":"package","path":"sub/x.go"}`, "sub/x.go:1: package sub", "main.go"},
@@ -467,6 +472,9 @@ func TestGlobAndGrep(t *testing.T) {
 			{glob, `{"pattern":"**"}`, "sub/x.go", "node_modules"},
 			{glob, `{"pattern":"**/*"}`, "sub/x.go", ".git/"},
 		} {
+			if bin == "" && c.not == "gen/" {
+				continue // the walker reads no .gitignore
+			}
 			input := strings.Replace(strings.ReplaceAll(c.input, "DIR", dir), "{", `{"path":"`+dir+`",`, 1)
 			if strings.Contains(c.input, `"path":`) {
 				input = strings.Replace(c.input, `"path":"`, `"path":"`+dir+`/`, 1)
