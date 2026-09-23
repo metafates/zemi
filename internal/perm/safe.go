@@ -752,7 +752,7 @@ func program(f []string) []string {
 func Subcommand(f []string) int {
 	for i := 1; i < len(f); i++ {
 		switch a := f[i]; {
-		case a == "-C" || a == "-c" || a == "--prefix" || a == "--git-dir" || a == "--work-tree" || a == "--namespace":
+		case subcommandValues[a]:
 			i++
 		case strings.HasPrefix(a, "-") || strings.HasPrefix(a, "+"):
 		default:
@@ -760,6 +760,32 @@ func Subcommand(f []string) int {
 		}
 	}
 	return -1
+}
+
+var subcommandValues = map[string]bool{"-C": true, "-c": true, "--prefix": true, "--git-dir": true, "--work-tree": true, "--namespace": true}
+
+// plainFlags are leading options known to take no value.
+var plainFlags = map[string]bool{
+	"--no-pager": true, "-p": true, "--paginate": true, "--bare": true, "--no-replace-objects": true,
+	"--literal-pathspecs": true, "--no-optional-locks": true, "-q": true, "--quiet": true, "-v": true,
+	"--verbose": true, "--offline": true, "--locked": true, "--frozen": true, "-s": true, "--silent": true,
+}
+
+// LeadKnown reports whether Subcommand read every word before f[i] for
+// sure: an option it knows takes a value, with that value, a --opt=value, a
+// +toolchain or a flag known to take none. An unknown option may take the
+// next word (npm -w web test), which Subcommand then calls the subcommand.
+func LeadKnown(f []string, i int) bool {
+	for j := 1; j < i; j++ {
+		switch a := f[j]; {
+		case subcommandValues[a]:
+			j++
+		case strings.HasPrefix(a, "+") || strings.HasPrefix(a, "--") && strings.Contains(a, "=") || plainFlags[a]:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // gitWriters are the git subcommands that write .git, which the sandbox

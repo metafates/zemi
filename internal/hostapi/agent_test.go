@@ -1040,6 +1040,9 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "npm exec prettier -- --check ."}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "pnpm dlx x"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "uv run x.py"}, "", nil},
+		// an unknown option may take the next word, so the subcommand is not sure
+		{tools.Request{Subject: "tool.bash", Arg: "npm -w web test"}, "allow this exact command", []string{"npm -w web test"}},
+		{tools.Request{Subject: "tool.bash", Arg: "uv --directory sub run pytest"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "busybox ls"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "awk '{print}' f"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "npm run build"}, "allow `npm run`", []string{"npm run", "npm run *"}},

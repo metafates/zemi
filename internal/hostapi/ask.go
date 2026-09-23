@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -352,9 +353,19 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	if wrapperProgram(f[0]) {
 		return nil, false
 	}
-	// npm exec, uv run and the like run a package named after them, as npx does
-	if i := perm.Subcommand(f); i > 0 && wrapperSubcommands[programName(f[0])+" "+f[i]] {
-		return nil, false
+	// npm exec, uv run and the like run a package named after them, as npx
+	// does; past an option whose value is unknown, any later word may be the
+	// subcommand
+	i := perm.Subcommand(f)
+	known := i < 0 || perm.LeadKnown(f, i)
+	if i > 0 {
+		words := f[i : i+1]
+		if !known {
+			words = f[i:]
+		}
+		if slices.ContainsFunc(words, func(w string) bool { return wrapperSubcommands[programName(f[0])+" "+w] }) {
+			return nil, false
+		}
 	}
 	// a program or subcommand that can delete or overwrite must not broaden
 	// to arbitrary later targets: the rule runs unconfined, and such a
@@ -364,9 +375,10 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	}
 	p := commandPrefix(seg)
 	switch {
-	case p != "":
+	case p != "" && known:
 	case subcommandPrograms[programName(f[0])]:
-		// git --version and a bare git have no subcommand; `git *` would allow every one
+		// git --version and a bare git have no subcommand, and npm -w web test
+		// has none for sure; `git *` or `npm -w web *` would allow every one
 		return []string{seg}, true
 	default:
 		p = f[0]
