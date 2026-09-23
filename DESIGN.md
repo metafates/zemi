@@ -596,7 +596,9 @@ in v1 (no origin, user included, rebinds them), so a compromised config
 cannot relocate the panic button or put a decoy on it (case-variant
 command names are refused by the §11 collision rules). `<leader>`
 expands to `ctrl+g` (the `keymap.leader` setting); multi-key sequences arm a
-pending state (shown in the statusline) until the next key or timeout.
+pending state (shown in the statusline) until the next key or timeout; a held
+prefix the next key breaks or the timeout ends replays as plain keys, so
+`ctrl+g` alone still opens the editor.
 Command `nargs` follows Vim's spec strings (`?` = 0 or 1, `+` = 1 or more,
 `*` = 0 or more).
 
@@ -1157,7 +1159,8 @@ provenance string.
   `><` on an error; at the right end a shimmering
   label naming the current activity, elapsed
   time, interrupt key, queue depth; it reads `ctx.frame`, `ctx.done`,
-  `ctx.cancelling`, `editing`, `waiting` and `agent.retry`/`compacting`),
+  `ctx.cancelling`, `interrupt_armed`, `view`, `editing`, `waiting` and
+  `agent.retry`/`compacting`),
   the statusline below. The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
   Statusline
@@ -1259,16 +1262,17 @@ provenance string.
   <n>`, `/copy code` and `/copy reply`), so no widget can hide what the
   model actually received.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
-  bubbles textarea; `enter` sends, `alt+enter` and `ctrl+enter` newline
+  bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+j` newline
   (configurable); a large paste folds into a token that expands on submit.
   A prompt glyph marks the first row and a gutter aligns the rest, so a
   multi-line draft reads as one block. The composer stays editable during
   a turn: a submit while the turn runs queues as steering (§4) instead of
   spawning a second turn, and the queued messages show above it.
 - **Default keymaps** (all rebindable by user config except the
-  Go-reserved cancel and reload triggers, §6.2): `enter`/`alt+enter`
-  send/newline, `esc`/`ctrl+c` interrupt the turn (idle, `ctrl+c`
-  twice within 2s quits), `ctrl+o` toggle reasoning,
+  Go-reserved cancel and reload triggers, §6.2): `enter` sends, `esc`
+  twice within 2s or `ctrl+c` once interrupts the turn (`esc` in an agent
+  view goes back; idle, `ctrl+c` moves a draft into the history, and on an
+  empty composer twice within 2s quits), `ctrl+o` toggle reasoning,
   `pgup`/`pgdown`, `shift+up`/`shift+down` and `ctrl+home`/`ctrl+end` scroll the
   transcript (the wheel too: mouse cell motion is captured because the altscreen has no
   native scrollback). A scrolled-back viewport is anchored on the rows it
@@ -1276,7 +1280,7 @@ provenance string.
   turn leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`, `/mode`,
   `/profile [name]` (the agent profile the next send runs as; a picker without a name;
-  `ctrl+t`/`ctrl+shift+t` cycle the agent, `tab`/`shift+tab` cycle the permission mode),
+  `ctrl+t`/`ctrl+shift+t` cycle the agent; `ctrl+y` flips to yolo and back),
   `/permissions` (the mode and the rules in force; a session rule an "always"
   answer wrote can be removed there),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`

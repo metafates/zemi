@@ -8,8 +8,8 @@ local function run_click(ev)
   assert(zemi.command.run(ev.id))
 end
 
--- Statusline left starts with the permission mode as a pill (tab cycles
--- it), colored like the composer prompt. A click opens the mode picker.
+-- Statusline left starts with the permission mode as a pill, colored like
+-- the composer prompt. A click opens the mode picker.
 zemi.ui.widget.add({
   id = "statusline.mode",
   region = "statusline.left",
@@ -48,7 +48,7 @@ zemi.ui.widget.add({
   ---@return zemi.Line[]
   render = function(ctx)
     if (ctx.key_seq or "") == "" then return {} end
-    return { { { text = ctx.key_seq .. " ...", hl = "Title" } } }
+    return { { { text = ctx.key_seq .. " …", hl = "Title" } } }
   end,
 })
 

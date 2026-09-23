@@ -19,7 +19,7 @@ import (
 
 // TestToggleOverlayStaysOpen: in a Reload overlay (skills) space and enter
 // run the row and rebuild the list in place, keeping the selection, the
-// filter and the box's size; ctrl+j moves like j.
+// filter and the box's size; ctrl+n moves like j.
 func TestToggleOverlayStaysOpen(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	on := false
@@ -31,7 +31,7 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 		return []any{map[string]any{"text": "a"}, map[string]any{"text": mark, "fill": "picked"}}
 	}
 	a.openOverlay(hostapi.Overlay{ID: "t", Origin: lua.OriginBuiltin, Items: items(), Reload: func() ([]any, [][]hostapi.Segment) { on = !on; return items(), nil }})
-	a.overlayKey("ctrl+j", "")
+	a.overlayKey("ctrl+n", "")
 	a.overlays[0].size = boxSize{60, 12}
 	for _, key := range []string{"space", "enter"} {
 		wasOn := on
@@ -361,7 +361,7 @@ func TestOverlayNavigation(t *testing.T) {
 			hostapi.Overlay{ID: "p", Items: []any{detail()}}, []string{"enter"},
 			func(a *App) string {
 				a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-				return map[bool]string{false: "still open"}[len(a.overlays) == 0 && a.quitArmed.IsZero()]
+				return map[bool]string{false: "still open"}[len(a.overlays) == 0 && a.armed == armed{}]
 			}},
 		{"the list keys scroll a body with no list",
 			hostapi.Overlay{Body: strings.Repeat("line\n", 50)}, []string{"down"},

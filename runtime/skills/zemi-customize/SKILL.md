@@ -119,7 +119,7 @@ the file is saved (zemi reloads config on change).
 
 ## Permission modes (`init.lua`, user config only)
 
-`zemi.permission.mode.add(name, spec)` adds a mode to the tab cycle: `base` (auto, yolo), `description`, `prompt`, static `rules`, and `decide`, which answers one ask
+`zemi.permission.mode.add(name, spec)` adds a mode to `/mode`: `base` (auto, yolo), `description`, `prompt`, static `rules`, and `decide`, which answers one ask
 that the rules left open. `decide` runs off the UI with a 60s ceiling, so it may ask a model
 of its own; it holds the interpreter while it runs, so the rest of zemi waits on it.
 
@@ -201,7 +201,7 @@ zemi.keymap.set("<leader>b", function() -- toggle the sidebar
   side.hidden = not side.hidden
   zemi.ui.layout.set(layout)
 end, { desc = "toggle the sidebar" })
-zemi.keymap.set("ctrl+j", "zemi.ui.scroll.down sidebar", { desc = "scroll the sidebar" })
+zemi.keymap.set("alt+j", "zemi.ui.scroll.down sidebar", { desc = "scroll the sidebar" })
 ```
 
 A region with an id and `focusable = true` can take the keys, which makes a panel you drive

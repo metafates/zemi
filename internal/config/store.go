@@ -67,7 +67,7 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.mouse", Kind: "bool", Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
 		{Path: "ui.notify", Kind: "bool", Default: true, Desc: "when zemi is not focused, notify through the terminal as a turn ends or a permission prompt waits"},
 		{Path: "ui.progress", Kind: "bool", Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
-		{Path: "ui.composer.multiline", Kind: "bool", Default: true, Desc: "composer accepts embedded newlines (alt/shift+enter)"},
+		{Path: "ui.composer.multiline", Kind: "bool", Default: true, Desc: "composer accepts embedded newlines (shift+enter, alt+enter, ctrl+j)"},
 		{Path: "ui.composer.history", Kind: "int", Default: 50, Desc: "composer history entries kept (0 disables)"},
 		{Path: "ui.completion.files", Kind: "bool", Default: true, Desc: "file completion on the trigger char in the composer"},
 		{Path: "ui.completion.max_items", Kind: "int", Default: 10, Desc: "completion popup rows"},

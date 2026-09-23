@@ -36,6 +36,7 @@ type KeyBinding struct {
 	Origin lua.Origin
 	Path   string
 	Gen    Gen
+	order  int // registration order, which /help and zemi.keymap.list keep
 }
 
 type bindKey struct{ focus, key string }
@@ -46,6 +47,7 @@ type bindKey struct{ focus, key string }
 type KeymapRegistry struct {
 	mu       sync.RWMutex
 	bindings map[bindKey]*KeyBinding
+	next     int
 }
 
 func NewKeymapRegistry() *KeymapRegistry {
@@ -72,6 +74,12 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 		if related && overlap && old.Origin.Rank() > b.Origin.Rank() {
 			return fmt.Errorf("keymap: %s overlaps %s bound by a %s registration", b.Key, k.key, old.Origin)
 		}
+	}
+	if old := r.bindings[bindKey{b.Focus, b.Key}]; old != nil {
+		b.order = old.order // a rebind keeps its place
+	} else {
+		r.next++
+		b.order = r.next
 	}
 	r.bindings[bindKey{b.Focus, b.Key}] = b
 	return nil
@@ -120,13 +128,12 @@ func (r *KeymapRegistry) IsPrefix(focus, seq string) bool {
 	return false
 }
 
-// List returns all bindings sorted by key, then focus.
+// List returns all bindings in registration order, so pairs bound together
+// read together.
 func (r *KeymapRegistry) List() []*KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return slices.SortedFunc(maps.Values(r.bindings), func(a, b *KeyBinding) int {
-		return cmp.Or(cmp.Compare(a.Key, b.Key), cmp.Compare(a.Focus, b.Focus))
-	})
+	return slices.SortedFunc(maps.Values(r.bindings), func(a, b *KeyBinding) int { return cmp.Compare(a.order, b.order) })
 }
 
 // Purge drops every binding (replay re-registers on reload).

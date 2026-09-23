@@ -119,7 +119,7 @@ type App struct {
 	focused    bool             // terminal focus (true until the terminal reports a blur)
 	keySeq     []string         // keys of a bound sequence typed so far
 	keySeqAt   time.Time
-	quitArmed  time.Time            // a second idle ctrl+c before this quits
+	armed      armed                // a key whose second press acts (ctrl+c quit, esc interrupt)
 	colors     colorprofile.Profile // what the terminal can show; bubbletea downsamples cells, not OSC 11
 
 	bootErr        error
@@ -486,7 +486,7 @@ func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
 // a turn's readouts, a toast's or the done frame's expiry. Everything else bumps.
 func (a *App) tickInterval() time.Duration {
 	st := a.lastState
-	if a.turnActive || a.host.Reflecting() || st.Done || st.QuitArmed || st.KeySeq != "" || len(a.toasts) > 0 {
+	if a.turnActive || a.host.Reflecting() || st.Done || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 {
 		return frameInterval
 	}
 	return idleInterval
@@ -517,12 +517,17 @@ func (a *App) onFrame() tea.Cmd {
 	// widgets read these flags, so a change re-renders them; the animation
 	// tick alone does not, it only matters while a turn bumps the frame
 	// anyway, and Done turning on and off bumps at both ends by itself
+	var replay tea.Cmd
+	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) > keySeqTimeout {
+		replay = a.replayKeys(a.keySeq, a.focusedNode())
+		a.keySeq = nil
+	}
 	st := a.uiState()
 	if st.Frame = 0; st != a.lastState {
 		a.lastState = st
 		a.frameGen++
 	}
-	cmds := []tea.Cmd{a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd()}
+	cmds := []tea.Cmd{a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd(), replay}
 	if c := a.progressCmd(active); c != nil {
 		cmds = append(cmds, c)
 	}
@@ -543,7 +548,7 @@ func (a *App) termBackground() color.Color {
 func (a *App) uiState() hostapi.UIState {
 	st := hostapi.UIState{
 		Time: a.timeStr, Frame: a.frame(), Done: a.turnOK && !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger,
-		QuitArmed: a.now().Before(a.quitArmed), RowsBelow: a.rowsBelow(),
+		QuitArmed: a.isArmed("ctrl+c"), InterruptArmed: a.isArmed("esc"), RowsBelow: a.rowsBelow(),
 		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(),
 	}
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {

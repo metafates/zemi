@@ -70,7 +70,7 @@ func TestFocusTodoPanel(t *testing.T) {
 		assert(zemi.keymap.get("j") == nil)`)
 
 	app.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-	if !app.now().Before(app.quitArmed) {
+	if !app.isArmed("ctrl+c") {
 		t.Fatal("ctrl+c must stay Go-reserved while a node has the keys")
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})

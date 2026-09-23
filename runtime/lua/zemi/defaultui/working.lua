@@ -52,11 +52,13 @@ zemi.ui.widget.add({
         parts = { "save and close the editor to continue" }
       end
       -- the open prompt says what answers it, so the rule shrinks to the
-      -- mascot alone rather than repeating it
+      -- mascot alone rather than repeating it; in an agent view esc goes back
       if ctx.waiting ~= "" then
         label, state, parts = "", "asking", {}
-      else
-        parts[#parts + 1] = ctx.cancelling and "ctrl+c quits" or "esc to interrupt"
+      elseif ctx.cancelling then
+        parts[#parts + 1] = "ctrl+c quits"
+      elseif not ctx.view then
+        parts[#parts + 1] = ctx.interrupt_armed and "esc again to interrupt" or "esc to interrupt"
       end
       local queued = #ag.steering - ag.reports
       if queued > 0 then parts[#parts + 1] = queued .. " queued, up to edit" end

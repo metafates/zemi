@@ -24,9 +24,7 @@ zemi.keymap.set("ctrl+y", function()
     before = cur.name
   end
 end, { desc = "yolo until the next press" })
-zemi.keymap.set("tab", "zemi.permission.mode.cycle", { desc = "next permission mode" })
-zemi.keymap.set("shift+tab", "zemi.permission.mode.prev", { desc = "previous permission mode" })
-zemi.keymap.set("ctrl+t", "zemi.agent.profile.cycle", { desc = "next profile (default, planner, ...)" })
+zemi.keymap.set("ctrl+t", "zemi.agent.profile.cycle", { desc = "next profile" })
 zemi.keymap.set("ctrl+shift+t", "zemi.agent.profile.prev", { desc = "previous profile" })
 zemi.keymap.set("pgup", "zemi.ui.scroll.up", { desc = "scroll chat up a page" })
 zemi.keymap.set("pgdown", "zemi.ui.scroll.down", { desc = "scroll chat down a page" })

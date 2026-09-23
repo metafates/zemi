@@ -182,8 +182,7 @@ guessing. Common keys:
   build or test flag that runs code can read it in a trusted project. A command that needs the network is retried with `network: true` (the sandbox stays, sockets are added); one that needs more with `sandbox: false`, which asks the
   user (not with `-p`, where nobody can answer). Without a sandbox (`/health` sandbox row) they run only commands that just read,
   as in an untrusted project. At runtime:
-  `/mode <name>`, `tab` (next), `shift+tab` (previous) or `ctrl+y` (yolo until the next
-  press); for one run: `zemi --mode auto`. `/permissions` lists the mode and every rule in
+  `/mode <name>` (a picker without a name) or `ctrl+y` (yolo until the next press); for one run: `zemi --mode auto`. `/permissions` lists the mode and every rule in
   force; an "always" answer (the only rule made at runtime) has a Remove action there,
   config rules do not. An "always" answer covers a command's program (with its subcommand
   for git, go, cargo and the like), a file's directory or a URL's host, and a file read is
@@ -196,7 +195,7 @@ guessing. Common keys:
   `*PASSWORD*`, ...), which zemi otherwise drops from every child. Name only what a build
   really needs: whatever is kept, the model can print.
 - Modes are configurable in init.lua. The start mode is `zemi.config.set("permissions.mode", "auto")`.
-  `zemi.permission.mode.del("yolo")` takes a mode out of tab and `/mode`,
+  `zemi.permission.mode.del("yolo")` takes a mode out of `/mode`,
   `zemi.permission.mode.set(name)` switches the active one, and
   `zemi.permission.mode.add(name, { base = "auto"|"yolo", description, prompt, rules, decide })`
   adds one (or replaces one with that name) after the others. It behaves like its base; its
@@ -229,7 +228,7 @@ settle is denied; a run that had calls denied says so on stderr.
 zemi.keymap.set("ctrl+t", function() zemi.agent.send("run the tests") end, { desc = "run tests" })
 zemi.keymap.set("ctrl+r", "compact")   -- a command name or a host action like "zemi.ui.help"
 zemi.keymap.set("ctrl+t", "new")       -- setting a bound key again rebinds it
-zemi.keymap.del("tab")                 -- unbind, also a shipped default
+zemi.keymap.del("ctrl+y")              -- unbind, also a shipped default
 for _, k in ipairs(zemi.keymap.list()) do print(k.key, k.action, k.origin) end
 local k = zemi.keymap.get("ctrl+o")    -- nil when unbound
 -- host actions: zemi.ui.help, zemi.ui.reasoning.toggle, zemi.ui.scroll.up, zemi.ui.scroll.down,

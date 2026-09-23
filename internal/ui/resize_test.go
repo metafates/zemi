@@ -18,10 +18,12 @@ import (
 )
 
 // TestGoldenHelpOverlay pins the help box; enter on a command row closes
-// it and fills the composer.
+// it and runs the command.
 func TestGoldenHelpOverlay(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
-	host.Commands.Add(&hostapi.Command{Name: "model", Desc: "choose the model", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1)})
+	ran := false
+	host.Commands.Add(&hostapi.Command{Name: "model", Desc: "choose the model", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+		GoFn: func(*hostapi.Host, string) error { ran = true; return nil }})
 	host.OpenHelp()
 	for app.Pump() {
 	}
@@ -31,8 +33,8 @@ func TestGoldenHelpOverlay(t *testing.T) {
 	st := &app.overlays[0]
 	st.selected = len(st.texts) - 1
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if len(app.overlays) != 0 || app.composer.text != "/model " {
-		t.Fatalf("enter on a command row: overlays=%d composer=%q", len(app.overlays), app.composer.text)
+	if len(app.overlays) != 0 || !ran {
+		t.Fatalf("enter on a command row: overlays=%d ran=%v", len(app.overlays), ran)
 	}
 }
 

@@ -29,9 +29,8 @@ command.
 
 ## The basics
 
-- `tab` cycles the safety mode at the left of the bar: `auto` (default, runs safe things
-  on its own), `plan` (looks around and suggests, changes nothing), `yolo` (`ctrl+y`, no
-  questions).
+- The safety mode sits at the left of the bar: `auto` (default, runs safe things on its
+  own) or `yolo` (`ctrl+y`, no questions). `/mode` or a click picks one.
 - It asks once per project before trusting it; `/trust` or `--trust` decide.
 - `/memory` saves facts, `/rewind` undoes a turn, `/compact` summarizes long chats.
 - Long chats learn into a summary; skills and memories carry over between sessions.

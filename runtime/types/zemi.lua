@@ -690,6 +690,7 @@ function zemi.event.stats() end
 ---@field agents_running integer Background agents of this session still running; their reports arrive as messages.
 ---@field jobs_running integer Background jobs (job_start, or a bash call that outlived its timeout) still running.
 ---@field quit_armed boolean A second ctrl+c quits.
+---@field interrupt_armed boolean A second esc interrupts the turn.
 ---@field key_seq string Keys of a bound sequence typed so far, space-separated; "" when none.
 ---@field rows_below integer Rows under the stage's scrolled region (the chat by default) while it is scrolled up; 0 when it follows the tail.
 ---@field cancelling boolean An interrupt was sent and the turn has not ended yet.

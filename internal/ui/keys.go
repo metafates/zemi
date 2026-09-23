@@ -22,12 +22,17 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	a.mouse = mouseSel{}
 	top := a.topChrome()
+	// an armed key acts only when pressed again right away on the bare
+	// composer: an esc that answers a box in between does not count
+	if key != a.armed.key || top != "" || a.palette.open || a.completion.shown() {
+		a.armed = armed{}
+	}
 
 	// A focused node takes every key but ctrl+c: its own keymaps, then the
 	// global ones. Unbound keys do nothing, and an unbound esc gives the
 	// keys back to the composer.
 	if f := a.focusedNode(); top == "" && f != "" && key != "ctrl+c" {
-		if !a.keySequence(key, f) && key == "esc" {
+		if ok, _ := a.keySequence(key, f); !ok && key == "esc" {
 			a.host.SetFocus("")
 		}
 		a.bump()
@@ -36,17 +41,24 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	// Keymaps (zemi.keymap.set) take single keys and bound sequences;
 	// printable keys stay with the composer, and an open popup keeps its
-	// keys (tab accepts even though tab is bound). The composer is Go-drawn,
-	// so typing must not bump the frame generation: that would re-render
-	// every Lua widget on every keystroke.
-	if top == "" && key != "ctrl+c" && (a.palette.open || a.completion.shown() || !a.keySequence(key, "")) {
-		return a.composerKey(key, msg)
+	// keys. The composer is Go-drawn, so typing must not bump the frame
+	// generation: that would re-render every Lua widget on every keystroke.
+	if top == "" && key != "ctrl+c" {
+		if a.palette.open || a.completion.shown() {
+			return a.composerKey(key, msg)
+		}
+		ok, replay := a.keySequence(key, "")
+		if !ok {
+			return tea.Batch(replay, a.composerKey(key, msg))
+		}
+		a.bump()
+		return replay
 	}
 	a.bump()
 
 	// Go-reserved cancel trigger: never routed to Lua, never rebindable
 	// (DESIGN §4, §6.2). It declines open chrome, interrupts a running
-	// turn, and when idle quits on a second press within 2s.
+	// turn, clears a draft, and on an empty composer quits when pressed twice.
 	if key == "ctrl+c" {
 		switch {
 		case top == "perm":
@@ -71,10 +83,13 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.forceQuit()
 		case a.host.AgentActive():
 			a.interrupt()
-		case a.now().Before(a.quitArmed):
+		case !a.composer.empty():
+			// the draft stays one up away
+			a.seedHistory()
+			a.composer.pushHistory(a.composer.text, a.historySize())
+			a.clearComposer()
+		case a.arm(key):
 			a.Quit()
-		default:
-			a.quitArmed = a.now().Add(2 * time.Second)
 		}
 		return nil
 	}
@@ -192,9 +207,13 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			a.palette.close()
 			return nil
 		case "enter":
+			// the highlighted argument replaces the one under the cursor, and
 			// a typed name that is not a command runs the highlighted one
 			name, args := splitCommand(strings.TrimPrefix(c.text, "/"))
-			if p := &a.palette; p.args == nil && p.selected < len(p.matches) && name != "reload" && a.host.Commands.Lookup(name) == nil {
+			switch {
+			case p.args != nil && p.selected < len(p.args):
+				c.replace(p.argStart, p.args[p.selected].Text)
+			case p.selected < len(p.matches) && name != "reload" && a.host.Commands.Lookup(name) == nil:
 				c.text = strings.TrimSpace("/" + p.matches[p.selected].Name + " " + args)
 			}
 		}
@@ -222,7 +241,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		a.submitComposer()
 		return nil
-	case "shift+enter", "alt+enter", "ctrl+enter":
+	case "shift+enter", "alt+enter", "ctrl+enter", "ctrl+j":
 		if !a.multiline() {
 			return nil
 		}
@@ -254,10 +273,11 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		return a.openEditor()
 	case "esc":
 		// Open popups consumed esc above, so a bare esc leaves an agent's
-		// transcript, or else interrupts.
+		// transcript, or else interrupts on a second press: esc closes every
+		// box, and one press too many must not kill the turn.
 		if a.host.ViewedAgent() != "" {
 			_ = a.host.ViewAgent("")
-		} else if a.host.AgentActive() {
+		} else if a.host.AgentActive() && a.arm(key) {
 			a.interrupt()
 		}
 		return nil
@@ -313,28 +333,73 @@ const keySeqTimeout = 1500 * time.Millisecond
 
 // keySequence runs bindings for focus, including multi-key ones ("ctrl+g
 // s"): a key that starts or continues a bound sequence is held until the
-// sequence completes, esc cancels it, and a key that breaks or outlives it
-// is handled on its own.
-func (a *App) keySequence(key, focus string) bool {
+// sequence completes, esc cancels it, and when a key breaks or outlives it
+// the held keys replay as plain ones before the key is handled on its own.
+func (a *App) keySequence(key, focus string) (bool, tea.Cmd) {
+	held := a.keySeq
+	a.keySeq = nil
+	if len(held) > 0 && key == "esc" {
+		return true, nil
+	}
+	var replay tea.Cmd
 	seq := key
-	if pending := a.keySeq; len(pending) > 0 {
-		a.keySeq = nil
-		if key == "esc" {
-			return true
-		}
-		if a.now().Sub(a.keySeqAt) <= keySeqTimeout {
-			seq = strings.Join(append(pending, key), " ")
-		}
+	if len(held) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
+		seq = strings.Join(append(held, key), " ")
+	} else {
+		replay, held = a.replayKeys(held, focus), nil
 	}
 	if b := a.host.Keymaps.Lookup(focus, seq); b != nil {
 		a.runRHS(b)
-		return true
+		return true, replay
 	}
 	if a.host.Keymaps.IsPrefix(focus, seq) {
 		a.keySeq, a.keySeqAt = strings.Fields(seq), a.now()
+		return true, replay
+	}
+	if len(held) == 0 {
+		return false, replay
+	}
+	replay = a.replayKeys(held, focus)
+	ok, cmd := a.keySequence(key, focus)
+	return ok, tea.Batch(replay, cmd)
+}
+
+// replayKeys hands held keys to the composer as plain ones, so a Go key
+// under a leader (ctrl+g opens the editor) still works on its own. A
+// focused node drops them, like any key it has no binding for.
+func (a *App) replayKeys(held []string, focus string) tea.Cmd {
+	if focus != "" || a.topChrome() != "" {
+		return nil
+	}
+	var cmds []tea.Cmd
+	for _, k := range held {
+		msg := tea.KeyPressMsg{}
+		if len([]rune(k)) == 1 {
+			msg.Text = k
+		}
+		cmds = append(cmds, a.composerKey(k, msg))
+	}
+	return tea.Batch(cmds...)
+}
+
+type armed struct {
+	key   string
+	until time.Time
+}
+
+// arm reports whether key is armed, disarming it: the second press acts.
+// Otherwise it arms key for 2s.
+func (a *App) arm(key string) bool {
+	if a.isArmed(key) {
+		a.armed = armed{}
 		return true
 	}
-	return seq != key && a.keySequence(key, focus)
+	a.armed = armed{key, a.now().Add(2 * time.Second)}
+	return false
+}
+
+func (a *App) isArmed(key string) bool {
+	return a.armed.key == key && a.now().Before(a.armed.until)
 }
 
 // focusedNode is the layout node taking keys: the host's focus while the
@@ -346,13 +411,13 @@ func (a *App) focusedNode() string {
 	return ""
 }
 
-// listMove maps list navigation keys (arrows, k/j, and the nvim-style
-// ctrl+k/j, ctrl+p/n) to -1 or 1; 0 means the key is not a move.
+// listMove maps list navigation keys (arrows, k/j, ctrl+p/n) to -1 or 1;
+// 0 means the key is not a move. ctrl+k and ctrl+j stay the composer's.
 func listMove(key string) int {
 	switch key {
-	case "up", "k", "ctrl+k", "ctrl+p":
+	case "up", "k", "ctrl+p":
 		return -1
-	case "down", "j", "ctrl+j", "ctrl+n":
+	case "down", "j", "ctrl+n":
 		return 1
 	}
 	return 0

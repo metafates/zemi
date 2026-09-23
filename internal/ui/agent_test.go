@@ -424,25 +424,67 @@ func TestGoldenAgentStream(t *testing.T) {
 	}
 }
 
-// TestInterruptKeys: esc and ctrl+c interrupt a running turn (queue back
-// in the composer, working row reads Cancelling; no runner is attached, so
-// the cancel itself must just not panic), and an idle ctrl+c arms quit.
+// TestInterruptKeys: esc interrupts a running turn on a second press within
+// 2s and an agent view takes it as back; ctrl+c interrupts at once, clears a
+// draft into the history, and on an empty composer arms quit. A held key
+// prefix replays as plain keys when the next key breaks it or it times out.
 func TestInterruptKeys(t *testing.T) {
-	for _, key := range []tea.KeyPressMsg{{Code: tea.KeyEscape}, {Code: 'c', Mod: tea.ModCtrl}} {
-		app, host := bootAgentApp(t, 80, 16)
-		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: time.Second, Steering: []string{"also this"}})
-		app.Update(key)
-		app.renderSync(t)
-		if frame := ansi.Strip(app.Frame()); app.composer.text != "also this" || !strings.Contains(frame, "Cancelling") {
-			t.Fatalf("%s: composer=%q frame:\n%s", key, app.composer.text, frame)
-		}
-	}
-
-	app, _ := bootAgentApp(t, 80, 16)
-	app.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-	app.renderSync(t)
-	if !strings.Contains(ansi.Strip(app.Frame()), "ctrl+c again to quit") {
-		t.Fatal("idle ctrl+c should arm quit")
+	esc, ctrlC, up := tea.KeyPressMsg{Code: tea.KeyEscape}, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: tea.KeyUp}
+	ctrlK, x := tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: 'x', Text: "x"}
+	var wait tea.KeyPressMsg // advances the clock 3s
+	for _, c := range []struct {
+		name          string
+		active, view  bool
+		draft         string
+		keys          []tea.KeyPressMsg
+		cancel        bool
+		composer, row string
+	}{
+		{"esc arms", true, false, "", []tea.KeyPressMsg{esc}, false, "", "esc again to interrupt"},
+		{"esc esc interrupts", true, false, "", []tea.KeyPressMsg{esc, esc}, true, "also this", "Cancelling"},
+		{"esc arms again after 3s", true, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, "", "esc again to interrupt"},
+		{"esc in an agent view goes back", true, true, "", []tea.KeyPressMsg{esc}, false, "", "esc to interrupt"},
+		{"ctrl+c interrupts at once", true, false, "", []tea.KeyPressMsg{ctrlC}, true, "also this", "Cancelling"},
+		{"ctrl+c clears a draft, up restores it", false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, "draft", ""},
+		{"ctrl+c on an empty composer arms quit", false, false, "", []tea.KeyPressMsg{ctrlC}, false, "", "ctrl+c again to quit"},
+		{"a broken prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlK, x}, false, "x", ""},
+		{"a timed out prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlK, wait}, false, "", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, host := bootAgentApp(t, 90, 16)
+			clock := time.UnixMilli(1000)
+			app.now = func() time.Time { return clock }
+			runLua(t, app, `zemi.keymap.set("ctrl+k s", "zemi.ui.help")`)
+			if c.active {
+				host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: time.Second, Steering: []string{"also this"}})
+			}
+			if c.view {
+				db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { db.Close() })
+				host.DB, clock = db, clock.Add(time.Hour)
+				id := store.NewID()
+				if err := db.CreateSession(id, store.NewID(), "run", "explore"); err != nil || host.ViewAgent(id) != nil {
+					t.Fatal(err)
+				}
+			}
+			app.composer.text = c.draft
+			for _, k := range c.keys {
+				if k == wait {
+					clock = clock.Add(3 * time.Second)
+					app.onFrame()
+					continue
+				}
+				app.Update(k)
+			}
+			app.renderSync(t)
+			frame := ansi.Strip(app.Frame())
+			if app.cancelling != c.cancel || app.composer.text != c.composer || !strings.Contains(frame, c.row) || host.ViewedAgent() != "" || app.isArmed("ctrl+c") != strings.HasSuffix(c.row, "quit") {
+				t.Fatalf("cancelling=%v composer=%q view=%q frame:\n%s", app.cancelling, app.composer.text, host.ViewedAgent(), frame)
+			}
+		})
 	}
 }
 
@@ -528,11 +570,13 @@ func lastToast(app *App) string {
 }
 
 // TestPaletteArgumentCompletion: past "/name " the palette lists the
-// command's argument candidates and tab fills the argument under the cursor.
+// command's argument candidates, tab fills the argument under the cursor
+// and enter runs the command with the highlighted one.
 func TestPaletteArgumentCompletion(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
+	ran := ""
 	host.Commands.Add(&hostapi.Command{
-		Name: "greet", GoFn: func(*hostapi.Host, string) error { return nil },
+		Name: "greet", GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
 		GoComplete: func(*hostapi.Host, string, string) []string { return []string{"alice", "bob"} },
 		Origin:     lua.OriginBuiltin, Gen: hostapi.Gen(1),
 	})
@@ -545,6 +589,15 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	if app.composer.text != "/greet bob " {
 		t.Fatalf("composer = %q", app.composer.text)
+	}
+	app.clearComposer()
+	for _, k := range "/greet " {
+		app.Update(tea.KeyPressMsg{Code: k, Text: string(k)})
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if ran != "bob" {
+		t.Fatalf("enter ran /greet %q", ran)
 	}
 }
 

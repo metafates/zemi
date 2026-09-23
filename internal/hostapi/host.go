@@ -596,25 +596,39 @@ func (h *Host) AppendReasoning(text string, stat TurnStat) {
 }
 
 // goKeys are the bindings the key router owns (internal/ui/keys.go): they
-// are not Lua keymaps, so /help would list none of them. Keep them in step
-// with the README table.
+// are not Lua keymaps, so /help would list none of them.
 var goKeys = [][2]string{
 	{"enter", "send the message"},
-	{"alt+enter, ctrl+j", "newline"},
-	{"esc", "interrupt the turn, or leave an agent view"},
-	{"ctrl+c", "interrupt; twice while idle quits"},
+	{"shift+enter, alt+enter, ctrl+j", "newline"},
+	{"esc", "back, or twice to interrupt"},
+	{"ctrl+c", "interrupt, clear the draft, quit"},
 	{"ctrl+g", "edit the draft in your editor"},
 	{"ctrl+v", "paste, images included"},
-	{"up, ctrl+p", "earlier prompts (empty composer: queued messages)"},
+	{"up, ctrl+p", "earlier prompts or queued ones"},
 	{"down, ctrl+n", "later prompts"},
 	{"ctrl+z", "undo in the composer"},
+	{"ctrl+a, ctrl+e", "line start, line end"},
 	{"alt+left, alt+right", "move by word"},
+	{"ctrl+u, ctrl+k", "delete to line start, to line end"},
+	{"ctrl+w", "delete the word before the cursor"},
 	{"/", "command palette"},
 	{"@", "attach a project file"},
 	{"!cmd", "run a shell command with your next message"},
 }
 
-// OpenHelp opens the help overlay listing keymaps and slash commands.
+// listKeys are the keys every list and box takes (internal/ui/keys.go).
+var listKeys = [][2]string{
+	{"up, down, ctrl+p, ctrl+n", "move"},
+	{"pgup, pgdown", "move a page"},
+	{"home, end", "first row, last row"},
+	{"/", "filter the rows"},
+	{"space", "toggle"},
+	{"y, Y", "copy the row, every row"},
+	{"shift+up, shift+down", "scroll the text a line"},
+}
+
+// OpenHelp opens the help overlay listing keys and slash commands. A
+// command row runs it, unless it needs an argument, which it fills in.
 func (h *Host) OpenHelp() {
 	ui := h.hooks()
 	if ui == nil {
@@ -634,12 +648,20 @@ func (h *Host) OpenHelp() {
 		}
 		items = append(items, map[string]any{"text": b.Key, "desc": desc, "section": "Keys"})
 	}
+	for _, k := range listKeys {
+		items = append(items, map[string]any{"text": k[0], "desc": k[1], "section": "Lists"})
+	}
 	// Hidden keeps a command out of the palette's default list, not out of
 	// /help: this is the index the README points people at.
 	for _, c := range h.Commands.List() {
-		items = append(items, map[string]any{"text": "/" + c.Name, "desc": c.Desc, "section": "Commands", "fill": "/" + c.Name + " "})
+		item := map[string]any{"text": "/" + c.Name, "desc": c.Desc, "section": "Commands", "run": c.Name}
+		if c.NArgs == "+" {
+			delete(item, "run")
+			item["fill"] = "/" + c.Name + " "
+		}
+		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "help", Title: "Help", Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "help", Title: "Help", Origin: lua.OriginBuiltin, Items: items, Verb: "run"})
 }
 
 func describeRHS(rhs RHS) string {
@@ -1142,14 +1164,15 @@ type UIState struct {
 	Time  string
 	Frame int // 500ms animation tick, the mascot's cadence; 0 with ui.animations off
 
-	Done       bool   // a turn finished a moment ago, not failed or stopped, so the mascot can bow
-	QuitArmed  bool   // a second ctrl+c quits
-	KeySeq     string // keys of a bound sequence typed so far
-	RowsBelow  int    // transcript rows under a scrolled-up viewport
-	Cancelling bool   // interrupt sent, turn not finished yet
-	Editing    string // title of the file open in the editor
-	Waiting    string // "approval" or "answer" while a prompt holds the turn
-	Focus      string // the drawn layout node taking keys, "" for the composer
+	Done           bool   // a turn finished a moment ago, not failed or stopped, so the mascot can bow
+	QuitArmed      bool   // a second ctrl+c quits
+	InterruptArmed bool   // a second esc interrupts the turn
+	KeySeq         string // keys of a bound sequence typed so far
+	RowsBelow      int    // transcript rows under a scrolled-up viewport
+	Cancelling     bool   // interrupt sent, turn not finished yet
+	Editing        string // title of the file open in the editor
+	Waiting        string // "approval" or "answer" while a prompt holds the turn
+	Focus          string // the drawn layout node taking keys, "" for the composer
 }
 
 // TildePath shortens the home directory, or a path under it, to ~.
@@ -1174,6 +1197,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("done", glua.LBool(state.Done))
 	tb.RawSetString("height", glua.LNumber(height))
 	tb.RawSetString("quit_armed", glua.LBool(state.QuitArmed))
+	tb.RawSetString("interrupt_armed", glua.LBool(state.InterruptArmed))
 	tb.RawSetString("key_seq", glua.LString(state.KeySeq))
 	tb.RawSetString("rows_below", glua.LNumber(state.RowsBelow))
 	tb.RawSetString("cancelling", glua.LBool(state.Cancelling))
@@ -1537,7 +1561,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.75.0"))
+	api.RawSetString("version", glua.LString("0.76.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

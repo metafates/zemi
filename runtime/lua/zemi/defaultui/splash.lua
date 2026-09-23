@@ -68,7 +68,7 @@ function M.render(ctx)
       { text = "/sessions", hl = "SplashKey" }, { text = " lists them", hl = "Comment" } })
   end
   row({ { text = "" } })
-  local tips = { { "/", "commands" }, { "@", "attach or drop files" }, { "!", "shell" }, { "tab", "permission mode" } }
+  local tips = { { "/", "commands" }, { "@", "attach or drop files" }, { "!", "shell" }, { "/help", "keys" } }
   ---@type zemi.Line
   local tip = {}
   for i, t in ipairs(tips) do

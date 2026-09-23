@@ -19,7 +19,7 @@ func bind(key, focus string, origin lua.Origin) *KeyBinding {
 // TestKeymapRegistry: set rebinds within and above an origin, lower trust is
 // refused for set and del, a focused binding cannot take what a more trusted
 // global one holds, lookup prefers the focused binding unless a more trusted
-// global one holds the key, and list is sorted.
+// global one holds the key, and list keeps registration order.
 func TestKeymapRegistry(t *testing.T) {
 	r := NewKeymapRegistry()
 	for _, s := range []struct {
@@ -67,7 +67,7 @@ func TestKeymapRegistry(t *testing.T) {
 	if !r.IsPrefix("todo", "ctrl+g") || r.IsPrefix("todo", "k") {
 		t.Fatal("IsPrefix should see global sequences from a focused node")
 	}
-	if all := r.List(); len(all) != 6 || all[3].Key != "tab" || all[4].Focus != "todo" {
+	if all := r.List(); len(all) != 6 || all[0].Key != "tab" || all[4].Key != "tab" || all[4].Focus != "todo" {
 		t.Fatalf("List = %+v", all)
 	}
 	for _, d := range []struct {
