@@ -669,7 +669,8 @@ func (h *Host) workflowCommands() []*Command {
 	return []*Command{{
 		Name: "workflow", NArgs: "*", Desc: "run a saved workflow",
 		GoFn: func(h *Host, args string) error {
-			name, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
+			typed, attached := CutAttached(args)
+			name, rest, _ := strings.Cut(strings.TrimSpace(typed), " ")
 			if name == "" {
 				return h.openWorkflows()
 			}
@@ -682,7 +683,7 @@ func (h *Host) workflowCommands() []*Command {
 			if rest = strings.TrimSpace(rest); rest != "" {
 				msg += " and args " + strconv.Quote(rest)
 			}
-			return h.AgentSend(msg + ", then relay its result.")
+			return h.AgentSend(msg + ", then relay its result." + attached)
 		},
 		GoComplete: func(h *Host, _, _ string) []string {
 			var names []string

@@ -495,6 +495,32 @@ func TestPrintInterruptJSON(t *testing.T) {
 	}
 }
 
+// TestPipedStdinIsNotTyped: piped stdin reaches the model behind the
+// marker, never in a row shown as the user's words, and names a session it
+// starts alone.
+func TestPipedStdinIsNotTyped(t *testing.T) {
+	const diff = "diff --git a/x b/x"
+	for _, c := range []struct{ prompt, title string }{
+		{"/review", "Run the saved workflow"},
+	} {
+		h := printHost(t)
+		if err := h.Settings.SetHost("session.auto_title", false); err != nil {
+			t.Fatal(err)
+		}
+		if code := printTurn(h, c.prompt+hostapi.Attached("stdin", diff), false, io.Discard, io.Discard); code != 0 {
+			t.Fatalf("%q: code %d", c.prompt, code)
+		}
+		for _, r := range h.Session().Transcript {
+			if r.Role == "user" && strings.Contains(r.Text, diff) {
+				t.Errorf("%q: stdin shown as typed: %q", c.prompt, r.Text)
+			}
+		}
+		if s, err := h.DB.GetSession(h.AgentSessionID()); err != nil || !strings.HasPrefix(s.Title, c.title) {
+			t.Errorf("%q: session %+v, %v", c.prompt, s, err)
+		}
+	}
+}
+
 // TestModelFlagUnderProfile: -m is refused when --profile names a profile
 // with its own model, since the run would measure the profile's.
 func TestModelFlagUnderProfile(t *testing.T) {
