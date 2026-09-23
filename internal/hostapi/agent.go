@@ -1045,6 +1045,15 @@ func toolSummary(input string) string {
 		}
 		return action
 	}
+	// the agent tool's description is optional; without it the row reads
+	// the agent and the task instead of the input JSON
+	if a, ok := m["agent"].(string); ok && a != "" {
+		if d, _ := m["description"].(string); d != "" {
+			return d
+		}
+		prompt, _ := m["prompt"].(string)
+		return strings.TrimSuffix(a+": "+truncRunes(strings.Join(strings.Fields(prompt), " "), 80), ": ")
+	}
 	for _, k := range []string{"path", "file_path", "pattern", "url", "query", "question", "name", "text", "description", "id"} {
 		if s, ok := m[k].(string); ok && s != "" {
 			return s

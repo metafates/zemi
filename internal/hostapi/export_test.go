@@ -196,6 +196,8 @@ func TestToolSummary(t *testing.T) {
 		`{"action":"keys","id":3,"keys":"hello<cr>"}`:                                   "keys hello<cr>",
 		`{"action":"close","id":2}`:                                                     "close 2",
 		`{"action":"definition","path":"/p/a.go","symbol":"Run"}`:                       "definition Run",
+		`{"agent":"explore","prompt":"look\n around"}`:                                  "explore: look around",
+		`{"agent":"explore","description":"Look around","prompt":"x"}`:                 "Look around",
 	} {
 		if got := toolSummary(in); got != want {
 			t.Errorf("toolSummary(%s) = %q, want %q", in, got, want)
