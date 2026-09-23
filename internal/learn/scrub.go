@@ -31,8 +31,17 @@ var keyShapes = []*regexp.Regexp{
 // group 1 is the password.
 var urlPassword = regexp.MustCompile(`\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s/:@]*:([^\s/]+)@`)
 
+// keyAssignments matches a key name set to a value, group 2 the value; an
+// auth scheme word before the value is skipped, so the credential is group 2.
 var keyAssignments = regexp.MustCompile(
-	`(?i)\b(api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|secret|password|passwd|pwd|bearer|authorization)\b\s*[=:]\s*\S+`)
+	`(?i)\b(api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|secret|password|passwd|pwd|bearer|authorization)\b\s*[=:]\s*(?:(?:bearer|basic|token)\s+)?(\S+)`)
+
+// reference reports whether an assigned value names where the secret comes
+// from ($VAR, ${VAR}, %VAR%, <token>, {{token}}) rather than holding it.
+func reference(v string) bool {
+	v = strings.TrimLeft(v, `"'`)
+	return strings.HasPrefix(v, "{{") || v != "" && strings.ContainsRune("$%<", rune(v[0]))
+}
 
 // entropyThreshold is the shannon-entropy floor (bits/char) above which a
 // long token is presumed secret; entropyFloorLen the minimum token length
@@ -69,7 +78,13 @@ func ScrubShapes(text string) string {
 	for _, re := range keyShapes {
 		out = redactAll(out, re.FindAllString(out, -1))
 	}
-	return redactAll(out, keyAssignments.FindAllString(out, -1))
+	var spans []string
+	for _, m := range keyAssignments.FindAllStringSubmatch(out, -1) {
+		if !reference(m[2]) {
+			spans = append(spans, m[0])
+		}
+	}
+	return redactAll(out, spans)
 }
 
 // oneBlob strips every redaction marker; what remains must be whitespace.

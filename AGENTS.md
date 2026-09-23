@@ -489,26 +489,26 @@ lua-language-server is installed.
 - **Reflector timing.** It runs on session close (`/new`, `/resume`) and in a startup sweep
   (`ReflectSweep`, once per process, not on a reload) over the newest sessions idle for ten
   minutes, at most three, never on quit. `reflectDue` reads the delta past kv
-  `reflector.seen.<sid>` (`RewindTo` clamps it) and is due only when the delta has two user
-  messages that are not compaction summaries and a tool call, or one failed tool call: one
-  exchange that went fine would cost a model call at every launch; `/reflect` skips the floor.
-  `claimReflect` takes an atomic kv claim per session (`reflector.claim.<sid>`, leased), so
-  two windows never reflect it at once, and `reflectClaimed` runs it (one at a time; a
-  skipped run releases its claim). It runs on `reflector.model`, then the small tier; a reply that is not the JSON
-  document asked for marks the delta seen and is the `/health` reflector row's news, never an
-  `/errors` entry, and a second failed try (kv `reflector.tries.<sid>`) marks it seen too. Its
-  prompt carries the scrubbed delta (`reflectLine`), the newest failed tool results
-  (`failedCalls`, read from the history rows: the telemetry rows keep no text), the
-  instruction files (`instructionSections`, shared with `systemWith`), the whole memory index
-  with budget use and quotes, and the project's skills and recipes by name, so it leaves a
-  repository's procedure to a recipe. It proposes memories only, no skills: each entry passes
-  `learn.Intake` with its `quote` and `gateMemory` like the `memory` tool's (stored at once
-  under `memory.autonomy = "auto"` when policy-clean, queued for `/memory` otherwise, a quote
-  not in the session dropped, DESIGN §10.4); an entry with empty text and `replaces` queues a
-  forget proposal, never auto-applied. There is no config-patch pipeline and no `/config`
-  command, the agent edits config files directly.
-  `digestFor()` renders every live memory, newest first per scope, under `learn.ScopeBudget`
-  (3 KB per scope); no search, no ranking.
+  `reflector.seen.<sid>` (`RewindTo` clamps it, `ForkSession` starts it at the copied history)
+  and is due only when the delta has two user messages that are not compaction summaries and a
+  tool call, or one failed tool call: one exchange that went fine would cost a model call at
+  every launch; `/reflect` skips the floor. `claimReflect` takes an atomic kv claim per session
+  (`reflector.claim.<sid>`, leased), so two windows never reflect it at once, and
+  `reflectClaimed` runs it (one at a time; a skipped run releases its claim). It runs on
+  `reflector.model`, then the small tier; a reply that is not the JSON document asked for marks
+  the delta seen and is the `/health` reflector row's news, never an `/errors` entry, and a
+  second failed try (kv `reflector.tries.<sid>`) marks it seen too. Its prompt carries the
+  scrubbed delta (`reflectLine`), the newest failed tool results (`failedCalls`, read from the
+  history rows: the telemetry rows keep no text), the instruction files (`instructionSections`,
+  shared with `systemWith`), the whole memory index with budget use and quotes, and the
+  project's skills and recipes by name, so it leaves a repository's procedure to a recipe. It
+  proposes memories only, no skills: each entry passes `learn.Intake` with its `quote` and
+  `gateMemory` like the `memory` tool's (stored at once under `memory.autonomy = "auto"` when
+  policy-clean, queued for `/memory` otherwise, a quote not in the session dropped, DESIGN
+  §10.4); an entry with empty text and `replaces` queues a forget proposal, never auto-applied.
+  There is no config-patch pipeline and no `/config` command, the agent edits config files
+  directly. `digestFor()` renders every live memory, newest first per scope, under
+  `learn.ScopeBudget` (3 KB per scope); no search, no ranking.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides real
   provider bugs (this once made the reflector read empty output everywhere).
@@ -562,12 +562,13 @@ lua-language-server is installed.
   guarded until added to `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new
   origin: the gate is a flag on the chunk name. A `path` script is a `.lua` file read through
   the read tool's `fs.read` check. Runs on the interpreter (10s ceiling), main agent only.
-- **Model memory writes**: the one `memory` tool goes through `memoryTool` -> `gateMemory`:
-  a near-duplicate (`learn.Similar` over both scopes and the pending proposals) is refused
-  with the id to pass as `replaces`; a learned user-scope memory needs a `quote`, checked
-  against the typed part of the session's user rows (`quoteInSession`, cut at `attachMarker`),
-  and a quote not found drops it; a scope over `learn.ScopeBudget` queues with the oldest ids
-  to replace, and `acceptProposal` and `moveMemory` refuse with them. Text with `replaces`
+- **Model memory writes**: the one `memory` tool goes through `memoryTool` -> `gateMemory`: a
+  near-duplicate (`learn.Similar` over both scopes and the pending proposals) is refused with
+  its id and text to merge through `replaces` (a pending one only as queued); a learned
+  user-scope memory needs a `quote`, checked against the typed part of the session's user rows
+  (`quoteInSession`, cut at `attachMarker`), and a quote not found drops it; a scope over
+  `learn.ScopeBudget` queues with the oldest ids to replace, and `acceptProposal`, `moveMemory`
+  and `rewriteMemory` refuse, pointing at the oldest in `/memory`. Text with `replaces`
   supersedes, empty text with it forgets (`forgetMemory`): a memory the user saved asks
   (`memory.write` as `Unsandboxed`, so no mode settles it), a learned one goes at once when
   `memoryAuto` holds (autonomy auto, a trusted project, no `fetch`, `web_search`, `lua` or
@@ -699,9 +700,10 @@ how many rows the frame takes, so nothing above it reflows.
 - **Sanitize at boundaries.** Model-influenced strings pass through `internal/sanitize` before
   reaching widgets, overlays or the log. Secrets are scrubbed by the learn intake scrubber at
   the memory/store boundary - don't log raw tool output or memory text.
-- **Memory intake policy** (`internal/learn`): text cap 300 and quote 160, provenance
-  required, `learn.Similar` refuses a near-duplicate, `origin` (`user` or `learned`) gates
-  autonomy and the replacement guard, no kind. `memory.autonomy` is user config only.
+- **Memory intake policy** (`internal/learn`): text cap 300 and quote 160, provenance required,
+  `learn.Similar` refuses a near-duplicate (the user's own text only a word-for-word repeat),
+  `origin` (`user` or `learned`) gates autonomy and the replacement guard, no kind.
+  `memory.autonomy` is user config only.
 - **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema; only
   user config sets them. Providers ship none; user config registers them, keys included
   (`api_key = zemi.env.get("NAME")`; `zemi.env.get` reads secret-shaped names for user and

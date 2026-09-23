@@ -1727,23 +1727,24 @@ session summaries. Additional signals: explicit user teaching
 
 ### 10.3 Distillation: the reflector
 
-The reflector is Go (`internal/hostapi/reflector.go`), not a Lua plugin
-and not a profile: one tool-less model call over a closed session. With
-no tools it cannot act at all, so its only output is the proposal
-document below. Triggered on `session.close` (`/new`, `/resume`) and by a
-startup sweep (once per process, not on a reload) over the newest sessions
-nothing has touched for ten minutes, at most three, so quitting never waits
-on a model call and a session a quit, a crash or a `-p` run left behind is
-still read; `/reflect` runs it by hand. It reads the delta since the seen
-count (kv `reflector.seen.<sid>`, clamped when a rewind cuts below it), and
-only when that delta holds two user messages (compaction summaries do not
-count) and a tool call, or one failed tool call; `/reflect` skips that
-floor. One run per session across windows: an atomic kv claim keyed by the
-session, leased for the run's timeout plus a minute, so a second window's
-delta waits for its next close or sweep instead of a run over the same rows. A reply that is
-not the JSON asked for marks the delta seen, as does a second failed try
-(kv `reflector.tries.<sid>`), so a delta a provider refuses does not cost a
-call at every close; `/health` shows the last outcome.
+The reflector is Go (`internal/hostapi/reflector.go`), not a Lua plugin and
+not a profile: one tool-less model call over a closed session. With no tools
+it cannot act at all, so its only output is the proposal document below.
+Triggered on `session.close` (`/new`, `/resume`) and by a startup sweep
+(once per process, not on a reload) over the newest sessions nothing has
+touched for ten minutes, at most three, so quitting never waits on a model
+call and a session a quit, a crash or a `-p` run left behind is still read;
+`/reflect` runs it by hand. It reads the delta since the seen count (kv
+`reflector.seen.<sid>`, clamped when a rewind cuts below it, a fork starting
+past its copied history), and only when that delta holds two user messages
+(compaction summaries do not count) and a tool call, or one failed tool
+call; `/reflect` skips that floor. One run per session across windows: an
+atomic kv claim keyed by the session, leased for the run's timeout plus a
+minute, so a second window's delta waits for its next close or sweep instead
+of a run over the same rows. A reply that is not the JSON asked for marks
+the delta seen, as does a second failed try (kv `reflector.tries.<sid>`), so
+a delta a provider refuses does not cost a call at every close; `/health`
+shows the last outcome.
 
 Input, in this order: the delta since the seen count (its last 120 user
 and assistant messages, each truncated to 400 runes, a compaction summary
@@ -1809,36 +1810,37 @@ by the next startup sweep, since the session still has unseen messages.
   and the screen reopens on that row), `u` undoes the last mark, and esc
   or `q` closes the screen and applies the marks. Stored rows show their
   age.
-- **Memory intake is host-side**, regardless of autonomy: a length cap
-  (300 chars, and 160 for the quote), provenance required, the quote
-  scrubbed like the text, and
-  intake-time secret scrubbing (a span matching a key shape or above an
-  entropy threshold in the quote is redacted with a `[redacted n chars]`
-  marker; one in the text refuses the memory, since a redacted row would
-  never load, and the error says to name the env var instead). Text phrased as instructions ("always run X", "ignore previous
+- **Memory intake is host-side**, regardless of autonomy: a length cap (300
+  chars, and 160 for the quote), provenance required, the quote scrubbed
+  like the text, and intake-time secret scrubbing (a span matching a key
+  shape or above an entropy threshold in the quote is redacted with a
+  `[redacted n chars]` marker; one in the text refuses the memory, since a
+  redacted row would never load, and the error says to name the env var
+  instead). Text phrased as instructions ("always run X", "ignore previous
   instructions") is flagged by a recall-biased heuristic pass (imperative
   verbs, second person, instruction-override phrasings) and routes to the
   review queue even under `memory.autonomy = auto`; false positives only
   cost a review click. Auto-applied memories are capped per session. A
   near-duplicate of a live memory or a pending proposal in either scope
-  (`learn.Similar`: 60% of the content tokens shared) is refused with the
-  id it repeats, so the model passes `replaces` instead. Anything about
-  the user carries `quote`, the user's own words: a learned user-scope
-  memory without one waits for review, and a quote that is not in the
-  session's user rows (compaction summaries aside) drops the memory. Each
-  scope has a 3 KB prompt budget (§10.7): a write that would pass it
-  queues for review with the oldest ids to replace, and `/memory <note>`,
-  accepting a queued one and a move into that scope refuse with them,
-  since the user is there. The
-  digest (§10.7) tells the model to follow a preference the user stated
-  and to check what any other line names before relying on it. Residual
-  risk is stated plainly: a learned line can still sway a credulous
+  (`learn.Similar`: 75% of the content tokens shared) is refused with the id
+  and text it repeats, so the model merges the two through `replaces` (a
+  pending one is named as queued; the user's own text is refused only word
+  for word). Anything about the user carries `quote`, the user's own words:
+  a learned user-scope memory without one waits for review, and a quote that
+  is not in the session's user rows (compaction summaries aside) drops the
+  memory. Each scope has a 3 KB prompt budget (§10.7): a write that would
+  pass it queues for review with the oldest ids to replace, and `/memory
+  <note>`, accepting a queued one, a move into that scope and an edit that
+  grows past it refuse and point at the oldest in `/memory`, since the user
+  is there. The digest (§10.7) tells the model to follow a preference the
+  user stated and to check what any other line names before relying on it.
+  Residual risk is stated plainly: a learned line can still sway a credulous
   model; the cap, provenance, quote check, scrubbing and the review queue
   narrow that window. `replaces` is the one edit: text with it supersedes
   the old memory, empty text with it forgets. `/memory forget <id>` is the
-  other review action: model proposals may
-  never silently drop a user-attested (`/memory <note>`) memory, and a
-  reflector retirement (§10.3) never drops any memory without review.
+  other review action: model proposals may never silently drop a
+  user-attested (`/memory <note>`) memory, and a reflector retirement
+  (§10.3) never drops any memory without review.
 - A recipe (§10.5) is written with the file tools, and every write asks:
   the dir is under zemi's state, so auto mode never settles it, no
   "always" is offered, and the ask says when the session read text from
