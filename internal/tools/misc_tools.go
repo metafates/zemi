@@ -32,24 +32,30 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			return fantasy.NewTextErrorResponse("todos unavailable"), nil
 		}
 		var out []store.Todo
+		cancelled := 0
 		for i, v := range list {
 			m, ok := v.(map[string]any)
 			if !ok {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: not an object", i)), nil
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: not an object", i+1)), nil
 			}
 			content := str(m["content"])
 			status := str(m["status"])
-			if status == "completed" { // the name other harnesses taught models
+			// the names other harnesses taught models
+			switch status {
+			case "completed":
 				status = "done"
+			case "cancelled":
+				cancelled++
+				continue
 			}
 			if content == "" {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: content is required", i)), nil
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: content is required", i+1)), nil
 			}
 			if !todoStatuses[status] {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: status must be pending, in_progress or done", i)), nil
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("todo %d: status must be pending, in_progress or done", i+1)), nil
 			}
 			out = append(out, store.Todo{
-				Content: content, Status: status, ActiveForm: str(m["active_form"]), Ord: i,
+				Content: content, Status: status, ActiveForm: str(m["active_form"]), Ord: len(out),
 			})
 		}
 		if err := p.TodosWrite(out); err != nil {
@@ -66,8 +72,11 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 				done++
 			}
 		}
+		if cancelled > 0 {
+			note = fmt.Sprintf("; dropped %d cancelled", cancelled)
+		}
 		if active > 1 {
-			note = fmt.Sprintf("; %d items are in_progress; keep exactly one", active)
+			note += fmt.Sprintf("; %d items are in_progress; keep exactly one", active)
 		}
 		return fantasy.NewTextResponse(fmt.Sprintf("updated todos: %d/%d done%s", done, len(out), note)), nil
 	}

@@ -64,18 +64,22 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	if resp.IsError || len(stored) != 2 || resp.Content != "updated todos: 0/2 done; 2 items are in_progress; keep exactly one" {
 		t.Fatalf("two in_progress: stored %d, %+v", len(stored), resp)
 	}
+	resp = call(t, todos, `{"todos":[{"content":"a","status":"cancelled"},{"content":"b","status":"pending"}]}`)
+	if resp.IsError || len(stored) != 1 || stored[0].Ord != 0 || resp.Content != "updated todos: 0/1 done; dropped 1 cancelled" {
+		t.Fatalf("cancelled items drop: stored %+v, %+v", stored, resp)
+	}
 
-	for _, bad := range []string{
-		`{"todos":[{"content":"","status":"pending"}]}`,
-		`{"todos":[{"content":"x","status":"nope"}]}`,
-		`{"todos":["not-an-object"]}`,
+	for _, bad := range []struct{ in, want string }{
+		{`{"todos":[{"content":"","status":"pending"}]}`, "todo 1: content is required"},
+		{`{"todos":[{"content":"x","status":"pending"},{"content":"x","status":"nope"}]}`, "todo 2: status must be"},
+		{`{"todos":["not-an-object"]}`, "todo 1: not an object"},
 	} {
-		resp = call(t, todos, bad)
-		if !resp.IsError {
-			t.Fatalf("bad input must error: %s -> %+v", bad, resp)
+		resp = call(t, todos, bad.in)
+		if !resp.IsError || !strings.HasPrefix(resp.Content, bad.want) {
+			t.Fatalf("bad input must error: %s -> %+v", bad.in, resp)
 		}
 	}
-	if len(stored) != 2 {
+	if len(stored) != 1 {
 		t.Fatalf("failed writes must not replace the list: %+v", stored)
 	}
 
