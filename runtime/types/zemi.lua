@@ -1767,6 +1767,9 @@ function zemi.timer.every(ms, fn) end
 -- zemi.state and zemi.env
 
 --- A persisted key-value store, global to zemi. Values round-trip as JSON.
+--- Plugin and project code each get their own key space and never see user
+--- or builtin keys; user config sees every key, stored as `plugin:<key>` and
+--- `project:<key>` for those.
 ---@class zemi.state
 zemi.state = {}
 

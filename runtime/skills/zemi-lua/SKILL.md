@@ -58,7 +58,8 @@ loads fresh.
   Share state through a table (`local got = {}`), or return values out of the `pcall`.
 - Module locals die on a reload. `zemi.state` is persisted and shared by every project and
   running zemi, so put the project in the key (`"branch:" .. zemi.project.root()`) and keep
-  what only this run needs in a local.
+  what only this run needs in a local. Plugin and project code each get their own space
+  (stored under `plugin:` or `project:`) and never see user keys; user config sees them all.
 - Nothing stores a value that can never work: a color that is not `#rrggbb`, a palette
   key or an ANSI color name, a rule subject outside `tool. fs. net. lua. mcp. memory.`, a printable key
   with no `focus`, a `zemi.config.watch` path outside the schema, and a tool spec with no

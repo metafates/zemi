@@ -887,6 +887,11 @@ zemi.state.set("recent.model", "anthropic/x")     -- persisted kv, global scope
 zemi.state.get("recent.model")                    -- also del(key), keys(prefix)
 ```
 
+`zemi.state` keys from plugin and project code are stored under a `plugin:`
+or `project:` prefix the chunk never sees, so each class has its own space
+and cannot read or overwrite user or builtin keys; user and builtin code see
+the whole store, other classes' keys included.
+
 Async I/O returns handles (§6.0 convention): block on `h:wait()` or pass
 callbacks; the watchdog cancels handles a tool left running. Blocking
 waits (`h:wait()`, `zemi.job.wait`) are not refused

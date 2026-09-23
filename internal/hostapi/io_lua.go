@@ -224,12 +224,22 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 // ---------------------------------------------------------------------------
 // zemi.state (persisted kv, global scope)
 
+// stateScope is the prefix a chunk's keys are stored under: plugin and
+// project code each get their own space, so neither reads or clobbers user
+// state (DESIGN §6.5); user and builtin see the whole store.
+func (h *Host) stateScope(L *glua.LState) string {
+	if o := h.RT.CurrentOrigin(L); o.Rank() < lua.OriginBuiltin.Rank() {
+		return string(o) + ":"
+	}
+	return ""
+}
+
 func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	// get(key) -> value; a key nobody set is nil with no error, a store or
 	// decode failure is nil, err
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		key := L.CheckString(1)
+		key := h.stateScope(L) + L.CheckString(1)
 		fail := func(err error) int {
 			L.Push(glua.LNil)
 			L.Push(glua.LString(err.Error()))
@@ -255,7 +265,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.state.set")
-		key := L.CheckString(1)
+		key := h.stateScope(L) + L.CheckString(1)
 		v := luaToGoChecked(L, 2, "zemi.state.set")
 		if h.GlobalDB == nil {
 			return luaResult(L, errors.New("store unavailable"))
@@ -270,7 +280,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	// clear it again
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		h.refuseDuringRender(L, "zemi.state.del")
-		key := L.CheckString(1)
+		key := h.stateScope(L) + L.CheckString(1)
 		if h.GlobalDB == nil {
 			return luaResult(L, errors.New("store unavailable"))
 		}
@@ -288,7 +298,8 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		if h.GlobalDB == nil {
 			return luaResult(L, errors.New("store unavailable"))
 		}
-		keys, err := h.GlobalDB.KeysKV(L.OptString(1, ""))
+		scope := h.stateScope(L)
+		keys, err := h.GlobalDB.KeysKV(scope + L.OptString(1, ""))
 		if err != nil {
 			L.Push(glua.LNil)
 			L.Push(glua.LString(err.Error()))
@@ -296,7 +307,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		}
 		out := L.NewTable()
 		for _, k := range keys {
-			out.Append(glua.LString(k))
+			out.Append(glua.LString(strings.TrimPrefix(k, scope)))
 		}
 		L.Push(out)
 		return 1

@@ -575,15 +575,36 @@ func TestPipelineForCheck(t *testing.T) {
 	}
 }
 
-// TestStoreBackedState covers zemi.state roundtrip through the global
-// store (DESIGN §6.5).
+// TestStoreBackedState runs its steps in order against one global store:
+// a lower origin neither reads nor clobbers a user key (DESIGN §6.5).
 func TestStoreBackedState(t *testing.T) {
 	_, r := newTestHostDB(t)
-	runUser(t, r, `
-		zemi.state.set("note", { text = "hi", n = 2 })
-		local v = zemi.state.get("note")
-		assert(v and v.text == "hi" and v.n == 2, "state roundtrip failed")
-	`)
+	for _, step := range []struct {
+		name   string
+		origin lua.Origin
+		src    string
+	}{
+		{"user roundtrip", lua.OriginUser, `
+			zemi.state.set("note", { text = "hi", n = 2 })
+			local v = zemi.state.get("note")
+			assert(v and v.text == "hi" and v.n == 2, "state roundtrip failed")`},
+		{"project own space", lua.OriginProject, `
+			assert(zemi.state.get("note") == nil, "project read a user key")
+			assert(zemi.state.set("note", "p"))
+			assert(zemi.state.get("note") == "p", "project roundtrip failed")
+			local k = zemi.state.keys()
+			assert(#k == 1 and k[1] == "note", "project keys: " .. table.concat(k, ","))`},
+		{"plugin own space", lua.OriginPlugin, `
+			assert(zemi.state.get("note") == nil, "plugin read another origin's key")
+			assert(zemi.state.del("note") == false, "plugin deleted another origin's key")`},
+		{"user key intact", lua.OriginUser, `
+			assert(zemi.state.get("note").text == "hi", "user key clobbered")
+			assert(zemi.state.get("project:note") == "p", "user cannot see project state")`},
+	} {
+		if err := r.ExecuteChunk(t.Context(), step.src, step.name+".lua", step.origin); err != nil {
+			t.Fatalf("%s: %v", step.name, err)
+		}
+	}
 }
 
 // fakeUI is a UIHooks stub driving the host-side overlay paths in tests.
