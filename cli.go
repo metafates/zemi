@@ -381,6 +381,23 @@ type reportTool struct {
 	Denied bool   `json:"denied,omitempty"`
 }
 
+// failureLine is why a failed call failed: a bash result ends in its
+// "exit:" or "stopped:" line under the command's output, so the last such
+// line (the output may hold one too), else the last line; other tools
+// lead with it.
+func failureLine(tool, output string) string {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if tool != tools.ToolBash {
+		return lines[0]
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		if l := lines[i]; strings.HasPrefix(l, "exit: ") || strings.HasPrefix(l, "stopped: ") || strings.HasPrefix(l, "timed out ") {
+			return l
+		}
+	}
+	return lines[len(lines)-1]
+}
+
 // turnReport summarizes the transcript rows one turn added.
 func turnReport(rows []hostapi.ChatMessage) report {
 	rep := report{Tools: []reportTool{}}
@@ -393,7 +410,7 @@ func turnReport(rows []hostapi.ChatMessage) report {
 		case m.Kind == "tool":
 			rt := reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == "ok", Detail: m.Detail}
 			if !rt.OK {
-				rt.Error, _, _ = strings.Cut(strings.TrimSpace(m.Output), "\n")
+				rt.Error = failureLine(m.Tool, m.Output)
 				// the gate's DeniedText; a bare "permission denied" is also EACCES
 				rt.Denied = strings.HasPrefix(strings.TrimSpace(m.Output), "permission denied (")
 			}

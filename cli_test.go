@@ -101,7 +101,7 @@ func TestTurnReport(t *testing.T) {
 		{Role: "user", Text: "go"},
 		{Role: "assistant", Text: "looking"},
 		{Role: "assistant", Kind: "tool", Tool: "agent", Text: "find it", Status: "ok", Detail: "explore · 3 tool calls"},
-		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err", Output: "exit: status 1\nrm: /: is a directory"},
+		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err", Output: "rm: /: is a directory\nexit: status 1\nchanged: x"},
 		{Role: "assistant", Kind: "tool", Tool: "write", Text: "x.go", Status: "err",
 			Output: "permission denied (mode): fs.write /x.go: print mode cannot ask"},
 		{Role: "assistant", Kind: "tool", Tool: tools.ToolLua, Text: "zemi.mcp.add{}", Status: "err",
