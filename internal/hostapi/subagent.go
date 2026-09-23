@@ -615,8 +615,8 @@ func (t *agentTool) names() []string {
 func (t *agentTool) Info() fantasy.ToolInfo {
 	var b strings.Builder
 	b.WriteString("Launch a subagent for a self-contained task; it works with its own context and returns one final report." +
-		" Independent tasks go in one message: call the tool several times. Prefer explore for questions about code, since it only reads and never" +
-		" stops to ask permission. The subagent cannot see this conversation: the prompt must carry everything it needs," +
+		" Independent tasks go in one message: call the tool several times. Prefer explore for questions about code: it only reads files" +
+		" (a fetch or web search still asks). The subagent cannot see this conversation: the prompt must carry everything it needs," +
 		" what to report back and how to verify the work. Its report is not shown to the user; relay what matters.")
 	// a detached run outlives a headless turn, which exits as soon as the
 	// main agent is idle, so its report would be thrown away
