@@ -45,8 +45,8 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	resp := call(t, todos, `{"todos":[
 		{"content":"first","status":"pending"},
 		{"content":"second","status":"done","active_form":"finishing second"}]}`)
-	if resp.IsError || !strings.Contains(resp.Content, "[ ] first") || !strings.Contains(resp.Content, "[x] second") {
-		t.Fatalf("write+read: %+v", resp)
+	if resp.IsError || resp.Content != "updated todos: 1/2 done" {
+		t.Fatalf("write acks with a count: %+v", resp)
 	}
 	if len(stored) != 2 || stored[1].ActiveForm != "finishing second" || stored[1].Ord != 1 {
 		t.Fatalf("stored todos: %+v", stored)
@@ -57,7 +57,7 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 		t.Fatalf("absent todos is read-only: %+v", resp)
 	}
 	resp = call(t, todos, `{"todos":[{"content":"a","status":"in_progress"},{"content":"b","status":"in_progress"}]}`)
-	if resp.IsError || len(stored) != 2 || !strings.HasSuffix(resp.Content, "2 items are in_progress; keep exactly one\n") {
+	if resp.IsError || len(stored) != 2 || resp.Content != "updated todos: 0/2 done; 2 items are in_progress; keep exactly one" {
 		t.Fatalf("two in_progress: stored %d, %+v", len(stored), resp)
 	}
 
