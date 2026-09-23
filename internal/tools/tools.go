@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -638,7 +639,13 @@ func validateFields(props map[string]any, required []string, input map[string]an
 			return fmt.Errorf("unknown field %q (have %s)", at+k, strings.Join(slices.Sorted(maps.Keys(props)), ", "))
 		}
 		if t, _ := ps["type"].(string); v != nil && !typeOK(t, v) {
-			return fmt.Errorf("field %q must be %s", at+k, t)
+			// a quoted number or boolean is read as meant, which saves the
+			// round trip; the tools assert the type, so it is written back
+			c, ok := unquote(t, v)
+			if !ok {
+				return fmt.Errorf("field %q must be %s", at+k, t)
+			}
+			input[k] = c
 		}
 		items, _ := ps["items"].(map[string]any)
 		req, _ := items["required"].([]string)
@@ -653,6 +660,19 @@ func validateFields(props map[string]any, required []string, input map[string]an
 		}
 	}
 	return nil
+}
+
+// unquote reads a string that spells a finite number or a boolean exactly.
+func unquote(want string, v any) (any, bool) {
+	s, _ := v.(string)
+	switch want {
+	case "boolean":
+		return s == "true", s == "true" || s == "false"
+	case "number", "integer":
+		f, err := strconv.ParseFloat(s, 64)
+		return f, err == nil && !math.IsInf(f, 0) && !math.IsNaN(f) && typeOK(want, f)
+	}
+	return nil, false
 }
 
 func typeOK(want string, v any) bool {

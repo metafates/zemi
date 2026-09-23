@@ -668,6 +668,7 @@ func TestValidationErrors(t *testing.T) {
 	// a misspelt field would run the call with its default and report success
 	info := fantasy.ToolInfo{Parameters: map[string]any{
 		"command": map[string]any{"type": "string"}, "timeout_ms": map[string]any{"type": "number"},
+		"all": map[string]any{"type": "boolean"}, "n": map[string]any{"type": "integer"},
 		// an array whose items admit extra fields, under a root that does not
 		"env": map[string]any{"type": "array", "items": map[string]any{"properties": map[string]any{"name": map[string]any{"type": "string"}}, "additionalProperties": true}},
 	}}
@@ -676,13 +677,24 @@ func TestValidationErrors(t *testing.T) {
 		open  bool
 		want  string
 	}{
-		{`{"command":"ls","timeout":1}`, false, `unknown field "timeout" (have command, env, timeout_ms)`},
+		{`{"command":"ls","timeout":1}`, false, `unknown field "timeout" (have all, command, env, n, timeout_ms)`},
 		{`{"command":"ls","timeout":null}`, false, ""},
 		{`{"command":"ls","timeout":1}`, true, ""},
 		{`{"command":"ls","env":[{"name":"a","value":1}]}`, false, ""},
+		{`{"all":"true","n":"2","timeout_ms":"1.5"}`, false, `{"all":true,"n":2,"timeout_ms":1.5}`},
+		{`{"n":"2.5"}`, false, `field "n" must be integer`},
+		{`{"timeout_ms":"Inf"}`, false, `field "timeout_ms" must be number`},
+		{`{"all":"yes"}`, false, `field "all" must be boolean`},
 	} {
-		_, err := ParseInput(info, c.input, c.open)
-		if got := fmt.Sprint(err); (err != nil && got != c.want) || (err == nil && c.want != "") {
+		m, err := ParseInput(info, c.input, c.open)
+		got := fmt.Sprint(err)
+		if err == nil && strings.HasPrefix(c.want, "{") {
+			b, _ := json.Marshal(m)
+			got = string(b)
+		} else if err == nil {
+			got = ""
+		}
+		if got != c.want {
 			t.Errorf("%s open=%v: got %q want %q", c.input, c.open, got, c.want)
 		}
 	}

@@ -64,7 +64,7 @@ func TestLuaToolFailures(t *testing.T) {
 		`{"id":"fail","n":2,"x":null}`: "ticket: no such ticket",
 		`{}`:                           `missing required field "id"`,
 		`{"id":1}`:                     `field "id" must be string`,
-		`{"id":"a","n":"1"}`:           `field "n" must be integer`,
+		`{"id":"a","n":"one"}`:         `field "n" must be integer`,
 		`{"id":"a","n":1.5}`:           `field "n" must be integer`,
 	} {
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{Input: input})
