@@ -738,7 +738,10 @@ run's id, and the user submits while the chat shows that run. A message
 joins the run at its next step boundary, or starts one more turn of it
 when its last step already began, and is stored in its child session. A
 run that fails or is cancelled cannot read what is still queued, so its
-report says how many messages it never read.
+report says how many messages it never read. A finished run is not gone:
+`send_to` runs it once more on the history it ended with (its kept runner,
+or its child session's rows), so a follow-up question costs no fresh
+exploration.
 
 Builtin providers come from catwalk's embedded catalog: every generation
 seeds the registry with the providers whose key env var is exported

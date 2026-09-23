@@ -125,7 +125,8 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 			reply = m.Text
 		}
 	}
-	if reply != "parent saw: sub report for: look around" {
+	// the run id heads the report, so send_to can continue the run
+	if !strings.HasPrefix(reply, "parent saw: [run "+runID+"]\n\nsub report for: look around") {
 		t.Fatalf("reply = %q", reply)
 	}
 	if !strings.HasPrefix(detail, "explore · 0 tool calls") {

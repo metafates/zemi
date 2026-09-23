@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -28,7 +29,7 @@ const maxBackgroundAgents = 4
 const maxKeptRuns = 50
 
 // agentRun is one subagent run. The fields above mu never change once the
-// run is registered.
+// run is registered, but cancel, which a continuation renews.
 type agentRun struct {
 	id, agent, description string
 	parent                 string // the session that started the run
@@ -37,8 +38,9 @@ type agentRun struct {
 	cancel                 context.CancelFunc
 
 	mu        sync.Mutex
-	sessionID string // the run's child session, "" when not recorded
-	status    string // running, done, failed, cancelled
+	sessionID string        // the run's child session, "" when not recorded
+	runner    *agent.Runner // kept after the run ends: send_to continues it with its history
+	status    string        // running, done, failed, cancelled
 	finished  time.Time
 	calls     int
 	tr        []ChatMessage  // the prompt, tool rows and replies so far
@@ -262,6 +264,27 @@ func (run *agentRun) droppedCount() int {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	return run.dropped
+}
+
+// continueRun sends one more message to a finished run: it runs again on
+// its own history (the runner it kept, or its child session's rows once
+// the process forgot it) and answers as a foreground run does. A running
+// run takes messages through MessageAgent instead.
+func (h *Host) continueRun(ctx context.Context, run *agentRun, prompt string, progress func(string)) (string, error) {
+	def, err := h.agentDef(run.agent)
+	if err != nil {
+		return "", err
+	}
+	run.mu.Lock()
+	if run.status == "running" {
+		run.mu.Unlock()
+		return "", fmt.Errorf("agent %s is running: its queue takes the message", run.id)
+	}
+	run.status, run.closed, run.finished, run.dropped = "running", false, time.Time{}, 0
+	run.tr = append(run.tr, ChatMessage{Role: "user", Text: prompt})
+	ctx, run.cancel = context.WithCancel(ctx)
+	run.mu.Unlock()
+	return h.runAgent(ctx, run, def, prompt, progress)
 }
 
 // MessageAgent queues text for a running agent (the agent tool's send_to, or

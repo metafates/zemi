@@ -2090,7 +2090,9 @@ func (h *Host) readLog() *sync.Map {
 // read or wrote, so refusing the next edit would only buy a re-read. A file
 // changed after the row that last read or wrote it is left out, because
 // that text is the one the model does not have.
-func (h *Host) seedReads(rows []*store.Message) {
+func (h *Host) seedReads(rows []*store.Message) { h.seedReadsInto(h.readLog(), rows) }
+
+func (h *Host) seedReadsInto(seen *sync.Map, rows []*store.Message) {
 	touched := map[string]int64{} // path -> the time of the row that last read or wrote it
 	for _, row := range rows {
 		var m fantasy.Message
@@ -2111,10 +2113,6 @@ func (h *Host) seedReads(rows []*store.Message) {
 			touched[in.Path] = row.CreatedAt
 		}
 	}
-	if len(touched) == 0 {
-		return
-	}
-	seen := h.readLog()
 	for path, at := range touched {
 		// stored times are milliseconds, file times finer: a file written in
 		// the row's own millisecond is not a later change

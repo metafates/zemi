@@ -318,8 +318,24 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	window := h.contextWindow(modelID)
 	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
 
-	sid := ""
-	if h.DB != nil {
+	run.mu.Lock()
+	prev, sid := run.runner, run.sessionID
+	run.runner = runner
+	run.mu.Unlock()
+	switch {
+	case prev != nil:
+		// a continuation: the history the run ended with (Send closes any
+		// dangling call), on the same child session
+		runner.History = prev.History
+	case sid != "" && h.DB != nil:
+		// a continuation of a run this process forgot: its rows are the history
+		rows, err := h.DB.Messages(sid)
+		if err != nil {
+			return "", err
+		}
+		runner.History, _ = historyFrom(rows)
+		h.seedReadsInto(pipe.Seen, rows)
+	case h.DB != nil:
 		sid = store.NewID()
 		if err := h.DB.CreateSession(sid, parent, truncRunes(run.description, 60), def.Name); err != nil {
 			h.Log.Warn("agents", "subagent session not recorded", map[string]any{"error": err.Error()})
@@ -622,7 +638,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	// main agent is idle, so its report would be thrown away
 	if t.h.hooks() != nil {
 		b.WriteString(" Set background for long work you need not wait on: the tool returns at once and the report arrives later as a message." +
-			" To add to or correct a running one, call again with send_to set to its id (agent and description are ignored).")
+			" To continue a run, running or finished, call again with send_to set to its id (agent and description are ignored): a finished one answers with its history intact.")
 	}
 	b.WriteString("\n\nAgents:")
 	for _, d := range t.defs {
@@ -648,7 +664,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	}
 	if t.h.hooks() != nil {
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"}
-		params["send_to"] = map[string]any{"type": "string", "description": "id of a running background agent to send prompt to"}
+		params["send_to"] = map[string]any{"type": "string", "description": "id of a run to continue: a running one reads prompt at its next step, a finished one answers it"}
 	}
 	return fantasy.ToolInfo{
 		Name:        tools.ToolAgent,
@@ -682,11 +698,24 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	}
 	defer t.h.postNotify("agent", call.Input, &reply)
 	if in.SendTo != "" {
-		if err := t.h.MessageAgent(in.SendTo, in.Prompt); err != nil {
-			return fantasy.NewTextErrorResponse(err.Error()), nil
+		run := t.h.tasks.find(in.SendTo)
+		if run == nil {
+			var err error
+			if run, err = t.h.loadRun(in.SendTo); err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
 		}
-		t.h.setToolDetail(call.ID, "message to "+in.SendTo)
-		return fantasy.NewTextResponse("Queued for agent " + in.SendTo + ": it reads the message at its next step. Its report still arrives when it finishes."), nil
+		if run.isRunning() {
+			if err := t.h.MessageAgent(run.id, in.Prompt); err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			t.h.setToolDetail(call.ID, "message to "+run.id)
+			return fantasy.NewTextResponse("Queued for agent " + run.id + ": it reads the message at its next step. Its report still arrives when it finishes."), nil
+		}
+		t.h.setTool(call.ID, func(st *StreamTool) { st.Run = run.id })
+		return t.foreground(ctx, call.ID, run, in.Prompt, func(ctx context.Context, progress func(string)) (string, error) {
+			return t.h.continueRun(ctx, run, in.Prompt, progress)
+		})
 	}
 	if strings.TrimSpace(in.Agent) == "" {
 		// only send_to may leave it out; an omission must not silently run
@@ -712,20 +741,29 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		t.h.setTool(call.ID, func(st *StreamTool) { st.Detail, st.Run = def.Name+" · background "+id+" (/agents)", id })
 		return fantasy.NewTextResponse("Started background agent " + id + ". Its report will arrive as a message when it finishes; do not wait for it."), nil
 	}
-	start := time.Now()
-	var last atomic.Value
 	run, rctx := t.h.newRun(ctx, def, in.Description, in.Prompt, false)
 	_ = t.h.tasks.add(run)
 	t.h.setTool(call.ID, func(st *StreamTool) { st.Run = run.id })
-	text, err := t.h.runAgent(rctx, run, def, in.Prompt, func(line string) {
+	return t.foreground(rctx, call.ID, run, in.Prompt, func(ctx context.Context, progress func(string)) (string, error) {
+		return t.h.runAgent(ctx, run, def, in.Prompt, progress)
+	})
+}
+
+// foreground waits for a run and answers with its report, the row's
+// detail following its progress; the run id heads the report (the tail
+// may be the spill file's name) so the model can continue the run.
+func (t *agentTool) foreground(ctx context.Context, callID string, run *agentRun, prompt string, do func(context.Context, func(string)) (string, error)) (fantasy.ToolResponse, error) {
+	start := time.Now()
+	var last atomic.Value
+	text, err := do(ctx, func(line string) {
 		last.Store(line)
-		t.h.setToolDetail(call.ID, line)
+		t.h.setToolDetail(callID, line)
 	})
 	summary, _ := last.Load().(string)
 	if summary == "" {
-		summary = def.Name
+		summary = run.agent
 	}
-	t.h.setToolDetail(call.ID, summary+" · "+fmtDuration(time.Since(start)))
+	t.h.setToolDetail(callID, summary+" · "+fmtDuration(time.Since(start)))
 	if err != nil {
 		msg := "agent failed: " + t.h.friendlyError(err)
 		if errors.Is(err, context.Canceled) {
@@ -736,7 +774,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		}
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
-	return fantasy.NewTextResponse(t.h.truncOutput("agent", text)), nil
+	return fantasy.NewTextResponse("[run " + run.id + "]\n\n" + t.h.truncOutput("agent", text)), nil
 }
 
 // preCheck runs the tool.pre events for a host-implemented tool: deny

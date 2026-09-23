@@ -113,7 +113,7 @@ func TestMessageAgent(t *testing.T) {
 		}
 		return "", h.MessageAgent(id, text)
 	}
-	run := func(name string, firstCallsTool bool, send func(*Host, string, string) (string, error)) {
+	run := func(name string, firstCallsTool, continues bool, send func(*Host, string, string) (string, error)) {
 		t.Run(name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
 			h.SetUIHooks(&fakeUI{}) // background agents are a TUI feature
@@ -166,14 +166,29 @@ func TestMessageAgent(t *testing.T) {
 			if err != nil || !strings.Contains(fmt.Sprint(stored.transcript()), "{user  also this") {
 				t.Fatalf("stored run: %v %+v", err, stored.transcript())
 			}
-			if _, err := send(h, id, "too late"); err == nil || !strings.Contains(err.Error(), "not running") {
+			// the tool continues a finished run on its history; the view only
+			// talks to a running one
+			out, err = send(h, id, "too late")
+			switch {
+			case !continues && (err == nil || !strings.Contains(err.Error(), "not running")):
 				t.Fatalf("finished run took a message: %v", err)
+			case continues && (err != nil || !strings.Contains(out, "unexpected: too late") || !strings.HasPrefix(out, "[run "+id+"]")):
+				t.Fatalf("continuation: %q %v", out, err)
+			}
+			if continues {
+				if tr := r.transcript(); r.isRunning() || tr[len(tr)-1].Text != "unexpected: too late" || tr[len(tr)-2].Text != "too late" {
+					t.Fatalf("continued transcript: %+v", tr)
+				}
+				stored, _ := h.loadRun(sid)
+				if !strings.Contains(fmt.Sprint(stored.transcript()), "{user  too late") {
+					t.Fatalf("continuation not stored: %+v", stored.transcript())
+				}
 			}
 			waitIdle(t, h)
 		})
 	}
-	run("model at a step boundary", true, viaTool)
-	run("user after the last step", false, viaView)
+	run("model at a step boundary", true, true, viaTool)
+	run("user after the last step", false, false, viaView)
 }
 
 // TestQueueDroppedOnFailure: the run's queue reaches a turn that follows,

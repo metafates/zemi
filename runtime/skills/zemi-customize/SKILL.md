@@ -71,7 +71,8 @@ included. A name nothing answers to fails the agent. The model sees the descript
 when choosing an agent, so say when to use it. Read at use, no reload needed. `/agents`
 lists them. Builtin `explore` has `read, glob, grep, lsp, fetch, web_search, skill`; builtin `web` has `web_search, fetch, read, grep, glob` and runs on the small tier; builtin `general` has everything a subagent may have. The model's `agent` tool also
 takes `background: true`: the report arrives as a later message, and a call with `send_to`
-set to the run's id sends its `prompt` to the running agent at its next step. `/agents` also lists the
+set to a run's id sends its `prompt` to a running agent at its next step, or runs a finished
+one again on its own history and answers. `/agents` also lists the
 session's runs (running, background, workflow ones): enter, or a click on an agent's row in
 the chat, shows that run's transcript in the chat, a message submitted there goes to that
 agent while it runs, and esc goes back. Background jobs
