@@ -20,12 +20,18 @@ function M.render(ctx)
   -- the bottom-anchored chat never cuts the block's first rows (it shows
   -- height - 1 of them)
   local recent, fit = ctx.recent or {}, (ctx.height or 0) > 0 and ctx.height - 1 or math.huge
+  -- the no-model hint names its fix, so it wraps under its label instead of clipping
+  local models = zemi.ui.wrap(ctx.model ~= "" and ctx.model or ("none yet: " .. ctx.model_hint), maxw - 9)
+  if ctx.init_error ~= "" then
+    models = { { { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" } } }
+  end
+  local base = 8 + #models
   local extra = #recent > 0 and #recent + 3 or 0
-  if 9 + extra > fit then recent, extra = {}, 0 end
+  if base + extra > fit then recent, extra = {}, 0 end
   local ver = (ctx.version or "") ~= "" and (ctx.version .. " · ") or ""
   local mark = { text = "@zemi", hl = "Title" }
   local tag = { text = ver .. "a coding agent that learns how you work", hl = "Comment" }
-  if width >= 36 and 9 + extra <= fit then
+  if width >= 36 and base + extra <= fit then
     -- the wordmark and the tagline sit beside the snail's head
     local block = snail.block()
     ---@param r zemi.Line
@@ -42,12 +48,10 @@ function M.render(ctx)
     row({ tag })
   end
   row({ { text = "" } })
-  ---@type zemi.Segment
-  local model = { text = (ctx.model ~= "" and ctx.model) or ("none yet: " .. ctx.model_hint), hl = "Normal" }
-  if ctx.init_error ~= "" then
-    model = { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" }
+  for i, segs in ipairs(models) do
+    table.insert(segs, 1, { text = i == 1 and "model    " or string.rep(" ", 9), hl = "Comment" })
+    row(segs)
   end
-  row({ { text = "model    ", hl = "Comment" }, model })
   local cwd, room = ctx.cwd or "", maxw - 10
   if fmt.cells(cwd) > room and room > 1 then
     -- keep the tail: the project name is at the end
