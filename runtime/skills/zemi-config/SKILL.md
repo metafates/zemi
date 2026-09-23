@@ -49,7 +49,7 @@ Tiers: `models.main` runs everything; `models.small` (titles, compaction summari
 
 ## Settings
 
-`zemi.config.set(path, value)` in init.lua. `zemi.config.schema()` returns every key with kind, default and description; read it with the Lua tool (it needs no approval) instead of guessing. A runtime pick (`/model`, `/effort`, `/profile`, the mode) survives a reload until init.lua changes that key. The keys that need more than the schema says:
+`zemi.config.set(path, value)` in init.lua. `zemi.config.schema()` returns every key with kind, default and description; read it with the Lua tool instead of guessing. A runtime pick (`/model`, `/effort`, `/profile`, the mode) survives a reload until init.lua changes that key. The keys that need more than the schema says:
 
 - `agent.profile`: `default`, `planner`, or a profile defined with `zemi.agent.profile` (zemi-customize); `/profile` or ctrl+t switches.
 - `agent.effort`: `low`, `medium`, `high`, or empty for the provider default; `/effort`.
@@ -83,7 +83,7 @@ Modes: `permissions.mode`, `/mode`, tab and shift+tab, ctrl+y (yolo until presse
 
 Planning is the `planner` profile (`/profile planner`, ctrl+t): file writes are refused, commands run with the project read-only, and the turn ends in a plan to approve, whatever the mode.
 
-The sandbox (seatbelt on macOS, Landlock on Linux) lets a command write only the project, the scratchpad and temp dirs, keeps `.git` and `.zemi` read-only (`.zemi/worktrees` aside), allows no network beyond localhost, and hides credential files and zemi's own dirs. On Linux with namespaces localhost is the sandbox's own; with `landlock + seccomp` the project is read-only and there is no network. A command that needs the network is retried with `network: true` (sockets added, sandbox kept), one that needs more with `sandbox: false`; both need the user's approval, so under `-p` both are denied. `permissions.env_keep` names secret-shaped env vars (`*TOKEN*`, `*KEY*`, ...) a child keeps; whatever is kept, the model can print.
+The sandbox (seatbelt on macOS, Landlock on Linux) lets a command write only the project, the scratchpad and temp dirs, keeps `.git` and `.zemi` read-only (`.zemi/worktrees` aside), allows no network beyond localhost, and hides credential files and zemi's own dirs. On Linux with namespaces localhost is the sandbox's own; with `landlock + seccomp` the project is read-only and there is no network. A command that needs the network is retried with `network: true` (sockets added, sandbox kept), one that needs more with `sandbox: false`; both need the user's approval in every mode but yolo, so under `-p` without yolo both are denied. `permissions.env_keep` names secret-shaped env vars (`*TOKEN*`, `*KEY*`, ...) a child keeps; whatever is kept, the model can print.
 
 ## MCP and language servers
 

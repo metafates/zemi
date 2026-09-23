@@ -5,7 +5,7 @@ description: Load before adding to zemi or restyling it - workflows, subagents, 
 
 # Customizing zemi
 
-Each piece below is a file in the user config directory (every project) or in `<repo>/.zemi/` (shared through git, loaded once the user trusts the project); ask which when unsure. Workflows and agents are read when used, Lua and commands reload when their file changes.
+Each piece below is a file in the user config directory (every project) or in `<repo>/.zemi/` (shared through git, loaded once the user trusts the project); ask which when unsure. Profiles, permission modes, colors and layout work only from the user's init.lua. Workflows and agents are read when used, Lua and commands reload when their file changes.
 
 ## Workflows (`workflows/<name>.lua`)
 
@@ -96,7 +96,7 @@ zemi.command.add("standup", function(a) zemi.agent.send("summarize yesterday's c
   { desc = "draft a standup", nargs = "*" })
 ```
 
-A key is a non-printable key or a sequence that starts with one (`"ctrl+x s"`; `<leader>` is `keymap.leader`, ctrl+x). Binding a taken key rebinds it: ctrl+t above replaces the shipped profile cycle. The shipped keys are in `keymaps.lua`. Host actions: `zemi.ui.help`, `zemi.model.pick`, `zemi.ui.reasoning.toggle`, `zemi.ui.scroll.up`, `zemi.ui.scroll.down`, `zemi.ui.scroll.top` and `zemi.ui.scroll.bottom` (each takes a node id after a space), `zemi.ui.focus.set <id>`, `zemi.ui.focus.next`, `zemi.ui.focus.prev`, `zemi.permission.mode.cycle`, `zemi.permission.mode.prev`, `zemi.agent.profile.cycle`, `zemi.agent.profile.prev`, and the `zemi.composer.*` ones zemi-lua lists.
+A key is a non-printable key or a sequence that starts with one (`"ctrl+x s"`; `<leader>` is `keymap.leader`, ctrl+g). Binding a taken key rebinds it: ctrl+t above replaces the shipped profile cycle. The shipped keys are in `keymaps.lua`. Host actions: `zemi.ui.help`, `zemi.model.pick`, `zemi.ui.reasoning.toggle`, `zemi.ui.scroll.up`, `zemi.ui.scroll.down`, `zemi.ui.scroll.top` and `zemi.ui.scroll.bottom` (each takes a node id after a space), `zemi.ui.focus.set <id>`, `zemi.ui.focus.next`, `zemi.ui.focus.prev`, `zemi.permission.mode.cycle`, `zemi.permission.mode.prev`, `zemi.agent.profile.cycle`, `zemi.agent.profile.prev`, and the `zemi.composer.*` ones zemi-lua lists.
 
 ## UI
 
@@ -114,7 +114,7 @@ Rules for `render(ctx)`:
 - A replacement statusline widget keeps its click with `on_click = function(ev) zemi.command.run(ev.id) end`. A replacement chat keeps reasoning toggles (`zemi.ui.reasoning.toggle()`), agent rows (`zemi.command.run("agents", "view " .. row.run)`) and tool output folding (keyed by the row's `tool:<idx>` click id).
 
 ```lua
--- a line under the default splash's wordmark
+-- a line under the default splash's tagline
 local default = require("zemi.defaultui")
 zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
@@ -123,7 +123,9 @@ zemi.ui.widget.add({
     local rows = default.splash(ctx)
     for i, row in ipairs(rows) do
       if row[#row].text == "@zemi" then
-        table.insert(rows, i + 1, { row[1], { text = "hack the planet", hl = "Title" } })
+        local indent = 0
+        for j = 2, #row - 1 do indent = indent + zemi.ui.width(row[j].text) end
+        table.insert(rows, i + 2, { row[1], { text = string.rep(" ", indent), copy = false }, { text = "hack the planet", hl = "Title" } })
         break
       end
     end
@@ -187,4 +189,4 @@ A region with an id and `focusable = true` can take the keys: `zemi.ui.focus.set
 
 ## After writing
 
-Try a change live with the Lua tool first (it needs the user's approval once and lasts until the next reload), then write it to config. Check with the Lua tool, whose reads need no approval: `zemi.health.list()` and `zemi.errors.list()` hold what `/health` and `/errors` show, `zemi.ui.screenshot()` the screen and `zemi.ui.layout.rects()` where each node landed. Then tell the user the path and how to undo it.
+Try a change live with the Lua tool first (it needs the user's approval once and lasts until the next reload), then write it to config. Check with the Lua tool: `zemi.health.list()` and `zemi.errors.list()` hold what `/health` and `/errors` show, `zemi.ui.screenshot()` the screen and `zemi.ui.layout.rects()` where each node landed. Then tell the user the path and how to undo it.

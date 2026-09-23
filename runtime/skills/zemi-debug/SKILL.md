@@ -1,13 +1,13 @@
 ---
 name: zemi-debug
-description: Diagnose zemi itself - crashes, errors, a silent model, missing providers, broken or unloaded config, no learning. Load when zemi misbehaves or fails.
+description: "Load when zemi misbehaves: a crash, an error in /errors, a silent model, a missing provider, config that does not load, or no learning."
 ---
 
 # Debugging zemi
 
 ## First look
 
-1. Read the `/health` rows yourself with the Lua tool (it needs no approval):
+1. Read the `/health` rows yourself with the Lua tool:
 
    ```lua
    return zemi.health.list()   -- { level, name, detail } per check

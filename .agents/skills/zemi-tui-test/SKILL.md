@@ -63,7 +63,7 @@ non-tty stdin). `--profile`, `--mode` and `-m` apply after `init.lua`.
 
 - A permission ask is a prompt box under the chat; answer with the key its rows show
   (`y`, `n`, `a` always, `p` project) or click.
-- Compare captures for **row shifts**: the same state change must not add or remove a row
+- Compare captures for row shifts: the same state change must not add or remove a row
   (house rule). Diff two captures with `diff <(...) <(...)`.
 - `zemi.ui.screenshot()` from the Lua tool or a keymap returns the same text without styling.
 - Idle CPU: `ps -o %cpu -p $(pgrep -f "zemi --trust")` over 30 s must stay near 0.
