@@ -28,6 +28,10 @@ const maxBackgroundAgents = 4
 // still reads their transcripts from the store.
 const maxKeptRuns = 50
 
+// runIDLen is what the model sees of a run's id: 32 bits are plenty for
+// one project's runs and cheap to repeat in a send_to.
+const runIDLen = 8
+
 // agentRun is one subagent run. The fields above mu never change once the
 // run is registered, but cancel, which a continuation renews.
 type agentRun struct {
@@ -160,7 +164,7 @@ func (r *taskReg) find(id string) *agentRun {
 func (h *Host) newRun(ctx context.Context, def AgentDef, description, prompt string, background bool) (*agentRun, context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &agentRun{
-		id: store.NewID()[:8], agent: def.Name, description: description, parent: h.AgentSessionID(),
+		id: store.NewID()[:runIDLen], agent: def.Name, description: description, parent: h.AgentSessionID(),
 		background: background, started: time.Now(), cancel: cancel, status: "running",
 		tr: []ChatMessage{{Role: "user", Text: prompt}}, rows: map[string]int{},
 	}, ctx
@@ -440,21 +444,24 @@ func (h *Host) refreshViewed(run *agentRun) {
 	}
 }
 
-func (h *Host) loadRun(sid string) (*agentRun, error) {
+// loadRun rebuilds a finished run from its child session, named by the
+// session id or the run id that heads it.
+func (h *Host) loadRun(id string) (*agentRun, error) {
 	if h.DB == nil {
 		return nil, errors.New("session store unavailable")
 	}
-	sess, err := h.DB.GetSession(sid)
+	sess, err := h.DB.FindSession(id)
 	if err != nil || sess.ParentID == "" {
-		return nil, fmt.Errorf("no agent run %q", sid)
+		return nil, fmt.Errorf("no agent run %q", id)
 	}
+	sid := sess.ID
 	rows, err := h.DB.Messages(sid)
 	if err != nil {
 		return nil, err
 	}
 	_, tr := historyFrom(rows)
 	run := &agentRun{
-		id: sid, agent: sess.Profile, description: sess.Title, parent: sess.ParentID, cancel: func() {},
+		id: sid[:runIDLen], agent: sess.Profile, description: sess.Title, parent: sess.ParentID, cancel: func() {},
 		started: time.UnixMilli(sess.CreatedAt), finished: time.UnixMilli(sess.UpdatedAt),
 		sessionID: sid, status: "done", tr: tr,
 	}

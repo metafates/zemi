@@ -151,6 +151,7 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	if err := h.ViewAgent(runs[0].id); err != nil || h.viewedRun() != runs[0] {
 		t.Fatalf("view: %v", err)
 	}
+	forgetRun(h, runID)
 	stored, err := h.loadRun(sid)
 	if err != nil || fmt.Sprint(stored.transcript()) != fmt.Sprint(want) {
 		t.Fatalf("stored run: %v %+v", err, stored)

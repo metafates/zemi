@@ -322,21 +322,26 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	prev, sid := run.runner, run.sessionID
 	run.runner = runner
 	run.mu.Unlock()
-	switch {
-	case prev != nil:
-		// a continuation: the history the run ended with (Send closes any
-		// dangling call), on the same child session
-		runner.History = prev.History
-	case sid != "" && h.DB != nil:
-		// a continuation of a run this process forgot: its rows are the history
-		rows, err := h.DB.Messages(sid)
-		if err != nil {
+	var rows []*store.Message
+	if sid != "" {
+		// a continuation may edit what the run read before
+		if rows, err = h.DB.Messages(sid); err != nil {
 			return "", err
 		}
-		runner.History, _ = historyFrom(rows)
 		h.seedReadsInto(pipe.Seen, rows)
+	}
+	switch {
+	case prev != nil:
+		// the history the run ended with (Send closes any dangling call),
+		// on the same child session
+		runner.History = prev.History
+	case sid != "":
+		// a run this process forgot: its rows are the history
+		runner.History, _ = historyFrom(rows)
 	case h.DB != nil:
-		sid = store.NewID()
+		// the run id heads the session id, so send_to finds the rows of a
+		// run the process no longer holds (a resume, or one past maxKeptRuns)
+		sid = run.id + store.NewID()[len(run.id):]
 		if err := h.DB.CreateSession(sid, parent, truncRunes(run.description, 60), def.Name); err != nil {
 			h.Log.Warn("agents", "subagent session not recorded", map[string]any{"error": err.Error()})
 			sid = ""

@@ -162,13 +162,16 @@ func TestMessageAgent(t *testing.T) {
 				t.Fatalf("transcript: %+v", tr)
 			}
 			_, _, _, sid := r.state()
-			stored, err := h.loadRun(sid)
-			if err != nil || !strings.Contains(fmt.Sprint(stored.transcript()), "{user  also this") {
-				t.Fatalf("stored run: %v %+v", err, stored.transcript())
+			// a run the process forgot is read back by the id the model saw
+			forgetRun(h, id)
+			stored, err := h.loadRun(id)
+			if err != nil || stored.sessionID != sid || !strings.Contains(fmt.Sprint(stored.transcript()), "{user  also this") {
+				t.Fatalf("stored run: %v %+v", err, stored)
 			}
 			// the tool continues a finished run on its history; the view only
 			// talks to a running one
 			out, err = send(h, id, "too late")
+			r = h.tasks.find(id)
 			switch {
 			case !continues && (err == nil || !strings.Contains(err.Error(), "not running")):
 				t.Fatalf("finished run took a message: %v", err)
@@ -179,6 +182,7 @@ func TestMessageAgent(t *testing.T) {
 				if tr := r.transcript(); r.isRunning() || tr[len(tr)-1].Text != "unexpected: too late" || tr[len(tr)-2].Text != "too late" {
 					t.Fatalf("continued transcript: %+v", tr)
 				}
+				forgetRun(h, id)
 				stored, _ := h.loadRun(sid)
 				if !strings.Contains(fmt.Sprint(stored.transcript()), "{user  too late") {
 					t.Fatalf("continuation not stored: %+v", stored.transcript())
@@ -189,6 +193,13 @@ func TestMessageAgent(t *testing.T) {
 	}
 	run("model at a step boundary", true, true, viaTool)
 	run("user after the last step", false, false, viaView)
+}
+
+// forgetRun drops a run from the registry, as eviction or a restart would.
+func forgetRun(h *Host, id string) {
+	h.tasks.mu.Lock()
+	defer h.tasks.mu.Unlock()
+	delete(h.tasks.runs, id)
 }
 
 // TestQueueDroppedOnFailure: the run's queue reaches a turn that follows,
