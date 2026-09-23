@@ -113,13 +113,7 @@ func (h *Host) jobsRunningCount() int {
 	if h.jobs == nil {
 		return 0
 	}
-	n := 0
-	for _, j := range h.jobs.List() {
-		if j.Running() {
-			n++
-		}
-	}
-	return n
+	return h.jobs.Running()
 }
 
 // noteWrite records a file tool's write while a bash call is open: its row

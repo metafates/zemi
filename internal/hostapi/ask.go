@@ -304,8 +304,8 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	p := commandPrefix(seg)
 	switch {
 	case p != "":
-	case subcommandPrograms[f[0]] && len(f) > 1:
-		// git --version has no subcommand; a bare `git *` would allow every one
+	case subcommandPrograms[f[0]]:
+		// git --version and a bare git have no subcommand; `git *` would allow every one
 		return []string{seg}, true
 	default:
 		p = f[0]

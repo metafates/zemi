@@ -177,6 +177,7 @@ zemi.ui.widget.add({
       if t.kind ~= nil and t.kind ~= "tool" then return false end
       -- a command that changed files keeps its row: the diff is the news; so
       -- does one that went on as a job, which the user should know is running
+      -- (the phrase is tools.JobHandoff, pinned by TestToolRows)
       if tool_name(t) == "bash" and (t.output or ""):find("moved to the background as job-", 1, true) then return false end
       return not ctx.show_reasoning and t.status == "ok" and COUNT[tool_name(t)] ~= nil and (t.diff or "") == ""
     end

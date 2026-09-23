@@ -907,7 +907,7 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && git diff"}, "allow `go test` and `git diff`", []string{"go test", "go test *", "git diff", "git diff *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "allow `ls`", []string{"ls", "ls *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "allow `cat`", []string{"cat", "cat *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow `go vet`, `git diff` and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "make *", "ls", "ls *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow `go vet`, `git diff` and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "ls", "ls *"}},
 		// a deleter stays exact: the rule runs unconfined and has no write path to ask on
 		{tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"}, "allow this exact command", []string{"rm build.tmp"}},
 		{tools.Request{Subject: "tool.bash", Arg: "/bin/rm old"}, "allow this exact command", []string{"/bin/rm old"}},
@@ -922,6 +922,8 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "git -C sub status"}, "allow `git -C sub status`", []string{"git -C sub status", "git -C sub status *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "cargo +nightly build"}, "allow `cargo +nightly build`", []string{"cargo +nightly build", "cargo +nightly build *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "git --version"}, "allow this exact command", []string{"git --version"}},
+		// a bare subcommand program stays exact too: `git *` is every subcommand
+		{tools.Request{Subject: "tool.bash", Arg: "git"}, "allow this exact command", []string{"git"}},
 		{tools.Request{Subject: "tool.bash", Arg: "npx prettier --check ."}, "", nil},
 		// interpreters and wrappers run whatever they are handed: no rule
 		// written from one of these says what the next call would run

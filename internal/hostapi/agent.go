@@ -1014,9 +1014,11 @@ func toolSummary(input string) string {
 		// line, less a "Plan" the row's verb already says
 		for line := range strings.Lines(plan) {
 			if line = strings.TrimSpace(strings.TrimLeft(line, "# \t")); line != "" {
-				if rest, ok := strings.CutPrefix(strings.ToLower(line), "plan"); ok && (rest == "" || rest[0] == ':' || rest[0] == ' ') {
-					line = strings.TrimSpace(line[len(line)-len(rest):])
-					line = strings.TrimSpace(strings.TrimPrefix(line, ":"))
+				// match on the original: lowercasing can change the byte length
+				if len(line) >= 4 && strings.EqualFold(line[:4], "plan") {
+					if rest := line[4:]; rest == "" || rest[0] == ':' || rest[0] == ' ' {
+						line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(rest), ":"))
+					}
 				}
 				return line
 			}

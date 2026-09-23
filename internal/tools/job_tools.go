@@ -18,6 +18,10 @@ import (
 	"github.com/metafates/zemi/internal/proc"
 )
 
+// JobHandoff opens the bash result note for a command that outlived its
+// timeout; the chat widget keeps such a row by this phrase.
+const JobHandoff = "moved to the background as "
+
 // Job is one managed background process.
 type Job struct {
 	ID     string
@@ -202,6 +206,19 @@ func (m *Jobs) List() []*Job {
 		}
 	}
 	return out
+}
+
+// Running counts the jobs still running; a render reads it every frame.
+func (m *Jobs) Running() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, j := range m.jobs {
+		if j.Running() {
+			n++
+		}
+	}
+	return n
 }
 
 // Kill terminates one job's process.

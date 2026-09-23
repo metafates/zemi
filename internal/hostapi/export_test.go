@@ -191,6 +191,7 @@ func TestToolSummary(t *testing.T) {
 		`{"plan":"# Plan\n1. x"}`:                                                       "",
 		`{"plan":"# Plan: add caching\n1. x"}`:                                          "add caching",
 		`{"plan":"# Planning notes"}`:                                                   "Planning notes",
+		`{"plan":"# Plan: ȺȺȺȺȺ İş"}`:                                                   "ȺȺȺȺȺ İş",
 		`{"action":"text","title":"Results","text":"# Build\n| a | b |"}`:               "text Results",
 		`{"action":"keys","id":3,"keys":"hello<cr>"}`:                                   "keys hello<cr>",
 		`{"action":"close","id":2}`:                                                     "close 2",
