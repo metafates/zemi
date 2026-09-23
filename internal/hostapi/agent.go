@@ -1904,9 +1904,10 @@ func (h *Host) WarnModel() {
 }
 
 // OfferModel opens the model picker when no model can run the next send,
-// so a first run starts on the keys to export rather than a failed send.
+// so a first run starts on the keys to export rather than a failed send. A
+// failed init.lua is its own news: the providers it adds never ran.
 func (h *Host) OfferModel() {
-	if h.modelRow().level == "error" {
+	if h.InitError() == "" && h.modelRow().level == "error" {
 		_ = h.OpenModelPicker()
 	}
 }

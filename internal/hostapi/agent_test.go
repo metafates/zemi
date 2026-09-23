@@ -1298,6 +1298,11 @@ func TestModelPickerOdd(t *testing.T) {
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	h.Providers.Reset(agent.Catalog{Missing: []agent.MissingKey{{ID: "deepseek", Env: "DEEPSEEK_API_KEY"}}})
+	h.SetInitError("init.lua:1: boom")
+	if h.OfferModel(); len(ui.opened) != 0 {
+		t.Fatal("a failed init.lua opened the picker")
+	}
+	h.SetInitError("")
 	if h.OfferModel(); len(ui.opened) != 1 {
 		t.Fatal("no model: the picker did not open")
 	}

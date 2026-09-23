@@ -112,7 +112,7 @@ cancels it, and appends its answer as a transcript row, which `-p` prints.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`), and a TUI
 boot no model can run opens the `/model` picker once (`Host.OfferModel`, after the flags
-apply, never on a reload). Builtin
+apply, never on a reload or after a failed init.lua). Builtin
 providers come from the embedded catwalk catalog (`agent.Builtin`, converted once per process
 with the key env vars resolved in Go, never stored in config): each is on only while its key is
 exported, one without is in `Registry.Missing` (minus the ids config deleted or added) so the
