@@ -327,10 +327,11 @@ func (r *Registry) apiKey(providerID string) string {
 var Efforts = []string{"low", "medium", "high"}
 
 // CallOptions are the provider options a turn runs with: the reasoning
-// effort and the spec's extra body fields, in the model's provider kind;
-// nil when neither applies to the kind. A catalog model gets the nearest
-// level it lists, or none; any other model that does not support an option
-// fails its turn with the provider's error.
+// effort and the spec's extra body fields, in the model's provider kind,
+// and for an OpenAI Responses model that reasons a reasoning summary; nil
+// when none applies. A catalog model gets the nearest level it lists, or
+// none; any other model that does not support an option fails its turn
+// with the provider's error.
 func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
 	providerID, model, _ := strings.Cut(modelID, "/")
 	spec, ok := r.Lookup(providerID)
@@ -347,6 +348,10 @@ func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
 	if effort != "" {
 		e := openai.ReasoningEffort(effort)
 		re = &e
+	}
+	if spec.Kind == KindOpenAI && openai.IsResponsesModel(model) {
+		// fantasy drops both reasoning fields for a model it knows does not reason
+		return openai.NewResponsesProviderOptions(&openai.ResponsesProviderOptions{ReasoningEffort: re, ReasoningSummary: new("auto")})
 	}
 	if re == nil && len(spec.Body) == 0 {
 		return nil
@@ -407,7 +412,12 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 		return languageModel(spec, key, model, anthropic.New, anthropic.WithBaseURL, anthropic.WithAPIKey, anthropic.WithHeaders,
 			func(c *http.Client) anthropic.Option { return anthropic.WithHTTPClient(c) })
 	case KindOpenAI:
-		return languageModel(spec, key, model, openai.New, openai.WithBaseURL, openai.WithAPIKey, openai.WithHeaders,
+		// fantasy sends only the models openai.IsResponsesModel accepts to
+		// /responses, the rest to /chat/completions
+		responses := func(o ...openai.Option) (fantasy.Provider, error) {
+			return openai.New(append(o, openai.WithUseResponsesAPI())...)
+		}
+		return languageModel(spec, key, model, responses, openai.WithBaseURL, openai.WithAPIKey, openai.WithHeaders,
 			func(c *http.Client) openai.Option { return openai.WithHTTPClient(c) })
 	case KindOpenAICompat:
 		return languageModel(spec, key, model, openaicompat.New, openaicompat.WithBaseURL, openaicompat.WithAPIKey, openaicompat.WithHeaders,

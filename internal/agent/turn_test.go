@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	openai "charm.land/fantasy/providers/openai"
 )
 
 // mockModel replays scripted stream parts; steps, when set, scripts one
@@ -685,5 +688,114 @@ func TestProviderHeadersRideRequests(t *testing.T) {
 		}
 	default:
 		t.Fatal("the provider never reached the gateway")
+	}
+}
+
+// promptRec keeps the prompt of the last model call.
+type promptRec struct {
+	fantasy.LanguageModel
+	prompt fantasy.Prompt
+}
+
+func (p *promptRec) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	p.prompt = call.Prompt
+	return p.LanguageModel.Stream(ctx, call)
+}
+
+// TestOpenAIResponses: an openai model fantasy knows as a Responses model
+// goes to /responses, a reasoning one asking for a summary and none for
+// encrypted reasoning, which a model that does not reason is refused; the
+// stored reasoning carries its item through JSON into the next session's
+// call. Any other model goes to /chat/completions.
+func TestOpenAIResponses(t *testing.T) {
+	sse := func(w http.ResponseWriter, events ...string) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, e := range events {
+			fmt.Fprintf(w, "data: %s\n\n", e)
+		}
+	}
+	var mu sync.Mutex
+	var paths, bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		paths, bodies = append(paths, r.URL.Path), append(bodies, string(body))
+		mu.Unlock()
+		if r.URL.Path == "/responses" {
+			sse(w, `{"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":[]}}`,
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":[]}}`,
+				`{"type":"response.output_item.added","output_index":1,"item":{"type":"message","id":"msg_1","role":"assistant","status":"in_progress","content":[]}}`,
+				`{"type":"response.output_text.delta","output_index":1,"content_index":0,"delta":"ok"}`,
+				`{"type":"response.output_item.done","output_index":1,"item":{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok","annotations":[]}]}}`,
+				`{"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`)
+			return
+		}
+		sse(w, `{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}`,
+			`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`, "[DONE]")
+	}))
+	defer srv.Close()
+	reg := NewRegistry()
+	if err := reg.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: srv.URL}, "k"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		model, path, item string
+		summary           bool
+	}{
+		{"o/gpt-5-codex", "/responses", "rs_1", true},
+		{"o/gpt-4o", "/responses", "rs_1", false},
+		{"o/gpt-3.5-turbo-16k", "/chat/completions", "", false},
+	} {
+		m, err := reg.Resolve(c.model)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stored []string
+		rec := &promptRec{LanguageModel: m}
+		var history []fantasy.Message
+		for _, text := range []string{"hi", "again"} {
+			r := NewRunner(rec, nil, "sys")
+			r.History, r.Hooks, r.ProviderOptions = history, newRecHooks(), reg.CallOptions(c.model, "")
+			r.Persist = func(_ string, msg fantasy.Message) error {
+				b, err := json.Marshal(msg)
+				stored = append(stored, string(b))
+				return err
+			}
+			if err := r.Send(t.Context(), text); err != nil {
+				t.Fatal(err)
+			}
+			waitDone(t, r.Hooks.(*recHooks))
+			history = nil // a resumed session reads the store
+			for _, s := range stored {
+				var msg fantasy.Message
+				if err := json.Unmarshal([]byte(s), &msg); err != nil {
+					t.Fatal(err)
+				}
+				history = append(history, msg)
+			}
+		}
+		mu.Lock()
+		got, first := paths, bodies[0]
+		paths, bodies = nil, nil
+		mu.Unlock()
+		if len(got) != 2 || got[0] != c.path || got[1] != c.path {
+			t.Fatalf("%s: paths %v, want %s", c.model, got, c.path)
+		}
+		if strings.Contains(first, "encrypted_content") || strings.Contains(first, `"summary":"auto"`) != c.summary {
+			t.Fatalf("%s: want summary %v and no encrypted reasoning: %s", c.model, c.summary, first)
+		}
+		item := ""
+		for _, msg := range rec.prompt {
+			for _, part := range msg.Content {
+				if rp, ok := part.(fantasy.ReasoningPart); ok {
+					if md := openai.GetReasoningMetadata(rp.ProviderOptions); md != nil {
+						item = md.ItemID
+					}
+				}
+			}
+		}
+		if item != c.item {
+			t.Fatalf("%s: turn 2 carried reasoning item %q, want %q", c.model, item, c.item)
+		}
 	}
 }

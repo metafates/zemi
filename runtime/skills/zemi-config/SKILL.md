@@ -25,7 +25,7 @@ The builtin providers (anthropic, openai, gemini, deepseek, openrouter, ...) are
 ```lua
 zemi.provider.add({
   id = "gw",                                -- a builtin id replaces that provider whole, key included
-  kind = zemi.provider.kind.OPENAI_COMPAT,  -- or ANTHROPIC, OPENAI, GOOGLE
+  kind = zemi.provider.kind.OPENAI_COMPAT,  -- or ANTHROPIC, GOOGLE, OPENAI (gpt-4 and later over /responses)
   base_url = "https://llm.internal/v1",     -- required for OPENAI_COMPAT
   api_key = zemi.env.get("GATEWAY_KEY"),
   -- headers = { ["X-Team"] = "core" },     -- as secret as the key
