@@ -1122,7 +1122,11 @@ func toolSummary(input string) string {
 	}
 	// the agent tool's description is optional; without it the row reads
 	// the agent and the task instead of the input JSON
-	if a, ok := m["agent"].(string); ok && a != "" {
+	a, _ := m["agent"].(string)
+	if to, _ := m["send_to"].(string); to != "" {
+		a = "to " + to
+	}
+	if a != "" {
 		if d, _ := m["description"].(string); d != "" {
 			return d
 		}
