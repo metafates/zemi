@@ -94,6 +94,10 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 			t.Errorf("%s from project: %v", src, err)
 		}
 	}
+	// a mode rule outside the subject namespaces would sit in its store and never match
+	if err := r.ExecuteChunk(context.Background(), `zemi.permission.mode.add("x", { base = "auto", rules = { { "bash", "ls *", "allow" } } })`, "u.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), `subject "bash" starts with none of`) {
+		t.Fatalf("mode rule with a bare subject: %v", err)
+	}
 	runUser(t, r, `
 		zemi.config.set("permissions.mode", "yolo")
 		zemi.permission.mode.add("x", { base = "auto", rules = { { "tool.bash", "ls *", "allow" } } })

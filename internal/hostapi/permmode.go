@@ -326,6 +326,10 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 					bad = "each rule needs subject, pattern and decision (allow, ask or deny)"
 					return
 				}
+				if !knownSubject(r.Subject) {
+					bad = badSubject(r.Subject).Error()
+					return
+				}
 				def.Rules.Add(r)
 			})
 			if bad != "" {

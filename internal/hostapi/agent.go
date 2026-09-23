@@ -1938,6 +1938,16 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
+// knownSubject: "bash" is not a subject, "tool.bash" is; a rule outside the
+// namespaces would sit in the store and never match.
+func knownSubject(subject string) bool {
+	return slices.ContainsFunc(perm.SubjectPrefixes, func(p string) bool { return strings.HasPrefix(subject, p) })
+}
+
+func badSubject(subject string) error {
+	return fmt.Errorf("subject %q starts with none of %s", subject, strings.Join(perm.SubjectPrefixes, " "))
+}
+
 // validateRule checks a Lua rule. Examples are required (DESIGN §9): the match example must match
 // the pattern without being excluded, the not_match example must be
 // excluded; a guard needs both examples.
@@ -1945,10 +1955,8 @@ func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
 	switch {
 	case r.Subject == "" || r.Pattern == "":
 		return errors.New("subject and pattern are required")
-	case !slices.ContainsFunc(perm.SubjectPrefixes, func(p string) bool { return strings.HasPrefix(r.Subject, p) }):
-		// "bash" is not a subject, "tool.bash" is: a rule outside the
-		// namespaces would sit in the store and never match
-		return fmt.Errorf("subject %q starts with none of %s", r.Subject, strings.Join(perm.SubjectPrefixes, " "))
+	case !knownSubject(r.Subject):
+		return badSubject(r.Subject)
 	case r.Decision != perm.Allow && r.Decision != perm.Ask && r.Decision != perm.Deny:
 		return errors.New("decision must be allow, ask or deny")
 	}
