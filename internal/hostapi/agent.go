@@ -96,6 +96,7 @@ type agentHost struct {
 	stepText, stepReason string
 	stepTools            []StreamTool
 	stepRows             int
+	stepThought          time.Duration
 	tools                []StreamTool
 	steering             []string
 	modelSeed            string
@@ -753,7 +754,7 @@ func (s *streamAdapter) StepStart() {
 	ag := s.h.agents
 	ag.mu.Lock()
 	// capped, so a pending row appended later cannot write into the saved slice
-	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows = ag.textBuf, ag.reasonBuf, slices.Clip(ag.tools), rows
+	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought = ag.textBuf, ag.reasonBuf, slices.Clip(ag.tools), rows, ag.thought
 	ag.mu.Unlock()
 }
 
@@ -762,7 +763,7 @@ func (s *streamAdapter) StepStart() {
 func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag := s.h.agents
 	ag.mu.Lock()
-	ag.textBuf, ag.reasonBuf, ag.tools = ag.stepText, ag.stepReason, ag.stepTools
+	ag.textBuf, ag.reasonBuf, ag.tools, ag.thought, ag.thinking = ag.stepText, ag.stepReason, ag.stepTools, ag.stepThought, false
 	rows := ag.stepRows
 	ag.retries++
 	ag.retryAt = time.Now().Add(delay)

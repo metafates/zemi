@@ -1452,6 +1452,16 @@ func TestRetryRestreamsStep(t *testing.T) {
 	if h.trEpoch.Load() == epoch {
 		t.Error("the cut kept the transcript epoch, so the chat widget draws its cached rows")
 	}
+	main := h.streamHooks()
+	h.agents.mu.Lock()
+	h.agents.thought = time.Second
+	h.agents.mu.Unlock()
+	main.StepStart()
+	main.ToolCallPending("c2", "glob") // flushes the text row, taking the thought time with it
+	main.Retrying(nil, 0)
+	if h.agents.thought != time.Second {
+		t.Errorf("the retry left thought at %v, want the step start's 1s", h.agents.thought)
+	}
 }
 
 func TestMaxOutput(t *testing.T) {
