@@ -65,10 +65,16 @@ func TestPlanApproval(t *testing.T) {
 	}
 }
 
+// TestPlanEditKeys: e swaps the buttons for the changes input row for row,
+// where j and k type instead of scrolling.
 func TestPlanEditKeys(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 18)
 	done := planAsync(t, app, "# Plan", "")
-	pressKeys(app, "e", "j", "k", "enter") // inside edit j/k type, not scroll
+	before := len(app.planBox(app.planAsk, 70, 18))
+	if pressKeys(app, "e"); len(app.planBox(app.planAsk, 70, 18)) != before {
+		t.Fatalf("e moved the box from %d rows", before)
+	}
+	pressKeys(app, "j", "k", "enter")
 	if r := awaitPlan(t, app, done); !r.ok || r.v.Feedback != "jk" {
 		t.Fatalf("e then j/k should send feedback \"jk\", got %+v ok=%v", r.v, r.ok)
 	}

@@ -419,6 +419,10 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		}
 		answer := trustAnswers[hit-1]
 		return spans, func() { a.answerTrust(answer) }, true
+	case top == "plan":
+		spans, ok := item(2) // the buttons; the changes input has no hits
+		key := map[int]string{1: "enter", 2: "e"}[hit]
+		return spans, func() { a.planKey(key, "") }, ok
 	case top == "question":
 		qp := a.question
 		if !qp.reviewing() && qp.states[qp.at].typing {

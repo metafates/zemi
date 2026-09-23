@@ -91,14 +91,15 @@ func (a *App) planKey(key, text string) {
 	}
 }
 
-// planBox draws the plan popup: the plan as scrollable markdown, the
-// changes input when typing, and the hints.
+// planBox draws the plan popup: the plan as scrollable markdown, then its
+// two buttons, which the changes input replaces row for row, so e moves
+// nothing.
 func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	inner := boxInner(w)
-	var ask, input [][]hostapi.Segment
-	hints := []hintPair{{"enter", "approve"}, {"e", "request changes"}, {"esc", "dismiss"}}
+	act := choiceRows([]promptChoice{{key: "enter", label: "Approve"}, {key: "e", label: "Request changes"}}, -1, inner, true)
+	hints := []hintPair{{"enter", "approve"}, {"esc", "dismiss"}}
 	if p.typing {
-		ask, input = [][]hostapi.Segment{{{Text: "What should change?", HL: "Host:Hint"}}}, [][]hostapi.Segment{p.input.inputRow(inner)}
+		act = [][]hostapi.Segment{{{Text: "What should change?", HL: "Host:Hint"}}, p.input.inputRow(inner)}
 		hints = []hintPair{{"enter", "send changes"}, {"esc", "back"}}
 	}
 	// a text view is 72 cells
@@ -108,13 +109,13 @@ func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	planN := len(md(planW))
 	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight := level > 0
-		p.view.viewH = max(h-2-len(stack(tight, oneRow, ask, input, oneRow))+1, 1)
+		p.view.viewH = max(h-2-len(stack(tight, oneRow, act, oneRow))+1, 1)
 		plan := p.view.window(p.view.wrap(md, planW), planW)
 		if planN == 0 {
 			plan = emptyRows("The plan is empty.", inner)
 		}
 		hintRow := hint(inner, slices.Concat(hints, scrolls(p.view))...)
-		return stack(tight, plan, ask, input, [][]hostapi.Segment{hintRow}), p.view.viewH < min(planN, 3)
+		return stack(tight, plan, act, [][]hostapi.Segment{hintRow}), p.view.viewH < min(planN, 3)
 	})
 	badge := ""
 	if p.mode != "" {
