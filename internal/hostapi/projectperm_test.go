@@ -12,20 +12,22 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-func writePermissions(t *testing.T, h *Host, content string) {
+func writePermissions(t *testing.T, path, content string) {
 	t.Helper()
-	dir := filepath.Join(h.Dirs.ProjectDir, ".zemi")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "permissions"), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestProjectPermissions(t *testing.T) {
 	h, _ := newTestHost(t)
-	writePermissions(t, h, `
+	h.Dirs.StateHome = t.TempDir()
+	// a repository can commit .zemi/permissions; only the state dir's file loads
+	writePermissions(t, filepath.Join(h.Dirs.ProjectDir, ".zemi", "permissions"), "curl https://example.com\n")
+	writePermissions(t, h.projectPermissionsPath(), `
 git push
 make all
 
@@ -44,41 +46,37 @@ python x.py
 		{"make all -j4", true},
 		{"git status", false},
 		{"python x.py", false},
+		{"curl https://example.com", false},
 	}
 	for _, c := range want {
 		if got := h.Perm.CheckCommand(c.cmd, "").Decision == perm.Allow; got != c.allow {
 			t.Errorf("CheckCommand(%q) allow=%v, want %v", c.cmd, got, c.allow)
 		}
 	}
-	ignore, err := os.ReadFile(filepath.Join(filepath.Dir(h.Dirs.WorktreesDir()), ".gitignore"))
-	if err != nil {
-		t.Fatalf("reading .zemi/.gitignore: %v", err)
-	}
-	if !strings.Contains(string(ignore), "permissions") {
-		t.Errorf(".zemi/.gitignore missing permissions entry:\n%s", ignore)
-	}
 }
 
 func TestProjectPermissionsUntrusted(t *testing.T) {
 	h, _ := newTestHost(t)
-	writePermissions(t, h, "git push\n")
+	h.Dirs.StateHome = t.TempDir()
+	writePermissions(t, h.projectPermissionsPath(), "git push\n")
 	if err := h.ProjectPermissionsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {
 		t.Fatalf("step: %v", err)
 	}
 	if h.Perm.CheckCommand("git push", "").Decision == perm.Allow {
-		t.Error("untrusted project must not load .zemi/permissions")
+		t.Error("an untrusted project must not load its permissions file")
 	}
 }
 
 // TestProjectAskPersists: the ask's "for this project" answer writes the
-// command to .zemi/permissions and registers principal-less rules now, so it
-// holds for this session and is read again on the next boot. A destructive
-// command is used because auto settles a safe one in a trusted project, so a
-// destructive command is the real case that still reaches the ask. No
-// writePermissions call: a fresh trusted project has no .zemi yet, so this
-// also proves projectAllow creates the dir instead of silently dropping it.
+// command to the permissions file and registers principal-less rules now, so
+// it holds for this session and is read again on the next boot. A
+// destructive command is used because auto settles a safe one in a trusted
+// project, so a destructive command is the real case that still reaches the
+// ask. No writePermissions call: this also proves projectAllow creates the
+// dir instead of silently dropping it.
 func TestProjectAskPersists(t *testing.T) {
 	h, _ := newTestHost(t)
+	h.Dirs.StateHome = t.TempDir()
 	h.SetProjectTrusted(true)
 
 	pipe := h.PipelineFor()
@@ -93,9 +91,9 @@ func TestProjectAskPersists(t *testing.T) {
 		t.Fatalf("asked: %+v", ui.asked)
 	}
 
-	b, err := os.ReadFile(filepath.Join(h.Dirs.ProjectDir, ".zemi", "permissions"))
+	b, err := os.ReadFile(h.projectPermissionsPath())
 	if err != nil {
-		t.Fatalf("reading .zemi/permissions: %v", err)
+		t.Fatalf("reading the permissions file: %v", err)
 	}
 	if !strings.Contains(string(b), cmd) {
 		t.Fatalf("permissions file missing command:\n%s", b)
@@ -116,6 +114,7 @@ func TestProjectAskPersists(t *testing.T) {
 // multi-line) offers none.
 func TestProjectChoice(t *testing.T) {
 	h, _ := newTestHost(t)
+	h.Dirs.StateHome = t.TempDir()
 	always := func(req tools.Request) (string, []perm.Rule) { return h.alwaysChoice(req) }
 	choice := func(req tools.Request) string {
 		label, rules := always(req)

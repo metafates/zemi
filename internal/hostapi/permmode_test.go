@@ -306,6 +306,7 @@ func TestPermModeDecide(t *testing.T) {
 // so /permissions shows it and takes it back.
 func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 	h, _ := newTestHost(t)
+	h.Dirs.StateHome = t.TempDir()
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	always := perm.Rule{Subject: "tool.bash", Pattern: "git push *", Decision: perm.Allow, Principal: "model"}
@@ -321,7 +322,7 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 		t.Fatalf("rules not listed with a way back:\n%s", rows)
 	}
 	// each rule says where to edit it
-	for _, want := range []string{"from .zemi/permissions; edit that file", "from the project's .zemi/init.lua", "from config; edit permissions in your init.lua"} {
+	for _, want := range []string{"/permissions; edit that file", "from the project's .zemi/init.lua", "from config; edit permissions in your init.lua"} {
 		if !strings.Contains(rows, want) {
 			t.Fatalf("missing %q:\n%s", want, rows)
 		}

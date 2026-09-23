@@ -203,9 +203,8 @@ func (d Dirs) WorktreesDir() string {
 // IgnoreLocal makes <repo root>/.zemi/.gitignore list the entries local to
 // this checkout, appending to an existing file: .zemi also holds checked-in
 // config, so nothing else is ignored.
-func (d Dirs) IgnoreLocal(extra ...string) error {
-	// worktrees always; a project's permissions file is listed by its step
-	entries := append([]string{"worktrees/"}, extra...)
+func (d Dirs) IgnoreLocal() error {
+	entries := []string{"worktrees/"}
 	path := filepath.Join(filepath.Dir(d.WorktreesDir()), ".gitignore")
 	b, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {

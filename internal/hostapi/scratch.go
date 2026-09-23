@@ -9,8 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/metafates/zemi/internal/store"
 )
 
 const scratchTTL = 7 * 24 * time.Hour
@@ -23,7 +21,7 @@ func (h *Host) scratchFor(sid string) string {
 	if sid == "" || h.Dirs.StateHome == "" {
 		return ""
 	}
-	return filepath.Join(filepath.Dir(store.ProjectDBPath(h.Dirs.StateHome, h.trustRoot())), "scratch", sid)
+	return filepath.Join(h.projectState(), "scratch", sid)
 }
 
 func (h *Host) inScratch(path string) bool {

@@ -171,7 +171,13 @@ func (h *Host) recipesDir() string {
 	if h.Dirs.StateHome == "" {
 		return ""
 	}
-	return filepath.Join(filepath.Dir(store.ProjectDBPath(h.Dirs.StateHome, h.trustRoot())), "skills")
+	return filepath.Join(h.projectState(), "skills")
+}
+
+// projectState is the repository's own state dir, next to its database: out
+// of every repository and of every sandbox's write roots.
+func (h *Host) projectState() string {
+	return filepath.Dir(store.ProjectDBPath(h.Dirs.StateHome, h.trustRoot()))
 }
 
 func (h *Host) discoverRecipes() []skills.Skill {

@@ -152,7 +152,7 @@ func (h *Host) permItems() []any {
 			case "":
 				item["detail"] = "from config; edit permissions in your init.lua"
 			case "permissions":
-				item["detail"] = "from .zemi/permissions; edit that file"
+				item["detail"] = "from " + TildePath(h.projectPermissionsPath()) + "; edit that file"
 			case "project":
 				item["detail"] = "from the project's .zemi/init.lua"
 			default:

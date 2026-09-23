@@ -297,8 +297,7 @@ dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect
 servers unconfined by name, and home credential paths are hidden. The exception is the repo's
 `.zemi/worktrees` (`Dirs.WorktreesDir`), where the agent keeps git worktrees: a write root of
 its own, listed in `.zemi/.gitignore` (`Dirs.IgnoreLocal`, appended, never rewritten; the
-project `permissions` file is listed the same way, and the ignore file lists itself so git
-status does not show `.zemi/`), with
+ignore file lists itself so git status does not show `.zemi/`), with
 each checkout's own `.git` and `.zemi` protected and nothing loaded from it. The namespace
 backend binds only protected paths that exist, so `Pipeline.Guard` records the missing ones
 before a run and checks them at exit: a created `.git` or `.zemi` holds trust off until
@@ -320,8 +319,9 @@ in it. Nothing may point into `.git`, since `.git/config` may hold tokens.
 Every rule lives in memory: `zemi.permission.rule.add` in config adds it again on each boot,
 and an "always" answer lasts until zemi exits. There is no rule file and zemi makes no git
 commits (`scope = "permanent"` raises and points at init.lua). Untouched by that "no rule
-file": a trusted project's gitignored `.zemi/permissions` (`ProjectPermissionsStep`,
-internal/hostapi/projectperm.go) lists bash commands always allowed in that project, each by
+file": a trusted project's `permissions` file in its state dir (`<state>/projects/<hash>/`,
+next to the recipes, where no repository can ship it and no sandbox can write it;
+`ProjectPermissionsStep`, internal/hostapi/projectperm.go) lists bash commands always allowed in that project, each by
 the `alwaysChoice` rule shape (a wrapper or deleting program or a glob line offers no rule);
 it is read as a Go boot step, so it never goes through the Lua origin gate below, and a
 permission overlay's `for this project` answer appends the command to it, offered only when
@@ -350,7 +350,7 @@ a segment says what the next call would run - nor for a `protectedWrite`, which
 exact path: a directory glob cannot exclude the secret shapes, so `Pipeline.Check`'s loosen
 sends a file request a `model` glob rule allowed back to the ask when `Secret` matches, and a command whose
 reader names one (`perm.ReadsSecret`: `cat .env`, `cat .e*`) when a `model` rule or a
-`.zemi/permissions` line allowed it (`perm.Rule.Source`); a user-config rule has no principal,
+permissions file line allowed it (`perm.Rule.Source`); a user-config rule has no principal,
 stays authoritative, and shows read-only in `/permissions` with its source (init.lua, the
 permissions file, a project's `.zemi/init.lua`), while a `model` rule gets a Remove action.
 `sandbox: false` is denied outright for a read-only agent (`Pipeline.Check`, before any mode

@@ -44,7 +44,7 @@ type Rule struct {
 	Principal string   `json:"principal"` // empty = any principal
 	// Source is where a principal-less rule came from, so /permissions can
 	// say what to edit: "" for user config, "permissions" for a project's
-	// .zemi/permissions file, else the Lua origin that added it
+	// permissions file, else the Lua origin that added it
 	Source string `json:"source,omitempty"`
 	// Network marks a session rule written from a network: true ask: a
 	// command it allows keeps the sandbox and gets sockets, as the ask said,

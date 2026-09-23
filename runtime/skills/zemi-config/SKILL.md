@@ -26,8 +26,10 @@ Rules when editing:
 - Add lasting rules with `zemi.permission.rule.add` in init.lua, which adds them again on every
   start; `a` in a permission prompt allows until zemi exits (a prompt's `p` choice allows a command
   permanently in one trusted project). A leftover `permissions.lua`
-  is not read. For one trusted project, a gitignored `.zemi/permissions` file (one bash
-  command per line, written there by a prompt's `p` answer or by hand) allows them without a prompt in that project.
+  is not read. For one trusted project, a `permissions` file in zemi's state dir
+  (`<state>/projects/<hash>/permissions`, the path `/permissions` shows; one bash command per
+  line, written there by a prompt's `p` answer or by hand) allows them without a prompt in
+  that project. A repository cannot ship one: a `.zemi/permissions` file is not read.
 - File writes ask first and show the diff, and write, edit and multiedit
   refuse a file the model has not read or that changed since it read it, and a symbolic
   link (edit its target). A bash row shows a diff of the files the command changed. zemi reloads when

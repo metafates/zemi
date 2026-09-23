@@ -278,12 +278,12 @@ Directories (XDG):
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
   projects/<hash>/scratch/<session id>/   per-session scratchpad (§9 write root)
   projects/<hash>/skills/<name>/SKILL.md  recipes: the project's private skills (§10.5)
+  projects/<hash>/permissions  bash commands always allowed in the project (§6.1), read only when trusted
   trust.json              trust decisions by repository root
   logs/
 <project>/
   .zemi/init.lua          project-local config, loaded after user config
   .zemi/agents|commands|workflows/  the same shapes
-  .zemi/permissions       bash commands always allowed here (§6.1), read only when trusted
   ZEMI.md, AGENTS.md, CLAUDE.md   context files
 ```
 
@@ -535,13 +535,14 @@ Lua can forge one. Only the user's own config and `always` answers
 write allow rules (the widening direction; plugin and project rules are
 deny/ask only, so their globs can only tighten).
 
-A project's `.zemi/permissions` file (§5) is a list of bash commands
-zemi always allows in that project, read as a boot step only when the
-project is trusted. Each line is allowed as a whole with the overlay's
-rule shape (§8): no rule is written from a wrapper or deleting program
-or a line carrying a glob. Because the file is gitignored (user-local)
-and trust-gated, allow rules from it are safe where project `.zemi`
-Lua above is not; the step appends the file to `.zemi/.gitignore`.
+A project's `permissions` file (§5, in its state dir) is a list of bash
+commands zemi always allows in that project, read as a boot step only
+when the project is trusted. Each line is allowed as a whole with the
+overlay's rule shape (§8): no rule is written from a wrapper or deleting
+program or a line carrying a glob. Because the file lives outside the
+repository (a clone cannot ship it; a gitignore line would not untrack a
+committed one) and no sandbox can write it, allow rules from it are safe
+where project `.zemi` Lua above is not.
 
 ### 6.2 Keys, commands, events
 
@@ -1311,8 +1312,8 @@ provenance string.
   scoped to the `model` principal, with the prefix-glob patterns §6.2 lists; they last
   until zemi exits. Lasting rules normally come only from `zemi.permission.rule.add`
   lines in the user's own config. The one exception is the `for this project`
-  answer: it appends the command to the project's gitignored `.zemi/permissions` file
-  (§5) and registers its rules un-scoped, so a trusted project re-reads them on every
+  answer: it appends the command to the project's `permissions` file in its state
+  dir (§5) and registers its rules un-scoped, so a trusted project re-reads them on every
   boot. The overlay
   is Go-owned and non-replaceable: a plugin cannot whitelist itself; Lua
   may restyle the frame via theme groups only. The security-relevant
