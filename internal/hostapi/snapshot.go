@@ -301,10 +301,10 @@ func (h *Host) checkpointBlob(root string, env []string, blob, abs, oldMode, new
 		h.checkpoint(store.Checkpoint{Path: abs})
 	default:
 		// the size first: a large file is never read whole
-		size, _ := h.runGit(root, env, "cat-file", "-s", blob)
+		size, _ := h.gitEnv(root, env, "cat-file", "-s", blob)
 		if n, _ := strconv.Atoi(strings.TrimSpace(size)); n > maxCheckpointBytes {
 			h.uncheckpointed(abs, "is too large to checkpoint")
-		} else if data, err := h.runGit(root, env, "cat-file", "-p", blob); err == nil {
+		} else if data, err := h.gitEnv(root, env, "cat-file", "-p", blob); err == nil {
 			// a link's blob is its target
 			h.checkpoint(store.Checkpoint{Path: abs, Existed: true, Link: oldMode == "120000", Content: []byte(data)})
 		}

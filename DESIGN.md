@@ -326,9 +326,12 @@ user-added; sandboxed when a backend is live, §9), auto mode and read-only agen
 auto settles in-project edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
 is an instruction file, no language server starts, `.agents` edits trigger no reload, and auto mode and read-only agents
 settle only reads and `perm.ReadCommand` commands. Either way zemi's own
-git calls switch off `core.fsmonitor`, hooks and repository filter
-drivers: a sandboxed command can plant a nested repository whose config
-would otherwise run unconfined on zemi's next `git status`.
+git calls (`proc.Git`) switch off `core.fsmonitor`, hooks, submodule
+recursion, LFS smudging, transports other than https, ssh and file, and
+repository filter drivers: a sandboxed command can plant a nested
+repository whose config would otherwise run unconfined on zemi's next
+`git status`. A plugin clone is someone else's repository, so its git
+calls blank the user's global filter drivers too.
 
 Load order is a list of boot steps: host `zemi.*` namespaces
 -> builtin commands (main's own plus every domain

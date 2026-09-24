@@ -32,7 +32,7 @@ func TestRewind(t *testing.T) {
 	}
 	// a repository, so a command's changes are snapshotted
 	for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"}} {
-		if out, err := h.runGit(h.Dirs.ProjectDir, nil, args...); err != nil {
+		if out, err := h.git(h.Dirs.ProjectDir, args...); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
 	}
@@ -310,7 +310,7 @@ func TestRewindBashSymlink(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"}} {
-				if out, err := h.runGit(dir, nil, args...); err != nil {
+				if out, err := h.git(dir, args...); err != nil {
 					t.Fatalf("git %v: %v %s", args, err, out)
 				}
 			}

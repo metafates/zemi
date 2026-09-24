@@ -25,7 +25,7 @@ func TestBashChanges(t *testing.T) {
 	write("a.txt", "one\ntwo\n")
 	write("staged.txt", "s\n")
 	for _, args := range [][]string{{"init", "-q"}, {"add", "a.txt", ".gitignore"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"}, {"add", "staged.txt"}} {
-		if out, err := h.runGit(dir, nil, args...); err != nil {
+		if out, err := h.git(dir, args...); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
 	}
@@ -83,7 +83,7 @@ func TestBashChanges(t *testing.T) {
 		env []string
 		bad string
 	}{{env, "hunter2"}, {nil, "shh"}} {
-		if objs, _ := h.runGit(dir, c.env, "cat-file", "--batch-all-objects", "--batch"); strings.Contains(objs, c.bad) {
+		if objs, _ := h.gitEnv(dir, c.env, "cat-file", "--batch-all-objects", "--batch"); strings.Contains(objs, c.bad) {
 			t.Errorf("an object store holds %q", c.bad)
 		}
 	}
@@ -145,7 +145,7 @@ func TestBashChanges(t *testing.T) {
 
 	// a gc prunes a blob the warm index still names: the next snapshot starts cold
 	for _, args := range [][]string{{"rm", "--cached", "-q", "staged.txt"}, {"prune", "--expire=now"}} {
-		if out, err := h.runGit(dir, nil, args...); err != nil {
+		if out, err := h.git(dir, args...); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
 	}
