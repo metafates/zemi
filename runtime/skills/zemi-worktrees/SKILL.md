@@ -27,8 +27,9 @@ git worktree add -b feat/retry .agents/worktrees/retry
   `.git` and `.agents` stay protected). A worktree outside the project is outside the jail:
   every read and write there needs approval, one prompt at a time.
 - zemi writes `.agents/worktrees/.gitignore` (`/*`) when the file is missing, at each start
-  or reload of a trusted project and before each sandboxed command, so `git status` stays clean, and `grep`, `glob` and ripgrep skip it, so
-  a search does not return every hit twice. Nothing under it is loaded as the outer
+  or reload of a trusted project and before a sandboxed command that may write it, so
+  `git status` stays clean, and `grep`, `glob` and ripgrep skip it, so a search does not
+  return every hit twice. Nothing under it is loaded as the outer
   project's config, skills, agents or commands.
 - `git worktree add` itself writes `.git`, so it needs approval once.
 
