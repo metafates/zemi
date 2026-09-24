@@ -203,12 +203,9 @@ func (h *Host) goHealthRows() []healthCheck {
 	out = append(out, h.modelRow())
 	// a role's own model would otherwise fail only at its first title,
 	// summary or run, where nobody looks
-	ids, windowed := []string{id}, []string{id}
+	ids := []string{id}
 	for _, r := range roles[1:] {
 		m := h.roleModel(r.Name)
-		if r.Name == "agents" || r.Name == "compact" {
-			windowed = append(windowed, m) // titles and the reflector read no window
-		}
 		if !slices.Contains(ids, m) {
 			ids = append(ids, m)
 			if row := h.modelCheck(r.Name+" model", m); row.level != "ok" {
@@ -218,15 +215,17 @@ func (h *Host) goHealthRows() []healthCheck {
 	}
 
 	// compactDue never fires on an unknown window, so the turn runs until
-	// the provider refuses it
+	// the provider refuses it. A summary budgets by the conversation's window
+	// when the compact model's is unknown, and titles and the reflector read none.
 	var unknown []string
-	for _, m := range windowed {
-		if m != "" && h.contextWindow(m) == 0 && !slices.Contains(unknown, m) {
-			unknown = append(unknown, m)
-		}
+	if id != "" && h.contextWindow(id) == 0 {
+		unknown = append(unknown, id+": no context percent, no auto compaction")
+	}
+	if m := h.roleModel("agents"); m != "" && m != id && h.contextWindow(m) == 0 {
+		unknown = append(unknown, m+": subagents trim their history only after the provider refuses it")
 	}
 	if len(unknown) > 0 {
-		add("warn", "context", "unknown for "+strings.Join(unknown, ", ")+": no context percent, no auto compaction; set context_window on the model entry, or agent.context_window")
+		add("warn", "context", "window unknown for "+strings.Join(unknown, "; ")+"; set context_window on the model entry, or agent.context_window")
 	} else if id != "" {
 		add("ok", "context", "window known, auto compaction on")
 	}

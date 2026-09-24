@@ -104,17 +104,18 @@ func TestHealthChecksProfileModel(t *testing.T) {
 	if c := got["model"]; c.level != "ok" || c.detail != "b/m" {
 		t.Errorf("model = %+v, want b/m", c)
 	}
-	if c := got["context"]; c.level != "warn" || !strings.Contains(c.detail, "unknown for b/m, a/m:") {
+	if c := got["context"]; c.level != "warn" || !strings.Contains(c.detail, "unknown for b/m: no context percent, no auto compaction; a/m: subagents") {
 		t.Errorf("context window = %+v, want a warning naming both models", c)
 	}
 }
 
 // TestHealthContextRoles: the context row warns only about a model whose
-// window is read, the conversation's, the agents' and compact's.
+// unknown window costs something, the conversation's and the agents'.
 func TestHealthContextRoles(t *testing.T) {
 	for _, c := range []struct{ name, lua, level string }{
 		{"titles and memory read no window", `zemi.config.set("models.titles", "b/m") zemi.config.set("models.memory", "b/m")`, "ok"},
-		{"compact reads one", `zemi.config.set("models.compact", "b/m")`, "warn"},
+		{"compact falls back to the chat window", `zemi.config.set("models.compact", "b/m")`, "ok"},
+		{"agents read one", `zemi.config.set("models.agents", "b/m")`, "warn"},
 	} {
 		h, r := newTestHostDB(t)
 		runUser(t, r, `
