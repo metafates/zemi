@@ -16,7 +16,7 @@ func TestTask(t *testing.T) {
 		name, src string
 		plain     bool   // run as an ordinary request, not a task
 		detach    bool   // StartTask instead of RunTask
-		act       string // while it waits: "release", "reload" or "cancel"
+		act       string // while it waits: "release", "reload", "cancel" or "forge" (a resume from Lua, then release)
 		want      string // the result, or the error it contains
 	}{
 		{name: "wait suspends and resumes with what the waiter gave", src: `return zemi.t.wait()`, act: "release", want: "done"},
@@ -28,12 +28,18 @@ func TestTask(t *testing.T) {
 		{name: "in a library callback", src: `table.sort({ 2, 1 }, function(a, b) zemi.t.wait() return a < b end)`, want: "cannot wait inside pcall"},
 		{name: "in a coroutine the task made", src: `coroutine.wrap(function() zemi.t.wait() end)()`, want: "only a task can wait"},
 		{name: "coroutine.yield", src: `coroutine.yield()`, want: "coroutine.yield cannot suspend"},
+		{name: "Lua cannot resume a waiting task", src: `zemi.t.stash(coroutine.running()) return zemi.t.wait()`, act: "forge", want: "done"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			waiting, release := make(chan struct{}, 1), make(chan struct{})
+			var stashed glua.LValue
 			steps := []BootStep{{Name: "t", Run: func(_ context.Context, _ *Runtime, g *Generation) error {
 				tb := g.L.NewTable()
+				tb.RawSetString("stash", g.L.NewFunction(func(L *glua.LState) int {
+					stashed = L.Get(1)
+					return 0
+				}))
 				tb.RawSetString("wait", Suspending(g.L, g.L.NewFunction(func(L *glua.LState) int {
 					return Suspend(L, "t.wait", func(ctx context.Context) func(*glua.LState) []glua.LValue {
 						waiting <- struct{}{}
@@ -105,6 +111,20 @@ func TestTask(t *testing.T) {
 					}
 				case "cancel":
 					cancel()
+				case "forge":
+					if _, err := r.Do(context.Background(), ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+						fn, err := genOf(L).SB.CompileChunk(`local ok, err = pcall(coroutine.resume, ..., "forged")
+							assert(not ok and err:find("resumes only when", 1, true), tostring(err))`, OriginPlugin.ChunkName("p.lua"))
+						if err != nil {
+							return nil, err
+						}
+						L.Push(fn)
+						L.Push(stashed)
+						return nil, L.PCall(1, 0, nil)
+					}); err != nil {
+						t.Fatalf("resume from Lua: %v", err)
+					}
+					close(release)
 				}
 			}
 			var res result

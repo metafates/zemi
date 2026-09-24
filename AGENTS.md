@@ -176,7 +176,8 @@ nested repo whose config zemi would run.
    running Lua at the next opcode (catchable once, then re-raises). A task (`lua.Task`,
    internal/lua/task.go) runs a callback as a coroutine: a handle's `wait()` yields it, a host
    goroutine waits, and the next slice is an ordinary request, so a resume never touches the
-   `LState` off the actor.
+   `LState` off the actor. The task's thread stays in `Generation.tasks` until it ends, and the
+   sandbox's `coroutine.resume` raises for it: only the driver resumes a task.
 2. **Watchdog / hot mode.** A wedged request trips the watchdog; after a grace period the
    runtime goes "hot" - every Lua request fails fast until force-reload builds a fresh `LState`
    (generation). All registrations (keymaps, widgets, events, timers, jobs, Lua tools, a

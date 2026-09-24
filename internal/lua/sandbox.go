@@ -145,7 +145,13 @@ func NewSandbox(originOf func(*glua.LState) Origin) (*Sandbox, error) {
 		resume := co.RawGetString("resume").(*glua.LFunction).GFunction
 		wrap := co.RawGetString("wrap").(*glua.LFunction).GFunction
 		co.RawSetString("resume", L.NewFunction(func(L *glua.LState) int {
-			bindContext(L, L.CheckThread(1))
+			th := L.CheckThread(1)
+			// the driver alone resumes a task, with what it waited on (DESIGN §4);
+			// wrap resumes only the thread it made
+			if g := genOf(L); g != nil && g.tasks[th] != nil {
+				L.RaiseError("coroutine.resume: a task's thread resumes only when what it waits on is done")
+			}
+			bindContext(L, th)
 			return resume(L)
 		}))
 		co.RawSetString("wrap", L.NewFunction(func(L *glua.LState) int {

@@ -87,6 +87,11 @@ func (r *Runtime) next(ctx context.Context, tr *taskRun) ([]any, error) {
 	cancel()
 	tr.wait = nil
 	if err := ctx.Err(); err != nil {
+		// only the actor may touch the thread the task leaves suspended
+		tr.gen.enqueue(newRequest(ClassIO, func(*glua.LState) ([]any, error) {
+			tr.gen.endTask(tr.th)
+			return nil, nil
+		}, context.Background(), 0, 0))
 		return nil, err
 	}
 	if tr.gen.ctx.Err() != nil {
@@ -131,7 +136,9 @@ func (tr *taskRun) run(L *glua.LState) ([]any, error) {
 	bindContext(L, tr.th)
 	g.tasks[tr.th] = tr
 	st, rets, err := Resume(L, tr.th, fn, args...)
-	delete(g.tasks, tr.th)
+	if st != glua.ResumeYield || tr.wait == nil {
+		g.endTask(tr.th)
+	}
 	if ae, ok := errors.AsType[*glua.ApiError](err); ok && ae.StackTrace == "" {
 		ae.StackTrace = traceback(tr.th) // the one PCall would give
 	}
@@ -151,6 +158,13 @@ func (tr *taskRun) run(L *glua.LState) ([]any, error) {
 		return nil, nil
 	}
 	return tr.Done(L, rets)
+}
+
+// endTask forgets a task's thread and kills it, so Lua holding the thread
+// cannot resume what the task left suspended.
+func (g *Generation) endTask(th *glua.LState) {
+	delete(g.tasks, th)
+	th.Dead = true
 }
 
 // Suspend yields the task running on L until w returns (DESIGN §4). Call

@@ -138,8 +138,9 @@ type Generation struct {
 
 	frames []frame // origin stack, see pushFrame
 
-	// tasks maps a task's thread to it while a slice runs (Suspend reads
-	// it); ctx ends with the generation, which ends every task's wait.
+	// tasks maps a task's thread to it until the task ends (Suspend reads
+	// it, coroutine.resume refuses it); ctx ends with the generation, which
+	// ends every task's wait.
 	tasks  map[*glua.LState]*taskRun
 	ctx    context.Context
 	cancel context.CancelCauseFunc

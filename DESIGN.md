@@ -166,7 +166,10 @@ Contracts that make this safe:
   `agent.assemble`, config watches, timer and `on_stdout`/`on_stderr`
   callbacks; `wait` raises there, and under `pcall` or a library callback
   such as `table.sort`, whose Go frame a yield would unwind, and in a
-  coroutine the task made. A task whose generation was purged or went hot
+  coroutine the task made. Only the driver resumes a task: its thread
+  stays registered until the task ends and `coroutine.resume` raises for
+  it, so no Lua holding the thread can run the task's rest with a forged
+  wait result. A task whose generation was purged or went hot
   ends at once, its wait cancelled with it: a dropped `execute` returns a
   tool error, a dropped `decide` sends the ask to the user, a dropped
   `tool.post` leaves the output as it was. Keymaps and Lua commands run in
