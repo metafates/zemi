@@ -197,7 +197,7 @@ func (a *App) CloseOverlay(id string, origin lua.Origin) {
 			return
 		}
 		o := a.overlays[i].o
-		if origin != lua.OriginUser && origin != lua.OriginBuiltin && origin != o.Origin {
+		if !mayClose(origin, o) {
 			a.log.Debug("ui", "overlay close refused", map[string]any{"id": id, "origin": string(origin)})
 			return
 		}

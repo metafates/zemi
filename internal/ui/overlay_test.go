@@ -253,7 +253,7 @@ func TestOverlayNavigation(t *testing.T) {
 	detail := func(actions ...any) map[string]any {
 		return map[string]any{"text": "err", "desc": "short", "detail": "line one\nline two", "actions": actions}
 	}
-	reloads := 0
+	reloads, spaced := 0, 0
 	for _, c := range []struct {
 		name  string
 		o     hostapi.Overlay
@@ -360,6 +360,30 @@ func TestOverlayNavigation(t *testing.T) {
 			func(a *App) string {
 				return map[bool]string{false: "not rebuilt"}[len(a.overlays) == 1 && reloads == 1]
 			}},
+		{"space passes by a toggle list row with its own verb",
+			hostapi.Overlay{Items: []any{map[string]any{"text": "Roles", "verb": "open", "run": "nope"}}, Reload: func() ([]any, [][]hostapi.Segment) { spaced++; return nil, nil }},
+			[]string{"space"},
+			func(a *App) string {
+				return map[bool]string{false: "space ran the row"}[len(a.overlays) == 1 && spaced == 0]
+			}},
+		{"a toggle list rebuilds when the overlay stacked on it closes, after its pick",
+			hostapi.Overlay{ID: "p", Items: []any{"old"}}, nil,
+			func(a *App) string {
+				a.overlays[0].o.Reload = func() ([]any, [][]hostapi.Segment) { return []any{a.composer.text}, nil }
+				a.openOverlay(hostapi.Overlay{ID: "c", Origin: lua.OriginBuiltin, Items: []any{map[string]any{"text": "pick", "fill": "new"}}})
+				a.overlayKey("enter", "")
+				return map[bool]string{false: fmt.Sprintf("overlays=%d", len(a.overlays))}[len(a.overlays) == 1 && a.overlays[0].texts[0] == "new"]
+			}},
+		{"opening an open id replaces it in place with the selection kept, unless a lower origin opens it",
+			hostapi.Overlay{ID: "p", Items: []any{"a", "b"}}, []string{"down"},
+			func(a *App) string {
+				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Items: []any{"c", "d"}})
+				if len(a.overlays) != 1 || a.overlays[0].selected != 1 || a.overlays[0].texts[1] != "d" {
+					return fmt.Sprintf("overlays=%d selected=%d", len(a.overlays), a.overlays[0].selected)
+				}
+				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginPlugin, Items: []any{"e"}})
+				return map[bool]string{false: "a plugin replaced a builtin list"}[len(a.overlays) == 2 && a.overlays[0].texts[0] == "c"]
+			}},
 		{"closing the parent drops its detail view",
 			hostapi.Overlay{ID: "p", Items: []any{detail()}}, []string{"enter"},
 			func(a *App) string {
@@ -431,6 +455,7 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}, Verb: "run"}, false, "enter fill · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}, Verb: "pick"}, false, "enter open · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, false, "enter pick · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "verb": "open"}}, Verb: "pick", Reload: func() ([]any, [][]hostapi.Segment) { return nil, nil }}, false, "enter open · y copy · esc close"},
 		{hostapi.Overlay{Body: "text"}, false, "y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "copy": "export X"}}}, false, "enter copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter fill · esc back"},

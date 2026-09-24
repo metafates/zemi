@@ -765,6 +765,8 @@ function zemi.event.stats() end
 ---@field text string
 ---@field id? string hands the action to the overlay's on_action, which takes it over fill and run
 ---@field hl? string highlight group of the label, such as "Danger"
+---@field hotkey? string one character that acts like enter on this action; with none, its position ("1", "2", ...)
+---@field detail? string enter opens it as a detail view of its own, over this one
 ---@field fill? string
 ---@field run? string
 
@@ -786,7 +788,7 @@ function zemi.event.stats() end
 ---@field on_action? fun(item: any, action: zemi.OverlayAction) Runs for a detail action with an `id`; the list closes like on on_select, a `reload` list rebuilds.
 ---@field keys? table<string, zemi.OverlayKey> One character each (j, k, /, y and Y are the list's and raise, a row's hotkey wins): a second verb on the selected item, which closes or rebuilds the list like on_action.
 ---@field on_close? fun()
----@field reload? fun(): any[] Makes a toggle list: enter and space run on_select (or the row's `run`) and keep the overlay open, then the items this returns replace the list, rendered again, keeping selection and filter. Both run off the key path; an error keeps the old items.
+---@field reload? fun(): any[] Makes a toggle list: enter and space run on_select (or the row's `run`) and keep the overlay open, then the items this returns replace the list, rendered again, keeping selection and filter. It runs again when an overlay opened over the list closes. Both run off the key path; an error keeps the old items.
 
 ---@class zemi.SelectOpts
 ---@field prompt? string
@@ -995,6 +997,9 @@ function zemi.ui.theme.list() end
 ---@class zemi.ui.overlay
 zemi.ui.overlay = {}
 
+--- Opening the id of an open overlay replaces it in place, keeping selection
+--- and filter, when the caller may close it (see close); otherwise it opens
+--- over it.
 ---@param spec zemi.OverlaySpec
 function zemi.ui.overlay.open(spec) end
 

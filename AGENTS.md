@@ -769,7 +769,11 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   an item with `detail` or `actions` pushes a detail view whose rows draw as the prompts'
   buttons, keyed by `hotkey` or position (`actionKey`), and `Body` is text above the items
   (markdown with `BodyMD`; `BodySegs` draws styled rows in its place, sanitized like `Body`,
-  which stays what `y` copies).
+  which stays what `y` copies). Opening the id of an open overlay replaces it in place
+  (`replaceOverlay`, keeping selection and filter; only an origin that may close it), and a
+  toggle list rebuilds when the overlay stacked on it closes (`closeOverlayByID`), so every
+  caller acts first and closes after: the worker then runs the rebuild behind the action. A
+  row's `verb` (Go-internal) names enter's action in the hint and keeps space from toggling it.
 - **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua jobs,
   MCP and LSP servers, git). A child runs in its own session: no controlling terminal (nothing
   can read the TUI's keys or hang on a password prompt) and its own process group, which

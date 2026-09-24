@@ -124,10 +124,37 @@ func (f *listFilter) filterRow() []hostapi.Segment {
 // grey, wrapped to w.
 func emptyRows(text string, w int) [][]hostapi.Segment { return wrapText(text, "Host:Hint", w) }
 
-// openOverlay pushes an overlay; Lua rendered its items when it opened, so
-// the key loop never calls Lua for them.
+// openOverlay pushes an overlay, or replaces the open one with its id in
+// place when o's origin may close it; Lua rendered its items when it opened,
+// so the key loop never calls Lua for them.
 func (a *App) openOverlay(o hostapi.Overlay) {
+	if i := a.overlayIndex(o.ID); i >= 0 && mayClose(o.Origin, a.overlays[i].o) {
+		a.replaceOverlay(i, o)
+		return
+	}
 	a.overlays = append(a.overlays, a.overlayState(o))
+}
+
+// mayClose reports whether origin may close (or replace) o: user and
+// builtin code, or the origin that opened it.
+func mayClose(origin lua.Origin, o hostapi.Overlay) bool {
+	return origin == lua.OriginUser || origin == lua.OriginBuiltin || origin == o.Origin
+}
+
+// overlayIndex is the stack index of the open list or view with id, -1 when
+// none is open.
+func (a *App) overlayIndex(id string) int {
+	return slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID == id && !st.back })
+}
+
+// replaceOverlay swaps o in at stack index i, keeping the selection, the
+// filter, the scroll and the box's size.
+func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
+	old := a.overlays[i]
+	st := a.overlayState(o)
+	st.listFilter, st.size, st.body = old.listFilter, old.size, old.body
+	st.refilter()
+	a.overlays[i] = st
 }
 
 func (a *App) overlayState(o hostapi.Overlay) overlayState {
@@ -189,23 +216,36 @@ func formatOverlayItem(item any) string {
 
 // enterVerb names what enter does on item idx: "open" its detail view,
 // "fill" the composer, the overlay's own verb ("confirm" by default), "back"
-// from a detail view, or "" when it does nothing.
+// from a detail view, or "" when it does nothing. A row's own verb names its
+// run or fill in place of the overlay's.
 func (st *overlayState) enterVerb(idx int) string {
 	m, _ := st.o.Items[idx].(map[string]any)
 	has := func(k string) bool { s, _ := m[k].(string); return s != "" }
 	switch {
-	case has("detail") || m["actions"] != nil:
+	case hasDetail(m):
 		return "open"
 	case rowRun(st.o, m) != "" || st.o.OnSelect != nil || st.back && has("id") && st.o.OnAction != nil:
-		return cmp.Or(st.o.Verb, "confirm")
+		return cmp.Or(itemVerb(m), st.o.Verb, "confirm")
 	case has("fill"):
-		return "fill"
+		return cmp.Or(itemVerb(m), "fill")
 	case has("copy"):
 		return "copy"
 	case st.back:
 		return "back"
 	}
 	return ""
+}
+
+func hasDetail(m map[string]any) bool {
+	s, _ := m["detail"].(string)
+	return s != "" || m["actions"] != nil
+}
+
+// itemVerb is a row's own enter verb. A row with one is not a toggle: space
+// passes it by in a toggle list.
+func itemVerb(m map[string]any) string {
+	s, _ := m["verb"].(string)
+	return sanitize.Line(s)
 }
 
 // actionKey is the key that acts on visible row n: the item's own hotkey,
@@ -236,43 +276,43 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 	a.overlays = append(a.overlays, st)
 }
 
-// detailAction runs action idx of the detail view on top. An action that
-// runs or fills something ends the parent too, unless it only runs a
-// command in a toggle list, which rebuilds; one with an id goes to
-// on_action; one that does none of it goes back.
+// detailAction runs action idx of the detail view on top, then closes it.
+// An action with an id goes to on_action; one that runs or fills something
+// ends the parent too, unless a toggle list runs it, which rebuilds as the
+// detail view closes; one that does none of it goes back.
 func (a *App) detailAction(idx int) {
 	d := a.overlays[len(a.overlays)-1]
-	a.closeOverlayByID(d.o.ID)
+	p := a.overlays[len(a.overlays)-2].o // a detail view opens right on top of its parent
 	m, _ := d.o.Items[idx].(map[string]any)
-	run := rowRun(d.o, m)
 	fill, _ := m["fill"].(string)
-	pi := len(a.overlays) - 1 // the parent: a detail view opens right on top of it
-	if id, _ := m["id"].(string); id != "" && d.o.OnAction != nil {
-		p := a.overlays[pi].o
-		a.overlayCall(p, func() { a.host.OverlayAction(context.Background(), p, d.item, m) })
-		return
-	}
+	id, _ := m["id"].(string)
 	switch {
-	case run == "" && fill == "":
-		return
-	case fill == "" && a.overlays[pi].o.Reload != nil:
+	case id != "" && d.o.OnAction != nil:
+		a.background(func() { a.host.OverlayAction(context.Background(), p, d.item, m) })
+		if p.Reload == nil {
+			a.closeOverlayByID(p.ID) // the detail view goes with it
+			return
+		}
+	case rowRun(d.o, m) == "" && fill == "":
+	case fill == "" && p.Reload != nil:
 		a.runOverlayRow(d.o, idx)
-		a.reloadOverlay(a.overlays[pi].o, nil)
 	default:
-		a.cancelOverlay(a.overlays[pi].o)
 		a.runOverlayRow(d.o, idx)
+		a.cancelOverlay(p)
+		return
 	}
+	a.closeOverlayByID(d.o.ID)
 }
 
 // overlayCall runs a Lua callback of a list on the worker: a toggle list
-// stays open and rebuilds, any other closes first, like on_select.
+// stays open and rebuilds, any other closes, like on_select.
 func (a *App) overlayCall(o hostapi.Overlay, call func()) {
 	if o.Reload != nil {
 		a.reloadOverlay(o, call)
 		return
 	}
-	a.closeOverlayByID(o.ID)
 	a.background(call)
+	a.closeOverlayByID(o.ID)
 }
 
 // reloadOverlay runs call (nil for none) and rebuilds a toggle list's items,
@@ -285,25 +325,25 @@ func (a *App) reloadOverlay(o hostapi.Overlay, call func()) {
 		}
 		items, text := o.Reload()
 		a.do(func() {
-			i := slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID == o.ID && st.o.Gen == o.Gen && !st.back })
-			if i < 0 {
-				return
+			if i := a.overlayIndex(o.ID); i >= 0 && a.overlays[i].o.Gen == o.Gen {
+				next := a.overlays[i].o
+				next.Items, next.ItemText = items, text
+				a.replaceOverlay(i, next)
 			}
-			st := &a.overlays[i]
-			old, next := *st, st.o
-			next.Items, next.ItemText = items, text
-			*st = a.overlayState(next)
-			st.listFilter, st.size, st.body, st.text = old.listFilter, old.size, old.body, old.text
-			st.refilter()
 		})
 	})
 }
 
-// closeOverlayByID closes an overlay and the detail views over it.
+// closeOverlayByID closes an overlay and the detail views over it. A toggle
+// list it uncovers rebuilds on the worker, so callers act before they close:
+// the rebuild then shows what the closed overlay changed.
 func (a *App) closeOverlayByID(id string) {
-	a.overlays = slices.DeleteFunc(a.overlays, func(st overlayState) bool {
-		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+"#detail")
-	})
+	closes := func(st overlayState) bool { return st.o.ID == id || strings.HasPrefix(st.o.ID, id+"#detail") }
+	top := len(a.overlays) > 0 && closes(a.overlays[len(a.overlays)-1])
+	a.overlays = slices.DeleteFunc(a.overlays, closes)
+	if n := len(a.overlays); top && n > 0 && a.overlays[n-1].o.Reload != nil {
+		a.reloadOverlay(a.overlays[n-1].o, nil)
+	}
 }
 
 // overlayKey routes keys to the topmost overlay; text is what the key types
@@ -351,13 +391,13 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			return nil
 		}
 		idx := st.visible[st.selected]
+		m, _ := o.Items[idx].(map[string]any)
 		verb := st.enterVerb(idx)
 		switch {
-		case key == "space" && o.Reload == nil:
-		case key == "enter" && verb == "open":
+		case key == "space" && (o.Reload == nil || itemVerb(m) != ""):
+		case key == "enter" && hasDetail(m):
 			a.openDetail(st, idx)
 		case verb == "copy":
-			m, _ := o.Items[idx].(map[string]any)
 			text, _ := m["copy"].(string)
 			return a.copied(text)
 		case st.back:
@@ -367,12 +407,12 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.reloadOverlay(o, func() { a.host.SelectOverlay(context.Background(), o, idx) })
 		case verb == "":
 		default:
-			a.closeOverlayByID(o.ID)
 			if o.OnSelect != nil {
 				a.background(func() { a.host.SelectOverlay(context.Background(), o, idx) })
 			} else {
 				a.runOverlayRow(o, idx)
 			}
+			a.closeOverlayByID(o.ID)
 		}
 	case "esc":
 		if st.back {
@@ -410,8 +450,8 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 	switch key {
 	case "enter":
 		o, value := st.o, in.text
-		a.closeOverlayByID(o.ID)
 		a.background(func() { a.host.SubmitOverlayInput(context.Background(), o, value) })
+		a.closeOverlayByID(o.ID)
 	case "esc":
 		a.cancelOverlay(st.o)
 	default:
@@ -425,11 +465,11 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 // cancelOverlay closes o and runs its on_close. The overlay's Lua
 // callbacks run on the background worker: the key loop never waits on Lua.
 func (a *App) cancelOverlay(o hostapi.Overlay) {
-	a.closeOverlayByID(o.ID)
-	a.bump()
 	if o.OnClose != nil {
 		a.background(func() { a.host.CancelOverlay(context.Background(), o) })
 	}
+	a.closeOverlayByID(o.ID)
+	a.bump()
 }
 
 // rowRun is the command a row runs: honored only for builtin and user
@@ -554,7 +594,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				enterCopies = verb == "copy"
 			}
 			m, _ := st.o.Items[st.visible[st.selected]].(map[string]any)
-			if st.o.Reload != nil && (st.o.OnSelect != nil || rowRun(st.o, m) != "") {
+			if st.o.Reload != nil && itemVerb(m) == "" && (st.o.OnSelect != nil || rowRun(st.o, m) != "") {
 				hints = append(hints, hintPair{"space", "toggle"})
 			}
 			for _, k := range st.o.Keys {
@@ -585,9 +625,12 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 // fieldLine is a "key: value" line of a detail body.
 var fieldLine = regexp.MustCompile(`^([a-z][a-z -]{0,14}): (.*)$`)
 
+// statusHL colors the status words every screen shares.
+var statusHL = map[string]string{"starting": "Host:Warn", "ready": "Host:Ok", "failed": "Host:Danger", "stopped": "Host:Hint", "off": "Host:Hint"}
+
 // fieldRows wraps a plain body, setting its "key: value" lines as a table:
 // dim keys in one column, each value wrapped beside its key, an error's in
-// the danger color.
+// the danger color and a status word in its own.
 func fieldRows(body string, w int) [][]hostapi.Segment {
 	lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
 	kw := 0
@@ -604,11 +647,11 @@ func fieldRows(body string, w int) [][]hostapi.Segment {
 			continue
 		}
 		hl := ""
-		switch {
-		case m[1] == "error", l == "status: failed":
+		switch m[1] {
+		case "error":
 			hl = "Host:Danger"
-		case l == "status: ready":
-			hl = "Host:Ok"
+		case "status":
+			hl = statusHL[m[2]]
 		}
 		for i, r := range hostapi.WrapSegs([]hostapi.Segment{{Text: m[2], HL: hl}}, w-kw) {
 			key := ""

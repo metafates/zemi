@@ -1202,11 +1202,18 @@ provenance string.
   an item's `copy` makes enter copy that text and keep the list open,
   and the toggle-list `reload` `/skills` uses: a function returning the
   items, run with `on_select` on the UI worker after enter or space while
-  the list stays open); Go still draws the box, the origin badge, the
-  filter and the hints, where a list's own `keys` are named. A detail view's rows are actions
+  the list stays open, and again when an overlay stacked on it closes, so
+  a picker opened from it shows its pick at once); Go still draws the box, the origin badge, the
+  filter and the hints, where a list's own `keys` are named. Opening the id
+  of an open overlay replaces it in place, keeping selection and filter, when
+  the opener may close it (user, builtin or its own origin). A detail view's rows are actions
   (`fill`, `run`, or an `id` handed to the list's `on_action`), so they draw as
   the prompts' buttons ("[r] Read it"), keyed by their `hotkey` or their
-  position.
+  position. A Go-built row may name its own enter verb (`verb`, "open" on a
+  row that opens another screen): the hint says it, and space, which toggles
+  a toggle list's rows, passes it by. A detail body's `status:` line colors
+  the status words every screen shares: `starting`, `ready`, `failed`,
+  `stopped` and `off`.
 - **Layout tree** (`zemi.ui.layout.set/get/rects`, `internal/ui/layout.go`): Lua hands
   over plain data, Go validates it once and solves it every frame on the Update
   goroutine, so the screen never waits on the interpreter. Boxes (row or col, optional
@@ -1310,7 +1317,8 @@ provenance string.
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/workflow`, `/review`, `/mcp`,
-  `/lsp`, `/win`) and `/trust` (§5). Enter on a help command row fills the composer.
+  `/lsp`, `/win`) and `/trust` (§5). Enter on a help command row runs it, or
+  fills the composer when the command needs an argument.
   Under `-p` a command that opens a screen fails with "/<name> needs the TUI".
   The menus share one list: a row that only a closer look should act on
   (an error, a server, a skill, a workflow, a rewind) opens a detail view
