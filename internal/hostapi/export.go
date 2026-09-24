@@ -78,9 +78,8 @@ func (h *Host) CopyReply(args string) error {
 // reply; each row runs a /copy form, and 1-9 pick a block at once.
 func copyPicker(blocks []codeBlock) Overlay {
 	var items []any
-	var rows [][]Segment
 	for i, b := range blocks {
-		item := map[string]any{"run": fmt.Sprintf("copy code %d", i+1)}
+		item := map[string]any{"text": fmt.Sprintf("%d  %s", i+1, cmp.Or(b.lang, "text")), "run": fmt.Sprintf("copy code %d", i+1)}
 		if i < 9 {
 			item["hotkey"] = strconv.Itoa(i + 1)
 		}
@@ -88,26 +87,20 @@ func copyPicker(blocks []codeBlock) Overlay {
 		if b.text != "" && !strings.HasSuffix(b.text, "\n") {
 			n++
 		}
-		lines := fmt.Sprintf(" · %d lines · ", n)
-		if n == 1 {
-			lines = " · 1 line · "
-		}
-		first := ""
+		item["desc"] = fmt.Sprintf("%d %s", n, plural(n, "line", "lines"))
 		for l := range strings.Lines(b.text) {
-			if first = strings.TrimSpace(l); first != "" {
+			if first := strings.TrimSpace(l); first != "" {
+				item["desc"] = item["desc"].(string) + " · " + first
 				break
 			}
 		}
 		items = append(items, item)
-		rows = append(rows, []Segment{{Text: strconv.Itoa(i + 1), HL: "Host:HintKey"}, {Text: "  " + cmp.Or(b.lang, "text")}, {Text: lines, HL: "Comment"}, {Text: first}})
 	}
 	if len(blocks) > 1 {
 		items = append(items, map[string]any{"text": "All code blocks", "run": "copy code"})
-		rows = append(rows, nil)
 	}
 	items = append(items, map[string]any{"text": "Whole reply", "run": "copy reply"})
-	rows = append(rows, nil)
-	return Overlay{ID: "copy", Title: "Copy", Origin: lua.OriginBuiltin, Items: items, ItemText: rows, Verb: "copy"}
+	return Overlay{ID: "copy", Title: "Copy", Origin: lua.OriginBuiltin, Items: items, Verb: "copy"}
 }
 
 type codeBlock struct{ lang, text string }
@@ -297,7 +290,7 @@ func (h *Host) OpenUsage() error {
 		if len(rows) > 0 {
 			rows = append(rows, []Segment{})
 		}
-		rows = append(rows, []Segment{text("Title", title), text("Comment", note)})
+		rows = append(rows, []Segment{text("Host:Title", title), text("Host:Hint", note)})
 	}
 	// bar is a meter of w cells, part/whole of it filled
 	bar := func(part, whole int64, w int, hl string) []Segment {
@@ -305,19 +298,19 @@ func (h *Host) OpenUsage() error {
 		if whole > 0 {
 			n = int(min(max(part*int64(w)/whole, min(part, 1)), int64(w))) // anything at all gets a cell
 		}
-		return []Segment{{Text: strings.Repeat("█", n), HL: hl, NoCopy: true}, {Text: strings.Repeat("░", w-n) + "  ", HL: "Rule", NoCopy: true}}
+		return []Segment{{Text: strings.Repeat("█", n), HL: hl, NoCopy: true}, {Text: strings.Repeat("░", w-n) + "  ", HL: "Host:Rule", NoCopy: true}}
 	}
 	if s.CtxWindow > 0 && s.LastIn > 0 { // a resumed session has no estimate before its first turn
 		pct := s.LastIn * 100 / s.CtxWindow
-		hl := "Accent"
+		hl := "Host:HintKey"
 		if pct >= 90 {
-			hl = "StatusUsageErr"
+			hl = "Host:Danger"
 		} else if pct >= 70 {
-			hl = "StatusUsageWarn"
+			hl = "Host:Warn"
 		}
 		section("Context", "")
 		rows = append(rows, append(append([]Segment{text("", "  ")}, bar(s.LastIn, s.CtxWindow, 32, hl)...),
-			text("Normal", fmtTok(s.LastIn)), text("Comment", fmt.Sprintf(" of %s · %d%%", fmtTok(s.CtxWindow), pct))))
+			text("Host:Value", fmtTok(s.LastIn)), text("Host:Hint", fmt.Sprintf(" of %s · %d%%", fmtTok(s.CtxWindow), pct))))
 	}
 	if parts, total := h.promptBreakdown(); total > 0 {
 		section("Prompt", "  "+fmtTok(total)+" sent with every request")
@@ -331,9 +324,9 @@ func (h *Host) OpenUsage() error {
 			if p.chars == 0 {
 				continue
 			}
-			row := append([]Segment{text("Normal", fmt.Sprintf("  %-14s", p.name))}, bar(int64(p.chars), int64(sum), 16, "Accent")...)
-			rows = append(rows, append(row, text("Normal", fmt.Sprintf("%6s", fmtTok(int64(p.chars/4)))),
-				text("Comment", fmt.Sprintf("  %3d%%", p.chars*100/sum))))
+			row := append([]Segment{text("Host:Value", fmt.Sprintf("  %-14s", p.name))}, bar(int64(p.chars), int64(sum), 16, "Host:HintKey")...)
+			rows = append(rows, append(row, text("Host:Value", fmt.Sprintf("%6s", fmtTok(int64(p.chars/4)))),
+				text("Host:Hint", fmt.Sprintf("  %3d%%", p.chars*100/sum))))
 		}
 	}
 	type window struct {
@@ -372,19 +365,19 @@ func (h *Host) OpenUsage() error {
 		if w.u.Sessions > 0 {
 			count = fmt.Sprint(w.u.Sessions)
 		}
-		row := []Segment{text("Normal", fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTok(w.u.Prompt), fmtTok(w.u.Completion))), text("Comment", fmt.Sprintf("%10s", count))}
+		row := []Segment{text("Host:Value", fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTok(w.u.Prompt), fmtTok(w.u.Completion))), text("Host:Hint", fmt.Sprintf("%10s", count))}
 		if priced {
-			row = append(row, text("Normal", fmt.Sprintf("%10s", fmt.Sprintf("$%.2f", w.u.Cost))))
+			row = append(row, text("Host:Value", fmt.Sprintf("%10s", fmt.Sprintf("$%.2f", w.u.Cost))))
 		}
 		// a broken cache prefix (a per-turn system section, a model switch) has
 		// no other symptom than the bill
 		if i == 0 && s.CacheBilled > 0 { // the live session
-			row = append(row, text("Comment", fmt.Sprintf("   %d%% cached", s.CacheRead*100/s.CacheBilled)))
+			row = append(row, text("Host:Hint", fmt.Sprintf("   %d%% cached", s.CacheRead*100/s.CacheBilled)))
 		}
 		rows = append(rows, row)
 	}
 	if id != "" && !priced {
-		rows = append(rows, []Segment{}, []Segment{text("Comment", "No cost: "+id+" has no prices. Set cost_per_1m_in and cost_per_1m_out on the model.")})
+		rows = append(rows, []Segment{}, []Segment{text("Host:Hint", "No cost: "+id+" has no prices. Set cost_per_1m_in and cost_per_1m_out on the model.")})
 	}
 	var plain strings.Builder
 	for _, r := range rows {
