@@ -36,10 +36,12 @@ kbd { color: var(--accent); }
 .snail .shell { stroke: var(--accent); }
 .snail .head { stroke: var(--fg); }
 h1 { font-size: 1.5em; font-weight: 600; margin: 0 0 .3em; line-height: 1.2; }
-.tag { margin-bottom: 2.4rem; }
+.tag { margin-bottom: .6em; }
+.repo { margin-bottom: 2.4rem; }
+.repo a { color: var(--accent); }
 
 /* its eyes: one pair per state, the only thing that changes while it works */
-.eyes { display: flex; flex-wrap: wrap; gap: .6em 3ch; margin: 0 0 2.8rem; list-style: none; padding: 0; }
+.eyes { display: flex; flex-wrap: wrap; gap: .6em 3ch; margin: 0 0 2.4rem; list-style: none; padding: 0; }
 .eyes li { display: flex; flex-direction: column; }
 .eyes .m { font-weight: 600; }
 .eyes .l { color: var(--dim); }
@@ -76,6 +78,7 @@ footer { margin-top: 3rem; color: var(--dim); }
 
 <h1>zemi</h1>
 <p class="tag">A coding agent for the terminal. It works inside an OS sandbox and asks only about what the sandbox cannot confine.</p>
+<p class="repo"><a href="https://github.com/metafates/zemi">github.com/metafates/zemi</a></p>
 
 <ul class="eyes" aria-label="the snail's eyes, one pair per state">
   <li><span class="m"><span class="accent">@</span>··</span><span class="l">idle</span></li>
@@ -90,7 +93,7 @@ footer { margin-top: 3rem; color: var(--dim); }
 <section class="sec" style="margin-top:0">
 <h2>install</h2>
 <div class="cmd"><pre><span class="dim">$ </span>go install github.com/metafates/zemi@latest
-<span class="dim">$ </span>export ANTHROPIC_API_KEY=...   <span class="dim"># or OPENAI_, GEMINI_, DEEPSEEK_...</span>
+<span class="dim">$ </span>export ANTHROPIC_API_KEY=...   <span class="dim"># or OPENAI_API_KEY, ...</span>
 <span class="dim">$ </span>zemi</pre></div>
 <p>Go 1.27. Local models and gateways go in <code>~/.config/zemi/init.lua</code>.</p>
 </section>
