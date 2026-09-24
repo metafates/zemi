@@ -115,6 +115,7 @@ type Overlay struct {
 	Empty    string
 	Selected int
 	Verb     string
+	Refresh  bool // only replaces the open overlay with this ID, so one the user closed stays closed
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text.

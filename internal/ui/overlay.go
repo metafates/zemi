@@ -132,6 +132,9 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		a.replaceOverlay(i, o)
 		return
 	}
+	if o.Refresh {
+		return
+	}
 	a.overlays = append(a.overlays, a.overlayState(o))
 }
 

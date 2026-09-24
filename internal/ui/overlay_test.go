@@ -411,6 +411,12 @@ func TestOverlayNavigation(t *testing.T) {
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginPlugin, Items: []any{"e"}})
 				return map[bool]string{false: "a plugin replaced a builtin list"}[len(a.overlays) == 2 && a.overlays[0].texts[0] == "c"]
 			}},
+		{"a refresh replaces an open id and opens nothing once it closed",
+			hostapi.Overlay{ID: "p", Items: []any{"a"}}, []string{"esc"},
+			func(a *App) string {
+				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Items: []any{"b"}, Refresh: true})
+				return map[bool]string{false: "a closed list came back"}[len(a.overlays) == 0]
+			}},
 		{"closing the parent drops its detail view",
 			hostapi.Overlay{ID: "p", Items: []any{detail()}}, []string{"enter"},
 			func(a *App) string {

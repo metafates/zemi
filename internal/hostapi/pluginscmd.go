@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -51,12 +52,12 @@ func (h *Host) pluginsCommand(args []string) error {
 					return
 				}
 			}
-			h.openPlugins(ui)
+			h.openPlugins(ui, true)
 		})
 	}
 	switch {
 	case len(args) == 0 || verb == "list" && len(args) == 1:
-		h.GoSafe("plugins", func() { h.openPlugins(ui) })
+		h.GoSafe("plugins", func() { h.openPlugins(ui, false) })
 	case verb == "toggle" && len(args) == 2:
 		p, err := h.pluginNamed(args[1])
 		if err != nil {
@@ -68,9 +69,14 @@ func (h *Host) pluginsCommand(args []string) error {
 		if err != nil {
 			return err
 		}
+		// one that ships only skills or commands has no init.lua to create
+		path := filepath.Join(p.Dir, "init.lua")
+		if _, err := os.Stat(path); err != nil {
+			path = p.Dir
+		}
 		// the editor blocks and a Go command runs on the key loop
 		h.GoSafe("plugins open", func() {
-			if err := ui.EditFile(context.Background(), EditRequest{Path: filepath.Join(p.Dir, "init.lua"), Title: "the plugin"}); err != nil {
+			if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: "the plugin"}); err != nil {
 				h.Notify("error", "Could not open the plugin", err.Error())
 			}
 		})
@@ -134,10 +140,11 @@ func (h *Host) pluginNamed(name string) (plugins.Plugin, error) {
 	return plugins.Plugin{}, Usagef("no plugin is named %q", name)
 }
 
-// openPlugins opens /plugins, or replaces the open list in place. It reads
-// git, so it never runs on the key loop.
-func (h *Host) openPlugins(ui UIHooks) {
-	ui.OpenOverlay(Overlay{ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Fields: true, Items: h.pluginItems(),
+// openPlugins opens /plugins, or replaces the open list in place; a refresh
+// after a slow action opens nothing once the user closed it. It reads git, so
+// it never runs on the key loop.
+func (h *Host) openPlugins(ui UIHooks, refresh bool) {
+	ui.OpenOverlay(Overlay{ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.pluginItems(),
 		Reload: func() ([]any, [][]Segment) { return h.pluginItems(), nil }})
 }
 

@@ -130,3 +130,29 @@ func TestPluginsCommand(t *testing.T) {
 		}
 	}
 }
+
+// TestPluginsOpen: Open in the editor opens init.lua, or the directory of a
+// plugin that has none.
+func TestPluginsOpen(t *testing.T) {
+	dirs := config.Dirs{ProjectDir: t.TempDir(), DataHome: t.TempDir()}
+	for _, name := range []string{"lua", "skills"} {
+		os.MkdirAll(filepath.Join(dirs.PluginsRoot(), "local", name), 0o755)
+	}
+	os.WriteFile(filepath.Join(dirs.PluginsRoot(), "local", "lua", "init.lua"), nil, 0o644)
+	log := logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	h := NewHost(r, log, config.NewStore(), dirs)
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
+		t.Fatal(err)
+	}
+	edited := make(chan string, 1)
+	h.SetUIHooks(&fakeUI{edit: func(path string) { edited <- path }})
+	for name, want := range map[string]string{"lua": "lua/init.lua", "skills": "skills"} {
+		if err := h.RunCommand(t.Context(), "plugins", "open "+name); err != nil {
+			t.Fatal(err)
+		}
+		if got := <-edited; got != filepath.Join(dirs.PluginsRoot(), "local", want) {
+			t.Errorf("%s opened %s", name, got)
+		}
+	}
+}
