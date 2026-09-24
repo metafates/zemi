@@ -1322,8 +1322,9 @@ provenance string.
   arguments, `s` sign in or stop, `e` enable, `d` disable, `o` open, `u`
   update or use now, `c` change, and `x`, in the danger color, for what
   cannot be undone (delete, or `/mcp`'s sign out, which deletes the saved
-  token). A screen that manages things (`/skills`, `/mcp`, `/lsp`,
-  `/permissions`, `/plugins`) is a toggle list, so an action returns to it rebuilt;
+  token); `/health`'s one action per check takes its label's initial. A
+  screen that manages things (`/skills`, `/mcp`, `/lsp`, `/permissions`,
+  `/plugins`) is a toggle list, so an action returns to it rebuilt;
   `/sessions`, `/agents` and `/workflows` close on an action instead: resume,
   a run and an agent's transcript move to another screen, which a rebuilt
   list would cover.
@@ -1423,7 +1424,7 @@ provenance string.
   `/profile [name]` (the agent profile the next send runs as; a picker without a name;
   `ctrl+t`/`ctrl+shift+t` cycle the agent; `ctrl+y` flips to yolo and back),
   `/permissions` (the mode and the rules in force; a session rule an "always"
-  answer wrote can be removed there),
+  answer wrote can be deleted there, from its detail view),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter offers Resume and Delete), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/btw <question>` (a side question

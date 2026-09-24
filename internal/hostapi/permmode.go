@@ -153,7 +153,7 @@ func (h *Host) permItems() []any {
 	mode := h.permModeDef()
 	items := []any{map[string]any{
 		"text": mode.Name, "desc": mode.Description,
-		"section": "Mode", "actions": []any{map[string]any{"text": "Change", "run": "mode"}},
+		"section": "Mode", "actions": []any{map[string]any{"text": "Change", "hotkey": "c", "run": "mode"}},
 	}}
 	rules := h.Perm.Rules()
 	slices.SortStableFunc(rules, func(a, b perm.Rule) int {
@@ -182,9 +182,9 @@ func (h *Host) permItems() []any {
 			}
 			answers[id] = item
 			forget := "permissions forget " + id
-			item["key"], item["run"] = "session", forget
-			item["actions"] = []any{map[string]any{"text": "Remove", "hotkey": "x", "run": forget}}
-			item["detail"] = "an always answer this session; removing it makes the next call ask again"
+			item["key"] = "session"
+			item["actions"] = []any{map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": forget}}
+			item["detail"] = "an always answer this session; deleting it makes the next call ask again"
 		} else {
 			switch r.Source {
 			case "":

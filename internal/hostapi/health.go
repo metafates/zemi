@@ -309,6 +309,7 @@ func (h *Host) goHealthRows() []healthCheck {
 			level, detail = "warn", fmt.Sprintf("%s · %d failed", detail, failed)
 		}
 		add(level, "plugins", detail)
+		out[len(out)-1].run = "plugins"
 	}
 
 	h.errs.mu.Lock()
@@ -444,8 +445,9 @@ func (h *Host) WaitMCP(ctx context.Context) {
 	}
 }
 
-// healthActions labels the command a check's detail view runs.
-var healthActions = map[string]string{"errors": "Show errors", "trust": "Change trust", "mcp": "Open MCP servers", "memory": "Review memories"}
+// healthActions labels the command a check's detail view runs; its initial
+// is the key.
+var healthActions = map[string]string{"errors": "Show errors", "trust": "Change trust", "mcp": "Open MCP servers", "memory": "Review memories", "plugins": "Open plugins"}
 
 // OpenHealth shows the checks in the list overlay.
 func (h *Host) OpenHealth() error {
@@ -471,7 +473,8 @@ func (h *Host) healthItems() []any {
 			item["detail"] = c.detail
 		}
 		if c.run != "" {
-			item["actions"] = []any{map[string]any{"text": healthActions[c.run], "run": c.run}}
+			label := healthActions[c.run]
+			item["actions"] = []any{map[string]any{"text": label, "hotkey": strings.ToLower(label[:1]), "run": c.run}}
 		}
 		if c.level == "ok" {
 			ok = append(ok, item)

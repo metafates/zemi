@@ -374,7 +374,7 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 		t.Fatalf("open: %v %+v", err, ui.opened)
 	}
 	rows := fmt.Sprint(ui.opened[0].Items)
-	if strings.Count(rows, "text:tool.bash git push") != 1 || !strings.Contains(rows, "text:tool.bash git push *") || !strings.Contains(rows, "run:permissions forget tool.bash git push ") {
+	if strings.Count(rows, "text:tool.bash git push") != 1 || !strings.Contains(rows, "text:tool.bash git push *") || !strings.Contains(rows, "hl:Danger hotkey:x run:permissions forget tool.bash git push text:Delete") || !strings.Contains(rows, "key:session section:") {
 		t.Fatalf("the answer is not one row with a way back:\n%s", rows)
 	}
 	// each rule says where to edit it, under a section named like every other

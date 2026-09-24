@@ -73,7 +73,7 @@ A rule in init.lua is added again every start. `match` is an argument the patter
 
 Model tool names, for `tool.<name>` rules and the `tools` of a profile or agent: `bash`, `read`, `write`, `edit`, `glob`, `grep`, `fetch`, `web_search`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`, `memory`, `skill`, `diagnostics`, `lsp`, `agent`, `workflow`, `lua`, `mcp_<server>_<tool>` and tools added from Lua.
 
-At a prompt `y` allows once, `a` for the session (a command's program, with its subcommand for git, go, cargo and the like; a file's directory; a URL's host), `r` a file read anywhere in the repository, and `p` for this project: it appends the command to `<state>/projects/<hash>/permissions`, one command per line, editable by hand and read only while the project is trusted (a repository cannot ship one). A deleting program stays exact, and a shell, interpreter, `sudo`, `xargs` or `zemi` gets no always answer. `/permissions` lists the mode and every rule, and removes session ones.
+At a prompt `y` allows once, `a` for the session (a command's program, with its subcommand for git, go, cargo and the like; a file's directory; a URL's host), `r` a file read anywhere in the repository, and `p` for this project: it appends the command to `<state>/projects/<hash>/permissions`, one command per line, editable by hand and read only while the project is trusted (a repository cannot ship one). A deleting program stays exact, and a shell, interpreter, `sudo`, `xargs` or `zemi` gets no always answer. `/permissions` lists the mode and every rule, and deletes session ones.
 
 Modes: `permissions.mode`, `/mode` (a picker without a name), ctrl+y (yolo until pressed again), `--mode`.
 
