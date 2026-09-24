@@ -105,7 +105,7 @@ func TestPluginsStep(t *testing.T) {
 			},
 			user: `require("p").setup() print(pcall(require("p").tail, function(m) zemi.permission.mode.set(m) end))
 				print(pcall(function() return require("p.meta").setup end))`,
-			want: []string{"plugin|false\n", "plugin:p:via-setup\n", "plugin:p:via-keymap\n", "user|false", "mode: auto\n", "__index must be a Lua function of plugin code"},
+			want: []string{"plugin|false\n", "plugin:p:via-setup\n", "plugin:p:via-keymap\n", "user|false", "mode: auto\n", "__index must be a Lua function of this plugin's own code"},
 			not:  []string{"plugin:b:"},
 		},
 		{
@@ -127,6 +127,19 @@ func TestPluginsStep(t *testing.T) {
 			user: `require("b").setup()`,
 			want: []string{"cannot modify frozen plugin module b", "outside plugin a", "plugin|setup secret plugin nil\n"},
 			not:  []string{"stolen", "off ran"},
+		},
+		{
+			name: "plugin code user code reaches with no frame of its plugin runs as no other plugin and as no one",
+			plugins: map[string]string{
+				"local/b/init.lua":        `zemi.state.set("token", "secret")`,
+				"local/b/lua/b/init.lua":  `local M = {} function M:get(k) return zemi.state.get(k) end return M`,
+				"local/a/lua/a/init.lua":  `return setmetatable({}, { __index = require("b").get })`,
+				"local/a/lua/a/plain.lua": `return { get = require("shared").get }`,
+			},
+			cfg:  map[string]string{"lua/shared.lua": `return { get = function() zemi.state.set("via", 1) end }`},
+			user: `print("A1", pcall(function() return require("a").token end)) print("A2", pcall(require("a.plain").get))`,
+			want: []string{"user|A1 false", "__index must be a Lua function of this plugin's own code", "user|A2 false", "has no principal"},
+			not:  []string{"A1 true", "A1 secret", "via"},
 		},
 		{
 			name: "a plugin's skills, agents, commands and workflows load, a disabled plugin's do not, the user's win",

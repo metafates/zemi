@@ -525,9 +525,10 @@ Sandbox (what userland gets):
   transparent, and chunks compile with no tail calls, which would drop
   their caller's frame. A metamethod runs with no frame of the code that
   set it, so `setmetatable` (tables only) lets code below builtin install
-  only Lua functions of its own origin or lower as handlers, copied at
-  the call: a Go, builtin or user function behind `obj.setup`, `obj()` or
-  `==` would run as the user code that triggered it. NOTE: a Go function
+  only Lua functions of its own origin or lower as handlers, and plugin
+  code only its own plugin's, copied at the call: a Go, builtin, user or
+  other plugin's function behind `obj.setup`, `obj()` or `==` would run
+  as the code that triggered it. NOTE: a Go function
   handed out as a plain value still runs as its caller, `obj:method()`
   included; a view per requirer is the upgrade. So a plugin's `setup()`
   that user `init.lua` calls runs as that plugin, a user handler that a project's `zemi.event.emit` runs
@@ -535,7 +536,9 @@ Sandbox (what userland gets):
   file of the code making them. A plugin is named by its directory under
   `installed/` or `local/`: that name scopes its `zemi.state` keys
   (`plugin:<name>:<key>`), its permission principal (`plugin:<name>`) and
-  its overlay badge, and two plugins cannot replace each other's command,
+  its overlay badge (plugin code with no file of its plugin on the stack,
+  such as a user module a plugin required, called from user code, has no
+  name, and the calls that need one raise), and two plugins cannot replace each other's command,
   keymap, widget, theme, tool, completion source or health row (the
   first by name keeps it; within one plugin the last writer wins).
 - Boundary caps: values crossing the Lua <-> Go marshal are capped (string

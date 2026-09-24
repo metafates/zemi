@@ -614,9 +614,9 @@ func TestStoreBackedState(t *testing.T) {
 			assert(zemi.state.get("note") == "p", "project roundtrip failed")
 			local k = zemi.state.keys()
 			assert(#k == 1 and k[1] == "note", "project keys: " .. table.concat(k, ","))`},
-		{"plugin own space", lua.OriginPlugin, `
-			assert(zemi.state.get("note") == nil, "plugin read another origin's key")
-			assert(zemi.state.del("note") == false, "plugin deleted another origin's key")`},
+		{"plugin code outside a plugin file", lua.OriginPlugin, `
+			assert(not pcall(zemi.state.get, "note"), "a nameless plugin read a state space")
+			assert(not pcall(zemi.state.del, "note"), "a nameless plugin deleted from a state space")`},
 		{"user key intact", lua.OriginUser, `
 			assert(zemi.state.get("note").text == "hi", "user key clobbered")
 			assert(zemi.state.get("project:note") == "p", "user cannot see project state")`},

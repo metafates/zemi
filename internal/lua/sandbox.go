@@ -248,28 +248,34 @@ func (s *Sandbox) setMetatable(L *glua.LState) int {
 	return 1
 }
 
-// copyHandlers copies mt's events, refusing a handler that would not run as o.
+// copyHandlers copies mt's events, refusing a handler that would not run as o
+// or, for plugin code, as the setter's own plugin.
 func copyHandlers(L *glua.LState, mt *glua.LTable, o Origin) *glua.LTable {
 	cp := L.NewTable()
 	bad := ""
+	g := genOf(L)
+	own := ""
+	if g != nil {
+		own = g.pluginRoot(g.rt.CurrentPath(L))
+	}
 	mt.ForEach(func(k, v glua.LValue) {
 		event, ok := k.(glua.LString)
 		if !ok || !strings.HasPrefix(string(event), "__") {
 			return
 		}
 		if fn, ok := v.(*glua.LFunction); ok {
-			fo := OriginHost
+			fo, path := OriginHost, ""
 			if !fn.IsG {
-				fo, _ = splitChunkName(fn.Proto.SourceName)
+				fo, path = splitChunkName(fn.Proto.SourceName)
 			}
-			if fo.Rank() == 0 || fo.Rank() > o.Rank() {
+			if fo.Rank() == 0 || fo.Rank() > o.Rank() || g != nil && g.pluginRoot(path) != own {
 				bad = string(event)
 			}
 		}
 		cp.RawSet(k, v)
 	})
 	if bad != "" {
-		L.RaiseError("setmetatable: %s must be a Lua function of %s code, not a Go, builtin or more trusted one, which would run as the code that triggers it", bad, o)
+		L.RaiseError("setmetatable: %s must be a Lua function of this %s's own code, not a Go, builtin, more trusted or other plugin's one, which would run as the code that triggers it", bad, o)
 	}
 	lock := mt.RawGetString("__metatable")
 	cp.RawSetString(handlersKey, glua.LBool(lock == glua.LNil))

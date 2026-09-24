@@ -29,7 +29,7 @@ which only the user's init.lua may add; a plugin's line carries `principal = "pl
 so the rule allows that plugin alone.
 No permission mode allows such a call, yolo included.
 In plugin and project code, `setmetatable` takes only that code's own Lua functions as
-handlers (a `zemi.*` member or a builtin helper raises) and reads them when it runs, so set
+handlers (a `zemi.*` member, a builtin helper or another plugin's function raises) and reads them when it runs, so set
 every handler before the call.
 zemi-customize lists what a plugin cannot do.
 

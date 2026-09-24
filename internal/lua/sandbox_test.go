@@ -131,10 +131,10 @@ func TestSandboxSetmetatable(t *testing.T) {
 		origin    Origin
 		src, want string // want "" runs clean
 	}{
-		{OriginPlugin, `setmetatable({}, { __index = tostring })`, "__index must be a Lua function of plugin code"},
+		{OriginPlugin, `setmetatable({}, { __index = tostring })`, "__index must be a Lua function of this plugin's own code"},
 		{OriginPlugin, `setmetatable({}, { __call = builtin })`, "__call must be"},
 		{OriginPlugin, `setmetatable({}, { __newindex = user })`, "__newindex must be"},
-		{OriginProject, `setmetatable({}, { __eq = tostring })`, "__eq must be a Lua function of project code"},
+		{OriginProject, `setmetatable({}, { __eq = tostring })`, "__eq must be a Lua function of this project's own code"},
 		{OriginPlugin, `setmetatable({}, { __tostring = builtin })`, "__tostring must be"},
 		{OriginPlugin, `setmetatable({}, { __gc = tostring })`, "__gc must be"},
 		{OriginPlugin, `setmetatable(1, {})`, "table expected"},

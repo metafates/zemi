@@ -436,7 +436,7 @@ and every Lua function on the stack, resumers included, builtin ones transparent
 `zemi.event.emit` runs inline runs as the project; chunks compile with no tail calls, which
 would drop a frame. A metamethod leaves no frame of the code that set it, so the sandbox's
 `setmetatable` (tables only) lets code below builtin install only its own origin's Lua
-functions as handlers, copied at the call; a Go function handed out as a plain value still runs
+functions as handlers, and a plugin only its own plugin's, copied at the call; a Go function handed out as a plain value still runs
 as its caller (NOTE in the code). Plugins (hostapi/plugins.go, `PluginsStep`): `plugins.Scan` lists
 `installed/` (clones) and `local/` (developed in place) minus `disabled`, sorted by name; a local
 plugin named like an installed one or a symlinked dir does not load, and a gone plugin's
@@ -444,8 +444,8 @@ plugin named like an installed one or a symlinked dir does not load, and a gone 
 gives the plugins' skills, agents, markdown commands and workflows, loaded after the user's and
 the builtin ones, init.lua failed or not; a name two plugins ship goes to the first by name, and
 `/errors` names both. `Host.PluginOf` names a plugin by its directory: its state keys are
-`plugin:<name>:<key>`, its Lua permission principal and its overlay badge `plugin:<name>`,
-and a call from plugin a into plugin b's function runs as a. Registries enforce: cross-origin
+`plugin:<name>:<key>`, its Lua permission principal and its overlay badge `plugin:<name>`
+(`Host.principal` raises for plugin code with no file of its plugin on the stack), and a call from plugin a into plugin b's function runs as a. Registries enforce: cross-origin
 collision is **refused** with the higher-trust origin winning; within one origin it is
 last-writer-wins, except that one plugin cannot replace another's command, keymap,
 widget, theme, tool, completion source or health row (`pluginClash`). Project origin additionally cannot register providers or builtin
