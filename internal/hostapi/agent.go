@@ -2375,13 +2375,25 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError(`zemi.permission.rule.add: scope must be "session"`)
 		}
 		// Origins (DESIGN §5, §6.1): allow rules widen, so they come from
-		// user config only; every other origin may only add deny/ask rules.
+		// user config only; every other origin may only add deny/ask rules,
+		// which match every principal, so none can aim at another plugin.
 		if origin := h.RT.CurrentOrigin(L); origin != lua.OriginUser {
 			if r.Decision == perm.Allow {
 				L.RaiseError("zemi.permission.rule.add: allow rules may only come from user config")
 				return 0
 			}
+			if rawString(spec, "principal") != "" {
+				L.RaiseError("zemi.permission.rule.add: only user config scopes a rule to a principal")
+				return 0
+			}
 			r.Source = string(origin)
+		}
+		if p := rawString(spec, "principal"); p != "" {
+			if name, ok := strings.CutPrefix(p, "plugin:"); !ok || name == "" {
+				L.RaiseError(`zemi.permission.rule.add: principal must be "plugin:<name>", got %q`, p)
+				return 0
+			}
+			r.Principal = p
 		}
 		if err := validateRule(&r, rawString(spec, "match"), rawString(spec, "not_match_example")); err != nil {
 			L.RaiseError("zemi.permission.rule.add: %v", err)
@@ -2401,6 +2413,9 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			row.RawSetString("pattern", glua.LString(r.Pattern))
 			row.RawSetString("decision", glua.LString(r.Decision))
 			row.RawSetString("not_match", glua.LString(r.NotMatch))
+			if r.Principal != "" {
+				row.RawSetString("principal", glua.LString(r.Principal))
+			}
 			out.Append(row)
 		}
 		L.Push(out)
