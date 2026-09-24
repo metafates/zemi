@@ -35,14 +35,15 @@ zemi-customize lists what a plugin cannot do.
 
 ## Modules
 
-`require("a.b")` loads `lua/a/b.lua` (or `lua/a/b/init.lua`) from the config dir or a
-loaded plugin's directory (`<name>/lua/`); project code also searches `.agents/lua/`
-first. `require("./x")` and
-`require("../x")` resolve next to the calling file and must stay in the same origin's
-tree. Builtin modules load once, and plugin and project code get them read-only;
-any other file loads once, except that code below the file's origin gets its own instance
-(both names share an instance). `/reload`
-loads fresh.
+`require("a.b")` loads `lua/a/b.lua` (or `lua/a/b/init.lua`) from the config dir, else
+from the plugin named `a` (`a/lua/a/`), which its own code searches first; project code
+also searches `.agents/lua/` first. A plugin answers only names under its own, so it cannot
+shadow another's modules. `require("./x")` and `require("../x")` resolve next to the calling
+file and must stay in the same origin's tree, and plugin code in its own plugin. Each file
+loads once (both names share an instance), except that code below the file's origin gets its
+own instance, one per plugin. Builtin modules for plugin and project code, and one plugin's
+modules for another plugin, come read-only, so keep a secret in a local, not in the module
+table. `/reload` loads fresh.
 
 ## Rules that keep zemi responsive
 

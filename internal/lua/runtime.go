@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -537,22 +538,30 @@ func (r *Runtime) requireModule(gen *Generation, L *glua.LState, name string) (g
 	})
 }
 
-// loadModule runs a module once per generation and trust class, keyed by
-// its resolved file, so "app.util" and "./util" naming one file share one
+// loadModule runs a module once per generation and requirer, keyed by its
+// resolved file, so "app.util" and "./util" naming one file share one
 // instance. A requirer below the file's origin gets its own instance run
-// under the requirer's origin: a shared table would let lower code plant
-// functions that higher-origin callbacks later call. Builtin modules are
-// the exception: they keep no caller-supplied functions, and rerunning
-// zemi.defaultui would re-register the UI and hit the cross-origin refusal,
-// so lower origins share the builtin instance through a read-only view.
+// under the requirer's origin, one per plugin: a shared table would let
+// lower code plant functions that higher-origin callbacks, or another
+// plugin, later call. Builtin modules for lower origins, and one plugin's
+// modules for another plugin, are the exception: the requirer shares the
+// owner's instance through a read-only view, so it can neither patch it
+// nor rerun it (rerunning zemi.defaultui would re-register the UI).
 func (r *Runtime) loadModule(gen *Generation, L *glua.LState, key, name string, origin Origin, read func() ([]byte, string, error)) (glua.LValue, error) {
 	req := r.CurrentOrigin(L)
 	lower := req != OriginHost && req.Rank() < origin.Rank()
-	if lower && origin != OriginBuiltin {
+	view := lower && origin == OriginBuiltin
+	switch {
+	case lower && !view:
+		if req == OriginPlugin {
+			key += "|" + r.requirerRoot(gen, L)
+		}
 		origin = req
+	case req == OriginPlugin && origin == OriginPlugin:
+		view = gen.pluginRoot(key) != r.requirerRoot(gen, L)
 	}
 	key += "|" + string(origin)
-	if !lower || origin != OriginBuiltin {
+	if !view {
 		return r.moduleInstance(gen, key, name, origin, read)
 	}
 	if cached, ok := gen.modules[key+"|view"]; ok {
@@ -560,7 +569,7 @@ func (r *Runtime) loadModule(gen *Generation, L *glua.LState, key, name string, 
 	}
 	mod, err := r.moduleInstance(gen, key, name, origin, read)
 	if tb, ok := mod.(*glua.LTable); ok && err == nil {
-		mod = gen.SB.readOnlyView(tb, "builtin module "+name)
+		mod = gen.SB.readOnlyView(tb, string(origin)+" module "+name)
 		gen.modules[key+"|view"] = mod
 	}
 	return mod, err
@@ -601,10 +610,13 @@ func (r *Runtime) readEmbedded(name string) ([]byte, string, error) {
 
 // findModule resolves a module name to a symlink-resolved file. Relative
 // names ("./util", "../lib/x") resolve against the requiring file and must
-// stay inside its origin's tree, so a path cannot reach code of another
-// trust class; dotted names search <root>/lua over the runtimepath.
+// stay inside its origin's tree; dotted names search <root>/lua over the
+// runtimepath. A plugin's file resolves only from its own enabled plugin,
+// so neither ".." nor a symlink reaches another plugin's code or a
+// disabled one's.
 func (r *Runtime) findModule(gen *Generation, L *glua.LState, name string) (string, Origin, error) {
-	var bases []string
+	type cand struct{ base, root string } // root: the plugin dir the file must be in, or ""
+	var cands []cand
 	var from string
 	relative := strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../")
 	if relative {
@@ -612,15 +624,15 @@ func (r *Runtime) findModule(gen *Generation, L *glua.LState, name string) (stri
 		if !filepath.IsAbs(from) {
 			return "", "", fmt.Errorf("relative require %q: the caller is not a file", name)
 		}
-		bases = []string{filepath.Join(filepath.Dir(from), filepath.FromSlash(strings.TrimSuffix(name, ".lua")))}
+		cands = []cand{{filepath.Join(filepath.Dir(from), filepath.FromSlash(strings.TrimSuffix(name, ".lua"))), gen.pluginRoot(from)}}
 	} else {
 		rel := filepath.FromSlash(strings.ReplaceAll(name, ".", "/"))
-		for _, root := range r.runtimepath(gen, L) {
-			bases = append(bases, filepath.Join(root, "lua", rel))
+		for _, root := range r.runtimepath(gen, L, rel) {
+			cands = append(cands, cand{filepath.Join(root, "lua", rel), gen.pluginRoot(root)})
 		}
 	}
-	for _, base := range bases {
-		for _, p := range []string{base + ".lua", filepath.Join(base, "init.lua")} {
+	for _, c := range cands {
+		for _, p := range []string{c.base + ".lua", filepath.Join(c.base, "init.lua")} {
 			resolved, err := filepath.EvalSymlinks(p)
 			if err != nil {
 				continue
@@ -631,6 +643,12 @@ func (r *Runtime) findModule(gen *Generation, L *glua.LState, name string) (stri
 				return "", "", fmt.Errorf("module %q at %s is outside known origins", name, resolved)
 			case relative && origin != r.paths.Classify(from):
 				return "", "", fmt.Errorf("relative require %q reaches %s, outside the %s tree", name, resolved, r.paths.Classify(from))
+			case gen.pluginRoot(resolved) != c.root || origin == OriginPlugin && c.root == "":
+				where := "the " + string(r.paths.Classify(c.base)) + " tree"
+				if c.root != "" {
+					where = "plugin " + filepath.Base(c.root)
+				}
+				return "", "", fmt.Errorf("module %q at %s is outside %s", name, resolved, where)
 			}
 			return resolved, origin, nil
 		}
@@ -681,12 +699,24 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 	return out, nil
 }
 
-// runtimepath lists require roots in order: the project's .agents for project
-// code only (user and plugin requires never resolve into a repository's
-// untrusted files), then config home and each plugin the plugins step
-// loaded; the embedded runtime is consulted separately (DESIGN §5).
-func (r *Runtime) runtimepath(gen *Generation, L *glua.LState) []string {
+// runtimepath lists the roots a dotted require of rel searches, in order:
+// the project's .agents for project code only (user and plugin requires
+// never resolve into a repository's untrusted files), config home, then the
+// enabled plugin named like rel's first segment, first for that plugin's own
+// code. A plugin answers only its own names, so none shadows another's
+// modules. The embedded runtime is consulted separately (DESIGN §5).
+func (r *Runtime) runtimepath(gen *Generation, L *glua.LState, rel string) []string {
+	head, _, _ := strings.Cut(rel, string(filepath.Separator))
 	var out []string
+	own := ""
+	for _, root := range gen.Plugins {
+		if filepath.Base(root) == head {
+			own = root
+		}
+	}
+	if own != "" && own == r.requirerRoot(gen, L) {
+		out, own = append(out, own), ""
+	}
 	for _, want := range []Origin{OriginProject, OriginUser} {
 		if want == OriginProject && r.CurrentOrigin(L) != OriginProject {
 			continue
@@ -697,7 +727,26 @@ func (r *Runtime) runtimepath(gen *Generation, L *glua.LState) []string {
 			}
 		}
 	}
-	return append(out, gen.Plugins...)
+	if own != "" {
+		out = append(out, own)
+	}
+	return out
+}
+
+// requirerRoot is the enabled plugin dir of the code calling require: the
+// calling file's, else that of the plugin the call runs as.
+func (r *Runtime) requirerRoot(gen *Generation, L *glua.LState) string {
+	return cmp.Or(gen.pluginRoot(r.callerFile(L)), gen.pluginRoot(r.CurrentPath(L)))
+}
+
+// pluginRoot is the enabled plugin dir that is or holds path, or "".
+func (g *Generation) pluginRoot(path string) string {
+	for _, root := range g.Plugins {
+		if path == root || strings.HasPrefix(path, root+string(filepath.Separator)) {
+			return root
+		}
+	}
+	return ""
 }
 
 // BootStep is one stage of the boot sequence, executed on the interpreter

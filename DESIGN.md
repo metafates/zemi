@@ -305,7 +305,7 @@ Directories (XDG):
   commands/<name>.md      markdown slash commands
   workflows/<name>.lua    saved workflow scripts
 ~/.local/share/zemi/      data
-  plugins/installed/<name>/  plugins zemi cloned (git); init.lua loaded, lua/ require()-able,
+  plugins/installed/<name>/  plugins zemi cloned (git); init.lua loaded, lua/<name>/ require()-able,
                           skills|agents|commands|workflows/ as in the config dir
   plugins/local/<name>/   plugins developed in place, the same shape; zemi never changes them
   plugins/disabled        names turned off, one per line
@@ -400,9 +400,13 @@ origin; cross-origin profile id collisions are refused, §11).
 runs as the loading origin (its chunk name is re-tagged, so a forged name
 does not stick) under the same denylist.
 
-Runtimepath, in order: `~/.config/zemi`, then each plugin the plugins
-step loaded (sorted by name, fixed for the generation), then the embedded
-`runtime/` (lowest precedence).
+Runtimepath, in order: a trusted project's `.agents` (for project code
+only), `~/.config/zemi`, then the one enabled plugin named like the
+module's first segment: `require("x.y")` searches only plugin `x`'s
+`lua/`, so no plugin shadows another's modules, and plugin `x`'s own code
+searches its root before the config dir. The plugin roots are the ones the
+plugins step loaded, fixed for the generation, so a disabled plugin's
+files never resolve.
 
 The plugins step lists `plugins/local/*` and `plugins/installed/*`, skips
 the names in `disabled`, and runs each `init.lua` as plugin origin; it runs
@@ -458,6 +462,18 @@ takes them: `toggle <name>` and `open <name>`.
   `package.loaders` would hand out the unfrozen stdlib and run files from
   `package.path`): `require` is Go-owned and resolves through a Go-side
   cache, so no Lua-side table can proxy another origin's modules.
+- `./x` and `../x` resolve next to the calling file and stay in its tree:
+  its origin class, and for plugin code its own plugin. A plugin's file
+  resolves only from that plugin, so neither `..` nor a symlink reaches
+  another plugin's code or a disabled one's.
+- A module runs once per generation, keyed by its resolved file (a dotted
+  and a relative name share it). Code below the file's origin gets its own
+  instance run under its own origin, one per plugin, so it cannot plant
+  functions that more trusted code or another plugin later calls. A
+  builtin module for lower code, and one plugin's module for another
+  plugin, is the owner's instance behind a deep read-only view: the
+  requirer can neither patch it nor rerun it. What a module keeps in its
+  table is readable that way; a secret stays in a local.
 
 Sandbox (what userland gets):
 

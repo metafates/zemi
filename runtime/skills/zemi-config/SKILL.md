@@ -113,4 +113,4 @@ A repository's `.agents/` at the git root holds `init.lua`, `lua/`, `agents/`, `
 
 ## Splitting config
 
-`require("a.b")` loads `lua/a/b.lua` or `lua/a/b/init.lua` from the config dir or a plugin; `require("./x")` loads `x.lua` next to the calling file and must stay inside that file's own tree.
+`require("a.b")` loads `lua/a/b.lua` or `lua/a/b/init.lua` from the config dir, else from the plugin named `a`; `require("./x")` loads `x.lua` next to the calling file and must stay inside that file's own tree.

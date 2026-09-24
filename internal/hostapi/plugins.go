@@ -38,13 +38,13 @@ func (h *Host) PluginsStep() lua.BootStep {
 			run, loads := pickPlugins(ps)
 			roots := make([]string, len(run))
 			for i, p := range run {
-				g.Plugins = append(g.Plugins, p.Dir)
 				kind := "installed"
 				if p.Local {
 					kind = "local"
 				}
 				roots[i] = filepath.Join(h.pluginsRoot(), kind, p.Name)
 			}
+			g.Plugins = roots
 			h.pluginRoots.Store(&roots)
 			for _, p := range run {
 				init := filepath.Join(p.Dir, "init.lua")

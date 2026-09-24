@@ -411,13 +411,18 @@ could settle it), and its sandbox hint offers only `network: true`.
 
 ### require and the origin model (internal/lua/runtime.go, origin.go, registries)
 
-Modules are cached per generation by resolved file and trust class: a requirer below the file's
-origin gets its own instance run under its own origin (builtin modules are shared instead,
-through a deep read-only view), so project or plugin code cannot plant functions into
-a table that higher-origin callbacks call. Dotted names search `<root>/lua` over the
-runtimepath: user, each plugin the plugins step loaded (`lua.Generation.Plugins`, fixed per
-generation), and the project's `.agents` first but only when the requirer is project code. `./x` and `../x` resolve against the calling function's chunk name, which is why
-file chunks are compiled with their absolute path, and must stay in that file's origin tree;
+Modules are cached per generation by resolved file and requirer: a requirer below the file's
+origin gets its own instance run under its own origin, one per plugin, so project or plugin code
+cannot plant functions into a table that higher-origin callbacks or another plugin call; a
+builtin module for lower code and one plugin's module for another plugin are the owner's
+instance behind a deep read-only view. Dotted names search `<root>/lua` over the runtimepath:
+the project's `.agents` first but only when the requirer is project code, user, then the one
+plugin the plugins step loaded (`lua.Generation.Plugins`, resolved, fixed per generation) named
+like the first segment, which that plugin's own code searches first: a plugin answers only its
+own names, so none shadows another's. `./x` and `../x` resolve against the calling function's
+chunk name, which is why file chunks are compiled with their absolute path, and must stay in
+that file's origin tree and, for plugin code, its own plugin; a plugin file resolves only
+inside an enabled plugin, so a symlink or `..` cannot run a disabled one.
 `load`/`loadstring` tag their chunks with the running origin and never keep an absolute name,
 so neither can be forged.
 
