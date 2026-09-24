@@ -1095,6 +1095,7 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "npm -w web test"}, "allow this exact command", []string{"npm -w web test"}},
 		{tools.Request{Subject: "tool.bash", Arg: "uv --directory sub run pytest"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "busybox ls"}, "", nil},
+		{tools.Request{Subject: "tool.bash", Arg: "zemi plugins list"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "awk '{print}' f"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "npm run build"}, "allow npm run", []string{"npm run", "npm run *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "sed -n 1p f"}, "allow this exact command", []string{"sed -n 1p f"}},

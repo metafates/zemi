@@ -393,11 +393,11 @@ because in a deep tree the directory rule is the same ask again one package over
 option is offered at all for a gate-forced ask (heredoc, env assignment), a pattern holding a
 glob wildcard, an opaque segment (an inner `sh -c`, a stripped assignment) or a wrapper program
 that runs what it is handed (`perm.WrapperPrograms`: shells, interpreters, `sudo`, `xargs`,
-`busybox`, `awk`, ..., the list `perm.Destructive` and `perm.GitWrites` look past too, and
-`wrapperSubcommands` for the `npm exec`/`uv run` spellings of `npx`) - no rule written from such
-a segment says what the next call would run - nor for a `protectedWrite`, which
-`Pipeline.Check` asks about whatever rule allows it. A secret-shaped file is offered only its
-exact path: a directory glob cannot exclude the secret shapes, so `Pipeline.Check`'s loosen
+`busybox`, `awk`, `zemi` itself, ..., the list `perm.Destructive` and `perm.GitWrites` look
+past too, and `wrapperSubcommands` for the `npm exec`/`uv run` spellings of `npx`) - no rule
+written from such a segment says what the next call would run - nor for a `protectedWrite`,
+which `Pipeline.Check` asks about whatever rule allows it. A secret-shaped file is offered only
+its exact path: a directory glob cannot exclude the secret shapes, so `Pipeline.Check`'s loosen
 sends a file request a `model` glob rule allowed back to the ask when `Secret` matches, and a command whose
 reader names one (`perm.ReadsSecret`: `cat .env`, `cat .e*`) when a `model` rule or a
 permissions file line allowed it (`perm.Rule.Source`); a user-config rule has no principal,

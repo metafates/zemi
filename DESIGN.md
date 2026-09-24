@@ -748,7 +748,8 @@ otherwise return a decision table:
   gate-forces to `ask` (heredoc/herestring, dangerous assignment), a
   pattern holding a glob wildcard, an opaque segment (an inner `sh -c`,
   a stripped assignment), a wrapper program that runs what it is
-  handed (a shell, an interpreter, `sudo`, `xargs`, `busybox`, and the
+  handed (a shell, an interpreter, `sudo`, `xargs`, `busybox`, `zemi`
+  itself, whose `plugins install` fetches code that runs everywhere, and the
   `npm exec`/`uv run` spellings of `npx`) offer no `always` option at
   all, so they re-ask every time: no rule written from such a segment
   says what the next call would run. A secret-shaped file is offered only

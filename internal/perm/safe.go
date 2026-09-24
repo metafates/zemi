@@ -724,7 +724,8 @@ var WrapperPrograms = map[string]bool{
 	"nohup": true, "time": true, "timeout": true, "watch": true, "setsid": true, "stdbuf": true, "script": true,
 	"nice": true, "ionice": true, "chrt": true, "caffeinate": true, "parallel": true, "ssh": true, "command": true, "builtin": true,
 	"npx": true, "pnpx": true, "bunx": true, "uvx": true, "pipx": true, "busybox": true, "toybox": true,
-	"awk": true, // an inline program, like perl -e
+	"awk":  true, // an inline program, like perl -e
+	"zemi": true, // -p runs a model, and plugins install fetches code that runs in every project
 }
 
 // globOperand reports an operand the shell may expand to many files.
