@@ -994,11 +994,18 @@ func (h *Host) memoryAuto(sid string) bool {
 	return h.Settings.Str("memory.autonomy") == "auto" && h.ProjectTrusted() && h.sessionLocalOnly(sid)
 }
 
-// markNotLocal records that plugin code fed the live session text, a sent
+// markNotLocal records that plugin code fed session sid text, a sent
 // message or a rewritten tool result, as a telemetry row sessionLocalOnly
-// reads like a tool zemi does not ship: the plugin may relay any text.
-func (h *Host) markNotLocal(who string) {
-	h.recordToolCall(h.AgentSessionID(), StreamTool{Name: who}, true)
+// reads like a tool zemi does not ship: the plugin may relay any text. One
+// row per plugin, read from the store, so a rewind that drops it re-marks.
+func (h *Host) markNotLocal(sid, who string) {
+	if h.DB == nil || sid == "" {
+		return
+	}
+	stats, _ := h.DB.ToolCallStats(sid, "")
+	if !slices.ContainsFunc(stats, func(s store.ToolStat) bool { return s.Tool == who }) {
+		h.recordToolCall(sid, StreamTool{Name: who}, true)
+	}
 }
 
 // sessionLocalOnly reports that neither session sid nor one of its subagents

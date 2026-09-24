@@ -635,9 +635,10 @@ lua-language-server is installed.
   `memoryAuto` holds (autonomy auto, a trusted project, no `fetch`, `web_search`, `lua` or
   non-builtin tool call in the session or its subagents'; `subagentHooks` records those,
   `ForkSession` copies them, and `markNotLocal` records a plugin's send or `tool.post`
-  rewrite the same way) and is proposed for review otherwise. A plugin's send reaches the
-  model behind `agent.Attached("plugin:<name>")`, so no quote comes from it, and draws as a
-  notice row (`reportHeads`).
+  rewrite the same way, once per session and in a subagent run's own) and is proposed for
+  review otherwise. A plugin's send reaches the model behind
+  `agent.Attached("plugin:<name>")`, so no quote comes from it, and draws as a notice row
+  (`reportHeads`).
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
   `callback_port` for one without dynamic registration). Servers come from `zemi.mcp.add` (user

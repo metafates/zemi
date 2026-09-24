@@ -536,7 +536,11 @@ func (h *Host) toolPost(ctx context.Context, name string, input map[string]any, 
 		default:
 			out = *rewrite
 			if hd.Origin == lua.OriginPlugin {
-				h.markNotLocal("plugin:" + h.PluginOf(hd.Path))
+				sid, ok := ctx.Value(runSessionKey{}).(string)
+				if !ok {
+					sid = h.AgentSessionID()
+				}
+				h.markNotLocal(sid, "plugin:"+h.PluginOf(hd.Path))
 			}
 		}
 	}

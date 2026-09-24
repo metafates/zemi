@@ -9,26 +9,31 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // TestPluginText: what a plugin sends or rewrites reaches the model, but is
-// never the user's words for a memory quote, and the session stops being
-// local only, so memoryAuto is off; a print run refuses a plugin's send.
+// never the user's words for a memory quote, and the session it reached,
+// the run's own for a subagent, stops being local only (one row however
+// often), so memoryAuto is off; a print run refuses a plugin's send.
 func TestPluginText(t *testing.T) {
 	const send = `assert(zemi.agent.send("the deploy key lives in vault"))`
+	const rewrite = `zemi.event.on("tool.post", function() return { output = "y" } end)`
 	for _, c := range []struct {
 		name     string
 		origin   lua.Origin
 		src      string
 		headless bool
-		rewrite  bool // run a tool.post after the chunk
+		rewrite  bool // run tool.post twice after the chunk
+		inRun    bool // ... in a subagent run of a session the user left
 		err      string
 		quote    bool // the text counts as the user's
 	}{
 		{name: "the user's send", origin: lua.OriginUser, src: send, quote: true},
 		{name: "a plugin's send", origin: lua.OriginPlugin, src: send},
 		{name: "a plugin's send in a print run", origin: lua.OriginPlugin, src: send, headless: true, err: "print run"},
-		{name: "a plugin's rewrite", origin: lua.OriginPlugin, src: `zemi.event.on("tool.post", function() return { output = "y" } end)`, rewrite: true},
+		{name: "a plugin's rewrite", origin: lua.OriginPlugin, src: rewrite, rewrite: true},
+		{name: "a plugin's rewrite in a run", origin: lua.OriginPlugin, src: rewrite, rewrite: true, inRun: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, r := newTestHostDB(t)
@@ -49,8 +54,21 @@ func TestPluginText(t *testing.T) {
 				t.Fatal(err)
 			}
 			if c.rewrite {
-				if out := h.toolPost(context.Background(), "read", nil, true, "x", nil, 0); out != "y" {
-					t.Fatalf("output = %q", out)
+				ctx, marked := context.Background(), sid
+				if c.inRun {
+					marked = store.NewID()
+					if err := h.DB.CreateSession(marked, "", "run", ""); err != nil {
+						t.Fatal(err)
+					}
+					ctx = context.WithValue(ctx, runSessionKey{}, marked)
+				}
+				for range 2 {
+					if out := h.toolPost(ctx, "read", nil, true, "x", nil, 0); out != "y" {
+						t.Fatalf("output = %q", out)
+					}
+				}
+				if stats, _ := h.DB.ToolCallStats(marked, ""); !slices.Equal(stats, []store.ToolStat{{Tool: "plugin:a", Calls: 1}}) {
+					t.Errorf("marked session's calls = %+v", stats)
 				}
 			} else {
 				waitFor(t, func() error {
@@ -64,8 +82,8 @@ func TestPluginText(t *testing.T) {
 			if got := h.quoteInSession(sid, "deploy key lives"); got != c.quote {
 				t.Errorf("quote counts = %v, want %v", got, c.quote)
 			}
-			if got := h.sessionLocalOnly(sid); got != c.quote {
-				t.Errorf("local only = %v, want %v", got, c.quote)
+			if got := h.sessionLocalOnly(sid); got != (c.quote || c.inRun) {
+				t.Errorf("local only = %v", got)
 			}
 			notice := slices.ContainsFunc(h.Session().Transcript, func(m ChatMessage) bool {
 				return m.Kind == "notice" && m.Text == "plugin:a: the deploy key lives in vault"

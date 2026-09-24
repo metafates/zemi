@@ -253,6 +253,10 @@ func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, promp
 
 // runAgent runs a registered run, recorded as a child session of the
 // session that started it.
+// runSessionKey carries a subagent run's session id on its tools' ctx; the
+// main agent's calls belong to the live session.
+type runSessionKey struct{}
+
 func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt string, progress func(string)) (text string, err error) {
 	defer func() {
 		run.finish(h, err)
@@ -341,6 +345,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		run.mu.Unlock()
 	}
 	seedLoaded(loaded, runner.History)
+	ctx = context.WithValue(ctx, runSessionKey{}, sid)
 	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid, ctx: ctx, base: base}
 	runner.Hooks = hooks
 	if sid != "" {

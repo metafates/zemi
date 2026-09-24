@@ -2313,13 +2313,16 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			return 2
 		}
 		h.GoSafe("zemi.agent.send", func() {
+			if plugin != "" {
+				h.markNotLocal(h.AgentSessionID(), plugin) // before the turn could write a memory
+			}
 			err := h.AgentSend(text)
 			switch {
 			case err != nil:
 				h.Log.Warn("agent", "zemi.agent.send failed", map[string]any{"error": err.Error()})
 				h.Notify("error", "Could not send", h.friendlyError(err))
 			case plugin != "":
-				h.markNotLocal(plugin) // the session exists once the send returns
+				h.markNotLocal(h.AgentSessionID(), plugin) // a fresh session exists only now
 			}
 		})
 		L.Push(glua.LTrue)
