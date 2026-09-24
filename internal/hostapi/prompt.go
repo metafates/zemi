@@ -320,8 +320,12 @@ func (h *Host) nearestInstructions(path string, sent func(string) bool) string {
 		}
 		for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
 			p := filepath.Join(dir, name)
-			if !h.instructionFile(p) || inPrompt[p] {
+			if !h.instructionFile(p) {
 				continue
+			}
+			// CLAUDE.md is read only where no AGENTS.md is
+			if inPrompt[p] {
+				break
 			}
 			if sent(p) {
 				return ""

@@ -9,7 +9,8 @@ import (
 
 // TestNearestInstructions: a package's own AGENTS.md rides the first read of
 // a file under it, once per session. Files already in the prompt do not
-// repeat, which is every instruction file from the repo root down.
+// repeat, which is every instruction file from the repo root down, nor does
+// a CLAUDE.md beside an AGENTS.md.
 func TestNearestInstructions(t *testing.T) {
 	h, _ := newTestHost(t)
 	pkg := filepath.Join(h.Dirs.ProjectDir, "sub")
@@ -17,6 +18,7 @@ func TestNearestInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("root rules"), 0o644)
+	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "CLAUDE.md"), []byte("claude rules"), 0o644)
 	os.WriteFile(filepath.Join(pkg, "AGENTS.md"), []byte("use tabs here"), 0o644)
 	file := filepath.Join(pkg, "x.go")
 	os.WriteFile(file, []byte("package sub\n"), 0o644)
@@ -36,7 +38,7 @@ func TestNearestInstructions(t *testing.T) {
 		t.Fatalf("compaction clears the read that carried them, so they come back: %q", got)
 	}
 	if got := h.nearestInstructions(filepath.Join(h.Dirs.ProjectDir, "main.go"), h.instructionSent); got != "" {
-		t.Fatalf("the root file is already in the prompt: %q", got)
+		t.Fatalf("the root AGENTS.md is already in the prompt, and CLAUDE.md beside it is never read: %q", got)
 	}
 
 	// a sibling directory whose name starts with the repo root's name is
