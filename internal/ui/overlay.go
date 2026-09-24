@@ -634,7 +634,8 @@ var statusHL = map[string]string{"starting": "Host:Warn", "ready": "Host:Ok", "f
 
 // fieldRows wraps a plain body, setting its "key: value" lines as a table:
 // dim keys in one column, each value wrapped beside its key, an error's in
-// the danger color and a status word in its own.
+// the danger color and a status word in its own. A non-field line right after
+// a field row continues its value, like an error's traceback.
 func fieldRows(body string, w int) [][]hostapi.Segment {
 	lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
 	kw := 0
@@ -644,23 +645,28 @@ func fieldRows(body string, w int) [][]hostapi.Segment {
 		}
 	}
 	var rows [][]hostapi.Segment
+	inField, hl := false, ""
 	for _, l := range lines {
 		m := fieldLine.FindStringSubmatch(l)
-		if m == nil || w-kw < 20 {
+		key, val := "", l
+		switch {
+		case w-kw < 20 || l == "" || m == nil && !inField:
+			inField = false
 			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, w)...)
 			continue
+		case m != nil:
+			key, val, hl = m[1], m[2], ""
+			switch key {
+			case "error":
+				hl = "Host:Danger"
+			case "status":
+				hl = statusHL[val]
+			}
 		}
-		hl := ""
-		switch m[1] {
-		case "error":
-			hl = "Host:Danger"
-		case "status":
-			hl = statusHL[m[2]]
-		}
-		for i, r := range hostapi.WrapSegs([]hostapi.Segment{{Text: m[2], HL: hl}}, w-kw) {
-			key := ""
-			if i == 0 {
-				key = m[1]
+		inField = true
+		for i, r := range hostapi.WrapSegs([]hostapi.Segment{{Text: val, HL: hl}}, w-kw) {
+			if i > 0 {
+				key = ""
 			}
 			rows = append(rows, append([]hostapi.Segment{{Text: fmt.Sprintf("%-*s", kw, key), HL: "Host:Hint"}}, r...))
 		}
