@@ -145,7 +145,7 @@ func (h *Host) pluginItems() []any {
 	}
 	install := map[string]any{"text": "Install a plugin", "verb": "install", "fill": "/plugins install "}
 	if len(ps) == 0 && err == nil {
-		install["desc"] = "No plugins yet."
+		install["desc"] = "no plugins yet"
 	}
 	items := []any{install, map[string]any{"text": "Check for updates", "verb": "check", "run": "plugins check"}}
 	provides := h.pluginProvides()
