@@ -1349,7 +1349,8 @@ func TestProfileSwitch(t *testing.T) {
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "main" }, { id = "cheap" } } })
 		zemi.config.set("models.chat", "a/main")
-		zemi.agent.profile("cheap", { model = "a/cheap" })`)
+		zemi.agent.profile("cheap", { model = "a/cheap" })
+		zemi.agent.profile("onchat", { model = "chat" })`)
 	for _, c := range []struct {
 		name    string
 		do      func() error
@@ -1366,6 +1367,12 @@ func TestProfileSwitch(t *testing.T) {
 			}
 			runUser(t, r, `local n = zemi.notify.list()[1]; assert(n.title == "Model not listed" and n.body:match("^a/nope: not in the provider's models list"), tostring(n and n.body))`)
 			return nil
+		}, ""},
+		{"model under a profile on the chat role", func() error {
+			if err := h.SetProfile("onchat"); err != nil {
+				return err
+			}
+			return h.SetModel("a/main", true)
 		}, ""},
 		{"switch", func() error { return h.SetProfile("cheap") }, ""},
 		{"model under a profile with one", func() error { return h.SetModel("a/main", true) }, "profile cheap sets its model"},

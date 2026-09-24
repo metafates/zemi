@@ -1830,6 +1830,7 @@ func (h *Host) OpenModelPicker(role string) error {
 			head["key"] = "current"
 		}
 	}
+	o.Items = []any{head}
 	for _, s := range h.Providers.List() {
 		for _, m := range s.Models {
 			id := s.ID + "/" + m.ID
@@ -1839,7 +1840,7 @@ func (h *Host) OpenModelPicker(role string) error {
 			}
 			item := map[string]any{"text": id, "run": run + id, "desc": desc}
 			if id == cur {
-				item["key"], o.Selected = "current", len(o.Items)+1
+				item["key"], o.Selected = "current", len(o.Items)
 			}
 			o.Items = append(o.Items, item)
 		}
@@ -1848,12 +1849,12 @@ func (h *Host) OpenModelPicker(role string) error {
 	_, registered := h.Providers.Lookup(prov)
 	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
 		// config named it by hand: shown so the typo is in view
-		o.Items = append([]any{map[string]any{"text": cur, "run": run + cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}}, o.Items...)
+		o.Items = slices.Insert(o.Items, 1, any(map[string]any{"text": cur, "run": run + cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}))
 		o.Selected = 1
 	}
-	usable := len(o.Items) > 0
-	if usable {
-		o.Items = append([]any{head}, o.Items...)
+	usable := len(o.Items) > 1
+	if !usable {
+		o.Items = nil
 	}
 	// the builtin providers without a key close the list, so a user finds
 	// what else zemi supports and the variable that turns each on
@@ -1904,7 +1905,7 @@ func (h *Host) OpenModelRoles() error {
 			r := roles[i]
 			item := map[string]any{"text": r.Name, "desc": cmp.Or(id, "no model") + " · " + r.Desc, "verb": "open", "run": "model " + r.Name}
 			switch {
-			case i == 0 && p != nil && p.Model != "":
+			case i == 0 && h.ProfileModelErr() != nil:
 				item["key"] = "profile " + p.Name
 			case i > 0 && h.Settings.Str("models."+r.Name) == "":
 				item["key"] = "follows chat"
@@ -2019,7 +2020,7 @@ func (h *Host) OfferModel() {
 // ProfileModelErr refuses a models.chat write the active profile would
 // hide: the key would change and the conversation would not.
 func (h *Host) ProfileModelErr() error {
-	if p, _ := h.resolveProfile(""); p != nil && p.Model != "" {
+	if p, _ := h.resolveProfile(""); p != nil && p.Model != "" && p.Model != "chat" {
 		return Usagef("profile %s sets its model; /profile default or drop model from it", p.Name)
 	}
 	return nil
