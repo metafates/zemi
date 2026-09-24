@@ -372,6 +372,9 @@ func TestOverlayNavigation(t *testing.T) {
 			func(a *App) string {
 				return map[bool]string{false: "not back"}[len(a.overlays) == 1 && !a.overlays[0].back]
 			}},
+		{"a row that opens a screen leaves its list under it, for esc to come back to",
+			hostapi.Overlay{ID: "m", Items: []any{map[string]any{"text": "Roles", "verb": "open", "run": "nope"}}}, []string{"enter"},
+			func(a *App) string { return map[bool]string{false: "closed"}[len(a.overlays) == 1] }},
 		{"a run action in a toggle list rebuilds the list",
 			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Toggle", "run": "nope"})}, Reload: func() ([]any, [][]hostapi.Segment) { reloads++; return []any{detail()}, nil }},
 			[]string{"enter", "enter"},

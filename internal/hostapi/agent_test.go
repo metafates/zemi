@@ -1328,18 +1328,18 @@ func TestModelPickerOdd(t *testing.T) {
 	}
 	// an id naming the keyless builtin gets the same listing, not a "current" row
 	runUser(t, r, `zemi.config.set("models.chat", "deepseek/x")`)
-	if h.OpenModelPicker("chat") != nil {
+	if h.OpenModelPicker("") != nil {
 		t.Fatal("picker did not open")
 	}
 	for _, o := range ui.opened {
-		if len(o.Items) != 1 || o.Items[0].(map[string]any)["text"] != "deepseek" || o.Items[0].(map[string]any)["copy"] != "export DEEPSEEK_API_KEY" || !strings.HasPrefix(o.Body, "No model yet") {
+		if len(o.Items) != 1 || o.Items[0].(map[string]any)["text"] != "deepseek" || o.Items[0].(map[string]any)["copy"] != "export DEEPSEEK_API_KEY" || !strings.HasPrefix(o.Body, "No models yet. Export") {
 			t.Fatalf("empty picker: %+v body %q", o.Items, o.Body)
 		}
 	}
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })
 		zemi.config.set("models.chat", "a/typo")`)
-	if h.OpenModelPicker("chat") != nil {
+	if h.OpenModelPicker("") != nil {
 		t.Fatal("picker did not open")
 	}
 	o := ui.opened[2]

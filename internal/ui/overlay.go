@@ -417,6 +417,8 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			}
 			a.closeOverlayByID(o.ID)
 		case verb == "":
+		case itemVerb(m) == "open" && o.OnSelect == nil:
+			a.runOverlayRow(o, idx) // the screen it opens goes over this list, so esc comes back
 		default:
 			if o.OnSelect != nil {
 				a.background(func() { a.host.SelectOverlay(context.Background(), o, idx) })

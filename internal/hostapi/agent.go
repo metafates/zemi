@@ -1796,8 +1796,8 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("ask", L.NewFunction(h.modelAsk))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
-		role := L.OptString(1, "chat")
-		if !isRole(role) {
+		role := L.OptString(1, "")
+		if role != "" && !isRole(role) {
 			L.RaiseError("zemi.model.pick: unknown role %q; roles: %s", role, roleNames())
 			return 0
 		}
@@ -1820,31 +1820,34 @@ func (h *Host) roleIDs() []string {
 
 // OpenModelPicker lists the registered models for role, where enter sets
 // it, then the keyless builtin providers, where it copies the export line.
-// The chat list opens on a Roles row; another role's on a chat row, which
-// makes the role follow chat.
+// Role "" is /model, which sets chat under a Roles row; another role's list
+// is a step of /model roles and opens on a chat row, which makes the role
+// follow chat.
 func (h *Host) OpenModelPicker(role string) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
-	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: "bottom-right", Verb: "pick", Empty: "No models yet: " + h.noModelHint() + "."}
-	run, cur := "model ", h.Settings.Str("models."+role)
-	var head map[string]any
-	if role == "chat" {
-		cur = h.roleModel("chat")
-		head = map[string]any{"text": "Roles", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"}
-	} else {
-		o.ID, o.Title, run = "model "+role, "Model roles / "+role, "model "+role+" "
+	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: "bottom-right", Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
+	run, cur := "model ", h.roleModel("chat")
+	switch role {
+	case "":
+		o.Items = []any{map[string]any{"text": "Roles", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"}}
+	case "chat":
+		o.ID, o.Title = "model chat", "Model roles / chat"
+	default:
+		o.ID, o.Title, run, cur = "model "+role, "Model roles / "+role, "model "+role+" ", h.Settings.Str("models."+role)
 		desc := "follow the chat model"
 		if id := h.roleModel("chat"); id != "" {
 			desc += ": " + id
 		}
-		head = map[string]any{"text": "chat", "desc": desc, "run": run + "chat"}
+		head := map[string]any{"text": "chat", "desc": desc, "run": run + "chat"}
 		if cur == "" {
 			head["key"] = "current"
 		}
+		o.Items = []any{head}
 	}
-	o.Items = []any{head}
+	heads := len(o.Items)
 	for _, s := range h.Providers.List() {
 		for _, m := range s.Models {
 			id := s.ID + "/" + m.ID
@@ -1863,10 +1866,10 @@ func (h *Host) OpenModelPicker(role string) error {
 	_, registered := h.Providers.Lookup(prov)
 	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
 		// config named it by hand: shown so the typo is in view
-		o.Items = slices.Insert(o.Items, 1, any(map[string]any{"text": cur, "run": run + cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}))
-		o.Selected = 1
+		o.Items = slices.Insert(o.Items, heads, any(map[string]any{"text": cur, "run": run + cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}))
+		o.Selected = heads
 	}
-	usable := len(o.Items) > 1
+	usable := len(o.Items) > heads
 	if !usable {
 		o.Items = nil
 	}
@@ -1876,7 +1879,7 @@ func (h *Host) OpenModelPicker(role string) error {
 		o.Items = append(o.Items, map[string]any{"text": m.ID, "desc": "export " + m.Env, "copy": "export " + m.Env})
 	}
 	if !usable && len(o.Items) > 0 {
-		o.Body = "No model yet: export one of these keys, or " + h.addProvider() + "."
+		o.Body = "No models yet. Export one of these keys, or " + h.addProvider() + "."
 	}
 	ui.OpenOverlay(o)
 	return nil
@@ -1961,7 +1964,7 @@ func (h *Host) SetModel(args string, warn bool) error {
 	f := strings.Fields(args)
 	switch {
 	case len(f) == 0:
-		return h.OpenModelPicker("chat")
+		return h.OpenModelPicker("")
 	case len(f) == 1 && f[0] == "roles":
 		return h.OpenModelRoles()
 	case len(f) == 1 && isRole(f[0]):
@@ -2027,7 +2030,7 @@ func (h *Host) WarnModel() {
 // failed init.lua is its own news: the providers it adds never ran.
 func (h *Host) OfferModel() {
 	if h.InitError() == "" && h.modelRow().level == "error" {
-		_ = h.OpenModelPicker("chat")
+		_ = h.OpenModelPicker("")
 	}
 }
 

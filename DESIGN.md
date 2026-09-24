@@ -847,7 +847,7 @@ zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
 
 zemi.model.list()                    -- { { id = "anthropic/...", roles = { "chat" }, ... } }
 zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes models.chat
-zemi.model.pick("titles")            -- open a role's picker (returns at once; default chat)
+zemi.model.pick("titles")            -- open a role's picker (returns at once; none opens /model)
 local h = zemi.model.ask({ prompt = "...", system = "...", model = "titles",
                            max_output = 1024, on_done = function(text, err) end })
 h:wait()                             -- text, or nil, err; suspends the task (§4)
@@ -1368,8 +1368,9 @@ provenance string.
   a run and an agent's transcript move to another screen, which a rebuilt
   list would cover.
   A row may name its own enter verb (`verb`, "open" on a
-  row that opens another screen): the hint says it, and space, which toggles
-  a toggle list's rows, passes it by. A Go screen's detail sets its one
+  row that opens another screen): the hint says it, space, which toggles
+  a toggle list's rows, passes it by, and an "open" row leaves its list
+  under the screen it opens, so esc comes back to it (`/model`'s Roles). A Go screen's detail sets its one
   `key: value` block as a table (any other body is text as written), and its
   `status:` line colors the status words every screen shares: `starting`,
   `ready`, `failed`, `stopped` and `off`. A list grouped by source

@@ -775,6 +775,7 @@ function zemi.event.stats() end
 ---@field run? string a command line such as "mcp restart gitlab" (user and builtin overlays only; ignored while the overlay has an on_select)
 ---@field hotkey? string one character that acts like enter on this row (not while filtering; j, k and / stay the list's)
 ---@field copy? string enter copies this to the clipboard and the list stays open (ignored while the overlay has an on_select)
+---@field verb? string enter's action in the hint ("open"); space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
 
 --- A detail view action; with no id, fill or run it goes back.
 ---@class zemi.OverlayAction
@@ -1293,10 +1294,10 @@ function zemi.model.set(id) end
 ---@return zemi.ModelHandle
 function zemi.model.ask(spec) end
 
---- Open a role's model picker and return at once; choosing a model runs
---- `/model <id>`, or `/model <role> <id>` for another role. Raises for an
---- unknown role.
----@param role? zemi.ModelRole Default "chat".
+--- Open a model picker and return at once: with no role `/model`, else that
+--- role's list from `/model roles`. Choosing a model runs `/model <id>`, or
+--- `/model <role> <id>` for another role. Raises for an unknown role.
+---@param role? zemi.ModelRole
 function zemi.model.pick(role) end
 
 -- ---------------------------------------------------------------------------

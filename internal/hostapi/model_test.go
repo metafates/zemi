@@ -54,7 +54,7 @@ func TestSetModelArgs(t *testing.T) {
 		err    string
 	}{
 		{"", "model", "", "", ""},
-		{"chat", "model", "", "", ""},
+		{"chat", "model chat", "", "", ""},
 		{"roles", "model roles", "", "", ""},
 		{"titles", "model titles", "", "", ""},
 		{"a/small", "", "models.chat", "a/small", ""},
