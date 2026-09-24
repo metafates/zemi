@@ -405,7 +405,8 @@ The plugins step lists `plugins/local/*` and `plugins/installed/*`, skips
 the names in `disabled`, and runs each `init.lua` as plugin origin; it runs
 no git. A plugin's skills, agents, commands and workflows come from the
 same list, sorted by name, whether or not its `init.lua` ran; the user's
-and the builtin ones win a name, and a skill a plugin ships never runs a
+and the builtin ones win a name, a name two plugins ship goes to the first
+and `/errors` names both, and a skill a plugin ships never runs a
 `zemi-skill.lua`. A plugin that fails does not stop the rest; each one's error goes
 to `/errors` and the `/health` plugins row counts it. A local plugin named
 like an installed one does not load, nor does a symlinked plugin dir (its
@@ -1822,7 +1823,8 @@ provenance string.
   roots, the config dir, the project's `.agents`, both skills dirs, that
   scratchpad and `<data>/types` (the API annotations
   and shipped Lua UI) and, for the model's file tools alone, the plugins
-  (`<data>/plugins`, whose skills the skill tool loads; not a `zemi.fs`
+  minus `.git` (`<data>/plugins`, whose skills the skill tool loads; a
+  clone's remote URL may carry a token; not a `zemi.fs`
   root, so no plugin reads another's source). The plugins and the rest of the data and state dirs are
   never write roots: a write to a local plugin asks every time with no
   always answer, and no mode settles it (yolo aside), since the code loads

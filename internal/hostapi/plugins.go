@@ -36,9 +36,16 @@ func (h *Host) PluginsStep() lua.BootStep {
 				h.sweepPluginState(ps)
 			}
 			run, loads := pickPlugins(ps)
-			for _, p := range run {
+			roots := make([]string, len(run))
+			for i, p := range run {
 				g.Plugins = append(g.Plugins, p.Dir)
+				kind := "installed"
+				if p.Local {
+					kind = "local"
+				}
+				roots[i] = filepath.Join(h.pluginsRoot(), kind, p.Name)
 			}
+			h.pluginRoots.Store(&roots)
 			for _, p := range run {
 				init := filepath.Join(p.Dir, "init.lua")
 				loads = append(loads, pluginLoad{p.Name, p.Dir, lua.LoadFileStep("plugin "+p.Name, init, lua.OriginPlugin).Run(ctx, r, g)})
@@ -83,23 +90,13 @@ func pickPlugins(ps []plugins.Plugin) (run []plugins.Plugin, refused []pluginLoa
 	return run, refused
 }
 
-// pluginDirs is the plugins the loader runs, read live like the user's own
-// agents and workflows, each with the resolved root PluginOf names it by.
+// pluginDirs is the plugin roots the last boot fixed for its generation,
+// resolved as PluginOf reads them.
 func (h *Host) pluginDirs() []string {
-	if h.Dirs.DataHome == "" {
-		return nil
+	if p := h.pluginRoots.Load(); p != nil {
+		return *p
 	}
-	ps, _ := plugins.Scan(h.Dirs)
-	run, _ := pickPlugins(ps)
-	dirs := make([]string, len(run))
-	for i, p := range run {
-		kind := "installed"
-		if p.Local {
-			kind = "local"
-		}
-		dirs[i] = filepath.Join(h.pluginsRoot(), kind, p.Name)
-	}
-	return dirs
+	return nil
 }
 
 // sweepPluginState drops the zemi.state keys of plugins whose directory is
@@ -117,8 +114,8 @@ func (h *Host) sweepPluginState(ps []plugins.Plugin) {
 	}
 }
 
-// localPlugins holds the plugins the user develops in place. The model's
-// file tools read it, like every plugin, without asking; it is no read jail,
+// localPlugins holds the plugins the user develops in place: auto mode and
+// plain commands read it, and writes to it always ask. It is no read jail,
 // which would let every plugin's and a trusted project's zemi.fs.read reach
 // them all.
 func (h *Host) localPlugins() string {
@@ -136,6 +133,14 @@ func (h *Host) PluginOf(path string) string {
 		return ""
 	}
 	return name
+}
+
+// pluginDup records a file resource one plugin ships under a name another
+// plugin took first; kept and dropped are the two files.
+func (h *Host) pluginDup(what, kept, dropped string) {
+	if a, b := h.PluginOf(kept), h.PluginOf(dropped); a != "" && b != "" && a != b {
+		h.RecordErrorOnce("plugins", fmt.Sprintf("%s is already provided by plugin %s, not %s", what, a, b))
+	}
 }
 
 // pluginClash refuses one plugin's registration over another's: both rank

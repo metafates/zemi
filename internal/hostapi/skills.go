@@ -86,10 +86,7 @@ func (h *Host) syncSkills() {
 	for _, p := range h.pluginDirs() {
 		dirs = append(dirs, skills.Dir{Path: filepath.Join(p, "skills"), Source: skills.Plugin})
 	}
-	found, warns := skills.Discover(dirs...)
-	for _, w := range warns {
-		h.RecordErrorOnce("skills", strings.TrimPrefix(w, "skills: "))
-	}
+	found := h.discoverSkills(dirs...)
 	rows := make([]*store.Skill, 0, len(found))
 	for _, s := range found {
 		rows = append(rows, &store.Skill{Name: s.Name, Path: s.Dir, Source: string(s.Source)})
@@ -479,8 +476,8 @@ func (h *Host) openSkills() error {
 
 // sourceOf names where a resource comes from, and which plugin ships it.
 func (h *Host) sourceOf(source, path string) string {
-	if source == string(skills.Plugin) {
-		return source + " " + h.PluginOf(path)
+	if n := h.PluginOf(path); n != "" {
+		return "plugin:" + n
 	}
 	return source
 }

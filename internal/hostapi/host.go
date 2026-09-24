@@ -269,6 +269,7 @@ type Host struct {
 	evlog eventLog // recent events and notifications for Lua reflection
 
 	pluginLoads atomic.Pointer[[]pluginLoad] // the last boot's enabled plugins, for /health and /plugins
+	pluginRoots atomic.Pointer[[]string]     // the plugins that boot runs, for their skills, agents, commands and workflows
 
 	// jobs owns the model's background processes (job_* tools).
 	jobs  *tools.Jobs

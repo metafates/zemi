@@ -284,8 +284,8 @@ Rules `(subject, pattern, decision, not_match?, principal?)`, subjects like `too
 `fs.read`, `fs.write`, `net.<host>`, `lua.<ns.call>`. Ordering: deny > ask > allow; within one
 decision, fewest wildcards then longest literal prefix wins. A `not_match` hit falls through
 and **forces ask**. The default when nothing matches is `Store.Default` (host wires
-`fsDefault`: jail reads and the model's reads of the plugins allow except secret-shaped
-paths, writes ask) and finally ask - there
+`fsDefault`: jail reads and the model's reads of the plugins, minus any `.git`, allow except
+secret-shaped paths, writes ask) and finally ask - there
 is no fail-open path. New host-API side effects need the same `lua.` subject.
 
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules and
@@ -431,9 +431,10 @@ and every Lua function on the stack, resumers included, builtin ones transparent
 would drop a frame. Plugins (hostapi/plugins.go, `PluginsStep`): `plugins.Scan` lists
 `installed/` (clones) and `local/` (developed in place) minus `disabled`, sorted by name; a local
 plugin named like an installed one or a symlinked dir does not load, and a gone plugin's
-`zemi.state` keys are dropped. The same pick (`pickPlugins`; `Host.pluginDirs` reads it live)
+`zemi.state` keys are dropped. The same pick, fixed for the generation (`Host.pluginDirs`),
 gives the plugins' skills, agents, markdown commands and workflows, loaded after the user's and
-the builtin ones, init.lua failed or not. `Host.PluginOf` names a plugin by its directory: its state keys are
+the builtin ones, init.lua failed or not; a name two plugins ship goes to the first by name, and
+`/errors` names both. `Host.PluginOf` names a plugin by its directory: its state keys are
 `plugin:<name>:<key>`, its Lua permission principal and its overlay badge `plugin:<name>`,
 and a call from plugin a into plugin b's function runs as a. Registries enforce: cross-origin
 collision is **refused** with the higher-trust origin winning; within one origin it is

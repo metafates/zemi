@@ -95,13 +95,15 @@ const maxAgentFileBytes = 1 << 20
 // agents load only once the project config tree is trusted.
 func (h *Host) agentDefs() []AgentDef {
 	var out []AgentDef
-	seen := map[string]bool{}
+	seen := map[string]string{} // name -> the kept file
 	add := func(defs []AgentDef) {
 		for _, d := range defs {
-			if !seen[d.Name] {
-				seen[d.Name] = true
-				out = append(out, d)
+			if kept, ok := seen[d.Name]; ok {
+				h.pluginDup("agent "+d.Name, kept, d.Path)
+				continue
 			}
+			seen[d.Name] = d.Path
+			out = append(out, d)
 		}
 	}
 	if h.Dirs.ConfigHome != "" {

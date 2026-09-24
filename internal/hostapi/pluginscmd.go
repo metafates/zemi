@@ -148,6 +148,7 @@ func (h *Host) pluginItems() []any {
 		install["desc"] = "No plugins yet."
 	}
 	items := []any{install, map[string]any{"text": "Check for updates", "verb": "check", "run": "plugins check"}}
+	provides := h.pluginProvides()
 	for _, p := range ps {
 		status, loadErr := h.pluginStatus(p)
 		var desc []string
@@ -173,8 +174,8 @@ func (h *Host) pluginItems() []any {
 		if loadErr != nil {
 			detail = append(detail, "error: "+loadErr.Error())
 		}
-		if provides := h.pluginProvides(p.Name); provides != "" {
-			detail = append(detail, "provides: "+provides)
+		if l := provides[p.Name]; l != nil {
+			detail = append(detail, "provides: "+strings.Join(l, " · "))
 		}
 		if p.Desc != "" {
 			detail = append([]string{p.Desc, ""}, detail...)
@@ -227,44 +228,34 @@ func (h *Host) pluginStatus(p plugins.Plugin) (string, error) {
 	return "starting", nil
 }
 
-// pluginProvides names what plugin name registered in this generation.
-func (h *Host) pluginProvides(name string) string {
-	var out []string
-	mine := func(o lua.Origin, path string) bool { return o == lua.OriginPlugin && h.PluginOf(path) == name }
-	for _, c := range h.Commands.List() {
-		if mine(c.Origin, c.Path) {
-			out = append(out, "command /"+c.Name)
+// pluginProvides lists what each plugin provides, by plugin name.
+func (h *Host) pluginProvides() map[string][]string {
+	out := map[string][]string{}
+	add := func(path, what string) {
+		if n := h.PluginOf(path); n != "" {
+			out[n] = append(out[n], what)
 		}
+	}
+	for _, c := range h.Commands.List() {
+		add(c.Path, "command /"+c.Name)
 	}
 	for _, t := range h.luaTools.list() {
-		if mine(t.Origin, t.Path) {
-			out = append(out, "tool "+t.Name)
-		}
+		add(t.Path, "tool "+t.Name)
 	}
 	for _, w := range h.Widgets.List() {
-		if mine(w.Origin, w.Path) {
-			out = append(out, "widget "+w.ID)
-		}
+		add(w.Path, "widget "+w.ID)
 	}
 	for _, k := range h.Keymaps.List() {
-		if mine(k.Origin, k.Path) {
-			out = append(out, "keymap "+k.Key)
-		}
+		add(k.Path, "keymap "+k.Key)
 	}
 	for _, s := range h.skillsReg.list() {
-		if mine(lua.Origin(s.Source), s.Dir) {
-			out = append(out, "skill "+s.Name)
-		}
+		add(s.Dir, "skill "+s.Name)
 	}
 	for _, d := range h.agentDefs() {
-		if mine(lua.Origin(d.Source), d.Path) {
-			out = append(out, "agent "+d.Name)
-		}
+		add(d.Path, "agent "+d.Name)
 	}
 	for _, w := range h.workflows() {
-		if mine(lua.Origin(w.Source), w.Path) {
-			out = append(out, "workflow "+w.Name)
-		}
+		add(w.Path, "workflow "+w.Name)
 	}
-	return strings.Join(out, " · ")
+	return out
 }

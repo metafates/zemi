@@ -148,18 +148,25 @@ func frontmatter(data []byte) (name, description string, err error) {
 
 // Discover merges skill directories in the order given, higher trust
 // first: on a name clash the earlier one wins (user over builtin,
-// §10.5). Unreadable or invalid directories are skipped with a
+// §10.5), with a warning when both dirs have one source (two plugins).
+// Unreadable or invalid directories are skipped with a
 // returned warning per failure, never fatal: a broken skill must not hide
 // the others.
 func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
-	seen := map[string]bool{}
+	seen := map[string]Skill{}
 	for _, d := range dirs {
 		entries, err := os.ReadDir(d.Path)
 		if err != nil {
 			continue
 		}
 		for _, e := range entries {
-			if !e.IsDir() || seen[e.Name()] {
+			if !e.IsDir() {
+				continue
+			}
+			if kept, ok := seen[e.Name()]; ok {
+				if kept.Source == d.Source {
+					warnings = append(warnings, fmt.Sprintf("skills: %s: skill %s is already in %s", filepath.Join(d.Path, e.Name()), e.Name(), kept.Dir))
+				}
 				continue
 			}
 			sk, err := Parse(filepath.Join(d.Path, e.Name()), d.Source)
@@ -169,7 +176,7 @@ func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
 					continue
 				}
 			}
-			seen[sk.Name] = true
+			seen[sk.Name] = sk
 			skills = append(skills, sk)
 		}
 	}

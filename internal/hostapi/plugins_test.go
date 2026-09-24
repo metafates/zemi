@@ -107,16 +107,29 @@ func TestPluginsStep(t *testing.T) {
 		},
 		{
 			name: "a plugin's skills, agents, commands and workflows load, a disabled plugin's do not, the user's win",
-			plugins: res(res(res(map[string]string{"installed/a/skills/s/zemi-skill.lua": `print("hook")`, "disabled": "off\n"},
+			plugins: res(res(res(map[string]string{"installed/a/skills/s/zemi-skill.lua": `print("hook")`, "installed/a/.git/config": "", "disabled": "off\n"},
 				"installed/a/", "s"), "installed/a/", "mine"), "local/off/", "gone"),
 			cfg: res(map[string]string{}, "", "mine"),
 			want: []string{
-				"skill s plugin a true\n", "skill mine user true\n", "agent s plugin a\n", "agent mine user\n",
-				"command s plugin a\n", "command mine user\n", "workflow s plugin a\n", "workflow mine user\n",
+				"skill s plugin:a true\n", "skill mine user true\n", "agent s plugin:a\n", "agent mine user\n",
+				"command s plugin:a\n", "command mine user\n", "workflow s plugin:a\n", "workflow mine user\n",
 				"read s allow ask\n", // the skill tool reads it; plugin Lua gets no jail
+				"read .git ask\n",    // a clone's remote URL may carry a token
 				"provides: command /s · skill s · agent s · workflow s\n",
 			},
-			not: []string{"gone", "plugin|hook", "mine plugin"},
+			not: []string{"gone", "plugin|hook", "mine plugin", "error: plugins", "error: skills"},
+		},
+		{
+			name:    "two plugins ship one name: the first by name keeps it and /errors names both",
+			plugins: res(res(map[string]string{}, "installed/b/", "x"), "local/a/", "x"),
+			want: []string{
+				"skill x plugin:a true\n", "agent x plugin:a\n", "command x plugin:a\n", "workflow x plugin:a\n",
+				"error: plugins: agent x is already provided by plugin a, not b\n",
+				"error: plugins: workflow x is already provided by plugin a, not b\n",
+				"error: skills: <plugins>/installed/b/skills/x: skill x is already in <plugins>/local/a/skills/x\n",
+				"already registered by plugin a, not b",
+			},
+			not: []string{"plugin:b"},
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -201,7 +214,13 @@ func TestPluginsStep(t *testing.T) {
 					fmt.Fprintf(&out, "workflow %s %s\n", w.Name, h.sourceOf(w.Source, w.Path))
 				}
 			}
-			fmt.Fprintf(&out, "provides: %s\n", h.pluginProvides("a"))
+			fmt.Fprintf(&out, "read .git %s\n", h.fsDefault("fs.read", filepath.Join(h.pluginsRoot(), "installed/a/.git/config")))
+			fmt.Fprintf(&out, "provides: %s\n", strings.Join(h.pluginProvides()["a"], " · "))
+			h.errs.mu.Lock()
+			for _, e := range h.errs.entries {
+				fmt.Fprintf(&out, "error: %s: %s\n", e.source, strings.ReplaceAll(e.msg, h.pluginsRoot(), "<plugins>"))
+			}
+			h.errs.mu.Unlock()
 			for _, row := range h.goHealthRows() {
 				if row.name == "plugins" {
 					fmt.Fprintf(&out, "health: %s\n", row.detail)

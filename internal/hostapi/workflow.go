@@ -57,7 +57,7 @@ type Workflow struct {
 // tree is trusted.
 func (h *Host) workflows() []Workflow {
 	var out []Workflow
-	seen := map[string]bool{}
+	seen := map[string]string{} // name -> the kept file
 	scan := func(dir, source string) {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -65,10 +65,14 @@ func (h *Host) workflows() []Workflow {
 		}
 		for _, e := range entries {
 			name, ok := strings.CutSuffix(e.Name(), ".lua")
-			if !ok || e.IsDir() || seen[name] {
+			if !ok || e.IsDir() {
 				continue
 			}
 			path := filepath.Join(dir, e.Name())
+			if kept, ok := seen[name]; ok {
+				h.pluginDup("workflow "+name, kept, path)
+				continue
+			}
 			if !skills.ValidName(name) {
 				h.RecordErrorOnce("workflows", path+": name must match [a-z0-9][a-z0-9-]*")
 				continue
@@ -78,7 +82,7 @@ func (h *Host) workflows() []Workflow {
 				h.RecordErrorOnce("workflows", err.Error())
 				continue
 			}
-			seen[name] = true
+			seen[name] = path
 			out = append(out, Workflow{Name: name, Description: leadingComment(src), Path: path, Source: source})
 		}
 	}
@@ -88,11 +92,11 @@ func (h *Host) workflows() []Workflow {
 	builtin, _ := fs.ReadDir(zemiruntime.Workflows, "workflows")
 	for _, e := range builtin {
 		name, ok := strings.CutSuffix(e.Name(), ".lua")
-		if !ok || seen[name] {
+		if _, dup := seen[name]; !ok || dup {
 			continue
 		}
 		src, _ := fs.ReadFile(zemiruntime.Workflows, "workflows/"+e.Name())
-		seen[name] = true
+		seen[name] = "builtin:" + e.Name()
 		out = append(out, Workflow{Name: name, Description: leadingComment(string(src)), Path: "builtin:" + e.Name(), Source: "builtin"})
 	}
 	for _, p := range h.pluginDirs() {
