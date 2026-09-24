@@ -48,18 +48,26 @@ const netTimeout = 2 * time.Minute
 
 const usage = "usage: plugins [list] | install <git url> [name] | update [name...] | check | enable <name> | disable <name> | delete <name>"
 
-func root(d config.Dirs) string { return filepath.Join(d.DataHome, "plugins") }
-
 // List reads every plugin, local ones first, each group by name. It runs
 // only local git reads.
 func List(ctx context.Context, d config.Dirs) ([]Plugin, error) {
+	ps, err := Scan(d)
+	for i, p := range ps {
+		ps[i] = load(ctx, p.Dir, p.Local, p.Enabled)
+	}
+	return ps, err
+}
+
+// Scan is List without git: only Name, Dir, Local and Enabled, for the boot
+// step that loads plugins.
+func Scan(d config.Dirs) ([]Plugin, error) {
 	off, err := disabled(d)
 	if err != nil {
 		return nil, err
 	}
 	var ps []Plugin
 	for _, kind := range []string{"local", "installed"} {
-		dir := filepath.Join(root(d), kind)
+		dir := filepath.Join(d.PluginsRoot(), kind)
 		entries, err := os.ReadDir(dir)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return nil, err
@@ -67,7 +75,7 @@ func List(ctx context.Context, d config.Dirs) ([]Plugin, error) {
 		for _, e := range entries {
 			// a symlink is listed so the loader can say why it refuses it
 			if nameRe.MatchString(e.Name()) && (e.IsDir() || e.Type()&fs.ModeSymlink != 0) {
-				ps = append(ps, load(ctx, filepath.Join(dir, e.Name()), kind == "local", !off[e.Name()]))
+				ps = append(ps, Plugin{Name: e.Name(), Dir: filepath.Join(dir, e.Name()), Local: kind == "local", Enabled: !off[e.Name()]})
 			}
 		}
 	}
@@ -94,7 +102,7 @@ func Install(ctx context.Context, d config.Dirs, url, name string) (Plugin, erro
 	if err := free(d, name); err != nil {
 		return Plugin{}, err
 	}
-	dir := filepath.Join(root(d), "installed")
+	dir := filepath.Join(d.PluginsRoot(), "installed")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Plugin{}, err
 	}
@@ -342,7 +350,7 @@ func free(d config.Dirs, name string) error {
 		return fmt.Errorf("%q is not a plugin name: lowercase letters, digits, '.', '_' and '-'", name)
 	}
 	for _, kind := range []string{"local", "installed"} {
-		if dir := filepath.Join(root(d), kind, name); exists(dir) {
+		if dir := filepath.Join(d.PluginsRoot(), kind, name); exists(dir) {
 			return fmt.Errorf("a plugin is already named %s: %s", name, dir)
 		}
 	}
@@ -355,13 +363,13 @@ func clone(d config.Dirs, name string) (string, error) {
 	if !nameRe.MatchString(name) {
 		return "", fmt.Errorf("no plugin is named %q", name)
 	}
-	dir := filepath.Join(root(d), "installed", name)
+	dir := filepath.Join(d.PluginsRoot(), "installed", name)
 	if fi, err := os.Lstat(dir); err == nil && fi.IsDir() {
 		return dir, nil
 	} else if err == nil {
 		return "", fmt.Errorf("%s is not a directory zemi cloned", dir)
 	}
-	if local := filepath.Join(root(d), "local", name); exists(local) {
+	if local := filepath.Join(d.PluginsRoot(), "local", name); exists(local) {
 		return "", fmt.Errorf("%s is a local plugin, which zemi never changes: %s", name, local)
 	}
 	return "", fmt.Errorf("no installed plugin is named %s", name)
@@ -373,7 +381,7 @@ func exists(p string) bool {
 }
 
 func disabled(d config.Dirs) (map[string]bool, error) {
-	data, err := os.ReadFile(filepath.Join(root(d), "disabled"))
+	data, err := os.ReadFile(filepath.Join(d.PluginsRoot(), "disabled"))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
@@ -402,10 +410,10 @@ func setDisabled(d config.Dirs, name string, off bool) error {
 	for _, n := range slices.Sorted(maps.Keys(set)) {
 		b.WriteString(n + "\n")
 	}
-	if err := os.MkdirAll(root(d), 0o755); err != nil {
+	if err := os.MkdirAll(d.PluginsRoot(), 0o755); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(root(d), ".disabled-*")
+	f, err := os.CreateTemp(d.PluginsRoot(), ".disabled-*")
 	if err != nil {
 		return err
 	}
@@ -414,7 +422,7 @@ func setDisabled(d config.Dirs, name string, off bool) error {
 	if err := errors.Join(err, f.Close()); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), filepath.Join(root(d), "disabled"))
+	return os.Rename(f.Name(), filepath.Join(d.PluginsRoot(), "disabled"))
 }
 
 // git runs git on a plugin repository, blanking the user's filter drivers too.

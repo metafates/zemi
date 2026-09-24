@@ -3,16 +3,12 @@ package hostapi
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -110,58 +106,6 @@ func TestHealthChecksProfileModel(t *testing.T) {
 	}
 	if c := got["context"]; c.level != "warn" || !strings.Contains(c.detail, "unknown for b/m, a/m:") {
 		t.Errorf("context window = %+v, want a warning naming both models", c)
-	}
-}
-
-// TestPluginsStepContinues: a failing plugin file does not stop the ones
-// sorted after it, and the /health row counts it.
-func TestPluginsStepContinues(t *testing.T) {
-	data, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	dirs := config.Dirs{ProjectDir: t.TempDir(), DataHome: data}
-	for name, src := range map[string]string{"a": `error("broken")`, "b": `zemi.command.add("from-b", function() end, {})`} {
-		p := filepath.Join(dirs.PluginsDir(), "p", "start", name, "plugin", name+".lua")
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	log := logging.New(t.TempDir())
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dirs.PluginsDir(), Origin: lua.OriginPlugin}}})
-	h := NewHost(r, log, config.NewStore(), dirs)
-	step := h.PluginsStep()
-	run := step.Run
-	var stepErr error
-	step.Run = func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-		stepErr = run(ctx, r, g)
-		return nil
-	}
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), step}); err != nil {
-		t.Fatal(err)
-	}
-	if stepErr == nil || !strings.Contains(stepErr.Error(), "broken") {
-		t.Errorf("step error = %v, want a.lua's", stepErr)
-	}
-	if h.Commands.Lookup("from-b") == nil {
-		t.Error("b.lua did not load after a.lua failed")
-	}
-	// made after boot: the counts stay the boot's, and only a pack with
-	// neither plugin/*.lua nor lua/ is named
-	for _, d := range []string{"lib/lua", "hollow", "c/plugin/c.lua"} {
-		if err := os.MkdirAll(filepath.Join(dirs.PluginsDir(), "p", "start", d), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	i := slices.IndexFunc(h.goHealthRows(), func(c healthCheck) bool {
-		return c.name == "plugins" && c.level == "warn" && strings.Contains(c.detail, "1 of 2 files failed") &&
-			strings.Contains(c.detail, "nothing to load in hollow:")
-	})
-	if i < 0 {
-		t.Errorf("no plugins warn row in %+v", h.goHealthRows())
 	}
 }
 

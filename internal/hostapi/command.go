@@ -300,7 +300,7 @@ func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) (err error) {
 	defer func() { report(err) }()
 	switch rhs := b.RHS; {
 	case rhs.Fn != nil:
-		return h.RT.StartTask(ctx, h.luaTask(lua.ClassUI, luaCaller{gen: b.Gen, origin: b.Origin}, rhs.Fn), func(err error) {
+		return h.RT.StartTask(ctx, h.luaTask(lua.ClassUI, luaCaller{gen: b.Gen, origin: b.Origin, path: b.Path}, rhs.Fn), func(err error) {
 			h.refresh()
 			report(err)
 		})

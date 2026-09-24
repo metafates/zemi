@@ -1521,9 +1521,15 @@ func TestMaxOutput(t *testing.T) {
 func TestAlwaysRuleSkipsProtectedWrites(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.agents.sessionID = "s1"
+	h.Dirs.DataHome = t.TempDir()
 	proj := perm.RealPath(h.Dirs.ProjectDir)
+	plugin := filepath.Join(perm.RealPath(h.Dirs.DataHome), "plugins", "local", "p", "init.lua")
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(proj, "*"), Decision: perm.Allow, Principal: "model"})
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(perm.RealPath(h.Dirs.StateHome), "*"), Decision: perm.Allow, Principal: "model"})
+	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: filepath.Join(perm.RealPath(h.Dirs.DataHome), "*"), Decision: perm.Allow, Principal: "model"})
+	if label, _ := h.alwaysChoice(tools.Request{Subject: "fs.write", Arg: plugin}); label != "" {
+		t.Errorf("a local plugin write offers %q", label)
+	}
 	pipe := h.PipelineFor()
 	for _, c := range []struct {
 		path string
@@ -1532,6 +1538,7 @@ func TestAlwaysRuleSkipsProtectedWrites(t *testing.T) {
 		{filepath.Join(proj, "main.go"), perm.Allow},
 		{filepath.Join(proj, "pkg", ".agents", "init.lua"), perm.Deny},
 		{filepath.Join(proj, "pkg", ".git", "config"), perm.Deny},
+		{plugin, perm.Deny},
 		{filepath.Join(h.ScratchDir(), "notes.md"), perm.Allow},
 	} {
 		if v := pipe.Check(tools.Request{Subject: "fs.write", Arg: c.path}); v.Decision != c.want {

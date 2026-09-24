@@ -514,8 +514,10 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	badge := ""
 	if st.o.Origin != lua.OriginBuiltin && st.o.Origin != lua.OriginUser {
 		badge = string(st.o.Origin)
-		// the file name, not its path: a full path leaves no room for the title
-		if st.o.Path != "" {
+		// a plugin's name, else the file's: a path leaves no room for the title
+		if name := a.host.PluginOf(st.o.Path); name != "" {
+			badge += ":" + name
+		} else if st.o.Path != "" {
 			badge += ":" + filepath.Base(st.o.Path)
 		}
 	}

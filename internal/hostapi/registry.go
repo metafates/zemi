@@ -48,6 +48,7 @@ type KeymapRegistry struct {
 	mu       sync.RWMutex
 	bindings map[bindKey]*KeyBinding
 	next     int
+	owner    func(path string) string // Host.PluginOf, see pluginClash
 }
 
 func NewKeymapRegistry() *KeymapRegistry {
@@ -65,14 +66,24 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	defer r.mu.Unlock()
 	if old := r.bindings[bindKey{b.Focus, b.Key}]; old != nil && old.Origin.Rank() > b.Origin.Rank() {
 		return fmt.Errorf("keymap: %s is already bound by a %s registration", b.Key, old.Origin)
+	} else if old != nil {
+		if err := pluginClash(r.owner, "keymap: "+b.Key, old.Origin, old.Path, b.Origin, b.Path); err != nil {
+			return err
+		}
 	}
 	// a key fires before the longer sequences it starts, so overlapping a
 	// more trusted sequence would take it over (or be dead)
 	for k, old := range r.bindings {
 		related := k.focus == b.Focus || k.focus == "" || b.Focus == ""
 		overlap := strings.HasPrefix(k.key, b.Key+" ") || strings.HasPrefix(b.Key, k.key+" ") || k.key == b.Key && k.focus == "" && b.Focus != ""
-		if related && overlap && old.Origin.Rank() > b.Origin.Rank() {
+		if !related || !overlap {
+			continue
+		}
+		if old.Origin.Rank() > b.Origin.Rank() {
 			return fmt.Errorf("keymap: %s overlaps %s bound by a %s registration", b.Key, k.key, old.Origin)
+		}
+		if err := pluginClash(r.owner, "keymap: "+b.Key+" overlaps "+k.key, old.Origin, old.Path, b.Origin, b.Path); err != nil {
+			return err
 		}
 	}
 	if old := r.bindings[bindKey{b.Focus, b.Key}]; old != nil {
@@ -165,7 +176,8 @@ type Command struct {
 // case-variant of an existing name is refused.
 type CommandRegistry struct {
 	mu       sync.RWMutex
-	commands map[string]*Command // canonical name
+	commands map[string]*Command      // canonical name
+	owner    func(path string) string // Host.PluginOf, see pluginClash
 }
 
 func NewCommandRegistry() *CommandRegistry {
@@ -187,6 +199,9 @@ func (r *CommandRegistry) Add(c *Command) (*Command, error) {
 		}
 		if old.Name != c.Name {
 			return old, fmt.Errorf("command /%s collides with /%s (case-insensitive)", c.Name, old.Name)
+		}
+		if err := pluginClash(r.owner, "command /"+c.Name, old.Origin, old.Path, c.Origin, c.Path); err != nil {
+			return old, err
 		}
 	}
 	r.commands[key] = c
@@ -250,6 +265,7 @@ type Widget struct {
 type WidgetRegistry struct {
 	mu      sync.RWMutex
 	widgets map[string]*Widget
+	owner   func(path string) string // Host.PluginOf, see pluginClash
 }
 
 func NewWidgetRegistry() *WidgetRegistry {
@@ -265,6 +281,9 @@ func (r *WidgetRegistry) Add(w *Widget) (*Widget, error) {
 	if old, exists := r.widgets[w.ID]; exists {
 		if old.Origin.Rank() > w.Origin.Rank() {
 			return old, fmt.Errorf("widget %q is already registered by a %s registration", w.ID, old.Origin)
+		}
+		if err := pluginClash(r.owner, fmt.Sprintf("widget %q", w.ID), old.Origin, old.Path, w.Origin, w.Path); err != nil {
+			return old, err
 		}
 	}
 	r.widgets[w.ID] = w
@@ -458,7 +477,8 @@ type Theme struct {
 type ThemeRegistry struct {
 	mu        sync.RWMutex
 	themes    map[string]*Theme
-	overrides map[string]HLSpec // zemi.ui.hl.set: groups set on top of any theme
+	overrides map[string]HLSpec        // zemi.ui.hl.set: groups set on top of any theme
+	owner     func(path string) string // Host.PluginOf, see pluginClash
 }
 
 // SetHL overrides one highlight group on top of every theme.
@@ -511,6 +531,9 @@ func (r *ThemeRegistry) Add(t *Theme) (*Theme, error) {
 	if old, exists := r.themes[t.Name]; exists {
 		if old.Origin.Rank() > t.Origin.Rank() {
 			return old, fmt.Errorf("theme %q is already registered by a %s registration", t.Name, old.Origin)
+		}
+		if err := pluginClash(r.owner, fmt.Sprintf("theme %q", t.Name), old.Origin, old.Path, t.Origin, t.Path); err != nil {
+			return old, err
 		}
 	}
 	r.themes[t.Name] = t

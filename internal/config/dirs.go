@@ -63,7 +63,8 @@ func (d Dirs) Ensure() error {
 	for _, dir := range []string{
 		d.ConfigHome,
 		filepath.Join(d.ConfigHome, "lua"),
-		d.PluginsDir(),
+		filepath.Join(d.PluginsRoot(), "installed"),
+		filepath.Join(d.PluginsRoot(), "local"),
 		d.LogDir(),
 	} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -211,9 +212,10 @@ func (d Dirs) UserTrees() []string {
 	return out
 }
 
-// PluginsDir is ~/.local/share/zemi/site/pack.
-func (d Dirs) PluginsDir() string {
-	return filepath.Join(d.DataHome, "site", "pack")
+// PluginsRoot is ~/.local/share/zemi/plugins: git clones in installed/,
+// plugins developed in place in local/, and the disabled list.
+func (d Dirs) PluginsRoot() string {
+	return filepath.Join(d.DataHome, "plugins")
 }
 
 // LogDir is ~/.local/state/zemi/logs.

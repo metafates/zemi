@@ -176,7 +176,7 @@ func TestConfigFingerprint(t *testing.T) {
 	write("init.lua", "-- one")
 	base := configFingerprint(dir)
 	write(".git/index", "x")
-	write("site/pack/x/start/y/node_modules/z/index.js", "x")
+	write("lua/node_modules/z/index.js", "x")
 	if configFingerprint(dir) != base {
 		t.Fatal("git data or a dependency tree changed the fingerprint")
 	}
@@ -640,18 +640,18 @@ func TestModelFlagUnderProfile(t *testing.T) {
 	}
 }
 
-// BenchmarkConfigFingerprint walks a config tree with a plugin's
-// dependency tree in it, the shape that made the one-second watch cost.
+// BenchmarkConfigFingerprint walks a local plugin with a dependency tree
+// in it, the shape that made the one-second watch cost.
 func BenchmarkConfigFingerprint(b *testing.B) {
 	dir := b.TempDir()
-	deps := filepath.Join(dir, "site", "pack", "x", "start", "y", "node_modules")
+	deps := filepath.Join(dir, "local", "y", "node_modules")
 	for i := range 2000 {
 		p := filepath.Join(deps, fmt.Sprintf("m%d", i%100), fmt.Sprintf("f%d.js", i))
 		_ = os.MkdirAll(filepath.Dir(p), 0o755)
 		_ = os.WriteFile(p, []byte("x"), 0o644)
 	}
-	_ = os.WriteFile(filepath.Join(dir, "init.lua"), []byte("-- one"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "local", "y", "init.lua"), []byte("-- one"), 0o644)
 	for b.Loop() {
-		configFingerprint(dir)
+		configFingerprint(pluginRoots(dir)...)
 	}
 }

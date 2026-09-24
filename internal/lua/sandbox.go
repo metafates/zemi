@@ -17,7 +17,7 @@ type Sandbox struct {
 	frozen    *glua.LTable
 	protected map[string]struct{}
 	integrity []namespaceCheck
-	originOf  func() Origin
+	originOf  func(*glua.LState) Origin
 	start     time.Time
 	guard     Guard
 }
@@ -77,7 +77,7 @@ type namespaceCheck struct {
 
 // NewSandbox creates a state with the §5 sandbox applied. zemi.*
 // namespaces are registered afterwards, before any chunk runs.
-func NewSandbox(originOf func() Origin) (*Sandbox, error) {
+func NewSandbox(originOf func(*glua.LState) Origin) (*Sandbox, error) {
 	L := glua.NewState(glua.Options{
 		SkipOpenLibs:  true,
 		CallStackSize: 512,
@@ -346,7 +346,7 @@ func (s *Sandbox) SetPrint(fn func(origin, line string)) {
 	printFn := s.L.NewFunction(func(L *glua.LState) int {
 		origin := OriginHost
 		if s.originOf != nil {
-			origin = s.originOf()
+			origin = s.originOf(L)
 		}
 		fn(string(origin), joinArgs(L, " "))
 		return 0
@@ -761,7 +761,7 @@ func (s *Sandbox) makeLoader(loadstring bool) *glua.LFunction {
 		if callerOrigin == "" && s.originOf != nil {
 			// pcall(loadstring, src, "@user:/x") has a Go caller; the name
 			// must still carry the running origin, not the forged one.
-			callerOrigin = s.originOf()
+			callerOrigin = s.originOf(L)
 		}
 		if filepath.IsAbs(chunkname) {
 			// an absolute name would pass as a file to relative require
@@ -817,7 +817,7 @@ func (s *Sandbox) debugTraceback(L *glua.LState) int {
 	b.WriteString("stack traceback:")
 	cur := Origin("")
 	if s.originOf != nil {
-		cur = s.originOf()
+		cur = s.originOf(L)
 	}
 	for lvl := 1; ; lvl++ {
 		dbg, ok := L.GetStack(lvl)

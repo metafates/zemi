@@ -268,7 +268,7 @@ type Host struct {
 	msgs  msgLog   // recent print and zemi.log lines for /messages
 	evlog eventLog // recent events and notifications for Lua reflection
 
-	pluginsBoot atomic.Pointer[[2]int] // plugin files the last boot failed to load and tried, for /health
+	pluginLoads atomic.Pointer[[]pluginLoad] // the last boot's enabled plugins, for /health
 
 	// jobs owns the model's background processes (job_* tools).
 	jobs  *tools.Jobs
@@ -455,6 +455,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		lsp:       newLSPReg(),
 	}
 	h.Perm.Default = h.fsDefault
+	h.Keymaps.owner, h.Commands.owner, h.Widgets.owner, h.Themes.owner, h.luaTools.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
 	h.jobs.OnExit = h.refresh
 	h.Perm.EnvKeep = func() string { return settings.Str("permissions.env_keep") }
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)

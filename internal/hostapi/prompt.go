@@ -101,6 +101,7 @@ func (h *Host) zemiPrompt(toolset []fantasy.AgentTool) string {
 	}
 	return "\n\n# zemi\nYou run inside zemi." + skill + " To change how zemi behaves for the user, use config, never its source." +
 		" User config directory: " + h.Dirs.ConfigHome + " (this exact path, not ~/.config/zemi). Project config directory: " + pdir + "." +
+		" Local plugins directory: " + h.localPlugins() + "." +
 		" Reading the user config needs no approval; writing it does, so say first what you will write." +
 		" The shipped Lua UI is readable in " + filepath.Join(h.TypesDir(), "zemi", "defaultui") + "."
 }

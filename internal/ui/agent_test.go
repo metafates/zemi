@@ -51,7 +51,7 @@ func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	settings := config.NewStore()
 	classes := lua.PathClasses{
 		{Prefix: cfg, Origin: lua.OriginUser},
-		{Prefix: filepath.Join(data, "site", "pack"), Origin: lua.OriginPlugin},
+		{Prefix: filepath.Join(data, "plugins"), Origin: lua.OriginPlugin},
 	}
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiRuntime.FS})
 	host := hostapi.NewHost(rt, log, settings, config.Dirs{ConfigHome: cfg, DataHome: data, StateHome: state})

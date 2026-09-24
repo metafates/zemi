@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"testing/fstest"
 )
@@ -201,40 +200,36 @@ func TestClassifyPrefixCreatedLater(t *testing.T) {
 	}
 }
 
-// TestRequireOriginFollowsFile verifies §5: origin comes from the module
-// file's directory class, never from the requirer, so a plugin module
-// required from user code reports plugin origin (and the user chunk itself
-// reports user).
-func TestRequireOriginFollowsFile(t *testing.T) {
-	r, _, plugin := newRequireRuntime(t)
-	writeFile(t, filepath.Join(plugin, "p", "start", "omod", "lua", "omod.lua"),
-		"print(\"hello from plugin\")\n")
-
-	var mu sync.Mutex
+// TestOriginFollowsCode: a module runs as its file's class, never its
+// requirer's, and code runs as the least trusted Lua function on its
+// stack: a plugin's setup() that user init.lua calls is plugin code, even
+// through a coroutine or a loadstring chunk named like user code, while a
+// builtin module in between is transparent.
+func TestOriginFollowsCode(t *testing.T) {
+	r, cfg, plugin := newRequireRuntime(t)
+	dir := filepath.Join(plugin, "local", "omod")
+	writeFile(t, filepath.Join(dir, "lua", "omod.lua"), `print("body")
+		return { setup = function(f) print("setup") f() coroutine.wrap(print)("wrapped")
+			local _, forged = pcall(loadstring, "print('forged')", "@user:/x") coroutine.wrap(forged)() end }`)
+	r.rfs = fstest.MapFS{"lua/zemi/util.lua": {Data: []byte(`return { call = function(f) f() end }`)}}
 	var lines []string
-	r.SetPrintHook(func(origin, line string) {
-		mu.Lock()
-		lines = append(lines, origin+"|"+line)
-		mu.Unlock()
-	})
-
+	r.SetPrintHook(func(origin, line string) { lines = append(lines, origin+"|"+line) })
+	boot := BootStep{Name: "plugins", Run: func(_ context.Context, _ *Runtime, g *Generation) error {
+		g.Plugins = []string{dir}
+		return nil
+	}}
+	if err := r.Boot(context.Background(), []BootStep{boot}); err != nil {
+		t.Fatal(err)
+	}
 	if err := r.ExecuteChunk(context.Background(), `
-		require("omod")
-		print("after require")
-	`, "init.lua", OriginUser); err != nil {
-		t.Fatalf("chunk failed: %v", err)
+		require("omod").setup(function() print("callback") end)
+		require("zemi.util").call(function() print("via builtin") end)
+	`, filepath.Join(cfg, "init.lua"), OriginUser); err != nil {
+		t.Fatal(err)
 	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 print lines, got %v", lines)
-	}
-	if !strings.Contains(lines[0], "plugin|") || !strings.Contains(lines[0], "hello from plugin") {
-		t.Fatalf("plugin module ran under wrong origin: %q", lines[0])
-	}
-	if !strings.Contains(lines[1], "user|") || !strings.Contains(lines[1], "after require") {
-		t.Fatalf("user chunk ran under wrong origin: %q", lines[1])
+	want := "plugin|body plugin|setup plugin|callback plugin|wrapped plugin|forged user|via builtin"
+	if got := strings.Join(lines, " "); got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
 	}
 }
 

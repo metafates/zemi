@@ -79,7 +79,7 @@ func run(args []string) int {
 
 	classes := lua.PathClasses{
 		{Prefix: dirs.ConfigHome, Origin: lua.OriginUser},
-		{Prefix: dirs.PluginsDir(), Origin: lua.OriginPlugin},
+		{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
 		{Prefix: dirs.ProjectConfigDir(), Origin: lua.OriginProject},
 	}
 	for _, dir := range dirs.UserTrees() {
@@ -235,13 +235,13 @@ func run(args []string) int {
 }
 
 // watchConfig reloads when files under the user or a trusted project's
-// config change, once no turn is running (an edit made mid-turn applies
-// after it).
+// config or a plugin change, once no turn is running (an edit made mid-turn
+// applies after it).
 func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
 	fingerprint := func() (string, bool) {
 		// a sandboxed command that created project config turns trust off first
 		h.CheckSandboxed()
-		roots := append([]string{dirs.ConfigHome}, dirs.UserTrees()...)
+		roots := append(append([]string{dirs.ConfigHome}, dirs.UserTrees()...), pluginRoots(dirs.PluginsRoot())...)
 		if h.ProjectTrusted() {
 			return configFingerprint(append(roots, dirs.ProjectConfigDir())...), true
 		}
@@ -259,6 +259,14 @@ func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
 			reload()
 		}
 	}
+}
+
+// pluginRoots are what the watcher reads of the plugins tree: every local
+// plugin whole, and for a clone only its git index, which install, update
+// and delete move, so a big installed tree costs no walk.
+func pluginRoots(root string) []string {
+	idx, _ := filepath.Glob(filepath.Join(root, "installed", "[^.]*", ".git", "index"))
+	return append(idx, filepath.Join(root, "local"), filepath.Join(root, "disabled"))
 }
 
 // configFingerprint summarizes config trees by path, size and modification

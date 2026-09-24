@@ -48,9 +48,9 @@ func TestPlugins(t *testing.T) {
 	f, _ := os.OpenFile(global, os.O_APPEND|os.O_WRONLY, 0)
 	f.WriteString("[filter \"x\"]\nsmudge = touch " + marker + "; cat\nclean = touch " + marker + "; cat\nrequired = true\n")
 	f.Close()
-	local := filepath.Join(root(d), "local", "loc")
+	local := filepath.Join(d.PluginsRoot(), "local", "loc")
 	os.MkdirAll(local, 0o755)
-	installed := filepath.Join(root(d), "installed")
+	installed := filepath.Join(d.PluginsRoot(), "installed")
 
 	for _, c := range []struct {
 		name   string
@@ -118,7 +118,7 @@ func TestPlugins(t *testing.T) {
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("a plugin clone ran the user's filter driver")
 	}
-	if off, _ := os.ReadFile(filepath.Join(root(d), "disabled")); len(off) != 0 {
+	if off, _ := os.ReadFile(filepath.Join(d.PluginsRoot(), "disabled")); len(off) != 0 {
 		t.Errorf("disabled = %q after the delete and the reinstall", off)
 	}
 }

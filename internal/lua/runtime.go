@@ -100,15 +100,52 @@ func (r *Runtime) PushFrame(L *glua.LState, origin Origin, path string) func() {
 	return g.pushFrame(origin, path)
 }
 
-// CurrentOrigin returns the origin of the chunk currently running on L's
-// interpreter (host entries push the registration origin).
+// CurrentOrigin returns the origin of the code running on L: the least
+// trusted of the top frame (a host entry pushes the registration origin)
+// and the Lua functions on the call stack, so a plugin's setup() that user
+// init.lua calls still runs as the plugin.
 func (r *Runtime) CurrentOrigin(L *glua.LState) Origin {
-	return genOf(L).top().origin
+	return r.effective(L).origin
 }
 
-// CurrentPath returns the file path of the chunk running on L, or "".
+// CurrentPath returns the file of the code CurrentOrigin names, or "".
 func (r *Runtime) CurrentPath(L *glua.LState) string {
-	return genOf(L).top().path
+	return r.effective(L).path
+}
+
+// effective walks the Lua functions on L's stack and on the threads that
+// resumed it, innermost first. Builtin functions are transparent, so a
+// builtin module calling a user callback leaves it user. The path is the
+// innermost file of the lowest origin whose own class matches it (not a
+// loadstring chunk, nor a user module a plugin required), else the top
+// frame's.
+// NOTE: a Lua tail call drops its caller's frame, so plugin code that
+// tail-calls a builtin or user function from init.lua's call hands it
+// init.lua's origin; the VM would have to record replaced frames.
+// NOTE: O(stack depth) per call; caching per frame push is the upgrade.
+func (r *Runtime) effective(L *glua.LState) frame {
+	top := genOf(L).top()
+	best, file := top, r.paths.Classify(top.path) == top.origin
+	for th := L; th != nil; th = th.Parent {
+		for lvl := 0; ; lvl++ {
+			dbg, ok := th.GetStack(lvl)
+			if !ok {
+				break
+			}
+			if _, err := th.GetInfo("S", dbg, glua.LNil); err != nil {
+				continue
+			}
+			o, path := splitChunkName(dbg.Source)
+			switch {
+			case o.Rank() == 0 || o == OriginBuiltin || o.Rank() > best.origin.Rank():
+			case o.Rank() < best.origin.Rank():
+				best, file = frame{o, path}, r.paths.Classify(path) == o
+			case !file && r.paths.Classify(path) == o:
+				best.path, file = path, true
+			}
+		}
+	}
+	return best
 }
 
 // The stack is touched only by the goroutine running the generation's
@@ -190,7 +227,7 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 	r.booting.Store(true)
 	defer r.booting.Store(false)
 	var gen *Generation
-	sb, err := NewSandbox(func() Origin { return gen.top().origin })
+	sb, err := NewSandbox(r.CurrentOrigin)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +242,6 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 		SB:      sb,
 		L:       sb.L,
 		modules: map[string]glua.LValue{},
-		packs:   map[string][]string{},
 		signal:  make(chan struct{}, 1),
 		stop:    make(chan struct{}),
 		tasks:   map[*glua.LState]*taskRun{},
@@ -490,7 +526,7 @@ func (r *Runtime) requireModule(gen *Generation, L *glua.LState, name string) (g
 	if strings.HasPrefix(name, "zemi.") {
 		// zemi.* resolves to the Go preload or the embedded stdlib only;
 		// userland cannot shadow it (DESIGN §5).
-		return r.loadModule(gen, "embedded:"+name, name, OriginBuiltin, func() ([]byte, string, error) {
+		return r.loadModule(gen, L, "embedded:"+name, name, OriginBuiltin, func() ([]byte, string, error) {
 			return r.readEmbedded(name)
 		})
 	}
@@ -498,7 +534,7 @@ func (r *Runtime) requireModule(gen *Generation, L *glua.LState, name string) (g
 	if err != nil {
 		return glua.LNil, err
 	}
-	return r.loadModule(gen, path, name, origin, func() ([]byte, string, error) {
+	return r.loadModule(gen, L, path, name, origin, func() ([]byte, string, error) {
 		data, err := os.ReadFile(path)
 		return data, path, err
 	})
@@ -512,8 +548,8 @@ func (r *Runtime) requireModule(gen *Generation, L *glua.LState, name string) (g
 // the exception: they keep no caller-supplied functions, and rerunning
 // zemi.defaultui would re-register the UI and hit the cross-origin refusal,
 // so lower origins share the builtin instance through a read-only view.
-func (r *Runtime) loadModule(gen *Generation, key, name string, origin Origin, read func() ([]byte, string, error)) (glua.LValue, error) {
-	req := r.CurrentOrigin(gen.L)
+func (r *Runtime) loadModule(gen *Generation, L *glua.LState, key, name string, origin Origin, read func() ([]byte, string, error)) (glua.LValue, error) {
+	req := r.CurrentOrigin(L)
 	lower := req != OriginHost && req.Rank() < origin.Rank()
 	if lower && origin != OriginBuiltin {
 		origin = req
@@ -582,7 +618,7 @@ func (r *Runtime) findModule(gen *Generation, L *glua.LState, name string) (stri
 		bases = []string{filepath.Join(filepath.Dir(from), filepath.FromSlash(strings.TrimSuffix(name, ".lua")))}
 	} else {
 		rel := filepath.FromSlash(strings.ReplaceAll(name, ".", "/"))
-		for _, root := range r.runtimepath(gen) {
+		for _, root := range r.runtimepath(gen, L) {
 			bases = append(bases, filepath.Join(root, "lua", rel))
 		}
 	}
@@ -650,31 +686,21 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 
 // runtimepath lists require roots in order: the project's .agents for project
 // code only (user and plugin requires never resolve into a repository's
-// untrusted files), then config home and each plugin (site/pack/*/start/*,
-// globbed once per generation); the embedded runtime is consulted separately
-// (DESIGN §5).
-func (r *Runtime) runtimepath(gen *Generation) []string {
+// untrusted files), then config home and each plugin the plugins step
+// loaded; the embedded runtime is consulted separately (DESIGN §5).
+func (r *Runtime) runtimepath(gen *Generation, L *glua.LState) []string {
 	var out []string
-	for _, want := range []Origin{OriginProject, OriginUser, OriginPlugin} {
-		if want == OriginProject && r.CurrentOrigin(gen.L) != OriginProject {
+	for _, want := range []Origin{OriginProject, OriginUser} {
+		if want == OriginProject && r.CurrentOrigin(L) != OriginProject {
 			continue
 		}
 		for _, c := range r.paths {
-			switch {
-			case c.Origin != want || c.Prefix == "":
-			case want != OriginPlugin:
+			if c.Origin == want && c.Prefix != "" {
 				out = append(out, c.Prefix)
-			default:
-				packs, ok := gen.packs[c.Prefix]
-				if !ok {
-					packs, _ = filepath.Glob(filepath.Join(c.Prefix, "*", "start", "*"))
-					gen.packs[c.Prefix] = packs
-				}
-				out = append(out, packs...)
 			}
 		}
 	}
-	return out
+	return append(out, gen.Plugins...)
 }
 
 // BootStep is one stage of the boot sequence, executed on the interpreter

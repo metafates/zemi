@@ -124,7 +124,9 @@ type Generation struct {
 	SB      *Sandbox
 	L       *glua.LState
 	modules map[string]glua.LValue
-	packs   map[string][]string // plugin dirs per plugin prefix, see runtimepath
+	// Plugins are the plugin dirs the plugins boot step loaded, in load
+	// order: the runtimepath's plugin roots for the whole generation.
+	Plugins []string
 
 	mu      sync.Mutex
 	heap    []*request

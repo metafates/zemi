@@ -74,7 +74,7 @@ zemi.ui.widget.add({
 	settings := config.NewStore()
 	classes := lua.PathClasses{
 		{Prefix: cfg, Origin: lua.OriginUser},
-		{Prefix: filepath.Join(data, "site", "pack"), Origin: lua.OriginPlugin},
+		{Prefix: filepath.Join(data, "plugins"), Origin: lua.OriginPlugin},
 		{Prefix: filepath.Join(projectResolved, ".agents"), Origin: lua.OriginProject},
 	}
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiRuntime.FS})

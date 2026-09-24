@@ -140,7 +140,8 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 		if h.secretPath(arg) {
 			return perm.Ask
 		}
-		if h.inJail(arg, h.readJails()...) || subject == "lua.fs.read" && h.inJail(arg, h.luaDataRoot()) {
+		if h.inJail(arg, h.readJails()...) || subject == "lua.fs.read" && h.inJail(arg, h.luaDataRoot()) ||
+			subject == "fs.read" && h.inJail(arg, h.localPlugins()) {
 			return perm.Allow
 		}
 	case "fs.write", "lua.fs.write":
@@ -164,8 +165,8 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 	approved = subject == "lua.job.start" && tool && approved
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
-	// rules are attributed to the calling code's origin, not to the model
-	pipe.Principal = string(h.RT.CurrentOrigin(L))
+	// rules are attributed to the calling code, not to the model
+	pipe.Principal = h.principal(L)
 	var v tools.Verdict
 	if subject == "lua.job.start" {
 		// a command line, normalized like bash so rules can scope arguments
@@ -188,9 +189,13 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 		})
 		// name the rule that settles it: a host-API call has no overlay, so
 		// "ask required" is the whole problem and none of the fix
+		who := ""
+		if strings.HasPrefix(pipe.Principal, "plugin:") {
+			who = fmt.Sprintf(", principal = %q", pipe.Principal)
+		}
 		L.RaiseError("%s %s: permission ask required; allow it in config with "+
-			`zemi.permission.rule.add{ subject = %q, pattern = %q, decision = "allow", match = %q }`,
-			subject, arg, subject, arg, arg)
+			`zemi.permission.rule.add{ subject = %q, pattern = %q, decision = "allow", match = %q%s }`,
+			subject, arg, subject, arg, arg, who)
 	default:
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
 	}
@@ -225,12 +230,21 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 // ---------------------------------------------------------------------------
 // zemi.state (persisted kv, global scope)
 
-// stateScope is the prefix a chunk's keys are stored under: plugin and
-// project code each get their own space, so neither reads or clobbers user
-// state (DESIGN §6.5); user and builtin see the whole store.
+// principal names the calling code for permission rules and state: its
+// origin, and for a plugin which one ("plugin:<name>").
+func (h *Host) principal(L *glua.LState) string {
+	if o := h.RT.CurrentOrigin(L); o != lua.OriginPlugin {
+		return string(o)
+	}
+	return "plugin:" + h.PluginOf(h.RT.CurrentPath(L))
+}
+
+// stateScope is the prefix a chunk's keys are stored under: each plugin and
+// project code get their own space, so none reads or clobbers another's or
+// user state (DESIGN §6.5); user and builtin see the whole store.
 func (h *Host) stateScope(L *glua.LState) string {
 	if o := h.RT.CurrentOrigin(L); o.Rank() < lua.OriginBuiltin.Rank() {
-		return string(o) + ":"
+		return h.principal(L) + ":"
 	}
 	return ""
 }

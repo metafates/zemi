@@ -144,6 +144,9 @@ func (h *Host) addCompletion(L *glua.LState) int {
 		if reg.list[i].origin.Rank() > s.origin.Rank() {
 			L.RaiseError("zemi.composer.complete: source %q is registered by %s config", s.id, reg.list[i].origin)
 		}
+		if err := pluginClash(h.PluginOf, "source "+s.id, reg.list[i].origin, reg.list[i].path, s.origin, s.path); err != nil {
+			L.RaiseError("zemi.composer.complete: %v", err)
+		}
 		reg.list[i] = s
 		return 0
 	}

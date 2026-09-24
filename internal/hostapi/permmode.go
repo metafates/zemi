@@ -448,7 +448,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 func (h *Host) autoLocal(req tools.Request) bool {
 	switch req.Subject {
 	case "fs.read":
-		return h.inJail(req.Arg, h.readJails()...) && !h.secretPath(req.Arg)
+		return h.inJail(req.Arg, append(h.readJails(), h.localPlugins())...) && !h.secretPath(req.Arg)
 	case "fs.write":
 		// zemi's own dirs can sit inside the project (zemi run in $HOME), and a
 		// write there (init.lua) changes what zemi allows
@@ -468,10 +468,11 @@ func (h *Host) protectedWrite(p string) bool { return h.protectedWhy(p) != "" }
 
 // protectedWhy says why a write under any .git, to the Lua in any .agents
 // (init.lua, lua/), to a .gitattributes or .gitmodules, the git dir a
-// project .git file names (git init --separate-git-dir) or zemi's own dirs
-// needs the user, "" for any other path: git runs what those name, and the
-// rest changes what zemi runs or allows. The rest of .agents (skills,
-// agents, commands, workflows) is an ordinary project write.
+// project .git file names (git init --separate-git-dir) or zemi's own dirs,
+// local plugins included, needs the user, "" for any other path: git runs
+// what those name, and the rest changes what zemi runs or allows. The rest
+// of .agents (skills, agents, commands, workflows) is an ordinary project
+// write.
 func (h *Host) protectedWhy(p string) string {
 	d, base := h.Dirs, filepath.Base(p)
 	const git = "which decides what git runs"
@@ -485,6 +486,9 @@ func (h *Host) protectedWhy(p string) string {
 		return "this changes " + base + ", " + git
 	case h.inJail(p, d.WorktreesDir()):
 		return ""
+	case h.inJail(p, h.localPlugins()):
+		// an approval in one project must not plant code every project loads
+		return "this changes a local plugin, which zemi runs in every project"
 	case h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome):
 		return "this changes zemi's own files"
 	case h.inJail(p, gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git"))):
@@ -571,9 +575,10 @@ func inDirNamed(p string, names ...string) bool {
 
 // safeCommandPath passes a settled command's argument when, read as a path
 // from the project root, it stays in the project and is not secret-shaped.
-// Plain reads may also use the scratchpad and zemi's config, which the read
-// tool reads without asking either; code may not run from there: the model
-// writes the pad without asking, even for a read-only agent.
+// Plain reads may also use the scratchpad, zemi's config and the local
+// plugins, which the read tool reads without asking either; code may not run
+// from there: the model writes the pad without asking, even for a read-only
+// agent.
 func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 	if strings.HasPrefix(arg, "~") {
 		return false
@@ -585,7 +590,7 @@ func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 	}
 	roots := []string{h.Dirs.ProjectDir}
 	if use != perm.ArgRun {
-		roots = append(append(roots, h.ScratchDir(), h.Dirs.ConfigHome), h.Dirs.UserTrees()...)
+		roots = append(append(roots, h.ScratchDir(), h.Dirs.ConfigHome, h.localPlugins()), h.Dirs.UserTrees()...)
 	}
 	walk := use == perm.ArgWalk || use == perm.ArgSearch
 	// .git/config may hold tokens

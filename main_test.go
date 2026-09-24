@@ -61,6 +61,42 @@ func TestConfigFingerprintFollowsSymlinks(t *testing.T) {
 	}
 }
 
+// TestPluginRootsFingerprint: an edit to a local plugin, a toggle and an
+// install or update (a clone's git index) reload; a clone's files and one
+// still in flight are not walked.
+func TestPluginRootsFingerprint(t *testing.T) {
+	for _, c := range []struct {
+		edit    string
+		noticed bool
+	}{
+		{"local/x/init.lua", true},
+		{"disabled", true},
+		{"installed/y/.git/index", true},
+		{"installed/z/.git/index", true},
+		{"installed/y/init.lua", false},
+		{"installed/.z.tmp/.git/index", false},
+		{"local/x/node_modules/a.js", false},
+	} {
+		root := t.TempDir()
+		write := func(name, body string) {
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(root, name)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, f := range []string{"local/x/init.lua", "installed/y/init.lua", "installed/y/.git/index"} {
+			write(f, "one")
+		}
+		base := configFingerprint(pluginRoots(root)...)
+		write(c.edit, "two!")
+		if got := configFingerprint(pluginRoots(root)...) != base; got != c.noticed {
+			t.Errorf("edit to %s noticed = %v, want %v", c.edit, got, c.noticed)
+		}
+	}
+}
+
 // TestMainCommandArgs: each command declares the arguments it reads, so a
 // stray one errors instead of being dropped (the host has no session store).
 func TestMainCommandArgs(t *testing.T) {

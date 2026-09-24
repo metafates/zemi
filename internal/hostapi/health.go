@@ -4,14 +4,11 @@
 package hostapi
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"maps"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -42,6 +39,7 @@ type luaHealthCheck struct {
 	name   string
 	fn     *glua.LFunction
 	origin lua.Origin
+	path   string
 	gen    Gen
 }
 
@@ -61,21 +59,23 @@ func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 		if strings.TrimSpace(name) == "" {
 			L.RaiseError("zemi.health.add: name is required")
 		}
-		c := luaHealthCheck{name: name, fn: fn, origin: h.RT.CurrentOrigin(L), gen: h.currentGen()}
+		c := luaHealthCheck{name: name, fn: fn, origin: h.RT.CurrentOrigin(L), path: h.RT.CurrentPath(L), gen: h.currentGen()}
 		reg := &h.healthReg
 		reg.mu.Lock()
-		i := slices.IndexFunc(reg.list, func(o luaHealthCheck) bool { return o.name == name })
-		refused := i >= 0 && reg.list[i].origin.Rank() > c.origin.Rank()
-		switch {
-		case refused:
-		case i >= 0:
-			reg.list[i] = c
-		default:
+		var err error
+		switch i := slices.IndexFunc(reg.list, func(o luaHealthCheck) bool { return o.name == name }); {
+		case i < 0:
 			reg.list = append(reg.list, c)
+		case reg.list[i].origin.Rank() > c.origin.Rank():
+			err = fmt.Errorf("%s is already registered by a more trusted origin", name)
+		default:
+			if err = pluginClash(h.PluginOf, name, reg.list[i].origin, reg.list[i].path, c.origin, c.path); err == nil {
+				reg.list[i] = c
+			}
 		}
 		reg.mu.Unlock()
-		if refused {
-			L.RaiseError("zemi.health.add: %s is already registered by a more trusted origin", name)
+		if err != nil {
+			L.RaiseError("zemi.health.add: %v", err)
 		}
 		return 0
 	}))
@@ -107,7 +107,7 @@ func (h *Host) inlineHealthRows(L *glua.LState) []healthCheck {
 		}
 		row := healthCheck{level: "ok", name: c.name}
 		func() {
-			defer h.RT.PushFrame(L, c.origin, "health")()
+			defer h.RT.PushFrame(L, c.origin, c.path)()
 			base := L.GetTop()
 			L.Push(c.fn)
 			if err := L.PCall(0, 1, nil); err != nil {
@@ -165,26 +165,6 @@ func healthResult(v any) (level, detail string) {
 		return level, sanitize.String(detail)
 	}
 	return "ok", ""
-}
-
-// PluginsStep loads site/pack/*/start/*/plugin/*.lua sorted, per the boot
-// order (DESIGN §5). A failing file does not stop the ones after it.
-func (h *Host) PluginsStep() lua.BootStep {
-	return lua.BootStep{
-		Name: "plugins",
-		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			files, err := filepath.Glob(filepath.Join(h.Dirs.PluginsDir(), "*", "start", "*", "plugin", "*.lua"))
-			slices.Sort(files)
-			var errs []error
-			for _, f := range files {
-				if err := lua.LoadFileStep("plugin "+f, f, lua.OriginPlugin).Run(ctx, r, g); err != nil {
-					errs = append(errs, err)
-				}
-			}
-			h.pluginsBoot.Store(&[2]int{len(errs), len(files)})
-			return errors.Join(append(errs, err)...)
-		},
-	}
 }
 
 // goHealthRows are the Go-side checks, in the order /health shows them.
@@ -317,25 +297,16 @@ func (h *Host) goHealthRows() []healthCheck {
 		add("ok", "layout", "every widget's region is drawn")
 	}
 
-	// a pack directory with neither plugin/*.lua nor lua/ loads nothing, silently
-	if packs, _ := filepath.Glob(filepath.Join(h.Dirs.PluginsDir(), "*", "start", "*")); len(packs) > 0 {
-		var empty []string
-		for _, p := range packs {
-			files, _ := filepath.Glob(filepath.Join(p, "plugin", "*.lua"))
-			if _, err := os.Stat(filepath.Join(p, "lua")); len(files) == 0 && err != nil {
-				empty = append(empty, filepath.Base(p))
+	if loads := h.pluginLoads.Load(); loads != nil && len(*loads) > 0 {
+		failed := 0
+		for _, l := range *loads {
+			if l.err != nil {
+				failed++
 			}
 		}
-		// the boot's counts, so the pair agrees when files moved since
-		boot := cmp.Or(h.pluginsBoot.Load(), &[2]int{})
-		failed, total := boot[0], boot[1]
-		level, detail := "ok", fmt.Sprintf("%d %s loaded", total, plural(total, "file", "files"))
+		level, detail := "ok", fmt.Sprintf("%d %s", len(*loads), plural(len(*loads), "plugin", "plugins"))
 		if failed > 0 {
-			level, detail = "warn", fmt.Sprintf("%d of %d %s failed, see /errors", failed, total, plural(total, "file", "files"))
-		}
-		if len(empty) > 0 {
-			level = "warn"
-			detail += "; nothing to load in " + strings.Join(empty, ", ") + ": a plugin is site/pack/*/start/<name>/plugin/*.lua or lua/"
+			level, detail = "warn", fmt.Sprintf("%s · %d failed", detail, failed)
 		}
 		add(level, "plugins", detail)
 	}
