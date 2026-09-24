@@ -143,7 +143,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		rows = append(rows, nil)
 		rows = append(rows, wrapText("Trusting lets this "+what+" run code and steer zemi:", "", width)...)
 		for _, g := range []string{
-			".zemi config: init.lua, agents, commands and workflows",
+			".agents config, skills, agents, commands and workflows",
 			"AGENTS.md and CLAUDE.md instructions",
 			"language servers, which can build the project",
 			"auto mode edits, builds and tests without asking",

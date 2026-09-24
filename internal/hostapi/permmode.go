@@ -192,7 +192,7 @@ func (h *Host) permItems() []any {
 			case "permissions":
 				item["detail"] = "from " + TildePath(h.projectPermissionsPath()) + "; edit that file"
 			case "project":
-				item["detail"] = "from the project's .zemi/init.lua"
+				item["detail"] = "from the project's .agents/init.lua"
 			default:
 				item["detail"] = "from " + r.Source + " config"
 			}
@@ -451,7 +451,7 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		return h.inJail(req.Arg, h.readJails()...) && !h.secretPath(req.Arg)
 	case "fs.write":
 		// zemi's own dirs can sit inside the project (zemi run in $HOME), and a
-		// write there (init.lua, .zemi/) changes what zemi allows
+		// write there (init.lua) changes what zemi allows
 		return h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
 	case "tool.bash":
 		return h.unsettled(req.Arg, req.ReadOnly) == ""
@@ -466,24 +466,25 @@ func (h *Host) autoLocal(req tools.Request) bool {
 
 func (h *Host) protectedWrite(p string) bool { return h.protectedWhy(p) != "" }
 
-// protectedWhy says why a write under any .git or .zemi (checkouts in
-// .zemi/worktrees aside), to a .gitattributes or .gitmodules, the git dir a
+// protectedWhy says why a write under any .git, to the Lua in any .agents
+// (init.lua, lua/), to a .gitattributes or .gitmodules, the git dir a
 // project .git file names (git init --separate-git-dir) or zemi's own dirs
 // needs the user, "" for any other path: git runs what those name, and the
-// rest changes what zemi allows.
+// rest changes what zemi runs or allows. The rest of .agents (skills,
+// agents, commands, workflows) is an ordinary project write.
 func (h *Host) protectedWhy(p string) string {
 	d, base := h.Dirs, filepath.Base(p)
 	const git = "which decides what git runs"
 	switch {
-	case inDirNamed(p, ".zemi"):
-		return "this changes .zemi, which decides what zemi runs"
+	case inDirNamed(p, ".agents/init.lua", ".agents/lua"):
+		return "this changes the Lua in .agents, which zemi runs"
 	case inDirNamed(p, ".git"):
 		return "this changes .git, " + git
 	case strings.EqualFold(base, ".gitattributes"), strings.EqualFold(base, ".gitmodules"):
 		return "this changes " + base + ", " + git
 	case h.inJail(p, d.WorktreesDir()):
 		return ""
-	case h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome, d.ProjectConfigDir()):
+	case h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome):
 		return "this changes zemi's own files"
 	case h.inJail(p, gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git"))):
 		return "this changes .git, " + git
@@ -537,24 +538,26 @@ func (h *Host) unsettled(cmd string, readOnly bool) string {
 	return ""
 }
 
-// inDirNamed reports a path under a directory with one of names (or that
-// entry itself): git runs programs its config and hooks name, even for
-// read-only commands, and zemi loads the nearest .zemi above where it starts.
+// inDirNamed reports a path under an entry with one of names (or that entry
+// itself), a name being one or more path components: git runs programs its
+// config and hooks name, even for read-only commands, and zemi runs the Lua
+// in a project's .agents.
 func inDirNamed(p string, names ...string) bool {
 	abs, err := filepath.Abs(p)
 	if err != nil {
 		return true
 	}
 	// EqualFold also matches .GIT on a case-sensitive volume, which only asks more
-	named := func(s string) bool {
-		return slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(s, n) })
+	named := func(parts []string) bool {
+		return slices.ContainsFunc(names, func(n string) bool {
+			want := strings.Split(n, "/")
+			return len(parts) >= len(want) && slices.EqualFunc(parts[:len(want)], want, strings.EqualFold)
+		})
 	}
 	for _, q := range []string{abs, perm.RealPath(p)} {
 		parts := strings.Split(filepath.ToSlash(q), "/")
-		for i, s := range parts {
-			// .zemi/worktrees/<name>/... is a checkout, not config
-			worktree := strings.EqualFold(s, ".zemi") && i+3 < len(parts) && parts[i+1] == "worktrees"
-			if named(s) && !worktree {
+		for i := range parts {
+			if named(parts[i:]) {
 				return true
 			}
 		}

@@ -42,11 +42,11 @@ var secretDirs = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"
 
 // sandboxPolicy is what a settled command may touch: the scratchpad, a
 // temp dir and a Go build cache of its own and, when trusted and not in plan
-// mode, the project; never .git, .zemi or zemi's own dirs, and zemi's dirs
+// mode, the project; never .git, .agents or zemi's own dirs, and zemi's dirs
 // are unreadable too (sessions, logs, keys in init.lua). The project is
 // writable only with a backend that keeps those read-only inside it, and
 // never when it is $HOME or above, holds one of zemi's dirs or sits in one,
-// holds a hidden path on a backend other than seatbelt, or its .git or .zemi
+// holds a hidden path on a backend other than seatbelt, or its .git or .agents
 // is a symlink: the backend protects the resolved target, so the link itself
 // could be replaced.
 // NOTE: GOCACHE points at a cache only sandboxed runs use: Go fails a build
@@ -80,7 +80,7 @@ func (h *Host) sandboxPolicy(readOnly bool) sandbox.Policy {
 	for _, root := range []string{d.ProjectDir, d.RepoRoot()} {
 		if root != "" {
 			protect(filepath.Join(root, ".git"))
-			protect(filepath.Join(root, ".zemi"))
+			protect(filepath.Join(root, ".agents"))
 		}
 	}
 	p.Protect = append(p.Protect, zemiDirs...)
@@ -100,7 +100,7 @@ func (h *Host) sandboxPolicy(readOnly bool) sandbox.Policy {
 		backend.Name != "seatbelt" && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, d.ProjectDir) })
 	writable := h.ProjectTrusted() && !readOnly && backend.EnforcesProtect && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) && !nested
 	if writable && backend.Name != "seatbelt" {
-		// seatbelt protects every .git and .zemi by name, the namespace
+		// seatbelt protects every .git and .agents by name, the namespace
 		// variant only the paths it binds
 		found, ok := configEntries(d.ProjectDir)
 		writable = ok
@@ -117,12 +117,12 @@ func (h *Host) sandboxPolicy(readOnly bool) sandbox.Policy {
 	relative := slices.ContainsFunc(path, func(e string) bool { return !filepath.IsAbs(e) })
 	if writable && !linked && !relative {
 		p.Write = append(p.Write, d.ProjectDir)
-		// the one part of .zemi a command may write; a real dir, since the
+		// the one part of .agents a command may write; a real dir, since the
 		// backend would open a link's target
 		wt := d.WorktreesDir()
 		if fi, err := os.Lstat(wt); err == nil && fi.IsDir() && h.inJail(wt, d.ProjectDir) {
-			if err := d.IgnoreLocal(); err != nil {
-				h.Log.Warn("sandbox", "cannot write .zemi/.gitignore", map[string]any{"error": err.Error()})
+			if err := d.WorktreesIgnore(); err != nil {
+				h.Log.Warn("sandbox", "cannot write .agents/worktrees/.gitignore", map[string]any{"error": err.Error()})
 			}
 			p.Write = append(p.Write, wt)
 		}
@@ -216,13 +216,13 @@ type sandboxGuard struct {
 
 // guardSandbox is called before a command starts under p. The namespace
 // backend makes a protected path read-only only if it exists, so a command
-// could create .zemi/init.lua or a .git with hooks, at the project root or
+// could create .agents/init.lua or a .git with hooks, at the project root or
 // in any directory below it. The returned func runs once the command exited:
-// if a missing path or a new .git or .zemi appeared, trust is held off
+// if a missing path or a new .git or .agents appeared, trust is held off
 // (holdTrust) and the text for the tool result says so.
 // NOTE: anything else creating the path while the command runs (the user's
 // git init) counts too; seatbelt's rules cover missing paths, so it is skipped.
-// Nested entries are checked at exit only: this process loads no .zemi below
+// Nested entries are checked at exit only: this process loads no .agents below
 // the project, and Host.git runs no program a nested .git names.
 func (h *Host) guardSandbox(p sandbox.Policy) func() string {
 	g := &sandboxGuard{}
@@ -273,7 +273,7 @@ func (h *Host) guardSandbox(p sandbox.Policy) func() string {
 		msg := ""
 		switch {
 		case !complete:
-			msg = fmt.Sprintf("a sandboxed command ran in a project of over %d entries, too many to check for a created .git or .zemi; project trust is off until /trust", sandboxWalkMax)
+			msg = fmt.Sprintf("a sandboxed command ran in a project of over %d entries, too many to check for a created .git or .agents; project trust is off until /trust", sandboxWalkMax)
 		case len(created) > 0:
 			msg = createdMessage(created)
 		}
@@ -291,8 +291,8 @@ func (h *Host) guardSandbox(p sandbox.Policy) func() string {
 // ignores would raise the ceiling.
 var sandboxWalkMax = 100_000
 
-// configEntries lists the .git and .zemi entries under root (true), which
-// it does not descend into (.zemi/worktrees aside), and the directories it cannot read (false),
+// configEntries lists the .git and .agents entries under root (true), which
+// it does not descend into (.agents/worktrees aside), and the directories it cannot read (false),
 // where a command could hide one. ok is false past sandboxWalkMax entries.
 func configEntries(root string) (found map[string]bool, ok bool) {
 	found, n := map[string]bool{}, 0
@@ -307,13 +307,13 @@ func configEntries(root string) (found map[string]bool, ok bool) {
 				return err
 			}
 			found[path] = false
-		case path != root && (strings.EqualFold(d.Name(), ".git") || strings.EqualFold(d.Name(), ".zemi")):
+		case path != root && (strings.EqualFold(d.Name(), ".git") || strings.EqualFold(d.Name(), ".agents")):
 			found[path] = true
-			// .zemi/worktrees is writable, so the walk goes on below it only
-			if d.IsDir() && !strings.EqualFold(d.Name(), ".zemi") {
+			// .agents/worktrees is writable, so the walk goes on below it only
+			if d.IsDir() && !strings.EqualFold(d.Name(), ".agents") {
 				return filepath.SkipDir
 			}
-		case d.IsDir() && strings.EqualFold(filepath.Base(filepath.Dir(path)), ".zemi") && d.Name() != "worktrees":
+		case d.IsDir() && strings.EqualFold(filepath.Base(filepath.Dir(path)), ".agents") && d.Name() != "worktrees":
 			return filepath.SkipDir
 		}
 		return nil

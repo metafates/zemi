@@ -52,8 +52,9 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".git", "config"), false, false},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "sub", ".git", "hooks", "pre-commit"), false, false},
 		{"fs.write", filepath.Join(h.Dirs.ConfigHome, "init.lua"), false, false},
-		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".zemi", "init.lua"), false, false},
-		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "pkg", ".zemi", "init.lua"), false, false},
+		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".agents", "init.lua"), false, false},
+		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "pkg", ".agents", "init.lua"), false, false},
+		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".agents", "skills", "x", "SKILL.md"), true, false}, // runs nothing
 		{"fs.read", secret, false, false},
 		{"fs.read", link, false, false},
 		{"fs.read", "/etc/passwd", false, false},
@@ -365,7 +366,7 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 		t.Fatalf("the answer is not one row with a way back:\n%s", rows)
 	}
 	// each rule says where to edit it, under a section named like every other
-	for _, want := range []string{"section:Allow rules", "section:Deny rules", "section:Mode text:auto", "/permissions; edit that file", "from the project's .zemi/init.lua", "from config; edit permissions in your init.lua"} {
+	for _, want := range []string{"section:Allow rules", "section:Deny rules", "section:Mode text:auto", "/permissions; edit that file", "from the project's .agents/init.lua", "from config; edit permissions in your init.lua"} {
 		if !strings.Contains(rows, want) {
 			t.Fatalf("missing %q:\n%s", want, rows)
 		}

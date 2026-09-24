@@ -121,7 +121,7 @@ func TestRequireRelative(t *testing.T) {
 	}
 }
 
-// TestRequireProjectModules: .zemi/lua is on the path for project code only.
+// TestRequireProjectModules: .agents/lua is on the path for project code only.
 func TestRequireProjectModules(t *testing.T) {
 	proj, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -166,12 +166,12 @@ func TestLoadFileStepOrigin(t *testing.T) {
 func TestClassifyMostSpecific(t *testing.T) {
 	pc := PathClasses{
 		{Prefix: "/cfg", Origin: OriginUser},
-		{Prefix: "/cfg/repo/.zemi", Origin: OriginProject},
+		{Prefix: "/cfg/repo/.agents", Origin: OriginProject},
 	}
 	for path, want := range map[string]Origin{
-		"/cfg/init.lua":            OriginUser,
-		"/cfg/repo/.zemi/init.lua": OriginProject,
-		"/cfgx/init.lua":           "",
+		"/cfg/init.lua":              OriginUser,
+		"/cfg/repo/.agents/init.lua": OriginProject,
+		"/cfgx/init.lua":             "",
 	} {
 		if got := pc.Classify(path); got != want {
 			t.Errorf("Classify(%s) = %q, want %q", path, got, want)

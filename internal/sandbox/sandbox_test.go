@@ -119,7 +119,7 @@ func act(verb, arg string) error {
 	case "chown":
 		return os.Chown(arg, os.Getuid(), os.Getgid())
 	case "setxattr":
-		if err := unix.Setxattr(arg, "user.zemi", []byte("x"), 0); err != nil {
+		if err := unix.Setxattr(arg, "user.agents", []byte("x"), 0); err != nil {
 			return fmt.Errorf("setxattr %s: %w", arg, err)
 		}
 	case "procpid":
@@ -160,7 +160,7 @@ func TestPolicy(t *testing.T) {
 	t.Log("backend:", b.Name)
 	root, outside, hide, state := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	scratch, cache := filepath.Join(state, "scratch"), filepath.Join(state, "sandbox-cache", "k", "go-build")
-	for _, d := range []string{filepath.Join(root, ".git"), filepath.Join(root, "zemi-real"), scratch, cache} {
+	for _, d := range []string{filepath.Join(root, ".git"), filepath.Join(root, "agents-real"), scratch, cache} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -170,12 +170,12 @@ func TestPolicy(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.Symlink("zemi-real", filepath.Join(root, ".zemi")); err != nil {
+	if err := os.Symlink("agents-real", filepath.Join(root, ".agents")); err != nil {
 		t.Fatal(err)
 	}
 	p := Policy{
 		Write:    []string{root, scratch, cache},
-		Protect:  []string{filepath.Join(root, ".git"), filepath.Join(root, ".zemi"), state},
+		Protect:  []string{filepath.Join(root, ".git"), filepath.Join(root, ".agents"), state},
 		Hide:     []string{hide, state},
 		Loopback: true,
 		Env:      map[string]string{"ZEMI_SANDBOX_TEST": "on"},
@@ -214,14 +214,14 @@ func TestPolicy(t *testing.T) {
 		{"write .git/config", "write", filepath.Join(root, ".git", "config"), false, !b.EnforcesProtect},
 		{"write .GIT/config", "write", filepath.Join(root, ".GIT", "config"), false, !b.EnforcesProtect || caseFolds != nil},
 		{"create a nested .git", "mkwrite", filepath.Join(root, "pkg", ".git", "config"), false, runtime.GOOS == "linux"},
-		{"create a nested .Zemi", "mkwrite", filepath.Join(root, "pkg", ".Zemi", "init.lua"), false, runtime.GOOS == "linux"},
+		{"create a nested .Agents", "mkwrite", filepath.Join(root, "pkg", ".Agents", "init.lua"), false, runtime.GOOS == "linux"},
 		{"write .gitignore", "write", filepath.Join(root, ".gitignore"), true, false},
 		{"write .github", "mkwrite", filepath.Join(root, ".github", "x.yml"), true, false},
 		{"create a .git in a root without protected paths", "mkwrite", filepath.Join(scratch, "repo", ".git", "config"), true, false},
 		{"rename .git", "rename", filepath.Join(root, ".git"), false, !b.EnforcesProtect},
-		{"write through a protected symlink", "write", filepath.Join(root, ".zemi", "init.lua"), false, !b.EnforcesProtect},
+		{"write through a protected symlink", "write", filepath.Join(root, ".agents", "init.lua"), false, !b.EnforcesProtect},
 		// NOTE: see setupNamespaces
-		{"rename a protected symlink", "rename", filepath.Join(root, ".zemi"), false, !b.EnforcesProtect || runtime.GOOS == "linux"},
+		{"rename a protected symlink", "rename", filepath.Join(root, ".agents"), false, !b.EnforcesProtect || runtime.GOOS == "linux"},
 		{"read a hidden dir", "read", filepath.Join(hide, "id"), false, false},
 		{"read .env", "read", filepath.Join(root, ".env"), false, !b.HidesSecretFiles},
 		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},
@@ -541,15 +541,15 @@ if "$0" __act write "$1" 2>/dev/null || "$0" __act open "$1" 2>/dev/null; then e
 	}
 }
 
-// A root inside another root's protected .zemi, and a session started in it.
+// A root inside another root's protected .agents, and a session started in it.
 func TestWorktreeRoot(t *testing.T) {
 	b := probeOrSkip(t)
 	if !b.EnforcesProtect {
 		t.Skipf("%s does not enforce this", b.Name)
 	}
 	root := t.TempDir()
-	zemi := filepath.Join(root, ".zemi")
-	trees := filepath.Join(zemi, "worktrees")
+	agents := filepath.Join(root, ".agents")
+	trees := filepath.Join(agents, "worktrees")
 	wt := filepath.Join(trees, "x")
 	if err := os.MkdirAll(filepath.Join(wt, "pkg"), 0o755); err != nil {
 		t.Fatal(err)
@@ -557,7 +557,7 @@ func TestWorktreeRoot(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	outer := Policy{Write: []string{root, trees}, Protect: []string{zemi, filepath.Join(wt, ".git")}}
+	outer := Policy{Write: []string{root, trees}, Protect: []string{agents, filepath.Join(wt, ".git")}}
 	inner := Policy{Write: []string{wt}, Protect: []string{filepath.Join(wt, ".git")}}
 	cases := []struct {
 		name, verb, arg string
@@ -565,9 +565,9 @@ func TestWorktreeRoot(t *testing.T) {
 		allowed, skip   bool
 	}{
 		{"outer writes the worktree", "write", filepath.Join(wt, "pkg", "a.txt"), outer, true, false},
-		{"outer writes .zemi", "write", filepath.Join(zemi, "init.lua"), outer, false, false},
+		{"outer writes .agents", "write", filepath.Join(agents, "init.lua"), outer, false, false},
 		{"outer writes the worktree's .git", "write", filepath.Join(wt, ".git"), outer, false, false},
-		{"outer creates the worktree's .zemi", "mkwrite", filepath.Join(wt, ".zemi", "init.lua"), outer, false, runtime.GOOS == "linux"},
+		{"outer creates the worktree's .agents", "mkwrite", filepath.Join(wt, ".agents", "init.lua"), outer, false, runtime.GOOS == "linux"},
 		{"inner writes the worktree", "write", filepath.Join(wt, "pkg", "b.txt"), inner, true, false},
 		{"inner creates a nested .git", "mkwrite", filepath.Join(wt, "pkg", ".git", "config"), inner, false, runtime.GOOS == "linux"},
 	}

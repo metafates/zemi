@@ -1228,7 +1228,7 @@ func ripgrep(ctx context.Context, root string, fn func(line string) bool, args .
 	// include that matches a directory name ("*") still un-ignores gitignored
 	// trees; rg has no glob for files only. --no-config: a user's
 	// RIPGREP_CONFIG_PATH (--smart-case, --glob) must not change what matches
-	args = append(append([]string{"--no-config", "--hidden", "--no-require-git"}, args...), "--glob", "!.git", "--glob", "!.zemi/worktrees")
+	args = append(append([]string{"--no-config", "--hidden", "--no-require-git"}, args...), "--glob", "!.git", "--glob", "!.agents/worktrees")
 	c := proc.CommandContext(cctx, rgBin, args...)
 	c.Dir = root
 	var stderr bytes.Buffer

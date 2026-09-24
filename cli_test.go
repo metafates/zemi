@@ -286,7 +286,7 @@ func TestHeadlessTrust(t *testing.T) {
 func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 	t.Helper()
 	project := t.TempDir()
-	cmds := filepath.Join(project, ".zemi", "commands")
+	cmds := filepath.Join(project, ".agents", "commands")
 	if err := os.MkdirAll(cmds, 0o755); err != nil {
 		t.Fatal(err)
 	}

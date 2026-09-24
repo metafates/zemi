@@ -243,18 +243,14 @@ func (h *Host) pinnedRecipes() []skills.Skill {
 	return nil
 }
 
-// discoverProjectSkills scans the repository's skill dirs, which other
+// discoverProjectSkills scans the repository's .agents/skills, which other
 // agents share. They are body only: a zemi-skill.lua there never runs.
 func (h *Host) discoverProjectSkills() []skills.Skill {
-	root := h.Dirs.RepoRoot()
-	if root == "" {
+	pdir := h.Dirs.ProjectConfigDir()
+	if pdir == "" {
 		return nil
 	}
-	var dirs []skills.Dir
-	for _, d := range []string{".zemi", ".agents", ".claude"} {
-		dirs = append(dirs, skills.Dir{Path: filepath.Join(root, d, "skills"), Source: skills.Project})
-	}
-	return h.discoverSkills(dirs...)
+	return h.discoverSkills(skills.Dir{Path: filepath.Join(pdir, "skills"), Source: skills.Project})
 }
 
 func (h *Host) discoverSkills(dirs ...skills.Dir) []skills.Skill {

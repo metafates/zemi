@@ -21,15 +21,15 @@ const (
 	deniedLookups = `nodename nor servname`
 )
 
-// nestedShapes is a .git or .zemi path component below root; APFS folds
+// nestedShapes is a .git or .agents path component below root; APFS folds
 // case, the regex does not. The root itself may sit under one (a worktree in
-// .zemi/worktrees), so the match starts after it.
+// .agents/worktrees), so the match starts after it.
 func nestedShapes(root string) string {
 	anchor := "^" + regexp.QuoteMeta(root)
 	if strings.ContainsAny(root, "\"\n") {
 		anchor = "" // unquotable: match anywhere, which only denies more
 	}
-	return `(regex #"` + anchor + `(/.*)?/\.([gG][iI][tT]|[zZ][eE][mM][iI])(/|$)")`
+	return `(regex #"` + anchor + `(/.*)?/\.([gG][iI][tT]|[aA][gG][eE][nN][tT][sS])(/|$)")`
 }
 
 //go:embed profile.sb
@@ -140,12 +140,12 @@ func profile(p Policy) (string, []string) {
 	for i, d := range slices.Compact(keep) {
 		fmt.Fprintf(&b, "(deny file-write-unlink (require-all (literal %s) (vnode-type DIRECTORY)))\n", param("KEEP", i, d))
 	}
-	// A nested .git or .zemi runs what it names once git or zemi starts in
+	// A nested .git or .agents runs what it names once git or zemi starts in
 	// that dir outside the sandbox. Only roots holding a protected path (the
 	// project) get this, so tests can still git init in the temp dirs.
 	// NOTE: a bare repo (HEAD, objects, refs, config) is found by git under
 	// any name and cannot be matched here.
-	// A root inside another root's protected path (.zemi/worktrees) is opened
+	// A root inside another root's protected path (.agents/worktrees) is opened
 	// again after that root's rule, shallow to deep, and gets its own.
 	roots := slices.Clone(p.Write)
 	slices.SortStableFunc(roots, func(a, b string) int { return len(a) - len(b) })

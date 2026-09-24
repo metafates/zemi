@@ -245,9 +245,10 @@ func TestProjectSkills(t *testing.T) {
 	writeSkill(t, h.authoredSkillsDir(), "deploy", "the user's deploy", "")
 	h.syncSkills()
 	root := h.Dirs.ProjectDir
-	writeSkill(t, filepath.Join(root, ".claude", "skills"), "deploy", "the project's deploy", "")
+	writeSkill(t, filepath.Join(root, ".agents", "skills"), "deploy", "the project's deploy", "")
+	writeSkill(t, filepath.Join(root, ".claude", "skills"), "claudely", "not read", "")
 	writeSkill(t, filepath.Join(root, ".agents", "skills"), "lint", "project lint", "")
-	writeSkill(t, filepath.Join(root, ".zemi", "skills"), "release", "project release", "")
+	writeSkill(t, filepath.Join(root, ".agents", "skills"), "release", "project release", "")
 
 	index := func() map[string]string {
 		got := map[string]string{}
@@ -259,7 +260,7 @@ func TestProjectSkills(t *testing.T) {
 		return got
 	}
 	h.SetProjectTrusted(true)
-	writeSkill(t, filepath.Join(root, ".claude", "skills"), "late", "written mid-session", "")
+	writeSkill(t, filepath.Join(root, ".agents", "skills"), "late", "written mid-session", "")
 	want := map[string]string{"deploy": "the user's deploy", "lint": "project lint", "release": "project release"}
 	if got := index(); !maps.Equal(got, want) {
 		t.Fatalf("trusted: %v", got)
@@ -312,7 +313,7 @@ func TestRecipes(t *testing.T) {
 	writeSkill(t, h.authoredSkillsDir(), "deploy", "the user's deploy", "")
 	writeSkill(t, h.authoredSkillsDir(), "ship", "the user's ship", "")
 	h.syncSkills()
-	writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".zemi", "skills"), "lint", "project lint", "")
+	writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".agents", "skills"), "lint", "project lint", "")
 	dir := h.recipesDir()
 	for _, name := range []string{"rig", "deploy", "lint"} {
 		writeSkill(t, dir, name, "recipe "+name, "")
@@ -414,7 +415,7 @@ func TestRecipes(t *testing.T) {
 	if !strings.Contains(h.environmentPrompt(), "Recipes: "+dir+"\n") {
 		t.Error("the environment of a trusted project names the recipes dir")
 	}
-	for _, d := range []string{filepath.Join(dir, "late"), filepath.Join(dir, "ship"), filepath.Join(h.authoredSkillsDir(), "ship"), filepath.Join(h.Dirs.ProjectDir, ".zemi", "skills", "lint")} {
+	for _, d := range []string{filepath.Join(dir, "late"), filepath.Join(dir, "ship"), filepath.Join(h.authoredSkillsDir(), "ship"), filepath.Join(h.Dirs.ProjectDir, ".agents", "skills", "lint")} {
 		if _, err := os.Stat(d); (err == nil) == (d == filepath.Join(dir, "late")) {
 			t.Errorf("after the deletes: stat %s: %v", d, err)
 		}

@@ -407,7 +407,7 @@ func TestReflectPrompt(t *testing.T) {
 			}
 		}, want: []string{"project 2.7/3 KB (full), user 0.0/3 KB)"}},
 		{name: "recipes and project skills by name, no global skills", seed: func(t *testing.T, h *Host, sid string) {
-			writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".zemi", "skills"), "lint", "project lint", "")
+			writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".agents", "skills"), "lint", "project lint", "")
 			h.SetProjectTrusted(true)
 			writeSkill(t, h.recipesDir(), "rig", "recipe rig", "")
 			h.skillsReg.set([]skills.Skill{{Name: "cut-release", Description: "when cutting a release", Source: skills.Authored}}, map[string]bool{"cut-release": true})

@@ -25,8 +25,8 @@ func writePermissions(t *testing.T, path, content string) {
 func TestProjectPermissions(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.StateHome = t.TempDir()
-	// a repository can commit .zemi/permissions; only the state dir's file loads
-	writePermissions(t, filepath.Join(h.Dirs.ProjectDir, ".zemi", "permissions"), "curl https://example.com\n")
+	// a repository can commit .agents/permissions; only the state dir's file loads
+	writePermissions(t, filepath.Join(h.Dirs.ProjectDir, ".agents", "permissions"), "curl https://example.com\n")
 	writePermissions(t, h.projectPermissionsPath(), `
 git push
 make all

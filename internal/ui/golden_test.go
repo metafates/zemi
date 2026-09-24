@@ -75,7 +75,7 @@ zemi.ui.widget.add({
 	classes := lua.PathClasses{
 		{Prefix: cfg, Origin: lua.OriginUser},
 		{Prefix: filepath.Join(data, "site", "pack"), Origin: lua.OriginPlugin},
-		{Prefix: filepath.Join(projectResolved, ".zemi"), Origin: lua.OriginProject},
+		{Prefix: filepath.Join(projectResolved, ".agents"), Origin: lua.OriginProject},
 	}
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiRuntime.FS})
 	host := hostapi.NewHost(rt, log, settings, dirs)

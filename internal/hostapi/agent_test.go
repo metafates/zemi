@@ -1064,7 +1064,7 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "fs.write", Arg: "/foo.txt"}, "allow edits of /foo.txt", []string{"/foo.txt"}},
 		{tools.Request{Subject: "fs.read", Arg: filepath.Join(home, "notes", "a.md")}, "allow reads in ~/notes/ and below", []string{filepath.Join(home, "notes", "*")}},
 		// the gate asks about a protected write whatever the rules say
-		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, ".zemi", "init.lua")}, "", nil},
+		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, ".agents", "init.lua")}, "", nil},
 		// Pipeline.Check sends a secret-shaped file back to the ask whatever a model rule says
 		{tools.Request{Subject: "fs.read", Arg: ".env"}, "allow reads of .env", []string{filepath.Join(proj, ".env")}},
 		{tools.Request{Subject: "fs.read", Arg: "main.go"}, "allow reads anywhere in the project", []string{filepath.Join(proj, "*")}},
@@ -1510,7 +1510,7 @@ func TestMaxOutput(t *testing.T) {
 }
 
 // TestAlwaysRuleSkipsProtectedWrites: a broad allow for the project still
-// asks for writes under a nested .zemi or .git, but not for the scratchpad.
+// asks for writes under a nested .agents or .git, but not for the scratchpad.
 func TestAlwaysRuleSkipsProtectedWrites(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.agents.sessionID = "s1"
@@ -1523,7 +1523,7 @@ func TestAlwaysRuleSkipsProtectedWrites(t *testing.T) {
 		want perm.Decision
 	}{
 		{filepath.Join(proj, "main.go"), perm.Allow},
-		{filepath.Join(proj, "pkg", ".zemi", "init.lua"), perm.Deny},
+		{filepath.Join(proj, "pkg", ".agents", "init.lua"), perm.Deny},
 		{filepath.Join(proj, "pkg", ".git", "config"), perm.Deny},
 		{filepath.Join(h.ScratchDir(), "notes.md"), perm.Allow},
 	} {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/perm"
@@ -144,24 +143,13 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- /help lists the keys and commands, /health says what is missing.
 `
 
-// ProjectConfigDir is <project>/.zemi.
+// ProjectConfigDir is <repo root>/.agents, the one place a trusted project
+// keeps zemi config.
 func (d Dirs) ProjectConfigDir() string {
 	if d.ProjectDir == "" {
 		return ""
 	}
-	// Started in a subdirectory, zemi still finds the repository's .zemi:
-	// search up to the directory holding .git. Outside a repository only
-	// ProjectDir counts, so a stray .zemi in a parent is never picked up.
-	root := d.RepoRoot()
-	for dir := d.ProjectDir; ; dir = filepath.Dir(dir) {
-		if fi, err := os.Stat(filepath.Join(dir, ".zemi")); err == nil && fi.IsDir() {
-			return filepath.Join(dir, ".zemi")
-		}
-		if dir == root || filepath.Dir(dir) == dir {
-			break
-		}
-	}
-	return filepath.Join(d.ProjectDir, ".zemi")
+	return filepath.Join(d.RepoRoot(), ".agents")
 }
 
 // RepoRoot is the nearest directory at or above ProjectDir holding .git,
@@ -185,58 +173,28 @@ func (d Dirs) RepoRoot() string {
 	return d.ProjectDir
 }
 
-// WorktreesDir is <repo root>/.zemi/worktrees, where the agent keeps git
-// worktrees: the one part of .zemi that commands and settled writes may
+// WorktreesDir is <repo root>/.agents/worktrees, where the agent keeps git
+// worktrees: the one part of .agents that commands and settled writes may
 // change, and that nothing is loaded from.
 func (d Dirs) WorktreesDir() string {
 	if d.ProjectDir == "" {
 		return ""
 	}
-	return filepath.Join(d.RepoRoot(), ".zemi", "worktrees")
+	return filepath.Join(d.ProjectConfigDir(), "worktrees")
 }
 
-// IgnoreLocal makes <repo root>/.zemi/.gitignore list the entries local to
-// this checkout, appending to an existing file: .zemi also holds checked-in
-// config, so nothing else is ignored.
-func (d Dirs) IgnoreLocal() error {
-	entries := []string{"worktrees/"}
-	path := filepath.Join(filepath.Dir(d.WorktreesDir()), ".gitignore")
-	b, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	have := map[string]bool{}
-	own := true // every line is one zemi writes, so the file is zemi's
-	for line := range strings.Lines(string(b)) {
-		l := strings.TrimSpace(line)
-		have[l] = true
-		own = own && (l == "" || l == ".gitignore" || slices.Contains(entries, l))
-	}
-	var add []string
-	for _, e := range entries {
-		if !have[e] {
-			add = append(add, e)
-		}
-	}
-	// the file ignores itself, or git status shows .zemi/ as untracked; a
-	// team's copy gets the line only with an entry it lacked anyway
-	if !have[".gitignore"] && (own || len(add) > 0) {
-		add = append(add, ".gitignore")
-	}
-	if len(add) == 0 {
+// WorktreesIgnore writes <WorktreesDir>/.gitignore ignoring everything,
+// itself included, when there is none.
+func (d Dirs) WorktreesIgnore() error {
+	f, err := os.OpenFile(filepath.Join(d.WorktreesDir(), ".gitignore"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if errors.Is(err, os.ErrExist) {
 		return nil
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	sep := ""
-	if len(b) > 0 && b[len(b)-1] != '\n' {
-		sep = "\n"
-	}
-	_, err = f.WriteString(sep + strings.Join(add, "\n") + "\n")
-	return err
+	_, err = f.WriteString("/*\n")
+	return errors.Join(err, f.Close())
 }
 
 // UserTrees are the config subdirectories zemi loads user files from.

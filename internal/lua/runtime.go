@@ -640,7 +640,7 @@ func (r *Runtime) evalModule(gen *Generation, src []byte, rel string, origin Ori
 	return out, nil
 }
 
-// runtimepath lists require roots in order: the project's .zemi for project
+// runtimepath lists require roots in order: the project's .agents for project
 // code only (user and plugin requires never resolve into a repository's
 // untrusted files), then config home and each plugin (site/pack/*/start/*,
 // globbed once per generation); the embedded runtime is consulted separately

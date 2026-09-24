@@ -283,7 +283,7 @@ func configFingerprint(roots ...string) string {
 			case err != nil:
 				return nil
 			case d.IsDir() && p != root && (d.Name()[0] == '.' || d.Name() == "node_modules" || p == filepath.Join(root, "worktrees") || slices.Contains(walk, p)):
-				return filepath.SkipDir // checkouts in .zemi/worktrees are not config; a root is walked once
+				return filepath.SkipDir // checkouts in .agents/worktrees are not config; a root is walked once
 			case d.IsDir():
 				return nil
 			}
@@ -492,7 +492,7 @@ func (tg *trustGate) step() lua.BootStep {
 	}
 }
 
-// projectInitStep loads <project>/.zemi/init.lua in a trusted project.
+// projectInitStep loads <repo>/.agents/init.lua in a trusted project.
 // Agents, commands and workflows read the decision when they are used.
 func projectInitStep(h *hostapi.Host, dirs config.Dirs) lua.BootStep {
 	return lua.BootStep{
@@ -502,7 +502,6 @@ func projectInitStep(h *hostapi.Host, dirs config.Dirs) lua.BootStep {
 			if _, err := os.Stat(init); err != nil || !h.ProjectTrusted() {
 				return nil
 			}
-			// the nearest .zemi at or above the project, which may not be the repository root's
 			h.Log.Info("boot", "loading project config", map[string]any{"path": init})
 			return lua.LoadFileStep("project init", init, lua.OriginProject).Run(ctx, r, g)
 		},

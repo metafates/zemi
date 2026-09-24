@@ -76,7 +76,7 @@ func TestTrustRoot(t *testing.T) {
 
 func TestRepoRootStopsAtHome(t *testing.T) {
 	tmp, _ := filepath.EvalSymlinks(t.TempDir())
-	for _, dir := range []string{"home/.git", "home/.zemi", "home/work/sub", "home/repo/.git", "home/repo/sub"} {
+	for _, dir := range []string{"home/.git", "home/.agents", "home/work/sub", "home/repo/.git", "home/repo/sub"} {
 		if err := os.MkdirAll(filepath.Join(tmp, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -86,10 +86,10 @@ func TestRepoRootStopsAtHome(t *testing.T) {
 		name, cwd, root, config string
 		folds                   bool // needs a case-folding volume
 	}{
-		{"dotfiles repo is not the root below home", "home/work/sub", "home/work/sub", "home/work/sub/.zemi", false},
-		{"repo below home", "home/repo/sub", "home/repo", "home/repo/sub/.zemi", false},
-		{"home itself", "home", "home", "home/.zemi", false},
-		{"case variant of home", "HOME/work/sub", "HOME/work/sub", "HOME/work/sub/.zemi", true},
+		{"dotfiles repo is not the root below home", "home/work/sub", "home/work/sub", "home/work/sub/.agents", false},
+		{"repo below home", "home/repo/sub", "home/repo", "home/repo/.agents", false},
+		{"home itself", "home", "home", "home/.agents", false},
+		{"case variant of home", "HOME/work/sub", "HOME/work/sub", "HOME/work/sub/.agents", true},
 	} {
 		if c.folds && perm.FoldCase("A") == "A" {
 			continue
@@ -109,15 +109,14 @@ func TestRepoRootStopsAtHome(t *testing.T) {
 
 func TestProjectConfigDir(t *testing.T) {
 	tmp := t.TempDir()
-	for _, dir := range []string{"repo/.git", "repo/.zemi", "repo/sub/deep", "stray/.zemi", "stray/norepo"} {
+	for _, dir := range []string{"repo/.git", "repo/sub/.agents", "stray/.agents", "stray/norepo"} {
 		if err := os.MkdirAll(filepath.Join(tmp, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, c := range []struct{ cwd, want string }{
-		{"repo", "repo/.zemi"},
-		{"repo/sub/deep", "repo/.zemi"},
-		{"stray/norepo", "stray/norepo/.zemi"}, // no repo: a parent's .zemi is not used
+		{"repo/sub", "repo/.agents"},             // the repository root's, never a nearer one
+		{"stray/norepo", "stray/norepo/.agents"}, // no repo: a parent's is not used
 	} {
 		got := Dirs{ProjectDir: filepath.Join(tmp, c.cwd)}.ProjectConfigDir()
 		if got != filepath.Join(tmp, c.want) {
@@ -126,23 +125,20 @@ func TestProjectConfigDir(t *testing.T) {
 	}
 }
 
-func TestIgnoreLocal(t *testing.T) {
+func TestWorktreesIgnore(t *testing.T) {
 	for _, c := range []struct{ name, have, want string }{
-		{"new file", "", "worktrees/\n.gitignore\n"},
-		{"an older zemi's file gets the self line", "worktrees/\n", "worktrees/\n.gitignore\n"},
-		{"a team's complete file is left alone", "cache\nworktrees/\n", "cache\nworktrees/\n"},
+		{"new file ignores everything", "", "/*\n"},
+		{"an existing file is left alone", "keep\n", "keep\n"},
 	} {
-		tmp := t.TempDir()
-		path := filepath.Join(tmp, ".zemi", ".gitignore")
-		for _, d := range []string{filepath.Join(tmp, ".git"), filepath.Dir(path)} {
-			if err := os.MkdirAll(d, 0o755); err != nil {
-				t.Fatal(err)
-			}
+		d := Dirs{ProjectDir: t.TempDir()}
+		path := filepath.Join(d.WorktreesDir(), ".gitignore")
+		if err := os.MkdirAll(d.WorktreesDir(), 0o755); err != nil {
+			t.Fatal(err)
 		}
 		if c.have != "" {
 			os.WriteFile(path, []byte(c.have), 0o644)
 		}
-		if err := (Dirs{ProjectDir: tmp}).IgnoreLocal(); err != nil {
+		if err := d.WorktreesIgnore(); err != nil {
 			t.Fatal(err)
 		}
 		if b, _ := os.ReadFile(path); string(b) != c.want {

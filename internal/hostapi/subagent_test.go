@@ -349,10 +349,9 @@ func TestAgentDefs(t *testing.T) {
 	write(filepath.Join(cfg, "agents"), "reviewer.md", "---\ndescription: reviews diffs\ntools: read, grep\nmodel: inherit\n---\nBe harsh.\n")
 	write(filepath.Join(cfg, "agents"), "explore.md", "---\ndescription: my explorer\ntools: [read]\n---\nmine\n")
 	write(filepath.Join(cfg, "agents"), "broken.md", "---\ntools: read\n---\nno description\n")
-	write(filepath.Join(proj, ".zemi", "agents"), "general.md", "---\ndescription: project override\n---\nx\n")
-	write(filepath.Join(proj, ".zemi", "agents"), "tester.md", "---\ndescription: runs tests\n---\nx\n")
-	write(filepath.Join(proj, ".claude", "agents"), "tester.md", "---\ndescription: shadowed by the nearer .zemi\n---\nx\n")
-	write(filepath.Join(proj, ".claude", "agents"), "claudely.md", "---\ndescription: from .claude\n---\nx\n")
+	write(filepath.Join(proj, ".agents", "agents"), "general.md", "---\ndescription: project override\n---\nx\n")
+	write(filepath.Join(proj, ".agents", "agents"), "tester.md", "---\ndescription: runs tests\n---\nx\n")
+	write(filepath.Join(proj, ".claude", "agents"), "claudely.md", "---\ndescription: not read\n---\nx\n")
 
 	log := logging.New(t.TempDir())
 	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{ConfigHome: cfg, ProjectDir: proj})
@@ -371,11 +370,8 @@ func TestAgentDefs(t *testing.T) {
 	if _, ok := defs["tester"]; ok {
 		t.Fatal("project agents must wait for trust")
 	}
-	if _, err := h.agentDef("tester"); err == nil || !strings.Contains(err.Error(), "/trust") {
+	if _, err := h.agentDef("tester"); err == nil || !strings.Contains(err.Error(), "/trust") || !strings.Contains(err.Error(), ".agents") {
 		t.Fatalf("untrusted project agent = %v", err)
-	}
-	if _, err := h.agentDef("claudely"); err == nil || !strings.Contains(err.Error(), ".claude") {
-		t.Fatalf("untrusted hint must name the dir the file is in: %v", err)
 	}
 	h.SetProjectTrusted(true)
 	defs = get()
@@ -384,7 +380,6 @@ func TestAgentDefs(t *testing.T) {
 		{"explore", "user", "my explorer", "read", "mine"},
 		{"general", "builtin", builtinAgents[1].Description, "", builtinAgents[1].System},
 		{"tester", "project", "runs tests", "", "x"},
-		{"claudely", "project", "from .claude", "", "x"},
 	} {
 		d, ok := defs[c.name]
 		if !ok {
@@ -396,6 +391,9 @@ func TestAgentDefs(t *testing.T) {
 	}
 	if _, ok := defs["broken"]; ok {
 		t.Fatal("an agent without description must be skipped")
+	}
+	if _, ok := defs["claudely"]; ok {
+		t.Fatal(".claude/agents must not load")
 	}
 	// the skipped file is reported to /errors, once over both get() calls
 	if n := len(h.errs.entries); n != 1 || !strings.Contains(h.errs.entries[0].msg, "broken.md") {

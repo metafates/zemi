@@ -260,7 +260,7 @@ func TestTemp(t *testing.T) {
 `
 
 // TestSandboxPolicy: the project is writable only when trusted, outside
-// a read-only agent, with a backend that keeps .git and .zemi read-only inside it,
+// a read-only agent, with a backend that keeps .git and .agents read-only inside it,
 // when it neither holds nor sits in one of zemi's dirs, holds no hidden path
 // on a backend that cannot hide inside a write root, and its .git is not a
 // symlink; zemi's dirs are hidden unless they hold the project, and builds
@@ -383,12 +383,12 @@ func TestSandboxGuard(t *testing.T) {
 		h.SetProjectTrusted(true)
 		h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
 		done := h.guardSandbox(h.sandboxPolicy(false))
-		// what `mkdir .zemi && echo 'print(1)' > .zemi/init.lua` leaves behind
-		zemiDir := filepath.Join(h.Dirs.ProjectDir, ".zemi")
-		if err := os.MkdirAll(zemiDir, 0o755); err != nil {
+		// what `mkdir .agents && echo 'print(1)' > .agents/init.lua` leaves behind
+		agentsDir := filepath.Join(h.Dirs.ProjectDir, ".agents")
+		if err := os.MkdirAll(agentsDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(zemiDir, "init.lua"), []byte("print(1)"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(agentsDir, "init.lua"), []byte("print(1)"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if running {
@@ -398,7 +398,7 @@ func TestSandboxGuard(t *testing.T) {
 			}
 		}
 		note := done()
-		if h.ProjectTrusted() || !h.TrustHeld() || !strings.Contains(note, zemiDir) || !strings.Contains(note, "/trust") {
+		if h.ProjectTrusted() || !h.TrustHeld() || !strings.Contains(note, agentsDir) || !strings.Contains(note, "/trust") {
 			t.Errorf("running %v: trusted %v held %v note %q", running, h.ProjectTrusted(), h.TrustHeld(), note)
 		}
 	}
@@ -411,7 +411,7 @@ func TestSandboxGuard(t *testing.T) {
 }
 
 // TestSandboxNestedConfig: on a backend that protects only the paths it
-// binds, a .git or .zemi a sandboxed command creates anywhere in the project
+// binds, a .git or .agents a sandboxed command creates anywhere in the project
 // holds trust off, one already there is protected, and a project too big to
 // walk holds trust off at exit or stays read-only.
 func TestSandboxNestedConfig(t *testing.T) {
@@ -424,7 +424,7 @@ func TestSandboxNestedConfig(t *testing.T) {
 	}{
 		{"nested .git dir", "", "pkg/.git/config", 0, filepath.Join("pkg", ".git")},
 		{"nested .git file", "", "pkg/.git", 0, filepath.Join("pkg", ".git")},
-		{"nested .zemi", "", "a/b/.zemi/init.lua", 0, filepath.Join("b", ".zemi")},
+		{"nested .agents", "", "a/b/.agents/init.lua", 0, filepath.Join("b", ".agents")},
 		{"plain file", "", "pkg/main.go", 0, ""},
 		{"existing nested repo", "vendor/x/.git/config", "", 0, ""},
 		{"too many entries at exit", "", "pkg/main.go", 1, "too many"},
@@ -502,36 +502,32 @@ func TestWorktreesDir(t *testing.T) {
 	h.SetProjectTrusted(true)
 	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
 	project := h.Dirs.ProjectDir
-	zemi := filepath.Join(project, ".zemi")
-	wt := filepath.Join(zemi, "worktrees", "x")
-	for _, d := range []string{filepath.Join(wt, ".zemi"), filepath.Join(zemi, "skills", ".git")} {
+	agents := filepath.Join(project, ".agents")
+	wt := filepath.Join(agents, "worktrees", "x")
+	for _, d := range []string{filepath.Join(wt, ".agents"), filepath.Join(agents, "skills", ".git")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	ignore := filepath.Join(zemi, ".gitignore")
-	if err := os.WriteFile(ignore, []byte("cache"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	for range 2 {
-		if p := h.sandboxPolicy(false); !slices.Contains(p.Write, filepath.Dir(wt)) || !slices.Contains(p.Protect, filepath.Join(wt, ".zemi")) {
+		if p := h.sandboxPolicy(false); !slices.Contains(p.Write, filepath.Dir(wt)) || !slices.Contains(p.Protect, filepath.Join(wt, ".agents")) {
 			t.Fatalf("write %v protect %v", p.Write, p.Protect)
 		}
 	}
-	if b, _ := os.ReadFile(ignore); string(b) != "cache\nworktrees/\n.gitignore\n" {
+	if b, _ := os.ReadFile(filepath.Join(agents, "worktrees", ".gitignore")); string(b) != "/*\n" {
 		t.Fatalf(".gitignore %q", b)
 	}
-	if found, _ := configEntries(project); found[filepath.Join(zemi, "skills", ".git")] {
-		t.Fatalf("walked .zemi/skills: %v", found)
+	if found, _ := configEntries(project); found[filepath.Join(agents, "skills", ".git")] {
+		t.Fatalf("walked .agents/skills: %v", found)
 	}
 	for path, want := range map[string]bool{
-		filepath.Join(wt, "main.go"):            false,
-		filepath.Join(wt, ".zemi", "init.lua"):  true,
-		filepath.Join(wt, ".git"):               true,
-		wt:                                      true,
-		filepath.Join(zemi, "init.lua"):         true,
-		filepath.Join(project, "pkg", "a.go"):   false,
-		filepath.Join(wt, "pkg", ".git", "cfg"): true,
+		filepath.Join(wt, "main.go"):             false,
+		filepath.Join(wt, ".agents", "init.lua"): true,
+		filepath.Join(wt, ".git"):                true,
+		filepath.Join(agents, "init.lua"):        true,
+		filepath.Join(agents, "lua", "m.lua"):    true,
+		filepath.Join(project, "pkg", "a.go"):    false,
+		filepath.Join(wt, "pkg", ".git", "cfg"):  true,
 	} {
 		if got := h.protectedWrite(path); got != want {
 			t.Errorf("protectedWrite(%s) = %v, want %v", path, got, want)

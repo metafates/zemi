@@ -261,8 +261,8 @@ func (h *Host) instructionSections(files []string, budget int) string {
 
 // instructionFiles lists the instruction files for this project, general
 // first: the user's <config>/AGENTS.md, then for each directory from the
-// repository root down to the working directory its ZEMI.md and AGENTS.md,
-// or CLAUDE.md when it has neither (repositories set up for Claude Code).
+// repository root down to the working directory its AGENTS.md, or CLAUDE.md
+// when it has none (repositories set up for Claude Code).
 // An untrusted project's files stay out: they steer the model's commands.
 func (h *Host) instructionFiles() []string {
 	var out []string
@@ -281,14 +281,11 @@ func (h *Host) instructionFiles() []string {
 		}
 	}
 	for _, dir := range dirs {
-		found := false
-		for _, name := range []string{"ZEMI.md", "AGENTS.md"} {
+		for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
 			if p := filepath.Join(dir, name); h.instructionFile(p) {
-				out, found = append(out, p), true
+				out = append(out, p)
+				break
 			}
-		}
-		if p := filepath.Join(dir, "CLAUDE.md"); !found && h.instructionFile(p) {
-			out = append(out, p)
 		}
 	}
 	return out
@@ -321,7 +318,7 @@ func (h *Host) nearestInstructions(path string, sent func(string) bool) string {
 		if _, ok := perm.Under(root, dir); !ok {
 			return ""
 		}
-		for _, name := range []string{"ZEMI.md", "AGENTS.md", "CLAUDE.md"} {
+		for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
 			p := filepath.Join(dir, name)
 			if !h.instructionFile(p) || inPrompt[p] {
 				continue

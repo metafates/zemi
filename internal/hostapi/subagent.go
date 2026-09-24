@@ -31,7 +31,7 @@ import (
 )
 
 // AgentDef is one subagent shape: builtin, or a markdown file under
-// <config>/agents or <project>/.zemi/agents (frontmatter + system prompt).
+// <config>/agents or <repo>/.agents/agents (frontmatter + system prompt).
 type AgentDef struct {
 	Name        string
 	Description string
@@ -108,28 +108,17 @@ func (h *Host) agentDefs() []AgentDef {
 		add(h.loadAgentDir(filepath.Join(h.Dirs.ConfigHome, "agents"), "user"))
 	}
 	add(builtinAgents)
-	if h.ProjectTrusted() {
-		// the nearest .zemi takes a name first, then the dirs other agents
-		// share (same list as markdown commands and skills)
-		for _, dir := range h.projectAgentDirs() {
-			add(h.loadAgentDir(dir, "project"))
-		}
+	if dir := h.projectAgentDir(); dir != "" && h.ProjectTrusted() {
+		add(h.loadAgentDir(dir, "project"))
 	}
 	return out
 }
 
-// projectAgentDirs are the repo's agent directories, nearest .zemi first.
-func (h *Host) projectAgentDirs() []string {
-	var dirs []string
+func (h *Host) projectAgentDir() string {
 	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" {
-		dirs = append(dirs, filepath.Join(pdir, "agents"))
+		return filepath.Join(pdir, "agents")
 	}
-	if root := h.Dirs.RepoRoot(); root != "" {
-		for _, d := range []string{".agents", ".claude"} {
-			dirs = append(dirs, filepath.Join(root, d, "agents"))
-		}
-	}
-	return dirs
+	return ""
 }
 
 func (h *Host) agentDef(name string) (AgentDef, error) {
@@ -143,11 +132,9 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 		}
 		names = append(names, d.Name)
 	}
-	if !h.ProjectTrusted() {
-		for _, dir := range h.projectAgentDirs() {
-			if _, err := os.Stat(filepath.Join(dir, name+".md")); err == nil {
-				return AgentDef{}, fmt.Errorf("agent %q is in %s, and this project is not trusted: the user runs /trust to load it", name, dir)
-			}
+	if dir := h.projectAgentDir(); dir != "" && !h.ProjectTrusted() {
+		if _, err := os.Stat(filepath.Join(dir, name+".md")); err == nil {
+			return AgentDef{}, fmt.Errorf("agent %q is in %s, and this project is not trusted: the user runs /trust to load it", name, dir)
 		}
 	}
 	return AgentDef{}, fmt.Errorf("unknown agent %q (have %s)", name, strings.Join(names, ", "))
@@ -955,7 +942,7 @@ func (h *Host) openAgents() error {
 			"text":    d.Name,
 			"desc":    d.Description,
 			"section": sourceSection(d.Source) + " agents", // apart from the runs above
-			"detail": fmt.Sprintf("%s\n\nsource: %s\nmodel: %s\ntools: %s\n\nAdd your own as agents/<name>.md in %s or .zemi.",
+			"detail": fmt.Sprintf("%s\n\nsource: %s\nmodel: %s\ntools: %s\n\nAdd your own as agents/<name>.md in %s or .agents.",
 				d.Description, d.Source, model, tools, TildePath(h.Dirs.ConfigHome)),
 		})
 	}

@@ -212,7 +212,7 @@ type Pipeline struct {
 	// Sandboxed is this run's policy, set on the per-run copy once the gate
 	// settled a command by mode; nil = unconfined.
 	Sandboxed *sandbox.Policy
-	// Protected says why a write to .git, a .zemi or zemi's own dirs is
+	// Protected says why a write to .git, the Lua in .agents or zemi's own dirs is
 	// protected, "" for any other: a rule allow for it still asks, since
 	// broad "always" globs cannot exclude every such path; nil = none.
 	Protected func(path string) string
@@ -413,7 +413,7 @@ func policyLimits(pol *sandbox.Policy) string {
 	}
 	// the project is a write root only where sandboxPolicy found it safe
 	if b.EnforcesProtect && (pol == nil || slices.Contains(pol.Write, workdir())) {
-		write = "writes only in a trusted project, the scratchpad and a private $TMPDIR" + sep + ".git and .zemi read-only"
+		write = "writes only in a trusted project, the scratchpad and a private $TMPDIR" + sep + ".git and .agents read-only"
 	}
 	s := net + sep + write
 	if pol != nil && pol.Network {

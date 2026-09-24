@@ -744,7 +744,7 @@ func (h *Host) openWorkflows() error {
 		})
 	}
 	ui.OpenOverlay(Overlay{ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items,
-		Empty: "No saved workflows. Add workflows/<name>.lua to " + TildePath(h.Dirs.ConfigHome) + " or .zemi."})
+		Empty: "No saved workflows. Add workflows/<name>.lua to " + TildePath(h.Dirs.ConfigHome) + " or .agents."})
 	return nil
 }
 

@@ -1,6 +1,6 @@
 // mdcommands.go registers prompt commands from markdown: commands/<name>.md
-// under the config dir (user origin) or a trusted repository's .zemi,
-// .agents and .claude dirs (project origin), the same three skills read. Running /<name> args sends the body to the agent with $ARGUMENTS
+// under the config dir (user origin) or a trusted repository's .agents
+// (project origin). Running /<name> args sends the body to the agent with $ARGUMENTS
 // and $1..$9 filled in, behind the typed "/<name> args". Files are read at boot; /reload picks up changes.
 package hostapi
 
@@ -40,35 +40,24 @@ func (h *Host) MarkdownCommandsStep() lua.BootStep {
 		Name: "markdown commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			if h.Dirs.ConfigHome != "" {
-				h.addMarkdownCommands(filepath.Join(h.Dirs.ConfigHome, "commands"), lua.OriginUser, Gen(g.ID), map[string]bool{})
+				h.addMarkdownCommands(filepath.Join(h.Dirs.ConfigHome, "commands"), lua.OriginUser, Gen(g.ID))
 			}
-			if !h.ProjectTrusted() {
-				return nil
-			}
-			// the nearest .zemi takes a name first, then the dirs other
-			// agents share
-			seen := map[string]bool{}
-			if pdir := h.Dirs.ProjectConfigDir(); pdir != "" {
-				h.addMarkdownCommands(filepath.Join(pdir, "commands"), lua.OriginProject, Gen(g.ID), seen)
-			}
-			if root := h.Dirs.RepoRoot(); root != "" {
-				for _, d := range []string{".agents", ".claude"} {
-					h.addMarkdownCommands(filepath.Join(root, d, "commands"), lua.OriginProject, Gen(g.ID), seen)
-				}
+			if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
+				h.addMarkdownCommands(filepath.Join(pdir, "commands"), lua.OriginProject, Gen(g.ID))
 			}
 			return nil
 		},
 	}
 }
 
-func (h *Host) addMarkdownCommands(dir string, origin lua.Origin, gen Gen, seen map[string]bool) {
+func (h *Host) addMarkdownCommands(dir string, origin lua.Origin, gen Gen) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
 	for _, e := range entries {
 		name, ok := strings.CutSuffix(e.Name(), ".md")
-		if !ok || e.IsDir() || seen[name] {
+		if !ok || e.IsDir() {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
@@ -117,6 +106,5 @@ func (h *Host) addMarkdownCommands(dir string, origin lua.Origin, gen Gen, seen 
 			warn(err.Error())
 			continue
 		}
-		seen[name] = true
 	}
 }
