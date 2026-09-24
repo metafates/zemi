@@ -87,13 +87,14 @@ func copyPicker(blocks []codeBlock) Overlay {
 		if b.text != "" && !strings.HasSuffix(b.text, "\n") {
 			n++
 		}
-		item["desc"] = fmt.Sprintf("%d %s", n, plural(n, "line", "lines"))
+		desc := fmt.Sprintf("%d %s", n, plural(n, "line", "lines"))
 		for l := range strings.Lines(b.text) {
 			if first := strings.TrimSpace(l); first != "" {
-				item["desc"] = item["desc"].(string) + " · " + first
+				desc += " · " + first
 				break
 			}
 		}
+		item["desc"] = desc
 		items = append(items, item)
 	}
 	if len(blocks) > 1 {

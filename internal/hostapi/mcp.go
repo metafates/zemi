@@ -717,7 +717,6 @@ func (h *Host) restartMCP(name string) error {
 	return h.addMCP(name, s.spec)
 }
 
-// openMCP lists the servers; an action returns to the list, which rebuilds.
 func (h *Host) openMCP() error {
 	ui, err := h.Screen()
 	if err != nil {

@@ -1505,7 +1505,7 @@ provenance string.
   its own rule: a segment matching the pattern but also matching the
   rule's `not_match` value does not match that rule and evaluation
   falls through; every fall-through is logged with its decision.
-  Lua-written rules must carry `match` / `not_match`
+  Lua-authored rules must carry `match` / `not_match`
   example strings, validated at load (codex execpolicy style): the
   `match` example must match the pattern without being excluded by the
   guard, and the `not_match` example must be excluded by the guard;
