@@ -85,6 +85,11 @@ func act(verb, arg string) error {
 		return err
 	case "rename":
 		return os.Rename(arg, arg+".moved")
+	case "renameonto":
+		if err := os.MkdirAll(arg+".src", 0o755); err != nil {
+			return err
+		}
+		return os.Rename(arg+".src", arg)
 	case "dial":
 		c, err := net.DialTimeout("tcp", arg, 3*time.Second)
 		if err == nil {
@@ -215,6 +220,7 @@ func TestPolicy(t *testing.T) {
 		{"write .GIT/config", "write", filepath.Join(root, ".GIT", "config"), false, !b.EnforcesProtect || caseFolds != nil},
 		{"create a nested .git", "mkwrite", filepath.Join(root, "pkg", ".git", "config"), false, runtime.GOOS == "linux"},
 		{"create a nested .Agents", "mkwrite", filepath.Join(root, "pkg", ".Agents", "init.lua"), false, runtime.GOOS == "linux"},
+		{"rename a dir onto a nested .agents", "renameonto", filepath.Join(root, "pkg", ".agents"), false, runtime.GOOS == "linux"},
 		{"write .gitignore", "write", filepath.Join(root, ".gitignore"), true, false},
 		{"write .github", "mkwrite", filepath.Join(root, ".github", "x.yml"), true, false},
 		{"create a .git in a root without protected paths", "mkwrite", filepath.Join(scratch, "repo", ".git", "config"), true, false},
