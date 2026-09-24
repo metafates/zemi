@@ -1504,7 +1504,7 @@ function zemi.composer.edit() end
 ---@field description? string
 ---@field prompt? string A system prompt section while the mode is active.
 ---@field rules? table[] `{ subject, pattern, decision }` rules that answer what would otherwise ask while the mode is on.
----@field decide? fun(req: zemi.PermRequest): "allow"|"deny"|nil Answers an ask the rules left open; anything else leaves it to the user. It runs off the UI with a 60s ceiling, so it may call a model (zemi.http), and holds the interpreter while it does.
+---@field decide? fun(req: zemi.PermRequest): "allow"|"deny"|nil Answers an ask the rules left open; anything else leaves it to the user. It runs as a task for at most 60s, so it may wait on a model call (zemi.http), which frees the interpreter.
 
 ---@class zemi.PermRequest
 ---@field subject string
@@ -1565,9 +1565,14 @@ function zemi.permission.mode.list() end
 ---@field input? table The parameters, flat: a name to its JSON Schema. A `properties` key here raises.
 ---@field required? string[] Which of `input`'s parameters the model must send.
 ---@field prompt? string A system prompt section only a run that has the tool gets. zemi adds the heading ("## Tool <name>"), so write the body only. Fixed text: what changes between turns costs the provider's prompt cache. Ignored from project code.
----@field execute fun(args: table, tool: { name: string, origin: zemi.Origin }): any, string? A string, a table whose `output` is the string, or anything else sent as JSON. `nil, err` fails the call with `err`. It holds the interpreter while it runs.
----@field timeout_ms? integer 30000 by default.
+---@field execute fun(args: table, run: zemi.ToolRun): any, string? A string, a table whose `output` is the string, or anything else sent as JSON. `nil, err` fails the call with `err`. It runs as a task: a handle's `wait` in it suspends it and frees the interpreter.
+---@field timeout_ms? integer Wall time for one call, waits included; 60000 by default.
 ---@field parallel? boolean Safe to run beside other tool calls.
+
+--- The call `execute` runs for.
+---@class zemi.ToolRun
+---@field name string
+---@field origin zemi.Origin
 
 ---@class zemi.ToolPreEvent
 ---@field name "tool.pre"
@@ -1711,7 +1716,7 @@ function zemi.fs.grep(pattern) end
 ---@field error? string
 
 ---@class zemi.HTTPHandle
----@field wait fun(self: zemi.HTTPHandle): zemi.HTTPResponse|nil, string|nil Gives up after 120 seconds.
+---@field wait fun(self: zemi.HTTPHandle): zemi.HTTPResponse|nil, string|nil Suspends the task until the response, 120 seconds at most; raises outside a task (a tool's execute, a command, a keymap, an overlay callback, an on_done or on_exit, a mode's decide) and under pcall.
 
 --- http and https only, no userinfo. Loopback, RFC1918 and metadata
 --- addresses are refused at connect time, on every redirect hop; an
@@ -1752,7 +1757,7 @@ function zemi.http.get(url, opts) end
 
 ---@class zemi.JobHandle
 ---@field id integer
----@field wait fun(self: zemi.JobHandle, ms?: integer): zemi.JobResult|nil, string|nil 30000 ms by default; err is "timeout" or "canceled" (the request ended).
+---@field wait fun(self: zemi.JobHandle, ms?: integer): zemi.JobResult|nil, string|nil Suspends the task until the job ends, 30000 ms by default; err is "timeout" or "canceled" (the task ended). Raises outside a task and under pcall, like `zemi.HTTPHandle.wait`.
 ---@field kill fun(self: zemi.JobHandle)
 ---@field write fun(self: zemi.JobHandle, s: string): true|nil, string|nil
 ---@field close_stdin fun(self: zemi.JobHandle)
@@ -1769,9 +1774,9 @@ zemi.job = {}
 ---@return string|nil err A process that could not start.
 function zemi.job.start(spec) end
 
---- Start a job and block the interpreter until it finishes (spec.timeout_ms,
---- default 60000, then kills it). Everything else waits, so keep it to
---- tools and short commands; elsewhere use `start` with `on_exit`.
+--- Start a job and suspend the task until it finishes (spec.timeout_ms,
+--- default 60000, then kills it). Raises outside a task, like a handle's
+--- `wait`; there use `start` with `on_exit`.
 ---@param spec zemi.JobSpec
 ---@return zemi.JobResult|nil res
 ---@return string|nil err

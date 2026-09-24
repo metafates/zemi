@@ -147,6 +147,32 @@ Contracts that make this safe:
 - **UI-critical handlers must be fast.** Keymaps, widget renders, and event
   handlers have a soft budget (~10 ms). Long work goes through
   `zemi.job` / `zemi.http` / `zemi.timer`, which are Go-backed and async.
+- **`wait()` suspends a task; anywhere else it raises.** A task is a
+  callback zemi runs as a coroutine (`lua.Task`): a Lua tool's `execute`,
+  Lua command functions, keymap functions, overlay callbacks (`on_select`,
+  `on_action`, `on_close`, `keys`, `reload`), the `on_done`/`on_exit`
+  callbacks of jobs, HTTP, agents, workflows and `zemi.ui.edit`, a
+  permission mode's `decide`, and a chunk run through `Runtime.Eval` (the
+  `lua` tool). A handle's `wait()` (and `zemi.job.wait`) yields the task:
+  the request running it ends, the interpreter serves everything else, and
+  a host goroutine waits on the handle, then queues the next slice as an
+  ordinary request of the task's class, with the task's origin frame
+  pushed again and its thread bound to that request's context. So the
+  watchdog, the class priorities and ctx cancellation hold per slice, and
+  a slow plugin cannot freeze keys or rendering by waiting. Everything
+  else stays a plain call, so a per-delta event allocates no thread:
+  widget renders, event handlers (vetoable ones included), completion
+  sources, health checks, `agent.assemble`, config watches, timer and
+  `on_stdout`/`on_stderr` callbacks; `wait` raises there, and under
+  `pcall` or a library callback such as `table.sort`, whose Go frame a
+  yield would unwind, and in a coroutine the task made. A task whose
+  generation was purged or went hot ends at once, its wait cancelled with
+  it: a dropped `execute` returns a tool error, a dropped `decide` sends
+  the ask to the user. Keymaps and Lua commands run in order on the UI's
+  worker per slice: a suspended one lets the next key's handler run, and
+  its rest reports its own failure (`-p` waits for a whole command).
+  NOTE: every task gets a fresh thread (~100 KB of garbage); a pool is the
+  upgrade path.
 - **Queue priority.** Requests carry a class: `ui` (keymaps, renders,
   events), `agent` (tool calls), `io` (timer/job/http callbacks, reloads).
   The queue drains `ui` first, then `agent`, then `io`, FIFO within a
@@ -155,9 +181,10 @@ Contracts that make this safe:
 - **Watchdog.** Timers arm at execution start, not at enqueue: queued
   time is unbounded by the watchdog (a queued callback behind a long tool
   waits, it is not canceled pre-execution). A running Lua tool uses the
-  tool's `timeout_ms`; ui/io handlers get the ~10 ms soft budget plus a
-  hard ceiling (1 s). On expiry the request's context is cancelled (the
-  catchable error surfaces as a failed handler) and the async handles it
+  tool's `timeout_ms` per slice and as its wall time; ui/io handlers get
+  the ~10 ms soft budget plus a hard ceiling (1 s) per slice. On expiry
+  the request's context is cancelled (the catchable error surfaces as a
+  failed handler) and the async handles it
   started (jobs, HTTP) are cancelled inside Go, so a blocked Go call
   actually terminates. If the interpreter is still busy with the same
   request after a grace period (10 s), the request is abandoned hard: the
@@ -213,8 +240,9 @@ Contracts that make this safe:
   showing its cached lines until the queue drains; the ~10 ms handler
   budget bounds each handler, it does not buy frame latency.
 - **Lua tools run on the interpreter thread.** An LLM tool implemented in Lua
-  blocks the queue only for its own duration; documented, configurable
-  `timeout`, and tools are required to do I/O via async APIs. A stuck handler
+  holds the queue only while its Lua runs: its I/O goes through handles,
+  and a `wait` on one suspends it (above). Its `timeout_ms` bounds the
+  call in wall time, waits included. A stuck handler
   fails the tool call with an error and marks the runtime "hot";
   force-reload is the Go-reserved `/reload` command plus the Go-reserved
   cancel trigger, never routed through Lua (while hot, every Lua keymap is
@@ -252,9 +280,8 @@ Go-reserved, §6.2, and in v1 its trigger is fixed: no origin, the user
 included, rebinds it) cancels the running
 turn by cancelling the fantasy
 context; in-flight Lua tool calls get the catchable "context canceled"
-error at the next opcode (see the watchdog above). One residual gap: a Go
-call invoked from Lua that blocks mid-call (e.g. `zemi.job.wait` waiting on
-a subprocess) does not observe cancellation until it returns. Every
+error at the next opcode (see the watchdog above), and one suspended in a
+`wait` ends there, killing a `zemi.job.wait` command. Every
 request-ctx cancellation (watchdog expiry, veto deadline, turn cancel,
 hot mode) cancels the async handles that request started, inside Go,
 which is what makes those terminate.
@@ -477,7 +504,8 @@ in which milestone.
   surface stays guessable without the type annotations open.
 - **Handles vs data**: anything holding a host resource (job, HTTP call,
   timer, session) is a handle with colon-call methods (`h:wait()`,
-  `t:stop()`). Everything else is a plain snapshot table; mutating it never
+  `t:stop()`); `wait()` suspends the task that calls it and raises outside
+  one (§4). Everything else is a plain snapshot table; mutating it never
   feeds back into the host.
 - **Never silently accept**: a call that can never do what it says raises
   where it is made, not three turns later in `/errors`. A color outside the
@@ -796,12 +824,12 @@ zemi.tool.add({
   input = { text = { type = "string" } },     -- the parameters, flat
   required = { "text" },
   parallel = false,
-  timeout_ms = 5000,
+  timeout_ms = 5000,                           -- wall time, waits included
   -- execute returns a string, { output = string }, or a table sent as JSON;
   -- `nil, err` is a tool error result (§6.0); a raise is one too, its
   -- traceback kept for /errors.
   execute = function(args, call)             -- call: { name, origin }
-    -- zemi.job.wait blocks the queue; timeout_ms bounds it
+    -- zemi.job.wait suspends execute and frees the interpreter (§4)
     return { output = zemi.job.wait({ cmd = "figlet", args = { args.text } }).stdout }
   end,
 })
@@ -865,9 +893,9 @@ builtin: its `pre` is a scoped handler for that tool only, running right
 after the global `tool.pre` events under the same decision contract.
 
 Fantasy may dispatch parallel tool calls (up to 5 concurrent, verified in
-its source): Go tools genuinely run concurrently; two Lua tools never
-overlap (one interpreter), so `parallel = true` on a Lua tool only means
-other Go tools may proceed while it waits for the queue.
+its source): Go tools genuinely run concurrently; two Lua tools never run
+Lua at once (one interpreter), but one suspended in a `wait` lets the
+other run, so `parallel = true` on a Lua tool overlaps their waits.
 
 Errors are results, not exceptions: a failed permission or Lua error becomes
 a `ToolResultOutputContentError`-style message so the model can recover.
@@ -880,17 +908,14 @@ zemi.fs.write("notes.md", "...")             -- jailed to project roots only;
                                              -- permission-gated on top (§9)
 zemi.fs.glob("**/*_test.go"); zemi.fs.grep("pattern")
 local h = zemi.http.get("https://example.com")    -- returns a handle now
-local res = h:wait()                              -- blocks the queue until done
-                                                  -- (legal only inside a tool
-                                                  -- handler, see below; the UI
-                                                  -- shows cached lines; Go
-                                                  -- chrome still renders):
+local res = h:wait()                              -- suspends the task until done
+                                                  -- (legal only in a task, §4):
                                                   -- { status, body }
 zemi.http.get(url, { on_done = function(r) end }) -- or callback style
 zemi.job.start({ cmd = "go", args = { "test", "./..." },
                  on_stdout = nil, on_exit = function(ev) end })
-zemi.job.wait({ cmd = "figlet", args = { "hi" } }) -- blocking convenience: run,
-                                                  -- wait, { stdout, stderr, code }
+zemi.job.wait({ cmd = "figlet", args = { "hi" } }) -- start and wait in one call:
+                                                  -- { stdout, stderr, code }
 local t = zemi.timer.after(1000, function() end)  -- one-shot; also zemi.timer.every
 t:stop()                                          -- cancels a pending timer
 zemi.state.set("recent.model", "anthropic/x")     -- persisted kv, global scope
@@ -902,14 +927,13 @@ or `project:` prefix the chunk never sees, so each class has its own space
 and cannot read or overwrite user or builtin keys; user and builtin code see
 the whole store, other classes' keys included.
 
-Async I/O returns handles (§6.0 convention): block on `h:wait()` or pass
-callbacks; the watchdog cancels handles a tool left running. Blocking
-waits (`h:wait()`, `zemi.job.wait`) are not refused
-anywhere, but they hold the interpreter until they return, so they end
-with the request that started them (its ceiling, or an interrupt):
-otherwise a blocked Go call, which no opcode cancellation can preempt,
-would leave the runtime hot. They belong in tool handlers; keymaps and
-event handlers use the callback form. Host-API calls
+Async I/O returns handles (§6.0 convention): `h:wait()` in a task or pass
+callbacks; a reload stops the jobs, timers and HTTP requests of the
+generation it drops. A wait (`h:wait()`, `zemi.job.wait`) suspends the
+task and frees the interpreter until the handle is done, its timeout
+passes (`zemi.job.wait` then kills the command) or the task ends; it
+raises outside a task (§4), so an event handler or a render uses the
+callback form. Host-API calls
 from Lua never open the interactive overlay: when the matched decision
 is `ask`, the call raises `permission ask required` (a
 `permission.request` event is emitted, post-hoc and informational: the
@@ -1568,8 +1592,8 @@ provenance string.
   sandbox"), since an approved one would run unconfined.
   A mode added from config may carry a `decide` function that answers one
   ask from Lua ("allow", "deny", anything else leaves it to the user); it
-  runs on the interpreter with a 60s ceiling, long enough for a model call
-  of its own, and like the mode's rules may not allow an unsandboxed or
+  runs as a task (§4) for at most 60s, long enough for a model call of its
+  own, and like the mode's rules may not allow an unsandboxed or
   network request, an ask a rule asked for or a protected write.
   A script the model's Lua tool gets by `path` must be a `.lua` file and is
   read through the `fs.read` gate the read tool uses, since a Lua error

@@ -452,10 +452,10 @@ func (a *App) runRHS(b *hostapi.KeyBinding) {
 	})
 }
 
-// background runs fn in order on one worker goroutine: Lua keymaps and
-// commands can block in a Go call (a job wait, say) for as long as the
-// runtime's ceiling and grace, and the key loop, ctrl+c included, must not
-// wait on them. Without a program (tests) fn runs inline.
+// background runs fn in order on one worker goroutine: a Lua keymap or
+// command holds it for a slice (the queue behind a long tool, its ceiling),
+// and the key loop, ctrl+c included, must not wait on them. Without a
+// program (tests) fn runs inline.
 func (a *App) background(fn func()) {
 	if a.program == nil {
 		fn()

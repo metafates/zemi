@@ -162,7 +162,10 @@ nested repo whose config zemi would run.
 
 1. **Only the Lua actor goroutine touches the `lua.LState`.** Everything else goes through the
    queue in `internal/lua` with priority classes `ui > agent > io`. `ctx` cancellation preempts
-   running Lua at the next opcode (catchable once, then re-raises).
+   running Lua at the next opcode (catchable once, then re-raises). A task (`lua.Task`,
+   internal/lua/task.go) runs a callback as a coroutine: a handle's `wait()` yields it, a host
+   goroutine waits, and the next slice is an ordinary request, so a resume never touches the
+   `LState` off the actor.
 2. **Watchdog / hot mode.** A wedged request trips the watchdog; after a grace period the
    runtime goes "hot" - every Lua request fails fast until force-reload builds a fresh `LState`
    (generation). All registrations (keymaps, widgets, events, timers, jobs, Lua tools, a
@@ -181,7 +184,13 @@ nested repo whose config zemi would run.
    hooks (`AskPermission`, `AskTrust`, `AskQuestion`, `ReviewMemories`) must only run on non-UI
    goroutines.
 4. **UI-critical Lua handlers (keymaps, widget render, event handlers) must be fast** (~10 ms).
-   Long work belongs in `zemi.job` / `zemi.http` / `zemi.timer`.
+   Long work belongs in `zemi.job` / `zemi.http` / `zemi.timer`. `wait()` suspends a task (a
+   Lua tool's `execute`, a Lua command, a keymap function, an overlay callback, an
+   `on_done`/`on_exit`, a mode's `decide`, `Runtime.Eval`) and raises anywhere else: a render,
+   an event handler, a timer, under `pcall` or a library callback (`lua.InGoCall`). A handle's
+   `wait` is a `lua.Suspending` wrapper, since gopher-lua drops the resume values of a Go
+   function reached by a tail call. A keymap or command returns once it suspends
+   (`StartTask`), so the next key runs; a purged generation ends every waiting task at once.
 5. **Vetoable events** (`permission.request`, `app.quit`, `composer.submit`, `tool.pre`) have a
    50 ms Lua-handler deadline and then take a logged default (fail-closed for permission asks).
    While the runtime is hot those handlers cannot run, so both deny until `/reload`.
@@ -279,8 +288,8 @@ project unwritable in the sandbox, whatever the mode; without trust or a sandbox
 command asks (under yolo, only without a sandbox), as does an MCP tool not marked read-only.
 Network requests are never settled: the URL is the model's. A mode from config may carry
 `decide`, a Lua function answering one ask ("allow", "deny", anything else sends it to the user
-whatever the base would settle, which is how a user gets every ask); it holds the interpreter
-with a 60s ceiling, long enough for a model call of its own, and, like the mode's own rules,
+whatever the base would settle, which is how a user gets every ask); it runs as a task for at
+most 60s, long enough for a model call of its own, and, like the mode's own rules,
 cannot allow an `Unsandboxed` or `Network` request, an `Explicit` one or a `protectedWrite`. In a trusted project with a live sandbox `unsettled` parses nothing:
 every command runs confined, except the short `perm.Destructive` list (forced or recursive
 `rm`, or one with a glob operand, `git clean`, `find -delete`, `shred`, `truncate`, `dd`,
@@ -556,9 +565,8 @@ lua-language-server is installed.
   state on a host goroutine, never on the interpreter (DESIGN §4): a coroutine per branch,
   `agent()`/`parallel()` yield and the scheduler resumes them as subagents finish. Invariants:
   the script sees only base/string/table/math + the workflow API (no fs, net, `zemi.*`);
-  `agent`/`parallel` are Lua wrappers because gopher-lua loses resume values on a tail call of
-  a yielding Go function, and both refuse under `pcall`, where a yield silently kills the
-  coroutine. The tool's description points at the zemi-customize skill for the API, which every
+  `agent`/`parallel` are `lua.Suspending` wrappers, and both refuse under `pcall` or a library
+  callback (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description points at the zemi-customize skill for the API, which every
   request would otherwise pay for.
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers an
   `agentRun` whose hooks build a live transcript, which `/agents view <id>` draws instead of
@@ -589,7 +597,8 @@ lua-language-server is installed.
   every script asks. A new API member is guarded until added to `luaReadOnly`;
   `TestLuaToolDefaultDeny` checks every member. Not a new
   origin: the gate is a flag on the chunk name. A `path` script is a `.lua` file read through
-  the read tool's `fs.read` check. Runs on the interpreter (10s ceiling), main agent only.
+  the read tool's `fs.read` check. Runs on the interpreter as a task (10s ceiling per slice),
+  main agent only.
 - **Model memory writes**: the one `memory` tool goes through `memoryTool` -> `gateMemory`: a
   near-duplicate (`learn.Similar` over both scopes and the pending proposals) is refused with
   its id and text to merge through `replaces` (a pending one only as queued); a learned
