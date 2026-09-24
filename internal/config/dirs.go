@@ -184,20 +184,30 @@ func (d Dirs) WorktreesDir() string {
 }
 
 // WorktreesIgnore writes <WorktreesDir>/.gitignore ignoring everything,
-// itself included, when the directory is there, a real one, with none.
-func (d Dirs) WorktreesIgnore() error {
-	if fi, err := os.Lstat(d.WorktreesDir()); err != nil || !fi.IsDir() {
-		return nil
+// itself included, when there is none. It reports whether WorktreesDir is
+// the repository's own directory, no link on the way, and writes only then:
+// zemi runs unconfined, so a symlinked .agents must not steer it elsewhere.
+func (d Dirs) WorktreesIgnore() (bool, error) {
+	wt := d.WorktreesDir()
+	root, err := filepath.EvalSymlinks(d.RepoRoot())
+	if err != nil {
+		return false, nil
 	}
-	f, err := os.OpenFile(filepath.Join(d.WorktreesDir(), ".gitignore"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if got, err := filepath.EvalSymlinks(wt); err != nil || got != filepath.Join(root, ".agents", "worktrees") {
+		return false, nil
+	}
+	if fi, err := os.Stat(wt); err != nil || !fi.IsDir() {
+		return false, nil
+	}
+	f, err := os.OpenFile(filepath.Join(wt, ".gitignore"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if errors.Is(err, os.ErrExist) {
-		return nil
+		return true, nil
 	}
 	if err != nil {
-		return err
+		return true, err
 	}
 	_, err = f.WriteString("/*\n")
-	return errors.Join(err, f.Close())
+	return true, errors.Join(err, f.Close())
 }
 
 // UserTrees are the config subdirectories zemi loads user files from.

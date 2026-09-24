@@ -497,7 +497,7 @@ func (tg *trustGate) step() lua.BootStep {
 			trusted, err := tg.decide()
 			tg.h.SetProjectTrusted(trusted)
 			if trusted { // so git status never lists the checkouts, sandbox or not
-				if werr := tg.dirs.WorktreesIgnore(); werr != nil {
+				if _, werr := tg.dirs.WorktreesIgnore(); werr != nil {
 					tg.h.Log.Warn("trust", "cannot write .agents/worktrees/.gitignore", map[string]any{"error": werr.Error()})
 				}
 			}

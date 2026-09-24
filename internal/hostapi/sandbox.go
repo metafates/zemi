@@ -119,11 +119,11 @@ func (h *Host) sandboxPolicy(readOnly bool) sandbox.Policy {
 		p.Write = append(p.Write, d.ProjectDir)
 		// the one part of .agents a command may write; a real dir, since the
 		// backend would open a link's target
-		wt := d.WorktreesDir()
-		if fi, err := os.Lstat(wt); err == nil && fi.IsDir() && h.inJail(wt, d.ProjectDir) {
-			if err := d.WorktreesIgnore(); err != nil {
-				h.Log.Warn("sandbox", "cannot write .agents/worktrees/.gitignore", map[string]any{"error": err.Error()})
-			}
+		own, err := d.WorktreesIgnore()
+		if err != nil {
+			h.Log.Warn("sandbox", "cannot write .agents/worktrees/.gitignore", map[string]any{"error": err.Error()})
+		}
+		if wt := d.WorktreesDir(); own && h.inJail(wt, d.ProjectDir) {
 			p.Write = append(p.Write, wt)
 		}
 	}

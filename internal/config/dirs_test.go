@@ -127,26 +127,35 @@ func TestProjectConfigDir(t *testing.T) {
 
 func TestWorktreesIgnore(t *testing.T) {
 	for _, c := range []struct {
-		name, have, want string
-		noDir            bool
+		name, have, want, setup string
+		own                     bool
 	}{
-		{"new file ignores everything", "", "/*\n", false},
-		{"an existing file is left alone", "keep\n", "keep\n", false},
-		{"no directory, no file", "", "", true},
+		{"new file ignores everything", "", "/*\n", "dir", true},
+		{"an existing file is left alone", "keep\n", "keep\n", "dir", true},
+		{"no directory, no file", "", "", "none", false},
+		{"a symlinked .agents is not followed", "", "", "linked", false},
 	} {
 		d := Dirs{ProjectDir: t.TempDir()}
-		path := filepath.Join(d.WorktreesDir(), ".gitignore")
-		if err := os.MkdirAll(map[bool]string{false: d.WorktreesDir(), true: d.ProjectDir}[c.noDir], 0o755); err != nil {
-			t.Fatal(err)
+		os.Mkdir(filepath.Join(d.ProjectDir, ".git"), 0o755)
+		wt := d.WorktreesDir()
+		switch c.setup {
+		case "dir":
+			os.MkdirAll(wt, 0o755)
+		case "linked":
+			outside := t.TempDir()
+			os.Mkdir(filepath.Join(outside, "worktrees"), 0o755)
+			os.Symlink(outside, filepath.Dir(wt))
 		}
 		if c.have != "" {
-			os.WriteFile(path, []byte(c.have), 0o644)
+			os.WriteFile(filepath.Join(wt, ".gitignore"), []byte(c.have), 0o644)
 		}
-		if err := d.WorktreesIgnore(); err != nil {
+		own, err := d.WorktreesIgnore()
+		if err != nil {
 			t.Fatal(err)
 		}
-		if b, _ := os.ReadFile(path); string(b) != c.want {
-			t.Errorf("%s: %q, want %q", c.name, b, c.want)
+		// through the link too: nothing may land in the target
+		if b, _ := os.ReadFile(filepath.Join(wt, ".gitignore")); string(b) != c.want || own != c.own {
+			t.Errorf("%s: %q own %v, want %q own %v", c.name, b, own, c.want, c.own)
 		}
 	}
 }
