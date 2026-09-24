@@ -490,12 +490,18 @@ func sourceSection(source string) string {
 	return strings.ToUpper(source[:1]) + source[1:]
 }
 
+// sortBySource puts rows in the section order every list shares: user,
+// builtin, plugin, project, then recipe.
+func sortBySource[T any](rows []T, source func(T) string) {
+	order := []string{"user", "builtin", "plugin", "project", "recipe"}
+	slices.SortStableFunc(rows, func(a, b T) int {
+		return cmp.Compare(slices.Index(order, source(a)), slices.Index(order, source(b)))
+	})
+}
+
 func (h *Host) skillItems() []any {
 	all := append(h.skillsReg.list(), h.projectOnlySkills()...)
-	order := []skills.Source{skills.User, skills.Builtin, skills.Plugin, skills.Project, skills.Recipe}
-	slices.SortStableFunc(all, func(a, b skills.Skill) int {
-		return cmp.Compare(slices.Index(order, a.Source), slices.Index(order, b.Source))
-	})
+	sortBySource(all, func(s skills.Skill) string { return string(s.Source) })
 	items := make([]any, 0, len(all))
 	for _, s := range all {
 		toggle := "skills toggle " + s.Name

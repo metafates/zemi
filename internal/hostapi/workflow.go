@@ -683,7 +683,9 @@ func (h *Host) openWorkflows() error {
 		return err
 	}
 	var items []any
-	for _, w := range h.workflows() {
+	list := h.workflows()
+	sortBySource(list, func(w Workflow) string { return w.Source })
+	for _, w := range list {
 		detail := strings.TrimLeft(w.Description+"\n\nsource: "+h.sourceOf(w.Source, w.Path), "\n")
 		if w.Source != "builtin" {
 			detail += "\npath: " + TildePath(w.Path)

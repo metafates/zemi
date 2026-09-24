@@ -921,7 +921,7 @@ func (h *Host) openAgents() error {
 		return err
 	}
 	defs := h.agentDefs()
-	slices.SortStableFunc(defs, func(a, b AgentDef) int { return cmp.Compare(a.Source, b.Source) })
+	sortBySource(defs, func(d AgentDef) string { return d.Source })
 	items := h.agentRunItems()
 	// jobs belong to the host, so a server started in an earlier session shows too
 	for _, j := range h.jobs.List() {

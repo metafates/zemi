@@ -1370,7 +1370,9 @@ provenance string.
   a toggle list's rows, passes it by. A Go screen's detail sets its one
   `key: value` block as a table (any other body is text as written), and its
   `status:` line colors the status words every screen shares: `starting`,
-  `ready`, `failed`, `stopped` and `off`.
+  `ready`, `failed`, `stopped` and `off`. A list grouped by source
+  (`/skills`, `/agents`, `/workflows`) puts the user's first,
+  then builtin, plugin and project (`sortBySource`).
 - **Layout tree** (`zemi.ui.layout.set/get/rects`, `internal/ui/layout.go`): Lua hands
   over plain data, Go validates it once and solves it every frame on the Update
   goroutine, so the screen never waits on the interpreter. Boxes (row or col, optional
