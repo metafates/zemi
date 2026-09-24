@@ -166,6 +166,25 @@ func TestPermissionRuleValidation(t *testing.T) {
 		t.Fatalf("rm -rf: %v (%s)", out.Decision, out.Reason)
 	}
 
+	// a principal scopes a user rule to one plugin; nobody else may scope one
+	runExpectErr(t, r, `zemi.permission.rule.add({
+		subject = "lua.model.ask", pattern = "*", decision = "allow", match = "x", principal = "model",
+	})`, `principal must be "plugin:<name>"`)
+	err = r.ExecuteChunk(context.Background(), `zemi.permission.rule.add({
+		subject = "lua.model.ask", pattern = "*", decision = "deny", match = "x", principal = "plugin:b",
+	})`, "plugin.lua", lua.OriginPlugin)
+	if err == nil || !strings.Contains(err.Error(), "only user config scopes a rule") {
+		t.Fatalf("plugin-origin principal: %v", err)
+	}
+	runUser(t, r, `
+		zemi.permission.rule.add({ subject = "lua.model.ask", pattern = "*", decision = "allow", match = "x", principal = "plugin:a" })
+		local rules = zemi.permission.rule.list()
+		assert(rules[#rules].principal == "plugin:a", "principal=" .. tostring(rules[#rules].principal))
+	`)
+	if a, b := h.Perm.Evaluate("lua.model.ask", "x", "plugin:a"), h.Perm.Evaluate("lua.model.ask", "x", "plugin:b"); a.Decision != perm.Allow || b.Decision == perm.Allow {
+		t.Fatalf("plugin:a %v, plugin:b %v", a.Decision, b.Decision)
+	}
+
 	// A reload replays config, so its rules go; an "always" answer keeps its.
 	always := perm.Rule{Subject: "tool.bash", Pattern: "go test *", Decision: perm.Allow, Principal: "model"}
 	h.Perm.Add(always)
