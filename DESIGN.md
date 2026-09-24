@@ -151,9 +151,9 @@ Contracts that make this safe:
   callback zemi runs as a coroutine (`lua.Task`): a Lua tool's `execute`,
   Lua command functions, keymap functions, overlay callbacks (`on_select`,
   `on_action`, `on_close`, `keys`, `reload`), the `on_done`/`on_exit`
-  callbacks of jobs, HTTP, agents, workflows and `zemi.ui.edit`, a
-  permission mode's `decide`, and a chunk run through `Runtime.Eval` (the
-  `lua` tool). A handle's `wait()` (and `zemi.job.wait`) yields the task:
+  callbacks of jobs, HTTP, model asks, agents, workflows and `zemi.ui.edit`,
+  `tool.post` handlers, a permission mode's `decide`, and a chunk run
+  through `Runtime.Eval` (the `lua` tool). A handle's `wait()` (and `zemi.job.wait`) yields the task:
   the request running it ends, the interpreter serves everything else, and
   a host goroutine waits on the handle, then queues the next slice as an
   ordinary request of the task's class, with the task's origin frame
@@ -161,14 +161,15 @@ Contracts that make this safe:
   watchdog, the class priorities and ctx cancellation hold per slice, and
   a slow plugin cannot freeze keys or rendering by waiting. Everything
   else stays a plain call, so a per-delta event allocates no thread:
-  widget renders, event handlers (vetoable ones included), completion
+  widget renders, event handlers (vetoable ones included; `tool.post`
+  aside), completion
   sources, health checks, `agent.assemble`, config watches, timer and
   `on_stdout`/`on_stderr` callbacks; `wait` raises there, and under
   `pcall` or a library callback such as `table.sort`, whose Go frame a
   yield would unwind, and in a coroutine the task made. A task whose
   generation was purged or went hot ends at once, its wait cancelled with
   it: a dropped `execute` returns a tool error, a dropped `decide` sends
-  the ask to the user. Keymaps and Lua commands run in order on the UI's
+  the ask to the user, a dropped `tool.post` leaves the output as it was. Keymaps and Lua commands run in order on the UI's
   worker per slice: a suspended one lets the next key's handler run, and
   its rest reports its own failure (`-p` waits for a whole command). An
   overlay's `reload` holds the worker until it returns, since it hands
@@ -531,7 +532,7 @@ in which milestone.
   whether it did. A new call takes the verb its shape already has, so the
   surface stays guessable without the type annotations open.
 - **Handles vs data**: anything holding a host resource (job, HTTP call,
-  timer, session) is a handle with colon-call methods (`h:wait()`,
+  model ask, timer, session) is a handle with colon-call methods (`h:wait()`,
   `t:stop()`); `wait()` suspends the task that calls it and raises outside
   one (§4). Everything else is a plain snapshot table; mutating it never
   feeds back into the host.
@@ -667,7 +668,9 @@ Event catalogue (v1, each emitted on the interpreter thread):
 
 - app: `app.ready`, `app.quit` (vetoable), `config.reloaded`
 - session: `session.new`, `session.open`, `session.close`
-- agent turn: `agent.start`, `agent.finish`, `agent.error`
+- agent turn: `agent.start`, `agent.step` (after each model call, a
+  subagent's included: its time, time to first token, tool calls and
+  usage), `agent.finish`, `agent.error`
 - subagents: `agent.subagent.start`, `agent.subagent.finish`
 - prompt: `agent.assemble` (returns a section to add, §10.7)
 - stream: `agent.text_delta`, `agent.reasoning_delta`
@@ -709,8 +712,7 @@ otherwise return a decision table:
   do not re-fire), so a rewrite cannot silence another origin's deny hook
   and re-entry still terminates (§6.4);
   `{ decision = "halt", reason = "..." }` ends the turn after this tool call
-  (fantasy `StopTurn`). `tool.post` is a notification: its return value is
-  ignored, and `ev.changed` lists the files the call changed. There is no `allow`
+  (fantasy `StopTurn`). There is no `allow`
   decision: absence of denial is the only pass, so a Lua hook can never
   pre-approve a permission (crush's `allow` does pre-approve; zemi
   deliberately diverges). A `rewrite` from a non-user principal
@@ -743,6 +745,20 @@ otherwise return a decision table:
   `{ decision = "deny", reason = "..." }` or nil. Lua can deny; it can
   never grant.
 
+`tool.post` is not vetoable, but it may rewrite what the model gets. Its
+handlers run after the call, then the tool's `zemi.tool.override` `post`,
+each as a task (§4) seeing in `ev.output` the full text the one before
+left (`ev.ms` is the call's time from the gate, an ask included;
+`ev.changed` lists the files it changed). A return of `{ output = "..." }`
+replaces the output, which is then cut and spilled like any other; a
+project handler's is ignored and logged, as its `tool.pre` rewrites are.
+One call's handlers get 30 s of wall time, waits included, each slice
+between waits the 50 ms veto deadline; esc ends them, and one that fails
+or runs late leaves the output as it was, its error in `/errors`. A
+rewrite touches neither the diff, `changed` nor the permission decision,
+and a plugin's marks the session not local-only (§10.4). A call with no
+handler runs no Lua.
+
 ### 6.3 Agents, sessions, models
 
 ```lua
@@ -764,6 +780,7 @@ zemi.agent.current()                 -- session handle: { id = "...", profile = 
 zemi.agent.send("fix the flaky test")  -- returns immediately; stream is
                                        -- async; during an active turn the
                                        -- message enqueues as steering (§4)
+                                       -- (plugins: see below)
 zemi.agent.cancel()
 zemi.agent.run({ agent = "explore", prompt = "...",              -- subagent,
                  description = "..." },                          -- async
@@ -776,6 +793,10 @@ zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
 zemi.model.list()                    -- { { id = "anthropic/...", roles = { "chat" }, ... } }
 zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes models.chat
 zemi.model.pick("titles")            -- open a role's picker (returns at once; default chat)
+local h = zemi.model.ask({ prompt = "...", system = "...", model = "titles",
+                           max_tokens = 1024, on_done = function(text, err) end })
+h:wait()                             -- text, or nil, err; suspends the task (§4)
+h:cancel()
 -- Models are roles: models.chat runs the conversation, and models.agents,
 -- models.titles, models.compact and models.memory (the reflector) follow it
 -- while empty; zemi.config.set sets them. Anywhere a model can be named (a
@@ -831,6 +852,18 @@ mechanical check is the origin, not the caller's principal). Provider base URLs 
 gate; a user provider's key comes from user config (`zemi.env.get` reads secret-shaped
 variables for user and builtin origin only) and is never exposed back to Lua.
 
+`zemi.model.ask` is one tool-less model call on a role's model or an id
+(default `chat`), run off the interpreter and billed to the live session.
+It costs money, so a plugin needs a user allow rule for `lua.model.ask`
+with its principal (§9), project code may not call it, and a reload
+cancels it. `zemi.agent.send` from a plugin asks `lua.agent.send` the same
+way; project code may not send at all. A plugin's text reaches the model
+behind `agent.Attached("plugin:<name>", ...)`, drawn as a notice row
+named after the plugin, so it is never the user's words (§10.4), and the
+send marks the session not local-only. A print run (`-p`) refuses a
+plugin's send: nothing would bound a chain of turns, and `-p` exits after
+its own.
+
 Session/message persistence and cost/token accounting mirror crush's model
 (SQLite, summary message, todos), simplified: sessions, messages (JSON parts),
 tool-call telemetry.
@@ -855,7 +888,8 @@ zemi.tool.add({
   -- execute returns a string, { output = string }, or a table sent as JSON;
   -- `nil, err` is a tool error result (§6.0); a raise is one too, its
   -- traceback kept for /errors.
-  execute = function(args, run)              -- run: { name, origin }
+  execute = function(args, run)              -- run: { name, origin, progress }
+    run:progress("rendering")                 -- one line on the call's row
     -- zemi.job.wait suspends execute and frees the interpreter (§4)
     return { output = zemi.job.wait({ cmd = "figlet", args = { args.text } }).stdout }
   end,
@@ -865,7 +899,8 @@ zemi.tool.override("bash", { pre = function(input)          -- wrap builtin;
     if input.command:match("^rm%s") then                    -- nil = pass through
       return { decision = "deny", reason = "no rm here" }
     end
-  end })
+  end,
+  post = function(ev) return { output = ev.output:sub(-2000) } end })  -- §6.2
 zemi.tool.list()          -- introspection for UI and reflector
 ```
 
@@ -905,7 +940,7 @@ model call -> schema validation
            -> tool.pre events (Lua: deny | rewrite | halt)
            -> permission gate (config rules + session rules; ask = overlay)
            -> execute (Go impl or Lua callback on interpreter thread)
-           -> tool.post events
+           -> tool.post events (Lua: may rewrite the output)
            -> result -> fantasy ToolResponse
 ```
 
@@ -915,9 +950,12 @@ in deny-only mode (deny decisions are re-checked against the rewritten
 input; rewrite and halt do not re-fire, §6.2), so a rewrite cannot
 silence another origin's deny hook and re-entry still terminates. Tools
 the host runs itself (`agent`, `workflow`, `lua`, MCP and Lua
-tools) refuse a rewrite with an error result instead. `zemi.tool.override(name, { pre })` wraps a
-builtin: its `pre` is a scoped handler for that tool only, running right
-after the global `tool.pre` events under the same decision contract.
+tools) refuse a rewrite with an error result instead. `zemi.tool.override(name, { pre, post })` wraps a
+tool: its `pre` is a scoped handler for that tool only, running right
+after the global `tool.pre` events under the same decision contract, and
+its `post` runs after the global `tool.post` handlers (§6.2).
+`run:progress(text)` shows one line under a Lua tool's row, sanitized and
+cut to 120 characters, as a command's last output line does.
 
 Fantasy may dispatch parallel tool calls (up to 5 concurrent, verified in
 its source): Go tools genuinely run concurrently; two Lua tools never run
@@ -956,8 +994,8 @@ user or builtin keys; user and builtin code see the whole store, the others'
 keys included. A plugin's keys go when its directory does (§5).
 
 Async I/O returns handles (§6.0 convention): `h:wait()` in a task or pass
-callbacks; a reload stops the jobs, timers and HTTP requests of the
-generation it drops. A wait (`h:wait()`, `zemi.job.wait`) suspends the
+callbacks; a reload stops the jobs, timers, HTTP requests and model asks
+of the generation it drops. A wait (`h:wait()`, `zemi.job.wait`) suspends the
 task and frees the interpreter until the handle is done, its timeout
 passes (`zemi.job.wait` then kills the command) or the task ends; it
 raises outside a task (§4), so an event handler or a render uses the
@@ -1554,7 +1592,9 @@ provenance string.
   the trigger: an operation inside a plugin-registered keymap acts as that
   plugin, not `user`, no matter whose finger pressed the key, and so does
   a plugin's `setup()` that user config calls; only user code acts as
-  `user`. A refused Lua call names the rule to paste. Rules may be scoped per principal, so a
+  `user`. A refused Lua call names the rule to paste, a plugin's with
+  `principal = "plugin:<name>"`: a principal scopes a rule to one plugin,
+  and only user config writes one. Rules may be scoped per principal, so a
   prompt-injected tool call (`model`) cannot ride rules meant for the
   user.
 - Defaults when no rule matches: pure reads (`zemi.config.get`,
@@ -1572,8 +1612,10 @@ provenance string.
   scrubbed at the memory store boundary with the memory-intake scrubber
   (§10.4); the side-effectful set (`fs.write`,
   `net.*`, `tool.*`, `zemi.job` as `lua.job.start`, `zemi.http` as
-  `lua.http.<method>`) is `ask`; `zemi.agent.send` and `zemi.model.set`
-  are not gated but refused below builtin origin, and `zemi.memory.add` is
+  `lua.http.<method>`, a plugin's `zemi.agent.send` and `zemi.model.ask` as
+  `lua.agent.send` and `lua.model.ask`) is `ask`; user and builtin code
+  send and ask ungated, `zemi.model.set` is refused below builtin origin,
+  project code may neither send nor ask, and `zemi.memory.add` is
   refused for project code (§5); a Lua-originated call to one of these
   APIs checks the same capability under its `lua.` subject (`lua.fs.read`
   mirrors `fs.read`, subject namespace above), so these defaults cover
@@ -1940,7 +1982,8 @@ by the next startup sweep, since the session still has unseen messages.
   pending one is named as queued; the user's own text is refused only word
   for word). Anything about the user carries `quote`, the user's own words:
   a learned user-scope memory without one waits for review, and a quote that
-  is not in the session's user rows (compaction summaries aside) drops the
+  is not in what the user typed in the session (compaction summaries,
+  attachments and a plugin's `zemi.agent.send` text aside) drops the
   memory. Each scope has a 3 KB prompt budget (§10.7): a write that would
   pass it queues for review with the oldest ids to replace, and `/memory
   <note>`, accepting a queued one, a move into that scope and an edit that
@@ -1986,9 +2029,10 @@ heuristic exists for), which queues anyway, a replacement of a `user`
 memory or of one in the other scope (a user-scope memory superseded from
 a project is hidden in every project), a retirement (§10.3), and everything from an untrusted project
 (§5) or from a session that it or one of its subagents fed text from
-outside the machine (`fetch`, `web_search`, the `lua` tool, and any tool
-zemi does not ship: MCP and Lua-registered ones, read from the session's
-`tool_calls`), since injected memories come from there.
+outside the machine (`fetch`, `web_search`, the `lua` tool, any tool
+zemi does not ship: MCP and Lua-registered ones, and a plugin's send or
+`tool.post` rewrite, which stores a `plugin:<name>` row; all read from the
+session's `tool_calls`), since injected memories come from there.
 The same conditions decide whether the `memory` tool's forget of a learned
 memory applies at once or waits for review; one the user saved asks,
 whatever the permission mode. Known ceiling: a command the user let run
