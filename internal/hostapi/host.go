@@ -268,7 +268,7 @@ type Host struct {
 	msgs  msgLog   // recent print and zemi.log lines for /messages
 	evlog eventLog // recent events and notifications for Lua reflection
 
-	pluginLoads atomic.Pointer[[]pluginLoad] // the last boot's enabled plugins, for /health
+	pluginLoads atomic.Pointer[[]pluginLoad] // the last boot's enabled plugins, for /health and /plugins
 
 	// jobs owns the model's background processes (job_* tools).
 	jobs  *tools.Jobs

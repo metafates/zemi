@@ -396,6 +396,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		}
 		idx := st.visible[st.selected]
 		m, _ := o.Items[idx].(map[string]any)
+		fill, _ := m["fill"].(string)
 		verb := st.enterVerb(idx)
 		switch {
 		case key == "space" && (o.Reload == nil || itemVerb(m) != ""):
@@ -406,9 +407,15 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			return a.copied(text)
 		case st.back:
 			a.detailAction(idx)
-		case o.Reload != nil:
+		case o.Reload != nil && fill == "":
 			a.runOverlayRow(o, idx)
 			a.reloadOverlay(o, func() { a.host.SelectOverlay(context.Background(), o, idx) })
+		case o.Reload != nil: // a fill hands the keys to the composer, so the list closes
+			a.runOverlayRow(o, idx)
+			if o.OnSelect != nil {
+				a.background(func() { a.host.SelectOverlay(context.Background(), o, idx) })
+			}
+			a.closeOverlayByID(o.ID)
 		case verb == "":
 		default:
 			if o.OnSelect != nil {

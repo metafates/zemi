@@ -60,8 +60,8 @@ func TestPlugins(t *testing.T) {
 		err    bool
 	}{
 		{name: "local only", args: nil, want: "loc local on " + local},
-		{name: "install takes the highest tag", args: []string{"install", "file://" + tagged}, want: "installed x v1.0.0"},
-		{name: "install a branch under a name", args: []string{"install", filepath.Join(tmp, "src", "y.git"), "why"}, want: "installed why "},
+		{name: "install takes the highest tag", args: []string{"install", "file://" + tagged}, want: "\nx v1.0.0\n"},
+		{name: "install a branch under a name", args: []string{"install", filepath.Join(tmp, "src", "y.git"), "why"}, want: "\nwhy "},
 		{name: "a taken name", args: []string{"install", "file://" + tagged}, want: "already named x", err: true},
 		{name: "a local plugin's name", args: []string{"install", "file://" + tagged, "loc"}, want: "already named loc", err: true},
 		{name: "a name that climbs", args: []string{"install", "file://" + tagged, "../x"}, want: "not a plugin name", err: true},
@@ -95,7 +95,7 @@ func TestPlugins(t *testing.T) {
 		},
 		{name: "check skips a symlink", args: []string{"check"}, want: "\nx v0.10.0 -> v1.0.0 (major)\n"},
 		{name: "delete", args: []string{"delete", "x"}},
-		{name: "reinstall after the delete", args: []string{"install", "file://" + tagged}, want: "installed x v1.0.0"},
+		{name: "reinstall after the delete", args: []string{"install", "file://" + tagged}, want: "\nx v1.0.0\n"},
 		{name: "an unknown verb", args: []string{"frob"}, want: "usage:", err: true},
 		{name: "enable takes one name", args: []string{"enable"}, want: "usage:", err: true},
 	} {

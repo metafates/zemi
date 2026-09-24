@@ -410,6 +410,20 @@ watcher reads `local/` whole, the `disabled` file and each clone's git
 index, so an edit, a toggle, an install, an update and a delete each
 reload.
 
+`/plugins` manages the tree through `internal/plugins`,
+which is plain git and runs no Lua: `install <git url> [name]` clones into a
+dot dir, checks out the highest `vX.Y.Z` tag and renames it into place;
+`update [name...]` moves a tag within its major version or pulls a branch
+fast-forward; `check` fetches, so the list names each update from local
+refs; `enable`, `disable` and `delete` (a clone only: a local plugin may
+exist nowhere else).
+`/plugins` is a toggle list built off the key loop, local plugins first,
+each row's state first (`failed`, an update), then its version and the
+`init.lua` description; its detail names the source, the load status and
+what the plugin registered, and the git verbs run on a goroutine that opens
+the list again when they end. Two verbs need the screen, so only `/plugins`
+takes them: `toggle <name>` and `open <name>`.
+
 `require` rules:
 
 - `require("zemi.foo")` always resolves to the preloaded Go namespace or the
@@ -1293,7 +1307,9 @@ provenance string.
   and the toggle-list `reload` `/skills` uses: a function returning the
   items, run with `on_select` on the UI worker after enter or space while
   the list stays open, and again when an overlay stacked on it closes, a
-  detail view only after it ran something, so a picker opened from it shows its pick at once); Go still draws the box, the origin badge, the
+  detail view only after it ran something, so a picker opened from it shows its pick at once,
+  and after a reload; a row that fills the composer closes the list, which would keep
+  the keys); Go still draws the box, the origin badge, the
   filter and the hints, where a list's own `keys` are named. Opening the id
   of an open overlay replaces it in place, keeping selection and filter, when
   the opener may close it (user, builtin or its own origin). A detail view's rows are actions
@@ -1305,7 +1321,7 @@ provenance string.
   update or use now, `c` change, and `x`, in the danger color, for what
   cannot be undone (delete, or `/mcp`'s sign out, which deletes the saved
   token). A screen that manages things (`/skills`, `/mcp`, `/lsp`,
-  `/permissions`) is a toggle list, so an action returns to it rebuilt;
+  `/permissions`, `/plugins`) is a toggle list, so an action returns to it rebuilt;
   `/sessions`, `/agents` and `/workflows` close on an action instead: resume,
   a run and an agent's transcript move to another screen, which a rebuilt
   list would cover.
@@ -1417,7 +1433,7 @@ provenance string.
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/workflow`, `/review`, `/mcp`,
-  `/lsp`, `/win`) and `/trust` (§5). Enter on a help command row runs it, or
+  `/lsp`, `/plugins`, `/win`) and `/trust` (§5). Enter on a help command row runs it, or
   fills the composer when the command needs an argument.
   Under `-p` a command that opens a screen fails with "/<name> needs the TUI".
   The menus share one list: a row that only a closer look should act on
@@ -2058,10 +2074,6 @@ tool; there is no `/skill` command, only `/skills` to browse, toggle and
 use them (a row's detail carries the whole body and opens it in the
 editor). Discovery lists only `enabled` skills to the model, and enable
 goes through the host API (`zemi.skills.enable`, user or builtin origin).
-Skills installed from
-outside the user's own hands (plugin manager, M5) land disabled until
-reviewed, like plugins; user skills, written in the user's own
-config dir, start enabled.
 
 A trusted project's skills (`.agents/skills` at the repository root, the
 dir other agents read) join
@@ -2243,16 +2255,17 @@ runtime/types/              the LuaLS `---@meta` description of the whole zemi.*
 
 ## 13. Milestones
 
-Status: M0-M3 shipped, and M3's config revision pipeline was later dropped
-(the reflector proposes memories only). M4 was never built: no eval harness, no mock
+Status: M0-M3 shipped, and M3's config revision pipeline was later dropped (the
+reflector proposes memories only). M4 was never built: no eval harness, no mock
 provider, no eval CI, no `zemi.eval`. M3's permanent rule scope, its
-`permissions.lua` dump and the config git repo were dropped too (§6.1). M5 shipped in part: subagents, workflows, the MCP client
-and the LSP client are in; the plugin manager and embeddings-backed
-search are not. Shipped outside every milestone: permission modes (§9),
-workflows, rewind and checkpoints, per-session scratchpads, background
-agents with the `/agents` transcript view, the `lua` tool, markdown
-commands and `agents/*.md`, headless print mode (`-p`) and `--health`,
-and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
+`permissions.lua` dump and the config git repo were dropped too (§6.1). M5
+shipped in part: subagents, workflows, the MCP client, the LSP client and the
+plugin manager (§5) are in; embeddings-backed search is not. Shipped outside
+every milestone: permission modes (§9), workflows, rewind and checkpoints,
+per-session scratchpads, background agents with the `/agents` transcript view,
+the `lua` tool, markdown commands and `agents/*.md`, headless print mode (`-p`)
+and `--health`, and the `zemi.health`, `zemi.composer` and `zemi.json`
+namespaces.
 
 - **M0, walk before running**: bubbletea shell, Lua host, sandbox, init.lua
   + plugins loading; the concurrency core starts here (actor queue with
@@ -2291,12 +2304,11 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
   Namespace: `zemi.eval`.
 - **M5, platform**: subagents (`zemi.agent.run` and the `agent` tool,
   §6.3), LSP client + tools, MCP client (bridged as tools and as
-  `zemi.mcp`, tools named as in §11: MCP servers quarantine
-  like plugins, their tool descriptions render to the model as fenced
+  `zemi.mcp`, tools named as in §11: their tool descriptions render to the model as fenced
   untrusted data in the §6.2 style, and the server process itself sits
   outside the §9 net gate like any user-installed binary), plugin
-  manager (`zemi add <git url>`: clones into `site/pack`, quarantined
-  disabled until reviewed), embeddings-backed memory search.
+  manager (`/plugins`, `zemi plugins install <git url>`, §5),
+  embeddings-backed memory search.
 
 ## 14. Open questions
 

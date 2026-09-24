@@ -28,7 +28,7 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 		if on {
 			mark = "● b"
 		}
-		return []any{map[string]any{"text": "a"}, map[string]any{"text": mark, "fill": "picked"}}
+		return []any{map[string]any{"text": "a"}, map[string]any{"text": mark}}
 	}
 	a.openOverlay(hostapi.Overlay{ID: "t", Origin: lua.OriginBuiltin, Items: items(), Reload: func() ([]any, [][]hostapi.Segment) { on = !on; return items(), nil }})
 	a.overlayKey("ctrl+n", "")
@@ -40,8 +40,8 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 			t.Fatalf("%s: overlays=%d selected=%d on=%v size=%v", key, len(a.overlays), a.overlays[0].selected, on, a.overlays[0].size)
 		}
 	}
-	if got := a.overlays[0].texts[1]; got != "○ b" || a.composer.text != "picked" {
-		t.Fatalf("row=%q composer=%q", got, a.composer.text)
+	if got := a.overlays[0].texts[1]; got != "○ b" {
+		t.Fatalf("row=%q", got)
 	}
 	a.overlayKey("", "/")
 	a.overlayKey("", "b")
@@ -371,6 +371,12 @@ func TestOverlayNavigation(t *testing.T) {
 			[]string{"space"},
 			func(a *App) string {
 				return map[bool]string{false: "space ran the row"}[len(a.overlays) == 1 && spaced == 0]
+			}},
+		{"a fill row closes a toggle list, so the composer has the keys",
+			hostapi.Overlay{Items: []any{map[string]any{"text": "Install", "verb": "install", "fill": "/plugins install "}}, Reload: func() ([]any, [][]hostapi.Segment) { return nil, nil }},
+			[]string{"enter"},
+			func(a *App) string {
+				return map[bool]string{false: fmt.Sprintf("overlays=%d composer=%q", len(a.overlays), a.composer.text)}[len(a.overlays) == 0 && a.composer.text == "/plugins install "]
 			}},
 		{"a toggle list rebuilds when the overlay stacked on it closes, after its pick",
 			hostapi.Overlay{ID: "p", Items: []any{"old"}}, nil,
@@ -771,6 +777,15 @@ zemi.ui.overlay.open({ id = "toggles", title = "Toggles", items = items(),
 	}
 	if len(app.overlays) != 1 || app.overlays[0].items[0].label != "[ ] a" || !host.HasUnseenErrors() {
 		t.Fatalf("a failed reload should keep the items and record the error: %+v", app.overlays[0].items)
+	}
+	// a fill row runs on_select too, then closes the list for the composer
+	runLua(t, app, `zemi.ui.overlay.open({ id = "fill", items = { { text = "a", fill = "/x " } },
+  on_select = function(it) zemi.notify({ body = "picked " .. it.text }) end, reload = function() return {} end })`)
+	pressKeys(app, "enter")
+	for app.Pump() {
+	}
+	if len(app.overlays) != 1 || app.composer.text != "/x " || lastToast(app) != "picked a" {
+		t.Fatalf("fill row: %d overlays, composer %q, toast %q", len(app.overlays), app.composer.text, lastToast(app))
 	}
 }
 

@@ -17,8 +17,8 @@ import (
 // pluginLoad is one enabled plugin as the last boot saw it; err is nil when
 // its init.lua ran.
 type pluginLoad struct {
-	name string
-	err  error
+	name, dir string
+	err       error
 }
 
 // PluginsStep loads every enabled plugin's init.lua as plugin origin, sorted
@@ -50,11 +50,11 @@ func (h *Host) PluginsStep() lua.BootStep {
 				case !p.Enabled:
 					continue
 				case p.Local && installed[p.Name]:
-					loads = append(loads, pluginLoad{p.Name, errors.New("an installed plugin has this name; delete it or rename this one")})
+					loads = append(loads, pluginLoad{p.Name, p.Dir, errors.New("an installed plugin has this name; delete it or rename this one")})
 				case lerr == nil && !fi.IsDir():
 					// origin is classified on resolved paths, so its files would
 					// be nobody's
-					loads = append(loads, pluginLoad{p.Name, errors.New("a symlink, which zemi does not load; move the plugin into " + filepath.Dir(p.Dir))})
+					loads = append(loads, pluginLoad{p.Name, p.Dir, errors.New("a symlink, which zemi does not load; move the plugin into " + filepath.Dir(p.Dir))})
 				default:
 					g.Plugins = append(g.Plugins, p.Dir)
 					run = append(run, p)
@@ -62,7 +62,7 @@ func (h *Host) PluginsStep() lua.BootStep {
 			}
 			for _, p := range run {
 				init := filepath.Join(p.Dir, "init.lua")
-				loads = append(loads, pluginLoad{p.Name, lua.LoadFileStep("plugin "+p.Name, init, lua.OriginPlugin).Run(ctx, r, g)})
+				loads = append(loads, pluginLoad{p.Name, p.Dir, lua.LoadFileStep("plugin "+p.Name, init, lua.OriginPlugin).Run(ctx, r, g)})
 			}
 			slices.SortStableFunc(loads, func(a, b pluginLoad) int { return cmp.Compare(a.name, b.name) })
 			h.pluginLoads.Store(&loads)

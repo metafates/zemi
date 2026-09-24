@@ -46,7 +46,8 @@ var (
 // netTimeout bounds a clone or a fetch; other git calls get proc.Git's.
 const netTimeout = 2 * time.Minute
 
-const usage = "usage: plugins [list] | install <git url> [name] | update [name...] | check | enable <name> | disable <name> | delete <name>"
+// ErrUsage is Run's error for a verb or arguments it does not take.
+var ErrUsage = errors.New("usage: plugins [list] | install <git url> [name] | update [name...] | check | enable <name> | disable <name> | delete <name>")
 
 // List reads every plugin, local ones first, each group by name. It runs
 // only local git reads.
@@ -247,7 +248,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 		}
 		p, err := Install(ctx, d, rest[0], name)
 		if err == nil {
-			fmt.Fprintf(w, "installed %s %s\n", p.Name, p.Version)
+			fmt.Fprintf(w, "%s\t%s\n", p.Name, p.Version)
 		}
 		return err
 	case verb == "update":
@@ -290,7 +291,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 	case verb == "delete" && len(rest) == 1:
 		return Delete(d, rest[0])
 	}
-	return errors.New(usage)
+	return ErrUsage
 }
 
 func load(ctx context.Context, dir string, local, enabled bool) Plugin {

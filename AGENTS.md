@@ -756,9 +756,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
 
 ## Gotchas and non-obvious conventions
 
-- **Not built**, whatever DESIGN §13 implies: M4 evals (no `zemi.eval`), the plugin manager,
-  embeddings. Everything else it names ships, plus permission modes, rewind, scratchpads,
-  the `lua` tool and print mode.
+- **Not built**, whatever DESIGN §13 implies: M4 evals (no `zemi.eval`) and embeddings.
+  Everything else it names ships, plus permission modes, rewind, scratchpads, the `lua` tool
+  and print mode.
 - **`zemi.*` namespaces are frozen and integrity-checked.** Tables are metatable-locked,
   `rawset`/`rawequal` are stripped, and Go re-verifies namespace contents per request class. A
   runtime-mutable member must go through the Go side, and each Go function exposed to Lua runs
@@ -810,9 +810,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   which stays what `y` copies). Opening the id of an open overlay replaces it in place
   (`replaceOverlay`, keeping selection and filter; only an origin that may close it), and a
   toggle list rebuilds when the overlay stacked on it closes (`closeOverlayByID`; a detail
-  view only after an action), so every caller acts first and closes after: the worker then
-  runs the rebuild behind the action. A row's `verb` names enter's action in the hint and
-  keeps space from toggling it.
+  view only after an action) and after a reload (`SignalBoot`), so every caller acts first
+  and closes after: the worker then runs the rebuild behind the action. A row that fills the
+  composer closes a toggle list, which would keep the keys. A row's `verb` names enter's action
+  in the hint and keeps space from toggling it.
 - **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua jobs,
   MCP and LSP servers, git). A child runs in its own session: no controlling terminal (nothing
   can read the TUI's keys or hang on a password prompt) and its own process group, which

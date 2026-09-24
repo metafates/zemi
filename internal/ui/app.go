@@ -203,6 +203,13 @@ func (a *App) SignalBoot(err error) {
 		a.bootErr = err
 		if err != nil {
 			a.log.Error("ui", "boot failed", map[string]any{"error": err.Error()})
+			return
+		}
+		// a toggle list open across a reload rebuilds from the new state
+		for _, st := range a.overlays {
+			if st.o.Reload != nil {
+				a.reloadOverlay(st.o, nil)
+			}
 		}
 	})
 }
