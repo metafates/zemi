@@ -2,7 +2,7 @@
 // chrome, no Lua participates in drawing or answering it. Suggestions from
 // the reflector come first (a keeps one, d drops it), then what zemi
 // remembers (d forgets); s moves a row between this project and everywhere,
-// e closes the screen to edit a row in the user's editor. Enter opens a row
+// o closes the screen to edit a row in the user's editor. Enter opens a row
 // with those actions as buttons. A key acts at once and u undoes; the
 // edited rows reach the host when the screen closes.
 package ui
@@ -279,7 +279,11 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 	if i := mr.at(); i < len(mr.items) && !mr.active {
 		hints = append(hints, hintPair{"enter", "open"})
 		for _, c := range memActions(mr.items[i], len(mr.undo) > 0) {
-			hints = append(hints, hintPair{c.key, strings.ToLower(c.label)})
+			verb := strings.ToLower(c.label)
+			if c.key == "o" { // the button's label does not fit a footer
+				verb = "editor"
+			}
+			hints = append(hints, hintPair{c.key, verb})
 		}
 	}
 	esc := map[bool]string{true: "back", false: "close"}[mr.active]

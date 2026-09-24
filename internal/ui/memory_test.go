@@ -114,7 +114,7 @@ func TestGoldenMemoryDetail(t *testing.T) {
 	}
 }
 
-// TestMemoryReviewEdit: e hands the row back for editing and the screen
+// TestMemoryReviewEdit: o hands the row back for editing and the screen
 // the host opens next starts on it; a forget suggestion has no text to edit.
 func TestMemoryReviewEdit(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 16)
@@ -126,7 +126,7 @@ func TestMemoryReviewEdit(t *testing.T) {
 	done := openReview(t, app, rows)
 	app.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
 	if app.memReview == nil {
-		t.Fatal("e closed the screen on a forget suggestion")
+		t.Fatal("o closed the screen on a forget suggestion")
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	app.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
