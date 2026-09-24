@@ -192,9 +192,10 @@ nested repo whose config zemi would run.
    Lua tool's `execute`, a Lua command, a keymap function, an overlay callback, an
    `on_done`/`on_exit`, a `tool.post` handler, a mode's `decide`, `Runtime.Eval`) and raises
    anywhere else: a render, any other event handler, a timer, under `pcall` or a library
-   callback (`lua.InGoCall`). A handle's `wait` is a `lua.Suspending` wrapper, since
-   gopher-lua drops the resume values of a Go function reached by a tail call. A keymap or command returns once it suspends
-   (`StartTask`), so the next key runs; a purged generation ends every waiting task at once.
+   callback (`lua.InGoCall`). A handle's `wait` is a `lua.Suspending` wrapper, since gopher-lua
+   drops the resume values of a Go function reached by a tail call. A keymap or command returns
+   once it suspends (`StartTask`), so the next key runs; a purged generation ends every waiting
+   task at once.
 5. **Vetoable events** (`permission.request`, `app.quit`, `composer.submit`, `tool.pre`) have a
    50 ms Lua-handler deadline and then take a logged default (fail-closed for permission asks).
    While the runtime is hot those handlers cannot run, so both deny until `/reload`.

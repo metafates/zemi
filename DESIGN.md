@@ -151,29 +151,29 @@ Contracts that make this safe:
   callback zemi runs as a coroutine (`lua.Task`): a Lua tool's `execute`,
   Lua command functions, keymap functions, overlay callbacks (`on_select`,
   `on_action`, `on_close`, `keys`, `reload`), the `on_done`/`on_exit`
-  callbacks of jobs, HTTP, model asks, agents, workflows and `zemi.ui.edit`,
-  `tool.post` handlers, a permission mode's `decide`, and a chunk run
-  through `Runtime.Eval` (the `lua` tool). A handle's `wait()` (and `zemi.job.wait`) yields the task:
-  the request running it ends, the interpreter serves everything else, and
-  a host goroutine waits on the handle, then queues the next slice as an
-  ordinary request of the task's class, with the task's origin frame
-  pushed again and its thread bound to that request's context. So the
-  watchdog, the class priorities and ctx cancellation hold per slice, and
-  a slow plugin cannot freeze keys or rendering by waiting. Everything
-  else stays a plain call, so a per-delta event allocates no thread:
-  widget renders, event handlers (vetoable ones included; `tool.post`
-  aside), completion
-  sources, health checks, `agent.assemble`, config watches, timer and
-  `on_stdout`/`on_stderr` callbacks; `wait` raises there, and under
-  `pcall` or a library callback such as `table.sort`, whose Go frame a
-  yield would unwind, and in a coroutine the task made. A task whose
-  generation was purged or went hot ends at once, its wait cancelled with
-  it: a dropped `execute` returns a tool error, a dropped `decide` sends
-  the ask to the user, a dropped `tool.post` leaves the output as it was. Keymaps and Lua commands run in order on the UI's
-  worker per slice: a suspended one lets the next key's handler run, and
-  its rest reports its own failure (`-p` waits for a whole command). An
-  overlay's `reload` holds the worker until it returns, since it hands
-  back the items.
+  callbacks of jobs, HTTP, model asks, agents, workflows and
+  `zemi.ui.edit`, `tool.post` handlers, a permission mode's `decide`, and
+  a chunk run through `Runtime.Eval` (the `lua` tool). A handle's `wait()`
+  (and `zemi.job.wait`) yields the task: the request running it ends, the
+  interpreter serves everything else, and a host goroutine waits on the
+  handle, then queues the next slice as an ordinary request of the task's
+  class, with the task's origin frame pushed again and its thread bound to
+  that request's context. So the watchdog, the class priorities and ctx
+  cancellation hold per slice, and a slow plugin cannot freeze keys or
+  rendering by waiting. Everything else stays a plain call, so a per-delta
+  event allocates no thread: widget renders, event handlers (vetoable ones
+  included; `tool.post` aside), completion sources, health checks,
+  `agent.assemble`, config watches, timer and `on_stdout`/`on_stderr`
+  callbacks; `wait` raises there, and under `pcall` or a library callback
+  such as `table.sort`, whose Go frame a yield would unwind, and in a
+  coroutine the task made. A task whose generation was purged or went hot
+  ends at once, its wait cancelled with it: a dropped `execute` returns a
+  tool error, a dropped `decide` sends the ask to the user, a dropped
+  `tool.post` leaves the output as it was. Keymaps and Lua commands run in
+  order on the UI's worker per slice: a suspended one lets the next key's
+  handler run, and its rest reports its own failure (`-p` waits for a
+  whole command). An overlay's `reload` holds the worker until it returns,
+  since it hands back the items.
   NOTE: every task gets a fresh thread (~100 KB of garbage); a pool is the
   upgrade path.
 - **Queue priority.** Requests carry a class: `ui` (keymaps, renders,
