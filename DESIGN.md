@@ -302,7 +302,8 @@ Directories (XDG):
   commands/<name>.md      markdown slash commands
   workflows/<name>.lua    saved workflow scripts
 ~/.local/share/zemi/      data
-  plugins/installed/<name>/  plugins zemi cloned (git); init.lua loaded, lua/ require()-able
+  plugins/installed/<name>/  plugins zemi cloned (git); init.lua loaded, lua/ require()-able,
+                          skills|agents|commands|workflows/ as in the config dir
   plugins/local/<name>/   plugins developed in place, the same shape; zemi never changes them
   plugins/disabled        names turned off, one per line
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
@@ -372,11 +373,12 @@ shipped Lua UI (`require("zemi.defaultui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (each enabled plugin's `init.lua`, sorted by name) ->
 user `init.lua` -> user skills' enable hooks -> a trusted project's
-`.agents/init.lua` -> markdown commands (user, then a trusted repo's
-`.agents`) ->
+`.agents/init.lua` -> markdown commands (user, then each plugin's, then a
+trusted repo's `.agents`) ->
 `app.ready`. Boot runs on its own goroutine, so it may block on the
-trust prompt without holding the UI. Project agents and workflows are read when used, under the
-current decision. Project config loads late with
+trust prompt without holding the UI. Agents and workflows are read when
+used: the user's, then the builtin ones, then each plugin's, then the
+project's under the current decision; the first of a name wins. Project config loads late with
 flagged reduced trust: its registrations are tagged `origin = "project"`
 (shown in the UI and logs), its permission rules may only tighten (deny or
 ask rules and `not_match` guards; allow rules are user-config-only), and
@@ -401,7 +403,10 @@ step loaded (sorted by name, fixed for the generation), then the embedded
 
 The plugins step lists `plugins/local/*` and `plugins/installed/*`, skips
 the names in `disabled`, and runs each `init.lua` as plugin origin; it runs
-no git. A plugin that fails does not stop the rest; each one's error goes
+no git. A plugin's skills, agents, commands and workflows come from the
+same list, sorted by name, whether or not its `init.lua` ran; the user's
+and the builtin ones win a name, and a skill a plugin ships never runs a
+`zemi-skill.lua`. A plugin that fails does not stop the rest; each one's error goes
 to `/errors` and the `/health` plugins row counts it. A local plugin named
 like an installed one does not load, nor does a symlinked plugin dir (its
 files would resolve outside the plugin class). The step also drops the
@@ -830,7 +835,7 @@ zemi.provider.add({
 
 There is no `task` profile. A headless sub-turn is a subagent: a named
 definition (builtin `explore`, `web` and `general`, plus `agents/*.md` under the
-config home, zemi's own, and a trusted repo's `.agents`) run as a fresh
+config home, an enabled plugin and a trusted repo's `.agents`) run as a fresh
 runner over the same tool pipeline, in a child session recorded with
 `parent_id`. Subagents never get `agent`, `workflow`, `todos`,
 `question`, `plan` or `lua`, so nesting stops at depth 1, and `zemi.agent.run`
@@ -1816,9 +1821,9 @@ provenance string.
   user did not approve); the read jail is wider: project
   roots, the config dir, the project's `.agents`, both skills dirs, that
   scratchpad and `<data>/types` (the API annotations
-  and shipped Lua UI) and, for the model's file tools alone, the local
-  plugins (`<data>/plugins/local`, not a `zemi.fs` root, so no plugin reads
-  another's source). The plugins and the rest of the data and state dirs are
+  and shipped Lua UI) and, for the model's file tools alone, the plugins
+  (`<data>/plugins`, whose skills the skill tool loads; not a `zemi.fs`
+  root, so no plugin reads another's source). The plugins and the rest of the data and state dirs are
   never write roots: a write to a local plugin asks every time with no
   always answer, and no mode settles it (yolo aside), since the code loads
   in every project, trusted or not; an installed plugin changes only
@@ -2068,10 +2073,12 @@ skills/
     zemi-skill.lua      # optional: zemi.tool.add / command.add on enable
 ```
 
-Discovery merges two sources, the higher-trust one winning a name
+Discovery merges three sources, the higher-trust one winning a name
 clash: user (config dir) over builtin (zemi's own, embedded
 under `runtime/skills/`, rewritten to `<data>/builtin-skills/` on every
-sync). Both start enabled. The model sees name +
+sync) over plugin (each enabled plugin's `skills/`, by plugin name, body
+only: its `zemi-skill.lua` never runs). All start enabled and toggle; a
+plugin skill's flag goes with the plugin when it is turned off. The model sees name +
 description in context and the full body on demand through the `skill`
 tool; there is no `/skill` command, only `/skills` to browse, toggle and
 use them (a row's detail carries the whole body and opens it in the
@@ -2080,7 +2087,7 @@ goes through the host API (`zemi.skills.enable`, user or builtin origin).
 
 A trusted project's skills (`.agents/skills` at the repository root, the
 dir other agents read) join
-the index after both sources and lose every name clash. They are
+the index after those and lose every name clash. They are
 body only (a `zemi-skill.lua` there never runs), enabled with no toggle,
 and kept out of the `skills` table, which is keyed by name across
 projects. They are scanned when the trust decision is set (boot, reload,

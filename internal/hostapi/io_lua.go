@@ -131,7 +131,8 @@ func (h *Host) luaJails(L *glua.LState, write bool) []string {
 }
 
 // fsDefault implements the §9 built-in defaults for fs subjects: reads
-// inside the jail allow except secret-shaped paths, writes allow only in the
+// inside the jail allow except secret-shaped paths, and the file tools read
+// the plugins (their skills load through them); writes allow only in the
 // session scratchpad; everything else asks.
 func (h *Host) fsDefault(subject, arg string) perm.Decision {
 	switch subject {
@@ -140,7 +141,7 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 			return perm.Ask
 		}
 		if h.inJail(arg, h.readJails()...) || subject == "lua.fs.read" && h.inJail(arg, h.luaDataRoot()) ||
-			subject == "fs.read" && h.inJail(arg, h.localPlugins()) {
+			subject == "fs.read" && h.inJail(arg, h.pluginsRoot()) {
 			return perm.Allow
 		}
 	case "fs.write", "lua.fs.write":

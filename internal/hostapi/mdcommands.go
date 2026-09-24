@@ -1,6 +1,6 @@
 // mdcommands.go registers prompt commands from markdown: commands/<name>.md
-// under the config dir (user origin) or a trusted repository's .agents
-// (project origin). Running /<name> args sends the body to the agent with $ARGUMENTS
+// under the config dir (user origin), an enabled plugin (plugin origin) or a
+// trusted repository's .agents (project origin). Running /<name> args sends the body to the agent with $ARGUMENTS
 // and $1..$9 filled in, behind the typed "/<name> args". Files are read at boot; /reload picks up changes.
 package hostapi
 
@@ -41,6 +41,9 @@ func (h *Host) MarkdownCommandsStep() lua.BootStep {
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			if h.Dirs.ConfigHome != "" {
 				h.addMarkdownCommands(filepath.Join(h.Dirs.ConfigHome, "commands"), lua.OriginUser, Gen(g.ID))
+			}
+			for _, p := range h.pluginDirs() {
+				h.addMarkdownCommands(filepath.Join(p, "commands"), lua.OriginPlugin, Gen(g.ID))
 			}
 			if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
 				h.addMarkdownCommands(filepath.Join(pdir, "commands"), lua.OriginProject, Gen(g.ID))

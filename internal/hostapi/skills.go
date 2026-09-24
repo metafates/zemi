@@ -82,9 +82,11 @@ func (h *Host) syncSkills() {
 	if err := h.materializeBuiltinSkills(); err != nil {
 		h.Log.Warn("skills", "builtin skills not written", map[string]any{"error": err.Error()})
 	}
-	found, warns := skills.Discover(
-		skills.Dir{Path: h.userSkillsDir(), Source: skills.User},
-		skills.Dir{Path: h.builtinSkillsDir(), Source: skills.Builtin})
+	dirs := []skills.Dir{{Path: h.userSkillsDir(), Source: skills.User}, {Path: h.builtinSkillsDir(), Source: skills.Builtin}}
+	for _, p := range h.pluginDirs() {
+		dirs = append(dirs, skills.Dir{Path: filepath.Join(p, "skills"), Source: skills.Plugin})
+	}
+	found, warns := skills.Discover(dirs...)
 	for _, w := range warns {
 		h.RecordErrorOnce("skills", strings.TrimPrefix(w, "skills: "))
 	}
@@ -475,6 +477,14 @@ func (h *Host) openSkills() error {
 	return nil
 }
 
+// sourceOf names where a resource comes from, and which plugin ships it.
+func (h *Host) sourceOf(source, path string) string {
+	if source == string(skills.Plugin) {
+		return source + " " + h.PluginOf(path)
+	}
+	return source
+}
+
 // sourceSection names a list section after where its rows come from.
 func sourceSection(source string) string {
 	if source == "" {
@@ -485,7 +495,7 @@ func sourceSection(source string) string {
 
 func (h *Host) skillItems() []any {
 	all := append(h.skillsReg.list(), h.projectOnlySkills()...)
-	order := []skills.Source{skills.User, skills.Builtin, skills.Project, skills.Recipe}
+	order := []skills.Source{skills.User, skills.Builtin, skills.Plugin, skills.Project, skills.Recipe}
 	slices.SortStableFunc(all, func(a, b skills.Skill) int {
 		return cmp.Compare(slices.Index(order, a.Source), slices.Index(order, b.Source))
 	})
@@ -520,7 +530,7 @@ func (h *Host) skillItems() []any {
 		// the description leads, then where it comes from and where it lives;
 		// the markdown renderer keeps the line break inside the paragraph
 		item["detail"] = fmt.Sprintf("%s\n\n*%s · %s*\n*%s*",
-			s.Description, s.Source, state, TildePath(filepath.Join(s.Dir, "SKILL.md")))
+			s.Description, h.sourceOf(string(s.Source), s.Dir), state, TildePath(filepath.Join(s.Dir, "SKILL.md")))
 		items = append(items, item)
 	}
 	return items

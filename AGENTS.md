@@ -147,7 +147,7 @@ and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
 `require("zemi.defaultui")` (shipped theme, widgets and keymaps, one module each) -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
 `init.lua` -> user skill hooks -> a trusted project's `.agents/init.lua` -> markdown commands
-(`commands/*.md`: user, then a trusted repo's `.agents`) -> `app.ready`.
+(`commands/*.md`: user, each plugin's, then a trusted repo's `.agents`) -> `app.ready`.
 Boot runs on its own goroutine and may block on the trust prompt.
 
 **Project trust** (main.go `trustGate`, DESIGN §5): one decision per repository, keyed by
@@ -284,7 +284,7 @@ Rules `(subject, pattern, decision, not_match?, principal?)`, subjects like `too
 `fs.read`, `fs.write`, `net.<host>`, `lua.<ns.call>`. Ordering: deny > ask > allow; within one
 decision, fewest wildcards then longest literal prefix wins. A `not_match` hit falls through
 and **forces ask**. The default when nothing matches is `Store.Default` (host wires
-`fsDefault`: jail reads and the model's reads of the local plugins allow except secret-shaped
+`fsDefault`: jail reads and the model's reads of the plugins allow except secret-shaped
 paths, writes ask) and finally ask - there
 is no fail-open path. New host-API side effects need the same `lua.` subject.
 
@@ -431,7 +431,9 @@ and every Lua function on the stack, resumers included, builtin ones transparent
 would drop a frame. Plugins (hostapi/plugins.go, `PluginsStep`): `plugins.Scan` lists
 `installed/` (clones) and `local/` (developed in place) minus `disabled`, sorted by name; a local
 plugin named like an installed one or a symlinked dir does not load, and a gone plugin's
-`zemi.state` keys are dropped. `Host.PluginOf` names a plugin by its directory: its state keys are
+`zemi.state` keys are dropped. The same pick (`pickPlugins`; `Host.pluginDirs` reads it live)
+gives the plugins' skills, agents, markdown commands and workflows, loaded after the user's and
+the builtin ones, init.lua failed or not. `Host.PluginOf` names a plugin by its directory: its state keys are
 `plugin:<name>:<key>`, its Lua permission principal and its overlay badge `plugin:<name>`,
 and a call from plugin a into plugin b's function runs as a. Registries enforce: cross-origin
 collision is **refused** with the higher-trust origin winning; within one origin it is
@@ -448,7 +450,8 @@ registry, follow `internal/hostapi/registry.go`.
 
 Skills are file-based units, each a `SKILL.md` with YAML frontmatter: user skills under
 `<config>/skills/`, builtin (zemi's self-knowledge, `runtime/skills/zemi-*`, embedded and
-rewritten to `<data>/builtin-skills/` on every sync), both enabled by default. A trusted
+rewritten to `<data>/builtin-skills/` on every sync) and plugin (`skills.Plugin`, each enabled
+plugin's `skills/`, body only), all in the table and enabled by default. A trusted
 project adds its own (`.agents/skills`): body only, enabled, never in the table or
 `skillsReg`, scanned by `SetProjectTrusted`, which every reload runs, so a skill written
 mid-session loads with the reload the config watcher starts. Recipes (`skills.Recipe`) are the project's
@@ -586,15 +589,15 @@ lua-language-server is installed.
 
 - **Subagents** (subagent.go) are fresh `agent.Runner`s over `PipelineFor()` (same permission
   gate; asks are prefixed with the agent name). Definitions: builtin `explore`, `web`,
-  `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over a trusted repo's
-  `.agents`). They never get `agent`, `workflow`, `todos`, `question`,
+  `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over plugin over a trusted
+  repo's `.agents`). They never get `agent`, `workflow`, `todos`, `question`,
   `plan` or `lua` (nesting depth 1). A run is a child session (`parent_id`);
   `ListSessions` hides children. They have no summarizer: `sendPruning` clears their own old
   tool output when the window fills and, with none left to clear, drops the middle of the
   history once, keeping the task and a recent tail. The delegation guidance lives in
   `delegationPrompt`: without it models rarely delegate.
 - **Workflows** (workflow.go) are Lua scripts (model-written via the `workflow` tool, saved
-  under `workflows/`, builtin in `runtime/workflows/`). They run in their **own** gopher-lua
+  under `workflows/`, builtin in `runtime/workflows/`, a plugin's after both). They run in their **own** gopher-lua
   state on a host goroutine, never on the interpreter (DESIGN §4): a coroutine per branch,
   `agent()`/`parallel()` yield and the scheduler resumes them as subagents finish. Invariants:
   the script sees only base/string/table/math + the workflow API (no fs, net, `zemi.*`);

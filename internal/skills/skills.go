@@ -1,7 +1,7 @@
 // Package skills implements skill discovery and validation
 // (DESIGN §10.5): SKILL.md files with yaml frontmatter (name,
-// description), written under the config dir's skills/ and, in a trusted
-// project, its own skills dirs. Discovery only reports what is on disk.
+// description), written under the config dir's skills/, shipped by a
+// plugin and, in a trusted project, its own skills dirs. Discovery only reports what is on disk.
 package skills
 
 import (
@@ -21,6 +21,7 @@ type Source string
 const (
 	User    Source = "user"    // the user's config dir
 	Builtin Source = "builtin" // shipped with zemi
+	Plugin  Source = "plugin"  // an enabled plugin's, body only
 	Project Source = "project" // a trusted project's, body only, never stored
 	Recipe  Source = "recipe"  // a trusted project's, kept in zemi's state dir, body only, never stored
 )

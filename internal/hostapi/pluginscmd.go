@@ -251,5 +251,20 @@ func (h *Host) pluginProvides(name string) string {
 			out = append(out, "keymap "+k.Key)
 		}
 	}
+	for _, s := range h.skillsReg.list() {
+		if mine(lua.Origin(s.Source), s.Dir) {
+			out = append(out, "skill "+s.Name)
+		}
+	}
+	for _, d := range h.agentDefs() {
+		if mine(lua.Origin(d.Source), d.Path) {
+			out = append(out, "agent "+d.Name)
+		}
+	}
+	for _, w := range h.workflows() {
+		if mine(lua.Origin(w.Source), w.Path) {
+			out = append(out, "workflow "+w.Name)
+		}
+	}
 	return strings.Join(out, " · ")
 }

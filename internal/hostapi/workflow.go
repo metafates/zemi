@@ -49,12 +49,12 @@ type Workflow struct {
 	Name        string
 	Description string // the file's leading "--" comment lines
 	Path        string
-	Source      string // user, builtin or project
+	Source      string // user, builtin, plugin or project
 }
 
-// workflows lists saved workflows: user files win over builtin ones, which
-// win over project files; project files load only once the project tree is
-// trusted.
+// workflows lists saved workflows: user files win over builtin ones, then
+// plugin ones, then project files; project files load only once the project
+// tree is trusted.
 func (h *Host) workflows() []Workflow {
 	var out []Workflow
 	seen := map[string]bool{}
@@ -94,6 +94,9 @@ func (h *Host) workflows() []Workflow {
 		src, _ := fs.ReadFile(zemiruntime.Workflows, "workflows/"+e.Name())
 		seen[name] = true
 		out = append(out, Workflow{Name: name, Description: leadingComment(string(src)), Path: "builtin:" + e.Name(), Source: "builtin"})
+	}
+	for _, p := range h.pluginDirs() {
+		scan(filepath.Join(p, "workflows"), "plugin")
 	}
 	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
 		scan(filepath.Join(pdir, "workflows"), "project")
@@ -677,7 +680,7 @@ func (h *Host) openWorkflows() error {
 	}
 	var items []any
 	for _, w := range h.workflows() {
-		detail := strings.TrimLeft(w.Description+"\n\nsource: "+w.Source, "\n")
+		detail := strings.TrimLeft(w.Description+"\n\nsource: "+h.sourceOf(w.Source, w.Path), "\n")
 		if w.Source != "builtin" {
 			detail += "\npath: " + TildePath(w.Path)
 		}

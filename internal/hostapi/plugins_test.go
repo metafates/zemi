@@ -3,6 +3,7 @@ package hostapi
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,19 +13,31 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/skills"
 )
 
 // TestPluginsStep boots plugins laid out under installed/ and local/, then
-// user init.lua, and reads what ran, the step's error, the zemi.state keys
-// and the /health row.
+// user init.lua, and reads what ran, the step's error, the zemi.state keys,
+// the /health row and the skills, agents, commands and workflows found.
 func TestPluginsStep(t *testing.T) {
 	tool := func(name string) string {
 		return `zemi.tool.add({ name = "` + name + `", description = "d", execute = function() return "" end })`
+	}
+	// res adds a skill, an agent, a command and a workflow named name under root
+	res := func(files map[string]string, root, name string) map[string]string {
+		maps.Copy(files, map[string]string{
+			root + "skills/" + name + "/SKILL.md": "---\nname: " + name + "\ndescription: d\n---\nbody",
+			root + "agents/" + name + ".md":       "---\ndescription: d\n---\nbe brief",
+			root + "commands/" + name + ".md":     "do it",
+			root + "workflows/" + name + ".lua":   "-- d\nreturn 1",
+		})
+		return files
 	}
 	for _, c := range []struct {
 		name    string
 		plugins map[string]string // under the plugins root
 		user    string            // init.lua
+		cfg     map[string]string // more files under the config home
 		seed    []string          // zemi.state keys set before boot
 		want    []string
 		not     []string
@@ -92,14 +105,31 @@ func TestPluginsStep(t *testing.T) {
 			want: []string{"plugin|false\n", "plugin:p:via-setup\n", "plugin:p:via-keymap\n", "user|false", "mode: auto\n"},
 			not:  []string{"plugin:b:"},
 		},
+		{
+			name: "a plugin's skills, agents, commands and workflows load, a disabled plugin's do not, the user's win",
+			plugins: res(res(res(map[string]string{"installed/a/skills/s/zemi-skill.lua": `print("hook")`, "disabled": "off\n"},
+				"installed/a/", "s"), "installed/a/", "mine"), "local/off/", "gone"),
+			cfg: res(map[string]string{}, "", "mine"),
+			want: []string{
+				"skill s plugin a true\n", "skill mine user true\n", "agent s plugin a\n", "agent mine user\n",
+				"command s plugin a\n", "command mine user\n", "workflow s plugin a\n", "workflow mine user\n",
+				"read s allow ask\n", // the skill tool reads it; plugin Lua gets no jail
+				"provides: command /s · skill s · agent s · workflow s\n",
+			},
+			not: []string{"gone", "plugin|hook", "mine plugin"},
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			tmp, err := filepath.EvalSymlinks(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
 			}
-			dirs := config.Dirs{ProjectDir: tmp, ConfigHome: filepath.Join(tmp, "cfg"), DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
-			files := map[string]string{filepath.Join(dirs.ConfigHome, "init.lua"): c.user}
+			// the project apart from zemi's dirs, so no read settles as a project read
+			dirs := config.Dirs{ProjectDir: filepath.Join(tmp, "proj"), ConfigHome: filepath.Join(tmp, "cfg"), DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
+			files := map[string]string{filepath.Join(dirs.ConfigHome, "init.lua"): c.user, filepath.Join(dirs.ProjectDir, ".keep"): ""}
+			for p, src := range c.cfg {
+				files[filepath.Join(dirs.ConfigHome, p)] = src
+			}
 			for p, src := range c.plugins {
 				files[filepath.Join(dirs.PluginsRoot(), p)] = src
 			}
@@ -133,7 +163,8 @@ func TestPluginsStep(t *testing.T) {
 				return nil
 			}
 			if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), step,
-				lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)}); err != nil {
+				lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser),
+				h.SkillsUserHooksStep(), h.MarkdownCommandsStep()}); err != nil {
 				t.Fatal(err)
 			}
 			if b := h.Keymaps.Lookup("", "ctrl+g"); b != nil {
@@ -146,6 +177,31 @@ func TestPluginsStep(t *testing.T) {
 				fmt.Fprintf(&out, "%s\n", k)
 			}
 			fmt.Fprintf(&out, "mode: %s\n", h.PermMode())
+			for _, s := range h.skillsReg.list() {
+				if s.Source != skills.Builtin {
+					fmt.Fprintf(&out, "skill %s %s %v\n", s.Name, h.sourceOf(string(s.Source), s.Dir), h.skillsReg.isEnabled(s.Name))
+				}
+				if s.Source == skills.Plugin {
+					md := filepath.Join(s.Dir, "SKILL.md")
+					fmt.Fprintf(&out, "read %s %s %s\n", s.Name, h.fsDefault("fs.read", md), h.fsDefault("lua.fs.read", md))
+				}
+			}
+			for _, d := range h.agentDefs() {
+				if d.Source != "builtin" {
+					fmt.Fprintf(&out, "agent %s %s\n", d.Name, h.sourceOf(d.Source, d.Path))
+				}
+			}
+			for _, c := range h.Commands.List() {
+				if strings.HasSuffix(c.Path, ".md") {
+					fmt.Fprintf(&out, "command %s %s\n", c.Name, h.sourceOf(string(c.Origin), c.Path))
+				}
+			}
+			for _, w := range h.workflows() {
+				if w.Source != "builtin" {
+					fmt.Fprintf(&out, "workflow %s %s\n", w.Name, h.sourceOf(w.Source, w.Path))
+				}
+			}
+			fmt.Fprintf(&out, "provides: %s\n", h.pluginProvides("a"))
 			for _, row := range h.goHealthRows() {
 				if row.name == "plugins" {
 					fmt.Fprintf(&out, "health: %s\n", row.detail)

@@ -31,7 +31,8 @@ import (
 )
 
 // AgentDef is one subagent shape: builtin, or a markdown file under
-// <config>/agents or <repo>/.agents/agents (frontmatter + system prompt).
+// <config>/agents, a plugin's agents or <repo>/.agents/agents (frontmatter +
+// system prompt).
 type AgentDef struct {
 	Name        string
 	Description string
@@ -39,7 +40,8 @@ type AgentDef struct {
 	Model    string
 	Tools    []string // nil = every tool a subagent may use
 	System   string
-	Source   string // builtin, user or project
+	Source   string // builtin, user, plugin or project
+	Path     string // the file, "" for a builtin
 	ReadOnly bool   // file writes denied even when a tool could make one
 }
 
@@ -89,8 +91,8 @@ var builtinAgents = []AgentDef{
 const maxAgentFileBytes = 1 << 20
 
 // agentDefs lists the available definitions. On a name clash the higher
-// trust source wins: user over builtin over project. Project agents load
-// only once the project config tree is trusted.
+// trust source wins: user over builtin over plugin over project. Project
+// agents load only once the project config tree is trusted.
 func (h *Host) agentDefs() []AgentDef {
 	var out []AgentDef
 	seen := map[string]bool{}
@@ -106,6 +108,9 @@ func (h *Host) agentDefs() []AgentDef {
 		add(h.loadAgentDir(filepath.Join(h.Dirs.ConfigHome, "agents"), "user"))
 	}
 	add(builtinAgents)
+	for _, p := range h.pluginDirs() {
+		add(h.loadAgentDir(filepath.Join(p, "agents"), "plugin"))
+	}
 	if dir := h.projectAgentDir(); dir != "" && h.ProjectTrusted() {
 		add(h.loadAgentDir(dir, "project"))
 	}
@@ -180,6 +185,7 @@ func parseAgentFile(path, source string) (AgentDef, error) {
 		Model:       fm.Model,
 		System:      strings.TrimSpace(body),
 		Source:      source,
+		Path:        path,
 	}
 	if d.Name == "" {
 		d.Name = strings.TrimSuffix(filepath.Base(path), ".md")
@@ -938,7 +944,7 @@ func (h *Host) openAgents() error {
 			"desc":    d.Description,
 			"section": sourceSection(d.Source) + " agents", // apart from the runs above
 			"detail": fmt.Sprintf("%s\n\nsource: %s\nmodel: %s\ntools: %s\n\nAdd your own as agents/<name>.md in %s or .agents.",
-				d.Description, d.Source, model, tools, TildePath(h.Dirs.ConfigHome)),
+				d.Description, h.sourceOf(d.Source, d.Path), model, tools, TildePath(h.Dirs.ConfigHome)),
 		})
 	}
 	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Verb: "open"})

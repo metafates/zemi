@@ -14,7 +14,7 @@ import (
 type Skill struct {
 	Name      string
 	Path      string
-	Source    string // user | builtin
+	Source    string // user | builtin | plugin
 	Enabled   bool
 	CreatedAt int64
 }

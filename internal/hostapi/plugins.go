@@ -35,30 +35,9 @@ func (h *Host) PluginsStep() lua.BootStep {
 				// plugin's saved tokens with it
 				h.sweepPluginState(ps)
 			}
-			installed := map[string]bool{}
-			for _, p := range ps {
-				if !p.Local {
-					installed[p.Name] = true
-				}
-			}
-			slices.SortStableFunc(ps, func(a, b plugins.Plugin) int { return cmp.Compare(a.Name, b.Name) })
-			var loads []pluginLoad
-			var run []plugins.Plugin
-			for _, p := range ps {
-				fi, lerr := os.Lstat(p.Dir)
-				switch {
-				case !p.Enabled:
-					continue
-				case p.Local && installed[p.Name]:
-					loads = append(loads, pluginLoad{p.Name, p.Dir, errors.New("an installed plugin has this name; delete it or rename this one")})
-				case lerr == nil && !fi.IsDir():
-					// origin is classified on resolved paths, so its files would
-					// be nobody's
-					loads = append(loads, pluginLoad{p.Name, p.Dir, errors.New("a symlink, which zemi does not load; move the plugin into " + filepath.Dir(p.Dir))})
-				default:
-					g.Plugins = append(g.Plugins, p.Dir)
-					run = append(run, p)
-				}
+			run, loads := pickPlugins(ps)
+			for _, p := range run {
+				g.Plugins = append(g.Plugins, p.Dir)
 			}
 			for _, p := range run {
 				init := filepath.Join(p.Dir, "init.lua")
@@ -77,6 +56,52 @@ func (h *Host) PluginsStep() lua.BootStep {
 	}
 }
 
+// pickPlugins sorts the enabled plugins by name and splits them into those
+// the loader runs and those it refuses, with why.
+func pickPlugins(ps []plugins.Plugin) (run []plugins.Plugin, refused []pluginLoad) {
+	installed := map[string]bool{}
+	for _, p := range ps {
+		if !p.Local {
+			installed[p.Name] = true
+		}
+	}
+	slices.SortStableFunc(ps, func(a, b plugins.Plugin) int { return cmp.Compare(a.Name, b.Name) })
+	for _, p := range ps {
+		fi, err := os.Lstat(p.Dir)
+		switch {
+		case !p.Enabled:
+		case p.Local && installed[p.Name]:
+			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("an installed plugin has this name; delete it or rename this one")})
+		case err == nil && !fi.IsDir():
+			// origin is classified on resolved paths, so its files would be
+			// nobody's
+			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("a symlink, which zemi does not load; move the plugin into " + filepath.Dir(p.Dir))})
+		default:
+			run = append(run, p)
+		}
+	}
+	return run, refused
+}
+
+// pluginDirs is the plugins the loader runs, read live like the user's own
+// agents and workflows, each with the resolved root PluginOf names it by.
+func (h *Host) pluginDirs() []string {
+	if h.Dirs.DataHome == "" {
+		return nil
+	}
+	ps, _ := plugins.Scan(h.Dirs)
+	run, _ := pickPlugins(ps)
+	dirs := make([]string, len(run))
+	for i, p := range run {
+		kind := "installed"
+		if p.Local {
+			kind = "local"
+		}
+		dirs[i] = filepath.Join(h.pluginsRoot(), kind, p.Name)
+	}
+	return dirs
+}
+
 // sweepPluginState drops the zemi.state keys of plugins whose directory is
 // gone, so a deleted plugin's saved tokens go with it.
 func (h *Host) sweepPluginState(ps []plugins.Plugin) {
@@ -93,8 +118,9 @@ func (h *Host) sweepPluginState(ps []plugins.Plugin) {
 }
 
 // localPlugins holds the plugins the user develops in place. The model's
-// file tools read it without asking; it is no read jail, which would let
-// every plugin's and a trusted project's zemi.fs.read reach them all.
+// file tools read it, like every plugin, without asking; it is no read jail,
+// which would let every plugin's and a trusted project's zemi.fs.read reach
+// them all.
 func (h *Host) localPlugins() string {
 	return filepath.Join(h.Dirs.PluginsRoot(), "local")
 }
