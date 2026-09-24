@@ -97,7 +97,7 @@ func (h *Host) zemiPrompt(toolset []fantasy.AgentTool) string {
 	}
 	var skill string
 	if hasTool(toolset, tools.ToolSkill) {
-		skill = " Anything about zemi itself (config, Lua API, keys, errors, what it learned) starts with the matching zemi-* skill: zemi-config before changing its settings, providers or permission rules, zemi-customize before extending or restyling it (subagents, commands, modes, UI)."
+		skill = " Anything about zemi itself (config, Lua API, keys, errors, what it learned) starts with the matching zemi-* skill: zemi-config before changing its settings, providers or permission rules, zemi-customize before extending or restyling it (plugins, subagents, commands, modes, UI)."
 	}
 	return "\n\n# zemi\nYou run inside zemi." + skill + " To change how zemi behaves for the user, use config, never its source." +
 		" User config directory: " + h.Dirs.ConfigHome + " (this exact path, not ~/.config/zemi). Project config directory: " + pdir + "." +
