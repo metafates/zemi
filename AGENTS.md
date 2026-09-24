@@ -105,7 +105,8 @@ reports on stderr how many asks nobody could approve (`Host.HeadlessDenials`, su
 `deniedHint` points at `--trust` or at an allow rule) and, on its own line, how many calls a
 rule, the mode or the profile denied. It also drops what needs a user (`headlessExcluded`), the
 agent tool's `background` and `send_to` (a detached report would outlive the run), and the
-prompt lines naming them. A headless run with no saved trust decision runs untrusted and says
+prompt lines naming them, and a plugin's `zemi.agent.send` raises there (nothing would bound
+its chain of turns). A headless run with no saved trust decision runs untrusted and says
 so. With no UI `Host.Notify` prints a warning or an error to `Host.Stderr` as "zemi: <title>:
 <body>", so `-p` never swallows one. A command that opens a screen gets `Host.Screen`'s
 `ErrNeedsTUI` there, which `RunCommand` names ("/help needs the TUI", status 1; `/trust`
@@ -189,10 +190,10 @@ nested repo whose config zemi would run.
 4. **UI-critical Lua handlers (keymaps, widget render, event handlers) must be fast** (~10 ms).
    Long work belongs in `zemi.job` / `zemi.http` / `zemi.timer`. `wait()` suspends a task (a
    Lua tool's `execute`, a Lua command, a keymap function, an overlay callback, an
-   `on_done`/`on_exit`, a mode's `decide`, `Runtime.Eval`) and raises anywhere else: a render,
-   an event handler, a timer, under `pcall` or a library callback (`lua.InGoCall`). A handle's
-   `wait` is a `lua.Suspending` wrapper, since gopher-lua drops the resume values of a Go
-   function reached by a tail call. A keymap or command returns once it suspends
+   `on_done`/`on_exit`, a `tool.post` handler, a mode's `decide`, `Runtime.Eval`) and raises
+   anywhere else: a render, any other event handler, a timer, under `pcall` or a library
+   callback (`lua.InGoCall`). A handle's `wait` is a `lua.Suspending` wrapper, since
+   gopher-lua drops the resume values of a Go function reached by a tail call. A keymap or command returns once it suspends
    (`StartTask`), so the next key runs; a purged generation ends every waiting task at once.
 5. **Vetoable events** (`permission.request`, `app.quit`, `composer.submit`, `tool.pre`) have a
    50 ms Lua-handler deadline and then take a logged default (fail-closed for permission asks).
@@ -212,7 +213,10 @@ nested repo whose config zemi would run.
 ### Tool pipeline (internal/tools/tools.go)
 
 Every model tool call runs: JSON unmarshal -> schema validation -> `tool.pre` Lua events (deny
-/ halt / rewrite) -> permission gate -> run -> `tool.post` notification. Invariants: a
+/ halt / rewrite) -> permission gate -> run -> `tool.post` handlers, then an override's `post`
+(`Host.toolPost`, each a task seeing the output the last left; a `{ output }` return rewrites
+what the model gets, never the diff, `changed` or the decision, and a project one is ignored;
+no handler, no Lua). Invariants: a
 rewritten input **re-enters at the permission gate** (per-run pipeline copy with
 `RewriteLoosened`, so a non-user rewrite can't ride a pre-existing allow glob); an ask with no
 overlay available fails closed; a denied result says who decided and why; errors become
@@ -360,7 +364,10 @@ the `alwaysChoice` rule shape (a wrapper or deleting program or a glob line offe
 it is read as a Go boot step, so it never goes through the Lua origin gate below, and a
 permission overlay's `for this project` answer appends the command to it, offered only when
 the file would load exactly the rules the label names (`projectChoice`). Only `user`
-origin may add allow rules (project may tighten only) or switch the mode
+origin may add allow rules (project may tighten only), scope a rule to one plugin
+(`principal = "plugin:<name>"`, which a plugin's refused call puts in the rule line it names;
+a plugin's `zemi.agent.send` and `zemi.model.ask` ask `lua.agent.send` and `lua.model.ask`)
+or switch the mode
 (`zemi.permission.mode.set`, which the shipped ctrl+y yolo toggle uses); the gate lives at the
 namespace closure, same off-interpreter-`OriginHost` reasoning as skills.
 
@@ -627,7 +634,10 @@ lua-language-server is installed.
   (`memory.write` as `Unsandboxed`, so no mode settles it), a learned one goes at once when
   `memoryAuto` holds (autonomy auto, a trusted project, no `fetch`, `web_search`, `lua` or
   non-builtin tool call in the session or its subagents'; `subagentHooks` records those,
-  `ForkSession` copies them) and is proposed for review otherwise.
+  `ForkSession` copies them, and `markNotLocal` records a plugin's send or `tool.post`
+  rewrite the same way) and is proposed for review otherwise. A plugin's send reaches the
+  model behind `agent.Attached("plugin:<name>")`, so no quote comes from it, and draws as a
+  notice row (`reportHeads`).
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
   `callback_port` for one without dynamic registration). Servers come from `zemi.mcp.add` (user
