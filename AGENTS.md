@@ -93,7 +93,7 @@ the trust boot step reads. `-m`, `/model <provider/model>` and `zemi.model.set` 
 `models.chat`, and refuse while the active profile sets its own model (`Host.ProfileModelErr`;
 `--profile` applies before `-m`), since the key would change and the conversation would not.
 `Host.SetModel` parses the rest of `/model`: `roles` opens the role list (`OpenModelRoles`, a
-toggle list that rebuilds when the role's model list over it closes), `<role>` that role's model
+`Reload` list that rebuilds when the role's model list over it closes), `<role>` that role's model
 list, `<role> <id>` or `<role> chat` sets the role or makes it follow chat.
 `--profile` and `/profile` (`Host.SetProfile`; no argument opens the picker, which the
 statusline's profile segment clicks into) write `agent.profile` for the next send: a switch

@@ -19,7 +19,7 @@ phase("collect")
 local diff, err = agent("Run `git log --oneline " .. base .. "..HEAD` and `git diff " .. base .. "...HEAD --stat`, then summarize each change in one line with its files.")
 if not diff then return "failed: " .. err end
 phase("write")
-return agent("Write a PR description (motivation, changes, how to test) from:\n" .. diff, { agent = "explore", model = "titles" })
+return agent("Write a PR description (motivation, changes, how to test) from:\n" .. diff, { agent = "explore" })
 ```
 
 - `agent(prompt, { agent, description, model })` returns the report or `nil, err`; the agent defaults to `general`. The prompt must stand alone: agents do not see the conversation.

@@ -77,10 +77,9 @@ func (h *Host) modelErr(id string) error {
 // generate runs one tool-less, single-step call (summaries, titles, the
 // reflector) on role's model and bills it to sid. The spec's body fields
 // ride it (a gateway's routing, service_tier), the reasoning effort not: a
-// short job need not think. It
-// streams: Anthropic's SDK refuses a large max_tokens otherwise, and the
-// idle timer covers only a stream. A turn's job passes retry, so the working
-// rule counts down its provider retries.
+// short job need not think. It streams: Anthropic's SDK refuses a large
+// max_tokens otherwise, and the idle timer covers only a stream. A turn's
+// job passes retry, so the working rule counts down its provider retries.
 func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, retry func(error, time.Duration), role string) (*fantasy.AgentResult, error) {
 	id := h.roleModel(role)
 	model, err := h.resolveModel(&Profile{Model: id})

@@ -197,33 +197,29 @@ func TestHealthProvidersRow(t *testing.T) {
 // same words, before any provider SDK gets to complain in its own; a role's
 // own model gets a row of its own.
 func TestHealthModelRow(t *testing.T) {
-	for _, c := range []struct{ name, lua, level, detail string }{
-		{"none", ``, "error", "no model yet: export OPENAI_API_KEY or add a provider to init.lua"},
-		{"unknown provider", `zemi.config.set("models.chat", "nobody/m")`, "error", `provider "nobody" is not registered: add a provider to `},
-		{"builtin without key", `zemi.config.set("models.chat", "openai/gpt-5")`, "error", `builtin provider "openai" needs its key: export OPENAI_API_KEY`},
-		{"empty key", `zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "m" } } })`, "error", "a: api_key is empty in "},
-		{"unlisted model", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })
+	for _, c := range []struct{ name, row, lua, level, detail string }{
+		{"none", "model", ``, "error", "no model yet: export OPENAI_API_KEY or add a provider to init.lua"},
+		{"unknown provider", "model", `zemi.config.set("models.chat", "nobody/m")`, "error", `provider "nobody" is not registered: add a provider to `},
+		{"builtin without key", "model", `zemi.config.set("models.chat", "openai/gpt-5")`, "error", `builtin provider "openai" needs its key: export OPENAI_API_KEY`},
+		{"empty key", "model", `zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "m" } } })`, "error", "a: api_key is empty in "},
+		{"unlisted model", "model", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })
 			zemi.config.set("models.chat", "a/other")`, "warn", "a/other: not in the provider's models list"},
-		{"titles model", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })
+		{"a role's row is named after it", "titles model", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })
 			zemi.config.set("models.titles", "nobody/m")`, "error", `provider "nobody" is not registered: add a provider to `},
 	} {
 		h, r := newTestHostDB(t)
 		h.Providers.Reset(agent.Catalog{Missing: []agent.MissingKey{{ID: "openai", Env: "OPENAI_API_KEY"}}})
 		runUser(t, r, c.lua)
 		row := healthCheck{}
-		name := "model"
-		if c.name == "titles model" {
-			name = c.name // a role's row is named after it
-		}
 		for _, x := range h.healthChecks() {
-			if x.name == name {
+			if x.name == c.row {
 				row = x
 			}
 		}
 		if row.level != c.level || !strings.HasPrefix(row.detail, c.detail) {
-			t.Errorf("%s: %s row = %+v", c.name, name, row)
+			t.Errorf("%s: %s row = %+v", c.name, c.row, row)
 		}
-		if c.level == "error" && name == "model" {
+		if c.level == "error" && c.row == "model" {
 			if _, err := h.resolveModel(nil); err == nil || !strings.HasPrefix(err.Error(), c.detail) {
 				t.Errorf("%s: resolveModel = %v", c.name, err)
 			}
