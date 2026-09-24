@@ -566,8 +566,8 @@ lua-language-server is installed.
   `agent()`/`parallel()` yield and the scheduler resumes them as subagents finish. Invariants:
   the script sees only base/string/table/math + the workflow API (no fs, net, `zemi.*`);
   `agent`/`parallel` are `lua.Suspending` wrappers, and both refuse under `pcall` or a library
-  callback (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description points at the zemi-customize skill for the API, which every
-  request would otherwise pay for.
+  callback (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description
+  points at the zemi-customize skill for the API, which every request would otherwise pay for.
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers an
   `agentRun` whose hooks build a live transcript, which `/agents view <id>` draws instead of
   the session's, and a submit while it runs goes to it through `MessageAgent`. A run's queue is

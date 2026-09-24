@@ -170,7 +170,9 @@ Contracts that make this safe:
   it: a dropped `execute` returns a tool error, a dropped `decide` sends
   the ask to the user. Keymaps and Lua commands run in order on the UI's
   worker per slice: a suspended one lets the next key's handler run, and
-  its rest reports its own failure (`-p` waits for a whole command).
+  its rest reports its own failure (`-p` waits for a whole command). An
+  overlay's `reload` holds the worker until it returns, since it hands
+  back the items.
   NOTE: every task gets a fresh thread (~100 KB of garbage); a pool is the
   upgrade path.
 - **Queue priority.** Requests carry a class: `ui` (keymaps, renders,
@@ -828,7 +830,7 @@ zemi.tool.add({
   -- execute returns a string, { output = string }, or a table sent as JSON;
   -- `nil, err` is a tool error result (§6.0); a raise is one too, its
   -- traceback kept for /errors.
-  execute = function(args, call)             -- call: { name, origin }
+  execute = function(args, run)              -- run: { name, origin }
     -- zemi.job.wait suspends execute and frees the interpreter (§4)
     return { output = zemi.job.wait({ cmd = "figlet", args = { args.text } }).stdout }
   end,
