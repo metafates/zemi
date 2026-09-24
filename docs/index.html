@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>zemi</title>
-<meta name="description" content="A coding agent for the terminal. It works inside an OS sandbox, asks only about what the sandbox cannot confine, and remembers how you work.">
+<meta name="description" content="A coding agent for the terminal. It learns how you work between sessions, keeps the prompt cheap, and its UI is Lua.">
 <style>
 :root {
   color-scheme: light dark;
@@ -77,7 +77,7 @@ footer { margin-top: 3rem; color: var(--dim); }
 </svg>
 
 <h1>zemi</h1>
-<p class="tag">A coding agent for the terminal. It works inside an OS sandbox and asks only about what the sandbox cannot confine.</p>
+<p class="tag">A coding agent for the terminal. It learns how you work between sessions, keeps the prompt cheap, and its UI is Lua.</p>
 <p class="repo"><a href="https://github.com/metafates/zemi">github.com/metafates/zemi</a></p>
 
 <ul class="eyes" aria-label="the snail's eyes, one pair per state">
@@ -99,6 +99,17 @@ footer { margin-top: 3rem; color: var(--dim); }
 </section>
 
 <section class="sec">
+<h2>it learns</h2>
+<p>When a session closes, zemi reads it back and keeps what would have cost a question next time: how you test, how you commit, what bit you. A memory about you must quote you. A procedure it worked out for a repo becomes a recipe it reuses there.</p>
+<p><code>/memory</code> shows what it kept. <code>/rewind</code> takes a turn back, files and lessons included.</p>
+</section>
+
+<section class="sec">
+<h2>tokens go to the code</h2>
+<p>The prompt is pinned per session, so the provider's cache hits every turn. Skills are an index until one is needed. Past ten MCP tools, they load by search. Titles, summaries and the learning pass run on a small model.</p>
+</section>
+
+<section class="sec">
 <h2>on its own, or with a question</h2>
 <div class="two">
 <ul>
@@ -113,11 +124,6 @@ footer { margin-top: 3rem; color: var(--dim); }
 </ul>
 </div>
 <p>Seatbelt on macOS, Landlock on Linux. Your keys and shell history are hidden from it. <kbd>ctrl+y</kbd> is yolo. <kbd>ctrl+t</kbd> is the planner, which changes nothing until you approve.</p>
-</section>
-
-<section class="sec">
-<h2>it remembers</h2>
-<p>How you run tests, how you write commits, what bit you last week. <code>/memory</code> shows what it kept, <code>/rewind</code> takes a turn back, files included.</p>
 </section>
 
 <section class="sec">

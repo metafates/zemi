@@ -1,7 +1,7 @@
 # zemi
 
-A coding agent for the terminal. It works inside an OS sandbox and asks only
-about what the sandbox cannot confine.
+A coding agent for the terminal. It learns how you work between sessions,
+keeps the prompt cheap, and its UI is Lua.
 
 ## Install
 
@@ -12,6 +12,22 @@ zemi
 ```
 
 Go 1.27. Local models and gateways go in `~/.config/zemi/init.lua`.
+
+## It learns
+
+When a session closes, zemi reads it back and keeps what would have cost a
+question next time: how you test, how you commit, what bit you. A memory about
+you must quote you. A procedure it worked out for a repo becomes a recipe it
+reuses there.
+
+`/memory` shows what it kept. `/rewind` takes a turn back, files and lessons
+included.
+
+## Tokens go to the code
+
+The prompt is pinned per session, so the provider's cache hits every turn.
+Skills are an index until one is needed. Past ten MCP tools, they load by
+search. Titles, summaries and the learning pass run on a small model.
 
 ## On its own, or with a question
 
@@ -24,11 +40,6 @@ Go 1.27. Local models and gateways go in `~/.config/zemi/init.lua`.
 Seatbelt on macOS, Landlock on Linux. Your keys and shell history are hidden
 from it. `ctrl+y` is yolo. `ctrl+t` is the planner, which changes nothing
 until you approve.
-
-## It remembers
-
-How you run tests, how you write commits, what bit you last week. `/memory`
-shows what it kept, `/rewind` takes a turn back, files included.
 
 ## The UI is Lua
 
