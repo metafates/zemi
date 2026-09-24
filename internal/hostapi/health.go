@@ -356,7 +356,11 @@ func (h *Host) goHealthRows() []healthCheck {
 	counts, servers := map[string]int{}, h.mcp.list()
 	for _, s := range servers {
 		s.mu.Lock()
-		counts[s.status]++
+		if s.err == errSignIn { // the one failure the user fixes from here
+			counts[errSignIn]++
+		} else {
+			counts[s.status]++
+		}
 		s.mu.Unlock()
 	}
 	switch {

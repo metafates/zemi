@@ -194,7 +194,7 @@ func TestHealthModelRow(t *testing.T) {
 }
 
 // TestHealthMCPRow: only ready servers read as ready; a starting one is
-// named, and one that failed or stopped warns.
+// named, one that failed or stopped warns, and a sign-in wait says so.
 func TestHealthMCPRow(t *testing.T) {
 	for _, c := range []struct {
 		statuses      []string
@@ -203,10 +203,15 @@ func TestHealthMCPRow(t *testing.T) {
 		{[]string{"ready", "ready"}, "ok", "2 servers ready"},
 		{[]string{"ready", "starting"}, "ok", "2 servers: 1 ready, 1 starting"},
 		{[]string{"failed", "ready", "stopped"}, "warn", "3 servers: 1 failed, 1 ready, 1 stopped"},
+		{[]string{"failed", errSignIn}, "warn", "2 servers: 1 failed, 1 needs sign-in"},
 	} {
 		h, _ := newTestHostDB(t)
 		for i, st := range c.statuses {
-			h.mcp.servers[fmt.Sprint(i)] = &mcpServer{status: st}
+			s := &mcpServer{status: st}
+			if st == errSignIn {
+				s.status, s.err = "failed", errSignIn
+			}
+			h.mcp.servers[fmt.Sprint(i)] = s
 		}
 		i := slices.IndexFunc(h.goHealthRows(), func(r healthCheck) bool { return r.name == "mcp" })
 		if row := h.goHealthRows()[i]; row.level != c.level || row.detail != c.detail {
