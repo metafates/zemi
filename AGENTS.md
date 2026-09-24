@@ -123,7 +123,7 @@ all of them. A tier config leaves unset runs `Registry.Default`: the first user-
 default model, else the first builtin's in catalog order (anthropic, openai, gemini first).
 Config reload is not fsnotify:
 `watchConfig` walks the config trees once a second (past dot-directories and `node_modules`)
-and reloads when a fingerprint moved and no turn is active; an untrusted project's `.zemi` is not watched. A replay that writes a key the
+and reloads when a fingerprint moved and no turn is active; an untrusted project's `.agents` is not watched (a trusted one's is, `worktrees` aside). A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`) and a key the new config writes fewer
 times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, `/profile`, the mode
 cycle and the flags survive a reload until the config changes that key. A key the config stopped
@@ -135,8 +135,8 @@ writing returns to its schema default, unless a runtime pick moved it since.
 and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
 `require("zemi.defaultui")` (shipped theme, widgets and keymaps, one module each) -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
-`init.lua` -> authored skill hooks -> a trusted project's `.zemi/init.lua` -> markdown commands
-(`commands/*.md`: user, then a trusted repo's `.zemi`, `.agents`, `.claude`) -> `app.ready`.
+`init.lua` -> authored skill hooks -> a trusted project's `.agents/init.lua` -> markdown commands
+(`commands/*.md`: user, then a trusted repo's `.agents`) -> `app.ready`.
 Boot runs on its own goroutine and may block on the trust prompt.
 
 **Project trust** (main.go `trustGate`, DESIGN §5): one decision per repository, keyed by
@@ -148,7 +148,8 @@ one, then the Go-owned prompt. `$HOME` and `/` are never asked about or saved
 (`hostapi.TrustUnsaved`). `/trust` reopens the prompt off the UI goroutine, saves, calls
 `Host.SetProjectTrusted` and reloads when the decision changed (a reload that fails before the
 trust step must not leave the old decision in force). `Host.ProjectTrusted()` gates project
-`.zemi` (init.lua, agents, commands, workflows), instruction files and profile `context.files`,
+`.agents` (`Dirs.ProjectConfigDir`, at the repo root only: init.lua, lua, skills, agents,
+commands, workflows), instruction files (AGENTS.md, else CLAUDE.md, per directory) and profile `context.files`,
 project skills, every language server, the Lua tool's ask, the read jail reaching past the
 launch dir to `Dirs.RepoRoot()`, and what auto mode and read-only agents settle. `Host.git` shells out to
 the `git` binary (no git library in go.mod) with `GIT_CONFIG_NOSYSTEM=1`, and switches off
@@ -267,9 +268,10 @@ allows, an ask a rule asked for included (an `ask` rule, a `not_match` exclusion
 not secret-shaped, `tool.workflow` scripts (each agent they start is gated), bash commands
 (`unsettled`), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
-`.git`, `.zemi` or zemi's own dirs and to a `.gitattributes` or `.gitmodules` are
-`protectedWrite`, checkouts in `.zemi/worktrees` aside, which no rule settles, a mode's own
-included).
+`.git` or zemi's own dirs, to the Lua in any `.agents` (`init.lua`, `lua/`) and to a
+`.gitattributes` or `.gitmodules` are `protectedWrite`, checkouts in `.agents/worktrees` aside,
+which no rule settles, a mode's own included; the rest of `.agents` runs nothing and is an
+ordinary project write).
 A read-only agent (`Profile.ReadOnly`, see below) denies writes and runs commands with the
 project unwritable in the sandbox, whatever the mode; without trust or a sandbox, a changing
 command asks (under yolo, only without a sandbox), as does an MCP tool not marked read-only.
@@ -307,14 +309,14 @@ system one (macOS keeps the `xcrun_db` there that picks what `/usr/bin/make` and
 `GOCACHE` is one per trust root (Go trusts cache entries, so a shared one lets one project
 poison another's build), the project is writable only when it is trusted, outside zemi's own
 dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect`), `.git`,
-`.zemi` and every `PATH` dir under a write root stay read-only because zemi runs git, sh and
+`.agents` and every `PATH` dir under a write root stay read-only because zemi runs git, sh and
 servers unconfined by name, and home credential paths are hidden. The exception is the repo's
-`.zemi/worktrees` (`Dirs.WorktreesDir`), where the agent keeps git worktrees: a write root of
-its own, listed in `.zemi/.gitignore` (`Dirs.IgnoreLocal`, appended, never rewritten; the
-ignore file lists itself so git status does not show `.zemi/`), with
-each checkout's own `.git` and `.zemi` protected and nothing loaded from it. The namespace
+`.agents/worktrees` (`Dirs.WorktreesDir`), where the agent keeps git worktrees: a write root of
+its own, ignored by the `/*` in its own `.gitignore` (`Dirs.WorktreesIgnore`, written only
+when missing), with
+each checkout's own `.git` and `.agents` protected and nothing loaded from it. The namespace
 backend binds only protected paths that exist, so `Pipeline.Guard` records the missing ones
-before a run and checks them at exit: a created `.git` or `.zemi` holds trust off until
+before a run and checks them at exit: a created `.git` or `.agents` holds trust off until
 `/trust`. Bash and `job_start` take two escapes no mode settles and each of which
 asks: `network: true` only adds sockets, `sandbox: false` drops the whole policy. A confined
 failure `sandbox.LikelyDenied` recognizes gets `Pipeline.sandboxHint`, which names the writable
@@ -369,7 +371,7 @@ sends a file request a `model` glob rule allowed back to the ask when `Secret` m
 reader names one (`perm.ReadsSecret`: `cat .env`, `cat .e*`) when a `model` rule or a
 permissions file line allowed it (`perm.Rule.Source`); a user-config rule has no principal,
 stays authoritative, and shows read-only in `/permissions` with its source (init.lua, the
-permissions file, a project's `.zemi/init.lua`), while each always answer is one row (its
+permissions file, a project's `.agents/init.lua`), while each always answer is one row (its
 bare and wildcard rules, `answerKey`) whose Remove drops both.
 `sandbox: false` is denied outright for a read-only agent (`Pipeline.Check`, before any mode
 could settle it), and its sandbox hint offers only `network: true`.
@@ -381,7 +383,7 @@ origin gets its own instance run under its own origin (builtin modules are share
 through a deep read-only view), so project or plugin code cannot plant functions into
 a table that higher-origin callbacks call. Dotted names search `<root>/lua` over the
 runtimepath: user, each plugin (`site/pack/*/start/*`, globbed once per generation), and the
-project's `.zemi` first but only when the requirer is project code. `./x` and `../x` resolve against the calling function's chunk name, which is why
+project's `.agents` first but only when the requirer is project code. `./x` and `../x` resolve against the calling function's chunk name, which is why
 file chunks are compiled with their absolute path, and must stay in that file's origin tree;
 `load`/`loadstring` tag their chunks with the running origin and never keep an absolute name,
 so neither can be forged.
@@ -389,7 +391,7 @@ so neither can be forged.
 Every chunk carries an origin from its resolved path class: `user` (~/.config/zemi, plus each
 subdirectory of it in `Dirs.UserTrees`, which the read jail registers too, so a symlinked
 `skills` or `lua` still resolves inside) > `builtin` (embedded runtime/) > `plugin` (site/pack)
-> `project` (<project>/.zemi). Registries
+> `project` (<repo>/.agents). Registries
 enforce: cross-origin collision is **refused** with the higher-trust origin winning; within one
 origin it is last-writer-wins. Project origin additionally cannot register providers or builtin
 tool names, and its `tool.pre` rewrites are ignored (logged). No origin can emit host-owned
@@ -404,9 +406,9 @@ registry, follow `internal/hostapi/registry.go`.
 Skills are file-based units, each a `SKILL.md` with YAML frontmatter: authored under
 `<config>/skills/`, builtin (zemi's self-knowledge, `runtime/skills/zemi-*`, embedded and
 rewritten to `<data>/builtin-skills/` on every sync), both enabled by default. A trusted
-project adds its own (`.zemi/skills`, `.agents/skills`, `.claude/skills`): body only, enabled,
-never in the table or `skillsReg`, scanned by `SetProjectTrusted`, so a skill a command writes
-mid-session waits for the next boot or `/trust`. Recipes (`skills.Recipe`) are the project's
+project adds its own (`.agents/skills`): body only, enabled, never in the table or
+`skillsReg`, scanned by `SetProjectTrusted`, which every reload runs, so a skill written
+mid-session loads with the reload the config watcher starts. Recipes (`skills.Recipe`) are the project's
 private skills under `<state>/projects/<hash>/skills` (`recipesDir`, a read jail root no sandbox
 policy can write): trusted only, body only, enabled, and they lose every name clash. The prompt
 lists the snapshot `environmentPrompt` pins with `ag.env` (new session, resume, `compactDone`);
@@ -541,7 +543,7 @@ lua-language-server is installed.
 - **Subagents** (subagent.go) are fresh `agent.Runner`s over `PipelineFor()` (same permission
   gate; asks are prefixed with the agent name). Definitions: builtin `explore`, `web` (on the
   small tier), `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over a trusted repo's
-  `.zemi`, `.agents`, `.claude`). They never get `agent`, `workflow`, `todos`, `question`,
+  `.agents`). They never get `agent`, `workflow`, `todos`, `question`,
   `plan` or `lua` (nesting depth 1). A run is a child session (`parent_id`);
   `ListSessions` hides children. They have no summarizer: `sendPruning` clears their own old
   tool output when the window fills and, with none left to clear, drops the middle of the

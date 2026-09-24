@@ -14,7 +14,7 @@ does not have raises with the list of the ones it does.
 ## Origins
 
 Every chunk runs with an origin from where it lives: `user` (`~/.config/zemi`) >
-`builtin` (shipped) > `plugin` (`site/pack`) > `project` (`<project>/.zemi`). A
+`builtin` (shipped) > `plugin` (`site/pack`) > `project` (`<repo>/.agents`). A
 registration with the same id from a lower origin is refused; the same origin replaces
 its own, and a binding may not be a prefix or an extension of a more trusted key. Only
 `user` may register providers, add allow rules or decide learning proposals. Below
@@ -28,7 +28,7 @@ zemi-config lists what a plugin cannot do.
 ## Modules
 
 `require("a.b")` loads `lua/a/b.lua` (or `lua/a/b/init.lua`) from the config dir or a
-plugin's own directory (`start/<name>/lua/`); project code also searches `.zemi/lua/`
+plugin's own directory (`start/<name>/lua/`); project code also searches `.agents/lua/`
 first. `require("./x")` and
 `require("../x")` resolve next to the calling file and must stay in the same origin's
 tree. Builtin modules load once, and plugin and project code get them read-only;
@@ -208,7 +208,7 @@ Agent files and workflow scripts are not config Lua: zemi-customize has both.
 
 Widget `ctx` carries `width`, `height`, `time` (`"15:04"`), `version`, `cwd`, `project` (the trust
 root, `~`-shortened), `trusted`, `model`, `profile`,
-`effort`, `permission_mode`, `permission_mode_base`, `profile_read_only`, `model_hint` (what to do when no model is set), `init_error` and `init_path` (a failed init.lua), `instructions_missing` (a trusted project with no AGENTS.md, ZEMI.md or CLAUDE.md, where the splash offers `/init`), `focus`, `agent_active`, `transcript`,
+`effort`, `permission_mode`, `permission_mode_base`, `profile_read_only`, `model_hint` (what to do when no model is set), `init_error` and `init_path` (a failed init.lua), `instructions_missing` (a trusted project with no AGENTS.md or CLAUDE.md, where the splash offers `/init`), `focus`, `agent_active`, `transcript`,
 `transcript_count` (its rows, without building it),
 `agent` (live turn: `active`, `model`, `text`, `reasoning`, `tools`, `steering`,
 `thought`, `elapsed`, `reports` (background reports among `steering`), `compacting`, `retry`

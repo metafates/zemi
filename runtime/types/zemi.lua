@@ -182,7 +182,7 @@ function debug.traceback(msg) end
 ---| "user"     # ~/.config/zemi
 ---| "builtin"  # shipped with zemi
 ---| "plugin"   # site/pack
----| "project"  # <project>/.zemi
+---| "project"  # <repo>/.agents
 
 ---@alias zemi.Level "debug"|"info"|"warn"|"error"
 ---@alias zemi.HealthLevel "ok"|"warn"|"error"
@@ -678,7 +678,7 @@ function zemi.event.stats() end
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
 ---@field todos zemi.Todo[]
 ---@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
----@field instructions_missing boolean The project is trusted, is not $HOME or /, and has no ZEMI.md, AGENTS.md or CLAUDE.md for the prompt: what /init writes.
+---@field instructions_missing boolean The project is trusted, is not $HOME or /, and has no AGENTS.md or CLAUDE.md for the prompt: what /init writes.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean

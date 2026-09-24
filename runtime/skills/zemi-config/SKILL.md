@@ -11,7 +11,7 @@ description: Load before changing zemi's settings, providers, models, permission
 | --- | --- |
 | `<config>/init.lua` | user config, run at startup as the trusted `user` origin |
 | `<config>/lua/`, `skills/`, `agents/`, `commands/`, `workflows/` | modules, skills, and the files zemi-customize describes |
-| `<repo>/.zemi/` | project config with the same layout, loaded only once the user trusts the project, as the low-trust `project` origin |
+| `<repo>/.agents/` | project config with the same layout, loaded only once the user trusts the project, as the low-trust `project` origin |
 | `<data>/site/pack/<any>/start/<name>/` | plugins |
 | `<data>/types/zemi.lua` | LuaLS annotations for the whole API, rewritten every start |
 | `<state>/` | logs, databases, trust decisions, and per project its `permissions` file and recipes (zemi-debug) |
@@ -78,13 +78,13 @@ At a prompt `y` allows once, `a` for the session (a command's program, with its 
 
 Modes: `permissions.mode`, `/mode` (a picker without a name), ctrl+y (yolo until pressed again), `--mode`.
 
-- `auto` (default): reads and edits inside the project run. In a trusted project with a sandbox every command runs sandboxed with no approval, except bulk deletes (`rm -rf`, `git clean`, `find -delete`, ...), git commands that write `.git`, and on Linux one naming a secret-shaped file. Writes to `.git`, `.zemi` or zemi's own dirs, `fetch`, `web_search` and MCP tools the server does not mark read-only need the user's approval. In an untrusted project, or with no sandbox (`/health` sandbox row), only commands that just read run on their own, and untrusted auto edits nothing.
+- `auto` (default): reads and edits inside the project run. In a trusted project with a sandbox every command runs sandboxed with no approval, except bulk deletes (`rm -rf`, `git clean`, `find -delete`, ...), git commands that write `.git`, and on Linux one naming a secret-shaped file. Writes to `.git`, `.agents/init.lua`, `.agents/lua/` or zemi's own dirs, `fetch`, `web_search` and MCP tools the server does not mark read-only need the user's approval. In an untrusted project, or with no sandbox (`/health` sandbox row), only commands that just read run on their own, and untrusted auto edits nothing.
 - `yolo`: allows everything the rules leave open; deny rules still apply. Suggest it only when the user asks.
 - Custom modes (`zemi.permission.mode.add`): zemi-customize.
 
 Planning is the `planner` profile (`/profile planner`, ctrl+t): file writes are refused, commands run with the project read-only, and the turn ends in a plan to approve, whatever the mode.
 
-The sandbox (seatbelt on macOS, Landlock on Linux) lets a command write only the project, the scratchpad and temp dirs, keeps `.git` and `.zemi` read-only (`.zemi/worktrees` aside), allows no network beyond localhost, and hides credential files and zemi's own dirs. On Linux with namespaces localhost is the sandbox's own; with `landlock + seccomp` the project is read-only and there is no network. A command that needs the network is retried with `network: true` (sockets added, sandbox kept), one that needs more with `sandbox: false`; both need the user's approval in every mode but yolo, so under `-p` without yolo both are denied. `permissions.env_keep` names secret-shaped env vars (`*TOKEN*`, `*KEY*`, ...) a child keeps; whatever is kept, the model can print.
+The sandbox (seatbelt on macOS, Landlock on Linux) lets a command write only the project, the scratchpad and temp dirs, keeps `.git` and `.agents` read-only (`.agents/worktrees` aside), allows no network beyond localhost, and hides credential files and zemi's own dirs. On Linux with namespaces localhost is the sandbox's own; with `landlock + seccomp` the project is read-only and there is no network. A command that needs the network is retried with `network: true` (sockets added, sandbox kept), one that needs more with `sandbox: false`; both need the user's approval in every mode but yolo, so under `-p` without yolo both are denied. `permissions.env_keep` names secret-shaped env vars (`*TOKEN*`, `*KEY*`, ...) a child keeps; whatever is kept, the model can print.
 
 ## MCP and language servers
 
@@ -110,7 +110,7 @@ The palette: `/new`, `/sessions` (resume or delete), `/rewind [id]` (restores th
 
 ## Project config and trust
 
-A repository's `.zemi/` (found up to the git root) holds `init.lua`, `lua/`, `agents/`, `commands/`, `workflows/` and `skills/`; `agents/`, `commands/` and `skills/` are also read from `.agents/` and `.claude/`. It loads only in a trusted project: the first start shows a trust prompt once (`y` or `n` is saved; `l` Later, where the cursor starts, or esc brings it back next start) and `/trust` shows it again. One decision covers the repository and its linked worktrees. Project code may add widgets, commands, keymaps on free keys, and deny or ask rules. It cannot register providers, MCP or language servers, allow rules or modes, set settings, send to the agent, or read secret-shaped env vars: personal settings go in the user init.lua.
+A repository's `.agents/` at the git root holds `init.lua`, `lua/`, `agents/`, `commands/`, `workflows/` and `skills/`; zemi reads no other project dir. It loads only in a trusted project: the first start shows a trust prompt once (`y` or `n` is saved; `l` Later, where the cursor starts, or esc brings it back next start) and `/trust` shows it again. One decision covers the repository and its linked worktrees. Project code may add widgets, commands, keymaps on free keys, and deny or ask rules. It cannot register providers, MCP or language servers, allow rules or modes, set settings, send to the agent, or read secret-shaped env vars: personal settings go in the user init.lua.
 
 ## Plugins
 

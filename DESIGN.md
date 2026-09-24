@@ -284,20 +284,21 @@ Directories (XDG):
   projects/<hash>/permissions  bash commands always allowed in the project (§6.1), read only when trusted
   trust.json              trust decisions by repository root
   logs/
-<project>/
-  .zemi/init.lua          project-local config, loaded after user config
-  .zemi/agents|commands|workflows/  the same shapes
-  ZEMI.md, AGENTS.md, CLAUDE.md   context files
+<repo>/
+  .agents/init.lua        project-local config, loaded after user config
+  .agents/lua|skills|agents|commands|workflows/  the same shapes
+  .agents/worktrees/      agent worktrees, ignored by its own .gitignore (§9)
+  AGENTS.md, else CLAUDE.md   context files, per directory
 ```
 
-Everything under `<project>/` loads only in a project the user trusts.
+Everything under `<repo>/` loads only in a project the user trusts.
 The decision is keyed by the repository root with symlinks resolved, and
 a linked worktree maps to its main checkout by reading the `.git` file,
 the `gitdir` back-pointer and `commondir` (git is never run to find it);
 outside a repository the key is the working directory. The search for the
 root stops below `$HOME`, so a dotfiles repository there is not the root
 of every directory in home. Boot asks once per
-process when no decision is saved, whether or not `.zemi` exists. The
+process when no decision is saved, whether or not `.agents` exists. The
 prompt shows the root `~`-shortened, what trusting loads and runs
 (scrolling on a short screen), and three buttons with the cursor on the last: `y`
 saves trusted, `n` saves untrusted, `l` (Later), `esc`, `ctrl+c` or an enter typed by
@@ -311,19 +312,19 @@ it), saves the answer, applies it
 before the reload it triggers when the decision changed, so a revoke holds
 even if that reload stops at an earlier failing step. When a sandboxed
 command creates a protected path that did not exist when it started
-(`.zemi`, `.git`; only the Linux namespace backend lets it), trust is held
+(`.agents`, `.git`; only the Linux namespace backend lets it), trust is held
 off for the process until `/trust` is answered, without saving: the tool
 result and a notification name the path, and the config watcher and the
 trust step check running commands before they read project config. There is no content hash:
 once the user lets auto mode run a repository's commands,
-re-asking about a pulled `.zemi/init.lua` protects nothing, and project
+re-asking about a pulled `.agents/init.lua` protects nothing, and project
 origin is denylisted anyway (below).
 
-Trusted, zemi loads the project's `.zemi` config and instruction files
+Trusted, zemi loads the project's `.agents` config and instruction files
 (and a profile's `context.files`), starts language servers (builtin and
 user-added; sandboxed when a backend is live, §9), auto mode and read-only agents settle builds and tests in the sandbox, and
 auto settles in-project edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
-is an instruction file, no language server starts, `.zemi` edits trigger no reload, and auto mode and read-only agents
+is an instruction file, no language server starts, `.agents` edits trigger no reload, and auto mode and read-only agents
 settle only reads and `perm.ReadCommand` commands. Either way zemi's own
 git calls switch off `core.fsmonitor`, hooks and repository filter
 drivers: a sandboxed command can plant a nested repository whose config
@@ -336,8 +337,8 @@ shipped Lua UI (`require("zemi.defaultui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (`site/pack/*/start/*/plugin/*.lua`, sorted) -> user
 `init.lua` -> authored skills' enable hooks -> a trusted project's
-`.zemi/init.lua` -> markdown commands (user, then a trusted repo's `.zemi`,
-`.agents` and `.claude`, the dirs other agents read) ->
+`.agents/init.lua` -> markdown commands (user, then a trusted repo's
+`.agents`) ->
 `app.ready`. Boot runs on its own goroutine, so it may block on the
 trust prompt without holding the UI. Project agents and workflows are read when used, under the
 current decision. Project config loads late with
@@ -427,7 +428,7 @@ Sandbox (what userland gets):
   `EvalSymlinks`-resolved path (a symlink is classified by what it
   resolves to, so an alias cannot borrow another class):
   `~/.config/zemi/**` is user, `~/.local/share/zemi/site/pack/**` is
-  plugin, `<project>/.zemi/**` is project, embedded `runtime/**` is
+  plugin, `<repo>/.agents/**` is project, embedded `runtime/**` is
   builtin. A resolved path in no class is refused at load. Origin never follows the requirer: a
   module under `site/pack/...` stays plugin origin and a project module
   stays project origin even when `init.lua` requires it, so untrusted
@@ -546,7 +547,7 @@ overlay's rule shape (§8): no rule is written from a wrapper or deleting
 program or a line carrying a glob. Because the file lives outside the
 repository (a clone cannot ship it; a gitignore line would not untrack a
 committed one) and no sandbox can write it, allow rules from it are safe
-where project `.zemi` Lua above is not.
+where project `.agents` Lua above is not.
 
 ### 6.2 Keys, commands, events
 
@@ -690,7 +691,7 @@ zemi.agent.profile("coder", {
   model = "anthropic/claude-sonnet-4-5",
   system = [[You are zemi, a coding agent...]],
   tools = { "read", "edit", "bash", "glob", "grep" },
-  context = { files = { "ZEMI.md", "AGENTS.md" } },
+  context = { files = { "AGENTS.md", "CONTRIBUTING.md" } },
   temperature = 0.2,
 })
 -- read_only makes a profile a planning agent: the project is read-only to it
@@ -734,7 +735,7 @@ zemi.provider.add({
 
 There is no `task` profile. A headless sub-turn is a subagent: a named
 definition (builtin `explore`, `web` and `general`, plus `agents/*.md` under the
-config home, zemi's own, and a trusted repo's `.zemi`, `.agents` and `.claude`) run as a fresh
+config home, zemi's own, and a trusted repo's `.agents`) run as a fresh
 runner over the same tool pipeline, in a child session recorded with
 `parent_id`. Subagents never get `agent`, `workflow`, `todos`,
 `question`, `plan` or `lua`, so nesting stops at depth 1, and `zemi.agent.run`
@@ -1517,8 +1518,8 @@ provenance string.
   the bash command is a `perm.ReadCommand`, and commands run sandboxed with the project
   unwritable, which is what keeps a planning session read-only. `auto` settles
   locally first, without a model: reads and writes inside the jail that
-  are not secret-shaped (writes under any `.git` or `.zemi`, to a
-  `.gitattributes` or `.gitmodules`, the git dir a project `.git` file
+  are not secret-shaped (writes under any `.git`, to the Lua in any `.agents`
+  (`init.lua`, `lua/`), to a `.gitattributes` or `.gitmodules`, the git dir a project `.git` file
   names, or zemi's own config, data and state dirs excepted: those ask
   whatever rule allows them, a mode's own included), workflow scripts (the
   script is sandboxed and each agent it starts is gated), and every bash
@@ -1536,7 +1537,7 @@ provenance string.
   A file request is judged and shown by its resolved path (relative to
   the project when inside it), so a symlink a sandboxed command planted
   cannot dress a write to zemi's config as a project file, and a write
-  under any `.git` or `.zemi` or zemi's own dirs, or outside the project
+  under any `.git`, to the Lua in any `.agents` or zemi's own dirs, or outside the project
   and the scratchpad (`~/.gitconfig`, a shell rc file: the sandbox cannot
   confine the write tool), goes to the user.
   Network is never settled locally, because the URL is the model's.
@@ -1626,11 +1627,11 @@ provenance string.
   poison a later unconfined build and a shared one another project's build) and the project when it is trusted, not read-only, not `$HOME`
   or above it, neither holds nor sits in one of zemi's config, data and
   state dirs, holds no hidden path unless the backend is seatbelt (a
-  Landlock rule on a write root opens its whole subtree), has no symlinked `.git` or `.zemi` (the backend protects the
+  Landlock rule on a write root opens its whole subtree), has no symlinked `.git` or `.agents` (the backend protects the
   resolved target, not the link), no relative `PATH` entry makes every
   directory a `PATH` dir, and the backend keeps protected paths
   read-only inside it (`Backend.EnforcesProtect`); `.git` (and a `gitdir:`
-  target), `.zemi`, zemi's dirs and every `PATH` dir inside a write root
+  target), `.agents` (its `worktrees` aside, a write root of its own), zemi's dirs and every `PATH` dir inside a write root
   (an activated `.venv/bin`: zemi runs git, sh, language servers and
   clipboard helpers unconfined by name) stay read-only (the scratchpad and
   cache re-allowed); localhost network only. Seatbelt's localhost is the
@@ -1638,7 +1639,7 @@ provenance string.
   already running on the machine are unreachable (the model is told so),
   and it binds only protected paths that exist, which is why a created one
   holds trust off (§5). It cannot protect by name either, so zemi walks the
-  writable project for `.git` and `.zemi` entries at any depth: the ones
+  writable project for `.git` and `.agents` entries at any depth: the ones
   there are bound read-only, one a command created holds trust off at exit,
   and past 100,000 entries the project stays read-only (or, when the command
   grew it past that, trust is held off). Landlock plus seccomp enforces neither the
@@ -1678,7 +1679,7 @@ provenance string.
   reaches `<data>/lua` (`zemi.fs.datadir(name)`, outside the watched config
   tree, never a root of the model's file tools or of a Lua tool script the
   user did not approve); the read jail is wider: project
-  roots, the config dir, the project's `.zemi`, both skills dirs, that
+  roots, the config dir, the project's `.agents`, both skills dirs, that
   scratchpad and `<data>/types` (the API annotations
   and shipped Lua UI). `site/pack` and the rest of the state dir are never
   write roots, so an approved `fs.write` cannot plant plugin code that
@@ -1939,8 +1940,8 @@ outside the user's own hands (plugin manager, M5) land disabled until
 reviewed, like plugins; authored skills written by the user in their own
 config dir start enabled.
 
-A trusted project's skills (`.zemi/skills`, `.agents/skills` and
-`.claude/skills` at the repository root, the dirs other agents read) join
+A trusted project's skills (`.agents/skills` at the repository root, the
+dir other agents read) join
 the index after both sources and lose every name clash. They are
 body only (a `zemi-skill.lua` there never runs), enabled with no toggle,
 and kept out of the `skills` table, which is keyed by name across
@@ -2001,7 +2002,7 @@ built-ins with scripted stubs; `expect` receives a transcript object
 ### 10.7 Context assembly (how learning reaches the model)
 
 Per session, the system prompt is assembled from: the base prompt + context
-files (ZEMI.md, AGENTS.md or CLAUDE.md, injected verbatim) + **memory digest**
+files (AGENTS.md, else CLAUDE.md, injected verbatim) + **memory digest**
 (every live memory, this project then every project, newest first, each
 scope cut at a 3 KB budget the write gate keeps it under (§10.4), each line
 prefixed with id, origin and age in days; no relevance ranking) +

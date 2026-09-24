@@ -5,7 +5,7 @@ description: Load before adding to zemi or restyling it - workflows, subagents, 
 
 # Customizing zemi
 
-Each piece below is a file in the user config directory (every project) or in `<repo>/.zemi/` (shared through git, loaded once the user trusts the project); ask which when unsure. Profiles, permission modes, colors and layout work only from the user's init.lua. Workflows and agents are read when used, Lua and commands reload when their file changes.
+Each piece below is a file in the user config directory (every project) or in `<repo>/.agents/` (shared through git, loaded once the user trusts the project); ask which when unsure. Profiles, permission modes, colors and layout work only from the user's init.lua. Workflows and agents are read when used, Lua and commands reload when their file changes.
 
 ## Workflows (`workflows/<name>.lua`)
 
@@ -65,7 +65,7 @@ Read $1 and add a failing test showing: $ARGUMENTS. Do not fix the bug.
 
 ## Permission modes (`init.lua`, user config only)
 
-`zemi.permission.mode.add(name, { base = "auto" or "yolo", description, prompt, rules, decide })` adds a mode to `/mode` or replaces one of that name, `zemi.permission.mode.del(name)` takes one out, and `permissions.mode` is the start mode. A mode acts like its base; `rules` (`{ "tool.bash", "go test*", "allow" }`) answer what would otherwise need the user's approval, `prompt` joins the system prompt while it is on, and `decide(req)` answers a request the rules left open. `decide` returns `"allow"` or `"deny"`; anything else (nil, an error, its 60 s ceiling) sends the request to the user even where the base would have allowed it. It holds the interpreter while it runs. Neither `rules` nor `decide` can allow `sandbox: false`, `network: true`, a request an `ask` rule covers, or a write to `.git`, `.zemi` or zemi's own files.
+`zemi.permission.mode.add(name, { base = "auto" or "yolo", description, prompt, rules, decide })` adds a mode to `/mode` or replaces one of that name, `zemi.permission.mode.del(name)` takes one out, and `permissions.mode` is the start mode. A mode acts like its base; `rules` (`{ "tool.bash", "go test*", "allow" }`) answer what would otherwise need the user's approval, `prompt` joins the system prompt while it is on, and `decide(req)` answers a request the rules left open. `decide` returns `"allow"` or `"deny"`; anything else (nil, an error, its 60 s ceiling) sends the request to the user even where the base would have allowed it. It holds the interpreter while it runs. Neither `rules` nor `decide` can allow `sandbox: false`, `network: true`, a request an `ask` rule covers, or a write to `.git`, the Lua in `.agents` or zemi's own files.
 
 ```lua
 -- every request reaches the user

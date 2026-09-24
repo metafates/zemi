@@ -29,7 +29,7 @@ description: Load before running the integration tests, or when they fail on a m
 
 - The description is the trigger: when to load the skill, not a summary of it, at most 512 characters. Every request carries it.
 - User skills go in `<config>/skills/`, enabled by default; the user toggles them in `/skills`. A `zemi-skill.lua` beside `SKILL.md` runs at startup, after init.lua, while the skill is enabled.
-- A trusted project's `.zemi/skills/`, `.agents/skills/` and `.claude/skills/` are always on and run no Lua; a user skill of the same name wins. They load at startup, on `/reload` and on `/trust`.
+- Skills in a trusted project's `.agents/skills/` are always on and run no Lua; a user skill of the same name wins. They load at startup, on `/reload` and on `/trust`.
 - `/skills use <name> [request]` sends a skill's body with a request, a disabled skill too.
 
 ## Recipes
