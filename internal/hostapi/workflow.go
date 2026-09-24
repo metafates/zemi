@@ -686,10 +686,11 @@ func (h *Host) openWorkflows() error {
 	list := h.workflows()
 	sortBySource(list, func(w Workflow) string { return w.Source })
 	for _, w := range list {
-		detail := strings.TrimLeft(w.Description+"\n\nsource: "+h.sourceOf(w.Source, w.Path), "\n")
+		detail := "source: " + h.sourceOf(w.Source, w.Path)
 		if w.Source != "builtin" {
 			detail += "\npath: " + TildePath(w.Path)
 		}
+		detail = strings.TrimSuffix(detail+"\n\n"+w.Description, "\n\n")
 		items = append(items, map[string]any{
 			"text":    w.Name,
 			"desc":    listDesc(w.Description),

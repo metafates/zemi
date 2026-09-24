@@ -650,25 +650,26 @@ var fieldLine = regexp.MustCompile(`^([a-z][a-z -]{0,14}): (.*)$`)
 // statusHL colors the status words every screen shares.
 var statusHL = map[string]string{"starting": "Host:Warn", "ready": "Host:Ok", "failed": "Host:Danger", "stopped": "Host:Hint", "off": "Host:Hint"}
 
-// fieldRows wraps a plain body, setting its one "key: value" block as a
-// table: dim keys in one column, each value wrapped beside its key, an
-// error's in the danger color and a status word in its own. A blank line
-// ends the block, and every line after an error's first continues it, so a
-// traceback or the text after the block stays text.
+// fieldRows wraps a plain body, setting the "key: value" lines it opens
+// with as a table: dim keys in one column, each value wrapped beside its
+// key, an error's in the danger color and a status word in its own. Only the
+// opening lines are fields, so prose after them never is, whatever its shape.
+// A blank line ends them, and every line after an error's first continues
+// it, so a traceback stays its text.
 func fieldRows(body string, w int) [][]hostapi.Segment {
 	lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
 	block := make([][]string, len(lines)) // key and value, key "" continuing; nil is text
-	kw, inBlock, inErr := 0, false, false
+	kw, inErr := 0, false
+fields:
 	for i, l := range lines {
-		if l == "" && inBlock {
-			break
-		}
 		switch m := fieldLine.FindStringSubmatch(l); {
 		case m != nil && !inErr:
-			block[i], inBlock, inErr = m[1:], true, m[1] == "error"
+			block[i], inErr = m[1:], m[1] == "error"
 			kw = max(kw, len(m[1])+2)
-		case inBlock:
+		case i > 0 && l != "":
 			block[i] = []string{"", l}
+		default:
+			break fields
 		}
 	}
 	var rows [][]hostapi.Segment

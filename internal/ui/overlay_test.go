@@ -846,8 +846,8 @@ func TestFieldRows(t *testing.T) {
 			[]string{"url    https://x.dev/mcp ", "error  one two three four five six  Host:Danger", "       seven eight nine ten Host:Danger", "       stack traceback: Host:Danger", "", "plain text"}},
 		{"a key inside an error is its text", "at: x.lua:1\nerror: boom\npanic: runtime error",
 			[]string{"at     x.lua:1 ", "error  boom Host:Danger", "       panic: runtime error Host:Danger"}},
-		{"text after the block stays text", "Prose first.\n\nstatus: ready\n\nwarning: unused x",
-			[]string{"Prose first.", "", "status  ready Host:Ok", "", "warning: unused x"}},
+		{"only the opening lines are fields", "status: ready\n\nsecurity: audits the auth code\n\nsource: user",
+			[]string{"status  ready Host:Ok", "", "security: audits the auth code", "", "source: user"}},
 	} {
 		var got []string
 		for _, r := range fieldRows(c.body, 40) {

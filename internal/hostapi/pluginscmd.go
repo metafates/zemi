@@ -190,7 +190,7 @@ func (h *Host) pluginItems() []any {
 			detail = append(detail, "error: "+loadErr.Error())
 		}
 		if p.Desc != "" {
-			detail = append([]string{p.Desc, ""}, detail...)
+			detail = append(detail, "", p.Desc)
 		}
 		var actions []any
 		if p.Latest != "" && !strings.HasSuffix(p.Latest, "(major)") {

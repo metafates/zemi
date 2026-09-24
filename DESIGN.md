@@ -1371,8 +1371,8 @@ provenance string.
   A row may name its own enter verb (`verb`, "open" on a
   row that opens another screen): the hint says it, space, which toggles
   a toggle list's rows, passes it by, and an "open" row leaves its list
-  under the screen it opens, so esc comes back to it (`/model`'s Roles). A Go screen's detail sets its one
-  `key: value` block as a table (any other body is text as written), and its
+  under the screen it opens, so esc comes back to it (`/model`'s Roles). A Go screen's detail opens with
+  `key: value` lines set as a table (prose after them is text as written), and its
   `status:` line colors the status words every screen shares: `starting`,
   `ready`, `failed`, `stopped` and `off`. A list grouped by source
   (`/skills`, `/agents`, `/workflows`) puts the user's first,

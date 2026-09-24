@@ -945,8 +945,8 @@ func (h *Host) openAgents() error {
 			"text":    d.Name,
 			"desc":    listDesc(d.Description),
 			"section": sourceSection(d.Source) + " agents", // apart from the runs above
-			"detail": fmt.Sprintf("%s\n\nsource: %s\nmodel: %s\ntools: %s\n\nAdd your own as agents/<name>.md in %s or .agents.",
-				d.Description, h.sourceOf(d.Source, d.Path), model, tools, TildePath(h.Dirs.ConfigHome)),
+			"detail": fmt.Sprintf("source: %s\nmodel: %s\ntools: %s\n\n%s\n\nAdd your own as agents/<name>.md in %s or .agents.",
+				h.sourceOf(d.Source, d.Path), model, tools, d.Description, TildePath(h.Dirs.ConfigHome)),
 		})
 	}
 	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Fields: true, Items: items, Verb: "open"})
