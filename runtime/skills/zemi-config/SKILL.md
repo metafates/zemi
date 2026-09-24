@@ -1,6 +1,6 @@
 ---
 name: zemi-config
-description: Load before changing zemi's settings, providers, models, permissions, MCP or language servers, plugins or trust, or to explain a zemi command, flag or key.
+description: Load before changing zemi's settings, providers, models, permissions, MCP or language servers or trust, or to explain a zemi command, flag or key.
 ---
 
 # Configuring zemi
@@ -12,7 +12,7 @@ description: Load before changing zemi's settings, providers, models, permission
 | `<config>/init.lua` | user config, run at startup as the trusted `user` origin |
 | `<config>/lua/`, `skills/`, `agents/`, `commands/`, `workflows/` | modules, skills, and the files zemi-customize describes |
 | `<repo>/.agents/` | project config with the same layout, loaded only once the user trusts the project, as the low-trust `project` origin |
-| `<data>/plugins/local/<name>/`, `installed/<name>/` | plugins developed in place, and git clones; `<data>/plugins/disabled` lists the names turned off |
+| `<data>/plugins/local/<name>/`, `installed/<name>/` | plugins developed in place, and git clones; `<data>/plugins/disabled` lists the names turned off; zemi-customize has how to write one |
 | `<data>/types/zemi.lua` | LuaLS annotations for the whole API, rewritten every start |
 | `<state>/` | logs, databases, trust decisions, and per project its `permissions` file and recipes (zemi-debug) |
 
@@ -110,17 +110,6 @@ The palette: `/new`, `/sessions` (resume or delete), `/rewind [id]` (restores th
 ## Project config and trust
 
 A repository's `.agents/` at the git root holds `init.lua`, `lua/`, `agents/`, `commands/`, `workflows/` and `skills/`; zemi reads no other project dir. It loads only in a trusted project: the first start shows a trust prompt once (`y` or `n` is saved; `l` Later, where the cursor starts, or esc brings it back next start) and `/trust` shows it again. One decision covers the repository and its linked worktrees. Project code may add widgets, commands, keymaps on free keys, and deny or ask rules. It cannot register providers, MCP or language servers, allow rules or modes, set settings, send to the agent, or read secret-shaped env vars: personal settings go in the user init.lua.
-
-## Plugins
-
-A plugin is `<data>/plugins/local/<name>/` (developed in place) or `installed/<name>/` (a git clone): its `init.lua` runs at startup, before the user's init.lua, as the `plugin` origin, and `lua/` holds modules anyone can require. It may add commands, keymaps on free keys, widgets, overlays, tools, event handlers, `agent.assemble` sections, and deny and ask rules. A job, an HTTP request, a file write, a model call (`zemi.model.ask`) or a message to the agent (`zemi.agent.send`) raises until the user's init.lua allows it with the rule the error prints, scoped to that plugin by its `principal`, and a plugin tool needs the user's approval on every call until the user allows `tool.<name>`: print those rules in the README. It cannot edit the composer, change settings, the theme, the layout, the model or the mode, or register providers or servers. Its code runs as the plugin wherever it is called from, a `setup()` in the user's init.lua included:
-
-```lua
-local snippets = require("snippets")   -- <plugin>/lua/snippets/init.lua
-zemi.command.add("snip", snippets.pick, { desc = "insert a snippet" })
-```
-
-`init.lua` runs before the user's, so register with defaults there and make `setup(opts)` safe to call again. zemi reloads within a second of an edit under `local/`. Its `zemi.state` keys are its own, and go when its directory does.
 
 ## Splitting config
 

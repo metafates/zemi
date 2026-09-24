@@ -1,13 +1,11 @@
 ---
 name: zemi-customize
-description: Load before adding to zemi or restyling it - workflows, subagents, prompt commands, profiles, permission modes, keymaps, themes, widgets, layout.
+description: Load before adding to zemi or restyling it - plugins, workflows, subagents, prompt commands, profiles, permission modes, keymaps, themes, widgets, layout.
 ---
 
 # Customizing zemi
 
-Each piece below is a file in the user config directory (every project) or in `<repo>/.agents/` (shared through git, loaded once the user trusts the project); ask which when unsure. Profiles, permission modes, colors and layout work only from the user's init.lua. Workflows and agents are read when used, Lua and commands reload when their file changes.
-
-Plugins live in the data dir instead: `/plugins` (or `zemi plugins` in a shell) installs one from a git URL, checks for and applies updates, turns plugins on and off and deletes a clone. zemi-config says what a plugin is.
+Settings, keymaps, profiles, permission modes, colors, layout and changes to the shipped widgets go in the user's init.lua. A feature with logic of its own (a tool, a new widget, a command and the handlers behind them) is a local plugin (Plugins, below), which the user can share, update and turn off on its own. Workflows, agents and prompt commands are files in the user config directory (every project) or in `<repo>/.agents/` (shared through git, loaded once the user trusts the project); ask which when unsure. Workflows and agents are read when used, Lua and commands reload when their file changes.
 
 ## Workflows (`workflows/<name>.lua`)
 
@@ -188,6 +186,75 @@ zemi.keymap.set("alt+j", "zemi.ui.scroll.down sidebar", { desc = "scroll the sid
 ```
 
 A region with an id and `focusable = true` can take the keys: `zemi.ui.focus.set(id)`, the `zemi.ui.focus.set <id>` host action or a click gives them to it, `zemi.ui.focus.next` and `zemi.ui.focus.prev` cycle, and esc hands them back to the composer. Keymaps with `{ focus = id }` work only there and may be plain letters; `ctx.focus` names the node that has the keys.
+
+## Plugins (`<data>/plugins/local/<name>/`)
+
+A plugin is a directory shaped like the config dir, in the local plugins directory the system prompt names. At startup zemi runs every enabled plugin's `init.lua`, sorted by name, before the user's init.lua:
+
+```
+<name>/                  lowercase letters, digits, ".", "_", "-"; the directory name is the plugin's name
+  init.lua               runs as the `plugin` origin; line 1 "-- <what it does>" is its /plugins description
+  lua/<name>/init.lua    require("<name>") from the plugin and the user's init.lua
+  skills/  agents/  commands/  workflows/    load like the config dir's
+```
+
+There is no manifest: the version is the checked-out `vX.Y.Z` tag, the source the `origin` remote. `installed/<name>/` holds the clones the user manages with `/plugins` (or `zemi plugins` in a shell: install from a git URL, check and update, turn on and off, delete). You never write there; to change one, the user deletes it and you clone it into `local/`. A local plugin named like an installed one, or a symlink in `local/`, does not load.
+
+`init.lua` registers everything with defaults, so the plugin works with no config, and the user's init.lua, which runs after it, passes options through `setup`. Keep `setup` safe to call again, and start gated calls on `app.ready`: the user's allow rules are added after the plugin's init.lua runs.
+
+```lua
+-- init.lua
+-- the git branch in the statusline
+require("branch")
+
+-- lua/branch/init.lua
+local M = { opts = { interval = 30000 } }
+local branch = ""
+
+function M.setup(opts)
+  for k, v in pairs(opts or {}) do M.opts[k] = v end
+end
+
+local function poll()
+  zemi.job.start({ cmd = "git", args = { "rev-parse", "--abbrev-ref", "HEAD" },
+    on_exit = function(res) branch = res.code == 0 and res.stdout:gsub("%s+$", "") or "" end })
+end
+
+zemi.ui.widget.add({ id = "branch", region = "statusline.right", priority = 50,
+  render = function() return branch == "" and {} or { { { text = branch, hl = "Dim" } } } end })
+
+zemi.event.on("app.ready", function()
+  poll()
+  zemi.timer.every(M.opts.interval, poll)
+end)
+
+return M
+```
+
+The README gives the user the lines for their init.lua:
+
+```lua
+zemi.permission.rule.add({ subject = "lua.job.start", pattern = "git rev-parse *", decision = "allow",
+  match = "git rev-parse --abbrev-ref HEAD", principal = "plugin:branch" })
+require("branch").setup({ interval = 10000 })
+```
+
+Identity: a plugin's code runs as the plugin wherever it is called from, its `setup()` in the user's init.lua included. A command, keymap, widget, theme, tool, completion source or health row another plugin registered first (by name) is refused, with both named in `/errors`, and a user or builtin one always wins, so prefix ids with the plugin name and bind only keys nothing else uses. Its `zemi.state` keys are its own (stored under `plugin:<name>:`) and go when its directory does.
+
+Permissions: a job, an HTTP request, a `zemi.fs` write, a model call (`zemi.model.ask`) or a message to the agent (`zemi.agent.send`) raises until the user's init.lua allows it; the error carries the rule line to paste, with `principal = "plugin:<name>"` so it covers that plugin alone. A plugin tool asks the user on every call until the user allows `tool.<name>`. List every rule the plugin needs in its README. A plugin cannot edit the composer, change settings, the theme, the layout, the model or the mode, add allow rules, or read secret-shaped env vars: a key comes through `setup({ key = zemi.env.get("NAME") })` in the user's init.lua.
+
+What a plugin cannot do at all: register providers, MCP servers or language servers (they run unconfined or hold keys, so the README gives the user the `zemi.provider.add` or `zemi.mcp.add` line to paste), rewrite the conversation or the provider request, draw its own transcript rows or a panel, change the tool set per turn (a profile does it once), or replace a builtin tool (`zemi.tool.override` adds `pre` and `post` around one). Each would break the prompt cache, the conversation or the UI rules below.
+
+Style, so a plugin looks like zemi: colors are theme groups (`Accent`, `Dim`, `Ok`, `Warn`, `Danger`, ...), never hex, so the user's theme applies. No state change adds or removes a row: status goes in a statusline widget that renders `{}` when there is nothing to say (with a high priority, since it comes and goes) or in a toast (`zemi.notify`). A tool's call row is zemi's own, labeled by a string `about` parameter, with `run:progress(text)` for the running line. Slow work goes in a `wait` inside a task or a job's `on_exit`, never in a render (zemi-lua has the API).
+
+Developing one:
+
+- Reads under `local/` need no approval; every write there asks the user, with no always answer and no mode settling it, since plugin code runs in every project. Say in one message what you will write.
+- zemi reloads within a second of an edit once no turn runs; `zemi.config.reload()` from the Lua tool applies it at once. A load error is in `zemi.errors.list()` (`plugin <name>: ...`), and the plugin's `/plugins` row reads `failed` with the error in its detail.
+- A sandboxed command cannot see the plugins directory, so running its tests or git there needs `sandbox: false`, which asks each time.
+- To move a feature out of the config dir, put its registrations in `local/<name>/init.lua` and its modules in `lua/<name>/`, leave `require("<name>").setup(...)` in the user's init.lua, and keep there what only user config may do (replacing a shipped widget, `hl.set`, layout, settings). Its allow rules keep working (a rule with no `principal` covers every caller); add the principal to narrow them. Its old `zemi.state` keys stay behind.
+
+Publishing: `git init`, commit, push to a host the user picks, then tag `v0.1.0` and push the tag. An install checks out the newest `vX.Y.Z` tag and an update stays in its major version, so a breaking change bumps the major. Users install with `/plugins install <git url>` or `zemi plugins install <git url>`.
 
 ## After writing
 

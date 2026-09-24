@@ -28,7 +28,7 @@ raises `permission ask required` with the `zemi.permission.rule.add` line that a
 which only the user's init.lua may add; a plugin's line carries `principal = "plugin:<name>"`,
 so the rule allows that plugin alone.
 No permission mode allows such a call, yolo included.
-zemi-config lists what a plugin cannot do.
+zemi-customize lists what a plugin cannot do.
 
 ## Modules
 
