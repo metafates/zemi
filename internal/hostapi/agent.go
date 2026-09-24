@@ -1442,7 +1442,7 @@ func (h *Host) Btw(question string) error {
 		case err != nil:
 			h.Notify("error", "Could not answer the side question", h.friendlyError(err))
 		default:
-			ui.OpenOverlay(Overlay{ID: "btw", Title: "Side question", Origin: lua.OriginBuiltin, Body: answer, BodyMD: true})
+			ui.OpenOverlay(Overlay{ID: fmt.Sprintf("btw:%d", h.selectSeq.Add(1)), Title: "Side question", Origin: lua.OriginBuiltin, Body: answer, BodyMD: true})
 		}
 	})
 	return nil
