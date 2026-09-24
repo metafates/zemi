@@ -178,14 +178,16 @@ func TestConfigFingerprint(t *testing.T) {
 		}
 	}
 	write("init.lua", "-- one")
-	base := configFingerprint(dir)
+	skip := filepath.Join(dir, "worktrees")
+	base := configFingerprint(skip, dir)
 	write(".git/index", "x")
 	write("lua/node_modules/z/index.js", "x")
-	if configFingerprint(dir) != base {
-		t.Fatal("git data or a dependency tree changed the fingerprint")
+	write("worktrees/w/init.lua", "x")
+	if configFingerprint(skip, dir) != base {
+		t.Fatal("git data, a dependency tree or a worktree changed the fingerprint")
 	}
 	write("init.lua", "-- two!")
-	if configFingerprint(dir) == base {
+	if configFingerprint(skip, dir) == base {
 		t.Fatal("an init.lua edit went unnoticed")
 	}
 }
@@ -656,6 +658,6 @@ func BenchmarkConfigFingerprint(b *testing.B) {
 	}
 	_ = os.WriteFile(filepath.Join(dir, "local", "y", "init.lua"), []byte("-- one"), 0o644)
 	for b.Loop() {
-		configFingerprint(pluginRoots(dir)...)
+		configFingerprint("", pluginRoots(dir)...)
 	}
 }

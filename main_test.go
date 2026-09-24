@@ -52,9 +52,9 @@ func TestConfigFingerprintFollowsSymlinks(t *testing.T) {
 				t.Fatal(err)
 			}
 			roots := append([]string{cfg}, config.Dirs{ConfigHome: cfg}.UserTrees()...)
-			base := configFingerprint(roots...)
+			base := configFingerprint("", roots...)
 			write(c.edit, "-- two!")
-			if got := configFingerprint(roots...) != base; got != c.noticed {
+			if got := configFingerprint("", roots...) != base; got != c.noticed {
 				t.Fatalf("edit to %s noticed = %v, want %v", c.edit, got, c.noticed)
 			}
 		})
@@ -76,6 +76,7 @@ func TestPluginRootsFingerprint(t *testing.T) {
 		{"installed/y/init.lua", false},
 		{"installed/.z.tmp/.git/index", false},
 		{"local/x/node_modules/a.js", false},
+		{"local/worktrees/init.lua", true}, // only the project's worktrees are skipped
 	} {
 		root := t.TempDir()
 		write := func(name, body string) {
@@ -89,9 +90,9 @@ func TestPluginRootsFingerprint(t *testing.T) {
 		for _, f := range []string{"local/x/init.lua", "installed/y/init.lua", "installed/y/.git/index"} {
 			write(f, "one")
 		}
-		base := configFingerprint(pluginRoots(root)...)
+		base := configFingerprint("", pluginRoots(root)...)
 		write(c.edit, "two!")
-		if got := configFingerprint(pluginRoots(root)...) != base; got != c.noticed {
+		if got := configFingerprint("", pluginRoots(root)...) != base; got != c.noticed {
 			t.Errorf("edit to %s noticed = %v, want %v", c.edit, got, c.noticed)
 		}
 	}

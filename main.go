@@ -243,9 +243,9 @@ func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
 		h.CheckSandboxed()
 		roots := append(append([]string{dirs.ConfigHome}, dirs.UserTrees()...), pluginRoots(dirs.PluginsRoot())...)
 		if h.ProjectTrusted() {
-			return configFingerprint(append(roots, dirs.ProjectConfigDir())...), true
+			return configFingerprint(dirs.WorktreesDir(), append(roots, dirs.ProjectConfigDir())...), true
 		}
-		return configFingerprint(roots...), false
+		return configFingerprint("", roots...), false
 	}
 	last, trusted := fingerprint()
 	for range time.Tick(time.Second) {
@@ -270,10 +270,14 @@ func pluginRoots(root string) []string {
 }
 
 // configFingerprint summarizes config trees by path, size and modification
-// time. Git data, dot-directories and node_modules are not config, and a
-// plugin's dependency tree would make every walk cost milliseconds.
-func configFingerprint(roots ...string) string {
+// time. Git data, dot-directories, node_modules and skip (the checkouts in
+// .agents/worktrees) are not config, and a plugin's dependency tree would
+// make every walk cost milliseconds.
+func configFingerprint(skip string, roots ...string) string {
 	sum := sha256.New()
+	if s, err := filepath.EvalSymlinks(skip); err == nil {
+		skip = s // the roots are walked resolved
+	}
 	// resolved, so a symlinked config home or user tree (dotfiles) is walked:
 	// WalkDir follows no link below its root
 	var walk []string
@@ -290,8 +294,8 @@ func configFingerprint(roots ...string) string {
 			switch {
 			case err != nil:
 				return nil
-			case d.IsDir() && p != root && (d.Name()[0] == '.' || d.Name() == "node_modules" || p == filepath.Join(root, "worktrees") || slices.Contains(walk, p)):
-				return filepath.SkipDir // checkouts in .agents/worktrees are not config; a root is walked once
+			case d.IsDir() && p != root && (d.Name()[0] == '.' || d.Name() == "node_modules" || p == skip || slices.Contains(walk, p)):
+				return filepath.SkipDir // a root is walked once
 			case d.IsDir():
 				return nil
 			}
