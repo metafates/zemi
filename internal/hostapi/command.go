@@ -282,19 +282,27 @@ func commandArgs(L *glua.LState, argString string) *glua.LTable {
 
 // RunRHS executes a keymap right-hand side on the ui class, a function as a
 // task, attributed to the binding's registration origin (DESIGN §9
-// attribution rule). Host actions run on the caller's goroutine (never the
-// interpreter), so config watches they fire go back through the queue.
-func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) error {
+// attribution rule), and reports its error, a later slice's included. Host
+// actions run on the caller's goroutine (never the interpreter), so config
+// watches they fire go back through the queue.
+func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) (err error) {
+	report := func(err error) {
+		switch {
+		case err == nil:
+		case isQuietLuaErr(err):
+			h.Log.Debug("ui", "keymap dropped", map[string]any{"keys": b.Key, "error": err.Error()})
+		default:
+			h.RecordError("keymap "+b.Key, err.Error())
+			h.Log.Error("ui", "keymap rhs failed", map[string]any{"keys": b.Key, "error": err.Error()})
+			h.Notify("error", "Could not run "+b.Key, err.Error())
+		}
+	}
+	defer func() { report(err) }()
 	switch rhs := b.RHS; {
 	case rhs.Fn != nil:
-		// a task: the caller gets its first slice's error, and the rest,
-		// after a wait, is reported here
 		return h.RT.StartTask(ctx, h.luaTask(lua.ClassUI, luaCaller{gen: b.Gen, origin: b.Origin}, rhs.Fn), func(err error) {
 			h.refresh()
-			if err != nil && !isQuietLuaErr(err) {
-				h.RecordError("keymap "+b.Key, err.Error())
-				h.Notify("error", "Could not run "+b.Key, err.Error())
-			}
+			report(err)
 		})
 	case rhs.Command != "":
 		return h.RunCommand(ctx, rhs.Command, "")

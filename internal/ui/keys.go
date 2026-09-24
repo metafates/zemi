@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"runtime/debug"
 	"slices"
@@ -11,7 +10,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -433,22 +431,11 @@ func listMove(key string) int {
 	return 0
 }
 
-// runRHS executes a keymap right-hand side on the ui class under the
-// binding's registration origin (DESIGN §9 attribution), on the background
-// worker.
+// runRHS executes a keymap right-hand side on the background worker.
 func (a *App) runRHS(b *hostapi.KeyBinding) {
 	a.background(func() {
-		err := a.host.RunRHS(context.Background(), b)
+		a.host.RunRHS(context.Background(), b)
 		a.Refresh() // what it changed shows without waiting for another redraw
-		switch {
-		case err == nil:
-		case errors.Is(err, lua.ErrHot), errors.Is(err, lua.ErrReloaded):
-			a.log.Debug("ui", "keymap dropped (runtime hot)", map[string]any{"keys": b.Key})
-		default:
-			a.host.RecordError("keymap "+b.Key, err.Error())
-			a.host.Log.Error("ui", "keymap rhs failed", map[string]any{"keys": b.Key, "error": err.Error()})
-			a.Notify("error", "Could not run "+b.Key, err.Error())
-		}
 	})
 }
 
