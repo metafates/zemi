@@ -137,7 +137,7 @@ writing returns to its schema default, unless a runtime pick moved it since.
 and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
 `require("zemi.defaultui")` (shipped theme, widgets and keymaps, one module each) -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
-`init.lua` -> authored skill hooks -> a trusted project's `.agents/init.lua` -> markdown commands
+`init.lua` -> user skill hooks -> a trusted project's `.agents/init.lua` -> markdown commands
 (`commands/*.md`: user, then a trusted repo's `.agents`) -> `app.ready`.
 Boot runs on its own goroutine and may block on the trust prompt.
 
@@ -416,7 +416,7 @@ registry, follow `internal/hostapi/registry.go`.
 
 ### Skills (internal/skills, internal/hostapi/skills.go)
 
-Skills are file-based units, each a `SKILL.md` with YAML frontmatter: authored under
+Skills are file-based units, each a `SKILL.md` with YAML frontmatter: user skills under
 `<config>/skills/`, builtin (zemi's self-knowledge, `runtime/skills/zemi-*`, embedded and
 rewritten to `<data>/builtin-skills/` on every sync), both enabled by default. A trusted
 project adds its own (`.agents/skills`): body only, enabled, never in the table or
@@ -443,7 +443,7 @@ and pins the list again. Invariants:
   sends it.
 - **Token efficiency**: the prompt carries only the index (name + description, cut to 512 runes
   with a warning); bodies load on demand via the `skill` tool, after a permission check.
-- **Hook placement**: an authored skill's `zemi-skill.lua` runs once, in the boot step after
+- **Hook placement**: a user skill's `zemi-skill.lua` runs once, in the boot step after
   user init.lua, as user origin; enabling later does not run it.
 
 ### Type annotations (internal/hostapi/types.go, runtime/types/zemi.lua)

@@ -28,14 +28,14 @@ description: run the local integration suite
 Body instructions here.
 `)
 	writeFile(t, filepath.Join(dir, "zemi-skill.lua"), "-- hook\n")
-	sk, err := Parse(dir, Authored)
+	sk, err := Parse(dir, User)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	if sk.Name != "local-integration" || sk.Description != "run the local integration suite" {
 		t.Fatalf("skill: %+v", sk)
 	}
-	if sk.Source != Authored {
+	if sk.Source != User {
 		t.Fatalf("source: %s", sk.Source)
 	}
 	if sk.Hook == "" {
@@ -44,7 +44,7 @@ Body instructions here.
 
 	crlf := filepath.Join(t.TempDir(), "crlf")
 	writeFile(t, filepath.Join(crlf, "SKILL.md"), "---\r\nname: crlf\r\ndescription: saved on windows\r\n---\r\n\r\nBody.\r\n")
-	if sk, err := Parse(crlf, Authored); err != nil || sk.Description != "saved on windows" {
+	if sk, err := Parse(crlf, User); err != nil || sk.Description != "saved on windows" {
 		t.Fatalf("crlf: %+v %v", sk, err)
 	}
 }
@@ -70,7 +70,7 @@ func TestParseErrors(t *testing.T) {
 			if c.content != "" {
 				writeFile(t, filepath.Join(dir, "SKILL.md"), c.content)
 			}
-			if _, err := Parse(dir, Authored); err == nil || !strings.Contains(err.Error(), c.want) {
+			if _, err := Parse(dir, User); err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("err=%v, want %q", err, c.want)
 			}
 		})
@@ -84,14 +84,14 @@ func TestParseDescriptionCap(t *testing.T) {
 	dir := filepath.Join(base, "x")
 	long := strings.Repeat("a", MaxDescriptionRunes+1)
 	writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: "+long+"\n---\n\nBody.\n")
-	sk, err := Parse(dir, Authored)
+	sk, err := Parse(dir, User)
 	if !errors.Is(err, ErrDescriptionCut) {
 		t.Fatalf("err=%v", err)
 	}
 	if len([]rune(sk.Description)) != MaxDescriptionRunes {
 		t.Fatalf("description kept %d runes", len([]rune(sk.Description)))
 	}
-	found, warnings := Discover(Dir{Path: base, Source: Authored})
+	found, warnings := Discover(Dir{Path: base, Source: User})
 	if len(found) != 1 || len(warnings) != 1 {
 		t.Fatalf("discover: %+v %q", found, warnings)
 	}
@@ -106,20 +106,20 @@ func TestParseSymlinkedSkillFile(t *testing.T) {
 	if err := os.Symlink(target, filepath.Join(dir, "SKILL.md")); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	if _, err := Parse(dir, Authored); err == nil || !strings.Contains(err.Error(), "symlink") {
+	if _, err := Parse(dir, User); err == nil || !strings.Contains(err.Error(), "symlink") {
 		t.Fatalf("err=%v", err)
 	}
 }
 
-func TestDiscoverMergesAuthoredOverBuiltin(t *testing.T) {
+func TestDiscoverMergesUserOverBuiltin(t *testing.T) {
 	root := t.TempDir()
-	authored, builtin := filepath.Join(root, "authored"), filepath.Join(root, "builtin")
-	writeFile(t, filepath.Join(authored, "alpha", "SKILL.md"), "---\nname: alpha\ndescription: authored alpha\n---\n")
-	writeFile(t, filepath.Join(authored, "broken", "SKILL.md"), "not frontmatter")
+	user, builtin := filepath.Join(root, "user"), filepath.Join(root, "builtin")
+	writeFile(t, filepath.Join(user, "alpha", "SKILL.md"), "---\nname: alpha\ndescription: user alpha\n---\n")
+	writeFile(t, filepath.Join(user, "broken", "SKILL.md"), "not frontmatter")
 	writeFile(t, filepath.Join(builtin, "alpha", "SKILL.md"), "---\nname: alpha\ndescription: builtin alpha\n---\n")
 	writeFile(t, filepath.Join(builtin, "beta", "SKILL.md"), "---\nname: beta\ndescription: builtin beta\n---\n")
 
-	got, warns := Discover(Dir{authored, Authored}, Dir{builtin, Builtin})
+	got, warns := Discover(Dir{user, User}, Dir{builtin, Builtin})
 	if len(warns) != 1 || !strings.Contains(warns[0], "broken") {
 		t.Fatalf("warnings=%v", warns)
 	}
@@ -130,7 +130,7 @@ func TestDiscoverMergesAuthoredOverBuiltin(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("skills=%d", len(got))
 	}
-	if byName["alpha"].Source != Authored || byName["alpha"].Description != "authored alpha" {
+	if byName["alpha"].Source != User || byName["alpha"].Description != "user alpha" {
 		t.Fatalf("alpha: %+v", byName["alpha"])
 	}
 	if byName["beta"].Source != Builtin {

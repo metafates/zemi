@@ -1,6 +1,6 @@
 // skills.go is the skills host API (DESIGN §6.7, §10.5): discovery
 // synced against the skills table, the zemi.skills namespace, the enable
-// hooks (authored skills run in the boot window after user init), and the
+// hooks (user skills run in the boot window after user init), and the
 // /skills command. Enable/disable require a user or builtin origin: a
 // plugin-registered keymap cannot flip a skill.
 package hostapi
@@ -83,7 +83,7 @@ func (h *Host) syncSkills() {
 		h.Log.Warn("skills", "builtin skills not written", map[string]any{"error": err.Error()})
 	}
 	found, warns := skills.Discover(
-		skills.Dir{Path: h.authoredSkillsDir(), Source: skills.Authored},
+		skills.Dir{Path: h.userSkillsDir(), Source: skills.User},
 		skills.Dir{Path: h.builtinSkillsDir(), Source: skills.Builtin})
 	for _, w := range warns {
 		h.RecordErrorOnce("skills", strings.TrimPrefix(w, "skills: "))
@@ -116,7 +116,7 @@ func joinIf(dir, elem string) string {
 	return filepath.Join(dir, elem)
 }
 
-func (h *Host) authoredSkillsDir() string { return joinIf(h.Dirs.ConfigHome, "skills") }
+func (h *Host) userSkillsDir() string { return joinIf(h.Dirs.ConfigHome, "skills") }
 
 // builtinSkillsDir is where the embedded builtin skills are copied so the
 // skill tool reads them from disk like any other skill.
@@ -262,7 +262,7 @@ func (h *Host) discoverSkills(dirs ...skills.Dir) []skills.Skill {
 }
 
 // projectOnlySkills is the project's skills and recipes whose names no
-// authored or builtin skill takes, enabled or not. Recipes are read
+// user or builtin skill takes, enabled or not. Recipes are read
 // live: only the prompt needs the pin.
 func (h *Host) projectOnlySkills() []skills.Skill { return h.projectOnly(h.discoverRecipes()) }
 
@@ -330,7 +330,7 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 }
 
 // runSkillHook evaluates one skill's zemi-skill.lua inline (we are on the
-// interpreter goroutine) as user origin: only authored skills carry one.
+// interpreter goroutine) as user origin: only user skills carry one.
 func (h *Host) runSkillHook(L *glua.LState, s skills.Skill) error {
 	if s.Hook == "" {
 		return nil
@@ -345,16 +345,16 @@ func (h *Host) runSkillHook(L *glua.LState, s skills.Skill) error {
 	return nil
 }
 
-// SkillsAuthoredHooksStep runs the hooks of enabled authored skills, after
+// SkillsUserHooksStep runs the hooks of enabled user skills, after
 // user init.lua and before the project config (DESIGN §5 load order); a
 // failing hook is logged, never fatal.
-func (h *Host) SkillsAuthoredHooksStep() lua.BootStep {
+func (h *Host) SkillsUserHooksStep() lua.BootStep {
 	return lua.BootStep{
-		Name: "authored skill hooks",
+		Name: "user skill hooks",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			h.syncSkills()
 			for _, s := range h.enabledSkills() {
-				if s.Source == skills.Authored {
+				if s.Source == skills.User {
 					_ = h.runSkillHook(g.L, s)
 				}
 			}
@@ -471,7 +471,7 @@ func (h *Host) openSkills() error {
 	}
 	ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true,
 		Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
-		Empty:  "No skills found. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + "."})
+		Empty:  "No skills yet. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + "."})
 	return nil
 }
 
@@ -485,7 +485,10 @@ func sourceSection(source string) string {
 
 func (h *Host) skillItems() []any {
 	all := append(h.skillsReg.list(), h.projectOnlySkills()...)
-	slices.SortStableFunc(all, func(a, b skills.Skill) int { return cmp.Compare(a.Source, b.Source) })
+	order := []skills.Source{skills.User, skills.Builtin, skills.Project, skills.Recipe}
+	slices.SortStableFunc(all, func(a, b skills.Skill) int {
+		return cmp.Compare(slices.Index(order, a.Source), slices.Index(order, b.Source))
+	})
 	items := make([]any, 0, len(all))
 	for _, s := range all {
 		toggle := "skills toggle " + s.Name

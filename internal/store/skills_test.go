@@ -9,7 +9,7 @@ import (
 func TestSyncSkillsAndEnabledState(t *testing.T) {
 	db := openTest(t)
 	all := []*Skill{
-		{Name: "authored-one", Path: "/a/authored-one", Source: "authored"},
+		{Name: "user-one", Path: "/a/user-one", Source: "user"},
 		{Name: "builtin-one", Path: "/a/builtin-one", Source: "builtin"},
 	}
 	if err := db.SyncSkills(all); err != nil {
@@ -26,7 +26,7 @@ func TestSyncSkillsAndEnabledState(t *testing.T) {
 	for _, r := range rows {
 		byName[r.Name] = r
 	}
-	if !byName["authored-one"].Enabled || !byName["builtin-one"].Enabled {
+	if !byName["user-one"].Enabled || !byName["builtin-one"].Enabled {
 		t.Fatal("skills must start enabled")
 	}
 
@@ -40,7 +40,7 @@ func TestSyncSkillsAndEnabledState(t *testing.T) {
 	// A resync refreshes paths and drops vanished skills but keeps the
 	// stored enabled choice.
 	if err := db.SyncSkills([]*Skill{
-		{Name: "authored-one", Path: "/b/authored-one", Source: "authored"},
+		{Name: "user-one", Path: "/b/user-one", Source: "user"},
 		{Name: "builtin-one", Path: "/b/builtin-one", Source: "builtin"},
 	}); err != nil {
 		t.Fatalf("resync: %v", err)

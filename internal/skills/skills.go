@@ -1,6 +1,6 @@
 // Package skills implements skill discovery and validation
 // (DESIGN §10.5): SKILL.md files with yaml frontmatter (name,
-// description), authored under the config dir's skills/ and, in a trusted
+// description), written under the config dir's skills/ and, in a trusted
 // project, its own skills dirs. Discovery only reports what is on disk.
 package skills
 
@@ -19,10 +19,10 @@ import (
 type Source string
 
 const (
-	Authored Source = "authored" // the user's config dir
-	Builtin  Source = "builtin"  // shipped with zemi
-	Project  Source = "project"  // a trusted project's, body only, never stored
-	Recipe   Source = "recipe"   // a trusted project's, kept in zemi's state dir, body only, never stored
+	User    Source = "user"    // the user's config dir
+	Builtin Source = "builtin" // shipped with zemi
+	Project Source = "project" // a trusted project's, body only, never stored
+	Recipe  Source = "recipe"  // a trusted project's, kept in zemi's state dir, body only, never stored
 )
 
 // Stored reports a source with a row in the skills table, so an enabled flag.
@@ -146,7 +146,7 @@ func frontmatter(data []byte) (name, description string, err error) {
 }
 
 // Discover merges skill directories in the order given, higher trust
-// first: on a name clash the earlier one wins (authored over builtin,
+// first: on a name clash the earlier one wins (user over builtin,
 // §10.5). Unreadable or invalid directories are skipped with a
 // returned warning per failure, never fatal: a broken skill must not hide
 // the others.

@@ -296,7 +296,7 @@ Directories (XDG):
 ~/.config/zemi/           config
   init.lua                entry point, runs on every start
   lua/**/*.lua            user modules, require()-able
-  skills/<name>/          authored skills (enabled by default)
+  skills/<name>/          user skills (enabled by default)
   agents/<name>.md        subagent definitions (§6.3)
   commands/<name>.md      markdown slash commands
   workflows/<name>.lua    saved workflow scripts
@@ -368,7 +368,7 @@ file's: memory, reflector, skills, agents, workflow, mcp, lsp) -> the
 shipped Lua UI (`require("zemi.defaultui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (`site/pack/*/start/*/plugin/*.lua`, sorted) -> user
-`init.lua` -> authored skills' enable hooks -> a trusted project's
+`init.lua` -> user skills' enable hooks -> a trusted project's
 `.agents/init.lua` -> markdown commands (user, then a trusted repo's
 `.agents`) ->
 `app.ready`. Boot runs on its own goroutine, so it may block on the
@@ -1156,7 +1156,7 @@ memory(id, scope, text, quote, provenance_session_id,
 checkpoints(message_id, session_id, path, existed, link, content, created_at)
                                                                 -- pre-turn file content (a link's target) for rewind (§8)
 proposals(id, kind, payload, created_at)                        -- pending, until reviewed
-skills(name, path, source, enabled, created_at)                 -- source: authored|builtin
+skills(name, path, source, enabled, created_at)                 -- source: user|builtin
 kv(key, value_json, updated_at)                                 -- zemi.state
 ```
 
@@ -1498,7 +1498,7 @@ provenance string.
   its own rule: a segment matching the pattern but also matching the
   rule's `not_match` value does not match that rule and evaluation
   falls through; every fall-through is logged with its decision.
-  Lua-authored rules must carry `match` / `not_match`
+  Lua-written rules must carry `match` / `not_match`
   example strings, validated at load (codex execpolicy style): the
   `match` example must match the pattern without being excluded by the
   guard, and the `not_match` example must be excluded by the guard;
@@ -1773,7 +1773,7 @@ provenance string.
    own behavior. Scoped, provenance-tracked. Cheap to write, cheap
    to supersede.
 2. **Procedures (skills)**: reusable recipes. A SKILL.md plus optional
-   `zemi-skill.lua` that registers tools/commands when enabled. Authored
+   `zemi-skill.lua` that registers tools/commands when enabled. User
    skills live in the config dir (`~/.config/zemi/skills/`) and start
    enabled, tracked by their `skills` row and file; nothing model-written
    is a skill: a repository procedure is a recipe.
@@ -1962,7 +1962,7 @@ skills/
 ```
 
 Discovery merges two sources, the higher-trust one winning a name
-clash: authored (config dir) over builtin (zemi's own, embedded
+clash: user (config dir) over builtin (zemi's own, embedded
 under `runtime/skills/`, rewritten to `<data>/builtin-skills/` on every
 sync). Both start enabled. The model sees name +
 description in context and the full body on demand through the `skill`
@@ -1972,8 +1972,8 @@ editor). Discovery lists only `enabled` skills to the model, and enable
 goes through the host API (`zemi.skills.enable`, user or builtin origin).
 Skills installed from
 outside the user's own hands (plugin manager, M5) land disabled until
-reviewed, like plugins; authored skills written by the user in their own
-config dir start enabled.
+reviewed, like plugins; user skills, written in the user's own
+config dir, start enabled.
 
 A trusted project's skills (`.agents/skills` at the repository root, the
 dir other agents read) join
@@ -2193,7 +2193,7 @@ and the `zemi.health`, `zemi.composer` and `zemi.json` namespaces.
   `/reflect`, session summaries; remaining built-in tools (`fetch`,
   `todos`, `question`, `web_search`, `job_*`, `skill`). Namespace:
   `zemi.memory`.
-- **M3, learn to act**: skills (authored), config
+- **M3, learn to act**: skills (user), config
   revision pipeline with diff review + git, validation (smoke-load),
   autonomy knobs, permanent-scope rules + `permissions.lua` (session
   rules ship in M1). Namespaces: `zemi.skills`, `zemi.learn`.

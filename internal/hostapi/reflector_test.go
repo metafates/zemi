@@ -410,7 +410,7 @@ func TestReflectPrompt(t *testing.T) {
 			writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".agents", "skills"), "lint", "project lint", "")
 			h.SetProjectTrusted(true)
 			writeSkill(t, h.recipesDir(), "rig", "recipe rig", "")
-			h.skillsReg.set([]skills.Skill{{Name: "cut-release", Description: "when cutting a release", Source: skills.Authored}}, map[string]bool{"cut-release": true})
+			h.skillsReg.set([]skills.Skill{{Name: "cut-release", Description: "when cutting a release", Source: skills.User}}, map[string]bool{"cut-release": true})
 		}, want: []string{"# Recipes and project skills\n- lint: project lint\n- rig: recipe rig"}, absent: []string{"cut-release"}},
 		{name: "an untrusted project's instruction files stay out", seed: func(t *testing.T, h *Host, sid string) {
 			if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("run make check before committing"), 0o644); err != nil {

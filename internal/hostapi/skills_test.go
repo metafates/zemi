@@ -22,7 +22,7 @@ import (
 )
 
 // newTestHostSkills boots a host with stores plus skill directories and
-// the path class real boot installs (authored skills are user origin).
+// the path class real boot installs (the config dir is user origin).
 func newTestHostSkills(t *testing.T) (*Host, *lua.Runtime) {
 	t.Helper()
 	h, r := newTestHostSkillsNoBoot(t)
@@ -72,8 +72,8 @@ func writeSkill(t *testing.T, base, name, description, hook string) {
 // skill index the model sees lists enabled skills only.
 func TestSkillsEnabledDefaults(t *testing.T) {
 	h, r := newTestHostSkills(t)
-	writeSkill(t, h.authoredSkillsDir(), "local-run", "run the local suite", "")
-	writeSkill(t, h.authoredSkillsDir(), "rare", "used once a year", "")
+	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
+	writeSkill(t, h.userSkillsDir(), "rare", "used once a year", "")
 	h.syncSkills()
 	if err := h.setSkillEnabled("rare", false); err != nil {
 		t.Fatal(err)
@@ -87,8 +87,8 @@ func TestSkillsEnabledDefaults(t *testing.T) {
 			end
 		end
 		assert(n == 2, "skills=" .. n)
-		assert(byName["local-run"].enabled == true, "authored must be enabled")
-		assert(byName["local-run"].source == "authored", "source=" .. tostring(byName["local-run"].source))
+		assert(byName["local-run"].enabled == true, "a user skill must be enabled")
+		assert(byName["local-run"].source == "user", "source=" .. tostring(byName["local-run"].source))
 		assert(byName["rare"].enabled == false, "disable did not stick")
 	`)
 	indexed := map[string]bool{}
@@ -104,7 +104,7 @@ func TestSkillsEnabledDefaults(t *testing.T) {
 // itself.
 func TestSkillItemsShowTheBody(t *testing.T) {
 	h, _ := newTestHostSkills(t)
-	writeSkill(t, h.authoredSkillsDir(), "local-run", "run the local suite", "")
+	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
 	h.syncSkills()
 	for _, it := range h.skillItems() {
 		m := it.(map[string]any)
@@ -124,7 +124,7 @@ func TestSkillItemsShowTheBody(t *testing.T) {
 // state, a project-origin chunk is refused, unknown names are refused.
 func TestSkillsEnableGate(t *testing.T) {
 	h, r := newTestHostSkills(t)
-	writeSkill(t, h.authoredSkillsDir(), "local-run", "run the local suite", "")
+	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
 	h.syncSkills()
 
 	runUser(t, r, `zemi.skills.disable("local-run")`)
@@ -146,22 +146,22 @@ func TestSkillsEnableGate(t *testing.T) {
 	`)
 }
 
-// TestSkillsAuthoredHooksStep covers the boot-window hook run: an enabled
-// authored skill's zemi-skill.lua runs in the authored hooks step. The
+// TestSkillsUserHooksStep covers the boot-window hook run: an enabled
+// user skill's zemi-skill.lua runs in the user hooks step. The
 // skill must exist before boot (production lays down dirs before boot).
-func TestSkillsAuthoredHooksStep(t *testing.T) {
+func TestSkillsUserHooksStep(t *testing.T) {
 	h, r := newTestHostSkillsNoBoot(t)
-	writeSkill(t, h.authoredSkillsDir(), "booted", "authored", `
-		zemi.command.add("booted-cmd", function() end, { desc = "from authored hook" })
+	writeSkill(t, h.userSkillsDir(), "booted", "user", `
+		zemi.command.add("booted-cmd", function() end, { desc = "from user hook" })
 	`)
 	h.syncSkills()
 	if err := r.Boot(context.Background(), []lua.BootStep{
-		h.NamespacesStep(), h.SkillsAuthoredHooksStep(),
+		h.NamespacesStep(), h.SkillsUserHooksStep(),
 	}); err != nil {
 		t.Fatalf("boot: %v", err)
 	}
 	if h.Commands.Lookup("booted-cmd") == nil {
-		t.Fatal("authored hook did not run in the boot window")
+		t.Fatal("user hook did not run in the boot window")
 	}
 }
 
@@ -210,7 +210,7 @@ func TestLearnProposalsAndDecide(t *testing.T) {
 // the request, enabled or not.
 func TestSkillsUse(t *testing.T) {
 	h, _ := newTestHostSkills(t)
-	writeSkill(t, h.authoredSkillsDir(), "local-run", "run the local suite", "")
+	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
 	h.syncSkills()
 	s := h.skillsReg.list()[slices.IndexFunc(h.skillsReg.list(), func(s skills.Skill) bool { return s.Name == "local-run" })]
 	msg, err := skillMessage(s, "make a landing page")
@@ -230,7 +230,7 @@ func TestSkillsUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := h.skillsCommand("use local-run"); err != nil && strings.Contains(err.Error(), "no skill") {
-		t.Errorf("disabled authored skill: err = %v", err)
+		t.Errorf("disabled user skill: err = %v", err)
 	}
 	if err := h.skillsCommand("use nothing"); err == nil || !strings.Contains(err.Error(), "no skill") {
 		t.Errorf("unknown skill: err = %v", err)
@@ -238,11 +238,11 @@ func TestSkillsUse(t *testing.T) {
 }
 
 // TestProjectSkills: a trusted project adds its skills to the index, an
-// authored skill keeps its name, a skill written later waits for the next
+// user skill keeps its name, a skill written later waits for the next
 // trust decision, and an untrusted project adds none.
 func TestProjectSkills(t *testing.T) {
 	h, _ := newTestHostSkills(t)
-	writeSkill(t, h.authoredSkillsDir(), "deploy", "the user's deploy", "")
+	writeSkill(t, h.userSkillsDir(), "deploy", "the user's deploy", "")
 	h.syncSkills()
 	root := h.Dirs.ProjectDir
 	writeSkill(t, filepath.Join(root, ".agents", "skills"), "deploy", "the project's deploy", "")
@@ -292,8 +292,8 @@ func TestSymlinkedSkillsDir(t *testing.T) {
 		classes = append(classes, lua.PathClass{Prefix: dir, Origin: lua.OriginUser})
 	}
 	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes}), log, config.NewStore(), dirs)
-	writeSkill(t, h.authoredSkillsDir(), "demo", "demo skill", "return {}")
-	if !h.inJail(filepath.Join(h.authoredSkillsDir(), "demo", "SKILL.md"), h.readJails()...) {
+	writeSkill(t, h.userSkillsDir(), "demo", "demo skill", "return {}")
+	if !h.inJail(filepath.Join(h.userSkillsDir(), "demo", "SKILL.md"), h.readJails()...) {
 		t.Error("a symlinked skills dir is outside the read jail")
 	}
 	hook, err := filepath.EvalSymlinks(filepath.Join(real, "demo", "zemi-skill.lua"))
@@ -310,8 +310,8 @@ func TestSymlinkedSkillsDir(t *testing.T) {
 // step naming a tool runs it in auto mode, where the user is asked every time.
 func TestRecipes(t *testing.T) {
 	h, _ := newTestHostSkills(t)
-	writeSkill(t, h.authoredSkillsDir(), "deploy", "the user's deploy", "")
-	writeSkill(t, h.authoredSkillsDir(), "ship", "the user's ship", "")
+	writeSkill(t, h.userSkillsDir(), "deploy", "the user's deploy", "")
+	writeSkill(t, h.userSkillsDir(), "ship", "the user's ship", "")
 	h.syncSkills()
 	writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".agents", "skills"), "lint", "project lint", "")
 	dir := h.recipesDir()
@@ -352,7 +352,7 @@ func TestRecipes(t *testing.T) {
 		{name: "any file there is scrubbed, whatever its name", prompt: late, tool: written, call: "write", input: strings.Replace(tok, "SKILL.md", "skill.md", 1), out: "redacted lines [6]"},
 		{name: "the redacted file is not stale", prompt: late, tool: written, call: "edit", input: string(edit), out: "tok saved"},
 		{name: "a name the directory does not have", prompt: late, tool: written, call: "write", input: md("bad", "other", "x"), out: "will not load: bad: frontmatter name"},
-		{name: "a name an authored skill has", prompt: late, tool: written, call: "write", input: md("ship", "ship", "x"), out: "another skill is named ship"},
+		{name: "a name an user skill has", prompt: late, tool: written, call: "write", input: md("ship", "ship", "x"), out: "another skill is named ship"},
 		{name: "a session that fetched says so", do: func() { h.recordToolCall(sid, StreamTool{ID: "c1", Name: "fetch"}, true) }, prompt: late, tool: written, call: "write", input: md("bad", "other", "y"), out: "will not load", outside: true},
 		{name: "only a recipe is deleted", do: func() {
 			if h.skillsCommand("delete ship") == nil || h.skillsCommand("delete lint") == nil {
@@ -415,7 +415,7 @@ func TestRecipes(t *testing.T) {
 	if !strings.Contains(h.environmentPrompt(), "Recipes: "+dir+"\n") {
 		t.Error("the environment of a trusted project names the recipes dir")
 	}
-	for _, d := range []string{filepath.Join(dir, "late"), filepath.Join(dir, "ship"), filepath.Join(h.authoredSkillsDir(), "ship"), filepath.Join(h.Dirs.ProjectDir, ".agents", "skills", "lint")} {
+	for _, d := range []string{filepath.Join(dir, "late"), filepath.Join(dir, "ship"), filepath.Join(h.userSkillsDir(), "ship"), filepath.Join(h.Dirs.ProjectDir, ".agents", "skills", "lint")} {
 		if _, err := os.Stat(d); (err == nil) == (d == filepath.Join(dir, "late")) {
 			t.Errorf("after the deletes: stat %s: %v", d, err)
 		}

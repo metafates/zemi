@@ -127,7 +127,7 @@ func run(args []string) int {
 		soft(host.ProjectPermissionsStep()),
 		soft(host.PluginsStep()),
 		soft(lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
-		soft(host.SkillsAuthoredHooksStep()),
+		soft(host.SkillsUserHooksStep()),
 		soft(projectInitStep(host, dirs)),
 		host.MarkdownCommandsStep(),
 		readyStep(host, app != nil),
