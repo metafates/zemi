@@ -421,3 +421,15 @@ func TestRecipes(t *testing.T) {
 		}
 	}
 }
+
+func TestListDesc(t *testing.T) {
+	for in, want := range map[string]string{
+		"Load before running the tests.": "load before running the tests",
+		"LSP servers for Go":             "LSP servers for Go",
+		"":                               "",
+	} {
+		if got := listDesc(in); got != want {
+			t.Errorf("listDesc(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

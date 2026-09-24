@@ -692,7 +692,7 @@ func (h *Host) openWorkflows() error {
 		}
 		items = append(items, map[string]any{
 			"text":    w.Name,
-			"desc":    w.Description,
+			"desc":    listDesc(w.Description),
 			"section": sourceSection(w.Source),
 			"detail":  detail,
 			"actions": []any{

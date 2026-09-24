@@ -17,6 +17,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
@@ -490,6 +492,17 @@ func sourceSection(source string) string {
 	return strings.ToUpper(source[:1]) + source[1:]
 }
 
+// listDesc is a row's desc from a description written for the model: a
+// fragment, lowercase and with no final period, like every list's.
+func listDesc(s string) string {
+	s = strings.TrimSuffix(strings.TrimSpace(s), ".")
+	r, n := utf8.DecodeRuneInString(s)
+	if next, _ := utf8.DecodeRuneInString(s[n:]); n > 0 && !unicode.IsUpper(next) { // an acronym stays
+		s = string(unicode.ToLower(r)) + s[n:]
+	}
+	return s
+}
+
 // sortBySource puts rows in the section order every list shares: user,
 // builtin, plugin, project, then recipe.
 func sortBySource[T any](rows []T, source func(T) string) {
@@ -505,7 +518,7 @@ func (h *Host) skillItems() []any {
 	items := make([]any, 0, len(all))
 	for _, s := range all {
 		toggle := "skills toggle " + s.Name
-		item := map[string]any{"text": s.Name, "desc": s.Description, "section": sourceSection(string(s.Source))}
+		item := map[string]any{"text": s.Name, "desc": listDesc(s.Description), "section": sourceSection(string(s.Source))}
 		var actions []any
 		item["key"] = "on"
 		switch {

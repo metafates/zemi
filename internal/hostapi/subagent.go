@@ -943,7 +943,7 @@ func (h *Host) openAgents() error {
 		}
 		items = append(items, map[string]any{
 			"text":    d.Name,
-			"desc":    d.Description,
+			"desc":    listDesc(d.Description),
 			"section": sourceSection(d.Source) + " agents", // apart from the runs above
 			"detail": fmt.Sprintf("%s\n\nsource: %s\nmodel: %s\ntools: %s\n\nAdd your own as agents/<name>.md in %s or .agents.",
 				d.Description, h.sourceOf(d.Source, d.Path), model, tools, TildePath(h.Dirs.ConfigHome)),
