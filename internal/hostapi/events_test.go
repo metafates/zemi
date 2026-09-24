@@ -3,7 +3,10 @@ package hostapi
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -160,6 +163,32 @@ func TestToolPreOnce(t *testing.T) {
 		if d, _, _, _ := pre("bash", map[string]any{"command": "ls"}); d != want {
 			t.Fatalf("call %d: decision %q, want %q", i+1, d, want)
 		}
+	}
+}
+
+// TestToolPostOnceOverlap: two tool calls whose tool.post runs overlap each
+// hold the handler list, and a once handler still runs for one of them.
+func TestToolPostOnceOverlap(t *testing.T) {
+	h, r := newTestHost(t)
+	var both sync.WaitGroup
+	both.Add(2)
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		both.Done()
+		both.Wait() // both calls are past their Handlers copy
+	}))
+	defer srv.Close()
+	runUser(t, r, fmt.Sprintf(`
+		zemi.permission.rule.add({ subject = "lua.http.get", pattern = "%[1]s*", decision = "allow", match = "%[1]s/x" })
+		zemi.event.on("tool.post", function() zemi.http.get("%[1]s/x"):wait() end)
+		zemi.event.on("tool.post", function(ev) return { output = ev.output .. " once" } end, { once = true })`, srv.URL))
+	outs := make([]string, 2)
+	var wg sync.WaitGroup
+	for i := range outs {
+		wg.Go(func() { outs[i] = h.toolPost(t.Context(), "echo", map[string]any{}, true, "x", nil, 0) })
+	}
+	wg.Wait()
+	if n := strings.Count(strings.Join(outs, ","), "once"); n != 1 {
+		t.Fatalf("outputs %q: the once handler ran %d times", outs, n)
 	}
 }
 

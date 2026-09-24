@@ -504,8 +504,8 @@ func (h *Host) toolPost(ctx context.Context, name string, input map[string]any, 
 	defer cancel()
 	out := output
 	for _, hd := range handlers {
-		if hd.Once {
-			h.Events.drop(hd)
+		if hd.Once && !h.Events.drop(hd) {
+			continue
 		}
 		payload["output"] = out
 		var rewrite *string

@@ -428,17 +428,20 @@ func (r *EventRegistry) Remove(id string, caller lua.Origin) (bool, error) {
 	return false, nil
 }
 
-// drop removes one handler by identity (once handlers).
-func (r *EventRegistry) drop(h *EventHandler) {
+// drop removes one handler by identity and reports whether it was still
+// registered: a once handler runs only for the caller that removed it, since
+// overlapping emits each hold a copy of the list.
+func (r *EventRegistry) drop(h *EventHandler) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	list := r.handlers[h.Event]
 	for i, hd := range list {
 		if hd == h {
 			r.handlers[h.Event] = append(list[:i:i], list[i+1:]...)
-			return
+			return true
 		}
 	}
+	return false
 }
 
 func (r *EventRegistry) Purge() {

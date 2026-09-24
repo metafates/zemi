@@ -902,8 +902,8 @@ func eventTable(name, from string, payload map[string]any) map[string]any {
 // at start and returns its first result. A handler that ran past the
 // deadline reports timedOut and no result, even if it returned.
 func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any, deadline time.Duration) (ret glua.LValue, timedOut bool, err error) {
-	if hd.Once {
-		h.Events.drop(hd)
+	if hd.Once && !h.Events.drop(hd) {
+		return glua.LNil, false, nil
 	}
 	defer h.RT.PushFrame(L, hd.Origin, hd.Path)()
 	handlerCtx, restore := setHandlerContext(L, deadline)
