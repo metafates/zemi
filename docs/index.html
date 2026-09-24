@@ -95,18 +95,17 @@ footer { margin-top: 3rem; color: var(--dim); }
 <div class="cmd"><pre><span class="dim">$ </span>go install github.com/metafates/zemi@latest
 <span class="dim">$ </span>export ANTHROPIC_API_KEY=...   <span class="dim"># or OPENAI_API_KEY, ...</span>
 <span class="dim">$ </span>zemi</pre></div>
-<p>Go 1.27. Local models and gateways go in <code>~/.config/zemi/init.lua</code>.</p>
 </section>
 
 <section class="sec">
 <h2>it learns</h2>
-<p>When a session closes, zemi reads it back and keeps what would have cost a question next time: how you test, how you commit, what bit you. A memory about you must quote you. A procedure it worked out for a repo becomes a recipe it reuses there.</p>
-<p><code>/memory</code> shows what it kept. <code>/rewind</code> takes a turn back, files and lessons included.</p>
+<p>After a session, zemi keeps what would have cost a question next time: how you test, how you commit. A memory about you must quote you. A procedure it worked out for a repo becomes a recipe there.</p>
+<p><code>/memory</code> shows what it kept. <code>/rewind</code> takes a turn back, lessons included.</p>
 </section>
 
 <section class="sec">
-<h2>tokens go to the code</h2>
-<p>The prompt is pinned per session, so the provider's cache hits every turn. Skills are an index until one is needed. Past ten MCP tools, they load by search. Titles, summaries and the learning pass run on a small model.</p>
+<h2>few tokens</h2>
+<p>The prompt is pinned per session, so the provider cache hits every turn. Skills are an index until one is used. Past ten MCP tools, they load by search. Titles, summaries and the learning pass run on a small model.</p>
 </section>
 
 <section class="sec">
@@ -123,7 +122,7 @@ footer { margin-top: 3rem; color: var(--dim); }
 <li>the network, leaving the sandbox</li>
 </ul>
 </div>
-<p>Seatbelt on macOS, Landlock on Linux. Your keys and shell history are hidden from it. <kbd>ctrl+y</kbd> is yolo. <kbd>ctrl+t</kbd> is the planner, which changes nothing until you approve.</p>
+<p>Seatbelt on macOS, Landlock on Linux. Keys and shell history are hidden. <kbd>ctrl+y</kbd> is yolo. <kbd>ctrl+t</kbd> is the planner: it reads and proposes, you approve.</p>
 </section>
 
 <section class="sec">
