@@ -192,7 +192,7 @@ A region with an id and `focusable = true` can take the keys: `zemi.ui.focus.set
 A plugin is a directory shaped like the config dir, in the local plugins directory the system prompt names. At startup zemi runs every enabled plugin's `init.lua`, sorted by name, before the user's init.lua:
 
 ```
-<name>/                  the plugin's name: lowercase letters, digits, ".", "_", "-", starting with a letter or digit
+<name>/                  the plugin's name: lowercase letters, digits, "_", "-", starting with a letter or digit
   init.lua               runs as the `plugin` origin; line 1 "-- <what it does>" is its /plugins description
   lua/<name>/init.lua    require("<name>") from the plugin and the user's init.lua
   skills/  agents/  commands/  workflows/    as in the config dir; the user's and zemi's own win a

@@ -65,6 +65,7 @@ func TestPlugins(t *testing.T) {
 		{name: "a taken name", args: []string{"install", "file://" + tagged}, want: "already named x", err: true},
 		{name: "a local plugin's name", args: []string{"install", "file://" + tagged, "loc"}, want: "already named loc", err: true},
 		{name: "a name that climbs", args: []string{"install", "file://" + tagged, "../x"}, want: "not a plugin name", err: true},
+		{name: "a dotted name, which require cannot reach", args: []string{"install", "file://" + tagged, "x.zemi"}, want: "not a plugin name", err: true},
 		{name: "a name like a flag", args: []string{"install", "file://" + tagged, "-x"}, want: "not a plugin name", err: true},
 		{name: "a URL like a flag", args: []string{"install", "--upload-pack=x"}, want: "not a git URL", err: true},
 		{name: "a remote helper", args: []string{"install", "ext::sh -c touch% " + marker, "e"}, want: "not allowed", err: true},

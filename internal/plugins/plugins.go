@@ -38,8 +38,9 @@ type Plugin struct {
 }
 
 var (
-	// a dot dir, such as a clone in flight, is never a plugin
-	nameRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+	// a dot dir, such as a clone in flight, is never a plugin, and no name
+	// holds a dot, which require("<name>") would read as a directory
+	nameRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 	semverRe = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)$`)
 )
 
@@ -348,7 +349,7 @@ func highest(tags string, major int) (string, [3]int) {
 // free refuses a bad name and one a local or installed plugin already has.
 func free(d config.Dirs, name string) error {
 	if !nameRe.MatchString(name) {
-		return fmt.Errorf("%q is not a plugin name: lowercase letters, digits, '.', '_' and '-'", name)
+		return fmt.Errorf("%q is not a plugin name: lowercase letters, digits, '_' and '-'", name)
 	}
 	for _, kind := range []string{"local", "installed"} {
 		if dir := filepath.Join(d.PluginsRoot(), kind, name); exists(dir) {
