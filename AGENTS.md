@@ -151,8 +151,8 @@ trust step must not leave the old decision in force). `Host.ProjectTrusted()` ga
 `.agents` (`Dirs.ProjectConfigDir`, at the repo root only: init.lua, lua, skills, agents,
 commands, workflows), instruction files (AGENTS.md, else CLAUDE.md, per directory) and profile `context.files`,
 project skills, every language server, the Lua tool's ask, the read jail reaching past the
-launch dir to `Dirs.RepoRoot()`, and what auto mode and read-only agents settle. `Host.git` and the
-plugin manager shell out to the `git` binary (no git library in go.mod) through `proc.Git`,
+launch dir to `Dirs.RepoRoot()`, and what auto mode and read-only agents settle. `Host.git` and
+`internal/plugins` shell out to the `git` binary (no git library in go.mod) through `proc.Git`,
 with `GIT_CONFIG_NOSYSTEM=1`, and switch off fsmonitor, hooks, submodule recursion, LFS
 smudging, every transport but https, ssh and file, and repo-local filter drivers (a plugin
 clone's global ones too) in every repository, trusted or not: a sandboxed command can plant a
