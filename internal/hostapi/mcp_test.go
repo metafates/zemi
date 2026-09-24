@@ -120,8 +120,8 @@ func TestMCPBridge(t *testing.T) {
 	if resp := run(0, `{"text":"hi"}`); !resp.IsError || !strings.Contains(resp.Content, "sign in again") {
 		t.Fatalf("call after the sign-in expired = %+v", resp)
 	}
-	if s, _ := h.mcpServerNamed("fake"); s.currentClient() != nil || s.status != "needs sign-in" {
-		t.Fatalf("status after the sign-in expired = %q", s.status)
+	if s, _ := h.mcpServerNamed("fake"); s.currentClient() != nil || s.status != "failed" || s.err != errSignIn {
+		t.Fatalf("status after the sign-in expired = %q, %q", s.status, s.err)
 	}
 	if items, _ := ui.opened[0].Reload(); !strings.Contains(fmt.Sprint(items[0].(map[string]any)["actions"]), "hotkey:s run:mcp sign-in fake") {
 		t.Errorf("the rebuilt /mcp row offers no [s] Sign in: %v", items)

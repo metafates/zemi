@@ -211,15 +211,18 @@ func (h *Host) checkToolNames(s *mcpServer, list []mcp.Tool) {
 	}
 }
 
+// errSignIn is the error of a server that waits for the user to sign in.
+const errSignIn = "needs sign-in"
+
 // needsSignIn marks s as waiting for the user to sign in, unless it was
 // stopped (replaced or reloaded away) or already waits.
 func (s *mcpServer) needsSignIn(h *Host) {
 	s.mu.Lock()
-	if s.stopped || s.status == "needs sign-in" {
+	if s.stopped || s.err == errSignIn {
 		s.mu.Unlock()
 		return
 	}
-	s.status, s.err = "needs sign-in", ""
+	s.status, s.err = "failed", errSignIn
 	s.mu.Unlock()
 	h.Notify("warn", s.name+" needs sign-in", "open /mcp")
 	h.refresh()
@@ -742,6 +745,9 @@ func (h *Host) mcpItems() []any {
 		all := len(s.tools)
 		s.mu.Unlock()
 		desc := status
+		if errText == errSignIn {
+			desc += " · " + errSignIn
+		}
 		if status == "ready" {
 			desc = fmt.Sprintf("ready · %d %s", len(tools), plural(len(tools), "tool", "tools"))
 			if len(tools) < all {
@@ -766,7 +772,7 @@ func (h *Host) mcpItems() []any {
 			detail += "\nerror: " + strings.TrimPrefix(errText, "mcp: ")
 		}
 		actions := []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "mcp restart " + s.name}}
-		if status == "needs sign-in" {
+		if errText == errSignIn {
 			actions = append(actions, map[string]any{"text": "Sign in", "hotkey": "s", "run": "mcp sign-in " + s.name})
 		}
 		if _, err := os.Stat(h.mcpAuth(s).Path); s.spec.URL != "" && err == nil {

@@ -2031,7 +2031,7 @@ function zemi.skills.disable(name) end
 
 ---@class zemi.MCPInfo
 ---@field name string
----@field status string "starting", "ready", "needs sign-in", "failed" or "stopped".
+---@field status string "starting", "ready", "failed" or "stopped"; a server waiting for a sign-in is "failed" with the error "needs sign-in".
 ---@field error string
 ---@field tools string[] The tools the model gets, after enabled_tools and disabled_tools.
 
@@ -2059,7 +2059,7 @@ function zemi.mcp.list() end
 ---@field name string
 ---@field command string
 ---@field filetypes string
----@field status string "available" (starts on its first file), "starting", "ready", "failed" or "stopped".
+---@field status string "off" (starts on its first file), "starting", "ready", "failed" or "stopped".
 ---@field error string
 
 ---@class zemi.lsp

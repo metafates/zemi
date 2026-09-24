@@ -604,7 +604,7 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 }
 
 // lspRows lists the servers this project can use with their state: running
-// ones first, then those that would start on their first file.
+// ones first, then those that would start on their first file ("off").
 func (h *Host) lspRows() []map[string]any {
 	defs := h.lspDefs("")
 	h.lsp.mu.Lock()
@@ -612,7 +612,7 @@ func (h *Host) lspRows() []map[string]any {
 	var out []map[string]any
 	for _, d := range defs {
 		if _, running := h.lsp.running[d.Name]; !running {
-			out = append(out, map[string]any{"name": d.Name, "command": d.Command, "status": "available", "error": "", "filetypes": strings.Join(d.Exts, " ")})
+			out = append(out, map[string]any{"name": d.Name, "command": d.Command, "status": "off", "error": "", "filetypes": strings.Join(d.Exts, " ")})
 		}
 	}
 	for name, p := range h.lsp.running {
@@ -635,7 +635,7 @@ func (h *Host) lspRows() []map[string]any {
 	}
 	slices.SortFunc(out, func(a, b map[string]any) int {
 		avail := func(r map[string]any) int {
-			if r["status"] == "available" {
+			if r["status"] == "off" {
 				return 1
 			}
 			return 0
@@ -690,7 +690,7 @@ func (h *Host) lspItems() []any {
 			detail += "\nerror: " + e
 		}
 		item := map[string]any{"text": name, "desc": status + " · " + fmt.Sprint(row["filetypes"]), "detail": detail}
-		if status != "available" {
+		if status != "off" {
 			item["actions"] = []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "lsp restart " + name}}
 		}
 		items = append(items, item)
