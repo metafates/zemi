@@ -1202,14 +1202,14 @@ provenance string.
   an item's `copy` makes enter copy that text and keep the list open,
   and the toggle-list `reload` `/skills` uses: a function returning the
   items, run with `on_select` on the UI worker after enter or space while
-  the list stays open, and again when an overlay stacked on it closes, so
-  a picker opened from it shows its pick at once); Go still draws the box, the origin badge, the
+  the list stays open, and again when an overlay stacked on it closes, a
+  detail view only after it ran something, so a picker opened from it shows its pick at once); Go still draws the box, the origin badge, the
   filter and the hints, where a list's own `keys` are named. Opening the id
   of an open overlay replaces it in place, keeping selection and filter, when
   the opener may close it (user, builtin or its own origin). A detail view's rows are actions
   (`fill`, `run`, or an `id` handed to the list's `on_action`), so they draw as
   the prompts' buttons ("[r] Read it"), keyed by their `hotkey` or their
-  position. A Go-built row may name its own enter verb (`verb`, "open" on a
+  position. A row may name its own enter verb (`verb`, "open" on a
   row that opens another screen): the hint says it, and space, which toggles
   a toggle list's rows, passes it by. A detail body's `status:` line colors
   the status words every screen shares: `starting`, `ready`, `failed`,

@@ -135,8 +135,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 	a.overlays = append(a.overlays, a.overlayState(o))
 }
 
-// mayClose reports whether origin may close (or replace) o: user and
-// builtin code, or the origin that opened it.
+// mayClose also gates replacing o by id.
 func mayClose(origin lua.Origin, o hostapi.Overlay) bool {
 	return origin == lua.OriginUser || origin == lua.OriginBuiltin || origin == o.Origin
 }
@@ -148,11 +147,14 @@ func (a *App) overlayIndex(id string) int {
 }
 
 // replaceOverlay swaps o in at stack index i, keeping the selection, the
-// filter, the scroll and the box's size.
+// filter and the box's size, and the scroll while the body is the same.
 func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	old := a.overlays[i]
 	st := a.overlayState(o)
-	st.listFilter, st.size, st.body = old.listFilter, old.size, old.body
+	st.listFilter, st.size = old.listFilter, old.size
+	if st.o.Body == old.o.Body {
+		st.body = old.body
+	}
 	st.refilter()
 	a.overlays[i] = st
 }
@@ -294,6 +296,8 @@ func (a *App) detailAction(idx int) {
 			return
 		}
 	case rowRun(d.o, m) == "" && fill == "":
+		a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
+		return
 	case fill == "" && p.Reload != nil:
 		a.runOverlayRow(d.o, idx)
 	default:
@@ -416,7 +420,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		}
 	case "esc":
 		if st.back {
-			a.closeOverlayByID(o.ID)
+			a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
 			return nil
 		}
 		a.cancelOverlay(o)

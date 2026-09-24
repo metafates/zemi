@@ -253,7 +253,7 @@ func TestOverlayNavigation(t *testing.T) {
 	detail := func(actions ...any) map[string]any {
 		return map[string]any{"text": "err", "desc": "short", "detail": "line one\nline two", "actions": actions}
 	}
-	reloads, spaced := 0, 0
+	reloads, spaced, backs := 0, 0, 0
 	for _, c := range []struct {
 		name  string
 		o     hostapi.Overlay
@@ -298,6 +298,12 @@ func TestOverlayNavigation(t *testing.T) {
 					return fmt.Sprintf("overlays=%d selected=%d", len(a.overlays), a.overlays[0].selected)
 				}
 				return ""
+			}},
+		{"going back from a toggle list's detail, by esc or an inert action, does not rebuild it",
+			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Nothing"})}, Reload: func() ([]any, [][]hostapi.Segment) { backs++; return nil, nil }},
+			[]string{"enter", "esc", "enter", "enter"},
+			func(a *App) string {
+				return map[bool]string{false: fmt.Sprintf("overlays=%d rebuilds=%d", len(a.overlays), backs)}[len(a.overlays) == 1 && backs == 0]
 			}},
 		{"the detail view has a breadcrumb title",
 			hostapi.Overlay{Title: "Errors", Items: []any{detail()}}, []string{"enter"},
