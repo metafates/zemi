@@ -35,6 +35,11 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "sub"), filepath.Join(h.Dirs.ProjectDir, "out")); err != nil {
 		t.Fatal(err)
 	}
+	// a symlinked .agents: its target runs as project config too
+	os.Mkdir(filepath.Join(h.Dirs.ProjectDir, "cfg"), 0o700)
+	if err := os.Symlink("cfg", filepath.Join(h.Dirs.ProjectDir, ".agents")); err != nil {
+		t.Fatal(err)
+	}
 	// git init --separate-git-dir
 	os.MkdirAll(filepath.Join(h.Dirs.ProjectDir, "gitstore", "hooks"), 0o755)
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, ".git"), []byte("gitdir: gitstore\n"), 0o644)
@@ -55,6 +60,7 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".agents", "init.lua"), false, false},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "pkg", ".agents", "init.lua"), false, false},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".agents", "skills", "x", "SKILL.md"), true, false}, // runs nothing
+		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "cfg", "init.lua"), false, false},
 		{"fs.read", secret, false, false},
 		{"fs.read", link, false, false},
 		{"fs.read", "/etc/passwd", false, false},

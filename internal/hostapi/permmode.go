@@ -476,7 +476,8 @@ func (h *Host) protectedWhy(p string) string {
 	d, base := h.Dirs, filepath.Base(p)
 	const git = "which decides what git runs"
 	switch {
-	case inDirNamed(p, ".agents/init.lua", ".agents/lua"):
+	case inDirNamed(p, ".agents/init.lua", ".agents/lua"),
+		h.inJail(p, filepath.Join(d.ProjectConfigDir(), "init.lua"), filepath.Join(d.ProjectConfigDir(), "lua")):
 		return "this changes the Lua in .agents, which zemi runs"
 	case inDirNamed(p, ".git"):
 		return "this changes .git, " + git
@@ -547,10 +548,13 @@ func inDirNamed(p string, names ...string) bool {
 	if err != nil {
 		return true
 	}
+	wants := make([][]string, len(names))
+	for i, n := range names {
+		wants[i] = strings.Split(n, "/")
+	}
 	// EqualFold also matches .GIT on a case-sensitive volume, which only asks more
 	named := func(parts []string) bool {
-		return slices.ContainsFunc(names, func(n string) bool {
-			want := strings.Split(n, "/")
+		return slices.ContainsFunc(wants, func(want []string) bool {
 			return len(parts) >= len(want) && slices.EqualFunc(parts[:len(want)], want, strings.EqualFold)
 		})
 	}
