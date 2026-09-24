@@ -1240,7 +1240,7 @@ function zemi.log.list() end
 ---@field id string "provider/model".
 ---@field display string
 ---@field has_key boolean
----@field roles zemi.ModelRole[] The roles that run on this model, "chat" as the conversation does (a profile's model included).
+---@field roles zemi.ModelRole[] The roles that run on this model. "chat" is models.chat, also while the active profile runs the conversation on its own model.
 
 ---@class zemi.provider
 ---@field kind zemi.ProviderKind
@@ -1278,8 +1278,8 @@ function zemi.model.set(id) end
 ---@class zemi.ModelAsk
 ---@field prompt string
 ---@field system? string
----@field model? string A role name or a "provider/model" id; "chat" by default.
----@field max_tokens? integer 1024 by default.
+---@field model? string A role name or a "provider/model" id; "chat" (models.chat, not a profile's own model) by default.
+---@field max_output? integer The reply's token cap, 1024 by default.
 ---@field on_done? fun(text: string?, err: string?) Runs as a task when the reply is in.
 
 ---@class zemi.ModelHandle

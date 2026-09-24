@@ -847,7 +847,7 @@ zemi.model.list()                    -- { { id = "anthropic/...", roles = { "cha
 zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes models.chat
 zemi.model.pick("titles")            -- open a role's picker (returns at once; default chat)
 local h = zemi.model.ask({ prompt = "...", system = "...", model = "titles",
-                           max_tokens = 1024, on_done = function(text, err) end })
+                           max_output = 1024, on_done = function(text, err) end })
 h:wait()                             -- text, or nil, err; suspends the task (§4)
 h:cancel()
 -- Models are roles: models.chat runs the conversation, and models.agents,

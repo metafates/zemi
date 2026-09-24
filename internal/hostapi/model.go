@@ -129,7 +129,7 @@ func (h *Host) modelAsk(L *glua.LState) int {
 		h.luaGate(L, "lua.model.ask", id)
 	}
 	maxOut := int64(1024)
-	if n, ok := spec.RawGetString("max_tokens").(glua.LNumber); ok && n > 0 {
+	if n, ok := spec.RawGetString("max_output").(glua.LNumber); ok && n > 0 {
 		maxOut = int64(n)
 	}
 	system := rawString(spec, "system")
