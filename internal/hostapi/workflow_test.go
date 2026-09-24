@@ -201,6 +201,15 @@ func TestSavedWorkflows(t *testing.T) {
 	if _, err := h.workflowSource("nope"); err == nil || !strings.Contains(err.Error(), "have review") {
 		t.Fatalf("missing workflow err = %v", err)
 	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.openWorkflows(); err != nil {
+		t.Fatal(err)
+	}
+	acts := fmt.Sprint(ui.opened[0].Items[0].(map[string]any)["actions"])
+	if acts != "[map[hotkey:r run:workflow review text:Run] map[fill:/workflow review  hotkey:a text:Run with arguments]]" {
+		t.Fatalf("workflow actions: %s", acts)
+	}
 }
 
 func TestAgentsOverlayConfigDir(t *testing.T) {

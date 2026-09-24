@@ -468,7 +468,7 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 }
 
 // TestAgentsListsJobs: /agents shows a model's background job with its
-// output and stops it through the Stop action's command.
+// output and stops it through the [s] Stop action's command.
 func TestAgentsListsJobs(t *testing.T) {
 	h, r := newTestHost(t)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
@@ -494,7 +494,7 @@ func TestAgentsListsJobs(t *testing.T) {
 			row = m
 		}
 	}
-	if !strings.Contains(fmt.Sprint(row["detail"]), "up") || !strings.Contains(fmt.Sprint(row["actions"]), "agents kill "+id) {
+	if !strings.Contains(fmt.Sprint(row["detail"]), "up") || !strings.Contains(fmt.Sprint(row["actions"]), "hotkey:s run:agents kill "+id) {
 		t.Fatalf("job row = %v", row)
 	}
 	if err := agents.GoFn(h, "kill "+id); err != nil {

@@ -916,7 +916,7 @@ func (h *Host) openAgents() error {
 			"detail":  j.Name + "\n" + j.Status() + "\n\n" + cmp.Or(shortOutput(j.Output()), "(no output)"),
 		}
 		if j.Running() {
-			item["actions"] = []any{map[string]any{"text": "Stop", "run": "agents kill " + j.ID}}
+			item["actions"] = []any{map[string]any{"text": "Stop", "hotkey": "s", "run": "agents kill " + j.ID}}
 		}
 		items = append(items, item)
 	}

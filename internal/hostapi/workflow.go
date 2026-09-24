@@ -687,13 +687,12 @@ func (h *Host) openWorkflows() error {
 			"section": sourceSection(w.Source),
 			"detail":  detail,
 			"actions": []any{
-				map[string]any{"text": "Run", "run": "workflow " + w.Name},
-				map[string]any{"text": "Run with arguments", "fill": "/workflow " + w.Name + " "},
+				map[string]any{"text": "Run", "hotkey": "r", "run": "workflow " + w.Name},
+				map[string]any{"text": "Run with arguments", "hotkey": "a", "fill": "/workflow " + w.Name + " "},
 			},
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items,
-		Empty: "No saved workflows. Add workflows/<name>.lua to " + TildePath(h.Dirs.ConfigHome) + " or .agents."})
+	ui.OpenOverlay(Overlay{ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items})
 	return nil
 }
 
