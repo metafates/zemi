@@ -132,6 +132,9 @@ func (tr *taskRun) run(L *glua.LState) ([]any, error) {
 	g.tasks[tr.th] = tr
 	st, rets, err := Resume(L, tr.th, fn, args...)
 	delete(g.tasks, tr.th)
+	if ae, ok := errors.AsType[*glua.ApiError](err); ok && ae.StackTrace == "" {
+		ae.StackTrace = traceback(tr.th) // the one PCall would give
+	}
 	switch {
 	case err != nil:
 		tr.wait = nil
@@ -192,7 +195,7 @@ func InGoCall(L *glua.LState) bool {
 	}
 }
 
-// Resume resumes th from L. A raise comes back with th's traceback, and a
+// Resume resumes th from L. A raise comes back without a traceback, and a
 // VM panic (a yield that unwound a Go library callback) as an error, with
 // L's stack and current thread put back so L stays usable.
 func Resume(L, th *glua.LState, fn *glua.LFunction, args ...glua.LValue) (st glua.ResumeState, vals []glua.LValue, err error) {
@@ -212,9 +215,6 @@ func Resume(L, th *glua.LState, fn *glua.LFunction, args ...glua.LValue) (st glu
 		}
 	}()
 	st, err, vals = L.Resume(th, fn, args...)
-	if ae, ok := errors.AsType[*glua.ApiError](err); ok && ae.StackTrace == "" {
-		ae.StackTrace = traceback(th)
-	}
 	return st, vals, err
 }
 

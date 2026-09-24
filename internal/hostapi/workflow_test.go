@@ -94,8 +94,8 @@ func TestWorkflowRun(t *testing.T) {
 			want:   "{\n  \"n\": 2\n}",
 		},
 		{
-			name:   "failed branch reports through errs",
-			script: `local out, errs = parallel({function() return agent("ok") end, function() local r, e = agent("fail") return r or error(e) end}) return out[1] .. " " .. tostring(errs ~= nil and errs[2] ~= nil)`,
+			name:   "failed branch reports through errs without a traceback",
+			script: `local out, errs = parallel({function() return agent("ok") end, function() local r, e = agent("fail") return r or error(e) end}) return out[1] .. " " .. tostring(errs ~= nil and errs[2] ~= nil and not errs[2]:find("traceback", 1, true))`,
 			want:   "ok! true",
 		},
 		{
