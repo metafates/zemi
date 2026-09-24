@@ -124,7 +124,8 @@ whole, `zemi.provider.del` drops one and `providers.builtin = false` (read once 
 all of them. A `models.chat` config leaves unset runs `Registry.Default`: the first user-added provider's
 default model, else the first builtin's in catalog order (anthropic, openai, gemini first).
 Config reload is not fsnotify:
-`watchConfig` walks the config trees once a second (past dot-directories and `node_modules`)
+`watchConfig` walks the config trees once a second (past dot-directories and `node_modules`),
+plus the local plugins, the plugins' `disabled` file and each clone's git index (`pluginRoots`),
 and reloads when a fingerprint moved and no turn is active; an untrusted project's `.agents` is not watched (a trusted one's is, `worktrees` aside). A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`) and a key the new config writes fewer
 times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, `/profile`, the mode
@@ -271,17 +272,19 @@ Rules `(subject, pattern, decision, not_match?, principal?)`, subjects like `too
 `fs.read`, `fs.write`, `net.<host>`, `lua.<ns.call>`. Ordering: deny > ask > allow; within one
 decision, fewest wildcards then longest literal prefix wins. A `not_match` hit falls through
 and **forces ask**. The default when nothing matches is `Store.Default` (host wires
-`fsDefault`: jail reads allow except secret-shaped paths, writes ask) and finally ask - there
+`fsDefault`: jail reads and the model's reads of the local plugins allow except secret-shaped
+paths, writes ask) and finally ask - there
 is no fail-open path. New host-API side effects need the same `lua.` subject.
 
 `permissions.mode` (internal/hostapi/permmode.go) only answers asks that survive the rules and
 the `permission.request` veto, and it is deterministic: no model screens anything. `yolo`
 allows, an ask a rule asked for included (an `ask` rule, a `not_match` exclusion:
 `Request.Explicit`, which `auto` and a mode's own rules leave to the user). `auto` settles what `autoLocal` covers - reads and edits **inside the jail** that are
-not secret-shaped, `tool.workflow` scripts (each agent they start is gated), bash commands
+not secret-shaped (reads of the local plugins too), `tool.workflow` scripts (each agent they start is gated), bash commands
 (`unsettled`), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
-`.git` or zemi's own dirs, to the Lua in any `.agents` (`init.lua`, `lua/`) and to a
+`.git` or zemi's own dirs (a local plugin included: it loads in every project, so like the
+recipes it asks every time, with no always answer), to the Lua in any `.agents` (`init.lua`, `lua/`) and to a
 `.gitattributes` or `.gitmodules` are `protectedWrite`, checkouts in `.agents/worktrees` aside,
 which no rule settles, a mode's own included; the rest of `.agents` runs nothing and is an
 ordinary project write).
@@ -342,7 +345,7 @@ argument must pass `safeCommandPath` (inside the project and not secret-shaped -
 matches the resolved path too, so a symlink cannot hide one, and every home path the sandbox
 hides (`secretDirs`: `~/.kube`, `~/.config/gh`, shell histories), whose names say nothing, so
 one list drives the sandbox, the re-ask and auto's read check; a plain read may also reach the
-scratchpad and zemi's config tree, but `cd` may not enter them). Readers keep their
+scratchpad, zemi's config tree and the local plugins, but `cd` may not enter them). Readers keep their
 `refusedFlags` and script checks, and `perm.ArgUse` says how an argument is used: a search
 pattern is no path, and a recursive search settles only over a tree with no secret-shaped file
 in it. Nothing may point into `.git`, since `.git/config` may hold tokens.
@@ -395,18 +398,29 @@ Modules are cached per generation by resolved file and trust class: a requirer b
 origin gets its own instance run under its own origin (builtin modules are shared instead,
 through a deep read-only view), so project or plugin code cannot plant functions into
 a table that higher-origin callbacks call. Dotted names search `<root>/lua` over the
-runtimepath: user, each plugin (`site/pack/*/start/*`, globbed once per generation), and the
-project's `.agents` first but only when the requirer is project code. `./x` and `../x` resolve against the calling function's chunk name, which is why
+runtimepath: user, each plugin the plugins step loaded (`lua.Generation.Plugins`, fixed per
+generation), and the project's `.agents` first but only when the requirer is project code. `./x` and `../x` resolve against the calling function's chunk name, which is why
 file chunks are compiled with their absolute path, and must stay in that file's origin tree;
 `load`/`loadstring` tag their chunks with the running origin and never keep an absolute name,
 so neither can be forged.
 
 Every chunk carries an origin from its resolved path class: `user` (~/.config/zemi, plus each
 subdirectory of it in `Dirs.UserTrees`, which the read jail registers too, so a symlinked
-`skills` or `lua` still resolves inside) > `builtin` (embedded runtime/) > `plugin` (site/pack)
-> `project` (<repo>/.agents). Registries
+`skills` or `lua` still resolves inside) > `builtin` (embedded runtime/) > `plugin`
+(`<data>/plugins`) > `project` (<repo>/.agents). The code a call runs as
+(`Runtime.CurrentOrigin`, `CurrentPath`) is the least trusted of the frame the host entry pushed
+and every Lua function on the stack, resumers included, builtin ones transparent: a plugin's
+`setup()` that init.lua calls runs as the plugin, and a user handler a project's
+`zemi.event.emit` runs inline runs as the project (NOTE in the code: a tail call drops its
+caller's frame). Plugins (hostapi/plugins.go, `PluginsStep`): `plugins.Scan` lists
+`installed/` (clones) and `local/` (developed in place) minus `disabled`, sorted by name; a local
+plugin named like an installed one or a symlinked dir does not load, and a gone plugin's
+`zemi.state` keys are dropped. `Host.PluginOf` names a plugin by its directory: its state keys are
+`plugin:<name>:<key>`, its Lua permission principal `plugin:<name>` (the refusal's paste line
+says so), its overlay badge `plugin:<name>`. Registries
 enforce: cross-origin collision is **refused** with the higher-trust origin winning; within one
-origin it is last-writer-wins. Project origin additionally cannot register providers or builtin
+origin it is last-writer-wins, except that one plugin cannot replace another's command, keymap,
+widget, theme, tool, completion source or health row (`pluginClash`). Project origin additionally cannot register providers or builtin
 tool names, and its `tool.pre` rewrites are ignored (logged). No origin can emit host-owned
 events. A keymap that is a prefix or an extension of a more trusted key is refused,
 `zemi.command.run` refuses a more trusted origin's Lua command (its body runs under that

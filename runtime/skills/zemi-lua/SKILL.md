@@ -14,21 +14,25 @@ does not have raises with the list of the ones it does.
 ## Origins
 
 Every chunk runs with an origin from where it lives: `user` (`~/.config/zemi`) >
-`builtin` (shipped) > `plugin` (`site/pack`) > `project` (`<repo>/.agents`). A
-registration with the same id from a lower origin is refused; the same origin replaces
-its own, and a binding may not be a prefix or an extension of a more trusted key. Only
+`builtin` (shipped) > `plugin` (`<data>/plugins/installed|local/<name>`) > `project`
+(`<repo>/.agents`). A call runs as the least trusted code on its stack, so a plugin's
+`setup()` that init.lua calls runs as the plugin, not as user config. A registration with
+the same id from a lower origin is refused; the same origin replaces its own, except that
+one plugin cannot replace another's, and a binding may not be a prefix or an extension of
+a more trusted key. Only
 `user` may register providers, add allow rules or decide learning proposals. Below
 `builtin`, code may not call `zemi.model.set` or `zemi.config.reload`, or run a more trusted
 origin's command with `zemi.command.run`, and a project handler cannot deny `app.quit`. Lua calls to gated APIs (`zemi.fs` writes, `zemi.http`, `zemi.job`)
 never open a prompt: an "ask" decision raises `permission ask required` with the
-`zemi.permission.rule.add` line that allows it, which only the user's init.lua may add.
+`zemi.permission.rule.add` line that allows it (for a plugin, with
+`principal = "plugin:<name>"`), which only the user's init.lua may add.
 No permission mode allows such a call, yolo included.
 zemi-config lists what a plugin cannot do.
 
 ## Modules
 
 `require("a.b")` loads `lua/a/b.lua` (or `lua/a/b/init.lua`) from the config dir or a
-plugin's own directory (`start/<name>/lua/`); project code also searches `.agents/lua/`
+loaded plugin's directory (`<name>/lua/`); project code also searches `.agents/lua/`
 first. `require("./x")` and
 `require("../x")` resolve next to the calling file and must stay in the same origin's
 tree. Builtin modules load once, and plugin and project code get them read-only;
@@ -52,8 +56,9 @@ loads fresh.
   Share state through a table (`local got = {}`), or return values out of the `pcall`.
 - Module locals die on a reload. `zemi.state` is persisted and shared by every project and
   running zemi, so put the project in the key (`"branch:" .. zemi.project.root()`) and keep
-  what only this run needs in a local. Plugin and project code each get their own space
-  (stored under `plugin:` or `project:`) and never see user keys; user config sees them all.
+  what only this run needs in a local. Each plugin and project code get their own space
+  (stored under `plugin:<name>:` or `project:`) and never see user keys; user config sees
+  them all.
 - Nothing stores a value that can never work: a color that is not `#rrggbb`, a palette
   key or an ANSI color name, a rule subject outside `tool. fs. net. lua. mcp. memory.`, a printable key
   with no `focus`, a key sequence containing ctrl+c (cancel and quit), a `zemi.config.watch` path outside the schema, and a tool spec with no

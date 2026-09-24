@@ -301,7 +301,9 @@ Directories (XDG):
   commands/<name>.md      markdown slash commands
   workflows/<name>.lua    saved workflow scripts
 ~/.local/share/zemi/      data
-  site/pack/*/start/*/    plugins: plugin/*.lua loaded, lua/ require()-able
+  plugins/installed/<name>/  plugins zemi cloned (git); init.lua loaded, lua/ require()-able
+  plugins/local/<name>/   plugins developed in place, the same shape; zemi never changes them
+  plugins/disabled        names turned off, one per line
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
   drops/                  files dropped in from outside the project (@drop:<name>)
   plans/<session id>.md   plans approved from a read-only agent
@@ -367,8 +369,8 @@ Load order is a list of boot steps: host `zemi.*` namespaces
 file's: memory, reflector, skills, agents, workflow, mcp, lsp) -> the
 shipped Lua UI (`require("zemi.defaultui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
-server) -> plugins (`site/pack/*/start/*/plugin/*.lua`, sorted) -> user
-`init.lua` -> user skills' enable hooks -> a trusted project's
+server) -> plugins (each enabled plugin's `init.lua`, sorted by name) ->
+user `init.lua` -> user skills' enable hooks -> a trusted project's
 `.agents/init.lua` -> markdown commands (user, then a trusted repo's
 `.agents`) ->
 `app.ready`. Boot runs on its own goroutine, so it may block on the
@@ -392,9 +394,20 @@ origin; cross-origin profile id collisions are refused, §11).
 runs as the loading origin (its chunk name is re-tagged, so a forged name
 does not stick) under the same denylist.
 
-Runtimepath, in order: `~/.config/zemi`, then
-`~/.local/share/zemi/site/pack/*/start/*` (sorted), then the embedded
+Runtimepath, in order: `~/.config/zemi`, then each plugin the plugins
+step loaded (sorted by name, fixed for the generation), then the embedded
 `runtime/` (lowest precedence).
+
+The plugins step lists `plugins/local/*` and `plugins/installed/*`, skips
+the names in `disabled`, and runs each `init.lua` as plugin origin; it runs
+no git. A plugin that fails does not stop the rest; each one's error goes
+to `/errors` and the `/health` plugins row counts it. A local plugin named
+like an installed one does not load, nor does a symlinked plugin dir (its
+files would resolve outside the plugin class). The step also drops the
+`zemi.state` keys of a plugin whose directory is gone. The one-second config
+watcher reads `local/` whole, the `disabled` file and each clone's git
+index, so an edit, a toggle, an install, an update and a delete each
+reload.
 
 `require` rules:
 
@@ -459,12 +472,25 @@ Sandbox (what userland gets):
   A file's origin comes from a directory-class map Go applies to its
   `EvalSymlinks`-resolved path (a symlink is classified by what it
   resolves to, so an alias cannot borrow another class):
-  `~/.config/zemi/**` is user, `~/.local/share/zemi/site/pack/**` is
+  `~/.config/zemi/**` is user, `~/.local/share/zemi/plugins/**` is
   plugin, `<repo>/.agents/**` is project, embedded `runtime/**` is
   builtin. A resolved path in no class is refused at load. Origin never follows the requirer: a
-  module under `site/pack/...` stays plugin origin and a project module
+  module under `plugins/...` stays plugin origin and a project module
   stays project origin even when `init.lua` requires it, so untrusted
   code cannot ride the boot phase under a user badge.
+- The code a call runs as is the least trusted of the frame the host
+  entry pushed (a registration's origin) and every Lua function on the
+  call stack, the threads that resumed it included; builtin functions are
+  transparent. So a plugin's `setup()` that user `init.lua` calls runs as
+  that plugin, a user handler that a project's `zemi.event.emit` runs
+  inline runs as the project, and registrations capture the origin and
+  file of the code making them. A plugin is named by its directory under
+  `installed/` or `local/`: that name scopes its `zemi.state` keys
+  (`plugin:<name>:<key>`), its permission principal (`plugin:<name>`) and
+  its overlay badge, and two plugins cannot replace each other's command,
+  keymap, widget, theme, tool, completion source or health row (the
+  first by name keeps it; within one plugin the last writer wins). Known
+  ceiling: a Lua tail call drops its caller's frame.
 - Boundary caps: values crossing the Lua <-> Go marshal are capped (string
   16 MB, table depth 64; configurable), cycles are refused with an error,
   and every Go function exposed to Lua runs under `recover`, so a Go panic
@@ -668,7 +694,8 @@ may emit only `user.*` event names; `zemi.event.emit` refuses host-owned
 prefixes, and every emitted event carries its emitter's origin in
 `ev.from` (Lua emissions carry the emitting origin; host-emitted events
 carry `from = "host"`), so a handler can tell a plugin's emission from
-the user's own.
+the user's own. A Lua emission runs its handlers inline, so a handler runs
+as the less trusted of itself and its emitter (§5).
 
 Vetoable events share one return contract. Return `nil` for "no objection";
 otherwise return a decision table:
@@ -922,10 +949,11 @@ zemi.state.set("recent.model", "anthropic/x")     -- persisted kv, global scope
 zemi.state.get("recent.model")                    -- also del(key), keys(prefix)
 ```
 
-`zemi.state` keys from plugin and project code are stored under a `plugin:`
-or `project:` prefix the chunk never sees, so each class has its own space
-and cannot read or overwrite user or builtin keys; user and builtin code see
-the whole store, other classes' keys included.
+`zemi.state` keys from plugin and project code are stored under a
+`plugin:<name>:` or `project:` prefix the chunk never sees, so each plugin
+and the project have their own space and cannot read or overwrite another's,
+user or builtin keys; user and builtin code see the whole store, the others'
+keys included. A plugin's keys go when its directory does (§5).
 
 Async I/O returns handles (§6.0 convention): `h:wait()` in a task or pass
 callbacks; a reload stops the jobs, timers and HTTP requests of the
@@ -1404,7 +1432,7 @@ provenance string.
   as do the completion and palette popups, which are not modal; while a
   modal is open everything outside the top box, plugin overlays and widget
   regions too, is dimmed in a fixed host color; at any other time a plugin
-  overlay carries a Go-stamped `plugin:<path>` origin badge. While a box
+  overlay carries a Go-stamped origin badge (`plugin:<name>`, `project:<file>`). While a box
   stays open its width and height only grow (a filter narrowing a menu,
   a question batch's tabs, a detail view, which opens at its list's size,
   the palette as you type), and a click outside it closes it.
@@ -1517,12 +1545,14 @@ provenance string.
   values use the same whole-string glob semantics as the pattern.
 - Principals: every operation carries the principal that originated it:
   `model` (every tool call, MCP tools included) or, for Lua, the running
-  origin: `user`, `builtin`, `plugin`, `project` (§5).
+  origin: `user`, `builtin`, `plugin:<name>`, `project` (§5).
   Attribution follows the registration origin of
-  the running handler, never the trigger: an operation inside a
-  plugin-registered keymap acts as `plugin`, not `user`, no matter
-  whose finger pressed the key; only bindings registered by the user's own
-  config act as `user`. Rules may be scoped per principal, so a
+  the running handler and the least trusted code on the call stack, never
+  the trigger: an operation inside a plugin-registered keymap acts as that
+  plugin, not `user`, no matter whose finger pressed the key, and so does
+  a plugin's `setup()` that user config calls; only user code acts as
+  `user`. A refused Lua call names the rule to paste, with
+  `principal = "plugin:<name>"` for a plugin. Rules may be scoped per principal, so a
   prompt-injected tool call (`model`) cannot ride rules meant for the
   user.
 - Defaults when no rule matches: pure reads (`zemi.config.get`,
@@ -1723,9 +1753,14 @@ provenance string.
   user did not approve); the read jail is wider: project
   roots, the config dir, the project's `.agents`, both skills dirs, that
   scratchpad and `<data>/types` (the API annotations
-  and shipped Lua UI). `site/pack` and the rest of the state dir are never
-  write roots, so an approved `fs.write` cannot plant plugin code that
-  auto-loads at the next boot. The config dir is read-only to Lua: of
+  and shipped Lua UI) and, for the model's file tools alone, the local
+  plugins (`<data>/plugins/local`, not a `zemi.fs` root, so no plugin reads
+  another's source). The plugins and the rest of the data and state dirs are
+  never write roots: a write to a local plugin asks every time with no
+  always answer, and no mode settles it (yolo aside), since the code loads
+  in every project, trusted or not; an installed plugin changes only
+  through git. So an approved `fs.write` in one project cannot silently
+  plant plugin code that auto-loads at the next boot. The config dir is read-only to Lua: of
   zemi's own code only Go writes there, so `zemi.fs.write` cannot
   author `init.lua`. The model's `read`, `write` and `edit` get their
   path resolved once before the gate and open exactly that path, walking

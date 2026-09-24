@@ -181,7 +181,7 @@ function debug.traceback(msg) end
 ---@alias zemi.Origin
 ---| "user"     # ~/.config/zemi
 ---| "builtin"  # shipped with zemi
----| "plugin"   # site/pack
+---| "plugin"   # <data>/plugins/{installed,local}/<name>; code runs as the least trusted function on its stack
 ---| "project"  # <repo>/.agents
 
 ---@alias zemi.Level "debug"|"info"|"warn"|"error"
@@ -1816,9 +1816,9 @@ function zemi.timer.every(ms, fn) end
 -- zemi.state and zemi.env
 
 --- A persisted key-value store, global to zemi. Values round-trip as JSON.
---- Plugin and project code each get their own key space and never see user
---- or builtin keys; user config sees every key, stored as `plugin:<key>` and
---- `project:<key>` for those.
+--- Each plugin and project code get their own key space and never see
+--- another's, user or builtin keys; user config sees every key, stored as
+--- `plugin:<name>:<key>` and `project:<key>` for those.
 ---@class zemi.state
 zemi.state = {}
 

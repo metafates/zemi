@@ -12,7 +12,7 @@ description: Load before changing zemi's settings, providers, models, permission
 | `<config>/init.lua` | user config, run at startup as the trusted `user` origin |
 | `<config>/lua/`, `skills/`, `agents/`, `commands/`, `workflows/` | modules, skills, and the files zemi-customize describes |
 | `<repo>/.agents/` | project config with the same layout, loaded only once the user trusts the project, as the low-trust `project` origin |
-| `<data>/site/pack/<any>/start/<name>/` | plugins |
+| `<data>/plugins/local/<name>/`, `installed/<name>/` | plugins developed in place, and git clones; `<data>/plugins/disabled` lists the names turned off |
 | `<data>/types/zemi.lua` | LuaLS annotations for the whole API, rewritten every start |
 | `<state>/` | logs, databases, trust decisions, and per project its `permissions` file and recipes (zemi-debug) |
 
@@ -113,14 +113,14 @@ A repository's `.agents/` at the git root holds `init.lua`, `lua/`, `agents/`, `
 
 ## Plugins
 
-A plugin is `<data>/site/pack/<any>/start/<name>/`: `plugin/*.lua` runs at startup, before init.lua, as the `plugin` origin, and `lua/` holds modules anyone can require. It may add commands, keymaps on free keys, widgets, overlays, tools, event handlers, `agent.assemble` sections, and deny and ask rules. A job, an HTTP request or a file write raises until the user's init.lua allows it (`lua.job.start`, `lua.http.<method>`, `lua.fs.write`), and a plugin tool needs the user's approval on every call until the user allows `tool.<name>`: print those rules in the README. It cannot edit the composer, send to the agent, change settings, the theme, the layout, the model or the mode, or register providers or servers. Code that needs to ships as a module the user wires up in init.lua, where it runs as user config:
+A plugin is `<data>/plugins/local/<name>/` (developed in place) or `installed/<name>/` (a git clone): its `init.lua` runs at startup, before the user's init.lua, as the `plugin` origin, and `lua/` holds modules anyone can require. It may add commands, keymaps on free keys, widgets, overlays, tools, event handlers, `agent.assemble` sections, and deny and ask rules. A job, an HTTP request or a file write raises until the user's init.lua allows it with the rule the error prints (`principal = "plugin:<name>"` scopes it to that plugin), and a plugin tool needs the user's approval on every call until the user allows `tool.<name>`: print those rules in the README. It cannot edit the composer, send to the agent, change settings, the theme, the layout, the model or the mode, or register providers or servers. Its code runs as the plugin wherever it is called from, a `setup()` in the user's init.lua included:
 
 ```lua
 local snippets = require("snippets")   -- <plugin>/lua/snippets/init.lua
 zemi.command.add("snip", snippets.pick, { desc = "insert a snippet" })
 ```
 
-`plugin/*.lua` runs before init.lua, so register with defaults there and make `setup(opts)` safe to call again. The plugin tree is not watched: `/reload` after editing it.
+`init.lua` runs before the user's, so register with defaults there and make `setup(opts)` safe to call again. zemi reloads within a second of an edit under `local/`. Its `zemi.state` keys are its own, and go when its directory does.
 
 ## Splitting config
 

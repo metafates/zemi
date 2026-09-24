@@ -89,10 +89,11 @@ description: "Load when zemi misbehaves: a crash, an error in /errors, a silent 
 | "connection refused" to a local server from a command auto mode ran, on Linux | `landlock + namespaces` gives the sandbox a localhost of its own, so servers already running on the machine are unreachable; retry with `network: true`, which shares zemi's own network |
 | "a sandboxed command created ...; project trust is off until /trust" | a sandboxed command made `.agents` or `.git` where there was none (only the Linux namespace sandbox lets it); zemi stops loading project config until `/trust` is answered. Look at what it created first |
 | reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume` and at start for sessions idle ten minutes, once one has two new user messages and a tool call or a failed call; `/reflect` runs it now |
-| `module "x" not found on runtimepath` from a plugin | the module is not at `site/pack/<any>/start/<name>/lua/x.lua` (or `x/init.lua`); plugin directories are listed once per boot, so a new one needs `/reload` |
+| `module "x" not found on runtimepath` from a plugin | the module is not at `<data>/plugins/installed/<name>/lua/x.lua` or `local/<name>/lua/x.lua` (or `x/init.lua`), or its plugin is disabled or failed to load; plugins are listed once per boot, and a new one reloads within a second |
 | `zemi -p "..."` from a script sits 3 seconds before it starts | stdin is an open pipe nobody writes to, and zemi waits that long for piped input; add `</dev/null` |
-| one plugin fails at boot | the others still load; `/errors` has the message and the `/health` plugins row counts the failed files |
-| a plugin registers nothing, with no error | its file is not at `site/pack/<any>/start/<name>/plugin/*.lua` (a library-only plugin has just `lua/`); the `/health` plugins row names a directory with neither |
+| one plugin fails at boot | the others still load; `/errors` has the message (`plugin <name>: ...`) and the `/health` plugins row counts the failed ones. A local plugin named like an installed one, or a symlinked plugin dir, never loads |
+| a plugin registers nothing, with no error | it has no `init.lua` at `<data>/plugins/installed/<name>/` or `local/<name>/` (a library-only plugin has just `lua/`), or its name is in `<data>/plugins/disabled` |
+| `... is already registered by plugin x` | two plugins want one command, key, widget, theme, tool, completion source or health row; the first by name keeps it |
 
 ## Stores
 
