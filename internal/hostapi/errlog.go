@@ -143,15 +143,15 @@ func (h *Host) OpenErrors(args string) error {
 		at := e.at.Format("15:04:05")
 		var actions []any
 		if noModel == nil {
-			actions = append(actions, map[string]any{"text": "Ask zemi to fix it", "run": fmt.Sprintf("errors ask %d", i)})
+			actions = append(actions, map[string]any{"text": "Ask zemi to fix it", "hotkey": "a", "run": fmt.Sprintf("errors ask %d", i)})
 		}
 		if kind, name, ok := strings.Cut(e.source, " "); ok && (kind == "mcp" || kind == "lsp") {
-			actions = append(actions, map[string]any{"text": "Restart " + name, "run": kind + " restart " + name})
+			actions = append(actions, map[string]any{"text": "Restart", "hotkey": "r", "run": kind + " restart " + name})
 		}
 		items = append(items, map[string]any{
 			"text":    e.source,
 			"desc":    at + " · " + Headline(e.msg),
-			"detail":  at + "\n" + ShortChunk(e.msg),
+			"detail":  "at: " + at + "\nerror: " + ShortChunk(e.msg),
 			"actions": actions,
 		})
 	}
