@@ -486,8 +486,10 @@ func (h *Host) toolPost(ctx context.Context, name string, input map[string]any, 
 	if !lspQuietTool[name] {
 		h.lspDirty()
 	}
-	payload := map[string]any{"tool": name, "input": input, "ok": ok, "output": truncRunes(output, 4096), "changed": changed, "ms": took.Milliseconds()}
-	h.recordEvent("tool.post", "host", payload)
+	payload := map[string]any{"tool": name, "input": input, "ok": ok, "output": output, "changed": changed, "ms": took.Milliseconds()}
+	logged := maps.Clone(payload) // the log keeps its map, which the chain below would change
+	logged["output"] = truncRunes(output, 4096)
+	h.recordEvent("tool.post", "host", logged)
 	handlers := h.Events.Handlers("tool.post")
 	for _, o := range h.luaTools.overridesFor(name) {
 		if o.Post != nil {
@@ -497,6 +499,7 @@ func (h *Host) toolPost(ctx context.Context, name string, input map[string]any, 
 	if len(handlers) == 0 {
 		return output
 	}
+	defer h.refresh() // what the handlers changed, like any event handler
 	ctx, cancel := context.WithTimeout(ctx, toolPostWait)
 	defer cancel()
 	out := output
