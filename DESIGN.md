@@ -525,9 +525,9 @@ in which milestone.
 ### 6.1 Config and lifecycle
 
 ```lua
-zemi.config.get("models.main")                -- dotted path lookup
+zemi.config.get("models.chat")                -- dotted path lookup
 zemi.config.set("ui.theme", "default")
-zemi.config.watch("models.main", function(new, old) end)
+zemi.config.watch("models.chat", function(new, old) end)
 zemi.env.get("EDITOR")                        -- env-read; secret-shaped
                                               -- names (§9 deny list) are denied
 zemi.log("...")                               -- callable table: zemi.log(msg) = info
@@ -746,15 +746,13 @@ zemi.agent.list()                    -- the agent definitions and their source
 zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
                                          -- (user origin only)
 
-zemi.model.list()                    -- { { id = "anthropic/...", ... } }
-zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes the conversation's tier
-zemi.model.pick()                    -- open the picker (returns at once)
--- Models are three config tiers: models.main runs everything, models.small the
--- short jobs (titles, compaction summaries, the builtin web agent), models.smart
--- the main conversation; an unset tier falls back to main, small first to the
--- small model of main's provider. Anywhere a model can
--- be named (a profile, an agent definition, the agent tool, a workflow) a tier
--- name works too.
+zemi.model.list()                    -- { { id = "anthropic/...", roles = { "chat" }, ... } }
+zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes models.chat
+zemi.model.pick("titles")            -- open a role's picker (returns at once; default chat)
+-- Models are roles: models.chat runs the conversation, and models.agents,
+-- models.titles, models.compact and models.memory (the reflector) follow it
+-- while empty; zemi.config.set sets them. Anywhere a model can be named (a
+-- profile, an agent definition, a workflow) a role name works too.
 
 zemi.provider.add({
   id = "myllm",
@@ -795,7 +793,7 @@ opens it once), then user config runs. `zemi.provider.add`
 under a builtin id replaces it whole, so a gateway `base_url` keeps
 working; `zemi.provider.del` drops one, `providers.builtin = false` all
 of them.
-A tier config leaves unset runs the catalog's default model for it, from
+A `models.chat` config leaves unset runs the catalog's default model, from
 the first provider the user added, else the first usable builtin in
 catalog order (anthropic, openai, gemini, ...): a user typed theirs,
 while a builtin's key may be exported for other tools.

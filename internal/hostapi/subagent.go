@@ -35,8 +35,7 @@ import (
 type AgentDef struct {
 	Name        string
 	Description string
-	// Model is a tier name (small, main, smart) or a provider/model id;
-	// "" takes the main tier.
+	// Model is a role name or a provider/model id; "" takes models.agents.
 	Model    string
 	Tools    []string // nil = every tool a subagent may use
 	System   string
@@ -71,7 +70,6 @@ var builtinAgents = []AgentDef{
 		Description: "Searches the web, reads pages and follows links, answering with its sources. Give it the question, not just a URL.",
 		Tools:       []string{"web_search", "fetch", "read", "grep", "glob"},
 		ReadOnly:    true,
-		Model:       "small",
 		System:      "Break the question into short, specific searches, fetch the pages that look relevant and follow their links when they hold the answer. A long page is saved to a file the fetch result names: grep and read that file instead of fetching again. Answer only what was asked, quote the exact text when it matters, and end with a Sources list of the URLs that contributed.",
 		Source:      "builtin",
 	},
@@ -632,10 +630,10 @@ func (h *Host) setTool(callID string, set func(*StreamTool)) {
 }
 
 // subagentModelID picks a subagent's model: the definition's reference (a
-// tier name or a provider/model id, which a tool call or a workflow may set
-// per run), then the main tier, then the session's model.
+// role name or a provider/model id, which a workflow may set per run), then
+// the agents role.
 func (h *Host) subagentModelID(def AgentDef) string {
-	return cmp.Or(h.modelRef(def.Model), h.tierModel("main"), h.sessionModelID())
+	return cmp.Or(h.modelRef(def.Model), h.roleModel("agents"))
 }
 
 // modelIDs lists every provider/model the config registered.
@@ -650,12 +648,12 @@ func (h *Host) modelIDs() []string {
 }
 
 // checkModelID refuses a model reference config does not know, naming the
-// ones it does. A tier name always passes: an unset tier falls back to main.
+// ones it does. A role name always passes: an unset role follows chat.
 func (h *Host) checkModelID(id string) error {
-	if id == "" || slices.Contains(Tiers, id) || slices.Contains(h.modelIDs(), id) {
+	if id == "" || isRole(id) || slices.Contains(h.modelIDs(), id) {
 		return nil
 	}
-	return fmt.Errorf("unknown model %q; tiers: %s; configured models: %s", id, strings.Join(Tiers, ", "), strings.Join(h.modelIDs(), ", "))
+	return fmt.Errorf("unknown model %q; roles: %s; configured models: %s", id, roleNames(), strings.Join(h.modelIDs(), ", "))
 }
 
 // ---------------------------------------------------------------------------
@@ -705,7 +703,6 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		"description": map[string]any{"type": "string", "description": "3-5 word label shown to the user" + required},
 		"prompt":      map[string]any{"type": "string", "description": "the full task"},
 		"agent":       map[string]any{"type": "string", "enum": t.names(), "description": "explore for reading and searching, general only when it must run commands or edit" + required},
-		"model":       map[string]any{"type": "string", "description": "a tier (small for simple searches, smart for hard reasoning, main) or a configured provider/model; default the agent's own, else main"},
 	}
 	if t.h.hooks() != nil {
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"}
@@ -733,7 +730,6 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		Prompt      string `json:"prompt"`
 		Agent       string `json:"agent"`
 		Background  bool   `json:"background"`
-		Model       string `json:"model"`
 		SendTo      string `json:"send_to"`
 	}
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
@@ -758,9 +754,6 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		if run.parent != t.h.AgentSessionID() {
 			return fantasy.NewTextErrorResponse("agent " + run.id + " belongs to another session: start a fresh run"), nil
 		}
-		if in.Model != "" && in.Model != run.model {
-			return fantasy.NewTextErrorResponse("model cannot change on send_to: start a fresh run for another model"), nil
-		}
 		if run.isRunning() {
 			if err := t.h.MessageAgent(run.id, in.Prompt); err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -783,12 +776,6 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	in.Description = cmp.Or(strings.TrimSpace(in.Description), def.Name)
-	if err := t.h.checkModelID(in.Model); err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
-	}
-	if in.Model != "" {
-		def.Model = in.Model
-	}
 	if in.Background && t.h.hooks() != nil {
 		id, err := t.h.startBackgroundAgent(def, in.Description, in.Prompt)
 		if err != nil {
@@ -934,7 +921,7 @@ func (h *Host) openAgents() error {
 		items = append(items, item)
 	}
 	for _, d := range defs {
-		model, tools := cmp.Or(d.Model, "main"), "every tool a subagent may use"
+		model, tools := cmp.Or(d.Model, "agents"), "every tool a subagent may use"
 		if d.Tools != nil {
 			tools = strings.Join(d.Tools, ", ")
 		}

@@ -367,12 +367,12 @@ func TestReportStoredWhenSessionMoved(t *testing.T) {
 }
 
 // TestSendTo: a continuation keeps the run's model and its row counts only
-// its own calls; a model change and another session's run are refused.
+// its own calls; another session's run is refused.
 func TestSendTo(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{}) // send_to is a TUI feature
 	runUser(t, r, `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "https://llm.internal/v1", api_key = "k", models = { { id = "a", max_output = 1000 }, { id = "b", max_output = 2000 } } })`)
-	h.Settings.SetQuiet("models.main", "p/a")
+	h.Settings.SetQuiet("models.chat", "p/a")
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, toolResult bool) []fantasy.StreamPart {
 			if (last == "work" || last == "more") && !toolResult {
@@ -381,7 +381,7 @@ func TestSendTo(t *testing.T) {
 			return textParts("done: " + last)
 		}}, nil
 	}
-	sid := seedSession(t, h)
+	seedSession(t, h)
 	def, _ := h.agentDef("explore")
 	def.Model = "p/b"
 	id, _, err := h.runSubagent(t.Context(), def, "d", "work", nil)
@@ -394,19 +394,12 @@ func TestSendTo(t *testing.T) {
 		!strings.HasPrefix(lines[0], "explore · 1 tool call · glob") || lines[1] != "explore · 1 tool call" || run.runner.MaxOutputTokens != 2000 {
 		t.Fatalf("continuation: %v, rows %q, max output %d", err, lines, run.runner.MaxOutputTokens)
 	}
-	for _, c := range []struct{ name, extra, session, want string }{
-		{"a model change", `,"model":"p/a"`, sid, "model cannot change"},
-		{"another session's run", "", "other", "belongs to another session"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			h.agents.mu.Lock()
-			h.agents.sessionID = c.session
-			h.agents.mu.Unlock()
-			resp, err := h.agentTool().Run(t.Context(), fantasy.ToolCall{ID: "c1", Input: fmt.Sprintf(`{"prompt":"again","send_to":%q%s}`, id, c.extra)})
-			if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) {
-				t.Fatalf("%v %q", err, resp.Content)
-			}
-		})
+	h.agents.mu.Lock()
+	h.agents.sessionID = "other"
+	h.agents.mu.Unlock()
+	resp, err := h.agentTool().Run(t.Context(), fantasy.ToolCall{ID: "c1", Input: fmt.Sprintf(`{"prompt":"again","send_to":%q}`, id)})
+	if err != nil || !resp.IsError || !strings.Contains(resp.Content, "belongs to another session") {
+		t.Fatalf("another session's run: %v %q", err, resp.Content)
 	}
 }
 

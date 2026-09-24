@@ -23,7 +23,7 @@ out for a repo becomes a recipe there.
 
 The prompt is pinned per session, so the provider cache hits every turn. Skills
 are an index until one is used. Past ten MCP tools, they load by search. Titles,
-summaries and the learning pass run on a small model.
+summaries and the learning pass can each run on a cheaper model (`/model roles`).
 
 ## On its own, or with a question
 

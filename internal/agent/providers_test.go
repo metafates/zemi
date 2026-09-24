@@ -183,7 +183,7 @@ func TestBuiltin(t *testing.T) {
 	byID := map[string]Spec{}
 	for _, s := range c.Specs {
 		byID[s.ID] = s
-		if !s.Builtin || len(s.Headers) > 0 || len(s.Models) == 0 || s.DefaultLarge == "" || c.Keys[s.ID] == "" {
+		if !s.Builtin || len(s.Headers) > 0 || len(s.Models) == 0 || s.DefaultModel == "" || c.Keys[s.ID] == "" {
 			t.Errorf("%s: %+v key %q", s.ID, s, c.Keys[s.ID])
 		}
 	}
@@ -212,41 +212,41 @@ func TestBuiltin(t *testing.T) {
 }
 
 // TestRegistryBuiltin: Default prefers a user spec over the catalog and
-// the tier's default model, Register clears Builtin so DropBuiltin keeps
+// the spec's default model, Register clears Builtin so DropBuiltin keeps
 // the override, Delete and Register drop an id from Missing.
 func TestRegistryBuiltin(t *testing.T) {
 	r := NewRegistry()
 	r.Reset(Catalog{Specs: []Spec{
-		{ID: "a", Kind: KindAnthropic, Builtin: true, DefaultLarge: "big", DefaultSmall: "tiny", Models: []Model{{ID: "big"}}},
+		{ID: "a", Kind: KindAnthropic, Builtin: true, DefaultModel: "big", Models: []Model{{ID: "big"}}},
 		{ID: "o", Kind: KindOpenAI, Builtin: true, Models: []Model{{ID: "first"}}},
 	}, Keys: map[string]string{"a": "ka", "o": "ko"}, Missing: []MissingKey{{"x", "X_KEY"}, {"y", "Y_KEY"}}})
-	if r.Default(false) != "a/big" || r.Default(true) != "a/tiny" || !r.HasKey("o") {
-		t.Fatalf("seed: %s %s", r.Default(false), r.Default(true))
+	if r.Default() != "a/big" || !r.HasKey("o") {
+		t.Fatalf("seed: %s", r.Default())
 	}
 	r.Delete("a")
 	r.Delete("nope")
 	r.Delete("x")
-	if r.Default(false) != "o/first" || r.HasKey("a") || !slices.Equal(r.Missing(), []MissingKey{{"y", "Y_KEY"}}) {
-		t.Fatalf("after delete: %s %v", r.Default(false), r.Missing())
+	if r.Default() != "o/first" || r.HasKey("a") || !slices.Equal(r.Missing(), []MissingKey{{"y", "Y_KEY"}}) {
+		t.Fatalf("after delete: %s %v", r.Default(), r.Missing())
 	}
 	if err := r.Register(Spec{ID: "empty", Kind: KindAnthropic, BaseURL: "http://gw"}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if r.Default(false) != "o/first" {
-		t.Fatalf("model-less user spec ahead of a builtin: %s", r.Default(false))
+	if r.Default() != "o/first" {
+		t.Fatalf("model-less user spec ahead of a builtin: %s", r.Default())
 	}
 	r.Delete("empty")
 	if err := r.Register(Spec{ID: "local", Kind: KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Builtin: true, Models: []Model{{ID: "q"}}}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if r.Default(false) != "local/q" {
-		t.Fatalf("user spec after a builtin: %s", r.Default(false))
+	if r.Default() != "local/q" {
+		t.Fatalf("user spec after a builtin: %s", r.Default())
 	}
 	if err := r.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: "http://gw/v1", Models: []Model{{ID: "g"}}}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if r.Default(false) != "o/g" || r.HasKey("o") {
-		t.Fatalf("override: %s", r.Default(false))
+	if r.Default() != "o/g" || r.HasKey("o") {
+		t.Fatalf("override: %s", r.Default())
 	}
 	if err := r.Register(Spec{ID: "y", Kind: KindAnthropic}, ""); err != nil {
 		t.Fatal(err)
@@ -259,11 +259,11 @@ func TestRegistryBuiltin(t *testing.T) {
 	for _, s := range r.List() {
 		ids = append(ids, s.ID)
 	}
-	if !slices.Equal(ids, []string{"o", "local", "y"}) || r.Default(true) != "o/g" || len(r.Missing()) != 0 {
+	if !slices.Equal(ids, []string{"o", "local", "y"}) || r.Default() != "o/g" || len(r.Missing()) != 0 {
 		t.Fatalf("after drop: %v %v", ids, r.Missing())
 	}
 	r.Reset(Catalog{})
-	if r.Default(false) != "" || len(r.List()) != 0 {
+	if r.Default() != "" || len(r.List()) != 0 {
 		t.Fatal("reset to empty")
 	}
 }

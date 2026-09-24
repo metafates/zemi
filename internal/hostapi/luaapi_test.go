@@ -143,7 +143,7 @@ func TestLuaAPIIO(t *testing.T) {
 		assert(v == nil and err == nil, "a key nobody set is nil with no error")
 		assert(zemi.env.get("ZEMI_NOT_SET_ANYWHERE") == nil, "an unset variable is nil, not the empty string")
 
-		local wid = zemi.config.watch("models.main", function() end)
+		local wid = zemi.config.watch("models.chat", function() end)
 		assert(type(wid) == "string", "watch id type " .. type(wid))
 		assert(zemi.config.unwatch(wid) == true and zemi.config.unwatch(wid) == false, "unwatch is idempotent")
 
@@ -343,7 +343,7 @@ func TestReloadBrokenInit(t *testing.T) {
 		zemi.permission.rule.add({ subject = "tool.bash", pattern = "curl *", decision = "deny", match = "curl x" })
 		zemi.permission.rule.add({ subject = "tool.bash", pattern = "ls *", decision = "allow", match = "ls x" })
 		zemi.config.set("permissions.mode", "strict")
-		zemi.config.set("models.main", "fake/m")`
+		zemi.config.set("models.chat", "fake/m")`
 	for _, c := range []struct {
 		name, init string
 		untrust    bool
@@ -382,7 +382,7 @@ func TestReloadBrokenInit(t *testing.T) {
 					t.Fatalf("reload %d: %v", i, err)
 				}
 			}
-			model, _ := h.Settings.Get("models.main")
+			model, _ := h.Settings.Get("models.chat")
 			decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.bash", cmd, "model").Decision }
 			got := fmt.Sprintf("curl %v, ls %v, model %v", decision("curl x"), decision("ls x"), model)
 			if !c.untrust { // which mode runs once strict is gone is permModeDef's to pin

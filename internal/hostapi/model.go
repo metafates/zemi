@@ -60,7 +60,7 @@ func (h *Host) modelErr(id string) error {
 	prov, _, _ := strings.Cut(id, "/")
 	spec, ok := h.Providers.Lookup(prov)
 	if !ok {
-		// the id may come from a tier, -m or a profile, so none is named
+		// the id may come from a role, -m or a profile, so none is named
 		missing := h.Providers.Missing()
 		if i := slices.IndexFunc(missing, func(m agent.MissingKey) bool { return m.ID == prov }); i >= 0 {
 			return fmt.Errorf("builtin provider %q needs its key: export %s", prov, missing[i].Env)
@@ -74,29 +74,16 @@ func (h *Host) modelErr(id string) error {
 	return nil
 }
 
-// modelFor resolves the model the first set key names, the small tier when
-// none is set, and returns its id for pricing.
-func (h *Host) modelFor(keys ...string) (fantasy.LanguageModel, string, error) {
-	for _, key := range keys {
-		if id := h.Settings.Str(key); id != "" && h.modelFn == nil {
-			m, err := h.Providers.Resolve(id)
-			return m, id, err
-		}
-	}
-	id := cmp.Or(h.tierModel("small"), h.sessionModelID())
-	m, err := h.resolveModel(&Profile{Model: id})
-	return m, id, err
-}
-
 // generate runs one tool-less, single-step call (summaries, titles, the
-// reflector) on the model the first set key names and bills it to sid. The
-// spec's body fields ride it (a gateway's routing, service_tier), the
-// reasoning effort not: a short job on a small tier need not think. It
+// reflector) on role's model and bills it to sid. The spec's body fields
+// ride it (a gateway's routing, service_tier), the reasoning effort not: a
+// short job need not think. It
 // streams: Anthropic's SDK refuses a large max_tokens otherwise, and the
 // idle timer covers only a stream. A turn's job passes retry, so the working
 // rule counts down its provider retries.
-func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, retry func(error, time.Duration), keys ...string) (*fantasy.AgentResult, error) {
-	model, id, err := h.modelFor(keys...)
+func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, retry func(error, time.Duration), role string) (*fantasy.AgentResult, error) {
+	id := h.roleModel(role)
+	model, err := h.resolveModel(&Profile{Model: id})
 	if err != nil {
 		return nil, err
 	}
@@ -142,40 +129,41 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 	}
 }
 
-// Tiers are the model tiers config names, in the order a picker shows them:
-// small runs the short jobs (session titles, compaction summaries, the
-// reflector, the builtin web subagent), main everything else, and smart the
-// main conversation, which orchestrates and delegates. A tier nothing set
-// falls back to main, small first to the small model of main's provider, so
-// a /model pick of a big model leaves the short jobs cheap.
-var Tiers = []string{"small", "main", "smart"}
-
-// tierModel resolves a tier name to the model id config gave it, falling
-// back to main, then to the first usable provider's default for the tier
-// (Registry.Default; nothing is written to config, so a reload cannot fight
-// the fallback). It returns "" for a name that is not a tier, so callers
-// can take a model reference that is either a tier or a provider/model id.
-func (h *Host) tierModel(tier string) string {
-	if !slices.Contains(Tiers, tier) {
-		return ""
-	}
-	id, main := h.Settings.Str("models."+tier), h.Settings.Str("models.main")
-	if prov, _, _ := strings.Cut(main, "/"); id == "" && tier == "small" && prov != "" {
-		if spec, ok := h.Providers.Lookup(prov); ok && spec.DefaultSmall != "" {
-			id = prov + "/" + spec.DefaultSmall
-		}
-	}
-	return cmp.Or(id, main, h.Providers.Default(tier == "small"))
+// roles are the kinds of model work config names a model for, as
+// models.<name>, in the order /model roles lists them.
+var roles = []modelRole{
+	{"chat", "the conversation"},
+	{"agents", "subagents"},
+	{"titles", "session titles"},
+	{"compact", "summaries"},
+	{"memory", "memory review"},
 }
 
-// modelRef resolves a model reference: a tier name, a provider/model id, or
-// "" for neither.
-func (h *Host) modelRef(ref string) string {
-	if id := h.tierModel(ref); id != "" {
-		return id
+type modelRole struct{ Name, Desc string }
+
+func isRole(name string) bool {
+	return slices.ContainsFunc(roles, func(r modelRole) bool { return r.Name == name })
+}
+
+func roleNames() string {
+	names := make([]string, len(roles))
+	for i, r := range roles {
+		names[i] = r.Name
 	}
-	if slices.Contains(Tiers, ref) {
-		return "" // a tier nothing configured, not a model id
+	return strings.Join(names, ", ")
+}
+
+// roleModel is the model id a role runs on: its key, else models.chat, else
+// the first usable provider's default (nothing is written to config, so a
+// reload cannot fight the fallback). "" when nothing can run.
+func (h *Host) roleModel(role string) string {
+	return cmp.Or(h.Settings.Str("models."+role), h.Settings.Str("models.chat"), h.Providers.Default())
+}
+
+// modelRef resolves a model reference, a role name or a provider/model id.
+func (h *Host) modelRef(ref string) string {
+	if isRole(ref) {
+		return h.roleModel(ref)
 	}
 	return ref
 }

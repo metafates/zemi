@@ -19,7 +19,7 @@ phase("collect")
 local diff, err = agent("Run `git log --oneline " .. base .. "..HEAD` and `git diff " .. base .. "...HEAD --stat`, then summarize each change in one line with its files.")
 if not diff then return "failed: " .. err end
 phase("write")
-return agent("Write a PR description (motivation, changes, how to test) from:\n" .. diff, { agent = "explore", model = "small" })
+return agent("Write a PR description (motivation, changes, how to test) from:\n" .. diff, { agent = "explore", model = "titles" })
 ```
 
 - `agent(prompt, { agent, description, model })` returns the report or `nil, err`; the agent defaults to `general`. The prompt must stand alone: agents do not see the conversation.
@@ -33,12 +33,12 @@ return agent("Write a PR description (motivation, changes, how to test) from:\n"
 ---
 description: Reviews Go code for concurrency bugs; use for any change touching goroutines
 tools: read, grep, glob
-model: small
+model: anthropic/claude-haiku-4-5
 ---
 You review Go code for data races, deadlocks and leaked goroutines. Cite file:line.
 ```
 
-`description` is required and is what the model reads when it picks an agent, so say when to use it. `name` defaults to the file name (lowercase letters, digits, `-`). `model` is a tier (`small`, `main`, `smart`) or a `provider/model`; omitted or `inherit`, main. `tools` is an allowlist, or `-name` entries that remove from the full set, so later tools still arrive; omitted, everything but `agent`, `workflow`, `todos`, `question`, `plan` and `lua`. An unknown tool name fails the agent. The builtin agents are `explore`, `general`, `web` and `plan`; a user file with one of those names replaces it.
+`description` is required and is what the model reads when it picks an agent, so say when to use it. `name` defaults to the file name (lowercase letters, digits, `-`). `model` is a role (`chat`, `agents`, `titles`, `compact`, `memory`: the model that role runs on) or a `provider/model`; omitted or `inherit`, `models.agents`. `tools` is an allowlist, or `-name` entries that remove from the full set, so later tools still arrive; omitted, everything but `agent`, `workflow`, `todos`, `question`, `plan` and `lua`. An unknown tool name fails the agent. The builtin agents are `explore`, `general`, `web` and `plan`; a user file with one of those names replaces it.
 
 ## Profiles (`init.lua`)
 

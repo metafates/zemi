@@ -221,13 +221,23 @@ func (h *Host) goHealthRows() []healthCheck {
 
 	id := h.sessionModelID()
 	out = append(out, h.modelRow())
+	// a role's own model would otherwise fail only at its first title,
+	// summary or run, where nobody looks
+	ids := []string{id}
+	for _, r := range roles[1:] {
+		if m := h.roleModel(r.Name); !slices.Contains(ids, m) {
+			ids = append(ids, m)
+			if row := h.modelCheck(r.Name+" model", m); row.level != "ok" {
+				out = append(out, row)
+			}
+		}
+	}
 
 	// compactDue never fires on an unknown window, so the turn runs until
 	// the provider refuses it
 	var unknown []string
-	for _, tier := range append([]string{""}, Tiers...) {
-		m := cmp.Or(h.tierModel(tier), id) // "" is no tier: the conversation's model
-		if m != "" && h.contextWindow(m) == 0 && !slices.Contains(unknown, m) {
+	for _, m := range ids {
+		if m != "" && h.contextWindow(m) == 0 {
 			unknown = append(unknown, m)
 		}
 	}
@@ -404,21 +414,21 @@ func (h *Host) goHealthRows() []healthCheck {
 	return out
 }
 
-// modelRow is the model check: what a send would fail with, or an id the
-// provider's list does not carry (a typo runs until the provider refuses
-// it). A reload toasts it, so a models.main nobody can run is not silent.
-func (h *Host) modelRow() healthCheck {
-	h.agents.mu.Lock()
-	id := h.liveModelID()
-	h.agents.mu.Unlock()
+// modelRow is the conversation's model check. A reload toasts it, so a
+// models.chat nobody can run is not silent.
+func (h *Host) modelRow() healthCheck { return h.modelCheck("model", h.sessionModelID()) }
+
+// modelCheck is what a call on id would fail with, or an id the provider's
+// list does not carry (a typo runs until the provider refuses it).
+func (h *Host) modelCheck(name, id string) healthCheck {
 	_, known := h.modelSpec(id)
 	switch err := h.modelErr(id); {
 	case err != nil:
-		return healthCheck{level: "error", name: "model", detail: err.Error()}
+		return healthCheck{level: "error", name: name, detail: err.Error()}
 	case !known:
-		return healthCheck{level: "warn", name: "model", detail: unlistedDetail(id)}
+		return healthCheck{level: "warn", name: name, detail: unlistedDetail(id)}
 	}
-	return healthCheck{level: "ok", name: "model", detail: id}
+	return healthCheck{level: "ok", name: name, detail: id}
 }
 
 // unlistedDetail is the warning for an id the provider's models list

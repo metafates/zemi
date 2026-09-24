@@ -89,10 +89,12 @@ or settled builds.
 it names one (`sendPrompt`, TUI and `-p` alike, so `/review` works from a git hook). `--help`
 lists the flags. Piped stdin (1 MiB at most) is attached behind the typed prompt and is a usage
 error without `-p`. Flags apply after boot so they win over `init.lua`, except `--trust`, which
-the trust boot step reads. `-m` and `/model` write the tier the conversation reads
-(`Host.ConversationKey`: `models.smart` when config set it, else `models.main`). Both, and
-`zemi.model.set`, refuse while the active profile sets its own model (`Host.ProfileModelErr`;
-`--profile` applies before `-m`), since the tier would change and the conversation would not.
+the trust boot step reads. `-m`, `/model <provider/model>` and `zemi.model.set` write
+`models.chat`, and refuse while the active profile sets its own model (`Host.ProfileModelErr`;
+`--profile` applies before `-m`), since the key would change and the conversation would not.
+`Host.SetModel` parses the rest of `/model`: `roles` opens the role list (`OpenModelRoles`, a
+toggle list that rebuilds when the role's model list over it closes), `<role>` that role's model
+list, `<role> <id>` or `<role> chat` sets the role or makes it follow chat.
 `--profile` and `/profile` (`Host.SetProfile`; no argument opens the picker, which the
 statusline's profile segment clicks into) write `agent.profile` for the next send: a switch
 changes the prompt and the tool set, so it busts the provider's prompt cache once; ctrl+t and
@@ -119,7 +121,7 @@ exported, one without is in `Registry.Missing` (minus the ids config deleted or 
 no-model hint (`noModelHint`, one sentence everywhere) can name the variable and `/model` lists it, copy only, after the usable models, `Registry.Reset` seeds every generation
 before `init.lua`, a `zemi.provider.add` under a builtin id replaces it
 whole, `zemi.provider.del` drops one and `providers.builtin = false` (read once in `readyStep`)
-all of them. A tier config leaves unset runs `Registry.Default`: the first user-added provider's
+all of them. A `models.chat` config leaves unset runs `Registry.Default`: the first user-added provider's
 default model, else the first builtin's in catalog order (anthropic, openai, gemini first).
 Config reload is not fsnotify:
 `watchConfig` walks the config trees once a second (past dot-directories and `node_modules`)
@@ -459,12 +461,13 @@ lua-language-server is installed.
 
 ### Turns, sessions and the learning loop (internal/hostapi: agent.go, session.go, compact.go, memory.go, reflector.go)
 
-- **Models are tiers.** `models.main` runs everything; `models.small` (session titles,
-  compaction summaries, the reflector, the builtin `web` agent) and `models.smart` (the main
-  conversation) fall back to it, an unset small first to the catalog's small model of main's
-  provider (`tierModel`), so a `/model` pick of a big model leaves the short jobs cheap.
-  Anything that takes a model - an agent definition, the `agent` tool, a workflow - takes a
-  tier name or a `provider/model` id (`modelRef`).
+- **Models are roles.** `models.chat` runs the conversation; `models.agents` (subagents with
+  no model of their own), `models.titles`, `models.compact` and `models.memory` (the
+  reflector) each follow it while empty (`roleModel`). Nothing falls back to a cheaper model on
+  its own, so the `/model roles` list shows every mapping. A `models.*` value is `""` or an id
+  with a `/` (`config.set` refuses a role name), so roles never nest. Anything that takes a
+  model - a profile, an agent definition, a workflow - takes a role name or a
+  `provider/model` id (`modelRef`). `/health` checks each distinct role model.
 - **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
   live tally when that session is still open. Calls outside a runner (summary, title,
   reflector) go through `Host.generate`, which bills them and sends the provider's body fields
@@ -529,7 +532,7 @@ lua-language-server is installed.
   every launch; `/reflect` skips the floor. `claimReflect` takes an atomic kv claim per session
   (`reflector.claim.<sid>`, leased), so two windows never reflect it at once, and
   `reflectClaimed` runs it (one at a time; a skipped run releases its claim). It runs on
-  `reflector.model`, then the small tier; a reply that is not the JSON document asked for marks
+  `models.memory`; a reply that is not the JSON document asked for marks
   the delta seen and is the `/health` reflector row's news, never an `/errors` entry, and a
   second failed try (kv `reflector.tries.<sid>`) marks it seen too. Its prompt carries the
   scrubbed delta (`reflectLine`), the newest failed tool results (`failedCalls`, read from the
@@ -552,8 +555,8 @@ lua-language-server is installed.
 ### Subagents, workflows, agent runs, the Lua tool, MCP, LSP
 
 - **Subagents** (subagent.go) are fresh `agent.Runner`s over `PipelineFor()` (same permission
-  gate; asks are prefixed with the agent name). Definitions: builtin `explore`, `web` (on the
-  small tier), `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over a trusted repo's
+  gate; asks are prefixed with the agent name). Definitions: builtin `explore`, `web`,
+  `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over a trusted repo's
   `.agents`). They never get `agent`, `workflow`, `todos`, `question`,
   `plan` or `lua` (nesting depth 1). A run is a child session (`parent_id`);
   `ListSessions` hides children. They have no summarizer: `sendPruning` clears their own old

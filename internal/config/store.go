@@ -3,6 +3,7 @@ package config
 import (
 	"cmp"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -47,9 +48,11 @@ func NewStore() *Store {
 
 func (s *Store) defineDefaults() {
 	defaults := []Setting{
-		{Path: "models.main", Kind: "string", Default: "", Desc: "the model everything runs on unless a tier or a definition names another (provider/model)"},
-		{Path: "models.small", Kind: "string", Default: "", Desc: "a fast, cheap model for short jobs: session titles, compaction summaries, the reflector and the web subagent (provider/model; empty uses the small model of main's provider, else models.main)"},
-		{Path: "models.smart", Kind: "string", Default: "", Desc: "a stronger model for the main conversation, which orchestrates and delegates (provider/model; empty uses the small model of main's provider, else models.main)"},
+		{Path: "models.chat", Kind: "string", Default: "", Desc: "the model the conversation runs on, and every role left empty (provider/model; empty uses the first added provider's default model, else the first usable builtin's)"},
+		{Path: "models.agents", Kind: "string", Default: "", Desc: "the model subagents run on when their definition names none (provider/model; empty follows models.chat)"},
+		{Path: "models.titles", Kind: "string", Default: "", Desc: "the model that names sessions (provider/model; empty follows models.chat)"},
+		{Path: "models.compact", Kind: "string", Default: "", Desc: "the model that writes compaction summaries (provider/model; empty follows models.chat)"},
+		{Path: "models.memory", Kind: "string", Default: "", Desc: "the model the reflector reviews sessions for memories on (provider/model; empty follows models.chat)"},
 		{Path: "providers.builtin", Kind: "bool", Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
 		{Path: "permissions.mode", Kind: "string", Default: "auto", Desc: "the permission mode zemi starts in: auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
 		{Path: "permissions.env_keep", Kind: "string", Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},
@@ -58,7 +61,7 @@ func (s *Store) defineDefaults() {
 		{Path: "web.search_url", Kind: "string", Default: "", Desc: "SearXNG search endpoint for the web_search tool, such as http://localhost:8888/search, with the json format enabled (empty uses DuckDuckGo Lite)"},
 		{Path: "agent.effort", Kind: "string", Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
 		{Path: "agent.profile", Kind: "string", Default: "default", Desc: "the profile the main conversation runs as: default, planner, or a name defined with zemi.agent.profile"},
-		{Path: "session.auto_title", Kind: "bool", Default: true, Desc: "name new sessions from their first exchange with a short model call (the small tier)"},
+		{Path: "session.auto_title", Kind: "bool", Default: true, Desc: "name new sessions from their first exchange with a short model call"},
 		{Path: "agent.context_window", Kind: "int", Default: 0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
 		{Path: "ui.chat.reasoning", Kind: "bool", Default: false, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
 		{Path: "lsp.auto", Kind: "bool", Default: true, Desc: "start installed language servers (gopls, pyright, typescript-language-server, clangd, rust-analyzer) in a trusted project with their marker file"},
@@ -71,8 +74,6 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.composer.history", Kind: "int", Default: 50, Desc: "composer history entries kept (0 disables)"},
 		{Path: "ui.completion.files", Kind: "bool", Default: true, Desc: "complete file paths after @ in the composer"},
 		{Path: "ui.completion.max_items", Kind: "int", Default: 10, Desc: "completion popup rows"},
-		{Path: "reflector.model", Kind: "string", Default: "", Desc: "model id the reflector runs on (provider/model; empty uses models.small, then models.main)"},
-		{Path: "compact.model", Kind: "string", Default: "", Desc: "model that writes compaction summaries (provider/model; empty uses models.small)"},
 		{Path: "memory.autonomy", Kind: "string", Default: "auto", Desc: "memories the model or the reflector propose: auto stores policy-clean ones at once, ask queues them for /memory; auto queues too in an untrusted project or a session that used fetch, web_search, the lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
 	}
 	for _, def := range defaults {
@@ -198,7 +199,12 @@ func checkKind(def Setting, val any) (any, error) {
 	ok := true
 	switch def.Kind {
 	case "string":
-		_, ok = val.(string)
+		var s string
+		s, ok = val.(string)
+		// a models.* key holds an id, never a role name: roles never nest
+		if ok && strings.HasPrefix(def.Path, "models.") && s != "" && !strings.Contains(s, "/") {
+			return nil, &ErrBadValue{Path: def.Path, Want: `a provider/model id or ""`}
+		}
 	case "int":
 		switch v := val.(type) {
 		case int:

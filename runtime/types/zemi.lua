@@ -1218,10 +1218,13 @@ function zemi.log.list() end
 ---@field base_url string
 ---@field builtin boolean From the builtin catalog; false once `zemi.provider.add` replaced it.
 
+---@alias zemi.ModelRole "chat"|"agents"|"titles"|"compact"|"memory"
+
 ---@class zemi.ModelInfo
 ---@field id string "provider/model".
 ---@field display string
 ---@field has_key boolean
+---@field roles zemi.ModelRole[] The roles that run on this model, "chat" as the conversation does (a profile's model included).
 
 ---@class zemi.provider
 ---@field kind zemi.ProviderKind
@@ -1248,21 +1251,25 @@ zemi.model = {}
 ---@return zemi.ModelInfo[]
 function zemi.model.list() end
 
---- Switch the model the main conversation runs on: it writes models.smart
---- when config set that tier, else models.main. Raises for a provider nobody
---- registered, and while the active profile sets its own model; an id the
---- provider does not list is taken and warned about. User or builtin origin only.
+--- Switch the model the main conversation runs on: it writes models.chat.
+--- Raises for a provider nobody registered, and while the active profile
+--- sets its own model; an id the provider does not list is taken and warned
+--- about. User or builtin origin only. Another role is plain config:
+--- `zemi.config.set("models.titles", id)`.
 ---@param id string
 function zemi.model.set(id) end
 
---- Open the model picker and return at once; choosing a model runs `/model <id>`.
-function zemi.model.pick() end
+--- Open a role's model picker and return at once; choosing a model runs
+--- `/model <id>`, or `/model <role> <id>` for another role. Raises for an
+--- unknown role.
+---@param role? zemi.ModelRole Default "chat".
+function zemi.model.pick(role) end
 
 -- ---------------------------------------------------------------------------
 -- zemi.agent
 
 ---@class zemi.ProfileSpec
----@field model? string A tier name ("small", "main", "smart") or a "provider/model" id.
+---@field model? string A role name (the model that role runs on) or a "provider/model" id.
 ---@field system? string Replaces the system prompt.
 ---@field temperature? number
 ---@field tools? string[] Allowed tool names; "-name" removes one and keeps the rest.

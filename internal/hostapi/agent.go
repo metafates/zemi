@@ -249,12 +249,12 @@ func (h *Host) readOnly() bool {
 }
 
 // currentModelID picks the model the main conversation runs on: a profile
-// override, else the smart tier.
+// override, else the chat role.
 func (h *Host) currentModelID(p *Profile) string {
 	if p != nil && p.Model != "" {
 		return h.modelRef(p.Model)
 	}
-	return h.tierModel("smart")
+	return h.roleModel("chat")
 }
 
 // liveModelID is the model turns run on: the running turn's, else the
@@ -1743,13 +1743,21 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		out := L.NewTable()
+		out, ids := L.NewTable(), h.roleIDs()
 		for _, s := range h.Providers.List() {
 			for _, m := range s.Models {
+				id := s.ID + "/" + m.ID
+				var on []string
+				for i, r := range roles {
+					if ids[i] == id {
+						on = append(on, r.Name)
+					}
+				}
 				row := L.NewTable()
-				row.RawSetString("id", glua.LString(s.ID+"/"+m.ID))
+				row.RawSetString("id", glua.LString(id))
 				row.RawSetString("display", glua.LString(m.Display))
 				row.RawSetString("has_key", glua.LBool(h.Providers.HasKey(s.ID)))
+				row.RawSetString("roles", lua.FromGo(L, on))
 				out.Append(row)
 			}
 		}
@@ -1759,11 +1767,11 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		h.refuseBelowUser(L, "model.set")
 		id := L.CheckString(1)
-		if err := h.modelSetErr(id); err != nil {
+		if err := h.modelSetErr("chat", id); err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
 			return 0
 		}
-		fired, err := h.Settings.SetQuiet(h.ConversationKey(), id)
+		fired, err := h.Settings.SetQuiet("models.chat", id)
 		if err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
 			return 0
@@ -1773,46 +1781,80 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
-		_ = h.OpenModelPicker() // headless there is nothing to pick with
+		role := L.OptString(1, "chat")
+		if !isRole(role) {
+			L.RaiseError("zemi.model.pick: unknown role %q; roles: %s", role, roleNames())
+			return 0
+		}
+		_ = h.OpenModelPicker(role) // headless there is nothing to pick with
 		return 0
 	}))
 	return tb
 }
 
-// OpenModelPicker lists the registered models, where enter runs /model <id>,
-// then the keyless builtin providers, where it copies the export line.
-func (h *Host) OpenModelPicker() error {
+// roleIDs is the model id each role runs on, in roles order: chat is the
+// conversation's, a profile's model included.
+func (h *Host) roleIDs() []string {
+	p, _ := h.resolveProfile("")
+	ids := []string{h.currentModelID(p)}
+	for _, r := range roles[1:] {
+		ids = append(ids, h.roleModel(r.Name))
+	}
+	return ids
+}
+
+// OpenModelPicker lists the registered models for role, where enter sets
+// it, then the keyless builtin providers, where it copies the export line.
+// The chat list opens on a Roles row; another role's on a chat row, which
+// makes the role follow chat.
+func (h *Host) OpenModelPicker(role string) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
-	p, _ := h.resolveProfile("")
-	cur, sel := h.currentModelID(p), 0 // what the next send reads, not the running turn's
-	var items []any
+	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: "bottom-right", Verb: "pick", Empty: "No models yet: " + h.noModelHint() + "."}
+	run, cur := "model ", h.Settings.Str("models."+role)
+	var head map[string]any
+	if role == "chat" {
+		p, _ := h.resolveProfile("")
+		cur = h.currentModelID(p) // what the next send reads, not the running turn's
+		head = map[string]any{"text": "Roles", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"}
+	} else {
+		o.ID, o.Title, run = "model "+role, "Model roles / "+role, "model "+role+" "
+		desc := "follow the chat model"
+		if id := h.roleModel("chat"); id != "" {
+			desc += ": " + id
+		}
+		head = map[string]any{"text": "chat", "desc": desc, "run": run + "chat"}
+		if cur == "" {
+			head["key"] = "current"
+		}
+	}
 	for _, s := range h.Providers.List() {
 		for _, m := range s.Models {
 			id := s.ID + "/" + m.ID
-			item := map[string]any{"text": id, "run": "model " + id}
-			if d := modelDesc(id, m); d != "" {
-				item["desc"] = d
+			desc := modelDesc(id, m)
+			if !h.Providers.HasKey(s.ID) {
+				desc = strings.TrimPrefix(desc+" · no API key", " · ")
 			}
-			switch {
-			case id == cur:
-				item["key"], sel = "current", len(items)
-			case !h.Providers.HasKey(s.ID):
-				item["key"] = "no API key"
+			item := map[string]any{"text": id, "run": run + id, "desc": desc}
+			if id == cur {
+				item["key"], o.Selected = "current", len(o.Items)+1
 			}
-			items = append(items, item)
+			o.Items = append(o.Items, item)
 		}
 	}
-	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom-right", Verb: "pick", Empty: "No models yet: " + h.noModelHint() + "."}
 	prov, _, _ := strings.Cut(cur, "/")
 	_, registered := h.Providers.Lookup(prov)
 	if _, known := h.modelSpec(cur); cur != "" && !known && registered {
 		// config named it by hand: shown so the typo is in view
-		o.Items = append([]any{map[string]any{"text": cur, "run": "model " + cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}}, items...)
+		o.Items = append([]any{map[string]any{"text": cur, "run": run + cur, "key": "current, not in the list", "desc": "the provider decides whether it exists"}}, o.Items...)
+		o.Selected = 1
 	}
 	usable := len(o.Items) > 0
+	if usable {
+		o.Items = append([]any{head}, o.Items...)
+	}
 	// the builtin providers without a key close the list, so a user finds
 	// what else zemi supports and the variable that turns each on
 	for _, m := range h.Providers.Missing() {
@@ -1822,6 +1864,57 @@ func (h *Host) OpenModelPicker() error {
 		o.Body = "No model yet: export one of these keys, or " + h.addProvider() + "."
 	}
 	ui.OpenOverlay(o)
+	return nil
+}
+
+// ownRoles names the roles config gave a model of their own.
+func (h *Host) ownRoles() []string {
+	var own []string
+	for _, r := range roles[1:] {
+		if h.Settings.Str("models."+r.Name) != "" {
+			own = append(own, r.Name)
+		}
+	}
+	return own
+}
+
+// rolesDesc is the Roles row's desc: which roles leave the chat model.
+func rolesDesc(own []string) string {
+	switch n := len(own); n {
+	case 0:
+		return "every role on the chat model"
+	case 1:
+		return own[0] + " on its own model"
+	default:
+		return strings.Join(own[:n-1], ", ") + " and " + own[n-1] + " on their own model"
+	}
+}
+
+// OpenModelRoles lists the roles and the model each runs on. Enter opens a
+// role's model list over it, and the list rebuilds when that one closes.
+func (h *Host) OpenModelRoles() error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	build := func() ([]any, [][]Segment) {
+		p, _ := h.resolveProfile("")
+		var items []any
+		for i, id := range h.roleIDs() {
+			r := roles[i]
+			item := map[string]any{"text": r.Name, "desc": cmp.Or(id, "no model") + " · " + r.Desc, "verb": "open", "run": "model " + r.Name}
+			switch {
+			case i == 0 && p != nil && p.Model != "":
+				item["key"] = "profile " + p.Name
+			case i > 0 && h.Settings.Str("models."+r.Name) == "":
+				item["key"] = "follows chat"
+			}
+			items = append(items, item)
+		}
+		return items, nil
+	}
+	items, _ := build()
+	ui.OpenOverlay(Overlay{ID: "model roles", Title: "Model roles", Origin: lua.OriginBuiltin, Items: items, Anchor: "bottom-right", Verb: "open", Reload: build})
 	return nil
 }
 
@@ -1844,27 +1937,38 @@ func modelDesc(id string, m agent.Model) string {
 	return strings.Join(parts, " · ")
 }
 
-// ConversationKey is the tier /model and -m write: the smart one when
-// config set it, since that is what the main conversation reads, else main.
-func (h *Host) ConversationKey() string {
-	if h.Settings.Str("models.smart") != "" {
-		return "models.smart"
+// SetModel runs /model's arguments from any goroutine: none opens the chat
+// list, "roles" the role list, a role its list, an id sets chat, and a role
+// with an id, or "chat" to follow it, sets that role. The config watches it
+// fires run later on the interpreter queue. warn toasts an id the provider
+// does not list; --health leaves that to its model row.
+func (h *Host) SetModel(args string, warn bool) error {
+	f := strings.Fields(args)
+	switch {
+	case len(f) == 0:
+		return h.OpenModelPicker("chat")
+	case len(f) == 1 && f[0] == "roles":
+		return h.OpenModelRoles()
+	case len(f) == 1 && isRole(f[0]):
+		return h.OpenModelPicker(f[0])
+	case len(f) == 1:
+		f = []string{"chat", f[0]}
+	case len(f) > 2 || !isRole(f[0]):
+		return Usagef("usage: /model [roles | <role> | [<role>] provider/model | <role> chat]; roles: %s", roleNames())
 	}
-	return "models.main"
-}
-
-// SetModel switches the conversation's tier (/model <id>) from any
-// goroutine: the config watches it fires run later on the interpreter queue.
-// warn toasts an id the provider does not list; --health leaves that to its
-// model row.
-func (h *Host) SetModel(id string, warn bool) error {
-	if err := h.modelSetErr(id); err != nil {
+	role, id := f[0], f[1]
+	if id == "chat" && role != "chat" {
+		id = ""
+	}
+	if id != "" {
+		if err := h.modelSetErr(role, id); err != nil {
+			return err
+		}
+	}
+	if err := h.setWatched("models."+role, id); err != nil {
 		return err
 	}
-	if err := h.setWatched(h.ConversationKey(), id); err != nil {
-		return err
-	}
-	if warn {
+	if warn && id != "" {
 		h.warnUnlisted(id)
 	}
 	return nil
@@ -1881,10 +1985,10 @@ func (h *Host) warnUnlisted(id string) {
 }
 
 // modelSetErr refuses a model pick under a provider nobody registered, or
-// one the active profile would hide. An id the provider does not list is
-// taken and warned about, like -m and config: the provider decides.
-func (h *Host) modelSetErr(id string) error {
-	if err := h.ProfileModelErr(); err != nil {
+// a chat pick the active profile would hide. An id the provider does not
+// list is taken and warned about, like -m and config: the provider decides.
+func (h *Host) modelSetErr(role, id string) error {
+	if err := h.ProfileModelErr(); err != nil && role == "chat" {
 		return err
 	}
 	prov, _, _ := strings.Cut(id, "/")
@@ -1908,12 +2012,12 @@ func (h *Host) WarnModel() {
 // failed init.lua is its own news: the providers it adds never ran.
 func (h *Host) OfferModel() {
 	if h.InitError() == "" && h.modelRow().level == "error" {
-		_ = h.OpenModelPicker()
+		_ = h.OpenModelPicker("chat")
 	}
 }
 
-// ProfileModelErr refuses a tier write the active profile would hide: the
-// tier would change and the conversation would not.
+// ProfileModelErr refuses a models.chat write the active profile would
+// hide: the key would change and the conversation would not.
 func (h *Host) ProfileModelErr() error {
 	if p, _ := h.resolveProfile(""); p != nil && p.Model != "" {
 		return Usagef("profile %s sets its model; /profile default or drop model from it", p.Name)
@@ -2111,7 +2215,7 @@ func profileDesc(p *Profile) string {
 		}
 	}
 	if p.Model != "" {
-		return p.Model + " - " + tools
+		return p.Model + " · " + tools
 	}
 	return tools
 }

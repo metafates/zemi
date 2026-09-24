@@ -192,7 +192,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 	initLua := filepath.Join(dir, "init.lua")
 	for _, c := range []struct {
 		name       string
-		config     []string // what init.lua sets models.main to, in order
+		config     []string // what init.lua sets models.chat to, in order
 		pick, want string
 	}{
 		{"first load applies config", []string{"p/a"}, "", "p/a"},
@@ -208,21 +208,21 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 	} {
 		src := ""
 		for _, v := range c.config {
-			src += `zemi.config.set("models.main", "` + v + `")` + "\n"
+			src += `zemi.config.set("models.chat", "` + v + `")` + "\n"
 		}
 		if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if c.pick != "" {
-			if _, err := h.Settings.SetQuiet("models.main", c.pick); err != nil {
+			if _, err := h.Settings.SetQuiet("models.chat", c.pick); err != nil {
 				t.Fatal(err)
 			}
 		}
 		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
 			t.Fatal(err)
 		}
-		if got, _ := h.Settings.Get("models.main"); got != c.want {
-			t.Errorf("%s: models.main = %v, want %s", c.name, got, c.want)
+		if got, _ := h.Settings.Get("models.chat"); got != c.want {
+			t.Errorf("%s: models.chat = %v, want %s", c.name, got, c.want)
 		}
 	}
 }
@@ -350,8 +350,8 @@ func TestModelNamespace(t *testing.T) {
 	runUser(t, r, `assert(zemi.env.get("ZEMI_TEST_TOKEN") == "abc", "user config reads secret-shaped env vars")`)
 
 	runUser(t, r, `zemi.model.set("myllm/main")`)
-	if v, ok := h.Settings.Get("models.main"); !ok || v != "myllm/main" {
-		t.Fatalf("models.main=%v ok=%v", v, ok)
+	if v, ok := h.Settings.Get("models.chat"); !ok || v != "myllm/main" {
+		t.Fatalf("models.chat=%v ok=%v", v, ok)
 	}
 	runUser(t, r, `
 		local models = zemi.model.list()
@@ -1215,8 +1215,8 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 
 // TestIdleStreamUsesProfileModel: between turns the context window, the
 // image check and zemi.agent.current follow the default profile's model,
-// not models.main; compaction and a subagent without a model take a tier,
-// whatever the conversation runs on.
+// not models.chat; compaction and a subagent without a model follow
+// models.chat, whatever the conversation runs on.
 func TestIdleStreamUsesProfileModel(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
@@ -1235,11 +1235,11 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 		t.Fatal("the profile's model is text-only")
 	}
 	runUser(t, r, `assert(zemi.agent.current().model == "a/big")`)
-	if _, id, err := h.modelFor("compact.model"); err != nil || id != "a/small" {
-		t.Fatalf("summary model %q, err %v, want the small tier", id, err)
+	if id := h.roleModel("compact"); id != "a/small" {
+		t.Fatalf("summary model %q, want models.chat", id)
 	}
 	if id := h.subagentModelID(AgentDef{}); id != "a/small" {
-		t.Fatalf("subagent model %q, want the main tier", id)
+		t.Fatalf("subagent model %q, want models.chat", id)
 	}
 }
 
@@ -1277,7 +1277,7 @@ func TestActiveProfileKey(t *testing.T) {
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if h.OpenProfilePicker() != nil || ui.opened[0].Items[1].(map[string]any)["desc"] != "x/big - every tool" {
+	if h.OpenProfilePicker() != nil || ui.opened[0].Items[1].(map[string]any)["desc"] != "x/big · every tool" {
 		t.Errorf("the defined planner's picker row %v", ui.opened)
 	}
 	if h.SetProfile("planner") != nil || h.cycleProfile(1) != nil || h.Settings.Str("agent.profile") != "p" {
@@ -1307,8 +1307,8 @@ func TestModelPickerOdd(t *testing.T) {
 		t.Fatal("no model: the picker did not open")
 	}
 	// an id naming the keyless builtin gets the same listing, not a "current" row
-	runUser(t, r, `zemi.config.set("models.main", "deepseek/x")`)
-	if h.OpenModelPicker() != nil {
+	runUser(t, r, `zemi.config.set("models.chat", "deepseek/x")`)
+	if h.OpenModelPicker("chat") != nil {
 		t.Fatal("picker did not open")
 	}
 	for _, o := range ui.opened {
@@ -1318,17 +1318,17 @@ func TestModelPickerOdd(t *testing.T) {
 	}
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })
-		zemi.config.set("models.main", "a/typo")`)
-	if h.OpenModelPicker() != nil {
+		zemi.config.set("models.chat", "a/typo")`)
+	if h.OpenModelPicker("chat") != nil {
 		t.Fatal("picker did not open")
 	}
 	o := ui.opened[2]
-	row := o.Items[0].(map[string]any)
-	if o.Selected != 0 || len(o.Items) != 3 || row["text"] != "a/typo" || row["run"] != "model a/typo" || row["key"] != "current, not in the list" {
+	row := o.Items[1].(map[string]any)
+	if o.Selected != 1 || len(o.Items) != 4 || row["text"] != "a/typo" || row["run"] != "model a/typo" || row["key"] != "current, not in the list" {
 		t.Fatalf("unlisted id: %+v", o.Items)
 	}
 	// the keyless builtins still close the list, copy only, with no body
-	if last := o.Items[2].(map[string]any); last["text"] != "deepseek" || last["run"] != nil || last["copy"] != "export DEEPSEEK_API_KEY" || o.Body != "" {
+	if last := o.Items[3].(map[string]any); last["text"] != "deepseek" || last["run"] != nil || last["copy"] != "export DEEPSEEK_API_KEY" || o.Body != "" {
 		t.Fatalf("missing builtins after the models: %+v body %q", o.Items, o.Body)
 	}
 	if w := h.modelRow().detail; !strings.HasPrefix(w, "a/typo: not in the provider's models list") {
@@ -1348,7 +1348,7 @@ func TestProfileSwitch(t *testing.T) {
 	h.SetUIHooks(ui)
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "main" }, { id = "cheap" } } })
-		zemi.config.set("models.main", "a/main")
+		zemi.config.set("models.chat", "a/main")
 		zemi.agent.profile("cheap", { model = "a/cheap" })`)
 	for _, c := range []struct {
 		name    string
@@ -1381,13 +1381,13 @@ func TestProfileSwitch(t *testing.T) {
 	for p, want := range map[*Profile]string{
 		{}:                        "every tool",
 		{Tools: []string{"-lua"}}: "every tool but lua",
-		{Model: "a/m", Tools: []string{"bash", "read"}}: "a/m - only bash, read",
+		{Model: "a/m", Tools: []string{"bash", "read"}}: "a/m · only bash, read",
 	} {
 		if got := profileDesc(p); got != want {
 			t.Errorf("desc %q, want %q", got, want)
 		}
 	}
-	if h.OpenProfilePicker() != nil || h.OpenModelPicker() != nil {
+	if h.OpenProfilePicker() != nil || h.OpenModelPicker("chat") != nil {
 		t.Fatal("a picker did not open")
 	}
 	for _, o := range ui.opened {
@@ -1656,15 +1656,15 @@ func TestProfileToolsRecordUnknown(t *testing.T) {
 
 // TestBuiltinProvidersSeed: the catalog seeds every generation, a user
 // add under a builtin id replaces it and survives providers.builtin =
-// false, del drops one, and the tiers fall back to the first usable
-// provider's defaults, a user one first.
+// false, del drops one, and the roles fall back to the first usable
+// provider's default, a user one first.
 func TestBuiltinProvidersSeed(t *testing.T) {
 	dir, log := t.TempDir(), logging.New(t.TempDir())
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
 	h.Builtin = agent.Catalog{Specs: []agent.Spec{
-		{ID: "a", Kind: agent.KindAnthropic, Builtin: true, DefaultLarge: "big", DefaultSmall: "tiny", Models: []agent.Model{{ID: "big"}, {ID: "tiny"}}},
-		{ID: "o", Kind: agent.KindOpenAI, Builtin: true, DefaultLarge: "g", Models: []agent.Model{{ID: "g"}}},
+		{ID: "a", Kind: agent.KindAnthropic, Builtin: true, DefaultModel: "big", Models: []agent.Model{{ID: "big"}, {ID: "tiny"}}},
+		{ID: "o", Kind: agent.KindOpenAI, Builtin: true, DefaultModel: "g", Models: []agent.Model{{ID: "g"}}},
 	}, Keys: map[string]string{"a": "ka", "o": "ko"}}
 	initLua := filepath.Join(dir, "init.lua")
 	reload := func(init string) {
@@ -1684,8 +1684,8 @@ func TestBuiltinProvidersSeed(t *testing.T) {
 		local ps = zemi.provider.list()
 		assert(#ps == 2 and ps[1].id == "a" and ps[1].builtin == true and ps[2].builtin == true, "seed")
 	`)
-	if h.currentModelID(nil) != "a/big" || h.tierModel("small") != "a/tiny" || !h.Providers.HasKey("a") {
-		t.Fatalf("catalog defaults: %s %s", h.currentModelID(nil), h.tierModel("small"))
+	if h.currentModelID(nil) != "a/big" || h.roleModel("titles") != "a/big" || !h.Providers.HasKey("a") {
+		t.Fatalf("catalog defaults: %s %s", h.currentModelID(nil), h.roleModel("titles"))
 	}
 	reload(`
 		zemi.provider.add({ id = "a", kind = "anthropic", base_url = "http://gw", api_key = "mine", models = { { id = "m" } } })
@@ -1696,8 +1696,8 @@ func TestBuiltinProvidersSeed(t *testing.T) {
 		local ps = zemi.provider.list()
 		assert(#ps == 1 and ps[1].id == "a" and ps[1].builtin == false and ps[1].base_url == "http://gw", "override: " .. #ps)
 	`)
-	if h.currentModelID(nil) != "a/m" || h.tierModel("small") != "a/m" {
-		t.Fatalf("user defaults: %s %s", h.currentModelID(nil), h.tierModel("small"))
+	if h.currentModelID(nil) != "a/m" || h.roleModel("titles") != "a/m" {
+		t.Fatalf("user defaults: %s %s", h.currentModelID(nil), h.roleModel("titles"))
 	}
 	reload(`
 		zemi.provider.add({ id = "local", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "q" } } })

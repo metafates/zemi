@@ -402,9 +402,9 @@ func TestAgentDefs(t *testing.T) {
 }
 
 // TestSubagentModelChoice: a subagent's model comes from its definition's
-// reference, which may name a tier, then the main tier, then the session;
-// an unset tier falls back to main. The agent tool lists the configured
-// models and refuses one it does not know.
+// reference, which may name a role, then models.agents, which follows
+// models.chat. A reference config does not know is refused with the roles
+// and the configured models.
 func TestSubagentModelChoice(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.provider.add({
@@ -412,31 +412,27 @@ func TestSubagentModelChoice(t *testing.T) {
 		models = { { id = "main" }, { id = "mini" } },
 	})`)
 	for _, c := range []struct {
-		def, main, small string
-		want             string
+		def, chat, agents string
+		want              string
 	}{
-		{"", "", "", "myllm/main"}, // no tier set: the session model
+		{"", "", "", "myllm/main"}, // nothing set: the provider's default
 		{"", "myllm/mini", "", "myllm/mini"},
-		{"myllm/main", "myllm/mini", "", "myllm/main"},
-		{"small", "myllm/main", "myllm/mini", "myllm/mini"},
-		{"small", "myllm/main", "", "myllm/main"}, // unset tier falls back to main
+		{"", "myllm/main", "myllm/mini", "myllm/mini"},
+		{"myllm/main", "myllm/mini", "myllm/mini", "myllm/main"},
+		{"chat", "myllm/main", "myllm/mini", "myllm/main"},
 	} {
-		h.Settings.SetQuiet("models.main", c.main)
-		h.Settings.SetQuiet("models.small", c.small)
+		h.Settings.SetQuiet("models.chat", c.chat)
+		h.Settings.SetQuiet("models.agents", c.agents)
 		if got := h.subagentModelID(AgentDef{Model: c.def}); got != c.want {
 			t.Errorf("%+v: got %q", c, got)
 		}
 	}
-	h.Settings.SetQuiet("models.main", "")
-	h.Settings.SetQuiet("models.small", "")
-	tool := h.agentTool()
 	// the catalog can be thousands of tokens; a bad id names it instead
-	if desc := tool.Info().Description; strings.Contains(desc, "myllm/main") {
+	if desc := h.agentTool().Info().Description; strings.Contains(desc, "myllm/main") {
 		t.Fatalf("description lists models: %q", desc)
 	}
-	resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "agent", Input: `{"description":"x","prompt":"p","agent":"explore","model":"other/x"}`})
-	if err != nil || !resp.IsError || !strings.Contains(resp.Content, `unknown model "other/x"; tiers: small, main, smart; configured models: myllm/main, myllm/mini`) {
-		t.Fatalf("unknown model: %v %q", err, resp.Content)
+	if err := h.checkModelID("other/x"); err == nil || err.Error() != `unknown model "other/x"; roles: chat, agents, titles, compact, memory; configured models: myllm/main, myllm/mini` {
+		t.Fatalf("unknown model: %v", err)
 	}
 }
 

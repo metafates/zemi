@@ -383,7 +383,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 	h.GoSafe("session title", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		res, err := h.generate(ctx, sid, titleSystem, "<conversation>\nuser: "+truncRunes(user, 2000)+"\n\nassistant: "+truncRunes(reply, 2000)+"\n</conversation>", nil, nil, "models.small")
+		res, err := h.generate(ctx, sid, titleSystem, "<conversation>\nuser: "+truncRunes(user, 2000)+"\n\nassistant: "+truncRunes(reply, 2000)+"\n</conversation>", nil, nil, "titles")
 		if err != nil {
 			h.Log.Debug("session", "title generation failed", map[string]any{"error": err.Error()})
 			return

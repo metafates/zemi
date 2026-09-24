@@ -477,7 +477,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		"zemi.ui.scroll.bottom":      func(h *Host, id string) error { h.scroll("bottom", id); return nil },
 		"zemi.ui.scroll.line_up":     func(h *Host, id string) error { h.scroll("line_up", id); return nil },
 		"zemi.ui.scroll.line_down":   func(h *Host, id string) error { h.scroll("line_down", id); return nil },
-		"zemi.model.pick":            func(h *Host, _ string) error { return h.OpenModelPicker() },
+		"zemi.model.pick":            func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
 		"zemi.composer.submit":       composerAction("submit"),
 		"zemi.composer.insert":       composerAction("insert"),
 		"zemi.composer.history_prev": composerAction("history_prev"),

@@ -101,13 +101,12 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- zemi.provider.del("openai")   -- drop one builtin provider
 -- zemi.config.set("providers.builtin", false)   -- or all of them
 
--- Model tiers: main runs everything, small the short jobs (session titles,
--- compaction summaries, the reflector, the web subagent), smart the main
--- conversation. Unset, main is the default of the first provider you add
--- here, else of the first builtin one with a key; small is main when you set
--- main, else that provider's small default; smart is main.
--- zemi.config.set("models.main", "anthropic/claude-sonnet-4-6")
--- zemi.config.set("models.small", "anthropic/claude-haiku-4-5-20251001")
+-- Model roles: chat runs the conversation and every role left unset; agents
+-- (subagents), titles, compact (summaries) and memory (the reflector) each
+-- take their own. Unset, chat is the default of the first provider you add
+-- here, else of the first builtin one with a key. /model roles sets them too.
+-- zemi.config.set("models.chat", "anthropic/claude-sonnet-4-6")
+-- zemi.config.set("models.titles", "anthropic/claude-haiku-4-5-20251001")
 
 -- Settings: zemi.config.schema() lists every one with its default.
 -- zemi.config.set("ui.theme", "default-light")

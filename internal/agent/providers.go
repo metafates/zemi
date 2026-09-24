@@ -74,8 +74,7 @@ type Spec struct {
 	// under a builtin id survives DropBuiltin.
 	Builtin      bool   `json:"builtin,omitempty"`
 	KeyEnv       string `json:"-"`                       // the env var a builtin's key came from, so a rejected key names it
-	DefaultLarge string `json:"default_large,omitempty"` // the model Default picks for the main tier
-	DefaultSmall string `json:"default_small,omitempty"` // and for the small tier
+	DefaultModel string `json:"default_model,omitempty"` // the model Default picks
 }
 
 // Catalog is the builtin providers with their env vars resolved: a
@@ -141,7 +140,7 @@ func builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 			continue
 		}
 		spec := Spec{ID: string(p.ID), Kind: kind, BaseURL: base, Builtin: true, KeyEnv: name,
-			DefaultLarge: p.DefaultLargeModelID, DefaultSmall: p.DefaultSmallModelID}
+			DefaultModel: p.DefaultLargeModelID}
 		for _, m := range p.Models {
 			spec.Models = append(spec.Models, Model{ID: m.ID, Display: m.Name, ContextWindow: m.ContextWindow, MaxOutput: m.DefaultMaxTokens,
 				CostPer1MIn: m.CostPer1MIn, CostPer1MOut: m.CostPer1MOut, CostPer1MInCached: m.CostPer1MInCached, CostPer1MOutCached: m.CostPer1MOutCached,
@@ -221,12 +220,12 @@ func (r *Registry) DropBuiltin() {
 	})
 }
 
-// Default is the "provider/model" a tier runs when config names none: the
+// Default is the "provider/model" models.chat runs when config names none: the
 // default model of the first spec the user added that has one, else of the
 // first such builtin (the catalog's order); "" when none has a model. A
 // user spec wins because the user typed it, while a builtin's key may be
 // exported for other tools.
-func (r *Registry) Default(small bool) string {
+func (r *Registry) Default() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, builtin := range []bool{false, true} {
@@ -234,10 +233,7 @@ func (r *Registry) Default(small bool) string {
 			if spec.Builtin != builtin {
 				continue
 			}
-			model := spec.DefaultLarge
-			if small {
-				model = spec.DefaultSmall
-			}
+			model := spec.DefaultModel
 			if model == "" && len(spec.Models) > 0 {
 				model = spec.Models[0].ID
 			}

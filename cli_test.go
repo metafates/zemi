@@ -426,7 +426,7 @@ func printHost(t *testing.T) *hostapi.Host {
 		t.Fatal(err)
 	}
 	cfg := fmt.Sprintf(`zemi.provider.add({ id = "fake", kind = zemi.provider.kind.OPENAI_COMPAT, api_key = "x", base_url = %q, models = { { id = "m", context_window = 128000 } } })
-		zemi.config.set("models.main", "fake/m")`, srv.URL+"/v1")
+		zemi.config.set("models.chat", "fake/m")`, srv.URL+"/v1")
 	if err := r.ExecuteChunk(context.Background(), cfg, "init.lua", lua.OriginUser); err != nil {
 		t.Fatal(err)
 	}

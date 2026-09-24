@@ -548,7 +548,7 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 
 func TestSetModelFiresWatches(t *testing.T) {
 	h, r := newTestHostDB(t)
-	runUser(t, r, `zemi.config.watch("models.main", function(nv) zemi.state.set("picked", nv) end)
+	runUser(t, r, `zemi.config.watch("models.chat", function(nv) zemi.state.set("picked", nv) end)
 		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "m" }, { id = "o" } } })`)
 	check := func(want string) {
 		t.Helper()
@@ -558,7 +558,7 @@ func TestSetModelFiresWatches(t *testing.T) {
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
-		t.Fatalf("models.main watch never saw %q", want)
+		t.Fatalf("models.chat watch never saw %q", want)
 	}
 	if err := h.SetModel("p/m", true); err != nil {
 		t.Fatal(err)

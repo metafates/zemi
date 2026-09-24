@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
-
-	"github.com/metafates/zemi/internal/agent"
 )
 
 // TestTurnCost: prices registered from Lua price a turn, cache writes and
@@ -42,7 +40,7 @@ func TestAgentFinishUsage(t *testing.T) {
 	runUser(t, r, `
 		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1",
 			models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } })
-		zemi.config.set("models.main", "p/m")
+		zemi.config.set("models.chat", "p/m")
 		zemi.event.on("agent.finish", function(ev)
 			local u, s = ev.usage, zemi.agent.usage()
 			zemi.state.set("fin", table.concat({ ev.session, ev.model, u["in"], u.out, u.total, u.cost, s.cost, s.total, s.context_window }, " "))
@@ -116,34 +114,8 @@ func TestGenerateStreams(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) { return streamOnly{}, nil }
 	maxOut := int64(128_000)
-	res, err := h.generate(t.Context(), "", titleSystem, "hi", &maxOut, nil, "models.small")
+	res, err := h.generate(t.Context(), "", titleSystem, "hi", &maxOut, nil, "titles")
 	if err != nil || res.Response.Content.Text() != "a title" {
 		t.Fatalf("generate = %+v, %v", res, err)
-	}
-}
-
-// TestSmallTierAfterPick: a /model pick moves the conversation, and the
-// short jobs stay on the catalog's small model of that provider, or on the
-// pick when the provider names none.
-func TestSmallTierAfterPick(t *testing.T) {
-	h, _ := newTestHost(t)
-	for _, s := range []agent.Spec{
-		{ID: "a", Kind: agent.KindAnthropic, DefaultLarge: "big", DefaultSmall: "tiny", Models: []agent.Model{{ID: "big"}, {ID: "huge"}, {ID: "tiny"}}},
-		{ID: "p", Kind: agent.KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Models: []agent.Model{{ID: "m"}}},
-	} {
-		if err := h.Providers.Register(s, "k"); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, c := range []struct{ pick, small string }{
-		{"a/huge", "a/tiny"},
-		{"p/m", "p/m"},
-	} {
-		if err := h.SetModel(c.pick, false); err != nil {
-			t.Fatal(err)
-		}
-		if _, got, _ := h.modelFor("reflector.model", "models.small"); got != c.small {
-			t.Errorf("small after /model %s = %s, want %s", c.pick, got, c.small)
-		}
 	}
 }

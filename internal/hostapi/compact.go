@@ -403,10 +403,8 @@ func (h *Host) storeCompaction(summary fantasy.Message, tail []fantasy.Message) 
 // errNoSummary.
 func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focus string, window int64) (string, error) {
 	// the budget is the smaller window: the call runs on the compact model
-	if _, id, err := h.modelFor("compact.model", "models.small"); err == nil {
-		if w := h.contextWindow(id); w > 0 && (window <= 0 || w < window) {
-			window = w
-		}
+	if w := h.contextWindow(h.roleModel("compact")); w > 0 && (window <= 0 || w < window) {
+		window = w
 	}
 	maxOut := int64(summaryMaxOut)
 	transcript := transcriptText(head)
@@ -432,7 +430,7 @@ func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focu
 		if focus != "" {
 			fmt.Fprintf(&b, "\n\nAdditional focus: %s", focus)
 		}
-		res, err := h.generate(ctx, h.AgentSessionID(), compactSystem, b.String(), &maxOut, h.streamHooks().Retrying, "compact.model", "models.small")
+		res, err := h.generate(ctx, h.AgentSessionID(), compactSystem, b.String(), &maxOut, h.streamHooks().Retrying, "compact")
 		switch {
 		case contextTooLarge(err) && tries < 3:
 			budget = len(text) * 4 / 5

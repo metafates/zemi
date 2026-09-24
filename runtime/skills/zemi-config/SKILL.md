@@ -34,7 +34,7 @@ zemi.provider.add({
     { id = "deepseek-chat", context_window = 128000, cost_per_1m_in = 0.27, cost_per_1m_out = 1.1 },
   },
 })
-zemi.config.set("models.main", "gw/deepseek-chat")
+zemi.config.set("models.chat", "gw/deepseek-chat")
 zemi.provider.del("openai")                 -- drop one builtin; providers.builtin = false drops them all
 ```
 
@@ -45,7 +45,7 @@ Model fields besides `id` and `display`:
 - `max_output`: reply cap in tokens; unset, anthropic models get 32000, others the provider default.
 - `images = false`: the model refuses images. Without it zemi learns that from the provider's first refusal, for the process.
 
-Tiers: `models.main` runs everything; `models.small` (titles, compaction summaries, the reflector, the `web` agent) and `models.smart` (the main conversation, which delegates; subagents stay on main) fall back to it, an unset small first to the catalog's small model of main's provider, so a `/model` pick of a big model leaves the short jobs cheap. An unset main runs the first added provider's default model, else the first usable builtin's. `/model` and `-m` write the tier the conversation reads (smart when set, else main) and refuse while the active profile sets its own model. Agent files, the `agent` tool and workflows take a tier name or a `provider/model`.
+Roles: `models.chat` runs the conversation, `/btw` and every role left empty; `models.agents` (subagents whose definition names no model, `web` included), `models.titles` (session titles), `models.compact` (compaction summaries) and `models.memory` (the reflector) each take a `provider/model` or `""` to follow chat. An unset chat runs the first added provider's default model, else the first usable builtin's. Nothing falls back to a cheaper model on its own: set titles and memory to one to save tokens. Set them with `zemi.config.set("models.titles", "gw/deepseek-chat")`, or `/model roles` (the list; enter opens a role's models), `/model <role> <provider/model>` or `/model <role> chat` to follow chat. `/model`, `-m` and `zemi.model.set` write `models.chat` and refuse while the active profile sets its own model. Agent files, profiles and workflows take a role name or a `provider/model`.
 
 ## Settings
 
@@ -54,7 +54,6 @@ Tiers: `models.main` runs everything; `models.small` (titles, compaction summari
 - `agent.profile`: `default`, `planner`, or a profile defined with `zemi.agent.profile` (zemi-customize); `/profile` or ctrl+t switches.
 - `agent.effort`: `low`, `medium`, `high`, or empty for the model's default; `/effort`.
   A builtin catalog model runs at its catalog default when unset, else the nearest level it lists, and gets none when it lists none; any other model gets the pick, or no effort when unset.
-- `reflector.model`, `compact.model`: a model for those jobs instead of the small tier.
 - `web.search_url`: a SearXNG endpoint with the json format on; empty uses DuckDuckGo Lite, which some networks answer with a bot check.
 - `memory.autonomy`: `auto` stores policy-clean memories at once, `ask` queues every one for `/memory` (zemi-learning).
 - `editor.command`: the editor for ctrl+g and `zemi.ui.edit`; empty uses `$VISUAL`, then `$EDITOR`, then vi.

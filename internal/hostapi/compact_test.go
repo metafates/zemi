@@ -41,20 +41,6 @@ func TestContextEstimateCountsPrompt(t *testing.T) {
 	}
 }
 
-// TestCompactModelSetting: compaction summaries can run on their own model.
-func TestCompactModelSetting(t *testing.T) {
-	h, r := newTestHost(t)
-	runUser(t, r, `
-		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1",
-			models = { { id = "sum" } } })
-		zemi.config.set("compact.model", "p/sum")
-	`)
-	m, _, err := h.modelFor("compact.model")
-	if err != nil || m.Model() != "sum" {
-		t.Fatalf("summarizer model = %v, err %v", m, err)
-	}
-}
-
 // TestSummaryKeptWhenCutOff: a summary the model cut at the output limit is
 // used with a note, instead of dropping the history unsummarized.
 func TestSummaryKeptWhenCutOff(t *testing.T) {

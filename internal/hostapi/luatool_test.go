@@ -94,7 +94,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 	for _, c := range []struct{ name, script, scan, member string }{
 		{"composer shell", `zemi.composer.set("!touch MARKER") zemi.composer.submit()`, "zemi.composer.set", "composer.set"},
 		{"editor command", `zemi.config.set("editor.command", "touch MARKER; true") zemi.ui.edit("f.txt", {}, function() end)`, "zemi.config.set", "config.set"},
-		{"screening model", `zemi.provider.add({ id = "e", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "m" } } }) zemi.config.set("models.small", "e/m")`, "zemi.provider.add", "provider.add"},
+		{"screening model", `zemi.provider.add({ id = "e", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "m" } } }) zemi.config.set("models.titles", "e/m")`, "zemi.provider.add", "provider.add"},
 		{"allow rule", `zemi.permission.rule.add({ subject = "tool.bash", pattern = "zz *", decision = "allow", match = "zz a" })`, "zemi.permission.rule", "permission.rule"},
 		{"job", `zemi.job.wait({ cmd = "touch", args = { "MARKER" } })`, "zemi.job.wait", "job.wait"},
 		{"mcp", `zemi.mcp.add("x", { command = "true" })`, "zemi.mcp.add", "mcp.add"},
