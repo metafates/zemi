@@ -67,7 +67,7 @@ func TestPlugins(t *testing.T) {
 		{name: "a name that climbs", args: []string{"install", "file://" + tagged, "../x"}, want: "not a plugin name", err: true},
 		{name: "a name like a flag", args: []string{"install", "file://" + tagged, "-x"}, want: "not a plugin name", err: true},
 		{name: "a URL like a flag", args: []string{"install", "--upload-pack=x"}, want: "not a git URL", err: true},
-		{name: "a remote helper", args: []string{"install", "ext::sh -c touch% " + marker, "e"}, want: "not a git URL", err: true},
+		{name: "a remote helper", args: []string{"install", "ext::sh -c touch% " + marker, "e"}, want: "not allowed", err: true},
 		{name: "a plaintext transport", args: []string{"install", "git://127.0.0.1/x", "g"}, want: "not allowed", err: true},
 		{name: "a clone that fails leaves nothing", args: []string{"install", "file://" + tmp + "/nope", "nope"}, want: "clone", err: true},
 		{
@@ -93,6 +93,7 @@ func TestPlugins(t *testing.T) {
 			before: func() { os.Symlink(local, filepath.Join(installed, "link")) },
 			args:   []string{"delete", "link"}, want: "not a directory zemi cloned", err: true,
 		},
+		{name: "check skips a symlink", args: []string{"check"}, want: "\nx v0.10.0 -> v1.0.0 (major)\n"},
 		{name: "delete", args: []string{"delete", "x"}},
 		{name: "reinstall after the delete", args: []string{"install", "file://" + tagged}, want: "installed x v1.0.0"},
 		{name: "an unknown verb", args: []string{"frob"}, want: "usage:", err: true},

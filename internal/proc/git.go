@@ -27,8 +27,8 @@ type Git struct {
 	Foreign bool
 }
 
-// noFilter holds the commands that never run a filter driver, which skip the
-// driver probe and its extra process.
+// noFilter holds the commands that run no filter driver as zemi calls them,
+// which skip the driver probe; cat-file would with --filters or --textconv.
 var noFilter = map[string]bool{"cat-file": true, "config": true, "fetch": true, "rev-list": true, "rev-parse": true, "tag": true}
 
 // Run runs git with args and returns its output; stderr is folded into the

@@ -78,7 +78,7 @@ func List(ctx context.Context, d config.Dirs) ([]Plugin, error) {
 // out its highest semver tag, if it has one. The clone lands in a dot dir
 // and is renamed into place, so the config watcher never loads half of it.
 func Install(ctx context.Context, d config.Dirs, url, name string) (Plugin, error) {
-	if strings.HasPrefix(url, "-") || strings.Contains(url, "::") {
+	if strings.HasPrefix(url, "-") {
 		return Plugin{}, fmt.Errorf("%q is not a git URL", url)
 	}
 	// a local path, as git tells it from host:path; git would resolve a
@@ -165,7 +165,7 @@ func Check(ctx context.Context, d config.Dirs) ([]Plugin, error) {
 	}
 	var errs []error
 	for i, p := range ps {
-		if p.Local {
+		if _, err := clone(d, p.Name); p.Local || err != nil {
 			continue
 		}
 		nctx, cancel := context.WithTimeout(ctx, netTimeout)
@@ -187,7 +187,13 @@ func Delete(d config.Dirs, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(dir); err != nil {
+	// moved aside first, so the config watcher never loads half of it
+	del := filepath.Join(filepath.Dir(dir), "."+name+".del")
+	os.RemoveAll(del)
+	if err := os.Rename(dir, del); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(del); err != nil {
 		return err
 	}
 	return setDisabled(d, name, false)
@@ -285,7 +291,8 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	if line, _, _ := strings.Cut(string(data), "\n"); strings.HasPrefix(line, "--") {
 		p.Desc = strings.TrimSpace(strings.TrimLeft(line, "-"))
 	}
-	if local {
+	// git would read the config of whatever repository a symlink names
+	if fi, err := os.Lstat(dir); local || err != nil || !fi.IsDir() {
 		return p
 	}
 	p.URL, _ = git(ctx, dir, "config", "--get", "remote.origin.url")
@@ -379,6 +386,8 @@ func disabled(d config.Dirs) (map[string]bool, error) {
 
 // setDisabled rewrites disabled through a temp file and a rename, so a CLI
 // and a TUI writing at once never leave a torn file.
+// NOTE: two concurrent writes can keep only one change; an flock on the root
+// would serialize them.
 func setDisabled(d config.Dirs, name string, off bool) error {
 	set, err := disabled(d)
 	if err != nil || set[name] == off {

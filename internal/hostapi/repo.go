@@ -7,10 +7,8 @@ import (
 	"github.com/metafates/zemi/internal/proc"
 )
 
-// git runs one hardened git command in dir (proc.Git).
-// NOTE: a status listing may name a stat-dirty filtered file as modified
-// (proc.Git's NOTE). Only the environment prompt's file list shows it;
-// lspSync keys on mtime and size, so it reports at most one extra change.
+// NOTE: only the environment prompt's file list shows proc.Git's false
+// modified file; lspSync keys on mtime and size, so it sends at most one extra change.
 func (h *Host) git(dir string, args ...string) (string, error) {
 	return h.gitEnv(dir, nil, args...)
 }
