@@ -19,6 +19,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 	glua "github.com/yuin/gopher-lua"
 )
@@ -45,8 +46,8 @@ type overrideRec struct {
 	Tool      string
 	Pre, Post *glua.LFunction
 	Origin    lua.Origin
-	Path   string
-	Gen    Gen
+	Path      string
+	Gen       Gen
 }
 
 type toolReg struct {
@@ -303,7 +304,7 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 	if v := a.pipe.CheckDenied(req); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse("permission " + string(v.Decision) + " (" + v.DecidedBy + "): " + req.Subject + ": " + v.Reason), nil
 	}
-	out, err := a.h.runLuaTool(ctx, a.t, input)
+	out, err := a.h.runLuaTool(ctx, a.t, call.ID, input)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -316,7 +317,7 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 // sent as JSON. nil, err fails the call with err alone (DESIGN §6.0). A
 // raised error reaches the model without its traceback, which names the
 // user's config paths; /errors keeps it.
-func (h *Host) runLuaTool(ctx context.Context, t *luaTool, input map[string]any) (string, error) {
+func (h *Host) runLuaTool(ctx context.Context, t *luaTool, callID string, input map[string]any) (string, error) {
 	ctx, cancel := context.WithTimeoutCause(ctx, t.Timeout, fmt.Errorf("timed out after %s", t.Timeout))
 	defer cancel()
 	res, err := h.RT.RunTask(ctx, lua.Task{Class: lua.ClassAgent, Ceiling: t.Timeout, Origin: t.Origin, Path: t.Path,
@@ -325,7 +326,7 @@ func (h *Host) runLuaTool(ctx context.Context, t *luaTool, input map[string]any)
 			if h.currentGen() != t.Gen {
 				return nil, nil, errors.New("the tool is gone after a config reload")
 			}
-			return t.Fn, []glua.LValue{lua.FromGo(L, input), lua.FromGo(L, map[string]any{"name": t.Name, "origin": string(t.Origin)})}, nil
+			return t.Fn, []glua.LValue{lua.FromGo(L, input), h.toolRun(L, t, callID)}, nil
 		},
 		Done: func(L *glua.LState, rets []glua.LValue) ([]any, error) {
 			if len(rets) > 1 && rets[0] == glua.LNil && rets[1] != glua.LNil {
@@ -358,6 +359,21 @@ func (h *Host) runLuaTool(ctx context.Context, t *luaTool, input map[string]any)
 	}
 	b, _ := json.Marshal(res[0])
 	return string(b), nil
+}
+
+// toolRun is the run handle execute gets: progress shows one line on the
+// call's row, as a command's last output line does.
+func (h *Host) toolRun(L *glua.LState, t *luaTool, callID string) *glua.LTable {
+	run := L.NewTable()
+	run.RawSetString("name", glua.LString(t.Name))
+	run.RawSetString("origin", glua.LString(t.Origin))
+	run.RawSetString("progress", L.NewFunction(func(L *glua.LState) int {
+		line := strings.Join(strings.Fields(sanitize.String(L.CheckString(2))), " ")
+		h.setToolDetail(callID, truncRunes(line, 120))
+		return 0
+	}))
+	lua.GuardFuncs(L, run, "run:", h.guardLua)
+	return run
 }
 
 // toolPreHook adapts the tool.pre events plus zemi.tool.override pre
