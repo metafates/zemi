@@ -137,9 +137,10 @@ func Install(ctx context.Context, d config.Dirs, url, name string) (Plugin, erro
 	return load(ctx, filepath.Join(dir, name), false, true), nil
 }
 
-// Update moves a plugin on a tag to the highest tag of the same major, and
-// one on a branch forward with a fast-forward pull. A dirty checkout makes
-// git refuse, and that error is returned as is.
+// Update fetches a plugin and checks out its highest semver tag, of the same
+// major when it is on a tag already, or moves a branch without tags forward
+// fast-forward. A dirty checkout makes git refuse, and that error is
+// returned as is.
 func Update(ctx context.Context, d config.Dirs, name string) (Plugin, error) {
 	dir, err := clone(d, name)
 	if err != nil {
@@ -147,19 +148,24 @@ func Update(ctx context.Context, d config.Dirs, name string) (Plugin, error) {
 	}
 	nctx, cancel := context.WithTimeout(ctx, netTimeout)
 	defer cancel()
+	if _, err := git(nctx, dir, "fetch", "--quiet", "--tags"); err != nil {
+		return Plugin{}, err
+	}
 	here, _ := git(ctx, dir, "tag", "--points-at", "HEAD")
-	if cur, cv := highest(here, -1); cur != "" {
-		if _, err := git(nctx, dir, "fetch", "--quiet", "--tags"); err != nil {
+	cur, cv := highest(here, -1)
+	major := -1
+	if cur != "" {
+		major = cv[0]
+	}
+	tags, _ := git(ctx, dir, "tag", "--list")
+	if top, v := highest(tags, major); top != "" && slices.Compare(v[:], cv[:]) > 0 {
+		if _, err := git(ctx, dir, "checkout", "--quiet", "refs/tags/"+top); err != nil {
 			return Plugin{}, err
 		}
-		tags, _ := git(ctx, dir, "tag", "--list")
-		if top, v := highest(tags, cv[0]); slices.Compare(v[:], cv[:]) > 0 {
-			if _, err := git(ctx, dir, "checkout", "--quiet", "refs/tags/"+top); err != nil {
-				return Plugin{}, err
-			}
+	} else if cur == "" {
+		if _, err := git(ctx, dir, "merge", "--quiet", "--ff-only", "@{upstream}"); err != nil {
+			return Plugin{}, err
 		}
-	} else if _, err := git(nctx, dir, "pull", "--quiet", "--ff-only"); err != nil {
-		return Plugin{}, err
 	}
 	off, err := disabled(d)
 	if err != nil {
@@ -219,20 +225,23 @@ func SetEnabled(d config.Dirs, name string, on bool) error {
 	return setDisabled(d, name, !on)
 }
 
-// Run runs one verb of the zemi plugins CLI, which /plugins shares.
+// UpToDate is what check and update print when no plugin has news.
+const UpToDate = "Plugins up to date"
+
+// Run runs one verb of the zemi plugins CLI, which /plugins shares. Only list
+// prints a table; every other verb prints plain lines a toast can show.
 func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error {
 	verb, rest := "list", args
 	if len(args) > 0 {
 		verb, rest = args[0], args[1:]
 	}
-	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	defer w.Flush()
 	switch {
 	case verb == "list" && len(rest) == 0:
 		ps, err := List(ctx, d)
 		if len(ps) == 0 && err == nil {
-			fmt.Fprintln(w, "No plugins yet. Install one with zemi plugins install <git url>.")
+			fmt.Fprintln(out, "No plugins yet. Install one with zemi plugins install <git url>.")
 		}
+		w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 		for _, p := range ps {
 			version, source, on := p.Version, p.URL, "on"
 			if p.Local {
@@ -243,7 +252,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 			}
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.Name, version, on, source)
 		}
-		return err
+		return errors.Join(err, w.Flush())
 	case verb == "install" && (len(rest) == 1 || len(rest) == 2):
 		name := ""
 		if len(rest) == 2 {
@@ -251,29 +260,36 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 		}
 		p, err := Install(ctx, d, rest[0], name)
 		if err == nil {
-			fmt.Fprintf(w, "%s\t%s\n", p.Name, p.Version)
+			fmt.Fprintln(out, p.Name, p.Version)
 		}
 		return err
 	case verb == "update":
-		if len(rest) == 0 {
-			ps, err := List(ctx, d)
-			if err != nil {
-				return err
-			}
-			for _, p := range ps {
-				if !p.Local {
+		ps, err := List(ctx, d)
+		if err != nil {
+			return err
+		}
+		was, all := map[string]string{}, len(rest) == 0
+		for _, p := range ps {
+			if !p.Local {
+				was[p.Name] = p.Version
+				if all {
 					rest = append(rest, p.Name)
 				}
 			}
 		}
 		var errs []error
+		moved := false
 		for _, name := range rest {
 			p, err := Update(ctx, d, name)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", name, err))
-				continue
+			} else if p.Version != was[name] {
+				fmt.Fprintf(out, "%s %s -> %s\n", p.Name, was[name], p.Version)
+				moved = true
 			}
-			fmt.Fprintf(w, "%s\t%s\n", p.Name, p.Version)
+		}
+		if !moved && len(errs) == 0 {
+			fmt.Fprintln(out, UpToDate)
 		}
 		return errors.Join(errs...)
 	case verb == "check" && len(rest) == 0:
@@ -281,12 +297,12 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 		n := 0
 		for _, p := range ps {
 			if p.Latest != "" {
-				fmt.Fprintf(w, "%s\t%s -> %s\n", p.Name, p.Version, p.Latest)
+				fmt.Fprintf(out, "%s %s -> %s\n", p.Name, p.Version, p.Latest)
 				n++
 			}
 		}
 		if n == 0 && err == nil {
-			fmt.Fprintln(w, "Plugins up to date")
+			fmt.Fprintln(out, UpToDate)
 		}
 		return err
 	case (verb == "enable" || verb == "disable") && len(rest) == 1:

@@ -90,11 +90,12 @@ func TestPluginsCommand(t *testing.T) {
 		{
 			name: "install from a bare repo", args: "install file://" + filepath.Join(tmp, "src", "x.git"),
 			want: []string{
-				"info: Plugin installed: x  v1.0.0", "section:Installed text:x", "desc:v1.0.0 · the x plugin",
+				"info: Plugin installed: x v1.0.0", "section:Installed text:x", "desc:v1.0.0 · the x plugin",
 				"version: v1.0.0", "status: starting", "hl:Danger hotkey:x run:plugins delete x text:Delete",
 			},
 		},
 		{name: "check with nothing newer", args: "check", want: []string{"info: Plugins up to date: ", "text:x"}},
+		{name: "update with nothing newer", args: "update", want: []string{"info: Plugins up to date: ", "text:x"}, not: []string{"Plugin updated"}},
 	} {
 		if err := h.RunCommand(t.Context(), "plugins", c.args); c.err != "" {
 			if err == nil || !strings.Contains(err.Error(), c.err) || len(ui.opened) > 0 {

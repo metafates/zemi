@@ -81,10 +81,20 @@ func TestPlugins(t *testing.T) {
 			before: func() { gitIn(branch, "commit", "-q", "--allow-empty", "-m", "more") },
 			args:   []string{"check"}, want: "-> 1 new commit",
 		},
-		{name: "update stays in the major", args: []string{"update", "x"}, want: "x v0.10.0"},
+		{name: "update stays in the major", args: []string{"update", "x"}, want: "\nx v0.1.0 -> v0.10.0\n"},
 		{name: "then the major shows", args: []string{"check"}, want: "x v0.10.0 -> v1.0.0 (major)"},
-		{name: "update pulls a branch", args: []string{"update"}, want: "x v0.10.0"},
+		{name: "update pulls a branch", args: []string{"update"}, want: "\nwhy "},
 		{name: "check after the pull", args: []string{"check"}, want: "\nx v0.10.0 -> v1.0.0 (major)\n"},
+		{name: "nothing new", args: []string{"update"}, want: "\nPlugins up to date\n"},
+		{
+			name:   "a branch moves to the first tag",
+			before: func() {
+				gitIn(branch, "commit", "-q", "--allow-empty", "-m", "tagged")
+				gitIn(branch, "tag", "v0.1.0")
+				gitIn(branch, "commit", "-q", "--allow-empty", "-m", "untagged")
+			},
+			args:   []string{"update", "why"}, want: " -> v0.1.0\n",
+		},
 		{name: "disable", args: []string{"disable", "x"}},
 		{name: "list", args: []string{"list"}, want: "x v0.10.0 off file://" + tagged},
 		{name: "disable an unknown name", args: []string{"disable", "nope"}, want: "no plugin is named", err: true},

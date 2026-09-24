@@ -89,7 +89,7 @@ func (h *Host) pluginsCommand(args []string) error {
 			if len(names) > 0 {
 				h.Notify("info", "Updates available", strings.Join(names, ", "))
 			} else if err == nil {
-				h.Notify("info", "Plugins up to date", "")
+				h.Notify("info", plugins.UpToDate, "")
 			}
 			return err
 		})
@@ -97,10 +97,15 @@ func (h *Host) pluginsCommand(args []string) error {
 		background(func() error {
 			var out strings.Builder
 			err := plugins.Run(context.Background(), h.Dirs, args, &out)
-			if body := strings.TrimSpace(out.String()); body != "" {
-				h.Notify("info", map[string]string{"install": "Plugin installed", "update": "Plugin updated"}[verb], body)
-			} else if err == nil && verb == "delete" {
-				h.Notify("info", "Plugin deleted", args[1])
+			title := map[string]string{"install": "Plugin installed", "update": "Plugin updated", "delete": "Plugin deleted"}[verb]
+			body := strings.TrimSpace(out.String())
+			if body == plugins.UpToDate {
+				title, body = body, ""
+			} else if verb == "delete" && err == nil {
+				body = args[1]
+			}
+			if err == nil || body != "" {
+				h.Notify("info", title, body)
 			}
 			return err
 		})
