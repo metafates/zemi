@@ -124,12 +124,12 @@ func TestMemoryReviewEdit(t *testing.T) {
 		{ID: "m2", Scope: "project", Origin: "user", Text: "other"},
 	}
 	done := openReview(t, app, rows)
-	app.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	app.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
 	if app.memReview == nil {
 		t.Fatal("e closed the screen on a forget suggestion")
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	app.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	app.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
 	if got := <-done; !got[1].Edit || got[0].Edit || got[2].Edit {
 		t.Fatalf("edit rows: %+v", got)
 	}

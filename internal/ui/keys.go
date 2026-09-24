@@ -167,7 +167,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.memAct("a")
 		case "d", "x", "backspace", "delete":
 			a.memAct("d")
-		case "s", "e", "u":
+		case "s", "o", "u":
 			a.memAct(key)
 		case "enter":
 			mr.open()

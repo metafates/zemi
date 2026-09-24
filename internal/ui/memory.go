@@ -198,7 +198,7 @@ func memActions(it hostapi.MemoryRow, undo bool) []promptChoice {
 		out = []promptChoice{{key: "d", label: "Forget"}}
 	}
 	if !it.Forget {
-		out = append(out, promptChoice{key: "s", label: map[bool]string{true: "Only this project", false: "Use everywhere"}[it.Scope == "user"]}, promptChoice{key: "e", label: "Edit"})
+		out = append(out, promptChoice{key: "s", label: map[bool]string{true: "Only this project", false: "Use everywhere"}[it.Scope == "user"]}, promptChoice{key: "o", label: "Open in the editor"})
 	}
 	if undo {
 		out = append(out, promptChoice{key: "u", label: "Undo"})
@@ -216,7 +216,7 @@ func (a *App) memAct(key string) {
 		a.markMemory("drop")
 	case "s":
 		a.markMemory("scope")
-	case "e":
+	case "o":
 		a.editMemory()
 	case "u":
 		a.undoMemory()

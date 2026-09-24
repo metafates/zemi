@@ -571,7 +571,7 @@ lua-language-server is installed.
   frame draws a row twice or not at all; `TurnDone` settles a call still open as stopped after
   an interrupt and as failed after an error. `historyFrom` splits text and merges reasoning the
   same way, so a resume draws the rows the live turn drew.
-- **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`; `e` opens the
+- **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`; `o` opens the
   raw text through `EditFile` after the other marks apply, re-running intake as user origin and
   keeping the id.
 - **Reflector timing.** It runs on session close (`/new`, `/resume`) and in a startup sweep
