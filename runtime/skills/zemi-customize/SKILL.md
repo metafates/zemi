@@ -259,7 +259,7 @@ Developing one:
 - A sandboxed command cannot see the plugins directory, so running its tests or git there needs `sandbox: false`, which asks each time outside yolo.
 - To move a feature out of the config dir, put its registrations in `local/<name>/init.lua` and its modules in `lua/<name>/`, leave `require("<name>").setup(...)` in the user's init.lua, and keep there what only user config may do (replacing a shipped widget, `hl.set`, layout, settings). Its allow rules keep working (a rule with no `principal` covers every caller); add the principal to narrow them. Its old `zemi.state` keys stay behind.
 
-Publishing: `git init`, commit, push to a host the user picks, then tag `v0.1.0` and push the tag. An install checks out the newest `vX.Y.Z` tag and an update stays in its major version (one installed before the first tag moves to it), so a breaking change bumps the major. Users install with `/plugins install <git url>` or `zemi plugins install <git url>`.
+Publishing: `git init`, commit, push to a host the user picks, then tag `v0.1.0` and push the tag. An install checks out the newest `vX.Y.Z` tag and an update stays in its major version (one installed from a branch moves to the first tag ahead of it), so a breaking change bumps the major. Users install with `/plugins install <git url>` or `zemi plugins install <git url>`.
 
 ## After writing
 

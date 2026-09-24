@@ -87,14 +87,15 @@ func TestPlugins(t *testing.T) {
 		{name: "check after the pull", args: []string{"check"}, want: "\nx v0.10.0 -> v1.0.0 (major)\n"},
 		{name: "nothing new", args: []string{"update"}, want: "\nPlugins up to date\n"},
 		{
-			name: "a branch moves to the first tag",
+			name: "check names the tag a branch moves to",
 			before: func() {
 				gitIn(branch, "commit", "-q", "--allow-empty", "-m", "tagged")
 				gitIn(branch, "tag", "v0.1.0")
 				gitIn(branch, "commit", "-q", "--allow-empty", "-m", "untagged")
 			},
-			args: []string{"update", "why"}, want: " -> v0.1.0\n",
+			args: []string{"check"}, want: " -> v0.1.0 x ",
 		},
+		{name: "a branch moves to the first tag", args: []string{"update", "why"}, want: " -> v0.1.0\n"},
 		{name: "disable", args: []string{"disable", "x"}},
 		{name: "list", args: []string{"list"}, want: "x v0.10.0 off file://" + tagged},
 		{name: "disable an unknown name", args: []string{"disable", "nope"}, want: "no plugin is named", err: true},
@@ -105,6 +106,24 @@ func TestPlugins(t *testing.T) {
 			args:   []string{"delete", "link"}, want: "not a directory zemi cloned", err: true,
 		},
 		{name: "check skips a symlink", args: []string{"check"}, want: "\nx v0.10.0 -> v1.0.0 (major)\n"},
+		{
+			name: "a tag behind a branch is no update",
+			before: func() {
+				older := repo("w")
+				gitIn(older, "commit", "-q", "--allow-empty", "-m", "c2")
+				if _, err := Install(t.Context(), d, older, ""); err != nil {
+					t.Fatal(err)
+				}
+				gitIn(older, "tag", "v0.1.0", "HEAD~1")
+				gitIn(older, "commit", "-q", "--allow-empty", "-m", "c3")
+			},
+			args: []string{"update", "w"}, want: "\nw ",
+		},
+		{
+			name:   "it stays on the branch",
+			before: func() { gitIn(filepath.Join(tmp, "src", "w"), "commit", "-q", "--allow-empty", "-m", "c4") },
+			args:   []string{"check"}, want: " -> 1 new commit x ",
+		},
 		{name: "delete", args: []string{"delete", "x"}},
 		{name: "reinstall after the delete", args: []string{"install", "file://" + tagged}, want: "\nx v1.0.0\n"},
 		{name: "an unknown verb", args: []string{"frob"}, want: "usage:", err: true},

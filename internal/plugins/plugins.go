@@ -141,10 +141,10 @@ func Install(ctx context.Context, d config.Dirs, url, name string) (Plugin, erro
 	return load(ctx, filepath.Join(dir, name), false, true), nil
 }
 
-// Update fetches a plugin and checks out its highest semver tag, of the same
-// major when it is on a tag already, or moves a branch without tags forward
-// fast-forward. A dirty checkout makes git refuse, and that error is
-// returned as is.
+// Update fetches a plugin and checks out its highest semver tag of the same
+// major when it is on a tag already; a branch moves to the highest tag ahead
+// of it, or else fast-forward. A dirty checkout makes git refuse, and that
+// error is returned as is.
 func Update(ctx context.Context, d config.Dirs, name string) (Plugin, error) {
 	dir, err := clone(d, name)
 	if err != nil {
@@ -155,19 +155,20 @@ func Update(ctx context.Context, d config.Dirs, name string) (Plugin, error) {
 	if _, err := git(nctx, dir, "fetch", "--quiet", "--tags"); err != nil {
 		return Plugin{}, err
 	}
+	to := ""
 	here, _ := git(ctx, dir, "tag", "--points-at", "HEAD")
-	cur, cv := highest(here, -1)
-	major := -1
-	if cur != "" {
-		major = cv[0]
-	}
-	tags, _ := git(ctx, dir, "tag", "--list")
-	if top, v := highest(tags, major); top != "" && slices.Compare(v[:], cv[:]) > 0 {
-		if _, err := git(ctx, dir, "checkout", "--quiet", "refs/tags/"+top); err != nil {
+	if cur, cv := highest(here, -1); cur != "" {
+		tags, _ := git(ctx, dir, "tag", "--list")
+		if top, v := highest(tags, cv[0]); slices.Compare(v[:], cv[:]) > 0 {
+			to = top
+		}
+	} else if to = tagAhead(ctx, dir); to == "" {
+		if _, err := git(ctx, dir, "merge", "--quiet", "--ff-only", "@{upstream}"); err != nil {
 			return Plugin{}, err
 		}
-	} else if cur == "" {
-		if _, err := git(ctx, dir, "merge", "--quiet", "--ff-only", "@{upstream}"); err != nil {
+	}
+	if to != "" {
+		if _, err := git(ctx, dir, "checkout", "--quiet", "refs/tags/"+to); err != nil {
 			return Plugin{}, err
 		}
 	}
@@ -339,12 +340,29 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 		return p
 	}
 	p.Version, _ = git(ctx, dir, "rev-parse", "--short", "HEAD")
+	if p.Latest = tagAhead(ctx, dir); p.Latest != "" {
+		return p
+	}
 	if n, _ := git(ctx, dir, "rev-list", "--count", "HEAD..@{upstream}"); n == "1" {
 		p.Latest = "1 new commit"
 	} else if n != "" && n != "0" {
 		p.Latest = n + " new commits"
 	}
 	return p
+}
+
+// tagAhead returns the highest semver tag when HEAD is its ancestor, where a
+// branch checkout moves: a release tagged behind the branch is a downgrade.
+func tagAhead(ctx context.Context, dir string) string {
+	tags, _ := git(ctx, dir, "tag", "--list")
+	top, _ := highest(tags, -1)
+	if top == "" {
+		return ""
+	}
+	if _, err := git(ctx, dir, "merge-base", "--is-ancestor", "HEAD", "refs/tags/"+top); err != nil {
+		return ""
+	}
+	return top
 }
 
 // firstLine reads line 1 of a regular file, 4 KB at most: a clone can hold

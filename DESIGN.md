@@ -429,7 +429,7 @@ reload.
 which is plain git and runs no Lua: `install <git url> [name]` clones into a
 dot dir, checks out the highest `vX.Y.Z` tag and renames it into place;
 `update [name...]` fetches, then moves a tag within its major version, a
-branch to the highest tag once the repository has one, or else a branch
+branch to the highest tag when that tag is ahead of it, or else a branch
 fast-forward, and names only the plugins that moved; `check` fetches, so
 the list names each update from local refs; `enable`, `disable` and
 `delete` (a clone only: a local plugin may exist nowhere else). `zemi plugins` runs without the Lua boot, the TUI or
