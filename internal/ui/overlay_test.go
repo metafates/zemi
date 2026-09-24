@@ -314,6 +314,18 @@ func TestOverlayNavigation(t *testing.T) {
 				}
 				return ""
 			}},
+		{"a detail is text unless its list holds fields",
+			hostapi.Overlay{Items: []any{map[string]any{"text": "trust", "detail": "trusted: ~/x"}}}, []string{"enter"},
+			func(a *App) string {
+				box := fmt.Sprint(a.overlayBox(&a.overlays[1], 80, 20))
+				return map[bool]string{false: box}[strings.Contains(box, "trusted: ~/x")]
+			}},
+		{"a fields list's detail sets them as a table",
+			hostapi.Overlay{Fields: true, Items: []any{map[string]any{"text": "mcp", "detail": "status: ready"}}}, []string{"enter"},
+			func(a *App) string {
+				box := fmt.Sprint(a.overlayBox(&a.overlays[1], 80, 20))
+				return map[bool]string{false: box}[strings.Contains(box, "{ready Host:Ok")]
+			}},
 		{"a breadcrumb longer than the list is cut, never widening the detail view",
 			hostapi.Overlay{Title: "A long parent title", Items: []any{map[string]any{"text": strings.Repeat("x", 50), "detail": "d"}}}, []string{"enter"},
 			func(a *App) string {
@@ -817,16 +829,27 @@ func TestOverlayCloseRules(t *testing.T) {
 }
 
 func TestFieldRows(t *testing.T) {
-	var got []string
-	for _, r := range fieldRows("url: https://x.dev/mcp\nerror: one two three four five six seven eight nine ten\nstack traceback:\n\nplain text", 40) {
-		hl := ""
-		if len(r) > 1 {
-			hl = " " + r[1].HL
+	for _, c := range []struct {
+		name, body string
+		want       []string
+	}{
+		{"an error's value runs to the blank line", "url: https://x.dev/mcp\nerror: one two three four five six seven eight nine ten\nstack traceback:\n\nplain text",
+			[]string{"url    https://x.dev/mcp ", "error  one two three four five six  Host:Danger", "       seven eight nine ten Host:Danger", "       stack traceback: Host:Danger", "", "plain text"}},
+		{"a key inside an error is its text", "at: x.lua:1\nerror: boom\npanic: runtime error",
+			[]string{"at     x.lua:1 ", "error  boom Host:Danger", "       panic: runtime error Host:Danger"}},
+		{"text after the block stays text", "Prose first.\n\nstatus: ready\n\nwarning: unused x",
+			[]string{"Prose first.", "", "status  ready Host:Ok", "", "warning: unused x"}},
+	} {
+		var got []string
+		for _, r := range fieldRows(c.body, 40) {
+			hl := ""
+			if len(r) > 1 {
+				hl = " " + r[1].HL
+			}
+			got = append(got, plainSegs(r)+hl)
 		}
-		got = append(got, plainSegs(r)+hl)
-	}
-	want := []string{"url    https://x.dev/mcp ", "error  one two three four five six  Host:Danger", "       seven eight nine ten Host:Danger", "       stack traceback: Host:Danger", "", "plain text"}
-	if !slices.Equal(got, want) {
-		t.Fatalf("rows %q, want %q", got, want)
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%s: rows %q, want %q", c.name, got, c.want)
+		}
 	}
 }

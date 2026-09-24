@@ -699,7 +699,7 @@ func (h *Host) openWorkflows() error {
 			},
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items})
+	ui.OpenOverlay(Overlay{ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Fields: true, Items: items})
 	return nil
 }
 

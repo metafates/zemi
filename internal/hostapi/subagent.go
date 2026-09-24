@@ -929,7 +929,7 @@ func (h *Host) openAgents() error {
 			"text":    j.ID,
 			"desc":    j.Status() + " · " + j.Name,
 			"section": "Background jobs (all sessions)",
-			"detail":  j.Name + "\n" + j.Status() + "\n\n" + cmp.Or(shortOutput(j.Output()), "(no output)"),
+			"detail":  "name: " + j.Name + "\nstatus: " + j.Status() + "\n\n" + cmp.Or(shortOutput(j.Output()), "(no output)"),
 		}
 		if j.Running() {
 			item["actions"] = []any{map[string]any{"text": "Stop", "hotkey": "s", "run": "agents kill " + j.ID}}
@@ -949,7 +949,7 @@ func (h *Host) openAgents() error {
 				d.Description, h.sourceOf(d.Source, d.Path), model, tools, TildePath(h.Dirs.ConfigHome)),
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Verb: "open"})
+	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Fields: true, Items: items, Verb: "open"})
 	return nil
 }
 

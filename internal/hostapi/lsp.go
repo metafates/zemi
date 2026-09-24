@@ -674,7 +674,7 @@ func (h *Host) lspCommands() []*Command {
 			if !h.ProjectTrusted() {
 				empty = "Language servers are off: this project is not trusted."
 			}
-			ui.OpenOverlay(Overlay{ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Items: h.lspItems(),
+			ui.OpenOverlay(Overlay{ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Fields: true, Items: h.lspItems(),
 				Reload: func() ([]any, [][]Segment) { return h.lspItems(), nil }, Empty: empty})
 			return nil
 		},

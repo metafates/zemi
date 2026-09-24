@@ -155,7 +155,7 @@ func (h *Host) OpenErrors(args string) error {
 			"actions": actions,
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No errors since zemi started."})
+	ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Fields: true, Items: items, Selected: sel, Empty: "No errors since zemi started."})
 	return nil
 }
 

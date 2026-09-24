@@ -137,7 +137,7 @@ func (h *Host) pluginNamed(name string) (plugins.Plugin, error) {
 // openPlugins opens /plugins, or replaces the open list in place. It reads
 // git, so it never runs on the key loop.
 func (h *Host) openPlugins(ui UIHooks) {
-	ui.OpenOverlay(Overlay{ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Items: h.pluginItems(),
+	ui.OpenOverlay(Overlay{ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Fields: true, Items: h.pluginItems(),
 		Reload: func() ([]any, [][]Segment) { return h.pluginItems(), nil }})
 }
 
@@ -176,11 +176,11 @@ func (h *Host) pluginItems() []any {
 			detail = append(detail, "latest: "+p.Latest)
 		}
 		detail = append(detail, "path: "+TildePath(p.Dir), "status: "+status)
-		if loadErr != nil {
-			detail = append(detail, "error: "+loadErr.Error())
-		}
 		if l := provides[p.Name]; l != nil {
 			detail = append(detail, "provides: "+strings.Join(l, " · "))
+		}
+		if loadErr != nil { // last: every line after it is its text
+			detail = append(detail, "error: "+loadErr.Error())
 		}
 		if p.Desc != "" {
 			detail = append([]string{p.Desc, ""}, detail...)

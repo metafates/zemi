@@ -722,7 +722,7 @@ func (h *Host) openMCP() error {
 	if err != nil {
 		return err
 	}
-	ui.OpenOverlay(Overlay{ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Items: h.mcpItems(),
+	ui.OpenOverlay(Overlay{ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Fields: true, Items: h.mcpItems(),
 		Reload: func() ([]any, [][]Segment) { return h.mcpItems(), nil },
 		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`})
 	return nil
@@ -756,14 +756,14 @@ func (h *Host) mcpItems() []any {
 		if signIn != "" {
 			detail += "\nsign in at: " + signIn
 		}
-		if errText != "" {
-			detail += "\nerror: " + strings.TrimPrefix(errText, "mcp: ")
-		}
 		if len(tools) > 20 {
 			tools = append(tools[:20], "…")
 		}
 		if len(tools) > 0 {
 			detail += "\ntools: " + strings.Join(tools, ", ")
+		}
+		if errText != "" { // last: every line after it is its text
+			detail += "\nerror: " + strings.TrimPrefix(errText, "mcp: ")
 		}
 		actions := []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "mcp restart " + s.name}}
 		if status == "needs sign-in" {

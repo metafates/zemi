@@ -1367,9 +1367,10 @@ provenance string.
   list would cover.
   A row may name its own enter verb (`verb`, "open" on a
   row that opens another screen): the hint says it, and space, which toggles
-  a toggle list's rows, passes it by. A detail body's `status:` line colors
-  the status words every screen shares: `starting`, `ready`, `failed`,
-  `stopped` and `off`.
+  a toggle list's rows, passes it by. A Go screen's detail sets its one
+  `key: value` block as a table (any other body is text as written), and its
+  `status:` line colors the status words every screen shares: `starting`,
+  `ready`, `failed`, `stopped` and `off`.
 - **Layout tree** (`zemi.ui.layout.set/get/rects`, `internal/ui/layout.go`): Lua hands
   over plain data, Go validates it once and solves it every frame on the Update
   goroutine, so the screen never waits on the interpreter. Boxes (row or col, optional

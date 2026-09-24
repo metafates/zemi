@@ -110,6 +110,7 @@ type Overlay struct {
 	// enter does to a row, when "confirm" does not say it.
 	Body     string
 	BodyMD   bool        // render Body (and every detail view's) as markdown
+	Fields   bool        // set a plain Body's (and every detail view's) "key: value" block as a table
 	BodySegs [][]Segment // Body as styled rows, drawn in its place; Body is what y copies
 	Empty    string
 	Selected int

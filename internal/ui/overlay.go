@@ -273,7 +273,7 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 		title = parent.o.Title + " / " + title
 	}
 	p := parent.o
-	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: body, BodyMD: p.BodyMD, Items: actions, OnAction: p.OnAction})
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: body, BodyMD: p.BodyMD, Fields: p.Fields, Items: actions, OnAction: p.OnAction})
 	st.back, st.item, st.size = true, parent.o.Items[idx], parent.size
 	a.overlays = append(a.overlays, st)
 }
@@ -547,8 +547,12 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			}
 		case st.o.BodyMD:
 			rows = a.host.Markdown(strings.TrimRight(st.o.Body, "\n"), w)
-		default:
+		case st.o.Fields:
 			rows = fieldRows(st.o.Body, w)
+		default:
+			for _, l := range strings.Split(strings.TrimRight(st.o.Body, "\n"), "\n") {
+				rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, w)...)
+			}
 		}
 		return rows
 	})
@@ -641,40 +645,46 @@ var fieldLine = regexp.MustCompile(`^([a-z][a-z -]{0,14}): (.*)$`)
 // statusHL colors the status words every screen shares.
 var statusHL = map[string]string{"starting": "Host:Warn", "ready": "Host:Ok", "failed": "Host:Danger", "stopped": "Host:Hint", "off": "Host:Hint"}
 
-// fieldRows wraps a plain body, setting its "key: value" lines as a table:
-// dim keys in one column, each value wrapped beside its key, an error's in
-// the danger color and a status word in its own. A non-field line right after
-// a field row continues its value, like an error's traceback.
+// fieldRows wraps a plain body, setting its one "key: value" block as a
+// table: dim keys in one column, each value wrapped beside its key, an
+// error's in the danger color and a status word in its own. A blank line
+// ends the block, and every line after an error's first continues it, so a
+// traceback or the text after the block stays text.
 func fieldRows(body string, w int) [][]hostapi.Segment {
 	lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
-	kw := 0
-	for _, l := range lines {
-		if m := fieldLine.FindStringSubmatch(l); m != nil {
+	block := make([][]string, len(lines)) // key and value, key "" continuing; nil is text
+	kw, inBlock, inErr := 0, false, false
+	for i, l := range lines {
+		if l == "" && inBlock {
+			break
+		}
+		switch m := fieldLine.FindStringSubmatch(l); {
+		case m != nil && !inErr:
+			block[i], inBlock, inErr = m[1:], true, m[1] == "error"
 			kw = max(kw, len(m[1])+2)
+		case inBlock:
+			block[i] = []string{"", l}
 		}
 	}
 	var rows [][]hostapi.Segment
-	inField, hl := false, ""
-	for _, l := range lines {
-		m := fieldLine.FindStringSubmatch(l)
-		key, val := "", l
-		switch {
-		case w-kw < 20 || l == "" || m == nil && !inField:
-			inField = false
+	hl := ""
+	for i, l := range lines {
+		if w-kw < 20 || block[i] == nil {
 			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, w)...)
 			continue
-		case m != nil:
-			key, val, hl = m[1], m[2], ""
-			switch key {
-			case "error":
-				hl = "Host:Danger"
-			case "status":
-				hl = statusHL[val]
-			}
 		}
-		inField = true
-		for i, r := range hostapi.WrapSegs([]hostapi.Segment{{Text: val, HL: hl}}, w-kw) {
-			if i > 0 {
+		key, val := block[i][0], block[i][1]
+		switch key {
+		case "":
+		case "error":
+			hl = "Host:Danger"
+		case "status":
+			hl = statusHL[val]
+		default:
+			hl = ""
+		}
+		for j, r := range hostapi.WrapSegs([]hostapi.Segment{{Text: val, HL: hl}}, w-kw) {
+			if j > 0 {
 				key = ""
 			}
 			rows = append(rows, append([]hostapi.Segment{{Text: fmt.Sprintf("%-*s", kw, key), HL: "Host:Hint"}}, r...))
