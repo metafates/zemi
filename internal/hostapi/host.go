@@ -351,6 +351,9 @@ type Host struct {
 	// path ~-shortened, which widgets read every frame.
 	trustRoot func() string
 	project   func() string
+	// pluginsRoot is Dirs.PluginsRoot resolved once, as chunk paths are:
+	// PluginOf runs on every gated call and every overlay frame.
+	pluginsRoot func() string
 	// gitStatus is the working tree listing the environment prompt carries,
 	// run once per process and warmed at boot: a large repository takes
 	// seconds to answer, and on the send path that is time to first token.
@@ -460,6 +463,13 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	h.Perm.EnvKeep = func() string { return settings.Str("permissions.env_keep") }
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return TildePath(h.trustRoot()) })
+	h.pluginsRoot = sync.OnceValue(func() string {
+		root := dirs.PluginsRoot()
+		if r, err := filepath.EvalSymlinks(root); err == nil {
+			return r
+		}
+		return root
+	})
 	h.gitStatus = sync.OnceValue(func() string { return h.gitStatusSection(dirs.ProjectDir) })
 	if dirs.StateHome != "" {
 		// keyed on the repository, not the launch directory: a subdirectory

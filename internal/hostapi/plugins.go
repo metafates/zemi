@@ -30,7 +30,11 @@ func (h *Host) PluginsStep() lua.BootStep {
 		Name: "plugins",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			ps, err := plugins.Scan(h.Dirs)
-			h.sweepPluginState(ps)
+			if err == nil {
+				// a failed scan lists no plugins, and the sweep would take every
+				// plugin's saved tokens with it
+				h.sweepPluginState(ps)
+			}
 			installed := map[string]bool{}
 			for _, p := range ps {
 				if !p.Local {
@@ -98,14 +102,8 @@ func (h *Host) localPlugins() string {
 // PluginOf names the plugin a file belongs to, its directory under
 // installed/ or local/, or "" for any other path.
 func (h *Host) PluginOf(path string) string {
-	sep, root := string(filepath.Separator), h.Dirs.PluginsRoot()
-	rel, ok := strings.CutPrefix(path, root+sep)
-	if !ok {
-		// chunk paths are resolved, the root may not be
-		if r, err := filepath.EvalSymlinks(root); err == nil {
-			rel, ok = strings.CutPrefix(path, r+sep)
-		}
-	}
+	sep := string(filepath.Separator)
+	rel, ok := strings.CutPrefix(path, h.pluginsRoot()+sep)
 	kind, rest, _ := strings.Cut(rel, sep)
 	name, _, _ := strings.Cut(rest, sep)
 	if !ok || kind != "local" && kind != "installed" {
@@ -122,7 +120,7 @@ func pluginClash(owner func(string) string, what string, old lua.Origin, oldPath
 		return nil
 	}
 	if a := owner(oldPath); a != owner(newPath) {
-		return fmt.Errorf("%s is already registered by plugin %s", what, a)
+		return fmt.Errorf("%s is already registered by plugin %s, not %s", what, a, owner(newPath))
 	}
 	return nil
 }
