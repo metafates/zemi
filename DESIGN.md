@@ -1268,8 +1268,9 @@ provenance string.
   cannot be undone (delete, or `/mcp`'s sign out, which deletes the saved
   token). A screen that manages things (`/skills`, `/mcp`, `/lsp`,
   `/permissions`) is a toggle list, so an action returns to it rebuilt;
-  `/sessions`, `/agents` and `/workflows` close on an action, since resume,
-  view and run move on to what they started.
+  `/sessions`, `/agents` and `/workflows` close on an action instead: resume,
+  a run and an agent's transcript move to another screen, which a rebuilt
+  list would cover.
   A row may name its own enter verb (`verb`, "open" on a
   row that opens another screen): the hint says it, and space, which toggles
   a toggle list's rows, passes it by. A detail body's `status:` line colors
