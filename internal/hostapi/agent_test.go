@@ -1417,10 +1417,11 @@ func TestProfileSwitch(t *testing.T) {
 	if h.OpenProfilePicker() != nil || h.OpenModelPicker("chat") != nil {
 		t.Fatal("a picker did not open")
 	}
-	for _, o := range ui.opened {
-		item := o.Items[o.Selected].(map[string]any)
-		if item["key"] != "current" || !strings.Contains(item["text"].(string), "cheap") {
-			t.Errorf("%s picker marks %v", o.ID, item)
+	// the profile is cheap's, the chat role stays models.chat
+	for i, want := range []string{"cheap", "a/main"} {
+		o := ui.opened[i]
+		if item := o.Items[o.Selected].(map[string]any); item["key"] != "current" || !strings.Contains(item["text"].(string), want) {
+			t.Errorf("%s picker marks %v, want %s", o.ID, item, want)
 		}
 	}
 }
