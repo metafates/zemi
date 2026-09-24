@@ -6,12 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // TestJobStartFailure: a command that cannot start is a runtime failure,
@@ -47,22 +45,8 @@ func TestJobGateSeesCommandLine(t *testing.T) {
 	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "true*", Decision: perm.Allow})
 	runUser(t, r, `
 		assert(zemi.job.wait({ cmd = "true", args = { "x" } }), "allowed")
-		assert(not pcall(zemi.job.wait, { cmd = "echo", args = { "true" } }), "the program leads the line")
+		assert(not pcall(zemi.job.start, { cmd = "echo", args = { "true" } }), "the program leads the line")
 	`)
-}
-
-// TestWaitEndsWithTheRequest: an interpreter-blocking wait ends when the
-// request's context is canceled (its ceiling, or ctrl+c), so it cannot
-// outlive the watchdog grace and leave the runtime hot (DESIGN §4).
-func TestWaitEndsWithTheRequest(t *testing.T) {
-	L := glua.NewState()
-	defer L.Close()
-	ctx, cancel := context.WithCancel(t.Context())
-	L.SetContext(ctx)
-	cancel()
-	if err := waitDone(L, make(chan struct{}), time.Minute); err == nil || err.Error() != "canceled" {
-		t.Fatalf("waitDone = %v, want canceled", err)
-	}
 }
 
 // TestReadJailCoversRepo: started in a subdirectory of a trusted repository,

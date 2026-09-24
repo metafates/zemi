@@ -186,7 +186,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		} else if len(required) > 0 {
 			L.RaiseError("zemi.tool.add: required names parameters but there is no input")
 		}
-		timeout := 30 * time.Second
+		timeout := 60 * time.Second
 		if ms, ok := spec.RawGetString("timeout_ms").(glua.LNumber); ok && ms > 0 {
 			timeout = time.Duration(ms) * time.Millisecond
 		}
@@ -303,39 +303,38 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 	return fantasy.NewTextResponse(out), nil
 }
 
-// runLuaTool executes the Lua callback on the interpreter (the fantasy
-// tool goroutine blocks here; one interpreter serializes Lua tools), so an
-// interrupt preempts it. A string result or a table's output field is the
-// output; anything else is sent as JSON. nil, err fails the call with err
-// alone (DESIGN §6.0). A raised error reaches the model without its
-// traceback, which names the user's config paths; /errors keeps it.
+// runLuaTool runs execute as a task, bounded by the tool's timeout in wall
+// time; a wait in it frees the interpreter, and an interrupt ends it. A
+// string result or a table's output field is the output; anything else is
+// sent as JSON. nil, err fails the call with err alone (DESIGN §6.0). A
+// raised error reaches the model without its traceback, which names the
+// user's config paths; /errors keeps it.
 func (h *Host) runLuaTool(ctx context.Context, t *luaTool, input map[string]any) (string, error) {
-	res, err := h.RT.Do(ctx, lua.ClassAgent, t.Timeout, 5*time.Second,
-		func(L *glua.LState) ([]any, error) {
+	ctx, cancel := context.WithTimeoutCause(ctx, t.Timeout, fmt.Errorf("timed out after %s", t.Timeout))
+	defer cancel()
+	res, err := h.RT.RunTask(ctx, lua.Task{Class: lua.ClassAgent, Ceiling: t.Timeout, Origin: t.Origin, Path: t.Path,
+		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
 			// a turn keeps the tools it started with: never call into a dropped generation
 			if h.currentGen() != t.Gen {
-				return nil, errors.New("the tool is gone after a config reload")
+				return nil, nil, errors.New("the tool is gone after a config reload")
 			}
-			defer h.RT.PushFrame(L, t.Origin, t.Path)()
-			base := L.GetTop()
-			defer L.SetTop(base)
-			L.Push(t.Fn)
-			L.Push(lua.FromGo(L, input))
-			L.Push(lua.FromGo(L, map[string]any{"name": t.Name, "origin": string(t.Origin)}))
-			if err := L.PCall(2, 2, nil); err != nil {
-				// an interrupt or timeout raises too, and is no config bug
-				if ae, ok := errors.AsType[*glua.ApiError](err); ok && L.Context().Err() == nil {
-					h.RecordError("tool "+t.Name, err.Error())
-					return nil, errors.New(ae.Object.String())
-				}
-				return nil, err
+			return t.Fn, []glua.LValue{lua.FromGo(L, input), lua.FromGo(L, map[string]any{"name": t.Name, "origin": string(t.Origin)})}, nil
+		},
+		Done: func(L *glua.LState, rets []glua.LValue) ([]any, error) {
+			if len(rets) > 1 && rets[0] == glua.LNil && rets[1] != glua.LNil {
+				return nil, errors.New(rets[1].String())
 			}
-			if msg := L.Get(-1); L.Get(-2) == glua.LNil && msg != glua.LNil {
-				return nil, errors.New(msg.String())
-			}
-			v, err := lua.ToGo(L.Get(-2))
+			v, err := lua.ToGo(rets[0])
 			return []any{v}, err
-		})
+		},
+	})
+	switch ae, raised := errors.AsType[*glua.ApiError](err); {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		err = context.Cause(ctx)
+	case raised:
+		h.RecordError("tool "+t.Name, err.Error())
+		err = errors.New(ae.Object.String())
+	}
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", t.Name, err)
 	}

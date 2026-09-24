@@ -244,22 +244,27 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 	return h.runLuaCommand(ctx, cmd, argString)
 }
 
+// runLuaCommand runs a Lua command as a task. With a UI it returns once the
+// task suspends, so the worker runs the next key before its rest; -p waits
+// for the whole command.
 func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string) error {
-	_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-		if h.currentGen() != cmd.Gen {
-			return nil, lua.ErrReloaded
+	t := lua.Task{Class: lua.ClassUI, Origin: cmd.Origin, Path: cmd.Path,
+		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
+			if h.currentGen() != cmd.Gen {
+				return nil, nil, lua.ErrReloaded
+			}
+			return cmd.Fn, []glua.LValue{commandArgs(L, argString)}, nil
+		}}
+	if h.hooks() == nil {
+		_, err := h.RT.RunTask(ctx, t)
+		return err
+	}
+	return h.RT.StartTask(ctx, t, func(err error) {
+		h.refresh()
+		if err != nil && !isQuietLuaErr(err) {
+			h.CommandFailed(cmd.Name, err)
 		}
-		defer h.RT.PushFrame(L, cmd.Origin, cmd.Path)()
-		base := L.GetTop()
-		L.Push(cmd.Fn)
-		L.Push(commandArgs(L, argString))
-		if err := L.PCall(1, 0, nil); err != nil {
-			L.SetTop(base)
-			return nil, err
-		}
-		return nil, nil
 	})
-	return err
 }
 
 // commandArgs is a command handler's argument: { args = raw, list = words }.
@@ -275,28 +280,22 @@ func commandArgs(L *glua.LState, argString string) *glua.LTable {
 	return args
 }
 
-// RunRHS executes a keymap right-hand side on the ui class, attributed to
-// the binding's registration origin (DESIGN §9 attribution rule). Host
-// actions run on the caller's goroutine (never the interpreter), so config
-// watches they fire go back through the queue.
+// RunRHS executes a keymap right-hand side on the ui class, a function as a
+// task, attributed to the binding's registration origin (DESIGN §9
+// attribution rule). Host actions run on the caller's goroutine (never the
+// interpreter), so config watches they fire go back through the queue.
 func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) error {
 	switch rhs := b.RHS; {
 	case rhs.Fn != nil:
-		_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-			// looked up before a reload, the function belongs to a dropped LState
-			if h.currentGen() != b.Gen {
-				return nil, lua.ErrReloaded
+		// a task: the caller gets its first slice's error, and the rest,
+		// after a wait, is reported here
+		return h.RT.StartTask(ctx, h.luaTask(lua.ClassUI, luaCaller{gen: b.Gen, origin: b.Origin}, rhs.Fn), func(err error) {
+			h.refresh()
+			if err != nil && !isQuietLuaErr(err) {
+				h.RecordError("keymap "+b.Key, err.Error())
+				h.Notify("error", "Could not run "+b.Key, err.Error())
 			}
-			defer h.RT.PushFrame(L, b.Origin, "")()
-			base := L.GetTop()
-			L.Push(rhs.Fn)
-			if err := L.PCall(0, 0, nil); err != nil {
-				L.SetTop(base)
-				return nil, err
-			}
-			return nil, nil
 		})
-		return err
 	case rhs.Command != "":
 		return h.RunCommand(ctx, rhs.Command, "")
 	case rhs.API != "":

@@ -16,19 +16,25 @@ func luaCtx(L *glua.LState) context.Context {
 	return cmp.Or(L.Context(), context.Background())
 }
 
-// waitDone blocks the interpreter until done, the timeout, or the running
-// request's cancellation: a wait that outlives its request leaves the
-// runtime hot until /reload, since a blocked Go call cannot be preempted
-// (DESIGN §4).
-func waitDone(L *glua.LState, done chan struct{}, timeout time.Duration) error {
-	select {
-	case <-done:
-		return nil
-	case <-luaCtx(L).Done():
-		return errors.New("canceled")
-	case <-time.After(timeout):
-		return errors.New("timeout")
-	}
+// waitHandle is a handle's wait(): it suspends the task until done closes,
+// the timeout passes or the task ends, and resumes it with ret's values
+// (err "timeout" or "canceled" when done did not close). stop, when set,
+// runs off the interpreter on either error.
+func waitHandle(L *glua.LState, api string, done <-chan struct{}, timeout time.Duration, stop func(), ret func(L *glua.LState, err error) []glua.LValue) int {
+	return lua.Suspend(L, api, func(ctx context.Context) func(*glua.LState) []glua.LValue {
+		var err error
+		select {
+		case <-done:
+		case <-ctx.Done():
+			err = errors.New("canceled")
+		case <-time.After(timeout):
+			err = errors.New("timeout")
+		}
+		if err != nil && stop != nil {
+			stop()
+		}
+		return func(L *glua.LState) []glua.LValue { return ret(L, err) }
+	})
 }
 
 // luaToGoChecked marshals the value at arg idx, raising a Lua error tagged

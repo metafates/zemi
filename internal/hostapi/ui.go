@@ -609,24 +609,15 @@ func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items 
 	return out
 }
 
-// luaReload is a Lua overlay's reload: fn() returns the new items, which
-// render_item renders again, under the overlay's origin. A failure or a
+// luaReload is a Lua overlay's reload: fn(), a task, returns the new items,
+// which render_item renders again, under the overlay's origin. A failure or a
 // stale generation keeps the items the overlay has.
 func (h *Host) luaReload(o Overlay, fn, render *glua.LFunction) func() ([]any, [][]Segment) {
 	return func() ([]any, [][]Segment) {
 		items, text := o.Items, o.ItemText
-		_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-			if h.staleOverlay(o) {
-				return nil, lua.ErrReloaded
-			}
-			defer h.RT.PushFrame(L, o.Origin, o.Path)()
-			base := L.GetTop()
-			defer L.SetTop(base)
-			L.Push(fn)
-			if err := L.PCall(0, 1, nil); err != nil {
-				return nil, err
-			}
-			v, err := lua.ToGo(L.Get(-1))
+		t := h.luaTask(lua.ClassUI, luaCaller{gen: o.Gen, origin: o.Origin, path: o.Path}, fn)
+		t.Done = func(L *glua.LState, rets []glua.LValue) ([]any, error) {
+			v, err := lua.ToGo(rets[0])
 			if err != nil {
 				return nil, err
 			}
@@ -642,7 +633,8 @@ func (h *Host) luaReload(o Overlay, fn, render *glua.LFunction) func() ([]any, [
 				text = h.renderItems(L, o.ID, render, list)
 			}
 			return nil, nil
-		})
+		}
+		_, err := h.RT.RunTask(context.Background(), t)
 		if err != nil && !isQuietLuaErr(err) {
 			h.RecordError("overlay "+o.ID+" reload", err.Error())
 		}

@@ -151,7 +151,6 @@ type wfTask struct {
 	fn      *glua.LFunction // set until the first resume
 	parent  *wfTask
 	slot    int
-	pdepth  int               // pcall nesting; yielding inside pcall would break the coroutine
 	kids    []*glua.LFunction // set by parallel() before it yields
 	waiting int
 	vals    *glua.LTable
@@ -307,22 +306,8 @@ func luaResultString(v glua.LValue) string {
 func (r *wfRun) install(args any) {
 	L := r.L
 	L.SetGlobal("args", lua.FromGo(L, args))
-	// gopher-lua drops the resume values of a yielding Go function reached
-	// by a tail call (`return agent(...)`), so scripts see Lua wrappers that
-	// call the Go functions in non-tail position.
-	wrap, err := L.LoadString(`local a, p = ...
-		return function(...) local r, e = a(...) return r, e end,
-			function(...) local r, e = p(...) return r, e end`)
-	if err != nil {
-		panic(err)
-	}
-	L.Push(wrap)
-	L.Push(L.NewFunction(r.luaAgent))
-	L.Push(L.NewFunction(r.luaParallel))
-	L.Call(2, 2)
-	L.SetGlobal("agent", L.Get(-2))
-	L.SetGlobal("parallel", L.Get(-1))
-	L.Pop(2)
+	L.SetGlobal("agent", lua.Suspending(L, L.NewFunction(r.luaAgent)))
+	L.SetGlobal("parallel", lua.Suspending(L, L.NewFunction(r.luaParallel)))
 	L.SetGlobal("phase", L.NewFunction(func(L *glua.LState) int {
 		r.phase = L.CheckString(1)
 		r.report()
@@ -339,29 +324,6 @@ func (r *wfRun) install(args any) {
 	})
 	L.SetGlobal("log", logFn)
 	L.SetGlobal("print", logFn)
-	L.SetGlobal("pcall", L.NewFunction(func(L *glua.LState) int {
-		L.CheckAny(1) // PCall with nothing to call dereferences nil
-		t := r.tasks[L]
-		if t != nil {
-			t.pdepth++
-		}
-		err := L.PCall(L.GetTop()-1, glua.MultRet, nil)
-		if t != nil {
-			t.pdepth--
-		}
-		if err != nil {
-			L.SetTop(0)
-			L.Push(glua.LFalse)
-			if ae, ok := errors.AsType[*glua.ApiError](err); ok {
-				L.Push(ae.Object)
-			} else {
-				L.Push(glua.LString(err.Error()))
-			}
-			return 2
-		}
-		L.Insert(glua.LTrue, 1)
-		return L.GetTop()
-	}))
 	js := L.NewTable()
 	js.RawSetString("encode", L.NewFunction(jsonEncode("json.encode")))
 	js.RawSetString("decode", L.NewFunction(func(L *glua.LState) int {
@@ -389,11 +351,11 @@ func (r *wfRun) install(args any) {
 // returns the agent's report, or nil and an error.
 func (r *wfRun) luaAgent(L *glua.LState) int {
 	t := r.tasks[L]
-	if t == nil {
+	switch {
+	case t == nil:
 		L.RaiseError("agent() must run inside the workflow")
-	}
-	if t.pdepth > 0 {
-		L.RaiseError("agent() cannot run inside pcall; it returns nil, err on failure instead")
+	case lua.InGoCall(L):
+		L.RaiseError("agent() cannot wait inside pcall or a library callback such as table.sort; it returns nil, err on failure instead")
 	}
 	var prompt, name, desc, model string
 	switch v := L.Get(1).(type) {
@@ -434,8 +396,8 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 // results in order plus a table of errors (nil when every branch finished).
 func (r *wfRun) luaParallel(L *glua.LState) int {
 	t := r.tasks[L]
-	if t == nil || t.pdepth > 0 {
-		L.RaiseError("parallel() cannot run inside pcall")
+	if t == nil || lua.InGoCall(L) {
+		L.RaiseError("parallel() cannot wait inside pcall or a library callback such as table.sort")
 	}
 	list := L.CheckTable(1)
 	n := list.Len()
@@ -469,8 +431,9 @@ func (r *wfRun) start(fn *glua.LFunction, parent *wfTask, slot int) {
 func (r *wfRun) resume(t *wfTask, args ...glua.LValue) {
 	fn := t.fn
 	t.fn = nil
-	st, err, vals, broken := r.safeResume(t, fn, args)
-	if broken {
+	st, vals, err := lua.Resume(r.L, t.co, fn, args...)
+	if _, raised := errors.AsType[*glua.ApiError](err); err != nil && !raised {
+		// a VM panic: the state is not usable afterwards
 		r.result, r.resultErr, r.over = glua.LNil, err, true
 		return
 	}
@@ -503,20 +466,6 @@ func (r *wfRun) resume(t *wfTask, args ...glua.LValue) {
 			r.finish(t, glua.LNil, errors.New("coroutine.yield is not available in workflows"))
 		}
 	}
-}
-
-// safeResume turns a panic out of the VM into a failed run: gopher-lua
-// panics when agent() or parallel() yields from inside a Go library callback
-// (table.sort, string.gsub), and the state is not usable afterwards.
-func (r *wfRun) safeResume(t *wfTask, fn *glua.LFunction, args []glua.LValue) (st glua.ResumeState, err error, vals []glua.LValue, broken bool) {
-	defer func() {
-		if p := recover(); p != nil {
-			st, broken = glua.ResumeError, true
-			err = fmt.Errorf("agent() or parallel() ran where it cannot wait (inside pcall or a library callback such as table.sort): %v", p)
-		}
-	}()
-	st, err, vals = r.L.Resume(t.co, fn, args...)
-	return st, err, vals, false
 }
 
 func (r *wfRun) dispatch() {

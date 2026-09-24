@@ -6,6 +6,7 @@ package hostapi
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -323,8 +324,8 @@ type timerHandle struct {
 
 func (t *timerHandle) stopIt() { t.once.Do(func() { close(t.stop) }) }
 
-// stopReg holds how to stop the live generation's timers and jobs, which a
-// reload stops before replay (DESIGN §4).
+// stopReg holds how to stop the live generation's timers, jobs and HTTP
+// requests, which a reload stops before replay (DESIGN §4).
 type stopReg struct {
 	mu   sync.Mutex
 	next int
@@ -724,8 +725,12 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 	allowPrivate := v.DecidedBy == "rule" && origin.Rank() > lua.OriginProject.Rank()
 	hnd := &httpHandle{done: make(chan struct{})}
 	at := h.callerOf(L)
+	ctx, cancel := context.WithCancel(context.Background())
+	stopID := h.stops.add(cancel) // a reload cancels it, like a job
 	h.GoSafe(subject, func() {
-		res, err := h.httpFetch(subject, string(origin), allowPrivate, req)
+		defer cancel()
+		defer h.stops.remove(stopID)
+		res, err := h.httpFetch(ctx, subject, string(origin), allowPrivate, req)
 		hnd.res, hnd.err = res, err
 		close(hnd.done)
 		if onDone != nil {
@@ -739,16 +744,14 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 		}
 	})
 	handle := L.NewTable()
-	handle.RawSetString("wait", L.NewFunction(func(L *glua.LState) int {
-		if err := waitDone(L, hnd.done, 120*time.Second); err != nil {
-			return luaResult(L, err)
-		}
-		if hnd.err != nil {
-			return luaResult(L, hnd.err)
-		}
-		L.Push(lua.FromGo(L, hnd.res))
-		return 1
-	}))
+	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
+		return waitHandle(L, "http:wait", hnd.done, 120*time.Second, nil, func(L *glua.LState, err error) []glua.LValue {
+			if err = cmp.Or(err, hnd.err); err != nil {
+				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
+			}
+			return []glua.LValue{lua.FromGo(L, hnd.res)}
+		})
+	})))
 	lua.GuardFuncs(L, handle, "http:", h.guardLua)
 	L.Push(handle)
 	return 1
@@ -758,7 +761,7 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 // network rules as the fetch tool: http/https only, no userinfo, denied
 // addresses refused at connect time, and every redirect hop re-gated under
 // the same subject as the calling origin (deny/ask refuses the hop, §6.5).
-func (h *Host) httpFetch(subject, principal string, allowPrivate bool, r httpReq) (map[string]any, error) {
+func (h *Host) httpFetch(ctx context.Context, subject, principal string, allowPrivate bool, r httpReq) (map[string]any, error) {
 	if _, err := tools.ParseNetURL(r.url); err != nil {
 		return nil, err
 	}
@@ -780,7 +783,7 @@ func (h *Host) httpFetch(subject, principal string, allowPrivate bool, r httpReq
 	if r.body != "" {
 		body = strings.NewReader(r.body)
 	}
-	req, err := http.NewRequest(r.method, r.url, body)
+	req, err := http.NewRequestWithContext(ctx, r.method, r.url, body)
 	if err != nil {
 		return nil, err
 	}
@@ -820,22 +823,33 @@ func (h *Host) callerOf(L *glua.LState) luaCaller {
 	return luaCaller{gen: h.currentGen(), origin: h.RT.CurrentOrigin(L), path: h.RT.CurrentPath(L)}
 }
 
-// callLuaAsync runs fn(args...) on the interpreter from a host goroutine,
-// dropping the call when the generation changed; a failing callback is
-// logged and shown in /errors.
+// luaTask calls fn(args...) as a task under at; one handed over before a
+// reload is dropped.
+func (h *Host) luaTask(class lua.Class, at luaCaller, fn *glua.LFunction, args ...any) lua.Task {
+	return lua.Task{Class: class, Origin: at.origin, Path: at.path,
+		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
+			if h.currentGen() != at.gen {
+				return nil, nil, lua.ErrReloaded
+			}
+			vals := make([]glua.LValue, len(args))
+			for i, a := range args {
+				vals[i] = lua.FromGo(L, a)
+			}
+			return fn, vals, nil
+		}}
+}
+
+// callLuaAsync runs fn(args...) as a task from a host goroutine, dropping
+// the call when the generation changed.
 func (h *Host) callLuaAsync(at luaCaller, fn *glua.LFunction, args ...any) {
-	_, err := h.RT.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
-		if h.currentGen() != at.gen {
-			return nil, nil
-		}
-		defer h.RT.PushFrame(L, at.origin, at.path)()
-		L.Push(fn)
-		for _, a := range args {
-			L.Push(lua.FromGo(L, a))
-		}
-		return nil, L.PCall(len(args), 0, nil)
-	})
-	h.refresh() // what the callback changed shows without waiting for another redraw
+	_, err := h.RT.RunTask(context.Background(), h.luaTask(lua.ClassIO, at, fn, args...))
+	h.callbackDone(err)
+}
+
+// callbackDone shows what an async callback changed, and a failing one in
+// the log and /errors.
+func (h *Host) callbackDone(err error) {
+	h.refresh() // without waiting for another redraw
 	if err != nil && !isQuietLuaErr(err) {
 		h.Log.Warn("lua", "callback failed", map[string]any{"error": err.Error()})
 		h.RecordError("lua callback", err.Error())
@@ -906,9 +920,24 @@ func (s *lineSink) add(line string) {
 				return
 			}
 			s.mu.Unlock()
-			s.h.callLuaAsync(s.at, s.fn, lines)
+			s.deliver(lines)
 		}
 	})
+}
+
+// deliver is a plain call, not a task: a batch every 30ms would cost a
+// task's thread each.
+func (s *lineSink) deliver(lines []string) {
+	_, err := s.h.RT.Do(context.Background(), lua.ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
+		if s.h.currentGen() != s.at.gen {
+			return nil, nil
+		}
+		defer s.h.RT.PushFrame(L, s.at.origin, s.at.path)()
+		L.Push(s.fn)
+		L.Push(lua.FromGo(L, lines))
+		return nil, L.PCall(1, 0, nil)
+	})
+	s.h.callbackDone(err)
 }
 
 // lineWriter is a process stream: it keeps up to 1 MiB for wait() and hands
@@ -1081,14 +1110,13 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		return jh, nil
 	}
 
-	wait := func(L *glua.LState, jh *jobHandle, timeout time.Duration) int {
-		if err := waitDone(L, jh.done, timeout); err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
-		}
-		L.Push(lua.FromGo(L, jh.snapshot()))
-		return 1
+	wait := func(L *glua.LState, api string, jh *jobHandle, timeout time.Duration, stop func()) int {
+		return waitHandle(L, api, jh.done, timeout, stop, func(L *glua.LState, err error) []glua.LValue {
+			if err != nil {
+				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
+			}
+			return []glua.LValue{lua.FromGo(L, jh.snapshot())}
+		})
 	}
 
 	tb.RawSetString("start", L.NewFunction(func(L *glua.LState) int {
@@ -1099,15 +1127,13 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		handle := L.NewTable()
 		handle.RawSetString("id", glua.LNumber(jh.id))
 		// Methods are colon calls (DESIGN §6.0), so arguments start at 2.
-		// wait([timeout_ms]) blocks the interpreter: keep it for tools and
-		// short commands, and prefer on_exit elsewhere
-		handle.RawSetString("wait", L.NewFunction(func(L *glua.LState) int {
+		handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
 			timeout := 30 * time.Second
 			if ms := L.OptInt(2, 0); ms > 0 {
 				timeout = time.Duration(ms) * time.Millisecond
 			}
-			return wait(L, jh, timeout)
-		}))
+			return wait(L, "job:wait", jh, timeout, nil)
+		})))
 		handle.RawSetString("kill", L.NewFunction(func(L *glua.LState) int {
 			proc.Kill(jh.cmd)
 			return 0
@@ -1130,10 +1156,10 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	// wait blocks the interpreter until the command finishes
-	// (spec.timeout_ms, default 60s, then kills it), so it belongs in tools
-	// and short commands; elsewhere start it and use on_exit.
-	tb.RawSetString("wait", L.NewFunction(func(L *glua.LState) int {
+	// wait starts the command and suspends the task until it finishes
+	// (spec.timeout_ms, default 60s, then kills it).
+	tb.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
+		lua.CheckWait(L, "zemi.job.wait") // before the command starts
 		jh, err := start(L)
 		if err != nil {
 			return luaResult(L, err)
@@ -1144,12 +1170,8 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 				timeout = time.Duration(ms) * time.Millisecond
 			}
 		}
-		if n := wait(L, jh, timeout); n == 2 {
-			proc.Kill(jh.cmd)
-			return 2
-		}
-		return 1
-	}))
+		return wait(L, "zemi.job.wait", jh, timeout, func() { proc.Kill(jh.cmd) })
+	})))
 
 	return tb
 }

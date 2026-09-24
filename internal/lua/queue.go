@@ -135,6 +135,12 @@ type Generation struct {
 	retired bool
 
 	frames []frame // origin stack, see pushFrame
+
+	// tasks maps a task's thread to it while a slice runs (Suspend reads
+	// it); ctx ends with the generation, which ends every task's wait.
+	tasks  map[*glua.LState]*taskRun
+	ctx    context.Context
+	cancel context.CancelCauseFunc
 }
 
 func (g *Generation) enqueue(r *request) {
@@ -179,6 +185,7 @@ func (g *Generation) pop() *request {
 // in the heap would wait on their reply channel forever. A running request
 // left going would push and read origin frames of the next generation.
 func (g *Generation) drain(err error) {
+	g.cancel(err)
 	g.mu.Lock()
 	g.retired = true
 	pending, running := g.heap, g.running

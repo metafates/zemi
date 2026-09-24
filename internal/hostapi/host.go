@@ -1476,26 +1476,22 @@ func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
 	h.callOverlay(ctx, o, "on_close", o.OnClose)
 }
 
-// callOverlay runs one of an overlay's callbacks under the overlay's origin;
-// a failure goes to /errors.
+// callOverlay runs one of an overlay's callbacks as a task under the
+// overlay's origin; a failure goes to /errors.
 func (h *Host) callOverlay(ctx context.Context, o Overlay, what string, fn *glua.LFunction, args ...any) {
 	if fn == nil || h.staleOverlay(o) {
 		return
 	}
-	_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-		defer h.RT.PushFrame(L, o.Origin, o.Path)()
-		base := L.GetTop()
-		L.Push(fn)
-		for _, arg := range args {
-			L.Push(lua.FromGo(L, arg))
-		}
-		if err := L.PCall(len(args), 0, nil); err != nil {
+	failed := func(err error) {
+		if err != nil && !isQuietLuaErr(err) {
 			h.Log.Error("ui", "overlay "+what+" failed", map[string]any{"id": o.ID, "error": err.Error()})
 			h.RecordError("overlay "+o.ID+" "+what, err.Error())
 		}
-		L.SetTop(base)
-		return nil, nil
-	})
+	}
+	failed(h.RT.StartTask(ctx, h.luaTask(lua.ClassUI, luaCaller{gen: o.Gen, origin: o.Origin, path: o.Path}, fn, args...), func(err error) {
+		h.refresh()
+		failed(err)
+	}))
 }
 
 // refuseBelowUser raises unless user config or shipped code is calling:

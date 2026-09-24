@@ -47,6 +47,8 @@ func guardFuncs(L *glua.LState, tb *glua.LTable, prefix string, guard Guard, see
 		case *glua.LFunction:
 			if v.IsG {
 				wraps[k] = guardFunc(L, v, prefix+k.String(), guard)
+			} else if inner, ok := suspended(v); ok {
+				v.Upvalues[0].SetValue(guardFunc(L, inner, prefix+k.String(), guard))
 			}
 		case *glua.LTable:
 			guardFuncs(L, v, prefix+k.String()+".", guard, seen)

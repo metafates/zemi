@@ -158,3 +158,54 @@ func TestDeferredCallbackKeepsOrigin(t *testing.T) {
 		})
 	}
 }
+
+// TestLuaToolWaitFreesInterpreter: execute waiting on a job suspends, so a
+// command runs meanwhile (here it is what ends the wait), and a reload ends
+// the wait at once with a tool error (DESIGN §4).
+func TestLuaToolWaitFreesInterpreter(t *testing.T) {
+	for _, c := range []struct{ act, want string }{
+		{"command", "hi"},
+		{"reload", "reload"},
+	} {
+		t.Run(c.act, func(t *testing.T) {
+			h, r := newTestHost(t)
+			h.Perm.Add(perm.Rule{Subject: "tool.slow", Pattern: "*", Decision: perm.Allow})
+			h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
+			runUser(t, r, `
+				local job
+				zemi.tool.add({ name = "slow", description = "waits on a job", execute = function()
+					job = zemi.job.start({ cmd = "cat", stdin = true })
+					return job:wait(5000).stdout
+				end })
+				zemi.command.add("ready", function() assert(job, "not waiting yet") end, {})
+				zemi.command.add("release", function() job:write("hi") job:close_stdin() end, {})
+			`)
+			tool := h.luaFantasyTools(h.PipelineFor())[0]
+			done := make(chan fantasy.ToolResponse, 1)
+			go func() {
+				resp, _ := tool.Run(context.Background(), fantasy.ToolCall{Input: "{}"})
+				done <- resp
+			}()
+			// a command runs while execute waits
+			waitFor(t, func() error { return h.RunCommand(context.Background(), "ready", "") })
+			var err error
+			if c.act == "reload" {
+				err = r.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration)
+			} else {
+				err = h.RunCommand(context.Background(), "release", "")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var resp fantasy.ToolResponse
+			select {
+			case resp = <-done:
+			case <-time.After(3 * time.Second):
+				t.Fatal("the tool did not return within 3s")
+			}
+			if resp.IsError != (c.act == "reload") || !strings.Contains(resp.Content, c.want) {
+				t.Fatalf("resp = %+v, want %q", resp, c.want)
+			}
+		})
+	}
+}

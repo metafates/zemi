@@ -680,34 +680,31 @@ func whitelists(path string) bool {
 	})
 }
 
-// modeDecideCeiling is how long a mode's decide function may run: long
-// enough for a model call over zemi.http, short enough that a wedged one
-// still trips the watchdog. It holds the interpreter for that time, which
-// is the mode's own cost.
+// modeDecideCeiling bounds a mode's decide in wall time, long enough for a
+// model call over zemi.http; a wait in it frees the interpreter.
 const modeDecideCeiling = 60 * time.Second
 
-// modeDecide runs a mode's decide function for one ask and returns what it
-// said; "" (an error, a timeout, anything but allow or deny) leaves the
-// request to the user.
+// modeDecide runs a mode's decide function for one ask, as a task, and
+// returns what it said; "" (an error, a timeout, a reload, anything but
+// allow or deny) leaves the request to the user.
 func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
 	ctx := context.Background()
 	if t := h.turn.Load(); t != nil {
 		ctx = t.ctx // an interrupt stops the decision too
 	}
-	out, err := h.RT.Do(ctx, lua.ClassAgent, modeDecideCeiling, 2*time.Second, func(L *glua.LState) ([]any, error) {
-		defer h.RT.PushFrame(L, def.Origin, "permission.mode."+def.Name)()
-		base := L.GetTop()
-		defer L.SetTop(base)
-		L.Push(def.Decide)
-		L.Push(lua.FromGo(L, map[string]any{
-			"subject": req.Subject, "arg": h.shownArg(req), "tool": req.Tool,
-			"reason": req.Reason, "preview": req.Preview, "description": req.Description,
-		}))
-		if err := L.PCall(1, 1, nil); err != nil {
-			return nil, err
-		}
-		s, _ := lua.ToGo(L.Get(-1))
-		return []any{s}, nil
+	ctx, cancel := context.WithTimeout(ctx, modeDecideCeiling)
+	defer cancel()
+	out, err := h.RT.RunTask(ctx, lua.Task{Class: lua.ClassAgent, Ceiling: modeDecideCeiling, Origin: def.Origin, Path: "permission.mode." + def.Name,
+		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
+			return def.Decide, []glua.LValue{lua.FromGo(L, map[string]any{
+				"subject": req.Subject, "arg": h.shownArg(req), "tool": req.Tool,
+				"reason": req.Reason, "preview": req.Preview, "description": req.Description,
+			})}, nil
+		},
+		Done: func(L *glua.LState, rets []glua.LValue) ([]any, error) {
+			s, _ := lua.ToGo(rets[0])
+			return []any{s}, nil
+		},
 	})
 	if err != nil {
 		h.Log.Warn("permissions", "mode decide failed", map[string]any{"mode": def.Name, "error": err.Error()})

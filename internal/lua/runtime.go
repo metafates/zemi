@@ -208,7 +208,9 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 		packs:   map[string][]string{},
 		signal:  make(chan struct{}, 1),
 		stop:    make(chan struct{}),
+		tasks:   map[*glua.LState]*taskRun{},
 	}
+	gen.ctx, gen.cancel = context.WithCancelCause(context.Background())
 	ud := sb.L.NewUserData()
 	ud.Value = gen
 	sb.L.G.Registry.RawSetString(genKey, ud)
@@ -308,12 +310,10 @@ func (r *Runtime) Call(ctx context.Context, origin Origin, fn *glua.LFunction, a
 	})
 }
 
-// ExecuteChunk compiles and runs src as a chunk of the given origin on the
-// interpreter goroutine.
+// ExecuteChunk compiles and runs src as a chunk of the given origin, as a
+// task.
 func (r *Runtime) ExecuteChunk(ctx context.Context, src, rel string, origin Origin) error {
-	_, err := r.Do(ctx, ClassIO, 0, 0, func(L *glua.LState) ([]any, error) {
-		return nil, r.runChunk(L, src, rel, origin)
-	})
+	_, err := r.Eval(ctx, src, rel, origin, 0, nil)
 	return err
 }
 
@@ -396,47 +396,55 @@ func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error
 	return nil
 }
 
-// Eval runs src as a chunk of origin on the interpreter and returns its
-// results. print in the chunk (and functions it defines) goes to out
+// Eval runs src as a chunk of origin, as a task, and returns its results.
+// With out set, print in the chunk (and functions it defines) goes to out
 // instead of the print hook; the chunk's globals stay in its own env.
 func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceiling time.Duration, out func(string)) ([]any, error) {
-	return r.Do(ctx, ClassIO, ceiling, time.Second, func(L *glua.LState) ([]any, error) {
-		sb, err := r.sandboxOf(L)
-		if err != nil {
-			return nil, err
-		}
-		fn, err := sb.CompileChunk(src, origin.ChunkName(rel))
-		if err != nil {
-			return nil, chunkErr(rel, src, origin, err)
-		}
-		// CompileChunk already gave the chunk a fresh env carrying the
-		// protected-global guard. A raw print here shadows the frozen one
-		// for this chunk alone; wrapping the env in a plain __index
-		// metatable instead would drop that guard.
-		fn.Env.RawSetString("print", L.NewFunction(func(L *glua.LState) int {
-			out(joinArgs(L, "\t"))
-			return 0
-		}))
-		defer r.PushFrame(L, origin, rel)()
-		base := L.GetTop()
-		L.Push(fn)
-		if err := L.PCall(0, glua.MultRet, nil); err != nil {
-			L.SetTop(base)
-			return nil, chunkErr(rel, src, origin, err)
-		}
-		var vals []any
-		for i := base + 1; i <= L.GetTop(); i++ {
-			v, err := ToGo(L.Get(i))
+	vals, err := r.RunTask(ctx, Task{
+		Class: ClassIO, Ceiling: ceiling, Origin: origin, Path: rel,
+		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
+			sb, err := r.sandboxOf(L)
 			if err != nil {
-				// not ToStringMeta: a raising __tostring would fail the chunk
-				// after it already ran
-				v = L.Get(i).String()
+				return nil, nil, err
 			}
-			vals = append(vals, v)
-		}
-		L.SetTop(base)
-		return vals, nil
+			fn, err := sb.CompileChunk(src, origin.ChunkName(rel))
+			if err != nil {
+				return nil, nil, chunkErr(rel, src, origin, err)
+			}
+			if out != nil {
+				// CompileChunk already gave the chunk a fresh env carrying the
+				// protected-global guard. A raw print here shadows the frozen
+				// one for this chunk alone; wrapping the env in a plain __index
+				// metatable instead would drop that guard.
+				fn.Env.RawSetString("print", L.NewFunction(func(L *glua.LState) int {
+					out(joinArgs(L, "\t"))
+					return 0
+				}))
+			}
+			return fn, nil, nil
+		},
+		Done: func(L *glua.LState, rets []glua.LValue) ([]any, error) {
+			// a resume reports a chunk that returned nothing as one nil
+			for len(rets) > 0 && rets[len(rets)-1] == glua.LNil {
+				rets = rets[:len(rets)-1]
+			}
+			var vals []any
+			for _, lv := range rets {
+				v, err := ToGo(lv)
+				if err != nil {
+					// not ToStringMeta: a raising __tostring would fail the chunk
+					// after it already ran
+					v = lv.String()
+				}
+				vals = append(vals, v)
+			}
+			return vals, nil
+		},
 	})
+	if _, ok := errors.AsType[*glua.ApiError](err); ok {
+		err = chunkErr(rel, src, origin, err)
+	}
+	return vals, err
 }
 
 // EvalFileInline loads and runs a file on the caller's interpreter turn:
@@ -464,7 +472,7 @@ func (r *Runtime) installRequire(gen *Generation) {
 	L := gen.L
 	gen.SB.SetRequire(L.NewClosure(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		val, err := r.requireModule(gen, name)
+		val, err := r.requireModule(gen, L, name)
 		if err != nil {
 			L.RaiseError("require: %v", err)
 			return 0
@@ -474,7 +482,8 @@ func (r *Runtime) installRequire(gen *Generation) {
 	}))
 }
 
-func (r *Runtime) requireModule(gen *Generation, name string) (glua.LValue, error) {
+// L is the thread calling require, whose stack names the requiring file.
+func (r *Runtime) requireModule(gen *Generation, L *glua.LState, name string) (glua.LValue, error) {
 	if ns := gen.SB.LookupPath(name); ns != glua.LNil {
 		return ns, nil
 	}
@@ -485,7 +494,7 @@ func (r *Runtime) requireModule(gen *Generation, name string) (glua.LValue, erro
 			return r.readEmbedded(name)
 		})
 	}
-	path, origin, err := r.findModule(gen, name)
+	path, origin, err := r.findModule(gen, L, name)
 	if err != nil {
 		return glua.LNil, err
 	}
@@ -561,8 +570,7 @@ func (r *Runtime) readEmbedded(name string) ([]byte, string, error) {
 // names ("./util", "../lib/x") resolve against the requiring file and must
 // stay inside its origin's tree, so a path cannot reach code of another
 // trust class; dotted names search <root>/lua over the runtimepath.
-func (r *Runtime) findModule(gen *Generation, name string) (string, Origin, error) {
-	L := gen.L
+func (r *Runtime) findModule(gen *Generation, L *glua.LState, name string) (string, Origin, error) {
 	var bases []string
 	var from string
 	relative := strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../")
@@ -698,7 +706,7 @@ func RequireStep(module string) BootStep {
 	return BootStep{
 		Name: "require " + module,
 		Run: func(ctx context.Context, r *Runtime, g *Generation) error {
-			_, err := r.requireModule(g, module)
+			_, err := r.requireModule(g, g.L, module)
 			return err
 		},
 	}
