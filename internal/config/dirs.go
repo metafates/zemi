@@ -184,8 +184,11 @@ func (d Dirs) WorktreesDir() string {
 }
 
 // WorktreesIgnore writes <WorktreesDir>/.gitignore ignoring everything,
-// itself included, when there is none.
+// itself included, when the directory is there, a real one, with none.
 func (d Dirs) WorktreesIgnore() error {
+	if fi, err := os.Lstat(d.WorktreesDir()); err != nil || !fi.IsDir() {
+		return nil
+	}
 	f, err := os.OpenFile(filepath.Join(d.WorktreesDir(), ".gitignore"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if errors.Is(err, os.ErrExist) {
 		return nil

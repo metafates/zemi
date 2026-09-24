@@ -343,7 +343,7 @@ dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect
 servers unconfined by name, and home credential paths are hidden. The exception is the repo's
 `.agents/worktrees` (`Dirs.WorktreesDir`), where the agent keeps git worktrees: a write root of
 its own, ignored by the `/*` in its own `.gitignore` (`Dirs.WorktreesIgnore`, written only
-when missing), with
+when missing, by the trust step of a trusted boot and by `sandboxPolicy`), with
 each checkout's own `.git` and `.agents` protected and nothing loaded from it. The namespace
 backend binds only protected paths that exist, so `Pipeline.Guard` records the missing ones
 before a run and checks them at exit: a created `.git` or `.agents` holds trust off until

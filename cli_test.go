@@ -214,6 +214,9 @@ func TestTrustGate(t *testing.T) {
 	} {
 		tg, h, r := newTrustGate(t)
 		root := tg.dirs.TrustRoot()
+		if err := os.MkdirAll(tg.dirs.WorktreesDir(), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if c.saved != "" {
 			if err := writeTrust(tg.dirs.TrustFile(), map[string]string{root: c.saved}); err != nil {
 				t.Fatal(err)
@@ -230,8 +233,9 @@ func TestTrustGate(t *testing.T) {
 		}
 		loaded := h.Commands.Lookup("x") != nil
 		again, _ := tg.decide()
-		if h.ProjectTrusted() != c.trusted || loaded != c.trusted || again != c.trusted {
-			t.Errorf("%s: trusted=%v loaded=%v again=%v", c.name, h.ProjectTrusted(), loaded, again)
+		_, err := os.Stat(filepath.Join(tg.dirs.WorktreesDir(), ".gitignore"))
+		if ignored := err == nil; h.ProjectTrusted() != c.trusted || loaded != c.trusted || again != c.trusted || ignored != c.trusted {
+			t.Errorf("%s: trusted=%v loaded=%v again=%v worktrees ignored=%v", c.name, h.ProjectTrusted(), loaded, again, ignored)
 		}
 		if want := map[bool]int{true: 1, false: 0}[c.answer != ""]; asked != want {
 			t.Errorf("%s: prompt opened %d times", c.name, asked)

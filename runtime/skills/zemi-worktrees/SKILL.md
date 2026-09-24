@@ -26,8 +26,8 @@ git worktree add -b feat/retry .agents/worktrees/retry
   the project: auto mode edits it with no approval and sandboxed commands may write it (its own
   `.git` and `.agents` stay protected). A worktree outside the project is outside the jail:
   every read and write there needs approval, one prompt at a time.
-- zemi writes `.agents/worktrees/.gitignore` (`/*`) when a sandboxed command next runs and the
-  file is missing, so `git status` stays clean, and `grep`, `glob` and ripgrep skip it, so
+- zemi writes `.agents/worktrees/.gitignore` (`/*`) when the file is missing, at each start
+  or reload of a trusted project and before each sandboxed command, so `git status` stays clean, and `grep`, `glob` and ripgrep skip it, so
   a search does not return every hit twice. Nothing under it is loaded as the outer
   project's config, skills, agents or commands.
 - `git worktree add` itself writes `.git`, so it needs approval once.
@@ -72,7 +72,7 @@ so an abandoned worktree is reused instead of piling up.
 | Symptom | Cause |
 | --- | --- |
 | `fatal: '<branch>' is already checked out` | another worktree holds it; `git worktree list` says which |
-| search results appear twice | the worktree is not under `.agents/worktrees/`, or no sandboxed command has run since it was made, so `.agents/worktrees/.gitignore` is missing |
+| search results appear twice | the worktree is not under `.agents/worktrees/`, or the project is not trusted, or neither a reload nor a sandboxed command came since the directory was made, so `.agents/worktrees/.gitignore` is missing |
 | the worktree has no `node_modules`, `.env`, build cache | untracked and ignored files are not copied; install or symlink them |
 | `git worktree remove` fails | uncommitted changes, or the directory was already deleted (`git worktree prune`) |
 | project config not loaded in the worktree | the main checkout is not trusted: a worktree shares its trust decision; `/trust` there |

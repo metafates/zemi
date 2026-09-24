@@ -126,13 +126,17 @@ func TestProjectConfigDir(t *testing.T) {
 }
 
 func TestWorktreesIgnore(t *testing.T) {
-	for _, c := range []struct{ name, have, want string }{
-		{"new file ignores everything", "", "/*\n"},
-		{"an existing file is left alone", "keep\n", "keep\n"},
+	for _, c := range []struct {
+		name, have, want string
+		noDir            bool
+	}{
+		{"new file ignores everything", "", "/*\n", false},
+		{"an existing file is left alone", "keep\n", "keep\n", false},
+		{"no directory, no file", "", "", true},
 	} {
 		d := Dirs{ProjectDir: t.TempDir()}
 		path := filepath.Join(d.WorktreesDir(), ".gitignore")
-		if err := os.MkdirAll(d.WorktreesDir(), 0o755); err != nil {
+		if err := os.MkdirAll(map[bool]string{false: d.WorktreesDir(), true: d.ProjectDir}[c.noDir], 0o755); err != nil {
 			t.Fatal(err)
 		}
 		if c.have != "" {
