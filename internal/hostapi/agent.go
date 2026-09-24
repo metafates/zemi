@@ -1807,13 +1807,13 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// roleIDs is the model id each role runs on, in roles order: chat is the
-// conversation's, a profile's model included.
+// roleIDs is the model id each role runs on, in roles order. chat is
+// models.chat even while the active profile runs its own model, since that
+// is what every role following chat and a model reference "chat" get.
 func (h *Host) roleIDs() []string {
-	p, _ := h.resolveProfile("")
-	ids := []string{h.currentModelID(p)}
-	for _, r := range roles[1:] {
-		ids = append(ids, h.roleModel(r.Name))
+	ids := make([]string, len(roles))
+	for i, r := range roles {
+		ids[i] = h.roleModel(r.Name)
 	}
 	return ids
 }
@@ -1831,8 +1831,7 @@ func (h *Host) OpenModelPicker(role string) error {
 	run, cur := "model ", h.Settings.Str("models."+role)
 	var head map[string]any
 	if role == "chat" {
-		p, _ := h.resolveProfile("")
-		cur = h.currentModelID(p) // what the next send reads, not the running turn's
+		cur = h.roleModel("chat")
 		head = map[string]any{"text": "Roles", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"}
 	} else {
 		o.ID, o.Title, run = "model "+role, "Model roles / "+role, "model "+role+" "

@@ -15,14 +15,14 @@ const rolesProvider = `zemi.provider.add({ id = "a", kind = "openai_compat", bas
 func TestRoleModel(t *testing.T) {
 	for _, c := range []struct {
 		name, config string
-		want         []string // chat, agents, titles, compact, memory
+		want         []string // the conversation, then chat, agents, titles, compact, memory
 		err          string
 	}{
-		{"nothing set runs the provider default", ``, []string{"a/big", "a/big", "a/big", "a/big", "a/big"}, ""},
-		{"unset roles follow chat", `zemi.config.set("models.chat", "a/small")`, []string{"a/small", "a/small", "a/small", "a/small", "a/small"}, ""},
-		{"a set role wins", `zemi.config.set("models.titles", "a/small") zemi.config.set("models.memory", "a/small")`, []string{"a/big", "a/big", "a/small", "a/big", "a/small"}, ""},
-		{"a profile's model moves chat only", `zemi.agent.profile("p", { model = "a/small" }) zemi.config.set("agent.profile", "p")`, []string{"a/small", "a/big", "a/big", "a/big", "a/big"}, ""},
-		{"a profile names a role", `zemi.config.set("models.titles", "a/small") zemi.agent.profile("p", { model = "titles" }) zemi.config.set("agent.profile", "p")`, []string{"a/small", "a/big", "a/small", "a/big", "a/big"}, ""},
+		{"nothing set runs the provider default", ``, []string{"a/big", "a/big", "a/big", "a/big", "a/big", "a/big"}, ""},
+		{"unset roles follow chat", `zemi.config.set("models.chat", "a/small")`, []string{"a/small", "a/small", "a/small", "a/small", "a/small", "a/small"}, ""},
+		{"a set role wins", `zemi.config.set("models.titles", "a/small") zemi.config.set("models.memory", "a/small")`, []string{"a/big", "a/big", "a/big", "a/small", "a/big", "a/small"}, ""},
+		{"a profile's model moves the conversation only", `zemi.agent.profile("p", { model = "a/small" }) zemi.config.set("agent.profile", "p")`, []string{"a/small", "a/big", "a/big", "a/big", "a/big", "a/big"}, ""},
+		{"a profile names a role", `zemi.config.set("models.titles", "a/small") zemi.agent.profile("p", { model = "titles" }) zemi.config.set("agent.profile", "p")`, []string{"a/small", "a/big", "a/big", "a/small", "a/big", "a/big"}, ""},
 		{"a key refuses a role name", `zemi.config.set("models.titles", "chat")`, nil, `config key models.titles expects a provider/model id or ""`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -32,7 +32,8 @@ func TestRoleModel(t *testing.T) {
 				return
 			}
 			runUser(t, r, rolesProvider+c.config)
-			if got := h.roleIDs(); !slices.Equal(got, c.want) {
+			p, _ := h.resolveProfile("")
+			if got := append([]string{h.currentModelID(p)}, h.roleIDs()...); !slices.Equal(got, c.want) {
 				t.Fatalf("roles run on %v, want %v", got, c.want)
 			}
 		})

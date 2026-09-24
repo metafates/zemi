@@ -509,7 +509,10 @@ lua-language-server is installed.
   no model of their own), `models.titles`, `models.compact` and `models.memory` (the
   reflector) each follow it while empty (`roleModel`). Nothing falls back to a cheaper model on
   its own, so the `/model roles` list shows every mapping. A `models.*` value is `""` or an id
-  with a `/` (`config.set` refuses a role name), so roles never nest. Anything that takes a
+  with a `/` (`config.set` refuses a role name), so roles never nest. A profile's own model
+  runs the conversation and moves no role: `chat` is always `models.chat` (`roleIDs`,
+  `zemi.model.list`, a `"chat"` reference), and the `/model roles` chat row tags the override
+  `profile <name>`. Anything that takes a
   model - a profile, an agent definition, a workflow - takes a role name or a
   `provider/model` id (`modelRef`). `/health` checks each distinct role model.
 - **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
