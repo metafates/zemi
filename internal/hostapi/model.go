@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // resolveModel picks the agent model for a profile (tests stub modelFn).
@@ -75,13 +77,13 @@ func (h *Host) modelErr(id string) error {
 }
 
 // generate runs one tool-less, single-step call (summaries, titles, the
-// reflector) on role's model and bills it to sid. The spec's body fields
+// reflector, zemi.model.ask) on ref, a role or a model id, and bills it to sid. The spec's body fields
 // ride it (a gateway's routing, service_tier), the reasoning effort not: a
 // short job need not think. It streams: Anthropic's SDK refuses a large
 // max_tokens otherwise, and the idle timer covers only a stream. A turn's
 // job passes retry, so the working rule counts down its provider retries.
-func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, retry func(error, time.Duration), role string) (*fantasy.AgentResult, error) {
-	id := h.roleModel(role)
+func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut *int64, retry func(error, time.Duration), ref string) (*fantasy.AgentResult, error) {
+	id := h.modelRef(ref)
 	model, err := h.resolveModel(&Profile{Model: id})
 	if err != nil {
 		return nil, err
@@ -107,6 +109,71 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 		h.bill(sid, id, res.TotalUsage)
 	}
 	return res, err
+}
+
+// modelAsk is zemi.model.ask: one tool-less call on a role's model or an
+// id, billed to the live session and run off the interpreter. It costs
+// money, so plugin code needs a user rule for lua.model.ask and project code
+// may not call it.
+func (h *Host) modelAsk(L *glua.LState) int {
+	spec := L.CheckTable(1)
+	prompt := rawString(spec, "prompt")
+	if prompt == "" {
+		L.RaiseError("zemi.model.ask: prompt is required")
+	}
+	id := h.modelRef(cmp.Or(rawString(spec, "model"), "chat"))
+	switch o := h.RT.CurrentOrigin(L); {
+	case o.Rank() <= lua.OriginProject.Rank():
+		L.RaiseError("zemi.model.ask: %s code may not call a model", o)
+	case o == lua.OriginPlugin:
+		h.luaGate(L, "lua.model.ask", id)
+	}
+	maxOut := int64(1024)
+	if n, ok := spec.RawGetString("max_tokens").(glua.LNumber); ok && n > 0 {
+		maxOut = int64(n)
+	}
+	system := rawString(spec, "system")
+	onDone, _ := spec.RawGetString("on_done").(*glua.LFunction)
+	sid, at := h.AgentSessionID(), h.callerOf(L)
+	var text string
+	var askErr error
+	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	stopID := h.stops.add(cancel) // a reload cancels it, like a job
+	h.GoSafe("zemi.model.ask", func() {
+		defer h.stops.remove(stopID)
+		defer cancel()
+		res, err := h.generate(ctx, sid, system, prompt, &maxOut, nil, id)
+		if err == nil {
+			text = concatText(res.Response.Content)
+		}
+		askErr = err
+		close(done)
+		switch {
+		case onDone == nil:
+		case err != nil:
+			h.callLuaAsync(at, onDone, nil, err.Error())
+		default:
+			h.callLuaAsync(at, onDone, text)
+		}
+	})
+	handle := L.NewTable()
+	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
+		// the idle timer already ends a stalled stream; this bounds a slow one
+		return waitHandle(L, "model:wait", done, 10*time.Minute, cancel, func(L *glua.LState, err error) []glua.LValue {
+			if err = cmp.Or(err, askErr); err != nil {
+				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
+			}
+			return []glua.LValue{glua.LString(text)}
+		})
+	})))
+	handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {
+		cancel()
+		return 0
+	}))
+	lua.GuardFuncs(L, handle, "model:", h.guardLua)
+	L.Push(handle)
+	return 1
 }
 
 // bill adds a model call's usage to session sid, and to the live tally when

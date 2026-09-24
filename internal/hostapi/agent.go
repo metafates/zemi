@@ -1794,6 +1794,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		h.warnUnlisted(id)
 		return 0
 	}))
+	tb.RawSetString("ask", L.NewFunction(h.modelAsk))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
 		role := L.OptString(1, "chat")
 		if !isRole(role) {
@@ -2286,9 +2287,22 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	// send(text) -> true, or nil, err. The turn itself must not run on the
 	// interpreter (DESIGN §4), so what it reports here is what can be known
 	// before it starts; later failures reach the transcript.
+	// A plugin's text goes to the model behind agent.Attached, so it is never
+	// the user's words, and it marks the session not local-only (DESIGN §6.3).
 	tb.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
 		text := L.CheckString(1)
-		h.refuseBelowUser(L, "agent.send")
+		plugin := ""
+		if h.RT.CurrentOrigin(L) == lua.OriginPlugin {
+			if h.hooks() == nil {
+				// nothing bounds a chain of turns, and -p exits after its own
+				L.RaiseError("zemi.agent.send: a plugin cannot send in a print run (-p)")
+			}
+			h.luaGate(L, "lua.agent.send", "*")
+			plugin = h.principal(L)
+			text = agent.Attached(plugin, text)
+		} else {
+			h.refuseBelowUser(L, "agent.send")
+		}
 		p, err := h.resolveProfile("")
 		if err == nil {
 			_, err = h.resolveModel(p)
@@ -2299,9 +2313,13 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			return 2
 		}
 		h.GoSafe("zemi.agent.send", func() {
-			if err := h.AgentSend(text); err != nil {
+			err := h.AgentSend(text)
+			switch {
+			case err != nil:
 				h.Log.Warn("agent", "zemi.agent.send failed", map[string]any{"error": err.Error()})
 				h.Notify("error", "Could not send", h.friendlyError(err))
+			case plugin != "":
+				h.markNotLocal(plugin) // the session exists once the send returns
 			}
 		})
 		L.Push(glua.LTrue)

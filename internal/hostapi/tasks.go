@@ -431,13 +431,20 @@ func (h *Host) notifyReports(queued []string) {
 
 var reportAttrs = regexp.MustCompile(`<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)"`)
 
+// pluginSent is a zemi.agent.send from a plugin, with its first line.
+var pluginSent = regexp.MustCompile(`<(plugin:[^>\s]+)>\n([^\n]*)`)
+
 // reportHeads rebuilds the notice rows from the reports behind a message's
-// agent.AttachMarker (a joined queue may carry several) and the planner's nudge,
-// so a reply that follows no user row says why; none for neither.
+// agent.AttachMarker (a joined queue may carry several), the plugins' sends
+// and the planner's nudge, so a reply that follows no user row says why;
+// none for none of them.
 func reportHeads(tail string) []string {
 	var heads []string
 	for _, m := range reportAttrs.FindAllStringSubmatch(tail, -1) {
 		heads = append(heads, reportHead(m[1], m[2], m[3]))
+	}
+	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
+		heads = append(heads, m[1]+": "+truncRunes(sanitize.String(m[2]), 200))
 	}
 	if strings.Contains(tail, planNudgeText) {
 		heads = append(heads, "Asked the planner to end with the plan or question tool.")
