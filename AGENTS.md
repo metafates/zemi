@@ -302,8 +302,8 @@ read-only - and hands the rest to the user with a reason naming why (`askHook`; 
 `.git` or zemi's own dirs (a local plugin included: it loads in every project, so like the
 recipes it asks every time, with no always answer), to the Lua in any `.agents` (`init.lua`, `lua/`) and to a
 `.gitattributes` or `.gitmodules` are `protectedWrite`, checkouts in `.agents/worktrees` aside,
-which no rule settles, a mode's own included; the rest of `.agents` runs nothing and is an
-ordinary project write).
+which no rule settles, a mode's own included; the rest of `.agents` (skills, agents, commands,
+workflows) loads nothing into the interpreter and is an ordinary project write).
 A read-only agent (`Profile.ReadOnly`, see below) denies writes and runs commands with the
 project unwritable in the sandbox, whatever the mode; without trust or a sandbox, a changing
 command asks (under yolo, only without a sandbox), as does an MCP tool not marked read-only.
