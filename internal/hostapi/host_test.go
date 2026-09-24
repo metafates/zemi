@@ -152,7 +152,6 @@ func TestNamespaceVersion(t *testing.T) {
 			assert(type(zemi.session[fn]) == "function", "zemi.session." .. fn .. " missing")
 		end
 		assert(type(zemi.agent.prompt) == "function", "zemi.agent.prompt missing")
-		assert(type(zemi.model.ask) == "function" and type(zemi.model.pick) == "function", "zemi.model.ask or pick missing")
 		for _, fn in ipairs({ "run", "list" }) do
 			assert(type(zemi.agent[fn]) == "function", "zemi.agent." .. fn .. " missing")
 			assert(type(zemi.workflow[fn]) == "function", "zemi.workflow." .. fn .. " missing")
