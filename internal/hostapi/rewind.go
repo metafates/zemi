@@ -325,6 +325,6 @@ func (h *Host) OpenRewind() error {
 		})
 	}
 	// builtin origin: the UI runs a row's command only for trusted overlays
-	ui.OpenOverlay(Overlay{ID: "rewind", Title: "Rewind", Origin: lua.OriginBuiltin, Items: items, Empty: "Nothing to rewind yet."})
+	ui.OpenOverlay(Overlay{ID: "rewind", Title: "Rewind", Origin: lua.OriginBuiltin, Items: items, Empty: "No prompts to rewind yet. Send a message to make one."})
 	return nil
 }
