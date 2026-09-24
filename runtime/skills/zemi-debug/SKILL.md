@@ -17,8 +17,8 @@ description: "Load when zemi misbehaves: a crash, an error in /errors, a silent 
 2. `/errors` lists recent errors: boot and reload failures, widget, keymap, click, command
    and event-handler errors, and recovered panics; a command's bad argument is a warning
    toast only. The red `errors /errors` statusline badge means
-   there are unseen ones. Enter opens one in full, with "Ask zemi to fix it" (and
-   "Restart <name>" for an MCP server). In every list `/` filters, `y` copies the selected
+   there are unseen ones. Enter opens one in full, with [a] Ask zemi to fix it (and
+   [r] Restart for an MCP or language server). In every list `/` filters, `y` copies the selected
    row (in a detail view, the whole text) and `Y` copies the whole list, so the user can
    paste an error back to you.
 3. Read the same entries yourself with the Lua tool instead of asking the user what the
