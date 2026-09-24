@@ -1985,7 +1985,6 @@ function zemi.skills.disable(name) end
 ---@field name string
 ---@field status string "starting", "ready", "needs sign-in", "failed" or "stopped".
 ---@field error string
----@field source string
 ---@field tools string[] The tools the model gets, after enabled_tools and disabled_tools.
 
 ---@class zemi.mcp
@@ -2012,7 +2011,7 @@ function zemi.mcp.list() end
 ---@field name string
 ---@field command string
 ---@field filetypes string
----@field status string "available" (starts on its first file), "starting", "running", "failed" or "exited".
+---@field status string "available" (starts on its first file), "starting", "ready", "failed" or "stopped".
 ---@field error string
 
 ---@class zemi.lsp

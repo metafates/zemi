@@ -49,7 +49,7 @@ func TestLSPDiagnostics(t *testing.T) {
 	}
 	t.Run("reports", func(t *testing.T) {
 		t.Parallel()
-		_, run := setup(t)
+		h, run := setup(t)
 		for _, c := range []struct{ tool, name, content, want string }{
 			{"write", "a.txt", "ok\nBROKEN", "error a.txt:2:1: broken"},
 			{"diagnostics", "a.txt", "", `<diagnostics source="fake">`},
@@ -61,6 +61,9 @@ func TestLSPDiagnostics(t *testing.T) {
 			if got := run(c.tool, c.name, c.content); !strings.Contains(got, c.want) {
 				t.Fatalf("%s %s = %q, want %q", c.tool, c.name, got, c.want)
 			}
+		}
+		if row := fmt.Sprint(h.lspItems()); !strings.Contains(row, "status: ready") || !strings.Contains(row, "hotkey:r run:lsp restart fake") {
+			t.Fatalf("/lsp row = %s", row)
 		}
 	})
 	// each silent touch waits out the client's floor, so the two run side by side

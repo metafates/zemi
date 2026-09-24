@@ -619,13 +619,13 @@ func (h *Host) lspRows() []map[string]any {
 		row := map[string]any{"name": name, "command": p.def.Command, "status": "starting", "error": "", "filetypes": strings.Join(p.def.Exts, " ")}
 		select {
 		case <-p.ready:
-			row["status"] = "running"
+			row["status"] = "ready"
 			if p.err != nil {
 				row["status"], row["error"] = "failed", p.err.Error()
 			} else {
 				select {
 				case <-p.client.Done():
-					row["status"] = "exited"
+					row["status"] = "stopped"
 				default:
 				}
 			}
@@ -670,25 +670,30 @@ func (h *Host) lspCommands() []*Command {
 			if err != nil {
 				return err
 			}
-			empty := "No language server for this project. Install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or add one with zemi.lsp.add."
+			empty := "No language servers yet. Install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or add one with zemi.lsp.add."
 			if !h.ProjectTrusted() {
 				empty = "Language servers are off: this project is not trusted."
 			}
-			var items []any
-			for _, row := range h.lspRows() {
-				name, status := fmt.Sprint(row["name"]), fmt.Sprint(row["status"])
-				detail := fmt.Sprintf("command: %s\nstatus: %s\nfiles: %s", row["command"], status, row["filetypes"])
-				if e := fmt.Sprint(row["error"]); e != "" {
-					detail += "\nerror: " + e
-				}
-				item := map[string]any{"text": name, "desc": status + " · " + fmt.Sprint(row["filetypes"]), "detail": detail}
-				if status != "available" {
-					item["actions"] = []any{map[string]any{"text": "Restart", "run": "lsp restart " + name}}
-				}
-				items = append(items, item)
-			}
-			ui.OpenOverlay(Overlay{ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Items: items, Empty: empty})
+			ui.OpenOverlay(Overlay{ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Items: h.lspItems(),
+				Reload: func() ([]any, [][]Segment) { return h.lspItems(), nil }, Empty: empty})
 			return nil
 		},
 	}}
+}
+
+func (h *Host) lspItems() []any {
+	var items []any
+	for _, row := range h.lspRows() {
+		name, status := fmt.Sprint(row["name"]), fmt.Sprint(row["status"])
+		detail := fmt.Sprintf("command: %s\nstatus: %s\nfiles: %s", row["command"], status, row["filetypes"])
+		if e := fmt.Sprint(row["error"]); e != "" {
+			detail += "\nerror: " + e
+		}
+		item := map[string]any{"text": name, "desc": status + " · " + fmt.Sprint(row["filetypes"]), "detail": detail}
+		if status != "available" {
+			item["actions"] = []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "lsp restart " + name}}
+		}
+		items = append(items, item)
+	}
+	return items
 }

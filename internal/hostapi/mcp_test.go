@@ -64,7 +64,7 @@ func TestMCPBridge(t *testing.T) {
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if err := h.openMCP(); err != nil || ui.opened[0].Items[0].(map[string]any)["desc"] != "ready · 2 of 3 tools · init.lua" {
+	if err := h.openMCP(); err != nil || ui.opened[0].Items[0].(map[string]any)["desc"] != "ready · 2 of 3 tools" || ui.opened[0].Reload == nil {
 		t.Errorf("/mcp row = %v, %v", ui.opened, err)
 	}
 	run := func(i int, input string) fantasy.ToolResponse {
@@ -122,6 +122,9 @@ func TestMCPBridge(t *testing.T) {
 	}
 	if s, _ := h.mcpServerNamed("fake"); s.currentClient() != nil || s.status != "needs sign-in" {
 		t.Fatalf("status after the sign-in expired = %q", s.status)
+	}
+	if items, _ := ui.opened[0].Reload(); !strings.Contains(fmt.Sprint(items[0].(map[string]any)["actions"]), "hotkey:s run:mcp sign-in fake") {
+		t.Errorf("the rebuilt /mcp row offers no [s] Sign in: %v", items)
 	}
 	// a reload that disables echo stops the snapshot's echo too
 	expired.Store(false)

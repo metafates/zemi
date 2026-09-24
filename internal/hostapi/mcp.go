@@ -45,7 +45,6 @@ type MCPSpec struct {
 	EnabledTools  []string // nil = all
 	DisabledTools []string
 	Timeout       time.Duration // per call; 0 = 2 minutes
-	Source        string        // where it was added: init.lua
 }
 
 type mcpServer struct {
@@ -646,7 +645,6 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 			URL: rawString(opts, "url"), Headers: rawStringMap(opts, "headers"),
 			ClientID: rawString(opts, "client_id"), ClientSecret: rawString(opts, "client_secret"),
 			EnabledTools: rawStrings(opts, "enabled_tools"), DisabledTools: rawStrings(opts, "disabled_tools"),
-			Source: "init.lua",
 		}
 		if n, ok := opts.RawGetString("callback_port").(glua.LNumber); ok {
 			spec.CallbackPort = int(n)
@@ -669,7 +667,7 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 					names = append(names, t.Name)
 				}
 			}
-			rows = append(rows, map[string]any{"name": s.name, "status": s.status, "error": s.err, "source": s.spec.Source, "tools": names})
+			rows = append(rows, map[string]any{"name": s.name, "status": s.status, "error": s.err, "tools": names})
 			s.mu.Unlock()
 		}
 		L.Push(lua.FromGo(L, rows))
@@ -719,11 +717,19 @@ func (h *Host) restartMCP(name string) error {
 	return h.addMCP(name, s.spec)
 }
 
+// openMCP lists the servers; an action returns to the list, which rebuilds.
 func (h *Host) openMCP() error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
+	ui.OpenOverlay(Overlay{ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Items: h.mcpItems(),
+		Reload: func() ([]any, [][]Segment) { return h.mcpItems(), nil },
+		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`})
+	return nil
+}
+
+func (h *Host) mcpItems() []any {
 	var items []any
 	for _, s := range h.mcp.list() {
 		s.mu.Lock()
@@ -760,18 +766,16 @@ func (h *Host) openMCP() error {
 		if len(tools) > 0 {
 			detail += "\ntools: " + strings.Join(tools, ", ")
 		}
-		actions := []any{map[string]any{"text": "Restart", "run": "mcp restart " + s.name}}
+		actions := []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "mcp restart " + s.name}}
 		if status == "needs sign-in" {
-			actions = append(actions, map[string]any{"text": "Sign in", "run": "mcp sign-in " + s.name})
+			actions = append(actions, map[string]any{"text": "Sign in", "hotkey": "s", "run": "mcp sign-in " + s.name})
 		}
 		if _, err := os.Stat(h.mcpAuth(s).Path); s.spec.URL != "" && err == nil {
-			actions = append(actions, map[string]any{"text": "Sign out", "run": "mcp sign-out " + s.name})
+			actions = append(actions, map[string]any{"text": "Sign out", "hotkey": "x", "hl": "Danger", "run": "mcp sign-out " + s.name})
 		}
-		items = append(items, map[string]any{"text": s.name, "desc": desc + " · " + s.spec.Source, "detail": detail, "actions": actions})
+		items = append(items, map[string]any{"text": s.name, "desc": desc, "detail": detail, "actions": actions})
 	}
-	ui.OpenOverlay(Overlay{ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Items: items,
-		Empty: `No MCP servers. Add one in init.lua: zemi.mcp.add("name", { command = "..." })`})
-	return nil
+	return items
 }
 
 func hasHeader(headers map[string]string, name string) bool {

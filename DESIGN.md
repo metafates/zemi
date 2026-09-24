@@ -1233,7 +1233,14 @@ provenance string.
   the opener may close it (user, builtin or its own origin). A detail view's rows are actions
   (`fill`, `run`, or an `id` handed to the list's `on_action`), so they draw as
   the prompts' buttons ("[r] Read it"), keyed by their `hotkey` or their
-  position. A row may name its own enter verb (`verb`, "open" on a
+  position. Go screens key every action by its verb's initial, one verb per
+  letter on a screen: `r` restart, resume or run, `a` ask or run with
+  arguments, `s` sign in or stop, `e` enable, `d` disable, `o` open, `u`
+  update or use now, `c` change, and `x`, in the danger color, for what
+  cannot be undone (delete, or `/mcp`'s sign out, which deletes the saved
+  token). A screen that manages things (`/skills`, `/mcp`, `/lsp`,
+  `/permissions`) is a toggle list, so an action returns to it rebuilt.
+  A row may name its own enter verb (`verb`, "open" on a
   row that opens another screen): the hint says it, and space, which toggles
   a toggle list's rows, passes it by. A detail body's `status:` line colors
   the status words every screen shares: `starting`, `ready`, `failed`,
