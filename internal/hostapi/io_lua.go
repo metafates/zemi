@@ -6,7 +6,6 @@ package hostapi
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -760,7 +759,10 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 	handle := L.NewTable()
 	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
 		return waitHandle(L, "http:wait", hnd.done, 120*time.Second, nil, func(L *glua.LState, err error) []glua.LValue {
-			if err = cmp.Or(err, hnd.err); err != nil {
+			if err == nil { // hnd.err is set only once done has closed
+				err = hnd.err
+			}
+			if err != nil {
 				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
 			}
 			return []glua.LValue{lua.FromGo(L, hnd.res)}

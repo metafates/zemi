@@ -161,7 +161,10 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
 		// the idle timer already ends a stalled stream; this bounds a slow one
 		return waitHandle(L, "model:wait", done, 10*time.Minute, cancel, func(L *glua.LState, err error) []glua.LValue {
-			if err = cmp.Or(err, askErr); err != nil {
+			if err == nil { // askErr is set only once done has closed
+				err = askErr
+			}
+			if err != nil {
 				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
 			}
 			return []glua.LValue{glua.LString(text)}
