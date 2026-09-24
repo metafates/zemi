@@ -602,6 +602,12 @@ func TestHeadlessNotices(t *testing.T) {
 	}{
 		{"-m unlisted", "zemi: Model not listed: a/unlisted: not in the provider's models list; the provider decides whether it exists\n", func() error { return applyOptions(h, options{model: "a/unlisted"}) }},
 		{"-m unlisted --health", "", func() error { return applyOptions(h, options{model: "a/unlisted", health: true}) }},
+		{"-m a role name", "", func() error {
+			if err := applyOptions(h, options{model: "titles"}); err == nil || !strings.Contains(err.Error(), `provider "titles" is not registered`) {
+				return fmt.Errorf("got %v", err)
+			}
+			return nil
+		}},
 		{"info", "", func() error { h.Notify("info", "Copied", "3 chars"); return nil }},
 		{"untitled error", "zemi: Error: first\n  second\n", func() error { h.Notify("error", "", "first\nsecond"); return nil }},
 		{"screen command", "", func() error {
