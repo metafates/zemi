@@ -938,7 +938,7 @@ func toolStatus(name string, ok bool, output string, cancelled bool) string {
 // StepDone bills a completed step's usage to the live session tally, so the
 // token count moves during the turn instead of only at TurnDone, and counts
 // the step for the todo nag unless a todos call ran in it.
-func (s *streamAdapter) StepDone(usage fantasy.Usage) {
+func (s *streamAdapter) StepDone(st agent.Step) {
 	h := s.h
 	ag := h.agents
 	ag.mu.Lock()
@@ -948,10 +948,24 @@ func (s *streamAdapter) StepDone(usage fantasy.Usage) {
 	if model == "" {
 		model = h.currentModelID(nil) // a turn the host did not start (tests)
 	}
-	h.bill(sid, model, usage)
+	h.bill(sid, model, st.Usage)
+	h.emitStep(sid, model, st)
 	if !touched {
 		h.maybeNagTodos()
 	}
+}
+
+// emitStep is agent.step, one per model call of a turn, a subagent's included.
+func (h *Host) emitStep(sid, model string, st agent.Step) {
+	u := st.Usage
+	h.EmitAsync("agent.step", map[string]any{
+		"session": sid, "model": model, "step": st.N,
+		"ms": st.Took.Milliseconds(), "first_token_ms": st.FirstToken.Milliseconds(), "tools": st.Tools,
+		"usage": map[string]any{
+			"in": u.InputTokens, "out": u.OutputTokens, "cache_read": u.CacheReadTokens, "cache_write": u.CacheCreationTokens,
+			"cost": h.turnCost(model, u),
+		},
+	})
 }
 
 func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {

@@ -34,13 +34,23 @@ type StreamHooks interface {
 	// StepStart marks the start of a model call; after Retrying the call
 	// streams again from its first delta.
 	StepStart()
-	// StepDone reports a completed step's usage, so the session token tally
-	// can move during the turn instead of only at TurnDone.
-	StepDone(usage fantasy.Usage)
+	// StepDone reports a completed step, so the session token tally can
+	// move during the turn instead of only at TurnDone.
+	StepDone(s Step)
 	// Retrying reports a provider retry (rate limit, overload) before the
 	// backoff delay.
 	Retrying(err error, delay time.Duration)
 	TurnDone(err error, usage fantasy.Usage)
+}
+
+// Step is one finished model call of a turn.
+type Step struct {
+	N     int // 1-based within the send
+	Usage fantasy.Usage
+	// Took runs from the call's start to its end; FirstToken to the first
+	// text, reasoning or tool argument it streamed, 0 when none came
+	Took, FirstToken time.Duration
+	Tools            int // tool calls it made
 }
 
 // PersistFunc receives every message of the turn (user first, then the
@@ -293,13 +303,25 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	// the tool whose arguments the step was streaming: a reply cut there
 	// may leave no tool call behind for closeToolCalls to answer
 	pending := ""
+	var stepStart time.Time
+	var firstToken time.Duration
+	token := func() {
+		if firstToken == 0 {
+			firstToken = time.Since(stepStart)
+		}
+	}
 	call := fantasy.AgentStreamCall{
-		Messages:         history,
-		StopWhen:         stops,
-		OnStepStart:      func(int) error { pending = ""; hooks.StepStart(); return nil },
-		OnTextDelta:      func(id, text string) error { hooks.TextDelta(text); return nil },
-		OnReasoningDelta: func(id, text string) error { hooks.ReasoningDelta(text); return nil },
+		Messages: history,
+		StopWhen: stops,
+		OnStepStart: func(int) error {
+			pending, stepStart, firstToken = "", time.Now(), 0
+			hooks.StepStart()
+			return nil
+		},
+		OnTextDelta:      func(id, text string) error { token(); hooks.TextDelta(text); return nil },
+		OnReasoningDelta: func(id, text string) error { token(); hooks.ReasoningDelta(text); return nil },
 		OnToolInputStart: func(id, name string) error {
+			token()
 			pending = name
 			hooks.ToolCallPending(id, name)
 			return nil
@@ -321,7 +343,10 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result), res.ClientMetadata)
 			return nil
 		},
-		OnRetry:         func(_ *fantasy.ProviderError, delay time.Duration) { hooks.Retrying(r.last.Err, delay) },
+		OnRetry: func(_ *fantasy.ProviderError, delay time.Duration) {
+			firstToken = 0 // the call streams again from its first delta
+			hooks.Retrying(r.last.Err, delay)
+		},
 		MaxRetries:      &maxRetries,
 		ProviderOptions: provOpts,
 	}
@@ -347,7 +372,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	call.OnStepFinish = func(s fantasy.StepResult) error {
 		steps = append(steps, s)
 		save(s.Messages...)
-		hooks.StepDone(s.Usage)
+		hooks.StepDone(Step{N: len(steps), Usage: s.Usage, Took: time.Since(stepStart), FirstToken: firstToken, Tools: len(s.Content.ToolCalls())})
 		return nil
 	}
 	// fantasy rebuilds each step's input as initial prompt + step responses,

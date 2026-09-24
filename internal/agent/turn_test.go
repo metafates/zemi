@@ -133,7 +133,8 @@ func (h *recHooks) ToolCallEnd(id, name string, ok bool, output, _ string) {
 	h.mu.Unlock()
 }
 
-func (h *recHooks) StepDone(usage fantasy.Usage) {
+func (h *recHooks) StepDone(st Step) {
+	usage := st.Usage
 	h.mu.Lock()
 	h.steps++
 	h.usage.InputTokens += usage.InputTokens

@@ -855,16 +855,16 @@ func TestTodoNag(t *testing.T) {
 		for i := range todoNagAfter * 2 {
 			s.ToolCallEnd(fmt.Sprint(i), "read", true, "", "")
 		}
-		s.StepDone(fantasy.Usage{})
+		s.StepDone(agent.Step{})
 		s.ToolCallEnd("t", tools.ToolTodos, true, "", "")
-		s.StepDone(fantasy.Usage{})
+		s.StepDone(agent.Step{})
 		for range todoNagAfter - 2 {
-			s.StepDone(fantasy.Usage{})
+			s.StepDone(agent.Step{})
 		}
 		if got := takeNag(h); got != "" {
 			t.Fatalf("a batch of calls is one step: %q", got)
 		}
-		s.StepDone(fantasy.Usage{})
+		s.StepDone(agent.Step{})
 		if got := takeNag(h); !strings.Contains(got, fmt.Sprintf("for %d steps", todoNagAfter)) {
 			t.Fatalf("nag after the threshold: %q", got)
 		}

@@ -16,7 +16,7 @@ var eventCatalogue = map[string]bool{
 	"session.new": true, "session.open": true, "session.close": true,
 	"agent.start": true, "agent.finish": true, "agent.error": true,
 	"agent.assemble": true, "agent.subagent.start": true, "agent.subagent.finish": true,
-	"agent.text_delta": true, "agent.reasoning_delta": true,
+	"agent.text_delta": true, "agent.reasoning_delta": true, "agent.step": true,
 	"tool.pre": true, "tool.post": true, "tool.denied": true,
 	"permission.request": true, "permission.resolved": true,
 	"ui.resize": true, "ui.theme": true, "composer.change": true, "composer.submit": true,
