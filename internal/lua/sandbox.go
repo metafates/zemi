@@ -229,8 +229,8 @@ const handlersKey = "__zemi_handlers"
 // triggers (obj.setup, obj(), obj == x) would run it as user (DESIGN §5).
 // The handlers are copied, so a later write to mt cannot swap one in, and
 // getmetatable still returns mt.
-// NOTE: a Go function handed out as a plain value still runs as its caller,
-// obj:method() included; closing that takes a view per requirer.
+// A Go function handed out as a plain value would run as its caller too,
+// which is why a plugin module may not export one (exportsGo).
 func (s *Sandbox) setMetatable(L *glua.LState) int {
 	obj := L.CheckTable(1)
 	L.CheckTypes(2, glua.LTNil, glua.LTTable)

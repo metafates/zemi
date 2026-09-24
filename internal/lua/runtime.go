@@ -592,8 +592,39 @@ func (r *Runtime) moduleInstance(gen *Generation, key, name string, origin Origi
 	if err != nil {
 		return glua.LNil, err
 	}
+	if origin == OriginPlugin {
+		if at := exportsGo(mod, "", map[*glua.LTable]bool{}); at != "" {
+			return glua.LNil, fmt.Errorf("plugin module %q exports the Go function %s: wrap it in a Lua function", name, at)
+		}
+	}
 	gen.modules[key] = mod
 	return mod, nil
+}
+
+// exportsGo names the first Go function reachable from a plugin module's
+// value, or "". A Go function handed out as a plain value runs as its
+// caller with no frame of the plugin, so require("p"):setup() with setup =
+// zemi.permission.rule.add would add the module table as a user rule.
+func exportsGo(v glua.LValue, at string, seen map[*glua.LTable]bool) string {
+	switch v := v.(type) {
+	case *glua.LFunction:
+		if v.IsG {
+			return cmp.Or(at, "it returns")
+		}
+	case *glua.LTable:
+		if seen[v] {
+			return ""
+		}
+		seen[v] = true
+		var found string
+		v.ForEach(func(k, e glua.LValue) {
+			if found == "" {
+				found = exportsGo(e, at+"."+k.String(), seen)
+			}
+		})
+		return found
+	}
+	return ""
 }
 
 func (r *Runtime) readEmbedded(name string) ([]byte, string, error) {

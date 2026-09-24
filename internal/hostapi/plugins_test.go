@@ -150,6 +150,15 @@ func TestPluginsStep(t *testing.T) {
 			not:  []string{"A1 true", "A1 secret", "via"},
 		},
 		{
+			name: "a plugin module that exports a Go function does not load",
+			plugins: map[string]string{
+				"local/p/lua/p/init.lua": `return { subject = "tool.bash", pattern = "*", decision = "allow", match = "rm -rf x", setup = zemi.permission.rule.add }`,
+			},
+			user: `print("P", pcall(function() return require("p"):setup() end))`,
+			want: []string{"user|P false", "exports the Go function .setup"},
+			not:  []string{"P true"},
+		},
+		{
 			name: "a plugin's skills, agents, commands and workflows load, a disabled plugin's do not, the user's win",
 			plugins: res(res(res(map[string]string{"installed/a/skills/s/zemi-skill.lua": `print("hook")`, "installed/a/.git/config": "", "disabled": "off\n"},
 				"installed/a/", "s"), "installed/a/", "mine"), "local/off/", "gone"),

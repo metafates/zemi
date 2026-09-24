@@ -440,8 +440,9 @@ and every Lua function on the stack, resumers included, builtin ones transparent
 `zemi.event.emit` runs inline runs as the project; chunks compile with no tail calls, which
 would drop a frame. A metamethod leaves no frame of the code that set it, so the sandbox's
 `setmetatable` (tables only) lets code below builtin install only its own origin's Lua
-functions as handlers, and a plugin only its own plugin's, copied at the call; a Go function handed out as a plain value still runs
-as its caller (NOTE in the code). Plugins (hostapi/plugins.go, `PluginsStep`): `plugins.Scan` lists
+functions as handlers, and a plugin only its own plugin's, copied at the call, and a plugin module
+that exports a Go function fails to require (`exportsGo`: `obj:method()` would run it as the caller
+with the module table as its argument). Plugins (hostapi/plugins.go, `PluginsStep`): `plugins.Scan` lists
 `installed/` (clones) and `local/` (developed in place) minus `disabled`, sorted by name; a local
 plugin named like an installed one or a symlinked dir does not load, and a gone or
 reinstalled plugin's `zemi.state` keys are dropped (`sweepPluginState`: the key `plugin:<name>`

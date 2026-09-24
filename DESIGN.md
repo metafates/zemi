@@ -532,9 +532,9 @@ Sandbox (what userland gets):
   only Lua functions of its own origin or lower as handlers, and plugin
   code only its own plugin's, copied at the call: a Go, builtin, user or
   other plugin's function behind `obj.setup`, `obj()` or `==` would run
-  as the code that triggered it. NOTE: a Go function
-  handed out as a plain value still runs as its caller, `obj:method()`
-  included; a view per requirer is the upgrade. So a plugin's `setup()`
+  as the code that triggered it, and a plugin module may export no Go
+  function at all (`require` refuses the module), since `obj:method()`
+  would hand the module table to it as its caller. So a plugin's `setup()`
   that user `init.lua` calls runs as that plugin, a user handler that a project's `zemi.event.emit` runs
   inline runs as the project, and registrations capture the origin and
   file of the code making them. A plugin is named by its directory under
