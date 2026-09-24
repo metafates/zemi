@@ -1757,7 +1757,7 @@ function zemi.http.get(url, opts) end
 
 ---@class zemi.JobHandle
 ---@field id integer
----@field wait fun(self: zemi.JobHandle, ms?: integer): zemi.JobResult|nil, string|nil Suspends the task until the job ends, 30000 ms by default; err is "timeout" or "canceled" (the task ended). Raises outside a task and under pcall, like `zemi.HTTPHandle.wait`.
+---@field wait fun(self: zemi.JobHandle, ms?: integer): zemi.JobResult|nil, string|nil Suspends the task until the job ends, 30000 ms by default; err is "timeout". Raises outside a task and under pcall, like `zemi.HTTPHandle.wait`.
 ---@field kill fun(self: zemi.JobHandle)
 ---@field write fun(self: zemi.JobHandle, s: string): true|nil, string|nil
 ---@field close_stdin fun(self: zemi.JobHandle)

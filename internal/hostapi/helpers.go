@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"time"
@@ -10,30 +9,22 @@ import (
 	glua "github.com/yuin/gopher-lua"
 )
 
-// luaCtx is the running request's context, which the queue cancels at the
-// request's ceiling and on an interrupt.
-func luaCtx(L *glua.LState) context.Context {
-	return cmp.Or(L.Context(), context.Background())
-}
-
 // waitHandle is a handle's wait(): it suspends the task until done closes,
 // the timeout passes or the task ends, and resumes it with ret's values
-// (err "timeout" or "canceled" when done did not close). stop, when set,
-// runs off the interpreter on either error.
+// (err "timeout" when it passed). stop, when set, runs off the interpreter
+// unless done closed.
 func waitHandle(L *glua.LState, api string, done <-chan struct{}, timeout time.Duration, stop func(), ret func(L *glua.LState, err error) []glua.LValue) int {
 	return lua.Suspend(L, api, func(ctx context.Context) func(*glua.LState) []glua.LValue {
-		var err error
 		select {
 		case <-done:
-		case <-ctx.Done():
-			err = errors.New("canceled")
+			return func(L *glua.LState) []glua.LValue { return ret(L, nil) }
+		case <-ctx.Done(): // the task ends; what this returns is never run
 		case <-time.After(timeout):
-			err = errors.New("timeout")
 		}
-		if err != nil && stop != nil {
+		if stop != nil {
 			stop()
 		}
-		return func(L *glua.LState) []glua.LValue { return ret(L, err) }
+		return func(L *glua.LState) []glua.LValue { return ret(L, errors.New("timeout")) }
 	})
 }
 
