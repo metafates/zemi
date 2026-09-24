@@ -428,7 +428,10 @@ subdirectory of it in `Dirs.UserTrees`, which the read jail registers too, so a 
 and every Lua function on the stack, resumers included, builtin ones transparent: a plugin's
 `setup()` that init.lua calls runs as the plugin, and a user handler a project's
 `zemi.event.emit` runs inline runs as the project; chunks compile with no tail calls, which
-would drop a frame. Plugins (hostapi/plugins.go, `PluginsStep`): `plugins.Scan` lists
+would drop a frame. A metamethod leaves no frame of the code that set it, so the sandbox's
+`setmetatable` (tables only) lets code below builtin install only its own origin's Lua
+functions as handlers, copied at the call; a Go function handed out as a plain value still runs
+as its caller (NOTE in the code). Plugins (hostapi/plugins.go, `PluginsStep`): `plugins.Scan` lists
 `installed/` (clones) and `local/` (developed in place) minus `disabled`, sorted by name; a local
 plugin named like an installed one or a symlinked dir does not load, and a gone plugin's
 `zemi.state` keys are dropped. The same pick, fixed for the generation (`Host.pluginDirs`),

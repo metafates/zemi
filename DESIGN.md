@@ -504,8 +504,14 @@ Sandbox (what userland gets):
   entry pushed (a registration's origin) and every Lua function on the
   call stack, the threads that resumed it included; builtin functions are
   transparent, and chunks compile with no tail calls, which would drop
-  their caller's frame. So a plugin's `setup()` that user `init.lua` calls runs as
-  that plugin, a user handler that a project's `zemi.event.emit` runs
+  their caller's frame. A metamethod runs with no frame of the code that
+  set it, so `setmetatable` (tables only) lets code below builtin install
+  only Lua functions of its own origin or lower as handlers, copied at
+  the call: a Go, builtin or user function behind `obj.setup`, `obj()` or
+  `==` would run as the user code that triggered it. NOTE: a Go function
+  handed out as a plain value still runs as its caller, `obj:method()`
+  included; a view per requirer is the upgrade. So a plugin's `setup()`
+  that user `init.lua` calls runs as that plugin, a user handler that a project's `zemi.event.emit` runs
   inline runs as the project, and registrations capture the origin and
   file of the code making them. A plugin is named by its directory under
   `installed/` or `local/`: that name scopes its `zemi.state` keys

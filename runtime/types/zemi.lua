@@ -93,6 +93,8 @@ function rawget(table, index) end
 ---@return any
 function select(index, ...) end
 
+--- In plugin and project code a handler must be that code's own Lua function, and the
+--- handlers are read at the call.
 ---@generic T: table
 ---@param table T
 ---@param metatable? table

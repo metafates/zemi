@@ -162,6 +162,8 @@ func NewSandbox(originOf func(*glua.LState) Origin) (*Sandbox, error) {
 		}))
 	}
 
+	global.RawSetString("setmetatable", L.NewFunction(s.setMetatable))
+
 	// load/loadstring stay (Lua source only, DESIGN §5) but the base
 	// versions bind compiled chunks to the interpreter's environment; the
 	// sandbox versions inherit the loading chunk's env and origin.
@@ -208,6 +210,68 @@ func NewSandbox(originOf func(*glua.LState) Origin) (*Sandbox, error) {
 	L.Env = frozen
 
 	return s, nil
+}
+
+// handlersKey marks a metatable setMetatable copied; true when the original
+// had no __metatable lock, so setmetatable may replace it.
+const handlersKey = "__zemi_handlers"
+
+// setMetatable is setmetatable for tables only: gopher-lua's would set the
+// metatable of every number, boolean or function. Code below builtin may
+// install only Lua functions of its own origin or lower as handlers: a Go or
+// builtin function leaves no frame of that origin, so an event user code
+// triggers (obj.setup, obj(), obj == x) would run it as user (DESIGN §5).
+// The handlers are copied, so a later write to mt cannot swap one in, and
+// getmetatable still returns mt.
+// NOTE: a Go function handed out as a plain value still runs as its caller,
+// obj:method() included; closing that takes a view per requirer.
+func (s *Sandbox) setMetatable(L *glua.LState) int {
+	obj := L.CheckTable(1)
+	L.CheckTypes(2, glua.LTNil, glua.LTTable)
+	if cur, ok := obj.Metatable.(*glua.LTable); ok && cur.RawGetString("__metatable") != glua.LNil && cur.RawGetString(handlersKey) != glua.LTrue {
+		L.RaiseError("cannot change a protected metatable")
+	}
+	mt := L.Get(2)
+	if tb, ok := mt.(*glua.LTable); ok && s.originOf != nil {
+		if o := s.originOf(L); o.Rank() > 0 && o.Rank() < OriginBuiltin.Rank() {
+			mt = copyHandlers(L, tb, o)
+		}
+	}
+	L.SetMetatable(obj, mt)
+	L.SetTop(1)
+	return 1
+}
+
+// copyHandlers copies mt's events, refusing a handler that would not run as o.
+func copyHandlers(L *glua.LState, mt *glua.LTable, o Origin) *glua.LTable {
+	cp := L.NewTable()
+	bad := ""
+	mt.ForEach(func(k, v glua.LValue) {
+		event, ok := k.(glua.LString)
+		if !ok || !strings.HasPrefix(string(event), "__") {
+			return
+		}
+		if fn, ok := v.(*glua.LFunction); ok {
+			fo := OriginHost
+			if !fn.IsG {
+				fo, _ = splitChunkName(fn.Proto.SourceName)
+			}
+			if fo.Rank() == 0 || fo.Rank() > o.Rank() {
+				bad = string(event)
+			}
+		}
+		cp.RawSet(k, v)
+	})
+	if bad != "" {
+		L.RaiseError("setmetatable: %s must be a Lua function of %s code, not a Go, builtin or more trusted one, which would run as the code that triggers it", bad, o)
+	}
+	lock := mt.RawGetString("__metatable")
+	cp.RawSetString(handlersKey, glua.LBool(lock == glua.LNil))
+	if lock == glua.LNil {
+		lock = mt
+	}
+	cp.RawSetString("__metatable", lock)
+	return cp
 }
 
 // bindContext gives thread th the context of L, the thread resuming it.

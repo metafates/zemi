@@ -105,6 +105,64 @@ func TestSandboxFrozenTables(t *testing.T) {
 	`)
 }
 
+// TestSandboxSetmetatable: code below builtin may install only its own Lua
+// functions as handlers, for every event: a Go, builtin or user function
+// would run as whoever triggers the event. A later write to the metatable
+// swaps nothing in.
+func TestSandboxSetmetatable(t *testing.T) {
+	origin := OriginPlugin
+	sb, err := NewSandbox(func(*glua.LState) Origin { return origin })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(sb.L.Close)
+	fnOf := func(o Origin) glua.LValue {
+		fn, err := sb.CompileChunk(`return function() return "handled" end`, o.ChunkName("f.lua"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sb.L.Push(fn)
+		sb.L.Call(0, 1)
+		defer sb.L.Pop(1)
+		return sb.L.Get(-1)
+	}
+	builtin, user := fnOf(OriginBuiltin), fnOf(OriginUser)
+	for _, c := range []struct {
+		origin    Origin
+		src, want string // want "" runs clean
+	}{
+		{OriginPlugin, `setmetatable({}, { __index = tostring })`, "__index must be a Lua function of plugin code"},
+		{OriginPlugin, `setmetatable({}, { __call = builtin })`, "__call must be"},
+		{OriginPlugin, `setmetatable({}, { __newindex = user })`, "__newindex must be"},
+		{OriginProject, `setmetatable({}, { __eq = tostring })`, "__eq must be a Lua function of project code"},
+		{OriginPlugin, `setmetatable({}, { __tostring = builtin })`, "__tostring must be"},
+		{OriginPlugin, `setmetatable({}, { __gc = tostring })`, "__gc must be"},
+		{OriginPlugin, `setmetatable(1, {})`, "table expected"},
+		{OriginPlugin, `
+			local mt = { __index = function() return "own" end }
+			local t = setmetatable({}, mt)
+			mt.__index, mt.__call = tostring, tostring
+			assert(t.x == "own" and not pcall(t) and getmetatable(t) == mt, "a later write reached the handlers")
+			setmetatable(t, nil)
+			local locked = setmetatable({}, { __metatable = "locked" })
+			assert(getmetatable(locked) == "locked" and not pcall(setmetatable, locked, {}), "lock lost")`, ""},
+		{OriginUser, `assert(setmetatable({}, { __index = builtin }).x == "handled")`, ""},
+	} {
+		origin = c.origin
+		fn, err := sb.CompileChunk("local builtin, user = ...\n"+c.src, c.origin.ChunkName("t.lua"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sb.L.Push(fn)
+		sb.L.Push(builtin)
+		sb.L.Push(user)
+		err = sb.L.PCall(2, 0, nil)
+		if got := fmt.Sprint(err); c.want == "" && err != nil || c.want != "" && !strings.Contains(got, c.want) {
+			t.Errorf("%s: got %v, want %q", c.src, err, c.want)
+		}
+	}
+}
+
 func TestSandboxChunkEnv(t *testing.T) {
 	sb := newTestSandbox(t)
 	// Ordinary new globals land in the chunk environment unblocked.
