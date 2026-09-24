@@ -994,9 +994,17 @@ func (h *Host) memoryAuto(sid string) bool {
 	return h.Settings.Str("memory.autonomy") == "auto" && h.ProjectTrusted() && h.sessionLocalOnly(sid)
 }
 
+// markNotLocal records that plugin code fed the live session text, a sent
+// message or a rewritten tool result, as a telemetry row sessionLocalOnly
+// reads like a tool zemi does not ship: the plugin may relay any text.
+func (h *Host) markNotLocal(who string) {
+	h.recordToolCall(h.AgentSessionID(), StreamTool{Name: who}, true)
+}
+
 // sessionLocalOnly reports that neither session sid nor one of its subagents
 // read text from outside the machine (fetch, web_search, a Lua or MCP tool,
-// any tool zemi does not ship), where injected text would come from.
+// any tool zemi does not ship, a plugin's text), where injected text would
+// come from.
 // NOTE: a bash command the user approved can fetch too and is not seen here.
 func (h *Host) sessionLocalOnly(sid string) bool {
 	if h.DB == nil {

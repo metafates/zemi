@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aymanbagabas/go-udiff"
 
@@ -123,10 +124,12 @@ type Asker func(req Request) (allowed bool, decidedBy, reason string)
 
 // Pipeline wires tools to the permission store and the host hooks.
 type Pipeline struct {
-	Store     *perm.Store
-	Pre       PreHook // nil = no tool.pre events
-	Ask       Asker   // nil = asks fail closed
-	Post      func(tool string, input map[string]any, ok bool, output string, changed []string)
+	Store *perm.Store
+	Pre   PreHook // nil = no tool.pre events
+	Ask   Asker   // nil = asks fail closed
+	// Post runs the tool.post events after a call the gate let through or
+	// refused, and returns the output the model gets; nil = none.
+	Post      func(ctx context.Context, tool string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string
 	Principal string
 
 	// TodosRead/TodosWrite back the session todo list; nil = todos error.
@@ -508,7 +511,7 @@ func (t *tool) Info() fantasy.ToolInfo                     { return t.info }
 func (t *tool) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (t *tool) SetProviderOptions(fantasy.ProviderOptions) {}
 
-func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.ToolResponse, err error) {
 	ctx = context.WithValue(ctx, callIDKey{}, call.ID)
 	if t.edits {
 		// the calls before this one on the same file land first, so the
@@ -547,10 +550,12 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 			}
 		}
 	}
+	start, run := time.Now(), *pipe
+	defer func() { res = t.post(ctx, &run, input, res, time.Since(start)) }()
 	if fi, err := os.Lstat(str(input["path"])); t.edits && err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		// a write through the link would change a file the row does not name
 		target := workRel(perm.RealPath(str(input["path"])))
-		return t.post(pipe, input, fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a symbolic link to %s; edit %s instead", str(input["path"]), target, target))), nil
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a symbolic link to %s; edit %s instead", str(input["path"]), target, target)), nil
 	}
 	if t.gated {
 		// resolved once: the gate judges and the tool opens the same path, so
@@ -564,19 +569,18 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 		switch fi, err := os.Stat(str(input["path"])); {
 		case err == nil:
 			if msg := pipe.stale(str(input["path"]), fi); msg != "" {
-				return t.post(pipe, input, fantasy.NewTextErrorResponse(msg)), nil
+				return fantasy.NewTextErrorResponse(msg), nil
 			}
 		case t.info.Name != ToolWrite && errors.Is(err, os.ErrNotExist):
 			// a missing file is write's normal case; an edit of one is a typo
-			return t.post(pipe, input, fantasy.NewTextErrorResponse(pipe.notFound(str(input["path"]), err))), nil
+			return fantasy.NewTextErrorResponse(pipe.notFound(str(input["path"]), err)), nil
 		}
 	}
 	if t.check != nil {
 		if err := t.check(pipe, input); err != nil {
-			return t.post(pipe, input, fantasy.NewTextErrorResponse(err.Error())), nil
+			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}
-	run := *pipe
 	for _, req := range t.subjects(input) {
 		req.Tool = t.info.Name
 		v := pipe.CheckDenied(req)
@@ -586,22 +590,21 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResp
 			if PathSubject(req.Subject) {
 				what = workRel(what) // as the ask showed it
 			}
-			return t.post(pipe, input, fantasy.NewTextErrorResponse(DeniedText(v, req.Subject+" "+what))), nil
+			return fantasy.NewTextErrorResponse(DeniedText(v, req.Subject+" "+what)), nil
 		}
 		if v.Decision == perm.Ask {
-			return t.post(pipe, input, fantasy.NewTextErrorResponse("permission unresolved (ask failed): "+req.Subject+" "+req.Arg+": "+v.Reason)), nil
+			return fantasy.NewTextErrorResponse("permission unresolved (ask failed): " + req.Subject + " " + req.Arg + ": " + v.Reason), nil
 		}
 		if pol := pipe.SandboxFor(req, v); pol != nil {
 			run.Sandboxed = pol
 		}
 	}
-	res, err := t.run(ctx, &run, input)
-	return t.post(&run, input, res), err
+	return t.run(ctx, &run, input)
 }
 
-// post delivers the tool.post notification with a text summary of the
-// response; Post is optional.
-func (t *tool) post(p *Pipeline, input map[string]any, res fantasy.ToolResponse) fantasy.ToolResponse {
+// post runs the tool.post events over a text summary of the response, which
+// a handler may rewrite; a media response keeps its content.
+func (t *tool) post(ctx context.Context, p *Pipeline, input map[string]any, res fantasy.ToolResponse, took time.Duration) fantasy.ToolResponse {
 	if p.Post == nil {
 		return res
 	}
@@ -609,7 +612,9 @@ func (t *tool) post(p *Pipeline, input map[string]any, res fantasy.ToolResponse)
 	if t.edits && !res.IsError {
 		changed = []string{str(input["path"])}
 	}
-	p.Post(t.info.Name, input, !res.IsError, res.Content, changed)
+	if out := p.Post(ctx, t.info.Name, input, !res.IsError, res.Content, changed, took); res.Type == "text" {
+		res.Content = out
+	}
 	return res
 }
 

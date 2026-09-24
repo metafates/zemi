@@ -741,7 +741,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	if resp, stop, err := t.h.preCheck("agent", call.Input); stop {
 		return resp, err
 	}
-	defer t.h.postNotify("agent", call.Input, &reply)
+	defer t.h.postNotify(ctx, "agent", call.Input, &reply, time.Now())
 	if in.SendTo != "" {
 		run := t.h.tasks.find(in.SendTo)
 		if run == nil {
@@ -852,12 +852,15 @@ func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool, error) 
 }
 
 // postNotify is preCheck's other half: these tools run outside
-// internal/tools, which fires tool.post for every other one. Deferred on
-// the tool's named result, so every return path reports.
-func (h *Host) postNotify(tool, input string, reply *fantasy.ToolResponse) {
+// internal/tools, which runs tool.post for every other one. Deferred on
+// the tool's named result, so every return path reports and a handler's
+// rewrite reaches the model.
+func (h *Host) postNotify(ctx context.Context, tool, input string, reply *fantasy.ToolResponse, start time.Time) {
 	var m map[string]any
 	_ = json.Unmarshal([]byte(input), &m)
-	h.toolPostHook()(tool, m, !reply.IsError, reply.Content, nil)
+	if out := h.toolPost(ctx, tool, m, !reply.IsError, reply.Content, nil, time.Since(start)); reply.Type == "text" {
+		reply.Content = out
+	}
 }
 
 // fmtDuration reads as the chat's durations do (defaultui text.duration).

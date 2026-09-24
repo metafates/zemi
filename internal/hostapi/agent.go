@@ -2486,19 +2486,6 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 // ---------------------------------------------------------------------------
 // permission gate for model tool calls
 
-// toolPostHook emits tool.post after every builtin tool run.
-func (h *Host) toolPostHook() func(string, map[string]any, bool, string, []string) {
-	return func(name string, input map[string]any, ok bool, output string, changed []string) {
-		if !lspQuietTool[name] {
-			h.lspDirty()
-		}
-		h.EmitAsync("tool.post", map[string]any{
-			"tool": name, "input": input, "ok": ok,
-			"output": truncRunes(output, 4096), "changed": changed,
-		})
-	}
-}
-
 // readLog is the live session's record of the files the model read. It
 // outlives the pipeline, which is rebuilt every send, so a file read in one
 // turn can be edited in the next. Only the live session is kept: an older
@@ -2607,7 +2594,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Denied: func(tool string, req tools.Request, v tools.Verdict) {
 			h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
 		},
-		Post:      h.toolPostHook(),
+		Post:      h.toolPost,
 		Principal: "model",
 		Jobs:      h.jobs,
 		Skills:    h.skillIndex,

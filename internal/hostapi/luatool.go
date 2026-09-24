@@ -179,7 +179,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	if resp, stop, err := h.preCheck("lua", call.Input); stop {
 		return resp, err
 	}
-	defer h.postNotify("lua", call.Input, &reply)
+	defer h.postNotify(ctx, "lua", call.Input, &reply, time.Now())
 	src := in.Script
 	if in.Path != "" {
 		// the file is read like the read tool reads it: a Lua error echoes

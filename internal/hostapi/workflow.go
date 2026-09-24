@@ -574,7 +574,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	if resp, stop, err := h.preCheck("workflow", call.Input); stop {
 		return resp, err
 	}
-	defer h.postNotify("workflow", call.Input, &reply)
+	defer h.postNotify(ctx, "workflow", call.Input, &reply, time.Now())
 	src, arg := in.Script, "script"
 	if in.Name != "" {
 		s, err := h.workflowSource(in.Name)

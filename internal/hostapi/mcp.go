@@ -445,7 +445,7 @@ func (t *toolSearch) Run(ctx context.Context, call fantasy.ToolCall) (reply fant
 	if resp, stop, err := t.h.preCheck(tools.ToolSearch, call.Input); stop {
 		return resp, err
 	}
-	defer t.h.postNotify(tools.ToolSearch, call.Input, &reply)
+	defer t.h.postNotify(ctx, tools.ToolSearch, call.Input, &reply, time.Now())
 	var fresh, had []string
 	for _, n := range searchMCP(t.tools, in.Query, t.loaded) {
 		if _, dup := t.loaded.LoadOrStore(n, true); dup {
@@ -552,7 +552,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 	if resp, stop, err := h.preCheck(mcpToolName(name, t.tool.Name), call.Input); stop {
 		return resp, err
 	}
-	defer h.postNotify(mcpToolName(name, t.tool.Name), call.Input, &reply)
+	defer h.postNotify(ctx, mcpToolName(name, t.tool.Name), call.Input, &reply, time.Now())
 	args, err := tools.ParseInput(t.Info(), call.Input, tools.SchemaOpen(t.tool.InputSchema))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil

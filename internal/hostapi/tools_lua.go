@@ -39,11 +39,12 @@ type luaTool struct {
 	Gen      Gen
 }
 
-// overrideRec is one zemi.tool.override pre hook for a builtin tool.
+// overrideRec is one zemi.tool.override of a tool: its pre and post
+// handlers, either nil.
 type overrideRec struct {
-	Tool   string
-	Fn     *glua.LFunction
-	Origin lua.Origin
+	Tool      string
+	Pre, Post *glua.LFunction
+	Origin    lua.Origin
 	Path   string
 	Gen    Gen
 }
@@ -219,12 +220,13 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		if !ok {
 			L.RaiseError("zemi.tool.override: spec must be a table")
 		}
-		fn, ok := spec.RawGetString("pre").(*glua.LFunction)
-		if !ok {
-			L.RaiseError("zemi.tool.override: pre callback is required")
+		pre, _ := spec.RawGetString("pre").(*glua.LFunction)
+		post, _ := spec.RawGetString("post").(*glua.LFunction)
+		if pre == nil && post == nil {
+			L.RaiseError("zemi.tool.override: a pre or post callback is required")
 		}
 		h.luaTools.addOverride(&overrideRec{
-			Tool: name, Fn: fn,
+			Tool: name, Pre: pre, Post: post,
 			Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L),
 			Gen: h.currentGen(),
 		})
@@ -296,7 +298,7 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 	if resp, stop, err := a.h.preCheck(a.t.Name, call.Input); stop {
 		return resp, err
 	}
-	defer a.h.postNotify(a.t.Name, call.Input, &reply)
+	defer a.h.postNotify(ctx, a.t.Name, call.Input, &reply, time.Now())
 	req := tools.Request{Tool: a.t.Name, Subject: "tool." + a.t.Name, Arg: a.t.Name, Reason: "Lua tool " + a.t.Name, Preview: call.Input}
 	if v := a.pipe.CheckDenied(req); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse("permission " + string(v.Decision) + " (" + v.DecidedBy + "): " + req.Subject + ": " + v.Reason), nil
@@ -367,7 +369,9 @@ func (h *Host) toolPreHook() tools.PreHook {
 		h.recordEvent("tool.pre", "host", map[string]any{"tool": name, "input": input})
 		handlers := h.Events.Handlers("tool.pre")
 		for _, o := range h.luaTools.overridesFor(name) {
-			handlers = append(handlers, &EventHandler{Event: "tool.pre", Fn: o.Fn, Origin: o.Origin, Path: o.Path})
+			if o.Pre != nil {
+				handlers = append(handlers, &EventHandler{Event: "tool.pre", Fn: o.Pre, Origin: o.Origin, Path: o.Path})
+			}
 		}
 		if len(handlers) == 0 {
 			return "", "", nil, false
@@ -451,4 +455,79 @@ func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input 
 		return "rewrite", "", m
 	}
 	return "", "", nil
+}
+
+// toolPostWait bounds one call's tool.post handlers in wall time, their
+// waits included; a slice of one gets the veto deadline on the interpreter.
+const toolPostWait = 30 * time.Second
+
+// toolPost runs tool.post after a tool call and returns the output the
+// model gets (DESIGN §6.2): the handlers, then the tool's override posts, in
+// turn as tasks, each seeing the output the one before left. A return of
+// { output = "..." } rewrites it, except from project code; a handler that
+// fails or runs late leaves it as it was.
+func (h *Host) toolPost(ctx context.Context, name string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string {
+	if !lspQuietTool[name] {
+		h.lspDirty()
+	}
+	payload := map[string]any{"tool": name, "input": input, "ok": ok, "output": truncRunes(output, 4096), "changed": changed, "ms": took.Milliseconds()}
+	h.recordEvent("tool.post", "host", payload)
+	handlers := h.Events.Handlers("tool.post")
+	for _, o := range h.luaTools.overridesFor(name) {
+		if o.Post != nil {
+			handlers = append(handlers, &EventHandler{Event: "tool.post", Fn: o.Post, Origin: o.Origin, Path: o.Path, Gen: o.Gen})
+		}
+	}
+	if len(handlers) == 0 {
+		return output
+	}
+	ctx, cancel := context.WithTimeout(ctx, toolPostWait)
+	defer cancel()
+	out := output
+	for _, hd := range handlers {
+		if hd.Once {
+			h.Events.drop(hd)
+		}
+		payload["output"] = out
+		var rewrite *string
+		t := h.luaTask(lua.ClassAgent, luaCaller{gen: hd.Gen, origin: hd.Origin, path: hd.Path}, hd.Fn, eventTable("tool.post", "host", payload))
+		t.Ceiling = lua.VetoDeadline
+		t.Done = func(L *glua.LState, rets []glua.LValue) ([]any, error) {
+			if len(rets) > 0 {
+				if tb, ok := rets[0].(*glua.LTable); ok {
+					if s, ok := tb.RawGetString("output").(glua.LString); ok {
+						rewrite = new(string(s))
+					}
+				}
+			}
+			return nil, nil
+		}
+		_, err := h.RT.RunTask(ctx, t)
+		switch {
+		case ctx.Err() != nil:
+			// interrupted, or out of time: the output stands as it is now
+			return h.postOutput(name, output, out)
+		case err != nil:
+			if !errors.Is(err, lua.ErrReloaded) && !errors.Is(err, lua.ErrHot) {
+				h.logHandlerError(hd, err)
+			}
+		case rewrite == nil:
+		case hd.Origin.Rank() <= lua.OriginProject.Rank():
+			h.Log.Warn("tools", "tool.post rewrite ignored", map[string]any{"tool": name, "origin": string(hd.Origin)})
+		default:
+			out = *rewrite
+			if hd.Origin == lua.OriginPlugin {
+				h.markNotLocal("plugin:" + h.PluginOf(hd.Path))
+			}
+		}
+	}
+	return h.postOutput(name, output, out)
+}
+
+// postOutput cuts a rewritten output like any other.
+func (h *Host) postOutput(name, output, out string) string {
+	if out == output {
+		return out
+	}
+	return h.truncOutput(name, out)
 }

@@ -682,14 +682,17 @@ func TestPostHookRuns(t *testing.T) {
 		perm.Rule{Subject: "tool.bash", Pattern: "echo *", Decision: perm.Allow},
 		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 	var posts []string
-	p.Post = func(tool string, input map[string]any, ok bool, output string, changed []string) {
+	p.Post = func(_ context.Context, tool string, input map[string]any, ok bool, output string, changed []string, _ time.Duration) string {
 		posts = append(posts, fmt.Sprintf("%s ok=%v %s changed=%v", tool, ok, output, changed))
+		return "rewritten"
 	}
 	p.Changes = func(string) func() (string, string, []string) {
 		return func() (string, string, []string) { return "", "", []string{"/by/bash"} }
 	}
 	ag := All(p)[0]
-	call(t, ag, `{"command":"echo posted"}`)
+	if res := call(t, ag, `{"command":"echo posted"}`); res.Content != "rewritten" {
+		t.Errorf("the model gets %q, not what post returned", res.Content)
+	}
 	call(t, ag, `{"command":"echo nope; rm x"}`)
 	file := perm.RealPath(filepath.Join(t.TempDir(), "f.txt"))
 	call(t, toolNamed(t, "write", p), `{"path":"`+file+`","content":"x"}`)
