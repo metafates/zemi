@@ -500,7 +500,7 @@ func (h *Host) toolPost(ctx context.Context, name string, input map[string]any, 
 		return output
 	}
 	defer h.refresh() // what the handlers changed, like any event handler
-	ctx, cancel := context.WithTimeout(ctx, toolPostWait)
+	postCtx, cancel := context.WithTimeoutCause(ctx, toolPostWait, fmt.Errorf("tool.post handlers ran past %s", toolPostWait))
 	defer cancel()
 	out := output
 	for _, hd := range handlers {
@@ -521,10 +521,13 @@ func (h *Host) toolPost(ctx context.Context, name string, input map[string]any, 
 			}
 			return nil, nil
 		}
-		_, err := h.RT.RunTask(ctx, t)
+		_, err := h.RT.RunTask(postCtx, t)
 		switch {
-		case ctx.Err() != nil:
+		case postCtx.Err() != nil:
 			// interrupted, or out of time: the output stands as it is now
+			if ctx.Err() == nil {
+				h.logHandlerError(hd, context.Cause(postCtx))
+			}
 			return h.postOutput(name, output, out)
 		case err != nil:
 			if !errors.Is(err, lua.ErrReloaded) && !errors.Is(err, lua.ErrHot) {
