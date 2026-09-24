@@ -2257,7 +2257,7 @@ internal/store/             sqlite schema, its version stamp and queries
 internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server
 internal/proc/              every child process (own session and process group) and hardened git
-internal/plugins/           plugin install, update, check, delete and on/off over plain git
+internal/plugins/           plugin install, update, check and delete over plain git, and on/off
 internal/glob/              rg-style glob matching for the file tools and LSP
 internal/sanitize/          escape stripping at the render and log boundary
 internal/logging/           log files and the in-memory ring behind /errors
