@@ -5,6 +5,7 @@
 package plugins
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -297,8 +299,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 
 func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	p := Plugin{Name: filepath.Base(dir), Dir: dir, Local: local, Enabled: enabled}
-	data, _ := os.ReadFile(filepath.Join(dir, "init.lua"))
-	if line, _, _ := strings.Cut(string(data), "\n"); strings.HasPrefix(line, "--") {
+	if line := firstLine(filepath.Join(dir, "init.lua")); strings.HasPrefix(line, "--") {
 		p.Desc = strings.TrimSpace(strings.TrimLeft(line, "-"))
 	}
 	// git would read the config of whatever repository a symlink names
@@ -324,6 +325,26 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 		p.Latest = n + " new commits"
 	}
 	return p
+}
+
+// firstLine reads line 1 of a regular file, 4 KB at most: a clone can hold
+// a symlink to /dev/zero or a FIFO, which would never end.
+func firstLine(path string) string {
+	lfi, err := os.Lstat(path)
+	if err != nil || !lfi.Mode().IsRegular() {
+		return ""
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	// the file opened must be the one checked, not a link swapped in since
+	if fi, err := f.Stat(); err != nil || !os.SameFile(lfi, fi) {
+		return ""
+	}
+	line, _ := bufio.NewReader(io.LimitReader(f, 4<<10)).ReadString('\n')
+	return line
 }
 
 // highest returns the highest semver tag among the lines of tags whose major

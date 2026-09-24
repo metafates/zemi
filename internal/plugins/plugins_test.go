@@ -119,6 +119,13 @@ func TestPlugins(t *testing.T) {
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("a plugin clone ran the user's filter driver")
 	}
+	// a clone's init.lua may be a symlink to /dev/zero: only a regular one is read
+	leak := filepath.Join(tmp, "leak.lua")
+	os.WriteFile(leak, []byte("-- leaked\n"), 0o644)
+	os.Symlink(leak, filepath.Join(local, "init.lua"))
+	if ps, _ := List(t.Context(), d); ps[0].Desc != "" {
+		t.Errorf("%s: description %q read through a symlink", ps[0].Name, ps[0].Desc)
+	}
 	if off, _ := os.ReadFile(filepath.Join(d.PluginsRoot(), "disabled")); len(off) != 0 {
 		t.Errorf("disabled = %q after the delete and the reinstall", off)
 	}
