@@ -395,7 +395,7 @@ function zemi.command.list() end
 ---@alias zemi.EventName
 ---| "app.ready" | "app.quit" | "config.reloaded"
 ---| "session.new" | "session.open" | "session.close"
----| "agent.start" | "agent.finish" | "agent.error" | "agent.assemble"
+---| "agent.start" | "agent.step" | "agent.finish" | "agent.error" | "agent.assemble"
 ---| "agent.subagent.start" | "agent.subagent.finish"
 ---| "agent.text_delta" | "agent.reasoning_delta"
 ---| "tool.pre" | "tool.post" | "tool.denied"
@@ -428,6 +428,16 @@ function zemi.command.list() end
 ---@field model string
 ---@field usage zemi.Usage This turn's own model calls; subagents and a step resent after compaction are only in `zemi.agent.usage()`.
 
+--- One model call of a turn, a subagent's included.
+---@class zemi.ev.AgentStep: zemi.Event
+---@field session string
+---@field model string
+---@field step integer 1-based within the send.
+---@field ms integer From the call's start to its end.
+---@field first_token_ms integer To the first text, reasoning or tool argument; 0 when none came.
+---@field tools integer Tool calls it made.
+---@field usage { in: integer, out: integer, cache_read: integer, cache_write: integer, cost: number }
+
 ---@class zemi.ev.Assemble: zemi.Event
 ---@field cwd string
 
@@ -441,7 +451,8 @@ function zemi.command.list() end
 ---@field tool string
 ---@field input table
 ---@field ok boolean
----@field output string At most 4096 characters.
+---@field output string The full text the model gets, as the handler before this one left it.
+---@field ms integer The call's time from the permission gate, an ask's wait included.
 ---@field changed string[] Absolute paths of the files the call changed: the file a write or edit wrote, and what a bash command changed in its repository (ignored files and other tools are not tracked). Commands running at the same time each list the other's changes too.
 
 ---@class zemi.ev.ToolDenied: zemi.Event
@@ -521,6 +532,8 @@ zemi.event = {}
 --- `app.quit`, `composer.submit`, `tool.pre`) give the handler 50 ms and
 --- then take their logged default; return `{ decision = "deny", reason = "..." }`
 --- to veto one (`tool.pre` also takes "halt" and "rewrite", see zemi.ToolOverride).
+--- A `tool.post` handler runs as a task and may return `{ output = "..." }`
+--- to replace what the model gets.
 --- `app.quit` vetoes from project code are ignored.
 ---@param name zemi.EventName|string A catalogued name or `user.*`; anything else raises.
 ---@param fn fun(ev: zemi.Event): any
@@ -533,7 +546,8 @@ zemi.event = {}
 ---@overload fun(name: "agent.assemble", fn: (fun(ev: zemi.ev.Assemble): string|{ title?: string, text: string }|nil), opts?: zemi.EventOpts): string
 ---@overload fun(name: "agent.subagent.start"|"agent.subagent.finish", fn: (fun(ev: zemi.ev.Subagent): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "tool.pre", fn: (fun(ev: zemi.ToolPreEvent): zemi.ToolVeto?), opts?: zemi.EventOpts): string
----@overload fun(name: "tool.post", fn: (fun(ev: zemi.ev.ToolPost): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "agent.step", fn: (fun(ev: zemi.ev.AgentStep): any), opts?: zemi.EventOpts): string
+---@overload fun(name: "tool.post", fn: (fun(ev: zemi.ev.ToolPost): zemi.ToolPostResult?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "tool.denied", fn: (fun(ev: zemi.ev.ToolDenied): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "permission.request", fn: (fun(ev: zemi.ev.PermissionRequest): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "permission.resolved", fn: (fun(ev: zemi.ev.PermissionResolved): any), opts?: zemi.EventOpts): string
@@ -1259,6 +1273,24 @@ function zemi.model.list() end
 ---@param id string
 function zemi.model.set(id) end
 
+---@class zemi.ModelAsk
+---@field prompt string
+---@field system? string
+---@field model? string A role name or a "provider/model" id; "chat" by default.
+---@field max_tokens? integer 1024 by default.
+---@field on_done? fun(text: string?, err: string?) Runs as a task when the reply is in.
+
+---@class zemi.ModelHandle
+---@field wait fun(self: zemi.ModelHandle): string|nil, string|nil Suspends the task until the reply, 10 minutes at most; raises outside a task and under pcall, like `zemi.HTTPHandle.wait`.
+---@field cancel fun(self: zemi.ModelHandle)
+
+--- One tool-less model call, run off the interpreter and billed to the
+--- live session; a reload cancels it. Plugin code needs a user rule for
+--- `lua.model.ask` with its principal; project code raises.
+---@param spec zemi.ModelAsk
+---@return zemi.ModelHandle
+function zemi.model.ask(spec) end
+
 --- Open a role's model picker and return at once; choosing a model runs
 --- `/model <id>`, or `/model <role> <id>` for another role. Raises for an
 --- unknown role.
@@ -1312,8 +1344,11 @@ function zemi.agent.profile(name, spec) end
 function zemi.agent.current() end
 
 --- Send a message. Returns at once; the turn runs off the interpreter, so
---- the error is what can be known before it starts (no model yet).
---- User or builtin origin only.
+--- the error is what can be known before it starts (no model yet); during
+--- a turn it joins at the next step. Plugin code needs a user rule for
+--- `lua.agent.send` with its principal, and raises in a print run (-p); its
+--- text reaches the model as the plugin's, never the user's words. Project
+--- code raises.
 ---@param text string
 ---@return true?, string?
 function zemi.agent.send(text) end
@@ -1499,12 +1534,14 @@ function zemi.composer.edit() end
 ---@field not_match? string A glob that falls through and forces an ask.
 ---@field not_match_example? string An argument `not_match` must catch; required with `not_match`.
 ---@field scope? "session" The only scope: a rule lasts until zemi exits, and init.lua adds it again on the next start.
+---@field principal? string "plugin:<name>": only that plugin's Lua calls match. User config only.
 
 ---@class zemi.Rule
 ---@field subject string
 ---@field pattern string
 ---@field decision zemi.Decision
 ---@field not_match string
+---@field principal? string
 
 ---@class zemi.PermModeSpec
 ---@field base? string The mode this one starts from.
@@ -1580,6 +1617,7 @@ function zemi.permission.mode.list() end
 ---@class zemi.ToolRun
 ---@field name string
 ---@field origin zemi.Origin
+---@field progress fun(self: zemi.ToolRun, text: string) One line under the call's row, sanitized and cut to 120 characters.
 
 ---@class zemi.ToolPreEvent
 ---@field name "tool.pre"
@@ -1595,8 +1633,15 @@ function zemi.permission.mode.list() end
 ---@field reason? string
 ---@field input? table
 
+--- What a `tool.post` handler returns to replace the output the model gets
+--- (ignored for project code); nil keeps it.
+---@class zemi.ToolPostResult
+---@field output string
+
+--- One of `pre` and `post` is required. Not available to project code.
 ---@class zemi.ToolOverride
----@field pre fun(ev: zemi.ToolPreEvent): zemi.ToolVeto? Not available to project code.
+---@field pre? fun(ev: zemi.ToolPreEvent): zemi.ToolVeto?
+---@field post? fun(ev: zemi.ev.ToolPost): zemi.ToolPostResult? Runs after the global `tool.post` handlers, as a task.
 
 ---@class zemi.ToolInfo
 ---@field name string
@@ -1610,8 +1655,8 @@ zemi.tool = {}
 ---@param spec zemi.ToolSpec
 function zemi.tool.add(spec) end
 
---- Hook a tool call before it runs. A rewritten input re-enters at the
---- permission gate.
+--- Hook one tool's calls: `pre` before it runs (a rewritten input re-enters
+--- at the permission gate), `post` after, to rewrite its output.
 ---@param name string
 ---@param spec zemi.ToolOverride
 function zemi.tool.override(name, spec) end
