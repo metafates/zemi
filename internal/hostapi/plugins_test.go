@@ -48,7 +48,7 @@ func TestPluginsStep(t *testing.T) {
 				"installed/a/init.lua": `print("a")`, "local/b/init.lua": `print("b")`,
 				"installed/c/init.lua": `print("c")`, "disabled": "c\n",
 			},
-			want: []string{"plugin|a\nplugin|b\n", "health: 2 plugins\n"},
+			want: []string{"plugin|a\nplugin|b\n", "health: 2 plugins ready\n"},
 			not:  []string{"plugin|c"},
 		},
 		{
@@ -60,8 +60,9 @@ func TestPluginsStep(t *testing.T) {
 		{
 			name:    "a failing plugin does not stop the rest",
 			plugins: map[string]string{"local/a/init.lua": `error("broken")`, "local/b/init.lua": `print("b")`},
-			want:    []string{"plugin a: ", "broken", "plugin|b", "health: 2 plugins · 1 failed"},
+			want:    []string{"plugin a: ", "broken", "plugin|b", "health: 2 plugins: 1 failed, 1 ready"},
 		},
+		{name: "none, and the row still shows", want: []string{"health: none on"}},
 		{
 			name: "two plugins collide on a command and a tool",
 			plugins: map[string]string{

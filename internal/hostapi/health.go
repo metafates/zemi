@@ -301,20 +301,25 @@ func (h *Host) goHealthRows() []healthCheck {
 		add("ok", "layout", "every widget's region is drawn")
 	}
 
-	if loads := h.pluginLoads.Load(); loads != nil && len(*loads) > 0 {
-		failed := 0
-		for _, l := range *loads {
-			if l.err != nil {
-				failed++
-			}
-		}
-		level, detail := "ok", fmt.Sprintf("%d %s", len(*loads), plural(len(*loads), "plugin", "plugins"))
-		if failed > 0 {
-			level, detail = "warn", fmt.Sprintf("%s · %d failed", detail, failed)
-		}
-		add(level, "plugins", detail)
-		out[len(out)-1].run = "plugins"
+	var loads []pluginLoad
+	if p := h.pluginLoads.Load(); p != nil {
+		loads = *p
 	}
+	failed := 0
+	for _, l := range loads {
+		if l.err != nil {
+			failed++
+		}
+	}
+	switch n := fmt.Sprintf("%d %s", len(loads), plural(len(loads), "plugin", "plugins")); {
+	case len(loads) == 0:
+		add("ok", "plugins", "none on")
+	case failed == 0:
+		add("ok", "plugins", n+" ready")
+	default:
+		add("warn", "plugins", fmt.Sprintf("%s: %d failed, %d ready", n, failed, len(loads)-failed))
+	}
+	out[len(out)-1].run = "plugins"
 
 	h.errs.mu.Lock()
 	nerr := len(h.errs.entries)
