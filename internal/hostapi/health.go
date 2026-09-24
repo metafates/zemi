@@ -203,9 +203,13 @@ func (h *Host) goHealthRows() []healthCheck {
 	out = append(out, h.modelRow())
 	// a role's own model would otherwise fail only at its first title,
 	// summary or run, where nobody looks
-	ids := []string{id}
+	ids, windowed := []string{id}, []string{id}
 	for _, r := range roles[1:] {
-		if m := h.roleModel(r.Name); !slices.Contains(ids, m) {
+		m := h.roleModel(r.Name)
+		if r.Name == "agents" || r.Name == "compact" {
+			windowed = append(windowed, m) // titles and the reflector read no window
+		}
+		if !slices.Contains(ids, m) {
 			ids = append(ids, m)
 			if row := h.modelCheck(r.Name+" model", m); row.level != "ok" {
 				out = append(out, row)
@@ -216,8 +220,8 @@ func (h *Host) goHealthRows() []healthCheck {
 	// compactDue never fires on an unknown window, so the turn runs until
 	// the provider refuses it
 	var unknown []string
-	for _, m := range ids {
-		if m != "" && h.contextWindow(m) == 0 {
+	for _, m := range windowed {
+		if m != "" && h.contextWindow(m) == 0 && !slices.Contains(unknown, m) {
 			unknown = append(unknown, m)
 		}
 	}

@@ -109,6 +109,27 @@ func TestHealthChecksProfileModel(t *testing.T) {
 	}
 }
 
+// TestHealthContextRoles: the context row warns only about a model whose
+// window is read, the conversation's, the agents' and compact's.
+func TestHealthContextRoles(t *testing.T) {
+	for _, c := range []struct{ name, lua, level string }{
+		{"titles and memory read no window", `zemi.config.set("models.titles", "b/m") zemi.config.set("models.memory", "b/m")`, "ok"},
+		{"compact reads one", `zemi.config.set("models.compact", "b/m")`, "warn"},
+	} {
+		h, r := newTestHostDB(t)
+		runUser(t, r, `
+			zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", api_key = "k", models = { { id = "m", context_window = 100000 } } })
+			zemi.provider.add({ id = "b", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", api_key = "k", models = { { id = "m" } } })
+			zemi.model.set("a/m")
+		`+c.lua)
+		for _, row := range h.healthChecks() {
+			if row.name == "context" && row.level != c.level {
+				t.Errorf("%s: context = %+v, want %s", c.name, row, c.level)
+			}
+		}
+	}
+}
+
 // TestHealthProvidersRow: the row lists what is registered, tags catalog
 // specs, counts the builtin ones waiting for a key, and with nothing
 // registered says what to export.
