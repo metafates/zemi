@@ -13,6 +13,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugins"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // pluginLoad is one enabled plugin as the last boot saw it; err is nil when
@@ -104,7 +105,8 @@ func (h *Host) pluginDirs() []string {
 // gone or holds another install than the one that wrote them, so a deleted
 // plugin's saved tokens never reach a new one of the same name, even one
 // installed before this boot. The key "plugin:<name>", which no plugin can
-// write, holds the install's id.
+// write, holds the install's id as a JSON string, since kv holds JSON that
+// a user zemi.state read decodes.
 func (h *Host) sweepPluginState(ps []plugins.Plugin) {
 	if h.GlobalDB == nil {
 		return
@@ -113,8 +115,10 @@ func (h *Host) sweepPluginState(ps []plugins.Plugin) {
 	for _, p := range ps {
 		id := strconv.Quote(plugins.InstallID(p.Dir))
 		was, err := h.GlobalDB.GetKV("plugin:" + p.Name)
-		if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
 			was = `""` // no id yet: a local plugin, or a clone made before ids
+		} else if err != nil {
+			was = id // a failed read must not drop the plugin's keys
 		}
 		ids[p.Name], fresh[p.Name] = id, was != id
 	}
