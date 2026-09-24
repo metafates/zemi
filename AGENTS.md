@@ -439,8 +439,9 @@ would drop a frame. A metamethod leaves no frame of the code that set it, so the
 functions as handlers, and a plugin only its own plugin's, copied at the call; a Go function handed out as a plain value still runs
 as its caller (NOTE in the code). Plugins (hostapi/plugins.go, `PluginsStep`): `plugins.Scan` lists
 `installed/` (clones) and `local/` (developed in place) minus `disabled`, sorted by name; a local
-plugin named like an installed one or a symlinked dir does not load, and a gone plugin's
-`zemi.state` keys are dropped. The same pick, fixed for the generation (`Host.pluginDirs`),
+plugin named like an installed one or a symlinked dir does not load, and a gone or
+reinstalled plugin's `zemi.state` keys are dropped (`sweepPluginState`: the key `plugin:<name>`
+holds the id `plugins.Install` writes into the clone's `.git`). The same pick, fixed for the generation (`Host.pluginDirs`),
 gives the plugins' skills, agents, markdown commands and workflows, loaded after the user's and
 the builtin ones, init.lua failed or not; a name two plugins ship goes to the first by name, and
 `/errors` names both. `Host.PluginOf` names a plugin by its directory: its state keys are

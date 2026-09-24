@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"cmp"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -123,6 +124,9 @@ func Install(ctx context.Context, d config.Dirs, url, name string) (Plugin, erro
 		if _, err := git(ctx, tmp, "checkout", "--quiet", "refs/tags/"+top); err != nil {
 			return Plugin{}, err
 		}
+	}
+	if err := os.WriteFile(filepath.Join(tmp, ".git", idFile), []byte(rand.Text()+"\n"), 0o644); err != nil {
+		return Plugin{}, err
 	}
 	if err := free(d, name); err != nil {
 		return Plugin{}, err
@@ -361,6 +365,16 @@ func firstLine(path string) string {
 	}
 	line, _ := bufio.NewReader(io.LimitReader(f, 4<<10)).ReadString('\n')
 	return line
+}
+
+// idFile, in a clone's .git, holds the random id Install gave it.
+const idFile = "zemi-install"
+
+// InstallID tells one install of a plugin from another under the same name,
+// so the host can drop the state a deleted one left; "" for a local plugin
+// or a clone made before ids.
+func InstallID(dir string) string {
+	return strings.TrimSpace(firstLine(filepath.Join(dir, ".git", idFile)))
 }
 
 // highest returns the highest semver tag among the lines of tags whose major

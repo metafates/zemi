@@ -87,13 +87,13 @@ func TestPlugins(t *testing.T) {
 		{name: "check after the pull", args: []string{"check"}, want: "\nx v0.10.0 -> v1.0.0 (major)\n"},
 		{name: "nothing new", args: []string{"update"}, want: "\nPlugins up to date\n"},
 		{
-			name:   "a branch moves to the first tag",
+			name: "a branch moves to the first tag",
 			before: func() {
 				gitIn(branch, "commit", "-q", "--allow-empty", "-m", "tagged")
 				gitIn(branch, "tag", "v0.1.0")
 				gitIn(branch, "commit", "-q", "--allow-empty", "-m", "untagged")
 			},
-			args:   []string{"update", "why"}, want: " -> v0.1.0\n",
+			args: []string{"update", "why"}, want: " -> v0.1.0\n",
 		},
 		{name: "disable", args: []string{"disable", "x"}},
 		{name: "list", args: []string{"list"}, want: "x v0.10.0 off file://" + tagged},
@@ -128,6 +128,9 @@ func TestPlugins(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("a plugin clone ran the user's filter driver")
+	}
+	if InstallID(filepath.Join(installed, "x")) == "" {
+		t.Error("the reinstall has no install id, so it would get the deleted one's state")
 	}
 	// a clone's init.lua may be a symlink to /dev/zero: only a regular one is read
 	leak := filepath.Join(tmp, "leak.lua")

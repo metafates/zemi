@@ -83,6 +83,13 @@ func TestPluginsStep(t *testing.T) {
 			not:  []string{"plugin:gone:k"},
 		},
 		{
+			name:    "a plugin installed again under the name does not get the old one's state",
+			plugins: map[string]string{"installed/a/init.lua": `print(zemi.state.get("k"))`, "installed/a/.git/zemi-install": "new\n"},
+			seed:    []string{"plugin:a", "plugin:a:k"},
+			want:    []string{"plugin|nil\n", "plugin:a\n"},
+			not:     []string{"plugin:a:k"},
+		},
+		{
 			name:    "a failed scan keeps every plugin's state",
 			plugins: map[string]string{"local/a/init.lua": "", "disabled/x": ""},
 			seed:    []string{"plugin:a:saved"},

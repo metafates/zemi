@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
@@ -99,17 +100,34 @@ func (h *Host) pluginDirs() []string {
 	return nil
 }
 
-// sweepPluginState drops the zemi.state keys of plugins whose directory is
-// gone, so a deleted plugin's saved tokens go with it.
+// sweepPluginState drops the zemi.state keys of a plugin whose directory is
+// gone or holds another install than the one that wrote them, so a deleted
+// plugin's saved tokens never reach a new one of the same name, even one
+// installed before this boot. The key "plugin:<name>", which no plugin can
+// write, holds the install's id.
 func (h *Host) sweepPluginState(ps []plugins.Plugin) {
 	if h.GlobalDB == nil {
 		return
 	}
+	ids, fresh := map[string]string{}, map[string]bool{}
+	for _, p := range ps {
+		id := strconv.Quote(plugins.InstallID(p.Dir))
+		was, err := h.GlobalDB.GetKV("plugin:" + p.Name)
+		if err != nil {
+			was = `""` // no id yet: a local plugin, or a clone made before ids
+		}
+		ids[p.Name], fresh[p.Name] = id, was != id
+	}
 	keys, _ := h.GlobalDB.KeysKV("plugin:")
 	for _, k := range keys {
 		name, _, _ := strings.Cut(strings.TrimPrefix(k, "plugin:"), ":")
-		if !slices.ContainsFunc(ps, func(p plugins.Plugin) bool { return p.Name == name }) {
+		if _, ok := ids[name]; !ok || fresh[name] {
 			_, _ = h.GlobalDB.DelKV(k)
+		}
+	}
+	for name, id := range ids {
+		if fresh[name] && id != `""` {
+			_ = h.GlobalDB.SetKV("plugin:"+name, id)
 		}
 	}
 }

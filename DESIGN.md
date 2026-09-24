@@ -418,7 +418,9 @@ and `/errors` names both, and a skill a plugin ships never runs a
 to `/errors` and the `/health` plugins row counts it. A local plugin named
 like an installed one does not load, nor does a symlinked plugin dir (its
 files would resolve outside the plugin class). The step also drops the
-`zemi.state` keys of a plugin whose directory is gone. The one-second config
+`zemi.state` keys of a plugin whose directory is gone or holds another
+install: `install` writes a random id into the clone's `.git`, and the key
+`plugin:<name>` keeps the one that wrote them. The one-second config
 watcher reads `local/` whole, the `disabled` file and each clone's git
 index, so an edit, a toggle, an install, an update and a delete each
 reload.
