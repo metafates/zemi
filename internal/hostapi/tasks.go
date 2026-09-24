@@ -431,8 +431,11 @@ func (h *Host) notifyReports(queued []string) {
 
 var reportAttrs = regexp.MustCompile(`<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)"`)
 
-// pluginSent is a zemi.agent.send from a plugin, with its first line.
-var pluginSent = regexp.MustCompile(`<(plugin:[^>\s]+)>\n([^\n]*)`)
+// pluginSent is a zemi.agent.send from a plugin, with its first line: a tag
+// right behind agent.AttachMarker (the tail starts past the first one), so a
+// stray line in a file or a send draws no row.
+// NOTE: text that carries the marker itself still draws one.
+var pluginSent = regexp.MustCompile(`(?:\A|` + regexp.QuoteMeta(agent.AttachMarker) + `)\n<(plugin:[^>\s]+)>\n([^\n]*)`)
 
 // reportHeads rebuilds the notice rows from the reports behind a message's
 // agent.AttachMarker (a joined queue may carry several), the plugins' sends
