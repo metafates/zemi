@@ -590,7 +590,7 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	ag := h.agents
 	ag.mu.Lock()
 	text, handoff := "", false
-	var waiting []string // reports a cancel left for the next message
+	var waiting []string // reports and plugin sends a cancel left for the next message
 	if done.ctx.Err() != nil {
 		for _, m := range ag.steering {
 			_, tail, _ := strings.Cut(m, agent.AttachMarker)
@@ -624,7 +624,7 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	case text == "":
 		// its notice row is drawn when the model reads it; say now that it waits
 		if len(waiting) > 0 {
-			h.Notify("info", "Background report waiting", strings.Join(waiting, "\n")+"\nit goes with your next message")
+			h.Notify("info", "Waiting for your next message", strings.Join(waiting, "\n"))
 		}
 		h.refresh()
 	case handoff:

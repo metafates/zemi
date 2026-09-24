@@ -534,7 +534,7 @@ func TestSteeringQueue(t *testing.T) {
 	send(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>")
 	h.AgentCancel()
 	h.nextTurn(scope)
-	if !strings.Contains(notes(), "Background report waiting: Background agent a1 (explore) finished\nit goes with your next message") {
+	if !strings.Contains(notes(), "Waiting for your next message: Background agent a1 (explore) finished") {
 		t.Fatalf("no waiting notice: %q", notes())
 	}
 	if err := h.closeSession(nil); err != nil {
