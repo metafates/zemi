@@ -1845,6 +1845,21 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 		hk.ReasoningDelta(" summary.")
 		hk.TextDelta("'s it")
 	}
+	// the last token of a thought may land after the step's call is pending
+	t.Run("call", func(t *testing.T) {
+		h, _ := newTestHostDB(t)
+		hk := h.streamHooks()
+		hk.ReasoningDelta("pin")
+		hk.ToolCallPending("t1", "grep")
+		hk.ReasoningDelta("ning.")
+		hk.ToolCallStart("t1", "grep", `{"pattern":"x"}`)
+		hk.ToolCallEnd("t1", "grep", true, "", "")
+		hk.ReasoningDelta("next")
+		hk.TurnDone(nil, fantasy.Usage{})
+		if got := rowsOf(h.Session().Transcript); got != "reasoning:pinning. | tool:x | reasoning:next" {
+			t.Fatalf("rows = %s", got)
+		}
+	})
 	for name, got := range map[string]func() string{
 		"main": func() string {
 			h, _ := newTestHostDB(t)

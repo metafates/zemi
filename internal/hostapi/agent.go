@@ -804,13 +804,15 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	// a new step thinks: what the last one showed goes above it. Reasoning
-	// after text with no call between is a late chunk of the same thought
-	// (providers send one after the reply starts), so it joins the block
-	// above and the reply is never cut. Only a call closes a thought.
+	// after text with no call between, or while the step's calls are still
+	// open, is a late chunk of the same thought (providers send the last
+	// token after the reply or the call starts), so it joins the block above
+	// and neither the reply nor the thought is cut. Only a finished call
+	// closes a thought: a step cannot end while one of its calls runs.
 	// NOTE: reasoning a provider interleaves after a call still open in the
 	// same step draws above that call live and below it on resume; an
 	// ordered live list would fix it.
-	if len(ag.tools) > 0 {
+	if slices.ContainsFunc(ag.tools, func(t StreamTool) bool { return t.Status != "run" && t.Status != "wait" }) {
 		s.h.flushOutput(TurnStat{})
 	}
 	ag.beginThinking()
