@@ -259,7 +259,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			Gen:      h.currentGen(),
 			Items:    list,
 			OnSelect: cb,
-			OnClose:  cancelWith(L, cb),
+			OnClose:  cb, // cb() gets nil, the vim.ui cancel shape
 		}
 		if fn, ok := opts.RawGetString("format_item").(*glua.LFunction); ok {
 			o.ItemText = h.renderItems(L, o.ID, fn, list)
@@ -285,7 +285,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			Input:    true,
 			Default:  rawString(opts, "default"),
 			OnSelect: cb,
-			OnClose:  cancelWith(L, cb),
+			OnClose:  cb,
 		}
 		if ui := h.hooks(); ui != nil {
 			ui.OpenOverlay(o)
@@ -640,16 +640,6 @@ func (h *Host) luaReload(o Overlay, fn, render *glua.LFunction) func() ([]any, [
 		}
 		return items, text
 	}
-}
-
-// cancelWith is an overlay on_close that calls cb(nil), the vim.ui cancel shape.
-func cancelWith(L *glua.LState, cb *glua.LFunction) *glua.LFunction {
-	return L.NewFunction(func(L *glua.LState) int {
-		L.Push(cb)
-		L.Push(glua.LNil)
-		L.Call(1, 0)
-		return 0
-	})
 }
 
 // EmitAsync delivers a host event without blocking the caller: it is safe
