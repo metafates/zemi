@@ -7,6 +7,8 @@ description: Load before adding to zemi or restyling it - workflows, subagents, 
 
 Each piece below is a file in the user config directory (every project) or in `<repo>/.agents/` (shared through git, loaded once the user trusts the project); ask which when unsure. Profiles, permission modes, colors and layout work only from the user's init.lua. Workflows and agents are read when used, Lua and commands reload when their file changes.
 
+Plugins live in the data dir instead: `/plugins` (or `zemi plugins` in a shell) installs one from a git URL, checks for and applies updates, turns plugins on and off and deletes a clone. zemi-config says what a plugin is.
+
 ## Workflows (`workflows/<name>.lua`)
 
 A Lua script that coordinates subagents, run by `/workflow <name> [args]` or by the `workflow` tool's `name`. Its leading `--` lines are its description. It runs in its own sandbox with only `agent`, `parallel`, `phase`, `log` (or `print`), `json`, `args` and Lua's string, table and math.

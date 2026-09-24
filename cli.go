@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/plugins"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
@@ -33,6 +35,13 @@ Usage:
   zemi -p "/review HEAD~1"      a prompt naming a command runs it
   git diff | zemi -p "review"   piped stdin is attached to the prompt
   zemi -- why does ls -la fail  flags are read anywhere; after -- it is all prompt
+
+Plugins (a prompt that starts with "plugins" is written zemi -- plugins ...):
+  zemi plugins [list]                   name, version, on or off, source
+  zemi plugins install <git url> [name] clone it at its highest vX.Y.Z tag
+  zemi plugins update [name...]         in the same major version; all without a name
+  zemi plugins check                    fetch, then list the updates
+  zemi plugins enable|disable|delete <name>
 
 Flags:
   -p, --print         answer the prompt on stdout and exit (no TUI)
@@ -81,6 +90,17 @@ type options struct {
 // parseArgs parses the command line. code is -1 when zemi should run, or
 // the exit status when it is done (help, version, usage error).
 func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
+	if len(args) > 0 && args[0] == "plugins" {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := plugins.Run(ctx, config.ResolveDirs(), args[1:], stdout); ctx.Err() != nil {
+			return o, 130
+		} else if err != nil {
+			fmt.Fprintln(stderr, "zemi: plugins:", err)
+			return o, 1
+		}
+		return o, 0
+	}
 	fs := flag.NewFlagSet("zemi", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var help, ver, trust bool

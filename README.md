@@ -45,6 +45,17 @@ zemi.keymap.set("ctrl+t", "zemi.agent.profile.cycle")
 Keys, commands, widgets, layout, permission rules: one file, reloaded on save,
 like Neovim. Or ask zemi to edit it.
 
+## Plugins
+
+```sh
+zemi plugins install https://github.com/someone/zemi-git-status
+```
+
+A plugin is a git repository shaped like the config dir. zemi checks out its
+newest `vX.Y.Z` tag, and `zemi plugins update` stays in that major version.
+Write your own in `~/.local/share/zemi/plugins/local/<name>/`. `/plugins`
+turns them on and off.
+
 ## Scripts and hooks
 
 ```sh

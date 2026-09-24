@@ -410,13 +410,14 @@ watcher reads `local/` whole, the `disabled` file and each clone's git
 index, so an edit, a toggle, an install, an update and a delete each
 reload.
 
-`/plugins` manages the tree through `internal/plugins`,
+`/plugins` and `zemi plugins` manage the tree through `internal/plugins`,
 which is plain git and runs no Lua: `install <git url> [name]` clones into a
 dot dir, checks out the highest `vX.Y.Z` tag and renames it into place;
 `update [name...]` moves a tag within its major version or pulls a branch
 fast-forward; `check` fetches, so the list names each update from local
 refs; `enable`, `disable` and `delete` (a clone only: a local plugin may
-exist nowhere else).
+exist nowhere else). `zemi plugins` runs without the Lua boot, the TUI or
+trust, so a prompt that starts with "plugins" is written after `--`.
 `/plugins` is a toggle list built off the key loop, local plugins first,
 each row's state first (`failed`, an update), then its version and the
 `init.lua` description; its detail names the source, the load status and

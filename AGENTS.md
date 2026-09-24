@@ -113,6 +113,13 @@ so. With no UI `Host.Notify` prints a warning or an error to `Host.Stderr` as "z
 points at `--trust`); `/btw` claims the agent like `/compact`, so `-p` waits on it and ctrl+c
 cancels it, and appends its answer as a transcript row, which `-p` prints.
 
+`zemi plugins <verb>` (`parseArgs`, when `plugins` is the first word) runs `plugins.Run` and
+exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
+reloads on the change. `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`
+and `open`. Its list is built off the key loop from `plugins.List` and the last boot's
+`pluginLoads`; install, update, check and delete run on `GoSafe`, toast, and open the list
+again, which replaces an open one in place. Under `-p` it points at `zemi plugins`.
+
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`), and a TUI
 boot no model can run opens the `/model` picker once (`Host.OfferModel`, after the flags
 apply, never on a reload or after a failed init.lua). Builtin

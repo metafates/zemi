@@ -46,6 +46,7 @@ func TestFailPrintJSON(t *testing.T) {
 }
 
 func TestParseArgs(t *testing.T) {
+	t.Setenv("ZEMI_DATA_HOME", t.TempDir())
 	for _, c := range []struct {
 		name string
 		args []string
@@ -68,6 +69,9 @@ func TestParseArgs(t *testing.T) {
 		{"dash dash after a word", []string{"hi", "--", "-m", "x"}, -1, options{prompt: "hi -m x"}},
 		{"trust", []string{"--trust", "hi"}, -1, options{prompt: "hi", trust: new(true)}},
 		{"trust false", []string{"--trust=false"}, -1, options{trust: new(false)}},
+		{"plugins runs without the TUI", []string{"plugins", "list"}, 0, options{}},
+		{"plugins takes its own verbs", []string{"plugins", "frob"}, 1, options{}},
+		{"a prompt about plugins", []string{"--", "plugins", "x"}, -1, options{prompt: "plugins x"}},
 	} {
 		got, code := parseArgs(c.args, io.Discard, io.Discard)
 		sameTrust := (got.trust == nil) == (c.want.trust == nil) && (got.trust == nil || *got.trust == *c.want.trust)
