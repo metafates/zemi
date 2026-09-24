@@ -209,3 +209,83 @@ func TestLuaToolWaitFreesInterpreter(t *testing.T) {
 		})
 	}
 }
+
+// TestToolPostRewrite: the tool.post handlers, then the tool's override post,
+// each see the output the one before left; a project handler's return and a
+// failing handler change nothing.
+func TestToolPostRewrite(t *testing.T) {
+	for _, c := range []struct{ name, user, project, want string }{
+		{"handlers then the override", `
+			zemi.tool.override("echo", { post = function(ev) return { output = ev.output .. " b" } end })
+			zemi.tool.override("other", { post = function() return { output = "another tool's" } end })
+			zemi.event.on("tool.post", function(ev) return { output = ev.output .. " a" } end)`, "", "x a b"},
+		{"the payload", `zemi.event.on("tool.post", function(ev)
+			return { output = table.concat({ ev.tool, tostring(ev.ok), type(ev.ms), ev.output }, " ") }
+		end)`, "", "echo true number x"},
+		{"a project return is ignored", "", `zemi.event.on("tool.post", function() return { output = "planted" } end)`, "x"},
+		{"a failing handler leaves it", `zemi.event.on("tool.post", function() error("boom") end)`, "", "x"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, r := newTestHost(t)
+			h.Perm.Add(perm.Rule{Subject: "tool.echo", Pattern: "*", Decision: perm.Allow})
+			runUser(t, r, `zemi.tool.add({ name = "echo", description = "echo", execute = function() return "x" end })`+c.user)
+			if c.project != "" {
+				if err := r.ExecuteChunk(context.Background(), c.project, "project-chunk", lua.OriginProject); err != nil {
+					t.Fatal(err)
+				}
+			}
+			resp, err := h.luaFantasyTools(h.PipelineFor())[0].Run(context.Background(), fantasy.ToolCall{Input: "{}"})
+			if err != nil || resp.Content != c.want {
+				t.Fatalf("output %q, %v; want %q", resp.Content, err, c.want)
+			}
+			if failed := strings.Contains(c.user, "boom"); h.HasUnseenErrors() != failed {
+				t.Errorf("unseen errors %v, want %v", h.HasUnseenErrors(), failed)
+			}
+		})
+	}
+}
+
+// TestTurnTelemetry: a Lua tool's run:progress shows on its row, and each
+// model call of the turn emits agent.step with its tool calls.
+func TestTurnTelemetry(t *testing.T) {
+	h, r := newTestHostDB(t)
+	h.Perm.Add(perm.Rule{Subject: "tool.fetch3", Pattern: "*", Decision: perm.Allow})
+	runUser(t, r, `
+		zemi.tool.add({ name = "fetch3", description = "fetch", execute = function(_, run)
+			run:progress("fetching\n3/5")
+			return "done"
+		end })
+		zemi.event.on("agent.step", function(ev)
+			zemi.state.set("step" .. ev.step, ev.tools .. " " .. type(ev.first_token_ms) .. " " .. type(ev.usage.cost))
+		end)`)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
+			if toolResult {
+				return textParts("ok")
+			}
+			return toolCallParts("c1", "fetch3", "{}")
+		}}, nil
+	}
+	if err := h.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	var detail string
+	for _, m := range h.Session().Transcript {
+		if m.Tool == "fetch3" {
+			detail = m.Detail
+		}
+	}
+	if detail != "fetching 3/5" {
+		t.Errorf("row detail = %q", detail)
+	}
+	// each emit runs on its own goroutine, so the two may land in either order
+	waitFor(t, func() error {
+		one, _ := h.GlobalDB.GetKV("step1")
+		two, _ := h.GlobalDB.GetKV("step2")
+		if one != `"1 number number"` || two != `"0 number number"` {
+			return fmt.Errorf("agent.step = %s, %s", one, two)
+		}
+		return nil
+	})
+}

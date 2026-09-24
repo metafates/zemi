@@ -98,6 +98,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		{"allow rule", `zemi.permission.rule.add({ subject = "tool.bash", pattern = "zz *", decision = "allow", match = "zz a" })`, "zemi.permission.rule", "permission.rule"},
 		{"job", `zemi.job.wait({ cmd = "touch", args = { "MARKER" } })`, "zemi.job.wait", "job.wait"},
 		{"mcp", `zemi.mcp.add("x", { command = "true" })`, "zemi.mcp.add", "mcp.add"},
+		{"model call", `zemi.model.ask({ prompt = "x" })`, "zemi.model.ask", "model.ask"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if _, err := h.runModelLua(context.Background(), c.script, luaToolChunk); err == nil || !strings.Contains(err.Error(), "asks before zemi."+c.member) {
