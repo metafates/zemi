@@ -142,7 +142,7 @@ func (h *Host) OpenSessions() error {
 		}
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Empty: "No sessions in this project yet."})
+	ui.OpenOverlay(Overlay{ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Empty: "No sessions in this project yet. Send a message to start one."})
 	return nil
 }
 

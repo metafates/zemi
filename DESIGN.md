@@ -1267,7 +1267,9 @@ provenance string.
   update or use now, `c` change, and `x`, in the danger color, for what
   cannot be undone (delete, or `/mcp`'s sign out, which deletes the saved
   token). A screen that manages things (`/skills`, `/mcp`, `/lsp`,
-  `/permissions`) is a toggle list, so an action returns to it rebuilt.
+  `/permissions`) is a toggle list, so an action returns to it rebuilt;
+  `/sessions`, `/agents` and `/workflows` close on an action, since resume,
+  view and run move on to what they started.
   A row may name its own enter verb (`verb`, "open" on a
   row that opens another screen): the hint says it, and space, which toggles
   a toggle list's rows, passes it by. A detail body's `status:` line colors
