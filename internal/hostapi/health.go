@@ -385,7 +385,11 @@ func (h *Host) goHealthRows() []healthCheck {
 
 	var lsps []string
 	for _, row := range h.lspRows() {
-		lsps = append(lsps, fmt.Sprintf("%s (%s)", row["name"], row["status"]))
+		st := fmt.Sprint(row["status"])
+		if st == "off" {
+			st = "off until a file it serves"
+		}
+		lsps = append(lsps, fmt.Sprintf("%s (%s)", row["name"], st))
 	}
 	switch {
 	case len(lsps) > 0:

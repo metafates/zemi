@@ -686,6 +686,9 @@ func (h *Host) lspItems() []any {
 	for _, row := range h.lspRows() {
 		name, status := fmt.Sprint(row["name"]), fmt.Sprint(row["status"])
 		detail := fmt.Sprintf("command: %s\nstatus: %s\nfiles: %s", row["command"], status, row["filetypes"])
+		if status == "off" {
+			detail += " (starts on the first one)"
+		}
 		if e := fmt.Sprint(row["error"]); e != "" {
 			detail += "\nerror: " + e
 		}
