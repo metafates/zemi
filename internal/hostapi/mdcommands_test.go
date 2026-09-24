@@ -74,12 +74,12 @@ func TestMarkdownCommandSends(t *testing.T) {
 func TestProjectMarkdownCommands(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.SetProjectTrusted(true)
-	for _, dir := range []string{".agents", ".claude"} {
-		d := filepath.Join(h.Dirs.ProjectDir, dir, "commands")
+	for _, c := range []struct{ dir, name string }{{".agents", "atest"}, {".claude", "ctest"}} {
+		d := filepath.Join(h.Dirs.ProjectDir, c.dir, "commands")
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(d, dir[1:2]+"test.md"), []byte("from "+dir+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(d, c.name+".md"), []byte("from "+c.dir+"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

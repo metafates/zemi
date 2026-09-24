@@ -124,7 +124,7 @@ func act(verb, arg string) error {
 	case "chown":
 		return os.Chown(arg, os.Getuid(), os.Getgid())
 	case "setxattr":
-		if err := unix.Setxattr(arg, "user.agents", []byte("x"), 0); err != nil {
+		if err := unix.Setxattr(arg, "user.zemi", []byte("x"), 0); err != nil {
 			return fmt.Errorf("setxattr %s: %w", arg, err)
 		}
 	case "procpid":
