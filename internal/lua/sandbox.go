@@ -703,8 +703,24 @@ func (s *Sandbox) CompileChunk(src, chunkname string) (*glua.LFunction, error) {
 	if err != nil {
 		return nil, err
 	}
+	noTailCalls(fn.Proto)
 	fn.Env = s.NewChunkEnv()
 	return fn, nil
+}
+
+// noTailCalls turns every tail call into a plain call, which the RETURN the
+// compiler emits after it completes: a tail call would drop its caller's
+// frame, and the origin a call runs as is read from the frames (DESIGN §5).
+// NOTE: tail recursion is bounded by CallStackSize.
+func noTailCalls(p *glua.FunctionProto) {
+	for i, in := range p.Code {
+		if int(in>>26) == glua.OP_TAILCALL {
+			p.Code[i] = in&(1<<26-1) | uint32(glua.OP_CALL)<<26
+		}
+	}
+	for _, c := range p.FunctionPrototypes {
+		noTailCalls(c)
+	}
 }
 
 // makeLoader builds the sandbox load/loadstring: it compiles Lua source
@@ -776,6 +792,7 @@ func (s *Sandbox) makeLoader(loadstring bool) *glua.LFunction {
 			L.Push(glua.LString(err.Error()))
 			return 2
 		}
+		noTailCalls(fn.Proto)
 		if callerEnv == nil {
 			callerEnv = s.NewChunkEnv()
 		}

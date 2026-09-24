@@ -481,7 +481,8 @@ Sandbox (what userland gets):
 - The code a call runs as is the least trusted of the frame the host
   entry pushed (a registration's origin) and every Lua function on the
   call stack, the threads that resumed it included; builtin functions are
-  transparent. So a plugin's `setup()` that user `init.lua` calls runs as
+  transparent, and chunks compile with no tail calls, which would drop
+  their caller's frame. So a plugin's `setup()` that user `init.lua` calls runs as
   that plugin, a user handler that a project's `zemi.event.emit` runs
   inline runs as the project, and registrations capture the origin and
   file of the code making them. A plugin is named by its directory under
@@ -489,8 +490,7 @@ Sandbox (what userland gets):
   (`plugin:<name>:<key>`), its permission principal (`plugin:<name>`) and
   its overlay badge, and two plugins cannot replace each other's command,
   keymap, widget, theme, tool, completion source or health row (the
-  first by name keeps it; within one plugin the last writer wins). Known
-  ceiling: a Lua tail call drops its caller's frame.
+  first by name keeps it; within one plugin the last writer wins).
 - Boundary caps: values crossing the Lua <-> Go marshal are capped (string
   16 MB, table depth 64; configurable), cycles are refused with an error,
   and every Go function exposed to Lua runs under `recover`, so a Go panic
@@ -1551,8 +1551,7 @@ provenance string.
   the trigger: an operation inside a plugin-registered keymap acts as that
   plugin, not `user`, no matter whose finger pressed the key, and so does
   a plugin's `setup()` that user config calls; only user code acts as
-  `user`. A refused Lua call names the rule to paste, with
-  `principal = "plugin:<name>"` for a plugin. Rules may be scoped per principal, so a
+  `user`. A refused Lua call names the rule to paste. Rules may be scoped per principal, so a
   prompt-injected tool call (`model`) cannot ride rules meant for the
   user.
 - Defaults when no rule matches: pure reads (`zemi.config.get`,

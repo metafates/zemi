@@ -24,8 +24,7 @@ a more trusted key. Only
 `builtin`, code may not call `zemi.model.set` or `zemi.config.reload`, or run a more trusted
 origin's command with `zemi.command.run`, and a project handler cannot deny `app.quit`. Lua calls to gated APIs (`zemi.fs` writes, `zemi.http`, `zemi.job`)
 never open a prompt: an "ask" decision raises `permission ask required` with the
-`zemi.permission.rule.add` line that allows it (for a plugin, with
-`principal = "plugin:<name>"`), which only the user's init.lua may add.
+`zemi.permission.rule.add` line that allows it, which only the user's init.lua may add.
 No permission mode allows such a call, yolo included.
 zemi-config lists what a plugin cannot do.
 

@@ -189,13 +189,9 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 		})
 		// name the rule that settles it: a host-API call has no overlay, so
 		// "ask required" is the whole problem and none of the fix
-		who := ""
-		if strings.HasPrefix(pipe.Principal, "plugin:") {
-			who = fmt.Sprintf(", principal = %q", pipe.Principal)
-		}
 		L.RaiseError("%s %s: permission ask required; allow it in config with "+
-			`zemi.permission.rule.add{ subject = %q, pattern = %q, decision = "allow", match = %q%s }`,
-			subject, arg, subject, arg, arg, who)
+			`zemi.permission.rule.add{ subject = %q, pattern = %q, decision = "allow", match = %q }`,
+			subject, arg, subject, arg, arg)
 	default:
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
 	}

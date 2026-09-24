@@ -11,6 +11,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 )
 
 // TestPluginsStep boots plugins laid out under installed/ and local/, then
@@ -55,27 +56,41 @@ func TestPluginsStep(t *testing.T) {
 				"local/b/init.lua": `zemi.command.add("dup", function() end, {})`,
 				"local/c/init.lua": tool("dup_tool"),
 			},
-			want: []string{"plugin b: ", "command /dup is already registered by plugin a", "plugin c: ", `tool "dup_tool" is already registered by plugin a`},
+			want: []string{"plugin b: ", "command /dup is already registered by plugin a, not b", "plugin c: ", `tool "dup_tool" is already registered by plugin a, not c`},
 			not:  []string{"plugin a: "},
 		},
 		{
 			name: "state and principal are per plugin, a gone plugin's state goes",
 			plugins: map[string]string{
 				"local/a/init.lua": `zemi.state.set("k", "a") print(select(2, pcall(zemi.job.start, { cmd = "true" })))`,
-				"local/b/init.lua": `zemi.state.set("k", "b") print(zemi.state.get("k"))`,
+				"local/b/init.lua": `zemi.state.set("k", "b") print(zemi.state.get("k")) print(select(2, pcall(zemi.job.start, { cmd = "true" })))`,
 			},
 			seed: []string{"plugin:gone:k", "plugin:a:old"},
-			want: []string{"plugin:a:k\n", "plugin:a:old\n", "plugin:b:k\n", "plugin|b\n", `principal = "plugin:a"`},
+			want: []string{"plugin:a:k\n", "plugin:a:old\n", "plugin:b:k\n", "plugin|b\n", "true: permission denied", "true: permission ask required"},
 			not:  []string{"plugin:gone:k"},
 		},
 		{
-			name: "a setup() that init.lua calls runs as the plugin",
-			plugins: map[string]string{"local/p/lua/p/init.lua": `return { setup = function()
-				print(tostring(pcall(zemi.config.set, "permissions.mode", "yolo")))
-				zemi.keymap.set("ctrl+g", function() zemi.state.set("k", 1) end)
-			end }`},
-			user: `require("p").setup()`,
-			want: []string{"plugin|false\n", "plugin:p:k\n"},
+			name:    "a failed scan keeps every plugin's state",
+			plugins: map[string]string{"local/a/init.lua": "", "disabled/x": ""},
+			seed:    []string{"plugin:a:saved"},
+			want:    []string{"is a directory", "plugin:a:saved\n"},
+		},
+		{
+			name: "a setup() that init.lua calls runs as the plugin, through a tail call and into another plugin",
+			plugins: map[string]string{
+				"local/p/lua/p/init.lua": `return {
+					setup = function()
+						print(tostring(pcall(zemi.config.set, "permissions.mode", "yolo")))
+						require("b").put("via-setup")
+						zemi.keymap.set("ctrl+g", function() require("b").put("via-keymap") end)
+					end,
+					tail = function(f) return f("yolo") end,
+				}`,
+				"local/b/lua/b/init.lua": `return { put = function(k) zemi.state.set(k, 1) end }`,
+			},
+			user: `require("p").setup() print(pcall(require("p").tail, function(m) zemi.permission.mode.set(m) end))`,
+			want: []string{"plugin|false\n", "plugin:p:via-setup\n", "plugin:p:via-keymap\n", "user|false", "mode: auto\n"},
+			not:  []string{"plugin:b:"},
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -104,6 +119,8 @@ func TestPluginsStep(t *testing.T) {
 			var out strings.Builder
 			r.SetPrintHook(func(origin, line string) { fmt.Fprintf(&out, "%s|%s\n", origin, line) })
 			h := NewHost(r, log, config.NewStore(), dirs)
+			// scoped to one plugin, so a case can tell the principals apart
+			h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Deny, Principal: "plugin:a"})
 			for _, k := range c.seed {
 				if err := h.GlobalDB.SetKV(k, "1"); err != nil {
 					t.Fatal(err)
@@ -128,6 +145,7 @@ func TestPluginsStep(t *testing.T) {
 			for _, k := range keys {
 				fmt.Fprintf(&out, "%s\n", k)
 			}
+			fmt.Fprintf(&out, "mode: %s\n", h.PermMode())
 			for _, row := range h.goHealthRows() {
 				if row.name == "plugins" {
 					fmt.Fprintf(&out, "health: %s\n", row.detail)

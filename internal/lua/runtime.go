@@ -116,16 +116,13 @@ func (r *Runtime) CurrentPath(L *glua.LState) string {
 // effective walks the Lua functions on L's stack and on the threads that
 // resumed it, innermost first. Builtin functions are transparent, so a
 // builtin module calling a user callback leaves it user. The path is the
-// innermost file of the lowest origin whose own class matches it (not a
-// loadstring chunk, nor a user module a plugin required), else the top
-// frame's.
-// NOTE: a Lua tail call drops its caller's frame, so plugin code that
-// tail-calls a builtin or user function from init.lua's call hands it
-// init.lua's origin; the VM would have to record replaced frames.
+// top frame's when it is a file of the lowest origin, else the outermost
+// such file (not a loadstring chunk, nor a user module a plugin required):
+// plugin a calling plugin b's function runs as a, whoever called a.
 // NOTE: O(stack depth) per call; caching per frame push is the upgrade.
 func (r *Runtime) effective(L *glua.LState) frame {
 	top := genOf(L).top()
-	best, file := top, r.paths.Classify(top.path) == top.origin
+	best, pinned := top, r.paths.Classify(top.path) == top.origin
 	for th := L; th != nil; th = th.Parent {
 		for lvl := 0; ; lvl++ {
 			dbg, ok := th.GetStack(lvl)
@@ -139,9 +136,9 @@ func (r *Runtime) effective(L *glua.LState) frame {
 			switch {
 			case o.Rank() == 0 || o == OriginBuiltin || o.Rank() > best.origin.Rank():
 			case o.Rank() < best.origin.Rank():
-				best, file = frame{o, path}, r.paths.Classify(path) == o
-			case !file && r.paths.Classify(path) == o:
-				best.path, file = path, true
+				best, pinned = frame{o, path}, false
+			case !pinned && r.paths.Classify(path) == o:
+				best.path = path
 			}
 		}
 	}
