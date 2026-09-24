@@ -1419,7 +1419,7 @@ func TestProfileSwitch(t *testing.T) {
 	}
 	// the profile is cheap's, the chat role stays models.chat
 	for i, want := range []string{"cheap", "a/main"} {
-		o := ui.opened[i]
+		o := ui.opened[len(ui.opened)-2+i] // after the /model refreshes the SetModel calls sent
 		if item := o.Items[o.Selected].(map[string]any); item["key"] != "current" || !strings.Contains(item["text"].(string), want) {
 			t.Errorf("%s picker marks %v, want %s", o.ID, item, want)
 		}

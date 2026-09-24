@@ -1828,6 +1828,11 @@ func (h *Host) OpenModelPicker(role string) error {
 	if err != nil {
 		return err
 	}
+	ui.OpenOverlay(h.modelPicker(role))
+	return nil
+}
+
+func (h *Host) modelPicker(role string) Overlay {
 	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: "bottom-right", Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
 	run, cur := "model ", h.roleModel("chat")
 	switch role {
@@ -1881,8 +1886,7 @@ func (h *Host) OpenModelPicker(role string) error {
 	if !usable && len(o.Items) > 0 {
 		o.Body = "No models yet. Export one of these keys, or " + h.addProvider() + "."
 	}
-	ui.OpenOverlay(o)
-	return nil
+	return o
 }
 
 // ownRoles names the roles config gave a model of their own.
@@ -1985,6 +1989,11 @@ func (h *Host) SetModel(args string, warn bool) error {
 	}
 	if err := h.setWatched("models."+role, id); err != nil {
 		return err
+	}
+	if ui, err := h.Screen(); err == nil { // a /model under the roles list shows the pick when it comes back
+		o := h.modelPicker("")
+		o.Refresh = true
+		ui.OpenOverlay(o)
 	}
 	if warn && id != "" {
 		h.warnUnlisted(id)

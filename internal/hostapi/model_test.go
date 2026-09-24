@@ -79,6 +79,8 @@ func TestSetModelArgs(t *testing.T) {
 			}
 		case h.Settings.Str(c.key) != c.want:
 			t.Errorf("%q: %s = %q, want %q", c.args, c.key, h.Settings.Str(c.key), c.want)
+		case len(ui.opened) != n+1 || ui.opened[n].ID != "model" || !ui.opened[n].Refresh:
+			t.Errorf("%q refreshed %v, want an open /model", c.args, ui.opened[n:])
 		}
 	}
 	// the roles list tags what follows chat, and zemi.model.list says what runs where
