@@ -420,7 +420,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "model", NArgs: "*", Desc: "choose the model, or one per role", GoFn: func(h *hostapi.Host, args string) error {
 			return h.SetModel(args, true)
 		}},
-		{Name: "permissions", NArgs: "*", Desc: "see the rules and remove one you allowed", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "permissions", NArgs: "*", Desc: "see the rules and delete one you allowed", GoFn: func(h *hostapi.Host, args string) error {
 			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "forget "); ok {
 				return h.ForgetRule(rest)
 			}

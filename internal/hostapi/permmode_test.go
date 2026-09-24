@@ -370,6 +370,7 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "rm -rf *", Decision: perm.Deny})
 	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "make *", Decision: perm.Allow, Source: "permissions"})
 	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "curl *", Decision: perm.Ask, Source: "project"})
+	h.Perm.Add(perm.Rule{Subject: "lua.http.get", Pattern: "https://x/*", Decision: perm.Allow, Principal: "plugin:foo"})
 	if err := h.OpenPermissions(); err != nil || len(ui.opened) != 1 {
 		t.Fatalf("open: %v %+v", err, ui.opened)
 	}
@@ -378,7 +379,7 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 		t.Fatalf("the answer is not one row with a way back:\n%s", rows)
 	}
 	// each rule says where to edit it, under a section named like every other
-	for _, want := range []string{"section:Allow rules", "section:Deny rules", "section:Mode text:auto", "/permissions; edit that file", "from the project's .agents/init.lua", "from config; edit permissions in your init.lua"} {
+	for _, want := range []string{"section:Allow rules", "section:Deny rules", "section:Mode text:auto", "/permissions; edit that file", "from the project's .agents/init.lua", "from config; edit permissions in your init.lua", "key:plugin:foo"} {
 		if !strings.Contains(rows, want) {
 			t.Fatalf("missing %q:\n%s", want, rows)
 		}

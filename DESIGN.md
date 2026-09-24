@@ -636,9 +636,11 @@ zemi.permission.rule.add{ subject = "tool.bash", pattern = "make *",
                           decision = "deny", match = "make check" }
 ```
 
-Lua rules carry no principal, so they match every principal (§9); rules
-stored by an `always` answer are scoped to the `model` principal, so a
-model tool call cannot ride a rule meant for the user. Every rule lives
+A Lua rule carries no principal and matches every principal, unless user
+config scopes it to one plugin with `principal = "plugin:<name>"` (§9),
+which `/permissions` shows in the row's tag; rules stored by an `always`
+answer are scoped to the `model` principal, so a model tool call cannot
+ride a rule meant for the user. Every rule lives
 in memory until zemi exits; a rule meant to last is a line in `init.lua`,
 which adds it again on every boot and a reload replays. There is no rule
 file: an earlier `scope = "permanent"` dumped rules to a generated

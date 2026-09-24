@@ -186,6 +186,9 @@ func (h *Host) permItems() []any {
 			item["actions"] = []any{map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": forget}}
 			item["detail"] = "an always answer this session; deleting it makes the next call ask again"
 		} else {
+			if strings.HasPrefix(r.Principal, "plugin:") {
+				item["key"] = r.Principal // it covers that plugin's calls alone
+			}
 			switch r.Source {
 			case "":
 				item["detail"] = "from config; edit permissions in your init.lua"

@@ -401,9 +401,10 @@ which `Pipeline.Check` asks about whatever rule allows it. A secret-shaped file 
 its exact path: a directory glob cannot exclude the secret shapes, so `Pipeline.Check`'s loosen
 sends a file request a `model` glob rule allowed back to the ask when `Secret` matches, and a command whose
 reader names one (`perm.ReadsSecret`: `cat .env`, `cat .e*`) when a `model` rule or a
-permissions file line allowed it (`perm.Rule.Source`); a user-config rule has no principal,
-stays authoritative, and shows read-only in `/permissions` with its source (init.lua, the
-permissions file, a project's `.agents/init.lua`), while each always answer is one row (its
+permissions file line allowed it (`perm.Rule.Source`); a user-config rule has no `Source` and
+no `model` principal, stays authoritative, and shows read-only in `/permissions` with its
+source (init.lua, the permissions file, a project's `.agents/init.lua`) and, when it scopes one
+plugin, that `plugin:<name>` principal as its tag, while each always answer is one row (its
 bare and wildcard rules, `answerKey`) whose Delete drops both; the row has no `run`, so
 space deletes nothing.
 `sandbox: false` is denied outright for a read-only agent (`Pipeline.Check`, before any mode
