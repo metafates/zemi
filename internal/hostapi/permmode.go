@@ -176,11 +176,20 @@ func (h *Host) permItems() []any {
 			// an answer writes p and "p *" (a host and its paths): one row,
 			// named by the pattern that covers the other, removes both
 			id := r.Subject + " " + answerKey(r.Pattern)
+			// y copies the init.lua lines that keep the answer past exit; a
+			// network answer has none, since a config allow runs unconfined
+			line := fmt.Sprintf(`zemi.permission.rule.add{ subject = %q, pattern = %q, decision = "allow", match = %q }`, r.Subject, r.Pattern, r.Pattern)
 			if row := answers[id]; row != nil {
 				row["text"] = r.Subject + " " + r.Pattern
+				if prev, ok := row["copy"].(string); ok {
+					row["copy"] = prev + "\n" + line
+				}
 				continue
 			}
 			answers[id] = item
+			if !r.Network {
+				item["copy"] = line
+			}
 			forget := "permissions forget " + id
 			item["key"] = "session"
 			item["actions"] = []any{map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": forget}}

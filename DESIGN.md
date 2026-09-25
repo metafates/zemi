@@ -1351,7 +1351,11 @@ provenance string.
   styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
   an item's `hotkey`, one character, acts like enter on that row outside a filter,
-  an item's `copy` makes enter copy that text and keep the list open,
+  an item's `copy` is the row's value, which `y` copies in place of the row
+  (`/model`'s full model id, the init.lua lines that keep a `/permissions`
+  always answer) and enter copies, keeping the list open, when the row does nothing else,
+  an item's `section` starts a header row where it changes, and the filter
+  matches it with the row, so a provider name narrows `/model` to its group,
   and the toggle-list `reload` `/skills` uses: a function returning the
   items, run with `on_select` on the UI worker after enter or space while
   the list stays open, and again when an overlay stacked on it closes, a
@@ -1377,7 +1381,12 @@ provenance string.
   A row may name its own enter verb (`verb`, "open" on a
   row that opens another screen): the hint says it, space, which toggles
   a toggle list's rows, passes it by, and an "open" row leaves its list
-  under the screen it opens, so esc comes back to it (`/model`'s Roles). A Go screen's detail opens with
+  under the screen it opens, so esc comes back to it (`/model`'s "Choose a
+  model per role"). A list's action rows are sentence-case verb phrases above
+  its sections, with no section of their own and their own verb where enter
+  does something other than the list's ("Install a plugin", "Follow the chat
+  model"); the values sit under section headers, so an action never reads as
+  one of them. A Go screen's detail opens with
   `key: value` lines set as a table (prose after them is text as written), and its
   `status:` line colors the status words every screen shares: `starting`,
   `ready`, `failed`, `stopped` and `off`. A list grouped by source

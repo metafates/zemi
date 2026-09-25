@@ -359,7 +359,7 @@ func TestPermModeDecide(t *testing.T) {
 // only rule a user writes at runtime and the only one with no file to edit,
 // so /permissions shows it and takes it back.
 func TestPermissionsOverlayRemovesAlways(t *testing.T) {
-	h, _ := newTestHost(t)
+	h, r := newTestHost(t)
 	h.Dirs.StateHome = t.TempDir()
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
@@ -393,6 +393,19 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 	for _, cmd := range []string{"git push", "git push origin main"} {
 		if h.Perm.Evaluate("tool.bash", cmd, "model").Decision != perm.Ask {
 			t.Errorf("%s: half of the removed answer still allows", cmd)
+		}
+	}
+	// the row's value is the init.lua lines that bring the whole answer back
+	var lines string
+	for _, it := range ui.opened[0].Items {
+		if m := it.(map[string]any); m["key"] == "session" {
+			lines, _ = m["copy"].(string)
+		}
+	}
+	runUser(t, r, lines)
+	for _, cmd := range []string{"git push", "git push origin main"} {
+		if h.Perm.Evaluate("tool.bash", cmd, "model").Decision != perm.Allow {
+			t.Errorf("%s: the copied lines do not allow it:\n%s", cmd, lines)
 		}
 	}
 }
