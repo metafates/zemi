@@ -27,10 +27,10 @@ func TestTerminalBackground(t *testing.T) {
 		theme   string
 		wantBG  bool // the terminal is painted with the canvas
 	}{
-		{"no answer", false, colorprofile.TrueColor, "default", false},
-		{"truecolor", true, colorprofile.TrueColor, "default", true},
-		{"256 colors", true, colorprofile.ANSI256, "default", true},
-		{"no color", true, colorprofile.Ascii, "default", false},
+		{"no answer", false, colorprofile.TrueColor, "whorl", false},
+		{"truecolor", true, colorprofile.TrueColor, "whorl", true},
+		{"256 colors", true, colorprofile.ANSI256, "whorl", true},
+		{"no color", true, colorprofile.Ascii, "whorl", false},
 		{"theme without bg", true, colorprofile.TrueColor, "bare", false},
 	} {
 		app.termBG = nil

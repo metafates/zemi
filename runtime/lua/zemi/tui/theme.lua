@@ -1,4 +1,4 @@
--- The default theme: greys, one accent (periwinkle), and the terminal's own
+-- whorl, the shipped theme: greys, one accent (periwinkle), and the terminal's own
 -- red, green and yellow so the user's palette decides those.
 --
 -- Widgets should reach for the semantic groups - Accent, Dim, Rule, Title,
@@ -81,7 +81,7 @@ local function theme(palette)
   return { palette = palette, hl = hl }
 end
 
-zemi.ui.theme.add("default", theme({
+zemi.ui.theme.add("whorl", theme({
   bg = "#141414",
   fg = "#d8d8d8",
   dim = "#7a7a7a",
@@ -92,7 +92,7 @@ zemi.ui.theme.add("default", theme({
 }))
 
 -- picked automatically when the terminal reports a light background
-zemi.ui.theme.add("default-light", theme({
+zemi.ui.theme.add("whorl-light", theme({
   bg = "#fafafa",
   fg = "#1b1b1b",
   dim = "#8e8e8e",
@@ -101,5 +101,3 @@ zemi.ui.theme.add("default-light", theme({
   addbg = "#e7f2e2",
   delbg = "#fae7e7",
 }))
-
-zemi.ui.theme.set("default")

@@ -151,7 +151,7 @@ zemi.timer.every(30000, poll)
 
 Keep such state in a local, not `zemi.state`: that store is shared by every project, so a branch kept there shows in the wrong repository.
 
-Colors: `zemi.ui.hl.set("Accent", { fg = "#c4a7e7" })` overrides one group, and groups that link to it follow. `zemi.ui.theme.add(name, { palette, hl })` defines a whole theme and a group it leaves out has no color, so copy the builder in `theme.lua` and change its palette. A `<name>-light` theme beside it is used on a light terminal. `zemi.ui.theme.set(name)` or `ui.theme` picks one.
+Colors: `zemi.ui.hl.set("Accent", { fg = "#c4a7e7" })` overrides one group, and groups that link to it follow. `zemi.ui.theme.add(name, { palette, hl })` defines a whole theme and a group it leaves out has no color, so copy the builder in `theme.lua` and change its palette. The shipped theme is `whorl` (`whorl-light` on a light terminal). A `<name>-light` theme beside it is used on a light terminal. `zemi.ui.theme.set(name)` or `ui.theme` picks one.
 
 Layout: `zemi.ui.layout.set({ root, floats })` in init.lua replaces `layout.lua` whole (the types file has every field). A `box` (`dir = "row"` or `"col"`, `sep`) holds `region`s, the one `composer` (with `frame = true` its square frame's `top`, `left` and `right` rules hold regions: the shipped layout keeps the mascot and the statusline there), a statusline `bar` and `spacer`s. Each is sized in cells, `"N%"`, `"fill"` (with `weight`) or `"content"`, with `min`, `max`, `hidden` and `collapse`. `stage = true` marks where prompts, overlays and toasts go; `floats` draw a region over the tree.
 

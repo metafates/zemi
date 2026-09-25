@@ -670,7 +670,7 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 // ActiveThemeName returns the configured theme, or its "-light" variant
 // when the terminal is light and the theme registered one.
 func (h *Host) ActiveThemeName() string {
-	name := cmp.Or(h.Settings.Str("ui.theme"), "default")
+	name := cmp.Or(h.Settings.Str("ui.theme"), "whorl")
 	if h.lightTerm.Load() && h.Themes.Get(name+"-light") != nil {
 		return name + "-light"
 	}

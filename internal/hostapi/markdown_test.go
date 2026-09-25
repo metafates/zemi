@@ -347,7 +347,7 @@ func TestMarkdownTheme(t *testing.T) {
 	for _, c := range []struct {
 		light bool
 		theme string
-	}{{false, "default"}, {true, "default-light"}} {
+	}{{false, "whorl"}, {true, "whorl-light"}} {
 		h.SetLightTerminal(c.light)
 		theme := h.Themes.Get(h.ActiveThemeName())
 		if theme == nil || theme.Name != c.theme {

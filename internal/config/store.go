@@ -56,7 +56,7 @@ func (s *Store) defineDefaults() {
 		{Path: "providers.builtin", Kind: "bool", Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
 		{Path: "permissions.mode", Kind: "string", Default: "auto", Desc: "the permission mode zemi starts in: auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
 		{Path: "permissions.env_keep", Kind: "string", Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},
-		{Path: "ui.theme", Kind: "string", Default: "default", Desc: "theme name: default, default-light or one zemi.ui.theme.add registers"},
+		{Path: "ui.theme", Kind: "string", Default: "whorl", Desc: "theme name: whorl (the shipped one; whorl-light is picked on a light terminal) or one zemi.ui.theme.add registers"},
 		{Path: "ui.animations", Kind: "bool", Default: true, Desc: "animate the working indicator (false keeps it static)"},
 		{Path: "web.search_url", Kind: "string", Default: "", Desc: "SearXNG search endpoint for the web_search tool, such as http://localhost:8888/search, with the json format enabled (empty uses DuckDuckGo Lite)"},
 		{Path: "agent.effort", Kind: "string", Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},

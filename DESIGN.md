@@ -606,7 +606,7 @@ in which milestone.
 
 ```lua
 zemi.config.get("models.chat")                -- dotted path lookup
-zemi.config.set("ui.theme", "default")
+zemi.config.set("ui.theme", "whorl")
 zemi.config.watch("models.chat", function(new, old) end)
 zemi.env.get("EDITOR")                        -- env-read; secret-shaped
                                               -- names (§9 deny list) are denied

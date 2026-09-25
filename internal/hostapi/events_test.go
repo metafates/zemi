@@ -99,7 +99,7 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.memory.add("x")`,
 		`zemi.model.set("p/m")`, `zemi.config.reload()`, `assert(zemi.command.run("usercmd"))`,
 		`zemi.ui.focus.set()`, `zemi.ui.focus.next()`, `zemi.ui.focus.prev()`,
-		`zemi.ui.hl.set("Normal", { fg = "#ff0000" })`, `zemi.ui.theme.set("default")`,
+		`zemi.ui.hl.set("Normal", { fg = "#ff0000" })`, `zemi.ui.theme.set("whorl")`,
 		`zemi.keymap.set("<leader>y", "zemi.ui.focus.set side")`,
 		`zemi.config.set("permissions.mode", "yolo")`, `zemi.provider.add({ id = "x", kind = "openai_compat" })`,
 		`zemi.lsp.add("x", { command = "sh", filetypes = { "x" } })`, `zemi.lsp.disable("gopls")`,
