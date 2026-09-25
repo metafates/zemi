@@ -94,7 +94,8 @@ func run(args []string) int {
 		RuntimeFS: zemiRuntime.FS,
 	})
 	host := hostapi.NewHost(rt, log, settings, dirs)
-	host.Builtin = agent.Builtin(os.Getenv)
+	catalog := agent.LoadCatalog(dirs.DataHome, os.Getenv)
+	host.Builtin.Store(&catalog)
 	rt.SetPrintHook(func(origin, line string) {
 		log.Info(origin, "print: "+line, nil)
 		host.RecordMessage(origin, line)

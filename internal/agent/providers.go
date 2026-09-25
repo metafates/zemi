@@ -6,12 +6,18 @@
 package agent
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -88,6 +94,25 @@ type Catalog struct {
 	Specs   []Spec
 	Keys    map[string]string
 	Missing []MissingKey
+	Info    CatalogInfo
+}
+
+// CatalogInfo says which catwalk catalog the builtin providers come from.
+type CatalogInfo struct {
+	Version           string    // the bundled catwalk module version
+	Fetched           time.Time // when the saved catalog was fetched; zero for the bundled one
+	Err               error     // why the saved catalog did not load, the bundled one in its place
+	Providers, Models int       // what zemi supports of it, keys exported or not
+}
+
+func (i CatalogInfo) String() string {
+	switch {
+	case !i.Fetched.IsZero():
+		return "updated " + i.Fetched.Local().Format(time.DateOnly) + " from " + strings.TrimPrefix(CatalogURL, "https://")
+	case i.Version == "":
+		return "bundled"
+	}
+	return "bundled (catwalk " + i.Version + ")"
 }
 
 // MissingKey is a builtin provider whose key env var is not exported.
@@ -109,18 +134,14 @@ var builtinKinds = map[catwalk.Type]string{
 	catwalk.TypeVercel:       KindVercel,
 }
 
-// Builtin converts the embedded catwalk catalog, resolving its "$NAME" key
-// and endpoint references through getenv, the only place Go itself reads a
-// key env var. The catalog's order is kept (anthropic, openai, gemini
-// first, then the rest), which is the order Default prefers. Catalog
+// Builtin converts a catwalk catalog, resolving its "$NAME" key and
+// endpoint references through getenv, the only place Go itself reads a key
+// env var. The catalog's order is kept (anthropic, openai, gemini first,
+// then the rest), which is the order Default prefers. Catalog
 // default_headers are dropped: they attribute requests to crush, and zemi
 // sends no header the user did not write. NOTE: model options
 // (temperature, top_p) are not carried.
-func Builtin(getenv func(string) string) Catalog {
-	return builtin(embedded.GetAll(), getenv)
-}
-
-func builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
+func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 	env := func(ref string) (name, value string) {
 		if !strings.HasPrefix(ref, "$") {
 			return "", ref
@@ -133,6 +154,8 @@ func builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		if !ok || p.APIKey == "" {
 			continue
 		}
+		c.Info.Providers++
+		c.Info.Models += len(p.Models)
 		name, key := env(p.APIKey)
 		if key == "" {
 			c.Missing = append(c.Missing, MissingKey{string(p.ID), name})
@@ -155,6 +178,107 @@ func builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		c.Keys[spec.ID] = key
 	}
 	return c
+}
+
+// CatalogURL is where UpdateCatalog fetches the catwalk catalog.
+const CatalogURL = "https://catwalk.charm.land"
+
+// catalogFile is the fetched catalog, kept in zemi's data dir: it decides
+// where each builtin key is sent, and no sandbox can write there.
+const catalogFile = "catwalk.json"
+
+type savedCatalog struct {
+	Catwalk   string             `json:"catwalk"` // the bundled version it was fetched under
+	Fetched   time.Time          `json:"fetched"`
+	Providers []catwalk.Provider `json:"providers"`
+}
+
+// bundledVersion is the catwalk module this binary embeds, "" when it
+// carries no build info.
+func bundledVersion() string {
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		for _, d := range bi.Deps {
+			if d.Path == "charm.land/catwalk" {
+				return cmp.Or(d.Replace, d).Version
+			}
+		}
+	}
+	return ""
+}
+
+// LoadCatalog converts the catalog UpdateCatalog saved in dir, else the
+// bundled one. A catalog saved under another bundled version is ignored,
+// so a zemi upgrade brings its newer bundle back; one that does not load
+// is Info.Err.
+func LoadCatalog(dir string, getenv func(string) string) Catalog {
+	ps, info := loadCatalog(dir)
+	c := Builtin(ps, getenv)
+	c.Info.Version, c.Info.Fetched, c.Info.Err = info.Version, info.Fetched, info.Err
+	return c
+}
+
+func loadCatalog(dir string) ([]catwalk.Provider, CatalogInfo) {
+	info := CatalogInfo{Version: bundledVersion()}
+	var s savedCatalog
+	data, err := os.ReadFile(filepath.Join(dir, catalogFile))
+	if err == nil {
+		err = json.Unmarshal(data, &s)
+	}
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		info.Err = err
+	case s.Catwalk != info.Version && info.Version != "":
+	case Builtin(s.Providers, func(string) string { return "" }).Info.Providers == 0:
+		info.Err = errors.New("no provider zemi supports")
+	default:
+		info.Fetched = s.Fetched
+		return s.Providers, info
+	}
+	return embedded.GetAll(), info
+}
+
+// UpdateCatalog fetches the catwalk catalog from url, saves it in dir for
+// later boots and returns it converted; changed is false when the one in
+// use was current. A failed update leaves the saved file as it was.
+func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) string) (c Catalog, changed bool, err error) {
+	ps, info := loadCatalog(dir)
+	// the server tags its indented JSON and the client returns no etag, so
+	// the catalog in use is tagged the same way
+	body, err := json.MarshalIndent(ps, "", "  ")
+	if err != nil {
+		return Catalog{}, false, err
+	}
+	fresh, err := catwalk.NewWithURL(url).GetProviders(ctx, catwalk.Etag(body))
+	changed = err == nil
+	if errors.Is(err, catwalk.ErrNotModified) {
+		fresh, err = ps, nil
+	}
+	if err != nil {
+		return Catalog{}, false, err
+	}
+	c = Builtin(fresh, getenv)
+	if c.Info.Providers == 0 {
+		return Catalog{}, false, errors.New("the fetched catalog has no provider zemi supports")
+	}
+	c.Info.Version, c.Info.Fetched = info.Version, time.Now().UTC().Truncate(time.Second)
+	data, err := json.Marshal(savedCatalog{c.Info.Version, c.Info.Fetched, fresh})
+	if err != nil {
+		return Catalog{}, false, err
+	}
+	f, err := os.CreateTemp(dir, ".catwalk-*")
+	if err != nil {
+		return Catalog{}, false, err
+	}
+	defer os.Remove(f.Name())
+	_, err = f.Write(data)
+	if err := errors.Join(err, f.Close()); err != nil {
+		return Catalog{}, false, err
+	}
+	if err := os.Rename(f.Name(), filepath.Join(dir, catalogFile)); err != nil {
+		return Catalog{}, false, err
+	}
+	return c, changed, nil
 }
 
 // KindsWithBody are the kinds whose fantasy options take Spec.Body.

@@ -1710,10 +1710,10 @@ func TestBuiltinProvidersSeed(t *testing.T) {
 	dir, log := t.TempDir(), logging.New(t.TempDir())
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	h.Builtin = agent.Catalog{Specs: []agent.Spec{
+	h.Builtin.Store(&agent.Catalog{Specs: []agent.Spec{
 		{ID: "a", Kind: agent.KindAnthropic, Builtin: true, DefaultModel: "big", Models: []agent.Model{{ID: "big"}, {ID: "tiny"}}},
 		{ID: "o", Kind: agent.KindOpenAI, Builtin: true, DefaultModel: "g", Models: []agent.Model{{ID: "g"}}},
-	}, Keys: map[string]string{"a": "ka", "o": "ko"}}
+	}, Keys: map[string]string{"a": "ka", "o": "ko"}})
 	initLua := filepath.Join(dir, "init.lua")
 	reload := func(init string) {
 		t.Helper()

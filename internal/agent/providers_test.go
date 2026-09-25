@@ -2,9 +2,14 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
@@ -12,6 +17,7 @@ import (
 	"time"
 
 	"charm.land/catwalk/pkg/catwalk"
+	"charm.land/catwalk/pkg/embedded"
 	"charm.land/fantasy"
 	"charm.land/fantasy/providers/anthropic"
 	"charm.land/fantasy/providers/google"
@@ -190,7 +196,7 @@ func TestModelErrorFinal(t *testing.T) {
 func TestBuiltin(t *testing.T) {
 	env := map[string]string{"ANTHROPIC_API_KEY": "sk-a", "OPENAI_API_KEY": "sk-o", "OPENAI_API_ENDPOINT": "http://gw/v1", "OPENROUTER_API_KEY": "sk-r",
 		"AZURE_OPENAI_API_KEY": "az", "AWS_ACCESS_KEY_ID": "aws", "PIONEER_API_KEY": "pi"}
-	c := Builtin(func(k string) string { return env[k] })
+	c := Builtin(embedded.GetAll(), func(k string) string { return env[k] })
 	byID := map[string]Spec{}
 	for _, s := range c.Specs {
 		byID[s.ID] = s
@@ -216,9 +222,77 @@ func TestBuiltin(t *testing.T) {
 		t.Errorf("order: %s, %s", c.Specs[0].ID, c.Specs[1].ID)
 	}
 	// an openai-compat entry whose endpoint resolves to "" is never a spec
-	bare := builtin([]catwalk.Provider{{ID: "bare", Type: catwalk.TypeOpenAICompat, APIKey: "$BARE_KEY", APIEndpoint: "$BARE_URL"}}, func(k string) string { return map[string]string{"BARE_KEY": "k"}[k] })
+	bare := Builtin([]catwalk.Provider{{ID: "bare", Type: catwalk.TypeOpenAICompat, APIKey: "$BARE_KEY", APIEndpoint: "$BARE_URL"}}, func(k string) string { return map[string]string{"BARE_KEY": "k"}[k] })
 	if len(bare.Specs) != 0 || len(bare.Keys) != 0 {
 		t.Errorf("bare openai-compat: %+v", bare)
+	}
+}
+
+var soloCatalog = []catwalk.Provider{{ID: "solo", Type: catwalk.TypeAnthropic, APIKey: "$SOLO_KEY", Models: []catwalk.Model{{ID: "m"}}}}
+
+func soloEnv(string) string { return "k" }
+
+// TestLoadCatalog: a saved catalog loads only when it parses and was
+// fetched under the bundled version; otherwise the bundled one runs.
+func TestLoadCatalog(t *testing.T) {
+	fetched := time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		name  string
+		file  any // nil: no file
+		saved bool
+		err   bool
+	}{
+		{name: "no file"},
+		{name: "version mismatch", file: savedCatalog{"v0.0.1", fetched, soloCatalog}},
+		{name: "garbage", file: "{", err: true},
+		{name: "no supported provider", file: savedCatalog{bundledVersion(), fetched, nil}, err: true},
+		{name: "valid", file: savedCatalog{bundledVersion(), fetched, soloCatalog}, saved: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if c.file != nil {
+				data, _ := json.Marshal(c.file)
+				if s, ok := c.file.(string); ok {
+					data = []byte(s)
+				}
+				if err := os.WriteFile(filepath.Join(dir, catalogFile), data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cat := LoadCatalog(dir, soloEnv)
+			solo := len(cat.Specs) == 1 && cat.Specs[0].ID == "solo"
+			if solo != c.saved || cat.Info.Fetched.Equal(fetched) != c.saved || (cat.Info.Err != nil) != c.err {
+				t.Errorf("specs %d, info %+v", len(cat.Specs), cat.Info)
+			}
+		})
+	}
+}
+
+// TestUpdateCatalog: a fetch saves the catalog for later boots, and the
+// next one sends its etag and reads a 304 as current.
+func TestUpdateCatalog(t *testing.T) {
+	body, _ := json.MarshalIndent(soloCatalog, "", "  ")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Trim(r.Header.Get("If-None-Match"), `"`) == catwalk.Etag(body) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	for _, changed := range []bool{true, false} {
+		c, got, err := UpdateCatalog(t.Context(), srv.URL, dir, soloEnv)
+		if err != nil || got != changed || c.Info.Providers != 1 || c.Info.Fetched.IsZero() {
+			t.Fatalf("changed %v, want %v: %+v, %v", got, changed, c.Info, err)
+		}
+		fi, err := os.Stat(filepath.Join(dir, catalogFile))
+		if err != nil || fi.Mode().Perm() != 0o600 {
+			t.Fatalf("saved file: %v, %v", fi, err)
+		}
+		if saved := LoadCatalog(dir, soloEnv); len(saved.Specs) != 1 || saved.Info.Fetched.IsZero() {
+			t.Fatalf("saved catalog does not load: %+v", saved.Info)
+		}
 	}
 }
 

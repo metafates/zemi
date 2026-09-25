@@ -37,7 +37,8 @@ func TestStarterInitNamesLiveAPI(t *testing.T) {
 // ids are in the catalog, so a catwalk bump that renames them fails here.
 func TestStarterInitProviderBlock(t *testing.T) {
 	h, r := newTestHost(t)
-	h.Builtin = agent.Builtin(func(string) string { return "x" })
+	c := agent.LoadCatalog(h.Dirs.DataHome, func(string) string { return "x" })
+	h.Builtin.Store(&c)
 	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}

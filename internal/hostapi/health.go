@@ -198,6 +198,11 @@ func (h *Host) goHealthRows() []healthCheck {
 	} else {
 		add("ok", "providers", strings.Join(names, ", "))
 	}
+	if info := h.Builtin.Load().Info; info.Err != nil {
+		add("warn", "catalog", "the saved catalog did not load: "+info.Err.Error()+"; "+info.String()+" in use")
+	} else {
+		add("ok", "catalog", info.String())
+	}
 
 	id := h.sessionModelID()
 	out = append(out, h.modelRow())

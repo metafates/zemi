@@ -203,9 +203,9 @@ type Host struct {
 	// built-in defaults.
 	Providers *agent.Registry
 	// Builtin seeds Providers on every generation: the catalog with the
-	// env keys resolved once per process, since the environment cannot
-	// change under a running zemi.
-	Builtin  agent.Catalog
+	// env keys resolved at boot, since the environment cannot change under
+	// a running zemi, and again by /model update.
+	Builtin  atomic.Pointer[agent.Catalog]
 	Perm     *perm.Store
 	DB       *store.DB
 	GlobalDB *store.DB
@@ -462,6 +462,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		tasks:     newTaskReg(),
 		lsp:       newLSPReg(),
 	}
+	h.Builtin.Store(&agent.Catalog{})
 	h.Perm.Default = h.fsDefault
 	h.Keymaps.owner, h.Commands.owner, h.Widgets.owner, h.Themes.owner, h.luaTools.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
 	h.jobs.OnExit = h.refresh
@@ -1598,7 +1599,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 	}
 	L := g.L
 	h.gen.Store(g.ID)
-	h.Providers.Reset(h.Builtin)
+	h.Providers.Reset(*h.Builtin.Load())
 	h.syncSkills()
 	h.syncTypes()
 	h.GoSafe("git status", func() { h.gitStatus() })
