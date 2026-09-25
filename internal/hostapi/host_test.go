@@ -603,6 +603,19 @@ func TestConfigSet(t *testing.T) {
 	}
 }
 
+// TestLuaLiteral: a value /config save writes reads back as itself in Lua.
+func TestLuaLiteral(t *testing.T) {
+	L := glua.NewState()
+	defer L.Close()
+	want := "q\" b\\ nl\n tab\t \x01\x7f9 é"
+	if err := L.DoString("s = " + luaLiteral(want)); err != nil {
+		t.Fatal(err)
+	}
+	if got := L.GetGlobal("s").String(); got != want {
+		t.Errorf("%q, want %q", got, want)
+	}
+}
+
 // TestConfigWatchNoDeadlock is the regression for the watch-delivery
 // deadlock: a Lua config.set inside a running interpreter request used to
 // deliver watches via a blocking RT.Do on the same (busy) queue, wedging

@@ -278,11 +278,28 @@ func (h *Host) configLua() (string, bool) {
 
 func setLine(path, lit string) string { return fmt.Sprintf("zemi.config.set(%q, %s)", path, lit) }
 
+// luaLiteral writes a string with only the escapes Lua 5.1 reads; other
+// bytes, UTF-8 included, stay as they are.
 func luaLiteral(v any) string {
-	if s, ok := v.(string); ok {
-		return strconv.Quote(s)
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Sprint(v)
 	}
-	return fmt.Sprint(v)
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, c := range []byte(s) {
+		switch {
+		case c == '"' || c == '\\':
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		case c < ' ' || c == 0x7f:
+			fmt.Fprintf(&b, `\%03d`, c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 // cfgLine is one setting to save: its path and its value as a Lua literal.
@@ -318,13 +335,13 @@ func (h *Host) saveConfig() {
 		body = append(body, strings.Join(saved, ", "))
 	}
 	for _, p := range skipped {
-		body = append(body, p+" is set by code in init.lua; left alone")
+		body = append(body, p+" is set by code or more than once in init.lua; left alone")
 	}
-	level := "info"
 	if len(saved) == 0 {
-		level = "warn"
+		h.Notify("warn", "Nothing saved to init.lua", strings.Join(body, "\n"))
+		return
 	}
-	h.Notify(level, fmt.Sprintf("Saved %d %s to init.lua", len(saved), plural(len(saved), "setting", "settings")), strings.Join(body, "\n"))
+	h.Notify("info", fmt.Sprintf("Saved %d %s to init.lua", len(saved), plural(len(saved), "setting", "settings")), strings.Join(body, "\n"))
 }
 
 // saveInit writes sets into the init.lua at path, read before, and refuses
@@ -358,6 +375,9 @@ func saveInit(path string, read []byte, sets []cfgLine) (saved, skipped []string
 	if err == nil {
 		err = tmp.Chmod(mode)
 	}
+	if err == nil {
+		err = tmp.Sync()
+	}
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}
@@ -375,7 +395,9 @@ func saveInit(path string, read []byte, sets []cfgLine) (saved, skipped []string
 // the managed block at the end, and a key set by code, indented or twice is
 // left alone and returned in skipped. No other line changes.
 // NOTE: lines are matched one by one, so a set line inside a block comment
-// or a long string reads as code; a Lua parser would lift that.
+// or a long string reads as code, a new block lands after a final top-level
+// return (which Lua refuses), and a start marker with no end gets a second
+// block; a Lua parser would lift all three.
 func rewriteInit(src string, sets []cfgLine) (out string, saved, skipped []string) {
 	lines := strings.Split(src, "\n")
 	var add []string
