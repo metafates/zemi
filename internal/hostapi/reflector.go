@@ -229,7 +229,7 @@ func (h *Host) clampReflectSeen(sid string, n int) {
 // is active is skipped and its claim released, so a later close can reflect
 // again (one reflector at a time). Progress reaches Lua as ctx.busy
 // plus the reflector.start / reflector.done events (done carries error on
-// failure). The claim is released when the run ends: on success the seen
+// failure; a run the user cancelled sends none). The claim is released when the run ends: on success the seen
 // marker keeps the result, on failure a later run retries; a crash leaves
 // it to the lease. n is the message count the claim covers.
 func (h *Host) reflectClaimed(sid, claim string, n int) bool {
@@ -249,9 +249,12 @@ func (h *Host) reflectClaimed(sid, claim string, n int) bool {
 	try++
 	_ = h.DB.SetKV(reflectTriesKey(sid), strconv.Itoa(try))
 	err := h.reflectSession(ctx, sid)
+	if errors.Is(ctx.Err(), context.Canceled) {
+		// the user's double esc: no failure, so the try is given back
+		_ = h.DB.SetKV(reflectTriesKey(sid), strconv.Itoa(try-1))
+		return true
+	}
 	switch {
-	case errors.Is(ctx.Err(), context.Canceled):
-		// the user's double esc, no zemi error; it still spends a try
 	case errors.Is(err, errNoProposal):
 		// prose is the model's answer, not a run to repeat, and the /health
 		// row's news rather than a zemi error the badge asks the agent to fix

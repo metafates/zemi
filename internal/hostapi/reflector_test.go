@@ -662,6 +662,16 @@ func TestReflectTrigger(t *testing.T) {
 			}
 			reflectNow(h, sid)
 		}, calls: 2, badge: true},
+		{name: "a cancelled run spends no try and leaves no news", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			m.block = time.Minute
+			m.during = h.CancelBusy
+			if !reflectNow(h, sid) || h.agents.reflectErr != nil {
+				t.Fatalf("ran, or left /health news: %v", h.agents.reflectErr)
+			}
+			if v, _ := h.DB.GetKV(reflectTriesKey(sid)); v != "0" {
+				t.Fatalf("tries = %q", v)
+			}
+		}, due: true, calls: 1},
 		{name: "two concurrent /reflect start one run", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
 			m.block = 100 * time.Millisecond
 			if err := h.reflectCommand(); err != nil {
