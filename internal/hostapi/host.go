@@ -622,7 +622,10 @@ func ToastTitle(level, title string) string {
 }
 
 // Notify shows a toast; with no UI a warning or an error goes to Stderr
-// instead, so a headless run never swallows one.
+// instead, so a headless run never swallows one. The title says what
+// happened, in sentence case with no period: "<Kind> <past participle>" with
+// the name in the body, "Could not <verb> <object>" with the cause in the
+// body, "Nothing to <verb> [yet]" with a reason only when it is not obvious.
 func (h *Host) Notify(level, title, body string) {
 	h.recordNotify(level, title, body)
 	if ui := h.hooks(); ui != nil {

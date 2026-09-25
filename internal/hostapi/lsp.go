@@ -663,7 +663,7 @@ func (h *Host) lspCommands() []*Command {
 				if p != nil { // else it capped out earlier; the counter is clear now
 					p.close()
 				}
-				h.Notify("info", name+" stopped", "it starts again on the next file it serves")
+				h.Notify("info", "Language server stopped", name+"; it starts again on the next file it serves")
 				return nil
 			}
 			ui, err := h.Screen()

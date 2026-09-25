@@ -226,7 +226,7 @@ func (s *mcpServer) needsSignIn(h *Host) {
 	}
 	s.status, s.err = "failed", errSignIn
 	s.mu.Unlock()
-	h.Notify("warn", s.name+" needs sign-in", "open /mcp")
+	h.Notify("warn", "Sign-in needed", s.name+"; open /mcp")
 	h.refresh()
 }
 
@@ -695,7 +695,7 @@ func (h *Host) mcpCommands() []*Command {
 				if err := h.restartMCP(name); err != nil {
 					return err
 				}
-				h.Notify("info", name+" is restarting", "")
+				h.Notify("info", "Server restarting", name)
 				return nil
 			case "sign-in":
 				return h.signInMCP(strings.TrimSpace(name))
@@ -840,7 +840,7 @@ func (h *Host) signInMCP(name string) error {
 			h.Notify("error", "Could not sign in to "+name, err.Error())
 			return
 		}
-		h.Notify("info", "Signed in to "+name, "")
+		h.Notify("info", "Signed in", name)
 		if err := h.restartMCP(name); err != nil {
 			h.Notify("error", "Could not restart "+name, err.Error())
 		}
@@ -856,7 +856,7 @@ func (h *Host) signOutMCP(name string) error {
 	if err := h.mcpAuth(s).Logout(); err != nil {
 		return err
 	}
-	h.Notify("info", "Signed out of "+name, "")
+	h.Notify("info", "Signed out", name)
 	return h.restartMCP(name)
 }
 

@@ -709,7 +709,7 @@ func TestMemoryCommandsRegistered(t *testing.T) {
 	if err := h.memoryCommand("forget " + projectMemories(t, h)[0].ID[:8]); err != nil {
 		t.Fatal(err)
 	}
-	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.title != "Forgotten" || n.body != "deploy by hand" {
+	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.title != "Memory forgotten" || n.body != "deploy by hand" {
 		t.Fatalf("toast: %+v", n)
 	}
 }

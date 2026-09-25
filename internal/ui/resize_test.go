@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"regexp"
@@ -227,7 +228,7 @@ func TestProfileSegment(t *testing.T) {
 
 // TestToastCap: a long error keeps a few rows, drops its stack trace, says
 // how much it cut and sends the reader to /errors when its caller recorded
-// it there; a toast records nothing itself.
+// it there; a toast records nothing itself. A lone title or body is one row.
 func TestToastCap(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	home, _ := os.UserHomeDir()
@@ -249,6 +250,16 @@ func TestToastCap(t *testing.T) {
 	app.pushToast("error", "", "x")
 	if top := plainSegs(toastBox(app.toasts[2], 80)[0]); !strings.HasPrefix(top, "┌ Error ─") {
 		t.Fatalf("untitled error toast: %q", top)
+	}
+	for _, c := range []struct {
+		title, body string
+		rows        int
+	}{{"Config reloaded", "", 1}, {"", "saved", 1}, {"Session exported", "saved to x", 3}} {
+		app.pushToast("info", c.title, c.body)
+		box := toastBox(app.toasts[len(app.toasts)-1], 80)
+		if first := plainSegs(box[0]); len(box) != c.rows || !strings.Contains(first, cmp.Or(c.title, c.body)) {
+			t.Errorf("toast %q %q: %d rows, first %q; want %d", c.title, c.body, len(box), first, c.rows)
+		}
 	}
 }
 

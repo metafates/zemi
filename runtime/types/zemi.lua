@@ -1136,7 +1136,11 @@ function zemi.ui.reasoning.toggle() end
 ---@field body? string
 ---@field level? zemi.Level
 
---- A toast. Callable: `zemi.notify({ title = "done", body = "..." })`.
+--- A toast. Callable: `zemi.notify({ title = "Plugin installed", body = "foo v1.2.0" })`.
+--- The title says what happened, in sentence case with no period: "<Kind>
+--- <past participle>" with the name in the body, "Could not <verb> <object>"
+--- with the cause in the body, "Nothing to <verb> [yet]" with a reason only
+--- when it is not obvious. A lone title or body draws as one row.
 ---@class zemi.notify
 ---@overload fun(spec: zemi.NotifySpec)
 ---@overload fun(body: string, title?: string)

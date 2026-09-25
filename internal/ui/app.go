@@ -1236,13 +1236,19 @@ func (a *App) statuslineSegments(region string) []hostapi.Segment {
 }
 
 // toastBox lays a toast out in the frame every other box uses, the title in
-// the top rule in the level's color, the body word-wrapped under it.
+// the top rule in the level's color, the body word-wrapped under it. A lone
+// title or body that fits one row is that row between the box's side bars.
 func toastBox(t toast, w int) [][]hostapi.Segment {
 	level := map[string]string{"warn": "ToastWarn", "error": "ToastErr"}[t.level]
 	if level == "" {
 		level = "ToastInfo"
 	}
 	inner := max(min(w-2, 60)-4, 1)
+	if (t.title == "") != (t.body == "") {
+		if rows := wrapText(t.title+t.body, level, inner); len(rows) == 1 {
+			return hostBoxW("", level, "", rows, w, 60, 0)[1:2]
+		}
+	}
 	var rows [][]hostapi.Segment
 	if t.body != "" {
 		rows = wrapText(t.body, "Normal", inner)

@@ -162,6 +162,10 @@ func (h *Host) DeleteSession(id string) error {
 		}
 	}
 	h.GoSafe("delete session", func() {
+		title := ""
+		if s, err := h.DB.GetSession(id); err == nil {
+			title = s.Title
+		}
 		if err := h.DB.DeleteSession(id); err != nil {
 			h.Notify("error", "Could not delete the session", err.Error())
 			return
@@ -171,7 +175,7 @@ func (h *Host) DeleteSession(id string) error {
 			_ = os.RemoveAll(h.scratchFor(id))
 			_ = os.RemoveAll(filepath.Join(h.Dirs.StateHome, "sandbox-tmp", id))
 		}
-		h.Notify("info", "Session deleted", "")
+		h.Notify("info", "Session deleted", title)
 	})
 	return nil
 }
