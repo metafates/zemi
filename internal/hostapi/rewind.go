@@ -90,7 +90,7 @@ func (h *Host) uncheckpointed(abs, why string) {
 // summaries and non-user rows report false.
 func userText(row *store.Message) (string, bool) {
 	var m fantasy.Message
-	if row.Role != "user" || json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
+	if row.Role != string(fantasy.MessageRoleUser) || json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
 		return "", false
 	}
 	if _, ok := summaryOf(m); ok {

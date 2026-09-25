@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"charm.land/fantasy"
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -408,7 +409,7 @@ func (h *Host) notifyReport(id, agentName, status, description, report string) {
 	if run := h.tasks.find(id); run != nil && run.parent != "" && h.DB != nil {
 		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(id, agentName, status, description, report)))
 		if err == nil {
-			err = h.DB.AddMessage(&store.Message{SessionID: run.parent, Role: "user", PartsJSON: string(parts)})
+			err = h.DB.AddMessage(&store.Message{SessionID: run.parent, Role: string(fantasy.MessageRoleUser), PartsJSON: string(parts)})
 		}
 		if err != nil {
 			h.Log.Warn("agents", "report not stored", map[string]any{"run": id, "error": err.Error()})

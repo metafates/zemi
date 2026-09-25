@@ -967,7 +967,7 @@ func (h *Host) quoteInSession(sid, quote string) bool {
 	}
 	want := foldSpace(quote)
 	for _, m := range msgs {
-		if m.Role != "user" {
+		if m.Role != string(fantasy.MessageRoleUser) {
 			continue
 		}
 		var fm fantasy.Message

@@ -1294,7 +1294,7 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 			return err
 		}
 	}
-	if role == "user" {
+	if role == string(fantasy.MessageRoleUser) {
 		h.agents.mu.Lock()
 		h.agents.turnMsgID = row.ID
 		h.agents.mu.Unlock()

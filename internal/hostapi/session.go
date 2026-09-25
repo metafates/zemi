@@ -205,7 +205,7 @@ func (h *Host) InputHistory(limit int) []string {
 // firstUserLine is the first typed line of a stored user message, for the
 // session picker; attachments and later lines stay out.
 func firstUserLine(partsJSON string) string {
-	text, _ := userText(&store.Message{Role: "user", PartsJSON: partsJSON})
+	text, _ := userText(&store.Message{Role: string(fantasy.MessageRoleUser), PartsJSON: partsJSON})
 	line, _, _ := strings.Cut(text, "\n")
 	return truncRunes(sanitize.String(line), 60)
 }
@@ -271,7 +271,7 @@ func resumeHistory(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 func resumeRows(rows []*store.Message) []*store.Message {
 	for i, row := range slices.Backward(rows) {
 		var m fantasy.Message
-		if row.Role != "user" || json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
+		if row.Role != string(fantasy.MessageRoleUser) || json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
 			continue
 		}
 		if _, ok := summaryOf(m); ok {

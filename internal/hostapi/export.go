@@ -185,7 +185,7 @@ func (h *Host) ExportSession(path string) (string, error) {
 			continue
 		}
 		var m fantasy.Message
-		if r.Role != "assistant" || json.Unmarshal([]byte(r.PartsJSON), &m) != nil {
+		if r.Role != string(fantasy.MessageRoleAssistant) || json.Unmarshal([]byte(r.PartsJSON), &m) != nil {
 			continue
 		}
 		var calls []string

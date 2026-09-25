@@ -383,7 +383,7 @@ func (h *Host) storeCompaction(summary fantasy.Message, tail []fantasy.Message) 
 		}
 		return &store.Message{SessionID: sid, Role: role, PartsJSON: string(parts)}, nil
 	}
-	head, err := row(summary, "user")
+	head, err := row(summary, string(fantasy.MessageRoleUser))
 	if err != nil {
 		return err
 	}

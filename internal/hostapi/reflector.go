@@ -394,7 +394,7 @@ func failedCalls(msgs []*store.Message) []string {
 	var out []string
 	for _, m := range msgs {
 		var fm fantasy.Message
-		if m.Role == "user" || m.Role == compactTailRole || json.Unmarshal([]byte(m.PartsJSON), &fm) != nil {
+		if m.Role == string(fantasy.MessageRoleUser) || m.Role == compactTailRole || json.Unmarshal([]byte(m.PartsJSON), &fm) != nil {
 			continue
 		}
 		for _, part := range fm.Content {
@@ -413,7 +413,7 @@ func failedCalls(msgs []*store.Message) []string {
 }
 
 func reflectLine(m *store.Message) string {
-	if m.Role != "user" && m.Role != "assistant" {
+	if m.Role != string(fantasy.MessageRoleUser) && m.Role != string(fantasy.MessageRoleAssistant) {
 		return ""
 	}
 	var fm fantasy.Message
@@ -423,7 +423,7 @@ func reflectLine(m *store.Message) string {
 	role, text := m.Role, concatText(fm.Content)
 	if s, ok := summaryOf(fm); ok {
 		role, text = "summary", s
-	} else if role == "user" {
+	} else if role == string(fantasy.MessageRoleUser) {
 		// what zemi appended is not the user's, and quoteInSession drops quotes from it
 		text, _, _ = strings.Cut(text, agent.AttachMarker)
 	}
