@@ -97,7 +97,8 @@ the trust boot step reads. `-m`, `/model <provider/model>` and `zemi.model.set` 
 the palette): `roles` opens the role list (`OpenModelRoles`, a `Reload` list that rebuilds
 when the role's model list over it closes, and that opens over `/model` from its "Choose a
 model per role" row, so esc goes back), `<role>` that role's model list (`chat` too, titled
-like the others), `<role> <id>` or `<role> chat` sets the role or makes it follow chat.
+like the others), `<role> <id>` or `<role> chat` sets the role or makes it follow chat
+(`chat chat` returns `models.chat` to the default).
 `--profile` and `/profile` (`Host.SetProfile`; no argument opens the picker, which the
 statusline's profile segment clicks into) write `agent.profile` for the next send: a switch
 changes the prompt and the tool set, so it busts the provider's prompt cache once; ctrl+t and
@@ -140,16 +141,20 @@ Config reload is not fsnotify:
 `watchConfig` walks the config trees once a second (past dot-directories and `node_modules`),
 plus the local plugins, the plugins' `disabled` file and each clone's git index (`pluginRoots`),
 and reloads when a fingerprint moved and no turn is active; an untrusted project's `.agents` is not watched (a trusted one's is, `worktrees` aside). A replay that writes a key the
-same way as the last boot is skipped (`cfgReplayed`) and a key the new config writes fewer
+same way as the last boot is skipped (`cfgReplayed`, which `zemi.config.set` and the setters with
+a key of their own, `zemi.ui.theme.set`, `zemi.permission.mode.set` and `zemi.model.set`, all
+run a valid value through) and a key the new config writes fewer
 times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, `/profile`, the mode
 cycle and the flags survive a reload until the config changes that key. A key the config stopped
 writing returns to its schema default, unless a runtime pick moved it since.
 
 `/config` (hostapi/configcmd.go) is a `Reload` list of every schema key by section, tagged by
 `cfgSource`: `init.lua` when the live value is config's last write, `unsaved` when a runtime
-pick moved it off that or off the default. Every runtime write goes through `Host.SetConfig`,
-which sends `models.*`, `permissions.mode`, `agent.profile` and `ui.theme` through their own
-setters and checks `agent.effort`, and fires the key's watches (`setWatched`). `config lua`
+pick moved it off that or off the default. Space toggles a bool; every other row opens its
+detail, whose actions pick or fill `/config set`. `/config` and `/effort` write through
+`Host.SetConfig`, which sends `models.*`, `permissions.mode`, `agent.profile` and `ui.theme`
+through their own setters and checks `agent.effort` (`default` is empty); every runtime write,
+those setters included, fires the key's watches through `setWatched`. `config lua`
 shows the keys off their default as `zemi.config.set` lines; `config save` (`saveInit`) writes
 the unsaved ones: the literal of a key's one top-level set line rewritten in place, a key no
 line names appended to the `-- zemi: saved from /config` block at the end, one set by code or
@@ -608,8 +613,9 @@ lua-language-server is installed.
   `gateMemory` like the `memory` tool's (stored at once under `memory.autonomy = "auto"` when
   policy-clean, queued for `/memory` otherwise, a quote not in the session dropped, DESIGN
   §10.4); an entry with empty text and `replaces` queues a forget proposal, never auto-applied.
-  There is no config-patch pipeline, the agent edits config files directly. `digestFor()` renders every live memory, newest first per scope, under
-  `learn.ScopeBudget` (3 KB per scope); no search, no ranking.
+  There is no config-patch pipeline, the agent edits config files directly. `digestFor()`
+  renders every live memory, newest first per scope, under `learn.ScopeBudget` (3 KB per
+  scope); no search, no ranking.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides real
   provider bugs (this once made the reflector read empty output everywhere).
