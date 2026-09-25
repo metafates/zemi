@@ -96,7 +96,7 @@ zemi.command.add("standup", function(a) zemi.agent.send("summarize yesterday's c
   { desc = "draft a standup", nargs = "*" })
 ```
 
-A key is a non-printable key or a sequence that starts with one (`"ctrl+x s"`; `<leader>` is `keymap.leader`, ctrl+x). Binding a taken key rebinds it: ctrl+t above replaces the shipped profile cycle. The shipped keys are in `keymaps.lua`. Host actions: `zemi.ui.help`, `zemi.model.pick`, `zemi.ui.reasoning.toggle`, `zemi.ui.scroll.up`, `zemi.ui.scroll.down`, `zemi.ui.scroll.top`, `zemi.ui.scroll.bottom`, `zemi.ui.scroll.line_up` and `zemi.ui.scroll.line_down` (each takes a node id after a space), `zemi.ui.focus.set <id>`, `zemi.ui.focus.next`, `zemi.ui.focus.prev`, `zemi.permission.mode.next`, `zemi.permission.mode.prev`, `zemi.agent.profile.next`, `zemi.agent.profile.prev`, and the `zemi.composer.*` ones zemi-lua lists.
+A key is a non-printable key or a sequence that starts with one (`"ctrl+x s"`; `<leader>` is `keymap.leader`, ctrl+x). Binding a taken key rebinds it: ctrl+t above replaces the shipped next profile key. The shipped keys are in `keymaps.lua`. Host actions: `zemi.ui.help`, `zemi.model.pick`, `zemi.ui.reasoning.toggle`, `zemi.ui.scroll.up`, `zemi.ui.scroll.down`, `zemi.ui.scroll.top`, `zemi.ui.scroll.bottom`, `zemi.ui.scroll.line_up` and `zemi.ui.scroll.line_down` (each takes a node id after a space), `zemi.ui.focus.set <id>`, `zemi.ui.focus.next`, `zemi.ui.focus.prev`, `zemi.permission.mode.next`, `zemi.permission.mode.prev`, `zemi.agent.profile.next`, `zemi.agent.profile.prev`, and the `zemi.composer.*` ones zemi-lua lists.
 
 ## UI
 
