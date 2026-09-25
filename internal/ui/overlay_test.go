@@ -189,7 +189,7 @@ func TestOverlaySelectOffKeyLoop(t *testing.T) {
 // it is free.
 func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 20)
-	runLua(t, app, `zemi.command.add("greet", function() end, { complete = function() return { "alice", "bob" } end })`)
+	runLua(t, app, `zemi.command.add("greet", function() end, { nargs = "?", complete = function() return { "alice", "bob" } end })`)
 	var keys []tea.KeyPressMsg
 	for _, r := range "/greet b" {
 		keys = append(keys, tea.KeyPressMsg{Code: r, Text: string(r)})

@@ -157,13 +157,13 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 // nothing is offered past the last argument the command's nargs takes.
 func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []CompletionItem {
 	cmd := h.Commands.Lookup(name)
-	if _, arg := argAt(lead, line); cmd == nil || (cmd.NArgs == "" || cmd.NArgs == "?") && arg > 1 {
+	if _, arg := argAt(lead, line); cmd == nil || cmd.NArgs == "" || cmd.NArgs == "?" && arg > 1 {
 		return nil
 	}
 	var out []CompletionItem
 	switch {
 	case cmd.GoComplete != nil:
-		// Go completers ignore lead, so it narrows here, before the cap
+		// Go completers return every candidate, so lead narrows here, before the cap
 		for _, s := range cmd.GoComplete(h, lead, line) {
 			if strings.HasPrefix(strings.ToLower(s), strings.ToLower(lead)) {
 				out = append(out, CompletionItem{Text: sanitize.String(s)})

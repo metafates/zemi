@@ -600,6 +600,11 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 		GoComplete: func(*hostapi.Host, string, string) []string { return []string{"alice", "bob"} },
 		Origin:     lua.OriginBuiltin, Gen: hostapi.Gen(1),
 	})
+	host.Commands.Add(&hostapi.Command{
+		Name: "quiet", GoFn: func(*hostapi.Host, string) error { return nil },
+		GoComplete: func(*hostapi.Host, string, string) []string { return []string{"loud"} },
+		Origin:     lua.OriginBuiltin, Gen: hostapi.Gen(1),
+	})
 	many := []string{}
 	for i := range 60 {
 		many = append(many, fmt.Sprint("x", i))
@@ -613,6 +618,7 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 		{"/greet b", "/greet b", "bob"},
 		{"/greet b\t", "/greet bob ", ""}, // nargs "?" takes no second argument
 		{"/gr\t", "/greet ", "alice bob"}, // an accepted name lists its arguments at once
+		{"/quiet ", "/quiet ", ""},        // nargs "" takes no argument at all
 		{"/many z", "/many z", "zed"},     // past the cap of 50
 	} {
 		app.clearComposer()
