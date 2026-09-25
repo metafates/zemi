@@ -340,7 +340,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	}
 
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
-	// a multi-select is a list whose marks sit in the key column, the other
+	// a multi-select is a list of switches, the other
 	// types buttons keyed by their digit
 	var items []listItem
 	var choices []promptChoice
@@ -351,7 +351,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 			if l, ok := strings.CutSuffix(label, " (Recommended)"); ok {
 				label, desc = l, strings.TrimSuffix("recommended · "+desc, " · ")
 			}
-			items = append(items, listItem{label: label, desc: desc, key: map[bool]string{true: "on"}[st.picked[i]]})
+			items = append(items, listItem{label: label, desc: desc, key: switchSeg(st.picked[i], false)})
 			choices = append(choices, promptChoice{key: optionKey(q, i), label: label, desc: desc})
 		}
 		if q.Type != tools.TypeYesNo {

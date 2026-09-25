@@ -654,18 +654,18 @@ func TestListDescColumn(t *testing.T) {
 	}{
 		{"a long title with a short description", []listItem{
 			{label: "a much longer session title here", desc: "now · short"},
-			{label: "done", desc: "now · 2 messages · hello number 3 with a longer message to title it", key: "current"},
+			{label: "done", desc: "now · 2 messages · hello number 3 with a longer message to title it", key: tagSeg("current")},
 		}},
 		{"a picker keeps its ids whole", []listItem{
 			{label: "deepseek/deepseek-v4-flash", desc: "DeepSeek-V4-Flash · 1M · $0.14/$0.28"},
-			{label: "fake/m", desc: "128k", key: "current"},
+			{label: "fake/m", desc: "128k", key: tagSeg("current")},
 			{label: "fake/deepseek-v4-flash-long-model-name", desc: "1M"},
 		}},
 	} {
 		col := -1
 		for i, row := range listRows(c.items, 0, nil, 10, 52) {
 			text, it := plainSegs(row), c.items[i]
-			if !strings.Contains(text, it.label) || !strings.HasSuffix(text, it.key) || strings.Contains(text, "·…") {
+			if !strings.Contains(text, it.label) || !strings.HasSuffix(text, it.key.Text) || strings.Contains(text, "·…") {
 				t.Errorf("%s: row %q", c.name, text)
 			}
 			x := 0
@@ -681,6 +681,31 @@ func TestListDescColumn(t *testing.T) {
 				}
 				x += ansi.StringWidth(s.Text)
 			}
+		}
+	}
+}
+
+// TestOverlaySwitch: an item's on and locked fields draw the switch, the
+// same width in every state, so a toggle never moves a row's text.
+func TestOverlaySwitch(t *testing.T) {
+	width := -1
+	for _, c := range []struct {
+		item   map[string]any
+		sw, hl string
+	}{
+		{map[string]any{"text": "a", "on": true}, "━━ on ", "Host:Ok"},
+		{map[string]any{"text": "a", "on": false, "key": "tag"}, "── off", "Host:Hint"},
+		{map[string]any{"text": "a", "locked": true}, "   on ", "Host:Hint"},
+	} {
+		row := listRows((&App{}).overlayState(hostapi.Overlay{Items: []any{c.item}}).items, 0, nil, 10, 0)[0]
+		if k := row[len(row)-1]; k.Text != c.sw || k.HL != c.hl {
+			t.Errorf("%v: switch %q in %s, want %q in %s", c.item, k.Text, k.HL, c.sw, c.hl)
+		}
+		if width < 0 {
+			width = segsWidth(row)
+		}
+		if segsWidth(row) != width {
+			t.Errorf("%v: row %d cells, want %d", c.item, segsWidth(row), width)
 		}
 	}
 }

@@ -217,11 +217,9 @@ func (h *Host) pluginItems() []any {
 			}
 			actions = append(actions, map[string]any{"text": label, "hotkey": "u", "run": "plugins update " + p.Name})
 		}
-		key := "on"
 		if p.Enabled {
 			actions = append(actions, map[string]any{"text": "Disable", "hotkey": "d", "run": "plugins disable " + p.Name})
 		} else {
-			key = "off"
 			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": "plugins enable " + p.Name})
 		}
 		actions = append(actions, map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "plugins open " + p.Name})
@@ -230,7 +228,7 @@ func (h *Host) pluginItems() []any {
 		}
 		items = append(items, map[string]any{
 			"text": p.Name, "desc": strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
-			"section": section, "key": key, "run": "plugins toggle " + p.Name,
+			"section": section, "on": p.Enabled, "run": "plugins toggle " + p.Name,
 			"detail": strings.Join(detail, "\n"), "actions": actions,
 		})
 	}

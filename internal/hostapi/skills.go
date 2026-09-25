@@ -520,14 +520,15 @@ func (h *Host) skillItems() []any {
 		toggle := "skills toggle " + s.Name
 		item := map[string]any{"text": s.Name, "desc": listDesc(s.Description), "section": sourceSection(string(s.Source))}
 		var actions []any
-		item["key"] = "on"
+		state := "on"
 		switch {
 		case !s.Source.Stored(): // no state to toggle
+			item["locked"] = true
 		case h.skillsReg.isEnabled(s.Name):
-			item["run"] = toggle
+			item["on"], item["run"] = true, toggle
 			actions = append(actions, map[string]any{"text": "Disable", "hotkey": "d", "run": toggle})
 		default:
-			item["key"], item["run"] = "off", toggle
+			state, item["on"], item["run"] = "off", false, toggle
 			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": toggle})
 		}
 		body, err := skills.Body(s.Dir)
@@ -545,7 +546,7 @@ func (h *Host) skillItems() []any {
 		// the description leads, then where it comes from and where it lives;
 		// the markdown renderer keeps the line break inside the paragraph
 		item["detail"] = fmt.Sprintf("%s\n\n*%s · %s*\n*%s*",
-			s.Description, h.sourceOf(string(s.Source), s.Dir), item["key"], TildePath(filepath.Join(s.Dir, "SKILL.md")))
+			s.Description, h.sourceOf(string(s.Source), s.Dir), state, TildePath(filepath.Join(s.Dir, "SKILL.md")))
 		items = append(items, item)
 	}
 	return items

@@ -768,6 +768,8 @@ function zemi.event.stats() end
 ---@field text string
 ---@field desc? string dim column after the text
 ---@field key? string right-aligned tag
+---@field on? boolean draws the on/off switch in the tag's place
+---@field locked? boolean draws the switch on with nothing to switch
 ---@field section? string a change of section starts with a header row; the filter matches it too
 ---@field detail? string body of the detail view
 ---@field actions? zemi.OverlayAction[] listed under the detail

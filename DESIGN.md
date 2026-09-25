@@ -1378,7 +1378,10 @@ provenance string.
   `/plugins`) is a toggle list, so an action returns to it rebuilt;
   `/sessions`, `/agents` and `/workflows` close on an action instead: resume,
   a run and an agent's transcript move to another screen, which a rebuilt
-  list would cover.
+  list would cover. A row's binary state (a skill or plugin on or off, a
+  picked option of a multi-select) is one 6-cell switch in the key column,
+  `━━ on ` in Ok, `── off` or a locked `   on ` in Hint, so a toggle never
+  moves text; a tag there (`current`, `follows chat`) names, in the accent.
   A row may name its own enter verb (`verb`, "open" on a
   row that opens another screen): the hint says it, space, which toggles
   a toggle list's rows, passes it by, and an "open" row leaves its list
@@ -1536,8 +1539,8 @@ provenance string.
   (`t`, which denies, stops the turn and hands the composer back); up and
   down move, enter answers the highlighted one. Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
-  last, a yes/no one's `y` and `n`, an open memory, an overlay's detail view; a multi-select stays a list whose
-  marks read `on` in the key column) draws its buttons through one renderer, which puts
+  last, a yes/no one's `y` and `n`, an open memory, an overlay's detail view; a multi-select stays a list of
+  switches) draws its buttons through one renderer, which puts
   each answer's key in brackets beside its label, the selected answer marked `›` in the accent like a selected list row. The session `always` and `wider`
   answers write allow rules to the rule store (§6.1),
   scoped to the `model` principal, with the prefix-glob patterns §6.2 lists; they last

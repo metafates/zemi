@@ -77,14 +77,14 @@ func TestPluginsCommand(t *testing.T) {
 			name: "the list", args: "",
 			want: []string{
 				"text:Install a plugin verb:install", "run:plugins check text:Check for updates verb:check",
-				"desc:a todo list", "provides: command /todo", "key:on run:plugins toggle a section:Local text:a",
+				"desc:a todo list", "provides: command /todo", "on:true run:plugins toggle a section:Local text:a",
 				"desc:failed", "status: failed\nerror: ", "broken", "hotkey:d run:plugins disable a",
 			},
 			not: []string{"text:Delete", "hotkey:u"},
 		},
 		{
-			name: "toggle flips the tag before any reload", args: "toggle a", reload: true,
-			want: []string{"key:off run:plugins toggle a", "status: off", "hotkey:e run:plugins enable a"},
+			name: "toggle flips the switch before any reload", args: "toggle a", reload: true,
+			want: []string{"on:false run:plugins toggle a", "status: off", "hotkey:e run:plugins enable a"},
 		},
 		{name: "a local plugin is not deleted", args: "delete b", want: []string{"error: Could not run /plugins: b is a local plugin", "text:b"}},
 		{

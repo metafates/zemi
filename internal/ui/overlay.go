@@ -186,7 +186,10 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 			s, _ := m[k].(string)
 			return sanitize.Line(s)
 		}
-		it := listItem{label: formatOverlayItem(item), desc: field("desc"), key: field("key"), section: field("section")}
+		it := listItem{label: formatOverlayItem(item), desc: field("desc"), key: tagSeg(field("key")), section: field("section")}
+		if _, ok := m["on"].(bool); ok || m["locked"] == true {
+			it.key = switchSeg(m["on"] == true, m["locked"] == true)
+		}
 		if i < len(o.ItemText) && o.ItemText[i] != nil {
 			// only text and hl: a click id or effect here would act as Go chrome's
 			for _, seg := range o.ItemText[i] {

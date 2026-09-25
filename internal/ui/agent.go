@@ -371,10 +371,26 @@ func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 // listItem is one selectable entry of a list.
 type listItem struct {
 	label, desc string
-	key         string // right-aligned column, in Host:HintKey
-	section     string // a change of section starts with a header row
+	key         hostapi.Segment // right-aligned column: a tag in Host:HintKey or a switchSeg
+	section     string          // a change of section starts with a header row
 	more        [][]hostapi.Segment
 	segs        []hostapi.Segment // the label styled; label keeps its plain text
+}
+
+// tagSeg is a key column tag: a word that names, never a binary state.
+func tagSeg(s string) hostapi.Segment { return hostapi.Segment{Text: s, HL: "Host:HintKey"} }
+
+// switchSeg is the one on/off switch: 6 cells in every state, so a toggle
+// never moves text, and track and word read without color. Locked is on
+// with nothing to switch.
+func switchSeg(on, locked bool) hostapi.Segment {
+	switch {
+	case locked:
+		return hostapi.Segment{Text: "   on ", HL: "Host:Hint"}
+	case on:
+		return hostapi.Segment{Text: "━━ on ", HL: "Host:Ok"}
+	}
+	return hostapi.Segment{Text: "── off", HL: "Host:Hint"}
 }
 
 // listRows is the one list renderer (palette, completion, pickers,
@@ -408,8 +424,8 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			if it.desc != "" { // a row with no description needs no column
 				labelW = max(labelW, ansi.StringWidth(it.label))
 			}
-			if it.key != "" {
-				keyW = max(keyW, 2+ansi.StringWidth(it.key))
+			if it.key.Text != "" {
+				keyW = max(keyW, 2+ansi.StringWidth(it.key.Text))
 			}
 		}
 		// too narrow for a description column beside the widest label, every
@@ -459,7 +475,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 				descW := -1 // no cut
 				if maxW > 0 && it.desc != "" && !under {
 					row = ellipsizeSegs(row, labelW)
-					descW = maxW - 4 - labelW - map[bool]int{true: 2 + ansi.StringWidth(it.key)}[it.key != ""]
+					descW = maxW - 4 - labelW - map[bool]int{true: 2 + ansi.StringWidth(it.key.Text)}[it.key.Text != ""]
 				}
 				if it.desc != "" && !under && (descW < 0 || descW > 2) {
 					desc := []hostapi.Segment{{Text: it.desc, HL: "Host:Hint"}}
@@ -469,8 +485,9 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 					row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, labelW-segsWidth(row))+2)})
 					row = append(row, desc...)
 				}
-				if it.key != "" {
-					keys[len(rows)] = hostapi.Segment{Text: it.key, HL: "Host:HintKey", Hit: hit}
+				if it.key.Text != "" {
+					it.key.Hit = hit
+					keys[len(rows)] = it.key
 				}
 				itemRows = append(itemRows, row)
 				if under && it.desc != "" {
