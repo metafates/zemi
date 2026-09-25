@@ -172,6 +172,10 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.config.set: only user config may set %q", path)
 		}
+		// the stored form, so a Lua number matches the int it becomes
+		if v, err = h.Settings.Check(path, v); err != nil {
+			L.RaiseError("zemi.config.set: %v (zemi.config.schema() lists every key and its type)", err)
+		}
 		// a replay writing what the last load wrote keeps what /model, the
 		// mode cycle, /effort or a flag picked since; an edited value wins
 		if h.RT.Booting() && h.cfgReplayed(path, v) {
@@ -179,7 +183,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		}
 		fired, err := h.Settings.SetQuiet(path, v)
 		if err != nil {
-			L.RaiseError("zemi.config.set: %v (zemi.config.schema() lists every key and its type)", err)
+			L.RaiseError("zemi.config.set: %v", err)
 		}
 		h.deliverFired(L, fired)
 		return 0

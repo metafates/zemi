@@ -149,20 +149,22 @@ func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
 	return fired, nil
 }
 
+// Check returns val in the stored form of path's kind, or why it cannot be
+// set there.
+func (s *Store) Check(path string, val any) (any, error) {
+	s.mu.RLock()
+	def, ok := s.schema[path]
+	s.mu.RUnlock()
+	if !ok {
+		return nil, &ErrUnknownKey{Path: path}
+	}
+	return checkKind(def, val)
+}
+
 // SetHost writes a schema key from Go code without firing watches.
 func (s *Store) SetHost(path string, val any) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	def, ok := s.schema[path]
-	if !ok {
-		return &ErrUnknownKey{Path: path}
-	}
-	val, err := checkKind(def, val)
-	if err != nil {
-		return err
-	}
-	s.values[path] = val
-	return nil
+	_, err := s.SetQuiet(path, val)
+	return err
 }
 
 // AddWatch registers a change observer and returns its handle id. A path
