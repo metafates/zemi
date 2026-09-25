@@ -17,6 +17,8 @@ import (
 	"charm.land/fantasy/providers/google"
 	"charm.land/fantasy/providers/openai"
 	"charm.land/fantasy/providers/openaicompat"
+	"charm.land/fantasy/providers/openrouter"
+	"charm.land/fantasy/providers/vercel"
 )
 
 func TestCallOptions(t *testing.T) {
@@ -28,13 +30,16 @@ func TestCallOptions(t *testing.T) {
 		{ID: "bo", Kind: KindOpenAI, Builtin: true, Models: []Model{{ID: "gpt-4o"}, {ID: "gpt-5.5", Efforts: []string{"low", "medium", "high"}, Effort: "medium"}}},
 		{ID: "bg", Kind: KindGoogle, Builtin: true, Models: []Model{{ID: "gemini-2.5-pro"}, {ID: "lite", Efforts: []string{"minimal", "low"}, Effort: "minimal"}}},
 	}})
-	for _, s := range []Spec{{ID: "a", Kind: "anthropic"}, {ID: "o", Kind: "openai"}, {ID: "c", Kind: "openai_compat", BaseURL: "http://127.0.0.1:1/v1"}, {ID: "g", Kind: "google"}} {
+	for _, s := range []Spec{{ID: "a", Kind: "anthropic"}, {ID: "o", Kind: "openai"}, {ID: "c", Kind: "openai_compat", BaseURL: "http://127.0.0.1:1/v1"}, {ID: "g", Kind: "google"}, {ID: "or", Kind: "openrouter"}, {ID: "v", Kind: "vercel"}} {
 		if err := r.Register(s, "k"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := r.Register(Spec{ID: "bare", Kind: "openai_compat"}, "k"); err == nil || !strings.Contains(err.Error(), "base_url is required") {
 		t.Fatalf("openai_compat without base_url: %v", err)
+	}
+	if err := r.Register(Spec{ID: "orp", Kind: "openrouter", BaseURL: "https://proxy.example/v1"}, "k"); err == nil || !strings.Contains(err.Error(), "fixed base_url") {
+		t.Fatalf("openrouter with base_url: %v", err)
 	}
 	for _, c := range []struct {
 		model, pick, key, sent string
@@ -43,6 +48,8 @@ func TestCallOptions(t *testing.T) {
 		{"o/gpt", "low", "openai", "low"},
 		{"c/deepseek", "medium", "openai-compat", "medium"},
 		{"g/gemini-3-pro", "high", "google", "high"},
+		{"or/anthropic/claude-sonnet-4", "high", "openrouter", "high"},
+		{"v/anthropic/claude-sonnet-4", "low", "vercel", "low"},
 		{"a/claude", "", "", ""},
 		{"a/claude", "extreme", "", ""},
 		{"missing/x", "high", "", ""},
@@ -87,6 +94,10 @@ func sentEffort(o fantasy.ProviderOptionsData) string {
 		e = (*string)(o.ReasoningEffort)
 	case *google.ProviderOptions:
 		e = o.ThinkingConfig.ThinkingLevel
+	case *openrouter.ProviderOptions:
+		e = (*string)(o.Reasoning.Effort)
+	case *vercel.ProviderOptions:
+		e = (*string)(o.Reasoning.Effort)
 	}
 	if e == nil {
 		return ""
@@ -190,7 +201,7 @@ func TestBuiltin(t *testing.T) {
 	for _, tc := range []struct{ id, kind, base string }{
 		{"anthropic", KindAnthropic, ""},
 		{"openai", KindOpenAI, "http://gw/v1"},
-		{"openrouter", KindOpenAICompat, "https://openrouter.ai/api/v1"},
+		{"openrouter", KindOpenRouter, "https://openrouter.ai/api/v1"},
 		{"deepseek", "", ""}, {"azure", "", ""}, {"bedrock", "", ""}, {"vertexai", "", ""}, {"copilot", "", ""}, {"pioneer", "", ""},
 	} {
 		s, ok := byID[tc.id]

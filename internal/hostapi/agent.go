@@ -1676,6 +1676,8 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 	kinds.RawSetString("OPENAI", glua.LString(agent.KindOpenAI))
 	kinds.RawSetString("OPENAI_COMPAT", glua.LString(agent.KindOpenAICompat))
 	kinds.RawSetString("GOOGLE", glua.LString(agent.KindGoogle))
+	kinds.RawSetString("OPENROUTER", glua.LString(agent.KindOpenRouter))
+	kinds.RawSetString("VERCEL", glua.LString(agent.KindVercel))
 	tb.RawSetString("kind", kinds)
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
@@ -1716,7 +1718,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		switch b := v.(type) {
 		case map[string]any:
 			if !slices.Contains(agent.KindsWithBody, spec.Kind) {
-				return agent.Spec{}, fmt.Errorf("body is sent only by the %s kinds", strings.Join(agent.KindsWithBody, " and "))
+				return agent.Spec{}, fmt.Errorf("body is sent only by the %s kinds", strings.Join(agent.KindsWithBody, ", "))
 			}
 			spec.Body = b
 		case []any:

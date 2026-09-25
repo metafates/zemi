@@ -1217,9 +1217,9 @@ function zemi.log.list() end
 ---@field id string
 ---@field kind string One of `zemi.provider.kind`.
 ---@field api_key? string Read it with `zemi.env.get`; never write a key into a file.
----@field base_url? string Required for openai_compat; overrides the default endpoint for the other kinds.
+---@field base_url? string Required for openai_compat, refused for openrouter; overrides the default endpoint for the other kinds.
 ---@field headers? table<string, string> Sent with every request; as secret as the key.
----@field body? table<string, any> Extra request-body fields, merged verbatim into every request (service_tier, a gateway's routing block). anthropic and openai_compat only.
+---@field body? table<string, any> Extra request-body fields, merged verbatim into every request (service_tier, a gateway's routing block). Not sent by openai or google.
 ---@field models zemi.ModelSpec[]
 
 ---@class zemi.ProviderKind
@@ -1227,6 +1227,8 @@ function zemi.log.list() end
 ---@field OPENAI "openai"
 ---@field OPENAI_COMPAT "openai_compat"
 ---@field GOOGLE "google"
+---@field OPENROUTER "openrouter"
+---@field VERCEL "vercel"
 
 ---@class zemi.ProviderInfo
 ---@field id string

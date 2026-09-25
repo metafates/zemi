@@ -25,11 +25,11 @@ The builtin providers (anthropic, openai, gemini, deepseek, openrouter, ...) are
 ```lua
 zemi.provider.add({
   id = "gw",                                -- a builtin id replaces that provider whole, key included
-  kind = zemi.provider.kind.OPENAI_COMPAT,  -- or ANTHROPIC, GOOGLE, OPENAI (gpt-4 and later over /responses)
-  base_url = "https://llm.internal/v1",     -- required for OPENAI_COMPAT
+  kind = zemi.provider.kind.OPENAI_COMPAT,  -- or ANTHROPIC, GOOGLE, OPENAI (gpt-4 and later over /responses), OPENROUTER, VERCEL
+  base_url = "https://llm.internal/v1",     -- required for OPENAI_COMPAT, refused for OPENROUTER
   api_key = zemi.env.get("GATEWAY_KEY"),
   -- headers = { ["X-Team"] = "core" },     -- as secret as the key
-  -- body = { service_tier = "flex" },      -- extra request fields; ANTHROPIC and OPENAI_COMPAT only
+  -- body = { service_tier = "flex" },      -- extra request fields; not sent by OPENAI or GOOGLE
   models = {
     { id = "deepseek-chat", context_window = 128000, cost_per_1m_in = 0.27, cost_per_1m_out = 1.1 },
   },

@@ -94,7 +94,7 @@ func TestProviderBody(t *testing.T) {
 			body = { service_tier = "flex", provider = { order = { "a" } } }, models = { { id = "m" } } })
 		local ok, err = pcall(zemi.provider.add, { id = "oa", kind = "openai", api_key = "k",
 			body = { service_tier = "flex" }, models = { { id = "m" } } })
-		assert(not ok and tostring(err):find("anthropic and openai_compat"), tostring(err))
+		assert(not ok and tostring(err):find("only by the anthropic, openai_compat"), tostring(err))
 	`)
 	spec, _ := h.Providers.Lookup("gw")
 	if spec.Body["service_tier"] != "flex" {

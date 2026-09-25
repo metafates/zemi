@@ -1,8 +1,8 @@
 // Package agent is the chat core (DESIGN §6.3): a provider registry
-// (kinds: anthropic, openai, openai_compat, google; seeded from the
-// builtin catwalk catalog, then user config), model catalog and the turn
-// runner that streams fantasy agent output into the UI and persists
-// messages.
+// (kinds: anthropic, openai, openai_compat, google, openrouter, vercel;
+// seeded from the builtin catwalk catalog, then user config), model
+// catalog and the turn runner that streams fantasy agent output into the
+// UI and persists messages.
 package agent
 
 import (
@@ -26,6 +26,8 @@ import (
 	google "charm.land/fantasy/providers/google"
 	openai "charm.land/fantasy/providers/openai"
 	openaicompat "charm.land/fantasy/providers/openaicompat"
+	openrouter "charm.land/fantasy/providers/openrouter"
+	vercel "charm.land/fantasy/providers/vercel"
 )
 
 // Model is one entry of a provider's catalog. ContextWindow is optional:
@@ -52,10 +54,12 @@ const (
 	KindOpenAI       = "openai"
 	KindOpenAICompat = "openai_compat"
 	KindGoogle       = "google"
+	KindOpenRouter   = "openrouter"
+	KindVercel       = "vercel"
 )
 
 // kinds is every kind Resolve knows.
-var kinds = []string{KindAnthropic, KindOpenAI, KindOpenAICompat, KindGoogle}
+var kinds = []string{KindAnthropic, KindOpenAI, KindOpenAICompat, KindGoogle, KindOpenRouter, KindVercel}
 
 // Spec describes one provider: kind selects the fantasy implementation.
 // Headers ride every request (a gateway's attribution or team header); they
@@ -92,16 +96,17 @@ type MissingKey struct{ ID, Env string }
 // builtinKinds maps catwalk types to zemi kinds. NOTE: azure, bedrock,
 // google-vertex and copilot are left out: they need more than one key
 // (endpoint and API version, an AWS credential chain, ADC, OAuth) and a
-// fantasy package each. openrouter and vercel are OpenAI-shaped, so
-// openai_compat talks to them; its usage has no cached-tokens field, so
-// OpenRouter cache reads bill as input.
+// fantasy package each. openrouter and vercel get their own kinds: every
+// kind reads cached tokens from the usage, but only theirs turn the
+// Anthropic cache breakpoints into the cache_control Claude behind them
+// needs.
 var builtinKinds = map[catwalk.Type]string{
 	catwalk.TypeAnthropic:    KindAnthropic,
 	catwalk.TypeOpenAI:       KindOpenAI,
 	catwalk.TypeGoogle:       KindGoogle,
 	catwalk.TypeOpenAICompat: KindOpenAICompat,
-	catwalk.TypeOpenRouter:   KindOpenAICompat,
-	catwalk.TypeVercel:       KindOpenAICompat,
+	catwalk.TypeOpenRouter:   KindOpenRouter,
+	catwalk.TypeVercel:       KindVercel,
 }
 
 // Builtin converts the embedded catwalk catalog, resolving its "$NAME" key
@@ -153,7 +158,7 @@ func builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 }
 
 // KindsWithBody are the kinds whose fantasy options take Spec.Body.
-var KindsWithBody = []string{KindAnthropic, KindOpenAICompat}
+var KindsWithBody = []string{KindAnthropic, KindOpenAICompat, KindOpenRouter, KindVercel}
 
 // Registry holds provider specs; ids are unique. API keys live in a side
 // map keyed by provider id and are never exposed through List or Lookup.
@@ -265,6 +270,9 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	// the fantasy default is api.openai.com, which would get the key
 	if spec.Kind == KindOpenAICompat && spec.BaseURL == "" {
 		return errors.New("base_url is required for OPENAI_COMPAT")
+	}
+	if spec.Kind == KindOpenRouter && spec.BaseURL != "" {
+		return errors.New("OPENROUTER has a fixed base_url; a proxy in front of it is OPENAI_COMPAT")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -378,6 +386,18 @@ func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
 		return anthropic.NewProviderOptions(o)
 	case KindOpenAICompat:
 		return openaicompat.NewProviderOptions(&openaicompat.ProviderOptions{ReasoningEffort: re, ExtraBody: spec.Body})
+	case KindOpenRouter:
+		o := &openrouter.ProviderOptions{ExtraBody: spec.Body}
+		if re != nil {
+			o.Reasoning = &openrouter.ReasoningOptions{Effort: new(openrouter.ReasoningEffort(effort))}
+		}
+		return openrouter.NewProviderOptions(o)
+	case KindVercel:
+		o := &vercel.ProviderOptions{ExtraBody: spec.Body}
+		if re != nil {
+			o.Reasoning = &vercel.ReasoningOptions{Effort: new(vercel.ReasoningEffort(effort))}
+		}
+		return vercel.NewProviderOptions(o)
 	case KindOpenAI:
 		if re != nil {
 			return openai.NewProviderOptions(&openai.ProviderOptions{ReasoningEffort: re})
@@ -437,6 +457,13 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 	case KindGoogle:
 		return languageModel(spec, key, model, google.New, google.WithBaseURL, google.WithGeminiAPIKey, google.WithHeaders,
 			func(c *http.Client) google.Option { return google.WithHTTPClient(c) })
+	case KindOpenRouter:
+		// its URL is fixed; Register refuses a base_url, and a builtin's is the same URL
+		return languageModel(spec, key, model, openrouter.New, nil, openrouter.WithAPIKey, openrouter.WithHeaders,
+			func(c *http.Client) openrouter.Option { return openrouter.WithHTTPClient(c) })
+	case KindVercel:
+		return languageModel(spec, key, model, vercel.New, vercel.WithBaseURL, vercel.WithAPIKey, vercel.WithHeaders,
+			func(c *http.Client) vercel.Option { return vercel.WithHTTPClient(c) })
 	default:
 		return nil, fmt.Errorf("unknown provider kind %q", spec.Kind)
 	}
@@ -456,7 +483,7 @@ func languageModel[O any](spec Spec, key, model string, newProvider func(...O) (
 	withBaseURL, withAPIKey func(string) O, withHeaders func(map[string]string) O, withClient func(*http.Client) O,
 ) (fantasy.LanguageModel, error) {
 	opts := []O{withClient(modelHTTP())}
-	if spec.BaseURL != "" {
+	if spec.BaseURL != "" && withBaseURL != nil {
 		opts = append(opts, withBaseURL(spec.BaseURL))
 	}
 	if key != "" {
