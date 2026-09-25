@@ -50,9 +50,14 @@ func (h *Host) pluginsCommand(args []string) error {
 		h.GoSafe("plugins "+verb, func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			done := h.Busy(label, cancel)
-			err := fn(ctx)
-			done()
+			stop := cancel
+			if verb == "delete" {
+				stop = nil // Delete takes no ctx, so esc would stop nothing
+			}
+			err := func() error {
+				defer h.Busy(label, stop)()
+				return fn(ctx)
+			}()
 			if err != nil && ctx.Err() == nil {
 				h.CommandFailed("plugins", pluginsErr(err))
 				if errors.Is(err, plugins.ErrUsage) {

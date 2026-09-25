@@ -474,9 +474,10 @@ func (h *Host) OpenHealth() error {
 	// A Go command runs on the key loop, and the checks do file IO and call
 	// Lua under the veto deadline: collect them off it, then open.
 	h.GoSafe("health", func() {
-		done := h.Busy("Checking health", nil)
-		items := h.healthItems()
-		done()
+		items := func() []any {
+			defer h.Busy("Checking health", nil)()
+			return h.healthItems()
+		}()
 		ui.OpenOverlay(Overlay{ID: "health", Title: "Health", Origin: lua.OriginBuiltin, Items: items})
 	})
 	return nil
