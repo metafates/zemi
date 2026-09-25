@@ -24,7 +24,7 @@ const lineOverhead = len("- [12345678 learned 365d] \n")
 // gate charges against ScopeBudget.
 func LineSize(text string) int { return len(text) + lineOverhead }
 
-var scopeTitles = [][2]string{{"project", "## this project"}, {"user", "## every project"}}
+var scopeTitles = [][2]string{{ScopeProject, "## this project"}, {ScopeUser, "## every project"}}
 
 // Digest renders rows, given newest first, into the framed section: the
 // project scope first, each scope cut once its lines reach budget bytes.

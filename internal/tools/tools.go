@@ -22,6 +22,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
@@ -1086,7 +1087,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			false,
 			map[string]any{
 				"text":     map[string]any{"type": "string"},
-				"scope":    map[string]any{"type": "string", "enum": []string{"project", "user"}, "description": "project (default): this repository only; user: holds in every project"},
+				"scope":    map[string]any{"type": "string", "enum": []string{learn.ScopeProject, learn.ScopeUser}, "description": "project (default): this repository only; user: holds in every project"},
 				"quote":    map[string]any{"type": "string", "description": "the user's exact words from this session that this memory rests on"},
 				"replaces": map[string]any{"type": "string", "description": "the memory to rewrite, or to drop when text is empty: its id from # Memory, the first 8 characters or more"},
 			},
@@ -1133,7 +1134,7 @@ func runMemory(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolR
 	}
 	scope := str(in["scope"])
 	if scope == "" {
-		scope = "project"
+		scope = learn.ScopeProject
 	}
 	msg, err := p.Remember(scope, str(in["text"]), str(in["quote"]), str(in["replaces"]))
 	if err != nil {

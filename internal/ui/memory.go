@@ -124,7 +124,7 @@ func (a *App) markMemory(key string) {
 	mr.undo = append(mr.undo, memUndo{at: sel, item: it})
 	switch key {
 	case "scope":
-		mr.items[sel].Scope = map[bool]string{true: "project", false: "user"}[it.Scope == "user"]
+		mr.items[sel].Scope = map[bool]string{true: learn.ScopeProject, false: learn.ScopeUser}[it.Scope == learn.ScopeUser]
 		return
 	case "keep":
 		it.Action = "accept"
@@ -198,7 +198,7 @@ func memActions(it hostapi.MemoryRow, undo bool) []promptChoice {
 		out = []promptChoice{{key: "d", label: "Forget"}}
 	}
 	if !it.Forget {
-		out = append(out, promptChoice{key: "s", label: map[bool]string{true: "Only this project", false: "Use everywhere"}[it.Scope == "user"]}, promptChoice{key: "o", label: "Open in the editor"})
+		out = append(out, promptChoice{key: "s", label: map[bool]string{true: "Only this project", false: "Use everywhere"}[it.Scope == learn.ScopeUser]}, promptChoice{key: "o", label: "Open in the editor"})
 	}
 	if undo {
 		out = append(out, promptChoice{key: "u", label: "Undo"})
@@ -261,7 +261,7 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 	}
 	sections := map[bool]string{
 		true:  fmt.Sprintf("Suggested by zemi (%d)", n),
-		false: fmt.Sprintf("Remembered (%d) · this project %s · everywhere %s", len(mr.items)-n, kb("project"), kb("user")),
+		false: fmt.Sprintf("Remembered (%d) · this project %s · everywhere %s", len(mr.items)-n, kb(learn.ScopeProject), kb(learn.ScopeUser)),
 	}
 	inner := boxInner(w)
 	mr.size.w = max(mr.size.w, 56)
@@ -346,7 +346,7 @@ func (a *App) memDetailBox(it hostapi.MemoryRow, w, h, inner int) [][]hostapi.Se
 }
 
 func memScope(it hostapi.MemoryRow) string {
-	if it.Scope == "user" {
+	if it.Scope == learn.ScopeUser {
 		return "everywhere"
 	}
 	return "this project"

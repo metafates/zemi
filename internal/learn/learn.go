@@ -25,6 +25,13 @@ const (
 	OriginLearned = "learned"
 )
 
+// ScopeUser memories hold in every project, ScopeProject ones in one
+// repository (DESIGN §7).
+const (
+	ScopeUser    = "user"
+	ScopeProject = "project"
+)
+
 // ErrRefused marks text the intake policy will not store.
 var ErrRefused = errors.New("learn: intake refused")
 

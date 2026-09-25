@@ -355,7 +355,7 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 			used[m.Scope] += learn.LineSize(m.Text)
 		}
 		fmt.Fprintf(&b, "\n# Memory index (project %s, user %s)\n",
-			budgetUse(used["project"]), budgetUse(used["user"]))
+			budgetUse(used[learn.ScopeProject]), budgetUse(used[learn.ScopeUser]))
 		now := time.Now()
 		for _, m := range mems {
 			fmt.Fprintf(&b, "- [%s %s %s%s] %s\n", m.ID[:8], m.Scope, m.Origin, learn.Age(m.UpdatedAt, now), m.Text)
@@ -484,9 +484,9 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 	for _, pm := range p.Memories {
 		scope := pm.Scope
 		if scope == "" {
-			scope = "project"
+			scope = learn.ScopeProject
 		}
-		if scope != "project" && scope != "user" {
+		if scope != learn.ScopeProject && scope != learn.ScopeUser {
 			skipped++
 			h.Log.Debug("reflector", "memory skipped: bad scope", map[string]any{"scope": scope})
 			continue

@@ -50,7 +50,7 @@ type MemoryRow struct {
 // memoryDB returns the store owning a scope: user scope in the global DB,
 // project scope in the project DB (DESIGN §7).
 func (h *Host) memoryDB(scope string) *store.DB {
-	if scope == "user" {
+	if scope == learn.ScopeUser {
 		return h.GlobalDB
 	}
 	return h.DB
@@ -234,7 +234,7 @@ func (h *Host) Remember(text string) error {
 	if strings.TrimSpace(text) == "" {
 		return Usagef("usage: /memory <note>")
 	}
-	res, err := h.storeMemory(h.AgentSessionID(), "project", learn.OriginUser, text, "")
+	res, err := h.storeMemory(h.AgentSessionID(), learn.ScopeProject, learn.OriginUser, text, "")
 	if err != nil {
 		return err
 	}
@@ -312,8 +312,8 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 		if r.Edit {
 			edit = r.ID
 		}
-		if r.Scope != "user" {
-			r.Scope = "project"
+		if r.Scope != learn.ScopeUser {
+			r.Scope = learn.ScopeProject
 		}
 		if old.Forget {
 			r.Scope = old.Scope // it names the memory where it is
@@ -711,7 +711,7 @@ func (h *Host) locateMemory(id string) (*store.DB, *store.Memory, error) {
 func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 	var out []*store.Memory
 	var errs []error
-	for _, scope := range []string{"project", "user"} {
+	for _, scope := range []string{learn.ScopeProject, learn.ScopeUser} {
 		db := h.memoryDB(scope)
 		if db == nil {
 			continue
@@ -768,8 +768,8 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if o.Rank() <= lua.OriginProject.Rank() {
 			L.RaiseError("zemi.memory.add: %s code may not add memories", o)
 		}
-		scope := cmp.Or(rawString(opts, "scope"), "project")
-		if scope != "project" && scope != "user" {
+		scope := cmp.Or(rawString(opts, "scope"), learn.ScopeProject)
+		if scope != learn.ScopeProject && scope != learn.ScopeUser {
 			L.RaiseError("zemi.memory.add: scope must be project or user")
 		}
 		// user config writes the user's own memory; the model's Lua tool
@@ -826,7 +826,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 // the memory it supersedes. A subagent passes its parent, which a
 // background run may outlive.
 func (h *Host) proposeMemory(sid, origin, scope, text, quote, replaces string) (memoryOutcome, error) {
-	if scope != "project" && scope != "user" {
+	if scope != learn.ScopeProject && scope != learn.ScopeUser {
 		return memoryOutcome{}, errors.New("scope must be project or user")
 	}
 	res, err := h.storeMemory(sid, scope, origin, text, quote)
@@ -910,7 +910,7 @@ func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 	m := &res.Memory
 	switch {
-	case m.Origin == learn.OriginLearned && m.Scope == "user" && m.Quote == "":
+	case m.Origin == learn.OriginLearned && m.Scope == learn.ScopeUser && m.Quote == "":
 		return "a memory about the user needs a quote", true
 	case !h.memoryAuto(m.ProvenanceSessionID):
 		return "", true
