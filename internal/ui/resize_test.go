@@ -2,6 +2,7 @@ package ui
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -166,15 +167,17 @@ func TestResizeStartsNoTick(t *testing.T) {
 	}
 }
 
-// TestStaleRenderKeepsNewerLines: a render of an older generation that
-// lands after a newer one leaves the newer lines and pending mark alone.
+// TestStaleRenderKeepsNewerLines: a render dispatched earlier that lands
+// after a newer one, of the same generation at another size and failing
+// alike, leaves the newer lines and the pending mark alone.
 func TestStaleRenderKeepsNewerLines(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
-	app.pending = map[string]renderKey{"w": {gen: 7}}
-	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "new"}}}, gen: 6}})
-	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "old"}}}, gen: 5}})
-	if got := plainSegs(app.widgetLines("w")[0]); got != "new" || app.pending["w"].gen != 7 {
-		t.Fatalf("lines %q, pending %v", got, app.pending)
+	app.pending = map[string]renderKey{"w": {gen: 8}}
+	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "new"}}}, height: 19, gen: 7, seq: 2}})
+	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "old"}}}, height: 20, gen: 7, seq: 1}})
+	app.Update(widgetsRenderedMsg{{id: "w", height: 20, gen: 7, seq: 1, err: errors.New("old")}})
+	if c := app.caches["w"]; plainSegs(c.lines[0]) != "new" || c.height != 19 || c.err != "" || app.pending["w"].gen != 8 {
+		t.Fatalf("cache %+v, pending %v", c, app.pending)
 	}
 }
 

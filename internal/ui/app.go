@@ -104,6 +104,7 @@ type App struct {
 	prefixes   map[string]string // styled segment prefixes, rebuilt each frame
 	caches     map[string]*widgetCache
 	pending    map[string]renderKey // widget id -> the render in flight
+	renderSeq  int64                // counts render dispatches, so the latest one wins
 	frameGen   int64
 	timeStr    string
 	turnActive bool             // what onFrame last saw of the agent
@@ -144,6 +145,7 @@ type widgetCache struct {
 	lines         [][]hostapi.Segment
 	width, height int
 	gen           int64
+	seq           int64  // the dispatch the lines came from
 	err           string // last recorded render error; a repeat is not recorded again
 	partial       bool   // lines of a render that asked to run again: older rows are still to come
 
@@ -264,7 +266,7 @@ type widgetRender struct {
 	lines         [][]hostapi.Segment
 	more          bool // the render wants to run again
 	width, height int
-	gen           int64
+	gen, seq      int64
 	err           error
 }
 
@@ -610,6 +612,11 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	if a.pending[msg.id] == (renderKey{msg.gen, msg.width, msg.height}) {
 		delete(a.pending, msg.id)
 	}
+	// renders of one generation at two sizes run concurrently: one dispatched
+	// earlier that finishes last must not replace newer lines
+	if c := a.caches[msg.id]; c != nil && c.seq > msg.seq {
+		return
+	}
 	if msg.err != nil {
 		// The failure marks the generation rendered so the widget is not
 		// retried every tick, and a repeat of the same error is not recorded
@@ -619,7 +626,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 			c = &widgetCache{}
 			a.caches[msg.id] = c
 		}
-		c.gen, c.width, c.height = msg.gen, msg.width, msg.height
+		c.gen, c.seq, c.width, c.height = msg.gen, msg.seq, msg.width, msg.height
 		if !isTolerableRenderErr(msg.err) && c.err != msg.err.Error() {
 			c.err = msg.err.Error()
 			a.host.RecordError("widget "+msg.id, c.err)
@@ -629,12 +636,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 		})
 		return
 	}
-	// renders of different generations run concurrently: an older one that
-	// finishes last must not replace newer lines
-	if c := a.caches[msg.id]; c != nil && c.gen > msg.gen {
-		return
-	}
-	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen, partial: msg.more}
+	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen, seq: msg.seq, partial: msg.more}
 	old := a.caches[msg.id]
 	if old != nil {
 		c.wrapW, c.lineRows, c.spare, c.wrapN = old.wrapW, old.lineRows, old.spare, old.wrapN
@@ -684,11 +686,13 @@ func (a *App) renderStaleWidgetsCmd(sizeOnly bool) tea.Cmd {
 		return nil
 	}
 	st := a.uiState()
+	a.renderSeq++
+	seq := a.renderSeq
 	return func() tea.Msg {
 		out := make(widgetsRenderedMsg, 0, len(stale))
 		for _, w := range stale {
 			lines, more, err := a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, st)
-			out = append(out, widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen, err: err})
+			out = append(out, widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen, seq: seq, err: err})
 		}
 		return out
 	}
