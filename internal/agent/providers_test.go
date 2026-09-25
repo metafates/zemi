@@ -221,14 +221,18 @@ func TestBuiltin(t *testing.T) {
 	if c.Specs[0].ID != "anthropic" || c.Specs[1].ID != "openai" {
 		t.Errorf("order: %s, %s", c.Specs[0].ID, c.Specs[1].ID)
 	}
-	// an openai-compat entry whose endpoint resolves to "" is never a spec
-	bare := Builtin([]catwalk.Provider{{ID: "bare", Type: catwalk.TypeOpenAICompat, APIKey: "$BARE_KEY", APIEndpoint: "$BARE_URL"}}, func(k string) string { return map[string]string{"BARE_KEY": "k"}[k] })
-	if len(bare.Specs) != 0 || len(bare.Keys) != 0 {
-		t.Errorf("bare openai-compat: %+v", bare)
+	for _, p := range []catwalk.Provider{
+		{ID: "bare openai-compat", Type: catwalk.TypeOpenAICompat, APIKey: "$XAI_API_KEY", APIEndpoint: "$GEMINI_API_ENDPOINT"},
+		{ID: "unbundled key", Type: catwalk.TypeAnthropic, APIKey: "$GITHUB_TOKEN"},
+		{ID: "unbundled endpoint", Type: catwalk.TypeOpenAICompat, APIKey: "$XAI_API_KEY", APIEndpoint: "$GITHUB_TOKEN"},
+	} {
+		if c := Builtin([]catwalk.Provider{p}, func(k string) string { return map[string]string{"XAI_API_KEY": "k", "GITHUB_TOKEN": "gh"}[k] }); len(c.Specs) != 0 || len(c.Keys) != 0 {
+			t.Errorf("%s: %+v", p.ID, c)
+		}
 	}
 }
 
-var soloCatalog = []catwalk.Provider{{ID: "solo", Type: catwalk.TypeAnthropic, APIKey: "$SOLO_KEY", Models: []catwalk.Model{{ID: "m"}}}}
+var soloCatalog = []catwalk.Provider{{ID: "solo", Type: catwalk.TypeAnthropic, APIKey: "$ANTHROPIC_API_KEY", Models: []catwalk.Model{{ID: "m"}}}}
 
 func soloEnv(string) string { return "k" }
 

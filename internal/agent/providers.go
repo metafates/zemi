@@ -151,7 +151,7 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 	c := Catalog{Keys: map[string]string{}}
 	for _, p := range providers {
 		kind, ok := builtinKinds[p.Type]
-		if !ok || p.APIKey == "" {
+		if !ok || p.APIKey == "" || !bundledRef(p.APIKey) || !bundledRef(p.APIEndpoint) {
 			continue
 		}
 		c.Info.Providers++
@@ -179,6 +179,21 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 	}
 	return c
 }
+
+// bundledRefs are the "$NAME" references the bundled catalog makes.
+var bundledRefs = sync.OnceValue(func() map[string]bool {
+	refs := map[string]bool{}
+	for _, p := range embedded.GetAll() {
+		refs[p.APIKey], refs[p.APIEndpoint] = true, true
+	}
+	return refs
+})
+
+// bundledRef holds for a literal value and for a variable the bundled
+// catalog reads, so a fetched catalog cannot pick which secret zemi sends.
+// NOTE: a provider the feed adds with a variable of its own waits for the
+// zemi release that bundles it.
+func bundledRef(ref string) bool { return !strings.HasPrefix(ref, "$") || bundledRefs()[ref] }
 
 // CatalogURL is where UpdateCatalog fetches the catwalk catalog.
 const CatalogURL = "https://catwalk.charm.land"

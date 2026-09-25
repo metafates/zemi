@@ -136,7 +136,8 @@ providers come from the catwalk catalog (`agent.LoadCatalog`, converted at boot 
 `Host.Builtin` pointer): the embedded one, or the one `/model update` (`agent.UpdateCatalog`,
 a busy job that reloads config; `-p` only saves) fetched from catwalk.charm.land into
 `<data>/catwalk.json`, never `<cache>`, which a sandbox can write, since the catalog picks
-where each key is sent. No network at boot; a saved catalog from another bundled catwalk
+where each key is sent. A fetched one reads only the variables the bundled one names
+(`bundledRef`), so the feed cannot pick which secret goes. No network at boot; a saved catalog from another bundled catwalk
 version is ignored, so an upgrade brings its newer bundle back, and one that does not load is
 the `/health` catalog row's warning. Each builtin is on only while its key is
 exported, one without is in `Registry.Missing` (minus the ids config deleted or added) so the

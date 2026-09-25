@@ -898,8 +898,9 @@ refuses it.
 Builtin providers come from catwalk's embedded catalog, or the one
 `/model update` fetched from catwalk.charm.land and saved in the data
 dir (the catalog picks where each key is sent, so it lives where no
-sandbox writes; one saved under another bundled catwalk version is
-ignored, so an upgrade brings its newer bundle back): every generation
+sandbox writes, and it reads only the variables the bundled one names;
+one saved under another bundled catwalk version is ignored, so an
+upgrade brings its newer bundle back): every generation
 seeds the registry with the providers whose key env var is exported
 (resolved at boot and on an update in Go, the one place that reads them; a
 provider without its key is absent; `/model` lists them with their
