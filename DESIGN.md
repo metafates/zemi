@@ -1393,7 +1393,8 @@ provenance string.
   one of them. A Go screen's detail opens with
   `key: value` lines set as a table (prose after them is text as written), and its
   `status:` line colors the status words every screen shares: `starting`,
-  `ready`, `failed`, `stopped` and `off`. A list grouped by source
+  `ready`, `failed`, `stopped`, `idle` (a language server waiting for its
+  first file) and `off` (disabled). A list grouped by source
   (`/skills`, `/agents`, `/workflows`) puts the user's first,
   then builtin, plugin and project (`sortBySource`).
 - **Layout tree** (`zemi.ui.layout.set/get/rects`, `internal/ui/layout.go`): Lua hands

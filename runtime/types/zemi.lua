@@ -2069,7 +2069,7 @@ function zemi.mcp.list() end
 ---@field name string
 ---@field command string
 ---@field filetypes string
----@field status string "off" (starts on its first file), "starting", "ready", "failed" or "stopped".
+---@field status string "idle" (starts on its first file), "starting", "ready", "failed" or "stopped".
 ---@field error string
 
 ---@class zemi.lsp

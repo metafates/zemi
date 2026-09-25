@@ -659,7 +659,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 var fieldLine = regexp.MustCompile(`^([a-z][a-z -]{0,14}): (.*)$`)
 
 // statusHL colors the status words every screen shares.
-var statusHL = map[string]string{"starting": "Host:Warn", "ready": "Host:Ok", "failed": "Host:Danger", "stopped": "Host:Hint", "off": "Host:Hint"}
+var statusHL = map[string]string{"starting": "Host:Warn", "ready": "Host:Ok", "failed": "Host:Danger", "stopped": "Host:Hint", "idle": "Host:Hint", "off": "Host:Hint"}
 
 // fieldRows wraps a plain body, setting the "key: value" lines it opens
 // with as a table: dim keys in one column, each value wrapped beside its
