@@ -800,3 +800,78 @@ func TestOpenAIResponses(t *testing.T) {
 		}
 	}
 }
+
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// TestCacheBreakpoints: an anthropic request marks the system block, the
+// last two messages and the last tool; an openrouter one goes to its fixed
+// URL with the same messages marked (fantasy drops a tool's mark there).
+func TestCacheBreakpoints(t *testing.T) {
+	var mu sync.Mutex
+	var sent, body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		body = string(b)
+		mu.Unlock()
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":{"message":"no model here"}}`)
+	}))
+	defer srv.Close()
+	orig := modelHTTP
+	t.Cleanup(func() { modelHTTP = orig })
+	modelHTTP = func() *http.Client {
+		return &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+			mu.Lock()
+			sent = r.URL.String()
+			mu.Unlock()
+			r = r.Clone(r.Context())
+			r.URL.Scheme, r.URL.Host = "http", strings.TrimPrefix(srv.URL, "http://")
+			return http.DefaultTransport.RoundTrip(r)
+		})}
+	}
+	reg := NewRegistry()
+	for _, s := range []Spec{{ID: "a", Kind: KindAnthropic}, {ID: "or", Kind: KindOpenRouter}} {
+		if err := reg.Register(s, "k"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	noop := func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return fantasy.ToolResponse{}, nil
+	}
+	tools := []fantasy.AgentTool{fantasy.NewAgentTool("one", "one", noop), fantasy.NewAgentTool("two", "two", noop)}
+	marks := func(list []json.RawMessage) string {
+		out := ""
+		for _, v := range list {
+			out += map[bool]string{true: "+", false: "-"}[strings.Contains(string(v), "cache_control")]
+		}
+		return out
+	}
+	for _, c := range []struct{ model, url, system, messages, tools string }{
+		{"a/claude-sonnet-4", "https://api.anthropic.com/v1/messages", "+", "-++", "-+"},
+		{"or/anthropic/claude-sonnet-4", "https://openrouter.ai/api/v1/chat/completions", "", "+-++", "--"},
+	} {
+		m, err := reg.Resolve(c.model)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := NewRunner(m, tools, "sys")
+		r.Hooks, r.ProviderOptions = newRecHooks(), reg.CallOptions(c.model, "")
+		r.History = []fantasy.Message{UserMessage("a"), {Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "b"}}}}
+		_ = r.Send(t.Context(), "c") // the server refuses; only the request matters
+		mu.Lock()
+		var req struct{ System, Messages, Tools []json.RawMessage }
+		err = json.Unmarshal([]byte(body), &req)
+		gotURL := sent
+		mu.Unlock()
+		if err != nil {
+			t.Fatalf("%s: %v in %s", c.model, err, body)
+		}
+		got := [4]string{gotURL, marks(req.System), marks(req.Messages), marks(req.Tools)}
+		if want := [4]string{c.url, c.system, c.messages, c.tools}; got != want {
+			t.Fatalf("%s: url, system, messages, tools marks = %q, want %q", c.model, got, want)
+		}
+	}
+}

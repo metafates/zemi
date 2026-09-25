@@ -144,17 +144,17 @@ var ErrReplyCut = errors.New("the reply hit the output token limit (the model's 
 
 // NewRunner builds a runner over a resolved model.
 func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system string) *Runner {
-	r := &Runner{last: &LastErr{LanguageModel: model}, tools: tools}
+	r := &Runner{last: &LastErr{LanguageModel: model}}
 	opts := []fantasy.AgentOption{}
 	if system != "" {
 		opts = append(opts, fantasy.WithSystemPrompt(system))
 	}
 	if len(tools) > 0 {
-		wrapped := make([]fantasy.AgentTool, len(tools))
+		r.tools = make([]fantasy.AgentTool, len(tools))
 		for i, t := range tools {
-			wrapped[i] = runningTool{t, r}
+			r.tools[i] = runningTool{t, r, i == len(tools)-1}
 		}
-		opts = append(opts, fantasy.WithTools(wrapped...))
+		opts = append(opts, fantasy.WithTools(r.tools...))
 	}
 	r.agent = fantasy.NewAgent(r.last, opts...)
 	return r
@@ -164,7 +164,18 @@ func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system st
 // arguments end when a serial call ahead of it still runs.
 type runningTool struct {
 	fantasy.AgentTool
-	r *Runner
+	r    *Runner
+	last bool
+}
+
+// ProviderOptions puts the fourth cache breakpoint on the last tool, so a
+// new system prompt over the same tools still reads their schemas from the
+// cache. NOTE: a step whose ActiveTools leave the last tool out has none.
+func (t runningTool) ProviderOptions() fantasy.ProviderOptions {
+	if t.last {
+		return cacheControl
+	}
+	return t.AgentTool.ProviderOptions()
 }
 
 func (t runningTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
@@ -594,8 +605,9 @@ func ContextUsed(u fantasy.Usage) int64 {
 	return u.InputTokens + u.CacheReadTokens + u.CacheCreationTokens + u.OutputTokens
 }
 
-// cacheControl marks an Anthropic prompt cache breakpoint; other providers
-// ignore options keyed by another provider's name.
+// cacheControl marks an Anthropic prompt cache breakpoint; the openrouter
+// and vercel providers read it too, the rest ignore options keyed by
+// another provider's name.
 var cacheControl = fantasy.ProviderOptions{
 	anthropic.Name: &anthropic.ProviderCacheControlOptions{CacheControl: anthropic.CacheControl{Type: "ephemeral"}},
 }
@@ -603,7 +615,7 @@ var cacheControl = fantasy.ProviderOptions{
 // withCacheBreakpoints returns a copy of msgs with breakpoints on the system
 // prompt (it follows the tools, so both are cached) and on the last two
 // messages, so each step reads the previous step's prefix from the cache.
-// That is 3 of the 4 breakpoints Anthropic allows.
+// With runningTool's that is all 4 breakpoints Anthropic allows.
 func withCacheBreakpoints(msgs []fantasy.Message) []fantasy.Message {
 	out := slices.Clone(msgs)
 	for i := range out {
