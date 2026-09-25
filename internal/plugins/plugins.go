@@ -161,6 +161,9 @@ func Update(ctx context.Context, d config.Dirs, name string) (Plugin, error) {
 	if _, err := git(nctx, dir, "fetch", "--quiet", "--tags"); err != nil {
 		return Plugin{}, err
 	}
+	// a cancel stops the fetch only: a killed merge or checkout would leave
+	// .git/index.lock and a half-moved worktree the next boot loads
+	ctx = context.WithoutCancel(ctx)
 	to := ""
 	here, _ := git(ctx, dir, "tag", "--points-at", "HEAD")
 	if cur, cv := highest(here, -1); cur != "" {
