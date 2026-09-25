@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/perm"
@@ -22,31 +24,43 @@ type Dirs struct {
 }
 
 // xdg resolves one root: zemi's own override first, then the XDG variable
-// the default mirrors, then the default under the home directory. A relative
-// value is ignored, as the XDG spec says, so no root depends on the cwd.
-func xdg(env, xdgEnv, underHome string) string {
+// the default mirrors, then the default under home, "" when home is unknown.
+// A relative value is ignored, as the XDG spec says, so no root depends on the cwd.
+func xdg(home, env, xdgEnv, underHome string) string {
 	if v := os.Getenv(env); filepath.IsAbs(v) {
 		return v
 	}
 	if v := os.Getenv(xdgEnv); filepath.IsAbs(v) {
 		return filepath.Join(v, "zemi")
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = os.TempDir() // no $HOME: still absolute, never the project
+	if home == "" {
+		return ""
 	}
 	return filepath.Join(home, underHome)
 }
 
-// ResolveDirs computes the standard locations from the environment.
-func ResolveDirs() Dirs {
-	return Dirs{
-		ConfigHome: xdg("ZEMI_CONFIG_HOME", "XDG_CONFIG_HOME", ".config/zemi"),
-		DataHome:   xdg("ZEMI_DATA_HOME", "XDG_DATA_HOME", ".local/share/zemi"),
-		StateHome:  xdg("ZEMI_STATE_HOME", "XDG_STATE_HOME", ".local/state/zemi"),
-		CacheHome:  xdg("ZEMI_CACHE_HOME", "XDG_CACHE_HOME", ".cache/zemi"),
+// ResolveDirs computes the standard locations from the environment. With no
+// $HOME (cron, a systemd unit) home is the passwd entry's, never a shared temp
+// dir another user could plant an init.lua in; with neither it fails.
+func ResolveDirs() (Dirs, error) {
+	home, _ := os.UserHomeDir()
+	if !filepath.IsAbs(home) {
+		home = ""
+		if u, err := user.Current(); err == nil && filepath.IsAbs(u.HomeDir) {
+			home = u.HomeDir
+		}
+	}
+	d := Dirs{
+		ConfigHome: xdg(home, "ZEMI_CONFIG_HOME", "XDG_CONFIG_HOME", ".config/zemi"),
+		DataHome:   xdg(home, "ZEMI_DATA_HOME", "XDG_DATA_HOME", ".local/share/zemi"),
+		StateHome:  xdg(home, "ZEMI_STATE_HOME", "XDG_STATE_HOME", ".local/state/zemi"),
+		CacheHome:  xdg(home, "ZEMI_CACHE_HOME", "XDG_CACHE_HOME", ".cache/zemi"),
 		ProjectDir: projectRoot(),
 	}
+	if slices.Contains([]string{d.ConfigHome, d.DataHome, d.StateHome, d.CacheHome}, "") {
+		return d, errors.New("no home directory: set HOME or the ZEMI_*_HOME variables")
+	}
+	return d, nil
 }
 
 func projectRoot() string {

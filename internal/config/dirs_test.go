@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,20 +11,24 @@ import (
 )
 
 // TestXDG: a relative override or XDG value is ignored, so every root stays
-// absolute; with no $HOME the fallback is too.
+// absolute; with no $HOME home is the passwd entry's.
 func TestXDG(t *testing.T) {
 	tmp := t.TempDir()
+	u, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct{ name, zemi, xdgHome, home, want string }{
 		{"zemi override", "/z", "/x", tmp, "/z"},
 		{"xdg", "", "/x", tmp, "/x/zemi"},
 		{"relative ignored", "z", "x", tmp, filepath.Join(tmp, ".config/zemi")},
-		{"no home", "", "", "", filepath.Join(os.TempDir(), ".config/zemi")},
+		{"no home", "", "", "", filepath.Join(u.HomeDir, ".config/zemi")},
 	} {
 		t.Setenv("ZEMI_CONFIG_HOME", c.zemi)
 		t.Setenv("XDG_CONFIG_HOME", c.xdgHome)
 		t.Setenv("HOME", c.home)
-		if got := ResolveDirs().ConfigHome; got != c.want {
-			t.Errorf("%s: ConfigHome = %q, want %q", c.name, got, c.want)
+		if d, err := ResolveDirs(); err != nil || d.ConfigHome != c.want {
+			t.Errorf("%s: ConfigHome = %q, %v, want %q", c.name, d.ConfigHome, err, c.want)
 		}
 	}
 }

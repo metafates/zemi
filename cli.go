@@ -94,7 +94,11 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 	if len(args) > 0 && args[0] == "plugins" {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		if err := plugins.Run(ctx, config.ResolveDirs(), args[1:], stdout); ctx.Err() != nil {
+		dirs, err := config.ResolveDirs()
+		if err == nil {
+			err = plugins.Run(ctx, dirs, args[1:], stdout)
+		}
+		if ctx.Err() != nil {
 			return o, 130
 		} else if err != nil {
 			fmt.Fprintln(stderr, "zemi: plugins:", err)

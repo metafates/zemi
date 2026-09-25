@@ -65,8 +65,11 @@ func run(args []string) int {
 	}
 	ctx := context.Background()
 
-	dirs := config.ResolveDirs()
-	if err := dirs.Ensure(); err != nil {
+	dirs, err := config.ResolveDirs()
+	if err == nil {
+		err = dirs.Ensure()
+	}
+	if err != nil {
 		return fail(err)
 	}
 	log := logging.New(dirs.LogDir())
@@ -217,7 +220,7 @@ func run(args []string) int {
 		os.Exit(130)
 	}()
 
-	_, err := p.Run()
+	_, err = p.Run()
 	// Children run in their own sessions (internal/proc), so the terminal
 	// closing does not reach them: stop them here. Exit even if some cleanup
 	// hangs.
