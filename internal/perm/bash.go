@@ -584,12 +584,12 @@ func EnvIsSecret(name string) bool {
 		slices.ContainsFunc(secretEnvShape, func(s string) bool { return strings.Contains(up, s) })
 }
 
-func (st *Store) envKept(name string) bool {
-	if st == nil || st.EnvKeep == nil {
+func (s *Store) envKept(name string) bool {
+	if s == nil || s.EnvKeep == nil {
 		return false
 	}
-	for s := range strings.SplitSeq(st.EnvKeep(), ",") {
-		if strings.EqualFold(strings.TrimSpace(s), name) {
+	for k := range strings.SplitSeq(s.EnvKeep(), ",") {
+		if strings.EqualFold(strings.TrimSpace(k), name) {
 			return true
 		}
 	}
@@ -599,10 +599,10 @@ func (st *Store) envKept(name string) bool {
 // ChildEnv is a child process environment: zemi's own minus secret-shaped
 // names the user did not keep, plus extras that pass the secret and
 // assignment gates.
-func (st *Store) ChildEnv(extras map[string]any) ([]string, error) {
+func (s *Store) ChildEnv(extras map[string]any) ([]string, error) {
 	var out []string
 	for _, kv := range os.Environ() {
-		if name, _, ok := strings.Cut(kv, "="); ok && (!EnvIsSecret(name) || st.envKept(name)) {
+		if name, _, ok := strings.Cut(kv, "="); ok && (!EnvIsSecret(name) || s.envKept(name)) {
 			out = append(out, kv)
 		}
 	}

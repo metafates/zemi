@@ -677,7 +677,7 @@ func CallDone(ctx context.Context, ids ...string) {
 func turn(ctx context.Context, id string) func() {
 	c := &callOrder
 	// taking mu first means the waiter is inside Wait when the broadcast lands
-	defer context.AfterFunc(ctx, func() { c.mu.Lock(); c.mu.Unlock(); c.cond.Broadcast() })()
+	defer context.AfterFunc(ctx, func() { c.mu.Lock(); c.mu.Unlock(); c.cond.Broadcast() })() //nolint:staticcheck // SA2001: the empty section is the ordering
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	k := callKey(ctx, id)

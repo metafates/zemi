@@ -504,7 +504,7 @@ func (r *wfRun) finish(t *wfTask, val glua.LValue, err error) {
 		p.vals.RawSetInt(t.slot, val)
 	}
 	if p.waiting--; p.waiting == 0 {
-		var errs glua.LValue = glua.LNil
+		errs := glua.LNil
 		if p.errs.MaxN() > 0 {
 			errs = p.errs
 		}
