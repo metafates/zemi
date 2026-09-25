@@ -60,14 +60,15 @@ Goldens conflict on every UI merge; take either side and run `make golden`.
 
 ## Commands
 
-A Makefile wraps the plain Go toolchain (module `github.com/metafates/zemi`, Go 1.27). No CI,
-no lint config; `make check` is what a change has to pass:
+A Makefile wraps the plain Go toolchain (module `github.com/metafates/zemi`, Go 1.27). No CI;
+`make check` is what a change has to pass:
 
 ```
-make check              # go vet + go test + make luals + make stylua + a gofmt check, all must be clean
+make check              # go vet + go test + make luals + make stylua + make lint + a gofmt check, all must be clean
 make luals              # lua-language-server over runtime/; prints a skip line without the binary
                         # not on PATH? make check LUALS=/path/to/lua-language-server
 make stylua             # stylua --check over runtime/ (stylua.toml); a skip line without the binary
+make lint               # golangci-lint run (.golangci.yml, curated linters); a skip line without the binary
 make build / make run   # go build -o bin/zemi . / run the TUI against your real ~/.config/zemi
 make test               # full suite (~20s, pure Go, no CGO; network only for one macOS TLS check)
 make race               # go test -race ./internal/...

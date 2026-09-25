@@ -1,0 +1,62 @@
+version: "2"
+run:
+  tests: true
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - unused
+    - ineffassign
+    - misspell
+    - usestdlibvars
+    - modernize
+    - exhaustive
+    - errorlint
+    - unconvert
+    - unparam
+    - wastedassign
+    - makezero
+    - copyloopvar
+    - intrange
+    - nolintlint
+    - perfsprint
+  settings:
+    govet:
+      enable-all: true
+      disable: [fieldalignment, shadow]
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.Rows).Close
+        - os.Remove
+        - os.RemoveAll
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*net/http.Server).Close
+        - (net.Listener).Close
+        - (net.Conn).Close
+        - (*github.com/metafates/zemi/internal/mcp.Client).Close
+        - golang.org/x/sys/unix.Close
+    exhaustive:
+      default-signifies-exhaustive: true
+    perfsprint:
+      errorf: false
+      strconcat: false
+      concat-loop: false
+    staticcheck:
+      checks: ["all", "-ST1000", "-ST1003", "-ST1020", "-ST1021", "-ST1022", "-QF1008"]
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [errcheck, unparam]
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

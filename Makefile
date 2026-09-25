@@ -1,9 +1,10 @@
 GO_FILES = $(shell git ls-files '*.go')
 
-.PHONY: all build run test race vet fmt golden luals stylua check install clean
+.PHONY: all build run test race vet lint fmt golden luals stylua check install clean
 
 LUALS ?= lua-language-server
 STYLUA ?= stylua
+GOLANGCI ?= golangci-lint
 
 all: check build
 
@@ -21,6 +22,11 @@ race:
 
 vet:
 	go vet ./...
+
+# golangci-lint with .golangci.yml; skipped without the binary
+lint:
+	@if command -v $(GOLANGCI) >/dev/null; then $(GOLANGCI) run ./...; \
+	else echo "lint: $(GOLANGCI) not installed, skipped (GOLANGCI=/path/to/golangci-lint to point at one)"; fi
 
 fmt:
 	gofmt -w $(GO_FILES)
@@ -44,7 +50,7 @@ stylua:
 	@if command -v $(STYLUA) >/dev/null; then $(STYLUA) --check runtime; \
 	else echo "stylua: $(STYLUA) not installed, skipped (STYLUA=/path/to/stylua to point at one)"; fi
 
-check: vet test luals stylua
+check: vet test luals stylua lint
 	@out=$$(gofmt -l $(GO_FILES)); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
 install:
