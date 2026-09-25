@@ -413,9 +413,9 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 	}
 }
 
-// TestMemoryForgetOriginGate pins the review guard: model and plugin
+// TestMemoryDelOriginGate pins the review guard: model and plugin
 // origins may never delete through Lua; user origin may, by id prefix.
-func TestMemoryForgetOriginGate(t *testing.T) {
+func TestMemoryDelOriginGate(t *testing.T) {
 	h, r := newTestHostDB(t)
 	seedSession(t, h)
 	m := &store.Memory{Scope: "project", Text: "old note about the pipeline", ProvenanceSessionID: "seed", Origin: learn.OriginLearned}

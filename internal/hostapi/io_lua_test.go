@@ -128,9 +128,9 @@ func TestJobCwdAndSandbox(t *testing.T) {
 	`)
 }
 
-// TestFsDatadir: user code reads and, with a rule, writes its data dir and
+// TestFsDataDir: user code reads and, with a rule, writes its data dir and
 // may hand it to the editor; plugin code gets neither the path nor the jail.
-func TestFsDatadir(t *testing.T) {
+func TestFsDataDir(t *testing.T) {
 	h, r := newTestHost(t)
 	h.Dirs.DataHome = t.TempDir()
 	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow})
