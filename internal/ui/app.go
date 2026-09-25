@@ -103,7 +103,7 @@ type App struct {
 
 	prefixes   map[string]string // styled segment prefixes, rebuilt each frame
 	caches     map[string]*widgetCache
-	pending    map[string]int64 // widget id -> generation of the render in flight
+	pending    map[string]renderKey // widget id -> the render in flight
 	frameGen   int64
 	timeStr    string
 	turnActive bool             // what onFrame last saw of the agent
@@ -253,6 +253,12 @@ type frameTickMsg struct{}
 // message, one compose, where one per widget cost a compose each.
 type widgetsRenderedMsg []widgetRender
 
+// renderKey is what a widget render was for: a frame generation at a size.
+type renderKey struct {
+	gen           int64
+	width, height int
+}
+
 type widgetRender struct {
 	id            string
 	lines         [][]hostapi.Segment
@@ -293,7 +299,19 @@ func (a *App) Init() tea.Cmd {
 	return tea.Batch(a.frameTickCmd(frameInterval), a.drainHooksCmd(), tea.RequestBackgroundColor)
 }
 
+// Update re-renders at once the widgets a message resized, so no frame draws
+// lines rendered for another size; the tick renders the rest.
+// NOTE: that solves the layout once per message, mouse motion included; if it
+// shows in a profile, run it only on a composer height change and a refresh.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	_, cmd := a.update(msg)
+	if _, tick := msg.(frameTickMsg); tick {
+		return a, cmd
+	}
+	return a, tea.Batch(cmd, a.renderStaleWidgetsCmd(true))
+}
+
+func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case frameTickMsg:
 		return a, a.onFrame()
@@ -322,7 +340,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, a.notifyIfAway(text)
 	case hookMsg:
-		_, cmd := a.Update(msg.inner)
+		_, cmd := a.update(msg.inner)
 		// Re-arm the persistent drain: each delivered hookMsg re-arms
 		// exactly one, so the chain never breaks.
 		return a, tea.Batch(cmd, a.drainHooksCmd())
@@ -341,9 +359,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.width, a.height = msg.Width, msg.Height
 		a.host.EmitAsync("ui.resize", map[string]any{"width": msg.Width, "height": msg.Height})
 		a.bump()
-		// render now rather than start a tick: each tick schedules the next,
-		// so every resize would add a frame loop that never stops
-		return a, a.renderStaleWidgetsCmd()
 	case tea.KeyPressMsg:
 		cmd := a.handleKey(msg)
 		a.publishComposer()
@@ -541,7 +556,7 @@ func (a *App) onFrame() tea.Cmd {
 		a.lastState = st
 		a.frameGen++
 	}
-	cmds := []tea.Cmd{a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd(), replay}
+	cmds := []tea.Cmd{a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd(false), replay}
 	if c := a.progressCmd(active); c != nil {
 		cmds = append(cmds, c)
 	}
@@ -592,7 +607,7 @@ func (a *App) frame() int {
 }
 
 func (a *App) onWidgetRendered(msg widgetRender) {
-	if a.pending[msg.id] == msg.gen {
+	if a.pending[msg.id] == (renderKey{msg.gen, msg.width, msg.height}) {
 		delete(a.pending, msg.id)
 	}
 	if msg.err != nil {
@@ -642,29 +657,33 @@ func isTolerableRenderErr(err error) bool {
 	return errors.Is(err, lua.ErrHot) || errors.Is(err, lua.ErrReloaded) || errors.Is(err, lua.ErrCanceled)
 }
 
-// renderStaleWidgetsCmd renders, as ui-class requests, the widgets whose
-// cache is missing or stale for the current frame generation.
-func (a *App) renderStaleWidgetsCmd() tea.Cmd {
-	gen, st := a.frameGen, a.uiState()
+// renderStaleWidgetsCmd renders, as ui-class requests, the widgets rendered
+// at another size and, unless sizeOnly, those never rendered or stale for the
+// current frame generation.
+func (a *App) renderStaleWidgetsCmd(sizeOnly bool) tea.Cmd {
+	gen := a.frameGen
 	var stale []shownWidget
 	for _, w := range a.shownWidgets() {
-		if c := a.caches[w.ID]; c != nil && c.gen == gen && c.width == w.width && c.height == w.height {
+		c := a.caches[w.ID]
+		if c == nil && sizeOnly || c != nil && c.width == w.width && c.height == w.height && (sizeOnly || c.gen == gen) {
 			continue
 		}
 		// One render per widget in flight: at 20 fps a slow widget would
 		// otherwise pile up a queue of renders of the same generation.
-		if a.pending[w.ID] == gen {
+		key := renderKey{gen, w.width, w.height}
+		if a.pending[w.ID] == key {
 			continue
 		}
 		if a.pending == nil {
-			a.pending = map[string]int64{}
+			a.pending = map[string]renderKey{}
 		}
-		a.pending[w.ID] = gen
+		a.pending[w.ID] = key
 		stale = append(stale, w)
 	}
 	if len(stale) == 0 {
 		return nil
 	}
+	st := a.uiState()
 	return func() tea.Msg {
 		out := make(widgetsRenderedMsg, 0, len(stale))
 		for _, w := range stale {

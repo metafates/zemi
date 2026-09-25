@@ -1426,7 +1426,8 @@ provenance string.
   async Lua callbacks (job, http, agent) and async event handlers
   bump it when they return, and `zemi.ui.redraw()` bumps it on demand (a
   repeating timer calls it itself, so an idle tick costs nothing). A
-  render's ctx builds `transcript`, `agent`, `todos`, `recent` and
+  widget a message resized renders on that message instead, so no frame
+  draws lines rendered for another size. A render's ctx builds `transcript`, `agent`, `todos`, `recent` and
   `instructions_missing` on first read: over a 500-row transcript a widget that reads only scalars renders
   in under 20 µs instead of 1 ms (`BenchmarkWidgetCtx`). A line table a
   widget returned is never changed by it: Go converts one it saw in the last

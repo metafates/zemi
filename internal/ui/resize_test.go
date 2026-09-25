@@ -170,10 +170,10 @@ func TestResizeStartsNoTick(t *testing.T) {
 // lands after a newer one leaves the newer lines and pending mark alone.
 func TestStaleRenderKeepsNewerLines(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
-	app.pending = map[string]int64{"w": 7}
+	app.pending = map[string]renderKey{"w": {gen: 7}}
 	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "new"}}}, gen: 6}})
 	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "old"}}}, gen: 5}})
-	if got := plainSegs(app.widgetLines("w")[0]); got != "new" || app.pending["w"] != 7 {
+	if got := plainSegs(app.widgetLines("w")[0]); got != "new" || app.pending["w"].gen != 7 {
 		t.Fatalf("lines %q, pending %v", got, app.pending)
 	}
 }

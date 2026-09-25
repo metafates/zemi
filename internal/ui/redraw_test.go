@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -113,7 +116,7 @@ func TestBumpWakesIdleTick(t *testing.T) {
 	if d := time.Since(start); d >= idleInterval {
 		t.Fatalf("the bump waited out the idle tick: %v", d)
 	}
-	if msg, ok := app.renderStaleWidgetsCmd()().(widgetsRenderedMsg); !ok || len(msg) < 2 {
+	if msg, ok := app.renderStaleWidgetsCmd(false)().(widgetsRenderedMsg); !ok || len(msg) < 2 {
 		t.Fatalf("stale widgets should render as one message, got %T %v", msg, msg)
 	}
 	tick = app.frameTickCmd(idleInterval)
@@ -141,5 +144,48 @@ func TestFrameClock(t *testing.T) {
 			t.Fatalf("tick %d ran in frame %d, after one in frame %d", i, f, last)
 		}
 		last = f
+	}
+}
+
+// TestComposerGrowResizesSplash: newlines typed faster than the tick
+// re-render the splash at the chat's new height at once, a render in flight
+// for the old height included, so no frame draws it a row too tall.
+func TestComposerGrowResizesSplash(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 24)
+	app.screen(t)
+	var cmds []tea.Cmd
+	for range 2 {
+		_, cmd := app.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
+		cmds = append(cmds, cmd)
+	}
+	var run func(tea.Cmd)
+	run = func(cmd tea.Cmd) {
+		if cmd == nil {
+			return
+		}
+		switch msg := cmd().(type) {
+		case tea.BatchMsg:
+			for _, c := range msg {
+				run(c)
+			}
+		case widgetsRenderedMsg:
+			app.Update(msg)
+		}
+	}
+	for _, cmd := range cmds {
+		run(cmd)
+	}
+	app.Frame()
+	for _, w := range app.shownWidgets() {
+		if c := app.caches[w.ID]; w.ID == "splash" && c.height != w.height {
+			t.Fatalf("splash rendered for %d rows, the chat has %d", c.height, w.height)
+		}
+	}
+	for _, row := range app.lastRows {
+		for _, seg := range row {
+			if seg.Bar {
+				t.Fatalf("a scrollbar is painted:\n%s", ansi.Strip(app.Frame()))
+			}
+		}
 	}
 }

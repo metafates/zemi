@@ -1313,7 +1313,7 @@ func TestWidgetErrorRecordedOnce(t *testing.T) {
 	for range 10 {
 		for app.Pump() {
 		}
-		if cmd := app.renderStaleWidgetsCmd(); cmd != nil {
+		if cmd := app.renderStaleWidgetsCmd(false); cmd != nil {
 			app.Update(cmd())
 		}
 	}
