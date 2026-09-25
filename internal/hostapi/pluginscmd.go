@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -115,7 +114,7 @@ func (h *Host) pluginsCommand(args []string) error {
 		// install takes a URL and an optional name, the last word either way
 		name := "plugins"
 		if len(args) > 1 {
-			name = strings.TrimSuffix(path.Base(strings.TrimRight(args[len(args)-1], "/")), ".git")
+			name = plugins.Name(args[len(args)-1])
 		}
 		label := map[string]string{"install": "Installing ", "update": "Updating ", "delete": "Deleting "}[verb] + name
 		background(label, func(ctx context.Context) error {

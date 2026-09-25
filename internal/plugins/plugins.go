@@ -87,6 +87,12 @@ func Scan(d config.Dirs) ([]Plugin, error) {
 	return ps, nil
 }
 
+// Name is the name a plugin installed from url gets by default: the URL's
+// last segment without ".git".
+func Name(url string) string {
+	return strings.TrimSuffix(path.Base(strings.TrimRight(url, "/")), ".git")
+}
+
 // Install clones url as name (default: the URL's last segment) and checks
 // out its highest semver tag, if it has one. The clone lands in a dot dir
 // and is renamed into place, so the config watcher never loads half of it.
@@ -103,7 +109,7 @@ func Install(ctx context.Context, d config.Dirs, url, name string) (Plugin, erro
 		}
 		url = abs
 	}
-	name = cmp.Or(name, strings.TrimSuffix(path.Base(strings.TrimRight(url, "/")), ".git"))
+	name = cmp.Or(name, Name(url))
 	if err := free(d, name); err != nil {
 		return Plugin{}, err
 	}
