@@ -269,11 +269,7 @@ func (h *Host) SetPermMode(mode string) error {
 		}
 		return Usagef("unknown permission mode %q (want %s)", mode, strings.Join(names, ", "))
 	}
-	if err := h.Settings.SetHost("permissions.mode", mode); err != nil {
-		return err
-	}
-	h.refresh()
-	return nil
+	return h.setWatched("permissions.mode", mode)
 }
 
 // approvePlan is the plan tool's hook: it shows a plan in the approval popup.

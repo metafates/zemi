@@ -108,17 +108,9 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 	theme.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		h.refuseBelowUser(L, "ui.theme.set") // it also writes the user-only ui.theme setting
-		name := L.CheckString(1)
-		if h.Themes.Get(name) == nil {
-			L.RaiseError("zemi.ui.theme.set: unknown theme %q", name)
-		}
-		fired, err := h.Settings.SetQuiet("ui.theme", name)
-		if err != nil {
+		if err := h.SetTheme(L.CheckString(1)); err != nil {
 			L.RaiseError("zemi.ui.theme.set: %v", err)
 		}
-		h.deliverFired(L, fired)
-		h.refresh()
-		h.EmitAsync("ui.theme", map[string]any{"theme": name})
 		return 0
 	}))
 	theme.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
@@ -665,6 +657,18 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 			h.Log.Debug("events", "async emit dropped", map[string]any{"event": name, "error": err.Error()})
 		}
 	})
+}
+
+// SetTheme makes a registered theme the active one.
+func (h *Host) SetTheme(name string) error {
+	if h.Themes.Get(name) == nil {
+		return Usagef("unknown theme %q", name)
+	}
+	if err := h.setWatched("ui.theme", name); err != nil {
+		return err
+	}
+	h.EmitAsync("ui.theme", map[string]any{"theme": name})
+	return nil
 }
 
 // ActiveThemeName returns the configured theme, or its "-light" variant
