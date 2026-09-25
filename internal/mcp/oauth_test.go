@@ -123,7 +123,7 @@ func TestOAuthSignIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
 	}
-	if p := <-page; !strings.Contains(p, "You're signed in") || !strings.Contains(p, "<b>fake</b>") {
+	if p := <-page; !strings.Contains(p, "<h1>signed in</h1>") || !strings.Contains(p, "<b>fake</b>") {
 		t.Fatalf("callback page:\n%s", p)
 	}
 	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
@@ -240,6 +240,25 @@ func TestCallbackPageEscapes(t *testing.T) {
 	writeCallbackPage(rec, "<srv>", errors.New(`<script>alert(1)</script>`))
 	if body := rec.Body.String(); strings.Contains(body, "<script>alert") || rec.Code != 400 {
 		t.Fatalf("unescaped failure page (%d):\n%s", rec.Code, body)
+	}
+}
+
+// TestCallbackPageMatchesLanding: callback.html copies the landing's palette
+// and snail, since go:embed cannot reach docs/.
+func TestCallbackPageMatchesLanding(t *testing.T) {
+	landing, err := os.ReadFile("../../docs/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ name, from, to string }{
+		{"snail", `<svg class="snail"`, "</svg>"},
+		{"palette", ":root {", "}\n}"}, // the light tokens through the dark block
+	} {
+		_, rest, ok := strings.Cut(string(landing), c.from)
+		block, _, found := strings.Cut(rest, c.to)
+		if !ok || !found || !strings.Contains(callbackHTML, c.from+block+c.to) {
+			t.Errorf("%s: callback.html no longer matches docs/index.html", c.name)
+		}
 	}
 }
 

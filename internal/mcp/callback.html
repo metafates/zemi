@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .OK}}signed in{{else}}sign-in failed{{end}} - zemi</title>
+<!-- the landing page's palette and snail (docs/index.html); a sign-in page loads nothing remote -->
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #fafafa; --fg: #1b1b1b; --dim: #8e8e8e; --rule: #cfcfcf; --accent: #6b78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #141414; --fg: #d8d8d8; --dim: #7a7a7a; --rule: #3a3a3a; --accent: #9aa5f2; }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 3.5rem 16px 4rem;
+  background: var(--bg); color: var(--fg);
+  font: 15px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  -webkit-font-smoothing: antialiased;
+}
+main { max-width: 72ch; margin: 0 auto; }
+p { margin: 0 0 1.2em; max-width: 60ch; }
+.dim { color: var(--dim); }
+.accent { color: var(--accent); }
+.snail { display: block; width: 210px; height: auto; margin: 0 0 1.6rem -6px; }
+.snail .shell { stroke: var(--accent); }
+.snail .head { stroke: var(--fg); }
+h1 { font-size: 1.5em; font-weight: 600; margin: 0 0 .3em; line-height: 1.2; }
+.tag { margin-bottom: .6em; }
+.eyes { display: flex; flex-wrap: wrap; gap: .6em 3ch; margin: 0 0 2.4rem; list-style: none; padding: 0; }
+.eyes li { display: flex; flex-direction: column; }
+.eyes .m { font-weight: 600; }
+.eyes .l { color: var(--dim); }
+.sec { margin: 2.4rem 0 0; }
+h2 { font-size: inherit; font-weight: 400; margin: 0 0 1rem; display: flex; align-items: center; }
+h2::before { content: ""; width: 2ch; border-top: 1px solid var(--rule); margin-right: 1ch; }
+h2::after { content: ""; flex: 1; border-top: 1px solid var(--rule); margin-left: 1ch; }
+.cmd { padding: .7rem 1ch; border: 1px solid var(--rule); margin: 0 0 1.1rem; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+
+<svg class="snail" viewBox="0 0 118 64" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <g class="shell">
+    <rect x="5" y="8" width="50" height="48" rx="8"/>
+    <rect x="15" y="24" width="30" height="16" rx="6"/>
+  </g>
+  <g class="head">
+    <path d="M85 22v18M95 22v18"/>
+    <path d="M45 56h14q6 0 6-6v-4q0-6 6-6h28q6 0 6 6v10"/>
+  </g>
+</svg>
+
+{{if .OK}}
+<h1>signed in</h1>
+<p class="tag">zemi is connected to <b>{{.Server}}</b>.</p>
+<ul class="eyes"><li><span class="m"><span class="accent">@</span>^^</span><span class="l">done</span></li></ul>
+{{else}}
+<h1>sign-in failed</h1>
+<p class="tag">zemi could not sign in to <b>{{.Server}}</b>.</p>
+<ul class="eyes"><li><span class="m"><span class="accent">@</span>&gt;&lt;</span><span class="l">error</span></li></ul>
+<div class="cmd">{{.Reason}}</div>
+{{end}}
+
+<section class="sec">
+<h2>next</h2>
+{{if .OK}}
+<p class="dim" id="foot">You can close this tab and go back to your terminal.</p>
+<script>
+  let n = 3; const foot = document.getElementById("foot");
+  const tick = () => { if (n === 0) { window.close(); foot.textContent = "You can close this tab and go back to your terminal."; return; }
+    foot.textContent = "This tab closes in " + n + "s."; n--; setTimeout(tick, 1000); };
+  tick();
+</script>
+{{else}}
+<p class="dim">Go back to zemi and open /mcp to try again.</p>
+{{end}}
+</section>
+
+</main>
+</body>
+</html>

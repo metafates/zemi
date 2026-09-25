@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -531,84 +532,7 @@ func writeCallbackPage(w http.ResponseWriter, server string, err error) {
 	_ = callbackPage.Execute(w, data)
 }
 
-// The page follows zemi's landing page: mono type on paper, ink rules, and
-// the snail in a dark terminal, its eyes ^^ when it worked and >< when it
-// did not, as in the TUI. No webfont: a sign-in page loads nothing remote.
-var callbackPage = template.Must(template.New("callback").Parse(`<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{if .OK}}Signed in{{else}}Sign-in failed{{end}} - zemi</title>
-<style>
-:root { --ink: #111; --grey: #6a6a6a; --paper: #fff; --shell: #6b78d6;
-  --bg: #141414; --fg: #d8d8d8; --dim: #7a7a7a; --rule: #3a3a3a; --red: #e5534b; --green: #57ab5a; --tshell: #9aa5f2; }
-@media (prefers-color-scheme: dark) { :root { --ink: #d8d8d8; --grey: #7a7a7a; --paper: #0c0c0c; --shell: #9aa5f2; } }
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--paper); color: var(--ink);
-  font: 15px/1.65 "Fira Code", "DejaVu Sans Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-ligatures: none; }
-.wrap { padding-inline: clamp(16px, 9vw, 160px); }
-header, section { padding-block: 2.4rem; }
-h1, h2 { font-size: 1rem; font-weight: 700; margin: 0; }
-h1 b { color: var(--shell); }
-hr { border: 0; border-top: 1px solid var(--ink); margin: 0; }
-p { max-width: 72ch; margin: 0 0 1em; }
-.note { color: var(--grey); }
-.term { max-width: 44rem; background: var(--bg); color: var(--fg); border: 1px solid var(--ink); }
-.title { padding: .35rem 1rem; border-bottom: 1px solid var(--rule); color: var(--dim); }
-.screen { padding: clamp(1rem, 4vw, 2.2rem); overflow-x: auto; }
-pre { margin: 0 0 1.4rem; font: inherit; font-size: clamp(18px, 4vw, 32px); line-height: 1.2; }
-pre b { color: var(--tshell); font-weight: 400; }
-.ok { color: var(--green); } .err { color: var(--red); } .dim { color: var(--dim); }
-.reason { color: var(--red); overflow-wrap: anywhere; }
-.cursor { display: inline-block; width: 1ch; height: 1.2em; vertical-align: text-bottom; background: var(--fg); animation: blink 1.1s steps(1) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
-</style>
-</head>
-<body>
-<div class="wrap">
-<header><h1><b>@</b>zemi</h1></header>
-<hr>
-<section>
-  <div class="term">
-    <div class="title">zemi - mcp sign-in</div>
-    <div class="screen">
-{{if .OK}}<pre aria-hidden="true"><b>╭────╮</b>
-<b>│╭──╮│</b>  ^^
-<b>│╰──╯│</b>╭─┴┴╮
-<b>╰────╯</b>╯   ╵</pre>
-      <div class="dim">state: <span class="ok">signed in</span></div>
-      <div>&gt; <b>{{.Server}}</b> is connected <span class="cursor"></span></div>
-{{else}}<pre aria-hidden="true"><b>╭────╮</b>
-<b>│╭──╮│</b>  &gt;&lt;
-<b>│╰──╯│</b>╭─┴┴╮
-<b>╰────╯</b>╯   ╵</pre>
-      <div class="dim">state: <span class="err">sign-in failed</span></div>
-      <div>&gt; could not sign in to <b>{{.Server}}</b></div>
-      <div class="reason">{{.Reason}}</div>
-{{end}}
-    </div>
-  </div>
-</section>
-<hr>
-<section>
-{{if .OK}}
-  <h2>You're signed in</h2>
-  <p class="note" id="foot">You can close this tab and go back to your terminal.</p>
-  <script>
-    let n = 3; const foot = document.getElementById("foot");
-    const tick = () => { if (n === 0) { window.close(); foot.textContent = "You can close this tab and go back to your terminal."; return; }
-      foot.textContent = "This tab closes in " + n + "s."; n--; setTimeout(tick, 1000); };
-    tick();
-  </script>
-{{else}}
-  <h2>Sign-in didn't finish</h2>
-  <p class="note">Go back to zemi and open /mcp to try again.</p>
-{{end}}
-</section>
-</div>
-</body>
-</html>
-`))
+//go:embed callback.html
+var callbackHTML string
+
+var callbackPage = template.Must(template.New("callback").Parse(callbackHTML))
