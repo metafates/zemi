@@ -349,8 +349,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			return err
 		}},
 		{Name: "effort", Hidden: true, NArgs: "?", Desc: "set reasoning effort", GoFn: func(h *hostapi.Host, args string) error {
-			switch args = strings.TrimSpace(args); args {
-			case "":
+			if args = strings.TrimSpace(args); args == "" {
 				// the readout is a toast, which a headless run drops
 				if _, err := h.Screen(); err != nil {
 					return err
@@ -362,8 +361,6 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				}
 				h.Notify("info", "Reasoning effort is "+cur, "/effort low, medium, high or default sets it")
 				return nil
-			case "default":
-				args = ""
 			}
 			return h.SetConfig("agent.effort", args)
 		}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} }},

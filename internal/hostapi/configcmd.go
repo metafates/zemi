@@ -146,7 +146,9 @@ func (h *Host) SetConfig(path string, val any) error {
 	case "ui.theme":
 		return h.SetTheme(s)
 	case "agent.effort":
-		if !slices.Contains([]string{"", "low", "medium", "high"}, s) {
+		if s == "default" {
+			val = ""
+		} else if !slices.Contains([]string{"", "low", "medium", "high"}, s) {
 			return Usagef("unknown effort %q (want low, medium, high or default)", s)
 		}
 	}

@@ -2115,6 +2115,7 @@ func (h *Host) ProfileNames() []string {
 // Picking a read-only agent remembers the one it replaced, so approving a
 // plan can return to it (approvePlan).
 func (h *Host) SetProfile(name string) error {
+	name = cmp.Or(name, "default") // resolveProfile reads "" as the active one
 	if _, err := h.resolveProfile(name); err != nil {
 		return Usagef("unknown profile %q (want %s)", name, strings.Join(h.ProfileNames(), ", "))
 	}

@@ -588,6 +588,21 @@ func TestSaveInit(t *testing.T) {
 	}
 }
 
+// TestConfigSet: /config set takes the words /config and the pickers show
+// for a value.
+func TestConfigSet(t *testing.T) {
+	h, _ := newTestHost(t)
+	for _, c := range []struct{ path, value, want string }{
+		{"agent.effort", "default", ""},
+		{"agent.profile", "", "default"},
+	} {
+		h.Settings.SetQuiet(c.path, "x")
+		if err := h.configSet(c.path, c.value); err != nil || h.Settings.Str(c.path) != c.want {
+			t.Errorf("%s %q: %q, %v; want %q", c.path, c.value, h.Settings.Str(c.path), err, c.want)
+		}
+	}
+}
+
 // TestConfigWatchNoDeadlock is the regression for the watch-delivery
 // deadlock: a Lua config.set inside a running interpreter request used to
 // deliver watches via a blocking RT.Do on the same (busy) queue, wedging
