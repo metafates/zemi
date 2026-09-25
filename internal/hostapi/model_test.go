@@ -95,7 +95,7 @@ func TestSetModelArgs(t *testing.T) {
 		{"/model a/big ", ""},
 	} {
 		// builtins an exported key turns on are left out
-		got := slices.DeleteFunc(h.CompleteModel("", c.line), func(s string) bool { p, _, ok := strings.Cut(s, "/"); return ok && p != "a" })
+		got := slices.DeleteFunc(h.CompleteModel("", c.line), func(s string) bool { return strings.Contains(s, "/") && !strings.HasPrefix(s, "a/") })
 		if strings.Join(got, " ") != c.want {
 			t.Errorf("complete %q = %v, want %q", c.line, got, c.want)
 		}
