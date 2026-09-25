@@ -844,8 +844,7 @@ func editDistance(a, b string) int {
 
 // relErr shortens the path in an os error the way the results do.
 func relErr(err error) error {
-	var pe *os.PathError
-	if errors.As(err, &pe) {
+	if pe, ok := errors.AsType[*os.PathError](err); ok {
 		pe.Path = workRel(pe.Path)
 	}
 	return err

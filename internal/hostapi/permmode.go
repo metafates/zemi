@@ -634,7 +634,7 @@ func (h *Host) noSecretsUnder(p string, roots []string, skipIgnored bool) bool {
 		// outside a repository skips no gitignored path either; rg matches
 		// ignore rules case-sensitively, whatever core.ignorecase says
 		out, err := h.git(p, "-c", "core.ignorecase=false", "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
-		for _, e := range strings.Split(out, "\x00") {
+		for e := range strings.SplitSeq(out, "\x00") {
 			if err == nil && e != "" {
 				ignored[strings.TrimSuffix(e, "/")] = true
 			}

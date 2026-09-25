@@ -2,8 +2,8 @@ package hostapi
 
 import (
 	"context"
-	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -19,7 +19,7 @@ import (
 // transcript for widgets that never read it costs.
 func BenchmarkWidgetCtx(b *testing.B) {
 	for _, rows := range []int{0, 500} {
-		b.Run(fmt.Sprint(rows), func(b *testing.B) {
+		b.Run(strconv.Itoa(rows), func(b *testing.B) {
 			log := logging.New(b.TempDir())
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 			h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: b.TempDir()})
@@ -33,7 +33,7 @@ func BenchmarkWidgetCtx(b *testing.B) {
 			for i := range rows {
 				h.AppendChat(ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "internal/x.go", Label: "edit x", Status: "ok", Diff: diff, Output: "done\nok"})
 				if i%2 == 0 {
-					h.AppendChat(ChatMessage{Role: "user", Text: "please change the thing in the other place " + fmt.Sprint(i)})
+					h.AppendChat(ChatMessage{Role: "user", Text: "please change the thing in the other place " + strconv.Itoa(i)})
 				}
 			}
 			w := h.Widgets.Get("m")

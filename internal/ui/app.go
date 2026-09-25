@@ -1217,7 +1217,7 @@ func fitClusters(left, right []statusItem, w int) ([]hostapi.Segment, []hostapi.
 		}
 		side, at := &left, -1
 		for _, c := range []*[]statusItem{&left, &right} {
-			for i := len(*c) - 1; i >= 0; i-- {
+			for i := range slices.Backward(*c) {
 				if at < 0 || (*c)[i].pri > (*side)[at].pri {
 					side, at = c, i
 				}

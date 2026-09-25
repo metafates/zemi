@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -91,7 +92,7 @@ var frameTurns = []int{10, 500}
 // re-renders and only the streamed rows are converted and wrapped again.
 func BenchmarkStreamingFrame(b *testing.B) {
 	for _, turns := range frameTurns {
-		b.Run(fmt.Sprint(turns), func(b *testing.B) {
+		b.Run(strconv.Itoa(turns), func(b *testing.B) {
 			app, host := bootAgentApp(b, 140, 40)
 			seedLongChat(host, turns)
 			app.renderSync(b)
@@ -176,7 +177,7 @@ func TestChatExpandSettledRow(t *testing.T) {
 // BenchmarkIdleFrame is a frame with nothing changed since the last one.
 func BenchmarkIdleFrame(b *testing.B) {
 	for _, turns := range frameTurns {
-		b.Run(fmt.Sprint(turns), func(b *testing.B) {
+		b.Run(strconv.Itoa(turns), func(b *testing.B) {
 			app, host := bootAgentApp(b, 140, 40)
 			seedLongChat(host, turns)
 			app.renderSync(b)
@@ -842,7 +843,7 @@ func TestReasoningLiveTail(t *testing.T) {
 	// the spinner cycles a frameMS apart while the header and tail stay put
 	a, b := render(500), render(750)
 	headOf := func(s string) string {
-		for _, l := range strings.Split(s, "\n") {
+		for l := range strings.SplitSeq(s, "\n") {
 			if strings.Contains(l, "Thinking") {
 				return l
 			}
@@ -1211,7 +1212,7 @@ func TestTodoRowsKeepTheLiveItem(t *testing.T) {
 		// a short screen keeps a third of the chat for the list
 		{14, []string{"▸ step 13", "○ step 14", "✓ step 01", "✓ 11 done"}},
 	} {
-		t.Run(fmt.Sprint(c.h), func(t *testing.T) { todoRows(t, c.h, c.want) })
+		t.Run(strconv.Itoa(c.h), func(t *testing.T) { todoRows(t, c.h, c.want) })
 	}
 }
 

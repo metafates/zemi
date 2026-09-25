@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -847,7 +848,7 @@ func TestTodoNag(t *testing.T) {
 		h.agents.mu.Lock()
 		h.agents.active = true // maybeNagTodos only queues while live
 		h.agents.mu.Unlock()
-		for i := 0; i < n; i++ {
+		for range n {
 			h.maybeNagTodos()
 		}
 	}
@@ -885,7 +886,7 @@ func TestTodoNag(t *testing.T) {
 		engage(h, 0)
 		s := h.streamHooks()
 		for i := range todoNagAfter * 2 {
-			s.ToolCallEnd(fmt.Sprint(i), "read", true, "", "")
+			s.ToolCallEnd(strconv.Itoa(i), "read", true, "", "")
 		}
 		s.StepDone(agent.Step{})
 		s.ToolCallEnd("t", tools.ToolTodos, true, "", "")
@@ -938,7 +939,7 @@ func TestTodoNag(t *testing.T) {
 		h, _ := newTestHostDB(t)
 		seedSession(t, h)
 		set(h, both)
-		for i := 0; i < todoNagAfter; i++ {
+		for range todoNagAfter {
 			h.maybeNagTodos() // a background agent's calls, the main agent idle
 		}
 		engage(h, todoNagAfter-1)

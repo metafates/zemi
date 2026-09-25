@@ -566,7 +566,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		case st.o.Fields:
 			rows = fieldRows(st.o.Body, w)
 		default:
-			for _, l := range strings.Split(strings.TrimRight(st.o.Body, "\n"), "\n") {
+			for l := range strings.SplitSeq(strings.TrimRight(st.o.Body, "\n"), "\n") {
 				rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, w)...)
 			}
 		}

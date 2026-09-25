@@ -43,8 +43,8 @@ zemi.command.add("hello", function() end, { desc = "says hello" })
 // rowOf is the screen row holding text, -1 when none does.
 func rowOf(frame, text string) (y, x int) {
 	for y, line := range strings.Split(ansi.Strip(frame), "\r\n") {
-		if i := strings.Index(line, text); i >= 0 {
-			return y, ansi.StringWidth(line[:i])
+		if before, _, ok := strings.Cut(line, text); ok {
+			return y, ansi.StringWidth(before)
 		}
 	}
 	return -1, -1

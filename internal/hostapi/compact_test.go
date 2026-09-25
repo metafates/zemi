@@ -3,8 +3,8 @@ package hostapi
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -265,7 +265,7 @@ func TestCompactionStopsAfterFailures(t *testing.T) {
 		h.agents.mu.Lock()
 		h.agents.ctxWin, h.agents.lastIn = 100_000, 90_000
 		h.agents.mu.Unlock()
-		send(fmt.Sprint(i))
+		send(strconv.Itoa(i))
 	}
 	if n := m.calls.Load(); n != compactMaxFails {
 		t.Fatalf("summarizer called %d times, want %d", n, compactMaxFails)

@@ -88,14 +88,15 @@ func copyPicker(blocks []codeBlock) Overlay {
 		if b.text != "" && !strings.HasSuffix(b.text, "\n") {
 			n++
 		}
-		desc := fmt.Sprintf("%d %s", n, plural(n, "line", "lines"))
+		var desc strings.Builder
+		fmt.Fprintf(&desc, "%d %s", n, plural(n, "line", "lines"))
 		for l := range strings.Lines(b.text) {
 			if first := strings.TrimSpace(l); first != "" {
-				desc += " · " + first
+				desc.WriteString(" · " + first)
 				break
 			}
 		}
-		item["desc"] = desc
+		item["desc"] = desc.String()
 		items = append(items, item)
 	}
 	if len(blocks) > 1 {
@@ -284,7 +285,7 @@ func (h *Host) OpenUsage() error {
 		case n >= 1000:
 			return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e3), ".0") + "k"
 		}
-		return fmt.Sprint(n)
+		return strconv.FormatInt(n, 10)
 	}
 	var rows [][]Segment
 	text := func(hl, t string) Segment { return Segment{Text: t, HL: hl} }
@@ -365,7 +366,7 @@ func (h *Host) OpenUsage() error {
 	for i, w := range windows {
 		count := ""
 		if w.u.Sessions > 0 {
-			count = fmt.Sprint(w.u.Sessions)
+			count = strconv.Itoa(w.u.Sessions)
 		}
 		row := []Segment{text("Host:Value", fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTok(w.u.Prompt), fmtTok(w.u.Completion))), text("Host:Hint", fmt.Sprintf("%10s", count))}
 		if priced {

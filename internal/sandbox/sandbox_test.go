@@ -386,7 +386,7 @@ func TestGroupKill(t *testing.T) {
 		group = groupOf(pid)
 	}
 	// the namespace variant runs the program under an init of its own
-	if inner := len(group) > 1; strings.TrimSpace(line) != fmt.Sprint(pid) && !(inner && b.EnforcesProtect) {
+	if inner := len(group) > 1; strings.TrimSpace(line) != strconv.Itoa(pid) && !(inner && b.EnforcesProtect) {
 		t.Fatalf("program pid %s, started %d, group %v", line, pid, group)
 	}
 	if pgid, err := syscall.Getpgid(pid); err != nil || pgid != pid {
@@ -422,7 +422,7 @@ func groupOf(pgid int) []int {
 		}
 		// pid (comm) state ppid pgrp ...; comm may hold spaces
 		f := strings.Fields(string(b[strings.LastIndexByte(string(b), ')')+1:]))
-		if len(f) > 2 && f[0] != "Z" && f[2] == fmt.Sprint(pgid) {
+		if len(f) > 2 && f[0] != "Z" && f[2] == strconv.Itoa(pgid) {
 			out = append(out, pid)
 		}
 	}
@@ -438,7 +438,7 @@ func TestCaps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		k, v, _ := strings.Cut(l, ":")
 		n, _ := strconv.ParseUint(strings.TrimSpace(v), 16, 64)
 		switch {

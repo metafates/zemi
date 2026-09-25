@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -458,8 +459,8 @@ func failureLine(tool, output string) string {
 	if tool != tools.ToolBash {
 		return lines[0]
 	}
-	for i := len(lines) - 1; i >= 0; i-- {
-		if l := lines[i]; strings.HasPrefix(l, "exit status ") || strings.HasPrefix(l, "signal: ") || strings.HasPrefix(l, "stopped: ") || strings.HasPrefix(l, "timed out ") {
+	for _, l := range slices.Backward(lines) {
+		if strings.HasPrefix(l, "exit status ") || strings.HasPrefix(l, "signal: ") || strings.HasPrefix(l, "stopped: ") || strings.HasPrefix(l, "timed out ") {
 			return l
 		}
 	}

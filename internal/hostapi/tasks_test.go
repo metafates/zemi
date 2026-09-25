@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -21,7 +22,7 @@ import (
 func TestTaskRegEviction(t *testing.T) {
 	reg := newTaskReg()
 	for i := range maxKeptRuns {
-		reg.add(&agentRun{id: fmt.Sprint(i), status: "done", started: time.Now()})
+		reg.add(&agentRun{id: strconv.Itoa(i), status: "done", started: time.Now()})
 	}
 	old := &agentRun{id: "old", status: "done", started: time.Now().Add(-time.Hour)}
 	reg.add(old)

@@ -248,7 +248,7 @@ func (h *Host) instructionSections(files []string, budget int) string {
 		}
 		budget -= len(b)
 	}
-	var sections string
+	var sections strings.Builder
 	for i, f := range files {
 		if texts[i] == "" {
 			continue
@@ -257,9 +257,9 @@ func (h *Host) instructionSections(files []string, budget int) string {
 		if rel, ok := perm.Under(h.Dirs.RepoRoot(), f); ok {
 			name = rel
 		}
-		sections += "\n\n## Instructions: " + name + "\n" + texts[i]
+		sections.WriteString("\n\n## Instructions: " + name + "\n" + texts[i])
 	}
-	return sections
+	return sections.String()
 }
 
 // instructionFiles lists the instruction files for this project, general

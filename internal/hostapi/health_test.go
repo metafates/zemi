@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -211,7 +212,7 @@ func TestHealthMCPRow(t *testing.T) {
 			if st == errSignIn {
 				s.status, s.err = "failed", errSignIn
 			}
-			h.mcp.servers[fmt.Sprint(i)] = s
+			h.mcp.servers[strconv.Itoa(i)] = s
 		}
 		i := slices.IndexFunc(h.goHealthRows(), func(r healthCheck) bool { return r.name == "mcp" })
 		if row := h.goHealthRows()[i]; row.level != c.level || row.detail != c.detail {

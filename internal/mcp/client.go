@@ -601,8 +601,7 @@ func (t *httpTransport) post(ctx context.Context, msg []byte) (*http.Response, s
 // redactURL cuts a *url.Error's URL to scheme://host/path: servers take API
 // keys in the query, and the text reaches the model, logs and Lua.
 func redactURL(err error) error {
-	var ue *url.Error
-	if errors.As(err, &ue) {
+	if ue, ok := errors.AsType[*url.Error](err); ok {
 		u, perr := url.Parse(ue.URL)
 		if perr != nil {
 			ue.URL = "(unparsable url)"

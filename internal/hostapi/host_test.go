@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -430,7 +431,7 @@ func TestRenderAllowlist(t *testing.T) {
 	}
 	src := `local job = zemi.job.start({ cmd = "true" })` + "\n"
 	for i, c := range cases {
-		src += fmt.Sprintf("zemi.ui.widget.add({ id = %q, region = \"header\", render = function() %s return {} end })\n", fmt.Sprint(i), c.call)
+		src += fmt.Sprintf("zemi.ui.widget.add({ id = %q, region = \"header\", render = function() %s return {} end })\n", strconv.Itoa(i), c.call)
 	}
 	src += `zemi.ui.widget.add({ id = "clean", region = "header", render = function()
 		return {{{text = "a\27[31mb", hl = "Comment"}, {text = "chrome", hl = "Host:BtnSel"}}}
@@ -441,7 +442,7 @@ func TestRenderAllowlist(t *testing.T) {
 		widgets[w.ID] = w
 	}
 	for i, c := range cases {
-		_, _, err := h.RenderWidget(context.Background(), widgets[fmt.Sprint(i)], 40, 10, UIState{})
+		_, _, err := h.RenderWidget(context.Background(), widgets[strconv.Itoa(i)], 40, 10, UIState{})
 		if want := "zemi." + c.refused + " is not allowed during widget render"; c.refused == "" && err != nil ||
 			c.refused != "" && (err == nil || !strings.Contains(err.Error(), want)) {
 			t.Errorf("%s: err = %v", c.call, err)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -231,7 +232,7 @@ func TestAutoModeReadCommands(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "app", "node_modules", "secret.txt"), []byte("K=v"), 0o600)
 	// an ignored tree past the walk limit does not count against rg
 	for i := range 10001 {
-		os.WriteFile(filepath.Join(root, "app", "node_modules", fmt.Sprint(i)), nil, 0o600)
+		os.WriteFile(filepath.Join(root, "app", "node_modules", strconv.Itoa(i)), nil, 0o600)
 	}
 	os.MkdirAll(filepath.Join(root, "wl"), 0o700)
 	os.WriteFile(filepath.Join(root, "wl", ".env"), []byte("K=v"), 0o600)

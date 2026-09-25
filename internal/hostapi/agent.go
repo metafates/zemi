@@ -691,15 +691,15 @@ func (h *Host) AgentTakeQueue() []string {
 // of the first agent.AttachMarker, where each reader cuts the text.
 func joinQueue(msgs []string) string {
 	shown := make([]string, len(msgs))
-	tails := ""
+	var tails strings.Builder
 	for i, m := range msgs {
 		s, tail, ok := strings.Cut(m, agent.AttachMarker)
 		if ok {
-			tails += agent.AttachMarker + tail
+			tails.WriteString(agent.AttachMarker + tail)
 		}
 		shown[i] = s
 	}
-	return strings.Join(shown, "\n\n") + tails
+	return strings.Join(shown, "\n\n") + tails.String()
 }
 
 // beginTurn resets the per-turn stream state (ag.mu held).
@@ -2206,10 +2206,7 @@ func (h *Host) cycleProfile(step int) error {
 	names := h.ProfileNames()
 	n := len(names)
 	cur := h.Settings.Str("agent.profile")
-	i := slices.Index(names, cur)
-	if i < 0 {
-		i = 0
-	}
+	i := max(slices.Index(names, cur), 0)
 	return h.SetProfile(names[((i+step)%n+n)%n])
 }
 

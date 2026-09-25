@@ -404,7 +404,7 @@ func chunkErr(rel, src string, origin Origin, err error) error {
 // the chunk itself as "in function <name:0>" and labels only the Go PCall
 // boundary "in main chunk".
 func usefulTrace(trace string) bool {
-	for _, line := range strings.Split(trace, "\n") {
+	for line := range strings.SplitSeq(trace, "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" && !strings.HasPrefix(line, "[") && !strings.HasPrefix(line, "stack traceback") && !strings.HasSuffix(line, ":0>") {
 			return true

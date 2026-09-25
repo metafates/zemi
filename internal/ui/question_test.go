@@ -237,8 +237,8 @@ func TestQuestionOptionsWrap(t *testing.T) {
 	frame := ansi.Strip(app.Frame())
 	x := func(desc string) int {
 		for l := range strings.SplitSeq(frame, "\n") {
-			if i := strings.Index(l, desc); i >= 0 {
-				return ansi.StringWidth(l[:i])
+			if before, _, ok := strings.Cut(l, desc); ok {
+				return ansi.StringWidth(before)
 			}
 		}
 		return -1

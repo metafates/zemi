@@ -212,7 +212,7 @@ func TestChatScrollShortContent(t *testing.T) {
 func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
 	visible := func(frame string) string {
 		t.Helper()
-		for _, row := range strings.Split(frame, "\r\n") {
+		for row := range strings.SplitSeq(frame, "\r\n") {
 			if i := strings.Index(ansi.Strip(row), "message "); i >= 0 {
 				// the scrollbar ends the row, and the padding before it
 				// depends on the width

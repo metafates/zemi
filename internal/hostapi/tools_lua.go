@@ -86,14 +86,14 @@ func (r *toolReg) list() []*luaTool {
 // provider's prompt cache; project prompts stay out, like their
 // agent.assemble sections.
 func (h *Host) toolSections(toolset []fantasy.AgentTool) string {
-	var out string
+	var out strings.Builder
 	for _, t := range h.luaTools.list() {
 		if t.Prompt == "" || t.Origin.Rank() <= lua.OriginProject.Rank() || !hasTool(toolset, t.Name) {
 			continue
 		}
-		out += "\n\n## Tool " + t.Name + " (from " + string(t.Origin) + " config)\n" + t.Prompt[:min(len(t.Prompt), assembleSectionMax)]
+		out.WriteString("\n\n## Tool " + t.Name + " (from " + string(t.Origin) + " config)\n" + t.Prompt[:min(len(t.Prompt), assembleSectionMax)])
 	}
-	return out
+	return out.String()
 }
 
 func (r *toolReg) addOverride(o *overrideRec) {

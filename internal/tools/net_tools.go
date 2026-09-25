@@ -196,8 +196,7 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	// headings and prose
 	req.Header.Set("Accept", "text/markdown, text/plain;q=0.9, text/html;q=0.8, */*;q=0.5")
 	resp, err := client.Do(req)
-	var private *privateAddrError
-	if errors.As(err, &private) {
+	if private, ok := errors.AsType[*privateAddrError](err); ok {
 		return fantasy.NewTextErrorResponse(privateRefused(private.ip.String(), u.Hostname()).Error()), nil
 	}
 	if err != nil {
