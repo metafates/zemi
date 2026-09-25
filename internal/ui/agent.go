@@ -18,6 +18,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // permAskPrompt is one open permission overlay; queued asks wait in
@@ -55,7 +56,7 @@ func (pa *permAskPrompt) choices() []permChoice {
 	if pa.req.Project != "" {
 		out = append(out, permChoice{"Yes, and " + pa.req.Project + " for this project", "p", "user:project", true, false})
 	}
-	return append(out, permChoice{"No", "n", "user", false, false}, permChoice{"No, and tell zemi what to do instead", "t", "user", false, true})
+	return append(out, permChoice{"No", "n", tools.ByUser, false, false}, permChoice{"No, and tell zemi what to do instead", "t", tools.ByUser, false, true})
 }
 
 // choosePerm answers the prompt with c. Telling zemi what to do also denies
@@ -66,7 +67,7 @@ func (a *App) choosePerm(c permChoice) {
 		return
 	}
 	for a.permAsk != nil {
-		a.answerPerm(false, "user")
+		a.answerPerm(false, tools.ByUser)
 	}
 	if a.host.AgentActive() {
 		a.interrupt()
@@ -643,7 +644,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	}
 	build := func(w int) [][]hostapi.Segment {
 		switch {
-		case req.Subject == "tool.bash":
+		case req.Subject == perm.SubjectBash:
 			return codePanel(req.Arg, "Host:Panel", w)
 		case isDiff:
 			rows := hostapi.DiffRows(req.Preview, w)
@@ -762,7 +763,7 @@ func padPanel(r []hostapi.Segment, width int) []hostapi.Segment {
 func permTitle(req hostapi.PermRequest, root string) (title, target string) {
 	title, target = "Allow "+req.Subject+"?", req.Arg
 	switch {
-	case req.Subject == "tool.bash":
+	case req.Subject == perm.SubjectBash:
 		if req.Outside {
 			return "Run this command outside the sandbox?", ""
 		}
@@ -771,9 +772,9 @@ func permTitle(req hostapi.PermRequest, root string) (title, target string) {
 		title = "Write this file?"
 	case req.Tool == "edit":
 		title = "Edit this file?"
-	case req.Subject == "fs.write":
+	case req.Subject == perm.SubjectWrite:
 		title = "Change this file?"
-	case req.Subject == "fs.read":
+	case req.Subject == perm.SubjectRead:
 		title = "Read this file?"
 	case strings.HasPrefix(req.Subject, "net."):
 		title = "Fetch this URL?"

@@ -88,9 +88,21 @@ type Request struct {
 type Verdict struct {
 	Decision  perm.Decision
 	Reason    string
-	DecidedBy string     // rule, hook, user, overlay, default
+	DecidedBy string     // a By value, a user answer ("user:always") or ByMode
 	Rule      *perm.Rule // the rule behind a "rule" verdict, nil otherwise
 }
+
+// Who decided a Verdict.
+const (
+	ByRule     = "rule"
+	ByDefault  = "default"
+	ByUser     = "user"
+	ByReadOnly = "profile:readonly"
+	ModePrefix = "mode:"
+)
+
+// ByMode is a verdict the permission mode name settled.
+func ByMode(name string) string { return ModePrefix + name }
 
 // DeniedText is the tool error a refused gate returns: who decided, what
 // it was about, and the reason the asker gave.
@@ -251,7 +263,9 @@ type LSPSession struct {
 }
 
 // PathSubject reports a subject whose argument is a file path.
-func PathSubject(subject string) bool { return subject == "fs.read" || subject == "fs.write" }
+func PathSubject(subject string) bool {
+	return subject == perm.SubjectRead || subject == perm.SubjectWrite
+}
 
 // CheckDenied is Check plus the tool.denied notification a refused verdict
 // owes its handlers: tools that gate themselves outside Run use it, so an
@@ -269,18 +283,18 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 func (p *Pipeline) Check(req Request) Verdict {
 	plan := p.Plan != nil && p.Plan()
 	req.ReadOnly = plan
-	if plan && req.Subject == "fs.write" && (p.Scratch == nil || !p.Scratch(req.Arg)) {
-		return Verdict{Decision: perm.Deny, Reason: "the user is planning: describe this change in the plan instead of making it", DecidedBy: "profile:readonly"}
+	if plan && req.Subject == perm.SubjectWrite && (p.Scratch == nil || !p.Scratch(req.Arg)) {
+		return Verdict{Decision: perm.Deny, Reason: "the user is planning: describe this change in the plan instead of making it", DecidedBy: ByReadOnly}
 	}
 	// read-only holds under every mode: yolo would settle the escape and
 	// run the command unconfined, with the project writable
-	if plan && req.Subject == "tool.bash" && req.Unsandboxed {
-		return Verdict{Decision: perm.Deny, Reason: "the user is planning: commands stay in the sandbox, which keeps the project read-only", DecidedBy: "profile:readonly"}
+	if plan && req.Subject == perm.SubjectBash && req.Unsandboxed {
+		return Verdict{Decision: perm.Deny, Reason: "the user is planning: commands stay in the sandbox, which keeps the project read-only", DecidedBy: ByReadOnly}
 	}
 	// rule is the one that allowed the request, nil when a default did
 	loosen := func(v Verdict, rule *perm.Rule) Verdict {
 		protected := ""
-		if v.Decision == perm.Allow && req.Subject == "fs.write" && p.Protected != nil {
+		if v.Decision == perm.Allow && req.Subject == perm.SubjectWrite && p.Protected != nil {
 			protected = p.Protected(req.Arg)
 		}
 		switch {
@@ -292,11 +306,11 @@ func (p *Pipeline) Check(req Request) Verdict {
 		// an "always" answer allows the file's whole directory, or names the
 		// one secret the user saw; a rule the user wrote in init.lua says
 		// what it means and stays authoritative
-		case PathSubject(req.Subject) && rule != nil && rule.Principal == "model" && strings.ContainsAny(rule.Pattern, "*?") && p.Secret != nil && p.Secret(req.Arg):
+		case PathSubject(req.Subject) && rule != nil && rule.Principal == perm.PrincipalModel && strings.ContainsAny(rule.Pattern, "*?") && p.Secret != nil && p.Secret(req.Arg):
 			return p.resolveAsk(req, "this file looks like it holds secrets")
 		// "allow cat" was answered for a file the user saw; a project file
 		// line names the program alone. The user's init.lua rule stays.
-		case req.Subject == "tool.bash" && rule != nil && (rule.Principal == "model" || rule.Source == "permissions") && p.Secret != nil && perm.ReadsSecret(req.Arg, p.Secret):
+		case req.Subject == perm.SubjectBash && rule != nil && (rule.Principal == perm.PrincipalModel || rule.Source == "permissions") && p.Secret != nil && perm.ReadsSecret(req.Arg, p.Secret):
 			return p.resolveAsk(req, "this file looks like it holds secrets")
 		// the user allowed the command confined; an Unsandboxed ask is never
 		// mode-settled, so dropping the sandbox reaches them
@@ -304,14 +318,14 @@ func (p *Pipeline) Check(req Request) Verdict {
 			return p.resolveAsk(req, "the rule keeps the sandbox; sandbox: false drops it")
 		// the rule was written for an agent that may change things; a reader
 		// keeps the allow
-		case plan && req.Subject == "tool.bash" && perm.ReadCommand(req.Arg, nil):
-		case plan && (req.Subject == "tool.bash" || strings.HasPrefix(req.Subject, "mcp.")):
+		case plan && req.Subject == perm.SubjectBash && perm.ReadCommand(req.Arg, nil):
+		case plan && (req.Subject == perm.SubjectBash || strings.HasPrefix(req.Subject, "mcp.")):
 			return p.resolveAsk(req, "read-only agent: commands that change things ask")
 		}
 		return v
 	}
 	var o perm.Outcome
-	if req.Subject == "tool.bash" {
+	if req.Subject == perm.SubjectBash {
 		o = p.Store.CheckCommand(req.Arg, p.Principal)
 	} else {
 		o = p.Store.Evaluate(req.Subject, req.Arg, p.Principal)
@@ -330,7 +344,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 // mode settled or a read-only agent runs confined, rule-allowed and
 // user-approved ones as they are. nil = unconfined.
 func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
-	if p.Sandbox == nil || req.Subject != "tool.bash" || v.Decision != perm.Allow || req.Unsandboxed {
+	if p.Sandbox == nil || req.Subject != perm.SubjectBash || v.Decision != perm.Allow || req.Unsandboxed {
 		return nil
 	}
 	// network: true keeps the sandbox, which is what the model and the user
@@ -339,7 +353,7 @@ func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
 	// is what keeps the project unwritable, and Check denies the escape
 	plan := p.Plan != nil && p.Plan()
 	network := req.Network || v.Rule != nil && v.Rule.Network
-	if !plan && !strings.HasPrefix(v.DecidedBy, "mode:") && !network {
+	if !plan && !strings.HasPrefix(v.DecidedBy, ModePrefix) && !network {
 		return nil
 	}
 	pol := p.Sandbox()
@@ -442,9 +456,9 @@ func SandboxProp() map[string]any {
 
 func decidedBy(o perm.Outcome) string {
 	if o.Rule != nil {
-		return "rule"
+		return ByRule
 	}
-	return "default"
+	return ByDefault
 }
 
 func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
@@ -453,7 +467,7 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 		if req.Reason != "" {
 			reason += " (asked because " + req.Reason + ")"
 		}
-		return Verdict{Decision: perm.Ask, Reason: reason + "; no overlay available, failing closed", DecidedBy: "default"}
+		return Verdict{Decision: perm.Ask, Reason: reason + "; no overlay available, failing closed", DecidedBy: ByDefault}
 	}
 	allowed, by, why := p.Ask(req)
 	if allowed {
@@ -462,7 +476,7 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 	// who said no and why it asked; the rule text ("no rule matched") says neither
 	who := "denied (" + by + ")"
 	switch {
-	case strings.HasPrefix(by, "user"):
+	case strings.HasPrefix(by, ByUser):
 		// they saw the request and refused it: the ask's reason says why it
 		// asked, which after a no is not why the call was denied; who said
 		// no is in DecidedBy already
@@ -470,7 +484,7 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 			return Verdict{Decision: perm.Deny, Reason: "it asked because " + why, DecidedBy: by}
 		}
 		return Verdict{Decision: perm.Deny, DecidedBy: by}
-	case by == "default" || by == "unsandboxed":
+	case by == ByDefault || by == "unsandboxed":
 		who = "nobody could answer the ask"
 		// nobody saw the ask, so the reason it asked is all the caller gets
 		if why == "" {
@@ -478,8 +492,8 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 		}
 	case by == "event":
 		who = "denied by a permission.request handler"
-	case strings.HasPrefix(by, "mode:"):
-		who = "denied by permission mode " + strings.TrimPrefix(by, "mode:")
+	case strings.HasPrefix(by, ModePrefix):
+		who = "denied by permission mode " + strings.TrimPrefix(by, ModePrefix)
 	}
 	if why != "" {
 		who += ": " + why
@@ -889,7 +903,7 @@ Chain dependent steps with &&.`,
 			},
 			[]string{"path", "limit"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.read", Arg: str(in["path"])}}
+				return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"])}}
 			},
 			runRead)),
 
@@ -900,7 +914,7 @@ Chain dependent steps with &&.`,
 			},
 			[]string{"path", "content"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Preview: ChangeDiff("write", in)}}
+				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff("write", in)}}
 			},
 			runWrite))),
 
@@ -913,7 +927,7 @@ Chain dependent steps with &&.`,
 			},
 			[]string{"path", "old_string", "new_string"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.write", Arg: str(in["path"]), Preview: ChangeDiff("edit", in)}}
+				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff("edit", in)}}
 			},
 			runEdit))),
 
@@ -924,7 +938,7 @@ Chain dependent steps with &&.`,
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.read", Arg: searchRoot(in)}}
+				return []Request{{Subject: perm.SubjectRead, Arg: searchRoot(in)}}
 			},
 			runGlob),
 
@@ -936,7 +950,7 @@ Chain dependent steps with &&.`,
 			},
 			[]string{"pattern"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.read", Arg: searchRoot(in)}}
+				return []Request{{Subject: perm.SubjectRead, Arg: searchRoot(in)}}
 			},
 			runGrep),
 
@@ -1087,7 +1101,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			},
 			[]string{"path"},
 			func(in map[string]any) []Request {
-				return []Request{{Subject: "fs.read", Arg: str(in["path"]), Reason: "read diagnostics"}}
+				return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"]), Reason: "read diagnostics"}}
 			},
 			func(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
 				if p.Diagnostics == nil {
@@ -1183,7 +1197,7 @@ func ChangePreview(in map[string]any) string {
 // bashRequests routes the whole command through the tool.bash subject;
 // the store's CheckCommand splits it into segments and gates.
 func bashRequests(cmd string, in map[string]any) []Request {
-	return []Request{{Subject: "tool.bash", Arg: cmd, Description: str(in["about"]),
+	return []Request{{Subject: perm.SubjectBash, Arg: cmd, Description: str(in["about"]),
 		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true}}
 }
 

@@ -66,7 +66,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if key == "ctrl+c" {
 		switch {
 		case top == "perm":
-			a.answerPerm(false, "user")
+			a.answerPerm(false, tools.ByUser)
 		case top == "memReview":
 			a.answerMemReview()
 		case top == "plan":
@@ -141,7 +141,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 				}
 			}
 		case key == "n" || key == "esc":
-			a.answerPerm(false, "user")
+			a.answerPerm(false, tools.ByUser)
 		}
 	case "memReview":
 		mr := a.memReview

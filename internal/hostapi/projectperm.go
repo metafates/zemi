@@ -57,7 +57,7 @@ func (h *Host) projectPermissions() {
 		}
 		for _, ps := range patterns {
 			for _, p := range ps {
-				h.addPermissionRule(perm.Rule{Subject: "tool.bash", Pattern: p, Decision: perm.Allow, Source: "permissions"})
+				h.addPermissionRule(perm.Rule{Subject: perm.SubjectBash, Pattern: p, Decision: perm.Allow, Source: "permissions"})
 			}
 		}
 	}

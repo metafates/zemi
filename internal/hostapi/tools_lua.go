@@ -543,7 +543,7 @@ func (h *Host) toolPost(ctx context.Context, name string, input map[string]any, 
 				if !ok {
 					sid = h.AgentSessionID()
 				}
-				h.markNotLocal(sid, "plugin:"+h.PluginOf(hd.Path))
+				h.markNotLocal(sid, perm.PluginPrincipal(h.PluginOf(hd.Path)))
 			}
 		}
 	}

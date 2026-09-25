@@ -2499,7 +2499,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			r.Source = string(origin)
 		}
 		if p := rawString(spec, "principal"); p != "" {
-			if name, ok := strings.CutPrefix(p, "plugin:"); !ok || name == "" {
+			if name, ok := perm.CutPluginPrincipal(p); !ok || name == "" {
 				L.RaiseError(`zemi.permission.rule.add: principal must be "plugin:<name>", got %q`, p)
 				return 0
 			}
@@ -2738,7 +2738,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			h.EmitAsync("tool.denied", map[string]any{"tool": tool, "subject": req.Subject, "arg": req.Arg, "by": v.DecidedBy, "reason": v.Reason})
 		},
 		Post:      h.toolPost,
-		Principal: "model",
+		Principal: perm.PrincipalModel,
 		Jobs:      h.jobs,
 		Skills:    h.skillIndex,
 		Images: func() bool {

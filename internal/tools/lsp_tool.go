@@ -39,9 +39,9 @@ var lspToolProps = map[string]any{
 
 func lspRequests(in map[string]any) []Request {
 	if str(in["action"]) == "rename" {
-		return []Request{{Subject: "fs.write", Arg: str(in["path"]), Reason: "rename " + str(in["symbol"]) + " to " + str(in["new_name"])}}
+		return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Reason: "rename " + str(in["symbol"]) + " to " + str(in["new_name"])}}
 	}
-	return []Request{{Subject: "fs.read", Arg: str(in["path"]), Reason: "lsp " + str(in["action"])}}
+	return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"]), Reason: "lsp " + str(in["action"])}}
 }
 
 func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
@@ -247,7 +247,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 			if absPath(f) == absPath(path) {
 				continue
 			}
-			if v := p.Check(Request{Tool: "lsp", Subject: "fs.write", Arg: f, Reason: "rename " + symbol + " to " + newName}); v.Decision != perm.Allow {
+			if v := p.Check(Request{Tool: "lsp", Subject: perm.SubjectWrite, Arg: f, Reason: "rename " + symbol + " to " + newName}); v.Decision != perm.Allow {
 				return fantasy.NewTextErrorResponse(DeniedText(v, "rename touches "+workRel(f)+"; nothing was changed")), nil
 			}
 		}

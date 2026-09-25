@@ -137,16 +137,16 @@ func (h *Host) luaJails(L *glua.LState, write bool) []string {
 // session scratchpad; everything else asks.
 func (h *Host) fsDefault(subject, arg string) perm.Decision {
 	switch subject {
-	case "fs.read", "lua.fs.read":
+	case perm.SubjectRead, "lua.fs.read":
 		if h.secretPath(arg) {
 			return perm.Ask
 		}
 		if h.inJail(arg, h.readJails()...) || subject == "lua.fs.read" && h.inJail(arg, h.luaDataRoot()) ||
-			subject == "fs.read" && h.inJail(arg, h.pluginsRoot()) && !inDirNamed(arg, ".git") {
+			subject == perm.SubjectRead && h.inJail(arg, h.pluginsRoot()) && !inDirNamed(arg, ".git") {
 			return perm.Allow
 		}
-	case "fs.write", "lua.fs.write":
-		if subject == "fs.write" && h.inScratch(arg) && !h.secretPath(arg) {
+	case perm.SubjectWrite, "lua.fs.write":
+		if subject == perm.SubjectWrite && h.inScratch(arg) && !h.secretPath(arg) {
 			return perm.Allow
 		}
 		if h.inJail(arg, h.writeJails()...) && !h.secretPath(arg) {
@@ -173,9 +173,9 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 		// a command line, normalized like bash so rules can scope arguments
 		// and a second command cannot ride an allow
 		o := pipe.Store.CheckCommandFor(subject, arg, pipe.Principal)
-		v = tools.Verdict{Decision: o.Decision, Reason: o.Reason, DecidedBy: "default"}
+		v = tools.Verdict{Decision: o.Decision, Reason: o.Reason, DecidedBy: tools.ByDefault}
 		if o.Rule != nil {
-			v.DecidedBy = "rule"
+			v.DecidedBy = tools.ByRule
 		}
 	} else {
 		v = pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"})
@@ -183,7 +183,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 	switch {
 	case v.Decision == perm.Allow:
 	case v.Decision == perm.Ask && approved:
-		v = tools.Verdict{Decision: perm.Allow, DecidedBy: "user"}
+		v = tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByUser}
 	case v.Decision == perm.Ask:
 		h.EmitAsync("permission.request", map[string]any{
 			"subject": subject, "arg": arg, "post_hoc": true,
@@ -191,7 +191,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 		// name the rule that settles it: a host-API call has no overlay, so
 		// "ask required" is the whole problem and none of the fix
 		principal := ""
-		if strings.HasPrefix(pipe.Principal, "plugin:") {
+		if _, ok := perm.CutPluginPrincipal(pipe.Principal); ok {
 			principal = pipe.Principal
 		}
 		L.RaiseError("%s %s: permission ask required; allow it in config with %s",
@@ -255,7 +255,7 @@ func (h *Host) principal(L *glua.LState) string {
 	if name == "" {
 		L.RaiseError("plugin code running with no file of its plugin on the stack has no principal for rules or state")
 	}
-	return "plugin:" + name
+	return perm.PluginPrincipal(name)
 }
 
 // stateScope is the prefix a chunk's keys are stored under: each plugin and
@@ -755,7 +755,7 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 	// host overrides the resolved-address deny. Allow rules are user-only
 	// (zemi.permission.rule refuses them elsewhere), and project callers
 	// never get the override.
-	allowPrivate := v.DecidedBy == "rule" && origin.Rank() > lua.OriginProject.Rank()
+	allowPrivate := v.DecidedBy == tools.ByRule && origin.Rank() > lua.OriginProject.Rank()
 	hnd := &httpHandle{done: make(chan struct{})}
 	at := h.callerOf(L)
 	ctx, cancel := context.WithCancel(context.Background())

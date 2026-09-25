@@ -12,7 +12,7 @@ import (
 // and is allowed only when every segment and every redirect target
 // matches an allow rule and no assignment prefix was stripped.
 func (s *Store) CheckCommand(cmd string, principal string) Outcome {
-	return s.CheckCommandFor("tool.bash", cmd, principal)
+	return s.CheckCommandFor(SubjectBash, cmd, principal)
 }
 
 // CheckCommandFor is CheckCommand with the segments matched under subject
@@ -60,14 +60,14 @@ func (s *Store) CheckCommandFor(subject, cmd, principal string) Outcome {
 		}
 	}
 	for _, p := range n.ReadPaths {
-		o := s.Evaluate("fs.read", p, principal)
+		o := s.Evaluate(SubjectRead, p, principal)
 		if o.Decision != Allow {
 			o.Reason = joinReason("read "+p, o.Reason)
 			return o
 		}
 	}
 	for _, p := range n.WritePaths {
-		o := s.Evaluate("fs.write", p, principal)
+		o := s.Evaluate(SubjectWrite, p, principal)
 		if o.Decision != Allow {
 			o.Reason = joinReason("write "+p, o.Reason)
 			return o

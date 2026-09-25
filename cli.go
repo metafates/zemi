@@ -483,7 +483,7 @@ func turnReport(rows []hostapi.ChatMessage) report {
 				rt.Denied = strings.HasPrefix(strings.TrimSpace(m.Output), "permission denied (")
 			}
 			// an unanswered ask is counted at the gate (Host.HeadlessDenials)
-			if by, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(m.Output), "permission denied ("), ")"); rt.Denied && by != "default" && by != "unsandboxed" && by != "network" {
+			if by, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(m.Output), "permission denied ("), ")"); rt.Denied && by != tools.ByDefault && by != "unsandboxed" && by != "network" {
 				rep.refused++
 			}
 			rep.Tools = append(rep.Tools, rt)

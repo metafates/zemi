@@ -67,7 +67,7 @@ func (r *modeReg) noteHeadless(req tools.Request) {
 	defer r.mu.Unlock()
 	r.headless.Asked++
 	switch {
-	case req.Unsandboxed && req.Subject == "tool.bash":
+	case req.Unsandboxed && req.Subject == perm.SubjectBash:
 		r.headless.Unsandboxed++
 	case req.Tool == tools.ToolLua || req.Tool == tools.ToolMemory:
 		r.headless.TUIOnly++
@@ -172,7 +172,7 @@ func (h *Host) permItems() []any {
 			"text": r.Subject + " " + r.Pattern, "desc": desc,
 			"section": sourceSection(string(r.Decision)) + " rules",
 		}
-		if r.Principal == "model" {
+		if r.Principal == perm.PrincipalModel {
 			// an answer writes p and "p *" (a host and its paths): one row,
 			// named by the pattern that covers the other, removes both
 			id := r.Subject + " " + answerKey(r.Pattern)
@@ -196,7 +196,7 @@ func (h *Host) permItems() []any {
 				item["detail"] = item["detail"].(string) + ". y copies it as init.lua lines, which also allow the secret-shaped files this answer still asks about"
 			}
 		} else {
-			if strings.HasPrefix(r.Principal, "plugin:") {
+			if _, ok := perm.CutPluginPrincipal(r.Principal); ok {
 				item["key"] = r.Principal // it covers that plugin's calls alone
 			}
 			switch r.Source {
@@ -228,7 +228,7 @@ func (h *Host) ForgetRule(arg string) error {
 	subject, pattern, _ := strings.Cut(strings.TrimSpace(arg), " ")
 	gone := false
 	for _, r := range h.Perm.Rules() {
-		if r.Principal == "model" && r.Subject == subject && answerKey(r.Pattern) == answerKey(pattern) {
+		if r.Principal == perm.PrincipalModel && r.Subject == subject && answerKey(r.Pattern) == answerKey(pattern) {
 			h.Perm.Remove(r)
 			gone = true
 		}
@@ -460,13 +460,13 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 // (askHook); a network request always does, since the URL is the model's.
 func (h *Host) autoLocal(req tools.Request) bool {
 	switch req.Subject {
-	case "fs.read":
+	case perm.SubjectRead:
 		return h.inJail(req.Arg, append(h.readJails(), h.localPlugins())...) && !h.secretPath(req.Arg)
-	case "fs.write":
+	case perm.SubjectWrite:
 		// zemi's own dirs can sit inside the project (zemi run in $HOME), and a
 		// write there (init.lua) changes what zemi allows
 		return h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
-	case "tool.bash":
+	case perm.SubjectBash:
 		return h.unsettled(req.Arg, req.ReadOnly) == ""
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated

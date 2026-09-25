@@ -106,7 +106,7 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 			continue
 		}
 		// the model reads the file, so the model's rules apply
-		if !drop && h.Perm.Evaluate("fs.read", abs, "model").Decision != perm.Allow {
+		if !drop && h.Perm.Evaluate(perm.SubjectRead, abs, perm.PrincipalModel).Decision != perm.Allow {
 			note("reading it needs your approval")
 			continue
 		}

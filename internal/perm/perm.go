@@ -28,6 +28,25 @@ const (
 	Deny  Decision = "deny"
 )
 
+// The subjects zemi's own tools ask about; the set is open (net.<host>,
+// lua.<ns.call>, mcp.<server>).
+const (
+	SubjectBash  = "tool.bash"
+	SubjectRead  = "fs.read"
+	SubjectWrite = "fs.write"
+)
+
+// PrincipalModel scopes a rule to the model's calls, like an always answer.
+const PrincipalModel = "model"
+
+const pluginPrefix = "plugin:"
+
+// PluginPrincipal is the principal a plugin's calls run as.
+func PluginPrincipal(name string) string { return pluginPrefix + name }
+
+// CutPluginPrincipal returns the plugin a principal names.
+func CutPluginPrincipal(p string) (string, bool) { return strings.CutPrefix(p, pluginPrefix) }
+
 // SubjectPrefixes are the namespaces a subject lives in. A rule for
 // anything else can never fire, so zemi refuses it (DESIGN §9).
 var SubjectPrefixes = []string{"tool.", "fs.", "net.", "lua.", "mcp.", "memory."}

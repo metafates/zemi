@@ -57,17 +57,17 @@ func (h *Host) askHook() tools.Asker {
 		// asked for, and a protected write, which Pipeline.Check re-asks
 		// whatever rule allowed it
 		settleable := !req.Unsandboxed && !req.Network && !req.Explicit &&
-			!(req.Subject == "fs.write" && !h.inScratch(req.Arg) && h.protectedWrite(req.Arg))
+			!(req.Subject == perm.SubjectWrite && !h.inScratch(req.Arg) && h.protectedWrite(req.Arg))
 		if def.Rules != nil {
 			o := def.Rules.Evaluate(req.Subject, req.Arg, "")
-			if req.Subject == "tool.bash" {
+			if req.Subject == perm.SubjectBash {
 				o = def.Rules.CheckCommand(req.Arg, "")
 			}
 			switch {
 			case o.Decision == perm.Allow && settleable:
-				return resolved(true, "mode:"+def.Name)
+				return resolved(true, tools.ByMode(def.Name))
 			case o.Decision == perm.Deny:
-				return resolved(false, "mode:"+def.Name)
+				return resolved(false, tools.ByMode(def.Name))
 			}
 		}
 		// a mode's own decide function (it may take seconds: a model call).
@@ -81,22 +81,22 @@ func (h *Host) askHook() tools.Asker {
 			switch h.modeDecide(def, req) {
 			case "allow":
 				if settleable {
-					return resolved(true, "mode:"+def.Name)
+					return resolved(true, tools.ByMode(def.Name))
 				}
 			case "deny":
-				return resolved(false, "mode:"+def.Name)
+				return resolved(false, tools.ByMode(def.Name))
 			}
 			base = ""
 		}
 		switch {
-		case base == "yolo" && req.ReadOnly && (req.Subject == "tool.bash" && !h.sandboxLive() || strings.HasPrefix(req.Subject, "mcp.")) && !h.autoLocal(req):
+		case base == "yolo" && req.ReadOnly && (req.Subject == perm.SubjectBash && !h.sandboxLive() || strings.HasPrefix(req.Subject, "mcp.")) && !h.autoLocal(req):
 			note("read-only agent: nothing confines this call")
 		case base == "yolo":
-			return resolved(true, "mode:"+def.Name)
+			return resolved(true, tools.ByMode(def.Name))
 		case req.Unsandboxed:
 			// a mode settles a command only to run it sandboxed; the Lua tool
 			// gives its own reason
-			if req.Subject == "tool.bash" {
+			if req.Subject == perm.SubjectBash {
 				req.Reason = "run outside the sandbox"
 			}
 		case req.Network:
@@ -107,10 +107,10 @@ func (h *Host) askHook() tools.Asker {
 			note("a rule asks for this")
 		case base == "auto":
 			if h.autoLocal(req) {
-				return resolved(true, "mode:"+def.Name)
+				return resolved(true, tools.ByMode(def.Name))
 			}
 			why := ""
-			if req.Subject == "fs.write" {
+			if req.Subject == perm.SubjectWrite {
 				why = h.protectedWhy(req.Arg)
 			}
 			switch {
@@ -120,7 +120,7 @@ func (h *Host) askHook() tools.Asker {
 				note("this file looks like it holds secrets")
 			case strings.HasPrefix(req.Subject, "net."):
 				note("a fetch always asks: the model chose the address")
-			case req.Subject == "fs.write" && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...):
+			case req.Subject == perm.SubjectWrite && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...):
 				// the sandbox cannot confine the write tool, and a file outside the
 				// project (~/.gitconfig, a shell rc) can name what runs next; the
 				// write jail is the launch dir even in a trusted repository (the
@@ -132,10 +132,10 @@ func (h *Host) askHook() tools.Asker {
 				}
 			case !h.ProjectTrusted():
 				note("this project is not trusted (/trust)")
-			case req.Subject == "tool.bash" && !h.sandboxLive():
+			case req.Subject == perm.SubjectBash && !h.sandboxLive():
 				// a settled command would run unconfined
 				note("no sandbox")
-			case req.Subject == "tool.bash":
+			case req.Subject == perm.SubjectBash:
 				note(h.unsettled(req.Arg, req.ReadOnly))
 			default:
 				note("auto mode settles reads and edits inside the project")
@@ -143,7 +143,7 @@ func (h *Host) askHook() tools.Asker {
 		}
 		// a recipe is followed by later sessions, so say when this one could
 		// carry injected text
-		if req.Subject == "fs.write" && h.inJail(req.Arg, h.recipesDir()) && !h.sessionLocalOnly(h.AgentSessionID()) {
+		if req.Subject == perm.SubjectWrite && h.inJail(req.Arg, h.recipesDir()) && !h.sessionLocalOnly(h.AgentSessionID()) {
 			note("this session read text from outside the machine")
 		}
 		ui := h.hooks()
@@ -152,18 +152,18 @@ func (h *Host) askHook() tools.Asker {
 			// only a command's sandbox escape is a sandbox matter; a Lua
 			// script or a memory edit is Unsandboxed for another reason and
 			// must not be reported as one
-			if req.Unsandboxed && req.Subject == "tool.bash" {
+			if req.Unsandboxed && req.Subject == perm.SubjectBash {
 				return resolved(false, "unsandboxed")
 			}
 			if req.Network {
 				return resolved(false, "network")
 			}
-			return resolved(false, "default")
+			return resolved(false, tools.ByDefault)
 		}
 		label, rules := h.alwaysChoice(req)
 		wider, wideRules := h.repoChoice(req)
 		project, projectRules := h.projectChoice(req, label, rules)
-		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Project: project, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description, Outside: req.Unsandboxed && req.Subject == "tool.bash"})
+		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Project: project, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description, Outside: req.Unsandboxed && req.Subject == perm.SubjectBash})
 		if by == "user:wider" {
 			rules = wideRules
 		}
@@ -232,10 +232,10 @@ func (h *Host) launchDirInRepo() string {
 // a command the user did not see.
 func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	rule := func(subject, pattern string) perm.Rule {
-		return perm.Rule{Subject: subject, Pattern: pattern, Decision: perm.Allow, Principal: "model"}
+		return perm.Rule{Subject: subject, Pattern: pattern, Decision: perm.Allow, Principal: perm.PrincipalModel}
 	}
 	switch {
-	case req.Subject == "tool.bash":
+	case req.Subject == perm.SubjectBash:
 		n := perm.Normalize(req.Arg)
 		// Opaque is an inner shell (sh -c) or a stripped assignment: what the
 		// rule would match is not what the user read
@@ -249,7 +249,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		for _, seg := range n.Segments {
 			// a segment this manager already lets through, by a session rule or
 			// a user rule, is not new: add neither a name nor a rule for it
-			if h.Perm.CheckCommandFor("tool.bash", seg, "model").Decision == perm.Allow {
+			if h.Perm.CheckCommandFor(perm.SubjectBash, seg, perm.PrincipalModel).Decision == perm.Allow {
 				continue
 			}
 			patterns, ok := bashAlwaysPatterns(seg)
@@ -257,7 +257,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 				return "", nil
 			}
 			for _, p := range patterns {
-				r := rule("tool.bash", p)
+				r := rule(perm.SubjectBash, p)
 				// the ask said "staying sandboxed", so the rule keeps it
 				r.Network = req.Network
 				rules = append(rules, r)
@@ -300,7 +300,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 			return fmt.Sprintf("allow %s and %d more%s", strings.Join(shown, ", "), hidden, effect), rules
 		}
 		return "allow " + strings.Join(shown, " and ") + effect, rules
-	case req.Subject == "fs.write" || req.Subject == "fs.read":
+	case req.Subject == perm.SubjectWrite || req.Subject == perm.SubjectRead:
 		// relative to the cwd, as the tools open it: Dir("a.go") is "." and
 		// the rule would be "*", which matches every path on disk
 		abs := perm.RealPath(req.Arg)
@@ -309,10 +309,10 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		}
 		// Pipeline.Check sends every such write back to the ask, so the rule
 		// would do nothing
-		if req.Subject == "fs.write" && !h.inScratch(abs) && h.protectedWrite(abs) {
+		if req.Subject == perm.SubjectWrite && !h.inScratch(abs) && h.protectedWrite(abs) {
 			return "", nil
 		}
-		what := map[string]string{"fs.write": "edits", "fs.read": "reads"}[req.Subject]
+		what := map[string]string{perm.SubjectWrite: "edits", perm.SubjectRead: "reads"}[req.Subject]
 		// a directory glob would cover the next secret too, and Check re-asks
 		// for it; the one file the user saw is safe to allow
 		dir := filepath.Dir(abs)
@@ -408,14 +408,14 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 // outlives that rule.
 func (h *Host) projectChoice(req tools.Request, alwaysLabel string, alwaysRules []perm.Rule) (string, []perm.Rule) {
 	// a file line runs unconfined, which a network ask promised not to
-	if req.Subject != "tool.bash" || req.Network || !h.ProjectTrusted() || alwaysLabel == "" || strings.ContainsAny(req.Arg, "\n") {
+	if req.Subject != perm.SubjectBash || req.Network || !h.ProjectTrusted() || alwaysLabel == "" || strings.ContainsAny(req.Arg, "\n") {
 		return "", nil
 	}
 	patterns, ok := bashRulePatterns(perm.Normalize(req.Arg))
 	var rules []perm.Rule
 	for _, ps := range patterns {
 		for _, p := range ps {
-			rules = append(rules, perm.Rule{Subject: "tool.bash", Pattern: p, Decision: perm.Allow})
+			rules = append(rules, perm.Rule{Subject: perm.SubjectBash, Pattern: p, Decision: perm.Allow})
 		}
 	}
 	if !ok || len(rules) != len(alwaysRules) {
@@ -430,7 +430,7 @@ func (h *Host) projectChoice(req tools.Request, alwaysLabel string, alwaysRules 
 // Secret-shaped files still go back to the ask (Pipeline.Check loosens a
 // model rule for them), so one rule can cover the tree.
 func (h *Host) repoChoice(req tools.Request) (string, []perm.Rule) {
-	if req.Subject != "fs.read" {
+	if req.Subject != perm.SubjectRead {
 		return "", nil
 	}
 	abs := perm.RealPath(req.Arg)
@@ -451,7 +451,7 @@ func (h *Host) repoChoice(req tools.Request) (string, []perm.Rule) {
 		}
 	}
 	return "allow reads anywhere in " + shown, []perm.Rule{{
-		Subject: "fs.read", Pattern: filepath.Join(root, "*"), Decision: perm.Allow, Principal: "model",
+		Subject: perm.SubjectRead, Pattern: filepath.Join(root, "*"), Decision: perm.Allow, Principal: perm.PrincipalModel,
 	}}
 }
 

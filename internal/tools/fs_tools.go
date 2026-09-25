@@ -1204,7 +1204,7 @@ func (p *Pipeline) ruledOut() func(path string) bool {
 	if p == nil || p.Store == nil {
 		return func(string) bool { return false }
 	}
-	eval := p.Store.Evaluator("fs.read", p.Principal)
+	eval := p.Store.Evaluator(perm.SubjectRead, p.Principal)
 	return func(path string) bool {
 		o := eval(path)
 		return o.Rule != nil && o.Decision != perm.Allow
