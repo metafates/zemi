@@ -219,20 +219,20 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		want     any
 		source   string // cfgSource after the reload
 	}{
-		{"first load applies config", "", "", []any{"p/a"}, nil, "p/a", "init.lua"},
+		{"first load applies config", "", "", []any{"p/a"}, nil, "p/a", "on disk"},
 		{"unchanged config keeps a pick", "", "", []any{"p/a"}, "p/b", "p/b", "unsaved"},
-		{"edited config wins over a pick", "", "", []any{"p/c"}, "p/b", "p/c", "init.lua"},
-		{"a second set of the same key applies", "", "", []any{"p/c", "p/d"}, nil, "p/d", "init.lua"},
+		{"edited config wins over a pick", "", "", []any{"p/c"}, "p/b", "p/c", "on disk"},
+		{"a second set of the same key applies", "", "", []any{"p/c", "p/d"}, nil, "p/d", "on disk"},
 		{"an unchanged double set keeps a pick", "", "", []any{"p/c", "p/d"}, "p/e", "p/e", "unsaved"},
-		{"editing the second set wins", "", "", []any{"p/c", "p/f"}, "p/e", "p/f", "init.lua"},
-		{"dropping the second set wins", "", "", []any{"p/c"}, "p/e", "p/c", "init.lua"},
+		{"editing the second set wins", "", "", []any{"p/c", "p/f"}, "p/e", "p/f", "on disk"},
+		{"dropping the second set wins", "", "", []any{"p/c"}, "p/e", "p/c", "on disk"},
 		{"a pick outlives the last set", "", "", nil, "p/e", "p/e", "unsaved"},
-		{"a set comes back", "", "", []any{"p/c"}, nil, "p/c", "init.lua"},
-		{"dropping every set returns the default", "", "", nil, nil, "", ""},
-		{"a key's own setter is a config write", "permissions.mode", "zemi.permission.mode.set(%[2]s)", []any{"yolo"}, nil, "yolo", "init.lua"},
+		{"a set comes back", "", "", []any{"p/c"}, nil, "p/c", "on disk"},
+		{"dropping every set returns the default", "", "", nil, nil, "", "default"},
+		{"a key's own setter is a config write", "permissions.mode", "zemi.permission.mode.set(%[2]s)", []any{"yolo"}, nil, "yolo", "on disk"},
 		{"and keeps a pick like one", "permissions.mode", "zemi.permission.mode.set(%[2]s)", []any{"yolo"}, "auto", "auto", "unsaved"},
-		{"a Lua number is the int it sets", "ui.composer.history", "", []any{5}, nil, 5, "init.lua"},
-		{"so dropping it returns the default", "ui.composer.history", "", nil, nil, 50, ""},
+		{"a Lua number is the int it sets", "ui.composer.history", "", []any{5}, nil, 5, "on disk"},
+		{"so dropping it returns the default", "ui.composer.history", "", nil, nil, 50, "default"},
 	} {
 		key := cmp.Or(c.key, "models.chat")
 		src := ""

@@ -602,14 +602,24 @@ func TestConfigSet(t *testing.T) {
 			t.Errorf("%s %q: %q, %v; want %q", c.path, c.value, h.Settings.Str(c.path), err, c.want)
 		}
 	}
-	// a bool row draws its switch, so its description names no on or off
-	if err := h.configSet("ui.animations", "off"); err != nil {
-		t.Fatal(err)
-	}
-	items := h.configItems()
-	row, _ := items[slices.IndexFunc(items, func(it any) bool { return it.(map[string]any)["text"] == "ui.animations" })].(map[string]any)
-	if desc, _ := row["desc"].(string); row["on"] != false || !strings.HasPrefix(desc, "unsaved · animate") {
-		t.Errorf("bool row: on %v, desc %q", row["on"], desc)
+	// a bool row draws its switch, and neither a toggle off what init.lua set
+	// nor a drop back to the default moves its description
+	h.cfgNow = map[string][]any{"ui.animations": {false}}
+	for _, c := range []struct {
+		step func()
+		on   bool
+		desc string
+	}{
+		{func() { h.Settings.SetQuiet("ui.animations", false) }, false, "on disk · animate"},
+		{func() { h.configSet("ui.animations", "on") }, true, "unsaved · animate"},
+		{func() { h.cfgNow = nil }, true, "default · animate"},
+	} {
+		c.step()
+		items := h.configItems()
+		row, _ := items[slices.IndexFunc(items, func(it any) bool { return it.(map[string]any)["text"] == "ui.animations" })].(map[string]any)
+		if desc, _ := row["desc"].(string); row["on"] != c.on || !strings.HasPrefix(desc, c.desc) {
+			t.Errorf("bool row: on %v, desc %q; want %v, %q", row["on"], desc, c.on, c.desc)
+		}
 	}
 }
 

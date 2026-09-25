@@ -158,9 +158,9 @@ cycle and the flags survive a reload until the config changes that key. A key th
 writing returns to its schema default, unless a runtime pick moved it since.
 
 `/config` (hostapi/configcmd.go) is a `Reload` list of every schema key by section, each
-description led by `cfgSource` (`default`; `init.lua` when the live value is config's last
-write; `unsaved` when a runtime pick moved it off that or off the default) and then the value,
-which a bool draws as its switch instead. Space toggles a bool; every other row opens its
+description led by its `cfgSource` (`default`; `on disk` when the live value is config's last
+write; `unsaved` when a runtime pick moved it off that or off the default; one width, so a
+toggle or a save moves no text) and then the value, which a bool draws as its switch instead. Space toggles a bool; every other row opens its
 detail, whose actions pick or fill `/config set`. `/config` and `/effort` write through
 `Host.SetConfig`, which sends `models.*`, `permissions.mode`, `agent.profile` and `ui.theme`
 through their own setters and checks `agent.effort` (`default` is empty); every runtime write,

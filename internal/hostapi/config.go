@@ -134,16 +134,17 @@ func (h *Host) cfgSettle() {
 	}
 }
 
-// cfgSource says where path's live value comes from: "init.lua" when it is
-// what config last wrote, "unsaved" when a runtime pick moved it off that or
-// off a default config never wrote, "" at that default.
+// cfgSource says where path's live value comes from: "on disk" when it is
+// what init.lua last wrote, "unsaved" when a runtime pick moved it off that
+// or off a default init.lua never wrote, "default" at that default. The
+// words are one width, so a toggle or a save in /config moves no text.
 func (h *Host) cfgSource(path string) string {
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
 	live, _ := h.Settings.Get(path)
-	want, source := h.Settings.Default(path), ""
+	want, source := h.Settings.Default(path), "default"
 	if w := h.cfgNow[path]; len(w) > 0 {
-		want, source = w[len(w)-1], "init.lua"
+		want, source = w[len(w)-1], "on disk"
 	}
 	if !reflect.DeepEqual(live, want) {
 		return "unsaved"
