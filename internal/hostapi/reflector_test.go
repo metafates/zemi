@@ -671,15 +671,15 @@ func TestReflectTrigger(t *testing.T) {
 				t.Fatal("the second /reflect must be refused")
 			}
 			waitFor(t, func() error {
-				if m.calls.Load() == 0 || h.reflecting.Load() {
+				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil
 			})
 		}, calls: 1},
 		{name: "/reflect while a run is active is refused before it claims", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
-			h.reflecting.Store(true)
-			defer h.reflecting.Store(false)
+			h.reflectMu.Lock()
+			defer h.reflectMu.Unlock()
 			if err := h.reflectCommand(); err == nil || !strings.Contains(err.Error(), "already active") {
 				t.Fatalf("err = %v", err)
 			}
@@ -692,7 +692,7 @@ func TestReflectTrigger(t *testing.T) {
 				t.Fatal(err)
 			}
 			waitFor(t, func() error {
-				if m.calls.Load() == 0 || h.reflecting.Load() {
+				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
 					return errors.New("still reflecting")
 				}
 				return nil

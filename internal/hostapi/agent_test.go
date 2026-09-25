@@ -1773,7 +1773,12 @@ type btwModel struct {
 }
 
 func (m *btwModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
-	if !strings.HasSuffix(concatText(call.Prompt[len(call.Prompt)-1].Content), "what failed?") {
+	last := concatText(call.Prompt[len(call.Prompt)-1].Content)
+	if strings.HasSuffix(last, "hang?") {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	if !strings.HasSuffix(last, "what failed?") {
 		return m.scriptModel.Stream(ctx, call)
 	}
 	m.call = call
@@ -1787,7 +1792,7 @@ func (m *btwModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 
 // TestBtw: a side question asked mid-turn sees the turn's finished steps on
 // the conversation's tools, runs none of them, is billed, and leaves no row
-// behind.
+// behind; in the TUI it is a busy job esc cancels without a toast.
 func TestBtw(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	stepped := make(chan struct{})
@@ -1825,6 +1830,31 @@ func TestBtw(t *testing.T) {
 	sawResult := slices.ContainsFunc(p, func(msg fantasy.Message) bool { return msg.Role == fantasy.MessageRoleTool })
 	if !sawResult || !strings.HasSuffix(concatText(p[len(p)-1].Content), "what failed?") || len(m.call.Tools) == 0 {
 		t.Fatalf("request: tool result %v, %d tools, last %+v", sawResult, len(m.call.Tools), p[len(p)-1])
+	}
+
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.Btw("hang?"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if label, _, cancellable := h.BusyNow(); label != "Answering the side question" || !cancellable {
+			return fmt.Errorf("busy %q %v", label, cancellable)
+		}
+		return nil
+	})
+	h.AgentCancel()
+	waitFor(t, func() error {
+		if label, _, _ := h.BusyNow(); label != "" {
+			return fmt.Errorf("still busy: %q", label)
+		}
+		return nil
+	})
+	h.evlog.mu.Lock()
+	notes := len(h.evlog.notes)
+	h.evlog.mu.Unlock()
+	if notes > 0 || len(ui.opened) > 0 {
+		t.Fatalf("a cancelled side question showed %d toasts, %d overlays", notes, len(ui.opened))
 	}
 }
 

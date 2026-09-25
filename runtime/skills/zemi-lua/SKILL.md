@@ -240,7 +240,7 @@ root, `~`-shortened), `trusted`, `model`, `profile`,
 (`attempt`, `why`, `next_in`, only while a retry waits or is under way, `next_in` 0 then)), `todos` (`content`, `status`, `active_form`), `view` (the agent run
 shown instead of the session: `id`, `agent`, `description`, `status`), `recent` (sessions,
 only while the transcript is empty), `usage`, `context`, `show_reasoning`, `frame` (the 50ms animation tick, 0 with animations off), `ended` (`"ok"`, `"error"` or `"cancelled"` for a moment after a turn ends, else `""`),
-`reflecting`, `pending_memory`, `agents_running` (this session's background agents; their reports arrive as messages), `jobs_running` (background jobs), `quit_armed`, `interrupt_armed` (a second esc interrupts), `key_seq` (a pending key
+`busy` (the newest job the user waits on that is not a turn, like /btw or a plugin install: `label`, `elapsed` seconds, `cancellable` by a double esc; nil when none), `pending_memory`, `agents_running` (this session's background agents; their reports arrive as messages), `jobs_running` (background jobs), `quit_armed`, `interrupt_armed` (a second esc interrupts), `key_seq` (a pending key
 sequence, "" when none), `rows_below` (transcript rows under a scrolled-up chat),
 `cancelling`, `editing` (the file open in the editor, else ""), `waiting` ("approval" or
 "answer" while a prompt holds the turn, else ""), `transcript_epoch`

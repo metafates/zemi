@@ -227,7 +227,7 @@ func (h *Host) clampReflectSeen(sid string, n int) {
 // reflectClaimed runs one reflect run over the claim's session, synchronous
 // on the caller's goroutine, and reports whether it ran: a run while another
 // is active is skipped and its claim released, so a later close can reflect
-// again (one reflector at a time). Progress reaches Lua as ctx.reflecting
+// again (one reflector at a time). Progress reaches Lua as ctx.busy
 // plus the reflector.start / reflector.done events (done carries error on
 // failure). The claim is released when the run ends: on success the seen
 // marker keeps the result, on failure a later run retries; a crash leaves
@@ -242,10 +242,7 @@ func (h *Host) reflectClaimed(sid, claim string, n int) bool {
 	defer h.DB.DelKV(claim)
 	ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
 	defer cancel()
-	h.reflecting.Store(true)
-	h.refresh()
-	defer h.refresh()
-	defer h.reflecting.Store(false)
+	defer h.Busy("Reflecting", cancel)()
 	h.EmitAsync("reflector.start", map[string]any{"session": sid})
 	tries, _ := h.DB.GetKV(reflectTriesKey(sid))
 	try, _ := strconv.Atoi(tries)
@@ -253,6 +250,8 @@ func (h *Host) reflectClaimed(sid, claim string, n int) bool {
 	_ = h.DB.SetKV(reflectTriesKey(sid), strconv.Itoa(try))
 	err := h.reflectSession(ctx, sid)
 	switch {
+	case errors.Is(ctx.Err(), context.Canceled):
+		// the user's double esc, no zemi error; it still spends a try
 	case errors.Is(err, errNoProposal):
 		// prose is the model's answer, not a run to repeat, and the /health
 		// row's news rather than a zemi error the badge asks the agent to fix
@@ -578,9 +577,10 @@ func (h *Host) reflectCommand() error {
 	}
 	// the claim alone would let this run start, then skip under the lock
 	// with only a log; a stale read here costs nothing but a repeat
-	if h.reflecting.Load() {
+	if !h.reflectMu.TryLock() {
 		return Usagef("a reflect run is already active")
 	}
+	h.reflectMu.Unlock()
 	n, claim := h.claimReflect(sid, len(msgs))
 	if claim == "" {
 		return Usagef("a reflect run is already active")

@@ -505,7 +505,7 @@ func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
 // a turn's readouts, a toast's or the done frame's expiry. Everything else bumps.
 func (a *App) tickInterval() time.Duration {
 	st := a.lastState
-	if a.turnActive || a.host.Reflecting() || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 {
+	if busy, _, _ := a.host.BusyNow(); a.turnActive || busy != "" || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 {
 		return frameInterval
 	}
 	return idleInterval
@@ -519,10 +519,10 @@ func (a *App) onFrame() tea.Cmd {
 		a.timeStr = ts
 		a.frameGen++
 	}
-	// While a turn runs every tick re-renders, so the spinner, the eyes and
+	// While a turn or a busy job runs every tick re-renders, so the eyes and
 	// the elapsed time step even when no stream event arrives.
 	active := a.host.AgentActive()
-	if active || a.host.Reflecting() {
+	if busy, _, _ := a.host.BusyNow(); active || busy != "" {
 		a.frameGen++
 	}
 	// the outcome is stamped by turnDoneMsg alone: the host can still read

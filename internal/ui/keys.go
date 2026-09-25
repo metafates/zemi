@@ -285,7 +285,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		if a.host.ViewedAgent() != "" {
 			a.armed = armed{}
 			_ = a.host.ViewAgent("")
-		} else if a.host.AgentActive() && a.arm(key) {
+		} else if _, _, busy := a.host.BusyNow(); (a.host.AgentActive() || busy) && a.arm(key) {
 			a.interrupt()
 		}
 		return nil
@@ -305,12 +305,13 @@ func (a *App) forceQuit() {
 	go a.leave()
 }
 
-// interrupt cancels the running turn and hands queued messages back to the
-// composer; the working row reads "Cancelling" until the turn ends.
+// interrupt cancels the running turn and the busy jobs and hands queued
+// messages back to the composer; the working row reads "Cancelling" until
+// the turn ends.
 func (a *App) interrupt() {
 	a.host.AgentCancel()
 	a.restoreQueue()
-	a.cancelling = true
+	a.cancelling = a.host.AgentActive()
 }
 
 // moveSel applies a list key to a selection over n items: the list moves

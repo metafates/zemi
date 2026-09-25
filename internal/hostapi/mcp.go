@@ -111,6 +111,8 @@ func (s *mcpServer) keeps(spec MCPSpec) bool {
 }
 
 func (h *Host) startMCP(s *mcpServer) {
+	// a send before the server is ready runs without its tools
+	defer h.Busy("Starting "+s.name, nil)()
 	env, _ := h.Perm.ChildEnv(nil)
 	env = append(env, "ZEMI_PROJECT_DIR="+h.Dirs.ProjectDir)
 	for k, v := range s.spec.Env {

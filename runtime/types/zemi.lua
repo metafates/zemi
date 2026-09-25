@@ -700,7 +700,7 @@ function zemi.event.stats() end
 ---@field show_reasoning boolean
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
 ---@field ended ""|"ok"|"error"|"cancelled" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
----@field reflecting boolean
+---@field busy? { label: string, elapsed: number, cancellable: boolean } The newest job the user waits on that is not a turn (/btw, a plugin install, the reflector): its label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
 ---@field pending_memory integer
 ---@field agents_running integer Background agents of this session still running; their reports arrive as messages.
 ---@field jobs_running integer Background jobs (job_start, or a bash call that outlived its timeout) still running.

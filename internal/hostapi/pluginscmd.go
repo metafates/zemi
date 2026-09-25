@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -43,10 +44,16 @@ func (h *Host) pluginsCommand(args []string) error {
 	if len(args) > 0 {
 		verb = args[0]
 	}
-	// git, or a big RemoveAll: off the key loop, then the list again
-	background := func(fn func() error) {
+	// git, or a big RemoveAll: off the key loop as a busy job, then the
+	// list again
+	background := func(label string, fn func(ctx context.Context) error) {
 		h.GoSafe("plugins "+verb, func() {
-			if err := fn(); err != nil {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := h.Busy(label, cancel)
+			err := fn(ctx)
+			done()
+			if err != nil && ctx.Err() == nil {
 				h.CommandFailed("plugins", pluginsErr(err))
 				if errors.Is(err, plugins.ErrUsage) {
 					return
@@ -84,8 +91,8 @@ func (h *Host) pluginsCommand(args []string) error {
 		// at once, so the list an action returns to shows it
 		return pluginsErr(plugins.Run(context.Background(), h.Dirs, args, io.Discard))
 	case verb == "check" && len(args) == 1:
-		background(func() error {
-			ps, err := plugins.Check(context.Background(), h.Dirs)
+		background("Checking plugins", func(ctx context.Context) error {
+			ps, err := plugins.Check(ctx, h.Dirs)
 			var names []string
 			for _, p := range ps {
 				if p.Latest != "" {
@@ -100,9 +107,15 @@ func (h *Host) pluginsCommand(args []string) error {
 			return err
 		})
 	case verb == "install" || verb == "update" || verb == "delete":
-		background(func() error {
+		// install takes a URL and an optional name, the last word either way
+		name := "plugins"
+		if len(args) > 1 {
+			name = strings.TrimSuffix(path.Base(strings.TrimRight(args[len(args)-1], "/")), ".git")
+		}
+		label := map[string]string{"install": "Installing ", "update": "Updating ", "delete": "Deleting "}[verb] + name
+		background(label, func(ctx context.Context) error {
 			var out strings.Builder
-			err := plugins.Run(context.Background(), h.Dirs, args, &out)
+			err := plugins.Run(ctx, h.Dirs, args, &out)
 			title := map[string]string{"install": "Plugin installed", "update": "Plugin updated", "delete": "Plugin deleted"}[verb]
 			body := strings.TrimSpace(out.String())
 			if body == plugins.UpToDate {

@@ -871,7 +871,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   long session under a 30 ms budget, latest units first; a region scrolled up keeps the last
   whole render until the fill ends (`App.scrolledUp`), so the reader's rows stay put. A turn's `turnScope` context (host.go) covers compaction, the model and tools, so
   a second esc within 2s (`App.arm`, shared with the idle ctrl+c quit) stops all of them;
-  a second ctrl+c while "Cancelling" quits.
+  a second ctrl+c while "Cancelling" quits. A job the user waits on that is not a turn
+  (`/btw`, `/plugins` network work, `/health`, the reflector, an MCP start) holds a `Host.Busy`
+  entry: the working rule draws the newest as `ctx.busy`, and `AgentCancel`, so the same
+  double esc, cancels every entry that has a cancel func.
 - **Widgets read UI flags, never Go-drawn text.** The composer frame's rules and the quit, key
   sequence and scroll flags are `tui/` widgets reading `hostapi.UIState`; a new flag goes
   into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget

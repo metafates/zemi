@@ -10,7 +10,8 @@ local READS = { read = true, grep = true, glob = true, fetch = true, web_search 
 -- the elapsed time. A part that ticks or flips keeps the cells it can grow
 -- to, so the block is centered once and the label never slides. The label
 -- stays away for the first 300ms so instant turns do not flash it, and the
--- eyes say how the turn ended for a few seconds after.
+-- eyes say how the turn ended for a few seconds after. A busy job shows the
+-- same way while idle, and as the first part to go during a turn.
 
 -- the state the eyes last showed and the frame it began on: an eye cycle
 -- starts with its state, whatever the clock read
@@ -31,9 +32,12 @@ zemi.ui.widget.add({
     ---@type { [1]: string, [2]: integer, [3]: integer? }[]
     local parts = {}
     local label, state = "", "idle"
+    local busy = ctx.busy and ctx.busy.elapsed >= 0.3 and ctx.busy or nil
     if not ctx.agent_active then
-      if ctx.reflecting then
-        label, state = "Reflecting", "reading"
+      if busy then
+        label, state = busy.label, "working"
+        if busy.cancellable then parts[1] = { ctx.interrupt_armed and "esc again" or "esc interrupt", 6, 13 } end
+        parts[#parts + 1] = { fmt.duration(busy.elapsed, true), 5, 7 }
       elseif ctx.ended == "ok" then
         state = "done"
       elseif ctx.ended == "error" then
@@ -87,6 +91,7 @@ zemi.ui.widget.add({
       end
       local queued = #ag.steering - ag.reports
       if queued > 0 then parts[#parts + 1] = { queued .. " queued · up edit", 1 } end
+      if busy then parts[#parts + 1] = { busy.label, 0 } end
       -- last, where its changing width moves nothing
       if tick then parts[#parts + 1] = tick end
     end

@@ -252,10 +252,12 @@ type Host struct {
 
 	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3);
 	// modelFn stubs the agent and reflector model in tests.
-	reflectMu  sync.Mutex
-	reflecting atomic.Bool
-	initFail   atomic.Pointer[string] // headline of the user init.lua failure this boot recorded
-	modelFn    func() (fantasy.LanguageModel, error)
+	reflectMu sync.Mutex
+	initFail  atomic.Pointer[string] // headline of the user init.lua failure this boot recorded
+	modelFn   func() (fantasy.LanguageModel, error)
+
+	busyMu sync.Mutex
+	busy   []*busyJob // user-visible jobs that are not a turn, oldest first
 
 	md        markdownCache
 	lightTerm atomic.Bool // the terminal reported a light background
@@ -547,9 +549,42 @@ func (h *Host) SetUIHooks(ui UIHooks) {
 	h.uiMu.Unlock()
 }
 
-// Reflecting reports whether a reflector run is active; the UI keeps
-// re-rendering widgets while it is, so the statusline badge animates.
-func (h *Host) Reflecting() bool { return h.reflecting.Load() }
+type busyJob struct {
+	label  string
+	start  time.Time
+	cancel context.CancelFunc
+}
+
+// Busy shows label on the working rule until done is called, for a job the
+// user waits on that is not a turn; a non-nil cancel lets a double esc
+// (AgentCancel) stop it.
+func (h *Host) Busy(label string, cancel context.CancelFunc) (done func()) {
+	j := &busyJob{label, time.Now(), cancel}
+	h.busyMu.Lock()
+	h.busy = append(h.busy, j)
+	h.busyMu.Unlock()
+	h.refresh()
+	return func() {
+		h.busyMu.Lock()
+		h.busy = slices.DeleteFunc(h.busy, func(b *busyJob) bool { return b == j })
+		h.busyMu.Unlock()
+		h.refresh()
+	}
+}
+
+// BusyNow is the newest busy job's label ("" when none runs) and how long
+// it has run, and whether esc can stop any busy job; the UI re-renders
+// every frame while one runs.
+// NOTE: only the newest label shows; a "+N" part would name the others.
+func (h *Host) BusyNow() (label string, elapsed time.Duration, cancellable bool) {
+	h.busyMu.Lock()
+	defer h.busyMu.Unlock()
+	if len(h.busy) == 0 {
+		return "", 0, false
+	}
+	j := h.busy[len(h.busy)-1]
+	return j.label, time.Since(j.start), slices.ContainsFunc(h.busy, func(b *busyJob) bool { return b.cancel != nil })
+}
 
 type titleSet struct {
 	text string
@@ -1266,7 +1301,13 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("permission_mode", glua.LString(mode.Name))
 	tb.RawSetString("permission_mode_base", glua.LString(mode.Base))
 	tb.RawSetString("show_reasoning", glua.LBool(h.ReasoningShown()))
-	tb.RawSetString("reflecting", glua.LBool(h.reflecting.Load()))
+	if label, elapsed, cancellable := h.BusyNow(); label != "" {
+		b := L.CreateTable(0, 3)
+		b.RawSetString("label", glua.LString(label))
+		b.RawSetString("elapsed", glua.LNumber(elapsed.Seconds()))
+		b.RawSetString("cancellable", glua.LBool(cancellable))
+		tb.RawSetString("busy", b)
+	}
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
 	tb.RawSetString("agents_running", glua.LNumber(h.tasks.runningFor(h.AgentSessionID())))
 	tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))

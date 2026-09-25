@@ -708,7 +708,8 @@ func (ag *agentHost) beginTurn() {
 	ag.retryAt, ag.retries, ag.retryWhy = time.Time{}, 0, ""
 }
 
-// AgentCancel aborts the active turn (DESIGN §6.3).
+// AgentCancel aborts the active turn (DESIGN §6.3) and every busy job with
+// a cancel func.
 func (h *Host) AgentCancel() {
 	ag := h.agents
 	ag.mu.Lock()
@@ -719,6 +720,13 @@ func (h *Host) AgentCancel() {
 	}
 	if t := h.turn.Load(); t != nil {
 		t.cancel()
+	}
+	h.busyMu.Lock()
+	defer h.busyMu.Unlock()
+	for _, j := range h.busy {
+		if j.cancel != nil {
+			j.cancel()
+		}
 	}
 }
 
@@ -1425,7 +1433,8 @@ Question: `
 // Btw runs /btw: a side question answered in an overlay from the
 // conversation so far, a running turn included, and never stored. Headless
 // the answer is a transcript row, which -p prints; the call claims the agent
-// like /compact, so -p waits on it and its ctrl+c cancels it.
+// like /compact, so -p waits on it and its ctrl+c cancels it. In the TUI it
+// is a busy job, which a double esc cancels.
 func (h *Host) Btw(question string) error {
 	ui := h.hooks()
 	if ui == nil {
@@ -1451,8 +1460,12 @@ func (h *Host) Btw(question string) error {
 		return nil
 	}
 	h.GoSafe("btw", func() {
-		answer, err := h.btw(context.Background(), question)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		defer h.Busy("Answering the side question", cancel)()
+		answer, err := h.btw(ctx, question)
 		switch {
+		case ctx.Err() != nil:
 		case errors.Is(err, errNothingToAsk):
 			h.Notify("warn", "Nothing to ask about yet", "")
 		case err != nil:
