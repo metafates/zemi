@@ -557,7 +557,7 @@ type busyJob struct {
 
 // Busy shows label on the working rule until done is called, for a job the
 // user waits on that is not a turn; a non-nil cancel lets a double esc
-// (AgentCancel) stop it.
+// (CancelBusy) stop it.
 func (h *Host) Busy(label string, cancel context.CancelFunc) (done func()) {
 	j := &busyJob{label, time.Now(), cancel}
 	h.busyMu.Lock()
@@ -569,6 +569,18 @@ func (h *Host) Busy(label string, cancel context.CancelFunc) (done func()) {
 		h.busy = slices.DeleteFunc(h.busy, func(b *busyJob) bool { return b == j })
 		h.busyMu.Unlock()
 		h.refresh()
+	}
+}
+
+// CancelBusy stops every busy job that has a cancel func. Only the user's
+// esc calls it: zemi.agent.cancel and a permission answer stop the turn alone.
+func (h *Host) CancelBusy() {
+	h.busyMu.Lock()
+	defer h.busyMu.Unlock()
+	for _, j := range h.busy {
+		if j.cancel != nil {
+			j.cancel()
+		}
 	}
 }
 

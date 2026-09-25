@@ -708,8 +708,7 @@ func (ag *agentHost) beginTurn() {
 	ag.retryAt, ag.retries, ag.retryWhy = time.Time{}, 0, ""
 }
 
-// AgentCancel aborts the active turn (DESIGN §6.3) and every busy job with
-// a cancel func.
+// AgentCancel aborts the active turn (DESIGN §6.3).
 func (h *Host) AgentCancel() {
 	ag := h.agents
 	ag.mu.Lock()
@@ -720,13 +719,6 @@ func (h *Host) AgentCancel() {
 	}
 	if t := h.turn.Load(); t != nil {
 		t.cancel()
-	}
-	h.busyMu.Lock()
-	defer h.busyMu.Unlock()
-	for _, j := range h.busy {
-		if j.cancel != nil {
-			j.cancel()
-		}
 	}
 }
 

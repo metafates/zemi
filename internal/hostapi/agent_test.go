@@ -1843,7 +1843,7 @@ func TestBtw(t *testing.T) {
 		}
 		return nil
 	})
-	h.AgentCancel()
+	h.CancelBusy()
 	waitFor(t, func() error {
 		if label, _, _ := h.BusyNow(); label != "" {
 			return fmt.Errorf("still busy: %q", label)
