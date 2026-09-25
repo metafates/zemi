@@ -41,7 +41,7 @@ func TestAgentSelfAccess(t *testing.T) {
 		t.Fatal("writes allow in the scratchpad only")
 	}
 
-	if err := h.Settings.SetHost("memory.autonomy", "auto"); err != nil {
+	if _, err := h.Settings.SetQuiet("memory.autonomy", "auto"); err != nil {
 		t.Fatal(err)
 	}
 	h.SetProjectTrusted(true)
@@ -56,7 +56,7 @@ func TestAgentSelfAccess(t *testing.T) {
 	if m.SupersededBy == "" {
 		t.Fatalf("replaced memory still live: %+v", m)
 	}
-	if err := h.Settings.SetHost("memory.autonomy", "ask"); err != nil {
+	if _, err := h.Settings.SetQuiet("memory.autonomy", "ask"); err != nil {
 		t.Fatal(err)
 	}
 	if msg, err := h.memoryTool(h.AgentSessionID(), "project", "", "", m.SupersededBy[:8]); err != nil || !strings.Contains(msg, "queued") {

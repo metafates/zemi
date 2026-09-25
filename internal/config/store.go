@@ -161,12 +161,6 @@ func (s *Store) Check(path string, val any) (any, error) {
 	return checkKind(def, val)
 }
 
-// SetHost writes a schema key from Go code without firing watches.
-func (s *Store) SetHost(path string, val any) error {
-	_, err := s.SetQuiet(path, val)
-	return err
-}
-
 // AddWatch registers a change observer and returns its handle id. A path
 // outside the schema is refused: watchers match by exact path, so a typo
 // would sit there and never fire.

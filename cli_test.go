@@ -574,7 +574,7 @@ func TestPipedStdinIsNotTyped(t *testing.T) {
 		{"", diff},
 	} {
 		h := printHost(t)
-		if err := h.Settings.SetHost("session.auto_title", false); err != nil {
+		if _, err := h.Settings.SetQuiet("session.auto_title", false); err != nil {
 			t.Fatal(err)
 		}
 		if code := printTurn(h, c.prompt+agent.Attached("stdin", diff), false, io.Discard, io.Discard); code != 0 {

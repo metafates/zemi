@@ -295,7 +295,7 @@ func TestReflectApply(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
-			h.Settings.SetHost("memory.autonomy", cmp.Or(c.autonomy, "auto"))
+			h.Settings.SetQuiet("memory.autonomy", cmp.Or(c.autonomy, "auto"))
 			h.SetProjectTrusted(true)
 			sid := seedSession(t, h)
 			seedTranscript(t, h, sid)
@@ -455,7 +455,7 @@ func TestReflectPrompt(t *testing.T) {
 func TestReflectForgetThroughReview(t *testing.T) {
 	for _, decide := range []string{"accept", "reject", "rewritten", "moved", "merged", "deleted"} {
 		h, r := newTestHostDB(t)
-		h.Settings.SetHost("memory.autonomy", "auto")
+		h.Settings.SetQuiet("memory.autonomy", "auto")
 		h.SetProjectTrusted(true)
 		sid := seedSession(t, h)
 		seedTranscript(t, h, sid)

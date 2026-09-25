@@ -77,7 +77,7 @@ func TestRememberStoresUserOrigin(t *testing.T) {
 func TestMemoryAddAutonomyGate(t *testing.T) {
 	h, r := newTestHostDB(t)
 	seedSession(t, h)
-	if err := h.Settings.SetHost("memory.autonomy", "ask"); err != nil {
+	if _, err := h.Settings.SetQuiet("memory.autonomy", "ask"); err != nil {
 		t.Fatal(err)
 	}
 	runUser(t, r, `
@@ -97,7 +97,7 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 	runExpectErr(t, r, `zemi.memory.add("x", { scope = "galaxy" })`, "scope must be project or user")
 
 	h2, r2 := newTestHostDB(t)
-	if err := h2.Settings.SetHost("memory.autonomy", "ask"); err != nil {
+	if _, err := h2.Settings.SetQuiet("memory.autonomy", "ask"); err != nil {
 		t.Fatal(err)
 	}
 	runUser(t, r2, `
@@ -108,8 +108,8 @@ func TestMemoryAddAutonomyGate(t *testing.T) {
 		t.Fatalf("proposal from user config: %+v", p)
 	}
 
-	if err := h.Settings.SetHost("memory.autonomy", "auto"); err != nil {
-		t.Fatalf("SetHost autonomy: %v", err)
+	if _, err := h.Settings.SetQuiet("memory.autonomy", "auto"); err != nil {
+		t.Fatalf("set autonomy: %v", err)
 	}
 	h.SetProjectTrusted(true)
 	runUser(t, r, `
@@ -330,7 +330,7 @@ func TestMemoryGate(t *testing.T) {
 			h, _ := newTestHostDB(t)
 			ui := &fakeUI{}
 			h.SetUIHooks(ui)
-			h.Settings.SetHost("memory.autonomy", cmp.Or(tc.autonomy, "auto"))
+			h.Settings.SetQuiet("memory.autonomy", cmp.Or(tc.autonomy, "auto"))
 			h.SetProjectTrusted(true)
 			sid := seedSession(t, h)
 			replaces := ""
@@ -387,7 +387,7 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
-			h.Settings.SetHost("memory.autonomy", "auto")
+			h.Settings.SetQuiet("memory.autonomy", "auto")
 			h.SetProjectTrusted(!tc.untrusted)
 			sid := seedSession(t, h)
 			child := store.NewID()

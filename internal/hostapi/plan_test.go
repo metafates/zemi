@@ -45,7 +45,7 @@ func TestPlanMode(t *testing.T) {
 	// the sandbox is what keeps the project read-only, so leaving it is denied
 	// before any mode (yolo would settle it) or the user sees the ask
 	for _, mode := range []string{"auto", "yolo"} {
-		h.Settings.SetHost("permissions.mode", mode)
+		h.Settings.SetQuiet("permissions.mode", mode)
 		pipe := h.PipelineFor()
 		pipe.Ask = func(tools.Request) (bool, string, string) { return true, "user", "" }
 		if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "make deploy", Unsandboxed: true}); v.Decision != perm.Deny || v.DecidedBy != "profile:readonly" {
@@ -71,7 +71,7 @@ func TestPlanSandbox(t *testing.T) {
 		want bool
 	}{{false, "auto", false}, {false, "yolo", false}, {true, "auto", true}, {true, "yolo", true}} {
 		fakeSandbox(h, c.live)
-		h.Settings.SetHost("permissions.mode", c.mode)
+		h.Settings.SetQuiet("permissions.mode", c.mode)
 		if got := h.PipelineFor().Sandbox() != nil; got != c.want {
 			t.Fatalf("live=%v mode=%s: policy=%v, want %v", c.live, c.mode, got, c.want)
 		}

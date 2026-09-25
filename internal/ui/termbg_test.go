@@ -38,7 +38,7 @@ func TestTerminalBackground(t *testing.T) {
 			app.Update(tea.BackgroundColorMsg{Color: canvas})
 		}
 		app.Update(tea.ColorProfileMsg{Profile: c.profile})
-		if err := app.host.Settings.SetHost("ui.theme", c.theme); err != nil {
+		if _, err := app.host.Settings.SetQuiet("ui.theme", c.theme); err != nil {
 			t.Fatal(err)
 		}
 		got := app.View().BackgroundColor

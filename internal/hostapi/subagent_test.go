@@ -441,7 +441,7 @@ func TestSubagentModelChoice(t *testing.T) {
 // outside text, so auto autonomy still queues it.
 func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	h.Settings.SetHost("memory.autonomy", "auto")
+	h.Settings.SetQuiet("memory.autonomy", "auto")
 	h.SetProjectTrusted(true)
 	sid := seedSession(t, h)
 	h.recordToolCall(sid, StreamTool{ID: "c1", Name: "fetch"}, true)
