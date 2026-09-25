@@ -214,12 +214,12 @@ func isRole(name string) bool {
 	return slices.ContainsFunc(roles, func(r modelRole) bool { return r.Name == name })
 }
 
-func roleNames() string {
+func roleNames() []string {
 	names := make([]string, len(roles))
 	for i, r := range roles {
 		names[i] = r.Name
 	}
-	return strings.Join(names, ", ")
+	return names
 }
 
 // roleModel is the model id a role runs on: its key, else models.chat, else

@@ -1653,6 +1653,16 @@ func (ag *agentHost) endThinking() {
 // ---------------------------------------------------------------------------
 // namespaces
 
+// enumTable is a table of constants keyed by each value upper-cased, like
+// zemi.provider.kind.OPENAI_COMPAT.
+func enumTable[T ~string](L *glua.LState, vals ...T) *glua.LTable {
+	tb := L.CreateTable(0, len(vals))
+	for _, v := range vals {
+		tb.RawSetString(strings.ToUpper(string(v)), glua.LString(v))
+	}
+	return tb
+}
+
 func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
@@ -1679,14 +1689,7 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 		h.Providers.Delete(L.CheckString(1))
 		return 0
 	}))
-	kinds := L.NewTable()
-	kinds.RawSetString("ANTHROPIC", glua.LString(agent.KindAnthropic))
-	kinds.RawSetString("OPENAI", glua.LString(agent.KindOpenAI))
-	kinds.RawSetString("OPENAI_COMPAT", glua.LString(agent.KindOpenAICompat))
-	kinds.RawSetString("GOOGLE", glua.LString(agent.KindGoogle))
-	kinds.RawSetString("OPENROUTER", glua.LString(agent.KindOpenRouter))
-	kinds.RawSetString("VERCEL", glua.LString(agent.KindVercel))
-	tb.RawSetString("kind", kinds)
+	tb.RawSetString("kind", enumTable(L, agent.Kinds...))
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		for _, s := range h.Providers.List() {
@@ -1810,10 +1813,12 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 	tb.RawSetString("ask", L.NewFunction(h.modelAsk))
+	tb.RawSetString("role", enumTable(L, roleNames()...))
+	tb.RawSetString("effort", enumTable(L, agent.Efforts...))
 	tb.RawSetString("pick", L.NewFunction(func(L *glua.LState) int {
 		role := L.OptString(1, "")
 		if role != "" && !isRole(role) {
-			L.RaiseError("zemi.model.pick: unknown role %q; roles: %s", role, roleNames())
+			L.RaiseError("zemi.model.pick: unknown role %q; roles: %s", role, strings.Join(roleNames(), ", "))
 			return 0
 		}
 		_ = h.OpenModelPicker(role) // headless there is nothing to pick with
@@ -1991,7 +1996,7 @@ func (h *Host) SetModel(args string, warn bool) error {
 	case len(f) == 1:
 		f = []string{"chat", f[0]}
 	case len(f) > 2 || !isRole(f[0]):
-		return Usagef("usage: /model [roles | update | <role> | [<role>] provider/model | <role> chat]; roles: %s", roleNames())
+		return Usagef("usage: /model [roles | update | <role> | [<role>] provider/model | <role> chat]; roles: %s", strings.Join(roleNames(), ", "))
 	}
 	role, id := f[0], f[1]
 	if id == "chat" { // chat following chat is the default model
@@ -2532,7 +2537,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("rule", rule)
-
+	tb.RawSetString("decision", enumTable(L, perm.Allow, perm.Ask, perm.Deny))
 	return tb
 }
 

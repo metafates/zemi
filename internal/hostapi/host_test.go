@@ -91,7 +91,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.86.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.87.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
@@ -100,6 +100,7 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(type(zemi.config.reload) == "function", "zemi.config.reload missing")
 		assert(zemi.provider.kind.OPENAI_COMPAT == "openai_compat" and zemi.provider.kind.ANTHROPIC == "anthropic" and zemi.provider.kind.OPENAI == "openai" and zemi.provider.kind.GOOGLE == "google" and zemi.provider.kind.OPENROUTER == "openrouter" and zemi.provider.kind.VERCEL == "vercel", "zemi.provider.kind missing")
+		assert(zemi.permission.decision.ALLOW == "allow" and zemi.memory.scope.PROJECT == "project" and zemi.model.role.TITLES == "titles" and zemi.notify.level.WARN == "warn" and zemi.model.effort.HIGH == "high", "an enum table is missing")
 		for _, fn in ipairs({ "add", "del", "set", "list" }) do
 			assert(type(zemi.permission.mode[fn]) == "function", "zemi.permission.mode." .. fn .. " missing")
 		end

@@ -11,9 +11,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	zemiruntime "github.com/metafates/zemi/runtime"
 	"github.com/yuin/gopher-lua/parse"
 )
@@ -167,6 +170,35 @@ func trimLast(path string) string {
 
 func TestTypesEventNames(t *testing.T) {
 	assertSameNames(t, "zemi.EventName", annotatedAlias(t, "zemi.EventName"), slices.Collect(maps.Keys(eventCatalogue)))
+}
+
+// TestTypesEnums: each enum table's class and the alias that types the
+// fields taking one list exactly the Go values, keyed upper-cased.
+func TestTypesEnums(t *testing.T) {
+	reConst := regexp.MustCompile(`(?m)^---@field ([A-Z_]+) "([^"]+)"$`)
+	for _, c := range []struct {
+		alias, table string
+		live         []string
+	}{
+		{"zemi.ProviderKind", "zemi.provider.kind", agent.Kinds},
+		{"zemi.Decision", "zemi.permission.decision", []string{string(perm.Allow), string(perm.Ask), string(perm.Deny)}},
+		{"zemi.Scope", "zemi.memory.scope", []string{learn.ScopeUser, learn.ScopeProject}},
+		{"zemi.Level", "zemi.notify.level", slices.Collect(maps.Keys(notifyLevels))},
+		{"zemi.ModelRole", "zemi.model.role", roleNames()},
+		{"", "zemi.model.effort", agent.Efforts},
+	} {
+		if c.alias != "" {
+			assertSameNames(t, c.alias, annotatedAlias(t, c.alias), slices.Clone(c.live))
+		}
+		var vals []string
+		for _, m := range reConst.FindAllStringSubmatch(annotatedClass(t, c.table), -1) {
+			if m[1] != strings.ToUpper(m[2]) {
+				t.Errorf("%s.%s is %q", c.table, m[1], m[2])
+			}
+			vals = append(vals, m[2])
+		}
+		assertSameNames(t, c.table, vals, slices.Clone(c.live))
+	}
 }
 
 func TestTypesHostActions(t *testing.T) {

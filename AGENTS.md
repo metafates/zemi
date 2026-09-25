@@ -530,7 +530,10 @@ loaded by the interpreter. `syncTypes` rewrites it plus a copy of `runtime/lua/`
 `<data>/types/` on every start, and `<config>/.luarc.json` whenever its content moved (an
 unchanged file is left alone: the config watcher reloads on an mtime). `TestTypes*` keep it
 honest: every API member annotated, nothing annotated that zemi dropped, and the
-`zemi.EventName`, `zemi.HostAction` and `zemi.WidgetCtx` aliases pinned to their Go sources. It
+`zemi.EventName`, `zemi.HostAction` and `zemi.WidgetCtx` aliases pinned to their Go sources, like
+each constant table (`enumTable`: `zemi.provider.kind`, `zemi.permission.decision`,
+`zemi.memory.scope`, `zemi.model.role`, `zemi.model.effort`, `zemi.notify.level`, keyed by the
+value upper-cased) and the alias that types the fields taking one (`TestTypesEnums`). It
 also carries `---@deprecated` stubs for the globals the sandbox strips, since the `.luarc.json`
 files turn off LuaLS's own libraries and it flags a deprecated global only when every
 definition is deprecated. Known ceiling: with no CI, `make luals` runs only where
@@ -832,7 +835,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   `origin` (`user` or `learned`) gates autonomy and the replacement guard, no kind.
   `memory.autonomy` is user config only.
 - **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema; only
-  user config sets them. Providers ship none; user config registers them, keys included
+  user config sets them, and a read of a key outside it panics under `go test`. Providers ship none; user config registers them, keys included
   (`api_key = zemi.env.get("NAME")`; `zemi.env.get` reads secret-shaped names for user and
   builtin origin only). Config fields hold values, never names of env vars.
 - **The Go-reserved triggers** (`ctrl+c` cancel, `/reload`) are never routed through Lua

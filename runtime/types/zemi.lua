@@ -186,9 +186,17 @@ function debug.traceback(msg) end
 ---| "plugin"   # <data>/plugins/{installed,local}/<name>; code runs as the least trusted function on its stack
 ---| "project"  # <repo>/.agents
 
----@alias zemi.Level "debug"|"info"|"warn"|"error"
+---@alias zemi.Level
+---| "info"
+---| "warn"
+---| "error"
+
 ---@alias zemi.HealthLevel "ok"|"warn"|"error"
----@alias zemi.Scope "user"|"project"
+
+---@alias zemi.Scope
+---| "user"     # holds in every project
+---| "project"  # this repository only
+
 --- The regions the default layout draws; a layout may draw any other name.
 ---@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"|string
 
@@ -1148,6 +1156,12 @@ function zemi.ui.reasoning.toggle() end
 ---@overload fun(body: string, title?: string)
 zemi.notify = {}
 
+---@class zemi.notify.level
+---@field INFO "info"
+---@field WARN "warn"
+---@field ERROR "error"
+zemi.notify.level = {}
+
 ---@param body string
 ---@param title? string
 function zemi.notify.info(body, title) end
@@ -1163,7 +1177,7 @@ function zemi.notify.error(body, title) end
 ---@class zemi.NotifyEntry
 ---@field at string "15:04:05".
 ---@field ts number Unix seconds.
----@field level string
+---@field level zemi.Level
 ---@field title string
 ---@field body string
 
@@ -1221,28 +1235,33 @@ function zemi.log.list() end
 
 ---@class zemi.ProviderSpec
 ---@field id string
----@field kind string One of `zemi.provider.kind`.
+---@field kind zemi.ProviderKind
 ---@field api_key? string Read it with `zemi.env.get`; never write a key into a file.
 ---@field base_url? string Required for openai_compat, refused for openrouter; overrides the default endpoint for the other kinds.
 ---@field headers? table<string, string> Sent with every request; as secret as the key.
 ---@field body? table<string, any> Extra request-body fields, merged verbatim into every request (service_tier, a gateway's routing block). Not sent by openai or google.
 ---@field models zemi.ModelSpec[]
 
----@class zemi.ProviderKind
----@field ANTHROPIC "anthropic"
----@field OPENAI "openai"
----@field OPENAI_COMPAT "openai_compat"
----@field GOOGLE "google"
----@field OPENROUTER "openrouter"
----@field VERCEL "vercel"
+---@alias zemi.ProviderKind
+---| "anthropic"
+---| "openai"         # gpt-4 and later, over /responses
+---| "openai_compat"  # any chat-completions endpoint; base_url required
+---| "google"
+---| "openrouter"
+---| "vercel"
 
 ---@class zemi.ProviderInfo
 ---@field id string
----@field kind string
+---@field kind zemi.ProviderKind
 ---@field base_url string
 ---@field builtin boolean From the builtin catalog; false once `zemi.provider.add` replaced it.
 
----@alias zemi.ModelRole "chat"|"agents"|"titles"|"compact"|"memory"
+---@alias zemi.ModelRole
+---| "chat"     # the conversation
+---| "agents"   # subagents
+---| "titles"   # session titles
+---| "compact"  # summaries
+---| "memory"   # memory review
 
 ---@class zemi.ModelInfo
 ---@field id string "provider/model".
@@ -1251,8 +1270,16 @@ function zemi.log.list() end
 ---@field roles zemi.ModelRole[] The roles that run on this model. "chat" is models.chat, also while the active profile runs the conversation on its own model.
 
 ---@class zemi.provider
----@field kind zemi.ProviderKind
 zemi.provider = {}
+
+---@class zemi.provider.kind
+---@field ANTHROPIC "anthropic"
+---@field OPENAI "openai"
+---@field OPENAI_COMPAT "openai_compat"
+---@field GOOGLE "google"
+---@field OPENROUTER "openrouter"
+---@field VERCEL "vercel"
+zemi.provider.kind = {}
 
 --- Register a provider and its models. User config only. An id a builtin
 --- provider has replaces it whole (a gateway in front of it keeps its
@@ -1271,6 +1298,21 @@ function zemi.provider.list() end
 
 ---@class zemi.model
 zemi.model = {}
+
+---@class zemi.model.role
+---@field CHAT "chat"
+---@field AGENTS "agents"
+---@field TITLES "titles"
+---@field COMPACT "compact"
+---@field MEMORY "memory"
+zemi.model.role = {}
+
+--- The levels /effort offers, for `zemi.config.set("agent.effort", ...)`.
+---@class zemi.model.effort
+---@field LOW "low"
+---@field MEDIUM "medium"
+---@field HIGH "high"
+zemi.model.effort = {}
 
 ---@return zemi.ModelInfo[]
 function zemi.model.list() end
@@ -1537,7 +1579,10 @@ function zemi.composer.edit() end
 -- ---------------------------------------------------------------------------
 -- zemi.permission
 
----@alias zemi.Decision "allow"|"ask"|"deny"
+---@alias zemi.Decision
+---| "allow"
+---| "ask"
+---| "deny"
 
 ---@class zemi.RuleSpec
 ---@field subject string "tool.bash", "fs.read", "fs.write", "net.<host>", "lua.<ns.call>", "mcp.<server>".
@@ -1579,6 +1624,12 @@ function zemi.composer.edit() end
 
 ---@class zemi.permission
 zemi.permission = {}
+
+---@class zemi.permission.decision
+---@field ALLOW "allow"
+---@field ASK "ask"
+---@field DENY "deny"
+zemi.permission.decision = {}
 
 ---@class zemi.permission.rule
 zemi.permission.rule = {}
@@ -1953,6 +2004,11 @@ function zemi.json.decode(s) end
 
 ---@class zemi.memory
 zemi.memory = {}
+
+---@class zemi.memory.scope
+---@field USER "user"
+---@field PROJECT "project"
+zemi.memory.scope = {}
 
 --- Propose a memory of at most 300 characters. It goes through intake and
 --- the autonomy gate, so it is stored or queued for review, never written

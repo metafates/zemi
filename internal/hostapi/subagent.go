@@ -666,7 +666,7 @@ func (h *Host) checkModelID(id string) error {
 	if id == "" || isRole(id) || slices.Contains(h.modelIDs(), id) {
 		return nil
 	}
-	return fmt.Errorf("unknown model %q; roles: %s; configured models: %s", id, roleNames(), strings.Join(h.modelIDs(), ", "))
+	return fmt.Errorf("unknown model %q; roles: %s; configured models: %s", id, strings.Join(roleNames(), ", "), strings.Join(h.modelIDs(), ", "))
 }
 
 // ---------------------------------------------------------------------------

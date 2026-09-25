@@ -1,19 +1,26 @@
 package hostapi
 
 import (
+	"maps"
+	"slices"
+
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/sanitize"
 	glua "github.com/yuin/gopher-lua"
 )
+
+// notifyLevels are zemi.notify's levels by name, each also a function.
+var notifyLevels = map[string]logging.Level{"info": logging.Info, "warn": logging.Warn, "error": logging.Error}
 
 // notifyNamespace builds zemi.notify: a callable table. The notify body and
 // title cross the sanitize boundary like every model-influenced string
 // (DESIGN §8).
 func (h *Host) notifyNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	tb.RawSetString("info", L.NewFunction(h.notifyFn(logging.Info)))
-	tb.RawSetString("warn", L.NewFunction(h.notifyFn(logging.Warn)))
-	tb.RawSetString("error", L.NewFunction(h.notifyFn(logging.Error)))
+	for name, level := range notifyLevels {
+		tb.RawSetString(name, L.NewFunction(h.notifyFn(level)))
+	}
+	tb.RawSetString("level", enumTable(L, slices.Collect(maps.Keys(notifyLevels))...))
 	tb.RawSetString("list", L.NewFunction(h.notifyListFn))
 	return tb
 }
@@ -43,13 +50,8 @@ func (h *Host) notifyFn(level logging.Level) glua.LGFunction {
 		}
 		// the closure lives for the generation: a spec's level must not stick
 		level := level
-		switch m["level"] {
-		case "info":
-			level = logging.Info
-		case "warn":
-			level = logging.Warn
-		case "error":
-			level = logging.Error
+		if l, ok := notifyLevels[strField(m, "level")]; ok {
+			level = l
 		}
 		h.Log.Log(level, string(h.RT.CurrentOrigin(L)), "notify: "+title+" "+body, nil)
 		h.Notify(level, sanitize.String(title), sanitize.String(body))

@@ -615,7 +615,7 @@ zemi.env.get("EDITOR")                        -- env-read; secret-shaped
                                               -- names (§9 deny list) are denied
 zemi.log("...")                               -- callable table: zemi.log(msg) = info
 zemi.log.info("...", { key = "value" })
-zemi.notify({ title = "hi", body = "...", level = "info" })
+zemi.notify({ title = "hi", body = "...", level = zemi.notify.level.INFO })
 ```
 
 Config values from `init.lua` merge with the defaults in Go's schema.
@@ -641,7 +641,7 @@ Permission rules are data with one API and an optional principal:
 
 ```lua
 zemi.permission.rule.add{ subject = "tool.bash", pattern = "make *",
-                          decision = "deny", match = "make check" }
+                          decision = zemi.permission.decision.DENY, match = "make check" }
 ```
 
 A Lua rule carries no principal and matches every principal, unless user
@@ -855,7 +855,7 @@ zemi.mcp.add("name", { ... }); zemi.mcp.list()  -- MCP servers bridged as tools
 
 zemi.model.list()                    -- { { id = "anthropic/...", roles = { "chat" }, ... } }
 zemi.model.set("anthropic/claude-sonnet-4-5")   -- writes models.chat
-zemi.model.pick("titles")            -- open a role's picker (returns at once; none opens /model)
+zemi.model.pick(zemi.model.role.TITLES)  -- open a role's picker (returns at once; none opens /model)
 local h = zemi.model.ask({ prompt = "...", system = "...", model = "titles",
                            max_output = 1024, on_done = function(text, err) end })
 h:wait()                             -- text, or nil, err; suspends the task (§4)
@@ -1254,7 +1254,7 @@ zemi.session.todos()                   -- this session's todo list
 zemi.session.list(); zemi.session.new(); zemi.session.resume(id)
 zemi.session.rewind(message_id)        -- restore files, then truncate (§8)
                                        -- new/resume/rewind: user config only
-zemi.memory.add("...", { scope = "project", quote = "...", replaces = id })
+zemi.memory.add("...", { scope = zemi.memory.scope.PROJECT, quote = "...", replaces = id })
                                        -- same host-side intake policy as §10.4
 zemi.memory.list(); zemi.memory.del(id)
 zemi.learn.list()                      -- pending proposal cards

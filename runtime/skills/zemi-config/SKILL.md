@@ -52,7 +52,7 @@ Roles: `models.chat` runs the conversation, `/btw` and every role left empty; `m
 `zemi.config.set(path, value)` in init.lua. `zemi.config.schema()` returns every key with kind, default and description; read it with the Lua tool instead of guessing. A runtime pick (`/model`, `/effort`, `/profile`, the mode) survives a reload until init.lua changes that key. `/config` lists every key with where it came from (`default`, `on disk` for init.lua, or `unsaved` for a runtime pick) and its value, a bool's as a switch: space toggles a bool and enter opens a key's detail to change or reset it, `/config set <key> <value>` sets one, `/config lua` shows the settings as Lua, and `/config save` writes the unsaved ones into init.lua, rewriting the key's one `zemi.config.set` line or appending to a `-- zemi: saved from /config` block at the end; a key set by code or more than once is left alone. The keys that need more than the schema says:
 
 - `agent.profile`: `default`, `planner`, or a profile defined with `zemi.agent.profile.add` (zemi-customize); `/profile` or ctrl+t switches.
-- `agent.effort`: `low`, `medium`, `high`, or empty for the model's default; `/effort`.
+- `agent.effort`: `low`, `medium`, `high` (`zemi.model.effort.HIGH`, ...), or empty for the model's default; `/effort`.
   A builtin catalog model runs at its catalog default when unset, else the nearest level it lists, and gets none when it lists none; any other model gets the pick, or no effort when unset.
 - `web.search_url`: a SearXNG endpoint with the json format on; empty uses DuckDuckGo Lite, which some networks answer with a bot check.
 - `memory.autonomy`: `auto` stores policy-clean memories at once, `ask` queues every one for `/memory` (zemi-learning).
@@ -66,7 +66,7 @@ The schema's description covers `session.auto_title`, `ui.theme`, `ui.animations
 A tool call meets the rules first; what they leave open goes to the permission mode, then to the user.
 
 ```lua
-zemi.permission.rule.add({ subject = "tool.bash", pattern = "git push*", decision = "deny", match = "git push origin main" })
+zemi.permission.rule.add({ subject = "tool.bash", pattern = "git push*", decision = zemi.permission.decision.DENY, match = "git push origin main" })
 ```
 
 A rule in init.lua is added again every start. `match` is an argument the pattern must catch, checked when the rule is added. Deny beats ask beats allow; within one decision the most specific pattern wins. Subjects: `tool.<name>` (`tool.bash` matches the normalized command), `fs.read` and `fs.write` (paths), `net.<host>` (the model's `fetch` and `web_search`), `mcp.<server>` (the tool name), and `lua.fs.write` (path), `lua.job.start` (command line), `lua.http.<method>` (URL) for calls config code makes. A `lua.*` call never shows a prompt in any mode: without an allow rule it raises with the rule to add. A subject ending in `.*` covers its family. In a command pattern `*` spans spaces and `/`, so `cat docs/*` also allows `cat docs/a /etc/passwd`; an argument with `..` or one the shell may still expand gets the stricter verdict.

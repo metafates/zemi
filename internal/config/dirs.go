@@ -149,7 +149,7 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- Permissions: allow rules come only from your own config. Each rule needs
 -- match, an argument its pattern must match, so a typo fails at startup.
 -- zemi.permission.rule.add({
---   subject = "tool.bash", pattern = "git push *", decision = "ask",
+--   subject = "tool.bash", pattern = "git push *", decision = zemi.permission.decision.ASK,
 --   match = "git push origin main",
 -- })
 

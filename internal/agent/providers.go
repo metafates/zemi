@@ -64,15 +64,15 @@ const (
 	KindVercel       = "vercel"
 )
 
-// kinds is every kind Resolve knows.
-var kinds = []string{KindAnthropic, KindOpenAI, KindOpenAICompat, KindGoogle, KindOpenRouter, KindVercel}
+// Kinds is every kind Resolve knows.
+var Kinds = []string{KindAnthropic, KindOpenAI, KindOpenAICompat, KindGoogle, KindOpenRouter, KindVercel}
 
 // Spec describes one provider: kind selects the fantasy implementation.
 // Headers ride every request (a gateway's attribution or team header); they
 // are as secret as the key, so nothing echoes them back.
 type Spec struct {
 	ID      string            `json:"id"`
-	Kind    string            `json:"kind"` // one of kinds
+	Kind    string            `json:"kind"` // one of Kinds
 	BaseURL string            `json:"base_url,omitempty"`
 	Headers map[string]string `json:"-"`
 	// Body holds extra request-body fields merged into every request
@@ -402,8 +402,8 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	if spec.ID == "" || spec.Kind == "" {
 		return errors.New("provider needs id and kind")
 	}
-	if !slices.Contains(kinds, spec.Kind) {
-		return fmt.Errorf("unknown provider kind %q (want %s)", spec.Kind, strings.Join(kinds, ", "))
+	if !slices.Contains(Kinds, spec.Kind) {
+		return fmt.Errorf("unknown provider kind %q (want %s)", spec.Kind, strings.Join(Kinds, ", "))
 	}
 	// the fantasy default is api.openai.com, which would get the key
 	if spec.Kind == KindOpenAICompat && spec.BaseURL == "" {

@@ -73,7 +73,7 @@ zemi.permission.mode.add("ask", { base = "auto", description = "I answer everyth
 
 -- a local model approves commands; zemi.http needs the user's allow rule, localhost included
 zemi.permission.rule.add({ subject = "lua.http.post", pattern = "http://localhost:11434/*",
-  decision = "allow", match = "http://localhost:11434/api/generate" })
+  decision = zemi.permission.decision.ALLOW, match = "http://localhost:11434/api/generate" })
 zemi.permission.mode.add("judged", {
   base = "auto", description = "a local model approves commands",
   decide = function(req)
@@ -81,7 +81,7 @@ zemi.permission.mode.add("judged", {
     local res = zemi.http.request({ method = "POST", url = "http://localhost:11434/api/generate",
       body = zemi.json.encode({ model = "llama3", stream = false, prompt = "Reply allow or deny. Command: " .. req.arg }) }):wait()
     local out = res and zemi.json.decode(res.body)
-    if out and (out.response or ""):match("^allow") then return "allow" end
+    if out and (out.response or ""):match("^allow") then return zemi.permission.decision.ALLOW end
   end,
 })
 ```
@@ -134,7 +134,7 @@ zemi.ui.widget.add({
 })
 
 -- the git branch: a job fills a local, the widget reads it
-zemi.permission.rule.add({ subject = "lua.job.start", pattern = "git rev-parse *", decision = "allow",
+zemi.permission.rule.add({ subject = "lua.job.start", pattern = "git rev-parse *", decision = zemi.permission.decision.ALLOW,
   match = "git rev-parse --abbrev-ref HEAD" })
 local branch = ""
 zemi.ui.widget.add({
@@ -254,7 +254,7 @@ return M
 The README lists what the user may add to their init.lua: the rule a gated call needs and the `setup` options. You never add them yourself unless the user asks:
 
 ```lua
-zemi.permission.rule.add({ subject = "lua.job.start", pattern = "git rev-parse *", decision = "allow",
+zemi.permission.rule.add({ subject = "lua.job.start", pattern = "git rev-parse *", decision = zemi.permission.decision.ALLOW,
   match = "git rev-parse --abbrev-ref HEAD", principal = "plugin:branch" })
 require("branch").setup({ interval = 10000 })
 ```
