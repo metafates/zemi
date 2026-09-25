@@ -27,7 +27,7 @@ type pluginsUI struct {
 
 func (u *pluginsUI) OpenOverlay(o Overlay) { u.opened <- o }
 func (u *pluginsUI) Notify(level logging.Level, title, body string) {
-	u.notes <- strings.ToLower(level.String()) + ": " + title + ": " + body
+	u.notes <- notifyName(level) + ": " + title + ": " + body
 }
 
 // TestPluginsCommand runs /plugins verbs in order over one plugin tree and

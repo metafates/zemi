@@ -12,6 +12,16 @@ import (
 // notifyLevels are zemi.notify's levels by name, each also a function.
 var notifyLevels = map[string]logging.Level{"info": logging.Info, "warn": logging.Warn, "error": logging.Error}
 
+// notifyName is level's name in notifyLevels, what zemi.notify.list reports.
+func notifyName(level logging.Level) string {
+	for name, l := range notifyLevels {
+		if l == level {
+			return name
+		}
+	}
+	return "info"
+}
+
 // notifyNamespace builds zemi.notify: a callable table. The notify body and
 // title cross the sanitize boundary like every model-influenced string
 // (DESIGN §8).
