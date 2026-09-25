@@ -25,9 +25,7 @@ local changes, err = agent(
     .. "Do not review or judge anything.",
   { agent = "general", description = "collect changes" }
 )
-if not changes then
-  return "could not read the changes: " .. err
-end
+if not changes then return "could not read the changes: " .. err end
 
 local lenses = {
   { "correctness", "logic errors, broken edge cases, wrong error handling, races" },
@@ -40,7 +38,11 @@ local jobs = {}
 for _, lens in ipairs(lenses) do
   jobs[#jobs + 1] = function()
     return agent(
-      "Review these changes for " .. lens[1] .. " problems (" .. lens[2] .. "). "
+      "Review these changes for "
+        .. lens[1]
+        .. " problems ("
+        .. lens[2]
+        .. "). "
         .. "Read the changed code and what it calls before judging. "
         .. "Report only problems these changes introduced; leave pre-existing ones alone, "
         .. "and do not ask for more rigor than the rest of the file has. "
@@ -68,6 +70,9 @@ return agent(
     .. "and these changes introduced it: reject a finding whose problem is also in code the changes did not touch. "
     .. "Answer with the confirmed findings, most severe first, as: file:line - problem - suggested fix. "
     .. "Then list rejected findings, one line each with the reason.\n\n"
-    .. "Changes:\n" .. changes .. "\n\nFindings:\n" .. table.concat(findings, "\n\n"),
+    .. "Changes:\n"
+    .. changes
+    .. "\n\nFindings:\n"
+    .. table.concat(findings, "\n\n"),
   { agent = "explore", description = "verify findings" }
 )

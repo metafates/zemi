@@ -7,9 +7,7 @@ local fmt = require("zemi.tui.text")
 
 --- Runs the command a statusline segment names in its click id.
 ---@param ev zemi.WidgetClick
-local function run_click(ev)
-  assert(zemi.command.run(ev.id))
-end
+local function run_click(ev) assert(zemi.command.run(ev.id)) end
 
 -- The permission mode, colored like the composer prompt. A click opens the
 -- mode picker.
@@ -43,7 +41,9 @@ zemi.ui.widget.add({
     local line = { { text = p, hl = "Comment" } }
     if ctx.trusted == false then
       line = p == "" and {} or { line[1], { text = " · ", hl = "Comment" } }
-      for _, seg in ipairs(fmt.hint("untrusted", "/trust", "trust")) do line[#line + 1] = seg end
+      for _, seg in ipairs(fmt.hint("untrusted", "/trust", "trust")) do
+        line[#line + 1] = seg
+      end
     end
     return { line }
   end,
@@ -165,36 +165,57 @@ end)
 -- per part, so config can replace or delete any of them.
 ---@type { [1]: string, [2]: integer, [3]: fun(ctx: zemi.WidgetCtx): string?, string?, string? }[]
 local right = {
-  { "model", 8, function(ctx)
-    if (ctx.model or "") == "" then return end
-    return ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment", "model"
-  end },
+  {
+    "model",
+    8,
+    function(ctx)
+      if (ctx.model or "") == "" then return end
+      return ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment", "model"
+    end,
+  },
   -- the shipped profile goes unsaid
-  { "profile", 20, function(ctx)
-    if ctx.profile_read_only then return ctx.profile, "ModePlan", "profile" end
-    if ctx.profile ~= "default" then return ctx.profile, "Comment", "profile" end
-  end },
+  {
+    "profile",
+    20,
+    function(ctx)
+      if ctx.profile_read_only then return ctx.profile, "ModePlan", "profile" end
+      if ctx.profile ~= "default" then return ctx.profile, "Comment", "profile" end
+    end,
+  },
   -- how much of the window is in use, not the running session total: the
   -- total says nothing about how much room is left.
-  { "context", 40, function(ctx)
-    local cx = ctx.context or {}
-    local used, window = fmt.tokens(cx.tokens), fmt.tokens(cx.window)
-    if window then return used and used .. "/" .. window .. " ctx" end
-    local total = fmt.tokens((ctx.usage or {}).total)
-    return total and total .. " tok"
-  end },
+  {
+    "context",
+    40,
+    function(ctx)
+      local cx = ctx.context or {}
+      local used, window = fmt.tokens(cx.tokens), fmt.tokens(cx.window)
+      if window then return used and used .. "/" .. window .. " ctx" end
+      local total = fmt.tokens((ctx.usage or {}).total)
+      return total and total .. " tok"
+    end,
+  },
   -- inside the meter, so it drops first and never stands without its unit;
   -- it draws whenever the meter does, 0% included, so it moves nothing
-  { "percent", 41, function(ctx)
-    local cx = ctx.context or {}
-    if (cx.tokens or 0) <= 0 or (cx.window or 0) <= 0 then return end
-    local pct = math.floor(tonumber(cx.pct) or 0)
-    return string.format("%d%%", pct), pct >= 95 and "StatusUsageErr" or pct >= 80 and "StatusUsageWarn" or "StatusUsage"
-  end },
-  { "cost", 42, function(ctx)
-    local cost = tonumber((ctx.usage or {}).cost or 0) or 0
-    if cost > 0 then return string.format("$%.2f", cost) end
-  end },
+  {
+    "percent",
+    41,
+    function(ctx)
+      local cx = ctx.context or {}
+      if (cx.tokens or 0) <= 0 or (cx.window or 0) <= 0 then return end
+      local pct = math.floor(tonumber(cx.pct) or 0)
+      return string.format("%d%%", pct),
+        pct >= 95 and "StatusUsageErr" or pct >= 80 and "StatusUsageWarn" or "StatusUsage"
+    end,
+  },
+  {
+    "cost",
+    42,
+    function(ctx)
+      local cost = tonumber((ctx.usage or {}).cost or 0) or 0
+      if cost > 0 then return string.format("$%.2f", cost) end
+    end,
+  },
 }
 for _, part in ipairs(right) do
   zemi.ui.widget.add({

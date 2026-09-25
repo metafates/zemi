@@ -53,15 +53,23 @@ zemi.ui.widget.add({
           break
         end
       end
-      if label == "Working" and ag.reasoning ~= "" and ag.text == "" then label, state = "Thinking", "thinking" end
+      if label == "Working" and ag.reasoning ~= "" and ag.text == "" then
+        label, state = "Thinking", "thinking"
+      end
       ---@type { [1]: string, [2]: integer, [3]: integer }?
       local tick = { fmt.duration(ag.elapsed, true), 5, 7 }
-      if ag.compacting then label, state = "Compacting", "reading" end
+      if ag.compacting then
+        label, state = "Compacting", "reading"
+      end
       if ag.retry then
         label, state = "Retrying", "error"
         parts = { { "attempt " .. ag.retry.attempt, 3 } }
         if ag.retry.why ~= "" then parts[#parts + 1] = { ag.retry.why, 2 } end
-        tick = { ag.retry.next_in > 0 and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true) or "retrying now", 5, 18 }
+        tick = {
+          ag.retry.next_in > 0 and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true) or "retrying now",
+          5,
+          18,
+        }
       end
       if ctx.cancelling then label = "Cancelling" end
       if ctx.editing ~= "" then
@@ -85,7 +93,9 @@ zemi.ui.widget.add({
     ---@return integer
     local function room()
       local n = 0
-      for _, p in ipairs(parts) do n = n + 3 + math.max(fmt.cells(p[1]), p[3] or 0) end
+      for _, p in ipairs(parts) do
+        n = n + 3 + math.max(fmt.cells(p[1]), p[3] or 0)
+      end
       return n
     end
     -- the snail keeps 8 cells of rule; the label gives way down to 16 cells
@@ -101,16 +111,21 @@ zemi.ui.widget.add({
     label = fmt.clip(label, ctx.width - 10 - room())
     ---@type string[]
     local texts = {}
-    for i, p in ipairs(parts) do texts[i] = p[1] end
+    for i, p in ipairs(parts) do
+      texts[i] = p[1]
+    end
     local after = #texts > 0 and " · " .. table.concat(texts, " · ") or ""
     local text = label .. after ~= "" and fmt.cells(label) + room() + 2 or 0
-    if state ~= shown then shown, since = state, ctx.frame end
+    if state ~= shown then
+      shown, since = state, ctx.frame
+    end
     local left = text > 0 and math.floor((ctx.width - text) / 2) or ctx.width
     local row = snail.rule(state, ctx.frame - since, left)
     if text > 0 then
       row[#row + 1] = { text = " " .. label, hl = "Comment", effect = "shimmer" }
       row[#row + 1] = { text = after .. " ", hl = "Comment" }
-      row[#row + 1] = { text = string.rep("─", ctx.width - left - fmt.cells(label .. after) - 2), hl = "Rule", copy = false }
+      row[#row + 1] =
+        { text = string.rep("─", ctx.width - left - fmt.cells(label .. after) - 2), hl = "Rule", copy = false }
     end
     return { row }
   end,

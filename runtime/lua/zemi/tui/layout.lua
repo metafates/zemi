@@ -4,16 +4,23 @@
 ---@type zemi.Layout
 local layout = {
   root = {
-    kind = "box", dir = "row", sep = true,
+    kind = "box",
+    dir = "row",
+    sep = true,
     children = {
       -- the main column
       {
-        kind = "box", dir = "col", min = 30,
+        kind = "box",
+        dir = "col",
+        min = 30,
         children = {
           { kind = "region", region = "header" },
           -- prompts, overlays, toasts and completion popups go over the stage
           {
-            kind = "box", dir = "col", stage = true, min = 1,
+            kind = "box",
+            dir = "col",
+            stage = true,
+            min = 1,
             children = {
               { kind = "region", id = "chat", region = "chat", scroll = "bottom", size = "fill", min = 3 },
             },

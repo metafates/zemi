@@ -6,32 +6,30 @@ local M = {}
 
 ---@param b integer A byte.
 ---@return boolean
-local function is_space(b)
-  return b == 32 or (b >= 9 and b <= 13)
-end
+local function is_space(b) return b == 32 or (b >= 9 and b <= 13) end
 
 ---@param s string
 ---@return string
 function M.trim(s)
   local i, j = 1, #s
-  while i <= j and is_space(s:byte(i)) do i = i + 1 end
-  while j >= i and is_space(s:byte(j)) do j = j - 1 end
+  while i <= j and is_space(s:byte(i)) do
+    i = i + 1
+  end
+  while j >= i and is_space(s:byte(j)) do
+    j = j - 1
+  end
   return s:sub(i, j)
 end
 
 ---@param s string
 ---@param prefix string
 ---@return boolean
-function M.startswith(s, prefix)
-  return s:sub(1, #prefix) == prefix
-end
+function M.startswith(s, prefix) return s:sub(1, #prefix) == prefix end
 
 ---@param s string
 ---@param suffix string
 ---@return boolean
-function M.endswith(s, suffix)
-  return suffix == "" or s:sub(-#suffix) == suffix
-end
+function M.endswith(s, suffix) return suffix == "" or s:sub(-#suffix) == suffix end
 
 --- Split on a plain (not pattern) separator, keeping empty fields.
 ---@param s string
@@ -58,7 +56,9 @@ end
 ---@return K[]
 function M.keys(t)
   local out = {}
-  for k in pairs(t) do out[#out + 1] = k end
+  for k in pairs(t) do
+    out[#out + 1] = k
+  end
   table.sort(out, function(a, b) return tostring(a) < tostring(b) end)
   return out
 end
@@ -69,7 +69,9 @@ end
 ---@return U[]
 function M.map(list, fn)
   local out = {}
-  for i, v in ipairs(list) do out[i] = fn(v, i) end
+  for i, v in ipairs(list) do
+    out[i] = fn(v, i)
+  end
   return out
 end
 
@@ -101,7 +103,9 @@ end
 function M.extend(...)
   local out = {}
   for i = 1, select("#", ...) do
-    for k, v in pairs(select(i, ...) or {}) do out[k] = v end
+    for k, v in pairs(select(i, ...) or {}) do
+      out[k] = v
+    end
   end
   return out
 end
@@ -127,9 +131,7 @@ end
 ---@param optional? boolean
 function M.validate(name, value, kind, optional)
   if value == nil and optional then return end
-  if type(value) ~= kind then
-    error(string.format("%s: expected %s, got %s", name, kind, type(value)), 2)
-  end
+  if type(value) ~= kind then error(string.format("%s: expected %s, got %s", name, kind, type(value)), 2) end
 end
 
 --- A one-line readable form; cycles and depth (4 by default) are bounded.
@@ -150,7 +152,9 @@ function M.inspect(v, depth)
     seen[x] = true
     ---@type string[], integer
     local parts, n = {}, #x
-    for i = 1, n do parts[#parts + 1] = go(x[i], d + 1) end
+    for i = 1, n do
+      parts[#parts + 1] = go(x[i], d + 1)
+    end
     for _, k in ipairs(M.keys(x)) do
       local listed = type(k) == "number" and k >= 1 and k <= n and k % 1 == 0
       if not listed then

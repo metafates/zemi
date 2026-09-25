@@ -1128,7 +1128,6 @@ zemi.ui.reasoning = {}
 --- Show or hide finished reasoning and every tool call (ctrl+o).
 function zemi.ui.reasoning.toggle() end
 
-
 -- ---------------------------------------------------------------------------
 -- zemi.notify and zemi.log
 

@@ -25,7 +25,11 @@ zemi.keymap.set("ctrl+y", function()
   end
 end, { desc = "yolo until the next press" })
 zemi.keymap.set("ctrl+t", "zemi.agent.profile.cycle", { desc = "next profile" })
-zemi.keymap.set("ctrl+shift+t", "zemi.agent.profile.prev", { desc = "previous profile, where the terminal tells it from ctrl+t" })
+zemi.keymap.set(
+  "ctrl+shift+t",
+  "zemi.agent.profile.prev",
+  { desc = "previous profile, where the terminal tells it from ctrl+t" }
+)
 zemi.keymap.set("pgup", "zemi.ui.scroll.up", { desc = "scroll chat up a page" })
 zemi.keymap.set("pgdown", "zemi.ui.scroll.down", { desc = "scroll chat down a page" })
 zemi.keymap.set("ctrl+home", "zemi.ui.scroll.top", { desc = "scroll chat to top" })

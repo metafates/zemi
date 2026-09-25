@@ -102,7 +102,9 @@ zemi.ui.widget.add({
     local function add_markdown(text)
       for _, segs in ipairs(zemi.ui.markdown(text, width - 2)) do
         local row = { { text = "  ", hl = "Normal", copy = false } }
-        for _, sg in ipairs(segs) do row[#row + 1] = sg end
+        for _, sg in ipairs(segs) do
+          row[#row + 1] = sg
+        end
         lines[#lines + 1] = row
       end
     end
@@ -148,7 +150,9 @@ zemi.ui.widget.add({
     local function add_reasoning(label, hint, text, tail, spin)
       local head = { mark(spin and "spin" or "thought"), { text = label, hl = "AgentReason" } }
       if hint then head[3] = { text = "  " .. hint, hl = "Comment" } end
-      for _, sg in ipairs(head) do sg.click = "reasoning" end
+      for _, sg in ipairs(head) do
+        sg.click = "reasoning"
+      end
       lines[#lines + 1] = head
       if not ctx.show_reasoning and not tail then return end
       local body = zemi.ui.wrap((text:gsub("%s+$", "")), math.max(width - 6, 20))
@@ -173,12 +177,19 @@ zemi.ui.widget.add({
     -- a verb, then the singular and plural noun; a verb alone never counts
     ---@type table<string, { [1]: string, [2]: string?, [3]: string? }>
     local COUNT = {
-      read = { "read", "file", "files" }, glob = { "searched for", "pattern", "patterns" },
-      grep = { "searched for", "pattern", "patterns" }, web_search = { "searched the web for", "query", "queries" },
-      bash = { "ran", "command", "commands" }, fetch = { "fetched", "page", "pages" },
-      skill = { "loaded", "skill", "skills" }, memory = { "saved", "memory", "memories" },
-      diagnostics = { "checked", "file", "files" }, job_read = { "checked", "job", "jobs" },
-      job_list = { "listed jobs" }, job_kill = { "stopped", "job", "jobs" }, todos = { "updated todos" },
+      read = { "read", "file", "files" },
+      glob = { "searched for", "pattern", "patterns" },
+      grep = { "searched for", "pattern", "patterns" },
+      web_search = { "searched the web for", "query", "queries" },
+      bash = { "ran", "command", "commands" },
+      fetch = { "fetched", "page", "pages" },
+      skill = { "loaded", "skill", "skills" },
+      memory = { "saved", "memory", "memories" },
+      diagnostics = { "checked", "file", "files" },
+      job_read = { "checked", "job", "jobs" },
+      job_list = { "listed jobs" },
+      job_kill = { "stopped", "job", "jobs" },
+      todos = { "updated todos" },
     }
     ---@param t zemi.tui.Tool
     ---@return string
@@ -210,7 +221,8 @@ zemi.ui.widget.add({
         end
         seen[key].n = seen[key].n + 1
         if tool_name(t) == "bash" then
-          commands[#commands + 1] = (t.label or "") ~= "" and fmt.lower(t.label) or relpath(t.text or t.input or ""):gsub("%s+", " ")
+          commands[#commands + 1] = (t.label or "") ~= "" and fmt.lower(t.label)
+            or relpath(t.text or t.input or ""):gsub("%s+", " ")
         end
       end
       ---@type string[]
@@ -254,7 +266,9 @@ zemi.ui.widget.add({
       local body = input
       if open then
         body = input:gsub("%s+$", "")
-        for l in (body .. "\n"):gmatch("(.-)\n") do more[#more + 1] = l end
+        for l in (body .. "\n"):gmatch("(.-)\n") do
+          more[#more + 1] = l
+        end
         input = table.remove(more, 1) or ""
       else
         input = (input:gsub("%s+", " "))
@@ -269,22 +283,29 @@ zemi.ui.widget.add({
       if label == "" and input ~= "" then rest = " " .. input end
       -- a command is highlighted where it is what the row reads, the head and
       -- an opened row; collapsed under its label it stays a Comment detail
-      local code = name == "bash" and input ~= "" and (open or label == "")
-        and zemi.ui.highlight(open and body or fit(input, width - fmt.cells(verb) - 13), "bash") or nil
+      local code = name == "bash"
+          and input ~= ""
+          and (open or label == "")
+          and zemi.ui.highlight(open and body or fit(input, width - fmt.cells(verb) - 13), "bash")
+        or nil
       -- an agent's rows open its transcript (ids must differ between adjacent rows),
       -- every other row (file tools included) expands the call
       local click = (t.run or "") ~= "" and ("agent:" .. t.run) or ("tool:" .. idx)
       local head = { mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = "AgentToolName" } }
       if code and label == "" then
         head[3] = { text = " ", hl = "Normal" }
-        for _, sg in ipairs(code[1] or {}) do head[#head + 1] = sg end
+        for _, sg in ipairs(code[1] or {}) do
+          head[#head + 1] = sg
+        end
       elseif rest ~= "" then
         head[3] = { text = fit(rest, width - fmt.cells(verb) - 12), hl = "Normal" }
       end
       if t.status == "run" and not asked and (t.elapsed or 0) >= 1 then
         head[#head + 1] = { text = " · " .. fmt.duration(t.elapsed, true), hl = "Comment" }
       end
-      for _, sg in ipairs(head) do sg.click = click end
+      for _, sg in ipairs(head) do
+        sg.click = click
+      end
       lines[#lines + 1] = head
       -- under the head one corner, every later row four cells in
       local corner = true
@@ -301,14 +322,22 @@ zemi.ui.widget.add({
       -- the command a description stands for, then progress, then the job
       -- a timed-out command went on as (the phrase is tools.JobHandoff)
       if label ~= "" and input ~= "" then detail(code and code[1] or fit(input, width - 6), "Comment") end
-      for i, l in ipairs(more) do detail(code and code[i + 1] or l, "Comment") end
+      for i, l in ipairs(more) do
+        detail(code and code[i + 1] or l, "Comment")
+      end
       if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), width - 6), "Comment") end
-      local job = t.status == "bg" and ((t.output or ""):match("moved to the background as (job%-%d+)") or (t.output or ""):match("^started (job%-%d+)"))
+      local job = t.status == "bg"
+        and (
+          (t.output or ""):match("moved to the background as (job%-%d+)")
+          or (t.output or ""):match("^started (job%-%d+)")
+        )
       if job then detail("running as " .. job, "Comment") end
       -- File tools show what they changed as numbered, tinted rows, four
       -- cells in; a diff row is body: no hover, but the click expands like the head
       for _, row in ipairs(zemi.ui.diff(t.diff or "", width - 4)) do
-        for _, sg in ipairs(row) do sg.click, sg.hover = click, false end
+        for _, sg in ipairs(row) do
+          sg.click, sg.hover = click, false
+        end
         table.insert(row, 1, { text = "    ", copy = false, click = click, hover = false })
         lines[#lines + 1] = row
       end
@@ -321,17 +350,33 @@ zemi.ui.widget.add({
       if output:match("^permission denied %(user") then output = "denied by you" end
       if output:match("^The user dismissed") then output = "dismissed by you" end
       if name == "plan" then output = plan_verdict(output) end
-      if output ~= "" and (t.status == "err" or t.status == "stopped" or name == "question" or name == "plan" or expanded[idx] or (ctx.show_reasoning and name == "bash")) then
+      if
+        output ~= ""
+        and (
+          t.status == "err"
+          or t.status == "stopped"
+          or name == "question"
+          or name == "plan"
+          or expanded[idx]
+          or (ctx.show_reasoning and name == "bash")
+        )
+      then
         ---@type string[]
         local out = {}
-        for ol in (output .. "\n"):gmatch("(.-)\n") do out[#out + 1] = ol end
+        for ol in (output .. "\n"):gmatch("(.-)\n") do
+          out[#out + 1] = ol
+        end
         -- a collapsed failure shows three lines where it says what went
         -- wrong: a tool's first, a command's last (its stderr and exit
         -- status); a click shows the rest
         local err, tail = t.status == "err", name == "bash"
         local first, last = 1, #out
         if err and not open and #out > 3 then
-          if tail then first = #out - 2 else last = 3 end
+          if tail then
+            first = #out - 2
+          else
+            last = 3
+          end
         end
         -- the host's own cut stands for the lines it dropped
         local hidden = 0
@@ -341,7 +386,9 @@ zemi.ui.widget.add({
         end
         local more = "… " .. fmt.count(hidden, "more line", "more lines")
         if hidden > 0 and first > 1 then detail(more, "Comment") end
-        for i = first, last do detail(out[i], err and i == (tail and #out or 1) and "Danger" or "Comment") end
+        for i = first, last do
+          detail(out[i], err and i == (tail and #out or 1) and "Danger" or "Comment")
+        end
         if hidden > 0 and first == 1 then detail(more, "Comment") end
       end
     end
@@ -362,7 +409,9 @@ zemi.ui.widget.add({
         -- one click id for the whole group: it opens every row of it and
         -- a click on any of those closes it again
         if expanded[idx] then
-          for _, t in ipairs(group) do add_tool(t, idx) end
+          for _, t in ipairs(group) do
+            add_tool(t, idx)
+          end
         else
           add_group(group, "tool:" .. idx)
         end
@@ -379,7 +428,9 @@ zemi.ui.widget.add({
     -- An agent run's transcript mutates in place and reports epoch 0, so
     -- only the session's settled rows are cached.
     local epoch = ctx.transcript_epoch or 0
-    if epoch ~= expanded_epoch then expanded, expanded_epoch = {}, epoch end
+    if epoch ~= expanded_epoch then
+      expanded, expanded_epoch = {}, epoch
+    end
     -- The live turn's calls are keyed by negative index and the host restarts
     -- that list every turn, so a shorter list means those keys now stand for
     -- another turn's rows.
@@ -412,7 +463,10 @@ zemi.ui.widget.add({
         -- a !command: the command, then its output, already cut to a head
         -- and a tail by the host; a failure's mark takes the prompt's place
         gap("user")
-        lines[#lines + 1] = { m.status == "err" and mark("err") or { text = "$ ", hl = "Title", copy = false }, { text = m.text, hl = "Normal" } }
+        lines[#lines + 1] = {
+          m.status == "err" and mark("err") or { text = "$ ", hl = "Title", copy = false },
+          { text = m.text, hl = "Normal" },
+        }
         for ol in ((m.detail or "") .. "\n"):gmatch("(.-)\n") do
           lines[#lines + 1] = { { text = "  ", copy = false }, { text = ol, hl = "Comment" } }
         end
@@ -427,9 +481,13 @@ zemi.ui.widget.add({
         for text in (m.text .. "\n"):gmatch("(.-)\n") do
           n = n + 1
           if n == 1 then
-            lines[#lines + 1] = { mark(cancelled and "stop" or "err"), { text = text, hl = cancelled and "Comment" or "Danger" } }
+            lines[#lines + 1] =
+              { mark(cancelled and "stop" or "err"), { text = text, hl = cancelled and "Comment" or "Danger" } }
           else
-            lines[#lines + 1] = { { text = n == 2 and "  ⎿ " or "    ", hl = "Comment", copy = false }, { text = text, hl = "Comment" } }
+            lines[#lines + 1] = {
+              { text = n == 2 and "  ⎿ " or "    ", hl = "Comment", copy = false },
+              { text = text, hl = "Comment" },
+            }
           end
         end
       elseif m.role == "user" then
@@ -455,7 +513,9 @@ zemi.ui.widget.add({
     -- markdown and code carry the theme's colors: a light terminal's
     -- variant renders them anew
     local key = table.concat({ epoch, width, tostring(ctx.show_reasoning), ctx.cwd or "", zemi.ui.theme.get() }, "|")
-    if key ~= units_key or epoch == 0 then units, units_key, settled = {}, key, nil end
+    if key ~= units_key or epoch == 0 then
+      units, units_key, settled = {}, key, nil
+    end
     -- A long session resumed, a new width or ctrl+o leave every unit to
     -- render, far more than one render may take: the latest come first, and
     -- past the budget the render returns them and asks for another.
@@ -479,7 +539,9 @@ zemi.ui.widget.add({
       local last = #tr
       while last >= 1 do
         local first = last
-        while first > 1 and tr[first].kind == "tool" and tr[first - 1].kind == "tool" do first = first - 1 end
+        while first > 1 and tr[first].kind == "tool" and tr[first - 1].kind == "tool" do
+          first = first - 1
+        end
         local u = units[first]
         if not u or u.next ~= last + 1 or u.hint ~= (first == last_reason) then
           if deadline and rendered > 0 and os.clock() > deadline then
@@ -496,14 +558,18 @@ zemi.ui.widget.add({
       ---@type zemi.Line[]
       local all = {}
       for n = #shown, 1, -1 do
-        for _, l in ipairs(shown[n].lines) do all[#all + 1] = l end
+        for _, l in ipairs(shown[n].lines) do
+          all[#all + 1] = l
+        end
       end
       done = { count = count, lines = all, n = #all, live_reason = live_reason }
       settled = not more and done or nil
     end
     -- the live turn's lines go after the settled ones in the same list
     lines, prev = done.lines, count > 0 and "settled" or nil
-    for n = #lines, done.n + 1, -1 do lines[n] = nil end
+    for n = #lines, done.n + 1, -1 do
+      lines[n] = nil
+    end
 
     -- Live turn (§6.3) from the host-owned ctx.agent snapshot, drawn as the
     -- settled rows will be: the reasoning, the calls, the reply.
@@ -544,10 +610,15 @@ zemi.ui.widget.add({
       blank()
       -- a header in the composer rule's voice: the name, how far along, and
       -- a short meter of one cell per item
-      local head = { { text = "Todos ", hl = "TodoTitle" }, { text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Comment" } }
+      local head =
+        { { text = "Todos ", hl = "TodoTitle" }, { text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Comment" } }
       for n, td in ipairs(todos) do
         if n > 12 then break end
-        head[#head + 1] = { text = "━", hl = td.status == "done" and "TodoDone" or td.status == "in_progress" and "TodoMark" or "Rule", copy = false }
+        head[#head + 1] = {
+          text = "━",
+          hl = td.status == "done" and "TodoDone" or td.status == "in_progress" and "TodoMark" or "Rule",
+          copy = false,
+        }
       end
       lines[#lines + 1] = head
       -- at most 12 rows and a third of the chat, the live ones first: in
@@ -557,7 +628,9 @@ zemi.ui.widget.add({
       local rank = { in_progress = 1, pending = 2, done = 3 }
       ---@type { td: zemi.Todo, n: integer }[]
       local shown = {}
-      for n, td in ipairs(todos) do shown[#shown + 1] = { td = td, n = n } end
+      for n, td in ipairs(todos) do
+        shown[#shown + 1] = { td = td, n = n }
+      end
       table.sort(shown, function(a, b)
         local ra, rb = rank[a.td.status] or 2, rank[b.td.status] or 2
         if ra ~= rb then return ra < rb end
@@ -571,9 +644,13 @@ zemi.ui.widget.add({
             if shown[i].td.status == "done" then done = done + 1 end
           end
           if done == hidden then
-            lines[#lines + 1] = { { text = "  ✓ ", hl = "TodoDone", copy = false }, { text = done .. " done", hl = "Comment" } }
+            lines[#lines + 1] =
+              { { text = "  ✓ ", hl = "TodoDone", copy = false }, { text = done .. " done", hl = "Comment" } }
           else
-            lines[#lines + 1] = { { text = "  … ", hl = "Comment", copy = false }, { text = fmt.count(hidden, "more todo", "more todos"), hl = "Comment" } }
+            lines[#lines + 1] = {
+              { text = "  … ", hl = "Comment", copy = false },
+              { text = fmt.count(hidden, "more todo", "more todos"), hl = "Comment" },
+            }
           end
           break
         end

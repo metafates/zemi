@@ -81,23 +81,29 @@ local function theme(palette)
   return { palette = palette, hl = hl }
 end
 
-zemi.ui.theme.add("whorl", theme({
-  bg = "#141414",
-  fg = "#d8d8d8",
-  dim = "#7a7a7a",
-  rule = "#3a3a3a",
-  accent = "#9aa5f2",
-  addbg = "#183018",
-  delbg = "#361010",
-}))
+zemi.ui.theme.add(
+  "whorl",
+  theme({
+    bg = "#141414",
+    fg = "#d8d8d8",
+    dim = "#7a7a7a",
+    rule = "#3a3a3a",
+    accent = "#9aa5f2",
+    addbg = "#183018",
+    delbg = "#361010",
+  })
+)
 
 -- picked automatically when the terminal reports a light background
-zemi.ui.theme.add("whorl-light", theme({
-  bg = "#fafafa",
-  fg = "#1b1b1b",
-  dim = "#8e8e8e",
-  rule = "#cfcfcf",
-  accent = "#6b78d6",
-  addbg = "#e7f2e2",
-  delbg = "#fae7e7",
-}))
+zemi.ui.theme.add(
+  "whorl-light",
+  theme({
+    bg = "#fafafa",
+    fg = "#1b1b1b",
+    dim = "#8e8e8e",
+    rule = "#cfcfcf",
+    accent = "#6b78d6",
+    addbg = "#e7f2e2",
+    delbg = "#fae7e7",
+  })
+)

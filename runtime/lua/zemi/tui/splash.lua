@@ -23,12 +23,15 @@ function M.render(ctx)
   -- the no-model hint names its fix, so it wraps under its label instead of clipping
   local models = zemi.ui.wrap(ctx.model ~= "" and ctx.model or ("none yet: " .. ctx.model_hint), maxw - 9)
   if ctx.init_error ~= "" then
-    models = { { { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" } } }
+    models =
+      { { { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" } } }
   end
   local hint = ctx.instructions_missing
   local base = 8 + #models + (hint and 1 or 0)
   local extra = #recent > 0 and #recent + 3 or 0
-  if base + extra > fit then recent, extra = {}, 0 end
+  if base + extra > fit then
+    recent, extra = {}, 0
+  end
   local ver = (ctx.version or "") ~= "" and (ctx.version .. " · ") or ""
   local mark = { text = "@zemi", hl = "Title" }
   local tag = { text = ver .. "a coding agent that learns how you work", hl = "Comment" }
@@ -43,7 +46,9 @@ function M.render(ctx)
     end
     beside(block[3], mark)
     beside(block[4], tag)
-    for _, r in ipairs(block) do row(r) end
+    for _, r in ipairs(block) do
+      row(r)
+    end
   else
     row({ mark })
     row({ tag })
@@ -58,13 +63,18 @@ function M.render(ctx)
     -- keep the tail: the project name is at the end
     ---@type string[]
     local chars = {}
-    for ch in cwd:gmatch(fmt.UTF8_CHAR) do chars[#chars + 1] = ch end
+    for ch in cwd:gmatch(fmt.UTF8_CHAR) do
+      chars[#chars + 1] = ch
+    end
     cwd = "…" .. table.concat(chars, "", #chars - room + 2)
   end
   row({ { text = "project  ", hl = "Comment" }, { text = cwd, hl = "Normal" } })
   if hint then
-    row({ { text = string.rep(" ", 9) .. "no AGENTS.md yet · ", hl = "Comment" }, { text = "/init", hl = "SplashKey" },
-      { text = " writes one", hl = "Comment" } })
+    row({
+      { text = string.rep(" ", 9) .. "no AGENTS.md yet · ", hl = "Comment" },
+      { text = "/init", hl = "SplashKey" },
+      { text = " writes one", hl = "Comment" },
+    })
   end
   if #recent > 0 then
     row({ { text = "" } })
@@ -73,8 +83,12 @@ function M.render(ctx)
       local title = (r.title ~= "" and r.title) or "(untitled)"
       row({ { text = string.format("  %-8s ", r.ago), hl = "Comment" }, { text = title, hl = "Normal" } })
     end
-    row({ { text = "  /resume", hl = "SplashKey" }, { text = " continues the latest, ", hl = "Comment" },
-      { text = "/sessions", hl = "SplashKey" }, { text = " lists them", hl = "Comment" } })
+    row({
+      { text = "  /resume", hl = "SplashKey" },
+      { text = " continues the latest, ", hl = "Comment" },
+      { text = "/sessions", hl = "SplashKey" },
+      { text = " lists them", hl = "Comment" },
+    })
   end
   row({ { text = "" } })
   local tips = { { "/", "commands" }, { "@", "attach or drop files" }, { "!", "shell" }, { "/help", "keys" } }
@@ -113,13 +127,17 @@ function M.render(ctx)
   ---@type zemi.Line[]
   local out = {}
   local top = math.max(0, math.floor(((ctx.height or 0) - #rows) / 2))
-  for _ = 1, top do out[#out + 1] = { { text = "" } } end
+  for _ = 1, top do
+    out[#out + 1] = { { text = "" } }
+  end
   for _, r in ipairs(rows) do
     table.insert(r, 1, { text = pad, copy = false })
     out[#out + 1] = r
   end
   -- the chat is bottom-anchored: trailing rows keep the block centered
-  for _ = 1, math.max(0, (ctx.height or 0) - top - #rows - 1) do out[#out + 1] = { { text = "" } } end
+  for _ = 1, math.max(0, (ctx.height or 0) - top - #rows - 1) do
+    out[#out + 1] = { { text = "" } }
+  end
   return out
 end
 

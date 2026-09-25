@@ -35,17 +35,20 @@ end
 ---@param one string
 ---@param many string
 ---@return string
-function M.count(n, one, many)
-  return n .. " " .. (n == 1 and one or many)
-end
+function M.count(n, one, many) return n .. " " .. (n == 1 and one or many) end
 
 --- Row marks, one glyph and one meaning each: finished, failed, stopped by
 --- the user, going on in the background, waiting on the user, reasoning and
 --- a notice.
 ---@type table<string, { [1]: string, [2]: string }>
 M.MARK = {
-  ok = { "✓", "Ok" }, err = { "✗", "Danger" }, stop = { "■", "Dim" }, bg = { "⧗", "Dim" },
-  wait = { "·", "Dim" }, thought = { "✻", "ThinkingMark" }, note = { "◦", "Dim" },
+  ok = { "✓", "Ok" },
+  err = { "✗", "Danger" },
+  stop = { "■", "Dim" },
+  bg = { "⧗", "Dim" },
+  wait = { "·", "Dim" },
+  thought = { "✻", "ThinkingMark" },
+  note = { "◦", "Dim" },
 }
 
 --- A pointer to what deals with something: the noun in Title (hl overrides
@@ -63,11 +66,29 @@ end
 --- What a tool call does, as its row and the working rule say it.
 ---@type table<string, string>
 M.VERB = {
-  read = "Read", write = "Write", edit = "Edit", glob = "Find", grep = "Search",
-  fetch = "Fetch", web_search = "Search web", bash = "Run", job_start = "Start", job_read = "Check job",
-  job_list = "List jobs", job_kill = "Stop job", memory = "Remember",
-  diagnostics = "Check", todos = "Update todos", question = "Ask", plan = "Plan", skill = "Load skill",
-  agent = "Agent", workflow = "Workflow", lua = "Run Lua", tool_search = "Find tools", lsp = "Look up",
+  read = "Read",
+  write = "Write",
+  edit = "Edit",
+  glob = "Find",
+  grep = "Search",
+  fetch = "Fetch",
+  web_search = "Search web",
+  bash = "Run",
+  job_start = "Start",
+  job_read = "Check job",
+  job_list = "List jobs",
+  job_kill = "Stop job",
+  memory = "Remember",
+  diagnostics = "Check",
+  todos = "Update todos",
+  question = "Ask",
+  plan = "Plan",
+  skill = "Load skill",
+  agent = "Agent",
+  workflow = "Workflow",
+  lua = "Run Lua",
+  tool_search = "Find tools",
+  lsp = "Look up",
 }
 
 --- A tool name as words for a row with no verb of its own: underscores
@@ -115,9 +136,7 @@ end
 --- Display width of a string in terminal cells.
 ---@param s string
 ---@return integer
-function M.cells(s)
-  return zemi.ui.width(s)
-end
+function M.cells(s) return zemi.ui.width(s) end
 
 --- A pattern matching one UTF-8 character.
 ---@type string
