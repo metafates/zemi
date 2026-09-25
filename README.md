@@ -53,7 +53,8 @@ zemi plugins install https://github.com/someone/zemi-git-status
 
 A plugin is a git repository shaped like the config dir. zemi checks out its
 newest `vX.Y.Z` tag, and `zemi plugins update` stays in that major version.
-Write your own in `~/.local/share/zemi/plugins/local/<name>/`. `/plugins`
+Write your own in `~/.local/share/zemi/plugins/local/<name>/`, or type
+`/plugins new <what it should do>` to have the agent write it. `/plugins`
 turns them on and off.
 
 ## Scripts and hooks

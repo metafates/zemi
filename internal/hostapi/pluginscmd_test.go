@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -154,5 +155,33 @@ func TestPluginsOpen(t *testing.T) {
 		if got := <-edited; got != filepath.Join(dirs.PluginsRoot(), "local", want) {
 			t.Errorf("%s opened %s", name, got)
 		}
+	}
+}
+
+// TestPluginsNew: the list offers New plugin first, and /plugins new sends
+// the agent to zemi-customize with what the user typed.
+func TestPluginsNew(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	m := reflectStub(t, h, "ok")
+	h.SetUIHooks(&fakeUI{})
+	if got := fmt.Sprint(h.pluginItems()[0]); !strings.Contains(got, "fill:/plugins new  text:New plugin verb:new") {
+		t.Fatalf("first row: %s", got)
+	}
+	if err := h.pluginsCommand([]string{"new", "a", "clock"}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if m.streams.Load() == 0 {
+			return errors.New("nothing sent")
+		}
+		return nil
+	})
+	waitIdle(t, h)
+	msgs, err := h.DB.Messages(h.AgentSessionID())
+	if err != nil || len(msgs) == 0 {
+		t.Fatalf("messages %v, %v", msgs, err)
+	}
+	if sent := msgs[0].PartsJSON; !strings.Contains(sent, "zemi-customize") || !strings.Contains(sent, "What it should do: a clock") {
+		t.Fatalf("sent %s", sent)
 	}
 }

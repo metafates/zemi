@@ -74,7 +74,7 @@ func TestGoldenPlugins(t *testing.T) {
 	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 })
 	frame("list")
 
-	for range 3 {
+	for range 4 {
 		app.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // -> git-status
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})

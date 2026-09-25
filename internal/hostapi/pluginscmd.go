@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -14,14 +15,17 @@ import (
 	"github.com/metafates/zemi/internal/plugins"
 )
 
-// pluginsCommands is /plugins: the zemi plugins verbs plus toggle and open,
-// which need the screen.
+// newPluginPrompt starts /plugins new; the procedure lives in zemi-customize.
+const newPluginPrompt = "I want a new zemi plugin. Load the zemi-customize skill and follow its New plugin steps.\n\nWhat it should do: %s"
+
+// pluginsCommands is /plugins: the zemi plugins verbs plus new, toggle and
+// open, which need the screen.
 func (h *Host) pluginsCommands() []*Command {
 	return []*Command{{
 		Name: "plugins", NArgs: "*", Desc: "install, update and turn plugins on or off",
 		GoFn: func(h *Host, args string) error { return h.pluginsCommand(strings.Fields(args)) },
-		GoComplete: subcommandCompleter([]string{"install", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
-			if sub == "install" || sub == "check" {
+		GoComplete: subcommandCompleter([]string{"new", "install", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
+			if sub == "new" || sub == "install" || sub == "check" {
 				return nil
 			}
 			ps, _ := plugins.Scan(h.Dirs)
@@ -91,6 +95,13 @@ func (h *Host) pluginsCommand(args []string) error {
 				h.Notify("error", "Could not open the plugin", err.Error())
 			}
 		})
+	case verb == "new":
+		prompt := fmt.Sprintf(newPluginPrompt, cmp.Or(strings.Join(args[1:], " "), "ask me"))
+		h.GoSafe("plugins new", func() {
+			if err := h.AgentSend(prompt); err != nil {
+				h.Notify("error", "Could not send", h.friendlyError(err))
+			}
+		})
 	case verb == "enable" || verb == "disable":
 		// at once, so the list an action returns to shows it
 		return pluginsErr(plugins.Run(context.Background(), h.Dirs, args, io.Discard))
@@ -140,7 +151,7 @@ func (h *Host) pluginsCommand(args []string) error {
 
 func pluginsErr(err error) error {
 	if errors.Is(err, plugins.ErrUsage) {
-		return Usagef("%v | toggle <name> | open <name> (TUI only)", err)
+		return Usagef("%v | new [what it does] | toggle <name> | open <name> (TUI only)", err)
 	}
 	return err
 }
@@ -165,7 +176,7 @@ func (h *Host) openPlugins(ui UIHooks, refresh bool) {
 		Reload: func() ([]any, [][]Segment) { return h.pluginItems(), nil }})
 }
 
-// pluginItems lists the plugins under two action rows, which carry the empty
+// pluginItems lists the plugins under three action rows, which carry the empty
 // state, so a rebuild keeps it true.
 func (h *Host) pluginItems() []any {
 	ps, err := plugins.List(context.Background(), h.Dirs)
@@ -176,7 +187,7 @@ func (h *Host) pluginItems() []any {
 	if len(ps) == 0 && err == nil {
 		install["desc"] = "no plugins yet"
 	}
-	items := []any{install, map[string]any{"text": "Check for updates", "verb": "check", "run": "plugins check"}}
+	items := []any{map[string]any{"text": "New plugin", "verb": "new", "fill": "/plugins new "}, install, map[string]any{"text": "Check for updates", "verb": "check", "run": "plugins check"}}
 	provides := h.pluginProvides()
 	for _, p := range ps {
 		status, loadErr := h.pluginStatus(p)

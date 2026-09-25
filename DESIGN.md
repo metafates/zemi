@@ -438,9 +438,11 @@ trust, so a prompt that starts with "plugins" is written after `--`.
 each row's state first (`failed`, an update), then its version and the
 `init.lua` description; its detail names the source, the load status and
 what the plugin registered, and the git verbs run on a goroutine that
-refreshes the list when they end, unless the user closed it meanwhile. Two
-verbs need the screen, so only `/plugins` takes them: `toggle <name>` and
-`open <name>` (its `init.lua` in the editor, or its directory without one).
+refreshes the list when they end, unless the user closed it meanwhile. Three
+verbs need the screen, so only `/plugins` takes them: `toggle <name>`,
+`open <name>` (its `init.lua` in the editor, or its directory without one)
+and `new [what it should do]`, the list's first row, which sends the agent
+a short prompt pointing at zemi-customize, where the procedure lives.
 
 `require` rules:
 

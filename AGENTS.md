@@ -119,8 +119,9 @@ cancels it, and appends its answer as a transcript row, which `-p` prints.
 
 `zemi plugins <verb>` (`parseArgs`, when `plugins` is the first word) runs `plugins.Run` and
 exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
-reloads on the change. `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`
-and `open`. Its list is built off the key loop from `plugins.List` and the last boot's
+reloads on the change. `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
+`open` and `new` (the list's first row, which sends `newPluginPrompt` to the agent: the
+procedure lives in zemi-customize). Its list is built off the key loop from `plugins.List` and the last boot's
 `pluginLoads`; install, update, check and delete run on `GoSafe`, toast, and refresh the list
 (`Overlay.Refresh`: it replaces an open one in place and opens nothing once esc closed it).
 `open` edits the plugin's `init.lua`, or its directory when it has none. Under `-p` it points at
