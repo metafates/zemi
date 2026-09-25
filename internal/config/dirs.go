@@ -22,28 +22,29 @@ type Dirs struct {
 }
 
 // xdg resolves one root: zemi's own override first, then the XDG variable
-// the default mirrors, then the default under the home directory.
-func xdg(env, xdgEnv, defaultPath string) string {
-	if v := os.Getenv(env); v != "" {
+// the default mirrors, then the default under the home directory. A relative
+// value is ignored, as the XDG spec says, so no root depends on the cwd.
+func xdg(env, xdgEnv, underHome string) string {
+	if v := os.Getenv(env); filepath.IsAbs(v) {
 		return v
 	}
-	if v := os.Getenv(xdgEnv); v != "" {
+	if v := os.Getenv(xdgEnv); filepath.IsAbs(v) {
 		return filepath.Join(v, "zemi")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return defaultPath
+		home = os.TempDir() // no $HOME: still absolute, never the project
 	}
-	return strings.Replace(defaultPath, "~", home, 1)
+	return filepath.Join(home, underHome)
 }
 
 // ResolveDirs computes the standard locations from the environment.
 func ResolveDirs() Dirs {
 	return Dirs{
-		ConfigHome: xdg("ZEMI_CONFIG_HOME", "XDG_CONFIG_HOME", "~/.config/zemi"),
-		DataHome:   xdg("ZEMI_DATA_HOME", "XDG_DATA_HOME", "~/.local/share/zemi"),
-		StateHome:  xdg("ZEMI_STATE_HOME", "XDG_STATE_HOME", "~/.local/state/zemi"),
-		CacheHome:  xdg("ZEMI_CACHE_HOME", "XDG_CACHE_HOME", "~/.cache/zemi"),
+		ConfigHome: xdg("ZEMI_CONFIG_HOME", "XDG_CONFIG_HOME", ".config/zemi"),
+		DataHome:   xdg("ZEMI_DATA_HOME", "XDG_DATA_HOME", ".local/share/zemi"),
+		StateHome:  xdg("ZEMI_STATE_HOME", "XDG_STATE_HOME", ".local/state/zemi"),
+		CacheHome:  xdg("ZEMI_CACHE_HOME", "XDG_CACHE_HOME", ".cache/zemi"),
 		ProjectDir: projectRoot(),
 	}
 }

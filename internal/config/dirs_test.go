@@ -9,6 +9,25 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
+// TestXDG: a relative override or XDG value is ignored, so every root stays
+// absolute; with no $HOME the fallback is too.
+func TestXDG(t *testing.T) {
+	tmp := t.TempDir()
+	for _, c := range []struct{ name, zemi, xdgHome, home, want string }{
+		{"zemi override", "/z", "/x", tmp, "/z"},
+		{"xdg", "", "/x", tmp, "/x/zemi"},
+		{"relative ignored", "z", "x", tmp, filepath.Join(tmp, ".config/zemi")},
+		{"no home", "", "", "", filepath.Join(os.TempDir(), ".config/zemi")},
+	} {
+		t.Setenv("ZEMI_CONFIG_HOME", c.zemi)
+		t.Setenv("XDG_CONFIG_HOME", c.xdgHome)
+		t.Setenv("HOME", c.home)
+		if got := ResolveDirs().ConfigHome; got != c.want {
+			t.Errorf("%s: ConfigHome = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // TestEnsureStarterInit: a fresh config home gets the starter, an
 // init.lua the user already has is never touched.
 func TestEnsureStarterInit(t *testing.T) {

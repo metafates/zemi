@@ -65,7 +65,8 @@ Environment:
   ZEMI_DATA_HOME      data dir (default ~/.local/share/zemi)
   ZEMI_STATE_HOME     state dir: sessions, memory, logs (default ~/.local/state/zemi)
   ZEMI_CACHE_HOME     cache dir: language server builds (default ~/.cache/zemi)
-                      each defaults to $XDG_<NAME>_HOME/zemi when that is set
+                      each defaults to $XDG_<NAME>_HOME/zemi when that is set;
+                      a relative path in either is ignored
   ANTHROPIC_API_KEY, OPENAI_API_KEY, ...
                       a builtin provider is on while its key is exported
                       (/model lists them)
