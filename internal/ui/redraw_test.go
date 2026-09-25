@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -158,28 +159,20 @@ func TestComposerGrowResizesSplash(t *testing.T) {
 		_, cmd := app.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 		cmds = append(cmds, cmd)
 	}
-	var run func(tea.Cmd)
-	run = func(cmd tea.Cmd) {
-		if cmd == nil {
-			return
-		}
-		switch msg := cmd().(type) {
-		case tea.BatchMsg:
-			for _, c := range msg {
-				run(c)
-			}
-		case widgetsRenderedMsg:
-			app.Update(msg)
-		}
-	}
 	for _, cmd := range cmds {
-		run(cmd)
+		for _, msg := range runCmd(cmd) {
+			if r, ok := msg.(widgetsRenderedMsg); ok {
+				app.Update(r)
+			}
+		}
 	}
 	app.Frame()
-	for _, w := range app.shownWidgets() {
-		if c := app.caches[w.ID]; w.ID == "splash" && c.height != w.height {
-			t.Fatalf("splash rendered for %d rows, the chat has %d", c.height, w.height)
-		}
+	i := slices.IndexFunc(app.shownWidgets(), func(w shownWidget) bool { return w.ID == "splash" })
+	if i < 0 {
+		t.Fatal("no splash is shown")
+	}
+	if w, c := app.shownWidgets()[i], app.caches["splash"]; c.height != w.height {
+		t.Fatalf("splash rendered for %d rows, the chat has %d", c.height, w.height)
 	}
 	for _, row := range app.lastRows {
 		for _, seg := range row {
@@ -188,4 +181,22 @@ func TestComposerGrowResizesSplash(t *testing.T) {
 			}
 		}
 	}
+}
+
+// runCmd runs cmd and every command of the batches it returns, and returns
+// their messages.
+func runCmd(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	b, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return []tea.Msg{msg}
+	}
+	var out []tea.Msg
+	for _, c := range b {
+		out = append(out, runCmd(c)...)
+	}
+	return out
 }

@@ -160,8 +160,9 @@ func TestResizeSweep(t *testing.T) {
 // started another would leave both running for good.
 func TestResizeStartsNoTick(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
-	if _, cmd := app.Update(tea.WindowSizeMsg{Width: 80, Height: 24}); cmd != nil {
-		if _, tick := cmd().(frameTickMsg); tick {
+	_, cmd := app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	for _, msg := range runCmd(cmd) {
+		if _, tick := msg.(frameTickMsg); tick {
 			t.Fatal("resize started a second frame loop")
 		}
 	}
