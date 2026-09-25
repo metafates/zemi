@@ -80,7 +80,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		text, _ := h.buildSystemParts(c.p, toolset)
 		if c.name == "explore" {
 			toolset, _ = filterTools(tools.All(h.PipelineFor()), builtinAgents[0].Tools, h.toolSkip(subagentExcluded))
-			text = h.systemWith(h.subagentSystem(builtinAgents[0], toolset), nil, toolset)
+			text = h.systemWith(h.subagentSystem(builtinAgents[0], toolset), toolset)
 		}
 		for _, tool := range toolset {
 			text += fmt.Sprintf("\n%q %s", tool.Info().Name, tool.Info().Description)
@@ -187,7 +187,7 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte(strings.Repeat("a", contextBudget+100)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got := h.systemWith("base", nil, nil)
+	got := h.systemWith("base", nil)
 	if !strings.Contains(got, "my rules") {
 		t.Fatal("the repository file evicted the user's own instructions")
 	}

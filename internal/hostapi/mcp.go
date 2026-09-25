@@ -448,8 +448,8 @@ func (t *toolSearch) Run(ctx context.Context, call fantasy.ToolCall) (reply fant
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	if resp, stop, err := t.h.preCheck(tools.ToolSearch, call.Input); stop {
-		return resp, err
+	if resp, stop := t.h.preCheck(tools.ToolSearch, call.Input); stop {
+		return resp, nil
 	}
 	defer t.h.postNotify(ctx, tools.ToolSearch, call.Input, &reply, time.Now())
 	var fresh, had []string
@@ -555,8 +555,8 @@ func (t *mcpTool) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h, name := t.h, t.srv.name
-	if resp, stop, err := h.preCheck(mcpToolName(name, t.tool.Name), call.Input); stop {
-		return resp, err
+	if resp, stop := h.preCheck(mcpToolName(name, t.tool.Name), call.Input); stop {
+		return resp, nil
 	}
 	defer h.postNotify(ctx, mcpToolName(name, t.tool.Name), call.Input, &reply, time.Now())
 	args, err := tools.ParseInput(t.Info(), call.Input, tools.SchemaOpen(t.tool.InputSchema))

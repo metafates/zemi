@@ -250,12 +250,11 @@ func readFrontmatterFile(path string) (block, body string, err error) {
 }
 
 // runSubagent runs def on prompt to completion as a tracked run (/agents)
-// and returns its id and final message; progress receives live lines for
-// the caller's UI row.
-func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, prompt string, progress func(string)) (string, string, error) {
+// and returns its id and final message.
+func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, prompt string) (string, string, error) {
 	run, ctx := h.newRun(ctx, def, description, prompt, false)
 	_ = h.tasks.add(run) // only background runs are capped
-	text, err := h.runAgent(ctx, run, def, prompt, progress)
+	text, err := h.runAgent(ctx, run, def, prompt, nil)
 	return run.id, text, err
 }
 
@@ -313,7 +312,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	loaded := new(sync.Map) // what the main agent loaded says nothing about what this run needs
 	kept, active := h.deferMCP(kept, loaded)
-	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), nil, kept))
+	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), kept))
 	runner.ActiveTools = active
 	runner.ProviderOptions = h.Providers.CallOptions(modelID, h.Effort(modelID))
 	runner.MaxOutputTokens = h.maxOutput(modelID)
@@ -751,8 +750,8 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	if strings.TrimSpace(in.Prompt) == "" {
 		return fantasy.NewTextErrorResponse("prompt is required"), nil
 	}
-	if resp, stop, err := t.h.preCheck("agent", call.Input); stop {
-		return resp, err
+	if resp, stop := t.h.preCheck("agent", call.Input); stop {
+		return resp, nil
 	}
 	defer t.h.postNotify(ctx, "agent", call.Input, &reply, time.Now())
 	if in.SendTo != "" {
@@ -775,7 +774,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 			return fantasy.NewTextResponse("Queued for agent " + run.id + ": it reads the message at its next step. Its report still arrives when it finishes."), nil
 		}
 		t.h.setTool(call.ID, func(st *StreamTool) { st.Run = run.id })
-		return t.foreground(ctx, call.ID, run, in.Prompt, func(ctx context.Context, progress func(string)) (string, error) {
+		return t.foreground(ctx, call.ID, run, func(ctx context.Context, progress func(string)) (string, error) {
 			return t.h.continueRun(ctx, run, in.Prompt, progress)
 		})
 	}
@@ -800,7 +799,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	run, rctx := t.h.newRun(ctx, def, in.Description, in.Prompt, false)
 	_ = t.h.tasks.add(run)
 	t.h.setTool(call.ID, func(st *StreamTool) { st.Run = run.id })
-	return t.foreground(rctx, call.ID, run, in.Prompt, func(ctx context.Context, progress func(string)) (string, error) {
+	return t.foreground(rctx, call.ID, run, func(ctx context.Context, progress func(string)) (string, error) {
 		return t.h.runAgent(ctx, run, def, in.Prompt, progress)
 	})
 }
@@ -808,7 +807,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 // foreground waits for a run and answers with its report, the row's
 // detail following its progress; the run id heads the report (the tail
 // may be the spill file's name) so the model can continue the run.
-func (t *agentTool) foreground(ctx context.Context, callID string, run *agentRun, prompt string, do func(context.Context, func(string)) (string, error)) (fantasy.ToolResponse, error) {
+func (t *agentTool) foreground(ctx context.Context, callID string, run *agentRun, do func(context.Context, func(string)) (string, error)) (fantasy.ToolResponse, error) {
 	start := time.Now()
 	var last atomic.Value
 	text, err := do(ctx, func(line string) {
@@ -835,9 +834,6 @@ func (t *agentTool) foreground(ctx context.Context, callID string, run *agentRun
 	return fantasy.NewTextResponse("[run " + run.id + "]\n\n" + t.h.truncOutput("agent", text)), nil
 }
 
-// preCheck runs the tool.pre events for a host-implemented tool: deny
-// becomes an error result, halt stops the turn. A rewrite is refused: these
-// tools run and gate their own input, so running the original would ignore it.
 // decodeInput validates a host tool's input against its schema, so a wrong
 // type is worded as it is for a builtin tool, then decodes it into in.
 func decodeInput(info fantasy.ToolInfo, input string, in any) error {
@@ -847,21 +843,24 @@ func decodeInput(info fantasy.ToolInfo, input string, in any) error {
 	return json.Unmarshal([]byte(input), in)
 }
 
-func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool, error) {
+// preCheck runs the tool.pre events for a host-implemented tool: deny
+// becomes an error result, halt stops the turn. A rewrite is refused: these
+// tools run and gate their own input, so running the original would ignore it.
+func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool) {
 	var m map[string]any
 	_ = json.Unmarshal([]byte(input), &m)
 	decision, reason, _, _ := h.toolPreHook()(tool, m)
 	switch decision {
 	case "deny":
-		return fantasy.NewTextErrorResponse("denied by hook: " + reason), true, nil
+		return fantasy.NewTextErrorResponse("denied by hook: " + reason), true
 	case "rewrite":
-		return fantasy.NewTextErrorResponse("refused: a tool.pre rewrite is not supported for the " + tool + " tool"), true, nil
+		return fantasy.NewTextErrorResponse("refused: a tool.pre rewrite is not supported for the " + tool + " tool"), true
 	case "halt":
 		resp := fantasy.NewTextErrorResponse("halted by hook: " + reason)
 		resp.StopTurn = true // as tools.Run: the step completes, the turn ends
-		return resp, true, nil
+		return resp, true
 	}
-	return fantasy.ToolResponse{}, false, nil
+	return fantasy.ToolResponse{}, false
 }
 
 // postNotify is preCheck's other half: these tools run outside
@@ -989,7 +988,7 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		at := h.callerOf(L)
 		h.GoSafe("zemi.agent.run", func() {
 			defer cancel()
-			_, text, err := h.runSubagent(ctx, def, desc, prompt, nil)
+			_, text, err := h.runSubagent(ctx, def, desc, prompt)
 			switch {
 			case onDone == nil:
 			case err != nil:

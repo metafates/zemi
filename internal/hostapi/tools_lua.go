@@ -296,8 +296,8 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	if resp, stop, err := a.h.preCheck(a.t.Name, call.Input); stop {
-		return resp, err
+	if resp, stop := a.h.preCheck(a.t.Name, call.Input); stop {
+		return resp, nil
 	}
 	defer a.h.postNotify(ctx, a.t.Name, call.Input, &reply, time.Now())
 	req := tools.Request{Tool: a.t.Name, Subject: "tool." + a.t.Name, Arg: a.t.Name, Reason: "Lua tool " + a.t.Name, Preview: call.Input}

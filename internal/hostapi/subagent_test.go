@@ -180,7 +180,7 @@ func TestSubagentFailureKeepsReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, text, err := h.runSubagent(context.Background(), def, "d", "look", nil)
+	_, text, err := h.runSubagent(context.Background(), def, "d", "look")
 	if err == nil {
 		t.Fatal("want the step error")
 	}
@@ -254,7 +254,7 @@ func TestSubagentLuaToolAsksAsAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := h.runSubagent(context.Background(), def, "d", "look", nil); err != nil {
+	if _, _, err := h.runSubagent(context.Background(), def, "d", "look"); err != nil {
 		t.Fatal(err)
 	}
 	if len(ui.asked) != 1 || !strings.HasPrefix(ui.asked[0].Reason, "agent general: ") {
@@ -288,7 +288,7 @@ func TestSubagentInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 2 {
-		if _, text, err := h.runSubagent(context.Background(), def, "d", "look", nil); err != nil || !strings.Contains(text, "use tabs here") {
+		if _, text, err := h.runSubagent(context.Background(), def, "d", "look"); err != nil || !strings.Contains(text, "use tabs here") {
 			t.Fatalf("run %d: read result %q, %v", i, text, err)
 		}
 	}
@@ -458,7 +458,7 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := h.runSubagent(t.Context(), def, "d", "look", nil); err != nil {
+	if _, _, err := h.runSubagent(t.Context(), def, "d", "look"); err != nil {
 		t.Fatal(err)
 	}
 	props := h.memoryProposals()

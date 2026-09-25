@@ -436,7 +436,8 @@ func listMove(key string) int {
 func (a *App) runRHS(b *hostapi.KeyBinding) {
 	a.background(func() {
 		_ = a.host.RunRHS(context.Background(), b) // it reports its own failure
-		a.Refresh() // what it changed shows without waiting for another redraw
+		// what it changed shows without waiting for another redraw
+		a.Refresh()
 	})
 }
 

@@ -486,7 +486,7 @@ func (r *wfRun) dispatch() {
 			// deferred so a panicking agent still reports: the run waits on done
 			d := wfDone{task: t, req: req, err: errors.New("the agent crashed")}
 			defer func() { r.done <- d }()
-			d.id, d.text, d.err = r.h.runSubagent(r.ctx, req.def, req.description, req.prompt, nil)
+			d.id, d.text, d.err = r.h.runSubagent(r.ctx, req.def, req.description, req.prompt)
 		})
 	}
 }
@@ -578,8 +578,8 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	if resp, stop, err := h.preCheck("workflow", call.Input); stop {
-		return resp, err
+	if resp, stop := h.preCheck("workflow", call.Input); stop {
+		return resp, nil
 	}
 	defer h.postNotify(ctx, "workflow", call.Input, &reply, time.Now())
 	src, arg := in.Script, "script"

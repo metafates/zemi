@@ -814,7 +814,7 @@ func (a *App) compose(w, h int) string {
 	var popup [][]hostapi.Segment
 	var popX int
 	if a.focusedNode() == "" { // the composer's popups follow its keys
-		popup, popX, pop = a.floatPopup(lay, len(rows), w)
+		popup, popX, pop = a.floatPopup(lay, len(rows))
 	}
 	for i, line := range popup {
 		placeBox(rows, [][]hostapi.Segment{line}, popX, pop.Min.Y+i, w)
@@ -974,7 +974,7 @@ func dimRows(rows [][]hostapi.Segment) {
 // the side with more rows, aligned with it. It covers only its own cells,
 // keeps its size while it stays open and ends in its hint row. It returns
 // the rows to draw, their left column and the cells they cover.
-func (a *App) floatPopup(lay screenLayout, h, w int) ([][]hostapi.Segment, int, uv.Rectangle) {
+func (a *App) floatPopup(lay screenLayout, h int) ([][]hostapi.Segment, int, uv.Rectangle) {
 	var render func(maxW, room, minW int) [][]hostapi.Segment
 	var size *boxSize
 	var hints []hintPair

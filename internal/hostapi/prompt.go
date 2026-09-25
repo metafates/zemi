@@ -182,15 +182,16 @@ End every turn with the question or plan tool, never plain text; after answering
 const planHeadless = `
 2. Write the plan as your reply and stop: nothing in this run can approve it.`
 
-// systemWith appends instruction files, the skills index and the session
-// digest to a base prompt. files names explicit project files (a profile's
-// context.files); nil means instructionFiles.
-func (h *Host) systemWith(sys string, files []string, toolset []fantasy.AgentTool) string {
-	out, _ := h.systemFor(sys, files, toolset)
+// systemWith appends the instruction files, the skills index and the
+// session digest to a base prompt.
+func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool) string {
+	out, _ := h.systemFor(sys, nil, toolset)
 	return out
 }
 
-// systemFor is systemWith with the section sizes it assembled.
+// systemFor is systemWith with the section sizes it assembled. files names
+// explicit project files (a profile's context.files); nil means
+// instructionFiles.
 func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool) (string, promptParts) {
 	// a profile's files are repository content too
 	if len(files) == 0 || !h.ProjectTrusted() {

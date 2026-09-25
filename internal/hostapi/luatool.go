@@ -176,8 +176,8 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	if resp, stop, err := h.preCheck("lua", call.Input); stop {
-		return resp, err
+	if resp, stop := h.preCheck("lua", call.Input); stop {
+		return resp, nil
 	}
 	defer h.postNotify(ctx, "lua", call.Input, &reply, time.Now())
 	src := in.Script
