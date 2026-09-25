@@ -336,9 +336,10 @@ func (p *Pipeline) Check(req Request) Verdict {
 		return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o), o.Rule}, o.Rule)
 	case perm.Deny:
 		return Verdict{perm.Deny, o.Reason, decidedBy(o), o.Rule}
+	default:
+		req.Explicit = o.Ruled()
+		return p.resolveAsk(req, o.Reason)
 	}
-	req.Explicit = o.Ruled()
-	return p.resolveAsk(req, o.Reason)
 }
 
 // SandboxFor is the policy a checked command runs under: one a permission

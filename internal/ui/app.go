@@ -1263,12 +1263,14 @@ func (a *App) statuslineSegments(region string) []hostapi.Segment {
 // the top rule in the level's color, the body word-wrapped under it. A lone
 // title or body that fits one row is that row between the box's side bars.
 func toastBox(t toast, w int) [][]hostapi.Segment {
-	level := "ToastInfo"
+	var level string
 	switch t.level {
 	case logging.Warn:
 		level = "ToastWarn"
 	case logging.Error:
 		level = "ToastErr"
+	default:
+		level = "ToastInfo"
 	}
 	inner := max(min(w-2, 60)-4, 1)
 	if (t.title == "") != (t.body == "") {

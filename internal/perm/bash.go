@@ -190,7 +190,6 @@ const (
 	tokWord tokKind = iota
 	tokSep
 	tokRedirect
-	tokTarget // word following a redirect operator
 	tokHeredoc
 )
 

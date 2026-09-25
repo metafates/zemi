@@ -31,8 +31,9 @@ func (o Origin) Rank() int {
 		return 20
 	case OriginProject:
 		return 10
+	default:
+		return 0
 	}
-	return 0
 }
 
 // PathClasses maps a resolved absolute directory to the origin class its

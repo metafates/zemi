@@ -42,6 +42,7 @@ func span(avail int, kids []spanKid) []int {
 			out[i] = (k.size.N*avail + 50) / 100
 		case hostapi.SizeContent:
 			out[i] = k.want
+		case hostapi.SizeFill: // takes what is left, below
 		}
 		out[i] = k.clamp(max(out[i], 0))
 		used += out[i]
@@ -73,8 +74,9 @@ func span(avail int, kids []spanKid) []int {
 			return 2
 		case hostapi.SizeContent:
 			return 1
+		default:
+			return 0
 		}
-		return 0
 	}
 	for _, floor := range []bool{true, false} {
 		for r := 3; r >= 0 && used > avail; r-- {
@@ -193,8 +195,9 @@ func floatAxis(sz hostapi.Size, rel int) int {
 		return sz.N
 	case hostapi.SizePercent:
 		return (sz.N*rel + 50) / 100
+	default:
+		return rel
 	}
-	return rel
 }
 
 // solve places n's children inside r. While the children's mins do not
@@ -217,7 +220,7 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 	}
 	var sizes []int
 	var kids []spanKid
-	avail := 0
+	var avail int
 	for {
 		avail = length
 		if n.Sep {
@@ -345,20 +348,21 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	switch {
 	case n.Kind == "box" && n.Dir == "row":
-		rows = make([][]hostapi.Segment, h)
+		joined := make([][]hostapi.Segment, h)
 		x := 0
 		for _, k := range l.kids {
 			if k.sep {
-				for j := range rows {
-					rows[j] = slices.Concat(padSegs(rows[j], x), []hostapi.Segment{{Text: "│", HL: "Rule", NoCopy: true}})
+				for j := range joined {
+					joined[j] = slices.Concat(padSegs(joined[j], x), []hostapi.Segment{{Text: "│", HL: "Rule", NoCopy: true}})
 				}
 				x++
 			}
 			for j, kr := range a.paint(k) {
-				rows[j] = slices.Concat(padSegs(rows[j], x), kr)
+				joined[j] = slices.Concat(padSegs(joined[j], x), kr)
 			}
 			x += k.rect.Dx()
 		}
+		rows = joined
 	case n.Kind == "box":
 		for i, k := range l.kids {
 			if i > 0 && n.Sep {

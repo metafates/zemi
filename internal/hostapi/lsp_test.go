@@ -370,7 +370,8 @@ func TestLSPRealServersSandboxed(t *testing.T) {
 				if _, err := exec.LookPath(c.server); err != nil {
 					t.Skip(c.server, " not installed")
 				}
-				got, err := "", error(nil)
+				var got string
+				var err error
 				for deadline := time.Now().Add(2 * time.Minute); ; time.Sleep(time.Second) {
 					got, err = h.lspDiagnostics(filepath.Join(proj, c.file))
 					if strings.Contains(got, c.want) || time.Now().After(deadline) {
