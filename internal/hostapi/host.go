@@ -654,6 +654,7 @@ var goKeys = [][2]string{
 	{"ctrl+w", "delete the word before the cursor"},
 	{"/", "command palette"},
 	{"@", "attach a project file"},
+	{"ctrl+space", "show completions"},
 	{"!cmd", "run a shell command with your next message"},
 }
 

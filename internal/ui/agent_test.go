@@ -600,15 +600,36 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 		GoComplete: func(*hostapi.Host, string, string) []string { return []string{"alice", "bob"} },
 		Origin:     lua.OriginBuiltin, Gen: hostapi.Gen(1),
 	})
-	for _, k := range "/greet b" {
-		app.Update(tea.KeyPressMsg{Code: k, Text: string(k)})
+	many := []string{}
+	for i := range 60 {
+		many = append(many, fmt.Sprint("x", i))
 	}
-	if !app.palette.open || len(app.palette.args) != 1 || app.palette.args[0].Text != "bob" || len(app.palette.matches) != 0 {
-		t.Fatalf("palette args = %+v, matches = %d (open=%v)", app.palette.args, len(app.palette.matches), app.palette.open)
-	}
-	app.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	if app.composer.text != "/greet bob " {
-		t.Fatalf("composer = %q", app.composer.text)
+	host.Commands.Add(&hostapi.Command{
+		Name: "many", NArgs: "*", GoFn: func(*hostapi.Host, string) error { return nil },
+		GoComplete: func(*hostapi.Host, string, string) []string { return append(many, "zed") },
+		Origin:     lua.OriginBuiltin, Gen: hostapi.Gen(1),
+	})
+	for _, c := range []struct{ keys, text, args string }{
+		{"/greet b", "/greet b", "bob"},
+		{"/greet b\t", "/greet bob ", ""}, // nargs "?" takes no second argument
+		{"/gr\t", "/greet ", "alice bob"}, // an accepted name lists its arguments at once
+		{"/many z", "/many z", "zed"},     // past the cap of 50
+	} {
+		app.clearComposer()
+		for _, k := range c.keys {
+			if k == '\t' {
+				app.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+			} else {
+				app.Update(tea.KeyPressMsg{Code: k, Text: string(k)})
+			}
+		}
+		args := []string{}
+		for _, a := range app.palette.args {
+			args = append(args, a.Text)
+		}
+		if app.composer.text != c.text || strings.Join(args, " ") != c.args || app.palette.open != (c.args != "") || len(app.palette.matches) != 0 {
+			t.Errorf("%q: composer %q, args %v (open=%v, matches %d), want %q and %q", c.keys, app.composer.text, args, app.palette.open, len(app.palette.matches), c.text, c.args)
+		}
 	}
 	for _, c := range []struct {
 		keys []tea.KeyPressMsg

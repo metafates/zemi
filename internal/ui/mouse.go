@@ -456,7 +456,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 	case y >= a.popRect.Min.Y && y < a.popRect.Max.Y && a.palette.open:
 		p := &a.palette
 		spans, ok := item(p.count())
-		return spans, func() { p.selected = hit - 1; a.acceptPalette(); a.updatePalette() }, ok
+		return spans, func() { p.selected = hit - 1; a.acceptPalette() }, ok
 	case top == "" && under.Click != "":
 		act := func() { a.clickWidget(under, x, y) }
 		if under.Widget == "" { // a Go pill or dock entry names its command

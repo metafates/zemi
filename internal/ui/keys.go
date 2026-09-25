@@ -191,7 +191,6 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	c := &a.composer
 	if key == "ctrl+z" {
 		c.undoLast()
-		a.updatePalette()
 		return a.updateCompletion()
 	}
 	t := keyText(msg)
@@ -207,8 +206,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		}
 		switch key {
 		case "tab":
-			a.acceptPalette()
-			return nil
+			return a.acceptPalette()
 		case "esc":
 			a.palette.close()
 			return nil
@@ -278,6 +276,8 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		return a.pasteClipboard()
 	case "ctrl+g":
 		return a.openEditor()
+	case "ctrl+space": // reopens whatever popup the cursor's word takes, after esc
+		return a.updateCompletion()
 	case "esc":
 		// Open popups consumed esc above, so a bare esc leaves an agent's
 		// transcript, or else interrupts on a second press: esc closes every
@@ -297,7 +297,6 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			c.insert(t)
 		}
 	}
-	a.updatePalette()
 	return a.updateCompletion()
 }
 

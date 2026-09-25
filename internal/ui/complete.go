@@ -46,12 +46,13 @@ func (a *App) completionMax() int {
 	return min(max(a.host.Settings.Int("ui.completion.max_items"), 1), 50)
 }
 
-// updateCompletion recomputes the completion state after a composer edit:
-// the token is the text between a trigger that starts a word and the
-// cursor; anything else closes the popup. Lua sources run on the worker,
-// never on the key path. The returned cmd launches a file scan when an "@"
-// popup just opened.
+// updateCompletion recomputes both popups after a composer edit: the
+// palette, and the completion whose token is the text between a trigger
+// that starts a word and the cursor; anything else closes it. Lua sources
+// run on the worker, never on the key path. The returned cmd launches a
+// file scan when an "@" popup just opened.
 func (a *App) updateCompletion() tea.Cmd {
+	a.updatePalette()
 	r := a.composer.runes()
 	cur := a.composer.cursor
 	i := cur

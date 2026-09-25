@@ -1215,9 +1215,13 @@ UI extensibility contract:
   whatever bound it.
 - Slash palette: typing `/` in the composer opens a popup listing registered
   commands, filtered case-insensitively as you type; `up`/`down`
-  navigate, `tab` accepts (fills `/name `), `enter` submits the typed
+  navigate, `tab` accepts (fills `/name ` and lists its arguments, or the
+  next argument's), `enter` submits the typed
   line, so `/name args` runs the command instead of sending to the
-  model; an unknown name toasts and does not send; `esc` closes. The
+  model; an unknown name toasts and does not send; `esc` closes and
+  `ctrl+space` reopens whatever popup the cursor's word takes. Past
+  `/name ` the list holds the command's argument candidates narrowed by
+  prefix, none past the last argument its `nargs` takes. The
   exact, case-sensitive `/reload` is Go-reserved: it is checked on
   composer submit before any Lua-visible command lookup (§4).
 - Completion sources: `zemi.composer.complete({ id, trigger | command,

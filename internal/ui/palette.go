@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -127,11 +128,12 @@ func (p *cmdPalette) rematch(prefix string, cmds []*hostapi.Command) {
 	p.selected = max(0, min(p.selected, len(p.matches)-1))
 }
 
-// accept fills the composer with the selected "/name " and closes.
-func (a *App) acceptPalette() {
+// acceptPalette fills the composer with the selected "/name " or argument,
+// then offers what comes next, as a typed space would.
+func (a *App) acceptPalette() tea.Cmd {
 	p := &a.palette
 	if !p.open || p.selected >= p.count() || p.selected < 0 {
-		return
+		return nil
 	}
 	if p.args != nil {
 		a.composer.replace(p.argStart, p.args[p.selected].Text+" ")
@@ -140,6 +142,7 @@ func (a *App) acceptPalette() {
 		a.composer.moveEnd()
 	}
 	p.close()
+	return a.updateCompletion()
 }
 
 // paletteRows renders the popup's list, at most room rows of at most maxW

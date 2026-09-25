@@ -429,6 +429,11 @@ func TestPaletteComplete(t *testing.T) {
 	if app.palette.open || app.composer.text != "/q" {
 		t.Fatalf("esc: open=%v text=%q", app.palette.open, app.composer.text)
 	}
+	// ctrl+space opens it again, with no edit
+	app.Update(tea.KeyPressMsg{Code: tea.KeySpace, Mod: tea.ModCtrl})
+	if !app.palette.open || len(app.palette.matches) != 2 || app.composer.text != "/q" {
+		t.Fatalf("ctrl+space: open=%v matches=%d text=%q", app.palette.open, len(app.palette.matches), app.composer.text)
+	}
 
 	// Submitting a unique command runs it with the argument string.
 	app.composer.text, app.composer.cursor = "/echo hi", 8
