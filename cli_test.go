@@ -614,7 +614,7 @@ func TestHeadlessNotices(t *testing.T) {
 		{"-m unlisted --health", "", func() error { return applyOptions(h, options{model: "a/unlisted", health: true}) }},
 		{"-m a role name", "", func() error {
 			if err := applyOptions(h, options{model: "titles"}); err == nil || !strings.Contains(err.Error(), `provider "titles" is not registered`) {
-				return fmt.Errorf("got %v", err)
+				return fmt.Errorf("got %w", err)
 			}
 			return nil
 		}},
@@ -625,7 +625,7 @@ func TestHeadlessNotices(t *testing.T) {
 		}},
 		{"screen command", "", func() error {
 			if err := sendPrompt(h, "/screen"); err == nil || err.Error() != "/screen needs the TUI" {
-				return fmt.Errorf("got %v", err)
+				return fmt.Errorf("got %w", err)
 			}
 			return nil
 		}},

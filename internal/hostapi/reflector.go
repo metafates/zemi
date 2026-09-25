@@ -474,7 +474,7 @@ func parseReflectProposal(out string) (*reflectProposal, error) {
 	}
 	var p reflectProposal
 	if err := json.Unmarshal([]byte(out[start:end+1]), &p); err != nil {
-		return nil, fmt.Errorf("%w: %v", errNoProposal, err)
+		return nil, fmt.Errorf("%w: %w", errNoProposal, err)
 	}
 	return &p, nil
 }

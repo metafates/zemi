@@ -309,7 +309,7 @@ func (g *Generation) do(ctx context.Context, class Class, ceiling, grace time.Du
 		// so an error other than cancel or abandon still reaches the caller.
 		res := <-r.reply
 		if res.err != nil && !errors.Is(res.err, ErrCanceled) && !errors.Is(res.err, ErrAbandoned) {
-			return nil, fmt.Errorf("%w (ctx: %v)", res.err, ctx.Err())
+			return nil, fmt.Errorf("%w (ctx: %v)", res.err, ctx.Err()) //nolint:errorlint // res.err is the cause; a wrapped ctx error would read as a plain cancel
 		}
 		return nil, context.Canceled
 	}
