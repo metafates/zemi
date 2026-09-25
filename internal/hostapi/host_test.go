@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -600,6 +601,15 @@ func TestConfigSet(t *testing.T) {
 		if err := h.configSet(c.path, c.value); err != nil || h.Settings.Str(c.path) != c.want {
 			t.Errorf("%s %q: %q, %v; want %q", c.path, c.value, h.Settings.Str(c.path), err, c.want)
 		}
+	}
+	// a bool row draws its switch, so its description names no on or off
+	if err := h.configSet("ui.animations", "off"); err != nil {
+		t.Fatal(err)
+	}
+	items := h.configItems()
+	row, _ := items[slices.IndexFunc(items, func(it any) bool { return it.(map[string]any)["text"] == "ui.animations" })].(map[string]any)
+	if desc, _ := row["desc"].(string); row["on"] != false || !strings.HasPrefix(desc, "unsaved · animate") {
+		t.Errorf("bool row: on %v, desc %q", row["on"], desc)
 	}
 }
 

@@ -165,16 +165,18 @@ func (h *Host) configItems() []any {
 	}
 	for _, s := range h.Settings.Schema() {
 		v, _ := h.Settings.Get(s.Path)
-		source := h.cfgSource(s.Path)
+		source := cmp.Or(h.cfgSource(s.Path), "default")
 		section, _, _ := strings.Cut(s.Path, ".")
+		// The source leads every row's description, since a bool's key column
+		// holds its switch: default, unsaved and init.lua differ by one cell at most.
 		item := map[string]any{
-			"text": s.Path, "desc": showSetting(v) + " · " + s.Desc, "section": sourceSection(section), "key": source,
-			"detail": fmt.Sprintf("kind: %s\ndefault: %s\nvalue: %s\nsource: %s\n\n%s", s.Kind, showSetting(s.Default), showSetting(v), cmp.Or(source, "default"), s.Desc),
+			"text": s.Path, "desc": source + " · " + showSetting(v) + " · " + s.Desc, "section": sourceSection(section),
+			"detail": fmt.Sprintf("kind: %s\ndefault: %s\nvalue: %s\nsource: %s\n\n%s", s.Kind, showSetting(s.Default), showSetting(v), source, s.Desc),
 		}
 		edit := map[string]any{"text": "Edit", "hotkey": "e", "fill": fmt.Sprintf("/config set %s %v", s.Path, v)}
 		switch pick := h.configPicker(s.Path); {
 		case s.Kind == "bool":
-			item["run"] = "config toggle " + s.Path
+			item["desc"], item["on"], item["run"] = source+" · "+s.Desc, v == true, "config toggle "+s.Path
 			edit = map[string]any{"text": "Toggle", "hotkey": "t", "run": item["run"]}
 		case pick != "":
 			edit = map[string]any{"text": "Change", "hotkey": "c", "run": pick}
