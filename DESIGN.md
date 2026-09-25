@@ -1352,10 +1352,11 @@ provenance string.
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
   an item's `hotkey`, one character, acts like enter on that row outside a filter,
   an item's `copy` is the row's value, which `y` copies in place of the row
-  (`/model`'s full model id, the init.lua lines that keep a `/permissions`
-  always answer) and enter copies, keeping the list open, when the row does nothing else,
+  (`/model`'s full model id, the init.lua lines of a `/permissions` always
+  answer) and enter copies, keeping the list open, when the row does nothing else,
   an item's `section` starts a header row where it changes, and the filter
-  matches it with the row, so a provider name narrows `/model` to its group,
+  matches it and the value with the row, so a provider name narrows `/model`
+  to its group and a full model id finds its row,
   and the toggle-list `reload` `/skills` uses: a function returning the
   items, run with `on_select` on the UI worker after enter or space while
   the list stays open, and again when an overlay stacked on it closes, a

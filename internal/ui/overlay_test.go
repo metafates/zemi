@@ -68,7 +68,7 @@ func TestReloadClosesLuaOverlays(t *testing.T) {
 // TestOverlayFilter: "/" starts a filter that narrows the rows (all words,
 // any case), backspace widens again, esc ends the filter before closing and
 // keeps the matched row, j moves outside a filter, and a new query selects
-// its first match, which enter runs. A query matches a row's section too.
+// its first match, which enter runs. A query matches a row's section and value too.
 // A row's hotkey runs it at once, except in a filter, which takes the key.
 func TestOverlayFilter(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
@@ -124,11 +124,16 @@ func TestOverlayFilter(t *testing.T) {
 	a.openOverlay(hostapi.Overlay{ID: "f", Origin: lua.OriginBuiltin, Items: []any{
 		map[string]any{"text": "gpt", "section": "openai"},
 		map[string]any{"text": "sonnet", "section": "anthropic"},
-		map[string]any{"text": "opus", "section": "anthropic"},
+		map[string]any{"text": "opus", "section": "anthropic", "copy": "anthropic/opus"},
 	}})
 	typeText("/anthropic")
 	if v := a.overlays[0].visible; !slices.Equal(v, []int{1, 2}) || strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20)), "openai") {
 		t.Fatalf("a section name narrows to its rows and drops the other header: %v", v)
+	}
+	a.overlayKey("esc", "")
+	typeText("/anthropic/op")
+	if v := a.overlays[0].visible; !slices.Equal(v, []int{2}) {
+		t.Fatalf("a row's value matches too, so a full model id finds its row: %v", v)
 	}
 }
 

@@ -23,7 +23,7 @@ import (
 type overlayState struct {
 	o     hostapi.Overlay
 	items []listItem // render_item's row when given, else the item's text
-	texts []string   // what the filter matches, per item: section, label and desc
+	texts []string   // what the filter matches, per item: section, label, desc and copy
 	listFilter
 	input composerState // text of an input overlay
 	body  viewport
@@ -196,7 +196,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		}
 		it.label = sanitize.Line(it.label) // a newline would break the box
 		st.items = append(st.items, it)
-		st.texts = append(st.texts, strings.TrimSpace(it.section+"  "+it.label+"  "+it.desc))
+		st.texts = append(st.texts, strings.TrimSpace(it.section+"  "+it.label+"  "+it.desc+"  "+field("copy")))
 	}
 	st.selected = o.Selected
 	st.refilter()
