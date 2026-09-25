@@ -1822,9 +1822,9 @@ func (h *Host) roleIDs() []string {
 
 // OpenModelPicker lists the registered models for role, where enter sets
 // it, then the keyless builtin providers, where it copies the export line.
-// Role "" is /model, which sets chat under a Roles row; another role's list
-// is a step of /model roles and opens on a chat row, which makes the role
-// follow chat.
+// Role "" is /model, which sets chat under a row opening /model roles;
+// another role's list is a step of /model roles and opens on a row that
+// makes the role follow chat.
 func (h *Host) OpenModelPicker(role string) error {
 	ui, err := h.Screen()
 	if err != nil {
@@ -1839,16 +1839,12 @@ func (h *Host) modelPicker(role string) Overlay {
 	run, cur := "model ", h.roleModel("chat")
 	switch role {
 	case "":
-		o.Items = []any{map[string]any{"text": "Roles", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"}}
+		o.Items = []any{map[string]any{"text": "Choose a model per role", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"}}
 	case "chat":
 		o.ID, o.Title = "model chat", "Model roles / chat"
 	default:
 		o.ID, o.Title, run, cur = "model "+role, "Model roles / "+role, "model "+role+" ", h.Settings.Str("models."+role)
-		desc := "follow the chat model"
-		if id := h.roleModel("chat"); id != "" {
-			desc += ": " + id
-		}
-		head := map[string]any{"text": "chat", "desc": desc, "run": run + "chat"}
+		head := map[string]any{"text": "Follow the chat model", "desc": h.roleModel("chat"), "run": run + "chat"}
 		if cur == "" {
 			head["key"] = "current"
 		}
@@ -1856,13 +1852,13 @@ func (h *Host) modelPicker(role string) Overlay {
 	}
 	heads := len(o.Items)
 	for _, s := range h.Providers.List() {
+		section := s.ID
+		if !h.Providers.HasKey(s.ID) {
+			section += " · no API key"
+		}
 		for _, m := range s.Models {
 			id := s.ID + "/" + m.ID
-			desc := modelDesc(id, m)
-			if !h.Providers.HasKey(s.ID) {
-				desc = strings.TrimPrefix(desc+" · no API key", " · ")
-			}
-			item := map[string]any{"text": id, "run": run + id, "desc": desc}
+			item := map[string]any{"text": m.ID, "section": section, "desc": modelDesc(id, m), "run": run + id, "copy": id}
 			if id == cur {
 				item["key"], o.Selected = "current", len(o.Items)
 			}
@@ -1883,7 +1879,7 @@ func (h *Host) modelPicker(role string) Overlay {
 	// the builtin providers without a key close the list, so a user finds
 	// what else zemi supports and the variable that turns each on
 	for _, m := range h.Providers.Missing() {
-		o.Items = append(o.Items, map[string]any{"text": m.ID, "desc": "export " + m.Env, "copy": "export " + m.Env})
+		o.Items = append(o.Items, map[string]any{"text": m.ID, "section": "Needs a key", "desc": "export " + m.Env, "copy": "export " + m.Env})
 	}
 	if !usable && len(o.Items) > 0 {
 		o.Body = "No models yet. Export one of these keys, or " + h.addProvider() + "."
@@ -1902,7 +1898,7 @@ func (h *Host) ownRoles() []string {
 	return own
 }
 
-// rolesDesc is the Roles row's desc: which roles leave the chat model.
+// rolesDesc is the desc of /model's row opening the roles: which roles leave the chat model.
 func rolesDesc(own []string) string {
 	switch n := len(own); n {
 	case 0:
@@ -1946,7 +1942,7 @@ func (h *Host) OpenModelRoles() error {
 // and USD per million tokens in/out, each left out when unknown.
 func modelDesc(id string, m agent.Model) string {
 	var parts []string
-	if m.Display != "" && m.Display != id {
+	if m.Display != "" && m.Display != id && m.Display != m.ID {
 		parts = append(parts, m.Display)
 	}
 	switch w := m.ContextWindow; {

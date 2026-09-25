@@ -1420,7 +1420,7 @@ func TestProfileSwitch(t *testing.T) {
 	// the profile is cheap's, the chat role stays models.chat
 	for i, want := range []string{"cheap", "a/main"} {
 		o := ui.opened[len(ui.opened)-2+i] // after the /model refreshes the SetModel calls sent
-		if item := o.Items[o.Selected].(map[string]any); item["key"] != "current" || !strings.Contains(item["text"].(string), want) {
+		if item := o.Items[o.Selected].(map[string]any); item["key"] != "current" || !strings.HasSuffix(item["run"].(string), " "+want) {
 			t.Errorf("%s picker marks %v, want %s", o.ID, item, want)
 		}
 	}
@@ -1755,6 +1755,7 @@ func TestModelDesc(t *testing.T) {
 		want string
 	}{
 		{agent.Model{ID: "m", Display: "p/m"}, ""},
+		{agent.Model{ID: "m", Display: "m"}, ""},
 		{agent.Model{ID: "m", Display: "Big", ContextWindow: 200_000, CostPer1MIn: 3, CostPer1MOut: 15}, "Big · 200k · $3/$15"},
 		{agent.Model{ID: "m", ContextWindow: 1_048_576, CostPer1MOut: 0.4}, "1.05M · $0/$0.4"},
 	} {
