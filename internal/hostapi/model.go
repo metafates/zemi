@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -257,7 +258,7 @@ var imagesRejected sync.Map
 // the provider's, so this is a text match like maxTokensRefused.
 func imagesRefused(err error) bool {
 	var pe *fantasy.ProviderError
-	if !errors.As(err, &pe) || pe.StatusCode != 400 {
+	if !errors.As(err, &pe) || pe.StatusCode != http.StatusBadRequest {
 		return false
 	}
 	s := strings.ToLower(pe.Message)

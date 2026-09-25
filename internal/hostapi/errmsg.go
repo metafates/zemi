@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"syscall"
@@ -40,13 +41,13 @@ func (h *Host) explain(err error) (cause, advice string) {
 		return "interrupted", ""
 	case errors.As(err, &pe) && pe.IsContextTooLarge():
 		return "the conversation no longer fits the model's context", "/compact or /new"
-	case pe != nil && (pe.AuthError || pe.StatusCode == 401 || pe.StatusCode == 403):
+	case pe != nil && (pe.AuthError || pe.StatusCode == http.StatusUnauthorized || pe.StatusCode == http.StatusForbidden):
 		return "the provider rejected the API key", key
-	case pe != nil && pe.StatusCode == 429:
+	case pe != nil && pe.StatusCode == http.StatusTooManyRequests:
 		return "rate limited by the provider", "wait a bit and send again"
-	case pe != nil && pe.StatusCode == 404:
+	case pe != nil && pe.StatusCode == http.StatusNotFound:
 		return "the provider does not know this model", "pick another with /model"
-	case pe != nil && (pe.StatusCode >= 500 || pe.StatusCode == 408):
+	case pe != nil && (pe.StatusCode >= 500 || pe.StatusCode == http.StatusRequestTimeout):
 		return fmt.Sprintf("the provider is having trouble (%d)", pe.StatusCode), "try again shortly"
 	case pe != nil && pe.StatusCode >= 400:
 		return fmt.Sprintf("the provider refused the request (%d): %s", pe.StatusCode, pe.Message), ""

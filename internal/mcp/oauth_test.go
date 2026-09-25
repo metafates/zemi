@@ -65,7 +65,7 @@ func TestOAuthSignIn(t *testing.T) {
 	mux.HandleFunc("/auth/authorize", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		if q.Get("client_id") != "c1" || q.Get("code_challenge_method") != "S256" || q.Get("resource") != srv.URL+"/mcp" {
-			http.Error(w, "bad authorize request "+q.Encode(), 400)
+			http.Error(w, "bad authorize request "+q.Encode(), http.StatusBadRequest)
 			return
 		}
 		mu.Lock()
@@ -163,7 +163,7 @@ func TestOAuthRefreshRotation(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		if r.Form.Get("refresh_token") != fmt.Sprint("r", n) {
-			w.WriteHeader(400)
+			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid_grant"})
 			return
 		}
@@ -203,7 +203,7 @@ func TestOAuthPreRegisteredClient(t *testing.T) {
 	mux.HandleFunc("/authorize", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		if q.Get("client_id") != "mine" {
-			http.Error(w, "client_id "+q.Get("client_id"), 400)
+			http.Error(w, "client_id "+q.Get("client_id"), http.StatusBadRequest)
 			return
 		}
 		http.Redirect(w, r, q.Get("redirect_uri")+"?code=abc&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
