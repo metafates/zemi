@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"testing"
 )
 
 // Setting describes one config key.
@@ -111,14 +112,20 @@ func (s *Store) Get(path string) (any, bool) {
 
 // Str, Bool and Int read a schema key in its kind. Every schema key holds
 // its default until someone sets it, so only a key outside the schema reads
-// as the zero value.
+// as the zero value, and under go test it panics, so a mistyped key fails
+// the suite.
 func (s *Store) Str(path string) string { return s.value[string](path) }
 func (s *Store) Bool(path string) bool  { return s.value[bool](path) }
 func (s *Store) Int(path string) int    { return s.value[int](path) }
 
 func (s *Store) value[T any](path string) T {
-	v, _ := s.Get(path)
-	t, _ := v.(T)
+	s.mu.RLock()
+	_, known := s.schema[path]
+	t, _ := s.values[path].(T)
+	s.mu.RUnlock()
+	if !known && testing.Testing() {
+		panic("config: " + path + " is not a schema key")
+	}
 	return t
 }
 
