@@ -19,6 +19,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -134,7 +135,7 @@ func (h *Host) applyProposal(res *learn.Result) error {
 		ag.memAuto++
 	}
 	ag.mu.Unlock()
-	h.Notify("info", "Memory saved", res.Memory.Text+redactNote(res.Scrubbed))
+	h.Notify(logging.Info, "Memory saved", res.Memory.Text+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -243,7 +244,7 @@ func (h *Host) Remember(text string) error {
 	if err := h.storeProposal(res); err != nil {
 		return err
 	}
-	h.Notify("info", "Memory saved for this project", "press s on it in /memory to keep it for every project"+redactNote(res.Scrubbed))
+	h.Notify(logging.Info, "Memory saved for this project", "press s on it in /memory to keep it for every project"+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -273,7 +274,7 @@ func (h *Host) memoryCommand(args string) error {
 		if err := db.DeleteMemory(m.ID); err != nil {
 			return err
 		}
-		h.Notify("info", "Memory forgotten", m.Text)
+		h.Notify(logging.Info, "Memory forgotten", m.Text)
 		return nil
 	case fields[0] == "forget":
 		return Usagef("usage: /memory forget <id>")
@@ -324,7 +325,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 			}
 		case old.Queued && r.Action == "accept":
 			if _, err := h.acceptProposal(r.ID, r.Scope); err != nil {
-				h.Notify("warn", "Could not accept a memory", err.Error())
+				h.Notify(logging.Warn, "Could not accept a memory", err.Error())
 				continue
 			}
 			accepted++
@@ -344,7 +345,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 			if err := h.addProposal(*p); err != nil {
 				h.Log.Warn("memory", "move rollback failed", map[string]any{"id": r.ID, "error": err.Error()})
 			}
-			h.Notify("warn", "Could not move a memory", "the "+r.Scope+" scope already has that text")
+			h.Notify(logging.Warn, "Could not move a memory", "the "+r.Scope+" scope already has that text")
 		case old.Queued:
 		case r.Action == "delete":
 			if db := h.memoryDB(old.Scope); db != nil && db.DeleteMemory(r.ID) == nil {
@@ -352,7 +353,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 			}
 		case r.Scope != old.Scope:
 			if err := h.moveMemory(r.ID, old.Scope, r.Scope); err != nil {
-				h.Notify("warn", "Could not move a memory", err.Error())
+				h.Notify(logging.Warn, "Could not move a memory", err.Error())
 				continue
 			}
 			moved++
@@ -368,7 +369,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 		}
 	}
 	if len(parts) > 0 {
-		h.Notify("info", "Memory updated", strings.Join(parts, ", "))
+		h.Notify(logging.Info, "Memory updated", strings.Join(parts, ", "))
 	}
 	if edit != "" {
 		h.editMemory(ui, edit)
@@ -411,9 +412,9 @@ func (h *Host) editMemory(ui UIHooks, id string) {
 	}()
 	switch {
 	case err != nil:
-		h.Notify("error", "Could not edit the memory", err.Error())
+		h.Notify(logging.Error, "Could not edit the memory", err.Error())
 	case scrubbed:
-		h.Notify("info", "Memory updated", "secrets redacted")
+		h.Notify(logging.Info, "Memory updated", "secrets redacted")
 	}
 }
 

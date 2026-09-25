@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/sandbox"
 )
 
@@ -363,7 +364,7 @@ func (h *Host) holdTrust(why string) {
 	h.trustHeld.Store(true)
 	h.SetProjectTrusted(false)
 	h.Log.Warn("sandbox", why, nil)
-	h.Notify("warn", "Trust is off", why)
+	h.Notify(logging.Warn, "Trust is off", why)
 }
 
 // TrustHeld reports trust held off by holdTrust.

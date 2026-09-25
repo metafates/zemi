@@ -14,6 +14,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -236,7 +237,7 @@ func TestModalDimsBackground(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 	host.AppendMessage("user", "hello there")
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"a"}})
-	app.pushToast("info", "Copied to the clipboard", "")
+	app.pushToast(logging.Info, "Copied to the clipboard", "")
 	hl := func(text string) string {
 		app.renderSync(t)
 		app.Frame()

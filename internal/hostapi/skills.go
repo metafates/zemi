@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/metafates/zemi/internal/learn"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/skills"
@@ -376,7 +377,7 @@ func (h *Host) skillsCommand(args string) error {
 		if err := h.setSkillEnabled(fields[1], fields[0] == "enable"); err != nil {
 			return err
 		}
-		h.Notify("info", "Skill "+fields[0]+"d", fields[1])
+		h.Notify(logging.Info, "Skill "+fields[0]+"d", fields[1])
 		return nil
 	case len(fields) == 2 && fields[0] == "toggle": // the /skills list, whose marks show the state
 		return h.setSkillEnabled(fields[1], !h.skillsReg.isEnabled(fields[1]))
@@ -401,7 +402,7 @@ func (h *Host) deleteRecipe(name string) error {
 			return err
 		}
 		h.pinRecipes()
-		h.Notify("info", "Recipe deleted", name)
+		h.Notify(logging.Info, "Recipe deleted", name)
 		return nil
 	}
 	return Usagef("no recipe %q: only a recipe can be deleted here", name)
@@ -422,7 +423,7 @@ func (h *Host) openSkillFile(name string) error {
 		// the editor blocks and a Go command runs on the key loop
 		h.GoSafe("skills open", func() {
 			if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: "the skill"}); err != nil {
-				h.Notify("error", "Could not open the skill", err.Error())
+				h.Notify(logging.Error, "Could not open the skill", err.Error())
 			}
 		})
 		return nil

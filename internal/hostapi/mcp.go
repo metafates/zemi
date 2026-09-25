@@ -25,6 +25,7 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/mcp"
 	"github.com/metafates/zemi/internal/perm"
@@ -226,7 +227,7 @@ func (s *mcpServer) needsSignIn(h *Host) {
 	}
 	s.status, s.err = "failed", errSignIn
 	s.mu.Unlock()
-	h.Notify("warn", "Sign-in needed", s.name+"; open /mcp")
+	h.Notify(logging.Warn, "Sign-in needed", s.name+"; open /mcp")
 	h.refresh()
 }
 
@@ -695,7 +696,7 @@ func (h *Host) mcpCommands() []*Command {
 				if err := h.restartMCP(name); err != nil {
 					return err
 				}
-				h.Notify("info", "Server restarting", name)
+				h.Notify(logging.Info, "Server restarting", name)
 				return nil
 			case "sign-in":
 				return h.signInMCP(strings.TrimSpace(name))
@@ -829,7 +830,7 @@ func (h *Host) signInMCP(name string) error {
 			s.mu.Lock()
 			s.signIn = u
 			s.mu.Unlock()
-			h.Notify("info", "Browser opened", "sign in to "+name+" there, or open /mcp for the link")
+			h.Notify(logging.Info, "Browser opened", "sign in to "+name+" there, or open /mcp for the link")
 			h.openBrowser(u)
 		})
 		s.mu.Lock()
@@ -837,12 +838,12 @@ func (h *Host) signInMCP(name string) error {
 		s.mu.Unlock()
 		if err != nil {
 			h.RecordError("mcp "+name, err.Error())
-			h.Notify("error", "Could not sign in to "+name, err.Error())
+			h.Notify(logging.Error, "Could not sign in to "+name, err.Error())
 			return
 		}
-		h.Notify("info", "Signed in", name)
+		h.Notify(logging.Info, "Signed in", name)
 		if err := h.restartMCP(name); err != nil {
-			h.Notify("error", "Could not restart "+name, err.Error())
+			h.Notify(logging.Error, "Could not restart "+name, err.Error())
 		}
 	})
 	return nil
@@ -856,7 +857,7 @@ func (h *Host) signOutMCP(name string) error {
 	if err := h.mcpAuth(s).Logout(); err != nil {
 		return err
 	}
-	h.Notify("info", "Signed out", name)
+	h.Notify(logging.Info, "Signed out", name)
 	return h.restartMCP(name)
 }
 

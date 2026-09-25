@@ -52,7 +52,7 @@ func (h *Host) notifyFn(level logging.Level) glua.LGFunction {
 			level = logging.Error
 		}
 		h.Log.Log(level, string(h.RT.CurrentOrigin(L)), "notify: "+title+" "+body, nil)
-		h.Notify(level.String(), sanitize.String(title), sanitize.String(body))
+		h.Notify(level, sanitize.String(title), sanitize.String(body))
 		return 0
 	}
 }

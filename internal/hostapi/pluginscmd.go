@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugins"
 )
@@ -92,14 +93,14 @@ func (h *Host) pluginsCommand(args []string) error {
 		// the editor blocks and a Go command runs on the key loop
 		h.GoSafe("plugins open", func() {
 			if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: "the plugin"}); err != nil {
-				h.Notify("error", "Could not open the plugin", err.Error())
+				h.Notify(logging.Error, "Could not open the plugin", err.Error())
 			}
 		})
 	case verb == "new":
 		prompt := fmt.Sprintf(newPluginPrompt, cmp.Or(strings.Join(args[1:], " "), "ask me"))
 		h.GoSafe("plugins new", func() {
 			if err := h.AgentSend(prompt); err != nil {
-				h.Notify("error", "Could not send", h.friendlyError(err))
+				h.Notify(logging.Error, "Could not send", h.friendlyError(err))
 			}
 		})
 	case verb == "enable" || verb == "disable":
@@ -115,9 +116,9 @@ func (h *Host) pluginsCommand(args []string) error {
 				}
 			}
 			if len(names) > 0 {
-				h.Notify("info", "Updates available", strings.Join(names, ", "))
+				h.Notify(logging.Info, "Updates available", strings.Join(names, ", "))
 			} else if err == nil {
-				h.Notify("info", plugins.UpToDate, "")
+				h.Notify(logging.Info, plugins.UpToDate, "")
 			}
 			return err
 		})
@@ -139,7 +140,7 @@ func (h *Host) pluginsCommand(args []string) error {
 				body = args[1]
 			}
 			if err == nil || body != "" {
-				h.Notify("info", title, body)
+				h.Notify(logging.Info, title, body)
 			}
 			return err
 		})
@@ -181,7 +182,7 @@ func (h *Host) openPlugins(ui UIHooks, refresh bool) {
 func (h *Host) pluginItems() []any {
 	ps, err := plugins.List(context.Background(), h.Dirs)
 	if err != nil {
-		h.Notify("error", "Could not read the plugins", err.Error())
+		h.Notify(logging.Error, "Could not read the plugins", err.Error())
 	}
 	install := map[string]any{"text": "Install a plugin", "verb": "install", "fill": "/plugins install "}
 	if len(ps) == 0 && err == nil {

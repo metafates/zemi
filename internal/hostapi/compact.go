@@ -18,6 +18,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -124,7 +125,7 @@ func (h *Host) compactFailed(cause string) bool {
 	off := ag.compactFails == compactMaxFails
 	ag.mu.Unlock()
 	if off {
-		h.Notify("warn", "Auto compaction off", cause+"; /compact or /new")
+		h.Notify(logging.Warn, "Auto compaction off", cause+"; /compact or /new")
 	}
 	return off
 }
@@ -177,11 +178,11 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 			ag.mu.Unlock()
 			if imageTooLarge(err) {
 				runner.DropImages("too large to send")
-				h.Notify("warn", "Image left out", "too large for "+model+"; the turn goes on without it")
+				h.Notify(logging.Warn, "Image left out", "too large for "+model+"; the turn goes on without it")
 			} else {
 				runner.TextOnly = true
 				imagesRejected.Store(model, true)
-				h.Notify("warn", "Images left out", model+" takes no images; images = false on its model entry skips this")
+				h.Notify(logging.Warn, "Images left out", model+" takes no images; images = false on its model entry skips this")
 			}
 			continue
 		}
@@ -224,7 +225,7 @@ func (h *Host) CompactNow(focus string) error {
 		return Usagef("a turn is running; compact after it")
 	case runner == nil || len(runner.History) < 2:
 		ag.mu.Unlock()
-		h.Notify("warn", "Nothing to compact yet", "")
+		h.Notify(logging.Warn, "Nothing to compact yet", "")
 		return nil
 	}
 	ag.active = true
@@ -253,13 +254,13 @@ func (h *Host) compactReporting(ctx context.Context, runner *agent.Runner, reaso
 		h.Log.Warn("agent", "compaction failed", map[string]any{"error": err.Error(), "reason": reason})
 		switch {
 		case errors.Is(err, errNothingToCompact):
-			h.Notify("warn", "Nothing to compact yet", "")
+			h.Notify(logging.Warn, "Nothing to compact yet", "")
 		case reason == compactManual:
-			h.Notify("error", "Could not compact", h.friendlyError(err))
+			h.Notify(logging.Error, "Could not compact", h.friendlyError(err))
 		default:
 			// the turn goes on, or ends on its own error
 			if cause := h.friendlyError(err); !h.compactFailed(cause) {
-				h.Notify("warn", "Could not compact", cause)
+				h.Notify(logging.Warn, "Could not compact", cause)
 			}
 		}
 	}

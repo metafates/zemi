@@ -618,8 +618,11 @@ func TestHeadlessNotices(t *testing.T) {
 			}
 			return nil
 		}},
-		{"info", "", func() error { h.Notify("info", "Copied", "3 chars"); return nil }},
-		{"untitled error", "zemi: Error: first\n  second\n", func() error { h.Notify("error", "", "first\nsecond"); return nil }},
+		{"info", "", func() error { h.Notify(logging.Info, "Copied", "3 chars"); return nil }},
+		{"untitled error", "zemi: Error: first\n  second\n", func() error { h.Notify(logging.Error, "", "first\nsecond"); return nil }},
+		{"zemi.notify.warn", "zemi: Warning: w\n", func() error {
+			return r.ExecuteChunk(context.Background(), `zemi.notify.warn("w")`, "init.lua", lua.OriginUser)
+		}},
 		{"screen command", "", func() error {
 			if err := sendPrompt(h, "/screen"); err == nil || err.Error() != "/screen needs the TUI" {
 				return fmt.Errorf("got %v", err)

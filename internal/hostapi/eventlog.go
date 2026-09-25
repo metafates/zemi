@@ -12,6 +12,7 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -58,10 +59,10 @@ func (h *Host) recordEvent(name, from string, payload map[string]any) {
 	}
 }
 
-func (h *Host) recordNotify(level, title, body string) {
+func (h *Host) recordNotify(level logging.Level, title, body string) {
 	l := &h.evlog
 	l.mu.Lock()
-	l.notes = append(l.notes, notifyEntry{time.Now(), level, title, body})
+	l.notes = append(l.notes, notifyEntry{time.Now(), strings.ToLower(level.String()), title, body})
 	if len(l.notes) > notifyLogMax {
 		l.notes = l.notes[len(l.notes)-notifyLogMax:]
 	}

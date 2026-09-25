@@ -6,6 +6,7 @@ package hostapi
 import (
 	"fmt"
 
+	"github.com/metafates/zemi/internal/logging"
 	glua "github.com/yuin/gopher-lua"
 )
 
@@ -41,14 +42,14 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 			if h.takeProposal(id) == nil {
 				return luaResult(L, fmt.Errorf("no such proposal %q", id))
 			}
-			h.Notify("info", "Memory dropped", "")
+			h.Notify(logging.Info, "Memory dropped", "")
 			return luaResult(L, nil)
 		}
 		p, err := h.acceptProposal(id, "")
 		if err != nil {
 			return luaResult(L, err)
 		}
-		h.Notify("info", map[bool]string{false: "Memory saved", true: "Memory forgotten"}[p.Forget], p.Text)
+		h.Notify(logging.Info, map[bool]string{false: "Memory saved", true: "Memory forgotten"}[p.Forget], p.Text)
 		return luaResult(L, nil)
 	}))
 

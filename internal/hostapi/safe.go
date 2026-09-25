@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"runtime/debug"
 	"time"
+
+	"github.com/metafates/zemi/internal/logging"
 )
 
 func (h *Host) GoSafe(where string, fn func()) {
@@ -35,7 +37,7 @@ func (h *Host) endTurnAfterPanic() {
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.turnStart, ag.retryAt = time.Time{}, time.Time{}
 	ag.mu.Unlock()
-	h.Notify("error", "Turn crashed", "it was stopped; /errors has the cause")
+	h.Notify(logging.Error, "Turn crashed", "it was stopped; /errors has the cause")
 	h.refresh()
 }
 

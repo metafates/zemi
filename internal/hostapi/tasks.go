@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -376,7 +377,7 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 			return
 		}
 		if err := h.AgentSend(h.reportMessage(run.id, def.Name, status, description, report)); err != nil {
-			h.Notify("error", "Could not send the report of "+run.id, h.friendlyError(err))
+			h.Notify(logging.Error, "Could not send the report of "+run.id, h.friendlyError(err))
 		}
 	})
 	return run.id, nil
@@ -413,7 +414,10 @@ func (h *Host) notifyReport(id, agentName, status, description, report string) {
 			h.Log.Warn("agents", "report not stored", map[string]any{"run": id, "error": err.Error()})
 		}
 	}
-	level := map[bool]string{true: "info", false: "warn"}[status == "finished"]
+	level := logging.Warn
+	if status == "finished" {
+		level = logging.Info
+	}
 	h.Notify(level, reportHead(id, agentName, status), description+"\n"+truncRunes(strings.TrimPrefix(report, reportFailed), 300))
 }
 

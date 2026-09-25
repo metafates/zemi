@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -466,7 +467,7 @@ func (a *App) background(fn func()) {
 	select {
 	case a.work <- fn:
 	default:
-		a.pushToast("warn", "Key dropped", "an earlier key or command is still running")
+		a.pushToast(logging.Warn, "Key dropped", "an earlier key or command is still running")
 	}
 }
 

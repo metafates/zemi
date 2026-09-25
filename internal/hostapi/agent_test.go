@@ -664,7 +664,7 @@ type fakeUI struct {
 	edit         func(path string) // what the user does in the editor
 }
 
-func (f *fakeUI) Notify(level, title, body string)     {}
+func (f *fakeUI) Notify(logging.Level, string, string) {}
 func (f *fakeUI) OpenOverlay(o Overlay)                { f.opened = append(f.opened, o) }
 func (f *fakeUI) CloseOverlay(id string, _ lua.Origin) { f.closed = append(f.closed, id) }
 func (f *fakeUI) CloseLuaOverlays()                    { f.closedLua++ }

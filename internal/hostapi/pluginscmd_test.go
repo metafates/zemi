@@ -25,8 +25,10 @@ type pluginsUI struct {
 	notes  chan string
 }
 
-func (u *pluginsUI) OpenOverlay(o Overlay)            { u.opened <- o }
-func (u *pluginsUI) Notify(level, title, body string) { u.notes <- level + ": " + title + ": " + body }
+func (u *pluginsUI) OpenOverlay(o Overlay) { u.opened <- o }
+func (u *pluginsUI) Notify(level logging.Level, title, body string) {
+	u.notes <- strings.ToLower(level.String()) + ": " + title + ": " + body
+}
 
 // TestPluginsCommand runs /plugins verbs in order over one plugin tree and
 // reads the list each one leaves, with the toasts it showed.

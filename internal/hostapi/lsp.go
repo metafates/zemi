@@ -23,6 +23,7 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -663,7 +664,7 @@ func (h *Host) lspCommands() []*Command {
 				if p != nil { // else it capped out earlier; the counter is clear now
 					p.close()
 				}
-				h.Notify("info", "Language server stopped", name+"; it starts again on the next file it serves")
+				h.Notify(logging.Info, "Language server stopped", name+"; it starts again on the next file it serves")
 				return nil
 			}
 			ui, err := h.Screen()

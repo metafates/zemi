@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	glua "github.com/yuin/gopher-lua"
@@ -130,7 +131,7 @@ func (h *Host) OpenErrors(args string) error {
 				e.at.Format("15:04:05"), e.source, e.msg)
 			h.GoSafe("errors ask", func() {
 				if err := h.AgentSend(prompt); err != nil {
-					h.Notify("error", "Could not send", h.friendlyError(err))
+					h.Notify(logging.Error, "Could not send", h.friendlyError(err))
 				}
 			})
 			return nil

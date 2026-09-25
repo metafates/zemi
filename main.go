@@ -165,11 +165,11 @@ func run(args []string) int {
 		if err := host.ForceReload(ctx, steps); err != nil {
 			log.Error("reload", "force reload failed", map[string]any{"error": err.Error()})
 			host.RecordError("reload", err.Error())
-			app.Notify("error", "Could not reload the config", err.Error())
+			app.Notify(logging.Error, "Could not reload the config", err.Error())
 			return
 		}
 		app.SignalBoot(nil)
-		app.Notify("info", "Config reloaded", "")
+		app.Notify(logging.Info, "Config reloaded", "")
 		host.WarnModel()
 		host.EmitAsync("config.reloaded", nil)
 	}
@@ -198,13 +198,13 @@ func run(args []string) int {
 		// failure: the TUI is still usable.
 		if err := applyOptions(host, opts); err != nil {
 			host.RecordError("flag", err.Error())
-			app.Notify("error", "Could not apply a flag", err.Error())
+			app.Notify(logging.Error, "Could not apply a flag", err.Error())
 		}
 		// here, not in app.ready: once per process, after -m, never on a reload
 		host.OfferModel()
 		if opts.prompt != "" {
 			if err := sendPrompt(host, opts.prompt); err != nil {
-				app.Notify("error", "Could not send", err.Error())
+				app.Notify(logging.Error, "Could not send", err.Error())
 			}
 		}
 	}()
@@ -345,7 +345,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				if n == 1 {
 					files = "file"
 				}
-				h.Notify("info", "Session rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
+				h.Notify(logging.Info, "Session rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
 			}
 			return err
 		}},
@@ -360,7 +360,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				if eff := h.Effort(h.AgentStream().Model); eff != pick {
 					cur += " (" + cmp.Or(eff, "none") + " on this model)"
 				}
-				h.Notify("info", "Reasoning effort is "+cur, "/effort low, medium, high or default sets it")
+				h.Notify(logging.Info, "Reasoning effort is "+cur, "/effort low, medium, high or default sets it")
 				return nil
 			}
 			return h.SetConfig("agent.effort", args)
@@ -569,7 +569,7 @@ func (tg *trustGate) command(reload func()) func() {
 			tg.h.ReleaseTrust()
 			ok, err := tg.record(root, answer)
 			if err != nil {
-				tg.h.Notify("error", "Could not save the trust decision", err.Error())
+				tg.h.Notify(logging.Error, "Could not save the trust decision", err.Error())
 			}
 			// set before the reload: a boot that fails before the trust step
 			// must not leave the old decision in force

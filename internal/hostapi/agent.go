@@ -24,6 +24,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
@@ -441,7 +442,7 @@ func (h *Host) drainQueue() {
 	scope := h.beginScope()
 	ag.mu.Unlock()
 	if err := h.sendClaimed(scope, text); err != nil {
-		h.Notify("error", "Could not send", h.friendlyError(err))
+		h.Notify(logging.Error, "Could not send", h.friendlyError(err))
 	}
 }
 
@@ -535,7 +536,7 @@ func (h *Host) handOff(scope *turnScope) {
 	// sending waits on the interpreter, and rewind may be called from Lua
 	h.GoSafe("agent send", func() {
 		if err := h.sendClaimed(scope, queued); err != nil {
-			h.Notify("error", "Could not send", h.friendlyError(err))
+			h.Notify(logging.Error, "Could not send", h.friendlyError(err))
 		}
 	})
 }
@@ -626,12 +627,12 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	case text == "":
 		// its notice row is drawn when the model reads it; say now that it waits
 		if len(waiting) > 0 {
-			h.Notify("info", "Waiting for your next message", strings.Join(waiting, "\n"))
+			h.Notify(logging.Info, "Waiting for your next message", strings.Join(waiting, "\n"))
 		}
 		h.refresh()
 	case handoff:
 		if err := h.sendClaimed(next, text); err != nil {
-			h.Notify("error", "Could not start the implementation", h.friendlyError(err))
+			h.Notify(logging.Error, "Could not start the implementation", h.friendlyError(err))
 		}
 		return nil, ""
 	default:
@@ -1461,9 +1462,9 @@ func (h *Host) Btw(question string) error {
 		switch {
 		case ctx.Err() != nil:
 		case errors.Is(err, errNothingToAsk):
-			h.Notify("warn", "Nothing to ask about yet", "")
+			h.Notify(logging.Warn, "Nothing to ask about yet", "")
 		case err != nil:
-			h.Notify("error", "Could not answer the side question", h.friendlyError(err))
+			h.Notify(logging.Error, "Could not answer the side question", h.friendlyError(err))
 		default:
 			ui.OpenOverlay(Overlay{ID: fmt.Sprintf("btw:%d", h.selectSeq.Add(1)), Title: "Side question", Origin: lua.OriginBuiltin, Body: answer, BodyMD: true})
 		}
@@ -2035,7 +2036,7 @@ func (h *Host) updateCatalog() error {
 				c.Info.Models, plural(c.Info.Models, "model", "models"))
 		}
 		if !headless {
-			h.Notify("info", title, body)
+			h.Notify(logging.Info, title, body)
 		} else if body != "" {
 			fmt.Fprintf(h.Stderr, "zemi: %s: %s\n", title, body)
 		} else {
@@ -2063,7 +2064,7 @@ func (h *Host) updateCatalog() error {
 		case err == nil:
 			_ = h.ReloadConfig()
 		case ctx.Err() == nil: // not esc
-			h.Notify("error", "Could not update the model catalog", err.Error())
+			h.Notify(logging.Error, "Could not update the model catalog", err.Error())
 		}
 	})
 	return nil
@@ -2098,7 +2099,7 @@ const unlistedTitle = "Model not listed"
 // not the model row: mid-turn the row is the running turn's model.
 func (h *Host) warnUnlisted(id string) {
 	if _, ok := h.modelSpec(id); !ok {
-		h.Notify("warn", unlistedTitle, unlistedDetail(id))
+		h.Notify(logging.Warn, unlistedTitle, unlistedDetail(id))
 	}
 }
 
@@ -2121,7 +2122,7 @@ func (h *Host) modelSetErr(role, id string) error {
 // provider refuses it.
 func (h *Host) WarnModel() {
 	if row := h.modelRow(); row.level != "ok" {
-		h.Notify("warn", map[string]string{"error": "Model unavailable", "warn": unlistedTitle}[row.level], row.detail)
+		h.Notify(logging.Warn, map[string]string{"error": "Model unavailable", "warn": unlistedTitle}[row.level], row.detail)
 	}
 }
 
@@ -2426,7 +2427,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			switch {
 			case err != nil:
 				h.Log.Warn("agent", "zemi.agent.send failed", map[string]any{"error": err.Error()})
-				h.Notify("error", "Could not send", h.friendlyError(err))
+				h.Notify(logging.Error, "Could not send", h.friendlyError(err))
 			case plugin != "":
 				h.markNotLocal(h.AgentSessionID(), plugin) // a fresh session exists only now
 			}

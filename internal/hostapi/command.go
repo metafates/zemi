@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	glua "github.com/yuin/gopher-lua"
@@ -228,11 +229,11 @@ func argAt(lead, line string) ([]string, int) {
 // (ErrUsage) is a warn, anything else did not happen and is recorded.
 func (h *Host) CommandFailed(name string, err error) {
 	if errors.Is(err, ErrUsage) {
-		h.Notify("warn", "Could not run /"+name, err.Error())
+		h.Notify(logging.Warn, "Could not run /"+name, err.Error())
 		return
 	}
 	h.RecordError("command "+name, err.Error())
-	h.Notify("error", "Could not run /"+name, err.Error())
+	h.Notify(logging.Error, "Could not run /"+name, err.Error())
 }
 
 // RunCommand runs a command by name as if typed.
@@ -304,7 +305,7 @@ func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) (err error) {
 		default:
 			h.RecordError("keymap "+b.Key, err.Error())
 			h.Log.Error("ui", "keymap rhs failed", map[string]any{"keys": b.Key, "error": err.Error()})
-			h.Notify("error", "Could not run "+b.Key, err.Error())
+			h.Notify(logging.Error, "Could not run "+b.Key, err.Error())
 		}
 	}
 	defer func() { report(err) }()

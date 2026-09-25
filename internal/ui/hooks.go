@@ -11,6 +11,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -176,9 +177,9 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 // hostapi.UIHooks
 
 // Notify shows a toast from any goroutine. Title and body are sanitized
-// here; the level is lowercased for the theme mapping.
-func (a *App) Notify(level, title, body string) {
-	level, title, body = strings.ToLower(level), sanitize.String(title), sanitize.String(body)
+// here.
+func (a *App) Notify(level logging.Level, title, body string) {
+	title, body = sanitize.String(title), sanitize.String(body)
 	a.do(func() { a.pushToast(level, title, body) })
 }
 

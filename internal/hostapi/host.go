@@ -2,7 +2,6 @@ package hostapi
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -36,7 +35,7 @@ import (
 // UIHooks is what the host API needs from the UI layer. Implemented by
 // internal/ui; hostapi never imports the UI.
 type UIHooks interface {
-	Notify(level, title, body string)
+	Notify(level logging.Level, title, body string)
 	OpenOverlay(o Overlay)
 	// CloseOverlay closes an overlay and runs its on_close, but only for a
 	// caller of user or builtin origin or the origin that opened it: a
@@ -630,8 +629,14 @@ func (h *Host) refresh() {
 }
 
 // ToastTitle is a toast's title, Warning or Error for an untitled one.
-func ToastTitle(level, title string) string {
-	return cmp.Or(title, map[string]string{"warn": "Warning", "error": "Error"}[level])
+func ToastTitle(level logging.Level, title string) string {
+	switch {
+	case title != "" || level < logging.Warn:
+		return title
+	case level == logging.Warn:
+		return "Warning"
+	}
+	return "Error"
 }
 
 // Notify shows a toast; with no UI a warning or an error goes to Stderr
@@ -639,13 +644,13 @@ func ToastTitle(level, title string) string {
 // happened, in sentence case with no period: "<Kind> <past participle>" with
 // the name in the body, "Could not <verb> <object>" with the cause in the
 // body, "Nothing to <verb> [yet]" with a reason only when it is not obvious.
-func (h *Host) Notify(level, title, body string) {
+func (h *Host) Notify(level logging.Level, title, body string) {
 	h.recordNotify(level, title, body)
 	if ui := h.hooks(); ui != nil {
 		ui.Notify(level, title, body)
 		return
 	}
-	if level != "warn" && level != "error" {
+	if level < logging.Warn {
 		return
 	}
 	line := "zemi: " + ToastTitle(level, title)

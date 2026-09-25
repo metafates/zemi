@@ -686,7 +686,7 @@ func TestEventLogFromLua(t *testing.T) {
 	h, r := newTestHost(t)
 	h.SetUIHooks(&fakeUI{})
 	h.EmitAsync("agent.text_delta", map[string]any{"text": "x"})
-	h.Notify("info", "first", "one")
+	h.Notify(logging.Info, "first", "one")
 	runUser(t, r, `
 		zemi.event.emit("user.ping", { n = 1 })
 		zemi.event.emit("user.ping", { n = 2 })
@@ -702,9 +702,9 @@ func TestEventLogFromLua(t *testing.T) {
 		assert(stats["agent.text_delta"] == 1, "delta counted")
 		assert(#zemi.event.log({ name = "agent.text_delta" }) == 0, "delta not logged")
 		local notes = zemi.notify.list()
-		assert(#notes == 4 and notes[4].level == "info" and notes[3].level == "ERROR", "notes=" .. #notes)
-		assert(notes[2].title == "third" and notes[2].level == "INFO", "level stuck: " .. notes[2].level)
-		assert(notes[1].title == "fourth" and notes[1].body == "four" and notes[1].level == "WARN", "string form")
+		assert(#notes == 4 and notes[4].level == "info" and notes[3].level == "error", "notes=" .. #notes)
+		assert(notes[2].title == "third" and notes[2].level == "info", "level stuck: " .. notes[2].level)
+		assert(notes[1].title == "fourth" and notes[1].body == "four" and notes[1].level == "warn", "string form")
 		assert(not pcall(zemi.notify, 42), "a number is not a spec")
 	`)
 }

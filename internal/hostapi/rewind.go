@@ -21,6 +21,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -82,7 +83,7 @@ func (h *Host) uncheckpointed(abs, why string) {
 		return
 	}
 	h.Log.Warn("rewind", "file not checkpointed", map[string]any{"path": abs, "why": why})
-	h.Notify("warn", "Checkpoint skipped", filepath.Base(abs)+" "+why+"; a rewind will not restore it")
+	h.Notify(logging.Warn, "Checkpoint skipped", filepath.Base(abs)+" "+why+"; a rewind will not restore it")
 }
 
 // userText returns what the user typed in a stored user message; compaction
@@ -150,9 +151,9 @@ func (h *Host) RewindTo(id string) (int, error) {
 	}
 	switch {
 	case aged > 0 && len(cps) == 0:
-		h.Notify("warn", "Files not restored", "their snapshots for that turn have aged out; only the conversation is cut")
+		h.Notify(logging.Warn, "Files not restored", "their snapshots for that turn have aged out; only the conversation is cut")
 	case aged > 0:
-		h.Notify("warn", "Some files not restored", fmt.Sprintf("snapshots older than %d days have aged out (%d of those %s); files changed then may not go back",
+		h.Notify(logging.Warn, "Some files not restored", fmt.Sprintf("snapshots older than %d days have aged out (%d of those %s); files changed then may not go back",
 			int(store.CheckpointTTL.Hours()/24), aged, plural(aged, "turn", "turns")))
 	}
 	var failed []string

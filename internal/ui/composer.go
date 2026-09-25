@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/logging"
 )
 
 // composerState is the multiline input editor (DESIGN §8): text with a
@@ -554,12 +555,12 @@ type editorMsg struct {
 func (a *App) openEditor() tea.Cmd {
 	dir, err := a.host.TempDir()
 	if err != nil {
-		a.pushToast("error", "Could not open the editor", err.Error())
+		a.pushToast(logging.Error, "Could not open the editor", err.Error())
 		return nil
 	}
 	f, err := os.CreateTemp(dir, "zemi-*.md")
 	if err != nil {
-		a.pushToast("error", "Could not open the editor", err.Error())
+		a.pushToast(logging.Error, "Could not open the editor", err.Error())
 		return nil
 	}
 	path := f.Name()
@@ -569,7 +570,7 @@ func (a *App) openEditor() tea.Cmd {
 	}
 	if err != nil {
 		_ = os.Remove(path)
-		a.pushToast("error", "Could not open the editor", err.Error())
+		a.pushToast(logging.Error, "Could not open the editor", err.Error())
 		return nil
 	}
 	go func() {

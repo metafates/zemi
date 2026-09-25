@@ -221,7 +221,7 @@ func (a *App) SignalBoot(err error) {
 func (a *App) Quit() {
 	quit := func() {
 		if res := a.host.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
-			a.Notify("warn", "Quit blocked", res.Reason)
+			a.Notify(logging.Warn, "Quit blocked", res.Reason)
 			return
 		}
 		a.leave()
@@ -381,7 +381,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case editorMsg:
 		if msg.err != nil {
-			a.pushToast("error", "Could not open the editor", msg.err.Error())
+			a.pushToast(logging.Error, "Could not open the editor", msg.err.Error())
 			return a, nil
 		}
 		text := sanitize.String(msg.text)
@@ -396,7 +396,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.updateCompletion()
 	case clipboardMsg:
 		if msg.err != nil {
-			a.pushToast("error", "Could not paste", msg.err.Error())
+			a.pushToast(logging.Error, "Could not paste", msg.err.Error())
 			return a, nil
 		}
 		a.insertToken(msg.token)
@@ -713,26 +713,27 @@ func (a *App) widgetLines(id string) [][]hostapi.Segment {
 
 // toast is a transient notification (zemi.notify, DESIGN §6.1).
 type toast struct {
-	level, title, body string
-	expires            time.Time
-	recorded           bool // its caller recorded the whole error in /errors
+	level       logging.Level
+	title, body string
+	expires     time.Time
+	recorded    bool // its caller recorded the whole error in /errors
 }
 
 // toastRows caps a toast's body: a long error or a stack trace would cover
 // the transcript.
 const toastRows = 3
 
-func (a *App) pushToast(level, title, body string) {
+func (a *App) pushToast(level logging.Level, title, body string) {
 	title = hostapi.ToastTitle(level, title)
 	// news goes quickly, what needs reading or acting on stays
 	ttl := 8 * time.Second
-	if level == "info" {
+	if level < logging.Warn {
 		ttl = 4 * time.Second
 	}
 	t := toast{level: level, title: title, body: body, expires: time.Now().Add(ttl)}
 	short, _, _ := strings.Cut(body, "stack traceback:")
 	t.body = hostapi.ShortChunk(strings.TrimRight(short, " \t\n"))
-	t.recorded = level == "error" && a.host.Recorded(body)
+	t.recorded = level == logging.Error && a.host.Recorded(body)
 	// the same failure again (a second send with no model) restarts the
 	// toast instead of stacking a twin under it
 	if n := len(a.toasts); n > 0 && a.toasts[n-1].level == level && a.toasts[n-1].title == title && a.toasts[n-1].body == t.body {
@@ -1262,9 +1263,12 @@ func (a *App) statuslineSegments(region string) []hostapi.Segment {
 // the top rule in the level's color, the body word-wrapped under it. A lone
 // title or body that fits one row is that row between the box's side bars.
 func toastBox(t toast, w int) [][]hostapi.Segment {
-	level := map[string]string{"warn": "ToastWarn", "error": "ToastErr"}[t.level]
-	if level == "" {
-		level = "ToastInfo"
+	level := "ToastInfo"
+	switch t.level {
+	case logging.Warn:
+		level = "ToastWarn"
+	case logging.Error:
+		level = "ToastErr"
 	}
 	inner := max(min(w-2, 60)-4, 1)
 	if (t.title == "") != (t.body == "") {

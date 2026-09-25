@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -90,7 +91,7 @@ func (h *Host) configCommand(args string) error {
 		// the editor blocks and a Go command runs on the key loop
 		h.GoSafe("config open", func() {
 			if err := ui.EditFile(context.Background(), EditRequest{Path: filepath.Join(h.Dirs.ConfigHome, "init.lua"), Title: "init.lua"}); err != nil {
-				h.Notify("error", "Could not open init.lua", err.Error())
+				h.Notify(logging.Error, "Could not open init.lua", err.Error())
 			}
 		})
 	default:
@@ -321,18 +322,18 @@ func (h *Host) saveConfig() {
 		}
 	}
 	if len(sets) == 0 {
-		h.Notify("info", "Nothing to save", "init.lua sets every value in force")
+		h.Notify(logging.Info, "Nothing to save", "init.lua sets every value in force")
 		return
 	}
 	path := filepath.Join(h.Dirs.ConfigHome, "init.lua")
 	read, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		h.Notify("error", "Could not save to init.lua", err.Error())
+		h.Notify(logging.Error, "Could not save to init.lua", err.Error())
 		return
 	}
 	saved, skipped, err := saveInit(path, read, sets)
 	if err != nil {
-		h.Notify("error", "Could not save to init.lua", err.Error())
+		h.Notify(logging.Error, "Could not save to init.lua", err.Error())
 		return
 	}
 	var body []string
@@ -343,10 +344,10 @@ func (h *Host) saveConfig() {
 		body = append(body, p+" is set by code or more than once in init.lua; left alone")
 	}
 	if len(saved) == 0 {
-		h.Notify("warn", "Nothing saved to init.lua", strings.Join(body, "\n"))
+		h.Notify(logging.Warn, "Nothing saved to init.lua", strings.Join(body, "\n"))
 		return
 	}
-	h.Notify("info", fmt.Sprintf("Saved %d %s to init.lua", len(saved), plural(len(saved), "setting", "settings")), strings.Join(body, "\n"))
+	h.Notify(logging.Info, fmt.Sprintf("Saved %d %s to init.lua", len(saved), plural(len(saved), "setting", "settings")), strings.Join(body, "\n"))
 }
 
 // saveInit writes sets into the init.lua at path, read before, and refuses

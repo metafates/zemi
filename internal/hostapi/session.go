@@ -19,6 +19,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
@@ -46,7 +47,7 @@ func (h *Host) ResumeSession(id string) error {
 		}
 		i := slices.IndexFunc(list, func(s *store.Session) bool { return s.ID != live })
 		if i < 0 {
-			h.Notify("warn", "Nothing to resume", "no other session in this project yet")
+			h.Notify(logging.Warn, "Nothing to resume", "no other session in this project yet")
 			return nil
 		}
 		id = list[i].ID
@@ -167,7 +168,7 @@ func (h *Host) DeleteSession(id string) error {
 			title = s.Title
 		}
 		if err := h.DB.DeleteSession(id); err != nil {
-			h.Notify("error", "Could not delete the session", err.Error())
+			h.Notify(logging.Error, "Could not delete the session", err.Error())
 			return
 		}
 		h.recentStale.Store(true)
@@ -175,7 +176,7 @@ func (h *Host) DeleteSession(id string) error {
 			_ = os.RemoveAll(h.scratchFor(id))
 			_ = os.RemoveAll(filepath.Join(h.Dirs.StateHome, "sandbox-tmp", id))
 		}
-		h.Notify("info", "Session deleted", title)
+		h.Notify(logging.Info, "Session deleted", title)
 	})
 	return nil
 }
