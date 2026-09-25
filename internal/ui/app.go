@@ -306,24 +306,24 @@ func (a *App) Init() tea.Cmd {
 // NOTE: that solves the layout once per message, mouse motion included; if it
 // shows in a profile, run it only on a composer height change and a refresh.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	_, cmd := a.update(msg)
+	cmd := a.update(msg)
 	if _, tick := msg.(frameTickMsg); tick {
 		return a, cmd
 	}
 	return a, tea.Batch(cmd, a.renderStaleWidgetsCmd(true))
 }
 
-func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (a *App) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case frameTickMsg:
-		return a, a.onFrame()
+		return a.onFrame()
 	case widgetsRenderedMsg:
 		for _, r := range msg {
 			a.onWidgetRendered(r)
 		}
 	case uiFunc:
 		a.bump()
-		return a, msg()
+		return msg()
 	case agentStreamMsg:
 		// Stream state lives in the host; just invalidate the frame.
 		a.bump()
@@ -340,12 +340,12 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != "" {
 			text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "…")
 		}
-		return a, a.notifyIfAway(text)
+		return a.notifyIfAway(text)
 	case hookMsg:
-		_, cmd := a.update(msg.inner)
+		cmd := a.update(msg.inner)
 		// Re-arm the persistent drain: each delivered hookMsg re-arms
 		// exactly one, so the chain never breaks.
-		return a, tea.Batch(cmd, a.drainHooksCmd())
+		return tea.Batch(cmd, a.drainHooksCmd())
 	case tea.ColorProfileMsg:
 		a.colors = msg.Profile
 	case tea.BackgroundColorMsg:
@@ -364,9 +364,9 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		cmd := a.handleKey(msg)
 		a.publishComposer()
-		return a, cmd
+		return cmd
 	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg:
-		return a, a.handleMouse(msg)
+		return a.handleMouse(msg)
 	case tea.MouseWheelMsg:
 		a.mouse = mouseSel{}
 		a.hoverKey = "" // the content under the pointer moves
@@ -374,15 +374,15 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if step != 0 {
 			a.wheel(msg.X, msg.Y, step)
 		}
-		return a, nil
+		return nil
 	case editorDoneMsg:
 		a.editing = ""
 		msg.errc <- msg.err
-		return a, nil
+		return nil
 	case editorMsg:
 		if msg.err != nil {
 			a.pushToast(logging.Error, "Could not open the editor", msg.err.Error())
-			return a, nil
+			return nil
 		}
 		text := sanitize.String(msg.text)
 		if !a.multiline() {
@@ -393,25 +393,25 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.composer.moveEnd()
 		a.composer.snapshot(prev, false)
 		a.publishComposer()
-		return a, a.updateCompletion()
+		return a.updateCompletion()
 	case clipboardMsg:
 		if msg.err != nil {
 			a.pushToast(logging.Error, "Could not paste", msg.err.Error())
-			return a, nil
+			return nil
 		}
 		a.insertToken(msg.token)
 		a.publishComposer()
-		return a, nil
+		return nil
 	case tea.PasteMsg:
 		s := sanitize.String(strings.ReplaceAll(strings.ReplaceAll(msg.Content, "\r\n", "\n"), "\r", "\n"))
 		if a.pasteChrome(s) {
-			return a, nil
+			return nil
 		}
 		// a dropped file arrives as a paste of its path
 		if paths, ok := parseDrop(s); ok {
 			a.insertAttachments(paths)
 			a.publishComposer()
-			return a, nil
+			return nil
 		}
 		if !a.multiline() {
 			s = strings.ReplaceAll(s, "\n", " ")
@@ -420,12 +420,12 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.composer.paste(s)
 		a.composer.snapshot(prev, false)
 		a.publishComposer()
-		return a, a.updateCompletion()
+		return a.updateCompletion()
 	case filesScannedMsg:
 		a.onFilesScanned(msg)
 		a.bump()
 	}
-	return a, nil
+	return nil
 }
 
 func (a *App) View() tea.View {
