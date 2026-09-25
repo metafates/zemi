@@ -190,17 +190,28 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 		})
 		// name the rule that settles it: a host-API call has no overlay, so
 		// "ask required" is the whole problem and none of the fix
-		scope := ""
+		principal := ""
 		if strings.HasPrefix(pipe.Principal, "plugin:") {
-			scope = fmt.Sprintf(", principal = %q", pipe.Principal)
+			principal = pipe.Principal
 		}
-		L.RaiseError("%s %s: permission ask required; allow it in config with "+
-			`zemi.permission.rule.add{ subject = %q, pattern = %q, decision = "allow", match = %q%s }`,
-			subject, arg, subject, arg, arg, scope)
+		L.RaiseError("%s %s: permission ask required; allow it in config with %s",
+			subject, arg, allowLine(subject, arg, arg, principal))
 	default:
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
 	}
 	return v
+}
+
+// allowLine is the init.lua line of an allow rule, match its example.
+// NOTE: %q writes \u and \x escapes gopher-lua cannot read, so a pattern with
+// a non-printable rune (a non-breaking space) needs editing by hand.
+func allowLine(subject, pattern, match, principal string) string {
+	scope := ""
+	if principal != "" {
+		scope = fmt.Sprintf(", principal = %q", principal)
+	}
+	return fmt.Sprintf(`zemi.permission.rule.add{ subject = %q, pattern = %q, decision = "allow", match = %q%s }`,
+		subject, pattern, match, scope)
 }
 
 // ---------------------------------------------------------------------------

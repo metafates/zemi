@@ -1484,7 +1484,9 @@ provenance string.
   `/profile [name]` (the agent profile the next send runs as; a picker without a name;
   `ctrl+t`/`ctrl+shift+t` cycle the agent; `ctrl+y` flips to yolo and back),
   `/permissions` (the mode and the rules in force; a session rule an "always"
-  answer wrote can be deleted there, from its detail view),
+  answer wrote can be deleted there, from its detail view, and `y` copies it as
+  init.lua lines, which are wider: a config allow skips the secret re-ask the
+  answer keeps, so the detail says so, and a network answer copies none),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; enter offers Resume and Delete), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/btw <question>` (a side question
