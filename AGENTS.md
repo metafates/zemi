@@ -836,9 +836,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   `origin` (`user` or `learned`) gates autonomy and the replacement guard, no kind.
   `memory.autonomy` is user config only.
 - **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema; only
-  user config sets them, and a read of a key outside it panics under `go test`. Providers ship none; user config registers them, keys included
-  (`api_key = zemi.env.get("NAME")`; `zemi.env.get` reads secret-shaped names for user and
-  builtin origin only). Config fields hold values, never names of env vars.
+  user config sets them, and a read of a key outside it panics under `go test`. Providers ship
+  none; user config registers them, keys included (`api_key = zemi.env.get("NAME")`;
+  `zemi.env.get` reads secret-shaped names for user and builtin origin only). Config fields
+  hold values, never names of env vars.
 - **The Go-reserved triggers** (`ctrl+c` cancel, `/reload`) are never routed through Lua
   keymaps and cannot be rebound - `/reload` is matched on composer submit before the command
   registry, so nothing can shadow it. Keep them out of any "rebind everything" refactor.
