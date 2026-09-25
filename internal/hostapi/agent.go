@@ -135,7 +135,7 @@ type agentHost struct {
 	promptText   string
 
 	// reasoningShown is the session-scoped expansion override for finished
-	// reasoning blocks (nil = follow ui.chat.reasoning config).
+	// reasoning blocks (nil = follow ui.reasoning config).
 	reasoningShown *bool
 
 	// turn timing: turnStart pins the wall clock at AgentSend, thinking
@@ -2252,14 +2252,16 @@ func profileDesc(p *Profile) string {
 func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	tb.RawSetString("profile", L.NewFunction(func(L *glua.LState) int {
+	profile := L.NewTable()
+	tb.RawSetString("profile", profile)
+	profile.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		spec, ok := L.Get(2).(*glua.LTable)
 		if !ok {
-			L.RaiseError("zemi.agent.profile: spec must be a table")
+			L.RaiseError("zemi.agent.profile.add: spec must be a table")
 			return 0
 		}
-		h.refuseBelowUser(L, "agent.profile")
+		h.refuseBelowUser(L, "agent.profile.add")
 		p := &Profile{Name: name, Model: rawString(spec, "model"), System: rawString(spec, "system"), ReadOnly: rawBool(spec, "read_only")}
 		if temp, ok := spec.RawGetString("temperature").(glua.LNumber); ok {
 			t := float64(temp)
@@ -2495,7 +2497,7 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 		L.Push(glua.LString(h.Session().Title))
 		return 1
 	}))
-	tb.RawSetString("set_title", L.NewFunction(func(L *glua.LState) int {
+	tb.RawSetString("rename", L.NewFunction(func(L *glua.LState) int {
 		title := L.CheckString(1)
 		h.tMu.Lock()
 		h.session.Title = title

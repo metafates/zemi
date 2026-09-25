@@ -12,7 +12,7 @@ import (
 func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	tb.RawSetString("proposals", L.NewFunction(func(L *glua.LState) int {
+	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
 		for _, m := range h.memoryProposals() {
 			row := L.NewTable()

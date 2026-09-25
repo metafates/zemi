@@ -295,9 +295,9 @@ function zemi.config.reload() end
 ---| "zemi.composer.history_next"
 ---| "zemi.composer.paste"
 ---| "zemi.composer.edit"
----| "zemi.permission.mode.cycle"
+---| "zemi.permission.mode.next"
 ---| "zemi.permission.mode.prev"
----| "zemi.agent.profile.cycle"
+---| "zemi.agent.profile.next"
 ---| "zemi.agent.profile.prev"
 
 ---@class zemi.keymap
@@ -325,8 +325,8 @@ zemi.keymap = {}
 --- zemi.composer.insert <text> (these user config only),
 --- zemi.ui.help, zemi.ui.reasoning.toggle, zemi.model.pick,
 --- zemi.ui.scroll.{up,down,top,bottom} [id], zemi.ui.focus.set [id],
---- zemi.ui.focus.next, zemi.ui.focus.prev, zemi.permission.mode.cycle and
---- zemi.permission.mode.prev (user config only).
+--- zemi.ui.focus.next, zemi.ui.focus.prev, zemi.permission.mode.{next,prev}
+--- and zemi.agent.profile.{next,prev} (user config only).
 ---@param key string
 ---@param action zemi.HostAction|string|fun()
 ---@param opts? zemi.KeymapOpts
@@ -1042,7 +1042,7 @@ function zemi.ui.input(opts, on_confirm) end
 ---@field title? string working-row label while the editor is open (default: the file name)
 
 --- Open a file in the project dir, anywhere in a trusted repository (`zemi.project.root()`), or under
---- `zemi.fs.datadir`, in the user's editor (editor.command, $VISUAL, $EDITOR)
+--- `zemi.fs.data_dir`, in the user's editor (editor.command, $VISUAL, $EDITOR)
 --- fullscreen over zemi, and call on_done when it exits: on_done(),
 --- or on_done(err) when it failed or exited non-zero.
 --- Never blocks the interpreter. Raises for a path outside those.
@@ -1331,16 +1331,19 @@ function zemi.model.pick(role) end
 ---@field description? string Shown while it runs.
 
 ---@class zemi.RunHandle
----@field cancel fun()
+---@field cancel fun(self: zemi.RunHandle)
 
 ---@class zemi.agent
 zemi.agent = {}
+
+---@class zemi.agent.profile
+zemi.agent.profile = {}
 
 --- Define a named profile (model, prompt, tool set). User or builtin origin
 --- only. The `agent.profile` config key names the active one.
 ---@param name string
 ---@param spec zemi.ProfileSpec
-function zemi.agent.profile(name, spec) end
+function zemi.agent.profile.add(name, spec) end
 
 ---@return zemi.AgentCurrent
 function zemi.agent.current() end
@@ -1432,7 +1435,7 @@ function zemi.session.id() end
 function zemi.session.title() end
 
 ---@param title string
-function zemi.session.set_title(title) end
+function zemi.session.rename(title) end
 
 ---@return zemi.StoredMessage[]
 function zemi.session.messages() end
@@ -1450,7 +1453,7 @@ function zemi.session.new() end
 ---@param id string
 ---@return true|nil ok
 ---@return string|nil err
-function zemi.session.open(id) end
+function zemi.session.resume(id) end
 
 ---@return zemi.Todo[]
 function zemi.session.todos() end
@@ -1721,7 +1724,7 @@ function zemi.fs.exists(path) end
 --- created: `write` makes the parents, and a job's `cwd` needs `mkdir` first.
 ---@param name string One directory name, no separators.
 ---@return string path
-function zemi.fs.datadir(name) end
+function zemi.fs.data_dir(name) end
 
 ---@param path string
 ---@return true|nil ok
@@ -1964,7 +1967,7 @@ function zemi.memory.list(include_superseded) end
 ---@param id string
 ---@return true|nil ok
 ---@return string|nil err
-function zemi.memory.forget(id) end
+function zemi.memory.del(id) end
 
 ---@class zemi.Proposal
 ---@field id string
@@ -1979,7 +1982,7 @@ zemi.learn = {}
 
 --- Memory proposals awaiting review, the rows /memory shows.
 ---@return zemi.Proposal[]
-function zemi.learn.proposals() end
+function zemi.learn.list() end
 
 --- Decide one proposal by id. User or builtin origin only.
 ---@param id string
@@ -2075,7 +2078,7 @@ function zemi.lsp.add(name, spec) end
 --- Never start this server: a builtin you do not want, or one added above.
 --- User config only.
 ---@param name string
-function zemi.lsp.disable(name) end
+function zemi.lsp.del(name) end
 
 --- The servers this project can use and their state.
 ---@return zemi.LSPInfo[]

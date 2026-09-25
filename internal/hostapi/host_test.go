@@ -89,7 +89,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.84.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.85.0", "version=" .. tostring(zemi.api.version))
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
@@ -130,7 +130,7 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(type(zemi.skills.list) == "function", "zemi.skills.list missing")
 		assert(type(zemi.skills.enable) == "function", "zemi.skills.enable missing")
 		assert(type(zemi.skills.disable) == "function", "zemi.skills.disable missing")
-		assert(type(zemi.learn.proposals) == "function", "zemi.learn.proposals missing")
+		assert(type(zemi.learn.list) == "function", "zemi.learn.list missing")
 		assert(type(zemi.learn.decide) == "function", "zemi.learn.decide missing")
 		for _, fn in ipairs({ "encode", "decode" }) do
 			assert(type(zemi.json[fn]) == "function", "zemi.json." .. fn .. " missing")
@@ -147,8 +147,8 @@ func TestNamespaceVersion(t *testing.T) {
 			assert(type(zemi.fs[fn]) == "function", "zemi.fs." .. fn .. " missing")
 		end
 		assert(type(zemi.mcp.add) == "function" and type(zemi.mcp.list) == "function", "zemi.mcp missing")
-		assert(type(zemi.lsp.add) == "function" and type(zemi.lsp.list) == "function" and type(zemi.lsp.disable) == "function", "zemi.lsp missing")
-		for _, fn in ipairs({ "list", "new", "open", "todos", "rewind" }) do
+		assert(type(zemi.lsp.add) == "function" and type(zemi.lsp.list) == "function" and type(zemi.lsp.del) == "function", "zemi.lsp missing")
+		for _, fn in ipairs({ "list", "new", "resume", "todos", "rewind" }) do
 			assert(type(zemi.session[fn]) == "function", "zemi.session." .. fn .. " missing")
 		end
 		assert(type(zemi.agent.prompt) == "function", "zemi.agent.prompt missing")

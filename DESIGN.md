@@ -387,7 +387,7 @@ flagged reduced trust: its registrations are tagged `origin = "project"`
 ask rules and `not_match` guards; allow rules are user-config-only), and
 its capability denylist is mechanical: no `tool.pre` rewrite handlers, no
 `zemi.tool.override` (same rewrite capability, same denial), no
-`zemi.provider.add`, no `zemi.agent.profile` and no `agent.profile`
+`zemi.provider.add`, no `zemi.agent.profile.add` and no `agent.profile`
 config write (prompt authorship is a stronger lever than any
 `tool.pre` rewrite), no `agent.send`, no `agent.assemble` section
 injection, no `zemi.memory.add`, no `zemi.model.set` or `zemi.config.reload`,
@@ -819,7 +819,7 @@ handler runs no Lua.
 
 ```lua
 -- Profiles are named agent shapes (fantasy agent + prompt + tools + model).
-zemi.agent.profile("coder", {
+zemi.agent.profile.add("coder", {
   model = "anthropic/claude-sonnet-4-5",
   system = [[You are zemi, a coding agent...]],
   tools = { "read", "edit", "bash", "glob", "grep" },
@@ -828,7 +828,7 @@ zemi.agent.profile("coder", {
 })
 -- read_only makes a profile a planning agent: the project is read-only to it
 -- and the pipeline denies writes and confines commands; "planner" ships that way.
-zemi.agent.profile("planner", { read_only = true })
+zemi.agent.profile.add("planner", { read_only = true })
 
 zemi.config.set("agent.profile", "coder")  -- the active one; "default" is the shipped shape,
                                            -- and what deleting this line returns to
@@ -1232,16 +1232,16 @@ UI extensibility contract:
 ### 6.7 Learning, session, skills
 
 ```lua
-zemi.session.id(); zemi.session.title(); zemi.session.set_title("...")
+zemi.session.id(); zemi.session.title(); zemi.session.rename("...")
 zemi.session.messages()                -- { id, role, json } per stored message
 zemi.session.todos()                   -- this session's todo list
-zemi.session.list(); zemi.session.new(); zemi.session.open(id)
+zemi.session.list(); zemi.session.new(); zemi.session.resume(id)
 zemi.session.rewind(message_id)        -- restore files, then truncate (§8)
-                                       -- new/open/rewind: user config only
+                                       -- new/resume/rewind: user config only
 zemi.memory.add("...", { scope = "project", quote = "...", replaces = id })
                                        -- same host-side intake policy as §10.4
-zemi.memory.list(); zemi.memory.forget(id)
-zemi.learn.proposals()                 -- pending proposal cards
+zemi.memory.list(); zemi.memory.del(id)
+zemi.learn.list()                      -- pending proposal cards
 zemi.learn.decide(id, "accept")        -- user principal only (keymap/command)
 zemi.skills.list(); zemi.skills.enable("local-integration")
 ```
@@ -1857,7 +1857,7 @@ provenance string.
   (`<state>/projects/<hash>/scratch/<session id>`, §5) is outside it but
   is the one path model `fs.write` allows by default (`fsDefault`;
   `zemi.fs` cannot write there), and user config's `zemi.fs` also
-  reaches `<data>/lua` (`zemi.fs.datadir(name)`, outside the watched config
+  reaches `<data>/lua` (`zemi.fs.data_dir(name)`, outside the watched config
   tree, never a root of the model's file tools or of a Lua tool script the
   user did not approve); the read jail is wider: project
   roots, the config dir, the project's `.agents`, both skills dirs, that
@@ -2004,7 +2004,7 @@ queues, a near-duplicate of a live or pending memory is skipped, and
 entry with `replaces` set and an empty `text` retires that memory: the
 reflector read in the session that it stopped being true. Retirements
 always queue as forget proposals (a copy of the memory, shown as `forget:
-<text>` in `/memory` and with `forget = true` in `zemi.learn.proposals()`),
+<text>` in `/memory` and with `forget = true` in `zemi.learn.list()`),
 whatever the autonomy, since deleting loses data; accepting one deletes the
 memory, rejecting keeps it.
 

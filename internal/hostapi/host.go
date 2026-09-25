@@ -501,9 +501,9 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		"zemi.ui.focus.set":          func(h *Host, id string) error { return h.focusNode(id) },
 		"zemi.ui.focus.next":         func(h *Host, _ string) error { return h.cycleFocus(1) },
 		"zemi.ui.focus.prev":         func(h *Host, _ string) error { return h.cycleFocus(-1) },
-		"zemi.permission.mode.cycle": func(h *Host, _ string) error { return h.cyclePermMode(1) },
+		"zemi.permission.mode.next":  func(h *Host, _ string) error { return h.cyclePermMode(1) },
 		"zemi.permission.mode.prev":  func(h *Host, _ string) error { return h.cyclePermMode(-1) },
-		"zemi.agent.profile.cycle":   func(h *Host, _ string) error { return h.cycleProfile(1) },
+		"zemi.agent.profile.next":    func(h *Host, _ string) error { return h.cycleProfile(1) },
 		"zemi.agent.profile.prev":    func(h *Host, _ string) error { return h.cycleProfile(-1) },
 		"zemi.reload":                nil, // Go-reserved; never dispatched here
 	}
@@ -731,7 +731,7 @@ func (h *Host) ToggleReasoning() {
 }
 
 // ReasoningShown reports whether finished reasoning blocks render expanded:
-// the session toggle wins, then the ui.chat.reasoning config knob.
+// the session toggle wins, then the ui.reasoning config knob.
 func (h *Host) ReasoningShown() bool {
 	ag := h.agents
 	ag.mu.Lock()
@@ -744,7 +744,7 @@ func (h *Host) reasoningShown() bool {
 	if h.agents.reasoningShown != nil {
 		return *h.agents.reasoningShown
 	}
-	return h.Settings.Bool("ui.chat.reasoning")
+	return h.Settings.Bool("ui.reasoning")
 }
 
 // ---------------------------------------------------------------------------
@@ -1595,7 +1595,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.84.0"))
+	api.RawSetString("version", glua.LString("0.85.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

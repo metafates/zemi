@@ -87,7 +87,7 @@ type lspReg struct {
 	scanned  bool              // the baseline exists
 	dirty    atomic.Bool       // something other than zemi's file tools ran
 	user     []lspDef
-	disabled map[string]bool // names zemi.lsp.disable turned off
+	disabled map[string]bool // names zemi.lsp.del dropped
 	running  map[string]*lspProc
 	attempts map[string]int
 }
@@ -581,11 +581,11 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 		h.lsp.mu.Unlock()
 		return 0
 	}))
-	// disable(name): never start this server (a builtin, or one added above).
-	tb.RawSetString("disable", L.NewFunction(func(L *glua.LState) int {
+	// del(name): never start this server (a builtin, or one added above).
+	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
-			L.RaiseError("zemi.lsp.disable: only user config may disable language servers")
+			L.RaiseError("zemi.lsp.del: only user config may drop language servers")
 		}
 		h.lsp.mu.Lock()
 		h.lsp.disabled[name] = true

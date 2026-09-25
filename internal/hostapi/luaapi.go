@@ -137,8 +137,8 @@ func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 		h.refuseBelowUser(L, "session.new")
 		return luaResult(L, h.NewSession())
 	}))
-	tb.RawSetString("open", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "session.open")
+	tb.RawSetString("resume", L.NewFunction(func(L *glua.LState) int {
+		h.refuseBelowUser(L, "session.resume")
 		return luaResult(L, h.ResumeSession(L.CheckString(1)))
 	}))
 	// rewind(message_id) -> restored file count, or nil, err

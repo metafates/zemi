@@ -530,7 +530,7 @@ lua-language-server is installed.
   runtime pick like any key. `PurgeGeneration` clears the definitions and `cfgSettle` returns
   a key config stopped writing to `default`, so deleting a profile and its `config.set` line
   runs the shipped one; a name nothing defines (a typo, a pick of a since deleted profile)
-  fails the send. A profile is defined with `zemi.agent.profile`: a `-name` denylist or an
+  fails the send. A profile is defined with `zemi.agent.profile.add`: a `-name` denylist or an
   allowlist of tools, so a new tool is in the default set until a profile drops it.
 - **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model, prompt,
   tools may change); `AgentSend` copies `History` from the previous idle runner. `runTurns`

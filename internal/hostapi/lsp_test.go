@@ -160,7 +160,7 @@ func TestLSPConfig(t *testing.T) {
 	runUser(t, r, `
 		zemi.lsp.add("gopls", { command = "gopls-wrapper", args = { "-rpc", 1, true, {} }, env = { A = "x", PORT = 8080, V = false, T = {}, [1] = "N=1" }, filetypes = { "go" }, settings = { gopls = { staticcheck = true } }, init_options = { x = 1 } })
 		zemi.lsp.add("zls", { command = "zls", filetypes = { "zig" } })
-		zemi.lsp.disable("zls")
+		zemi.lsp.del("zls")
 	`)
 	if defs := h.lspDefs(""); len(defs) != 0 {
 		t.Fatalf("an untrusted project starts servers the user added: %+v", defs)

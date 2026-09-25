@@ -472,7 +472,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			t.Fatalf("want one queued forget and the memory kept: %+v", props)
 		}
 		runUser(t, r, `
-			local p = zemi.learn.proposals()
+			local p = zemi.learn.list()
 			assert(#p == 1 and p[1].forget == true and p[1].text == "deploy by hand", "forget row")
 		`)
 		if rows := h.memoryRows(); rows[0].Text != "forget: deploy by hand" {

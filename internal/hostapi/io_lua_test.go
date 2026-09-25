@@ -136,24 +136,24 @@ func TestFsDatadir(t *testing.T) {
 	h.Perm.Add(perm.Rule{Subject: "lua.fs.write", Pattern: "*", Decision: perm.Allow})
 	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "pwd", Decision: perm.Allow})
 	runUser(t, r, `
-		local dir = zemi.fs.datadir("notes")
+		local dir = zemi.fs.data_dir("notes")
 		assert(zemi.fs.write(dir .. "/a.txt", "hi"))
 		assert(zemi.fs.read(dir .. "/a.txt") == "hi")
 		assert(zemi.job.wait({ cmd = "pwd", cwd = dir }).stdout:find("/lua/notes\n$"))
 		zemi.ui.edit(dir .. "/a.txt", {}, function() end)
 		for _, bad in ipairs({ "", "..", "a/b" }) do
-			assert(not pcall(zemi.fs.datadir, bad), bad)
+			assert(not pcall(zemi.fs.data_dir, bad), bad)
 		end
 	`)
 	file := filepath.Join(h.Dirs.DataHome, "lua", "notes", "a.txt")
 	if _, err := os.Stat(file); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := h.runModelLua(context.Background(), `return zemi.fs.read(zemi.fs.datadir("notes") .. "/a.txt")`, luaToolChunk); err == nil || !strings.Contains(err.Error(), "outside the jail") {
+	if out, err := h.runModelLua(context.Background(), `return zemi.fs.read(zemi.fs.data_dir("notes") .. "/a.txt")`, luaToolChunk); err == nil || !strings.Contains(err.Error(), "outside the jail") {
 		t.Fatalf("an unapproved Lua tool script read the data dir: %q %v", out, err)
 	}
 	err := r.ExecuteChunk(context.Background(), `
-		assert(not pcall(zemi.fs.datadir, "notes"), "datadir")
+		assert(not pcall(zemi.fs.data_dir, "notes"), "data_dir")
 		for _, call in ipairs({ "read", "write" }) do
 			local ok, err = pcall(zemi.fs[call], "`+file+`", "x")
 			assert(not ok and tostring(err):find("outside the jail"), call .. ": " .. tostring(err))

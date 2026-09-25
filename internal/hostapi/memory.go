@@ -807,9 +807,9 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	tb.RawSetString("forget", L.NewFunction(func(L *glua.LState) int {
+	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
-		h.refuseBelowUser(L, "memory.forget")
+		h.refuseBelowUser(L, "memory.del")
 		db, m, err := h.locateMemory(id)
 		if err == nil {
 			err = db.DeleteMemory(m.ID)

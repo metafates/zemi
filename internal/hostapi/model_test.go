@@ -21,8 +21,8 @@ func TestRoleModel(t *testing.T) {
 		{"nothing set runs the provider default", ``, []string{"a/big", "a/big", "a/big", "a/big", "a/big", "a/big"}, ""},
 		{"unset roles follow chat", `zemi.config.set("models.chat", "a/small")`, []string{"a/small", "a/small", "a/small", "a/small", "a/small", "a/small"}, ""},
 		{"a set role wins", `zemi.config.set("models.titles", "a/small") zemi.config.set("models.memory", "a/small")`, []string{"a/big", "a/big", "a/big", "a/small", "a/big", "a/small"}, ""},
-		{"a profile's model moves the conversation only", `zemi.agent.profile("p", { model = "a/small" }) zemi.config.set("agent.profile", "p")`, []string{"a/small", "a/big", "a/big", "a/big", "a/big", "a/big"}, ""},
-		{"a profile names a role", `zemi.config.set("models.titles", "a/small") zemi.agent.profile("p", { model = "titles" }) zemi.config.set("agent.profile", "p")`, []string{"a/small", "a/big", "a/big", "a/small", "a/big", "a/big"}, ""},
+		{"a profile's model moves the conversation only", `zemi.agent.profile.add("p", { model = "a/small" }) zemi.config.set("agent.profile", "p")`, []string{"a/small", "a/big", "a/big", "a/big", "a/big", "a/big"}, ""},
+		{"a profile names a role", `zemi.config.set("models.titles", "a/small") zemi.agent.profile.add("p", { model = "titles" }) zemi.config.set("agent.profile", "p")`, []string{"a/small", "a/big", "a/big", "a/small", "a/big", "a/big"}, ""},
 		{"a key refuses a role name", `zemi.config.set("models.titles", "chat")`, nil, `config key models.titles expects a provider/model id or ""`},
 	} {
 		t.Run(c.name, func(t *testing.T) {

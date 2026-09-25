@@ -51,7 +51,7 @@ Roles: `models.chat` runs the conversation, `/btw` and every role left empty; `m
 
 `zemi.config.set(path, value)` in init.lua. `zemi.config.schema()` returns every key with kind, default and description; read it with the Lua tool instead of guessing. A runtime pick (`/model`, `/effort`, `/profile`, the mode) survives a reload until init.lua changes that key. The keys that need more than the schema says:
 
-- `agent.profile`: `default`, `planner`, or a profile defined with `zemi.agent.profile` (zemi-customize); `/profile` or ctrl+t switches.
+- `agent.profile`: `default`, `planner`, or a profile defined with `zemi.agent.profile.add` (zemi-customize); `/profile` or ctrl+t switches.
 - `agent.effort`: `low`, `medium`, `high`, or empty for the model's default; `/effort`.
   A builtin catalog model runs at its catalog default when unset, else the nearest level it lists, and gets none when it lists none; any other model gets the pick, or no effort when unset.
 - `web.search_url`: a SearXNG endpoint with the json format on; empty uses DuckDuckGo Lite, which some networks answer with a bot check.
@@ -59,7 +59,7 @@ Roles: `models.chat` runs the conversation, `/btw` and every role left empty; `m
 - `editor.command`: the editor for ctrl+g and `zemi.ui.edit`; empty uses `$VISUAL`, then `$EDITOR`, then vi.
 - `permissions.mode`, `permissions.env_keep`: under Permissions.
 
-The schema's description covers `session.auto_title`, `ui.theme`, `ui.animations`, `ui.mouse`, `ui.notify`, `ui.progress`, `ui.chat.reasoning`, `ui.composer.multiline`, `ui.composer.history`, `ui.completion.files` and `ui.completion.max_items`.
+The schema's description covers `session.auto_title`, `ui.theme`, `ui.animations`, `ui.mouse`, `ui.notify`, `ui.progress`, `ui.reasoning`, `ui.composer.multiline`, `ui.composer.history`, `ui.completion.files` and `ui.completion.max_items`.
 
 ## Permissions
 
@@ -95,7 +95,7 @@ zemi.mcp.add("files", { command = "npx", args = { "-y", "@modelcontextprotocol/s
 
 A command server starts in zemi's data dir with the project path in `ZEMI_PROJECT_DIR`, so pass absolute paths, never `.`. `enabled_tools`, `disabled_tools` and `timeout` (seconds) trim a server. An HTTP server that needs an account shows "needs sign-in" in `/mcp`, whose Sign in action opens the browser; one that refuses dynamic registration needs `client_id` (and `client_secret`) from an app registered by hand, plus `callback_port` when its redirect URI has a fixed port. Past ten MCP tools their schemas leave the request and the model loads them through `tool_search`. `/mcp restart|sign-in|sign-out <name>`.
 
-Language servers (gopls, pyright, typescript-language-server, clangd, rust-analyzer) start on the first file with their marker (go.mod, package.json, Cargo.toml, ...) at or above it, only in a trusted project, and sandboxed when a sandbox exists; rust-analyzer needs a `Cargo.lock` and does not start without a sandbox. `zemi.lsp.add(name, { command, args, env, filetypes, settings, init_options })` adds a server or replaces a builtin of that name, `zemi.lsp.disable(name)` keeps one from starting, `lsp.auto = false` turns off the builtin ones. `/lsp` lists them; `/lsp restart <name>`.
+Language servers (gopls, pyright, typescript-language-server, clangd, rust-analyzer) start on the first file with their marker (go.mod, package.json, Cargo.toml, ...) at or above it, only in a trusted project, and sandboxed when a sandbox exists; rust-analyzer needs a `Cargo.lock` and does not start without a sandbox. `zemi.lsp.add(name, { command, args, env, filetypes, settings, init_options })` adds a server or replaces a builtin of that name, `zemi.lsp.del(name)` keeps one from starting, `lsp.auto = false` turns off the builtin ones. `/lsp` lists them; `/lsp restart <name>`.
 
 ## Command line
 

@@ -39,7 +39,7 @@ Seatbelt on macOS, Landlock on Linux. Keys and shell history are hidden.
 ## The UI is Lua
 
 ```lua
-zemi.keymap.set("ctrl+t", "zemi.agent.profile.cycle")
+zemi.keymap.set("ctrl+t", "zemi.agent.profile.next")
 ```
 
 Keys, commands, widgets, layout, permission rules: one file, reloaded on save,

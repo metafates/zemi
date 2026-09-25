@@ -210,7 +210,7 @@ func TestModeSwitchQuiet(t *testing.T) {
 // TestProfileSegment: the statusline names a profile other than default.
 func TestProfileSegment(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
-	runLua(t, app, `zemi.agent.profile("terse", {})`)
+	runLua(t, app, `zemi.agent.profile.add("terse", {})`)
 	for _, c := range []struct {
 		profile string
 		shown   bool

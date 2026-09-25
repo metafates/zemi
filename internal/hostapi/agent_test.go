@@ -67,7 +67,7 @@ func runExpectErr(t *testing.T, r *lua.Runtime, src string, want ...string) {
 func TestProfileTemperatureReachesRunner(t *testing.T) {
 	h, r := newTestHost(t)
 	reflectStub(t, h, "")
-	runUser(t, r, `zemi.agent.profile("warm", { temperature = 0.3 })`)
+	runUser(t, r, `zemi.agent.profile.add("warm", { temperature = 0.3 })`)
 	p, err := h.resolveProfile("warm")
 	if err != nil {
 		t.Fatal(err)
@@ -430,7 +430,7 @@ func TestSessionNamespace(t *testing.T) {
 
 	runUser(t, r, `
 		assert(zemi.session.id() == "", "session should start empty")
-		zemi.session.set_title("my session")
+		zemi.session.rename("my session")
 		assert(zemi.session.title() == "my session", "title=" .. zemi.session.title())
 		assert(#zemi.session.messages() == 0, "messages should be empty")
 	`)
@@ -1218,7 +1218,7 @@ func TestTurnPricedWithProfileModel(t *testing.T) {
 	h, r := newTestHostDB(t)
 	reflectStub(t, h, "ok")
 	runUser(t, r, `
-		zemi.agent.profile("cheap", { model = "p/cheap" })
+		zemi.agent.profile.add("cheap", { model = "p/cheap" })
 		zemi.config.set("agent.profile", "cheap")
 	`)
 	if err := h.AgentSend("hi"); err != nil {
@@ -1245,7 +1245,7 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 			{ id = "small", context_window = 32000 },
 		} })
 		zemi.model.set("a/small")
-		zemi.agent.profile("p", { model = "a/big" })
+		zemi.agent.profile.add("p", { model = "a/big" })
 		zemi.config.set("agent.profile", "p")
 	`)
 	if s := h.AgentStream(); s.Model != "a/big" || s.CtxWindow != 200000 {
@@ -1274,9 +1274,9 @@ func TestActiveProfileKey(t *testing.T) {
 		wantErr   bool
 	}{
 		{name: "unset runs the shipped profile"},
-		{name: "a defined planner replaces the shipped one", src: `zemi.agent.profile("planner", { system = "PLAN HARDER" }) zemi.config.set("agent.profile", "planner")`, want: "planner", system: "PLAN HARDER"},
-		{name: "the key selects", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile("p", {})`, want: "p"},
-		{name: "default resets", src: `zemi.agent.profile("p", {}) zemi.config.set("agent.profile", "p") zemi.config.set("agent.profile", "default")`},
+		{name: "a defined planner replaces the shipped one", src: `zemi.agent.profile.add("planner", { system = "PLAN HARDER" }) zemi.config.set("agent.profile", "planner")`, want: "planner", system: "PLAN HARDER"},
+		{name: "the key selects", src: `zemi.config.set("agent.profile", "p") zemi.agent.profile.add("p", {})`, want: "p"},
+		{name: "default resets", src: `zemi.agent.profile.add("p", {}) zemi.config.set("agent.profile", "p") zemi.config.set("agent.profile", "default")`},
 		{name: "an unknown name errors", src: `zemi.config.set("agent.profile", "nope")`, wantErr: true},
 	} {
 		h, r := newTestHost(t)
@@ -1291,7 +1291,7 @@ func TestActiveProfileKey(t *testing.T) {
 		}
 	}
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.agent.profile("p", {}) zemi.agent.profile("planner", { model = "x/big" }) zemi.agent.profile("default", {})`)
+	runUser(t, r, `zemi.agent.profile.add("p", {}) zemi.agent.profile.add("planner", { model = "x/big" }) zemi.agent.profile.add("default", {})`)
 	if names := h.ProfileNames(); !slices.Equal(names, []string{"default", "planner", "p"}) {
 		t.Errorf("names %v", names)
 	}
@@ -1369,8 +1369,8 @@ func TestProfileSwitch(t *testing.T) {
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "main" }, { id = "cheap" } } })
 		zemi.config.set("models.chat", "a/main")
-		zemi.agent.profile("cheap", { model = "a/cheap" })
-		zemi.agent.profile("onchat", { model = "chat" })`)
+		zemi.agent.profile.add("cheap", { model = "a/cheap" })
+		zemi.agent.profile.add("onchat", { model = "chat" })`)
 	for _, c := range []struct {
 		name    string
 		do      func() error
@@ -1431,7 +1431,7 @@ func TestProfileSwitch(t *testing.T) {
 // project directory twice and silently reads nothing.
 func TestProfileContextFilesSurviveTwoSends(t *testing.T) {
 	h, r := newTestHost(t)
-	runUser(t, r, `zemi.agent.profile("p", { context = { files = { "NOTES.md" } } })`)
+	runUser(t, r, `zemi.agent.profile.add("p", { context = { files = { "NOTES.md" } } })`)
 	p, err := h.resolveProfile("p")
 	if err != nil {
 		t.Fatal(err)

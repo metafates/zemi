@@ -321,7 +321,7 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 	return v, true
 }
 
-// cyclePermMode steps through the modes (the mode cycle and prev actions).
+// cyclePermMode steps through the modes (the mode next and prev actions).
 func (h *Host) cyclePermMode(step int) error {
 	list := h.PermModeList()
 	n := len(list)

@@ -106,7 +106,7 @@ func (h *Host) writeJails() []string {
 	return []string{h.Dirs.ProjectDir}
 }
 
-// luaDataRoot holds the zemi.fs.datadir dirs. It sits outside the config
+// luaDataRoot holds the zemi.fs.data_dir dirs. It sits outside the config
 // tree, so a write there never reloads the config.
 func (h *Host) luaDataRoot() string {
 	if h.Dirs.DataHome == "" {
@@ -538,15 +538,15 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		return luaResult(L, os.Remove(path))
 	}))
 
-	// datadir(name) is where config code keeps its files; nothing is created.
-	tb.RawSetString("datadir", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "fs.datadir")
+	// data_dir(name) is where config code keeps its files; nothing is created.
+	tb.RawSetString("data_dir", L.NewFunction(func(L *glua.LState) int {
+		h.refuseBelowUser(L, "fs.data_dir")
 		name := L.CheckString(1)
 		if !filepath.IsLocal(name) || filepath.Base(name) != name {
-			L.RaiseError("zemi.fs.datadir: %q is not a plain directory name", name)
+			L.RaiseError("zemi.fs.data_dir: %q is not a plain directory name", name)
 		}
 		if h.luaDataRoot() == "" {
-			L.RaiseError("zemi.fs.datadir: no data dir")
+			L.RaiseError("zemi.fs.data_dir: no data dir")
 		}
 		L.Push(glua.LString(filepath.Join(h.luaDataRoot(), name)))
 		return 1

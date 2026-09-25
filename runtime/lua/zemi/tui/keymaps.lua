@@ -24,7 +24,7 @@ zemi.keymap.set("ctrl+y", function()
     before = cur.name
   end
 end, { desc = "yolo until the next press" })
-zemi.keymap.set("ctrl+t", "zemi.agent.profile.cycle", { desc = "next profile" })
+zemi.keymap.set("ctrl+t", "zemi.agent.profile.next", { desc = "next profile" })
 zemi.keymap.set(
   "ctrl+shift+t",
   "zemi.agent.profile.prev",

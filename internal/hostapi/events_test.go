@@ -93,18 +93,19 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 	t.Setenv("ZEMI_TEST_API_KEY", "k")
 	for _, src := range []string{
 		`zemi.agent.run({ prompt = "x" })`, `zemi.workflow.run({ script = "return 1" })`,
-		`zemi.agent.send("x")`, `zemi.agent.profile("evil", { system = "x" })`, `zemi.config.set("agent.profile", "evil")`,
+		`zemi.agent.send("x")`, `zemi.agent.profile.add("evil", { system = "x" })`, `zemi.config.set("agent.profile", "evil")`,
 		`zemi.composer.set("!touch x")`, `zemi.composer.insert("x")`, `zemi.composer.submit()`,
-		`zemi.session.new()`, `zemi.session.open("x")`, `zemi.session.rewind("x")`,
+		`zemi.session.new()`, `zemi.session.resume("x")`, `zemi.session.rewind("x")`,
 		`zemi.memory.add("x")`,
 		`zemi.model.set("p/m")`, `zemi.config.reload()`, `assert(zemi.command.run("usercmd"))`,
 		`zemi.ui.focus.set()`, `zemi.ui.focus.next()`, `zemi.ui.focus.prev()`,
 		`zemi.ui.hl.set("Normal", { fg = "#ff0000" })`, `zemi.ui.theme.set("whorl")`,
 		`zemi.keymap.set("<leader>y", "zemi.ui.focus.set side")`,
 		`zemi.config.set("permissions.mode", "yolo")`, `zemi.provider.add({ id = "x", kind = "openai_compat" })`,
-		`zemi.lsp.add("x", { command = "sh", filetypes = { "x" } })`, `zemi.lsp.disable("gopls")`,
+		`zemi.lsp.add("x", { command = "sh", filetypes = { "x" } })`, `zemi.lsp.del("gopls")`,
 		`zemi.permission.mode.add("x", { base = "yolo" })`, `zemi.permission.mode.del("auto")`,
-		`zemi.keymap.set("<leader>y", "zemi.permission.mode.cycle")`, `zemi.keymap.set("<leader>y", "zemi.agent.profile.cycle")`, `assert(zemi.command.run("gocmd"))`,
+		`zemi.keymap.set("<leader>y", "zemi.permission.mode.next")`, `zemi.keymap.set("<leader>y", "zemi.agent.profile.next")`,
+		`zemi.keymap.set("<leader>y", "zemi.agent.profile.prev")`, `assert(zemi.command.run("gocmd"))`,
 		`zemi.http.request({ url = "http://x", headers = { Authorization = "t" } })`, `zemi.env.get("ZEMI_TEST_API_KEY")`,
 	} {
 		if err := r.ExecuteChunk(context.Background(), src, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") && !strings.Contains(err.Error(), "may not") && !strings.Contains(err.Error(), "secret denylist") {
@@ -119,8 +120,8 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		zemi.config.set("permissions.mode", "yolo")
 		zemi.permission.mode.add("x", { base = "auto", rules = { { "tool.bash", "ls *", "allow" } } })
 		zemi.permission.mode.del("x")
-		zemi.lsp.disable("gopls")
-		zemi.keymap.set("<leader>y", "zemi.permission.mode.cycle")
+		zemi.lsp.del("gopls")
+		zemi.keymap.set("<leader>y", "zemi.permission.mode.next")
 		assert(zemi.command.run("gocmd"))
 		assert(zemi.env.get("ZEMI_TEST_API_KEY") == "k")`)
 	if err := r.ExecuteChunk(context.Background(), `zemi.event.on("app.quit", function() return { decision = "deny" } end)`, "p.lua", lua.OriginProject); err != nil {

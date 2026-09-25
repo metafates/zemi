@@ -642,7 +642,7 @@ func TestModelFlagUnderProfile(t *testing.T) {
 	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.ExecuteChunk(context.Background(), `zemi.agent.profile("cheap", { model = "a/cheap" })`, "init.lua", lua.OriginUser); err != nil {
+	if err := r.ExecuteChunk(context.Background(), `zemi.agent.profile.add("cheap", { model = "a/cheap" })`, "init.lua", lua.OriginUser); err != nil {
 		t.Fatal(err)
 	}
 	if err := applyOptions(h, options{model: "a/main", profile: "cheap"}); err == nil || !strings.Contains(err.Error(), "sets its model") {
