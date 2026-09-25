@@ -402,9 +402,6 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 	if spec.ID == "" || spec.Kind == "" {
 		return errors.New("provider needs id and kind")
 	}
-	if spec.Kind == "openaicompat" {
-		spec.Kind = KindOpenAICompat
-	}
 	if !slices.Contains(kinds, spec.Kind) {
 		return fmt.Errorf("unknown provider kind %q (want %s)", spec.Kind, strings.Join(kinds, ", "))
 	}
