@@ -358,7 +358,7 @@ func TestPermissionBoxFits(t *testing.T) {
 // TestGoldenModelPicker pins the model picker: zemi.model.pick returns at
 // once, so the interpreter stays free while it is open, and enter runs /model <id>.
 func TestGoldenModelPicker(t *testing.T) {
-	app, host := bootAgentApp(t, 70, 16)
+	app, host := bootAgentApp(t, 70, 20)
 	runLua(t, app, `
 		zemi.provider.add({ id = "anthropic", kind = "openai_compat", base_url = "http://x", api_key = "k", models = {
 			{ id = "claude-sonnet-4-5", display = "Claude Sonnet 4.5" }, { id = "claude-haiku-4-5", display = "Claude Haiku 4.5" } } })
