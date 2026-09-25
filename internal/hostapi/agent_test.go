@@ -1356,12 +1356,12 @@ func TestModelPickerOdd(t *testing.T) {
 		t.Fatal("picker did not open")
 	}
 	o := ui.opened[2]
-	row := o.Items[1].(map[string]any)
-	if o.Selected != 1 || len(o.Items) != 4 || row["text"] != "a/typo" || row["run"] != "model a/typo" || row["key"] != "current, not in the list" {
+	row := o.Items[2].(map[string]any)
+	if o.Selected != 2 || len(o.Items) != 5 || row["text"] != "a/typo" || row["run"] != "model a/typo" || row["key"] != "current, not in the list" {
 		t.Fatalf("unlisted id: %+v", o.Items)
 	}
 	// the keyless builtins still close the list, copy only, with no body
-	if last := o.Items[3].(map[string]any); last["text"] != "deepseek" || last["run"] != nil || last["copy"] != "export DEEPSEEK_API_KEY" || o.Body != "" {
+	if last := o.Items[4].(map[string]any); last["text"] != "deepseek" || last["run"] != nil || last["copy"] != "export DEEPSEEK_API_KEY" || o.Body != "" {
 		t.Fatalf("missing builtins after the models: %+v body %q", o.Items, o.Body)
 	}
 	if w := h.modelRow().detail; !strings.HasPrefix(w, "a/typo: not in the provider's models list") {

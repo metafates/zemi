@@ -89,7 +89,7 @@ func TestSetModelArgs(t *testing.T) {
 		t.Errorf("titles row key %v", k)
 	}
 	for _, c := range []struct{ line, want string }{
-		{"/model ", "roles chat agents titles compact memory a/big a/small"},
+		{"/model ", "roles update chat agents titles compact memory a/big a/small"},
 		{"/model titles ", "chat a/big a/small"},
 		{"/model chat ", "a/big a/small"},
 		{"/model a/big ", ""},

@@ -60,8 +60,9 @@ for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty`
 `go-readability` with `html-to-markdown` (the `fetch` tool: the article
 out of a page, as markdown the model can read). Tool input validation is a small hand-written
 schema check, not a JSON Schema library. `charm.land/catwalk` is taken
-for its embedded provider catalog only (§6.3): no network at boot, no
-update, the user's own `zemi.provider.add` on top. Not taken:
+for its embedded provider catalog and its client (§6.3): no network at
+boot, an update only when the user asks, the user's own
+`zemi.provider.add` on top. Not taken:
 `charm.land/bubbles` (the composer is zemi's own editor, §6.6) and
 `fsnotify` (config reload is a one-second fingerprint walk of the config
 trees). Ripgrep is
@@ -894,9 +895,13 @@ or its child session's rows), so a follow-up question costs no fresh
 exploration. It keeps the run's model, and a run another session started
 refuses it.
 
-Builtin providers come from catwalk's embedded catalog: every generation
+Builtin providers come from catwalk's embedded catalog, or the one
+`/model update` fetched from catwalk.charm.land and saved in the data
+dir (the catalog picks where each key is sent, so it lives where no
+sandbox writes; one saved under another bundled catwalk version is
+ignored, so an upgrade brings its newer bundle back): every generation
 seeds the registry with the providers whose key env var is exported
-(resolved once per process in Go, the one place that reads them; a
+(resolved at boot and on an update in Go, the one place that reads them; a
 provider without its key is absent; `/model` lists them with their
 variables after the usable models, and a TUI boot with no model to run
 opens it once), then user config runs. `zemi.provider.add`

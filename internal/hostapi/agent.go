@@ -1849,7 +1849,8 @@ func (h *Host) modelPicker(role string) Overlay {
 	run, cur := "model ", h.roleModel("chat")
 	switch role {
 	case "":
-		o.Items = []any{map[string]any{"text": "Choose a model per role", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"}}
+		o.Items = []any{map[string]any{"text": "Choose a model per role", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"},
+			map[string]any{"text": "Update the model catalog", "desc": h.Builtin.Load().Info.String(), "verb": "update", "run": "model update"}}
 	case "chat":
 		o.ID, o.Title = "model chat", "Model roles / chat"
 	default:
@@ -1968,10 +1969,11 @@ func modelDesc(id string, m agent.Model) string {
 }
 
 // SetModel runs /model's arguments from any goroutine: none opens the chat
-// list, "roles" the role list, a role its list, an id sets chat, and a role
-// with an id, or "chat" to follow it, sets that role. The config watches it
-// fires run later on the interpreter queue. warn toasts an id the provider
-// does not list; --health leaves that to its model row.
+// list, "roles" the role list, "update" fetches the catalog, a role its
+// list, an id sets chat, and a role with an id, or "chat" to follow it,
+// sets that role. The config watches it fires run later on the interpreter
+// queue. warn toasts an id the provider does not list; --health leaves
+// that to its model row.
 func (h *Host) SetModel(args string, warn bool) error {
 	f := strings.Fields(args)
 	switch {
@@ -1979,12 +1981,14 @@ func (h *Host) SetModel(args string, warn bool) error {
 		return h.OpenModelPicker("")
 	case len(f) == 1 && f[0] == "roles":
 		return h.OpenModelRoles()
+	case len(f) == 1 && f[0] == "update":
+		return h.updateCatalog()
 	case len(f) == 1 && isRole(f[0]):
 		return h.OpenModelPicker(f[0])
 	case len(f) == 1:
 		f = []string{"chat", f[0]}
 	case len(f) > 2 || !isRole(f[0]):
-		return Usagef("usage: /model [roles | <role> | [<role>] provider/model | <role> chat]; roles: %s", roleNames())
+		return Usagef("usage: /model [roles | update | <role> | [<role>] provider/model | <role> chat]; roles: %s", roleNames())
 	}
 	role, id := f[0], f[1]
 	if id == "chat" { // chat following chat is the default model
@@ -2007,9 +2011,60 @@ func (h *Host) SetModel(args string, warn bool) error {
 	return nil
 }
 
+// updateCatalog fetches the catwalk catalog for this and later boots. With
+// a UI it runs as a busy job and reloads config so the registry takes it;
+// headless it only saves, before the run exits, and says so on stderr.
+func (h *Host) updateCatalog() error {
+	kept := "bundled"
+	if !h.Builtin.Load().Info.Fetched.IsZero() {
+		kept = "saved"
+	}
+	headless := h.hooks() == nil
+	run := func(ctx context.Context) (changed bool, err error) {
+		c, changed, err := agent.UpdateCatalog(ctx, agent.CatalogURL, h.Dirs.DataHome, os.Getenv)
+		if err != nil {
+			return false, fmt.Errorf("%w; the %s one stays", err, kept)
+		}
+		h.Builtin.Store(&c)
+		msg := "Model catalog is up to date"
+		if changed {
+			msg = fmt.Sprintf("Model catalog updated: %d providers, %d models", c.Info.Providers, c.Info.Models)
+		}
+		if headless {
+			fmt.Fprintln(h.Stderr, "zemi: "+msg)
+		} else {
+			title, body, _ := strings.Cut(msg, ": ")
+			h.Notify("info", title, body)
+		}
+		return changed, nil
+	}
+	if headless {
+		if _, err := run(context.Background()); err != nil {
+			return fmt.Errorf("could not update the model catalog: %w", err)
+		}
+		return nil
+	}
+	h.GoSafe("model update", func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		changed, err := func() (bool, error) {
+			defer h.Busy("Updating the model catalog", cancel)()
+			return run(ctx)
+		}()
+		switch {
+		case ctx.Err() != nil: // esc
+		case err != nil:
+			h.Notify("error", "Could not update the model catalog", err.Error())
+		case changed:
+			_ = h.ReloadConfig()
+		}
+	})
+	return nil
+}
+
 // CompleteModel offers /model's arguments in SetModel's grammar.
 func (h *Host) CompleteModel(lead, line string) []string {
-	first := []string{"roles"}
+	first := []string{"roles", "update"}
 	var ids []string
 	for _, r := range roles {
 		first = append(first, r.Name)

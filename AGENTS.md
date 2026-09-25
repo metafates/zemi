@@ -96,9 +96,10 @@ the trust boot step reads. `-m`, `/model <provider/model>` and `zemi.model.set` 
 `Host.SetModel` parses the rest of `/model` (`Host.CompleteModel` offers the same grammar in
 the palette): `roles` opens the role list (`OpenModelRoles`, a `Reload` list that rebuilds
 when the role's model list over it closes, and that opens over `/model` from its "Choose a
-model per role" row, so esc goes back), `<role>` that role's model list (`chat` too, titled
-like the others), `<role> <id>` or `<role> chat` sets the role or makes it follow chat
-(`chat chat` returns `models.chat` to the default).
+model per role" row, so esc goes back), `update` fetches the catalog (below; the row under
+it), `<role>` that role's model list (`chat` too, titled like the others), `<role> <id>` or
+`<role> chat` sets the role or makes it follow chat (`chat chat` returns `models.chat` to the
+default).
 `--profile` and `/profile` (`Host.SetProfile`; no argument opens the picker, which the
 statusline's profile segment clicks into) write `agent.profile` for the next send: a switch
 changes the prompt and the tool set, so it busts the provider's prompt cache once; ctrl+t and
@@ -130,8 +131,14 @@ procedure lives in zemi-customize). Its list is built off the key loop from `plu
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`), and a TUI
 boot no model can run opens the `/model` picker once (`Host.OfferModel`, after the flags
 apply, never on a reload or after a failed init.lua). Builtin
-providers come from the embedded catwalk catalog (`agent.Builtin`, converted once per process
-with the key env vars resolved in Go, never stored in config): each is on only while its key is
+providers come from the catwalk catalog (`agent.LoadCatalog`, converted at boot by
+`agent.Builtin` with the key env vars resolved in Go, never stored in config, into the
+`Host.Builtin` pointer): the embedded one, or the one `/model update` (`agent.UpdateCatalog`,
+a busy job that reloads config; `-p` only saves) fetched from catwalk.charm.land into
+`<data>/catwalk.json`, never `<cache>`, which a sandbox can write, since the catalog picks
+where each key is sent. No network at boot; a saved catalog from another bundled catwalk
+version is ignored, so an upgrade brings its newer bundle back, and one that does not load is
+the `/health` catalog row's warning. Each builtin is on only while its key is
 exported, one without is in `Registry.Missing` (minus the ids config deleted or added) so the
 no-model hint (`noModelHint`, one sentence everywhere) can name the variable and `/model` lists it, copy only, after the usable models, `Registry.Reset` seeds every generation
 before `init.lua`, a `zemi.provider.add` under a builtin id replaces it
@@ -891,7 +898,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   whole render until the fill ends (`App.scrolledUp`), so the reader's rows stay put. A turn's `turnScope` context (host.go) covers compaction, the model and tools, so
   a second esc within 2s (`App.arm`, shared with the idle ctrl+c quit) stops all of them;
   a second ctrl+c while "Cancelling" quits. A job the user waits on that is not a turn
-  (`/btw`, `/plugins` network work, `/health`, the reflector, an MCP start) holds a `Host.Busy`
+  (`/btw`, `/plugins` network work, `/model update`, `/health`, the reflector, an MCP start) holds a `Host.Busy`
   entry: the working rule draws the newest as `ctx.busy`, and the same double esc
   (`CancelBusy`, never `zemi.agent.cancel`) cancels every entry that has a cancel func.
 - **Widgets read UI flags, never Go-drawn text.** The composer frame's rules and the quit, key
