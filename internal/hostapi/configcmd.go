@@ -156,8 +156,8 @@ func (h *Host) SetConfig(path string, val any) error {
 }
 
 // configItems lists every setting by section under two action rows. Enter
-// opens a row's detail; space toggles a bool, opens a picker, or fills
-// /config set for the rest.
+// opens a row's detail, whose actions change the value; space toggles a
+// bool and passes the other rows by.
 func (h *Host) configItems() []any {
 	items := []any{
 		map[string]any{"text": "Show as Lua", "verb": "show", "run": "config lua"},
@@ -168,7 +168,7 @@ func (h *Host) configItems() []any {
 		source := h.cfgSource(s.Path)
 		section, _, _ := strings.Cut(s.Path, ".")
 		item := map[string]any{
-			"text": s.Path, "desc": showSetting(v) + " · " + s.Desc, "section": section, "key": source,
+			"text": s.Path, "desc": showSetting(v) + " · " + s.Desc, "section": sourceSection(section), "key": source,
 			"detail": fmt.Sprintf("kind: %s\ndefault: %s\nvalue: %s\nsource: %s\n\n%s", s.Kind, showSetting(s.Default), showSetting(v), cmp.Or(source, "default"), s.Desc),
 		}
 		edit := map[string]any{"text": "Edit", "hotkey": "e", "fill": fmt.Sprintf("/config set %s %v", s.Path, v)}
@@ -177,10 +177,10 @@ func (h *Host) configItems() []any {
 			item["run"] = "config toggle " + s.Path
 			edit = map[string]any{"text": "Toggle", "hotkey": "t", "run": item["run"]}
 		case pick != "":
-			item["run"] = pick
 			edit = map[string]any{"text": "Change", "hotkey": "c", "run": pick}
-		default:
-			item["fill"] = edit["fill"]
+		}
+		if item["run"] == nil {
+			item["verb"] = "open" // a row with a verb is no toggle
 		}
 		actions := []any{edit}
 		if !reflect.DeepEqual(v, s.Default) {
