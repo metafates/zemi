@@ -57,7 +57,7 @@ func TestGoldenPlugins(t *testing.T) {
 	step := host.PluginsStep()
 	run := step.Run
 	step.Run = func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error { run(ctx, r, g); return nil }
-	steps := []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.defaultui"), step}
+	steps := []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui"), step}
 	if err := host.ForceReload(ctx, steps); err != nil {
 		t.Fatal(err)
 	}

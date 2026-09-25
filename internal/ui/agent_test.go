@@ -59,7 +59,7 @@ func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	host.SetUIHooks(app)
 	app.CaptureHooks()
 
-	steps := []lua.BootStep{host.NamespacesStep(), lua.RequireStep("zemi.defaultui")}
+	steps := []lua.BootStep{host.NamespacesStep(), lua.RequireStep("zemi.tui")}
 	if err := rt.Boot(ctx, steps); err != nil {
 		t.Fatalf("boot: %v", err)
 	}

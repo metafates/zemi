@@ -1,5 +1,5 @@
-local fmt = require("zemi.defaultui.text")
-local snail = require("zemi.defaultui.snail")
+local fmt = require("zemi.tui.text")
+local snail = require("zemi.tui.snail")
 
 ---@type table<string, boolean>
 local READS = { read = true, grep = true, glob = true, fetch = true, web_search = true, skill = true }

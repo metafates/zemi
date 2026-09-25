@@ -3,7 +3,7 @@
 -- side draws from its outer edge in priority order and a short row drops the
 -- highest priority first, so what lasts sits outermost and what comes and
 -- goes sits inner, where it moves nothing.
-local fmt = require("zemi.defaultui.text")
+local fmt = require("zemi.tui.text")
 
 --- Runs the command a statusline segment names in its click id.
 ---@param ev zemi.WidgetClick

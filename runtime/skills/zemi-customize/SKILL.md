@@ -100,7 +100,7 @@ A key is a non-printable key or a sequence that starts with one (`"ctrl+x s"`; `
 
 ## UI
 
-Everything on screen but the composer and the Go-drawn prompts is a Lua widget. The shipped UI is readable source in the defaultui directory the system prompt names: `theme.lua`, `layout.lua`, `keymaps.lua`, and the widgets in `statusline.lua`, `working.lua`, `chat.lua` and `splash.lua`. Read the one you change. A widget registered with a shipped id replaces it; a new id adds one.
+Everything on screen but the composer and the Go-drawn prompts is a Lua widget. The shipped UI is readable source in the tui directory the system prompt names: `theme.lua`, `layout.lua`, `keymaps.lua`, and the widgets in `statusline.lua`, `working.lua`, `chat.lua` and `splash.lua`. Read the one you change. A widget registered with a shipped id replaces it; a new id adds one.
 
 Shipped ids: `splash` and `chat` (region `chat`); `working` (the composer frame's top rule: the mascot and the turn status); in `statusline.left` `statusline.mode`, `statusline.quit`, `statusline.cwd`, `statusline.agents`, `statusline.view`, `statusline.learn`, `statusline.keys`, `statusline.scroll`; in `statusline.right` `statusline.profile`, `statusline.model`, `statusline.context`, `statusline.percent`, `statusline.cost`. zemi draws a separator between the statusline widgets that draw, so each returns its text alone. Each side draws from its outer edge by priority and a short row drops the highest first, so a lasting widget takes a low priority and one that comes and goes a high one, where it moves nothing.
 
@@ -115,7 +115,7 @@ Rules for `render(ctx)`:
 
 ```lua
 -- a line under the default splash's tagline
-local default = require("zemi.defaultui")
+local default = require("zemi.tui")
 zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)

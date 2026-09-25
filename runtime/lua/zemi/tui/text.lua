@@ -1,6 +1,6 @@
 -- Formatting helpers the default widgets share:
--- require("zemi.defaultui.text").
----@class zemi.defaultui.text
+-- require("zemi.tui.text").
+---@class zemi.tui.text
 local M = {}
 
 --- A token count as "812", "24.5k" or "1.2M"; nil for none.

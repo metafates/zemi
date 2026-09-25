@@ -84,7 +84,7 @@ zemi.ui.widget.add({
 
 	steps := []lua.BootStep{
 		host.NamespacesStep(),
-		lua.RequireStep("zemi.defaultui"),
+		lua.RequireStep("zemi.tui"),
 		lua.LoadFileStep("init", filepath.Join(cfg, "init.lua"), lua.OriginUser),
 	}
 	if err := rt.Boot(ctx, steps); err != nil {

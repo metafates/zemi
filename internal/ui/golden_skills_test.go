@@ -22,7 +22,7 @@ func TestGoldenSkillsList(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	steps := []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.defaultui"), host.SkillsUserHooksStep()}
+	steps := []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui"), host.SkillsUserHooksStep()}
 	if err := host.ForceReload(ctx, steps); err != nil {
 		t.Fatal(err)
 	}

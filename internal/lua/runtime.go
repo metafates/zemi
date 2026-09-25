@@ -546,7 +546,7 @@ func (r *Runtime) requireModule(gen *Generation, L *glua.LState, name string) (g
 // plugin, later call. Builtin modules for lower origins, and one plugin's
 // modules for another plugin, are the exception: the requirer shares the
 // owner's instance through a read-only view, so it can neither patch it
-// nor rerun it (rerunning zemi.defaultui would re-register the UI).
+// nor rerun it (rerunning zemi.tui would re-register the UI).
 func (r *Runtime) loadModule(gen *Generation, L *glua.LState, key, name string, origin Origin, read func() ([]byte, string, error)) (glua.LValue, error) {
 	req := r.CurrentOrigin(L)
 	lower := req != OriginHost && req.Rank() < origin.Rank()

@@ -147,7 +147,7 @@ writing returns to its schema default, unless a runtime pick moved it since.
 
 `main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `steps` in main.go),
 and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
-`require("zemi.defaultui")` (shipped theme, widgets and keymaps, one module each) -> project
+`require("zemi.tui")` (shipped theme, widgets and keymaps, one module each) -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
 `init.lua` -> user skill hooks -> a trusted project's `.agents/init.lua` -> markdown commands
 (`commands/*.md`: user, each plugin's, then a trusted repo's `.agents`) -> `app.ready`.
@@ -704,7 +704,7 @@ lua-language-server is installed.
 
 `zemi.ui.layout.set` hands Go a layout table; `ParseLayout` validates it into immutable
 `hostapi.Layout` data (no closures) behind an atomic pointer `compose` reads every frame, so
-drawing never waits on Lua. The shipped `defaultui/layout.lua` sets the default, user config
+drawing never waits on Lua. The shipped `tui/layout.lua` sets the default, user config
 may replace it, lower origins are refused. A reload keeps the old layout drawn (the spec is
 plain data, safe across generations); `ForceReload` drops one the replay did not set again and
 `DefaultLayout`, the Go copy of the shipped tree, draws. `span` sizes one box per frame from
@@ -716,7 +716,7 @@ painted segments, never the tree. `/health` has a `layout` row naming widgets in
 layout does not draw. A `composer` node with `frame` draws the square frame around the composer
 and puts the first line of the widgets in its `top`, `left` and `right` regions into the rules
 (`composerFrame`, ui/composer.go; `top` gets the whole rule, whose left corner holds the
-snail of `defaultui/snail.lua`, its eyes showing the state, how a turn ended included
+snail of `tui/snail.lua`, its eyes showing the state, how a turn ended included
 (`ctx.ended`), and whose middle holds the turn's status), which is where the shipped layout keeps the mascot and the statusline: agent
 state changes what a rule says, never how many rows the frame takes, so nothing above it
 reflows. The statusline clusters draw from their outer edges by widget priority and a short
@@ -871,7 +871,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   a second esc within 2s (`App.arm`, shared with the idle ctrl+c quit) stops all of them;
   a second ctrl+c while "Cancelling" quits.
 - **Widgets read UI flags, never Go-drawn text.** The composer frame's rules and the quit, key
-  sequence and scroll flags are `defaultui/` widgets reading `hostapi.UIState`; a new flag goes
+  sequence and scroll flags are `tui/` widgets reading `hostapi.UIState`; a new flag goes
   into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget
   cannot render at the 50 ms frame clock is a segment `effect` the UI applies (`shimmer`). The terminal itself
   gets OSC 9 (notify when unfocused), OSC 9;4 (`ui.progress`: a running turn as taskbar

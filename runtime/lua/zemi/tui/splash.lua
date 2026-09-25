@@ -1,7 +1,7 @@
 -- The splash that fills the empty chat until the first message.
-local fmt = require("zemi.defaultui.text")
-local snail = require("zemi.defaultui.snail")
----@class zemi.defaultui.splash
+local fmt = require("zemi.tui.text")
+local snail = require("zemi.tui.snail")
+---@class zemi.tui.splash
 local M = {}
 
 --- The splash rows: the mascot and wordmark, what zemi will run with, recent sessions

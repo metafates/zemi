@@ -122,7 +122,7 @@ func run(args []string) int {
 	steps := []lua.BootStep{
 		host.NamespacesStep(),
 		host.BuiltinCommandsStep(mainCommands(quit, trust.command(func() { reload() }))...),
-		lua.RequireStep("zemi.defaultui"),
+		lua.RequireStep("zemi.tui"),
 		soft(trust.step()),
 		soft(host.ProjectPermissionsStep()),
 		soft(host.PluginsStep()),

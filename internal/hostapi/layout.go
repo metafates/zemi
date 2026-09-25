@@ -119,7 +119,7 @@ type Rect struct{ X, Y, Width, Height int }
 
 // DefaultLayout is what zemi draws when no config set a layout (before the
 // shipped UI loads, or after a reload that set none). It matches the
-// shipped defaultui/layout.lua: the main column; in it the header, the
+// shipped tui/layout.lua: the main column; in it the header, the
 // stage (the chat), a blank row and the framed composer, whose rules carry
 // the mascot and the statusline.
 var DefaultLayout = &Layout{Root: &LayoutNode{Kind: "box", Dir: "row", Sep: true, Size: Size{Kind: SizeFill}, Children: []*LayoutNode{

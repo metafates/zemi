@@ -13,11 +13,11 @@ import (
 )
 
 // TestSplashExtends: user config can wrap the default splash through
-// require("zemi.defaultui").splash (the zemi-customize skill's example).
+// require("zemi.tui").splash (the zemi-customize skill's example).
 func TestSplashExtends(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 30)
 	runLua(t, app, `
-local default = require("zemi.defaultui")
+local default = require("zemi.tui")
 zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
@@ -37,20 +37,20 @@ zemi.ui.widget.add({
 	}
 }
 
-// TestDefaultUIPluginRequire: plugin code can require zemi.defaultui (its
+// TestTUIPluginRequire: plugin code can require zemi.tui (its
 // body must not rerun under the plugin's origin) but cannot write into it.
-func TestDefaultUIPluginRequire(t *testing.T) {
+func TestTUIPluginRequire(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 30)
 	src := `
-local d = require("zemi.defaultui")
+local d = require("zemi.tui")
 assert(type(d.splash) == "function", "splash missing")
 assert(not pcall(function() d.splash = print end), "plugin wrote into the builtin module")
-assert(require("zemi.defaultui") == d, "view not cached")`
+assert(require("zemi.tui") == d, "view not cached")`
 	plugin := filepath.Join(host.Dirs.PluginsRoot(), "local", "p", "init.lua")
 	if err := host.RT.ExecuteChunk(context.Background(), src, plugin, lua.OriginPlugin); err != nil {
 		t.Fatal(err)
 	}
-	runLua(t, app, `assert(require("zemi.defaultui").splash ~= print)`)
+	runLua(t, app, `assert(require("zemi.tui").splash ~= print)`)
 }
 
 // TestSplashFitsShortChat: a short chat drops the recent sessions, then
@@ -59,7 +59,7 @@ func TestSplashFitsShortChat(t *testing.T) {
 	for h, want := range map[int]string{13: "@zemi", 14: "╭────╮", 20: "3m ago"} {
 		app, _ := bootAgentApp(t, 80, h)
 		runLua(t, app, `
-local default = require("zemi.defaultui")
+local default = require("zemi.tui")
 zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
@@ -82,7 +82,7 @@ zemi.ui.widget.add({
 func TestSplashWrapsModelHint(t *testing.T) {
 	app, _ := bootAgentApp(t, 120, 30)
 	runLua(t, app, `
-local default = require("zemi.defaultui")
+local default = require("zemi.tui")
 zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)

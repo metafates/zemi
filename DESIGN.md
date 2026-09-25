@@ -372,7 +372,7 @@ calls blank the user's global filter drivers too.
 Load order is a list of boot steps: host `zemi.*` namespaces
 -> builtin commands (main's own plus every domain
 file's: memory, reflector, skills, agents, workflow, mcp, lsp) -> the
-shipped Lua UI (`require("zemi.defaultui")`) -> the project trust
+shipped Lua UI (`require("zemi.tui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (each enabled plugin's `init.lua`, sorted by name) ->
 user `init.lua` -> user skills' enable hooks -> a trusted project's
@@ -1114,7 +1114,9 @@ UI extensibility contract:
 - The screen is a layout tree of regions (`header`, `chat`, `working`, `composer`,
   `statusline`, or any name) that Lua sets with `zemi.ui.layout.set`
   and Go solves and paints every frame (§8), plus an overlay stack. The shipped chat and statusline are default Lua registrations
-  in `runtime/lua/zemi/defaultui/` (one module per part), replaceable by id. The composer is
+  in `runtime/lua/zemi/tui/` (one module per part), replaceable by id. The module is
+  `zemi.tui`, since `require("zemi.ui")` returns the frozen host namespace, whose `theme`
+  and `layout` members would also shadow `theme.lua` and `layout.lua`. The composer is
   Go-owned and zemi's own editor (`internal/ui/composer.go`; there is no
   bubbles dependency): visual wrapping, a large paste folded into a
   token, submitted-message history, `ctrl+z` undo, and a
@@ -1388,7 +1390,7 @@ provenance string.
   content and cells, the last child first, down to min and then to 0, and hides its last
   `collapse` child while the mins do not fit. The solver is integer arithmetic and never
   fails. Floats place a region like a neovim float (relative node, anchor corner,
-  row/col, size) in list order. The shipped `defaultui/layout.lua` sets the default;
+  row/col, size) in list order. The shipped `tui/layout.lua` sets the default;
   user config may replace it, plugin and project code may not (a layout can
   hide what they show). `/reload` keeps drawing the old layout until the replay sets
   one; a replay that sets none draws the Go copy of the default (`hostapi.DefaultLayout`).
@@ -1492,7 +1494,7 @@ provenance string.
   item index; widget segments carry their `click` id (§6.6) and are
   targets only while their widget has `on_click` and no modal chrome is
   open, which takes every click. The shipped statusline is clickable from
-  `defaultui/statusline.lua`: the mode and the always-visible agent pill open their
+  `tui/statusline.lua`: the mode and the always-visible agent pill open their
   pickers, the model the model
   picker, the context and cost `/usage`, pending reviews `/memory`,
   running agents `/agents`. The chat widget marks a reasoning line
@@ -2299,7 +2301,7 @@ internal/plugins/           plugin install, update, check and delete over plain 
 internal/glob/              rg-style glob matching for the file tools and LSP
 internal/sanitize/          escape stripping at the render and log boundary
 internal/logging/           log files and the in-memory ring behind /errors
-runtime/lua/                embedded Lua userland (defaultui, widgets, themes)
+runtime/lua/                embedded Lua userland (tui: widgets, themes)
 runtime/skills/zemi-*/      zemi's own skills; runtime/workflows/, the builtin ones
 runtime/types/              the LuaLS `---@meta` description of the whole zemi.* API
 ```

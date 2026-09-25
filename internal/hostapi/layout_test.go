@@ -63,12 +63,12 @@ func TestLayoutOrigins(t *testing.T) {
 	if err := os.WriteFile(initLua, []byte(userLayout), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	steps := []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.defaultui.layout"), lua.LoadFileStep("init", initLua, lua.OriginUser)}
+	steps := []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.tui.layout"), lua.LoadFileStep("init", initLua, lua.OriginUser)}
 	if err := r.Boot(context.Background(), steps[:2]); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(h.Layout(), DefaultLayout) {
-		t.Fatal("the Go fallback drifted from defaultui/layout.lua")
+		t.Fatal("the Go fallback drifted from tui/layout.lua")
 	}
 	if err := h.ForceReload(context.Background(), steps); err != nil {
 		t.Fatal(err)

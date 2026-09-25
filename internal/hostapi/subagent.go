@@ -876,7 +876,7 @@ func (h *Host) postNotify(ctx context.Context, tool, input string, reply *fantas
 	}
 }
 
-// fmtDuration reads as the chat's durations do (defaultui text.duration).
+// fmtDuration reads as the chat's durations do (tui text.duration).
 func fmtDuration(d time.Duration) string {
 	if d < 9950*time.Millisecond {
 		return fmt.Sprintf("%.1fs", d.Seconds())

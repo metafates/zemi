@@ -1,5 +1,5 @@
 -- The chat widget: the transcript, the live turn and the todo list.
-local fmt = require("zemi.defaultui.text")
+local fmt = require("zemi.tui.text")
 
 -- The one per-row "running now" mark: a braille spinner, stepped by
 -- ctx.frame (50 ms a step), so a row that only shows live animates cleanly.
@@ -9,7 +9,7 @@ local BRAILLE = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇",
 local HINT = "click or ctrl+o to read"
 
 -- A tool row: a settled transcript row or a call of the live turn.
----@alias zemi.defaultui.Tool zemi.TranscriptRow|zemi.ToolCall
+---@alias zemi.tui.Tool zemi.TranscriptRow|zemi.ToolCall
 
 local HOME = zemi.env.get("HOME") or ""
 
@@ -31,11 +31,11 @@ end
 -- reply streams the widget renders many times a second and only the live
 -- turn changes. `settled` is the units' lines in order, which a render hands
 -- back as they are while the transcript has `count` rows.
----@class zemi.defaultui.ChatUnit
+---@class zemi.tui.ChatUnit
 ---@field lines zemi.Line[]
 ---@field next integer Index of the message after the unit.
 ---@field hint boolean The unit is the reasoning line that carries the expand hint.
----@type table<integer, zemi.defaultui.ChatUnit>
+---@type table<integer, zemi.tui.ChatUnit>
 local units = {}
 local units_key = ""
 ---@type { count: integer, lines: zemi.Line[], n: integer, live_reason: boolean }?
@@ -180,10 +180,10 @@ zemi.ui.widget.add({
       diagnostics = { "checked", "file", "files" }, job_read = { "checked", "job", "jobs" },
       job_list = { "listed jobs" }, job_kill = { "stopped", "job", "jobs" }, todos = { "updated todos" },
     }
-    ---@param t zemi.defaultui.Tool
+    ---@param t zemi.tui.Tool
     ---@return string
     local function tool_name(t) return t.tool or t.name or "?" end
-    ---@param t zemi.defaultui.Tool
+    ---@param t zemi.tui.Tool
     ---@return boolean
     local function collapsible(t)
       if t.kind ~= nil and t.kind ~= "tool" then return false end
@@ -193,7 +193,7 @@ zemi.ui.widget.add({
     ---@param s string
     ---@return string
     local function relpath(s) return fmt.relpath(s, ctx.cwd) end
-    ---@param group zemi.defaultui.Tool[]
+    ---@param group zemi.tui.Tool[]
     ---@param click string The id a click on the summary row carries.
     local function add_group(group, click)
       ---@type string[], table<string, { c: { [1]: string, [2]: string?, [3]: string? }, n: integer }>
@@ -239,7 +239,7 @@ zemi.ui.widget.add({
     -- user, so it neither spins nor counts.
     ---@type table<string, string>
     local MARK_OF = { ok = "ok", err = "err", stopped = "stop", bg = "bg" }
-    ---@param t zemi.defaultui.Tool
+    ---@param t zemi.tui.Tool
     ---@param idx integer Transcript index, negative for a live-turn call.
     local function add_tool(t, idx)
       local name = tool_name(t)
@@ -346,14 +346,14 @@ zemi.ui.widget.add({
       end
     end
     -- rows from i on: a collapsed group or one call; returns the next index
-    ---@param list zemi.defaultui.Tool[]
+    ---@param list zemi.tui.Tool[]
     ---@param i integer
     ---@param live boolean? The live turn's calls, indexed apart from the transcript.
     ---@return integer
     local function add_tools(list, i, live)
       local idx = live and -i or i
       if collapsible(list[i]) then
-        ---@type zemi.defaultui.Tool[]
+        ---@type zemi.tui.Tool[]
         local group = {}
         while i <= #list and collapsible(list[i]) do
           group[#group + 1] = list[i]
@@ -395,7 +395,7 @@ zemi.ui.widget.add({
     ---@param first integer
     ---@param last integer
     ---@param hinted boolean
-    ---@return zemi.defaultui.ChatUnit
+    ---@return zemi.tui.ChatUnit
     local function unit(tr, first, last, hinted)
       local m = tr[first]
       lines, prev = {}, first > 1 and "above" or nil
@@ -473,7 +473,7 @@ zemi.ui.widget.add({
         if m.kind == "reasoning" and not live_reason then last_reason = n end
       end
       local deadline = epoch ~= 0 and os.clock() + 0.03
-      ---@type zemi.defaultui.ChatUnit[]
+      ---@type zemi.tui.ChatUnit[]
       local shown = {}
       local rendered = 0
       local last = #tr

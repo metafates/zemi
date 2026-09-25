@@ -927,7 +927,7 @@ function zemi.ui.widget.list() end
 zemi.ui.layout = {}
 
 --- Replace the screen layout (DESIGN §8). The shipped UI sets the default
---- (defaultui/layout.lua) and user config may replace it; plugin and
+--- (tui/layout.lua) and user config may replace it; plugin and
 --- project code are refused. Raises on a malformed layout: an unknown
 --- kind or field, no composer or two, a region drawn twice, a duplicate id,
 --- a bad size, min over max, more than 64 nodes or 8 levels. `/reload`
