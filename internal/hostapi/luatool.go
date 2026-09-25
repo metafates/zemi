@@ -193,7 +193,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		}
 		path = perm.RealPath(path)
 		if v := h.PipelineFor().CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectRead, Arg: path}); v.Decision != perm.Allow {
-			return fantasy.NewTextErrorResponse(tools.DeniedText(v, "fs.read "+in.Path)), nil
+			return fantasy.NewTextErrorResponse(tools.DeniedText(v, perm.SubjectRead+" "+in.Path)), nil
 		}
 		// opened the way the file tools open theirs, so a directory swapped
 		// for a symlink after the check fails instead of leading elsewhere

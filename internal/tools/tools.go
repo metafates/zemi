@@ -477,6 +477,7 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 	}
 	// who said no and why it asked; the rule text ("no rule matched") says neither
 	who := "denied (" + by + ")"
+	mode, byMode := strings.CutPrefix(by, ModePrefix)
 	switch {
 	case strings.HasPrefix(by, ByUser):
 		// they saw the request and refused it: the ask's reason says why it
@@ -494,8 +495,8 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 		}
 	case by == "event":
 		who = "denied by a permission.request handler"
-	case strings.HasPrefix(by, ModePrefix):
-		who = "denied by permission mode " + strings.TrimPrefix(by, ModePrefix)
+	case byMode:
+		who = "denied by permission mode " + mode
 	}
 	if why != "" {
 		who += ": " + why
