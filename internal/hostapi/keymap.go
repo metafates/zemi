@@ -171,7 +171,7 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 				strings.HasPrefix(rhs.API, "zemi.agent.profile.") ||
 				strings.HasPrefix(rhs.API, "zemi.composer.") || strings.HasPrefix(rhs.API, "zemi.ui.focus.")) &&
 				b.Origin != lua.OriginUser && b.Origin != lua.OriginBuiltin {
-				L.RaiseError("zemi.keymap.set: only user config may bind permission mode, agent, composer or focus actions")
+				L.RaiseError("zemi.keymap.set: only user config may bind permission mode, profile, composer or focus actions")
 			}
 			b.RHS = rhs
 		default:
