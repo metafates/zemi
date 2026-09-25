@@ -153,17 +153,21 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 
 // CompleteCommand returns argument candidates for a command line from the
 // command's Go completer or its Lua complete(arg_lead, cmdline), sanitized
-// and capped; a failing completer offers nothing and lands in /errors.
+// and capped; a failing completer offers nothing and lands in /errors, and
+// nothing is offered past the last argument the command's nargs takes.
 func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []CompletionItem {
 	cmd := h.Commands.Lookup(name)
-	if cmd == nil {
+	if _, arg := argAt(lead, line); cmd == nil || (cmd.NArgs == "" || cmd.NArgs == "?") && arg > 1 {
 		return nil
 	}
 	var out []CompletionItem
 	switch {
 	case cmd.GoComplete != nil:
+		// Go completers ignore lead, so it narrows here, before the cap
 		for _, s := range cmd.GoComplete(h, lead, line) {
-			out = append(out, CompletionItem{Text: sanitize.String(s)})
+			if strings.HasPrefix(strings.ToLower(s), strings.ToLower(lead)) {
+				out = append(out, CompletionItem{Text: sanitize.String(s)})
+			}
 		}
 	case cmd.Complete != nil:
 		res, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
@@ -199,11 +203,7 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 // when next is set, later arguments from next.
 func subcommandCompleter(subs []string, next func(h *Host, sub string) []string) func(h *Host, lead, line string) []string {
 	return func(h *Host, lead, line string) []string {
-		fields := strings.Fields(line)
-		arg := len(fields)
-		if lead != "" {
-			arg--
-		}
+		fields, arg := argAt(lead, line)
 		switch {
 		case arg <= 1:
 			return subs
@@ -212,6 +212,16 @@ func subcommandCompleter(subs []string, next func(h *Host, sub string) []string)
 		}
 		return nil
 	}
+}
+
+// argAt splits the line before the cursor into words, "/name" first, and
+// says which argument, from 1, the cursor is in.
+func argAt(lead, line string) ([]string, int) {
+	fields := strings.Fields(line)
+	if lead != "" {
+		return fields, len(fields) - 1
+	}
+	return fields, len(fields)
 }
 
 // CommandFailed reports a command's error: one of how it was asked

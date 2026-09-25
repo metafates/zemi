@@ -88,6 +88,18 @@ func TestSetModelArgs(t *testing.T) {
 	if k := roles[2].(map[string]any)["key"]; k != "follows chat" {
 		t.Errorf("titles row key %v", k)
 	}
+	for _, c := range []struct{ line, want string }{
+		{"/model ", "roles chat agents titles compact memory a/big a/small"},
+		{"/model titles ", "chat a/big a/small"},
+		{"/model chat ", "a/big a/small"},
+		{"/model a/big ", ""},
+	} {
+		// builtins an exported key turns on are left out
+		got := slices.DeleteFunc(h.CompleteModel("", c.line), func(s string) bool { p, _, ok := strings.Cut(s, "/"); return ok && p != "a" })
+		if strings.Join(got, " ") != c.want {
+			t.Errorf("complete %q = %v, want %q", c.line, got, c.want)
+		}
+	}
 	runUser(t, r, `zemi.config.set("models.memory", "a/big")
 		for _, m in ipairs(zemi.model.list()) do
 			local want = m.id == "a/big" and "memory" or "chat,agents,titles,compact"

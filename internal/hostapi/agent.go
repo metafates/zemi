@@ -2003,6 +2003,29 @@ func (h *Host) SetModel(args string, warn bool) error {
 	return nil
 }
 
+// CompleteModel offers /model's arguments in SetModel's grammar.
+func (h *Host) CompleteModel(lead, line string) []string {
+	first := []string{"roles"}
+	var ids []string
+	for _, r := range roles {
+		first = append(first, r.Name)
+	}
+	for _, s := range h.Providers.List() {
+		for _, m := range s.Models {
+			ids = append(ids, s.ID+"/"+m.ID)
+		}
+	}
+	return subcommandCompleter(append(first, ids...), func(_ *Host, sub string) []string {
+		switch {
+		case sub == "chat":
+			return ids
+		case isRole(sub):
+			return append([]string{"chat"}, ids...)
+		}
+		return nil
+	})(h, lead, line)
+}
+
 const unlistedTitle = "Model not listed"
 
 // warnUnlisted toasts a pick the provider does not list. It reads the pick,
