@@ -272,10 +272,11 @@ func TestLoadCatalog(t *testing.T) {
 	}
 }
 
-// TestUpdateCatalog: a fetch saves the catalog for later boots, and the
-// next one sends its etag and reads a 304 as current.
+// TestUpdateCatalog: a fetch saves the catalog for later boots, the next
+// one sends its etag and reads a 304 as current, and a feed with no
+// provider zemi supports leaves the saved file alone.
 func TestUpdateCatalog(t *testing.T) {
-	body, _ := json.MarshalIndent(soloCatalog, "", "  ")
+	var body []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Trim(r.Header.Get("If-None-Match"), `"`) == catwalk.Etag(body) {
 			w.WriteHeader(http.StatusNotModified)
@@ -285,17 +286,27 @@ func TestUpdateCatalog(t *testing.T) {
 	}))
 	defer srv.Close()
 	dir := t.TempDir()
-	for _, changed := range []bool{true, false} {
-		c, got, err := UpdateCatalog(t.Context(), srv.URL, dir, soloEnv)
-		if err != nil || got != changed || c.Info.Providers != 1 || c.Info.Fetched.IsZero() {
-			t.Fatalf("changed %v, want %v: %+v, %v", got, changed, c.Info, err)
+	for _, c := range []struct {
+		name    string
+		feed    []catwalk.Provider
+		changed bool
+		err     bool
+	}{
+		{name: "fetched", feed: soloCatalog, changed: true},
+		{name: "not modified", feed: soloCatalog},
+		{name: "no supported provider", feed: []catwalk.Provider{}, err: true},
+	} {
+		body, _ = json.MarshalIndent(c.feed, "", "  ")
+		cat, changed, err := UpdateCatalog(t.Context(), srv.URL, dir, soloEnv)
+		if (err != nil) != c.err || changed != c.changed || !c.err && (cat.Info.Providers != 1 || cat.Info.Fetched.IsZero()) {
+			t.Fatalf("%s: changed %v, %+v, %v", c.name, changed, cat.Info, err)
 		}
 		fi, err := os.Stat(filepath.Join(dir, catalogFile))
 		if err != nil || fi.Mode().Perm() != 0o600 {
-			t.Fatalf("saved file: %v, %v", fi, err)
+			t.Fatalf("%s: saved file: %v, %v", c.name, fi, err)
 		}
 		if saved := LoadCatalog(dir, soloEnv); len(saved.Specs) != 1 || saved.Info.Fetched.IsZero() {
-			t.Fatalf("saved catalog does not load: %+v", saved.Info)
+			t.Fatalf("%s: saved catalog does not load: %+v", c.name, saved.Info)
 		}
 	}
 }

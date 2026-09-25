@@ -228,6 +228,10 @@ func bundledVersion() string {
 func LoadCatalog(dir string, getenv func(string) string) Catalog {
 	ps, info := loadCatalog(dir)
 	c := Builtin(ps, getenv)
+	if c.Info.Providers == 0 && !info.Fetched.IsZero() {
+		c = Builtin(embedded.GetAll(), getenv)
+		info.Fetched, info.Err = time.Time{}, errors.New("no provider zemi supports")
+	}
 	c.Info.Version, c.Info.Fetched, c.Info.Err = info.Version, info.Fetched, info.Err
 	return c
 }
@@ -244,8 +248,6 @@ func loadCatalog(dir string) ([]catwalk.Provider, CatalogInfo) {
 	case err != nil:
 		info.Err = err
 	case s.Catwalk != info.Version && info.Version != "":
-	case Builtin(s.Providers, func(string) string { return "" }).Info.Providers == 0:
-		info.Err = errors.New("no provider zemi supports")
 	default:
 		info.Fetched = s.Fetched
 		return s.Providers, info
@@ -254,8 +256,8 @@ func loadCatalog(dir string) ([]catwalk.Provider, CatalogInfo) {
 }
 
 // UpdateCatalog fetches the catwalk catalog from url, saves it in dir for
-// later boots and returns it converted; changed is false when the one in
-// use was current. A failed update leaves the saved file as it was.
+// later boots and returns it converted; changed is false when the saved
+// one was current. A failed update leaves the saved file as it was.
 func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) string) (c Catalog, changed bool, err error) {
 	ps, info := loadCatalog(dir)
 	// the server tags its indented JSON and the client returns no etag, so
