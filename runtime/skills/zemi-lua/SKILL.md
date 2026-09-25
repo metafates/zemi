@@ -25,7 +25,7 @@ a more trusted key. Only
 origin's command with `zemi.command.run`, and a project handler cannot deny `app.quit`. Lua calls to gated APIs (`zemi.fs` writes, `zemi.http`, `zemi.job`, and a
 plugin's `zemi.agent.send` and `zemi.model.ask`) never open a prompt: an "ask" decision
 raises `permission ask required` with the `zemi.permission.rule.add` line that allows it,
-which only the user's init.lua may add; a plugin's line carries `principal = "plugin:<name>"`,
+which only the user's init.lua may add (show it to the user and ask before adding it); a plugin's line carries `principal = "plugin:<name>"`,
 so the rule allows that plugin alone.
 No permission mode allows such a call, yolo included.
 In plugin and project code, `setmetatable` takes only that code's own Lua functions as
