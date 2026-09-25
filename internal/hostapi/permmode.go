@@ -424,6 +424,10 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		gate(L, "set")
+		if modeIndex(h.PermModeList(), name) >= 0 && h.cfgReplayed("permissions.mode", name) {
+			L.Push(glua.LTrue)
+			return 1
+		}
 		if err := h.SetPermMode(name); err != nil {
 			L.Push(glua.LNil)
 			L.Push(glua.LString(err.Error()))

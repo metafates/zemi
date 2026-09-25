@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -200,8 +201,8 @@ func TestPermissionRuleValidation(t *testing.T) {
 
 // TestReloadKeepsRuntimePicks: a reload whose config writes what the last
 // load wrote keeps a value picked at runtime, config writing one key
-// several times included; an edited config value wins. /config tags the
-// value by where it came from.
+// several times included, through zemi.config.set or a setter of its own;
+// an edited config value wins. /config tags the value by where it came from.
 func TestReloadKeepsRuntimePicks(t *testing.T) {
 	dir, log := t.TempDir(), logging.New(t.TempDir())
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
@@ -211,41 +212,48 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 	}
 	initLua := filepath.Join(dir, "init.lua")
 	for _, c := range []struct {
-		name       string
-		config     []string // what init.lua sets models.chat to, in order
-		pick, want string
-		source     string // cfgSource after the reload
+		name     string
+		key, set string // the key, and the call init.lua sets it with; "" is models.chat and zemi.config.set
+		config   []any  // what init.lua sets the key to, in order
+		pick     any    // nil picks nothing
+		want     any
+		source   string // cfgSource after the reload
 	}{
-		{"first load applies config", []string{"p/a"}, "", "p/a", "init.lua"},
-		{"unchanged config keeps a pick", []string{"p/a"}, "p/b", "p/b", "unsaved"},
-		{"edited config wins over a pick", []string{"p/c"}, "p/b", "p/c", "init.lua"},
-		{"a second set of the same key applies", []string{"p/c", "p/d"}, "", "p/d", "init.lua"},
-		{"an unchanged double set keeps a pick", []string{"p/c", "p/d"}, "p/e", "p/e", "unsaved"},
-		{"editing the second set wins", []string{"p/c", "p/f"}, "p/e", "p/f", "init.lua"},
-		{"dropping the second set wins", []string{"p/c"}, "p/e", "p/c", "init.lua"},
-		{"a pick outlives the last set", nil, "p/e", "p/e", "unsaved"},
-		{"a set comes back", []string{"p/c"}, "", "p/c", "init.lua"},
-		{"dropping every set returns the default", nil, "", "", ""},
+		{"first load applies config", "", "", []any{"p/a"}, nil, "p/a", "init.lua"},
+		{"unchanged config keeps a pick", "", "", []any{"p/a"}, "p/b", "p/b", "unsaved"},
+		{"edited config wins over a pick", "", "", []any{"p/c"}, "p/b", "p/c", "init.lua"},
+		{"a second set of the same key applies", "", "", []any{"p/c", "p/d"}, nil, "p/d", "init.lua"},
+		{"an unchanged double set keeps a pick", "", "", []any{"p/c", "p/d"}, "p/e", "p/e", "unsaved"},
+		{"editing the second set wins", "", "", []any{"p/c", "p/f"}, "p/e", "p/f", "init.lua"},
+		{"dropping the second set wins", "", "", []any{"p/c"}, "p/e", "p/c", "init.lua"},
+		{"a pick outlives the last set", "", "", nil, "p/e", "p/e", "unsaved"},
+		{"a set comes back", "", "", []any{"p/c"}, nil, "p/c", "init.lua"},
+		{"dropping every set returns the default", "", "", nil, nil, "", ""},
+		{"a key's own setter is a config write", "permissions.mode", "zemi.permission.mode.set(%[2]s)", []any{"yolo"}, nil, "yolo", "init.lua"},
+		{"and keeps a pick like one", "permissions.mode", "zemi.permission.mode.set(%[2]s)", []any{"yolo"}, "auto", "auto", "unsaved"},
+		{"a Lua number is the int it sets", "ui.composer.history", "", []any{5}, nil, 5, "init.lua"},
+		{"so dropping it returns the default", "ui.composer.history", "", nil, nil, 50, ""},
 	} {
+		key := cmp.Or(c.key, "models.chat")
 		src := ""
 		for _, v := range c.config {
-			src += `zemi.config.set("models.chat", "` + v + `")` + "\n"
+			src += fmt.Sprintf(cmp.Or(c.set, "zemi.config.set(%[1]q, %[2]s)"), key, luaLiteral(v)) + "\n"
 		}
 		if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if c.pick != "" {
-			if _, err := h.Settings.SetQuiet("models.chat", c.pick); err != nil {
+		if c.pick != nil {
+			if _, err := h.Settings.SetQuiet(key, c.pick); err != nil {
 				t.Fatal(err)
 			}
 		}
 		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
 			t.Fatal(err)
 		}
-		if got, _ := h.Settings.Get("models.chat"); got != c.want {
-			t.Errorf("%s: models.chat = %v, want %s", c.name, got, c.want)
+		if got, _ := h.Settings.Get(key); got != c.want {
+			t.Errorf("%s: %s = %v, want %v", c.name, key, got, c.want)
 		}
-		if got := h.cfgSource("models.chat"); got != c.source {
+		if got := h.cfgSource(key); got != c.source {
 			t.Errorf("%s: source %q, want %q", c.name, got, c.source)
 		}
 	}

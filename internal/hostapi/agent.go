@@ -1794,6 +1794,9 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.model.set: %v", err)
 			return 0
 		}
+		if h.cfgReplayed("models.chat", id) {
+			return 0
+		}
 		fired, err := h.Settings.SetQuiet("models.chat", id)
 		if err != nil {
 			L.RaiseError("zemi.model.set: %v", err)

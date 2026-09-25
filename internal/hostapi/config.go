@@ -82,8 +82,12 @@ func (h *Host) purgeWatches() {
 // previous boot wrote the same value at the same point in that key's
 // sequence, so there is nothing to apply and a value picked at runtime
 // stays. The first write that differs makes the key's later writes apply
-// too, config setting one key twice included.
+// too, config setting one key twice included. Every setter init.lua can
+// call runs a valid value through it, so /config knows what config set.
 func (h *Host) cfgReplayed(path string, v any) bool {
+	if !h.RT.Booting() {
+		return false
+	}
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
 	h.cfgRotate()
@@ -195,7 +199,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		}
 		// a replay writing what the last load wrote keeps what /model, the
 		// mode cycle, /effort or a flag picked since; an edited value wins
-		if h.RT.Booting() && h.cfgReplayed(path, v) {
+		if h.cfgReplayed(path, v) {
 			return 0
 		}
 		fired, err := h.Settings.SetQuiet(path, v)

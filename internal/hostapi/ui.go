@@ -108,7 +108,11 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 	theme.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		h.refuseBelowUser(L, "ui.theme.set") // it also writes the user-only ui.theme setting
-		if err := h.SetTheme(L.CheckString(1)); err != nil {
+		name := L.CheckString(1)
+		if h.Themes.Get(name) != nil && h.cfgReplayed("ui.theme", name) {
+			return 0
+		}
+		if err := h.SetTheme(name); err != nil {
 			L.RaiseError("zemi.ui.theme.set: %v", err)
 		}
 		return 0
