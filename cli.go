@@ -316,6 +316,9 @@ func printTurn(h *hostapi.Host, prompt string, jsonOut bool, stdout, stderr io.W
 	interrupted := ctx.Err() != nil
 	if !interrupted {
 		if err := sendPrompt(h, prompt); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return 130
+			}
 			if !jsonOut && errors.Is(err, hostapi.ErrNoModel) && h.InitError() != "" {
 				return 1 // the init failure on stderr is the cause
 			}
