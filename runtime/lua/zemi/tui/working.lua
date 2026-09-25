@@ -36,7 +36,9 @@ zemi.ui.widget.add({
     if not ctx.agent_active then
       if busy then
         label, state = busy.label, "working"
-        if busy.cancellable then parts[1] = { ctx.interrupt_armed and "esc again" or "esc interrupt", 6, 13 } end
+        if busy.cancellable and not ctx.view then
+          parts[1] = { ctx.interrupt_armed and "esc again" or "esc interrupt", 6, 13 }
+        end
         parts[#parts + 1] = { fmt.duration(busy.elapsed, true), 5, 7 }
       elseif ctx.ended == "ok" then
         state = "done"
@@ -84,14 +86,16 @@ zemi.ui.widget.add({
       -- mascot alone rather than repeating it; in an agent view esc goes back
       if ctx.waiting ~= "" then
         label, state, parts, tick = "", "asking", {}, nil
-      elseif ctx.cancelling then
-        parts[#parts + 1] = { "ctrl+c quit", 6, 13 }
-      elseif not ctx.view then
-        parts[#parts + 1] = { ctx.interrupt_armed and "esc again" or "esc interrupt", 6, 13 }
+      else
+        if ctx.cancelling then
+          parts[#parts + 1] = { "ctrl+c quit", 6, 13 }
+        elseif not ctx.view then
+          parts[#parts + 1] = { ctx.interrupt_armed and "esc again" or "esc interrupt", 6, 13 }
+        end
+        local queued = #ag.steering - ag.reports
+        if queued > 0 then parts[#parts + 1] = { queued .. " queued · up edit", 1 } end
+        if busy then parts[#parts + 1] = { busy.label, 0 } end
       end
-      local queued = #ag.steering - ag.reports
-      if queued > 0 then parts[#parts + 1] = { queued .. " queued · up edit", 1 } end
-      if busy then parts[#parts + 1] = { busy.label, 0 } end
       -- last, where its changing width moves nothing
       if tick then parts[#parts + 1] = tick end
     end
