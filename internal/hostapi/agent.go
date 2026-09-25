@@ -1984,13 +1984,11 @@ func (h *Host) SetModel(args string, warn bool) error {
 		return Usagef("usage: /model [roles | <role> | [<role>] provider/model | <role> chat]; roles: %s", roleNames())
 	}
 	role, id := f[0], f[1]
-	if id == "chat" && role != "chat" {
+	if id == "chat" { // chat following chat is the default model
 		id = ""
 	}
-	if id != "" {
-		if err := h.modelSetErr(role, id); err != nil {
-			return err
-		}
+	if err := h.modelSetErr(role, id); err != nil {
+		return err
 	}
 	if err := h.setWatched("models."+role, id); err != nil {
 		return err
@@ -2047,7 +2045,7 @@ func (h *Host) modelSetErr(role, id string) error {
 		return err
 	}
 	prov, _, _ := strings.Cut(id, "/")
-	if _, ok := h.Providers.Lookup(prov); !ok {
+	if _, ok := h.Providers.Lookup(prov); !ok && id != "" {
 		return usageError{h.modelErr(id)}
 	}
 	return nil
@@ -2081,8 +2079,9 @@ func (h *Host) ProfileModelErr() error {
 }
 
 // setWatched writes a config key from any goroutine: the watches it fires
-// run later on the interpreter queue.
-func (h *Host) setWatched(path, val string) error {
+// run later on the interpreter queue. It checks only the kind: SetConfig
+// sends a key with a setter of its own there first.
+func (h *Host) setWatched(path string, val any) error {
 	fired, err := h.Settings.SetQuiet(path, val)
 	if err != nil {
 		return err

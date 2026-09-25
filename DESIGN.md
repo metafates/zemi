@@ -627,8 +627,12 @@ A key whose `set` line was deleted returns to its default on that reload, unless
 `memory.autonomy` (§10.4) is one of them like `permissions.mode`: user
 config may raise it, project and plugin code may not, and the
 model's `lua` tool asks before any such call. Persistent config changes are edits to
-files in the config dir (the user's, or the agent's through the
-permission-gated file tools); zemi makes no commits.
+files in the config dir (the user's, `/config save`, or the agent's through the
+permission-gated file tools); zemi makes no commits. `/config save` writes only
+the keys a runtime pick moved off what init.lua left: it rewrites the literal of a
+key's one top-level `zemi.config.set` line, appends a key no line names to a
+`-- zemi: saved from /config` block at the end of init.lua, and leaves a key set by
+code or twice alone, so no user line but that literal ever changes.
 
 Permission rules are data with one API and an optional principal:
 

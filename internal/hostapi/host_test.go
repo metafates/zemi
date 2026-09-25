@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -521,6 +522,69 @@ func TestConfigSetGating(t *testing.T) {
 	`)
 	if v, ok := h.Settings.Get("ui.composer.history"); !ok || v != 42 {
 		t.Fatalf("ui.composer.history = %v, want 42", v)
+	}
+}
+
+// TestSaveInit pins /config save: it changes only the literal of a key's
+// one set line or the managed block, and never writes over code or a file
+// that changed since it was read.
+func TestSaveInit(t *testing.T) {
+	theme, effort := cfgLine{"ui.theme", `"dark"`}, cfgLine{"agent.effort", `"high"`}
+	for _, c := range []struct {
+		name      string
+		src, disk string // what save read, and the file when it writes; disk "" is src
+		sets      []cfgLine
+		want      string // the file after; "" is unchanged
+		skipped   string
+		link, err bool
+	}{
+		{name: "the one set line gets the new literal, through a link", link: true,
+			src:  "-- zemi.config.set(\"ui.theme\", \"old\")\nzemi.config.set(\"ui.theme\", 'whorl') -- mine\n",
+			sets: []cfgLine{theme},
+			want: "-- zemi.config.set(\"ui.theme\", \"old\")\nzemi.config.set(\"ui.theme\", \"dark\") -- mine\n"},
+		{name: "a key no line names starts the block at the end",
+			src:  "a()",
+			sets: []cfgLine{effort},
+			want: "a()\n\n" + cfgBlockStart + "\nzemi.config.set(\"agent.effort\", \"high\")\n" + cfgBlockEnd + "\n"},
+		{name: "a new key joins the block and a key in it is rewritten there",
+			src:  "a()\n\n" + cfgBlockStart + "\nzemi.config.set(\"ui.theme\", \"x\")\n" + cfgBlockEnd + "\nb()\n",
+			sets: []cfgLine{theme, effort},
+			want: "a()\n\n" + cfgBlockStart + "\nzemi.config.set(\"ui.theme\", \"dark\")\nzemi.config.set(\"agent.effort\", \"high\")\n" + cfgBlockEnd + "\nb()\n"},
+		{name: "a key set by code, indented or twice is left alone",
+			src:     "zemi.config.set(\"models.chat\", m)\nif x then\n  zemi.config.set(\"ui.theme\", \"a\")\nend\nzemi.config.set(\"agent.effort\", \"low\")\nzemi.config.set(\"agent.effort\", \"high\")\n",
+			sets:    []cfgLine{{"models.chat", `"p/m"`}, theme, effort},
+			skipped: "models.chat ui.theme agent.effort"},
+		{name: "a file that changed since the read is refused",
+			src: "zemi.config.set(\"ui.theme\", \"a\")\n", disk: "edited()\n", sets: []cfgLine{theme}, err: true},
+	} {
+		dir := t.TempDir()
+		path, disk := filepath.Join(dir, "init.lua"), cmp.Or(c.disk, c.src)
+		file := path
+		if c.link {
+			file = filepath.Join(dir, "dotfiles.lua")
+			if err := os.Symlink(file, path); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.WriteFile(file, []byte(disk), 0o640); err != nil {
+			t.Fatal(err)
+		}
+		_, skipped, err := saveInit(path, []byte(c.src), c.sets)
+		got, _ := os.ReadFile(file)
+		st, _ := os.Lstat(path)
+		switch {
+		case (err != nil) != c.err:
+			t.Errorf("%s: err %v", c.name, err)
+		case string(got) != cmp.Or(c.want, disk):
+			t.Errorf("%s: file\n%s", c.name, got)
+		case strings.Join(skipped, " ") != c.skipped:
+			t.Errorf("%s: skipped %q", c.name, skipped)
+		case c.link && st.Mode()&os.ModeSymlink == 0:
+			t.Errorf("%s: the link was replaced", c.name)
+		}
+		if fi, _ := os.Stat(file); fi.Mode().Perm() != 0o640 {
+			t.Errorf("%s: mode %v", c.name, fi.Mode())
+		}
 	}
 }
 

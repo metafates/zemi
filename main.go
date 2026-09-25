@@ -364,12 +364,8 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				return nil
 			case "default":
 				args = ""
-			case "low", "medium", "high":
-			default:
-				return hostapi.Usagef("unknown effort %q (want low, medium, high or default)", args)
 			}
-			_, err := h.Settings.SetQuiet("agent.effort", args)
-			return err
+			return h.SetConfig("agent.effort", args)
 		}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} }},
 		{Name: "profile", NArgs: "?", Desc: "choose the agent profile: model, prompt and tools", GoFn: func(h *hostapi.Host, args string) error {
 			if args = strings.TrimSpace(args); args == "" {

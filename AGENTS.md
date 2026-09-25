@@ -145,6 +145,17 @@ times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, `/prof
 cycle and the flags survive a reload until the config changes that key. A key the config stopped
 writing returns to its schema default, unless a runtime pick moved it since.
 
+`/config` (hostapi/configcmd.go) is a `Reload` list of every schema key by section, tagged by
+`cfgSource`: `init.lua` when the live value is config's last write, `unsaved` when a runtime
+pick moved it off that or off the default. Every runtime write goes through `Host.SetConfig`,
+which sends `models.*`, `permissions.mode`, `agent.profile` and `ui.theme` through their own
+setters and checks `agent.effort`, and fires the key's watches (`setWatched`). `config lua`
+shows the keys off their default as `zemi.config.set` lines; `config save` (`saveInit`) writes
+the unsaved ones: the literal of a key's one top-level set line rewritten in place, a key no
+line names appended to the `-- zemi: saved from /config` block at the end, one set by code or
+twice left alone, through a temp file renamed over init.lua (its target when it is a link) and
+refused when the file changed since it was read. Under `-p` only `config set` runs.
+
 ## Architecture and control flow
 
 `main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `steps` in main.go),
@@ -597,8 +608,7 @@ lua-language-server is installed.
   `gateMemory` like the `memory` tool's (stored at once under `memory.autonomy = "auto"` when
   policy-clean, queued for `/memory` otherwise, a quote not in the session dropped, DESIGN
   §10.4); an entry with empty text and `replaces` queues a forget proposal, never auto-applied.
-  There is no config-patch pipeline and no `/config` command, the agent edits config files
-  directly. `digestFor()` renders every live memory, newest first per scope, under
+  There is no config-patch pipeline, the agent edits config files directly. `digestFor()` renders every live memory, newest first per scope, under
   `learn.ScopeBudget` (3 KB per scope); no search, no ranking.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides real

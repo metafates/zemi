@@ -125,6 +125,7 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- zemi.config.set("models.titles", "anthropic/claude-haiku-4-5-20251001")
 
 -- Settings: zemi.config.schema() lists every one with its default.
+-- /config lists every setting and can save what you pick here.
 -- zemi.config.set("ui.theme", "whorl-light")
 
 -- Keys: <leader> is keymap.leader (ctrl+x). The right-hand side is a

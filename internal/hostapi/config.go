@@ -130,6 +130,23 @@ func (h *Host) cfgSettle() {
 	}
 }
 
+// cfgSource says where path's live value comes from: "init.lua" when it is
+// what config last wrote, "unsaved" when a runtime pick moved it off that or
+// off a default config never wrote, "" at that default.
+func (h *Host) cfgSource(path string) string {
+	h.cfgMu.Lock()
+	defer h.cfgMu.Unlock()
+	live, _ := h.Settings.Get(path)
+	want, source := h.Settings.Default(path), ""
+	if w := h.cfgNow[path]; len(w) > 0 {
+		want, source = w[len(w)-1], "init.lua"
+	}
+	if !reflect.DeepEqual(live, want) {
+		return "unsaved"
+	}
+	return source
+}
+
 func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 

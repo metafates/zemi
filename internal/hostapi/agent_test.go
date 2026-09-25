@@ -200,7 +200,8 @@ func TestPermissionRuleValidation(t *testing.T) {
 
 // TestReloadKeepsRuntimePicks: a reload whose config writes what the last
 // load wrote keeps a value picked at runtime, config writing one key
-// several times included; an edited config value wins.
+// several times included; an edited config value wins. /config tags the
+// value by where it came from.
 func TestReloadKeepsRuntimePicks(t *testing.T) {
 	dir, log := t.TempDir(), logging.New(t.TempDir())
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
@@ -213,17 +214,18 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		name       string
 		config     []string // what init.lua sets models.chat to, in order
 		pick, want string
+		source     string // cfgSource after the reload
 	}{
-		{"first load applies config", []string{"p/a"}, "", "p/a"},
-		{"unchanged config keeps a pick", []string{"p/a"}, "p/b", "p/b"},
-		{"edited config wins over a pick", []string{"p/c"}, "p/b", "p/c"},
-		{"a second set of the same key applies", []string{"p/c", "p/d"}, "", "p/d"},
-		{"an unchanged double set keeps a pick", []string{"p/c", "p/d"}, "p/e", "p/e"},
-		{"editing the second set wins", []string{"p/c", "p/f"}, "p/e", "p/f"},
-		{"dropping the second set wins", []string{"p/c"}, "p/e", "p/c"},
-		{"a pick outlives the last set", nil, "p/e", "p/e"},
-		{"a set comes back", []string{"p/c"}, "", "p/c"},
-		{"dropping every set returns the default", nil, "", ""},
+		{"first load applies config", []string{"p/a"}, "", "p/a", "init.lua"},
+		{"unchanged config keeps a pick", []string{"p/a"}, "p/b", "p/b", "unsaved"},
+		{"edited config wins over a pick", []string{"p/c"}, "p/b", "p/c", "init.lua"},
+		{"a second set of the same key applies", []string{"p/c", "p/d"}, "", "p/d", "init.lua"},
+		{"an unchanged double set keeps a pick", []string{"p/c", "p/d"}, "p/e", "p/e", "unsaved"},
+		{"editing the second set wins", []string{"p/c", "p/f"}, "p/e", "p/f", "init.lua"},
+		{"dropping the second set wins", []string{"p/c"}, "p/e", "p/c", "init.lua"},
+		{"a pick outlives the last set", nil, "p/e", "p/e", "unsaved"},
+		{"a set comes back", []string{"p/c"}, "", "p/c", "init.lua"},
+		{"dropping every set returns the default", nil, "", "", ""},
 	} {
 		src := ""
 		for _, v := range c.config {
@@ -242,6 +244,9 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		}
 		if got, _ := h.Settings.Get("models.chat"); got != c.want {
 			t.Errorf("%s: models.chat = %v, want %s", c.name, got, c.want)
+		}
+		if got := h.cfgSource("models.chat"); got != c.source {
+			t.Errorf("%s: source %q, want %q", c.name, got, c.source)
 		}
 	}
 }
