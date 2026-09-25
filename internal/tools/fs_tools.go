@@ -1188,7 +1188,7 @@ func ListFiles(root string, limit int) []string {
 	}
 	if !ripgrep(context.Background(), root, collect, "--files") {
 		files = files[:0]
-		walk(context.Background(), root, func(_, rel string) error {
+		_ = walk(context.Background(), root, func(_, rel string) error {
 			if !collect(rel) {
 				return filepath.SkipAll
 			}

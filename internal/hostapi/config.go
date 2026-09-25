@@ -120,7 +120,9 @@ func (h *Host) cfgSettle() {
 	h.cfgRotate()
 	for path, prev := range h.cfgPrev {
 		if live, _ := h.Settings.Get(path); len(prev) > 0 && len(h.cfgNow[path]) == 0 && reflect.DeepEqual(live, prev[len(prev)-1]) {
-			h.Settings.SetQuiet(path, h.Settings.Default(path))
+			if _, err := h.Settings.SetQuiet(path, h.Settings.Default(path)); err != nil {
+				h.Log.Warn("config", "settle failed", map[string]any{"path": path, "error": err.Error()})
+			}
 		}
 	}
 	for path, now := range h.cfgNow {

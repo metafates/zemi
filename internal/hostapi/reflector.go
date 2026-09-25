@@ -233,13 +233,18 @@ func (h *Host) clampReflectSeen(sid string, n int) {
 // marker keeps the result, on failure a later run retries; a crash leaves
 // it to the lease. n is the message count the claim covers.
 func (h *Host) reflectClaimed(sid, claim string, n int) bool {
+	release := func() {
+		if _, err := h.DB.DelKV(claim); err != nil {
+			h.Log.Warn("reflector", "claim not released; its lease ends it", map[string]any{"session": sid, "error": err.Error()})
+		}
+	}
 	if !h.reflectMu.TryLock() {
 		h.Log.Debug("reflector", "run skipped: another run is active", map[string]any{"session": sid})
-		h.DB.DelKV(claim)
+		release()
 		return false
 	}
 	defer h.reflectMu.Unlock()
-	defer h.DB.DelKV(claim)
+	defer release()
 	ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
 	defer cancel()
 	defer h.Busy("Reflecting", cancel)()

@@ -477,7 +477,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 	}))
 
 	tb.RawSetString("help", L.NewFunction(func(L *glua.LState) int {
-		h.OpenHelp()
+		_ = h.OpenHelp() // headless there is nothing to open it on, like every overlay
 		return 0
 	}))
 

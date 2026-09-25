@@ -435,7 +435,7 @@ func listMove(key string) int {
 // runRHS executes a keymap right-hand side on the background worker.
 func (a *App) runRHS(b *hostapi.KeyBinding) {
 	a.background(func() {
-		a.host.RunRHS(context.Background(), b)
+		_ = a.host.RunRHS(context.Background(), b) // it reports its own failure
 		a.Refresh() // what it changed shows without waiting for another redraw
 	})
 }

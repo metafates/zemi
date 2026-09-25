@@ -40,7 +40,11 @@ linters:
         - (*net/http.Server).Close
         - (net.Listener).Close
         - (net.Conn).Close
+        - (*database/sql.DB).Close
+        - (*net/http.Server).Serve
         - (*github.com/metafates/zemi/internal/mcp.Client).Close
+        - (*github.com/metafates/zemi/internal/lsp.Client).Close
+        - (*github.com/metafates/zemi/internal/store.DB).Close
         - golang.org/x/sys/unix.Close
     exhaustive:
       default-signifies-exhaustive: true
@@ -55,7 +59,7 @@ linters:
       require-specific: true
   exclusions:
     rules:
-      - path: _test\.go
+      - path: (_test\.go|internal/mcp/mcptest/|internal/lsp/lsptest/)
         linters: [errcheck, unparam]
 issues:
   max-issues-per-linter: 0

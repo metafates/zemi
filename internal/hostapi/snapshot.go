@@ -92,12 +92,15 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 		sweepSnaps(tmp)
 		s.swept = true
 	}
-	os.MkdirAll(objs, 0o700)
+	if err := os.MkdirAll(objs, 0o700); err != nil {
+		return "", nil, ""
+	}
 	for retry := false; ; retry = true {
 		if _, err := os.Stat(warm); err != nil {
-			// a repository with no index yet starts from an empty one
+			// the user's index warms the first snapshot; without it (no index
+			// yet, a failed copy) git starts from an empty one
 			if data, err := os.ReadFile(index); err == nil {
-				os.WriteFile(warm, data, 0o600)
+				_ = os.WriteFile(warm, data, 0o600)
 			}
 		}
 		if _, err = h.gitEnv(root, env, append([]string{"add", "-A"}, snapPathspec...)...); err == nil {
