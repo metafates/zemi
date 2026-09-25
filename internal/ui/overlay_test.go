@@ -68,8 +68,8 @@ func TestReloadClosesLuaOverlays(t *testing.T) {
 // TestOverlayFilter: "/" starts a filter that narrows the rows (all words,
 // any case), backspace widens again, esc ends the filter before closing and
 // keeps the matched row, j moves outside a filter, and a new query selects
-// its first match, which enter runs. A row's hotkey runs it at once, except
-// in a filter, which takes the key.
+// its first match, which enter runs. A query matches a row's section too.
+// A row's hotkey runs it at once, except in a filter, which takes the key.
 func TestOverlayFilter(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	var items []any
@@ -120,6 +120,15 @@ func TestOverlayFilter(t *testing.T) {
 	a.overlayKey("3", "3")
 	if len(a.overlays) != 0 || a.composer.text != "gamma three" {
 		t.Fatalf("hotkey: overlays=%d composer=%q", len(a.overlays), a.composer.text)
+	}
+	a.openOverlay(hostapi.Overlay{ID: "f", Origin: lua.OriginBuiltin, Items: []any{
+		map[string]any{"text": "gpt", "section": "openai"},
+		map[string]any{"text": "sonnet", "section": "anthropic"},
+		map[string]any{"text": "opus", "section": "anthropic"},
+	}})
+	typeText("/anthropic")
+	if v := a.overlays[0].visible; !slices.Equal(v, []int{1, 2}) || strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20)), "openai") {
+		t.Fatalf("a section name narrows to its rows and drops the other header: %v", v)
 	}
 }
 
@@ -271,6 +280,16 @@ func TestOverlayNavigation(t *testing.T) {
 				}
 				return ""
 			}},
+		{"y copies a row's value in place of its text, and enter still runs the row",
+			hostapi.Overlay{Items: []any{map[string]any{"text": "gpt-5", "desc": "400k", "run": "nope", "copy": "openai/gpt-5\x1b[2J"}}}, nil,
+			func(a *App) string {
+				batch, _ := a.overlayKey("y", "")().(tea.BatchMsg)
+				if got := fmt.Sprint(batch[0]()); got != "openai/gpt-5" {
+					return fmt.Sprintf("y copied %q", got)
+				}
+				a.overlayKey("enter", "")
+				return map[bool]string{false: "enter did not run the row"}[len(a.overlays) == 0]
+			}},
 		{"an empty overlay shows its empty line and enter does nothing",
 			hostapi.Overlay{Empty: "Nothing to see."}, []string{"enter"},
 			func(a *App) string {
@@ -373,7 +392,7 @@ func TestOverlayNavigation(t *testing.T) {
 				return map[bool]string{false: "not back"}[len(a.overlays) == 1 && !a.overlays[0].back]
 			}},
 		{"a row that opens a screen leaves its list under it, for esc to come back to",
-			hostapi.Overlay{ID: "m", Items: []any{map[string]any{"text": "Roles", "verb": "open", "run": "nope"}}}, []string{"enter"},
+			hostapi.Overlay{ID: "m", Items: []any{map[string]any{"text": "Choose a model per role", "verb": "open", "run": "nope"}}}, []string{"enter"},
 			func(a *App) string { return map[bool]string{false: "closed"}[len(a.overlays) == 1] }},
 		{"a run action in a toggle list rebuilds the list",
 			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Toggle", "run": "nope"})}, Reload: func() ([]any, [][]hostapi.Segment) { reloads++; return []any{detail()}, nil }},
@@ -382,7 +401,7 @@ func TestOverlayNavigation(t *testing.T) {
 				return map[bool]string{false: "not rebuilt"}[len(a.overlays) == 1 && reloads == 1]
 			}},
 		{"space passes by a toggle list row with its own verb",
-			hostapi.Overlay{Items: []any{map[string]any{"text": "Roles", "verb": "open", "run": "nope"}}, Reload: func() ([]any, [][]hostapi.Segment) { spaced++; return nil, nil }},
+			hostapi.Overlay{Items: []any{map[string]any{"text": "Choose a model per role", "verb": "open", "run": "nope"}}, Reload: func() ([]any, [][]hostapi.Segment) { spaced++; return nil, nil }},
 			[]string{"space"},
 			func(a *App) string {
 				return map[bool]string{false: "space ran the row"}[len(a.overlays) == 1 && spaced == 0]

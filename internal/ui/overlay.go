@@ -23,7 +23,7 @@ import (
 type overlayState struct {
 	o     hostapi.Overlay
 	items []listItem // render_item's row when given, else the item's text
-	texts []string   // what the filter matches and y copies, per item
+	texts []string   // what the filter matches, per item: section, label and desc
 	listFilter
 	input composerState // text of an input overlay
 	body  viewport
@@ -196,7 +196,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		}
 		it.label = sanitize.Line(it.label) // a newline would break the box
 		st.items = append(st.items, it)
-		st.texts = append(st.texts, strings.TrimSpace(it.label+"  "+it.desc))
+		st.texts = append(st.texts, strings.TrimSpace(it.section+"  "+it.label+"  "+it.desc))
 	}
 	st.selected = o.Selected
 	st.refilter()
@@ -406,8 +406,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		case key == "enter" && hasDetail(m):
 			a.openDetail(st, idx)
 		case verb == "copy":
-			text, _ := m["copy"].(string)
-			return a.copied(text)
+			return a.copied(st.value(idx))
 		case st.back:
 			a.detailAction(idx)
 		case o.Reload != nil && fill == "":
@@ -449,15 +448,24 @@ func (a *App) copyOverlay(st *overlayState, all bool) tea.Cmd {
 		lines = []string{st.o.Body}
 	case all:
 		for _, i := range st.visible {
-			lines = append(lines, st.texts[i])
+			lines = append(lines, st.value(i))
 		}
 	case len(st.visible) > 0:
-		lines = append(lines, st.texts[st.visible[st.selected]])
+		lines = append(lines, st.value(st.visible[st.selected]))
 	}
 	if len(lines) == 0 {
 		return nil
 	}
 	return a.copied(strings.Join(lines, "\n"))
+}
+
+// value is what y copies of item i: its copy field, else its row.
+func (st *overlayState) value(i int) string {
+	m, _ := st.o.Items[i].(map[string]any)
+	if s, _ := m["copy"].(string); s != "" {
+		return sanitize.String(s)
+	}
+	return strings.TrimSpace(st.items[i].label + "  " + st.items[i].desc)
 }
 
 // inputKey edits an input overlay's line; enter submits, esc cancels.
