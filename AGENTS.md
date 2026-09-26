@@ -173,8 +173,8 @@ global store's kv as `config:<path>`, or deletes the row when the value is `cfgB
 last write when init.lua wrote the key, else the default). It keeps nothing while booting or
 before `Host.KeepPicks`, which main turns on after the TUI's flags apply, so a flag, `-p` and
 `--health` keep none, and never a mode whose base is yolo (never fail open across restarts).
-`NewHost` applies the rows before any Lua (`loadPicks`, each through `Settings.Check`), so
-init.lua still wins; per user, not per project.
+`NewHost` applies the rows before any Lua (`loadPicks`, each through `Settings.Check`, a yolo
+row left out since user Lua can write kv directly), so init.lua still wins; per user, not per project.
 
 `/config` (hostapi/configcmd.go) is a `Reload` list of every schema key by section, each
 description led by its `cfgSource` (`init.lua` when the live value is config's last write;

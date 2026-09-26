@@ -236,6 +236,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		source   string // cfgSource after the reload
 		keep     bool   // KeepPicks for the pick: off is a flag's
 		restart  bool   // a new zemi instead of a reload
+		row      string // a kv row written straight to the global store before the restart
 	}{
 		{name: "first load applies config", config: []any{"p/a"}, want: "p/a", source: "init.lua"},
 		{name: "unchanged config keeps a pick", config: []any{"p/a"}, pick: "p/b", want: "p/b", source: "this run"},
@@ -259,6 +260,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		{name: "reset forgets it", pick: "reset", keep: true, want: "", source: "default"},
 		{name: "for good", restart: true, want: "", source: "default"},
 		{name: "yolo is not saved", key: "permissions.mode", pick: "yolo", keep: true, restart: true, want: "auto", source: "default"},
+		{name: "nor loaded", key: "permissions.mode", row: `"yolo"`, restart: true, want: "auto", source: "default"},
 		{name: "a flag is not saved", pick: "p/z", restart: true, want: "", source: "default"},
 	} {
 		key := cmp.Or(c.key, "models.chat")
@@ -278,6 +280,11 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 			}
 		default:
 			if err := h.SetConfig(key, c.pick); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if c.row != "" {
+			if err := h.GlobalDB.SetKV("config:"+key, c.row); err != nil {
 				t.Fatal(err)
 			}
 		}
