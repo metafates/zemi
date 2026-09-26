@@ -354,7 +354,7 @@ files, one naming an existing secret-shaped file. Known ceiling: the sandbox pol
 can write code and run it unattended, rewrite any project file and read what the policy does
 not hide, outside the project too. In an untrusted project both modes settle only `ReadCommand`
 commands (every program only reads, named without a path; no builds, no git) and auto settles
-no writes. In a trusted project with no sandbox backend auto still settles jail writes, but
+no project writes (a `madePlugins` plugin is in no project). In a trusted project with no sandbox backend auto still settles jail writes, but
 commands settle only when `ReadCommand` holds, since an approved one would run unconfined.
 
 **Sandbox** (internal/sandbox, internal/hostapi/sandbox.go, DESIGN §9): a `tool.bash` verdict a

@@ -99,7 +99,9 @@ func TestPluginCreationGrant(t *testing.T) {
 	h.Dirs.DataHome = t.TempDir()
 	local := filepath.Join(perm.RealPath(h.Dirs.DataHome), "plugins", "local")
 	h.pluginsRoot = func() string { return filepath.Dir(local) }
-	os.MkdirAll(filepath.Join(local, "y"), 0o755)
+	if err := os.MkdirAll(filepath.Join(local, "y"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	h.SetPermMode("auto")
 	ui := &fakeUI{askBy: "user"}
 	h.SetUIHooks(ui)

@@ -80,7 +80,7 @@ At a prompt `y` allows once, `a` for the session (a command's program, with its 
 
 Modes: `permissions.mode`, `/mode` (a picker without a name), ctrl+y (yolo until pressed again), `--mode`.
 
-- `auto` (default): reads and edits inside the project run. In a trusted project with a sandbox every command runs sandboxed with no approval, except bulk deletes (`rm -rf`, `git clean`, `find -delete`, ...), git commands that write `.git`, and on Linux one naming a secret-shaped file. Writes to `.git`, `.agents/init.lua`, `.agents/lua/` or zemi's own dirs (but a local plugin whose creating write you approved, until zemi exits), `fetch`, `web_search` and MCP tools the server does not mark read-only need the user's approval. In an untrusted project, or with no sandbox (`/health` sandbox row), only commands that just read run on their own, and untrusted auto edits nothing.
+- `auto` (default): reads and edits inside the project run. In a trusted project with a sandbox every command runs sandboxed with no approval, except bulk deletes (`rm -rf`, `git clean`, `find -delete`, ...), git commands that write `.git`, and on Linux one naming a secret-shaped file. Writes to `.git`, `.agents/init.lua`, `.agents/lua/` or zemi's own dirs (but a local plugin whose creating write you approved, until zemi exits), `fetch`, `web_search` and MCP tools the server does not mark read-only need the user's approval. In an untrusted project, or with no sandbox (`/health` sandbox row), only commands that just read run on their own, and untrusted auto edits no project file.
 - `yolo`: allows everything the rules leave open; deny rules still apply. Suggest it only when the user asks.
 - Custom modes (`zemi.permission.mode.add`): zemi-customize.
 

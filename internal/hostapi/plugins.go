@@ -138,9 +138,9 @@ func (h *Host) sweepPluginState(ps []plugins.Plugin) {
 }
 
 // localPlugins holds the plugins the user develops in place: auto mode and
-// plain commands read it, and writes to it always ask. It is no read jail,
-// which would let every plugin's and a trusted project's zemi.fs.read reach
-// them all.
+// plain commands read it, and writes to it ask unless its creation was
+// allowed (madePlugin). It is no read jail, which would let every plugin's
+// and a trusted project's zemi.fs.read reach them all.
 func (h *Host) localPlugins() string {
 	return filepath.Join(h.Dirs.PluginsRoot(), "local")
 }
