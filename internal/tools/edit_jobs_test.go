@@ -110,17 +110,19 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 	}
 	for _, c := range []struct {
 		name, out      string
-		plan           bool
+		plan, offline  bool
 		want, unwanted []string
 	}{
-		{"network already given", network, false, []string{"sandbox: false", "the project read-only"}, []string{"no network", "network: true"}},
-		{"network already given while planning", network, true, []string{"the project read-only"}, []string{"no network", "network: true", "sandbox: false"}},
-		{"system temp", "/bin/sh: /tmp/x: Operation not permitted", false, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead; sandbox: false only if"}, nil},
-		{"system temp while planning", "mktemp: mkstemp failed on /var/folders/x/T/a.XXXX: Operation not permitted", true, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead."}, []string{"sandbox: false", "network: true"}},
+		{"network already given", network, false, false, []string{"sandbox: false", "the project read-only"}, []string{"no network", "network: true"}},
+		{"network already given while planning", network, true, false, []string{"the project read-only"}, []string{"no network", "network: true", "sandbox: false"}},
+		{"system temp", "/bin/sh: /tmp/x: Operation not permitted", false, false, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead. If it needs more"}, nil},
+		{"system temp while planning", "mktemp: mkstemp failed on /var/folders/x/T/a.XXXX: Operation not permitted", true, false, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead."}, []string{"sandbox: false", "network: true"}},
+		{"system temp and no network", "downloading into /tmp/cache\n" + network, false, true, []string{"use $TMPDIR", "network failure: call it again with network: true"}, nil},
+		{"project under the system temp", "fatal: Unable to create '/tmp/proj/.git/index.lock': Operation not permitted", false, false, []string{"sandbox: false"}, []string{"/tmp is not writable"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p := &Pipeline{SandboxParam: true, Plan: func() bool { return c.plan }}
-			hint := p.sandboxHint(&sandbox.Policy{Network: true, Write: []string{"/pad/s1"}, Env: map[string]string{"TMPDIR": "/pad/s1"}}, c.out, denied)
+			hint := p.sandboxHint(&sandbox.Policy{Network: !c.offline, Write: []string{"/pad/s1", "/private/tmp/proj"}, Env: map[string]string{"TMPDIR": "/pad/s1"}}, c.out, denied)
 			for _, w := range c.want {
 				if !strings.Contains(hint, w) {
 					t.Errorf("hint lacks %q: %s", w, hint)

@@ -411,25 +411,25 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 		return ""
 	}
 	limits := policyLimits(pol)
-	if pol != nil && len(pol.Write) > 0 {
+	var write []string
+	if pol != nil {
+		write = pol.Write
+	}
+	if len(write) > 0 {
 		// the exact paths, so a retry does not guess at a sibling of the
 		// scratchpad or a temp dir the policy never named
-		limits += ". Writable: " + strings.Join(pol.Write, ", ") + ", and what is below them"
+		limits += ". Writable: " + strings.Join(write, ", ") + ", and what is below them"
 	}
 	network := pol != nil && pol.Network
 	plan := p.Plan != nil && p.Plan()
 	head := "\nThe sandbox may have blocked this: " + limits + "."
-	if sandbox.LikelyTemp(out, err) {
+	if sandbox.LikelyTemp(out, err, write) {
 		// the fix the model can make without an ask comes first
 		dir := "$TMPDIR"
 		if pol != nil && pol.Env["TMPDIR"] != "" {
 			dir += " (" + pol.Env["TMPDIR"] + ", the scratchpad)"
 		}
-		escape := "."
-		if p.SandboxParam && !plan {
-			escape = "; sandbox: false only if a program hardcodes /tmp."
-		}
-		return head + " /tmp is not writable here: use " + dir + " instead" + escape
+		head += " /tmp is not writable here: use " + dir + " instead."
 	}
 	// sandbox: false is denied for a read-only agent, so it is not offered
 	if !p.SandboxParam || plan && network {

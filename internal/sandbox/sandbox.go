@@ -146,14 +146,24 @@ func LikelyNetwork(out string, err error) bool {
 	return network.MatchString(out[max(0, len(out)-deniedTail):] + "\n" + err.Error())
 }
 
-// systemTemp matches a path in the shared temp dirs; the leading separator
-// keeps a project's own tmp/ out.
-var systemTemp = regexp.MustCompile(`(^|[\s'"=:(])/(private/)?tmp/|/var/folders/`)
+// systemTemp matches a path in the shared temp dirs that starts a word, so a
+// project's own tmp/ is not one.
+var systemTemp = regexp.MustCompile(`(?:^|[\s'"=:(])((?:/private)?/(?:tmp|var/folders)/[^\s'":)]*)`)
 
-// LikelyTemp reports a denial naming the system temp dir, which the
-// policy's own $TMPDIR would fix.
-func LikelyTemp(out string, err error) bool {
-	return LikelyDenied(out, err) && systemTemp.MatchString(out[max(0, len(out)-deniedTail):])
+// LikelyTemp reports a denial naming a system temp path outside the write
+// roots, which the policy's own $TMPDIR would fix. /private is dropped on
+// both sides, since macOS output names /tmp and a resolved root /private/tmp.
+func LikelyTemp(out string, err error, write []string) bool {
+	if !LikelyDenied(out, err) {
+		return false
+	}
+	for _, m := range systemTemp.FindAllStringSubmatch(out[max(0, len(out)-deniedTail):], -1) {
+		path := strings.TrimPrefix(m[1], "/private")
+		if !slices.ContainsFunc(write, func(w string) bool { return within(path, strings.TrimPrefix(w, "/private")) }) {
+			return true
+		}
+	}
+	return false
 }
 
 // within reports whether p is root or below it, on the strings as given:
