@@ -211,8 +211,8 @@ func notifyStyle(setting string, env func(string) string, goos string, has func(
 	default:
 		return setting, "set in config"
 	}
-	// tmux drops OSC 9 unless allow-passthrough is on
-	if env("TMUX") == "" {
+	// tmux, GNU screen and zellij drop OSC 9 unless it is passed through
+	if env("TMUX") == "" && env("STY") == "" && env("ZELLIJ") == "" {
 		for _, k := range []string{"TERM_PROGRAM", "TERM"} {
 			if v := env(k); slices.Contains(oscTerms, v) {
 				return "osc", "auto: " + k + "=" + v

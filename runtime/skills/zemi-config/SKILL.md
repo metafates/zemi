@@ -61,7 +61,7 @@ Roles: `models.chat` runs the conversation, `/btw`, the idle recap and every rol
   A builtin catalog model runs at its catalog default when unset, else the nearest level it lists, and gets none when it lists none; any other model gets the pick, or no effort when unset.
 - `web.search_url`: a SearXNG endpoint with the json format on; empty uses DuckDuckGo Lite, which some networks answer with a bot check.
 - `memory.autonomy`: `auto` stores policy-clean memories at once, `ask` queues every one for `/memory` (zemi-learning).
-- `ui.notify`: how zemi alerts while its window is unfocused: `osc` (OSC 9, which iTerm2, Ghostty, WezTerm and kitty show; tmux drops it without passthrough), `native` (osascript on macOS, notify-send on Linux; a bell when neither is found), `bell` or `off`. `auto` picks osc for a terminal known to show it outside tmux, else native on this machine, else a bell; the `/health` notify row names the pick and why.
+- `ui.notify`: how zemi alerts while its window is unfocused: `osc` (OSC 9, which iTerm2, Ghostty, WezTerm and kitty show; tmux, screen and zellij drop it without passthrough), `native` (osascript on macOS, notify-send on Linux; a bell when neither is found), `bell` or `off`. `auto` picks osc for a terminal known to show it outside those multiplexers, else native on this machine, else a bell; the `/health` notify row names the pick and why.
 - `editor.command`: the editor for ctrl+g and `zemi.ui.edit`; empty uses `$VISUAL`, then `$EDITOR`, then vi.
 - `permissions.mode`, `permissions.env_keep`: under Permissions.
 
