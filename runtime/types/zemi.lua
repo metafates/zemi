@@ -780,7 +780,7 @@ function zemi.event.stats() end
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
 ---@field todos zemi.Todo[]
 ---@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
----@field included zemi.Included What a send carries. Cached: rebuilt after a boot or reload, a trust change, a new session, a skill toggle and a memory write.
+---@field included zemi.Included What a send carries. Cached: rebuilt after a boot or reload, a trust change, a new session, a skill toggle or recipe delete, and a memory write.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean

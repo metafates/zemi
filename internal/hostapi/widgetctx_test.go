@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -167,7 +168,7 @@ func TestTableSegments(t *testing.T) {
 }
 
 // TestIncludedCached: ctx.included reads the recipes dir and the store once,
-// not per render, and again after a memory write.
+// not per render, and again after a memory write through this host.
 func TestIncludedCached(t *testing.T) {
 	h, r := newTestHostSkills(t)
 	h.SetProjectTrusted(true)
@@ -180,8 +181,18 @@ func TestIncludedCached(t *testing.T) {
 		want string
 	}{
 		{"first render", func() {}, "0 0"},
-		{"a recipe alone is not rescanned", func() { writeSkill(t, h.recipesDir(), "rig", "recipe rig", "") }, "0 0"},
-		{"a memory write reads again", func() { learnedMemory(t, h, store.ScopeUser, "the user prefers short replies", "") }, "1 1"},
+		{"a recipe or another handle's memory is not reread", func() {
+			writeSkill(t, h.recipesDir(), "rig", "recipe rig", "")
+			other, err := store.Open(filepath.Join(h.Dirs.StateHome, "zemi.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer other.Close()
+			if err := other.AddMemory(&store.Memory{Scope: store.ScopeUser, Text: "the user works late", ProvenanceSessionID: "seed", Origin: store.OriginLearned}); err != nil {
+				t.Fatal(err)
+			}
+		}, "0 0"},
+		{"a memory write reads again", func() { learnedMemory(t, h, store.ScopeUser, "the user prefers short replies", "") }, "2 1"},
 	} {
 		c.do()
 		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("inc"), 20, 1, UIState{})

@@ -1563,9 +1563,10 @@ type included struct {
 }
 
 // includedData is cached, since the splash renders every frame while a job
-// runs: rebuilt after SetProjectTrusted (every boot and reload runs it), a
-// session close, a skill toggle or recipe delete, and a memory write.
-// NOTE: a file written outside zemi while the splash shows waits for one of those.
+// runs: rebuilt after a reload, a trust change, a session close, a skill
+// toggle or recipe delete, and a memory write through this process.
+// NOTE: a file written outside zemi, or a memory another zemi process writes
+// to the shared store, waits for one of those.
 func (h *Host) includedData() included {
 	var gen uint64
 	for _, db := range []*store.DB{h.GlobalDB, h.DB} {
@@ -2057,6 +2058,7 @@ func (h *Host) PurgeGeneration() {
 	h.stops.purge()
 	h.mcp.park()
 	h.lsp.stopAll()
+	h.includedStale.Store(true)
 	// An overlay left open would keep drawing with callbacks that are now
 	// dropped (submitOverlay), which reads as a frozen picker.
 	if ui := h.hooks(); ui != nil {
