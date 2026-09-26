@@ -63,6 +63,17 @@ linters:
     rules:
       - path: (_test\.go|internal/mcp/mcptest/|internal/lsp/lsptest/)
         linters: [errcheck, unparam]
+# golines left out: at any width it rewrites long calls into shapes that
+# read worse than the line it split
+formatters:
+  enable: [gofumpt, goimports, gci]
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes: [github.com/metafates/zemi]
+    gci:
+      sections: [standard, default, localmodule]
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

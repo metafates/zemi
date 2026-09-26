@@ -28,8 +28,9 @@ lint:
 	@if command -v $(GOLANGCI) >/dev/null; then $(GOLANGCI) run ./...; \
 	else echo "lint: $(GOLANGCI) not installed, skipped (GOLANGCI=/path/to/golangci-lint to point at one)"; fi
 
+# golangci-lint's formatters (gofumpt, goimports, gci); gofmt alone without it
 fmt:
-	gofmt -w $(GO_FILES)
+	@if command -v $(GOLANGCI) >/dev/null; then $(GOLANGCI) fmt ./...; else gofmt -w $(GO_FILES); fi
 	@if command -v $(STYLUA) >/dev/null; then $(STYLUA) runtime; fi
 
 # regenerate internal/ui/testdata/*.golden, then review the diff
