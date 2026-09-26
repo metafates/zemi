@@ -131,6 +131,23 @@ const (
 
 var PreVerdicts = []PreVerdict{PreDeny, PreHalt, PreRewrite}
 
+// VerdictResponse is the result a deny or a halt leaves the model; done is
+// false for any other verdict, which lets the call on. A halt is a result,
+// not a Go error: that would fail the step and drop the calls that already
+// ran in it from the history.
+func VerdictResponse(v PreVerdict, reason string) (resp fantasy.ToolResponse, done bool) {
+	switch v {
+	case PreDeny:
+		return fantasy.NewTextErrorResponse("denied by hook: " + reason), true
+	case PreHalt:
+		resp = fantasy.NewTextErrorResponse("halted by hook: " + reason)
+		resp.StopTurn = true
+		return resp, true
+	default:
+		return resp, false
+	}
+}
+
 // PreHook runs the tool.pre Lua events. Rewritten carries the replacement
 // input (already shallow-merged over the original). Loosened reports a
 // rewrite decided by a non-user principal: on re-entry an allow decision
@@ -558,28 +575,20 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	pipe := t.pipe
 	if t.pipe.Pre != nil {
 		decision, reason, rewritten, loosened := t.pipe.Pre(t.info.Name, input)
-		switch decision {
-		case PreDeny:
-			return fantasy.NewTextErrorResponse("denied by hook: " + reason), nil
-		case PreHalt:
-			// a result, not a Go error: that would fail the step and drop
-			// the calls that already ran in it from the history
-			resp := fantasy.NewTextErrorResponse("halted by hook: " + reason)
-			resp.StopTurn = true
+		if resp, done := VerdictResponse(decision, reason); done {
 			return resp, nil
-		case PreRewrite:
-			if rewritten != nil {
-				// The rewritten input re-enters at the permission gate
-				// below (never skips it, DESIGN §6.4); a per-run pipeline
-				// copy keeps concurrent tools race-free.
-				if err := Validate(t.info, rewritten, false); err != nil {
-					return fantasy.NewTextErrorResponse("rewrite invalid: " + err.Error()), nil
-				}
-				input = rewritten
-				rp := *t.pipe
-				rp.RewriteLoosened = loosened
-				pipe = &rp
+		}
+		if decision == PreRewrite && rewritten != nil {
+			// The rewritten input re-enters at the permission gate below
+			// (never skips it, DESIGN §6.4); a per-run pipeline copy keeps
+			// concurrent tools race-free.
+			if err := Validate(t.info, rewritten, false); err != nil {
+				return fantasy.NewTextErrorResponse("rewrite invalid: " + err.Error()), nil
 			}
+			input = rewritten
+			rp := *t.pipe
+			rp.RewriteLoosened = loosened
+			pipe = &rp
 		}
 	}
 	start, run := time.Now(), *pipe

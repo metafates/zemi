@@ -849,17 +849,10 @@ func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool) {
 	var m map[string]any
 	_ = json.Unmarshal([]byte(input), &m)
 	decision, reason, _, _ := h.toolPreHook()(tool, m)
-	switch decision {
-	case tools.PreDeny:
-		return fantasy.NewTextErrorResponse("denied by hook: " + reason), true
-	case tools.PreRewrite:
+	if decision == tools.PreRewrite {
 		return fantasy.NewTextErrorResponse("refused: a tool.pre rewrite is not supported for the " + tool + " tool"), true
-	case tools.PreHalt:
-		resp := fantasy.NewTextErrorResponse("halted by hook: " + reason)
-		resp.StopTurn = true // as tools.Run: the step completes, the turn ends
-		return resp, true
 	}
-	return fantasy.ToolResponse{}, false
+	return tools.VerdictResponse(decision, reason)
 }
 
 // postNotify is preCheck's other half: these tools run outside
