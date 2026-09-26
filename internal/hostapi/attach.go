@@ -104,14 +104,17 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 			refused = append(refused, rel+": "+why)
 		}
 		// a FIFO blocks the turn, and an @word naming no file is just prose
-		f, fi, err := tools.OpenRegular(path)
-		if err != nil {
+		if fi, err := os.Stat(abs); err != nil || !fi.Mode().IsRegular() {
 			continue
 		}
-		// the model reads the file, so the model's rules apply
-		if !drop && h.Perm.Evaluate(perm.SubjectRead, abs, perm.PrincipalModel).Decision != perm.Allow {
-			f.Close()
+		// the model reads the file, so the model's rules apply, before it is
+		// opened: opening a device has effects
+		if !drop && h.Perm.Evaluate(perm.SubjectRead, h.projectAbs(rel), perm.PrincipalModel).Decision != perm.Allow {
 			note("reading it needs your approval")
+			continue
+		}
+		f, fi, err := tools.OpenRegular(path)
+		if err != nil {
 			continue
 		}
 		if fi.Size() > limit { // a huge file would be read whole first
