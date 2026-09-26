@@ -242,11 +242,7 @@ func checkKind(def Setting, val any) (any, error) {
 			if s == "default" && slices.Contains(def.Choices, "") {
 				return "", nil
 			}
-			words := make([]string, len(def.Choices))
-			for i, c := range def.Choices {
-				words[i] = cmp.Or(c, "default")
-			}
-			return nil, &ErrBadValue{Path: def.Path, Want: OrList(words), Got: s}
+			return nil, &ErrBadValue{Path: def.Path, Want: choiceList(def.Choices), Got: s}
 		}
 	case KindInt:
 		switch v := val.(type) {
@@ -263,9 +259,20 @@ func checkKind(def Setting, val any) (any, error) {
 		_, ok = val.(bool)
 	}
 	if !ok {
+		if def.Choices != nil {
+			return nil, &ErrBadValue{Path: def.Path, Want: choiceList(def.Choices)}
+		}
 		return nil, &ErrBadValue{Path: def.Path, Want: string(def.Kind)}
 	}
 	return val, nil
+}
+
+func choiceList(choices []string) string {
+	words := make([]string, len(choices))
+	for i, c := range choices {
+		words[i] = cmp.Or(c, "default")
+	}
+	return OrList(words)
 }
 
 // OrList joins words as "a, b or c".
