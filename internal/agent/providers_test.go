@@ -52,6 +52,7 @@ func TestCallOptions(t *testing.T) {
 	}{
 		{"a/claude", "high", "anthropic", "high"},
 		{"o/gpt", "low", "openai", "low"},
+		{"o/gpt", "", "openai", ""}, // the session's prompt_cache_key alone
 		{"c/deepseek", "medium", "openai-compat", "medium"},
 		{"g/gemini-3-pro", "high", "google", "high"},
 		{"or/anthropic/claude-sonnet-4", "high", "openrouter", "high"},
@@ -70,7 +71,7 @@ func TestCallOptions(t *testing.T) {
 		{"bg/lite", "", "google", "minimal"},
 		{"bg/lite", "high", "google", "low"},
 	} {
-		opts := r.CallOptions(c.model, r.Effort(c.model, c.pick))
+		opts := r.CallOptions(c.model, r.Effort(c.model, c.pick), "s1")
 		if c.key == "" {
 			if opts != nil {
 				t.Fatalf("%s %q: want no options, got %v", c.model, c.pick, opts)
@@ -82,6 +83,9 @@ func TestCallOptions(t *testing.T) {
 		}
 		if got := sentEffort(opts[c.key]); got != c.sent {
 			t.Fatalf("%s %q: sent %q, want %q", c.model, c.pick, got, c.sent)
+		}
+		if key := cacheKey(opts[c.key]); (c.key == "openai") != (key == "s1") {
+			t.Fatalf("%s %q: prompt_cache_key %q", c.model, c.pick, key)
 		}
 	}
 }
@@ -111,6 +115,20 @@ func sentEffort(o fantasy.ProviderOptionsData) string {
 	return strings.ToLower(*e)
 }
 
+func cacheKey(o fantasy.ProviderOptionsData) string {
+	var k *string
+	switch o := o.(type) {
+	case *openai.ProviderOptions:
+		k = o.PromptCacheKey
+	case *openai.ResponsesProviderOptions:
+		k = o.PromptCacheKey
+	}
+	if k == nil {
+		return ""
+	}
+	return *k
+}
+
 // TestCallOptionsBody: a spec's extra body fields ride every request, with
 // or without a reasoning effort.
 func TestCallOptionsBody(t *testing.T) {
@@ -119,7 +137,7 @@ func TestCallOptionsBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, effort := range []string{"", "high"} {
-		po, ok := r.CallOptions("c/m", effort)["openai-compat"].(*openaicompat.ProviderOptions)
+		po, ok := r.CallOptions("c/m", effort, "")["openai-compat"].(*openaicompat.ProviderOptions)
 		if !ok || po.ExtraBody["service_tier"] != "flex" {
 			t.Fatalf("effort %q: options %+v", effort, po)
 		}

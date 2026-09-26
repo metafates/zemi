@@ -93,7 +93,7 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 		Messages:        []fantasy.Message{agent.UserMessage(prompt)},
 		MaxOutputTokens: maxOut,
 		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
-		ProviderOptions: h.Providers.CallOptions(id, ""),
+		ProviderOptions: h.Providers.CallOptions(id, "", sid),
 	}
 	if retry != nil {
 		last := &agent.LastErr{LanguageModel: model}

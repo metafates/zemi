@@ -314,7 +314,6 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	kept, active := h.deferMCP(kept, loaded)
 	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), kept))
 	runner.ActiveTools = active
-	runner.ProviderOptions = h.Providers.CallOptions(modelID, h.Effort(modelID))
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)
 	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
@@ -351,6 +350,8 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		run.sessionID = sid
 		run.mu.Unlock()
 	}
+	// the run's own session keys its cache: its prompt is not the parent's
+	runner.ProviderOptions = h.Providers.CallOptions(modelID, h.Effort(modelID), sid)
 	seedLoaded(loaded, runner.History)
 	ctx = context.WithValue(ctx, runSessionKey{}, sid)
 	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid, ctx: ctx, base: base}

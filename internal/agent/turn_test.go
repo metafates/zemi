@@ -627,7 +627,7 @@ func TestRegistryConcurrentReload(t *testing.T) {
 	})
 	for range 100 {
 		r.HasKey("p1")
-		r.CallOptions("p1/m", "high")
+		r.CallOptions("p1/m", "high", "")
 	}
 	wg.Wait()
 }
@@ -756,7 +756,7 @@ func TestOpenAIResponses(t *testing.T) {
 		var history []fantasy.Message
 		for _, text := range []string{"hi", "again"} {
 			r := NewRunner(rec, nil, "sys")
-			r.History, r.Hooks, r.ProviderOptions = history, newRecHooks(), reg.CallOptions(c.model, "")
+			r.History, r.Hooks, r.ProviderOptions = history, newRecHooks(), reg.CallOptions(c.model, "", "")
 			r.Persist = func(_ string, msg fantasy.Message) error {
 				b, err := json.Marshal(msg)
 				stored = append(stored, string(b))
@@ -858,7 +858,7 @@ func TestCacheBreakpoints(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := NewRunner(m, tools, "sys")
-		r.Hooks, r.ProviderOptions = newRecHooks(), reg.CallOptions(c.model, "")
+		r.Hooks, r.ProviderOptions = newRecHooks(), reg.CallOptions(c.model, "", "")
 		r.History = []fantasy.Message{UserMessage("a"), {Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "b"}}}}
 		_ = r.Send(t.Context(), "c") // the server refuses; only the request matters
 		mu.Lock()

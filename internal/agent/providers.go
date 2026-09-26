@@ -495,8 +495,11 @@ func (r *Registry) Effort(modelID, pick string) string {
 // effort ("" sends none; see Effort) and the spec's extra body fields, in
 // the model's provider kind, and for an OpenAI Responses model that reasons
 // a reasoning summary; nil when none applies. A model that does not support
-// an option fails its turn with the provider's error.
-func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
+// an option fails its turn with the provider's error. OpenAI gets sessionID
+// as prompt_cache_key: it routes on a hash of the prompt's first tokens and
+// the key, and every session's prompt starts alike, so without one parallel
+// sessions and subagents pile onto one cache shard and miss.
+func (r *Registry) CallOptions(modelID, effort, sessionID string) fantasy.ProviderOptions {
 	providerID, model, _ := strings.Cut(modelID, "/")
 	spec, ok := r.Lookup(providerID)
 	if !ok {
@@ -507,9 +510,19 @@ func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
 		e := openai.ReasoningEffort(effort)
 		re = &e
 	}
-	if spec.Kind == KindOpenAI && openai.IsResponsesModel(model) {
-		// fantasy drops both reasoning fields for a model it knows does not reason
-		return openai.NewResponsesProviderOptions(&openai.ResponsesProviderOptions{ReasoningEffort: re, ReasoningSummary: new("auto")})
+	if spec.Kind == KindOpenAI {
+		var key *string
+		if sessionID != "" {
+			key = &sessionID
+		}
+		switch {
+		case openai.IsResponsesModel(model):
+			// fantasy drops both reasoning fields for a model it knows does not reason
+			return openai.NewResponsesProviderOptions(&openai.ResponsesProviderOptions{ReasoningEffort: re, ReasoningSummary: new("auto"), PromptCacheKey: key})
+		case re != nil || key != nil:
+			return openai.NewProviderOptions(&openai.ProviderOptions{ReasoningEffort: re, PromptCacheKey: key})
+		}
+		return nil
 	}
 	if re == nil && len(spec.Body) == 0 {
 		return nil
@@ -536,10 +549,6 @@ func (r *Registry) CallOptions(modelID, effort string) fantasy.ProviderOptions {
 			o.Reasoning = &vercel.ReasoningOptions{Effort: new(vercel.ReasoningEffort(effort))}
 		}
 		return vercel.NewProviderOptions(o)
-	case KindOpenAI:
-		if re != nil {
-			return openai.NewProviderOptions(&openai.ProviderOptions{ReasoningEffort: re})
-		}
 	case KindGoogle:
 		if re != nil {
 			level := strings.ToUpper(effort)
