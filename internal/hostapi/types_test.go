@@ -84,18 +84,26 @@ func TestTypesDeclareNothingExtra(t *testing.T) {
 // TestSyncTypesWritesAnnotations: a start leaves the annotations and a
 // lua-language-server pointed at them, in the config dir and in each local
 // plugin (never a clone or a symlinked plugin), replaces an edited
-// .luarc.json, and leaves the file alone when it already says that.
+// .luarc.json, and leaves the file alone when it already says that or is a
+// link, whose target is not zemi's.
 func TestSyncTypesWritesAnnotations(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.DataHome, h.Dirs.ConfigHome = t.TempDir(), t.TempDir()
 	luarc := filepath.Join(h.Dirs.ConfigHome, ".luarc.json")
 	root, elsewhere := h.Dirs.PluginsRoot(), t.TempDir()
-	for _, d := range []string{"local/mine", "installed/clone"} {
+	for _, d := range []string{"local/mine", "local/shipped", "installed/clone"} {
 		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := os.Symlink(elsewhere, filepath.Join(root, "local", "linked")); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(t.TempDir(), "zshrc")
+	if err := os.WriteFile(victim, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(root, "local", "shipped", ".luarc.json")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -117,6 +125,9 @@ func TestSyncTypesWritesAnnotations(t *testing.T) {
 		if (err == nil) != want || want && string(got) != string(data) {
 			t.Errorf("%s/.luarc.json written = %v, want %v", dir, err == nil, want)
 		}
+	}
+	if got, _ := os.ReadFile(victim); string(got) != "keep" {
+		t.Errorf("a linked .luarc.json wrote through to its target: %q", got)
 	}
 
 	if err := os.WriteFile(luarc, []byte("{}"), 0o644); err != nil {

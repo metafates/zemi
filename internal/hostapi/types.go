@@ -8,6 +8,7 @@ package hostapi
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -34,7 +35,10 @@ func (h *Host) syncTypes() {
 		return
 	}
 	luarcs := []string{h.Dirs.ConfigHome}
-	ps, _ := plugins.Scan(h.Dirs)
+	ps, err := plugins.Scan(h.Dirs)
+	if err != nil {
+		h.Log.Warn("types", "plugins not scanned for luarc", map[string]any{"error": err.Error()})
+	}
 	for _, p := range ps {
 		// a clone is git's, and zemi does not load a symlinked dir
 		if fi, err := os.Lstat(p.Dir); p.Local && err == nil && fi.IsDir() {
@@ -108,6 +112,10 @@ func writeLuarc(dir, typesDir string) error {
 		return err
 	}
 	data = append(data, '\n')
+	// a plugin repo may ship the file as a link; WriteFile would clobber its target
+	if fi, err := os.Lstat(path); err == nil && !fi.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", path)
+	}
 	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, data) {
 		return nil
 	}
