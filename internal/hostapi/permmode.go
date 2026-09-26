@@ -474,7 +474,7 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		// rule, though a user one with no principal covers it too.
 		return (h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) || h.madePlugin(req.Arg)) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
 	case perm.SubjectBash:
-		return h.unsettled(req.Arg, req.ReadOnly) == ""
+		return h.unsettled(req.Command(), req.ReadOnly) == ""
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
 	}
@@ -533,27 +533,27 @@ func (h *Host) protectedWhy(p string) string {
 // read what the policy does not hide, outside the project too (without
 // HidesSecretFiles, a .env it names by a glob). Screening the text again
 // would bring the asks back; tighten sandboxPolicy instead.
-func (h *Host) unsettled(cmd string, readOnly bool) string {
+func (h *Host) unsettled(n perm.Normalized, readOnly bool) string {
 	if !h.ProjectTrusted() || !h.sandboxLive() {
-		if perm.ReadCommand(cmd, h.safeCommandPath) {
+		if n.ReadCommand(h.safeCommandPath) {
 			return ""
 		}
 		return "only commands that just read run without a trusted project and a sandbox"
 	}
 	if !readOnly {
-		if why := perm.Destructive(cmd); why != "" {
+		if why := n.Destructive(); why != "" {
 			return why
 		}
 		// a confined git write can only fail; asking first saves the failed
 		// run and the sandbox: false retry
-		if why := perm.GitWrites(cmd); why != "" {
+		if why := n.GitWrites(); why != "" {
 			return why
 		}
 	}
 	if h.sandbox.Load().backend.HidesSecretFiles {
 		return ""
 	}
-	for _, f := range perm.Normalize(cmd).Args {
+	for _, f := range n.Args {
 		for _, a := range f[1:] {
 			if !filepath.IsAbs(a) {
 				a = filepath.Join(h.Dirs.ProjectDir, a)

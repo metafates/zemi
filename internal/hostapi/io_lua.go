@@ -172,7 +172,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 	if subject == "lua.job.start" {
 		// a command line, normalized like bash so rules can scope arguments
 		// and a second command cannot ride an allow
-		o := pipe.Store.CheckCommandFor(subject, arg, pipe.Principal)
+		o := pipe.Store.CheckCommandFor(subject, perm.Normalize(arg), pipe.Principal)
 		v = tools.Verdict{Decision: o.Decision, Reason: o.Reason, DecidedBy: tools.ByDefault}
 		if o.Rule != nil {
 			v.DecidedBy = tools.ByRule

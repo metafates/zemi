@@ -62,7 +62,7 @@ func (h *Host) askHook() tools.Asker {
 		if def.Rules != nil {
 			o := def.Rules.Evaluate(req.Subject, req.Arg, "")
 			if req.Subject == perm.SubjectBash {
-				o = def.Rules.CheckCommand(req.Arg, "")
+				o = def.Rules.CheckCommandFor(perm.SubjectBash, req.Command(), "")
 			}
 			switch {
 			case o.Decision == perm.Allow && settleable:
@@ -137,7 +137,7 @@ func (h *Host) askHook() tools.Asker {
 				// a settled command would run unconfined
 				note("no sandbox")
 			case req.Subject == perm.SubjectBash:
-				note(h.unsettled(req.Arg, req.ReadOnly))
+				note(h.unsettled(req.Command(), req.ReadOnly))
 			default:
 				note("auto mode settles reads and edits inside the project")
 			}
@@ -237,7 +237,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	}
 	switch {
 	case req.Subject == perm.SubjectBash:
-		n := perm.Normalize(req.Arg)
+		n := req.Command()
 		// Opaque is an inner shell (sh -c) or a stripped assignment: what the
 		// rule would match is not what the user read
 		if n.Fail != "" || n.ForceAsk != "" || n.Assign != "" || n.Opaque {
@@ -250,7 +250,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		for _, seg := range n.Segments {
 			// a segment this manager already lets through, by a session rule or
 			// a user rule, is not new: add neither a name nor a rule for it
-			if h.Perm.CheckCommandFor(perm.SubjectBash, seg, perm.PrincipalModel).Decision == perm.Allow {
+			if h.Perm.CheckCommand(seg, perm.PrincipalModel).Decision == perm.Allow {
 				continue
 			}
 			patterns, ok := bashAlwaysPatterns(seg)
@@ -380,7 +380,7 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	// a program or subcommand that can delete or overwrite must not broaden
 	// to arbitrary later targets: the rule runs unconfined, and such a
 	// command has no write path to re-ask on
-	if destructiveProgram(programName(f[0])) || perm.Destructive(seg) != "" {
+	if destructiveProgram(programName(f[0])) || perm.Normalize(seg).Destructive() != "" {
 		return []string{seg}, true
 	}
 	p := commandPrefix(seg)
@@ -412,7 +412,7 @@ func (h *Host) projectChoice(req tools.Request, alwaysLabel string, alwaysRules 
 	if req.Subject != perm.SubjectBash || req.Network || !h.ProjectTrusted() || alwaysLabel == "" || strings.ContainsAny(req.Arg, "\n") {
 		return "", nil
 	}
-	patterns, ok := bashRulePatterns(perm.Normalize(req.Arg))
+	patterns, ok := bashRulePatterns(req.Command())
 	var rules []perm.Rule
 	for _, ps := range patterns {
 		for _, p := range ps {

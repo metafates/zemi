@@ -28,7 +28,7 @@ func FuzzNormalize(f *testing.F) {
 		// allowed through by the full decision path, whatever the rules say
 		s := NewStore()
 		s.Add(Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow})
-		if (n.Fail != "" || n.ForceAsk != "") && s.CheckCommandFor("tool.bash", cmd, "").Decision == Allow {
+		if (n.Fail != "" || n.ForceAsk != "") && s.CheckCommand(cmd, "").Decision == Allow {
 			t.Fatalf("gated command allowed: %q (%s %s)", cmd, n.Fail, n.ForceAsk)
 		}
 	})
@@ -49,7 +49,7 @@ func FuzzReadCommand(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, cmd string) {
-		ReadCommand(cmd, func(_ string, _ ArgUse) bool { return true })
+		Normalize(cmd).ReadCommand(func(_ string, _ ArgUse) bool { return true })
 	})
 }
 

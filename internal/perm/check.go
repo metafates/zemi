@@ -12,13 +12,13 @@ import (
 // and is allowed only when every segment and every redirect target
 // matches an allow rule and no assignment prefix was stripped.
 func (s *Store) CheckCommand(cmd string, principal string) Outcome {
-	return s.CheckCommandFor(SubjectBash, cmd, principal)
+	return s.CheckCommandFor(SubjectBash, Normalize(cmd), principal)
 }
 
-// CheckCommandFor is CheckCommand with the segments matched under subject
-// (lua.job.start gates Lua-started programs the same way).
-func (s *Store) CheckCommandFor(subject, cmd, principal string) Outcome {
-	n := Normalize(cmd)
+// CheckCommandFor is CheckCommand on a parsed command, with the segments
+// matched under subject (lua.job.start gates Lua-started programs the same
+// way).
+func (s *Store) CheckCommandFor(subject string, n Normalized, principal string) Outcome {
 	if n.Fail != "" {
 		return Outcome{Decision: Deny, Reason: n.Fail}
 	}

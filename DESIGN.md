@@ -363,7 +363,7 @@ Trusted, zemi loads the project's `.agents` config and instruction files
 user-added; sandboxed when a backend is live, §9), auto mode and read-only agents settle builds and tests in the sandbox, and
 auto settles in-project edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
 is an instruction file, no language server starts, `.agents` edits trigger no reload, and auto mode and read-only agents
-settle only reads and `perm.ReadCommand` commands. Either way zemi's own
+settle only reads and `perm.Normalized.ReadCommand` commands. Either way zemi's own
 git calls (`proc.Git`) switch off `core.fsmonitor`, hooks, submodule
 recursion, LFS smudging, transports other than https, ssh and file, and
 repository filter drivers: a sandboxed command can plant a nested
@@ -1738,7 +1738,7 @@ provenance string.
   so a project or plugin rule can tighten it. Two ship: `auto` and `yolo` (every surviving ask allows, an explicit one too). A read-only agent
   (the shipped `planner` profile, `Profile.ReadOnly`) is the old `plan` in the agent axis:
   `fs.write` is denied even under an allow rule, bash and `mcp.*` allows flip to `ask` unless
-  the bash command is a `perm.ReadCommand`, and commands run sandboxed with the project
+  the bash command is a `perm.Normalized.ReadCommand`, and commands run sandboxed with the project
   unwritable, which is what keeps a planning session read-only. `auto` settles
   locally first, without a model: reads and writes inside the jail that
   are not secret-shaped (writes under any `.git`, to the Lua in any `.agents`
@@ -1747,11 +1747,11 @@ provenance string.
   whatever rule allows them, a mode's own included), workflow scripts (the
   script is sandboxed and each agent it starts is gated), and every bash
   command, unparsed, since it runs sandboxed (below). Two kinds still ask
-  (`Host.unsettled`): the short `perm.Destructive` list (forced or
+  (`Host.unsettled`): the short `perm.Normalized.Destructive` list (forced or
   recursive `rm`, or one with a glob operand, `git clean`, `find -delete`,
   `shred`, `truncate`, `dd`, `rsync --delete`, also behind `xargs`,
   `find -exec`, `sh -c`, `eval` or a shell keyword, and a bare `rm` in a
-  loop body or a shell body `xargs` or `find -exec` repeats), a git command that writes `.git` (`perm.GitWrites`:
+  loop body or a shell body `xargs` or `find -exec` repeats), a git command that writes `.git` (`perm.Normalized.GitWrites`:
   the sandbox keeps `.git` read-only, so a confined commit could only
   fail and the ask comes first), and on a backend that cannot hide files
   a command naming an existing secret-shaped file. Anything a
@@ -1769,7 +1769,7 @@ provenance string.
   what the sandbox does not hide, outside the project too; that is the
   auto-mode tradeoff, and the sandbox policy (below) is its only limit.
   In a project the user has not trusted (§5) both modes settle less:
-  writes and every command but `perm.ReadCommand` (an allowlist of
+  writes and every command but `perm.Normalized.ReadCommand` (an allowlist of
   programs that only read, named without a path, with per-program flag
   and script checks, arguments inside the project and not secret-shaped,
   recursive searches only over trees with no secret-shaped file; no build

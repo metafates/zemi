@@ -275,9 +275,11 @@ MCP and Lua tools) call the gate themselves and run the events through `preCheck
 refuses a rewrite with an error result), `postNotify` and `Pipeline.CheckDenied`. A command a
 permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`).
 
-Bash is special: `perm.Store.CheckCommand` normalizes the command first (compound splitting,
+Bash is special: `Pipeline.Check` normalizes the command once (`perm.Normalize`: compound splitting,
 redirect and env-assignment gates - internal/perm/bash.go, heavily table-tested; extend those
-tables when touching it). An assignment prefix the normalizer strips downgrades an allow
+tables when touching it), and `perm.Store.CheckCommandFor`, the predicates on `perm.Normalized`,
+the ask hook and `alwaysChoice` all judge that one parse (`Request.Command`); only a nested
+`sh -c` body or `eval` text is parsed again. An assignment prefix the normalizer strips downgrades an allow
 verdict to ask, since the rules never see it and `GIT_EXTERNAL_DIFF=./x git diff` runs `./x`.
 A segment with a word that climbs (`docs/../x`) is judged as written and with the word cleaned,
 and the stricter verdict holds (`cleanDotDot`), so `cat docs/*` does not allow it; a path word
@@ -354,11 +356,11 @@ Network requests are never settled: the URL is the model's. A mode from config m
 whatever the base would settle, which is how a user gets every ask); it runs as a task for at
 most 60s, long enough for a model call of its own, and, like the mode's own rules,
 cannot allow an `Unsandboxed` or `Network` request, an `Explicit` one or a `protectedWrite`. In a trusted project with a live sandbox `unsettled` parses nothing:
-every command runs confined, except the short `perm.Destructive` list (forced or recursive
+every command runs confined, except the short `perm.Normalized.Destructive` list (forced or recursive
 `rm`, or one with a glob operand, `git clean`, `find -delete`, `shred`, `truncate`, `dd`,
 `rsync --delete`, also behind `xargs`, `find -exec`, `sh -c`, `eval` or a shell keyword, and a
 bare `rm` in a loop body or in a shell body `xargs` or `find -exec` repeats), a git command that writes `.git`
-(`perm.GitWrites`: commit, checkout, stash and the like, which the sandbox's read-only `.git`
+(`perm.Normalized.GitWrites`: commit, checkout, stash and the like, which the sandbox's read-only `.git`
 could only fail, so the ask comes before a wasted run) and, on a backend that cannot hide
 files, one naming an existing secret-shaped file. Known ceiling: the sandbox policy is the only limit, so the model
 can write code and run it unattended, rewrite any project file and read what the policy does
@@ -435,19 +437,19 @@ program and subcommand for `git`, `go`, `cargo` and the other `subcommandProgram
 options kept (`git -C sub status`, `perm.Subcommand`) and the exact segment when options leave
 no subcommand (`git --version`) or one not for sure (`npm -w web test`: `perm.LeadKnown`); a file's directory, or the file alone when that is `$HOME`, `/` or between,
 which hold every dotfile; a URL's host). A deleting program (`rm`, `mv`, `find`, `tar`, ...) or a segment
-`perm.Destructive` names stays exact, since its rule would run unconfined. A file read is also
+`perm.Normalized.Destructive` names stays exact, since its rule would run unconfined. A file read is also
 offered the wider `repoChoice` ("allow reads anywhere in <repo>", answered as `user:wider`),
 because in a deep tree the directory rule is the same ask again one package over. No always
 option is offered at all for a gate-forced ask (heredoc, env assignment), a pattern holding a
 glob wildcard, an opaque segment (an inner `sh -c`, a stripped assignment) or a wrapper program
 that runs what it is handed (`perm.WrapperPrograms`: shells, interpreters, `sudo`, `xargs`,
-`busybox`, `awk`, `zemi` itself, ..., the list `perm.Destructive` and `perm.GitWrites` look
+`busybox`, `awk`, `zemi` itself, ..., the list `perm.Normalized.Destructive` and `perm.Normalized.GitWrites` look
 past too, and `wrapperSubcommands` for the `npm exec`/`uv run` spellings of `npx`) - no rule
 written from such a segment says what the next call would run - nor for a `protectedWrite`,
 which `Pipeline.Check` asks about whatever rule allows it. A secret-shaped file is offered only
 its exact path: a directory glob cannot exclude the secret shapes, so `Pipeline.Check`'s loosen
 sends a file request a `model` glob rule allowed back to the ask when `Secret` matches, and a command whose
-reader names one (`perm.ReadsSecret`: `cat .env`, `cat .e*`) when a `model` rule or a
+reader names one (`perm.Normalized.ReadsSecret`: `cat .env`, `cat .e*`) when a `model` rule or a
 permissions file line allowed it (`perm.Rule.Source`); a user-config rule has no `Source` and
 no `model` principal, stays authoritative, and shows read-only in `/permissions` with its
 source (init.lua, the permissions file, a project's `.agents/init.lua`) and, when it scopes one

@@ -67,15 +67,13 @@ const (
 // nothing, and every argument passes pathOK, so a reader cannot print secrets
 // or files outside the project. A nil pathOK refuses absolute, home and
 // parent paths. These settle where no sandbox would hold the command.
-func ReadCommand(cmd string, pathOK func(arg string, use ArgUse) bool) bool {
-	cmd = inlineVars(cmd)
-	if expands(cmd) {
+func (n Normalized) ReadCommand(pathOK func(arg string, use ArgUse) bool) bool {
+	if expands(n.cmd) {
 		return false
 	}
 	if pathOK == nil {
 		pathOK = relativeArg
 	}
-	n := Normalize(cmd)
 	// an assignment can steer a reader past its checked flags
 	// (RIPGREP_CONFIG_PATH), and sh -c passes arguments nothing here sees
 	if n.Fail != "" || n.ForceAsk != "" || n.Opaque || len(n.WritePaths) > 0 || len(n.Segments) == 0 {
@@ -409,8 +407,7 @@ func safeArgs(args []string, pathOK func(pos int, flag, a string) bool) bool {
 // (cat .e*), judged by secret on each path word; a search pattern is no
 // path. Other programs are not judged: an always rule keeps a deleter
 // exact and offers a wrapper nothing.
-func ReadsSecret(cmd string, secret func(path string) bool) bool {
-	n := Normalize(cmd)
+func (n Normalized) ReadsSecret(secret func(path string) bool) bool {
 	found := false
 	for _, f := range n.Args {
 		if len(f) == 0 || !readOnlyPrograms[filepath.Base(f[0])] {
@@ -839,15 +836,14 @@ var gitWriters = map[string]bool{
 
 // GitWrites says why a git command cannot run with .git read-only: its
 // subcommand writes the repository. Empty when it only reads, or is no git.
-func GitWrites(cmd string) string {
-	n := Normalize(cmd)
+func (n Normalized) GitWrites() string {
 	if n.Fail != "" {
 		return ""
 	}
 	for _, f := range n.Args {
 		f = program(f)
 		for _, body := range shellBodies(f) {
-			if why := GitWrites(body); why != "" {
+			if why := Normalize(body).GitWrites(); why != "" {
 				return why
 			}
 		}
@@ -903,8 +899,8 @@ func GitWrites(cmd string) string {
 // confines it to the project: it may delete or empty many files at once.
 // Empty when it may run. Normalize already made sh -c bodies and
 // substitutions segments of their own.
-func Destructive(cmd string) string {
-	return destructive(cmd, false)
+func (n Normalized) Destructive() string {
+	return n.destructive(false)
 }
 
 // repeats are the runners that run what they are handed once per input,
@@ -920,8 +916,7 @@ func repeats(prog string) bool {
 // destructive is Destructive with repeated set for a shell body a
 // repeating runner hands a shell (xargs sh -c 'rm "$@"'). A loop body
 // between do and done repeats too.
-func destructive(cmd string, repeated bool) string {
-	n := Normalize(cmd)
+func (n Normalized) destructive(repeated bool) string {
 	if n.Fail != "" {
 		return n.Fail
 	}
@@ -937,7 +932,7 @@ func destructive(cmd string, repeated bool) string {
 		f = g
 		repeated := repeated || loops > 0
 		for _, body := range shellBodies(f) {
-			if why := destructive(body, repeated || len(f) > 0 && repeats(f[0])); why != "" {
+			if why := Normalize(body).destructive(repeated || len(f) > 0 && repeats(f[0])); why != "" {
 				return why
 			}
 		}
@@ -948,7 +943,7 @@ func destructive(cmd string, repeated bool) string {
 			name, rest := filepath.Base(w), f[i+1:]
 			switch {
 			case name == "eval":
-				if why := destructive(strings.Join(rest, " "), repeated); why != "" {
+				if why := Normalize(strings.Join(rest, " ")).destructive(repeated); why != "" {
 					return why
 				}
 				continue

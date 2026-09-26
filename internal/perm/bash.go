@@ -34,6 +34,9 @@ type Normalized struct {
 	// Fail is a non-empty reason when the call must fail outright
 	// (unbalanced quotes or parens, emptied redirect target).
 	Fail string
+	// cmd is the text the segments came from, variables inlined, for what
+	// only the text shows (ReadCommand's expands)
+	cmd string
 }
 
 // envGateNames are the environment-affecting variables whose assignment
@@ -76,8 +79,8 @@ func EnvAssignmentGate(name string) bool {
 // Normalize turns a raw bash command into matched-form segments plus the
 // redirect gates. It never errors: problems surface in Fail/ForceAsk.
 func Normalize(cmd string) Normalized {
-	var n Normalized
 	cmd = inlineVars(cmd)
+	n := Normalized{cmd: cmd}
 	n.scan(cmd)
 	if n.Fail == "" && n.ForceAsk == "" && quotedSubstitution(cmd) {
 		n.ForceAsk = "command substitution inside quotes"

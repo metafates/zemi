@@ -65,7 +65,7 @@ func TestUnsettled(t *testing.T) {
 	} {
 		h.SetProjectTrusted(c.trusted)
 		fakeSandbox(h, c.live)
-		if got := h.unsettled(c.cmd, c.readOnly) == ""; got != c.want {
+		if got := h.unsettled(perm.Normalize(c.cmd), c.readOnly) == ""; got != c.want {
 			t.Errorf("trusted=%v live=%v readOnly=%v %q: got %v", c.trusted, c.live, c.readOnly, c.cmd, got)
 		}
 	}

@@ -83,6 +83,17 @@ type Request struct {
 	// ReadOnly marks a read-only agent's request (Pipeline.Plan), whose
 	// command runs confined whoever allows it; set by the pipeline
 	ReadOnly bool
+	// cmd is a tool.bash Arg as the gate parsed it; set by the pipeline
+	cmd *perm.Normalized
+}
+
+// Command is a tool.bash request's command, parsed once by the gate, or
+// here for a request that never went through it.
+func (r Request) Command() perm.Normalized {
+	if r.cmd != nil {
+		return *r.cmd
+	}
+	return perm.Normalize(r.Arg)
 }
 
 // Verdict is the pipeline outcome for one permission request.
@@ -324,6 +335,10 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	plan := p.Plan != nil && p.Plan()
 	req.ReadOnly = plan
+	if req.Subject == perm.SubjectBash {
+		n := perm.Normalize(req.Arg)
+		req.cmd = &n
+	}
 	if plan && req.Subject == perm.SubjectWrite && (p.Scratch == nil || !p.Scratch(req.Arg)) {
 		return Verdict{Decision: perm.Deny, Reason: "the user is planning: describe this change in the plan instead of making it", DecidedBy: ByReadOnly}
 	}
@@ -351,7 +366,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 			return p.resolveAsk(req, "this file looks like it holds secrets")
 		// "allow cat" was answered for a file the user saw; a project file
 		// line names the program alone. The user's init.lua rule stays.
-		case req.Subject == perm.SubjectBash && rule != nil && (rule.Principal == perm.PrincipalModel || rule.Source == "permissions") && p.Secret != nil && perm.ReadsSecret(req.Arg, p.Secret):
+		case req.Subject == perm.SubjectBash && rule != nil && (rule.Principal == perm.PrincipalModel || rule.Source == "permissions") && p.Secret != nil && req.cmd.ReadsSecret(p.Secret):
 			return p.resolveAsk(req, "this file looks like it holds secrets")
 		// the user allowed the command confined; an Unsandboxed ask is never
 		// mode-settled, so dropping the sandbox reaches them
@@ -359,7 +374,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 			return p.resolveAsk(req, "the rule keeps the sandbox; sandbox: false drops it")
 		// the rule was written for an agent that may change things; a reader
 		// keeps the allow
-		case plan && req.Subject == perm.SubjectBash && perm.ReadCommand(req.Arg, nil):
+		case plan && req.Subject == perm.SubjectBash && req.cmd.ReadCommand(nil):
 		case plan && (req.Subject == perm.SubjectBash || strings.HasPrefix(req.Subject, "mcp.")):
 			return p.resolveAsk(req, "read-only agent: commands that change things ask")
 		}
@@ -367,7 +382,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	var o perm.Outcome
 	if req.Subject == perm.SubjectBash {
-		o = p.Store.CheckCommand(req.Arg, p.Principal)
+		o = p.Store.CheckCommandFor(perm.SubjectBash, *req.cmd, p.Principal)
 	} else {
 		o = p.Store.Evaluate(req.Subject, written, p.Principal)
 	}

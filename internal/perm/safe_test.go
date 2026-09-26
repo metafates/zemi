@@ -150,7 +150,7 @@ func TestReadCommand(t *testing.T) {
 		{"bin/ls", false},
 		{"/bin/ls", false},
 	} {
-		if got := ReadCommand(c.cmd, nil); got != c.safe {
+		if got := Normalize(c.cmd).ReadCommand(nil); got != c.safe {
 			t.Errorf("ReadCommand(%q) = %v, want %v", c.cmd, got, c.safe)
 		}
 	}
@@ -206,7 +206,7 @@ func TestReadCommandPathCheck(t *testing.T) {
 		{"grep -r KEY # internal", false},
 		{"grep -r KEY\t# internal", false},
 	} {
-		if got := ReadCommand(c.cmd, notSecret); got != c.safe {
+		if got := Normalize(c.cmd).ReadCommand(notSecret); got != c.safe {
 			t.Errorf("ReadCommand(%q) = %v, want %v", c.cmd, got, c.safe)
 		}
 	}
@@ -297,7 +297,7 @@ func TestDestructive(t *testing.T) {
 		{"python3 - <<'EOF'\nprint(1)\nEOF", false},
 		{"FOO=1 npm run build > out.log", false},
 	} {
-		if got := Destructive(c.cmd) != ""; got != c.asks {
+		if got := Normalize(c.cmd).Destructive() != ""; got != c.asks {
 			t.Errorf("Destructive(%q) = %v, want %v", c.cmd, got, c.asks)
 		}
 	}
@@ -353,7 +353,7 @@ func TestGitWrites(t *testing.T) {
 		{"bash -lc 'git status'", false},
 		{"go build ./...", false},
 	} {
-		if got := GitWrites(c.cmd) != ""; got != c.writes {
+		if got := Normalize(c.cmd).GitWrites() != ""; got != c.writes {
 			t.Errorf("GitWrites(%q) = %v, want %v", c.cmd, got, c.writes)
 		}
 	}
