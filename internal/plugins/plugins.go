@@ -216,9 +216,8 @@ func Check(ctx context.Context, d config.Dirs) ([]Plugin, error) {
 // symlink in local/ loses the link only.
 func Delete(d config.Dirs, name string) error {
 	dir, err := clone(d, name)
-	if local := filepath.Join(d.PluginsRoot(), "local", name); err != nil && nameRe.MatchString(name) &&
-		!exists(filepath.Join(d.PluginsRoot(), "installed", name)) && exists(local) {
-		dir, err = local, nil
+	if errors.Is(err, errLocal) {
+		dir, err = filepath.Join(d.PluginsRoot(), "local", name), nil
 	}
 	if err != nil {
 		return err
@@ -443,6 +442,8 @@ func free(d config.Dirs, name string) error {
 
 // clone returns the directory of an installed plugin: a direct child of
 // installed/ that is a directory and no symlink.
+var errLocal = errors.New("a local plugin, which zemi never changes")
+
 func clone(d config.Dirs, name string) (string, error) {
 	if !nameRe.MatchString(name) {
 		return "", fmt.Errorf("no plugin is named %q", name)
@@ -454,7 +455,7 @@ func clone(d config.Dirs, name string) (string, error) {
 		return "", fmt.Errorf("%s is not a directory zemi cloned", dir)
 	}
 	if local := filepath.Join(d.PluginsRoot(), "local", name); exists(local) {
-		return "", fmt.Errorf("%s is a local plugin, which zemi never changes: %s", name, local)
+		return "", fmt.Errorf("%s is %w: %s", name, errLocal, local)
 	}
 	return "", fmt.Errorf("no installed plugin is named %s", name)
 }
