@@ -56,10 +56,10 @@ When there is nothing worth keeping, answer {}.`
 // reflectProposal is the schema-validated model output.
 type reflectProposal struct {
 	Memories []struct {
-		Scope    string `json:"scope"`
-		Text     string `json:"text"`
-		Quote    string `json:"quote"`
-		Replaces string `json:"replaces"`
+		Scope    store.Scope `json:"scope"`
+		Text     string      `json:"text"`
+		Quote    string      `json:"quote"`
+		Replaces string      `json:"replaces"`
 	} `json:"memories"`
 }
 
@@ -355,12 +355,12 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		}
 	}
 	if mems, _ := h.memoryList(false); len(mems) > 0 {
-		used := map[string]int{}
+		used := map[store.Scope]int{}
 		for _, m := range mems {
 			used[m.Scope] += learn.LineSize(m.Text)
 		}
 		fmt.Fprintf(&b, "\n# Memory index (project %s, user %s)\n",
-			budgetUse(used[learn.ScopeProject]), budgetUse(used[learn.ScopeUser]))
+			budgetUse(used[store.ScopeProject]), budgetUse(used[store.ScopeUser]))
 		now := time.Now()
 		for _, m := range mems {
 			fmt.Fprintf(&b, "- [%s %s %s%s] %s\n", m.ID[:8], m.Scope, m.Origin, learn.Age(m.UpdatedAt, now), m.Text)
@@ -489,9 +489,9 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 	for _, pm := range p.Memories {
 		scope := pm.Scope
 		if scope == "" {
-			scope = learn.ScopeProject
+			scope = store.ScopeProject
 		}
-		if scope != learn.ScopeProject && scope != learn.ScopeUser {
+		if !slices.Contains(store.Scopes, scope) {
 			skipped++
 			h.Log.Debug("reflector", "memory skipped: bad scope", map[string]any{"scope": scope})
 			continue
@@ -505,7 +505,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			}
 			continue
 		}
-		res, err := learn.Intake(scope, learn.OriginLearned, pm.Text, pm.Quote, sid)
+		res, err := learn.Intake(scope, store.OriginLearned, pm.Text, pm.Quote, sid)
 		if err != nil {
 			skipped++
 			h.Log.Debug("reflector", "memory skipped by intake", map[string]any{"error": err.Error()})

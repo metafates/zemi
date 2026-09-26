@@ -35,8 +35,8 @@ const memoryAutoApplyCap = 20
 // memory from either scope.
 type MemoryRow struct {
 	ID         string
-	Scope      string // "user" or "project"
-	Origin     string // "user" or "learned"
+	Scope      store.Scope
+	Origin     store.Origin
 	Text       string
 	Quote      string // the user's words behind a memory about them
 	Queued     bool   // proposal awaiting review, not yet stored
@@ -49,8 +49,8 @@ type MemoryRow struct {
 
 // memoryDB returns the store owning a scope: user scope in the global DB,
 // project scope in the project DB (DESIGN §7).
-func (h *Host) memoryDB(scope string) *store.DB {
-	if scope == learn.ScopeUser {
+func (h *Host) memoryDB(scope store.Scope) *store.DB {
+	if scope == store.ScopeUser {
 		return h.GlobalDB
 	}
 	return h.DB
@@ -58,9 +58,9 @@ func (h *Host) memoryDB(scope string) *store.DB {
 
 // storeMemory runs the §10.4 intake policy over what session sid wrote;
 // user config before the first send is its own provenance.
-func (h *Host) storeMemory(sid, scope, origin, text, quote string) (*learn.Result, error) {
+func (h *Host) storeMemory(sid string, scope store.Scope, origin store.Origin, text, quote string) (*learn.Result, error) {
 	if sid == "" {
-		if origin != learn.OriginUser {
+		if origin != store.OriginUser {
 			return nil, learn.ErrNoProvenance
 		}
 		sid = "user"
@@ -188,7 +188,7 @@ var (
 // NOTE: scans both scopes; fine for the dozens of rows a budget holds.
 func (h *Host) duplicateMemory(m store.Memory, replaces string) (dup *store.Memory, queued bool) {
 	same := learn.Similar
-	if m.Origin == learn.OriginUser {
+	if m.Origin == store.OriginUser {
 		same = strings.EqualFold
 	}
 	live, _ := h.memoryList(false)
@@ -234,7 +234,7 @@ func (h *Host) Remember(text string) error {
 	if strings.TrimSpace(text) == "" {
 		return Usagef("usage: /memory <note>")
 	}
-	res, err := h.storeMemory(h.AgentSessionID(), learn.ScopeProject, learn.OriginUser, text, "")
+	res, err := h.storeMemory(h.AgentSessionID(), store.ScopeProject, store.OriginUser, text, "")
 	if err != nil {
 		return err
 	}
@@ -312,8 +312,8 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 		if r.Edit {
 			edit = r.ID
 		}
-		if r.Scope != learn.ScopeUser {
-			r.Scope = learn.ScopeProject
+		if r.Scope != store.ScopeUser {
+			r.Scope = store.ScopeProject
 		}
 		if old.Forget {
 			r.Scope = old.Scope // it names the memory where it is
@@ -345,7 +345,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 			if err := h.addProposal(*p); err != nil {
 				h.Log.Warn("memory", "move rollback failed", map[string]any{"id": r.ID, "error": err.Error()})
 			}
-			h.Notify(logging.Warn, "Could not move a memory", "the "+r.Scope+" scope already has that text")
+			h.Notify(logging.Warn, "Could not move a memory", "the "+string(r.Scope)+" scope already has that text")
 		case old.Queued:
 		case r.Action == "delete":
 			if db := h.memoryDB(old.Scope); db != nil && db.DeleteMemory(r.ID) == nil {
@@ -444,7 +444,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 		if p.ID != id || p.Forget {
 			continue
 		}
-		res, err := h.storeMemory(h.AgentSessionID(), p.Scope, learn.OriginUser, text, p.Quote)
+		res, err := h.storeMemory(h.AgentSessionID(), p.Scope, store.OriginUser, text, p.Quote)
 		if err != nil || res.Memory.Text == p.Text {
 			return false, err
 		}
@@ -467,7 +467,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	res, err := h.storeMemory(h.AgentSessionID(), m.Scope, learn.OriginUser, text, m.Quote)
+	res, err := h.storeMemory(h.AgentSessionID(), m.Scope, store.OriginUser, text, m.Quote)
 	if err != nil || res.Memory.Text == m.Text {
 		return false, err
 	}
@@ -479,7 +479,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	if dup, _ := h.duplicateMemory(res.Memory, ""); dup != nil {
 		return false, fmt.Errorf("%w: %q", errDuplicateMemory, dup.Text)
 	}
-	return res.Scrubbed, db.UpdateMemoryText(m.ID, res.Memory.Text, learn.OriginUser)
+	return res.Scrubbed, db.UpdateMemoryText(m.ID, res.Memory.Text, store.OriginUser)
 }
 
 // takeProposal removes one pending memory proposal by id and returns it,
@@ -505,7 +505,7 @@ func (h *Host) takeProposal(id string) *memoryProposal {
 
 // moveMemory stores a memory in the other scope, then deletes it from the
 // old one; a failed add, or a full destination, leaves it where it was.
-func (h *Host) moveMemory(id, from, to string) error {
+func (h *Host) moveMemory(id string, from, to store.Scope) error {
 	src, dst := h.memoryDB(from), h.memoryDB(to)
 	if src == nil || dst == nil {
 		return errors.New("memory store unavailable")
@@ -528,9 +528,9 @@ func (h *Host) moveMemory(id, from, to string) error {
 			return errScopeFull(to)
 		}
 		err = dst.AddMemory(m)
-	case m.Origin == learn.OriginUser && live[i].Origin != learn.OriginUser:
+	case m.Origin == store.OriginUser && live[i].Origin != store.OriginUser:
 		// the copy left behind keeps the user's attestation (DESIGN §10.4)
-		err = dst.UpdateMemoryText(live[i].ID, live[i].Text, learn.OriginUser)
+		err = dst.UpdateMemoryText(live[i].ID, live[i].Text, store.OriginUser)
 	}
 	if err != nil {
 		return err
@@ -553,7 +553,7 @@ func (h *Host) moveMemory(id, from, to string) error {
 // proposal names (one already gone counts as done, one rewritten since drops
 // the proposal). A full scope or a store failure other than a duplicate puts
 // it back in the queue, so the decision can be made again.
-func (h *Host) acceptProposal(id, scope string) (*memoryProposal, error) {
+func (h *Host) acceptProposal(id string, scope store.Scope) (*memoryProposal, error) {
 	p := h.takeProposal(id)
 	if p == nil {
 		return nil, fmt.Errorf("no such proposal %q", id)
@@ -646,7 +646,7 @@ func (h *Host) memoryRows() []MemoryRow {
 					what = `"` + short + `..."`
 				}
 				if old.Scope != m.Scope {
-					what = old.Scope + " memory " + what
+					what = string(old.Scope) + " memory " + what
 				}
 			}
 			text += " (replaces " + what + ")"
@@ -711,7 +711,7 @@ func (h *Host) locateMemory(id string) (*store.DB, *store.Memory, error) {
 func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 	var out []*store.Memory
 	var errs []error
-	for _, scope := range []string{learn.ScopeProject, learn.ScopeUser} {
+	for _, scope := range []store.Scope{store.ScopeProject, store.ScopeUser} {
 		db := h.memoryDB(scope)
 		if db == nil {
 			continue
@@ -768,15 +768,15 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if o.Rank() <= lua.OriginProject.Rank() {
 			L.RaiseError("zemi.memory.add: %s code may not add memories", o)
 		}
-		scope := cmp.Or(rawString(opts, "scope"), learn.ScopeProject)
-		if scope != learn.ScopeProject && scope != learn.ScopeUser {
+		scope := cmp.Or(store.Scope(rawString(opts, "scope")), store.ScopeProject)
+		if !slices.Contains(store.Scopes, scope) {
 			L.RaiseError("zemi.memory.add: scope must be project or user")
 		}
 		// user config writes the user's own memory; the model's Lua tool
 		// runs as user origin but its notes are the model's
-		memOrigin := learn.OriginLearned
+		memOrigin := store.OriginLearned
 		if tool, _ := h.modelLuaRun(L); !tool && o == lua.OriginUser {
-			memOrigin = learn.OriginUser
+			memOrigin = store.OriginUser
 		}
 		res, err := h.proposeMemory(h.AgentSessionID(), memOrigin, scope, text, rawString(opts, "quote"), rawString(opts, "replaces"))
 		if err != nil {
@@ -818,7 +818,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		return luaResult(L, err)
 	}))
 
-	tb.RawSetString("scope", enumTable(L, learn.ScopeUser, learn.ScopeProject))
+	tb.RawSetString("scope", enumTable(L, store.Scopes...))
 	return tb
 }
 
@@ -826,8 +826,8 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 // zemi.memory.add) through intake and the autonomy gate; replaces names
 // the memory it supersedes. A subagent passes its parent, which a
 // background run may outlive.
-func (h *Host) proposeMemory(sid, origin, scope, text, quote, replaces string) (memoryOutcome, error) {
-	if scope != learn.ScopeProject && scope != learn.ScopeUser {
+func (h *Host) proposeMemory(sid string, origin store.Origin, scope store.Scope, text, quote, replaces string) (memoryOutcome, error) {
+	if !slices.Contains(store.Scopes, scope) {
 		return memoryOutcome{}, errors.New("scope must be project or user")
 	}
 	res, err := h.storeMemory(sid, scope, origin, text, quote)
@@ -846,14 +846,14 @@ func (h *Host) proposeMemory(sid, origin, scope, text, quote, replaces string) (
 
 // memoryTool is the memory tool from session sid: text supersedes what
 // replaces names, empty text with replaces forgets it.
-func (h *Host) memoryTool(sid, scope, text, quote, replaces string) (string, error) {
+func (h *Host) memoryTool(sid string, scope store.Scope, text, quote, replaces string) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		if replaces == "" {
 			return "", errors.New("text is empty; pass replaces=<id> to drop a memory")
 		}
 		return h.forgetMemory(sid, replaces)
 	}
-	out, err := h.proposeMemory(sid, learn.OriginLearned, scope, text, quote, replaces)
+	out, err := h.proposeMemory(sid, store.OriginLearned, scope, text, quote, replaces)
 	if err != nil {
 		return "", err
 	}
@@ -870,7 +870,7 @@ func (h *Host) forgetMemory(sid, id string) (string, error) {
 	}
 	short := m.ID[:8]
 	switch {
-	case m.Origin == learn.OriginUser:
+	case m.Origin == store.OriginUser:
 		req := tools.Request{Tool: tools.ToolMemory, Subject: "memory.write", Arg: short, Reason: "forget a memory the user saved", Preview: m.Text, Unsandboxed: true}
 		if v := h.PipelineFor().CheckDenied(req); v.Decision != perm.Allow {
 			return "", fmt.Errorf("permission denied (%s): forget memory %s", v.DecidedBy, short)
@@ -895,7 +895,7 @@ func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 	if dup, queued := h.duplicateMemory(*m, res.Supersedes); dup != nil {
 		return memoryOutcome{Duplicate: dup, DupQueued: queued}, nil
 	}
-	if m.Origin == learn.OriginLearned && m.Quote != "" && !h.quoteInSession(m.ProvenanceSessionID, m.Quote) {
+	if m.Origin == store.OriginLearned && m.Quote != "" && !h.quoteInSession(m.ProvenanceSessionID, m.Quote) {
 		h.Log.Info("memory", "dropped: quote not in the session", map[string]any{"text": m.Text, "quote": m.Quote})
 		return memoryOutcome{Dropped: true}, nil
 	}
@@ -911,7 +911,7 @@ func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 	m := &res.Memory
 	switch {
-	case m.Origin == learn.OriginLearned && m.Scope == learn.ScopeUser && m.Quote == "":
+	case m.Origin == store.OriginLearned && m.Scope == store.ScopeUser && m.Quote == "":
 		return "a memory about the user needs a quote", true
 	case !h.memoryAuto(m.ProvenanceSessionID):
 		return "", true
@@ -928,7 +928,7 @@ func (h *Host) memoryReview(res *learn.Result) (reason string, review bool) {
 	return "", false
 }
 
-func errScopeFull(scope string) error {
+func errScopeFull(scope store.Scope) error {
 	return fmt.Errorf("%s memory is full; forget one of its oldest in /memory first", scope)
 }
 
@@ -1050,7 +1050,7 @@ func (h *Host) replacementNeedsReview(res *learn.Result) bool {
 		return false
 	}
 	_, old, err := h.locateMemory(res.Supersedes)
-	return err == nil && (old.Origin == learn.OriginUser || old.Scope != res.Memory.Scope)
+	return err == nil && (old.Origin == store.OriginUser || old.Scope != res.Memory.Scope)
 }
 
 // autoApplyBudgetLeft caps what the live session stores without review;

@@ -2763,7 +2763,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			h.agents.mu.Unlock()
 			return h.takesImages(id)
 		},
-		Remember: func(scope, text, quote, replaces string) (string, error) {
+		Remember: func(scope store.Scope, text, quote, replaces string) (string, error) {
 			return h.memoryTool(h.AgentSessionID(), scope, text, quote, replaces)
 		},
 		Scratch: h.inScratch,

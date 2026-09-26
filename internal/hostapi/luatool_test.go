@@ -12,8 +12,8 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // TestAgentSelfAccess covers what the agent reaches of zemi itself: the lua
@@ -45,7 +45,7 @@ func TestAgentSelfAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.SetProjectTrusted(true)
-	res, err := h.proposeMemory(h.AgentSessionID(), learn.OriginLearned, "project", "the build uses make", "", "")
+	res, err := h.proposeMemory(h.AgentSessionID(), store.OriginLearned, "project", "the build uses make", "", "")
 	if err != nil || res.ID == "" {
 		t.Fatalf("propose: %+v %v", res, err)
 	}

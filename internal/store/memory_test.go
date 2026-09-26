@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func addMem(t *testing.T, db *DB, scope, text string) *Memory {
+func addMem(t *testing.T, db *DB, scope Scope, text string) *Memory {
 	t.Helper()
 	m := &Memory{Scope: scope, Text: text, Quote: "q", Origin: "user", ProvenanceSessionID: "s9"}
 	if err := db.AddMemory(m); err != nil {

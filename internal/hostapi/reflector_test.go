@@ -209,9 +209,9 @@ func addToolResult(t *testing.T, h *Host, sid, name, text, errText string) {
 }
 
 // learnedMemory stores one learned memory in scope and returns its id.
-func learnedMemory(t *testing.T, h *Host, scope, text, quote string) string {
+func learnedMemory(t *testing.T, h *Host, scope store.Scope, text, quote string) string {
 	t.Helper()
-	m := &store.Memory{Scope: scope, Text: text, Quote: quote, ProvenanceSessionID: "seed", Origin: learn.OriginLearned}
+	m := &store.Memory{Scope: scope, Text: text, Quote: quote, ProvenanceSessionID: "seed", Origin: store.OriginLearned}
 	if err := h.memoryDB(scope).AddMemory(m); err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +465,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 		h.SetProjectTrusted(true)
 		sid := seedSession(t, h)
 		seedTranscript(t, h, sid)
-		old := &store.Memory{Scope: "project", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: learn.OriginUser}
+		old := &store.Memory{Scope: "project", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: store.OriginUser}
 		if err := h.DB.AddMemory(old); err != nil {
 			t.Fatal(err)
 		}
@@ -496,7 +496,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 				t.Fatal("reject found nothing")
 			}
 		case "rewritten":
-			if err := h.DB.UpdateMemoryText(old.ID, "deploy with bin/deploy", learn.OriginUser); err != nil {
+			if err := h.DB.UpdateMemoryText(old.ID, "deploy with bin/deploy", store.OriginUser); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := h.acceptProposal(props[0].ID, ""); err == nil || len(h.memoryProposals()) != 0 {
@@ -518,7 +518,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 				t.Fatal(err)
 			}
 		case "merged":
-			if err := h.GlobalDB.AddMemory(&store.Memory{Scope: "user", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: learn.OriginLearned}); err != nil {
+			if err := h.GlobalDB.AddMemory(&store.Memory{Scope: "user", Text: "deploy by hand", ProvenanceSessionID: "seed", Origin: store.OriginLearned}); err != nil {
 				t.Fatal(err)
 			}
 			if err := h.moveMemory(old.ID, "project", "user"); err != nil {

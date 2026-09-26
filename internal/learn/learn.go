@@ -18,20 +18,6 @@ const (
 // (DESIGN §10.7).
 const ScopeBudget = 3072
 
-// OriginUser and OriginLearned are the memory.origin values (DESIGN §7);
-// the digest labels and the supersede guard read them.
-const (
-	OriginUser    = "user"
-	OriginLearned = "learned"
-)
-
-// ScopeUser memories hold in every project, ScopeProject ones in one
-// repository (DESIGN §7).
-const (
-	ScopeUser    = "user"
-	ScopeProject = "project"
-)
-
 // ErrRefused marks text the intake policy will not store.
 var ErrRefused = errors.New("learn: intake refused")
 

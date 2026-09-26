@@ -9,17 +9,39 @@ import (
 	"fmt"
 )
 
+// Scope is where a memory holds: ScopeUser in every project, ScopeProject
+// in one repository, each in its own DB (DESIGN §7).
+type Scope string
+
+const (
+	ScopeUser    Scope = "user"
+	ScopeProject Scope = "project"
+)
+
+var Scopes = []Scope{ScopeUser, ScopeProject}
+
+// Origin is who wrote a memory (DESIGN §7); the digest labels and the
+// supersede guard read it.
+type Origin string
+
+const (
+	OriginUser    Origin = "user"
+	OriginLearned Origin = "learned"
+)
+
+var Origins = []Origin{OriginUser, OriginLearned}
+
 // Memory is one remembered fact.
 type Memory struct {
 	ID                  string
-	Scope               string // "user" or "project"
+	Scope               Scope
 	Text                string // capped and scrubbed at intake (learn.MaxTextLen)
 	Quote               string // the user's own words behind a memory about them (learn.MaxQuoteLen)
 	ProvenanceSessionID string
 	CreatedAt           int64
 	UpdatedAt           int64
 	SupersededBy        string
-	Origin              string // "user" | "learned"
+	Origin              Origin
 }
 
 const memoryCols = `id, scope, text, quote, provenance_session_id,
@@ -78,7 +100,7 @@ func (s *DB) GetMemory(id string) (*Memory, error) {
 
 // ListMemory returns a scope's memories, newest first; superseded rows are
 // included only when asked.
-func (s *DB) ListMemory(scope string, includeSuperseded bool) ([]*Memory, error) {
+func (s *DB) ListMemory(scope Scope, includeSuperseded bool) ([]*Memory, error) {
 	q := `SELECT ` + memoryCols + ` FROM memory WHERE scope = ?`
 	if !includeSuperseded {
 		q += ` AND superseded_by IS NULL`
@@ -90,7 +112,7 @@ func (s *DB) ListMemory(scope string, includeSuperseded bool) ([]*Memory, error)
 
 // UpdateMemoryText rewrites a memory's text and origin. Unknown ids are
 // ErrNotFound.
-func (s *DB) UpdateMemoryText(id, text, origin string) error {
+func (s *DB) UpdateMemoryText(id, text string, origin Origin) error {
 	return s.execOne("update memory text", `UPDATE memory SET text = ?, origin = ?, updated_at = ?
 		WHERE id = ?`, text, origin, now(), id)
 }

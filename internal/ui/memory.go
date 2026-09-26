@@ -17,6 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/store"
 )
 
 type memReviewPrompt struct {
@@ -124,7 +125,7 @@ func (a *App) markMemory(key string) {
 	mr.undo = append(mr.undo, memUndo{at: sel, item: it})
 	switch key {
 	case "scope":
-		mr.items[sel].Scope = map[bool]string{true: learn.ScopeProject, false: learn.ScopeUser}[it.Scope == learn.ScopeUser]
+		mr.items[sel].Scope = map[bool]store.Scope{true: store.ScopeProject, false: store.ScopeUser}[it.Scope == store.ScopeUser]
 		return
 	case "keep":
 		it.Action = "accept"
@@ -198,7 +199,7 @@ func memActions(it hostapi.MemoryRow, undo bool) []promptChoice {
 		out = []promptChoice{{key: "d", label: "Forget"}}
 	}
 	if !it.Forget {
-		out = append(out, promptChoice{key: "s", label: map[bool]string{true: "Only this project", false: "Use everywhere"}[it.Scope == learn.ScopeUser]}, promptChoice{key: "o", label: "Open in the editor"})
+		out = append(out, promptChoice{key: "s", label: map[bool]string{true: "Only this project", false: "Use everywhere"}[it.Scope == store.ScopeUser]}, promptChoice{key: "o", label: "Open in the editor"})
 	}
 	if undo {
 		out = append(out, promptChoice{key: "u", label: "Undo"})
@@ -250,18 +251,18 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 	mr := a.memReview
 	mr.apply(mr.texts())
 	n := rememberedAt(mr.items)
-	used := map[string]int{}
+	used := map[store.Scope]int{}
 	for _, it := range mr.items[n:] {
 		if !it.Queued {
 			used[it.Scope] += learn.LineSize(it.Text)
 		}
 	}
-	kb := func(scope string) string {
+	kb := func(scope store.Scope) string {
 		return fmt.Sprintf("%.1f/%d KB", float64(used[scope])/1024, learn.ScopeBudget/1024)
 	}
 	sections := map[bool]string{
 		true:  fmt.Sprintf("Suggested by zemi (%d)", n),
-		false: fmt.Sprintf("Remembered (%d) · this project %s · everywhere %s", len(mr.items)-n, kb(learn.ScopeProject), kb(learn.ScopeUser)),
+		false: fmt.Sprintf("Remembered (%d) · this project %s · everywhere %s", len(mr.items)-n, kb(store.ScopeProject), kb(store.ScopeUser)),
 	}
 	inner := boxInner(w)
 	mr.size.w = max(mr.size.w, 56)
@@ -346,7 +347,7 @@ func (a *App) memDetailBox(it hostapi.MemoryRow, w, h, inner int) [][]hostapi.Se
 }
 
 func memScope(it hostapi.MemoryRow) string {
-	if it.Scope == learn.ScopeUser {
+	if it.Scope == store.ScopeUser {
 		return "everywhere"
 	}
 	return "this project"

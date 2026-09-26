@@ -11,7 +11,7 @@ import (
 )
 
 func TestIntakeCleansAndFlags(t *testing.T) {
-	res, err := Intake("project", OriginLearned, "the\tdploy gate\n  lives in ci/pipeline \x1b[31mred", " I said so\n", "sess1234")
+	res, err := Intake("project", store.OriginLearned, "the\tdploy gate\n  lives in ci/pipeline \x1b[31mred", " I said so\n", "sess1234")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,20 +34,20 @@ func TestIntakeScrubsSecrets(t *testing.T) {
 		// a token cut by the length cap is still recognized whole
 		strings.Repeat("a ", MaxTextLen/2-6) + "ghp_0123456789abcdefghijklmnopqrstuv",
 	} {
-		if _, err := Intake("project", OriginUser, text, "", "s1"); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "env var") {
+		if _, err := Intake("project", store.OriginUser, text, "", "s1"); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "env var") {
 			t.Fatalf("%q: %v", text, err)
 		}
 	}
 
 	// the quote is scrubbed, not refused: it is provenance, not what loads
-	res, err := Intake("user", OriginLearned, "the user keeps the token in CI", "use ghp_0123456789abcdefghijklmnopqrstuv", "s1")
+	res, err := Intake("user", store.OriginLearned, "the user keeps the token in CI", "use ghp_0123456789abcdefghijklmnopqrstuv", "s1")
 	if err != nil || !res.Scrubbed || strings.Contains(res.Memory.Quote, "ghp_") {
 		t.Fatalf("quote: %+v %v", res, err)
 	}
 }
 
 func TestIntakeRefusesOneBlob(t *testing.T) {
-	_, err := Intake("project", OriginUser, "sk-abcdefghijklmnopqrs0123456789ABCDEFGH", "", "s1")
+	_, err := Intake("project", store.OriginUser, "sk-abcdefghijklmnopqrs0123456789ABCDEFGH", "", "s1")
 	if !errors.Is(err, ErrRefused) {
 		t.Fatalf("want ErrRefused, got %v", err)
 	}
@@ -55,8 +55,10 @@ func TestIntakeRefusesOneBlob(t *testing.T) {
 
 func TestIntakeValidation(t *testing.T) {
 	for _, tc := range []struct {
-		scope, origin, text, prov string
-		want                      error
+		scope      store.Scope
+		origin     store.Origin
+		text, prov string
+		want       error
 	}{
 		{"project", "robot", "t", "s", ErrBadOrigin},
 		{"project", "user", "t", "  ", ErrNoProvenance},
@@ -70,7 +72,7 @@ func TestIntakeValidation(t *testing.T) {
 
 func TestIntakeCapsTextAndQuote(t *testing.T) {
 	long := strings.Repeat("wordsx ", MaxTextLen) // both cuts land mid-word, so no space is trimmed
-	res, err := Intake("project", OriginUser, long, long, "s1")
+	res, err := Intake("project", store.OriginUser, long, long, "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,15 +207,15 @@ func TestInstructionShaped(t *testing.T) {
 // for an empty store.
 func TestDigestBudget(t *testing.T) {
 	at := time.UnixMilli(1700000000000)
-	mem := func(scope, id, text string, origin string, age time.Duration) *store.Memory {
+	mem := func(scope store.Scope, id, text string, origin store.Origin, age time.Duration) *store.Memory {
 		return &store.Memory{ID: id, Scope: scope, Text: text, Origin: origin, UpdatedAt: at.Add(-age).UnixMilli()}
 	}
 	rows := []*store.Memory{
-		mem("project", "aaaa0000ffffffff", "newest project fact", OriginLearned, 0),
-		mem("project", "bbbb0000ffffffff", "token [redacted 24 chars] stored", OriginUser, 0),
-		mem("project", "cccc0000ffffffff", "older project fact", OriginUser, 72*time.Hour),
-		mem("project", "dddd0000ffffffff", "oldest project fact, past the budget", OriginUser, 96*time.Hour),
-		mem("user", "eeee0000ffffffff", "the user prefers short replies", OriginUser, 0),
+		mem("project", "aaaa0000ffffffff", "newest project fact", store.OriginLearned, 0),
+		mem("project", "bbbb0000ffffffff", "token [redacted 24 chars] stored", store.OriginUser, 0),
+		mem("project", "cccc0000ffffffff", "older project fact", store.OriginUser, 72*time.Hour),
+		mem("project", "dddd0000ffffffff", "oldest project fact, past the budget", store.OriginUser, 96*time.Hour),
+		mem("user", "eeee0000ffffffff", "the user prefers short replies", store.OriginUser, 0),
 	}
 	budget := LineSize("newest project fact") + LineSize("older project fact")
 	want := digestHeader + `

@@ -296,7 +296,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	parent := cmp.Or(run.parent, "lua")
 	// memories name the session this run belongs to, not whichever is live
 	// when a background run gets to them
-	pipe.Remember = func(scope, text, quote, replaces string) (string, error) {
+	pipe.Remember = func(scope store.Scope, text, quote, replaces string) (string, error) {
 		return h.memoryTool(parent, scope, text, quote, replaces)
 	}
 	if ask := pipe.Ask; ask != nil {

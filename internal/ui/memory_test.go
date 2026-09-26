@@ -21,7 +21,7 @@ func reviewAnswer(t *testing.T, done chan []hostapi.MemoryRow) map[string]string
 		got := map[string]string{}
 		for _, r := range rows {
 			if r.Action != "" || r.Scope != "project" {
-				got[r.ID] = r.Action + " " + r.Scope
+				got[r.ID] = r.Action + " " + string(r.Scope)
 			}
 		}
 		return got

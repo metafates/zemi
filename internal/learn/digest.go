@@ -24,7 +24,10 @@ const lineOverhead = len("- [12345678 learned 365d] \n")
 // gate charges against ScopeBudget.
 func LineSize(text string) int { return len(text) + lineOverhead }
 
-var scopeTitles = [][2]string{{ScopeProject, "## this project"}, {ScopeUser, "## every project"}}
+var scopeTitles = []struct {
+	scope store.Scope
+	title string
+}{{store.ScopeProject, "## this project"}, {store.ScopeUser, "## every project"}}
 
 // Digest renders rows, given newest first, into the framed section: the
 // project scope first, each scope cut once its lines reach budget bytes.
@@ -36,14 +39,14 @@ func Digest(rows []*store.Memory, at time.Time, budget int) string {
 	for _, sc := range scopeTitles {
 		used, first := 0, true
 		for _, m := range rows {
-			if m == nil || m.Scope != sc[0] || strings.Contains(m.Text, "[redacted") {
+			if m == nil || m.Scope != sc.scope || strings.Contains(m.Text, "[redacted") {
 				continue
 			}
 			if used += LineSize(m.Text); used > budget {
 				break
 			}
 			if first {
-				b.WriteString("\n\n" + sc[1])
+				b.WriteString("\n\n" + sc.title)
 				first = false
 			}
 			fmt.Fprintf(&b, "\n- [%s %s%s] %s", Truncate(m.ID, 8), m.Origin, Age(m.UpdatedAt, at), m.Text)

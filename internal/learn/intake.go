@@ -7,6 +7,7 @@ package learn
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/sanitize"
@@ -28,8 +29,8 @@ type Result struct {
 // with a secret is refused rather than stored redacted: the digest never
 // loads a redacted row, so storing one only says "saved" for a memory
 // nobody will read.
-func Intake(scope, origin, text, quote, provenance string) (*Result, error) {
-	if origin != OriginUser && origin != OriginLearned {
+func Intake(scope store.Scope, origin store.Origin, text, quote, provenance string) (*Result, error) {
+	if !slices.Contains(store.Origins, origin) {
 		return nil, ErrBadOrigin
 	}
 	if strings.TrimSpace(provenance) == "" {
