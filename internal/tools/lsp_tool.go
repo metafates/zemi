@@ -40,11 +40,11 @@ var lspToolProps = map[string]any{
 	"direction": map[string]any{"type": "string", "enum": []string{"incoming", "outgoing"}, "description": "call_hierarchy only; who calls the symbol or what it calls, omitted = both"},
 }
 
-func lspRequests(in map[string]any) []Request {
+func lspRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
 	if str(in["action"]) == "rename" {
-		return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Reason: "rename " + str(in["symbol"]) + " to " + str(in["new_name"])}}
+		return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Reason: "rename " + str(in["symbol"]) + " to " + str(in["new_name"])}}, nil
 	}
-	return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"]), Reason: "lsp " + str(in["action"])}}
+	return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"]), Reason: "lsp " + str(in["action"])}}, nil
 }
 
 func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {

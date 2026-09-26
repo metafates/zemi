@@ -566,8 +566,11 @@ func (NoProviderOptions) SetProviderOptions(fantasy.ProviderOptions) {}
 // tool implements fantasy.AgentTool over a plain run function.
 type tool struct {
 	NoProviderOptions
-	info     fantasy.ToolInfo
-	subjects func(input map[string]any) []Request
+	info fantasy.ToolInfo
+	// subjects parses the input into the requests the gate answers, and
+	// refuses input the tool could not act on (a URL that is no URL), so
+	// the user is never asked about it; nil = none
+	subjects func(p *Pipeline, input map[string]any) ([]Request, error)
 	run      func(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error)
 	pipe     *Pipeline
 	// gated: the path input is resolved before the gate and the tool opens
@@ -576,9 +579,6 @@ type tool struct {
 	// edits: the tool changes a file it must have read unchanged (write,
 	// edit), checked before the gate
 	edits bool
-	// check refuses input the tool could not act on (a URL that is no
-	// URL) before the gate, so the user is never asked about it; nil = none
-	check func(p *Pipeline, input map[string]any) error
 }
 
 func (t *tool) Info() fantasy.ToolInfo { return t.info }
@@ -645,12 +645,13 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 			return fantasy.NewTextErrorResponse(pipe.notFound(str(input["path"]), err)), nil
 		}
 	}
-	if t.check != nil {
-		if err := t.check(pipe, input); err != nil {
+	var reqs []Request
+	if t.subjects != nil {
+		if reqs, err = t.subjects(pipe, input); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}
-	for _, req := range t.subjects(input) {
+	for _, req := range reqs {
 		req.Tool = t.info.Name
 		v := pipe.CheckDenied(req)
 		run.verdict = v
@@ -901,15 +902,10 @@ func edits(t fantasy.AgentTool) fantasy.AgentTool {
 	return t
 }
 
-func checked(t fantasy.AgentTool, check func(*Pipeline, map[string]any) error) fantasy.AgentTool {
-	t.(*tool).check = check
-	return t
-}
-
 // All returns the builtin tools bound to a pipeline.
 func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name, desc string, parallel bool, props map[string]any, required []string,
-		subjects func(map[string]any) []Request,
+		subjects func(*Pipeline, map[string]any) ([]Request, error),
 		run func(context.Context, *Pipeline, map[string]any) (fantasy.ToolResponse, error)) fantasy.AgentTool {
 		if required == nil {
 			required = []string{} // nil marshals as "required": null, which strict providers refuse
@@ -945,9 +941,7 @@ Chain dependent steps with &&.`,
 				"timeout_ms": map[string]any{"type": "integer", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
 			}),
 			[]string{"command"},
-			func(in map[string]any) []Request {
-				return bashRequests(str(in["command"]), in)
-			},
+			bashRequests,
 			runBash),
 
 		gated(mk(ToolRead, "Read a file (text or image), or list a directory one level deep. Each line starts with its number and a tab, which are not part of the file. Do not read lines you already have again unless something other than your own edits changed the file.", true,
@@ -957,8 +951,8 @@ Chain dependent steps with &&.`,
 				"limit":  map[string]any{"type": "integer", "description": "how many lines to read; 0 reads to the end, still at most 2000 lines or 50000 bytes"},
 			},
 			[]string{"path", "limit"},
-			func(in map[string]any) []Request {
-				return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"])}}
+			func(_ *Pipeline, in map[string]any) ([]Request, error) {
+				return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"])}}, nil
 			},
 			runRead)),
 
@@ -968,8 +962,8 @@ Chain dependent steps with &&.`,
 				"content": map[string]any{"type": "string"},
 			},
 			[]string{"path", "content"},
-			func(in map[string]any) []Request {
-				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff("write", in)}}
+			func(_ *Pipeline, in map[string]any) ([]Request, error) {
+				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff("write", in)}}, nil
 			},
 			runWrite))),
 
@@ -981,8 +975,8 @@ Chain dependent steps with &&.`,
 				"replace_all": map[string]any{"type": "boolean"},
 			},
 			[]string{"path", "old_string", "new_string"},
-			func(in map[string]any) []Request {
-				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff("edit", in)}}
+			func(_ *Pipeline, in map[string]any) ([]Request, error) {
+				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff("edit", in)}}, nil
 			},
 			runEdit))),
 
@@ -992,8 +986,8 @@ Chain dependent steps with &&.`,
 				"path":    map[string]any{"type": "string", "description": "directory to search under; default the working directory"},
 			},
 			[]string{"pattern"},
-			func(in map[string]any) []Request {
-				return []Request{{Subject: perm.SubjectRead, Arg: searchRoot(in)}}
+			func(_ *Pipeline, in map[string]any) ([]Request, error) {
+				return []Request{{Subject: perm.SubjectRead, Arg: searchRoot(in)}}, nil
 			},
 			runGlob),
 
@@ -1004,30 +998,30 @@ Chain dependent steps with &&.`,
 				"include": map[string]any{"type": "string", "description": "glob limiting which files are searched, such as *.go"},
 			},
 			[]string{"pattern"},
-			func(in map[string]any) []Request {
-				return []Request{{Subject: perm.SubjectRead, Arg: searchRoot(in)}}
+			func(_ *Pipeline, in map[string]any) ([]Request, error) {
+				return []Request{{Subject: perm.SubjectRead, Arg: searchRoot(in)}}, nil
 			},
 			runGrep),
 
-		checked(mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation. Local and private addresses are refused.",
+		mk(ToolFetch, "Fetch an http or https URL as text; an HTML page comes back as its main article in markdown, without navigation. Local and private addresses are refused.",
 			true,
 			map[string]any{
 				"url": map[string]any{"type": "string"},
 			},
 			[]string{"url"},
-			func(in map[string]any) []Request {
+			func(p *Pipeline, in map[string]any) ([]Request, error) {
+				u, err := ParseNetURL(str(in["url"]))
+				if err == nil {
+					err = checkFetchHost(p, u)
+				}
+				if err != nil {
+					return nil, err
+				}
 				// the real host, so a rule (or an "always allow") matches the
-				// per-hop check runFetch makes later; check refused a bad URL
-				u, _ := ParseNetURL(str(in["url"]))
-				return []Request{{Subject: "net." + u.Hostname(), Arg: str(in["url"])}}
+				// per-hop check runFetch makes later
+				return []Request{{Subject: "net." + u.Hostname(), Arg: str(in["url"])}}, nil
 			},
-			runFetch), func(p *Pipeline, in map[string]any) error {
-			u, err := ParseNetURL(str(in["url"]))
-			if err != nil {
-				return err
-			}
-			return checkFetchHost(p, u)
-		}),
+			runFetch),
 
 		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, with exactly one item in_progress while work remains. Mark an item done as soon as it finishes, in the same response as the next step's first calls, and never call a step done in your reply before the list does. Do not repeat the list in your reply. Without todos it returns the list.",
 			false,
@@ -1043,7 +1037,7 @@ Chain dependent steps with &&.`,
 				}},
 			},
 			nil,
-			func(in map[string]any) []Request { return nil },
+			nil,
 			runTodos),
 
 		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, behavior, preferences, tradeoffs; never what reading code would tell you, approval for a routine action, or whether a plan is ready (use plan). Put independent questions in one call; ask separately when one answer changes another. Choice questions take 2-4 options with 1-5 word labels, the one you recommend first with its label ending in "(Recommended)". Never add an "Other" option: the user can always type their own answer.`,
@@ -1069,7 +1063,7 @@ Chain dependent steps with &&.`,
 				}},
 			},
 			[]string{"questions"},
-			func(in map[string]any) []Request { return nil },
+			nil,
 			runQuestion),
 
 		mk(ToolPlan, `Present an implementation plan and wait for the user's verdict before changing anything. Call it only before a large or ambiguous change (a clear task is done, not planned, and a question is answered), or as a read-only agent once nothing is left to decide. Ask open questions with the question tool first.
@@ -1078,26 +1072,25 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			false,
 			map[string]any{"plan": map[string]any{"type": "string", "description": "the plan in markdown"}},
 			[]string{"plan"},
-			func(in map[string]any) []Request { return nil },
+			nil,
 			runPlan),
 
-		checked(mk(ToolWebSearch, "Search the web: up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short; fetch the results worth reading.",
+		mk(ToolWebSearch, "Search the web: up to max_results (default 10, max 20) results as title, URL and snippet. Keep queries short; fetch the results worth reading.",
 			true,
 			map[string]any{
 				"query":       map[string]any{"type": "string"},
 				"max_results": map[string]any{"type": "integer"},
 			},
 			[]string{"query"},
-			func(in map[string]any) []Request {
-				// check refused a bad web.search_url
-				u, _, _ := searchURL(p, str(in["query"]))
-				return []Request{{Subject: "net." + u.Hostname(), Arg: u.String(), Reason: "web search"}}
+			func(p *Pipeline, in map[string]any) ([]Request, error) {
+				// a bad search URL is the user's config, not a request to gate
+				u, _, err := searchURL(p, str(in["query"]))
+				if err != nil {
+					return nil, err
+				}
+				return []Request{{Subject: "net." + u.Hostname(), Arg: u.String(), Reason: "web search"}}, nil
 			},
-			runWebSearch), func(p *Pipeline, in map[string]any) error {
-			// a bad search URL is the user's config, not a request to gate
-			_, _, err := searchURL(p, str(in["query"]))
-			return err
-		}),
+			runWebSearch),
 
 		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) with sh -c and return a job id at once. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
 			true,
@@ -1106,9 +1099,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				"command": map[string]any{"type": "string"},
 			}),
 			[]string{"command"},
-			func(in map[string]any) []Request {
-				return bashRequests(str(in["command"]), in)
-			},
+			bashRequests,
 			runJobStart),
 
 		mk(ToolJobRead, "Read what a background job printed since your last read of it, and whether it is still running.",
@@ -1118,14 +1109,14 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				"wait_ms": map[string]any{"type": "integer", "description": "wait until the job exits, or prints and then stays quiet for 2s, at most this long (max 600000); a silent job waits it all out. Default 0 returns at once."},
 			},
 			[]string{"id"},
-			func(in map[string]any) []Request { return nil },
+			nil,
 			runJobRead),
 
 		mk(ToolJobList, "List background jobs with their state.",
 			true,
 			map[string]any{},
 			nil,
-			func(in map[string]any) []Request { return nil },
+			nil,
 			runJobList),
 
 		mk(ToolJobKill, "Stop a background job and everything it started.",
@@ -1134,7 +1125,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				"id": map[string]any{"type": "string"},
 			},
 			[]string{"id"},
-			func(in map[string]any) []Request { return nil },
+			nil,
 			runJobKill),
 
 		mk(ToolMemory, "Keep one durable fact for future sessions: call it when the user says to remember something, states a preference or corrects you, and when you hit a gotcha the code does not say. One sentence, at most 300 characters, as it holds now, naming the file, command or flag it is about (\"the user wants commits made without being asked once checks pass\", \"the goldens are regenerated by make golden\"); never an instruction, a log of this session or a description of a change. Only what the user taught you or you verified, and only what a future session could not re-derive in seconds: not what AGENTS.md, a tool description or one file read already says. A user-scope memory needs quote. A repository procedure is a recipe, not a memory. Never a secret: name the env var that holds it.",
@@ -1146,7 +1137,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				"replaces": map[string]any{"type": "string", "description": "the memory to rewrite, or to drop when text is empty: its id from # Memory, the first 8 characters or more"},
 			},
 			[]string{"text"},
-			func(in map[string]any) []Request { return nil },
+			nil,
 			runMemory),
 
 		mk(ToolDiagnostics, "A file's compiler and linter diagnostics from its language server, warnings included. write and edit append the errors of the file they change, or say it has none; call this for another file, for warnings, or when their result said neither.",
@@ -1155,8 +1146,8 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				"path": map[string]any{"type": "string"},
 			},
 			[]string{"path"},
-			func(in map[string]any) []Request {
-				return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"]), Reason: "read diagnostics"}}
+			func(_ *Pipeline, in map[string]any) ([]Request, error) {
+				return []Request{{Subject: perm.SubjectRead, Arg: str(in["path"]), Reason: "read diagnostics"}}, nil
 			},
 			func(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
 				if p.Diagnostics == nil {
@@ -1177,7 +1168,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				"name": map[string]any{"type": "string"},
 			},
 			[]string{"name"},
-			func(in map[string]any) []Request { return nil },
+			nil,
 			runSkill),
 	}
 }
@@ -1251,9 +1242,9 @@ func ChangePreview(in map[string]any) string {
 
 // bashRequests routes the whole command through the tool.bash subject;
 // the store's CheckCommand splits it into segments and gates.
-func bashRequests(cmd string, in map[string]any) []Request {
-	return []Request{{Subject: perm.SubjectBash, Arg: cmd, Description: str(in["about"]),
-		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true}}
+func bashRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
+	return []Request{{Subject: perm.SubjectBash, Arg: str(in["command"]), Description: str(in["about"]),
+		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true}}, nil
 }
 
 // ShellQuote quotes s as one sh word, leaving words sh would not split or
