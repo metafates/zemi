@@ -79,22 +79,33 @@ zemi.ui.widget.add({
 }
 
 // TestSplashWrapsModelHint: the no-model hint names the fix, so it wraps
-// under its label instead of losing its end.
+// under its label instead of losing its end, and picking a model leaves the
+// block where it was.
 func TestSplashWrapsModelHint(t *testing.T) {
 	app, _ := bootAgentApp(t, 120, 30)
-	runLua(t, app, `
+	col := -1
+	for _, model := range []string{"", "a/b"} {
+		runLua(t, app, `
 local default = require("zemi.tui")
 zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
-    ctx.model, ctx.model_hint = "", "export ANTHROPIC_API_KEY or add a provider to ~/.config/zemi/init.lua"
+    ctx.model, ctx.model_hint = "`+model+`", "export ANTHROPIC_API_KEY or add a provider to ~/.config/zemi/init.lua"
     return default.splash(ctx)
   end,
 })`)
-	app.renderSync(t)
-	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "none yet: export ANTHROPIC_API_KEY or add a provider to") || !strings.Contains(frame, "         ~/.config/zemi/init.lua") {
-		t.Fatalf("hint cut:\n%s", frame)
+		app.frameGen++
+		app.renderSync(t)
+		frame := ansi.Strip(app.Frame())
+		if model == "" && (!strings.Contains(frame, "none yet: export ANTHROPIC_API_KEY or add a provider to") || !strings.Contains(frame, "         ~/.config/zemi/init.lua")) {
+			t.Fatalf("hint cut:\n%s", frame)
+		}
+		before, _, _ := strings.Cut(frame, "@zemi")
+		if c := len(before) - strings.LastIndex(before, "\n"); col == -1 {
+			col = c
+		} else if c != col {
+			t.Fatalf("model %q moved @zemi:\n%s", model, frame)
+		}
 	}
 }
 
