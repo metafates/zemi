@@ -365,7 +365,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				if eff := h.Effort(h.AgentStream().Model); eff != pick {
 					cur += " (" + cmp.Or(eff, "none") + " on this model)"
 				}
-				h.Notify(logging.Info, "Reasoning effort is "+cur, "/effort "+strings.Join(efforts, ", ")+" sets it")
+				h.Notify(logging.Info, "Reasoning effort is "+cur, "/effort "+config.OrList(efforts)+" sets it")
 				return nil
 			}
 			return h.SetConfig("agent.effort", args)

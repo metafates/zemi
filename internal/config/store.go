@@ -245,7 +245,7 @@ func checkKind(def Setting, val any) (any, error) {
 			for i, c := range def.Choices {
 				words[i] = cmp.Or(c, "default")
 			}
-			return nil, &ErrBadValue{Path: def.Path, Want: strings.Join(words, ", ")}
+			return nil, &ErrBadValue{Path: def.Path, Want: OrList(words)}
 		}
 	case KindInt:
 		switch v := val.(type) {
@@ -265,4 +265,12 @@ func checkKind(def Setting, val any) (any, error) {
 		return nil, &ErrBadValue{Path: def.Path, Want: string(def.Kind)}
 	}
 	return val, nil
+}
+
+// OrList joins words as "a, b or c".
+func OrList(words []string) string {
+	if len(words) < 2 {
+		return strings.Join(words, "")
+	}
+	return strings.Join(words[:len(words)-1], ", ") + " or " + words[len(words)-1]
 }
