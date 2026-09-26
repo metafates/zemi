@@ -839,12 +839,14 @@ func (h *Host) signInMCP(name string) error {
 			s.mu.Lock()
 			s.signIn = u
 			s.mu.Unlock()
+			h.mcpChanged()
 			h.Notify(logging.Info, "Browser opened", "sign in to "+name+" there, or open /mcp for the link")
 			h.openBrowser(u)
 		})
 		s.mu.Lock()
 		s.signIn = ""
 		s.mu.Unlock()
+		h.mcpChanged()
 		if err != nil {
 			h.RecordError("mcp "+name, err.Error())
 			h.Notify(logging.Error, "Could not sign in to "+name, err.Error())
