@@ -166,6 +166,10 @@ func fromGo(L *lua.LState, v any, depth int, seen map[uintptr]struct{}) lua.LVal
 	case fmt.Stringer:
 		return fromGo(L, t.String(), depth, seen)
 	default:
+		// a closed set is a named string type (hostapi.RowKind)
+		if rv := reflect.ValueOf(v); rv.Kind() == reflect.String {
+			return fromGo(L, rv.String(), depth, seen)
+		}
 		L.RaiseError("zemi.lua: cannot marshal Go value of type %T", v)
 		return lua.LNil
 	}

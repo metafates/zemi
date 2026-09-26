@@ -173,6 +173,7 @@ func TestFromGoScalars(t *testing.T) {
 		{1.25, glua.LNumber(1.25)},
 		{errors.New("boom"), glua.LString("boom")},
 		{stringerValue{}, glua.LString("stringer!")},
+		{namedString("ok"), glua.LString("ok")},
 	}
 	for _, c := range cases {
 		if got := FromGo(L, c.in); got != c.want {
@@ -180,6 +181,8 @@ func TestFromGoScalars(t *testing.T) {
 		}
 	}
 }
+
+type namedString string
 
 type stringerValue struct{}
 
