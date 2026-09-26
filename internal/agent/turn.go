@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -106,6 +107,18 @@ type Runner struct {
 	tools  []fantasy.AgentTool
 	// live is the running step's input, which holds the turn's finished steps
 	live []fantasy.Message
+	// sent and key are the messages and the prefix key the last step sent
+	// (signed), kept across turns and carried by Continue
+	sent []fantasy.Message
+	key  string
+}
+
+// Continue carries prev's conversation into r, a runner built for the next
+// send, with what prev last sent so signed still knows which thinking holds.
+func (r *Runner) Continue(prev *Runner) {
+	prev.mu.Lock()
+	defer prev.mu.Unlock()
+	r.History, r.sent, r.key = prev.History, prev.sent, prev.key
 }
 
 // CutShort reports whether the last Send ended because Full said the
@@ -402,17 +415,11 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		if len(steered) > 0 {
 			msgs = interleave(o.Messages[:len(o.Messages)-len(resp)], resp, steered)
 		}
-		live := msgs
-		if live[0].Role == fantasy.MessageRoleSystem {
-			live = live[1:]
-		}
-		r.mu.Lock()
-		r.live = slices.Clone(live) // fantasy appends to the step input
-		r.mu.Unlock()
-		res := fantasy.PrepareStepResult{Messages: withCacheBreakpoints(msgs)}
+		var res fantasy.PrepareStepResult
 		if active != nil {
 			res.ActiveTools = active()
 		}
+		res.Messages = withCacheBreakpoints(r.signed(msgs, res.ActiveTools, true))
 		return ctx, res, nil
 	}
 
@@ -501,10 +508,11 @@ func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text stri
 		// past lastErr, which the turn this may run beside writes
 		ModelProvider: func() fantasy.LanguageModel { return r.last.LanguageModel },
 		PrepareStep: func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
-			res := fantasy.PrepareStepResult{Messages: withCacheBreakpoints(o.Messages), Tools: inert}
+			res := fantasy.PrepareStepResult{Tools: inert}
 			if r.ActiveTools != nil {
 				res.ActiveTools = r.ActiveTools()
 			}
+			res.Messages = withCacheBreakpoints(r.signed(o.Messages, res.ActiveTools, false))
 			return ctx, res, nil
 		},
 	}
@@ -611,6 +619,85 @@ func withCacheControl(o fantasy.ProviderOptions) fantasy.ProviderOptions {
 	maps.Copy(out, o)
 	out[anthropic.Name] = &anthropic.ProviderCacheControlOptions{CacheControl: anthropic.CacheControl{Type: "ephemeral"}}
 	return out
+}
+
+// signed drops from a step's input the thinking the provider would refuse.
+// Anthropic signs a thinking block over the system prompt, the tools and every
+// message before it, and Claude Opus 5.5 and Fable 5.1 refuse a replayed block
+// whose prefix changed ("Invalid signature in thinking block"; accounts from
+// 2026-08-31 by default, older ones on opt-in), directly and through
+// openrouter or vercel, which replay the same signature. Every request passes
+// here, so this one check covers every history edit: compaction, pruned tool
+// output, stripped images, a rebuilt prompt, a tool loaded mid-turn. record
+// keeps what was sent for the next step.
+func (r *Runner) signed(msgs []fantasy.Message, active []string, record bool) []fantasy.Message {
+	var sys []fantasy.Message
+	if len(msgs) > 0 && msgs[0].Role == fantasy.MessageRoleSystem {
+		sys, msgs = msgs[:1], msgs[1:]
+	}
+	var key strings.Builder
+	for _, m := range sys {
+		for _, p := range m.Content {
+			if t, ok := p.(fantasy.TextPart); ok {
+				key.WriteString(t.Text)
+			}
+		}
+	}
+	names := active
+	if names == nil {
+		for _, t := range r.tools {
+			names = append(names, t.Info().Name)
+		}
+	}
+	// NOTE: tools by name: a schema that changes under the same name is missed
+	for _, n := range names {
+		key.WriteString("\x00" + n)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := keepSigned(msgs, r.sent, key.String() == r.key)
+	if record {
+		r.sent, r.key, r.live = out, key.String(), out
+	}
+	return slices.Concat(sys, out)
+}
+
+// keepSigned drops the reasoning from msgs starting at the first message that
+// differs from sent, all of it when the prefix changed. A message sent without
+// its reasoning matches its stripped form, so a drop holds on later steps
+// while the messages after it keep their own.
+func keepSigned(msgs, sent []fantasy.Message, samePrefix bool) []fantasy.Message {
+	out := slices.Clone(msgs)
+	edited := !samePrefix
+	for i, m := range out {
+		if !edited && i < len(sent) {
+			if reflect.DeepEqual(m, sent[i]) {
+				continue
+			}
+			if s := noReasoning(m); reflect.DeepEqual(s, sent[i]) {
+				out[i] = s
+				continue
+			}
+			edited = true
+		}
+		if edited {
+			out[i] = noReasoning(m)
+		}
+	}
+	return out
+}
+
+// noReasoning drops the Claude thinking, which openrouter and vercel keep
+// under the anthropic metadata too; no other reasoning is bound to its prefix.
+func noReasoning(m fantasy.Message) fantasy.Message {
+	signed := func(p fantasy.MessagePart) bool {
+		r, ok := p.(fantasy.ReasoningPart)
+		return ok && anthropic.GetReasoningMetadata(r.ProviderOptions) != nil
+	}
+	if slices.ContainsFunc(m.Content, signed) {
+		m.Content = slices.DeleteFunc(slices.Clone(m.Content), signed)
+	}
+	return m
 }
 
 // withCacheBreakpoints returns a copy of msgs with breakpoints on the system

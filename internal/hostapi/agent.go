@@ -550,7 +550,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string) error {
 	// prompt only with pinPrompt's key); the conversation carries over from
 	// the idle previous one.
 	if prev := ag.runner; prev != nil {
-		runner.History = prev.History
+		runner.Continue(prev)
 	}
 	ag.runner = runner
 	ag.modelSeed = ""
@@ -1595,6 +1595,7 @@ func (h *Host) aside(ctx context.Context, text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	r.Continue(live) // what live last sent decides which thinking still holds
 	res, err := r.Aside(ctx, history, text)
 	if err != nil {
 		return "", err

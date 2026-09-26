@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	anthropic "charm.land/fantasy/providers/anthropic"
 	openai "charm.land/fantasy/providers/openai"
 )
 
@@ -894,4 +895,59 @@ func (r *Runner) Active() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.active
+}
+
+// TestSignedThinking: thinking whose signed prefix changed leaves the step's
+// input, and what one step dropped stays dropped while a later reply keeps
+// its own.
+func TestSignedThinking(t *testing.T) {
+	msg := func(role fantasy.MessageRole, text string, thought bool) fantasy.Message {
+		m := fantasy.Message{Role: role, Content: []fantasy.MessagePart{fantasy.TextPart{Text: text}}}
+		if thought {
+			m.Content = append([]fantasy.MessagePart{fantasy.ReasoningPart{Text: "hmm " + text, ProviderOptions: fantasy.ProviderOptions{
+				anthropic.Name: &anthropic.ReasoningOptionMetadata{Signature: "sig " + text},
+			}}}, m.Content...)
+		}
+		return m
+	}
+	sys := func(text string) fantasy.Message { return msg(fantasy.MessageRoleSystem, text, false) }
+	u1, a1 := msg(fantasy.MessageRoleUser, "u1", false), msg(fantasy.MessageRoleAssistant, "a1", true)
+	t1, a2 := msg(fantasy.MessageRoleTool, "t1", false), msg(fantasy.MessageRoleAssistant, "a2", true)
+	edited := msg(fantasy.MessageRoleTool, "t1 pruned", false)
+	base := []fantasy.Message{sys("s"), u1, a1, t1, a2}
+	thoughts := func(msgs []fantasy.Message) string {
+		out := ""
+		for _, m := range msgs {
+			out += map[bool]string{true: "+", false: "-"}[slices.ContainsFunc(m.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeReasoning })]
+		}
+		return out
+	}
+	for _, c := range []struct {
+		name  string
+		prev  []fantasy.Message // nil: the runner sent nothing yet (a resume)
+		next  []fantasy.Message
+		tools []string
+		want  string
+	}{
+		{"an append strips nothing", base[:3], base, []string{"a"}, "--+-+"},
+		{"a mid-history edit strips from the edit on", base, []fantasy.Message{sys("s"), u1, a1, edited, a2}, []string{"a"}, "--+--"},
+		{"a changed system prompt strips all", base, append([]fantasy.Message{sys("s2")}, base[1:]...), []string{"a"}, "-----"},
+		{"a changed tool set strips all", base, base, []string{"a", "b"}, "-----"},
+		{"a runner that sent nothing strips all", nil, base, []string{"a"}, "-----"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := &Runner{}
+			if c.prev != nil {
+				r.signed(c.prev, []string{"a"}, true)
+				r.sent = c.prev[1:] // as if the earlier step went out whole
+			}
+			if got := thoughts(r.signed(c.next, c.tools, true)); got != c.want {
+				t.Fatalf("thinking kept %q, want %q", got, c.want)
+			}
+			a3 := msg(fantasy.MessageRoleAssistant, "a3", true)
+			if got := thoughts(r.signed(append(slices.Clone(c.next), a3), c.tools, true)); got != c.want+"+" {
+				t.Fatalf("next step kept %q, want %q", got, c.want+"+")
+			}
+		})
+	}
 }

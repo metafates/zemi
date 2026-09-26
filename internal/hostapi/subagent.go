@@ -299,7 +299,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	case prev != nil:
 		// the history the run ended with (Send closes any dangling call),
 		// on the same child session
-		runner.History = prev.History
+		runner.Continue(prev)
 	case sid != "":
 		// a run this process forgot: its rows are the history
 		runner.History, _ = historyFrom(rows)

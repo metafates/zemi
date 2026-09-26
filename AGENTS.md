@@ -599,7 +599,10 @@ lua-language-server is installed.
   fails the send. A profile is defined with `zemi.agent.profile.add`: a `-name` denylist or an
   allowlist of tools, so a new tool is in the default set until a profile drops it.
 - **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model and
-  tools may change; the prompt comes from `ag.pin`); `AgentSend` copies `History` from the previous idle runner. `runTurns`
+  tools may change; the prompt comes from `ag.pin`); `AgentSend` carries the previous idle runner's conversation over (`Runner.Continue`), and
+  every step's input passes `Runner.signed`, which drops the thinking whose signed prefix
+  (system prompt, tool names, earlier messages) changed since the last step, so no history
+  edit replays a signature Anthropic refuses. `runTurns`
   loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction
   runs before a send, when `Runner.Full` cuts a turn at a step boundary, and once after a
   context-too-long refusal. The size is `agent.ContextUsed` of the last step, never a sum; an
