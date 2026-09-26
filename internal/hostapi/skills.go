@@ -85,14 +85,11 @@ func (h *Host) syncSkills() {
 	if err := h.materializeBuiltinSkills(); err != nil {
 		h.Log.Warn("skills", "builtin skills not written", map[string]any{"error": err.Error()})
 	}
-	dirs := []skills.Dir{{Path: h.userSkillsDir(), Source: skills.User}}
-	// a <config>/skills linked to ~/.agents/skills is read once
-	if a, err := os.Stat(h.agentsSkillsDir()); err == nil {
-		if u, err := os.Stat(h.userSkillsDir()); err != nil || !os.SameFile(a, u) {
-			dirs = append(dirs, skills.Dir{Path: h.agentsSkillsDir(), Source: skills.User})
-		}
+	dirs := []skills.Dir{
+		{Path: h.userSkillsDir(), Source: skills.User},
+		{Path: h.agentsSkillsDir(), Source: skills.User},
+		{Path: h.builtinSkillsDir(), Source: skills.Builtin},
 	}
-	dirs = append(dirs, skills.Dir{Path: h.builtinSkillsDir(), Source: skills.Builtin})
 	for _, p := range h.pluginDirs() {
 		dirs = append(dirs, skills.Dir{Path: filepath.Join(p, "skills"), Source: skills.Plugin})
 	}
@@ -484,7 +481,7 @@ func (h *Host) openSkills() error {
 	}
 	ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true,
 		Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
-		Empty:  "No skills yet. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + " or ~/.agents."})
+		Empty:  "No skills yet. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + " or " + TildePath(h.Dirs.AgentsHome) + "."})
 	return nil
 }
 

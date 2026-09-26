@@ -13,7 +13,8 @@ Use tmux: pyte-style emulators garble bubbletea's incremental renderer, tmux doe
 
 Never run `bin/zemi` bare: it opens the real `~/.config/zemi` and can save a trust decision
 or a session there. `zemi-safe` (next to this file) runs the binary with all four
-`ZEMI_*_HOME` dirs under one scratch tree; it is a script, so it also works inside a tmux
+`ZEMI_*_HOME` dirs under one scratch tree (`~/.agents/skills` still loads from `HOME`, so
+a prompt capture can differ by machine); it is a script, so it also works inside a tmux
 pane, where the caller's environment is not forwarded, and from fish, which does not split
 `$VAR` into words.
 

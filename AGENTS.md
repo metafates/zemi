@@ -80,7 +80,8 @@ git commits are run unsandboxed (`sandbox: false`): `.git` is read-only inside t
 sandbox, so a confined `git commit` fails on `index.lock`.
 
 For a throwaway config tree, redirect all dirs: `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`,
-`ZEMI_STATE_HOME`, `ZEMI_CACHE_HOME` (internal/config/dirs.go); most tests inject
+`ZEMI_STATE_HOME`, `ZEMI_CACHE_HOME` (internal/config/dirs.go), and `HOME` too when the
+skills in `~/.agents/skills`, which no override moves, must stay out; most tests inject
 `config.Dirs{...}` with `t.TempDir()` instead. Tests boot with empty dirs and an untrusted
 project: call `h.SetProjectTrusted(true)` when one needs project instructions, language servers
 or settled builds.
@@ -495,12 +496,12 @@ registry, follow `internal/hostapi/registry.go`.
 
 Skills are file-based units, each a `SKILL.md` with YAML frontmatter: user skills under
 `<config>/skills/`, then `~/.agents/skills/` (`Dirs.AgentsHome`, in `UserTrees`; body only,
-installers write there; read once when the config dir links to it), builtin (zemi's self-knowledge, `runtime/skills/zemi-*`, embedded and
-rewritten to `<data>/builtin-skills/` on every sync) and plugin (`skills.Plugin`, each enabled
-plugin's `skills/`, body only), all in the table and enabled by default. A trusted
-project adds its own (`.agents/skills`): body only, enabled, never in the table or
-`skillsReg`, scanned by `SetProjectTrusted`, which every reload runs, so a skill written
-mid-session loads with the reload the config watcher starts. Recipes (`skills.Recipe`) are the project's
+since installers write there; the config dir wins a name clash), builtin (zemi's
+self-knowledge, `runtime/skills/zemi-*`, embedded and rewritten to `<data>/builtin-skills/` on
+every sync) and plugin (`skills.Plugin`, each enabled plugin's `skills/`, body only), all in the
+table and enabled by default. A trusted project adds its own (`.agents/skills`): body only,
+enabled, never in the table or `skillsReg`, scanned by `SetProjectTrusted`, which every reload
+runs, so a skill written mid-session loads with the reload the config watcher starts. Recipes (`skills.Recipe`) are the project's
 private skills under `<state>/projects/<hash>/skills` (`recipesDir`, a read jail root no sandbox
 policy can write): trusted only, body only, enabled, and they lose every name clash. The prompt
 lists the snapshot `environmentPrompt` pins with `ag.env` (new session, resume, `compactDone`);
