@@ -168,13 +168,15 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	// schema() lists every known setting: path, kind, default and desc.
+	// schema() lists every known setting: path, kind, default, desc and choices.
 	tb.RawSetString("schema", L.NewFunction(func(L *glua.LState) int {
 		rows := []any{}
 		for _, s := range h.Settings.Schema() {
-			rows = append(rows, map[string]any{
-				"path": s.Path, "kind": s.Kind, "default": s.Default, "desc": s.Desc,
-			})
+			row := map[string]any{"path": s.Path, "kind": s.Kind, "default": s.Default, "desc": s.Desc}
+			if s.Choices != nil {
+				row["choices"] = s.Choices
+			}
+			rows = append(rows, row)
 		}
 		L.Push(lua.FromGo(L, rows))
 		return 1

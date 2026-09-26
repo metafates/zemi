@@ -18,6 +18,8 @@ const (
 	KindBool   Kind = "bool"
 )
 
+var Kinds = []Kind{KindString, KindInt, KindBool}
+
 // Setting describes one config key.
 type Setting struct {
 	Path    string

@@ -233,11 +233,17 @@ zemi.api = {}
 -- ---------------------------------------------------------------------------
 -- zemi.config
 
+---@alias zemi.SettingKind
+---| "string"
+---| "int"
+---| "bool"
+
 ---@class zemi.SettingSchema
 ---@field path string Dotted key, e.g. "ui.theme".
----@field kind string "string", "bool", "int" or "float".
+---@field kind zemi.SettingKind
 ---@field default any
 ---@field desc string
+---@field choices? string[] The only values a string key takes; nil takes any.
 
 ---@class zemi.config
 zemi.config = {}

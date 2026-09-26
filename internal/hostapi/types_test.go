@@ -235,6 +235,7 @@ func TestTypesEnums(t *testing.T) {
 		{"zemi.TurnEnd", "", strs(turnEnds)},
 		{"zemi.Waiting", "", strs(waitings)},
 		{"zemi.RunStatus", "", strs(runStatuses)},
+		{"zemi.SettingKind", "", strs(config.Kinds)},
 	} {
 		if c.alias != "" {
 			assertSameNames(t, c.alias, annotatedAlias(t, c.alias), slices.Clone(c.live))
