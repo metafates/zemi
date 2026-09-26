@@ -454,7 +454,8 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 }
 
 // autoLocal is everything auto mode settles: reading and editing files
-// inside the jail that are not secret-shaped, commands (unsettled), running
+// inside the jail that are not secret-shaped (editing a local plugin whose
+// creation was allowed too), commands (unsettled), running
 // workflows (their agents' tools are checked one by one) and MCP tools their
 // server marks read-only. Anything else goes to the user with a reason
 // (askHook); a network request always does, since the URL is the model's.
@@ -464,8 +465,12 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		return h.inJail(req.Arg, append(h.readJails(), h.localPlugins())...) && !h.secretPath(req.Arg)
 	case perm.SubjectWrite:
 		// zemi's own dirs can sit inside the project (zemi run in $HOME), and a
-		// write there (init.lua) changes what zemi allows
-		return h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
+		// write there (init.lua) changes what zemi allows.
+		// NOTE: a plugin whose creation was allowed settles with no trust check
+		// (it is in no project, and $HOME is never trusted), so text the model
+		// reads later can steer code every later boot runs, in every project.
+		// Plugin origin bounds it: it adds no allow rule, and gated calls raise.
+		return (h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) || h.madePlugin(req.Arg)) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
 	case perm.SubjectBash:
 		return h.unsettled(req.Arg, req.ReadOnly) == ""
 	case "tool.workflow":
@@ -482,7 +487,8 @@ func (h *Host) protectedWrite(p string) bool { return h.protectedWhy(p) != "" }
 // protectedWhy says why a write under any .git, to the Lua in any .agents
 // (init.lua, lua/), to a .gitattributes or .gitmodules, the git dir a
 // project .git file names (git init --separate-git-dir) or zemi's own dirs,
-// local plugins included, needs the user, "" for any other path: git runs
+// local plugins included but one whose creation was allowed in this
+// process, needs the user, "" for any other path: git runs
 // what those name, and the rest changes what zemi runs or allows. The rest
 // of .agents (skills, agents, commands, workflows) is an ordinary project
 // write.
@@ -497,15 +503,17 @@ func (h *Host) protectedWhy(p string) string {
 		return "this changes .git, " + git
 	case strings.EqualFold(base, ".gitattributes"), strings.EqualFold(base, ".gitmodules"):
 		return "this changes " + base + ", " + git
-	case h.inJail(p, d.WorktreesDir()):
+	case h.inJail(p, gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git"))):
+		return "this changes .git, " + git
+	case h.inJail(p, d.WorktreesDir()), h.madePlugin(p):
 		return ""
+	case h.newPlugin(p) != "":
+		return "this creates the local plugin " + h.PluginOf(p) + ", which zemi runs in every project; once allowed, zemi edits it without asking until it exits"
 	case h.inJail(p, h.localPlugins()):
 		// an approval in one project must not plant code every project loads
 		return "this changes a local plugin, which zemi runs in every project"
 	case h.inJail(p, d.ConfigHome, d.DataHome, d.StateHome):
 		return "this changes zemi's own files"
-	case h.inJail(p, gitdirTarget(filepath.Join(d.ProjectDir, ".git")), gitdirTarget(filepath.Join(d.RepoRoot(), ".git"))):
-		return "this changes .git, " + git
 	}
 	return ""
 }

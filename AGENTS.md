@@ -330,7 +330,9 @@ not secret-shaped (reads of the local plugins too), `tool.workflow` scripts (eac
 (`unsettled`), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
 `.git` or zemi's own dirs (a local plugin included: it loads in every project, so like the
-recipes it asks every time, with no always answer), to the Lua in any `.agents` (`init.lua`, `lua/`) and to a
+recipes it asks every time, with no always answer, except one whose creating write the user or
+yolo allowed in this process (`madePlugins`, recorded by `askHook`), which auto then edits in any
+project), to the Lua in any `.agents` (`init.lua`, `lua/`) and to a
 `.gitattributes` or `.gitmodules` are `protectedWrite`, checkouts in `.agents/worktrees` aside,
 which no rule settles, a mode's own included; the rest of `.agents` (skills, agents, commands,
 workflows) loads nothing into the interpreter and is an ordinary project write).

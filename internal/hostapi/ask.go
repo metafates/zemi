@@ -32,6 +32,13 @@ func (h *Host) askHook() tools.Asker {
 			req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
 		}
 		resolved := func(allowed bool, by string) (bool, string, string) {
+			// only yolo or the user allows a write that creates a plugin: it is
+			// protected, so no mode rule, decide or store rule settles it
+			if allowed && req.Subject == perm.SubjectWrite {
+				if dir := h.newPlugin(req.Arg); dir != "" {
+					h.madePlugins.Store(dir, true)
+				}
+			}
 			h.EmitAsync("permission.resolved", map[string]any{
 				"subject": req.Subject, "arg": req.Arg,
 				"decision": map[bool]string{true: "allow", false: "deny"}[allowed],

@@ -290,6 +290,9 @@ type Host struct {
 
 	pluginLoads atomic.Pointer[[]pluginLoad] // the last boot's enabled plugins, for /health and /plugins
 	pluginRoots atomic.Pointer[[]string]     // the plugins that boot runs, for their skills, agents, commands and workflows
+	// madePlugins holds the local plugin dirs whose creation the user or yolo
+	// allowed: auto settles the model's edits there until zemi exits
+	madePlugins sync.Map
 
 	// jobs owns the model's background processes (job_* tools).
 	jobs  *tools.Jobs

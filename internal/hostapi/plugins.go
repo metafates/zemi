@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -155,6 +156,33 @@ func (h *Host) PluginOf(path string) string {
 		return ""
 	}
 	return name
+}
+
+// localPluginDir is the local/<name> directory holding path, or "".
+func (h *Host) localPluginDir(path string) string {
+	name := h.PluginOf(path)
+	if dir := filepath.Join(h.pluginsRoot(), "local", name); name != "" && strings.HasPrefix(path, dir) {
+		return dir
+	}
+	return ""
+}
+
+// newPlugin is the local plugin directory a write to path would create, or
+// "" when path is in none or it exists.
+func (h *Host) newPlugin(path string) string {
+	if dir := h.localPluginDir(path); dir != "" {
+		if _, err := os.Lstat(dir); errors.Is(err, fs.ErrNotExist) {
+			return dir
+		}
+	}
+	return ""
+}
+
+// madePlugin says whether path is in a local plugin whose creation was
+// allowed in this process.
+func (h *Host) madePlugin(path string) bool {
+	_, ok := h.madePlugins.Load(h.localPluginDir(path))
+	return ok
 }
 
 // pluginDup records a file resource one plugin ships under a name another

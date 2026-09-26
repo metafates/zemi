@@ -90,6 +90,44 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 	}
 }
 
+// TestPluginCreationGrant: the user's yes to the write that creates a
+// local plugin lets auto edit that plugin, in an untrusted project too;
+// its .git, a plugin that existed and one whose creation was refused keep
+// asking, and zemi.fs never reaches it.
+func TestPluginCreationGrant(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.Dirs.DataHome = t.TempDir()
+	local := filepath.Join(perm.RealPath(h.Dirs.DataHome), "plugins", "local")
+	h.pluginsRoot = func() string { return filepath.Dir(local) }
+	os.MkdirAll(filepath.Join(local, "y"), 0o755)
+	h.SetPermMode("auto")
+	ui := &fakeUI{askBy: "user"}
+	h.SetUIHooks(ui)
+	ask := h.askHook()
+	const creates = ", which zemi runs in every project; once allowed, zemi edits it without asking until it exits"
+	for _, c := range []struct {
+		path       string
+		yes, asked bool
+		allowed    bool
+		why        string
+	}{
+		{"x/init.lua", true, true, true, "this creates the local plugin x" + creates},
+		{"x/lua/x/init.lua", false, false, true, ""},
+		{"x/.git/config", false, true, false, "this changes .git, which decides what git runs"},
+		{"y/init.lua", true, true, true, "this changes a local plugin, which zemi runs in every project"},
+		{"y/lua/y/init.lua", false, true, false, "this changes a local plugin, which zemi runs in every project"},
+		{"z/init.lua", false, true, false, "this creates the local plugin z" + creates},
+		{"z/lua/z/init.lua", false, true, false, "this creates the local plugin z" + creates},
+	} {
+		ui.asked, ui.askAllowed = nil, c.yes
+		ok, _, why := ask(tools.Request{Subject: "fs.write", Arg: filepath.Join(local, c.path)})
+		if ok != c.allowed || (len(ui.asked) > 0) != c.asked || why != c.why {
+			t.Errorf("%s: allowed %v, asked %v, reason %q", c.path, ok, len(ui.asked) > 0, why)
+		}
+	}
+	runExpectErr(t, h.RT, fmt.Sprintf("zemi.fs.write(%q, 'x')", filepath.Join(local, "x", "init.lua")), "outside the jail")
+}
+
 // TestUntrustedModes: in an untrusted project, for a command with no
 // sandbox to run in, or for a write outside the project, auto mode sends
 // what it cannot settle to the user; the Lua tool asks there and for a

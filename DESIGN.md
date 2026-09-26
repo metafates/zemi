@@ -1907,8 +1907,12 @@ provenance string.
   never write roots: a write to a local plugin asks every time with no
   always answer, and no mode settles it (yolo aside), since the code loads
   in every project, trusted or not; an installed plugin changes only
-  through git. So an approved `fs.write` in one project cannot silently
-  plant plugin code that auto-loads at the next boot. The config dir is read-only to Lua: of
+  through git. The one exception is the plugin being created: the user's
+  yes (or yolo) to the write that creates `local/<name>/` lets auto edit
+  that directory, its `.git` aside, in any project until zemi exits,
+  and a directory that already existed is never granted. So an approved
+  `fs.write` in one project cannot silently plant code in a plugin the user
+  did not just create. The config dir is read-only to Lua: of
   zemi's own code only Go writes there, so `zemi.fs.write` cannot
   author `init.lua`. The model's `read`, `write` and `edit` get their
   path resolved once before the gate and open exactly that path, walking
