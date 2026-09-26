@@ -494,7 +494,8 @@ registry, follow `internal/hostapi/registry.go`.
 ### Skills (internal/skills, internal/hostapi/skills.go)
 
 Skills are file-based units, each a `SKILL.md` with YAML frontmatter: user skills under
-`<config>/skills/`, builtin (zemi's self-knowledge, `runtime/skills/zemi-*`, embedded and
+`<config>/skills/`, then `~/.agents/skills/` (`Dirs.AgentsHome`, in `UserTrees`; body only,
+installers write there; read once when the config dir links to it), builtin (zemi's self-knowledge, `runtime/skills/zemi-*`, embedded and
 rewritten to `<data>/builtin-skills/` on every sync) and plugin (`skills.Plugin`, each enabled
 plugin's `skills/`, body only), all in the table and enabled by default. A trusted
 project adds its own (`.agents/skills`): body only, enabled, never in the table or
@@ -521,8 +522,8 @@ and pins the list again. Invariants:
   sends it.
 - **Token efficiency**: the prompt carries only the index (name + description, cut to 512 runes
   with a warning); bodies load on demand via the `skill` tool, after a permission check.
-- **Hook placement**: a user skill's `zemi-skill.lua` runs once, in the boot step after
-  user init.lua, as user origin; enabling later does not run it.
+- **Hook placement**: a `<config>/skills` skill's `zemi-skill.lua` runs once, in the boot
+  step after user init.lua, as user origin; enabling later does not run it.
 
 ### Type annotations (internal/hostapi/types.go, runtime/types/zemi.lua)
 

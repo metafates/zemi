@@ -85,7 +85,14 @@ func (h *Host) syncSkills() {
 	if err := h.materializeBuiltinSkills(); err != nil {
 		h.Log.Warn("skills", "builtin skills not written", map[string]any{"error": err.Error()})
 	}
-	dirs := []skills.Dir{{Path: h.userSkillsDir(), Source: skills.User}, {Path: h.builtinSkillsDir(), Source: skills.Builtin}}
+	dirs := []skills.Dir{{Path: h.userSkillsDir(), Source: skills.User}}
+	// a <config>/skills linked to ~/.agents/skills is read once
+	if a, err := os.Stat(h.agentsSkillsDir()); err == nil {
+		if u, err := os.Stat(h.userSkillsDir()); err != nil || !os.SameFile(a, u) {
+			dirs = append(dirs, skills.Dir{Path: h.agentsSkillsDir(), Source: skills.User})
+		}
+	}
+	dirs = append(dirs, skills.Dir{Path: h.builtinSkillsDir(), Source: skills.Builtin})
 	for _, p := range h.pluginDirs() {
 		dirs = append(dirs, skills.Dir{Path: filepath.Join(p, "skills"), Source: skills.Plugin})
 	}
@@ -119,6 +126,9 @@ func joinIf(dir, elem string) string {
 }
 
 func (h *Host) userSkillsDir() string { return joinIf(h.Dirs.ConfigHome, "skills") }
+
+// agentsSkillsDir is ~/.agents/skills, the user skills other agents read too.
+func (h *Host) agentsSkillsDir() string { return joinIf(h.Dirs.AgentsHome, "skills") }
 
 // builtinSkillsDir is where the embedded builtin skills are copied so the
 // skill tool reads them from disk like any other skill.
@@ -347,7 +357,7 @@ func (h *Host) runSkillHook(L *glua.LState, s skills.Skill) error {
 	return nil
 }
 
-// SkillsUserHooksStep runs the hooks of enabled user skills, after
+// SkillsUserHooksStep runs the hooks of enabled skills in <config>/skills, after
 // user init.lua and before the project config (DESIGN §5 load order); a
 // failing hook is logged, never fatal.
 func (h *Host) SkillsUserHooksStep() lua.BootStep {
@@ -356,7 +366,8 @@ func (h *Host) SkillsUserHooksStep() lua.BootStep {
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 			h.syncSkills()
 			for _, s := range h.enabledSkills() {
-				if s.Source == skills.User {
+				// installers write ~/.agents/skills: a hook there would run as user at every boot
+				if s.Source == skills.User && filepath.Dir(s.Dir) == h.userSkillsDir() {
 					_ = h.runSkillHook(g.L, s)
 				}
 			}
@@ -473,7 +484,7 @@ func (h *Host) openSkills() error {
 	}
 	ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true,
 		Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
-		Empty:  "No skills yet. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + "."})
+		Empty:  "No skills yet. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + " or ~/.agents."})
 	return nil
 }
 

@@ -21,6 +21,7 @@ type Dirs struct {
 	StateHome  string // ~/.local/state/zemi
 	CacheHome  string // ~/.cache/zemi
 	ProjectDir string // current project root (cwd)
+	AgentsHome string // ~/.agents, whose skills/ other agents share; never from an override
 }
 
 // xdg resolves one root: zemi's own override first, then the XDG variable
@@ -56,6 +57,9 @@ func ResolveDirs() (Dirs, error) {
 		StateHome:  xdg(home, "ZEMI_STATE_HOME", "XDG_STATE_HOME", ".local/state/zemi"),
 		CacheHome:  xdg(home, "ZEMI_CACHE_HOME", "XDG_CACHE_HOME", ".cache/zemi"),
 		ProjectDir: projectRoot(),
+	}
+	if home != "" {
+		d.AgentsHome = filepath.Join(home, ".agents")
 	}
 	if slices.Contains([]string{d.ConfigHome, d.DataHome, d.StateHome, d.CacheHome}, "") {
 		return d, errors.New("no home directory: set HOME or the ZEMI_*_HOME variables")
@@ -226,10 +230,10 @@ func (d Dirs) WorktreesIgnore() (bool, error) {
 	return true, errors.Join(err, f.Close())
 }
 
-// UserTrees are the config subdirectories zemi loads user files from.
-// They are named apart from ConfigHome because a symlinked one (skills ->
-// ~/.agents/skills) resolves outside it, and both origin classification and
-// the read jail work on resolved paths.
+// UserTrees are the directories zemi loads user files from: the config
+// subdirectories and ~/.agents/skills. They are named apart from ConfigHome
+// because a symlinked one resolves outside it, and both origin
+// classification and the read jail work on resolved paths.
 func (d Dirs) UserTrees() []string {
 	if d.ConfigHome == "" {
 		return nil
@@ -237,6 +241,9 @@ func (d Dirs) UserTrees() []string {
 	var out []string
 	for _, name := range []string{"lua", "skills", "agents", "commands", "workflows"} {
 		out = append(out, filepath.Join(d.ConfigHome, name))
+	}
+	if d.AgentsHome != "" {
+		out = append(out, filepath.Join(d.AgentsHome, "skills"))
 	}
 	return out
 }

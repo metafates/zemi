@@ -321,6 +321,7 @@ Directories (XDG):
   projects/<hash>/permissions  bash commands always allowed in the project (§6.1), read only when trusted
   trust.json              trust decisions by repository root
   logs/
+~/.agents/skills/<name>/  user skills other agents read too, body only (§10.5)
 <repo>/
   .agents/init.lua        project-local config, loaded after user config
   .agents/lua|skills|agents|commands|workflows/  the same shapes
@@ -2151,7 +2152,9 @@ skills/
 ```
 
 Discovery merges three sources, the higher-trust one winning a name
-clash: user (config dir) over builtin (zemi's own, embedded
+clash: user (config dir, then `~/.agents/skills`, the dir other agents
+share, whose `zemi-skill.lua` never runs since installers write there)
+over builtin (zemi's own, embedded
 under `runtime/skills/`, rewritten to `<data>/builtin-skills/` on every
 sync) over plugin (each enabled plugin's `skills/`, by plugin name, body
 only: its `zemi-skill.lua` never runs). All start enabled and toggle; a

@@ -148,7 +148,8 @@ func frontmatter(data []byte) (name, description string, err error) {
 
 // Discover merges skill directories in the order given, higher trust
 // first: on a name clash the earlier one wins (user over builtin,
-// §10.5), with a warning when both dirs have one source (two plugins).
+// §10.5), with a warning when two plugins ship one name: <config>/skills
+// over ~/.agents/skills is a choice the user made.
 // Unreadable or invalid directories are skipped with a
 // returned warning per failure, never fatal: a broken skill must not hide
 // the others.
@@ -164,7 +165,7 @@ func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
 				continue
 			}
 			if kept, ok := seen[e.Name()]; ok {
-				if kept.Source == d.Source {
+				if kept.Source == Plugin && d.Source == Plugin {
 					warnings = append(warnings, fmt.Sprintf("skills: %s: skill %s is already in %s", filepath.Join(d.Path, e.Name()), e.Name(), kept.Dir))
 				}
 				continue

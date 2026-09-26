@@ -305,6 +305,42 @@ func TestSymlinkedSkillsDir(t *testing.T) {
 	}
 }
 
+// TestAgentsHomeSkills: ~/.agents/skills adds user skills, body only, that
+// lose a name clash to <config>/skills; a config dir linked to it reads once.
+func TestAgentsHomeSkills(t *testing.T) {
+	for _, linked := range []bool{false, true} {
+		h, r := newTestHostSkillsNoBoot(t)
+		h.Dirs.AgentsHome = t.TempDir()
+		agents := h.agentsSkillsDir()
+		hook, want := `zemi.command.add("agents-hook", function() end)`, "the config deploy"
+		if linked {
+			// the hook would run through <config>/skills, outside the test's path classes
+			hook, want = "", "the agents deploy"
+			if err := os.Symlink(agents, h.userSkillsDir()); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+		} else {
+			writeSkill(t, h.userSkillsDir(), "deploy", "the config deploy", "")
+		}
+		writeSkill(t, agents, "shared", "from agents", hook)
+		writeSkill(t, agents, "deploy", "the agents deploy", "")
+		if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.SkillsUserHooksStep()}); err != nil {
+			t.Fatalf("boot: %v", err)
+		}
+		shared, _ := h.skillsReg.get("shared")
+		deploy, _ := h.skillsReg.get("deploy")
+		if shared.Source != skills.User || !h.skillsReg.isEnabled("shared") || deploy.Description != want {
+			t.Errorf("linked=%v: shared %+v, deploy %q", linked, shared, deploy.Description)
+		}
+		if h.HasUnseenErrors() {
+			t.Errorf("linked=%v: errors %+v", linked, h.errs.entries)
+		}
+		if h.Commands.Lookup("agents-hook") != nil {
+			t.Error("a ~/.agents/skills hook ran")
+		}
+	}
+}
+
 // TestRecipes: the steps share one host, in order. The prompt lists the
 // recipes pinned with the environment; the skill tool resolves them live. A
 // step naming a tool runs it in auto mode, where the user is asked every time.

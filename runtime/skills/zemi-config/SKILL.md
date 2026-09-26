@@ -11,6 +11,7 @@ description: Load before changing zemi's settings, providers, models, permission
 | --- | --- |
 | `<config>/init.lua` | user config, run at startup as the trusted `user` origin |
 | `<config>/lua/`, `skills/`, `agents/`, `commands/`, `workflows/` | modules, skills, and the files zemi-customize describes |
+| `~/.agents/skills/` | user skills other agents read too, after `<config>/skills/`; a `zemi-skill.lua` there never runs |
 | `<repo>/.agents/` | project config with the same layout, loaded only once the user trusts the project, as the low-trust `project` origin |
 | `<data>/plugins/local/<name>/`, `installed/<name>/` | plugins developed in place, and git clones; `<data>/plugins/disabled` lists the names turned off; zemi-customize has how to write one |
 | `<data>/types/zemi.lua` | LuaLS annotations for the whole API, rewritten every start |
