@@ -223,16 +223,17 @@ func RealPath(p string) string {
 	return real
 }
 
-// Path is an absolute path with every symlink resolved as the kernel
-// resolves it, the proof Open acts on: only Resolve and Lresolve make one,
-// and the zero value opens nothing.
+// Path is an absolute path resolved as the kernel resolves it, the proof
+// Open acts on: every directory component is resolved, and the last one too
+// unless Lresolve made it, when Open refuses a link there. Only Resolve and
+// Lresolve make one, and the zero value opens nothing.
 type Path struct{ s string }
 
 // Resolve resolves p with RealPath.
 func Resolve(p string) (Path, error) {
 	r := RealPath(p)
 	if r == "" {
-		return Path{}, fmt.Errorf("%s: too many levels of symbolic links", p)
+		return Path{}, fmt.Errorf("%s cannot be resolved", p)
 	}
 	return Path{r}, nil
 }
