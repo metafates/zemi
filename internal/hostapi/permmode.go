@@ -375,12 +375,8 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 					return string(s)
 				}
 				r := perm.Rule{Subject: field(1, "subject"), Pattern: field(2, "pattern"), Decision: perm.Decision(field(3, "decision"))}
-				if r.Subject == "" || r.Pattern == "" || (r.Decision != perm.Allow && r.Decision != perm.Deny && r.Decision != perm.Ask) {
-					bad = "each rule needs subject, pattern and decision (allow, ask or deny)"
-					return
-				}
-				if !knownSubject(r.Subject) {
-					bad = badSubject(r.Subject).Error()
+				if err := ruleShape(r); err != nil {
+					bad = err.Error()
 					return
 				}
 				def.Rules.Add(r)

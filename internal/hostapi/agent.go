@@ -2578,10 +2578,9 @@ func badSubject(subject string) error {
 	return fmt.Errorf("subject %q starts with none of %s", subject, strings.Join(perm.SubjectPrefixes, " "))
 }
 
-// validateRule checks a Lua rule. Examples are required (DESIGN §9): the match example must match
-// the pattern without being excluded, the not_match example must be
-// excluded; a guard needs both examples.
-func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
+// ruleShape checks what every rule intake needs: a known subject, a
+// pattern and a decision.
+func ruleShape(r perm.Rule) error {
 	switch {
 	case r.Subject == "" || r.Pattern == "":
 		return errors.New("subject and pattern are required")
@@ -2589,6 +2588,16 @@ func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
 		return badSubject(r.Subject)
 	case r.Decision != perm.Allow && r.Decision != perm.Ask && r.Decision != perm.Deny:
 		return errors.New("decision must be allow, ask or deny")
+	}
+	return nil
+}
+
+// validateRule checks a Lua rule. Examples are required (DESIGN §9): the match example must match
+// the pattern without being excluded, the not_match example must be
+// excluded; a guard needs both examples.
+func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
+	if err := ruleShape(*r); err != nil {
+		return err
 	}
 	if r.NotMatch == "" {
 		if matchEx == "" {
