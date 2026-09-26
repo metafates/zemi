@@ -20,6 +20,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	glua "github.com/yuin/gopher-lua"
+
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
@@ -28,7 +30,6 @@ import (
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // skillsReg caches discovery results between DB syncs. Everything that
@@ -132,26 +133,17 @@ func (h *Host) agentsSkillsDir() string { return joinIf(h.Dirs.AgentsHome, "skil
 func (h *Host) builtinSkillsDir() string { return joinIf(h.Dirs.DataHome, "builtin-skills") }
 
 // materializeBuiltinSkills rewrites the builtin skills on every sync, so an
-// upgraded zemi replaces them.
+// upgraded zemi replaces them and drops the ones it no longer ships.
 func (h *Host) materializeBuiltinSkills() error {
 	dir := h.builtinSkillsDir()
 	if dir == "" {
 		return nil
 	}
-	return fs.WalkDir(zemiruntime.Skills, "skills", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		data, err := zemiruntime.Skills.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		out := filepath.Join(dir, strings.TrimPrefix(p, "skills/"))
-		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-			return err
-		}
-		return os.WriteFile(out, data, 0o644)
-	})
+	sub, err := fs.Sub(zemiruntime.Skills, "skills")
+	if err != nil {
+		return err
+	}
+	return replaceDir(dir, sub)
 }
 
 // skillIndex resolves enabled skills for the skill tool (DESIGN §10.5:

@@ -86,9 +86,9 @@ func TestTypesDeclareNothingExtra(t *testing.T) {
 
 // TestSyncTypesWritesAnnotations: a start leaves the annotations and a
 // lua-language-server pointed at them, in the config dir and in each local
-// plugin (never a clone or a symlinked plugin), replaces an edited
-// .luarc.json, and leaves the file alone when it already says that or is a
-// link, whose target is not zemi's.
+// plugin (never a clone or a symlinked plugin), drops a module zemi no
+// longer ships, replaces an edited .luarc.json, and leaves the file alone
+// when it already says that or is a link, whose target is not zemi's.
 func TestSyncTypesWritesAnnotations(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.DataHome, h.Dirs.ConfigHome = t.TempDir(), t.TempDir()
@@ -109,12 +109,22 @@ func TestSyncTypesWritesAnnotations(t *testing.T) {
 	if err := os.Symlink(victim, filepath.Join(root, "local", "shipped", ".luarc.json")); err != nil {
 		t.Fatal(err)
 	}
+	gone := filepath.Join(h.TypesDir(), "zemi", "gone.lua")
+	if err := os.MkdirAll(filepath.Dir(gone), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gone, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	h.syncTypes()
 	for _, rel := range []string{"zemi.lua", filepath.Join("zemi", "util.lua")} {
 		if _, err := os.Stat(filepath.Join(h.TypesDir(), rel)); err != nil {
 			t.Fatalf("types/%s: %v", rel, err)
 		}
+	}
+	if _, err := os.Stat(gone); err == nil {
+		t.Error("a module zemi no longer ships is still in the types dir")
 	}
 	data, err := os.ReadFile(luarc)
 	if err != nil {

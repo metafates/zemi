@@ -8,11 +8,11 @@ package hostapi
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/metafates/zemi/internal/plugins"
 	zemiruntime "github.com/metafates/zemi/runtime"
@@ -55,39 +55,40 @@ func (h *Host) syncTypes() {
 // writeTypes copies the embedded annotations plus the runtime modules
 // config can require, so require("zemi.util") resolves to real source.
 func (h *Host) writeTypes(dir string) error {
-	trees := []struct {
-		fsys fs.FS
-		root string
-		// strip is dropped from each path, the rest hangs under dir
-		strip string
-	}{
-		{zemiruntime.Types, "types", "types/"},
-		{zemiruntime.FS, "lua", "lua/"},
-	}
-	// a module zemi no longer ships must not linger as a reference
-	if err := os.RemoveAll(filepath.Join(dir, "zemi")); err != nil {
+	types, err := fs.Sub(zemiruntime.Types, "types")
+	if err != nil {
 		return err
 	}
+	mods, err := fs.Sub(zemiruntime.FS, "lua")
+	if err != nil {
+		return err
+	}
+	return replaceDir(dir, types, mods)
+}
+
+// replaceDir fills a temp sibling of dir from trees and renames it over dir,
+// so a file zemi no longer ships goes and another zemi window reading dir
+// finds the old tree or the new one (missing only between the two renames).
+func replaceDir(dir string, trees ...fs.FS) error {
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.MkdirTemp(filepath.Dir(dir), "."+filepath.Base(dir)+"-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
 	for _, t := range trees {
-		err := fs.WalkDir(t.fsys, t.root, func(p string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
-				return err
-			}
-			data, err := fs.ReadFile(t.fsys, p)
-			if err != nil {
-				return err
-			}
-			out := filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(p, t.strip)))
-			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-				return err
-			}
-			return os.WriteFile(out, data, 0o644)
-		})
-		if err != nil {
+		if err := os.CopyFS(tmp, t); err != nil {
 			return err
 		}
 	}
-	return nil
+	old := tmp + ".old"
+	if err := os.Rename(dir, old); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	defer os.RemoveAll(old)
+	return os.Rename(tmp, dir)
 }
 
 // writeLuarc writes the lua-language-server settings zemi generates,
