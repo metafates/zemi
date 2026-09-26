@@ -977,9 +977,9 @@ func All(p *Pipeline) []fantasy.AgentTool {
 		}
 	}
 
-	withSandbox := func(props map[string]any) map[string]any {
+	withSandbox := func(props, sandbox, network map[string]any) map[string]any {
 		if p != nil && p.SandboxParam {
-			props["sandbox"], props["network"] = SandboxProp(), NetworkProp()
+			props["sandbox"], props["network"] = sandbox, network
 		}
 		return props
 	}
@@ -995,7 +995,7 @@ Chain dependent steps with &&.`,
 				"about":      map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user, e.g. Run the unit tests. With network or sandbox set, also why it needs that."},
 				"command":    map[string]any{"type": "string"},
 				"timeout_ms": map[string]any{"type": "integer", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
-			}),
+			}, SandboxProp(), NetworkProp()),
 			[]string{"command"},
 			bashRequests,
 			runBash),
@@ -1158,7 +1158,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			withSandbox(map[string]any{
 				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server. With network or sandbox set, also why it needs that."},
 				"command": map[string]any{"type": "string"},
-			}),
+			}, map[string]any{"type": "boolean", "description": "as bash's sandbox"}, map[string]any{"type": "boolean", "description": "as bash's network"}),
 			[]string{"command"},
 			bashRequests,
 			runJobStart),
