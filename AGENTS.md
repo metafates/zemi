@@ -715,11 +715,11 @@ lua-language-server is installed.
   most five into the session's set (`sessionLogs`, dropped with the session, reseeded on resume
   from the history's `mcp_` calls; a subagent run has its own). Every MCP tool stays
   registered, so a call to one not loaded still runs; the catalog changes only with the
-  servers, and each load costs one prompt-cache miss. Every status change goes through
-  `setMCP`, which also refreshes an open `/mcp` (`Overlay.Refresh`, as a language server's
-  finished start refreshes `/lsp`). A sign-out stops the server and leaves it `needs sign-in`
-  with no start: only a server that asked for a sign-in offers one, so a start would fail the
-  same way. `ServiceStatus` (host.go) is the one status word of `/mcp`, `/lsp`, `/plugins`,
+  servers, and each load costs one prompt-cache miss. A start's outcome and a sign-in
+  request go through `setMCP`, which refreshes an open `/mcp` (`Overlay.Refresh`, as a
+  language server's finished start refreshes `/lsp`), as do a sign-out and the sign-in link. A
+  sign-out stops the server and leaves it `needs sign-in` with no start, assuming a start would
+  fail the same way (NOTE in the code: a server whose auth is optional waits until Restart). `ServiceStatus` (host.go) is the one status word of `/mcp`, `/lsp`, `/plugins`,
   `/health` and `zemi.mcp.list`/`zemi.lsp.list`, colored by the UI's `statusHL`, a map the
   exhaustive linter keeps complete. Test against `internal/mcp/mcptest`.
 - **LSP** (lsp.go, internal/lsp): servers start lazily on the first matching file, and only in
