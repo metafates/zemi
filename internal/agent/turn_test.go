@@ -808,9 +808,10 @@ func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f
 // TestCacheBreakpoints: an anthropic request marks the system block, the
 // last two messages and the last tool; an openrouter one goes to its fixed
 // URL with the same messages marked (fantasy drops a tool's mark there).
+// Both carry the session's affinity header.
 func TestCacheBreakpoints(t *testing.T) {
 	var mu sync.Mutex
-	var sent, body string
+	var sent, body, affinity string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		mu.Lock()
@@ -825,7 +826,7 @@ func TestCacheBreakpoints(t *testing.T) {
 	modelHTTP = func() *http.Client {
 		return &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
 			mu.Lock()
-			sent = r.URL.String()
+			sent, affinity = r.URL.String(), r.Header.Get("x-session-affinity")
 			mu.Unlock()
 			r = r.Clone(r.Context())
 			r.URL.Scheme, r.URL.Host = "http", strings.TrimPrefix(srv.URL, "http://")
@@ -858,20 +859,20 @@ func TestCacheBreakpoints(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := NewRunner(m, tools, "sys")
-		r.Hooks, r.ProviderOptions = newRecHooks(), reg.CallOptions(c.model, "", "")
+		r.Hooks, r.ProviderOptions, r.Headers = newRecHooks(), reg.CallOptions(c.model, "", ""), SessionHeaders("s1")
 		r.History = []fantasy.Message{UserMessage("a"), {Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "b"}}}}
 		_ = r.Send(t.Context(), "c") // the server refuses; only the request matters
 		mu.Lock()
 		var req struct{ System, Messages, Tools []json.RawMessage }
 		err = json.Unmarshal([]byte(body), &req)
-		gotURL := sent
+		gotURL, gotAffinity := sent, affinity
 		mu.Unlock()
 		if err != nil {
 			t.Fatalf("%s: %v in %s", c.model, err, body)
 		}
-		got := [4]string{gotURL, marks(req.System), marks(req.Messages), marks(req.Tools)}
-		if want := [4]string{c.url, c.system, c.messages, c.tools}; got != want {
-			t.Fatalf("%s: url, system, messages, tools marks = %q, want %q", c.model, got, want)
+		got := [5]string{gotURL, gotAffinity, marks(req.System), marks(req.Messages), marks(req.Tools)}
+		if want := [5]string{c.url, "s1", c.system, c.messages, c.tools}; got != want {
+			t.Fatalf("%s: url, affinity, system, messages, tools marks = %q, want %q", c.model, got, want)
 		}
 	}
 }

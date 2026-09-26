@@ -351,7 +351,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		run.mu.Unlock()
 	}
 	// the run's own session keys its cache: its prompt is not the parent's
-	runner.ProviderOptions = h.Providers.CallOptions(modelID, h.Effort(modelID), sid)
+	runner.ProviderOptions, runner.Headers = h.Providers.CallOptions(modelID, h.Effort(modelID), sid), agent.SessionHeaders(sid)
 	seedLoaded(loaded, runner.History)
 	ctx = context.WithValue(ctx, runSessionKey{}, sid)
 	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid, ctx: ctx, base: base}

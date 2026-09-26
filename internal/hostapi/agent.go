@@ -342,7 +342,8 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	h.agents.promptParts, h.agents.promptTokens, h.agents.promptText = sizes, int64(chars/4), sys
 	h.agents.mu.Unlock()
 	id := h.currentModelID(p)
-	r.ProviderOptions = h.Providers.CallOptions(id, h.Effort(id), h.AgentSessionID())
+	sid := h.AgentSessionID()
+	r.ProviderOptions, r.Headers = h.Providers.CallOptions(id, h.Effort(id), sid), agent.SessionHeaders(sid)
 	r.MaxOutputTokens = h.maxOutput(id)
 	if p != nil {
 		r.Temperature = p.Temperature

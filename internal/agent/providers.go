@@ -138,9 +138,9 @@ var builtinKinds = map[catwalk.Type]string{
 // endpoint references through getenv, the only place Go itself reads a key
 // env var. The catalog's order is kept (anthropic, openai, gemini first,
 // then the rest), which is the order Default prefers. Catalog
-// default_headers are dropped: they attribute requests to crush, and zemi
-// sends no header the user did not write. NOTE: model options
-// (temperature, top_p) are not carried.
+// default_headers are dropped: they attribute requests to crush, and the
+// only header zemi sends that the user did not write is SessionHeaders'.
+// NOTE: model options (temperature, top_p) are not carried.
 func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 	env := func(ref string) (name, value string) {
 		if !strings.HasPrefix(ref, "$") {
@@ -556,6 +556,18 @@ func (r *Registry) CallOptions(modelID, effort, sessionID string) fantasy.Provid
 		}
 	}
 	return nil
+}
+
+// SessionHeaders are the per-call headers of a session's requests:
+// x-session-affinity, which routers such as Fireworks use to send a
+// session to the replica that holds its prompt cache. The value is the
+// session's opaque random id; nil for "". NOTE: only a provider or router
+// that routes on it gains anything; the rest ignore it.
+func SessionHeaders(sessionID string) map[string]string {
+	if sessionID == "" {
+		return nil
+	}
+	return map[string]string{"x-session-affinity": sessionID}
 }
 
 // effortRank orders the catalog's reasoning levels.

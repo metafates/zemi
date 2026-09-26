@@ -75,6 +75,8 @@ type Runner struct {
 
 	// ProviderOptions ride on every call (reasoning effort).
 	ProviderOptions fantasy.ProviderOptions
+	// Headers ride every call (SessionHeaders).
+	Headers map[string]string
 
 	// Steer is polled at every step boundary; the messages it returns join
 	// the running turn as user messages (DESIGN §4 steering).
@@ -278,7 +280,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	}
 	history := append([]fantasy.Message(nil), r.History...)
 	temp := r.Temperature
-	provOpts := r.ProviderOptions
+	provOpts, headers := r.ProviderOptions, r.Headers
 	r.mu.Unlock()
 
 	// Full goes first: fantasy stops at the first condition that holds, and
@@ -360,6 +362,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		},
 		MaxRetries:      &maxRetries,
 		ProviderOptions: provOpts,
+		Headers:         headers,
 	}
 	if temp != nil {
 		t := *temp
@@ -500,6 +503,7 @@ func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text stri
 		Temperature:     r.Temperature,
 		MaxRetries:      &maxRetries,
 		ProviderOptions: r.ProviderOptions,
+		Headers:         r.Headers,
 		// past lastErr, which the turn this may run beside writes
 		ModelProvider: func() fantasy.LanguageModel { return r.last.LanguageModel },
 		PrepareStep: func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {

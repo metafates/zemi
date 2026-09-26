@@ -94,6 +94,7 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 		MaxOutputTokens: maxOut,
 		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
 		ProviderOptions: h.Providers.CallOptions(id, "", sid),
+		Headers:         agent.SessionHeaders(sid),
 	}
 	if retry != nil {
 		last := &agent.LastErr{LanguageModel: model}
