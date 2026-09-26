@@ -316,11 +316,11 @@ func TestClickScrolledListOpensSameItem(t *testing.T) {
 // TestBoxEllipsisOnlyOnLongRows: a long row ends in an ellipsis, a short row
 // padded to its width does not, and a long row keeps its scrollbar cell.
 func TestBoxEllipsisOnlyOnLongRows(t *testing.T) {
-	box := hostBox("", "", "", listRows([]listItem{{label: "short"}, {label: strings.Repeat("long ", 20)}}, 0, nil, 10, 0), 40)
+	box := hostBox("", "", "", listRows([]listItem{{label: "short"}, {label: strings.Repeat("long ", 20)}}, 0, nil, 10, 0), 40, 100, 0)
 	if short, long := plainSegs(box[1]), plainSegs(box[2]); strings.Contains(short, "…") || !strings.Contains(long, "…") {
 		t.Fatalf("short %q, long %q", short, long)
 	}
-	barred := hostBox("", "", "", [][]hostapi.Segment{{{Text: strings.Repeat("long ", 20)}, {Text: "█", Bar: true}}}, 40)
+	barred := hostBox("", "", "", [][]hostapi.Segment{{{Text: strings.Repeat("long ", 20)}, {Text: "█", Bar: true}}}, 40, 100, 0)
 	if row := plainSegs(barred[1]); !strings.Contains(row, "…") || !strings.HasSuffix(row, "█ │") {
 		t.Fatalf("barred %q", row)
 	}
@@ -545,11 +545,4 @@ func TestWheelUnderPointer(t *testing.T) {
 			}
 		})
 	}
-}
-
-// hostBox draws a chrome box: a titled top border with an optional
-// right-aligned badge, body rows padded to one width. The badge (a Lua
-// overlay's origin) wins over the title when space runs out.
-func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w int) [][]hostapi.Segment {
-	return hostBoxW(title, titleHL, badge, body, w, 100, 0)
 }

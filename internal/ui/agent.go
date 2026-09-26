@@ -150,7 +150,7 @@ func promptBox(title, badge string, body [][]hostapi.Segment, w, h, maxW int, si
 	if size.h > 0 { // a kept box cuts a longer title (a detail view's breadcrumb) instead of widening
 		title = ansi.Truncate(title, size.w-1-map[bool]int{true: ansi.StringWidth(badge) + 2}[badge != ""], "…")
 	}
-	box := hostBoxW(title, "Host:Title", badge, body, w, maxW, size.w)
+	box := hostBox(title, "Host:Title", badge, body, w, maxW, size.w)
 	size.w, size.h = max(size.w, hostapi.SegsWidth(box[0])-4), max(size.h, len(box))
 	return box
 }
@@ -310,11 +310,12 @@ func choiceView(choices []promptChoice, sel int, v *viewport, w int, short bool)
 	return v.window(list, w)
 }
 
-// hostBoxW is hostBox with its own width cap and a width its rows pad to.
-// Title and badge come bare: the box pads each with a space and keeps a
-// rule cell before the corner. A body segment with no style is value text,
-// so a box shows one white.
-func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, minW int) [][]hostapi.Segment {
+// hostBox draws a chrome box at most maxW wide whose rows pad to at least
+// minW: a titled top border with an optional right-aligned badge, which
+// wins over the title when space runs out. Title and badge come bare: the
+// box pads each with a space and keeps a rule cell before the corner. A
+// body segment with no style is value text, so a box shows one white.
+func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, minW int) [][]hostapi.Segment {
 	label := func(s string, room int) string {
 		if s == "" || room < 3 {
 			return ""
@@ -706,7 +707,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	}
 	hintRow := hint(inner, hints...)
 	// panels span the box, and the box fits its content (at least 56 wide):
-	// a padded panel counts by its text, other rows whole as hostBoxW counts them
+	// a padded panel counts by its text, other rows whole as hostBox counts them
 	fit, bar := 56, 0
 	if len(content) > pa.view.viewH {
 		bar = 1 // a scrolled panel's text keeps its cells beside the bar

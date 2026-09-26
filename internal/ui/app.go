@@ -1275,7 +1275,7 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 	inner := max(min(w-2, 60)-4, 1)
 	// a lone title or body sits inside the box, so no toast is an empty frame
 	if (t.title == "") != (t.body == "") {
-		return hostBoxW("", level, "", wrapText(t.title+t.body, level, inner), w, 60, 0)
+		return hostBox("", level, "", wrapText(t.title+t.body, level, inner), w, 60, 0)
 	}
 	var rows [][]hostapi.Segment
 	if t.body != "" {
@@ -1288,7 +1288,7 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 		}
 		rows = append(rows[:toastRows-1], more)
 	}
-	return hostBoxW(t.title, level, "", rows, w, 60, 0)
+	return hostBox(t.title, level, "", rows, w, 60, 0)
 }
 
 // ---------------------------------------------------------------------------
