@@ -1901,6 +1901,52 @@ func TestBtw(t *testing.T) {
 	}
 }
 
+func TestRecap(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	if _, err := h.Settings.SetQuiet("session.auto_title", false); err != nil {
+		t.Fatal(err)
+	}
+	m := reflectStub(t, h, "fixing the build;\n\n  next: run  make check\nignored")
+	const recap = "recap: fixing the build; next: run make check"
+	turn := func(tools bool) func() {
+		return func() {
+			if tools {
+				m.toolStep.Store(1)
+			}
+			if err := h.AgentSend("go"); err != nil {
+				t.Fatal(err)
+			}
+			waitIdle(t, h)
+		}
+	}
+	for _, c := range []struct {
+		name  string
+		setup func()
+		want  string // the row the recap adds, "" for none
+	}{
+		{"a turn that ran a tool gets one, the first naming the key", turn(true), recap + " (disable recaps in /config)"},
+		{"the next has no hint", func() {}, recap},
+		{"off in config", func() { _, _ = h.Settings.SetQuiet("session.recap", false) }, ""},
+		{"a reply-only turn is its own recap", func() { _, _ = h.Settings.SetQuiet("session.recap", true); turn(false)() }, ""},
+		{"a row landing during the call makes it stale", func() {
+			turn(true)()
+			m.during = func() { h.AppendMessage(fantasy.MessageRoleUser, "back") }
+		}, ""},
+	} {
+		c.setup()
+		before := len(h.Session().Transcript)
+		h.recap(t.Context())
+		tr := h.Session().Transcript
+		var got string
+		if last := tr[len(tr)-1]; len(tr) > before && last.Kind == RowNotice {
+			got = last.Text
+		}
+		if got != c.want {
+			t.Errorf("%s: recap row %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // TestLateReasoningKeepsReplyWhole: a reasoning chunk a provider sends after
 // the reply started joins the thought above it, live, in a subagent's run and
 // on resume alike, so the reply is never cut after its first word.

@@ -1491,9 +1491,15 @@ func (h *Host) Btw(question string) error {
 
 var errNothingToAsk = errors.New("no conversation to ask about yet")
 
-// btw sends the question on the prefix the next send would use (profile,
-// prompt, tools), so it reads the provider's cache, and bills it.
 func (h *Host) btw(ctx context.Context, question string) (string, error) {
+	answer, err := h.aside(ctx, btwPrompt+question)
+	return cmp.Or(answer, "(no answer: the model reached for a tool)"), err
+}
+
+// aside sends text on the prefix the next send would use (profile, prompt,
+// tools), so it reads the provider's cache, and bills it. A reply that is
+// only a tool call is "".
+func (h *Host) aside(ctx context.Context, text string) (string, error) {
 	ag := h.agents
 	ag.mu.Lock()
 	live, sid, compacting := ag.runner, ag.sessionID, ag.compacting
@@ -1513,12 +1519,64 @@ func (h *Host) btw(ctx context.Context, question string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	res, err := r.Aside(ctx, history, btwPrompt+question)
+	res, err := r.Aside(ctx, history, text)
 	if err != nil {
 		return "", err
 	}
 	h.bill(sid, h.currentModelID(p), res.TotalUsage)
-	return cmp.Or(strings.TrimSpace(concatText(res.Response.Content)), "(no answer: the model reached for a tool)"), nil
+	return strings.TrimSpace(concatText(res.Response.Content)), nil
+}
+
+const recapPrompt = `The user stepped away and is coming back. In one or two short sentences of plain text, say what this conversation is working toward, then where it stands: the next step, a question waiting on the user, or a check not yet run. Keep file, command and identifier names exact. Call no tools: none will run. No heading, no label, no apology.`
+
+// Recap adds a live-only notice row saying where the session stands, from
+// an aside on the cached conversation. The UI calls it when nobody touched
+// the terminal since a turn ended well, and cancels ctx on the next input.
+func (h *Host) Recap(ctx context.Context) { h.GoSafe("recap", func() { h.recap(ctx) }) }
+
+func (h *Host) recap(ctx context.Context) {
+	if !h.Settings.Bool("session.recap") {
+		return
+	}
+	ag := h.agents
+	ag.mu.Lock()
+	sid, idle := ag.sessionID, ag.runner != nil && !ag.active && !ag.compacting && h.tasks.runningFor(ag.sessionID) == 0
+	ag.mu.Unlock()
+	h.tMu.Lock()
+	tr := h.session.Transcript
+	h.tMu.Unlock()
+	// a turn that ran no tool is its own recap
+	worked := false
+	for _, m := range slices.Backward(tr) {
+		worked = m.Kind == RowTool
+		if worked || m.Role == fantasy.MessageRoleUser && m.Kind == RowMessage {
+			break
+		}
+	}
+	if !idle || !worked {
+		return
+	}
+	answer, err := h.aside(ctx, recapPrompt)
+	lines := slices.DeleteFunc(strings.Split(answer, "\n"), func(l string) bool { return strings.TrimSpace(l) == "" })
+	text := sanitize.String(truncRunes(strings.Join(strings.Fields(strings.Join(lines[:min(2, len(lines))], " ")), " "), 300))
+	if err != nil || text == "" {
+		h.Log.Debug("session", "no recap", map[string]any{"error": fmt.Sprint(err)})
+		return
+	}
+	if h.AgentSessionID() != sid {
+		return
+	}
+	// a send, a report or a rewind since the call would leave it stale
+	h.tMu.Lock()
+	if ctx.Err() == nil && len(h.session.Transcript) == len(tr) {
+		// NOTE: the hint shows once per launch; a kv counter would keep it to once ever.
+		if !h.recapHinted.Swap(true) {
+			text += " (disable recaps in /config)"
+		}
+		h.session.Transcript = append(h.session.Transcript, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "recap: " + text})
+	}
+	h.tMu.Unlock()
+	h.refresh()
 }
 
 // AgentSessionID returns the live session id ("" before the first send).

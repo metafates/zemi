@@ -372,7 +372,8 @@ type Host struct {
 	// badge (refreshPending).
 	pendingMemory atomic.Int32
 
-	selectSeq atomic.Int64 // ids for overlays each call opens anew (select, input, /btw)
+	selectSeq   atomic.Int64 // ids for overlays each call opens anew (select, input, /btw)
+	recapHinted atomic.Bool  // a recap row named its /config key
 
 	errs  errLog   // recent runtime errors for /errors
 	msgs  msgLog   // recent print and zemi.log lines for /messages

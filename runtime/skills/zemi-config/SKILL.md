@@ -48,7 +48,7 @@ Model fields besides `id` and `display`:
 
 Any other key, on the provider or on a model entry, is refused as an unknown field.
 
-Roles: `models.chat` runs the conversation, `/btw` and every role left empty; `models.agents` (subagents whose definition names no model, `web` included), `models.titles` (session titles), `models.compact` (compaction summaries) and `models.memory` (the reflector) each take a `provider/model` or `""` to follow chat. An unset chat runs the first added provider's default model, else the first usable builtin's. Nothing falls back to a cheaper model on its own: set titles and memory to one to save tokens. Compact on the chat model is asked after the conversation itself, so it reads the prompt cache; a cheaper compact model gets a flat transcript instead. Set them with `zemi.config.set("models.titles", "gw/deepseek-chat")`, or `/model roles` (the list; enter opens a role's models), `/model <role> <provider/model>` or `/model <role> chat` to follow chat. `/model`, `-m` and `zemi.model.set` write `models.chat` and refuse while the active profile sets its own model. Agent files, profiles and workflows take a role name or a `provider/model`.
+Roles: `models.chat` runs the conversation, `/btw`, the idle recap and every role left empty; `models.agents` (subagents whose definition names no model, `web` included), `models.titles` (session titles), `models.compact` (compaction summaries) and `models.memory` (the reflector) each take a `provider/model` or `""` to follow chat. An unset chat runs the first added provider's default model, else the first usable builtin's. Nothing falls back to a cheaper model on its own: set titles and memory to one to save tokens. Compact on the chat model is asked after the conversation itself, so it reads the prompt cache; a cheaper compact model gets a flat transcript instead. Set them with `zemi.config.set("models.titles", "gw/deepseek-chat")`, or `/model roles` (the list; enter opens a role's models), `/model <role> <provider/model>` or `/model <role> chat` to follow chat. `/model`, `-m` and `zemi.model.set` write `models.chat` and refuse while the active profile sets its own model. Agent files, profiles and workflows take a role name or a `provider/model`.
 
 ## Settings
 
@@ -62,7 +62,7 @@ Roles: `models.chat` runs the conversation, `/btw` and every role left empty; `m
 - `editor.command`: the editor for ctrl+g and `zemi.ui.edit`; empty uses `$VISUAL`, then `$EDITOR`, then vi.
 - `permissions.mode`, `permissions.env_keep`: under Permissions.
 
-The schema's description covers `session.auto_title`, `ui.theme`, `ui.animations`, `ui.mouse`, `ui.notify`, `ui.progress`, `ui.reasoning`, `ui.composer.multiline`, `ui.composer.history`, `ui.completion.files` and `ui.completion.max_items`.
+The schema's description covers `session.auto_title`, `session.recap`, `ui.theme`, `ui.animations`, `ui.mouse`, `ui.notify`, `ui.progress`, `ui.reasoning`, `ui.composer.multiline`, `ui.composer.history`, `ui.completion.files` and `ui.completion.max_items`.
 
 ## Permissions
 

@@ -38,6 +38,7 @@ const (
 	idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
 	frameMS          = 50                     // the frame clock: spinner, eyes and shimmer step once per tick
 	doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
+	recapDelay       = 3 * time.Minute        // idle after a turn before a recap: inside Anthropic's 5-minute cache
 	hookQueueSize    = 64
 	chatWheelStep    = 1
 )
@@ -119,6 +120,10 @@ type App struct {
 	keySeqAt   time.Time
 	armed      armed                // a key whose second press acts (ctrl+c quit, esc interrupt)
 	colors     colorprofile.Profile // what the terminal can show; bubbletea downsamples cells, not OSC 11
+
+	// an idle recap: when one is due (zero for none), and the stop of one in flight
+	recapAt   time.Time
+	recapStop context.CancelFunc
 
 	bootErr        error
 	streamPending  atomic.Bool   // a stream agentStreamMsg is queued
@@ -313,6 +318,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) update(msg tea.Msg) tea.Cmd {
+	switch msg.(type) {
+	case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseWheelMsg, tea.FocusMsg:
+		// plain motion is not input: terminals report hover over an unfocused window
+		a.recapAt = time.Time{}
+		if a.recapStop != nil {
+			a.recapStop()
+		}
+	}
 	switch msg := msg.(type) {
 	case frameTickMsg:
 		return a.onFrame()
@@ -330,10 +343,11 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 	case turnDoneMsg:
 		a.bump()
 		a.turnEnd, a.turnEnded = a.now(), hostapi.TurnOK
+		a.recapAt = a.now().Add(recapDelay)
 		if msg.stopped {
-			a.turnEnded = hostapi.TurnCancelled
+			a.turnEnded, a.recapAt = hostapi.TurnCancelled, time.Time{}
 		} else if msg.err != "" {
-			a.turnEnded = hostapi.TurnError
+			a.turnEnded, a.recapAt = hostapi.TurnError, time.Time{}
 		}
 		text := "zemi finished"
 		if msg.err != "" {
@@ -544,6 +558,12 @@ func (a *App) onFrame() tea.Cmd {
 	// the outcome is stamped by turnDoneMsg alone: the host can still read
 	// active a moment after it, and uiState hides Ended while active
 	a.turnActive = active
+	if !active && !a.recapAt.IsZero() && !a.now().Before(a.recapAt) {
+		var ctx context.Context
+		ctx, a.recapStop = context.WithCancel(context.Background())
+		a.recapAt = time.Time{}
+		a.host.Recap(ctx)
+	}
 	// widgets read these flags, so a change re-renders them; the animation
 	// tick alone does not, it only matters while a turn bumps the frame
 	// anyway, and Ended turning on and off bumps at both ends by itself
