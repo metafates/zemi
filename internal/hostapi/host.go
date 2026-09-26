@@ -424,6 +424,10 @@ type Host struct {
 	recent      []*store.Session
 	recentStale atomic.Bool
 
+	includedMu    sync.Mutex
+	included      included
+	includedStale atomic.Bool
+
 	mcp   *mcpReg  // MCP servers and their tools
 	tasks *taskReg // subagent runs
 	lsp   *lspReg  // language servers
@@ -511,6 +515,7 @@ func (h *Host) SetProjectTrusted(ok bool) {
 		found = h.discoverProjectSkills()
 	}
 	h.projectSkills.Store(&found)
+	h.includedStale.Store(true)
 }
 
 // TrustUnsaved reports a trust root no decision is saved for: the home
@@ -627,6 +632,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	}
 	h.refreshPending()
 	h.recentStale.Store(true)
+	h.includedStale.Store(true)
 	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
 	// sync: the first turn's tool schema and --health read it (the probe is fast)
 	b, err := sandbox.Probe()
@@ -1514,10 +1520,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		},
 		"agent":      func(L *glua.LState) glua.LValue { return agentTable(L, stream) },
 		"transcript": func(L *glua.LState) glua.LValue { return transcriptTable(L, transcript) },
-		// NOTE: built on every read (a recipes dir scan and two memory
-		// queries); only the splash reads it, before the first message. Cache
-		// it behind a stale flag like recentSessions if a per-frame widget reads it.
-		"included": func(L *glua.LState) glua.LValue { return h.includedTable(L) },
+		"included":   func(L *glua.LState) glua.LValue { return h.includedTable(L) },
 		"recent": func(L *glua.LState) glua.LValue {
 			if len(sess.Transcript) > 0 {
 				return glua.LNil
@@ -1551,13 +1554,33 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	return tb, func() { live = false }
 }
 
-// includedTable is ctx.included: what a send carries besides the
-// conversation. instructions is nil where project files cannot load:
-// untrusted, or $HOME and /, which are nobody's project.
-func (h *Host) includedTable(L *glua.LState) *glua.LTable {
-	tb := L.CreateTable(0, 5)
+// included is what ctx.included reads from disk and the store.
+type included struct {
+	instructions []string // nil where project files cannot load
+	memories     int
+	skills       int
+	memGen       uint64 // the memory generation the counts were read at
+}
+
+// includedData is cached, since the splash renders every frame while a job
+// runs: rebuilt after SetProjectTrusted (every boot and reload runs it), a
+// session close, a skill toggle or recipe delete, and a memory write.
+// NOTE: a file written outside zemi while the splash shows waits for one of those.
+func (h *Host) includedData() included {
+	var gen uint64
+	for _, db := range []*store.DB{h.GlobalDB, h.DB} {
+		if db != nil {
+			gen += db.MemoryGen()
+		}
+	}
+	h.includedMu.Lock()
+	defer h.includedMu.Unlock()
+	if !h.includedStale.Swap(false) && h.included.memGen == gen {
+		return h.included
+	}
+	inc := included{memGen: gen}
 	if root := h.Dirs.RepoRoot(); h.ProjectTrusted() && !TrustUnsaved(root) {
-		files := L.NewTable()
+		inc.instructions = []string{}
 		mine := filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
 		for _, p := range h.instructionFiles() {
 			if p == mine {
@@ -1566,15 +1589,32 @@ func (h *Host) includedTable(L *glua.LState) *glua.LTable {
 			if rel, err := filepath.Rel(root, p); err == nil {
 				p = rel
 			}
+			inc.instructions = append(inc.instructions, p)
+		}
+	}
+	mems, _ := h.memoryList(false)
+	inc.memories = len(mems)
+	// the builtin zemi-* skills ship with every install: counting them is noise
+	inc.skills = len(slices.DeleteFunc(h.enabledSkills(), func(s skills.Skill) bool { return s.Source == skills.Builtin }))
+	h.included = inc
+	return inc
+}
+
+// includedTable is ctx.included: what a send carries besides the
+// conversation. instructions is nil where project files cannot load:
+// untrusted, or $HOME and /, which are nobody's project.
+func (h *Host) includedTable(L *glua.LState) *glua.LTable {
+	inc := h.includedData()
+	tb := L.CreateTable(0, 5)
+	if inc.instructions != nil {
+		files := L.CreateTable(len(inc.instructions), 0)
+		for _, p := range inc.instructions {
 			files.Append(glua.LString(p))
 		}
 		tb.RawSetString("instructions", files)
 	}
-	mems, _ := h.memoryList(false)
-	tb.RawSetString("memories", glua.LNumber(len(mems)))
-	// the builtin zemi-* skills ship with every install: counting them is noise
-	own := slices.DeleteFunc(h.enabledSkills(), func(s skills.Skill) bool { return s.Source == skills.Builtin })
-	tb.RawSetString("skills", glua.LNumber(len(own)))
+	tb.RawSetString("memories", glua.LNumber(inc.memories))
+	tb.RawSetString("skills", glua.LNumber(inc.skills))
 	tb.RawSetString("mcp", glua.LNumber(len(h.mcp.list())))
 	plugins := 0
 	if p := h.pluginLoads.Load(); p != nil {

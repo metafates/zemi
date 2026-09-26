@@ -77,31 +77,6 @@ function M.render(ctx)
     recent, extra = {}, 0
   end
   local mascot, showctx = width >= 36 and base + extra <= fit, base - 2 <= fit
-  local inc = ctx.included
-  ---@type zemi.Segment[][]
-  local parts = {}
-  -- the first part is always there, so no count change adds or removes the row
-  local files = inc.instructions
-  if not files then
-    parts[1] = { { text = "no project instructions", hl = "Comment" } }
-  elseif #files == 0 then
-    parts[1] = { { text = "/init", hl = "SplashKey" }, { text = " writes AGENTS.md", hl = "Comment" } }
-  else
-    parts[1] = {
-      { text = #files == 1 and files[1] or fmt.count(#files, "instruction file", "instruction files"), hl = "Normal" },
-    }
-  end
-  for _, c in ipairs({
-    { inc.memories, "memory", "memories" },
-    { inc.skills, "skill", "skills" },
-    { inc.mcp, "mcp server", "mcp servers" },
-    { inc.plugins, "plugin", "plugins" },
-  }) do
-    if c[1] > 0 then parts[#parts + 1] = { { text = fmt.count(c[1], c[2], c[3]), hl = "Normal" } } end
-  end
-  ---@type zemi.Line
-  local context = { { text = "context  ", hl = "Comment" } }
-  fill(context, parts, { text = " · ", hl = "Comment" }, room)
   if mascot then
     -- the wordmark and the tagline sit beside the snail's head
     local block = snail.block()
@@ -136,7 +111,38 @@ function M.render(ctx)
     cwd = "…" .. table.concat(chars, "", #chars - cwdw + 2)
   end
   row({ { text = "project  ", hl = "Comment" }, { text = cwd, hl = "Normal" } })
-  if showctx then row(context) end
+  -- built only when shown: ctx.included reads the store when its cache went stale
+  if showctx then
+    local inc = ctx.included
+    ---@type zemi.Segment[][]
+    local parts = {}
+    -- the first part is always there, so no count change adds or removes the row
+    local files = inc.instructions
+    if not files then
+      parts[1] = { { text = "no project instructions", hl = "Comment" } }
+    elseif #files == 0 then
+      parts[1] = { { text = "/init", hl = "SplashKey" }, { text = " writes AGENTS.md", hl = "Comment" } }
+    else
+      parts[1] = {
+        {
+          text = #files == 1 and files[1] or fmt.count(#files, "instruction file", "instruction files"),
+          hl = "Normal",
+        },
+      }
+    end
+    for _, c in ipairs({
+      { inc.memories, "memory", "memories" },
+      { inc.skills, "skill", "skills" },
+      { inc.mcp, "mcp server", "mcp servers" },
+      { inc.plugins, "plugin", "plugins" },
+    }) do
+      if c[1] > 0 then parts[#parts + 1] = { { text = fmt.count(c[1], c[2], c[3]), hl = "Normal" } } end
+    end
+    ---@type zemi.Line
+    local context = { { text = "context  ", hl = "Comment" } }
+    fill(context, parts, { text = " · ", hl = "Comment" }, room)
+    row(context)
+  end
   if #recent > 0 then
     row({ { text = "" } })
     row({ { text = "recent", hl = "Title" } })

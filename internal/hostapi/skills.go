@@ -311,6 +311,7 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 		return err
 	}
 	h.skillsReg.setEnabledFlag(name, enabled)
+	h.includedStale.Store(true)
 	return nil
 }
 
@@ -388,6 +389,7 @@ func (h *Host) deleteRecipe(name string) error {
 		h.agents.mu.Lock()
 		h.agents.dropPin()
 		h.agents.mu.Unlock()
+		h.includedStale.Store(true)
 		h.Notify(logging.Info, "Recipe deleted", name)
 		return nil
 	}

@@ -65,6 +65,7 @@ func scanMemory(row scanner) (*Memory, error) {
 // AddMemory inserts one memory row; empty id and timestamps are filled, and
 // a row copied from another scope keeps its age.
 func (s *DB) AddMemory(m *Memory) error {
+	defer s.memGen.Add(1)
 	if m.ID == "" {
 		m.ID = NewID()
 	}
@@ -113,6 +114,7 @@ func (s *DB) ListMemory(scope Scope, includeSuperseded bool) ([]*Memory, error) 
 // UpdateMemoryText rewrites a memory's text and origin. Unknown ids are
 // ErrNotFound.
 func (s *DB) UpdateMemoryText(id, text string, origin Origin) error {
+	defer s.memGen.Add(1)
 	return s.execOne("update memory text", `UPDATE memory SET text = ?, origin = ?, updated_at = ?
 		WHERE id = ?`, text, origin, now(), id)
 }
@@ -120,18 +122,21 @@ func (s *DB) UpdateMemoryText(id, text string, origin Origin) error {
 // SupersedeMemory marks one memory as replaced by another; the row stays
 // (the supersede guard reads the trail). Unknown ids are ErrNotFound.
 func (s *DB) SupersedeMemory(id, byID string) error {
+	defer s.memGen.Add(1)
 	return s.execOne("supersede memory", `UPDATE memory SET superseded_by = ?, updated_at = ?
 		WHERE id = ?`, nullString(byID), now(), id)
 }
 
 // DeleteMemory removes a memory row. Unknown ids are ErrNotFound.
 func (s *DB) DeleteMemory(id string) error {
+	defer s.memGen.Add(1)
 	return s.execOne("delete memory", `DELETE FROM memory WHERE id = ?`, id)
 }
 
 // DeleteLearnedBetween deletes the learned memories a session wrote from
 // from to until, both included, and returns their ids.
 func (s *DB) DeleteLearnedBetween(sessionID string, from, until int64) ([]string, error) {
+	defer s.memGen.Add(1)
 	rows, err := s.db.Query(`DELETE FROM memory WHERE origin = 'learned'
 		AND provenance_session_id = ? AND created_at BETWEEN ? AND ? RETURNING id`, sessionID, from, until)
 	return collect(rows, err, func(r scanner) (id string, err error) {
@@ -142,6 +147,7 @@ func (s *DB) DeleteLearnedBetween(sessionID string, from, until int64) ([]string
 
 // Unsupersede makes the memories ids replaced live again.
 func (s *DB) Unsupersede(ids []string) error {
+	defer s.memGen.Add(1)
 	args := make([]any, len(ids))
 	for i, id := range ids {
 		args[i] = id

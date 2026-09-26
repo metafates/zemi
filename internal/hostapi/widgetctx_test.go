@@ -12,6 +12,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // BenchmarkWidgetCtx renders a statusline-like widget that reads one field
@@ -161,6 +162,34 @@ func TestTableSegments(t *testing.T) {
 		}
 		if i == 1 && got[0][0].Text != "kept" {
 			t.Errorf("a line table seen last render was converted again: %q", got[0][0].Text)
+		}
+	}
+}
+
+// TestIncludedCached: ctx.included reads the recipes dir and the store once,
+// not per render, and again after a memory write.
+func TestIncludedCached(t *testing.T) {
+	h, r := newTestHostSkills(t)
+	h.SetProjectTrusted(true)
+	runUser(t, r, `zemi.ui.widget.add({ id = "inc", region = "header", render = function(ctx)
+		return { { { text = ctx.included.memories .. " " .. ctx.included.skills } } }
+	end })`)
+	for _, c := range []struct {
+		name string
+		do   func()
+		want string
+	}{
+		{"first render", func() {}, "0 0"},
+		{"a recipe alone is not rescanned", func() { writeSkill(t, h.recipesDir(), "rig", "recipe rig", "") }, "0 0"},
+		{"a memory write reads again", func() { learnedMemory(t, h, store.ScopeUser, "the user prefers short replies", "") }, "1 1"},
+	} {
+		c.do()
+		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("inc"), 20, 1, UIState{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := lines[0][0].Text; got != c.want {
+			t.Fatalf("%s: memories and skills %q, want %q", c.name, got, c.want)
 		}
 	}
 }
