@@ -212,10 +212,14 @@ func Check(ctx context.Context, d config.Dirs) ([]Plugin, error) {
 	return ps, errors.Join(errs...)
 }
 
-// Delete removes an installed plugin. A local one may exist nowhere else,
-// so it is the user's to remove.
+// Delete removes the installed clone of that name, else the local plugin. A
+// symlink in local/ loses the link only.
 func Delete(d config.Dirs, name string) error {
 	dir, err := clone(d, name)
+	if local := filepath.Join(d.PluginsRoot(), "local", name); err != nil && nameRe.MatchString(name) &&
+		!exists(filepath.Join(d.PluginsRoot(), "installed", name)) && exists(local) {
+		dir, err = local, nil
+	}
 	if err != nil {
 		return err
 	}

@@ -434,7 +434,8 @@ dot dir, checks out the highest `vX.Y.Z` tag and renames it into place;
 branch to the highest tag when that tag is ahead of it, or else a branch
 fast-forward, and names only the plugins that moved; `check` fetches, so
 the list names each update from local refs; `enable`, `disable` and
-`delete` (a clone only: a local plugin may exist nowhere else). `zemi plugins` runs without the Lua boot, the TUI or
+`delete` (an installed clone, else the local plugin; a symlink loses the
+link only). `zemi plugins` runs without the Lua boot, the TUI or
 trust, so a prompt that starts with "plugins" is written after `--`.
 `/plugins` is a toggle list built off the key loop, local plugins first,
 each row's state first (`failed`, an update), then its version and the

@@ -236,10 +236,9 @@ func (h *Host) pluginItems() []any {
 		} else {
 			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": "plugins enable " + p.Name})
 		}
-		actions = append(actions, map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "plugins open " + p.Name})
-		if !p.Local {
-			actions = append(actions, map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": "plugins delete " + p.Name})
-		}
+		actions = append(actions,
+			map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "plugins open " + p.Name},
+			map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": "plugins delete " + p.Name})
 		items = append(items, map[string]any{
 			"text": p.Name, "desc": strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
 			"section": section, "on": p.Enabled, "run": "plugins toggle " + p.Name,

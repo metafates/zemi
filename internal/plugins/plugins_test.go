@@ -99,7 +99,18 @@ func TestPlugins(t *testing.T) {
 		{name: "disable", args: []string{"disable", "x"}},
 		{name: "list", args: []string{"list"}, want: "x v0.10.0 off file://" + tagged},
 		{name: "disable an unknown name", args: []string{"disable", "nope"}, want: "no plugin is named", err: true},
-		{name: "delete a local plugin", args: []string{"delete", "loc"}, want: "local plugin", err: true},
+		{
+			name:   "delete a local plugin",
+			before: func() { os.MkdirAll(filepath.Join(filepath.Dir(local), "gone"), 0o755) },
+			args:   []string{"delete", "gone"},
+		},
+		{name: "it is gone", args: []string{"enable", "gone"}, want: "no plugin is named", err: true},
+		{
+			// the reinstall below clones src/x, so following the link would fail it
+			name:   "delete a local symlink",
+			before: func() { os.Symlink(filepath.Join(tmp, "src", "x"), filepath.Join(filepath.Dir(local), "lnk")) },
+			args:   []string{"delete", "lnk"},
+		},
 		{
 			name:   "delete a symlink",
 			before: func() { os.Symlink(local, filepath.Join(installed, "link")) },
@@ -141,7 +152,7 @@ func TestPlugins(t *testing.T) {
 		if (err != nil) != c.err || !strings.Contains(got, c.want) {
 			t.Errorf("%s: plugins %q = %q (err %v), want %q", c.name, c.args, got, err, c.want)
 		}
-		if dots, _ := filepath.Glob(filepath.Join(installed, ".*")); len(dots) > 0 {
+		if dots, _ := filepath.Glob(filepath.Join(d.PluginsRoot(), "*", ".*")); len(dots) > 0 {
 			t.Fatalf("%s: left %v", c.name, dots)
 		}
 	}
