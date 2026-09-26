@@ -398,30 +398,36 @@ func TestHoverStyle(t *testing.T) {
 	}
 }
 
-// TestSelectionRejoinsWrappedText: a drag over a wrapped user message and a
-// wrapped code block copies the text the model and the user wrote, without
-// the gutter bar, the bullets or the wrap points.
+// TestSelectionRejoinsWrappedText: a drag over a wrapped user message, a
+// wrapped code block and a wrapped notice copies the text the model and the
+// user wrote, without the gutter bar, the bullets, the wrap points or the
+// notice's hint.
 func TestSelectionRejoinsWrappedText(t *testing.T) {
 	app, host := bootAgentApp(t, 44, 24)
 	prompt := "please rewrite this helper so it stops allocating a slice on every call"
 	code := "func add(a, b int) int { return a + b + 1000000 }"
+	recap := "recap: fixing the build; next run make check"
 	host.AppendMessage("user", prompt)
 	host.AppendMessage("assistant", "here:\n\n```go\n"+code+"\n```\n")
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowNotice, Text: recap, Detail: "off in /config"})
 	app.renderSync(t)
-	dragRows := func(from, to string) string {
-		_, y0 := findCell(t, app, from)
-		_, y1 := findCell(t, app, to)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "(off in /config)") {
+		t.Fatalf("the notice hint is not drawn:\n%s", frame)
+	}
+	for _, c := range []struct{ from, to, want string }{
+		{"please", "every call", prompt},
+		{"func add", "1000000", code},
+		{"recap:", "/config)", recap},
+	} {
+		_, y0 := findCell(t, app, c.from)
+		_, y1 := findCell(t, app, c.to)
 		if y1 <= y0 {
-			t.Fatalf("%q did not wrap", from)
+			t.Fatalf("%q did not wrap", c.from)
 		}
 		dragTo(app, 0, y0, app.width-1, y1)
-		return app.selectionText()
-	}
-	if got := dragRows("please", "every call"); got != prompt {
-		t.Errorf("prompt: %q", got)
-	}
-	if got := dragRows("func add", "1000000"); got != code {
-		t.Errorf("code: %q", got)
+		if got := app.selectionText(); got != c.want {
+			t.Errorf("drag from %q: %q, want %q", c.from, got, c.want)
+		}
 	}
 }
 

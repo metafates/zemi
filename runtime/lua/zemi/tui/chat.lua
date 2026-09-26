@@ -467,7 +467,9 @@ zemi.ui.widget.add({
         end
       elseif m.kind == "compact" or m.kind == "notice" then
         gap("activity")
-        lines[#lines + 1] = { mark("note"), { text = m.text, hl = "Comment" } }
+        local row = { mark("note"), { text = m.text, hl = "Comment" } }
+        if (m.detail or "") ~= "" then row[3] = { text = " (" .. m.detail .. ")", hl = "Comment", copy = false } end
+        lines[#lines + 1] = row
       elseif m.kind == "error" then
         -- the headline, then the raw error as its detail
         gap("activity")
