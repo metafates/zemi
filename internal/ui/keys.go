@@ -24,7 +24,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// an armed key acts only when pressed again right away on the bare
 	// composer: an esc that answers a box in between does not count, and a
 	// held key prefix never outlives a key that bypasses keySequence
-	elsewhere := top != "" || a.palette.open || a.completion.shown()
+	elsewhere := top != noModal || a.palette.open || a.completion.shown()
 	if elsewhere || key != a.armed.key {
 		a.armed = armed{}
 	}
@@ -35,7 +35,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// A focused node takes every key but ctrl+c: its own keymaps, then the
 	// global ones. Unbound keys do nothing, and an unbound esc gives the
 	// keys back to the composer.
-	if f := a.focusedNode(); top == "" && f != "" && key != "ctrl+c" {
+	if f := a.focusedNode(); top == noModal && f != "" && key != "ctrl+c" {
 		if ok, _ := a.keySequence(key, f); !ok && key == "esc" {
 			a.host.SetFocus("")
 		}
@@ -47,7 +47,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// printable keys stay with the composer, and an open popup keeps its
 	// keys. The composer is Go-drawn, so typing must not bump the frame
 	// generation: that would re-render every Lua widget on every keystroke.
-	if top == "" && key != "ctrl+c" {
+	if top == noModal && key != "ctrl+c" {
 		if a.palette.open || a.completion.shown() {
 			return a.composerKey(key, msg)
 		}
@@ -65,17 +65,17 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// turn, clears a draft, and on an empty composer quits when pressed twice.
 	if key == "ctrl+c" {
 		switch {
-		case top == "perm":
+		case top == modalPerm:
 			a.answerPerm(false, tools.ByUser)
-		case top == "memReview":
+		case top == modalMemReview:
 			a.answerMemReview()
-		case top == "plan":
+		case top == modalPlan:
 			a.finishPlan(tools.PlanVerdict{}, false)
-		case top == "question":
+		case top == modalQuestion:
 			a.finishQuestion(false)
-		case top == "trust":
+		case top == modalTrust:
 			a.answerTrust("later")
-		case top == "overlay":
+		case top == modalOverlay:
 			// the whole menu closes, not only a detail view on top of it
 			i := len(a.overlays) - 1
 			for i > 0 && a.overlays[i].back {
@@ -102,7 +102,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	// Go-owned chrome and Lua overlays capture all keys (§8, §10.4).
 	switch top {
-	case "trust":
+	case modalTrust:
 		if a.program != nil && a.now().Sub(a.trust.opened) < permGrace {
 			return nil
 		}
@@ -120,7 +120,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "enter":
 			a.answerTrust(trustAnswers[tp.sel])
 		}
-	case "perm":
+	case modalPerm:
 		pa := a.permAsk
 		if a.program != nil && a.now().Sub(pa.opened) < permGrace {
 			return nil
@@ -143,7 +143,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case key == "n" || key == "esc":
 			a.answerPerm(false, tools.ByUser)
 		}
-	case "memReview":
+	case modalMemReview:
 		mr := a.memReview
 		if mr.detail && mr.at() < len(mr.items) {
 			acts := memActions(mr.items[mr.at()], len(mr.undo) > 0)
@@ -175,12 +175,13 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "esc":
 			a.answerMemReview()
 		}
-	case "plan":
+	case modalPlan:
 		a.planKey(key, keyText(msg))
-	case "question":
+	case modalQuestion:
 		a.questionKey(key, keyText(msg))
-	case "overlay":
+	case modalOverlay:
 		return a.overlayKey(key, keyText(msg))
+	case noModal:
 	}
 	return nil
 }
@@ -377,7 +378,7 @@ func (a *App) keySequence(key, focus string) (bool, tea.Cmd) {
 // under a leader (ctrl+g opens the editor) still works on its own. A
 // focused node drops them, like any key it has no binding for.
 func (a *App) replayKeys(held []string, focus string) tea.Cmd {
-	if focus != "" || a.topChrome() != "" {
+	if focus != "" || a.topChrome() != noModal {
 		return nil
 	}
 	var cmds []tea.Cmd
@@ -520,25 +521,38 @@ func (a *App) modeBase() string {
 	return "auto"
 }
 
-// topChrome names the prompt drawn on top, which takes keys, the wheel,
-// pastes and clicks. It mirrors the splice order in compose: perm over
-// memReview, question, trust, then Lua overlays.
-func (a *App) topChrome() string {
+// modal is a prompt drawn over the composer, which takes keys, the wheel,
+// pastes and clicks while it is on top.
+type modal int
+
+const (
+	noModal modal = iota
+	modalPerm
+	modalMemReview
+	modalPlan
+	modalQuestion
+	modalTrust
+	modalOverlay
+)
+
+// topChrome is the prompt drawn on top. It mirrors the splice order in
+// compose: perm over memReview, question, trust, then Lua overlays.
+func (a *App) topChrome() modal {
 	switch {
 	case a.permAsk != nil:
-		return "perm"
+		return modalPerm
 	case a.memReview != nil:
-		return "memReview"
+		return modalMemReview
 	case a.planAsk != nil:
-		return "plan"
+		return modalPlan
 	case a.question != nil:
-		return "question"
+		return modalQuestion
 	case a.trust != nil:
-		return "trust"
+		return modalTrust
 	case len(a.overlays) > 0:
-		return "overlay"
+		return modalOverlay
 	}
-	return ""
+	return noModal
 }
 
 // wheel scrolls the box on top: the modal chrome, else an open composer
@@ -569,26 +583,26 @@ func (a *App) wheel(x, y, step int) {
 // false with no box on top.
 func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 	switch a.topChrome() {
-	case "perm":
+	case modalPerm:
 		text, sel, n = &a.permAsk.view, &a.permAsk.sel, len(a.permAsk.choices())
-	case "plan":
+	case modalPlan:
 		text = &a.planAsk.view
-	case "memReview":
+	case modalMemReview:
 		if mr := a.memReview; mr.detail {
 			text, sel, n = &mr.body, &mr.act, len(memActions(mr.items[mr.at()], len(mr.undo) > 0))
 		} else {
 			sel, n = &mr.selected, len(mr.visible)
 		}
-	case "question":
+	case modalQuestion:
 		if qp := a.question; !qp.reviewing() {
 			text = &qp.states[qp.at].ask
 		}
 		sel, n = a.question.sel()
-	case "overlay":
+	case modalOverlay:
 		if st := &a.overlays[len(a.overlays)-1]; !st.o.Input {
 			text, sel, n = &st.body, &st.selected, len(st.visible)
 		}
-	case "trust":
+	case modalTrust:
 		text = &a.trust.view
 	default:
 		switch {
@@ -608,9 +622,9 @@ func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 func (a *App) pasteChrome(text string) bool {
 	line := strings.Join(strings.Fields(text), " ")
 	switch a.topChrome() {
-	case "":
+	case noModal:
 		return false
-	case "question":
+	case modalQuestion:
 		qp := a.question
 		if qp.reviewing() {
 			break
@@ -620,19 +634,20 @@ func (a *App) pasteChrome(text string) bool {
 			st.typing = true
 			st.input.insert(line)
 		}
-	case "plan":
+	case modalPlan:
 		p := a.planAsk
 		if !p.typing {
 			p.typing, p.input = true, composerState{}
 		}
 		p.input.insert(line)
-	case "overlay":
+	case modalOverlay:
 		st := &a.overlays[len(a.overlays)-1]
 		if st.o.Input {
 			st.input.insert(line)
 		} else {
 			st.edit("", line, st.texts)
 		}
+	case modalPerm, modalMemReview, modalTrust: // no text input: swallowed
 	}
 	a.bump()
 	return true

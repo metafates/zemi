@@ -849,7 +849,7 @@ func (a *App) compose(w, h int) string {
 			continue // a detail view replaces the list it opened from
 		}
 		if ov := &a.overlays[i]; ov.o.Anchor != "" {
-			box, right := a.overlayBox(ov, area.Dx(), area.Dy()), ov.o.Anchor == "bottom-right"
+			box, right := a.overlayBox(ov, area.Dx(), area.Dy()), ov.o.Anchor == hostapi.OverlayBottomRight
 			modals = append(modals, func() { rows, a.chromeRect = anchorBottom(rows, box, area, frame, right, w) })
 		} else {
 			splice(a.overlayBox(ov, area.Dx(), area.Dy()))

@@ -186,14 +186,14 @@ func (a *App) dragBar(y int) {
 func (a *App) dismissOutside(x, y int) bool {
 	out := func(r uv.Rectangle) bool { return !r.Empty() && !(uv.Position{X: x, Y: y}).In(r) }
 	switch {
-	case a.topChrome() == "overlay" && out(a.chromeRect):
+	case a.topChrome() == modalOverlay && out(a.chromeRect):
 		// the whole menu goes, not only a detail view drawn over it
 		i := len(a.overlays) - 1
 		for i > 0 && a.overlays[i].back {
 			i--
 		}
 		a.cancelOverlay(a.overlays[i].o)
-	case a.topChrome() != "":
+	case a.topChrome() != noModal:
 		return false
 	case a.palette.open && out(a.popRect):
 		a.palette.close()
@@ -209,7 +209,7 @@ func (a *App) dismissOutside(x, y int) bool {
 // focusAt gives the keys to the focusable node a click lands in (the topmost:
 // floats come last), or to the composer when it lands there.
 func (a *App) focusAt(x, y int) {
-	if a.topChrome() != "" {
+	if a.topChrome() != noModal {
 		return
 	}
 	in := func(r hostapi.Rect) bool { return x >= r.X && x < r.X+r.Width && y >= r.Y && y < r.Y+r.Height }
@@ -297,7 +297,7 @@ func (a *App) highlightHover(rows [][]hostapi.Segment) {
 		return
 	}
 	style := func(s *hostapi.Segment) { s.Over = "Hover" }
-	if top := a.topChrome(); top == "perm" || top == "trust" {
+	if top := a.topChrome(); top == modalPerm || top == modalTrust {
 		style = func(s *hostapi.Segment) { s.HL = "Host:Hover" }
 	} else if rest := dropCells(rows[a.hoverY], a.hoverX); len(rest) > 0 && rest[0].Hit > 0 {
 		style = func(s *hostapi.Segment) { s.Over = "HoverItem" }
@@ -404,7 +404,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		}, true
 	}
 	switch top := a.topChrome(); {
-	case top == "perm":
+	case top == modalPerm:
 		pa := a.permAsk
 		choices := pa.choices()
 		spans, ok := item(len(choices))
@@ -413,18 +413,18 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		}
 		c := choices[hit-1]
 		return spans, func() { a.choosePerm(c) }, true
-	case top == "trust":
+	case top == modalTrust:
 		spans, ok := item(len(trustAnswers))
 		if !ok || (a.program != nil && a.now().Sub(a.trust.opened) < permGrace) {
 			return nil, nil, false
 		}
 		answer := trustAnswers[hit-1]
 		return spans, func() { a.answerTrust(answer) }, true
-	case top == "plan":
+	case top == modalPlan:
 		spans, ok := item(2) // the buttons; the changes input has no hits
 		key := map[int]string{1: "a", 2: "e"}[hit]
 		return spans, func() { a.planKey(key, "") }, ok
-	case top == "question":
+	case top == modalQuestion:
 		qp := a.question
 		if !qp.reviewing() && qp.states[qp.at].typing {
 			return nil, nil, false // the row is an input, not a choice
@@ -435,7 +435,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			return spans, func() { *sel = hit - 1; a.questionKey("enter", "") }, ok
 		}
 		return list(n, sel, func() { a.questionKey("enter", "") })
-	case top == "memReview":
+	case top == modalMemReview:
 		mr := a.memReview
 		if mr.detail {
 			acts := memActions(mr.items[mr.at()], len(mr.undo) > 0)
@@ -443,7 +443,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			return spans, func() { a.memAct(acts[hit-1].key) }, ok
 		}
 		return list(len(mr.visible), &mr.selected, mr.open)
-	case top == "overlay":
+	case top == modalOverlay:
 		st := &a.overlays[len(a.overlays)-1]
 		var open func()
 		if len(st.visible) > 0 && st.enterVerb(st.visible[st.selected]) != "" {
@@ -458,7 +458,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		p := &a.palette
 		spans, ok := item(p.count())
 		return spans, func() { p.selected = hit - 1; a.acceptPalette() }, ok
-	case top == "" && under.Click != "":
+	case top == noModal && under.Click != "":
 		act := func() { a.clickWidget(under, x, y) }
 		if under.Widget == "" { // a Go pill or dock entry names its command
 			name, args := SplitCommand(under.Click)
