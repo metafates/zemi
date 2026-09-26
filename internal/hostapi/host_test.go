@@ -3,6 +3,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -604,7 +605,8 @@ func TestConfigSet(t *testing.T) {
 		{"agent.profile", "", "default", false},
 	} {
 		h.Settings.SetQuiet(c.path, "high")
-		if err := h.configSet(c.path, c.value); (err != nil) != c.bad || h.Settings.Str(c.path) != c.want {
+		// a refused value is a usage hint, not an error
+		if err := h.configSet(c.path, c.value); (err != nil) != c.bad || err != nil && !errors.Is(err, ErrUsage) || h.Settings.Str(c.path) != c.want {
 			t.Errorf("%s %q: %q, %v; want %q", c.path, c.value, h.Settings.Str(c.path), err, c.want)
 		}
 	}

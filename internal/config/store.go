@@ -184,7 +184,10 @@ func (s *Store) Check(path string, val any) (any, error) {
 func (s *Store) SetChoices[T ~string](path string, choices []T) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	def := s.schema[path]
+	def, ok := s.schema[path]
+	if !ok {
+		panic("config: SetChoices on a key outside the schema: " + path)
+	}
 	def.Choices = nil
 	for _, c := range choices {
 		def.Choices = append(def.Choices, string(c))

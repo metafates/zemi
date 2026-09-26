@@ -315,6 +315,11 @@ func configFingerprint(skip string, roots ...string) string {
 // mainCommands are the Go-owned slash commands that need the program's own
 // hooks; the rest come from the host (hostapi.BuiltinCommandsStep).
 func mainCommands(quit, trust func()) []*hostapi.Command {
+	var efforts []string
+	for _, e := range agent.Efforts {
+		efforts = append(efforts, string(e))
+	}
+	efforts = append(efforts, "default")
 	return []*hostapi.Command{
 		{Name: "quit", Desc: "quit zemi", GoFn: func(*hostapi.Host, string) error {
 			quit()
@@ -360,11 +365,11 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				if eff := h.Effort(h.AgentStream().Model); eff != pick {
 					cur += " (" + cmp.Or(eff, "none") + " on this model)"
 				}
-				h.Notify(logging.Info, "Reasoning effort is "+cur, "/effort low, medium, high or default sets it")
+				h.Notify(logging.Info, "Reasoning effort is "+cur, "/effort "+strings.Join(efforts, ", ")+" sets it")
 				return nil
 			}
 			return h.SetConfig("agent.effort", args)
-		}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"low", "medium", "high", "default"} }},
+		}, GoComplete: func(*hostapi.Host, string, string) []string { return efforts }},
 		{Name: "profile", NArgs: hostapi.NArgsOptional, Desc: "choose the agent profile: model, prompt and tools", GoFn: func(h *hostapi.Host, args string) error {
 			if args = strings.TrimSpace(args); args == "" {
 				return h.OpenProfilePicker()

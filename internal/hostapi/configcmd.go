@@ -147,9 +147,18 @@ func (h *Host) SetConfig(path string, val any) error {
 		return h.SetProfile(s)
 	case "ui.theme":
 		return h.SetTheme(s)
-	case "agent.effort":
-		if s == "default" {
-			val = ""
+	}
+	// a key whose choices hold "" takes "default" for it, as /config pick shows it
+	if def, _ := h.setting(path); def.Choices != nil {
+		if s == "default" && slices.Contains(def.Choices, "") {
+			val, s = "", ""
+		}
+		if !slices.Contains(def.Choices, s) {
+			words := make([]string, len(def.Choices))
+			for i, c := range def.Choices {
+				words[i] = cmp.Or(c, "default")
+			}
+			return Usagef("%s takes %s, not %q", path, strings.Join(words, ", "), s)
 		}
 	}
 	return h.setWatched(path, val)
