@@ -78,7 +78,7 @@ func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 		case i < 0:
 			reg.list = append(reg.list, c)
 		default:
-			if err = mayReplace(h.PluginOf, name, reg.list[i].origin, reg.list[i].path, c.origin, c.path); err == nil {
+			if err = mayReplace(h.PluginOf, "health row "+name, reg.list[i].origin, reg.list[i].path, c.origin, c.path); err == nil {
 				reg.list[i] = c
 			}
 		}

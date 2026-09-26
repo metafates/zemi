@@ -91,8 +91,8 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 		if !related || !overlap {
 			continue
 		}
-		if err := mayReplace(r.owner, "keymap "+k.key, old.Origin, old.Path, b.Origin, b.Path); err != nil {
-			return fmt.Errorf("%s overlaps it: %w", b.Key, err)
+		if err := mayReplace(r.owner, "keymap "+b.Key+" overlaps "+k.key+", which", old.Origin, old.Path, b.Origin, b.Path); err != nil {
+			return err
 		}
 	}
 	if old := r.bindings[bindKey{b.Focus, b.Key}]; old != nil {

@@ -64,14 +64,20 @@ func TestPluginsStep(t *testing.T) {
 		},
 		{name: "none, and the row still shows", want: []string{"health: none on"}},
 		{
-			name: "two plugins collide on a command and a tool",
+			name: "two plugins collide on a command, a tool, a health row and a completion source",
 			plugins: map[string]string{
-				"local/a/init.lua": `zemi.command.add("dup", function() end, {}) zemi.command.add("dup", function() end, {}) ` + tool("dup_tool"),
+				"local/a/init.lua": `zemi.command.add("dup", function() end, {}) zemi.command.add("dup", function() end, {}) ` + tool("dup_tool") +
+					` zemi.health.add("dup", function() return "" end) zemi.composer.complete({ id = "dup", trigger = "#", items = function() return {} end })`,
 				"local/b/init.lua": `zemi.command.add("dup", function() end, {})`,
 				"local/c/init.lua": tool("dup_tool"),
+				"local/d/init.lua": `zemi.health.add("dup", function() return "" end)`,
+				"local/e/init.lua": `zemi.composer.complete({ id = "dup", trigger = "#", items = function() return {} end })`,
 			},
-			want: []string{"plugin b: ", "command /dup is registered by plugin a, not b", "plugin c: ", `tool "dup_tool" is registered by plugin a, not c`},
-			not:  []string{"plugin a: "},
+			want: []string{
+				"plugin b: ", "command /dup is registered by plugin a, not b", "plugin c: ", `tool "dup_tool" is registered by plugin a, not c`,
+				"plugin d: ", "health row dup is registered by plugin a, not d", "plugin e: ", "completion source dup is registered by plugin a, not e",
+			},
+			not: []string{"plugin a: "},
 		},
 		{
 			name: "a broken file hides no other plugin's of its name",
