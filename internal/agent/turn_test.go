@@ -919,6 +919,7 @@ func TestSignedThinking(t *testing.T) {
 	t1, a2 := msg(fantasy.MessageRoleTool, "t1", false), msg(fantasy.MessageRoleAssistant, "a2", true)
 	edited := msg(fantasy.MessageRoleTool, "t1 pruned", false)
 	base := []fantasy.Message{sys("s"), u1, a1, t1, a2}
+	ab := []string{"a", "b"}
 	thoughts := func(msgs []fantasy.Message) string {
 		out := ""
 		for _, m := range msgs {
@@ -933,16 +934,17 @@ func TestSignedThinking(t *testing.T) {
 		tools []string
 		want  string
 	}{
-		{"an append strips nothing", base[:3], base, []string{"a"}, "--+-+"},
-		{"a mid-history edit strips from the edit on", base, []fantasy.Message{sys("s"), u1, a1, edited, a2}, []string{"a"}, "--+--"},
-		{"a changed system prompt strips all", base, append([]fantasy.Message{sys("s2")}, base[1:]...), []string{"a"}, "-----"},
-		{"a changed tool set strips all", base, base, []string{"a", "b"}, "-----"},
-		{"a runner that sent nothing strips all", nil, base, []string{"a"}, "-----"},
+		{"an append strips nothing", base[:3], base, ab, "--+-+"},
+		{"a mid-history edit strips from the edit on", base, []fantasy.Message{sys("s"), u1, a1, edited, a2}, ab, "--+--"},
+		{"a changed system prompt strips all", base, append([]fantasy.Message{sys("s2")}, base[1:]...), ab, "-----"},
+		{"a changed tool set strips all", base, base, []string{"a"}, "-----"},
+		{"a reordered tool set strips nothing", base, base, []string{"b", "a"}, "--+-+"},
+		{"a runner that sent nothing strips all", nil, base, ab, "-----"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := &Runner{}
 			if c.prev != nil {
-				r.signed(c.prev, []string{"a"}, true)
+				r.signed(c.prev, ab, true)
 				r.sent = c.prev[1:] // as if the earlier step went out whole
 			}
 			if got := thoughts(r.signed(c.next, c.tools, true)); got != c.want {

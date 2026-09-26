@@ -621,15 +621,9 @@ func withCacheControl(o fantasy.ProviderOptions) fantasy.ProviderOptions {
 	return out
 }
 
-// signed drops from a step's input the thinking the provider would refuse.
-// Anthropic signs a thinking block over the system prompt, the tools and every
-// message before it, and Claude Opus 5.5 and Fable 5.1 refuse a replayed block
-// whose prefix changed ("Invalid signature in thinking block"; accounts from
-// 2026-08-31 by default, older ones on opt-in), directly and through
-// openrouter or vercel, which replay the same signature. Every request passes
-// here, so this one check covers every history edit: compaction, pruned tool
-// output, stripped images, a rebuilt prompt, a tool loaded mid-turn. record
-// keeps what was sent for the next step.
+// signed drops the thinking whose signed prefix (system, tool set, earlier
+// messages) changed: Anthropic, openrouter and vercel refuse it. Every request
+// passes here, so this one check covers every history edit.
 func (r *Runner) signed(msgs []fantasy.Message, active []string, record bool) []fantasy.Message {
 	var sys []fantasy.Message
 	if len(msgs) > 0 && msgs[0].Role == fantasy.MessageRoleSystem {
@@ -649,8 +643,9 @@ func (r *Runner) signed(msgs []fantasy.Message, active []string, record bool) []
 			names = append(names, t.Info().Name)
 		}
 	}
+	// Sorted: the API binds tools as a set and deferMCP's order is random.
 	// NOTE: tools by name: a schema that changes under the same name is missed
-	for _, n := range names {
+	for _, n := range slices.Sorted(slices.Values(names)) {
 		key.WriteString("\x00" + n)
 	}
 	r.mu.Lock()
