@@ -74,6 +74,14 @@ func TestPluginsStep(t *testing.T) {
 			not:  []string{"plugin a: "},
 		},
 		{
+			name: "a broken file hides no other plugin's of its name",
+			plugins: res(map[string]string{
+				"local/a/agents/x.md": "---\n---\nno description", "local/a/commands/x.md": "",
+			}, "local/b/", "x"),
+			want: []string{"agent x plugin:b\n", "command x plugin:b\n"},
+			not:  []string{"already provided"},
+		},
+		{
 			name: "state and principal are per plugin, a gone plugin's state goes",
 			plugins: map[string]string{
 				"local/a/init.lua": `zemi.state.set("k", "a") print(select(2, pcall(zemi.job.start, { cmd = "true" })))`,

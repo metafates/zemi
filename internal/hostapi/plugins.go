@@ -192,11 +192,12 @@ type layerFile struct {
 	origin     lua.Origin
 }
 
-// layerFiles lists the <name><ext> files in sub of the user config, each
-// enabled plugin, then a trusted project's .agents. The first file of a
-// name wins; /errors records one no skills.ValidName and one a plugin ships
-// under a name another plugin took first.
-func (h *Host) layerFiles(sub, ext string) []layerFile {
+// layerFiles hands load the <name><ext> files in sub of the user config,
+// each enabled plugin, then a trusted project's .agents. The first file of a
+// name load accepts wins, so a broken one hides nothing; /errors records a
+// name no skills.ValidName and one a plugin ships under a name another
+// plugin took first.
+func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 	var dirs []layerFile
 	if h.Dirs.ConfigHome != "" {
 		dirs = append(dirs, layerFile{path: filepath.Join(h.Dirs.ConfigHome, sub), origin: lua.OriginUser})
@@ -207,7 +208,6 @@ func (h *Host) layerFiles(sub, ext string) []layerFile {
 	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
 		dirs = append(dirs, layerFile{path: filepath.Join(pdir, sub), origin: lua.OriginProject})
 	}
-	var out []layerFile
 	seen := map[string]string{} // name -> the kept file
 	for _, d := range dirs {
 		entries, _ := os.ReadDir(d.path)
@@ -227,9 +227,9 @@ func (h *Host) layerFiles(sub, ext string) []layerFile {
 				h.RecordErrorOnce(sub, path+": name must match [a-z0-9][a-z0-9-]*")
 				continue
 			}
-			seen[name] = path
-			out = append(out, layerFile{name, path, d.origin})
+			if load(layerFile{name, path, d.origin}) {
+				seen[name] = path
+			}
 		}
 	}
-	return out
 }

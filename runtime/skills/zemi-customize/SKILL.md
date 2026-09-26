@@ -38,7 +38,7 @@ model: anthropic/claude-haiku-4-5
 You review Go code for data races, deadlocks and leaked goroutines. Cite file:line.
 ```
 
-`description` is required and is what the model reads when it picks an agent, so say when to use it. `name` defaults to the file name (lowercase letters, digits, `-`). `model` is a role (`chat`, `agents`, `titles`, `compact`, `memory`: the model that role runs on) or a `provider/model`; omitted or `inherit`, `models.agents`. `tools` is an allowlist, or `-name` entries that remove from the full set, so later tools still arrive; omitted, everything but `agent`, `workflow`, `todos`, `question`, `plan` and `lua`. An unknown tool name fails the agent. The builtin agents are `explore`, `general`, `web` and `plan`; a user file with one of those names replaces it.
+`description` is required and is what the model reads when it picks an agent, so say when to use it. The file name is the agent's name (lowercase letters, digits, `-`); a `name` field is ignored. `model` is a role (`chat`, `agents`, `titles`, `compact`, `memory`: the model that role runs on) or a `provider/model`; omitted or `inherit`, `models.agents`. `tools` is an allowlist, or `-name` entries that remove from the full set, so later tools still arrive; omitted, everything but `agent`, `workflow`, `todos`, `question`, `plan` and `lua`. An unknown tool name fails the agent. The builtin agents are `explore`, `general`, `web` and `plan`; a user file with one of those names replaces it.
 
 ## Profiles (`init.lua`)
 

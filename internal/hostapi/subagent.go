@@ -95,15 +95,15 @@ const maxAgentFileBytes = 1 << 20
 // agents load only once the project config tree is trusted.
 func (h *Host) agentDefs() []AgentDef {
 	defs := slices.Clone(builtinAgents)
-	for _, f := range h.layerFiles("agents", ".md") {
-		d, err := parseAgentFile(f.path, f.origin)
+	h.layerFiles("agents", ".md", func(f layerFile) bool {
+		d, err := parseAgentFile(f.name, f.path, f.origin)
 		if err != nil {
-			// a broken file cannot hide the others
 			h.RecordErrorOnce("agents", err.Error())
-			continue
+			return false
 		}
 		defs = append(defs, d)
-	}
+		return true
+	})
 	sortBySource(defs, func(d AgentDef) lua.Origin { return d.Source })
 	seen := map[string]bool{}
 	return slices.DeleteFunc(defs, func(d AgentDef) bool {
@@ -139,13 +139,12 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 	return AgentDef{}, fmt.Errorf("unknown agent %q (have %s)", name, strings.Join(names, ", "))
 }
 
-func parseAgentFile(path string, source lua.Origin) (AgentDef, error) {
+func parseAgentFile(name, path string, source lua.Origin) (AgentDef, error) {
 	block, body, err := readFrontmatterFile(path)
 	if err != nil {
 		return AgentDef{}, err
 	}
 	var fm struct {
-		Name        string `yaml:"name"`
 		Description string `yaml:"description"`
 		Model       string `yaml:"model"`
 		Tools       any    `yaml:"tools"`
@@ -154,21 +153,15 @@ func parseAgentFile(path string, source lua.Origin) (AgentDef, error) {
 		return AgentDef{}, fmt.Errorf("%s: frontmatter: %w", path, err)
 	}
 	d := AgentDef{
-		Name:        fm.Name,
+		Name:        name,
 		Description: strings.TrimSpace(fm.Description),
 		Model:       fm.Model,
 		System:      strings.TrimSpace(body),
 		Source:      source,
 		Path:        path,
 	}
-	if d.Name == "" {
-		d.Name = strings.TrimSuffix(filepath.Base(path), ".md")
-	}
 	if d.Model == "inherit" {
 		d.Model = ""
-	}
-	if !skills.ValidName(d.Name) {
-		return AgentDef{}, fmt.Errorf("%s: name %q must match [a-z0-9][a-z0-9-]*", path, d.Name)
 	}
 	if d.Description == "" {
 		return AgentDef{}, fmt.Errorf("%s: description is required", path)

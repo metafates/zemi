@@ -43,7 +43,7 @@ func (h *Host) MarkdownCommandsStep() lua.BootStep {
 }
 
 func (h *Host) addMarkdownCommands(gen Gen) {
-	for _, f := range h.layerFiles("commands", ".md") {
+	h.layerFiles("commands", ".md", func(f layerFile) bool {
 		name, path := f.name, f.path
 		warn := func(msg string) {
 			h.Log.Warn("commands", path+": "+msg, nil)
@@ -52,7 +52,7 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 		block, body, err := readFrontmatterFile(path)
 		if err != nil {
 			warn(err.Error())
-			continue
+			return false
 		}
 		var fm struct {
 			Description  string `yaml:"description"`
@@ -60,12 +60,12 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 		}
 		if err := yaml.Unmarshal([]byte(block), &fm); err != nil {
 			warn("frontmatter: " + err.Error())
-			continue
+			return false
 		}
 		body = strings.TrimSpace(body)
 		if body == "" {
 			warn("empty prompt")
-			continue
+			return false
 		}
 		desc := fm.Description
 		if desc == "" {
@@ -84,7 +84,8 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 		})
 		if err != nil {
 			warn(err.Error())
-			continue
+			return false
 		}
-	}
+		return true
+	})
 }

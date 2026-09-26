@@ -64,14 +64,15 @@ func (h *Host) workflows() []Workflow {
 			out = append(out, Workflow{Name: name, Description: leadingComment(string(src)), Path: "builtin:" + e.Name(), Source: lua.OriginBuiltin})
 		}
 	}
-	for _, f := range h.layerFiles("workflows", ".lua") {
+	h.layerFiles("workflows", ".lua", func(f layerFile) bool {
 		src, err := readRegularFile(f.path)
 		if err != nil {
 			h.RecordErrorOnce("workflows", err.Error())
-			continue
+			return false
 		}
 		out = append(out, Workflow{Name: f.name, Description: leadingComment(src), Path: f.path, Source: f.origin})
-	}
+		return true
+	})
 	sortBySource(out, func(w Workflow) lua.Origin { return w.Source })
 	seen := map[string]bool{}
 	return slices.DeleteFunc(out, func(w Workflow) bool {
