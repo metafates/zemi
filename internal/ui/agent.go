@@ -22,7 +22,7 @@ import (
 )
 
 // permAskPrompt is the open permission overlay; the host hands the UI one
-// ask at a time (Host.AsksWaiting counts the rest).
+// ask at a time (Host.AsksWaiting counts it and the ones behind it).
 type permAskPrompt struct {
 	req hostapi.PermRequest
 	// answer is nil once answered: the box stays drawn, inert, while more
