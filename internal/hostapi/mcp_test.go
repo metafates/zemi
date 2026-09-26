@@ -143,6 +143,21 @@ func TestMCPBridge(t *testing.T) {
 	if resp := run(0, `{"text":"hi"}`); !resp.IsError || !strings.Contains(resp.Content, "no longer offers echo") {
 		t.Fatalf("disabled tool call = %+v", resp)
 	}
+	// a sign-out waits for the next sign-in at once, since a start could
+	// only fail the same way, and redraws the open /mcp
+	n := len(ui.overlays())
+	if err := h.signOutMCP("fake"); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := h.mcpServerNamed("fake"); s.status != StatusSignIn {
+		t.Errorf("status after a sign-out = %q, want no start", s.status)
+	}
+	if !slices.ContainsFunc(ui.overlays()[n:], func(o Overlay) bool {
+		row := o.Items[0].(map[string]any)
+		return o.Refresh && row["desc"] == "needs sign-in" && strings.Contains(fmt.Sprint(row["actions"]), "run:mcp sign-in fake")
+	}) {
+		t.Errorf("no /mcp refresh shows the sign-out: %+v", ui.overlays()[n:])
+	}
 }
 
 // TestMCPMedia: an image goes out the size the read tool's would, and one

@@ -865,8 +865,16 @@ func (h *Host) signOutMCP(name string) error {
 	if err := h.mcpAuth(s).Logout(); err != nil {
 		return err
 	}
+	// only a server that asked for a sign-in offers a sign-out, and a start
+	// would fail the same way: no network call, one toast
+	out := &mcpServer{name: name, spec: s.spec, status: StatusSignIn}
+	h.mcp.mu.Lock()
+	h.mcp.servers[name] = out
+	h.mcp.mu.Unlock()
+	s.stop()
 	h.Notify(logging.Info, "Signed out", name)
-	return h.restartMCP(name)
+	h.mcpChanged()
+	return nil
 }
 
 // openBrowser opens an http(s) URL with the platform's opener; the URL is
