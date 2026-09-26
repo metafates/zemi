@@ -271,6 +271,7 @@ func (h *Host) luaFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 // luaToolAdapter runs a Lua tool through tool.pre, the permission gate
 // (tool.<name>) and the interpreter (DESIGN §6.4).
 type luaToolAdapter struct {
+	tools.NoProviderOptions
 	h    *Host
 	t    *luaTool
 	pipe *tools.Pipeline
@@ -285,9 +286,6 @@ func (a *luaToolAdapter) Info() fantasy.ToolInfo {
 		Parallel:    a.t.Parallel,
 	}
 }
-
-func (a *luaToolAdapter) ProviderOptions() fantasy.ProviderOptions   { return nil }
-func (a *luaToolAdapter) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	input, err := tools.ParseInput(a.Info(), call.Input, tools.SchemaOpen(a.t.Schema))

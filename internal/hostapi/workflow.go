@@ -534,6 +534,7 @@ func (r *wfRun) report() {
 // the workflow tool
 
 type workflowTool struct {
+	tools.NoProviderOptions
 	h     *Host
 	saved []Workflow
 }
@@ -563,9 +564,6 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 		Required: []string{"description"},
 	}
 }
-
-func (t *workflowTool) ProviderOptions() fantasy.ProviderOptions   { return nil }
-func (t *workflowTool) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h := t.h

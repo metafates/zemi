@@ -415,6 +415,7 @@ func seedLoaded(loaded *sync.Map, history []fantasy.Message) {
 }
 
 type toolSearch struct {
+	tools.NoProviderOptions
 	h      *Host
 	tools  []*mcpTool
 	loaded *sync.Map
@@ -444,9 +445,6 @@ func (t *toolSearch) Info() fantasy.ToolInfo {
 		Required:    []string{"query"},
 	}
 }
-
-func (t *toolSearch) ProviderOptions() fantasy.ProviderOptions   { return nil }
-func (t *toolSearch) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (t *toolSearch) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	var in struct {
@@ -532,6 +530,7 @@ const (
 )
 
 type mcpTool struct {
+	tools.NoProviderOptions
 	h     *Host
 	srv   *mcpServer
 	tool  mcp.Tool
@@ -556,9 +555,6 @@ func (t *mcpTool) Info() fantasy.ToolInfo {
 		Parallel:    true,
 	}
 }
-
-func (t *mcpTool) ProviderOptions() fantasy.ProviderOptions   { return nil }
-func (t *mcpTool) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h, name := t.h, t.srv.name

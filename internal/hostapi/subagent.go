@@ -675,6 +675,7 @@ func (h *Host) checkModelID(id string) error {
 // agentTool is the model's entry point to subagents. Parallel: several
 // calls in one step run concurrently.
 type agentTool struct {
+	tools.NoProviderOptions
 	h    *Host
 	defs []AgentDef
 }
@@ -733,9 +734,6 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 // bgAgentStarted opens the result of an agent call that went on in the
 // background, whose row reads as still running (toolStatus).
 const bgAgentStarted = "Started background agent "
-
-func (t *agentTool) ProviderOptions() fantasy.ProviderOptions   { return nil }
-func (t *agentTool) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	var in struct {

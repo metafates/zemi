@@ -142,7 +142,10 @@ func luaUnlisted(src string) []string {
 	return out
 }
 
-type luaEvalTool struct{ h *Host }
+type luaEvalTool struct {
+	tools.NoProviderOptions
+	h *Host
+}
 
 func (h *Host) luaEvalTool() fantasy.AgentTool { return &luaEvalTool{h: h} }
 
@@ -162,9 +165,6 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 		Required: []string{"description"},
 	}
 }
-
-func (t *luaEvalTool) ProviderOptions() fantasy.ProviderOptions   { return nil }
-func (t *luaEvalTool) SetProviderOptions(fantasy.ProviderOptions) {}
 
 func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h := t.h

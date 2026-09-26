@@ -517,7 +517,15 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 type callIDKey struct{}
 
 // tool implements fantasy.AgentTool over a plain run function.
+// NoProviderOptions is the fantasy.AgentTool option pair of a tool that
+// sends the provider none.
+type NoProviderOptions struct{}
+
+func (NoProviderOptions) ProviderOptions() fantasy.ProviderOptions   { return nil }
+func (NoProviderOptions) SetProviderOptions(fantasy.ProviderOptions) {}
+
 type tool struct {
+	NoProviderOptions
 	info     fantasy.ToolInfo
 	subjects func(input map[string]any) []Request
 	run      func(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error)
@@ -533,9 +541,7 @@ type tool struct {
 	check func(p *Pipeline, input map[string]any) error
 }
 
-func (t *tool) Info() fantasy.ToolInfo                     { return t.info }
-func (t *tool) ProviderOptions() fantasy.ProviderOptions   { return nil }
-func (t *tool) SetProviderOptions(fantasy.ProviderOptions) {}
+func (t *tool) Info() fantasy.ToolInfo { return t.info }
 
 func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.ToolResponse, err error) {
 	ctx = context.WithValue(ctx, callIDKey{}, call.ID)
