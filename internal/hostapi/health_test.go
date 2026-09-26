@@ -14,8 +14,8 @@ import (
 )
 
 // TestHealthLuaChecks: checks registered from Lua become /health rows, in
-// either return shape, and one that raises or returns an unknown level
-// reports as an error row rather than taking the whole page down.
+// either return shape, and one that raises or returns an unknown level, a
+// number included, reports as an error row rather than taking the whole page down.
 func TestHealthLuaChecks(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `
@@ -24,6 +24,8 @@ func TestHealthLuaChecks(t *testing.T) {
 		zemi.health.add("note", function() return "plain detail" end)
 		zemi.health.add("boom", function() error("nope") end)
 		zemi.health.add("typo", function() return { level = "warning", detail = "low" } end)
+		zemi.health.add("number", function() return { level = 3 } end)
+		zemi.health.add("unset", function() return { detail = "fine" } end)
 	`)
 	err := r.ExecuteChunk(context.Background(), `zemi.health.add("disk", function() return "planted" end)`, "p.lua", lua.OriginPlugin)
 	if err == nil || !strings.Contains(err.Error(), "more trusted") {
@@ -41,6 +43,8 @@ func TestHealthLuaChecks(t *testing.T) {
 		{"note", "ok", "plain detail"},
 		{"boom", "error", "nope"},
 		{"typo", "error", `level "warning" is not one of ok, warn, error`},
+		{"number", "error", `level 3 is not one of`},
+		{"unset", "ok", "fine"},
 	} {
 		row := got[c.name]
 		if string(row.level) != c.level || !strings.Contains(row.detail, c.detail) {

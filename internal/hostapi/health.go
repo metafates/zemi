@@ -162,23 +162,26 @@ func (h *Host) luaHealthRows() []healthCheck {
 	return rows
 }
 
-// healthResult reads what a check returned. A level outside healthLevels
-// is the check's misuse and fails it like a raise (DESIGN §6.0), so a
-// misspelt "warning" never reads as ok.
+// healthResult reads what a check returned. A missing level is ok; any
+// level outside healthLevels, a number included, is the check's misuse and
+// fails it like a raise (DESIGN §6.0), so a misspelt "warning" never reads
+// as ok.
 func healthResult(v any) (HealthLevel, string, error) {
 	switch v := v.(type) {
 	case string:
 		return HealthOK, sanitize.String(v), nil
 	case map[string]any:
-		level, _ := v["level"].(string)
+		raw, set := v["level"]
+		level := HealthOK
+		if set {
+			s, _ := raw.(string)
+			level = HealthLevel(s)
+		}
+		if !slices.Contains(healthLevels, level) {
+			return "", "", fmt.Errorf("level %#v is not one of %s", raw, strings.Join(strs(healthLevels), ", "))
+		}
 		detail, _ := v["detail"].(string)
-		if level == "" {
-			level = string(HealthOK)
-		}
-		if !slices.Contains(healthLevels, HealthLevel(level)) {
-			return "", "", fmt.Errorf("level %q is not one of %s", level, strings.Join(strs(healthLevels), ", "))
-		}
-		return HealthLevel(level), sanitize.String(detail), nil
+		return level, sanitize.String(detail), nil
 	}
 	return HealthOK, "", nil
 }

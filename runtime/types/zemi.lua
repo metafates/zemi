@@ -2275,7 +2275,7 @@ function zemi.lsp.list() end
 --- What a /health check returns; no level reads as "ok", and any other
 --- level fails the check like a raise.
 ---@class zemi.HealthResult
----@field level zemi.HealthLevel
+---@field level? zemi.HealthLevel
 ---@field detail string
 
 ---@class zemi.health
