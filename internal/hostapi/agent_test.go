@@ -660,6 +660,7 @@ func TestStoreBackedState(t *testing.T) {
 type fakeUI struct {
 	askAllowed   bool
 	askBy        string
+	onAsk        func(PermRequest) (bool, string) // answers in place of askAllowed and askBy
 	asked        []PermRequest
 	reviewItems  [][]MemoryRow
 	reviewResult []MemoryRow
@@ -716,6 +717,9 @@ func (f *fakeUI) Copy(text string) { f.copied = text }
 
 func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 	f.asked = append(f.asked, req)
+	if f.onAsk != nil {
+		return f.onAsk(req)
+	}
 	return f.askAllowed, f.askBy
 }
 

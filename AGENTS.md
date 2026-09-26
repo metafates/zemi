@@ -368,6 +368,10 @@ not hide, outside the project too. In an untrusted project both modes settle onl
 commands (every program only reads, named without a path; no builds, no git) and auto settles
 no project writes (a `madePlugins` plugin is in no project). In a trusted project with no sandbox backend auto still settles jail writes, but
 commands settle only when `ReadCommand` holds, since an approved one would run unconfined.
+Asks reach the user one at a time (`Host.askMu`, held over the prompt stage only, never over
+the veto or `decide`), and a waiter is judged again once it holds it (`Request.Recheck`, then
+the mode and trust with no Lua), so an answer, a switch to yolo or new trust settles the asks
+behind it, a rule's verdict returned whole (`tools.ByRecheck`) so a network rule keeps the sandbox.
 
 **Sandbox** (internal/sandbox, internal/hostapi/sandbox.go, DESIGN §9): a `tool.bash` verdict a
 mode gave (`DecidedBy` `mode:<name>`, base not yolo) makes `Pipeline.SandboxFor` return

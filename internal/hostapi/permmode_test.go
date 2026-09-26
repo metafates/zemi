@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -479,5 +480,74 @@ func TestExplicitAskReachesUser(t *testing.T) {
 		if got := v.Decision == perm.Allow; got != c.settled || !c.settled && !strings.Contains(v.Reason, "a rule asks for this") {
 			t.Errorf("%s %q: %+v", c.subject, c.arg, v)
 		}
+	}
+}
+
+// TestAskWaiterJudgedAgain: asks reach the user one at a time, and one
+// that waited behind a prompt is judged again (rules, mode) once the prompt
+// is answered, so an answer that covers it settles it without a second
+// prompt, with the rule's verdict whole.
+func TestAskWaiterJudgedAgain(t *testing.T) {
+	root := perm.RealPath(t.TempDir())
+	for _, d := range []string{".git", "a", "b"} {
+		os.Mkdir(filepath.Join(root, d), 0o700)
+	}
+	read := func(rel string) tools.Request {
+		p := filepath.Join(root, rel)
+		os.WriteFile(p, nil, 0o600)
+		return tools.Request{Subject: "fs.read", Arg: p}
+	}
+	curl := tools.Request{Subject: "tool.bash", Arg: "curl example.com"}
+	netCurl := curl
+	netCurl.Network = true
+	for _, c := range []struct {
+		name          string
+		first, second tools.Request
+		by            string        // the first prompt's answer
+		during        func(h *Host) // what happens while it is open
+		prompts       int
+		allowed       [2]bool
+		secondBy      string
+		network       bool // the second runs confined with the network
+	}{
+		{"always covers the waiting read", read("a/x"), read("a/y"), "user:always", nil, 1, [2]bool{true, true}, tools.ByRule, false},
+		{"wider covers another package", read("a/x"), read("b/z"), "user:wider", nil, 1, [2]bool{true, true}, tools.ByRule, false},
+		{"answer does not cover the waiter", read("a/x"), read("b/z"), "user:always", nil, 2, [2]bool{true, true}, "user:always", false},
+		{"yolo switch settles the waiter", read("a/x"), read("a/y"), "user:once", func(h *Host) { h.SetPermMode("yolo") }, 1, [2]bool{true, true}, tools.ByMode("yolo"), false},
+		{"tell denies the waiter", read("a/x"), read("a/y"), tools.ByUser, func(h *Host) { h.DenyWaitingAsks() }, 1, [2]bool{false, false}, tools.ByUser, false},
+		{"network always-rule keeps the sandbox", netCurl, curl, "user:always", nil, 1, [2]bool{true, true}, tools.ByRule, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHost(t)
+			fakeSandbox(h, true)
+			opened := make(chan struct{})
+			ui := &fakeUI{}
+			ui.onAsk = func(PermRequest) (bool, string) {
+				if len(ui.asked) == 1 {
+					close(opened)
+					for h.AsksWaiting() < 2 { // the second is at the prompt stage
+						runtime.Gosched()
+					}
+					if c.during != nil {
+						c.during(h)
+					}
+				}
+				return c.by != tools.ByUser, c.by
+			}
+			h.SetUIHooks(ui)
+			pipe := h.PipelineFor()
+			var first tools.Verdict
+			done := make(chan struct{})
+			go func() { first = pipe.Check(c.first); close(done) }()
+			<-opened
+			second := pipe.Check(c.second)
+			<-done
+			if got := [2]bool{first.Decision == perm.Allow, second.Decision == perm.Allow}; got != c.allowed || len(ui.asked) != c.prompts || second.DecidedBy != c.secondBy {
+				t.Fatalf("allowed %v, %d prompts, second by %q", got, len(ui.asked), second.DecidedBy)
+			}
+			if pol := pipe.SandboxFor(c.second, second); (pol != nil && pol.Network) != c.network {
+				t.Fatalf("sandbox %+v", pol)
+			}
+		})
 	}
 }

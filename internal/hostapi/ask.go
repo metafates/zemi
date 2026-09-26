@@ -23,26 +23,41 @@ import (
 // rules nor auto settle an ask a rule asked for), then the Go-owned
 // overlay and the "always" rule storage (DESIGN §6.2, §8).
 func (h *Host) askHook() tools.Asker {
-	return func(req tools.Request) (bool, string, string) {
-		askedFor := req.Reason
-		resolved := func(allowed bool, by string) (bool, string, string) {
-			// only yolo or the user allows a write that creates a plugin: it is
-			// protected, so no mode rule, decide or store rule settles it
-			if allowed && req.Subject == perm.SubjectWrite {
-				if dir := h.newPlugin(req.Arg); dir != "" {
-					h.madePlugins.Store(dir, true)
-				}
+	return func(req tools.Request) (bool, string, string) { return h.ask(req, false) }
+}
+
+// ask answers one request. Asks reach the user one at a time under askMu,
+// and each is judged again once it holds the lock (held): an answer, a mode
+// switch or new trust while it waited may settle it. No Lua runs under
+// askMu (the held pass skips the veto and decide), so nothing on the
+// interpreter can wait on it, and the UI goroutine never takes it.
+// NOTE: sync.Mutex hands off in arrival order only once a waiter has
+// waited over 1ms (starvation mode), so prompt order is FIFO in practice,
+// not by guarantee.
+func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
+	entry := req
+	askedFor := req.Reason
+	resolved := func(allowed bool, by string) (bool, string, string) {
+		// only yolo or the user allows a write that creates a plugin: it is
+		// protected, so no mode rule, decide or store rule settles it
+		if allowed && req.Subject == perm.SubjectWrite {
+			if dir := h.newPlugin(req.Arg); dir != "" {
+				h.madePlugins.Store(dir, true)
 			}
-			h.EmitAsync("permission.resolved", map[string]any{
-				"subject": req.Subject, "arg": req.Arg,
-				"decision": map[bool]perm.Decision{true: perm.Allow, false: perm.Deny}[allowed],
-				"by":       by,
-			})
-			if req.Reason == askedFor {
-				return allowed, by, ""
-			}
-			return allowed, by, req.Reason
 		}
+		h.EmitAsync("permission.resolved", map[string]any{
+			"subject": req.Subject, "arg": req.Arg,
+			"decision": map[bool]perm.Decision{true: perm.Allow, false: perm.Deny}[allowed],
+			"by":       by,
+		})
+		if req.Reason == askedFor {
+			return allowed, by, ""
+		}
+		return allowed, by, req.Reason
+	}
+	// a rule answer changes no handler's verdict, and audit handlers
+	// would see the ask twice
+	if !held {
 		var res VetoResult
 		h.outsideReload(func() {
 			res = h.EmitVetoable(context.Background(), "permission.request",
@@ -52,133 +67,164 @@ func (h *Host) askHook() tools.Asker {
 		if res.Denied {
 			return resolved(false, "event")
 		}
-		def := h.permModeDef()
-		// what a mode's rules and decide may never allow, only yolo or the user:
-		// a command leaving the sandbox or reaching the network, an ask a rule
-		// asked for, and a protected write, which Pipeline.Check re-asks
-		// whatever rule allowed it
-		settleable := !req.Unsandboxed && !req.Network && !req.Explicit &&
-			!(req.Subject == perm.SubjectWrite && !h.inScratch(req.Arg) && h.protectedWrite(req.Arg))
-		if def.Rules != nil {
-			o := def.Rules.Evaluate(req.Subject, req.Arg, "")
-			if req.Subject == perm.SubjectBash {
-				o = def.Rules.CheckCommandFor(perm.SubjectBash, req.Command(), "")
-			}
-			switch {
-			case o.Decision == perm.Allow && settleable:
-				return resolved(true, tools.ByMode(def.Name))
-			case o.Decision == perm.Deny:
-				return resolved(false, tools.ByMode(def.Name))
-			}
-		}
-		// a mode's own decide function (it may take seconds: a model call).
-		// Anything but allow or deny leaves the ask to the user whatever the
-		// base would settle, so a decide that never answers is how a user
-		// asks to see every request.
-		base := def.Base
-		// a reason joins what the asker said (a subagent's name)
-		note := func(s string) { req.Reason = strings.TrimPrefix(req.Reason+"; "+s, "; ") }
-		if def.Decide != nil {
-			switch h.modeDecide(def, req) {
-			case "allow":
-				if settleable {
-					return resolved(true, tools.ByMode(def.Name))
-				}
-			case "deny":
-				return resolved(false, tools.ByMode(def.Name))
-			}
-			base = ""
+	}
+	def := h.permModeDef()
+	// what a mode's rules and decide may never allow, only yolo or the user:
+	// a command leaving the sandbox or reaching the network, an ask a rule
+	// asked for, and a protected write, which Pipeline.Check re-asks
+	// whatever rule allowed it
+	settleable := !req.Unsandboxed && !req.Network && !req.Explicit &&
+		!(req.Subject == perm.SubjectWrite && !h.inScratch(req.Arg) && h.protectedWrite(req.Arg))
+	if def.Rules != nil {
+		o := def.Rules.Evaluate(req.Subject, req.Arg, "")
+		if req.Subject == perm.SubjectBash {
+			o = def.Rules.CheckCommandFor(perm.SubjectBash, req.Command(), "")
 		}
 		switch {
-		case base == "yolo" && req.ReadOnly && (req.Subject == perm.SubjectBash && !h.sandboxLive() || strings.HasPrefix(req.Subject, "mcp.")) && !h.autoLocal(req):
-			note("read-only agent: nothing confines this call")
-		case base == "yolo":
+		case o.Decision == perm.Allow && settleable:
 			return resolved(true, tools.ByMode(def.Name))
-		case req.Unsandboxed:
-			// a mode settles a command only to run it sandboxed; the Lua tool
-			// gives its own reason
-			if req.Subject == perm.SubjectBash {
-				req.Reason = "run outside the sandbox"
-			}
-		case req.Network:
-			// the host is the model's, like a fetch URL, so no mode settles it
-			req.Reason = "needs the network, staying sandboxed"
-		case req.Explicit:
-			// whoever wrote the rule wanted to see this; only yolo overrides it
-			note("a rule asks for this")
-		case base == "auto":
-			if h.autoLocal(req) {
+		case o.Decision == perm.Deny:
+			return resolved(false, tools.ByMode(def.Name))
+		}
+	}
+	// a mode's own decide function (it may take seconds: a model call).
+	// Anything but allow or deny leaves the ask to the user whatever the
+	// base would settle, so a decide that never answers is how a user
+	// asks to see every request.
+	base := def.Base
+	// a reason joins what the asker said (a subagent's name)
+	note := func(s string) { req.Reason = strings.TrimPrefix(req.Reason+"; "+s, "; ") }
+	// what decide sent to the user stays with the user
+	if def.Decide != nil && !held {
+		switch h.modeDecide(def, req) {
+		case "allow":
+			if settleable {
 				return resolved(true, tools.ByMode(def.Name))
 			}
-			why := ""
-			if req.Subject == perm.SubjectWrite {
-				why = h.protectedWhy(req.Arg)
-			}
-			switch {
-			case why != "":
-				note(why)
-			case tools.PathSubject(req.Subject) && h.secretPath(req.Arg):
-				note("this file looks like it holds secrets")
-			case strings.HasPrefix(req.Subject, "net."):
-				note("a fetch always asks: the model chose the address")
-			case req.Subject == perm.SubjectWrite && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...):
-				// the sandbox cannot confine the write tool, and a file outside the
-				// project (~/.gitconfig, a shell rc) can name what runs next; the
-				// write jail is the launch dir even in a trusted repository (the
-				// sandbox's write root), so a sibling package says which dir
-				if launch := h.launchDirInRepo(); launch != "" && h.inJail(req.Arg, h.Dirs.RepoRoot()) {
-					note("this changes a file outside " + launch + ", the directory zemi was started in")
-				} else {
-					note("this changes a file outside the project")
-				}
-			case !h.ProjectTrusted():
-				note("this project is not trusted (/trust)")
-			case req.Subject == perm.SubjectBash && !h.sandboxLive():
-				// a settled command would run unconfined
-				note("no sandbox")
-			case req.Subject == perm.SubjectBash:
-				note(h.unsettled(req.Command(), req.ReadOnly))
-			default:
-				note("auto mode settles reads and edits inside the project")
-			}
+		case "deny":
+			return resolved(false, tools.ByMode(def.Name))
 		}
-		// a recipe is followed by later sessions, so say when this one could
-		// carry injected text
-		if req.Subject == perm.SubjectWrite && h.inJail(req.Arg, h.recipesDir()) && !h.sessionLocalOnly(h.AgentSessionID()) {
-			note("this session read text from outside the machine")
-		}
-		ui := h.hooks()
-		if ui == nil {
-			h.modes.noteHeadless(req)
-			// only a command's sandbox escape is a sandbox matter; a Lua
-			// script or a memory edit is Unsandboxed for another reason and
-			// must not be reported as one
-			if req.Unsandboxed && req.Subject == perm.SubjectBash {
-				return resolved(false, "unsandboxed")
-			}
-			if req.Network {
-				return resolved(false, "network")
-			}
-			return resolved(false, tools.ByDefault)
-		}
-		label, rules := h.alwaysChoice(req)
-		wider, wideRules := h.repoChoice(req)
-		project, projectRules := h.projectChoice(req, label, rules)
-		allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Project: project, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description, Outside: req.Unsandboxed && req.Subject == perm.SubjectBash})
-		if by == "user:wider" {
-			rules = wideRules
-		}
-		if allowed && (by == "user:always" || by == "user:wider") {
-			for _, r := range rules {
-				h.Perm.Add(r)
-			}
-		}
-		if allowed && by == "user:project" {
-			h.projectAllow(req.Arg, projectRules)
-		}
-		return resolved(allowed, by)
 	}
+	if def.Decide != nil {
+		base = ""
+	}
+	switch {
+	case base == "yolo" && req.ReadOnly && (req.Subject == perm.SubjectBash && !h.sandboxLive() || strings.HasPrefix(req.Subject, "mcp.")) && !h.autoLocal(req):
+		note("read-only agent: nothing confines this call")
+	case base == "yolo":
+		return resolved(true, tools.ByMode(def.Name))
+	case req.Unsandboxed:
+		// a mode settles a command only to run it sandboxed; the Lua tool
+		// gives its own reason
+		if req.Subject == perm.SubjectBash {
+			req.Reason = "run outside the sandbox"
+		}
+	case req.Network:
+		// the host is the model's, like a fetch URL, so no mode settles it
+		req.Reason = "needs the network, staying sandboxed"
+	case req.Explicit:
+		// whoever wrote the rule wanted to see this; only yolo overrides it
+		note("a rule asks for this")
+	case base == "auto":
+		if h.autoLocal(req) {
+			return resolved(true, tools.ByMode(def.Name))
+		}
+		why := ""
+		if req.Subject == perm.SubjectWrite {
+			why = h.protectedWhy(req.Arg)
+		}
+		switch {
+		case why != "":
+			note(why)
+		case tools.PathSubject(req.Subject) && h.secretPath(req.Arg):
+			note("this file looks like it holds secrets")
+		case strings.HasPrefix(req.Subject, "net."):
+			note("a fetch always asks: the model chose the address")
+		case req.Subject == perm.SubjectWrite && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...):
+			// the sandbox cannot confine the write tool, and a file outside the
+			// project (~/.gitconfig, a shell rc) can name what runs next; the
+			// write jail is the launch dir even in a trusted repository (the
+			// sandbox's write root), so a sibling package says which dir
+			if launch := h.launchDirInRepo(); launch != "" && h.inJail(req.Arg, h.Dirs.RepoRoot()) {
+				note("this changes a file outside " + launch + ", the directory zemi was started in")
+			} else {
+				note("this changes a file outside the project")
+			}
+		case !h.ProjectTrusted():
+			note("this project is not trusted (/trust)")
+		case req.Subject == perm.SubjectBash && !h.sandboxLive():
+			// a settled command would run unconfined
+			note("no sandbox")
+		case req.Subject == perm.SubjectBash:
+			note(h.unsettled(req.Command(), req.ReadOnly))
+		default:
+			note("auto mode settles reads and edits inside the project")
+		}
+	}
+	// a recipe is followed by later sessions, so say when this one could
+	// carry injected text
+	if req.Subject == perm.SubjectWrite && h.inJail(req.Arg, h.recipesDir()) && !h.sessionLocalOnly(h.AgentSessionID()) {
+		note("this session read text from outside the machine")
+	}
+	ui := h.hooks()
+	if ui == nil {
+		h.modes.noteHeadless(req)
+		// only a command's sandbox escape is a sandbox matter; a Lua
+		// script or a memory edit is Unsandboxed for another reason and
+		// must not be reported as one
+		if req.Unsandboxed && req.Subject == perm.SubjectBash {
+			return resolved(false, "unsandboxed")
+		}
+		if req.Network {
+			return resolved(false, "network")
+		}
+		return resolved(false, tools.ByDefault)
+	}
+	if !held {
+		cut := h.askCut.Load()
+		h.asksWaiting.Add(1)
+		h.askMu.Lock()
+		defer func() {
+			h.asksWaiting.Add(-1)
+			h.askMu.Unlock()
+			ui.Refresh() // drops an answered prompt no other ask replaced
+		}()
+		if h.askCut.Load() != cut {
+			return resolved(false, tools.ByUser) // told zemi what to do instead
+		}
+		v, fresh := req.Recheck()
+		if v.Decision != perm.Ask {
+			resolved(v.Decision == perm.Allow, v.DecidedBy)
+			return false, tools.ByRecheck, ""
+		}
+		// the fresh judgement's flags: a rule added while it waited may ask
+		entry.Explicit, entry.ReadOnly = fresh.Explicit, fresh.ReadOnly
+		return h.ask(entry, true)
+	}
+	label, rules := h.alwaysChoice(req)
+	wider, wideRules := h.repoChoice(req)
+	project, projectRules := h.projectChoice(req, label, rules)
+	allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Project: project, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description, Outside: req.Unsandboxed && req.Subject == perm.SubjectBash})
+	if by == "user:wider" {
+		rules = wideRules
+	}
+	if allowed && (by == "user:always" || by == "user:wider") {
+		for _, r := range rules {
+			h.Perm.Add(r)
+		}
+	}
+	if allowed && by == "user:project" {
+		h.projectAllow(req.Arg, projectRules)
+	}
+	return resolved(allowed, by)
 }
+
+// AsksWaiting is how many asks are at the prompt stage, the one shown
+// included; some may settle without a prompt.
+func (h *Host) AsksWaiting() int { return int(h.asksWaiting.Load()) }
+
+// DenyWaitingAsks denies every ask waiting for the prompt now, as the user.
+func (h *Host) DenyWaitingAsks() { h.askCut.Add(1) }
 
 // shownArg is the request's argument as the user reads it: a path relative
 // to the project when inside it, or to the trusted repository's root, else

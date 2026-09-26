@@ -86,6 +86,30 @@ type Request struct {
 	ReadOnly bool
 	// cmd is a tool.bash Arg as the gate parsed it; set by the pipeline
 	cmd *perm.Normalized
+	// gate is the pipeline and request as Check got them; set by the pipeline
+	gate *checked
+}
+
+type checked struct {
+	p   *Pipeline
+	req Request
+}
+
+// Recheck judges the request again against the rules as they are now, the
+// pipeline's loosening included, and asks nobody: an ask verdict fails
+// closed, with the request it would have asked, whose Explicit and ReadOnly
+// are judged afresh. A request that never went through the gate asks.
+func (r Request) Recheck() (Verdict, Request) {
+	if r.gate == nil {
+		return Verdict{Decision: perm.Ask, DecidedBy: ByDefault}, r
+	}
+	q := *r.gate.p
+	var asked *Request
+	q.Ask = func(a Request) (bool, string, string) { asked = &a; return false, ByDefault, "" }
+	if v := q.Check(r.gate.req); asked == nil {
+		return v, r.gate.req
+	}
+	return Verdict{Decision: perm.Ask, Reason: "still asks", DecidedBy: ByDefault}, *asked
 }
 
 // Command is a tool.bash request's command, parsed once by the gate, or
@@ -112,6 +136,9 @@ const (
 	ByUser     = "user"
 	ByReadOnly = "profile:readonly"
 	ModePrefix = "mode:"
+	// ByRecheck is an asker's answer that the request's Recheck now settles;
+	// the pipeline returns that verdict whole, its Rule included
+	ByRecheck = "recheck"
 )
 
 // ByMode is a verdict the permission mode name settled.
@@ -169,7 +196,8 @@ func VerdictResponse(v PreVerdict, reason string) (resp fantasy.ToolResponse, do
 type PreHook func(tool string, input map[string]any) (decision PreVerdict, reason string, rewritten map[string]any, loosened bool)
 
 // Asker resolves an ask decision with the user; FIFO ordering is the
-// caller's concern (one overlay at a time, host-side).
+// caller's concern (one overlay at a time, host-side). ByRecheck as
+// decidedBy hands the answer to the request's Recheck.
 // reason is why it asked when that is not the request's own reason ("not
 // settled: this project is not trusted (/trust)"), "" otherwise.
 type Asker func(req Request) (allowed bool, decidedBy, reason string)
@@ -329,6 +357,7 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 // Check decides one request; for tool.bash the store normalizes the
 // command (segments, redirect gates, assignment gate) in one call.
 func (p *Pipeline) Check(req Request) Verdict {
+	req.gate = &checked{p, req}
 	// the rules and the secret shapes see the path as the request names it,
 	// and the rest judges and shows where it lands, so a planted symlink
 	// cannot dress a write to zemi's config as a project file. The run's own
@@ -544,6 +573,10 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 		return Verdict{Decision: perm.Ask, Reason: reason + "; no overlay available, failing closed", DecidedBy: ByDefault}
 	}
 	allowed, by, why := p.Ask(req)
+	if by == ByRecheck {
+		v, _ := req.Recheck()
+		return v
+	}
 	if allowed {
 		return Verdict{Decision: perm.Allow, DecidedBy: by}
 	}

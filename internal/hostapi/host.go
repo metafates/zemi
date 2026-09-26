@@ -383,6 +383,11 @@ type Host struct {
 	// madePlugins holds the local plugin dirs whose creation the user or yolo
 	// allowed: auto settles the model's edits there until zemi exits
 	madePlugins sync.Map
+	// askMu holds the prompt stage of an ask (ask); asksWaiting counts the
+	// asks in it, and askCut moves when the user denies every waiting one
+	askMu       sync.Mutex
+	asksWaiting atomic.Int32
+	askCut      atomic.Uint64
 
 	// jobs owns the model's background processes (job_* tools).
 	jobs  *tools.Jobs
