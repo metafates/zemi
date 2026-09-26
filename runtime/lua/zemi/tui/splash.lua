@@ -59,9 +59,9 @@ function M.render(ctx)
   local pad = math.max(0, math.floor((width - math.min(maxw, math.max(tipw, 13 + fmt.cells(tag.text)))) / 2))
   local room = math.min(maxw, width - pad - 2)
 
-  -- a short chat drops the recent sessions first, then the mascot, so
-  -- the bottom-anchored chat never cuts the block's first rows (it shows
-  -- height - 1 of them)
+  -- a short chat drops the recent sessions first, then the mascot, then the
+  -- context row, so the bottom-anchored chat never cuts the block's first
+  -- rows (it shows height - 1 of them)
   local recent, fit = ctx.recent or {}, (ctx.height or 0) > 0 and ctx.height - 1 or math.huge
   -- the no-model hint names its fix, so it wraps under its label instead of clipping
   local models = zemi.ui.wrap(ctx.model ~= "" and ctx.model or ("none yet: " .. ctx.model_hint), room - 9)
@@ -69,13 +69,22 @@ function M.render(ctx)
     models =
       { { { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" } } }
   end
+  local base = 9 + #models
+  local extra = #recent > 0 and #recent + 3 or 0
+  if base + extra > fit then
+    recent, extra = {}, 0
+  end
+  local mascot, showctx = width >= 36 and base + extra <= fit, base - 2 <= fit
   local inc = ctx.included
   ---@type zemi.Segment[][]
   local parts = {}
+  -- the first part is always there, so no count change adds or removes the row
   local files = inc.instructions
-  if files and #files == 0 then
+  if not files then
+    parts[1] = { { text = "no project instructions", hl = "Comment" } }
+  elseif #files == 0 then
     parts[1] = { { text = "/init", hl = "SplashKey" }, { text = " writes AGENTS.md", hl = "Comment" } }
-  elseif files then
+  else
     parts[1] = {
       { text = #files == 1 and files[1] or fmt.count(#files, "instruction file", "instruction files"), hl = "Normal" },
     }
@@ -91,12 +100,7 @@ function M.render(ctx)
   ---@type zemi.Line
   local context = { { text = "context  ", hl = "Comment" } }
   fill(context, parts, { text = " · ", hl = "Comment" }, room)
-  local base = 8 + #models + (#context > 1 and 1 or 0)
-  local extra = #recent > 0 and #recent + 3 or 0
-  if base + extra > fit then
-    recent, extra = {}, 0
-  end
-  if width >= 36 and base + extra <= fit then
+  if mascot then
     -- the wordmark and the tagline sit beside the snail's head
     local block = snail.block()
     ---@param r zemi.Line
@@ -130,7 +134,7 @@ function M.render(ctx)
     cwd = "…" .. table.concat(chars, "", #chars - cwdw + 2)
   end
   row({ { text = "project  ", hl = "Comment" }, { text = cwd, hl = "Normal" } })
-  if #context > 1 then row(context) end
+  if showctx then row(context) end
   if #recent > 0 then
     row({ { text = "" } })
     row({ { text = "recent", hl = "Title" } })

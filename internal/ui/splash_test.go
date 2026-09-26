@@ -55,9 +55,9 @@ assert(require("zemi.tui") == d, "view not cached")`
 }
 
 // TestSplashFitsShortChat: a short chat drops the recent sessions, then
-// the mascot, instead of cutting the block's top rows.
+// the mascot, then the context row, instead of cutting the block's top rows.
 func TestSplashFitsShortChat(t *testing.T) {
-	for h, want := range map[int]string{13: "@zemi", 14: "╭────╮", 20: "3m ago"} {
+	for h, want := range map[int]string{11: "@zemi", 14: "context  ", 15: "╭────╮", 21: "3m ago"} {
 		app, _ := bootAgentApp(t, 80, h)
 		runLua(t, app, `
 local default = require("zemi.tui")
@@ -72,7 +72,7 @@ zemi.ui.widget.add({
 		app.Frame() // lays out the chat, so the next render knows its height
 		app.frameGen++
 		app.renderSync(t)
-		if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, want) || strings.Contains(frame, "╭────╮") != (h > 13) {
+		if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, want) || strings.Contains(frame, "╭────╮") != (h > 14) {
 			t.Fatalf("%d rows: want %q\n%s", h, want, frame)
 		}
 	}
@@ -116,11 +116,11 @@ func TestSplashContext(t *testing.T) {
 		memory    bool
 		want, not string
 	}{
-		{"untrusted", proj, false, "", false, "", "context  "},
+		{"untrusted", proj, false, "", false, "context  no project instructions", ""},
 		{"trusted", proj, true, "", false, "context  /init writes AGENTS.md", ""},
 		{"has CLAUDE.md", proj, true, "CLAUDE.md", false, "context  CLAUDE.md", "writes AGENTS.md"},
-		{"trusted home", home, true, "", false, "", "context  "},
-		{"one memory", proj, true, "", true, "context  CLAUDE.md · 1 memory", "skill"},
+		{"trusted home", home, true, "", false, "context  no project instructions", ""},
+		{"one memory", proj, true, "CLAUDE.md", true, "context  CLAUDE.md · 1 memory", "skill"},
 	} {
 		host.Dirs.ProjectDir = c.dir
 		host.SetProjectTrusted(c.trusted)
