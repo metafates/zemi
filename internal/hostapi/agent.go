@@ -1643,16 +1643,23 @@ func (h *Host) recap(ctx context.Context) {
 	if h.AgentSessionID() != sid {
 		return
 	}
+	// the first recap ever names its /config key
+	row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "recap: " + text}
+	if h.GlobalDB != nil {
+		if _, err := h.GlobalDB.GetKV("recap.hinted"); errors.Is(err, store.ErrNotFound) {
+			row.Detail = "off in /config"
+		}
+	}
 	// a send, a report or a rewind since the call would leave it stale
 	h.tMu.Lock()
-	if ctx.Err() == nil && len(h.session.Transcript) == len(tr) {
-		// NOTE: the hint shows once per launch; a kv counter would keep it to once ever.
-		if !h.recapHinted.Swap(true) {
-			text += " (disable recaps in /config)"
-		}
-		h.session.Transcript = append(h.session.Transcript, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "recap: " + text})
+	added := ctx.Err() == nil && len(h.session.Transcript) == len(tr)
+	if added {
+		h.session.Transcript = append(h.session.Transcript, row)
 	}
 	h.tMu.Unlock()
+	if added && row.Detail != "" {
+		_ = h.GlobalDB.SetKV("recap.hinted", "true")
+	}
 	h.refresh()
 }
 

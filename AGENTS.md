@@ -638,7 +638,8 @@ lua-language-server is installed.
   `Host.aside` is that call; the idle recap (`Host.Recap`, `session.recap`) is one more: the UI
   calls it `recapDelay` (3 min, inside Anthropic's 5-minute cache) after a turn that ended well
   with no key, paste, click, wheel or focus since, which also cancel it; a turn that ran a tool
-  gets a live-only `recap: ...` notice row, dropped when the transcript moved during the call.
+  gets a live-only `recap: ...` notice row, dropped when the transcript moved during the call;
+  the first one ever (kv `recap.hinted`) carries the uncopied hint `(off in /config)`.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
   anything that does not decode as a fantasy message, and reads a file tool's or a bash call's

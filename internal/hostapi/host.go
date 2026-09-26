@@ -229,7 +229,7 @@ type ChatMessage struct {
 	Label  string // tool rows: the model's description of a command
 	Tool   string
 	Status CallStatus // tool and shell rows; an error row an interrupt left is CallCancelled
-	Detail string     // tool rows: subagent or workflow progress summary
+	Detail string     // tool rows: subagent or workflow progress summary; notice rows: a hint drawn after the text, never copied
 	Run    string     // agent tool rows: the run id
 	Diff   string     // file tool rows: the applied change as "- "/"+ " lines
 	Output string     // tool rows: the last lines of the result (shortOutput)
@@ -379,8 +379,7 @@ type Host struct {
 	// badge (refreshPending).
 	pendingMemory atomic.Int32
 
-	selectSeq   atomic.Int64 // ids for overlays each call opens anew (select, input, /btw)
-	recapHinted atomic.Bool  // a recap row named its /config key
+	selectSeq atomic.Int64 // ids for overlays each call opens anew (select, input, /btw)
 
 	errs  errLog   // recent runtime errors for /errors
 	msgs  msgLog   // recent print and zemi.log lines for /messages

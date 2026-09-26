@@ -1972,10 +1972,10 @@ func TestRecap(t *testing.T) {
 	for _, c := range []struct {
 		name  string
 		setup func()
-		want  string // the row the recap adds, "" for none
+		want  string // the row the recap adds as text|detail, "" for none
 	}{
-		{"a turn that ran a tool gets one, the first naming the key", turn(true), recap + " (disable recaps in /config)"},
-		{"the next has no hint", func() {}, recap},
+		{"a turn that ran a tool gets one, the first ever naming the key", turn(true), recap + "|off in /config"},
+		{"the next has no hint", func() {}, recap + "|"},
 		{"off in config", func() { _, _ = h.Settings.SetQuiet("session.recap", false) }, ""},
 		{"a reply-only turn is its own recap", func() { _, _ = h.Settings.SetQuiet("session.recap", true); turn(false)() }, ""},
 		{"a row landing during the call makes it stale", func() {
@@ -1989,7 +1989,7 @@ func TestRecap(t *testing.T) {
 		tr := h.Session().Transcript
 		var got string
 		if last := tr[len(tr)-1]; len(tr) > before && last.Kind == RowNotice {
-			got = last.Text
+			got = last.Text + "|" + last.Detail
 		}
 		if got != c.want {
 			t.Errorf("%s: recap row %q, want %q", c.name, got, c.want)
