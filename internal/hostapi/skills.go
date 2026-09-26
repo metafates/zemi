@@ -486,19 +486,19 @@ func (h *Host) openSkills() error {
 }
 
 // sourceOf names where a resource comes from, and which plugin ships it.
-func (h *Host) sourceOf(source, path string) string {
+func (h *Host) sourceOf[S ~string](source S, path string) string {
 	if n := h.PluginOf(path); n != "" {
 		return "plugin:" + n
 	}
-	return source
+	return string(source)
 }
 
 // sourceSection names a list section after where its rows come from.
-func sourceSection(source string) string {
+func sourceSection[S ~string](source S) string {
 	if source == "" {
 		return ""
 	}
-	return strings.ToUpper(source[:1]) + source[1:]
+	return strings.ToUpper(string(source[:1])) + string(source[1:])
 }
 
 // listDesc is a row's desc from a description written for the model: a
@@ -512,22 +512,22 @@ func listDesc(s string) string {
 	return s
 }
 
-// sortBySource puts rows in the section order every list shares: user,
-// builtin, plugin, project, then recipe.
-func sortBySource[T any](rows []T, source func(T) string) {
-	order := []string{"user", "builtin", "plugin", "project", "recipe"}
+// sortBySource puts rows in the section order every list shares, the most
+// trusted origin first: user, builtin, plugin, project, then a recipe,
+// which no origin names.
+func sortBySource[T any, S ~string](rows []T, source func(T) S) {
 	slices.SortStableFunc(rows, func(a, b T) int {
-		return cmp.Compare(slices.Index(order, source(a)), slices.Index(order, source(b)))
+		return cmp.Compare(lua.Origin(source(b)).Rank(), lua.Origin(source(a)).Rank())
 	})
 }
 
 func (h *Host) skillItems() []any {
 	all := append(h.skillsReg.list(), h.projectOnlySkills()...)
-	sortBySource(all, func(s skills.Skill) string { return string(s.Source) })
+	sortBySource(all, func(s skills.Skill) skills.Source { return s.Source })
 	items := make([]any, 0, len(all))
 	for _, s := range all {
 		toggle := "skills toggle " + s.Name
-		item := map[string]any{"text": s.Name, "desc": listDesc(s.Description), "section": sourceSection(string(s.Source))}
+		item := map[string]any{"text": s.Name, "desc": listDesc(s.Description), "section": sourceSection(s.Source)}
 		var actions []any
 		state := "on"
 		switch {
@@ -555,7 +555,7 @@ func (h *Host) skillItems() []any {
 		// the description leads, then where it comes from and where it lives;
 		// the markdown renderer keeps the line break inside the paragraph
 		item["detail"] = fmt.Sprintf("%s\n\n*%s · %s*\n*%s*",
-			s.Description, h.sourceOf(string(s.Source), s.Dir), state, TildePath(filepath.Join(s.Dir, "SKILL.md")))
+			s.Description, h.sourceOf(s.Source, s.Dir), state, TildePath(filepath.Join(s.Dir, "SKILL.md")))
 		items = append(items, item)
 	}
 	return items
@@ -564,7 +564,7 @@ func (h *Host) skillItems() []any {
 // skillsCommands is /skills.
 func (h *Host) skillsCommands() []*Command {
 	return []*Command{{
-		Name: "skills", NArgs: "*", Desc: "turn skills on or off, or use one",
+		Name: "skills", NArgs: NArgsAny, Desc: "turn skills on or off, or use one",
 		GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
 		GoComplete: subcommandCompleter([]string{"enable", "disable", "use", "open", "delete"}, func(h *Host, _ string) []string {
 			var names []string

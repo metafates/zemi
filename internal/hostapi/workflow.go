@@ -49,7 +49,7 @@ type Workflow struct {
 	Name        string
 	Description string // the file's leading "--" comment lines
 	Path        string
-	Source      string // user, builtin, plugin or project
+	Source      lua.Origin
 }
 
 // workflows lists saved workflows: user files win over builtin ones, then
@@ -58,7 +58,7 @@ type Workflow struct {
 func (h *Host) workflows() []Workflow {
 	var out []Workflow
 	seen := map[string]string{} // name -> the kept file
-	scan := func(dir, source string) {
+	scan := func(dir string, source lua.Origin) {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			return
@@ -87,7 +87,7 @@ func (h *Host) workflows() []Workflow {
 		}
 	}
 	if h.Dirs.ConfigHome != "" {
-		scan(filepath.Join(h.Dirs.ConfigHome, "workflows"), "user")
+		scan(filepath.Join(h.Dirs.ConfigHome, "workflows"), lua.OriginUser)
 	}
 	builtin, _ := fs.ReadDir(zemiruntime.Workflows, "workflows")
 	for _, e := range builtin {
@@ -97,13 +97,13 @@ func (h *Host) workflows() []Workflow {
 		}
 		src, _ := fs.ReadFile(zemiruntime.Workflows, "workflows/"+e.Name())
 		seen[name] = "builtin:" + e.Name()
-		out = append(out, Workflow{Name: name, Description: leadingComment(string(src)), Path: "builtin:" + e.Name(), Source: "builtin"})
+		out = append(out, Workflow{Name: name, Description: leadingComment(string(src)), Path: "builtin:" + e.Name(), Source: lua.OriginBuiltin})
 	}
 	for _, p := range h.pluginDirs() {
-		scan(filepath.Join(p, "workflows"), "plugin")
+		scan(filepath.Join(p, "workflows"), lua.OriginPlugin)
 	}
 	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
-		scan(filepath.Join(pdir, "workflows"), "project")
+		scan(filepath.Join(pdir, "workflows"), lua.OriginProject)
 	}
 	return out
 }
@@ -123,7 +123,7 @@ func leadingComment(src string) string {
 func (h *Host) workflowSource(name string) (string, error) {
 	var names []string
 	for _, w := range h.workflows() {
-		if w.Name == name && w.Source == "builtin" {
+		if w.Name == name && w.Source == lua.OriginBuiltin {
 			b, err := fs.ReadFile(zemiruntime.Workflows, "workflows/"+name+".lua")
 			return string(b), err
 		}
@@ -644,7 +644,7 @@ func (h *Host) truncOutput(name, s string) string {
 // workflowCommands are /workflow and /review.
 func (h *Host) workflowCommands() []*Command {
 	return []*Command{{
-		Name: "workflow", NArgs: "*", Desc: "run a saved workflow",
+		Name: "workflow", NArgs: NArgsAny, Desc: "run a saved workflow",
 		GoFn: func(h *Host, args string) error {
 			typed, attached := agent.CutAttached(args)
 			name, rest, _ := strings.Cut(strings.TrimSpace(typed), " ")
@@ -670,7 +670,7 @@ func (h *Host) workflowCommands() []*Command {
 			return names
 		},
 	}, {
-		Name: "review", NArgs: "?", Desc: "review your changes, a base ref or a commit, with several agents",
+		Name: "review", NArgs: NArgsOptional, Desc: "review your changes, a base ref or a commit, with several agents",
 		GoFn: func(h *Host, args string) error {
 			return h.RunCommand(context.Background(), "workflow", strings.TrimSpace("review "+args))
 		},
@@ -684,10 +684,10 @@ func (h *Host) openWorkflows() error {
 	}
 	var items []any
 	list := h.workflows()
-	sortBySource(list, func(w Workflow) string { return w.Source })
+	sortBySource(list, func(w Workflow) lua.Origin { return w.Source })
 	for _, w := range list {
 		detail := "source: " + h.sourceOf(w.Source, w.Path)
-		if w.Source != "builtin" {
+		if w.Source != lua.OriginBuiltin {
 			detail += "\npath: " + TildePath(w.Path)
 		}
 		detail = strings.TrimSuffix(detail+"\n\n"+w.Description, "\n\n")

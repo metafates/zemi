@@ -37,6 +37,18 @@ const maxKeptRuns = 50
 // one project's runs and cheap to repeat in a send_to.
 const runIDLen = 8
 
+// RunStatus is where an agent run stands.
+type RunStatus string
+
+const (
+	RunRunning   RunStatus = "running"
+	RunDone      RunStatus = "done"
+	RunFailed    RunStatus = "failed"
+	RunCancelled RunStatus = "cancelled"
+)
+
+var runStatuses = []RunStatus{RunRunning, RunDone, RunFailed, RunCancelled}
+
 // agentRun is one subagent run. The fields above mu never change once the
 // run is registered, but cancel, which a continuation renews.
 type agentRun struct {
@@ -53,7 +65,7 @@ type agentRun struct {
 	started   time.Time     // the last start: a continuation counts its own time
 	sessionID string        // the run's child session, "" when not recorded
 	runner    *agent.Runner // kept after the run ends: send_to continues it with its history
-	status    string        // running, done, failed, cancelled
+	status    RunStatus
 	finished  time.Time
 	calls     int
 	tr        []ChatMessage  // the prompt, tool rows and replies so far
@@ -174,8 +186,8 @@ func (h *Host) newRun(ctx context.Context, def AgentDef, description, prompt str
 	ctx, cancel := context.WithCancel(ctx)
 	return &agentRun{
 		id: store.NewID()[:runIDLen], agent: def.Name, description: description, parent: h.AgentSessionID(), model: def.Model,
-		background: background, started: time.Now(), cancel: cancel, status: "running",
-		tr: []ChatMessage{{Role: "user", Text: prompt}}, rows: map[string]int{},
+		background: background, started: time.Now(), cancel: cancel, status: RunRunning,
+		tr: []ChatMessage{{Role: fantasy.MessageRoleUser, Text: prompt}}, rows: map[string]int{},
 	}, ctx
 }
 
@@ -188,11 +200,11 @@ func (run *agentRun) startedAt() time.Time {
 func (run *agentRun) isRunning() bool {
 	run.mu.Lock()
 	defer run.mu.Unlock()
-	return run.status == "running"
+	return run.status == RunRunning
 }
 
 // state is the run's list row data.
-func (run *agentRun) state() (status string, calls int, took time.Duration, sessionID string) {
+func (run *agentRun) state() (status RunStatus, calls int, took time.Duration, sessionID string) {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	took = time.Since(run.started)
@@ -208,7 +220,7 @@ func (run *agentRun) transcript() []ChatMessage {
 	defer run.mu.Unlock()
 	tr := append([]ChatMessage(nil), run.tr...)
 	if strings.TrimSpace(run.text) != "" {
-		tr = append(tr, ChatMessage{Role: "assistant", Text: run.text})
+		tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: run.text})
 	}
 	return tr
 }
@@ -216,7 +228,7 @@ func (run *agentRun) transcript() []ChatMessage {
 // flush moves the streamed reply into a row (run.mu held).
 func (run *agentRun) flush() {
 	if strings.TrimSpace(run.text) != "" {
-		run.tr = append(run.tr, ChatMessage{Role: "assistant", Text: run.text})
+		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: run.text})
 	}
 	run.text = ""
 }
@@ -226,7 +238,7 @@ func (run *agentRun) flush() {
 func (run *agentRun) message(text string) error {
 	run.mu.Lock()
 	defer run.mu.Unlock()
-	if run.status != "running" || run.closed {
+	if run.status != RunRunning || run.closed {
 		return fmt.Errorf("agent %s is not running", run.id)
 	}
 	run.queue = append(run.queue, text)
@@ -249,7 +261,7 @@ func (run *agentRun) take() []string {
 		run.flush()
 	}
 	for _, m := range q {
-		run.tr = append(run.tr, ChatMessage{Role: "user", Text: m})
+		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: m})
 	}
 	return q
 }
@@ -296,12 +308,12 @@ func (h *Host) continueRun(ctx context.Context, run *agentRun, prompt string, pr
 	}
 	def.Model = cmp.Or(run.model, def.Model)
 	run.mu.Lock()
-	if run.status == "running" {
+	if run.status == RunRunning {
 		run.mu.Unlock()
 		return "", fmt.Errorf("agent %s is running: its queue takes the message", run.id)
 	}
 	run.status, run.closed, run.started, run.finished, run.dropped = "running", false, time.Now(), time.Time{}, 0
-	run.tr = append(run.tr, ChatMessage{Role: "user", Text: prompt})
+	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: prompt})
 	ctx, run.cancel = context.WithCancel(ctx)
 	run.mu.Unlock()
 	return h.runAgent(ctx, run, def, prompt, progress)
@@ -329,25 +341,25 @@ func (run *agentRun) finish(h *Host, err error) {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	run.flush()
-	cut := "err"
+	cut := CallErr
 	if errors.Is(err, context.Canceled) {
-		cut = "stopped"
+		cut = CallStopped
 	}
 	for _, i := range run.rows {
-		if run.tr[i].Status == "run" || run.tr[i].Status == "wait" {
+		if run.tr[i].Status == CallRun || run.tr[i].Status == CallWait {
 			run.tr[i].Status, run.tr[i].Diff = cut, ""
 		}
 	}
 	run.finished = time.Now()
 	switch {
 	case errors.Is(err, context.Canceled):
-		run.status = "cancelled"
-		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "error", Status: "cancelled", Text: "Stopped"})
+		run.status = RunCancelled
+		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Status: CallCancelled, Text: "Stopped"})
 	case err != nil:
-		run.status = "failed"
-		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "error", Text: truncRunes(sanitize.String(h.friendlyError(err)), 400)})
+		run.status = RunFailed
+		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: truncRunes(sanitize.String(h.friendlyError(err)), 400)})
 	default:
-		run.status = "done"
+		run.status = RunDone
 	}
 }
 
@@ -543,7 +555,7 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 	run := &agentRun{
 		id: sid[:runIDLen], agent: sess.Profile, description: sess.Title, parent: sess.ParentID, cancel: func() {},
 		started: time.UnixMilli(sess.CreatedAt), finished: time.UnixMilli(sess.UpdatedAt),
-		sessionID: sid, status: "done", tr: tr,
+		sessionID: sid, status: RunDone, tr: tr,
 	}
 	_ = h.tasks.add(run)
 	return run, nil
@@ -554,14 +566,14 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 func (h *Host) agentRunItems() []any {
 	sid := h.AgentSessionID()
 	var running, earlier []any
-	row := func(id, status, agent string, took time.Duration, desc, calls string) {
+	row := func(id string, status RunStatus, agent string, took time.Duration, desc, calls string) {
 		item := map[string]any{
 			"text":    agent,
-			"desc":    status + " · " + fmtDuration(took) + calls + " · " + desc,
+			"desc":    string(status) + " · " + fmtDuration(took) + calls + " · " + desc,
 			"run":     "agents view " + id,
 			"section": "Earlier in this session",
 		}
-		if status == "running" {
+		if status == RunRunning {
 			item["section"] = "Running"
 			running = append(running, item)
 			return
@@ -588,7 +600,7 @@ func (h *Host) agentRunItems() []any {
 		children, _ := h.DB.ChildSessions(sid)
 		for _, c := range children {
 			if !held[c.ID] {
-				row(c.ID, "done", c.Profile, time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Title, "")
+				row(c.ID, RunDone, c.Profile, time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Title, "")
 			}
 		}
 	}

@@ -66,10 +66,10 @@ func TestFailedTurnLeavesErrorRow(t *testing.T) {
 		sa.TurnDone(c.err, fantasy.Usage{})
 		tr := h.Session().Transcript
 		last := tr[len(tr)-1]
-		if last.Kind != "error" || last.Text != c.text || last.Status != c.status {
+		if last.Kind != "error" || last.Text != c.text || string(last.Status) != c.status {
 			t.Fatalf("%v: last row = %+v", c.err, last)
 		}
-		if call := tr[len(tr)-2]; call.Tool != "read" || call.Status != c.call {
+		if call := tr[len(tr)-2]; call.Tool != "read" || string(call.Status) != c.call {
 			t.Fatalf("%v: open call = %+v", c.err, call)
 		}
 	}

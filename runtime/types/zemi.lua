@@ -191,11 +191,18 @@ function debug.traceback(msg) end
 ---| "warn"
 ---| "error"
 
----@alias zemi.HealthLevel "ok"|"warn"|"error"
+---@alias zemi.HealthLevel
+---| "ok"
+---| "warn"
+---| "error"
 
 ---@alias zemi.Scope
 ---| "user"     # holds in every project
 ---| "project"  # this repository only
+
+---@alias zemi.MemoryOrigin
+---| "user"     # the user wrote it or said to keep it
+---| "learned"  # the model or the reflector proposed it
 
 --- The regions the default layout draws; a layout may draw any other name.
 ---@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"|string
@@ -365,9 +372,15 @@ function zemi.keymap.list() end
 ---@field args string
 ---@field list string[]
 
+---@alias zemi.NArgs
+---| ""   # none (the default)
+---| "?"  # at most one
+---| "+"  # one or more
+---| "*"  # any
+
 ---@class zemi.CommandOpts
 ---@field desc? string Shown in /help and the slash palette.
----@field nargs? ""|"?"|"*"|"+" Arguments the command takes: "" none (the default), "?" at most one, "+" one or more, "*" any. A line with the wrong count is refused and the handler never runs.
+---@field nargs? zemi.NArgs Arguments the command takes; a line with the wrong count is refused and the handler never runs.
 ---@field complete? fun(lead: string, line: string): string[]|zemi.CompletionItem[] Runs off the key path; the palette keeps the rows that start with `lead`, and is not called past the last argument `nargs` takes. An error lands in /errors.
 
 ---@class zemi.Command
@@ -501,7 +514,7 @@ function zemi.command.list() end
 ---@class zemi.ev.MemoryWritten: zemi.Event
 ---@field id string
 ---@field scope zemi.Scope
----@field origin "user"|"learned"
+---@field origin zemi.MemoryOrigin
 ---@field text string
 
 ---@class zemi.ev.ReflectorStart: zemi.Event
@@ -621,10 +634,19 @@ function zemi.event.stats() end
 ---@field compacting boolean History is being summarized.
 ---@field retry? { attempt: integer, why: string, next_in: number } Set while a provider retry waits or is under way (next_in 0).
 
+---@alias zemi.CallStatus
+---| "wait"       # its arguments stream, or a serial call ahead of it runs
+---| "run"
+---| "ok"
+---| "err"
+---| "stopped"    # the user denied, dismissed or interrupted it
+---| "bg"         # its work goes on in the background (a job, a background agent)
+---| "cancelled"  # an error row an interrupt left
+
 ---@class zemi.ToolCall
 ---@field name string
 ---@field input string
----@field status "wait"|"run"|"ok"|"err"|"stopped"|"bg" "wait" until the call starts: its arguments stream, or a serial call ahead of it runs. "stopped": the user denied, dismissed or interrupted it. "bg": its work goes on in the background (a job, a background agent).
+---@field status zemi.CallStatus
 ---@field detail string Subagent and workflow progress.
 ---@field run string Agent calls: the run id (`/agents view <id>`), else "".
 ---@field label string The model's description of the call.
@@ -632,13 +654,26 @@ function zemi.event.stats() end
 ---@field diff string
 ---@field output string
 
+---@alias zemi.Role
+---| "user"
+---| "assistant"
+
+---@alias zemi.RowKind
+---| ""           # a plain message
+---| "reasoning"  # a finished thinking block
+---| "tool"
+---| "shell"      # a !command and its output
+---| "compact"
+---| "notice"
+---| "error"
+
 --- One transcript entry.
 ---@class zemi.TranscriptRow
----@field role "user"|"assistant"
----@field kind ""|"reasoning"|"tool"|"shell"|"compact"|"notice"|"error"
+---@field role zemi.Role
+---@field kind zemi.RowKind
 ---@field text string
 ---@field tool string
----@field status string Tool and shell rows: "wait", "run", "ok", "err", "stopped" (the user denied, dismissed or interrupted it) or "bg" (it goes on in the background); error rows: "cancelled" for an interrupt.
+---@field status zemi.CallStatus|"" Tool and shell rows, and "cancelled" on an error row an interrupt left.
 ---@field label string
 ---@field detail string
 ---@field run string Agent calls: the run id, else "".
@@ -654,9 +689,14 @@ function zemi.event.stats() end
 ---@field title string
 ---@field ago string "now", "5m ago", "2d ago".
 
+---@alias zemi.TodoStatus
+---| "pending"
+---| "in_progress"
+---| "done"
+
 ---@class zemi.Todo
 ---@field content string
----@field status "pending"|"in_progress"|"done"
+---@field status zemi.TodoStatus
 ---@field active_form string
 
 ---@class zemi.Usage
@@ -669,6 +709,22 @@ function zemi.event.stats() end
 ---@field tokens integer
 ---@field window integer
 ---@field pct number
+
+---@alias zemi.RunStatus
+---| "running"
+---| "done"
+---| "failed"
+---| "cancelled"
+
+---@alias zemi.TurnEnd
+---| "ok"
+---| "error"
+---| "cancelled"
+
+---@alias zemi.Waiting
+---| "approval"  # a permission ask
+---| "plan"      # a plan to approve
+---| "answer"    # a question
 
 --- What a widget's render function is given. Everything is a snapshot:
 --- render must be pure and finish in about 10 ms: only the read-only
@@ -696,7 +752,7 @@ function zemi.event.stats() end
 ---@field permission_mode_base string
 ---@field agent_active boolean
 ---@field agent zemi.AgentCtx
----@field view? { id: string, agent: string, description: string, status: string } The agent run the chat shows instead of the session; a submit messages it while it is running.
+---@field view? { id: string, agent: string, description: string, status: zemi.RunStatus } The agent run the chat shows instead of the session; a submit messages it while it is running.
 ---@field transcript zemi.TranscriptRow[]
 ---@field transcript_count integer Rows in `transcript`, without building it.
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
@@ -707,7 +763,7 @@ function zemi.event.stats() end
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
----@field ended ""|"ok"|"error"|"cancelled" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
+---@field ended zemi.TurnEnd|"" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
 ---@field busy? { label: string, elapsed: number, cancellable: boolean } The newest job the user waits on that is not a turn (/btw, a plugin install, the reflector): its label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
 ---@field pending_memory integer
 ---@field agents_running integer Background agents of this session still running; their reports arrive as messages.
@@ -718,7 +774,7 @@ function zemi.event.stats() end
 ---@field rows_below integer Rows under the stage's scrolled region (the chat by default) while it is scrolled up; 0 when it follows the tail.
 ---@field cancelling boolean An interrupt was sent and the turn has not ended yet.
 ---@field editing string Title of the file open in the user's editor, else "".
----@field waiting string "approval" or "answer" while a prompt holds the turn, else "".
+---@field waiting zemi.Waiting|"" The prompt holding the turn, else "".
 ---@field focus string Id of the layout node that has the keys, "" while the composer has them.
 
 --- `render` may return true as a second result to render again next frame:
@@ -747,7 +803,13 @@ function zemi.event.stats() end
 ---@field priority integer
 ---@field origin zemi.Origin
 
----@alias zemi.Underline "none"|"single"|"double"|"curl"|"dotted"|"dashed"
+---@alias zemi.Underline
+---| "none"
+---| "single"
+---| "double"
+---| "curl"
+---| "dotted"
+---| "dashed"
 
 --- A highlight group. The hover groups `Hover` (clickable widget segments,
 --- statusline pills) and `HoverItem` (list rows) draw
@@ -801,6 +863,10 @@ function zemi.event.stats() end
 ---@field desc? string named next to the key in the footer
 ---@field fn fun(item: any) Gets the selected item, nil on an empty list.
 
+---@alias zemi.OverlayAnchor
+---| "bottom-left"
+---| "bottom-right"
+
 ---@class zemi.OverlaySpec
 ---@field id string
 ---@field title? string
@@ -810,7 +876,7 @@ function zemi.event.stats() end
 ---@field items? zemi.OverlayItem[]|any[]
 ---@field render_item? fun(item: any): string|zemi.Line A line's segments keep their `hl` (text, hl only); unstyled ones take the row's.
 ---@field selected? integer 1-based item selected when it opens.
----@field anchor? "bottom-left"|"bottom-right" In line with the composer frame's edge, by the statusline pill that opened it; nil centers it.
+---@field anchor? zemi.OverlayAnchor In line with the composer frame's edge, by the statusline pill that opened it; nil centers it.
 ---@field on_select? fun(item: any) Takes enter for every item, so the items' own `fill` and `run` no longer act (a `reload` list runs both).
 ---@field on_action? fun(item: any, action: zemi.OverlayAction) Runs for a detail action with an `id`; the list closes like on on_select, a `reload` list rebuilds.
 ---@field keys? table<string, zemi.OverlayKey> One character each (j, k, /, y and Y are the list's and raise, a row's hotkey wins): a second verb on the selected item, which closes or rebuilds the list like on_action.
@@ -849,6 +915,20 @@ function zemi.ui.widget.list() end
 --- "content" (the rows a region, bar or composer draws; in a col only).
 ---@alias zemi.Size integer|string
 
+---@alias zemi.LayoutDir
+---| "row"  # left to right
+---| "col"  # top to bottom
+
+---@alias zemi.LayoutScroll
+---| "top"
+---| "bottom"  # follows the tail
+
+---@alias zemi.FloatAnchor
+---| "NW"
+---| "NE"
+---| "SW"
+---| "SE"
+
 ---@alias zemi.LayoutNode
 ---| zemi.LayoutBox
 ---| zemi.LayoutRegion
@@ -872,7 +952,7 @@ function zemi.ui.widget.list() end
 --- Children laid out left to right ("row") or top to bottom ("col").
 ---@class zemi.LayoutBox: zemi.LayoutBase
 ---@field kind "box"
----@field dir "row"|"col"
+---@field dir zemi.LayoutDir
 ---@field sep? boolean A one-cell separator between children.
 ---@field children zemi.LayoutNode[]
 
@@ -880,7 +960,7 @@ function zemi.ui.widget.list() end
 ---@class zemi.LayoutRegion: zemi.LayoutBase
 ---@field kind "region"
 ---@field region zemi.Region
----@field scroll? "top"|"bottom" Scrollable (needs an id): the wheel over it and the zemi.ui.scroll.* actions move it; "bottom" follows the tail.
+---@field scroll? zemi.LayoutScroll Scrollable (needs an id): the wheel over it and the zemi.ui.scroll.* actions move it.
 ---@field focusable? boolean Can take the keys (needs an id): zemi.ui.focus, a click on it, and keymaps with `focus` set to its id.
 
 --- One row: the first line of each widget in `left`, then Go's pills (boot
@@ -914,7 +994,7 @@ function zemi.ui.widget.list() end
 ---@field id? string
 ---@field region zemi.Region
 ---@field relative? string A node id, "stage" (default) or "screen".
----@field anchor? "NW"|"NE"|"SW"|"SE" Default "NW".
+---@field anchor? zemi.FloatAnchor Default "NW".
 ---@field row? integer
 ---@field col? integer
 ---@field width? integer|string Cells, "N%" of the relative node, or "content" (default: its widest row).
@@ -977,10 +1057,18 @@ function zemi.ui.title(text) end
 --- other state calls this. Raises inside render.
 function zemi.ui.redraw() end
 
+---@alias zemi.ScrollAction
+---| "up"         # a page, with a one-row overlap
+---| "down"
+---| "top"
+---| "bottom"
+---| "line_up"
+---| "line_down"
+
 --- Scroll a layout node, or the stage's scrolled region (the chat) without
 --- `id`, as the zemi.ui.scroll.* host actions do: for a click. Raises inside
 --- render.
----@param action "up"|"down"|"top"|"bottom"|"line_up"|"line_down"
+---@param action zemi.ScrollAction
 ---@param id? string
 function zemi.ui.scroll(action, id) end
 
@@ -1374,7 +1462,7 @@ function zemi.model.pick(role) end
 ---@class zemi.AgentDef
 ---@field name string
 ---@field description string
----@field source string
+---@field source zemi.Origin
 
 ---@class zemi.AgentRunSpec
 ---@field prompt string
@@ -1442,7 +1530,7 @@ function zemi.agent.run(spec, on_done) end
 ---@class zemi.WorkflowInfo
 ---@field name string
 ---@field description string The file's leading comment.
----@field source "user"|"builtin"|"plugin"|"project"
+---@field source zemi.Origin
 ---@field path string
 
 ---@class zemi.workflow
@@ -1690,11 +1778,16 @@ function zemi.permission.mode.list() end
 ---@field tool string
 ---@field input table
 
+---@alias zemi.ToolVerdict
+---| "deny"
+---| "halt"
+---| "rewrite"
+
 --- What a `tool.pre` handler returns: "deny" refuses the call, "halt" also
 --- ends the turn, "rewrite" merges `input` into the call's input (ignored
 --- for project code). nil lets the call through.
 ---@class zemi.ToolVeto
----@field decision "deny"|"halt"|"rewrite"
+---@field decision zemi.ToolVerdict
 ---@field reason? string
 ---@field input? table
 
@@ -1986,7 +2079,7 @@ function zemi.json.decode(s) end
 ---@class zemi.Memory
 ---@field id string
 ---@field scope zemi.Scope
----@field origin "user"|"learned"
+---@field origin zemi.MemoryOrigin
 ---@field text string
 ---@field quote string The user's own words a memory about them rests on; "" otherwise.
 
@@ -2049,17 +2142,28 @@ zemi.learn = {}
 ---@return zemi.Proposal[]
 function zemi.learn.list() end
 
+---@alias zemi.LearnAction
+---| "accept"
+---| "reject"
+
 --- Decide one proposal by id. User or builtin origin only.
 ---@param id string
----@param action "accept"|"reject"
+---@param action zemi.LearnAction
 ---@return true|nil ok
 ---@return string|nil err
 function zemi.learn.decide(id, action) end
 
+---@alias zemi.SkillSource
+---| "user"
+---| "builtin"
+---| "plugin"
+---| "project"  # always enabled
+---| "recipe"   # a project's private skill, always enabled
+
 ---@class zemi.Skill
 ---@field name string
 ---@field description string
----@field source "user"|"builtin"|"plugin"|"project"|"recipe" A project skill or recipe is always enabled and cannot be toggled.
+---@field source zemi.SkillSource
 ---@field enabled boolean
 ---@field path string
 
@@ -2161,7 +2265,8 @@ function zemi.lsp.list() end
 -- ---------------------------------------------------------------------------
 -- zemi.health and zemi.errors
 
---- What a /health check returns. Any other level reads as "ok".
+--- What a /health check returns; no level reads as "ok", and any other
+--- level fails the check like a raise.
 ---@class zemi.HealthResult
 ---@field level zemi.HealthLevel
 ---@field detail string

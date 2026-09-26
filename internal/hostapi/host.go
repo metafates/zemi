@@ -46,10 +46,9 @@ type UIHooks interface {
 	// Reload replays the boot steps on a fresh generation (/reload).
 	Reload()
 	Refresh()
-	// Scroll moves a scrolled region of the layout ("up", "down", "top",
-	// "bottom", "line_up" or "line_down"): the node id, or the stage's when
-	// id is "".
-	Scroll(kind, id string)
+	// Scroll moves a scrolled region of the layout: the node id, or the
+	// stage's when id is "".
+	Scroll(kind ScrollAction, id string)
 	// LayoutRects is where the last frame drew each node with an id, plus
 	// "stage" and "composer"; safe from any goroutine.
 	LayoutRects() map[string]Rect
@@ -101,7 +100,7 @@ type Overlay struct {
 	OnClose  *glua.LFunction
 	Keys     []OverlayKey // list-level keys, named in the footer
 	Gen      Gen
-	Anchor   string // "bottom-left" or "bottom-right": in line with the composer frame, by the pill that opened it; "" centered
+	Anchor   OverlayAnchor
 
 	// Body is text above the items; with no items the overlay is a
 	// read-only view. Empty is the line shown when there are no items and
@@ -144,6 +143,63 @@ const (
 // serviceStatuses pins runtime/types/zemi.lua's zemi.ServiceStatus.
 var serviceStatuses = []ServiceStatus{StatusIdle, StatusStarting, StatusReady, StatusFailed, StatusSignIn, StatusStopped, StatusOff}
 
+// OverlayAnchor puts an overlay in line with the composer frame, by the
+// pill that opened it; "" centers it.
+type OverlayAnchor string
+
+const (
+	OverlayBottomLeft  OverlayAnchor = "bottom-left"
+	OverlayBottomRight OverlayAnchor = "bottom-right"
+)
+
+var overlayAnchors = []OverlayAnchor{OverlayBottomLeft, OverlayBottomRight}
+
+// ScrollAction moves a scrolled region: a page with a one-row overlap, to
+// an end, or a row.
+type ScrollAction string
+
+const (
+	ScrollUp       ScrollAction = "up"
+	ScrollDown     ScrollAction = "down"
+	ScrollTop      ScrollAction = "top"
+	ScrollBottom   ScrollAction = "bottom"
+	ScrollLineUp   ScrollAction = "line_up"
+	ScrollLineDown ScrollAction = "line_down"
+)
+
+var scrollActions = []ScrollAction{ScrollUp, ScrollDown, ScrollTop, ScrollBottom, ScrollLineUp, ScrollLineDown}
+
+// RowKind is a transcript row's shape. RowReasoning is a finished thinking
+// block the chat widget collapses to a one-line summary.
+type RowKind string
+
+const (
+	RowMessage   RowKind = ""
+	RowReasoning RowKind = "reasoning"
+	RowTool      RowKind = "tool"
+	RowShell     RowKind = "shell" // a !command and its output
+	RowCompact   RowKind = "compact"
+	RowNotice    RowKind = "notice"
+	RowError     RowKind = "error"
+)
+
+var rowKinds = []RowKind{RowMessage, RowReasoning, RowTool, RowShell, RowCompact, RowNotice, RowError}
+
+// CallStatus is where a tool call, or a !command, stands on its row.
+type CallStatus string
+
+const (
+	CallWait      CallStatus = "wait" // arguments streaming, or queued behind a serial call
+	CallRun       CallStatus = "run"
+	CallOK        CallStatus = "ok"
+	CallErr       CallStatus = "err"
+	CallStopped   CallStatus = "stopped"   // the user denied, dismissed or interrupted it
+	CallBG        CallStatus = "bg"        // its work goes on in the background
+	CallCancelled CallStatus = "cancelled" // an error row: the turn was interrupted
+)
+
+var callStatuses = []CallStatus{CallWait, CallRun, CallOK, CallErr, CallStopped, CallBG, CallCancelled}
+
 // OverlayKey is one character that runs Fn(selected item) on a list.
 type OverlayKey struct {
 	Key, Desc string
@@ -151,20 +207,18 @@ type OverlayKey struct {
 }
 
 // ChatMessage is a transcript entry (composer submissions); assistant
-// replies carry the turn stats the chat widget renders. Kind marks the
-// entry shape: "" (plain message) or "reasoning" (a finished thinking
-// block the chat widget collapses to a one-line summary).
+// replies carry the turn stats the chat widget renders.
 type ChatMessage struct {
-	Role   string
-	Kind   string // "", "reasoning", "tool", "compact", "notice" or "error"
+	Role   fantasy.MessageRole
+	Kind   RowKind
 	Text   string // tool rows: the input summary
 	Label  string // tool rows: the model's description of a command
 	Tool   string
-	Status string // tool rows: "ok", "err" or "stopped" (denied or dismissed by the user); error rows: "cancelled" for an interrupt
-	Detail string // tool rows: subagent or workflow progress summary
-	Run    string // agent tool rows: the run id
-	Diff   string // file tool rows: the applied change as "- "/"+ " lines
-	Output string // tool rows: the last lines of the result (shortOutput)
+	Status CallStatus // tool and shell rows; an error row an interrupt left is CallCancelled
+	Detail string     // tool rows: subagent or workflow progress summary
+	Run    string     // agent tool rows: the run id
+	Diff   string     // file tool rows: the applied change as "- "/"+ " lines
+	Output string     // tool rows: the last lines of the result (shortOutput)
 	Stat   *TurnStat
 }
 
@@ -508,12 +562,12 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 			h.ToggleReasoning()
 			return nil
 		},
-		"zemi.ui.scroll.up":          func(h *Host, id string) error { h.scroll("up", id); return nil },
-		"zemi.ui.scroll.down":        func(h *Host, id string) error { h.scroll("down", id); return nil },
-		"zemi.ui.scroll.top":         func(h *Host, id string) error { h.scroll("top", id); return nil },
-		"zemi.ui.scroll.bottom":      func(h *Host, id string) error { h.scroll("bottom", id); return nil },
-		"zemi.ui.scroll.line_up":     func(h *Host, id string) error { h.scroll("line_up", id); return nil },
-		"zemi.ui.scroll.line_down":   func(h *Host, id string) error { h.scroll("line_down", id); return nil },
+		"zemi.ui.scroll.up":          func(h *Host, id string) error { h.scroll(ScrollUp, id); return nil },
+		"zemi.ui.scroll.down":        func(h *Host, id string) error { h.scroll(ScrollDown, id); return nil },
+		"zemi.ui.scroll.top":         func(h *Host, id string) error { h.scroll(ScrollTop, id); return nil },
+		"zemi.ui.scroll.bottom":      func(h *Host, id string) error { h.scroll(ScrollBottom, id); return nil },
+		"zemi.ui.scroll.line_up":     func(h *Host, id string) error { h.scroll(ScrollLineUp, id); return nil },
+		"zemi.ui.scroll.line_down":   func(h *Host, id string) error { h.scroll(ScrollLineDown, id); return nil },
 		"zemi.model.pick":            func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
 		"zemi.composer.submit":       composerAction("submit"),
 		"zemi.composer.insert":       composerAction("insert"),
@@ -683,7 +737,7 @@ func (h *Host) Notify(level logging.Level, title, body string) {
 
 // scroll routes a zemi.ui.scroll.* action to the UI (no-op before the UI
 // attaches, e.g. headless runs).
-func (h *Host) scroll(kind, id string) {
+func (h *Host) scroll(kind ScrollAction, id string) {
 	if ui := h.hooks(); ui != nil {
 		ui.Scroll(kind, id)
 	}
@@ -702,7 +756,7 @@ func (h *Host) Session() Session {
 	}
 }
 
-func (h *Host) AppendMessage(role, text string) {
+func (h *Host) AppendMessage(role fantasy.MessageRole, text string) {
 	h.AppendChat(ChatMessage{Role: role, Text: text})
 }
 
@@ -774,7 +828,7 @@ func (h *Host) OpenHelp() error {
 	// /help: this is the index the README points people at.
 	for _, c := range h.Commands.List() {
 		item := map[string]any{"text": "/" + c.Name, "desc": c.Desc, "section": "Commands", "run": c.Name}
-		if c.NArgs == "+" {
+		if c.NArgs == NArgsSome {
 			delete(item, "run")
 			item["fill"] = "/" + c.Name + " "
 		}
@@ -1282,20 +1336,43 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 	return out, nil
 }
 
+// TurnEnd is how a turn ended.
+type TurnEnd string
+
+const (
+	TurnOK        TurnEnd = "ok"
+	TurnError     TurnEnd = "error"
+	TurnCancelled TurnEnd = "cancelled"
+)
+
+var turnEnds = []TurnEnd{TurnOK, TurnError, TurnCancelled}
+
+// Waiting is the prompt holding a turn: a permission ask, a plan to
+// approve or a question to answer.
+type Waiting string
+
+const (
+	WaitApproval Waiting = "approval"
+	WaitPlan     Waiting = "plan"
+	WaitAnswer   Waiting = "answer"
+)
+
+var waitings = []Waiting{WaitApproval, WaitPlan, WaitAnswer}
+
 // UIState is the context snapshot passed to widget renders.
 type UIState struct {
 	Time  string
 	Frame int // the 50ms frame clock the spinner, eyes and shimmer step on; 0 with ui.animations off
 
-	Ended          string // how the turn that ended a moment ago ended: "ok", "error" or "cancelled"; "" after that
-	QuitArmed      bool   // a second ctrl+c quits
-	InterruptArmed bool   // a second esc interrupts the turn
-	KeySeq         string // keys of a bound sequence typed so far
-	RowsBelow      int    // transcript rows under a scrolled-up viewport
-	Cancelling     bool   // interrupt sent, turn not finished yet
-	Editing        string // title of the file open in the editor
-	Waiting        string // "approval" or "answer" while a prompt holds the turn
-	Focus          string // the drawn layout node taking keys, "" for the composer
+	Ended          TurnEnd // how the turn that ended a moment ago ended; "" after that
+	QuitArmed      bool    // a second ctrl+c quits
+	InterruptArmed bool    // a second esc interrupts the turn
+	KeySeq         string  // keys of a bound sequence typed so far
+	RowsBelow      int     // transcript rows under a scrolled-up viewport
+	Cancelling     bool    // interrupt sent, turn not finished yet
+	Editing        string  // title of the file open in the editor
+	Waiting        Waiting // while a prompt holds the turn
+	Focus          string  // the drawn layout node taking keys, "" for the composer
 }
 
 // TildePath shortens the home directory, or a path under it, to ~.
@@ -1679,7 +1756,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.88.0"))
+	api.RawSetString("version", glua.LString("0.89.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

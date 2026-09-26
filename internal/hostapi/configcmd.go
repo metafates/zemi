@@ -31,7 +31,7 @@ const (
 // runtime picks written back into init.lua.
 func (h *Host) configCommands() []*Command {
 	return []*Command{{
-		Name: "config", NArgs: "*", Desc: "see and change every setting, and save your picks to init.lua",
+		Name: "config", NArgs: NArgsAny, Desc: "see and change every setting, and save your picks to init.lua",
 		GoFn: func(h *Host, args string) error { return h.configCommand(args) },
 		GoComplete: subcommandCompleter([]string{"set", "toggle", "reset", "pick", "lua", "save", "open"}, func(h *Host, sub string) []string {
 			if sub == "lua" || sub == "save" || sub == "open" {

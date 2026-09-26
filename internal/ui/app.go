@@ -109,7 +109,7 @@ type App struct {
 	timeStr    string
 	turnActive bool             // what onFrame last saw of the agent
 	turnEnd    time.Time        // when the last turn reported its end, so the mascot can bow
-	turnEnded  string           // how it ended: "ok", "error" or "cancelled"
+	turnEnded  hostapi.TurnEnd  // how it ended
 	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
@@ -330,11 +330,11 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		a.streamPending.Store(false)
 	case turnDoneMsg:
 		a.bump()
-		a.turnEnd, a.turnEnded = a.now(), "ok"
+		a.turnEnd, a.turnEnded = a.now(), hostapi.TurnOK
 		if msg.stopped {
-			a.turnEnded = "cancelled"
+			a.turnEnded = hostapi.TurnCancelled
 		} else if msg.err != "" {
-			a.turnEnded = "error"
+			a.turnEnded = hostapi.TurnError
 		}
 		text := "zemi finished"
 		if msg.err != "" {
@@ -590,11 +590,11 @@ func (a *App) uiState() hostapi.UIState {
 	}
 	switch {
 	case a.permAsk != nil:
-		st.Waiting = "approval"
+		st.Waiting = hostapi.WaitApproval
 	case a.planAsk != nil:
-		st.Waiting = "plan"
+		st.Waiting = hostapi.WaitPlan
 	case a.question != nil:
-		st.Waiting = "answer"
+		st.Waiting = hostapi.WaitAnswer
 	}
 	return st
 }
@@ -1075,7 +1075,7 @@ func (a *App) followStage() {
 // region, the default one when id is "": up and down move a page with a
 // one-row overlap, top and bottom go to the ends, line_up and line_down a
 // row.
-func (a *App) applyScroll(kind, id string) {
+func (a *App) applyScroll(kind hostapi.ScrollAction, id string) {
 	id = cmp.Or(id, a.scrollDef)
 	st := a.scrolls[id]
 	if st == nil {
@@ -1083,17 +1083,17 @@ func (a *App) applyScroll(kind, id string) {
 	}
 	page := max(st.viewH-1, 1)
 	switch kind {
-	case "up":
+	case hostapi.ScrollUp:
 		a.scrollRows(id, -page)
-	case "down":
+	case hostapi.ScrollDown:
 		a.scrollRows(id, page)
-	case "top":
+	case hostapi.ScrollTop:
 		a.scrollRows(id, -max(st.rows, 1))
-	case "bottom":
+	case hostapi.ScrollBottom:
 		a.scrollRows(id, max(st.rows, 1))
-	case "line_up":
+	case hostapi.ScrollLineUp:
 		a.scrollRows(id, -1)
-	case "line_down":
+	case hostapi.ScrollLineDown:
 		a.scrollRows(id, 1)
 	}
 }

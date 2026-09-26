@@ -34,33 +34,38 @@ func (h *Host) BuiltinCommandsStep(extra ...*Command) lua.BootStep {
 	}
 }
 
-// validNargs follows Vim's spec strings (§6.2).
-func validNargs(n string) bool {
-	switch n {
-	case "", "?", "+", "*":
-		return true
-	}
-	return false
-}
+// NArgs is how many arguments a command takes, in Vim's spec strings
+// (§6.2).
+type NArgs string
+
+const (
+	NArgsNone     NArgs = ""
+	NArgsOptional NArgs = "?"
+	NArgsSome     NArgs = "+"
+	NArgsAny      NArgs = "*"
+)
+
+var nargsSpecs = []NArgs{NArgsNone, NArgsOptional, NArgsSome, NArgsAny}
 
 // nargsOK validates a raw argument string against command name's nargs spec.
 // Attached text (piped stdin) is no argument.
-func nargsOK(name, nargs, args string) error {
+func nargsOK(name string, nargs NArgs, args string) error {
 	typed, _ := agent.CutAttached(args)
 	fields := strings.Fields(typed)
 	switch nargs {
-	case "":
+	case NArgsNone:
 		if len(fields) != 0 {
 			return fmt.Errorf("/%s takes no arguments", name)
 		}
-	case "?":
+	case NArgsOptional:
 		if len(fields) > 1 {
 			return fmt.Errorf("/%s takes at most one argument", name)
 		}
-	case "+":
+	case NArgsSome:
 		if len(fields) == 0 {
 			return fmt.Errorf("/%s requires an argument", name)
 		}
+	case NArgsAny:
 	}
 	return nil
 }
@@ -79,8 +84,8 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 			Gen:    h.currentGen(),
 		}
 		if opts := L.OptTable(3, nil); opts != nil {
-			cmd.Desc, cmd.NArgs = rawString(opts, "desc"), rawString(opts, "nargs")
-			if !validNargs(cmd.NArgs) {
+			cmd.Desc, cmd.NArgs = rawString(opts, "desc"), NArgs(rawString(opts, "nargs"))
+			if !slices.Contains(nargsSpecs, cmd.NArgs) {
 				L.RaiseError("zemi.command.add: invalid nargs %q (want one of \"\", \"?\", \"+\", \"*\")", cmd.NArgs)
 			}
 			cmd.Complete, _ = opts.RawGetString("complete").(*glua.LFunction)
@@ -158,7 +163,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 // nothing is offered past the last argument the command's nargs takes.
 func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []CompletionItem {
 	cmd := h.Commands.Lookup(name)
-	if _, arg := argAt(lead, line); cmd == nil || cmd.NArgs == "" || cmd.NArgs == "?" && arg > 1 {
+	if _, arg := argAt(lead, line); cmd == nil || cmd.NArgs == NArgsNone || cmd.NArgs == NArgsOptional && arg > 1 {
 		return nil
 	}
 	var out []CompletionItem

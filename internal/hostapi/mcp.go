@@ -692,7 +692,7 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 // mcpCommands is /mcp.
 func (h *Host) mcpCommands() []*Command {
 	return []*Command{{
-		Name: "mcp", NArgs: "*", Desc: "manage MCP servers",
+		Name: "mcp", NArgs: NArgsAny, Desc: "manage MCP servers",
 		GoFn: func(h *Host, args string) error {
 			sub, name, _ := strings.Cut(strings.TrimSpace(args), " ")
 			switch sub {

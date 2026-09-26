@@ -539,7 +539,10 @@ honest: every API member annotated, nothing annotated that zemi dropped, and the
 `zemi.EventName`, `zemi.HostAction` and `zemi.WidgetCtx` aliases pinned to their Go sources, like
 each constant table (`enumTable`: `zemi.provider.kind`, `zemi.permission.decision`,
 `zemi.memory.scope`, `zemi.model.role`, `zemi.model.effort`, `zemi.notify.level`, keyed by the
-value upper-cased) and the alias that types the fields taking one (`TestTypesEnums`). It
+value upper-cased) and the alias that types the fields taking one (`TestTypesEnums`), and every
+other closed set Lua sees (a Go `type X string` with a slice of its values: `RowKind`, `CallStatus`,
+`HealthLevel`, ...) as a multi-line `---|` alias, the layout kinds as the `kind` literals of the
+`zemi.LayoutNode` classes (`TestTypesLayoutKinds`). It
 also carries `---@deprecated` stubs for the globals the sandbox strips, since the `.luarc.json`
 files turn off LuaLS's own libraries and it flags a deprecated global only when every
 definition is deprecated. Known ceiling: with no CI, `make luals` runs only where

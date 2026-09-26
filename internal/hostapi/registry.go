@@ -158,7 +158,7 @@ func (r *KeymapRegistry) Purge() {
 type Command struct {
 	Name     string
 	Desc     string
-	NArgs    string // "", "?", "+", "*"
+	NArgs    NArgs
 	Complete *glua.LFunction
 	Fn       *glua.LFunction
 	GoFn     func(h *Host, args string) error
@@ -458,13 +458,25 @@ type HLSpec struct {
 	Fg, Bg, Sp   string // hex, a palette name, or "NONE" (no color, clearing one under a hover)
 	Bold, Italic *bool
 	Reverse      *bool
-	Underline    string  // "", or one of UnderlineKinds
+	Underline    Underline
 	Brighten     float64 // hover groups: mix the drawn fg this far toward white, negative toward black
 	Replace      bool    // hover groups: draw as this group alone, not over the text's style
 }
 
-// UnderlineKinds are the underline values a group takes; "none" removes one.
-var UnderlineKinds = []string{"none", "single", "double", "curl", "dotted", "dashed"}
+// Underline is a highlight group's underline style; "" keeps what is under
+// it and UnderlineNone removes one.
+type Underline string
+
+const (
+	UnderlineNone   Underline = "none"
+	UnderlineSingle Underline = "single"
+	UnderlineDouble Underline = "double"
+	UnderlineCurl   Underline = "curl"
+	UnderlineDotted Underline = "dotted"
+	UnderlineDashed Underline = "dashed"
+)
+
+var underlines = []Underline{UnderlineNone, UnderlineSingle, UnderlineDouble, UnderlineCurl, UnderlineDotted, UnderlineDashed}
 
 // Theme is a palette + highlight group set registered from Lua.
 type Theme struct {

@@ -267,7 +267,7 @@ func printHealth(h *hostapi.Host, stdout io.Writer) int {
 	}
 	code := 0
 	for _, r := range h.HealthRows() {
-		if r.Level == "error" {
+		if r.Level == hostapi.HealthError {
 			code = 1
 		}
 		fmt.Fprintf(stdout, "%-5s %-12s %s\n", r.Level, r.Name, r.Detail)

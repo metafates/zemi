@@ -196,11 +196,11 @@ func TestModeSwitchQuiet(t *testing.T) {
 	if f := a.Frame(); strings.Contains(f, "safe actions run on their own") {
 		t.Fatalf("a switch must not explain itself:\n%s", ansi.Strip(f))
 	}
-	for _, anchor := range []string{"bottom-left", "bottom-right"} {
+	for _, anchor := range []hostapi.OverlayAnchor{hostapi.OverlayBottomLeft, hostapi.OverlayBottomRight} {
 		a.openOverlay(hostapi.Overlay{ID: "mode", Title: "Permission mode", Items: []any{"manual", "auto"}, Anchor: anchor})
 		rows := strings.Split(ansi.Strip(a.Frame()), "\r\n")
 		edge := func(row string) bool {
-			if anchor == "bottom-left" {
+			if anchor == hostapi.OverlayBottomLeft {
 				return strings.HasPrefix(row, "┌ Permission mode") || strings.HasPrefix(row, "└─")
 			}
 			return strings.HasSuffix(row, "┐") || strings.HasSuffix(row, "─┘")

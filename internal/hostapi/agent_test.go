@@ -690,7 +690,7 @@ func (f *fakeUI) Reload() {
 	f.reloads.Add(1)
 }
 func (f *fakeUI) Refresh()                          {}
-func (f *fakeUI) Scroll(kind, id string)            {}
+func (f *fakeUI) Scroll(ScrollAction, string)       {}
 func (f *fakeUI) LayoutRects() map[string]Rect      { return nil }
 func (f *fakeUI) AgentStream()                      {}
 func (f *fakeUI) TurnDone(err string, stopped bool) { f.turnsDone.Add(1) }
@@ -1025,7 +1025,7 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 	// text streamed before a tool call stays above its row
 	var order []string
 	for _, m := range h.Session().Transcript {
-		order = append(order, m.Kind+":"+m.Text)
+		order = append(order, string(m.Kind)+":"+m.Text)
 	}
 	if got := strings.Join(order, " | "); got != "reasoning:pondering | :answer | tool:ls | :done" {
 		t.Fatalf("transcript order = %s", got)
@@ -1894,7 +1894,7 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 	rowsOf := func(tr []ChatMessage) string {
 		var out []string
 		for _, m := range tr {
-			out = append(out, m.Kind+":"+m.Text)
+			out = append(out, string(m.Kind)+":"+m.Text)
 		}
 		return strings.Join(out, " | ")
 	}

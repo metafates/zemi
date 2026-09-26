@@ -98,7 +98,7 @@ func (h *Host) addMarkdownCommands(dir string, origin lua.Origin, gen Gen) {
 			desc += " " + fm.ArgumentHint
 		}
 		_, err = h.Commands.Add(&Command{
-			Name: name, NArgs: "*", Desc: desc, Path: path, Origin: origin, Gen: gen,
+			Name: name, NArgs: NArgsAny, Desc: desc, Path: path, Origin: origin, Gen: gen,
 			// the typed line stays the user's words; the body is the file's
 			GoFn: func(h *Host, args string) error {
 				typed, stdin := agent.CutAttached(args)

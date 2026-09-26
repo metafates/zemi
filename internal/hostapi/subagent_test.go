@@ -385,7 +385,7 @@ func TestAgentDefs(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s missing", c.name)
 		}
-		if d.Source != c.source || d.Description != c.desc || strings.Join(d.Tools, ",") != c.tools || d.System != c.system || d.Model != "" {
+		if string(d.Source) != c.source || d.Description != c.desc || strings.Join(d.Tools, ",") != c.tools || d.System != c.system || d.Model != "" {
 			t.Fatalf("%s = %+v", c.name, d)
 		}
 	}

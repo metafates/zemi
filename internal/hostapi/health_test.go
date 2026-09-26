@@ -14,8 +14,8 @@ import (
 )
 
 // TestHealthLuaChecks: checks registered from Lua become /health rows, in
-// either return shape, and one that raises reports as an error row rather
-// than taking the whole page down.
+// either return shape, and one that raises or returns an unknown level
+// reports as an error row rather than taking the whole page down.
 func TestHealthLuaChecks(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `
@@ -23,6 +23,7 @@ func TestHealthLuaChecks(t *testing.T) {
 		zemi.health.add("disk", function() return { level = "warn", detail = "low" } end)
 		zemi.health.add("note", function() return "plain detail" end)
 		zemi.health.add("boom", function() error("nope") end)
+		zemi.health.add("typo", function() return { level = "warning", detail = "low" } end)
 	`)
 	err := r.ExecuteChunk(context.Background(), `zemi.health.add("disk", function() return "planted" end)`, "p.lua", lua.OriginPlugin)
 	if err == nil || !strings.Contains(err.Error(), "more trusted") {
@@ -39,9 +40,10 @@ func TestHealthLuaChecks(t *testing.T) {
 		{"disk", "warn", "low"},
 		{"note", "ok", "plain detail"},
 		{"boom", "error", "nope"},
+		{"typo", "error", `level "warning" is not one of ok, warn, error`},
 	} {
 		row := got[c.name]
-		if row.level != c.level || !strings.Contains(row.detail, c.detail) {
+		if string(row.level) != c.level || !strings.Contains(row.detail, c.detail) {
 			t.Errorf("%s = %+v, want level %s containing %q", c.name, row, c.level, c.detail)
 		}
 	}
@@ -71,7 +73,7 @@ func TestHealthChecks(t *testing.T) {
 	for name, level := range map[string]string{
 		"store": "ok", "model": "error", "reflector": "warn", "learning": "ok", "skills": "ok", "lua": "ok", "mcp": "ok", "layout": "warn",
 	} {
-		if got[name].level != level {
+		if string(got[name].level) != level {
 			t.Errorf("%s = %+v, want level %s", name, got[name], level)
 		}
 	}
@@ -125,7 +127,7 @@ func TestHealthContextRoles(t *testing.T) {
 			zemi.model.set("a/m")
 		`+c.lua)
 		for _, row := range h.healthChecks() {
-			if row.name == "context" && row.level != c.level {
+			if row.name == "context" && string(row.level) != c.level {
 				t.Errorf("%s: context = %+v, want %s", c.name, row, c.level)
 			}
 		}
@@ -154,7 +156,7 @@ func TestHealthProvidersRow(t *testing.T) {
 				row = x
 			}
 		}
-		if row.level != c.level || !strings.HasPrefix(row.detail, c.detail) {
+		if string(row.level) != c.level || !strings.HasPrefix(row.detail, c.detail) {
 			t.Errorf("%s: providers row = %+v", c.name, row)
 		}
 	}
@@ -183,7 +185,7 @@ func TestHealthModelRow(t *testing.T) {
 				row = x
 			}
 		}
-		if row.level != c.level || !strings.HasPrefix(row.detail, c.detail) {
+		if string(row.level) != c.level || !strings.HasPrefix(row.detail, c.detail) {
 			t.Errorf("%s: %s row = %+v", c.name, c.row, row)
 		}
 		if c.level == "error" && c.row == "model" {
@@ -211,7 +213,7 @@ func TestHealthMCPRow(t *testing.T) {
 			h.mcp.servers[strconv.Itoa(i)] = &mcpServer{status: st}
 		}
 		i := slices.IndexFunc(h.goHealthRows(), func(r healthCheck) bool { return r.name == "mcp" })
-		if row := h.goHealthRows()[i]; row.level != c.level || row.detail != c.detail {
+		if row := h.goHealthRows()[i]; string(row.level) != c.level || row.detail != c.detail {
 			t.Errorf("%v: mcp row = %+v", c.statuses, row)
 		}
 	}

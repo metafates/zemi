@@ -737,7 +737,7 @@ func (h *Host) digestFor() string {
 // memoryCommands is /memory.
 func (h *Host) memoryCommands() []*Command {
 	return []*Command{{
-		Name: "memory", NArgs: "*", Desc: "review what zemi remembers; /memory <note> keeps one",
+		Name: "memory", NArgs: NArgsAny, Desc: "review what zemi remembers; /memory <note> keeps one",
 		GoFn: func(h *Host, args string) error { return h.memoryCommand(args) },
 	}}
 }

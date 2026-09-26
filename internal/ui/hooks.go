@@ -262,6 +262,6 @@ func (a *App) publishComposer() {
 
 // Scroll implements hostapi.UIHooks (zemi.ui.scroll.* host actions);
 // posted to the UI goroutine like every other hook.
-func (a *App) Scroll(kind, id string) {
+func (a *App) Scroll(kind hostapi.ScrollAction, id string) {
 	a.do(func() { a.applyScroll(kind, id) })
 }

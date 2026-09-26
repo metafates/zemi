@@ -11,12 +11,15 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/fantasy"
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
 	"github.com/yuin/gopher-lua/parse"
 )
@@ -213,6 +216,25 @@ func TestTypesEnums(t *testing.T) {
 		{"zemi.ModelRole", "zemi.model.role", roleNames()},
 		{"", "zemi.model.effort", strs(agent.Efforts)},
 		{"zemi.ServiceStatus", "", strs(serviceStatuses)},
+		{"zemi.MemoryOrigin", "", strs(store.Origins)},
+		{"zemi.TodoStatus", "", strs(store.TodoStatuses)},
+		{"zemi.ToolVerdict", "", strs(tools.PreVerdicts)},
+		{"zemi.SkillSource", "", strs(skills.Sources)},
+		{"zemi.Role", "", strs([]fantasy.MessageRole{fantasy.MessageRoleUser, fantasy.MessageRoleAssistant})},
+		{"zemi.LearnAction", "", learnActions},
+		{"zemi.HealthLevel", "", strs(healthLevels)},
+		{"zemi.Underline", "", strs(underlines)},
+		{"zemi.NArgs", "", strs(nargsSpecs)},
+		{"zemi.ScrollAction", "", strs(scrollActions)},
+		{"zemi.OverlayAnchor", "", strs(overlayAnchors)},
+		{"zemi.LayoutDir", "", strs(layoutDirs)},
+		{"zemi.LayoutScroll", "", strs(scrollEdges)},
+		{"zemi.FloatAnchor", "", strs(floatAnchors)},
+		{"zemi.RowKind", "", strs(rowKinds)},
+		{"zemi.CallStatus", "", strs(callStatuses)},
+		{"zemi.TurnEnd", "", strs(turnEnds)},
+		{"zemi.Waiting", "", strs(waitings)},
+		{"zemi.RunStatus", "", strs(runStatuses)},
 	} {
 		if c.alias != "" {
 			assertSameNames(t, c.alias, annotatedAlias(t, c.alias), slices.Clone(c.live))
@@ -285,7 +307,8 @@ func annotatedClass(t *testing.T, name string) string {
 	return b.String()
 }
 
-// annotatedAlias is the quoted members of `---@alias name` and its `---|` lines.
+// annotatedAlias is the quoted members of `---@alias name` and its `---|`
+// lines, "" included, their `#` comments left out.
 func annotatedAlias(t *testing.T, name string) []string {
 	t.Helper()
 	_, rest, ok := strings.Cut(typesSource(t), "---@alias "+name+"\n")
@@ -297,11 +320,31 @@ func annotatedAlias(t *testing.T, name string) []string {
 		if !strings.HasPrefix(line, "---|") {
 			break
 		}
-		for _, m := range regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(line, -1) {
+		line, _, _ = strings.Cut(line, "#")
+		for _, m := range regexp.MustCompile(`"([^"]*)"`).FindAllStringSubmatch(line, -1) {
 			out = append(out, m[1])
 		}
 	}
 	return out
+}
+
+// TestTypesLayoutKinds: zemi.LayoutNode is a union of one class per kind,
+// each with its own `kind` literal, which together are the kinds Go parses.
+func TestTypesLayoutKinds(t *testing.T) {
+	_, rest, _ := strings.Cut(typesSource(t), "---@alias zemi.LayoutNode\n")
+	var kinds []string
+	for line := range strings.SplitSeq(rest, "\n") {
+		class, ok := strings.CutPrefix(line, "---| ")
+		if !ok {
+			break
+		}
+		m := regexp.MustCompile(`(?m)^---@field kind "([a-z]+)"$`).FindStringSubmatch(annotatedClass(t, class+": zemi.LayoutBase"))
+		if m == nil {
+			t.Fatalf("%s has no kind literal", class)
+		}
+		kinds = append(kinds, m[1])
+	}
+	assertSameNames(t, "zemi.LayoutNode kinds", kinds, strs(layoutKinds))
 }
 
 func assertSameNames(t *testing.T, what string, annotated, live []string) {

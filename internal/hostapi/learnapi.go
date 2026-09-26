@@ -5,10 +5,14 @@ package hostapi
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/metafates/zemi/internal/logging"
 	glua "github.com/yuin/gopher-lua"
 )
+
+// learnActions are what zemi.learn.decide takes.
+var learnActions = []string{"accept", "reject"}
 
 func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
@@ -35,7 +39,7 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 		id := L.CheckString(1)
 		action := L.CheckString(2)
 		h.refuseBelowUser(L, "learn.decide")
-		if action != "accept" && action != "reject" {
+		if !slices.Contains(learnActions, action) {
 			L.RaiseError("zemi.learn.decide: action must be accept or reject")
 		}
 		if action == "reject" {

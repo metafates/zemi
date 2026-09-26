@@ -72,7 +72,7 @@ func (h *Host) ResumeSession(id string) error {
 	history, tr := resumeHistory(rows)
 	first := ""
 	for _, m := range tr {
-		if m.Role == "user" && m.Kind == "" {
+		if m.Role == fantasy.MessageRoleUser && m.Kind == RowMessage {
 			first = m.Text
 			break
 		}
@@ -319,7 +319,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		// live turn flushed it; reasoning never cuts a reply (ReasoningDelta)
 		reply := func() {
 			if s := strings.TrimSpace(text.String()); s != "" {
-				tr = append(tr, ChatMessage{Role: "assistant", Text: s})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s})
 				text.Reset()
 			}
 		}
@@ -336,13 +336,13 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 					tr[reasoning].Text += p.Text
 				} else {
 					reasoning = len(tr)
-					tr = append(tr, ChatMessage{Role: "assistant", Kind: "reasoning", Text: p.Text, Stat: &TurnStat{}})
+					tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: p.Text, Stat: &TurnStat{}})
 				}
 			case fantasy.ToolCallPart:
 				reply()
 				toolRow[p.ToolCallID] = len(tr)
 				tc := calls[p.ToolCallID]
-				tr = append(tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: "ok", Diff: tc.Diff, Run: tc.Run, Detail: tc.Detail})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: CallOK, Diff: tc.Diff, Run: tc.Run, Detail: tc.Detail})
 			case fantasy.ToolResultPart:
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
 					out := agent.ToolOutput(p.Output)
@@ -354,19 +354,19 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		s := text.String()
 		if m.Role == fantasy.MessageRoleUser {
 			if _, ok := summaryOf(m); ok {
-				tr = append(tr, ChatMessage{Role: "assistant", Kind: "compact", Text: "Compacted earlier messages"})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: "Compacted earlier messages"})
 				continue
 			}
 			var tail string
 			s, tail, _ = strings.Cut(s, agent.AttachMarker) // show what was typed
 			for _, head := range reportHeads(tail) {
-				tr = append(tr, ChatMessage{Role: "assistant", Kind: "notice", Text: head})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head})
 			}
 		}
 		if s = strings.TrimSpace(s); s != "" {
-			role := "assistant"
+			role := fantasy.MessageRoleAssistant
 			if m.Role == fantasy.MessageRoleUser {
-				role = "user"
+				role = fantasy.MessageRoleUser
 			}
 			tr = append(tr, ChatMessage{Role: role, Text: s})
 		}

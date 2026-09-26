@@ -659,7 +659,7 @@ func (h *Host) lspRows() []lspRow {
 // lspCommands is /lsp.
 func (h *Host) lspCommands() []*Command {
 	return []*Command{{
-		Name: "lsp", NArgs: "*", Desc: "manage language servers", Hidden: true,
+		Name: "lsp", NArgs: NArgsAny, Desc: "manage language servers", Hidden: true,
 		GoFn: func(h *Host, args string) error {
 			if name, ok := strings.CutPrefix(strings.TrimSpace(args), "restart "); ok {
 				name = strings.TrimSpace(name)

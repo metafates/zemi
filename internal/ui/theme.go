@@ -81,7 +81,7 @@ func (t themeResolver) group(hl string) (hostapi.HLSpec, *hostapi.Theme, bool) {
 func (t themeResolver) hover(base uv.Style, group string) uv.Style {
 	spec, theme, ok := t.group(group)
 	if !ok {
-		spec = hostapi.HLSpec{Underline: "single"}
+		spec = hostapi.HLSpec{Underline: hostapi.UnderlineSingle}
 	}
 	if spec.Replace {
 		base = uv.Style{}
@@ -135,9 +135,10 @@ func drawOver(st uv.Style, spec hostapi.HLSpec, theme *hostapi.Theme) uv.Style {
 	return st
 }
 
-var underlines = map[string]uv.Underline{
-	"none": uv.UnderlineNone, "single": uv.UnderlineSingle, "double": uv.UnderlineDouble,
-	"curl": uv.UnderlineCurly, "dotted": uv.UnderlineDotted, "dashed": uv.UnderlineDashed,
+//exhaustive:enforce
+var underlines = map[hostapi.Underline]uv.Underline{
+	hostapi.UnderlineNone: uv.UnderlineNone, hostapi.UnderlineSingle: uv.UnderlineSingle, hostapi.UnderlineDouble: uv.UnderlineDouble,
+	hostapi.UnderlineCurl: uv.UnderlineCurly, hostapi.UnderlineDotted: uv.UnderlineDotted, hostapi.UnderlineDashed: uv.UnderlineDashed,
 }
 
 func luma(c color.Color) float64 {

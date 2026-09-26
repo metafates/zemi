@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"charm.land/fantasy"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -124,7 +125,7 @@ func (h *Host) OpenModePicker() error {
 		}
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom-left", Verb: "pick"})
+	ui.OpenOverlay(Overlay{ID: "mode", Title: "Permission mode", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: OverlayBottomLeft, Verb: "pick"})
 	return nil
 }
 
@@ -170,7 +171,7 @@ func (h *Host) permItems() []any {
 		}
 		item := map[string]any{
 			"text": r.Subject + " " + r.Pattern, "desc": desc,
-			"section": sourceSection(string(r.Decision)) + " rules",
+			"section": sourceSection(r.Decision) + " rules",
 		}
 		if r.Principal == perm.PrincipalModel {
 			// an answer writes p and "p *" (a host and its paths): one row,
@@ -291,7 +292,7 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 			v.Path = path
 		}
 	}
-	h.appendAfterLive(ChatMessage{Role: "assistant", Text: sanitize.String(plan)})
+	h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: sanitize.String(plan)})
 	restore, mode := "", ""
 	if h.readOnly() {
 		h.modes.mu.Lock()

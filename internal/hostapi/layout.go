@@ -28,19 +28,67 @@ type Size struct {
 	N    int
 }
 
+// LayoutKind is what a layout node is: a box of children or a leaf.
+type LayoutKind string
+
+const (
+	LayoutBox      LayoutKind = "box"
+	LayoutRegion   LayoutKind = "region"
+	LayoutBar      LayoutKind = "bar"
+	LayoutComposer LayoutKind = "composer"
+	LayoutSpacer   LayoutKind = "spacer"
+)
+
+var layoutKinds = []LayoutKind{LayoutBox, LayoutRegion, LayoutBar, LayoutComposer, LayoutSpacer}
+
+// LayoutDir is how a box lays out its children: DirRow side by side,
+// DirCol stacked.
+type LayoutDir string
+
+const (
+	DirRow LayoutDir = "row"
+	DirCol LayoutDir = "col"
+)
+
+var layoutDirs = []LayoutDir{DirRow, DirCol}
+
+// ScrollEdge is the edge a scrollable region starts at; EdgeBottom follows
+// the tail.
+type ScrollEdge string
+
+const (
+	EdgeTop    ScrollEdge = "top"
+	EdgeBottom ScrollEdge = "bottom"
+)
+
+var scrollEdges = []ScrollEdge{EdgeTop, EdgeBottom}
+
+// FloatAnchor is the corner of a float pinned to the same corner of the
+// node it floats over.
+type FloatAnchor string
+
+const (
+	AnchorNW FloatAnchor = "NW"
+	AnchorNE FloatAnchor = "NE"
+	AnchorSW FloatAnchor = "SW"
+	AnchorSE FloatAnchor = "SE"
+)
+
+var floatAnchors = []FloatAnchor{AnchorNW, AnchorNE, AnchorSW, AnchorSE}
+
 // LayoutNode is one node of the screen's layout tree (DESIGN §8): a box
 // lays its children out along Dir, a leaf names what fills its cells.
 type LayoutNode struct {
 	ID       string
-	Kind     string // box, region, composer, bar or spacer
-	Dir      string // box: row or col
-	Sep      bool   // box: a one-cell separator between children
+	Kind     LayoutKind
+	Dir      LayoutDir // box
+	Sep      bool      // box: a one-cell separator between children
 	Children []*LayoutNode
 
-	Region      string // region: the widgets drawn in it
-	Scroll      string // region: "top" or "bottom" (follows the tail) makes it scrollable
-	Focusable   bool   // region: can take keys (zemi.ui.focus), by its id
-	Left, Right string // bar, framed composer: the regions of its left and right clusters
+	Region      string     // region: the widgets drawn in it
+	Scroll      ScrollEdge // region: makes it scrollable
+	Focusable   bool       // region: can take keys (zemi.ui.focus), by its id
+	Left, Right string     // bar, framed composer: the regions of its left and right clusters
 
 	Frame bool   // composer: a square frame around it, two rows taller
 	Top   string // framed composer: the region drawn in its top rule
@@ -58,7 +106,7 @@ type LayoutNode struct {
 type LayoutFloat struct {
 	ID, Region    string
 	Relative      string // a node id, "stage" or "screen"
-	Anchor        string // NW, NE, SW or SE
+	Anchor        FloatAnchor
 	Row, Col      int
 	Width, Height Size // cells, a percent of the relative node, or content
 	Hidden        bool
@@ -122,14 +170,14 @@ type Rect struct{ X, Y, Width, Height int }
 // shipped tui/layout.lua: the main column; in it the header, the
 // stage (the chat), a blank row and the framed composer, whose rules carry
 // the mascot and the statusline.
-var DefaultLayout = &Layout{Root: &LayoutNode{Kind: "box", Dir: "row", Sep: true, Size: Size{Kind: SizeFill}, Children: []*LayoutNode{
-	{Kind: "box", Dir: "col", Size: Size{Kind: SizeFill}, Min: 30, Children: []*LayoutNode{
-		{Kind: "region", Region: "header"},
-		{Kind: "box", Dir: "col", Stage: true, Size: Size{Kind: SizeFill}, Min: 1, Children: []*LayoutNode{
-			{ID: "chat", Kind: "region", Region: "chat", Scroll: "bottom", Size: Size{Kind: SizeFill}, Min: 3},
+var DefaultLayout = &Layout{Root: &LayoutNode{Kind: LayoutBox, Dir: DirRow, Sep: true, Size: Size{Kind: SizeFill}, Children: []*LayoutNode{
+	{Kind: LayoutBox, Dir: DirCol, Size: Size{Kind: SizeFill}, Min: 30, Children: []*LayoutNode{
+		{Kind: LayoutRegion, Region: "header"},
+		{Kind: LayoutBox, Dir: DirCol, Stage: true, Size: Size{Kind: SizeFill}, Min: 1, Children: []*LayoutNode{
+			{ID: "chat", Kind: LayoutRegion, Region: "chat", Scroll: EdgeBottom, Size: Size{Kind: SizeFill}, Min: 3},
 		}},
-		{Kind: "spacer", Size: Size{Kind: SizeCells, N: 1}},
-		{Kind: "composer", Frame: true, Top: "working", Left: "statusline.left", Right: "statusline.right"},
+		{Kind: LayoutSpacer, Size: Size{Kind: SizeCells, N: 1}},
+		{Kind: LayoutComposer, Frame: true, Top: "working", Left: "statusline.left", Right: "statusline.right"},
 	}},
 }}}
 
@@ -315,11 +363,11 @@ func ParseLayout(v any) (*Layout, error) {
 		return nil, err
 	}
 	p := &layoutParser{ids: map[string]bool{}, regions: map[string]bool{}}
-	root, err := p.node(m["root"], "root", 1, "col", false)
+	root, err := p.node(m["root"], "root", 1, DirCol, false)
 	if err != nil {
 		return nil, err
 	}
-	if root.Kind != "box" {
+	if root.Kind != LayoutBox {
 		return nil, fmt.Errorf("root: must be a box")
 	}
 	if p.composers != 1 {
@@ -348,7 +396,7 @@ func ParseLayout(v any) (*Layout, error) {
 	return lay, nil
 }
 
-func (p *layoutParser) node(v any, at string, depth int, dir string, hiddenAbove bool) (*LayoutNode, error) {
+func (p *layoutParser) node(v any, at string, depth int, dir LayoutDir, hiddenAbove bool) (*LayoutNode, error) {
 	m, ok := v.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%s: expected a node table", at)
@@ -382,7 +430,7 @@ func (p *layoutParser) node(v any, at string, depth int, dir string, hiddenAbove
 		}
 		return int(f)
 	}
-	n.Kind, n.ID = str("kind"), str("id")
+	n.Kind, n.ID = LayoutKind(str("kind")), str("id")
 	n.Stage, n.Hidden, n.Collapse = flag("stage"), flag("hidden"), flag("collapse")
 	n.Min, n.Max = cells("min"), cells("max")
 	if err != nil {
@@ -417,32 +465,32 @@ func (p *layoutParser) node(v any, at string, depth int, dir string, hiddenAbove
 		return nil
 	}
 	switch n.Kind {
-	case "box":
+	case LayoutBox:
 		err = onlyKeys(m, at, append(common, "dir", "sep", "children")...)
-		n.Dir, n.Sep = str("dir"), flag("sep")
-		if err == nil && n.Dir != "row" && n.Dir != "col" {
+		n.Dir, n.Sep = LayoutDir(str("dir")), flag("sep")
+		if err == nil && !slices.Contains(layoutDirs, n.Dir) {
 			err = fmt.Errorf("%s: dir must be \"row\" or \"col\"", at)
 		}
-	case "region":
+	case LayoutRegion:
 		if err = onlyKeys(m, at, append(common, "region", "scroll", "focusable")...); err == nil {
 			err = region("region")
 		}
-		n.Region, n.Scroll, n.Focusable = str("region"), str("scroll"), flag("focusable")
+		n.Region, n.Scroll, n.Focusable = str("region"), ScrollEdge(str("scroll")), flag("focusable")
 		switch {
 		case err != nil:
-		case n.Scroll != "" && n.Scroll != "top" && n.Scroll != "bottom":
+		case n.Scroll != "" && !slices.Contains(scrollEdges, n.Scroll):
 			err = fmt.Errorf("%s: scroll must be \"top\" or \"bottom\"", at)
 		case (n.Scroll != "" || n.Focusable) && n.ID == "":
 			err = fmt.Errorf("%s: a scrolled or focusable region needs an id", at)
 		}
-	case "bar":
+	case LayoutBar:
 		if err = onlyKeys(m, at, append(common, "left", "right")...); err == nil {
 			if err = region("left"); err == nil {
 				err = region("right")
 			}
 		}
 		n.Left, n.Right = str("left"), str("right")
-	case "composer":
+	case LayoutComposer:
 		err = onlyKeys(m, at, append(common, "frame", "top", "left", "right")...)
 		n.Frame, n.Top, n.Left, n.Right = flag("frame"), str("top"), str("left"), str("right")
 		p.composers++
@@ -458,18 +506,18 @@ func (p *layoutParser) node(v any, at string, depth int, dir string, hiddenAbove
 				err = region(key)
 			}
 		}
-	case "spacer":
+	case LayoutSpacer:
 		err = onlyKeys(m, at, common...)
 	default:
-		err = fmt.Errorf("%s: unknown kind %q (box, region, bar, composer or spacer)", at, n.Kind)
+		err = fmt.Errorf("%s: unknown kind %q (%s)", at, n.Kind, strings.Join(strs(layoutKinds), ", "))
 	}
 	if err != nil {
 		return nil, err
 	}
 	switch {
-	case n.Kind == "spacer":
+	case n.Kind == LayoutSpacer:
 		n.Size = Size{Kind: SizeCells, N: 1}
-	case dir == "row" || n.Kind == "box":
+	case dir == DirRow || n.Kind == LayoutBox:
 		n.Size = Size{Kind: SizeFill} // content is measured down a column only
 	default:
 		n.Size = Size{Kind: SizeContent}
@@ -478,7 +526,7 @@ func (p *layoutParser) node(v any, at string, depth int, dir string, hiddenAbove
 		if n.Size, err = parseSize(sv, at); err != nil {
 			return nil, err
 		}
-		if n.Size.Kind == SizeContent && (dir == "row" || n.Kind == "box" || n.Kind == "spacer") {
+		if n.Size.Kind == SizeContent && (dir == DirRow || n.Kind == LayoutBox || n.Kind == LayoutSpacer) {
 			return nil, fmt.Errorf("%s: size \"content\" works only for a region, bar or composer in a col", at)
 		}
 	}
@@ -489,7 +537,7 @@ func (p *layoutParser) node(v any, at string, depth int, dir string, hiddenAbove
 		}
 		n.Size.N = int(f)
 	}
-	if n.Kind != "box" {
+	if n.Kind != LayoutBox {
 		if _, ok := m["children"]; ok {
 			return nil, fmt.Errorf("%s: only a box has children", at)
 		}
@@ -517,14 +565,16 @@ func (p *layoutParser) float(v any, at string) (LayoutFloat, error) {
 	if err := onlyKeys(m, at, "id", "region", "relative", "anchor", "row", "col", "width", "height", "hidden", "focusable"); err != nil {
 		return LayoutFloat{}, err
 	}
-	f := LayoutFloat{Relative: "stage", Anchor: "NW", Width: Size{Kind: SizeContent}, Height: Size{Kind: SizeContent}}
-	for key, dst := range map[string]*string{"id": &f.ID, "region": &f.Region, "relative": &f.Relative, "anchor": &f.Anchor} {
+	f := LayoutFloat{Relative: "stage", Width: Size{Kind: SizeContent}, Height: Size{Kind: SizeContent}}
+	anchor := string(AnchorNW)
+	for key, dst := range map[string]*string{"id": &f.ID, "region": &f.Region, "relative": &f.Relative, "anchor": &anchor} {
 		if s, ok := m[key].(string); ok {
 			*dst = s
 		} else if m[key] != nil {
 			return f, fmt.Errorf("%s: %s must be a string", at, key)
 		}
 	}
+	f.Anchor = FloatAnchor(anchor)
 	for key, dst := range map[string]*int{"row": &f.Row, "col": &f.Col} {
 		if n, ok := m[key].(float64); ok && n == float64(int(n)) {
 			*dst = int(n)
@@ -553,7 +603,7 @@ func (p *layoutParser) float(v any, at string) (LayoutFloat, error) {
 		return f, fmt.Errorf("%s: region must name a region", at)
 	case p.regions[f.Region]:
 		return f, fmt.Errorf("%s: region %q is drawn twice", at, f.Region)
-	case !slices.Contains([]string{"NW", "NE", "SW", "SE"}, f.Anchor):
+	case !slices.Contains(floatAnchors, f.Anchor):
 		return f, fmt.Errorf("%s: anchor must be NW, NE, SW or SE", at)
 	case f.ID != "" && (p.ids[f.ID] || f.ID == "stage" || f.ID == "screen"):
 		return f, fmt.Errorf("node id %q is taken", f.ID)

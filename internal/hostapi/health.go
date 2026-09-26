@@ -21,8 +21,19 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
+// HealthLevel is how a /health row reads.
+type HealthLevel string
+
+const (
+	HealthOK    HealthLevel = "ok"
+	HealthWarn  HealthLevel = "warn"
+	HealthError HealthLevel = "error"
+)
+
+var healthLevels = []HealthLevel{HealthOK, HealthWarn, HealthError}
+
 type healthCheck struct {
-	level  string // ok | warn | error
+	level  HealthLevel
 	name   string
 	detail string
 	run    string // the command the row's detail action runs
@@ -105,23 +116,24 @@ func (h *Host) inlineHealthRows(L *glua.LState) []healthCheck {
 		if c.gen != gen {
 			continue
 		}
-		row := healthCheck{level: "ok", name: c.name}
+		row := healthCheck{level: HealthOK, name: c.name}
 		func() {
 			defer h.RT.PushFrame(L, c.origin, c.path)()
 			base := L.GetTop()
 			L.Push(c.fn)
 			if err := L.PCall(0, 1, nil); err != nil {
 				L.SetTop(base)
-				row.level, row.detail = "error", sanitize.String(err.Error())
+				row.level, row.detail = HealthError, sanitize.String(err.Error())
 				return
 			}
 			v, err := lua.ToGo(L.Get(-1))
 			L.SetTop(base)
-			if err != nil {
-				row.level, row.detail = "error", sanitize.String(err.Error())
-				return
+			if err == nil {
+				row.level, row.detail, err = healthResult(v)
 			}
-			row.level, row.detail = healthResult(v)
+			if err != nil {
+				row.level, row.detail = HealthError, sanitize.String(err.Error())
+			}
 		}()
 		out = append(out, row)
 	}
@@ -144,40 +156,44 @@ func (h *Host) luaHealthRows() []healthCheck {
 		return []any{h.inlineHealthRows(L)}, nil
 	})
 	if err != nil || len(vals) == 0 {
-		return []healthCheck{{level: "error", name: "health checks", detail: sanitize.String(fmt.Sprint(err))}}
+		return []healthCheck{{level: HealthError, name: "health checks", detail: sanitize.String(fmt.Sprint(err))}}
 	}
 	rows, _ := vals[0].([]healthCheck)
 	return rows
 }
 
-func healthResult(v any) (level, detail string) {
+// healthResult reads what a check returned. A level outside healthLevels
+// is the check's misuse and fails it like a raise (DESIGN §6.0), so a
+// misspelt "warning" never reads as ok.
+func healthResult(v any) (HealthLevel, string, error) {
 	switch v := v.(type) {
 	case string:
-		return "ok", sanitize.String(v)
+		return HealthOK, sanitize.String(v), nil
 	case map[string]any:
-		level, _ = v["level"].(string)
-		detail, _ = v["detail"].(string)
-		switch level {
-		case "ok", "warn", "error":
-		default:
-			level = "ok"
+		level, _ := v["level"].(string)
+		detail, _ := v["detail"].(string)
+		if level == "" {
+			level = string(HealthOK)
 		}
-		return level, sanitize.String(detail)
+		if !slices.Contains(healthLevels, HealthLevel(level)) {
+			return "", "", fmt.Errorf("level %q is not one of %s", level, strings.Join(strs(healthLevels), ", "))
+		}
+		return HealthLevel(level), sanitize.String(detail), nil
 	}
-	return "ok", ""
+	return HealthOK, "", nil
 }
 
 // goHealthRows are the Go-side checks, in the order /health shows them.
 func (h *Host) goHealthRows() []healthCheck {
 	var out []healthCheck
-	add := func(level, name, detail string) {
+	add := func(level HealthLevel, name, detail string) {
 		out = append(out, healthCheck{level: level, name: name, detail: detail})
 	}
 
 	if h.DB == nil || h.GlobalDB == nil {
-		add("error", "store", fmt.Sprintf("sessions and memory unavailable: %v", h.initErr))
+		add(HealthError, "store", fmt.Sprintf("sessions and memory unavailable: %v", h.initErr))
 	} else {
-		add("ok", "store", "sessions and memory on disk")
+		add(HealthOK, "store", "sessions and memory on disk")
 	}
 
 	var names []string
@@ -192,16 +208,16 @@ func (h *Host) goHealthRows() []healthCheck {
 		}
 	}
 	if len(names) == 0 {
-		add("warn", "providers", "none usable")
+		add(HealthWarn, "providers", "none usable")
 	} else if n := len(h.Providers.Missing()); n > 0 {
-		add("ok", "providers", fmt.Sprintf("%s; %d builtin without a key exported", strings.Join(names, ", "), n))
+		add(HealthOK, "providers", fmt.Sprintf("%s; %d builtin without a key exported", strings.Join(names, ", "), n))
 	} else {
-		add("ok", "providers", strings.Join(names, ", "))
+		add(HealthOK, "providers", strings.Join(names, ", "))
 	}
 	if info := h.Builtin.Load().Info; info.Err != nil {
-		add("warn", "catalog", "the saved catalog did not load: "+info.Err.Error()+"; "+info.String()+" in use")
+		add(HealthWarn, "catalog", "the saved catalog did not load: "+info.Err.Error()+"; "+info.String()+" in use")
 	} else {
-		add("ok", "catalog", info.String())
+		add(HealthOK, "catalog", info.String())
 	}
 
 	id := h.sessionModelID()
@@ -213,7 +229,7 @@ func (h *Host) goHealthRows() []healthCheck {
 		m := h.roleModel(r.Name)
 		if !slices.Contains(ids, m) {
 			ids = append(ids, m)
-			if row := h.modelCheck(r.Name+" model", m); row.level != "ok" {
+			if row := h.modelCheck(r.Name+" model", m); row.level != HealthOK {
 				out = append(out, row)
 			}
 		}
@@ -230,31 +246,31 @@ func (h *Host) goHealthRows() []healthCheck {
 		unknown = append(unknown, m+": subagents trim their history only after the provider refuses it")
 	}
 	if len(unknown) > 0 {
-		add("warn", "context", "window unknown for "+strings.Join(unknown, "; ")+"; set context_window on the model entry, or agent.context_window")
+		add(HealthWarn, "context", "window unknown for "+strings.Join(unknown, "; ")+"; set context_window on the model entry, or agent.context_window")
 	} else if id != "" {
-		add("ok", "context", "window known, auto compaction on")
+		add(HealthOK, "context", "window known, auto compaction on")
 	}
 
 	if _, err := exec.LookPath("git"); err != nil {
-		add("warn", "git", "not found; the prompt has no git status and git commands that print file content ask")
+		add(HealthWarn, "git", "not found; the prompt has no git status and git commands that print file content ask")
 	} else {
-		add("ok", "git", "found")
+		add(HealthOK, "git", "found")
 	}
 
 	// internal/tools resolves rg the same way at init, in this process.
 	if rg, err := exec.LookPath("rg"); err != nil {
-		add("warn", "ripgrep", "not found; glob and grep use the slower Go walker")
+		add(HealthWarn, "ripgrep", "not found; glob and grep use the slower Go walker")
 	} else {
-		add("ok", "ripgrep", rg+" runs glob and grep")
+		add(HealthOK, "ripgrep", rg+" runs glob and grep")
 	}
 
 	switch s := h.sandbox.Load(); {
 	case s.err != nil:
-		add("warn", "sandbox", "unavailable: "+s.err.Error()+"; auto mode runs only read-only commands without asking")
+		add(HealthWarn, "sandbox", "unavailable: "+s.err.Error()+"; auto mode runs only read-only commands without asking")
 	case !s.backend.EnforcesProtect:
-		add("ok", "sandbox", s.backend.Name+" confines the commands auto mode and read-only agents run; it cannot keep .git read-only, so the project is read-only to them")
+		add(HealthOK, "sandbox", s.backend.Name+" confines the commands auto mode and read-only agents run; it cannot keep .git read-only, so the project is read-only to them")
 	default:
-		add("ok", "sandbox", s.backend.Name+" confines the commands auto mode and read-only agents run")
+		add(HealthOK, "sandbox", s.backend.Name+" confines the commands auto mode and read-only agents run")
 	}
 
 	h.agents.mu.Lock()
@@ -262,18 +278,18 @@ func (h *Host) goHealthRows() []healthCheck {
 	h.agents.mu.Unlock()
 	switch {
 	case errors.Is(reflectErr, errNoProposal):
-		add("warn", "reflector", "last run "+reflectErr.Error())
+		add(HealthWarn, "reflector", "last run "+reflectErr.Error())
 	case reflectErr != nil:
-		add("error", "reflector", "last run failed: "+reflectErr.Error())
+		add(HealthError, "reflector", "last run failed: "+reflectErr.Error())
 	default:
-		add("ok", "reflector", "runs when a session closes and at startup for idle ones")
+		add(HealthOK, "reflector", "runs when a session closes and at startup for idle ones")
 	}
 
 	if mem := h.pendingMemory.Load(); mem > 0 {
-		add("warn", "learning", fmt.Sprintf("%d %s to review in /memory", mem, plural(int(mem), "memory", "memories")))
+		add(HealthWarn, "learning", fmt.Sprintf("%d %s to review in /memory", mem, plural(int(mem), "memory", "memories")))
 		out[len(out)-1].run = "memory"
 	} else {
-		add("ok", "learning", "nothing to review")
+		add(HealthOK, "learning", "nothing to review")
 	}
 
 	// the project's own skills are always on and never in the registry, so
@@ -283,12 +299,12 @@ func (h *Host) goHealthRows() []healthCheck {
 	if proj > 0 {
 		msg += fmt.Sprintf(" (%d from this project)", proj)
 	}
-	add("ok", "skills", msg)
+	add(HealthOK, "skills", msg)
 
 	if h.RT.IsHot() {
-		add("error", "lua", "stopped: a boot step failed or a call wedged; see /errors, then /reload")
+		add(HealthError, "lua", "stopped: a boot step failed or a call wedged; see /errors, then /reload")
 	} else {
-		add("ok", "lua", "runtime healthy")
+		add(HealthOK, "lua", "runtime healthy")
 	}
 
 	// a widget in a region no node draws is the first thing a relayout breaks
@@ -300,9 +316,9 @@ func (h *Host) goHealthRows() []healthCheck {
 		}
 	}
 	if len(undrawn) > 0 {
-		add("warn", "layout", "the layout draws no region for: "+strings.Join(undrawn, ", "))
+		add(HealthWarn, "layout", "the layout draws no region for: "+strings.Join(undrawn, ", "))
 	} else {
-		add("ok", "layout", "every widget's region is drawn")
+		add(HealthOK, "layout", "every widget's region is drawn")
 	}
 
 	var loads []pluginLoad
@@ -317,11 +333,11 @@ func (h *Host) goHealthRows() []healthCheck {
 	}
 	switch n := fmt.Sprintf("%d %s", len(loads), plural(len(loads), "plugin", "plugins")); {
 	case len(loads) == 0:
-		add("ok", "plugins", "none on")
+		add(HealthOK, "plugins", "none on")
 	case failed == 0:
-		add("ok", "plugins", n+" ready")
+		add(HealthOK, "plugins", n+" ready")
 	default:
-		add("warn", "plugins", fmt.Sprintf("%s: %d failed, %d ready", n, failed, len(loads)-failed))
+		add(HealthWarn, "plugins", fmt.Sprintf("%s: %d failed, %d ready", n, failed, len(loads)-failed))
 	}
 	out[len(out)-1].run = "plugins"
 
@@ -341,20 +357,20 @@ func (h *Host) goHealthRows() []healthCheck {
 	if nerr > 0 {
 		// name one of them: headless there is no /errors to open, and a
 		// boot step that failed is an error so --health does not read green
-		level := "warn"
+		level := HealthWarn
 		if boot {
-			level = "error"
+			level = HealthError
 		}
 		add(level, "errors", fmt.Sprintf("%d since start, %s: %s", nerr, shown.source, Headline(shown.msg)))
 		out[len(out)-1].run = "errors"
 	} else {
-		add("ok", "errors", "none since start")
+		add(HealthOK, "errors", "none since start")
 	}
 
 	if h.ProjectTrusted() {
-		add("ok", "trust", "trusted: "+TildePath(h.Dirs.TrustRoot()))
+		add(HealthOK, "trust", "trusted: "+TildePath(h.Dirs.TrustRoot()))
 	} else {
-		add("warn", "trust", "not trusted: project config, instructions and language servers are off; /trust")
+		add(HealthWarn, "trust", "not trusted: project config, instructions and language servers are off; /trust")
 	}
 	out[len(out)-1].run = "trust"
 
@@ -366,17 +382,17 @@ func (h *Host) goHealthRows() []healthCheck {
 	}
 	switch {
 	case len(servers) == 0:
-		add("ok", "mcp", "no servers added")
+		add(HealthOK, "mcp", "no servers added")
 	case counts[StatusReady] == len(servers):
-		add("ok", "mcp", fmt.Sprintf("%d %s ready", len(servers), plural(len(servers), "server", "servers")))
+		add(HealthOK, "mcp", fmt.Sprintf("%d %s ready", len(servers), plural(len(servers), "server", "servers")))
 	default:
 		var parts []string
 		for _, st := range slices.Sorted(maps.Keys(counts)) {
 			parts = append(parts, fmt.Sprintf("%d %s", counts[st], st))
 		}
-		level := "warn"
+		level := HealthWarn
 		if counts[StatusReady]+counts[StatusStarting] == len(servers) {
-			level = "ok"
+			level = HealthOK
 		}
 		add(level, "mcp", fmt.Sprintf("%d %s: %s", len(servers), plural(len(servers), "server", "servers"), strings.Join(parts, ", ")))
 	}
@@ -394,11 +410,11 @@ func (h *Host) goHealthRows() []healthCheck {
 	}
 	switch {
 	case len(lsps) > 0:
-		add("ok", "lsp", strings.Join(lsps, ", "))
+		add(HealthOK, "lsp", strings.Join(lsps, ", "))
 	case !h.ProjectTrusted():
-		add("ok", "lsp", "off: project not trusted (/trust)")
+		add(HealthOK, "lsp", "off: project not trusted (/trust)")
 	default:
-		add("ok", "lsp", "none for this project: install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or zemi.lsp.add one")
+		add(HealthOK, "lsp", "none for this project: install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or zemi.lsp.add one")
 	}
 	return out
 }
@@ -413,11 +429,11 @@ func (h *Host) modelCheck(name, id string) healthCheck {
 	_, known := h.modelSpec(id)
 	switch err := h.modelErr(id); {
 	case err != nil:
-		return healthCheck{level: "error", name: name, detail: err.Error()}
+		return healthCheck{level: HealthError, name: name, detail: err.Error()}
 	case !known:
-		return healthCheck{level: "warn", name: name, detail: unlistedDetail(id)}
+		return healthCheck{level: HealthWarn, name: name, detail: unlistedDetail(id)}
 	}
-	return healthCheck{level: "ok", name: name, detail: id}
+	return healthCheck{level: HealthOK, name: name, detail: id}
 }
 
 // unlistedDetail is the warning for an id the provider's models list
@@ -431,7 +447,10 @@ func (h *Host) healthChecks() []healthCheck {
 }
 
 // HealthRow is one check for a caller with no UI (zemi --health).
-type HealthRow struct{ Level, Name, Detail string }
+type HealthRow struct {
+	Level        HealthLevel
+	Name, Detail string
+}
 
 // HealthRows runs the checks and returns them as plain data.
 func (h *Host) HealthRows() []HealthRow {
@@ -490,14 +509,14 @@ func (h *Host) healthItems() []any {
 	for _, c := range h.healthChecks() {
 		item := map[string]any{"text": c.name, "desc": c.detail, "section": "OK"}
 		// a detail view that only repeats a short, fine row leads nowhere
-		if c.run != "" || c.level != "ok" || utf8.RuneCountInString(c.detail) > 48 {
+		if c.run != "" || c.level != HealthOK || utf8.RuneCountInString(c.detail) > 48 {
 			item["detail"] = c.detail
 		}
 		if c.run != "" {
 			label := healthActions[c.run]
 			item["actions"] = []any{map[string]any{"text": label, "hotkey": strings.ToLower(label[:1]), "run": c.run}}
 		}
-		if c.level == "ok" {
+		if c.level == HealthOK {
 			ok = append(ok, item)
 			continue
 		}

@@ -81,7 +81,7 @@ type StreamTool struct {
 	Output  string // the last lines of the result (shortOutput)
 	Name    string
 	Input   string
-	Status  string // "wait" (arguments streaming, or queued behind a serial call), "run", "ok", "err", "stopped"
+	Status  CallStatus
 	partial string // the head of the streaming input, until Label is known
 }
 
@@ -573,7 +573,7 @@ func (h *Host) startTurn(text string) {
 func (h *Host) appendUserRows(text string) bool {
 	shown, tail, _ := strings.Cut(text, agent.AttachMarker)
 	for _, head := range reportHeads(tail) {
-		h.AppendChat(ChatMessage{Role: "assistant", Kind: "notice", Text: head})
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head})
 	}
 	if shown == "" {
 		return false
@@ -794,7 +794,7 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 func (h *Host) cutAssistantRows(n int) {
 	h.tMu.Lock()
 	if t := h.session.Transcript; len(t) > n {
-		kept := slices.DeleteFunc(slices.Clone(t[n:]), func(m ChatMessage) bool { return m.Role == "assistant" })
+		kept := slices.DeleteFunc(slices.Clone(t[n:]), func(m ChatMessage) bool { return m.Role == fantasy.MessageRoleAssistant })
 		// replaced whole, like setTranscript: readers share the old array
 		// (Host.Session) and the chat widget caches rows by index
 		h.session.Transcript = append(slices.Clip(t[:n]), kept...)
@@ -816,7 +816,7 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 	// NOTE: reasoning a provider interleaves after a call still open in the
 	// same step draws above that call live and below it on resume; an
 	// ordered live list would fix it.
-	if slices.ContainsFunc(ag.tools, func(t StreamTool) bool { return t.Status != "run" && t.Status != "wait" }) {
+	if slices.ContainsFunc(ag.tools, func(t StreamTool) bool { return t.Status != CallRun && t.Status != CallWait }) {
 		s.h.flushOutput(TurnStat{})
 	}
 	ag.beginThinking()
@@ -831,7 +831,7 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 // arguments: a write's file body or a long heredoc takes seconds that a
 // spinner alone says nothing about.
 func (s *streamAdapter) ToolCallPending(id, name string) {
-	s.openToolRow(StreamTool{ID: id, Name: name, Status: "wait"})
+	s.openToolRow(StreamTool{ID: id, Name: name, Status: CallWait})
 }
 
 // inputDiff is a file tool's change as its input describes it, before it
@@ -848,7 +848,7 @@ func inputDiff(name, input string) string {
 }
 
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
-	row := StreamTool{ID: id, Name: name, Input: toolSummary(input), Label: toolLabel(input), Status: "wait", Diff: inputDiff(name, input)}
+	row := StreamTool{ID: id, Name: name, Input: toolSummary(input), Label: toolLabel(input), Status: CallWait, Diff: inputDiff(name, input)}
 	ag := s.h.agents
 	ag.mu.Lock()
 	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
@@ -867,7 +867,7 @@ func (s *streamAdapter) ToolCallStart(id, name, input string) {
 func (s *streamAdapter) ToolCallRunning(id string) {
 	ag := s.h.agents
 	ag.mu.Lock()
-	if i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id && t.Status == "wait" }); i >= 0 {
+	if i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id && t.Status == CallWait }); i >= 0 {
 		ag.tools[i].Status, ag.tools[i].Started = "run", time.Now()
 	}
 	ag.mu.Unlock()
@@ -899,7 +899,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 	ag.mu.Lock()
 	for i := len(ag.tools) - 1; i >= 0; i-- {
 		t := &ag.tools[i]
-		if t.ID == id && (t.Status == "run" || t.Status == "wait") {
+		if t.ID == id && (t.Status == CallRun || t.Status == CallWait) {
 			t.Status, t.Output = status, shortOutput(output)
 			if !ok {
 				t.Diff = "" // the change did not happen
@@ -924,21 +924,21 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 	}
 }
 
-// toolStatus is a finished call's row status: "stopped" when the user
+// toolStatus is a finished call's row status: stopped when the user
 // denied, dismissed or interrupted it (cancelled), so the row does not read
-// as a failure, and "bg" when its work goes on in the background.
-func toolStatus(name string, ok bool, output string, cancelled bool) string {
+// as a failure.
+func toolStatus(name string, ok bool, output string, cancelled bool) CallStatus {
 	switch {
 	case name == tools.ToolAgent && strings.HasPrefix(output, bgAgentStarted),
 		name == tools.ToolBash && strings.Contains(output, "so it "+tools.JobHandoff),
 		name == tools.ToolJobStart && ok:
-		return "bg"
+		return CallBG
 	case ok:
-		return "ok"
+		return CallOK
 	case cancelled || tools.UserStopped(output):
-		return "stopped"
+		return CallStopped
 	}
-	return "err"
+	return CallErr
 }
 
 // StepDone bills a completed step's usage to the live session tally, so the
@@ -1007,8 +1007,8 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	// a call still open here was cut off: by the user, or by the error that
 	// ended the turn
 	for i, t := range ag.tools {
-		if t.Status == "run" || t.Status == "wait" {
-			ag.tools[i].Status, ag.tools[i].Diff = map[bool]string{true: "stopped", false: "err"}[errors.Is(err, context.Canceled)], ""
+		if t.Status == CallRun || t.Status == CallWait {
+			ag.tools[i].Status, ag.tools[i].Diff = map[bool]CallStatus{true: CallStopped, false: CallErr}[errors.Is(err, context.Canceled)], ""
 		}
 	}
 	h.flushOutput(stat)
@@ -1020,7 +1020,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	}
 	ui := h.hooks()
 	if ui != nil {
-		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == "stopped" })
+		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == CallStopped })
 		ui.TurnDone(h.friendlyError(err), stopped)
 	}
 	// a print run exits before a title call answers: no UI, no title
@@ -1038,7 +1038,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
 		// The failure stays in the transcript: a toast expires, and a turn
 		// that ended silently looks like zemi ignored the message.
-		row := ChatMessage{Role: "assistant", Kind: "error", Text: truncRunes(sanitize.String(h.errorRowText(err)), 400)}
+		row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: truncRunes(sanitize.String(h.errorRowText(err)), 400)}
 		if errors.Is(err, context.Canceled) {
 			row.Status = "cancelled"
 		}
@@ -1068,17 +1068,17 @@ func (h *Host) flushOutput(stat TurnStat) {
 	ag.endThinking()
 	var rows []ChatMessage
 	if strings.TrimSpace(ag.reasonBuf) != "" {
-		rows = append(rows, ChatMessage{Role: "assistant", Kind: "reasoning", Text: ag.reasonBuf, Stat: &TurnStat{ThoughtMS: ag.thought.Milliseconds()}})
+		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: ag.reasonBuf, Stat: &TurnStat{ThoughtMS: ag.thought.Milliseconds()}})
 	}
-	done := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.Status == "run" || t.Status == "wait" })
+	done := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.Status == CallRun || t.Status == CallWait })
 	if done < 0 {
 		done = len(ag.tools)
 	}
 	for _, t := range ag.tools[:done] {
-		rows = append(rows, ChatMessage{Role: "assistant", Kind: "tool", Tool: t.Name, Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
+		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: t.Name, Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
 	}
 	if strings.TrimSpace(ag.textBuf) != "" {
-		rows = append(rows, ChatMessage{Role: "assistant", Text: ag.textBuf, Stat: &stat})
+		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: ag.textBuf, Stat: &stat})
 	}
 	ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", slices.Clone(ag.tools[done:]), "", 0
 	h.tMu.Lock()
@@ -1446,9 +1446,9 @@ func (h *Host) Btw(question string) error {
 		h.GoSafe("btw", func() {
 			defer h.endTurnAfterPanic()
 			answer, err := h.btw(scope.ctx, question)
-			row := ChatMessage{Role: "assistant", Text: answer}
+			row := ChatMessage{Role: fantasy.MessageRoleAssistant, Text: answer}
 			if err != nil {
-				row = ChatMessage{Role: "assistant", Kind: "error", Text: sanitize.String(h.errorRowText(err))}
+				row = ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: sanitize.String(h.errorRowText(err))}
 			}
 			h.AppendChat(row)
 			h.handOff(scope)
@@ -1867,7 +1867,7 @@ func (h *Host) OpenModelPicker(role string) error {
 }
 
 func (h *Host) modelPicker(role string) Overlay {
-	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: "bottom-right", Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
+	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No models yet. Add a provider to " + h.initPath() + "."}
 	run, cur := "model ", h.roleModel("chat")
 	switch role {
 	case "":
@@ -1967,7 +1967,7 @@ func (h *Host) OpenModelRoles() error {
 		return items, nil
 	}
 	items, _ := build()
-	ui.OpenOverlay(Overlay{ID: "model roles", Title: "Model roles", Origin: lua.OriginBuiltin, Items: items, Anchor: "bottom-right", Verb: "open", Reload: build})
+	ui.OpenOverlay(Overlay{ID: "model roles", Title: "Model roles", Origin: lua.OriginBuiltin, Items: items, Anchor: OverlayBottomRight, Verb: "open", Reload: build})
 	return nil
 }
 
@@ -2140,8 +2140,8 @@ func (h *Host) modelSetErr(role, id string) error {
 // config the provider does not list would otherwise run silently until the
 // provider refuses it.
 func (h *Host) WarnModel() {
-	if row := h.modelRow(); row.level != "ok" {
-		h.Notify(logging.Warn, map[string]string{"error": "Model unavailable", "warn": unlistedTitle}[row.level], row.detail)
+	if row := h.modelRow(); row.level != HealthOK {
+		h.Notify(logging.Warn, map[HealthLevel]string{HealthError: "Model unavailable", HealthWarn: unlistedTitle}[row.level], row.detail)
 	}
 }
 
@@ -2338,7 +2338,7 @@ func (h *Host) OpenProfilePicker() error {
 		}
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "profile", Title: "Profile", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: "bottom-right", Verb: "pick"})
+	ui.OpenOverlay(Overlay{ID: "profile", Title: "Profile", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Anchor: OverlayBottomRight, Verb: "pick"})
 	return nil
 }
 

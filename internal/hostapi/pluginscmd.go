@@ -23,7 +23,7 @@ const newPluginPrompt = "I want a new zemi plugin. Load the zemi-customize skill
 // open, which need the screen.
 func (h *Host) pluginsCommands() []*Command {
 	return []*Command{{
-		Name: "plugins", NArgs: "*", Desc: "install, update and turn plugins on or off",
+		Name: "plugins", NArgs: NArgsAny, Desc: "install, update and turn plugins on or off",
 		GoFn: func(h *Host, args string) error { return h.pluginsCommand(strings.Fields(args)) },
 		GoComplete: subcommandCompleter([]string{"new", "install", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
 			if sub == "new" || sub == "install" || sub == "check" {

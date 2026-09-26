@@ -151,18 +151,19 @@ func (a *App) layout(w, h int) screenLayout {
 			s.rects[n.ID] = l.rect
 		}
 		switch n.Kind {
-		case "composer":
+		case hostapi.LayoutComposer:
 			s.rects["composer"] = l.rect
 			s.bar = s.bar || n.Left != "" || n.Right != ""
-		case "bar":
+		case hostapi.LayoutBar:
 			s.bar = true
-		case "region":
+		case hostapi.LayoutRegion:
 			if n.Scroll != "" && (s.scroll == "" || inStage && !staged) {
 				s.scroll, staged = n.ID, inStage
 			}
 			if n.Focusable {
 				s.focusable = append(s.focusable, n.ID)
 			}
+		case hostapi.LayoutBox, hostapi.LayoutSpacer:
 		}
 		for _, k := range l.kids {
 			walk(k, inStage)
@@ -204,10 +205,10 @@ func floatAxis(sz hostapi.Size, rel int) int {
 // fit, the last collapsing child is hidden for the frame.
 func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 	l := laid{node: n, rect: r, rows: r.Dy()}
-	if n.Kind != "box" {
+	if n.Kind != hostapi.LayoutBox {
 		return l
 	}
-	row := n.Dir == "row"
+	row := n.Dir == hostapi.DirRow
 	length, cross := r.Dy(), r.Dx()
 	if row {
 		length, cross = cross, length
@@ -273,15 +274,16 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 // measure is the rows a content-sized node draws at width.
 func (a *App) measure(n *hostapi.LayoutNode, width int) int {
 	switch n.Kind {
-	case "region":
+	case hostapi.LayoutRegion:
 		return len(a.regionLines(n.Region, regionWidth(n, width)))
-	case "composer":
+	case hostapi.LayoutComposer:
 		if n.Frame {
 			return len(a.composerRows(frameInner(width))) + 2
 		}
 		return len(a.composerRows(width))
-	case "bar":
+	case hostapi.LayoutBar:
 		return 1
+	case hostapi.LayoutBox, hostapi.LayoutSpacer:
 	}
 	return 0
 }
@@ -318,17 +320,18 @@ func (a *App) shownWidgets() []shownWidget {
 	var walk func(l laid)
 	walk = func(l laid) {
 		switch l.node.Kind {
-		case "region":
+		case hostapi.LayoutRegion:
 			add(l.node.Region, regionWidth(l.node, l.rect.Dx()), l.rows)
-		case "bar":
+		case hostapi.LayoutBar:
 			add(l.node.Left, l.rect.Dx(), 1)
 			add(l.node.Right, l.rect.Dx(), 1)
-		case "composer":
+		case hostapi.LayoutComposer:
 			if l.node.Frame {
 				add(l.node.Top, max(l.rect.Dx()-2, 1), 1) // the whole rule between the corners
 				add(l.node.Left, frameInner(l.rect.Dx()), 1)
 				add(l.node.Right, frameInner(l.rect.Dx()), 1)
 			}
+		case hostapi.LayoutBox, hostapi.LayoutSpacer:
 		}
 		for _, k := range l.kids {
 			walk(k)
@@ -347,7 +350,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	n, w, h := l.node, l.rect.Dx(), l.rect.Dy()
 	var rows [][]hostapi.Segment
 	switch {
-	case n.Kind == "box" && n.Dir == "row":
+	case n.Kind == hostapi.LayoutBox && n.Dir == hostapi.DirRow:
 		joined := make([][]hostapi.Segment, h)
 		x := 0
 		for _, k := range l.kids {
@@ -363,27 +366,27 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 			x += k.rect.Dx()
 		}
 		rows = joined
-	case n.Kind == "box":
+	case n.Kind == hostapi.LayoutBox:
 		for i, k := range l.kids {
 			if i > 0 && n.Sep {
 				rows = append(rows, []hostapi.Segment{{Text: strings.Repeat("─", w), HL: "Rule", NoCopy: true}})
 			}
 			rows = append(rows, a.paint(k)...)
 		}
-	case n.Kind == "region" && n.Scroll != "":
+	case n.Kind == hostapi.LayoutRegion && n.Scroll != "":
 		rows = a.paintScrolled(n, l.rect)
-	case n.Kind == "region":
+	case n.Kind == hostapi.LayoutRegion:
 		rows = a.regionLines(n.Region, w)
 		for i, row := range rows {
 			if segsWidth(row) == 0 {
 				rows[i] = padSegs(row, w) // a blank line is a blank row
 			}
 		}
-	case n.Kind == "composer" && n.Frame:
+	case n.Kind == hostapi.LayoutComposer && n.Frame:
 		rows = a.composerFrame(n, w)
-	case n.Kind == "composer":
+	case n.Kind == hostapi.LayoutComposer:
 		rows = a.composerRows(w)
-	case n.Kind == "bar":
+	case n.Kind == hostapi.LayoutBar:
 		rows = [][]hostapi.Segment{a.statusRow(w, n.Left, n.Right)}
 	}
 	for len(rows) < h {
@@ -652,8 +655,8 @@ func abs(n int) int {
 // from the start.
 func (a *App) scrollOf(n *hostapi.LayoutNode) *scrollState {
 	st := a.scrolls[n.ID]
-	if st == nil || st.bottom != (n.Scroll == "bottom") {
-		st = &scrollState{follow: n.Scroll == "bottom", bottom: n.Scroll == "bottom"}
+	if st == nil || st.bottom != (n.Scroll == hostapi.EdgeBottom) {
+		st = &scrollState{follow: n.Scroll == hostapi.EdgeBottom, bottom: n.Scroll == hostapi.EdgeBottom}
 		a.scrolls[n.ID] = st
 	}
 	return st
@@ -704,10 +707,10 @@ func (a *App) paintFloats(rows [][]hostapi.Segment, s *screenLayout, w, h int) {
 			continue
 		}
 		x, y := pf.rel.Min.X+f.Col, pf.rel.Min.Y+f.Row
-		if strings.HasSuffix(f.Anchor, "E") {
+		if f.Anchor == hostapi.AnchorNE || f.Anchor == hostapi.AnchorSE {
 			x = pf.rel.Max.X - fw + f.Col
 		}
-		if strings.HasPrefix(f.Anchor, "S") {
+		if f.Anchor == hostapi.AnchorSW || f.Anchor == hostapi.AnchorSE {
 			y = pf.rel.Max.Y - fh + f.Row
 		}
 		x, y = max(0, min(x, w-fw)), max(0, min(y, h-fh))

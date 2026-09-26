@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/fantasy"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
@@ -37,16 +38,16 @@ func (h *Host) RunShell(cmd string) {
 		err := proc.Run(c)
 		raw, written := out.Snapshot()
 		text := tools.CmdOut(h.ScratchDir(), "shell", raw, written-int64(out.Max))
-		status := "ok"
+		status := CallOK
 		switch {
 		case errors.Is(ctx.Err(), context.DeadlineExceeded):
-			status, text = "err", strings.TrimSpace(text+"\ntimed out after "+shellTimeout.String())
+			status, text = CallErr, strings.TrimSpace(text+"\ntimed out after "+shellTimeout.String())
 		case err != nil:
-			status, text = "err", strings.TrimSpace(text+"\n"+err.Error())
+			status, text = CallErr, strings.TrimSpace(text+"\n"+err.Error())
 		}
 		// the model reads the output as a bash call's, through shellNotes; the
 		// row keeps its head and its tail, where the failure is
-		h.AppendChat(ChatMessage{Role: "user", Kind: "shell", Text: sanitize.String(cmd), Detail: shortOutput(text), Status: status})
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Kind: RowShell, Text: sanitize.String(cmd), Detail: shortOutput(text), Status: status})
 		ag := h.agents
 		ag.mu.Lock()
 		ag.shellNotes = append(ag.shellNotes, fmt.Sprintf("\n<shell command=%q status=%q>\n%s\n</shell>", cmd, status, text))

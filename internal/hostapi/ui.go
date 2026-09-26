@@ -146,9 +146,9 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			Origin: h.RT.CurrentOrigin(L),
 			Path:   h.RT.CurrentPath(L),
 			Gen:    h.currentGen(),
-			Anchor: rawString(tb, "anchor"),
+			Anchor: OverlayAnchor(rawString(tb, "anchor")),
 		}
-		if o.Anchor != "" && o.Anchor != "bottom-left" && o.Anchor != "bottom-right" {
+		if o.Anchor != "" && !slices.Contains(overlayAnchors, o.Anchor) {
 			L.RaiseError("zemi.ui.overlay.open: anchor must be \"bottom-left\", \"bottom-right\" or nil, got %q", o.Anchor)
 		}
 		if lines, ok := tb.RawGetString("body").(*glua.LTable); ok {
@@ -454,9 +454,9 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 
 	// scroll(action, id?) is the zemi.ui.scroll.* host actions for a click.
 	tb.RawSetString("scroll", L.NewFunction(func(L *glua.LState) int {
-		kind := L.CheckString(1)
-		if _, ok := h.hostActions["zemi.ui.scroll."+kind]; !ok {
-			L.ArgError(1, "up, down, top, bottom, line_up or line_down")
+		kind := ScrollAction(L.CheckString(1))
+		if !slices.Contains(scrollActions, kind) {
+			L.ArgError(1, strings.Join(strs(scrollActions), ", "))
 		}
 		h.scroll(kind, L.OptString(2, ""))
 		return 0
@@ -555,12 +555,12 @@ func hlSpec(L *glua.LState, where string, m map[string]any, palette map[string]s
 	switch u := m["underline"].(type) {
 	case nil:
 	case bool:
-		spec.Underline = map[bool]string{true: "single", false: "none"}[u]
+		spec.Underline = map[bool]Underline{true: UnderlineSingle, false: UnderlineNone}[u]
 	case string:
-		if !slices.Contains(UnderlineKinds, u) {
-			L.RaiseError("%s: underline %q is not one of %s", where, u, strings.Join(UnderlineKinds, ", "))
+		if !slices.Contains(underlines, Underline(u)) {
+			L.RaiseError("%s: underline %q is not one of %s", where, u, strings.Join(strs(underlines), ", "))
 		}
-		spec.Underline = u
+		spec.Underline = Underline(u)
 	default:
 		L.RaiseError("%s: underline must be a boolean or a string", where)
 	}

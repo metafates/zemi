@@ -40,7 +40,7 @@ type AgentDef struct {
 	Model    string
 	Tools    []string // nil = every tool a subagent may use
 	System   string
-	Source   string // builtin, user, plugin or project
+	Source   lua.Origin
 	Path     string // the file, "" for a builtin
 	ReadOnly bool   // file writes denied even when a tool could make one
 }
@@ -57,7 +57,7 @@ var builtinAgents = []AgentDef{
 		Tools:       []string{"read", "glob", "grep", "lsp", "fetch", "web_search", "skill"},
 		ReadOnly:    true,
 		System:      "Search broadly, read what matters, never guess. Lead with the answer, quote code only when the exact text matters, and when you did not find it, say where you looked.",
-		Source:      "builtin",
+		Source:      lua.OriginBuiltin,
 	},
 	{
 		Name:        "general",
@@ -65,7 +65,7 @@ var builtinAgents = []AgentDef{
 		// this replaces basePrompt rather than extending it, so the git and
 		// verification rules have to be said again here
 		System: "Carry the task through: change, verify with the narrowest test or build that covers the change, report. Do only what the task asks; do not commit, push or change git state unless it says to.",
-		Source: "builtin",
+		Source: lua.OriginBuiltin,
 	},
 	{
 		Name:        "web",
@@ -73,7 +73,7 @@ var builtinAgents = []AgentDef{
 		Tools:       []string{"web_search", "fetch", "read", "grep", "glob"},
 		ReadOnly:    true,
 		System:      "Break the question into short, specific searches, fetch the pages that look relevant and follow their links when they hold the answer. A long page is saved to a file the fetch result names: grep and read that file instead of fetching again. Answer only what was asked, quote the exact text when it matters, and end with a Sources list of the URLs that contributed.",
-		Source:      "builtin",
+		Source:      lua.OriginBuiltin,
 	},
 	{
 		// the planner a read-only agent delegates to in a planning session (§6): a
@@ -84,7 +84,7 @@ var builtinAgents = []AgentDef{
 		Tools:       []string{"read", "glob", "grep", "lsp", "skill", "fetch", "web_search"},
 		ReadOnly:    true,
 		System:      "Read the code the change touches and the patterns it should reuse; never guess what a read would answer. Then report a plan someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most, then the open questions only the user can answer.",
-		Source:      "builtin",
+		Source:      lua.OriginBuiltin,
 	},
 }
 
@@ -107,14 +107,14 @@ func (h *Host) agentDefs() []AgentDef {
 		}
 	}
 	if h.Dirs.ConfigHome != "" {
-		add(h.loadAgentDir(filepath.Join(h.Dirs.ConfigHome, "agents"), "user"))
+		add(h.loadAgentDir(filepath.Join(h.Dirs.ConfigHome, "agents"), lua.OriginUser))
 	}
 	add(builtinAgents)
 	for _, p := range h.pluginDirs() {
-		add(h.loadAgentDir(filepath.Join(p, "agents"), "plugin"))
+		add(h.loadAgentDir(filepath.Join(p, "agents"), lua.OriginPlugin))
 	}
 	if dir := h.projectAgentDir(); dir != "" && h.ProjectTrusted() {
-		add(h.loadAgentDir(dir, "project"))
+		add(h.loadAgentDir(dir, lua.OriginProject))
 	}
 	return out
 }
@@ -147,7 +147,7 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 
 // loadAgentDir parses every *.md in dir; a broken file is logged and
 // skipped so it cannot hide the others.
-func (h *Host) loadAgentDir(dir, source string) []AgentDef {
+func (h *Host) loadAgentDir(dir string, source lua.Origin) []AgentDef {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
@@ -167,7 +167,7 @@ func (h *Host) loadAgentDir(dir, source string) []AgentDef {
 	return out
 }
 
-func parseAgentFile(path, source string) (AgentDef, error) {
+func parseAgentFile(path string, source lua.Origin) (AgentDef, error) {
 	block, body, err := readFrontmatterFile(path)
 	if err != nil {
 		return AgentDef{}, err
@@ -482,11 +482,11 @@ func (s *subagentHooks) TextDelta(text string) {
 func (s *subagentHooks) ReasoningDelta(text string) {
 	run := s.run
 	run.mu.Lock()
-	if n := len(run.tr); n == 0 || run.tr[n-1].Kind != "reasoning" {
+	if n := len(run.tr); n == 0 || run.tr[n-1].Kind != RowReasoning {
 		run.flush()
 	}
-	if n := len(run.tr); n == 0 || run.tr[n-1].Kind != "reasoning" {
-		run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "reasoning"})
+	if n := len(run.tr); n == 0 || run.tr[n-1].Kind != RowReasoning {
+		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning})
 		s.thinkAt = time.Now()
 	}
 	run.tr[len(run.tr)-1].Text += text
@@ -501,7 +501,7 @@ func (s *subagentHooks) ToolInputDelta(string, string)  {}
 // endThinking times the Thought row the next text or call ends, as the
 // main agent's is timed (run.mu held).
 func (s *subagentHooks) endThinking() {
-	if n := len(s.run.tr); !s.thinkAt.IsZero() && n > 0 && s.run.tr[n-1].Kind == "reasoning" {
+	if n := len(s.run.tr); !s.thinkAt.IsZero() && n > 0 && s.run.tr[n-1].Kind == RowReasoning {
 		s.run.tr[n-1].Stat = &TurnStat{ThoughtMS: time.Since(s.thinkAt).Milliseconds()}
 	}
 	s.thinkAt = time.Time{}
@@ -516,7 +516,7 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run.calls++
 	n := run.calls - s.base
 	run.rows[id] = len(run.tr)
-	run.tr = append(run.tr, ChatMessage{Role: "assistant", Kind: "tool", Tool: name, Text: toolSummary(input), Label: toolLabel(input), Status: "wait", Diff: diff})
+	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: name, Text: toolSummary(input), Label: toolLabel(input), Status: CallWait, Diff: diff})
 	run.mu.Unlock()
 	// one line: the widget wraps, and a long command would push the chat around
 	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, plural(n, "call", "calls"), name,
@@ -897,7 +897,7 @@ func fmtDuration(d time.Duration) string {
 // agentsCommands is /agents.
 func (h *Host) agentsCommands() []*Command {
 	return []*Command{{
-		Name: "agents", NArgs: "*", Desc: "see running agents and the ones zemi can start",
+		Name: "agents", NArgs: NArgsAny, Desc: "see running agents and the ones zemi can start",
 		GoFn: func(h *Host, args string) error {
 			sub, id, _ := strings.Cut(strings.TrimSpace(args), " ")
 			switch id = strings.TrimSpace(id); sub {
@@ -921,7 +921,7 @@ func (h *Host) openAgents() error {
 		return err
 	}
 	defs := h.agentDefs()
-	sortBySource(defs, func(d AgentDef) string { return d.Source })
+	sortBySource(defs, func(d AgentDef) lua.Origin { return d.Source })
 	items := h.agentRunItems()
 	// jobs belong to the host, so a server started in an earlier session shows too
 	for _, j := range h.jobs.List() {

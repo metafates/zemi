@@ -26,6 +26,8 @@ const (
 	Recipe  Source = "recipe"  // a trusted project's, kept in zemi's state dir, body only, never stored
 )
 
+var Sources = []Source{User, Builtin, Plugin, Project, Recipe}
+
 // Stored reports a source with a row in the skills table, so an enabled flag.
 func (s Source) Stored() bool { return s != Project && s != Recipe }
 

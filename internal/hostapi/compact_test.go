@@ -227,9 +227,9 @@ func TestCompactionMidTurn(t *testing.T) {
 			var kinds []string
 			errRow := ""
 			for _, row := range h.Session().Transcript {
-				kinds = append(kinds, row.Kind)
+				kinds = append(kinds, string(row.Kind))
 				if row.Kind == "error" {
-					errRow = row.Status
+					errRow = string(row.Status)
 				}
 			}
 			if got := strings.Join(kinds, ","); strings.Contains(got, "compact") != (c.summaryErr == nil && !c.cancel) || errRow != c.errRow {

@@ -53,7 +53,7 @@ func TestNargsOK(t *testing.T) {
 		{"+", " ", "/foo requires an argument"},
 		{"*", "a b c", ""},
 	} {
-		h.Commands.Add(&Command{Name: "foo", NArgs: c.nargs, GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin, Gen: h.currentGen()})
+		h.Commands.Add(&Command{Name: "foo", NArgs: NArgs(c.nargs), GoFn: func(*Host, string) error { return nil }, Origin: lua.OriginBuiltin, Gen: h.currentGen()})
 		got := ""
 		if err := h.RunCommand(context.Background(), "foo", c.args); err != nil {
 			got = err.Error()

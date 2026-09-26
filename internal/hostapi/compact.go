@@ -297,7 +297,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 		if freed > 0 && reason == compactAuto && used < threshold {
 			runner.History = pruned
 			h.compactDone(used, false)
-			h.AppendChat(ChatMessage{Role: "assistant", Kind: "compact", Text: fmt.Sprintf("Cleared %dk tokens of old tool output", freed/1000)})
+			h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: fmt.Sprintf("Cleared %dk tokens of old tool output", freed/1000)})
 			return nil
 		}
 		history = pruned
@@ -367,7 +367,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	overhead := h.agents.promptTokens // every prompt carries it, the messages are not the whole context
 	h.agents.mu.Unlock()
 	h.compactDone(estTokens(runner.History...)+overhead, reason == compactManual)
-	h.AppendChat(ChatMessage{Role: "assistant", Kind: "compact", Text: fmt.Sprintf("Compacted %d messages", len(head))})
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: fmt.Sprintf("Compacted %d messages", len(head))})
 	return nil
 }
 

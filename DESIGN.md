@@ -1413,7 +1413,7 @@ provenance string.
   `ready`, `failed`, `stopped`, `idle` (a language server waiting for its
   first file) and `off` (disabled). A list grouped by source
   (`/skills`, `/agents`, `/workflows`) puts the user's first,
-  then builtin, plugin and project (`sortBySource`).
+  then builtin, plugin and project, by `lua.Origin.Rank` (`sortBySource`).
 - **Layout tree** (`zemi.ui.layout.set/get/rects`, `internal/ui/layout.go`): Lua hands
   over plain data, Go validates it once and solves it every frame on the Update
   goroutine, so the screen never waits on the interpreter. Boxes (row or col, optional
