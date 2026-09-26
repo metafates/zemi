@@ -2233,12 +2233,14 @@ built-ins with scripted stubs; `expect` receives a transcript object
 
 ### 10.7 Context assembly (how learning reaches the model)
 
-Per session, the system prompt is assembled from: the base prompt + context
-files (AGENTS.md, else CLAUDE.md, injected verbatim) + **memory digest**
-(every live memory, this project then every project, newest first, each
-scope cut at a 3 KB budget the write gate keeps it under (§10.4), each line
-prefixed with id, origin and age in days; no relevance ranking) +
-**skills index** (name + description only). The digest is pinned at
+Per session, the system prompt is assembled most stable first, so a
+provider that caches any shared prefix shares it across sessions: the
+base prompt + context files (AGENTS.md, else CLAUDE.md, injected
+verbatim) + **skills index** (name + description only) + Lua sections
+(§6.3) + the environment + **memory digest** (every live memory, this project then
+every project, newest first, each scope cut at a 3 KB budget the write
+gate keeps it under (§10.4), each line prefixed with id, origin and age in
+days; no relevance ranking). The environment and the digest are pinned at
 session start and refreshed only at compaction (triggered before a turn
 or at a step boundary once the context the last step used, cache
 included, is within a 20k reply reserve plus 13k of the window but at

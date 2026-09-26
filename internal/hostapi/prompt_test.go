@@ -12,9 +12,10 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// TestSystemPromptSections: the environment is pinned per session, project
-// instructions sit under their own heading, and a profile's own prompt
-// still carries the zemi section.
+// TestSystemPromptSections: the environment is pinned per session and
+// follows the instructions, so a shared prefix spans sessions,
+// project instructions sit under their own heading, and a profile's own
+// prompt still carries the zemi section.
 func TestSystemPromptSections(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.ConfigHome = t.TempDir()
@@ -32,6 +33,9 @@ func TestSystemPromptSections(t *testing.T) {
 		if !strings.Contains(sys, want) {
 			t.Errorf("default prompt misses %q", want)
 		}
+	}
+	if i, j := strings.Index(sys, "# Project instructions"), strings.Index(sys, "# Environment"); i >= j {
+		t.Errorf("the per-session environment at %d precedes the instructions at %d", j, i)
 	}
 	lean := h.buildSystem(&Profile{Tools: []string{"bash"}})
 	for _, gone := range []string{"# Delegating", "zemi-customize", "zemi-lua", "# Skills"} {

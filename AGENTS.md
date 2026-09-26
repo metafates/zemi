@@ -793,12 +793,13 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   (`promptBox`, `choiceRows`); Lua reads the composer through a snapshot the UI publishes and
   edits it through `UIHooks.ComposerEdit`, applied on the UI goroutine.
 - **System prompt** (prompt.go): `basePrompt` + `delegationPrompt` for the default profile,
-  then `zemiPrompt`, the read-only agent's plan section, the per-session pinned
-  `environmentPrompt`, instruction files
+  then `zemiPrompt`, the read-only agent's plan section, instruction files
   under `# Project instructions` (the repository's files share a 32 KB budget spent deepest
   file first, so a huge root `AGENTS.md` cannot squeeze out the package's own; the user's
-  `<config>/AGENTS.md` gets its own budget), Lua sections (`agent.assemble`, then the `prompt`
-  of each Lua tool in the tool set), skills, digest. It is built from the
+  `<config>/AGENTS.md` gets its own budget), skills, Lua sections (`agent.assemble`, then the
+  `prompt` of each Lua tool in the tool set), the per-session pinned `environmentPrompt`,
+  digest: most stable first, so a provider that caches any shared prefix (OpenAI, DeepSeek,
+  Gemini) shares the instructions across sessions. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index and the zemi-* sentence, no `read`
   drops its "Using tools" line, and a read-only agent without the `plan` tool

@@ -219,7 +219,9 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	if hasTool(toolset, tools.ToolSkill) {
 		index = h.skillsIndexPrompt()
 	}
-	out := h.withDigest(sys + env + sections + luaSections + index)
+	// Most stable first: providers that cache any shared prefix then share
+	// the instructions across sessions; env and the digest are per session.
+	out := h.withDigest(sys + sections + index + luaSections + env)
 	parts := promptParts{base: len(sys) + len(env), instructions: len(sections), lua: len(luaSections), skills: len(index)}
 	parts.digest = len(out) - parts.base - parts.instructions - parts.lua - parts.skills
 	return out, parts
