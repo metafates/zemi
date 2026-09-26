@@ -1269,8 +1269,8 @@ func str(v any) string {
 }
 
 // searchRoot is where glob and grep look: path, or the working directory.
-// NOTE: the walk starts from this raw string, not the perm.Path the gate
-// judged, so a directory swapped for a symlink after the check is walked;
+// NOTE: the walk starts from this raw string, not the resolved root the
+// gate judged, so a directory swapped for a symlink after the check is walked;
 // each hit meets the deny and ask read rules (ruledOut), not the jail default.
 func searchRoot(in map[string]any) string {
 	if s := str(in["path"]); s != "" {
