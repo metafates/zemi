@@ -185,6 +185,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		// or a select's item keeps the fields that parse
 		r, _ := hostapi.ParseOverlayItem(item)
 		r.Desc, r.Key, r.Section, r.Verb = sanitize.Line(r.Desc), sanitize.Line(r.Key), sanitize.Line(r.Section), sanitize.Line(r.Verb)
+		r.Hotkey = sanitize.Line(r.Hotkey)
 		r.Fill, r.Copy = sanitize.String(r.Fill), sanitize.String(r.Copy) // Detail is the detail view's Body, sanitized there
 		if o.Origin != lua.OriginBuiltin && o.Origin != lua.OriginUser {
 			r.Run = "" // so a plugin row label cannot disguise a command
