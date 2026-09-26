@@ -494,7 +494,7 @@ function zemi.command.list() end
 ---@class zemi.ev.PermissionResolved: zemi.Event
 ---@field subject string
 ---@field arg string
----@field decision "allow"|"deny"
+---@field decision zemi.Decision Never "ask".
 ---@field by string
 
 ---@class zemi.ev.Resize: zemi.Event
