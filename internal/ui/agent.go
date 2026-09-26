@@ -521,8 +521,8 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 	}
 	v.rows, v.viewH = len(rows), max(room, 1)
 	bar := 0 // the scrollbar's column and a gap before it, so the widest row never touches it
-	if v.overflows() && barInner(maxW) < maxW {
-		bar, maxW = 2, maxW-2
+	if v.overflows() && barText(maxW) < maxW {
+		bar, maxW = maxW-barText(maxW), barText(maxW)
 		build(maxW)
 	} else if v.overflows() && maxW == 0 {
 		bar = 2

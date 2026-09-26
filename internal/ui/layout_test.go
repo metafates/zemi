@@ -101,7 +101,7 @@ func TestViewport(t *testing.T) {
 		{"under 8 cells draws no bar", viewport{viewH: 5}, 20, 7, nil, 0, 5, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			// content wrapped at what the bar leaves, as viewport.wrap does
+			// the widest content window takes beside the bar
 			lines := make([][]hostapi.Segment, c.rows)
 			for i := range lines {
 				lines[i] = []hostapi.Segment{{Text: fmt.Sprintf("%0*d", barInner(c.width), i)}}
@@ -126,16 +126,23 @@ func TestViewport(t *testing.T) {
 	}
 }
 
-// TestViewportWrapGap: text wrapped for an overflowing view keeps a blank
-// cell before the bar, as a list does, so its widest row never touches it.
+// TestViewportWrapGap: text beside an overflowing view's bar keeps a blank
+// cell before it, as a list does, so its widest row never touches it.
 func TestViewportWrapGap(t *testing.T) {
-	v := viewport{viewH: 2}
 	full := func(w int) [][]hostapi.Segment {
 		return [][]hostapi.Segment{{{Text: strings.Repeat("x", w)}}, {{Text: strings.Repeat("y", w)}}, {{Text: "z"}}}
 	}
-	for _, r := range v.window(v.wrap(full, 12), 12) {
-		if row := []rune(plainSegs(r)); len(row) != 12 || row[10] != ' ' {
-			t.Fatalf("row %q: want a blank cell before the bar", string(row))
+	for name, lines := range map[string]func(v *viewport) [][]hostapi.Segment{
+		"box body": func(v *viewport) [][]hostapi.Segment { return v.wrap(full, 12) },
+		"scrolled region": func(*viewport) [][]hostapi.Segment {
+			return full(regionWidth(&hostapi.LayoutNode{Scroll: "bottom"}, 12))
+		},
+	} {
+		v := viewport{viewH: 2}
+		for _, r := range v.window(lines(&v), 12) {
+			if row := []rune(plainSegs(r)); len(row) != 12 || row[10] != ' ' {
+				t.Fatalf("%s: row %q: want a blank cell before the bar", name, string(row))
+			}
 		}
 	}
 }

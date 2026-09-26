@@ -287,10 +287,10 @@ func (a *App) measure(n *hostapi.LayoutNode, width int) int {
 }
 
 // regionWidth is the cells a region's widgets render at: a scrolled one
-// keeps its bar's column.
+// keeps its bar's column and a blank before it.
 func regionWidth(n *hostapi.LayoutNode, w int) int {
 	if n.Scroll != "" {
-		return barInner(w)
+		return barText(w)
 	}
 	return w
 }
@@ -443,13 +443,20 @@ func barInner(width int) int {
 	return width
 }
 
-// wrap builds content at width, again two cells narrower when it overflows
-// the view: the bar's and a blank before it, so the widest row never touches
-// the bar, as in a list. viewH must be set.
+// barText is what text may use beside a bar: its column and a blank before it.
+func barText(width int) int {
+	if barInner(width) < width {
+		return width - 2
+	}
+	return width
+}
+
+// wrap builds content at width, again at barText when it overflows the view,
+// so the widest row never touches the bar. viewH must be set.
 func (v *viewport) wrap(build func(width int) [][]hostapi.Segment, width int) [][]hostapi.Segment {
 	lines := build(width)
-	if len(lines) > v.viewH && barInner(width) < width {
-		lines = build(barInner(width) - 1)
+	if len(lines) > v.viewH && barText(width) < width {
+		lines = build(barText(width))
 	}
 	return lines
 }
@@ -526,7 +533,7 @@ type scrollState struct {
 const anchorRows = 3
 
 // paintScrolled draws a scrolled region into r. Its widgets render at
-// barInner of its width whether or not the bar shows, so the bar
+// barText of its width whether or not the bar shows, so the bar
 // appearing never rewraps them.
 func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.Segment {
 	w, h := r.Dx(), r.Dy()

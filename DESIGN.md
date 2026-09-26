@@ -1434,8 +1434,9 @@ provenance string.
   completion popups go over the stage's bottom when it is above the composer, else beside
   the composer on the side with room; Lua floats never cover the composer or the alarm
   pills, and without a bar the pills float at the bottom-left. A scrolled region
-  keeps its last column for a thin scrollbar and its widgets render one cell narrower,
-  so the bar appearing covers and rewraps nothing; every other scrolling box (overlay
+  keeps its last column for a thin scrollbar and a blank before it, and its widgets
+  render two cells narrower, so the bar appearing covers and rewraps nothing and chat
+  text lines up with the composer's; every other scrolling box (overlay
   bodies and lists, prompts, popups) scrolls through the same viewport and bar, and every
   bar drags, found by its cells in the last frame.
   Widgets render at their node's width and height; a content-sized node gets
