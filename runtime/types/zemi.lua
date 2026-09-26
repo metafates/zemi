@@ -688,7 +688,7 @@ function zemi.event.stats() end
 ---@field tool string
 ---@field status zemi.CallStatus|"" Tool and shell rows, and "cancelled" on an error row an interrupt left.
 ---@field label string
----@field detail string
+---@field detail string Tool rows: subagent and workflow progress; notice rows: a hint drawn after the text, never copied.
 ---@field run string Agent calls: the run id, else "".
 ---@field diff string
 ---@field output string Last lines of a tool result; a plan call's verdict ("approved", "changes requested: ..."); an answered question call's rows, each `question\tanswer` ("not answered" when left open).

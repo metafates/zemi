@@ -246,7 +246,7 @@ or "answer" while a prompt holds the turn, else ""), `transcript_epoch`
 (changes when the transcript is replaced, 0 while an agent run is shown: rows are worth
 caching only when it is stable). Transcript rows carry
 `role`, `kind` ("", reasoning, tool, shell, compact, notice, error), `text`, `tool`, `status`, `label`,
-`detail` (subagent and workflow progress), `diff`, `output` (the last lines of a tool
+`detail` (subagent and workflow progress; a notice row's hint, drawn after the text and never copied), `diff`, `output` (the last lines of a tool
 result), `in`, `out`, `thought`, `elapsed`.
 
 ## Events
