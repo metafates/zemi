@@ -327,13 +327,14 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	// On the conversation's own model the summary is asked after the runner's
 	// whole unpruned history, the exact prefix the last step read, so the
 	// provider reads it from a warm cache entry; the flat transcript goes to a
-	// separate compact model, or when that call gives no summary.
+	// separate compact model, when that call gives no summary, or after an
+	// overflow, where the whole history was just refused.
 	var out string
 	err := errNoSummary
 	h.agents.mu.Lock()
 	model := h.agents.turnModel
 	h.agents.mu.Unlock()
-	if model != "" && model == h.roleModel("compact") {
+	if model != "" && model == h.roleModel("compact") && reason != compactOverflow {
 		out, err = h.summarizeAside(ctx, runner, len(tail), model, focus)
 	}
 	if errors.Is(err, errNoSummary) || contextTooLarge(err) {

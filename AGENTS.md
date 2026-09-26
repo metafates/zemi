@@ -610,9 +610,10 @@ lua-language-server is installed.
   (`ag.turnModel`, "" for the bare runner a resume or rewind leaves) the summary is asked
   through `Runner.Aside` after the whole unpruned history, with a note naming how many
   messages stay as the verbatim tail (`summarizeAside`, `compactNote`), so it reads the
-  prefix the last step just cached; a separate compact model, or an aside with no summary or a
-  context-too-long refusal, gets the flat `summarize`. The summary row is followed by the verbatim tail
-  stored with row role `tail`, which resume reads and transcript readers skip. An unfinished
+  prefix the last step just cached; a separate compact model, an overflow (the whole
+  history was just refused), or an aside with no summary or a context-too-long refusal
+  gets the flat `summarize`. The summary row is followed by the verbatim tail stored with
+  row role `tail`, which resume reads and transcript readers skip. An unfinished
   todo list goes after `</summary>`, where `summaryOf` drops it, so a stale one is never
   merged.
 - **A turn's work survives the turn.** `Runner.Persist` writes each step's messages from
