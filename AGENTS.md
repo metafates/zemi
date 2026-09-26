@@ -165,8 +165,9 @@ write; `unsaved` when a runtime pick moved it off that or off the default; one w
 toggle or a save moves no text) and then the value, which a bool draws as its switch instead. Space toggles a bool; every other row opens its
 detail, whose actions pick or fill `/config set`. `/config` and `/effort` write through
 `Host.SetConfig`, which sends `models.*`, `permissions.mode`, `agent.profile` and `ui.theme`
-through their own setters and reads `agent.effort` `default` as empty; a key's `Choices` (the
-effort levels, `memory.autonomy`'s auto or ask) refuse any other value, `zemi.config.set` too; every runtime write,
+through their own setters and turns the rest's refused value into a usage hint. A key's
+`Choices` (the effort levels and "", `memory.autonomy`'s auto or ask) refuse any other value in
+`config.checkKind`, `zemi.config.set` too, which reads `default` as a "" choice; every runtime write,
 those setters included, fires the key's watches through `setWatched`. `config lua`
 shows the keys off their default as `zemi.config.set` lines; `config save` (`saveInit`) writes
 the unsaved ones: the literal of a key's one top-level set line rewritten in place, a key no

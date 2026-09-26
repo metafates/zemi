@@ -243,7 +243,7 @@ zemi.api = {}
 ---@field kind zemi.SettingKind
 ---@field default any
 ---@field desc string
----@field choices? string[] The only values a string key takes; nil takes any.
+---@field choices? string[] The only values a string key takes; nil takes any. `zemi.config.set` also takes "default" for a "" choice.
 
 ---@class zemi.config
 zemi.config = {}

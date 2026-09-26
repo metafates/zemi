@@ -2,7 +2,6 @@ package config
 
 import (
 	"cmp"
-	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -238,7 +237,15 @@ func checkKind(def Setting, val any) (any, error) {
 			return nil, &ErrBadValue{Path: def.Path, Want: `a provider/model id or ""`}
 		}
 		if ok && def.Choices != nil && !slices.Contains(def.Choices, s) {
-			return nil, &ErrBadValue{Path: def.Path, Want: fmt.Sprintf("one of %q", def.Choices)}
+			// "default" names a "" choice, as /config shows it
+			if s == "default" && slices.Contains(def.Choices, "") {
+				return "", nil
+			}
+			words := make([]string, len(def.Choices))
+			for i, c := range def.Choices {
+				words[i] = cmp.Or(c, "default")
+			}
+			return nil, &ErrBadValue{Path: def.Path, Want: strings.Join(words, ", ")}
 		}
 	case KindInt:
 		switch v := val.(type) {
