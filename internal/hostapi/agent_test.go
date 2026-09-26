@@ -381,6 +381,8 @@ func TestModelNamespace(t *testing.T) {
 	})`)
 	runExpectErr(t, r, `zemi.provider.add({ id = "old", kind = "openai", api_key_env = "OLD_KEY" })`, `spec: unknown field "api_key_env"`)
 	runExpectErr(t, r, `zemi.provider.add({ id = "old", kind = "openai", models = { { id = "a" }, { id = "b", images = false } } })`, `models[2]: unknown field "images"`)
+	runExpectErr(t, r, `zemi.provider.add({ id = "old", kind = "openai", models = { [1] = { id = "a" }, [3] = { id = "b" } } })`, `models must be a list`)
+	runExpectErr(t, r, `zemi.provider.add({ id = "old", kind = "openai", models = { "a" } })`, `models[1] must be a table`)
 	t.Setenv("ZEMI_TEST_TOKEN", "abc")
 	runUser(t, r, `assert(zemi.env.get("ZEMI_TEST_TOKEN") == "abc", "user config reads secret-shaped env vars")`)
 

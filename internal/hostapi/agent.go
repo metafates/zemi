@@ -1713,7 +1713,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 	}
 	raw, err := lua.ToGo(tb)
 	if err != nil {
-		return agent.Spec{}, err
+		return agent.Spec{}, fmt.Errorf("spec: %w", err)
 	}
 	fields, _ := raw.(map[string]any)
 	if err := onlyKeys(fields, "spec", "id", "kind", "api_key", "base_url", "headers", "body", "models"); err != nil {
@@ -1734,13 +1734,17 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 	case []any:
 		return agent.Spec{}, errors.New("body must be a table of named fields")
 	}
-	models, _ := fields["models"].([]any)
+	// an empty table marshals as a map
+	models, ok := fields["models"].([]any)
+	if m, isMap := fields["models"].(map[string]any); !ok && fields["models"] != nil && (!isMap || len(m) > 0) {
+		return agent.Spec{}, errors.New("models must be a list of model entries")
+	}
 	for i, v := range models {
+		at := fmt.Sprintf("models[%d]", i+1)
 		e, ok := v.(map[string]any)
 		if !ok {
-			continue
+			return agent.Spec{}, fmt.Errorf("%s must be a table", at)
 		}
-		at := fmt.Sprintf("models[%d]", i+1)
 		if err := onlyKeys(e, at, "id", "display", "context_window", "max_output", "vision",
 			"cost_per_1m_in", "cost_per_1m_out", "cost_per_1m_in_cached", "cost_per_1m_out_cached"); err != nil {
 			return agent.Spec{}, err
