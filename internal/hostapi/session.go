@@ -227,6 +227,7 @@ func (h *Host) closeSession(open func()) error {
 	ag.cacheRead, ag.cacheBilled = 0, 0
 	ag.compactFails, ag.compacted = 0, false
 	ag.digest, ag.memAuto, ag.pin = "", 0, promptPin{}
+	ag.dropPin()
 	ag.todoInProgress, ag.todoSteps, ag.todoPending, ag.todoNag = "", 0, false, ""
 	if open != nil {
 		open()

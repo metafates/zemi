@@ -135,8 +135,9 @@ type agentHost struct {
 	promptTokens int64
 	promptParts  []promptPart
 	// pin is the main agent's fixed prefix (DESIGN §6.3), sent verbatim
-	// until its key moves or a drop point zeroes it.
-	pin promptPin
+	// until its key moves or a drop point clears it; pinDrops counts drops.
+	pin      promptPin
+	pinDrops int
 
 	// reasoningShown is the session-scoped expansion override for finished
 	// reasoning blocks (nil = follow ui.reasoning config).
@@ -366,6 +367,10 @@ type promptPin struct {
 	infos     map[string]fantasy.ToolInfo
 }
 
+// dropPin makes the next send build the prompt again. The text stays for
+// /prompt and for the rest of a running turn, which still sends it. ag.mu held.
+func (ag *agentHost) dropPin() { ag.pin.key, ag.pinDrops = "", ag.pinDrops+1 }
+
 // pinnedTool sends the Info the pin was built with, so a description read
 // from files (agent definitions, saved workflows) cannot move the prefix.
 type pinnedTool struct {
@@ -396,7 +401,7 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) ([]fantasy.Age
 	k := strings.Join(key, "\x00")
 	ag := h.agents
 	ag.mu.Lock()
-	pin := ag.pin
+	pin, drops := ag.pin, ag.pinDrops
 	ag.mu.Unlock()
 	if pin.key != k {
 		pin = promptPin{key: k, infos: map[string]fantasy.ToolInfo{}}
@@ -405,7 +410,10 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) ([]fantasy.Age
 			pin.infos[info.Name] = info
 		}
 		ag.mu.Lock()
-		ag.pin = pin
+		// a drop during the build means it may have read what the drop replaced
+		if ag.pinDrops == drops {
+			ag.pin = pin
+		}
 		ag.mu.Unlock()
 	}
 	out := make([]fantasy.AgentTool, len(toolset))

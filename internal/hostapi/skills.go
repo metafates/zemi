@@ -386,7 +386,7 @@ func (h *Host) deleteRecipe(name string) error {
 			return err
 		}
 		h.agents.mu.Lock()
-		h.agents.pin = promptPin{}
+		h.agents.dropPin()
 		h.agents.mu.Unlock()
 		h.Notify(logging.Info, "Recipe deleted", name)
 		return nil
