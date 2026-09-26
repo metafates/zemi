@@ -28,8 +28,11 @@ const lspToolDesc = `Ask the file's language server about a symbol by name. Unli
 - symbols: the file's outline, cheaper than reading a large file for its shape.
 - call_hierarchy: who calls the symbol (incoming) and what it calls (outgoing).`
 
+// lspActions are what runLSP answers; the switch there reads the same words.
+var lspActions = []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols", "call_hierarchy"}
+
 var lspToolProps = map[string]any{
-	"action":    map[string]any{"type": "string", "enum": []string{"definition", "implementation", "references", "rename", "symbols", "workspace_symbols", "call_hierarchy"}},
+	"action":    map[string]any{"type": "string", "enum": lspActions},
 	"path":      map[string]any{"type": "string", "description": "a file where the symbol appears (a use is enough for definition); the file to outline for symbols; any file of the language for workspace_symbols"},
 	"symbol":    map[string]any{"type": "string", "description": "the identifier as written, or the query for workspace_symbols; not for symbols"},
 	"line":      map[string]any{"type": "integer", "description": "1-based line, when the name appears more than once"},

@@ -852,11 +852,11 @@ func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool) {
 	_ = json.Unmarshal([]byte(input), &m)
 	decision, reason, _, _ := h.toolPreHook()(tool, m)
 	switch decision {
-	case "deny":
+	case tools.PreDeny:
 		return fantasy.NewTextErrorResponse("denied by hook: " + reason), true
-	case "rewrite":
+	case tools.PreRewrite:
 		return fantasy.NewTextErrorResponse("refused: a tool.pre rewrite is not supported for the " + tool + " tool"), true
-	case "halt":
+	case tools.PreHalt:
 		resp := fantasy.NewTextErrorResponse("halted by hook: " + reason)
 		resp.StopTurn = true // as tools.Run: the step completes, the turn ends
 		return resp, true

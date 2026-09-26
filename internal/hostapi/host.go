@@ -850,7 +850,7 @@ func (h *Host) EmitOnState(L *glua.LState, name string, payload map[string]any) 
 // a zemi.Veto table is its decision. Anything else is a handler that meant
 // to decide and wrote the wrong shape, and bad says so, so the caller can
 // fail closed instead of reading silence as consent (DESIGN §6.0).
-func vetoDecision(ret glua.LValue, allowed ...string) (tb *glua.LTable, decision, bad string) {
+func vetoDecision[T ~string](ret glua.LValue, allowed ...T) (tb *glua.LTable, decision T, bad string) {
 	if ret == nil || ret == glua.LNil {
 		return nil, "", ""
 	}
@@ -859,9 +859,9 @@ func vetoDecision(ret glua.LValue, allowed ...string) (tb *glua.LTable, decision
 		return nil, "", fmt.Sprintf("a handler returned %s: return nil, or { decision = %q, reason = ... }",
 			ret.Type().String(), allowed[0])
 	}
-	if decision = rawString(tb, "decision"); !slices.Contains(allowed, decision) {
+	if decision = T(rawString(tb, "decision")); !slices.Contains(allowed, decision) {
 		return nil, "", fmt.Sprintf("a handler returned decision %q: use nil or one of %s",
-			decision, strings.Join(allowed, ", "))
+			decision, strings.Join(strs(allowed), ", "))
 	}
 	return tb, decision, ""
 }

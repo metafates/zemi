@@ -283,7 +283,7 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 	decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.bash", cmd, "model").Decision }
 
 	pre := h.toolPreHook()
-	var vetoed string
+	var vetoed tools.PreVerdict
 	done := make(chan struct{})
 	probe := lua.BootStep{Name: "probe", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
 		if d := decision("rm x"); d != perm.Deny {

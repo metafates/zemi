@@ -1371,7 +1371,7 @@ func (h *Host) resetTodoNag(todos []store.Todo) {
 		return
 	}
 	for _, td := range todos {
-		if td.Status == "in_progress" {
+		if td.Status == store.TodoInProgress {
 			ag.todoInProgress = td.Content
 			return
 		}

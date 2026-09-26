@@ -381,7 +381,7 @@ func (h *Host) toolRun(L *glua.LState, t *luaTool, callID string) *glua.LTable {
 // shallow rewrite merging (DESIGN §6.2, §6.4). A rewrite by any non-user
 // handler marks the result loosened.
 func (h *Host) toolPreHook() tools.PreHook {
-	pre := func(name string, input map[string]any) (string, string, map[string]any, bool) {
+	pre := func(name string, input map[string]any) (tools.PreVerdict, string, map[string]any, bool) {
 		h.recordEvent("tool.pre", "host", map[string]any{"tool": name, "input": input})
 		handlers := h.Events.Handlers("tool.pre")
 		for _, o := range h.luaTools.overridesFor(name) {
@@ -392,7 +392,8 @@ func (h *Host) toolPreHook() tools.PreHook {
 		if len(handlers) == 0 {
 			return "", "", nil, false
 		}
-		var decision, reason string
+		var decision tools.PreVerdict
+		var reason string
 		var rewritten map[string]any
 		loosened := false
 		// twice: the deny-only re-run after a rewrite calls every handler again
@@ -405,23 +406,23 @@ func (h *Host) toolPreHook() tools.PreHook {
 			for _, hd := range handlers {
 				d, r, rw := h.callToolPre(L, hd, name, merged)
 				switch {
-				case d == "deny" || d == "halt":
+				case d == tools.PreDeny || d == tools.PreHalt:
 					decision, reason, rewritten, loosened = d, r, nil, false
 					return nil, nil
-				case d == "rewrite" && rw != nil && hd.Origin.Rank() <= lua.OriginProject.Rank():
+				case d == tools.PreRewrite && rw != nil && hd.Origin.Rank() <= lua.OriginProject.Rank():
 					// same denial as zemi.tool.override (DESIGN §5)
 					h.Log.Warn("tools", "tool.pre rewrite ignored", map[string]any{"tool": name, "origin": string(hd.Origin)})
-				case d == "rewrite" && rw != nil:
+				case d == tools.PreRewrite && rw != nil:
 					maps.Copy(merged, rw)
-					decision, rewritten = "rewrite", merged
+					decision, rewritten = tools.PreRewrite, merged
 					loosened = loosened || hd.Origin != lua.OriginUser
 				}
 			}
 			// deny-only re-run over the rewritten input, so a later rewrite
 			// cannot slip past an earlier deny hook (DESIGN §6.2)
-			if decision == "rewrite" {
+			if decision == tools.PreRewrite {
 				for _, hd := range handlers {
-					if d, r, _ := h.callToolPre(L, hd, name, merged); d == "deny" {
+					if d, r, _ := h.callToolPre(L, hd, name, merged); d == tools.PreDeny {
 						decision, reason, rewritten, loosened = d, r, nil, false
 						return nil, nil
 					}
@@ -433,42 +434,42 @@ func (h *Host) toolPreHook() tools.PreHook {
 			h.Log.Warn("tools", "tool.pre run failed", map[string]any{"tool": name, "error": err.Error()})
 			if !errors.Is(err, lua.ErrAbandoned) {
 				// a hot runtime cannot run the deny hooks: fail closed
-				return "deny", "tool.pre hooks could not run (lua runtime unavailable, /reload): " + err.Error(), nil, false
+				return tools.PreDeny, "tool.pre hooks could not run (lua runtime unavailable, /reload): " + err.Error(), nil, false
 			}
 			return "", "", nil, false
 		}
 		return decision, reason, rewritten, loosened
 	}
-	return func(name string, input map[string]any) (decision, reason string, rewritten map[string]any, loosened bool) {
+	return func(name string, input map[string]any) (decision tools.PreVerdict, reason string, rewritten map[string]any, loosened bool) {
 		h.outsideReload(func() { decision, reason, rewritten, loosened = pre(name, input) })
 		return
 	}
 }
 
 // callToolPre runs one pre handler and parses the decision table.
-func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input map[string]any) (decision, reason string, rewritten map[string]any) {
+func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input map[string]any) (decision tools.PreVerdict, reason string, rewritten map[string]any) {
 	ev := map[string]any{"name": "tool.pre", "from": "host", "tool": tool, "input": input}
 	ret, _, err := h.callEvent(L, hd, ev, lua.VetoDeadline)
 	if err != nil {
 		h.logHandlerError(hd, err) // proceed is the tool.pre default (DESIGN §4)
 		return "", "", nil
 	}
-	tb, d, bad := vetoDecision(ret, "deny", "halt", "rewrite")
+	tb, d, bad := vetoDecision(ret, tools.PreVerdicts...)
 	if bad != "" {
 		// a misspelled deny must not read as consent (DESIGN §6.2)
 		h.logHandlerError(hd, errors.New(bad))
-		return "deny", "tool.pre: " + bad, nil
+		return tools.PreDeny, "tool.pre: " + bad, nil
 	}
 	switch d {
-	case "deny", "halt":
+	case tools.PreDeny, tools.PreHalt:
 		return d, rawString(tb, "reason"), nil
-	case "rewrite":
+	case tools.PreRewrite:
 		rw, err := lua.ToGo(tb.RawGetString("input"))
 		if err != nil {
 			return "", "", nil
 		}
 		m, _ := rw.(map[string]any)
-		return "rewrite", "", m
+		return tools.PreRewrite, "", m
 	}
 	return "", "", nil
 }

@@ -20,8 +20,6 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-var todoStatuses = map[string]bool{"pending": true, "in_progress": true, "done": true}
-
 func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	if p.TodosRead == nil {
 		return fantasy.NewTextErrorResponse("todos unavailable"), nil
@@ -42,10 +40,11 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		active, done := 0, 0
 		for _, td := range out {
 			switch td.Status {
-			case "in_progress":
+			case store.TodoInProgress:
 				active++
-			case "done":
+			case store.TodoDone:
 				done++
+			case store.TodoPending:
 			}
 		}
 		if cancelled > 0 {
@@ -76,19 +75,19 @@ func ParseTodos(input map[string]any) (out []store.Todo, cancelled int, ok bool,
 			return nil, 0, true, fmt.Errorf("todo %d: not an object", i+1)
 		}
 		content := str(m["content"])
-		status := str(m["status"])
+		status := store.TodoStatus(str(m["status"]))
 		// the names other harnesses taught models
-		switch status {
-		case "completed":
-			status = "done"
-		case "cancelled":
+		if status == "completed" {
+			status = store.TodoDone
+		}
+		if status == "cancelled" {
 			cancelled++
 			continue
 		}
 		if content == "" {
 			return nil, 0, true, fmt.Errorf("todo %d: content is required", i+1)
 		}
-		if !todoStatuses[status] {
+		if !slices.Contains(store.TodoStatuses, status) {
 			return nil, 0, true, fmt.Errorf("todo %d: status must be pending, in_progress or done", i+1)
 		}
 		out = append(out, store.Todo{Content: content, Status: status, ActiveForm: str(m["active_form"]), Ord: len(out)})
@@ -177,6 +176,8 @@ const (
 	TypeFreeText QuestionType = "free_text"
 )
 
+var QuestionTypes = []QuestionType{TypeYesNo, TypeSingle, TypeMulti, TypeFreeText}
+
 // Question is one structured ask to the user, drawn by a Go-owned overlay.
 // Type must be one of the four: yes_no and single_choice ask one option,
 // multi_choice marks several, free_text answers on a typed row. Options may
@@ -223,9 +224,7 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 			Description: str(m["description"]),
 			Header:      str(m["header"]),
 		}
-		switch q.Type {
-		case TypeYesNo, TypeSingle, TypeMulti, TypeFreeText:
-		default:
+		if !slices.Contains(QuestionTypes, q.Type) {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: type must be yes_no, single_choice, multi_choice or free_text", i+1)), nil
 		}
 		if q.Type == TypeFreeText {

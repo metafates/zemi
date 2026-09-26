@@ -54,7 +54,7 @@ func TestToolPreHandlerErrorRecorded(t *testing.T) {
 	} {
 		h, r := newTestHost(t)
 		runUser(t, r, `zemi.event.on("tool.pre", function(ev) `+c.body+` end)`)
-		if d, _, _, _ := h.toolPreHook()("bash", map[string]any{"command": "cat .env"}); d != c.want || !h.HasUnseenErrors() {
+		if d, _, _, _ := h.toolPreHook()("bash", map[string]any{"command": "cat .env"}); string(d) != c.want || !h.HasUnseenErrors() {
 			t.Errorf("%s: decision %q, want %q; unseen errors %v", c.body, d, c.want, h.HasUnseenErrors())
 		}
 	}

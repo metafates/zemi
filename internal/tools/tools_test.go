@@ -108,7 +108,7 @@ func TestBashGate(t *testing.T) {
 	allow := func(pattern string) perm.Rule {
 		return perm.Rule{Subject: "tool.bash", Pattern: pattern, Decision: perm.Allow}
 	}
-	rewrite := func(tool string, input map[string]any) (string, string, map[string]any, bool) {
+	rewrite := func(tool string, input map[string]any) (PreVerdict, string, map[string]any, bool) {
 		if str(input["command"]) == "rewrite-me" {
 			return "rewrite", "", map[string]any{"command": "echo hi"}, true
 		}
@@ -117,7 +117,7 @@ func TestBashGate(t *testing.T) {
 	for _, c := range []struct {
 		name      string
 		rule      perm.Rule
-		pre       func(string, map[string]any) (string, string, map[string]any, bool)
+		pre       func(string, map[string]any) (PreVerdict, string, map[string]any, bool)
 		noOverlay bool
 		command   string
 		want      string
@@ -316,7 +316,7 @@ func TestPreHookDenyRewriteReentry(t *testing.T) {
 		perm.Rule{Subject: "tool.bash", Pattern: "*", Decision: perm.Allow})
 	denied := 0
 	rewrites := 0
-	p.Pre = func(tool string, input map[string]any) (string, string, map[string]any, bool) {
+	p.Pre = func(tool string, input map[string]any) (PreVerdict, string, map[string]any, bool) {
 		if tool != "bash" {
 			return "", "", nil, false
 		}

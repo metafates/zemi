@@ -160,7 +160,7 @@ func TestToolPreOnce(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.event.on("tool.pre", function() return { decision = "deny", reason = "once" } end, { once = true })`)
 	pre := h.toolPreHook()
-	for i, want := range []string{"deny", ""} {
+	for i, want := range []tools.PreVerdict{tools.PreDeny, ""} {
 		if d, _, _, _ := pre("bash", map[string]any{"command": "ls"}); d != want {
 			t.Fatalf("call %d: decision %q, want %q", i+1, d, want)
 		}
@@ -263,7 +263,7 @@ func TestToolPreRewrite(t *testing.T) {
 		name         string
 		origin       lua.Origin
 		src          string
-		wantDecision string
+		wantDecision tools.PreVerdict
 		wantCommand  string
 	}{
 		{"user rewrite applies", lua.OriginUser, rewriteRm, "rewrite", "rm -rf x"},

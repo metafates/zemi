@@ -343,10 +343,22 @@ func (s *DB) SessionPreviews(ids []string) (map[string]SessionPreview, error) {
 	return out, rows.Err()
 }
 
+// TodoStatus is where a todo item stands; the todos tool's schema offers
+// TodoStatuses.
+type TodoStatus string
+
+const (
+	TodoPending    TodoStatus = "pending"
+	TodoInProgress TodoStatus = "in_progress"
+	TodoDone       TodoStatus = "done"
+)
+
+var TodoStatuses = []TodoStatus{TodoPending, TodoInProgress, TodoDone}
+
 // Todo is one item of a session's todo list.
 type Todo struct {
 	Content    string
-	Status     string
+	Status     TodoStatus
 	ActiveForm string
 	Ord        int
 }

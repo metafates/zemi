@@ -120,13 +120,23 @@ func UserStopped(output string) bool {
 	return strings.HasPrefix(output, "permission denied (user)") || strings.HasPrefix(output, "The user dismissed")
 }
 
-// PreHook runs the tool.pre Lua events; decision is "" (pass),
-// "deny", "rewrite" or "halt". Rewritten carries the replacement input
-// (already shallow-merged over the original). Loosened reports a rewrite
-// decided by a non-user principal: on re-entry an allow decision flips
-// to ask, so a rewrite can never ride a pre-existing allow glob (DESIGN
-// §6.2, §6.4).
-type PreHook func(tool string, input map[string]any) (decision, reason string, rewritten map[string]any, loosened bool)
+// PreVerdict is a tool.pre answer; "" passes the call on.
+type PreVerdict string
+
+const (
+	PreDeny    PreVerdict = "deny"
+	PreHalt    PreVerdict = "halt"
+	PreRewrite PreVerdict = "rewrite"
+)
+
+var PreVerdicts = []PreVerdict{PreDeny, PreHalt, PreRewrite}
+
+// PreHook runs the tool.pre Lua events. Rewritten carries the replacement
+// input (already shallow-merged over the original). Loosened reports a
+// rewrite decided by a non-user principal: on re-entry an allow decision
+// flips to ask, so a rewrite can never ride a pre-existing allow glob
+// (DESIGN §6.2, §6.4).
+type PreHook func(tool string, input map[string]any) (decision PreVerdict, reason string, rewritten map[string]any, loosened bool)
 
 // Asker resolves an ask decision with the user; FIFO ordering is the
 // caller's concern (one overlay at a time, host-side).
@@ -543,15 +553,15 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	if t.pipe.Pre != nil {
 		decision, reason, rewritten, loosened := t.pipe.Pre(t.info.Name, input)
 		switch decision {
-		case "deny":
+		case PreDeny:
 			return fantasy.NewTextErrorResponse("denied by hook: " + reason), nil
-		case "halt":
+		case PreHalt:
 			// a result, not a Go error: that would fail the step and drop
 			// the calls that already ran in it from the history
 			resp := fantasy.NewTextErrorResponse("halted by hook: " + reason)
 			resp.StopTurn = true
 			return resp, nil
-		case "rewrite":
+		case PreRewrite:
 			if rewritten != nil {
 				// The rewritten input re-enters at the permission gate
 				// below (never skips it, DESIGN §6.4); a per-run pipeline
@@ -983,7 +993,7 @@ Chain dependent steps with &&.`,
 					"type": "object",
 					"properties": map[string]any{
 						"content":     map[string]any{"type": "string"},
-						"status":      map[string]any{"type": "string", "enum": []string{"pending", "in_progress", "done"}},
+						"status":      map[string]any{"type": "string", "enum": store.TodoStatuses},
 						"active_form": map[string]any{"type": "string", "description": "on the in_progress item only: present tense shown while it runs, e.g. Running tests"},
 					},
 					"required": []string{"content", "status"},
@@ -999,7 +1009,7 @@ Chain dependent steps with &&.`,
 				"questions": map[string]any{"type": "array", "description": "1 to 4, shown as tabs the user moves between before submitting", "items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"type":        map[string]any{"type": "string", "enum": []string{"yes_no", "single_choice", "multi_choice", "free_text"}, "description": "yes_no gets Yes and No; multi_choice lets the user mark several; free_text is typed"},
+						"type":        map[string]any{"type": "string", "enum": QuestionTypes, "description": "yes_no gets Yes and No; multi_choice lets the user mark several; free_text is typed"},
 						"question":    map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
 						"description": map[string]any{"type": "string", "description": "markdown context the options cannot carry, shown under the question"},
 						"header":      map[string]any{"type": "string", "description": "with several questions, a 1-3 word tab label, e.g. Auth method"},

@@ -354,7 +354,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	var todos string
 	if h.DB != nil {
 		rows, _ := h.DB.Todos(h.AgentSessionID())
-		if slices.ContainsFunc(rows, func(td store.Todo) bool { return td.Status != "done" }) {
+		if slices.ContainsFunc(rows, func(td store.Todo) bool { return td.Status != store.TodoDone }) {
 			todos = "\n\nThe todo list as of this compaction:\n" + tools.TodoList(rows)
 		}
 	}
