@@ -253,6 +253,10 @@ func TestPromptPinned(t *testing.T) {
 		{"AGENTS.md created by hand next to a CLAUDE.md", "CLAUDE.md", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			handEdit(h, agentsMD(h), "run make check")
 		}, false, 1},
+		{"AGENTS.md edited by hand once trust is off", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			handEdit(h, agentsMD(h), "run make check")
+			h.SetProjectTrusted(false)
+		}, true, 0},
 		{"AGENTS.md turned into a link to a secret", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			env := filepath.Join(h.Dirs.ProjectDir, ".env")
 			handEdit(h, env, "run make check")

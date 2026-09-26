@@ -395,8 +395,9 @@ func (h *Host) instructionEdits() string {
 		}
 		fi, err := os.Stat(p)
 		// the sandbox cannot write the user's file, while a repository one
-		// may have become a link to a secret since the prompt was built
-		if err != nil || fi.ModTime().Equal(had) || p != mine && !h.instructionFile(p) {
+		// may have become a link to a secret since the prompt was built,
+		// and loads only while the project is trusted
+		if err != nil || fi.ModTime().Equal(had) || p != mine && (!h.ProjectTrusted() || !h.instructionFile(p)) {
 			continue
 		}
 		mt := fi.ModTime()

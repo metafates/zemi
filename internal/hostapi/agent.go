@@ -397,7 +397,8 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) ([]fantasy.Age
 	infos := make([]fantasy.ToolInfo, len(toolset))
 	for i, t := range toolset {
 		infos[i] = t.Info()
-		schema, _ := json.Marshal([]any{infos[i].Parameters, infos[i].Required})
+		// Parallel is in the key: fantasy reads it per step, not the provider
+		schema, _ := json.Marshal([]any{infos[i].Parameters, infos[i].Required, infos[i].Parallel})
 		key = append(key, infos[i].Name, string(schema))
 	}
 	k := strings.Join(key, "\x00")
