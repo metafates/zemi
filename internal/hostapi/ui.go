@@ -718,7 +718,7 @@ func (h *Host) luaReload(o Overlay, fn, render *glua.LFunction) func() ([]any, [
 				list, err = overlayItems(v)
 			}
 			if err != nil {
-				return nil, fmt.Errorf("reload: %w", err)
+				return nil, err
 			}
 			items, text = list, nil
 			if render != nil {
