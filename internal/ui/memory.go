@@ -294,8 +294,8 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 			head = emptyRows("Nothing remembered yet. Type /memory <note> to save one.", inner)
 		}
 		room := h - 2 - len(stack(tight, slices.Concat(head, oneRow), oneRow)) + 1
-		// the text wraps beside the marker's two cells, and the bar's and its
-		// gap's two once the list overflows
+		// the text wraps beside the marker's two cells, and beside the bar once
+		// the list overflows
 		rows := func(textW int) [][]hostapi.Segment {
 			wrapped := slices.Clone(items)
 			for i, it := range wrapped {
@@ -313,7 +313,7 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 			list = emptyRows("No matches.", inner)
 		default:
 			if list = rows(inner - 2); mr.view.overflows() {
-				list = rows(inner - 4)
+				list = rows(barText(inner) - 2)
 			}
 		}
 		hintRow := hint(inner, slices.Concat(hints, scrolls(mr.view), []hintPair{{"esc", esc}})...)
