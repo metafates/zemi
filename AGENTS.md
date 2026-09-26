@@ -20,8 +20,9 @@ These are the owner's rules for anyone changing this repo, human or agent.
 
 Every new line must be deserved, and the best change deletes code. Before adding anything: does
 it need to exist, does the tree already have it, does the stdlib or an installed dependency do
-it. No abstractions nobody asked for, no speculative options, fewest files. Fix a root cause in
-the shared primitive, never per screen or per caller.
+it. No abstractions nobody asked for, no speculative options, fewest files. A report names a
+symptom: find the root cause and fix the class it belongs to in the shared primitive, never the
+one case per screen or per caller.
 
 Breaking changes are welcome, architecture and the Lua API included, when they make the result
 simpler. No compatibility shims, no deprecated aliases, no "the old key is still read": remove
