@@ -1593,11 +1593,13 @@ func (h *Host) includedData() included {
 			inc.instructions = append(inc.instructions, p)
 		}
 	}
-	mems, _ := h.memoryList(false)
+	mems, err := h.memoryList(false)
 	inc.memories = len(mems)
 	// the builtin zemi-* skills ship with every install: counting them is noise
 	inc.skills = len(slices.DeleteFunc(h.enabledSkills(), func(s skills.Skill) bool { return s.Source == skills.Builtin }))
-	h.included = inc
+	if err == nil { // a short count from a failed read is not cached
+		h.included = inc
+	}
 	return inc
 }
 

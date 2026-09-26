@@ -970,8 +970,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   resized (a composer newline, a resize) renders on that message, so no frame draws lines
   rendered for another size. A render's ctx
   builds `transcript`, `agent`, `todos`, `recent` and `included` on first read (`widgetCtxTable`,
-  `BenchmarkWidgetCtx`): keep new expensive fields lazy, and one that reads disk or the store
-  cached too (`recentSessions`, `includedData`, which a memory write moves through
+  `BenchmarkWidgetCtx`): keep new expensive fields lazy, and cache one that reads disk or the
+  store (`recentSessions`, `includedData`, which a memory write moves through
   `store.DB.MemoryGen`). A widget never changes a line table
   it returned: `Widget.tableSegments` converts one it saw last render only once and
   `widgetCache.lineRows` wraps it once per width, and `Host.Session` shares the transcript
