@@ -193,8 +193,8 @@ func (h *Host) pluginItems() []any {
 	for _, p := range ps {
 		status, loadErr := h.pluginStatus(p)
 		var desc []string
-		if status == "failed" {
-			desc = append(desc, status)
+		if status == StatusFailed {
+			desc = append(desc, string(status))
 		}
 		if p.Latest != "" {
 			desc = append(desc, "update "+p.Latest)
@@ -211,7 +211,7 @@ func (h *Host) pluginItems() []any {
 		if p.Latest != "" {
 			detail = append(detail, "latest: "+p.Latest)
 		}
-		detail = append(detail, "path: "+TildePath(p.Dir), "status: "+status)
+		detail = append(detail, "path: "+TildePath(p.Dir), "status: "+string(status))
 		if l := provides[p.Name]; l != nil {
 			detail = append(detail, "provides: "+strings.Join(l, " · "))
 		}
@@ -249,9 +249,9 @@ func (h *Host) pluginItems() []any {
 
 // pluginStatus is how the last boot left p: "starting" when it is on but no
 // boot has run it yet.
-func (h *Host) pluginStatus(p plugins.Plugin) (string, error) {
+func (h *Host) pluginStatus(p plugins.Plugin) (ServiceStatus, error) {
 	if !p.Enabled {
-		return "off", nil
+		return StatusOff, nil
 	}
 	if loads := h.pluginLoads.Load(); loads != nil {
 		for _, l := range *loads {
@@ -259,12 +259,12 @@ func (h *Host) pluginStatus(p plugins.Plugin) (string, error) {
 				continue
 			}
 			if l.err != nil {
-				return "failed", l.err
+				return StatusFailed, l.err
 			}
-			return "ready", nil
+			return StatusReady, nil
 		}
 	}
-	return "starting", nil
+	return StatusStarting, nil
 }
 
 // pluginProvides lists what each plugin provides, by plugin name.

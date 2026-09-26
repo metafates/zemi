@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -654,6 +655,7 @@ type fakeUI struct {
 	planVerdict  tools.PlanVerdict
 	planOK       bool
 	planAsked    int
+	mu           sync.Mutex // guards opened: a status change opens off the test goroutine
 	opened       []Overlay
 	closed       []string
 	closedLua    int
@@ -666,7 +668,16 @@ type fakeUI struct {
 }
 
 func (f *fakeUI) Notify(logging.Level, string, string) {}
-func (f *fakeUI) OpenOverlay(o Overlay)                { f.opened = append(f.opened, o) }
+func (f *fakeUI) OpenOverlay(o Overlay) {
+	f.mu.Lock()
+	f.opened = append(f.opened, o)
+	f.mu.Unlock()
+}
+func (f *fakeUI) overlays() []Overlay {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.opened)
+}
 func (f *fakeUI) CloseOverlay(id string, _ lua.Origin) { f.closed = append(f.closed, id) }
 func (f *fakeUI) CloseLuaOverlays()                    { f.closedLua++ }
 func (f *fakeUI) Reload() {

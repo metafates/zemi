@@ -198,21 +198,17 @@ func TestHealthModelRow(t *testing.T) {
 // named, one that failed or stopped warns, and a sign-in wait says so.
 func TestHealthMCPRow(t *testing.T) {
 	for _, c := range []struct {
-		statuses      []string
+		statuses      []ServiceStatus
 		level, detail string
 	}{
-		{[]string{"ready", "ready"}, "ok", "2 servers ready"},
-		{[]string{"ready", "starting"}, "ok", "2 servers: 1 ready, 1 starting"},
-		{[]string{"failed", "ready", "stopped"}, "warn", "3 servers: 1 failed, 1 ready, 1 stopped"},
-		{[]string{"failed", errSignIn}, "warn", "2 servers: 1 failed, 1 needs sign-in"},
+		{[]ServiceStatus{StatusReady, StatusReady}, "ok", "2 servers ready"},
+		{[]ServiceStatus{StatusReady, StatusStarting}, "ok", "2 servers: 1 ready, 1 starting"},
+		{[]ServiceStatus{StatusFailed, StatusReady, StatusStopped}, "warn", "3 servers: 1 failed, 1 ready, 1 stopped"},
+		{[]ServiceStatus{StatusFailed, StatusSignIn}, "warn", "2 servers: 1 failed, 1 needs sign-in"},
 	} {
 		h, _ := newTestHostDB(t)
 		for i, st := range c.statuses {
-			s := &mcpServer{status: st}
-			if st == errSignIn {
-				s.status, s.err = "failed", errSignIn
-			}
-			h.mcp.servers[strconv.Itoa(i)] = s
+			h.mcp.servers[strconv.Itoa(i)] = &mcpServer{status: st}
 		}
 		i := slices.IndexFunc(h.goHealthRows(), func(r healthCheck) bool { return r.name == "mcp" })
 		if row := h.goHealthRows()[i]; row.level != c.level || row.detail != c.detail {

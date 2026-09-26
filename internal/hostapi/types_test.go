@@ -172,8 +172,8 @@ func TestTypesEventNames(t *testing.T) {
 	assertSameNames(t, "zemi.EventName", annotatedAlias(t, "zemi.EventName"), slices.Collect(maps.Keys(eventCatalogue)))
 }
 
-// TestTypesEnums: each enum table's class and the alias that types the
-// fields taking one list exactly the Go values, keyed upper-cased.
+// TestTypesEnums: each enum table's class, keyed upper-cased, and each
+// alias that types the fields taking one list exactly the Go values.
 func TestTypesEnums(t *testing.T) {
 	reConst := regexp.MustCompile(`(?m)^---@field ([A-Z_]+) "([^"]+)"$`)
 	for _, c := range []struct {
@@ -186,9 +186,18 @@ func TestTypesEnums(t *testing.T) {
 		{"zemi.Level", "zemi.notify.level", slices.Collect(maps.Keys(notifyLevels))},
 		{"zemi.ModelRole", "zemi.model.role", roleNames()},
 		{"", "zemi.model.effort", agent.Efforts},
+		{"zemi.ServiceStatus", "", func() (out []string) {
+			for _, s := range serviceStatuses {
+				out = append(out, string(s))
+			}
+			return out
+		}()},
 	} {
 		if c.alias != "" {
 			assertSameNames(t, c.alias, annotatedAlias(t, c.alias), slices.Clone(c.live))
+		}
+		if c.table == "" {
+			continue
 		}
 		var vals []string
 		for _, m := range reConst.FindAllStringSubmatch(annotatedClass(t, c.table), -1) {

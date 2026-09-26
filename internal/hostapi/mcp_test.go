@@ -64,8 +64,8 @@ func TestMCPBridge(t *testing.T) {
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if err := h.openMCP(); err != nil || ui.opened[0].Items[0].(map[string]any)["desc"] != "ready · 2 of 3 tools" || ui.opened[0].Reload == nil {
-		t.Errorf("/mcp row = %v, %v", ui.opened, err)
+	if err := h.openMCP(); err != nil || ui.overlays()[0].Items[0].(map[string]any)["desc"] != "ready · 2 of 3 tools" || ui.overlays()[0].Reload == nil {
+		t.Errorf("/mcp row = %v, %v", ui.overlays(), err)
 	}
 	run := func(i int, input string) fantasy.ToolResponse {
 		resp, err := list[i].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: names[i], Input: input})
@@ -120,10 +120,10 @@ func TestMCPBridge(t *testing.T) {
 	if resp := run(0, `{"text":"hi"}`); !resp.IsError || !strings.Contains(resp.Content, "sign in again") {
 		t.Fatalf("call after the sign-in expired = %+v", resp)
 	}
-	if s, _ := h.mcpServerNamed("fake"); s.currentClient() != nil || s.status != "failed" || s.err != errSignIn {
+	if s, _ := h.mcpServerNamed("fake"); s.currentClient() != nil || s.status != StatusSignIn {
 		t.Fatalf("status after the sign-in expired = %q, %q", s.status, s.err)
 	}
-	if items, _ := ui.opened[0].Reload(); !strings.Contains(fmt.Sprint(items[0].(map[string]any)["actions"]), "hotkey:s run:mcp sign-in fake") {
+	if items, _ := ui.overlays()[0].Reload(); !strings.Contains(fmt.Sprint(items[0].(map[string]any)["actions"]), "hotkey:s run:mcp sign-in fake") {
 		t.Errorf("the rebuilt /mcp row offers no [s] Sign in: %v", items)
 	}
 	// a reload that disables echo stops the snapshot's echo too

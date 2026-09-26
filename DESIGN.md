@@ -1387,7 +1387,9 @@ provenance string.
   cannot be undone (delete, or `/mcp`'s sign out, which deletes the saved
   token); `/health`'s one action per check takes its label's initial. A
   screen that manages things (`/skills`, `/mcp`, `/lsp`, `/permissions`,
-  `/plugins`) is a toggle list, so an action returns to it rebuilt;
+  `/plugins`) is a toggle list, so an action returns to it rebuilt, and
+  `/mcp`, `/lsp` and `/plugins` also rebuild in place when a server or a
+  slow action changes their state off the key loop (`Overlay.Refresh`);
   `/sessions`, `/agents` and `/workflows` close on an action instead: resume,
   a run and an agent's transcript move to another screen, which a rebuilt
   list would cover. A row's binary state (a skill or plugin on or off, a

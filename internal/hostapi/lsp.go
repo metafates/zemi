@@ -330,7 +330,12 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 	h.lsp.mu.Unlock()
 	if !ok {
 		h.GoSafe("lsp start "+def.Name, func() {
-			defer close(p.ready)
+			defer func() {
+				close(p.ready)
+				if ui := h.hooks(); ui != nil {
+					ui.OpenOverlay(h.lspOverlay(true))
+				}
+			}()
 			env, _ := h.Perm.ChildEnv(nil)
 			for k, v := range def.Env {
 				env = append(env, k+"="+v)
@@ -595,8 +600,8 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
-		for _, row := range h.lspRows() {
-			out.Append(lua.FromGo(L, row))
+		for _, r := range h.lspRows() {
+			out.Append(lua.FromGo(L, map[string]any{"name": r.Name, "command": r.Command, "filetypes": r.Filetypes, "status": string(r.Status), "error": r.Error}))
 		}
 		L.Push(out)
 		return 1
@@ -604,29 +609,34 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
+type lspRow struct {
+	Name, Command, Filetypes, Error string
+	Status                          ServiceStatus
+}
+
 // lspRows lists the servers this project can use with their state: running
-// ones first, then those that would start on their first file ("idle").
-func (h *Host) lspRows() []map[string]any {
+// ones first, then those that would start on their first file (idle).
+func (h *Host) lspRows() []lspRow {
 	defs := h.lspDefs("")
 	h.lsp.mu.Lock()
 	defer h.lsp.mu.Unlock()
-	var out []map[string]any
+	var out []lspRow
 	for _, d := range defs {
 		if _, running := h.lsp.running[d.Name]; !running {
-			out = append(out, map[string]any{"name": d.Name, "command": d.Command, "status": "idle", "error": "", "filetypes": strings.Join(d.Exts, " ")})
+			out = append(out, lspRow{Name: d.Name, Command: d.Command, Filetypes: strings.Join(d.Exts, " "), Status: StatusIdle})
 		}
 	}
 	for name, p := range h.lsp.running {
-		row := map[string]any{"name": name, "command": p.def.Command, "status": "starting", "error": "", "filetypes": strings.Join(p.def.Exts, " ")}
+		row := lspRow{Name: name, Command: p.def.Command, Filetypes: strings.Join(p.def.Exts, " "), Status: StatusStarting}
 		select {
 		case <-p.ready:
-			row["status"] = "ready"
+			row.Status = StatusReady
 			if p.err != nil {
-				row["status"], row["error"] = "failed", p.err.Error()
+				row.Status, row.Error = StatusFailed, p.err.Error()
 			} else {
 				select {
 				case <-p.client.Done():
-					row["status"] = "stopped"
+					row.Status = StatusStopped
 				default:
 				}
 			}
@@ -634,14 +644,14 @@ func (h *Host) lspRows() []map[string]any {
 		}
 		out = append(out, row)
 	}
-	slices.SortFunc(out, func(a, b map[string]any) int {
-		avail := func(r map[string]any) int {
-			if r["status"] == "idle" {
+	slices.SortFunc(out, func(a, b lspRow) int {
+		avail := func(r lspRow) int {
+			if r.Status == StatusIdle {
 				return 1
 			}
 			return 0
 		}
-		return cmp.Or(cmp.Compare(avail(a), avail(b)), cmp.Compare(a["name"].(string), b["name"].(string)))
+		return cmp.Or(cmp.Compare(avail(a), avail(b)), cmp.Compare(a.Name, b.Name))
 	})
 	return out
 }
@@ -671,31 +681,35 @@ func (h *Host) lspCommands() []*Command {
 			if err != nil {
 				return err
 			}
-			empty := "No language servers yet. Install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or add one with zemi.lsp.add."
-			if !h.ProjectTrusted() {
-				empty = "Language servers are off: this project is not trusted."
-			}
-			ui.OpenOverlay(Overlay{ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Fields: true, Items: h.lspItems(),
-				Reload: func() ([]any, [][]Segment) { return h.lspItems(), nil }, Empty: empty})
+			ui.OpenOverlay(h.lspOverlay(false))
 			return nil
 		},
 	}}
 }
 
+// lspOverlay is /lsp; with refresh it only replaces an open one.
+func (h *Host) lspOverlay(refresh bool) Overlay {
+	empty := "No language servers yet. Install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or add one with zemi.lsp.add."
+	if !h.ProjectTrusted() {
+		empty = "Language servers are off: this project is not trusted."
+	}
+	return Overlay{ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.lspItems(),
+		Reload: func() ([]any, [][]Segment) { return h.lspItems(), nil }, Empty: empty}
+}
+
 func (h *Host) lspItems() []any {
 	var items []any
 	for _, row := range h.lspRows() {
-		name, status := fmt.Sprint(row["name"]), fmt.Sprint(row["status"])
-		detail := fmt.Sprintf("command: %s\nstatus: %s\nfiles: %s", row["command"], status, row["filetypes"])
-		if status == "idle" {
+		detail := fmt.Sprintf("command: %s\nstatus: %s\nfiles: %s", row.Command, row.Status, row.Filetypes)
+		if row.Status == StatusIdle {
 			detail += " (starts on the first one)"
 		}
-		if e := fmt.Sprint(row["error"]); e != "" {
-			detail += "\nerror: " + e
+		if row.Error != "" {
+			detail += "\nerror: " + row.Error
 		}
-		item := map[string]any{"text": name, "desc": status + " · " + fmt.Sprint(row["filetypes"]), "detail": detail}
-		if status != "idle" {
-			item["actions"] = []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "lsp restart " + name}}
+		item := map[string]any{"text": row.Name, "desc": string(row.Status) + " · " + row.Filetypes, "detail": detail}
+		if row.Status != StatusIdle {
+			item["actions"] = []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "lsp restart " + row.Name}}
 		}
 		items = append(items, item)
 	}

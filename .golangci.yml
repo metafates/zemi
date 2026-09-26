@@ -47,6 +47,8 @@ linters:
         - (*github.com/metafates/zemi/internal/store.DB).Close
         - golang.org/x/sys/unix.Close
     exhaustive:
+      check: [switch, map]
+      explicit-exhaustive-map: true # only maps marked //exhaustive:enforce
       default-signifies-exhaustive: true
     perfsprint:
       errorf: false

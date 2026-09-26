@@ -659,7 +659,12 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 var fieldLine = regexp.MustCompile(`^([a-z][a-z -]{0,14}): (.*)$`)
 
 // statusHL colors the status words every screen shares.
-var statusHL = map[string]string{"starting": "Host:Warn", "ready": "Host:Ok", "failed": "Host:Danger", "stopped": "Host:Hint", "idle": "Host:Hint", "off": "Host:Hint"}
+//
+//exhaustive:enforce
+var statusHL = map[hostapi.ServiceStatus]string{
+	hostapi.StatusIdle: "Host:Hint", hostapi.StatusStarting: "Host:Warn", hostapi.StatusReady: "Host:Ok", hostapi.StatusFailed: "Host:Danger",
+	hostapi.StatusSignIn: "Host:Warn", hostapi.StatusStopped: "Host:Hint", hostapi.StatusOff: "Host:Hint",
+}
 
 // fieldRows wraps a plain body, setting the "key: value" lines it opens
 // with as a table: dim keys in one column, each value wrapped beside its
@@ -696,7 +701,7 @@ fields:
 		case "error":
 			hl = "Host:Danger"
 		case "status":
-			hl = statusHL[val]
+			hl = statusHL[hostapi.ServiceStatus(val)]
 		default:
 			hl = ""
 		}

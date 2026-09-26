@@ -55,7 +55,7 @@ type mcpServer struct {
 	mu      sync.Mutex
 	client  *mcp.Client
 	tools   []mcp.Tool
-	status  string // starting, ready, failed, stopped
+	status  ServiceStatus
 	err     string
 	signIn  string // the sign-in URL while one waits in the browser
 	stopped bool
@@ -82,7 +82,7 @@ func (h *Host) addMCP(name string, spec MCPSpec) error {
 	if (spec.Command == "") == (spec.URL == "") {
 		return errors.New("give exactly one of command or url")
 	}
-	s := &mcpServer{name: name, spec: spec, status: "starting"}
+	s := &mcpServer{name: name, spec: spec, status: StatusStarting}
 	h.mcp.mu.Lock()
 	old, parked := h.mcp.servers[name], h.mcp.parked[name]
 	delete(h.mcp.parked, name)
@@ -108,7 +108,7 @@ func (h *Host) addMCP(name string, spec MCPSpec) error {
 func (s *mcpServer) keeps(spec MCPSpec) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return (s.status == "ready" || s.status == "starting") && reflect.DeepEqual(s.spec, spec)
+	return (s.status == StatusReady || s.status == StatusStarting) && reflect.DeepEqual(s.spec, spec)
 }
 
 func (h *Host) startMCP(s *mcpServer) {
@@ -140,19 +140,14 @@ func (h *Host) startMCP(s *mcpServer) {
 	// a stopped server was replaced or reloaded away: its failure is no news
 	fail := func(err error) {
 		if errors.Is(err, mcp.ErrAuthRequired) {
-			s.needsSignIn(h)
+			h.needsSignIn(s)
 			return
 		}
-		s.mu.Lock()
-		if s.stopped {
-			s.mu.Unlock()
+		if !h.setMCP(s, StatusFailed, err.Error()) {
 			return
 		}
-		s.status, s.err = "failed", err.Error()
-		s.mu.Unlock()
 		h.Log.Warn("mcp", "server failed", map[string]any{"server": s.name, "error": err.Error()})
 		h.RecordError("mcp "+s.name, err.Error())
-		h.refresh()
 	}
 	client, err := mcp.Start(ctx, cfg)
 	if err != nil {
@@ -167,15 +162,13 @@ func (h *Host) startMCP(s *mcpServer) {
 	}
 	h.checkToolNames(s, list)
 	s.mu.Lock()
-	if s.stopped {
-		s.mu.Unlock()
+	s.client, s.tools = client, list // unused until the status is ready
+	s.mu.Unlock()
+	if !h.setMCP(s, StatusReady, "") {
 		client.Close()
 		return
 	}
-	s.client, s.tools, s.status, s.err = client, list, "ready", ""
-	s.mu.Unlock()
 	h.Log.Info("mcp", "server ready", map[string]any{"server": s.name, "tools": len(list)})
-	h.refresh()
 	h.GoSafe("mcp watch "+s.name, func() {
 		<-client.Done()
 		fail(client.Err())
@@ -214,21 +207,34 @@ func (h *Host) checkToolNames(s *mcpServer, list []mcp.Tool) {
 	}
 }
 
-// errSignIn is the error of a server that waits for the user to sign in.
-const errSignIn = "needs sign-in"
-
-// needsSignIn marks s as waiting for the user to sign in, unless it was
-// stopped (replaced or reloaded away) or already waits.
-func (s *mcpServer) needsSignIn(h *Host) {
+// setMCP moves s to status and shows it, unless s was stopped (replaced or
+// reloaded away, so its news is no one's) or is there already. It reports
+// whether s moved.
+func (h *Host) setMCP(s *mcpServer, status ServiceStatus, err string) bool {
 	s.mu.Lock()
-	if s.stopped || s.err == errSignIn {
-		s.mu.Unlock()
-		return
+	moved := !s.stopped && (s.status != status || s.err != err)
+	if moved {
+		s.status, s.err = status, err
 	}
-	s.status, s.err = "failed", errSignIn
 	s.mu.Unlock()
-	h.Notify(logging.Warn, "Sign-in needed", s.name+"; open /mcp")
+	if moved {
+		h.mcpChanged()
+	}
+	return moved
+}
+
+// mcpChanged redraws what shows the servers, an open /mcp included.
+func (h *Host) mcpChanged() {
 	h.refresh()
+	if ui := h.hooks(); ui != nil {
+		ui.OpenOverlay(h.mcpOverlay(true))
+	}
+}
+
+func (h *Host) needsSignIn(s *mcpServer) {
+	if h.setMCP(s, StatusSignIn, "") {
+		h.Notify(logging.Warn, "Sign-in needed", s.name+"; open /mcp")
+	}
 }
 
 // offered reports whether enabled_tools and disabled_tools give the model
@@ -240,7 +246,7 @@ func (s *mcpServer) offered(name string) bool {
 func (s *mcpServer) currentClient() *mcp.Client {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.status != "ready" {
+	if s.status != StatusReady {
 		return nil
 	}
 	return s.client
@@ -248,7 +254,7 @@ func (s *mcpServer) currentClient() *mcp.Client {
 
 func (s *mcpServer) stop() {
 	s.mu.Lock()
-	s.stopped, s.status = true, "stopped"
+	s.stopped, s.status = true, StatusStopped
 	c := s.client
 	s.mu.Unlock()
 	if c != nil {
@@ -334,7 +340,7 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	seen := map[string]bool{} // "a.b" and "a_b" map to one tool name
 	for _, s := range h.mcp.list() {
 		s.mu.Lock()
-		list, ready := s.tools, s.status == "ready"
+		list, ready := s.tools, s.status == StatusReady
 		s.mu.Unlock()
 		if !ready {
 			continue
@@ -584,7 +590,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 	defer cancel()
 	res, err := client.CallTool(cctx, t.tool.Name, args)
 	if errors.Is(err, mcp.ErrAuthRequired) {
-		s.needsSignIn(h)
+		h.needsSignIn(s)
 		return fantasy.NewTextErrorResponse("MCP server " + name + " needs the user to sign in again (/mcp)"), nil
 	}
 	if err != nil {
@@ -673,7 +679,7 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 					names = append(names, t.Name)
 				}
 			}
-			rows = append(rows, map[string]any{"name": s.name, "status": s.status, "error": s.err, "tools": names})
+			rows = append(rows, map[string]any{"name": s.name, "status": string(s.status), "error": s.err, "tools": names})
 			s.mu.Unlock()
 		}
 		L.Push(lua.FromGo(L, rows))
@@ -728,10 +734,15 @@ func (h *Host) openMCP() error {
 	if err != nil {
 		return err
 	}
-	ui.OpenOverlay(Overlay{ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Fields: true, Items: h.mcpItems(),
-		Reload: func() ([]any, [][]Segment) { return h.mcpItems(), nil },
-		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`})
+	ui.OpenOverlay(h.mcpOverlay(false))
 	return nil
+}
+
+// mcpOverlay is /mcp; with refresh it only replaces an open one.
+func (h *Host) mcpOverlay(refresh bool) Overlay {
+	return Overlay{ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.mcpItems(),
+		Reload: func() ([]any, [][]Segment) { return h.mcpItems(), nil },
+		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`}
 }
 
 func (h *Host) mcpItems() []any {
@@ -747,11 +758,8 @@ func (h *Host) mcpItems() []any {
 		}
 		all := len(s.tools)
 		s.mu.Unlock()
-		desc := status
-		if errText == errSignIn {
-			desc += " · " + errSignIn
-		}
-		if status == "ready" {
+		desc := string(status)
+		if status == StatusReady {
 			desc = fmt.Sprintf("ready · %d %s", len(tools), plural(len(tools), "tool", "tools"))
 			if len(tools) < all {
 				desc = fmt.Sprintf("ready · %d of %d tools", len(tools), all)
@@ -761,7 +769,7 @@ func (h *Host) mcpItems() []any {
 		if s.spec.URL != "" {
 			detail = "url: " + s.spec.URL
 		}
-		detail += "\nstatus: " + status
+		detail += "\nstatus: " + string(status)
 		if signIn != "" {
 			detail += "\nsign in at: " + signIn
 		}
@@ -775,7 +783,7 @@ func (h *Host) mcpItems() []any {
 			detail += "\nerror: " + strings.TrimPrefix(errText, "mcp: ")
 		}
 		actions := []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "mcp restart " + s.name}}
-		if errText == errSignIn {
+		if status == StatusSignIn {
 			actions = append(actions, map[string]any{"text": "Sign in", "hotkey": "s", "run": "mcp sign-in " + s.name})
 		}
 		if _, err := os.Stat(h.mcpAuth(s).Path); s.spec.URL != "" && err == nil {

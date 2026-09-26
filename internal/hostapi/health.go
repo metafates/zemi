@@ -358,20 +358,16 @@ func (h *Host) goHealthRows() []healthCheck {
 	}
 	out[len(out)-1].run = "trust"
 
-	counts, servers := map[string]int{}, h.mcp.list()
+	counts, servers := map[ServiceStatus]int{}, h.mcp.list()
 	for _, s := range servers {
 		s.mu.Lock()
-		if s.err == errSignIn { // the one failure the user fixes from here
-			counts[errSignIn]++
-		} else {
-			counts[s.status]++
-		}
+		counts[s.status]++
 		s.mu.Unlock()
 	}
 	switch {
 	case len(servers) == 0:
 		add("ok", "mcp", "no servers added")
-	case counts["ready"] == len(servers):
+	case counts[StatusReady] == len(servers):
 		add("ok", "mcp", fmt.Sprintf("%d %s ready", len(servers), plural(len(servers), "server", "servers")))
 	default:
 		var parts []string
@@ -379,7 +375,7 @@ func (h *Host) goHealthRows() []healthCheck {
 			parts = append(parts, fmt.Sprintf("%d %s", counts[st], st))
 		}
 		level := "warn"
-		if counts["ready"]+counts["starting"] == len(servers) {
+		if counts[StatusReady]+counts[StatusStarting] == len(servers) {
 			level = "ok"
 		}
 		add(level, "mcp", fmt.Sprintf("%d %s: %s", len(servers), plural(len(servers), "server", "servers"), strings.Join(parts, ", ")))
@@ -390,11 +386,11 @@ func (h *Host) goHealthRows() []healthCheck {
 
 	var lsps []string
 	for _, row := range h.lspRows() {
-		st := fmt.Sprint(row["status"])
-		if st == "idle" {
+		st := string(row.Status)
+		if row.Status == StatusIdle {
 			st = "idle until a file it serves"
 		}
-		lsps = append(lsps, fmt.Sprintf("%s (%s)", row["name"], st))
+		lsps = append(lsps, fmt.Sprintf("%s (%s)", row.Name, st))
 	}
 	switch {
 	case len(lsps) > 0:
@@ -456,7 +452,7 @@ func (h *Host) WaitMCP(ctx context.Context) {
 	for slices.ContainsFunc(h.mcp.list(), func(s *mcpServer) bool {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		return s.status == "starting"
+		return s.status == StatusStarting
 	}) {
 		select {
 		case <-ctx.Done():

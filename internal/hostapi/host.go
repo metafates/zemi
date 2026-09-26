@@ -127,6 +127,23 @@ type Overlay struct {
 	Reload func() (items []any, text [][]Segment)
 }
 
+// ServiceStatus is where an MCP server, a language server or a plugin
+// stands: the status word of /mcp, /lsp, /plugins, /health and zemi.*.list.
+type ServiceStatus string
+
+const (
+	StatusIdle     ServiceStatus = "idle" // a language server that starts on its first file
+	StatusStarting ServiceStatus = "starting"
+	StatusReady    ServiceStatus = "ready"
+	StatusFailed   ServiceStatus = "failed"
+	StatusSignIn   ServiceStatus = "needs sign-in"
+	StatusStopped  ServiceStatus = "stopped"
+	StatusOff      ServiceStatus = "off" // a plugin the user turned off
+)
+
+// serviceStatuses pins runtime/types/zemi.lua's zemi.ServiceStatus.
+var serviceStatuses = []ServiceStatus{StatusIdle, StatusStarting, StatusReady, StatusFailed, StatusSignIn, StatusStopped, StatusOff}
+
 // OverlayKey is one character that runs Fn(selected item) on a list.
 type OverlayKey struct {
 	Key, Desc string
@@ -1658,7 +1675,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.87.0"))
+	api.RawSetString("version", glua.LString("0.88.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
