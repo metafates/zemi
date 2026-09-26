@@ -301,10 +301,6 @@ func (h *Host) skillsIndexPrompt() string {
 	return b.String()
 }
 
-// skillIndexDescMax is what discovery lets a description reach, so the
-// index never clips.
-const skillIndexDescMax = skills.MaxDescriptionRunes
-
 // setSkillEnabled flips the stored enabled state; a hook already ran in
 // the boot window, so it is not re-run here. The origin gate lives in the
 // Lua namespace: Go callers run off the interpreter, where the frame origin

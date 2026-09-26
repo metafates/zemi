@@ -546,3 +546,10 @@ func TestWheelUnderPointer(t *testing.T) {
 		})
 	}
 }
+
+// hostBox draws a chrome box: a titled top border with an optional
+// right-aligned badge, body rows padded to one width. The badge (a Lua
+// overlay's origin) wins over the title when space runs out.
+func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w int) [][]hostapi.Segment {
+	return hostBoxW(title, titleHL, badge, body, w, 100, 0)
+}

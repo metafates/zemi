@@ -132,13 +132,6 @@ func (a *App) answerPerm(ok bool, by string) {
 // ---------------------------------------------------------------------------
 // chrome
 
-// hostBox draws a chrome box: a titled top border with an optional
-// right-aligned badge, body rows padded to one width. The badge (a Lua
-// overlay's origin) wins over the title when space runs out.
-func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w int) [][]hostapi.Segment {
-	return hostBoxW(title, titleHL, badge, body, w, 100, 0)
-}
-
 // boxInner is the widest row a hostBox on a w-cell screen shows whole.
 func boxInner(w int) int { return max(min(w-4, 100)-4, 1) }
 
@@ -158,7 +151,7 @@ func promptBox(title, badge string, body [][]hostapi.Segment, w, h, maxW int, si
 		title = ansi.Truncate(title, size.w-1-map[bool]int{true: ansi.StringWidth(badge) + 2}[badge != ""], "…")
 	}
 	box := hostBoxW(title, "Host:Title", badge, body, w, maxW, size.w)
-	size.w, size.h = max(size.w, segsWidth(box[0])-4), max(size.h, len(box))
+	size.w, size.h = max(size.w, hostapi.SegsWidth(box[0])-4), max(size.h, len(box))
 	return box
 }
 
@@ -273,7 +266,7 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 				r = label[j]
 			}
 			if j < len(desc) {
-				r = slices.Concat(r, []hostapi.Segment{{Text: strings.Repeat(" ", max(lw+2-segsWidth(r), 2)), HL: "Host:Hint"}}, desc[j])
+				r = slices.Concat(r, []hostapi.Segment{{Text: strings.Repeat(" ", max(lw+2-hostapi.SegsWidth(r), 2)), HL: "Host:Hint"}}, desc[j])
 			}
 			row := slices.Concat(btn, r)
 			if j > 0 {
@@ -316,7 +309,7 @@ func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, m
 	}
 	bw := max(3+ansi.StringWidth(label(title, 999)+label(badge, 999)), minW+4)
 	for _, r := range body {
-		bw = max(bw, segsWidth(r)+4)
+		bw = max(bw, hostapi.SegsWidth(r)+4)
 	}
 	// wide boxes read badly; long rows end in an ellipsis instead
 	bw = max(min(bw, w-4, maxW), min(12, max(w, 4)))
@@ -342,7 +335,7 @@ func hostBoxW(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, m
 			s.HL = cmp.Or(s.HL, "Host:Value")
 			row = append(row, s)
 		}
-		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, bw-4-segsWidth(line)-len(bar))), NoCopy: true})
+		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, bw-4-hostapi.SegsWidth(line)-len(bar))), NoCopy: true})
 		row = append(append(row, bar...), hostapi.Segment{Text: " │", HL: "Host:Rule", NoCopy: true})
 		box = append(box, row)
 	}
@@ -483,7 +476,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 					if descW > 0 {
 						desc = ellipsizeSegs(desc, descW)
 					}
-					row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, labelW-segsWidth(row))+2)})
+					row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, labelW-hostapi.SegsWidth(row))+2)})
 					row = append(row, desc...)
 				}
 				if it.key.Text != "" {
@@ -536,21 +529,21 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 	for y, r := range rows {
 		k, ok := keys[y]
 		kw := map[bool]int{true: 2 + ansi.StringWidth(k.Text)}[ok]
-		if maxW > 0 && segsWidth(r)+kw > maxW {
+		if maxW > 0 && hostapi.SegsWidth(r)+kw > maxW {
 			// a cut row still wants every cell, so the list keeps them all
 			// where the word-boundary cut would leave a few
 			rows[y], widest = ellipsizeSegs(r, maxW-kw), maxW
 			continue
 		}
-		widest = max(widest, segsWidth(r)+kw)
+		widest = max(widest, hostapi.SegsWidth(r)+kw)
 	}
 	for y, r := range rows {
 		if k, ok := keys[y]; ok {
-			pad := hostapi.Segment{Text: strings.Repeat(" ", widest-segsWidth(r)-ansi.StringWidth(k.Text)), Hit: k.Hit}
+			pad := hostapi.Segment{Text: strings.Repeat(" ", widest-hostapi.SegsWidth(r)-ansi.StringWidth(k.Text)), Hit: k.Hit}
 			rows[y] = append(r, pad, k)
 			continue
 		}
-		rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-segsWidth(r))})
+		rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-hostapi.SegsWidth(r))})
 	}
 	if !v.overflows() {
 		v.top = 0
@@ -708,7 +701,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " "))+bar)
 	}
 	for _, r := range slices.Concat(head, words, list, [][]hostapi.Segment{hintRow}) {
-		fit = max(fit, segsWidth(r))
+		fit = max(fit, hostapi.SegsWidth(r))
 	}
 	fit = min(fit, inner)
 	panelW := fit
@@ -751,9 +744,9 @@ func capRows(rows [][]hostapi.Segment, n, w int) [][]hostapi.Segment {
 // padPanel cuts or extends a panel row to width, keeping its last style.
 func padPanel(r []hostapi.Segment, width int) []hostapi.Segment {
 	r = truncateSegs(r, width)
-	if n := len(r); n > 0 && segsWidth(r) < width {
+	if n := len(r); n > 0 && hostapi.SegsWidth(r) < width {
 		last := r[n-1]
-		last.Text += strings.Repeat(" ", width-segsWidth(r))
+		last.Text += strings.Repeat(" ", width-hostapi.SegsWidth(r))
 		r = append(r[:n-1:n-1], last)
 	}
 	return r
@@ -853,7 +846,7 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 		for i >= 0 && (pairs[i].key == "enter" || pairs[i].key == "esc") {
 			i--
 		}
-		if segsWidth(out) <= w || i < 0 {
+		if hostapi.SegsWidth(out) <= w || i < 0 {
 			return out
 		}
 		pairs = slices.Delete(pairs, i, i+1)

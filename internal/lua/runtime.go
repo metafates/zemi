@@ -315,35 +315,6 @@ func (g *Generation) do(ctx context.Context, class Class, ceiling, grace time.Du
 	}
 }
 
-// Call runs a registered Lua callback with Go arguments. It is the standard
-// host -> Lua entry point for UI-class work.
-func (r *Runtime) Call(ctx context.Context, origin Origin, fn *glua.LFunction, args ...any) ([]any, error) {
-	return r.Do(ctx, ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-		defer r.PushFrame(L, origin, "callback")()
-		base := L.GetTop()
-		L.Push(fn)
-		for _, a := range args {
-			L.Push(FromGo(L, a))
-		}
-		if err := L.PCall(len(args), glua.MultRet, nil); err != nil {
-			L.SetTop(base)
-			return nil, err
-		}
-		nres := L.GetTop() - base
-		out := make([]any, 0, nres)
-		for i := 1; i <= nres; i++ {
-			v, err := ToGo(L.Get(base + i))
-			if err != nil {
-				L.SetTop(base)
-				return nil, err
-			}
-			out = append(out, v)
-		}
-		L.SetTop(base)
-		return out, nil
-	})
-}
-
 // ExecuteChunk compiles and runs src as a chunk of the given origin, as a
 // task.
 func (r *Runtime) ExecuteChunk(ctx context.Context, src, rel string, origin Origin) error {

@@ -354,18 +354,18 @@ func TestOverlayNavigation(t *testing.T) {
 		{"a breadcrumb longer than the list is cut, never widening the detail view",
 			hostapi.Overlay{Title: "A long parent title", Items: []any{map[string]any{"text": strings.Repeat("x", 50), "detail": "d"}}}, []string{"enter"},
 			func(a *App) string {
-				list, detail := segsWidth(a.overlayBox(&a.overlays[0], 120, 20)[0]), a.overlayBox(&a.overlays[1], 120, 20)[0]
-				return map[bool]string{false: fmt.Sprintf("list %d wide, detail %q", list, plainSegs(detail))}[segsWidth(detail) == list]
+				list, detail := hostapi.SegsWidth(a.overlayBox(&a.overlays[0], 120, 20)[0]), a.overlayBox(&a.overlays[1], 120, 20)[0]
+				return map[bool]string{false: fmt.Sprintf("list %d wide, detail %q", list, plainSegs(detail))}[hostapi.SegsWidth(detail) == list]
 			}},
 		{"the wheel scrolls a detail body with actions, and the box keeps its width",
 			hostapi.Overlay{Title: "Errors", Items: []any{detail(map[string]any{"text": "Ask", "fill": "x"}, map[string]any{"text": "Back"})}}, []string{"enter"},
 			func(a *App) string {
 				d := &a.overlays[1]
 				d.o.Body = strings.Repeat("line\n", 60)
-				before := segsWidth(a.overlayBox(d, 80, 20)[0])
+				before := hostapi.SegsWidth(a.overlayBox(d, 80, 20)[0])
 				a.wheel(0, 0, 1)
 				d.selected = 1
-				if after := segsWidth(a.overlayBox(d, 80, 20)[0]); d.body.top != 1 || after != before {
+				if after := hostapi.SegsWidth(a.overlayBox(d, 80, 20)[0]); d.body.top != 1 || after != before {
 					return fmt.Sprintf("scroll=%d width %d -> %d", d.body.top, before, after)
 				}
 				return ""
@@ -563,8 +563,8 @@ func TestOverlayFilterKeepsSize(t *testing.T) {
 		st.active, st.query = true, q
 		st.apply(st.texts)
 		got := app.overlayBox(st, 80, 40)
-		if segsWidth(got[0]) != segsWidth(box[0]) || len(got) != len(box) {
-			t.Fatalf("filter %q: %dx%d, want %dx%d", q, segsWidth(got[0]), len(got), segsWidth(box[0]), len(box))
+		if hostapi.SegsWidth(got[0]) != hostapi.SegsWidth(box[0]) || len(got) != len(box) {
+			t.Fatalf("filter %q: %dx%d, want %dx%d", q, hostapi.SegsWidth(got[0]), len(got), hostapi.SegsWidth(box[0]), len(box))
 		}
 		if q == "item" && col(got) != col(box) {
 			t.Fatalf("filter %q moved the description column from %d to %d", q, col(box), col(got))
@@ -703,10 +703,10 @@ func TestOverlaySwitch(t *testing.T) {
 			t.Errorf("%v: switch %q in %s, want %q in %s", c.item, k.Text, k.HL, c.sw, c.hl)
 		}
 		if width < 0 {
-			width = segsWidth(row)
+			width = hostapi.SegsWidth(row)
 		}
-		if segsWidth(row) != width {
-			t.Errorf("%v: row %d cells, want %d", c.item, segsWidth(row), width)
+		if hostapi.SegsWidth(row) != width {
+			t.Errorf("%v: row %d cells, want %d", c.item, hostapi.SegsWidth(row), width)
 		}
 	}
 }

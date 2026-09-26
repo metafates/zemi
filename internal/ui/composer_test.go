@@ -348,10 +348,10 @@ func TestCompletionListWidth(t *testing.T) {
 		files = append(files, fmt.Sprintf("f%03d.go", i))
 	}
 	app.onFilesScanned(filesScannedMsg{gen: app.completion.walkGen, files: files})
-	first := segsWidth(app.completionRows(76, 10, 0)[0])
+	first := hostapi.SegsWidth(app.completionRows(76, 10, 0)[0])
 	app.completion.selected = app.completion.count() - 1
 	rows := app.completionRows(76, 10, 0)
-	if w := segsWidth(rows[0]); w != first || app.completion.count() != listMaxFiles || !strings.Contains(plainSegs(rows[len(rows)-1]), "more files") {
+	if w := hostapi.SegsWidth(rows[0]); w != first || app.completion.count() != listMaxFiles || !strings.Contains(plainSegs(rows[len(rows)-1]), "more files") {
 		t.Fatalf("width %d then %d, %d items, last row %q", first, w, app.completion.count(), plainSegs(rows[len(rows)-1]))
 	}
 }

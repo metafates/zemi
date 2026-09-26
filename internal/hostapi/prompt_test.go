@@ -219,3 +219,10 @@ func TestSendPrepCheap(t *testing.T) {
 		t.Fatalf("5 prompt builds took %s; something expensive is back on the send path", d)
 	}
 }
+
+// buildSystem renders the system prompt with context files appended
+// (capped; DESIGN §6.3 context.files).
+func (h *Host) buildSystem(p *Profile) string {
+	sys, _ := h.buildSystemParts(p, h.profileTools(p))
+	return sys
+}

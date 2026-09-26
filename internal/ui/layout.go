@@ -378,7 +378,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	case n.Kind == hostapi.LayoutRegion:
 		rows = a.regionLines(n.Region, w)
 		for i, row := range rows {
-			if segsWidth(row) == 0 {
+			if hostapi.SegsWidth(row) == 0 {
 				rows[i] = padSegs(row, w) // a blank line is a blank row
 			}
 		}
@@ -686,7 +686,7 @@ func (a *App) paintFloats(rows [][]hostapi.Segment, s *screenLayout, w, h int) {
 			if sg.Widget == "" && sg.Click != "" { // a Go pill
 				keep = append(keep, kept{x, y, []hostapi.Segment{sg}})
 			}
-			x += segsWidth([]hostapi.Segment{sg})
+			x += hostapi.SegsWidth([]hostapi.Segment{sg})
 		}
 	}
 	for _, pf := range s.floats {
@@ -696,7 +696,7 @@ func (a *App) paintFloats(rows [][]hostapi.Segment, s *screenLayout, w, h int) {
 		if f.Width.Kind == hostapi.SizeContent {
 			fw = 0
 			for _, l := range lines {
-				fw = max(fw, segsWidth(l))
+				fw = max(fw, hostapi.SegsWidth(l))
 			}
 			fw = min(fw, pf.width)
 		}
@@ -739,7 +739,7 @@ func placeBox(rows, box [][]hostapi.Segment, x0, y0, w int) [][]hostapi.Segment 
 		if y < 0 || y >= len(rows) {
 			continue
 		}
-		bw := segsWidth(line)
+		bw := hostapi.SegsWidth(line)
 		under := rows[y]
 		row := padSegs(truncateSegs(under, x0), x0)
 		row = append(row, line...)

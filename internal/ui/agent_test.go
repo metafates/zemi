@@ -902,7 +902,7 @@ func TestWorkingRowMascot(t *testing.T) {
 		app.now = func() time.Time { return time.UnixMilli(ms) }
 		app.renderSync(t)
 		segs := app.widgetLines("working")[0]
-		if w := segsWidth(segs); w != 78 {
+		if w := hostapi.SegsWidth(segs); w != 78 {
 			t.Fatalf("the rule is %d cells, want 78", w)
 		}
 		return ansi.Strip(app.renderSegs(segs, 80))

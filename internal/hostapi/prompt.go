@@ -129,13 +129,6 @@ type promptParts struct {
 	digest       int
 }
 
-// buildSystem renders the system prompt with context files appended
-// (capped; DESIGN §6.3 context.files).
-func (h *Host) buildSystem(p *Profile) string {
-	sys, _ := h.buildSystemParts(p, h.profileTools(p))
-	return sys
-}
-
 // buildSystemParts takes the run's tool set so the prompt names no tool the
 // model does not have.
 func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string, promptParts) {

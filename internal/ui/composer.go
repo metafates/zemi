@@ -461,7 +461,7 @@ func (a *App) composerFrame(n *hostapi.LayoutNode, w int) [][]hostapi.Segment {
 // rule draws one side of the composer frame across w cells: the corners, the
 // clusters at either end, "─" between them.
 func rule(l, r, hl string, left, right []hostapi.Segment, w int) []hostapi.Segment {
-	fill := max(w-2-segsWidth(left)-segsWidth(right), 0)
+	fill := max(w-2-hostapi.SegsWidth(left)-hostapi.SegsWidth(right), 0)
 	out := append([]hostapi.Segment{{Text: l, HL: hl, NoCopy: true}}, left...)
 	out = append(out, hostapi.Segment{Text: strings.Repeat("─", fill), HL: hl, NoCopy: true})
 	return append(append(out, right...), hostapi.Segment{Text: r, HL: hl, NoCopy: true})
@@ -469,7 +469,7 @@ func rule(l, r, hl string, left, right []hostapi.Segment, w int) []hostapi.Segme
 
 // spaced sets a cluster off from the rule around it.
 func spaced(segs []hostapi.Segment) []hostapi.Segment {
-	if segsWidth(segs) == 0 {
+	if hostapi.SegsWidth(segs) == 0 {
 		return nil
 	}
 	return slices.Concat([]hostapi.Segment{{Text: " ", NoCopy: true}}, segs, []hostapi.Segment{{Text: " ", NoCopy: true}})
@@ -480,7 +480,7 @@ func spaced(segs []hostapi.Segment) []hostapi.Segment {
 // (one is left for the ellipsis hostBox puts on a longer row).
 func (c *composerState) inputRow(width int) []hostapi.Segment {
 	segs := cursorSegs([]rune(c.text), c.cursor, "")
-	if over := 2 + segsWidth(segs[:2]) - (width - 1); over > 0 {
+	if over := 2 + hostapi.SegsWidth(segs[:2]) - (width - 1); over > 0 {
 		segs = dropCells(segs, over)
 	}
 	return padSegs(append([]hostapi.Segment{{Text: "> ", HL: "Comment", NoCopy: true}}, segs...), 40)

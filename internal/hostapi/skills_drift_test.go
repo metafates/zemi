@@ -65,8 +65,8 @@ func TestBuiltinSkillDescriptionsFitIndex(t *testing.T) {
 		t.Fatalf("builtin skills: %d found, warnings %v", len(found), warns)
 	}
 	for _, s := range found {
-		if n := len([]rune(s.Description)); n > skillIndexDescMax {
-			t.Errorf("%s description is %d runes, index shows %d", s.Name, n, skillIndexDescMax)
+		if n := len([]rune(s.Description)); n > skills.MaxDescriptionRunes {
+			t.Errorf("%s description is %d runes, index shows %d", s.Name, n, skills.MaxDescriptionRunes)
 		}
 	}
 }

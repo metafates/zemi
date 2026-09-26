@@ -881,7 +881,7 @@ func (a *App) compose(w, h int) string {
 				if y >= stage.Max.Y {
 					break
 				}
-				x0 := max(stage.Min.X, stage.Max.X-segsWidth(line)-2)
+				x0 := max(stage.Min.X, stage.Max.X-hostapi.SegsWidth(line)-2)
 				rows = placeBox(rows, [][]hostapi.Segment{margined(line)}, x0, y, w)
 				y++
 			}
@@ -1014,7 +1014,7 @@ func (a *App) floatPopup(lay screenLayout, h int) ([][]hostapi.Segment, int, uv.
 	}
 	bw := 0
 	for _, row := range box {
-		bw = max(bw, segsWidth(row))
+		bw = max(bw, hostapi.SegsWidth(row))
 	}
 	return box, x, uv.Rect(x, top, bw, len(box))
 }
@@ -1186,7 +1186,7 @@ func (a *App) pills() []statusItem {
 func (a *App) statusRow(w int, leftRegion, rightRegion string) []hostapi.Segment {
 	left, right := a.statusClusters(w, leftRegion, rightRegion)
 	out := append([]hostapi.Segment{}, left...)
-	if gap := max(0, w-segsWidth(left)-segsWidth(right)); gap > 0 {
+	if gap := max(0, w-hostapi.SegsWidth(left)-hostapi.SegsWidth(right)); gap > 0 {
 		out = append(out, hostapi.Segment{Text: strings.Repeat(" ", gap)})
 	}
 	return append(out, right...)
@@ -1212,7 +1212,7 @@ func (a *App) statusClusters(w int, leftRegion, rightRegion string) (left, right
 func fitClusters(left, right []statusItem, w int) ([]hostapi.Segment, []hostapi.Segment) {
 	for {
 		l, r := joinItems(left, false), joinItems(right, true)
-		if segsWidth(l)+segsWidth(r) < w || len(left)+len(right) == 1 {
+		if hostapi.SegsWidth(l)+hostapi.SegsWidth(r) < w || len(left)+len(right) == 1 {
 			return ellipsizeSegs(l, w), ellipsizeSegs(r, w)
 		}
 		side, at := &left, -1
@@ -1248,7 +1248,7 @@ var statusDot = hostapi.Segment{Text: " · ", HL: "Comment", NoCopy: true}
 func (a *App) statusItems(region string) []statusItem {
 	var out []statusItem
 	for _, wgt := range a.host.Widgets.InRegion(region) {
-		if lines := a.widgetLines(wgt.ID); len(lines) > 0 && segsWidth(lines[0]) > 0 {
+		if lines := a.widgetLines(wgt.ID); len(lines) > 0 && hostapi.SegsWidth(lines[0]) > 0 {
 			out = append(out, statusItem{lines[0], wgt.Priority})
 		}
 	}
@@ -1372,7 +1372,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 }
 
 func truncateSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
-	if segsWidth(segs) <= w {
+	if hostapi.SegsWidth(segs) <= w {
 		return segs
 	}
 	var out []hostapi.Segment
@@ -1395,7 +1395,7 @@ func truncateSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 }
 
 func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
-	pad := w - segsWidth(segs)
+	pad := w - hostapi.SegsWidth(segs)
 	if pad <= 0 {
 		return segs
 	}
@@ -1403,6 +1403,3 @@ func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	// the canvas instead of leaving the terminal's background showing.
 	return append(append([]hostapi.Segment{}, segs...), hostapi.Segment{Text: strings.Repeat(" ", pad), HL: "Normal"})
 }
-
-// the same measurement the markdown renderer uses
-var segsWidth = hostapi.SegsWidth

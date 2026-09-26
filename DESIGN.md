@@ -2351,7 +2351,7 @@ internal/proc/              every child process (own session and process group) 
 internal/plugins/           plugin install, update, check and delete over plain git, and on/off
 internal/glob/              rg-style glob matching for the file tools and LSP
 internal/sanitize/          escape stripping at the render and log boundary
-internal/logging/           log files and the in-memory ring behind /errors
+internal/logging/           log files
 runtime/lua/                embedded Lua userland (tui: widgets, themes)
 runtime/skills/zemi-*/      zemi's own skills; runtime/workflows/, the builtin ones
 runtime/types/              the LuaLS `---@meta` description of the whole zemi.* API

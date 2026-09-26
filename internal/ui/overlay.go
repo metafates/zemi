@@ -730,9 +730,9 @@ func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, area uv.Rectan
 	y0 := area.Min.Y + (bottom-area.Min.Y-bh)/2
 	lo, hi := w, 0
 	for i := range bh {
-		x0 := area.Min.X + max((area.Dx()-segsWidth(box[i]))/2, 1)
+		x0 := area.Min.X + max((area.Dx()-hostapi.SegsWidth(box[i]))/2, 1)
 		rows = placeBox(rows, [][]hostapi.Segment{margined(box[i])}, x0-1, y0+i, w)
-		lo, hi = min(lo, x0-1), max(hi, x0+segsWidth(box[i])+1)
+		lo, hi = min(lo, x0-1), max(hi, x0+hostapi.SegsWidth(box[i])+1)
 	}
 	return rows, uv.Rect(lo, y0, max(hi-lo, 0), bh)
 }
@@ -744,7 +744,7 @@ func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, area uv.Rectan
 func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, right bool, w int) ([][]hostapi.Segment, uv.Rectangle) {
 	bottom := min(area.Max.Y, len(rows))
 	y0 := max(area.Min.Y, bottom-len(box))
-	bw := segsWidth(box[0])
+	bw := hostapi.SegsWidth(box[0])
 	x := frame.Min.X
 	if right {
 		x = max(frame.Max.X-bw, 0)
