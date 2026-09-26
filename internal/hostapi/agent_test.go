@@ -210,8 +210,10 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 	dir, log := t.TempDir(), logging.New(t.TempDir())
 	dirs := config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()}
 	initLua := filepath.Join(dir, "init.lua")
-	const prov = `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "a" }, { id = "b" }, { id = "c" }, { id = "e" }, { id = "z" } } })` + "\n"
-	if err := os.WriteFile(initLua, []byte(prov), 0o600); err != nil {
+	const head = `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "a" }, { id = "b" }, { id = "c" }, { id = "e" }, { id = "z" } } })
+zemi.permission.mode.add("wild", { base = "yolo" })
+`
+	if err := os.WriteFile(initLua, []byte(head), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var h *Host
@@ -237,6 +239,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		keep     bool   // KeepPicks for the pick: off is a flag's
 		restart  bool   // a new zemi instead of a reload
 		row      string // a kv row written straight to the global store before the restart
+		unkept   bool   // the pick must leave no row in the global store
 	}{
 		{name: "first load applies config", config: []any{"p/a"}, want: "p/a", source: "init.lua"},
 		{name: "unchanged config keeps a pick", config: []any{"p/a"}, pick: "p/b", want: "p/b", source: "this run"},
@@ -259,12 +262,13 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		{name: "dropping the line restores the pick", want: "p/c", source: "saved"},
 		{name: "reset forgets it", pick: "reset", keep: true, want: "", source: "default"},
 		{name: "for good", restart: true, want: "", source: "default"},
-		{name: "yolo is not saved", key: "permissions.mode", pick: "yolo", keep: true, restart: true, want: "auto", source: "default"},
+		{name: "yolo is not saved", key: "permissions.mode", pick: "yolo", keep: true, unkept: true, restart: true, want: "auto", source: "default"},
+		{name: "nor a mode based on it", key: "permissions.mode", pick: "wild", keep: true, unkept: true, restart: true, want: "auto", source: "default"},
 		{name: "nor loaded", key: "permissions.mode", row: `"yolo"`, restart: true, want: "auto", source: "default"},
 		{name: "a flag is not saved", pick: "p/z", restart: true, want: "", source: "default"},
 	} {
 		key := cmp.Or(c.key, "models.chat")
-		src := prov
+		src := head
 		for _, v := range c.config {
 			src += fmt.Sprintf(cmp.Or(c.set, "zemi.config.set(%[1]q, %[2]s)"), key, luaLiteral(v)) + "\n"
 		}
@@ -282,6 +286,9 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 			if err := h.SetConfig(key, c.pick); err != nil {
 				t.Fatal(err)
 			}
+		}
+		if _, err := h.GlobalDB.GetKV("config:" + key); c.unkept && !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("%s: the pick left a row in the global store (%v)", c.name, err)
 		}
 		if c.row != "" {
 			if err := h.GlobalDB.SetKV("config:"+key, c.row); err != nil {
