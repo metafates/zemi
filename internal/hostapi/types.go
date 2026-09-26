@@ -66,11 +66,11 @@ func (h *Host) writeTypes(dir string) error {
 	return replaceDir(dir, types, mods)
 }
 
-// replaceDir fills a temp sibling of dir from trees and renames it over dir,
-// so a file zemi no longer ships goes and another zemi window reading dir
-// finds the old tree or the new one (missing only between the two renames).
+// replaceDir fills a temp sibling of dir from trees, renames each file over
+// its old path and then removes what the new tree lacks, so another zemi
+// window reading dir never misses a file both versions ship.
 func replaceDir(dir string, trees ...fs.FS) error {
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	tmp, err := os.MkdirTemp(filepath.Dir(dir), "."+filepath.Base(dir)+"-")
@@ -83,12 +83,41 @@ func replaceDir(dir string, trees ...fs.FS) error {
 			return err
 		}
 	}
-	old := tmp + ".old"
-	if err := os.Rename(dir, old); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	keep := map[string]bool{}
+	err = filepath.WalkDir(tmp, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(tmp, p)
+		keep[rel] = true
+		if d.IsDir() {
+			return os.MkdirAll(filepath.Join(dir, rel), 0o755)
+		}
+		return os.Rename(p, filepath.Join(dir, rel))
+	})
+	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(old)
-	return os.Rename(tmp, dir)
+	return filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		// another window may have removed it first
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		if keep[rel] {
+			return nil
+		}
+		if err := os.RemoveAll(p); err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return fs.SkipDir
+		}
+		return nil
+	})
 }
 
 // writeLuarc writes the lua-language-server settings zemi generates,
