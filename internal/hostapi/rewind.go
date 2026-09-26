@@ -192,7 +192,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	h.forgetInstructions()
 	h.setTranscript(sess.Title, tr)
 	if ui := h.hooks(); ui != nil {
-		ui.ComposerEdit("set", text, -1)
+		ui.ComposerEdit(ComposerSet, text, -1)
 	}
 	return len(cps), nil
 }

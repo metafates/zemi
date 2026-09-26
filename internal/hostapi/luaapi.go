@@ -70,14 +70,14 @@ func (h *Host) SetComposerSnapshot(text string, cursor int) {
 // goroutine.
 func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	edit := func(what string, op func(L *glua.LState) (string, int)) *glua.LFunction {
+	edit := func(what ComposerOp, op func(L *glua.LState) (string, int)) *glua.LFunction {
 		return L.NewFunction(func(L *glua.LState) int {
 			// a submitted line reaches slash commands, !shell and the agent
 			hint := ""
-			if what == "set" || what == "insert" {
+			if what == ComposerSet || what == ComposerInsert {
 				hint = `an overlay item's fill = "text" fills the composer from any origin`
 			}
-			h.refuseBelowUser(L, "composer."+what, hint)
+			h.refuseBelowUser(L, "composer."+string(what), hint)
 			text, cursor := op(L)
 			if ui := h.hooks(); ui != nil {
 				ui.ComposerEdit(what, text, cursor)
@@ -92,15 +92,15 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 		L.Push(lua.FromGo(L, map[string]any{"text": text, "cursor": cursor}))
 		return 1
 	}))
-	tb.RawSetString("set", edit("set", func(L *glua.LState) (string, int) {
+	tb.RawSetString(string(ComposerSet), edit(ComposerSet, func(L *glua.LState) (string, int) {
 		return L.CheckString(1), L.OptInt(2, -1)
 	}))
-	tb.RawSetString("insert", edit("insert", func(L *glua.LState) (string, int) {
+	tb.RawSetString(string(ComposerInsert), edit(ComposerInsert, func(L *glua.LState) (string, int) {
 		return L.CheckString(1), 0
 	}))
 	tb.RawSetString("complete", L.NewFunction(h.addCompletion))
-	for _, op := range []string{"submit", "history_prev", "history_next", "paste", "edit"} {
-		tb.RawSetString(op, edit(op, func(L *glua.LState) (string, int) { return "", 0 }))
+	for _, op := range []ComposerOp{ComposerSubmit, ComposerHistoryPrev, ComposerHistoryNext, ComposerPaste, ComposerEditor} {
+		tb.RawSetString(string(op), edit(op, func(L *glua.LState) (string, int) { return "", 0 }))
 	}
 	return tb
 }

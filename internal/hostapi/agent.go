@@ -2459,7 +2459,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		// a later turn as if they had just been typed
 		if q := h.AgentTakeQueue(); len(q) > 0 {
 			if ui := h.hooks(); ui != nil {
-				ui.ComposerEdit("set", strings.Join(q, "\n"), -1)
+				ui.ComposerEdit(ComposerSet, strings.Join(q, "\n"), -1)
 			}
 		}
 		return 0

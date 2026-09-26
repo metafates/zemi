@@ -67,10 +67,9 @@ type UIHooks interface {
 	// AskPlan shows a plan for approval (restore is the agent to return to on
 	// approval, "" when none); ok is false when the user dismisses it.
 	AskPlan(plan, restore string) (tools.PlanVerdict, bool)
-	// ComposerEdit applies a zemi.composer edit on the UI goroutine: op is
-	// "set" (cursor -1 = end), "insert", "submit", "history_prev",
-	// "history_next", "paste" or "edit".
-	ComposerEdit(op, text string, cursor int)
+	// ComposerEdit applies a zemi.composer edit on the UI goroutine; only
+	// ComposerSet reads cursor (-1 = end).
+	ComposerEdit(op ComposerOp, text string, cursor int)
 	// EditFile opens a file in the user's editor and blocks until it exits.
 	// Never call it on the UI goroutine.
 	EditFile(ctx context.Context, req EditRequest) error
@@ -153,6 +152,19 @@ const (
 )
 
 var overlayAnchors = []OverlayAnchor{OverlayBottomLeft, OverlayBottomRight}
+
+// ComposerOp is a zemi.composer edit.
+type ComposerOp string
+
+const (
+	ComposerSet         ComposerOp = "set"
+	ComposerInsert      ComposerOp = "insert"
+	ComposerSubmit      ComposerOp = "submit"
+	ComposerHistoryPrev ComposerOp = "history_prev"
+	ComposerHistoryNext ComposerOp = "history_next"
+	ComposerPaste       ComposerOp = "paste"
+	ComposerEditor      ComposerOp = "edit" // the draft in the user's editor
+)
 
 // ScrollAction moves a scrolled region: a page with a one-row overlap, to
 // an end, or a row.
@@ -569,12 +581,12 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		"zemi.ui.scroll.line_up":     func(h *Host, id string) error { h.scroll(ScrollLineUp, id); return nil },
 		"zemi.ui.scroll.line_down":   func(h *Host, id string) error { h.scroll(ScrollLineDown, id); return nil },
 		"zemi.model.pick":            func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
-		"zemi.composer.submit":       composerAction("submit"),
-		"zemi.composer.insert":       composerAction("insert"),
-		"zemi.composer.history_prev": composerAction("history_prev"),
-		"zemi.composer.history_next": composerAction("history_next"),
-		"zemi.composer.paste":        composerAction("paste"),
-		"zemi.composer.edit":         composerAction("edit"),
+		"zemi.composer.submit":       composerAction(ComposerSubmit),
+		"zemi.composer.insert":       composerAction(ComposerInsert),
+		"zemi.composer.history_prev": composerAction(ComposerHistoryPrev),
+		"zemi.composer.history_next": composerAction(ComposerHistoryNext),
+		"zemi.composer.paste":        composerAction(ComposerPaste),
+		"zemi.composer.edit":         composerAction(ComposerEditor),
 		"zemi.ui.focus.set":          func(h *Host, id string) error { return h.focusNode(id) },
 		"zemi.ui.focus.next":         func(h *Host, _ string) error { return h.cycleFocus(1) },
 		"zemi.ui.focus.prev":         func(h *Host, _ string) error { return h.cycleFocus(-1) },
@@ -595,7 +607,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 
 // composerAction is a zemi.composer.* host action: op, with the text after
 // the action's name for insert.
-func composerAction(op string) func(h *Host, args string) error {
+func composerAction(op ComposerOp) func(h *Host, args string) error {
 	return func(h *Host, args string) error {
 		if ui := h.hooks(); ui != nil {
 			ui.ComposerEdit(op, args, 0)
