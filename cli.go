@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"charm.land/fantasy"
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -473,11 +474,11 @@ func turnReport(rows []hostapi.ChatMessage) report {
 	var replies []string
 	for _, m := range rows {
 		switch {
-		case m.Role != "assistant":
-		case m.Kind == "":
+		case m.Role != fantasy.MessageRoleAssistant:
+		case m.Kind == hostapi.RowMessage:
 			replies = append(replies, strings.TrimSpace(m.Text))
-		case m.Kind == "tool":
-			rt := reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == "ok", Detail: m.Detail}
+		case m.Kind == hostapi.RowTool:
+			rt := reportTool{Name: m.Tool, Input: m.Text, OK: m.Status == hostapi.CallOK, Detail: m.Detail}
 			if !rt.OK {
 				rt.Error = failureLine(m.Tool, m.Output)
 				// the gate's DeniedText; a bare "permission denied" is also EACCES
@@ -488,9 +489,9 @@ func turnReport(rows []hostapi.ChatMessage) report {
 				rep.refused++
 			}
 			rep.Tools = append(rep.Tools, rt)
-		case m.Kind == "compact":
+		case m.Kind == hostapi.RowCompact:
 			rep.Compactions++
-		case m.Kind == "error":
+		case m.Kind == hostapi.RowError:
 			rep.IsError, rep.Error = true, m.Text
 		}
 	}

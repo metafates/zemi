@@ -253,7 +253,7 @@ func (h *Host) setTranscript(title string, tr []ChatMessage) {
 	h.session.Title, h.session.Transcript, h.view = title, tr, ""
 	h.trEpoch.Add(1)
 	h.tMu.Unlock()
-	h.scroll("bottom", "")
+	h.scroll(ScrollBottom, "")
 	h.refresh()
 }
 

@@ -345,7 +345,7 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 		}
 		fg, bg := theme.color(spec.Fg), theme.color(spec.Bg)
 		bold, italic := spec.Bold != nil && *spec.Bold, spec.Italic != nil && *spec.Italic
-		underline := spec.Underline != "" && spec.Underline != "none"
+		underline := spec.Underline != "" && spec.Underline != UnderlineNone
 		fmt.Fprintf(&key, ";%s=%s/%s/%t%t%t", group, fg, bg, bold, italic, underline)
 		if fg != "" {
 			p.Color = &fg

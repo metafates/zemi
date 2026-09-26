@@ -312,7 +312,7 @@ func (h *Host) continueRun(ctx context.Context, run *agentRun, prompt string, pr
 		run.mu.Unlock()
 		return "", fmt.Errorf("agent %s is running: its queue takes the message", run.id)
 	}
-	run.status, run.closed, run.started, run.finished, run.dropped = "running", false, time.Now(), time.Time{}, 0
+	run.status, run.closed, run.started, run.finished, run.dropped = RunRunning, false, time.Now(), time.Time{}, 0
 	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: prompt})
 	ctx, run.cancel = context.WithCancel(ctx)
 	run.mu.Unlock()
@@ -331,7 +331,7 @@ func (h *Host) MessageAgent(id, text string) error {
 		return err
 	}
 	if h.ViewedAgent() == run.id {
-		h.scroll("bottom", "")
+		h.scroll(ScrollBottom, "")
 		h.refresh()
 	}
 	return nil
@@ -515,7 +515,7 @@ func (h *Host) ViewAgent(id string) error {
 	h.tMu.Lock()
 	h.view = id
 	h.tMu.Unlock()
-	h.scroll("bottom", "")
+	h.scroll(ScrollBottom, "")
 	h.refresh()
 	return nil
 }

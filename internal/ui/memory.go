@@ -231,7 +231,7 @@ func (a *App) memMore(it hostapi.MemoryRow) [][]hostapi.Segment {
 	if it.Action == "accept" {
 		meta = append(meta, hostapi.Segment{Text: "kept · ", HL: "Host:Ok"})
 	}
-	info := []string{memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == "learned"]}
+	info := []string{memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == store.OriginLearned]}
 	if it.Updated != 0 {
 		info = append(info, strings.TrimSpace(learn.Age(it.Updated, a.now())))
 	}

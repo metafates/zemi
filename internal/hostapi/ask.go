@@ -41,7 +41,7 @@ func (h *Host) askHook() tools.Asker {
 			}
 			h.EmitAsync("permission.resolved", map[string]any{
 				"subject": req.Subject, "arg": req.Arg,
-				"decision": map[bool]string{true: "allow", false: "deny"}[allowed],
+				"decision": map[bool]perm.Decision{true: perm.Allow, false: perm.Deny}[allowed],
 				"by":       by,
 			})
 			if req.Reason == askedFor {

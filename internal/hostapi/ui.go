@@ -405,9 +405,9 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		switch spec.Underline {
 		case "":
-		case "none":
+		case UnderlineNone:
 			out["underline"] = false
-		case "single":
+		case UnderlineSingle:
 			out["underline"] = true
 		default:
 			out["underline"] = spec.Underline

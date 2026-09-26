@@ -578,7 +578,7 @@ func (h *Host) appendUserRows(text string) bool {
 	if shown == "" {
 		return false
 	}
-	h.AppendMessage("user", shown)
+	h.AppendMessage(fantasy.MessageRoleUser, shown)
 	return true
 }
 
@@ -868,7 +868,7 @@ func (s *streamAdapter) ToolCallRunning(id string) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	if i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id && t.Status == CallWait }); i >= 0 {
-		ag.tools[i].Status, ag.tools[i].Started = "run", time.Now()
+		ag.tools[i].Status, ag.tools[i].Started = CallRun, time.Now()
 	}
 	ag.mu.Unlock()
 	s.h.agentStream()
@@ -1040,7 +1040,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		// that ended silently looks like zemi ignored the message.
 		row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: truncRunes(sanitize.String(h.errorRowText(err)), 400)}
 		if errors.Is(err, context.Canceled) {
-			row.Status = "cancelled"
+			row.Status = CallCancelled
 		}
 		h.AppendChat(row)
 	} else {
@@ -1656,6 +1656,14 @@ func (ag *agentHost) endThinking() {
 
 // enumTable is a table of constants keyed by each value upper-cased, like
 // zemi.provider.kind.OPENAI_COMPAT.
+func enumTable[T ~string](L *glua.LState, vals ...T) *glua.LTable {
+	tb := L.CreateTable(0, len(vals))
+	for _, v := range vals {
+		tb.RawSetString(strings.ToUpper(string(v)), glua.LString(v))
+	}
+	return tb
+}
+
 // strs is a closed set's values as plain strings.
 func strs[T ~string](vals []T) []string {
 	out := make([]string, len(vals))
@@ -1663,14 +1671,6 @@ func strs[T ~string](vals []T) []string {
 		out[i] = string(v)
 	}
 	return out
-}
-
-func enumTable[T ~string](L *glua.LState, vals ...T) *glua.LTable {
-	tb := L.CreateTable(0, len(vals))
-	for _, v := range vals {
-		tb.RawSetString(strings.ToUpper(string(v)), glua.LString(v))
-	}
-	return tb
 }
 
 func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
@@ -2149,7 +2149,7 @@ func (h *Host) WarnModel() {
 // so a first run starts on the keys to export rather than a failed send. A
 // failed init.lua is its own news: the providers it adds never ran.
 func (h *Host) OfferModel() {
-	if h.InitError() == "" && h.modelRow().level == "error" {
+	if h.InitError() == "" && h.modelRow().level == HealthError {
 		_ = h.OpenModelPicker("")
 	}
 }

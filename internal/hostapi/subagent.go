@@ -528,7 +528,7 @@ func (s *subagentHooks) ToolCallRunning(id string) {
 	run := s.run
 	run.mu.Lock()
 	if i, found := run.rows[id]; found {
-		run.tr[i].Status = "run"
+		run.tr[i].Status = CallRun
 	}
 	run.mu.Unlock()
 	s.h.refreshViewed(run)
