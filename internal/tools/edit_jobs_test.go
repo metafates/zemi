@@ -21,17 +21,17 @@ import (
 )
 
 func TestEditRefusesAmbiguousMatch(t *testing.T) {
-	path := filepath.Join(perm.RealPath(t.TempDir()), "f.txt") // the tools open resolved paths
+	path := filepath.Join(t.TempDir(), "f.txt")
 	os.WriteFile(path, []byte("x = 1\nx = 1\n"), 0o644)
-	p := &Pipeline{}
+	p := onPath(t, nil, path)
 	for _, c := range []struct {
 		input map[string]any
 		want  string
 		file  string
 	}{
-		{map[string]any{"path": path, "old_string": "x = 1", "new_string": "x = 2"}, "matches 2 places", "x = 1\nx = 1\n"},
-		{map[string]any{"path": path, "old_string": "", "new_string": "y"}, "empty", "x = 1\nx = 1\n"},
-		{map[string]any{"path": path, "old_string": "x = 1", "new_string": "x = 2", "replace_all": true}, "2 replacements", "x = 2\nx = 2\n"},
+		{map[string]any{"old_string": "x = 1", "new_string": "x = 2"}, "matches 2 places", "x = 1\nx = 1\n"},
+		{map[string]any{"old_string": "", "new_string": "y"}, "empty", "x = 1\nx = 1\n"},
+		{map[string]any{"old_string": "x = 1", "new_string": "x = 2", "replace_all": true}, "2 replacements", "x = 2\nx = 2\n"},
 	} {
 		res, _ := runEdit(context.Background(), p, c.input)
 		got, _ := os.ReadFile(path)

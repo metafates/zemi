@@ -4,6 +4,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -254,6 +255,10 @@ type Pipeline struct {
 	// Sandboxed is this run's policy, set on the per-run copy once the gate
 	// settled a command by mode; nil = unconfined.
 	Sandboxed *sandbox.Policy
+	// Path is a file tool's path input as the gate checked it, set on the
+	// per-run copy. NOTE: the tool opens it, never input["path"]: resolving
+	// the string again would follow a symlink swapped in after the check.
+	Path perm.Path
 	// Protected says why a write to .git, the Lua in .agents or zemi's own dirs is
 	// protected, "" for any other: a rule allow for it still asks, since
 	// broad "always" globs cannot exclude every such path; nil = none.
@@ -308,6 +313,11 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 // Check decides one request; for tool.bash the store normalizes the
 // command (segments, redirect gates, assignment gate) in one call.
 func (p *Pipeline) Check(req Request) Verdict {
+	if PathSubject(req.Subject) {
+		// judged and shown where it lands: a symlink a sandboxed command
+		// planted must not dress a write to zemi's config as a project file
+		req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
+	}
 	plan := p.Plan != nil && p.Plan()
 	req.ReadOnly = plan
 	if plan && req.Subject == perm.SubjectWrite && (p.Scratch == nil || !p.Scratch(req.Arg)) {
@@ -561,7 +571,7 @@ type tool struct {
 	run      func(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error)
 	pipe     *Pipeline
 	// gated: the path input is resolved before the gate and the tool opens
-	// exactly that path (openGated)
+	// exactly that path (Pipeline.Path)
 	gated bool
 	// edits: the tool changes a file it must have read unchanged (write,
 	// edit), checked before the gate
@@ -614,8 +624,13 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	if t.gated {
 		// resolved once: the gate judges and the tool opens the same path, so
 		// a symlink a sandboxed command plants later cannot redirect the tool
+		path, err := perm.Resolve(str(input["path"]))
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		run.Path = path
 		input = maps.Clone(input)
-		input["path"] = perm.RealPath(str(input["path"]))
+		input["path"] = path.String()
 	}
 	if t.edits {
 		// before the gate, so the user is never asked to approve a change
@@ -1259,6 +1274,9 @@ func str(v any) string {
 }
 
 // searchRoot is where glob and grep look: path, or the working directory.
+// NOTE: the walk starts from this raw string, not the perm.Path the gate
+// judged, so a directory swapped for a symlink after the check is walked;
+// each hit meets the deny and ask read rules (ruledOut), not the jail default.
 func searchRoot(in map[string]any) string {
 	if s := str(in["path"]); s != "" {
 		return s

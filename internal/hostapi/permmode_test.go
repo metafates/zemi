@@ -349,14 +349,14 @@ func TestAutoResolvesPaths(t *testing.T) {
 	os.Symlink(h.Dirs.ConfigHome, filepath.Join(proj, "cfg"))
 	os.Symlink(filepath.Join(proj, ".git"), filepath.Join(proj, "gl"))
 	os.Symlink(outside, filepath.Join(proj, "out"))
-	ask := h.askHook()
+	pipe := h.PipelineFor()
 	for _, c := range []struct{ arg, shown string }{
 		{"cfg/init.lua", filepath.Join(perm.RealPath(h.Dirs.ConfigHome), "init.lua")},
 		{"gl/hooks/post-checkout", filepath.Join(".git", "hooks", "post-checkout")},
 		{"out/x.go", filepath.Join(outside, "x.go")},
 	} {
 		ui.asked = nil
-		ask(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, c.arg)})
+		pipe.Check(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, c.arg)})
 		if len(ui.asked) != 1 || ui.asked[0].Arg != c.shown {
 			t.Errorf("%s: asked %+v", c.arg, ui.asked)
 		}

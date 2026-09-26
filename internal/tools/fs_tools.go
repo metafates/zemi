@@ -375,11 +375,11 @@ const (
 // from. It streams: the peak cost is the page, not the file, so a huge log
 // pages like any other file instead of ending the process.
 func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	path := str(input["path"])
-	f, fi, err := OpenRegular(path)
+	path := p.Path.String()
+	f, fi, err := OpenRegular(p.Path)
 	switch {
 	case fi != nil && fi.IsDir():
-		return listDir(p, path), nil
+		return listDir(p, p.Path), nil
 	case err != nil:
 		return fantasy.NewTextErrorResponse(p.notFound(path, err)), nil
 	}
@@ -477,8 +477,8 @@ func readLine(br *bufio.Reader, max int) (string, error) {
 // listDir lists a directory one level deep, sorted, directories ending in
 // "/". Like glob and grep it hides entries a deny or ask read rule covers,
 // and like grep the strict secret shapes, which it names.
-func listDir(p *Pipeline, path string) fantasy.ToolResponse {
-	f, err := openGated(path, os.O_RDONLY, 0)
+func listDir(p *Pipeline, path perm.Path) fantasy.ToolResponse {
+	f, err := path.Open(os.O_RDONLY, 0)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(relErr(err).Error())
 	}
@@ -495,7 +495,7 @@ func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 			break
 		}
 		switch name := e.Name(); {
-		case ruledOut(filepath.Join(path, name)):
+		case ruledOut(filepath.Join(path.String(), name)):
 		case perm.PathIsStrictSecret(name):
 			secret = append(secret, name)
 		default:
@@ -518,41 +518,41 @@ func listDir(p *Pipeline, path string) fantasy.ToolResponse {
 	return fantasy.NewTextResponse(strings.Join(shown, "\n"))
 }
 
-// OpenRegular opens a file for reading through openGated. fi is set once
-// the file is open, so a directory or a FIFO is reported without reading
-// it; the caller closes f.
-func OpenRegular(path string) (f *os.File, fi os.FileInfo, err error) {
+// OpenRegular opens a file for reading. fi is set once the file is open,
+// so a directory or a FIFO is reported without reading it; the caller
+// closes f.
+func OpenRegular(path perm.Path) (f *os.File, fi os.FileInfo, err error) {
 	// nonblocking: opening a FIFO must not wait for a writer
-	f, err = openGated(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	f, err = path.Open(os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, nil, err
 	}
 	if fi, err = f.Stat(); err != nil || !fi.Mode().IsRegular() {
 		// a FIFO blocks and a device can be endless
 		f.Close()
-		return nil, fi, cmp.Or(err, error(&os.PathError{Op: "read", Path: path, Err: errors.New("not a regular file")}))
+		return nil, fi, cmp.Or(err, error(&os.PathError{Op: "read", Path: path.String(), Err: errors.New("not a regular file")}))
 	}
 	return f, fi, nil
 }
 
 // readGated reads a whole file for edit. A file over editMaxBytes is refused
 // rather than allocated: the edit would have to hold it twice over.
-func readGated(path string) (data []byte, fi os.FileInfo, err error) {
+func readGated(path perm.Path) (data []byte, fi os.FileInfo, err error) {
 	f, fi, err := OpenRegular(path)
 	if err != nil {
 		return nil, fi, err
 	}
 	defer f.Close()
 	if fi.Size() > editMaxBytes {
-		return nil, fi, fmt.Errorf("%s is %d bytes, over edit's %d MB limit; make this change with a command in bash", workRel(path), fi.Size(), editMaxBytes>>20)
+		return nil, fi, fmt.Errorf("%s is %d bytes, over edit's %d MB limit; make this change with a command in bash", workRel(path.String()), fi.Size(), editMaxBytes>>20)
 	}
 	data, err = io.ReadAll(f)
 	return data, fi, err
 }
 
-// writeGated replaces a file's content through openGated.
-func writeGated(path string, data []byte, mode os.FileMode) error {
-	f, err := openGated(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+// WriteFile replaces a file's content, making missing parent directories.
+func WriteFile(path perm.Path, data []byte, mode os.FileMode) error {
+	f, err := path.Open(os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
@@ -698,7 +698,7 @@ func absPath(path string) string { return perm.CanonPath(path) }
 
 // runWrite creates or overwrites a file (parents created).
 func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	path := str(input["path"])
+	path := p.Path.String()
 	content := str(input["content"])
 	defer lockFile(path)()
 	if fi, err := os.Stat(path); err == nil {
@@ -707,7 +707,7 @@ func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		}
 	}
 	p.checkpoint(path)
-	if err := writeGated(path, []byte(content), 0o644); err != nil {
+	if err := WriteFile(p.Path, []byte(content), 0o644); err != nil {
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	return fantasy.NewTextResponse(fmt.Sprintf("wrote %s (%d bytes)", workRel(path), len(content)) + p.wrote(path)), nil
@@ -735,13 +735,10 @@ func (p *Pipeline) checkpoint(path string) {
 	}
 }
 
-func runEdit(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	return editFile(p, str(input["path"]), input)
-}
-
-// editFile applies an edit to a file under its lock. Matching runs on LF
+// runEdit applies an edit to a file under its lock. Matching runs on LF
 // text and a CRLF file is written back with CRLF.
-func editFile(p *Pipeline, path string, in map[string]any) (fantasy.ToolResponse, error) {
+func runEdit(ctx context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
+	path := p.Path.String()
 	defer lockFile(path)()
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -750,7 +747,7 @@ func editFile(p *Pipeline, path string, in map[string]any) (fantasy.ToolResponse
 	if msg := p.stale(path, fi); msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
-	data, _, err := readGated(path)
+	data, _, err := readGated(p.Path)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
@@ -765,7 +762,7 @@ func editFile(p *Pipeline, path string, in map[string]any) (fantasy.ToolResponse
 		out = strings.ReplaceAll(out, "\n", "\r\n")
 	}
 	p.checkpoint(path)
-	if err := writeGated(path, []byte(out), fi.Mode().Perm()); err != nil {
+	if err := WriteFile(p.Path, []byte(out), fi.Mode().Perm()); err != nil {
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	res := fmt.Sprintf("edited %s (%d replacement%s)", rel, n, plural(n))

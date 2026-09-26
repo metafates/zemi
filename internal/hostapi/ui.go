@@ -302,10 +302,12 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			// where a job's paths are relative to
 			roots = append(roots, h.Dirs.RepoRoot())
 		}
-		resolved, err := h.resolveJailed(path, roots)
+		// the editor opens the path by name and follows symlinks anyway
+		p, err := h.resolveJailed(path, roots, false)
 		if err != nil {
 			L.RaiseError("zemi.ui.edit: %v", err)
 		}
+		resolved := p.String()
 		h.luaGate(L, "lua.fs.read", resolved)
 		line := 0
 		if n, ok := opts.RawGetString("line").(glua.LNumber); ok {

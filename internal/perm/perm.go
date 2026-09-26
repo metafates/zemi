@@ -7,6 +7,7 @@ package perm
 
 import (
 	"cmp"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -221,6 +222,40 @@ func RealPath(p string) string {
 	}
 	return real
 }
+
+// Path is an absolute path with every symlink resolved as the kernel
+// resolves it, the proof Open acts on: only Resolve and Lresolve make one,
+// and the zero value opens nothing.
+type Path struct{ s string }
+
+// Resolve resolves p with RealPath.
+func Resolve(p string) (Path, error) {
+	r := RealPath(p)
+	if r == "" {
+		return Path{}, fmt.Errorf("%s: too many levels of symbolic links", p)
+	}
+	return Path{r}, nil
+}
+
+// Lresolve is Resolve leaving the last component as named, like lstat(2):
+// a symlink there is the link itself, which Open refuses and Remove deletes.
+func Lresolve(p string) (Path, error) {
+	sep := string(filepath.Separator)
+	dir, name, ok := strings.CutLast(p, sep)
+	if !ok {
+		dir, name = ".", p
+	}
+	if name == "" || name == "." || name == ".." {
+		return Resolve(p)
+	}
+	r, err := Resolve(dir + sep)
+	if err != nil {
+		return Path{}, err
+	}
+	return Path{filepath.Join(r.s, name)}, nil
+}
+
+func (p Path) String() string { return p.s }
 
 // FoldCase folds p on darwin and windows, where the filesystem ignores case.
 func FoldCase(p string) string {

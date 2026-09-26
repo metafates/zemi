@@ -3,7 +3,6 @@
 package hostapi
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"net/url"
@@ -26,11 +25,6 @@ import (
 func (h *Host) askHook() tools.Asker {
 	return func(req tools.Request) (bool, string, string) {
 		askedFor := req.Reason
-		if tools.PathSubject(req.Subject) {
-			// judged and shown where it lands: a symlink a sandboxed command
-			// planted must not dress a write to zemi's config as a project file
-			req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
-		}
 		resolved := func(allowed bool, by string) (bool, string, string) {
 			// only yolo or the user allows a write that creates a plugin: it is
 			// protected, so no mode rule, decide or store rule settles it

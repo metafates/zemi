@@ -187,16 +187,17 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		if filepath.Ext(in.Path) != ".lua" {
 			return fantasy.NewTextErrorResponse(in.Path + ": not a .lua file"), nil
 		}
-		path := in.Path
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(h.Dirs.ProjectDir, path)
+		abs := in.Path
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(h.Dirs.ProjectDir, abs)
 		}
-		path = perm.RealPath(path)
-		if v := h.PipelineFor().CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectRead, Arg: path}); v.Decision != perm.Allow {
+		path, err := perm.Resolve(abs)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if v := h.PipelineFor().CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectRead, Arg: path.String()}); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, perm.SubjectRead+" "+in.Path)), nil
 		}
-		// opened the way the file tools open theirs, so a directory swapped
-		// for a symlink after the check fails instead of leading elsewhere
 		f, fi, err := tools.OpenRegular(path)
 		var b []byte
 		if err == nil {

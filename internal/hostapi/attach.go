@@ -10,6 +10,7 @@ package hostapi
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -74,21 +75,23 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 			continue
 		}
 		seen[rel] = true
-		var abs string
+		var path perm.Path
+		var err error
 		drop := false
 		if name, ok := strings.CutPrefix(rel, "drop:"); ok {
 			// only copies of what the user dropped live there (AttachPath)
 			if name == "" || strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, ".") || h.dropsDir() == "" {
 				continue
 			}
-			abs, drop = filepath.Join(h.dropsDir(), name), true
+			path, err = perm.Resolve(filepath.Join(h.dropsDir(), name))
+			drop = true
 		} else {
-			var err error
-			abs, err = h.resolveJailed(rel, []string{h.Dirs.ProjectDir})
-			if err != nil {
-				continue
-			}
+			path, err = h.resolveJailed(rel, []string{h.Dirs.ProjectDir}, false)
 		}
+		if err != nil {
+			continue
+		}
+		abs := path.String()
 		mt, image := imageTypes[strings.ToLower(filepath.Ext(abs))]
 		limit, tag := int64(attachMax), "file"
 		if image {
@@ -101,20 +104,23 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 			refused = append(refused, rel+": "+why)
 		}
 		// a FIFO blocks the turn, and an @word naming no file is just prose
-		fi, err := os.Stat(abs)
-		if err != nil || !fi.Mode().IsRegular() {
+		f, fi, err := tools.OpenRegular(path)
+		if err != nil {
 			continue
 		}
 		// the model reads the file, so the model's rules apply
 		if !drop && h.Perm.Evaluate(perm.SubjectRead, abs, perm.PrincipalModel).Decision != perm.Allow {
+			f.Close()
 			note("reading it needs your approval")
 			continue
 		}
 		if fi.Size() > limit { // a huge file would be read whole first
+			f.Close()
 			note(overLimit(limit))
 			continue
 		}
-		data, err := os.ReadFile(abs)
+		data, err := io.ReadAll(io.LimitReader(f, limit+1))
+		f.Close()
 		switch {
 		case err != nil:
 			note("it could not be read")

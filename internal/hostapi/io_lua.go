@@ -463,16 +463,17 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 // lua.fs.read gate and changes lua.fs.write; runtime failures return nil, err.
 func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	resolve := func(L *glua.LState, api string, write bool) string {
+	// link: the call means a symlink itself, not what it points at
+	resolve := func(L *glua.LState, api string, write, link bool) perm.Path {
 		subject := "lua.fs.read"
 		if write {
 			subject = "lua.fs.write"
 		}
-		resolved, err := h.resolveJailed(L.CheckString(1), h.luaJails(L, write))
+		resolved, err := h.resolveJailed(L.CheckString(1), h.luaJails(L, write), link)
 		if err != nil {
 			L.RaiseError("zemi.fs.%s: %v", api, err)
 		}
-		h.luaGate(L, subject, resolved)
+		h.luaGate(L, subject, resolved.String())
 		return resolved
 	}
 	kind := func(fi os.FileInfo) string {
@@ -486,8 +487,12 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}
 
 	tb.RawSetString("read", L.NewFunction(func(L *glua.LState) int {
-		path := resolve(L, "read", false)
-		b, err := os.ReadFile(path)
+		f, _, err := tools.OpenRegular(resolve(L, "read", false, false))
+		if err != nil {
+			return luaResult(L, err)
+		}
+		defer f.Close()
+		b, err := io.ReadAll(f)
 		if err != nil {
 			return luaResult(L, err)
 		}
@@ -496,21 +501,21 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("write", L.NewFunction(func(L *glua.LState) int {
-		path := resolve(L, "write", true)
-		content := L.CheckString(2)
-		err := os.MkdirAll(filepath.Dir(path), 0o755)
-		if err == nil {
-			err = os.WriteFile(path, []byte(content), 0o644)
-		}
-		return luaResult(L, err)
+		path := resolve(L, "write", true, false)
+		return luaResult(L, tools.WriteFile(path, []byte(L.CheckString(2)), 0o644))
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		dir := resolve(L, "list", false)
-		entries, err := os.ReadDir(dir)
+		f, err := resolve(L, "list", false, false).Open(os.O_RDONLY, 0)
 		if err != nil {
 			return luaResult(L, err)
 		}
+		defer f.Close()
+		entries, err := f.ReadDir(-1)
+		if err != nil {
+			return luaResult(L, err)
+		}
+		slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 		rows := []any{}
 		for _, e := range entries {
 			if fi, err := e.Info(); err == nil {
@@ -522,8 +527,9 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("stat", L.NewFunction(func(L *glua.LState) int {
-		path := resolve(L, "stat", false)
-		fi, err := os.Lstat(path)
+		// NOTE: by name, so a directory swapped after the check shows the
+		// metadata of what it leads to; nothing is opened
+		fi, err := os.Lstat(resolve(L, "stat", false, true).String())
 		if err != nil {
 			return luaResult(L, err)
 		}
@@ -532,21 +538,18 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("exists", L.NewFunction(func(L *glua.LState) int {
-		path := resolve(L, "exists", false)
-		_, err := os.Lstat(path)
+		_, err := os.Lstat(resolve(L, "exists", false, true).String())
 		L.Push(glua.LBool(err == nil))
 		return 1
 	}))
 
 	tb.RawSetString("mkdir", L.NewFunction(func(L *glua.LState) int {
-		path := resolve(L, "mkdir", true)
-		return luaResult(L, os.MkdirAll(path, 0o755))
+		return luaResult(L, resolve(L, "mkdir", true, false).MkdirAll())
 	}))
 
 	// remove deletes one file or empty directory (never a tree).
 	tb.RawSetString("remove", L.NewFunction(func(L *glua.LState) int {
-		path := resolve(L, "remove", true)
-		return luaResult(L, os.Remove(path))
+		return luaResult(L, resolve(L, "remove", true, true).Remove())
 	}))
 
 	// data_dir(name) is where config code keeps its files; nothing is created.
@@ -593,18 +596,27 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 }
 
 // resolveJailed resolves path against the project dir and enforces the
-// jail (no escaping the roots, no symlinks out).
-func (h *Host) resolveJailed(path string, roots []string) (string, error) {
+// jail (no escaping the roots, no symlinks out). With link the last
+// component stays as named (perm.Lresolve).
+func (h *Host) resolveJailed(path string, roots []string, link bool) (perm.Path, error) {
 	if path == "" {
-		return "", errors.New("empty path")
+		return perm.Path{}, errors.New("empty path")
 	}
-	resolved := path
-	if !filepath.IsAbs(resolved) {
-		resolved = filepath.Join(h.Dirs.ProjectDir, resolved)
+	abs := path
+	if !filepath.IsAbs(abs) {
+		// not Join: it cleans .. before a symlink is seen
+		abs = h.Dirs.ProjectDir + string(filepath.Separator) + abs
 	}
-	resolved = filepath.Clean(resolved)
-	if !h.inJail(resolved, roots...) {
-		return "", fmt.Errorf("%s is outside the jail", path)
+	resolve := perm.Resolve
+	if link {
+		resolve = perm.Lresolve
+	}
+	resolved, err := resolve(abs)
+	if err != nil {
+		return perm.Path{}, err
+	}
+	if !h.inJail(resolved.String(), roots...) {
+		return perm.Path{}, fmt.Errorf("%s is outside the jail", path)
 	}
 	return resolved, nil
 }
@@ -1063,9 +1075,11 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		cmd := proc.Command(cmdName, args...)
 		cmd.Dir = h.Dirs.ProjectDir
 		if cwd := rawString(spec, "cwd"); cwd != "" {
-			if cmd.Dir, err = h.resolveJailed(cwd, h.luaJails(L, false)); err != nil {
+			dir, err := h.resolveJailed(cwd, h.luaJails(L, false), false)
+			if err != nil {
 				L.RaiseError("zemi.job.start: cwd: %v", err)
 			}
+			cmd.Dir = dir.String()
 			// exec blames the program for a directory it cannot enter
 			if _, err := os.Stat(cmd.Dir); err != nil {
 				return nil, fmt.Errorf("zemi.job.start: cwd: %w", err)

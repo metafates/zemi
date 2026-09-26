@@ -295,11 +295,13 @@ of its step. A mistyped path names up to three siblings it could have meant (`Pi
 `ResumeSession` rebuilds that map from the stored rows (`seedReads`), leaving out
 files touched after the last message. `tool.Run` runs the same check before the gate
 (`tool.edits`), so nobody approves a change the tool would then refuse, and resolves the path
-(`perm.RealPath`) before the gate; the tools open exactly that path through `openGated` (an
-`openat` walk with `O_NOFOLLOW`), so a sandboxed command cannot swap a directory for a symlink
-between check and open. Both writers refuse a path whose last component is a symbolic link
-and name the target to edit instead. `glob` and `grep` are gated on their root only, so neither
-shows a hit a deny or ask `fs.read` rule covers. grep and a directory listing leave out the
+once (`perm.Resolve`) before the gate into the per-run `Pipeline.Path`; the tools open exactly
+that `perm.Path` (`Path.Open`, an `openat` walk with `O_NOFOLLOW`) and never the input string,
+so a sandboxed command cannot swap a directory for a symlink between check and open.
+`zemi.fs`, `@file` attachments and the `lua` tool's `path` open through a `perm.Path` too
+(`resolveJailed`). Both writers refuse a path whose last component is a symbolic link
+and name the target to edit instead. `glob` and `grep` are gated on their root only and walk
+the raw root (NOTE in the code), so neither shows a hit a deny or ask `fs.read` rule covers. grep and a directory listing leave out the
 strict secret shapes (`perm.PathIsStrictSecret`: not `*secret*`, `*credential*` or a
 `.env.example`): a listing names what it hid, and grep's answer never depends on them, since a
 count of their hits would leak a key one bit per call. Output too long for a result is cut

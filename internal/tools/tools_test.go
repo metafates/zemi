@@ -104,6 +104,20 @@ func call(t *testing.T, ag fantasy.AgentTool, input string) fantasy.ToolResponse
 	return resp
 }
 
+// onPath is the per-run copy Run hands a file tool for path.
+func onPath(t *testing.T, p *Pipeline, path string) *Pipeline {
+	t.Helper()
+	var run Pipeline
+	if p != nil {
+		run = *p
+	}
+	var err error
+	if run.Path, err = perm.Resolve(path); err != nil {
+		t.Fatal(err)
+	}
+	return &run
+}
+
 func TestBashGate(t *testing.T) {
 	allow := func(pattern string) perm.Rule {
 		return perm.Rule{Subject: "tool.bash", Pattern: pattern, Decision: perm.Allow}
@@ -594,16 +608,16 @@ func TestReadAndBashShapes(t *testing.T) {
 		{"t.txt", 5, "text", "past the end"},
 		{"d", 0, "text", "a/\nc"},
 	} {
-		res, _ := runRead(ctx, p, map[string]any{"path": filepath.Join(dir, c.name), "offset": c.offset})
+		res, _ := runRead(ctx, onPath(t, p, filepath.Join(dir, c.name)), map[string]any{"offset": c.offset})
 		if res.Type != c.typ || !strings.Contains(res.Content, c.want) {
 			t.Errorf("%s: %+v", c.name, res)
 		}
 	}
-	if res, _ := runRead(ctx, p, map[string]any{"path": os.DevNull}); !strings.Contains(res.Content, "not a regular file") {
+	if res, _ := runRead(ctx, onPath(t, p, os.DevNull), nil); !strings.Contains(res.Content, "not a regular file") {
 		t.Errorf("device: %+v", res)
 	}
 	p.Images = func() bool { return false }
-	if res, _ := runRead(ctx, p, map[string]any{"path": filepath.Join(dir, "i.png")}); res.Type != "text" || !strings.Contains(res.Content, "does not take images") {
+	if res, _ := runRead(ctx, onPath(t, p, filepath.Join(dir, "i.png")), nil); res.Type != "text" || !strings.Contains(res.Content, "does not take images") {
 		t.Errorf("text-only model: %+v", res)
 	}
 	if res, _ := runBash(ctx, p, map[string]any{"command": "echo out; echo err >&2; echo out2"}); res.Content != "out\nerr\nout2" {
@@ -725,11 +739,11 @@ func TestOutputLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	res, _ := runRead(ctx, nil, map[string]any{"path": path})
+	res, _ := runRead(ctx, onPath(t, nil, path), nil)
 	if !strings.HasSuffix(res.Content, "... (more lines; continue with offset 2001)\n") {
 		t.Fatalf("first page tail: %q", res.Content[len(res.Content)-80:])
 	}
-	res, _ = runRead(ctx, nil, map[string]any{"path": path, "offset": float64(2001)})
+	res, _ = runRead(ctx, onPath(t, nil, path), map[string]any{"offset": float64(2001)})
 	if strings.Contains(res.Content, "more lines") || !strings.HasSuffix(res.Content, "line 2005 match\n") {
 		t.Fatalf("last page: %q", res.Content)
 	}
@@ -843,12 +857,12 @@ func TestReadPagesAHugeFile(t *testing.T) {
 	}
 	f.Close()
 
-	p := &Pipeline{Seen: &sync.Map{}}
-	res, _ := runRead(context.Background(), p, map[string]any{"path": path, "offset": float64(100_000)})
+	p := onPath(t, &Pipeline{Seen: &sync.Map{}}, path)
+	res, _ := runRead(context.Background(), p, map[string]any{"offset": float64(100_000)})
 	if !strings.Contains(res.Content, "100000\tx") || !strings.Contains(res.Content, "... (more lines; continue with offset") {
 		t.Fatalf("page: %q", res.Content[:min(len(res.Content), 120)])
 	}
-	res, _ = editFile(p, path, map[string]any{"old_string": "x", "new_string": "y"})
+	res, _ = runEdit(context.Background(), p, map[string]any{"old_string": "x", "new_string": "y"})
 	if !strings.Contains(res.Content, "over edit's 10 MB limit") {
 		t.Fatalf("edit of a huge file: %q", res.Content)
 	}

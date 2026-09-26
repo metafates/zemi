@@ -1920,15 +1920,17 @@ provenance string.
   `fs.write` in one project cannot silently plant code in a plugin the user
   did not just create. The config dir is read-only to Lua: of
   zemi's own code only Go writes there, so `zemi.fs.write` cannot
-  author `init.lua`. The model's `read`, `write` and `edit` get their
-  path resolved once before the gate and open exactly that path, walking
-  it with `openat` and `O_NOFOLLOW` (`openGated`), so a directory a
-  sandboxed command swaps for a symlink after the check fails the open.
+  author `init.lua`. The model's `read`, `write` and `edit`, `zemi.fs`,
+  `@file` attachments and the `lua` tool's `path` get their path resolved
+  once before the check into a `perm.Path` and open exactly that path,
+  walking it with `openat` and `O_NOFOLLOW` (`Path.Open`), so a directory
+  a sandboxed command swaps for a symlink after the check fails the open.
   `write` and `edit` refuse a path whose last component is a
   symbolic link and name the target to edit instead.
-  Residual race: `zemi.fs` opens the checked path plainly, so a component
-  swapped between check and open is not caught there (the Linux endgame
-  is `openat2` with `RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS`). Path containment is containment
+  Residual race: `zemi.fs.stat` and `exists` and the roots `glob` and
+  `grep` walk go by name, so a component swapped between check and use
+  is followed there (the Linux endgame is `openat2` with
+  `RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS`). Path containment is containment
   of paths, not of filesystem topology: a mount point inside a project
   root or a hardlink to an outside file is out of scope (both need
   privileges or a pre-planted link the threat model cannot create).
