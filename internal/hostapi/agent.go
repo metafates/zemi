@@ -1967,7 +1967,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		if h.cfgReplayed("models.chat", id) {
 			return 0
 		}
-		fired, err := h.Settings.SetQuiet("models.chat", id)
+		fired, err := h.writeSetting("models.chat", id)
 		if err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
 			return 0
@@ -2319,7 +2319,7 @@ func (h *Host) ProfileModelErr() error {
 // run later on the interpreter queue. It checks only the kind: SetConfig
 // sends a key with a setter of its own there first.
 func (h *Host) setWatched(path string, val any) error {
-	fired, err := h.Settings.SetQuiet(path, val)
+	fired, err := h.writeSetting(path, val)
 	if err != nil {
 		return err
 	}

@@ -1,8 +1,10 @@
 package hostapi
 
 import (
+	"encoding/json/v2"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 
 	glua "github.com/yuin/gopher-lua"
@@ -114,15 +116,19 @@ func (h *Host) cfgRotate() {
 // cfgSettle runs after a replay: a key whose every write matched the last
 // boot but whose config now writes it fewer times ends at a value nothing
 // applied, so its last write is applied here. A key config stopped writing
-// returns to its default unless a runtime pick moved it since. Like a
-// skipped write neither notifies a watcher.
+// returns to its saved pick, else its default, unless a runtime pick moved
+// it since. Like a skipped write neither notifies a watcher.
 func (h *Host) cfgSettle() {
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
 	h.cfgRotate()
 	for path, prev := range h.cfgPrev {
 		if live, _ := h.Settings.Get(path); len(prev) > 0 && len(h.cfgNow[path]) == 0 && reflect.DeepEqual(live, prev[len(prev)-1]) {
-			if _, err := h.Settings.SetQuiet(path, h.Settings.Default(path)); err != nil {
+			back, ok := h.picked[path]
+			if !ok {
+				back = h.Settings.Default(path)
+			}
+			if _, err := h.Settings.SetQuiet(path, back); err != nil {
 				h.Log.Warn("config", "settle failed", map[string]any{"path": path, "error": err.Error()})
 			}
 		}
@@ -138,22 +144,103 @@ func (h *Host) cfgSettle() {
 	}
 }
 
-// cfgSource says where path's live value comes from: "on disk" when it is
-// what init.lua last wrote, "unsaved" when a runtime pick moved it off that
-// or off a default init.lua never wrote, "default" at that default. The
-// words are one width, so a toggle or a save in /config moves no text.
+// cfgSource says where path's live value comes from: "init.lua" when it is
+// what init.lua last wrote, "saved" when it is the pick kept for a key
+// init.lua does not write, "default" at the default of such a key, and
+// "this run" for anything else, which a restart does not keep.
 func (h *Host) cfgSource(path string) string {
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
 	live, _ := h.Settings.Get(path)
-	want, source := h.Settings.Default(path), "default"
+	pick, saved := h.picked[path]
+	switch w := h.cfgNow[path]; {
+	case len(w) > 0 && reflect.DeepEqual(live, w[len(w)-1]):
+		return "init.lua"
+	case len(w) > 0:
+		return "this run"
+	case saved && reflect.DeepEqual(live, pick):
+		return "saved"
+	case reflect.DeepEqual(live, h.Settings.Default(path)):
+		return "default"
+	}
+	return "this run"
+}
+
+// cfgBase is what path is without a pick: config's last write when init.lua
+// wrote the key, else its default. set reports that init.lua wrote it.
+func (h *Host) cfgBase(path string) (v any, set bool) {
+	h.cfgMu.Lock()
+	defer h.cfgMu.Unlock()
 	if w := h.cfgNow[path]; len(w) > 0 {
-		want, source = w[len(w)-1], "on disk"
+		return w[len(w)-1], true
 	}
-	if !reflect.DeepEqual(live, want) {
-		return "unsaved"
+	return h.Settings.Default(path), false
+}
+
+// writeSetting is every runtime write of a config key: the value, then
+// keepPick.
+func (h *Host) writeSetting(path string, v any) ([]config.WatchFired, error) {
+	fired, err := h.Settings.SetQuiet(path, v)
+	if err == nil {
+		h.keepPick(path)
 	}
-	return source
+	return fired, err
+}
+
+// keepPick keeps path's live value in the global store for the next start,
+// or forgets it when it is the key's cfgBase. A write during boot is
+// init.lua's, and one before KeepPicks is a flag's. A yolo mode is never
+// kept: a flip made for one task must not start every later zemi, in any
+// project, allowing what the rules do not deny.
+func (h *Host) keepPick(path string) {
+	if h.GlobalDB == nil || h.RT.Booting() || !h.KeepPicks.Load() ||
+		path == "permissions.mode" && h.permModeDef().Base == "yolo" {
+		return
+	}
+	live, _ := h.Settings.Get(path)
+	base, _ := h.cfgBase(path)
+	h.cfgMu.Lock()
+	defer h.cfgMu.Unlock()
+	var err error
+	if reflect.DeepEqual(live, base) {
+		delete(h.picked, path)
+		_, err = h.GlobalDB.DelKV("config:" + path)
+	} else if b, jerr := json.Marshal(live); jerr != nil {
+		err = jerr
+	} else if err = h.GlobalDB.SetKV("config:"+path, string(b)); err == nil {
+		h.picked[path] = live
+	}
+	if err != nil {
+		h.Log.Warn("config", "could not keep a pick", map[string]any{"path": path, "error": err.Error()})
+	}
+}
+
+// loadPicks applies the kept picks before any Lua runs, so init.lua still
+// wins over them; a row the schema no longer takes is left out.
+func (h *Host) loadPicks() {
+	keys, err := h.GlobalDB.KeysKV("config:")
+	if err != nil {
+		h.Log.Warn("config", "could not read the kept picks", map[string]any{"error": err.Error()})
+	}
+	for _, k := range keys {
+		path := strings.TrimPrefix(k, "config:")
+		raw, err := h.GlobalDB.GetKV(k)
+		var v any
+		if err == nil {
+			err = json.Unmarshal([]byte(raw), &v)
+		}
+		if err == nil {
+			v, err = h.Settings.Check(path, v)
+		}
+		if err == nil {
+			_, err = h.Settings.SetQuiet(path, v)
+		}
+		if err != nil {
+			h.Log.Warn("config", "kept pick left out", map[string]any{"path": path, "error": err.Error()})
+			continue
+		}
+		h.picked[path] = v
+	}
 }
 
 func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
@@ -209,7 +296,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		if h.cfgReplayed(path, v) {
 			return 0
 		}
-		fired, err := h.Settings.SetQuiet(path, v)
+		fired, err := h.writeSetting(path, v)
 		if err != nil {
 			L.RaiseError("zemi.config.set: %v", err)
 		}

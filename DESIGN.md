@@ -621,25 +621,28 @@ zemi.notify({ title = "hi", body = "...", level = zemi.notify.level.INFO })
 ```
 
 Config values from `init.lua` merge with the defaults in Go's schema.
-`zemi.config.set` is in-memory for the session, callable from user config
-only, and accepts only keys in the schema; anything else is refused with an
+`zemi.config.set` is callable from user config only (past boot it is a
+runtime pick, kept like one, below), and accepts only keys in the schema; anything else is refused with an
 error. A reload
 replays it, but a call that writes the value the last boot wrote is skipped,
 so a runtime pick (`/model`, `/effort`, `/profile`, the mode cycle, `-m`) is not reverted
 by an unrelated config edit; replaying `agent.profile` over a read-only agent
 pick would loosen its read-only plan silently, so a pick is settled to its last value too.
-A key whose `set` line was deleted returns to its default on that reload, unless a runtime pick moved it since.
+A key whose `set` line was deleted returns to its saved pick, else its default, on that reload, unless a runtime pick moved it since.
 `memory.autonomy` (§10.4) is one of them like `permissions.mode`: user
 config may raise it, project and plugin code may not, and the
-model's `lua` tool asks before any such call. Persistent config changes are edits to
-files in the config dir (the user's, `/config save`, or the agent's through the
-permission-gated file tools); zemi makes no commits. `/config save` writes only
-the keys a runtime pick moved off what init.lua left: it rewrites the literal of a
-key's one top-level `zemi.config.set` line, appends a key no line names to a
-`-- zemi: saved from /config` block at the end of init.lua, and leaves a key set by
-code or twice alone, and every key when the result would not parse, so no user line
-but that literal ever changes. What it leaves alone `/config lua` can hand to the
-agent; its edit of init.lua is a protected write, asked with its diff outside yolo.
+model's `lua` tool asks before any such call.
+
+A runtime pick outlives the process: the global store keeps it per key as
+`config:<path>`, one row each, so two windows never lose each other's picks,
+and a start applies the rows before any Lua. The layers are schema default <
+saved pick < init.lua < this run: init.lua always wins a restart, and a pick
+over a key it sets lasts the run. A pick back to what the key would be without
+it forgets the row. Flags, `-p` and `--health` keep nothing, and neither does a
+mode whose base is yolo: a flip made for one task must not start every later
+zemi, in any repository, allowing what the rules do not deny. zemi never edits
+init.lua; `/config lua` shows the settings as lines to copy, and the agent edits
+config files through the permission-gated file tools. zemi makes no commits.
 
 Permission rules are data with one API and an optional principal:
 

@@ -530,125 +530,6 @@ func TestConfigSetGating(t *testing.T) {
 	}
 }
 
-// TestSaveInit pins /config save: it changes only the literal of a key's
-// one set line or the managed block, and never writes over code or a file
-// that changed since it was read.
-func TestSaveInit(t *testing.T) {
-	theme, effort := cfgLine{"ui.theme", `"dark"`}, cfgLine{"agent.effort", `"high"`}
-	for _, c := range []struct {
-		name      string
-		src, disk string // what save read, and the file when it writes; disk "" is src
-		sets      []cfgLine
-		want      string // the file after; "" is unchanged
-		skipped   string
-		link, err bool
-	}{
-		{
-			name: "the one set line gets the new literal, through a link", link: true,
-			src:  "-- zemi.config.set(\"ui.theme\", \"old\")\nzemi.config.set(\"ui.theme\", 'whorl') -- mine\n",
-			sets: []cfgLine{theme},
-			want: "-- zemi.config.set(\"ui.theme\", \"old\")\nzemi.config.set(\"ui.theme\", \"dark\") -- mine\n",
-		},
-		{
-			name: "a key no line names starts the block at the end",
-			src:  "a()",
-			sets: []cfgLine{effort},
-			want: "a()\n\n" + cfgBlockStart + "\nzemi.config.set(\"agent.effort\", \"high\")\n" + cfgBlockEnd + "\n",
-		},
-		{
-			name: "a new key joins the block and a key in it is rewritten there",
-			src:  "a()\n\n" + cfgBlockStart + "\nzemi.config.set(\"ui.theme\", \"x\")\n" + cfgBlockEnd + "\nb()\n",
-			sets: []cfgLine{theme, effort},
-			want: "a()\n\n" + cfgBlockStart + "\nzemi.config.set(\"ui.theme\", \"dark\")\nzemi.config.set(\"agent.effort\", \"high\")\n" + cfgBlockEnd + "\nb()\n",
-		},
-		{
-			name:    "a key set by code, indented or twice is left alone",
-			src:     "zemi.config.set(\"models.chat\", m)\nif x then\n  zemi.config.set(\"ui.theme\", \"a\")\nend\nzemi.config.set(\"agent.effort\", \"low\")\nzemi.config.set(\"agent.effort\", \"high\")\n",
-			sets:    []cfgLine{{"models.chat", `"p/m"`}, theme, effort},
-			skipped: "models.chat ui.theme agent.effort",
-		},
-		{
-			name: "a block that would follow a final return is left alone",
-			src:  "zemi.config.set(\"ui.theme\", \"a\")\nreturn {}\n", sets: []cfgLine{effort}, skipped: "agent.effort",
-		},
-		{
-			name: "a file that changed since the read is refused",
-			src:  "zemi.config.set(\"ui.theme\", \"a\")\n", disk: "edited()\n", sets: []cfgLine{theme}, err: true,
-		},
-	} {
-		dir := t.TempDir()
-		path, disk := filepath.Join(dir, "init.lua"), cmp.Or(c.disk, c.src)
-		file := path
-		if c.link {
-			file = filepath.Join(dir, "dotfiles.lua")
-			if err := os.Symlink(file, path); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := os.WriteFile(file, []byte(disk), 0o640); err != nil {
-			t.Fatal(err)
-		}
-		_, skipped, err := saveInit(path, []byte(c.src), c.sets)
-		got, _ := os.ReadFile(file)
-		st, _ := os.Lstat(path)
-		switch {
-		case (err != nil) != c.err:
-			t.Errorf("%s: err %v", c.name, err)
-		case string(got) != cmp.Or(c.want, disk):
-			t.Errorf("%s: file\n%s", c.name, got)
-		case strings.Join(skipped, " ") != c.skipped:
-			t.Errorf("%s: skipped %q", c.name, skipped)
-		case c.link && st.Mode()&os.ModeSymlink == 0:
-			t.Errorf("%s: the link was replaced", c.name)
-		}
-		if fi, _ := os.Stat(file); fi.Mode().Perm() != 0o640 {
-			t.Errorf("%s: mode %v", c.name, fi.Mode())
-		}
-	}
-}
-
-// TestConfigAsk: /config lua tags a key save would leave alone, and
-// /config ask sends only those keys to the agent.
-func TestConfigAsk(t *testing.T) {
-	h, r := newTestHostDB(t)
-	h.Dirs.ConfigHome = t.TempDir()
-	m := reflectStub(t, h, "ok")
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-	runUser(t, r, `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "https://gw/v1", models = { { id = "m" } } })`)
-	if err := os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "init.lua"), []byte("if x then\n  zemi.config.set(\"ui.theme\", \"a\")\nend\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	h.cfgNow = map[string][]any{"ui.theme": {"a"}}
-	h.Settings.SetQuiet("ui.theme", "dark")
-	h.Settings.SetQuiet("agent.effort", "high")
-	if err := h.configCommand("lua"); err != nil {
-		t.Fatal(err)
-	}
-	o := ui.overlays()[0]
-	if !strings.Contains(o.Body, `"dark") -- unsaved, save leaves it`) || !strings.Contains(o.Body, `"high") -- unsaved`+"\n") ||
-		fmt.Sprint(o.Items) != "[map[run:config save text:Save unsaved to init.lua verb:save] map[desc:ui.theme run:config ask text:Ask zemi to save the rest verb:ask]]" {
-		t.Fatalf("lua %v\n%s", o.Items, o.Body)
-	}
-	if err := h.configCommand("ask"); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, func() error {
-		if m.streams.Load() == 0 {
-			return errors.New("nothing sent")
-		}
-		return nil
-	})
-	waitIdle(t, h)
-	msgs, err := h.DB.Messages(h.AgentSessionID())
-	if err != nil || len(msgs) == 0 {
-		t.Fatalf("messages %v, %v", msgs, err)
-	}
-	if sent := msgs[0].PartsJSON; !strings.Contains(sent, "zemi-config") || !strings.Contains(sent, `zemi.config.set(\"ui.theme\", \"dark\")`) || strings.Contains(sent, "agent.effort") {
-		t.Fatalf("sent %s", sent)
-	}
-}
-
 // TestConfigSet: /config set takes the words /config and the pickers show
 // for a value.
 func TestConfigSet(t *testing.T) {
@@ -675,9 +556,9 @@ func TestConfigSet(t *testing.T) {
 		on   bool
 		desc string
 	}{
-		{func() { h.Settings.SetQuiet("ui.animations", false) }, false, "on disk · animate"},
-		{func() { h.configSet("ui.animations", "on") }, true, "unsaved · animate"},
-		{func() { h.cfgNow = nil }, true, "default · animate"},
+		{func() { h.Settings.SetQuiet("ui.animations", false) }, false, "init.lua · animate"},
+		{func() { h.configSet("ui.animations", "on") }, true, "this run · animate"},
+		{func() { h.cfgNow = nil }, true, "default  · animate"},
 	} {
 		c.step()
 		items := h.configItems()
@@ -688,7 +569,7 @@ func TestConfigSet(t *testing.T) {
 	}
 }
 
-// TestLuaLiteral: a value /config save writes reads back as itself in Lua.
+// TestLuaLiteral: a value /config lua shows reads back as itself in Lua.
 func TestLuaLiteral(t *testing.T) {
 	L := glua.NewState()
 	defer L.Close()

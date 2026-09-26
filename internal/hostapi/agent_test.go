@@ -204,52 +204,86 @@ func TestPermissionRuleValidation(t *testing.T) {
 // TestReloadKeepsRuntimePicks: a reload whose config writes what the last
 // load wrote keeps a value picked at runtime, config writing one key
 // several times included, through zemi.config.set or a setter of its own;
-// an edited config value wins. /config tags the value by where it came from.
+// an edited config value wins. A kept pick outlives a restart under
+// init.lua. /config tags the value by where it came from.
 func TestReloadKeepsRuntimePicks(t *testing.T) {
 	dir, log := t.TempDir(), logging.New(t.TempDir())
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+	dirs := config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()}
+	initLua := filepath.Join(dir, "init.lua")
+	const prov = `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "a" }, { id = "b" }, { id = "c" }, { id = "e" }, { id = "z" } } })` + "\n"
+	if err := os.WriteFile(initLua, []byte(prov), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	initLua := filepath.Join(dir, "init.lua")
+	var h *Host
+	steps := func() []lua.BootStep {
+		return []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}
+	}
+	start := func() {
+		r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
+		h = NewHost(r, log, config.NewStore(), dirs)
+		h.SetUIHooks(&fakeUI{}) // /config reset needs a screen
+		if err := r.Boot(t.Context(), steps()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start()
 	for _, c := range []struct {
 		name     string
 		key, set string // the key, and the call init.lua sets it with; "" is models.chat and zemi.config.set
 		config   []any  // what init.lua sets the key to, in order
-		pick     any    // nil picks nothing
+		pick     any    // through SetConfig; nil picks nothing, "reset" runs /config reset
 		want     any
 		source   string // cfgSource after the reload
+		keep     bool   // KeepPicks for the pick: off is a flag's
+		restart  bool   // a new zemi instead of a reload
 	}{
-		{"first load applies config", "", "", []any{"p/a"}, nil, "p/a", "on disk"},
-		{"unchanged config keeps a pick", "", "", []any{"p/a"}, "p/b", "p/b", "unsaved"},
-		{"edited config wins over a pick", "", "", []any{"p/c"}, "p/b", "p/c", "on disk"},
-		{"a second set of the same key applies", "", "", []any{"p/c", "p/d"}, nil, "p/d", "on disk"},
-		{"an unchanged double set keeps a pick", "", "", []any{"p/c", "p/d"}, "p/e", "p/e", "unsaved"},
-		{"editing the second set wins", "", "", []any{"p/c", "p/f"}, "p/e", "p/f", "on disk"},
-		{"dropping the second set wins", "", "", []any{"p/c"}, "p/e", "p/c", "on disk"},
-		{"a pick outlives the last set", "", "", nil, "p/e", "p/e", "unsaved"},
-		{"a set comes back", "", "", []any{"p/c"}, nil, "p/c", "on disk"},
-		{"dropping every set returns the default", "", "", nil, nil, "", "default"},
-		{"a key's own setter is a config write", "permissions.mode", "zemi.permission.mode.set(%[2]s)", []any{"yolo"}, nil, "yolo", "on disk"},
-		{"and keeps a pick like one", "permissions.mode", "zemi.permission.mode.set(%[2]s)", []any{"yolo"}, "auto", "auto", "unsaved"},
-		{"a Lua number is the int it sets", "ui.composer.history", "", []any{5}, nil, 5, "on disk"},
-		{"so dropping it returns the default", "ui.composer.history", "", nil, nil, 50, "default"},
+		{name: "first load applies config", config: []any{"p/a"}, want: "p/a", source: "init.lua"},
+		{name: "unchanged config keeps a pick", config: []any{"p/a"}, pick: "p/b", want: "p/b", source: "this run"},
+		{name: "edited config wins over a pick", config: []any{"p/c"}, pick: "p/b", want: "p/c", source: "init.lua"},
+		{name: "a second set of the same key applies", config: []any{"p/c", "p/d"}, want: "p/d", source: "init.lua"},
+		{name: "an unchanged double set keeps a pick", config: []any{"p/c", "p/d"}, pick: "p/e", want: "p/e", source: "this run"},
+		{name: "editing the second set wins", config: []any{"p/c", "p/f"}, pick: "p/e", want: "p/f", source: "init.lua"},
+		{name: "dropping the second set wins", config: []any{"p/c"}, pick: "p/e", want: "p/c", source: "init.lua"},
+		{name: "a pick outlives the last set", pick: "p/e", want: "p/e", source: "this run"},
+		{name: "a set comes back", config: []any{"p/c"}, want: "p/c", source: "init.lua"},
+		{name: "dropping every set returns the default", want: "", source: "default"},
+		{name: "a key's own setter is a config write", key: "permissions.mode", set: "zemi.permission.mode.set(%[2]s)", config: []any{"yolo"}, want: "yolo", source: "init.lua"},
+		{name: "and keeps a pick like one", key: "permissions.mode", set: "zemi.permission.mode.set(%[2]s)", config: []any{"yolo"}, pick: "auto", want: "auto", source: "this run"},
+		{name: "a Lua number is the int it sets", key: "ui.composer.history", config: []any{5}, want: 5, source: "init.lua"},
+		{name: "so dropping it returns the default", key: "ui.composer.history", want: 50, source: "default"},
+		{name: "a pick persists", pick: "p/b", keep: true, restart: true, want: "p/b", source: "saved"},
+		{name: "init.lua overrides it", config: []any{"p/a"}, restart: true, want: "p/a", source: "init.lua"},
+		{name: "a pick over config lasts the run", config: []any{"p/a"}, pick: "p/c", keep: true, want: "p/c", source: "this run"},
+		{name: "a restart runs config", config: []any{"p/a"}, restart: true, want: "p/a", source: "init.lua"},
+		{name: "dropping the line restores the pick", want: "p/c", source: "saved"},
+		{name: "reset forgets it", pick: "reset", keep: true, want: "", source: "default"},
+		{name: "for good", restart: true, want: "", source: "default"},
+		{name: "yolo is not saved", key: "permissions.mode", pick: "yolo", keep: true, restart: true, want: "auto", source: "default"},
+		{name: "a flag is not saved", pick: "p/z", restart: true, want: "", source: "default"},
 	} {
 		key := cmp.Or(c.key, "models.chat")
-		src := ""
+		src := prov
 		for _, v := range c.config {
 			src += fmt.Sprintf(cmp.Or(c.set, "zemi.config.set(%[1]q, %[2]s)"), key, luaLiteral(v)) + "\n"
 		}
 		if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if c.pick != nil {
-			if _, err := h.Settings.SetQuiet(key, c.pick); err != nil {
+		h.KeepPicks.Store(c.keep)
+		switch c.pick {
+		case nil:
+		case "reset":
+			if err := h.configCommand("reset " + key); err != nil {
+				t.Fatal(err)
+			}
+		default:
+			if err := h.SetConfig(key, c.pick); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
+		if c.restart {
+			start()
+		} else if err := h.ForceReload(t.Context(), steps()); err != nil {
 			t.Fatal(err)
 		}
 		if got, _ := h.Settings.Get(key); got != c.want {

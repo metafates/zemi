@@ -201,6 +201,7 @@ func run(args []string) int {
 			host.RecordError("flag", err.Error())
 			app.Notify(logging.Error, "Could not apply a flag", err.Error())
 		}
+		host.KeepPicks.Store(true)
 		// here, not in app.ready: once per process, after -m, never on a reload
 		host.OfferModel()
 		if opts.prompt != "" {

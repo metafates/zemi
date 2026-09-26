@@ -346,13 +346,18 @@ type Host struct {
 	// cfgPrev and cfgNow hold, per key, the values zemi.config.set wrote
 	// during the previous boot and during this one, in order: a replay
 	// writing the same sequence keeps a runtime pick made since (config.go)
-	cfgMu    sync.Mutex
-	cfgGen   Gen
-	cfgPrev  map[string][]any
-	cfgNow   map[string][]any
-	agents   *agentHost
-	luaTools *toolReg
-	stops    *stopReg
+	cfgMu   sync.Mutex
+	cfgGen  Gen
+	cfgPrev map[string][]any
+	cfgNow  map[string][]any
+	// picked mirrors the picks kept in the global store as config:<path>
+	picked map[string]any
+	// KeepPicks lets a runtime pick outlive the process; main turns it on
+	// once the TUI's flags applied, so a flag, -p and --health keep none.
+	KeepPicks atomic.Bool
+	agents    *agentHost
+	luaTools  *toolReg
+	stops     *stopReg
 
 	// memReview serializes the /memory review overlay; the hook runs off
 	// the UI goroutine.
@@ -588,6 +593,10 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		// keyed on the repository, not the launch directory: a subdirectory
 		// and a worktree are the same project, with the same sessions
 		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, h.trustRoot())
+	}
+	h.picked = map[string]any{}
+	if h.GlobalDB != nil {
+		h.loadPicks()
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
 		"zemi.ui.help": func(h *Host, _ string) error { return h.OpenHelp() },

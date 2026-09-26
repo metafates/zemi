@@ -164,26 +164,32 @@ a key of their own, `zemi.ui.theme.set`, `zemi.permission.mode.set` and `zemi.mo
 run a valid value through) and a key the new config writes fewer
 times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, `/profile`, the mode
 cycle and the flags survive a reload until the config changes that key. A key the config stopped
-writing returns to its schema default, unless a runtime pick moved it since.
+writing returns to its saved pick, else its schema default, unless a runtime pick moved it since.
+
+Runtime picks outlive the process: the layers are schema default < saved pick < init.lua <
+this run. Every runtime write goes through `Host.writeSetting` (`setWatched`, and
+`zemi.config.set` and `zemi.model.set` past boot), whose `keepPick` keeps the value in the
+global store's kv as `config:<path>`, or deletes the row when the value is `cfgBase` (config's
+last write when init.lua wrote the key, else the default). It keeps nothing while booting or
+before `Host.KeepPicks`, which main turns on after the TUI's flags apply, so a flag, `-p` and
+`--health` keep none, and never a mode whose base is yolo (never fail open across restarts).
+`NewHost` applies the rows before any Lua (`loadPicks`, each through `Settings.Check`), so
+init.lua still wins; per user, not per project.
 
 `/config` (hostapi/configcmd.go) is a `Reload` list of every schema key by section, each
-description led by its `cfgSource` (`default`; `on disk` when the live value is config's last
-write; `unsaved` when a runtime pick moved it off that or off the default; one width, so a
-toggle or a save moves no text) and then the value, which a bool draws as its switch instead. Space toggles a bool; every other row opens its
-detail, whose actions pick or fill `/config set`. `/config` and `/effort` write through
+description led by its `cfgSource` (`init.lua` when the live value is config's last write;
+`saved` when it is the kept pick of a key init.lua does not write; `default`; `this run` for
+anything a restart drops, which the detail explains for a key init.lua sets; padded to one
+width, so a change moves no text) and then the value, which a bool draws as its switch instead. Space toggles a bool; every other row opens its
+detail, whose actions pick or fill `/config set`, and reset a value off its `cfgBase` ("Reset
+to init.lua" or "Reset to default", which forgets the kept pick). `/config` and `/effort` write through
 `Host.SetConfig`, which sends `models.*`, `permissions.mode`, `agent.profile` and `ui.theme`
 through their own setters; for any other key a refused value is a usage hint. A key's
 `Choices` (the effort levels and "", `memory.autonomy`'s auto or ask) refuse any other value in
 `config.checkKind`, which also takes `default` for a "" choice, `zemi.config.set` included; every runtime write,
 those setters included, fires the key's watches through `setWatched`. `config lua`
-shows the keys off their default as `zemi.config.set` lines; `config save` (`saveInit`) writes
-the unsaved ones: the literal of a key's one top-level set line rewritten in place, a key no
-line names appended to the `-- zemi: saved from /config` block at the end, one set by code or
-twice left alone, and every key left alone when the result would not parse (`planInit`),
-through a temp file renamed over init.lua (its target when it is a link) and refused when the
-file changed since it was read. `config lua` tags a key save would leave alone `-- unsaved,
-save leaves it` and, when a model can run, offers `config ask`, which sends those keys,
-recomputed at the press, to the agent (`saveRestPrompt`). Under `-p` only `config set` runs.
+shows the keys off their default as `zemi.config.set` lines, read only, for `y` to copy. zemi
+never edits init.lua. Under `-p` only `config set` runs.
 
 ## Architecture and control flow
 
