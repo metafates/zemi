@@ -74,6 +74,7 @@ make test               # full suite (~20s, pure Go, no CGO; network only for on
 make race               # go test -race ./internal/...
 make golden             # regenerate internal/ui/testdata/*.golden, then read the diff
 make fmt                # gofmt -w over the tracked Go files, and stylua over runtime/ Lua
+make reset-db           # delete the stores a schema bump refuses (ZEMI_STATE=<dir> for another tree)
 ```
 
 git commits are run unsandboxed (`sandbox: false`): `.git` is read-only inside the
