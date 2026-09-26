@@ -132,8 +132,9 @@ func TestCompaction(t *testing.T) {
 }
 
 // TestCompactionOnCachedPrefix: on the conversation's own model the summary
-// is asked after the runner's system prompt and history, the prefix the
-// provider cached; a refusal there falls back to the flat transcript, which
+// is asked after the runner's system prompt and whole history, the prefix the
+// last step read, with a note naming the verbatim tail; a refusal there falls
+// back to the flat transcript, which
 // still summarizes instead of dropping the history.
 func TestCompactionOnCachedPrefix(t *testing.T) {
 	for _, name := range []string{"answers", "refused"} {
@@ -157,8 +158,9 @@ func TestCompactionOnCachedPrefix(t *testing.T) {
 			m.mu.Lock()
 			p := m.prompts[1]
 			m.mu.Unlock()
-			if len(p) != 3 || concatText(p[0].Content) != sys || concatText(p[1].Content) != big || !strings.HasPrefix(concatText(p[2].Content), compactNote) {
-				t.Fatalf("the compaction call is not system, history, note: %d messages", len(p))
+			if len(p) != 4 || concatText(p[0].Content) != sys || concatText(p[1].Content) != big || concatText(p[2].Content) != "ok" ||
+				!strings.HasPrefix(concatText(p[3].Content), compactNote) || !strings.Contains(concatText(p[3].Content), "except its last 1 message,") {
+				t.Fatalf("the compaction call is not system, whole history, note naming the tail: %d messages", len(p))
 			}
 			if s, _ := summaryOf(h.agents.runner.History[0]); s != "ok" {
 				t.Fatalf("summary %q", s)

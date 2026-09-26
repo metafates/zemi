@@ -324,16 +324,17 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	if len(head) == 0 {
 		return errNothingToCompact
 	}
-	// On the conversation's own model the summary is asked on the runner's
-	// prefix, the unpruned bytes the provider cached; the flat transcript
-	// goes to a separate compact model, or when that call gives no summary.
+	// On the conversation's own model the summary is asked after the runner's
+	// whole unpruned history, the exact prefix the last step read, so the
+	// provider reads it from a warm cache entry; the flat transcript goes to a
+	// separate compact model, or when that call gives no summary.
 	var out string
 	err := errNoSummary
 	h.agents.mu.Lock()
 	model := h.agents.turnModel
 	h.agents.mu.Unlock()
 	if model != "" && model == h.roleModel("compact") {
-		out, err = h.summarizeAside(ctx, runner, runner.History[:len(runner.History)-len(tail)], model, focus)
+		out, err = h.summarizeAside(ctx, runner, len(tail), model, focus)
 	}
 	if errors.Is(err, errNoSummary) || contextTooLarge(err) {
 		out, err = h.summarize(ctx, head, prev, focus, window)
@@ -465,15 +466,19 @@ func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focu
 	}
 }
 
-// summarizeAside asks for the summary of head after head itself, one step
-// on the runner's system prompt, tools and breakpoints (Runner.Aside),
-// billed like /btw.
-func (h *Host) summarizeAside(ctx context.Context, runner *agent.Runner, head []fantasy.Message, model, focus string) (string, error) {
+// summarizeAside asks for the summary of the runner's history but its last
+// tail messages, the verbatim tail, one step on the runner's system prompt,
+// tools and breakpoints (Runner.Aside), billed like /btw.
+func (h *Host) summarizeAside(ctx context.Context, runner *agent.Runner, tail int, model, focus string) (string, error) {
 	note := compactNote
+	if tail > 0 {
+		note += fmt.Sprintf("\n\nYour summary replaces the conversation above except its last %d %s, kept verbatim after it: summarize only what comes before.",
+			tail, map[bool]string{true: "message", false: "messages"}[tail == 1])
+	}
 	if focus != "" {
 		note += "\n\nAdditional focus: " + focus
 	}
-	res, err := runner.Aside(ctx, head, note)
+	res, err := runner.Aside(ctx, runner.History, note)
 	if err != nil {
 		return "", err
 	}

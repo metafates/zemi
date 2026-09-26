@@ -608,8 +608,9 @@ lua-language-server is installed.
   context-too-long refusal. The size is `agent.ContextUsed` of the last step, never a sum; an
   unknown window means no auto compaction. When `models.compact` is the runner's model
   (`ag.turnModel`, "" for the bare runner a resume or rewind leaves) the summary is asked
-  through `Runner.Aside` after the unpruned head (`summarizeAside`, `compactNote`), so it
-  reads the provider's cache; a separate compact model, or an aside with no summary or a
+  through `Runner.Aside` after the whole unpruned history, with a note naming how many
+  messages stay as the verbatim tail (`summarizeAside`, `compactNote`), so it reads the
+  prefix the last step just cached; a separate compact model, or an aside with no summary or a
   context-too-long refusal, gets the flat `summarize`. The summary row is followed by the verbatim tail
   stored with row role `tail`, which resume reads and transcript readers skip. An unfinished
   todo list goes after `</summary>`, where `summaryOf` drops it, so a stale one is never
