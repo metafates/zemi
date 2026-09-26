@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -525,8 +526,12 @@ func TestAskWaiterJudgedAgain(t *testing.T) {
 			ui.onAsk = func(PermRequest) (bool, string) {
 				if len(ui.asked) == 1 {
 					close(opened)
-					for h.AsksWaiting() < 2 { // the second is at the prompt stage
-						runtime.Gosched()
+					// the second is at the prompt stage; t.Error, since this is no test goroutine
+					for deadline := time.Now().Add(3 * time.Second); h.AsksWaiting() < 2; runtime.Gosched() {
+						if time.Now().After(deadline) {
+							t.Error("the second ask never reached the prompt stage")
+							break
+						}
 					}
 					if c.during != nil {
 						c.during(h)
