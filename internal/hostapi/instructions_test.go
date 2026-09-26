@@ -23,21 +23,21 @@ func TestNearestInstructions(t *testing.T) {
 	file := filepath.Join(pkg, "x.go")
 	os.WriteFile(file, []byte("package sub\n"), 0o644)
 
-	if got := h.nearestInstructions(file, h.instructionSent); got != "" {
+	if got := h.nearestInstructions(file, h.instructionFiles(), h.instructionSent); got != "" {
 		t.Fatalf("an untrusted project's instructions must not load: %q", got)
 	}
 	h.SetProjectTrusted(true)
-	if got := h.nearestInstructions(file, h.instructionSent); !strings.Contains(got, "use tabs here") {
+	if got := h.nearestInstructions(file, h.instructionFiles(), h.instructionSent); !strings.Contains(got, "use tabs here") {
 		t.Fatalf("first read must carry the package instructions: %q", got)
 	}
-	if got := h.nearestInstructions(file, h.instructionSent); got != "" {
+	if got := h.nearestInstructions(file, h.instructionFiles(), h.instructionSent); got != "" {
 		t.Fatalf("they must not repeat in the same session: %q", got)
 	}
 	h.compactDone(0, false)
-	if got := h.nearestInstructions(file, h.instructionSent); !strings.Contains(got, "use tabs here") {
+	if got := h.nearestInstructions(file, h.instructionFiles(), h.instructionSent); !strings.Contains(got, "use tabs here") {
 		t.Fatalf("compaction clears the read that carried them, so they come back: %q", got)
 	}
-	if got := h.nearestInstructions(filepath.Join(h.Dirs.ProjectDir, "main.go"), h.instructionSent); got != "" {
+	if got := h.nearestInstructions(filepath.Join(h.Dirs.ProjectDir, "main.go"), h.instructionFiles(), h.instructionSent); got != "" {
 		t.Fatalf("the root AGENTS.md is already in the prompt, and CLAUDE.md beside it is never read: %q", got)
 	}
 
@@ -49,7 +49,7 @@ func TestNearestInstructions(t *testing.T) {
 	}
 	t.Cleanup(func() { os.RemoveAll(sibling) })
 	os.WriteFile(filepath.Join(sibling, "AGENTS.md"), []byte("not ours"), 0o644)
-	if got := h.nearestInstructions(filepath.Join(sibling, "x.go"), h.instructionSent); got != "" {
+	if got := h.nearestInstructions(filepath.Join(sibling, "x.go"), h.instructionFiles(), h.instructionSent); got != "" {
 		t.Fatalf("nothing outside the repo may be read: %q", got)
 	}
 
@@ -58,7 +58,7 @@ func TestNearestInstructions(t *testing.T) {
 	if err := os.Symlink(filepath.Join(sibling, "AGENTS.md"), filepath.Join(leak, "CLAUDE.md")); err != nil {
 		t.Fatal(err)
 	}
-	if got := h.nearestInstructions(filepath.Join(leak, "x.go"), h.instructionSent); got != "" {
+	if got := h.nearestInstructions(filepath.Join(leak, "x.go"), h.instructionFiles(), h.instructionSent); got != "" {
 		t.Fatalf("a symlink must not lead out of the repo: %q", got)
 	}
 }

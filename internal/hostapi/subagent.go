@@ -248,7 +248,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	pipe.Seen = &sync.Map{} // what the main agent read says nothing about what this run saw
 	var sent sync.Map       // likewise the instruction files its reads carried
 	pipe.Instructions = func(path string) string {
-		return h.nearestInstructions(path, func(p string) bool {
+		return h.nearestInstructions(path, h.instructionFiles(), func(p string) bool {
 			_, dup := sent.LoadOrStore(p, true)
 			return dup
 		})

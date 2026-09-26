@@ -360,11 +360,13 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 }
 
 // promptPin is the prefix one key was built for: the system text, its
-// sections and each tool's Info.
+// sections and each tool's Info, and the instruction file versions messages
+// carried since (instructionEdits).
 type promptPin struct {
 	key, text string
 	parts     promptParts
 	infos     map[string]fantasy.ToolInfo
+	sent      map[string]time.Time
 }
 
 // dropPin makes the next send build the prompt again. The text stays for
@@ -2855,6 +2857,15 @@ func (h *Host) seedReadsInto(seen *sync.Map, rows []*store.Message) {
 	}
 }
 
+// mainInstructions is the main agent's Instructions hook: its prompt holds
+// the files the pin read.
+func (h *Host) mainInstructions(path string) string {
+	h.agents.mu.Lock()
+	prompted := slices.Collect(maps.Keys(h.agents.pin.parts.files))
+	h.agents.mu.Unlock()
+	return h.nearestInstructions(path, prompted, h.instructionSent)
+}
+
 // afterWrite is the pipeline's AfterWrite hook. The recipe check comes first:
 // it may rewrite the file.
 func (h *Host) afterWrite(path string) string {
@@ -2927,7 +2938,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		ScratchDir:   h.ScratchDir,
 		SearchURL:    func() string { return h.Settings.Str("web.search_url") },
 		Seen:         h.readLog(),
-		Instructions: func(path string) string { return h.nearestInstructions(path, h.instructionSent) },
+		Instructions: h.mainInstructions,
 	}
 	if ui := h.hooks(); ui != nil {
 		p.Question = ui.AskQuestion

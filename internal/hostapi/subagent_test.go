@@ -292,7 +292,7 @@ func TestSubagentInstructions(t *testing.T) {
 			t.Fatalf("run %d: read result %q, %v", i, text, err)
 		}
 	}
-	if got := h.nearestInstructions(file, h.instructionSent); !strings.Contains(got, "use tabs here") {
+	if got := h.nearestInstructions(file, h.instructionFiles(), h.instructionSent); !strings.Contains(got, "use tabs here") {
 		t.Fatalf("the main conversation lost its delivery: %q", got)
 	}
 }

@@ -130,7 +130,7 @@ type promptParts struct {
 	lua          int
 	skills       int
 	digest       int
-	files        map[string]time.Time // instruction file -> its mtime as read, zero when missing
+	files        map[string]time.Time // instruction file, or where one would load, -> its mtime as read, zero when missing
 }
 
 // buildSystemParts takes the run's tool set so the prompt names no tool the
@@ -191,8 +191,9 @@ func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool) string {
 // instructionFiles.
 func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool) (string, promptParts) {
 	// a profile's files are repository content too
+	var tracked []string
 	if len(files) == 0 || !h.ProjectTrusted() {
-		files = h.instructionFiles()
+		tracked, files = h.instructionPaths(), h.instructionFiles()
 	} else {
 		// a copy: these are the profile's own paths, and rewriting them in
 		// place would make the next send join them to the project dir again
@@ -200,11 +201,11 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 		for i, f := range files {
 			abs[i] = filepath.Join(h.Dirs.ProjectDir, f)
 		}
-		files = abs
+		tracked, files = abs, abs
 	}
 	// stat before the read: an edit between the two is then attached, not lost
 	mtimes := map[string]time.Time{}
-	for _, f := range files {
+	for _, f := range tracked {
 		var mt time.Time
 		if fi, err := os.Stat(f); err == nil {
 			mt = fi.ModTime()
@@ -276,6 +277,13 @@ func (h *Host) instructionSections(files []string, budget int) string {
 // when it has none (repositories set up for Claude Code).
 // An untrusted project's files stay out: they steer the model's commands.
 func (h *Host) instructionFiles() []string {
+	mine := filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
+	return slices.DeleteFunc(h.instructionPaths(), func(p string) bool { return p != mine && !h.instructionFile(p) })
+}
+
+// instructionPaths is where instructionFiles looks, a file that would load
+// were it created included, so a pinned prompt can tell one appeared.
+func (h *Host) instructionPaths() []string {
 	var out []string
 	if h.Dirs.ConfigHome != "" {
 		out = append(out, filepath.Join(h.Dirs.ConfigHome, "AGENTS.md"))
@@ -292,28 +300,27 @@ func (h *Host) instructionFiles() []string {
 		}
 	}
 	for _, dir := range dirs {
-		for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
-			if p := filepath.Join(dir, name); h.instructionFile(p) {
-				out = append(out, p)
-				break
-			}
+		p := filepath.Join(dir, "AGENTS.md")
+		out = append(out, p)
+		if !h.instructionFile(p) {
+			out = append(out, filepath.Join(dir, "CLAUDE.md"))
 		}
 	}
 	return out
 }
 
 // nearestInstructions returns the instruction file that governs path and is
-// not already in the prompt: in a monorepo opened at the root, a package's
-// own AGENTS.md sits below the files instructionFiles collects. Each one is
-// sent once per conversation, with the read that first reaches it: sent
-// reports whether it went out already and records it otherwise.
-func (h *Host) nearestInstructions(path string, sent func(string) bool) string {
+// not in the prompt, which holds prompted: in a monorepo opened at the root,
+// a package's own AGENTS.md sits below the files instructionFiles collects.
+// Each one is sent once per conversation, with the read that first reaches
+// it: sent reports whether it went out already and records it otherwise.
+func (h *Host) nearestInstructions(path string, prompted []string, sent func(string) bool) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return ""
 	}
 	inPrompt := map[string]bool{}
-	for _, p := range h.instructionFiles() {
+	for _, p := range prompted {
 		inPrompt[p] = true
 	}
 	root := h.Dirs.RepoRoot()
@@ -369,19 +376,27 @@ func instructionBlock(name, note string, data []byte) (string, bool) {
 	return fmt.Sprintf("\n<instructions path=%q>\n%s\n%s\n</instructions>\n", name, note, body), whole
 }
 
-// instructionEdits attaches each instruction file the pinned prompt holds
-// that changed since, once per change: the prompt keeps the old text so the
-// provider cache holds. A version the model read or wrote itself is skipped.
+// instructionEdits attaches each instruction file the pinned prompt holds,
+// or one created where it would load, that changed since, once per change:
+// the prompt keeps the old text so the provider cache holds. A version the
+// model read or wrote itself is skipped.
 func (h *Host) instructionEdits() string {
 	ag := h.agents
 	ag.mu.Lock()
-	files := maps.Clone(ag.pin.parts.files)
+	files, sent := ag.pin.parts.files, maps.Clone(ag.pin.sent)
 	ag.mu.Unlock()
+	mine := filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
 	seen := h.readLog()
 	var b strings.Builder
 	for _, p := range slices.Sorted(maps.Keys(files)) {
+		had, ok := sent[p]
+		if !ok {
+			had = files[p]
+		}
 		fi, err := os.Stat(p)
-		if err != nil || fi.ModTime().Equal(files[p]) {
+		// the sandbox cannot write the user's file, while a repository one
+		// may have become a link to a secret since the prompt was built
+		if err != nil || fi.ModTime().Equal(had) || p != mine && !h.instructionFile(p) {
 			continue
 		}
 		mt := fi.ModTime()
@@ -391,10 +406,10 @@ func (h *Host) instructionEdits() string {
 				continue
 			}
 			name := p
-			if _, ok := perm.Under(h.Dirs.RepoRoot(), p); ok {
-				name, _ = filepath.Rel(h.Dirs.ProjectDir, p)
+			if rel, ok := perm.Under(h.Dirs.RepoRoot(), p); ok {
+				name = rel
 			}
-			block, whole := instructionBlock(name, "Changed since the system prompt was built: this version replaces the one there.", data)
+			block, whole := instructionBlock(name, "New or changed since the system prompt was built: this version replaces any copy there.", data)
 			b.WriteString(block)
 			// a cut text is not the file: an edit must read it first
 			if whole {
@@ -402,9 +417,10 @@ func (h *Host) instructionEdits() string {
 			}
 		}
 		ag.mu.Lock()
-		if ag.pin.parts.files != nil {
-			ag.pin.parts.files[p] = mt
+		if ag.pin.sent == nil {
+			ag.pin.sent = map[string]time.Time{}
 		}
+		ag.pin.sent[p] = mt
 		ag.mu.Unlock()
 	}
 	return b.String()
@@ -515,13 +531,22 @@ func (h *Host) instructionSent(p string) bool {
 	return false
 }
 
-// forgetInstructions lets instruction files ride reads again once the read
-// results that carried them are cleared, summarized or cut.
+// forgetInstructions lets instruction files ride reads, and hand edits of
+// them the next message, again once the results and messages that carried
+// them are cleared, summarized or cut.
 func (h *Host) forgetInstructions() {
 	ag := h.agents
 	ag.readMu.Lock()
 	ag.instr = map[string]bool{}
 	ag.readMu.Unlock()
+	ag.mu.Lock()
+	sent := ag.pin.sent
+	ag.pin.sent = nil
+	ag.mu.Unlock()
+	seen := h.readLog()
+	for p, mt := range sent {
+		seen.CompareAndDelete(perm.CanonPath(p), mt)
+	}
 }
 
 // OpenPrompt shows the pinned system prompt the last send carried, which /usage

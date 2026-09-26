@@ -26,7 +26,7 @@ AGENTS.md has the house rules and `make check`; these are the ones it leaves out
 
 ## Prompt cache
 
-Anything in the prefix that varies per request busts the provider cache for the rest of the session. Pin per session (`environmentPrompt`, `ag.env`), never per turn: no dates, git status, map-ordered schemas or a plan re-injected every step. A profile or tool-set switch may bust it once, since the user asked. Check by diffing two consecutive request bodies from the fake server (zemi-tui-test).
+Anything in the prefix that varies per request busts the provider cache for the rest of the session. The main agent's whole prefix is one pin (`ag.pin`, `pinPrompt`): read files and Lua output when it is built, and put a new input that must rebuild it in its key, never in a pin field of its own. Never per turn: no dates, git status, map-ordered schemas or a plan re-injected every step. A profile or tool-set switch may bust it once, since the user asked. Check by diffing two consecutive request bodies from the fake server (zemi-tui-test).
 
 ## Tests that will not flake
 

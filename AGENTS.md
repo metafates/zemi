@@ -836,14 +836,18 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   first token. The main agent's prefix is one pin (`ag.pin`, `pinPrompt`): the system text
   and every tool's `Info` (through `pinnedTool`), sent verbatim while its key holds (profile,
   model, `ProjectTrusted`, the mode's prompt, each tool's name and input schema, since a stale
-  schema fails calls). `closeSession` (`/new`, `/resume`), `compactDone` and `deleteRecipe`
-  drop it; rewind keeps it, and a reload drops nothing, since the config watcher reloads on
+  schema fails calls). `closeSession` (`/new`, `/resume`) zeroes it, `compactDone` and
+  `deleteRecipe` clear its key (`dropPin`: `/prompt` and a running turn keep the text, and a
+  build a drop overtook is not stored); rewind keeps it, and a reload drops nothing, since the config watcher reloads on
   any config-tree write, the model's own skill writes included. So instruction files, skills,
   descriptions (saved workflows, agent definitions) and `agent.assemble` output are read only
-  when it is built, and a hit costs no file read and no Lua. An instruction file the pin read
-  whose mtime moved rides the next user message once (`instructionEdits`, beside
-  `takeShellNotes` in `expandAttachments`, framed like `nearestInstructions` by
-  `instructionBlock`), unless the read log holds that mtime: the model read or wrote it itself.
+  when it is built, and a hit costs no file read and no Lua. An instruction file the pin read,
+  or one created where it would load (`instructionPaths`), whose mtime moved rides the next
+  user message once (`instructionEdits`, beside `takeShellNotes` in `expandAttachments`,
+  framed like `nearestInstructions` by `instructionBlock`, after the same `instructionFile`
+  check), unless the read log holds that mtime: the model read or wrote it itself. A rewind
+  (`forgetInstructions`) lets it ride again. The main agent's reads count the pinned files as
+  in the prompt.
   Subagents build theirs once per run (`systemWith`).
 - **Tool schemas**: fantasy wraps `ToolInfo.Parameters` as the properties map, so tools pass
   `tools.SchemaProperties(schema)` and a non-nil `Required`; strict providers reject anything

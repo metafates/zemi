@@ -957,9 +957,12 @@ skills, saved workflows, agent definitions, memories and `agent.assemble`
 handlers wait for the next rebuild, and `/reload` and the config watcher
 rebuild nothing, since the watcher reloads on any config-tree write, the
 model's own skill writes included. The one exception is an instruction
-file the prompt holds and the user edited by hand: its new text rides the
-next user message once, in the same `<instructions>` block a read uses,
-unless the model read or wrote that version itself. Subagents build
+file the prompt holds, or one created where it would load, that the user
+edited by hand: its new text rides the next user message once, in the
+same `<instructions>` block a read uses, unless the model read or wrote
+that version itself, and again after a rewind cuts that message. It is
+checked like the prompt's own files first, so a file that became a link
+out of the repository or to a secret sends nothing. Subagents build
 their prompt once per run.
 
 ### 6.4 Tools

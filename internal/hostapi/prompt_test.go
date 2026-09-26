@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -229,21 +231,44 @@ func TestSendPrepCheap(t *testing.T) {
 // TestPromptPinned: two sends around a change carry the same system prompt
 // and tools unless the change is a drop point or moves the key, which an
 // agent.assemble counter shows. A hand edit of an instruction file rides
-// the next message once instead.
+// the next message once instead. The prompt starts with an AGENTS.md, or
+// with the file a row's setup names.
 func TestPromptPinned(t *testing.T) {
 	agentsMD := func(h *Host) string { return filepath.Join(h.Dirs.ProjectDir, "AGENTS.md") }
+	handEdit := func(h *Host, path, text string) {
+		os.WriteFile(path, []byte(text), 0o644)
+		later := time.Now().Add(time.Hour)
+		os.Chtimes(path, later, later)
+	}
 	for _, c := range []struct {
 		name    string
+		setup   string
 		between func(t *testing.T, h *Host, r *lua.Runtime)
 		rebuilt bool
 		attach  int
 	}{
-		{"AGENTS.md edited by hand", func(t *testing.T, h *Host, _ *lua.Runtime) {
-			os.WriteFile(agentsMD(h), []byte("run make check"), 0o644)
-			later := time.Now().Add(time.Hour)
-			os.Chtimes(agentsMD(h), later, later)
+		{"AGENTS.md edited by hand", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			handEdit(h, agentsMD(h), "run make check")
 		}, false, 1},
-		{"AGENTS.md edited through the edit tool", func(t *testing.T, h *Host, _ *lua.Runtime) {
+		{"AGENTS.md created by hand next to a CLAUDE.md", "CLAUDE.md", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			handEdit(h, agentsMD(h), "run make check")
+		}, false, 1},
+		{"AGENTS.md turned into a link to a secret", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			env := filepath.Join(h.Dirs.ProjectDir, ".env")
+			handEdit(h, env, "run make check")
+			os.Remove(agentsMD(h))
+			os.Symlink(env, agentsMD(h))
+		}, false, 0},
+		{"hand edit sent, then rewound", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			handEdit(h, agentsMD(h), "run make check")
+			sender(t, h)("mid")
+			rows, _ := h.DB.Messages(h.AgentSessionID())
+			last := rows[slices.IndexFunc(rows, func(m *store.Message) bool { return m.Role == "user" && strings.Contains(m.PartsJSON, "mid") })]
+			if _, err := h.RewindTo(last.ID); err != nil {
+				t.Fatal(err)
+			}
+		}, false, 1},
+		{"AGENTS.md edited through the edit tool", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: agentsMD(h), Decision: perm.Allow})
 			all := tools.All(h.PipelineFor())
 			for _, call := range []struct {
@@ -260,35 +285,35 @@ func TestPromptPinned(t *testing.T) {
 				}
 			}
 		}, false, 0},
-		{"skill added", func(t *testing.T, h *Host, _ *lua.Runtime) {
+		{"skill added", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			writeSkill(t, h.userSkillsDir(), "fresh", "a fresh skill", "")
 			h.syncSkills()
 		}, false, 0},
-		{"workflow saved", func(t *testing.T, h *Host, _ *lua.Runtime) {
+		{"workflow saved", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			os.MkdirAll(filepath.Join(h.Dirs.ConfigHome, "workflows"), 0o755)
 			os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "workflows", "fresh.lua"), []byte("-- a fresh workflow\nreturn 1\n"), 0o644)
 		}, false, 0},
-		{"memory added", func(t *testing.T, h *Host, _ *lua.Runtime) {
+		{"memory added", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			if err := h.Remember("a fresh memory"); err != nil {
 				t.Fatal(err)
 			}
 		}, false, 0},
-		{"assemble handler changed and reloaded", func(t *testing.T, h *Host, r *lua.Runtime) {
+		{"assemble handler changed and reloaded", "", func(t *testing.T, h *Host, r *lua.Runtime) {
 			if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 				t.Fatal(err)
 			}
 			runUser(t, r, `zemi.event.on("agent.assemble", function() return "changed" end)`)
 		}, false, 0},
-		{"compaction", func(t *testing.T, h *Host, _ *lua.Runtime) {
+		{"compaction", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			if err := h.CompactNow(""); err != nil {
 				t.Fatal(err)
 			}
 			waitIdle(t, h)
 		}, true, 0},
-		{"profile switch", func(t *testing.T, _ *Host, r *lua.Runtime) {
+		{"profile switch", "", func(t *testing.T, _ *Host, r *lua.Runtime) {
 			runUser(t, r, `zemi.agent.profile.add("other", {}); zemi.config.set("agent.profile", "other")`)
 		}, true, 0},
-		{"resume", func(t *testing.T, h *Host, _ *lua.Runtime) {
+		{"resume", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			sid := h.AgentSessionID()
 			if err := h.NewSession(); err != nil {
 				t.Fatal(err)
@@ -304,7 +329,7 @@ func TestPromptPinned(t *testing.T) {
 			h.SetProjectTrusted(true)
 			h.Settings.SetQuiet("models.chat", "stub/m")
 			m := reflectStub(t, h, "ok")
-			os.WriteFile(agentsMD(h), []byte("run make test"), 0o644)
+			os.WriteFile(filepath.Join(h.Dirs.ProjectDir, cmp.Or(c.setup, "AGENTS.md")), []byte("run make test"), 0o644)
 			runUser(t, r, `local n = 0
 zemi.event.on("agent.assemble", function() n = n + 1; return "build " .. n end)`)
 			send := sender(t, h)
