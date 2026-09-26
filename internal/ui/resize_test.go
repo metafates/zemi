@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
+
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
@@ -25,8 +26,10 @@ import (
 func TestGoldenHelpOverlay(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	ran := false
-	host.Commands.Add(&hostapi.Command{Name: "model", Desc: "choose the model", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-		GoFn: func(*hostapi.Host, string) error { ran = true; return nil }})
+	host.Commands.Add(&hostapi.Command{
+		Name: "model", Desc: "choose the model", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+		GoFn: func(*hostapi.Host, string) error { ran = true; return nil },
+	})
 	host.OpenHelp()
 	for app.Pump() {
 	}
@@ -82,8 +85,10 @@ func TestGoldenOverlayDetail(t *testing.T) {
 func TestOverlayWidthStableWhileScrolling(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
 	for i := range 14 {
-		host.Commands.Add(&hostapi.Command{Name: fmt.Sprintf("cmd%02d", i), Desc: strings.Repeat("d", 3+i*3),
-			Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1)})
+		host.Commands.Add(&hostapi.Command{
+			Name: fmt.Sprintf("cmd%02d", i), Desc: strings.Repeat("d", 3+i*3),
+			Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+		})
 	}
 	host.OpenHelp()
 	for app.Pump() {

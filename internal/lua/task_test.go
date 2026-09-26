@@ -61,7 +61,8 @@ func TestTask(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			task := Task{Class: ClassAgent, Origin: OriginUser, Path: "t.lua",
+			task := Task{
+				Class: ClassAgent, Origin: OriginUser, Path: "t.lua",
 				Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
 					fn, err := genOf(L).SB.CompileChunk(c.src, OriginUser.ChunkName("t.lua"))
 					return fn, nil, err

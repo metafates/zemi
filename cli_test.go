@@ -114,12 +114,18 @@ func TestTurnReport(t *testing.T) {
 		{Role: "assistant", Text: "looking"},
 		{Role: "assistant", Kind: "tool", Tool: "agent", Text: "find it", Status: "ok", Detail: "explore · 3 tool calls"},
 		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err", Output: "rm: /: is a directory\nexit status 1\nchanged: x"},
-		{Role: "assistant", Kind: "tool", Tool: "write", Text: "x.go", Status: "err",
-			Output: "permission denied (mode): fs.write /x.go: print mode cannot ask"},
-		{Role: "assistant", Kind: "tool", Tool: tools.ToolLua, Text: "zemi.mcp.add{}", Status: "err",
-			Output: "permission denied (mode): tool.lua: print mode cannot ask"},
-		{Role: "assistant", Kind: "tool", Tool: tools.ToolMemory, Text: "forget x", Status: "err",
-			Output: "permission denied (default): memory.write: nobody could answer the ask"},
+		{
+			Role: "assistant", Kind: "tool", Tool: "write", Text: "x.go", Status: "err",
+			Output: "permission denied (mode): fs.write /x.go: print mode cannot ask",
+		},
+		{
+			Role: "assistant", Kind: "tool", Tool: tools.ToolLua, Text: "zemi.mcp.add{}", Status: "err",
+			Output: "permission denied (mode): tool.lua: print mode cannot ask",
+		},
+		{
+			Role: "assistant", Kind: "tool", Tool: tools.ToolMemory, Text: "forget x", Status: "err",
+			Output: "permission denied (default): memory.write: nobody could answer the ask",
+		},
 		{Role: "assistant", Kind: "compact", Text: "cleared 40k tokens of old tool output"},
 		{Role: "assistant", Text: "found"},
 	})
@@ -394,14 +400,18 @@ func fakeOpenAI(w http.ResponseWriter, r *http.Request) {
 	}
 	usage := map[string]int{"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}
 	if !body.Stream {
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": "c", "object": "chat.completion", "model": "m", "usage": usage,
-			"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": "done"}, "finish_reason": "stop"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "c", "object": "chat.completion", "model": "m", "usage": usage,
+			"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": "done"}, "finish_reason": "stop"}},
+		})
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	ev := func(delta map[string]any, fin any) {
-		b, _ := json.Marshal(map[string]any{"id": "c", "object": "chat.completion.chunk", "model": "m", "usage": usage,
-			"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": fin}}})
+		b, _ := json.Marshal(map[string]any{
+			"id": "c", "object": "chat.completion.chunk", "model": "m", "usage": usage,
+			"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": fin}},
+		})
 		fmt.Fprintf(w, "data: %s\n\n", b)
 		w.(http.Flusher).Flush()
 	}
@@ -409,8 +419,10 @@ func fakeOpenAI(w http.ResponseWriter, r *http.Request) {
 	_, say, _ := strings.Cut(text, "say ")
 	switch {
 	case last.Role == "user" && call != nil:
-		ev(map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": "t1", "type": "function",
-			"function": map[string]any{"name": call[1], "arguments": call[2]}}}}, nil)
+		ev(map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{
+			"index": 0, "id": "t1", "type": "function",
+			"function": map[string]any{"name": call[1], "arguments": call[2]},
+		}}}, nil)
 		ev(map[string]any{}, "tool_calls")
 	case last.Role == "user" && strings.HasSuffix(text, "hang"):
 		select {
@@ -462,8 +474,10 @@ func TestPrintTurn(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, stderr: "1 tool call denied by a rule", notErr: "allow rule"},
-		{name: "a subagent's unanswered ask counts", prompt: `call agent {"agent":"general","description":"d","prompt":"call write {\"path\":\"zz.txt\",\"content\":\"x\"}"}`,
-			stderr: "1 tool call denied; nobody can approve a call with -p", denied: 1},
+		{
+			name: "a subagent's unanswered ask counts", prompt: `call agent {"agent":"general","description":"d","prompt":"call write {\"path\":\"zz.txt\",\"content\":\"x\"}"}`,
+			stderr: "1 tool call denied; nobody can approve a call with -p", denied: 1,
+		},
 		{name: "a swapped-in session is not this run's", first: []string{"say hi", "/new"}, prompt: "/resume", notStdout: "hi"},
 	} {
 		h := printHost(t)
@@ -602,8 +616,10 @@ func TestHeadlessNotices(t *testing.T) {
 	if err := r.ExecuteChunk(context.Background(), `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })`, "init.lua", lua.OriginUser); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.Commands.Add(&hostapi.Command{Name: "screen", Desc: "d", Origin: lua.OriginUser,
-		GoFn: func(h *hostapi.Host, _ string) error { _, err := h.Screen(); return err }}); err != nil {
+	if _, err := h.Commands.Add(&hostapi.Command{
+		Name: "screen", Desc: "d", Origin: lua.OriginUser,
+		GoFn: func(h *hostapi.Host, _ string) error { _, err := h.Screen(); return err },
+	}); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {

@@ -13,10 +13,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
-	glua "github.com/yuin/gopher-lua"
 )
 
 func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {

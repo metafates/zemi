@@ -242,9 +242,11 @@ func TestPluginsStep(t *testing.T) {
 				fmt.Fprintf(&out, "step: %v\n", run(ctx, r, g))
 				return nil
 			}
-			if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), step,
+			if err := r.Boot(context.Background(), []lua.BootStep{
+				h.NamespacesStep(), step,
 				lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser),
-				h.SkillsUserHooksStep(), h.MarkdownCommandsStep()}); err != nil {
+				h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
+			}); err != nil {
 				t.Fatal(err)
 			}
 			if b := h.Keymaps.Lookup("", "ctrl+g"); b != nil {

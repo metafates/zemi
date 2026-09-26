@@ -737,9 +737,11 @@ func (h *Host) openMCP() error {
 
 // mcpOverlay is /mcp; with refresh it only replaces an open one.
 func (h *Host) mcpOverlay(refresh bool) Overlay {
-	return Overlay{ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.mcpItems(),
+	return Overlay{
+		ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.mcpItems(),
 		Reload: func() ([]any, [][]Segment) { return h.mcpItems(), nil },
-		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`}
+		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`,
+	}
 }
 
 func (h *Host) mcpItems() []any {
@@ -802,8 +804,10 @@ func hasHeader(headers map[string]string, name string) bool {
 
 // mcpAuth is the stored sign-in of an HTTP server, keyed by name and URL.
 func (h *Host) mcpAuth(s *mcpServer) *mcp.Auth {
-	return &mcp.Auth{Name: s.name, ServerURL: s.spec.URL, Path: filepath.Join(h.Dirs.DataHome, "mcp-auth", s.name+".json"),
-		ClientID: s.spec.ClientID, ClientSecret: s.spec.ClientSecret, CallbackPort: s.spec.CallbackPort}
+	return &mcp.Auth{
+		Name: s.name, ServerURL: s.spec.URL, Path: filepath.Join(h.Dirs.DataHome, "mcp-auth", s.name+".json"),
+		ClientID: s.spec.ClientID, ClientSecret: s.spec.ClientSecret, CallbackPort: s.spec.CallbackPort,
+	}
 }
 
 func (h *Host) mcpServerNamed(name string) (*mcpServer, error) {

@@ -535,8 +535,10 @@ func seccomp(ns, network bool) error {
 		// x32 syscalls share the arch but not the numbers
 		prog = append(prog, jump(unix.BPF_JMP|unix.BPF_JGE|unix.BPF_K, 0x40000000, 0, 1), deny)
 	}
-	metadata := []uint32{unix.SYS_FCHOWN, unix.SYS_FCHOWNAT, unix.SYS_SETXATTR, unix.SYS_LSETXATTR, unix.SYS_FSETXATTR,
-		unix.SYS_SETXATTRAT, unix.SYS_REMOVEXATTR, unix.SYS_LREMOVEXATTR, unix.SYS_FREMOVEXATTR, unix.SYS_REMOVEXATTRAT, unix.SYS_FILE_SETATTR}
+	metadata := []uint32{
+		unix.SYS_FCHOWN, unix.SYS_FCHOWNAT, unix.SYS_SETXATTR, unix.SYS_LSETXATTR, unix.SYS_FSETXATTR,
+		unix.SYS_SETXATTRAT, unix.SYS_REMOVEXATTR, unix.SYS_LREMOVEXATTR, unix.SYS_FREMOVEXATTR, unix.SYS_REMOVEXATTRAT, unix.SYS_FILE_SETATTR,
+	}
 	if runtime.GOARCH == "amd64" {
 		metadata = append(metadata, 92, 94) // chown, lchown; arm64 has only the at forms
 	}

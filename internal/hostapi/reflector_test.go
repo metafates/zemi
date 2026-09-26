@@ -237,22 +237,27 @@ func TestReflectApply(t *testing.T) {
 		stored, queued int // memories this run stored live, proposals it queued
 		check          func(t *testing.T, h *Host, sid string)
 	}{
-		{name: "a project fact stores under auto", doc: "Sure! Here it is:\n" + `{"memories":[{"scope":"project","text":"` + fact + `"}]}` + "\nHope that helps.", stored: 1,
+		{
+			name: "a project fact stores under auto", doc: "Sure! Here it is:\n" + `{"memories":[{"scope":"project","text":"` + fact + `"}]}` + "\nHope that helps.", stored: 1,
 			check: func(t *testing.T, h *Host, sid string) {
 				if s, _ := h.DB.GetSession(sid); s == nil || s.CompletionTokens != 7 || h.agents.sessOut != 0 {
 					t.Fatalf("reflector usage goes to the session it read: %+v live=%d", s, h.agents.sessOut)
 				}
-			}},
-		{name: "ask queues it", autonomy: "ask", doc: `{"memories":[{"scope":"project","text":"` + fact + `"}]}`, queued: 1,
+			},
+		},
+		{
+			name: "ask queues it", autonomy: "ask", doc: `{"memories":[{"scope":"project","text":"` + fact + `"}]}`, queued: 1,
 			check: func(t *testing.T, h *Host, sid string) {
 				if p := h.memoryProposals(); p[0].Text != fact || p[0].ProvenanceSessionID != sid {
 					t.Fatalf("proposal: %+v", p[0])
 				}
-			}},
+			},
+		},
 		{name: "a user preference with the user's words stores", doc: `{"memories":[{"scope":"user","text":"the user wants short replies","quote":"Short replies please"}]}`, stored: 1},
 		{name: "a user preference without a quote queues", doc: `{"memories":[{"scope":"user","text":"the user wants short replies"}]}`, queued: 1},
 		{name: "a quote the user never wrote drops the memory", doc: `{"memories":[{"scope":"user","text":"the user wants short replies","quote":"long replies please"}]}`},
-		{name: "replaces by the index's id prefix supersedes the old memory, near-duplicate or not",
+		{
+			name: "replaces by the index's id prefix supersedes the old memory, near-duplicate or not",
 			seed: func(t *testing.T, h *Host, sid string) string {
 				return learnedMemory(t, h, "project", "the deploy script requires the labels sequence bumped", "")[:8]
 			},
@@ -261,8 +266,10 @@ func TestReflectApply(t *testing.T) {
 				if !slices.ContainsFunc(projectMemories(t, h), func(m *store.Memory) bool { return m.SupersededBy != "" }) {
 					t.Fatal("old memory not superseded")
 				}
-			}},
-		{name: "replaces under ask queues and links on accept", autonomy: "ask",
+			},
+		},
+		{
+			name: "replaces under ask queues and links on accept", autonomy: "ask",
 			seed: func(t *testing.T, h *Host, sid string) string {
 				return learnedMemory(t, h, "project", "deploy by hand", "")
 			},
@@ -279,8 +286,10 @@ func TestReflectApply(t *testing.T) {
 				if old, _ := h.DB.GetMemory(p.Supersedes); old.SupersededBy != p.ID {
 					t.Fatalf("superseded_by=%q want %q", old.SupersededBy, p.ID)
 				}
-			}},
-		{name: "replaces with empty text queues a forget",
+			},
+		},
+		{
+			name: "replaces with empty text queues a forget",
 			seed: func(t *testing.T, h *Host, sid string) string {
 				return learnedMemory(t, h, "project", "deploy by hand", "")
 			},
@@ -289,17 +298,22 @@ func TestReflectApply(t *testing.T) {
 				if p := h.memoryProposals(); !p[0].Forget || len(projectMemories(t, h)) != 1 {
 					t.Fatalf("want a queued forget and the memory kept: %+v", p)
 				}
-			}},
-		{name: "a near-duplicate of an indexed memory is skipped",
+			},
+		},
+		{
+			name: "a near-duplicate of an indexed memory is skipped",
 			seed: func(t *testing.T, h *Host, sid string) string { return learnedMemory(t, h, "project", fact, "") },
-			doc:  `{"memories":[{"scope":"project","text":"the deploy script requires the labels sequence bumped"}]}`},
+			doc:  `{"memories":[{"scope":"project","text":"the deploy script requires the labels sequence bumped"}]}`,
+		},
 		{name: "instruction-shaped text queues", doc: `{"memories":[{"scope":"project","text":"always run the deploy before reviews"}]}`, queued: 1},
-		{name: "a secret is refused", doc: `{"memories":[{"scope":"project","text":"the api_key = sk-abcdefghijklmnopqrs lives in deploy"}]}`,
+		{
+			name: "a secret is refused", doc: `{"memories":[{"scope":"project","text":"the api_key = sk-abcdefghijklmnopqrs lives in deploy"}]}`,
 			check: func(t *testing.T, h *Host, sid string) {
 				if len(projectMemories(t, h)) != 0 {
 					t.Fatal("a redacted memory was stored")
 				}
-			}},
+			},
+		},
 		{name: "a bad scope is skipped", doc: `{"memories":[{"scope":"galaxy","text":"` + fact + `"}]}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -366,9 +380,11 @@ func TestReflectPrompt(t *testing.T) {
 		seed         func(t *testing.T, h *Host, sid string)
 		want, absent []string
 	}{
-		{name: "the tail of the delta", seed: notes,
+		{
+			name: "the tail of the delta", seed: notes,
 			want:   []string{fmt.Sprintf("note %d.", reflectMsgsMax+4), "earlier messages omitted", "summary: the gist"},
-			absent: []string{"tool bash", "deploy script keeps failing", "note 0."}},
+			absent: []string{"tool bash", "deploy script keeps failing", "note 0."},
+		},
 		{name: "only what came after seen", seed: func(t *testing.T, h *Host, sid string) {
 			notes(t, h, sid)
 			msgs, _ := h.DB.Messages(sid)

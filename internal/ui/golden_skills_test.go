@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/exp/golden"
+
 	"github.com/metafates/zemi/internal/lua"
 )
 

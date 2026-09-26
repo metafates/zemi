@@ -214,7 +214,8 @@ func TestSandboxedBash(t *testing.T) {
 	t.Run("a network policy keeps the file rules", func(t *testing.T) {
 		pol := h.PipelineFor().SandboxFor(
 			tools.Request{Subject: "tool.bash", Arg: "curl https://example.com", Network: true},
-			tools.Verdict{Decision: perm.Allow, DecidedBy: "user"})
+			tools.Verdict{Decision: perm.Allow, DecidedBy: "user"},
+		)
 		if pol == nil || !pol.Network || len(pol.Write) == 0 {
 			t.Errorf("policy %+v: want the network with the file rules kept", pol)
 		}

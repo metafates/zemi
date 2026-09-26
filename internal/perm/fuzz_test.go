@@ -54,8 +54,10 @@ func FuzzReadCommand(f *testing.F) {
 }
 
 func FuzzPathIsSecret(f *testing.F) {
-	for _, s := range []string{"/tmp/x", ".env", "/etc/passwd", "~/.ssh/id_rsa",
-		"some/dir/.git/config", "a/b/../../c", "", "."} {
+	for _, s := range []string{
+		"/tmp/x", ".env", "/etc/passwd", "~/.ssh/id_rsa",
+		"some/dir/.git/config", "a/b/../../c", "", ".",
+	} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, p string) {
@@ -64,8 +66,10 @@ func FuzzPathIsSecret(f *testing.F) {
 }
 
 func FuzzCanonPath(f *testing.F) {
-	for _, s := range []string{"private/x", "./private/x", "/tmp/../etc/passwd",
-		"a//b", ".", "..", "loop/../x", "/tmp/*/x", ""} {
+	for _, s := range []string{
+		"private/x", "./private/x", "/tmp/../etc/passwd",
+		"a//b", ".", "..", "loop/../x", "/tmp/*/x", "",
+	} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, p string) {
@@ -81,8 +85,13 @@ func FuzzCanonPath(f *testing.F) {
 // pattern matches the argument must always beat a global allow.
 func FuzzEvaluate(f *testing.F) {
 	for _, seed := range [][2]string{
-		{"*", "git log"}, {"git*", "git log"}, {"*/rm *", "rm -rf /"},
-		{"a?b", "abc"}, {"x/*/y", "x/z/y"}, {"*\n*", "a"}, {"", "anything"},
+		{"*", "git log"},
+		{"git*", "git log"},
+		{"*/rm *", "rm -rf /"},
+		{"a?b", "abc"},
+		{"x/*/y", "x/z/y"},
+		{"*\n*", "a"},
+		{"", "anything"},
 	} {
 		f.Add(seed[0], seed[1])
 	}
@@ -101,8 +110,11 @@ func FuzzEvaluate(f *testing.F) {
 // matches - it falls through and forces Ask.
 func FuzzNotMatch(f *testing.F) {
 	for _, seed := range [][2]string{
-		{"/x/*", "/x/secret*"}, {"a*", "ab*"}, {"*", "x*"},
-		{"git*", "git secret*"}, {"", ""},
+		{"/x/*", "/x/secret*"},
+		{"a*", "ab*"},
+		{"*", "x*"},
+		{"git*", "git secret*"},
+		{"", ""},
 	} {
 		f.Add(seed[0], seed[1])
 	}

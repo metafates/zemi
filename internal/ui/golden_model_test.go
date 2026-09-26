@@ -20,8 +20,10 @@ func TestGoldenModelRoles(t *testing.T) {
 		zemi.model.set("anthropic/claude-sonnet-4-5")
 		zemi.config.set("models.memory", "anthropic/claude-haiku-4-5")`)
 	// main.go owns /model
-	host.Commands.Add(&hostapi.Command{Name: "model", NArgs: "*", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-		GoFn: func(h *hostapi.Host, args string) error { return h.SetModel(args, false) }})
+	host.Commands.Add(&hostapi.Command{
+		Name: "model", NArgs: "*", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+		GoFn: func(h *hostapi.Host, args string) error { return h.SetModel(args, false) },
+	})
 	frame := func(name string) {
 		for app.Pump() {
 		}

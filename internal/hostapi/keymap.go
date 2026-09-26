@@ -8,9 +8,9 @@ import (
 	"sync"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // normalizeKey lowercases named keys ("Ctrl+T" is "ctrl+t", as bubbletea

@@ -5,8 +5,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/metafates/zemi/internal/lua"
 	glua "github.com/yuin/gopher-lua"
+
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // eventCatalogue is the v1 event list (DESIGN §6.2). Lua subscribes to

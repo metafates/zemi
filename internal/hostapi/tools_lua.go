@@ -16,12 +16,12 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // luaTool is one zemi.tool.add entry: interpreter-owned callback,
@@ -316,7 +316,8 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 func (h *Host) runLuaTool(ctx context.Context, t *luaTool, callID string, input map[string]any) (string, error) {
 	ctx, cancel := context.WithTimeoutCause(ctx, t.Timeout, fmt.Errorf("timed out after %s", t.Timeout))
 	defer cancel()
-	res, err := h.RT.RunTask(ctx, lua.Task{Class: lua.ClassAgent, Ceiling: t.Timeout, Origin: t.Origin, Path: t.Path,
+	res, err := h.RT.RunTask(ctx, lua.Task{
+		Class: lua.ClassAgent, Ceiling: t.Timeout, Origin: t.Origin, Path: t.Path,
 		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
 			// a turn keeps the tools it started with: never call into a dropped generation
 			if h.currentGen() != t.Gen {
@@ -438,7 +439,7 @@ func (h *Host) toolPreHook() tools.PreHook {
 	}
 	return func(name string, input map[string]any) (decision tools.PreVerdict, reason string, rewritten map[string]any, loosened bool) {
 		h.outsideReload(func() { decision, reason, rewritten, loosened = pre(name, input) })
-		return
+		return decision, reason, rewritten, loosened
 	}
 }
 

@@ -24,6 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	glua "github.com/yuin/gopher-lua"
+
 	"github.com/metafates/zemi/internal/glob"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -31,7 +33,6 @@ import (
 	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // secretPath matches the §9 secret shapes on the path as written and on the
@@ -91,8 +92,10 @@ func (h *Host) readJails() []string {
 	// shipped Lua UI, which the agent reads before restyling or extending it.
 	// UserTrees: a symlinked one (skills -> ~/.agents/skills) resolves
 	// outside the config home, so it needs its own root.
-	roots := append([]string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
-		h.builtinSkillsDir(), h.ScratchDir(), h.TypesDir()},
+	roots := append([]string{
+		h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
+		h.builtinSkillsDir(), h.ScratchDir(), h.TypesDir(),
+	},
 		h.Dirs.UserTrees()...)
 	if h.ProjectTrusted() {
 		// the decision covers the repository, so starting in a subdirectory
@@ -880,7 +883,8 @@ func (h *Host) callerOf(L *glua.LState) luaCaller {
 // luaTask calls fn(args...) as a task under at; one handed over before a
 // reload is dropped.
 func (h *Host) luaTask(class lua.Class, at luaCaller, fn *glua.LFunction, args ...any) lua.Task {
-	return lua.Task{Class: class, Origin: at.origin, Path: at.path,
+	return lua.Task{
+		Class: class, Origin: at.origin, Path: at.path,
 		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
 			if h.currentGen() != at.gen {
 				return nil, nil, lua.ErrReloaded
@@ -890,7 +894,8 @@ func (h *Host) luaTask(class lua.Class, at luaCaller, fn *glua.LFunction, args .
 				vals[i] = lua.FromGo(L, a)
 			}
 			return fn, vals, nil
-		}}
+		},
+	}
 }
 
 // callLuaAsync runs fn(args...) as a task from a host goroutine, dropping

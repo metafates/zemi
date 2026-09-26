@@ -5,8 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/metafates/zemi/internal/lua"
 	glua "github.com/yuin/gopher-lua"
+
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // waitHandle is a handle's wait(): it suspends the task until done closes,

@@ -123,7 +123,8 @@ func Serve(in io.Reader, out io.Writer) {
 					for _, m := range wordRe.FindAllStringIndex(line, -1) {
 						if line[m[0]:m[1]] == word {
 							out = append(out, map[string]any{"uri": uri, "range": map[string]any{
-								"start": map[string]any{"line": i, "character": m[0]}, "end": map[string]any{"line": i, "character": m[1]}}})
+								"start": map[string]any{"line": i, "character": m[0]}, "end": map[string]any{"line": i, "character": m[1]},
+							}})
 						}
 					}
 				}
@@ -161,10 +162,11 @@ func Serve(in io.Reader, out io.Writer) {
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result})
 		case "textDocument/prepareCallHierarchy", "callHierarchy/incomingCalls", "callHierarchy/outgoingCalls":
 			res := func(result any) { write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result}) }
-			itemJSON := func(name string, u string, r lsp.Range) map[string]any {
+			itemJSON := func(name, u string, r lsp.Range) map[string]any {
 				rng := map[string]any{
 					"start": map[string]any{"line": r.Start.Line, "character": r.Start.Character},
-					"end":   map[string]any{"line": r.End.Line, "character": r.End.Character}}
+					"end":   map[string]any{"line": r.End.Line, "character": r.End.Character},
+				}
 				return map[string]any{"name": name, "kind": 12, "uri": u, "range": rng, "selectionRange": rng}
 			}
 			// rust-analyzer refuses an item sent back without the field
@@ -220,7 +222,8 @@ func Serve(in io.Reader, out io.Writer) {
 						continue
 					}
 					syms = append(syms, map[string]any{"name": name, "kind": 12, "location": map[string]any{"uri": u, "range": map[string]any{
-						"start": map[string]any{"line": i, "character": 0}, "end": map[string]any{"line": i, "character": len(line)}}}})
+						"start": map[string]any{"line": i, "character": 0}, "end": map[string]any{"line": i, "character": len(line)},
+					}}})
 				}
 			}
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": syms})
@@ -230,7 +233,8 @@ func Serve(in io.Reader, out io.Writer) {
 				if name, ok := strings.CutPrefix(line, "func "); ok {
 					name, _, _ = strings.Cut(name, "(")
 					syms = append(syms, map[string]any{"name": name, "kind": 12, "range": map[string]any{
-						"start": map[string]any{"line": i, "character": 0}, "end": map[string]any{"line": i + 1, "character": 0}}})
+						"start": map[string]any{"line": i, "character": 0}, "end": map[string]any{"line": i + 1, "character": 0},
+					}})
 				}
 			}
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": syms})
@@ -286,8 +290,10 @@ func Serve(in io.Reader, out io.Writer) {
 				if p, err := filepath.EvalSymlinks(strings.TrimPrefix(uri, "file://")); err == nil {
 					uri = "file://" + p
 				}
-				write(map[string]any{"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics",
-					"params": map[string]any{"uri": uri, "version": version, "diagnostics": diags}})
+				write(map[string]any{
+					"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics",
+					"params": map[string]any{"uri": uri, "version": version, "diagnostics": diags},
+				})
 			}
 		}
 	}

@@ -15,11 +15,12 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	glua "github.com/yuin/gopher-lua"
+
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // PermModeDef is one permission mode. Base picks the behavior: auto
@@ -349,8 +350,10 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name, spec := L.CheckString(1), L.CheckTable(2)
 		gate(L, "add")
-		def := PermModeDef{Name: name, Base: rawString(spec, "base"), Description: rawString(spec, "description"), Prompt: rawString(spec, "prompt"),
-			Origin: h.RT.CurrentOrigin(L)}
+		def := PermModeDef{
+			Name: name, Base: rawString(spec, "base"), Description: rawString(spec, "description"), Prompt: rawString(spec, "prompt"),
+			Origin: h.RT.CurrentOrigin(L),
+		}
 		def.Decide, _ = spec.RawGetString("decide").(*glua.LFunction)
 		if !modeName.MatchString(name) {
 			L.RaiseError("zemi.permission.mode.add: name %q must match [a-z][a-z0-9-]{0,15}", name)
@@ -718,7 +721,8 @@ func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
 	}
 	ctx, cancel := context.WithTimeout(ctx, modeDecideCeiling)
 	defer cancel()
-	out, err := h.RT.RunTask(ctx, lua.Task{Class: lua.ClassAgent, Ceiling: modeDecideCeiling, Origin: def.Origin, Path: "permission.mode." + def.Name,
+	out, err := h.RT.RunTask(ctx, lua.Task{
+		Class: lua.ClassAgent, Ceiling: modeDecideCeiling, Origin: def.Origin, Path: "permission.mode." + def.Name,
 		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
 			return def.Decide, []glua.LValue{lua.FromGo(L, map[string]any{
 				"subject": req.Subject, "arg": h.shownArg(req), "tool": req.Tool,

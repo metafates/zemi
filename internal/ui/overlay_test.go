@@ -276,19 +276,27 @@ func TestOverlayNavigation(t *testing.T) {
 		keys  []string
 		check func(a *App) string // "" when the state is right
 	}{
-		{"enter on an inert row keeps the box open",
-			hostapi.Overlay{Items: []any{"a", "b"}}, []string{"enter"},
-			func(a *App) string { return map[bool]string{false: "closed"}[len(a.overlays) == 1] }},
-		{"enter on a copy row toasts and keeps the list open",
-			hostapi.Overlay{Items: []any{map[string]any{"text": "deepseek", "copy": "export X"}}}, []string{"enter"},
+		{
+			"enter on an inert row keeps the box open",
+			hostapi.Overlay{Items: []any{"a", "b"}},
+			[]string{"enter"},
+			func(a *App) string { return map[bool]string{false: "closed"}[len(a.overlays) == 1] },
+		},
+		{
+			"enter on a copy row toasts and keeps the list open",
+			hostapi.Overlay{Items: []any{map[string]any{"text": "deepseek", "copy": "export X"}}},
+			[]string{"enter"},
 			func(a *App) string {
 				if len(a.overlays) != 1 || len(a.toasts) != 1 || a.toasts[0].title != "Copied" {
 					return fmt.Sprintf("overlays=%d toasts=%+v", len(a.overlays), a.toasts)
 				}
 				return ""
-			}},
-		{"y copies a row's value in place of its text, and enter still runs the row",
-			hostapi.Overlay{Items: []any{map[string]any{"text": "gpt-5", "desc": "400k", "run": "nope", "copy": "openai/gpt-5\x1b[2J"}}}, nil,
+			},
+		},
+		{
+			"y copies a row's value in place of its text, and enter still runs the row",
+			hostapi.Overlay{Items: []any{map[string]any{"text": "gpt-5", "desc": "400k", "run": "nope", "copy": "openai/gpt-5\x1b[2J"}}},
+			nil,
 			func(a *App) string {
 				batch, _ := a.overlayKey("y", "")().(tea.BatchMsg)
 				if got := fmt.Sprint(batch[0]()); got != "openai/gpt-5" {
@@ -296,70 +304,99 @@ func TestOverlayNavigation(t *testing.T) {
 				}
 				a.overlayKey("enter", "")
 				return map[bool]string{false: "enter did not run the row"}[len(a.overlays) == 0]
-			}},
-		{"an empty overlay shows its empty line and enter does nothing",
-			hostapi.Overlay{Empty: "Nothing to see."}, []string{"enter"},
+			},
+		},
+		{
+			"an empty overlay shows its empty line and enter does nothing",
+			hostapi.Overlay{Empty: "Nothing to see."},
+			[]string{"enter"},
 			func(a *App) string {
 				if len(a.overlays) != 1 || !strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20)), "Nothing to see.") {
 					return "no empty line"
 				}
 				return ""
-			}},
-		{"an empty list under a body keeps its empty line",
-			hostapi.Overlay{Body: "header", Empty: "Nothing cached yet."}, nil,
+			},
+		},
+		{
+			"an empty list under a body keeps its empty line",
+			hostapi.Overlay{Body: "header", Empty: "Nothing cached yet."},
+			nil,
 			func(a *App) string {
 				box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20))
 				return map[bool]string{false: box}[strings.Contains(box, "header") && strings.Contains(box, "Nothing cached yet.")]
-			}},
-		{"a reload list whose rows only open says nothing of space",
-			hostapi.Overlay{Items: []any{detail()}, Reload: func() ([]any, [][]hostapi.Segment) { return nil, nil }}, nil,
+			},
+		},
+		{
+			"a reload list whose rows only open says nothing of space",
+			hostapi.Overlay{Items: []any{detail()}, Reload: func() ([]any, [][]hostapi.Segment) { return nil, nil }},
+			nil,
 			func(a *App) string {
 				box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20))
 				return map[bool]string{true: box}[strings.Contains(box, "toggle")]
-			}},
-		{"enter opens the detail and esc goes back with the selection kept",
-			hostapi.Overlay{Title: "Errors", Items: []any{"a", detail()}}, []string{"down", "enter", "esc"},
+			},
+		},
+		{
+			"enter opens the detail and esc goes back with the selection kept",
+			hostapi.Overlay{Title: "Errors", Items: []any{"a", detail()}},
+			[]string{"down", "enter", "esc"},
 			func(a *App) string {
 				if len(a.overlays) != 1 || a.overlays[0].selected != 1 {
 					return fmt.Sprintf("overlays=%d selected=%d", len(a.overlays), a.overlays[0].selected)
 				}
 				return ""
-			}},
-		{"going back from a toggle list's detail, by esc or an inert action, does not rebuild it",
+			},
+		},
+		{
+			"going back from a toggle list's detail, by esc or an inert action, does not rebuild it",
 			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Nothing"})}, Reload: func() ([]any, [][]hostapi.Segment) { backs++; return nil, nil }},
 			[]string{"enter", "esc", "enter", "enter"},
 			func(a *App) string {
 				return map[bool]string{false: fmt.Sprintf("overlays=%d rebuilds=%d", len(a.overlays), backs)}[len(a.overlays) == 1 && backs == 0]
-			}},
-		{"the detail view has a breadcrumb title",
-			hostapi.Overlay{Title: "Errors", Items: []any{detail()}}, []string{"enter"},
+			},
+		},
+		{
+			"the detail view has a breadcrumb title",
+			hostapi.Overlay{Title: "Errors", Items: []any{detail()}},
+			[]string{"enter"},
 			func(a *App) string {
 				d := a.overlays[len(a.overlays)-1]
 				if len(a.overlays) != 2 || d.o.Title != "Errors / err" || !d.back {
 					return fmt.Sprintf("%+v", d)
 				}
 				return ""
-			}},
-		{"a detail is text unless its list holds fields",
-			hostapi.Overlay{Items: []any{map[string]any{"text": "trust", "detail": "trusted: ~/x"}}}, []string{"enter"},
+			},
+		},
+		{
+			"a detail is text unless its list holds fields",
+			hostapi.Overlay{Items: []any{map[string]any{"text": "trust", "detail": "trusted: ~/x"}}},
+			[]string{"enter"},
 			func(a *App) string {
 				box := fmt.Sprint(a.overlayBox(&a.overlays[1], 80, 20))
 				return map[bool]string{false: box}[strings.Contains(box, "trusted: ~/x")]
-			}},
-		{"a fields list's detail sets them as a table",
-			hostapi.Overlay{Fields: true, Items: []any{map[string]any{"text": "mcp", "detail": "status: ready"}}}, []string{"enter"},
+			},
+		},
+		{
+			"a fields list's detail sets them as a table",
+			hostapi.Overlay{Fields: true, Items: []any{map[string]any{"text": "mcp", "detail": "status: ready"}}},
+			[]string{"enter"},
 			func(a *App) string {
 				box := fmt.Sprint(a.overlayBox(&a.overlays[1], 80, 20))
 				return map[bool]string{false: box}[strings.Contains(box, "{ready Host:Ok")]
-			}},
-		{"a breadcrumb longer than the list is cut, never widening the detail view",
-			hostapi.Overlay{Title: "A long parent title", Items: []any{map[string]any{"text": strings.Repeat("x", 50), "detail": "d"}}}, []string{"enter"},
+			},
+		},
+		{
+			"a breadcrumb longer than the list is cut, never widening the detail view",
+			hostapi.Overlay{Title: "A long parent title", Items: []any{map[string]any{"text": strings.Repeat("x", 50), "detail": "d"}}},
+			[]string{"enter"},
 			func(a *App) string {
 				list, detail := hostapi.SegsWidth(a.overlayBox(&a.overlays[0], 120, 20)[0]), a.overlayBox(&a.overlays[1], 120, 20)[0]
 				return map[bool]string{false: fmt.Sprintf("list %d wide, detail %q", list, plainSegs(detail))}[hostapi.SegsWidth(detail) == list]
-			}},
-		{"the wheel scrolls a detail body with actions, and the box keeps its width",
-			hostapi.Overlay{Title: "Errors", Items: []any{detail(map[string]any{"text": "Ask", "fill": "x"}, map[string]any{"text": "Back"})}}, []string{"enter"},
+			},
+		},
+		{
+			"the wheel scrolls a detail body with actions, and the box keeps its width",
+			hostapi.Overlay{Title: "Errors", Items: []any{detail(map[string]any{"text": "Ask", "fill": "x"}, map[string]any{"text": "Back"})}},
+			[]string{"enter"},
 			func(a *App) string {
 				d := &a.overlays[1]
 				d.o.Body = strings.Repeat("line\n", 60)
@@ -370,65 +407,92 @@ func TestOverlayNavigation(t *testing.T) {
 					return fmt.Sprintf("scroll=%d width %d -> %d", d.body.top, before, after)
 				}
 				return ""
-			}},
-		{"a detail view draws no filter, so typing hides no action",
-			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Ask", "fill": "x"})}}, []string{"enter"},
+			},
+		},
+		{
+			"a detail view draws no filter, so typing hides no action",
+			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Ask", "fill": "x"})}},
+			[]string{"enter"},
 			func(a *App) string {
 				for _, k := range []string{"/", "x"} {
 					a.overlayKey(k, k)
 				}
 				d := a.overlays[len(a.overlays)-1]
 				return map[bool]string{false: fmt.Sprintf("visible=%v filtering=%v", d.visible, d.active)}[len(d.visible) == 1 && !d.active]
-			}},
-		{"an action that fills closes the stack",
-			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Use", "fill": "/use "})}}, []string{"enter", "enter"},
+			},
+		},
+		{
+			"an action that fills closes the stack",
+			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Use", "fill": "/use "})}},
+			[]string{"enter", "enter"},
 			func(a *App) string {
 				if len(a.overlays) != 0 || a.composer.text != "/use " {
 					return fmt.Sprintf("overlays=%d composer=%q", len(a.overlays), a.composer.text)
 				}
 				return ""
-			}},
-		{"an action with nothing to do goes back",
-			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Cancel"})}}, []string{"enter", "enter"},
+			},
+		},
+		{
+			"an action with nothing to do goes back",
+			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Cancel"})}},
+			[]string{"enter", "enter"},
 			func(a *App) string {
 				return map[bool]string{false: "not back"}[len(a.overlays) == 1 && !a.overlays[0].back]
-			}},
-		{"a plugin's run action goes back, as its hint says",
-			hostapi.Overlay{Origin: lua.OriginPlugin, Items: []any{detail(map[string]any{"text": "Restart", "run": "help"})}}, []string{"enter", "enter"},
+			},
+		},
+		{
+			"a plugin's run action goes back, as its hint says",
+			hostapi.Overlay{Origin: lua.OriginPlugin, Items: []any{detail(map[string]any{"text": "Restart", "run": "help"})}},
+			[]string{"enter", "enter"},
 			func(a *App) string {
 				return map[bool]string{false: "not back"}[len(a.overlays) == 1 && !a.overlays[0].back]
-			}},
-		{"a row that opens a screen leaves its list under it, for esc to come back to",
-			hostapi.Overlay{ID: "m", Items: []any{map[string]any{"text": "Choose a model per role", "verb": "open", "run": "nope"}}}, []string{"enter"},
-			func(a *App) string { return map[bool]string{false: "closed"}[len(a.overlays) == 1] }},
-		{"a run action in a toggle list rebuilds the list",
+			},
+		},
+		{
+			"a row that opens a screen leaves its list under it, for esc to come back to",
+			hostapi.Overlay{ID: "m", Items: []any{map[string]any{"text": "Choose a model per role", "verb": "open", "run": "nope"}}},
+			[]string{"enter"},
+			func(a *App) string { return map[bool]string{false: "closed"}[len(a.overlays) == 1] },
+		},
+		{
+			"a run action in a toggle list rebuilds the list",
 			hostapi.Overlay{Items: []any{detail(map[string]any{"text": "Toggle", "run": "nope"})}, Reload: func() ([]any, [][]hostapi.Segment) { reloads++; return []any{detail()}, nil }},
 			[]string{"enter", "enter"},
 			func(a *App) string {
 				return map[bool]string{false: "not rebuilt"}[len(a.overlays) == 1 && reloads == 1]
-			}},
-		{"space passes by a toggle list row with its own verb",
+			},
+		},
+		{
+			"space passes by a toggle list row with its own verb",
 			hostapi.Overlay{Items: []any{map[string]any{"text": "Choose a model per role", "verb": "open", "run": "nope"}}, Reload: func() ([]any, [][]hostapi.Segment) { spaced++; return nil, nil }},
 			[]string{"space"},
 			func(a *App) string {
 				return map[bool]string{false: "space ran the row"}[len(a.overlays) == 1 && spaced == 0]
-			}},
-		{"a fill row closes a toggle list, so the composer has the keys",
+			},
+		},
+		{
+			"a fill row closes a toggle list, so the composer has the keys",
 			hostapi.Overlay{Items: []any{map[string]any{"text": "Install", "verb": "install", "fill": "/plugins install "}}, Reload: func() ([]any, [][]hostapi.Segment) { return nil, nil }},
 			[]string{"enter"},
 			func(a *App) string {
 				return map[bool]string{false: fmt.Sprintf("overlays=%d composer=%q", len(a.overlays), a.composer.text)}[len(a.overlays) == 0 && a.composer.text == "/plugins install "]
-			}},
-		{"a toggle list rebuilds when the overlay stacked on it closes, after its pick",
-			hostapi.Overlay{ID: "p", Items: []any{"old"}}, nil,
+			},
+		},
+		{
+			"a toggle list rebuilds when the overlay stacked on it closes, after its pick",
+			hostapi.Overlay{ID: "p", Items: []any{"old"}},
+			nil,
 			func(a *App) string {
 				a.overlays[0].o.Reload = func() ([]any, [][]hostapi.Segment) { return []any{a.composer.text}, nil }
 				a.openOverlay(hostapi.Overlay{ID: "c", Origin: lua.OriginBuiltin, Items: []any{map[string]any{"text": "pick", "fill": "new"}}})
 				a.overlayKey("enter", "")
 				return map[bool]string{false: fmt.Sprintf("overlays=%d", len(a.overlays))}[len(a.overlays) == 1 && a.overlays[0].texts[0] == "new"]
-			}},
-		{"opening an open id replaces it in place with the selection kept, unless a lower origin opens it",
-			hostapi.Overlay{ID: "p", Items: []any{"a", "b"}}, []string{"down"},
+			},
+		},
+		{
+			"opening an open id replaces it in place with the selection kept, unless a lower origin opens it",
+			hostapi.Overlay{ID: "p", Items: []any{"a", "b"}},
+			[]string{"down"},
 			func(a *App) string {
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Items: []any{"c", "d"}})
 				if len(a.overlays) != 1 || a.overlays[0].selected != 1 || a.overlays[0].texts[1] != "d" {
@@ -436,35 +500,53 @@ func TestOverlayNavigation(t *testing.T) {
 				}
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginPlugin, Items: []any{"e"}})
 				return map[bool]string{false: "a plugin replaced a builtin list"}[len(a.overlays) == 2 && a.overlays[0].texts[0] == "c"]
-			}},
-		{"a refresh replaces an open id and opens nothing once it closed",
-			hostapi.Overlay{ID: "p", Items: []any{"a"}}, []string{"esc"},
+			},
+		},
+		{
+			"a refresh replaces an open id and opens nothing once it closed",
+			hostapi.Overlay{ID: "p", Items: []any{"a"}},
+			[]string{"esc"},
 			func(a *App) string {
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Items: []any{"b"}, Refresh: true})
 				return map[bool]string{false: "a closed list came back"}[len(a.overlays) == 0]
-			}},
-		{"closing the parent drops its detail view",
-			hostapi.Overlay{ID: "p", Items: []any{detail()}}, []string{"enter"},
+			},
+		},
+		{
+			"closing the parent drops its detail view",
+			hostapi.Overlay{ID: "p", Items: []any{detail()}},
+			[]string{"enter"},
 			func(a *App) string {
 				a.closeOverlayByID("p")
 				return map[bool]string{false: "detail left"}[len(a.overlays) == 0]
-			}},
-		{"ctrl+c on a detail view closes the whole menu",
-			hostapi.Overlay{ID: "p", Items: []any{detail()}}, []string{"enter"},
+			},
+		},
+		{
+			"ctrl+c on a detail view closes the whole menu",
+			hostapi.Overlay{ID: "p", Items: []any{detail()}},
+			[]string{"enter"},
 			func(a *App) string {
 				a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 				return map[bool]string{false: "still open"}[len(a.overlays) == 0 && a.armed == armed{}]
-			}},
-		{"the list keys scroll a body with no list",
-			hostapi.Overlay{Body: strings.Repeat("line\n", 50)}, []string{"down"},
-			func(a *App) string { return map[bool]string{false: "no scroll"}[a.overlays[0].body.top == 1] }},
-		{"a multi-line label stays on one row",
-			hostapi.Overlay{Items: []any{"fix: empty input\n\nThe parser crashed."}}, nil,
+			},
+		},
+		{
+			"the list keys scroll a body with no list",
+			hostapi.Overlay{Body: strings.Repeat("line\n", 50)},
+			[]string{"down"},
+			func(a *App) string { return map[bool]string{false: "no scroll"}[a.overlays[0].body.top == 1] },
+		},
+		{
+			"a multi-line label stays on one row",
+			hostapi.Overlay{Items: []any{"fix: empty input\n\nThe parser crashed."}},
+			nil,
 			func(a *App) string {
 				return map[bool]string{false: "label kept its newlines"}[a.overlays[0].items[0].label == "fix: empty input The parser crashed."]
-			}},
-		{"a newline in the title or empty text adds no terminal line",
-			hostapi.Overlay{Title: "a\nb", Empty: "p\nq"}, nil,
+			},
+		},
+		{
+			"a newline in the title or empty text adds no terminal line",
+			hostapi.Overlay{Title: "a\nb", Empty: "p\nq"},
+			nil,
 			func(a *App) string {
 				for _, row := range a.overlayBox(&a.overlays[0], 80, 20) {
 					if strings.Contains(plainSegs(row), "\n") {
@@ -472,10 +554,14 @@ func TestOverlayNavigation(t *testing.T) {
 					}
 				}
 				return ""
-			}},
-		{"Selected picks the first item",
-			hostapi.Overlay{Items: []any{"a", "b", "c"}, Selected: 2}, nil,
-			func(a *App) string { return map[bool]string{false: "wrong selection"}[a.overlays[0].selected == 2] }},
+			},
+		},
+		{
+			"Selected picks the first item",
+			hostapi.Overlay{Items: []any{"a", "b", "c"}, Selected: 2},
+			nil,
+			func(a *App) string { return map[bool]string{false: "wrong selection"}[a.overlays[0].selected == 2] },
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			a := newTestApp(t, t.TempDir())
@@ -773,8 +859,10 @@ for _, bad in ipairs({ { text = 1 }, { on = "yes" }, { actions = "x" }, { action
   assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { bad } }), "a field of the wrong type must raise")
 end
 assert(pcall(zemi.ui.overlay.open, { id = "x", items = { { id = 1 } } }), "a list item's id is its own data")`)
-	want := hostapi.OverlayItem{Text: "t", Desc: "d", Key: "k", Section: "s", Detail: "x", Verb: "v", Hotkey: "h", Fill: "f", Copy: "c",
-		Run: "r", ID: "i", HL: "Danger", Switch: true, Locked: true, Actions: []any{"a"}}
+	want := hostapi.OverlayItem{
+		Text: "t", Desc: "d", Key: "k", Section: "s", Detail: "x", Verb: "v", Hotkey: "h", Fill: "f", Copy: "c",
+		Run: "r", ID: "i", HL: "Danger", Switch: true, Locked: true, Actions: []any{"a"},
+	}
 	if got := app.overlays[0].items[0].row; !reflect.DeepEqual(got, want) {
 		t.Fatalf("row %+v", got)
 	}
@@ -910,12 +998,18 @@ func TestFieldRows(t *testing.T) {
 		name, body string
 		want       []string
 	}{
-		{"an error's value runs to the blank line", "url: https://x.dev/mcp\nerror: one two three four five six seven eight nine ten\nstack traceback:\n\nplain text",
-			[]string{"url    https://x.dev/mcp ", "error  one two three four five six  Host:Danger", "       seven eight nine ten Host:Danger", "       stack traceback: Host:Danger", "", "plain text"}},
-		{"a key inside an error is its text", "at: x.lua:1\nerror: boom\npanic: runtime error",
-			[]string{"at     x.lua:1 ", "error  boom Host:Danger", "       panic: runtime error Host:Danger"}},
-		{"only the opening lines are fields", "status: ready\n\nsecurity: audits the auth code\n\nsource: user",
-			[]string{"status  ready Host:Ok", "", "security: audits the auth code", "", "source: user"}},
+		{
+			"an error's value runs to the blank line", "url: https://x.dev/mcp\nerror: one two three four five six seven eight nine ten\nstack traceback:\n\nplain text",
+			[]string{"url    https://x.dev/mcp ", "error  one two three four five six  Host:Danger", "       seven eight nine ten Host:Danger", "       stack traceback: Host:Danger", "", "plain text"},
+		},
+		{
+			"a key inside an error is its text", "at: x.lua:1\nerror: boom\npanic: runtime error",
+			[]string{"at     x.lua:1 ", "error  boom Host:Danger", "       panic: runtime error Host:Danger"},
+		},
+		{
+			"only the opening lines are fields", "status: ready\n\nsecurity: audits the auth code\n\nsource: user",
+			[]string{"status  ready Host:Ok", "", "security: audits the auth code", "", "source: user"},
+		},
 	} {
 		var got []string
 		for _, r := range fieldRows(c.body, 40) {

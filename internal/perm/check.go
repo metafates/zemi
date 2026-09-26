@@ -11,7 +11,7 @@ import (
 // the assignment gate or a heredoc fires, fails when normalization fails,
 // and is allowed only when every segment and every redirect target
 // matches an allow rule and no assignment prefix was stripped.
-func (s *Store) CheckCommand(cmd string, principal string) Outcome {
+func (s *Store) CheckCommand(cmd, principal string) Outcome {
 	return s.CheckCommandFor(SubjectBash, Normalize(cmd), principal)
 }
 

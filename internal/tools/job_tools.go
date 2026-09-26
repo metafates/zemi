@@ -152,8 +152,10 @@ func (m *Jobs) Start(dir, line string, env []string, pol *sandbox.Policy, after 
 	if env != nil {
 		cmd.Env = env
 	}
-	j := &Job{Name: line, cmd: cmd, done: make(chan struct{}), policy: pol,
-		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20}, after: after}
+	j := &Job{
+		Name: line, cmd: cmd, done: make(chan struct{}), policy: pol,
+		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20}, after: after,
+	}
 	cmd.Stdout, cmd.Stderr = j.stdout, j.stderr
 	fail := func(err error) (string, error) {
 		if after != nil {

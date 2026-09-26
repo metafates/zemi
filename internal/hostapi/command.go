@@ -7,11 +7,12 @@ import (
 	"slices"
 	"strings"
 
+	glua "github.com/yuin/gopher-lua"
+
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // BuiltinCommandsStep registers the Go-owned slash commands: the ones the
@@ -264,13 +265,15 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 // task suspends, so the worker runs the next key before its rest; -p waits
 // for the whole command.
 func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string) error {
-	t := lua.Task{Class: lua.ClassUI, Origin: cmd.Origin, Path: cmd.Path,
+	t := lua.Task{
+		Class: lua.ClassUI, Origin: cmd.Origin, Path: cmd.Path,
 		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
 			if h.currentGen() != cmd.Gen {
 				return nil, nil, lua.ErrReloaded
 			}
 			return cmd.Fn, []glua.LValue{commandArgs(L, argString)}, nil
-		}}
+		},
+	}
 	if h.hooks() == nil {
 		_, err := h.RT.RunTask(ctx, t)
 		return err

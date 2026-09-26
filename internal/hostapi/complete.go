@@ -8,9 +8,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	glua "github.com/yuin/gopher-lua"
+
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // CompletionItem is one row a Lua completion source offers.

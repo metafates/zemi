@@ -33,13 +33,15 @@ func (h *Host) sandboxLive() bool {
 
 // secretDirs are home paths a sandboxed command can neither read nor write:
 // credentials, tokens and shell histories that code a build runs could print.
-var secretDirs = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".config/gh", ".config/gcloud",
+var secretDirs = []string{
+	".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".config/gh", ".config/gcloud",
 	".password-store", ".netrc", ".pypirc", ".cargo/credentials.toml", "Library/Keychains",
 	".git-credentials", ".config/git/credentials", ".npmrc", ".yarnrc", ".yarnrc.yml", ".pgpass", ".my.cnf",
 	".vault-token", ".terraform.d/credentials.tfrc.json", ".config/hub", ".config/op", ".config/rclone",
 	".local/share/keyrings", ".m2/settings.xml", ".gradle/gradle.properties", ".gem/credentials", ".boto", ".oci",
 	".config/doctl", ".config/fly", ".bash_history", ".zsh_history", ".local/share/fish/fish_history",
-	".psql_history", ".mysql_history", ".python_history", ".node_repl_history"}
+	".psql_history", ".mysql_history", ".python_history", ".node_repl_history",
+}
 
 // sandboxPolicy is what a settled command may touch: the scratchpad, which
 // is also its $TMPDIR, a Go build cache of its own and, when trusted and not
@@ -184,8 +186,10 @@ func (h *Host) serverPolicy(name string) sandbox.Policy {
 		name = hex.EncodeToString([]byte(name))
 	}
 	dir := filepath.Join(h.Dirs.CacheHome, "lsp", h.trustKey(), name)
-	for k, sub := range map[string]string{"XDG_CACHE_HOME": "cache", "GOCACHE": "go-build", "GOPLSCACHE": "gopls",
-		"CARGO_TARGET_DIR": "target", "TMPDIR": "tmp", "TMP": "tmp", "TEMP": "tmp"} {
+	for k, sub := range map[string]string{
+		"XDG_CACHE_HOME": "cache", "GOCACHE": "go-build", "GOPLSCACHE": "gopls",
+		"CARGO_TARGET_DIR": "target", "TMPDIR": "tmp", "TMP": "tmp", "TEMP": "tmp",
+	} {
 		if os.MkdirAll(filepath.Join(dir, sub), 0o700) == nil {
 			p.Env[k] = filepath.Join(dir, sub)
 		}

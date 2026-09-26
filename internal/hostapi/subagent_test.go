@@ -201,14 +201,22 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 		refusals int
 		check    func([]fantasy.Message) bool
 	}{
-		{"old tool output is cleared", []fantasy.Message{agent.UserMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)}, 1,
+		{
+			"old tool output is cleared",
+			[]fantasy.Message{agent.UserMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)},
+			1,
 			func(h []fantasy.Message) bool {
 				return toolText(h[1].Content[0].(fantasy.ToolResultPart)) == clearedOutput
-			}},
-		{"nothing to clear drops the middle, not the task", []fantasy.Message{agent.UserMessage("look"), big}, 1,
+			},
+		},
+		{
+			"nothing to clear drops the middle, not the task",
+			[]fantasy.Message{agent.UserMessage("look"), big},
+			1,
 			func(h []fantasy.Message) bool {
 				return concatText(h[0].Content) == "look" && estTokens(h...) < 1_000
-			}},
+			},
+		},
 		{"a second refusal ends the run", []fantasy.Message{agent.UserMessage("look"), big}, 9, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {

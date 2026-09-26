@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/tools"
@@ -367,16 +368,24 @@ func TestHoverStyle(t *testing.T) {
 		spec  *hostapi.HLSpec // nil: the group is not set
 		want  uv.Style
 	}{
-		{"unset keys keep the base", "Hover", &hostapi.HLSpec{Underline: "curl", Sp: "#ff0000"},
-			uv.Style{Fg: base.Fg, Bg: base.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineCurly, UnderlineColor: rgb(0xff0000)}},
+		{
+			"unset keys keep the base", "Hover", &hostapi.HLSpec{Underline: "curl", Sp: "#ff0000"},
+			uv.Style{Fg: base.Fg, Bg: base.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineCurly, UnderlineColor: rgb(0xff0000)},
+		},
 		{"false and NONE clear", "HoverItem", &hostapi.HLSpec{Bold: new(false), Bg: "NONE"}, uv.Style{Fg: base.Fg}},
 		{"replace drops the base", "Hover", &hostapi.HLSpec{Replace: true, Fg: "#ffffff"}, uv.Style{Fg: rgb(0xffffff)}},
-		{"brighten mixes the text's fg toward white", "Hover", &hostapi.HLSpec{Brighten: 0.5},
-			uv.Style{Fg: rgb(0xc8ccd0), Bg: base.Bg, Attrs: uv.AttrBold}},
-		{"brighten darkens text on a lighter fill", "Hover", &hostapi.HLSpec{Brighten: 0.5, Bg: "#ffffff"},
-			uv.Style{Fg: rgb(0x484c50), Bg: rgb(0xffffff), Attrs: uv.AttrBold}},
-		{"a theme without the group still underlines", "HoverNope", nil,
-			uv.Style{Fg: base.Fg, Bg: base.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle}},
+		{
+			"brighten mixes the text's fg toward white", "Hover", &hostapi.HLSpec{Brighten: 0.5},
+			uv.Style{Fg: rgb(0xc8ccd0), Bg: base.Bg, Attrs: uv.AttrBold},
+		},
+		{
+			"brighten darkens text on a lighter fill", "Hover", &hostapi.HLSpec{Brighten: 0.5, Bg: "#ffffff"},
+			uv.Style{Fg: rgb(0x484c50), Bg: rgb(0xffffff), Attrs: uv.AttrBold},
+		},
+		{
+			"a theme without the group still underlines", "HoverNope", nil,
+			uv.Style{Fg: base.Fg, Bg: base.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle},
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if c.spec != nil {
@@ -480,10 +489,14 @@ func TestScrollbarDrag(t *testing.T) {
 		down bool
 		done func(*App) bool
 	}{
-		"chat": {func(_ *App, host *hostapi.Host) { fillChat(host) }, false,
-			func(app *App) bool { return app.scrolls["chat"].top == 0 }},
-		"help list": {func(_ *App, host *hostapi.Host) { host.OpenHelp() }, true,
-			func(app *App) bool { st := &app.overlays[0]; return st.selected == len(st.visible)-1 }},
+		"chat": {
+			func(_ *App, host *hostapi.Host) { fillChat(host) }, false,
+			func(app *App) bool { return app.scrolls["chat"].top == 0 },
+		},
+		"help list": {
+			func(_ *App, host *hostapi.Host) { host.OpenHelp() }, true,
+			func(app *App) bool { st := &app.overlays[0]; return st.selected == len(st.visible)-1 },
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			app, host := bootAgentApp(t, 80, 24)

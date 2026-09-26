@@ -12,8 +12,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/metafates/zemi/internal/lua"
 	glua "github.com/yuin/gopher-lua"
+
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // Gen identifies a runtime generation; registrations are tagged with the

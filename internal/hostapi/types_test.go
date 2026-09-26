@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+	"github.com/yuin/gopher-lua/parse"
+
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
@@ -21,7 +23,6 @@ import (
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
-	"github.com/yuin/gopher-lua/parse"
 )
 
 // annotated collects every `function zemi.a.b(` and `---@field x` line of

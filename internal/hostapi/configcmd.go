@@ -15,10 +15,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yuin/gopher-lua/parse"
+
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/yuin/gopher-lua/parse"
 )
 
 // cfgBlockStart and cfgBlockEnd mark the lines /config save appends at the
@@ -62,8 +63,10 @@ func (h *Host) configCommand(args string) error {
 	}
 	switch verb {
 	case "":
-		o := Overlay{ID: "config", Title: "Config", Origin: lua.OriginBuiltin, Fields: true, Items: h.configItems(),
-			Reload: func() ([]any, [][]Segment) { return h.configItems(), nil }}
+		o := Overlay{
+			ID: "config", Title: "Config", Origin: lua.OriginBuiltin, Fields: true, Items: h.configItems(),
+			Reload: func() ([]any, [][]Segment) { return h.configItems(), nil },
+		}
 		if e := h.InitError(); e != "" { // what init.lua sets past the error never ran
 			o.Body = "error: " + e
 		}

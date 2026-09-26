@@ -457,9 +457,11 @@ func (h *Host) openSkills() error {
 	if err != nil {
 		return err
 	}
-	ui.OpenOverlay(Overlay{ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true,
+	ui.OpenOverlay(Overlay{
+		ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true,
 		Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
-		Empty:  "No skills yet. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + " or " + TildePath(h.Dirs.AgentsHome) + "."})
+		Empty:  "No skills yet. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + " or " + TildePath(h.Dirs.AgentsHome) + ".",
+	})
 	return nil
 }
 

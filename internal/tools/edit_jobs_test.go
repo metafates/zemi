@@ -149,7 +149,8 @@ func TestBashTimeoutBecomesJob(t *testing.T) {
 	t.Parallel()
 	p := &Pipeline{Jobs: NewJobs()}
 	res, _ := runBash(context.Background(), p, map[string]any{
-		"command": "echo started; sleep 30", "timeout_ms": float64(400)})
+		"command": "echo started; sleep 30", "timeout_ms": float64(400),
+	})
 	if res.IsError || !strings.Contains(res.Content, JobHandoff+"job-1") {
 		t.Fatalf("timeout must hand off to a job: %+v", res)
 	}

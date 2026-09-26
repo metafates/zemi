@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/metafates/zemi/internal/lua"
 	glua "github.com/yuin/gopher-lua"
+
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // SizeKind is how a layout node claims cells along its parent box's axis.

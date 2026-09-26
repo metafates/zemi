@@ -20,9 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aymanbagabas/go-udiff"
-
 	"charm.land/fantasy"
+	"github.com/aymanbagabas/go-udiff"
 
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/perm"
@@ -962,7 +961,8 @@ func edits(t fantasy.AgentTool) fantasy.AgentTool {
 func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name, desc string, parallel bool, props map[string]any, required []string,
 		subjects func(*Pipeline, map[string]any) ([]Request, error),
-		run func(context.Context, *Pipeline, map[string]any) (fantasy.ToolResponse, error)) fantasy.AgentTool {
+		run func(context.Context, *Pipeline, map[string]any) (fantasy.ToolResponse, error),
+	) fantasy.AgentTool {
 		if required == nil {
 			required = []string{} // nil marshals as "required": null, which strict providers refuse
 		}
@@ -1304,8 +1304,10 @@ func ChangePreview(in map[string]any) string {
 // bashRequests routes the whole command through the tool.bash subject;
 // the store's CheckCommand splits it into segments and gates.
 func bashRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
-	return []Request{{Subject: perm.SubjectBash, Arg: str(in["command"]), Description: str(in["about"]),
-		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true}}, nil
+	return []Request{{
+		Subject: perm.SubjectBash, Arg: str(in["command"]), Description: str(in["about"]),
+		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true,
+	}}, nil
 }
 
 // ShellQuote quotes s as one sh word, leaving words sh would not split or

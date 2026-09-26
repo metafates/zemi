@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
@@ -31,7 +32,6 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // Profile is one named agent shape: model, system prompt, tools.
@@ -449,8 +449,13 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 		}
 	}
 	return []promptPart{
-		{"system", p.base}, {"tools", builtin}, {"mcp", mcp},
-		{"instructions", p.instructions}, {"lua", p.lua}, {"skills", p.skills}, {"memory", p.digest},
+		{"system", p.base},
+		{"tools", builtin},
+		{"mcp", mcp},
+		{"instructions", p.instructions},
+		{"lua", p.lua},
+		{"skills", p.skills},
+		{"memory", p.digest},
 	}
 }
 
@@ -1442,7 +1447,8 @@ func (h *Host) maybeNagTodos() {
 	ag.todoPending = true
 	ag.todoNag = agent.Note(fmt.Sprintf(
 		"%q has been in_progress for %d steps. If it is done, mark it done with the todos tool and set the next item in_progress; if not, carry on.",
-		ag.todoInProgress, ag.todoSteps))
+		ag.todoInProgress, ag.todoSteps,
+	))
 }
 
 // resetTodoNag re-arms the staleness tracker from a fresh todo write. A
@@ -2015,8 +2021,10 @@ func (h *Host) modelPicker(role string) Overlay {
 	run, cur := "model ", h.roleModel("chat")
 	switch role {
 	case "":
-		o.Items = []any{map[string]any{"text": "Choose a model per role", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"},
-			map[string]any{"text": "Update the model catalog", "desc": h.Builtin.Load().Info.String(), "verb": "update", "run": "model update"}}
+		o.Items = []any{
+			map[string]any{"text": "Choose a model per role", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"},
+			map[string]any{"text": "Update the model catalog", "desc": h.Builtin.Load().Info.String(), "verb": "update", "run": "model update"},
+		}
 	case "chat":
 		o.ID, o.Title = "model chat", "Model roles / chat"
 	default:

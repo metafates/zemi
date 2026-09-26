@@ -112,15 +112,19 @@ func TestQuestionAndPlanTools(t *testing.T) {
 		want              string
 		isErr, stop       bool
 	}{
-		{"answers in order", "question", two, answer([]string{"A (Recommended)", "tests, vet"}, true), nil,
-			"The user answered:\n- \"Which path?\": A\n- \"Checks?\": tests, vet", false, false},
+		{
+			"answers in order", "question", two, answer([]string{"A (Recommended)", "tests, vet"}, true), nil,
+			"The user answered:\n- \"Which path?\": A\n- \"Checks?\": tests, vet", false, false,
+		},
 		{"dismissal ends the turn", "question", two, answer(nil, false), nil, "dismissed", true, true},
 		{"no user: decide and continue", "question", two, nil, nil, "No user is available", false, false},
 		{"too many questions", "question", `{"questions":[{"type":"single_choice","question":"1"},{"type":"single_choice","question":"2"},{"type":"single_choice","question":"3"},{"type":"single_choice","question":"4"},{"type":"single_choice","question":"5"}]}`, answer(nil, true), nil, "1 to 4", true, false},
 		{"option without label", "question", `{"questions":[{"type":"single_choice","question":"x","options":[{"description":"no label"}]}]}`, answer(nil, true), nil, "options[0].label", true, false},
 		{"missing type", "question", `{"questions":[{"question":"x"}]}`, answer(nil, true), nil, "missing required field", true, false},
-		{"approved returns to the agent", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Approved: true, Profile: "default", Path: "/p.md"}, true),
-			"you are back as the default agent. Implementation runs in the next turn", false, true},
+		{
+			"approved returns to the agent", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Approved: true, Profile: "default", Path: "/p.md"}, true),
+			"you are back as the default agent. Implementation runs in the next turn", false, true,
+		},
 		{"changes requested", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Feedback: "use sqlite"}, true), "asked for changes: use sqlite", false, false},
 		{"plan dismissed", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{}, false), "dismissed the plan", true, true},
 		{"plan with no user", "plan", `{"plan":"1. do it"}`, nil, nil, "Put the plan in your reply", false, false},
@@ -394,7 +398,6 @@ func TestJobToolsLifecycle(t *testing.T) {
 	if !resp.IsError || !strings.Contains(resp.Content, "no such job") {
 		t.Fatalf("kill unknown: %+v", resp)
 	}
-
 }
 
 func TestJobNilHooksFailClosed(t *testing.T) {

@@ -19,6 +19,9 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	glua "github.com/yuin/gopher-lua"
+	"github.com/yuin/gopher-lua/parse"
+
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
@@ -29,8 +32,6 @@ import (
 	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
-	glua "github.com/yuin/gopher-lua"
-	"github.com/yuin/gopher-lua/parse"
 )
 
 // UIHooks is what the host API needs from the UI layer. Implemented by

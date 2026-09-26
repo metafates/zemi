@@ -9,7 +9,8 @@ import "regexp"
 var (
 	// imperative start: text opens with a command verb
 	imperativeStart = regexp.MustCompile(
-		`(?i)^\W*(run|use|always|never|ignore|disregard|forget|override|remember|ensure|make|set|add|remove|delete|install|execute|prefer|follow|stop|start|keep|do|dont|don't|write|read|check|call|curl|wget|sudo|export|source|apply|enable|disable|avoid|append|replace|drop)\b`)
+		`(?i)^\W*(run|use|always|never|ignore|disregard|forget|override|remember|ensure|make|set|add|remove|delete|install|execute|prefer|follow|stop|start|keep|do|dont|don't|write|read|check|call|curl|wget|sudo|export|source|apply|enable|disable|avoid|append|replace|drop)\b`,
+	)
 
 	// second person anywhere
 	secondPerson = regexp.MustCompile(`(?i)\b(you|your|you're|youre|ur)\b`)

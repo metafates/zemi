@@ -5,9 +5,10 @@ import (
 	"strconv"
 	"sync"
 
+	glua "github.com/yuin/gopher-lua"
+
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // watchRec tracks config watches registered from Lua so a force-reload can

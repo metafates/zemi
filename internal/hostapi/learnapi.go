@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/metafates/zemi/internal/logging"
 	glua "github.com/yuin/gopher-lua"
+
+	"github.com/metafates/zemi/internal/logging"
 )
 
 // learnActions are what zemi.learn.decide takes.

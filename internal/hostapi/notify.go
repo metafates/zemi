@@ -4,9 +4,10 @@ import (
 	"maps"
 	"slices"
 
+	glua "github.com/yuin/gopher-lua"
+
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/sanitize"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // notifyLevels are zemi.notify's levels by name, each also a function.

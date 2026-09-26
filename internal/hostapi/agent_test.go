@@ -688,6 +688,7 @@ func (f *fakeUI) OpenOverlay(o Overlay) {
 	f.opened = append(f.opened, o)
 	f.mu.Unlock()
 }
+
 func (f *fakeUI) overlays() []Overlay {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -823,8 +824,10 @@ func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 			continue
 		}
 		var err error
-		resp, err = ag.Run(context.Background(), fantasy.ToolCall{ID: "t1", Name: "question",
-			Input: `{"questions":[{"type":"single_choice","question":"Ship it?","options":[{"label":"proceed"},{"label":"abort"}]}]}`})
+		resp, err = ag.Run(context.Background(), fantasy.ToolCall{
+			ID: "t1", Name: "question",
+			Input: `{"questions":[{"type":"single_choice","question":"Ship it?","options":[{"label":"proceed"},{"label":"abort"}]}]}`,
+		})
 		if err != nil {
 			t.Fatalf("Run: %v", err)
 		}
@@ -1527,11 +1530,15 @@ func TestRetryRestreamsStep(t *testing.T) {
 		text  func() string
 		rows  func() int // transcript rows plus live tool rows
 	}{
-		"main": {h.streamHooks(), func() string { return h.AgentStream().Text },
-			func() int { return len(h.Session().Transcript) + len(h.AgentStream().Tools) }},
-		"subagent": {&subagentHooks{h: h, def: builtinAgents[0], run: run},
+		"main": {
+			h.streamHooks(), func() string { return h.AgentStream().Text },
+			func() int { return len(h.Session().Transcript) + len(h.AgentStream().Tools) },
+		},
+		"subagent": {
+			&subagentHooks{h: h, def: builtinAgents[0], run: run},
 			func() string { run.mu.Lock(); defer run.mu.Unlock(); return run.text },
-			func() int { run.mu.Lock(); defer run.mu.Unlock(); return len(run.tr) }},
+			func() int { run.mu.Lock(); defer run.mu.Unlock(); return len(run.tr) },
+		},
 	} {
 		base := c.rows()
 		c.hooks.ToolCallStart("c0", "read", `{"path":"a"}`)
@@ -1826,8 +1833,10 @@ func (m *btwModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 	}
 	m.call = call
 	return streamOf(&fantasy.Response{
-		Content: fantasy.ResponseContent{fantasy.TextContent{Text: "the build"},
-			fantasy.ToolCallContent{ToolCallID: "b1", ToolName: "todos", Input: `{"todos":[{"content":"x","status":"pending"}]}`}},
+		Content: fantasy.ResponseContent{
+			fantasy.TextContent{Text: "the build"},
+			fantasy.ToolCallContent{ToolCallID: "b1", ToolName: "todos", Input: `{"todos":[{"content":"x","status":"pending"}]}`},
+		},
 		FinishReason: fantasy.FinishReasonToolCalls,
 		Usage:        fantasy.Usage{InputTokens: 100, OutputTokens: 7},
 	}), nil
@@ -1998,8 +2007,10 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 		},
 		"resume": func() string {
 			m := fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
-				fantasy.ReasoningPart{Text: "pondering"}, fantasy.TextPart{Text: "Here"},
-				fantasy.ReasoningPart{Text: " summary."}, fantasy.TextPart{Text: "'s it"},
+				fantasy.ReasoningPart{Text: "pondering"},
+				fantasy.TextPart{Text: "Here"},
+				fantasy.ReasoningPart{Text: " summary."},
+				fantasy.TextPart{Text: "'s it"},
 			}}
 			raw, err := json.Marshal(m)
 			if err != nil {

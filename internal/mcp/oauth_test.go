@@ -56,8 +56,10 @@ func TestOAuthSignIn(t *testing.T) {
 		writeJSON(w, 200, map[string]any{"resource": srv.URL + "/mcp", "authorization_servers": []string{srv.URL + "/auth"}})
 	})
 	mux.HandleFunc("/.well-known/oauth-authorization-server/auth", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"issuer": srv.URL + "/auth", "authorization_endpoint": srv.URL + "/auth/authorize",
-			"token_endpoint": srv.URL + "/auth/token", "registration_endpoint": srv.URL + "/auth/register"})
+		writeJSON(w, 200, map[string]any{
+			"issuer": srv.URL + "/auth", "authorization_endpoint": srv.URL + "/auth/authorize",
+			"token_endpoint": srv.URL + "/auth/token", "registration_endpoint": srv.URL + "/auth/register",
+		})
 	})
 	mux.HandleFunc("/auth/register", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 201, map[string]any{"client_id": "c1"})
@@ -196,8 +198,10 @@ func TestOAuthPreRegisteredClient(t *testing.T) {
 	var srv *httptest.Server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/oauth-authorization-server/mcp", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"authorization_endpoint": srv.URL + "/authorize",
-			"token_endpoint": srv.URL + "/token", "registration_endpoint": srv.URL + "/register"})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"authorization_endpoint": srv.URL + "/authorize",
+			"token_endpoint":         srv.URL + "/token", "registration_endpoint": srv.URL + "/register",
+		})
 	})
 	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	mux.HandleFunc("/authorize", func(w http.ResponseWriter, r *http.Request) {

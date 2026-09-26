@@ -203,7 +203,7 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 	rows, err := s.db.Query(`SELECT message_id, path, existed, link, content FROM checkpoints WHERE session_id = ?`, src.ID)
 	cps, err := collect(rows, err, func(r scanner) (c checkpoint, err error) {
 		err = r.Scan(&c.mid, &c.Path, &c.Existed, &c.Link, &c.Content)
-		return
+		return c, err
 	})
 	if err != nil {
 		return fmt.Errorf("store: fork session: %w", err)
@@ -217,7 +217,7 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 	}
 	calls, err := collect(rows, err, func(r scanner) (c call, err error) {
 		err = r.Scan(&c.MessageID, &c.Tool, &c.OK, &c.at)
-		return
+		return c, err
 	})
 	if err != nil {
 		return fmt.Errorf("store: fork session: %w", err)
@@ -398,7 +398,7 @@ func (s *DB) Todos(sessionID string) ([]Todo, error) {
 		FROM todos WHERE session_id = ? ORDER BY ord`, sessionID)
 	return collect(rows, err, func(r scanner) (td Todo, err error) {
 		err = r.Scan(&td.Content, &td.Status, &td.ActiveForm, &td.Ord)
-		return
+		return td, err
 	})
 }
 
@@ -447,7 +447,7 @@ func (s *DB) ToolCallStats(sessionID, afterID string) ([]ToolStat, error) {
 		GROUP BY t.tool ORDER BY COUNT(*) DESC, t.tool`, sessionID, afterID, afterID)
 	return collect(rows, err, func(r scanner) (st ToolStat, err error) {
 		err = r.Scan(&st.Tool, &st.Calls, &st.Failed)
-		return
+		return st, err
 	})
 }
 
@@ -511,7 +511,7 @@ func (s *DB) KeysKV(prefix string) ([]string, error) {
 	rows, err := s.db.Query(`SELECT key FROM kv WHERE key LIKE ? ESCAPE '\' ORDER BY key`, likePrefix(prefix))
 	return collect(rows, err, func(r scanner) (k string, err error) {
 		err = r.Scan(&k)
-		return
+		return k, err
 	})
 }
 

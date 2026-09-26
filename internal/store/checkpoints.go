@@ -40,7 +40,7 @@ func (s *DB) CheckpointsFrom(sessionID, messageID string) ([]Checkpoint, error) 
 		ORDER BY m.rowid, c.created_at`, sessionID, messageID)
 	all, err := collect(rows, err, func(r scanner) (cp Checkpoint, err error) {
 		err = r.Scan(&cp.Path, &cp.Existed, &cp.Link, &cp.Content)
-		return
+		return cp, err
 	})
 	seen := map[string]bool{}
 	return slices.DeleteFunc(all, func(cp Checkpoint) bool {
@@ -63,7 +63,7 @@ func (s *DB) CheckpointPaths(sessionID string) (map[string][]string, error) {
 		if err = r.Scan(&id, &path); err == nil {
 			out[id] = append(out[id], path)
 		}
-		return
+		return id, err
 	})
 	return out, err
 }

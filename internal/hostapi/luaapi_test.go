@@ -349,12 +349,18 @@ func TestReloadBrokenInit(t *testing.T) {
 		untrust    bool
 		want       string
 	}{
-		{"a runtime error keeps what it did not reach", `zemi.permission.mode.add("strict", { base = "auto" }) error("half saved")` + whole, false,
-			"curl deny, ls ask, model fake/m, mode strict"},
-		{"a syntax error keeps the working generation", whole + `zemi.keymap.set("ctrl+q", function() end`, false,
-			"curl deny, ls allow, model fake/m, mode strict"},
-		{"a syntax error after trust went off still reloads", whole + `zemi.keymap.set("ctrl+q", function() end`, true,
-			"curl deny, ls ask, model fake/m"},
+		{
+			"a runtime error keeps what it did not reach", `zemi.permission.mode.add("strict", { base = "auto" }) error("half saved")` + whole, false,
+			"curl deny, ls ask, model fake/m, mode strict",
+		},
+		{
+			"a syntax error keeps the working generation", whole + `zemi.keymap.set("ctrl+q", function() end`, false,
+			"curl deny, ls allow, model fake/m, mode strict",
+		},
+		{
+			"a syntax error after trust went off still reloads", whole + `zemi.keymap.set("ctrl+q", function() end`, true,
+			"curl deny, ls ask, model fake/m",
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir, log := t.TempDir(), logging.New(t.TempDir())

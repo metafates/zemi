@@ -27,7 +27,6 @@ import (
 	"charm.land/catwalk/pkg/catwalk"
 	"charm.land/catwalk/pkg/embedded"
 	"charm.land/fantasy"
-
 	anthropic "charm.land/fantasy/providers/anthropic"
 	google "charm.land/fantasy/providers/google"
 	openai "charm.land/fantasy/providers/openai"
@@ -172,14 +171,18 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		if kind == KindOpenAICompat && base == "" {
 			continue
 		}
-		spec := Spec{ID: string(p.ID), Kind: kind, BaseURL: base, Builtin: true, KeyEnv: name,
-			DefaultModel: p.DefaultLargeModelID}
+		spec := Spec{
+			ID: string(p.ID), Kind: kind, BaseURL: base, Builtin: true, KeyEnv: name,
+			DefaultModel: p.DefaultLargeModelID,
+		}
 		for _, m := range p.Models {
 			// catwalk's legacy names: "in cached" is the cache write price,
 			// "out cached" the cache read price
-			spec.Models = append(spec.Models, Model{ID: m.ID, Display: m.Name, ContextWindow: m.ContextWindow, MaxOutput: m.DefaultMaxTokens,
+			spec.Models = append(spec.Models, Model{
+				ID: m.ID, Display: m.Name, ContextWindow: m.ContextWindow, MaxOutput: m.DefaultMaxTokens,
 				CostPer1MIn: m.CostPer1MIn, CostPer1MOut: m.CostPer1MOut, CostPer1MCacheWrite: m.CostPer1MInCached, CostPer1MCacheRead: m.CostPer1MOutCached,
-				TextOnly: !m.SupportsImages, Efforts: m.ReasoningLevels, Effort: m.DefaultReasoningEffort})
+				TextOnly: !m.SupportsImages, Efforts: m.ReasoningLevels, Effort: m.DefaultReasoningEffort,
+			})
 		}
 		c.Specs = append(c.Specs, spec)
 		c.Keys[spec.ID] = key

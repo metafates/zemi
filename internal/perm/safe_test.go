@@ -217,10 +217,26 @@ func TestPathIsSecret(t *testing.T) {
 		path   string
 		secret bool
 	}{
-		{".env", true}, {"prod.env", true}, {".env.local", true}, {".npmrc", true}, {".yarnrc.yml", true},
-		{".pgpass", true}, {".pypirc", true}, {".htpasswd", true}, {".my.cnf", true}, {"x.p12", true},
-		{"x.pfx", true}, {"x.jks", true}, {"x.keystore", true}, {"secrets.tfvars", true}, {"id_ed25519", true},
-		{"id_ed25519.pub", false}, {"main.tfvars", false}, {".yarnrc", false}, {"environment.go", false}, {"main.go", false},
+		{".env", true},
+		{"prod.env", true},
+		{".env.local", true},
+		{".npmrc", true},
+		{".yarnrc.yml", true},
+		{".pgpass", true},
+		{".pypirc", true},
+		{".htpasswd", true},
+		{".my.cnf", true},
+		{"x.p12", true},
+		{"x.pfx", true},
+		{"x.jks", true},
+		{"x.keystore", true},
+		{"secrets.tfvars", true},
+		{"id_ed25519", true},
+		{"id_ed25519.pub", false},
+		{"main.tfvars", false},
+		{".yarnrc", false},
+		{"environment.go", false},
+		{"main.go", false},
 	} {
 		if got := PathIsSecret(c.path); got != c.secret {
 			t.Errorf("PathIsSecret(%q) = %v, want %v", c.path, got, c.secret)

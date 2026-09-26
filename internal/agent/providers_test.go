@@ -30,9 +30,11 @@ import (
 func TestCallOptions(t *testing.T) {
 	r := NewRegistry()
 	r.Reset(Catalog{Specs: []Spec{
-		{ID: "b", Kind: KindAnthropic, Builtin: true, Models: []Model{{ID: "haiku"},
+		{ID: "b", Kind: KindAnthropic, Builtin: true, Models: []Model{
+			{ID: "haiku"},
 			{ID: "opus", Efforts: []string{"low", "medium", "high", "xhigh", "max"}, Effort: "high"},
-			{ID: "pro", Efforts: []string{"low", "high"}, Effort: "high"}}},
+			{ID: "pro", Efforts: []string{"low", "high"}, Effort: "high"},
+		}},
 		{ID: "bo", Kind: KindOpenAI, Builtin: true, Models: []Model{{ID: "gpt-4o"}, {ID: "gpt-5.5", Efforts: []string{"low", "medium", "high"}, Effort: "medium"}}},
 		{ID: "bg", Kind: KindGoogle, Builtin: true, Models: []Model{{ID: "gemini-2.5-pro"}, {ID: "lite", Efforts: []string{"minimal", "low"}, Effort: "minimal"}}},
 	}})
@@ -212,8 +214,10 @@ func TestModelErrorFinal(t *testing.T) {
 // provider with no exported key is Missing, unsupported types are absent
 // and no catalog header is carried.
 func TestBuiltin(t *testing.T) {
-	env := map[string]string{"ANTHROPIC_API_KEY": "sk-a", "OPENAI_API_KEY": "sk-o", "OPENAI_API_ENDPOINT": "http://gw/v1", "OPENROUTER_API_KEY": "sk-r",
-		"AZURE_OPENAI_API_KEY": "az", "AWS_ACCESS_KEY_ID": "aws", "PIONEER_API_KEY": "pi"}
+	env := map[string]string{
+		"ANTHROPIC_API_KEY": "sk-a", "OPENAI_API_KEY": "sk-o", "OPENAI_API_ENDPOINT": "http://gw/v1", "OPENROUTER_API_KEY": "sk-r",
+		"AZURE_OPENAI_API_KEY": "az", "AWS_ACCESS_KEY_ID": "aws", "PIONEER_API_KEY": "pi",
+	}
 	c := Builtin(embedded.GetAll(), func(k string) string { return env[k] })
 	byID := map[string]Spec{}
 	for _, s := range c.Specs {
@@ -230,7 +234,12 @@ func TestBuiltin(t *testing.T) {
 		{"anthropic", KindAnthropic, ""},
 		{"openai", KindOpenAI, "http://gw/v1"},
 		{"openrouter", KindOpenRouter, "https://openrouter.ai/api/v1"},
-		{"deepseek", "", ""}, {"azure", "", ""}, {"bedrock", "", ""}, {"vertexai", "", ""}, {"copilot", "", ""}, {"pioneer", "", ""},
+		{"deepseek", "", ""},
+		{"azure", "", ""},
+		{"bedrock", "", ""},
+		{"vertexai", "", ""},
+		{"copilot", "", ""},
+		{"pioneer", "", ""},
 	} {
 		s, ok := byID[tc.id]
 		if ok != (tc.kind != "") || s.Kind != tc.kind || s.BaseURL != tc.base {

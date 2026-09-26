@@ -304,7 +304,7 @@ func canonPattern(pat string) string {
 // (fewest wildcards, then longest literal prefix) wins. An argument that
 // matches a rule's pattern but also its NotMatch is skipped, and when no
 // other rule matches it forces ask, ahead of Default.
-func (s *Store) Evaluate(subject, arg string, principal string) Outcome {
+func (s *Store) Evaluate(subject, arg, principal string) Outcome {
 	return s.Evaluator(subject, principal)(arg)
 }
 

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"

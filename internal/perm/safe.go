@@ -15,9 +15,11 @@ var SecretPathShape = append(slices.Clone(strictSecretShape), "*credential*", "*
 
 // strictSecretShape is SecretPathShape without the broad names, which also
 // match source files (credential.ts, secret_prompt.py).
-var strictSecretShape = []string{".env", "*.env", ".env.*", ".envrc", "*.pem", "*.key", "*.p12", "*.pfx", "*.jks", "*.keystore",
+var strictSecretShape = []string{
+	".env", "*.env", ".env.*", ".envrc", "*.pem", "*.key", "*.p12", "*.pfx", "*.jks", "*.keystore",
 	"id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*",
-	".netrc", ".npmrc", ".yarnrc.yml", ".pgpass", ".pypirc", ".htpasswd", ".my.cnf"}
+	".netrc", ".npmrc", ".yarnrc.yml", ".pgpass", ".pypirc", ".htpasswd", ".my.cnf",
+}
 
 // PathIsSecret folds on every OS: a shape that asks one file too many is
 // cheaper than a darwin spelling that slips past.

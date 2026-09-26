@@ -14,9 +14,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/metafates/zemi/internal/logging"
 	glua "github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
+
+	"github.com/metafates/zemi/internal/logging"
 )
 
 // Runtime owns the interpreter lifecycle: one live generation at a time, a

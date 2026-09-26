@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
+
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -48,11 +49,15 @@ func TestGoldenMemoryReviewOverlay(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 18)
 
 	items := []hostapi.MemoryRow{
-		{ID: "m1", Scope: "project", Origin: "learned",
-			Text: "the fts join needs m-qualified columns", Quote: "qualify the fts columns with m", Queued: true},
-		{ID: "m2", Scope: "user", Origin: "user",
+		{
+			ID: "m1", Scope: "project", Origin: "learned",
+			Text: "the fts join needs m-qualified columns", Quote: "qualify the fts columns with m", Queued: true,
+		},
+		{
+			ID: "m2", Scope: "user", Origin: "user",
 			Text:    "the user prefers short replies",
-			Updated: app.now().Add(-12 * 24 * time.Hour).UnixMilli()},
+			Updated: app.now().Add(-12 * 24 * time.Hour).UnixMilli(),
+		},
 	}
 	done := openReview(t, app, items)
 
@@ -270,8 +275,10 @@ func TestMemoryReviewLongList(t *testing.T) {
 	for i := range 12 {
 		items = append(items, hostapi.MemoryRow{ID: string(rune('a' + i)), Scope: "user", Origin: "user", Text: "short note"})
 	}
-	items = append(items, hostapi.MemoryRow{ID: "z", Scope: "project", Origin: "learned",
-		Text: "run **go test** <!-- hidden --> before `make golden`; " + strings.Repeat("word ", 30) + "tail-marker"})
+	items = append(items, hostapi.MemoryRow{
+		ID: "z", Scope: "project", Origin: "learned",
+		Text: "run **go test** <!-- hidden --> before `make golden`; " + strings.Repeat("word ", 30) + "tail-marker",
+	})
 	done := openReview(t, app, items)
 
 	app.renderSync(t)

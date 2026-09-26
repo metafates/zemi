@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/metafates/zemi/internal/lua"
 	glua "github.com/yuin/gopher-lua"
+
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestCompleteCommand: a Lua command's complete(arg_lead, cmdline) feeds

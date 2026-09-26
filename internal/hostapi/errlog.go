@@ -12,10 +12,11 @@ import (
 	"sync"
 	"time"
 
+	glua "github.com/yuin/gopher-lua"
+
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
-	glua "github.com/yuin/gopher-lua"
 )
 
 const errLogMax = 50

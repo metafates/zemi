@@ -81,8 +81,12 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		{"default", nil, []string{"Scratchpad: ", "offset and limit", `"job_start"`, "zemi-config before changing its settings", "say first what you will write"}, []string{"in one message"}, []string{"in one response"}},
 		// a subagent: explore reads and searches, and writes nothing
 		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, []string{"Put notes", "Put temporary files", "read for edit"}, nil},
-		{"lean", lean, []string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
-			[]string{"workflow", "zemi-lua", "job_start", `"lsp"`}, nil},
+		{
+			"lean", lean,
+			[]string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
+			[]string{"workflow", "zemi-lua", "job_start", `"lsp"`},
+			nil,
+		},
 		// the plan's shape lives in the plan tool's description only
 		{"read-only", &Profile{ReadOnly: true}, []string{"plan tool"}, nil, []string{"how to verify, the assumptions"}},
 		{"read-only no plan", &Profile{ReadOnly: true, Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool"}, nil},
@@ -141,7 +145,9 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 			os.WriteFile(filepath.Join(dir, ".gitattributes"), []byte("a filter=x\n"), 0o644)
 			os.WriteFile(filepath.Join(dir, "a"), []byte("hi\n"), 0o644)
 			for _, args := range [][]string{
-				{"init", "-q"}, {"add", "."}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"},
+				{"init", "-q"},
+				{"add", "."},
+				{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"},
 				{"config", "core.fsmonitor", "touch " + marker + "; false"},
 				{"config", "filter.x.clean", "touch " + marker + "; cat"},
 				{"config", "filter.x.required", "true"}, // git lfs install --local

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	glua "github.com/yuin/gopher-lua"
+
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
@@ -20,7 +22,6 @@ import (
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
-	glua "github.com/yuin/gopher-lua"
 )
 
 // newTestHost boots a fresh runtime with the full host API installed.
@@ -542,26 +543,38 @@ func TestSaveInit(t *testing.T) {
 		skipped   string
 		link, err bool
 	}{
-		{name: "the one set line gets the new literal, through a link", link: true,
+		{
+			name: "the one set line gets the new literal, through a link", link: true,
 			src:  "-- zemi.config.set(\"ui.theme\", \"old\")\nzemi.config.set(\"ui.theme\", 'whorl') -- mine\n",
 			sets: []cfgLine{theme},
-			want: "-- zemi.config.set(\"ui.theme\", \"old\")\nzemi.config.set(\"ui.theme\", \"dark\") -- mine\n"},
-		{name: "a key no line names starts the block at the end",
+			want: "-- zemi.config.set(\"ui.theme\", \"old\")\nzemi.config.set(\"ui.theme\", \"dark\") -- mine\n",
+		},
+		{
+			name: "a key no line names starts the block at the end",
 			src:  "a()",
 			sets: []cfgLine{effort},
-			want: "a()\n\n" + cfgBlockStart + "\nzemi.config.set(\"agent.effort\", \"high\")\n" + cfgBlockEnd + "\n"},
-		{name: "a new key joins the block and a key in it is rewritten there",
+			want: "a()\n\n" + cfgBlockStart + "\nzemi.config.set(\"agent.effort\", \"high\")\n" + cfgBlockEnd + "\n",
+		},
+		{
+			name: "a new key joins the block and a key in it is rewritten there",
 			src:  "a()\n\n" + cfgBlockStart + "\nzemi.config.set(\"ui.theme\", \"x\")\n" + cfgBlockEnd + "\nb()\n",
 			sets: []cfgLine{theme, effort},
-			want: "a()\n\n" + cfgBlockStart + "\nzemi.config.set(\"ui.theme\", \"dark\")\nzemi.config.set(\"agent.effort\", \"high\")\n" + cfgBlockEnd + "\nb()\n"},
-		{name: "a key set by code, indented or twice is left alone",
+			want: "a()\n\n" + cfgBlockStart + "\nzemi.config.set(\"ui.theme\", \"dark\")\nzemi.config.set(\"agent.effort\", \"high\")\n" + cfgBlockEnd + "\nb()\n",
+		},
+		{
+			name:    "a key set by code, indented or twice is left alone",
 			src:     "zemi.config.set(\"models.chat\", m)\nif x then\n  zemi.config.set(\"ui.theme\", \"a\")\nend\nzemi.config.set(\"agent.effort\", \"low\")\nzemi.config.set(\"agent.effort\", \"high\")\n",
 			sets:    []cfgLine{{"models.chat", `"p/m"`}, theme, effort},
-			skipped: "models.chat ui.theme agent.effort"},
-		{name: "a block that would follow a final return is left alone",
-			src: "zemi.config.set(\"ui.theme\", \"a\")\nreturn {}\n", sets: []cfgLine{effort}, skipped: "agent.effort"},
-		{name: "a file that changed since the read is refused",
-			src: "zemi.config.set(\"ui.theme\", \"a\")\n", disk: "edited()\n", sets: []cfgLine{theme}, err: true},
+			skipped: "models.chat ui.theme agent.effort",
+		},
+		{
+			name: "a block that would follow a final return is left alone",
+			src:  "zemi.config.set(\"ui.theme\", \"a\")\nreturn {}\n", sets: []cfgLine{effort}, skipped: "agent.effort",
+		},
+		{
+			name: "a file that changed since the read is refused",
+			src:  "zemi.config.set(\"ui.theme\", \"a\")\n", disk: "edited()\n", sets: []cfgLine{theme}, err: true,
+		},
 	} {
 		dir := t.TempDir()
 		path, disk := filepath.Join(dir, "init.lua"), cmp.Or(c.disk, c.src)

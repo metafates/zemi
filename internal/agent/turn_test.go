@@ -472,8 +472,10 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 	m := &mockModel{steps: [][]fantasy.StreamPart{
 		{
 			{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
-			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls,
-				Usage: fantasy.Usage{InputTokens: 10, CacheReadTokens: 90, OutputTokens: 5}},
+			{
+				Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls,
+				Usage: fantasy.Usage{InputTokens: 10, CacheReadTokens: 90, OutputTokens: 5},
+			},
 		},
 		textParts("done"),
 	}}

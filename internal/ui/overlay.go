@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -671,7 +672,7 @@ fields:
 // spliceBox composites box rows centered over the chat area; what the box
 // does not cover stays visible. It reports the cells the box took, which a
 // click outside closes it on.
-func spliceBox(rows [][]hostapi.Segment, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hostapi.Segment, uv.Rectangle) {
+func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hostapi.Segment, uv.Rectangle) {
 	if len(rows) == 0 || len(box) == 0 {
 		return rows, uv.Rectangle{}
 	}

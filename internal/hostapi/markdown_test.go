@@ -273,13 +273,19 @@ func TestDiffRows(t *testing.T) {
 		width      int
 		want       []string
 	}{
-		{"numbers", "--- a.go\n+++ a.go\n@@ -9,3 +9,3 @@\n one\n-two\n+TWO\n three\n", 40,
-			[]string{"  9   one", " 10 - two", " 10 + TWO", " 11   three"}},
+		{
+			"numbers", "--- a.go\n+++ a.go\n@@ -9,3 +9,3 @@\n one\n-two\n+TWO\n three\n", 40,
+			[]string{"  9   one", " 10 - two", " 10 + TWO", " 11   three"},
+		},
 		{"wrapped", "@@ -1 +1 @@\n+alpha beta gamma delta", 20, []string{" 1 + alpha beta", "     gamma delta"}},
-		{"files and hunks", "M a.go\n@@ -1 +1 @@\n-a\n+b\nM b.go\n@@ -3 +3 @@\n x\n@@ -9 +9 @@\n--- y", 20,
-			[]string{" M a.go", "  1 - a", "  1 + b", " M b.go", "  3   x", "    ⋯", "  9 - -- y"}},
-		{"cjk", "@@ -1 +1 @@\n+" + cjk, 40, []string{" 1 + " + cjk[:3*17], "     " + cjk[3*17:3*34], "     " + cjk[3*34:3*51],
-			"     " + cjk[3*51:3*68], "     " + cjk[3*68:3*85], "     " + cjk[3*85:]}},
+		{
+			"files and hunks", "M a.go\n@@ -1 +1 @@\n-a\n+b\nM b.go\n@@ -3 +3 @@\n x\n@@ -9 +9 @@\n--- y", 20,
+			[]string{" M a.go", "  1 - a", "  1 + b", " M b.go", "  3   x", "    ⋯", "  9 - -- y"},
+		},
+		{"cjk", "@@ -1 +1 @@\n+" + cjk, 40, []string{
+			" 1 + " + cjk[:3*17], "     " + cjk[3*17:3*34], "     " + cjk[3*34:3*51],
+			"     " + cjk[3*51:3*68], "     " + cjk[3*68:3*85], "     " + cjk[3*85:],
+		}},
 	} {
 		var got []string
 		copied := ""
@@ -313,8 +319,10 @@ func TestHighlight(t *testing.T) {
 		width            int
 		want             string // rows joined by /, each segment as [text|hl]
 	}{
-		{"keywords and comments", "for f in a; do cat $f; done # why", "bash", 0,
-			"[for|Accent][ f in a|Normal][;|Dim][ |Normal][do|Accent][ cat $f|Normal][;|Dim][ |Normal][done|Accent][ |Normal][# why|Dim]"},
+		{
+			"keywords and comments", "for f in a; do cat $f; done # why", "bash", 0,
+			"[for|Accent][ f in a|Normal][;|Dim][ |Normal][do|Accent][ cat $f|Normal][;|Dim][ |Normal][done|Accent][ |Normal][# why|Dim]",
+		},
 		{"a row per line", "cat <<EOF\nhi\nEOF", "bash", 0, "[cat <<EOF|Normal]/[hi|Normal]/[EOF|Normal]"},
 		{"no lexer", "x\t<y>\x1b[31m", "nope", 0, "[x    <y>|]"},
 		{"wraps", "echo alpha beta gamma", "bash", 12, "[echo alpha |Normal]/[beta gamma|Normal]"},

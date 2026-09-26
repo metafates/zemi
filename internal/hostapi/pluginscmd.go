@@ -173,8 +173,10 @@ func (h *Host) pluginNamed(name string) (plugins.Plugin, error) {
 // after a slow action opens nothing once the user closed it. It reads git, so
 // it never runs on the key loop.
 func (h *Host) openPlugins(ui UIHooks, refresh bool) {
-	ui.OpenOverlay(Overlay{ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.pluginItems(),
-		Reload: func() ([]any, [][]Segment) { return h.pluginItems(), nil }})
+	ui.OpenOverlay(Overlay{
+		ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.pluginItems(),
+		Reload: func() ([]any, [][]Segment) { return h.pluginItems(), nil },
+	})
 }
 
 // pluginItems lists the plugins under three action rows, which carry the empty

@@ -136,7 +136,7 @@ func (s *DB) DeleteLearnedBetween(sessionID string, from, until int64) ([]string
 		AND provenance_session_id = ? AND created_at BETWEEN ? AND ? RETURNING id`, sessionID, from, until)
 	return collect(rows, err, func(r scanner) (id string, err error) {
 		err = r.Scan(&id)
-		return
+		return id, err
 	})
 }
 

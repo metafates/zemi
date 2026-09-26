@@ -693,8 +693,10 @@ func (h *Host) lspOverlay(refresh bool) Overlay {
 	if !h.ProjectTrusted() {
 		empty = "Language servers are off: this project is not trusted."
 	}
-	return Overlay{ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.lspItems(),
-		Reload: func() ([]any, [][]Segment) { return h.lspItems(), nil }, Empty: empty}
+	return Overlay{
+		ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.lspItems(),
+		Reload: func() ([]any, [][]Segment) { return h.lspItems(), nil }, Empty: empty,
+	}
 }
 
 func (h *Host) lspItems() []any {

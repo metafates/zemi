@@ -294,7 +294,7 @@ func ProjectDBPath(stateHome, projectRoot string) string {
 
 // OpenForDirs opens the global database and, when a project root is known,
 // the per-project one (DESIGN §7).
-func OpenForDirs(stateHome, projectRoot string) (global *DB, project *DB, err error) {
+func OpenForDirs(stateHome, projectRoot string) (global, project *DB, err error) {
 	global, err = Open(filepath.Join(stateHome, "zemi.db"))
 	if err != nil {
 		return nil, nil, err

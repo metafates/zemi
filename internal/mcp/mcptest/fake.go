@@ -33,8 +33,10 @@ func Respond(line []byte) []byte {
 	}
 	switch m.Method {
 	case "initialize":
-		resp["result"] = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{}},
-			"serverInfo": map[string]any{"name": "fake", "version": "1"}}
+		resp["result"] = map[string]any{
+			"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{}},
+			"serverInfo": map[string]any{"name": "fake", "version": "1"},
+		}
 	case "tools/list":
 		if m.Params.Cursor == "" {
 			shot := tool("shot", "take a screenshot")

@@ -20,6 +20,7 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -420,9 +421,13 @@ var codeGroups = [...]struct {
 	tok   chroma.TokenType
 	group string
 }{
-	{chroma.Text, "Normal"}, {chroma.Keyword, "Accent"}, {chroma.Comment, "Dim"},
-	{chroma.Punctuation, "Dim"}, {chroma.Operator, "Dim"},
-	{chroma.GenericInserted, "DiffAdd"}, {chroma.GenericDeleted, "DiffDel"},
+	{chroma.Text, "Normal"},
+	{chroma.Keyword, "Accent"},
+	{chroma.Comment, "Dim"},
+	{chroma.Punctuation, "Dim"},
+	{chroma.Operator, "Dim"},
+	{chroma.GenericInserted, "DiffAdd"},
+	{chroma.GenericDeleted, "DiffDel"},
 }
 
 // Highlight draws code in lang as one row per line in codeGroups' groups,

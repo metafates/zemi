@@ -4,8 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/metafates/zemi/internal/lua"
 	glua "github.com/yuin/gopher-lua"
+
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // Registries accept any non-nil function at the Go level (real guards live

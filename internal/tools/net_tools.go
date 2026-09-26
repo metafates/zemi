@@ -255,7 +255,8 @@ var tagRe = regexp.MustCompile(`(?s)<[^>]*>`)
 // set, and a docs page's parameter table is half of what it says.
 var mdConv = sync.OnceValue(func() *converter.Converter {
 	return converter.NewConverter(converter.WithPlugins(
-		mdbase.NewBasePlugin(), commonmark.NewCommonmarkPlugin(), table.NewTablePlugin()))
+		mdbase.NewBasePlugin(), commonmark.NewCommonmarkPlugin(), table.NewTablePlugin(),
+	))
 })
 
 // htmlToText renders a page as markdown for the model: readability picks

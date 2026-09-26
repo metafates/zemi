@@ -255,23 +255,28 @@ func TestMCPDeferred(t *testing.T) {
 		want    []string
 	}{
 		{"ten or fewer ride every step", 3, []string{"hi"}, []string{
-			"mcp_a_echo mcp_a_fail mcp_a_shot mcp_b_echo mcp_b_fail mcp_b_shot mcp_c_echo mcp_c_fail mcp_c_shot"}},
+			"mcp_a_echo mcp_a_fail mcp_a_shot mcp_b_echo mcp_b_fail mcp_b_shot mcp_c_echo mcp_c_fail mcp_c_shot",
+		}},
 		{"past ten only loaded tools are offered", 4, []string{"search:echo"}, []string{
 			"tool_search",
-			"mcp_a_echo mcp_b_echo mcp_c_echo mcp_d_echo tool_search"}},
+			"mcp_a_echo mcp_b_echo mcp_c_echo mcp_d_echo tool_search",
+		}},
 		{"an exact name wins over more keyword hits", 4, []string{"search:text the screenshot mcp_d_fail"}, []string{
 			"tool_search",
-			"mcp_a_echo mcp_a_shot mcp_b_echo mcp_b_shot mcp_d_fail tool_search"}},
+			"mcp_a_echo mcp_a_shot mcp_b_echo mcp_b_shot mcp_d_fail tool_search",
+		}},
 		{"a repeated search loads the next matches", 4, []string{"search:text", "search:text"}, []string{
 			"tool_search",
 			"mcp_a_echo mcp_a_fail mcp_a_shot mcp_b_echo mcp_b_shot tool_search",
 			"mcp_a_echo mcp_a_fail mcp_a_shot mcp_b_echo mcp_b_shot tool_search",
-			"mcp_a_echo mcp_a_fail mcp_a_shot mcp_b_echo mcp_b_fail mcp_b_shot mcp_c_echo mcp_c_fail mcp_c_shot mcp_d_echo tool_search"}},
+			"mcp_a_echo mcp_a_fail mcp_a_shot mcp_b_echo mcp_b_fail mcp_b_shot mcp_c_echo mcp_c_fail mcp_c_shot mcp_d_echo tool_search",
+		}},
 		{"new drops them and resume reseeds the called ones", 4, []string{"search:shot", "call:mcp_c_shot", "new", "hi", "resume", "hi"}, []string{
 			"tool_search", "mcp_a_shot mcp_b_shot mcp_c_shot mcp_d_shot tool_search",
 			"mcp_a_shot mcp_b_shot mcp_c_shot mcp_d_shot tool_search", "mcp_a_shot mcp_b_shot mcp_c_shot mcp_d_shot tool_search",
 			"tool_search",
-			"mcp_c_shot tool_search"}},
+			"mcp_c_shot tool_search",
+		}},
 	}
 	srv := httptest.NewServer(mcptest.Handler())
 	defer srv.Close()

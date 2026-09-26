@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/sanitize"
