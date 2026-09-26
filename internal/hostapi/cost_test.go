@@ -18,7 +18,7 @@ func TestTurnCost(t *testing.T) {
 		id = "p", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1",
 		models = {
 			{ id = "m", cost_per_1m_in = 3, cost_per_1m_out = 15,
-			  cost_per_1m_in_cached = 3.75, cost_per_1m_out_cached = 0.5 },
+			  cost_per_1m_cache_write = 3.75, cost_per_1m_cache_read = 0.5 },
 			{ id = "free" },
 		},
 	})`)

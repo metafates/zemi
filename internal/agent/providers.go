@@ -47,11 +47,11 @@ type Model struct {
 	CostPer1MIn   float64 // USD per million prompt tokens
 	CostPer1MOut  float64 // USD per million completion tokens
 	// prompt cache prices, billed apart from the prompt tokens
-	CostPer1MInCached  float64  // USD per million tokens written to the cache
-	CostPer1MOutCached float64  // USD per million tokens read from it
-	TextOnly           bool     // the model refuses image parts
-	Efforts            []string // a builtin's reasoning levels; empty takes no effort
-	Effort             string   // a builtin's level when /effort is unset
+	CostPer1MCacheWrite float64  // USD per million tokens written to the cache
+	CostPer1MCacheRead  float64  // USD per million tokens read from it
+	TextOnly            bool     // the model refuses image parts
+	Efforts             []string // a builtin's reasoning levels; empty takes no effort
+	Effort              string   // a builtin's level when /effort is unset
 }
 
 // Provider kinds: which fantasy implementation talks to the provider.
@@ -170,8 +170,10 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		spec := Spec{ID: string(p.ID), Kind: kind, BaseURL: base, Builtin: true, KeyEnv: name,
 			DefaultModel: p.DefaultLargeModelID}
 		for _, m := range p.Models {
+			// catwalk's legacy names: "in cached" is the cache write price,
+			// "out cached" the cache read price
 			spec.Models = append(spec.Models, Model{ID: m.ID, Display: m.Name, ContextWindow: m.ContextWindow, MaxOutput: m.DefaultMaxTokens,
-				CostPer1MIn: m.CostPer1MIn, CostPer1MOut: m.CostPer1MOut, CostPer1MInCached: m.CostPer1MInCached, CostPer1MOutCached: m.CostPer1MOutCached,
+				CostPer1MIn: m.CostPer1MIn, CostPer1MOut: m.CostPer1MOut, CostPer1MCacheWrite: m.CostPer1MInCached, CostPer1MCacheRead: m.CostPer1MOutCached,
 				TextOnly: !m.SupportsImages, Efforts: m.ReasoningLevels, Effort: m.DefaultReasoningEffort})
 		}
 		c.Specs = append(c.Specs, spec)

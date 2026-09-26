@@ -1228,8 +1228,8 @@ function zemi.log.list() end
 ---@field context_window? integer Without it there is no context percent and no auto compaction.
 ---@field cost_per_1m_in? number
 ---@field cost_per_1m_out? number
----@field cost_per_1m_in_cached? number
----@field cost_per_1m_out_cached? number
+---@field cost_per_1m_cache_write? number
+---@field cost_per_1m_cache_read? number
 ---@field max_output? integer Reply token cap; unset, anthropic models get 32000 and other kinds the provider default.
 ---@field vision? boolean false for a model that refuses image input; read then returns a text error and @image attachments are omitted with a note.
 

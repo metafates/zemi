@@ -302,8 +302,8 @@ func (h *Host) turnCost(modelID string, u fantasy.Usage) float64 {
 	m, _ := h.modelSpec(modelID)
 	return (float64(u.InputTokens)*m.CostPer1MIn +
 		float64(u.OutputTokens)*m.CostPer1MOut +
-		float64(u.CacheCreationTokens)*m.CostPer1MInCached +
-		float64(u.CacheReadTokens)*m.CostPer1MOutCached) / 1e6
+		float64(u.CacheCreationTokens)*m.CostPer1MCacheWrite +
+		float64(u.CacheReadTokens)*m.CostPer1MCacheRead) / 1e6
 }
 
 // contextWindow: agent.context_window, then the model spec, else 0

@@ -1747,7 +1747,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 			return agent.Spec{}, fmt.Errorf("%s must be a table", at)
 		}
 		if err := onlyKeys(e, at, "id", "display", "context_window", "max_output", "vision",
-			"cost_per_1m_in", "cost_per_1m_out", "cost_per_1m_in_cached", "cost_per_1m_out_cached"); err != nil {
+			"cost_per_1m_in", "cost_per_1m_out", "cost_per_1m_cache_write", "cost_per_1m_cache_read"); err != nil {
 			return agent.Spec{}, err
 		}
 		positive := func(key string) float64 {
@@ -1757,15 +1757,15 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		id, _ := e["id"].(string)
 		display, _ := e["display"].(string)
 		spec.Models = append(spec.Models, agent.Model{
-			ID:                 id,
-			Display:            display,
-			ContextWindow:      int64(positive("context_window")),
-			MaxOutput:          int64(positive("max_output")),
-			CostPer1MIn:        positive("cost_per_1m_in"),
-			CostPer1MOut:       positive("cost_per_1m_out"),
-			CostPer1MInCached:  positive("cost_per_1m_in_cached"),
-			CostPer1MOutCached: positive("cost_per_1m_out_cached"),
-			TextOnly:           e["vision"] == false,
+			ID:                  id,
+			Display:             display,
+			ContextWindow:       int64(positive("context_window")),
+			MaxOutput:           int64(positive("max_output")),
+			CostPer1MIn:         positive("cost_per_1m_in"),
+			CostPer1MOut:        positive("cost_per_1m_out"),
+			CostPer1MCacheWrite: positive("cost_per_1m_cache_write"),
+			CostPer1MCacheRead:  positive("cost_per_1m_cache_read"),
+			TextOnly:            e["vision"] == false,
 		})
 	}
 	if spec.ID == "" || spec.Kind == "" {

@@ -42,7 +42,7 @@ zemi.provider.del("openai")                 -- drop one builtin; providers.built
 Model fields besides `id` and `display`:
 
 - `context_window`: without it there is no context percent and no auto compaction, only `/compact` and a provider's too-long refusal. `agent.context_window` overrides it.
-- `cost_per_1m_in`, `cost_per_1m_out`, `cost_per_1m_in_cached` (tokens written to the prompt cache), `cost_per_1m_out_cached` (tokens read from it). Without the cached pair, cached turns read cheaper than they were.
+- `cost_per_1m_in`, `cost_per_1m_out`, `cost_per_1m_cache_write` (tokens written to the prompt cache), `cost_per_1m_cache_read` (tokens read from it). Without the cache pair, cached turns read cheaper than they were.
 - `max_output`: reply cap in tokens; unset, anthropic models get 32000, others the provider default.
 - `vision = false`: the model refuses images. Without it zemi learns that from the provider's first refusal, for the process.
 
