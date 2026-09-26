@@ -381,17 +381,17 @@ type listItem struct {
 // tagSeg is a key column tag: a word that names, never a binary state.
 func tagSeg(s string) hostapi.Segment { return hostapi.Segment{Text: s, HL: "Host:HintKey"} }
 
-// switchSeg is the one on/off switch: 6 cells in every state, so a toggle
-// never moves text, and track and word read without color. Locked is on
-// with nothing to switch.
+// switchSeg is the one on/off switch: 5 cells in every state, so a toggle
+// never moves text, and a filled or hollow square and the word read without
+// color. Locked is on with nothing to switch.
 func switchSeg(on, locked bool) hostapi.Segment {
 	switch {
 	case locked:
-		return hostapi.Segment{Text: "   on ", HL: "Host:Hint"}
+		return hostapi.Segment{Text: "  on ", HL: "Host:Hint"}
 	case on:
-		return hostapi.Segment{Text: "━━ on ", HL: "Host:Ok"}
+		return hostapi.Segment{Text: "■ on ", HL: "Host:Ok"}
 	}
-	return hostapi.Segment{Text: "── off", HL: "Host:Hint"}
+	return hostapi.Segment{Text: "□ off", HL: "Host:Hint"}
 }
 
 // listRows is the one list renderer (palette, completion, pickers,

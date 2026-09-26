@@ -1396,8 +1396,8 @@ provenance string.
   `/sessions`, `/agents` and `/workflows` close on an action instead: resume,
   a run and an agent's transcript move to another screen, which a rebuilt
   list would cover. A row's binary state (a skill or plugin on or off, a
-  picked option of a multi-select) is one 6-cell switch in the key column,
-  `━━ on ` in Ok, `── off` or a locked `   on ` in Hint, so a toggle never
+  picked option of a multi-select) is one 5-cell switch in the key column,
+  `■ on ` in Ok, `□ off` or a locked `  on ` in Hint, so a toggle never
   moves text; a tag there (`current`, `follows chat`) names, in the accent.
   A row may name its own enter verb (`verb`, "open" on a
   row that opens another screen): the hint says it, space, which toggles
