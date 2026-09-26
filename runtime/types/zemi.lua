@@ -1231,7 +1231,7 @@ function zemi.log.list() end
 ---@field cost_per_1m_in_cached? number
 ---@field cost_per_1m_out_cached? number
 ---@field max_output? integer Reply token cap; unset, anthropic models get 32000 and other kinds the provider default.
----@field images? boolean false for a model that refuses image input; read then returns a text error and @image attachments are omitted with a note.
+---@field vision? boolean false for a model that refuses image input; read then returns a text error and @image attachments are omitted with a note.
 
 ---@class zemi.ProviderSpec
 ---@field id string
@@ -1283,7 +1283,8 @@ zemi.provider.kind = {}
 
 --- Register a provider and its models. User config only. An id a builtin
 --- provider has replaces it whole (a gateway in front of it keeps its
---- base_url); the builtin ones are on while their key is exported.
+--- base_url); the builtin ones are on while their key is exported. An unknown
+--- field on the spec or on a model entry raises.
 ---@param spec zemi.ProviderSpec
 function zemi.provider.add(spec) end
 

@@ -81,7 +81,7 @@ description: "Load when zemi misbehaves: a crash, an error in /errors, a silent 
 | "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
 | statusline `boot failed` | init.lua, a plugin or project config raised during startup; `/errors` or the log (source `boot`) has the error |
 | statusline `stuck /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
-| "does not take images; going on without them" | the provider refused image input; set `images = false` on the model entry, or pick a multimodal model for screenshots |
+| "does not take images; going on without them" | the provider refused image input; set `vision = false` on the model entry, or pick a multimodal model for screenshots |
 | context percent missing, no auto compaction | the model has no `context_window` (`/health` context row); add it to the model entry or set `agent.context_window` |
 | project `.agents/` config, AGENTS.md or language servers ignored; auto mode needs approval for every build, edit and git command | the project is not trusted (`/health` trust row); `/trust` shows the prompt again. Decisions live in `~/.local/state/zemi/trust.json` by repository root; a linked worktree uses its main checkout's |
 | auto mode needs approval for every command that is not a plain read in a trusted project ("no sandbox") | no sandbox backend (`/health` sandbox row: `sandbox-exec` missing, zemi itself already inside a sandbox, or no Landlock); without one only reading commands run on their own |

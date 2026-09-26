@@ -116,7 +116,7 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 --   api_key = zemi.env.get("LOCAL_API_KEY"),   -- leave out for a server that needs none
 --   headers = { ["X-Team"] = "core" },   -- extra headers a gateway needs; as secret as the key
 --   body = { service_tier = "flex" },   -- extra request-body fields; not sent by OPENAI or GOOGLE
---   models = { { id = "qwen3", context_window = 32000 } },   -- cost_per_1m_in/out optional; images = false for a text-only model
+--   models = { { id = "qwen3", context_window = 32000 } },   -- cost_per_1m_in/out optional; vision = false for a text-only model
 -- })
 -- zemi.provider.del("openai")   -- drop one builtin provider
 -- zemi.config.set("providers.builtin", false)   -- or all of them

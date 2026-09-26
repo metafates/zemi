@@ -182,7 +182,7 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 			} else {
 				runner.TextOnly = true
 				imagesRejected.Store(model, true)
-				h.Notify(logging.Warn, "Images left out", model+" takes no images; images = false on its model entry skips this")
+				h.Notify(logging.Warn, "Images left out", model+" takes no images; vision = false on its model entry skips this")
 			}
 			continue
 		}

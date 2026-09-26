@@ -44,7 +44,9 @@ Model fields besides `id` and `display`:
 - `context_window`: without it there is no context percent and no auto compaction, only `/compact` and a provider's too-long refusal. `agent.context_window` overrides it.
 - `cost_per_1m_in`, `cost_per_1m_out`, `cost_per_1m_in_cached` (tokens written to the prompt cache), `cost_per_1m_out_cached` (tokens read from it). Without the cached pair, cached turns read cheaper than they were.
 - `max_output`: reply cap in tokens; unset, anthropic models get 32000, others the provider default.
-- `images = false`: the model refuses images. Without it zemi learns that from the provider's first refusal, for the process.
+- `vision = false`: the model refuses images. Without it zemi learns that from the provider's first refusal, for the process.
+
+Any other key, on the provider or on a model entry, is refused as an unknown field.
 
 Roles: `models.chat` runs the conversation, `/btw` and every role left empty; `models.agents` (subagents whose definition names no model, `web` included), `models.titles` (session titles), `models.compact` (compaction summaries) and `models.memory` (the reflector) each take a `provider/model` or `""` to follow chat. An unset chat runs the first added provider's default model, else the first usable builtin's. Nothing falls back to a cheaper model on its own: set titles and memory to one to save tokens. Set them with `zemi.config.set("models.titles", "gw/deepseek-chat")`, or `/model roles` (the list; enter opens a role's models), `/model <role> <provider/model>` or `/model <role> chat` to follow chat. `/model`, `-m` and `zemi.model.set` write `models.chat` and refuse while the active profile sets its own model. Agent files, profiles and workflows take a role name or a `provider/model`.
 

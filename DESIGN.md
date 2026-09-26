@@ -909,7 +909,9 @@ variables after the usable models, and a TUI boot with no model to run
 opens it once), then user config runs. `zemi.provider.add`
 under a builtin id replaces it whole, so a gateway `base_url` keeps
 working; `zemi.provider.del` drops one, `providers.builtin = false` all
-of them.
+of them. An unknown field on the spec or on a model entry raises: a
+text-only model says `vision = false`, and a misspelt key there would
+send it images anyway.
 A `models.chat` config leaves unset runs the catalog's default model, from
 the first provider the user added, else the first usable builtin in
 catalog order (anthropic, openai, gemini, ...): a user typed theirs,

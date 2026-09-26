@@ -40,18 +40,18 @@ import (
 // the token budget the statusline percent readout divides by; models
 // without one fall back to agent.context_window config.
 type Model struct {
-	ID            string  `json:"id"`
-	Display       string  `json:"display"`
-	ContextWindow int64   `json:"context_window,omitempty"`
-	MaxOutput     int64   `json:"max_output,omitempty"`      // reply token limit; 0 = zemi's default for the kind
-	CostPer1MIn   float64 `json:"cost_per_1m_in,omitempty"`  // USD per million prompt tokens
-	CostPer1MOut  float64 `json:"cost_per_1m_out,omitempty"` // USD per million completion tokens
+	ID            string
+	Display       string
+	ContextWindow int64
+	MaxOutput     int64   // reply token limit; 0 = zemi's default for the kind
+	CostPer1MIn   float64 // USD per million prompt tokens
+	CostPer1MOut  float64 // USD per million completion tokens
 	// prompt cache prices, billed apart from the prompt tokens
-	CostPer1MInCached  float64  `json:"cost_per_1m_in_cached,omitempty"`  // USD per million tokens written to the cache
-	CostPer1MOutCached float64  `json:"cost_per_1m_out_cached,omitempty"` // USD per million tokens read from it
-	TextOnly           bool     `json:"text_only,omitempty"`              // the model refuses image parts
-	Efforts            []string `json:"-"`                                // a builtin's reasoning levels; empty takes no effort
-	Effort             string   `json:"-"`                                // a builtin's level when /effort is unset
+	CostPer1MInCached  float64  // USD per million tokens written to the cache
+	CostPer1MOutCached float64  // USD per million tokens read from it
+	TextOnly           bool     // the model refuses image parts
+	Efforts            []string // a builtin's reasoning levels; empty takes no effort
+	Effort             string   // a builtin's level when /effort is unset
 }
 
 // Provider kinds: which fantasy implementation talks to the provider.
@@ -71,20 +71,20 @@ var Kinds = []string{KindAnthropic, KindOpenAI, KindOpenAICompat, KindGoogle, Ki
 // Headers ride every request (a gateway's attribution or team header); they
 // are as secret as the key, so nothing echoes them back.
 type Spec struct {
-	ID      string            `json:"id"`
-	Kind    string            `json:"kind"` // one of Kinds
-	BaseURL string            `json:"base_url,omitempty"`
-	Headers map[string]string `json:"-"`
+	ID      string
+	Kind    string // one of Kinds
+	BaseURL string
+	Headers map[string]string
 	// Body holds extra request-body fields merged into every request
 	// (service_tier, a gateway's routing block, a vendor's thinking flag).
 	// Only KindsWithBody carry it.
-	Body   map[string]any `json:"-"`
-	Models []Model        `json:"models"`
+	Body   map[string]any
+	Models []Model
 	// Builtin marks a catalog spec; Register clears it, so a user spec
 	// under a builtin id survives DropBuiltin.
-	Builtin      bool   `json:"builtin,omitempty"`
-	KeyEnv       string `json:"-"`                       // the env var a builtin's key came from, so a rejected key names it
-	DefaultModel string `json:"default_model,omitempty"` // the model Default picks
+	Builtin      bool
+	KeyEnv       string // the env var a builtin's key came from, so a rejected key names it
+	DefaultModel string // the model Default picks
 }
 
 // Catalog is the builtin providers with their env vars resolved: a

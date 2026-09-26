@@ -239,7 +239,7 @@ func (h *Host) modelRef(ref string) string {
 }
 
 // takesImages reports whether a model accepts image parts; unknown
-// models are assumed to, until the model entry says images = false or the
+// models are assumed to, until the model entry says vision = false or the
 // provider refused a request over them (imagesRejected).
 func (h *Host) takesImages(id string) bool {
 	if _, refused := imagesRejected.Load(id); refused {

@@ -379,7 +379,8 @@ func TestModelNamespace(t *testing.T) {
 		api_key = "test-key",
 		models = { { id = "main", display = "Main" }, { id = "mini" } },
 	})`)
-	runExpectErr(t, r, `zemi.provider.add({ id = "old", kind = "openai", api_key_env = "OLD_KEY" })`, "api_key_env is gone")
+	runExpectErr(t, r, `zemi.provider.add({ id = "old", kind = "openai", api_key_env = "OLD_KEY" })`, `spec: unknown field "api_key_env"`)
+	runExpectErr(t, r, `zemi.provider.add({ id = "old", kind = "openai", models = { { id = "a" }, { id = "b", images = false } } })`, `models[2]: unknown field "images"`)
 	t.Setenv("ZEMI_TEST_TOKEN", "abc")
 	runUser(t, r, `assert(zemi.env.get("ZEMI_TEST_TOKEN") == "abc", "user config reads secret-shaped env vars")`)
 
@@ -1266,7 +1267,7 @@ func TestIdleStreamUsesProfileModel(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = {
-			{ id = "big", context_window = 200000, images = false },
+			{ id = "big", context_window = 200000, vision = false },
 			{ id = "small", context_window = 32000 },
 		} })
 		zemi.model.set("a/small")
@@ -1547,7 +1548,7 @@ func TestRetryRestreamsStep(t *testing.T) {
 func TestMaxOutput(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096, images = false } } })
+		zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096, vision = false } } })
 		zemi.provider.add({ id = "o", kind = "openai", models = { { id = "gpt" } } })
 	`)
 	for model, want := range map[string]int64{"a/big": 32_000, "a/old": 4096, "o/gpt": 0} {
