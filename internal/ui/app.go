@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"image/color"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -496,26 +495,15 @@ func (a *App) notifyIfAway(text string) tea.Cmd {
 	case "bell":
 		return tea.Raw("\a")
 	case "native":
-		return nativeNotify(text)
+		args := hostapi.NotifyArgv(text)
+		return func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = proc.Run(proc.CommandContext(ctx, args[0], args[1:]...))
+			return nil
+		}
 	}
 	return nil
-}
-
-// nativeNotify shows text through the OS notifier, as argv so no text is
-// ever read as AppleScript.
-// NOTE: macOS credits an osascript banner to Script Editor, whose icon it
-// shows and whose setting mutes it; terminal-notifier is the upgrade.
-func nativeNotify(text string) tea.Cmd {
-	args := []string{"notify-send", "-a", "zemi", "--", "zemi", text}
-	if runtime.GOOS == "darwin" {
-		args = []string{"osascript", "-e", "on run argv", "-e", `display notification (item 1 of argv) with title "zemi"`, "-e", "end run", text}
-	}
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = proc.Run(proc.CommandContext(ctx, args[0], args[1:]...))
-		return nil
-	}
 }
 
 // Frame renders the full screen as styled text; exported for the golden

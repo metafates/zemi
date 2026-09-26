@@ -194,14 +194,16 @@ func healthResult(v any) (HealthLevel, string, error) {
 // as a desktop notification. TERM survives ssh, TERM_PROGRAM does not.
 var oscTerms = []string{"iTerm.app", "ghostty", "WezTerm", "xterm-ghostty", "xterm-kitty", "wezterm"}
 
+// notifiers name the native notifier per GOOS.
+var notifiers = map[string]string{"darwin": "osascript", "linux": "notify-send"}
+
 // notifyStyle resolves the ui.notify setting to the style notifyIfAway
-// uses, and why.
+// uses, and why. has runs only when the answer needs it: it walks PATH.
 func notifyStyle(setting string, env func(string) string, goos string, has func(string) bool) (style, why string) {
-	tool := map[string]string{"darwin": "osascript", "linux": "notify-send"}[goos]
-	native := tool != "" && has(tool)
+	tool := notifiers[goos]
 	switch setting {
 	case "native":
-		if native {
+		if tool != "" && has(tool) {
 			return "native", "via " + tool
 		}
 		return "bell", "native: " + cmp.Or(tool, "a notifier") + " not found"
@@ -218,7 +220,7 @@ func notifyStyle(setting string, env func(string) string, goos string, has func(
 		}
 	}
 	// over ssh a native notification would show on the remote machine
-	if native && env("SSH_TTY") == "" && env("SSH_CONNECTION") == "" {
+	if tool != "" && env("SSH_TTY") == "" && env("SSH_CONNECTION") == "" && has(tool) {
 		return "native", "auto: via " + tool
 	}
 	return "bell", "auto: no OSC 9 terminal or local notifier found"
@@ -230,6 +232,19 @@ func (h *Host) NotifyStyle() (style, why string) {
 		_, err := exec.LookPath(name)
 		return err == nil
 	})
+}
+
+// NotifyArgv is the command that shows text as a native notification. The
+// text is argv, never spliced into AppleScript, and escaped for the Pango
+// markup notify-send daemons read in a body.
+// NOTE: macOS credits an osascript banner to Script Editor, whose icon it
+// shows and whose setting mutes it; terminal-notifier is the upgrade.
+func NotifyArgv(text string) []string {
+	if notifiers[runtime.GOOS] == "osascript" {
+		return []string{"osascript", "-e", "on run argv", "-e", `display notification (item 1 of argv) with title "zemi"`, "-e", "end run", text}
+	}
+	text = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(text)
+	return []string{"notify-send", "-a", "zemi", "--", "zemi", text}
 }
 
 // goHealthRows are the Go-side checks, in the order /health shows them.
@@ -316,7 +331,7 @@ func (h *Host) goHealthRows() []healthCheck {
 	switch style, why := h.NotifyStyle(); {
 	case style == "off":
 		add(HealthOK, "notify", "off")
-	case h.Settings.Str("ui.notify") == "native" && style != "native":
+	case strings.HasPrefix(why, "native: "):
 		add(HealthWarn, "notify", style+", "+why)
 	default:
 		add(HealthOK, "notify", style+", "+why+"; only while zemi is unfocused")
