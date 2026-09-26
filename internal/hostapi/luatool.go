@@ -187,15 +187,13 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		if filepath.Ext(in.Path) != ".lua" {
 			return fantasy.NewTextErrorResponse(in.Path + ": not a .lua file"), nil
 		}
-		abs := in.Path
-		if !filepath.IsAbs(abs) {
-			abs = filepath.Join(h.Dirs.ProjectDir, abs)
-		}
-		path, err := perm.Resolve(abs)
+		path, err := perm.Resolve(h.projectAbs(in.Path))
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
-		if v := h.PipelineFor().CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectRead, Arg: path.String()}); v.Decision != perm.Allow {
+		pipe := h.PipelineFor()
+		pipe.Path = path // judged where it is opened, not resolved again
+		if v := pipe.CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectRead, Arg: path.String()}); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, perm.SubjectRead+" "+in.Path)), nil
 		}
 		f, fi, err := tools.OpenRegular(path)
