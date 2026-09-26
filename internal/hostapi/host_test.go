@@ -514,12 +514,14 @@ func TestEmitVetoable(t *testing.T) {
 }
 
 // TestConfigSetGating pins the config write gate: only user config sets,
-// and the value applies to the store.
+// a value of the wrong kind for a key with choices names them, and the value
+// applies to the store.
 func TestConfigSetGating(t *testing.T) {
 	h, r := newTestHost(t)
 	if err := r.ExecuteChunk(t.Context(), `zemi.config.set("memory.autonomy", "auto")`, "p.lua", lua.OriginProject); err == nil || !strings.Contains(err.Error(), "only user config") {
 		t.Fatalf("project config set memory.autonomy: %v", err)
 	}
+	runExpectErr(t, r, `zemi.config.set("ui.notify", false)`, "config key ui.notify expects auto, osc, native, bell or off")
 	runUser(t, r, `
 		zemi.config.set("memory.autonomy", "auto")
 
