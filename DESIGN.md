@@ -2246,7 +2246,10 @@ least half of it, never when the window is unknown; once after a
 provider's context-too-long refusal; or by `/compact [focus]`: Go clears
 old tool output and, when that is not enough, summarizes all but a
 verbatim tail (at least the latest user message on, when a turn came
-before it) with one model call, stores the summary (an unfinished todo
+before it) with one model call (asked after the runner's own prompt and
+unpruned history when the compact role runs the conversation's model, so
+it reads the provider's cache; a flat transcript to a separate compact
+model, or when that call gives no summary), stores the summary (an unfinished todo
 list follows it, outside what the next compaction merges) and a copy of the
 tail after it (`/resume` scans for the last summary row and starts from
 it), and re-runs digest assembly, §7, with the environment section and the

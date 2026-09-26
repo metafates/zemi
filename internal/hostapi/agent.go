@@ -105,7 +105,7 @@ type agentHost struct {
 	tools                []StreamTool
 	steering             []string
 	modelSeed            string
-	turnModel            string // model id the running turn was built with, for its price
+	turnModel            string // model id the runner was built with, "" for a bare one: its price, and compact's cached prefix
 
 	// session usage (DESIGN §8 statusline tally): sessIn/sessOut accumulate
 	// every turn's counts, lastIn is the context the latest step used

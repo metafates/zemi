@@ -131,6 +131,42 @@ func TestCompaction(t *testing.T) {
 	}
 }
 
+// TestCompactionOnCachedPrefix: on the conversation's own model the summary
+// is asked after the runner's system prompt and history, the prefix the
+// provider cached; a refusal there falls back to the flat transcript, which
+// still summarizes instead of dropping the history.
+func TestCompactionOnCachedPrefix(t *testing.T) {
+	for _, name := range []string{"answers", "refused"} {
+		t.Run(name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			h.Settings.SetQuiet("models.chat", "stub/m")
+			m := reflectStub(t, h, "ok")
+			h.reflectMu.Lock()
+			defer h.reflectMu.Unlock()
+			send := sender(t, h)
+			big := strings.Repeat("x", 80_000) // past the tail budget, so it is the head
+			send(big)
+			h.agents.mu.Lock()
+			h.agents.ctxWin, h.agents.lastIn = 100_000, 90_000
+			sys := h.agents.promptText
+			h.agents.mu.Unlock()
+			if name == "refused" {
+				m.overflow.Store(1)
+			}
+			send("two")
+			m.mu.Lock()
+			p := m.prompts[1]
+			m.mu.Unlock()
+			if len(p) != 3 || concatText(p[0].Content) != sys || concatText(p[1].Content) != big || !strings.HasPrefix(concatText(p[2].Content), compactNote) {
+				t.Fatalf("the compaction call is not system, history, note: %d messages", len(p))
+			}
+			if s, _ := summaryOf(h.agents.runner.History[0]); s != "ok" {
+				t.Fatalf("summary %q", s)
+			}
+		})
+	}
+}
+
 // TestCompactionMidTurn: a step that fills the context cuts the turn before
 // the model reads its tool result; the history is compacted and the same
 // turn continues from the summary.
@@ -420,9 +456,10 @@ func TestCapRefusal(t *testing.T) {
 		name    string
 		msg     string
 		dropped bool
+		streams int32 // an overflow adds the summary, asked on the cached prefix
 	}{
-		{"cap refused", "max_tokens: 8000 > 4096, which is the maximum allowed", true},
-		{"context overflow", "input length and `max_tokens` exceed context limit: 195000 + 8000 > 200000, decrease input length or `max_tokens`", false},
+		{"cap refused", "max_tokens: 8000 > 4096, which is the maximum allowed", true, 2},
+		{"context overflow", "input length and `max_tokens` exceed context limit: 195000 + 8000 > 200000, decrease input length or `max_tokens`", false, 3},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, r := newTestHostDB(t)
@@ -433,8 +470,8 @@ func TestCapRefusal(t *testing.T) {
 			h.reflectMu.Lock()
 			defer h.reflectMu.Unlock()
 			sender(t, h)("hi")
-			if n := m.streams.Load(); n != 2 {
-				t.Fatalf("model streamed %d times, want 2", n)
+			if n := m.streams.Load(); n != c.streams {
+				t.Fatalf("model streamed %d times, want %d", n, c.streams)
 			}
 			if _, dropped := capRejected.Load("a/m"); dropped != c.dropped {
 				t.Fatalf("cap dropped: %v, want %v", dropped, c.dropped)

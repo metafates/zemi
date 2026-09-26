@@ -185,7 +185,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	}
 	history, tr := resumeHistory(rows[:cut])
 	ag.mu.Lock()
-	ag.runner = &agent.Runner{History: history}
+	ag.runner, ag.turnModel = &agent.Runner{History: history}, ""
 	// the stored rows keep tool output a prune cleared, so compactDue must see them
 	ag.lastIn, ag.turnMsgID = estTokens(history...)+ag.promptTokens, ""
 	ag.mu.Unlock()

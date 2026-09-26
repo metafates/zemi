@@ -83,7 +83,7 @@ func (h *Host) ResumeSession(id string) error {
 		ag.sessionID, ag.titled, ag.firstUser = id, true, first
 		// A bare runner carries the history; AgentSend copies it into the
 		// runner it builds for the next turn.
-		ag.runner = &agent.Runner{History: history}
+		ag.runner, ag.turnModel = &agent.Runner{History: history}, ""
 		ag.sessIn, ag.sessOut, ag.sessCost = sess.PromptTokens, sess.CompletionTokens, sess.Cost
 		// lastIn is the current-context estimate; seed it from the history and
 		// the prompt so the context readout and compactDue see the window it

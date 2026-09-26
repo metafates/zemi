@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -39,6 +40,8 @@ type reflectStubModel struct {
 	failOnce   atomic.Pointer[fantasy.ProviderError] // the next Stream call's error
 	cutReply   bool                                  // Generate stops at the output limit
 	during     func()                                // runs inside Generate, while the model "thinks"
+	mu         sync.Mutex
+	prompts    [][]fantasy.Message // every Stream call's prompt but a side call's
 }
 
 func (m *reflectStubModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
@@ -78,6 +81,9 @@ func (m *reflectStubModel) Stream(ctx context.Context, call fantasy.Call) (fanta
 	}
 	m.streams.Add(1)
 	m.lastPrompt.Store(int32(len(call.Prompt)))
+	m.mu.Lock()
+	m.prompts = append(m.prompts, call.Prompt)
+	m.mu.Unlock()
 	if used := m.toolStep.Swap(0); used > 0 {
 		return func(yield func(fantasy.StreamPart) bool) {
 			_ = yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "nope", ToolCallInput: "{}"}) &&

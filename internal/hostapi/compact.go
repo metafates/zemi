@@ -52,7 +52,15 @@ const (
 
 const compactSystem = `You write a handoff summary of a coding session so another agent can continue it in a fresh context. You are not in the conversation: do not answer questions in it, do not call tools, output only the summary.
 
-Use exactly these sections, keep all of them, write "(none)" when empty, terse bullets:
+` + compactSections
+
+// compactNote asks for the summary inside the conversation itself, so the
+// call reads the provider's cache of its prefix.
+const compactNote = `Stop the work here. Write a handoff summary of the conversation above so another agent can continue it in a fresh context. Do not call tools, output only the summary.
+
+` + compactSections
+
+const compactSections = `Use exactly these sections, keep all of them, write "(none)" when empty, terse bullets:
 ## Goal
 ## User instructions and preferences
 (quote the user's own words for anything that constrains the work)
@@ -66,7 +74,7 @@ Use exactly these sections, keep all of them, write "(none)" when empty, terse b
 ## Facts
 (exact commands, error messages, identifiers, URLs worth keeping; approaches that failed and why, so they are not retried)
 
-If a <previous-summary> is given, merge it: keep everything still relevant, move finished work to Done, and where it conflicts with the conversation, the conversation wins.`
+If a <previous-summary> is given, or the conversation opens with a <summary>, merge it: keep everything still relevant, move finished work to Done, and where it conflicts with the conversation, the conversation wins.`
 
 var errNoSummary = errors.New("compaction returned no usable summary")
 
@@ -316,7 +324,20 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	if len(head) == 0 {
 		return errNothingToCompact
 	}
-	out, err := h.summarize(ctx, head, prev, focus, window)
+	// On the conversation's own model the summary is asked on the runner's
+	// prefix, the unpruned bytes the provider cached; the flat transcript
+	// goes to a separate compact model, or when that call gives no summary.
+	var out string
+	err := errNoSummary
+	h.agents.mu.Lock()
+	model := h.agents.turnModel
+	h.agents.mu.Unlock()
+	if model != "" && model == h.roleModel("compact") {
+		out, err = h.summarizeAside(ctx, runner, runner.History[:len(runner.History)-len(tail)], model, focus)
+	}
+	if errors.Is(err, errNoSummary) || contextTooLarge(err) {
+		out, err = h.summarize(ctx, head, prev, focus, window)
+	}
 	switch {
 	case err == nil:
 	case reason != compactManual && (errors.Is(err, errNoSummary) || contextTooLarge(err)):
@@ -439,17 +460,39 @@ func (h *Host) summarize(ctx context.Context, head []fantasy.Message, prev, focu
 		case err != nil:
 			return "", err
 		}
-		out := strings.TrimSpace(concatText(res.Response.Content))
-		if out == "" {
-			return "", errNoSummary
-		}
+		return summaryText(res)
+	}
+}
+
+// summarizeAside asks for the summary of head after head itself, one step
+// on the runner's system prompt, tools and breakpoints (Runner.Aside),
+// billed like /btw.
+func (h *Host) summarizeAside(ctx context.Context, runner *agent.Runner, head []fantasy.Message, model, focus string) (string, error) {
+	note := compactNote
+	if focus != "" {
+		note += "\n\nAdditional focus: " + focus
+	}
+	res, err := runner.Aside(ctx, head, note)
+	if err != nil {
+		return "", err
+	}
+	h.bill(h.AgentSessionID(), model, res.TotalUsage)
+	return summaryText(res)
+}
+
+// summaryText is a summary call's reply: errNoSummary when it is empty or a
+// tool call.
+func summaryText(res *fantasy.AgentResult) (string, error) {
+	out := strings.TrimSpace(concatText(res.Response.Content))
+	switch {
+	case out == "" || res.Response.FinishReason == fantasy.FinishReasonToolCalls:
+		return "", errNoSummary
+	case res.Response.FinishReason == fantasy.FinishReasonLength:
 		// A summary cut at the output limit still beats the fallback, which
 		// drops the earlier history unsummarized.
-		if res.Response.FinishReason == fantasy.FinishReasonLength {
-			out += "\n\n(the summary was cut off at the output limit)"
-		}
-		return out, nil
+		out += "\n\n(the summary was cut off at the output limit)"
 	}
+	return out, nil
 }
 
 // summaryOf returns the summary a compaction message carries.
