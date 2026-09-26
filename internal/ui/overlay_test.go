@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -759,6 +760,23 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", body = { 1 } }), "a body that
 	pressKeys(app, "enter")
 	if d := app.overlays[1]; !d.o.BodyMD || strings.Contains(plainSegs(app.overlayBox(&d, 60, 16)[1]), "*") {
 		t.Fatalf("detail: %+v", d.o)
+	}
+}
+
+// TestOverlayItemFields: every field of a Lua item reaches the parsed row,
+// and one of the wrong type raises, a detail action's id included.
+func TestOverlayItemFields(t *testing.T) {
+	app, _ := bootAgentApp(t, 60, 16)
+	runLua(t, app, `zemi.ui.overlay.open({ id = "f", items = { { text = "t", desc = "d", key = "k", section = "s", detail = "x", verb = "v",
+  hotkey = "h", fill = "f", copy = "c", run = "r", id = "i", hl = "Danger", on = false, locked = true, actions = { "a" } } } })
+for _, bad in ipairs({ { text = 1 }, { on = "yes" }, { actions = "x" }, { actions = { { id = 1 } } } }) do
+  assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { bad } }), "a field of the wrong type must raise")
+end
+assert(pcall(zemi.ui.overlay.open, { id = "x", items = { { id = 1 } } }), "a list item's id is its own data")`)
+	want := hostapi.OverlayItem{Text: "t", Desc: "d", Key: "k", Section: "s", Detail: "x", Verb: "v", Hotkey: "h", Fill: "f", Copy: "c",
+		Run: "r", ID: "i", HL: "Danger", Switch: true, Locked: true, Actions: []any{"a"}}
+	if got := app.overlays[0].items[0].row; !reflect.DeepEqual(got, want) {
+		t.Fatalf("row %+v", got)
 	}
 }
 

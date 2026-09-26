@@ -171,11 +171,11 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		if v := tb.RawGetString("items"); v != glua.LNil {
 			items, err := lua.ToGo(v)
+			if err == nil {
+				o.Items, err = overlayItems(items)
+			}
 			if err != nil {
 				L.RaiseError("zemi.ui.overlay.open: %v", err)
-			}
-			if list, ok := items.([]any); ok {
-				o.Items = list
 			}
 		}
 		render, _ := tb.RawGetString("render_item").(*glua.LFunction)
@@ -572,6 +572,103 @@ func hlSpec(L *glua.LState, where string, m map[string]any, palette map[string]s
 	return spec
 }
 
+// OverlayItem is an overlay row's fields, parsed from its item: a table of
+// them, else a value whose text is the row. Callbacks get the raw item.
+type OverlayItem struct {
+	Text, Desc, Key, Section, Detail, Verb, Hotkey, Fill, Copy, Run, ID, HL string
+	Switch, On, Locked                                                      bool  // Switch: on is set, so the row draws the switch
+	Actions                                                                 []any // a detail view's items; nil when it has none
+}
+
+// ParseOverlayItem reads item's fields, leaving out one of the wrong type,
+// which err names. A list item's id and hl are its own data; a detail
+// action's are checked.
+func ParseOverlayItem(item any) (OverlayItem, error) { return parseItem(item, false) }
+
+func parseItem(item any, action bool) (OverlayItem, error) {
+	m, ok := item.(map[string]any)
+	if !ok {
+		s, ok := item.(string)
+		if !ok {
+			s = fmt.Sprint(item)
+		}
+		return OverlayItem{Text: s}, nil
+	}
+	var p OverlayItem
+	var err error
+	bad := func(key, want string, v any) {
+		if err == nil {
+			err = fmt.Errorf("%s must be %s, got %s", key, want, luaShape(v))
+		}
+	}
+	for _, f := range []struct {
+		key string
+		dst *string
+	}{{"text", &p.Text}, {"desc", &p.Desc}, {"key", &p.Key}, {"section", &p.Section}, {"detail", &p.Detail}, {"verb", &p.Verb}, {"hotkey", &p.Hotkey}, {"fill", &p.Fill}, {"copy", &p.Copy}, {"run", &p.Run}, {"id", &p.ID}, {"hl", &p.HL}} {
+		switch v := m[f.key].(type) {
+		case nil:
+		case string:
+			*f.dst = v
+		default:
+			if action || f.key != "id" && f.key != "hl" {
+				bad(f.key, "a string", v)
+			}
+		}
+	}
+	if _, ok := m["text"].(string); !ok {
+		p.Text = fmt.Sprint(item)
+	}
+	for _, f := range []struct {
+		key string
+		dst *bool
+	}{{"on", &p.On}, {"locked", &p.Locked}} {
+		switch v := m[f.key].(type) {
+		case nil:
+		case bool:
+			*f.dst = v
+		default:
+			bad(f.key, "a boolean", v)
+		}
+	}
+	_, p.Switch = m["on"].(bool)
+	switch v := m["actions"].(type) {
+	case nil:
+	case []any:
+		p.Actions = v
+	case map[string]any:
+		if len(v) > 0 {
+			bad("actions", "a list", v)
+			break
+		}
+		p.Actions = []any{} // Lua's {} marshals as an empty map
+	default:
+		bad("actions", "a list", v)
+	}
+	for i, a := range p.Actions {
+		if _, e := parseItem(a, true); e != nil && err == nil {
+			err = fmt.Errorf("actions[%d].%w", i+1, e)
+		}
+	}
+	return p, err
+}
+
+// overlayItems is a Lua items list with every item's fields checked.
+func overlayItems(v any) ([]any, error) {
+	if m, ok := v.(map[string]any); ok && len(m) == 0 {
+		return nil, nil // Lua's {} marshals as an empty map
+	}
+	list, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("items must be a list, got %s", luaShape(v))
+	}
+	for i, item := range list {
+		if _, err := ParseOverlayItem(item); err != nil {
+			return nil, fmt.Errorf("items[%d].%w", i+1, err)
+		}
+	}
+	return list, nil
+}
+
 // renderItems runs an overlay's render_item here on the interpreter, so the
 // UI goroutine never waits on the queue to draw the rows. render_item
 // returns a string or one line of segments; a failing item falls back to its
@@ -616,15 +713,12 @@ func (h *Host) luaReload(o Overlay, fn, render *glua.LFunction) func() ([]any, [
 		t := h.luaTask(lua.ClassUI, luaCaller{gen: o.Gen, origin: o.Origin, path: o.Path}, fn)
 		t.Done = func(L *glua.LState, rets []glua.LValue) ([]any, error) {
 			v, err := lua.ToGo(rets[0])
+			var list []any
+			if err == nil {
+				list, err = overlayItems(v)
+			}
 			if err != nil {
-				return nil, err
-			}
-			list, ok := v.([]any)
-			if m, isMap := v.(map[string]any); isMap && len(m) == 0 {
-				list, ok = nil, true // Lua's {} marshals as an empty map
-			}
-			if !ok {
-				return nil, fmt.Errorf("reload must return a list of items, got %T", v)
+				return nil, fmt.Errorf("reload: %w", err)
 			}
 			items, text = list, nil
 			if render != nil {

@@ -383,7 +383,8 @@ type listItem struct {
 	key         hostapi.Segment // right-aligned column: a tag in Host:HintKey or a switchSeg
 	section     string          // a change of section starts with a header row
 	more        [][]hostapi.Segment
-	segs        []hostapi.Segment // the label styled; label keeps its plain text
+	segs        []hostapi.Segment   // the label styled; label keeps its plain text
+	row         hostapi.OverlayItem // an overlay row's fields (overlayState)
 }
 
 // tagSeg is a key column tag: a word that names, never a binary state.

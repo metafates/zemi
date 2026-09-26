@@ -1380,7 +1380,10 @@ provenance string.
   the keys); Go still draws the box, the origin badge, the
   filter and the hints, where a list's own `keys` are named. Opening the id
   of an open overlay replaces it in place, keeping selection and filter, when
-  the opener may close it (user, builtin or its own origin). A detail view's rows are actions
+  the opener may close it (user, builtin or its own origin). Go parses each
+  item once (`hostapi.ParseOverlayItem`), and an item or action field of the
+  wrong type raises from `open` (§6.0) instead of drawing a row that ignores it
+  (a list item's `id` and `hl` are its own data). A detail view's rows are actions
   (`fill`, `run`, or an `id` handed to the list's `on_action`), so they draw as
   the prompts' buttons ("[r] Read it"), keyed by their `hotkey` or their
   position. Go screens key every action by its verb's initial, one verb per

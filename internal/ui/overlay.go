@@ -181,14 +181,17 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		return st
 	}
 	for i, item := range o.Items {
-		m, _ := item.(map[string]any)
-		field := func(k string) string {
-			s, _ := m[k].(string)
-			return sanitize.Line(s)
+		// zemi.ui.overlay.open raised on a Lua item's wrong type; a Go screen's
+		// or a select's item keeps the fields that parse
+		r, _ := hostapi.ParseOverlayItem(item)
+		r.Desc, r.Key, r.Section, r.Verb = sanitize.Line(r.Desc), sanitize.Line(r.Key), sanitize.Line(r.Section), sanitize.Line(r.Verb)
+		r.Fill, r.Copy = sanitize.String(r.Fill), sanitize.String(r.Copy) // Detail is the detail view's Body, sanitized there
+		if o.Origin != lua.OriginBuiltin && o.Origin != lua.OriginUser {
+			r.Run = "" // so a plugin row label cannot disguise a command
 		}
-		it := listItem{label: formatOverlayItem(item), desc: field("desc"), key: tagSeg(field("key")), section: field("section")}
-		if _, ok := m["on"].(bool); ok || m["locked"] == true {
-			it.key = switchSeg(m["on"] == true, m["locked"] == true)
+		it := listItem{label: r.Text, desc: r.Desc, key: tagSeg(r.Key), section: r.Section, row: r}
+		if r.Switch || r.Locked {
+			it.key = switchSeg(r.On, r.Locked)
 		}
 		if i < len(o.ItemText) && o.ItemText[i] != nil {
 			// only text and hl: a click id or effect here would act as Go chrome's
@@ -199,7 +202,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		}
 		it.label = sanitize.Line(it.label) // a newline would break the box
 		st.items = append(st.items, it)
-		st.texts = append(st.texts, strings.TrimSpace(it.section+"  "+it.label+"  "+it.desc+"  "+field("copy")))
+		st.texts = append(st.texts, strings.TrimSpace(it.section+"  "+it.label+"  "+it.desc+"  "+r.Copy))
 	}
 	st.selected = o.Selected
 	st.refilter()
@@ -208,35 +211,21 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 
 var oneLine = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
 
-// formatOverlayItem renders items without render_item: strings, or
-// {text, fill} maps.
-func formatOverlayItem(item any) string {
-	if m, ok := item.(map[string]any); ok {
-		if s, ok := m["text"].(string); ok {
-			return s
-		}
-	}
-	if s, ok := item.(string); ok {
-		return s
-	}
-	return fmt.Sprint(item)
-}
-
 // enterVerb names what enter does on item idx: "open" its detail view,
 // "fill" the composer, the overlay's own verb ("confirm" by default), "back"
 // from a detail view, or "" when it does nothing. A row's own verb names its
-// run or fill in place of the overlay's.
+// run or fill in place of the overlay's; a row with one is not a toggle:
+// space passes it by in a toggle list.
 func (st *overlayState) enterVerb(idx int) string {
-	m, _ := st.o.Items[idx].(map[string]any)
-	has := func(k string) bool { s, _ := m[k].(string); return s != "" }
+	r := st.items[idx].row
 	switch {
-	case hasDetail(m):
+	case hasDetail(r):
 		return "open"
-	case rowRun(st.o, m) != "" || st.o.OnSelect != nil || st.back && has("id") && st.o.OnAction != nil:
-		return cmp.Or(itemVerb(m), st.o.Verb, "confirm")
-	case has("fill"):
-		return cmp.Or(itemVerb(m), "fill")
-	case has("copy"):
+	case r.Run != "" || st.o.OnSelect != nil || st.back && r.ID != "" && st.o.OnAction != nil:
+		return cmp.Or(r.Verb, st.o.Verb, "confirm")
+	case r.Fill != "":
+		return cmp.Or(r.Verb, "fill")
+	case r.Copy != "":
 		return "copy"
 	case st.back:
 		return "back"
@@ -244,24 +233,13 @@ func (st *overlayState) enterVerb(idx int) string {
 	return ""
 }
 
-func hasDetail(m map[string]any) bool {
-	s, _ := m["detail"].(string)
-	return s != "" || m["actions"] != nil
-}
-
-// itemVerb is a row's own enter verb. A row with one is not a toggle: space
-// passes it by in a toggle list.
-func itemVerb(m map[string]any) string {
-	s, _ := m["verb"].(string)
-	return sanitize.Line(s)
-}
+func hasDetail(r hostapi.OverlayItem) bool { return r.Detail != "" || r.Actions != nil }
 
 // actionKey is the key that acts on visible row n: the item's own hotkey,
 // and in a detail view, whose rows are actions, its position when it has
 // none, so every action reads as a button with a key.
 func (st *overlayState) actionKey(n int) string {
-	m, _ := st.o.Items[st.visible[n]].(map[string]any)
-	if k, _ := m["hotkey"].(string); k != "" || !st.back {
+	if k := st.items[st.visible[n]].row.Hotkey; k != "" || !st.back {
 		return k
 	}
 	return strconv.Itoa(n + 1)
@@ -271,15 +249,13 @@ func (st *overlayState) actionKey(n int) string {
 // body and its actions as the list, under the parent's origin so the badge
 // and the run gate stay the parent's.
 func (a *App) openDetail(parent *overlayState, idx int) {
-	m, _ := parent.o.Items[idx].(map[string]any)
-	body, _ := m["detail"].(string)
-	actions, _ := m["actions"].([]any)
+	r := parent.items[idx].row
 	title := parent.items[idx].label
 	if parent.o.Title != "" {
 		title = parent.o.Title + " / " + title
 	}
 	p := parent.o
-	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: body, BodyMD: p.BodyMD, Fields: p.Fields, Items: actions, OnAction: p.OnAction})
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: p.Fields, Items: r.Actions, OnAction: p.OnAction})
 	st.back, st.item, st.size = true, parent.o.Items[idx], parent.size
 	a.overlays = append(a.overlays, st)
 }
@@ -291,23 +267,21 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 func (a *App) detailAction(idx int) {
 	d := a.overlays[len(a.overlays)-1]
 	p := a.overlays[len(a.overlays)-2].o // a detail view opens right on top of its parent
-	m, _ := d.o.Items[idx].(map[string]any)
-	fill, _ := m["fill"].(string)
-	id, _ := m["id"].(string)
+	r := d.items[idx].row
 	switch {
-	case id != "" && d.o.OnAction != nil:
-		a.background(func() { a.host.OverlayAction(context.Background(), p, d.item, m) })
+	case r.ID != "" && d.o.OnAction != nil:
+		a.background(func() { a.host.OverlayAction(context.Background(), p, d.item, d.o.Items[idx]) })
 		if p.Reload == nil {
 			a.closeOverlayByID(p.ID) // the detail view goes with it
 			return
 		}
-	case rowRun(d.o, m) == "" && fill == "":
+	case r.Run == "" && r.Fill == "":
 		a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
 		return
-	case fill == "" && p.Reload != nil:
-		a.runOverlayRow(d.o, idx)
+	case r.Fill == "" && p.Reload != nil:
+		a.runOverlayRow(r)
 	default:
-		a.runOverlayRow(d.o, idx)
+		a.runOverlayRow(r)
 		a.cancelOverlay(p)
 		return
 	}
@@ -401,34 +375,33 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			return nil
 		}
 		idx := st.visible[st.selected]
-		m, _ := o.Items[idx].(map[string]any)
-		fill, _ := m["fill"].(string)
+		r := st.items[idx].row
 		verb := st.enterVerb(idx)
 		switch {
-		case key == "space" && (o.Reload == nil || itemVerb(m) != ""):
-		case key == "enter" && hasDetail(m):
+		case key == "space" && (o.Reload == nil || r.Verb != ""):
+		case key == "enter" && hasDetail(r):
 			a.openDetail(st, idx)
 		case verb == "copy":
 			return a.copied(st.value(idx))
 		case st.back:
 			a.detailAction(idx)
-		case o.Reload != nil && fill == "":
-			a.runOverlayRow(o, idx)
+		case o.Reload != nil && r.Fill == "":
+			a.runOverlayRow(r)
 			a.reloadOverlay(o, func() { a.host.SelectOverlay(context.Background(), o, idx) })
 		case o.Reload != nil: // a fill hands the keys to the composer, so the list closes
-			a.runOverlayRow(o, idx)
+			a.runOverlayRow(r)
 			if o.OnSelect != nil {
 				a.background(func() { a.host.SelectOverlay(context.Background(), o, idx) })
 			}
 			a.closeOverlayByID(o.ID)
 		case verb == "":
-		case itemVerb(m) == "open" && o.OnSelect == nil:
-			a.runOverlayRow(o, idx) // the screen it opens goes over this list, so esc comes back
+		case r.Verb == "open" && o.OnSelect == nil:
+			a.runOverlayRow(r) // the screen it opens goes over this list, so esc comes back
 		default:
 			if o.OnSelect != nil {
 				a.background(func() { a.host.SelectOverlay(context.Background(), o, idx) })
 			} else {
-				a.runOverlayRow(o, idx)
+				a.runOverlayRow(r)
 			}
 			a.closeOverlayByID(o.ID)
 		}
@@ -464,9 +437,8 @@ func (a *App) copyOverlay(st *overlayState, all bool) tea.Cmd {
 
 // value is what y copies of item i: its copy field, else its row.
 func (st *overlayState) value(i int) string {
-	m, _ := st.o.Items[i].(map[string]any)
-	if s, _ := m["copy"].(string); s != "" {
-		return sanitize.String(s)
+	if s := st.items[i].row.Copy; s != "" {
+		return s
 	}
 	return strings.TrimSpace(st.items[i].label + "  " + st.items[i].desc)
 }
@@ -499,32 +471,15 @@ func (a *App) cancelOverlay(o hostapi.Overlay) {
 	a.bump()
 }
 
-// rowRun is the command a row runs: honored only for builtin and user
-// overlays so a plugin row label cannot disguise a command.
-func rowRun(o hostapi.Overlay, m map[string]any) string {
-	if o.Origin != lua.OriginBuiltin && o.Origin != lua.OriginUser {
-		return ""
-	}
-	run, _ := m["run"].(string)
-	return run
-}
-
 // runOverlayRow applies a row's "fill" (into the composer, like tab in the
-// palette) and "run" (rowRun).
-func (a *App) runOverlayRow(o hostapi.Overlay, idx int) {
-	if idx >= len(o.Items) {
-		return
-	}
-	m, ok := o.Items[idx].(map[string]any)
-	if !ok {
-		return
-	}
-	if fill, _ := m["fill"].(string); fill != "" {
-		a.composer.text = sanitize.String(fill)
+// palette) and "run", which only builtin and user overlays keep.
+func (a *App) runOverlayRow(r hostapi.OverlayItem) {
+	if r.Fill != "" {
+		a.composer.text = r.Fill
 		a.composer.moveEnd()
 	}
-	if run := rowRun(o, m); run != "" {
-		name, args := SplitCommand(run)
+	if r.Run != "" {
+		name, args := SplitCommand(r.Run)
 		a.runCommand(name, args)
 	}
 }
@@ -602,9 +557,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			// a detail view's rows are actions: draw them as the prompts' buttons
 			choices := make([]promptChoice, 0, len(st.visible))
 			for n, i := range st.visible {
-				m, _ := st.o.Items[i].(map[string]any)
-				hl, _ := m["hl"].(string)
-				choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: hostapi.UserHL(hl)})
+				choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: hostapi.UserHL(st.items[i].row.HL)})
 			}
 			st.view.viewH = limit
 			list = choiceView(choices, st.selected, &st.view, inner, level > 1)
@@ -626,8 +579,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				hints = append(hints, hintPair{"enter", verb})
 				enterCopies = verb == "copy"
 			}
-			m, _ := st.o.Items[st.visible[st.selected]].(map[string]any)
-			if st.o.Reload != nil && itemVerb(m) == "" && (st.o.OnSelect != nil || rowRun(st.o, m) != "") {
+			if r := st.items[st.visible[st.selected]].row; st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
 				hints = append(hints, hintPair{"space", "toggle"})
 			}
 			for _, k := range st.o.Keys {
