@@ -551,7 +551,7 @@ func NetworkProp() map[string]any {
 	return map[string]any{"type": "boolean", "description": "true adds the network and keeps the rest of the sandbox (go mod download, npm install, curl). Needs the user's approval."}
 }
 
-// SandboxProp is the escape bash and job_start take while a backend is live.
+// SandboxProp is bash's escape while a backend is live; job_start's points at it.
 func SandboxProp() map[string]any {
 	return map[string]any{"type": "boolean", "description": "Commands that run without the user's approval are sandboxed: " + sandboxLimits() + ". false drops every limit and needs approval; only when network: true was not enough."}
 }
