@@ -710,7 +710,8 @@ func (p *promptRec) Stream(ctx context.Context, call fantasy.Call) (fantasy.Stre
 // goes to /responses, a reasoning one asking for a summary and none for
 // encrypted reasoning, which a model that does not reason is refused; the
 // stored reasoning carries its item through JSON into the next session's
-// call. Any other model goes to /chat/completions.
+// call. Any other model goes to /chat/completions. Both carry the spec's
+// body.
 func TestOpenAIResponses(t *testing.T) {
 	sse := func(w http.ResponseWriter, events ...string) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -739,7 +740,7 @@ func TestOpenAIResponses(t *testing.T) {
 	}))
 	defer srv.Close()
 	reg := NewRegistry()
-	if err := reg.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: srv.URL}, "k"); err != nil {
+	if err := reg.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: srv.URL, Body: map[string]any{"prompt_cache_retention": "24h"}}, "k"); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {
@@ -787,6 +788,9 @@ func TestOpenAIResponses(t *testing.T) {
 		}
 		if strings.Contains(first, "encrypted_content") || strings.Contains(first, `"summary":"auto"`) != c.summary {
 			t.Fatalf("%s: want summary %v and no encrypted reasoning: %s", c.model, c.summary, first)
+		}
+		if !strings.Contains(first, `"prompt_cache_retention":"24h"`) {
+			t.Fatalf("%s: the spec's body is missing: %s", c.model, first)
 		}
 		item := ""
 		for _, msg := range rec.prompt {

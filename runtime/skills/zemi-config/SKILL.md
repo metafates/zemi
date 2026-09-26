@@ -30,7 +30,7 @@ zemi.provider.add({
   base_url = "https://llm.internal/v1",     -- required for OPENAI_COMPAT, refused for OPENROUTER
   api_key = zemi.env.get("GATEWAY_KEY"),
   -- headers = { ["X-Team"] = "core" },     -- as secret as the key
-  -- body = { service_tier = "flex" },      -- extra request fields; not sent by OPENAI or GOOGLE
+  -- body = { service_tier = "flex" },      -- extra request fields; not sent by GOOGLE
   models = {
     { id = "deepseek-chat", context_window = 128000, cost_per_1m_in = 0.27, cost_per_1m_out = 1.1 },
   },
@@ -38,6 +38,8 @@ zemi.provider.add({
 zemi.config.set("models.chat", "gw/deepseek-chat")
 zemi.provider.del("openai")                 -- drop one builtin; providers.builtin = false drops them all
 ```
+
+A longer prompt cache is an opt-in `body` entry, never a default since model support varies: `body = { prompt_cache_retention = "24h" }` on an `OPENAI` provider keeps OpenAI's cache for a day on the models that accept it.
 
 Model fields besides `id` and `display`:
 

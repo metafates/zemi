@@ -33,6 +33,7 @@ import (
 	openaicompat "charm.land/fantasy/providers/openaicompat"
 	openrouter "charm.land/fantasy/providers/openrouter"
 	vercel "charm.land/fantasy/providers/vercel"
+	"github.com/charmbracelet/openai-go/option"
 
 	"github.com/metafates/zemi/internal/config"
 )
@@ -299,8 +300,8 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 	return c, changed, nil
 }
 
-// KindsWithBody are the kinds whose fantasy options take Spec.Body.
-var KindsWithBody = []Kind{KindAnthropic, KindOpenAICompat, KindOpenRouter, KindVercel}
+// KindsWithBody are the kinds that send Spec.Body.
+var KindsWithBody = []Kind{KindAnthropic, KindOpenAI, KindOpenAICompat, KindOpenRouter, KindVercel}
 
 // Registry holds provider specs; ids are unique. API keys live in a side
 // map keyed by provider id and are never exposed through List or Lookup.
@@ -609,8 +610,13 @@ func (r *Registry) Resolve(modelID string) (fantasy.LanguageModel, error) {
 	case KindOpenAI:
 		// fantasy sends only the models openai.IsResponsesModel accepts to
 		// /responses, the rest to /chat/completions
+		// fantasy's openai options have no extra body, the SDK sets it
 		responses := func(o ...openai.Option) (fantasy.Provider, error) {
-			return openai.New(append(o, openai.WithUseResponsesAPI())...)
+			o = append(o, openai.WithUseResponsesAPI())
+			for _, k := range slices.Sorted(maps.Keys(spec.Body)) {
+				o = append(o, openai.WithSDKOptions(option.WithJSONSet(k, spec.Body[k])))
+			}
+			return openai.New(o...)
 		}
 		return languageModel(spec, key, model, responses, openai.WithBaseURL, openai.WithAPIKey, openai.WithHeaders,
 			func(c *http.Client) openai.Option { return openai.WithHTTPClient(c) })

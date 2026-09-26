@@ -878,7 +878,7 @@ zemi.provider.add({
   kind = zemi.provider.kind.OPENAI_COMPAT,  -- fantasy/openaicompat under the hood
   base_url = "https://llm.internal/v1",
   api_key = zemi.env.get("MYLLM_KEY"),
-  body = { service_tier = "flex" },         -- extra request-body fields (not openai or google)
+  body = { service_tier = "flex" },         -- extra request-body fields (not google)
   models = { { id = "main", display = "Main" } },
 })
 ```
