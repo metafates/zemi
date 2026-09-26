@@ -149,7 +149,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			Anchor: OverlayAnchor(rawString(tb, "anchor")),
 		}
 		if o.Anchor != "" && !slices.Contains(overlayAnchors, o.Anchor) {
-			L.RaiseError("zemi.ui.overlay.open: anchor must be \"bottom-left\", \"bottom-right\" or nil, got %q", o.Anchor)
+			L.RaiseError("zemi.ui.overlay.open: anchor must be one of %s or nil, got %q", strings.Join(strs(overlayAnchors), ", "), o.Anchor)
 		}
 		if lines, ok := tb.RawGetString("body").(*glua.LTable); ok {
 			v, err := lua.ToGo(lines)

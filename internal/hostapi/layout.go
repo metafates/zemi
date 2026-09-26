@@ -469,7 +469,7 @@ func (p *layoutParser) node(v any, at string, depth int, dir LayoutDir, hiddenAb
 		err = onlyKeys(m, at, append(common, "dir", "sep", "children")...)
 		n.Dir, n.Sep = LayoutDir(str("dir")), flag("sep")
 		if err == nil && !slices.Contains(layoutDirs, n.Dir) {
-			err = fmt.Errorf("%s: dir must be \"row\" or \"col\"", at)
+			err = fmt.Errorf("%s: dir must be one of %s", at, strings.Join(strs(layoutDirs), ", "))
 		}
 	case LayoutRegion:
 		if err = onlyKeys(m, at, append(common, "region", "scroll", "focusable")...); err == nil {
@@ -479,7 +479,7 @@ func (p *layoutParser) node(v any, at string, depth int, dir LayoutDir, hiddenAb
 		switch {
 		case err != nil:
 		case n.Scroll != "" && !slices.Contains(scrollEdges, n.Scroll):
-			err = fmt.Errorf("%s: scroll must be \"top\" or \"bottom\"", at)
+			err = fmt.Errorf("%s: scroll must be one of %s", at, strings.Join(strs(scrollEdges), ", "))
 		case (n.Scroll != "" || n.Focusable) && n.ID == "":
 			err = fmt.Errorf("%s: a scrolled or focusable region needs an id", at)
 		}
@@ -604,7 +604,7 @@ func (p *layoutParser) float(v any, at string) (LayoutFloat, error) {
 	case p.regions[f.Region]:
 		return f, fmt.Errorf("%s: region %q is drawn twice", at, f.Region)
 	case !slices.Contains(floatAnchors, f.Anchor):
-		return f, fmt.Errorf("%s: anchor must be NW, NE, SW or SE", at)
+		return f, fmt.Errorf("%s: anchor must be one of %s", at, strings.Join(strs(floatAnchors), ", "))
 	case f.ID != "" && (p.ids[f.ID] || f.ID == "stage" || f.ID == "screen"):
 		return f, fmt.Errorf("node id %q is taken", f.ID)
 	}
