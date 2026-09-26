@@ -313,9 +313,13 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 // Check decides one request; for tool.bash the store normalizes the
 // command (segments, redirect gates, assignment gate) in one call.
 func (p *Pipeline) Check(req Request) Verdict {
-	if PathSubject(req.Subject) {
-		// judged and shown where it lands: a symlink a sandboxed command
-		// planted must not dress a write to zemi's config as a project file
+	// the rules and the secret shapes see the path as written, which a
+	// secret-named symlink keeps; the rest judges and shows where it lands,
+	// so a planted symlink cannot dress a write to zemi's config as a project
+	// file. The run's own Path is resolved already: a second resolve could
+	// land elsewhere than the tool opens.
+	written := req.Arg
+	if PathSubject(req.Subject) && (p.Path == perm.Path{} || req.Arg != p.Path.String()) {
 		req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
 	}
 	plan := p.Plan != nil && p.Plan()
@@ -343,7 +347,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 		// an "always" answer allows the file's whole directory, or names the
 		// one secret the user saw; a rule the user wrote in init.lua says
 		// what it means and stays authoritative
-		case PathSubject(req.Subject) && rule != nil && rule.Principal == perm.PrincipalModel && strings.ContainsAny(rule.Pattern, "*?") && p.Secret != nil && p.Secret(req.Arg):
+		case PathSubject(req.Subject) && rule != nil && rule.Principal == perm.PrincipalModel && strings.ContainsAny(rule.Pattern, "*?") && p.Secret != nil && p.Secret(written):
 			return p.resolveAsk(req, "this file looks like it holds secrets")
 		// "allow cat" was answered for a file the user saw; a project file
 		// line names the program alone. The user's init.lua rule stays.
@@ -365,7 +369,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	if req.Subject == perm.SubjectBash {
 		o = p.Store.CheckCommand(req.Arg, p.Principal)
 	} else {
-		o = p.Store.Evaluate(req.Subject, req.Arg, p.Principal)
+		o = p.Store.Evaluate(req.Subject, written, p.Principal)
 	}
 	switch o.Decision {
 	case perm.Allow:
@@ -653,7 +657,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	}
 	for _, req := range reqs {
 		req.Tool = t.info.Name
-		v := pipe.CheckDenied(req)
+		v := run.CheckDenied(req)
 		run.verdict = v
 		if v.Decision == perm.Deny {
 			what := req.Arg
@@ -665,7 +669,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 		if v.Decision == perm.Ask {
 			return fantasy.NewTextErrorResponse("permission unresolved (ask failed): " + req.Subject + " " + req.Arg + ": " + v.Reason), nil
 		}
-		if pol := pipe.SandboxFor(req, v); pol != nil {
+		if pol := run.SandboxFor(req, v); pol != nil {
 			run.Sandboxed = pol
 		}
 	}

@@ -469,11 +469,13 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		if write {
 			subject = "lua.fs.write"
 		}
-		resolved, err := h.resolveJailed(L.CheckString(1), h.luaJails(L, write), link)
+		path := L.CheckString(1)
+		resolved, err := h.resolveJailed(path, h.luaJails(L, write), link)
 		if err != nil {
 			L.RaiseError("zemi.fs.%s: %v", api, err)
 		}
-		h.luaGate(L, subject, resolved.String())
+		// as written: the secret shapes match a secret-named symlink's name
+		h.luaGate(L, subject, h.projectAbs(path))
 		return resolved
 	}
 	kind := func(fi os.FileInfo) string {
@@ -602,16 +604,11 @@ func (h *Host) resolveJailed(path string, roots []string, link bool) (perm.Path,
 	if path == "" {
 		return perm.Path{}, errors.New("empty path")
 	}
-	abs := path
-	if !filepath.IsAbs(abs) {
-		// not Join: it cleans .. before a symlink is seen
-		abs = h.Dirs.ProjectDir + string(filepath.Separator) + abs
-	}
 	resolve := perm.Resolve
 	if link {
 		resolve = perm.Lresolve
 	}
-	resolved, err := resolve(abs)
+	resolved, err := resolve(h.projectAbs(path))
 	if err != nil {
 		return perm.Path{}, err
 	}
@@ -619,6 +616,15 @@ func (h *Host) resolveJailed(path string, roots []string, link bool) (perm.Path,
 		return perm.Path{}, fmt.Errorf("%s is outside the jail", path)
 	}
 	return resolved, nil
+}
+
+// projectAbs is path made absolute against the project dir; not Join,
+// which cleans .. before a symlink is seen.
+func (h *Host) projectAbs(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return h.Dirs.ProjectDir + string(filepath.Separator) + path
 }
 
 // jailedGlob matches project-relative paths in the glob tool's dialect,

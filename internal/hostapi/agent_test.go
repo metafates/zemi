@@ -438,7 +438,17 @@ func TestFsDefaults(t *testing.T) {
 		end
 	`)
 	runExpectErr(t, r, `zemi.fs.read("/etc/hosts")`, "outside the jail")
+	// judged by its name too, not only by its innocently named target
+	os.WriteFile(filepath.Join(proj, "notes.txt"), []byte("K=v"), 0o644)
+	if err := os.Symlink("notes.txt", filepath.Join(proj, ".env")); err != nil {
+		t.Fatal(err)
+	}
 	runExpectErr(t, r, `zemi.fs.read(".env")`, "permission ask required")
+	pipe := h.PipelineFor()
+	pipe.Ask = nil
+	if v := pipe.Check(tools.Request{Subject: perm.SubjectRead, Arg: filepath.Join(proj, ".env")}); v.Decision != perm.Ask {
+		t.Fatalf("model read of the .env link: %+v", v)
+	}
 }
 
 // TestSessionNamespace covers the session surface: empty id before the
