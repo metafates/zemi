@@ -43,7 +43,7 @@ func TestHealthLuaChecks(t *testing.T) {
 		{"note", "ok", "plain detail"},
 		{"boom", "error", "nope"},
 		{"typo", "error", `level "warning" is not one of ok, warn, error`},
-		{"number", "error", `level 3 is not one of`},
+		{"number", "error", `level is not a string: want one of ok, warn, error`},
 		{"unset", "ok", "fine"},
 	} {
 		row := got[c.name]
