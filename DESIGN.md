@@ -308,7 +308,7 @@ Directories (XDG):
 ~/.local/share/zemi/      data
   plugins/installed/<name>/  plugins zemi cloned (git); init.lua loaded, lua/<name>/ require()-able,
                           skills|agents|commands|workflows/ as in the config dir
-  plugins/local/<name>/   plugins developed in place, the same shape; zemi never changes them
+  plugins/local/<name>/   plugins developed in place, the same shape; zemi writes only their .luarc.json
   plugins/disabled        names turned off, one per line
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
   drops/                  files dropped in from outside the project (@drop:<name>)

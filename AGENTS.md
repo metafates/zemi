@@ -149,7 +149,7 @@ whole, `zemi.provider.del` drops one and `providers.builtin = false` (read once 
 all of them. A `models.chat` config leaves unset runs `Registry.Default`: the first user-added provider's
 default model, else the first builtin's in catalog order (anthropic, openai, gemini first).
 Config reload is not fsnotify:
-`watchConfig` walks the config trees once a second (past dot-directories and `node_modules`),
+`watchConfig` walks the config trees once a second (past dot-directories, `node_modules` and `.luarc.json`),
 plus the local plugins, the plugins' `disabled` file and each clone's git index (`pluginRoots`),
 and reloads when a fingerprint moved and no turn is active; an untrusted project's `.agents` is not watched (a trusted one's is, `worktrees` aside). A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`, which `zemi.config.set` and the setters with
@@ -530,8 +530,8 @@ and pins the list again. Invariants:
 
 `runtime/types/zemi.lua` is the LuaLS (`---@meta`) description of the whole `zemi.*` API, never
 loaded by the interpreter. `syncTypes` rewrites it plus a copy of `runtime/lua/` to
-`<data>/types/` on every start, and `<config>/.luarc.json` whenever its content moved (an
-unchanged file is left alone: the config watcher reloads on an mtime). `TestTypes*` keep it
+`<data>/types/` on every start, and the `.luarc.json` in `<config>` and in each local plugin whenever
+its content moved (an editor reloads on each write; the config watcher skips it). `TestTypes*` keep it
 honest: every API member annotated, nothing annotated that zemi dropped, and the
 `zemi.EventName`, `zemi.HostAction` and `zemi.WidgetCtx` aliases pinned to their Go sources, like
 each constant table (`enumTable`: `zemi.provider.kind`, `zemi.permission.decision`,

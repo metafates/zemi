@@ -82,13 +82,22 @@ func TestTypesDeclareNothingExtra(t *testing.T) {
 }
 
 // TestSyncTypesWritesAnnotations: a start leaves the annotations and a
-// lua-language-server pointed at them, replaces an edited .luarc.json, and
-// leaves the file alone when it already says that (the config watcher
-// reloads on an mtime).
+// lua-language-server pointed at them, in the config dir and in each local
+// plugin (never a clone or a symlinked plugin), replaces an edited
+// .luarc.json, and leaves the file alone when it already says that.
 func TestSyncTypesWritesAnnotations(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.DataHome, h.Dirs.ConfigHome = t.TempDir(), t.TempDir()
 	luarc := filepath.Join(h.Dirs.ConfigHome, ".luarc.json")
+	root, elsewhere := h.Dirs.PluginsRoot(), t.TempDir()
+	for _, d := range []string{"local/mine", "installed/clone"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(root, "local", "linked")); err != nil {
+		t.Fatal(err)
+	}
 
 	h.syncTypes()
 	for _, rel := range []string{"zemi.lua", filepath.Join("zemi", "util.lua")} {
@@ -102,6 +111,12 @@ func TestSyncTypesWritesAnnotations(t *testing.T) {
 	}
 	if !strings.Contains(string(data), h.TypesDir()) {
 		t.Fatalf(".luarc.json does not point at the types dir:\n%s", data)
+	}
+	for dir, want := range map[string]bool{filepath.Join(root, "local", "mine"): true, filepath.Join(root, "installed", "clone"): false, elsewhere: false} {
+		got, err := os.ReadFile(filepath.Join(dir, ".luarc.json"))
+		if (err == nil) != want || want && string(got) != string(data) {
+			t.Errorf("%s/.luarc.json written = %v, want %v", dir, err == nil, want)
+		}
 	}
 
 	if err := os.WriteFile(luarc, []byte("{}"), 0o644); err != nil {

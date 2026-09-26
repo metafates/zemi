@@ -271,6 +271,7 @@ Developing one:
 
 - Reads under `local/` need no approval; every write there asks the user, with no always answer and no mode but yolo settling it, since plugin code runs in every project. Say in one message what you will write.
 - zemi reloads within a second of an edit once no turn runs; `zemi.config.reload()` from the Lua tool applies it at once. A load error is in `zemi.errors.list()` (`plugin <name>: ...`), and the plugin's `/plugins` row reads `failed` with the error in its detail.
+- zemi writes the plugin's `.luarc.json` (editor types, with this machine's paths): never write it, and add it to `.gitignore` when publishing.
 - A sandboxed command cannot see the plugins directory, so running its tests or git there needs `sandbox: false`, which asks each time outside yolo.
 - Moving a feature out of the config dir is the one plugin task that edits init.lua: say which lines leave it and which stay, and wait for the user's yes. Then put its registrations in `local/<name>/init.lua` and its modules in `lua/<name>/`, leave `require("<name>").setup(...)` in the user's init.lua, and keep there what only user config may do (replacing a shipped widget, `hl.set`, layout, settings). Its allow rules keep working (a rule with no `principal` covers every caller); add the principal to narrow them. Its old `zemi.state` keys stay behind.
 

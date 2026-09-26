@@ -76,6 +76,7 @@ func TestPluginRootsFingerprint(t *testing.T) {
 		{"installed/y/init.lua", false},
 		{"installed/.z.tmp/.git/index", false},
 		{"local/x/node_modules/a.js", false},
+		{"local/x/.luarc.json", false},
 		{"local/worktrees/init.lua", true}, // only the project's worktrees are skipped
 	} {
 		root := t.TempDir()

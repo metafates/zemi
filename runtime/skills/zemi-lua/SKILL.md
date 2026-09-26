@@ -92,7 +92,7 @@ Its description covers what comes back, the 10 s ceiling between waits and which
 ## Type annotations
 
 zemi writes LuaLS annotations for this whole API to `~/.local/share/zemi/types/zemi.lua`
-on every start, and a `~/.config/zemi/.luarc.json` pointing at them, rewritten when zemi
+on every start, and a `.luarc.json` pointing at them in `~/.config/zemi` and each local plugin, rewritten when zemi
 changes it. Read
 that file when you need an exact signature, field name or return shape - tests fail when it
 drifts from the surface Go registers. Each event's payload is a `zemi.ev.*` class that

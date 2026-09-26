@@ -274,9 +274,9 @@ func pluginRoots(root string) []string {
 }
 
 // configFingerprint summarizes config trees by path, size and modification
-// time. Git data, dot-directories, node_modules and skip (the checkouts in
-// .agents/worktrees) are not config, and a plugin's dependency tree would
-// make every walk cost milliseconds.
+// time. Git data, dot-directories, node_modules, skip (the checkouts in
+// .agents/worktrees) and the .luarc.json zemi writes itself are not config,
+// and a plugin's dependency tree would make every walk cost milliseconds.
 func configFingerprint(skip string, roots ...string) string {
 	sum := sha256.New()
 	if s, err := filepath.EvalSymlinks(skip); err == nil {
@@ -300,7 +300,7 @@ func configFingerprint(skip string, roots ...string) string {
 				return nil
 			case d.IsDir() && p != root && (d.Name()[0] == '.' || d.Name() == "node_modules" || p == skip || slices.Contains(walk, p)):
 				return filepath.SkipDir // a root is walked once
-			case d.IsDir():
+			case d.IsDir() || d.Name() == ".luarc.json":
 				return nil
 			}
 			if info, err := os.Stat(p); err == nil && !info.IsDir() {

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/metafates/zemi/internal/plugins"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
@@ -21,8 +22,8 @@ import (
 func (h *Host) TypesDir() string { return joinIf(h.Dirs.DataHome, "types") }
 
 // syncTypes rewrites the annotations and the .luarc.json beside init.lua
-// on every start, so an upgraded zemi replaces both. Failures are logged:
-// an editor convenience must never stop a boot.
+// and in each local plugin on every start, so an upgraded zemi replaces
+// them. Failures are logged: an editor convenience must never stop a boot.
 func (h *Host) syncTypes() {
 	dir := h.TypesDir()
 	if dir == "" {
@@ -32,8 +33,18 @@ func (h *Host) syncTypes() {
 		h.Log.Warn("types", "annotations not written", map[string]any{"error": err.Error()})
 		return
 	}
-	if err := h.writeLuarc(dir); err != nil {
-		h.Log.Warn("types", "luarc not written", map[string]any{"error": err.Error()})
+	luarcs := []string{h.Dirs.ConfigHome}
+	ps, _ := plugins.Scan(h.Dirs)
+	for _, p := range ps {
+		// a clone is git's, and zemi does not load a symlinked dir
+		if fi, err := os.Lstat(p.Dir); p.Local && err == nil && fi.IsDir() {
+			luarcs = append(luarcs, p.Dir)
+		}
+	}
+	for _, d := range luarcs {
+		if err := writeLuarc(d, dir); err != nil {
+			h.Log.Warn("types", "luarc not written", map[string]any{"dir": d, "error": err.Error()})
+		}
 	}
 }
 
@@ -78,12 +89,12 @@ func (h *Host) writeTypes(dir string) error {
 // writeLuarc writes the lua-language-server settings zemi generates,
 // replacing an edited file: the settings describe zemi's sandbox, and a
 // stale copy costs the user diagnostics on every line. It writes only when
-// the content moved, since the config watcher reloads on an mtime.
-func (h *Host) writeLuarc(typesDir string) error {
-	if h.Dirs.ConfigHome == "" {
+// the content moved: an open editor reloads its workspace on each write.
+func writeLuarc(dir, typesDir string) error {
+	if dir == "" {
 		return nil
 	}
-	path := filepath.Join(h.Dirs.ConfigHome, ".luarc.json")
+	path := filepath.Join(dir, ".luarc.json")
 	data, err := json.MarshalIndent(map[string]any{
 		"$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
 		// the sandbox's own basic, os and debug are described in zemi.lua
