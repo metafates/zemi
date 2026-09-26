@@ -613,7 +613,7 @@ func TestConfigAsk(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := ui.overlays()[0]
-	if !strings.Contains(o.Body, `"dark") -- unsaved, set by code`) || !strings.Contains(o.Body, `"high") -- unsaved`+"\n") ||
+	if !strings.Contains(o.Body, `"dark") -- unsaved, save leaves it`) || !strings.Contains(o.Body, `"high") -- unsaved`+"\n") ||
 		fmt.Sprint(o.Items) != "[map[run:config save text:Save unsaved to init.lua verb:save] map[desc:ui.theme run:config ask text:Ask zemi to save the rest verb:ask]]" {
 		t.Fatalf("lua %v\n%s", o.Items, o.Body)
 	}

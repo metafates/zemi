@@ -299,7 +299,7 @@ func (h *Host) configLua() (body string, saves bool, skipped []string) {
 		line := setLine(s.Path, luaLiteral(v))
 		switch {
 		case slices.Contains(skipped, s.Path):
-			line += " -- unsaved, set by code"
+			line += " -- unsaved, save leaves it"
 		case unsaved:
 			line += " -- unsaved"
 		}
@@ -380,7 +380,11 @@ func (h *Host) saveConfig() {
 		body = append(body, strings.Join(saved, ", "))
 	}
 	if len(skipped) > 0 {
-		body = append(body, "set by code in init.lua, left alone: "+strings.Join(skipped, ", ")+"; /config lua can ask zemi to save them")
+		line := "left alone: " + strings.Join(skipped, ", ")
+		if h.modelErr(h.currentModelID(nil)) == nil {
+			line += "; /config lua can ask zemi to save them"
+		}
+		body = append(body, line)
 	}
 	if len(saved) == 0 {
 		h.Notify(logging.Warn, "Nothing saved to init.lua", strings.Join(body, "\n"))
