@@ -20,6 +20,7 @@ import (
 func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	a.mouse = mouseSel{}
+	a.dropAnsweredPerm() // a lost Refresh must not leave an inert box holding the keys
 	top := a.topChrome()
 	// an armed key acts only when pressed again right away on the bare
 	// composer: an esc that answers a box in between does not count, and a
@@ -65,7 +66,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// turn, clears a draft, and on an empty composer quits when pressed twice.
 	if key == "ctrl+c" {
 		switch {
-		case top == modalPerm:
+		case top == modalPerm && a.permAsk.answer != nil:
 			a.answerPerm(false, tools.ByUser)
 		case top == modalMemReview:
 			a.answerMemReview()

@@ -238,11 +238,8 @@ func TestGoldenPermissionOverlay(t *testing.T) {
 	}
 }
 
-// TestPermissionDenyAndQueue: two concurrent asks reach the prompt one at
-// a time through the host; the answered box stays drawn until the next one
-// replaces it, and "once" stores no rules. Which ask surfaces first is not
-// fixed, so exactly one is denied.
-func TestPermissionDenyAndQueue(t *testing.T) {
+// Which ask surfaces first is not fixed, so exactly one is denied.
+func TestPermissionDenyOneAtATime(t *testing.T) {
 	app, host := bootAgentApp(t, 70, 16)
 	pipe := host.PipelineFor()
 	res := make(chan bool, 2)
@@ -265,6 +262,10 @@ func TestPermissionDenyAndQueue(t *testing.T) {
 		t.Fatalf("once must not store rules: %+v", host.Perm.Rules())
 	}
 	waitPrompt(t, app, func() bool { return app.permAsk == nil })
+	app.permAsk = &permAskPrompt{} // answered, and the Refresh that drops it lost
+	if app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"}); app.permAsk != nil || app.composer.text != "x" {
+		t.Fatalf("an inert box with no ask waiting must give the keys back: %q", app.composer.text)
+	}
 }
 
 // TestPermissionTellNarrow: at 30 columns the box keeps its right border
