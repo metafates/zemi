@@ -41,20 +41,25 @@ var secretDirs = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"
 	".config/doctl", ".config/fly", ".bash_history", ".zsh_history", ".local/share/fish/fish_history",
 	".psql_history", ".mysql_history", ".python_history", ".node_repl_history"}
 
-// sandboxPolicy is what a settled command may touch: the scratchpad, a
-// temp dir and a Go build cache of its own and, when trusted and not in plan
-// mode, the project; never .git, .agents or zemi's own dirs, and zemi's dirs
+// sandboxPolicy is what a settled command may touch: the scratchpad, which
+// is also its $TMPDIR, a Go build cache of its own and, when trusted and not
+// in plan mode, the project; never .git, .agents or zemi's own dirs, and zemi's dirs
 // are unreadable too (sessions, logs, keys in init.lua). The project is
 // writable only with a backend that keeps those read-only inside it, and
 // never when it is $HOME or above, holds one of zemi's dirs or sits in one,
 // holds a hidden path on a backend other than seatbelt, or its .git or .agents
 // is a symlink: the backend protects the resolved target, so the link itself
 // could be replaced.
-// NOTE: GOCACHE points at a cache only sandboxed runs use: Go fails a build
-// it cannot cache, and the user's cache written from here could poison a
-// later unconfined build. Other tools' caches stay read-only. The system
-// temp dir is not writable for the same reason: macOS keeps xcrun_db there,
-// which picks the binary /usr/bin/make or git runs.
+// NOTE: GOCACHE points at a cache only sandboxed runs use, one per trust
+// root: Go fails a build it cannot cache, and the user's cache written from
+// here could poison a later unconfined build. Other tools' caches stay
+// read-only, so uv (its lock in ~/.cache/uv) and npm (~/.npm) fail, and so
+// does a module fetch under network: true; the fix is one Env entry each
+// (UV_CACHE_DIR, npm_config_cache) at a dir in the pad, never the user's
+// cache. The system temp dir is not writable for the same reason: macOS
+// keeps xcrun_db there, which picks the binary /usr/bin/make or git runs.
+// Seatbelt denies binding a unix socket, and even allowed, macOS's 104-byte
+// socket path is tight under the pad.
 func (h *Host) sandboxPolicy(readOnly bool) sandbox.Policy {
 	d := h.Dirs
 	home, _ := os.UserHomeDir()
@@ -128,22 +133,19 @@ func (h *Host) sandboxPolicy(readOnly bool) sandbox.Policy {
 			p.Write = append(p.Write, wt)
 		}
 	}
-	if s := h.ScratchDir(); s != "" {
+	// both made here: the sandbox cannot create them inside the protected
+	// state dir. The pad is the temp dir too, so the file tools read what a
+	// command left there without asking.
+	p.Env = map[string]string{}
+	if s := h.ScratchDir(); s != "" && os.MkdirAll(s, 0o700) == nil {
 		p.Write = append(p.Write, s)
+		p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = s, s, s
 	}
 	if d.StateHome != "" {
-		p.Env = map[string]string{}
 		cache := filepath.Join(d.StateHome, "sandbox-cache", h.trustKey(), "go-build")
-		// made here: the sandbox cannot create them inside the protected state dir
 		if os.MkdirAll(cache, 0o700) == nil {
 			p.Write = append(p.Write, cache)
 			p.Env["GOCACHE"] = cache
-		}
-		// per session, swept with the scratchpads
-		tmp := filepath.Join(d.StateHome, "sandbox-tmp", cmp.Or(h.AgentSessionID(), "no-session"))
-		if os.MkdirAll(tmp, 0o700) == nil {
-			p.Write = append(p.Write, tmp)
-			p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = tmp, tmp, tmp
 		}
 	}
 	// zemi runs git, sh, language servers and clipboard helpers unconfined by

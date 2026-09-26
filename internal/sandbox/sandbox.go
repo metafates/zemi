@@ -146,6 +146,16 @@ func LikelyNetwork(out string, err error) bool {
 	return network.MatchString(out[max(0, len(out)-deniedTail):] + "\n" + err.Error())
 }
 
+// systemTemp matches a path in the shared temp dirs; the leading separator
+// keeps a project's own tmp/ out.
+var systemTemp = regexp.MustCompile(`(^|[\s'"=:(])/(private/)?tmp/|/var/folders/`)
+
+// LikelyTemp reports a denial naming the system temp dir, which the
+// policy's own $TMPDIR would fix.
+func LikelyTemp(out string, err error) bool {
+	return LikelyDenied(out, err) && systemTemp.MatchString(out[max(0, len(out)-deniedTail):])
+}
+
 // within reports whether p is root or below it, on the strings as given:
 // policy paths are already clean and resolved. perm.Under is the version
 // for paths that still need filepath treatment.

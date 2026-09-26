@@ -418,12 +418,25 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	}
 	network := pol != nil && pol.Network
 	plan := p.Plan != nil && p.Plan()
+	head := "\nThe sandbox may have blocked this: " + limits + "."
+	if sandbox.LikelyTemp(out, err) {
+		// the fix the model can make without an ask comes first
+		dir := "$TMPDIR"
+		if pol != nil && pol.Env["TMPDIR"] != "" {
+			dir += " (" + pol.Env["TMPDIR"] + ", the scratchpad)"
+		}
+		escape := "."
+		if p.SandboxParam && !plan {
+			escape = "; sandbox: false only if a program hardcodes /tmp."
+		}
+		return head + " /tmp is not writable here: use " + dir + " instead" + escape
+	}
 	// sandbox: false is denied for a read-only agent, so it is not offered
 	if !p.SandboxParam || plan && network {
-		return "\nThe sandbox may have blocked this: " + limits + "."
+		return head
 	}
 	if plan {
-		return "\nThe sandbox may have blocked this: " + limits + ". The project stays read-only while planning; network: true (needs approval) adds only the network."
+		return head + " The project stays read-only while planning; network: true (needs approval) adds only the network."
 	}
 	retry := " It looks like a network failure: call it again with network: true, which keeps the sandbox and needs approval."
 	switch {
@@ -433,7 +446,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	case !sandbox.LikelyNetwork(out, err):
 		retry = " If it needs the network, call it again with network: true (sandbox kept); if it needs more, sandbox: false (no limits). Both need approval."
 	}
-	return "\nThe sandbox may have blocked this: " + limits + "." + retry
+	return head + retry
 }
 
 // sandboxLimits names what the live backend enforces on a settled command.
@@ -449,7 +462,7 @@ func policyLimits(pol *sandbox.Policy) string {
 	// seccomp blocks every inet socket
 	// NOTE: a refused connection to a host service matches no LikelyDenied
 	// pattern, so on Linux it gets no hint; the limit text is all it gets.
-	net, write, sep := "no network", "writes only in the scratchpad and a private $TMPDIR, the project read-only", ", "
+	net, write, sep := "no network", "writes only in the scratchpad (also $TMPDIR), the project read-only", ", "
 	switch {
 	case b.EnforcesProtect && runtime.GOOS == "linux":
 		net, sep = "no network at all, not even to servers running on this machine", "; "
@@ -458,7 +471,7 @@ func policyLimits(pol *sandbox.Policy) string {
 	}
 	// the project is a write root only where sandboxPolicy found it safe
 	if b.EnforcesProtect && (pol == nil || slices.Contains(pol.Write, workdir())) {
-		write = "writes only in a trusted project, the scratchpad and a private $TMPDIR" + sep + ".git and .agents read-only"
+		write = "writes only in a trusted project and the scratchpad (also $TMPDIR)" + sep + ".git and .agents read-only"
 	}
 	s := net + sep + write
 	if pol != nil && pol.Network {

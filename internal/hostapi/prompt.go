@@ -362,7 +362,7 @@ func (h *Host) instructionFile(p string) bool {
 // {Scratch} and {Recipes} for a run that can use them: a read-only subagent
 // is told nothing it could not follow.
 const (
-	scratchUse   = "Put temporary files here instead of /tmp or the project: notes, drafts, scripts. Reading and writing here needs no approval, even for a read-only agent. Write to this exact directory or below it: its parent and its siblings are not writable, and a sandboxed command also has $TMPDIR.\n"
+	scratchUse   = "Put temporary files here instead of /tmp or the project: notes, drafts, scripts. Reading and writing here needs no approval, even for a read-only agent. Write to this exact directory or below it: its parent and its siblings are not writable. It is $TMPDIR for sandboxed commands; /tmp is not writable to them.\n"
 	scratchWrite = "Put notes and drafts here instead of /tmp or the project. Reading and writing here needs no approval, even for a read-only agent. Write to this exact directory or below it: its parent and its siblings are not writable.\n"
 	recipesUse   = "A procedure for this repository that took you many steps to find goes in <name>/SKILL.md there: yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. The skill tool loads it at once. Fix a stale step in place and date the fix. Never write a secret there; name the env var that holds it.\n"
 )

@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -172,10 +171,8 @@ func (h *Host) DeleteSession(id string) error {
 			return
 		}
 		h.recentStale.Store(true)
-		if h.Dirs.StateHome != "" {
-			_ = os.RemoveAll(h.scratchFor(id))
-			_ = os.RemoveAll(filepath.Join(h.Dirs.StateHome, "sandbox-tmp", id))
-		}
+		// "" when there is no state dir, which RemoveAll ignores
+		_ = os.RemoveAll(h.scratchFor(id))
 		h.Notify(logging.Info, "Session deleted", title)
 	})
 	return nil

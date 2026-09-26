@@ -143,10 +143,10 @@ func sandboxedBash(t *testing.T) (*Host, *lua.Runtime, *fakeUI, func(map[string]
 }
 
 // TestSandboxedBash runs the real bash tool under seatbelt: a command a
-// mode settled writes the project and its own temp dir but nothing outside
-// them, the system temp dir included (xcrun_db there picks what /usr/bin/make
-// runs), gets the hint when denied, and sandbox: false goes to the user
-// instead.
+// mode settled writes the project and its own temp dir, the scratchpad the
+// read tool reads without an ask, but nothing outside them, the system temp
+// dir included (xcrun_db there picks what /usr/bin/make runs), gets the hint
+// when denied, and sandbox: false goes to the user instead.
 func TestSandboxedBash(t *testing.T) {
 	h, r, ui, run := sandboxedBash(t)
 	outside := t.TempDir()
@@ -201,6 +201,16 @@ func TestSandboxedBash(t *testing.T) {
 			}
 		})
 	}
+	t.Run("the read tool reads a command's temp file", func(t *testing.T) {
+		ui.asked = nil
+		all := tools.All(h.PipelineFor())
+		read := all[slices.IndexFunc(all, func(tl fantasy.AgentTool) bool { return tl.Info().Name == tools.ToolRead })]
+		input, _ := json.Marshal(map[string]any{"path": private, "limit": 0})
+		resp, err := read.Run(context.Background(), fantasy.ToolCall{ID: "2", Name: tools.ToolRead, Input: string(input)})
+		if err != nil || resp.IsError || len(ui.asked) > 0 {
+			t.Errorf("read %s: %v %s, asked %+v", private, err, resp.Content, ui.asked)
+		}
+	})
 	t.Run("a network policy keeps the file rules", func(t *testing.T) {
 		pol := h.PipelineFor().SandboxFor(
 			tools.Request{Subject: "tool.bash", Arg: "curl https://example.com", Network: true},
@@ -263,12 +273,13 @@ func TestTemp(t *testing.T) {
 // a read-only agent, with a backend that keeps .git and .agents read-only inside it,
 // when it neither holds nor sits in one of zemi's dirs, holds no hidden path
 // on a backend that cannot hide inside a write root, and its .git is not a
-// symlink; zemi's dirs are hidden unless they hold the project, and builds
-// get a Go cache of their own.
+// symlink; zemi's dirs are hidden unless they hold the project, builds
+// get a Go cache of their own and $TMPDIR is the scratchpad.
 func TestSandboxPolicy(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.StateHome = t.TempDir()
 	h.Dirs.ConfigHome = t.TempDir()
+	h.agents.sessionID = "s1"
 	project := h.Dirs.ProjectDir
 	for _, c := range []struct {
 		name                   string
@@ -330,6 +341,9 @@ func TestSandboxPolicy(t *testing.T) {
 				if st, err := os.Stat(dir); err != nil || !st.IsDir() || !slices.Contains(p.Write, dir) || !strings.HasPrefix(dir, h.Dirs.StateHome) {
 					t.Errorf("GOCACHE or TMPDIR %q: %v, write %v", dir, err, p.Write)
 				}
+			}
+			if p.Env["TMPDIR"] != h.ScratchDir() {
+				t.Errorf("TMPDIR %q, want the scratchpad %q", p.Env["TMPDIR"], h.ScratchDir())
 			}
 			if slices.Contains(p.Write, os.TempDir()) {
 				t.Errorf("the shared temp dir is writable: %v", p.Write)

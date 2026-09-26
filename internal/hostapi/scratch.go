@@ -1,8 +1,9 @@
 // scratch.go gives each session a scratchpad: a directory for the agent's
 // temporary files (notes, drafts, command output, Lua scripts, handoffs
 // between subagents) that file tools read and write without asking, plan
-// mode included. Pads live under the project's state directory, outside the
-// repository, and are removed once idle for scratchTTL.
+// mode included; it is a sandboxed command's $TMPDIR too. Pads live in
+// <state>/scratch, outside every repository and short enough for a unix
+// socket path on Linux, and are removed once idle for scratchTTL.
 package hostapi
 
 import (
@@ -21,7 +22,7 @@ func (h *Host) scratchFor(sid string) string {
 	if sid == "" || h.Dirs.StateHome == "" {
 		return ""
 	}
-	return filepath.Join(h.projectState(), "scratch", sid)
+	return filepath.Join(h.Dirs.StateHome, "scratch", sid)
 }
 
 func (h *Host) inScratch(path string) bool {
@@ -36,14 +37,12 @@ func (h *Host) ensureScratch() string {
 	if dir == "" {
 		return ""
 	}
-	// sweep first: a resumed session's own pad may be idle past the TTL too;
-	// sandbox temp dirs go with them
-	for _, root := range []string{filepath.Dir(dir), filepath.Join(h.Dirs.StateHome, "sandbox-tmp")} {
-		entries, _ := os.ReadDir(root)
-		for _, e := range entries {
-			if info, err := e.Info(); err == nil && e.IsDir() && time.Since(info.ModTime()) > scratchTTL {
-				_ = os.RemoveAll(filepath.Join(root, e.Name()))
-			}
+	// sweep first: a resumed session's own pad may be idle past the TTL too
+	root := filepath.Dir(dir)
+	entries, _ := os.ReadDir(root)
+	for _, e := range entries {
+		if info, err := e.Info(); err == nil && e.IsDir() && time.Since(info.ModTime()) > scratchTTL {
+			_ = os.RemoveAll(filepath.Join(root, e.Name()))
 		}
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {

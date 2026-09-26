@@ -371,8 +371,10 @@ every command runs confined whoever allowed it (`Request.ReadOnly`; `unsettled` 
 run under `serverPolicy`. `NewHost` probes the backend synchronously, so `--health` and the first turn's
 schema see it.
 
-`sandboxPolicy` writes the policy; the whys behind it: the sandbox temp dir is never the shared
-system one (macOS keeps the `xcrun_db` there that picks what `/usr/bin/make` and `git` run),
+`sandboxPolicy` writes the policy; the whys behind it: the sandbox temp dir (`TMPDIR`) is the
+session's scratchpad, so the file tools read what a command left there without an ask, and
+never the shared system one (macOS keeps the `xcrun_db` there that picks what `/usr/bin/make`
+and `git` run; a denial naming `/tmp` gets a hint pointing at `$TMPDIR` before `sandbox: false`),
 `GOCACHE` is one per trust root (Go trusts cache entries, so a shared one lets one project
 poison another's build), the project is writable only when it is trusted, outside zemi's own
 dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect`), `.git`,
@@ -683,8 +685,9 @@ lua-language-server is installed.
   (`notifyReport`), like one for a session that moved on.
   `/agents` lists the live session's runs and, under Running, the live runs of every other session (`runningElsewhere`,
   named by that session's title): they block `/rewind`, so their stop must be reachable.
-- **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch/<session id>`, pads idle a week
-  removed. `fsDefault` allows `fs.write` there and `Pipeline.Scratch` lets it pass a read-only
+- **Scratchpad** (scratch.go): `<state>/scratch/<session id>`, short enough for a Linux unix
+  socket path under it, pads of every project idle a week removed. It is a sandboxed command's
+  `TMPDIR`. `fsDefault` allows `fs.write` there and `Pipeline.Scratch` lets it pass a read-only
   agent; a program may read it, never run from it.
 - **Lua tool** (luatool.go, tool name `lua`): model Lua runs through `Runtime.Eval` as `user`
   origin, default-deny: without approval it may call only `luaReadOnly` members. Every Go

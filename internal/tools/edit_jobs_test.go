@@ -100,24 +100,27 @@ func TestJobReadSandboxHint(t *testing.T) {
 }
 
 // TestSandboxHintFollowsPolicy: a run that had the network is not told to
-// ask for it again, and a project left out of the write roots reads as read-only.
+// ask for it again, a project left out of the write roots reads as
+// read-only, and a denied system temp path points at $TMPDIR first.
 func TestSandboxHintFollowsPolicy(t *testing.T) {
 	denied := errors.New("exit status 1")
-	out := "curl: (6) Could not resolve host: example.com"
-	if !sandbox.LikelyDenied(out, denied) {
+	network := "curl: (6) Could not resolve host: example.com"
+	if !sandbox.LikelyDenied(network, denied) {
 		t.Skip("no denial pattern on this platform")
 	}
 	for _, c := range []struct {
-		name           string
+		name, out      string
 		plan           bool
 		want, unwanted []string
 	}{
-		{"network already given", false, []string{"sandbox: false", "the project read-only"}, []string{"no network", "network: true"}},
-		{"network already given while planning", true, []string{"the project read-only"}, []string{"no network", "network: true", "sandbox: false"}},
+		{"network already given", network, false, []string{"sandbox: false", "the project read-only"}, []string{"no network", "network: true"}},
+		{"network already given while planning", network, true, []string{"the project read-only"}, []string{"no network", "network: true", "sandbox: false"}},
+		{"system temp", "/bin/sh: /tmp/x: Operation not permitted", false, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead; sandbox: false only if"}, nil},
+		{"system temp while planning", "mktemp: mkstemp failed on /var/folders/x/T/a.XXXX: Operation not permitted", true, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead."}, []string{"sandbox: false", "network: true"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p := &Pipeline{SandboxParam: true, Plan: func() bool { return c.plan }}
-			hint := p.sandboxHint(&sandbox.Policy{Network: true, Write: []string{"/tmp/x"}}, out, denied)
+			hint := p.sandboxHint(&sandbox.Policy{Network: true, Write: []string{"/pad/s1"}, Env: map[string]string{"TMPDIR": "/pad/s1"}}, c.out, denied)
 			for _, w := range c.want {
 				if !strings.Contains(hint, w) {
 					t.Errorf("hint lacks %q: %s", w, hint)

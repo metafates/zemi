@@ -22,7 +22,7 @@ AGENTS.md has the house rules and `make check`; these are the ones it leaves out
 - Parallel workers in worktrees: never `git stash` (the stash is shared by every worktree of
   the repo), and write patch files with `git diff --no-ext-diff` (the repo sets a display
   diff tool that `git apply` cannot read). When copying state for a boot check, leave out
-  `sandbox-cache`, `sandbox-tmp` and `tmp`, which run to gigabytes.
+  `sandbox-cache`, `scratch` and `tmp`, which run to gigabytes.
 
 ## Prompt cache
 
