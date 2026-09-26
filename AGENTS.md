@@ -966,7 +966,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   `App.bump`, which wakes it, and all stale widgets render as one message; a widget a message
   resized (a composer newline, a resize) renders on that message, so no frame draws lines
   rendered for another size. A render's ctx
-  builds `transcript`, `agent`, `todos`, `recent` and `instructions_missing` on first read (`widgetCtxTable`,
+  builds `transcript`, `agent`, `todos`, `recent` and `included` on first read (`widgetCtxTable`,
   `BenchmarkWidgetCtx`): keep new expensive fields lazy. A widget never changes a line table
   it returned: `Widget.tableSegments` converts one it saw last render only once and
   `widgetCache.lineRows` wraps it once per width, and `Host.Session` shares the transcript

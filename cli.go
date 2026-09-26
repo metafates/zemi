@@ -27,7 +27,7 @@ import (
 	"github.com/metafates/zemi/internal/ui"
 )
 
-const usage = `zemi - a terminal coding agent that learns how you work
+const usage = `zemi - a terminal coding agent, context included
 
 Usage:
   zemi [flags] [prompt]

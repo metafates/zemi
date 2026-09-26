@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // TestSplashExtends: user config can wrap the default splash through
@@ -97,9 +98,10 @@ zemi.ui.widget.add({
 	}
 }
 
-// TestSplashInitHint: only a trusted project with no instruction file is
-// offered /init, and $HOME is nobody's project.
-func TestSplashInitHint(t *testing.T) {
+// TestSplashContext: the context row names what a send carries; /init is
+// offered only in a trusted project with no instruction file, $HOME is
+// nobody's project, and a zero count is left out.
+func TestSplashContext(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 30)
 	proj := t.TempDir()
 	home, err := os.UserHomeDir()
@@ -107,16 +109,18 @@ func TestSplashInitHint(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {
-		name    string
-		dir     string
-		trusted bool
-		file    string
-		want    bool
+		name      string
+		dir       string
+		trusted   bool
+		file      string
+		memory    bool
+		want, not string
 	}{
-		{"untrusted", proj, false, "", false},
-		{"trusted", proj, true, "", true},
-		{"has CLAUDE.md", proj, true, "CLAUDE.md", false},
-		{"trusted home", home, true, "", false},
+		{"untrusted", proj, false, "", false, "", "context  "},
+		{"trusted", proj, true, "", false, "context  /init writes AGENTS.md", ""},
+		{"has CLAUDE.md", proj, true, "CLAUDE.md", false, "context  CLAUDE.md", "writes AGENTS.md"},
+		{"trusted home", home, true, "", false, "", "context  "},
+		{"one memory", proj, true, "", true, "context  CLAUDE.md · 1 memory", "skill"},
 	} {
 		host.Dirs.ProjectDir = c.dir
 		host.SetProjectTrusted(c.trusted)
@@ -125,10 +129,16 @@ func TestSplashInitHint(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		if c.memory {
+			if err := host.GlobalDB.AddMemory(&store.Memory{Scope: store.ScopeUser, Text: "prefers tabs", ProvenanceSessionID: "seed", Origin: store.OriginUser}); err != nil {
+				t.Fatal(err)
+			}
+		}
 		app.frameGen++
 		app.renderSync(t)
-		if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "no AGENTS.md yet · /init writes one") != c.want {
-			t.Errorf("%s: want hint %v\n%s", c.name, c.want, frame)
+		frame := ansi.Strip(app.Frame())
+		if !strings.Contains(frame, c.want) || c.not != "" && strings.Contains(frame, c.not) {
+			t.Errorf("%s: want %q, not %q\n%s", c.name, c.want, c.not, frame)
 		}
 	}
 }

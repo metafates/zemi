@@ -703,6 +703,14 @@ function zemi.event.stats() end
 ---@field title string
 ---@field ago string "now", "5m ago", "2d ago".
 
+--- What a send carries besides the conversation.
+---@class zemi.Included
+---@field instructions? string[] The project's instruction files, repo-relative; empty when it has none (what /init writes), nil when untrusted or at $HOME or /.
+---@field memories integer Live memories of both scopes.
+---@field skills integer Enabled skills other than the builtin zemi-* ones.
+---@field mcp integer MCP servers configured.
+---@field plugins integer Plugins that loaded without an error.
+
 ---@alias zemi.TodoStatus
 ---| "pending"
 ---| "in_progress"
@@ -744,7 +752,7 @@ function zemi.event.stats() end
 --- render must be pure and finish in about 10 ms: only the read-only
 --- `zemi.*` calls other than `zemi.fs.*` and a handle's `wait` work inside
 --- it, any other raises. `transcript`, `agent`, `todos`, `recent` and
---- `instructions_missing` are built on first read, so a widget that does
+--- `included` are built on first read, so a widget that does
 --- not read them does not pay for them; kept past the render, a ctx reads
 --- nil for the ones render did not read.
 ---@class zemi.WidgetCtx
@@ -772,7 +780,7 @@ function zemi.event.stats() end
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
 ---@field todos zemi.Todo[]
 ---@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
----@field instructions_missing boolean The project is trusted, is not $HOME or /, and has no AGENTS.md or CLAUDE.md for the prompt: what /init writes.
+---@field included zemi.Included What a send carries. Each render that reads it scans the recipes dir and queries memory: fine for the splash, too slow for a per-frame widget.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean

@@ -4,6 +4,32 @@ local snail = require("zemi.tui.snail")
 ---@class zemi.tui.splash
 local M = {}
 
+--- Appends whole items to line, joined by sep, as many as fit in room cells.
+---@param line zemi.Line
+---@param items zemi.Segment[][]
+---@param sep zemi.Segment
+---@param room integer
+---@return integer used cells of line
+local function fill(line, items, sep, room)
+  local used = 0
+  for _, s in ipairs(line) do
+    used = used + fmt.cells(s.text)
+  end
+  for i, item in ipairs(items) do
+    local w = i > 1 and fmt.cells(sep.text) or 0
+    for _, s in ipairs(item) do
+      w = w + fmt.cells(s.text)
+    end
+    if used + w > room then break end
+    used = used + w
+    if i > 1 then line[#line + 1] = sep end
+    for _, s in ipairs(item) do
+      line[#line + 1] = s
+    end
+  end
+  return used
+end
+
 --- The splash rows: the mascot and wordmark, what zemi will run with, recent sessions
 --- to pick up and the keys worth knowing, centered in ctx.width by ctx.height.
 ---@param ctx zemi.WidgetCtx
@@ -16,25 +42,60 @@ function M.render(ctx)
   local maxw = math.min(width - 4, 72)
   ---@param segs zemi.Line
   local function row(segs) rows[#rows + 1] = segs end
+  local ver = (ctx.version or "") ~= "" and (ctx.version .. " · ") or ""
+  local mark = { text = "@zemi", hl = "Title" }
+  local tag = { text = ver .. "context included", hl = "Comment" }
+  ---@type zemi.Line
+  local tip = {}
+  local tipw = fill(tip, {
+    { { text = "/", hl = "SplashKey" }, { text = " commands", hl = "Comment" } },
+    { { text = "@", hl = "SplashKey" }, { text = " attach or drop files", hl = "Comment" } },
+    { { text = "!", hl = "SplashKey" }, { text = " shell", hl = "Comment" } },
+    { { text = "/help", hl = "SplashKey" }, { text = " keys", hl = "Comment" } },
+  }, { text = "   " }, maxw)
+  -- centered on the static rows (the wordmark beside the snail, the tips)
+  -- with every value row clipped to the room right of them, so no value
+  -- change (a model pick, a count, a title) moves the block
+  local pad = math.max(0, math.floor((width - math.min(maxw, math.max(tipw, 13 + fmt.cells(tag.text)))) / 2))
+  local room = math.min(maxw, width - pad - 2)
+
   -- a short chat drops the recent sessions first, then the mascot, so
   -- the bottom-anchored chat never cuts the block's first rows (it shows
   -- height - 1 of them)
   local recent, fit = ctx.recent or {}, (ctx.height or 0) > 0 and ctx.height - 1 or math.huge
   -- the no-model hint names its fix, so it wraps under its label instead of clipping
-  local models = zemi.ui.wrap(ctx.model ~= "" and ctx.model or ("none yet: " .. ctx.model_hint), maxw - 9)
+  local models = zemi.ui.wrap(ctx.model ~= "" and ctx.model or ("none yet: " .. ctx.model_hint), room - 9)
   if ctx.init_error ~= "" then
     models =
       { { { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" } } }
   end
-  local hint = ctx.instructions_missing
-  local base = 8 + #models + (hint and 1 or 0)
+  local inc = ctx.included
+  ---@type zemi.Segment[][]
+  local parts = {}
+  local files = inc.instructions
+  if files and #files == 0 then
+    parts[1] = { { text = "/init", hl = "SplashKey" }, { text = " writes AGENTS.md", hl = "Comment" } }
+  elseif files then
+    parts[1] = {
+      { text = #files == 1 and files[1] or fmt.count(#files, "instruction file", "instruction files"), hl = "Normal" },
+    }
+  end
+  for _, c in ipairs({
+    { inc.memories, "memory", "memories" },
+    { inc.skills, "skill", "skills" },
+    { inc.mcp, "mcp server", "mcp servers" },
+    { inc.plugins, "plugin", "plugins" },
+  }) do
+    if c[1] > 0 then parts[#parts + 1] = { { text = fmt.count(c[1], c[2], c[3]), hl = "Normal" } } end
+  end
+  ---@type zemi.Line
+  local context = { { text = "context  ", hl = "Comment" } }
+  fill(context, parts, { text = " · ", hl = "Comment" }, room)
+  local base = 8 + #models + (#context > 1 and 1 or 0)
   local extra = #recent > 0 and #recent + 3 or 0
   if base + extra > fit then
     recent, extra = {}, 0
   end
-  local ver = (ctx.version or "") ~= "" and (ctx.version .. " · ") or ""
-  local mark = { text = "@zemi", hl = "Title" }
-  local tag = { text = ver .. "a coding agent that learns how you work", hl = "Comment" }
   if width >= 36 and base + extra <= fit then
     -- the wordmark and the tagline sit beside the snail's head
     local block = snail.block()
@@ -58,24 +119,18 @@ function M.render(ctx)
     table.insert(segs, 1, { text = i == 1 and "model    " or string.rep(" ", 9), hl = "Comment" })
     row(segs)
   end
-  local cwd, room = ctx.cwd or "", maxw - 10
-  if fmt.cells(cwd) > room and room > 1 then
+  local cwd, cwdw = ctx.cwd or "", room - 10
+  if fmt.cells(cwd) > cwdw and cwdw > 1 then
     -- keep the tail: the project name is at the end
     ---@type string[]
     local chars = {}
     for ch in cwd:gmatch(fmt.UTF8_CHAR) do
       chars[#chars + 1] = ch
     end
-    cwd = "…" .. table.concat(chars, "", #chars - room + 2)
+    cwd = "…" .. table.concat(chars, "", #chars - cwdw + 2)
   end
   row({ { text = "project  ", hl = "Comment" }, { text = cwd, hl = "Normal" } })
-  if hint then
-    row({
-      { text = string.rep(" ", 9) .. "no AGENTS.md yet · ", hl = "Comment" },
-      { text = "/init", hl = "SplashKey" },
-      { text = " writes one", hl = "Comment" },
-    })
-  end
+  if #context > 1 then row(context) end
   if #recent > 0 then
     row({ { text = "" } })
     row({ { text = "recent", hl = "Title" } })
@@ -91,39 +146,9 @@ function M.render(ctx)
     })
   end
   row({ { text = "" } })
-  local tips = { { "/", "commands" }, { "@", "attach or drop files" }, { "!", "shell" }, { "/help", "keys" } }
-  -- whole tips only: as many as fit
-  ---@type zemi.Line
-  local tip = {}
-  local used = 0
-  for i, t in ipairs(tips) do
-    local sep = i > 1 and "   " or ""
-    local w = fmt.cells(sep .. t[1] .. " " .. t[2])
-    if used + w > maxw then break end
-    used = used + w
-    if sep ~= "" then tip[#tip + 1] = { text = sep } end
-    tip[#tip + 1] = { text = t[1], hl = "SplashKey" }
-    tip[#tip + 1] = { text = " " .. t[2], hl = "Comment" }
-  end
   row(tip)
 
-  -- Center the block as a whole (rows stay left-aligned to each other),
-  -- clipping to the width so a narrow window never wraps the logo.
-  local widest = 0
-  for i, r in ipairs(rows) do
-    ---@type integer, zemi.Line
-    local n, clipped = 0, {}
-    for _, seg in ipairs(r) do
-      local left = maxw - n
-      if left <= 0 then break end
-      local text = fmt.clip(seg.text, left)
-      clipped[#clipped + 1] = { text = text, hl = seg.hl }
-      n = n + fmt.cells(text)
-    end
-    rows[i] = clipped
-    widest = math.max(widest, n)
-  end
-  local pad = string.rep(" ", math.max(0, math.floor((width - widest) / 2)))
+  -- rows stay left-aligned to each other, clipped so a narrow window never wraps the logo
   ---@type zemi.Line[]
   local out = {}
   local top = math.max(0, math.floor(((ctx.height or 0) - #rows) / 2))
@@ -131,8 +156,16 @@ function M.render(ctx)
     out[#out + 1] = { { text = "" } }
   end
   for _, r in ipairs(rows) do
-    table.insert(r, 1, { text = pad, copy = false })
-    out[#out + 1] = r
+    ---@type integer, zemi.Line
+    local n, clipped = 0, { { text = string.rep(" ", pad), copy = false } }
+    for _, seg in ipairs(r) do
+      local left = room - n
+      if left <= 0 then break end
+      local text = fmt.clip(seg.text, left)
+      clipped[#clipped + 1] = { text = text, hl = seg.hl }
+      n = n + fmt.cells(text)
+    end
+    out[#out + 1] = clipped
   end
   -- the chat is bottom-anchored: trailing rows keep the block centered
   for _ = 1, math.max(0, (ctx.height or 0) - top - #rows - 1) do
@@ -142,7 +175,7 @@ function M.render(ctx)
 end
 
 -- Register a widget with id "splash" in init.lua to replace it (ctx carries
--- version, model, cwd, recent, width and height).
+-- version, model, cwd, included, recent, width and height).
 zemi.ui.widget.add({
   id = "splash",
   region = "chat",

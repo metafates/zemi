@@ -1515,12 +1515,10 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		},
 		"agent":      func(L *glua.LState) glua.LValue { return agentTable(L, stream) },
 		"transcript": func(L *glua.LState) glua.LValue { return transcriptTable(L, transcript) },
-		// $HOME and / are nobody's project, so /init is not offered there
-		"instructions_missing": func(L *glua.LState) glua.LValue {
-			mine := filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
-			return glua.LBool(h.ProjectTrusted() && !TrustUnsaved(h.Dirs.RepoRoot()) &&
-				!slices.ContainsFunc(h.instructionFiles(), func(p string) bool { return p != mine }))
-		},
+		// NOTE: built on every read (a recipes dir scan and two memory
+		// queries); only the splash reads it, before the first message. Cache
+		// it behind a stale flag like recentSessions if a per-frame widget reads it.
+		"included": func(L *glua.LState) glua.LValue { return h.includedTable(L) },
 		"recent": func(L *glua.LState) glua.LValue {
 			if len(sess.Transcript) > 0 {
 				return glua.LNil
@@ -1552,6 +1550,43 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	}))
 	L.SetMetatable(tb, mt)
 	return tb, func() { live = false }
+}
+
+// includedTable is ctx.included: what a send carries besides the
+// conversation. instructions is nil where project files cannot load:
+// untrusted, or $HOME and /, which are nobody's project.
+func (h *Host) includedTable(L *glua.LState) *glua.LTable {
+	tb := L.CreateTable(0, 5)
+	if root := h.Dirs.RepoRoot(); h.ProjectTrusted() && !TrustUnsaved(root) {
+		files := L.NewTable()
+		mine := filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
+		for _, p := range h.instructionFiles() {
+			if p == mine {
+				continue
+			}
+			if rel, err := filepath.Rel(root, p); err == nil {
+				p = rel
+			}
+			files.Append(glua.LString(p))
+		}
+		tb.RawSetString("instructions", files)
+	}
+	mems, _ := h.memoryList(false)
+	tb.RawSetString("memories", glua.LNumber(len(mems)))
+	// the builtin zemi-* skills ship with every install: counting them is noise
+	own := slices.DeleteFunc(h.enabledSkills(), func(s skills.Skill) bool { return s.Source == skills.Builtin })
+	tb.RawSetString("skills", glua.LNumber(len(own)))
+	tb.RawSetString("mcp", glua.LNumber(len(h.mcp.list())))
+	plugins := 0
+	if p := h.pluginLoads.Load(); p != nil {
+		for _, l := range *p {
+			if l.err == nil {
+				plugins++
+			}
+		}
+	}
+	tb.RawSetString("plugins", glua.LNumber(plugins))
+	return tb
 }
 
 // agentTable is ctx.agent: the live turn.
