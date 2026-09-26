@@ -636,7 +636,9 @@ permission-gated file tools); zemi makes no commits. `/config save` writes only
 the keys a runtime pick moved off what init.lua left: it rewrites the literal of a
 key's one top-level `zemi.config.set` line, appends a key no line names to a
 `-- zemi: saved from /config` block at the end of init.lua, and leaves a key set by
-code or twice alone, so no user line but that literal ever changes.
+code or twice alone, and every key when the result would not parse, so no user line
+but that literal ever changes. What it leaves alone `/config lua` can hand to the
+agent; its edit of init.lua is a protected write, asked with its diff outside yolo.
 
 Permission rules are data with one API and an optional principal:
 

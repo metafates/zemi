@@ -18,6 +18,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/yuin/gopher-lua/parse"
 )
 
 // cfgBlockStart and cfgBlockEnd mark the lines /config save appends at the
@@ -27,14 +28,17 @@ const (
 	cfgBlockEnd   = "-- zemi: end"
 )
 
+// saveRestPrompt hands the agent the picks /config save left alone.
+const saveRestPrompt = "Save these /config picks in my %s. zemi's own save left them alone: the file sets each by code, under a condition, more than once, or where a line added at the end would not parse. Load the zemi-config skill, read the file and the modules it requires, and change each key where it is set so it takes the value below, touching nothing else. Approving the edit is my yes; if a key is set under a condition and you cannot tell which branch I mean, ask me. zemi reloads the config when your turn ends.\n\n%s"
+
 // configCommands is /config: every setting, edited in place, and the
 // runtime picks written back into init.lua.
 func (h *Host) configCommands() []*Command {
 	return []*Command{{
 		Name: "config", NArgs: NArgsAny, Desc: "see and change every setting, and save your picks to init.lua",
 		GoFn: func(h *Host, args string) error { return h.configCommand(args) },
-		GoComplete: subcommandCompleter([]string{"set", "toggle", "reset", "pick", "lua", "save", "open"}, func(h *Host, sub string) []string {
-			if sub == "lua" || sub == "save" || sub == "open" {
+		GoComplete: subcommandCompleter([]string{"set", "toggle", "reset", "pick", "lua", "save", "ask", "open"}, func(h *Host, sub string) []string {
+			if sub == "lua" || sub == "save" || sub == "ask" || sub == "open" {
 				return nil
 			}
 			var paths []string
@@ -79,14 +83,32 @@ func (h *Host) configCommand(args string) error {
 	case "pick":
 		return h.openConfigPick(ui, path)
 	case "lua":
-		body, unsaved := h.configLua()
+		body, saves, skipped := h.configLua()
 		o := Overlay{ID: "config lua", Title: "Config as Lua", Origin: lua.OriginBuiltin, Body: body}
-		if unsaved {
-			o.Items = []any{map[string]any{"text": "Save unsaved to init.lua", "verb": "save", "run": "config save"}}
+		if saves {
+			o.Items = append(o.Items, map[string]any{"text": "Save unsaved to init.lua", "verb": "save", "run": "config save"})
+		}
+		if len(skipped) > 0 && h.modelErr(h.currentModelID(nil)) == nil {
+			o.Items = append(o.Items, map[string]any{"text": "Ask zemi to save the rest", "desc": strings.Join(skipped, ", "), "verb": "ask", "run": "config ask"})
 		}
 		ui.OpenOverlay(o)
 	case "save":
 		h.GoSafe("config save", h.saveConfig)
+	case "ask":
+		var lines []string
+		for _, s := range h.skippedSets(h.unsavedSets()) {
+			lines = append(lines, setLine(s.path, s.lit))
+		}
+		if lines == nil {
+			h.Notify(logging.Info, "Nothing to ask about", "/config save writes every unsaved setting")
+			return nil
+		}
+		prompt := fmt.Sprintf(saveRestPrompt, h.initPath(), strings.Join(lines, "\n"))
+		h.GoSafe("config ask", func() {
+			if err := h.AgentSend(prompt); err != nil {
+				h.Notify(logging.Error, "Could not send", h.friendlyError(err))
+			}
+		})
 	case "open":
 		// the editor blocks and a Go command runs on the key loop
 		h.GoSafe("config open", func() {
@@ -95,7 +117,7 @@ func (h *Host) configCommand(args string) error {
 			}
 		})
 	default:
-		return Usagef("usage: /config [set <key> <value> | toggle <key> | reset <key> | pick <key> | lua | save | open]")
+		return Usagef("usage: /config [set <key> <value> | toggle <key> | reset <key> | pick <key> | lua | save | ask | open]")
 	}
 	return nil
 }
@@ -260,22 +282,30 @@ func (h *Host) openConfigPick(ui UIHooks, path string) error {
 }
 
 // configLua is every setting off its default or unsaved as the lines
-// init.lua sets it with, and whether any is unsaved.
-func (h *Host) configLua() (string, bool) {
-	lines, unsaved := []string{cfgBlockStart}, false
+// init.lua sets it with, whether /config save would write any, and the
+// unsaved keys it would leave alone.
+func (h *Host) configLua() (body string, saves bool, skipped []string) {
+	sets := h.unsavedSets()
+	for _, s := range h.skippedSets(sets) {
+		skipped = append(skipped, s.path)
+	}
+	lines := []string{cfgBlockStart}
 	for _, s := range h.Settings.Schema() {
 		v, _ := h.Settings.Get(s.Path)
-		source := h.cfgSource(s.Path)
-		if source != "unsaved" && reflect.DeepEqual(v, s.Default) {
+		unsaved := slices.ContainsFunc(sets, func(c cfgLine) bool { return c.path == s.Path })
+		if !unsaved && reflect.DeepEqual(v, s.Default) {
 			continue
 		}
 		line := setLine(s.Path, luaLiteral(v))
-		if source == "unsaved" {
-			line, unsaved = line+" -- unsaved", true
+		switch {
+		case slices.Contains(skipped, s.Path):
+			line += " -- unsaved, set by code"
+		case unsaved:
+			line += " -- unsaved"
 		}
 		lines = append(lines, line)
 	}
-	return strings.Join(append(lines, cfgBlockEnd), "\n"), unsaved
+	return strings.Join(append(lines, cfgBlockEnd), "\n"), len(sets) > len(skipped), skipped
 }
 
 func setLine(path, lit string) string { return fmt.Sprintf("zemi.config.set(%q, %s)", path, lit) }
@@ -307,9 +337,7 @@ func luaLiteral(v any) string {
 // cfgLine is one setting to save: its path and its value as a Lua literal.
 type cfgLine struct{ path, lit string }
 
-// saveConfig writes the unsaved settings into init.lua and toasts what it
-// saved and what it left alone.
-func (h *Host) saveConfig() {
+func (h *Host) unsavedSets() []cfgLine {
 	var sets []cfgLine
 	for _, s := range h.Settings.Schema() {
 		if h.cfgSource(s.Path) == "unsaved" {
@@ -317,6 +345,21 @@ func (h *Host) saveConfig() {
 			sets = append(sets, cfgLine{s.Path, luaLiteral(v)})
 		}
 	}
+	return sets
+}
+
+// skippedSets is the part of sets /config save would leave alone in the
+// init.lua on disk.
+func (h *Host) skippedSets(sets []cfgLine) []cfgLine {
+	read, _ := os.ReadFile(filepath.Join(h.Dirs.ConfigHome, "init.lua")) // save reports a read error
+	_, _, skipped := planInit(string(read), sets)
+	return slices.DeleteFunc(slices.Clone(sets), func(s cfgLine) bool { return !slices.Contains(skipped, s.path) })
+}
+
+// saveConfig writes the unsaved settings into init.lua and toasts what it
+// saved and what it left alone.
+func (h *Host) saveConfig() {
+	sets := h.unsavedSets()
 	if len(sets) == 0 {
 		h.Notify(logging.Info, "Nothing to save", "init.lua sets every value in force")
 		return
@@ -336,8 +379,8 @@ func (h *Host) saveConfig() {
 	if len(saved) > 0 {
 		body = append(body, strings.Join(saved, ", "))
 	}
-	for _, p := range skipped {
-		body = append(body, p+" is set by code or more than once in init.lua; left alone")
+	if len(skipped) > 0 {
+		body = append(body, "set by code in init.lua, left alone: "+strings.Join(skipped, ", ")+"; /config lua can ask zemi to save them")
 	}
 	if len(saved) == 0 {
 		h.Notify(logging.Warn, "Nothing saved to init.lua", strings.Join(body, "\n"))
@@ -350,7 +393,7 @@ func (h *Host) saveConfig() {
 // when the file changed since: writing over it would drop that change. The
 // write is a rename, so an editor or a crash never sees half a file.
 func saveInit(path string, read []byte, sets []cfgLine) (saved, skipped []string, err error) {
-	out, saved, skipped := rewriteInit(string(read), sets)
+	out, saved, skipped := planInit(string(read), sets)
 	if len(saved) == 0 {
 		return nil, skipped, nil
 	}
@@ -374,14 +417,28 @@ func saveInit(path string, read []byte, sets []cfgLine) (saved, skipped []string
 	return saved, skipped, nil
 }
 
+// planInit is rewriteInit, except that it leaves every key alone when the
+// result would not parse: Go never writes an init.lua Lua refuses.
+func planInit(src string, sets []cfgLine) (out string, saved, skipped []string) {
+	out, saved, skipped = rewriteInit(src, sets)
+	if _, err := parse.Parse(strings.NewReader(out), "init.lua"); err != nil {
+		skipped = nil
+		for _, s := range sets {
+			skipped = append(skipped, s.path)
+		}
+		return src, nil, skipped
+	}
+	return out, saved, skipped
+}
+
 // rewriteInit sets each key in src: the one top-level zemi.config.set line
 // naming it with a literal gets the new literal, a key no line names joins
 // the managed block at the end, and a key set by code, indented or twice is
 // left alone and returned in skipped. No other line changes.
 // NOTE: lines are matched one by one, so a set line inside a block comment
 // or a long string reads as code, a new block lands after a final top-level
-// return (which Lua refuses), and a start marker with no end gets a second
-// block; a Lua parser would lift all three.
+// return, and a start marker with no end gets a second block; planInit
+// refuses what would not parse, and a Lua AST would lift all three.
 func rewriteInit(src string, sets []cfgLine) (out string, saved, skipped []string) {
 	lines := strings.Split(src, "\n")
 	var add []string

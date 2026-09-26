@@ -178,8 +178,11 @@ those setters included, fires the key's watches through `setWatched`. `config lu
 shows the keys off their default as `zemi.config.set` lines; `config save` (`saveInit`) writes
 the unsaved ones: the literal of a key's one top-level set line rewritten in place, a key no
 line names appended to the `-- zemi: saved from /config` block at the end, one set by code or
-twice left alone, through a temp file renamed over init.lua (its target when it is a link) and
-refused when the file changed since it was read. Under `-p` only `config set` runs.
+twice left alone, and every key left alone when the result would not parse (`planInit`),
+through a temp file renamed over init.lua (its target when it is a link) and
+refused when the file changed since it was read. `config lua` tags a key save would leave
+alone `-- unsaved, set by code` and, when a model can run, offers `config ask`, which sends
+those keys, recomputed at the press, to the agent (`saveRestPrompt`). Under `-p` only `config set` runs.
 
 ## Architecture and control flow
 

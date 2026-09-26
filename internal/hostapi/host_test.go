@@ -558,6 +558,8 @@ func TestSaveInit(t *testing.T) {
 			src:     "zemi.config.set(\"models.chat\", m)\nif x then\n  zemi.config.set(\"ui.theme\", \"a\")\nend\nzemi.config.set(\"agent.effort\", \"low\")\nzemi.config.set(\"agent.effort\", \"high\")\n",
 			sets:    []cfgLine{{"models.chat", `"p/m"`}, theme, effort},
 			skipped: "models.chat ui.theme agent.effort"},
+		{name: "a block that would follow a final return is left alone",
+			src: "zemi.config.set(\"ui.theme\", \"a\")\nreturn {}\n", sets: []cfgLine{effort}, skipped: "agent.effort"},
 		{name: "a file that changed since the read is refused",
 			src: "zemi.config.set(\"ui.theme\", \"a\")\n", disk: "edited()\n", sets: []cfgLine{theme}, err: true},
 	} {
@@ -589,6 +591,48 @@ func TestSaveInit(t *testing.T) {
 		if fi, _ := os.Stat(file); fi.Mode().Perm() != 0o640 {
 			t.Errorf("%s: mode %v", c.name, fi.Mode())
 		}
+	}
+}
+
+// TestConfigAsk: /config lua tags a key save would leave alone, and
+// /config ask sends only those keys to the agent.
+func TestConfigAsk(t *testing.T) {
+	h, r := newTestHostDB(t)
+	h.Dirs.ConfigHome = t.TempDir()
+	m := reflectStub(t, h, "ok")
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	runUser(t, r, `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "https://gw/v1", models = { { id = "m" } } })`)
+	if err := os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "init.lua"), []byte("if x then\n  zemi.config.set(\"ui.theme\", \"a\")\nend\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.cfgNow = map[string][]any{"ui.theme": {"a"}}
+	h.Settings.SetQuiet("ui.theme", "dark")
+	h.Settings.SetQuiet("agent.effort", "high")
+	if err := h.configCommand("lua"); err != nil {
+		t.Fatal(err)
+	}
+	o := ui.overlays()[0]
+	if !strings.Contains(o.Body, `"dark") -- unsaved, set by code`) || !strings.Contains(o.Body, `"high") -- unsaved`+"\n") ||
+		fmt.Sprint(o.Items) != "[map[run:config save text:Save unsaved to init.lua verb:save] map[desc:ui.theme run:config ask text:Ask zemi to save the rest verb:ask]]" {
+		t.Fatalf("lua %v\n%s", o.Items, o.Body)
+	}
+	if err := h.configCommand("ask"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if m.streams.Load() == 0 {
+			return errors.New("nothing sent")
+		}
+		return nil
+	})
+	waitIdle(t, h)
+	msgs, err := h.DB.Messages(h.AgentSessionID())
+	if err != nil || len(msgs) == 0 {
+		t.Fatalf("messages %v, %v", msgs, err)
+	}
+	if sent := msgs[0].PartsJSON; !strings.Contains(sent, "zemi-config") || !strings.Contains(sent, `zemi.config.set(\"ui.theme\", \"dark\")`) || strings.Contains(sent, "agent.effort") {
+		t.Fatalf("sent %s", sent)
 	}
 }
 
