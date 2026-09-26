@@ -944,6 +944,7 @@ func TestSignedThinking(t *testing.T) {
 		{"a tool set changed mid-loop keeps the last tool_use's thinking", base, base, []string{"a"}, "------*-"},
 		{"a reordered tool set strips nothing", base, base, []string{"b", "a"}, "--+-+-+-"},
 		{"a runner that sent nothing strips every closed turn", nil, base, ab, "------*-"},
+		{"a steered text after a changed tool set keeps the last tool_use's thinking", base, append(slices.Clone(base), user("steered")), []string{"a"}, "------*--"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := &Runner{}

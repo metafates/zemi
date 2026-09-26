@@ -661,8 +661,9 @@ func (r *Runner) signed(msgs []fantasy.Message, active []string, record bool) []
 // differs from sent, all of it when the prefix changed. A message sent without
 // its reasoning matches its stripped form, so a drop holds on later steps
 // while the messages after it keep their own. out keeps the open tool loop
-// (past the last user text) whole: Anthropic refuses a final tool_use without
-// its thinking on every account, a stale signature only where it is enforced.
+// (past the last user text that follows no tool result) whole: Anthropic
+// refuses a final tool_use without its thinking on every account, a stale
+// signature only where it is enforced.
 // rec, the next step's sent, strips it too, so it goes once the loop closes.
 // NOTE: a prefix that changes inside a turn (tool_search loading an MCP tool,
 // a compaction continuation, a subagent prune) leaves the open loop signed
@@ -671,10 +672,15 @@ func (r *Runner) signed(msgs []fantasy.Message, active []string, record bool) []
 func keepSigned(msgs, sent []fantasy.Message, samePrefix bool) (out, rec []fantasy.Message) {
 	rec = slices.Clone(msgs)
 	edited := !samePrefix
-	open := 0
+	open, results := 0, false
 	for i, m := range rec {
-		if m.Role == fantasy.MessageRoleUser && slices.ContainsFunc(m.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeText }) {
+		// Text behind tool results (a steered message) joins their user block
+		// at the API, so the tool_use before it is still the last.
+		if m.Role == fantasy.MessageRoleUser && !results && slices.ContainsFunc(m.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeText }) {
 			open = i
+		}
+		if m.Role != fantasy.MessageRoleUser {
+			results = m.Role == fantasy.MessageRoleTool
 		}
 		if !edited && i < len(sent) {
 			if reflect.DeepEqual(m, sent[i]) {

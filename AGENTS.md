@@ -603,7 +603,7 @@ lua-language-server is installed.
   every step's input passes `Runner.signed`, which drops the thinking whose signed prefix
   (system prompt, tool names, earlier messages) changed since the last step, so no history
   edit replays a signature Anthropic refuses; the open tool loop past the last user text
-  keeps its own until that loop closes, since Anthropic refuses a final tool_use without it
+  (a steered one joins the tool results and closes nothing) keeps its own until that loop closes, since Anthropic refuses a final tool_use without it
   on every account. `runTurns`
   loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction
   runs before a send, when `Runner.Full` cuts a turn at a step boundary, and once after a
