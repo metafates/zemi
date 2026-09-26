@@ -865,7 +865,11 @@ func (h *Host) signOutMCP(name string) error {
 	if err != nil {
 		return err
 	}
-	if err := h.mcpAuth(s).Logout(); err != nil {
+	auth := h.mcpAuth(s)
+	if _, err := os.Stat(auth.Path); s.spec.URL == "" || err != nil {
+		return Usagef("%s is not signed in", name)
+	}
+	if err := auth.Logout(); err != nil {
 		return err
 	}
 	// NOTE: a start is assumed to fail the same way, so none runs; a server

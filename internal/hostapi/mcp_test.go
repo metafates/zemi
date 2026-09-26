@@ -9,6 +9,8 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -146,6 +148,14 @@ func TestMCPBridge(t *testing.T) {
 	// a sign-out waits for the next sign-in at once, since a start could
 	// only fail the same way, and redraws the open /mcp
 	n := len(ui.overlays())
+	signed, _ := h.mcpServerNamed("fake")
+	grant := h.mcpAuth(signed).Path
+	if err := os.MkdirAll(filepath.Dir(grant), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(grant, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := h.signOutMCP("fake"); err != nil {
 		t.Fatal(err)
 	}
@@ -164,6 +174,10 @@ func TestMCPBridge(t *testing.T) {
 		return o.Refresh && row["desc"] == "needs sign-in" && strings.Contains(fmt.Sprint(row["actions"]), "run:mcp sign-in fake")
 	}) {
 		t.Errorf("no /mcp refresh shows the sign-out: %+v", ui.overlays()[n:])
+	}
+	// the grant is gone now, so a second sign-out has nothing to park
+	if err := h.signOutMCP("fake"); err == nil || !strings.Contains(err.Error(), "not signed in") {
+		t.Errorf("sign-out with no grant = %v, want a refusal", err)
 	}
 }
 
