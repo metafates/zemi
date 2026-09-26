@@ -245,7 +245,7 @@ func checkKind(def Setting, val any) (any, error) {
 			for i, c := range def.Choices {
 				words[i] = cmp.Or(c, "default")
 			}
-			return nil, &ErrBadValue{Path: def.Path, Want: OrList(words)}
+			return nil, &ErrBadValue{Path: def.Path, Want: OrList(words), Got: s}
 		}
 	case KindInt:
 		switch v := val.(type) {

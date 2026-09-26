@@ -597,17 +597,17 @@ func TestSaveInit(t *testing.T) {
 func TestConfigSet(t *testing.T) {
 	h, _ := newTestHost(t)
 	for _, c := range []struct {
-		path, value, want string
-		bad               bool
+		path, value, want, err string
 	}{
-		{"agent.effort", "default", "", false},
-		{"agent.effort", "turbo", "high", true},
-		{"agent.profile", "", "default", false},
+		{"agent.effort", "default", "", ""},
+		{"agent.effort", "turbo", "high", `config key agent.effort expects low, medium, high or default, not "turbo"`},
+		{"agent.profile", "", "default", ""},
 	} {
 		h.Settings.SetQuiet(c.path, "high")
 		// a refused value is a usage hint, not an error
-		if err := h.configSet(c.path, c.value); (err != nil) != c.bad || err != nil && !errors.Is(err, ErrUsage) || h.Settings.Str(c.path) != c.want {
-			t.Errorf("%s %q: %q, %v; want %q", c.path, c.value, h.Settings.Str(c.path), err, c.want)
+		err := h.configSet(c.path, c.value)
+		if fmt.Sprint(err) != cmp.Or(c.err, "<nil>") || err != nil && !errors.Is(err, ErrUsage) || h.Settings.Str(c.path) != c.want {
+			t.Errorf("%s %q: %q, %v; want %q, %q", c.path, c.value, h.Settings.Str(c.path), err, c.want, c.err)
 		}
 	}
 	// a bool row draws its switch, and neither a toggle off what init.lua set
