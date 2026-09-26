@@ -241,6 +241,18 @@ func MoreLines(n int) string {
 	return fmt.Sprintf("… %d more %s", n, plural(n, "line", "lines"))
 }
 
+// rowOutput is a tool result as its transcript row shows it: a plan's
+// verdict, since its result is written for the model, else shortOutput.
+func rowOutput(tool, out string) string {
+	if tool == tools.ToolPlan {
+		verdict, path := tools.PlanOutcome(out)
+		if out = verdict; path != "" {
+			out += ", saved to " + TildePath(path)
+		}
+	}
+	return shortOutput(out)
+}
+
 // shortOutput keeps 10 lines of a tool result for the transcript row, each
 // capped at 300 runes and sanitized: the first three, which say what went
 // wrong, and the last six, with a row counting what fell out between them.

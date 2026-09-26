@@ -900,7 +900,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 	for i := len(ag.tools) - 1; i >= 0; i-- {
 		t := &ag.tools[i]
 		if t.ID == id && (t.Status == CallRun || t.Status == CallWait) {
-			t.Status, t.Output = status, shortOutput(output)
+			t.Status, t.Output = status, rowOutput(name, output)
 			if !ok {
 				t.Diff = "" // the change did not happen
 			}

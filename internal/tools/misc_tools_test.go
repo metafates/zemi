@@ -139,6 +139,27 @@ func TestQuestionAndPlanTools(t *testing.T) {
 	}
 }
 
+// TestPlanOutcome: a plan row reads the verdict back out of each result the
+// plan tool writes for the model.
+func TestPlanOutcome(t *testing.T) {
+	for _, c := range []struct {
+		name          string
+		v             PlanVerdict
+		verdict, path string
+	}{
+		{"approved and saved", PlanVerdict{Approved: true, Path: "/p.md"}, "approved", "/p.md"},
+		{"approved, back to the agent", PlanVerdict{Approved: true, Profile: "default"}, "approved", ""},
+		{"changes over two lines", PlanVerdict{Feedback: "use sqlite\nand go"}, "changes requested: use sqlite\nand go", ""},
+	} {
+		p, _ := testPipeline(t, false)
+		p.ApprovePlan = func(string) (PlanVerdict, bool) { return c.v, true }
+		resp := call(t, toolNamed(t, "plan", p), `{"plan":"1. do it"}`)
+		if v, path := PlanOutcome(resp.Content); v != c.verdict || path != c.path {
+			t.Errorf("%s: verdict %q, path %q", c.name, v, path)
+		}
+	}
+}
+
 // TestYesNoOptions: explicit options are kept as given (not doubled by the
 // Yes/No default), and omitted options fall back to Yes/No.
 func TestYesNoOptions(t *testing.T) {

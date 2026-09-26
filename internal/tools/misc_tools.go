@@ -116,6 +116,29 @@ type PlanVerdict struct {
 // ImplementPlan is what an approved plan's result tells the agent to do.
 const ImplementPlan = "Implement it; track its steps with todos if it has several."
 
+// The plan results PlanOutcome reads back.
+const (
+	planApproved = "The user approved the plan"
+	planChanges  = "The user has not approved the plan and asked for changes: "
+	planRevise   = "\nRevise the plan"
+	planSaved    = "\nThe plan is saved at "
+)
+
+// PlanOutcome is the verdict in a plan result, which is written for the
+// model, for its row to show: path is where an approved plan was saved, ""
+// when it was not. Any other result comes back whole.
+func PlanOutcome(output string) (verdict, path string) {
+	if feedback, ok := strings.CutPrefix(output, planChanges); ok {
+		feedback, _, _ = strings.Cut(feedback, planRevise)
+		return "changes requested: " + feedback, ""
+	}
+	if !strings.HasPrefix(output, planApproved) {
+		return output, ""
+	}
+	_, path, _ = strings.Cut(output, planSaved)
+	return "approved", strings.TrimSuffix(path, ".")
+}
+
 func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	plan := strings.TrimSpace(str(input["plan"]))
 	if plan == "" {
@@ -127,7 +150,7 @@ func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	v, ok := p.ApprovePlan(plan)
 	saved := ""
 	if v.Path != "" {
-		saved = "\nThe plan is saved at " + v.Path + "."
+		saved = planSaved + v.Path + "."
 	}
 	implement := " " + ImplementPlan + saved
 	switch {
@@ -136,12 +159,12 @@ func runPlan(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	case v.Approved && v.Profile != "":
 		// the read-only turn that proposed this ends here; the run's planFollowup
 		// starts implementation as the restored agent, so do not keep going
-		return endTurn("The user approved the plan; you are back as the " + v.Profile + " agent. Implementation runs in the next turn." + saved), nil
+		return endTurn(planApproved + "; you are back as the " + v.Profile + " agent. Implementation runs in the next turn." + saved), nil
 	case v.Approved:
-		return fantasy.NewTextResponse("The user approved the plan." + implement), nil
+		return fantasy.NewTextResponse(planApproved + "." + implement), nil
 	}
-	return fantasy.NewTextResponse("The user has not approved the plan and asked for changes: " + v.Feedback +
-		"\nRevise the plan, ask with the question tool if something is still unclear, and call plan again."), nil
+	return fantasy.NewTextResponse(planChanges + v.Feedback + planRevise +
+		", ask with the question tool if something is still unclear, and call plan again."), nil
 }
 
 // stopTurn is an error result that ends the turn: the user wants to speak next.

@@ -659,7 +659,7 @@ function zemi.event.stats() end
 ---@field label string The model's description of the call.
 ---@field elapsed number
 ---@field diff string
----@field output string
+---@field output string Last lines of the result; a plan call's verdict.
 
 ---@alias zemi.Role
 ---| "user"
@@ -685,7 +685,7 @@ function zemi.event.stats() end
 ---@field detail string
 ---@field run string Agent calls: the run id, else "".
 ---@field diff string
----@field output string Last lines of a tool result.
+---@field output string Last lines of a tool result; a plan call's verdict ("approved", "changes requested: ...").
 ---@field ["in"] integer Prompt tokens.
 ---@field out integer Completion tokens.
 ---@field thought number

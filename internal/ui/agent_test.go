@@ -1159,8 +1159,8 @@ func TestToolRows(t *testing.T) {
 		// a verdict the user gave shows as one line under a stop mark; the model keeps the reason and the instructions
 		{Name: "question", Input: "Name?", Status: "stopped", Output: "The user dismissed the questions. Stop and wait for them to say how to proceed."},
 		{Name: "write", Input: "b.go", Status: "stopped", Output: "permission denied (user): fs.write /p/b.go: it asked because this project is not trusted (/trust)"},
-		{Name: "plan", Input: "# Plan", Status: "ok", Output: "The user approved the plan. Implement it now: track its steps with todos, carry them through, verify, and report.\nThe plan is saved at /data/plans/s1.md."},
-		{Name: "plan", Input: "# Plan", Status: "ok", Output: "The user has not approved the plan and asked for changes: use go\nRevise the plan, ask with the question tool if something is still unclear, and call plan again."},
+		{Name: "plan", Input: "# Plan", Status: "ok", Output: "approved, saved to /data/plans/s1.md"},
+		{Name: "plan", Input: "# Plan", Status: "ok", Output: "changes requested: use go"},
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())

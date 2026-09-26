@@ -12,21 +12,6 @@ local HINT = "click or ctrl+o to read"
 -- A tool row: a settled transcript row or a call of the live turn.
 ---@alias zemi.tui.Tool zemi.TranscriptRow|zemi.ToolCall
 
-local HOME = zemi.env.get("HOME") or ""
-
---- The plan tool's result is written for the model; the row shows the verdict.
----@param output string
----@return string
-local function plan_verdict(output)
-  local feedback = output:match("^The user has not approved the plan and asked for changes: (.-)\nRevise the plan")
-  if feedback then return "changes requested: " .. feedback end
-  if not output:match("^The user approved") then return output end
-  local path = output:match("The plan is saved at (.-)%.$")
-  if not path then return "approved" end
-  if HOME ~= "" and path:sub(1, #HOME + 1) == HOME .. "/" then path = "~" .. path:sub(#HOME + 1) end
-  return "approved, saved to " .. path
-end
-
 -- The settled transcript is rendered in units, a message or a run of tool
 -- rows, kept across frames by the index of their first message: while a
 -- reply streams the widget renders many times a second and only the live
@@ -348,7 +333,6 @@ zemi.ui.widget.add({
       -- carries the reason and the instructions, the row the verdict
       if output:match("^permission denied %(user") then output = "denied by you" end
       if output:match("^The user dismissed") then output = "dismissed by you" end
-      if name == "plan" then output = plan_verdict(output) end
       if
         output ~= ""
         and (
