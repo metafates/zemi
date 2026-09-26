@@ -468,6 +468,9 @@ function zemi.command.list() end
 ---@field tools integer Tool calls it made.
 ---@field usage { in: integer, out: integer, cache_read: integer, cache_write: integer, cost: number }
 
+--- Fired when the main agent's prompt is built (a new session, a resume, a
+--- compaction, a model, profile, trust or tool change), not per send, and
+--- once per subagent run.
 ---@class zemi.ev.Assemble: zemi.Event
 ---@field cwd string
 
@@ -1511,7 +1514,7 @@ function zemi.agent.cancel() end
 ---@return zemi.AgentUsage
 function zemi.agent.usage() end
 
---- The system prompt the last send assembled, "" before the first one.
+--- The pinned system prompt the last send carried, "" before the first one.
 --- `/prompt` shows the same text.
 ---@return string
 function zemi.agent.prompt() end

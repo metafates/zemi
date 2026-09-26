@@ -735,7 +735,8 @@ Event catalogue (v1, each emitted on the interpreter thread):
   subagent's included: its time, time to first token, tool calls and
   usage), `agent.finish`, `agent.error`
 - subagents: `agent.subagent.start`, `agent.subagent.finish`
-- prompt: `agent.assemble` (returns a section to add, §10.7)
+- prompt: `agent.assemble` (returns a section to add, §10.7; runs when the
+  prompt is built, not per send, §6.3)
 - stream: `agent.text_delta`, `agent.reasoning_delta`
 - tools: `tool.pre` (vetoable: `deny|rewrite|halt`), `tool.post`, `tool.denied`
 - permission: `permission.request` (vetoable), `permission.resolved`
@@ -940,11 +941,26 @@ Session/message persistence and cost/token accounting mirror crush's model
 tool-call telemetry.
 
 System prompts are Go string constants in `internal/hostapi/prompt.go`;
-there are no template files. They are assembled per session and pinned
-there, because anything that varies per turn busts the provider's prompt
-cache. Lua injects sections via the `agent.assemble` event and a Lua
-tool's `prompt`, which ships only with the tool (memory
+there are no template files. Lua injects sections via the `agent.assemble`
+event and a Lua tool's `prompt`, which ships only with the tool (memory
 digest, skills index, project context ship as built-in sections).
+
+The main agent's fixed prefix, the system prompt and every tool's
+description and schema, is built once and sent verbatim, because anything
+that varies per turn busts the provider's prompt cache. It is keyed on
+what the user switches (profile, model, trust, a permission mode's
+prompt) and each tool's name and input schema, since a stale schema
+fails calls: a change there rebuilds it. Otherwise it is rebuilt only
+where the cache is gone anyway: `/new`, `/resume`, a compaction, and
+`/skills delete`. Nothing edited mid-session moves it: instruction files,
+skills, saved workflows, agent definitions, memories and `agent.assemble`
+handlers wait for the next rebuild, and `/reload` and the config watcher
+rebuild nothing, since the watcher reloads on any config-tree write, the
+model's own skill writes included. The one exception is an instruction
+file the prompt holds and the user edited by hand: its new text rides the
+next user message once, in the same `<instructions>` block a read uses,
+unless the model read or wrote that version itself. Subagents build
+their prompt once per run.
 
 ### 6.4 Tools
 
@@ -2191,8 +2207,8 @@ the index after those and lose every name clash. They are
 body only (a `zemi-skill.lua` there never runs), enabled with no toggle,
 and kept out of the `skills` table, which is keyed by name across
 projects. They are scanned when the trust decision is set (boot, reload,
-`/trust`), never per turn: a sandboxed command may write one, and a
-rescan would change the prompt mid-session. An untrusted project adds
+`/trust`), never per turn, and the pinned prompt (§6.3) keeps the index
+a session was built with: a sandboxed command may write one. An untrusted project adds
 none, like its instruction files (§5).
 
 Recipes are the third source: a trusted project's private skills under
@@ -2200,12 +2216,11 @@ Recipes are the third source: a trusted project's private skills under
 memory. They never enter the repository, no sandbox policy makes the dir
 writable, and they behave like project skills (body only, no toggle, no
 row), losing a name clash to those too. The index lists the recipes found
-when the environment section is pinned (new session, resume, compaction,
-§10.7), while the `skill` tool and `/skills` read the dir on every call: a recipe
+when the prompt was pinned (§6.3), while the `skill` tool and `/skills` read the dir on every call: a recipe
 written mid-session loads at once and never moves the prompt. Loading a
 skill counts as reading its file, so a correction is one `edit`. Only a
 recipe has a Delete action in `/skills` (`/skills delete <name>`), which
-lists the recipes again: the index moves once, by the user's own act. The
+rebuilds the prompt: the index moves once, by the user's own act. The
 reflector's prompt lists the project's skills and recipes by name and
 leaves a repository's own procedure to the live agent's recipe.
 
@@ -2253,8 +2268,9 @@ verbatim) + **skills index** (name + description only) + Lua sections
 (§6.3) + the environment + **memory digest** (every live memory, this project then
 every project, newest first, each scope cut at a 3 KB budget the write
 gate keeps it under (§10.4), each line prefixed with id, origin and age in
-days; no relevance ranking). The environment and the digest are pinned at
-session start and refreshed only at compaction (triggered before a turn
+days; no relevance ranking). The whole prompt, tool descriptions included,
+is pinned at session start (§6.3) and rebuilt with a fresh environment and
+digest at compaction (triggered before a turn
 or at a step boundary once the context the last step used, cache
 included, is within a 20k reply reserve plus 13k of the window but at
 least half of it, never when the window is unknown; once after a
@@ -2268,7 +2284,7 @@ model, or when that call gives no summary), stores the summary (an unfinished to
 list follows it, outside what the next compaction merges) and a copy of the
 tail after it (`/resume` scans for the last summary row and starts from
 it), and re-runs digest assembly, §7, with the environment section and the
-recipes list (§10.5) pinned again; three failed or
+rest of the prompt (§6.3) pinned again; three failed or
 ineffective auto compactions in a row stop it for the session), which keeps
 provider prompt caches warm; under "# Memory" a preference the user
 stated holds unless the conversation or project instructions say

@@ -151,19 +151,17 @@ func (h *Host) materializeBuiltinSkills() error {
 func (h *Host) skillIndex() []tools.SkillInfo {
 	var out []tools.SkillInfo
 	// recipes are read live: one written this session loads at once, while
-	// the prompt keeps the pinned list
-	for _, s := range h.enabled(h.discoverRecipes()) {
+	// the pinned prompt keeps the list it was built with
+	for _, s := range h.enabledSkills() {
 		out = append(out, tools.SkillInfo{Name: s.Name, Path: s.Dir})
 	}
 	return out
 }
 
 // enabledSkills is the registry's enabled skills, then the project's.
-func (h *Host) enabledSkills() []skills.Skill { return h.enabled(h.pinnedRecipes()) }
-
-func (h *Host) enabled(recipes []skills.Skill) []skills.Skill {
+func (h *Host) enabledSkills() []skills.Skill {
 	enabled := slices.DeleteFunc(h.skillsReg.list(), func(s skills.Skill) bool { return !h.skillsReg.isEnabled(s.Name) })
-	return append(enabled, h.projectOnly(recipes)...)
+	return append(enabled, h.projectOnlySkills()...)
 }
 
 // recipesDir holds a project's recipes: skills private to this machine, kept
@@ -237,13 +235,6 @@ func (h *Host) recipeAfterWrite(path string) string {
 	return note + sk.Name + " saved; the skill tool loads it"
 }
 
-func (h *Host) pinnedRecipes() []skills.Skill {
-	if p := h.recipes.Load(); p != nil {
-		return *p
-	}
-	return nil
-}
-
 // discoverProjectSkills scans the repository's .agents/skills, which other
 // agents share. They are body only: a zemi-skill.lua there never runs.
 func (h *Host) discoverProjectSkills() []skills.Skill {
@@ -263,13 +254,10 @@ func (h *Host) discoverSkills(dirs ...skills.Dir) []skills.Skill {
 }
 
 // projectOnlySkills is the project's skills and recipes whose names no
-// user or builtin skill takes, enabled or not. Recipes are read
-// live: only the prompt needs the pin.
-func (h *Host) projectOnlySkills() []skills.Skill { return h.projectOnly(h.discoverRecipes()) }
-
-// projectOnly puts recipes after the repository's skills: a recipe loses
-// every name clash.
-func (h *Host) projectOnly(recipes []skills.Skill) []skills.Skill {
+// user or builtin skill takes, enabled or not. Recipes are read live and
+// come after the repository's skills: a recipe loses every name clash.
+func (h *Host) projectOnlySkills() []skills.Skill {
+	recipes := h.discoverRecipes()
 	var all []skills.Skill
 	if p := h.projectSkills.Load(); p != nil {
 		all = slices.Clone(*p)
@@ -386,7 +374,7 @@ func (h *Host) skillsCommand(args string) error {
 	}
 }
 
-// deleteRecipe removes a recipe and pins the list again: the index moves
+// deleteRecipe removes a recipe and drops the pinned prompt: the index moves
 // once, by the user's own act. Every other source lives in files the user or
 // the repository owns.
 func (h *Host) deleteRecipe(name string) error {
@@ -397,7 +385,9 @@ func (h *Host) deleteRecipe(name string) error {
 		if err := os.RemoveAll(s.Dir); err != nil {
 			return err
 		}
-		h.pinRecipes()
+		h.agents.mu.Lock()
+		h.agents.pin = promptPin{}
+		h.agents.mu.Unlock()
 		h.Notify(logging.Info, "Recipe deleted", name)
 		return nil
 	}

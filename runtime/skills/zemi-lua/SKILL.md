@@ -256,7 +256,7 @@ result), `in`, `out`, `thought`, `elapsed`.
 `first_token_ms`, `tools`, `usage` `{ ["in"], out, cache_read, cache_write, cost }`),
 `agent.finish` (session, model, `usage`: this turn's `{ ["in"], out, total, cost }`),
 `agent.error`, `agent.subagent.start`, `agent.subagent.finish`,
-`agent.assemble` (return a string or `{ title, text }` to add a system prompt section;
+`agent.assemble` (return a string or `{ title, text }` to add a system prompt section; it runs when the prompt is built (a new session, `/resume`, a compaction, a model, profile, trust or tool change), not per send, so a section edit applies after `/new` or `/compact`;
 user, builtin and plugin handlers only), `composer.change`, `tool.denied` (tool, subject, arg, by,
 reason), `app.quit` (vetoable), `agent.text_delta`, `agent.reasoning_delta`, `tool.pre`
 (vetoable: deny, halt, rewrite), `tool.post` (tool, input, ok, `output` in full, `ms`,

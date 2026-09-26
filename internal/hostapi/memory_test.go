@@ -437,10 +437,9 @@ func TestMemoryDelOriginGate(t *testing.T) {
 	}
 }
 
-// TestDigestPinnedAtSessionStart covers §10.7: the digest is computed once
-// when the session is created and later memories do not leak into the
-// pinned prompt.
-func TestDigestPinnedAtSessionStart(t *testing.T) {
+// TestDigestAtSessionStart covers §10.7: the session's prompt carries the
+// memories it started with (TestPromptPinned keeps later ones out).
+func TestDigestAtSessionStart(t *testing.T) {
 	h, _ := newTestHostDB(t)
 
 	if sys := h.buildSystem(nil); strings.Contains(sys, "# Memory") {
@@ -462,16 +461,9 @@ func TestDigestPinnedAtSessionStart(t *testing.T) {
 		t.Fatalf("digest line missing:\n%s", sys)
 	}
 
-	// Pinned: memories added after session start stay out of this
-	// session's prompt.
-	if err := h.Remember("later note that must not appear"); err != nil {
+	if err := h.Remember("later note"); err != nil {
 		t.Fatalf("remember2: %v", err)
 	}
-	sys2 := h.buildSystem(nil)
-	if strings.Contains(sys2, "later note") || sys2 != sys {
-		t.Fatal("digest changed after session start (must stay pinned)")
-	}
-
 	if got := h.digestFor(); !strings.Contains(got, "later note") {
 		t.Fatalf("digestFor missed the new memory: %q", got)
 	}

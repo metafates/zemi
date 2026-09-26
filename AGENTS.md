@@ -523,9 +523,9 @@ table and enabled by default. A trusted project adds its own (`.agents/skills`):
 enabled, never in the table or `skillsReg`, scanned by `SetProjectTrusted`, which every reload
 runs, so a skill written mid-session loads with the reload the config watcher starts. Recipes (`skills.Recipe`) are the project's
 private skills under `<state>/projects/<hash>/skills` (`recipesDir`, a read jail root no sandbox
-policy can write): trusted only, body only, enabled, and they lose every name clash. The prompt
-lists the snapshot `environmentPrompt` pins with `ag.env` (new session, resume, `compactDone`);
-`skillIndex` discovers the dir live, so a recipe written mid-session loads without moving the
+policy can write): trusted only, body only, enabled, and they lose every name clash. The
+pinned prompt (`ag.pin`, below) lists the ones found when it was built; `skillIndex` and
+`enabledSkills` discover the dir live, so a recipe written mid-session loads without moving the
 prompt, and `runSkill` marks the file read so an `edit` can follow. The agent writes recipes with
 the plain file tools (the environment prompt's `Recipes:` line says how); the dir is a
 `protectedWrite`: no rule and neither auto mode nor a read-only agent settles a write (yolo still
@@ -535,7 +535,7 @@ rewrite the file) scrubs every file written there in place (`learn.ScrubShapes`:
 pass, which cuts the long paths and `NAME=url` a procedure is made of), names the redacted
 lines and tells the model what will not load. `/skills` and its commands read the dir live.
 `/skills delete <name>` (`deleteRecipe`, the Delete action only recipe rows have) removes one
-and pins the list again. Invariants:
+and drops the pinned prompt. Invariants:
 
 - **Only user or builtin origin may enable/disable** (`refuseBelowUser` gate at the Lua
   namespace boundary - NOT inside the Go helper; off-interpreter goroutines read `OriginHost`,
@@ -588,8 +588,8 @@ lua-language-server is installed.
   runs the shipped one; a name nothing defines (a typo, a pick of a since deleted profile)
   fails the send. A profile is defined with `zemi.agent.profile.add`: a `-name` denylist or an
   allowlist of tools, so a new tool is in the default set until a profile drops it.
-- **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model, prompt,
-  tools may change); `AgentSend` copies `History` from the previous idle runner. `runTurns`
+- **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model and
+  tools may change; the prompt comes from `ag.pin`); `AgentSend` copies `History` from the previous idle runner. `runTurns`
   loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction
   runs before a send, when `Runner.Full` cuts a turn at a step boundary, and once after a
   context-too-long refusal. The size is `agent.ContextUsed` of the last step, never a sum; an
@@ -833,7 +833,18 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   (`TestPromptFollowsToolSet`). Anything that varies per turn must be
   pinned per session or it busts the provider's prompt cache - which is why `gitStatusSection`
   runs once per process, warmed at boot so a big repository's `git status` is not paid for at
-  first token.
+  first token. The main agent's prefix is one pin (`ag.pin`, `pinPrompt`): the system text
+  and every tool's `Info` (through `pinnedTool`), sent verbatim while its key holds (profile,
+  model, `ProjectTrusted`, the mode's prompt, each tool's name and input schema, since a stale
+  schema fails calls). `closeSession` (`/new`, `/resume`), `compactDone` and `deleteRecipe`
+  drop it; rewind keeps it, and a reload drops nothing, since the config watcher reloads on
+  any config-tree write, the model's own skill writes included. So instruction files, skills,
+  descriptions (saved workflows, agent definitions) and `agent.assemble` output are read only
+  when it is built, and a hit costs no file read and no Lua. An instruction file the pin read
+  whose mtime moved rides the next user message once (`instructionEdits`, beside
+  `takeShellNotes` in `expandAttachments`, framed like `nearestInstructions` by
+  `instructionBlock`), unless the read log holds that mtime: the model read or wrote it itself.
+  Subagents build theirs once per run (`systemWith`).
 - **Tool schemas**: fantasy wraps `ToolInfo.Parameters` as the properties map, so tools pass
   `tools.SchemaProperties(schema)` and a non-nil `Required`; strict providers reject anything
   else.

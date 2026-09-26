@@ -330,8 +330,8 @@ func TestAgentsHomeSkills(t *testing.T) {
 	}
 }
 
-// TestRecipes: the steps share one host, in order. The prompt lists the
-// recipes pinned with the environment; the skill tool resolves them live. A
+// TestRecipes: the steps share one host, in order. The pinned prompt lists
+// the recipes it was built with; the skill tool resolves them live. A
 // step naming a tool runs it in auto mode, where the user is asked every time.
 func TestRecipes(t *testing.T) {
 	h, _ := newTestHostSkills(t)
@@ -358,6 +358,10 @@ func TestRecipes(t *testing.T) {
 	edit, _ := json.Marshal(map[string]string{"path": filepath.Join(dir, "tok", "SKILL.md"), "old_string": "step one", "new_string": "step 1"})
 	late := []string{"late", "rig"}
 	written := []string{"late", "rig", "tok"}
+	pinned := func() string {
+		_, sys, _ := h.pinPrompt(nil, h.profileTools(nil))
+		return sys
+	}
 
 	for _, c := range []struct {
 		name         string
@@ -369,10 +373,10 @@ func TestRecipes(t *testing.T) {
 		outside      bool // the ask names text from outside the machine
 	}{
 		{name: "untrusted project is inert", do: func() { h.SetProjectTrusted(false) }, read: perm.Ask},
-		{name: "trusted lists it, a taken name is dropped", do: func() { h.SetProjectTrusted(true); h.environmentPrompt() }, prompt: []string{"rig"}, tool: []string{"rig"}},
+		{name: "trusted lists it, a taken name is dropped", do: func() { h.SetProjectTrusted(true) }, prompt: []string{"rig"}, tool: []string{"rig"}},
 		{name: "written mid-session loads, the prompt stays", do: func() { writeSkill(t, dir, "late", "recipe late", "") }, prompt: []string{"rig"}, tool: late},
 		{name: "a reload's trust step keeps the pin", do: func() { h.SetProjectTrusted(true) }, prompt: []string{"rig"}, tool: late},
-		{name: "compaction pins again", do: func() { h.compactDone(0, false); h.environmentPrompt() }, prompt: late, tool: late},
+		{name: "compaction pins again", do: func() { h.compactDone(0, false) }, prompt: late, tool: late},
 		{name: "a secret is redacted", prompt: late, tool: written, call: "write", input: tok, out: "redacted lines [6]"},
 		{name: "any file there is scrubbed, whatever its name", prompt: late, tool: written, call: "write", input: strings.Replace(tok, "SKILL.md", "skill.md", 1), out: "redacted lines [6]"},
 		{name: "the redacted file is not stale", prompt: late, tool: written, call: "edit", input: string(edit), out: "tok saved"},
@@ -408,7 +412,7 @@ func TestRecipes(t *testing.T) {
 			}
 		}
 		var prompt, tool, items []string
-		for line := range strings.Lines(h.skillsIndexPrompt()) {
+		for line := range strings.Lines(pinned()) {
 			if name, _, ok := strings.Cut(strings.TrimPrefix(line, "- "), ": recipe "); ok {
 				prompt = append(prompt, name)
 			}

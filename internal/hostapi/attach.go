@@ -59,8 +59,9 @@ func overLimit(limit int64) string {
 	return fmt.Sprintf("it is over the %d KB attachment limit; read it with the read tool", limit>>10)
 }
 
-// expandAttachments also carries output of the user's !commands since the
-// last message, behind the same marker, and returns referenced images.
+// expandAttachments also carries instruction files edited since the prompt
+// was pinned and output of the user's !commands since the last message,
+// behind the same marker, and returns referenced images.
 func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 	var b strings.Builder
 	var images []fantasy.FilePart
@@ -151,6 +152,7 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 	default:
 		h.Notify(logging.Warn, fmt.Sprintf("Could not attach %d files", len(refused)), strings.Join(refused, "\n"))
 	}
+	b.WriteString(h.instructionEdits())
 	b.WriteString(h.takeShellNotes())
 	if b.Len() == 0 {
 		return text, images

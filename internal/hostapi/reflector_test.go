@@ -42,6 +42,7 @@ type reflectStubModel struct {
 	during     func()                                // runs inside Generate, while the model "thinks"
 	mu         sync.Mutex
 	prompts    [][]fantasy.Message // every Stream call's prompt but a side call's
+	tools      [][]fantasy.Tool    // and its tools
 }
 
 func (m *reflectStubModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
@@ -83,6 +84,7 @@ func (m *reflectStubModel) Stream(ctx context.Context, call fantasy.Call) (fanta
 	m.lastPrompt.Store(int32(len(call.Prompt)))
 	m.mu.Lock()
 	m.prompts = append(m.prompts, call.Prompt)
+	m.tools = append(m.tools, call.Tools)
 	m.mu.Unlock()
 	if used := m.toolStep.Swap(0); used > 0 {
 		return func(yield func(fantasy.StreamPart) bool) {

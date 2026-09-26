@@ -148,7 +148,7 @@ func TestCompactionOnCachedPrefix(t *testing.T) {
 			send(big)
 			h.agents.mu.Lock()
 			h.agents.ctxWin, h.agents.lastIn = 100_000, 90_000
-			sys := h.agents.promptText
+			sys := h.agents.pin.text
 			h.agents.mu.Unlock()
 			if name == "refused" {
 				m.overflow.Store(1)

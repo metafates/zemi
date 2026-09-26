@@ -131,11 +131,12 @@ type agentHost struct {
 
 	// promptTokens estimates the system prompt and tool schemas the runner
 	// carries; every prompt holds them, so the context estimate counts them.
-	// promptParts is the same total broken down for /usage, promptText the
-	// system prompt itself for /prompt.
+	// promptParts is the same total broken down for /usage.
 	promptTokens int64
 	promptParts  []promptPart
-	promptText   string
+	// pin is the main agent's fixed prefix (DESIGN §6.3), sent verbatim
+	// until its key moves or a drop point zeroes it.
+	pin promptPin
 
 	// reasoningShown is the session-scoped expansion override for finished
 	// reasoning blocks (nil = follow ui.reasoning config).
@@ -326,7 +327,7 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	}
 	_, loaded := h.sessionLogs()
 	toolset, active := h.deferMCP(h.profileTools(p), loaded)
-	sys, parts := h.buildSystemParts(p, toolset)
+	toolset, sys, parts := h.pinPrompt(p, toolset)
 	r := agent.NewRunner(model, toolset, sys)
 	r.ActiveTools = active
 	sent := toolset
@@ -339,7 +340,7 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 		chars += s.chars
 	}
 	h.agents.mu.Lock()
-	h.agents.promptParts, h.agents.promptTokens, h.agents.promptText = sizes, int64(chars/4), sys
+	h.agents.promptParts, h.agents.promptTokens = sizes, int64(chars/4)
 	h.agents.mu.Unlock()
 	id := h.currentModelID(p)
 	sid := h.AgentSessionID()
@@ -355,6 +356,63 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	r.Compose = func(text string) fantasy.Message { return h.composeUserMessage(text, !r.TextOnly) }
 	r.Full = h.contextFull
 	return r, nil
+}
+
+// promptPin is the prefix one key was built for: the system text, its
+// sections and each tool's Info.
+type promptPin struct {
+	key, text string
+	parts     promptParts
+	infos     map[string]fantasy.ToolInfo
+}
+
+// pinnedTool sends the Info the pin was built with, so a description read
+// from files (agent definitions, saved workflows) cannot move the prefix.
+type pinnedTool struct {
+	fantasy.AgentTool
+	info fantasy.ToolInfo
+}
+
+func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
+
+// pinPrompt gives the pinned prompt while its key holds and builds and pins a
+// new one otherwise. The key is what the user switches (profile, model,
+// trust, a mode's prompt) and each tool's name and input schema, since a
+// stale schema fails calls. Descriptions, instruction files, skills and
+// agent.assemble output wait for a drop point (closeSession, compactDone,
+// deleteRecipe). A reload drops nothing: the config watcher reloads on any
+// config-tree write, the model's own skill writes included.
+func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) ([]fantasy.AgentTool, string, promptParts) {
+	key := []string{"", h.currentModelID(p), strconv.FormatBool(h.ProjectTrusted()), h.permModeDef().Prompt}
+	if p != nil {
+		key[0] = p.Name
+	}
+	infos := make([]fantasy.ToolInfo, len(toolset))
+	for i, t := range toolset {
+		infos[i] = t.Info()
+		schema, _ := json.Marshal([]any{infos[i].Parameters, infos[i].Required})
+		key = append(key, infos[i].Name, string(schema))
+	}
+	k := strings.Join(key, "\x00")
+	ag := h.agents
+	ag.mu.Lock()
+	pin := ag.pin
+	ag.mu.Unlock()
+	if pin.key != k {
+		pin = promptPin{key: k, infos: map[string]fantasy.ToolInfo{}}
+		pin.text, pin.parts = h.buildSystemParts(p, toolset)
+		for _, info := range infos {
+			pin.infos[info.Name] = info
+		}
+		ag.mu.Lock()
+		ag.pin = pin
+		ag.mu.Unlock()
+	}
+	out := make([]fantasy.AgentTool, len(toolset))
+	for i, t := range toolset {
+		out[i] = pinnedTool{t, pin.infos[infos[i].Name]}
+	}
+	return out, pin.text, pin.parts
 }
 
 // promptPart is one named section of the fixed prompt, in characters.
@@ -385,8 +443,8 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 	}
 }
 
-// SystemPrompt is the system prompt the last send assembled, "" before the
-// first one. /usage measures it; this is the text, so a profile, an
+// SystemPrompt is the pinned system prompt the last send carried, "" before
+// the first one. /usage measures it; this is the text, so a profile, an
 // assemble handler or an instruction file the budget cut can be read
 // instead of guessed at. It is never rebuilt here: assembling it runs Lua
 // handlers on the interpreter, which a Lua caller would deadlock on.
@@ -394,7 +452,7 @@ func (h *Host) SystemPrompt() string {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	return ag.promptText
+	return ag.pin.text
 }
 
 // promptBreakdown is the fixed prompt the last runner build measured, in
@@ -472,8 +530,9 @@ func (h *Host) sendClaimed(scope *turnScope, text string) error {
 	}
 
 	ag.mu.Lock()
-	// The runner is rebuilt per send (model, prompt and tools may have
-	// changed); the conversation carries over from the idle previous one.
+	// The runner is rebuilt per send (model and tools may have changed, the
+	// prompt only with pinPrompt's key); the conversation carries over from
+	// the idle previous one.
 	if prev := ag.runner; prev != nil {
 		runner.History = prev.History
 	}
@@ -2472,7 +2531,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	// prompt() is the system prompt the last send assembled, "" before the
+	// prompt() is the pinned system prompt the last send carried, "" before the
 	// first one; it is never rebuilt here (see SystemPrompt).
 	tb.RawSetString("prompt", L.NewFunction(func(L *glua.LState) int {
 		L.Push(glua.LString(h.SystemPrompt()))

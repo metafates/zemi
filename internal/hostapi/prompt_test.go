@@ -1,14 +1,20 @@
 package hostapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -217,6 +223,111 @@ func TestSendPrepCheap(t *testing.T) {
 	}
 	if d := time.Since(start); d > 200*time.Millisecond {
 		t.Fatalf("5 prompt builds took %s; something expensive is back on the send path", d)
+	}
+}
+
+// TestPromptPinned: two sends around a change carry the same system prompt
+// and tools unless the change is a drop point or moves the key, which an
+// agent.assemble counter shows. A hand edit of an instruction file rides
+// the next message once instead.
+func TestPromptPinned(t *testing.T) {
+	agentsMD := func(h *Host) string { return filepath.Join(h.Dirs.ProjectDir, "AGENTS.md") }
+	for _, c := range []struct {
+		name    string
+		between func(t *testing.T, h *Host, r *lua.Runtime)
+		rebuilt bool
+		attach  int
+	}{
+		{"AGENTS.md edited by hand", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			os.WriteFile(agentsMD(h), []byte("run make check"), 0o644)
+			later := time.Now().Add(time.Hour)
+			os.Chtimes(agentsMD(h), later, later)
+		}, false, 1},
+		{"AGENTS.md edited through the edit tool", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: agentsMD(h), Decision: perm.Allow})
+			all := tools.All(h.PipelineFor())
+			for _, call := range []struct {
+				name string
+				in   map[string]any
+			}{
+				{"read", map[string]any{"path": agentsMD(h), "limit": 0}},
+				{"edit", map[string]any{"path": agentsMD(h), "old_string": "test", "new_string": "check"}},
+			} {
+				i := slices.IndexFunc(all, func(a fantasy.AgentTool) bool { return a.Info().Name == call.name })
+				input, _ := json.Marshal(call.in)
+				if resp, err := all[i].Run(t.Context(), fantasy.ToolCall{ID: "t", Name: call.name, Input: string(input)}); err != nil || resp.IsError {
+					t.Fatalf("%s: %v %s", call.name, err, resp.Content)
+				}
+			}
+		}, false, 0},
+		{"skill added", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			writeSkill(t, h.userSkillsDir(), "fresh", "a fresh skill", "")
+			h.syncSkills()
+		}, false, 0},
+		{"workflow saved", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			os.MkdirAll(filepath.Join(h.Dirs.ConfigHome, "workflows"), 0o755)
+			os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "workflows", "fresh.lua"), []byte("-- a fresh workflow\nreturn 1\n"), 0o644)
+		}, false, 0},
+		{"memory added", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			if err := h.Remember("a fresh memory"); err != nil {
+				t.Fatal(err)
+			}
+		}, false, 0},
+		{"assemble handler changed and reloaded", func(t *testing.T, h *Host, r *lua.Runtime) {
+			if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+				t.Fatal(err)
+			}
+			runUser(t, r, `zemi.event.on("agent.assemble", function() return "changed" end)`)
+		}, false, 0},
+		{"compaction", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			if err := h.CompactNow(""); err != nil {
+				t.Fatal(err)
+			}
+			waitIdle(t, h)
+		}, true, 0},
+		{"profile switch", func(t *testing.T, _ *Host, r *lua.Runtime) {
+			runUser(t, r, `zemi.agent.profile.add("other", {}); zemi.config.set("agent.profile", "other")`)
+		}, true, 0},
+		{"resume", func(t *testing.T, h *Host, _ *lua.Runtime) {
+			sid := h.AgentSessionID()
+			if err := h.NewSession(); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.ResumeSession(sid); err != nil {
+				t.Fatal(err)
+			}
+		}, true, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, r := newTestHostDB(t)
+			h.Dirs.ConfigHome = t.TempDir()
+			h.SetProjectTrusted(true)
+			h.Settings.SetQuiet("models.chat", "stub/m")
+			m := reflectStub(t, h, "ok")
+			os.WriteFile(agentsMD(h), []byte("run make test"), 0o644)
+			runUser(t, r, `local n = 0
+zemi.event.on("agent.assemble", function() n = n + 1; return "build " .. n end)`)
+			send := sender(t, h)
+			send("one")
+			c.between(t, h, r)
+			send("two")
+			m.mu.Lock()
+			first, last := m.prompts[0], m.prompts[len(m.prompts)-1]
+			tools0, _ := json.Marshal(m.tools[0])
+			tools1, _ := json.Marshal(m.tools[len(m.tools)-1])
+			m.mu.Unlock()
+			sys0, sys1 := concatText(first[0].Content), concatText(last[0].Content)
+			if rebuilt := strings.Contains(sys1, "build 2"); rebuilt != c.rebuilt {
+				t.Errorf("rebuilt = %v, want %v", rebuilt, c.rebuilt)
+			}
+			if !c.rebuilt && (sys0 != sys1 || string(tools0) != string(tools1)) {
+				t.Errorf("the prefix moved: prompt equal %v, tools equal %v", sys0 == sys1, string(tools0) == string(tools1))
+			}
+			msg := concatText(last[len(last)-1].Content)
+			if n := strings.Count(msg, `<instructions path="AGENTS.md">`); n != c.attach || c.attach > 0 && !strings.Contains(msg, "run make check") {
+				t.Errorf("%d attachments, want %d: %q", n, c.attach, msg)
+			}
+		})
 	}
 }
 

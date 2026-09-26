@@ -34,10 +34,13 @@ description: "Load when zemi misbehaves: a crash, an error in /errors, a silent 
    section, an instruction file the budget cut, the memory digest - read the prompt itself:
 
    ```lua
-   return zemi.agent.prompt()   -- the system prompt of the last send, "" before the first
+   return zemi.agent.prompt()   -- the pinned system prompt, "" before the first send
    ```
 
-   `/prompt` shows the same text; `/usage` only measures it.
+   `/prompt` shows the same text; `/usage` only measures it. The prompt is pinned for the
+   session, so it may lag the files on disk: an edit to a skill, a profile or an
+   `agent.assemble` handler shows after `/new` or `/compact`, and a hand edit to an
+   instruction file rides the next message instead.
 
 4. For anything about what is on the screen - a widget drawing wrong, a theme, an overlay
    in the way, text wrapping badly, a statusline that lost a segment - look instead of

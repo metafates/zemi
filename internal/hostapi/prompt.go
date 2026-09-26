@@ -4,9 +4,11 @@ package hostapi
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -120,13 +122,15 @@ func (h *Host) InitProject() error { return h.AgentSend(initPrompt) }
 const initPrompt = `Study this repository and write AGENTS.md at its root for future coding agents; if it exists, update it and keep what is still true. Cover, briefly and concretely: what the project is, in two sentences; the exact commands to build, test, lint and run, taken from the build files; the main packages and how control flows between them; conventions and non-obvious gotchas you confirmed in the code. No generic advice. In a large codebase, first explore different areas with parallel explore agents.`
 
 // promptParts is the size in characters of each section of the fixed
-// prompt, so /usage can say what the tokens every request pays for are.
+// prompt, so /usage can say what the tokens every request pays for are,
+// and the instruction files it read.
 type promptParts struct {
 	base         int // the system prompt itself, mode section and environment
 	instructions int
 	lua          int
 	skills       int
 	digest       int
+	files        map[string]time.Time // instruction file -> its mtime as read, zero when missing
 }
 
 // buildSystemParts takes the run's tool set so the prompt names no tool the
@@ -198,6 +202,15 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 		}
 		files = abs
 	}
+	// stat before the read: an edit between the two is then attached, not lost
+	mtimes := map[string]time.Time{}
+	for _, f := range files {
+		var mt time.Time
+		if fi, err := os.Stat(f); err == nil {
+			mt = fi.ModTime()
+		}
+		mtimes[f] = mt
+	}
 	// The user's own file spends its own budget: how big a repository's
 	// AGENTS.md is must not decide whether the user's rules ship at all.
 	var mine []string
@@ -215,7 +228,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	// Most stable first: providers that cache any shared prefix then share
 	// the instructions across sessions; env and the digest are per session.
 	out := h.withDigest(sys + sections + index + luaSections + env)
-	parts := promptParts{base: len(sys) + len(env), instructions: len(sections), lua: len(luaSections), skills: len(index)}
+	parts := promptParts{base: len(sys) + len(env), instructions: len(sections), lua: len(luaSections), skills: len(index), files: mtimes}
 	parts.digest = len(out) - parts.base - parts.instructions - parts.lua - parts.skills
 	return out, parts
 }
@@ -336,18 +349,65 @@ func (h *Host) nearestInstructions(path string, sent func(string) bool) string {
 			if err != nil {
 				rel = p
 			}
-			relDir := filepath.Dir(rel)
-			body := string(data)
-			if cut := truncRunes(body, 4000); cut != body {
-				body = cut + "\n(cut here; read " + rel + " for the rest)"
-			}
-			return fmt.Sprintf("\n<instructions path=%q>\nThese apply to every file under %s/.\n%s\n</instructions>\n", rel, relDir, body)
+			block, _ := instructionBlock(rel, "These apply to every file under "+filepath.Dir(rel)+"/.", data)
+			return block
 		}
 		if filepath.Dir(dir) == dir {
 			break
 		}
 	}
 	return ""
+}
+
+// instructionBlock frames an instruction file for a message, cut to 4000
+// runes; whole reports that nothing was cut.
+func instructionBlock(name, note string, data []byte) (string, bool) {
+	body, whole := string(data), true
+	if cut := truncRunes(body, 4000); cut != body {
+		body, whole = cut+"\n(cut here; read "+name+" for the rest)", false
+	}
+	return fmt.Sprintf("\n<instructions path=%q>\n%s\n%s\n</instructions>\n", name, note, body), whole
+}
+
+// instructionEdits attaches each instruction file the pinned prompt holds
+// that changed since, once per change: the prompt keeps the old text so the
+// provider cache holds. A version the model read or wrote itself is skipped.
+func (h *Host) instructionEdits() string {
+	ag := h.agents
+	ag.mu.Lock()
+	files := maps.Clone(ag.pin.parts.files)
+	ag.mu.Unlock()
+	seen := h.readLog()
+	var b strings.Builder
+	for _, p := range slices.Sorted(maps.Keys(files)) {
+		fi, err := os.Stat(p)
+		if err != nil || fi.ModTime().Equal(files[p]) {
+			continue
+		}
+		mt := fi.ModTime()
+		if t, ok := seen.Load(perm.CanonPath(p)); !ok || !t.(time.Time).Equal(mt) {
+			data, err := os.ReadFile(p)
+			if err != nil {
+				continue
+			}
+			name := p
+			if _, ok := perm.Under(h.Dirs.RepoRoot(), p); ok {
+				name, _ = filepath.Rel(h.Dirs.ProjectDir, p)
+			}
+			block, whole := instructionBlock(name, "Changed since the system prompt was built: this version replaces the one there.", data)
+			b.WriteString(block)
+			// a cut text is not the file: an edit must read it first
+			if whole {
+				seen.Store(perm.CanonPath(p), mt)
+			}
+		}
+		ag.mu.Lock()
+		if ag.pin.parts.files != nil {
+			ag.pin.parts.files[p] = mt
+		}
+		ag.mu.Unlock()
+	}
+	return b.String()
 }
 
 // instructionFile reports whether a repository instruction file may load.
@@ -394,7 +454,6 @@ func (h *Host) environmentPrompt() string {
 	if env != "" {
 		return env
 	}
-	h.pinRecipes()
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n\n# Environment\nWorking directory: %s\nPlatform: %s/%s\nDate at session start: %s\n", h.Dirs.ProjectDir, runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"))
 	if dir := h.ensureScratch(); dir != "" {
@@ -465,7 +524,7 @@ func (h *Host) forgetInstructions() {
 	ag.readMu.Unlock()
 }
 
-// OpenPrompt shows the system prompt the last send assembled, which /usage
+// OpenPrompt shows the pinned system prompt the last send carried, which /usage
 // only measures.
 func (h *Host) OpenPrompt() error {
 	ui, err := h.Screen()
