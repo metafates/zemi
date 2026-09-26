@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,34 +13,36 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// TestNotifyWhenAway: a finished turn notifies through the terminal only
+// TestNotifyWhenAway: a finished turn notifies in the ui.notify style only
 // while the terminal reports zemi unfocused.
 func TestNotifyWhenAway(t *testing.T) {
 	log := logging.New("")
 	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
 	app := NewApp(host, log)
-	done := turnDoneMsg{}
 	for _, c := range []struct {
-		name   string
-		focus  tea.Msg
-		notify bool
+		name, style string
+		focus       tea.Msg
+		want        string // the raw bytes sent, "" for no notification
 	}{
-		{"focused", nil, false},
-		{"away", tea.BlurMsg{}, true},
-		{"back", tea.FocusMsg{}, false},
+		{"focused", "osc", nil, ""},
+		{"away", "osc", tea.BlurMsg{}, "\x1b]9;zemi finished\x07"},
+		{"away with a bell", "bell", nil, "\a"},
+		{"away and off", "off", nil, ""},
+		{"back", "osc", tea.FocusMsg{}, ""},
 	} {
+		if _, err := host.Settings.SetQuiet("ui.notify", c.style); err != nil {
+			t.Fatal(err)
+		}
 		if c.focus != nil {
 			app.Update(c.focus)
 		}
-		_, cmd := app.Update(done)
-		if (cmd != nil) != c.notify {
-			t.Fatalf("%s: notification = %v", c.name, cmd != nil)
+		got := ""
+		if _, cmd := app.Update(turnDoneMsg{}); cmd != nil {
+			raw, _ := cmd().(tea.RawMsg)
+			got = fmt.Sprint(raw.Msg)
 		}
-		if cmd != nil {
-			raw, ok := cmd().(tea.RawMsg)
-			if !ok || !strings.Contains(fmt.Sprint(raw.Msg), "\x1b]9;zemi finished") {
-				t.Fatalf("%s: cmd = %#v", c.name, raw)
-			}
+		if got != c.want {
+			t.Errorf("%s: sent %q, want %q", c.name, got, c.want)
 		}
 	}
 }

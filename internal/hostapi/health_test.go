@@ -244,3 +244,29 @@ func TestWaitMCP(t *testing.T) {
 	s.mu.Unlock()
 	<-done
 }
+
+// TestNotifyStyle: auto sends OSC 9 only where a terminal draws it, a native
+// notification only on this machine, and a bell otherwise.
+func TestNotifyStyle(t *testing.T) {
+	for _, c := range []struct {
+		name, setting, goos, env, tools, want string
+	}{
+		{"ghostty", "auto", "darwin", "TERM_PROGRAM=ghostty", "osascript", "osc"},
+		{"kitty over ssh", "auto", "linux", "TERM=xterm-kitty SSH_TTY=/dev/pts/1", "notify-send", "osc"},
+		{"tmux on a mac", "auto", "darwin", "TERM_PROGRAM=tmux TERM=xterm-ghostty TMUX=x", "osascript", "native"},
+		{"Apple Terminal without a notifier", "auto", "darwin", "TERM_PROGRAM=Apple_Terminal", "", "bell"},
+		{"linux over ssh", "auto", "linux", "TERM=xterm-256color SSH_CONNECTION=x", "notify-send", "bell"},
+		{"native with no tool", "native", "linux", "", "", "bell"},
+		{"off", "off", "darwin", "TERM_PROGRAM=ghostty", "osascript", "off"},
+	} {
+		env := map[string]string{}
+		for kv := range strings.FieldsSeq(c.env) {
+			k, v, _ := strings.Cut(kv, "=")
+			env[k] = v
+		}
+		has := func(name string) bool { return name == c.tools }
+		if got, why := notifyStyle(c.setting, func(k string) string { return env[k] }, c.goos, has); got != c.want {
+			t.Errorf("%s: %s (%s), want %s", c.name, got, why, c.want)
+		}
+	}
+}

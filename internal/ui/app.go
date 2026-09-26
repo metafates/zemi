@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"image/color"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -28,6 +29,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -481,14 +483,39 @@ func (a *App) progressCmd(running bool) tea.Cmd {
 	return tea.Raw("\x1b]9;4;3\x07")
 }
 
-// notifyIfAway alerts through the terminal when zemi needs attention while
-// its window is not focused: OSC 9 (a desktop notification in iTerm2,
-// Ghostty, WezTerm, Windows Terminal) and a bell for other terminals.
+// notifyIfAway alerts in the ui.notify style (Host.NotifyStyle) when zemi
+// needs attention while its window is not focused.
 func (a *App) notifyIfAway(text string) tea.Cmd {
-	if a.focused || !a.host.Settings.Bool("ui.notify") {
+	if a.focused {
 		return nil
 	}
-	return tea.Raw("\x1b]9;" + sanitize.String(text) + "\x07\a")
+	text = sanitize.String(text)
+	switch style, _ := a.host.NotifyStyle(); style {
+	case "osc":
+		return tea.Raw("\x1b]9;" + text + "\x07")
+	case "bell":
+		return tea.Raw("\a")
+	case "native":
+		return nativeNotify(text)
+	}
+	return nil
+}
+
+// nativeNotify shows text through the OS notifier, as argv so no text is
+// ever read as AppleScript.
+// NOTE: macOS credits an osascript banner to Script Editor, whose icon it
+// shows and whose setting mutes it; terminal-notifier is the upgrade.
+func nativeNotify(text string) tea.Cmd {
+	args := []string{"notify-send", "-a", "zemi", "--", "zemi", text}
+	if runtime.GOOS == "darwin" {
+		args = []string{"osascript", "-e", "on run argv", "-e", `display notification (item 1 of argv) with title "zemi"`, "-e", "end run", text}
+	}
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = proc.Run(proc.CommandContext(ctx, args[0], args[1:]...))
+		return nil
+	}
 }
 
 // Frame renders the full screen as styled text; exported for the golden

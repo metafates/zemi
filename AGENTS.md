@@ -983,7 +983,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   sequence and scroll flags are `tui/` widgets reading `hostapi.UIState`; a new flag goes
   into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget
   cannot render at the 50 ms frame clock is a segment `effect` the UI applies (`shimmer`). The terminal itself
-  gets OSC 9 (notify when unfocused), OSC 9;4 (`ui.progress`: a running turn as taskbar
+  gets the `ui.notify` alert when zemi is unfocused (OSC 9, a bell or a native notification,
+  as `Host.NotifyStyle` resolves `auto`), OSC 9;4 (`ui.progress`: a running turn as taskbar
   progress, resent every few seconds so terminals do not hide it, cleared on quit) and OSC 11
   (the theme's Normal bg as its own background, through `tea.View.BackgroundColor` so bubbletea
   resets it on every exit, a signal included; only when it answered the query and the color

@@ -4,11 +4,14 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"os/exec"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -187,6 +190,48 @@ func healthResult(v any) (HealthLevel, string, error) {
 	return HealthOK, "", nil
 }
 
+// oscTerms are the TERM_PROGRAM and TERM values of terminals that show OSC 9
+// as a desktop notification. TERM survives ssh, TERM_PROGRAM does not.
+var oscTerms = []string{"iTerm.app", "ghostty", "WezTerm", "xterm-ghostty", "xterm-kitty", "wezterm"}
+
+// notifyStyle resolves the ui.notify setting to the style notifyIfAway
+// uses, and why.
+func notifyStyle(setting string, env func(string) string, goos string, has func(string) bool) (style, why string) {
+	tool := map[string]string{"darwin": "osascript", "linux": "notify-send"}[goos]
+	native := tool != "" && has(tool)
+	switch setting {
+	case "native":
+		if native {
+			return "native", "via " + tool
+		}
+		return "bell", "native: " + cmp.Or(tool, "a notifier") + " not found"
+	case "auto":
+	default:
+		return setting, "set in config"
+	}
+	// tmux drops OSC 9 unless allow-passthrough is on
+	if env("TMUX") == "" {
+		for _, k := range []string{"TERM_PROGRAM", "TERM"} {
+			if v := env(k); slices.Contains(oscTerms, v) {
+				return "osc", "auto: " + k + "=" + v
+			}
+		}
+	}
+	// over ssh a native notification would show on the remote machine
+	if native && env("SSH_TTY") == "" && env("SSH_CONNECTION") == "" {
+		return "native", "auto: via " + tool
+	}
+	return "bell", "auto: no OSC 9 terminal or local notifier found"
+}
+
+// NotifyStyle is notifyStyle for this process.
+func (h *Host) NotifyStyle() (style, why string) {
+	return notifyStyle(h.Settings.Str("ui.notify"), os.Getenv, runtime.GOOS, func(name string) bool {
+		_, err := exec.LookPath(name)
+		return err == nil
+	})
+}
+
 // goHealthRows are the Go-side checks, in the order /health shows them.
 func (h *Host) goHealthRows() []healthCheck {
 	var out []healthCheck
@@ -266,6 +311,15 @@ func (h *Host) goHealthRows() []healthCheck {
 		add(HealthWarn, "ripgrep", "not found; glob and grep use the slower Go walker")
 	} else {
 		add(HealthOK, "ripgrep", rg+" runs glob and grep")
+	}
+
+	switch style, why := h.NotifyStyle(); {
+	case style == "off":
+		add(HealthOK, "notify", "off")
+	case h.Settings.Str("ui.notify") == "native" && style != "native":
+		add(HealthWarn, "notify", style+", "+why)
+	default:
+		add(HealthOK, "notify", style+", "+why+"; only while zemi is unfocused")
 	}
 
 	switch s := h.sandbox.Load(); {
