@@ -533,7 +533,6 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 // callIDKey carries the tool call id to a run function, for Progress.
 type callIDKey struct{}
 
-// tool implements fantasy.AgentTool over a plain run function.
 // NoProviderOptions is the fantasy.AgentTool option pair of a tool that
 // sends the provider none.
 type NoProviderOptions struct{}
@@ -541,6 +540,7 @@ type NoProviderOptions struct{}
 func (NoProviderOptions) ProviderOptions() fantasy.ProviderOptions   { return nil }
 func (NoProviderOptions) SetProviderOptions(fantasy.ProviderOptions) {}
 
+// tool implements fantasy.AgentTool over a plain run function.
 type tool struct {
 	NoProviderOptions
 	info     fantasy.ToolInfo
