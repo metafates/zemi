@@ -139,8 +139,7 @@ reload that no longer adds it. `event.on` and `config.watch` hand back the id th
 | `zemi.timer` | `after(ms, fn)` (0 ms = next tick), `every(ms, fn)` -> `{ stop }` |
 | `zemi.state`, `zemi.env` | `set`, `get`, `del`, `keys(prefix)` (persisted kv; a key nobody set is nil with no error); `get(name)` (filtered environment; nil when the variable is not set, so `zemi.env.get("K") or error("set K")` works) |
 
-`require("zemi.util")` adds `split`, `trim`, `startswith`, `endswith`, `keys`, `map`,
-`filter`, `contains`, `extend`, `get`, `validate`, `inspect`.
+`require("zemi.util")` adds `split`, `trim`, `keys`, `get`, `validate` and `inspect`.
 
 ## Examples
 

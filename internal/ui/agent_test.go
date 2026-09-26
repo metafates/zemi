@@ -787,10 +787,8 @@ func TestLuaUtil(t *testing.T) {
 		local u = require("zemi.util")
 		assert(u.trim("  hi \n") == "hi", "trim")
 		assert(table.concat(u.split("a,,b", ","), "|") == "a||b", "split")
-		assert(u.startswith("zemi", "ze") and u.endswith("zemi", "mi"), "affixes")
 		assert(table.concat(u.keys({ b = 1, a = 2 }), ",") == "a,b", "keys")
 		assert(u.get({ a = { b = { c = 3 } } }, "a", "b", "c") == 3 and u.get({}, "x", "y") == nil, "get")
-		assert(u.extend({ a = 1, b = 1 }, { b = 2 }).b == 2, "extend")
 		local cyc = { 1, name = "x" }
 		cyc.self = cyc
 		local s = u.inspect(cyc)

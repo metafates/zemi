@@ -1,5 +1,6 @@
 -- The chat widget: the transcript, the live turn and the todo list.
 local fmt = require("zemi.tui.text")
+local util = require("zemi.util")
 
 -- The one per-row "running now" mark: a braille spinner, stepped by
 -- ctx.frame (50 ms a step), so a row that only shows live animates cleanly.
@@ -266,10 +267,8 @@ zemi.ui.widget.add({
       local body = input
       if open then
         body = input:gsub("%s+$", "")
-        for l in (body .. "\n"):gmatch("(.-)\n") do
-          more[#more + 1] = l
-        end
-        input = table.remove(more, 1) or ""
+        more = util.split(body, "\n")
+        input = table.remove(more, 1)
       else
         input = (input:gsub("%s+", " "))
       end
@@ -361,11 +360,7 @@ zemi.ui.widget.add({
           or (ctx.show_reasoning and name == "bash")
         )
       then
-        ---@type string[]
-        local out = {}
-        for ol in (output .. "\n"):gmatch("(.-)\n") do
-          out[#out + 1] = ol
-        end
+        local out = util.split(output, "\n")
         -- a collapsed failure shows three lines where it says what went
         -- wrong: a tool's first, a command's last (its stderr and exit
         -- status); a click shows the rest
@@ -467,7 +462,7 @@ zemi.ui.widget.add({
           m.status == "err" and mark("err") or { text = "$ ", hl = "Title", copy = false },
           { text = m.text, hl = "Normal" },
         }
-        for ol in ((m.detail or "") .. "\n"):gmatch("(.-)\n") do
+        for _, ol in ipairs(util.split(m.detail or "", "\n")) do
           lines[#lines + 1] = { { text = "  ", copy = false }, { text = ol, hl = "Comment" } }
         end
       elseif m.kind == "compact" or m.kind == "notice" then
@@ -477,9 +472,7 @@ zemi.ui.widget.add({
         -- the headline, then the raw error as its detail
         gap("activity")
         local cancelled = m.status == "cancelled"
-        local n = 0
-        for text in (m.text .. "\n"):gmatch("(.-)\n") do
-          n = n + 1
+        for n, text in ipairs(util.split(m.text, "\n")) do
           if n == 1 then
             lines[#lines + 1] =
               { mark(cancelled and "stop" or "err"), { text = text, hl = cancelled and "Comment" or "Danger" } }

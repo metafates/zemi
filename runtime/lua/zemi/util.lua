@@ -21,16 +21,6 @@ function M.trim(s)
   return s:sub(i, j)
 end
 
----@param s string
----@param prefix string
----@return boolean
-function M.startswith(s, prefix) return s:sub(1, #prefix) == prefix end
-
----@param s string
----@param suffix string
----@return boolean
-function M.endswith(s, suffix) return suffix == "" or s:sub(-#suffix) == suffix end
-
 --- Split on a plain (not pattern) separator, keeping empty fields.
 ---@param s string
 ---@param sep string
@@ -60,53 +50,6 @@ function M.keys(t)
     out[#out + 1] = k
   end
   table.sort(out, function(a, b) return tostring(a) < tostring(b) end)
-  return out
-end
-
----@generic T, U
----@param list T[]
----@param fn fun(v: T, i: integer): U
----@return U[]
-function M.map(list, fn)
-  local out = {}
-  for i, v in ipairs(list) do
-    out[i] = fn(v, i)
-  end
-  return out
-end
-
----@generic T
----@param list T[]
----@param fn fun(v: T, i: integer): boolean
----@return T[]
-function M.filter(list, fn)
-  local out = {}
-  for i, v in ipairs(list) do
-    if fn(v, i) then out[#out + 1] = v end
-  end
-  return out
-end
-
----@param list any[]
----@param value any
----@return boolean
-function M.contains(list, value)
-  for _, v in ipairs(list) do
-    if v == value then return true end
-  end
-  return false
-end
-
---- A shallow merge into a new table; later tables win.
----@param ... table?
----@return table
-function M.extend(...)
-  local out = {}
-  for i = 1, select("#", ...) do
-    for k, v in pairs(select(i, ...) or {}) do
-      out[k] = v
-    end
-  end
   return out
 end
 
