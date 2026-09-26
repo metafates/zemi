@@ -231,13 +231,6 @@ func (r *Runner) Cancel() {
 	}
 }
 
-// Active reports whether a turn is running.
-func (r *Runner) Active() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.active
-}
-
 // Send streams one turn. The user message is appended to history,
 // persisted, and the agent streams; step messages are appended and
 // persisted as they complete. An empty userText continues from history as

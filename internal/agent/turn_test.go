@@ -886,3 +886,10 @@ func TestCacheBreakpoints(t *testing.T) {
 		}
 	}
 }
+
+// Active reports whether a turn is running.
+func (r *Runner) Active() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.active
+}
