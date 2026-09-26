@@ -247,9 +247,10 @@ zemi.config = {}
 ---@return any
 function zemi.config.get(path) end
 
---- Write a setting. User config only; raises for an unknown path or a wrong
---- kind. A reload that writes the same value as the last
---- load leaves the setting alone, so a runtime pick (/model, /effort) stays.
+--- Write a setting. User config only; raises for an unknown path, a wrong
+--- kind or a value outside the key's `choices` (agent.effort, memory.autonomy).
+--- A reload that writes the same value as the last load leaves the setting
+--- alone, so a runtime pick (/model, /effort) stays.
 ---@param path string
 ---@param value any
 function zemi.config.set(path, value) end
