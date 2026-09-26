@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -241,13 +242,24 @@ func MoreLines(n int) string {
 	return fmt.Sprintf("… %d more %s", n, plural(n, "line", "lines"))
 }
 
-// rowOutput is a tool result as its transcript row shows it: a plan's
-// verdict, since its result is written for the model, else shortOutput.
+// rowOutput is a tool result as its transcript row shows it, else
+// shortOutput: a plan's verdict and an answered question call's
+// "question\tanswer" lines, since their results are written for the model.
 func rowOutput(tool, out string) string {
-	if tool == tools.ToolPlan {
+	switch tool {
+	case tools.ToolPlan:
 		verdict, path := tools.PlanOutcome(out)
 		if out = verdict; path != "" {
 			out += ", saved to " + TildePath(path)
+		}
+	case tools.ToolQuestion:
+		if qa := tools.QuestionAnswers(out); qa != nil {
+			line := func(s string) string { return sanitize.String(truncRunes(strings.Join(strings.Fields(s), " "), 300)) }
+			rows := make([]string, len(qa))
+			for i, p := range qa {
+				rows[i] = line(p[0]) + "\t" + cmp.Or(line(p[1]), "not answered")
+			}
+			return strings.Join(rows, "\n")
 		}
 	}
 	return shortOutput(out)
@@ -1780,7 +1792,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.90.0"))
+	api.RawSetString("version", glua.LString("0.91.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

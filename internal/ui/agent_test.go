@@ -1140,7 +1140,8 @@ func TestFileRowClickIDs(t *testing.T) {
 // line, edits and failures keep their rows, a command shows the model's
 // description with the command under it, and ctrl+o shows every call.
 func TestToolRows(t *testing.T) {
-	app, host := bootAgentApp(t, 100, 64)
+	longQ := "Delete the 8 leftover worktree-agent-* branches too? They are all merged into main, so their commits stay reachable and nothing is lost."
+	app, host := bootAgentApp(t, 100, 80)
 	host.AppendMessage("user", "fix it")
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
 		{Name: "read", Input: "a.go", Status: "ok"},
@@ -1157,16 +1158,29 @@ func TestToolRows(t *testing.T) {
 		// included; a command's shows its end, where its error and exit status are
 		{Name: "bash", Input: "go build", Label: "Build the binary", Status: "err", Output: "e1\ne2\ne3\n… 21 more lines\nl1\nl2\nl3\nl4\nl5\nl6"},
 		// a verdict the user gave shows as one line under a stop mark; the model keeps the reason and the instructions
-		{Name: "question", Input: "Name?", Status: "stopped", Output: "The user dismissed the questions. Stop and wait for them to say how to proceed."},
+		{Name: "question", Input: "Name?", Label: "name", Status: "stopped", Output: "The user dismissed the questions. Stop and wait for them to say how to proceed."},
 		{Name: "write", Input: "b.go", Status: "stopped", Output: "permission denied (user): fs.write /p/b.go: it asked because this project is not trusted (/trust)"},
 		{Name: "plan", Input: "# Plan", Status: "ok", Output: "approved, saved to /data/plans/s1.md"},
 		{Name: "plan", Input: "# Plan", Status: "ok", Output: "changes requested: use go"},
+		// an answered question reads its header, then each question with its
+		// answer: on one line when it fits, the answer under it when not
+		{Name: "question", Input: "Which auth method?", Label: "auth method", Status: "ok", Output: "Which auth method?\tOAuth"},
+		{Name: "question", Input: longQ, Label: "branch cleanup", Status: "ok", Output: longQ + "\tYes, delete them"},
+		{Name: "question", Input: "Which store? +1 more", Label: "store, cache size", Status: "ok", Output: "Which store?\tsqlite\nHow large may the cache grow?\tnot answered"},
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
+	for _, q := range []string{"Which auth method?", "Delete the 8 leftover", "Which store?"} {
+		if n := strings.Count(frame, q); n != 1 {
+			t.Fatalf("%q shows %d times, want once:\n%s", q, n, frame)
+		}
+	}
 	for _, want := range []string{"Read 2 files, ran 1 command: vet the code", "⧗ Build it", "    running as job-1", "⧗ Start dev server", "    running as job-2", "    … 27 more lines", "    l4", "    l6", "✓ Edit a.go", "7 - old", "7 + new", "✗ Run the unit tests", "⎿ go test ./...", "    --- FAIL: TestX",
 		"⎿ cat > n.txt <<EOT first line EOT", "✗ Run printf a printf b",
-		"■ Write b.go", "  ⎿ denied by you", "  ⎿ dismissed by you", "  ⎿ approved, saved to /data/plans/s1.md", "  ⎿ changes requested: use go"} {
+		"■ Write b.go", "  ⎿ denied by you", "  ⎿ approved, saved to /data/plans/s1.md", "  ⎿ changes requested: use go",
+		"■ Ask name", "  ⎿ Name?", "    dismissed by you",
+		"✓ Ask auth method", "  ⎿ Which auth method?  OAuth", "✓ Ask branch cleanup", "    Yes, delete them",
+		"✓ Ask store, cache size", "  ⎿ Which store?  sqlite", "    How large may the cache grow?  not answered"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}

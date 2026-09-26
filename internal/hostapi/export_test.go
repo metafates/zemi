@@ -164,6 +164,8 @@ func TestToolLabel(t *testing.T) {
 		`{"command":"ls"}`:                                        "",
 		`{"about":"Look up the ticket","id":"FE-1"}`:              "Look up the ticket",
 		`{"description":"Find the config loader","prompt":"..."}`: "",
+		`{"questions":[{"question":"Which one?","header":"Auth method"},{"question":"How big?"},{"question":"Keep?","header":"API key"}]}`: "auth method, API key",
+		`{"questions":[{"question":"Which one?"},{"question":"How big?"}]}`:                                                                "2 questions",
 	} {
 		if got := toolLabel(in); got != want {
 			t.Errorf("toolLabel(%s) = %q, want %q", in, got, want)

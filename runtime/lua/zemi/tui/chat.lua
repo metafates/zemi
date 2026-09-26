@@ -303,9 +303,17 @@ zemi.ui.widget.add({
         lines[#lines + 1] = row
         corner = false
       end
+      -- an answered question's output holds "question\tanswer" lines, which
+      -- take the place of the question under its header
+      local output = t.output or ""
+      local answered = name == "question" and output:find("\t") ~= nil
       -- the command a description stands for, then progress, then the job
       -- a timed-out command went on as (the phrase is tools.JobHandoff)
-      if label ~= "" and input ~= "" then detail(code and code[1] or fit(input, width - 6), "Comment") end
+      if answered then
+        more = {}
+      elseif label ~= "" and input ~= "" then
+        detail(code and code[1] or fit(input, width - 6), "Comment")
+      end
       for i, l in ipairs(more) do
         detail(code and code[i + 1] or l, "Comment")
       end
@@ -327,8 +335,6 @@ zemi.ui.widget.add({
       end
       -- the result's last lines: always for a failure, for what the user
       -- answered (question, plan), for commands with ctrl+o
-      local output = t.output or ""
-      if name == "question" then output = output:gsub("^The user answered:\n", "") end
       -- what the user just decided needs no restating: the model's text
       -- carries the reason and the instructions, the row the verdict
       if output:match("^permission denied %(user") then output = "denied by you" end
@@ -366,7 +372,17 @@ zemi.ui.widget.add({
         local more = "… " .. fmt.count(hidden, "more line", "more lines")
         if hidden > 0 and first > 1 then detail(more, "Comment") end
         for i = first, last do
-          detail(out[i], err and i == (tail and #out or 1) and "Danger" or "Comment")
+          local q, a = out[i]:match("^(.-)\t(.*)$")
+          if answered and q then
+            if fmt.cells(q) + 2 + fmt.cells(a) <= width - 4 then
+              detail({ { text = q, hl = "Comment" }, { text = "  " .. a, hl = "Normal" } }, "Comment")
+            else
+              detail(q, "Comment")
+              detail(a, "Normal")
+            end
+          else
+            detail(out[i], err and i == (tail and #out or 1) and "Danger" or "Comment")
+          end
         end
         if hidden > 0 and first == 1 then detail(more, "Comment") end
       end
