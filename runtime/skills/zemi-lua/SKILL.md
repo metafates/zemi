@@ -18,7 +18,7 @@ Every chunk runs with an origin from where it lives: `user` (`~/.config/zemi`) >
 (`<repo>/.agents`). A call runs as the least trusted code on its stack, so a plugin's
 `setup()` that init.lua calls runs as the plugin, not as user config. A registration with
 the same id from a lower origin is refused; the same origin replaces its own, except that
-one plugin cannot replace another's, and a binding may not be a prefix or an extension of
+one plugin can neither replace nor remove another's, and a binding may not be a prefix or an extension of
 a more trusted key. Only
 `user` may register providers, add allow rules or decide learning proposals. Below
 `builtin`, code may not call `zemi.model.set` or `zemi.config.reload`, or run a more trusted

@@ -54,7 +54,7 @@ type toolReg struct {
 	mu        sync.Mutex
 	byName    map[string]*luaTool
 	overrides map[string][]*overrideRec
-	owner     func(path string) string // Host.PluginOf, see pluginClash
+	owner     func(path string) string // Host.PluginOf, see mayReplace
 }
 
 func newToolReg() *toolReg {
@@ -64,10 +64,8 @@ func newToolReg() *toolReg {
 func (r *toolReg) add(t *luaTool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if old, ok := r.byName[t.Name]; ok && old.Origin.Rank() > t.Origin.Rank() {
-		return fmt.Errorf("tool %q is already registered by a %s registration", t.Name, old.Origin)
-	} else if ok {
-		if err := pluginClash(r.owner, fmt.Sprintf("tool %q", t.Name), old.Origin, old.Path, t.Origin, t.Path); err != nil {
+	if old, ok := r.byName[t.Name]; ok {
+		if err := mayReplace(r.owner, fmt.Sprintf("tool %q", t.Name), old.Origin, old.Path, t.Origin, t.Path); err != nil {
 			return err
 		}
 	}

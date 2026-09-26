@@ -190,7 +190,7 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		key, focus, _ := binding(L, "del")
-		removed, err := h.Keymaps.Del(h.RT.CurrentOrigin(L), focus, key)
+		removed, err := h.Keymaps.Del(h.RT.CurrentOrigin(L), h.RT.CurrentPath(L), focus, key)
 		if err != nil {
 			L.RaiseError("zemi.keymap.del: %v", err)
 		}

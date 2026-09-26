@@ -70,7 +70,7 @@ func TestPluginsStep(t *testing.T) {
 				"local/b/init.lua": `zemi.command.add("dup", function() end, {})`,
 				"local/c/init.lua": tool("dup_tool"),
 			},
-			want: []string{"plugin b: ", "command /dup is already registered by plugin a, not b", "plugin c: ", `tool "dup_tool" is already registered by plugin a, not c`},
+			want: []string{"plugin b: ", "command /dup is registered by plugin a, not b", "plugin c: ", `tool "dup_tool" is registered by plugin a, not c`},
 			not:  []string{"plugin a: "},
 		},
 		{
@@ -180,7 +180,7 @@ func TestPluginsStep(t *testing.T) {
 				"error: plugins: agent x is already provided by plugin a, not b\n",
 				"error: plugins: workflow x is already provided by plugin a, not b\n",
 				"error: skills: <plugins>/installed/b/skills/x: skill x is already in <plugins>/local/a/skills/x\n",
-				"already registered by plugin a, not b",
+				"registered by plugin a, not b",
 			},
 			not: []string{"plugin:b"},
 		},

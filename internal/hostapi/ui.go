@@ -52,7 +52,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		return 0
 	}))
 	widget.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		ok, err := h.Widgets.Remove(L.CheckString(1), h.RT.CurrentOrigin(L))
+		ok, err := h.Widgets.Remove(L.CheckString(1), h.RT.CurrentOrigin(L), h.RT.CurrentPath(L))
 		if err != nil {
 			L.RaiseError("zemi.ui.widget.del: %v", err)
 		}

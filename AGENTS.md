@@ -487,8 +487,8 @@ the builtin ones, init.lua failed or not; a name two plugins ship goes to the fi
 `plugin:<name>:<key>`, its Lua permission principal and its overlay badge `plugin:<name>`
 (`Host.principal` raises for plugin code with no file of its plugin on the stack), and a call from plugin a into plugin b's function runs as a. Registries enforce: cross-origin
 collision is **refused** with the higher-trust origin winning; within one origin it is
-last-writer-wins, except that one plugin cannot replace another's command, keymap,
-widget, theme, tool, completion source or health row (`pluginClash`). Project origin additionally cannot register providers or builtin
+last-writer-wins, except that one plugin can neither replace nor remove another's command, keymap,
+widget, theme, event handler, tool, completion source, health row or config watch (`mayReplace`, which every add and remove runs). Project origin additionally cannot register providers or builtin
 tool names, and its `tool.pre` rewrites are ignored (logged). No origin can emit host-owned
 events. A keymap that is a prefix or an extension of a more trusted key is refused,
 `zemi.command.run` refuses a more trusted origin's Lua command (its body runs under that

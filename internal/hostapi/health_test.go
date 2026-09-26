@@ -28,7 +28,7 @@ func TestHealthLuaChecks(t *testing.T) {
 		zemi.health.add("unset", function() return { detail = "fine" } end)
 	`)
 	err := r.ExecuteChunk(context.Background(), `zemi.health.add("disk", function() return "planted" end)`, "p.lua", lua.OriginPlugin)
-	if err == nil || !strings.Contains(err.Error(), "more trusted") {
+	if err == nil || !strings.Contains(err.Error(), "registered by user config") {
 		t.Errorf("plugin replacing a user check: %v", err)
 	}
 	got := map[string]healthCheck{}

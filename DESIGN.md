@@ -2304,7 +2304,8 @@ the host-only proposal channel (§10.3), the user-only config.set and allow rule
 - Registration conflicts (duplicate widget id, keymap collision) warn at
   load with origin path, last-writer-wins within one origin, like nvim's
   plugin loading noise but structured. Cross-origin id collisions are
-  refused with the lower-trust origin losing: event-handler ids, profile
+  refused with the lower-trust origin losing, and one plugin can neither
+  replace nor remove another's: event-handler ids, profile
   ids, builtin tool names, command names, and widget ids, so project
   config, loaded last, cannot replace a user safety hook, a user
   profile, a user command, or the shipped chat widget. Command names

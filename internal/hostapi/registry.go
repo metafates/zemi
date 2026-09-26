@@ -41,6 +41,20 @@ type KeyBinding struct {
 
 type bindKey struct{ focus, key string }
 
+// mayReplace refuses a registration or removal by a less trusted origin
+// than the holder's, and one plugin's over another's: both rank as plugin,
+// so the later would silently replace or drop the first. owner is
+// Host.PluginOf; a bare registry (tests) has none and checks the rank only.
+func mayReplace(owner func(string) string, what string, old lua.Origin, oldPath string, by lua.Origin, byPath string) error {
+	switch {
+	case old.Rank() > by.Rank():
+		return fmt.Errorf("%s is registered by %s config", what, old)
+	case owner != nil && old == lua.OriginPlugin && by == lua.OriginPlugin && owner(oldPath) != owner(byPath):
+		return fmt.Errorf("%s is registered by plugin %s, not %s", what, owner(oldPath), owner(byPath))
+	}
+	return nil
+}
+
 // KeymapRegistry stores one binding per key and focus with origin
 // precedence (user > builtin > plugin > project) and last-writer-wins
 // within one origin (DESIGN §6.2).
@@ -48,7 +62,7 @@ type KeymapRegistry struct {
 	mu       sync.RWMutex
 	bindings map[bindKey]*KeyBinding
 	next     int
-	owner    func(path string) string // Host.PluginOf, see pluginClash
+	owner    func(path string) string // Host.PluginOf, see mayReplace
 }
 
 func NewKeymapRegistry() *KeymapRegistry {
@@ -64,10 +78,8 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if old := r.bindings[bindKey{b.Focus, b.Key}]; old != nil && old.Origin.Rank() > b.Origin.Rank() {
-		return fmt.Errorf("keymap: %s is already bound by a %s registration", b.Key, old.Origin)
-	} else if old != nil {
-		if err := pluginClash(r.owner, "keymap: "+b.Key, old.Origin, old.Path, b.Origin, b.Path); err != nil {
+	if old := r.bindings[bindKey{b.Focus, b.Key}]; old != nil {
+		if err := mayReplace(r.owner, "keymap "+b.Key, old.Origin, old.Path, b.Origin, b.Path); err != nil {
 			return err
 		}
 	}
@@ -79,11 +91,8 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 		if !related || !overlap {
 			continue
 		}
-		if old.Origin.Rank() > b.Origin.Rank() {
-			return fmt.Errorf("keymap: %s overlaps %s bound by a %s registration", b.Key, k.key, old.Origin)
-		}
-		if err := pluginClash(r.owner, "keymap: "+b.Key+" overlaps "+k.key, old.Origin, old.Path, b.Origin, b.Path); err != nil {
-			return err
+		if err := mayReplace(r.owner, "keymap "+k.key, old.Origin, old.Path, b.Origin, b.Path); err != nil {
+			return fmt.Errorf("%s overlaps it: %w", b.Key, err)
 		}
 	}
 	if old := r.bindings[bindKey{b.Focus, b.Key}]; old != nil {
@@ -96,19 +105,19 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	return nil
 }
 
-// Del unbinds a key set by the same or a less trusted origin, so user
-// config can remove shipped defaults but a plugin cannot remove user keys.
-// Del removes a binding and reports whether there was one. Unbinding what
-// is not bound is not an error: a reloaded config must be idempotent.
-func (r *KeymapRegistry) Del(origin lua.Origin, focus, key string) (bool, error) {
+// Del unbinds a key the caller may replace (mayReplace) and reports whether
+// there was one. Unbinding what is not bound is not an error: a reloaded
+// config must be idempotent.
+func (r *KeymapRegistry) Del(by lua.Origin, byPath, focus, key string) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	k := bindKey{focus, key}
-	switch b := r.bindings[k]; {
-	case b == nil:
+	b := r.bindings[k]
+	if b == nil {
 		return false, nil
-	case b.Origin.Rank() > origin.Rank():
-		return false, fmt.Errorf("keymap: %s is bound by a %s registration", key, b.Origin)
+	}
+	if err := mayReplace(r.owner, "keymap "+key, b.Origin, b.Path, by, byPath); err != nil {
+		return false, err
 	}
 	delete(r.bindings, k)
 	return true, nil
@@ -177,7 +186,7 @@ type Command struct {
 type CommandRegistry struct {
 	mu       sync.RWMutex
 	commands map[string]*Command      // canonical name
-	owner    func(path string) string // Host.PluginOf, see pluginClash
+	owner    func(path string) string // Host.PluginOf, see mayReplace
 }
 
 func NewCommandRegistry() *CommandRegistry {
@@ -194,14 +203,11 @@ func (r *CommandRegistry) Add(c *Command) (*Command, error) {
 	defer r.mu.Unlock()
 	key := canonical(c.Name)
 	if old, exists := r.commands[key]; exists {
-		if old.Origin.Rank() > c.Origin.Rank() {
-			return old, fmt.Errorf("command /%s is already registered by a %s registration", c.Name, old.Origin)
+		if err := mayReplace(r.owner, "command /"+old.Name, old.Origin, old.Path, c.Origin, c.Path); err != nil {
+			return old, err
 		}
 		if old.Name != c.Name {
 			return old, fmt.Errorf("command /%s collides with /%s (case-insensitive)", c.Name, old.Name)
-		}
-		if err := pluginClash(r.owner, "command /"+c.Name, old.Origin, old.Path, c.Origin, c.Path); err != nil {
-			return old, err
 		}
 	}
 	r.commands[key] = c
@@ -222,17 +228,17 @@ func (r *CommandRegistry) List() []*Command {
 	return slices.SortedFunc(maps.Values(r.commands), func(a, b *Command) int { return cmp.Compare(a.Name, b.Name) })
 }
 
-// Remove drops a command, refusing one registered by a higher-trust origin
-// than the caller; it reports whether one was removed.
-func (r *CommandRegistry) Remove(name string, caller lua.Origin) (bool, error) {
+// Remove drops a command the caller may replace (mayReplace); it reports
+// whether one was removed.
+func (r *CommandRegistry) Remove(name string, by lua.Origin, byPath string) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	c, ok := r.commands[canonical(name)]
 	if !ok {
 		return false, nil
 	}
-	if c.Origin.Rank() > caller.Rank() {
-		return false, fmt.Errorf("command /%s belongs to %s config", c.Name, c.Origin)
+	if err := mayReplace(r.owner, "command /"+c.Name, c.Origin, c.Path, by, byPath); err != nil {
+		return false, err
 	}
 	delete(r.commands, canonical(name))
 	return true, nil
@@ -265,7 +271,7 @@ type Widget struct {
 type WidgetRegistry struct {
 	mu      sync.RWMutex
 	widgets map[string]*Widget
-	owner   func(path string) string // Host.PluginOf, see pluginClash
+	owner   func(path string) string // Host.PluginOf, see mayReplace
 }
 
 func NewWidgetRegistry() *WidgetRegistry {
@@ -279,10 +285,7 @@ func (r *WidgetRegistry) Add(w *Widget) (*Widget, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if old, exists := r.widgets[w.ID]; exists {
-		if old.Origin.Rank() > w.Origin.Rank() {
-			return old, fmt.Errorf("widget %q is already registered by a %s registration", w.ID, old.Origin)
-		}
-		if err := pluginClash(r.owner, fmt.Sprintf("widget %q", w.ID), old.Origin, old.Path, w.Origin, w.Path); err != nil {
+		if err := mayReplace(r.owner, fmt.Sprintf("widget %q", w.ID), old.Origin, old.Path, w.Origin, w.Path); err != nil {
 			return old, err
 		}
 	}
@@ -290,17 +293,17 @@ func (r *WidgetRegistry) Add(w *Widget) (*Widget, error) {
 	return w, nil
 }
 
-// Remove drops a widget, refusing one registered by a more trusted origin
-// than the caller; it reports whether one was removed.
-func (r *WidgetRegistry) Remove(id string, caller lua.Origin) (bool, error) {
+// Remove drops a widget the caller may replace (mayReplace); it reports
+// whether one was removed.
+func (r *WidgetRegistry) Remove(id string, by lua.Origin, byPath string) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	w, ok := r.widgets[id]
 	if !ok {
 		return false, nil
 	}
-	if w.Origin.Rank() > caller.Rank() {
-		return false, fmt.Errorf("widget %q belongs to %s config", id, w.Origin)
+	if err := mayReplace(r.owner, fmt.Sprintf("widget %q", id), w.Origin, w.Path, by, byPath); err != nil {
+		return false, err
 	}
 	delete(r.widgets, id)
 	return true, nil
@@ -359,6 +362,7 @@ type EventRegistry struct {
 	mu       sync.RWMutex
 	handlers map[string][]*EventHandler // event -> handlers in registration order
 	nextID   int
+	owner    func(path string) string // Host.PluginOf, see mayReplace
 }
 
 func NewEventRegistry() *EventRegistry {
@@ -372,16 +376,13 @@ func (r *EventRegistry) Add(h *EventHandler) (*EventHandler, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if h.ID != "" {
-		for _, existing := range r.handlers[h.Event] {
-			if existing.ID == h.ID {
-				if existing.Origin.Rank() > h.Origin.Rank() {
-					return existing, fmt.Errorf("event handler id %q on %s is already registered by a %s registration",
-						h.ID, h.Event, existing.Origin)
-				}
-				// replace within trust level
-				r.replaceLocked(h.Event, existing, h)
-				return h, nil
+		list := r.handlers[h.Event]
+		if i := slices.IndexFunc(list, func(o *EventHandler) bool { return o.ID == h.ID }); i >= 0 {
+			if err := mayReplace(r.owner, fmt.Sprintf("event handler %q on %s", h.ID, h.Event), list[i].Origin, list[i].Path, h.Origin, h.Path); err != nil {
+				return list[i], err
 			}
+			list[i] = h
+			return h, nil
 		}
 	} else {
 		r.nextID++
@@ -391,16 +392,6 @@ func (r *EventRegistry) Add(h *EventHandler) (*EventHandler, error) {
 	return h, nil
 }
 
-func (r *EventRegistry) replaceLocked(event string, old, new *EventHandler) {
-	list := r.handlers[event]
-	for i, h := range list {
-		if h == old {
-			list[i] = new
-			return
-		}
-	}
-}
-
 // Handlers returns the subscription list for an event.
 func (r *EventRegistry) Handlers(event string) []*EventHandler {
 	r.mu.RLock()
@@ -408,9 +399,9 @@ func (r *EventRegistry) Handlers(event string) []*EventHandler {
 	return append([]*EventHandler(nil), r.handlers[event]...)
 }
 
-// Remove drops the handler with id, refusing one registered by a
-// higher-trust origin than the caller; it reports whether one was removed.
-func (r *EventRegistry) Remove(id string, caller lua.Origin) (bool, error) {
+// Remove drops the handler with id when the caller may replace it
+// (mayReplace); it reports whether one was removed.
+func (r *EventRegistry) Remove(id string, by lua.Origin, byPath string) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for ev, list := range r.handlers {
@@ -418,8 +409,8 @@ func (r *EventRegistry) Remove(id string, caller lua.Origin) (bool, error) {
 			if hd.ID != id {
 				continue
 			}
-			if hd.Origin.Rank() > caller.Rank() {
-				return false, fmt.Errorf("event handler %q belongs to %s config", id, hd.Origin)
+			if err := mayReplace(r.owner, fmt.Sprintf("event handler %q", id), hd.Origin, hd.Path, by, byPath); err != nil {
+				return false, err
 			}
 			r.handlers[ev] = append(list[:i:i], list[i+1:]...)
 			return true, nil
@@ -493,7 +484,7 @@ type ThemeRegistry struct {
 	mu        sync.RWMutex
 	themes    map[string]*Theme
 	overrides map[string]HLSpec        // zemi.ui.hl.set: groups set on top of any theme
-	owner     func(path string) string // Host.PluginOf, see pluginClash
+	owner     func(path string) string // Host.PluginOf, see mayReplace
 }
 
 // SetHL overrides one highlight group on top of every theme.
@@ -544,10 +535,7 @@ func (r *ThemeRegistry) Add(t *Theme) (*Theme, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if old, exists := r.themes[t.Name]; exists {
-		if old.Origin.Rank() > t.Origin.Rank() {
-			return old, fmt.Errorf("theme %q is already registered by a %s registration", t.Name, old.Origin)
-		}
-		if err := pluginClash(r.owner, fmt.Sprintf("theme %q", t.Name), old.Origin, old.Path, t.Origin, t.Path); err != nil {
+		if err := mayReplace(r.owner, fmt.Sprintf("theme %q", t.Name), old.Origin, old.Path, t.Origin, t.Path); err != nil {
 			return old, err
 		}
 	}

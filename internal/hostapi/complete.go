@@ -141,10 +141,7 @@ func (h *Host) addCompletion(L *glua.LState) int {
 	reg.mu.Lock()
 	defer reg.mu.Unlock()
 	if i := slices.IndexFunc(reg.list, func(o completionSource) bool { return o.id == s.id }); i >= 0 {
-		if reg.list[i].origin.Rank() > s.origin.Rank() {
-			L.RaiseError("zemi.composer.complete: source %q is registered by %s config", s.id, reg.list[i].origin)
-		}
-		if err := pluginClash(h.PluginOf, "source "+s.id, reg.list[i].origin, reg.list[i].path, s.origin, s.path); err != nil {
+		if err := mayReplace(h.PluginOf, "completion source "+s.id, reg.list[i].origin, reg.list[i].path, s.origin, s.path); err != nil {
 			L.RaiseError("zemi.composer.complete: %v", err)
 		}
 		reg.list[i] = s

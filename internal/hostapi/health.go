@@ -77,10 +77,8 @@ func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 		switch i := slices.IndexFunc(reg.list, func(o luaHealthCheck) bool { return o.name == name }); {
 		case i < 0:
 			reg.list = append(reg.list, c)
-		case reg.list[i].origin.Rank() > c.origin.Rank():
-			err = fmt.Errorf("%s is already registered by a more trusted origin", name)
 		default:
-			if err = pluginClash(h.PluginOf, name, reg.list[i].origin, reg.list[i].path, c.origin, c.path); err == nil {
+			if err = mayReplace(h.PluginOf, name, reg.list[i].origin, reg.list[i].path, c.origin, c.path); err == nil {
 				reg.list[i] = c
 			}
 		}

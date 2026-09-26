@@ -354,7 +354,7 @@ zemi.keymap = {}
 ---@param opts? zemi.KeymapOpts
 function zemi.keymap.set(key, action, opts) end
 
---- Unbind a key the caller's origin or a less trusted one set. A key
+--- Unbind a key the caller's origin or a less trusted one set, not another plugin's. A key
 --- nothing bound is `false`, not an error, so a reload unbinds idempotently.
 ---@param key string
 ---@param opts? { focus?: string }
@@ -909,7 +909,7 @@ zemi.ui.widget = {}
 ---@param spec zemi.WidgetSpec
 function zemi.ui.widget.add(spec) end
 
---- Remove a widget the caller's origin or a less trusted one registered.
+--- Remove a widget the caller's origin or a less trusted one registered, not another plugin's.
 ---@param id string
 ---@return boolean removed false when no widget has that id
 function zemi.ui.widget.del(id) end

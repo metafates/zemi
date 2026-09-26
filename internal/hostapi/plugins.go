@@ -192,16 +192,3 @@ func (h *Host) pluginDup(what, kept, dropped string) {
 		h.RecordErrorOnce("plugins", fmt.Sprintf("%s is already provided by plugin %s, not %s", what, a, b))
 	}
 }
-
-// pluginClash refuses one plugin's registration over another's: both rank
-// as plugin, so the later would silently replace the first. owner is
-// Host.PluginOf; a bare registry (tests) has none and refuses nothing.
-func pluginClash(owner func(string) string, what string, old lua.Origin, oldPath string, new lua.Origin, newPath string) error {
-	if owner == nil || old != lua.OriginPlugin || new != lua.OriginPlugin {
-		return nil
-	}
-	if a := owner(oldPath); a != owner(newPath) {
-		return fmt.Errorf("%s is already registered by plugin %s, not %s", what, a, owner(newPath))
-	}
-	return nil
-}

@@ -96,10 +96,10 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		return 0
 	}))
 
-	// del(name) removes a command registered by this origin or a
-	// lower-trust one; it returns whether one was removed.
+	// del(name) removes a command the caller may replace (mayReplace); it
+	// returns whether one was removed.
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		ok, err := h.Commands.Remove(L.CheckString(1), h.RT.CurrentOrigin(L))
+		ok, err := h.Commands.Remove(L.CheckString(1), h.RT.CurrentOrigin(L), h.RT.CurrentPath(L))
 		if err != nil {
 			L.RaiseError("zemi.command.del: %v", err)
 		}

@@ -63,10 +63,10 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	// off(id) removes a handler registered by this origin or a lower-trust
-	// one; it returns whether a handler was removed.
+	// off(id) removes a handler the caller may replace (mayReplace); it
+	// returns whether a handler was removed.
 	tb.RawSetString("off", L.NewFunction(func(L *glua.LState) int {
-		ok, err := h.Events.Remove(L.CheckString(1), h.RT.CurrentOrigin(L))
+		ok, err := h.Events.Remove(L.CheckString(1), h.RT.CurrentOrigin(L), h.RT.CurrentPath(L))
 		if err != nil {
 			L.RaiseError("zemi.event.off: %v", err)
 		}

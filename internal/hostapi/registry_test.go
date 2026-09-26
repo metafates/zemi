@@ -82,7 +82,7 @@ func TestKeymapRegistry(t *testing.T) {
 		{"a focused key is not the global one", "k", "tree", lua.OriginUser, false, false},
 		{"user deletes a plugin focused key", "k", "todo", lua.OriginUser, true, false},
 	} {
-		removed, err := r.Del(d.origin, d.focus, d.key)
+		removed, err := r.Del(d.origin, "", d.focus, d.key)
 		if removed != d.removed || (err != nil) != d.wantErr {
 			t.Fatalf("%s: removed=%v err=%v", d.name, removed, err)
 		}
@@ -289,5 +289,99 @@ func TestThemeRegistry(t *testing.T) {
 	r.Purge()
 	if len(r.List()) != 0 {
 		t.Fatal("Purge must clear themes")
+	}
+}
+
+// TestPluginOwnership: one plugin neither replaces nor removes another's
+// registration, and replaces and removes its own from any of its files.
+func TestPluginOwnership(t *testing.T) {
+	owner := func(p string) string { name, _, _ := strings.Cut(p, "/"); return name }
+	const pl = lua.OriginPlugin
+	type ops struct {
+		add func(path string) error         // nil: ids are fresh, so only removal can clash
+		del func(path string) (bool, error) // nil: no removal
+	}
+	for _, c := range []struct {
+		name string
+		reg  func() ops
+	}{
+		{"keymap", func() ops {
+			r := NewKeymapRegistry()
+			r.owner = owner
+			return ops{
+				func(p string) error { return r.Set(&KeyBinding{Key: "x", Origin: pl, Path: p}) },
+				func(p string) (bool, error) { return r.Del(pl, p, "", "x") },
+			}
+		}},
+		{"command", func() ops {
+			r := NewCommandRegistry()
+			r.owner = owner
+			return ops{
+				func(p string) error {
+					_, err := r.Add(&Command{Name: "x", Fn: noopFn, Origin: pl, Path: p})
+					return err
+				},
+				func(p string) (bool, error) { return r.Remove("x", pl, p) },
+			}
+		}},
+		{"widget", func() ops {
+			r := NewWidgetRegistry()
+			r.owner = owner
+			return ops{
+				func(p string) error {
+					_, err := r.Add(&Widget{ID: "x", Region: "r", Render: noopFn, Origin: pl, Path: p})
+					return err
+				},
+				func(p string) (bool, error) { return r.Remove("x", pl, p) },
+			}
+		}},
+		{"event handler", func() ops {
+			r := NewEventRegistry()
+			r.owner = owner
+			return ops{
+				func(p string) error {
+					_, err := r.Add(&EventHandler{ID: "x", Event: "permission.request", Fn: noopFn, Origin: pl, Path: p})
+					return err
+				},
+				func(p string) (bool, error) { return r.Remove("x", pl, p) },
+			}
+		}},
+		{"theme", func() ops {
+			r := NewThemeRegistry()
+			r.owner = owner
+			return ops{add: func(p string) error { _, err := r.Add(&Theme{Name: "x", Origin: pl, Path: p}); return err }}
+		}},
+		{"tool", func() ops {
+			r := newToolReg()
+			r.owner = owner
+			return ops{add: func(p string) error { return r.add(&luaTool{Name: "x", Origin: pl, Path: p}) }}
+		}},
+		{"config watch", func() ops {
+			r := newWatchReg()
+			r.owner = owner
+			r.add(1, watchRec{origin: pl, src: "a/init.lua"})
+			return ops{del: func(p string) (bool, error) { return r.del(1, pl, p) }}
+		}},
+	} {
+		o := c.reg()
+		if o.add != nil {
+			if err := o.add("a/init.lua"); err != nil {
+				t.Fatalf("%s: plugin a adds: %v", c.name, err)
+			}
+			if err := o.add("b/init.lua"); err == nil || !strings.Contains(err.Error(), "registered by plugin a, not b") {
+				t.Fatalf("%s: plugin b replaces a's: %v", c.name, err)
+			}
+			if err := o.add("a/lua/a/x.lua"); err != nil {
+				t.Fatalf("%s: plugin a replaces its own: %v", c.name, err)
+			}
+		}
+		if o.del != nil {
+			if ok, err := o.del("b/init.lua"); ok || err == nil {
+				t.Fatalf("%s: plugin b removes a's: %v %v", c.name, ok, err)
+			}
+			if ok, err := o.del("a/init.lua"); !ok || err != nil {
+				t.Fatalf("%s: plugin a removes its own: %v %v", c.name, ok, err)
+			}
+		}
 	}
 }

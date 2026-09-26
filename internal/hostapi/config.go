@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"fmt"
 	"reflect"
 	"strconv"
 	"sync"
@@ -24,8 +23,9 @@ type watchRec struct {
 
 // watchReg keys records by the config.Store watch id.
 type watchReg struct {
-	mu   sync.Mutex
-	byID map[int]watchRec
+	mu    sync.Mutex
+	byID  map[int]watchRec
+	owner func(path string) string // Host.PluginOf, see mayReplace
 }
 
 func newWatchReg() *watchReg { return &watchReg{byID: map[int]watchRec{}} }
@@ -36,16 +36,17 @@ func (w *watchReg) add(id int, rec watchRec) {
 	w.byID[id] = rec
 }
 
-// del drops one record, reporting whether the origin may and there was one.
-func (w *watchReg) del(id int, origin lua.Origin) (bool, error) {
+// del drops one record the caller may replace (mayReplace), reporting
+// whether there was one.
+func (w *watchReg) del(id int, by lua.Origin, byPath string) (bool, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	rec, ok := w.byID[id]
-	switch {
-	case !ok:
+	if !ok {
 		return false, nil
-	case rec.origin.Rank() > origin.Rank():
-		return false, fmt.Errorf("the watch was registered by a %s registration", rec.origin)
+	}
+	if err := mayReplace(w.owner, "watch "+strconv.Itoa(id), rec.origin, rec.src, by, byPath); err != nil {
+		return false, err
 	}
 	delete(w.byID, id)
 	return true, nil
@@ -241,7 +242,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 			L.Push(glua.LBool(false))
 			return 1
 		}
-		removed, err := h.watches.del(id, h.RT.CurrentOrigin(L))
+		removed, err := h.watches.del(id, h.RT.CurrentOrigin(L), h.RT.CurrentPath(L))
 		if err != nil {
 			L.RaiseError("zemi.config.unwatch: %v", err)
 		}
