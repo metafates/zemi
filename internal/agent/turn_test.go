@@ -805,6 +805,16 @@ type roundTrip func(*http.Request) (*http.Response, error)
 
 func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+// TestCacheBreakpointKeepsOptions: a breakpoint joins a message's own
+// provider options and leaves the caller's map alone.
+func TestCacheBreakpointKeepsOptions(t *testing.T) {
+	own := fantasy.ProviderOptions{openai.Name: &openai.ProviderOptions{}}
+	out := withCacheBreakpoints([]fantasy.Message{{Role: fantasy.MessageRoleUser, ProviderOptions: own}})
+	if _, ok := out[0].ProviderOptions[openai.Name]; !ok || len(out[0].ProviderOptions) != 2 || len(own) != 1 {
+		t.Fatalf("options %v, own %v", out[0].ProviderOptions, own)
+	}
+}
+
 // TestCacheBreakpoints: an anthropic request marks the system block, the
 // last two messages and the last tool; an openrouter one goes to its fixed
 // URL with the same messages marked (fantasy drops a tool's mark there).

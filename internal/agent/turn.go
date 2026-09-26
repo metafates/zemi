@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -175,7 +176,7 @@ type runningTool struct {
 // cache. NOTE: a step whose ActiveTools leave the last tool out has none.
 func (t runningTool) ProviderOptions() fantasy.ProviderOptions {
 	if t.last {
-		return cacheControl
+		return withCacheControl(t.AgentTool.ProviderOptions())
 	}
 	return t.AgentTool.ProviderOptions()
 }
@@ -609,11 +610,14 @@ func ContextUsed(u fantasy.Usage) int64 {
 	return u.InputTokens + u.CacheReadTokens + u.CacheCreationTokens + u.OutputTokens
 }
 
-// cacheControl marks an Anthropic prompt cache breakpoint; the openrouter
-// and vercel providers read it too, the rest ignore options keyed by
-// another provider's name.
-var cacheControl = fantasy.ProviderOptions{
-	anthropic.Name: &anthropic.ProviderCacheControlOptions{CacheControl: anthropic.CacheControl{Type: "ephemeral"}},
+// withCacheControl is a copy of o that also marks an Anthropic prompt cache
+// breakpoint; the openrouter and vercel providers read it too, the rest
+// ignore options keyed by another provider's name.
+func withCacheControl(o fantasy.ProviderOptions) fantasy.ProviderOptions {
+	out := fantasy.ProviderOptions{}
+	maps.Copy(out, o)
+	out[anthropic.Name] = &anthropic.ProviderCacheControlOptions{CacheControl: anthropic.CacheControl{Type: "ephemeral"}}
+	return out
 }
 
 // withCacheBreakpoints returns a copy of msgs with breakpoints on the system
@@ -624,7 +628,7 @@ func withCacheBreakpoints(msgs []fantasy.Message) []fantasy.Message {
 	out := slices.Clone(msgs)
 	for i := range out {
 		if (i == 0 && out[i].Role == fantasy.MessageRoleSystem) || i >= len(out)-2 {
-			out[i].ProviderOptions = cacheControl
+			out[i].ProviderOptions = withCacheControl(out[i].ProviderOptions)
 		}
 	}
 	return out
