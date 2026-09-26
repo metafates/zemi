@@ -2,18 +2,29 @@ package config
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 )
 
+// Kind is the type of value a setting holds.
+type Kind string
+
+const (
+	KindString Kind = "string"
+	KindInt    Kind = "int"
+	KindBool   Kind = "bool"
+)
+
 // Setting describes one config key.
 type Setting struct {
 	Path    string
-	Kind    string // "string" | "int" | "bool"
+	Kind    Kind
 	Default any
 	Desc    string
+	Choices []string // the only values a string key takes; nil takes any
 }
 
 // Store holds the merged config values and user watches. The schema is
@@ -49,33 +60,33 @@ func NewStore() *Store {
 
 func (s *Store) defineDefaults() {
 	defaults := []Setting{
-		{Path: "models.chat", Kind: "string", Default: "", Desc: "the model the conversation runs on, and every role left empty (provider/model; empty uses the first added provider's default model, else the first usable builtin's)"},
-		{Path: "models.agents", Kind: "string", Default: "", Desc: "the model subagents run on when their definition names none (provider/model; empty follows models.chat)"},
-		{Path: "models.titles", Kind: "string", Default: "", Desc: "the model that names sessions (provider/model; empty follows models.chat)"},
-		{Path: "models.compact", Kind: "string", Default: "", Desc: "the model that writes compaction summaries (provider/model; empty follows models.chat)"},
-		{Path: "models.memory", Kind: "string", Default: "", Desc: "the model the reflector reviews sessions for memories on (provider/model; empty follows models.chat)"},
-		{Path: "providers.builtin", Kind: "bool", Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
-		{Path: "permissions.mode", Kind: "string", Default: "auto", Desc: "the permission mode zemi starts in: auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
-		{Path: "permissions.env_keep", Kind: "string", Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},
-		{Path: "ui.theme", Kind: "string", Default: "whorl", Desc: "theme name: whorl (the shipped one; whorl-light is picked on a light terminal) or one zemi.ui.theme.add registers"},
-		{Path: "ui.animations", Kind: "bool", Default: true, Desc: "animate the working indicator (false keeps it static)"},
-		{Path: "web.search_url", Kind: "string", Default: "", Desc: "SearXNG search endpoint for the web_search tool, such as http://localhost:8888/search, with the json format enabled (empty uses DuckDuckGo Lite)"},
-		{Path: "agent.effort", Kind: "string", Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
-		{Path: "agent.profile", Kind: "string", Default: "default", Desc: "the profile the main conversation runs as: default, planner, or a name defined with zemi.agent.profile.add"},
-		{Path: "session.auto_title", Kind: "bool", Default: true, Desc: "name new sessions from their first exchange with a short model call"},
-		{Path: "agent.context_window", Kind: "int", Default: 0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
-		{Path: "ui.reasoning", Kind: "bool", Default: false, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
-		{Path: "lsp.auto", Kind: "bool", Default: true, Desc: "start installed language servers (gopls, pyright, typescript-language-server, clangd, rust-analyzer) in a trusted project with their marker file"},
-		{Path: "editor.command", Kind: "string", Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
-		{Path: "keymap.leader", Kind: "string", Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
-		{Path: "ui.mouse", Kind: "bool", Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
-		{Path: "ui.notify", Kind: "bool", Default: true, Desc: "when zemi is not focused, notify through the terminal as a turn ends or a permission prompt waits"},
-		{Path: "ui.progress", Kind: "bool", Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
-		{Path: "ui.composer.multiline", Kind: "bool", Default: true, Desc: "composer accepts embedded newlines (shift+enter, alt+enter, ctrl+j)"},
-		{Path: "ui.composer.history", Kind: "int", Default: 50, Desc: "composer history entries kept (0 disables)"},
-		{Path: "ui.completion.files", Kind: "bool", Default: true, Desc: "complete file paths after @ in the composer"},
-		{Path: "ui.completion.max_items", Kind: "int", Default: 10, Desc: "completion popup rows"},
-		{Path: "memory.autonomy", Kind: "string", Default: "auto", Desc: "memories the model or the reflector propose: auto stores policy-clean ones at once, ask queues them for /memory; auto queues too in an untrusted project or a session that used fetch, web_search, the lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
+		{Path: "models.chat", Kind: KindString, Default: "", Desc: "the model the conversation runs on, and every role left empty (provider/model; empty uses the first added provider's default model, else the first usable builtin's)"},
+		{Path: "models.agents", Kind: KindString, Default: "", Desc: "the model subagents run on when their definition names none (provider/model; empty follows models.chat)"},
+		{Path: "models.titles", Kind: KindString, Default: "", Desc: "the model that names sessions (provider/model; empty follows models.chat)"},
+		{Path: "models.compact", Kind: KindString, Default: "", Desc: "the model that writes compaction summaries (provider/model; empty follows models.chat)"},
+		{Path: "models.memory", Kind: KindString, Default: "", Desc: "the model the reflector reviews sessions for memories on (provider/model; empty follows models.chat)"},
+		{Path: "providers.builtin", Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
+		{Path: "permissions.mode", Kind: KindString, Default: "auto", Desc: "the permission mode zemi starts in: auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
+		{Path: "permissions.env_keep", Kind: KindString, Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},
+		{Path: "ui.theme", Kind: KindString, Default: "whorl", Desc: "theme name: whorl (the shipped one; whorl-light is picked on a light terminal) or one zemi.ui.theme.add registers"},
+		{Path: "ui.animations", Kind: KindBool, Default: true, Desc: "animate the working indicator (false keeps it static)"},
+		{Path: "web.search_url", Kind: KindString, Default: "", Desc: "SearXNG search endpoint for the web_search tool, such as http://localhost:8888/search, with the json format enabled (empty uses DuckDuckGo Lite)"},
+		{Path: "agent.effort", Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
+		{Path: "agent.profile", Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, planner, or a name defined with zemi.agent.profile.add"},
+		{Path: "session.auto_title", Kind: KindBool, Default: true, Desc: "name new sessions from their first exchange with a short model call"},
+		{Path: "agent.context_window", Kind: KindInt, Default: 0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
+		{Path: "ui.reasoning", Kind: KindBool, Default: false, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
+		{Path: "lsp.auto", Kind: KindBool, Default: true, Desc: "start installed language servers (gopls, pyright, typescript-language-server, clangd, rust-analyzer) in a trusted project with their marker file"},
+		{Path: "editor.command", Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
+		{Path: "keymap.leader", Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
+		{Path: "ui.mouse", Kind: KindBool, Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
+		{Path: "ui.notify", Kind: KindBool, Default: true, Desc: "when zemi is not focused, notify through the terminal as a turn ends or a permission prompt waits"},
+		{Path: "ui.progress", Kind: KindBool, Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
+		{Path: "ui.composer.multiline", Kind: KindBool, Default: true, Desc: "composer accepts embedded newlines (shift+enter, alt+enter, ctrl+j)"},
+		{Path: "ui.composer.history", Kind: KindInt, Default: 50, Desc: "composer history entries kept (0 disables)"},
+		{Path: "ui.completion.files", Kind: KindBool, Default: true, Desc: "complete file paths after @ in the composer"},
+		{Path: "ui.completion.max_items", Kind: KindInt, Default: 10, Desc: "completion popup rows"},
+		{Path: "memory.autonomy", Kind: KindString, Default: "auto", Choices: []string{"auto", "ask"}, Desc: "memories the model or the reflector propose: auto stores policy-clean ones at once, ask queues them for /memory; auto queues too in an untrusted project or a session that used fetch, web_search, the lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
 	}
 	for _, def := range defaults {
 		s.schema[def.Path] = def
@@ -168,6 +179,16 @@ func (s *Store) Check(path string, val any) (any, error) {
 	return checkKind(def, val)
 }
 
+// SetChoices limits the string key path to choices, for a list that lives
+// in a package config cannot import (agent.Efforts).
+func (s *Store) SetChoices(path string, choices []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	def := s.schema[path]
+	def.Choices = choices
+	s.schema[path] = def
+}
+
 // AddWatch registers a change observer and returns its handle id. A path
 // outside the schema is refused: watchers match by exact path, so a typo
 // would sit there and never fire.
@@ -201,14 +222,17 @@ func (s *Store) RemoveWatch(id int) bool {
 func checkKind(def Setting, val any) (any, error) {
 	ok := true
 	switch def.Kind {
-	case "string":
+	case KindString:
 		var s string
 		s, ok = val.(string)
 		// a models.* key holds an id, never a role name: roles never nest
 		if ok && strings.HasPrefix(def.Path, "models.") && s != "" && !strings.Contains(s, "/") {
 			return nil, &ErrBadValue{Path: def.Path, Want: `a provider/model id or ""`}
 		}
-	case "int":
+		if ok && def.Choices != nil && !slices.Contains(def.Choices, s) {
+			return nil, &ErrBadValue{Path: def.Path, Want: fmt.Sprintf("one of %q", def.Choices)}
+		}
+	case KindInt:
 		switch v := val.(type) {
 		case int:
 		case int64:
@@ -219,11 +243,11 @@ func checkKind(def Setting, val any) (any, error) {
 		default:
 			ok = false
 		}
-	case "bool":
+	case KindBool:
 		_, ok = val.(bool)
 	}
 	if !ok {
-		return nil, &ErrBadValue{Path: def.Path, Want: def.Kind}
+		return nil, &ErrBadValue{Path: def.Path, Want: string(def.Kind)}
 	}
 	return val, nil
 }

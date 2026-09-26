@@ -72,7 +72,7 @@ func (h *Host) configCommand(args string) error {
 		if verb == "reset" {
 			return h.SetConfig(path, s.Default)
 		}
-		if s.Kind != "bool" {
+		if s.Kind != config.KindBool {
 			return Usagef("%s is not on or off; /config set %s <value>", path, path)
 		}
 		return h.SetConfig(path, !h.Settings.Bool(path))
@@ -117,16 +117,17 @@ func (h *Host) configSet(path, value string) error {
 	}
 	var v any = value
 	switch s.Kind {
-	case "bool":
+	case config.KindBool:
 		b, ok := map[string]bool{"on": true, "true": true, "off": false, "false": false}[value]
 		if !ok {
 			return Usagef("%s is on or off", path)
 		}
 		v = b
-	case "int":
+	case config.KindInt:
 		if v, err = strconv.Atoi(value); err != nil {
 			return Usagef("%s is a whole number", path)
 		}
+	case config.KindString:
 	}
 	return h.SetConfig(path, v)
 }
@@ -149,8 +150,6 @@ func (h *Host) SetConfig(path string, val any) error {
 	case "agent.effort":
 		if s == "default" {
 			val = ""
-		} else if !slices.Contains([]string{"", "low", "medium", "high"}, s) {
-			return Usagef("unknown effort %q (want low, medium, high or default)", s)
 		}
 	}
 	return h.setWatched(path, val)
@@ -167,7 +166,7 @@ func (h *Host) configItems() []any {
 	for _, s := range h.Settings.Schema() {
 		v, _ := h.Settings.Get(s.Path)
 		source, value := h.cfgSource(s.Path), showSetting(v)+" · "
-		if s.Kind == "bool" {
+		if s.Kind == config.KindBool {
 			value = "" // the switch in the key column draws it
 		}
 		section, _, _ := strings.Cut(s.Path, ".")
@@ -179,7 +178,7 @@ func (h *Host) configItems() []any {
 		}
 		edit := map[string]any{"text": "Edit", "hotkey": "e", "fill": fmt.Sprintf("/config set %s %v", s.Path, v)}
 		switch pick := h.configPicker(s.Path); {
-		case s.Kind == "bool":
+		case s.Kind == config.KindBool:
 			item["on"], item["run"] = v == true, "config toggle "+s.Path
 			edit = map[string]any{"text": "Toggle", "hotkey": "t", "run": item["run"]}
 		case pick != "":
@@ -236,12 +235,9 @@ func (h *Host) configChoices(path string) []string {
 			}
 		}
 		return names
-	case "agent.effort":
-		return []string{"low", "medium", "high", ""}
-	case "memory.autonomy":
-		return []string{"auto", "ask"}
 	}
-	return nil
+	s, _ := h.setting(path)
+	return s.Choices
 }
 
 // openConfigPick lists path's choices; closing it rebuilds /config under it.

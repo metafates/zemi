@@ -595,12 +595,16 @@ func TestSaveInit(t *testing.T) {
 // for a value.
 func TestConfigSet(t *testing.T) {
 	h, _ := newTestHost(t)
-	for _, c := range []struct{ path, value, want string }{
-		{"agent.effort", "default", ""},
-		{"agent.profile", "", "default"},
+	for _, c := range []struct {
+		path, value, want string
+		bad               bool
+	}{
+		{"agent.effort", "default", "", false},
+		{"agent.effort", "turbo", "high", true},
+		{"agent.profile", "", "default", false},
 	} {
-		h.Settings.SetQuiet(c.path, "x")
-		if err := h.configSet(c.path, c.value); err != nil || h.Settings.Str(c.path) != c.want {
+		h.Settings.SetQuiet(c.path, "high")
+		if err := h.configSet(c.path, c.value); (err != nil) != c.bad || h.Settings.Str(c.path) != c.want {
 			t.Errorf("%s %q: %q, %v; want %q", c.path, c.value, h.Settings.Str(c.path), err, c.want)
 		}
 	}

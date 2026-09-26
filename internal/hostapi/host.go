@@ -486,6 +486,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	h.Keymaps.owner, h.Commands.owner, h.Widgets.owner, h.Themes.owner, h.luaTools.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
 	h.jobs.OnExit = h.refresh
 	h.Perm.EnvKeep = func() string { return settings.Str("permissions.env_keep") }
+	settings.SetChoices("agent.effort", append(slices.Clone(agent.Efforts), ""))
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return TildePath(h.trustRoot()) })
 	h.pluginsRoot = sync.OnceValue(func() string {
