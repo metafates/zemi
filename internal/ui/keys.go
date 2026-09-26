@@ -122,7 +122,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	case modalPerm:
 		pa := a.permAsk
-		if a.program != nil && a.now().Sub(pa.opened) < permGrace {
+		if pa.answer == nil || a.program != nil && a.now().Sub(pa.opened) < permGrace {
 			return nil
 		}
 		choices := pa.choices()

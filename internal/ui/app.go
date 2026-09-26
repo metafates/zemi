@@ -75,10 +75,9 @@ type App struct {
 	trust    *trustPrompt
 	toasts   []toast
 
-	// Go-owned agent chrome (DESIGN §6.3, §8): the permission overlay
-	// (with a queue for concurrent asks) and the memory review overlay.
+	// Go-owned agent chrome (DESIGN §6.3, §8): the permission overlay and
+	// the memory review overlay.
 	permAsk   *permAskPrompt
-	permQueue []*permAskPrompt
 	memReview *memReviewPrompt
 	memEdited string // the row the next memory screen opens on
 	planAsk   *planAskPrompt

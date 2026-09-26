@@ -20,6 +20,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	zemiRuntime "github.com/metafates/zemi/runtime"
@@ -237,73 +238,49 @@ func TestGoldenPermissionOverlay(t *testing.T) {
 	}
 }
 
-// TestPermissionDenyAndQueue covers the deny answers and the FIFO queue:
-// two concurrent asks queue, each is answered exactly once, and "once"
-// stores no rules. The ask dispatch order is nondeterministic, so the
-// assertions are order-agnostic (one deny, one once).
+// TestPermissionDenyAndQueue: two concurrent asks reach the prompt one at
+// a time through the host; the answered box stays drawn until the next one
+// replaces it, and "once" stores no rules. Which ask surfaces first is not
+// fixed, so exactly one is denied.
 func TestPermissionDenyAndQueue(t *testing.T) {
 	app, host := bootAgentApp(t, 70, 16)
-
-	done1 := make(chan struct{})
-	var allowed1 bool
-	go func() {
-		allowed1, _ = app.AskPermission(hostapi.PermRequest{Subject: "fs.write", Arg: "/etc/hosts", Reason: "edit hosts"})
-		close(done1)
-	}()
-	done2 := make(chan struct{})
-	var allowed2 bool
-	go func() {
-		allowed2, _ = app.AskPermission(hostapi.PermRequest{Subject: "tool.bash", Arg: "make test"})
-		close(done2)
-	}()
-	waitPrompt(t, app, func() bool { return app.permAsk != nil })
-
-	// Deny whichever surfaced; the queued one must open next.
+	pipe := host.PipelineFor()
+	res := make(chan bool, 2)
+	for _, req := range []tools.Request{{Subject: "fs.write", Arg: "/etc/hosts", Reason: "edit hosts"}, {Subject: "tool.bash", Arg: "make test"}} {
+		go func() { res <- pipe.Check(req).Decision == perm.Allow }()
+	}
+	waitPrompt(t, app, func() bool { return app.permAsk != nil && host.AsksWaiting() == 2 })
+	app.renderSync(t)
+	first := app.permAsk
 	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
-	var second chan struct{}
-	select {
-	case <-done1:
-		second = done2
-	case <-done2:
-		second = done1
-	case <-time.After(2 * time.Second):
-		t.Fatal("first answer not delivered")
+	waitPrompt(t, app, func() bool { return app.permAsk != first && app.permAsk != nil })
+	if app.permAsk.size != first.size {
+		t.Fatalf("the next prompt must open in the answered box: %+v, was %+v", app.permAsk.size, first.size)
 	}
-	waitPrompt(t, app, func() bool { return app.permAsk != nil })
-
 	app.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
-	select {
-	case <-second:
-	case <-time.After(2 * time.Second):
-		t.Fatal("second answer not delivered")
-	}
-	if allowed1 == allowed2 {
-		t.Fatalf("exactly one ask must be denied: allowed1=%v allowed2=%v", allowed1, allowed2)
+	if a, b := <-res, <-res; a == b {
+		t.Fatalf("exactly one ask must be denied: %v %v", a, b)
 	}
 	if len(host.Perm.Rules()) != 0 {
 		t.Fatalf("once must not store rules: %+v", host.Perm.Rules())
 	}
-	if app.permAsk != nil {
-		t.Fatal("queue should be empty")
-	}
+	waitPrompt(t, app, func() bool { return app.permAsk == nil })
 }
 
 // TestPermissionTellNarrow: at 30 columns the box keeps its right border
 // and every choice keeps its key button, down moves between them, and "t"
-// denies the open ask and the queued one.
+// denies the open ask and the waiting one.
 func TestPermissionTellNarrow(t *testing.T) {
-	app, _ := bootAgentApp(t, 30, 30)
+	app, host := bootAgentApp(t, 30, 30)
+	pipe := host.PipelineFor()
 	res := make(chan bool, 2)
 	for _, arg := range []string{"make test", "make lint"} {
-		go func() {
-			ok, _ := app.AskPermission(hostapi.PermRequest{Subject: "tool.bash", Arg: arg})
-			res <- ok
-		}()
+		go func() { res <- pipe.Check(tools.Request{Subject: "tool.bash", Arg: arg}).Decision == perm.Allow }()
 	}
-	waitPrompt(t, app, func() bool { return app.permAsk != nil && len(app.permQueue) == 1 })
+	waitPrompt(t, app, func() bool { return app.permAsk != nil && host.AsksWaiting() == 2 })
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "┐") || !strings.Contains(frame, "│ › [y] Yes") || !strings.Contains(frame, "│   [t] No, and") {
+	if !strings.Contains(frame, "┐") || !strings.Contains(frame, "│ › [y] Yes") || !strings.Contains(frame, "│   [t] No, and") || !strings.Contains(frame, "1 of 2") {
 		t.Fatalf("narrow box:\n%s", frame)
 	}
 	if app.Update(tea.KeyPressMsg{Code: tea.KeyDown}); app.permAsk.sel != 1 {
@@ -315,6 +292,7 @@ func TestPermissionTellNarrow(t *testing.T) {
 			t.Fatal("tell must deny every ask")
 		}
 	}
+	waitPrompt(t, app, func() bool { return app.permAsk == nil })
 }
 
 // TestPermissionBoxFits: whatever the model writes and however long the

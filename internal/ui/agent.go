@@ -21,11 +21,12 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// permAskPrompt is one open permission overlay; queued asks wait in
-// permQueue and open when the current one is answered (parallel tool runs
-// may ask concurrently; each must be answered exactly once).
+// permAskPrompt is the open permission overlay; the host hands the UI one
+// ask at a time (Host.AsksWaiting counts the rest).
 type permAskPrompt struct {
-	req    hostapi.PermRequest
+	req hostapi.PermRequest
+	// answer is nil once answered: the box stays drawn, inert, while more
+	// asks wait, so the next replaces it in place instead of blanking the stage
 	answer chan permAnswer
 	opened time.Time // keys typed just before it appeared must not answer it
 	sel    int       // highlighted choice
@@ -60,16 +61,16 @@ func (pa *permAskPrompt) choices() []permChoice {
 }
 
 // choosePerm answers the prompt with c. Telling zemi what to do also denies
-// the queued asks and interrupts the turn; the composer already has focus.
+// the waiting asks and interrupts the turn; the composer already has focus.
 func (a *App) choosePerm(c permChoice) {
+	if a.permAsk == nil || a.permAsk.answer == nil {
+		return // a click on the last frame's box after it was answered
+	}
+	if c.tell {
+		a.host.DenyWaitingAsks()
+	}
 	a.answerPerm(c.ok, c.by)
-	if !c.tell {
-		return
-	}
-	for a.permAsk != nil {
-		a.answerPerm(false, tools.ByUser)
-	}
-	if a.host.AgentActive() {
+	if c.tell && a.host.AgentActive() {
 		a.interrupt()
 	}
 }
@@ -103,10 +104,8 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	ch := make(chan permAnswer, 1)
 	a.await(func() tea.Cmd {
 		p := &permAskPrompt{req: req, answer: ch, opened: a.now()}
-		if a.permAsk != nil {
-			// a queued ask opens as the user answers the one before it
-			a.permQueue = append(a.permQueue, p)
-			return nil
+		if a.permAsk != nil { // the answered box: keep its size so nothing jumps
+			p.size = a.permAsk.size
 		}
 		a.permAsk = p
 		title, _ := permTitle(req, a.host.Dirs.ProjectDir)
@@ -118,15 +117,24 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 
 func (a *App) answerPerm(ok bool, by string) {
 	pa := a.permAsk
-	a.permAsk = nil
-	if pa != nil && pa.answer != nil {
-		pa.answer <- permAnswer{ok: ok, by: by}
+	if pa == nil || pa.answer == nil {
+		return
 	}
-	if len(a.permQueue) > 0 {
-		a.permAsk, a.permQueue = a.permQueue[0], a.permQueue[1:]
-		a.permAsk.opened = a.now()
+	waiting := a.host.AsksWaiting() > 1 // read first: the answer releases its ask
+	pa.answer <- permAnswer{ok: ok, by: by}
+	pa.answer = nil
+	if !waiting {
+		a.permAsk = nil
 	}
 	a.bump()
+}
+
+// dropAnsweredPerm closes an answered box once no ask waits to replace it.
+func (a *App) dropAnsweredPerm() {
+	if a.permAsk != nil && a.permAsk.answer == nil && a.host.AsksWaiting() == 0 {
+		a.permAsk = nil
+		a.bump()
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -702,6 +710,9 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		pa.view.viewH = max(left, 1)
 		return nil, left < min(len(content), 2) || len(words) < len(said)
 	})
+	if pa.answer == nil {
+		dimRows(list) // answered: no longer a target
+	}
 	if len(content) > pa.view.viewH {
 		content = build(barInner(inner)) // the bar's column
 		hints = append(hints, hintPair{"pgup/pgdn", "scroll"})
@@ -731,9 +742,10 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	for i := range banner {
 		banner[i] = padPanel(banner[i], fit)
 	}
+	// an upper bound: a waiting ask may settle without a prompt
 	badge := ""
-	if n := len(a.permQueue); n > 0 {
-		badge = fmt.Sprintf("1 of %d", n+1)
+	if n := a.host.AsksWaiting(); n > 1 {
+		badge = fmt.Sprintf("1 of %d", n)
 	}
 	body := stack(tight, banner, head, content, words, list, [][]hostapi.Segment{hintRow})
 	return promptBox(title, badge, body, w, h, maxW, &pa.size)

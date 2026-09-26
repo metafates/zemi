@@ -214,7 +214,7 @@ func (a *App) Refresh() {
 	if a.refreshPending.Swap(true) {
 		return
 	}
-	if !a.dispatch(uiFunc(func() tea.Cmd { a.refreshPending.Store(false); return nil })) {
+	if !a.dispatch(uiFunc(func() tea.Cmd { a.refreshPending.Store(false); a.dropAnsweredPerm(); return nil })) {
 		a.refreshPending.Store(false)
 	}
 }

@@ -1549,8 +1549,11 @@ provenance string.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command
   and env preview for job asks), and resume
-  the pipeline. Concurrent ask-needing calls queue: one active overlay at
-  a time, FIFO. The title asks what the call would do ("Run this
+  the pipeline. Concurrent ask-needing calls wait in the host: one overlay
+  at a time, in arrival order, each waiter judged again (rules, mode,
+  trust) before its overlay opens, so an answer that covers it settles it
+  with no prompt; the answered box stays drawn until the next replaces it
+  in place. The title asks what the call would do ("Run this
   command?"), and the model's description sits quoted on its own line,
   never in the title. The choices are a vertical list with their keys:
   `Yes` (`y`, or `o`), `Yes, and allow <what> for this session` (`a`, only
@@ -1558,7 +1561,7 @@ provenance string.
   rule runs it, `outside the sandbox` or `with the network`; plus a wider read choice `r` and,
   for a trusted project's safe bash command, a `for this project` choice
   `p`), `No` (`n` or `esc`), and `No, and tell zemi what to do instead`
-  (`t`, which denies, stops the turn and hands the composer back); up and
+  (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
   down move, enter answers the highlighted one. Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
   last, a yes/no one's `y` and `n`, an open memory, an overlay's detail view; a multi-select stays a list of
