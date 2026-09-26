@@ -6,8 +6,6 @@ package hostapi
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -15,7 +13,6 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/skills"
 )
 
 var positionalArg = regexp.MustCompile(`\$([1-9])`)
@@ -39,38 +36,18 @@ func (h *Host) MarkdownCommandsStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "markdown commands",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			if h.Dirs.ConfigHome != "" {
-				h.addMarkdownCommands(filepath.Join(h.Dirs.ConfigHome, "commands"), lua.OriginUser, Gen(g.ID))
-			}
-			for _, p := range h.pluginDirs() {
-				h.addMarkdownCommands(filepath.Join(p, "commands"), lua.OriginPlugin, Gen(g.ID))
-			}
-			if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
-				h.addMarkdownCommands(filepath.Join(pdir, "commands"), lua.OriginProject, Gen(g.ID))
-			}
+			h.addMarkdownCommands(Gen(g.ID))
 			return nil
 		},
 	}
 }
 
-func (h *Host) addMarkdownCommands(dir string, origin lua.Origin, gen Gen) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		name, ok := strings.CutSuffix(e.Name(), ".md")
-		if !ok || e.IsDir() {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
+func (h *Host) addMarkdownCommands(gen Gen) {
+	for _, f := range h.layerFiles("commands", ".md") {
+		name, path := f.name, f.path
 		warn := func(msg string) {
 			h.Log.Warn("commands", path+": "+msg, nil)
 			h.RecordError("command "+name, msg)
-		}
-		if !skills.ValidName(name) {
-			warn("file name must match [a-z0-9][a-z0-9-]*")
-			continue
 		}
 		block, body, err := readFrontmatterFile(path)
 		if err != nil {
@@ -98,7 +75,7 @@ func (h *Host) addMarkdownCommands(dir string, origin lua.Origin, gen Gen) {
 			desc += " " + fm.ArgumentHint
 		}
 		_, err = h.Commands.Add(&Command{
-			Name: name, NArgs: NArgsAny, Desc: desc, Path: path, Origin: origin, Gen: gen,
+			Name: name, NArgs: NArgsAny, Desc: desc, Path: path, Origin: f.origin, Gen: gen,
 			// the typed line stays the user's words; the body is the file's
 			GoFn: func(h *Host, args string) error {
 				typed, stdin := agent.CutAttached(args)

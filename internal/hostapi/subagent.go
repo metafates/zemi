@@ -94,29 +94,23 @@ const maxAgentFileBytes = 1 << 20
 // trust source wins: user over builtin over plugin over project. Project
 // agents load only once the project config tree is trusted.
 func (h *Host) agentDefs() []AgentDef {
-	var out []AgentDef
-	seen := map[string]string{} // name -> the kept file
-	add := func(defs []AgentDef) {
-		for _, d := range defs {
-			if kept, ok := seen[d.Name]; ok {
-				h.pluginDup("agent "+d.Name, kept, d.Path)
-				continue
-			}
-			seen[d.Name] = d.Path
-			out = append(out, d)
+	defs := slices.Clone(builtinAgents)
+	for _, f := range h.layerFiles("agents", ".md") {
+		d, err := parseAgentFile(f.path, f.origin)
+		if err != nil {
+			// a broken file cannot hide the others
+			h.RecordErrorOnce("agents", err.Error())
+			continue
 		}
+		defs = append(defs, d)
 	}
-	if h.Dirs.ConfigHome != "" {
-		add(h.loadAgentDir(filepath.Join(h.Dirs.ConfigHome, "agents"), lua.OriginUser))
-	}
-	add(builtinAgents)
-	for _, p := range h.pluginDirs() {
-		add(h.loadAgentDir(filepath.Join(p, "agents"), lua.OriginPlugin))
-	}
-	if dir := h.projectAgentDir(); dir != "" && h.ProjectTrusted() {
-		add(h.loadAgentDir(dir, lua.OriginProject))
-	}
-	return out
+	sortBySource(defs, func(d AgentDef) lua.Origin { return d.Source })
+	seen := map[string]bool{}
+	return slices.DeleteFunc(defs, func(d AgentDef) bool {
+		dup := seen[d.Name]
+		seen[d.Name] = true
+		return dup
+	})
 }
 
 func (h *Host) projectAgentDir() string {
@@ -143,28 +137,6 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 		}
 	}
 	return AgentDef{}, fmt.Errorf("unknown agent %q (have %s)", name, strings.Join(names, ", "))
-}
-
-// loadAgentDir parses every *.md in dir; a broken file is logged and
-// skipped so it cannot hide the others.
-func (h *Host) loadAgentDir(dir string, source lua.Origin) []AgentDef {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var out []AgentDef
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		d, err := parseAgentFile(filepath.Join(dir, e.Name()), source)
-		if err != nil {
-			h.RecordErrorOnce("agents", err.Error())
-			continue
-		}
-		out = append(out, d)
-	}
-	return out
 }
 
 func parseAgentFile(path string, source lua.Origin) (AgentDef, error) {

@@ -180,7 +180,7 @@ func TestPluginsStep(t *testing.T) {
 				"error: plugins: agent x is already provided by plugin a, not b\n",
 				"error: plugins: workflow x is already provided by plugin a, not b\n",
 				"error: skills: <plugins>/installed/b/skills/x: skill x is already in <plugins>/local/a/skills/x\n",
-				"registered by plugin a, not b",
+				"error: plugins: command x is already provided by plugin a, not b\n",
 			},
 			not: []string{"plugin:b"},
 		},

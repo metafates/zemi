@@ -18,6 +18,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -29,7 +30,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
@@ -57,55 +57,28 @@ type Workflow struct {
 // tree is trusted.
 func (h *Host) workflows() []Workflow {
 	var out []Workflow
-	seen := map[string]string{} // name -> the kept file
-	scan := func(dir string, source lua.Origin) {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return
-		}
-		for _, e := range entries {
-			name, ok := strings.CutSuffix(e.Name(), ".lua")
-			if !ok || e.IsDir() {
-				continue
-			}
-			path := filepath.Join(dir, e.Name())
-			if kept, ok := seen[name]; ok {
-				h.pluginDup("workflow "+name, kept, path)
-				continue
-			}
-			if !skills.ValidName(name) {
-				h.RecordErrorOnce("workflows", path+": name must match [a-z0-9][a-z0-9-]*")
-				continue
-			}
-			src, err := readRegularFile(path)
-			if err != nil {
-				h.RecordErrorOnce("workflows", err.Error())
-				continue
-			}
-			seen[name] = path
-			out = append(out, Workflow{Name: name, Description: leadingComment(src), Path: path, Source: source})
-		}
-	}
-	if h.Dirs.ConfigHome != "" {
-		scan(filepath.Join(h.Dirs.ConfigHome, "workflows"), lua.OriginUser)
-	}
 	builtin, _ := fs.ReadDir(zemiruntime.Workflows, "workflows")
 	for _, e := range builtin {
-		name, ok := strings.CutSuffix(e.Name(), ".lua")
-		if _, dup := seen[name]; !ok || dup {
+		if name, ok := strings.CutSuffix(e.Name(), ".lua"); ok {
+			src, _ := fs.ReadFile(zemiruntime.Workflows, "workflows/"+e.Name())
+			out = append(out, Workflow{Name: name, Description: leadingComment(string(src)), Path: "builtin:" + e.Name(), Source: lua.OriginBuiltin})
+		}
+	}
+	for _, f := range h.layerFiles("workflows", ".lua") {
+		src, err := readRegularFile(f.path)
+		if err != nil {
+			h.RecordErrorOnce("workflows", err.Error())
 			continue
 		}
-		src, _ := fs.ReadFile(zemiruntime.Workflows, "workflows/"+e.Name())
-		seen[name] = "builtin:" + e.Name()
-		out = append(out, Workflow{Name: name, Description: leadingComment(string(src)), Path: "builtin:" + e.Name(), Source: lua.OriginBuiltin})
+		out = append(out, Workflow{Name: f.name, Description: leadingComment(src), Path: f.path, Source: f.origin})
 	}
-	for _, p := range h.pluginDirs() {
-		scan(filepath.Join(p, "workflows"), lua.OriginPlugin)
-	}
-	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
-		scan(filepath.Join(pdir, "workflows"), lua.OriginProject)
-	}
-	return out
+	sortBySource(out, func(w Workflow) lua.Origin { return w.Source })
+	seen := map[string]bool{}
+	return slices.DeleteFunc(out, func(w Workflow) bool {
+		dup := seen[w.Name]
+		seen[w.Name] = true
+		return dup
+	})
 }
 
 func leadingComment(src string) string {

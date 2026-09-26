@@ -14,6 +14,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugins"
+	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -185,10 +186,50 @@ func (h *Host) madePlugin(path string) bool {
 	return ok
 }
 
-// pluginDup records a file resource one plugin ships under a name another
-// plugin took first; kept and dropped are the two files.
-func (h *Host) pluginDup(what, kept, dropped string) {
-	if a, b := h.PluginOf(kept), h.PluginOf(dropped); a != "" && b != "" && a != b {
-		h.RecordErrorOnce("plugins", fmt.Sprintf("%s is already provided by plugin %s, not %s", what, a, b))
+// layerFile is one <name><ext> file of a layered resource directory.
+type layerFile struct {
+	name, path string
+	origin     lua.Origin
+}
+
+// layerFiles lists the <name><ext> files in sub of the user config, each
+// enabled plugin, then a trusted project's .agents. The first file of a
+// name wins; /errors records one no skills.ValidName and one a plugin ships
+// under a name another plugin took first.
+func (h *Host) layerFiles(sub, ext string) []layerFile {
+	var dirs []layerFile
+	if h.Dirs.ConfigHome != "" {
+		dirs = append(dirs, layerFile{path: filepath.Join(h.Dirs.ConfigHome, sub), origin: lua.OriginUser})
 	}
+	for _, p := range h.pluginDirs() {
+		dirs = append(dirs, layerFile{path: filepath.Join(p, sub), origin: lua.OriginPlugin})
+	}
+	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && h.ProjectTrusted() {
+		dirs = append(dirs, layerFile{path: filepath.Join(pdir, sub), origin: lua.OriginProject})
+	}
+	var out []layerFile
+	seen := map[string]string{} // name -> the kept file
+	for _, d := range dirs {
+		entries, _ := os.ReadDir(d.path)
+		for _, e := range entries {
+			name, ok := strings.CutSuffix(e.Name(), ext)
+			if !ok || e.IsDir() {
+				continue
+			}
+			path := filepath.Join(d.path, e.Name())
+			if kept, ok := seen[name]; ok {
+				if a, b := h.PluginOf(kept), h.PluginOf(path); a != "" && b != "" && a != b {
+					h.RecordErrorOnce("plugins", fmt.Sprintf("%s %s is already provided by plugin %s, not %s", strings.TrimSuffix(sub, "s"), name, a, b))
+				}
+				continue
+			}
+			if !skills.ValidName(name) {
+				h.RecordErrorOnce(sub, path+": name must match [a-z0-9][a-z0-9-]*")
+				continue
+			}
+			seen[name] = path
+			out = append(out, layerFile{name, path, d.origin})
+		}
+	}
+	return out
 }
