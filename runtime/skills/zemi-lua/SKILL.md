@@ -112,7 +112,7 @@ reload that no longer adds it. `event.on` and `config.watch` hand back the id th
 | Namespace | Members |
 | --- | --- |
 | `zemi.api` | `version` (API version string) |
-| `zemi.config` | `get`, `set` (user config only), `watch(path, fn)` -> id (a path outside the schema raises), `unwatch(id)` -> bool, `schema`, `reload()` (same as `/reload`) |
+| `zemi.config` | `get`, `set` (user config only; a call after boot, from a keymap or a handler, is a pick zemi keeps for later starts unless init.lua sets the key), `watch(path, fn)` -> id (a path outside the schema raises), `unwatch(id)` -> bool, `schema`, `reload()` (same as `/reload`) |
 | `zemi.errors` | `list()` -> what `/errors` shows, newest first |
 | `zemi.project` | `trusted()` -> the user's trust decision (check it before a job runs the project's code), `root()` -> the repository root, the launch dir outside a repository |
 | `zemi.keymap` | `set(key, fn_or_action, {desc, focus})` (again to rebind), `del(key, {focus})`, `get(key, {focus})`, `list()`; a printable key with no `focus` raises, since those reach the composer; keys may be sequences starting with a non-printable key: `"ctrl+x s"`, `"<leader>gs"` (`keymap.leader`, default ctrl+x); `focus = id` scopes a binding to a focusable layout node, where it may be a plain letter. An action string is a command name (`"usage"`, `"/usage"`, what `get` hands back) or a host action; `zemi.HostAction` in the types file lists every host action. Taking a key the composer owns (`ctrl+a/e/k/u/w`, `home`, `end`) works and leaves the composer without it |

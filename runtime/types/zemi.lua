@@ -257,7 +257,9 @@ function zemi.config.get(path) end
 --- Write a setting. User config only; raises for an unknown path, a wrong
 --- kind or a value outside the key's `choices` (agent.effort, memory.autonomy).
 --- A reload that writes the same value as the last load leaves the setting
---- alone, so a runtime pick (/model, /effort) stays.
+--- alone, so a runtime pick (/model, /effort) stays. A call made after boot
+--- (a keymap, a timer, an event handler) is a runtime pick: zemi keeps it for
+--- every later start, in every project, unless init.lua sets that key.
 ---@param path string
 ---@param value any
 function zemi.config.set(path, value) end
@@ -1422,7 +1424,8 @@ function zemi.model.list() end
 --- Switch the model the main conversation runs on: it writes models.chat.
 --- Raises for a provider nobody registered, and while the active profile
 --- sets its own model; an id the provider does not list is taken and warned
---- about. User or builtin origin only. Another role is plain config:
+--- about. User or builtin origin only. A call made after boot is kept for
+--- later starts, like `zemi.config.set`. Another role is plain config:
 --- `zemi.config.set("models.titles", id)`.
 ---@param id string
 function zemi.model.set(id) end
