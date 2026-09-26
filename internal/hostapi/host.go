@@ -295,6 +295,7 @@ type TurnStat struct {
 	Out       int64
 	ThoughtMS int64
 	ElapsedMS int64
+	Ended     int64 // unix seconds the turn ended, 0 when unknown
 }
 
 // Host bundles the core services the zemi.* namespaces adapt.
@@ -1606,6 +1607,7 @@ func transcriptTable(L *glua.LState, transcript []ChatMessage) *glua.LTable {
 			row.RawSetString("out", glua.LNumber(m.Stat.Out))
 			row.RawSetString("thought", glua.LNumber(float64(m.Stat.ThoughtMS)/1000))
 			row.RawSetString("elapsed", glua.LNumber(float64(m.Stat.ElapsedMS)/1000))
+			row.RawSetString("ended", glua.LNumber(m.Stat.Ended))
 		}
 		tr.Append(row)
 	}

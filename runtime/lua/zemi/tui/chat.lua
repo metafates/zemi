@@ -495,6 +495,7 @@ zemi.ui.widget.add({
         local tout = fmt.tokens(m.out)
         if (m.elapsed or 0) > 0 then parts[#parts + 1] = fmt.duration(m.elapsed) end
         if tout then parts[#parts + 1] = tout .. " out" end
+        if (m.ended or 0) > 0 then parts[#parts + 1] = os.date("%H:%M", m.ended) end
         if #parts > 0 then
           gap("stats")
           lines[#lines + 1] = { { text = "  ", copy = false }, { text = table.concat(parts, " · "), hl = "Comment" } }

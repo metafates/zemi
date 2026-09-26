@@ -693,6 +693,7 @@ function zemi.event.stats() end
 ---@field out integer Completion tokens.
 ---@field thought number
 ---@field elapsed number
+---@field ended number Unix time the turn ended, 0 when unknown.
 
 ---@class zemi.RecentSession
 ---@field id string

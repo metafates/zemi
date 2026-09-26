@@ -165,7 +165,7 @@ func TestGoldenReasoningCollapse(t *testing.T) {
 	host.AppendMessage("user", "why does the build fail?")
 	appendReasoning(host, "checked go.mod, then the fixture dir", hostapi.TurnStat{ThoughtMS: 4200, ElapsedMS: 38000})
 	appendReply(host, "The test binary exits 1 because the fixture path moved.", hostapi.TurnStat{
-		In: 12340, Out: 1234, ThoughtMS: 4200, ElapsedMS: 38000,
+		In: 12340, Out: 1234, ThoughtMS: 4200, ElapsedMS: 38000, Ended: 1_700_000_000,
 	})
 
 	app.renderSync(t)

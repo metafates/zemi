@@ -1069,7 +1069,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	}
 	ag.mu.Lock()
 	text, tools := ag.textBuf, ag.tools
-	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens}
+	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: time.Now().Unix()}
 	if !ag.turnStart.IsZero() {
 		stat.ElapsedMS = time.Since(ag.turnStart).Milliseconds()
 	}
