@@ -903,7 +903,8 @@ func (r *Runner) Active() bool {
 
 // TestSignedThinking: thinking whose signed prefix changed leaves the step's
 // input, and what one step dropped stays dropped while a later reply keeps
-// its own.
+// its own. The open tool loop past the last user text keeps its thinking; a
+// "*" marks a stale one, which goes once the next user text closes the loop.
 func TestSignedThinking(t *testing.T) {
 	msg := func(role fantasy.MessageRole, text string, thought bool) fantasy.Message {
 		m := fantasy.Message{Role: role, Content: []fantasy.MessagePart{fantasy.TextPart{Text: text}}}
@@ -915,10 +916,13 @@ func TestSignedThinking(t *testing.T) {
 		return m
 	}
 	sys := func(text string) fantasy.Message { return msg(fantasy.MessageRoleSystem, text, false) }
-	u1, a1 := msg(fantasy.MessageRoleUser, "u1", false), msg(fantasy.MessageRoleAssistant, "a1", true)
+	user := func(text string) fantasy.Message { return msg(fantasy.MessageRoleUser, text, false) }
+	u1, a1 := user("u1"), msg(fantasy.MessageRoleAssistant, "a1", true)
 	t1, a2 := msg(fantasy.MessageRoleTool, "t1", false), msg(fantasy.MessageRoleAssistant, "a2", true)
+	u2, a3 := user("u2"), msg(fantasy.MessageRoleAssistant, "a3", true)
+	t3 := msg(fantasy.MessageRoleTool, "t3", false)
 	edited := msg(fantasy.MessageRoleTool, "t1 pruned", false)
-	base := []fantasy.Message{sys("s"), u1, a1, t1, a2}
+	base := []fantasy.Message{sys("s"), u1, a1, t1, a2, u2, a3, t3}
 	ab := []string{"a", "b"}
 	thoughts := func(msgs []fantasy.Message) string {
 		out := ""
@@ -934,12 +938,12 @@ func TestSignedThinking(t *testing.T) {
 		tools []string
 		want  string
 	}{
-		{"an append strips nothing", base[:3], base, ab, "--+-+"},
-		{"a mid-history edit strips from the edit on", base, []fantasy.Message{sys("s"), u1, a1, edited, a2}, ab, "--+--"},
-		{"a changed system prompt strips all", base, append([]fantasy.Message{sys("s2")}, base[1:]...), ab, "-----"},
-		{"a changed tool set strips all", base, base, []string{"a"}, "-----"},
-		{"a reordered tool set strips nothing", base, base, []string{"b", "a"}, "--+-+"},
-		{"a runner that sent nothing strips all", nil, base, ab, "-----"},
+		{"an append strips nothing", base[:3], base, ab, "--+-+-+-"},
+		{"a mid-history edit strips from the edit on", base, []fantasy.Message{sys("s"), u1, a1, edited, a2, u2, a3, t3}, ab, "--+---*-"},
+		{"a changed system prompt strips every closed turn", base, append([]fantasy.Message{sys("s2")}, base[1:]...), ab, "------*-"},
+		{"a tool set changed mid-loop keeps the last tool_use's thinking", base, base, []string{"a"}, "------*-"},
+		{"a reordered tool set strips nothing", base, base, []string{"b", "a"}, "--+-+-+-"},
+		{"a runner that sent nothing strips every closed turn", nil, base, ab, "------*-"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := &Runner{}
@@ -947,12 +951,16 @@ func TestSignedThinking(t *testing.T) {
 				r.signed(c.prev, ab, true)
 				r.sent = c.prev[1:] // as if the earlier step went out whole
 			}
-			if got := thoughts(r.signed(c.next, c.tools, true)); got != c.want {
-				t.Fatalf("thinking kept %q, want %q", got, c.want)
+			open, closed := strings.ReplaceAll(c.want, "*", "+"), strings.ReplaceAll(c.want, "*", "-")
+			if got := thoughts(r.signed(c.next, c.tools, true)); got != open {
+				t.Fatalf("thinking kept %q, want %q", got, open)
 			}
-			a3 := msg(fantasy.MessageRoleAssistant, "a3", true)
-			if got := thoughts(r.signed(append(slices.Clone(c.next), a3), c.tools, true)); got != c.want+"+" {
-				t.Fatalf("next step kept %q, want %q", got, c.want+"+")
+			next := append(slices.Clone(c.next), msg(fantasy.MessageRoleAssistant, "a4", true))
+			if got := thoughts(r.signed(next, c.tools, true)); got != open+"+" {
+				t.Fatalf("next step kept %q, want %q", got, open+"+")
+			}
+			if got := thoughts(r.signed(append(next, user("u5")), c.tools, true)); got != closed+"+-" {
+				t.Fatalf("after the next user text kept %q, want %q", got, closed+"+-")
 			}
 		})
 	}

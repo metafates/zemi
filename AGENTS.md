@@ -602,7 +602,9 @@ lua-language-server is installed.
   tools may change; the prompt comes from `ag.pin`); `AgentSend` carries the previous idle runner's conversation over (`Runner.Continue`), and
   every step's input passes `Runner.signed`, which drops the thinking whose signed prefix
   (system prompt, tool names, earlier messages) changed since the last step, so no history
-  edit replays a signature Anthropic refuses. `runTurns`
+  edit replays a signature Anthropic refuses; the open tool loop past the last user text
+  keeps its own until that loop closes, since Anthropic refuses a final tool_use without it
+  on every account. `runTurns`
   loops the queue's follow-ups on one runner through `sendCompacting` (compact.go): compaction
   runs before a send, when `Runner.Full` cuts a turn at a step boundary, and once after a
   context-too-long refusal. The size is `agent.ContextUsed` of the last step, never a sum; an

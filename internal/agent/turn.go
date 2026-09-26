@@ -650,9 +650,9 @@ func (r *Runner) signed(msgs []fantasy.Message, active []string, record bool) []
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := keepSigned(msgs, r.sent, key.String() == r.key)
+	out, rec := keepSigned(msgs, r.sent, key.String() == r.key)
 	if record {
-		r.sent, r.key, r.live = out, key.String(), out
+		r.sent, r.key, r.live = rec, key.String(), out
 	}
 	return slices.Concat(sys, out)
 }
@@ -660,26 +660,37 @@ func (r *Runner) signed(msgs []fantasy.Message, active []string, record bool) []
 // keepSigned drops the reasoning from msgs starting at the first message that
 // differs from sent, all of it when the prefix changed. A message sent without
 // its reasoning matches its stripped form, so a drop holds on later steps
-// while the messages after it keep their own.
-func keepSigned(msgs, sent []fantasy.Message, samePrefix bool) []fantasy.Message {
-	out := slices.Clone(msgs)
+// while the messages after it keep their own. out keeps the open tool loop
+// (past the last user text) whole: Anthropic refuses a final tool_use without
+// its thinking on every account, a stale signature only where it is enforced.
+// rec, the next step's sent, strips it too, so it goes once the loop closes.
+// NOTE: a prefix that changes inside a turn (tool_search loading an MCP tool,
+// a compaction continuation, a subagent prune) leaves the open loop signed
+// over the old one, which an enforcing account refuses; freezing ActiveTools
+// for the turn or the drop_block beta would lift it.
+func keepSigned(msgs, sent []fantasy.Message, samePrefix bool) (out, rec []fantasy.Message) {
+	rec = slices.Clone(msgs)
 	edited := !samePrefix
-	for i, m := range out {
+	open := 0
+	for i, m := range rec {
+		if m.Role == fantasy.MessageRoleUser && slices.ContainsFunc(m.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeText }) {
+			open = i
+		}
 		if !edited && i < len(sent) {
 			if reflect.DeepEqual(m, sent[i]) {
 				continue
 			}
 			if s := noReasoning(m); reflect.DeepEqual(s, sent[i]) {
-				out[i] = s
+				rec[i] = s
 				continue
 			}
 			edited = true
 		}
 		if edited {
-			out[i] = noReasoning(m)
+			rec[i] = noReasoning(m)
 		}
 	}
-	return out
+	return slices.Concat(rec[:open], msgs[open:]), rec
 }
 
 // noReasoning drops the Claude thinking, which openrouter and vercel keep
