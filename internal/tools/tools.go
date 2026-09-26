@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"net/url"
 	"os"
 	"runtime"
 	"slices"
@@ -270,6 +271,10 @@ type Pipeline struct {
 	// per-run copy. NOTE: the tool opens it, never input["path"]: resolving
 	// the string again would follow a symlink swapped in after the check.
 	Path perm.Path
+	// search is web_search's URL as the gate approved it, set on the per-run
+	// copy by its subjects; searx says it is the user's SearXNG endpoint.
+	search *url.URL
+	searx  bool
 	// Protected says why a write to .git, the Lua in .agents or zemi's own dirs is
 	// protected, "" for any other: a rule allow for it still asks, since
 	// broad "always" globs cannot exclude every such path; nil = none.
@@ -324,11 +329,13 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 // Check decides one request; for tool.bash the store normalizes the
 // command (segments, redirect gates, assignment gate) in one call.
 func (p *Pipeline) Check(req Request) Verdict {
-	// the rules and the secret shapes see the path as written, which a
-	// secret-named symlink keeps; the rest judges and shows where it lands,
-	// so a planted symlink cannot dress a write to zemi's config as a project
-	// file. The run's own Path is resolved already: a second resolve could
-	// land elsewhere than the tool opens.
+	// the rules and the secret shapes see the path as the request names it,
+	// and the rest judges and shows where it lands, so a planted symlink
+	// cannot dress a write to zemi's config as a project file. The run's own
+	// Path is resolved already and named that way: a second resolve could land
+	// elsewhere than the tool opens. NOTE: so the gated file tools are judged
+	// by the target alone; a secret-named link to a plain file opens with no
+	// ask, while a plain-named link to a secret still asks.
 	written := req.Arg
 	if PathSubject(req.Subject) && (p.Path == perm.Path{} || req.Arg != p.Path.String()) {
 		req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
@@ -452,13 +459,10 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	network := pol != nil && pol.Network
 	plan := p.Plan != nil && p.Plan()
 	head := "\nThe sandbox may have blocked this: " + limits + "."
-	if sandbox.LikelyTemp(out, err, write) {
-		// the fix the model can make without an ask comes first
-		dir := "$TMPDIR"
-		if pol != nil && pol.Env["TMPDIR"] != "" {
-			dir += " (" + pol.Env["TMPDIR"] + ", the scratchpad)"
-		}
-		head += " /tmp is not writable here: use " + dir + " instead."
+	// the fix the model can make without an ask comes first; with no session
+	// there is no pad, so $TMPDIR is the denied system one and no fix exists
+	if sandbox.LikelyTemp(out, err, write) && pol != nil && pol.Env["TMPDIR"] != "" {
+		head += " /tmp is not writable here: use $TMPDIR (" + pol.Env["TMPDIR"] + ", the scratchpad) instead."
 	}
 	// sandbox: false is denied for a read-only agent, so it is not offered
 	if !p.SandboxParam || plan && network {
@@ -1102,11 +1106,16 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			},
 			[]string{"query"},
 			func(p *Pipeline, in map[string]any) ([]Request, error) {
+				query := strings.TrimSpace(str(in["query"]))
+				if query == "" {
+					return nil, errors.New("empty query")
+				}
 				// a bad search URL is the user's config, not a request to gate
-				u, _, err := searchURL(p, str(in["query"]))
+				u, searx, err := searchURL(p, query)
 				if err != nil {
 					return nil, err
 				}
+				p.search, p.searx = u, searx
 				return []Request{{Subject: "net." + u.Hostname(), Arg: u.String(), Reason: "web search"}}, nil
 			},
 			runWebSearch),

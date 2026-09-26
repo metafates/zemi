@@ -308,7 +308,8 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			L.RaiseError("zemi.ui.edit: %v", err)
 		}
 		resolved := p.String()
-		h.luaGate(L, "lua.fs.read", resolved)
+		// gated by the written name like zemi.fs, so a secret-named link asks
+		h.luaGate(L, "lua.fs.read", h.projectAbs(path))
 		line := 0
 		if n, ok := opts.RawGetString("line").(glua.LNumber); ok {
 			line = int(n)

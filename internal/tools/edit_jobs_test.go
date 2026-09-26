@@ -111,18 +111,24 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 	for _, c := range []struct {
 		name, out      string
 		plan, offline  bool
+		noPad          bool
 		want, unwanted []string
 	}{
-		{"network already given", network, false, false, []string{"sandbox: false", "the project read-only"}, []string{"no network", "network: true"}},
-		{"network already given while planning", network, true, false, []string{"the project read-only"}, []string{"no network", "network: true", "sandbox: false"}},
-		{"system temp", "/bin/sh: /tmp/x: Operation not permitted", false, false, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead. If it needs more"}, nil},
-		{"system temp while planning", "mktemp: mkstemp failed on /var/folders/x/T/a.XXXX: Operation not permitted", true, false, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead."}, []string{"sandbox: false", "network: true"}},
-		{"system temp and no network", "downloading into /tmp/cache\n" + network, false, true, []string{"use $TMPDIR", "network failure: call it again with network: true"}, nil},
-		{"project under the system temp", "fatal: Unable to create '/tmp/proj/.git/index.lock': Operation not permitted", false, false, []string{"sandbox: false"}, []string{"/tmp is not writable"}},
+		{"network already given", network, false, false, false, []string{"sandbox: false", "the project read-only"}, []string{"no network", "network: true"}},
+		{"network already given while planning", network, true, false, false, []string{"the project read-only"}, []string{"no network", "network: true", "sandbox: false"}},
+		{"system temp", "/bin/sh: /tmp/x: Operation not permitted", false, false, false, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead. If it needs more"}, nil},
+		{"system temp while planning", "mktemp: mkstemp failed on /var/folders/x/T/a.XXXX: Operation not permitted", true, false, false, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead."}, []string{"sandbox: false", "network: true"}},
+		{"system temp and no network", "downloading into /tmp/cache\n" + network, false, true, false, []string{"use $TMPDIR", "network failure: call it again with network: true"}, nil},
+		{"project under the system temp", "fatal: Unable to create '/tmp/proj/.git/index.lock': Operation not permitted", false, false, false, []string{"sandbox: false"}, []string{"/tmp is not writable"}},
+		{"system temp with no pad", "/bin/sh: /tmp/x: Operation not permitted", false, false, true, []string{"sandbox: false"}, []string{"/tmp is not writable"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p := &Pipeline{SandboxParam: true, Plan: func() bool { return c.plan }}
-			hint := p.sandboxHint(&sandbox.Policy{Network: !c.offline, Write: []string{"/pad/s1", "/private/tmp/proj"}, Env: map[string]string{"TMPDIR": "/pad/s1"}}, c.out, denied)
+			pol := &sandbox.Policy{Network: !c.offline, Write: []string{"/pad/s1", "/private/tmp/proj"}, Env: map[string]string{"TMPDIR": "/pad/s1"}}
+			if c.noPad {
+				pol.Write, pol.Env = pol.Write[1:], nil
+			}
+			hint := p.sandboxHint(pol, c.out, denied)
 			for _, w := range c.want {
 				if !strings.Contains(hint, w) {
 					t.Errorf("hint lacks %q: %s", w, hint)

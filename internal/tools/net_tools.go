@@ -311,17 +311,14 @@ func searchURL(p *Pipeline, query string) (*url.URL, bool, error) {
 }
 
 func runWebSearch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	query := strings.TrimSpace(str(input["query"]))
-	if query == "" {
-		return fantasy.NewTextErrorResponse("empty query"), nil
-	}
 	limit := 10
 	if v, ok := input["max_results"].(float64); ok && v >= 1 {
 		limit = int(min(v, 20))
 	}
-	u, searx, err := searchURL(p, query)
-	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
+	// the URL the gate approved, parsed once in subjects
+	u, searx := p.search, p.searx
+	if u == nil {
+		return fantasy.NewTextErrorResponse("empty query"), nil
 	}
 	// The host is the user's (config), so a self-hosted SearXNG on a
 	// private address is allowed; redirects are refused so a hop cannot

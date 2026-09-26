@@ -444,6 +444,7 @@ func TestFsDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	runExpectErr(t, r, `zemi.fs.read(".env")`, "permission ask required")
+	runExpectErr(t, r, `zemi.ui.edit(".env", {}, function() end)`, "permission ask required")
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
 	if v := pipe.Check(tools.Request{Subject: perm.SubjectRead, Arg: filepath.Join(proj, ".env")}); v.Decision != perm.Ask {

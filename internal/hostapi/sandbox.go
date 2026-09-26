@@ -137,6 +137,8 @@ func (h *Host) sandboxPolicy(readOnly bool) sandbox.Policy {
 	// both made here: the sandbox cannot create them inside the protected
 	// state dir. The pad is the temp dir too, so the file tools read what a
 	// command left there without asking.
+	// NOTE: a run outside any session (Lua at idle) has no pad and so no
+	// TMPDIR: its temp writes fail and the hint names no fix
 	p.Env = map[string]string{}
 	if s := h.ScratchDir(); s != "" && os.MkdirAll(s, 0o700) == nil {
 		p.Write = append(p.Write, s)
