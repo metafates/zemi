@@ -28,6 +28,11 @@ simpler. No compatibility shims, no deprecated aliases, no "the old key is still
 the old thing, then update `runtime/types/zemi.lua`, `TestNamespaceVersion` and the
 `zemi.api.version` string together.
 
+Parse at the boundary: a check returns the checked value in the shape inner code needs (a
+struct, a `perm.Path`) and inner code takes that type, never the raw string; a check that
+returns only an error, followed by `x, _ :=` on the same input, is a bug. A type gets an
+unexported field only when it carries a proof something acts on, like a path safe to open.
+
 Comments say only what the code cannot: a why, an invariant, a ceiling, in one or two lines,
 describing the code as it is and never the diff. A deliberate shortcut gets a `NOTE:` naming
 the ceiling. Tests are tables and one runner, a case another case covers is deleted,
