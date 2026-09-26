@@ -15,6 +15,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 func waitIdle(t *testing.T, h *Host) {
@@ -296,5 +297,42 @@ func TestForkKeepsTodos(t *testing.T) {
 	}
 	if todos := h.todoSnapshot(); h.AgentSessionID() != id || len(todos) != 1 || todos[0].Content != "a" {
 		t.Fatalf("fork %s has todos %+v", h.AgentSessionID(), todos)
+	}
+}
+
+// TestPlanRowOutput: a plan row shows the verdict, not the text written for
+// the model, both live and after a resume.
+func TestPlanRowOutput(t *testing.T) {
+	const raw = "The user approved the plan. " + tools.ImplementPlan + "\nThe plan is saved at /p/s1.md."
+	const want = "approved, saved to /p/s1.md"
+	for name, got := range map[string]func() string{
+		"live": func() string {
+			h, _ := newTestHostDB(t)
+			hk := h.streamHooks()
+			hk.ToolCallStart("c1", tools.ToolPlan, `{"plan":"x"}`)
+			hk.ToolCallEnd("c1", tools.ToolPlan, true, raw, "")
+			hk.TurnDone(nil, fantasy.Usage{})
+			tr := h.Session().Transcript
+			return tr[len(tr)-1].Output
+		},
+		"resume": func() string {
+			var rows []*store.Message
+			for _, m := range []fantasy.Message{
+				{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.ToolCallPart{ToolCallID: "c1", ToolName: tools.ToolPlan, Input: `{"plan":"x"}`}}},
+				{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{fantasy.ToolResultPart{ToolCallID: "c1", Output: fantasy.ToolResultOutputContentText{Text: raw}}}},
+			} {
+				parts, err := json.Marshal(m)
+				if err != nil {
+					t.Fatal(err)
+				}
+				rows = append(rows, &store.Message{Role: string(m.Role), PartsJSON: string(parts)})
+			}
+			_, tr := historyFrom(rows)
+			return tr[len(tr)-1].Output
+		},
+	} {
+		if g := got(); g != want {
+			t.Errorf("%s: output %q, want %q", name, g, want)
+		}
 	}
 }
