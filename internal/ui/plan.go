@@ -6,7 +6,6 @@
 package ui
 
 import (
-	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -108,18 +107,13 @@ func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	// a text view is 72 cells
 	p.size.w = max(p.size.w, 72)
 	planW := min(inner, p.size.w)
-	md := p.text.at(func(w int) [][]hostapi.Segment { return a.host.Markdown(p.plan, w) })
-	planN := len(md(planW))
-	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
-		tight := level > 0
-		p.view.viewH = max(h-2-len(stack(tight, oneRow, act, oneRow))+1, 1)
-		plan := p.view.window(p.view.wrap(md, planW), planW)
-		if planN == 0 {
-			plan = emptyRows("The plan is empty.", inner)
+	md := p.text.at(func(w int) [][]hostapi.Segment {
+		if rows := a.host.Markdown(p.plan, w); len(rows) > 0 {
+			return rows
 		}
-		hintRow := hint(inner, slices.Concat(hints, scrolls(p.view))...)
-		return stack(tight, plan, act, [][]hostapi.Segment{hintRow}), p.view.viewH < min(planN, 3)
+		return emptyRows("The plan is empty.", w)
 	})
+	body := scrollChoiceBody(h, inner, &p.view, md, planW, func(bool) [][]hostapi.Segment { return act }, hints...)
 	badge := ""
 	if p.mode != "" {
 		badge = "back to " + p.mode + " on approve"

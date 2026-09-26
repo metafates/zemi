@@ -335,14 +335,8 @@ func (a *App) memDetailBox(it hostapi.MemoryRow, w, h, inner int) [][]hostapi.Se
 		}
 		return rows
 	}
-	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
-		tight := level > 0
-		list := choiceRows(acts, mr.act, inner, level > 1)
-		mr.body.viewH = max(h-2-len(stack(tight, oneRow, list, oneRow))+1, 1)
-		rows := mr.body.window(mr.body.wrap(text, textW), textW)
-		hintRow := hint(inner, slices.Concat([]hintPair{{"enter", "confirm"}}, scrolls(mr.body), []hintPair{{"esc", "back"}})...)
-		return stack(tight, rows, list, [][]hostapi.Segment{hintRow}), mr.body.viewH < min(mr.body.rows, 3)
-	})
+	act := func(compact bool) [][]hostapi.Segment { return choiceRows(acts, mr.act, inner, compact) }
+	body := scrollChoiceBody(h, inner, &mr.body, text, textW, act, hintPair{"enter", "confirm"}, hintPair{"esc", "back"})
 	return promptBox("Memory / "+sanitize.Line(it.Text), "", body, w, h, 100, &mr.size)
 }
 

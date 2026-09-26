@@ -162,14 +162,8 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		{key: "n", label: "Don't trust"},
 		{key: "l", label: "Later", desc: laterDesc},
 	}
-	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
-		tight := level > 0
-		list := choiceRows(choices, tp.sel, width, level > 1)
-		tp.view.viewH = max(h-2-len(stack(tight, oneRow, list, oneRow))+1, 1)
-		text := tp.view.window(tp.view.wrap(explain, width), width)
-		hintRow := hint(width, slices.Concat([]hintPair{{"enter", "confirm"}}, scrolls(tp.view), []hintPair{{"esc", "later"}})...)
-		return stack(tight, text, list, [][]hostapi.Segment{hintRow}), tp.view.viewH < min(tp.view.rows, 3)
-	})
+	act := func(compact bool) [][]hostapi.Segment { return choiceRows(choices, tp.sel, width, compact) }
+	body := scrollChoiceBody(h, width, &tp.view, explain, width, act, hintPair{"enter", "confirm"}, hintPair{"esc", "later"})
 	return promptBox("Trust this "+what+"?", "", body, w, h, 100, &tp.size)
 }
 
