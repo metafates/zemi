@@ -705,8 +705,8 @@ lua-language-server is installed.
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
   `callback_port` for one without dynamic registration). Servers come from `zemi.mcp.add` (user
-  origin only); `PurgeGeneration` parks them, the replay keeps a live one it adds with the same
-  spec and the rest stop. They run unconfined in `DataHome` with `ZEMI_PROJECT_DIR` set,
+  origin only); `PurgeGeneration` parks them, the replay keeps a live one (or one waiting for a
+  sign-in) it adds with the same spec and the rest stop. They run unconfined in `DataHome` with `ZEMI_PROJECT_DIR` set,
   trusted project or not: `npx` and `uv` read config from the working directory, and most
   servers need the network a sandbox refuses. Tools are
   `mcp_<server>_<tool>`, gated as subject `mcp.<server>` with the tool name as argument. Past

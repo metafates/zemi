@@ -104,11 +104,12 @@ func (h *Host) addMCP(name string, spec MCPSpec) error {
 	return nil
 }
 
-// keeps reports whether s can serve spec as it is: a failed server restarts.
+// keeps reports whether s can serve spec as it is: a failed server restarts,
+// one waiting for a sign-in keeps waiting, since a start would fail the same way.
 func (s *mcpServer) keeps(spec MCPSpec) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return (s.status == StatusReady || s.status == StatusStarting) && reflect.DeepEqual(s.spec, spec)
+	return (s.status == StatusReady || s.status == StatusStarting || s.status == StatusSignIn) && reflect.DeepEqual(s.spec, spec)
 }
 
 func (h *Host) startMCP(s *mcpServer) {

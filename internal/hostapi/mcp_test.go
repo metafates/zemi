@@ -149,8 +149,15 @@ func TestMCPBridge(t *testing.T) {
 	if err := h.signOutMCP("fake"); err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := h.mcpServerNamed("fake"); s.status != StatusSignIn {
-		t.Errorf("status after a sign-out = %q, want no start", s.status)
+	out, _ := h.mcpServerNamed("fake")
+	if out.status != StatusSignIn {
+		t.Errorf("status after a sign-out = %q, want no start", out.status)
+	}
+	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), readd}); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := h.mcpServerNamed("fake"); s != out || s.status != StatusSignIn {
+		t.Errorf("a reload after a sign-out started the server: %q", s.status)
 	}
 	if !slices.ContainsFunc(ui.overlays()[n:], func(o Overlay) bool {
 		row := o.Items[0].(map[string]any)
