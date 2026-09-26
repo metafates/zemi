@@ -131,7 +131,6 @@ CREATE TABLE IF NOT EXISTS kv (
 
 CREATE TABLE IF NOT EXISTS proposals (
 	id TEXT PRIMARY KEY,
-	kind TEXT NOT NULL,
 	payload TEXT NOT NULL,
 	created_at INTEGER NOT NULL
 );
@@ -154,7 +153,7 @@ CREATE INDEX IF NOT EXISTS memory_scope_updated ON memory(scope, updated_at);
 // schemaVersion stamps every store. zemi keeps no migrations before its
 // first release: a schema change bumps this, and a store another version made
 // is refused with its path, for the developer to delete.
-const schemaVersion = 3
+const schemaVersion = 4
 
 func (s *DB) migrate() error {
 	// one transaction, so a second process opening the same file waits and

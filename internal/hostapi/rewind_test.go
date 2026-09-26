@@ -115,7 +115,7 @@ func TestRewind(t *testing.T) {
 	h.DB.SupersedeMemory(old.ID, learned.ID)
 	for _, at := range []int64{last, last + 1} {
 		payload, _ := json.Marshal(memoryProposal{Scope: "project", Text: strconv.FormatInt(at, 10), Origin: "learned", ProvenanceSessionID: sid})
-		if err := h.DB.AddProposal(&store.Proposal{Kind: "memory", Payload: string(payload), CreatedAt: at}); err != nil {
+		if err := h.DB.AddProposal(&store.Proposal{Payload: string(payload), CreatedAt: at}); err != nil {
 			t.Fatal(err)
 		}
 	}

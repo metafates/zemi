@@ -575,7 +575,7 @@ func TestMemoryReviewMovesProposals(t *testing.T) {
 	if len(moved) != 1 || moved[0].Scope != "user" {
 		t.Fatalf("moved suggestion: %+v", moved)
 	}
-	if got, _ := h.GlobalDB.Proposals("memory"); len(got) != 1 || got[0].ID != moved[0].ID {
+	if got, _ := h.GlobalDB.Proposals(); len(got) != 1 || got[0].ID != moved[0].ID {
 		t.Fatalf("moved suggestion not in the user store: %+v", got)
 	}
 

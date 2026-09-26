@@ -94,7 +94,7 @@ func (h *Host) addProposal(p memoryProposal) error {
 	}
 	payload, err := json.Marshal(p)
 	if err == nil {
-		err = db.AddProposal(&store.Proposal{ID: p.ID, Kind: "memory", Payload: string(payload)})
+		err = db.AddProposal(&store.Proposal{ID: p.ID, Payload: string(payload)})
 	}
 	if err == nil {
 		h.refreshPending()
@@ -607,7 +607,7 @@ func (h *Host) memoryProposals() []memoryProposal {
 		if db == nil {
 			continue
 		}
-		rows, err := db.Proposals("memory")
+		rows, err := db.Proposals()
 		if err != nil {
 			h.Log.Warn("memory", "proposal list failed", map[string]any{"error": err.Error()})
 			continue

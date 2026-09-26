@@ -1298,7 +1298,7 @@ memory(id, scope, text, quote, provenance_session_id,
        created_at, updated_at, superseded_by, origin)
 checkpoints(message_id, session_id, path, existed, link, content, created_at)
                                                                 -- pre-turn file content (a link's target) for rewind (§8)
-proposals(id, kind, payload, created_at)                        -- pending, until reviewed
+proposals(id, payload, created_at)                              -- pending, until reviewed
 skills(name, path, source, enabled, created_at)                 -- source: user|builtin
 kv(key, value_json, updated_at)                                 -- zemi.state
 ```
