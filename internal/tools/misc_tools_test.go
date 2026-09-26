@@ -160,6 +160,27 @@ func TestPlanOutcome(t *testing.T) {
 	}
 }
 
+// TestQuestionAnswers: a question row reads each question and answer back
+// out of the result the question tool writes for the model.
+func TestQuestionAnswers(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		answers []string
+		ok      bool
+		want    [][2]string
+	}{
+		{"quotes, a newline and an open one", []string{"say \"hi\"", ""}, true, [][2]string{{"Name \"it\"?\nor not", `say "hi"`}, {"Checks?", ""}}},
+		{"dismissed", nil, false, nil},
+	} {
+		p, _ := testPipeline(t, false)
+		p.Question = func([]Question) ([]string, bool) { return c.answers, c.ok }
+		resp := call(t, toolNamed(t, "question", p), `{"questions":[{"type":"free_text","question":"Name \"it\"?\nor not"},{"type":"free_text","question":"Checks?"}]}`)
+		if got := QuestionAnswers(resp.Content); !slices.Equal(got, c.want) {
+			t.Errorf("%s: %q from %q", c.name, got, resp.Content)
+		}
+	}
+}
+
 // TestYesNoOptions: explicit options are kept as given (not doubled by the
 // Yes/No default), and omitted options fall back to Yes/No.
 func TestYesNoOptions(t *testing.T) {

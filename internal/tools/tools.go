@@ -1027,7 +1027,7 @@ Chain dependent steps with &&.`,
 						"type":        map[string]any{"type": "string", "enum": QuestionTypes, "description": "yes_no gets Yes and No; multi_choice lets the user mark several; free_text is typed"},
 						"question":    map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
 						"description": map[string]any{"type": "string", "description": "markdown context the options cannot carry, shown under the question"},
-						"header":      map[string]any{"type": "string", "description": "with several questions, a 1-3 word tab label, e.g. Auth method"},
+						"header":      map[string]any{"type": "string", "description": "a 1-3 word label for the question, e.g. Auth method: its tab in a batch and its transcript row"},
 						"options": map[string]any{"type": "array", "description": "required for single_choice and multi_choice", "items": map[string]any{
 							"type": "object",
 							"properties": map[string]any{

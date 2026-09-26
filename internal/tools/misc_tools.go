@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"charm.land/fantasy"
@@ -275,15 +276,46 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		return stopTurn("The user dismissed the questions. Stop and wait for them to say how to proceed."), nil
 	}
 	var b strings.Builder
-	b.WriteString("The user answered:")
+	b.WriteString(questionAnswered)
 	for i, q := range qs {
 		ans := strings.ReplaceAll(answers[i], " (Recommended)", "")
 		if ans == "" {
-			ans = "(not answered: use your recommended option, or your best judgment if you gave none)"
+			ans = questionOpen
 		}
 		fmt.Fprintf(&b, "\n- %q: %s", q.Question, ans)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
+}
+
+// The question result QuestionAnswers reads back.
+const (
+	questionAnswered = "The user answered:"
+	questionOpen     = "(not answered: use your recommended option, or your best judgment if you gave none)"
+)
+
+// QuestionAnswers is each question and its answer in a question result,
+// which is written for the model, for its row to show: "" for a question the
+// user left open. Any other result is nil.
+func QuestionAnswers(output string) [][2]string {
+	lines := strings.Split(output, "\n")
+	if lines[0] != questionAnswered || len(lines) < 2 {
+		return nil
+	}
+	qa := make([][2]string, 0, len(lines)-1)
+	for _, l := range lines[1:] {
+		l, dash := strings.CutPrefix(l, "- ")
+		quoted, err := strconv.QuotedPrefix(l)
+		ans, colon := strings.CutPrefix(l[len(quoted):], ": ")
+		if !dash || err != nil || !colon {
+			return nil
+		}
+		q, _ := strconv.Unquote(quoted)
+		if ans == questionOpen {
+			ans = ""
+		}
+		qa = append(qa, [2]string{q, ans})
+	}
+	return qa
 }
 
 // SkillInfo is one resolvable skill: name plus the directory holding
