@@ -168,9 +168,10 @@ function os.time(t) end
 
 --- The date as text in a strftime `format` ("%c" by default; a leading "!"
 --- means UTC), or as a table with "*t".
+---@overload fun(format: "*t"|"!*t", time?: integer): { year: integer, month: integer, day: integer, hour: integer, min: integer, sec: integer, wday: integer, yday: integer, isdst: boolean }
 ---@param format? string
 ---@param time? integer Unix seconds; now by default.
----@return string|{ year: integer, month: integer, day: integer, hour: integer, min: integer, sec: integer, wday: integer, yday: integer, isdst: boolean }
+---@return string
 function os.date(format, time) end
 
 ---@class sandbox.debug
