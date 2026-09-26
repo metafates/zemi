@@ -59,7 +59,8 @@ var secretDirs = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"
 // cache. The system temp dir is not writable for the same reason: macOS
 // keeps xcrun_db there, which picks the binary /usr/bin/make or git runs.
 // Seatbelt denies binding a unix socket, and even allowed, macOS's 104-byte
-// socket path is tight under the pad.
+// socket path is tight under the pad; the fix is a seatbelt rule allowing
+// bind under a short per-session socket dir.
 func (h *Host) sandboxPolicy(readOnly bool) sandbox.Policy {
 	d := h.Dirs
 	home, _ := os.UserHomeDir()
