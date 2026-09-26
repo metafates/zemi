@@ -206,18 +206,13 @@ func TestTypesEnums(t *testing.T) {
 		alias, table string
 		live         []string
 	}{
-		{"zemi.ProviderKind", "zemi.provider.kind", agent.Kinds},
+		{"zemi.ProviderKind", "zemi.provider.kind", strs(agent.Kinds)},
 		{"zemi.Decision", "zemi.permission.decision", []string{string(perm.Allow), string(perm.Ask), string(perm.Deny)}},
 		{"zemi.Scope", "zemi.memory.scope", []string{learn.ScopeUser, learn.ScopeProject}},
 		{"zemi.Level", "zemi.notify.level", slices.Collect(maps.Keys(notifyLevels))},
 		{"zemi.ModelRole", "zemi.model.role", roleNames()},
-		{"", "zemi.model.effort", agent.Efforts},
-		{"zemi.ServiceStatus", "", func() (out []string) {
-			for _, s := range serviceStatuses {
-				out = append(out, string(s))
-			}
-			return out
-		}()},
+		{"", "zemi.model.effort", strs(agent.Efforts)},
+		{"zemi.ServiceStatus", "", strs(serviceStatuses)},
 	} {
 		if c.alias != "" {
 			assertSameNames(t, c.alias, annotatedAlias(t, c.alias), slices.Clone(c.live))

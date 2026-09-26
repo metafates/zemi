@@ -181,11 +181,14 @@ func (s *Store) Check(path string, val any) (any, error) {
 
 // SetChoices limits the string key path to choices, for a list that lives
 // in a package config cannot import (agent.Efforts).
-func (s *Store) SetChoices(path string, choices []string) {
+func (s *Store) SetChoices[T ~string](path string, choices []T) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	def := s.schema[path]
-	def.Choices = choices
+	def.Choices = nil
+	for _, c := range choices {
+		def.Choices = append(def.Choices, string(c))
+	}
 	s.schema[path] = def
 }
 

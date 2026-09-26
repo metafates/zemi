@@ -219,7 +219,7 @@ func newAgentHost() *agentHost {
 
 // Effort is the reasoning level modelID runs at under the agent.effort pick.
 func (h *Host) Effort(modelID string) string {
-	return h.Providers.Effort(modelID, h.Settings.Str("agent.effort"))
+	return h.Providers.Effort(modelID, agent.Effort(h.Settings.Str("agent.effort")))
 }
 
 // resolveProfile returns the profile to run: explicit name, else the
@@ -1656,6 +1656,15 @@ func (ag *agentHost) endThinking() {
 
 // enumTable is a table of constants keyed by each value upper-cased, like
 // zemi.provider.kind.OPENAI_COMPAT.
+// strs is a closed set's values as plain strings.
+func strs[T ~string](vals []T) []string {
+	out := make([]string, len(vals))
+	for i, v := range vals {
+		out[i] = string(v)
+	}
+	return out
+}
+
 func enumTable[T ~string](L *glua.LState, vals ...T) *glua.LTable {
 	tb := L.CreateTable(0, len(vals))
 	for _, v := range vals {
@@ -1722,14 +1731,14 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 	}
 	spec := agent.Spec{
 		ID:      rawString(tb, "id"),
-		Kind:    rawString(tb, "kind"),
+		Kind:    agent.Kind(rawString(tb, "kind")),
 		BaseURL: rawString(tb, "base_url"),
 		Headers: rawStringMap(tb, "headers"),
 	}
 	switch b := fields["body"].(type) {
 	case map[string]any:
 		if !slices.Contains(agent.KindsWithBody, spec.Kind) {
-			return agent.Spec{}, fmt.Errorf("body is sent only by the %s kinds", strings.Join(agent.KindsWithBody, ", "))
+			return agent.Spec{}, fmt.Errorf("body is sent only by the %s kinds", strings.Join(strs(agent.KindsWithBody), ", "))
 		}
 		spec.Body = b
 	case []any:

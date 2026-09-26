@@ -71,7 +71,7 @@ func TestCallOptions(t *testing.T) {
 		{"bg/lite", "", "google", "minimal"},
 		{"bg/lite", "high", "google", "low"},
 	} {
-		opts := r.CallOptions(c.model, r.Effort(c.model, c.pick), "s1")
+		opts := r.CallOptions(c.model, r.Effort(c.model, Effort(c.pick)), "s1")
 		if c.key == "" {
 			if opts != nil {
 				t.Fatalf("%s %q: want no options, got %v", c.model, c.pick, opts)
@@ -169,7 +169,7 @@ func (s generateStub) Stream(context.Context, fantasy.Call) (fantasy.StreamRespo
 func TestGoogleUsage(t *testing.T) {
 	raw := fantasy.Usage{InputTokens: 200_000, CacheReadTokens: 180_000, OutputTokens: 100, ReasoningTokens: 50}
 	for _, c := range []struct {
-		kind          string
+		kind          Kind
 		input, output int64
 	}{{KindGoogle, 20_000, 150}, {KindAnthropic, 200_000, 100}} {
 		m := idleModel{LanguageModel: generateStub{usage: raw}, idle: time.Minute, kind: c.kind}
@@ -222,7 +222,11 @@ func TestBuiltin(t *testing.T) {
 			t.Errorf("%s: %+v key %q", s.ID, s, c.Keys[s.ID])
 		}
 	}
-	for _, tc := range []struct{ id, kind, base string }{
+	for _, tc := range []struct {
+		id   string
+		kind Kind
+		base string
+	}{
 		{"anthropic", KindAnthropic, ""},
 		{"openai", KindOpenAI, "http://gw/v1"},
 		{"openrouter", KindOpenRouter, "https://openrouter.ai/api/v1"},

@@ -54,25 +54,28 @@ type Model struct {
 	Effort              string   // a builtin's level when /effort is unset
 }
 
-// Provider kinds: which fantasy implementation talks to the provider.
+// Kind is a provider kind: which fantasy implementation talks to the
+// provider.
+type Kind string
+
 const (
-	KindAnthropic    = "anthropic"
-	KindOpenAI       = "openai"
-	KindOpenAICompat = "openai_compat"
-	KindGoogle       = "google"
-	KindOpenRouter   = "openrouter"
-	KindVercel       = "vercel"
+	KindAnthropic    Kind = "anthropic"
+	KindOpenAI       Kind = "openai"
+	KindOpenAICompat Kind = "openai_compat"
+	KindGoogle       Kind = "google"
+	KindOpenRouter   Kind = "openrouter"
+	KindVercel       Kind = "vercel"
 )
 
 // Kinds is every kind Resolve knows.
-var Kinds = []string{KindAnthropic, KindOpenAI, KindOpenAICompat, KindGoogle, KindOpenRouter, KindVercel}
+var Kinds = []Kind{KindAnthropic, KindOpenAI, KindOpenAICompat, KindGoogle, KindOpenRouter, KindVercel}
 
 // Spec describes one provider: kind selects the fantasy implementation.
 // Headers ride every request (a gateway's attribution or team header); they
 // are as secret as the key, so nothing echoes them back.
 type Spec struct {
 	ID      string
-	Kind    string // one of Kinds
+	Kind    Kind
 	BaseURL string
 	Headers map[string]string
 	// Body holds extra request-body fields merged into every request
@@ -125,7 +128,7 @@ type MissingKey struct{ ID, Env string }
 // kind reads cached tokens from the usage, but only theirs turn the
 // Anthropic cache breakpoints into the cache_control Claude behind them
 // needs.
-var builtinKinds = map[catwalk.Type]string{
+var builtinKinds = map[catwalk.Type]Kind{
 	catwalk.TypeAnthropic:    KindAnthropic,
 	catwalk.TypeOpenAI:       KindOpenAI,
 	catwalk.TypeGoogle:       KindGoogle,
@@ -301,7 +304,7 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 }
 
 // KindsWithBody are the kinds whose fantasy options take Spec.Body.
-var KindsWithBody = []string{KindAnthropic, KindOpenAICompat, KindOpenRouter, KindVercel}
+var KindsWithBody = []Kind{KindAnthropic, KindOpenAICompat, KindOpenRouter, KindVercel}
 
 // Registry holds provider specs; ids are unique. API keys live in a side
 // map keyed by provider id and are never exposed through List or Lookup.
@@ -405,7 +408,7 @@ func (r *Registry) Register(spec Spec, apiKey string) error {
 		return errors.New("provider needs id and kind")
 	}
 	if !slices.Contains(Kinds, spec.Kind) {
-		return fmt.Errorf("unknown provider kind %q (want %s)", spec.Kind, strings.Join(Kinds, ", "))
+		return fmt.Errorf("unknown provider kind %q (zemi.provider.kind lists them)", spec.Kind)
 	}
 	// the fantasy default is api.openai.com, which would get the key
 	if spec.Kind == KindOpenAICompat && spec.BaseURL == "" {
@@ -467,15 +470,17 @@ func (r *Registry) apiKey(providerID string) string {
 	return r.keys[providerID]
 }
 
-// Efforts are the reasoning effort levels /effort offers ("" = the model's
+// Effort is a reasoning effort level /effort offers ("" = the model's
 // default).
-var Efforts = []string{"low", "medium", "high"}
+type Effort string
+
+var Efforts = []Effort{"low", "medium", "high"}
 
 // Effort is the reasoning level modelID runs at for the /effort pick ("" =
 // unset): a catalog model gets its default level when unset, else the level
 // it lists nearest the pick, and none when it lists none; any other model
 // gets the pick.
-func (r *Registry) Effort(modelID, pick string) string {
+func (r *Registry) Effort(modelID string, pick Effort) string {
 	if !slices.Contains(Efforts, pick) {
 		pick = ""
 	}
@@ -484,13 +489,13 @@ func (r *Registry) Effort(modelID, pick string) string {
 	i := slices.IndexFunc(spec.Models, func(m Model) bool { return m.ID == model })
 	switch {
 	case !spec.Builtin || i < 0:
-		return pick
+		return string(pick)
 	case len(spec.Models[i].Efforts) == 0:
 		return ""
 	case pick == "":
 		return spec.Models[i].Effort
 	}
-	return nearestEffort(spec.Models[i].Efforts, pick)
+	return nearestEffort(spec.Models[i].Efforts, string(pick))
 }
 
 // CallOptions are the provider options a turn runs with: the reasoning
@@ -556,6 +561,7 @@ func (r *Registry) CallOptions(modelID, effort, sessionID string) fantasy.Provid
 			level := strings.ToUpper(effort)
 			return fantasy.ProviderOptions{google.Name: &google.ProviderOptions{ThinkingConfig: &google.ThinkingConfig{ThinkingLevel: &level}}}
 		}
+	case KindOpenAI: // answered above
 	}
 	return nil
 }
@@ -704,7 +710,7 @@ type idleModel struct {
 	fantasy.LanguageModel
 	idle     time.Duration
 	provider string
-	kind     string
+	kind     Kind
 }
 
 // usage brings Gemini's counts to the shape billing and ContextUsed read:
