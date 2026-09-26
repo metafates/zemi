@@ -25,6 +25,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -601,11 +602,7 @@ func writeTrust(path string, m map[string]string) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return config.WriteFileAtomic(path, data, 0o600)
 }
 
 // readyStep drops the builtin providers when init.lua turned them off

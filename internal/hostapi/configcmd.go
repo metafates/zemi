@@ -368,25 +368,7 @@ func saveInit(path string, read []byte, sets []cfgLine) (saved, skipped []string
 	if st, err := os.Stat(path); err == nil {
 		mode = st.Mode().Perm()
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".init.lua.*")
-	if err != nil {
-		return nil, nil, err
-	}
-	defer os.Remove(tmp.Name()) // names nothing once renamed
-	_, err = tmp.WriteString(out)
-	if err == nil {
-		err = tmp.Chmod(mode)
-	}
-	if err == nil {
-		err = tmp.Sync()
-	}
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Rename(tmp.Name(), path)
-	}
-	if err != nil {
+	if err := config.WriteFileAtomic(path, []byte(out), mode); err != nil {
 		return nil, nil, err
 	}
 	return saved, skipped, nil

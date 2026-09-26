@@ -493,16 +493,7 @@ func setDisabled(d config.Dirs, name string, off bool) error {
 	if err := os.MkdirAll(d.PluginsRoot(), 0o755); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(d.PluginsRoot(), ".disabled-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	_, err = f.WriteString(b.String())
-	if err := errors.Join(err, f.Close()); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), filepath.Join(d.PluginsRoot(), "disabled"))
+	return config.WriteFileAtomic(filepath.Join(d.PluginsRoot(), "disabled"), []byte(b.String()), 0o600)
 }
 
 // git runs git on a plugin repository, blanking the user's filter drivers too.

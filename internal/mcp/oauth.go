@@ -29,6 +29,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/metafates/zemi/internal/config"
 )
 
 // ErrAuthRequired means the server wants a sign-in zemi does not have (or
@@ -100,11 +102,7 @@ func (a *Auth) save(t *Token) error {
 	if err != nil {
 		return err
 	}
-	tmp := a.Path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, a.Path)
+	return config.WriteFileAtomic(a.Path, b, 0o600)
 }
 
 // Logout forgets the grant.

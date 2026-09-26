@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -252,6 +253,22 @@ func (d Dirs) UserTrees() []string {
 // plugins developed in place in local/, and the disabled list.
 func (d Dirs) PluginsRoot() string {
 	return filepath.Join(d.DataHome, "plugins")
+}
+
+// WriteFileAtomic replaces path with data through a temp file in its
+// directory, so a reader or a crash never sees half a file and two zemi
+// windows writing at once never share a temp file.
+func WriteFileAtomic(path string, data []byte, mode fs.FileMode) error {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name()) // names nothing once renamed
+	_, err = f.Write(data)
+	if err := errors.Join(err, f.Chmod(mode), f.Sync(), f.Close()); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 // LogDir is ~/.local/state/zemi/logs.

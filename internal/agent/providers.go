@@ -34,6 +34,8 @@ import (
 	openaicompat "charm.land/fantasy/providers/openaicompat"
 	openrouter "charm.land/fantasy/providers/openrouter"
 	vercel "charm.land/fantasy/providers/vercel"
+
+	"github.com/metafates/zemi/internal/config"
 )
 
 // Model is one entry of a provider's catalog. ContextWindow is optional:
@@ -288,16 +290,7 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 	if err != nil {
 		return Catalog{}, false, err
 	}
-	f, err := os.CreateTemp(dir, ".catwalk-*")
-	if err != nil {
-		return Catalog{}, false, err
-	}
-	defer os.Remove(f.Name())
-	_, err = f.Write(data)
-	if err := errors.Join(err, f.Close()); err != nil {
-		return Catalog{}, false, err
-	}
-	if err := os.Rename(f.Name(), filepath.Join(dir, catalogFile)); err != nil {
+	if err := config.WriteFileAtomic(filepath.Join(dir, catalogFile), data, 0o600); err != nil {
 		return Catalog{}, false, err
 	}
 	return c, changed, nil
