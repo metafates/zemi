@@ -56,7 +56,7 @@ func TestTypesCoverAPI(t *testing.T) {
 		}
 	}
 
-	for ns, members := range bootedNamespaces(t) {
+	for ns, members := range bootedNamespaces(t, true) {
 		for _, member := range members {
 			path := ns + "." + member
 			// zemi.provider.kind.ANTHROPIC is covered by the kind class
@@ -71,7 +71,7 @@ func TestTypesCoverAPI(t *testing.T) {
 // registers is worse than none, because an editor keeps offering it.
 func TestTypesDeclareNothingExtra(t *testing.T) {
 	live := map[string]bool{"zemi.api.version": true}
-	for ns, members := range bootedNamespaces(t) {
+	for ns, members := range bootedNamespaces(t, true) {
 		live[ns] = true
 		for _, member := range members {
 			live[ns+"."+member] = true
@@ -179,8 +179,9 @@ func typesSource(t *testing.T) string {
 }
 
 // bootedNamespaces installs the host API on a fresh runtime and reports
-// what it registered: namespace -> dotted member paths.
-func bootedNamespaces(t *testing.T) map[string][]string {
+// what it registered: namespace -> dotted member paths; with test, zemi.test
+// too, as a plugin test boot registers it.
+func bootedNamespaces(t *testing.T, test bool) map[string][]string {
 	t.Helper()
 	log := logging.New(t.TempDir())
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
@@ -190,7 +191,11 @@ func bootedNamespaces(t *testing.T) map[string][]string {
 		out = g.SB.NamespaceMembers()
 		return nil
 	}}
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), capture}); err != nil {
+	steps := []lua.BootStep{h.NamespacesStep(), capture}
+	if test {
+		steps = []lua.BootStep{h.NamespacesStep(), (&PluginTest{h: h}).Step(), capture}
+	}
+	if err := r.Boot(context.Background(), steps); err != nil {
 		t.Fatal(err)
 	}
 	return out

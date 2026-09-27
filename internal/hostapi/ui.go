@@ -309,7 +309,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		resolved := p.String()
 		// gated by the written name like zemi.fs, so a secret-named link asks
-		h.luaGate(L, "lua.fs.read", h.projectAbs(path))
+		h.luaGate(L, "lua.fs.read", h.projectAbs(path), nil)
 		line := 0
 		if n, ok := opts.RawGetString("line").(glua.LNumber); ok {
 			line = int(n)
@@ -322,15 +322,15 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		ui := h.hooks()
 		h.GoSafe("ui.edit", func() {
 			if ui == nil {
-				h.callLuaAsync(at, cb, "no UI in this run")
+				h.callLuaAsync("zemi.ui.edit on_done", at, cb, "no UI in this run")
 				return
 			}
 			h.lspDirty()
 			if err := ui.EditFile(context.Background(), EditRequest{Path: resolved, Line: line, Title: title}); err != nil {
-				h.callLuaAsync(at, cb, err.Error())
+				h.callLuaAsync("zemi.ui.edit on_done", at, cb, err.Error())
 				return
 			}
-			h.callLuaAsync(at, cb)
+			h.callLuaAsync("zemi.ui.edit on_done", at, cb)
 		})
 		return 0
 	}))
@@ -803,6 +803,9 @@ func linesTable(L *glua.LState, lines [][]Segment) *glua.LTable {
 			}
 			if s.Soft {
 				seg.RawSetString("soft_wrap", glua.LTrue)
+			}
+			if s.Click != "" {
+				seg.RawSetString("click", glua.LString(s.Click))
 			}
 			row.Append(seg)
 		}

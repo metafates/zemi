@@ -435,8 +435,9 @@ branch to the highest tag when that tag is ahead of it, or else a branch
 fast-forward, and names only the plugins that moved; `check` fetches, so
 the list names each update from local refs; `enable`, `disable` and
 `delete` (an installed clone, else the local plugin; a symlink loses the
-link only). `zemi plugins` runs without the Lua boot, the TUI or
-trust, so a prompt that starts with "plugins" is written after `--`.
+link only). `zemi plugins` runs without the TUI or trust, and without the
+Lua boot but for `test`, so a prompt that starts with "plugins" is written
+after `--`.
 `/plugins` is a toggle list built off the key loop, local plugins first,
 each row's state first (`failed`, an update), then its version and the
 `init.lua` description; its detail names the source, the load status and
@@ -446,6 +447,35 @@ verbs need the screen, so only `/plugins` takes them: `toggle <name>`,
 `open <name>` (its `init.lua` in the editor, or its directory without one)
 and `new [what it should do]`, the list's first row, which sends the agent
 a short prompt pointing at zemi-customize, where the procedure lives.
+
+`zemi plugins test <name|dir> [pattern]` runs a plugin's
+`tests/*_test.lua` so an agent writing one tests it without a user's
+session. Each case whose "file: name" holds the pattern runs in a zemi of
+its own, booted in the process from temp dirs holding a filtered copy of
+the plugin (no dot entries, `node_modules` or links leading out) and
+nothing else: no user or project config, no trust step, no other plugin,
+no `~/.agents`. The file's top level runs where `init.lua` would, so it is
+the case's setup, and a first boot collects the case names. `zemi.test`,
+registered only there, declares cases and drives what the plugin
+registered the way zemi runs it: `run`, `keys`, `tool` (through the
+adapter the model's call runs), `render`, `click`, `emit` (to the plugin's
+own handlers, `tool.post` as tasks and vetoable events with their
+deadline), `overlay` and `answer`, each refusing another origin's target, a
+Go command and a host action, and `eq` compares Lua values. The zemi does
+no IO by construction: the process starts no process (`proc.Refuse`), and
+a job, HTTP request, model ask, agent send or `zemi.fs` write passes the
+gate only when a `test.stub` answers it, its reply standing in for the
+transport, else it raises the missing-rule error whatever rules exist and
+the report names the stub line. Time is a fake clock at 2026-01-01 UTC
+that only `test.advance` moves, driving timers, `os.time`/`os.date`/`os.clock`,
+a render's `ctx.time` and log times; every driver returns once zemi is
+quiet (no host goroutine running, no timer due). An error zemi records in
+`/errors` while a driver runs fails the case. Output is the failures,
+paths relative to the plugin, and one summary line; the exit status is 1
+on any failure, no case or a pattern matching none, 2 on a usage error.
+NOTE: one widget renders at a time (no screen layout), `keys` reaches no
+`{ focus = id }` binding, a stub answers at once (a timeout is untested),
+and the plugin's skills, agents and workflows are not exercised.
 
 `require` rules:
 
@@ -2398,12 +2428,14 @@ the host-only proposal channel (§10.3), the user-only config.set and allow rule
 
 ```
 main.go, cli.go             wiring, boot steps, and the command line
+plugintest.go               zemi plugins test: the copy, a boot per case, the report
 internal/lua/               interpreter thread, Lua sandbox, origins, marshal, require
 internal/hostapi/           zemi.* namespaces and the host services behind them:
                             turns, sessions, compaction, subagents, workflows,
                             agent runs, memory, reflector, skills hosting,
                             permissions + modes, mcp and
-                            lsp wiring, rewind, scratchpads, health, export
+                            lsp wiring, rewind, scratchpads, health, export,
+                            zemi.test
 internal/agent/             the fantasy runner: one turn, steps, stops, retries
 internal/tools/             builtin tools (fs, bash, jobs, net, misc) and the tool
                             pipeline (validate, tool.pre, permission gate, run)

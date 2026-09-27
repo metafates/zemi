@@ -723,9 +723,9 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 			switch {
 			case onDone == nil:
 			case err != nil:
-				h.callLuaAsync(at, onDone, nil, err.Error(), res.Log)
+				h.callLuaAsync("zemi.workflow.run on_done", at, onDone, nil, err.Error(), res.Log)
 			default:
-				h.callLuaAsync(at, onDone, res.Value, nil, res.Log)
+				h.callLuaAsync("zemi.workflow.run on_done", at, onDone, res.Value, nil, res.Log)
 			}
 		})
 		handle := L.NewTable()

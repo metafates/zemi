@@ -81,17 +81,9 @@ func run(args []string) int {
 
 	settings := config.NewStore()
 
-	classes := lua.PathClasses{
-		{Prefix: dirs.ConfigHome, Origin: lua.OriginUser},
-		{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
-		{Prefix: dirs.ProjectConfigDir(), Origin: lua.OriginProject},
-	}
-	for _, dir := range dirs.UserTrees() {
-		classes = append(classes, lua.PathClass{Prefix: dir, Origin: lua.OriginUser})
-	}
 	rt := lua.NewRuntime(lua.RuntimeOptions{
 		Log:       log,
-		PathClass: classes,
+		PathClass: pathClasses(dirs),
 		RuntimeFS: zemiRuntime.FS,
 	})
 	host := hostapi.NewHost(rt, log, settings, dirs)
@@ -124,19 +116,15 @@ func run(args []string) int {
 	// reload is set before boot starts; /trust calls it after boot
 	var reload func()
 	soft := func(s lua.BootStep) lua.BootStep { return softStep(host, app == nil, s) }
-	steps := []lua.BootStep{
-		host.NamespacesStep(),
-		host.BuiltinCommandsStep(mainCommands(quit, trust.command(func() { reload() }))...),
-		lua.RequireStep("zemi.tui"),
-		soft(trust.step()),
-		soft(host.ProjectPermissionsStep()),
+	steps := bootSteps(host, mainCommands(quit, trust.command(func() { reload() })),
+		[]lua.BootStep{soft(trust.step()), soft(host.ProjectPermissionsStep())},
 		soft(host.PluginsStep()),
-		soft(lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
-		soft(host.SkillsUserHooksStep()),
-		soft(projectInitStep(host, dirs)),
-		host.MarkdownCommandsStep(),
-		readyStep(host, app != nil),
-	}
+		[]lua.BootStep{
+			soft(lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
+			soft(host.SkillsUserHooksStep()),
+			soft(projectInitStep(host, dirs)),
+		},
+		app != nil)
 
 	if opts.health {
 		if err := rt.Boot(ctx, steps); err != nil {
@@ -238,6 +226,29 @@ func run(args []string) int {
 		return fail(err)
 	}
 	return 0
+}
+
+// pathClasses is where each origin's files live (DESIGN §5).
+func pathClasses(dirs config.Dirs) lua.PathClasses {
+	classes := lua.PathClasses{
+		{Prefix: dirs.ConfigHome, Origin: lua.OriginUser},
+		{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
+		{Prefix: dirs.ProjectConfigDir(), Origin: lua.OriginProject},
+	}
+	for _, dir := range dirs.UserTrees() {
+		classes = append(classes, lua.PathClass{Prefix: dir, Origin: lua.OriginUser})
+	}
+	return classes
+}
+
+// bootSteps is the boot order (DESIGN §5): trust is what runs before the
+// plugins and config what runs after them, where init.lua does. A plugin
+// test runs no trust and its test file as the config.
+func bootSteps(h *hostapi.Host, cmds []*hostapi.Command, trust []lua.BootStep, plugins lua.BootStep, config []lua.BootStep, reflect bool) []lua.BootStep {
+	return slices.Concat(
+		[]lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(cmds...), lua.RequireStep("zemi.tui")},
+		trust, []lua.BootStep{plugins}, config,
+		[]lua.BootStep{h.MarkdownCommandsStep(), readyStep(h, reflect)})
 }
 
 // watchConfig reloads when files under the user or a trusted project's

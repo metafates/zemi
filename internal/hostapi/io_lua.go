@@ -162,16 +162,29 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 // the §6.5 contract ("permission ask required"): host-API calls from Lua
 // never open the interactive overlay, so the asker is stripped from the
 // pipeline copy and an unresolved ask stays an ask for the gate to refuse.
-func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
+// req describes the call for a test zemi, where only a test.stub passes one
+// of the calls that do IO: its reply is returned and stands in for the
+// transport, and a call none answers is refused whatever rules exist.
+func (h *Host) luaGate(L *glua.LState, subject, arg string, req map[string]any) (tools.Verdict, map[string]any) {
+	stubbed := false
+	if h.test != nil {
+		var reply map[string]any
+		if reply, stubbed = h.test.reply(L, subject, arg, req); reply != nil {
+			return tools.Verdict{Decision: perm.Allow, DecidedBy: "test.stub"}, reply
+		}
+	}
 	// a program the Lua tool starts runs unconfined, so the user approves it
 	tool, approved := h.modelLuaRun(L)
-	approved = subject == "lua.job.start" && tool && approved
+	approved = subject == "lua.job.start" && tool && approved && !stubbed
 	pipe := h.PipelineFor()
 	pipe.Ask = nil
 	// rules are attributed to the calling code, not to the model
 	pipe.Principal = h.principal(L)
 	var v tools.Verdict
-	if subject == "lua.job.start" {
+	switch {
+	case stubbed:
+		v = tools.Verdict{Decision: perm.Ask}
+	case subject == "lua.job.start":
 		// a command line, normalized like bash so rules can scope arguments
 		// and a second command cannot ride an allow
 		o := pipe.Store.CheckCommandFor(subject, perm.Normalize(arg), pipe.Principal)
@@ -179,7 +192,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 		if o.Rule != nil {
 			v.DecidedBy = tools.ByRule
 		}
-	} else {
+	default:
 		v = pipe.Check(tools.Request{Subject: subject, Arg: arg, Reason: "Lua call"})
 	}
 	switch {
@@ -201,7 +214,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string) tools.Verdict {
 	default:
 		L.RaiseError("%s %s: permission denied (%s)", subject, arg, v.DecidedBy)
 	}
-	return v
+	return v, nil
 }
 
 // allowLine is the init.lua line of an allow rule, match its example.
@@ -352,12 +365,29 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 // ---------------------------------------------------------------------------
 // zemi.timer
 
+// timerHandle is one zemi.timer on the runtime's clock (lua.Clock).
 type timerHandle struct {
-	stop chan struct{}
-	once sync.Once
+	mu      sync.Mutex
+	stopped bool
+	stop    func() bool // the pending tick's
 }
 
-func (t *timerHandle) stopIt() { t.once.Do(func() { close(t.stop) }) }
+func (t *timerHandle) arm(c lua.Clock, d time.Duration, fire func()) {
+	t.mu.Lock()
+	if !t.stopped {
+		t.stop = c.AfterFunc(d, fire)
+	}
+	t.mu.Unlock()
+}
+
+func (t *timerHandle) stopIt() {
+	t.mu.Lock()
+	if !t.stopped && t.stop != nil {
+		t.stop()
+	}
+	t.stopped = true
+	t.mu.Unlock()
+}
 
 // stopReg holds how to stop the live generation's timers, jobs and HTTP
 // requests, which a reload stops before replay (DESIGN §4).
@@ -405,47 +435,42 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 			}
 			d := time.Duration(ms) * time.Millisecond
 			at := h.callerOf(L)
-			handle := &timerHandle{stop: make(chan struct{})}
+			handle := &timerHandle{}
 			stopID := h.stops.add(handle.stopIt)
-			h.GoSafe("zemi.timer", func() {
-				defer h.stops.remove(stopID)
-				t := time.NewTimer(d)
-				defer t.Stop()
-				for {
-					select {
-					case <-handle.stop:
-						return
-					case <-t.C:
-					}
-					_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
-						if h.currentGen() != at.gen {
-							return nil, nil
-						}
-						defer h.RT.PushFrame(L, at.origin, at.path)()
-						base := L.GetTop()
-						L.Push(fn)
-						if err := L.PCall(0, 0, nil); err != nil {
-							L.SetTop(base)
-							return nil, err
-						}
+			var fire func() // the clock's call: a tick on a host goroutine
+			tick := func() {
+				_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
+					if h.currentGen() != at.gen {
 						return nil, nil
-					})
-					if !repeat {
-						h.refresh() // a repeating timer redraws itself with zemi.ui.redraw
 					}
-					if err != nil && !isQuietLuaErr(err) {
-						h.Log.Warn("lua", "timer callback failed", map[string]any{"error": err.Error()})
-						h.RecordError("zemi.timer", err.Error())
+					defer h.RT.PushFrame(L, at.origin, at.path)()
+					base := L.GetTop()
+					L.Push(fn)
+					if err := L.PCall(0, 0, nil); err != nil {
+						L.SetTop(base)
+						return nil, err
 					}
-					if err != nil || !repeat {
-						return
-					}
-					t.Reset(d)
+					return nil, nil
+				})
+				if !repeat {
+					h.refresh() // a repeating timer redraws itself with zemi.ui.redraw
 				}
-			})
+				if err != nil && !isQuietLuaErr(err) {
+					h.Log.Warn("lua", "timer callback failed", map[string]any{"error": err.Error()})
+					h.RecordError("zemi.timer", err.Error())
+				}
+				if err != nil || !repeat {
+					h.stops.remove(stopID)
+					return
+				}
+				handle.arm(h.RT.Clock(), d, fire)
+			}
+			fire = func() { h.GoSafe("zemi.timer", tick) }
+			handle.arm(h.RT.Clock(), d, fire)
 			handleTb := L.NewTable()
 			handleTb.RawSetString("stop", L.NewFunction(func(L *glua.LState) int {
 				handle.stopIt()
+				h.stops.remove(stopID)
 				return 0
 			}))
 			lua.GuardFuncs(L, handleTb, "timer:", h.guardLua)
@@ -477,7 +502,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.fs.%s: %v", api, err)
 		}
 		// as written: the secret shapes match a secret-named symlink's name
-		h.luaGate(L, subject, h.projectAbs(path))
+		h.luaGate(L, subject, h.projectAbs(path), map[string]any{"path": path})
 		return resolved
 	}
 	kind := func(fi os.FileInfo) string {
@@ -572,7 +597,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("glob", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
-		h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir)
+		h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir, nil)
 		matches, err := h.jailedGlob(cmp.Or(L.Context(), context.Background()), pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.glob: %v", err)
@@ -583,7 +608,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("grep", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
-		h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir)
+		h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir, nil)
 		re, err := regexp.Compile(pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.grep: %v", err)
@@ -724,12 +749,23 @@ type httpHandle struct {
 func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) int {
 	subject := "lua.http." + strings.ToLower(req.method)
 	origin := h.RT.CurrentOrigin(L)
-	v := h.luaGate(L, subject, req.url)
+	v, stub := h.luaGate(L, subject, req.url, map[string]any{"method": req.method, "url": req.url, "headers": req.headers, "body": req.body})
 	// §9 localhost development opt-in: an explicit user allow rule for the
 	// host overrides the resolved-address deny. Allow rules are user-only
 	// (zemi.permission.rule refuses them elsewhere), and project callers
 	// never get the override.
 	allowPrivate := v.DecidedBy == tools.ByRule && origin.Rank() > lua.OriginProject.Rank()
+	fetch := func(ctx context.Context) (map[string]any, error) {
+		return h.httpFetch(ctx, subject, string(origin), allowPrivate, req)
+	}
+	if stub != nil {
+		fetch = func(context.Context) (map[string]any, error) {
+			if _, err := tools.ParseNetURL(req.url); err != nil {
+				return nil, err
+			}
+			return stub, nil
+		}
+	}
 	hnd := &httpHandle{done: make(chan struct{})}
 	at := h.callerOf(L)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -737,7 +773,7 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 	h.GoSafe(subject, func() {
 		defer cancel()
 		defer h.stops.remove(stopID)
-		res, err := h.httpFetch(ctx, subject, string(origin), allowPrivate, req)
+		res, err := fetch(ctx)
 		hnd.res, hnd.err = res, err
 		close(hnd.done)
 		if onDone != nil {
@@ -747,7 +783,7 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 			} else {
 				maps.Copy(payload, res)
 			}
-			h.callLuaAsync(at, onDone, payload)
+			h.callLuaAsync("zemi.http on_done", at, onDone, payload)
 		}
 	})
 	handle := L.NewTable()
@@ -851,20 +887,20 @@ func (h *Host) luaTask(class lua.Class, at luaCaller, fn *glua.LFunction, args .
 	}
 }
 
-// callLuaAsync runs fn(args...) as a task from a host goroutine, dropping
-// the call when the generation changed.
-func (h *Host) callLuaAsync(at luaCaller, fn *glua.LFunction, args ...any) {
+// callLuaAsync runs fn(args...), the callback what names, as a task from a
+// host goroutine, dropping the call when the generation changed.
+func (h *Host) callLuaAsync(what string, at luaCaller, fn *glua.LFunction, args ...any) {
 	_, err := h.RT.RunTask(context.Background(), h.luaTask(lua.ClassIO, at, fn, args...))
-	h.callbackDone(err)
+	h.callbackDone(what, err)
 }
 
 // callbackDone shows what an async callback changed, and a failing one in
 // the log and /errors.
-func (h *Host) callbackDone(err error) {
+func (h *Host) callbackDone(what string, err error) {
 	h.refresh() // without waiting for another redraw
 	if err != nil && !isQuietLuaErr(err) {
-		h.Log.Warn("lua", "callback failed", map[string]any{"error": err.Error()})
-		h.RecordError("lua callback", err.Error())
+		h.Log.Warn("lua", "callback failed", map[string]any{"callback": what, "error": err.Error()})
+		h.RecordError(what, err.Error())
 	}
 }
 
@@ -887,6 +923,11 @@ type jobHandle struct {
 	err    string
 }
 
+// discard is a stubbed job's stdin: what the plugin writes goes nowhere.
+type discard struct{ io.Writer }
+
+func (discard) Close() error { return nil }
+
 func (j *jobHandle) snapshot() map[string]any {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -903,6 +944,7 @@ type lineSink struct {
 	h         *Host
 	at        luaCaller
 	fn        *glua.LFunction
+	what      string // "zemi.job on_stdout", for /errors
 	mu        sync.Mutex
 	pending   []string
 	scheduled bool
@@ -949,7 +991,7 @@ func (s *lineSink) deliver(lines []string) {
 		L.Push(lua.FromGo(L, lines))
 		return nil, L.PCall(1, 0, nil)
 	})
-	s.h.callbackDone(err)
+	s.h.callbackDone(s.what, err)
 }
 
 // lineWriter is a process stream: it keeps up to 1 MiB for wait() and hands
@@ -1021,7 +1063,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.job.start: cmd is required")
 		}
 		args := rawStrings(spec, "args")
-		h.luaGate(L, "lua.job.start", argvLine(cmdName, args))
+		_, stub := h.luaGate(L, "lua.job.start", argvLine(cmdName, args), map[string]any{"cmd": cmdName, "args": args, "cwd": rawString(spec, "cwd")})
 		extras := map[string]any{}
 		if envT, ok := spec.RawGetString("env").(*glua.LTable); ok {
 			if v, err := lua.ToGo(envT); err == nil {
@@ -1053,7 +1095,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		guard := func() string { return "" }
 		// a program that was not found is proc.Start's returned error, not a
 		// sandbox failure
-		if rawBool(spec, "sandbox") && cmd.Err == nil {
+		if rawBool(spec, "sandbox") && cmd.Err == nil && stub == nil {
 			pol := h.sandboxPolicy(h.readOnly(), h.ScratchDir())
 			// never an unconfined run in its place
 			if err := sandbox.Wrap(cmd, pol); err != nil {
@@ -1069,7 +1111,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		at := h.callerOf(L)
 		sinkOf := func(key string) *lineSink {
 			if fn, ok := spec.RawGetString(key).(*glua.LFunction); ok {
-				return &lineSink{h: h, at: at, fn: fn}
+				return &lineSink{h: h, at: at, fn: fn, what: "zemi.job " + key}
 			}
 			return nil
 		}
@@ -1077,35 +1119,58 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		outW := &lineWriter{mu: &jh.mu, buf: &jh.stdout, sink: outSink}
 		errW := &lineWriter{mu: &jh.mu, buf: &jh.stderr, sink: errSink}
 		cmd.Stdout, cmd.Stderr = outW, errW
-		// stdin stays closed unless asked for: cat, grep or rg would wait on it
-		if rawBool(spec, "stdin") {
-			stdin, err := cmd.StdinPipe()
-			if err != nil {
-				L.RaiseError("zemi.job.start: %v", err)
+		// the process ends with its exit code, or with why it did not run; a
+		// test zemi's stub stands in for it
+		exit := func() (int, error) {
+			if stub != nil {
+				fmt.Fprint(outW, stub["stdout"])
+				fmt.Fprint(errW, stub["stderr"])
+				code, _ := stub["code"].(float64)
+				return int(code), nil
 			}
-			jh.stdin = stdin
-		}
-		if err := proc.Start(cmd); err != nil {
-			guard()
-			if strings.ContainsAny(cmdName, " \t") {
-				return nil, fmt.Errorf("zemi.job.start: %w (cmd is the program alone; the rest goes in args = { ... })", err)
+			var ee *exec.ExitError
+			switch err := proc.Wait(cmd); {
+			case errors.As(err, &ee):
+				return ee.ExitCode(), nil
+			case err != nil && !errors.Is(err, exec.ErrWaitDelay):
+				return 0, err
 			}
-			return nil, fmt.Errorf("zemi.job.start: %w", err)
+			return 0, nil
 		}
-		stopID := h.stops.add(func() { proc.Kill(cmd) })
+		stopID := 0
+		switch {
+		case stub != nil:
+			if rawBool(spec, "stdin") {
+				jh.stdin = discard{io.Discard}
+			}
+		default:
+			// stdin stays closed unless asked for: cat, grep or rg would wait on it
+			if rawBool(spec, "stdin") {
+				stdin, err := cmd.StdinPipe()
+				if err != nil {
+					L.RaiseError("zemi.job.start: %v", err)
+				}
+				jh.stdin = stdin
+			}
+			if err := proc.Start(cmd); err != nil {
+				guard()
+				if strings.ContainsAny(cmdName, " \t") {
+					return nil, fmt.Errorf("zemi.job.start: %w (cmd is the program alone; the rest goes in args = { ... })", err)
+				}
+				return nil, fmt.Errorf("zemi.job.start: %w", err)
+			}
+			stopID = h.stops.add(func() { proc.Kill(cmd) })
+		}
 		onExit, _ := spec.RawGetString("on_exit").(*glua.LFunction)
 		h.GoSafe("job wait", func() {
-			err := proc.Wait(cmd)
+			code, err := exit()
 			h.stops.remove(stopID)
 			guard()
 			outW.flush()
 			errW.flush()
 			jh.mu.Lock()
-			var ee *exec.ExitError
-			switch {
-			case errors.As(err, &ee):
-				jh.code = ee.ExitCode()
-			case err != nil && !errors.Is(err, exec.ErrWaitDelay):
+			jh.code = code
+			if err != nil {
 				jh.err = err.Error()
 			}
 			jh.mu.Unlock()
@@ -1117,7 +1182,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 				}
 			}
 			if onExit != nil {
-				h.callLuaAsync(at, onExit, jh.snapshot())
+				h.callLuaAsync("zemi.job on_exit", at, onExit, jh.snapshot())
 			}
 			h.EmitAsync("job.exit", map[string]any{"id": jh.id, "cmd": cmdName, "code": jh.code})
 		})

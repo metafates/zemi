@@ -378,69 +378,83 @@ func (h *Host) toolRun(L *glua.LState, t *luaTool, callID string) *glua.LTable {
 // shallow rewrite merging (DESIGN §6.2, §6.4). A rewrite by any non-user
 // handler marks the result loosened.
 func (h *Host) toolPreHook() tools.PreHook {
-	pre := func(name string, input map[string]any) (tools.PreVerdict, string, map[string]any, bool) {
-		h.recordEvent("tool.pre", "host", map[string]any{"tool": name, "input": input})
-		handlers := h.Events.Handlers("tool.pre")
-		for _, o := range h.luaTools.overridesFor(name) {
-			if o.Pre != nil {
-				handlers = append(handlers, &EventHandler{Event: "tool.pre", Fn: o.Pre, Origin: o.Origin, Path: o.Path})
+	return func(name string, input map[string]any) (decision tools.PreVerdict, reason string, rewritten map[string]any, loosened bool) {
+		h.outsideReload(func() {
+			decision, reason, rewritten, loosened = h.toolPre(name, input, h.hookHandlers("tool.pre", name))
+		})
+		return decision, reason, rewritten, loosened
+	}
+}
+
+// hookHandlers is event's handlers, then the pre or post of each
+// zemi.tool.override of tool.
+func (h *Host) hookHandlers(event, tool string) []*EventHandler {
+	handlers := h.Events.Handlers(event)
+	for _, o := range h.luaTools.overridesFor(tool) {
+		fn := o.Post
+		if event == "tool.pre" {
+			fn = o.Pre
+		}
+		if fn != nil {
+			handlers = append(handlers, &EventHandler{Event: event, Fn: fn, Origin: o.Origin, Path: o.Path, Gen: o.Gen})
+		}
+	}
+	return handlers
+}
+
+// toolPre runs handlers as tool.pre for one call of name.
+func (h *Host) toolPre(name string, input map[string]any, handlers []*EventHandler) (tools.PreVerdict, string, map[string]any, bool) {
+	h.recordEvent("tool.pre", "host", map[string]any{"tool": name, "input": input})
+	if len(handlers) == 0 {
+		return "", "", nil, false
+	}
+	var decision tools.PreVerdict
+	var reason string
+	var rewritten map[string]any
+	loosened := false
+	// twice: the deny-only re-run after a rewrite calls every handler again
+	ceiling := time.Duration(2*len(handlers))*lua.VetoDeadline + 2*time.Second
+	_, err := h.RT.Do(context.Background(), lua.ClassAgent, ceiling, 0, func(L *glua.LState) ([]any, error) {
+		merged := maps.Clone(input)
+		if merged == nil {
+			merged = map[string]any{}
+		}
+		for _, hd := range handlers {
+			d, r, rw := h.callToolPre(L, hd, name, merged)
+			switch {
+			case d == tools.PreDeny || d == tools.PreHalt:
+				decision, reason, rewritten, loosened = d, r, nil, false
+				return nil, nil
+			case d == tools.PreRewrite && rw != nil && hd.Origin.Rank() <= lua.OriginProject.Rank():
+				// same denial as zemi.tool.override (DESIGN §5)
+				h.Log.Warn("tools", "tool.pre rewrite ignored", map[string]any{"tool": name, "origin": string(hd.Origin)})
+			case d == tools.PreRewrite && rw != nil:
+				maps.Copy(merged, rw)
+				decision, rewritten = tools.PreRewrite, merged
+				loosened = loosened || hd.Origin != lua.OriginUser
 			}
 		}
-		if len(handlers) == 0 {
-			return "", "", nil, false
-		}
-		var decision tools.PreVerdict
-		var reason string
-		var rewritten map[string]any
-		loosened := false
-		// twice: the deny-only re-run after a rewrite calls every handler again
-		ceiling := time.Duration(2*len(handlers))*lua.VetoDeadline + 2*time.Second
-		_, err := h.RT.Do(context.Background(), lua.ClassAgent, ceiling, 0, func(L *glua.LState) ([]any, error) {
-			merged := maps.Clone(input)
-			if merged == nil {
-				merged = map[string]any{}
-			}
+		// deny-only re-run over the rewritten input, so a later rewrite
+		// cannot slip past an earlier deny hook (DESIGN §6.2)
+		if decision == tools.PreRewrite {
 			for _, hd := range handlers {
-				d, r, rw := h.callToolPre(L, hd, name, merged)
-				switch {
-				case d == tools.PreDeny || d == tools.PreHalt:
+				if d, r, _ := h.callToolPre(L, hd, name, merged); d == tools.PreDeny {
 					decision, reason, rewritten, loosened = d, r, nil, false
 					return nil, nil
-				case d == tools.PreRewrite && rw != nil && hd.Origin.Rank() <= lua.OriginProject.Rank():
-					// same denial as zemi.tool.override (DESIGN §5)
-					h.Log.Warn("tools", "tool.pre rewrite ignored", map[string]any{"tool": name, "origin": string(hd.Origin)})
-				case d == tools.PreRewrite && rw != nil:
-					maps.Copy(merged, rw)
-					decision, rewritten = tools.PreRewrite, merged
-					loosened = loosened || hd.Origin != lua.OriginUser
 				}
 			}
-			// deny-only re-run over the rewritten input, so a later rewrite
-			// cannot slip past an earlier deny hook (DESIGN §6.2)
-			if decision == tools.PreRewrite {
-				for _, hd := range handlers {
-					if d, r, _ := h.callToolPre(L, hd, name, merged); d == tools.PreDeny {
-						decision, reason, rewritten, loosened = d, r, nil, false
-						return nil, nil
-					}
-				}
-			}
-			return nil, nil
-		})
-		if err != nil {
-			h.Log.Warn("tools", "tool.pre run failed", map[string]any{"tool": name, "error": err.Error()})
-			if !errors.Is(err, lua.ErrAbandoned) {
-				// a hot runtime cannot run the deny hooks: fail closed
-				return tools.PreDeny, "tool.pre hooks could not run (lua runtime unavailable, /reload): " + err.Error(), nil, false
-			}
-			return "", "", nil, false
 		}
-		return decision, reason, rewritten, loosened
+		return nil, nil
+	})
+	if err != nil {
+		h.Log.Warn("tools", "tool.pre run failed", map[string]any{"tool": name, "error": err.Error()})
+		if !errors.Is(err, lua.ErrAbandoned) {
+			// a hot runtime cannot run the deny hooks: fail closed
+			return tools.PreDeny, "tool.pre hooks could not run (lua runtime unavailable, /reload): " + err.Error(), nil, false
+		}
+		return "", "", nil, false
 	}
-	return func(name string, input map[string]any) (decision tools.PreVerdict, reason string, rewritten map[string]any, loosened bool) {
-		h.outsideReload(func() { decision, reason, rewritten, loosened = pre(name, input) })
-		return decision, reason, rewritten, loosened
-	}
+	return decision, reason, rewritten, loosened
 }
 
 // callToolPre runs one pre handler and parses the decision table.
@@ -481,6 +495,11 @@ const toolPostWait = 30 * time.Second
 // { output = "..." } rewrites it, except from project code; a handler that
 // fails or runs late leaves it as it was.
 func (h *Host) toolPost(ctx context.Context, pad, name string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string {
+	return h.postChain(ctx, h.hookHandlers("tool.post", name), pad, name, input, ok, output, changed, took)
+}
+
+// postChain runs handlers as tool.post for one call of name.
+func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, name string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string {
 	if !lspQuietTool[name] {
 		h.lspDirty()
 	}
@@ -488,12 +507,6 @@ func (h *Host) toolPost(ctx context.Context, pad, name string, input map[string]
 	logged := maps.Clone(payload) // the log keeps its map, which the chain below would change
 	logged["output"] = truncRunes(output, 4096)
 	h.recordEvent("tool.post", "host", logged)
-	handlers := h.Events.Handlers("tool.post")
-	for _, o := range h.luaTools.overridesFor(name) {
-		if o.Post != nil {
-			handlers = append(handlers, &EventHandler{Event: "tool.post", Fn: o.Post, Origin: o.Origin, Path: o.Path, Gen: o.Gen})
-		}
-	}
 	if len(handlers) == 0 {
 		return output
 	}

@@ -40,15 +40,18 @@ func (h *Host) RecordError(source, msg string) {
 	l.mu.Lock()
 	msg = sanitize.String(msg)
 	if n := len(l.entries); n > 0 && l.entries[n-1].msg == msg {
-		l.entries[n-1].at = time.Now() // the badge is back, so the row says when
+		l.entries[n-1].at = h.now() // the badge is back, so the row says when
 	} else {
-		l.entries = append(l.entries, errEntry{time.Now(), source, msg})
+		l.entries = append(l.entries, errEntry{h.now(), source, msg})
 		if len(l.entries) > errLogMax {
 			l.entries = l.entries[len(l.entries)-errLogMax:]
 		}
 	}
 	l.unseen = true
 	l.mu.Unlock()
+	if h.test != nil {
+		h.test.recorded(source, msg)
+	}
 	h.refresh()
 }
 

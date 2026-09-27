@@ -197,6 +197,7 @@ A plugin is a directory shaped like the config dir, in the local plugins directo
   lua/<name>/init.lua    require("<name>") from the plugin and the user's init.lua
   skills/  agents/  commands/  workflows/    as in the config dir; the user's and zemi's own win a
                          name, and a skill's zemi-skill.lua does not run
+  tests/<topic>_test.lua its tests (Testing, below)
 ```
 
 There is no manifest: the version is the checked-out `vX.Y.Z` tag, the source the `origin` remote. `installed/<name>/` holds the clones the user manages with `/plugins` (or `zemi plugins` in a shell: install from a git URL, check and update, turn on and off, delete, which removes a local plugin too). You never write there; to change one, the user deletes it and you clone it into `local/`. A local plugin named like an installed one, or a symlink in `local/`, does not load.
@@ -207,7 +208,8 @@ New plugin (the user asked for one, or `/plugins new` sent you here):
 2. Before writing code, check whether zemi already does it. With the Lua tool, read `zemi.config.schema()`, `zemi.command.list()`, `zemi.keymap.list()`, `zemi.ui.widget.list()` and `zemi.tool.list()`; also read the shipped UI source and the plugins directory. If a setting, a shipped command, a prompt command (`commands/<name>.md`) or a workflow does the job, say which, offer that instead, and write a plugin only if the user still wants one.
 3. Pick a name nothing registers yet and say in one message what you will write: `local/<name>/init.lua`, `lua/<name>/init.lua` and a `README.md` naming its commands, keys, `setup` options and every rule it needs.
 4. Write it to work with no line in the user's init.lua (below), `init.lua` first: that write creates the plugin and is the one the user approves, so it shows them the code. Then run `zemi.config.reload()`, check `zemi.errors.list()` and the plugin's `/plugins` row, and try what it registered (`zemi.command.run`, `zemi.ui.screenshot()`).
-5. Tell the user what it registered, that `/plugins` turns it off, and which README lines they may add to init.lua for more. Do not add them yourself.
+5. Write `tests/<name>_test.lua`, run `zemi plugins test <name>` and fix until it passes.
+6. Tell the user what it registered, that `/plugins` turns it off, and which README lines they may add to init.lua for more. Do not add them yourself.
 
 `init.lua` registers what the plugin is for, with defaults, so it works the moment it loads with no line in the user's init.lua: its commands, its widgets (rendering `{}` until they have something to say), its tool, and keys only where `zemi.keymap.get(key)` is nil. What the user did not ask for stays off until `setup(opts)` turns it on: timers and polling beyond what its own widgets need, event handlers that act (sending to the agent, vetoing a submit or a tool call), network calls, a key someone else holds. Keep `setup` safe to call again, and start gated calls on `app.ready`: the user's allow rules are added after the plugin's init.lua runs.
 
@@ -272,8 +274,25 @@ Developing one:
 - Reads under `local/` need no approval. Writes ask the user, with no always answer and no mode but yolo settling them, since plugin code runs in every project; the exception is the plugin you created: once the user approved the write that created its directory, auto mode settles your later edits there until zemi exits (its `.git` aside), while any other plugin asks every time. Say in one message what you will write.
 - zemi reloads within a second of an edit once no turn runs; `zemi.config.reload()` from the Lua tool applies it at once. A load error is in `zemi.errors.list()` (`plugin <name>: ...`), and the plugin's `/plugins` row reads `failed` with the error in its detail.
 - zemi writes the plugin's `.luarc.json` (editor types, with this machine's paths): never write it, and add it to `.gitignore` when publishing.
-- A sandboxed command cannot see the plugins directory, so running its tests or git there needs `sandbox: false`, which asks each time outside yolo.
+- The sandbox hides a plugin's `.git`, so git there needs `sandbox: false`, which asks each time outside yolo.
 - Moving a feature out of the config dir is the one plugin task that edits init.lua: say which lines leave it and which stay, and wait for the user's yes. Then put its registrations in `local/<name>/init.lua` and its modules in `lua/<name>/`, leave `require("<name>").setup(...)` in the user's init.lua, and keep there what only user config may do (replacing a shipped widget, `hl.set`, layout, settings). Its allow rules keep working (a rule with no `principal` covers every caller); add the principal to narrow them. Its old `zemi.state` keys stay behind.
+
+Testing: `zemi plugins test <name|dir> [pattern]` runs each case of `tests/*_test.lua` in a zemi of its own holding only the plugin, with no rules and a clock that moves only by `test.advance`. The file's top level runs where init.lua would, before `app.ready`: stub there what boot calls. A job, HTTP request, model ask, agent send or `zemi.fs` write raises unless `test.stub` answers it, and the failure prints the stub line to add. The drivers (`run`, `keys`, `tool`, `render`, `click`, `emit`, `overlay`, `answer`) reach only what the plugin registered; `zemi.test` in the types lists them. Plugin code can tell it is under test, so passing tests are no review of what it does.
+
+```lua
+local test = assert(zemi.test)
+local wttr = test.stub("lua.http.get", "https://wttr.in/*", { body = '{"temp_C":"21"}' })
+
+test("the tool reports the temperature", function()
+  test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C")
+  test.eq(wttr[1].url, "https://wttr.in/Oslo?format=j1")
+end)
+
+test("the widget shows the last one", function()
+  assert(test.tool("weather_now", { city = "Oslo" }))
+  test.eq(test.render("weather"), { "21C" })
+end)
+```
 
 Publishing: `git init`, commit, push to a host the user picks, then tag `v0.1.0` and push the tag. An install checks out the newest `vX.Y.Z` tag and an update stays in its major version (one installed from a branch moves to the first tag ahead of it), so a breaking change bumps the major. Users install with `/plugins install <git url>` or `zemi plugins install <git url>`.
 

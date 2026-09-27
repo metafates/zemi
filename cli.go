@@ -45,6 +45,9 @@ Plugins (a prompt that starts with "plugins" is written zemi -- plugins ...):
   zemi plugins update [name...]         in the same major version; all without a name
   zemi plugins check                    fetch, then list the updates
   zemi plugins enable|disable|delete <name>
+  zemi plugins test <name|dir> [pattern]
+                                        run its tests/*_test.lua, each case in a
+                                        zemi of its own; 1 if any failed
 
 Flags:
   -p, --print         answer the prompt on stdout and exit (no TUI)
@@ -97,9 +100,15 @@ func parseArgs(args []string, stdout, stderr io.Writer) (o options, code int) {
 	if len(args) > 0 && args[0] == "plugins" {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+		if len(args) > 1 && args[1] == "test" {
+			return o, testPlugins(ctx, args[2:], stdout, stderr)
+		}
 		dirs, err := config.ResolveDirs()
 		if err == nil {
 			err = plugins.Run(ctx, dirs, args[1:], stdout)
+		}
+		if errors.Is(err, plugins.ErrUsage) {
+			err = fmt.Errorf("%w | test <name|dir> [pattern]", err)
 		}
 		if ctx.Err() != nil {
 			return o, 130

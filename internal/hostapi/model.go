@@ -123,20 +123,39 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	if prompt == "" {
 		L.RaiseError("zemi.model.ask: prompt is required")
 	}
-	id := h.modelRef(cmp.Or(rawString(spec, "model"), "chat"))
+	ref := cmp.Or(rawString(spec, "model"), "chat")
+	id := h.modelRef(ref)
+	system := rawString(spec, "system")
+	var stub map[string]any
 	switch o := h.RT.CurrentOrigin(L); {
 	case o.Rank() <= lua.OriginProject.Rank():
 		L.RaiseError("zemi.model.ask: %s code may not call a model", o)
 	case o == lua.OriginPlugin:
-		h.luaGate(L, "lua.model.ask", id)
+		_, stub = h.luaGate(L, "lua.model.ask", id, map[string]any{"model": ref, "prompt": prompt, "system": system})
 	}
 	maxOut := int64(1024)
 	if n, ok := spec.RawGetString("max_output").(glua.LNumber); ok && n > 0 {
 		maxOut = int64(n)
 	}
-	system := rawString(spec, "system")
 	onDone, _ := spec.RawGetString("on_done").(*glua.LFunction)
 	sid, at := h.AgentSessionID(), h.callerOf(L)
+	ask := func(ctx context.Context) (string, error) {
+		res, err := h.generate(ctx, sid, system, prompt, &maxOut, nil, id)
+		if err != nil {
+			return "", err
+		}
+		return concatText(res.Response.Content), nil
+	}
+	if stub != nil {
+		// a test zemi's stub stands in for the provider
+		ask = func(context.Context) (string, error) {
+			if e, _ := stub["error"].(string); e != "" {
+				return "", errors.New(e)
+			}
+			text, _ := stub["text"].(string)
+			return text, nil
+		}
+	}
 	var text string
 	var askErr error
 	done := make(chan struct{})
@@ -145,18 +164,16 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	h.GoSafe("zemi.model.ask", func() {
 		defer h.stops.remove(stopID)
 		defer cancel()
-		res, err := h.generate(ctx, sid, system, prompt, &maxOut, nil, id)
-		if err == nil {
-			text = concatText(res.Response.Content)
-		}
+		var err error
+		text, err = ask(ctx)
 		askErr = err
 		close(done)
 		switch {
 		case onDone == nil:
 		case err != nil:
-			h.callLuaAsync(at, onDone, nil, err.Error())
+			h.callLuaAsync("zemi.model.ask on_done", at, onDone, nil, err.Error())
 		default:
-			h.callLuaAsync(at, onDone, text)
+			h.callLuaAsync("zemi.model.ask on_done", at, onDone, text)
 		}
 	})
 	handle := L.NewTable()

@@ -129,13 +129,28 @@ cancels it, and appends its answer as a transcript row, which `-p` prints.
 
 `zemi plugins <verb>` (`parseArgs`, when `plugins` is the first word) runs `plugins.Run` and
 exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
-reloads on the change. `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
+reloads on the change. `test` is the one verb that boots Lua (below). `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
 `open` and `new` (the list's first row, which sends `newPluginPrompt` to the agent: the
 procedure lives in zemi-customize). Its list is built off the key loop from `plugins.List` and the last boot's
 `pluginLoads`; install, update, check and delete run on `GoSafe`, toast, and refresh the list
 (`Overlay.Refresh`: it replaces an open one in place and opens nothing once esc closed it).
 `open` edits the plugin's `init.lua`, or its directory when it has none. Under `-p` it points at
 `zemi plugins`.
+
+`zemi plugins test <name|dir> [pattern]` (plugintest.go, hostapi/plugintest.go) runs a plugin's
+`tests/*_test.lua`: `testPlugins` resolves a name as the plugins step would (`hostapi.PluginDir`),
+copies the plugin into temp dirs (`copyPlugin`: no dot entries or `node_modules`, a link only when
+relative and inside, capped), and boots one zemi per case in this process (`hostapi.NewPluginTest`,
+`bootSteps` with no trust and the test file where init.lua runs), which `Host.Close` ends. The
+first boot collects the case names. `proc.Refuse` makes the process start nothing, git and the
+sandbox probe included. The test zemi runs on a fake `lua.Clock` only `test.advance` moves, with
+`WholeTasks` so a driver waits for what it started, and is quiet when no `GoSafe` goroutine runs
+(`goes`) and no timer is due. `luaGate` asks `PluginTest.reply` first about a call that does IO:
+only a `test.stub` reply passes, standing in for the transport at the call site, and an
+unanswered call raises the missing-rule error whatever rules exist. Drivers refuse what another
+origin registered, a Go command and a host action; an error recorded to /errors under another
+source while one runs fails the case at its call. `zemi.test` exists only there
+(`TestNamespaceVersion`); `TestPluginsTest` runs it over `testdata/plugins/demo`.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`), and a TUI
 boot no model can run opens the `/model` picker once (`Host.OfferModel`, after the flags

@@ -17,7 +17,7 @@ import (
 )
 
 // newPluginPrompt starts /plugins new; the procedure lives in zemi-customize.
-const newPluginPrompt = "I want a new zemi plugin. Load the zemi-customize skill and follow its New plugin steps.\n\nWhat it should do: %s"
+const newPluginPrompt = "I want a new zemi plugin. Load the zemi-customize skill and follow its New plugin steps, its tests written and passing.\n\nWhat it should do: %s"
 
 // pluginsCommands is /plugins: the zemi plugins verbs plus new, toggle and
 // open, which need the screen.

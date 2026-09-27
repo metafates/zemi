@@ -157,7 +157,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 
 	// every member is read-only or guarded, so a new one asks by default
 	var members []string
-	for ns, ms := range bootedNamespaces(t) {
+	for ns, ms := range bootedNamespaces(t, false) {
 		for _, m := range ms {
 			if name := strings.TrimPrefix(ns, "zemi.") + "." + m; !luaReadOnly[name] {
 				members = append(members, fmt.Sprintf("%q", name))

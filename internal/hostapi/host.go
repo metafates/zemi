@@ -358,6 +358,9 @@ type Host struct {
 	agents    *agentHost
 	luaTools  *toolReg
 	stops     *stopReg
+	goes      goes
+	// test is set, before boot, only in a zemi plugins test zemi
+	test *PluginTest
 
 	// memReview serializes the /memory review overlay; the hook runs off
 	// the UI goroutine.
@@ -650,6 +653,9 @@ func composerAction(op ComposerOp) func(h *Host, args string) error {
 		return nil
 	}
 }
+
+// now is the time Lua sees (lua.Clock): a toast's, a log line's, a render's.
+func (h *Host) now() time.Time { return h.RT.Clock().Now() }
 
 func (h *Host) hooks() UIHooks {
 	h.uiMu.RLock()
@@ -980,8 +986,11 @@ type VetoResult struct {
 // contributes nothing and the aggregated decision or the default wins
 // (DESIGN §4, §6.2).
 func (h *Host) EmitVetoable(ctx context.Context, name string, payload map[string]any, deadline time.Duration) VetoResult {
+	return h.emitVetoable(ctx, name, h.Events.Handlers(name), payload, deadline)
+}
+
+func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventHandler, payload map[string]any, deadline time.Duration) VetoResult {
 	h.recordEvent(name, "host", payload)
-	handlers := h.Events.Handlers(name)
 	if len(handlers) == 0 {
 		return VetoResult{}
 	}
@@ -1138,6 +1147,12 @@ type Segment struct {
 // second result: the lines are what its time allowed and it wants to run
 // again, which is how a long chat draws its latest rows first.
 func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, state UIState) (lines [][]Segment, more bool, err error) {
+	return h.renderWidget(ctx, w, width, height, state, nil)
+}
+
+// renderWidget is RenderWidget with over's fields set over the ctx render
+// gets, which is how test.render supplies what a session would.
+func (h *Host) renderWidget(ctx context.Context, w *Widget, width, height int, state UIState, over *glua.LTable) (lines [][]Segment, more bool, err error) {
 	linesAny, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 		// a frame queued before a reload holds the old generation's function
 		if w.Gen != h.currentGen() {
@@ -1154,6 +1169,9 @@ func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, s
 		L.Push(w.Render)
 		ctxTb, done := h.widgetCtxTable(L, width, height, state)
 		defer done()
+		if over != nil {
+			over.ForEach(ctxTb.RawSet)
+		}
 		L.Push(ctxTb)
 		if err := L.PCall(1, 2, nil); err != nil {
 			L.SetTop(base)
@@ -1736,12 +1754,12 @@ func (h *Host) SelectOverlay(ctx context.Context, o Overlay, index int) {
 	if index >= 0 && index < len(o.Items) {
 		item = o.Items[index]
 	}
-	h.submitOverlay(ctx, o, item)
+	_ = h.callOverlay(ctx, o, "on_select", o.OnSelect, item)
 }
 
 // SubmitOverlayInput hands an input overlay's text to on_select.
 func (h *Host) SubmitOverlayInput(ctx context.Context, o Overlay, text string) {
-	h.submitOverlay(ctx, o, text)
+	_ = h.callOverlay(ctx, o, "on_select", o.OnSelect, text)
 }
 
 // staleOverlay reports an overlay left open across a reload: its callbacks
@@ -1751,41 +1769,39 @@ func (h *Host) staleOverlay(o Overlay) bool {
 	return o.Gen != 0 && o.Gen != h.currentGen()
 }
 
-func (h *Host) submitOverlay(ctx context.Context, o Overlay, item any) {
-	h.callOverlay(ctx, o, "on_select", o.OnSelect, item)
-}
-
 // OverlayAction runs on_action with the item and the action chosen in its
 // detail view.
 func (h *Host) OverlayAction(ctx context.Context, o Overlay, item, action any) {
-	h.callOverlay(ctx, o, "on_action", o.OnAction, item, action)
+	_ = h.callOverlay(ctx, o, "on_action", o.OnAction, item, action)
 }
 
 // OverlayKey runs a list-level key's function with the selected item.
 func (h *Host) OverlayKey(ctx context.Context, o Overlay, k OverlayKey, item any) {
-	h.callOverlay(ctx, o, "key "+k.Key, k.Fn, item)
+	_ = h.callOverlay(ctx, o, "key "+k.Key, k.Fn, item)
 }
 
 // CancelOverlay runs on_close if present.
 func (h *Host) CancelOverlay(ctx context.Context, o Overlay) {
-	h.callOverlay(ctx, o, "on_close", o.OnClose)
+	_ = h.callOverlay(ctx, o, "on_close", o.OnClose)
 }
 
 // callOverlay runs one of an overlay's callbacks as a task under the
-// overlay's origin; a failure goes to /errors.
-func (h *Host) callOverlay(ctx context.Context, o Overlay, what string, fn *glua.LFunction, args ...any) {
+// overlay's origin; a failure goes to /errors, and the first slice's to the
+// caller too.
+func (h *Host) callOverlay(ctx context.Context, o Overlay, what string, fn *glua.LFunction, args ...any) error {
 	if fn == nil || h.staleOverlay(o) {
-		return
+		return nil
 	}
-	failed := func(err error) {
+	failed := func(err error) error {
 		if err != nil && !isQuietLuaErr(err) {
 			h.Log.Error("ui", "overlay "+what+" failed", map[string]any{"id": o.ID, "error": err.Error()})
 			h.RecordError("overlay "+o.ID+" "+what, err.Error())
 		}
+		return err
 	}
-	failed(h.RT.StartTask(ctx, h.luaTask(lua.ClassUI, luaCaller{gen: o.Gen, origin: o.Origin, path: o.Path}, fn, args...), func(err error) {
+	return failed(h.RT.StartTask(ctx, h.luaTask(lua.ClassUI, luaCaller{gen: o.Gen, origin: o.Origin, path: o.Path}, fn, args...), func(err error) {
 		h.refresh()
-		failed(err)
+		_ = failed(err)
 	}))
 }
 
@@ -1876,7 +1892,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.94.0"))
+	api.RawSetString("version", glua.LString("0.95.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -2062,9 +2078,22 @@ func (h *Host) PurgeGeneration() {
 	h.lsp.stopAll()
 	h.includedStale.Store(true)
 	// An overlay left open would keep drawing with callbacks that are now
-	// dropped (submitOverlay), which reads as a frozen picker.
+	// dropped (staleOverlay), which reads as a frozen picker.
 	if ui := h.hooks(); ui != nil {
 		ui.CloseLuaOverlays()
+	}
+}
+
+// Close ends the host: the runtime, what its generation started (timers,
+// jobs, requests, servers) and the stores, so it holds no file or goroutine.
+func (h *Host) Close() {
+	h.RT.Close()
+	h.PurgeGeneration()
+	h.mcp.stopParked()
+	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
+		if db != nil {
+			db.Close()
+		}
 	}
 }
 

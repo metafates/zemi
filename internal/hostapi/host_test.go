@@ -94,7 +94,8 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.94.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.95.0", "version=" .. tostring(zemi.api.version))
+		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugins test")
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
 		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")

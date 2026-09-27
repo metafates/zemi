@@ -2343,3 +2343,33 @@ function zemi.project.trusted() end
 --- `$HOME` or above), or the launch dir outside a repository.
 ---@return string
 function zemi.project.root() end
+
+-- ---------------------------------------------------------------------------
+-- zemi.test
+
+--- A plugin's tests (`zemi plugins test <name>` runs `tests/*_test.lua`).
+--- Each case runs in a fresh zemi holding only the plugin, after the file's
+--- top level and `app.ready`, on a clock that starts at 2026-01-01 00:00 UTC
+--- and moves only by `advance`. Every driver returns once zemi is quiet. A
+--- job, HTTP request, model ask, agent send or `zemi.fs` write raises
+--- unless a stub answers it: http `{ status = 200, body = "", headers = {} }`,
+--- job `{ code = 0, stdout = "", stderr = "" }` (stdout reaches `on_stdout`),
+--- model a string or `{ error = "..." }`; a stubbed write writes.
+---@class zemi.test
+---@overload fun(name: string, fn: fun()) Declare a case, at the top level.
+---@field eq fun(got: any, want: any) Compare deeply, functions by identity; raises naming the first difference.
+---@field run fun(name: string, args?: string): true|nil, string? Run the plugin's command as typed.
+---@field keys fun(seq: string): true|nil, string? Run what the plugin bound a global key sequence to.
+---@field tool fun(name: string, input: table): string|nil, string? Call the plugin's tool as the model would, allowed: the output or nil, err it gets.
+---@field render fun(id: string, ctx?: table): string[], zemi.Line[] Draw the plugin's widget: ctx's fields override width 80, height 1 and the rest.
+---@field click fun(id: string, click: string): true|nil, string? Run the widget's on_click for a segment's click id.
+---@field emit fun(name: zemi.EventName, ev?: table): any Deliver a host event to the plugin's handlers: `tool.post` returns the output the model gets, a vetoable event its zemi.Veto or nil.
+---@field overlay fun(): { id: string, title: string, body: string, items: string[], input: boolean }? The top open overlay.
+---@field answer fun(choice: integer|string|nil, action?: string): true|nil, string? Enter on an item (its index or text) or its detail action, type an input's text, or esc for nil.
+---@field stub fun(subject: string, pattern?: string, reply?: table|string|false|fun(req: table): (table|string|false)): table[] Answer the calls matching pattern ("*"): reply's fields, a function returning them, or false to refuse. The newest match answers; returns the requests it answered.
+---@field advance fun(ms: number) Move the clock, firing due timers in order.
+
+--- Only a `zemi plugins test` boot has it (reading it anywhere else
+--- raises), so a test file starts with `local test = assert(zemi.test)`.
+---@type zemi.test?
+zemi.test = nil

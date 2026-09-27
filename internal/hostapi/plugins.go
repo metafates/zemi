@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugins"
 	"github.com/metafates/zemi/internal/skills"
@@ -92,6 +93,30 @@ func pickPlugins(ps []plugins.Plugin) (run []plugins.Plugin, refused []pluginLoa
 		}
 	}
 	return run, refused
+}
+
+// PluginDir is the directory of the plugin named name that the plugins step
+// would load, turned off or not, or why it would load none.
+func PluginDir(d config.Dirs, name string) (string, error) {
+	ps, err := plugins.Scan(d)
+	if err != nil {
+		return "", err
+	}
+	for i := range ps {
+		ps[i].Enabled = true
+	}
+	run, refused := pickPlugins(ps)
+	for _, p := range run {
+		if p.Name == name {
+			return p.Dir, nil
+		}
+	}
+	for _, l := range refused {
+		if l.name == name {
+			return "", fmt.Errorf("%s: %w", l.dir, l.err)
+		}
+	}
+	return "", fmt.Errorf("no plugin is named %q in %s", name, d.PluginsRoot())
 }
 
 // pluginDirs is the plugin roots the last boot fixed for its generation,

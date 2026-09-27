@@ -962,9 +962,9 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 			switch {
 			case onDone == nil:
 			case err != nil:
-				h.callLuaAsync(at, onDone, nil, h.friendlyError(err))
+				h.callLuaAsync("zemi.agent.run on_done", at, onDone, nil, h.friendlyError(err))
 			default:
-				h.callLuaAsync(at, onDone, text, nil)
+				h.callLuaAsync("zemi.agent.run on_done", at, onDone, text, nil)
 			}
 		})
 		handle := L.NewTable()
