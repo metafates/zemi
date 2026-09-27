@@ -216,12 +216,14 @@ func (t *PluginTest) settle(ctx context.Context) error {
 }
 
 func (t *PluginTest) advance(L *glua.LState) int {
-	ms := L.CheckNumber(1)
-	if ms < 0 || math.IsNaN(float64(ms)) {
+	ms := float64(L.CheckNumber(1))
+	if ms < 0 || math.IsNaN(ms) {
 		raise(L, "test.advance: ms must not be negative")
 	}
+	// a Duration holds some 292 years; past that the conversion wraps on amd64
+	ms = min(ms, float64(math.MaxInt64/int64(time.Millisecond)))
 	return t.drive(L, "advance", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
-		until := t.clock.Now().Add(time.Duration(float64(ms) * float64(time.Millisecond)))
+		until := t.clock.Now().Add(time.Duration(ms * float64(time.Millisecond)))
 		for t.settle(ctx) == nil {
 			f, ok := t.clock.due(until)
 			if !ok {

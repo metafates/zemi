@@ -126,6 +126,9 @@ test("copied", function()
   end
 end)`,
 		}, want: "1 passed (1 file, (T))\n"},
+		{name: "advance past what a duration holds", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
+			"init.lua": "", "tests/a_test.lua": `zemi.test("far", function() zemi.test.advance(math.huge) zemi.test.eq(os.date("!%Y"), "2318") end)`,
+		}, want: "1 passed (1 file, (T))\n"},
 		{name: "a name the plugins step would load", args: []string{"named"}, code: 0, want: "1 passed (1 file, (T))\n"},
 		{
 			name: "300 boots under 256 open files", args: []string{"<plugin>"}, limit: 256, code: 0,
