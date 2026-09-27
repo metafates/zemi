@@ -46,7 +46,8 @@ func (mr *memReviewPrompt) open() {
 }
 
 // seek filters the rows again and selects item i, or the first shown after
-// it. A row's text is its label, as memMore draws it; its quote is text.
+// it. A memory's text is its row's label, as memMore draws it, and its quote
+// is other text.
 func (mr *memReviewPrompt) seek(i int) {
 	mr.labels, mr.texts = mr.labels[:0], mr.texts[:0]
 	for _, it := range mr.items {
