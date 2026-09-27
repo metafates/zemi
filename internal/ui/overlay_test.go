@@ -142,6 +142,20 @@ func TestOverlayFilter(t *testing.T) {
 	if st := a.overlays[0]; !slices.Equal(st.visible, []int{1}) || fmt.Sprint(st.match) != "[[0 2 5]]" {
 		t.Fatalf("a one-token label matches fuzzily, and says where: %v %v", st.visible, st.match)
 	}
+	a.overlayKey("esc", "")
+	a.openOverlay(hostapi.Overlay{ID: "f", Origin: lua.OriginBuiltin, Items: []any{"x"}, ItemText: [][]hostapi.Segment{{{Text: "●  "}, {Text: "sonnet", HL: "Ok"}}}})
+	typeText("/net")
+	var lit []string
+	for _, row := range a.overlayBox(&a.overlays[0], 80, 20) {
+		for _, s := range row {
+			if s.HL == "Host:Title" && strings.TrimSpace(strings.TrimPrefix(s.Text, "›")) != "" {
+				lit = append(lit, s.Text)
+			}
+		}
+	}
+	if !slices.Equal(lit, []string{"net"}) {
+		t.Fatalf("a render_item row's spaces stay, so the highlight lands on what matched: %q", lit)
+	}
 }
 
 // TestTopChromeTakesInput: keys, ctrl+c and the wheel reach the prompt

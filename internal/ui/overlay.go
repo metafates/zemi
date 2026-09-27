@@ -186,7 +186,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		if o.Origin != lua.OriginBuiltin && o.Origin != lua.OriginUser {
 			r.Run = "" // so a plugin row label cannot disguise a command
 		}
-		it := listItem{label: r.Text, desc: r.Desc, key: tagSeg(r.Key), section: r.Section, row: r}
+		it := listItem{label: sanitize.Line(r.Text), desc: r.Desc, key: tagSeg(r.Key), section: r.Section, row: r} // a newline would break the box
 		if r.Switch || r.Locked {
 			it.key = switchSeg(r.On, r.Locked)
 		}
@@ -195,9 +195,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 			for _, seg := range o.ItemText[i] {
 				it.segs = append(it.segs, hostapi.Segment{Text: oneLine.Replace(sanitize.String(seg.Text)), HL: hostapi.UserHL(seg.HL)})
 			}
-			it.label = plainSegs(it.segs)
+			it.label = plainSegs(it.segs) // spaces kept: a filter's offsets index the segments
 		}
-		it.label = sanitize.Line(it.label) // a newline would break the box
 		st.items = append(st.items, it)
 		st.labels = append(st.labels, it.label)
 		st.texts = append(st.texts, it.section+"  "+it.desc+"  "+r.Copy)
