@@ -220,7 +220,7 @@ func TestComposerKeysMultilineOff(t *testing.T) {
 
 func TestCompletionFlow(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
-	app.completion.files = []string{"cmd/root.go", "internal/ui/app.go", "main.go"}
+	app.completion.setFiles([]string{"cmd/root.go", "internal/ui/app.go", "main.go"})
 
 	type k struct {
 		key  string
@@ -240,7 +240,7 @@ func TestCompletionFlow(t *testing.T) {
 		t.Fatalf("empty token matches: %v", app.completion.matches)
 	}
 	send(k{"u", "u"}, k{"i", "i"})
-	if got := app.completion.matches; len(got) != 1 || got[0] != "internal/ui/app.go" {
+	if got := app.completion.matches; len(got) != 1 || got[0].Index != 1 {
 		t.Fatalf("token 'ui' matches: %v", got)
 	}
 	if app.completion.start != 4 { // after "see "
@@ -357,22 +357,24 @@ func TestCompletionListWidth(t *testing.T) {
 	}
 }
 
-func TestMatchScore(t *testing.T) {
-	cases := []struct {
-		path, q string
-		want    int
-		ok      bool
-	}{
-		{"internal/ui/app.go", "app", 0, true},
-		{"internal/ui/app.go", "ui/app", 2, true},
-		{"internal/ui/app.go", "iap", 2, true},
-		{"main.go", "zz", 0, false},
-		{"README.md", "readme", 0, true},
-	}
-	for _, c := range cases {
-		got, ok := matchScore(c.path, c.q)
-		if ok != c.ok || (ok && got != c.want) {
-			t.Errorf("matchScore(%q,%q) = %d,%v want %d,%v", c.path, c.q, got, ok, c.want, c.ok)
+func TestFileRanking(t *testing.T) {
+	files := []string{"README.md", "agent/turn_final_response_app.py", "apps/x.go", "happy.go", "internal/ui/app.go", "lib/app_app.go", "ã©.go"}
+	for _, c := range []struct{ token, want string }{
+		{"", "README.md[] agent/turn_final_response_app.py[] apps/x.go[] happy.go[] internal/ui/app.go[] lib/app_app.go[] ã©.go[]"},
+		{"app", "lib/app_app.go[4 5 6] internal/ui/app.go[12 13 14] apps/x.go[0 1 2] happy.go[1 2 3] agent/turn_final_response_app.py[14 20 30]"},
+		{"uiapp", "internal/ui/app.go[9 10 12 13 14] agent/turn_final_response_app.py[7 12 14 20 30]"},
+		{"READ", "README.md[0 1 2 3]"},
+		{"é", ""},
+	} {
+		f := fileCompleter{token: c.token}
+		f.setFiles(files)
+		f.rematch()
+		var got []string
+		for _, m := range f.matches {
+			got = append(got, fmt.Sprintf("%s%v", files[m.Index], m.Pos))
+		}
+		if strings.Join(got, " ") != c.want {
+			t.Errorf("%q: got %q, want %q", c.token, strings.Join(got, " "), c.want)
 		}
 	}
 }
@@ -453,6 +455,20 @@ func TestPaletteComplete(t *testing.T) {
 		t.Fatalf("partial submit: ran=%v text=%q", ran, app.composer.text)
 	}
 
+	// A typo the highlighted command does not begin runs nothing, unless the
+	// user moved to it.
+	ran = false
+	app.composer.text, app.composer.cursor = "/eho hi", 4
+	app.updatePalette()
+	app.composerKey("enter", tea.KeyPressMsg{})
+	if ran || app.composer.text != "/eho hi" || len(app.palette.matches) != 1 {
+		t.Fatalf("typo submit: ran=%v text=%q matches=%d", ran, app.composer.text, len(app.palette.matches))
+	}
+	send(k{"down", ""}, k{"enter", ""})
+	if !ran || app.composer.text != "" {
+		t.Fatalf("moved submit: ran=%v text=%q", ran, app.composer.text)
+	}
+
 	// An unknown slash line is not sent and keeps the text for fixing.
 	app.composer.text, app.composer.cursor = "/nope", 5
 	app.updatePalette()
@@ -479,7 +495,7 @@ func TestPaletteComplete(t *testing.T) {
 func TestSubmitFailed(t *testing.T) {
 	for _, text := range []string{"send with no model keeps the text", "an empty popup still sends @nope.txt"} {
 		app := newTestApp(t, t.TempDir())
-		app.completion.files = []string{"main.go"}
+		app.completion.setFiles([]string{"main.go"})
 		for _, r := range text {
 			app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
 		}

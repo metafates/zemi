@@ -211,7 +211,7 @@ function debug.traceback(msg) end
 --- One styled run of text in a widget or overlay row. `hl` names a
 --- highlight group; omit it for the default foreground.
 ---@class zemi.Segment
----@field text string
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 ---@field hl? string
 ---@field click? string Widget rows only: the id a click passes to the widget's `on_click`.
 ---@field effect? "shimmer" A bright band sweeps across the text every frame, blending `hl` toward Normal (static with ui.animations off).
@@ -391,7 +391,7 @@ function zemi.keymap.list() end
 ---@class zemi.CommandOpts
 ---@field desc? string Shown in /help and the slash palette.
 ---@field nargs? zemi.NArgs Arguments the command takes; a line with the wrong count is refused and the handler never runs.
----@field complete? fun(lead: string, line: string): string[]|zemi.CompletionItem[] Runs off the key path; the palette keeps the rows that start with `lead`, and is not called past the last argument `nargs` takes. An error lands in /errors.
+---@field complete? fun(lead: string, line: string): string[]|zemi.CompletionItem[] Runs off the key path; the palette shows the rows as returned, so match them against `lead` yourself, and it is not called past the last argument `nargs` takes. An error lands in /errors.
 
 ---@class zemi.Command
 ---@field name string
@@ -518,17 +518,17 @@ function zemi.command.list() end
 ---@field theme string
 
 ---@class zemi.ev.ComposerChange: zemi.Event
----@field text string
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 ---@field cursor integer
 
 ---@class zemi.ev.ComposerSubmit: zemi.Event
----@field text string
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 
 ---@class zemi.ev.MemoryWritten: zemi.Event
 ---@field id string
 ---@field scope zemi.Scope
 ---@field origin zemi.MemoryOrigin
----@field text string
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 
 ---@class zemi.ev.ReflectorStart: zemi.Event
 ---@field session string
@@ -684,7 +684,7 @@ function zemi.event.stats() end
 ---@class zemi.TranscriptRow
 ---@field role zemi.Role
 ---@field kind zemi.RowKind
----@field text string
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 ---@field tool string
 ---@field status zemi.CallStatus|"" Tool and shell rows, and "cancelled" on an error row an interrupt left.
 ---@field label string
@@ -857,8 +857,8 @@ function zemi.event.stats() end
 --- item, and does nothing when none applies. `run` is honored only for
 --- user config.
 ---@class zemi.OverlayItem
----@field text string
----@field desc? string dim column after the text
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field desc? string dim column after the text; the filter finds words in it
 ---@field key? string right-aligned tag
 ---@field on? boolean draws the on/off switch in the tag's place
 ---@field locked? boolean draws the switch on with nothing to switch
@@ -873,7 +873,7 @@ function zemi.event.stats() end
 
 --- A detail view action; with no id, fill or run it goes back.
 ---@class zemi.OverlayAction
----@field text string
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 ---@field id? string hands the action to the overlay's on_action, which takes it over fill and run
 ---@field hl? string highlight group of the label, such as "Danger"
 ---@field hotkey? string one character that acts like enter on this action; with none, its position ("1", "2", ...)
@@ -1632,11 +1632,11 @@ function zemi.session.rewind(message_id) end
 -- zemi.composer
 
 ---@class zemi.ComposerState
----@field text string
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 ---@field cursor integer 0-based character offset.
 
 ---@class zemi.CompletionItem
----@field text string
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 ---@field desc? string
 
 --- A completion source: `trigger` completes the word after that character
@@ -1647,7 +1647,7 @@ function zemi.session.rewind(message_id) end
 ---@field id string Registering the id again from the same origin replaces it.
 ---@field trigger? string One punctuation character other than "/".
 ---@field command? string A command name.
----@field items fun(lead: string, line: string): string[]|zemi.CompletionItem[] `lead` is the typed word after the trigger (or the argument under the cursor), `line` the draft up to the cursor. Runs off the key path, on every edit of the word; filter by `lead` yourself. At most 50 items across a popup's sources.
+---@field items fun(lead: string, line: string): string[]|zemi.CompletionItem[] `lead` is the typed word after the trigger (or the argument under the cursor), `line` the draft up to the cursor. Runs off the key path, on every edit of the word; the popup shows the rows as returned, so match them against `lead` yourself (by meaning too: an issue number may find its title). At most 50 items across a popup's sources.
 
 ---@class zemi.composer
 zemi.composer = {}
@@ -1862,7 +1862,7 @@ function zemi.tool.list() end
 ---@class zemi.GrepHit
 ---@field path string
 ---@field line integer
----@field text string
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 
 --- Paths resolve against the project directory and must stay inside the
 --- jail; reads pass the `lua.fs.read` gate and changes `lua.fs.write`.
@@ -2106,7 +2106,7 @@ function zemi.json.decode(s) end
 ---@field id string
 ---@field scope zemi.Scope
 ---@field origin zemi.MemoryOrigin
----@field text string
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 ---@field quote string The user's own words a memory about them rests on; "" otherwise.
 
 ---@class zemi.MemoryOpts
@@ -2157,7 +2157,7 @@ function zemi.memory.del(id) end
 ---@field id string
 ---@field scope zemi.Scope
 ---@field origin string
----@field text string
+---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 ---@field quote string
 ---@field forget? true Accepting deletes the stored memory this text is a copy of.
 

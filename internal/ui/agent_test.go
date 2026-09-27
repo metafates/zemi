@@ -634,7 +634,7 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 		}
 		args := []string{}
 		for _, a := range app.palette.args {
-			args = append(args, a.Text)
+			args = append(args, a.label)
 		}
 		if app.composer.text != c.text || strings.Join(args, " ") != c.args || app.palette.open != (c.args != "") || len(app.palette.matches) != 0 {
 			t.Errorf("%q: composer %q, args %v (open=%v, matches %d), want %q and %q", c.keys, app.composer.text, args, app.palette.open, len(app.palette.matches), c.text, c.args)

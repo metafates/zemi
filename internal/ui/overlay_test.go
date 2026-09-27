@@ -42,7 +42,7 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 			t.Fatalf("%s: overlays=%d selected=%d on=%v size=%v", key, len(a.overlays), a.overlays[0].selected, on, a.overlays[0].size)
 		}
 	}
-	if got := a.overlays[0].texts[1]; got != "○ b" {
+	if got := a.overlays[0].labels[1]; got != "○ b" {
 		t.Fatalf("row=%q", got)
 	}
 	a.overlayKey("", "/")
@@ -137,6 +137,11 @@ func TestOverlayFilter(t *testing.T) {
 	if v := a.overlays[0].visible; !slices.Equal(v, []int{2}) {
 		t.Fatalf("a row's value matches too, so a full model id finds its row: %v", v)
 	}
+	a.overlayKey("esc", "")
+	typeText("/snt")
+	if st := a.overlays[0]; !slices.Equal(st.visible, []int{1}) || fmt.Sprint(st.match) != "[[0 2 5]]" {
+		t.Fatalf("a one-token label matches fuzzily, and says where: %v %v", st.visible, st.match)
+	}
 }
 
 // TestTopChromeTakesInput: keys, ctrl+c and the wheel reach the prompt
@@ -220,7 +225,7 @@ func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 			t.Fatal("the completer never answered")
 		}
 	}
-	if len(app.palette.args) != 1 || app.palette.args[0].Text != "bob" {
+	if len(app.palette.args) != 2 || app.palette.args[1].label != "bob" { // as the completer answered
 		t.Fatalf("palette args %v", app.palette.args)
 	}
 	// the next key keeps the popup and its size until the completer answers
@@ -486,7 +491,7 @@ func TestOverlayNavigation(t *testing.T) {
 				a.overlays[0].o.Reload = func() ([]any, [][]hostapi.Segment) { return []any{a.composer.text}, nil }
 				a.openOverlay(hostapi.Overlay{ID: "c", Origin: lua.OriginBuiltin, Items: []any{map[string]any{"text": "pick", "fill": "new"}}})
 				a.overlayKey("enter", "")
-				return map[bool]string{false: fmt.Sprintf("overlays=%d", len(a.overlays))}[len(a.overlays) == 1 && a.overlays[0].texts[0] == "new"]
+				return map[bool]string{false: fmt.Sprintf("overlays=%d", len(a.overlays))}[len(a.overlays) == 1 && a.overlays[0].labels[0] == "new"]
 			},
 		},
 		{
@@ -495,11 +500,11 @@ func TestOverlayNavigation(t *testing.T) {
 			[]string{"down"},
 			func(a *App) string {
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Items: []any{"c", "d"}})
-				if len(a.overlays) != 1 || a.overlays[0].selected != 1 || a.overlays[0].texts[1] != "d" {
+				if len(a.overlays) != 1 || a.overlays[0].selected != 1 || a.overlays[0].labels[1] != "d" {
 					return fmt.Sprintf("overlays=%d selected=%d", len(a.overlays), a.overlays[0].selected)
 				}
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginPlugin, Items: []any{"e"}})
-				return map[bool]string{false: "a plugin replaced a builtin list"}[len(a.overlays) == 2 && a.overlays[0].texts[0] == "c"]
+				return map[bool]string{false: "a plugin replaced a builtin list"}[len(a.overlays) == 2 && a.overlays[0].labels[0] == "c"]
 			},
 		},
 		{
@@ -648,7 +653,7 @@ func TestOverlayFilterKeepsSize(t *testing.T) {
 	col := func(box [][]hostapi.Segment) int { return strings.Index(plainSegs(box[2]), "about") }
 	for _, q := range []string{"item", "xxx"} {
 		st.active, st.query = true, q
-		st.apply(st.texts)
+		st.apply()
 		got := app.overlayBox(st, 80, 40)
 		if hostapi.SegsWidth(got[0]) != hostapi.SegsWidth(box[0]) || len(got) != len(box) {
 			t.Fatalf("filter %q: %dx%d, want %dx%d", q, hostapi.SegsWidth(got[0]), len(got), hostapi.SegsWidth(box[0]), len(box))
@@ -677,7 +682,7 @@ func TestOverlayRowsBuiltOnce(t *testing.T) {
 		{"first frame", func() {}, true},
 		{"same frame", func() {}, false},
 		{"move", func() { st.selected = 30 }, true},
-		{"filter", func() { st.query = "item 4"; st.refilter() }, true},
+		{"filter", func() { st.query = "item 4"; st.apply() }, true},
 		{"resize", func() {}, true},
 	} {
 		c.step()

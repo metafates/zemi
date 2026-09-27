@@ -162,7 +162,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 			return nil
 		}
-		if mr.edit(key, keyText(msg), mr.texts()) || moveSel(&mr.selected, len(mr.visible), mr.view.pageItems(len(mr.visible)), key) {
+		if mr.edit(key, keyText(msg)) || moveSel(&mr.selected, len(mr.visible), mr.view.pageItems(len(mr.visible)), key) {
 			return nil
 		}
 		switch key {
@@ -217,12 +217,13 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		case "enter":
 			// the highlighted argument replaces a typed or picked one, so a
 			// bare "/name " runs as typed, and a typed name that is not a
-			// command runs the highlighted one
+			// command runs the highlighted one it begins or the user moved to
 			name, args := SplitCommand(strings.TrimPrefix(c.text, "/"))
 			switch {
 			case p.args != nil && p.selected < len(p.args) && (p.moved || c.cursor > p.argStart):
-				c.replace(p.argStart, p.args[p.selected].Text)
-			case p.selected < len(p.matches) && name != "reload" && a.host.Commands.Lookup(name) == nil:
+				c.replace(p.argStart, p.args[p.selected].label)
+			case p.selected < len(p.matches) && name != "reload" && a.host.Commands.Lookup(name) == nil &&
+				(p.moved || name == "" || p.hits[p.selected].Prefix):
 				c.text = strings.TrimSpace("/" + p.matches[p.selected].Name + " " + args)
 			}
 		}
@@ -647,7 +648,7 @@ func (a *App) pasteChrome(text string) bool {
 		if st.o.Input {
 			st.input.insert(line)
 		} else {
-			st.edit("", line, st.texts)
+			st.edit("", line)
 		}
 	case modalPerm, modalMemReview, modalTrust: // no text input: swallowed
 	}

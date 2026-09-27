@@ -40,22 +40,19 @@ func (mr *memReviewPrompt) at() int {
 	return len(mr.items)
 }
 
-func (mr *memReviewPrompt) texts() []string {
-	out := make([]string, len(mr.items))
-	for i, it := range mr.items {
-		out[i] = it.Text + "  " + it.Quote
-	}
-	return out
-}
-
 // open shows the selected row with its actions as buttons.
 func (mr *memReviewPrompt) open() {
 	mr.detail, mr.act, mr.body = mr.at() < len(mr.items), 0, viewport{}
 }
 
-// seek filters the rows again and selects item i, or the first shown after it.
+// seek filters the rows again and selects item i, or the first shown after
+// it. A row's text is its label, as memMore draws it; its quote is text.
 func (mr *memReviewPrompt) seek(i int) {
-	mr.apply(mr.texts())
+	mr.labels, mr.texts = mr.labels[:0], mr.texts[:0]
+	for _, it := range mr.items {
+		mr.labels, mr.texts = append(mr.labels, sanitize.String(it.Text)), append(mr.texts, it.Quote)
+	}
+	mr.apply()
 	j, _ := slices.BinarySearch(mr.visible, i)
 	mr.selected = max(0, min(len(mr.visible)-1, j))
 }
@@ -249,7 +246,6 @@ func (a *App) memMore(it hostapi.MemoryRow) [][]hostapi.Segment {
 // scope's prompt budget the stored rows take.
 func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 	mr := a.memReview
-	mr.apply(mr.texts())
 	n := rememberedAt(mr.items)
 	used := map[store.Scope]int{}
 	for _, it := range mr.items[n:] {
@@ -271,9 +267,11 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 	}
 	mr.detail = false
 	items := make([]listItem, 0, len(mr.visible))
-	for _, i := range mr.visible {
+	for n, i := range mr.visible {
 		it := mr.items[i]
-		items = append(items, listItem{section: sections[suggested(it)], more: a.memMore(it)})
+		more := a.memMore(it)
+		more[0] = matchSegs(more[0], mr.match[n], n == mr.selected)
+		items = append(items, listItem{section: sections[suggested(it)], more: more})
 	}
 
 	var hints []hintPair

@@ -393,6 +393,7 @@ type listItem struct {
 	section     string          // a change of section starts with a header row
 	more        [][]hostapi.Segment
 	segs        []hostapi.Segment   // the label styled; label keeps its plain text
+	match       []int               // byte offsets of the label's runes a filter matched
 	row         hostapi.OverlayItem // an overlay row's fields (overlayState)
 }
 
@@ -487,10 +488,11 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			}
 			var itemRows [][]hostapi.Segment
 			if it.label != "" || len(it.more) == 0 {
-				row := []hostapi.Segment{{Text: it.label, HL: hl}}
-				if it.segs != nil {
-					row = styled(it.segs)
+				row := it.segs
+				if row == nil {
+					row = []hostapi.Segment{{Text: it.label}}
 				}
+				row = styled(matchSegs(row, it.match, i == sel))
 				descW := -1 // no cut
 				if maxW > 0 && it.desc != "" && !under {
 					row = ellipsizeSegs(row, labelW)
@@ -597,6 +599,49 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 		}
 	}
 	return v.window(win, widest+bar)
+}
+
+// matchSegs draws the runes at byte offsets pos of a row's text in the
+// accent, a filter's match, before the row's style fills the segments
+// without one. The selected row is the accent already, so there the rest of
+// its own text steps back to the bold plain color and a match reads the same
+// in every row; a segment with a style of its own keeps it.
+func matchSegs(segs []hostapi.Segment, pos []int, sel bool) []hostapi.Segment {
+	if len(pos) == 0 {
+		return segs
+	}
+	hl := map[bool]string{false: "Host:HintKey", true: "Host:Title"}[sel]
+	var out []hostapi.Segment
+	j, off := 0, 0
+	for _, s := range segs {
+		start, was := 0, false
+		flush := func(end int) {
+			if end > start {
+				run := s
+				run.Text = s.Text[start:end]
+				switch {
+				case was:
+					run.HL = hl
+				case sel && run.HL == "":
+					run.HL = "Host:Bold"
+				}
+				out = append(out, run)
+			}
+			start = end
+		}
+		for i := range s.Text {
+			for j < len(pos) && pos[j] < off+i {
+				j++
+			}
+			if hit := j < len(pos) && pos[j] == off+i; hit != was {
+				flush(i)
+				was = hit
+			}
+		}
+		flush(len(s.Text))
+		off += len(s.Text)
+	}
+	return out
 }
 
 // shimmer is the "shimmer" segment effect: a bright band sweeps across the

@@ -1,10 +1,11 @@
 package ui
 
 import (
-	"cmp"
 	"context"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -13,15 +14,16 @@ import (
 )
 
 // fileCompleter is the composer popup after a trigger that starts a word:
-// "@" lists project files, scanned off the UI goroutine and fuzzy-ranked
-// here, and any trigger lists what its Lua sources offer (extra, first).
+// "@" lists project files, scanned off the UI goroutine and ranked here,
+// and any trigger lists what its Lua sources offer (extra, first).
 type fileCompleter struct {
 	open     bool
 	trigger  rune
 	start    int      // rune index of the trigger char in the composer
 	token    string   // query between the trigger and the cursor
 	files    []string // paths relative to the session cwd
-	matches  []string
+	bases    []string // each file's last element
+	matches  []hostapi.Hit
 	extra    []listItem // the Lua sources' items, ahead of matches
 	selected int
 	view     viewport
@@ -75,10 +77,8 @@ func (a *App) updateCompletion() tea.Cmd {
 	f.token = string(r[i+1 : cur])
 	if lua {
 		// until the sources answer, the rows they gave for a shorter word
-		// narrow by prefix, so a fast tab never takes a row the word left
-		f.extra = slices.DeleteFunc(f.extra, func(it listItem) bool {
-			return !strings.HasPrefix(strings.ToLower(it.label), strings.ToLower(f.token))
-		})
+		// narrow, so a fast tab never takes a row the word left
+		f.extra = matchRows(f.extra, f.token, true)
 		trigger, token, line := string(r[i]), f.token, string(r[:cur])
 		a.background(func() {
 			items := a.host.Complete(context.Background(), trigger, "", token, line)
@@ -86,10 +86,7 @@ func (a *App) updateCompletion() tea.Cmd {
 				if !f.open || a.composer.cursor > len(a.composer.runes()) || string(a.composer.runes()[:a.composer.cursor]) != line {
 					return // the draft moved on
 				}
-				f.extra = f.extra[:0]
-				for _, it := range items {
-					f.extra = append(f.extra, listItem{label: it.Text, desc: it.Desc})
-				}
+				f.extra = matchRows(candRows(items), token, false) // shown as the sources matched them
 				f.selected = max(0, min(f.selected, f.count()-1))
 			})
 		})
@@ -114,9 +111,16 @@ func (a *App) onFilesScanned(msg filesScannedMsg) {
 		return
 	}
 	a.completion.scanning = false
-	a.completion.files = msg.files
+	a.completion.setFiles(msg.files)
 	if a.completion.open {
 		a.completion.rematch()
+	}
+}
+
+func (f *fileCompleter) setFiles(files []string) {
+	f.files, f.bases = files, make([]string, len(files))
+	for i, p := range files {
+		f.bases[i] = p[strings.LastIndexByte(p, '/')+1:]
 	}
 }
 
@@ -133,65 +137,86 @@ func (f *fileCompleter) count() int { return len(f.extra) + len(f.matches) }
 // trigger with nothing to offer stays out of the way of prose.
 func (f *fileCompleter) shown() bool { return f.open && (f.trigger == '@' || f.count() > 0) }
 
-// rematch re-filters and re-ranks the file list against the token.
+// rematch ranks the files the token matches, a file name it begins first.
+// A name it matches scores by the name alone, which a path's other elements
+// would only blur; a file matched across directories scores by its path.
 func (f *fileCompleter) rematch() {
-	f.matches = f.matches[:0]
 	if f.token == "" {
-		f.matches = append(f.matches, f.files...)
-	} else {
-		type scored struct {
-			path  string
-			score int
-		}
-		var cands []scored
-		for _, p := range f.files {
-			if s, ok := matchScore(p, f.token); ok {
-				cands = append(cands, scored{p, s})
-			}
-		}
-		slices.SortFunc(cands, func(x, y scored) int {
-			return cmp.Or(cmp.Compare(x.score, y.score), cmp.Compare(len(x.path), len(y.path)), strings.Compare(x.path, y.path))
-		})
-		for _, c := range cands {
-			f.matches = append(f.matches, c.path)
-		}
+		f.matches = hostapi.Match("", f.files[:min(len(f.files), listMaxFiles)], nil)
+		f.partial = len(f.files) > listMaxFiles || len(f.files) >= scanMaxFiles
+		f.selected = max(0, min(f.selected, f.count()-1))
+		return
 	}
-	f.partial = len(f.matches) > listMaxFiles || len(f.files) >= scanMaxFiles
-	f.matches = f.matches[:min(len(f.matches), listMaxFiles)]
+	// chunks of the tree match at once: scoring the thousands of hits a short
+	// token has in a big tree takes longer than a keystroke may on one core
+	const chunk = 8192
+	best := make([][]hostapi.Hit, (len(f.files)+chunk-1)/chunk)
+	var hits atomic.Int64
+	var wg sync.WaitGroup
+	for c := range best {
+		wg.Go(func() {
+			var n int
+			best[c], n = f.matchFiles(c*chunk, min(c*chunk+chunk, len(f.files)))
+			hits.Add(int64(n))
+		})
+	}
+	wg.Wait()
+	f.partial = hits.Load() > listMaxFiles || len(f.files) >= scanMaxFiles
+	f.matches = hostapi.Rank(slices.Concat(best...), f.files, listMaxFiles)
 	f.selected = max(0, min(f.selected, f.count()-1))
 }
 
-// matchScore ranks a path against the query: basename prefix beats
-// basename subsequence beats path subsequence; lower wins.
-func matchScore(path, query string) (int, bool) {
-	p := strings.ToLower(path)
-	q := strings.ToLower(query)
-	base := p
-	if i := strings.LastIndexByte(p, '/'); i >= 0 {
-		base = p[i+1:]
+// matchFiles matches the token against files[lo:hi]: the best listMaxFiles
+// hits, indexed into files, and how many there were.
+func (f *fileCompleter) matchFiles(lo, hi int) ([]hostapi.Hit, int) {
+	files, bases := f.files[lo:hi], f.bases[lo:hi]
+	names := hostapi.Match(f.token, bases, nil)
+	rest := slices.Clone(files) // blanked where the name matched: "" matches nothing
+	for _, h := range names {
+		rest[h.Index] = ""
+		for k := range h.Pos {
+			h.Pos[k] += len(files[h.Index]) - len(bases[h.Index])
+		}
 	}
-	switch {
-	case strings.HasPrefix(base, q):
-		return 0, true
-	case subseq(base, q):
-		return 1, true
-	case subseq(p, q):
-		return 2, true
+	paths := hostapi.Match(f.token, rest, nil)
+	for i := range paths {
+		paths[i].Prefix = false // only a name's prefix leads
 	}
-	return 0, false
+	hits := slices.Concat(names, paths)
+	for i := range hits {
+		hits[i].Index += lo
+	}
+	return hostapi.Rank(hits, f.files, listMaxFiles), len(hits)
 }
 
-// subseq reports whether q is a subsequence of s.
-func subseq(s, q string) bool {
-	for len(q) > 0 {
-		i := strings.IndexByte(s, q[0])
-		if i < 0 {
-			return false
-		}
-		s = s[i+1:]
-		q = q[1:]
+// candRows are completion candidates as list rows.
+func candRows(cands []hostapi.CompletionItem) []listItem {
+	rows := make([]listItem, 0, len(cands))
+	for _, c := range cands {
+		rows = append(rows, listItem{label: c.Text, desc: c.Desc})
 	}
-	return true
+	return rows
+}
+
+// matchRows marks what query matches in each row's label, in row order;
+// narrow also drops the rows it does not match.
+func matchRows(rows []listItem, query string, narrow bool) []listItem {
+	labels := make([]string, len(rows))
+	for i, r := range rows {
+		labels[i] = r.label
+	}
+	hits := hostapi.Match(query, labels, nil)
+	out := make([]listItem, 0, len(rows))
+	for i, r := range rows {
+		r.match = nil
+		if len(hits) > 0 && hits[0].Index == i {
+			r.match, hits = hits[0].Pos, hits[1:]
+		} else if narrow {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // accept replaces the token after the trigger with the selected match (plus
@@ -206,7 +231,7 @@ func (a *App) acceptCompletion() {
 	case f.selected < n:
 		text = f.extra[f.selected].label
 	default:
-		text = f.matches[f.selected-n]
+		text = f.files[f.matches[f.selected-n].Index]
 	}
 	a.composer.replace(f.start+1, text+" ")
 	f.close()
@@ -233,7 +258,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	}
 	items := append([]listItem(nil), f.extra...)
 	for _, m := range f.matches {
-		items = append(items, listItem{label: m})
+		items = append(items, listItem{label: f.files[m.Index], match: m.Pos})
 	}
 	rows := listRowsW(items, items, f.selected, &f.view, min(a.completionMax(), room), minW, maxW)
 	if f.partial {

@@ -146,7 +146,7 @@ func (a *App) Pump() bool {
 // pinned as a golden (files injected; no filesystem walk).
 func TestGoldenComposerCompletion(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 12)
-	app.completion.files = []string{"internal/ui/app.go", "main.go"}
+	app.completion.setFiles([]string{"internal/ui/app.go", "main.go"})
 	for _, k := range []string{"s", "e", "e", " ", "@", "a", "p"} {
 		app.Update(tea.KeyPressMsg{Code: rune(k[0]), Text: k})
 	}
@@ -206,7 +206,7 @@ func TestPopupKeepsSize(t *testing.T) {
 	for _, c := range []struct{ open, narrow string }{{"/mo", "zz"}, {"@ap", "zzzq"}} {
 		app, host := bootAgentApp(t, 80, 14)
 		host.Commands.Add(&hostapi.Command{Name: "model", Desc: "choose the model", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1)})
-		app.completion.files = []string{"internal/ui/app.go", "main.go"}
+		app.completion.setFiles([]string{"internal/ui/app.go", "main.go"})
 		popup := func(keys string) string {
 			for _, k := range keys {
 				app.Update(tea.KeyPressMsg{Code: k, Text: string(k)})

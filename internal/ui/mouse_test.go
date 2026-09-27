@@ -186,8 +186,8 @@ func TestFilterKeys(t *testing.T) {
 		{"foo bar", "ctrl+u", ""},
 		{"foo", "backspace", "fo"},
 	} {
-		f := listFilter{active: true, query: c.query}
-		if !f.edit(c.key, "", []string{"a"}) || f.query != c.want {
+		f := listFilter{active: true, query: c.query, labels: []string{"a"}}
+		if !f.edit(c.key, "") || f.query != c.want {
 			t.Errorf("%q %s -> %q, want %q", c.query, c.key, f.query, c.want)
 		}
 	}
@@ -202,6 +202,7 @@ func TestHoverTargets(t *testing.T) {
 			{ID: "a", Scope: "user", Origin: "user", Text: "short one", Queued: true},
 			{ID: "b", Scope: "user", Origin: "user", Text: long},
 		}}
+		app.memReview.seek(0)
 	}
 	overlay := func(app *App) {
 		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"beta and a much longer row", "alpha"}})

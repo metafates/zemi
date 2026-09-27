@@ -24,7 +24,6 @@ import (
 type overlayState struct {
 	o     hostapi.Overlay
 	items []listItem // render_item's row when given, else the item's text
-	texts []string   // what the filter matches, per item: section, label, desc and copy
 	listFilter
 	input composerState // text of an input overlay
 	body  viewport
@@ -44,30 +43,24 @@ type listKey struct {
 	sel, top, room, minW, maxW int
 }
 
-func (st *overlayState) refilter() { st.apply(st.texts) }
-
-// listFilter narrows a list as the user types: visible holds the indices of
-// rows containing every word of query (case-insensitive), and selected
+// listFilter narrows a list as the user types, through hostapi.Match over
+// each row's label and text: visible holds the rows it keeps in list order,
+// so sections stay whole, match their labels' matched offsets, and selected
 // indexes visible.
 type listFilter struct {
-	active   bool // "/" was pressed: keys type into query
-	query    string
-	visible  []int
-	selected int
-	view     viewport // the list, or a detail view's actions
+	active        bool // "/" was pressed: keys type into query
+	query         string
+	labels, texts []string // per row
+	visible       []int
+	match         [][]int
+	selected      int
+	view          viewport // the list, or a detail view's actions
 }
 
-func (f *listFilter) apply(texts []string) {
-	words := strings.Fields(strings.ToLower(f.query))
-	f.visible = f.visible[:0]
-	for i, text := range texts {
-		lower, ok := strings.ToLower(text), true
-		for _, w := range words {
-			ok = ok && strings.Contains(lower, w)
-		}
-		if ok {
-			f.visible = append(f.visible, i)
-		}
+func (f *listFilter) apply() {
+	f.visible, f.match = f.visible[:0], f.match[:0]
+	for _, h := range hostapi.Match(f.query, f.labels, f.texts) {
+		f.visible, f.match = append(f.visible, h.Index), append(f.match, h.Pos)
 	}
 	f.selected = max(0, min(f.selected, len(f.visible)-1))
 }
@@ -76,7 +69,7 @@ func (f *listFilter) apply(texts []string) {
 // starts a query, then typed text, the composer's deletion keys, and esc
 // (or backspace on an empty query) ends it. Outside a query letters like
 // j and k stay free for moving. It reports whether the key was used.
-func (f *listFilter) edit(key, text string, texts []string) bool {
+func (f *listFilter) edit(key, text string) bool {
 	if !f.active {
 		f.active = text == "/"
 		return f.active
@@ -102,7 +95,7 @@ func (f *listFilter) edit(key, text string, texts []string) bool {
 	default:
 		return false
 	}
-	f.apply(texts)
+	f.apply()
 	if f.query != old {
 		f.selected, f.view.top = 0, 0 // a new query selects its first match
 		if f.query == "" {
@@ -155,11 +148,13 @@ func (a *App) overlayIndex(id string) int {
 func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	old := a.overlays[i]
 	st := a.overlayState(o)
-	st.listFilter, st.size = old.listFilter, old.size
+	f := old.listFilter
+	f.labels, f.texts = st.labels, st.texts
+	st.listFilter, st.size = f, old.size
 	if st.o.Body == old.o.Body {
 		st.body = old.body
 	}
-	st.refilter()
+	st.apply()
 	a.overlays[i] = st
 }
 
@@ -204,10 +199,11 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		}
 		it.label = sanitize.Line(it.label) // a newline would break the box
 		st.items = append(st.items, it)
-		st.texts = append(st.texts, strings.TrimSpace(it.section+"  "+it.label+"  "+it.desc+"  "+r.Copy))
+		st.labels = append(st.labels, it.label)
+		st.texts = append(st.texts, it.section+"  "+it.desc+"  "+r.Copy)
 	}
 	st.selected = o.Selected
-	st.refilter()
+	st.apply()
 	return st
 }
 
@@ -350,7 +346,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	if st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) {
 		return nil
 	}
-	if len(o.Items) > 0 && !st.back && st.edit(key, text, st.texts) || moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
+	if len(o.Items) > 0 && !st.back && st.edit(key, text) || moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
 		return nil
 	}
 	// a row's key acts like enter on it; one printable character, so no
@@ -569,8 +565,10 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		case len(st.visible) > 0:
 			if key := (listKey{st.query, st.selected, st.view.top, limit, st.size.w, inner}); st.rows == nil || key != st.rowsKey {
 				items := make([]listItem, 0, len(st.visible))
-				for _, i := range st.visible {
-					items = append(items, st.items[i])
+				for n, i := range st.visible {
+					it := st.items[i]
+					it.match = st.match[n]
+					items = append(items, it)
 				}
 				st.rows = listRowsW(items, st.items, st.selected, &st.view, limit, st.size.w, inner)
 				key.top = st.view.top

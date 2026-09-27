@@ -56,7 +56,7 @@ first release, so no migration library came with it), `charm.land/glamour/v2`
 (markdown in chat, with `alecthomas/chroma/v2` for the code block
 formatter that marks glamour's own margins), `charmbracelet/x/exp/golden` (golden-file assertions
 for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty`
-(sandbox tests), and
+(sandbox tests), `sahilm/fuzzy` (the one list filter, §6.6), and
 `go-readability` with `html-to-markdown` (the `fetch` tool: the article
 out of a page, as markdown the model can read). Tool input validation is a small hand-written
 schema check, not a JSON Schema library. `charm.land/catwalk` is taken
@@ -1254,14 +1254,18 @@ UI extensibility contract:
   lower origin could route the user's typing to its own keymaps. A key the user presses still runs
   whatever bound it.
 - Slash palette: typing `/` in the composer opens a popup listing registered
-  commands, filtered case-insensitively as you type; `up`/`down`
+  commands, matched fuzzily as you type and ranked best first, a name the
+  typed one begins leading; `up`/`down`
   navigate, `tab` accepts (fills `/name ` and lists its arguments, or the
   next argument's), `enter` submits the typed
   line, so `/name args` runs the command instead of sending to the
-  model; an unknown name toasts and does not send; `esc` closes and
+  model; a typed name that is no command runs the highlighted one only
+  when it begins that name or the user moved to it, so a typo toasts and
+  does not send; `esc` closes and
   `ctrl+space` reopens whatever popup the cursor's word takes. Past
-  `/name ` the list holds the command's argument candidates narrowed by
-  prefix, none past the last argument its `nargs` takes. The
+  `/name ` the list holds the command's argument candidates, a Go
+  completer's matched and ranked before the cap of 50, a Lua one's as it
+  returned them, none past the last argument its `nargs` takes. The
   exact, case-sensitive `/reload` is Go-reserved: it is checked on
   composer submit before any Lua-visible command lookup (§4).
 - Completion sources: `zemi.composer.complete({ id, trigger | command,
@@ -1270,8 +1274,28 @@ UI extensibility contract:
   command's argument candidates. `items(lead, line)` runs on the UI worker
   after each edit, like a Lua command completer, and its answer is dropped
   when the draft moved on, so the key loop never waits on it; Go sanitizes
-  the rows and caps them at 50. A trigger popup with nothing to offer is
+  the rows and caps them at 50, and shows them as the source matched them
+  (by meaning, maybe), narrowing only the rows it keeps while an answer is
+  pending. A trigger popup with nothing to offer is
   not drawn and takes no keys, so prose with a `#` in it still submits.
+- One matcher (`hostapi.Match`, over `sahilm/fuzzy`) filters every list a
+  human narrows by typing: the palette, argument candidates, `@` files,
+  overlays and `/memory`. Every word of the query must match a row: its
+  label fuzzily when the label is one token (a name, an id, a path, a
+  dotted key), or as a substring when the label is prose (it holds a
+  space), since a subsequence finds nearly every line of prose; any word
+  may instead appear in the row's other text. Popups under the composer
+  rank best first (`hostapi.Rank`); overlays and `/memory` keep list
+  order, so sections stay whole and `/sessions` keeps recency. `@` files
+  rank a file name the token begins first, then by the score of the name,
+  or of the path when only the path matches. Every list draws the matched
+  runes of a label in the accent (`listRowsW`, `matchSegs`); on the
+  selected row, whose label is the accent, the rest of the label turns the
+  bold text color, so a match reads the same on every row. It changes only
+  colors, never a row's width, and never underlines: that means a click
+  acts. Model-facing lookups
+  (`tool_search`, a mistyped path's siblings), command dispatch and every
+  permission or path check stay exact.
 
 ### 6.7 Learning, session, skills
 

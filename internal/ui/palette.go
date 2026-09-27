@@ -16,16 +16,18 @@ import (
 // "/" as the first character lists the registered commands filtered as you
 // type; up/down navigate, tab accepts, esc closes. Enter runs the typed
 // "/name args" line instead of sending a message, or the highlighted
-// command when the typed name is not one. The exact "/reload" is
+// command when the typed name is not one but begins it, or the user moved
+// to it: a typo never runs whatever ranked first. The exact "/reload" is
 // the Go-reserved force-reload trigger and never reaches the command
 // registry (DESIGN §4).
 type cmdPalette struct {
 	open     bool
 	matches  []*hostapi.Command
-	args     []hostapi.CompletionItem // argument candidates once the cursor is past "/name "
-	argStart int                      // rune index where the argument under the cursor starts
+	hits     []hostapi.Hit // what the query matched in each of matches
+	args     []listItem    // argument candidates once the cursor is past "/name "
+	argStart int           // rune index where the argument under the cursor starts
 	selected int
-	moved    bool   // the user moved the highlight in this argument list
+	moved    bool   // the user moved the highlight in this list
 	query    string // what the list was narrowed by; a new one selects its first row
 	view     viewport
 	size     boxSize // typing never narrows or shortens the popup
@@ -62,33 +64,29 @@ func (a *App) updatePalette() {
 		start--
 	}
 	name, typed, line := string(r[1:nameEnd]), string(r[start:cur]), string(r[:cur])
-	show := func(cands []hostapi.CompletionItem) {
-		if p := &a.palette; p.args == nil || p.argStart != start { // a new list: the name's gave way, or another argument's
+	// cands come ranked by the Go completer or as a Lua one matched them, so
+	// only narrow drops rows
+	show := func(cands []listItem, narrow bool) {
+		p := &a.palette
+		if p.args == nil || p.argStart != start { // a new list: the name's gave way, or another argument's
 			p.selected, p.moved, p.view, p.size = 0, false, viewport{}, boxSize{}
 		} else if p.query != typed {
 			p.selected, p.moved = 0, false
 		}
-		a.palette.query = typed
-		lead := strings.ToLower(typed)
-		args := []hostapi.CompletionItem{}
-		for _, c := range cands {
-			if strings.HasPrefix(strings.ToLower(c.Text), lead) {
-				args = append(args, c)
-			}
-		}
-		a.palette.matches, a.palette.args, a.palette.argStart = nil, args, start
-		a.palette.open = len(args) > 0
-		a.palette.selected = max(0, min(a.palette.selected, len(args)-1))
+		p.query, p.matches, p.hits, p.argStart = typed, nil, nil, start
+		p.args = matchRows(cands, typed, narrow)
+		p.open = len(p.args) > 0
+		p.selected = max(0, min(p.selected, len(p.args)-1))
 	}
 	lua := a.host.HasCompletions("", name)
 	if c := a.host.Commands.Lookup(name); !lua && (c == nil || c.Complete == nil || c.GoComplete != nil) {
-		show(a.host.CompleteCommand(context.Background(), name, typed, line))
+		show(candRows(a.host.CompleteCommand(context.Background(), name, typed, line)), false)
 		return
 	}
 	// A Lua completer or source runs on the worker, since the key loop never
 	// waits on Lua; its answer is dropped once the line before the cursor
-	// moved on. Until it lands, the rows it gave narrow by prefix.
-	show(a.palette.args)
+	// moved on. Until it lands, the rows it gave narrow by the typed word.
+	show(a.palette.args, true)
 	a.background(func() {
 		cands := a.host.CompleteCommand(context.Background(), name, typed, line)
 		if lua {
@@ -96,7 +94,7 @@ func (a *App) updatePalette() {
 		}
 		a.do(func() {
 			if string(a.composer.runes()[:a.composer.cursor]) == line {
-				show(cands)
+				show(candRows(cands), false)
 			}
 		})
 	})
@@ -105,28 +103,31 @@ func (a *App) updatePalette() {
 func (p *cmdPalette) close() {
 	p.open = false
 	p.selected, p.moved, p.view, p.size, p.query = 0, false, viewport{}, boxSize{}, ""
-	p.matches, p.args = nil, nil
+	p.matches, p.args, p.hits = nil, nil, nil
 }
 
-// rematch filters the command registry against the typed prefix. The
-// prefix is the first word with or without the trigger character; an
-// empty prefix (bare "/") lists every command.
-func (p *cmdPalette) rematch(prefix string, cmds []*hostapi.Command) {
-	p.matches = p.matches[:0]
-	prefix = strings.ToLower(strings.TrimPrefix(prefix, "/"))
-	if i := strings.IndexAny(prefix, " \t"); i >= 0 {
-		prefix = prefix[:i]
+// rematch ranks the command names the typed one matches, best first; a bare
+// "/" lists every command in order.
+func (p *cmdPalette) rematch(query string, cmds []*hostapi.Command) {
+	names := make([]string, len(cmds))
+	for i, c := range cmds {
+		names[i] = c.Name
 	}
-	for _, c := range cmds {
-		// hidden commands stay out of the bare "/" list but complete once typed
-		if strings.HasPrefix(strings.ToLower(c.Name), prefix) && (!c.Hidden || prefix != "") {
-			p.matches = append(p.matches, c)
+	hits := hostapi.Match(query, names, nil)
+	if query != "" {
+		hits = hostapi.Rank(hits, names, len(hits))
+	}
+	p.matches, p.hits = p.matches[:0], p.hits[:0]
+	for _, h := range hits {
+		// hidden commands stay out of the list until their name is typed
+		if !cmds[h.Index].Hidden || h.Prefix {
+			p.matches, p.hits = append(p.matches, cmds[h.Index]), append(p.hits, h)
 		}
 	}
-	if p.query != prefix {
-		p.selected = 0
+	if p.query != query {
+		p.selected, p.moved = 0, false
 	}
-	p.query = prefix
+	p.query = query
 	p.selected = max(0, min(p.selected, len(p.matches)-1))
 }
 
@@ -138,7 +139,7 @@ func (a *App) acceptPalette() tea.Cmd {
 		return nil
 	}
 	if p.args != nil {
-		a.composer.replace(p.argStart, p.args[p.selected].Text+" ")
+		a.composer.replace(p.argStart, p.args[p.selected].label+" ")
 	} else {
 		a.composer.text = "/" + p.matches[p.selected].Name + " "
 		a.composer.moveEnd()
@@ -155,12 +156,14 @@ func (a *App) paletteRows(maxW, room, minW int) [][]hostapi.Segment {
 		return emptyRows("No matches.", maxW)
 	}
 	items := make([]listItem, 0, p.count())
-	for _, c := range p.matches {
-		items = append(items, listItem{label: "/" + c.Name, desc: c.Desc})
+	for i, c := range p.matches {
+		var match []int
+		for _, at := range p.hits[i].Pos {
+			match = append(match, at+1) // past the "/"
+		}
+		items = append(items, listItem{label: "/" + c.Name, desc: c.Desc, match: match})
 	}
-	for _, c := range p.args {
-		items = append(items, listItem{label: c.Text, desc: c.Desc})
-	}
+	items = append(items, p.args...)
 	return listRowsW(items, items, p.selected, &p.view, min(8, room), minW, maxW)
 }
 
