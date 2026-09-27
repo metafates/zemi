@@ -94,7 +94,7 @@ func NewPluginTest(log *logging.Logger, classes lua.PathClasses, dirs config.Dir
 // Step registers zemi.test and runs the test file as its plugin's code;
 // with no file it only registers.
 func (t *PluginTest) Step() lua.BootStep {
-	return lua.BootStep{Name: "test file", Run: func(_ context.Context, r *lua.Runtime, g *lua.Generation) error {
+	return lua.BootStep{Name: "test file", Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 		tb := g.L.NewTable()
 		for name, fn := range map[string]glua.LGFunction{"eq": t.eq, "stub": t.stub, "overlay": t.overlay} {
 			tb.RawSetString(name, g.L.NewFunction(fn))
@@ -108,7 +108,7 @@ func (t *PluginTest) Step() lua.BootStep {
 		if err := g.SB.RegisterCallableNamespace("zemi.test", tb, g.L.NewFunction(t.declare)); err != nil || t.file == "" {
 			return err
 		}
-		return r.EvalFileInline(g.L, t.file, lua.OriginPlugin)
+		return r.EvalFileInline(ctx, g.L, t.file, lua.OriginPlugin)
 	}}
 }
 

@@ -101,7 +101,14 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 			return pt, end, err
 		}
 		idle := func() {}
-		return pt, end, h.RT.Boot(ctx, bootSteps(h, mainCommands(idle, idle), nil, h.PluginsStep(), []lua.BootStep{pt.Step()}, false))
+		bctx, cancel := context.WithTimeout(ctx, caseTimeout)
+		defer cancel()
+		err := h.RT.Boot(bctx, bootSteps(h, mainCommands(idle, idle), nil, h.PluginsStep(), []lua.BootStep{pt.Step()}, false))
+		if step, ok := errors.AsType[*lua.StepError](err); ok && bctx.Err() == context.DeadlineExceeded {
+			// Lua names where the deadline stopped it
+			step.Err = errors.New(strings.Replace(step.Err.Error(), bctx.Err().Error(), "timed out after "+caseTimeout.String(), 1))
+		}
+		return pt, end, err
 	}
 
 	start := time.Now()
@@ -111,6 +118,9 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		pt, end, err := boot(file, -1)
 		declared := pt.Cases
 		end()
+		if ctx.Err() != nil {
+			return 130
+		}
 		if err != nil {
 			failed++
 			if step, ok := errors.AsType[*lua.StepError](err); ok && step.Step == "plugins" {

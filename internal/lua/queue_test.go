@@ -326,7 +326,7 @@ func TestChunkAfterReload(t *testing.T) {
 	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
 		t.Fatalf("ForceReload: %v", err)
 	}
-	if err := r.runChunk(old, "return 1", "late.lua", OriginUser); !errors.Is(err, ErrReloaded) {
+	if err := r.runChunk(t.Context(), old, "return 1", "late.lua", OriginUser); !errors.Is(err, ErrReloaded) {
 		t.Fatalf("late chunk got %v, want ErrReloaded", err)
 	}
 }

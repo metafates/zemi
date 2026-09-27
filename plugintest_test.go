@@ -96,6 +96,9 @@ for i = 1, 300 do test("case " .. i, function() end) end
 		{name: "a plugin that does not load", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
 			"init.lua": `require("cp")`, "lua/cp/init.lua": `require("cp.util")`, "tests/a_test.lua": `zemi.test("a", function() end)`,
 		}, want: "FAIL init.lua:1: require: lua/cp/init.lua:1: require: module \"cp.util\" not found on runtimepath\n0 passed, 1 failed (1 file, (T))\n"},
+		{name: "a plugin whose load never ends", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
+			"init.lua": "while true do end", "tests/a_test.lua": `zemi.test("a", function() end)`,
+		}, want: "FAIL init.lua:1: timed out after 300ms\n0 passed, 1 failed (1 file, (T))\n"},
 		{name: "a test file that does not parse", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
 			"init.lua": "", "tests/a_test.lua": "zemi.test(\"a\", function()\n  local x =\nend)\n",
 		}, want: "FAIL tests/a_test.lua:3: syntax error near 'end'\n0 passed, 1 failed (1 file, (T))\n"},

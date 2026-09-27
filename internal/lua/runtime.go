@@ -424,7 +424,7 @@ func usefulTrace(trace string) bool {
 	return false
 }
 
-func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error {
+func (r *Runtime) runChunk(ctx context.Context, L *glua.LState, src, rel string, origin Origin) error {
 	sb, err := r.sandboxOf(L)
 	if err != nil {
 		return err
@@ -434,6 +434,11 @@ func (r *Runtime) runChunk(L *glua.LState, src, rel string, origin Origin) error
 		return chunkErr(rel, src, origin, err)
 	}
 	defer r.PushFrame(L, origin, rel)()
+	if L.Context() == nil {
+		// a boot step's chunk ends with ctx, as a request's code does with its own
+		L.SetContext(ctx)
+		defer L.RemoveContext()
+	}
 	L.Push(fn)
 	if err := L.PCall(0, 0, nil); err != nil {
 		return chunkErr(rel, src, origin, err)
@@ -497,8 +502,8 @@ func (r *Runtime) Eval(ctx context.Context, src, rel string, origin Origin, ceil
 // interpreter goroutine (Do would deadlock there). The path is
 // symlink-resolved and must classify to a known origin; the origin
 // argument must match the classification, so a caller cannot launder a
-// chunk through a higher-trust origin.
-func (r *Runtime) EvalFileInline(L *glua.LState, path string, origin Origin) error {
+// chunk through a higher-trust origin. ctx stops it at its next opcode.
+func (r *Runtime) EvalFileInline(ctx context.Context, L *glua.LState, path string, origin Origin) error {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return err
@@ -510,7 +515,7 @@ func (r *Runtime) EvalFileInline(L *glua.LState, path string, origin Origin) err
 	if err != nil {
 		return err
 	}
-	return r.runChunk(L, string(data), resolved, origin)
+	return r.runChunk(ctx, L, string(data), resolved, origin)
 }
 
 func (r *Runtime) installRequire(gen *Generation) {
@@ -817,7 +822,7 @@ func LoadFileStep(name, path string, origin Origin) BootStep {
 			if path == "" {
 				return nil
 			}
-			if err := r.EvalFileInline(g.L, path, origin); !errors.Is(err, fs.ErrNotExist) {
+			if err := r.EvalFileInline(ctx, g.L, path, origin); !errors.Is(err, fs.ErrNotExist) {
 				return err
 			}
 			return nil

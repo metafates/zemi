@@ -317,11 +317,11 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 
 // runSkillHook evaluates one skill's zemi-skill.lua inline (we are on the
 // interpreter goroutine) as user origin: only user skills carry one.
-func (h *Host) runSkillHook(L *glua.LState, s skills.Skill) error {
+func (h *Host) runSkillHook(ctx context.Context, L *glua.LState, s skills.Skill) error {
 	if s.Hook == "" {
 		return nil
 	}
-	if err := h.RT.EvalFileInline(L, s.Hook, lua.OriginUser); err != nil {
+	if err := h.RT.EvalFileInline(ctx, L, s.Hook, lua.OriginUser); err != nil {
 		// /errors and /health, like a dropped skill file: a dead hook is
 		// silent otherwise, and the skill looks enabled
 		h.RecordErrorOnce("skills", s.Name+": enable hook failed: "+err.Error())
@@ -342,7 +342,7 @@ func (h *Host) SkillsUserHooksStep() lua.BootStep {
 			for _, s := range h.enabledSkills() {
 				// installers write ~/.agents/skills: a hook there would run as user at every boot
 				if s.Source == skills.User && filepath.Dir(s.Dir) == h.userSkillsDir() {
-					_ = h.runSkillHook(g.L, s)
+					_ = h.runSkillHook(ctx, g.L, s)
 				}
 			}
 			return nil
