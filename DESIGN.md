@@ -1492,9 +1492,10 @@ provenance string.
   list's row, `fill` the composer, `copy`. A row names its own (`verb`)
   where the list's default would say another: "open" on a row that runs a
   command opening a screen, "run" on `/model`'s "Update the model catalog".
-  Space, which toggles a toggle list's rows, passes a row with a verb by, and
-  an "open" row leaves its list under the screen it opens, so esc comes back
-  to it (`/model`'s "Choose a model per role"). A list's action rows are
+  Space, which toggles a toggle list's rows outside an open filter (in one
+  it types, so a query of two words flips nothing), passes a row with a verb
+  by, and an "open" row leaves its list under the screen it opens, so esc
+  comes back to it (`/model`'s "Choose a model per role"). A list's action rows are
   sentence-case verb phrases above its sections, with no section of their
   own ("Install a plugin", "Follow the chat model"); the values sit under
   section headers, so an action never reads as one of them. An open filter

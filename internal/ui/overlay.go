@@ -344,8 +344,8 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		return nil
 	}
 	a.bump()
-	if key == "space" && o.Reload != nil {
-		text = "" // space toggles rows in a toggle list
+	if key == "space" && o.Reload != nil && !st.active {
+		text = "" // space toggles rows in a toggle list, and types into an open filter
 	}
 	// a body that overflows takes the scroll keys, and the list keys too
 	// when there is no list to move in
@@ -586,7 +586,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				hints = append(hints, hintPair{"enter", verb})
 				enterCopies = verb == "copy"
 			}
-			if r := st.items[st.visible[st.selected]].row; verb != "toggle" && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
+			if r := st.items[st.visible[st.selected]].row; verb != "toggle" && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") && !st.active {
 				hints = append(hints, hintPair{"space", "toggle"})
 			}
 			for _, k := range st.o.Keys {

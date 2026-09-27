@@ -20,8 +20,9 @@ import (
 )
 
 // TestToggleOverlayStaysOpen: in a Reload overlay (skills) space and enter
-// run the row and rebuild the list in place, keeping the selection, the
-// filter and the box's size; ctrl+n moves like j.
+// run the row and rebuild the list in place, keeping the selection and the
+// box's size; ctrl+n moves like j. An open filter takes space as text, so a
+// query of two words toggles nothing.
 func TestToggleOverlayStaysOpen(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	on := false
@@ -47,9 +48,10 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 	}
 	a.overlayKey("", "/")
 	a.overlayKey("", "b")
+	wasOn := on
 	a.overlayKey("space", " ")
-	if st := a.overlays[0]; !st.active || st.query != "b" || len(st.visible) != 1 {
-		t.Fatalf("filter after toggle: %+v", st.listFilter)
+	if st := a.overlays[0]; !st.active || st.query != "b " || len(st.visible) != 1 || on != wasOn {
+		t.Fatalf("space in a filter: on %v -> %v, %+v", wasOn, on, st.listFilter)
 	}
 }
 
