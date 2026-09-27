@@ -161,6 +161,8 @@ func Rank(hits []Hit, labels []string, n int) []Hit {
 	return top
 }
 
+// NOTE: a file path with a space in it reads as prose too, so "@mnr" misses
+// "docs/My Notes/readme.md"; tell paths apart here if that ever matters.
 func prose(label string) bool { return strings.Contains(label, " ") }
 
 // asciiLower is w lowercased when it is ASCII, else "".
