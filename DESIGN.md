@@ -69,7 +69,8 @@ trees). Nor is ripgrep: `glob`, `grep`, `@` completion and `zemi.fs.glob`/`grep`
 share one lister (`tools.ListFiles`), `git ls-files --cached --others
 --exclude-standard` through the hardened `proc.Git`, so the `.gitignore`
 files decide, and a Go walker that skips hidden and build directories by
-name where git cannot list (no repository, no git). `grep` searches that
+name where git cannot list (no repository, no git) or takes over 2 s (a
+huge untracked tree), the tool result saying which. `grep` searches that
 list in parallel with Go's RE2 `regexp`, in path order, so the same call
 returns the same lines.
 

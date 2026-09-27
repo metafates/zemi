@@ -334,7 +334,7 @@ so a sandboxed command cannot swap a directory for a symlink between check and o
 (`resolveJailed`). Both writers refuse a path whose last component is a symbolic link
 and name the target to edit instead. `glob` and `grep` are gated on their root only, so neither
 shows a hit a deny or ask `fs.read` rule covers, and both list through `tools.ListFiles`
-(`git ls-files`, a walker where git cannot list; no symbolic links, so grep reads through
+(`git ls-files`, a walker where git cannot list or takes over 2 s; no symbolic links, so grep reads through
 none). grep and a directory listing leave out the strict secret shapes
 (`perm.PathIsStrictSecret`: not `*secret*`, `*credential*` or a `.env.example`): a listing names what it hid, and grep's answer never depends on them, since a
 count of their hits would leak a key one bit per call. Output too long for a result is cut

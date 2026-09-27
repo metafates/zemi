@@ -1039,6 +1039,11 @@ const (
 // walkedNote tells the model that walk, not git, picked the files it sees.
 const walkedNote = "(no git file list here: .gitignore not read, hidden and build directories skipped)"
 
+// listWait bounds git's file listing. git walks every untracked file before
+// it prints one, which in a huge untracked tree (a $HOME dotfiles repo) runs
+// for seconds; the biggest repository measured, 26k files, lists in 0.3 s cold.
+var listWait = 2 * time.Second
+
 // runGlob lists files under root (default session dir) matching pattern,
 // newest first: recently changed files are the likely targets.
 func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
@@ -1056,7 +1061,7 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	files, walked, err := ListFiles(ctx, root, ListLimit)
+	files, note, err := ListFiles(ctx, root, ListLimit)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -1073,8 +1078,8 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	slices.SortFunc(rels, func(a, b string) int { return cmp.Or(mod[b].Compare(mod[a]), strings.Compare(a, b)) })
 	var out []string
-	if walked {
-		out = append(out, walkedNote)
+	if note != "" {
+		out = append(out, note)
 	}
 	// a check resolves symlinks, so only as many hits are checked as are shown
 	ruledOut, shown := p.ruledOut(), 0
@@ -1117,7 +1122,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	name := func(rel string) string { return filepath.ToSlash(filepath.Join(root, rel)) }
 	var files []string
-	walked := false
+	note := ""
 	if fi, err := os.Stat(root); err == nil && fi.Mode().IsRegular() {
 		// Grep opens no symbolic link, but one named as path was asked for
 		given, real := filepath.ToSlash(filepath.Clean(root)), root
@@ -1126,7 +1131,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 		root, files = filepath.Dir(real), []string{filepath.Base(real)}
 		name = func(string) string { return given }
-	} else if files, walked, err = ListFiles(ctx, root, ListLimit); err != nil {
+	} else if files, note, err = ListFiles(ctx, root, ListLimit); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	capped := len(files) == ListLimit
@@ -1137,8 +1142,8 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	var out []string
-	if walked {
-		out = append(out, walkedNote)
+	if note != "" {
+		out = append(out, note)
 	}
 	if literal {
 		out = append(out, "(pattern taken literally)")
@@ -1160,14 +1165,12 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 
 // ListFiles lists up to limit regular files under root, relative to it, in
 // path order: in a git work tree what git tracks or would track (the
-// .gitignore files read), else, with walked set, what walk finds. Neither
-// lists a symbolic link, .git or a nested repository.
-func ListFiles(ctx context.Context, root string, limit int) (files []string, walked bool, err error) {
-	// NOTE: git walks every untracked file under root before it prints one,
-	// so reading less would not stop it early; in a big untracked tree (a
-	// $HOME dotfiles repo) only proc.Git's 15 s timeout bounds it, and then
-	// the walker runs. A short deadline of its own here would lift that.
-	out, err := proc.Git{Dir: root}.Run(ctx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+// .gitignore files read), else what walk finds, with note the line saying
+// why. Neither lists a symbolic link, .git or a nested repository.
+func ListFiles(ctx context.Context, root string, limit int) (files []string, note string, err error) {
+	gitCtx, cancel := context.WithTimeout(ctx, listWait)
+	defer cancel()
+	out, err := proc.Git{Dir: root}.Run(gitCtx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	// an index entry is the repository's word: a planted one can say "../x"
 	// or "sub/.git/config", and a tracked directory may since have become a
 	// symbolic link
@@ -1195,7 +1198,10 @@ func ListFiles(ctx context.Context, root string, limit int) (files []string, wal
 	}
 	// nothing listed: no repository, no git, or a root git ignores whole
 	if len(files) == 0 {
-		walked = true
+		note = walkedNote
+		if ctx.Err() == nil && errors.Is(gitCtx.Err(), context.DeadlineExceeded) {
+			note = fmt.Sprintf("(git took over %s to list the files here, so a walk did: .gitignore not read, hidden and build directories skipped)", listWait)
+		}
 		err = walk(ctx, root, func(rel string) error {
 			files = append(files, filepath.ToSlash(rel))
 			if len(files) == limit {
@@ -1204,13 +1210,13 @@ func ListFiles(ctx context.Context, root string, limit int) (files []string, wal
 			return nil
 		})
 		if err != nil {
-			return nil, walked, err
+			return nil, note, err
 		}
 	}
 	slices.Sort(files)
 	// an unmerged path is listed once per stage
 	files = slices.Compact(files)
-	return files[:min(len(files), limit)], walked, nil
+	return files[:min(len(files), limit)], note, nil
 }
 
 // Hit is one line Grep found, Rel relative to the root it searched.

@@ -458,6 +458,7 @@ func TestGlobAndGrep(t *testing.T) {
 		want, not string
 		root      string // default dir
 		noGit     bool
+		slowGit   bool // a git that never answers
 	}{
 		{tool: glob, input: `{"pattern":"*.go"}`, want: "sub/x.go", not: "node_modules"},
 		{tool: glob, input: `{"pattern":"*.go"}`, want: "main.go", not: "link.go"},
@@ -491,10 +492,18 @@ func TestGlobAndGrep(t *testing.T) {
 		{tool: grep, input: `{"pattern":"needle"}`, want: walkedNote + "\n" + out + "/loose.txt:1", root: out},
 		{tool: glob, input: `{"pattern":"*.go"}`, want: walkedNote + "\n", not: "build/", noGit: true},
 		{tool: grep, input: `{"pattern":"needle"}`, want: "src/a.txt:1", not: "bin.dat", noGit: true},
+		{tool: glob, input: `{"pattern":"*.go"}`, want: "(git took over 50ms to list the files here, so a walk did: .gitignore not read", not: "build/", slowGit: true},
 	} {
 		t.Run(c.input, func(t *testing.T) {
 			if c.noGit {
 				t.Setenv("PATH", "")
+			}
+			if c.slowGit {
+				bin := t.TempDir()
+				os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\nexec /bin/sleep 60\n"), 0o755)
+				t.Setenv("PATH", bin)
+				defer func(w time.Duration) { listWait = w }(listWait)
+				listWait = 50 * time.Millisecond
 			}
 			root := cmp.Or(c.root, dir)
 			input := strings.Replace(strings.ReplaceAll(c.input, "DIR", root), "{", `{"path":"`+root+`",`, 1)
