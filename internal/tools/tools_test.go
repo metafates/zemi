@@ -409,7 +409,7 @@ func TestGlobAndGrep(t *testing.T) {
 		"src/credential.ts": "export function loadCredential() {}\n", "src/a.txt": "needle\n", "gen/b.txt": "needle\n", "locked/c.txt": "needle\n",
 		".github/workflows/ci.yml": "on: push\n", "build/tracked.go": "package tracked\n", "build/untracked.go": "package tracked\n",
 		".agents/worktrees/w/x.go": "package sub\n", "bin.dat": strings.Repeat("a", 600) + "\x00\nneedle\n",
-		"two.txt": "one\ntwo anchored\n",
+		"two.txt": "one\ntwo anchored\n", "swap/s.txt": "inside\n",
 	}
 	for i := range 300 {
 		files[fmt.Sprintf("many/f%03d.txt", i)] = "dup\n"
@@ -430,6 +430,10 @@ func TestGlobAndGrep(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// a tracked directory swapped for a link leads out of the root
+	os.RemoveAll(filepath.Join(dir, "swap"))
+	os.Symlink(out, filepath.Join(dir, "swap"))
+	os.WriteFile(filepath.Join(out, "s.txt"), []byte("outside\n"), 0o644)
 	// git lists untracked files first, right after its stderr warning about
 	// the unreadable dir, which must not garble notes.txt
 	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("notes\n"), 0o644)
@@ -457,6 +461,7 @@ func TestGlobAndGrep(t *testing.T) {
 		{tool: glob, input: `{"pattern":"**/*.go"}`, want: "main.go", not: "private"},
 		{tool: grep, input: `{"pattern":"package priv"}`, want: "no matches", not: "k.go"},
 		{tool: grep, input: `{"pattern":"package priv"}`, want: "no matches", not: "lnk.txt"},
+		{tool: grep, input: `{"pattern":"outside"}`, want: "no matches", not: "swap/"},
 		{tool: grep, input: `{"pattern":"package","path":"sub/x.go"}`, want: "sub/x.go:1: package sub", not: "main.go"},
 		{tool: grep, input: `{"pattern":"sub("}`, want: "(pattern taken literally)\n", not: "bad pattern"},
 		{tool: grep, input: `{"pattern":"sub("}`, want: "call.go:1: x := sub(1)", not: "x.go"},

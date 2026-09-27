@@ -1139,10 +1139,24 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 // lists a symbolic link, .git or a nested repository.
 func ListFiles(ctx context.Context, root string, limit int) (files []string, walked bool, err error) {
 	out, err := proc.Git{Dir: root}.Run(ctx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	// an index entry is the repository's word: a planted one can say "../x",
+	// and a tracked directory may since have become a symbolic link
+	realDir := map[string]bool{".": true}
+	var inRoot func(dir string) bool
+	inRoot = func(dir string) bool {
+		ok, seen := realDir[dir]
+		if !seen {
+			fi, err := os.Lstat(filepath.Join(root, dir))
+			ok = err == nil && fi.IsDir() && inRoot(filepath.Dir(dir))
+			realDir[dir] = ok
+		}
+		return ok
+	}
 	for rel := range strings.SplitSeq(out, "\x00") {
 		// a nested repository comes as its directory, a deleted or a
 		// submodule's entry as no regular file
-		if err != nil || rel == "" || strings.HasSuffix(rel, "/") || strings.HasPrefix(rel, ".agents/worktrees/") {
+		if err != nil || strings.HasSuffix(rel, "/") || strings.HasPrefix(rel, ".agents/worktrees/") ||
+			!filepath.IsLocal(rel) || filepath.Clean(rel) != rel || !inRoot(filepath.Dir(rel)) {
 			continue
 		}
 		if fi, err := os.Lstat(filepath.Join(root, rel)); err == nil && fi.Mode().IsRegular() {
