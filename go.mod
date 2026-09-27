@@ -18,6 +18,7 @@ require (
 	github.com/charmbracelet/x/exp/golden v0.0.0-20250806222409-83e3a29d542f
 	github.com/creack/pty v1.1.24
 	github.com/goccy/go-yaml v1.19.2
+	github.com/sahilm/fuzzy v0.1.3
 	github.com/yuin/gopher-lua v1.1.2
 	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0
@@ -90,7 +91,6 @@ require (
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/sahilm/fuzzy v0.1.3 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
 	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
