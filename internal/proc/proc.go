@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -56,8 +57,25 @@ func CommandContext(ctx context.Context, name string, args ...string) *exec.Cmd 
 	return cmd
 }
 
+var refused atomic.Pointer[error]
+
+// Refuse makes every later start fail with err, zemi's own git and sandbox
+// probe included: zemi plugins test starts no process.
+func Refuse(err error) { refused.Store(&err) }
+
+// Refused is the error Refuse set, nil while processes may start.
+func Refused() error {
+	if p := refused.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
 // Start starts cmd and remembers its group for KillAll.
 func Start(cmd *exec.Cmd) error {
+	if err := Refused(); err != nil {
+		return err
+	}
 	if err := cmd.Start(); err != nil {
 		return err
 	}

@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/proc"
 )
 
 // helperArg is the argv[0]+1 a re-exec'd helper answers to.
@@ -59,7 +60,11 @@ var probed struct {
 
 // Probe reports the backend this machine supports, checked once.
 func Probe() (Backend, error) {
-	probed.once.Do(func() { probed.b, probed.err = probe() })
+	probed.once.Do(func() {
+		if probed.err = proc.Refused(); probed.err == nil {
+			probed.b, probed.err = probe()
+		}
+	})
 	return probed.b, probed.err
 }
 

@@ -65,6 +65,9 @@ func (g Git) Run(ctx context.Context, args ...string) (string, error) {
 }
 
 func (g Git) run(ctx context.Context, args ...string) (string, error) {
+	if err := Refused(); err != nil {
+		return "", err
+	}
 	cmd := CommandContext(ctx, "git", args...)
 	cmd.Dir = g.Dir
 	// status leaves a repository's index alone
