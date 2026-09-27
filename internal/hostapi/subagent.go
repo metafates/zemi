@@ -282,7 +282,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	loaded := new(sync.Map) // what the main agent loaded says nothing about what this run needs
 	kept, active := h.deferMCP(kept, loaded)
-	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), kept, pipe.Pad, def.Name+"-"+run.id))
+	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), kept, pipe.Pad))
 	runner.ActiveTools = active
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)
@@ -334,6 +334,11 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 			}
 			return h.DB.AddMessage(&store.Message{SessionID: sid, Role: role, PartsJSON: string(parts)})
 		}
+	}
+	// in the task, not the system prompt, which runs of one agent share
+	writes := hasTool(kept, tools.ToolBash) || hasTool(kept, tools.ToolWrite) || hasTool(kept, tools.ToolEdit)
+	if len(runner.History) == 0 && pipe.Pad != "" && writes {
+		prompt += "\n\n" + fmt.Sprintf(scratchOwn, filepath.Join(pipe.Pad, def.Name+"-"+run.id))
 	}
 	h.EmitAsync("agent.subagent.start", map[string]any{"agent": def.Name, "description": run.description, "session": sid})
 	runner.Steer = run.takeQueue

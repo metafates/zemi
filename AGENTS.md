@@ -733,7 +733,8 @@ lua-language-server is installed.
   and `edit` need no prior read there (the stale check stays), a pad write is never
   checkpointed, and `Destructive` lets an `rm` whose every operand is below the pad
   (`$TMPDIR/...` or its literal path) settle. A file tool path starting with `$`, `~` or
-  `%VAR%` is refused naming the pad. Subagents are told to keep their files in
+  `%VAR%` is refused naming the pad. A subagent run that can write is told in its task, never its
+  system prompt (which runs of one agent share in the provider cache), to keep its files in
   `<pad>/<agent>-<run id>`. `ensureScratch` removes pads with nothing in them changed for a
   week, never the live one (NOTE: another window's pad unused that long goes too).
 - **Lua tool** (luatool.go, tool name `lua`): model Lua runs through `Runtime.Eval` as `user`

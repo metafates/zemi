@@ -305,6 +305,37 @@ func TestSubagentInstructions(t *testing.T) {
 	}
 }
 
+// TestSubagentOwnDir: runs of one agent share a system prompt, so the
+// provider cache serves it, and each is told its own directory in the pad in
+// its task.
+func TestSubagentOwnDir(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.agents.sessionID = "s1"
+	var systems []string
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, _ bool) []fantasy.StreamPart {
+			systems = append(systems, system)
+			return textParts(last)
+		}}, nil
+	}
+	def, err := h.agentDef("general")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dirs []string
+	for range 2 {
+		_, text, err := h.runSubagent(context.Background(), def, "d", "look")
+		_, dir, ok := strings.Cut(text, "keep your own files in "+filepath.Join(h.ScratchDir(), "general-"))
+		if err != nil || !ok {
+			t.Fatalf("task %q, %v", text, err)
+		}
+		dirs = append(dirs, dir)
+	}
+	if len(systems) != 2 || systems[0] != systems[1] || dirs[0] == dirs[1] {
+		t.Errorf("%d prompts, equal %v; dirs %q", len(systems), len(systems) == 2 && systems[0] == systems[1], dirs)
+	}
+}
+
 // TestSubagentReportTruncated: a runaway report is cut before it lands in
 // the caller's context, and the whole text waits in the scratchpad.
 func TestSubagentReportTruncated(t *testing.T) {
