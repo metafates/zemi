@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/metafates/zemi/runtime"
 )
 
 // TestPluginsTest runs zemi plugins test on testdata/plugins/demo, whose
@@ -45,10 +48,22 @@ test("found by name", function() assert(test.run("named")) end)`,
 	many := `local test = zemi.test
 for i = 1, 300 do test("case " .. i, function() end) end
 `
+	// the plugin and test zemi-customize shows, as an agent copies them
+	skill, err := fs.ReadFile(runtime.Skills, "skills/zemi-customize/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	example := map[string]string{}
+	for path, heading := range map[string]string{"init.lua": "`init.lua`:\n", "lua/branch/init.lua": "`lua/branch/init.lua`:", "tests/branch_test.lua": "`tests/branch_test.lua` for the plugin above:"} {
+		_, after, _ := strings.Cut(string(skill), heading)
+		_, block, _ := strings.Cut(after, "```lua\n")
+		example[path], _, _ = strings.Cut(block, "```")
+	}
 
 	for _, c := range []struct {
 		name   string
 		plugin map[string]string // a plugin to write; a value "-> x" is a link to x; none runs demo
+		named  string            // its name, cp when empty
 		args   []string          // <plugin> stands for its dir
 		limit  uint64            // RLIMIT_NOFILE during the run
 		cancel bool              // interrupted before it starts
@@ -164,6 +179,7 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 		{name: "advance past what a duration holds", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
 			"init.lua": "", "tests/a_test.lua": `zemi.test("far", function() zemi.test.advance(math.huge) zemi.test.eq(os.date("!%Y"), "2318") end)`,
 		}, want: "1 passed (1 file, (T))\n"},
+		{name: "the zemi-customize example passes", args: []string{"<plugin>"}, code: 0, plugin: example, named: "branch", want: "2 passed (1 file, (T))\n"},
 		{name: "a name the plugins step would load", args: []string{"named"}, code: 0, want: "1 passed (1 file, (T))\n"},
 		{
 			name: "300 boots under 256 open files", args: []string{"<plugin>"}, limit: 256, code: 0,
@@ -179,7 +195,7 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 		t.Run(c.name, func(t *testing.T) {
 			dir := demo
 			if c.plugin != nil {
-				dir = filepath.Join(t.TempDir(), "p", "cp")
+				dir = filepath.Join(t.TempDir(), "p", cmp.Or(c.named, "cp"))
 				for path, body := range c.plugin {
 					if target, ok := strings.CutPrefix(body, "-> "); ok {
 						if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, path)), 0o755); err != nil {
