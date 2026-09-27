@@ -254,8 +254,9 @@ type Pipeline struct {
 
 	// Remember runs the memory tool through the host's intake and autonomy
 	// gate and returns the answer: what became of the memory and what to do
-	// next. nil = memory tool error.
-	Remember func(scope store.Scope, text, quote, replaces string) (string, error)
+	// next; p is the run asking, whose gate a forget goes through. nil = memory
+	// tool error.
+	Remember func(p *Pipeline, scope store.Scope, text, quote, replaces string) (string, error)
 
 	// Pad is the scratchpad this pipeline was bound to, "" for none: every
 	// command's $TMPDIR, where cut output is saved in full and the file
@@ -1314,7 +1315,7 @@ func runMemory(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolR
 	if scope == "" {
 		scope = store.ScopeProject
 	}
-	msg, err := p.Remember(scope, str(in["text"]), str(in["quote"]), str(in["replaces"]))
+	msg, err := p.Remember(p, scope, str(in["text"]), str(in["quote"]), str(in["replaces"]))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

@@ -844,14 +844,14 @@ func (h *Host) proposeMemory(sid string, origin store.Origin, scope store.Scope,
 	return h.gateMemory(res)
 }
 
-// memoryTool is the memory tool from session sid: text supersedes what
-// replaces names, empty text with replaces forgets it.
-func (h *Host) memoryTool(sid string, scope store.Scope, text, quote, replaces string) (string, error) {
+// memoryTool is the memory tool that run p called from session sid: text
+// supersedes what replaces names, empty text with replaces forgets it.
+func (h *Host) memoryTool(p *tools.Pipeline, sid string, scope store.Scope, text, quote, replaces string) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		if replaces == "" {
 			return "", errors.New("text is empty; pass replaces=<id> to drop a memory")
 		}
-		return h.forgetMemory(sid, replaces)
+		return h.forgetMemory(p, sid, replaces)
 	}
 	out, err := h.proposeMemory(sid, store.OriginLearned, scope, text, quote, replaces)
 	if err != nil {
@@ -862,8 +862,9 @@ func (h *Host) memoryTool(sid string, scope store.Scope, text, quote, replaces s
 
 // forgetMemory drops a memory for the model: one the user saved asks
 // (Unsandboxed so no mode settles it), a learned one goes at once under
-// auto autonomy and is proposed for review otherwise.
-func (h *Host) forgetMemory(sid, id string) (string, error) {
+// auto autonomy and is proposed for review otherwise. The ask goes through
+// p, so it names the agent that asked.
+func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 	db, m, err := h.locateMemory(id)
 	if err != nil {
 		return "", err
@@ -872,7 +873,7 @@ func (h *Host) forgetMemory(sid, id string) (string, error) {
 	switch {
 	case m.Origin == store.OriginUser:
 		req := tools.Request{Tool: tools.ToolMemory, Subject: "memory.write", Arg: short, Reason: "forget a memory the user saved", Preview: m.Text, Unsandboxed: true}
-		if v := h.PipelineFor().CheckDenied(req); v.Decision != perm.Allow {
+		if v := p.CheckDenied(req); v.Decision != perm.Allow {
 			return "", fmt.Errorf("permission denied (%s): forget memory %s", v.DecidedBy, short)
 		}
 	case !h.memoryAuto(sid):

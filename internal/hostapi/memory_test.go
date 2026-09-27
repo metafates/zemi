@@ -385,7 +385,7 @@ func TestMemoryGate(t *testing.T) {
 			if tc.note {
 				err = h.Remember(tc.text)
 			} else {
-				msg, err = h.memoryTool(sid, cmp.Or(tc.scope, store.ScopeProject), tc.text, tc.quote, replaces)
+				msg, err = h.memoryTool(h.PipelineFor(), sid, cmp.Or(tc.scope, store.ScopeProject), tc.text, tc.quote, replaces)
 			}
 			if err != nil {
 				msg = err.Error()

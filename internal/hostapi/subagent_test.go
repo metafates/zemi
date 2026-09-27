@@ -243,30 +243,41 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 	}
 }
 
-// TestSubagentLuaToolAsksAsAgent: a subagent's Lua tools check through its
+// TestSubagentAsksAsAgent: a subagent's host-checked tools ask through its
 // own pipeline, so the ask names the agent.
-func TestSubagentLuaToolAsksAsAgent(t *testing.T) {
-	h, r := newTestHostDB(t)
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-	runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
-			if toolResult {
-				return textParts("done")
+func TestSubagentAsksAsAgent(t *testing.T) {
+	for _, tc := range []struct{ name, tool string }{
+		{"lua tool", "weather"},
+		{"forgetting a memory the user saved", tools.ToolMemory},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, r := newTestHostDB(t)
+			ui := &fakeUI{}
+			h.SetUIHooks(ui)
+			runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
+			if err := h.Remember("deploy by hand"); err != nil {
+				t.Fatal(err)
 			}
-			return toolCallParts("c1", "weather", `{}`)
-		}}, nil
-	}
-	def, err := h.agentDef("general")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := h.runSubagent(context.Background(), def, "d", "look"); err != nil {
-		t.Fatal(err)
-	}
-	if len(ui.asked) != 1 || !strings.HasPrefix(ui.asked[0].Reason, "agent general: ") {
-		t.Fatalf("asked: %+v", ui.asked)
+			args := `{"text": "", "replaces": "` + projectMemories(t, h)[0].ID + `"}`
+			h.modelFn = func() (fantasy.LanguageModel, error) {
+				return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
+					if toolResult {
+						return textParts("done")
+					}
+					return toolCallParts("c1", tc.tool, args)
+				}}, nil
+			}
+			def, err := h.agentDef("general")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := h.runSubagent(context.Background(), def, "d", "look"); err != nil {
+				t.Fatal(err)
+			}
+			if len(ui.asked) != 1 || !strings.HasPrefix(ui.asked[0].Reason, "agent general: ") {
+				t.Fatalf("asked: %+v", ui.asked)
+			}
+		})
 	}
 }
 
