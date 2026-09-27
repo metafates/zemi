@@ -150,6 +150,17 @@ test("drivers reach only what the plugin registered", function()
   end
 end)
 
+test("a reply field no call reads is refused", function()
+  for _, c in ipairs({
+    { "lua.http.get", { bdy = "x" }, "bdy is not a field of a http reply, which takes body, headers, status" },
+    { "lua.job.start", { code = "1" }, "code must be a number, not a string" },
+    { "lua.agent.send", { text = "x" }, "text is not a field of a send reply, which takes no fields" },
+  }) do
+    local ok, err = pcall(test.stub, c[1], "*", c[2])
+    assert(not ok and err:find(c[3], 1, true), err)
+  end
+end)
+
 test("eq compares functions by identity and follows cycles", function()
   assert(not pcall(test.eq, { a = 1, f = print }, { a = 1, f = tostring }))
   local a, b = {}, {}

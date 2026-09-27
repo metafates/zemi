@@ -958,10 +958,46 @@ func (t *PluginTest) stub(L *glua.LState) int {
 	default:
 		L.RaiseError("test.stub: reply is its result fields, a function returning them, or false to refuse")
 	}
+	if msg := checkReply(kind, reply); msg != "" {
+		L.RaiseError("test.stub: %s", msg)
+	}
 	s := &testStub{subject: subject, pattern: pattern, reply: reply, requests: L.NewTable()}
 	t.stubs = append(t.stubs, s)
 	L.Push(s.requests)
 	return 1
+}
+
+// stubFields are the fields a reply to each kind of call takes, and their
+// types: the rest would be dropped without a word, so a typo passes.
+var stubFields = map[string]map[string]glua.LValueType{
+	"http":  {"status": glua.LTNumber, "body": glua.LTString, "headers": glua.LTTable},
+	"job":   {"code": glua.LTNumber, "stdout": glua.LTString, "stderr": glua.LTString},
+	"model": {"text": glua.LTString, "error": glua.LTString},
+	"send":  {},
+	"write": {},
+}
+
+// checkReply is why a reply table cannot answer a call of kind, or "".
+func checkReply(kind string, reply glua.LValue) string {
+	tb, ok := reply.(*glua.LTable)
+	if !ok {
+		return ""
+	}
+	fields := stubFields[kind]
+	for _, k := range sortedKeys(tb) {
+		want, ok := fields[k.String()]
+		if _, str := k.(glua.LString); !str || !ok {
+			takes := "no fields"
+			if len(fields) > 0 {
+				takes = strings.Join(slices.Sorted(maps.Keys(fields)), ", ")
+			}
+			return fmt.Sprintf("%s is not a field of a %s reply, which takes %s", k, kind, takes)
+		}
+		if got := tb.RawGet(k).Type(); got != want {
+			return fmt.Sprintf("%s must be a %s, not a %s", k, want, got)
+		}
+	}
+	return ""
 }
 
 // reply is the reply of the newest stub matching a gated call, with the
@@ -989,6 +1025,10 @@ func (t *PluginTest) reply(L *glua.LState, subject, arg string, req map[string]a
 		}
 		if reply == glua.LFalse {
 			return nil, true
+		}
+		if msg := checkReply(kind, reply); msg != "" {
+			t.note("test.stub reply: " + msg)
+			L.RaiseError("test.stub reply: %s", msg)
 		}
 		s.requests.Append(reqTb)
 		out := map[string]any{}

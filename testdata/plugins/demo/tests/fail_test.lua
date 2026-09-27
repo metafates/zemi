@@ -35,3 +35,10 @@ test("a case that never settles", function()
   again()
   test.advance(1)
 end)
+
+test("a reply function with a misspelled field", function()
+  test.stub("lua.http.get", "https://wttr.in/*", function()
+    return { bdy = "{}" }
+  end)
+  test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C, Sunny")
+end)

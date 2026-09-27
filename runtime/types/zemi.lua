@@ -2354,7 +2354,11 @@ function zemi.project.root() end
 --- job, HTTP request, model ask, agent send or `zemi.fs` write raises
 --- unless a stub answers it: http `{ status = 200, body = "", headers = {} }`,
 --- job `{ code = 0, stdout = "", stderr = "" }` (stdout reaches `on_stdout`),
---- model a string or `{ error = "..." }`; a stubbed write writes.
+--- model a string, `{ text }` or `{ error = "..." }`, send and write none;
+--- a field a reply does not take, or of another type, raises. A stubbed
+--- write writes. The requests a stub returns are http `{ method, url,
+--- headers, body }`, job `{ cmd, args, cwd }`, model `{ model, prompt,
+--- system }`, send `{ text }` and write `{ path }`.
 ---@class zemi.test
 ---@overload fun(name: string, fn: fun()) Declare a case, at the top level.
 ---@field eq fun(got: any, want: any) Compare deeply, functions by identity; raises naming the first difference.
