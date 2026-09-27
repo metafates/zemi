@@ -425,7 +425,8 @@ one list drives the sandbox, the re-ask and auto's read check; a plain read may 
 scratchpad, zemi's config tree and the local plugins, but `cd` may not enter them). Readers keep their
 `refusedFlags` and script checks, and `perm.ArgUse` says how an argument is used: a search
 pattern is no path, and a recursive search settles only over a tree with no secret-shaped file
-in it. Nothing may point into `.git`, since `.git/config` may hold tokens.
+in it and, unless it skips hidden entries like a plain `rg`, no `.git` directory (`grep -r`
+reads one). Nothing may point into `.git`, since `.git/config` may hold tokens.
 
 Every rule lives in memory: `zemi.permission.rule.add` in config adds it again on each boot,
 and an "always" answer lasts until zemi exits. There is no rule file and zemi makes no git

@@ -1800,7 +1800,8 @@ provenance string.
   writes and every command but `perm.Normalized.ReadCommand` (an allowlist of
   programs that only read, named without a path, with per-program flag
   and script checks, arguments inside the project and not secret-shaped,
-  recursive searches only over trees with no secret-shaped file; no build
+  recursive searches only over trees with no secret-shaped file and, unless
+  the searcher skips hidden entries, no `.git` directory; no build
   tool and no git, which runs programs `.git/config` names) go to the user.
   With no sandbox backend a trusted project also settles only
   `ReadCommand` commands, which run unconfined, and

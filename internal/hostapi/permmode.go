@@ -622,7 +622,8 @@ func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
 
 // noSecretsUnder reports whether a recursive search of p could print no
 // secret-shaped file: p exists, and if it is a directory, nothing under it
-// (.git aside) is secret-shaped or a symlink to a directory, a secret or
+// is secret-shaped, a .git directory (grep -r and rg --hidden read its
+// config, which may hold tokens) or a symlink to a directory, a secret or
 // out of roots. With skipIgnored, hidden entries and those git ignores are
 // left out, as rg leaves them out.
 // NOTE: gives up past 10000 entries, so a search over a big tree asks;
@@ -666,10 +667,8 @@ func (h *Host) noSecretsUnder(p string, roots []string, skipIgnored bool) bool {
 		switch {
 		case err != nil:
 			return err
-		case n > 10000 || perm.PathIsSecret(path):
+		case n > 10000 || perm.PathIsSecret(path) || d.IsDir() && strings.EqualFold(d.Name(), ".git"):
 			return unsafe
-		case d.IsDir() && d.Name() == ".git":
-			return filepath.SkipDir
 		case d.Type()&fs.ModeSymlink != 0:
 			if st, err := os.Stat(path); err != nil || st.IsDir() || !h.inJail(path, roots...) || h.secretPath(path) {
 				return unsafe

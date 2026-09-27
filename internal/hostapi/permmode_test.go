@@ -287,6 +287,10 @@ func TestAutoModeReadCommands(t *testing.T) {
 		t.Skip("needs git:", err)
 	}
 	h.git(root, "config", "core.ignorecase", "true")
+	// a repository with no secret-shaped file: its .git/config may still hold a token
+	os.MkdirAll(filepath.Join(root, "nest"), 0o700)
+	os.WriteFile(filepath.Join(root, "nest", "a.txt"), nil, 0o600)
+	h.git(filepath.Join(root, "nest"), "init", "-q")
 	for _, c := range []struct {
 		cmd  string
 		want bool
@@ -327,6 +331,10 @@ func TestAutoModeReadCommands(t *testing.T) {
 		{"rg -g x KEY app", false},
 		{"grep -r KEY app", false},
 		{"ag KEY app", false},
+		{"rg TOKEN nest", true},
+		{"grep -rn TOKEN nest", false},
+		{"rg --hidden TOKEN nest", false},
+		{"diff -r nest nest", false},
 	} {
 		if got := h.autoLocal(tools.Request{Subject: "tool.bash", Arg: c.cmd}); got != c.want {
 			t.Errorf("%s: got %v, want %v", c.cmd, got, c.want)
