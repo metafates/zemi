@@ -195,7 +195,7 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 	for _, name := range []string{"dofile", "loadfile", "module", "require", "_printregs", "xpcall", "newproxy"} {
 		L.SetGlobal(name, glua.LNil)
 	}
-	lua.CapStringRep(L)
+	lua.FixStringLib(L)
 	run := &wfRun{h: h, ctx: ctx, L: L, tasks: map[*glua.LState]*wfTask{}, done: make(chan wfDone, workflowMaxAgents), progress: progress}
 	run.install(args)
 

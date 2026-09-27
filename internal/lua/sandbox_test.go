@@ -433,6 +433,24 @@ func TestSandboxLoadReaderSizeCap(t *testing.T) {
 	`)
 }
 
+func TestSandboxStringFormat(t *testing.T) {
+	sb := newTestSandbox(t)
+	mustRun(t, sb, `
+		for _, c in ipairs({
+			{ { "%d|%5.1f|%x|%u", "12", "2.5", 255, 7 }, "12|  2.5|ff|7" },
+			{ { "100%% %s %d", nil, 5, 6 }, "100% nil 5" },
+			{ { "%%%02X", 32 }, "%20" },
+			{ { "%s (%d saved)", "x" }, "bad argument #3 to format (no value)" },
+			{ { "%d", "main" }, "bad argument #2 to format (number expected, got string)" },
+			{ { "%y", 1 }, "invalid option '%y' to 'format'" },
+			{ { "50%" }, "invalid option '%' to 'format'" },
+		}) do
+			local ok, got = pcall(function() return string.format(unpack(c[1], 1, table.maxn(c[1]))) end)
+			assert(got == c[2] or not ok and got:find(c[2], 1, true), c[1][1] .. ": " .. tostring(got))
+		end
+	`)
+}
+
 func TestSandboxLoadRefusesBytecode(t *testing.T) {
 	sb := newTestSandbox(t)
 	mustRun(t, sb, `

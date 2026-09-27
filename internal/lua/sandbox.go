@@ -142,7 +142,7 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 	// __index pointing at itself, so ("").__index would hand out the real
 	// table; strings get a locked metatable over the frozen proxy below.
 	global.RawGetString("string").(*glua.LTable).RawSetString("__index", glua.LNil)
-	CapStringRep(L)
+	FixStringLib(L)
 
 	// A thread keeps the context it was created under: unless resume rebinds
 	// it, a coroutine made in one request raises "context canceled" in a
@@ -332,12 +332,14 @@ func (s *Sandbox) makeOsTable() *glua.LTable {
 	return osTab
 }
 
-// CapStringRep caps string.rep results at MaxStringBytes: an out-of-memory
+// FixStringLib caps string.rep results at MaxStringBytes: an out-of-memory
 // kills the whole process, and string.rep reaches one in a single call.
 // NOTE: .. in a loop, gsub and table.concat still grow strings uncapped;
 // gopher-lua has no allocation hook to cap them all.
-func CapStringRep(L *glua.LState) {
-	L.GetGlobal(glua.StringLibName).(*glua.LTable).RawSetString("rep", L.NewFunction(func(L *glua.LState) int {
+// It also gives string.format Lua 5.1's argument checks (checkFormat).
+func FixStringLib(L *glua.LState) {
+	lib := L.GetGlobal(glua.StringLibName).(*glua.LTable)
+	lib.RawSetString("rep", L.NewFunction(func(L *glua.LState) int {
 		s, n := L.CheckString(1), L.CheckInt(2)
 		if n > 0 && len(s) > 0 && n > MaxStringBytes/len(s) {
 			L.RaiseError("string.rep: result exceeds the %d byte cap", MaxStringBytes)
@@ -345,6 +347,54 @@ func CapStringRep(L *glua.LState) {
 		L.Push(glua.LString(strings.Repeat(s, max(n, 0))))
 		return 1
 	}))
+	format := lib.RawGetString("format")
+	lib.RawSetString("format", L.NewFunction(func(L *glua.LState) int {
+		f, args := checkFormat(L)
+		L.Push(format)
+		L.Push(glua.LString(f))
+		for _, a := range args {
+			L.Push(a)
+		}
+		L.Call(len(args)+1, 1)
+		return 1
+	}))
+}
+
+// checkFormat raises where Lua 5.1's string.format does (an unknown option,
+// a missing argument, a non-number under a numeric option) and returns the
+// format and arguments gopher-lua's may print: it hands them to Go's fmt,
+// which writes "%!d(MISSING)", 0 for a word under %d and a numeric string's
+// bytes in hex under %x.
+func checkFormat(L *glua.LState) (string, []glua.LValue) {
+	f := []byte(L.CheckString(1))
+	var args []glua.LValue
+	for i := 0; i < len(f); i++ {
+		if f[i] != '%' {
+			continue
+		}
+		if i++; i < len(f) && f[i] == '%' {
+			continue
+		}
+		for i < len(f) && strings.IndexByte("-+ #0123456789.", f[i]) >= 0 {
+			i++
+		}
+		if i == len(f) || strings.IndexByte("cdiouxXeEfgGsq", f[i]) < 0 {
+			L.RaiseError("invalid option '%%%s' to 'format'", f[i:min(i+1, len(f))])
+		}
+		n := len(args) + 2
+		switch {
+		case n > L.GetTop():
+			L.ArgError(n, "no value")
+		case f[i] == 's' || f[i] == 'q':
+			args = append(args, L.Get(n))
+		default:
+			args = append(args, L.CheckNumber(n))
+		}
+		if f[i] == 'u' { // Go's fmt has no %u
+			f[i] = 'd'
+		}
+	}
+	return string(f), args
 }
 
 func tableInt(tb *glua.LTable, name string, def int) int {
