@@ -38,9 +38,24 @@ type Runtime struct {
 	cur       atomic.Pointer[Generation]
 	seq       atomic.Int64
 
-	printHook func(origin, line string)
-	reloadMu  sync.Mutex
+	printHook  func(origin, line string)
+	reloadMu   sync.Mutex
+	clock      Clock
+	wholeTasks bool
 }
+
+// Clock is the time Lua sees: os.time, os.date and os.clock read it, and
+// the host runs zemi.timer on it. zemi plugins test gives its zemi a fake one.
+type Clock interface {
+	Now() time.Time
+	AfterFunc(d time.Duration, f func()) (stop func() bool)
+}
+
+type wallClock struct{}
+
+func (wallClock) Now() time.Time { return time.Now() }
+
+func (wallClock) AfterFunc(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop }
 
 // frame is one entry of the origin stack: the origin and the file path of
 // the chunk currently running on the interpreter goroutine.
@@ -54,19 +69,28 @@ type RuntimeOptions struct {
 	Log       *logging.Logger
 	PathClass PathClasses
 	RuntimeFS fs.FS // embedded FS rooted at runtime/ (containing lua/...)
+	Clock     Clock // nil is the wall clock
+	// WholeTasks makes StartTask wait for the whole task, as RunTask does:
+	// a test zemi drives one thing at a time and reads what it left.
+	WholeTasks bool
 }
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
 	r := &Runtime{
-		log:   opts.Log,
-		paths: opts.PathClass,
-		rfs:   opts.RuntimeFS,
+		log:        opts.Log,
+		paths:      opts.PathClass,
+		rfs:        opts.RuntimeFS,
+		clock:      cmp.Or[Clock](opts.Clock, wallClock{}),
+		wholeTasks: opts.WholeTasks,
 	}
 	if r.log == nil {
 		r.log = logging.New("")
 	}
 	return r
 }
+
+// Clock is the clock Lua reads.
+func (r *Runtime) Clock() Clock { return r.clock }
 
 // SetPrintHook routes Lua print() to the host (origin-tagged).
 func (r *Runtime) SetPrintHook(fn func(origin, line string)) {
@@ -202,14 +226,7 @@ func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func(
 	defer r.reloadMu.Unlock()
 	r.reloading.Store(true)
 	defer r.reloading.Store(false)
-	if old := r.current(); old != nil {
-		old.drain(ErrReloaded)
-		close(old.stop)
-		r.hotMu.Lock()
-		r.cur.Store(nil)
-		r.hotMu.Unlock()
-		r.log.Info("lua", "generation retired for reload", map[string]any{"gen": old.ID})
-	}
+	r.retire()
 	if purge != nil {
 		purge()
 	}
@@ -222,11 +239,32 @@ func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func(
 	return nil
 }
 
+// Close retires the live generation: its queued and running requests end,
+// its tasks' waits end and its dispatcher stops, so it holds nothing.
+func (r *Runtime) Close() {
+	r.reloadMu.Lock()
+	defer r.reloadMu.Unlock()
+	r.retire()
+}
+
+func (r *Runtime) retire() {
+	old := r.current()
+	if old == nil {
+		return
+	}
+	old.drain(ErrReloaded)
+	close(old.stop)
+	r.hotMu.Lock()
+	r.cur.Store(nil)
+	r.hotMu.Unlock()
+	r.log.Info("lua", "generation retired", map[string]any{"gen": old.ID})
+}
+
 func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, error) {
 	r.booting.Store(true)
 	defer r.booting.Store(false)
 	var gen *Generation
-	sb, err := NewSandbox(r.CurrentOrigin)
+	sb, err := NewSandbox(r.CurrentOrigin, r.clock.Now)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +297,7 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 
 	for _, step := range steps {
 		if err := step.Run(ctx, r, gen); err != nil {
-			err = fmt.Errorf("boot step %s: %w", step.Name, err)
+			err = &StepError{step.Name, err}
 			// no dispatcher will run this generation, so its requests,
 			// queued and future, must fail fast until a reload succeeds
 			r.goHot(gen, err)
@@ -758,6 +796,16 @@ type BootStep struct {
 	Name string
 	Run  func(ctx context.Context, r *Runtime, g *Generation) error
 }
+
+// StepError is the error of the boot step that stopped a boot.
+type StepError struct {
+	Step string
+	Err  error
+}
+
+func (e *StepError) Error() string { return "boot step " + e.Step + ": " + e.Err.Error() }
+
+func (e *StepError) Unwrap() error { return e.Err }
 
 // LoadFileStep loads a Lua file from disk as the given origin; a missing
 // file is skipped.

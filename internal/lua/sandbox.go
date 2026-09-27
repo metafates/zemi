@@ -18,6 +18,7 @@ type Sandbox struct {
 	protected map[string]struct{}
 	integrity []namespaceCheck
 	originOf  func(*glua.LState) Origin
+	now       func() time.Time
 	start     time.Time
 	guard     Guard
 }
@@ -76,8 +77,12 @@ type namespaceCheck struct {
 }
 
 // NewSandbox creates a state with the §5 sandbox applied. zemi.*
-// namespaces are registered afterwards, before any chunk runs.
-func NewSandbox(originOf func(*glua.LState) Origin) (*Sandbox, error) {
+// namespaces are registered afterwards, before any chunk runs. now is the
+// os library's clock; nil is the wall clock.
+func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sandbox, error) {
+	if now == nil {
+		now = time.Now
+	}
 	L := glua.NewState(glua.Options{
 		SkipOpenLibs:  true,
 		CallStackSize: 512,
@@ -124,7 +129,8 @@ func NewSandbox(originOf func(*glua.LState) Origin) (*Sandbox, error) {
 		L:         L,
 		protected: map[string]struct{}{},
 		originOf:  originOf,
-		start:     time.Now(),
+		now:       now,
+		start:     now(),
 	}
 
 	global.RawSetString("os", s.makeOsTable())
@@ -300,12 +306,12 @@ func (s *Sandbox) makeOsTable() *glua.LTable {
 	osTab := L.NewTable()
 	L.SetFuncs(osTab, map[string]glua.LGFunction{
 		"clock": func(L *glua.LState) int {
-			L.Push(glua.LNumber(time.Since(s.start).Seconds()))
+			L.Push(glua.LNumber(s.now().Sub(s.start).Seconds()))
 			return 1
 		},
 		"time": func(L *glua.LState) int {
 			if L.GetTop() == 0 {
-				L.Push(glua.LNumber(time.Now().Unix()))
+				L.Push(glua.LNumber(s.now().Unix()))
 				return 1
 			}
 			tb := L.CheckTable(1)
@@ -318,10 +324,10 @@ func (s *Sandbox) makeOsTable() *glua.LTable {
 			if day < 0 || mon < 0 || year < 0 {
 				L.RaiseError("os.time: incomplete date table")
 			}
-			L.Push(glua.LNumber(time.Date(year, time.Month(mon), day, hh, mm, sec, 0, time.Local).Unix()))
+			L.Push(glua.LNumber(time.Date(year, time.Month(mon), day, hh, mm, sec, 0, s.now().Location()).Unix()))
 			return 1
 		},
-		"date": luaDate,
+		"date": s.date,
 	})
 	return osTab
 }
@@ -348,13 +354,14 @@ func tableInt(tb *glua.LTable, name string, def int) int {
 	return def
 }
 
-// luaDate implements the subset of os.date zemi needs: %c, %x, %X and the
-// individual specifiers, with optional Unix time argument.
-func luaDate(L *glua.LState) int {
+// date implements the subset of os.date zemi needs: %c, %x, %X and the
+// individual specifiers, with optional Unix time argument, in the clock's
+// zone.
+func (s *Sandbox) date(L *glua.LState) int {
 	format := L.OptString(1, "%c")
-	t := time.Now()
+	t := s.now()
 	if L.Get(2) != glua.LNil {
-		t = time.Unix(L.CheckInt64(2), 0)
+		t = time.Unix(L.CheckInt64(2), 0).In(t.Location())
 	}
 	format, utc := strings.CutPrefix(format, "!")
 	if utc {

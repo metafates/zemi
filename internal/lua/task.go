@@ -55,8 +55,13 @@ func (r *Runtime) RunTask(ctx context.Context, t Task) ([]any, error) {
 
 // StartTask runs t's first slice and returns its error. A task that
 // suspends goes on off the caller's goroutine, and end gets how it ended,
-// so the caller's next request runs before the rest of this one.
+// so the caller's next request runs before the rest of this one; with
+// WholeTasks it is RunTask.
 func (r *Runtime) StartTask(ctx context.Context, t Task, end func(error)) error {
+	if r.wholeTasks {
+		_, err := r.RunTask(ctx, t)
+		return err
+	}
 	tr := &taskRun{Task: t}
 	if _, err := r.slice(ctx, tr); err != nil || tr.wait == nil {
 		return err
@@ -214,9 +219,9 @@ func InGoCall(L *glua.LState) bool {
 // L's stack and current thread put back so L stays usable.
 func Resume(L, th *glua.LState, fn *glua.LFunction, args ...glua.LValue) (st glua.ResumeState, vals []glua.LValue, err error) {
 	if fn == nil {
-		// a Suspending wrapper reads two results off the registers the
+		// a Suspending wrapper reads three results off the registers the
 		// resume values land in; fewer would leave a stale one there
-		for len(args) < 2 {
+		for len(args) < 3 {
 			args = append(args, glua.LNil)
 		}
 	}
@@ -263,7 +268,7 @@ func traceback(th *glua.LState) string {
 }
 
 var suspendingProto = func() *glua.FunctionProto {
-	chunk, err := parse.Parse(strings.NewReader(`local f = ... return function(...) local a, b = f(...) return a, b end`), "wait")
+	chunk, err := parse.Parse(strings.NewReader(`local f = ... return function(...) local a, b, e = f(...) if e ~= nil then error(e, 0) end return a, b end`), "wait")
 	if err != nil {
 		panic(err)
 	}
@@ -277,7 +282,8 @@ var suspendingProto = func() *glua.FunctionProto {
 // Suspending wraps fn, a Go function that may call Suspend, in a Lua
 // function: gopher-lua drops the resume values of a Go function reached by
 // a tail call (`return h:wait()`), and the wrapper calls it in non-tail
-// position. GuardFuncs guards the fn inside.
+// position. A third value the waiter hands back is raised at the call, as
+// is. GuardFuncs guards the fn inside.
 func Suspending(L *glua.LState, fn *glua.LFunction) *glua.LFunction {
 	L.Push(L.NewFunctionFromProto(suspendingProto))
 	L.Push(fn)

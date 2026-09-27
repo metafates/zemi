@@ -10,7 +10,7 @@ import (
 
 func newTestSandbox(t *testing.T) *Sandbox {
 	t.Helper()
-	sb, err := NewSandbox(nil)
+	sb, err := NewSandbox(nil, nil)
 	if err != nil {
 		t.Fatalf("NewSandbox: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestSandboxFrozenTables(t *testing.T) {
 // swaps nothing in.
 func TestSandboxSetmetatable(t *testing.T) {
 	origin := OriginPlugin
-	sb, err := NewSandbox(func(*glua.LState) Origin { return origin })
+	sb, err := NewSandbox(func(*glua.LState) Origin { return origin }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +447,7 @@ func TestSandboxLoadRefusesBytecode(t *testing.T) {
 // surface the size of the real one: it decides whether the check can run
 // on every request or only when the request class changes (DESIGN §4).
 func BenchmarkCheckIntegrity(b *testing.B) {
-	sb, err := NewSandbox(nil)
+	sb, err := NewSandbox(nil, nil)
 	if err != nil {
 		b.Fatal(err)
 	}
