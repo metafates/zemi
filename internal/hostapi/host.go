@@ -106,7 +106,7 @@ type Overlay struct {
 	// Body is text above the items; with no items the overlay is a
 	// read-only view. Empty is the line shown when there are no items and
 	// no body. Selected is the item selected when it opens. Verb names what
-	// enter does to a row, when "confirm" does not say it.
+	// enter does to a row, when the list's default word does not say it.
 	Body     string
 	BodyMD   bool        // render Body (and every detail view's) as markdown
 	Fields   bool        // set the "key: value" lines a plain Body (and every detail view) opens with as a table

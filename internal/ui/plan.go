@@ -99,10 +99,10 @@ func (a *App) planKey(key, text string) {
 func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	inner := boxInner(w)
 	act := choiceRows([]promptChoice{{key: "a", label: "Approve"}, {key: "e", label: "Request changes"}}, p.sel, inner, true)
-	hints := []hintPair{{"enter", "confirm"}, {"esc", "dismiss"}}
+	hints := []hintPair{pickHint, {"esc", "dismiss"}}
 	if p.typing {
 		act = [][]hostapi.Segment{{{Text: "What should change?", HL: "Host:Hint"}}, p.input.inputRow(inner)}
-		hints = []hintPair{{"enter", "send changes"}, {"esc", "back"}}
+		hints = []hintPair{submitHint, {"esc", "back"}}
 	}
 	// a text view is 72 cells
 	p.size.w = max(p.size.w, 72)

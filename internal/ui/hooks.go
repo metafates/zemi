@@ -164,7 +164,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		{key: "l", label: "Later", desc: laterDesc},
 	}
 	act := func(compact bool) [][]hostapi.Segment { return choiceRows(choices, tp.sel, width, compact) }
-	body := scrollChoiceBody(h, width, &tp.view, explain, width, act, hintPair{"enter", "confirm"}, hintPair{"esc", "later"})
+	body := scrollChoiceBody(h, width, &tp.view, explain, width, act, pickHint, hintPair{"esc", "later"})
 	return promptBox("Trust this "+what+"?", "", body, w, h, 100, &tp.size)
 }
 

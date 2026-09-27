@@ -342,7 +342,7 @@ prompt shows the root `~`-shortened, what trusting loads and runs
 (scrolling on a short screen), and three buttons with the cursor on the last: `y`
 saves trusted, `n` saves untrusted, `l` (Later), `esc`, `ctrl+c` or an enter typed by
 habit means untrusted until the next start (a reload does not ask again); up and down
-move the cursor, enter confirms it, a click answers a row. `--trust` or `--trust=false`
+move the cursor, enter picks it, a click answers a row. `--trust` or `--trust=false`
 decides one run without saving; a headless run with nothing saved is
 untrusted and says so on stderr. The home directory and `/` are never
 asked about or saved (their prompt says it applies to this run only).
@@ -1489,7 +1489,10 @@ provenance string.
   Enter's hint names its act in one word shared by every list: `open` a
   detail or another screen, `pick` a value (a picker, `zemi.ui.select`, the
   `@` popup), `run` a command (the palette, `/help`), `toggle` a toggle
-  list's row, `fill` the composer, `copy`. A row names its own (`verb`)
+  list's row, `fill` the composer, `copy`; a prompt's footer says `pick`
+  for its buttons, whichever is highlighted, and `submit` for typed text
+  (`zemi.ui.input`, a typed answer, a multi-select's picks, a plan's
+  changes). A row names its own (`verb`)
   where the list's default would say another: "open" on a row that runs a
   command opening a screen, "run" on `/model`'s "Update the model catalog".
   Space, which toggles a toggle list's rows outside an open filter (in one
@@ -1652,7 +1655,7 @@ provenance string.
   for a trusted project's safe bash command, a `for this project` choice
   `p`), `No` (`n` or `esc`), and `No, and tell zemi what to do instead`
   (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
-  down move, enter answers the highlighted one. Every Go-owned prompt
+  down move, enter picks the highlighted one. Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
   last, a yes/no one's `y` and `n`, an open memory, an overlay's detail view; a multi-select stays a list of
   switches) draws its buttons through one renderer, which puts

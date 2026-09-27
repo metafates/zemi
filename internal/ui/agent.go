@@ -734,7 +734,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	for _, c := range choices {
 		btns = append(btns, promptChoice{key: c.key, label: c.label})
 	}
-	hints := []hintPair{{"enter", "answer"}, {"esc", "deny"}} // one verb for every button: a changing one shifts the row
+	hints := []hintPair{pickHint, {"esc", "deny"}}
 	placeholder := oneRow
 	if len(content) == 0 {
 		placeholder = nil
@@ -878,6 +878,10 @@ func permNote(reason string) string {
 // hintPair is one key of a footer hint and the verb it does.
 type hintPair struct{ key, verb string }
 
+// enter's hint in every prompt, in the lists' words (enterVerb): one verb
+// for every button, since a changing one shifts the row, and one for text.
+var pickHint, submitHint = hintPair{"enter", "pick"}, hintPair{"enter", "submit"}
+
 // hintSlot is where a pair sits in a footer: moving, enter, space, letter
 // keys, scrolling, copy, then esc.
 func hintSlot(p hintPair) int {
@@ -898,7 +902,7 @@ func hintSlot(p hintPair) int {
 	return 3
 }
 
-// hint is the one footer row every box draws: "enter confirm · esc deny",
+// hint is the one footer row every box draws: "enter pick · esc deny",
 // the pairs in slot order. Past w cells the middle pairs give way, the last
 // first; enter and esc never do.
 func hint(w int, pairs ...hintPair) []hostapi.Segment {

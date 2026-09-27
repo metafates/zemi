@@ -505,7 +505,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	}
 	inner := boxInner(w)
 	if st.o.Input {
-		body := [][]hostapi.Segment{st.input.inputRow(inner), nil, hint(inner, hintPair{"enter", "confirm"}, hintPair{"esc", "close"})}
+		body := [][]hostapi.Segment{st.input.inputRow(inner), nil, hint(inner, submitHint, hintPair{"esc", "close"})}
 		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
 	// a list fits its content, 56 cells at least, a text view is 72, and a
@@ -565,8 +565,8 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			}
 			st.view.viewH = limit
 			list = choiceView(choices, st.selected, &st.view, inner, level > 1)
-			if len(st.visible) > 0 { // one verb for every button: a changing one shifts the row
-				hints = append(hints, hintPair{"enter", "confirm"})
+			if len(st.visible) > 0 {
+				hints = append(hints, pickHint)
 			}
 		case len(st.visible) > 0:
 			if key := (listKey{st.query, st.selected, st.view.top, limit, st.size.w, inner}); st.rows == nil || key != st.rowsKey {
