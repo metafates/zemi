@@ -65,7 +65,7 @@ for i = 1, 300 do test("case " .. i, function() end) end
 		plugin map[string]string // a plugin to write; a value "-> x" is a link to x; none runs demo
 		named  string            // its name, cp when empty
 		args   []string          // <plugin> stands for its dir
-		limit  uint64            // RLIMIT_NOFILE during the run
+		spare  uint64            // file descriptors the run may open past those the test process holds
 		cancel bool              // interrupted before it starts
 		code   int
 		want   string // (T) stands for the time a run took
@@ -182,7 +182,7 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 		{name: "the zemi-customize example passes", args: []string{"<plugin>"}, code: 0, plugin: example, named: "branch", want: "2 passed (1 file, (T))\n"},
 		{name: "a name the plugins step would load", args: []string{"named"}, code: 0, want: "1 passed (1 file, (T))\n"},
 		{
-			name: "300 boots under 256 open files", args: []string{"<plugin>"}, limit: 256, code: 0,
+			name: "300 boots in 256 spare file descriptors", args: []string{"<plugin>"}, spare: 256, code: 0,
 			plugin: map[string]string{"init.lua": "", "tests/a_test.lua": many}, want: "300 passed (1 file, (T))\n",
 		},
 		{name: "an interrupt leaves no temp dir", args: []string{"<plugin>", "pass_test"}, cancel: true, code: 130, want: ""},
@@ -216,13 +216,18 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 			}
 			tmp := t.TempDir()
 			t.Setenv("TMPDIR", tmp)
-			if c.limit > 0 {
+			if c.spare > 0 {
 				var was syscall.Rlimit
 				if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &was); err != nil {
 					t.Fatal(err)
 				}
 				lower := was
-				lower.Cur = c.limit
+				// other tests' hosts stay open, the more so under -count
+				open, err := os.ReadDir("/dev/fd")
+				if err != nil {
+					t.Fatal(err)
+				}
+				lower.Cur = uint64(len(open)) + c.spare
 				if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &lower); err != nil {
 					t.Fatal(err)
 				}
