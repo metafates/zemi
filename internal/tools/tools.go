@@ -304,9 +304,10 @@ type Pipeline struct {
 	RewriteLoosened bool
 
 	// Sandbox is the policy a command a permission mode settled runs under,
-	// with pad (Pad) writable; nil or a nil result = unconfined (no backend,
-	// yolo).
-	Sandbox func(pad string) *sandbox.Policy
+	// with pad (Pad) writable and the project unwritable when readOnly
+	// (Plan, which a read-only subagent sets on its copy); nil or a nil
+	// result = unconfined (no backend, yolo).
+	Sandbox func(readOnly bool, pad string) *sandbox.Policy
 	// SandboxParam gives bash and job_start the sandbox: false escape; set
 	// while a backend is live and someone can answer the ask.
 	SandboxParam bool
@@ -477,7 +478,7 @@ func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
 	if !plan && !strings.HasPrefix(v.DecidedBy, ModePrefix) && !network {
 		return nil
 	}
-	pol := p.Sandbox(p.Pad)
+	pol := p.Sandbox(plan, p.Pad)
 	if pol != nil && network {
 		pol.Network = true
 	}

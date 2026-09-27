@@ -2909,7 +2909,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
 		Plan:        func() bool { return readOnly },
-		Sandbox: func(pad string) *sandbox.Policy {
+		Sandbox: func(readOnly bool, pad string) *sandbox.Policy {
 			// read-only is absolute: a planner must not touch the project even
 			// under yolo. Otherwise yolo allows everything and runs unconfined.
 			// A policy with no backend fails every wrap, so without one the

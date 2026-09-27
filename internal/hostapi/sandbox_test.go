@@ -73,16 +73,26 @@ func TestUnsettled(t *testing.T) {
 			t.Errorf("trusted=%v live=%v readOnly=%v %q: got %v", c.trusted, c.live, c.readOnly, c.cmd, got)
 		}
 	}
-	// what a read-only agent settles it runs confined, whoever allowed it
+	// what a read-only agent settles it runs confined, whoever allowed it:
+	// the planner, and a read-only subagent (explore) the default agent
+	// started, under yolo too
 	h.SetProjectTrusted(true)
-	fakeSandbox(h, true)
-	h.SetProfile("planner")
+	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
 	req := tools.Request{Subject: "tool.bash", Arg: "rm -rf build"}
-	for _, by := range []string{"user", "rule", "mode:auto"} {
-		if pol := h.PipelineFor().SandboxFor(req, tools.Verdict{Decision: perm.Allow, DecidedBy: by}); pol == nil || slices.Contains(pol.Write, h.Dirs.ProjectDir) {
-			t.Errorf("read-only agent, allowed by %s: policy %+v", by, pol)
+	for _, mode := range []string{"auto", "yolo"} {
+		h.SetPermMode(mode)
+		for _, profile := range []string{"planner", "default"} {
+			h.SetProfile(profile)
+			pipe := h.PipelineFor()
+			pipe.Plan = func() bool { return true }
+			for _, by := range []string{"user", "rule", "mode:" + mode} {
+				if pol := pipe.SandboxFor(req, tools.Verdict{Decision: perm.Allow, DecidedBy: by}); pol == nil || slices.Contains(pol.Write, h.Dirs.ProjectDir) {
+					t.Errorf("read-only agent under %s from %s, allowed by %s: policy %+v", mode, profile, by, pol)
+				}
+			}
 		}
 	}
+	h.SetPermMode("auto")
 	// a rule an "always" answer wrote from a network ask keeps the sandbox
 	// and adds sockets when the next call comes without the flag
 	h.SetProfile("default")

@@ -72,8 +72,8 @@ func TestPlanSandbox(t *testing.T) {
 	}{{false, "auto", false}, {false, "yolo", false}, {true, "auto", true}, {true, "yolo", true}} {
 		fakeSandbox(h, c.live)
 		h.Settings.SetQuiet("permissions.mode", c.mode)
-		if got := h.PipelineFor().Sandbox("") != nil; got != c.want {
-			t.Fatalf("live=%v mode=%s: policy=%v, want %v", c.live, c.mode, got, c.want)
+		if pipe := h.PipelineFor(); (pipe.Sandbox(pipe.Plan(), "") != nil) != c.want {
+			t.Fatalf("live=%v mode=%s: policy=%v", c.live, c.mode, !c.want)
 		}
 	}
 }
