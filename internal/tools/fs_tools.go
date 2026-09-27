@@ -1139,15 +1139,16 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 // lists a symbolic link, .git or a nested repository.
 func ListFiles(ctx context.Context, root string, limit int) (files []string, walked bool, err error) {
 	out, err := proc.Git{Dir: root}.Run(ctx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-	// an index entry is the repository's word: a planted one can say "../x",
-	// and a tracked directory may since have become a symbolic link
+	// an index entry is the repository's word: a planted one can say "../x"
+	// or "sub/.git/config", and a tracked directory may since have become a
+	// symbolic link
 	realDir := map[string]bool{".": true}
 	var inRoot func(dir string) bool
 	inRoot = func(dir string) bool {
 		ok, seen := realDir[dir]
 		if !seen {
 			fi, err := os.Lstat(filepath.Join(root, dir))
-			ok = err == nil && fi.IsDir() && inRoot(filepath.Dir(dir))
+			ok = err == nil && fi.IsDir() && filepath.Base(dir) != ".git" && inRoot(filepath.Dir(dir))
 			realDir[dir] = ok
 		}
 		return ok
