@@ -780,11 +780,14 @@ func TestListDescColumn(t *testing.T) {
 			{label: "fake/m", desc: "128k", key: tagSeg("current")},
 			{label: "fake/deepseek-v4-flash-long-model-name", desc: "1M"},
 		}},
+		{"a cut after a sentence ends in the bare ellipsis", []listItem{
+			{label: "explore", desc: "read-only: finds how something works. Use it before editing"},
+		}},
 	} {
 		col := -1
 		for i, row := range listRows(c.items, 0, nil, 10, 52) {
 			text, it := plainSegs(row), c.items[i]
-			if !strings.Contains(text, it.label) || !strings.HasSuffix(text, it.key.Text) || strings.Contains(text, "·…") {
+			if !strings.Contains(text, it.label) || !strings.HasSuffix(text, it.key.Text) || strings.Contains(text, "·…") || strings.Contains(text, ".…") {
 				t.Errorf("%s: row %q", c.name, text)
 			}
 			x := 0
