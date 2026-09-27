@@ -336,7 +336,7 @@ func TestAutoModeReadCommands(t *testing.T) {
 		{"rg --hidden TOKEN nest", false},
 		{"diff -r nest nest", false},
 	} {
-		if got := h.autoLocal(tools.Request{Subject: "tool.bash", Arg: c.cmd}); got != c.want {
+		if got := h.autoLocal(tools.Request{Subject: "tool.bash", Arg: c.cmd, Pad: pad}); got != c.want {
 			t.Errorf("%s: got %v, want %v", c.cmd, got, c.want)
 		}
 	}

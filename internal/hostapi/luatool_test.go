@@ -14,6 +14,7 @@ import (
 
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestAgentSelfAccess covers what the agent reaches of zemi itself: the lua
@@ -37,7 +38,9 @@ func TestAgentSelfAccess(t *testing.T) {
 	if !strings.Contains(pad, filepath.Join("scratch", "s1")) {
 		t.Fatalf("pad = %q", pad)
 	}
-	if h.fsDefault("fs.write", filepath.Join(pad, "notes.md")) != perm.Allow || h.fsDefault("fs.write", filepath.Join(h.Dirs.ProjectDir, "x")) != perm.Ask {
+	pipe := h.PipelineFor()
+	pipe.Ask = nil
+	if pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(pad, "notes.md")}).Decision != perm.Allow || pipe.Check(tools.Request{Subject: perm.SubjectWrite, Arg: filepath.Join(h.Dirs.ProjectDir, "x")}).Decision != perm.Ask {
 		t.Fatal("writes allow in the scratchpad only")
 	}
 

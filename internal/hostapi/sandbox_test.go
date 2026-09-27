@@ -65,7 +65,7 @@ func TestUnsettled(t *testing.T) {
 	} {
 		h.SetProjectTrusted(c.trusted)
 		fakeSandbox(h, c.live)
-		if got := h.unsettled(perm.Normalize(c.cmd), c.readOnly) == ""; got != c.want {
+		if got := h.unsettled(tools.Request{Subject: perm.SubjectBash, Arg: c.cmd, ReadOnly: c.readOnly}) == ""; got != c.want {
 			t.Errorf("trusted=%v live=%v readOnly=%v %q: got %v", c.trusted, c.live, c.readOnly, c.cmd, got)
 		}
 	}
@@ -159,7 +159,7 @@ func TestSandboxedBash(t *testing.T) {
 	venv := filepath.Join(h.Dirs.ProjectDir, ".venv", "bin")
 	os.MkdirAll(venv, 0o755)
 	t.Setenv("PATH", venv+string(filepath.ListSeparator)+os.Getenv("PATH"))
-	private := filepath.Join(h.sandboxPolicy(false).Env["TMPDIR"], "made.txt")
+	private := filepath.Join(h.ScratchDir(), "made.txt")
 	for _, c := range []struct {
 		name, mode, path string
 		unsandboxed, net bool
@@ -331,7 +331,7 @@ func TestSandboxPolicy(t *testing.T) {
 				}
 				defer os.Remove(git)
 			}
-			p := h.sandboxPolicy(c.plan)
+			p := h.sandboxPolicy(c.plan, h.ScratchDir())
 			if got := slices.Contains(p.Write, h.Dirs.ProjectDir); got != c.want {
 				t.Errorf("project writable %v, want %v: %v", got, c.want, p.Write)
 			}
@@ -360,7 +360,7 @@ func TestSandboxPolicy(t *testing.T) {
 		{"relative PATH dir", "bin" + string(filepath.ListSeparator) + "/usr/bin", false, false},
 	} {
 		t.Setenv("PATH", c.path)
-		p := h.sandboxPolicy(false)
+		p := h.sandboxPolicy(false, h.ScratchDir())
 		if got := slices.Contains(p.Write, project); got != c.writable {
 			t.Errorf("%s: project writable %v: %v", c.name, got, p.Write)
 		}
@@ -379,10 +379,10 @@ func TestSandboxPolicy(t *testing.T) {
 			t.Errorf("server %s %q: %v", k, server.Env[k], err)
 		}
 	}
-	a := h.sandboxPolicy(false).Env["GOCACHE"]
+	a := h.sandboxPolicy(false, h.ScratchDir()).Env["GOCACHE"]
 	h.Dirs.ProjectDir = t.TempDir()
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot) // a host finds its root once
-	if b := h.sandboxPolicy(false).Env["GOCACHE"]; a == b {
+	if b := h.sandboxPolicy(false, h.ScratchDir()).Env["GOCACHE"]; a == b {
 		t.Errorf("two trust roots share the Go cache %q", a)
 	}
 }
@@ -397,7 +397,7 @@ func TestSandboxGuard(t *testing.T) {
 		h.Dirs.StateHome = t.TempDir()
 		h.SetProjectTrusted(true)
 		h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
-		done := h.guardSandbox(h.sandboxPolicy(false))
+		done := h.guardSandbox(h.sandboxPolicy(false, h.ScratchDir()))
 		// what `mkdir .agents && echo 'print(1)' > .agents/init.lua` leaves behind
 		agentsDir := filepath.Join(h.Dirs.ProjectDir, ".agents")
 		if err := os.MkdirAll(agentsDir, 0o755); err != nil {
@@ -420,7 +420,7 @@ func TestSandboxGuard(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
 	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
-	if note := h.guardSandbox(h.sandboxPolicy(false))(); note != "" || !h.ProjectTrusted() {
+	if note := h.guardSandbox(h.sandboxPolicy(false, h.ScratchDir()))(); note != "" || !h.ProjectTrusted() {
 		t.Errorf("nothing created: note %q trusted %v", note, h.ProjectTrusted())
 	}
 }
@@ -462,7 +462,7 @@ func TestSandboxNestedConfig(t *testing.T) {
 			if c.before != "" {
 				touch(c.before)
 			}
-			p := h.sandboxPolicy(false)
+			p := h.sandboxPolicy(false, h.ScratchDir())
 			if !slices.Contains(p.Write, h.Dirs.ProjectDir) {
 				t.Fatalf("project not writable: %v", p.Write)
 			}
@@ -487,7 +487,7 @@ func TestSandboxNestedConfig(t *testing.T) {
 	h.SetProjectTrusted(true)
 	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), nil, 0o644)
-	if p := h.sandboxPolicy(false); slices.Contains(p.Write, h.Dirs.ProjectDir) {
+	if p := h.sandboxPolicy(false, h.ScratchDir()); slices.Contains(p.Write, h.Dirs.ProjectDir) {
 		t.Errorf("a project too big to walk is writable: %v", p.Write)
 	}
 }
@@ -525,7 +525,7 @@ func TestWorktreesDir(t *testing.T) {
 		}
 	}
 	for range 2 {
-		if p := h.sandboxPolicy(false); !slices.Contains(p.Write, filepath.Dir(wt)) || !slices.Contains(p.Protect, filepath.Join(wt, ".agents")) {
+		if p := h.sandboxPolicy(false, h.ScratchDir()); !slices.Contains(p.Write, filepath.Dir(wt)) || !slices.Contains(p.Protect, filepath.Join(wt, ".agents")) {
 			t.Fatalf("write %v protect %v", p.Write, p.Protect)
 		}
 	}

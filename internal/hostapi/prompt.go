@@ -158,7 +158,7 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string
 	if def := h.permModeDef(); def.Prompt != "" {
 		sys += "\n\n# Permission mode: " + def.Name + "\n" + def.Prompt
 	}
-	return h.systemFor(sys, files, toolset)
+	return h.systemFor(sys, files, toolset, h.ScratchDir())
 }
 
 // planPrompt joins the system prompt for a read-only agent (Profile.ReadOnly);
@@ -179,17 +179,18 @@ End every turn with the question or plan tool, never plain text; after answering
 const planHeadless = `
 2. Write the plan as your reply and stop: nothing in this run can approve it.`
 
-// systemWith appends the instruction files, the skills index and the
-// session digest to a base prompt.
-func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool) string {
-	out, _ := h.systemFor(sys, nil, toolset)
+// systemWith appends the instruction files, the skills index, the
+// environment with the run's scratchpad pad and the session digest to a
+// base prompt.
+func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool, pad string) string {
+	out, _ := h.systemFor(sys, nil, toolset, pad)
 	return out
 }
 
 // systemFor is systemWith with the section sizes it assembled. files names
 // explicit project files (a profile's context.files); nil means
 // instructionFiles.
-func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool) (string, promptParts) {
+func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool, pad string) (string, promptParts) {
 	// a profile's files are repository content too
 	var tracked []string
 	if len(files) == 0 || !h.ProjectTrusted() {
@@ -222,7 +223,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	if sections != "" {
 		sections = "\n\n# Project instructions\nFrom the user and the repository, already loaded: do not read them again. They override the default rules above; a deeper directory's file wins over a shallower one, and the user's messages win over every file." + sections
 	}
-	env, luaSections, index := h.environmentFor(toolset), h.assembleSections()+h.toolSections(toolset), ""
+	env, luaSections, index := h.environmentFor(toolset, pad), h.assembleSections()+h.toolSections(toolset), ""
 	if hasTool(toolset, tools.ToolSkill) {
 		index = h.skillsIndexPrompt()
 	}
@@ -444,15 +445,19 @@ const (
 	recipesUse   = "A procedure for this repository that took you many steps to find goes in <name>/SKILL.md there: yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. The skill tool loads it at once. Fix a stale step in place and date the fix. Never write a secret there; name the env var that holds it.\n"
 )
 
-// environmentFor is the pinned environment with the clauses toolset can use.
-func (h *Host) environmentFor(toolset []fantasy.AgentTool) string {
+// environmentFor is the pinned environment with the clauses toolset can use
+// and pad, the run's scratchpad.
+func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string) string {
 	writes := hasTool(toolset, tools.ToolWrite) || hasTool(toolset, tools.ToolEdit)
 	scratch, recipes := "", ""
-	switch {
-	case hasTool(toolset, tools.ToolBash):
-		scratch = scratchUse
-	case writes:
-		scratch = scratchWrite
+	if pad != "" {
+		scratch = "Scratchpad: " + pad + "\n"
+		switch {
+		case hasTool(toolset, tools.ToolBash):
+			scratch += scratchUse
+		case writes:
+			scratch += scratchWrite
+		}
 	}
 	if writes {
 		recipes = recipesUse
@@ -473,9 +478,10 @@ func (h *Host) environmentPrompt() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n\n# Environment\nWorking directory: %s\nPlatform: %s/%s\nDate at session start: %s\n", h.Dirs.ProjectDir, runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"))
-	if dir := h.ensureScratch(); dir != "" {
-		fmt.Fprintf(&b, "Scratchpad: %s\n{Scratch}", dir)
-	}
+	// the run's own pad goes in {Scratch}: a subagent's may be another
+	// session's
+	h.ensureScratch()
+	b.WriteString("{Scratch}")
 	if dir := h.recipesDir(); dir != "" && h.ProjectTrusted() {
 		fmt.Fprintf(&b, "Recipes: %s\n{Recipes}", dir)
 	}

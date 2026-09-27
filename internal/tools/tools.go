@@ -83,6 +83,9 @@ type Request struct {
 	// ReadOnly marks a read-only agent's request (Pipeline.Plan), whose
 	// command runs confined whoever allows it; set by the pipeline
 	ReadOnly bool
+	// Pad is the checking pipeline's scratchpad (Pipeline.Pad); set by the
+	// pipeline
+	Pad string
 	// cmd is a tool.bash Arg as the gate parsed it; set by the pipeline
 	cmd *perm.Normalized
 	// gate is the pipeline and request as Check got them; set by the pipeline
@@ -118,6 +121,20 @@ func (r Request) Command() perm.Normalized {
 		return *r.cmd
 	}
 	return perm.Normalize(r.Arg)
+}
+
+// InPad reports a file request inside the request's scratchpad.
+func (r Request) InPad() bool { return PathSubject(r.Subject) && inPad(r.Pad, r.Arg) }
+
+// inPad reports path inside pad, both resolved, so a symlink in the pad
+// cannot lead out.
+func inPad(pad, path string) bool {
+	if pad == "" || path == "" {
+		return false
+	}
+	real := perm.CanonPath(path)
+	_, ok := perm.Under(perm.CanonPath(pad), real)
+	return ok && real != ""
 }
 
 // Verdict is the pipeline outcome for one permission request.
@@ -237,16 +254,14 @@ type Pipeline struct {
 	// next. nil = memory tool error.
 	Remember func(scope store.Scope, text, quote, replaces string) (string, error)
 
-	// Scratch reports a path inside the session scratchpad: writes there
-	// pass a read-only agent. nil = no scratchpad.
-	Scratch func(path string) bool
+	// Pad is the scratchpad this pipeline was bound to, "" for none: every
+	// command's $TMPDIR, where cut output is saved in full and the file
+	// tools read and write without asking. Bound once, so a run that
+	// outlives its session keeps the pad its prompt names.
+	Pad string
 	// SearchURL returns the user's SearXNG endpoint for web_search; nil or
 	// "" = DuckDuckGo Lite.
 	SearchURL func() string
-
-	// ScratchDir is the session scratchpad, where output cut from a result
-	// is saved in full; nil or "" = nowhere.
-	ScratchDir func() string
 
 	// Seen maps absolute paths to the modification time the model read
 	// them at: write tools refuse a file it has not seen as it is. nil = no
@@ -285,9 +300,10 @@ type Pipeline struct {
 	// decisions ask instead (never skips the gate, §6.4).
 	RewriteLoosened bool
 
-	// Sandbox is the policy a command a permission mode settled runs under;
-	// nil or a nil result = unconfined (no backend, yolo).
-	Sandbox func() *sandbox.Policy
+	// Sandbox is the policy a command a permission mode settled runs under,
+	// with pad (Pad) writable; nil or a nil result = unconfined (no backend,
+	// yolo).
+	Sandbox func(pad string) *sandbox.Policy
 	// SandboxParam gives bash and job_start the sandbox: false escape; set
 	// while a backend is live and someone can answer the ask.
 	SandboxParam bool
@@ -369,12 +385,13 @@ func (p *Pipeline) Check(req Request) Verdict {
 		req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
 	}
 	plan := p.Plan != nil && p.Plan()
-	req.ReadOnly = plan
+	req.ReadOnly, req.Pad = plan, p.Pad
 	if req.Subject == perm.SubjectBash {
 		n := perm.Normalize(req.Arg)
 		req.cmd = &n
 	}
-	if plan && req.Subject == perm.SubjectWrite && (p.Scratch == nil || !p.Scratch(req.Arg)) {
+	pad := req.InPad()
+	if plan && req.Subject == perm.SubjectWrite && !pad {
 		return Verdict{Decision: perm.Deny, Reason: "the user is planning: describe this change in the plan instead of making it", DecidedBy: ByReadOnly}
 	}
 	// read-only holds under every mode: yolo would settle the escape and
@@ -385,7 +402,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	// rule is the one that allowed the request, nil when a default did
 	loosen := func(v Verdict, rule *perm.Rule) Verdict {
 		protected := ""
-		if v.Decision == perm.Allow && req.Subject == perm.SubjectWrite && p.Protected != nil {
+		if v.Decision == perm.Allow && req.Subject == perm.SubjectWrite && p.Protected != nil && !pad {
 			protected = p.Protected(req.Arg)
 		}
 		switch {
@@ -421,6 +438,11 @@ func (p *Pipeline) Check(req Request) Verdict {
 	} else {
 		o = p.Store.Evaluate(req.Subject, written, p.Principal)
 	}
+	// the pad is neither project nor zemi dir: what no rule decided there
+	// allows, a secret-shaped name aside, which the sandbox refuses there too
+	if pad && !o.Ruled() && (p.Secret == nil || !p.Secret(written)) {
+		o = perm.Outcome{Decision: perm.Allow, Reason: "inside the scratchpad"}
+	}
 	switch o.Decision {
 	case perm.Allow:
 		return loosen(Verdict{perm.Allow, o.Reason, decidedBy(o), o.Rule}, o.Rule)
@@ -448,7 +470,7 @@ func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
 	if !plan && !strings.HasPrefix(v.DecidedBy, ModePrefix) && !network {
 		return nil
 	}
-	pol := p.Sandbox()
+	pol := p.Sandbox(p.Pad)
 	if pol != nil && network {
 		pol.Network = true
 	}
@@ -489,8 +511,8 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	head := "\nThe sandbox may have blocked this: " + limits + "."
 	// the fix the model can make without an ask comes first; with no session
 	// there is no pad, so $TMPDIR is the denied system one and no fix exists
-	if sandbox.LikelyTemp(out, err, write) && pol != nil && pol.Env["TMPDIR"] != "" {
-		head += " /tmp is not writable here: use $TMPDIR (" + pol.Env["TMPDIR"] + ", the scratchpad) instead."
+	if sandbox.LikelyTemp(out, err, write) && p.Pad != "" {
+		head += " /tmp is not writable here: use $TMPDIR (" + p.Pad + ", the scratchpad) instead."
 	}
 	// sandbox: false is denied for a read-only agent, so it is not offered
 	if !p.SandboxParam || plan && network {

@@ -138,8 +138,8 @@ func (h *Host) luaJails(L *glua.LState, write bool) []string {
 // fsDefault implements the §9 built-in defaults for fs subjects: reads
 // inside the jail allow except secret-shaped paths, and the file tools read
 // the plugins (their skills load through them) but not a clone's .git, whose
-// config may hold a token in the remote URL; writes allow only in the
-// session scratchpad; everything else asks.
+// config may hold a token in the remote URL; everything else asks. A
+// pipeline allows its own scratchpad (tools.Pipeline.Pad).
 func (h *Host) fsDefault(subject, arg string) perm.Decision {
 	switch subject {
 	case perm.SubjectRead, "lua.fs.read":
@@ -151,9 +151,6 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 			return perm.Allow
 		}
 	case perm.SubjectWrite, "lua.fs.write":
-		if subject == perm.SubjectWrite && h.inScratch(arg) && !h.secretPath(arg) {
-			return perm.Allow
-		}
 		if h.inJail(arg, h.writeJails()...) && !h.secretPath(arg) {
 			return perm.Ask // write stays ask inside the jail too
 		}
@@ -1057,7 +1054,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		// a program that was not found is proc.Start's returned error, not a
 		// sandbox failure
 		if rawBool(spec, "sandbox") && cmd.Err == nil {
-			pol := h.sandboxPolicy(h.readOnly())
+			pol := h.sandboxPolicy(h.readOnly(), h.ScratchDir())
 			// never an unconfined run in its place
 			if err := sandbox.Wrap(cmd, pol); err != nil {
 				L.RaiseError("zemi.job.start: sandbox: %v", err)

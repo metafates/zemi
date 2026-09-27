@@ -74,7 +74,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	// asked for, and a protected write, which Pipeline.Check re-asks
 	// whatever rule allowed it
 	settleable := !req.Unsandboxed && !req.Network && !req.Explicit &&
-		!(req.Subject == perm.SubjectWrite && !h.inScratch(req.Arg) && h.protectedWrite(req.Arg))
+		!(req.Subject == perm.SubjectWrite && !req.InPad() && h.protectedWrite(req.Arg))
 	if def.Rules != nil {
 		o := def.Rules.Evaluate(req.Subject, req.Arg, "")
 		if req.Subject == perm.SubjectBash {
@@ -130,7 +130,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 			return resolved(true, tools.ByMode(def.Name))
 		}
 		why := ""
-		if req.Subject == perm.SubjectWrite {
+		if req.Subject == perm.SubjectWrite && !req.InPad() {
 			why = h.protectedWhy(req.Arg)
 		}
 		switch {
@@ -140,7 +140,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 			note("this file looks like it holds secrets")
 		case strings.HasPrefix(req.Subject, "net."):
 			note("a fetch always asks: the model chose the address")
-		case req.Subject == perm.SubjectWrite && !h.inJail(req.Arg, append(h.writeJails(), h.ScratchDir())...):
+		case req.Subject == perm.SubjectWrite && !req.InPad() && !h.inJail(req.Arg, h.writeJails()...):
 			// the sandbox cannot confine the write tool, and a file outside the
 			// project (~/.gitconfig, a shell rc) can name what runs next; the
 			// write jail is the launch dir even in a trusted repository (the
@@ -156,7 +156,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 			// a settled command would run unconfined
 			note("no sandbox")
 		case req.Subject == perm.SubjectBash:
-			note(h.unsettled(req.Command(), req.ReadOnly))
+			note(h.unsettled(req))
 		default:
 			note("auto mode settles reads and edits inside the project")
 		}
@@ -356,7 +356,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		}
 		// Pipeline.Check sends every such write back to the ask, so the rule
 		// would do nothing
-		if req.Subject == perm.SubjectWrite && !h.inScratch(abs) && h.protectedWrite(abs) {
+		if req.Subject == perm.SubjectWrite && !req.InPad() && h.protectedWrite(abs) {
 			return "", nil
 		}
 		what := map[string]string{perm.SubjectWrite: "edits", perm.SubjectRead: "reads"}[req.Subject]

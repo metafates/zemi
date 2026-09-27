@@ -123,10 +123,10 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 		{"system temp with no pad", "/bin/sh: /tmp/x: Operation not permitted", false, false, true, []string{"sandbox: false"}, []string{"/tmp is not writable"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			p := &Pipeline{SandboxParam: true, Plan: func() bool { return c.plan }}
-			pol := &sandbox.Policy{Network: !c.offline, Write: []string{"/pad/s1", "/private/tmp/proj"}, Env: map[string]string{"TMPDIR": "/pad/s1"}}
+			p := &Pipeline{SandboxParam: true, Plan: func() bool { return c.plan }, Pad: "/pad/s1"}
+			pol := &sandbox.Policy{Network: !c.offline, Write: []string{"/pad/s1", "/private/tmp/proj"}}
 			if c.noPad {
-				pol.Write, pol.Env = pol.Write[1:], nil
+				p.Pad, pol.Write = "", pol.Write[1:]
 			}
 			hint := p.sandboxHint(pol, c.out, denied)
 			for _, w := range c.want {
@@ -214,7 +214,7 @@ func TestJobStreamsOutput(t *testing.T) {
 // chunk, which since() has already moved past.
 func TestJobReadSpillsTheCut(t *testing.T) {
 	dir := t.TempDir()
-	p := &Pipeline{Jobs: NewJobs(), ScratchDir: func() string { return dir }}
+	p := &Pipeline{Jobs: NewJobs(), Pad: dir}
 	if res, _ := runJobStart(context.Background(), p, map[string]any{"command": "seq 1 4000"}); res.IsError {
 		t.Fatal(res.Content)
 	}

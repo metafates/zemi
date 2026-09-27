@@ -43,8 +43,8 @@ var secretDirs = []string{
 	".psql_history", ".mysql_history", ".python_history", ".node_repl_history",
 }
 
-// sandboxPolicy is what a settled command may touch: the scratchpad, which
-// is also its $TMPDIR, a Go build cache of its own and, when trusted and not
+// sandboxPolicy is what a settled command may touch: the scratchpad pad,
+// also its $TMPDIR, a Go build cache of its own and, when trusted and not
 // in plan mode, the project; never .git, .agents or zemi's own dirs, and zemi's dirs
 // are unreadable too (sessions, logs, keys in init.lua). The project is
 // writable only with a backend that keeps those read-only inside it, and
@@ -60,10 +60,9 @@ var secretDirs = []string{
 // (UV_CACHE_DIR, npm_config_cache) at a dir in the pad, never the user's
 // cache. The system temp dir is not writable for the same reason: macOS
 // keeps xcrun_db there, which picks the binary /usr/bin/make or git runs.
-// Seatbelt denies binding a unix socket, and even allowed, macOS's 104-byte
-// socket path is tight under the pad; the fix is a seatbelt rule allowing
-// bind under a short per-session socket dir.
-func (h *Host) sandboxPolicy(readOnly bool) sandbox.Policy {
+// Seatbelt denies binding a unix socket; the fix is a seatbelt rule allowing
+// bind under the pad.
+func (h *Host) sandboxPolicy(readOnly bool, pad string) sandbox.Policy {
 	d := h.Dirs
 	home, _ := os.UserHomeDir()
 	p := sandbox.Policy{Loopback: true}
@@ -142,9 +141,9 @@ func (h *Host) sandboxPolicy(readOnly bool) sandbox.Policy {
 	// NOTE: a run outside any session (Lua at idle) has no pad and so no
 	// TMPDIR: its temp writes fail and the hint names no fix
 	p.Env = map[string]string{}
-	if s := h.ScratchDir(); s != "" && os.MkdirAll(s, 0o700) == nil {
-		p.Write = append(p.Write, s)
-		p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = s, s, s
+	if pad != "" && os.MkdirAll(pad, 0o700) == nil {
+		p.Write = append(p.Write, pad)
+		p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = pad, pad, pad
 	}
 	if d.StateHome != "" {
 		cache := filepath.Join(d.StateHome, "sandbox-cache", h.trustKey(), "go-build")
@@ -177,7 +176,7 @@ func (h *Host) trustKey() string {
 // which the cache, build and temp variables point at.
 // NOTE: nothing sweeps it; a rust target dir there can be large.
 func (h *Host) serverPolicy(name string) sandbox.Policy {
-	p := h.sandboxPolicy(true)
+	p := h.sandboxPolicy(true, "")
 	p.Write, p.Env = nil, map[string]string{}
 	if h.Dirs.CacheHome == "" {
 		return p

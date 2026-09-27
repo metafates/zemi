@@ -2894,7 +2894,8 @@ func (h *Host) afterWrite(path string) string {
 // PipelineFor builds the tools pipeline for the model's tool calls. It is
 // built per send (profileTools -> ensureRunner), so the read-only snapshot
 // below matches the profile the system prompt was built for; switching the
-// agent mid-turn changes the next send, not the running one.
+// agent mid-turn changes the next send, not the running one. The pad is the
+// live session's, bound as the prompt names it.
 func (h *Host) PipelineFor() *tools.Pipeline {
 	readOnly := h.readOnly()
 	p := &tools.Pipeline{
@@ -2908,23 +2909,16 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,
 		Plan:        func() bool { return readOnly },
-		Sandbox: func() *sandbox.Policy {
+		Sandbox: func(pad string) *sandbox.Policy {
 			// read-only is absolute: a planner must not touch the project even
 			// under yolo. Otherwise yolo allows everything and runs unconfined.
 			// A policy with no backend fails every wrap, so without one the
 			// planner keeps only Check's denies and asks.
-			if !h.sandboxLive() {
+			if !h.sandboxLive() || !readOnly && h.permModeDef().Base == "yolo" {
 				return nil
 			}
-			if readOnly {
-				p := h.sandboxPolicy(true)
-				return &p
-			}
-			if def := h.permModeDef(); def.Base != "yolo" {
-				p := h.sandboxPolicy(false)
-				return &p
-			}
-			return nil
+			p := h.sandboxPolicy(readOnly, pad)
+			return &p
 		},
 		SandboxParam: h.sandboxLive() && h.hooks() != nil,
 		Guard:        h.guardSandbox,
@@ -2944,15 +2938,9 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Remember: func(scope store.Scope, text, quote, replaces string) (string, error) {
 			return h.memoryTool(h.AgentSessionID(), scope, text, quote, replaces)
 		},
-		Scratch: h.inScratch,
-		Protected: func(p string) string {
-			if h.inScratch(p) {
-				return ""
-			}
-			return h.protectedWhy(p)
-		},
+		Pad:          h.ScratchDir(),
+		Protected:    h.protectedWhy,
 		Secret:       h.secretPath,
-		ScratchDir:   h.ScratchDir,
 		SearchURL:    func() string { return h.Settings.Str("web.search_url") },
 		Seen:         h.readLog(),
 		Instructions: h.mainInstructions,

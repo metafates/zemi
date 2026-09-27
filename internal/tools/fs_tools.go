@@ -152,7 +152,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	// the count goes with the text: job_read resumes exactly after it
 	raw, written := buf.Snapshot()
 	var b strings.Builder
-	b.WriteString(CmdOut(p.scratch(), "bash", raw, written-int64(buf.Max)))
+	b.WriteString(CmdOut(p.Pad, "bash", raw, written-int64(buf.Max)))
 	if timedOut {
 		if b.Len() > 0 {
 			b.WriteString("\n")
@@ -353,15 +353,11 @@ func Spill(dir, name, s string) string {
 	return "\n(output saved to " + f.Name() + ")"
 }
 
-func (p *Pipeline) scratch() string {
-	if p == nil || p.ScratchDir == nil {
+func (p *Pipeline) spill(name, s string) string {
+	if p == nil {
 		return ""
 	}
-	return p.ScratchDir()
-}
-
-func (p *Pipeline) spill(name, s string) string {
-	return Spill(p.scratch(), name, s)
+	return Spill(p.Pad, name, s)
 }
 
 const (

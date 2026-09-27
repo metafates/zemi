@@ -631,7 +631,7 @@ func TestReadAndBashShapes(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "d", "b.pem"), nil, 0o644)
 	os.WriteFile(filepath.Join(dir, "d", "c"), nil, 0o644)
 	ctx := context.Background()
-	p := &Pipeline{ScratchDir: func() string { return filepath.Join(dir, "pad") }}
+	p := &Pipeline{Pad: filepath.Join(dir, "pad")}
 	for _, c := range []struct {
 		name      string
 		offset    float64

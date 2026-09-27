@@ -256,6 +256,11 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	if def.ReadOnly {
 		pipe.Plan = func() bool { return true } // no file changes, whatever a tool could do
 	}
+	// its session's pad even when the live session moved on (a background
+	// run, a continuation after /new)
+	if run.parent != "" {
+		pipe.Pad = h.scratchFor(run.parent)
+	}
 	// A run outside any session (Lua at idle) still gets a parent, so
 	// /sessions never lists it as a top-level session.
 	parent := cmp.Or(run.parent, "lua")
@@ -277,7 +282,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	loaded := new(sync.Map) // what the main agent loaded says nothing about what this run needs
 	kept, active := h.deferMCP(kept, loaded)
-	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), kept))
+	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), kept, pipe.Pad))
 	runner.ActiveTools = active
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)

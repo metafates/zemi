@@ -14,8 +14,9 @@ import (
 
 const scratchTTL = 7 * 24 * time.Hour
 
-// ScratchDir is the live session's scratchpad, "" before the first send;
-// subagents share their session's pad.
+// ScratchDir is the live session's scratchpad, "" before the first send. A
+// pipeline binds it once (tools.Pipeline.Pad); a subagent run binds its
+// parent session's.
 func (h *Host) ScratchDir() string { return h.scratchFor(h.AgentSessionID()) }
 
 func (h *Host) scratchFor(sid string) string {
@@ -23,11 +24,6 @@ func (h *Host) scratchFor(sid string) string {
 		return ""
 	}
 	return filepath.Join(h.Dirs.StateHome, "scratch", sid)
-}
-
-func (h *Host) inScratch(path string) bool {
-	dir := h.ScratchDir()
-	return dir != "" && h.inJail(path, dir)
 }
 
 // ensureScratch creates the session's pad and removes the pads idle past

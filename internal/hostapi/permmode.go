@@ -473,7 +473,7 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		// rule, though a user one with no principal covers it too.
 		return (h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) || h.madePlugin(req.Arg)) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
 	case perm.SubjectBash:
-		return h.unsettled(req.Command(), req.ReadOnly) == ""
+		return h.unsettled(req) == ""
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
 	}
@@ -532,14 +532,15 @@ func (h *Host) protectedWhy(p string) string {
 // read what the policy does not hide, outside the project too (without
 // HidesSecretFiles, a .env it names by a glob). Screening the text again
 // would bring the asks back; tighten sandboxPolicy instead.
-func (h *Host) unsettled(n perm.Normalized, readOnly bool) string {
+func (h *Host) unsettled(req tools.Request) string {
+	n := req.Command()
 	if !h.ProjectTrusted() || !h.sandboxLive() {
-		if n.ReadCommand(h.safeCommandPath) {
+		if n.ReadCommand(h.safeCommandPath(req.Pad)) {
 			return ""
 		}
 		return "only commands that just read run without a trusted project and a sandbox"
 	}
-	if !readOnly {
+	if !req.ReadOnly {
 		if why := n.Destructive(); why != "" {
 			return why
 		}
@@ -597,27 +598,29 @@ func inDirNamed(p string, names ...string) bool {
 
 // safeCommandPath passes a settled command's argument when, read as a path
 // from the project root, it stays in the project and is not secret-shaped.
-// Plain reads may also use the scratchpad, zemi's config and the local
-// plugins, which the read tool reads without asking either; code may not run
-// from there: the model writes the pad without asking, even for a read-only
-// agent.
-func (h *Host) safeCommandPath(arg string, use perm.ArgUse) bool {
-	if strings.HasPrefix(arg, "~") {
-		return false
+// Plain reads may also use pad, zemi's config and the local plugins, which
+// the read tool reads without asking either; cd may not enter them, since
+// an unconfined command from there could run what the model wrote to the
+// pad without asking.
+func (h *Host) safeCommandPath(pad string) func(arg string, use perm.ArgUse) bool {
+	return func(arg string, use perm.ArgUse) bool {
+		if strings.HasPrefix(arg, "~") {
+			return false
+		}
+		p := arg
+		if !filepath.IsAbs(p) {
+			// not Join: it cleans .. before RealPath sees a symlink before it
+			p = h.Dirs.ProjectDir + string(filepath.Separator) + p
+		}
+		roots := []string{h.Dirs.ProjectDir}
+		if use != perm.ArgRun {
+			roots = append(append(roots, pad, h.Dirs.ConfigHome, h.localPlugins()), h.Dirs.UserTrees()...)
+		}
+		walk := use == perm.ArgWalk || use == perm.ArgSearch
+		// .git/config may hold tokens
+		return h.inJail(p, roots...) && !h.secretPath(p) && !inDirNamed(p, ".git") &&
+			(!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch))
 	}
-	p := arg
-	if !filepath.IsAbs(p) {
-		// not Join: it cleans .. before RealPath sees a symlink before it
-		p = h.Dirs.ProjectDir + string(filepath.Separator) + p
-	}
-	roots := []string{h.Dirs.ProjectDir}
-	if use != perm.ArgRun {
-		roots = append(append(roots, h.ScratchDir(), h.Dirs.ConfigHome, h.localPlugins()), h.Dirs.UserTrees()...)
-	}
-	walk := use == perm.ArgWalk || use == perm.ArgSearch
-	// .git/config may hold tokens
-	return h.inJail(p, roots...) && !h.secretPath(p) && !inDirNamed(p, ".git") &&
-		(!walk || h.noSecretsUnder(p, roots, use == perm.ArgSearch))
 }
 
 // noSecretsUnder reports whether a recursive search of p could print no
