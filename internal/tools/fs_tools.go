@@ -1138,6 +1138,10 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 // .gitignore files read), else, with walked set, what walk finds. Neither
 // lists a symbolic link, .git or a nested repository.
 func ListFiles(ctx context.Context, root string, limit int) (files []string, walked bool, err error) {
+	// NOTE: git walks every untracked file under root before it prints one,
+	// so reading less would not stop it early; in a big untracked tree (a
+	// $HOME dotfiles repo) only proc.Git's 15 s timeout bounds it, and then
+	// the walker runs. A short deadline of its own here would lift that.
 	out, err := proc.Git{Dir: root}.Run(ctx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	// an index entry is the repository's word: a planted one can say "../x"
 	// or "sub/.git/config", and a tracked directory may since have become a
