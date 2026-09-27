@@ -211,7 +211,7 @@ function debug.traceback(msg) end
 --- One styled run of text in a widget or overlay row. `hl` names a
 --- highlight group; omit it for the default foreground.
 ---@class zemi.Segment
----@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field text string
 ---@field hl? string
 ---@field click? string Widget rows only: the id a click passes to the widget's `on_click`.
 ---@field effect? "shimmer" A bright band sweeps across the text every frame, blending `hl` toward Normal (static with ui.animations off).
@@ -518,17 +518,17 @@ function zemi.command.list() end
 ---@field theme string
 
 ---@class zemi.ev.ComposerChange: zemi.Event
----@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field text string
 ---@field cursor integer
 
 ---@class zemi.ev.ComposerSubmit: zemi.Event
----@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field text string
 
 ---@class zemi.ev.MemoryWritten: zemi.Event
 ---@field id string
 ---@field scope zemi.Scope
 ---@field origin zemi.MemoryOrigin
----@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field text string
 
 ---@class zemi.ev.ReflectorStart: zemi.Event
 ---@field session string
@@ -684,7 +684,7 @@ function zemi.event.stats() end
 ---@class zemi.TranscriptRow
 ---@field role zemi.Role
 ---@field kind zemi.RowKind
----@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field text string
 ---@field tool string
 ---@field status zemi.CallStatus|"" Tool and shell rows, and "cancelled" on an error row an interrupt left.
 ---@field label string
@@ -873,7 +873,7 @@ function zemi.event.stats() end
 
 --- A detail view action; with no id, fill or run it goes back.
 ---@class zemi.OverlayAction
----@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field text string
 ---@field id? string hands the action to the overlay's on_action, which takes it over fill and run
 ---@field hl? string highlight group of the label, such as "Danger"
 ---@field hotkey? string one character that acts like enter on this action; with none, its position ("1", "2", ...)
@@ -1632,11 +1632,11 @@ function zemi.session.rewind(message_id) end
 -- zemi.composer
 
 ---@class zemi.ComposerState
----@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field text string
 ---@field cursor integer 0-based character offset.
 
 ---@class zemi.CompletionItem
----@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field text string
 ---@field desc? string
 
 --- A completion source: `trigger` completes the word after that character
@@ -1862,7 +1862,7 @@ function zemi.tool.list() end
 ---@class zemi.GrepHit
 ---@field path string
 ---@field line integer
----@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field text string
 
 --- Paths resolve against the project directory and must stay inside the
 --- jail; reads pass the `lua.fs.read` gate and changes `lua.fs.write`.
@@ -2106,7 +2106,7 @@ function zemi.json.decode(s) end
 ---@field id string
 ---@field scope zemi.Scope
 ---@field origin zemi.MemoryOrigin
----@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field text string
 ---@field quote string The user's own words a memory about them rests on; "" otherwise.
 
 ---@class zemi.MemoryOpts
@@ -2157,7 +2157,7 @@ function zemi.memory.del(id) end
 ---@field id string
 ---@field scope zemi.Scope
 ---@field origin string
----@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
+---@field text string
 ---@field quote string
 ---@field forget? true Accepting deletes the stored memory this text is a copy of.
 
