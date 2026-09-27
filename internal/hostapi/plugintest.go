@@ -429,13 +429,16 @@ func (t *PluginTest) unowned(mark int, own, when string) string {
 	return ""
 }
 
-// note adds a line to the report, after the error of the driver running.
+// note adds a line to the report, after the error of the driver running,
+// once: a call a loop repeats says the same thing each time.
 func (t *PluginTest) note(line string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.at != "" {
+	switch {
+	case slices.Contains(t.log, line) || slices.Contains(t.pending, line):
+	case t.at != "":
 		t.pending = append(t.pending, line)
-	} else {
+	default:
 		t.log = append(t.log, line)
 	}
 }

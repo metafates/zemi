@@ -92,7 +92,7 @@ for i = 1, 300 do test("case " .. i, function() end) end
 0 passed, 1 failed (2 files, (T))
 `},
 		{name: "eq on an error naming a file", args: []string{"<plugin>", "naming a file"}, code: 1, want: `FAIL tests/fail_test.lua:46: eq on an error naming a file
-  tests/fail_test.lua:48: got "tests/fail_test.lua:47: lua.http.get htt...", want "permission ask required" (first difference at char 1)
+  tests/fail_test.lua:49: got "tests/fail_test.lua:47: lua.http.get htt...", want "permission ask required" (first difference at char 1)
   no stub answered it; answer it with test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })
 0 passed, 1 failed (2 files, (T))
 `},

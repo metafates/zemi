@@ -45,5 +45,6 @@ end)
 
 test("eq on an error naming a file", function()
   local _, err = pcall(zemi.http.get, "https://example.com/")
+  pcall(zemi.http.get, "https://example.com/")
   test.eq(err, "permission ask required")
 end)
