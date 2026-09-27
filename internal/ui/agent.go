@@ -601,16 +601,15 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 	return v.window(win, widest+bar)
 }
 
-// matchSegs draws the runes at byte offsets pos of a row's text in the
-// accent, a filter's match, before the row's style fills the segments
-// without one. The selected row is the accent already, so there the rest of
-// its own text steps back to the bold plain color and a match reads the same
-// in every row; a segment with a style of its own keeps it.
+// matchSegs draws the runes at byte offsets pos of a row's text, a filter's
+// match, before the row's style fills the segments without one: in the
+// accent, or on the selected row, which is the accent already, in the bold
+// plain color.
 func matchSegs(segs []hostapi.Segment, pos []int, sel bool) []hostapi.Segment {
 	if len(pos) == 0 {
 		return segs
 	}
-	hl := map[bool]string{false: "Host:HintKey", true: "Host:Title"}[sel]
+	hl := map[bool]string{false: "Host:HintKey", true: "Host:Bold"}[sel]
 	var out []hostapi.Segment
 	j, off := 0, 0
 	for _, s := range segs {
@@ -619,11 +618,8 @@ func matchSegs(segs []hostapi.Segment, pos []int, sel bool) []hostapi.Segment {
 			if end > start {
 				run := s
 				run.Text = s.Text[start:end]
-				switch {
-				case was:
+				if was {
 					run.HL = hl
-				case sel && run.HL == "":
-					run.HL = "Host:Bold"
 				}
 				out = append(out, run)
 			}

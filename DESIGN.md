@@ -1289,9 +1289,9 @@ UI extensibility contract:
   order, so sections stay whole and `/sessions` keeps recency. `@` files
   rank a file name the token begins first, then by the score of the name,
   or of the path when only the path matches. Every list draws the matched
-  runes of a label in the accent (`listRowsW`, `matchSegs`); on the
-  selected row, whose label is the accent, the rest of the label turns the
-  bold text color, so a match reads the same on every row. It changes only
+  runes of a label in the accent (`listRowsW`, `matchSegs`); the selected
+  row stays the bold accent whatever matched, and its matched runes take the
+  bold text color, so each state has one look in every list. It changes only
   colors, never a row's width, and never underlines: that means a click
   acts. Model-facing lookups
   (`tool_search`, a mistyped path's siblings), command dispatch and every

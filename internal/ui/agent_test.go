@@ -595,6 +595,34 @@ func lastToast(app *App) string {
 // command's argument candidates, tab fills the argument under the cursor,
 // enter runs the command with the highlighted one once the user moved to it
 // and a bare "/name " as typed.
+func TestMatchLook(t *testing.T) {
+	items := []listItem{{label: "sonnet", match: []int{3, 4, 5}}, {label: "opus", desc: "net"}, {label: "gpt", match: []int{0}}}
+	for _, c := range []struct {
+		name string
+		sel  int
+		want string
+	}{
+		{"a selected label match is bold plain on the accent row", 0, "[› /Host:Title son/Host:Title net/Host:Bold] [opus/Host:Value net/Host:Hint] [g/Host:HintKey pt/Host:Value]"},
+		{"a selected desc match keeps the same accent row", 1, "[son/Host:Value net/Host:HintKey] [› /Host:Title opus/Host:Title net/Host:Hint] [g/Host:HintKey pt/Host:Value]"},
+	} {
+		var got []string
+		for _, row := range listRows(items, c.sel, nil, 20, 0) {
+			var segs []string
+			for _, s := range row {
+				if strings.TrimSpace(s.Text) != "" {
+					segs = append(segs, s.Text+"/"+s.HL)
+				}
+			}
+			if segs != nil {
+				got = append(got, fmt.Sprint(segs))
+			}
+		}
+		if g := strings.Join(got, " "); g != c.want {
+			t.Errorf("%s:\n got %s\nwant %s", c.name, g, c.want)
+		}
+	}
+}
+
 func TestPaletteArgumentCompletion(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 	ran := ""
