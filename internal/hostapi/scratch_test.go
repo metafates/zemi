@@ -62,17 +62,24 @@ func TestPadBoundPerPipeline(t *testing.T) {
 	h, r := newTestHostDB(t)
 	fakeSandbox(h, true)
 	h.SetProjectTrusted(true)
+	h.Perm.Add(perm.Rule{Subject: "tool.long", Pattern: "*", Decision: perm.Allow})
 	h.Perm.Add(perm.Rule{Subject: "tool.short", Pattern: "*", Decision: perm.Allow})
 	runUser(t, r, `
+		zemi.tool.add({ name = "long", description = "d", execute = function() return string.rep("x", 40000) end })
 		zemi.tool.add({ name = "short", description = "d", execute = function() return "ok" end })
-		zemi.event.on("tool.post", function() return { output = string.rep("x", 40000) } end)`)
+		zemi.event.on("tool.post", function(ev)
+			if ev.tool == "short" then return { output = string.rep("x", 40000) } end
+		end)`)
 	h.agents.sessionID = "s1"
 	old, pad := h.PipelineFor(), h.ScratchDir()
 	h.agents.sessionID = "s2"
-	// a host tool's spill lands where the run's prompt says, like bash's
-	resp, err := h.luaFantasyTools(old)[0].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
-	if err != nil || !strings.Contains(resp.Content, "(output saved to "+pad+string(filepath.Separator)) {
-		t.Errorf("spill not in the bound pad %s: %v %q", pad, err, resp.Content[max(0, len(resp.Content)-200):])
+	// a host tool's output and a tool.post rewrite spill where the run's
+	// prompt says, like bash's
+	for _, tool := range h.luaFantasyTools(old) {
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{Input: "{}"})
+		if err != nil || len(resp.Content) > 31_000 || !strings.Contains(resp.Content, "(output saved to "+pad+string(filepath.Separator)) {
+			t.Errorf("%s: %d bytes, spill not in the bound pad %s: %v %q", tool.Info().Name, len(resp.Content), pad, err, resp.Content[max(0, len(resp.Content)-200):])
+		}
 	}
 	for _, c := range []struct {
 		name, subject string
