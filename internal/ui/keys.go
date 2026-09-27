@@ -216,14 +216,13 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		case "enter":
 			// the highlighted argument replaces a typed or picked one, so a
-			// bare "/name " runs as typed, and a typed name that is not a
-			// command runs the highlighted one it begins or the user moved to
+			// bare "/name " runs as typed, and the highlighted command
+			// replaces a typed name that is none or that the user moved off
 			name, args := SplitCommand(strings.TrimPrefix(c.text, "/"))
 			switch {
 			case p.args != nil && p.selected < len(p.args) && (p.moved || c.cursor > p.argStart):
 				c.replace(p.argStart, p.args[p.selected].label)
-			case p.selected < len(p.matches) && name != "reload" && a.host.Commands.Lookup(name) == nil &&
-				(p.moved || name == "" || p.hits[p.selected].Prefix):
+			case p.selected < len(p.matches) && (p.moved || a.host.Commands.Lookup(name) == nil):
 				c.text = strings.TrimSpace("/" + p.matches[p.selected].Name + " " + args)
 			}
 		}

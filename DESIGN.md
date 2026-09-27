@@ -1259,9 +1259,10 @@ UI extensibility contract:
   navigate, `tab` accepts (fills `/name ` and lists its arguments, or the
   next argument's), `enter` submits the typed
   line, so `/name args` runs the command instead of sending to the
-  model; a typed name that is no command runs the highlighted one only
-  when it begins that name or the user moved to it, so a typo toasts and
-  does not send; `esc` closes and
+  model; the highlighted command runs in place of a typed name that is
+  none or that the user moved off, so what is highlighted is what runs;
+  once arguments follow the name the list holds only the names it begins,
+  and an unknown name with no row toasts and does not send; `esc` closes and
   `ctrl+space` reopens whatever popup the cursor's word takes. Past
   `/name ` the list holds the command's argument candidates, a Go
   completer's matched and ranked before the cap of 50, a Lua one's as it

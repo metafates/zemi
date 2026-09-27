@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -381,17 +383,15 @@ func TestFileRanking(t *testing.T) {
 
 func TestPaletteComplete(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
-	ran := false
-	add := func(name string, fn func(h *hostapi.Host, args string) error) {
+	ran := "" // the command line that ran
+	for _, name := range []string{"q", "qa", "echo"} {
 		if _, err := app.host.Commands.Add(&hostapi.Command{
-			Name: name, NArgs: "*", Desc: "test", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1), GoFn: fn,
+			Name: name, NArgs: "*", Desc: "test", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+			GoFn: func(_ *hostapi.Host, args string) error { ran = name + " " + args; return nil },
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	add("q", nil)
-	add("qa", nil)
-	add("echo", func(h *hostapi.Host, args string) error { ran = args == "hi"; return nil })
 
 	type k struct {
 		key  string
@@ -442,31 +442,8 @@ func TestPaletteComplete(t *testing.T) {
 	app.composer.text, app.composer.cursor = "/echo hi", 8
 	app.updatePalette()
 	app.composerKey("enter", tea.KeyPressMsg{})
-	if !ran || app.composer.text != "" {
-		t.Fatalf("submit: ran=%v text=%q", ran, app.composer.text)
-	}
-
-	// A partial name runs the highlighted command, arguments kept.
-	ran = false
-	app.composer.text, app.composer.cursor = "/ec hi", 3
-	app.updatePalette()
-	app.composerKey("enter", tea.KeyPressMsg{})
-	if !ran || app.composer.text != "" {
-		t.Fatalf("partial submit: ran=%v text=%q", ran, app.composer.text)
-	}
-
-	// A typo the highlighted command does not begin runs nothing, unless the
-	// user moved to it.
-	ran = false
-	app.composer.text, app.composer.cursor = "/eho hi", 4
-	app.updatePalette()
-	app.composerKey("enter", tea.KeyPressMsg{})
-	if ran || app.composer.text != "/eho hi" || len(app.palette.matches) != 1 {
-		t.Fatalf("typo submit: ran=%v text=%q matches=%d", ran, app.composer.text, len(app.palette.matches))
-	}
-	send(k{"down", ""}, k{"enter", ""})
-	if !ran || app.composer.text != "" {
-		t.Fatalf("moved submit: ran=%v text=%q", ran, app.composer.text)
+	if ran != "echo hi" || app.composer.text != "" {
+		t.Fatalf("submit: ran=%q text=%q", ran, app.composer.text)
 	}
 
 	// An unknown slash line is not sent and keeps the text for fixing.
@@ -485,6 +462,53 @@ func TestPaletteComplete(t *testing.T) {
 	app.updatePalette()
 	if len(app.palette.matches) != 0 {
 		t.Fatalf("/reload listed: %d", len(app.palette.matches))
+	}
+}
+
+func TestPaletteDispatch(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 24)
+	ran := "" // the command line that ran
+	for _, name := range []string{"zq", "zqa", "echo", "reloadall"} {
+		if _, err := app.host.Commands.Add(&hostapi.Command{
+			Name: name, NArgs: "*", Desc: "test", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+			GoFn: func(_ *hostapi.Host, args string) error { ran = name + " " + args; return nil },
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// What is highlighted beside "enter run" is what runs: any hit while the
+	// name is being typed, only a name the typed one begins once arguments
+	// follow.
+	for _, c := range []struct {
+		name, text string
+		cursor     int
+		keys       []string
+		row, ran   string // the highlighted row, "" for none, and the line that ran
+		left       string // the draft after enter
+	}{
+		{"a fuzzy hit runs", "/eho", 4, nil, "/echo", "echo ", ""},
+		{"a prefix hit runs with the arguments", "/ec hi", 3, nil, "/echo", "echo hi", ""},
+		{"a fuzzy hit is not listed before arguments", "/eho hi", 4, nil, "", "", "/eho hi"},
+		{"the moved-to row runs over a typed name", "/zq hi", 3, []string{"down"}, "/zqa", "zqa hi", ""},
+		{"the reserved reload lists no row to claim it", "/reload", 7, nil, "", "", ""},
+	} {
+		ran = ""
+		app.composer.text, app.composer.cursor = c.text, c.cursor
+		app.updatePalette()
+		for _, key := range c.keys {
+			app.composerKey(key, tea.KeyPressMsg{})
+		}
+		frame, row := ansi.Strip(app.Frame()), ""
+		if m := regexp.MustCompile(`› (/\S+)`).FindStringSubmatch(frame); m != nil {
+			row = m[1]
+		}
+		if row != c.row || !strings.Contains(frame, "enter run") {
+			t.Errorf("%s: highlighted %q, want %q beside the hint:\n%s", c.name, row, c.row, frame)
+		}
+		app.composerKey("enter", tea.KeyPressMsg{})
+		if ran != c.ran || app.composer.text != c.left {
+			t.Errorf("%s: ran %q, want %q; text %q", c.name, ran, c.ran, app.composer.text)
+		}
 	}
 }
 

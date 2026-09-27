@@ -14,12 +14,11 @@ import (
 
 // cmdPalette is the composer's slash-command popup (DESIGN §6.6): typing
 // "/" as the first character lists the registered commands filtered as you
-// type; up/down navigate, tab accepts, esc closes. Enter runs the typed
-// "/name args" line instead of sending a message, or the highlighted
-// command when the typed name is not one but begins it, or the user moved
-// to it: a typo never runs whatever ranked first. The exact "/reload" is
-// the Go-reserved force-reload trigger and never reaches the command
-// registry (DESIGN §4).
+// type; up/down navigate, tab accepts, esc closes. Enter runs the "/name
+// args" line instead of sending a message, with the highlighted command in
+// place of a typed name that is none or that the user moved off: what is
+// highlighted is what runs. The exact "/reload" is the Go-reserved
+// force-reload trigger and never reaches the command registry (DESIGN §4).
 type cmdPalette struct {
 	open     bool
 	matches  []*hostapi.Command
@@ -55,7 +54,11 @@ func (a *App) updatePalette() {
 	}
 	if cur <= nameEnd {
 		a.palette.open, a.palette.args = true, nil
-		a.palette.rematch(string(r[1:nameEnd]), a.host.Commands.List())
+		cmds := a.host.Commands.List()
+		if string(r) == "/reload" { // enter reloads, so no row may claim it
+			cmds = nil
+		}
+		a.palette.rematch(string(r[1:nameEnd]), strings.TrimSpace(string(r[nameEnd:])) != "", cmds)
 		return
 	}
 	// Past "/name ": complete the argument under the cursor.
@@ -107,8 +110,10 @@ func (p *cmdPalette) close() {
 }
 
 // rematch ranks the command names the typed one matches, best first; a bare
-// "/" lists every command in order.
-func (p *cmdPalette) rematch(query string, cmds []*hostapi.Command) {
+// "/" lists every command in order. With arguments after the name only the
+// names it begins are listed, since a fuzzy hit would rewrite a line the
+// user may have meant as typed.
+func (p *cmdPalette) rematch(query string, args bool, cmds []*hostapi.Command) {
 	names := make([]string, len(cmds))
 	for i, c := range cmds {
 		names[i] = c.Name
@@ -120,7 +125,7 @@ func (p *cmdPalette) rematch(query string, cmds []*hostapi.Command) {
 	p.matches, p.hits = p.matches[:0], p.hits[:0]
 	for _, h := range hits {
 		// hidden commands stay out of the list until their name is typed
-		if !cmds[h.Index].Hidden || h.Prefix {
+		if (!cmds[h.Index].Hidden || h.Prefix) && (!args || h.Prefix || query == "") {
 			p.matches, p.hits = append(p.matches, cmds[h.Index]), append(p.hits, h)
 		}
 	}
