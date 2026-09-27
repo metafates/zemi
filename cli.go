@@ -24,7 +24,6 @@ import (
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
-	"github.com/metafates/zemi/internal/ui"
 )
 
 const usage = `zemi - a terminal coding agent, context included
@@ -308,7 +307,7 @@ func sendPrompt(h *hostapi.Host, prompt string) error {
 	h.WaitMCP(context.Background())
 	typed, attached := agent.CutAttached(prompt)
 	if rest, ok := strings.CutPrefix(typed, "/"); ok {
-		name, args := ui.SplitCommand(rest)
+		name, args := hostapi.SplitCommand(rest)
 		if h.Commands.Lookup(name) != nil {
 			return h.RunCommand(context.Background(), name, args+attached)
 		}

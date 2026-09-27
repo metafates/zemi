@@ -476,7 +476,7 @@ func (a *App) runOverlayRow(r hostapi.OverlayItem) {
 		a.composer.moveEnd()
 	}
 	if r.Run != "" {
-		name, args := SplitCommand(r.Run)
+		name, args := hostapi.SplitCommand(r.Run)
 		a.runCommand(name, args)
 	}
 }

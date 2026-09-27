@@ -462,7 +462,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 	case top == noModal && under.Click != "":
 		act := func() { a.clickWidget(under, x, y) }
 		if under.Widget == "" { // a Go pill or dock entry names its command
-			name, args := SplitCommand(under.Click)
+			name, args := hostapi.SplitCommand(under.Click)
 			act = func() {
 				if name != "reload" {
 					a.runCommand(name, args)

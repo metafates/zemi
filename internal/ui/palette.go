@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"strings"
-	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -217,7 +216,7 @@ func (a *App) runSlashCommand(text string) {
 		}
 		return
 	}
-	name, args := SplitCommand(raw)
+	name, args := hostapi.SplitCommand(raw)
 	cmd := a.host.Commands.Lookup(name)
 	if cmd == nil {
 		a.pushToast(logging.Warn, "Unknown command", "/"+name+"; /help lists them")
@@ -265,15 +264,4 @@ func (a *App) restoreQueue() bool {
 	a.composer.text = strings.Join(q, "\n\n")
 	a.composer.moveEnd()
 	return true
-}
-
-// SplitCommand splits "name arg string" into the command name and the raw
-// argument string. The name ends at any whitespace: a shift+enter line may
-// follow it.
-func SplitCommand(raw string) (name, args string) {
-	i := strings.IndexFunc(raw, unicode.IsSpace)
-	if i < 0 {
-		return raw, ""
-	}
-	return raw[:i], strings.TrimLeftFunc(raw[i:], unicode.IsSpace)
 }

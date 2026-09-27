@@ -137,10 +137,22 @@ test("copied", function()
   end
 end)`,
 		}, want: "1 passed (1 file, (T))\n"},
-		{name: "an answer nothing would take", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
-			"init.lua":         `zemi.command.add("menu", function() zemi.ui.overlay.open({ id = "menu", items = { { text = "go", run = "menu" } } }) end)`,
-			"tests/a_test.lua": `zemi.test("a run row", function() assert(zemi.test.run("menu")) assert(zemi.test.answer("go")) end)`,
-		}, want: "FAIL tests/a_test.lua:1: a run row\n  tests/a_test.lua:1: test.answer: overlay menu has no on_select; test.run runs what a row's run names\n0 passed, 1 failed (1 file, (T))\n"},
+		{name: "an answer runs a row's run when no callback takes it", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
+			"init.lua": `zemi.command.add("menu", function()
+  zemi.state.set("n", (zemi.state.get("n") or 0) + 1)
+  zemi.ui.overlay.open({ id = "menu", items = { { text = "again", run = "menu" }, { text = "help", run = "help" }, "none" } })
+end)`,
+			"tests/a_test.lua": `local test = assert(zemi.test)
+test("rows", function()
+  assert(test.run("menu"))
+  assert(test.answer("again"))
+  test.eq(zemi.state.get("n"), 2)
+  for _, c in ipairs({ { "help", "/help is not a command of plugin cp" }, { "none", "overlay menu has no on_select, and the row no run" } }) do
+    local ok, err = pcall(test.answer, c[1])
+    assert(not ok and err:find(c[2], 1, true), err)
+  end
+end)`,
+		}, want: "1 passed (1 file, (T))\n"},
 		{name: "a job's output arrives when it ends, the clock unmoved", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
 			"init.lua": `zemi.command.add("log", function()
   zemi.job.start({ cmd = "git", args = { "log" }, on_stdout = function(lines) zemi.state.set("out", lines) end })

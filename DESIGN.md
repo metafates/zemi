@@ -474,8 +474,9 @@ quiet (no host goroutine running, no timer due). An error zemi records in
 paths relative to the plugin, and one summary line; the exit status is 1
 on any failure, no case or a pattern matching none, 2 on a usage error.
 NOTE: one widget renders at a time (no screen layout), `keys` reaches no
-`{ focus = id }` binding, `answer` no row's `run`, list key or toggle
-list, a stub answers at once (a timeout is untested), and the plugin's
+`{ focus = id }` binding, `answer` no list key or toggle list (a row
+it picks runs its `run` when no callback takes it, only a command of the
+plugin), a stub answers at once (a timeout is untested), and the plugin's
 skills, agents and workflows are not exercised.
 
 `require` rules:

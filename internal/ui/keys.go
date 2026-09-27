@@ -218,7 +218,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			// the highlighted argument replaces a typed or picked one, so a
 			// bare "/name " runs as typed, and the highlighted command
 			// replaces a typed name that is none or that the user moved off
-			name, args := SplitCommand(strings.TrimPrefix(c.text, "/"))
+			name, args := hostapi.SplitCommand(strings.TrimPrefix(c.text, "/"))
 			switch {
 			case p.args != nil && p.selected < len(p.args) && (p.moved || c.cursor > p.argStart):
 				c.replace(p.argStart, p.args[p.selected].label)

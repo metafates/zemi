@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
 
 	glua "github.com/yuin/gopher-lua"
 
@@ -345,4 +346,15 @@ func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) (err error) {
 		return fn(h, args)
 	}
 	return nil
+}
+
+// SplitCommand splits "name arg string" into the command name and the raw
+// argument string. The name ends at any whitespace: a shift+enter line may
+// follow it.
+func SplitCommand(raw string) (name, args string) {
+	i := strings.IndexFunc(raw, unicode.IsSpace)
+	if i < 0 {
+		return raw, ""
+	}
+	return raw[:i], strings.TrimLeftFunc(raw[i:], unicode.IsSpace)
 }

@@ -720,13 +720,15 @@ func itemText(o Overlay, i int) string {
 
 // answer is test.answer(choice [, action]): enter on an item (its index or
 // text) or on a detail action (its id or text), the input's text, or esc
-// for nil. The overlay closes first, as the UI closes it.
+// for nil. The overlay closes first, as the UI closes it, and a row no
+// callback takes runs its run, the plugin's command.
+// NOTE: a list key and a toggle list's reload are not driven here.
 func (t *PluginTest) answer(L *glua.LState) int {
 	o, ok := t.ui.top()
 	if !ok {
 		raise(L, "test.answer: no overlay is open")
 	}
-	var item, action any
+	var item any
 	what, fn := "on_select", o.OnSelect
 	choice := L.Get(1)
 	switch c := choice.(type) {
@@ -761,32 +763,41 @@ func (t *PluginTest) answer(L *glua.LState) int {
 	default:
 		raise(L, "test.answer: choice must be an item's index or text, the input's text, or nil for esc")
 	}
+	args := []any{item}
+	row, _ := ParseOverlayItem(item)
 	if a := L.Get(2); a != glua.LNil && choice != glua.LNil {
-		p, _ := ParseOverlayItem(item)
 		want := a.String()
-		i := slices.IndexFunc(p.Actions, func(x any) bool {
+		i := slices.IndexFunc(row.Actions, func(x any) bool {
 			ap, _ := ParseOverlayItem(x)
 			return ap.ID == want || ap.Text == want
 		})
 		if i < 0 {
 			raise(L, "test.answer: the item has no action %q", want)
 		}
-		what, fn, action = "on_action", o.OnAction, p.Actions[i]
+		args = append(args, row.Actions[i])
+		row, _ = ParseOverlayItem(row.Actions[i])
+		what, fn = "on_action", o.OnAction
+		if row.ID == "" {
+			fn = nil // the UI sends on_action only an action with an id
+		}
 	}
-	if fn == nil && what != "on_close" {
-		// NOTE: a row's run, a list key and a toggle list's reload are not driven here
-		raise(L, "test.answer: overlay %s has no %s; test.run runs what a row's run names", o.ID, what)
+	act := func(ctx context.Context) error { return t.h.callOverlay(ctx, o, what, fn, args...) }
+	switch {
+	case what == "on_close":
+		args = nil
+	case fn != nil:
+	case row.Run == "":
+		raise(L, "test.answer: overlay %s has no %s, and the row no run", o.ID, what)
+	default:
+		name, cmdArgs := SplitCommand(row.Run)
+		if t.command(name) == nil {
+			t.refuse(L, "answer", "/"+name, "command", t.commands())
+		}
+		act = func(ctx context.Context) error { return t.h.RunCommand(ctx, name, cmdArgs) }
 	}
 	return t.drive(L, "answer", "overlay "+o.ID, func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		t.ui.close(o.ID)
-		args := []any{item}
-		switch {
-		case what == "on_close":
-			args = nil
-		case action != nil:
-			args = append(args, action)
-		}
-		return nil, errText(t.h.callOverlay(ctx, o, what, fn, args...))
+		return nil, errText(act(ctx))
 	})
 }
 
