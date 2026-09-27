@@ -836,7 +836,7 @@ func keyPath(k glua.LValue) string {
 	if s, ok := k.(glua.LString); ok && luaIdent.MatchString(string(s)) {
 		return "." + string(s)
 	}
-	return "[" + literal(k, "", nil) + "]"
+	return "[" + literal(k, "", map[*glua.LTable]bool{}) + "]"
 }
 
 // literal writes v as Lua source, a table on one line when it fits.
