@@ -19,6 +19,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"regexp/syntax"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -999,10 +1001,18 @@ func plural(n int) string {
 const (
 	globMaxFiles   = 200
 	grepMaxMatches = 100
+	// ListLimit caps a glob, grep or zemi.fs listing, so a walk of a huge
+	// tree outside any repository ends.
+	ListLimit = 200_000
+	// grepMaxSize is the largest file grep reads.
+	// NOTE: a bigger file (a bundle, a dump, a huge lock file) is not
+	// searched; a streaming line reader would lift the cap, at the price of
+	// the one pass over the whole file that rules most files out.
+	grepMaxSize = 4 << 20
 )
 
-// globMaxScan is where a glob stops collecting; a var so a test can hit it
-var globMaxScan = 20_000
+// walkedNote tells the model that walk, not git, picked the files it sees.
+const walkedNote = "(no git file list here: .gitignore not read, hidden and build directories skipped)"
 
 // runGlob lists files under root (default session dir) matching pattern,
 // newest first: recently changed files are the likely targets.
@@ -1017,66 +1027,50 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 		pattern = filepath.ToSlash(rel)
 	}
-	// matched here, not by rg --glob: an rg glob that matches a directory
-	// name ("*") would list .git and gitignored trees
-	// NOTE: globMaxScan counts matches, so a narrow pattern lists the whole
-	// tree; a pattern that cannot name a directory (one ending in an
-	// extension) could go to rg as --glob too, as a pre-filter.
 	match, err := glob.Match(pattern)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
+	files, walked, err := ListFiles(ctx, root, ListLimit)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
 	var rels []string
-	collect := func(rel string) bool {
-		if match(rel) {
+	mod := map[string]time.Time{}
+	for _, f := range files {
+		if match(f) {
+			rel := filepath.ToSlash(filepath.Join(root, f))
 			rels = append(rels, rel)
-		}
-		return len(rels) < globMaxScan
-	}
-	if !ripgrep(ctx, root, collect, "--files") {
-		rels = rels[:0]
-		err = walk(ctx, root, func(path, rel string) error {
-			if !collect(rel) {
-				return filepath.SkipAll
+			if fi, err := os.Lstat(rel); err == nil {
+				mod[rel] = fi.ModTime()
 			}
-			return nil
-		})
-		if err != nil {
-			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}
-	if len(rels) == 0 {
-		return fantasy.NewTextResponse("(no matches)"), nil
+	slices.SortFunc(rels, func(a, b string) int { return cmp.Or(mod[b].Compare(mod[a]), strings.Compare(a, b)) })
+	var out []string
+	if walked {
+		out = append(out, walkedNote)
 	}
-	mod := make(map[string]time.Time, len(rels))
-	for i, rel := range rels {
-		rels[i] = filepath.ToSlash(filepath.Join(root, rel))
-		if fi, err := os.Stat(rels[i]); err == nil {
-			mod[rels[i]] = fi.ModTime()
-		}
-	}
-	slices.SortStableFunc(rels, func(a, b string) int { return mod[b].Compare(mod[a]) })
 	// a check resolves symlinks, so only as many hits are checked as are shown
-	ruledOut, shown := p.ruledOut(), rels[:0]
+	ruledOut, shown := p.ruledOut(), 0
 	for i, rel := range rels {
-		if len(shown) == globMaxFiles {
-			// the scan stopped at globMaxScan, so the rest is unknown; below
-			// it "up to" holds, since ruledOut may hide some of the remainder
-			if len(rels) == globMaxScan {
-				shown = append(shown, fmt.Sprintf("... (scan stopped at %d files; narrow the pattern or path)", globMaxScan))
-			} else {
-				shown = append(shown, fmt.Sprintf("... (up to %d more; narrow the pattern or path)", len(rels)-i))
-			}
+		if shown == globMaxFiles {
+			// "up to": ruledOut may hide some of the rest
+			out = append(out, fmt.Sprintf("... (up to %d more; narrow the pattern or path)", len(rels)-i))
 			break
 		}
 		if !ruledOut(rel) {
-			shown = append(shown, rel)
+			out = append(out, rel)
+			shown++
 		}
 	}
-	if len(shown) == 0 {
-		return fantasy.NewTextResponse("(no matches)"), nil
+	if shown == 0 {
+		out = append(out, "(no matches)")
 	}
-	return fantasy.NewTextResponse(strings.Join(shown, "\n")), nil
+	if len(files) == ListLimit {
+		out = append(out, fmt.Sprintf("... (listing stopped at %d files; narrow the path)", ListLimit))
+	}
+	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
 }
 
 // runGrep searches file contents under root, optionally only in files
@@ -1090,82 +1084,48 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	if literal {
 		re = regexp.MustCompile(regexp.QuoteMeta(pattern))
 	}
-	// a file root is searched as one file of its directory, so rel keeps
-	// its shape
-	file := ""
-	if fi, err := os.Stat(root); err == nil && fi.Mode().IsRegular() {
-		root, file = filepath.Dir(root), filepath.Base(root)
-	}
-	var hits []string
-	hidden, ruledOut := map[string]bool{}, p.ruledOut()
-	add := func(rel string, line int, text string) bool {
-		path := filepath.Join(root, rel)
-		h, ok := hidden[rel]
-		if !ok {
-			h = perm.PathIsStrictSecret(rel) || ruledOut(path)
-			hidden[rel] = h
-		}
-		if !h {
-			hits = append(hits, fmt.Sprintf("%s:%d: %s", filepath.ToSlash(path), line, truncLine(text)))
-		}
-		return len(hits) < grepMaxMatches
-	}
-	args := []string{"--line-number", "--no-heading", "--null", "--max-columns", "1000", "--max-columns-preview", "--regexp", pattern}
-	if literal {
-		args = append(args, "--fixed-strings")
-	}
+	match := func(string) bool { return true }
 	if include != "" {
-		args = append(args, "--glob", include)
-	}
-	if file != "" {
-		// no "--": ripgrep appends its exclusions after these args
-		args = append(args, "--with-filename", "./"+file)
-	}
-	ok := ripgrep(ctx, root, func(out string) bool {
-		rel, rest, _ := strings.Cut(out, "\x00")
-		n, text, _ := strings.Cut(rest, ":")
-		line, _ := strconv.Atoi(n)
-		return add(rel, line, text)
-	}, args...)
-	if !ok {
-		hits = hits[:0]
-		match := func(string) bool { return true }
-		if include != "" {
-			if match, err = glob.Match(include); err != nil {
-				return fantasy.NewTextErrorResponse(err.Error()), nil
-			}
-		}
-		visit := func(path, rel string) error {
-			if !match(rel) || perm.PathIsStrictSecret(rel) || !isTextFile(path) {
-				return nil
-			}
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return nil
-			}
-			for i, line := range strings.Split(string(data), "\n") {
-				if re.MatchString(line) && !add(rel, i+1, line) {
-					return filepath.SkipAll
-				}
-			}
-			return nil
-		}
-		if file != "" {
-			err = visit(filepath.Join(root, file), file)
-		} else {
-			err = walk(ctx, root, visit)
-		}
-		if err != nil && !errors.Is(err, filepath.SkipAll) {
+		if match, err = glob.Match(include); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}
+	name := func(rel string) string { return filepath.ToSlash(filepath.Join(root, rel)) }
+	var files []string
+	walked := false
+	if fi, err := os.Stat(root); err == nil && fi.Mode().IsRegular() {
+		// Grep opens no symbolic link, but one named as path was asked for
+		given, real := filepath.ToSlash(filepath.Clean(root)), root
+		if r, err := filepath.EvalSymlinks(root); err == nil {
+			real = r
+		}
+		root, files = filepath.Dir(real), []string{filepath.Base(real)}
+		name = func(string) string { return given }
+	} else if files, walked, err = ListFiles(ctx, root, ListLimit); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	capped := len(files) == ListLimit
+	files = slices.DeleteFunc(files, func(rel string) bool { return !match(rel) || perm.PathIsStrictSecret(rel) })
+	ruledOut := p.ruledOut()
+	hits, err := Grep(ctx, root, files, re, grepMaxMatches, func(rel string) bool { return !ruledOut(filepath.Join(root, rel)) })
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
 	var out []string
+	if walked {
+		out = append(out, walkedNote)
+	}
 	if literal {
 		out = append(out, "(pattern taken literally)")
 	}
-	out = append(out, hits...)
-	if len(hits) >= grepMaxMatches {
+	for _, h := range hits {
+		out = append(out, fmt.Sprintf("%s:%d: %s", name(h.Rel), h.Line, truncLine(h.Text)))
+	}
+	switch {
+	case len(hits) == grepMaxMatches:
 		out = append(out, fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches))
+	case capped:
+		out = append(out, fmt.Sprintf("... (searched the first %d files; narrow the path)", ListLimit))
 	}
 	if len(hits) == 0 {
 		out = append(out, "(no matches; secret-shaped files like .env are not searched, read one to ask)")
@@ -1173,25 +1133,158 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
 }
 
-// ListFiles lists up to limit files under root, relative to it, in no
-// particular order. Hidden directories like .github are listed only when
-// rg is installed; the walker fallback skips them.
-func ListFiles(root string, limit int) []string {
-	var files []string
-	collect := func(rel string) bool {
-		files = append(files, rel)
-		return len(files) < limit
+// ListFiles lists up to limit regular files under root, relative to it, in
+// path order: in a git work tree what git tracks or would track (the
+// .gitignore files read), else, with walked set, what walk finds. Neither
+// lists a symbolic link, .git or a nested repository.
+func ListFiles(ctx context.Context, root string, limit int) (files []string, walked bool, err error) {
+	out, err := proc.Git{Dir: root}.Run(ctx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	for rel := range strings.SplitSeq(out, "\x00") {
+		// a nested repository comes as its directory, a deleted or a
+		// submodule's entry as no regular file
+		if err != nil || rel == "" || strings.HasSuffix(rel, "/") || strings.HasPrefix(rel, ".agents/worktrees/") {
+			continue
+		}
+		if fi, err := os.Lstat(filepath.Join(root, rel)); err == nil && fi.Mode().IsRegular() {
+			files = append(files, rel)
+		}
 	}
-	if !ripgrep(context.Background(), root, collect, "--files") {
-		files = files[:0]
-		_ = walk(context.Background(), root, func(_, rel string) error {
-			if !collect(rel) {
+	// nothing listed: no repository, no git, or a root git ignores whole
+	if len(files) == 0 {
+		walked = true
+		err = walk(ctx, root, func(rel string) error {
+			files = append(files, filepath.ToSlash(rel))
+			if len(files) == limit {
 				return filepath.SkipAll
 			}
 			return nil
 		})
+		if err != nil {
+			return nil, walked, err
+		}
 	}
-	return files
+	slices.Sort(files)
+	// an unmerged path is listed once per stage
+	files = slices.Compact(files)
+	return files[:min(len(files), limit)], walked, nil
+}
+
+// Hit is one line Grep found, Rel relative to the root it searched.
+type Hit struct {
+	Rel  string
+	Line int
+	Text string
+}
+
+// Grep returns the first limit lines matching re in files, relative to
+// root, in their order. It reads a file only when it is regular, at most
+// grepMaxSize bytes and not binary; show, asked once per file with hits,
+// can leave that file out.
+func Grep(ctx context.Context, root string, files []string, re *regexp.Regexp, limit int, show func(rel string) bool) ([]Hit, error) {
+	whole := wholeFile(re)
+	found, done := make([][]Hit, len(files)), make([]bool, len(files))
+	// the files before prefix are all searched; the hits among them decide
+	// the answer, so it does not depend on which worker finished first.
+	// NOTE: workers run ahead of a slow file unbounded, holding up to limit
+	// hits per file they pass; a window on next-prefix would cap that.
+	var mu sync.Mutex
+	prefix, n := 0, 0
+	var next atomic.Int64
+	var stop atomic.Bool
+	var wg sync.WaitGroup
+	for range runtime.GOMAXPROCS(0) {
+		wg.Go(func() {
+			var buf []byte
+			for !stop.Load() && ctx.Err() == nil {
+				i := int(next.Add(1)) - 1
+				if i >= len(files) {
+					return
+				}
+				hits := grepFile(root, files[i], re, whole, limit, &buf)
+				mu.Lock()
+				found[i], done[i] = hits, true
+				for ; prefix < len(files) && done[prefix]; prefix++ {
+					if len(found[prefix]) > 0 && show != nil && !show(files[prefix]) {
+						found[prefix] = nil
+					}
+					n += len(found[prefix])
+				}
+				stop.Store(n >= limit)
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var hits []Hit
+	for _, f := range found[:prefix] {
+		hits = append(hits, f...)
+	}
+	return hits[:min(len(hits), limit)], nil
+}
+
+// grepFile returns up to limit matching lines of one file, read into the
+// worker's buf. It reads only what a fresh Lstat and the opened file agree
+// is one regular file, so a symbolic link swapped in since the listing is
+// never followed.
+// NOTE: a parent directory swapped for a link still is; perm.Path.Open's
+// openat walk would close that at a syscall per path component.
+func grepFile(root, rel string, re, whole *regexp.Regexp, limit int, buf *[]byte) []Hit {
+	path := filepath.Join(root, rel)
+	fi, err := os.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > grepMaxSize {
+		return nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	if st, err := f.Stat(); err != nil || !os.SameFile(fi, st) {
+		return nil
+	}
+	if int64(cap(*buf)) < fi.Size() {
+		*buf = make([]byte, fi.Size())
+	}
+	data := (*buf)[:fi.Size()]
+	n, _ := io.ReadFull(f, data)
+	data = data[:n]
+	if looksBinary(data) || whole != nil && !whole.Match(data) {
+		return nil
+	}
+	var hits []Hit
+	n = 0
+	for line := range bytes.Lines(data) {
+		n++
+		if line = bytes.TrimSuffix(line, []byte("\n")); re.Match(line) {
+			if hits = append(hits, Hit{rel, n, string(line)}); len(hits) == limit {
+				break
+			}
+		}
+	}
+	return hits
+}
+
+// wholeFile is re made to match at line breaks, so one pass over a whole
+// file rules out every line of it; nil when re anchors to the text (\A, \z,
+// ^ under (?-m)), which a line-wise search matches at every line.
+func wholeFile(re *regexp.Regexp) *regexp.Regexp {
+	src := "(?m)" + re.String()
+	parsed, err := syntax.Parse(src, syntax.Perl)
+	if err != nil || anchorsText(parsed) {
+		return nil
+	}
+	whole, err := regexp.Compile(src)
+	if err != nil {
+		return nil
+	}
+	return whole
+}
+
+func anchorsText(re *syntax.Regexp) bool {
+	return re.Op == syntax.OpBeginText || re.Op == syntax.OpEndText || slices.ContainsFunc(re.Sub, anchorsText)
 }
 
 // ruledOut reports whether a deny or ask rule covers reading path: glob
@@ -1207,54 +1300,13 @@ func (p *Pipeline) ruledOut() func(path string) bool {
 	}
 }
 
-// rgBin is ripgrep when installed: it honors .gitignore and is much faster
-// than the Go walker, which stays as the fallback.
-var rgBin, _ = exec.LookPath("rg")
-
-// ripgrep streams rg's output lines, run in root, to fn until fn returns
-// false. false means rg is missing or refused the pattern or a glob, and the
-// caller falls back; an unreadable path (exit 2 after the search) is not.
-func ripgrep(ctx context.Context, root string, fn func(line string) bool, args ...string) bool {
-	if rgBin == "" {
-		return false
-	}
-	cctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	// the exclusions go last: rg's last matching glob wins. NOTE: a grep
-	// include that matches a directory name ("*") still un-ignores gitignored
-	// trees; rg has no glob for files only. --no-config: a user's
-	// RIPGREP_CONFIG_PATH (--smart-case, --glob) must not change what matches
-	args = append(append([]string{"--no-config", "--hidden", "--no-require-git"}, args...), "--glob", "!.git", "--glob", "!.agents/worktrees")
-	c := proc.CommandContext(cctx, rgBin, args...)
-	c.Dir = root
-	var stderr bytes.Buffer
-	c.Stderr = &stderr
-	out, err := c.StdoutPipe()
-	if err != nil || proc.Start(c) != nil {
-		return false
-	}
-	sc := bufio.NewScanner(out)
-	sc.Buffer(nil, 1<<20)
-	stopped := false
-	for sc.Scan() {
-		if !fn(sc.Text()) {
-			stopped = true
-			break
-		}
-	}
-	// an unread pipe would block rg forever
-	if stopped || sc.Err() != nil {
-		cancel()
-	}
-	err = proc.Wait(c)
-	var exit *exec.ExitError
-	refused := bytes.Contains(stderr.Bytes(), []byte("regex parse error")) || bytes.Contains(stderr.Bytes(), []byte("error parsing glob"))
-	return stopped || err == nil || (errors.As(err, &exit) && (exit.ExitCode() == 1 || exit.ExitCode() == 2 && !refused))
-}
-
-// walk visits the regular files under root for the Go fallback, which skips
-// hidden and generated directories instead of reading .gitignore.
-func walk(ctx context.Context, root string, fn func(path, rel string) error) error {
+// walk visits the regular files under root, by path relative to it, when
+// git cannot list them.
+// NOTE: it reads no .gitignore and skips hidden and generated directories
+// by name instead, so a tracked .github or build/ is missed and an ignored
+// output directory listed; the root .gitignore read through internal/glob
+// (negations, anchoring, directory-only lines) would get closer.
+func walk(ctx context.Context, root string, fn func(rel string) error) error {
 	// WalkDir does not follow a symlinked root, and would visit nothing
 	if real, err := filepath.EvalSymlinks(root); err == nil {
 		root = real
@@ -1281,7 +1333,7 @@ func walk(ctx context.Context, root string, fn func(path, rel string) error) err
 			return nil
 		}
 		rel, _ := filepath.Rel(root, path)
-		return fn(path, rel)
+		return fn(rel)
 	})
 }
 
@@ -1290,19 +1342,6 @@ func truncLine(s string) string {
 		return strings.ToValidUTF8(s[:200], "") + "..."
 	}
 	return s
-}
-
-// isTextFile rejects obviously binary files; grep opens every file, so it
-// sniffs only the first 512 bytes.
-func isTextFile(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	buf := make([]byte, 512)
-	n, _ := f.Read(buf)
-	return !looksBinary(buf[:n])
 }
 
 func skipDir(name string) bool {

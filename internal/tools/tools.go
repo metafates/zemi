@@ -1047,7 +1047,7 @@ Chain dependent steps with &&.`,
 			},
 			runGlob),
 
-		mk(ToolGrep, "Search file contents under path, skipping .gitignored ones, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text.", true,
+		mk(ToolGrep, "Search file contents under path, skipping .gitignored, binary and over 4 MB files, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text.", true,
 			map[string]any{
 				"pattern": map[string]any{"type": "string", "description": "RE2 regular expression matched against each line"},
 				"path":    map[string]any{"type": "string", "description": "file or directory to search; default the working directory"},

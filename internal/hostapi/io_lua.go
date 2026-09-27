@@ -6,12 +6,14 @@ package hostapi
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -574,7 +576,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("glob", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
 		h.luaGate(L, "lua.fs.read", h.Dirs.ProjectDir)
-		matches, err := h.jailedGlob(pattern)
+		matches, err := h.jailedGlob(cmp.Or(L.Context(), context.Background()), pattern)
 		if err != nil {
 			L.RaiseError("zemi.fs.glob: %v", err)
 		}
@@ -589,9 +591,13 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.fs.grep: %v", err)
 		}
+		hits, err := h.jailedGrep(cmp.Or(L.Context(), context.Background()), re)
+		if err != nil {
+			L.RaiseError("zemi.fs.grep: %v", err)
+		}
 		rows := []any{}
-		for _, hit := range h.jailedGrep(re) {
-			rows = append(rows, map[string]any{"path": hit.path, "line": hit.line, "text": hit.text})
+		for _, hit := range hits {
+			rows = append(rows, map[string]any{"path": hit.Rel, "line": hit.Line, "text": hit.Text})
 		}
 		L.Push(lua.FromGo(L, rows))
 		return 1
@@ -632,75 +638,25 @@ func (h *Host) projectAbs(path string) string {
 
 // jailedGlob matches project-relative paths in the glob tool's dialect,
 // anchored at the root so "*.go" stays in the top directory.
-func (h *Host) jailedGlob(pattern string) ([]string, error) {
+func (h *Host) jailedGlob(ctx context.Context, pattern string) ([]string, error) {
 	match, err := glob.Match("/" + strings.TrimPrefix(pattern, "/"))
 	if err != nil {
 		return nil, err
 	}
-	var out []string
-	root := h.Dirs.ProjectDir
-	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return skipHidden(root, p, d, err)
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return nil
-		}
-		if match("/" + rel) {
-			out = append(out, rel)
-		}
-		return nil
-	})
-	slices.Sort(out)
-	return out, err
-}
-
-// skipHidden is the walk result for a directory or unreadable entry: dot
-// directories below root are skipped, unreadable entries ignored.
-func skipHidden(root, p string, d os.DirEntry, err error) error {
-	if err == nil && strings.HasPrefix(d.Name(), ".") && p != root {
-		return filepath.SkipDir
-	}
-	return nil
-}
-
-type grepHit struct {
-	path string
-	line int
-	text string
+	files, _, err := tools.ListFiles(ctx, h.Dirs.ProjectDir, tools.ListLimit)
+	return slices.DeleteFunc(files, func(rel string) bool { return !match("/" + rel) }), err
 }
 
 // jailedGrep never reads secret-shaped files, which the lua.fs.read gate
-// would ask for, nor symlinks, which could lead out of the project.
-func (h *Host) jailedGrep(re *regexp.Regexp) []grepHit {
-	var out []grepHit
+// would ask for.
+func (h *Host) jailedGrep(ctx context.Context, re *regexp.Regexp) ([]tools.Hit, error) {
 	root := h.Dirs.ProjectDir
-	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return skipHidden(root, p, d, err)
-		}
-		if d.Type()&os.ModeSymlink != 0 || perm.PathIsSecret(p) {
-			return nil
-		}
-		f, err := os.Open(p)
-		if err != nil {
-			return nil
-		}
-		defer f.Close()
-		data, err := io.ReadAll(io.LimitReader(f, 1<<20))
-		if err != nil {
-			return nil
-		}
-		for i, line := range strings.Split(string(data), "\n") {
-			if re.MatchString(line) {
-				rel, _ := filepath.Rel(root, p)
-				out = append(out, grepHit{path: rel, line: i + 1, text: line})
-			}
-		}
-		return nil
-	})
-	return out
+	files, _, err := tools.ListFiles(ctx, root, tools.ListLimit)
+	if err != nil {
+		return nil, err
+	}
+	files = slices.DeleteFunc(files, func(rel string) bool { return perm.PathIsSecret(filepath.Join(root, rel)) })
+	return tools.Grep(ctx, root, files, re, math.MaxInt, nil)
 }
 
 // ---------------------------------------------------------------------------

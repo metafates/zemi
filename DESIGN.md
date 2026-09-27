@@ -65,13 +65,13 @@ boot, an update only when the user asks, the user's own
 `zemi.provider.add` on top. Not taken:
 `charm.land/bubbles` (the composer is zemi's own editor, §6.6) and
 `fsnotify` (config reload is a one-second fingerprint walk of the config
-trees). Ripgrep is
-not a dependency either: `glob` and `grep` exec whatever
-`rg` `exec.LookPath` found at init and fall back to a Go walker with the
-same rules when `rg` is missing (Go-side and cancellable either way).
-`glob` lists `rg --files` and matches the pattern in Go; `grep` passes
-its pattern as `--regexp` and its include as `--glob`, so neither can be
-read as a flag.
+trees). Nor is ripgrep: `glob`, `grep`, `@` completion and `zemi.fs.glob`/`grep`
+share one lister (`tools.ListFiles`), `git ls-files --cached --others
+--exclude-standard` through the hardened `proc.Git`, so the `.gitignore`
+files decide, and a Go walker that skips hidden and build directories by
+name where git cannot list (no repository, no git). `grep` searches that
+list in parallel with Go's RE2 `regexp`, in path order, so the same call
+returns the same lines.
 
 ## 3. High-level architecture
 
@@ -1006,8 +1006,8 @@ names it `view`; it returns images as image content, lists a directory
 one level deep in place of crush's `ls`, and carries the
 nearest instruction file not already in the prompt, once per session),
 `write`, `edit` (incl. whitespace-tolerant variant),
-`glob`, `grep` (both Go-exec'd async against `rg` with a Go
-walker fallback, §2), `fetch` (readability picks the article out of the
+`glob`, `grep` (both over `git ls-files` with a Go walker fallback, §2),
+`fetch` (readability picks the article out of the
 page, converted to markdown),
 `todos`, `question` (1-4 questions in one overlay, options or a typed
 answer), `plan` (shows the plan in its own scrollable popup for approval; for a
@@ -1543,7 +1543,7 @@ provenance string.
   transcript rebuilt from the store), `/compact`, `/btw <question>` (a side question
   answered in an overlay, on stdout under `-p`, from the conversation so far,
   never stored), `/health` (one row per check, problems first: store, model
-  key, context window, git, ripgrep,
+  key, context window, git,
   reflector, pending reviews, skills, recent errors, project trust, MCP
   servers, language servers, Lua runtime),
   `/errors` (recent widget, keymap and event-handler errors behind the
@@ -2460,9 +2460,4 @@ namespaces.
 - Streaming render cost: a long transcript re-renders per generation
   bump; needs a per-widget invalidation design and a measured budget.
 - Platform support statement: the doc assumes Unix throughout (XDG
-  paths, `rg` resolution, termios); v1 scope for Windows is undecided.
-- Hardened `rg` resolution: today the binary is whatever
-  `exec.LookPath` finds at init, so a `PATH` entry the user controls
-  decides which `rg` runs. Resolving from a fixed directory list that
-  excludes cwd-relative entries would close that, at the price of
-  missing installs in unusual places.
+  paths, termios); v1 scope for Windows is undecided.

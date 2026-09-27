@@ -1914,13 +1914,15 @@ function zemi.fs.mkdir(path) end
 ---@return string|nil err
 function zemi.fs.remove(path) end
 
---- Match project-relative paths. `*` and `?` stay inside one segment,
+--- Match the project's files, as the glob tool lists them (no .gitignored
+--- files, no symbolic links), in path order. `*` and `?` stay inside one segment,
 --- `**` spans directories ("**/*.go"), `{a,b}` alternates, `[...]` is a class.
 ---@param pattern string
 ---@return string[] paths
 function zemi.fs.glob(pattern) end
 
---- Search the project for a Go regular expression.
+--- Search the project's files for a Go regular expression, in path order,
+--- skipping secret-shaped, binary and over 4 MB files.
 ---@param pattern string
 ---@return zemi.GrepHit[]
 function zemi.fs.grep(pattern) end

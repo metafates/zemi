@@ -2,6 +2,7 @@ package tools
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sandbox"
 )
 
@@ -395,79 +397,110 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 	}
 }
 
-// TestGlobAndGrep runs every case through ripgrep and the Go fallback.
+// TestGlobAndGrep runs over a real git repository, outside one and with no
+// git binary.
 func TestGlobAndGrep(t *testing.T) {
 	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
-	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "sub", "node_modules"), 0o755)
-	os.MkdirAll(filepath.Join(dir, "private"), 0o755)
-	os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	dir, out := t.TempDir(), t.TempDir()
 	p.Store.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(dir, "private", "*"), Decision: perm.Deny})
-	for name, body := range map[string]string{
-		"main.go": "package main\n", "notes.txt": "notes\n", ".env": "package secret\n", "private/k.go": "package priv\n", "call.go": "x := sub(1)\n",
-		".gitignore": "node_modules/\ngen/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n", ".git/HEAD": "ref\n",
+	files := map[string]string{
+		"main.go": "package main\n", ".env": "package secret\n", "private/k.go": "package priv\n", "call.go": "x := sub(1)\n",
+		".gitignore": "node_modules/\ngen/\nbuild/\n", "sub/x.go": "package sub\n", "sub/node_modules/y.go": "package y\n",
 		"src/credential.ts": "export function loadCredential() {}\n", "src/a.txt": "needle\n", "gen/b.txt": "needle\n", "locked/c.txt": "needle\n",
-	} {
+		".github/workflows/ci.yml": "on: push\n", "build/tracked.go": "package tracked\n", "build/untracked.go": "package tracked\n",
+		".agents/worktrees/w/x.go": "package sub\n", "bin.dat": strings.Repeat("a", 600) + "\x00\nneedle\n",
+		"two.txt": "one\ntwo anchored\n",
+	}
+	for i := range 300 {
+		files[fmt.Sprintf("many/f%03d.txt", i)] = "dup\n"
+	}
+	for name, body := range files {
 		os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755)
 		os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
+		// old, so a glob's newest-first cut leaves them out
+		if strings.HasPrefix(name, "many/") {
+			os.Chtimes(filepath.Join(dir, name), time.Time{}, time.Unix(0, 0))
+		}
 	}
-	// rg reports the unreadable dir and exits 2 after searching the rest
+	os.WriteFile(filepath.Join(out, "loose.txt"), []byte("needle\n"), 0o644)
+	os.Symlink("main.go", filepath.Join(dir, "link.go"))
+	os.Symlink("private/k.go", filepath.Join(dir, "lnk.txt"))
+	for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}, {"add", "-f", "build/tracked.go"}} {
+		if _, err := (proc.Git{Dir: dir}).Run(t.Context(), args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// git lists untracked files first, right after its stderr warning about
+	// the unreadable dir, which must not garble notes.txt
+	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("notes\n"), 0o644)
 	os.Chmod(filepath.Join(dir, "locked"), 0)
 	t.Cleanup(func() { os.Chmod(filepath.Join(dir, "locked"), 0o755) })
 	glob, grep := toolNamed(t, "glob", p), toolNamed(t, "grep", p)
-	saved := rgBin
-	t.Cleanup(func() { rgBin = saved })
-	for _, bin := range []string{saved, ""} {
-		rgBin = bin
-		for _, c := range []struct {
-			tool      fantasy.AgentTool
-			input     string
-			want, not string
-		}{
-			{glob, `{"pattern":"*.go"}`, "sub/x.go", "node_modules"},
-			{glob, `{"pattern":"*.go"}`, "main.go", "notes"},
-			{glob, `{"pattern":"sub/**/*.go"}`, "sub/x.go", "main.go"},
-			{glob, `{"pattern":"*.{go,txt}"}`, "notes.txt", "node_modules"},
-			{grep, `{"pattern":"package sub"}`, "x.go:1", "main.go"},
-			{grep, `{"pattern":"package","include":"[m]*.go"}`, "main.go:1", "x.go"},
-			{grep, `{"pattern":"package (y|secret)"}`, "(no matches; secret-shaped", "y.go"},
-			{grep, `{"pattern":"loadCredential|package secret"}`, "src/credential.ts:1", "package secret"},
-			{grep, `{"pattern":"needle"}`, "src/a.txt:1", "gen/"},
-			{glob, `{"pattern":"**/*.txt"}`, "src/a.txt", "gen/"},
-			{glob, `{"pattern":"**/*.go"}`, "main.go", "private"},
-			{grep, `{"pattern":"package priv"}`, "no matches", "k.go"},
-			{grep, `{"pattern":"package","path":"sub/x.go"}`, "sub/x.go:1: package sub", "main.go"},
-			{grep, `{"pattern":"sub("}`, "(pattern taken literally)\n", "bad pattern"},
-			{grep, `{"pattern":"sub("}`, "call.go:1: x := sub(1)", "x.go"},
-			{glob, `{"pattern":"./sub/*.go"}`, "sub/x.go", "main.go"},
-			{glob, `{"pattern":"DIR/sub/*.go"}`, "sub/x.go", "main.go"},
-			{glob, `{"pattern":"/etc/*"}`, "pass its directory as path", "hosts"},
-			{glob, `{"pattern":"*"}`, "main.go", ".git/"},
-			{glob, `{"pattern":"**"}`, "sub/x.go", "node_modules"},
-			{glob, `{"pattern":"**/*"}`, "sub/x.go", ".git/"},
-		} {
-			if bin == "" && c.not == "gen/" {
-				continue // the walker reads no .gitignore
+	for _, c := range []struct {
+		tool      fantasy.AgentTool
+		input     string
+		want, not string
+		root      string // default dir
+		noGit     bool
+	}{
+		{tool: glob, input: `{"pattern":"*.go"}`, want: "sub/x.go", not: "node_modules"},
+		{tool: glob, input: `{"pattern":"*.go"}`, want: "main.go", not: "link.go"},
+		{tool: glob, input: `{"pattern":"sub/**/*.go"}`, want: "sub/x.go", not: "main.go"},
+		{tool: glob, input: `{"pattern":"*.{go,txt}"}`, want: "notes.txt", not: "node_modules"},
+		{tool: grep, input: `{"pattern":"package sub"}`, want: "x.go:1", not: "main.go"},
+		{tool: grep, input: `{"pattern":"package","include":"[m]*.go"}`, want: "main.go:1", not: "x.go"},
+		{tool: grep, input: `{"pattern":"package (y|secret)"}`, want: "(no matches; secret-shaped", not: "y.go"},
+		{tool: grep, input: `{"pattern":"loadCredential|package secret"}`, want: "src/credential.ts:1", not: "package secret"},
+		{tool: grep, input: `{"pattern":"needle"}`, want: "src/a.txt:1", not: "gen/"},
+		{tool: grep, input: `{"pattern":"needle"}`, want: "src/a.txt:1", not: "bin.dat"},
+		{tool: glob, input: `{"pattern":"**/*.txt"}`, want: "src/a.txt", not: "gen/"},
+		{tool: glob, input: `{"pattern":"**/*.go"}`, want: "main.go", not: "private"},
+		{tool: grep, input: `{"pattern":"package priv"}`, want: "no matches", not: "k.go"},
+		{tool: grep, input: `{"pattern":"package priv"}`, want: "no matches", not: "lnk.txt"},
+		{tool: grep, input: `{"pattern":"package","path":"sub/x.go"}`, want: "sub/x.go:1: package sub", not: "main.go"},
+		{tool: grep, input: `{"pattern":"sub("}`, want: "(pattern taken literally)\n", not: "bad pattern"},
+		{tool: grep, input: `{"pattern":"sub("}`, want: "call.go:1: x := sub(1)", not: "x.go"},
+		{tool: grep, input: `{"pattern":"^package tracked$"}`, want: "build/tracked.go:1", not: "untracked"},
+		{tool: grep, input: `{"pattern":"\\Atwo anchored"}`, want: "two.txt:2: two anchored"},
+		{tool: grep, input: `{"pattern":"dup"}`, want: "many/f099.txt:1: dup\n... (stopped at 100", not: "f100"},
+		{tool: glob, input: `{"pattern":"./sub/*.go"}`, want: "sub/x.go", not: "main.go"},
+		{tool: glob, input: `{"pattern":"DIR/sub/*.go"}`, want: "sub/x.go", not: "main.go"},
+		{tool: glob, input: `{"pattern":"/etc/*"}`, want: "pass its directory as path", not: "hosts"},
+		{tool: glob, input: `{"pattern":"*"}`, want: "main.go", not: ".git/"},
+		{tool: glob, input: `{"pattern":"**"}`, want: "sub/x.go", not: "node_modules"},
+		{tool: glob, input: `{"pattern":"**/*"}`, want: "sub/x.go", not: ".agents/worktrees"},
+		{tool: glob, input: `{"pattern":"**/*.yml"}`, want: ".github/workflows/ci.yml", not: walkedNote},
+		{tool: glob, input: `{"pattern":"*","path":"gen"}`, want: walkedNote + "\n" + dir + "/gen/b.txt"},
+		{tool: grep, input: `{"pattern":"needle"}`, want: walkedNote + "\n" + out + "/loose.txt:1", root: out},
+		{tool: glob, input: `{"pattern":"*.go"}`, want: walkedNote + "\n", not: "build/", noGit: true},
+		{tool: grep, input: `{"pattern":"needle"}`, want: "src/a.txt:1", not: "bin.dat", noGit: true},
+	} {
+		t.Run(c.input, func(t *testing.T) {
+			if c.noGit {
+				t.Setenv("PATH", "")
 			}
-			input := strings.Replace(strings.ReplaceAll(c.input, "DIR", dir), "{", `{"path":"`+dir+`",`, 1)
+			root := cmp.Or(c.root, dir)
+			input := strings.Replace(strings.ReplaceAll(c.input, "DIR", root), "{", `{"path":"`+root+`",`, 1)
 			if strings.Contains(c.input, `"path":`) {
-				input = strings.Replace(c.input, `"path":"`, `"path":"`+dir+`/`, 1)
+				input = strings.Replace(c.input, `"path":"`, `"path":"`+root+`/`, 1)
 			}
 			resp := call(t, c.tool, input)
-			if !strings.Contains(resp.Content, c.want) || strings.Contains(resp.Content, c.not) {
-				t.Errorf("rg=%q %s: want %q, not %q, got %q", bin, c.input, c.want, c.not, resp.Content)
+			if !strings.Contains(resp.Content, c.want) || c.not != "" && strings.Contains(resp.Content, c.not) {
+				t.Errorf("want %q, not %q, got %q", c.want, c.not, resp.Content)
 			}
+		})
+	}
+	// a hit in .env must not change the answer, and the same call answers the same
+	for _, pat := range [][2]string{{"package (y|secret)", "package (y|zzz)"}, {"dup|needle", "dup|needle"}} {
+		if a, b := call(t, grep, `{"path":"`+dir+`","pattern":"`+pat[0]+`"}`), call(t, grep, `{"path":"`+dir+`","pattern":"`+pat[1]+`"}`); a.Content != b.Content {
+			t.Errorf("%q and %q answer differently: %q vs %q", pat[0], pat[1], a.Content, b.Content)
 		}
-		// a hit in .env must not change the answer
-		if a, b := call(t, grep, `{"path":"`+dir+`","pattern":"package (y|secret)"}`), call(t, grep, `{"path":"`+dir+`","pattern":"package (y|zzz)"}`); a.Content != b.Content {
-			t.Errorf("rg=%q grep answers on .env content: %q vs %q", bin, a.Content, b.Content)
-		}
-		// a mistyped path must say so instead of reading as an empty tree
-		for _, tool := range []fantasy.AgentTool{glob, grep} {
-			resp := call(t, tool, `{"path":"`+filepath.Join(dir, "nope")+`","pattern":"x"}`)
-			if !resp.IsError || !strings.Contains(resp.Content, "no such file or directory") {
-				t.Errorf("rg=%q missing root: %+v", bin, resp)
-			}
+	}
+	// a mistyped path must say so instead of reading as an empty tree
+	for _, tool := range []fantasy.AgentTool{glob, grep} {
+		resp := call(t, tool, `{"path":"`+filepath.Join(dir, "nope")+`","pattern":"x"}`)
+		if !resp.IsError || !strings.Contains(resp.Content, "no such file or directory") {
+			t.Errorf("missing root: %+v", resp)
 		}
 	}
 }
@@ -485,12 +518,6 @@ func TestGlobChecksOnlyShownHits(t *testing.T) {
 	resp := call(t, toolNamed(t, "glob", p), `{"path":"`+dir+`","pattern":"*.go"}`)
 	if !strings.Contains(resp.Content, "up to 800 more") || checks > globMaxFiles+1 {
 		t.Errorf("%d checks, got %q", checks, resp.Content[max(0, len(resp.Content)-80):])
-	}
-	// a scan that hit its cap has no count to give
-	defer func(n int) { globMaxScan = n }(globMaxScan)
-	globMaxScan = 500
-	if resp := call(t, toolNamed(t, "glob", p), `{"path":"`+dir+`","pattern":"*.go"}`); !strings.Contains(resp.Content, "scan stopped at 500 files") {
-		t.Errorf("capped scan: %q", resp.Content[max(0, len(resp.Content)-80):])
 	}
 }
 
@@ -728,8 +755,7 @@ func TestPostHookRuns(t *testing.T) {
 	}
 }
 
-// TestOutputLimits: read pages a long file with a continuation offset, grep
-// returns every matching line up to its cap, and command output keeps its end.
+// TestOutputLimits: read pages a long file with a continuation offset.
 func TestOutputLimits(t *testing.T) {
 	dir := perm.RealPath(t.TempDir())
 	path := filepath.Join(dir, "big.txt")
@@ -748,10 +774,6 @@ func TestOutputLimits(t *testing.T) {
 	res, _ = runRead(ctx, onPath(t, nil, path), map[string]any{"offset": float64(2001)})
 	if strings.Contains(res.Content, "more lines") || !strings.HasSuffix(res.Content, "line 2005 match\n") {
 		t.Fatalf("last page: %q", res.Content)
-	}
-	res, _ = runGrep(ctx, nil, map[string]any{"pattern": "match", "path": dir})
-	if n := strings.Count(res.Content, "\n"); n != grepMaxMatches || !strings.Contains(res.Content, "stopped at 100 matches") {
-		t.Fatalf("grep lines = %d: %q", n, res.Content[len(res.Content)-120:])
 	}
 }
 

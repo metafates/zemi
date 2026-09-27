@@ -316,16 +316,9 @@ func (h *Host) goHealthRows() []healthCheck {
 	}
 
 	if _, err := exec.LookPath("git"); err != nil {
-		add(HealthWarn, "git", "not found; the prompt has no git status and git commands that print file content ask")
+		add(HealthWarn, "git", "not found; the prompt has no git status, glob, grep and @ completion read no .gitignore, and git commands that print file content ask")
 	} else {
 		add(HealthOK, "git", "found")
-	}
-
-	// internal/tools resolves rg the same way at init, in this process.
-	if rg, err := exec.LookPath("rg"); err != nil {
-		add(HealthWarn, "ripgrep", "not found; glob and grep use the slower Go walker")
-	} else {
-		add(HealthOK, "ripgrep", rg+" runs glob and grep")
 	}
 
 	switch style, why := h.NotifyStyle(); {

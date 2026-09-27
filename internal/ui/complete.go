@@ -33,7 +33,7 @@ type fileCompleter struct {
 }
 
 // scanMaxFiles caps the scan so a walk that never ends cannot eat memory.
-// A repo that passes it loses whatever rg listed last, hence the note.
+// A repo that passes it loses the paths listed last, hence the note.
 const scanMaxFiles = 50000
 
 // listMaxFiles caps the matches the popup lists: every frame builds the
@@ -245,8 +245,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 // scanFilesCmd lists the project's files off the UI goroutine.
 func (a *App) scanFilesCmd(dir string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		files := tools.ListFiles(dir, scanMaxFiles)
-		slices.Sort(files)
+		files, _, _ := tools.ListFiles(context.Background(), dir, scanMaxFiles)
 		return filesScannedMsg{gen: gen, files: files}
 	}
 }
