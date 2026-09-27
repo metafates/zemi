@@ -170,11 +170,18 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 	var out []CompletionItem
 	switch {
 	case cmd.GoComplete != nil:
-		// Go completers return every candidate, so lead narrows here, before the cap
+		// Go completers return every candidate, so lead narrows and ranks here,
+		// before the cap: the one hit may sit past it
+		var cands []string
 		for _, s := range cmd.GoComplete(h, lead, line) {
-			if strings.HasPrefix(strings.ToLower(s), strings.ToLower(lead)) {
-				out = append(out, CompletionItem{Text: sanitize.String(s)})
-			}
+			cands = append(cands, sanitize.String(s))
+		}
+		hits := Match(lead, cands, nil)
+		if lead != "" {
+			hits = Rank(hits, cands, maxCompletions)
+		}
+		for _, hit := range hits {
+			out = append(out, CompletionItem{Text: cands[hit.Index]})
 		}
 	case cmd.Complete != nil:
 		res, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {

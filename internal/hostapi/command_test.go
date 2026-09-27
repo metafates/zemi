@@ -43,6 +43,39 @@ func TestCompleteCommand(t *testing.T) {
 	}
 }
 
+func TestMatch(t *testing.T) {
+	cmds := []string{"reflect", "reload", "resume", "memory", "score"}
+	for _, c := range []struct {
+		name, query   string
+		labels, texts []string
+		rank          int // keep the best rank hits, best first; 0 keeps row order
+		want          string
+	}{
+		{"an empty query keeps every row, no highlight", " ", cmds, nil, 0, "0[] 1[] 2[] 3[] 4[]"},
+		{"a one-token label matches fuzzily", "cfg", []string{"config", "rewind"}, nil, 0, "0[0 3 5]"},
+		{"a prefix hit highlights the prefix", "APP", []string{"app_app.go"}, nil, 0, "0[0 1 2]"},
+		{"prose needs the word in it", "rsm", []string{"resume a session", "rsm"}, nil, 0, "1[0 1 2]"},
+		{"every word, any order, any case", "two b", []string{"alpha one", "Beta two", "gamma three"}, nil, 0, "1[0 5 6 7]"},
+		{"a word may match the text instead", "openai gpt", []string{"gpt-5", "o3"}, []string{"openai", "openai"}, 0, "0[0 1 2]"},
+		{"a full id finds its row", "openai/gpt-5", []string{"anthropic/claude-sonnet-4", "openai/gpt-5"}, nil, 0, "1[0 1 2 3 4 5 6 7 8 9 10 11]"},
+		{"runes match whole", "é", []string{"ã©.go", "café"}, nil, 0, "1[3]"},
+		{"ranked: prefix hits by length, then score", "re", cmds, nil, 5, "1[0 1] 2[0 1] 0[0 1] 4[3 4]"},
+		{"ranked and capped", "re", cmds, nil, 2, "1[0 1] 2[0 1]"},
+	} {
+		hits := Match(c.query, c.labels, c.texts)
+		if c.rank > 0 {
+			hits = Rank(hits, c.labels, c.rank)
+		}
+		var got []string
+		for _, h := range hits {
+			got = append(got, fmt.Sprintf("%d%v", h.Index, h.Pos))
+		}
+		if strings.Join(got, " ") != c.want {
+			t.Errorf("%s: %q got %q, want %q", c.name, c.query, strings.Join(got, " "), c.want)
+		}
+	}
+}
+
 // TestNargsOK: a Go command's arguments are checked as typed and through
 // zemi.command.run, so `/new idea` is not a plain /new.
 func TestNargsOK(t *testing.T) {
