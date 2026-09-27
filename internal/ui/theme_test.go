@@ -8,16 +8,18 @@ import (
 )
 
 // A light terminal background switches both the fixed chrome and the theme
-// to their light variant, and a dark one switches back.
+// to their light variant, a dark one switches back, and the chrome follows
+// the light theme picked in a dark terminal.
 func TestLightBackground(t *testing.T) {
-	app, _ := bootAgentApp(t, 80, 24)
+	app, host := bootAgentApp(t, 80, 24)
 	darkTitle, darkFg := app.hlStyle("Host:Title"), app.thm.style("Normal").Fg
 
 	app.Update(tea.BackgroundColorMsg{Color: rgb(0xfafafa)})
 	if !app.thm.light {
 		t.Fatal("a light background did not switch the chrome")
 	}
-	if app.hlStyle("Host:Title") == darkTitle {
+	lightTitle := app.hlStyle("Host:Title")
+	if lightTitle == darkTitle {
 		t.Fatal("the fixed chrome kept its dark accent")
 	}
 	if fg := app.thm.style("Normal").Fg; fg == darkFg {
@@ -27,6 +29,13 @@ func TestLightBackground(t *testing.T) {
 	app.Update(tea.BackgroundColorMsg{Color: rgb(0x141414)})
 	if app.thm.light {
 		t.Fatal("a dark background did not switch back")
+	}
+	// the light theme picked in a dark terminal paints a light canvas
+	if err := host.SetTheme("whorl-light"); err != nil {
+		t.Fatal(err)
+	}
+	if app.hlStyle("Host:Title") != lightTitle {
+		t.Fatal("the fixed chrome kept its dark accent on the light theme's canvas")
 	}
 }
 

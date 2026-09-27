@@ -40,7 +40,7 @@ type chrome struct{ fg, dim, rule, accent, panel, add, del color.Color }
 var (
 	darkChrome  = chrome{rgb(0xd8d8d8), rgb(0x7a7a7a), rgb(0x3a3a3a), rgb(0x9aa5f2), rgb(0x1e1e1e), rgb(0x183018), rgb(0x361010)}
 	lightChrome = chrome{rgb(0x1b1b1b), rgb(0x8e8e8e), rgb(0xcfcfcf), rgb(0x6b78d6), rgb(0xf0f0f0), rgb(0xe7f2e2), rgb(0xfae7e7)}
-	// keyed by "the terminal is light"
+	// keyed by "the canvas is light" (hlStyle)
 	hostStyles = map[bool]map[string]uv.Style{false: chromeStyles(darkChrome), true: chromeStyles(lightChrome)}
 )
 
