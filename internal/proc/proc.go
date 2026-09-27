@@ -10,6 +10,7 @@ package proc
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os/exec"
@@ -57,16 +58,25 @@ func CommandContext(ctx context.Context, name string, args ...string) *exec.Cmd 
 	return cmd
 }
 
-var refused atomic.Pointer[error]
+// ErrRefused is every start's error while a Refuse holds.
+var ErrRefused = errors.New("zemi plugins test starts no process")
 
-// Refuse makes every later start fail with err, zemi's own git and sandbox
-// probe included: zemi plugins test starts no process.
-func Refuse(err error) { refused.Store(&err) }
+var refusing atomic.Int32
 
-// Refused is the error Refuse set, nil while processes may start.
+// Refuse makes every start fail, zemi's own git and the sandbox probe
+// included, until each release it returned has run, so one runner ending
+// never lifts another's.
+// NOTE: process wide: a zemi not under test in the same process starts
+// nothing either meanwhile. zemi plugins test is a process of its own.
+func Refuse() (release func()) {
+	refusing.Add(1)
+	return sync.OnceFunc(func() { refusing.Add(-1) })
+}
+
+// Refused is ErrRefused while a Refuse holds, else nil.
 func Refused() error {
-	if p := refused.Load(); p != nil {
-		return *p
+	if refusing.Load() > 0 {
+		return ErrRefused
 	}
 	return nil
 }

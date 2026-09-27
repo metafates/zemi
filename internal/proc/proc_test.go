@@ -4,10 +4,12 @@ package proc
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -81,5 +83,30 @@ func TestBuffer(t *testing.T) {
 	}
 	if got, n := b.Snapshot(); !strings.HasSuffix(got, "\n23456") || !strings.Contains(got, "23 bytes") || n != 33 {
 		t.Fatalf("after small writes = %q, %d", got, n)
+	}
+}
+
+// TestRefuse: runners that start and end in parallel never lift a refusal
+// one still holds, and a release that runs twice counts once.
+func TestRefuse(t *testing.T) {
+	release := Refuse()
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Go(func() {
+			r := Refuse()
+			r()
+			r()
+		})
+	}
+	wg.Wait()
+	if err := Run(Command("true")); !errors.Is(err, ErrRefused) {
+		t.Fatalf("start while refused: %v", err)
+	}
+	if _, err := (Git{Dir: t.TempDir()}).Run(t.Context(), "version"); !errors.Is(err, ErrRefused) {
+		t.Fatalf("git while refused: %v", err)
+	}
+	release()
+	if err := Run(Command("true")); err != nil {
+		t.Fatalf("start once released: %v", err)
 	}
 }

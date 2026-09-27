@@ -61,13 +61,13 @@ var probed struct {
 	err  error
 }
 
-// Probe reports the backend this machine supports, checked once.
+// Probe reports the backend this machine supports, checked once processes
+// may start (proc.Refuse).
 func Probe() (Backend, error) {
-	probed.once.Do(func() {
-		if probed.err = proc.Refused(); probed.err == nil {
-			probed.b, probed.err = probe()
-		}
-	})
+	if err := proc.Refused(); err != nil {
+		return Backend{}, err
+	}
+	probed.once.Do(func() { probed.b, probed.err = probe() })
 	return probed.b, probed.err
 }
 

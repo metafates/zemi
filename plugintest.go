@@ -57,8 +57,7 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	if err != nil {
 		return fail(err)
 	}
-	proc.Refuse(errors.New("a test zemi starts no process"))
-	defer proc.Refuse(nil)
+	defer proc.Refuse()()
 	tmp, err := os.MkdirTemp("", "zemi-test-")
 	if err != nil {
 		return fail(err)
