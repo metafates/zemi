@@ -33,11 +33,14 @@ func DispatchHelper() {
 }
 
 // Policy is what a sandboxed command may touch. Everything is readable
-// except Hide; only Write is writable, minus Protect.
+// except Hide, where Read and List open parts again; only Write is
+// writable, minus Protect.
 type Policy struct {
 	Write    []string          // writable roots
 	Protect  []string          // read-only even inside Write
 	Hide     []string          // neither readable nor writable
+	Read     []string          // readable inside Hide, with all they hold
+	List     []string          // directories inside Hide whose names are readable, not what they hold
 	Loopback bool              // listen on and connect to localhost
 	Network  bool              // reach the network: the file rules still apply
 	Env      map[string]string // extra environment for the sandboxed command
@@ -102,7 +105,7 @@ func Wrap(cmd *exec.Cmd, p Policy) error {
 			}
 		}
 	}
-	p.Write, p.Protect, p.Hide = real(p.Write), protect, real(p.Hide)
+	p.Write, p.Protect, p.Hide, p.Read, p.List = real(p.Write), protect, real(p.Hide), real(p.Read), real(p.List)
 	return wrap(cmd, p)
 }
 

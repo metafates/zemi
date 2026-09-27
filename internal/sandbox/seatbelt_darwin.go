@@ -91,11 +91,19 @@ func profile(p Policy) (string, []string) {
 	// the last matching rule wins, so rules go shallow to deep (a nested path
 	// is longer): a root inside a protected or hidden dir, like the scratchpad
 	// under the state dir, is open again, and a protected or hidden path inside
-	// a root stays shut. At the same path Hide beats Protect beats Write.
+	// a root stays shut. At the same path Hide beats Protect beats the rest.
+	// A List dir's literal rule matches the dir alone, so what it holds stays
+	// under the Hide above it.
 	type rule struct{ path, text string }
 	var rules []rule
 	for i, w := range p.Write {
 		rules = append(rules, rule{w, "(allow file-read* file-write* (subpath " + param("WRITE", i, w) + "))"})
+	}
+	for i, r := range p.Read {
+		rules = append(rules, rule{r, "(allow file-read* (subpath " + param("READ", i, r) + "))"})
+	}
+	for i, l := range p.List {
+		rules = append(rules, rule{l, "(allow file-read* (literal " + param("LIST", i, l) + "))"})
 	}
 	for i, pr := range p.Protect {
 		rules = append(rules, rule{pr, "(deny file-write* (subpath " + param("PROTECT", i, pr) + "))"})
@@ -108,11 +116,12 @@ func profile(p Policy) (string, []string) {
 		b.WriteString(r.text + "\n")
 	}
 	// realpath and cargo stat every parent of a root, so the hidden parents of
-	// a root (the state dir over the sandbox cache) give back their metadata
+	// a root or a path Read or List opens (the state dir over the sandbox
+	// cache, the data dir over a local plugin) give back their metadata
 	// only: listing them and reading what else they hold stays denied.
 	// Landlock has no right for stat or path walks, so Linux needs none of this.
 	var parents []string
-	for _, w := range p.Write {
+	for _, w := range slices.Concat(p.Write, p.Read, p.List) {
 		for d := filepath.Dir(w); ; d = filepath.Dir(d) {
 			if slices.ContainsFunc(p.Hide, func(h string) bool { return within(d, h) }) {
 				parents = append(parents, d)

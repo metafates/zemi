@@ -1926,7 +1926,10 @@ provenance string.
   readable but the home credential paths (`~/.ssh`, `~/.aws`, `~/.config/gh`,
   `~/.npmrc`, `~/.git-credentials`, shell histories, ...), zemi's config,
   data and state dirs (sessions, logs, keys in `init.lua`; not when they
-  hold the project, and the write roots inside them stay usable) and, on
+  hold the project, and the write roots inside them stay usable; of the
+  data dir a local plugin's code, its `.lua` files and `lua`, `tests` and
+  layered dirs, reads back with the names in the plugin dirs, so
+  `zemi plugins test` runs confined, while its `.git` stays hidden) and, on
   macOS, the strict secret file shapes (in the scratchpad too, so a hint
   names another file name as the way through); writable are the pipeline's scratchpad, also
   its temp dir (`TMPDIR`, `TMP` and `TEMP`, which every model command gets, confined or not, so

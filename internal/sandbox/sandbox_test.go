@@ -170,7 +170,16 @@ func TestPolicy(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, f := range []string{filepath.Join(root, "plain.txt"), filepath.Join(root, ".env"), filepath.Join(hide, "id"), filepath.Join(state, "zemi.db")} {
+	plugin := filepath.Join(hide, "plugins", "local", "p")
+	for _, d := range []string{filepath.Join(plugin, ".git"), filepath.Join(plugin, "lua", "p")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range []string{
+		filepath.Join(root, "plain.txt"), filepath.Join(root, ".env"), filepath.Join(hide, "id"), filepath.Join(state, "zemi.db"),
+		filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua", "p", "init.lua"), filepath.Join(plugin, ".git", "config"),
+	} {
 		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -182,6 +191,8 @@ func TestPolicy(t *testing.T) {
 		Write:    []string{root, scratch, cache},
 		Protect:  []string{filepath.Join(root, ".git"), filepath.Join(root, ".agents"), state},
 		Hide:     []string{hide, state},
+		Read:     []string{filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua")},
+		List:     []string{plugin},
 		Loopback: true,
 		Env:      map[string]string{"ZEMI_SANDBOX_TEST": "on"},
 	}
@@ -229,6 +240,12 @@ func TestPolicy(t *testing.T) {
 		// NOTE: see setupNamespaces
 		{"rename a protected symlink", "rename", filepath.Join(root, ".agents"), false, !b.EnforcesProtect || runtime.GOOS == "linux"},
 		{"read a hidden dir", "read", filepath.Join(hide, "id"), false, false},
+		{"read a file Read opens in a hidden dir", "read", filepath.Join(plugin, "init.lua"), true, false},
+		{"read in a tree Read opens", "read", filepath.Join(plugin, "lua", "p", "init.lua"), true, false},
+		{"realpath what Read opens", "realpath", filepath.Join(plugin, "lua", "p", "init.lua"), true, false},
+		{"list a dir List opens", "ls", plugin, true, false},
+		{"read what a List dir holds", "read", filepath.Join(plugin, ".git", "config"), false, false},
+		{"write what Read opens", "write", filepath.Join(plugin, "init.lua"), false, false},
 		{"read .env", "read", filepath.Join(root, ".env"), false, !b.HidesSecretFiles},
 		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},
 		{"write /dev/shm", "write", shm, true, runtime.GOOS != "linux"},

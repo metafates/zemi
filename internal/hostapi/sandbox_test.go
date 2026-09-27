@@ -225,6 +225,27 @@ func TestSandboxedBash(t *testing.T) {
 			t.Errorf("read %s: %v %s, asked %+v", private, err, resp.Content, ui.asked)
 		}
 	})
+	t.Run("a local plugin's code reads back, its .git does not", func(t *testing.T) {
+		data := h.Dirs.DataHome
+		defer func() { h.Dirs.DataHome = data }()
+		h.Dirs.DataHome = t.TempDir()
+		plugin := filepath.Join(h.Dirs.PluginsRoot(), "local", "p")
+		files := map[string]bool{"init.lua": true, "lua/p/init.lua": true, "README.md": false, ".git/config": false}
+		for path := range files {
+			file := filepath.Join(plugin, path)
+			if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(file, []byte("in "+path), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for path, readable := range files {
+			if resp := run(map[string]any{"command": "cat " + filepath.Join(plugin, path)}); strings.Contains(resp.Content, "in "+path) != readable {
+				t.Errorf("cat %s: readable %v, want %v: %s", path, !readable, readable, resp.Content)
+			}
+		}
+	})
 	t.Run("a network policy keeps the file rules", func(t *testing.T) {
 		pol := h.PipelineFor().SandboxFor(
 			tools.Request{Subject: "tool.bash", Arg: "curl https://example.com", Network: true},

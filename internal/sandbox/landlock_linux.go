@@ -434,6 +434,16 @@ func landlock(p Policy) error {
 	if err := addRead(add, "/", hide); err != nil {
 		return err
 	}
+	for _, r := range p.Read {
+		if err := add(r, fsReadRights); err != nil {
+			return err
+		}
+	}
+	for _, l := range p.List {
+		if err := add(l, unix.LANDLOCK_ACCESS_FS_READ_DIR); err != nil {
+			return err
+		}
+	}
 	// NOTE: without namespaces /dev/shm is the one the user's other programs
 	// share, so their POSIX shared memory is writable too.
 	for _, w := range append(p.Write, "/dev/null", "/dev/zero", "/dev/tty", "/dev/ptmx", "/dev/shm") {

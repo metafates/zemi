@@ -87,6 +87,17 @@ func Scan(d config.Dirs) ([]Plugin, error) {
 	return ps, nil
 }
 
+// Code reports whether an entry of a plugin's root is what zemi loads or its
+// tests read: the .lua files, lua/, tests/ and the layered dirs. zemi plugins
+// test copies only these, and a sandboxed command may read only these of a
+// local plugin.
+func Code(name string, dir bool) bool {
+	if dir {
+		return slices.Contains([]string{"lua", "tests", "skills", "agents", "commands", "workflows"}, name)
+	}
+	return strings.HasSuffix(name, ".lua")
+}
+
 // Name is the name a plugin installed from url gets by default: the URL's
 // last segment without ".git".
 func Name(url string) string {
