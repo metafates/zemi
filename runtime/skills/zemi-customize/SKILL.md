@@ -277,20 +277,21 @@ Developing one:
 - The sandbox hides a plugin's `.git`, so git there needs `sandbox: false`, which asks each time outside yolo.
 - Moving a feature out of the config dir is the one plugin task that edits init.lua: say which lines leave it and which stay, and wait for the user's yes. Then put its registrations in `local/<name>/init.lua` and its modules in `lua/<name>/`, leave `require("<name>").setup(...)` in the user's init.lua, and keep there what only user config may do (replacing a shipped widget, `hl.set`, layout, settings). Its allow rules keep working (a rule with no `principal` covers every caller); add the principal to narrow them. Its old `zemi.state` keys stay behind.
 
-Testing: `zemi plugins test <name|dir> [pattern]` runs each case of `tests/*_test.lua` in a zemi of its own holding only the plugin, with no rules and a clock that moves only by `test.advance`. The file's top level runs where init.lua would, before `app.ready`: stub there what boot calls. A job, HTTP request, model ask, agent send or `zemi.fs` write raises unless `test.stub` answers it, and the failure prints the stub line to add. The drivers (`run`, `keys`, `tool`, `render`, `click`, `emit`, `overlay`, `answer`) reach only what the plugin registered; `zemi.test` in the types lists them. Plugin code can tell it is under test, so passing tests are no review of what it does.
+Testing: `zemi plugins test <name|dir> [pattern]` runs each case of `tests/*_test.lua` in a fresh zemi holding only the plugin: no user config, no rules, and a clock only `test.advance` moves. The file's top level runs where init.lua would, before `app.ready`, so stub there what the plugin calls at boot. A job, HTTP request, model ask, agent send or `zemi.fs` write raises unless `test.stub` answers it, and a failing case prints the stub line to add. The drivers reach only what the plugin registered; `zemi.test` in the types lists them with the reply and request fields. Plugin code can tell it is under test, so passing tests are no review of what it does. `tests/branch_test.lua` for the plugin above:
 
 ```lua
-local test = assert(zemi.test)
-local wttr = test.stub("lua.http.get", "https://wttr.in/*", { body = '{"temp_C":"21"}' })
+local test = zemi.test
+local git = test.stub("lua.job.start", "git rev-parse *", { stdout = "main\n" })
 
-test("the tool reports the temperature", function()
-  test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C")
-  test.eq(wttr[1].url, "https://wttr.in/Oslo?format=j1")
+test("the widget shows the branch git reports", function()
+  test.eq(test.render("branch"), { "main" })
+  test.eq(git[1].args, { "rev-parse", "--abbrev-ref", "HEAD" })
 end)
 
-test("the widget shows the last one", function()
-  assert(test.tool("weather_now", { city = "Oslo" }))
-  test.eq(test.render("weather"), { "21C" })
+test("a checkout shows on the next poll", function()
+  test.stub("lua.job.start", "git rev-parse *", { stdout = "fix-login\n" })
+  test.advance(30000)
+  test.eq(test.render("branch"), { "fix-login" })
 end)
 ```
 
