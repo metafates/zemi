@@ -79,7 +79,7 @@ func TestPluginsCommand(t *testing.T) {
 		{
 			name: "the list", args: "",
 			want: []string{
-				"text:Install a plugin verb:install", "run:plugins check text:Check for updates verb:check",
+				"text:Install a plugin verb:fill", "run:plugins check text:Check for updates verb:run",
 				"desc:a todo list", "provides: command /todo", "on:true run:plugins toggle a section:Local text:a",
 				"desc:failed", "status: failed\nerror: ", "broken", "hotkey:d run:plugins disable a",
 				"hl:Danger hotkey:x run:plugins delete a text:Delete",
@@ -167,7 +167,7 @@ func TestPluginsNew(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")
 	h.SetUIHooks(&fakeUI{})
-	if got := fmt.Sprint(h.pluginItems()[0]); !strings.Contains(got, "fill:/plugins new  text:New plugin verb:new") {
+	if got := fmt.Sprint(h.pluginItems()[0]); !strings.Contains(got, "fill:/plugins new  text:New plugin verb:fill") {
 		t.Fatalf("first row: %s", got)
 	}
 	if err := h.pluginsCommand([]string{"new", "a", "clock"}); err != nil {

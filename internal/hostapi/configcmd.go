@@ -144,7 +144,7 @@ func (h *Host) SetConfig(path string, val any) error {
 // bool and passes the other rows by.
 func (h *Host) configItems() []any {
 	items := []any{
-		map[string]any{"text": "Show as Lua", "verb": "show", "run": "config lua"},
+		map[string]any{"text": "Show as Lua", "verb": "open", "run": "config lua"},
 		map[string]any{"text": "Open init.lua", "verb": "open", "run": "config open"},
 	}
 	for _, s := range h.Settings.Schema() {

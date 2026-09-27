@@ -597,8 +597,12 @@ func TestOverlayNavigation(t *testing.T) {
 	}
 }
 
-// TestOverlayHints: the footer names only keys that act on the selection.
+// TestOverlayHints: the footer names only keys that act on the selection,
+// with one verb per act of enter's in every list.
 func TestOverlayHints(t *testing.T) {
+	reload := func() ([]any, [][]hostapi.Segment) { return nil, nil }
+	run := []any{map[string]any{"text": "a", "run": "x"}}
+	keys := []hostapi.OverlayKey{{Key: "e", Desc: "edit"}}
 	hints := func(o hostapi.Overlay, filtering bool) string {
 		a := newTestApp(t, t.TempDir())
 		o.Origin = lua.OriginBuiltin
@@ -619,7 +623,13 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}, Verb: "run"}, false, "enter fill · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}, Verb: "pick"}, false, "enter open · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, false, "enter pick · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "verb": "open"}}, Verb: "pick", Reload: func() ([]any, [][]hostapi.Segment) { return nil, nil }}, false, "enter open · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "verb": "open"}}, Verb: "pick", Reload: reload}, false, "enter open · y copy · esc close"},
+		{hostapi.Overlay{Items: run}, false, "enter run · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{"a"}, OnSelect: &glua.LFunction{}}, false, "enter pick · y copy · esc close"},
+		{hostapi.Overlay{Items: run, Reload: reload}, false, "enter toggle · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "detail": "d"}}, Reload: reload}, false, "enter open · space toggle · y copy · esc close"},
+		{hostapi.Overlay{Items: run, Keys: keys}, false, "enter run · e edit · y copy · esc close"},
+		{hostapi.Overlay{Items: run, Keys: keys}, true, "enter run · esc back"},
 		{hostapi.Overlay{Body: "text"}, false, "y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "copy": "export X"}}}, false, "enter copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter fill · esc back"},

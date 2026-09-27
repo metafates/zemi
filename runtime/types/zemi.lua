@@ -869,7 +869,7 @@ function zemi.event.stats() end
 ---@field run? string a command line such as "mcp restart gitlab" (user and builtin overlays only; ignored while the overlay has an on_select)
 ---@field hotkey? string one character that acts like enter on this row (not while filtering; j, k and / stay the list's)
 ---@field copy? string the row's value: y copies it in place of the row's text, and enter copies it, keeping the list open, when the row does nothing else (no on_select, run, fill or detail); the filter matches it too
----@field verb? string enter's action in the hint ("open"); space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
+---@field verb? string enter's action in the hint where the default would say another: zemi's lists use "open" (another screen), "pick" (a value), "run" (a command), "toggle" and "fill"; space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
 
 --- A detail view action; with no id, fill or run it goes back.
 ---@class zemi.OverlayAction

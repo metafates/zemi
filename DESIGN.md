@@ -1486,15 +1486,20 @@ provenance string.
   picked option of a multi-select) is one 5-cell switch in the key column,
   `■ on ` in Ok, `□ off` or a locked `  on ` in Hint, so a toggle never
   moves text; a tag there (`current`, `follows chat`) names, in the accent.
-  A row may name its own enter verb (`verb`, "open" on a
-  row that opens another screen): the hint says it, space, which toggles
-  a toggle list's rows, passes it by, and an "open" row leaves its list
-  under the screen it opens, so esc comes back to it (`/model`'s "Choose a
-  model per role"). A list's action rows are sentence-case verb phrases above
-  its sections, with no section of their own and their own verb where enter
-  does something other than the list's ("Install a plugin", "Follow the chat
-  model"); the values sit under section headers, so an action never reads as
-  one of them. A Go screen's detail opens with
+  Enter's hint names its act in one word shared by every list: `open` a
+  detail or another screen, `pick` a value (a picker, `zemi.ui.select`, the
+  `@` popup), `run` a command (the palette, `/help`), `toggle` a toggle
+  list's row, `fill` the composer, `copy`. A row names its own (`verb`)
+  where the list's default would say another: "open" on a row that runs a
+  command opening a screen, "run" on `/model`'s "Update the model catalog".
+  Space, which toggles a toggle list's rows, passes a row with a verb by, and
+  an "open" row leaves its list under the screen it opens, so esc comes back
+  to it (`/model`'s "Choose a model per role"). A list's action rows are
+  sentence-case verb phrases above its sections, with no section of their
+  own ("Install a plugin", "Follow the chat model"); the values sit under
+  section headers, so an action never reads as one of them. An open filter
+  types every one-character key, so the footer drops a list's own keys
+  (`keys`, `/memory`'s actions) while it is open. A Go screen's detail opens with
   `key: value` lines set as a table (prose after them is text as written), and its
   `status:` line colors the status words every screen shares: `starting`,
   `ready`, `failed`, `stopped`, `idle` (a language server waiting for its

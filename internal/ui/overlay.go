@@ -208,18 +208,25 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 
 var oneLine = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
 
-// enterVerb names what enter does on item idx: "open" its detail view,
-// "fill" the composer, the overlay's own verb ("confirm" by default), "back"
-// from a detail view, or "" when it does nothing. A row's own verb names its
-// run or fill in place of the overlay's; a row with one is not a toggle:
-// space passes it by in a toggle list.
+// enterVerb names what enter does on item idx, one word per act in every
+// list: "open" a detail view or another screen, "pick" a value, "run" a
+// command, "toggle" a toggle list's row, "fill" the composer, "copy", "back"
+// from a detail view, or "" when it does nothing. A row's own verb, else the
+// overlay's, names its run, select or fill where the default would not; a
+// row with one is not a toggle: space passes it by in a toggle list.
 func (st *overlayState) enterVerb(idx int) string {
 	r := st.items[idx].row
 	switch {
 	case hasDetail(r):
 		return "open"
 	case r.Run != "" || st.o.OnSelect != nil || st.back && r.ID != "" && st.o.OnAction != nil:
-		return cmp.Or(r.Verb, st.o.Verb, "confirm")
+		act := "run"
+		if st.o.Reload != nil {
+			act = "toggle"
+		} else if st.o.OnSelect != nil {
+			act = "pick"
+		}
+		return cmp.Or(r.Verb, st.o.Verb, act)
 	case r.Fill != "":
 		return cmp.Or(r.Verb, "fill")
 	case r.Copy != "":
@@ -574,15 +581,18 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				st.rowsKey = key
 			}
 			list = st.rows
-			if verb := st.enterVerb(st.visible[st.selected]); verb != "" {
+			verb := st.enterVerb(st.visible[st.selected])
+			if verb != "" {
 				hints = append(hints, hintPair{"enter", verb})
 				enterCopies = verb == "copy"
 			}
-			if r := st.items[st.visible[st.selected]].row; st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
+			if r := st.items[st.visible[st.selected]].row; verb != "toggle" && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
 				hints = append(hints, hintPair{"space", "toggle"})
 			}
 			for _, k := range st.o.Keys {
-				hints = append(hints, hintPair{k.Key, k.Desc})
+				if !st.active { // an open filter types these one-character keys
+					hints = append(hints, hintPair{k.Key, k.Desc})
+				}
 			}
 		}
 		var body [][]hostapi.Segment

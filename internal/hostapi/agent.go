@@ -2031,7 +2031,7 @@ func (h *Host) modelPicker(role string) Overlay {
 	case "":
 		o.Items = []any{
 			map[string]any{"text": "Choose a model per role", "desc": rolesDesc(h.ownRoles()), "verb": "open", "run": "model roles"},
-			map[string]any{"text": "Update the model catalog", "desc": h.Builtin.Load().Info.String(), "verb": "update", "run": "model update"},
+			map[string]any{"text": "Update the model catalog", "desc": h.Builtin.Load().Info.String(), "verb": "run", "run": "model update"},
 		}
 	case "chat":
 		o.ID, o.Title = "model chat", "Model roles / chat"
@@ -2127,7 +2127,7 @@ func (h *Host) OpenModelRoles() error {
 		return items, nil
 	}
 	items, _ := build()
-	ui.OpenOverlay(Overlay{ID: "model roles", Title: "Model roles", Origin: lua.OriginBuiltin, Items: items, Anchor: OverlayBottomRight, Verb: "open", Reload: build})
+	ui.OpenOverlay(Overlay{ID: "model roles", Title: "Model roles", Origin: lua.OriginBuiltin, Items: items, Anchor: OverlayBottomRight, Reload: build})
 	return nil
 }
 

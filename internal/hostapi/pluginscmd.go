@@ -186,11 +186,11 @@ func (h *Host) pluginItems() []any {
 	if err != nil {
 		h.Notify(logging.Error, "Could not read the plugins", err.Error())
 	}
-	install := map[string]any{"text": "Install a plugin", "verb": "install", "fill": "/plugins install "}
+	install := map[string]any{"text": "Install a plugin", "verb": "fill", "fill": "/plugins install "}
 	if len(ps) == 0 && err == nil {
 		install["desc"] = "no plugins yet"
 	}
-	items := []any{map[string]any{"text": "New plugin", "verb": "new", "fill": "/plugins new "}, install, map[string]any{"text": "Check for updates", "verb": "check", "run": "plugins check"}}
+	items := []any{map[string]any{"text": "New plugin", "verb": "fill", "fill": "/plugins new "}, install, map[string]any{"text": "Check for updates", "verb": "run", "run": "plugins check"}}
 	provides := h.pluginProvides()
 	for _, p := range ps {
 		status, loadErr := h.pluginStatus(p)
