@@ -97,9 +97,22 @@ func NewPluginTest(log *logging.Logger, classes lua.PathClasses, dirs config.Dir
 func (t *PluginTest) Step() lua.BootStep {
 	return lua.BootStep{Name: "test file", Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 		tb := g.L.NewTable()
-		for name, fn := range map[string]glua.LGFunction{"eq": t.eq, "stub": t.stub, "overlay": t.overlay} {
+		for name, fn := range map[string]glua.LGFunction{"stub": t.stub, "overlay": t.overlay} {
 			tb.RawSetString(name, g.L.NewFunction(fn))
 		}
+		eq, err := g.SB.CompileChunk(eqLua, lua.OriginBuiltin.ChunkName("test.eq"))
+		if err != nil {
+			return err
+		}
+		rel := g.L.NewFunction(func(L *glua.LState) int {
+			L.Push(glua.LString(t.Rel(L.CheckString(1))))
+			return 1
+		})
+		if err := g.L.CallByParam(glua.P{Fn: eq, NRet: 1, Protect: true}, rel); err != nil {
+			return err
+		}
+		tb.RawSetString("eq", g.L.Get(-1))
+		g.L.Pop(1)
 		for name, fn := range map[string]glua.LGFunction{
 			"run": t.runCmd, "keys": t.keys, "tool": t.tool, "render": t.render, "click": t.click,
 			"emit": t.emit, "answer": t.answer, "advance": t.advance,
@@ -140,7 +153,7 @@ func (t *PluginTest) Run(ctx context.Context, timeout time.Duration) []string {
 		t.mu.Unlock()
 		return fail(msg)
 	}
-	if t.settle(ctx) != nil {
+	if t.settle(ctx, t.clock.Now()) != nil {
 		return timedOut()
 	}
 	if msg := t.unowned(0, "", "during boot"); msg != "" {
@@ -156,7 +169,7 @@ func (t *PluginTest) Run(ctx context.Context, timeout time.Duration) []string {
 		return timedOut()
 	case err != nil:
 		return fail(luaErrText(err))
-	case t.settle(ctx) != nil:
+	case t.settle(ctx, t.clock.Now()) != nil:
 		return timedOut()
 	}
 	if msg := t.unowned(mark, "", "after the case"); msg != "" {
@@ -201,15 +214,17 @@ func (t *PluginTest) declare(L *glua.LState) int {
 // ---------------------------------------------------------------------------
 // quiet and the clock
 
-// settle waits until zemi is quiet: no host goroutine runs and no timer is
-// due at the fake now, the due ones fired in order; never once ctx is done.
-func (t *PluginTest) settle(ctx context.Context) error {
+// settle fires the timers due by until in order, waiting after each until
+// no host goroutine runs, and moves the clock to until: zemi is quiet then.
+// It stops once ctx is done.
+func (t *PluginTest) settle(ctx context.Context, until time.Time) error {
 	for {
 		if err := cmp.Or(ctx.Err(), t.goes.wait(ctx)); err != nil {
 			return err
 		}
-		f, ok := t.clock.due(t.clock.Now())
+		f, ok := t.clock.due(until)
 		if !ok {
+			t.clock.set(until)
 			return nil
 		}
 		f()
@@ -224,16 +239,7 @@ func (t *PluginTest) advance(L *glua.LState) int {
 	// a Duration holds some 292 years; past that the conversion wraps on amd64
 	ms = min(ms, float64(math.MaxInt64/int64(time.Millisecond)))
 	return t.drive(L, "advance", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
-		until := t.clock.Now().Add(time.Duration(ms * float64(time.Millisecond)))
-		for t.settle(ctx) == nil {
-			f, ok := t.clock.due(until)
-			if !ok {
-				t.clock.set(until)
-				break
-			}
-			f()
-		}
-		return none, nil
+		return none, t.settle(ctx, t.clock.Now().Add(time.Duration(ms*float64(time.Millisecond))))
 	})
 }
 
@@ -283,14 +289,12 @@ func (g *goes) wait(ctx context.Context) error {
 type fakeClock struct {
 	mu     sync.Mutex
 	now    time.Time
-	seq    int
-	timers []*fakeTimer
+	timers []*fakeTimer // by when they are due, then as they were set
 }
 
 type fakeTimer struct {
-	at  time.Time
-	seq int
-	f   func()
+	at time.Time
+	f  func()
 }
 
 func (c *fakeClock) Now() time.Time {
@@ -308,9 +312,12 @@ func (c *fakeClock) set(now time.Time) {
 func (c *fakeClock) AfterFunc(d time.Duration, f func()) func() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.seq++
-	t := &fakeTimer{c.now.Add(d), c.seq, f}
-	c.timers = append(c.timers, t)
+	t := &fakeTimer{c.now.Add(d), f}
+	i := slices.IndexFunc(c.timers, func(o *fakeTimer) bool { return o.at.After(t.at) })
+	if i < 0 {
+		i = len(c.timers)
+	}
+	c.timers = slices.Insert(c.timers, i, t)
 	return func() bool {
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -320,22 +327,15 @@ func (c *fakeClock) AfterFunc(d time.Duration, f func()) func() bool {
 	}
 }
 
-// due takes the earliest timer due by until, the first set of those due
-// together, and moves the clock to its time.
+// due takes the first timer due by until and moves the clock to its time.
 func (c *fakeClock) due(until time.Time) (func(), bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	i := -1
-	for j, t := range c.timers {
-		if !t.at.After(until) && (i < 0 || t.at.Before(c.timers[i].at) || t.at.Equal(c.timers[i].at) && t.seq < c.timers[i].seq) {
-			i = j
-		}
-	}
-	if i < 0 {
+	if len(c.timers) == 0 || c.timers[0].at.After(until) {
 		return nil, false
 	}
-	t := c.timers[i]
-	c.timers = slices.Delete(c.timers, i, i+1)
+	t := c.timers[0]
+	c.timers = c.timers[1:]
 	c.now = t.at
 	return t.f, true
 }
@@ -377,7 +377,7 @@ func (t *PluginTest) drive(L *glua.LState, name, own string, act func(ctx contex
 		mark := len(t.errs)
 		t.mu.Unlock()
 		push, err := act(ctx)
-		if t.settle(ctx) != nil {
+		if t.settle(ctx, t.clock.Now()) != nil {
 			return none // timed out: the case does not resume
 		}
 		r, raised := errors.AsType[raiseErr](err)
@@ -448,51 +448,46 @@ func luaErrText(err error) string {
 	return err.Error()
 }
 
-func (t *PluginTest) mine(path string) bool { return t.h.PluginOf(path) == t.plugin }
-
-// refuse raises for a target the plugin under test did not register,
-// naming the ones it did.
-func (t *PluginTest) refuse(L *glua.LState, driver, target, kind string, own []string) {
-	has := "none"
-	if len(own) > 0 {
-		has = strings.Join(own, ", ")
-	}
-	raise(L, "test.%s: %s is not a %s of plugin %s; it registered %s", driver, target, kind, t.plugin, has)
-}
-
-func (t *PluginTest) command(name string) *Command {
-	if c := t.h.Commands.Lookup(name); c != nil && c.GoFn == nil && t.mine(c.Path) {
-		return c
-	}
-	return nil
-}
-
-func (t *PluginTest) commands() (out []string) {
-	for _, c := range t.h.Commands.List() {
-		if t.command(c.Name) != nil {
-			out = append(out, "/"+c.Name)
-		}
-	}
-	return out
-}
-
-// runCmd is test.run(name [, args]): the plugin's Lua command as typed.
-func (t *PluginTest) runCmd(L *glua.LState) int {
-	name, args := strings.TrimPrefix(L.CheckString(1), "/"), L.OptString(2, "")
-	if t.command(name) == nil {
-		t.refuse(L, "run", "/"+name, "command", t.commands())
-	}
-	return t.drive(L, "run", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
-		return nil, errText(t.h.RunCommand(ctx, name, args))
-	})
-}
-
 // errText drops a Lua error's traceback, which names Go and temp frames.
 func errText(err error) error {
 	if err == nil {
 		return nil
 	}
 	return errors.New(luaErrText(err))
+}
+
+func (t *PluginTest) mine(path string) bool { return t.h.PluginOf(path) == t.plugin }
+
+// own is what of all the plugin registered under name, key naming each
+// entry and whether it is the plugin's; for any other name it raises,
+// listing the plugin's.
+func own[T any](t *PluginTest, L *glua.LState, driver, kind, name string, all []T, key func(T) (string, bool)) T {
+	var names []string
+	for _, x := range all {
+		if k, ok := key(x); ok && k == name {
+			return x
+		} else if ok {
+			names = append(names, k)
+		}
+	}
+	raise(L, "test.%s: %s is not a %s of plugin %s; it registered %s", driver, name, kind, t.plugin, cmp.Or(strings.Join(names, ", "), "none"))
+	var zero T
+	return zero
+}
+
+// command is the plugin's Lua command name, which driver runs.
+func (t *PluginTest) command(L *glua.LState, driver, name string) *Command {
+	return own(t, L, driver, "command", "/"+name, t.h.Commands.List(), func(c *Command) (string, bool) {
+		return "/" + c.Name, c.GoFn == nil && t.mine(c.Path)
+	})
+}
+
+// runCmd is test.run(name [, args]): the plugin's Lua command as typed.
+func (t *PluginTest) runCmd(L *glua.LState) int {
+	c, args := t.command(L, "run", strings.TrimPrefix(L.CheckString(1), "/")), L.OptString(2, "")
+	return t.drive(L, "run", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
+		return nil, errText(t.h.RunCommand(ctx, c.Name, args))
+	})
 }
 
 // keys is test.keys(seq): what the plugin bound a global key sequence to.
@@ -503,16 +498,10 @@ func (t *PluginTest) keys(L *glua.LState) int {
 	if err != nil {
 		raise(L, "test.keys: %v", err)
 	}
-	b := t.h.Keymaps.Lookup("", seq)
-	if b == nil || !t.mine(b.Path) || b.RHS.API != "" || b.RHS.Command != "" && t.command(b.RHS.Command) == nil {
-		var own []string
-		for _, k := range t.h.Keymaps.List() {
-			if k.Focus == "" && t.mine(k.Path) && k.RHS.API == "" {
-				own = append(own, k.Key)
-			}
-		}
-		t.refuse(L, "keys", seq, "Lua key binding", own)
-	}
+	b := own(t, L, "keys", "Lua key binding", seq, t.h.Keymaps.List(), func(k *KeyBinding) (string, bool) {
+		c := t.h.Commands.Lookup(k.RHS.Command)
+		return k.Key, k.Focus == "" && t.mine(k.Path) && k.RHS.API == "" && (k.RHS.Command == "" || c != nil && c.GoFn == nil && t.mine(c.Path))
+	})
 	return t.drive(L, "keys", "keymap "+b.Key, func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		return nil, errText(t.h.RunRHS(ctx, b))
 	})
@@ -523,19 +512,7 @@ func (t *PluginTest) keys(L *glua.LState) int {
 func (t *PluginTest) tool(L *glua.LState) int {
 	name := L.CheckString(1)
 	input := luaToGoChecked(L, 2, "test.tool")
-	var lt *luaTool
-	var own []string
-	for _, x := range t.h.luaTools.list() {
-		if t.mine(x.Path) {
-			own = append(own, x.Name)
-			if x.Name == name {
-				lt = x
-			}
-		}
-	}
-	if lt == nil {
-		t.refuse(L, "tool", name, "tool", own)
-	}
+	lt := own(t, L, "tool", "tool", name, t.h.luaTools.list(), func(x *luaTool) (string, bool) { return x.Name, t.mine(x.Path) })
 	if input == nil {
 		input = map[string]any{}
 	}
@@ -555,18 +532,7 @@ func (t *PluginTest) tool(L *glua.LState) int {
 }
 
 func (t *PluginTest) widget(L *glua.LState, driver string) *Widget {
-	id := L.CheckString(1)
-	w := t.h.Widgets.Get(id)
-	if w == nil || !t.mine(w.Path) {
-		var own []string
-		for _, x := range t.h.Widgets.List() {
-			if t.mine(x.Path) {
-				own = append(own, x.ID)
-			}
-		}
-		t.refuse(L, driver, id, "widget", own)
-	}
-	return w
+	return own(t, L, driver, "widget", L.CheckString(1), t.h.Widgets.List(), func(w *Widget) (string, bool) { return w.ID, t.mine(w.Path) })
 }
 
 // render is test.render(id [, ctx]): the widget's lines as text, then as
@@ -591,17 +557,21 @@ func (t *PluginTest) render(L *glua.LState) int {
 			return nil, raiseErr("render " + w.ID + ": " + luaErrText(err))
 		}
 		return func(L *glua.LState) []glua.LValue {
-			text := L.CreateTable(len(lines), 0)
-			for _, line := range lines {
-				var b strings.Builder
-				for _, s := range line {
-					b.WriteString(s.Text)
-				}
-				text.Append(glua.LString(b.String()))
+			text := make([]string, len(lines))
+			for i, line := range lines {
+				text[i] = segText(line)
 			}
-			return []glua.LValue{text, linesTable(L, lines)}
+			return []glua.LValue{lua.FromGo(L, text), linesTable(L, lines)}
 		}, nil
 	})
+}
+
+func segText(segs []Segment) string {
+	var b strings.Builder
+	for _, s := range segs {
+		b.WriteString(s.Text)
+	}
+	return b.String()
 }
 
 // click is test.click(id, click): the widget's on_click for a segment's
@@ -627,23 +597,15 @@ func (t *PluginTest) emit(L *glua.LState) int {
 		raise(L, "test.emit: %q is not a host event; zemi.event.emit sends user.* events", name)
 	}
 	tool, _ := ev["tool"].(string)
-	mine := func(hs []*EventHandler) []*EventHandler {
+	handlers := func(event string) []*EventHandler {
+		hs := t.h.Events.Handlers(event)
+		if event == "tool.pre" || event == "tool.post" {
+			hs = t.h.hookHandlers(event, tool)
+		}
 		return slices.DeleteFunc(hs, func(hd *EventHandler) bool { return !t.mine(hd.Path) })
 	}
-	handlers := mine(t.h.Events.Handlers(name))
-	if name == "tool.pre" || name == "tool.post" {
-		handlers = mine(t.h.hookHandlers(name, tool))
-	}
-	if len(handlers) == 0 {
-		var own []string
-		for e := range eventCatalogue {
-			if len(mine(t.h.Events.Handlers(e))) > 0 {
-				own = append(own, e)
-			}
-		}
-		slices.Sort(own)
-		t.refuse(L, "emit", name, "handled event", own)
-	}
+	own(t, L, "emit", "handled event", name, slices.Sorted(maps.Keys(eventCatalogue)), func(e string) (string, bool) { return e, len(handlers(e)) > 0 })
+	hs := handlers(name)
 	input, _ := ev["input"].(map[string]any)
 	return t.drive(L, "emit", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		veto := func(decision, reason string, input map[string]any) func(*glua.LState) []glua.LValue {
@@ -664,20 +626,20 @@ func (t *PluginTest) emit(L *glua.LState) int {
 			}
 			output, _ := ev["output"].(string)
 			ms, _ := ev["ms"].(float64)
-			out := t.h.postChain(ctx, handlers, "", tool, input, ev["ok"] != false, output, changed, time.Duration(ms)*time.Millisecond)
+			out := t.h.postChain(ctx, hs, "", tool, input, ev["ok"] != false, output, changed, time.Duration(ms)*time.Millisecond)
 			return func(*glua.LState) []glua.LValue { return []glua.LValue{glua.LString(out)} }, nil
 		case "tool.pre":
-			d, reason, rewritten, _ := t.h.toolPre(tool, input, handlers)
+			d, reason, rewritten, _ := t.h.toolPre(tool, input, hs)
 			return veto(string(d), reason, rewritten), nil
 		case "permission.request", "app.quit", "composer.submit":
-			if res := t.h.emitVetoable(ctx, name, handlers, ev, lua.VetoDeadline); res.Denied {
+			if res := t.h.emitVetoable(ctx, name, hs, ev, lua.VetoDeadline); res.Denied {
 				return veto("deny", res.Reason, nil), nil
 			}
 			return veto("", "", nil), nil
 		}
 		_, err := t.h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 			t.h.recordEvent(name, "host", ev)
-			t.h.emitSync(L, handlers, name, ev, "host")
+			t.h.emitSync(L, hs, name, ev, "host")
 			return nil, nil
 		})
 		return none, err
@@ -691,31 +653,22 @@ func (t *PluginTest) overlay(L *glua.LState) int {
 		L.Push(glua.LNil)
 		return 1
 	}
-	items := L.CreateTable(len(o.Items), 0)
-	for i := range o.Items {
-		items.Append(glua.LString(itemText(o, i)))
-	}
-	tb := L.CreateTable(0, 5)
-	tb.RawSetString("id", glua.LString(o.ID))
-	tb.RawSetString("title", glua.LString(o.Title))
-	tb.RawSetString("body", glua.LString(o.Body))
-	tb.RawSetString("items", items)
-	tb.RawSetString("input", glua.LBool(o.Input))
-	L.Push(tb)
+	L.Push(lua.FromGo(L, map[string]any{"id": o.ID, "title": o.Title, "body": o.Body, "items": itemTexts(o), "input": o.Input}))
 	return 1
 }
 
-// itemText is the row the user reads for item i.
-func itemText(o Overlay, i int) string {
-	if i < len(o.ItemText) && o.ItemText[i] != nil {
-		var b strings.Builder
-		for _, s := range o.ItemText[i] {
-			b.WriteString(s.Text)
+// itemTexts are the rows the user reads.
+func itemTexts(o Overlay) []string {
+	texts := make([]string, len(o.Items))
+	for i, item := range o.Items {
+		if i < len(o.ItemText) && o.ItemText[i] != nil {
+			texts[i] = segText(o.ItemText[i])
+		} else {
+			p, _ := ParseOverlayItem(item)
+			texts[i] = p.Text
 		}
-		return b.String()
 	}
-	p, _ := ParseOverlayItem(o.Items[i])
-	return p.Text
+	return texts
 }
 
 // answer is test.answer(choice [, action]): enter on an item (its index or
@@ -728,51 +681,44 @@ func (t *PluginTest) answer(L *glua.LState) int {
 	if !ok {
 		raise(L, "test.answer: no overlay is open")
 	}
-	var item any
-	what, fn := "on_select", o.OnSelect
-	choice := L.Get(1)
-	switch c := choice.(type) {
+	what, fn, args := "on_close", o.OnClose, []any(nil)
+	switch c := L.Get(1).(type) {
 	case *glua.LNilType:
-		what, fn = "on_close", o.OnClose
 	case glua.LString:
-		if o.Input {
-			item = string(c)
-			break
-		}
-		i := -1
-		for j := range o.Items {
-			if itemText(o, j) == string(c) {
-				i = j
-				break
-			}
-		}
-		if i < 0 {
-			texts := make([]string, len(o.Items))
-			for j := range o.Items {
-				texts[j] = luaLiteral(itemText(o, j))
+		texts := itemTexts(o)
+		i := slices.Index(texts, string(c))
+		switch {
+		case o.Input:
+			args = []any{string(c)}
+		case i < 0:
+			for j := range texts {
+				texts[j] = luaLiteral(texts[j])
 			}
 			raise(L, "test.answer: no item %q in %s; it lists %s", string(c), o.ID, strings.Join(texts, ", "))
+		default:
+			args = []any{o.Items[i]}
 		}
-		item = o.Items[i]
 	case glua.LNumber:
 		i := int(c) - 1
 		if o.Input || i < 0 || i >= len(o.Items) {
 			raise(L, "test.answer: %s has no item %d", o.ID, int(c))
 		}
-		item = o.Items[i]
+		args = []any{o.Items[i]}
 	default:
 		raise(L, "test.answer: choice must be an item's index or text, the input's text, or nil for esc")
 	}
-	args := []any{item}
-	row, _ := ParseOverlayItem(item)
-	if a := L.Get(2); a != glua.LNil && choice != glua.LNil {
-		want := a.String()
+	var row OverlayItem
+	if args != nil {
+		what, fn = "on_select", o.OnSelect
+		row, _ = ParseOverlayItem(args[0])
+	}
+	if a := L.Get(2); a != glua.LNil && args != nil {
 		i := slices.IndexFunc(row.Actions, func(x any) bool {
 			ap, _ := ParseOverlayItem(x)
-			return ap.ID == want || ap.Text == want
+			return ap.ID == a.String() || ap.Text == a.String()
 		})
 		if i < 0 {
-			raise(L, "test.answer: the item has no action %q", want)
+			raise(L, "test.answer: the item has no action %q", a.String())
 		}
 		args = append(args, row.Actions[i])
 		row, _ = ParseOverlayItem(row.Actions[i])
@@ -782,18 +728,13 @@ func (t *PluginTest) answer(L *glua.LState) int {
 		}
 	}
 	act := func(ctx context.Context) error { return t.h.callOverlay(ctx, o, what, fn, args...) }
-	switch {
-	case what == "on_close":
-		args = nil
-	case fn != nil:
-	case row.Run == "":
-		raise(L, "test.answer: overlay %s has no %s, and the row no run", o.ID, what)
-	default:
-		name, cmdArgs := SplitCommand(row.Run)
-		if t.command(name) == nil {
-			t.refuse(L, "answer", "/"+name, "command", t.commands())
+	if fn == nil && args != nil {
+		if row.Run == "" {
+			raise(L, "test.answer: overlay %s has no %s, and the row no run", o.ID, what)
 		}
-		act = func(ctx context.Context) error { return t.h.RunCommand(ctx, name, cmdArgs) }
+		name, cmdArgs := SplitCommand(row.Run)
+		c := t.command(L, "answer", name)
+		act = func(ctx context.Context) error { return t.h.RunCommand(ctx, c.Name, cmdArgs) }
 	}
 	return t.drive(L, "answer", "overlay "+o.ID, func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		t.ui.close(o.ID)
@@ -804,169 +745,63 @@ func (t *PluginTest) answer(L *glua.LState) int {
 // ---------------------------------------------------------------------------
 // eq
 
-// eq is test.eq(got, want): a deep compare of Lua values, functions and
-// other references by identity.
-func (t *PluginTest) eq(L *glua.LState) int {
-	if L.GetTop() < 2 {
-		L.RaiseError("test.eq: takes the value got and the value wanted")
-	}
-	got, want := L.Get(1), L.Get(2)
-	path, g, w, same := diff(got, want, "", map[[2]*glua.LTable]bool{})
-	if same {
-		return 0
-	}
-	msg := "got " + literal(g, "", map[*glua.LTable]bool{}) + ", want " + literal(w, "", map[*glua.LTable]bool{})
-	if gs, ok := g.(glua.LString); ok {
-		if ws, ok := w.(glua.LString); ok && max(len(gs), len(ws)) > 40 {
-			// Rel before the cut, which could leave half a temp path
-			msg = window(t.Rel(string(gs)), t.Rel(string(ws)))
-		}
-	}
-	if path != "" {
-		msg = strings.TrimPrefix(path, ".") + ": " + msg
-		gl, wl := literal(got, "", map[*glua.LTable]bool{}), literal(want, "", map[*glua.LTable]bool{})
-		if strings.Count(gl, "\n") < 10 && strings.Count(wl, "\n") < 10 {
-			msg += "\ngot  " + gl + "\nwant " + wl
-		}
-	}
-	L.RaiseError("%s", msg)
-	return 0
-}
+// eqLua is test.eq, Lua so it prints values with zemi.util.inspect. It
+// walks tables in key order, a pair met again counting as equal so cycles
+// end, and rel makes the plugin copy's paths relative before a long string
+// is cut around its first difference.
+const eqLua = `local rel = ...
 
-// diff finds the first path where got and want differ, tables walked in key
-// order with the pairs already compared taken as equal, so cycles end.
-func diff(got, want glua.LValue, path string, seen map[[2]*glua.LTable]bool) (string, glua.LValue, glua.LValue, bool) {
-	gt, gok := got.(*glua.LTable)
-	wt, wok := want.(*glua.LTable)
-	if gok && wok {
-		if seen[[2]*glua.LTable{gt, wt}] {
-			return "", nil, nil, true
-		}
-		seen[[2]*glua.LTable{gt, wt}] = true
-		for _, k := range sortedKeys(gt, wt) {
-			if p, g, w, ok := diff(gt.RawGet(k), wt.RawGet(k), path+keyPath(k), seen); !ok {
-				return p, g, w, false
-			}
-		}
-		return "", nil, nil, true
-	}
-	if gn, ok := got.(glua.LNumber); ok {
-		if wn, ok := want.(glua.LNumber); ok && math.IsNaN(float64(gn)) && math.IsNaN(float64(wn)) {
-			return "", nil, nil, true
-		}
-	}
-	return path, got, want, got == want
-}
+local function diff(got, want, path, seen)
+  if type(got) == "table" and type(want) == "table" then
+    seen[got] = seen[got] or {}
+    if seen[got][want] then return end
+    seen[got][want] = true
+    local both, u = {}, require("zemi.util")
+    for k in pairs(got) do both[k] = true end
+    for k in pairs(want) do both[k] = true end
+    for _, k in ipairs(u.keys(both)) do
+      local key = type(k) == "string" and k:find("^[%a_][%w_]*$") and "." .. k or "[" .. u.inspect(k) .. "]"
+      local p, g, w = diff(got[k], want[k], path .. key, seen)
+      if p then return p, g, w end
+    end
+  elseif got ~= want and (got == got or want == want) then -- NaN equals NaN
+    return path, got, want
+  end
+end
 
-// sortedKeys is the keys of both tables: numbers ascending, then strings,
-// then the rest by how they print.
-func sortedKeys(tabs ...*glua.LTable) []glua.LValue {
-	set := map[glua.LValue]bool{}
-	for _, tb := range tabs {
-		tb.ForEach(func(k, _ glua.LValue) { set[k] = true })
-	}
-	rank := func(v glua.LValue) int {
-		switch v.(type) {
-		case glua.LNumber:
-			return 0
-		case glua.LString:
-			return 1
-		}
-		return 2
-	}
-	keys := make([]glua.LValue, 0, len(set))
-	for k := range set {
-		keys = append(keys, k)
-	}
-	slices.SortFunc(keys, func(a, b glua.LValue) int {
-		if c := cmp.Compare(rank(a), rank(b)); c != 0 {
-			return c
-		}
-		if an, ok := a.(glua.LNumber); ok {
-			return cmp.Compare(float64(an), float64(b.(glua.LNumber)))
-		}
-		return cmp.Compare(a.String(), b.String())
-	})
-	return keys
-}
+local function window(g, w)
+  local i = 1
+  while i <= #g and g:byte(i) == w:byte(i) do i = i + 1 end
+  local function cut(s)
+    local from, to = math.max(1, i - 10), math.min(#s, i + 39)
+    -- a cut inside a UTF-8 sequence moves to its edge
+    while from > 1 and s:byte(from) >= 128 and s:byte(from) < 192 do from = from - 1 end
+    while to < #s and s:byte(to + 1) >= 128 and s:byte(to + 1) < 192 do to = to + 1 end
+    local q = require("zemi.util").inspect(s:sub(from, to))
+    if from > 1 then q = '"...' .. q:sub(2) end
+    if to < #s then q = q:sub(1, -2) .. '..."' end
+    return q
+  end
+  local chars = select(2, g:sub(1, i - 1):gsub("[^\128-\191]", "")) + 1
+  return ("got %s, want %s (first difference at char %d)"):format(cut(g), cut(w), chars)
+end
 
-var luaIdent = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
-func keyPath(k glua.LValue) string {
-	if s, ok := k.(glua.LString); ok && luaIdent.MatchString(string(s)) {
-		return "." + string(s)
-	}
-	return "[" + literal(k, "", map[*glua.LTable]bool{}) + "]"
-}
-
-// literal writes v as Lua source, a table on one line when it fits.
-func literal(v glua.LValue, indent string, seen map[*glua.LTable]bool) string {
-	switch v := v.(type) {
-	case glua.LString:
-		return luaLiteral(string(v))
-	case glua.LNumber:
-		switch f := float64(v); {
-		case math.IsNaN(f):
-			return "0/0"
-		case math.IsInf(f, 1):
-			return "math.huge"
-		case math.IsInf(f, -1):
-			return "-math.huge"
-		}
-		return v.String()
-	case *glua.LTable:
-		if seen[v] {
-			return "<cycle>"
-		}
-		seen[v] = true
-		defer delete(seen, v)
-		inner := indent + "  "
-		var items []string
-		n := v.Len()
-		for i := 1; i <= n; i++ {
-			items = append(items, literal(v.RawGetInt(i), inner, seen))
-		}
-		for _, k := range sortedKeys(v) {
-			if i, ok := k.(glua.LNumber); ok && float64(i) == math.Trunc(float64(i)) && i >= 1 && int(i) <= n {
-				continue
-			}
-			key := "[" + literal(k, inner, seen) + "]"
-			if s, ok := k.(glua.LString); ok && luaIdent.MatchString(string(s)) {
-				key = string(s)
-			}
-			items = append(items, key+" = "+literal(v.RawGet(k), inner, seen))
-		}
-		if len(items) == 0 {
-			return "{}"
-		}
-		if line := "{ " + strings.Join(items, ", ") + " }"; len(line) <= 60 && !strings.Contains(line, "\n") {
-			return line
-		}
-		return "{\n" + inner + strings.Join(items, ",\n"+inner) + "\n" + indent + "}"
-	}
-	return v.String()
-}
-
-// window shows two long strings around their first difference.
-func window(got, want string) string {
-	g, w := []rune(got), []rune(want)
-	i := 0
-	for i < len(g) && i < len(w) && g[i] == w[i] {
-		i++
-	}
-	cut := func(r []rune) string {
-		from, to := max(0, i-10), min(len(r), i+40)
-		s := luaLiteral(string(r[from:to]))
-		if from > 0 {
-			s = `"...` + s[1:]
-		}
-		if to < len(r) {
-			s = s[:len(s)-1] + `..."`
-		}
-		return s
-	}
-	return fmt.Sprintf("got %s, want %s (first difference at char %d)", cut(g), cut(w), i+1)
-}
+return function(...)
+  if select("#", ...) < 2 then error("test.eq: takes the value got and the value wanted", 3) end
+  local got, want = ...
+  local path, g, w = diff(got, want, "", {})
+  if not path then return end
+  local inspect = require("zemi.util").inspect
+  local msg = "got " .. inspect(g) .. ", want " .. inspect(w)
+  if type(g) == "string" and type(w) == "string" and math.max(#g, #w) > 40 then msg = window(rel(g), rel(w)) end
+  if path ~= "" then
+    local gl, wl = inspect(got), inspect(want)
+    msg = path:gsub("^%.", "") .. ": " .. msg
+    if #gl + #wl <= 120 then msg = msg .. "\ngot  " .. gl .. "\nwant " .. wl end
+  end
+  error(msg, 3) -- 3: gopher-lua counts error itself
+end
+`
 
 // ---------------------------------------------------------------------------
 // stubs
@@ -1038,20 +873,21 @@ func checkReply(kind string, reply glua.LValue) string {
 		return ""
 	}
 	fields := stubFields[kind]
-	for _, k := range sortedKeys(tb) {
+	takes := cmp.Or(strings.Join(slices.Sorted(maps.Keys(fields)), ", "), "no fields")
+	var why []string // sorted, so a reply with two gets the same one each run
+	tb.ForEach(func(k, v glua.LValue) {
 		want, ok := fields[k.String()]
 		if _, str := k.(glua.LString); !str || !ok {
-			takes := "no fields"
-			if len(fields) > 0 {
-				takes = strings.Join(slices.Sorted(maps.Keys(fields)), ", ")
-			}
-			return fmt.Sprintf("%s is not a field of a %s reply, which takes %s", k, kind, takes)
+			why = append(why, fmt.Sprintf("%s is not a field of a %s reply, which takes %s", k, kind, takes))
+		} else if v.Type() != want {
+			why = append(why, fmt.Sprintf("%s must be a %s, not a %s", k, want, v.Type()))
 		}
-		if got := tb.RawGet(k).Type(); got != want {
-			return fmt.Sprintf("%s must be a %s, not a %s", k, want, got)
-		}
+	})
+	if len(why) == 0 {
+		return ""
 	}
-	return ""
+	slices.Sort(why)
+	return why[0]
 }
 
 // stubReply stands in for a call's transport: the reply's fields over its
@@ -1158,16 +994,10 @@ func (u *testUI) top() (Overlay, bool) {
 	return u.overlays[len(u.overlays)-1], true
 }
 
-func (u *testUI) close(id string) (Overlay, bool) {
+func (u *testUI) close(id string) {
 	u.mu.Lock()
-	defer u.mu.Unlock()
-	i := slices.IndexFunc(u.overlays, func(o Overlay) bool { return o.ID == id })
-	if i < 0 {
-		return Overlay{}, false
-	}
-	o := u.overlays[i]
-	u.overlays = slices.Delete(u.overlays, i, i+1)
-	return o, true
+	u.overlays = slices.DeleteFunc(u.overlays, func(o Overlay) bool { return o.ID == id })
+	u.mu.Unlock()
 }
 
 func (u *testUI) OpenOverlay(o Overlay) {

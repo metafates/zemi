@@ -17,6 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugins"
 	"github.com/metafates/zemi/internal/proc"
 )
@@ -66,7 +67,7 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	if tmp, err = filepath.EvalSymlinks(tmp); err != nil {
 		return fail(err)
 	}
-	if inside(src, tmp) {
+	if _, in := perm.Under(src, tmp); in {
 		return fail(fmt.Errorf("the temp dir %s is inside the plugin %s", tmp, src))
 	}
 	name := filepath.Base(src)
@@ -244,6 +245,7 @@ func pluginSource(arg string) (string, error) {
 // most copyFiles files and copyBytes bytes.
 func copyPlugin(src, dst string) error {
 	files, size := 0, int64(0)
+	inside := func(p string) bool { _, ok := perm.Under(src, p); return ok }
 	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -264,7 +266,7 @@ func copyPlugin(src, dst string) error {
 			if err != nil {
 				return err
 			}
-			if real, err := filepath.EvalSymlinks(p); err != nil || filepath.IsAbs(target) || !inside(src, real) || !inside(src, filepath.Join(filepath.Dir(p), target)) {
+			if real, err := filepath.EvalSymlinks(p); err != nil || filepath.IsAbs(target) || !inside(real) || !inside(filepath.Join(filepath.Dir(p), target)) {
 				return nil
 			}
 			return os.Symlink(target, to)
@@ -284,10 +286,4 @@ func copyPlugin(src, dst string) error {
 		}
 		return os.WriteFile(to, data, info.Mode().Perm())
 	})
-}
-
-// inside reports whether p is root or below it.
-func inside(root, p string) bool {
-	rel, err := filepath.Rel(root, p)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
