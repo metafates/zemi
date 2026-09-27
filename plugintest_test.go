@@ -89,6 +89,9 @@ for i = 1, 300 do test("case " .. i, function() end) end
   timed out after 300ms in test.advance(1) at tests/fail_test.lua:36
 0 passed, 1 failed (2 files, (T))
 `},
+		{name: "a driver still running at the deadline", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
+			"init.lua": `zemi.command.add("spin", function() while true do end end)`, "tests/a_test.lua": `zemi.test("spins", function() zemi.test.run("spin") end)`,
+		}, want: "FAIL tests/a_test.lua:1: spins\n  timed out after 300ms in test.run(\"spin\") at tests/a_test.lua:1\n0 passed, 1 failed (1 file, (T))\n"},
 		{
 			name: "a pattern matching nothing", args: []string{"<plugin>", "wether"}, code: 1,
 			want: "no case matches \"wether\" (26 cases in 2 files)\n",

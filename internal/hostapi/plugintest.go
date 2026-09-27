@@ -201,10 +201,10 @@ func (t *PluginTest) declare(L *glua.LState) int {
 // quiet and the clock
 
 // settle waits until zemi is quiet: no host goroutine runs and no timer is
-// due at the fake now, the due ones fired in order.
+// due at the fake now, the due ones fired in order; never once ctx is done.
 func (t *PluginTest) settle(ctx context.Context) error {
 	for {
-		if err := t.h.goes.wait(ctx); err != nil {
+		if err := cmp.Or(ctx.Err(), t.h.goes.wait(ctx)); err != nil {
 			return err
 		}
 		f, ok := t.clock.due(t.clock.Now())
