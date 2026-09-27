@@ -42,3 +42,8 @@ test("a reply function with a misspelled field", function()
   end)
   test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C, Sunny")
 end)
+
+test("eq on an error naming a file", function()
+  local _, err = pcall(zemi.http.get, "https://example.com/")
+  test.eq(err, "permission ask required")
+end)

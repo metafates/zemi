@@ -91,6 +91,11 @@ for i = 1, 300 do test("case " .. i, function() end) end
   test.stub reply: bdy is not a field of a http reply, which takes body, headers, status
 0 passed, 1 failed (2 files, (T))
 `},
+		{name: "eq on an error naming a file", args: []string{"<plugin>", "naming a file"}, code: 1, want: `FAIL tests/fail_test.lua:46: eq on an error naming a file
+  tests/fail_test.lua:48: got "tests/fail_test.lua:47: lua.http.get htt...", want "permission ask required" (first difference at char 1)
+  no stub answered it; answer it with test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })
+0 passed, 1 failed (2 files, (T))
+`},
 		{name: "a case times out", args: []string{"<plugin>", "never settles"}, code: 1, want: `FAIL tests/fail_test.lua:31: a case that never settles
   timed out after 300ms in test.advance(1) at tests/fail_test.lua:36
 0 passed, 1 failed (2 files, (T))
@@ -100,7 +105,7 @@ for i = 1, 300 do test("case " .. i, function() end) end
 		}, want: "FAIL tests/a_test.lua:1: spins\n  timed out after 300ms in test.run(\"spin\") at tests/a_test.lua:1\n0 passed, 1 failed (1 file, (T))\n"},
 		{
 			name: "a pattern matching nothing", args: []string{"<plugin>", "wether"}, code: 1,
-			want: "no case matches \"wether\" (28 cases in 2 files)\n",
+			want: "no case matches \"wether\" (29 cases in 2 files)\n",
 		},
 		{name: "a plugin that does not load", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
 			"init.lua": `require("cp")`, "lua/cp/init.lua": `require("cp.util")`, "tests/a_test.lua": `zemi.test("a", function() end)`,

@@ -765,7 +765,8 @@ func (t *PluginTest) eq(L *glua.LState) int {
 	msg := "got " + literal(g, "", map[*glua.LTable]bool{}) + ", want " + literal(w, "", map[*glua.LTable]bool{})
 	if gs, ok := g.(glua.LString); ok {
 		if ws, ok := w.(glua.LString); ok && max(len(gs), len(ws)) > 40 {
-			msg = window(string(gs), string(ws))
+			// Rel before the cut, which could leave half a temp path
+			msg = window(t.Rel(string(gs)), t.Rel(string(ws)))
 		}
 	}
 	if path != "" {
@@ -901,7 +902,7 @@ func window(got, want string) string {
 		i++
 	}
 	cut := func(r []rune) string {
-		from, to := max(0, i-10), min(len(r), i+20)
+		from, to := max(0, i-10), min(len(r), i+40)
 		s := luaLiteral(string(r[from:to]))
 		if from > 0 {
 			s = `"...` + s[1:]
