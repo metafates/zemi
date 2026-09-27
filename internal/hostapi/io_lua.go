@@ -941,45 +941,56 @@ func (j *jobHandle) snapshot() map[string]any {
 }
 
 // lineSink batches output lines for a Lua callback: a line waits at most
-// 30ms, and one delivery runs at a time, so a chatty process cannot flood
-// the queue.
+// 30ms on the runtime's clock, or until the stream ends, and one delivery
+// runs at a time, so a chatty process cannot flood the queue.
 type lineSink struct {
-	h         *Host
-	at        luaCaller
-	fn        *glua.LFunction
-	what      string // "zemi.job on_stdout", for /errors
-	mu        sync.Mutex
-	pending   []string
-	scheduled bool
-	wg        sync.WaitGroup
+	h    *Host
+	at   luaCaller
+	fn   *glua.LFunction
+	what string // "zemi.job on_stdout", for /errors
+	mu   sync.Mutex
+	// pending waits for the drain stop stops, nil when none is scheduled
+	pending []string
+	stop    func() bool
+	wg      sync.WaitGroup
 }
 
 func (s *lineSink) add(line string) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.pending = append(s.pending, line)
-	schedule := !s.scheduled
-	s.scheduled = true
-	s.mu.Unlock()
-	if !schedule {
-		return
+	if s.stop == nil {
+		s.wg.Add(1)
+		s.stop = s.h.RT.Clock().AfterFunc(30*time.Millisecond, func() { s.h.safe("job output", s.drain) })
 	}
-	s.wg.Add(1)
-	s.h.GoSafe("job output", func() {
-		defer s.wg.Done()
-		time.Sleep(30 * time.Millisecond)
-		for {
-			s.mu.Lock()
-			lines := s.pending
-			s.pending = nil
-			if len(lines) == 0 {
-				s.scheduled = false
-				s.mu.Unlock()
-				return
-			}
+}
+
+// end delivers what waits now, the stream being over, and returns once
+// every delivery ran.
+func (s *lineSink) end() {
+	s.mu.Lock()
+	stop := s.stop
+	s.mu.Unlock()
+	if stop != nil && stop() {
+		s.drain()
+	}
+	s.wg.Wait()
+}
+
+func (s *lineSink) drain() {
+	defer s.wg.Done()
+	for {
+		s.mu.Lock()
+		lines := s.pending
+		s.pending = nil
+		if len(lines) == 0 {
+			s.stop = nil
 			s.mu.Unlock()
-			s.deliver(lines)
+			return
 		}
-	})
+		s.mu.Unlock()
+		s.deliver(lines)
+	}
 }
 
 // deliver is a plain call, not a task: a batch every 30ms would cost a
@@ -1183,7 +1194,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			// on_exit follows every output callback
 			for _, s := range []*lineSink{outSink, errSink} {
 				if s != nil {
-					s.wg.Wait()
+					s.end()
 				}
 			}
 			if onExit != nil {

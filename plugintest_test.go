@@ -141,6 +141,14 @@ end)`,
 			"init.lua":         `zemi.command.add("menu", function() zemi.ui.overlay.open({ id = "menu", items = { { text = "go", run = "menu" } } }) end)`,
 			"tests/a_test.lua": `zemi.test("a run row", function() assert(zemi.test.run("menu")) assert(zemi.test.answer("go")) end)`,
 		}, want: "FAIL tests/a_test.lua:1: a run row\n  tests/a_test.lua:1: test.answer: overlay menu has no on_select; test.run runs what a row's run names\n0 passed, 1 failed (1 file, (T))\n"},
+		{name: "a job's output arrives when it ends, the clock unmoved", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
+			"init.lua": `zemi.command.add("log", function()
+  zemi.job.start({ cmd = "git", args = { "log" }, on_stdout = function(lines) zemi.state.set("out", lines) end })
+end)`,
+			"tests/a_test.lua": `local test = assert(zemi.test)
+test.stub("lua.job.start", "git log", { stdout = "a\nb" })
+test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { "a", "b" }) end)`,
+		}, want: "1 passed (1 file, (T))\n"},
 		{name: "advance past what a duration holds", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
 			"init.lua": "", "tests/a_test.lua": `zemi.test("far", function() zemi.test.advance(math.huge) zemi.test.eq(os.date("!%Y"), "2318") end)`,
 		}, want: "1 passed (1 file, (T))\n"},
