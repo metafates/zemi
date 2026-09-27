@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -154,5 +155,31 @@ func TestBashChanges(t *testing.T) {
 	}
 	if _, diff, _ := h.bashChanges(t.TempDir())(); diff != "" {
 		t.Errorf("no repository, got %q", diff)
+	}
+}
+
+// TestSnapshotRacyEntry: a file rewritten at the same size in the second its
+// index was written looks clean by stat alone; the first snapshot must still
+// hash it, or a bash row misses the change and a rewind restores the old text.
+func TestSnapshotRacyEntry(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	dir := h.Dirs.ProjectDir
+	a := filepath.Join(dir, "a.txt")
+	// one second an hour ago stands in for "the same second"; checkStat
+	// minimal leaves out the ctime a real race would share too
+	then := time.Now().Add(-time.Hour).Truncate(time.Second)
+	os.WriteFile(a, []byte("v1"), 0o644)
+	os.Chtimes(a, then, then)
+	for _, args := range [][]string{{"init", "-q"}, {"config", "core.checkStat", "minimal"}, {"config", "core.trustCtime", "false"}, {"add", "-A"}} {
+		if out, err := h.git(dir, args...); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	os.WriteFile(a, []byte("v2"), 0o644)
+	os.Chtimes(a, then, then)
+	os.Chtimes(filepath.Join(dir, ".git", "index"), then, then)
+	root, env, tree := h.snapshot(dir)
+	if got, err := h.gitEnv(root, env, "cat-file", "-p", tree+":a.txt"); got != "v2" {
+		t.Fatalf("snapshot holds %q (%v), want v2", got, err)
 	}
 }

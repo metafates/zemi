@@ -98,9 +98,13 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 	for retry := false; ; retry = true {
 		if _, err := os.Stat(warm); err != nil {
 			// the user's index warms the first snapshot; without it (no index
-			// yet, a failed copy) git starts from an empty one
-			if data, err := os.ReadFile(index); err == nil {
-				_ = os.WriteFile(warm, data, 0o600)
+			// yet, a failed copy) git starts from an empty one. The copy keeps
+			// the index's mtime, by which git rehashes an entry changed in the
+			// second the index was written.
+			st, err := os.Stat(index)
+			data, rerr := os.ReadFile(index)
+			if err == nil && rerr == nil && (os.WriteFile(warm, data, 0o600) != nil || os.Chtimes(warm, st.ModTime(), st.ModTime()) != nil) {
+				os.Remove(warm)
 			}
 		}
 		if _, err = h.gitEnv(root, env, append([]string{"add", "-A"}, snapPathspec...)...); err == nil {
