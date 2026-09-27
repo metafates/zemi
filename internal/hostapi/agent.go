@@ -2580,7 +2580,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 				// nothing bounds a chain of turns, and -p exits after its own
 				L.RaiseError("zemi.agent.send: a plugin cannot send in a print run (-p)")
 			}
-			if _, stub := h.luaGate(L, "lua.agent.send", "*", map[string]any{"text": text}); stub != nil {
+			if _, stub := h.luaGate(L, "lua.agent.send", "*", func() map[string]any { return map[string]any{"text": text} }); stub != nil {
 				L.Push(glua.LTrue) // a test zemi's stub keeps the text and starts no turn
 				return 1
 			}

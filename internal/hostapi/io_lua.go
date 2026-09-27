@@ -164,8 +164,9 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 // pipeline copy and an unresolved ask stays an ask for the gate to refuse.
 // req describes the call for a test zemi, where only a test.stub passes one
 // of the calls that do IO: its reply is returned and stands in for the
-// transport, and a call none answers is refused whatever rules exist.
-func (h *Host) luaGate(L *glua.LState, subject, arg string, req map[string]any) (tools.Verdict, map[string]any) {
+// transport, and a call none answers is refused whatever rules exist; req
+// is a func so no other zemi builds it.
+func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[string]any) (tools.Verdict, map[string]any) {
 	stubbed := false
 	if h.test != nil {
 		var reply map[string]any
@@ -437,7 +438,7 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 			at := h.callerOf(L)
 			handle := &timerHandle{}
 			stopID := h.stops.add(handle.stopIt)
-			var fire func() // the clock's call: a tick on a host goroutine
+			var fire func() // the clock's call, on its goroutine
 			tick := func() {
 				_, err := h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
 					if h.currentGen() != at.gen {
@@ -465,7 +466,7 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 				}
 				handle.arm(h.RT.Clock(), d, fire)
 			}
-			fire = func() { h.GoSafe("zemi.timer", tick) }
+			fire = func() { h.safe("zemi.timer", tick) }
 			handle.arm(h.RT.Clock(), d, fire)
 			handleTb := L.NewTable()
 			handleTb.RawSetString("stop", L.NewFunction(func(L *glua.LState) int {
@@ -502,7 +503,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.fs.%s: %v", api, err)
 		}
 		// as written: the secret shapes match a secret-named symlink's name
-		h.luaGate(L, subject, h.projectAbs(path), map[string]any{"path": path})
+		h.luaGate(L, subject, h.projectAbs(path), func() map[string]any { return map[string]any{"path": path} })
 		return resolved
 	}
 	kind := func(fi os.FileInfo) string {
@@ -749,7 +750,9 @@ type httpHandle struct {
 func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) int {
 	subject := "lua.http." + strings.ToLower(req.method)
 	origin := h.RT.CurrentOrigin(L)
-	v, stub := h.luaGate(L, subject, req.url, map[string]any{"method": req.method, "url": req.url, "headers": req.headers, "body": req.body})
+	v, stub := h.luaGate(L, subject, req.url, func() map[string]any {
+		return map[string]any{"method": req.method, "url": req.url, "headers": req.headers, "body": req.body}
+	})
 	// §9 localhost development opt-in: an explicit user allow rule for the
 	// host overrides the resolved-address deny. Allow rules are user-only
 	// (zemi.permission.rule refuses them elsewhere), and project callers
@@ -1063,7 +1066,9 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.job.start: cmd is required")
 		}
 		args := rawStrings(spec, "args")
-		_, stub := h.luaGate(L, "lua.job.start", argvLine(cmdName, args), map[string]any{"cmd": cmdName, "args": args, "cwd": rawString(spec, "cwd")})
+		_, stub := h.luaGate(L, "lua.job.start", argvLine(cmdName, args), func() map[string]any {
+			return map[string]any{"cmd": cmdName, "args": args, "cwd": rawString(spec, "cwd")}
+		})
 		extras := map[string]any{}
 		if envT, ok := spec.RawGetString("env").(*glua.LTable); ok {
 			if v, err := lua.ToGo(envT); err == nil {

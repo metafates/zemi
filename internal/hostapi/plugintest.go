@@ -49,6 +49,7 @@ type PluginTest struct {
 	run    int             // the case this boot runs; -1 runs none
 	fn     *glua.LFunction // its function
 
+	goes    goes
 	mu      sync.Mutex
 	stubs   []*testStub // interpreter only
 	errs    []errEntry  // what zemi recorded in /errors, in order
@@ -204,7 +205,7 @@ func (t *PluginTest) declare(L *glua.LState) int {
 // due at the fake now, the due ones fired in order; never once ctx is done.
 func (t *PluginTest) settle(ctx context.Context) error {
 	for {
-		if err := cmp.Or(ctx.Err(), t.h.goes.wait(ctx)); err != nil {
+		if err := cmp.Or(ctx.Err(), t.goes.wait(ctx)); err != nil {
 			return err
 		}
 		f, ok := t.clock.due(t.clock.Now())
@@ -234,6 +235,47 @@ func (t *PluginTest) advance(L *glua.LState) int {
 		}
 		return none, nil
 	})
+}
+
+// goes counts the goroutines GoSafe runs in a test zemi: every async
+// callback and handler reaches Lua through one, so it is quiet when none runs.
+type goes struct {
+	mu   sync.Mutex
+	n    int
+	none chan struct{} // closed when n drops to zero
+}
+
+func (g *goes) add() {
+	g.mu.Lock()
+	if g.n == 0 {
+		g.none = make(chan struct{})
+	}
+	g.n++
+	g.mu.Unlock()
+}
+
+func (g *goes) done() {
+	g.mu.Lock()
+	if g.n--; g.n == 0 {
+		close(g.none)
+	}
+	g.mu.Unlock()
+}
+
+// wait returns once no GoSafe goroutine runs, or with ctx's error.
+func (g *goes) wait(ctx context.Context) error {
+	g.mu.Lock()
+	n, none := g.n, g.none
+	g.mu.Unlock()
+	if n == 0 {
+		return nil
+	}
+	select {
+	case <-none:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // fakeClock is a test zemi's lua.Clock: time moves only when test.advance
@@ -1006,7 +1048,7 @@ func checkReply(kind string, reply glua.LValue) string {
 // none answers gets a note naming the stub that would.
 // NOTE: a stub answers at once, so a handle's timeout goes untested; a
 // reply that waits for test.advance would reach it.
-func (t *PluginTest) reply(L *glua.LState, subject, arg string, req map[string]any) (map[string]any, bool) {
+func (t *PluginTest) reply(L *glua.LState, subject, arg string, req func() map[string]any) (map[string]any, bool) {
 	kind := stubKind(subject)
 	if kind == "" {
 		return nil, false
@@ -1015,7 +1057,7 @@ func (t *PluginTest) reply(L *glua.LState, subject, arg string, req map[string]a
 		if s.subject != subject || !perm.MatchExample(s.pattern, arg) {
 			continue
 		}
-		reqTb := lua.FromGo(L, req)
+		reqTb := lua.FromGo(L, req())
 		reply := s.reply
 		if fn, ok := reply.(*glua.LFunction); ok {
 			L.Push(fn)
@@ -1051,7 +1093,7 @@ func (t *PluginTest) reply(L *glua.LState, subject, arg string, req map[string]a
 		}
 		return out, true
 	}
-	t.note("no stub answered it; answer it with " + stubLine(kind, subject, arg, req))
+	t.note("no stub answered it; answer it with " + stubLine(kind, subject, arg, req()))
 	return nil, true
 }
 

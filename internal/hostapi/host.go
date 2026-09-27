@@ -358,7 +358,6 @@ type Host struct {
 	agents    *agentHost
 	luaTools  *toolReg
 	stops     *stopReg
-	goes      goes
 	// test is set, before boot, only in a zemi plugins test zemi
 	test *PluginTest
 

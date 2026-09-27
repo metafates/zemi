@@ -131,7 +131,7 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	case o.Rank() <= lua.OriginProject.Rank():
 		L.RaiseError("zemi.model.ask: %s code may not call a model", o)
 	case o == lua.OriginPlugin:
-		_, stub = h.luaGate(L, "lua.model.ask", id, map[string]any{"model": ref, "prompt": prompt, "system": system})
+		_, stub = h.luaGate(L, "lua.model.ask", id, func() map[string]any { return map[string]any{"model": ref, "prompt": prompt, "system": system} })
 	}
 	maxOut := int64(1024)
 	if n, ok := spec.RawGetString("max_output").(glua.LNumber); ok && n > 0 {
