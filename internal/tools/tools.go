@@ -228,7 +228,7 @@ type Pipeline struct {
 	Ask   Asker   // nil = asks fail closed
 	// Post runs the tool.post events after a call the gate let through or
 	// refused, and returns the output the model gets; nil = none.
-	Post      func(ctx context.Context, tool string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string
+	Post      func(ctx context.Context, pad, tool string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string
 	Principal string
 
 	// TodosRead/TodosWrite back the session todo list; nil = todos error.
@@ -809,7 +809,7 @@ func (t *tool) post(ctx context.Context, p *Pipeline, input map[string]any, res 
 	if t.edits && !res.IsError {
 		changed = []string{str(input["path"])}
 	}
-	if out := p.Post(ctx, t.info.Name, input, !res.IsError, res.Content, changed, took); res.Type == "text" {
+	if out := p.Post(ctx, p.Pad, t.info.Name, input, !res.IsError, res.Content, changed, took); res.Type == "text" {
 		res.Content = out
 	}
 	return res

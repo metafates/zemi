@@ -64,7 +64,7 @@ func TestPluginText(t *testing.T) {
 					ctx = context.WithValue(ctx, runSessionKey{}, marked)
 				}
 				for range 2 {
-					if out := h.toolPost(ctx, "read", nil, true, "x", nil, 0); out != "y" {
+					if out := h.toolPost(ctx, "", "read", nil, true, "x", nil, 0); out != "y" {
 						t.Fatalf("output = %q", out)
 					}
 				}

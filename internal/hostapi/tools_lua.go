@@ -295,7 +295,7 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 	if resp, stop := a.h.preCheck(a.t.Name, call.Input); stop {
 		return resp, nil
 	}
-	defer a.h.postNotify(ctx, a.t.Name, call.Input, &reply, time.Now())
+	defer a.h.postNotify(ctx, a.pipe.Pad, a.t.Name, call.Input, &reply, time.Now())
 	req := tools.Request{Tool: a.t.Name, Subject: "tool." + a.t.Name, Arg: a.t.Name, Reason: "Lua tool " + a.t.Name, Preview: call.Input}
 	if v := a.pipe.CheckDenied(req); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse("permission " + string(v.Decision) + " (" + v.DecidedBy + "): " + req.Subject + ": " + v.Reason), nil
@@ -480,7 +480,7 @@ const toolPostWait = 30 * time.Second
 // turn as tasks, each seeing the output the one before left. A return of
 // { output = "..." } rewrites it, except from project code; a handler that
 // fails or runs late leaves it as it was.
-func (h *Host) toolPost(ctx context.Context, name string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string {
+func (h *Host) toolPost(ctx context.Context, pad, name string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string {
 	if !lspQuietTool[name] {
 		h.lspDirty()
 	}
@@ -526,7 +526,7 @@ func (h *Host) toolPost(ctx context.Context, name string, input map[string]any, 
 			if ctx.Err() == nil {
 				h.logHandlerError(hd, context.Cause(postCtx))
 			}
-			return h.postOutput(name, output, out)
+			return h.postOutput(pad, name, output, out)
 		case err != nil:
 			if !errors.Is(err, lua.ErrReloaded) && !errors.Is(err, lua.ErrHot) {
 				h.logHandlerError(hd, err)
@@ -545,13 +545,13 @@ func (h *Host) toolPost(ctx context.Context, name string, input map[string]any, 
 			}
 		}
 	}
-	return h.postOutput(name, output, out)
+	return h.postOutput(pad, name, output, out)
 }
 
 // postOutput cuts a rewritten output like any other.
-func (h *Host) postOutput(name, output, out string) string {
+func (h *Host) postOutput(pad, name, output, out string) string {
 	if out == output {
 		return out
 	}
-	return h.truncOutput(name, out)
+	return h.truncOutput(pad, name, out)
 }

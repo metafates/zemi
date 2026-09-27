@@ -54,7 +54,7 @@ func TestHostToolEvents(t *testing.T) {
 		zemi.state.set("wpost", tostring(ev.ok))
 	end)`)
 	h.Perm.Add(perm.Rule{Subject: "tool.workflow", Pattern: "*", Decision: perm.Deny})
-	resp, err := h.workflowTool().Run(context.Background(),
+	resp, err := h.workflowTool(h.PipelineFor()).Run(context.Background(),
 		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"description":"d","script":"return 1"}`})
 	if err != nil || !resp.IsError {
 		t.Fatalf("denied workflow = %+v, %v", resp, err)
@@ -185,7 +185,7 @@ func TestToolPostOnceOverlap(t *testing.T) {
 	outs := make([]string, 2)
 	var wg sync.WaitGroup
 	for i := range outs {
-		wg.Go(func() { outs[i] = h.toolPost(t.Context(), "echo", map[string]any{}, true, "x", nil, 0) })
+		wg.Go(func() { outs[i] = h.toolPost(t.Context(), "", "echo", map[string]any{}, true, "x", nil, 0) })
 	}
 	wg.Wait()
 	if n := strings.Count(strings.Join(outs, ","), "once"); n != 1 {

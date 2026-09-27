@@ -456,7 +456,8 @@ func (t *toolSearch) Run(ctx context.Context, call fantasy.ToolCall) (reply fant
 	if resp, stop := t.h.preCheck(tools.ToolSearch, call.Input); stop {
 		return resp, nil
 	}
-	defer t.h.postNotify(ctx, tools.ToolSearch, call.Input, &reply, time.Now())
+	// every deferred tool shares the run's pipeline
+	defer t.h.postNotify(ctx, t.tools[0].pipe.Pad, tools.ToolSearch, call.Input, &reply, time.Now())
 	var fresh, had []string
 	for _, n := range searchMCP(t.tools, in.Query, t.loaded) {
 		if _, dup := t.loaded.LoadOrStore(n, true); dup {
@@ -561,7 +562,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 	if resp, stop := h.preCheck(mcpToolName(name, t.tool.Name), call.Input); stop {
 		return resp, nil
 	}
-	defer h.postNotify(ctx, mcpToolName(name, t.tool.Name), call.Input, &reply, time.Now())
+	defer h.postNotify(ctx, t.pipe.Pad, mcpToolName(name, t.tool.Name), call.Input, &reply, time.Now())
 	args, err := tools.ParseInput(t.Info(), call.Input, tools.SchemaOpen(t.tool.InputSchema))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -593,7 +594,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 	if err != nil {
 		return fantasy.NewTextErrorResponse("mcp " + name + ": " + err.Error()), nil
 	}
-	text := h.truncOutput("mcp", res.Text())
+	text := h.truncOutput(t.pipe.Pad, "mcp", res.Text())
 	if res.IsError {
 		return fantasy.NewTextErrorResponse(text), nil
 	}

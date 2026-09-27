@@ -726,7 +726,8 @@ lua-language-server is installed.
 - **Scratchpad** (scratch.go): `<state>/scratch/<first 12 of the session id>`, short so a unix
   socket path under it fits macOS's 104 bytes. A pipeline binds it once (`Pipeline.Pad`,
   `Request.Pad`): `PipelineFor` the live session's, a subagent run its parent session's, so a run
-  that outlives `/new` or `/resume` keeps the pad its prompt names. It is `TMPDIR`, `TMP` and
+  that outlives `/new` or `/resume` keeps the pad its prompt names, and a host tool's cut
+  output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. It is `TMPDIR`, `TMP` and
   `TEMP` in every command the model starts, confined or not (`Pipeline.childEnv`; the user's
   `!command` keeps the user's). `Pipeline.Check` allows reads and writes there that no rule
   decided, a read-only agent's included, but a secret-shaped name (`tools.PadSecret`); `write`

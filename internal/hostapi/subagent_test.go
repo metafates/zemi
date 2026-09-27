@@ -348,11 +348,11 @@ func TestSubagentReportTruncated(t *testing.T) {
 	}
 	// the schema words a wrong type as the builtin tools do
 	for in, want := range map[string]string{`{"prompt":1}`: `field "prompt" must be string`, `[1]`: "input must be a JSON object"} {
-		if resp, _ := h.agentTool().Run(context.Background(), fantasy.ToolCall{ID: "c0", Name: "agent", Input: in}); !resp.IsError || resp.Content != want {
+		if resp, _ := h.agentTool(h.PipelineFor()).Run(context.Background(), fantasy.ToolCall{ID: "c0", Name: "agent", Input: in}); !resp.IsError || resp.Content != want {
 			t.Fatalf("%s: %+v", in, resp)
 		}
 	}
-	resp, err := h.agentTool().Run(context.Background(), fantasy.ToolCall{
+	resp, err := h.agentTool(h.PipelineFor()).Run(context.Background(), fantasy.ToolCall{
 		ID: "c1", Name: "agent", Input: `{"description":"d","prompt":"look","agent":"explore"}`,
 	})
 	if err != nil {
@@ -467,7 +467,7 @@ func TestSubagentModelChoice(t *testing.T) {
 		}
 	}
 	// the catalog can be thousands of tokens; a bad id names it instead
-	if desc := h.agentTool().Info().Description; strings.Contains(desc, "myllm/main") {
+	if desc := h.agentTool(nil).Info().Description; strings.Contains(desc, "myllm/main") {
 		t.Fatalf("description lists models: %q", desc)
 	}
 	if err := h.checkModelID("other/x"); err == nil || err.Error() != `unknown model "other/x"; roles: chat, agents, titles, compact, memory; configured models: myllm/main, myllm/mini` {

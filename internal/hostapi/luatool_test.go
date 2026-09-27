@@ -81,7 +81,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		t.Fatal(err)
 	}
 	marker := filepath.Join(t.TempDir(), "made")
-	tool := h.luaEvalTool()
+	tool := h.luaEvalTool(h.PipelineFor())
 	run := func(script string, allow bool) (*fakeUI, string) {
 		ui := &fakeUI{askAllowed: allow, askBy: "user", screenshot: "screen"}
 		h.SetUIHooks(ui)
@@ -192,7 +192,7 @@ func TestLuaToolCeiling(t *testing.T) {
 	old := luaToolCeiling
 	luaToolCeiling = 50 * time.Millisecond
 	t.Cleanup(func() { luaToolCeiling = old })
-	tool := h.luaEvalTool()
+	tool := h.luaEvalTool(h.PipelineFor())
 	for _, c := range []struct{ script, want string }{
 		{"while true do end", "error: stopped after its 50ms ceiling"},
 		{"error({ code = 1 })", `error: lua-tool: {"code":1}`},
@@ -233,7 +233,7 @@ func TestLuaToolPath(t *testing.T) {
 		ui := &fakeUI{askBy: "user"}
 		h.SetUIHooks(ui)
 		input, _ := json.Marshal(map[string]string{"description": "x", "path": c.path})
-		resp, _ := h.luaEvalTool().Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
+		resp, _ := h.luaEvalTool(h.PipelineFor()).Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 		if !strings.HasPrefix(resp.Content, c.want) || len(ui.asked) != c.asks {
 			t.Errorf("%s: %q, %d asks", c.path, resp.Content, len(ui.asked))
 		}

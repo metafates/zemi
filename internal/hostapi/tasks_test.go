@@ -124,7 +124,7 @@ func TestReportNoticeWhereRead(t *testing.T) {
 // and is stored in its child session; a finished run refuses one.
 func TestMessageAgent(t *testing.T) {
 	viaTool := func(h *Host, id, text string) (string, error) {
-		resp, err := h.agentTool().Run(t.Context(), fantasy.ToolCall{ID: "c2", Input: fmt.Sprintf(`{"description":"d","agent":"explore","prompt":%q,"send_to":%q}`, text, id)})
+		resp, err := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "c2", Input: fmt.Sprintf(`{"description":"d","agent":"explore","prompt":%q,"send_to":%q}`, text, id)})
 		if err == nil && resp.IsError {
 			err = errors.New(resp.Content)
 		}
@@ -163,7 +163,7 @@ func TestMessageAgent(t *testing.T) {
 			if _, err := viaTool(h, "", ""); err == nil {
 				t.Fatal("an empty prompt must be refused")
 			}
-			resp, err := h.agentTool().Run(t.Context(), fantasy.ToolCall{ID: "c1", Input: `{"description":"d","agent":"explore","prompt":"look","background":true}`})
+			resp, err := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "c1", Input: `{"description":"d","agent":"explore","prompt":"look","background":true}`})
 			if err != nil || resp.IsError {
 				t.Fatalf("start: %v %s", err, resp.Content)
 			}
@@ -398,7 +398,7 @@ func TestSendTo(t *testing.T) {
 	h.agents.mu.Lock()
 	h.agents.sessionID = "other"
 	h.agents.mu.Unlock()
-	resp, err := h.agentTool().Run(t.Context(), fantasy.ToolCall{ID: "c1", Input: fmt.Sprintf(`{"prompt":"again","send_to":%q}`, id)})
+	resp, err := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "c1", Input: fmt.Sprintf(`{"prompt":"again","send_to":%q}`, id)})
 	if err != nil || !resp.IsError || !strings.Contains(resp.Content, "belongs to another session") {
 		t.Fatalf("another session's run: %v %q", err, resp.Content)
 	}

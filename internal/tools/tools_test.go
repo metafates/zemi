@@ -787,7 +787,7 @@ func TestPostHookRuns(t *testing.T) {
 		perm.Rule{Subject: "tool.bash", Pattern: "echo *", Decision: perm.Allow},
 		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 	var posts []string
-	p.Post = func(_ context.Context, tool string, input map[string]any, ok bool, output string, changed []string, _ time.Duration) string {
+	p.Post = func(_ context.Context, _, tool string, input map[string]any, ok bool, output string, changed []string, _ time.Duration) string {
 		posts = append(posts, fmt.Sprintf("%s ok=%v %s changed=%v", tool, ok, output, changed))
 		return "rewritten"
 	}

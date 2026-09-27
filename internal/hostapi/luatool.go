@@ -144,10 +144,13 @@ func luaUnlisted(src string) []string {
 
 type luaEvalTool struct {
 	tools.NoProviderOptions
-	h *Host
+	h    *Host
+	pipe *tools.Pipeline
 }
 
-func (h *Host) luaEvalTool() fantasy.AgentTool { return &luaEvalTool{h: h} }
+func (h *Host) luaEvalTool(pipe *tools.Pipeline) fantasy.AgentTool {
+	return &luaEvalTool{h: h, pipe: pipe}
+}
 
 func (t *luaEvalTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
@@ -179,7 +182,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	if resp, stop := h.preCheck("lua", call.Input); stop {
 		return resp, nil
 	}
-	defer h.postNotify(ctx, "lua", call.Input, &reply, time.Now())
+	defer h.postNotify(ctx, t.pipe.Pad, "lua", call.Input, &reply, time.Now())
 	src := in.Script
 	if in.Path != "" {
 		// the file is read like the read tool reads it: a Lua error echoes
@@ -249,12 +252,12 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 			// the error names the file the model can edit
 			msg = strings.ReplaceAll(msg, rel+":", in.Path+":")
 		}
-		return fantasy.NewTextErrorResponse(h.truncOutput("lua", strings.TrimSpace(out+"\nerror: "+msg))), nil
+		return fantasy.NewTextErrorResponse(h.truncOutput(t.pipe.Pad, "lua", strings.TrimSpace(out+"\nerror: "+msg))), nil
 	}
 	if out == "" {
 		out = "(no output)"
 	}
-	return fantasy.NewTextResponse(h.truncOutput("lua", out)), nil
+	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "lua", out)), nil
 }
 
 // runModelLua runs src as a user-origin chunk named rel (the model can do

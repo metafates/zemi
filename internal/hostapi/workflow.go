@@ -510,10 +510,13 @@ func (r *wfRun) report() {
 type workflowTool struct {
 	tools.NoProviderOptions
 	h     *Host
+	pipe  *tools.Pipeline
 	saved []Workflow
 }
 
-func (h *Host) workflowTool() fantasy.AgentTool { return &workflowTool{h: h, saved: h.workflows()} }
+func (h *Host) workflowTool(pipe *tools.Pipeline) fantasy.AgentTool {
+	return &workflowTool{h: h, pipe: pipe, saved: h.workflows()}
+}
 
 const workflowToolDesc = `Run a Lua script that coordinates subagents when code has to sit between them: stages that feed each other, loops, checking results. Independent tasks need no workflow. Pass a saved workflow's name, or a new script after loading the zemi-customize skill for the API.`
 
@@ -553,7 +556,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	if resp, stop := h.preCheck("workflow", call.Input); stop {
 		return resp, nil
 	}
-	defer h.postNotify(ctx, "workflow", call.Input, &reply, time.Now())
+	defer h.postNotify(ctx, t.pipe.Pad, "workflow", call.Input, &reply, time.Now())
 	src, arg := in.Script, "script"
 	if in.Name != "" {
 		s, err := h.workflowSource(in.Name)
@@ -591,23 +594,23 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 		if errors.Is(err, context.Canceled) {
 			msg = "workflow cancelled"
 		}
-		return fantasy.NewTextErrorResponse(h.truncOutput("workflow", strings.TrimSpace(msg+"\n"+out))), nil
+		return fantasy.NewTextErrorResponse(h.truncOutput(t.pipe.Pad, "workflow", strings.TrimSpace(msg+"\n"+out))), nil
 	}
 	if strings.TrimSpace(out) == "" {
 		out = "(the workflow returned nothing)"
 	}
-	return fantasy.NewTextResponse(h.truncOutput("workflow", out)), nil
+	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "workflow", out)), nil
 }
 
 // truncOutput cuts a host tool's output to what a result may carry and
-// saves the whole text to the session scratchpad, so the rest is one read
-// away instead of gone.
-func (h *Host) truncOutput(name, s string) string {
+// saves the whole text to pad, the scratchpad of the pipeline that made the
+// call, so the rest is one read away instead of gone.
+func (h *Host) truncOutput(pad, name, s string) string {
 	cut := tools.TruncOut(s, 30000)
 	if cut == s {
 		return s
 	}
-	return cut + tools.Spill(h.ScratchDir(), name, s)
+	return cut + tools.Spill(pad, name, s)
 }
 
 // ---------------------------------------------------------------------------

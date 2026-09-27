@@ -390,7 +390,7 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 			h.notifyReport(run.id, def.Name, status, description, report)
 			return
 		}
-		if err := h.AgentSend(h.reportMessage(run.id, def.Name, status, description, report)); err != nil {
+		if err := h.AgentSend(h.reportMessage(h.scratchFor(run.parent), run.id, def.Name, status, description, report)); err != nil {
 			h.Notify(logging.Error, "Could not send the report of "+run.id, h.friendlyError(err))
 		}
 	})
@@ -407,8 +407,8 @@ func reportHead(id, agent, status string) string {
 // description is model text); the user gets the head as a notice row where the
 // model reads it (appendUserRows), so it never lands above the rows of the
 // turn it arrives in.
-func (h *Host) reportMessage(id, agentName, status, description, report string) string {
-	return agent.AttachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", id, agentName, status, description) + h.truncOutput("agent", report) + "\n</agent-report>\n</attached-files>"
+func (h *Host) reportMessage(pad, id, agentName, status, description, report string) string {
+	return agent.AttachMarker + fmt.Sprintf("\n<agent-report run=%q agent=%q status=%q description=%q>\n", id, agentName, status, description) + h.truncOutput(pad, "agent", report) + "\n</agent-report>\n</attached-files>"
 }
 
 // reportFailed heads a failed run's report for the model; the toast of one
@@ -420,7 +420,7 @@ const reportFailed = "the agent failed: "
 // hands it to the model.
 func (h *Host) notifyReport(id, agentName, status, description, report string) {
 	if run := h.tasks.find(id); run != nil && run.parent != "" && h.DB != nil {
-		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(id, agentName, status, description, report)))
+		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(h.scratchFor(run.parent), id, agentName, status, description, report)))
 		if err == nil {
 			err = h.DB.AddMessage(&store.Message{SessionID: run.parent, Role: string(fantasy.MessageRoleUser), PartsJSON: string(parts)})
 		}

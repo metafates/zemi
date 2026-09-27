@@ -652,10 +652,13 @@ func (h *Host) checkModelID(id string) error {
 type agentTool struct {
 	tools.NoProviderOptions
 	h    *Host
+	pipe *tools.Pipeline
 	defs []AgentDef
 }
 
-func (h *Host) agentTool() fantasy.AgentTool { return &agentTool{h: h, defs: h.agentDefs()} }
+func (h *Host) agentTool(pipe *tools.Pipeline) fantasy.AgentTool {
+	return &agentTool{h: h, pipe: pipe, defs: h.agentDefs()}
+}
 
 // names lists the agents this tool offers.
 func (t *agentTool) names() []string {
@@ -727,7 +730,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	if resp, stop := t.h.preCheck("agent", call.Input); stop {
 		return resp, nil
 	}
-	defer t.h.postNotify(ctx, "agent", call.Input, &reply, time.Now())
+	defer t.h.postNotify(ctx, t.pipe.Pad, "agent", call.Input, &reply, time.Now())
 	if in.SendTo != "" {
 		run := t.h.tasks.find(in.SendTo)
 		if run == nil {
@@ -805,7 +808,7 @@ func (t *agentTool) foreground(ctx context.Context, callID string, run *agentRun
 		}
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
-	return fantasy.NewTextResponse("[run " + run.id + "]\n\n" + t.h.truncOutput("agent", text)), nil
+	return fantasy.NewTextResponse("[run " + run.id + "]\n\n" + t.h.truncOutput(t.pipe.Pad, "agent", text)), nil
 }
 
 // decodeInput validates a host tool's input against its schema, so a wrong
@@ -834,10 +837,10 @@ func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool) {
 // internal/tools, which runs tool.post for every other one. Deferred on
 // the tool's named result, so every return path reports and a handler's
 // rewrite reaches the model.
-func (h *Host) postNotify(ctx context.Context, tool, input string, reply *fantasy.ToolResponse, start time.Time) {
+func (h *Host) postNotify(ctx context.Context, pad, tool, input string, reply *fantasy.ToolResponse, start time.Time) {
 	var m map[string]any
 	_ = json.Unmarshal([]byte(input), &m)
-	if out := h.toolPost(ctx, tool, m, !reply.IsError, reply.Content, nil, time.Since(start)); reply.Type == "text" {
+	if out := h.toolPost(ctx, pad, tool, m, !reply.IsError, reply.Content, nil, time.Since(start)); reply.Type == "text" {
 		reply.Content = out
 	}
 }

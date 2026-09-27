@@ -190,7 +190,7 @@ func TestUntrustedModes(t *testing.T) {
 		}
 	}
 	h.SetPermMode("auto")
-	lua := h.luaEvalTool()
+	lua := h.luaEvalTool(h.PipelineFor())
 	for _, c := range []struct {
 		mode     string
 		trusted  bool

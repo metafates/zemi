@@ -280,7 +280,7 @@ func (h *Host) sessionModelID() string {
 }
 
 func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
-	return append(tools.All(pipe), h.agentTool(), h.workflowTool(), h.luaEvalTool())
+	return append(tools.All(pipe), h.agentTool(pipe), h.workflowTool(pipe), h.luaEvalTool(pipe))
 }
 
 // headlessExcluded needs a user at a terminal: with no UI hooks these tools

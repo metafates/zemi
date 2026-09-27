@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -57,12 +59,21 @@ func TestEnsureScratchSweep(t *testing.T) {
 // the pad its prompt names with no ask and its commands get it as $TMPDIR;
 // another session's pad is zemi's own files to anyone else.
 func TestPadBoundPerPipeline(t *testing.T) {
-	h, _ := newTestHostDB(t)
+	h, r := newTestHostDB(t)
 	fakeSandbox(h, true)
 	h.SetProjectTrusted(true)
+	h.Perm.Add(perm.Rule{Subject: "tool.short", Pattern: "*", Decision: perm.Allow})
+	runUser(t, r, `
+		zemi.tool.add({ name = "short", description = "d", execute = function() return "ok" end })
+		zemi.event.on("tool.post", function() return { output = string.rep("x", 40000) } end)`)
 	h.agents.sessionID = "s1"
 	old, pad := h.PipelineFor(), h.ScratchDir()
 	h.agents.sessionID = "s2"
+	// a host tool's spill lands where the run's prompt says, like bash's
+	resp, err := h.luaFantasyTools(old)[0].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
+	if err != nil || !strings.Contains(resp.Content, "(output saved to "+pad+string(filepath.Separator)) {
+		t.Errorf("spill not in the bound pad %s: %v %q", pad, err, resp.Content[max(0, len(resp.Content)-200):])
+	}
 	for _, c := range []struct {
 		name, subject string
 		p             *tools.Pipeline

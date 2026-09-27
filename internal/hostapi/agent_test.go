@@ -1748,7 +1748,7 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 			t.Errorf("headless toolset still ships %q", name)
 		}
 	}
-	params := func() map[string]any { return h.agentTool().Info().Parameters }
+	params := func() map[string]any { return h.agentTool(nil).Info().Parameters }
 	if params()["background"] != nil {
 		t.Error("the headless agent tool still offers background")
 	}
