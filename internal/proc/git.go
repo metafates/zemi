@@ -29,9 +29,9 @@ type Git struct {
 
 // noFilter holds the commands that run no filter driver as zemi calls them,
 // which skip the driver probe; cat-file would with --filters or --textconv.
-var noFilter = map[string]bool{"cat-file": true, "config": true, "fetch": true, "rev-list": true, "rev-parse": true, "tag": true}
+var noFilter = map[string]bool{"cat-file": true, "config": true, "fetch": true, "ls-files": true, "rev-list": true, "rev-parse": true, "tag": true}
 
-// Run runs git with args and returns its output; stderr is folded into the
+// Run runs git with args and returns its stdout; stderr goes only into the
 // error. Without a deadline on ctx the call gets 15 seconds.
 func (g Git) Run(ctx context.Context, args ...string) (string, error) {
 	if _, ok := ctx.Deadline(); !ok {
@@ -59,7 +59,7 @@ func (g Git) Run(ctx context.Context, args ...string) (string, error) {
 	}
 	out, err := g.run(ctx, append(safe, args...)...)
 	if err != nil {
-		return out, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(out))
+		return out, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	return out, nil
 }
@@ -70,7 +70,14 @@ func (g Git) run(ctx context.Context, args ...string) (string, error) {
 	// status leaves a repository's index alone
 	cmd.Env = append(cmd.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_LFS_SKIP_SMUDGE=1")
 	cmd.Env = append(cmd.Env, g.Env...)
-	out, err := cmd.CombinedOutput()
+	// a warning on stderr ("could not open directory") must not land in a
+	// -z listing or a blob's content
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		err = fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+	}
 	return string(out), err
 }
 
