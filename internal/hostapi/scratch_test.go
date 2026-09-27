@@ -9,22 +9,46 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
-func TestEnsureScratchKeepsResumedPad(t *testing.T) {
+// TestEnsureScratchSweep: the sweep keeps the live pad however old, and
+// another pad while anything in it moved within the TTL, whatever its own
+// directory time says.
+func TestEnsureScratchSweep(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	h.agents.sessionID = "s1"
-	pad := h.ScratchDir()
-	old := time.Now().Add(-2 * scratchTTL)
-	if err := os.MkdirAll(pad, 0o700); err != nil || os.Chtimes(pad, old, old) != nil {
-		t.Fatal(err)
+	h.agents.sessionID = store.NewID()
+	live := h.ScratchDir()
+	if len(filepath.Base(live)) != padIDLen {
+		t.Fatalf("pad %q is not named by %d characters of the id", live, padIDLen)
 	}
-	if h.ensureScratch() != pad {
+	root, old := filepath.Dir(live), time.Now().Add(-2*scratchTTL)
+	cases := []struct {
+		name, file  string
+		fresh, kept bool
+	}{
+		{"the live pad", filepath.Join(live, "notes.md"), false, true},
+		{"a pad written deep inside", filepath.Join(root, "b", "d", "e", "out.txt"), true, true},
+		{"a pad nobody used", filepath.Join(root, "c", "d", "out.txt"), false, false},
+	}
+	for _, c := range cases {
+		if err := os.MkdirAll(filepath.Dir(c.file), 0o700); err != nil || os.WriteFile(c.file, nil, 0o600) != nil {
+			t.Fatal(err)
+		}
+		for p := c.file; p != root; p = filepath.Dir(p) {
+			if !c.fresh || p != c.file {
+				os.Chtimes(p, old, old)
+			}
+		}
+	}
+	if h.ensureScratch() != live {
 		t.Fatal("no pad")
 	}
-	if _, err := os.Stat(pad); err != nil {
-		t.Fatalf("a resumed session's idle pad was swept away: %v", err)
+	for _, c := range cases {
+		if _, err := os.Stat(c.file); (err == nil) != c.kept {
+			t.Errorf("%s: kept %v, want %v", c.name, err == nil, c.kept)
+		}
 	}
 }
 

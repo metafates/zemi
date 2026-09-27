@@ -96,13 +96,11 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	// becomes a job, which outlives the turn.
 	c := proc.Command("sh", "-c", cmd)
 	c.Dir = workdir()
-	// secret-shaped variables stay out of the child, as they do for jobs:
-	// the model reads whatever the command prints
-	env, err := p.Store.ChildEnv(nil)
+	env, err := p.childEnv()
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	c.Env = append(env, proc.NonInteractiveEnv...)
+	c.Env = env
 	// one buffer keeps stdout and stderr in the order they were written
 	buf := &proc.Buffer{Max: 1 << 20}
 	c.Stdout, c.Stderr = buf, buf
@@ -353,6 +351,24 @@ func Spill(dir, name, s string) string {
 	return "\n(output saved to " + f.Name() + ")"
 }
 
+// childEnv is the environment of a command the model starts: secret-shaped
+// variables stay out, since the model reads whatever it prints, and the pad
+// is its temp dir whoever allowed it, so a file it leaves there is where
+// the prompt says. The touch tells another process's sweep the pad is used.
+func (p *Pipeline) childEnv() ([]string, error) {
+	env, err := p.Store.ChildEnv(nil)
+	if err != nil {
+		return nil, err
+	}
+	env = append(env, proc.NonInteractiveEnv...)
+	if p.Pad != "" && os.MkdirAll(p.Pad, 0o700) == nil {
+		now := time.Now()
+		_ = os.Chtimes(p.Pad, now, now)
+		env = append(env, "TMPDIR="+p.Pad, "TMP="+p.Pad, "TEMP="+p.Pad)
+	}
+	return env, nil
+}
+
 func (p *Pipeline) spill(name, s string) string {
 	if p == nil {
 		return ""
@@ -569,8 +585,9 @@ func (p *Pipeline) markRead(path string, fi os.FileInfo) {
 // stale refuses changing a file the model has not read, or one that changed
 // since (a command it ran, the user's editor, a formatter, another agent):
 // writing over it would silently drop those changes. bash never updates
-// Seen, so the model re-reads what a command rewrote. "" when the view is
-// current.
+// Seen, so the model re-reads what a command rewrote. A pad file needs no
+// read: its own command made it and nobody else edits there. "" when the
+// view is current.
 func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	rel := workRel(path)
 	// before the read log: a directory listing never marks it seen, so the
@@ -583,6 +600,7 @@ func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	}
 	t, ok := p.Seen.Load(absPath(path))
 	switch {
+	case !ok && inPad(p.Pad, path):
 	case !ok:
 		return "read " + rel + " with the read tool first (the lines you change are enough), then repeat this call: this session has not read it, and cat, sed or grep in bash does not count."
 	case !t.(time.Time).Equal(fi.ModTime()):
@@ -727,8 +745,9 @@ func (p *Pipeline) wrote(path string) string {
 	return note
 }
 
+// checkpoint leaves out the pad, which is no project a rewind restores.
 func (p *Pipeline) checkpoint(path string) {
-	if p.Checkpoint != nil {
+	if p.Checkpoint != nil && !inPad(p.Pad, path) {
 		p.Checkpoint(path)
 	}
 }

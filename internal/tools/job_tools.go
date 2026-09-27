@@ -273,11 +273,10 @@ func runJobStart(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil
 	}
 	line := str(input["command"])
-	env, err := p.Store.ChildEnv(nil)
+	env, err := p.childEnv()
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	env = append(env, proc.NonInteractiveEnv...)
 	id, err := p.Jobs.Start(workdir(), line, env, p.Sandboxed, p.guard())
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil

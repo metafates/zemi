@@ -617,6 +617,63 @@ func TestEditSafety(t *testing.T) {
 	}
 }
 
+// TestScratchpad: the pad needs no rule, no prior read and no write access
+// to the project, keeps the stale check, stays out of checkpoints and is a
+// command's $TMPDIR whoever allowed it; a secret-shaped name there asks, and
+// a path a shell would expand is refused naming the real one.
+func TestScratchpad(t *testing.T) {
+	pad, proj := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
+	t.Chdir(proj)
+	p, asked := testPipeline(t, false)
+	p.Pad, p.Seen, p.Secret = pad, &sync.Map{}, perm.PathIsSecret
+	p.Plan = func() bool { return true } // a read-only agent writes only there
+	var checkpoints []string
+	p.Checkpoint = func(path string) { checkpoints = append(checkpoints, path) }
+	for _, f := range []string{"made.txt", "stale.txt"} {
+		os.WriteFile(filepath.Join(pad, f), []byte("a\n"), 0o644)
+	}
+	for _, c := range []struct {
+		name, tool, input string
+		before            func()
+		want              string
+		asks              bool
+	}{
+		{"write a new file", ToolWrite, `{"path":"PAD/notes/n.md","content":"x"}`, nil, "wrote", false},
+		{"edit what a command made, unread", ToolEdit, `{"path":"PAD/made.txt","old_string":"a","new_string":"b"}`, nil, "edited", false},
+		{"read", ToolRead, `{"path":"PAD/stale.txt","limit":0}`, nil, "1\ta", false},
+		{"edit what changed since the read", ToolEdit, `{"path":"PAD/stale.txt","old_string":"b","new_string":"c"}`, func() {
+			later := time.Now().Add(time.Hour)
+			os.WriteFile(filepath.Join(pad, "stale.txt"), []byte("b\n"), 0o644)
+			os.Chtimes(filepath.Join(pad, "stale.txt"), later, later)
+		}, "changed since", false},
+		{"secret-shaped name", ToolWrite, `{"path":"PAD/cert.pem","content":"x"}`, nil, "give it another name", true},
+		{"$TMPDIR", ToolWrite, `{"path":"$TMPDIR/n.md","content":"x"}`, nil, `directory called "$TMPDIR" in the project. Write the absolute path: the scratchpad, $TMPDIR in commands, is PAD.`, false},
+		{"~", ToolRead, `{"path":"~/n.md","limit":0}`, nil, "home is", false},
+		{"%TEMP%", ToolWrite, `{"path":"%TEMP%\\n.md","content":"x"}`, nil, "not expanded", false},
+	} {
+		if c.before != nil {
+			c.before()
+		}
+		n := len(*asked)
+		got := call(t, toolNamed(t, c.tool, p), strings.ReplaceAll(c.input, "PAD", pad)).Content
+		if len(*asked) > n {
+			got = (*asked)[n].Reason // what the user and a failed ask read
+		}
+		if want := strings.ReplaceAll(c.want, "PAD", pad); !strings.Contains(got, want) || len(*asked) > n != c.asks {
+			t.Errorf("%s: asked %v, got %q, want %q", c.name, len(*asked) > n, got, want)
+		}
+	}
+	if len(checkpoints) > 0 {
+		t.Errorf("pad writes checkpointed: %q", checkpoints)
+	}
+	if entries, _ := os.ReadDir(proj); len(entries) > 0 {
+		t.Errorf("a path was taken literally: %v", entries)
+	}
+	if res, _ := runBash(context.Background(), p, map[string]any{"command": `printf %s "$TMPDIR"`}); res.Content != pad {
+		t.Errorf("unconfined $TMPDIR is %q, want %q", res.Content, pad)
+	}
+}
+
 // TestReadAndBashShapes: read returns images as images, lists a directory
 // without secret-shaped names, and refuses binaries and offsets past the end; bash keeps stdout and stderr in order, strips
 // colors, and saves cut output to the scratchpad.

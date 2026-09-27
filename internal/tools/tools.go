@@ -13,12 +13,15 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"charm.land/fantasy"
 	"github.com/aymanbagabas/go-udiff"
@@ -440,7 +443,11 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	// the pad is neither project nor zemi dir: what no rule decided there
 	// allows, a secret-shaped name aside, which the sandbox refuses there too
-	if pad && !o.Ruled() && (p.Secret == nil || !p.Secret(written)) {
+	if pad && !o.Ruled() {
+		if p.Secret != nil && p.Secret(written) {
+			req.Reason = strings.TrimPrefix(req.Reason+"; "+PadSecret, "; ")
+			return p.resolveAsk(req, PadSecret)
+		}
 		o = perm.Outcome{Decision: perm.Allow, Reason: "inside the scratchpad"}
 	}
 	switch o.Decision {
@@ -514,6 +521,9 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	if sandbox.LikelyTemp(out, err, write) && p.Pad != "" {
 		head += " /tmp is not writable here: use $TMPDIR (" + p.Pad + ", the scratchpad) instead."
 	}
+	if secretNamed(out) {
+		head += " Secret-shaped files (.env, *.pem, *.key) cannot be read or written here, not even in the scratchpad: if the file holds no secret, give it another name."
+	}
 	// sandbox: false is denied for a read-only agent, so it is not offered
 	if !p.SandboxParam || plan && network {
 		return head
@@ -531,6 +541,23 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	}
 	return head + retry
 }
+
+// secretNamed reports a denial naming a file a backend that hides the
+// secret shapes refuses whatever the write roots, the pad's own included.
+func secretNamed(out string) bool {
+	if b, _ := sandbox.Probe(); !b.HidesSecretFiles {
+		return false
+	}
+	for w := range strings.FieldsFuncSeq(out[max(0, len(out)-2000):], func(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(`:'"()`, r) }) {
+		if perm.PathIsStrictSecret(w) || strings.HasPrefix(filepath.Base(w), ".env.") {
+			return true
+		}
+	}
+	return false
+}
+
+// PadSecret is why a secret-shaped name in the scratchpad asks.
+const PadSecret = "a secret-shaped name (.env, *.pem, *.key) asks even in the scratchpad; if the file holds no secret, give it another name"
 
 // sandboxLimits names what the live backend enforces on a settled command.
 func sandboxLimits() string { return policyLimits(nil) }
@@ -693,6 +720,9 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	}
 	start, run := time.Now(), *pipe
 	defer func() { res = t.post(ctx, &run, input, res, time.Since(start)) }()
+	if t.gated && unexpanded.MatchString(str(input["path"])) {
+		return fantasy.NewTextErrorResponse(pipe.unexpandedText(str(input["path"]))), nil
+	}
 	if fi, err := os.Lstat(str(input["path"])); t.edits && err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		// a write through the link would change a file the row does not name
 		target := workRel(perm.RealPath(str(input["path"])))
@@ -747,6 +777,25 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 		}
 	}
 	return t.run(ctx, &run, input)
+}
+
+// unexpanded is a path a shell would expand ($TMPDIR/x, ~/x, %TEMP%\x) and
+// the file tools would take as a directory of that name in the project.
+var unexpanded = regexp.MustCompile(`^(\$|~|%\w+%)`)
+
+// unexpandedText refuses such a path and names the real ones: nothing is
+// expanded, so a guess would land where it did not mean.
+func (p *Pipeline) unexpandedText(path string) string {
+	first, _, _ := strings.Cut(filepath.ToSlash(path), "/")
+	msg := fmt.Sprintf("%s: file tool paths are not expanded, so this would name a directory called %q in the project. Write the absolute path", path, first)
+	home, _ := os.UserHomeDir()
+	switch {
+	case strings.HasPrefix(path, "~") && home != "":
+		return msg + ": home is " + home + "."
+	case p.Pad != "":
+		return msg + ": the scratchpad, $TMPDIR in commands, is " + p.Pad + "."
+	}
+	return msg + "."
 }
 
 // post runs the tool.post events over a text summary of the response, which
@@ -1034,7 +1083,7 @@ Chain dependent steps with &&.`,
 			},
 			runRead)),
 
-		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read with the read tool and not changed since. To change part of a file use edit.", true,
+		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read with the read tool, unless it is in the scratchpad, and not changed since. To change part of a file use edit.", true,
 			map[string]any{
 				"path":    map[string]any{"type": "string"},
 				"content": map[string]any{"type": "string"},
@@ -1045,7 +1094,7 @@ Chain dependent steps with &&.`,
 			},
 			runWrite))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read with the read tool (a window around the change is enough; cat or sed in bash does not count) and not changed since except by your edits. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. Whole lines also match when only whitespace differs. Several edit calls to one file sent together apply in order.", true,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read with the read tool (a window around the change is enough; cat or sed in bash does not count), unless it is in the scratchpad, and not changed since except by your edits. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. Whole lines also match when only whitespace differs. Several edit calls to one file sent together apply in order.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
