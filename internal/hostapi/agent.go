@@ -24,7 +24,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -1228,7 +1227,7 @@ func toolLabel(input string) string {
 }
 
 func cleanLabel(s string) string {
-	return learn.Truncate(strings.Join(strings.Fields(s), " "), 80)
+	return clipRunes(strings.Join(strings.Fields(s), " "), 80)
 }
 
 // aboutArg is a call's leading "about" argument in input that is still streaming.
