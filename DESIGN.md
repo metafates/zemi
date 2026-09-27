@@ -1490,9 +1490,11 @@ provenance string.
   detail or another screen, `pick` a value (a picker, `zemi.ui.select`, the
   `@` popup), `run` a command (the palette, `/help`), `toggle` a toggle
   list's row, `fill` the composer, `copy`; a prompt's footer says `pick`
-  for its buttons, whichever is highlighted, and `submit` for typed text
+  for its buttons, whichever is highlighted, and `send` for typed text
   (`zemi.ui.input`, a typed answer, a multi-select's picks, a plan's
-  changes). A row names its own (`verb`)
+  changes, the question review's last row, whose question rows `open`):
+  four letters each, so starting to type or moving the highlight never
+  shifts the footer. A row names its own (`verb`)
   where the list's default would say another: "open" on a row that runs a
   command opening a screen, "run" on `/model`'s "Update the model catalog".
   Space, which toggles a toggle list's rows outside an open filter (in one

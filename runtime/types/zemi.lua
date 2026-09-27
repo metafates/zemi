@@ -1155,7 +1155,7 @@ function zemi.ui.overlay.close(id) end
 function zemi.ui.select(items, opts, on_choice) end
 
 --- A one-line prompt in the shape of `vim.ui.input`: on_confirm gets the
---- text on enter, which its footer names "submit", nil on esc.
+--- text on enter, which its footer names "send", nil on esc.
 ---@param opts zemi.InputOpts
 ---@param on_confirm fun(text: string|nil)
 function zemi.ui.input(opts, on_confirm) end

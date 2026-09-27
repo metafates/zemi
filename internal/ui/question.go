@@ -329,7 +329,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 			items = append(items, listItem{label: strings.ReplaceAll(q.Question, "\n", " "), more: [][]hostapi.Segment{{ans}}})
 		}
 		items = append(items, listItem{label: "Submit answers"})
-		enter := map[bool]hintPair{true: submitHint, false: {"enter", "open"}}[qp.reviewSel == len(qp.qs)]
+		enter := map[bool]hintPair{true: sendHint, false: {"enter", "open"}}[qp.reviewSel == len(qp.qs)]
 		return fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 			tight := level > 0
 			room := h - 2 - len(stack(tight, tabs, oneRow, oneRow)) + 1
@@ -374,9 +374,9 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	var hints []hintPair
 	switch {
 	case st.typing:
-		hints = slices.Concat(moves, []hintPair{submitHint, {"esc", map[bool]string{true: "dismiss", false: "back"}[len(q.Options) == 0]}})
+		hints = slices.Concat(moves, []hintPair{sendHint, {"esc", map[bool]string{true: "dismiss", false: "back"}[len(q.Options) == 0]}})
 	case q.Multi():
-		hints = slices.Concat(moves, []hintPair{{"space", "toggle"}, submitHint, {"esc", "dismiss"}})
+		hints = slices.Concat(moves, []hintPair{{"space", "toggle"}, sendHint, {"esc", "dismiss"}})
 	default:
 		hints = slices.Concat(moves, []hintPair{pickHint, {"esc", "dismiss"}})
 	}

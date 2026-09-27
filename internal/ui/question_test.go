@@ -91,6 +91,20 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 		return fmt.Sprint(strings.Count(f[:top], "\n"), strings.Count(f[top:top+strings.Index(f[top:], "┘")], "\n"))
 	}
 	want := box()
+	// starting to type and moving over the review keep the footer's keys in place
+	escAt := func() int {
+		app.renderSync(t)
+		f := ansi.Strip(app.Frame())
+		return strings.Index(f[strings.LastIndex(f, "enter "):], "esc ")
+	}
+	footer := func(keys, back []string) {
+		at := escAt()
+		if pressKeys(app, keys...); escAt() != at {
+			t.Fatalf("after %v the footer moved:\n%s", keys, ansi.Strip(app.Frame()))
+		}
+		pressKeys(app, back...)
+	}
+	footer([]string{"j", "j", "enter"}, []string{"esc", "k", "k"})
 	for _, keys := range [][]string{{"j", "enter"}, {"j", "j", "j", "enter"}, {"esc", "k", "k", "k", "space", "j", "j", "space", "enter"}} {
 		if pressKeys(app, keys...); box() != want {
 			t.Fatalf("after %v the box moved from %s to %s:\n%s", keys, want, box(), ansi.Strip(app.Frame()))
@@ -99,6 +113,7 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "Submit answers") || !strings.Contains(frame, "tests, lint") {
 		t.Fatalf("review tab missing:\n%s", frame)
 	}
+	footer([]string{"k"}, []string{"j"})
 	pressKeys(app, "enter")
 	if r := awaitAnswer(t, app, done); !r.ok || fmt.Sprint(r.answers) != "[skip tests, lint]" {
 		t.Fatalf("answers %q ok=%v", r.answers, r.ok)

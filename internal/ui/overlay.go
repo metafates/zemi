@@ -505,7 +505,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	}
 	inner := boxInner(w)
 	if st.o.Input {
-		body := [][]hostapi.Segment{st.input.inputRow(inner), nil, hint(inner, submitHint, hintPair{"esc", "close"})}
+		body := [][]hostapi.Segment{st.input.inputRow(inner), nil, hint(inner, sendHint, hintPair{"esc", "close"})}
 		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
 	// a list fits its content, 56 cells at least, a text view is 72, and a

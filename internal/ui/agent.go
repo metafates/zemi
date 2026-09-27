@@ -879,8 +879,9 @@ func permNote(reason string) string {
 type hintPair struct{ key, verb string }
 
 // enter's hint in every prompt, in the lists' words (enterVerb): one verb
-// for every button, since a changing one shifts the row, and one for text.
-var pickHint, submitHint = hintPair{"enter", "pick"}, hintPair{"enter", "submit"}
+// for every button and one for typed text, as wide as "pick" and "open",
+// since a changing width shifts the row.
+var pickHint, sendHint = hintPair{"enter", "pick"}, hintPair{"enter", "send"}
 
 // hintSlot is where a pair sits in a footer: moving, enter, space, letter
 // keys, scrolling, copy, then esc.

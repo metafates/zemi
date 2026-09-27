@@ -102,7 +102,7 @@ func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	hints := []hintPair{pickHint, {"esc", "dismiss"}}
 	if p.typing {
 		act = [][]hostapi.Segment{{{Text: "What should change?", HL: "Host:Hint"}}, p.input.inputRow(inner)}
-		hints = []hintPair{submitHint, {"esc", "back"}}
+		hints = []hintPair{sendHint, {"esc", "back"}}
 	}
 	// a text view is 72 cells
 	p.size.w = max(p.size.w, 72)
