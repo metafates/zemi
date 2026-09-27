@@ -40,7 +40,7 @@ function M.split(s, sep)
   end
 end
 
---- The keys, sorted so iteration order is stable.
+--- The keys, sorted so iteration order is stable: numbers ascending first.
 ---@generic K
 ---@param t table<K, any>
 ---@return K[]
@@ -49,7 +49,12 @@ function M.keys(t)
   for k in pairs(t) do
     out[#out + 1] = k
   end
-  table.sort(out, function(a, b) return tostring(a) < tostring(b) end)
+  table.sort(out, function(a, b)
+    local na, nb = type(a) == "number", type(b) == "number"
+    if na and nb then return a < b end
+    if na ~= nb then return na end
+    return tostring(a) < tostring(b)
+  end)
   return out
 end
 
@@ -88,7 +93,14 @@ function M.inspect(v, depth)
   ---@param d integer
   ---@return string
   local function go(x, d)
-    if type(x) == "string" then return '"' .. (x:gsub('"', '\\"')) .. '"' end
+    if type(x) == "string" then
+      -- the escapes Lua reads back
+      local escaped = x:gsub(
+        '[%c"\\]',
+        function(c) return (c == '"' or c == "\\") and "\\" .. c or ("\\%03d"):format(c:byte()) end
+      )
+      return '"' .. escaped .. '"'
+    end
     if type(x) ~= "table" then return tostring(x) end
     if seen[x] then return "<cycle>" end
     if d > limit then return "{...}" end
