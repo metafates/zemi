@@ -435,7 +435,7 @@ func landlock(p Policy) error {
 		return err
 	}
 	for _, r := range p.Read {
-		if err := add(r, fsReadRights); err != nil {
+		if err := addRead(add, r, hide); err != nil {
 			return err
 		}
 	}

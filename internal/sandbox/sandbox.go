@@ -39,7 +39,7 @@ type Policy struct {
 	Write    []string          // writable roots
 	Protect  []string          // read-only even inside Write
 	Hide     []string          // neither readable nor writable
-	Read     []string          // readable inside Hide, with all they hold
+	Read     []string          // readable inside Hide, with all they hold but a deeper Hide
 	List     []string          // directories inside Hide whose names are readable, not what they hold
 	Loopback bool              // listen on and connect to localhost
 	Network  bool              // reach the network: the file rules still apply

@@ -105,7 +105,9 @@ func (h *Host) sandboxPolicy(readOnly bool, pad string) sandbox.Policy {
 			p.Hide = append(p.Hide, filepath.Join(home, s))
 		}
 	}
-	p.Read, p.List = localPluginCode(d)
+	var hide []string
+	p.Read, p.List, hide = localPluginCode(d)
+	p.Hide = append(p.Hide, hide...)
 	nested := slices.ContainsFunc(zemiDirs, func(z string) bool { return h.inJail(z, d.ProjectDir) }) || h.inJail(d.ProjectDir, zemiDirs...) ||
 		// Landlock rules only add access: a write root opens every hidden path inside it
 		backend.Name != "seatbelt" && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, d.ProjectDir) })
@@ -168,15 +170,16 @@ func (h *Host) sandboxPolicy(readOnly bool, pad string) sandbox.Policy {
 // localPluginCode is what of the hidden data dir a sandboxed command may
 // read, so zemi plugins test runs confined: each local plugin's code
 // (plugins.Code), and the names in the plugin dirs and the disabled list
-// the runner resolves a name with. A plugin's .git and the rest stay hidden.
-// NOTE: a .git nested in lua/ or tests/ is readable, and on Landlock, which
-// hides no secret file by name, a .env there too.
-func localPluginCode(d config.Dirs) (read, list []string) {
+// the runner resolves a name with; hide is what below the code the runner
+// does not copy (plugins.Kept). A plugin's .git and the rest stay hidden.
+// NOTE: on Landlock, which hides no secret file by name, a key.pem in the
+// code is readable, and a List dir lists the names of every dir below it.
+func localPluginCode(d config.Dirs) (read, list, hide []string) {
 	root := d.PluginsRoot()
 	local := filepath.Join(root, "local")
 	entries, err := os.ReadDir(local)
 	if err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	read = []string{filepath.Join(root, "disabled")}
 	list = []string{local, filepath.Join(root, "installed")}
@@ -189,12 +192,24 @@ func localPluginCode(d config.Dirs) (read, list []string) {
 		// a link reads as its target, which a rule on its own path never opens
 		files, _ := os.ReadDir(dir)
 		for _, f := range files {
-			if plugins.Code(f.Name(), f.IsDir()) {
-				read = append(read, filepath.Join(dir, f.Name()))
+			if !plugins.Code(f.Name(), f.IsDir()) {
+				continue
 			}
+			code := filepath.Join(dir, f.Name())
+			read = append(read, code)
+			_ = filepath.WalkDir(code, func(p string, e fs.DirEntry, err error) error {
+				if err != nil || plugins.Kept(e.Name()) {
+					return nil
+				}
+				hide = append(hide, p)
+				if e.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			})
 		}
 	}
-	return read, list
+	return read, list, hide
 }
 
 // trustKey names the trust root in cache paths. Caches are kept one per

@@ -240,7 +240,7 @@ func pluginSource(arg string) (string, error) {
 }
 
 // copyPlugin copies the plugin at src to dst the way a test zemi should
-// load it: its code (plugins.Code), no dot entries or node_modules, a
+// load it: its code (plugins.Code, plugins.Kept), a
 // symbolic link only when it is relative and stays inside the plugin, at
 // most copyFiles files and copyBytes bytes.
 func copyPlugin(src, dst string) error {
@@ -249,7 +249,7 @@ func copyPlugin(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		if p != src && (strings.HasPrefix(d.Name(), ".") || d.Name() == "node_modules" || filepath.Dir(p) == src && !plugins.Code(d.Name(), d.IsDir())) {
+		if p != src && (!plugins.Kept(d.Name()) || filepath.Dir(p) == src && !plugins.Code(d.Name(), d.IsDir())) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}

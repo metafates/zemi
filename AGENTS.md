@@ -421,7 +421,8 @@ dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect
 `.agents` and every `PATH` dir under a write root stay read-only because zemi runs git, sh and
 servers unconfined by name, and home credential paths are hidden. Of the hidden data dir a local
 plugin's code (`plugins.Code`, through `Policy.Read`) and the names in the plugin dirs
-(`Policy.List`) read back, so `zemi plugins test` runs confined; its `.git` stays hidden. The exception is the repo's
+(`Policy.List`) read back, so `zemi plugins test` runs confined; its `.git`, and a dot entry or
+`node_modules` in its code (`plugins.Kept`), stay hidden. The exception is the repo's
 `.agents/worktrees` (`Dirs.WorktreesDir`), where the agent keeps git worktrees: a write root of
 its own, ignored by the `/*` in its own `.gitignore` (`Dirs.WorktreesIgnore`, written only
 when missing, by the trust step of a trusted boot and by `sandboxPolicy`), with

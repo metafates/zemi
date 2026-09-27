@@ -98,6 +98,10 @@ func Code(name string, dir bool) bool {
 	return strings.HasSuffix(name, ".lua")
 }
 
+// Kept reports whether an entry below a plugin's code is code too: not a dot
+// entry, since a nested .git may hold tokens, nor node_modules.
+func Kept(name string) bool { return !strings.HasPrefix(name, ".") && name != "node_modules" }
+
 // Name is the name a plugin installed from url gets by default: the URL's
 // last segment without ".git".
 func Name(url string) string {

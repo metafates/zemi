@@ -171,7 +171,7 @@ func TestPolicy(t *testing.T) {
 		}
 	}
 	plugin := filepath.Join(hide, "plugins", "local", "p")
-	for _, d := range []string{filepath.Join(plugin, ".git"), filepath.Join(plugin, "lua", "p")} {
+	for _, d := range []string{filepath.Join(plugin, ".git"), filepath.Join(plugin, "lua", "p", ".git")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -179,6 +179,7 @@ func TestPolicy(t *testing.T) {
 	for _, f := range []string{
 		filepath.Join(root, "plain.txt"), filepath.Join(root, ".env"), filepath.Join(hide, "id"), filepath.Join(state, "zemi.db"),
 		filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua", "p", "init.lua"), filepath.Join(plugin, ".git", "config"),
+		filepath.Join(plugin, "lua", "p", ".git", "config"),
 	} {
 		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
@@ -190,7 +191,7 @@ func TestPolicy(t *testing.T) {
 	p := Policy{
 		Write:    []string{root, scratch, cache},
 		Protect:  []string{filepath.Join(root, ".git"), filepath.Join(root, ".agents"), state},
-		Hide:     []string{hide, state},
+		Hide:     []string{hide, state, filepath.Join(plugin, "lua", "p", ".git")},
 		Read:     []string{filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua")},
 		List:     []string{plugin},
 		Loopback: true,
@@ -245,6 +246,7 @@ func TestPolicy(t *testing.T) {
 		{"realpath what Read opens", "realpath", filepath.Join(plugin, "lua", "p", "init.lua"), true, false},
 		{"list a dir List opens", "ls", plugin, true, false},
 		{"read what a List dir holds", "read", filepath.Join(plugin, ".git", "config"), false, false},
+		{"read a Hide inside a Read tree", "read", filepath.Join(plugin, "lua", "p", ".git", "config"), false, false},
 		{"write what Read opens", "write", filepath.Join(plugin, "init.lua"), false, false},
 		{"read .env", "read", filepath.Join(root, ".env"), false, !b.HidesSecretFiles},
 		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},
