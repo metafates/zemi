@@ -731,6 +731,10 @@ func (t *PluginTest) answer(L *glua.LState) int {
 		}
 		what, fn, action = "on_action", o.OnAction, p.Actions[i]
 	}
+	if fn == nil && what != "on_close" {
+		// NOTE: a row's run, a list key and a toggle list's reload are not driven here
+		raise(L, "test.answer: overlay %s has no %s; test.run runs what a row's run names", o.ID, what)
+	}
 	return t.drive(L, "answer", "overlay "+o.ID, func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		t.ui.close(o.ID)
 		args := []any{item}
