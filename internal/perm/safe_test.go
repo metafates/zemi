@@ -1,6 +1,8 @@
 package perm
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -245,6 +247,10 @@ func TestPathIsSecret(t *testing.T) {
 }
 
 func TestDestructive(t *testing.T) {
+	pad := t.TempDir()
+	if err := os.Symlink("/", filepath.Join(pad, "link")); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct {
 		cmd  string
 		asks bool
@@ -299,8 +305,49 @@ func TestDestructive(t *testing.T) {
 		{"rm *.txt", true},
 		{"rm -- *", true},
 		{"rm a?.log", true},
+		// the pad itself, a climb out of it, another variable, or a $TMPDIR
+		// something may have set
+		{"rm -rf $TMPDIR", true},
+		{"rm -rf $TMPDIR/", true},
+		{"rm -rf $TMPDIR/..", true},
+		{"rm -rf $TMPDIR/../x", true},
+		{"rm -rf $TMPDIR/a/../../x", true},
+		{`rm -rf "$TMPDIR"x`, true},
+		{"rm -rf $TMPDIRx/y", true},
+		{"rm -rf $TMPDIR/a /etc", true},
+		{"rm -rf -- -x $TMPDIR/a", true},
+		{"rm -rf $TMPDIR/.*", true},
+		{"rm -rf ${TMPDIR}/{a,..}", true},
+		{"rm -rf ${TMPDIR:-/}/x", true},
+		{"rm -rf $TMPDIR/$x", true},
+		{"rm -rf $TMPDIR/link", true},
+		{"rm -rf PAD", true},
+		{"rm -rf PAD/../x", true},
+		{"rm -rf '$TMPDIR/x'", true},
+		{`rm -rf \$TMPDIR/x`, true},
+		{"TMPDIR=/ rm -rf $TMPDIR/x", true},
+		{"(TMPDIR=/; rm -rf $TMPDIR/x)", true},
+		{"export TMPDIR=/; rm -rf $TMPDIR/x", true},
+		{"unset TMPDIR; rm -rf $TMPDIR/x", true},
+		{`declare "$v=/"; rm -rf $TMPDIR/x`, true},
+		{`command eval "$v"; rm -rf $TMPDIR/x`, true},
+		{`eval "TMPDIR=/"; rm -rf $TMPDIR/x`, true},
+		{"sh -c 'TMPDIR=/; rm -rf $TMPDIR/x'", true},
+		{"sh -c 'rm -rf $TMPDIR/x'", true},
+		{"ls | xargs rm -rf $TMPDIR/x", true},
+		{"find $TMPDIR/x -delete", true},
 
 		{"rm x", false},
+		{"rm -rf $TMPDIR/build", false},
+		{`rm -rf "$TMPDIR/build" "${TMPDIR}/out"`, false},
+		{`rm -rf "$TMPDIR"/x`, false},
+		{"rm -rf -- $TMPDIR/x", false},
+		{"rm -f $TMPDIR/*.log", false},
+		{"rm -rf PAD/x", false},
+		{"cd / && rm -rf $TMPDIR/x", false},
+		{`echo "it's gone" && rm -rf $TMPDIR/x`, false},
+		{"for i in 1 2; do rm -rf $TMPDIR/x$i.d; done", true},
+		{"while true; do rm -rf $TMPDIR/x; break; done", false},
 		{"for f in a b; do echo $f; done; rm x", false},
 		{"sh -c 'rm x'", false},
 		{"rm -v x", false},
@@ -313,7 +360,7 @@ func TestDestructive(t *testing.T) {
 		{"python3 - <<'EOF'\nprint(1)\nEOF", false},
 		{"FOO=1 npm run build > out.log", false},
 	} {
-		if got := Normalize(c.cmd).Destructive() != ""; got != c.asks {
+		if got := Normalize(strings.ReplaceAll(c.cmd, "PAD", pad)).Destructive(pad) != ""; got != c.asks {
 			t.Errorf("Destructive(%q) = %v, want %v", c.cmd, got, c.asks)
 		}
 	}

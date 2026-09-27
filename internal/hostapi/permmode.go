@@ -521,7 +521,8 @@ func (h *Host) protectedWhy(p string) string {
 
 // unsettled says why auto mode leaves a bash command to the user, or ""
 // when it runs. In a trusted project with a sandbox every command runs,
-// confined (Pipeline.SandboxFor), but the few that delete in bulk; a
+// confined (Pipeline.SandboxFor), but the few that delete in bulk outside
+// the request's scratchpad; a
 // read-only agent's run is confined with the project unwritable whoever
 // allowed it, so those fail on their own and an ask would only add a prompt.
 // Anywhere else it would run unconfined, so only readers settle.
@@ -541,7 +542,7 @@ func (h *Host) unsettled(req tools.Request) string {
 		return "only commands that just read run without a trusted project and a sandbox"
 	}
 	if !req.ReadOnly {
-		if why := n.Destructive(); why != "" {
+		if why := n.Destructive(req.Pad); why != "" {
 			return why
 		}
 		// a confined git write can only fail; asking first saves the failed

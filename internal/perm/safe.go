@@ -2,6 +2,7 @@ package perm
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -900,9 +901,111 @@ func (n Normalized) GitWrites() string {
 // Destructive says why a command still goes to the user when a sandbox
 // confines it to the project: it may delete or empty many files at once.
 // Empty when it may run. Normalize already made sh -c bodies and
-// substitutions segments of their own.
-func (n Normalized) Destructive() string {
-	return n.destructive(false)
+// substitutions segments of their own. pad is the scratchpad, $TMPDIR in
+// every command the model runs, "" for none: an rm whose every operand is
+// inside it deletes nothing of the project.
+// NOTE: a symlink the same command plants in the pad, or one a glob picks
+// with a trailing slash, still leads out; the run is confined, so it can
+// delete no more than any settled command can.
+func (n Normalized) Destructive(pad string) string {
+	if !n.padIntact() {
+		pad = ""
+	}
+	return n.destructive(false, pad)
+}
+
+// padIntact reports that $TMPDIR is the value zemi set: the text names it
+// only as $TMPDIR or ${TMPDIR}, unescaped and outside single quotes, nothing
+// is assigned, and no builtin runs that sets or unsets a variable by a name
+// it may build at run time (read, eval, declare "$n=x").
+func (n Normalized) padIntact() bool {
+	if n.Fail != "" || n.ForceAsk != "" || n.Opaque || n.Assign != "" {
+		return false
+	}
+	for _, f := range n.Args {
+		for f = program(f); len(f) > 0; {
+			if shellState[f[0]] || strings.ContainsAny(f[0], "$=") ||
+				f[0] == "printf" && slices.ContainsFunc(f, func(a string) bool { return strings.HasPrefix(a, "-v") }) {
+				return false
+			}
+			g, ok := stepRunner(f)
+			if !ok {
+				break
+			}
+			f = g
+		}
+	}
+	const name = "TMPDIR"
+	inSingle, inDouble := false, false
+	for i := 0; i < len(n.cmd); i++ {
+		switch c, rest := n.cmd[i], n.cmd[i:]; {
+		case inSingle:
+			inSingle = c != '\''
+			if strings.HasPrefix(rest, name) {
+				return false
+			}
+		case c == '\\':
+			i++ // an escaped $ leaves the name to the last case
+		case c == '\'' && !inDouble:
+			inSingle = true
+		case c == '"':
+			inDouble = !inDouble
+		case strings.HasPrefix(rest, "${"+name+"}"):
+			i += len(name) + 2
+		case strings.HasPrefix(rest, "$"+name) && !nameByte(rest, len(name)+1):
+			i += len(name)
+		case strings.HasPrefix(rest, name):
+			return false
+		}
+	}
+	return true
+}
+
+// shellState are the builtins that set or unset the shell variables their
+// arguments name.
+var shellState = map[string]bool{
+	"eval": true, "source": true, ".": true, "export": true, "declare": true, "typeset": true, "local": true,
+	"readonly": true, "unset": true, "read": true, "mapfile": true, "readarray": true, "getopts": true,
+	"let": true, "alias": true, "trap": true, "select": true, "enable": true,
+}
+
+func nameByte(s string, i int) bool {
+	return i < len(s) && (s[i] == '_' || s[i] >= 'a' && s[i] <= 'z' || s[i] >= 'A' && s[i] <= 'Z' || s[i] >= '0' && s[i] <= '9')
+}
+
+// padOperands reports that args has operands and each names a path below
+// pad: the literal pad path or $TMPDIR, a slash, then a rest with no climb
+// and no expansion but a glob. A word after -- is an operand whatever it
+// starts with.
+func padOperands(args []string, pad string) bool {
+	operands, dashed := 0, false
+	for _, a := range args {
+		if !dashed && strings.HasPrefix(a, "-") {
+			dashed = a == "--"
+			continue
+		}
+		rest, ok := strings.CutPrefix(a, "$TMPDIR/")
+		if !ok {
+			rest, ok = strings.CutPrefix(a, "${TMPDIR}/")
+		}
+		// unquoted, a pad path holding a blank or a glob splits or expands
+		if ok && strings.ContainsAny(pad, " \t\n*?[") {
+			return false
+		}
+		if !ok {
+			rest, ok = strings.CutPrefix(a, strings.TrimSuffix(pad, "/")+"/")
+		}
+		if !ok || path.Clean(rest) == "." || strings.ContainsAny(rest, "~\\") || expandsToDotDot("/"+rest) ||
+			slices.Contains(strings.Split(rest, "/"), "..") {
+			return false
+		}
+		// a symlink already there leads out
+		if _, in := Under(RealPath(pad), RealPath(filepath.Join(pad, rest))); !in && !strings.ContainsAny(rest, "*?[") {
+			return false
+		}
+		operands++
+	}
+	return operands > 0
 }
 
 // repeats are the runners that run what they are handed once per input,
@@ -918,7 +1021,7 @@ func repeats(prog string) bool {
 // destructive is Destructive with repeated set for a shell body a
 // repeating runner hands a shell (xargs sh -c 'rm "$@"'). A loop body
 // between do and done repeats too.
-func (n Normalized) destructive(repeated bool) string {
+func (n Normalized) destructive(repeated bool, pad string) string {
 	if n.Fail != "" {
 		return n.Fail
 	}
@@ -934,7 +1037,7 @@ func (n Normalized) destructive(repeated bool) string {
 		f = g
 		repeated := repeated || loops > 0
 		for _, body := range shellBodies(f) {
-			if why := Normalize(body).destructive(repeated || len(f) > 0 && repeats(f[0])); why != "" {
+			if why := Normalize(body).destructive(repeated || len(f) > 0 && repeats(f[0]), ""); why != "" {
 				return why
 			}
 		}
@@ -945,7 +1048,7 @@ func (n Normalized) destructive(repeated bool) string {
 			name, rest := filepath.Base(w), f[i+1:]
 			switch {
 			case name == "eval":
-				if why := Normalize(strings.Join(rest, " ")).destructive(repeated); why != "" {
+				if why := Normalize(strings.Join(rest, " ")).destructive(repeated, ""); why != "" {
 					return why
 				}
 				continue
@@ -955,6 +1058,10 @@ func (n Normalized) destructive(repeated bool) string {
 			case name == "rsync" && slices.ContainsFunc(rest, func(a string) bool { return strings.HasPrefix(a, "--del") || strings.HasPrefix(a, "--remove") }):
 			case name == "shred", name == "truncate", name == "dd":
 			default:
+				continue
+			}
+			// behind a runner (xargs, find -exec) more operands come from elsewhere
+			if name == "rm" && i == 0 && pad != "" && padOperands(rest, pad) {
 				continue
 			}
 			return "this may delete many files"

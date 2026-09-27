@@ -426,7 +426,7 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	// a program or subcommand that can delete or overwrite must not broaden
 	// to arbitrary later targets: the rule runs unconfined, and such a
 	// command has no write path to re-ask on
-	if destructiveProgram(programName(f[0])) || perm.Normalize(seg).Destructive() != "" {
+	if destructiveProgram(programName(f[0])) || perm.Normalize(seg).Destructive("") != "" {
 		return []string{seg}, true
 	}
 	p := commandPrefix(seg)

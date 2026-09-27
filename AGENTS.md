@@ -370,7 +370,8 @@ cannot allow an `Unsandboxed` or `Network` request, an `Explicit` one or a `prot
 every command runs confined, except the short `perm.Normalized.Destructive` list (forced or recursive
 `rm`, or one with a glob operand, `git clean`, `find -delete`, `shred`, `truncate`, `dd`,
 `rsync --delete`, also behind `xargs`, `find -exec`, `sh -c`, `eval` or a shell keyword, and a
-bare `rm` in a loop body or in a shell body `xargs` or `find -exec` repeats), a git command that writes `.git`
+bare `rm` in a loop body or in a shell body `xargs` or `find -exec` repeats; not an `rm` whose
+every operand is below the scratchpad, while nothing in the command can have changed `$TMPDIR`), a git command that writes `.git`
 (`perm.Normalized.GitWrites`: commit, checkout, stash and the like, which the sandbox's read-only `.git`
 could only fail, so the ask comes before a wasted run) and, on a backend that cannot hide
 files, one naming an existing secret-shaped file. Known ceiling: the sandbox policy is the only limit, so the model
