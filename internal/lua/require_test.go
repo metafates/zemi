@@ -180,7 +180,7 @@ func TestClassifyMostSpecific(t *testing.T) {
 
 // TestClassifyPrefixCreatedLater: a class registered through a symlink
 // before its directory exists (data/skills on first run) still matches
-// once the directory is made.
+// once the directory is made, though it was resolved before.
 func TestClassifyPrefixCreatedLater(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -191,9 +191,7 @@ func TestClassifyPrefixCreatedLater(t *testing.T) {
 	}
 	pc := PathClasses{{Prefix: filepath.Join(root, "link", "skills"), Origin: OriginProject}}
 	file := filepath.Join(root, "skills", "a.lua")
-	if got := pc.Classify(file); got != "" {
-		t.Fatalf("before mkdir: %q", got)
-	}
+	pc.Classify(file)
 	writeFile(t, file, "")
 	if got := pc.Classify(file); got != OriginProject {
 		t.Fatalf("after mkdir: %q, want %q", got, OriginProject)

@@ -69,17 +69,26 @@ func (pc PathClasses) Classify(resolvedPath string) Origin {
 }
 
 // prefixResolution memoizes EvalSymlinks of registered prefixes: Classify
-// runs on every file load and prefix resolution is filesystem work.
+// runs for every Lua frame of every guarded call, and prefix resolution is
+// filesystem work. A missing prefix resolves as its deepest existing parent
+// does, so it matches once made; each boot clears the memo, so one made a
+// symbolic link since resolves too.
 var prefixResolution sync.Map
 
 func resolvePrefix(p string) string {
 	if v, ok := prefixResolution.Load(p); ok {
 		return v.(string)
 	}
-	res, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		// not memoized: a directory created later still resolves
-		return p
+	res := p
+	for dir, rest := p, ""; ; {
+		if r, err := filepath.EvalSymlinks(dir); err == nil {
+			res = filepath.Join(r, rest)
+			break
+		}
+		if filepath.Dir(dir) == dir {
+			break
+		}
+		dir, rest = filepath.Dir(dir), filepath.Join(filepath.Base(dir), rest)
 	}
 	prefixResolution.Store(p, res)
 	return res

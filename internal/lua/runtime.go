@@ -263,6 +263,7 @@ func (r *Runtime) retire() {
 func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, error) {
 	r.booting.Store(true)
 	defer r.booting.Store(false)
+	prefixResolution.Clear()
 	var gen *Generation
 	sb, err := NewSandbox(r.CurrentOrigin, r.clock.Now)
 	if err != nil {
