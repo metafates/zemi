@@ -453,9 +453,19 @@ func concatText[T any](parts []T) string {
 	return b.String()
 }
 
+// truncRunes cuts text for the model or the log to n runes.
 func truncRunes(s string, n int) string {
 	if c := learn.Truncate(s, n); c != s {
 		return c + "..."
+	}
+	return s
+}
+
+// clipRunes cuts text the user reads to n runes, ending in the one-cell
+// ellipsis every screen cuts with.
+func clipRunes(s string, n int) string {
+	if c := learn.Truncate(s, n); c != s {
+		return strings.TrimRight(c, " ") + "…"
 	}
 	return s
 }

@@ -358,7 +358,7 @@ func (run *agentRun) finish(h *Host, err error) {
 		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Status: CallCancelled, Text: "Stopped"})
 	case err != nil:
 		run.status = RunFailed
-		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: truncRunes(sanitize.String(h.friendlyError(err)), 400)})
+		run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: clipRunes(sanitize.String(h.friendlyError(err)), 400)})
 	default:
 		run.status = RunDone
 	}
@@ -432,7 +432,7 @@ func (h *Host) notifyReport(id, agentName, status, description, report string) {
 	if status == "finished" {
 		level = logging.Info
 	}
-	h.Notify(level, reportHead(id, agentName, status), description+"\n"+truncRunes(strings.TrimPrefix(report, reportFailed), 300))
+	h.Notify(level, reportHead(id, agentName, status), description+"\n"+clipRunes(strings.TrimPrefix(report, reportFailed), 300))
 }
 
 var reportBody = regexp.MustCompile(`(?s)<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")>\n(.*?)\n</agent-report>`)
@@ -465,7 +465,7 @@ func reportHeads(tail string) []string {
 		heads = append(heads, reportHead(m[1], m[2], m[3]))
 	}
 	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
-		heads = append(heads, m[1]+": "+truncRunes(sanitize.String(m[2]), 200))
+		heads = append(heads, m[1]+": "+clipRunes(sanitize.String(m[2]), 200))
 	}
 	if strings.Contains(tail, planNudgeText) {
 		heads = append(heads, "Asked the planner to end with the plan or question tool.")
@@ -593,7 +593,7 @@ func (h *Host) agentRunItems() []any {
 		status, calls, took, _ := run.state()
 		from := "another session"
 		if sess, err := h.DB.GetSession(run.parent); h.DB != nil && err == nil && sess.Title != "" {
-			from = sess.Title
+			from = clipRunes(sess.Title, 60)
 		}
 		row(run.id, status, run.agent, took, run.description+" (from "+from+")", fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
 	}

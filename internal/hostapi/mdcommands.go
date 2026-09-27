@@ -69,7 +69,7 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 		}
 		desc := fm.Description
 		if desc == "" {
-			desc = truncRunes(strings.SplitN(body, "\n", 2)[0], 60)
+			desc = clipRunes(strings.SplitN(body, "\n", 2)[0], 60)
 		}
 		if fm.ArgumentHint != "" {
 			desc += " " + fm.ArgumentHint

@@ -255,7 +255,7 @@ func rowOutput(tool, out string) string {
 		}
 	case tools.ToolQuestion:
 		if qa := tools.QuestionAnswers(out); qa != nil {
-			line := func(s string) string { return sanitize.String(truncRunes(strings.Join(strings.Fields(s), " "), 300)) }
+			line := func(s string) string { return sanitize.String(clipRunes(strings.Join(strings.Fields(s), " "), 300)) }
 			rows := make([]string, len(qa))
 			for i, p := range qa {
 				rows[i] = line(p[0]) + "\t" + cmp.Or(line(p[1]), "not answered")
@@ -284,7 +284,7 @@ func shortOutput(s string) string {
 		lines = append(lines[:3:3], cut...)
 	}
 	for i, l := range lines {
-		lines[i] = sanitize.String(truncRunes(l, 300))
+		lines[i] = sanitize.String(clipRunes(l, 300))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -737,7 +737,7 @@ func (h *Host) TerminalTitle() string {
 		return t.text
 	}
 	if t := sanitize.String(h.SessionTitle()); t != "" && t != "zemi" {
-		return t + " · zemi"
+		return clipRunes(t, 60) + " · zemi"
 	}
 	return "zemi"
 }

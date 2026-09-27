@@ -312,7 +312,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		// the run id heads the session id, so send_to finds the rows of a
 		// run the process no longer holds (a resume, or one past maxKeptRuns)
 		sid = run.id + store.NewID()[len(run.id):]
-		if err := h.DB.CreateSession(sid, parent, truncRunes(run.description, 60), def.Name); err != nil {
+		if err := h.DB.CreateSession(sid, parent, run.description, def.Name); err != nil {
 			h.Log.Warn("agents", "subagent session not recorded", map[string]any{"error": err.Error()})
 			sid = ""
 		}
@@ -495,7 +495,7 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run.mu.Unlock()
 	// one line: the widget wraps, and a long command would push the chat around
 	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, plural(n, "call", "calls"), name,
-		truncRunes(strings.Join(strings.Fields(toolSummary(input)), " "), 60)))
+		clipRunes(strings.Join(strings.Fields(toolSummary(input)), " "), 60)))
 	s.h.refreshViewed(run)
 }
 
@@ -952,7 +952,7 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		}
 		desc := rawString(spec, "description")
 		if desc == "" {
-			desc = truncRunes(prompt, 40)
+			desc = clipRunes(prompt, 40)
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		at := h.callerOf(L)

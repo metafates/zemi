@@ -368,7 +368,7 @@ func (h *Host) toolRun(L *glua.LState, t *luaTool, callID string) *glua.LTable {
 	run.RawSetString("origin", glua.LString(t.Origin))
 	run.RawSetString("progress", L.NewFunction(func(L *glua.LState) int {
 		line := strings.Join(strings.Fields(sanitize.String(L.CheckString(2))), " ")
-		h.setToolDetail(callID, truncRunes(line, 120))
+		h.setToolDetail(callID, clipRunes(line, 120))
 		return 0
 	}))
 	lua.GuardFuncs(L, run, "run:", h.guardLua)

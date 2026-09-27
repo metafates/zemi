@@ -641,10 +641,7 @@ func (h *Host) memoryRows() []MemoryRow {
 			// the screen shows no ids, so the row names the memory by its text
 			what := "a memory since deleted"
 			if _, old, err := h.locateMemory(m.Supersedes); err == nil {
-				what = `"` + old.Text + `"`
-				if short := learn.Truncate(old.Text, 40); short != old.Text {
-					what = `"` + short + `..."`
-				}
+				what = `"` + clipRunes(old.Text, 40) + `"`
 				if old.Scope != m.Scope {
 					what = string(old.Scope) + " memory " + what
 				}

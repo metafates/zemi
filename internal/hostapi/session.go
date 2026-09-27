@@ -128,9 +128,10 @@ func (h *Host) OpenSessions() error {
 			desc = append(desc, fmt.Sprintf("%d %s", p.Count, plural(p.Count, "message", "messages")))
 		}
 		if line := firstUserLine(p.FirstJSON); line != "" && !strings.EqualFold(line, s.Title) {
-			desc = append(desc, line)
+			desc = append(desc, clipRunes(line, 60))
 		}
-		item := map[string]any{"text": cmp.Or(s.Title, "Untitled"), "desc": strings.Join(desc, " · ")}
+		// a list gives its labels room before descriptions: a whole title would hide the age
+		item := map[string]any{"text": cmp.Or(clipRunes(s.Title, 60), "Untitled"), "desc": strings.Join(desc, " · ")}
 		if s.ID == current {
 			item["key"] = "current"
 		} else {
@@ -204,7 +205,7 @@ func (h *Host) InputHistory(limit int) []string {
 func firstUserLine(partsJSON string) string {
 	text, _ := userText(&store.Message{Role: string(fantasy.MessageRoleUser), PartsJSON: partsJSON})
 	line, _, _ := strings.Cut(text, "\n")
-	return truncRunes(sanitize.String(line), 60)
+	return sanitize.String(line)
 }
 
 // closeSession detaches the live session (refused mid-turn) and fires its
@@ -393,7 +394,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 			return
 		}
 		first, _, _ := strings.Cut(strings.TrimSpace(concatText(res.Response.Content)), "\n")
-		title := sanitize.String(truncRunes(strings.Trim(strings.TrimSpace(first), `"'.# `), 60))
+		title := sanitize.String(strings.Trim(strings.TrimSpace(first), `"'.# `))
 		if title == "" {
 			return
 		}

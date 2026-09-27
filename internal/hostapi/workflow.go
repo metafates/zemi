@@ -366,7 +366,7 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	}
 	if desc == "" {
 		first, _, _ := strings.Cut(prompt, "\n")
-		desc = truncRunes(first, 40)
+		desc = clipRunes(first, 40)
 	}
 	r.started++
 	t.req = &wfAgentReq{def: def, description: desc, prompt: prompt}
@@ -499,7 +499,7 @@ func (r *wfRun) report() {
 		parts = append(parts, fmt.Sprintf("%d/%d agents done", r.finished, r.started))
 	}
 	if n := len(r.log); n > 0 {
-		parts = append(parts, truncRunes(r.log[n-1], 60))
+		parts = append(parts, clipRunes(r.log[n-1], 60))
 	}
 	r.progress(strings.Join(parts, " · "))
 }

@@ -192,7 +192,7 @@ func (h *Host) ExportSession(path string) (string, error) {
 		var calls []string
 		for _, part := range m.Content {
 			if tc, ok := part.(fantasy.ToolCallPart); ok {
-				calls = append(calls, fmt.Sprintf("- `%s` %s", sanitize.String(tc.ToolName), sanitize.String(truncRunes(strings.Join(strings.Fields(toolSummary(tc.Input)), " "), 120))))
+				calls = append(calls, fmt.Sprintf("- `%s` %s", sanitize.String(tc.ToolName), sanitize.String(clipRunes(strings.Join(strings.Fields(toolSummary(tc.Input)), " "), 120))))
 			}
 		}
 		// a file the user later cats: model text must not carry escapes

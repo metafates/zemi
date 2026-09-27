@@ -1,0 +1,17 @@
+{
+ "messages": [
+  {
+   "content": "Name the coding conversation below for a session list. Do not answer or continue it. Reply with the title only: 3 to 6 words naming the task, file and identifier names kept exact, no quotes, no trailing period, in the language the user wrote in.",
+   "role": "system"
+  },
+  {
+   "content": "<conversation>\nuser: a very long first message that goes on well past sixty runes so the stored title would have been cut with dots\n\nassistant: done, here is the reply. \n</conversation>",
+   "role": "user"
+  }
+ ],
+ "model": "m",
+ "stream_options": {
+  "include_usage": true
+ },
+ "stream": true
+}

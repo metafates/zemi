@@ -1113,7 +1113,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		h.EmitAsync("agent.error", map[string]any{"error": errString(err)})
 		// The failure stays in the transcript: a toast expires, and a turn
 		// that ended silently looks like zemi ignored the message.
-		row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: truncRunes(sanitize.String(h.errorRowText(err)), 400)}
+		row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: clipRunes(sanitize.String(h.errorRowText(err)), 400)}
 		if errors.Is(err, context.Canceled) {
 			row.Status = CallCancelled
 		}
@@ -1328,7 +1328,7 @@ func toolSummary(input string) string {
 			return d
 		}
 		prompt, _ := m["prompt"].(string)
-		return strings.TrimSuffix(a+": "+truncRunes(strings.Join(strings.Fields(prompt), " "), 80), ": ")
+		return strings.TrimSuffix(a+": "+clipRunes(strings.Join(strings.Fields(prompt), " "), 80), ": ")
 	}
 	for _, k := range []string{"path", "file_path", "pattern", "url", "query", "question", "name", "text", "description", "id"} {
 		if s, ok := m[k].(string); ok && s != "" {
@@ -1494,8 +1494,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		// piped stdin alone: its first line, past the element's tag
 		_, typed, _ = strings.Cut(strings.TrimPrefix(attached, agent.AttachMarker+"\n"), "\n")
 	}
-	first, _, _ := strings.Cut(strings.TrimSpace(typed), "\n")
-	title := truncRunes(first, 60)
+	title, _, _ := strings.Cut(strings.TrimSpace(typed), "\n")
 	if err := h.DB.CreateSession(sid, "", title, name); err != nil {
 		ag.mu.Unlock()
 		return err
@@ -1635,7 +1634,7 @@ func (h *Host) recap(ctx context.Context) {
 	}
 	answer, err := h.aside(ctx, recapPrompt)
 	lines := slices.DeleteFunc(strings.Split(answer, "\n"), func(l string) bool { return strings.TrimSpace(l) == "" })
-	text := sanitize.String(truncRunes(strings.Join(strings.Fields(strings.Join(lines[:min(2, len(lines))], " ")), " "), 300))
+	text := sanitize.String(clipRunes(strings.Join(strings.Fields(strings.Join(lines[:min(2, len(lines))], " ")), " "), 300))
 	if err != nil || text == "" {
 		h.Log.Debug("session", "no recap", map[string]any{"error": fmt.Sprint(err)})
 		return
