@@ -2358,13 +2358,15 @@ function zemi.project.root() end
 --- a field a reply does not take, or of another type, raises. A stubbed
 --- write writes. The requests a stub returns are http `{ method, url,
 --- headers, body }`, job `{ cmd, args, cwd }`, model `{ model, prompt,
---- system }`, send `{ text }` and write `{ path }`.
+--- system }`, send `{ text }` and write `{ path }`. A report names the
+--- plugin's files relative to it, but an error a case catches holds the
+--- path of the test's copy: match its tail with `find`.
 ---@class zemi.test
 ---@overload fun(name: string, fn: fun()) Declare a case, at the top level.
 ---@field eq fun(got: any, want: any) Compare deeply, functions by identity; raises naming the first difference.
 ---@field run fun(name: string, args?: string): true|nil, string? Run the plugin's command as typed.
 ---@field keys fun(seq: string): true|nil, string? Run what the plugin bound a global key sequence to.
----@field tool fun(name: string, input: table): string|nil, string? Call the plugin's tool as the model would, allowed: the output or nil, err it gets.
+---@field tool fun(name: string, input: table): string|nil, string? Call the plugin's tool as the model would, allowed: the output, or nil and the error the model gets, behind the tool's name ("weather_now: ...").
 ---@field render fun(id: string, ctx?: table): string[], zemi.Line[] Draw the plugin's widget: ctx's fields override width 80, height 1 and the rest.
 ---@field click fun(id: string, click: string): true|nil, string? Run the widget's on_click for a segment's click id.
 ---@field emit fun(name: zemi.EventName, ev?: table): any Deliver a host event to the plugin's handlers: `tool.post` returns the output the model gets, a vetoable event its zemi.Veto or nil.
