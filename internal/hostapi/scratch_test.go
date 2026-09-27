@@ -15,10 +15,10 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// TestEnsureScratchSweep: the sweep keeps the live pad however old, and
-// another pad while anything in it moved within the TTL, whatever its own
-// directory time says.
-func TestEnsureScratchSweep(t *testing.T) {
+// TestScratchSweep: the sweep keeps the live pad however old, and another
+// pad while anything in it moved within the TTL, whatever its own directory
+// time says.
+func TestScratchSweep(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.agents.sessionID = store.NewID()
 	live := h.ScratchDir()
@@ -44,9 +44,7 @@ func TestEnsureScratchSweep(t *testing.T) {
 			}
 		}
 	}
-	if h.ensureScratch() != live {
-		t.Fatal("no pad")
-	}
+	h.sweepScratch(root, time.Now().Add(-scratchTTL))
 	for _, c := range cases {
 		if _, err := os.Stat(c.file); (err == nil) != c.kept {
 			t.Errorf("%s: kept %v, want %v", c.name, err == nil, c.kept)

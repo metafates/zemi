@@ -31,30 +31,34 @@ func (h *Host) scratchFor(sid string) string {
 	return filepath.Join(h.Dirs.StateHome, "scratch", sid[:min(len(sid), padIDLen)])
 }
 
-// ensureScratch creates the live session's pad, marks it used and removes
-// the pads unused past scratchTTL; "" when there is no pad.
-// NOTE: a pad counts as used when anything in it changed or a command ran
-// with it; one another zemi window holds with neither for scratchTTL is
-// removed under it. A lock per live process would lift that.
-func (h *Host) ensureScratch() string {
+// ensureScratch creates the live session's pad and marks it used; the sweep
+// of the others walks their trees, so it runs off the send path.
+func (h *Host) ensureScratch() {
 	dir := h.ScratchDir()
 	if dir == "" {
-		return ""
+		return
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		h.Log.Warn("scratch", "scratchpad not created", map[string]any{"error": err.Error()})
-		return ""
+		return
 	}
 	now := time.Now()
 	_ = os.Chtimes(dir, now, now)
-	root := filepath.Dir(dir)
+	h.GoSafe("scratch sweep", func() { h.sweepScratch(filepath.Dir(dir), now.Add(-scratchTTL)) })
+}
+
+// sweepScratch removes the pads under root unused since t. The live pad is
+// read at each removal, since a resume may make an old pad live mid-sweep.
+// NOTE: a pad counts as used when anything in it changed or a command ran
+// with it; one another zemi window holds with neither for scratchTTL is
+// removed under it. A lock per live process would lift that.
+func (h *Host) sweepScratch(root string, t time.Time) {
 	entries, _ := os.ReadDir(root)
 	for _, e := range entries {
-		if pad := filepath.Join(root, e.Name()); e.IsDir() && pad != dir && !usedSince(pad, now.Add(-scratchTTL)) {
+		if pad := filepath.Join(root, e.Name()); e.IsDir() && !usedSince(pad, t) && pad != h.ScratchDir() {
 			_ = os.RemoveAll(pad)
 		}
 	}
-	return dir
 }
 
 // usedSince reports anything under dir, dir included, modified after t: a
