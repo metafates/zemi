@@ -62,20 +62,22 @@ func TestPadBoundPerPipeline(t *testing.T) {
 	h.SetProjectTrusted(true)
 	h.Perm.Add(perm.Rule{Subject: "tool.long", Pattern: "*", Decision: perm.Allow})
 	h.Perm.Add(perm.Rule{Subject: "tool.short", Pattern: "*", Decision: perm.Allow})
+	h.Perm.Add(perm.Rule{Subject: "tool.failing", Pattern: "*", Decision: perm.Allow})
 	runUser(t, r, `
 		zemi.tool.add({ name = "long", description = "d", execute = function() return string.rep("x", 40000) end })
 		zemi.tool.add({ name = "short", description = "d", execute = function() return "ok" end })
+		zemi.tool.add({ name = "failing", description = "d", execute = function() return nil, string.rep("x", 40000) end })
 		zemi.event.on("tool.post", function(ev)
 			if ev.tool == "short" then return { output = string.rep("x", 40000) } end
 		end)`)
 	h.agents.sessionID = "s1"
 	old, pad := h.PipelineFor(), h.ScratchDir()
 	h.agents.sessionID = "s2"
-	// a host tool's output and a tool.post rewrite spill where the run's
+	// a host tool's output, its error and a tool.post rewrite spill where the run's
 	// prompt says, like bash's
 	for _, tool := range h.luaFantasyTools(old) {
 		resp, err := tool.Run(t.Context(), fantasy.ToolCall{Input: "{}"})
-		if err != nil || len(resp.Content) > 31_000 || !strings.Contains(resp.Content, "(output saved to "+pad+string(filepath.Separator)) {
+		if err != nil || resp.IsError != (tool.Info().Name == "failing") || len(resp.Content) > 31_000 || !strings.Contains(resp.Content, "(output saved to "+pad+string(filepath.Separator)) {
 			t.Errorf("%s: %d bytes, spill not in the bound pad %s: %v %q", tool.Info().Name, len(resp.Content), pad, err, resp.Content[max(0, len(resp.Content)-200):])
 		}
 	}

@@ -302,9 +302,11 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 	}
 	out, err := a.h.runLuaTool(ctx, a.t, call.ID, input)
 	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
+		out = err.Error()
 	}
-	return fantasy.NewTextResponse(a.h.truncOutput(a.pipe.Pad, a.t.Name, out)), nil
+	reply = fantasy.NewTextResponse(a.h.truncOutput(a.pipe.Pad, a.t.Name, out))
+	reply.IsError = err != nil
+	return reply, nil
 }
 
 // runLuaTool runs execute as a task, bounded by the tool's timeout in wall
