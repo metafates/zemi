@@ -57,7 +57,7 @@ for i = 1, 300 do test("case " .. i, function() end) end
 	}{
 		{
 			name: "the passing cases pass", args: []string{"<plugin>", "pass_test"}, code: 0,
-			want: "21 passed (2 files, (T))\n",
+			want: "22 passed (2 files, (T))\n",
 		},
 		{name: "eq on a string", args: []string{"<plugin>", "fail_test.lua: eq on a string"}, code: 1, want: `FAIL tests/fail_test.lua:7: eq on a string
   tests/fail_test.lua:11: got "Oslo: 21C, Sunny", want "Oslo: 21C, sunny"
@@ -87,8 +87,8 @@ for i = 1, 300 do test("case " .. i, function() end) end
 `},
 		{name: "a reply field nothing reads", args: []string{"<plugin>", "misspelled"}, code: 1, want: `FAIL tests/fail_test.lua:39: a reply function with a misspelled field
   tests/fail_test.lua:43: got nil, want "Oslo: 21C, Sunny"
-  test.tool at tests/fail_test.lua:43 returned: weather_now: lua/demo/init.lua:85: test.stub reply: bdy is not a field of a http reply, which takes body, headers, status
-  test.stub reply: bdy is not a field of a http reply, which takes body, headers, status
+  test.tool at tests/fail_test.lua:43 returned: weather_now: lua/demo/init.lua:85: test.stub reply: bdy is not a field of a http reply, which takes body, error, headers, status
+  test.stub reply: bdy is not a field of a http reply, which takes body, error, headers, status
 0 passed, 1 failed (2 files, (T))
 `},
 		{name: "eq on an error naming a file", args: []string{"<plugin>", "naming a file"}, code: 1, want: `FAIL tests/fail_test.lua:46: eq on an error naming a file
@@ -105,7 +105,7 @@ for i = 1, 300 do test("case " .. i, function() end) end
 		}, want: "FAIL tests/a_test.lua:1: spins\n  timed out after 300ms in test.run(\"spin\") at tests/a_test.lua:1\n0 passed, 1 failed (1 file, (T))\n"},
 		{
 			name: "a pattern matching nothing", args: []string{"<plugin>", "wether"}, code: 1,
-			want: "no case matches \"wether\" (29 cases in 2 files)\n",
+			want: "no case matches \"wether\" (30 cases in 2 files)\n",
 		},
 		{name: "a plugin that does not load", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
 			"init.lua": `require("cp")`, "lua/cp/init.lua": `require("cp.util")`, "tests/a_test.lua": `zemi.test("a", function() end)`,

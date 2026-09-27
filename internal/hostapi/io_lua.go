@@ -166,10 +166,10 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 // of the calls that do IO: its reply is returned and stands in for the
 // transport, and a call none answers is refused whatever rules exist; req
 // is a func so no other zemi builds it.
-func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[string]any) (tools.Verdict, map[string]any) {
+func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[string]any) (tools.Verdict, *stubReply) {
 	stubbed := false
 	if h.test != nil {
-		var reply map[string]any
+		var reply *stubReply
 		if reply, stubbed = h.test.reply(L, subject, arg, req); reply != nil {
 			return tools.Verdict{Decision: perm.Allow, DecidedBy: "test.stub"}, reply
 		}
@@ -766,7 +766,7 @@ func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) in
 			if _, err := tools.ParseNetURL(req.url); err != nil {
 				return nil, err
 			}
-			return stub, nil
+			return stub.fields, stub.err
 		}
 	}
 	hnd := &httpHandle{done: make(chan struct{})}
@@ -1139,9 +1139,9 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		// test zemi's stub stands in for it
 		exit := func() (int, error) {
 			if stub != nil {
-				fmt.Fprint(outW, stub["stdout"])
-				fmt.Fprint(errW, stub["stderr"])
-				code, _ := stub["code"].(float64)
+				fmt.Fprint(outW, stub.fields["stdout"])
+				fmt.Fprint(errW, stub.fields["stderr"])
+				code, _ := stub.fields["code"].(float64)
 				return int(code), nil
 			}
 			var ee *exec.ExitError

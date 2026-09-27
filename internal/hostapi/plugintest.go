@@ -1013,7 +1013,7 @@ func (t *PluginTest) stub(L *glua.LState) int {
 // stubFields are the fields a reply to each kind of call takes, and their
 // types: the rest would be dropped without a word, so a typo passes.
 var stubFields = map[string]map[string]glua.LValueType{
-	"http":  {"status": glua.LTNumber, "body": glua.LTString, "headers": glua.LTTable},
+	"http":  {"status": glua.LTNumber, "body": glua.LTString, "headers": glua.LTTable, "error": glua.LTString},
 	"job":   {"code": glua.LTNumber, "stdout": glua.LTString, "stderr": glua.LTString},
 	"model": {"text": glua.LTString, "error": glua.LTString},
 	"send":  {},
@@ -1043,12 +1043,19 @@ func checkReply(kind string, reply glua.LValue) string {
 	return ""
 }
 
-// reply is the reply of the newest stub matching a gated call, with the
-// defaults filled in, and whether the call is one a stub answers; a call
-// none answers gets a note naming the stub that would.
+// stubReply stands in for a call's transport: the reply's fields over its
+// kind's defaults, or the transport's failure its error field names.
+type stubReply struct {
+	fields map[string]any
+	err    error
+}
+
+// reply is the reply of the newest stub matching a gated call, and whether
+// the call is one a stub answers; a call none answers gets a note naming
+// the stub that would.
 // NOTE: a stub answers at once, so a handle's timeout goes untested; a
 // reply that waits for test.advance would reach it.
-func (t *PluginTest) reply(L *glua.LState, subject, arg string, req func() map[string]any) (map[string]any, bool) {
+func (t *PluginTest) reply(L *glua.LState, subject, arg string, req func() map[string]any) (*stubReply, bool) {
 	kind := stubKind(subject)
 	if kind == "" {
 		return nil, false
@@ -1080,18 +1087,20 @@ func (t *PluginTest) reply(L *glua.LState, subject, arg string, req func() map[s
 			out = map[string]any{"status": 200.0, "body": "", "headers": map[string]any{}}
 		case "job":
 			out = map[string]any{"code": 0.0, "stdout": "", "stderr": ""}
-		case "model":
-			if s, ok := reply.(glua.LString); ok {
-				return map[string]any{"text": string(s)}, true
-			}
 		}
-		if tb, ok := reply.(*glua.LTable); ok {
-			fields, err := lua.ToGo(tb)
-			if m, ok := fields.(map[string]any); ok && err == nil {
+		switch r := reply.(type) {
+		case glua.LString:
+			out["text"] = string(r)
+		case *glua.LTable:
+			fields, _ := lua.ToGo(r)
+			if m, ok := fields.(map[string]any); ok {
 				maps.Copy(out, m)
 			}
 		}
-		return out, true
+		if e, _ := out["error"].(string); e != "" {
+			return &stubReply{err: errors.New(e)}, true
+		}
+		return &stubReply{fields: out}, true
 	}
 	t.note("no stub answered it; answer it with " + stubLine(kind, subject, arg, req()))
 	return nil, true

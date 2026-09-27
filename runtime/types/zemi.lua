@@ -2354,7 +2354,8 @@ function zemi.project.root() end
 --- job, HTTP request, model ask, agent send or `zemi.fs` write raises
 --- unless a stub answers it: http `{ status = 200, body = "", headers = {} }`,
 --- job `{ code = 0, stdout = "", stderr = "" }` (stdout reaches `on_stdout`),
---- model a string, `{ text }` or `{ error = "..." }`, send and write none;
+--- model a string or `{ text }`, send and write none; an http or model
+--- reply `{ error = "..." }` is its transport failing;
 --- a field a reply does not take, or of another type, raises. A stubbed
 --- write writes. The requests a stub returns are http `{ method, url,
 --- headers, body }`, job `{ cmd, args, cwd }`, model `{ model, prompt,

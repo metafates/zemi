@@ -126,7 +126,7 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	ref := cmp.Or(rawString(spec, "model"), "chat")
 	id := h.modelRef(ref)
 	system := rawString(spec, "system")
-	var stub map[string]any
+	var stub *stubReply
 	switch o := h.RT.CurrentOrigin(L); {
 	case o.Rank() <= lua.OriginProject.Rank():
 		L.RaiseError("zemi.model.ask: %s code may not call a model", o)
@@ -149,11 +149,8 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	if stub != nil {
 		// a test zemi's stub stands in for the provider
 		ask = func(context.Context) (string, error) {
-			if e, _ := stub["error"].(string); e != "" {
-				return "", errors.New(e)
-			}
-			text, _ := stub["text"].(string)
-			return text, nil
+			text, _ := stub.fields["text"].(string)
+			return text, stub.err
 		}
 	}
 	var text string

@@ -76,6 +76,19 @@ test("a 503 is an error the model reads", function()
   test.eq({ test.tool("weather_now", { city = "Oslo" }) }, { nil, "weather_now: wttr.in answered 503" })
 end)
 
+test("a request that fails at the transport is an error too", function()
+  test.stub("lua.http.get", "https://wttr.in/*", { error = "dial tcp: i/o timeout" })
+  test.eq({ test.tool("weather_now", { city = "Oslo" }) }, { nil, "weather_now: dial tcp: i/o timeout" })
+  local done
+  zemi.http.get("https://wttr.in/Oslo", {
+    on_done = function(res)
+      done = res
+    end,
+  })
+  test.advance(0)
+  test.eq(done, { url = "https://wttr.in/Oslo", error = "dial tcp: i/o timeout" })
+end)
+
 test("the schema refuses a missing city", function()
   local _, err = test.tool("weather_now", {})
   assert(err:find("city", 1, true), err)
@@ -152,7 +165,7 @@ end)
 
 test("a reply field no call reads is refused", function()
   for _, c in ipairs({
-    { "lua.http.get", { bdy = "x" }, "bdy is not a field of a http reply, which takes body, headers, status" },
+    { "lua.http.get", { bdy = "x" }, "bdy is not a field of a http reply, which takes body, error, headers, status" },
     { "lua.job.start", { code = "1" }, "code must be a number, not a string" },
     { "lua.agent.send", { text = "x" }, "text is not a field of a send reply, which takes no fields" },
   }) do
