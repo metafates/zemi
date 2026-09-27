@@ -33,7 +33,7 @@ func TestPluginsTest(t *testing.T) {
 		"config/init.lua":                   `zemi.command.add("from-init", function() end)`,
 		".agents/skills/from-home/SKILL.md": "---\nname: from-home\ndescription: x\n---\nx\n",
 		"data/plugins/local/named/init.lua": "zemi.command.add('named', function() end)\n",
-		"data/plugins/local/named/tests/n_test.lua": `local test = assert(zemi.test)
+		"data/plugins/local/named/tests/n_test.lua": `local test = zemi.test
 test("found by name", function() assert(test.run("named")) end)`,
 	} {
 		writeFile(t, filepath.Join(home, path), body)
@@ -42,7 +42,7 @@ test("found by name", function() assert(test.run("named")) end)`,
 	old := caseTimeout
 	caseTimeout = 300 * time.Millisecond
 	t.Cleanup(func() { caseTimeout = old })
-	many := `local test = assert(zemi.test)
+	many := `local test = zemi.test
 for i = 1, 300 do test("case " .. i, function() end) end
 `
 
@@ -129,7 +129,7 @@ for i = 1, 300 do test("case " .. i, function() end) end
 		{name: "the copy leaves out dot entries, node_modules and links out", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
 			"init.lua": "", "lua/cp/real.lua": "return 1", "lua/cp/alias.lua": "-> real.lua", "lua/cp/out.lua": "-> ../../../outside.lua",
 			".hidden/x.lua": "return 1", "node_modules/x.lua": "return 1",
-			"tests/a_test.lua": `local test = assert(zemi.test)
+			"tests/a_test.lua": `local test = zemi.test
 test("copied", function()
   test.eq(require("cp.alias"), 1)
   for _, m in ipairs({ "cp.out", "./../.hidden/x", "./../node_modules/x" }) do
@@ -142,7 +142,7 @@ end)`,
   zemi.state.set("n", (zemi.state.get("n") or 0) + 1)
   zemi.ui.overlay.open({ id = "menu", items = { { text = "again", run = "menu" }, { text = "help", run = "help" }, "none" } })
 end)`,
-			"tests/a_test.lua": `local test = assert(zemi.test)
+			"tests/a_test.lua": `local test = zemi.test
 test("rows", function()
   assert(test.run("menu"))
   assert(test.answer("again"))
@@ -157,7 +157,7 @@ end)`,
 			"init.lua": `zemi.command.add("log", function()
   zemi.job.start({ cmd = "git", args = { "log" }, on_stdout = function(lines) zemi.state.set("out", lines) end })
 end)`,
-			"tests/a_test.lua": `local test = assert(zemi.test)
+			"tests/a_test.lua": `local test = zemi.test
 test.stub("lua.job.start", "git log", { stdout = "a\nb" })
 test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { "a", "b" }) end)`,
 		}, want: "1 passed (1 file, (T))\n"},

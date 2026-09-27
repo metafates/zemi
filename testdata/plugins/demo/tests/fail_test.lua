@@ -1,4 +1,4 @@
-local test = assert(zemi.test)
+local test = zemi.test
 local stdout = "main\n"
 test.stub("lua.job.start", "git rev-parse *", function()
   return { stdout = stdout }

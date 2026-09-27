@@ -1,4 +1,4 @@
-local test = assert(zemi.test)
+local test = zemi.test
 local branch = "main"
 local git = test.stub("lua.job.start", "git rev-parse *", function()
   return branch and { stdout = branch .. "\n" } or { code = 128, stderr = "fatal: not a git repository" }
