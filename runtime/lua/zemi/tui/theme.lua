@@ -74,9 +74,10 @@ local function theme(palette)
     ScrollbarThumb = { link = "Accent" },
     -- hover draws over the text's own style: keys left out keep it. A row
     -- header takes the accent and nothing else; body rows opt out entirely
-    -- (hover = false) and say a click acts with the pointer shape alone.
+    -- (hover = false) and say a click acts with the pointer shape alone. A
+    -- list row underlines, so it never takes the selection's or a match's accent.
     Hover = { link = "Accent" },
-    HoverItem = { link = "Accent" },
+    HoverItem = { underline = true },
   }
   return { palette = palette, hl = hl }
 end

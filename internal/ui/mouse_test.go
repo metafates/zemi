@@ -370,6 +370,10 @@ func TestHoverStyle(t *testing.T) {
 		want  uv.Style
 	}{
 		{
+			"a list row keeps the colors its selection and matches draw", "HoverItem", nil,
+			uv.Style{Fg: base.Fg, Bg: base.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineSingle},
+		},
+		{
 			"unset keys keep the base", "Hover", &hostapi.HLSpec{Underline: "curl", Sp: "#ff0000"},
 			uv.Style{Fg: base.Fg, Bg: base.Bg, Attrs: uv.AttrBold, Underline: uv.UnderlineCurly, UnderlineColor: rgb(0xff0000)},
 		},

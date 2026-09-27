@@ -1251,7 +1251,8 @@ UI extensibility contract:
   color), `bold`, `italic`, `reverse` and `underline` (`true` or a kind: `double`,
   `curl`, `dotted`, `dashed`). Hover draws the theme's `Hover` (widget click
   segments, statusline pills) or `HoverItem` (list rows,
-  menus, memory items) over the text's own style: keys a hover group leaves out
+  menus, memory items; the shipped one underlines, so a hovered row keeps
+  its selection's and matches' accent apart) over the text's own style: keys a hover group leaves out
   keep that style, `false` and `"NONE"` clear it, `brighten` lifts the text's fg
   (toward black on a lighter fill) and `replace` draws the group alone. A theme
   without the group underlines. A segment marked `hover = false` takes neither
