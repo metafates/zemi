@@ -904,9 +904,10 @@ func (n Normalized) GitWrites() string {
 // substitutions segments of their own. pad is the scratchpad, $TMPDIR in
 // every command the model runs, "" for none: an rm whose every operand is
 // inside it deletes nothing of the project.
-// NOTE: a symlink the same command plants in the pad, or one a glob picks
-// with a trailing slash, still leads out; the run is confined, so it can
-// delete no more than any settled command can.
+// NOTE: a symlink the same command plants in the pad, one a glob picks
+// with a trailing slash, or an arithmetic assignment to a name built at run
+// time ($(( $(printf TMP)DIR = 0 ))) still leads out; the run is confined,
+// so it can delete no more than any settled command can.
 func (n Normalized) Destructive(pad string) string {
 	if !n.padIntact() {
 		pad = ""
@@ -980,7 +981,7 @@ func nameByte(s string, i int) bool {
 func padOperands(args []string, pad string) bool {
 	operands, dashed := 0, false
 	for _, a := range args {
-		if !dashed && strings.HasPrefix(a, "-") {
+		if !dashed && strings.HasPrefix(a, "-") && a != "-" {
 			dashed = a == "--"
 			continue
 		}
@@ -995,7 +996,7 @@ func padOperands(args []string, pad string) bool {
 		if !ok {
 			rest, ok = strings.CutPrefix(a, strings.TrimSuffix(pad, "/")+"/")
 		}
-		if !ok || path.Clean(rest) == "." || strings.ContainsAny(rest, "~\\") || expandsToDotDot("/"+rest) ||
+		if !ok || path.Clean("/"+rest) == "/" || strings.ContainsAny(rest, "~\\") || expandsToDotDot("/"+rest) ||
 			slices.Contains(strings.Split(rest, "/"), "..") {
 			return false
 		}

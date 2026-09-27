@@ -309,6 +309,8 @@ func TestDestructive(t *testing.T) {
 		// something may have set
 		{"rm -rf $TMPDIR", true},
 		{"rm -rf $TMPDIR/", true},
+		{"rm -rf ${TMPDIR}//", true},
+		{"rm -rf $TMPDIR/x -", true},
 		{"rm -rf $TMPDIR/..", true},
 		{"rm -rf $TMPDIR/../x", true},
 		{"rm -rf $TMPDIR/a/../../x", true},
