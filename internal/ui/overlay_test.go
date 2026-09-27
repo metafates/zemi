@@ -239,7 +239,7 @@ func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 			t.Fatal("the completer never answered")
 		}
 	}
-	if len(app.palette.args) != 2 || app.palette.args[1].label != "bob" { // as the completer answered
+	if len(app.palette.args) != 1 || app.palette.args[0].label != "bob" {
 		t.Fatalf("palette args %v", app.palette.args)
 	}
 	// the next key keeps the popup and its size until the completer answers

@@ -391,7 +391,7 @@ function zemi.keymap.list() end
 ---@class zemi.CommandOpts
 ---@field desc? string Shown in /help and the slash palette.
 ---@field nargs? zemi.NArgs Arguments the command takes; a line with the wrong count is refused and the handler never runs.
----@field complete? fun(lead: string, line: string): string[]|zemi.CompletionItem[] Runs off the key path; the palette shows the rows as returned, so match them against `lead` yourself, and it is not called past the last argument `nargs` takes. An error lands in /errors.
+---@field complete? fun(lead: string, line: string): string[]|zemi.CompletionItem[] Runs off the key path; return every candidate: the palette matches the rows against `lead` with the one fuzzy matcher and ranks them best first, and it is not called past the last argument `nargs` takes. An error lands in /errors.
 
 ---@class zemi.Command
 ---@field name string

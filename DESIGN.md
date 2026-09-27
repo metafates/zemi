@@ -1264,9 +1264,10 @@ UI extensibility contract:
   once arguments follow the name the list holds only the names it begins,
   and an unknown name with no row toasts and does not send; `esc` closes and
   `ctrl+space` reopens whatever popup the cursor's word takes. Past
-  `/name ` the list holds the command's argument candidates, a Go
-  completer's matched and ranked before the cap of 50, a Lua one's as it
-  returned them, none past the last argument its `nargs` takes. The
+  `/name ` the list holds the command's argument candidates, its Go or Lua
+  completer's matched and ranked in one place (`CompleteCommand`) before the
+  cap of 50, a completion source's (below) as it returned them, none past
+  the last argument its `nargs` takes. The
   exact, case-sensitive `/reload` is Go-reserved: it is checked on
   composer submit before any Lua-visible command lookup (§4).
 - Completion sources: `zemi.composer.complete({ id, trigger | command,

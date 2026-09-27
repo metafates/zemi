@@ -13,7 +13,8 @@ import (
 )
 
 // TestCompleteCommand: a Lua command's complete(arg_lead, cmdline) feeds
-// argument candidates; Go subcommand completers switch lists by position.
+// argument candidates, narrowed and ranked by the lead like a Go
+// completer's; Go subcommand completers switch lists by position.
 func TestCompleteCommand(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
@@ -23,7 +24,7 @@ func TestCompleteCommand(t *testing.T) {
 		})
 		zemi.command.add("boom", function() end, { nargs = "*", complete = function() error("nope") end })
 	`)
-	if got := fmt.Sprint(h.CompleteCommand(context.Background(), "greet", "a", "/greet a")); got != "[{alice } {bob builder} {a }]" {
+	if got := fmt.Sprint(h.CompleteCommand(context.Background(), "greet", "b", "/greet b")); got != "[{b } {bob builder}]" {
 		t.Fatalf("lua complete = %s", got)
 	}
 	if got := h.CompleteCommand(context.Background(), "boom", "", "/boom "); got != nil || !strings.Contains(h.errs.entries[0].msg, "nope") {

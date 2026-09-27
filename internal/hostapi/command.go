@@ -159,29 +159,20 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 }
 
 // CompleteCommand returns argument candidates for a command line from the
-// command's Go completer or its Lua complete(arg_lead, cmdline), sanitized
-// and capped; a failing completer offers nothing and lands in /errors, and
-// nothing is offered past the last argument the command's nargs takes.
+// command's Go completer or its Lua complete(arg_lead, cmdline), sanitized,
+// matched against lead, ranked and capped; a failing completer offers
+// nothing and lands in /errors, and nothing is offered past the last
+// argument the command's nargs takes.
 func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []CompletionItem {
 	cmd := h.Commands.Lookup(name)
 	if _, arg := argAt(lead, line); cmd == nil || cmd.NArgs == NArgsNone || cmd.NArgs == NArgsOptional && arg > 1 {
 		return nil
 	}
-	var out []CompletionItem
+	var cands []CompletionItem
 	switch {
 	case cmd.GoComplete != nil:
-		// Go completers return every candidate, so lead narrows and ranks here,
-		// before the cap: the one hit may sit past it
-		var cands []string
 		for _, s := range cmd.GoComplete(h, lead, line) {
-			cands = append(cands, sanitize.String(s))
-		}
-		hits := Match(lead, cands, nil)
-		if lead != "" {
-			hits = Rank(hits, cands, maxCompletions)
-		}
-		for _, hit := range hits {
-			out = append(out, CompletionItem{Text: cands[hit.Index]})
+			cands = append(cands, CompletionItem{Text: sanitize.String(s)})
 		}
 	case cmd.Complete != nil:
 		res, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, func(L *glua.LState) ([]any, error) {
@@ -208,9 +199,22 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 			}
 			return nil
 		}
-		out = completionItems(res[0])
+		cands = completionItems(res[0])
 	}
-	return out[:min(len(out), maxCompletions)]
+	// lead narrows and ranks here, before the cap: the one hit may sit past it
+	labels := make([]string, len(cands))
+	for i, c := range cands {
+		labels[i] = c.Text
+	}
+	hits := Match(lead, labels, nil)
+	if lead != "" {
+		hits = Rank(hits, labels, maxCompletions)
+	}
+	var out []CompletionItem
+	for _, hit := range hits[:min(len(hits), maxCompletions)] {
+		out = append(out, cands[hit.Index])
+	}
+	return out
 }
 
 // subcommandCompleter completes the first argument from a fixed list and,

@@ -67,8 +67,8 @@ func (a *App) updatePalette() {
 		start--
 	}
 	name, typed, line := string(r[1:nameEnd]), string(r[start:cur]), string(r[:cur])
-	// cands come ranked by the Go completer or as a Lua one matched them, so
-	// only narrow drops rows
+	// cands come ranked by CompleteCommand or as a completion source returned
+	// them, so only narrow drops rows
 	show := func(cands []listItem, narrow bool) {
 		p := &a.palette
 		if p.args == nil || p.argStart != start { // a new list: the name's gave way, or another argument's
