@@ -800,9 +800,9 @@ func numbered(lines []string, at, n int) string {
 	return b.String()
 }
 
-// notFound words a path error; for a missing file it names up to three
-// siblings a typo could have meant (app.go for apps.go or ap.go), leaving
-// out secret-shaped and ruled-out names as listDir does.
+// notFound words a path error; for a missing file it names the three
+// siblings nearest what a typo could have meant (app.go for apps.go or
+// ap.go), leaving out secret-shaped and ruled-out names as listDir does.
 func (p *Pipeline) notFound(path string, err error) string {
 	msg := relErr(err).Error()
 	if !errors.Is(err, os.ErrNotExist) {
@@ -817,21 +817,31 @@ func (p *Pipeline) notFound(path string, err error) string {
 		}
 		return name
 	}
-	stem := stemOf(strings.ToLower(filepath.Base(path)))
+	base := strings.ToLower(filepath.Base(path))
+	stem := stemOf(base)
 	ruledOut, dir := p.ruledOut(), filepath.Dir(path)
-	var near []string
+	type sibling struct {
+		name       string
+		stem, full int // edit distances
+	}
+	var near []sibling
 	for _, e := range entries {
 		name := strings.ToLower(e.Name())
 		s := stemOf(name)
-		if len(near) == 3 || e.IsDir() || perm.PathIsSecret(name) || ruledOut(filepath.Join(dir, e.Name())) {
+		if e.IsDir() || perm.PathIsSecret(name) || ruledOut(filepath.Join(dir, e.Name())) {
 			continue
 		}
-		if s == stem || len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s)) || editDistance(s, stem) <= 2 {
-			near = append(near, e.Name())
+		if d := editDistance(s, stem); s == stem || len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s)) || d <= 2 {
+			near = append(near, sibling{e.Name(), d, editDistance(name, base)})
 		}
 	}
+	slices.SortStableFunc(near, func(a, b sibling) int { return cmp.Or(a.stem-b.stem, a.full-b.full) })
 	if len(near) > 0 {
-		msg += " (did you mean " + strings.Join(near, ", ") + "?)"
+		names := make([]string, 0, 3)
+		for _, s := range near[:min(3, len(near))] {
+			names = append(names, s.name)
+		}
+		msg += " (did you mean " + strings.Join(names, ", ") + "?)"
 	}
 	return msg
 }

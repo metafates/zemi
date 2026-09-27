@@ -323,7 +323,7 @@ changes; within one step the lock is taken in call order (`tools.CallStart` from
 runner's ids when its turn ends, so a call nothing ran never holds the file), so two edits to
 one file emitted together apply as written. A live call's row waits (`wait`, drawn with no
 timer) until fantasy starts it (`agent.runningTool`): a serial call (bash, lsp) holds the rest
-of its step. A mistyped path names up to three siblings it could have meant (`Pipeline.notFound`), for read and edit alike, before any ask.
+of its step. A mistyped path names up to three siblings it could have meant, nearest first (`Pipeline.notFound`), for read and edit alike, before any ask.
 `ResumeSession` rebuilds that map from the stored rows (`seedReads`), leaving out
 files touched after the last message. `tool.Run` runs the same check before the gate
 (`tool.edits`), so nobody approves a change the tool would then refuse, and resolves the path

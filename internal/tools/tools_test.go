@@ -265,29 +265,41 @@ func TestCallOrderReleases(t *testing.T) {
 	}
 }
 
-// TestNotFoundNamesSiblings: a mistyped path names the files it could have
-// meant, for read and edit alike, without asking anyone about the edit.
+// TestNotFoundNamesSiblings: a mistyped path names the three files nearest
+// what it could have meant, for read and edit alike, without asking anyone
+// about the edit.
 func TestNotFoundNamesSiblings(t *testing.T) {
 	p, asked := testPipeline(t, false, perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
 	p.Seen = &sync.Map{}
-	dir := t.TempDir()
-	// dotfiles sort first and a directory is no file to read: neither may
-	// fill the three suggestions
-	for _, name := range []string{".git", ".gitignore", "app.go", "apps.go", "apt.go", "main.go", "app.env"} {
-		os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644)
-	}
-	os.Mkdir(filepath.Join(dir, "ap"), 0o755)
-	for _, c := range []struct{ tool, input string }{
-		{"read", `{"path":"` + filepath.Join(dir, "ap.go") + `","limit":0}`},
-		{"edit", `{"path":"` + filepath.Join(dir, "ap.go") + `","old_string":"a","new_string":"b"}`},
+	for _, c := range []struct {
+		name, missing, want string
+		files               []string
+	}{
+		// dotfiles sort first, a directory is no file to read and a secret
+		// is not named: none may fill the suggestions
+		{"secrets, dotfiles and directories left out", "ap.go", "app.go, apt.go, apps.go", []string{".git", ".gitignore", "ap/", "app.go", "apps.go", "apt.go", "main.go", "app.env"}},
+		{"the nearest three, not the first three", "config.go", "config.ts, confg.go, configs.go", []string{"a_config.go", "confg.go", "config.ts", "config_old.go", "configs.go"}},
+		{"no near name", "zzz.txt", "", []string{"app.go"}},
 	} {
-		resp := call(t, toolNamed(t, c.tool, p), c.input)
-		if !resp.IsError || !strings.Contains(resp.Content, "did you mean app.go, apps.go, apt.go?") || strings.Contains(resp.Content, "app.env") || len(*asked) != 0 {
-			t.Errorf("%s: %+v asked %+v", c.tool, resp, *asked)
+		dir := t.TempDir()
+		for _, name := range c.files {
+			if d, ok := strings.CutSuffix(name, "/"); ok {
+				os.Mkdir(filepath.Join(dir, d), 0o755)
+			} else {
+				os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644)
+			}
 		}
-	}
-	if resp := call(t, toolNamed(t, "read", p), `{"path":"`+filepath.Join(dir, "zzz.txt")+`","limit":0}`); !resp.IsError || strings.Contains(resp.Content, "did you mean") {
-		t.Errorf("no near name: %+v", resp)
+		path := filepath.Join(dir, c.missing)
+		for tool, input := range map[string]string{
+			"read": `{"path":"` + path + `","limit":0}`,
+			"edit": `{"path":"` + path + `","old_string":"a","new_string":"b"}`,
+		} {
+			resp := call(t, toolNamed(t, tool, p), input)
+			_, got, _ := strings.Cut(strings.TrimSuffix(resp.Content, "?)"), "(did you mean ")
+			if !resp.IsError || got != c.want || len(*asked) != 0 {
+				t.Errorf("%s, %s: %q asked %+v, want %q", c.name, tool, resp.Content, *asked, c.want)
+			}
+		}
 	}
 }
 
