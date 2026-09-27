@@ -55,6 +55,7 @@ func TestMatch(t *testing.T) {
 		{"a one-token label matches fuzzily", "cfg", []string{"config", "rewind"}, nil, 0, "0[0 3 5]"},
 		{"a prefix hit highlights the prefix", "APP", []string{"app_app.go"}, nil, 0, "0[0 1 2]"},
 		{"prose needs the word in it", "rsm", []string{"resume a session", "rsm"}, nil, 0, "1[0 1 2]"},
+		{"padding makes no prose", "snt", []string{" sonnet "}, nil, 0, "0[1 3 6]"},
 		{"every word, any order, any case", "two b", []string{"alpha one", "Beta two", "gamma three"}, nil, 0, "1[0 5 6 7]"},
 		{"a word may match the text instead", "openai gpt", []string{"gpt-5", "o3"}, []string{"openai", "openai"}, 0, "0[0 1 2]"},
 		{"a full id finds its row", "openai/gpt-5", []string{"anthropic/claude-sonnet-4", "openai/gpt-5"}, nil, 0, "1[0 1 2 3 4 5 6 7 8 9 10 11]"},
