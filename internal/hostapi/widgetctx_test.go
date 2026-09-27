@@ -16,6 +16,23 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
+// TestRelpath: a chat row writes a path under the working directory
+// relative to it and one elsewhere under home from ~, as ctx.cwd reads.
+func TestRelpath(t *testing.T) {
+	runUser(t, newTestHostUI(t).RT, `
+local relpath = require("zemi.tui.text").relpath
+for _, c in ipairs({
+  { "/h/me/p/a.go", "~/p", "/h/me", "a.go" },
+  { "cat /h/me/.x/b /h/me/p/c", "~/p", "/h/me", "cat ~/.x/b c" },
+  { "/h/meta/a", "~/p", "/h/me", "/h/meta/a" },
+  { "/tmp/p/a.go", "/tmp/p", "/h/me", "a.go" },
+}) do
+  local got = relpath(c[1], c[2], c[3])
+  assert(got == c[4], c[1] .. " reads " .. got .. ", want " .. c[4])
+end
+`)
+}
+
 // BenchmarkWidgetCtx renders a statusline-like widget that reads one field
 // over an empty and a 500-row transcript: the gap is what building the
 // transcript for widgets that never read it costs.

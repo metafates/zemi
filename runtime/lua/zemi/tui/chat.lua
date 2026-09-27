@@ -189,7 +189,7 @@ zemi.ui.widget.add({
     end
     ---@param s string
     ---@return string
-    local function relpath(s) return fmt.relpath(s, ctx.cwd) end
+    local function relpath(s) return fmt.relpath(s, ctx.cwd, ctx.home) end
     ---@param group zemi.tui.Tool[]
     ---@param click string The id a click on the summary row carries.
     local function add_group(group, click)

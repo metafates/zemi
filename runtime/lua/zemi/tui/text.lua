@@ -124,11 +124,14 @@ function M.lower(s)
   return (s:gsub("^%u", string.lower))
 end
 
---- Text with every path under cwd written relative to it.
+--- Text with every path under cwd written relative to it, and every other
+--- path under home from ~, as ctx.cwd is written.
 ---@param s string
 ---@param cwd string?
+---@param home string?
 ---@return string
-function M.relpath(s, cwd)
+function M.relpath(s, cwd, home)
+  if home and home ~= "" and home ~= "/" then s = s:gsub(home:gsub("%p", "%%%0") .. "/", "~/") end
   if not cwd or cwd == "" then return s end
   return (s:gsub(cwd:gsub("%p", "%%%0") .. "/", ""))
 end
