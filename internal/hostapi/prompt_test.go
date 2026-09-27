@@ -65,6 +65,7 @@ func TestSystemPromptSections(t *testing.T) {
 func TestPromptFollowsToolSet(t *testing.T) {
 	h := newTestHostUI(t)
 	h.agents.sessionID = "s1" // a session has a scratchpad, whose line is part of the prompt
+	pad := h.ScratchDir()
 	h.agents.profiles["lean"] = &Profile{Name: "lean", Tools: []string{"-workflow", "-lua", "-job_start", "-lsp"}}
 	h.SetUIHooks(&fakeUI{})
 	lean, err := h.resolveProfile("lean")
@@ -78,9 +79,11 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		gone []string
 		once []string
 	}{
-		{"default", nil, []string{"Scratchpad: ", "offset and limit", `"job_start"`, "zemi-config before changing its settings", "say first what you will write"}, []string{"in one message"}, []string{"in one response"}},
-		// a subagent: explore reads and searches, and writes nothing
-		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, []string{"Put notes", "Put temporary files", "read for edit"}, nil},
+		{"default", nil, []string{"Scratchpad: ", "It is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "zemi-config before changing its settings", "say first what you will write"}, []string{"in one message", "keep your own files"}, []string{"in one response"}},
+		// subagents: explore reads and searches, and writes nothing; general
+		// shares the pad with its siblings
+		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "reading them needs no approval", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, []string{"Keep notes", "Keep temporary files", "keep your own files", "read for edit"}, nil},
+		{"general", &Profile{Name: "general"}, []string{"It is $TMPDIR in every command you run", "keep your own files in " + filepath.Join(pad, "general-r1")}, nil, nil},
 		{
 			"lean", lean,
 			[]string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
@@ -94,9 +97,10 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	} {
 		toolset := h.profileTools(c.p)
 		text, _ := h.buildSystemParts(c.p, toolset)
-		if c.name == "explore" {
-			toolset, _ = filterTools(tools.All(h.PipelineFor()), builtinAgents[0].Tools, h.toolSkip(subagentExcluded))
-			text = h.systemWith(h.subagentSystem(builtinAgents[0], toolset), toolset, h.ScratchDir())
+		if i := slices.IndexFunc(builtinAgents, func(d AgentDef) bool { return d.Name == c.name }); i >= 0 {
+			def := builtinAgents[i]
+			toolset, _ = filterTools(tools.All(h.PipelineFor()), def.Tools, h.toolSkip(subagentExcluded))
+			text = h.systemWith(h.subagentSystem(def, toolset), toolset, h.ScratchDir(), def.Name+"-r1")
 		}
 		for _, tool := range toolset {
 			text += fmt.Sprintf("\n%q %s", tool.Info().Name, tool.Info().Description)
@@ -205,7 +209,7 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte(strings.Repeat("a", contextBudget+100)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got := h.systemWith("base", nil, "")
+	got := h.systemWith("base", nil, "", "")
 	if !strings.Contains(got, "my rules") {
 		t.Fatal("the repository file evicted the user's own instructions")
 	}

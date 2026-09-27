@@ -315,7 +315,7 @@ Directories (XDG):
   plans/<session id>.md   plans approved from a read-only agent
 ~/.local/state/zemi/      state
   zemi.db                 global store (user memory, skills, kv, revisions)
-  scratch/<session id>/   per-session scratchpad, a sandboxed command's $TMPDIR (§9 write root)
+  scratch/<id prefix>/    per-session scratchpad, every model command's $TMPDIR (§9 write root)
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
   projects/<hash>/skills/<name>/SKILL.md  recipes: the project's private skills (§10.5)
   projects/<hash>/permissions  bash commands always allowed in the project (§6.1), read only when trusted
@@ -1871,9 +1871,10 @@ provenance string.
   `~/.npmrc`, `~/.git-credentials`, shell histories, ...), zemi's config,
   data and state dirs (sessions, logs, keys in `init.lua`; not when they
   hold the project, and the write roots inside them stay usable) and, on
-  macOS, the strict secret file shapes; writable are the session's scratchpad, also
-  its temp dir (set as `TMPDIR`, `TMP` and `TEMP`, so the file tools read what a
-  command left there without asking; the shared system temp dir and `/tmp`
+  macOS, the strict secret file shapes (in the scratchpad too, so a hint
+  names another file name as the way through); writable are the pipeline's scratchpad, also
+  its temp dir (`TMPDIR`, `TMP` and `TEMP`, which every model command gets, confined or not, so
+  the file tools read what a command left there without asking; the shared system temp dir and `/tmp`
   are not writable, since macOS keeps the `xcrun_db` there that picks what
   `/usr/bin/make` or `git` runs, and a denial naming one gets a hint
   pointing at `$TMPDIR` before `sandbox: false`), a Go
@@ -1933,9 +1934,10 @@ provenance string.
   outside the jail ask (model tools) or are refused (`zemi.fs`). The write root is the launch
   directory, which is also all a sandboxed command may write (`zemi.ui.edit` alone reaches the
   whole trusted repository: the user does that writing); the per-session scratchpad
-  (`<state>/scratch/<session id>`, §5, a sandboxed command's `$TMPDIR`) is outside it but
-  is the one path model `fs.write` allows by default (`fsDefault`;
-  `zemi.fs` cannot write there), and user config's `zemi.fs` also
+  (`<state>/scratch/<id prefix>`, §5, every model command's `$TMPDIR`) is outside it but
+  is the one path the model's file tools read and write by default, secret-shaped names aside
+  (`Pipeline.Check` on the pad the pipeline was bound to, so a run that outlives its session
+  keeps it; `zemi.fs` cannot write there), and user config's `zemi.fs` also
   reaches `<data>/lua` (`zemi.fs.data_dir(name)`, outside the watched config
   tree, never a root of the model's file tools or of a Lua tool script the
   user did not approve); the read jail is wider: project

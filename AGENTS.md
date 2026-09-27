@@ -300,7 +300,7 @@ by base name, its leading options dropped), so `git -C . push` meets a `git push
 allow is judged as written, and a git alias still slips past (NOTE in the code).
 
 File tools (internal/tools/fs_tools.go): `write` and `edit` refuse a file the
-model has not read, or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get
+model has not read (outside the scratchpad), or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get
 their own), and hold a per-path lock, so a concurrent agent or the user's editor cannot lose
 changes; within one step the lock is taken in call order (`tools.CallStart` from fantasy's
 `OnToolCall`, which fires for every call before any is dispatched; `tools.CallDone` from
@@ -387,7 +387,7 @@ behind it, a rule's verdict returned whole (`tools.ByRecheck`) so a network rule
 
 **Sandbox** (internal/sandbox, internal/hostapi/sandbox.go, DESIGN §9): a `tool.bash` verdict a
 mode gave (`DecidedBy` `mode:<name>`, base not yolo) makes `Pipeline.SandboxFor` return
-`h.sandboxPolicy(readOnly)`; `tool.Run` puts it on the per-run pipeline copy, and `runBash`,
+`h.sandboxPolicy(readOnly, pad)`; `tool.Run` puts it on the per-run pipeline copy, and `runBash`,
 `Jobs.Start`/`Adopt` call `sandbox.Wrap` before starting. A wrap error is a
 tool error, never an unconfined run. Rule-allowed and user-approved runs, `!command`,
 `zemi.job`, MCP servers and `Host.git` stay unconfined, except under a read-only agent, whose
@@ -397,8 +397,8 @@ run under `serverPolicy`. `NewHost` probes the backend synchronously, so `--heal
 schema see it.
 
 `sandboxPolicy` writes the policy; the whys behind it: the sandbox temp dir (`TMPDIR`) is the
-session's scratchpad, so the file tools read what a command left there without an ask, and
-never the shared system one (macOS keeps the `xcrun_db` there that picks what `/usr/bin/make`
+pipeline's scratchpad, as it is for every model command, so the file tools read what a command
+left there without an ask, and never the shared system one (macOS keeps the `xcrun_db` there that picks what `/usr/bin/make`
 and `git` run; a denial naming `/tmp` gets a hint pointing at `$TMPDIR` before `sandbox: false`),
 `GOCACHE` is one per trust root (Go trusts cache entries, so a shared one lets one project
 poison another's build), the project is writable only when it is trusted, outside zemi's own
@@ -423,7 +423,7 @@ argument must pass `safeCommandPath` (inside the project and not secret-shaped -
 matches the resolved path too, so a symlink cannot hide one, and every home path the sandbox
 hides (`secretDirs`: `~/.kube`, `~/.config/gh`, shell histories), whose names say nothing, so
 one list drives the sandbox, the re-ask and auto's read check; a plain read may also reach the
-scratchpad, zemi's config tree and the local plugins, but `cd` may not enter them). Readers keep their
+request's scratchpad, zemi's config tree and the local plugins, but `cd` may not enter them). Readers keep their
 `refusedFlags` and script checks, and `perm.ArgUse` says how an argument is used: a search
 pattern is no path, and a recursive search settles only over a tree with no secret-shaped file
 in it and, unless it skips hidden entries like a plain `rg`, no `.git` directory (`grep -r`
@@ -723,10 +723,19 @@ lua-language-server is installed.
   (`notifyReport`), like one for a session that moved on.
   `/agents` lists the live session's runs and, under Running, the live runs of every other session (`runningElsewhere`,
   named by that session's title): they block `/rewind`, so their stop must be reachable.
-- **Scratchpad** (scratch.go): `<state>/scratch/<session id>`, short enough for a Linux unix
-  socket path under it, pads of every project idle a week removed. It is a sandboxed command's
-  `TMPDIR`. `fsDefault` allows `fs.write` there and `Pipeline.Scratch` lets it pass a read-only
-  agent; a program may read it, never run from it.
+- **Scratchpad** (scratch.go): `<state>/scratch/<first 12 of the session id>`, short so a unix
+  socket path under it fits macOS's 104 bytes. A pipeline binds it once (`Pipeline.Pad`,
+  `Request.Pad`): `PipelineFor` the live session's, a subagent run its parent session's, so a run
+  that outlives `/new` or `/resume` keeps the pad its prompt names. It is `TMPDIR`, `TMP` and
+  `TEMP` in every command the model starts, confined or not (`Pipeline.childEnv`; the user's
+  `!command` keeps the user's). `Pipeline.Check` allows reads and writes there that no rule
+  decided, a read-only agent's included, but a secret-shaped name (`tools.PadSecret`); `write`
+  and `edit` need no prior read there (the stale check stays), a pad write is never
+  checkpointed, and `Destructive` lets an `rm` whose every operand is below the pad
+  (`$TMPDIR/...` or its literal path) settle. A file tool path starting with `$`, `~` or
+  `%VAR%` is refused naming the pad. Subagents are told to keep their files in
+  `<pad>/<agent>-<run id>`. `ensureScratch` removes pads with nothing in them changed for a
+  week, never the live one (NOTE: another window's pad unused that long goes too).
 - **Lua tool** (luatool.go, tool name `lua`): model Lua runs through `Runtime.Eval` as `user`
   origin, default-deny: without approval it may call only `luaReadOnly` members. Every Go
   function in a namespace passes the sandbox guard (`Sandbox.SetGuard` -> `guardLua`), which
