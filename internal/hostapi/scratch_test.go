@@ -81,6 +81,13 @@ func TestPadBoundPerPipeline(t *testing.T) {
 			t.Errorf("%s: %d bytes, spill not in the bound pad %s: %v %q", tool.Info().Name, len(resp.Content), pad, err, resp.Content[max(0, len(resp.Content)-200):])
 		}
 	}
+	script := filepath.Join(pad, "x.lua")
+	if err := os.MkdirAll(pad, 0o700); err != nil || os.WriteFile(script, []byte(`print("ran")`), 0o600) != nil {
+		t.Fatal(err)
+	}
+	if resp, err := h.luaEvalTool(old).Run(t.Context(), fantasy.ToolCall{Input: `{"description":"d","path":"` + script + `"}`}); err != nil || resp.Content != "ran" {
+		t.Errorf("a lua script in the bound pad: %q %v", resp.Content, err)
+	}
 	for _, c := range []struct {
 		name, subject string
 		p             *tools.Pipeline

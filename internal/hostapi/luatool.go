@@ -194,7 +194,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
-		pipe := h.PipelineFor()
+		pipe := *t.pipe
 		pipe.Path = path // judged where it is opened, not resolved again
 		if v := pipe.CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectRead, Arg: path.String()}); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, perm.SubjectRead+" "+in.Path)), nil
@@ -235,7 +235,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 			req.Unsandboxed = true
 			req.Reason = "uses " + strings.Join(unlisted, ", ") + ", which can change zemi or start programs outside the sandbox"
 		}
-		if v := h.PipelineFor().CheckDenied(req); v.Decision != perm.Allow {
+		if v := t.pipe.CheckDenied(req); v.Decision != perm.Allow {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, "Lua "+arg)), nil
 		}
 		if len(unlisted) > 0 {
