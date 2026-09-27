@@ -267,6 +267,22 @@ func TestMemoryReviewEmpty(t *testing.T) {
 	}
 }
 
+// TestMemoryReviewFilter: an open filter hints what enter still does, like
+// any filtered list, and leaves out the action keys it types.
+func TestMemoryReviewFilter(t *testing.T) {
+	app, _ := bootAgentApp(t, 90, 16)
+	openReview(t, app, []hostapi.MemoryRow{{ID: "m1", Scope: "project", Origin: "user", Text: "the fts join needs qualified columns"}})
+	pressKeys(app, "/fts")
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "enter open · esc back") || strings.Contains(frame, "d drop") {
+		t.Fatalf("filtered memory hints:\n%s", frame)
+	}
+	pressKeys(app, "enter")
+	if !app.memReview.detail {
+		t.Fatal("enter in a filter opens the row, as its hint says")
+	}
+}
+
 // TestMemoryReviewLongList: memories read whole and as plain text, so
 // markdown cannot hide part of one, the window scrolls to the selection, and the box keeps its place.
 func TestMemoryReviewLongList(t *testing.T) {

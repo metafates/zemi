@@ -276,14 +276,16 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 	}
 
 	var hints []hintPair
-	if i := mr.at(); i < len(mr.items) && !mr.active {
+	if i := mr.at(); i < len(mr.items) {
 		hints = append(hints, hintPair{"enter", "open"})
 		for _, c := range memActions(mr.items[i], len(mr.undo) > 0) {
 			verb := strings.ToLower(c.label)
 			if c.key == "o" { // the button's label does not fit a footer
 				verb = "editor"
 			}
-			hints = append(hints, hintPair{c.key, verb})
+			if !mr.active { // an open filter types the action keys
+				hints = append(hints, hintPair{c.key, verb})
+			}
 		}
 	}
 	esc := map[bool]string{true: "back", false: "close"}[mr.active]
