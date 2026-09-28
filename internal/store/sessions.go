@@ -36,31 +36,17 @@ func (s *DB) CreateSession(id, parentID, title, profile string) error {
 	return nil
 }
 
-const sessionCols = `id, parent_id, title, profile, created_at, updated_at,
+const sessionCols = `id, COALESCE(parent_id, ''), title, profile, created_at, updated_at,
 	prompt_tokens, completion_tokens, cost`
 
 func scanSession(row scanner) (*Session, error) {
-	var (
-		s      Session
-		parent any
-	)
-	if err := row.Scan(&s.ID, &parent, &s.Title, &s.Profile,
+	var s Session
+	if err := row.Scan(&s.ID, &s.ParentID, &s.Title, &s.Profile,
 		&s.CreatedAt, &s.UpdatedAt,
 		&s.PromptTokens, &s.CompletionTokens, &s.Cost); err != nil {
 		return nil, err
 	}
-	s.ParentID = asString(parent)
 	return &s, nil
-}
-
-func asString(v any) string {
-	if v == nil {
-		return ""
-	}
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return fmt.Sprint(v)
 }
 
 // GetSession loads one session by id.
@@ -318,15 +304,11 @@ type SessionPreview struct {
 // bound the scan: the picker shows a page of sessions, not every message
 // ever stored.
 func (s *DB) SessionPreviews(ids []string) (map[string]SessionPreview, error) {
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
 	rows, err := s.db.Query(`SELECT session_id, COUNT(*), COALESCE((
 			SELECT parts_json FROM messages f
 			WHERE f.session_id = m.session_id AND f.role = 'user' ORDER BY rowid LIMIT 1), '')
 		FROM messages m WHERE role IN ('user', 'assistant')
-		AND session_id IN (`+placeholders(len(ids))+`) GROUP BY session_id`, args...)
+		AND session_id IN (SELECT value FROM json_each(?)) GROUP BY session_id`, jsonList(ids))
 	if err != nil {
 		return nil, err
 	}

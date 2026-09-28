@@ -53,6 +53,12 @@ func TestMemorySupersedeAndDelete(t *testing.T) {
 	if len(list) != 2 {
 		t.Fatalf("full list = %+v", list)
 	}
+	if err := db.Unsupersede([]string{new.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = db.ListMemory("project", false); len(list) != 2 {
+		t.Fatalf("unsuperseded list = %+v", list)
+	}
 
 	if err := db.DeleteMemory(new.ID); err != nil {
 		t.Fatal(err)

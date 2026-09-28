@@ -44,21 +44,15 @@ type Memory struct {
 	Origin              Origin
 }
 
-const memoryCols = `id, scope, text, quote, provenance_session_id,
-	created_at, updated_at, superseded_by, origin`
+const memoryCols = `id, scope, text, quote, COALESCE(provenance_session_id, ''),
+	created_at, updated_at, COALESCE(superseded_by, ''), origin`
 
 func scanMemory(row scanner) (*Memory, error) {
-	var (
-		m         Memory
-		prov      any
-		supersede any
-	)
-	if err := row.Scan(&m.ID, &m.Scope, &m.Text, &m.Quote, &prov,
-		&m.CreatedAt, &m.UpdatedAt, &supersede, &m.Origin); err != nil {
+	var m Memory
+	if err := row.Scan(&m.ID, &m.Scope, &m.Text, &m.Quote, &m.ProvenanceSessionID,
+		&m.CreatedAt, &m.UpdatedAt, &m.SupersededBy, &m.Origin); err != nil {
 		return nil, err
 	}
-	m.ProvenanceSessionID = asString(prov)
-	m.SupersededBy = asString(supersede)
 	return &m, nil
 }
 
@@ -102,12 +96,8 @@ func (s *DB) GetMemory(id string) (*Memory, error) {
 // ListMemory returns a scope's memories, newest first; superseded rows are
 // included only when asked.
 func (s *DB) ListMemory(scope Scope, includeSuperseded bool) ([]*Memory, error) {
-	q := `SELECT ` + memoryCols + ` FROM memory WHERE scope = ?`
-	if !includeSuperseded {
-		q += ` AND superseded_by IS NULL`
-	}
-	q += ` ORDER BY updated_at DESC`
-	rows, err := s.db.Query(q, scope)
+	rows, err := s.db.Query(`SELECT `+memoryCols+` FROM memory WHERE scope = ? AND (? OR superseded_by IS NULL)
+		ORDER BY updated_at DESC`, scope, includeSuperseded)
 	return collect(rows, err, scanMemory)
 }
 
@@ -148,10 +138,6 @@ func (s *DB) DeleteLearnedBetween(sessionID string, from, until int64) ([]string
 // Unsupersede makes the memories ids replaced live again.
 func (s *DB) Unsupersede(ids []string) error {
 	defer s.memGen.Add(1)
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
-	_, err := s.db.Exec(`UPDATE memory SET superseded_by = NULL WHERE superseded_by IN (`+placeholders(len(ids))+`)`, args...)
+	_, err := s.db.Exec(`UPDATE memory SET superseded_by = NULL WHERE superseded_by IN (SELECT value FROM json_each(?))`, jsonList(ids))
 	return err
 }

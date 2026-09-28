@@ -60,7 +60,7 @@ func (s *DB) SyncSkills(discovered []*Skill) error {
 		return fmt.Errorf("store: sync skills: %w", err)
 	}
 	defer tx.Rollback()
-	names := make([]any, len(discovered))
+	names := make([]string, len(discovered))
 	for i, sk := range discovered {
 		names[i] = sk.Name
 		if _, err := tx.Exec(`INSERT INTO skills (name, path, source, enabled, created_at)
@@ -70,8 +70,7 @@ func (s *DB) SyncSkills(discovered []*Skill) error {
 			return fmt.Errorf("store: sync skills: %w", err)
 		}
 	}
-	if _, err := tx.Exec(`DELETE FROM skills WHERE name NOT IN (`+placeholders(len(names))+`)`,
-		names...); err != nil {
+	if _, err := tx.Exec(`DELETE FROM skills WHERE name NOT IN (SELECT value FROM json_each(?))`, jsonList(names)); err != nil {
 		return fmt.Errorf("store: sync skills: %w", err)
 	}
 	return tx.Commit()

@@ -6,11 +6,11 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -248,6 +248,16 @@ func nullString(s string) any {
 	return s
 }
 
+// jsonList is strings as one parameter for IN (SELECT value FROM json_each(?));
+// never "null", which json_each reads as one NULL row that NOT IN never passes.
+func jsonList(s []string) string {
+	if len(s) == 0 {
+		return "[]"
+	}
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
 type scanner interface{ Scan(...any) error }
 
 // collect scans every row of a query and closes it.
@@ -277,15 +287,6 @@ func (s *DB) execOne(what, query string, args ...any) error {
 		return ErrNotFound
 	}
 	return nil
-}
-
-// placeholders returns n comma-separated "?", or an empty string literal
-// for none so IN () stays valid.
-func placeholders(n int) string {
-	if n == 0 {
-		return "''"
-	}
-	return strings.Repeat(",?", n)[1:]
 }
 
 // ProjectDBPath is the per-project database location: a hash of the
