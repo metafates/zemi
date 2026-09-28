@@ -111,13 +111,13 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- A provider zemi does not know, a local server, or a gateway in front of
 -- a known one (reuse its id: yours replaces it whole):
 -- zemi.provider.add({
---   id = "local",
---   kind = zemi.provider.kind.OPENAI_COMPAT,   -- or ANTHROPIC, OPENAI, GOOGLE, OPENROUTER, VERCEL
---   base_url = "http://localhost:11434/v1",   -- required for OPENAI_COMPAT, refused for OPENROUTER, an endpoint override for the rest
---   api_key = zemi.env.get("LOCAL_API_KEY"),   -- leave out for a server that needs none
---   headers = { ["X-Team"] = "core" },   -- extra headers a gateway needs; as secret as the key
---   body = { service_tier = "flex" },   -- extra request-body fields; not sent by GOOGLE
---   models = { { id = "qwen3", context_window = 32000 } },   -- cost_per_1m_in/out optional; vision = false for a text-only model
+-- 	id = "local",
+-- 	kind = zemi.provider.kind.OPENAI_COMPAT,   -- or ANTHROPIC, OPENAI, GOOGLE, OPENROUTER, VERCEL
+-- 	base_url = "http://localhost:11434/v1",   -- required for OPENAI_COMPAT, refused for OPENROUTER, an endpoint override for the rest
+-- 	api_key = zemi.env.get("LOCAL_API_KEY"),   -- leave out for a server that needs none
+-- 	headers = { ["X-Team"] = "core" },   -- extra headers a gateway needs; as secret as the key
+-- 	body = { service_tier = "flex" },   -- extra request-body fields; not sent by GOOGLE
+-- 	models = { { id = "qwen3", context_window = 32000 } },   -- cost_per_1m_in/out optional; vision = false for a text-only model
 -- })
 -- zemi.provider.del("openai")   -- drop one builtin provider
 -- zemi.config.set("providers.builtin", false)   -- or all of them
@@ -142,21 +142,21 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 
 -- Your own slash command, completed in the palette like the builtin ones.
 -- zemi.command.add("tests", function(a)
---   zemi.agent.send("run the tests" .. (a.args ~= "" and " for " .. a.args or ""))
+-- 	zemi.agent.send("run the tests" .. (a.args ~= "" and " for " .. a.args or ""))
 -- end, { desc = "ask the agent to run the tests", nargs = "?" })
 
 -- Everything on screen is a widget: an id, a region, and a render that
 -- returns lines of { text, hl } segments. Reuse a builtin id to replace it.
 -- zemi.ui.widget.add({
---   id = "msgs", region = "statusline.right", priority = 5,
---   render = function(ctx) return { { { text = ctx.transcript_count .. " msgs", hl = "Dim" } } } end,
+-- 	id = "msgs", region = "statusline.right", priority = 5,
+-- 	render = function(ctx) return { { { text = ctx.transcript_count .. " msgs", hl = "Dim" } } } end,
 -- })
 
 -- Permissions: allow rules come only from your own config. Each rule needs
 -- match, an argument its pattern must match, so a typo fails at startup.
 -- zemi.permission.rule.add({
---   subject = "tool.bash", pattern = "git push *", decision = zemi.permission.decision.ASK,
---   match = "git push origin main",
+-- 	subject = "tool.bash", pattern = "git push *", decision = zemi.permission.decision.ASK,
+-- 	match = "git push origin main",
 -- })
 
 -- zemi writes type annotations for the whole zemi.* API and a .luarc.json

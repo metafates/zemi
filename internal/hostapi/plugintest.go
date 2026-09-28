@@ -755,54 +755,54 @@ func (t *PluginTest) answer(L *glua.LState) int {
 const eqLua = `local rel = ...
 
 local function diff(got, want, path, seen)
-  if type(got) == "table" and type(want) == "table" then
-    seen[got] = seen[got] or {}
-    if seen[got][want] then return end
-    seen[got][want] = true
-    local both, u = {}, require("zemi.util")
-    for k in pairs(got) do both[k] = true end
-    for k in pairs(want) do both[k] = true end
-    for _, k in ipairs(u.keys(both)) do
-      local key = type(k) == "string" and k:find("^[%a_][%w_]*$") and "." .. k or "[" .. u.inspect(k) .. "]"
-      local p, g, w = diff(got[k], want[k], path .. key, seen)
-      if p then return p, g, w end
-    end
-  elseif got ~= want and (got == got or want == want) then -- NaN equals NaN
-    return path, got, want
-  end
+	if type(got) == "table" and type(want) == "table" then
+		seen[got] = seen[got] or {}
+		if seen[got][want] then return end
+		seen[got][want] = true
+		local both, u = {}, require("zemi.util")
+		for k in pairs(got) do both[k] = true end
+		for k in pairs(want) do both[k] = true end
+		for _, k in ipairs(u.keys(both)) do
+			local key = type(k) == "string" and k:find("^[%a_][%w_]*$") and "." .. k or "[" .. u.inspect(k) .. "]"
+			local p, g, w = diff(got[k], want[k], path .. key, seen)
+			if p then return p, g, w end
+		end
+	elseif got ~= want and (got == got or want == want) then -- NaN equals NaN
+		return path, got, want
+	end
 end
 
 local function window(g, w)
-  local i = 1
-  while i <= #g and g:byte(i) == w:byte(i) do i = i + 1 end
-  local function cut(s)
-    local from, to = math.max(1, i - 10), math.min(#s, i + 39)
-    -- a cut inside a UTF-8 sequence moves to its edge
-    while from > 1 and s:byte(from) >= 128 and s:byte(from) < 192 do from = from - 1 end
-    while to < #s and s:byte(to + 1) >= 128 and s:byte(to + 1) < 192 do to = to + 1 end
-    local q = require("zemi.util").inspect(s:sub(from, to))
-    if from > 1 then q = '"...' .. q:sub(2) end
-    if to < #s then q = q:sub(1, -2) .. '..."' end
-    return q
-  end
-  local chars = select(2, g:sub(1, i - 1):gsub("[^\128-\191]", "")) + 1
-  return ("got %s, want %s (first difference at char %d)"):format(cut(g), cut(w), chars)
+	local i = 1
+	while i <= #g and g:byte(i) == w:byte(i) do i = i + 1 end
+	local function cut(s)
+		local from, to = math.max(1, i - 10), math.min(#s, i + 39)
+		-- a cut inside a UTF-8 sequence moves to its edge
+		while from > 1 and s:byte(from) >= 128 and s:byte(from) < 192 do from = from - 1 end
+		while to < #s and s:byte(to + 1) >= 128 and s:byte(to + 1) < 192 do to = to + 1 end
+		local q = require("zemi.util").inspect(s:sub(from, to))
+		if from > 1 then q = '"...' .. q:sub(2) end
+		if to < #s then q = q:sub(1, -2) .. '..."' end
+		return q
+	end
+	local chars = select(2, g:sub(1, i - 1):gsub("[^\128-\191]", "")) + 1
+	return ("got %s, want %s (first difference at char %d)"):format(cut(g), cut(w), chars)
 end
 
 return function(...)
-  if select("#", ...) < 2 then error("test.eq: takes the value got and the value wanted", 3) end
-  local got, want = ...
-  local path, g, w = diff(got, want, "", {})
-  if not path then return end
-  local inspect = require("zemi.util").inspect
-  local msg = "got " .. inspect(g) .. ", want " .. inspect(w)
-  if type(g) == "string" and type(w) == "string" and math.max(#g, #w) > 40 then msg = window(rel(g), rel(w)) end
-  if path ~= "" then
-    local gl, wl = inspect(got), inspect(want)
-    msg = path:gsub("^%.", "") .. ": " .. msg
-    if #gl + #wl <= 120 then msg = msg .. "\ngot  " .. gl .. "\nwant " .. wl end
-  end
-  error(msg, 3) -- 3: gopher-lua counts error itself
+	if select("#", ...) < 2 then error("test.eq: takes the value got and the value wanted", 3) end
+	local got, want = ...
+	local path, g, w = diff(got, want, "", {})
+	if not path then return end
+	local inspect = require("zemi.util").inspect
+	local msg = "got " .. inspect(g) .. ", want " .. inspect(w)
+	if type(g) == "string" and type(w) == "string" and math.max(#g, #w) > 40 then msg = window(rel(g), rel(w)) end
+	if path ~= "" then
+		local gl, wl = inspect(got), inspect(want)
+		msg = path:gsub("^%.", "") .. ": " .. msg
+		if #gl + #wl <= 120 then msg = msg .. "\ngot  " .. gl .. "\nwant " .. wl end
+	end
+	error(msg, 3) -- 3: gopher-lua counts error itself
 end
 `
 

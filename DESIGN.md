@@ -721,14 +721,14 @@ zemi.keymap.get("ctrl+e")              -- { key, action, desc, origin } or nil
 zemi.keymap.list()
 
 zemi.command.add("Todo", function(args)
-    zemi.notify({ body = "todo: " .. (args.args or "") })
-  end, { desc = "show todos", nargs = "?", complete = function(prefix) return {} end })
+		zemi.notify({ body = "todo: " .. (args.args or "") })
+	end, { desc = "show todos", nargs = "?", complete = function(prefix) return {} end })
 
 zemi.event.on("tool.pre", function(ev)
-    if ev.tool == "bash" and ev.input.command:match("^rm%s") then
-      return { decision = "deny", reason = "no rm from the model" }
-    end
-  end, { id = "safety.no-rm" })
+		if ev.tool == "bash" and ev.input.command:match("^rm%s") then
+			return { decision = "deny", reason = "no rm from the model" }
+		end
+	end, { id = "safety.no-rm" })
 zemi.event.emit("user.my-thing", { any = "payload" })
 ```
 
@@ -868,11 +868,11 @@ handler runs no Lua.
 ```lua
 -- Profiles are named agent shapes (fantasy agent + prompt + tools + model).
 zemi.agent.profile.add("coder", {
-  model = "anthropic/claude-sonnet-4-5",
-  system = [[You are zemi, a coding agent...]],
-  tools = { "read", "edit", "bash", "glob", "grep" },
-  context = { files = { "AGENTS.md", "CONTRIBUTING.md" } },
-  temperature = 0.2,
+	model = "anthropic/claude-sonnet-4-5",
+	system = [[You are zemi, a coding agent...]],
+	tools = { "read", "edit", "bash", "glob", "grep" },
+	context = { files = { "AGENTS.md", "CONTRIBUTING.md" } },
+	temperature = 0.2,
 })
 -- read_only makes a profile a planning agent: the project is read-only to it
 -- and the pipeline denies writes and confines commands; "planner" ships that way.
@@ -907,12 +907,12 @@ h:cancel()
 -- profile, an agent definition, a workflow) a role name works too.
 
 zemi.provider.add({
-  id = "myllm",
-  kind = zemi.provider.kind.OPENAI_COMPAT,  -- fantasy/openaicompat under the hood
-  base_url = "https://llm.internal/v1",
-  api_key = zemi.env.get("MYLLM_KEY"),
-  body = { service_tier = "flex" },         -- extra request-body fields (not google)
-  models = { { id = "main", display = "Main" } },
+	id = "myllm",
+	kind = zemi.provider.kind.OPENAI_COMPAT,  -- fantasy/openaicompat under the hood
+	base_url = "https://llm.internal/v1",
+	api_key = zemi.env.get("MYLLM_KEY"),
+	body = { service_tier = "flex" },         -- extra request-body fields (not google)
+	models = { { id = "main", display = "Main" } },
 })
 ```
 
@@ -1008,28 +1008,28 @@ their prompt once per run.
 
 ```lua
 zemi.tool.add({
-  name = "figlet",
-  description = "Render text as ASCII art",
-  input = { text = { type = "string" } },     -- the parameters, flat
-  required = { "text" },
-  parallel = false,
-  timeout_ms = 5000,                           -- wall time, waits included
-  -- execute returns a string, { output = string }, or a table sent as JSON;
-  -- `nil, err` is a tool error result (§6.0); a raise is one too, its
-  -- traceback kept for /errors.
-  execute = function(args, run)              -- run: { name, origin, progress }
-    run:progress("rendering")                 -- one line on the call's row
-    -- zemi.job.wait suspends execute and frees the interpreter (§4)
-    return { output = zemi.job.wait({ cmd = "figlet", args = { args.text } }).stdout }
-  end,
+	name = "figlet",
+	description = "Render text as ASCII art",
+	input = { text = { type = "string" } },     -- the parameters, flat
+	required = { "text" },
+	parallel = false,
+	timeout_ms = 5000,                           -- wall time, waits included
+	-- execute returns a string, { output = string }, or a table sent as JSON;
+	-- `nil, err` is a tool error result (§6.0); a raise is one too, its
+	-- traceback kept for /errors.
+	execute = function(args, run)              -- run: { name, origin, progress }
+		run:progress("rendering")                 -- one line on the call's row
+		-- zemi.job.wait suspends execute and frees the interpreter (§4)
+		return { output = zemi.job.wait({ cmd = "figlet", args = { args.text } }).stdout }
+	end,
 })
 
 zemi.tool.override("bash", { pre = function(input)          -- wrap builtin;
-    if input.command:match("^rm%s") then                    -- nil = pass through
-      return { decision = "deny", reason = "no rm here" }
-    end
-  end,
-  post = function(ev) return { output = ev.output:sub(-2000) } end })  -- §6.2
+		if input.command:match("^rm%s") then                    -- nil = pass through
+			return { decision = "deny", reason = "no rm here" }
+		end
+	end,
+	post = function(ev) return { output = ev.output:sub(-2000) } end })  -- §6.2
 zemi.tool.list()          -- introspection for UI and reflector
 ```
 
@@ -1151,33 +1151,33 @@ stdin is closed unless the job asks for a pipe with `stdin = true`).
 ```lua
 -- A statusline segment
 zemi.ui.widget.add({
-  id = "clock", region = "statusline.right", priority = 10,
-  render = function(ctx)   -- ctx: { width, session, agent, time, ... }
-    return { { { text = ctx.time, hl = "Comment" } } }  -- lines of segments
-  end,
+	id = "clock", region = "statusline.right", priority = 10,
+	render = function(ctx)   -- ctx: { width, session, agent, time, ... }
+		return { { { text = ctx.time, hl = "Comment" } } }  -- lines of segments
+	end,
 })
 
 -- Overlays (modals/pickers) with their own keymaps
 zemi.ui.overlay.open({
-  id = "model-picker", title = "Model",
-  items = zemi.model.list(),
-  render_item = function(m) return m.display end,  -- or a line of segments
-  selected = 2, anchor = "bottom-right",           -- 1-based; by its statusline pill
-  on_select = function(m) zemi.model.set(m.id) end,
+	id = "model-picker", title = "Model",
+	items = zemi.model.list(),
+	render_item = function(m) return m.display end,  -- or a line of segments
+	selected = 2, anchor = "bottom-right",           -- 1-based; by its statusline pill
+	on_select = function(m) zemi.model.set(m.id) end,
 })
 
 -- Pickers in the shape of vim.ui.select: on_choice(item), nil on cancel
 zemi.ui.select(zemi.model.list(), {
-  prompt = "Model",
-  format_item = function(m) return m.display end,
+	prompt = "Model",
+	format_item = function(m) return m.display end,
 }, function(m) if m then zemi.model.set(m.id) end end)
 
 -- Themes: palettes + highlight groups resolved by Go (colorprofile-aware)
 zemi.ui.theme.add("tokyonight", {
-  palette = { bg = "#1a1b26", fg = "#a9b1d6" },
-  hl = { Comment = { fg = "fg", italic = true },
-         StatusLine = { bg = "bg", fg = "fg" },
-         DiffAdd = { fg = "#9ece6a" } },
+	palette = { bg = "#1a1b26", fg = "#a9b1d6" },
+	hl = { Comment = { fg = "fg", italic = true },
+	       StatusLine = { bg = "bg", fg = "fg" },
+	       DiffAdd = { fg = "#9ece6a" } },
 })
 zemi.ui.theme.set("tokyonight")
 ```
@@ -2324,10 +2324,10 @@ get one. What follows is the intended shape (M4, §13).
 
 ```lua
 zemi.eval.suite("core", {
-  { id = "greets", prompt = "say hi",
-    expect = function(transcript) return transcript.text:find("hi") ~= nil end },
-  { id = "uses_todos", prompt = "plan 3 tasks", tools = mock.tools(),
-    expect = function(t) return #t.tool_calls("todos") > 0 end },
+	{ id = "greets", prompt = "say hi",
+		expect = function(transcript) return transcript.text:find("hi") ~= nil end },
+	{ id = "uses_todos", prompt = "plan 3 tasks", tools = mock.tools(),
+		expect = function(t) return #t.tool_calls("todos") > 0 end },
 })
 ```
 
