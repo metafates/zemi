@@ -1,4 +1,5 @@
 /bin/
+/zemi
 .claude/*
 !.claude/skills
 *.test
