@@ -309,6 +309,10 @@ func pluginsCommand() *cobra.Command {
 	yes := false
 	// git clones and fetches: an interrupt stops them and exits with 130
 	run := func(c *cobra.Command, args []string) error {
+		// asked before the signal context, so ctrl+c at the prompt ends zemi
+		if c.Name() == "delete" && !yes && !confirm(c, "Delete the plugin "+args[0]+" and its files?") {
+			return exitStatus(1)
+		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		dirs, err := config.ResolveDirs()
@@ -320,8 +324,6 @@ func pluginsCommand() *cobra.Command {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no plugins yet; zemi plugins install <git url> adds one")
 			}
 			err = errors.Join(err, plugins.Table(c.OutOrStdout(), ps))
-		case c.Name() == "delete" && !yes && !confirm(c, "Delete the plugin "+args[0]+" and its files?"):
-			return exitStatus(1)
 		default:
 			err = plugins.Run(ctx, dirs, append([]string{c.Name()}, args...), c.OutOrStdout())
 		}
