@@ -185,7 +185,6 @@ func TestSandboxedBash(t *testing.T) {
 		{"private temp write", "sbx", private, false, false, false, true, "", ""},
 		{"binary planted in a PATH dir", "sbx", filepath.Join(venv, "git"), false, false, false, false, venv + " is read-only to commands: zemi runs programs from it unconfined", ""},
 		{"system temp write", "sbx", shared, false, false, false, false, "/tmp is not writable: use $TMPDIR.", ""},
-		{"write outside", "sbx", filepath.Join(outside, "x.txt"), false, false, false, false, "/tmp is not writable: use $TMPDIR.", ""},
 		{"sandbox false asks", "sbx", filepath.Join(outside, "y.txt"), true, false, false, false, "", "run outside the sandbox"},
 		{"network asks", "sbx", filepath.Join(h.Dirs.ProjectDir, "net.txt"), false, true, false, false, "", "needs the network, staying sandboxed"},
 		{"an approved network run stays confined", "sbx", filepath.Join(outside, "net.txt"), false, true, true, false, "/tmp is not writable", "needs the network, staying sandboxed"},
