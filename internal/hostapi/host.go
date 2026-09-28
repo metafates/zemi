@@ -1449,6 +1449,9 @@ var waitings = []Waiting{WaitApproval, WaitPlan, WaitAnswer}
 // ClockLayout formats UIState.Time, the wall clock widgets show.
 const ClockLayout = "15:04"
 
+// StampLayout dates a session in an export and in zemi sessions.
+const StampLayout = time.DateOnly + " " + ClockLayout
+
 // UIState is the context snapshot passed to widget renders.
 type UIState struct {
 	Time  string // the wall clock in ClockLayout, stepped once a minute

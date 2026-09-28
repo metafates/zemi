@@ -57,7 +57,7 @@ func (h *Host) ResumeSession(id string) error {
 	sess, err := h.DB.GetSession(id)
 	if errors.Is(err, store.ErrNotFound) {
 		if h.hooks() == nil {
-			return Usagef("no session %q", id)
+			return Usagef("no session %q; zemi sessions lists them", id)
 		}
 		return Usagef("no session %q; /sessions lists them", id)
 	}

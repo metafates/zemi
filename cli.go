@@ -2,10 +2,12 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -22,6 +24,8 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/plugins"
+	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // envHelp ends the root's help only.
@@ -174,7 +178,7 @@ call, so one the mode leaves to the user is denied and stderr counts them.`,
 		},
 	}
 
-	root.AddCommand(run, pluginsCommand(), health)
+	root.AddCommand(run, sessionsCommand(), pluginsCommand(), health)
 	return root
 }
 
@@ -300,6 +304,68 @@ func pluginsCommand() *cobra.Command {
 		},
 	})
 	return cmd
+}
+
+func sessionsCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "sessions",
+		Short: "list this project's sessions, newest first",
+		Args:  cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			dirs, err := config.ResolveDirs()
+			if err != nil {
+				return err
+			}
+			var list []*store.Session
+			db, err := projectStore(dirs)
+			if err == nil {
+				defer db.Close()
+				list, err = db.ListSessions(-1)
+			}
+			if errors.Is(err, fs.ErrNotExist) || err == nil && len(list) == 0 {
+				fmt.Fprintf(c.ErrOrStderr(), "zemi: no sessions in %s yet\n", hostapi.TildePath(dirs.TrustRoot()))
+				return nil
+			}
+			for _, s := range list {
+				title := cmp.Or(strings.Join(strings.Fields(sanitize.String(s.Title)), " "), "(untitled)")
+				fmt.Fprintf(c.OutOrStdout(), "%s  %s  %s\n", s.ID, time.UnixMilli(s.UpdatedAt).Format(hostapi.StampLayout), title)
+			}
+			return err
+		},
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "export <id>",
+		Short: "print a session as markdown",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(c *cobra.Command, args []string) error {
+			dirs, err := config.ResolveDirs()
+			if err != nil {
+				return err
+			}
+			db, err := projectStore(dirs)
+			md := ""
+			if err == nil {
+				defer db.Close()
+				md, err = hostapi.SessionMarkdown(db, args[0], false)
+			}
+			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("no session %q; zemi sessions lists them", args[0])
+			}
+			fmt.Fprint(c.OutOrStdout(), md)
+			return err
+		},
+	})
+	return cmd
+}
+
+// projectStore opens this project's store. A missing one is fs.ErrNotExist
+// and stays missing, so a look or a tab press creates no database.
+func projectStore(dirs config.Dirs) (*store.DB, error) {
+	path := store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot())
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+	return store.Open(path)
 }
 
 // confirm asks on stderr and reads the answer from stdin; only y or yes is

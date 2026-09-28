@@ -15,6 +15,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // TestCLI runs command lines through execute with a launch that records
@@ -40,6 +41,19 @@ func TestCLI(t *testing.T) {
 	base, dir := t.TempDir(), t.TempDir()
 	t.Chdir(base)
 	t.Setenv("PWD", base)
+	const sid = "3f9c1ad2e8b04c7f9a51d0e6b2c4a8f1"
+	dirs, err := config.ResolveDirs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateSession(sid, "", "fix the failing test", "default"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
 	for _, c := range []struct {
 		name           string
 		args           []string
@@ -62,7 +76,10 @@ func TestCLI(t *testing.T) {
 		{name: "version", args: []string{"--version"}, stdout: "zemi "},
 		{name: "health takes no args", args: []string{"health", "x"}, code: 2, stderr: "Run 'zemi health --help'"},
 		{name: "a parent takes no args", args: []string{"plugins", "are", "slow"}, code: 2, stderr: `unknown command "are" for "zemi plugins"`},
-		{name: "a failure is 1", args: []string{"plugins", "enable", "nope"}, code: 1, stderr: `zemi: plugins enable: no plugin is named "nope"`},
+		{name: "a failure is 1", args: []string{"sessions", "export", "nope"}, code: 1, stderr: `zemi: sessions export: no session "nope"`},
+		{name: "sessions lists", args: []string{"sessions"}, stdout: sid + "  "},
+		{name: "export prints markdown", args: []string{"sessions", "export", sid}, stdout: "# fix the failing test\n"},
+		{name: "no store, no sessions", args: []string{"-C", dir, "sessions"}, stderr: "zemi: no sessions in "},
 		{name: "plugins arity", args: []string{"plugins", "enable"}, code: 2},
 		{name: "delete off a terminal", args: []string{"plugins", "delete", "zzq"}, code: 2, stderr: "pass --yes to delete zzq"},
 		{name: "plugins lists", args: []string{"plugins"}, stdout: "zzq"},

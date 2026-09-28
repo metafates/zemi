@@ -150,19 +150,10 @@ func codeBlocks(md string) []codeBlock {
 
 // ExportSession writes the live session as markdown to path ("" picks
 // zemi-<id>.md in the project), says where, and returns the path written.
-// full adds reasoning, every tool call expanded and the subagent runs.
 func (h *Host) ExportSession(path string, full bool) (string, error) {
 	sid := h.AgentSessionID()
 	if sid == "" || h.DB == nil {
 		return "", Usagef("no session to export")
-	}
-	sess, err := h.DB.GetSession(sid)
-	if err != nil {
-		return "", err
-	}
-	rows, err := h.DB.Messages(sid)
-	if err != nil {
-		return "", err
 	}
 	if path == "" {
 		path = filepath.Join(h.Dirs.ProjectDir, "zemi-"+sid[:min(8, len(sid))]+".md")
@@ -175,23 +166,45 @@ func (h *Host) ExportSession(path string, full bool) (string, error) {
 	if h.secretPath(path) {
 		return "", Usagef("refusing to write over %s", path)
 	}
+	md, err := SessionMarkdown(h.DB, sid, full)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, []byte(md), 0o644); err != nil {
+		return "", err
+	}
+	h.Notify(logging.Info, "Session exported", "saved to "+TildePath(h.relPath(path)))
+	return path, nil
+}
+
+// SessionMarkdown is a session as markdown; full adds reasoning, every tool
+// call expanded and the subagent runs.
+func SessionMarkdown(db *store.DB, sid string, full bool) (string, error) {
+	sess, err := db.GetSession(sid)
+	if err != nil {
+		return "", err
+	}
+	rows, err := db.Messages(sid)
+	if err != nil {
+		return "", err
+	}
 	title := sanitize.String(sess.Title)
 	if title == "" {
 		title = "zemi session"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n_zemi session %s, %s_\n", title, sid, time.UnixMilli(sess.CreatedAt).Format(time.DateOnly+" "+ClockLayout))
+	fmt.Fprintf(&b, "# %s\n\n_zemi session %s, %s_\n", title, sid, time.UnixMilli(sess.CreatedAt).Format(StampLayout))
 	_, tr := historyFrom(rows)
 	exportMarkdown(&b, tr, 2, full)
 	if full {
 		// NOTE: raw tool results stay out, the rows' short output stands in;
 		// a reader who needs a whole result reads the store
-		runs, err := h.DB.ChildSessions(sid)
+		runs, err := db.ChildSessions(sid)
 		if err != nil {
 			return "", err
 		}
 		for _, run := range slices.Backward(runs) {
-			rows, err := h.DB.Messages(run.ID)
+			rows, err := db.Messages(run.ID)
 			if err != nil {
 				return "", err
 			}
@@ -200,11 +213,7 @@ func (h *Host) ExportSession(path string, full bool) (string, error) {
 			exportMarkdown(&b, tr, 3, true)
 		}
 	}
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
-		return "", err
-	}
-	h.Notify(logging.Info, "Session exported", "saved to "+TildePath(h.relPath(path)))
-	return path, nil
+	return b.String(), nil
 }
 
 // exportMarkdown writes transcript rows as markdown under level headers, one
