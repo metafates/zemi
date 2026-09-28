@@ -97,7 +97,7 @@ func TestBuiltinSkillReferences(t *testing.T) {
 		rows = append(rows, struct{ name, text string }{path, body})
 	}
 	// a bare name: commands/<name>.md is a path, AGENTS.md no reference file
-	ref := regexp.MustCompile("(?:^|[\\s(`])([a-z]+\\.md)\\b")
+	ref := regexp.MustCompile("(?:^|[\\s(`])([a-z][a-z0-9-]*\\.md)\\b")
 	for _, r := range rows {
 		for _, m := range ref.FindAllStringSubmatch(r.text, -1) {
 			file := m[1]
