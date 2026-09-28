@@ -201,8 +201,8 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	defer c.snapshot(composerSnap{c.text, c.cursor}, t != "" && t != " ")
 
 	// Popups take the list moves but for the ones that edit text: k, j,
-	// home and end.
-	popupMove := !slices.Contains([]string{"k", "j", "home", "end"}, key)
+	// home, end and the half pages, which a ten-row popup has no use for.
+	popupMove := !slices.Contains([]string{"k", "j", "home", "end"}, key) && !halfPage(key)
 	if p := &a.palette; p.open {
 		if popupMove && moveSel(&p.selected, p.count(), p.view.viewH, key) {
 			p.moved = true
@@ -319,10 +319,14 @@ func (a *App) interrupt() {
 }
 
 // moveSel applies a list key to a selection over n items: the list moves
-// one item, the page keys page items, home and end the ends. It reports
-// whether the key was a move.
+// one item, ctrl+d/u half a page, the page keys page items, home and end
+// the ends. It reports whether the key was a move.
 func moveSel(sel *int, n, page int, key string) bool {
 	switch key {
+	case "ctrl+d":
+		*sel += max(page/2, 1)
+	case "ctrl+u":
+		*sel -= max(page/2, 1)
 	case "pgup":
 		*sel -= page
 	case "pgdown":
@@ -434,6 +438,10 @@ func listMove(key string) int {
 	}
 	return 0
 }
+
+// halfPage reports whether key is a half-page move, which an input row
+// takes for itself: ctrl+u deletes to the line start there.
+func halfPage(key string) bool { return key == "ctrl+d" || key == "ctrl+u" }
 
 // runRHS executes a keymap right-hand side on the background worker.
 func (a *App) runRHS(b *hostapi.KeyBinding) {

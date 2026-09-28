@@ -490,14 +490,18 @@ func (v *viewport) window(lines [][]hostapi.Segment, width int) [][]hostapi.Segm
 }
 
 // scrollKey applies a scroll key to a text viewport: shift+up/down a line,
-// the page keys a page, ctrl+home/end the edges, and in a box with nothing
-// to select (textOnly) the list keys a line.
+// ctrl+d/u half the view, the page keys a page, ctrl+home/end the edges, and
+// in a box with nothing to select (textOnly) the list keys a line.
 func scrollKey(v *viewport, key string, textOnly bool) bool {
 	switch key {
 	case "shift+up":
 		v.scroll(-1)
 	case "shift+down":
 		v.scroll(1)
+	case "ctrl+d":
+		v.scroll(max(v.viewH/2, 1))
+	case "ctrl+u":
+		v.scroll(-max(v.viewH/2, 1))
 	case "pgup":
 		v.page(-1)
 	case "pgdown":

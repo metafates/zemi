@@ -1601,7 +1601,9 @@ provenance string.
   empty composer twice within 2s quits), `ctrl+o` toggle reasoning,
   `pgup`/`pgdown`, `shift+up`/`shift+down` and `ctrl+home`/`ctrl+end` scroll the
   transcript (the wheel too: mouse cell motion is captured because the altscreen has no
-  native scrollback). A scrolled-back viewport is anchored on the rows it
+  native scrollback); in lists `ctrl+d`/`ctrl+u` move half a page, and
+  scroll a box's text when it overflows, which the footer names as
+  `ctrl+d/u scroll`. A scrolled-back viewport is anchored on the rows it
   shows, not on a row number, so a resize, an expanded thought or a new
   turn leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`, `/mode`,

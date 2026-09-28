@@ -383,7 +383,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	}
 	// a body that overflows takes the scroll keys, and the list keys too
 	// when there is no list to move in
-	if st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) {
+	if !(st.active && halfPage(key)) && st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) {
 		return nil
 	}
 	if !st.back && st.edit(key, text) || moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {

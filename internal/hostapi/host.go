@@ -843,7 +843,8 @@ var goKeys = [][2]string{
 
 // listKeys are the keys every list and box takes (internal/ui/keys.go).
 var listKeys = [][2]string{
-	{"up, down, ctrl+p, ctrl+n", "move"},
+	{"up, down, j, k, ctrl+p, ctrl+n", "move"},
+	{"ctrl+d, ctrl+u", "move half a page, or scroll the text"},
 	{"pgup, pgdown", "move a page"},
 	{"home, end", "first row, last row"},
 	{"/", "filter; enter keeps it, esc clears it"},

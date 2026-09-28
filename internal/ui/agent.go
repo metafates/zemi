@@ -757,7 +757,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	}
 	if len(content) > pa.view.viewH {
 		content = build(barInner(inner)) // the bar's column
-		hints = append(hints, hintPair{"pgup/pgdn", "scroll"})
+		hints = append(hints, scrollHint)
 	}
 	hintRow := hint(inner, hints...)
 	// panels span the box, and the box fits its content (at least 56 wide):
@@ -893,7 +893,7 @@ func hintSlot(p hintPair) int {
 		return 1
 	case p.key == "space":
 		return 2
-	case p.key == "pgup/pgdn":
+	case p == scrollHint:
 		return 4
 	case p.key == "y":
 		return 5
@@ -928,11 +928,15 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 	}
 }
 
-// scrolls is the page keys' hint pair while any of views overflows.
+// scrollHint names the half-page keys, which every box's text scrolls on
+// and a laptop has.
+var scrollHint = hintPair{"ctrl+d/u", "scroll"}
+
+// scrolls is scrollHint while any of views overflows.
 func scrolls(views ...viewport) []hintPair {
 	for _, v := range views {
 		if v.overflows() {
-			return []hintPair{{"pgup/pgdn", "scroll"}}
+			return []hintPair{scrollHint}
 		}
 	}
 	return nil

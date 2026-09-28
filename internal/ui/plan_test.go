@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -83,17 +81,34 @@ func TestPlanEditKeys(t *testing.T) {
 	}
 }
 
+// TestPlanScroll: the plan's text scrolls a line on shift+arrows and half
+// the view on ctrl+d/u, the list keys move the buttons, and ctrl+u edits a
+// typed change. top counts lines plus halves of the view.
 func TestPlanScroll(t *testing.T) {
-	app, _ := bootAgentApp(t, 70, 18)
-	done := planAsync(t, app, strings.Repeat("# h\n\nline\n", 30), "")
-	app.Frame()
-	app.Update(tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModShift})
-	if app.planAsk.view.top != 1 || app.planAsk.sel != 0 {
-		t.Fatalf("shift+down should scroll the plan, got top=%d sel=%d", app.planAsk.view.top, app.planAsk.sel)
-	}
-	pressKeys(app, "enter")
-	if r := awaitPlan(t, app, done); !r.ok || !r.v.Approved {
-		t.Fatalf("scroll then enter should approve, got %+v ok=%v", r.v, r.ok)
+	for _, c := range []struct {
+		name               string
+		keys               []string
+		lines, halves, sel int
+		input              string
+	}{
+		{"shift+down scrolls a line", []string{"shift+down"}, 1, 0, 0, ""},
+		{"ctrl+d scrolls half the view", []string{"ctrl+d"}, 0, 1, 0, ""},
+		{"ctrl+u goes back", []string{"ctrl+d", "ctrl+d", "ctrl+u"}, 0, 1, 0, ""},
+		{"j moves the button, not the text", []string{"j"}, 0, 0, 1, ""},
+		{"ctrl+u while typing changes edits the input", []string{"e", "xy", "ctrl+u", "z"}, 0, 0, 0, "z"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, _ := bootAgentApp(t, 70, 18)
+			done := planAsync(t, app, strings.Repeat("# h\n\nline\n", 30), "")
+			app.Frame()
+			pressKeys(app, c.keys...)
+			p := app.planAsk
+			if want := c.lines + c.halves*max(p.view.viewH/2, 1); p.view.top != want || p.sel != c.sel || p.input.text != c.input {
+				t.Errorf("top=%d sel=%d input=%q, want %d %d %q", p.view.top, p.sel, p.input.text, want, c.sel, c.input)
+			}
+			app.finishPlan(tools.PlanVerdict{}, false)
+			awaitPlan(t, app, done)
+		})
 	}
 }
 

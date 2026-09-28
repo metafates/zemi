@@ -643,7 +643,7 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Body: "text"}, "", "y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "copy": "export X"}}}, "", "enter copy · esc close"},
 		{hostapi.Overlay{Body: "text", Items: []any{map[string]any{"text": "a", "fill": "x"}}}, "/", "enter done · esc clear"},
-		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, "", "enter fill · pgup/pgdn scroll · y copy · esc close"},
+		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, "", "enter fill · ctrl+d/u scroll · y copy · esc close"},
 	} {
 		if got := strings.Trim(hints(c.o, c.filter), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)
@@ -651,15 +651,32 @@ func TestOverlayHints(t *testing.T) {
 	}
 }
 
+func TestMoveSel(t *testing.T) {
+	for _, c := range []struct {
+		key                 string
+		n, page, from, want int
+	}{
+		{"ctrl+d", 20, 10, 0, 5},
+		{"ctrl+u", 20, 10, 12, 7},
+		{"ctrl+d", 20, 10, 17, 19},
+		{"ctrl+u", 20, 10, 3, 0},
+		{"ctrl+d", 20, 1, 0, 1},
+	} {
+		if sel := c.from; !moveSel(&sel, c.n, c.page, c.key) || sel != c.want {
+			t.Errorf("%s from %d over %d, page %d: %d, want %d", c.key, c.from, c.n, c.page, sel, c.want)
+		}
+	}
+}
+
 // TestHintOrder: pairs sort into their slots, and a narrow row drops the
 // middle pairs last first, never enter or esc.
 func TestHintOrder(t *testing.T) {
-	pairs := []hintPair{{"esc", "close"}, {"y", "copy"}, {"a", "keep"}, {"enter", "open"}, {"d", "drop"}, {"pgup/pgdn", "scroll"}}
+	pairs := []hintPair{{"esc", "close"}, {"y", "copy"}, {"a", "keep"}, {"enter", "open"}, {"d", "drop"}, {"ctrl+d/u", "scroll"}}
 	for _, c := range []struct {
 		w    int
 		want string
 	}{
-		{80, "enter open · a keep · d drop · pgup/pgdn scroll · y copy · esc close"},
+		{80, "enter open · a keep · d drop · ctrl+d/u scroll · y copy · esc close"},
 		{40, "enter open · a keep · d drop · esc close"},
 		{5, "enter open · esc close"},
 	} {

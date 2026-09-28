@@ -315,7 +315,7 @@ func TestPermissionBoxFits(t *testing.T) {
 		{
 			"short screen", 60, 20,
 			hostapi.PermRequest{Subject: "tool.bash", Arg: "go test ./internal/ui/... -run TestGoldenPermissionOverlay -count=1 -v 2>&1 | tee /tmp/out.txt && grep -n FAIL /tmp/out.txt | head", Description: "Run the golden permission overlay test verbosely and keep the log for later", Always: "allow go test and 3 more"},
-			[]string{"█", "pgup/pgdn scroll", "esc deny", "[t] No, and tell"},
+			[]string{"█", "ctrl+d/u scroll", "esc deny", "[t] No, and tell"},
 		},
 		{
 			"one hidden line shows", 80, 24,

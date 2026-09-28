@@ -47,23 +47,24 @@ func awaitAnswer(t *testing.T, app *App, done chan questionResult) questionResul
 	return questionResult{}
 }
 
+// pressKeys presses each key: a named one, ctrl and a letter, or else its
+// runes typed one by one.
 func pressKeys(app *App, keys ...string) {
+	named := map[string]tea.KeyPressMsg{
+		"enter": {Code: tea.KeyEnter}, "esc": {Code: tea.KeyEscape}, "space": {Code: tea.KeySpace, Text: " "},
+		"backspace": {Code: tea.KeyBackspace}, "shift+down": {Code: tea.KeyDown, Mod: uv.ModShift},
+	}
 	for _, k := range keys {
-		switch k {
-		case "enter":
-			app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-		case "esc":
-			app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-		case "space":
-			app.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
-		case "backspace":
-			app.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
-		case "ctrl+c":
-			app.Update(tea.KeyPressMsg{Mod: uv.ModCtrl, Code: 'c'})
-		default:
-			for _, r := range k {
-				app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
-			}
+		msg, ok := named[k]
+		if c, ctrl := strings.CutPrefix(k, "ctrl+"); ctrl && len(c) == 1 {
+			msg, ok = tea.KeyPressMsg{Mod: uv.ModCtrl, Code: rune(c[0])}, true
+		}
+		if ok {
+			app.Update(msg)
+			continue
+		}
+		for _, r := range k {
+			app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
 		}
 	}
 }

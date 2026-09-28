@@ -62,7 +62,7 @@ func (a *App) finishPlan(v tools.PlanVerdict, ok bool) {
 func (a *App) planKey(key, text string) {
 	p := a.planAsk
 	defer a.bump()
-	if scrollKey(&p.view, key, false) || !p.typing && moveSel(&p.sel, 2, 2, key) {
+	if !(p.typing && halfPage(key)) && scrollKey(&p.view, key, false) || !p.typing && moveSel(&p.sel, 2, 2, key) {
 		return
 	}
 	if p.typing {
