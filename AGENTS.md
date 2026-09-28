@@ -420,7 +420,7 @@ schema see it.
 `sandboxPolicy` writes the policy; the whys behind it: the sandbox temp dir (`TMPDIR`) is the
 pipeline's scratchpad, as it is for every model command, so the file tools read what a command
 left there without an ask, and never the shared system one (macOS keeps the `xcrun_db` there that picks what `/usr/bin/make`
-and `git` run; a denial naming `/tmp` gets a hint pointing at `$TMPDIR` before `sandbox: false`),
+and `git` run; a denial naming `/tmp` gets a hint pointing at `$TMPDIR`),
 `GOCACHE` is one per trust root (Go trusts cache entries, so a shared one lets one project
 poison another's build), the project is writable only when it is trusted, outside zemi's own
 dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect`), `.git`,

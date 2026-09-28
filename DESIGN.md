@@ -1964,7 +1964,7 @@ provenance string.
   the file tools read what a command left there without asking; the shared system temp dir and `/tmp`
   are not writable, since macOS keeps the `xcrun_db` there that picks what
   `/usr/bin/make` or `git` runs, and a denial naming one gets a hint
-  pointing at `$TMPDIR` before `sandbox: false`), a Go
+  pointing at `$TMPDIR`), a Go
   build cache only sandboxed runs use, one per trust root
   (`<state>/sandbox-cache/<hash of the trust root>/go-build`, set as
   `GOCACHE` through `Policy.Env`: Go fails a build it cannot cache, and Go
