@@ -60,9 +60,7 @@ var builtinLSP = []lspDef{
 	// It runs a workspace's Lua (Lua.runtime.plugin) only once the client
 	// says yes, and zemi's never does (lsp.Client's server requests). With
 	// workspace diagnostics on, it would publish a file's before zemi opens
-	// it, and it never publishes an unchanged result again.
-	// NOTE: an edit that leaves a file's diagnostics as they were gets none
-	// back, so the write reports nothing rather than the same errors.
+	// it, and it never publishes an unchanged result again (lspCheck).
 	{
 		Name: "luals", Command: "lua-language-server", Exts: []string{".lua"},
 		Markers: []string{".luarc.json", ".luarc.jsonc", ".stylua.toml", "stylua.toml", "selene.toml", ".luacheckrc"},
@@ -534,6 +532,12 @@ func (h *Host) lspCheck(path string, afterWrite bool) (out string, ok bool) {
 	}
 	h.EmitAsync("lsp.request", map[string]any{"server": def.Name, "path": abs, "kind": "diagnostics"})
 	diags, err := p.client.Touch(ctx, abs, languageID(abs))
+	if errors.Is(err, lsp.ErrNoFresh) && filepath.Base(def.Command) == "lua-language-server" && p.client.Published(abs) {
+		// lua-language-server publishes only a changed result, so its silence repeats the last one.
+		// NOTE: a check slower than Touch's floor reads the same, reporting the
+		// errors of the text before; a request per check (pull diagnostics) would not.
+		diags, err = p.client.Diagnostics(abs), nil
+	}
 	h.lspAnswered(ctx, p, err == nil)
 	if err != nil {
 		return "", false

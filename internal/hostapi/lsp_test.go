@@ -354,6 +354,12 @@ func TestLSPRealLuaLS(t *testing.T) {
 	if !strings.Contains(got, "error ") || !strings.Contains(got, "region") {
 		t.Fatalf("the planted spec: %q", got)
 	}
+	// an edit that leaves the error as it was gets no new publish
+	spec, _ := os.ReadFile(bad)
+	os.WriteFile(bad, append(spec, "-- still broken\n"...), 0o644)
+	if again, _ := h.lspDiagnostics(bad); again != got {
+		t.Fatalf("after an edit that kept the error: %q, want %q", again, got)
+	}
 	err := filepath.WalkDir(plugin, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Ext(p) != ".lua" || p == bad {
 			return err

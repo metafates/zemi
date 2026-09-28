@@ -559,6 +559,13 @@ func (c *Client) Diagnostics(path string) []Diagnostic {
 	return append([]Diagnostic(nil), c.diags[normPath(path)]...)
 }
 
+// Published reports whether the server has published diagnostics for path.
+func (c *Client) Published(path string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.pubSeq[normPath(path)] > 0
+}
+
 // Done is closed when the server exits.
 func (c *Client) Done() <-chan struct{} { return c.done }
 
