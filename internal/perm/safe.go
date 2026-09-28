@@ -125,8 +125,12 @@ func (n Normalized) PluginTest(exe string) bool {
 	}
 	f := n.Args[0]
 	return (f[0] == "zemi" || f[0] == exe && exe != "") && (len(f) == 4 || len(f) == 5) &&
-		f[1] == "plugins" && f[2] == "test" && !strings.Contains(f[3], "/") && f[3] != "." && f[3] != ".."
+		f[1] == "plugins" && f[2] == "test" && pluginName.MatchString(f[3])
 }
+
+// pluginName is internal/plugins' name shape, which no shell expansion
+// (~, {a,b}, a glob) can match.
+var pluginName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 func relativeArg(a string, _ ArgUse) bool {
 	return !strings.HasPrefix(a, "/") && !strings.HasPrefix(a, "~") && a != ".." && !strings.HasPrefix(a, "../") && !strings.Contains(a, "/../")
