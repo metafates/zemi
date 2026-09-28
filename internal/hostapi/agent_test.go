@@ -57,7 +57,7 @@ func TestCommandSendsTypedLine(t *testing.T) {
 	}{
 		{"/init", h.InitProject},
 		{"/plugins new show cost", func() error { return h.pluginsCommand("new show cost") }},
-		{"/errors ask 0", func() error { return h.OpenErrors("ask 0") }},
+		{"/errors ask lua: boom", func() error { return h.OpenErrors("ask 0") }},
 		{"/review", func() error { return review(h, "") }},
 	} {
 		sent := m.streams.Load()
