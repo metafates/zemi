@@ -127,7 +127,10 @@ func TestSplashContext(t *testing.T) {
 		memory    bool
 		want, not string
 	}{
-		{"untrusted", proj, false, "", false, "context  no project instructions", ""},
+		// the app boots with no project, so /trust has nothing to turn on; the
+		// golden M0 frame pins an untrusted project's "instructions off until /trust"
+		{"no project", "", false, "", false, "context  no project instructions", "off until"},
+		{"no sessions", proj, true, "", false, `try      "explain this project"`, ""},
 		{"trusted", proj, true, "", false, "context  /init writes AGENTS.md", ""},
 		{"has CLAUDE.md", proj, true, "CLAUDE.md", false, "context  CLAUDE.md", "writes AGENTS.md"},
 		{"trusted home", home, true, "", false, "context  no project instructions", ""},

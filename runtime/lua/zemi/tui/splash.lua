@@ -65,6 +65,8 @@ function M.render(ctx)
 	-- context row, so the bottom-anchored chat never cuts the block's first
 	-- rows (it shows height - 1 of them)
 	local recent, fit = ctx.recent or {}, (ctx.height or 0) > 0 and ctx.height - 1 or math.huge
+	-- taken before the fit check empties recent: a project with sessions never shows it
+	local try = #recent == 0
 	-- the no-model hint names its fix, so it wraps under its label instead of clipping
 	local models = zemi.ui.wrap(ctx.model ~= "" and ctx.model or ("none yet: " .. ctx.model_hint), room - 9)
 	if ctx.init_error ~= "" then
@@ -73,9 +75,9 @@ function M.render(ctx)
 		}
 	end
 	local base = 9 + #models
-	local extra = #recent > 0 and #recent + 3 or 0
+	local extra = #recent > 0 and #recent + 3 or 1
 	if base + extra > fit then
-		recent, extra = {}, 0
+		recent, try, extra = {}, false, 0
 	end
 	local mascot, showctx = width >= 36 and base + extra <= fit, base - 2 <= fit
 	if mascot then
@@ -119,7 +121,10 @@ function M.render(ctx)
 		local parts = {}
 		-- the first part is always there, so no count change adds or removes the row
 		local files = inc.instructions
-		if not files then
+		-- ~, / and no root are never trusted, so /trust would not turn instructions on there
+		if not files and not ctx.trusted and ctx.project ~= "~" and ctx.project ~= "/" and ctx.project ~= "" then
+			parts[1] = { { text = "instructions off until ", hl = "Comment" }, { text = "/trust", hl = "SplashKey" } }
+		elseif not files then
 			parts[1] = { { text = "no project instructions", hl = "Comment" } }
 		elseif #files == 0 then
 			parts[1] = { { text = "/init", hl = "SplashKey" }, { text = " writes AGENTS.md", hl = "Comment" } }
@@ -143,6 +148,16 @@ function M.render(ctx)
 		local context = { { text = "context  ", hl = "Comment" } }
 		fill(context, parts, { text = " · ", hl = "Comment" }, room)
 		row(context)
+	end
+	if try then
+		-- zemi is configured by asking it, which no other screen says
+		---@type zemi.Line
+		local line = { { text = "try      ", hl = "Comment" } }
+		fill(line, {
+			{ { text = '"explain this project"', hl = "Normal" } },
+			{ { text = '"make zemi use a light theme"', hl = "Normal" } },
+		}, { text = " · ", hl = "Comment" }, room)
+		row(line)
 	end
 	if #recent > 0 then
 		row({ { text = "" } })
