@@ -60,8 +60,12 @@ var (
 )
 
 // Dropped reports whether err is the runtime dropping a request (hot,
-// reloading, cancelled) rather than the Lua code failing.
+// reloading, cancelled) rather than the Lua code failing. A request stopped
+// at its ceiling is the code failing, though it unwraps to context.Canceled.
 func Dropped(err error) bool {
+	if _, ok := errors.AsType[ceilingError](err); ok {
+		return false
+	}
 	return errors.Is(err, ErrHot) || errors.Is(err, ErrReloaded) || errors.Is(err, ErrCanceled)
 }
 
