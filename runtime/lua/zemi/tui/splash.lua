@@ -44,8 +44,6 @@ function M.render(ctx)
 	local function row(segs) rows[#rows + 1] = segs end
 	local ver = (ctx.version or "") ~= "" and (ctx.version .. " · ") or ""
 	local mark = { text = "@zemi", hl = "Title" }
-	-- the column the wordmark and tagline start at, right of the snail's head
-	local markcol = 13
 	local tag = { text = ver .. "context included", hl = "Comment" }
 	---@type zemi.Line
 	local tip = {}
@@ -58,7 +56,8 @@ function M.render(ctx)
 	-- centered on the static rows (the wordmark beside the snail, the tips)
 	-- with every value row clipped to the room right of them, so no value
 	-- change (a model pick, a count, a title) moves the block
-	local pad = math.max(0, math.floor((width - math.min(maxw, math.max(tipw, markcol + fmt.cells(tag.text)))) / 2))
+	local pad =
+		math.max(0, math.floor((width - math.min(maxw, math.max(tipw, snail.MARK_COL + fmt.cells(tag.text)))) / 2))
 	local room = math.min(maxw, width - pad - 2)
 
 	-- a short chat drops the recent sessions first, then the mascot, then the
@@ -81,17 +80,7 @@ function M.render(ctx)
 	end
 	local mascot, showctx = width >= 36 and base + extra <= fit, base - 2 <= fit
 	if mascot then
-		-- the wordmark and the tagline sit beside the snail's head
-		local block = snail.block()
-		---@param r zemi.Line
-		---@param seg zemi.Segment
-		local function beside(r, seg)
-			r[#r + 1] = { text = string.rep(" ", markcol - fmt.cells(r[1].text .. r[2].text)), copy = false }
-			r[#r + 1] = seg
-		end
-		beside(block[3], mark)
-		beside(block[4], tag)
-		for _, r in ipairs(block) do
+		for _, r in ipairs(snail.block({ mark, tag })) do
 			row(r)
 		end
 	else

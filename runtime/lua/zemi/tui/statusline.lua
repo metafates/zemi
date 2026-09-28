@@ -211,10 +211,7 @@ local right = {
 	{
 		"cost",
 		42,
-		function(ctx)
-			local cost = tonumber((ctx.usage or {}).cost or 0) or 0
-			if cost > 0 then return string.format("$%.2f", cost) end
-		end,
+		function(ctx) return fmt.cost((ctx.usage or {}).cost) end,
 	},
 }
 for _, part in ipairs(right) do

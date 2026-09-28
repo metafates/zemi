@@ -17,6 +17,14 @@ function M.tokens(n)
 	return (s:gsub("%.0([kM])$", "%1"))
 end
 
+--- A cost in dollars as "$0.42"; nil for none (an unpriced model).
+---@param usd number|nil
+---@return string|nil
+function M.cost(usd)
+	usd = tonumber(usd) or 0
+	if usd > 0 then return string.format("$%.2f", usd) end
+end
+
 --- A duration as "4.2s" under ten seconds, then "42s", "3m 05s", "1h 02m".
 --- A clock that ticks passes whole: its seconds only grow in width.
 ---@param s number seconds
