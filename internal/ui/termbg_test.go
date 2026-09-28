@@ -58,15 +58,17 @@ func TestTerminalBackground(t *testing.T) {
 
 // TestRuleAt16Colors: at 16 colors a rule, the host frame and the dim
 // behind a popup take bright black, never the dark canvas's black, and so
-// does a diff's number, never red on its red row; at 256 each keeps its own.
+// do a near-black group on that canvas and a diff's number, never red on its
+// red row; at 256 each keeps its own.
 func TestRuleAt16Colors(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 24)
+	app.host.Themes.SetHL("NearBlack", hostapi.HLSpec{Fg: "#202020"})
 	for _, c := range []struct {
 		profile colorprofile.Profile
 		bright  bool
 	}{{colorprofile.ANSI, true}, {colorprofile.ANSI256, false}} {
 		app.Update(tea.ColorProfileMsg{Profile: c.profile})
-		for _, hl := range []string{"Rule", "Host:Rule", "Host:Dim", "DiffDelNum", "Host:DiffAddNum"} {
+		for _, hl := range []string{"Rule", "Host:Rule", "Host:Dim", "NearBlack", "DiffDelNum", "Host:DiffAddNum"} {
 			if got := app.segStyle(hl, "", false).Fg == ansi.BrightBlack; got != c.bright {
 				t.Errorf("%v %s: bright black %v, want %v", c.profile, hl, got, c.bright)
 			}
