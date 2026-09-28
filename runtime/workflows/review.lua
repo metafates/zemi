@@ -8,71 +8,71 @@ local sha = base and #base >= 7 and #base <= 40 and base:match("^%x+$")
 
 local task
 if sha then
-  task = "List the changes commit " .. base .. " introduced: run `git show " .. base .. "`. "
+	task = "List the changes commit " .. base .. " introduced: run `git show " .. base .. "`. "
 elseif base then
-  task = "List the changes in this repository: run `git status --short` and `git diff --merge-base " .. base .. "`. "
+	task = "List the changes in this repository: run `git status --short` and `git diff --merge-base " .. base .. "`. "
 else
-  task = "List the changes in this repository: run `git status --short` and `git diff HEAD`. "
+	task = "List the changes in this repository: run `git status --short` and `git diff HEAD`. "
 end
 
 -- One agent reads the changes, so the reviewers can stay read-only and
 -- never stop to ask for permission.
 phase("collect changes")
 local changes, err = agent(
-  task
-    .. "For every changed file give its path and a precise summary of each change with line numbers. "
-    .. (sha and "" or "Read each untracked (??) file from git status in full and summarize it as a new file. ")
-    .. "Do not review or judge anything.",
-  { agent = "general", description = "collect changes" }
+	task
+		.. "For every changed file give its path and a precise summary of each change with line numbers. "
+		.. (sha and "" or "Read each untracked (??) file from git status in full and summarize it as a new file. ")
+		.. "Do not review or judge anything.",
+	{ agent = "general", description = "collect changes" }
 )
 if not changes then return "could not read the changes: " .. err end
 
 local lenses = {
-  { "correctness", "logic errors, broken edge cases, wrong error handling, races" },
-  { "security", "unsafe input handling, injection, leaked secrets, missing permission or path checks" },
-  { "simplicity", "needless code, duplicated logic, abstractions nothing uses" },
+	{ "correctness", "logic errors, broken edge cases, wrong error handling, races" },
+	{ "security", "unsafe input handling, injection, leaked secrets, missing permission or path checks" },
+	{ "simplicity", "needless code, duplicated logic, abstractions nothing uses" },
 }
 
 phase("review")
 local jobs = {}
 for _, lens in ipairs(lenses) do
-  jobs[#jobs + 1] = function()
-    return agent(
-      "Review these changes for "
-        .. lens[1]
-        .. " problems ("
-        .. lens[2]
-        .. "). "
-        .. "Read the changed code and what it calls before judging. "
-        .. "Report only problems these changes introduced; leave pre-existing ones alone, "
-        .. "and do not ask for more rigor than the rest of the file has. "
-        .. "Report at most 5 findings, most severe first, each as: file:line - problem - why it matters. "
-        .. "Report nothing you cannot point to in the code; if nothing is wrong, say so.\n\n"
-        .. changes,
-      { agent = "explore", description = lens[1] .. " review" }
-    )
-  end
+	jobs[#jobs + 1] = function()
+		return agent(
+			"Review these changes for "
+				.. lens[1]
+				.. " problems ("
+				.. lens[2]
+				.. "). "
+				.. "Read the changed code and what it calls before judging. "
+				.. "Report only problems these changes introduced; leave pre-existing ones alone, "
+				.. "and do not ask for more rigor than the rest of the file has. "
+				.. "Report at most 5 findings, most severe first, each as: file:line - problem - why it matters. "
+				.. "Report nothing you cannot point to in the code; if nothing is wrong, say so.\n\n"
+				.. changes,
+			{ agent = "explore", description = lens[1] .. " review" }
+		)
+	end
 end
 local reports, errs = parallel(jobs)
 
 local findings = {}
 for i, lens in ipairs(lenses) do
-  if reports[i] then
-    findings[#findings + 1] = "## " .. lens[1] .. "\n" .. reports[i]
-  elseif errs and errs[i] then
-    log(lens[1] .. " review failed: " .. errs[i])
-  end
+	if reports[i] then
+		findings[#findings + 1] = "## " .. lens[1] .. "\n" .. reports[i]
+	elseif errs and errs[i] then
+		log(lens[1] .. " review failed: " .. errs[i])
+	end
 end
 
 phase("verify")
 return agent(
-  "Verify these review findings. For each one read the cited code and keep it only if the problem is real "
-    .. "and these changes introduced it: reject a finding whose problem is also in code the changes did not touch. "
-    .. "Answer with the confirmed findings, most severe first, as: file:line - problem - suggested fix. "
-    .. "Then list rejected findings, one line each with the reason.\n\n"
-    .. "Changes:\n"
-    .. changes
-    .. "\n\nFindings:\n"
-    .. table.concat(findings, "\n\n"),
-  { agent = "explore", description = "verify findings" }
+	"Verify these review findings. For each one read the cited code and keep it only if the problem is real "
+		.. "and these changes introduced it: reject a finding whose problem is also in code the changes did not touch. "
+		.. "Answer with the confirmed findings, most severe first, as: file:line - problem - suggested fix. "
+		.. "Then list rejected findings, one line each with the reason.\n\n"
+		.. "Changes:\n"
+		.. changes
+		.. "\n\nFindings:\n"
+		.. table.concat(findings, "\n\n"),
+	{ agent = "explore", description = "verify findings" }
 )

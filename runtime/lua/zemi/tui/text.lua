@@ -7,14 +7,14 @@ local M = {}
 ---@param n integer|nil
 ---@return string|nil
 function M.tokens(n)
-  if not n or n <= 0 then return nil end
-  local s = string.format("%d", n)
-  if n >= 1000000 then
-    s = string.format("%.1fM", n / 1000000)
-  elseif n >= 1000 then
-    s = string.format("%.1fk", n / 1000)
-  end
-  return (s:gsub("%.0([kM])$", "%1"))
+	if not n or n <= 0 then return nil end
+	local s = string.format("%d", n)
+	if n >= 1000000 then
+		s = string.format("%.1fM", n / 1000000)
+	elseif n >= 1000 then
+		s = string.format("%.1fk", n / 1000)
+	end
+	return (s:gsub("%.0([kM])$", "%1"))
 end
 
 --- A duration as "4.2s" under ten seconds, then "42s", "3m 05s", "1h 02m".
@@ -23,11 +23,11 @@ end
 ---@param whole boolean? Whole seconds under ten too ("4s").
 ---@return string
 function M.duration(s, whole)
-  if s < 9.95 and not whole then return string.format("%.1fs", math.max(s, 0)) end
-  s = math.floor(math.max(s, 0) + (whole and 0 or 0.5))
-  if s < 60 then return s .. "s" end
-  if s < 3600 then return string.format("%dm %02ds", math.floor(s / 60), s % 60) end
-  return string.format("%dh %02dm", math.floor(s / 3600), math.floor(s / 60) % 60)
+	if s < 9.95 and not whole then return string.format("%.1fs", math.max(s, 0)) end
+	s = math.floor(math.max(s, 0) + (whole and 0 or 0.5))
+	if s < 60 then return s .. "s" end
+	if s < 3600 then return string.format("%dm %02ds", math.floor(s / 60), s % 60) end
+	return string.format("%dh %02dm", math.floor(s / 3600), math.floor(s / 60) % 60)
 end
 
 --- A count with its noun: "1 file", "3 files".
@@ -42,13 +42,13 @@ function M.count(n, one, many) return n .. " " .. (n == 1 and one or many) end
 --- a notice.
 ---@type table<string, { [1]: string, [2]: string }>
 M.MARK = {
-  ok = { "✓", "Ok" },
-  err = { "✗", "Danger" },
-  stop = { "■", "Dim" },
-  bg = { "⧗", "Dim" },
-  wait = { "·", "Dim" },
-  thought = { "✻", "ThinkingMark" },
-  note = { "◦", "Dim" },
+	ok = { "✓", "Ok" },
+	err = { "✗", "Danger" },
+	stop = { "■", "Dim" },
+	bg = { "⧗", "Dim" },
+	wait = { "·", "Dim" },
+	thought = { "✻", "ThinkingMark" },
+	note = { "◦", "Dim" },
 }
 
 --- A pointer to what deals with something: the noun in Title (hl overrides
@@ -60,35 +60,35 @@ M.MARK = {
 ---@param hl string?
 ---@return zemi.Line
 function M.hint(noun, cmd, click, hl)
-  return { { text = noun, hl = hl or "Title", click = click }, { text = " " .. cmd, hl = "Comment", click = click } }
+	return { { text = noun, hl = hl or "Title", click = click }, { text = " " .. cmd, hl = "Comment", click = click } }
 end
 
 --- What a tool call does, as its row and the working rule say it.
 ---@type table<string, string>
 M.VERB = {
-  read = "Read",
-  write = "Write",
-  edit = "Edit",
-  glob = "Find",
-  grep = "Search",
-  fetch = "Fetch",
-  web_search = "Search web",
-  bash = "Run",
-  job_start = "Start",
-  job_read = "Check job",
-  job_list = "List jobs",
-  job_kill = "Stop job",
-  memory = "Remember",
-  diagnostics = "Check",
-  todos = "Update todos",
-  question = "Ask",
-  plan = "Plan",
-  skill = "Load skill",
-  agent = "Agent",
-  workflow = "Workflow",
-  lua = "Run Lua",
-  tool_search = "Find tools",
-  lsp = "Look up",
+	read = "Read",
+	write = "Write",
+	edit = "Edit",
+	glob = "Find",
+	grep = "Search",
+	fetch = "Fetch",
+	web_search = "Search web",
+	bash = "Run",
+	job_start = "Start",
+	job_read = "Check job",
+	job_list = "List jobs",
+	job_kill = "Stop job",
+	memory = "Remember",
+	diagnostics = "Check",
+	todos = "Update todos",
+	question = "Ask",
+	plan = "Plan",
+	skill = "Load skill",
+	agent = "Agent",
+	workflow = "Workflow",
+	lua = "Run Lua",
+	tool_search = "Find tools",
+	lsp = "Look up",
 }
 
 --- A tool name as words for a row with no verb of its own: underscores
@@ -97,8 +97,8 @@ M.VERB = {
 ---@param name string
 ---@return string
 function M.title(name)
-  local s = name:gsub("^mcp_", ""):gsub("_", " ")
-  return s:sub(1, 1):upper() .. s:sub(2)
+	local s = name:gsub("^mcp_", ""):gsub("_", " ")
+	return s:sub(1, 1):upper() .. s:sub(2)
 end
 
 --- A call's headline as a verb and the rest: "Read", " a.go". A command's
@@ -108,11 +108,11 @@ end
 ---@return string verb
 ---@return string rest
 function M.head(name, label)
-  if name == "bash" and label ~= "" then
-    local verb, rest = label:match("^(%S+)(.*)$")
-    return verb:sub(1, 1):upper() .. verb:sub(2), rest
-  end
-  return M.VERB[name] or M.title(name), label ~= "" and " " .. M.lower(label) or ""
+	if name == "bash" and label ~= "" then
+		local verb, rest = label:match("^(%S+)(.*)$")
+		return verb:sub(1, 1):upper() .. verb:sub(2), rest
+	end
+	return M.VERB[name] or M.title(name), label ~= "" and " " .. M.lower(label) or ""
 end
 
 --- Text with its first letter lowercased, so it reads on after a verb,
@@ -120,8 +120,8 @@ end
 ---@param s string
 ---@return string
 function M.lower(s)
-  if s:match("^%u%u") then return s end
-  return (s:gsub("^%u", string.lower))
+	if s:match("^%u%u") then return s end
+	return (s:gsub("^%u", string.lower))
 end
 
 --- Text with every path under cwd written relative to it, and every other
@@ -131,9 +131,9 @@ end
 ---@param home string?
 ---@return string
 function M.relpath(s, cwd, home)
-  if home and home ~= "" and home ~= "/" then s = s:gsub(home:gsub("%p", "%%%0") .. "/", "~/") end
-  if not cwd or cwd == "" then return s end
-  return (s:gsub(cwd:gsub("%p", "%%%0") .. "/", ""))
+	if home and home ~= "" and home ~= "/" then s = s:gsub(home:gsub("%p", "%%%0") .. "/", "~/") end
+	if not cwd or cwd == "" then return s end
+	return (s:gsub(cwd:gsub("%p", "%%%0") .. "/", ""))
 end
 
 --- Display width of a string in terminal cells.
@@ -151,18 +151,18 @@ M.UTF8_CHAR = "[%z\1-\127\194-\244][\128-\191]*"
 ---@param room integer
 ---@return string
 function M.clip(text, room)
-  if M.cells(text) <= room then return text end
-  if room < 1 then return "" end
-  ---@type string[]
-  local chars = {}
-  local w = 0
-  for ch in text:gmatch(M.UTF8_CHAR) do
-    local cw = M.cells(ch)
-    if w + cw > room - 1 then break end
-    chars[#chars + 1] = ch
-    w = w + cw
-  end
-  return (table.concat(chars):gsub("%s+$", "")) .. "…"
+	if M.cells(text) <= room then return text end
+	if room < 1 then return "" end
+	---@type string[]
+	local chars = {}
+	local w = 0
+	for ch in text:gmatch(M.UTF8_CHAR) do
+		local cw = M.cells(ch)
+		if w + cw > room - 1 then break end
+		chars[#chars + 1] = ch
+		w = w + cw
+	end
+	return (table.concat(chars):gsub("%s+$", "")) .. "…"
 end
 
 return M
