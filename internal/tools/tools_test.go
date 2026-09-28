@@ -674,6 +674,24 @@ func TestScratchpad(t *testing.T) {
 	}
 }
 
+// TestReadSaysWhatTheModelSees: a text-only model is told before it plans
+// that images and screenshots are no use to it.
+func TestReadSaysWhatTheModelSees(t *testing.T) {
+	for _, c := range []struct {
+		name           string
+		images         func() bool
+		says, unwanted string
+	}{
+		{"takes images", nil, "(text or image)", "cannot see images"},
+		{"text only", func() bool { return false }, "cannot see images: do not take screenshots", "(text or image)"},
+	} {
+		desc := toolNamed(t, ToolRead, &Pipeline{Images: c.images}).Info().Description
+		if !strings.Contains(desc, c.says) || strings.Contains(desc, c.unwanted) {
+			t.Errorf("%s: %q", c.name, desc)
+		}
+	}
+}
+
 // TestReadAndBashShapes: read returns images as images, lists a directory
 // without secret-shaped names, and refuses binaries and offsets past the end; bash keeps stdout and stderr in order, strips
 // colors, and saves cut output to the scratchpad.

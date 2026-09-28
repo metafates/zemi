@@ -895,7 +895,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   runs once per process, warmed at boot so a big repository's `git status` is not paid for at
   first token. The main agent's prefix is one pin (`ag.pin`, `pinPrompt`): the system text
   and every tool's `Info` (through `pinnedTool`), sent verbatim while its key holds (profile,
-  model, `ProjectTrusted`, the mode's prompt, each tool's name and input schema, since a stale
+  model, `ProjectTrusted`, the mode's prompt, whether the model takes images, each tool's name and input schema, since a stale
   schema fails calls). `closeSession` (`/new`, `/resume`) zeroes it, `compactDone` and
   `deleteRecipe` clear its key (`dropPin`: `/prompt` and a running turn keep the text, and a
   build a drop overtook is not stored); rewind keeps it, and a reload drops nothing, since the config watcher reloads on

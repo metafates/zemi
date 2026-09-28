@@ -246,8 +246,9 @@ type Pipeline struct {
 	// Skills resolves enabled skills for the skill tool; nil = skills error.
 	Skills func() []SkillInfo
 	// Images reports whether the model takes image parts; nil = yes. A
-	// text-only model gets a text error from read instead of a refused
-	// request that ends the turn.
+	// text-only model is told so in read's description, and read refuses an
+	// image instead of sending a request that ends the turn. All calls it
+	// once while it builds, so it must not take a lock All's caller holds.
 	Images func() bool
 
 	// Remember runs the memory tool through the host's intake and autonomy
@@ -1068,6 +1069,12 @@ func All(p *Pipeline) []fantasy.AgentTool {
 		return props
 	}
 
+	// a model told it reads images plans screenshots it can never look at
+	readDesc := "Read a file (text or image), or list a directory one level deep."
+	if p != nil && p.Images != nil && !p.Images() {
+		readDesc = "Read a text file, or list a directory one level deep. This model cannot see images: do not take screenshots or read image files. Check visual work in its source and with the project's build or tests, or ask the user to look."
+	}
+
 	return []fantasy.AgentTool{
 		mk(ToolBash, `Run a command with sh -c in the working directory. POSIX sh, not bash: for [[ ]], arrays or pipefail run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged; long output keeps its start and end, and the result names a file holding all of it. A command still running at the timeout keeps running as a job; the result gives its id.
 Not for what does not exit on its own (npm run dev, tsc -w, tail -f): & and nohup do not help, since what a command leaves running is stopped when it returns. Not for reading, searching or editing files: cat, sed -n or head output is not a read for edit.
@@ -1084,7 +1091,7 @@ Chain dependent steps with &&.`,
 			bashRequests,
 			runBash),
 
-		gated(mk(ToolRead, "Read a file (text or image), or list a directory one level deep. Each line starts with its number and a tab, which are not part of the file. Do not read lines you already have again unless something other than your own edits changed the file.", true,
+		gated(mk(ToolRead, readDesc+" Each line starts with its number and a tab, which are not part of the file. Do not read lines you already have again unless something other than your own edits changed the file.", true,
 			map[string]any{
 				"path":   map[string]any{"type": "string", "description": "absolute, or relative to the working directory"},
 				"offset": map[string]any{"type": "integer", "description": "1-based line to start at"},

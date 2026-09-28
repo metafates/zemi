@@ -312,6 +312,10 @@ func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 	}
 	skip = h.toolSkip(skip)
 	pipe := h.PipelineFor()
+	// the model this set is built for, which read's description, its image
+	// check and the pin key all judge; a running turn's may be another
+	id := h.currentModelID(p)
+	pipe.Images = func() bool { return h.takesImages(id) }
 	all := append(append(h.builtinTools(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
 	out, unknown := filterTools(all, want, skip)
 	if len(unknown) > 0 {
@@ -383,13 +387,15 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 
 // pinPrompt gives the pinned prompt while its key holds and builds and pins a
 // new one otherwise. The key is what the user switches (profile, model,
-// trust, a mode's prompt) and each tool's name and input schema, since a
-// stale schema fails calls. Descriptions, instruction files, skills and
+// trust, a mode's prompt), whether the model takes images (read's
+// description says) and each tool's name and input schema, since a stale
+// schema fails calls. Descriptions, instruction files, skills and
 // agent.assemble output wait for a drop point (closeSession, compactDone,
 // deleteRecipe). A reload drops nothing: the config watcher reloads on any
 // config-tree write, the model's own skill writes included.
 func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) ([]fantasy.AgentTool, string, promptParts) {
-	key := []string{"", h.currentModelID(p), strconv.FormatBool(h.ProjectTrusted()), h.permModeDef().Prompt}
+	id := h.currentModelID(p)
+	key := []string{"", id, strconv.FormatBool(h.ProjectTrusted()), h.permModeDef().Prompt, strconv.FormatBool(h.takesImages(id))}
 	if p != nil {
 		key[0] = p.Name
 	}

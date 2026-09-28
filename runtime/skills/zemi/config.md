@@ -29,7 +29,7 @@ Model fields besides `id` and `display`:
 - `context_window`: without it there is no context percent and no auto compaction, only `/compact` and a provider's too-long refusal. `agent.context_window` overrides it.
 - `cost_per_1m_in`, `cost_per_1m_out`, `cost_per_1m_cache_write` (tokens written to the prompt cache), `cost_per_1m_cache_read` (tokens read from it). Without the cache pair, cached turns read cheaper than they were.
 - `max_output`: reply cap in tokens; unset, anthropic models get 32000, others the provider default.
-- `vision = false`: the model refuses images. Without it zemi learns that from the provider's first refusal, for the process.
+- `vision = false`: the model takes no images: read's description tells it so, read refuses image files, and images leave its history. Without it zemi learns that from the provider's first refusal, for the process.
 
 Any other key, on the provider or on a model entry, is refused as an unknown field.
 

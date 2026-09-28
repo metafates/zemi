@@ -412,7 +412,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a %d byte image, over the %d byte limit", rel, fi.Size(), readMaxImage)), nil
 		}
 		if p.Images != nil && !p.Images() {
-			return fantasy.NewTextErrorResponse(rel + " is an image and the current model does not take images; go on without it, or ask the user to describe it or switch model"), nil
+			return fantasy.NewTextErrorResponse(rel + " is an image and the current model does not take images, so a screenshot is no use either; go on without it, or ask the user to describe it or switch model"), nil
 		}
 		data, err := io.ReadAll(br)
 		if err != nil {

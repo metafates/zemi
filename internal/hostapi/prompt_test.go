@@ -324,6 +324,10 @@ func TestPromptPinned(t *testing.T) {
 			}
 			waitIdle(t, h)
 		}, true, 0},
+		{"provider refused images", "", func(t *testing.T, _ *Host, _ *lua.Runtime) {
+			imagesRejected.Store("stub/m", true)
+			t.Cleanup(func() { imagesRejected.Delete("stub/m") })
+		}, true, 0},
 		{"profile switch", "", func(t *testing.T, _ *Host, r *lua.Runtime) {
 			runUser(t, r, `zemi.agent.profile.add("other", {}); zemi.config.set("agent.profile", "other")`)
 		}, true, 0},
