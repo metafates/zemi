@@ -1167,6 +1167,8 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 // path order: in a git work tree what git tracks or would track (the
 // .gitignore files read), else what walk finds, with note the line saying
 // why. Neither lists a symbolic link, .git or a nested repository.
+// git and not a Go matcher: only the index knows a tracked file an ignore
+// rule covers, and snapshots, lsp sync and auto mode read git's rules too.
 func ListFiles(ctx context.Context, root string, limit int) (files []string, note string, err error) {
 	gitCtx, cancel := context.WithTimeout(ctx, listWait)
 	defer cancel()
