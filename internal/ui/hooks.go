@@ -33,13 +33,14 @@ func rgb(v uint32) ansi.RGBColor {
 
 // chrome is the host chrome's palette: greys and the one accent
 // (periwinkle), plus the faintest tint a diff row may take and the selected
-// row's band, the canvas tinted toward the accent. Red, green and yellow
-// stay the terminal's own, so the user's palette decides them. The canvas
-// is the theme's (hlStyle fills it), so chrome and widgets share one.
+// row's band, the canvas tinted toward the accent (faintly: 256 colors round
+// a bluer tint to navy, not grey). Red, green and yellow stay the terminal's
+// own, so the user's palette decides them. The canvas is the theme's
+// (hlStyle fills it), so chrome and widgets share one.
 type chrome struct{ fg, dim, rule, accent, panel, add, del, band color.Color }
 
 var (
-	darkChrome  = chrome{rgb(0xd8d8d8), rgb(0x7a7a7a), rgb(0x3a3a3a), rgb(0x9aa5f2), rgb(0x1e1e1e), rgb(0x183018), rgb(0x361010), rgb(0x272833)}
+	darkChrome  = chrome{rgb(0xd8d8d8), rgb(0x7a7a7a), rgb(0x3a3a3a), rgb(0x9aa5f2), rgb(0x1e1e1e), rgb(0x183018), rgb(0x361010), rgb(0x28292f)}
 	lightChrome = chrome{rgb(0x1b1b1b), rgb(0x8e8e8e), rgb(0xcfcfcf), rgb(0x6b78d6), rgb(0xf0f0f0), rgb(0xe7f2e2), rgb(0xfae7e7), rgb(0xe9eaf6)}
 	// keyed by "the canvas is light" (hlStyle)
 	hostStyles = map[bool]map[string]uv.Style{false: chromeStyles(darkChrome), true: chromeStyles(lightChrome)}
