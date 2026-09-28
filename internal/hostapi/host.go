@@ -1573,6 +1573,12 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		"agent":      func(L *glua.LState) glua.LValue { return agentTable(L, stream) },
 		"transcript": func(L *glua.LState) glua.LValue { return transcriptTable(L, transcript) },
 		"included":   func(L *glua.LState) glua.LValue { return h.includedTable(L) },
+		"resume": func(L *glua.LState) glua.LValue {
+			if id := h.AgentSessionID(); id != "" {
+				return glua.LString(ResumeCommand(id))
+			}
+			return glua.LString("")
+		},
 		"recent": func(L *glua.LState) glua.LValue {
 			if len(sess.Transcript) > 0 {
 				return glua.LNil
@@ -1929,7 +1935,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.99.0"))
+	api.RawSetString("version", glua.LString("0.100.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

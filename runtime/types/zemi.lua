@@ -205,8 +205,10 @@ function debug.traceback(msg) end
 ---| "user"     # the user wrote it or said to keep it
 ---| "learned"  # the model or the reflector proposed it
 
---- The regions the default layout draws; a layout may draw any other name.
----@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"|string
+--- The regions the default layout draws, plus "exit", which no layout draws: its
+--- widgets print once to the shell after zemi quits, foreground colors only. A layout
+--- may draw any other name.
+---@alias zemi.Region "header"|"chat"|"working"|"statusline.left"|"statusline.right"|"exit"|string
 
 --- One styled run of text in a widget or overlay row. `hl` names a
 --- highlight group; omit it for the default foreground.
@@ -815,6 +817,7 @@ function zemi.event.stats() end
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
 ---@field todos zemi.Todo[]
 ---@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
+---@field resume string The shell command that reopens this session from its project (`zemi -r <id>`); "" before the first send.
 ---@field included zemi.Included What a send carries. Cached: rebuilt after a boot or reload, a trust change, a new session, a skill toggle or recipe delete, and a memory write.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage

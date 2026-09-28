@@ -33,6 +33,10 @@ func (h *Host) NewSession() error {
 	return nil
 }
 
+// ResumeCommand is the shell command that reopens session id, run from its
+// project; the one place that names the CLI's resume flag.
+func ResumeCommand(id string) string { return "zemi -r " + id }
+
 // ResumeSession reopens a stored session ("" means the most recent other one).
 func (h *Host) ResumeSession(id string) error {
 	if h.DB == nil {

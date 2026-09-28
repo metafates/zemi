@@ -69,10 +69,16 @@ func TestHealthListFromLua(t *testing.T) {
 func TestHealthChecks(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.agents.reflectErr = fmt.Errorf("%w: no JSON object in the output", errNoProposal)
-	runUser(t, h.RT, `zemi.ui.widget.add({ id = "lost", region = "nowhere", render = function() return {} end })`)
+	runUser(t, h.RT, `
+		zemi.ui.widget.add({ id = "lost", region = "nowhere", render = function() return {} end })
+		zemi.ui.widget.add({ id = "bye", region = "exit", render = function() return {} end })`)
 	got := map[string]healthCheck{}
 	for _, c := range h.healthChecks() {
 		got[c.name] = c
+	}
+	// no layout draws the exit region: it prints on quit
+	if d := got["layout"].detail; !strings.Contains(d, "lost") || strings.Contains(d, "bye") {
+		t.Errorf("layout row %q", d)
 	}
 	for name, level := range map[string]string{
 		"store": "ok", "model": "error", "reflector": "warn", "learning": "ok", "skills": "ok", "lua": "ok", "mcp": "ok", "layout": "warn",

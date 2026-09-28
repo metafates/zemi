@@ -165,6 +165,9 @@ func launch(o options) int {
 	if err == nil || errors.Is(err, tea.ErrProgramKilled) {
 		fmt.Print(ansi.SetPointerShape("default"))
 	}
+	if err == nil {
+		fmt.Print(app.Farewell())
+	}
 	time.AfterFunc(3*time.Second, func() { os.Exit(0) })
 	if err != nil {
 		return fail(err)

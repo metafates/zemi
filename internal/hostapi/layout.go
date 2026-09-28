@@ -182,6 +182,9 @@ var DefaultLayout = &Layout{Root: &LayoutNode{Kind: LayoutBox, Dir: DirRow, Sep:
 	}},
 }}}
 
+// RegionExit is drawn by no layout: the UI prints it to the shell on quit.
+const RegionExit = "exit"
+
 const (
 	maxLayoutNodes = 64
 	maxLayoutDepth = 8

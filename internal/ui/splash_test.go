@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/lua"
@@ -154,5 +155,62 @@ func TestSplashContext(t *testing.T) {
 		if !strings.Contains(frame, c.want) || c.not != "" && strings.Contains(frame, c.not) {
 			t.Errorf("%s: want %q, not %q\n%s", c.name, c.want, c.not, frame)
 		}
+	}
+}
+
+// TestFarewell: what zemi prints to the shell on quit, the exit region.
+func TestFarewell(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		width     int
+		profile   colorprofile.Profile
+		title     string
+		cost      float64
+		send      bool
+		want, not []string
+	}{
+		{"no messages", 80, colorprofile.TrueColor, "t", 0, false, nil, []string{"zemi"}},
+		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, []string{"@zemi", "Fix the flaky test", "╭────╮", "cost     $0.42"}, []string{"\x1b"}},
+		{"color", 80, colorprofile.TrueColor, "t", 0, true, []string{"\x1b[38;"}, []string{"[48;", ";48;2;"}},
+		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, []string{"  @zemi  t\n"}, []string{"╭────╮"}},
+		{"untitled", 80, colorprofile.NoTTY, "zemi", 0, true, []string{"fix the build"}, []string{"more", "cost"}},
+		{"control chars", 80, colorprofile.TrueColor, "a\x1b]52;c;x\x07b", 0, true, []string{"  ab\n"}, []string{"\x1b]52"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, host := bootAgentApp(t, c.width, 30)
+			app.colors = c.profile
+			db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { db.Close() })
+			host.DB = db
+			if c.send {
+				sid := store.NewID()
+				if err := db.CreateSession(sid, "", c.title, ""); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.AddUsage(sid, 0, 0, c.cost); err != nil {
+					t.Fatal(err)
+				}
+				if err := host.ResumeSession(sid); err != nil {
+					t.Fatal(err)
+				}
+				host.AppendMessage("user", "  fix the build\nmore")
+				// whole even where the terminal wraps it
+				c.want = append(c.want, "zemi -r "+sid)
+			}
+			out := app.Farewell()
+			for _, w := range c.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("missing %q:\n%s", w, out)
+				}
+			}
+			for _, n := range c.not {
+				if strings.Contains(out, n) {
+					t.Errorf("has %q:\n%q", n, out)
+				}
+			}
+		})
 	}
 }

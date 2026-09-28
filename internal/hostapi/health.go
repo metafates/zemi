@@ -375,6 +375,7 @@ func (h *Host) goHealthRows() []healthCheck {
 
 	// a widget in a region no node draws is the first thing a relayout breaks
 	drawn := h.Layout().Regions()
+	drawn[RegionExit] = true
 	var undrawn []string
 	for _, w := range h.Widgets.List() {
 		if !drawn[w.Region] {

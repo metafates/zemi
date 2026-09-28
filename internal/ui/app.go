@@ -248,6 +248,37 @@ func (a *App) leave() {
 	}
 }
 
+// Farewell renders the exit region for the shell the TUI handed back. Call
+// it only once p.Run returned, so no Update runs beside it. Foreground only:
+// the shell's background is not the theme's, nor is its default text color.
+func (a *App) Farewell() string {
+	var b strings.Builder
+	out := &colorprofile.Writer{Forward: &b, Profile: a.colors}
+	for _, w := range a.host.Widgets.InRegion(hostapi.RegionExit) {
+		// a hot or wedged runtime prints nothing rather than hold the exit
+		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		lines, _, err := a.host.RenderWidget(ctx, w, cmp.Or(a.width, 80), 0, a.uiState())
+		cancel()
+		if err != nil {
+			a.log.Warn("ui", "exit widget failed", map[string]any{"widget": w.ID, "error": err.Error()})
+			continue
+		}
+		for _, line := range lines {
+			for _, s := range line {
+				if s.HL == "" || s.HL == "Normal" {
+					_, _ = out.WriteString(s.Text)
+					continue
+				}
+				st := a.hlStyle(s.HL)
+				st.Bg = nil
+				_, _ = out.WriteString(st.Styled(s.Text))
+			}
+			_, _ = out.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
 // ---------------------------------------------------------------------------
 // messages
 
