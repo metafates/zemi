@@ -205,7 +205,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 				if key := k.String(); utf8.RuneCountInString(key) != 1 || fn == nil {
 					L.RaiseError("zemi.ui.overlay.open: keys[%q] must be one character with { desc, fn }", key)
 				}
-				if strings.Contains(ListOwnKeys, k.String()) {
+				if strings.Contains(listOwnKeys, k.String()) {
 					L.RaiseError("zemi.ui.overlay.open: keys[%q] is the list's own key", k.String())
 				}
 				o.Keys = append(o.Keys, OverlayKey{Key: k.String(), Desc: rawString(spec, "desc"), Fn: fn})
@@ -586,9 +586,9 @@ type OverlayItem struct {
 // action's are checked.
 func ParseOverlayItem(item any) (OverlayItem, error) { return parseItem(item, false) }
 
-// ListOwnKeys are the one-character keys every list keeps for itself, so
+// listOwnKeys are the one-character keys every list keeps for itself, so
 // no overlay key or hotkey may take them.
-const ListOwnKeys = "jk/yY"
+const listOwnKeys = "jk/yY"
 
 func parseItem(item any, action bool) (OverlayItem, error) {
 	m, ok := item.(map[string]any)
@@ -649,7 +649,7 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	default:
 		bad("actions", "a list", v)
 	}
-	if h := p.Hotkey; h != "" && (utf8.RuneCountInString(h) != 1 || strings.Contains(ListOwnKeys, h)) && err == nil {
+	if h := p.Hotkey; h != "" && (utf8.RuneCountInString(h) != 1 || strings.Contains(listOwnKeys, h)) && err == nil {
 		err = fmt.Errorf("hotkey must be one character other than j, k, /, y and Y, got %q", h)
 	}
 	for i, a := range p.Actions {

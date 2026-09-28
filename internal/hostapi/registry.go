@@ -26,12 +26,12 @@ type RHS struct {
 	Fn      *glua.LFunction // Lua callback (interpreter goroutine only)
 	Command string          // registered command name
 	API     string          // dotted host-API call (zemi.*)
-	Move    string          // a list alias: the move it stands for ("down"), one of ListMoves
+	Move    string          // a list alias: the move it stands for ("down"), one of listMoves
 }
 
-// ListMoves are the keys a list alias may stand for: moves only, so no
+// listMoves are the keys a list alias may stand for: moves only, so no
 // alias answers, confirms or copies on a prompt.
-var ListMoves = []string{"up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"}
+var listMoves = []string{"up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"}
 
 // KeyBinding maps one key to a right-hand side.
 type KeyBinding struct {

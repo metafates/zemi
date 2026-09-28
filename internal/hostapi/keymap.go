@@ -130,7 +130,7 @@ func (h *Host) resolveRHS(s string) (RHS, error) {
 // host action; setting a bound key again rebinds it. opts.focus scopes a
 // binding to a focusable layout node: it works only while that node has the
 // keys, and there it may start with a printable key. opts.list makes the key
-// a list alias, whose action is one of ListMoves.
+// a list alias, whose action is one of listMoves.
 func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	// binding reads the key, opts.focus and opts.list of a call
@@ -162,8 +162,8 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 		key, focus, list, opts := binding(L, "set")
 		b := &KeyBinding{Key: key, Focus: focus, List: list, Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L), Gen: h.currentGen()}
 		v := L.Get(2)
-		if s, ok := v.(glua.LString); list && (!ok || !slices.Contains(ListMoves, string(s))) {
-			L.RaiseError("zemi.keymap.set: with opts.list the action is a move: %s", strings.Join(ListMoves, ", "))
+		if s, ok := v.(glua.LString); list && (!ok || !slices.Contains(listMoves, string(s))) {
+			L.RaiseError("zemi.keymap.set: with opts.list the action is a move: %s", strings.Join(listMoves, ", "))
 		}
 		switch v := v.(type) {
 		case *glua.LFunction:
