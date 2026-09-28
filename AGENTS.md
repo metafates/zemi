@@ -331,7 +331,8 @@ of its step. A mistyped path names up to three siblings it could have meant, nea
 files touched after the last message. `tool.Run` runs the same check before the gate
 (`tool.edits`), so nobody approves a change the tool would then refuse, and resolves the path
 once (`perm.Resolve`) before the gate into the per-run `Pipeline.Path`; the tools open exactly
-that `perm.Path` (`Path.Open`, an `openat` walk with `O_NOFOLLOW`) and never the input string,
+that `perm.Path` (`Path.Open`, an `openat` walk with `O_NOFOLLOW` through search-only directory fds, so a
+confined zemi, as `zemi plugins test` runs, passes a parent it may not list) and never the input string,
 so a sandboxed command cannot swap a directory for a symlink between check and open.
 `zemi.fs`, `@file` attachments and the `lua` tool's `path` open through a `perm.Path` too
 (`resolveJailed`). Both writers refuse a path whose last component is a symbolic link

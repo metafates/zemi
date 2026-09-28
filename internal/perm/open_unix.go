@@ -1,4 +1,4 @@
-//go:build unix
+//go:build darwin || linux
 
 package perm
 
@@ -80,18 +80,20 @@ func (p Path) parts() ([]string, error) {
 	return strings.Split(strings.Trim(p.s, "/"), "/"), nil
 }
 
-// walk opens the directories parts names below /, one at a time; with
-// create a missing one is made. The caller closes the fd.
+// walk opens the directories parts names below /, one at a time, search
+// only, so a parent zemi may not list (hidden by the sandbox it runs in)
+// still leads to what it may open; with create a missing one is made. The
+// caller closes the fd.
 func (p Path) walk(parts []string, create bool) (int, error) {
-	dir, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	dir, err := unix.Open("/", searchDir|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return -1, &os.PathError{Op: "open", Path: p.s, Err: err}
 	}
 	for _, c := range parts {
-		fd, err := at(dir, c, unix.O_RDONLY|unix.O_DIRECTORY, 0)
+		fd, err := at(dir, c, searchDir, 0)
 		if errors.Is(err, unix.ENOENT) && create {
 			if err = unix.Mkdirat(dir, c, 0o755); err == nil || errors.Is(err, unix.EEXIST) {
-				fd, err = at(dir, c, unix.O_RDONLY|unix.O_DIRECTORY, 0)
+				fd, err = at(dir, c, searchDir, 0)
 			}
 		}
 		unix.Close(dir)

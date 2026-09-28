@@ -1,4 +1,4 @@
-//go:build unix
+//go:build darwin || linux
 
 package perm
 
@@ -29,13 +29,15 @@ func TestPathActsOnWhatWasChecked(t *testing.T) {
 		resolve func(string) (Path, error)
 		rel     string
 		swap    bool // d becomes a symlink to outside after the check
+		search  bool // d may be searched but not listed after the check
 		op      func(Path) error
 		wantErr bool
 	}{
-		{"open reaches the checked file", Resolve, "d/f", false, read, false},
-		{"open refuses a swapped directory", Resolve, "d/f", true, read, true},
-		{"remove refuses a swapped directory", Resolve, "d/f", true, Path.Remove, true},
-		{"remove takes a link, not its target", Lresolve, "link", false, Path.Remove, false},
+		{"open reaches the checked file", Resolve, "d/f", false, false, read, false},
+		{"open walks a directory it may not list", Resolve, "d/f", false, true, read, false},
+		{"open refuses a swapped directory", Resolve, "d/f", true, false, read, true},
+		{"remove refuses a swapped directory", Resolve, "d/f", true, false, Path.Remove, true},
+		{"remove takes a link, not its target", Lresolve, "link", false, false, Path.Remove, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			root, outside := RealPath(t.TempDir()), RealPath(t.TempDir())
@@ -50,6 +52,10 @@ func TestPathActsOnWhatWasChecked(t *testing.T) {
 			if c.swap {
 				os.Rename(filepath.Join(root, "d"), filepath.Join(root, "old"))
 				os.Symlink(outside, filepath.Join(root, "d"))
+			}
+			if c.search {
+				os.Chmod(filepath.Join(root, "d"), 0o111)
+				t.Cleanup(func() { os.Chmod(filepath.Join(root, "d"), 0o755) })
 			}
 			if err := c.op(p); (err != nil) != c.wantErr {
 				t.Fatalf("err = %v, want error %v", err, c.wantErr)

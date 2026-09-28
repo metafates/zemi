@@ -2040,6 +2040,10 @@ provenance string.
   once before the check into a `perm.Path` and open exactly that path,
   walking it with `openat` and `O_NOFOLLOW` (`Path.Open`), so a directory
   a sandboxed command swaps for a symlink after the check fails the open.
+  The walk opens each directory search only (`O_SEARCH` on macOS,
+  `O_PATH` on Linux), so a zemi that itself runs confined passes a parent
+  the sandbox hides (its state dir, above the scratchpad) and still reads
+  nothing there.
   `write` and `edit` refuse a path whose last component is a
   symbolic link and name the target to edit instead.
   Residual race: `zemi.fs.stat` and `exists` and the roots `glob` and
