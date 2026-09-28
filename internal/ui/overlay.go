@@ -65,53 +65,87 @@ func (f *listFilter) apply() {
 	f.selected = max(0, min(f.selected, len(f.visible)-1))
 }
 
-// edit applies a filtering key. Every list filters the same way: "/"
-// starts a query, then typed text, the composer's deletion keys, and esc
-// (or backspace on an empty query) ends it. Outside a query letters like
-// j and k stay free for moving. It reports whether the key was used.
+// edit applies a filtering key. "/" starts typing a query on a list with
+// rows; typed text and the composer's deletion keys edit it; enter keeps it
+// and gives the keys back to the list, where "/" types on and esc clears it;
+// esc while typing, or backspace on an empty query, clears it too. It
+// reports whether the key was used.
 func (f *listFilter) edit(key, text string) bool {
 	if !f.active {
-		f.active = text == "/"
-		return f.active
-	}
-	old, prev := f.query, -1
-	if f.selected < len(f.visible) {
-		prev = f.visible[f.selected]
+		switch {
+		case text == "/" && len(f.labels) > 0:
+			f.active = true
+		case key == "esc" && f.query != "":
+			f.set("")
+		default:
+			return false
+		}
+		return true
 	}
 	q := composerState{text: f.query, cursor: len([]rune(f.query))}
 	switch {
-	case key == "esc" || (key == "backspace" && f.query == ""):
-		f.query, f.active = "", false
+	case key == "enter":
+		f.active = false
+	case key == "esc" || key == "backspace" && f.query == "":
+		f.active = false
+		f.set("")
 	case key == "backspace":
 		q.backspace()
-		f.query = q.text
+		f.set(q.text)
 	case key == "ctrl+w" || key == "alt+backspace":
 		q.delWord()
-		f.query = q.text
+		f.set(q.text)
 	case key == "ctrl+u":
-		f.query = ""
+		f.set("")
 	case text != "":
-		f.query += text
+		f.set(f.query + text)
 	default:
 		return false
 	}
+	return true
+}
+
+// set narrows to query: a new query selects its first match, a cleared one
+// keeps the selected row.
+func (f *listFilter) set(query string) {
+	prev := -1
+	if f.selected < len(f.visible) {
+		prev = f.visible[f.selected]
+	}
+	changed := query != f.query
+	f.query = query
 	f.apply()
-	if f.query != old {
-		f.selected, f.view.top = 0, 0 // a new query selects its first match
-		if f.query == "" {
-			f.selected = max(0, slices.Index(f.visible, prev)) // a cleared one keeps the row
+	if changed {
+		f.selected, f.view.top = 0, 0
+		if query == "" {
+			f.selected = max(0, slices.Index(f.visible, prev))
 		}
 	}
-	return true
 }
 
 // filterRow is the query line above a list, a hint while no query is open
 // so opening one adds no row.
 func (f *listFilter) filterRow() []hostapi.Segment {
-	if f.active {
-		return append([]hostapi.Segment{{Text: "/ ", HL: "Host:Hint"}}, cursorSegs([]rune(f.query), len([]rune(f.query)), "Host:Bold")...)
+	slash := hostapi.Segment{Text: "/ ", HL: "Host:HintKey"}
+	switch r := []rune(f.query); {
+	case f.active:
+		return append([]hostapi.Segment{slash}, cursorSegs(r, len(r), "Host:Bold")...)
+	case f.query != "":
+		return []hostapi.Segment{slash, {Text: f.query, HL: "Host:Value"}}
 	}
 	return []hostapi.Segment{{Text: "/", HL: "Host:HintKey"}, {Text: " filter", HL: "Host:Hint"}}
+}
+
+// filterHints are the footer's keys while a filter types, since every
+// one-character key types; esc says what it does to a kept query otherwise.
+func (f *listFilter) filterHints(hints []hintPair, esc string) []hintPair {
+	switch {
+	case f.active:
+		return []hintPair{{"enter", "done"}, {"esc", "clear"}}
+	case f.query != "":
+		esc = "clear"
+	}
+	return append(hints, hintPair{"esc", esc})
 }
 
 // emptyRows is how every empty list or view reads: a sentence in the hint
@@ -352,7 +386,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	if st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) {
 		return nil
 	}
-	if len(o.Items) > 0 && !st.back && st.edit(key, text) || moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
+	if !st.back && st.edit(key, text) || moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
 		return nil
 	}
 	// a row's key acts like enter on it; one printable character, so no
@@ -586,13 +620,11 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				hints = append(hints, hintPair{"enter", verb})
 				enterCopies = verb == "copy"
 			}
-			if r := st.items[st.visible[st.selected]].row; verb != "toggle" && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") && !st.active {
+			if r := st.items[st.visible[st.selected]].row; verb != "toggle" && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
 				hints = append(hints, hintPair{"space", "toggle"})
 			}
 			for _, k := range st.o.Keys {
-				if !st.active { // an open filter types these one-character keys
-					hints = append(hints, hintPair{k.Key, k.Desc})
-				}
+				hints = append(hints, hintPair{k.Key, k.Desc})
 			}
 		}
 		var body [][]hostapi.Segment
@@ -600,16 +632,11 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			st.body.viewH = max(room-len(list), 1)
 			body = st.body.window(st.body.wrap(buildBody, bodyW), bodyW)
 		}
-		// y types into an open filter, and says nothing enter does not
-		if (bodyN > 0 || len(st.visible) > 0) && !st.active && !enterCopies {
+		// y says nothing enter does not
+		if (bodyN > 0 || len(st.visible) > 0) && !enterCopies {
 			hints = append(hints, hintPair{"y", "copy"})
 		}
-		esc := "close"
-		if st.active || st.back { // esc ends an open filter first
-			esc = "back"
-		}
-		hints = append(hints, scrolls(st.body, st.view)...)
-		hints = append(hints, hintPair{"esc", esc})
+		hints = st.filterHints(append(hints, scrolls(st.body, st.view)...), map[bool]string{true: "back", false: "close"}[st.back])
 		rows := stack(tight, body, slices.Concat(head, list, fixed), [][]hostapi.Segment{hint(inner, hints...)})
 		return rows, bodyN > 0 && st.body.viewH < min(bodyN, 3) || len(listPH) > 0 && st.view.viewH < min(st.view.rows, 3)
 	})

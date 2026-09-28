@@ -846,7 +846,7 @@ var listKeys = [][2]string{
 	{"up, down, ctrl+p, ctrl+n", "move"},
 	{"pgup, pgdown", "move a page"},
 	{"home, end", "first row, last row"},
-	{"/", "filter the rows"},
+	{"/", "filter; enter keeps it, esc clears it"},
 	{"space", "toggle"},
 	{"y, Y", "copy the row, every row"},
 	{"shift+up, shift+down", "scroll the text a line"},

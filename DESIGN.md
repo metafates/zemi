@@ -1450,7 +1450,7 @@ provenance string.
   every field a Go-built menu uses (`anchor`, `selected`, a `body` of
   styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
-  an item's `hotkey`, one character, acts like enter on that row outside a filter,
+  an item's `hotkey`, one character, acts like enter on that row while no filter types,
   an item's `copy` is the row's value, which `y` copies in place of the row
   (`/model`'s full model id, the init.lua lines of a `/permissions` always
   answer) and enter copies, keeping the list open, when the row does nothing else,
@@ -1504,9 +1504,11 @@ provenance string.
   comes back to it (`/model`'s "Choose a model per role"). A list's action rows are
   sentence-case verb phrases above its sections, with no section of their
   own ("Install a plugin", "Follow the chat model"); the values sit under
-  section headers, so an action never reads as one of them. An open filter
-  types every one-character key, so the footer drops a list's own keys
-  (`keys`, `/memory`'s actions) while it is open. A Go screen's detail opens with
+  section headers, so an action never reads as one of them. `/` starts a
+  filter on a list with rows. While it types, every one-character key types,
+  so the footer says only `enter done · esc clear`; enter keeps the query and
+  gives the keys back to the list (j and k move in the narrowed rows, `/`
+  types on), and esc clears it, then closes. A Go screen's detail opens with
   `key: value` lines set as a table (prose after them is text as written), and its
   `status:` line colors the status words every screen shares: `starting`,
   `ready`, `failed`, `stopped`, `idle` (a language server waiting for its

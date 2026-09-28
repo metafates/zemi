@@ -168,7 +168,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		switch key {
 		case "a", "y":
 			a.memAct("a")
-		case "d", "x", "backspace", "delete":
+		case "d", "x":
 			a.memAct("d")
 		case "s", "o", "u":
 			a.memAct(key)

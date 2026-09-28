@@ -69,94 +69,100 @@ func TestReloadClosesLuaOverlays(t *testing.T) {
 	}
 }
 
-// TestOverlayFilter: "/" starts a filter that narrows the rows (all words,
-// any case), backspace widens again, esc ends the filter before closing and
-// keeps the matched row, j moves outside a filter, and a new query selects
-// its first match, which enter runs. A query matches a row's section and value too.
-// A row's hotkey runs it at once, except in a filter, which takes the key.
+// TestOverlayFilter: "/" types a query that narrows the rows (all words,
+// any case, a row's section and value too), enter keeps it and gives the
+// keys back to the list, esc clears it before closing, and a new query
+// selects its first match.
 func TestOverlayFilter(t *testing.T) {
-	a := newTestApp(t, t.TempDir())
-	var items []any
+	var fixture []any
 	for _, s := range []string{"alpha one", "Beta two", "gamma three"} {
-		items = append(items, map[string]any{"text": s, "fill": s})
+		fixture = append(fixture, map[string]any{"text": s, "fill": s})
 	}
-	a.openOverlay(hostapi.Overlay{ID: "f", Origin: lua.OriginBuiltin, Items: items})
-	typeText := func(s string) {
-		for _, r := range s {
-			a.overlayKey(string(r), string(r))
-		}
-	}
-	visible := func() int { return len(a.overlays[0].visible) }
-
-	typeText("/t")
-	if visible() != 2 {
-		t.Fatalf("t: %d rows", visible())
-	}
-	typeText("wo b")
-	if visible() != 1 {
-		t.Fatalf("'two b': %d rows", visible())
-	}
-	a.overlayKey("backspace", "")
-	a.overlayKey("backspace", "")
-	if q := a.overlays[0].query; q != "two" || visible() != 1 {
-		t.Fatalf("backspace: query %q, %d rows", q, visible())
-	}
-	a.overlayKey("esc", "")
-	if len(a.overlays) != 1 || visible() != 3 {
-		t.Fatalf("esc clears the filter first: overlays=%d rows=%d", len(a.overlays), visible())
-	}
-	a.overlayKey("j", "j")
-	if a.overlays[0].selected != 2 || a.overlays[0].query != "" {
-		t.Fatalf("j outside a filter: selected=%d query=%q", a.overlays[0].selected, a.overlays[0].query)
-	}
-	typeText("/e")
-	a.overlayKey("enter", "")
-	if len(a.overlays) != 0 || a.composer.text != "alpha one" {
-		t.Fatalf("enter: overlays=%d composer=%q", len(a.overlays), a.composer.text)
-	}
-	items[2].(map[string]any)["hotkey"] = "3"
-	a.openOverlay(hostapi.Overlay{ID: "f", Origin: lua.OriginBuiltin, Items: items})
-	typeText("/3")
-	if a.overlays[0].query != "3" {
-		t.Fatalf("a filter takes the hotkey: query %q", a.overlays[0].query)
-	}
-	a.overlayKey("esc", "")
-	a.overlayKey("3", "3")
-	if len(a.overlays) != 0 || a.composer.text != "gamma three" {
-		t.Fatalf("hotkey: overlays=%d composer=%q", len(a.overlays), a.composer.text)
-	}
-	a.openOverlay(hostapi.Overlay{ID: "f", Origin: lua.OriginBuiltin, Items: []any{
+	hotkeyed := slices.Clone(fixture)
+	hotkeyed[2] = map[string]any{"text": "gamma three", "fill": "gamma three", "hotkey": "3"}
+	models := []any{
 		map[string]any{"text": "gpt", "section": "openai"},
 		map[string]any{"text": "sonnet", "section": "anthropic"},
 		map[string]any{"text": "opus", "section": "anthropic", "copy": "anthropic/opus"},
-	}})
-	typeText("/anthropic")
-	if v := a.overlays[0].visible; !slices.Equal(v, []int{1, 2}) || strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20)), "openai") {
-		t.Fatalf("a section name narrows to its rows and drops the other header: %v", v)
 	}
-	a.overlayKey("esc", "")
-	typeText("/anthropic/op")
-	if v := a.overlays[0].visible; !slices.Equal(v, []int{2}) {
-		t.Fatalf("a row's value matches too, so a full model id finds its row: %v", v)
-	}
-	a.overlayKey("esc", "")
-	typeText("/snt")
-	if st := a.overlays[0]; !slices.Equal(st.visible, []int{1}) || fmt.Sprint(st.match) != "[[0 2 5]]" {
-		t.Fatalf("a one-token label matches fuzzily, and says where: %v %v", st.visible, st.match)
-	}
-	a.overlayKey("esc", "")
-	a.openOverlay(hostapi.Overlay{ID: "f", Origin: lua.OriginBuiltin, Items: []any{"x"}, ItemText: [][]hostapi.Segment{{{Text: "●  "}, {Text: "sonnet", HL: "Ok"}}}})
-	typeText("/net")
-	var lit []string
-	for _, row := range a.overlayBox(&a.overlays[0], 80, 20) {
-		for _, s := range row {
-			if s.HL == "Host:Bold" && strings.Contains(fmt.Sprint(row), "●") {
-				lit = append(lit, s.Text)
-			}
+	runes := func(s string, keys ...string) []string { return append(strings.Split(s, ""), keys...) }
+	state := func(a *App, active bool, query string, rows, sel int) string {
+		if len(a.overlays) != 1 {
+			return fmt.Sprintf("%d overlays", len(a.overlays))
 		}
+		st := a.overlays[0]
+		if st.active != active || st.query != query || len(st.visible) != rows || st.selected != sel {
+			return fmt.Sprintf("active=%v query=%q rows=%d selected=%d", st.active, st.query, len(st.visible), st.selected)
+		}
+		return ""
 	}
-	if !slices.Equal(lit, []string{"net"}) {
-		t.Fatalf("a render_item row's spaces stay, so the highlight lands on what matched: %q", lit)
+	closedWith := func(a *App, composer string) string {
+		if len(a.overlays) != 0 || a.composer.text != composer {
+			return fmt.Sprintf("overlays=%d composer=%q", len(a.overlays), a.composer.text)
+		}
+		return ""
+	}
+	for _, c := range []struct {
+		name  string
+		o     hostapi.Overlay
+		keys  []string
+		check func(a *App) string
+	}{
+		{"typing narrows", hostapi.Overlay{}, runes("/t"), func(a *App) string { return state(a, true, "t", 2, 0) }},
+		{"every word must match, backspace widens", hostapi.Overlay{}, runes("/two b", "backspace", "backspace"), func(a *App) string { return state(a, true, "two", 1, 0) }},
+		{"enter keeps the query and gives j to the list", hostapi.Overlay{}, runes("/t", "enter", "j"), func(a *App) string { return state(a, false, "t", 2, 1) }},
+		{"esc while typing clears and keeps the row", hostapi.Overlay{}, runes("/ga", "esc"), func(a *App) string { return state(a, false, "", 3, 2) }},
+		{"esc on a kept query clears, a second closes", hostapi.Overlay{}, runes("/t", "enter", "esc", "esc"), func(a *App) string { return closedWith(a, "") }},
+		{"/ on a kept query types on", hostapi.Overlay{}, runes("/t", "enter", "/", "w"), func(a *App) string { return state(a, true, "tw", 1, 0) }},
+		{"backspace on an empty query stops typing", hostapi.Overlay{}, runes("/", "backspace"), func(a *App) string { return state(a, false, "", 3, 0) }},
+		{"j moves while no filter types", hostapi.Overlay{}, runes("jj"), func(a *App) string { return state(a, false, "", 3, 2) }},
+		{"enter on a kept query acts on the row", hostapi.Overlay{}, runes("/e", "enter", "enter"), func(a *App) string { return closedWith(a, "alpha one") }},
+		{"a typing filter takes the hotkey", hostapi.Overlay{Items: hotkeyed}, runes("/3"), func(a *App) string { return state(a, true, "3", 0, 0) }},
+		{"a hotkey runs its row", hostapi.Overlay{Items: hotkeyed}, runes("3"), func(a *App) string { return closedWith(a, "gamma three") }},
+		{"/ on a list with no rows is inert", hostapi.Overlay{Items: []any{}}, runes("/"), func(a *App) string { return state(a, false, "", 0, 0) }},
+		{"a section name narrows to its rows and drops the other header", hostapi.Overlay{Items: models}, runes("/anthropic"), func(a *App) string {
+			if v := a.overlays[0].visible; !slices.Equal(v, []int{1, 2}) || strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20)), "openai") {
+				return fmt.Sprint(v)
+			}
+			return ""
+		}},
+		{"a row's value matches too, so a full model id finds its row", hostapi.Overlay{Items: models}, runes("/anthropic/op"), func(a *App) string {
+			return map[bool]string{false: fmt.Sprint(a.overlays[0].visible)}[slices.Equal(a.overlays[0].visible, []int{2})]
+		}},
+		{"a one-token label matches fuzzily, and says where", hostapi.Overlay{Items: models}, runes("/snt"), func(a *App) string {
+			st := a.overlays[0]
+			return map[bool]string{false: fmt.Sprint(st.visible, st.match)}[slices.Equal(st.visible, []int{1}) && fmt.Sprint(st.match) == "[[0 2 5]]"]
+		}},
+		{"a render_item row keeps its spaces, so the highlight lands on what matched", hostapi.Overlay{Items: []any{"x"}, ItemText: [][]hostapi.Segment{{{Text: "●  "}, {Text: "sonnet", HL: "Ok"}}}}, runes("/net"), func(a *App) string {
+			var lit []string
+			for _, row := range a.overlayBox(&a.overlays[0], 80, 20) {
+				for _, s := range row {
+					if s.HL == "Host:Bold" && strings.Contains(fmt.Sprint(row), "●") {
+						lit = append(lit, s.Text)
+					}
+				}
+			}
+			return map[bool]string{false: fmt.Sprint(lit)}[slices.Equal(lit, []string{"net"})]
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			a := newTestApp(t, t.TempDir())
+			c.o.ID, c.o.Origin = "f", lua.OriginBuiltin
+			if c.o.Items == nil {
+				c.o.Items = fixture
+			}
+			a.openOverlay(c.o)
+			for _, k := range c.keys {
+				text := map[string]string{"space": " "}[k]
+				if len([]rune(k)) == 1 {
+					text = k
+				}
+				a.overlayKey(k, text)
+			}
+			if msg := c.check(a); msg != "" {
+				t.Fatal(msg)
+			}
+		})
 	}
 }
 
@@ -605,11 +611,12 @@ func TestOverlayHints(t *testing.T) {
 	reload := func() ([]any, [][]hostapi.Segment) { return nil, nil }
 	run := []any{map[string]any{"text": "a", "run": "x"}}
 	keys := []hostapi.OverlayKey{{Key: "e", Desc: "edit"}}
-	hints := func(o hostapi.Overlay, filtering bool) string {
+	hints := func(o hostapi.Overlay, filter string) string {
 		a := newTestApp(t, t.TempDir())
 		o.Origin = lua.OriginBuiltin
 		a.openOverlay(o)
-		a.overlays[0].active = filtering
+		// "/" types, "=" is a kept query
+		a.overlays[0].active, a.overlays[0].query = filter == "/", strings.TrimPrefix(filter, "=")
 		box := a.overlayBox(&a.overlays[0], 80, 20)
 		if len(box) > 20 {
 			t.Errorf("%d rows do not fit 20", len(box))
@@ -617,28 +624,28 @@ func TestOverlayHints(t *testing.T) {
 		return plainSegs(box[len(box)-2])
 	}
 	for _, c := range []struct {
-		o         hostapi.Overlay
-		filtering bool
-		want      string
+		o      hostapi.Overlay
+		filter string
+		want   string
 	}{
-		{hostapi.Overlay{Items: []any{"inert"}}, false, "y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}, Verb: "run"}, false, "enter fill · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}, Verb: "pick"}, false, "enter open · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, false, "enter pick · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "verb": "open"}}, Verb: "pick", Reload: reload}, false, "enter open · y copy · esc close"},
-		{hostapi.Overlay{Items: run}, false, "enter run · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{"a"}, OnSelect: &glua.LFunction{}}, false, "enter pick · y copy · esc close"},
-		{hostapi.Overlay{Items: run, Reload: reload}, false, "enter toggle · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "detail": "d"}}, Reload: reload}, false, "enter open · space toggle · y copy · esc close"},
-		{hostapi.Overlay{Items: run, Keys: keys}, false, "enter run · e edit · y copy · esc close"},
-		{hostapi.Overlay{Items: run, Keys: keys}, true, "enter run · esc back"},
-		{hostapi.Overlay{Body: "text"}, false, "y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "copy": "export X"}}}, false, "enter copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter fill · esc back"},
-		{hostapi.Overlay{Body: "text", Items: []any{map[string]any{"text": "a", "fill": "x"}}}, true, "enter fill · esc back"},
-		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, false, "enter fill · pgup/pgdn scroll · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{"inert"}}, "", "y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}, Verb: "run"}, "", "enter fill · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}, Verb: "pick"}, "", "enter open · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, "", "enter pick · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "verb": "open"}}, Verb: "pick", Reload: reload}, "", "enter open · y copy · esc close"},
+		{hostapi.Overlay{Items: run}, "", "enter run · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{"a"}, OnSelect: &glua.LFunction{}}, "", "enter pick · y copy · esc close"},
+		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "detail": "d"}}, Reload: reload}, "", "enter open · space toggle · y copy · esc close"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run · e edit · y copy · esc close"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter done · esc clear"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run · e edit · y copy · esc clear"},
+		{hostapi.Overlay{Body: "text"}, "", "y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "copy": "export X"}}}, "", "enter copy · esc close"},
+		{hostapi.Overlay{Body: "text", Items: []any{map[string]any{"text": "a", "fill": "x"}}}, "/", "enter done · esc clear"},
+		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, "", "enter fill · pgup/pgdn scroll · y copy · esc close"},
 	} {
-		if got := strings.Trim(hints(c.o, c.filtering), "│ "); got != c.want {
+		if got := strings.Trim(hints(c.o, c.filter), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)
 		}
 	}

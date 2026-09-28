@@ -56,6 +56,8 @@ func pressKeys(app *App, keys ...string) {
 			app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 		case "space":
 			app.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
+		case "backspace":
+			app.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 		case "ctrl+c":
 			app.Update(tea.KeyPressMsg{Mod: uv.ModCtrl, Code: 'c'})
 		default:

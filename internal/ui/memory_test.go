@@ -261,25 +261,37 @@ func TestMemoryReviewEmpty(t *testing.T) {
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 
+	pressKeys(app, "/")
+	if app.memReview.active {
+		t.Fatal("/ started a filter over no rows")
+	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if got := reviewAnswer(t, done); len(got) != 0 {
 		t.Fatalf("empty review returned %v", got)
 	}
 }
 
-// TestMemoryReviewFilter: an open filter hints what enter still does, like
-// any filtered list, and leaves out the action keys it types.
+// TestMemoryReviewFilter: a typing filter's footer names only enter and
+// esc, enter keeps the query and gives the keys back, and backspace on a
+// kept query drops nothing.
 func TestMemoryReviewFilter(t *testing.T) {
 	app, _ := bootAgentApp(t, 90, 16)
 	openReview(t, app, []hostapi.MemoryRow{{ID: "m1", Scope: "project", Origin: "user", Text: "the fts join needs qualified columns"}})
+	footer := func() string {
+		app.renderSync(t)
+		return ansi.Strip(app.Frame())
+	}
 	pressKeys(app, "/fts")
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "enter open · esc back") || strings.Contains(frame, "d drop") {
-		t.Fatalf("filtered memory hints:\n%s", frame)
+	if frame := footer(); !strings.Contains(frame, "enter done · esc clear") || strings.Contains(frame, "d drop") {
+		t.Fatalf("typing filter hints:\n%s", frame)
+	}
+	pressKeys(app, "enter", "backspace")
+	if frame := footer(); app.memReview.detail || len(app.memReview.items) != 1 || !strings.Contains(frame, "enter open") || !strings.Contains(frame, "esc clear") {
+		t.Fatalf("kept filter:\n%s", frame)
 	}
 	pressKeys(app, "enter")
 	if !app.memReview.detail {
-		t.Fatal("enter in a filter opens the row, as its hint says")
+		t.Fatal("enter on a kept filter opens the row")
 	}
 }
 

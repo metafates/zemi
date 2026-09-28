@@ -283,12 +283,9 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 			if c.key == "o" { // the button's label does not fit a footer
 				verb = "editor"
 			}
-			if !mr.active { // an open filter types the action keys
-				hints = append(hints, hintPair{c.key, verb})
-			}
+			hints = append(hints, hintPair{c.key, verb})
 		}
 	}
-	esc := map[bool]string{true: "back", false: "close"}[mr.active]
 	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight := level > 0
 		head := [][]hostapi.Segment{mr.filterRow()}
@@ -318,7 +315,7 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 				list = rows(barText(inner) - 2)
 			}
 		}
-		hintRow := hint(inner, slices.Concat(hints, scrolls(mr.view), []hintPair{{"esc", esc}})...)
+		hintRow := hint(inner, mr.filterHints(slices.Concat(hints, scrolls(mr.view)), "close")...)
 		return stack(tight, slices.Concat(head, list), [][]hostapi.Segment{hintRow}), len(items) > 0 && mr.view.viewH < min(mr.view.rows, 3)
 	})
 	return promptBox("Memory", "", body, w, h, 100, &mr.size)
