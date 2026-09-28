@@ -91,7 +91,7 @@ func (h *Host) pluginsCommand(line string) error {
 		})
 	}
 	switch {
-	case len(args) == 0 || verb == "list" && len(args) == 1:
+	case len(args) == 0:
 		h.GoSafe("plugins", func() { h.openPlugins(ui, false) })
 	case verb == "toggle" && len(args) == 2:
 		p, err := h.pluginNamed(args[1])

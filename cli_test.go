@@ -24,13 +24,19 @@ func TestCLI(t *testing.T) {
 	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
 		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
 	}
-	plugin := filepath.Join(home, "data", "plugins", "local", "rub")
-	if err := os.MkdirAll(plugin, 0o755); err != nil {
+	for _, name := range []string{"rub", "zzq"} {
+		if err := os.MkdirAll(filepath.Join(home, "data", "plugins", "local", name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// stdin is no terminal, as for an agent's command
+	stdin, w, err := os.Pipe()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(plugin, "init.lua"), []byte("-- rub"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	defer w.Close()
+	defer func(was *os.File) { os.Stdin = was }(os.Stdin)
+	os.Stdin = stdin
 	base, dir := t.TempDir(), t.TempDir()
 	t.Chdir(base)
 	t.Setenv("PWD", base)
@@ -39,6 +45,7 @@ func TestCLI(t *testing.T) {
 		args           []string
 		code           int
 		stdout, stderr string
+		notStdout      string
 		want           *options
 	}{
 		{name: "tui", want: &options{}},
@@ -57,7 +64,10 @@ func TestCLI(t *testing.T) {
 		{name: "a parent takes no args", args: []string{"plugins", "are", "slow"}, code: 2, stderr: `unknown command "are" for "zemi plugins"`},
 		{name: "a failure is 1", args: []string{"plugins", "enable", "nope"}, code: 1, stderr: `zemi: plugins enable: no plugin is named "nope"`},
 		{name: "plugins arity", args: []string{"plugins", "enable"}, code: 2},
-		{name: "plugins lists", args: []string{"plugins"}, stdout: "rub"},
+		{name: "delete off a terminal", args: []string{"plugins", "delete", "zzq"}, code: 2, stderr: "pass --yes to delete zzq"},
+		{name: "plugins lists", args: []string{"plugins"}, stdout: "zzq"},
+		{name: "delete with yes", args: []string{"plugins", "delete", "--yes", "zzq"}},
+		{name: "the delete took", args: []string{"plugins"}, stdout: "rub", notStdout: "zzq"},
 		{name: "completion script", args: []string{"completion", "fish"}, stdout: "complete -c zemi"},
 		{name: "-C a missing dir", args: []string{"-C", "nope", "hi"}, code: 2, stderr: "zemi: -C nope: no such file or directory"},
 		{name: "-C a dir", args: []string{"-C", dir, "run", "hi"}, want: &options{run: true, prompt: "hi", dir: dir}},
@@ -72,7 +82,7 @@ func TestCLI(t *testing.T) {
 			return 0
 		})
 		if code != c.code || !strings.Contains(out.String(), c.stdout) || !strings.Contains(errOut.String(), c.stderr) ||
-			c.code == 1 && strings.Contains(errOut.String(), "--help") {
+			c.notStdout != "" && strings.Contains(out.String(), c.notStdout) || c.code == 1 && strings.Contains(errOut.String(), "--help") {
 			t.Errorf("%s: code %d, stdout %q, stderr %q", c.name, code, out.String(), errOut.String())
 		}
 		if (got == nil) != (c.want == nil) {

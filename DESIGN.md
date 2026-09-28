@@ -439,7 +439,8 @@ branch to the highest tag when that tag is ahead of it, or else a branch
 fast-forward, and names only the plugins that moved; `check` fetches, so
 the list names each update from local refs; `enable`, `disable` and
 `delete` (an installed clone, else the local plugin; a symlink loses the
-link only). `zemi plugins` runs without the TUI or trust, and without the
+link only; `zemi plugins delete` asks first, and needs `--yes` off a
+terminal). `zemi plugins` runs without the TUI or trust, and without the
 Lua boot but for `test`; a prompt whose first word names a command goes
 after `--`.
 `/plugins` is a toggle list built off the key loop, local plugins first,

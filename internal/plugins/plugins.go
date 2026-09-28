@@ -49,7 +49,7 @@ var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 const netTimeout = 2 * time.Minute
 
 // ErrUsage is Run's error for a verb or arguments it does not take.
-var ErrUsage = errors.New("usage: plugins [list] | install <git url> [name] | update [name...] | check | enable <name> | disable <name> | delete <name>")
+var ErrUsage = errors.New("usage: plugins install <git url> [name] | update [name...] | check | enable <name> | disable <name> | delete <name>")
 
 // List reads every plugin, local ones first, each group by name. It runs
 // only local git reads.
@@ -258,31 +258,31 @@ func SetEnabled(d config.Dirs, name string, on bool) error {
 // UpToDate is what check and update print when no plugin has news.
 const UpToDate = "Plugins up to date"
 
-// Run runs one verb of the zemi plugins CLI, which /plugins shares. Only list
-// prints a table; every other verb prints plain lines a toast can show.
-func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error {
-	verb, rest := "list", args
-	if len(args) > 0 {
-		verb, rest = args[0], args[1:]
+// Table writes one aligned line per plugin, no header, the free-text source
+// last, so cut and awk read the name.
+func Table(out io.Writer, ps []Plugin) error {
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	for _, p := range ps {
+		version, source, on := p.Version, p.URL, "on"
+		if p.Local {
+			version, source = "local", p.Dir
+		}
+		if !p.Enabled {
+			on = "off"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.Name, version, on, source)
 	}
+	return w.Flush()
+}
+
+// Run runs one verb of the zemi plugins CLI, which /plugins shares; each
+// prints plain lines a toast can show.
+func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		return ErrUsage
+	}
+	verb, rest := args[0], args[1:]
 	switch {
-	case verb == "list" && len(rest) == 0:
-		ps, err := List(ctx, d)
-		if len(ps) == 0 && err == nil {
-			fmt.Fprintln(out, "No plugins yet. Install one with zemi plugins install <git url>.")
-		}
-		w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-		for _, p := range ps {
-			version, source, on := p.Version, p.URL, "on"
-			if p.Local {
-				version, source = "local", p.Dir
-			}
-			if !p.Enabled {
-				on = "off"
-			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.Name, version, on, source)
-		}
-		return errors.Join(err, w.Flush())
 	case verb == "install" && (len(rest) == 1 || len(rest) == 2):
 		name := ""
 		if len(rest) == 2 {

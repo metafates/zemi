@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,8 +65,8 @@ func TestPlugins(t *testing.T) {
 	for _, c := range []struct {
 		name   string
 		before func()
-		args   []string
-		want   string // in the output (words joined by one space, a newline on each end), or in the error when err
+		args   []string // nil lists with Table
+		want   string   // in the output (words joined by one space, a newline on each end), or in the error when err
 		err    bool
 	}{
 		{name: "local only", args: nil, want: "loc local on " + local},
@@ -106,7 +107,7 @@ func TestPlugins(t *testing.T) {
 		},
 		{name: "a branch moves to the first tag", args: []string{"update", "why"}, want: " -> v0.1.0\n"},
 		{name: "disable", args: []string{"disable", "x"}},
-		{name: "list", args: []string{"list"}, want: "x v0.10.0 off file://" + tagged},
+		{name: "list", args: nil, want: "x v0.10.0 off file://" + tagged},
 		{name: "disable an unknown name", args: []string{"disable", "nope"}, want: "no plugin is named", err: true},
 		{
 			name:   "delete a local plugin",
@@ -153,7 +154,12 @@ func TestPlugins(t *testing.T) {
 			c.before()
 		}
 		var out strings.Builder
-		err := Run(t.Context(), d, c.args, &out)
+		ps, err := List(t.Context(), d)
+		if c.args == nil {
+			err = errors.Join(err, Table(&out, ps))
+		} else {
+			err = Run(t.Context(), d, c.args, &out)
+		}
 		got := "\n" + strings.Join(strings.Fields(out.String()), " ") + "\n"
 		if err != nil {
 			got = err.Error()

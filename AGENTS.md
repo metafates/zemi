@@ -138,7 +138,9 @@ points at `--trust`); `/btw` claims the agent like `/compact`, so `zemi run` wai
 ctrl+c cancels it, and appends its answer as a transcript row, which `zemi run` prints.
 
 `zemi plugins [verb]` (`pluginsCommand`) runs `plugins.Run` and exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
-reloads on the change. `test` is the one verb that boots Lua (below). `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
+reloads on the change. Bare, it lists (`plugins.Table`: no header, the source last; the empty
+hint on stderr). `delete` asks on the terminal, `--yes` answers, and off a terminal it refuses,
+so an agent's command cannot delete a plugin. `test` is the one verb that boots Lua (below). `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
 `open`, `new` (the list's first row, which sends `newPluginPrompt` to the agent: the
 procedure lives in the zemi skill's plugins.md) and `modify <name> [what to change]` (a local
 plugin's detail action fills it; it sends `modifyPluginPrompt` and records the plugin in

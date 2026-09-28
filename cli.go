@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 	"golang.org/x/mod/module"
 
@@ -230,16 +232,24 @@ func polish(c *cobra.Command) {
 // pluginsCommand is zemi plugins: no Lua boot, TUI, trust or store, so it
 // works beside a running TUI, whose config watcher reloads on the change.
 func pluginsCommand() *cobra.Command {
+	yes := false
 	// git clones and fetches: an interrupt stops them and exits with 130
 	run := func(c *cobra.Command, args []string) error {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		dirs, err := config.ResolveDirs()
-		if err == nil {
-			if c.Name() != "plugins" {
-				args = append([]string{c.Name()}, args...)
+		switch {
+		case err != nil:
+		case c.Name() == "plugins":
+			var ps []plugins.Plugin
+			if ps, err = plugins.List(ctx, dirs); err == nil && len(ps) == 0 {
+				fmt.Fprintln(c.ErrOrStderr(), "zemi: no plugins yet; zemi plugins install <git url> adds one")
 			}
-			err = plugins.Run(ctx, dirs, args, c.OutOrStdout())
+			err = errors.Join(err, plugins.Table(c.OutOrStdout(), ps))
+		case c.Name() == "delete" && !yes && !confirm(c, "Delete the plugin "+args[0]+" and its files?"):
+			return exitStatus(1)
+		default:
+			err = plugins.Run(ctx, dirs, append([]string{c.Name()}, args...), c.OutOrStdout())
 		}
 		if ctx.Err() != nil {
 			return exitStatus(130)
@@ -261,10 +271,24 @@ func pluginsCommand() *cobra.Command {
 		{"check", "fetch, then list the updates", cobra.NoArgs},
 		{"enable <name>", "load the plugin from the next start", cobra.ExactArgs(1)},
 		{"disable <name>", "stop loading the plugin", cobra.ExactArgs(1)},
-		{"delete <name>", "delete a plugin and its files", cobra.ExactArgs(1)},
 	} {
 		cmd.AddCommand(&cobra.Command{Use: v.use, Short: v.short, Args: v.args, RunE: run})
 	}
+	// a local plugin is the user's own code with no copy anywhere, and off a
+	// terminal nobody answers, so an agent's command cannot delete one
+	del := &cobra.Command{
+		Use:   "delete <name>",
+		Short: "delete a plugin and its files; asks first",
+		Args: cobra.MatchAll(cobra.ExactArgs(1), func(_ *cobra.Command, args []string) error {
+			if !yes && !term.IsTerminal(os.Stdin.Fd()) {
+				return fmt.Errorf("plugins delete: stdin is not a terminal to ask on; pass --yes to delete %s", args[0])
+			}
+			return nil
+		}),
+		RunE: run,
+	}
+	del.Flags().BoolVar(&yes, "yes", false, "delete without asking")
+	cmd.AddCommand(del)
 	cmd.AddCommand(&cobra.Command{
 		Use:   "test <name|dir> [pattern]",
 		Short: "run its tests, each case in a zemi of its own",
@@ -276,6 +300,15 @@ func pluginsCommand() *cobra.Command {
 		},
 	})
 	return cmd
+}
+
+// confirm asks on stderr and reads the answer from stdin; only y or yes is
+// a yes.
+func confirm(c *cobra.Command, question string) bool {
+	fmt.Fprint(c.ErrOrStderr(), question+" [y/N] ")
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	a := strings.ToLower(strings.TrimSpace(line))
+	return a == "y" || a == "yes"
 }
 
 func versionString() string {
