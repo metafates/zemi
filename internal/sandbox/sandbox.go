@@ -109,7 +109,7 @@ func Wrap(cmd *exec.Cmd, p Policy) error {
 	}
 	p.Write, p.Protect, p.Hide, p.Read, p.List = real(p.Write), protect, real(p.Hide), real(p.Read), real(p.List)
 	if p.Pad != "" {
-		p.Pad = real([]string{p.Pad})[0]
+		p.Pad = cmp.Or(perm.RealPath(p.Pad), p.Pad)
 	}
 	return wrap(cmd, p)
 }
