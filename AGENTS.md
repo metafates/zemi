@@ -908,7 +908,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   check), unless the read log holds that mtime: the model read or wrote it itself. A rewind
   (`forgetInstructions`) lets it ride again. The main agent's reads count the pinned files as
   in the prompt.
-  Subagents build theirs once per run (`systemWith`).
+  Subagents build theirs once per run (`systemWith`). `TestPromptBudget` caps what the default
+  request carries before the first message (system text and tool definitions); raise it only
+  with a reason.
 - **Tool schemas**: fantasy wraps `ToolInfo.Parameters` as the properties map, so tools pass
   `tools.SchemaProperties(schema)` and a non-nil `Required`; strict providers reject anything
   else.

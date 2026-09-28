@@ -16,6 +16,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -379,4 +380,35 @@ zemi.event.on("agent.assemble", function() n = n + 1; return "build " .. n end)`
 func (h *Host) buildSystem(p *Profile) string {
 	sys, _ := h.buildSystemParts(p, h.profileTools(p))
 	return sys
+}
+
+// TestPromptBudget: what the default request carries before the first
+// message (system text and tool definitions) stays under a ceiling, so the
+// base cannot grow unnoticed.
+func TestPromptBudget(t *testing.T) {
+	h, _ := newTestHostSkills(t)
+	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true}})
+	h.SetUIHooks(&fakeUI{})
+	h.SetProjectTrusted(true)
+	h.agents.sessionID = "s1"
+	if _, err := h.Settings.SetQuiet("lsp.auto", false); err != nil {
+		t.Fatal(err)
+	}
+	toolset := h.profileTools(nil)
+	sys, parts := h.buildSystemParts(nil, toolset)
+	if !strings.Contains(sys, "# Skills") || !strings.Contains(sys, "Sandbox (auto mode)") {
+		t.Fatal("no skills index or Sandbox block: the count would be less than users get")
+	}
+	sizes := promptSizes(parts, toolset)
+	n := 0
+	for _, s := range sizes {
+		n += s.chars
+	}
+	// NOTE: chars, not tokens (about 4.3 per o200k token): the owner's limit
+	// is 10k tokens, and this ceiling sits just above today's size, so any
+	// growth is a decision. Raise it only with a reason.
+	const ceiling = 22000
+	if n > ceiling {
+		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
+	}
 }
