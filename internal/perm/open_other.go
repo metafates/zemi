@@ -1,4 +1,4 @@
-//go:build !darwin && !linux
+//go:build !unix
 
 package perm
 
@@ -8,8 +8,8 @@ import (
 )
 
 // Open opens the path that was checked.
-// NOTE: a symlink swapped in after the check is followed; on darwin and
-// linux the path is walked with O_NOFOLLOW.
+// NOTE: a symlink swapped in after the check is followed; the unix version
+// walks the path with O_NOFOLLOW.
 func (p Path) Open(flag int, mode os.FileMode) (*os.File, error) {
 	if flag&os.O_CREATE != 0 {
 		if err := os.MkdirAll(filepath.Dir(p.s), 0o755); err != nil {
