@@ -98,9 +98,9 @@ or settled builds.
 
 The command line is a cobra tree (`execute`): `zemi` opens the TUI, `zemi run` answers one
 prompt on stdout, and `sessions` (and `sessions export <id>`, `hostapi.SessionMarkdown` on
-stdout; `projectStore` never creates the project's store), `plugins`, `health`, cobra's
-`completion` and `help` are subcommands, each
-declaring its `Args` (cobra checks positionals only on the root). A prompt argument is sent as
+stdout; `projectStore` never creates the project's store), `models` (and `models update`),
+`plugins`, `health`, cobra's `completion` and `help` are subcommands, each declaring its
+`Args` (cobra checks positionals only on the root). A prompt argument is sent as
 the first message, or run as a command when it names one (`sendPrompt`, TUI and `zemi run`
 alike, so `/review` works from a git hook); a prompt whose first word names a zemi command goes
 after `--`, and a lone word a near miss of one is refused (`options.finish`), since it would pay
