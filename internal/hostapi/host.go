@@ -1140,6 +1140,9 @@ type Segment struct {
 	// without a newline and drops the row's cells after this segment
 	Soft bool
 	Bar  bool // Go only: a viewport's scrollbar cell, kept to a box's right edge
+	// Band is Go only: the selected row of a list or prompt, drawn on
+	// Host:Band's background. A field, since hover rewrites Over and HL.
+	Band bool
 }
 
 // RenderWidget runs a widget's Lua render at the cells its layout node gives

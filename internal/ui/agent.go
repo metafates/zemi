@@ -245,8 +245,9 @@ func (t *textRows) at(build func(int) [][]hostapi.Segment) func(int) [][]hostapi
 type promptChoice struct{ key, label, desc, hl string }
 
 // choiceRows draws a prompt's answers as buttons: "[y] Trust", the key right
-// next to what it does, the selected one marked like a selected list row; a
-// choice with no key keeps the column blank. Labels and descriptions are two
+// next to what it does, the selected one marked like a selected list row,
+// its band padded to the widest button; a choice with no key keeps the
+// column blank. Labels and descriptions are two
 // columns, each wrapping in its own, so every description starts at one x.
 // Every row carries the choice's 1-based Hit, so a click answers it. A label
 // wraps, since the user answers what it says, unless short cuts each choice
@@ -272,8 +273,8 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 		btn, textHL := []hostapi.Segment{
 			{Text: "  " + open, HL: "Host:Hint"}, {Text: c.key, HL: "Host:HintKey"}, {Text: shut + pad, HL: "Host:Hint"},
 		}, "Host:Value"
-		if i == sel { // marked like a selected list row
-			btn, textHL = []hostapi.Segment{{Text: "› " + open + c.key + shut + pad, HL: "Host:Title"}}, "Host:Title"
+		if i == sel {
+			btn, textHL = []hostapi.Segment{{Text: "› ", HL: "Host:Title"}, {Text: open, HL: "Host:Hint"}, {Text: c.key, HL: "Host:HintKey"}, {Text: shut + pad, HL: "Host:Hint"}}, "Host:Bold"
 		}
 		labelW, desc := textW, [][]hostapi.Segment(nil)
 		if c.desc != "" {
@@ -296,9 +297,18 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 				row = slices.Concat([]hostapi.Segment{{Text: strings.Repeat(" ", kw+5)}}, r)
 			}
 			for k := range row {
-				row[k].Hit = i + 1
+				row[k].Hit, row[k].Band = i+1, i == sel
 			}
 			rows = append(rows, row)
+		}
+	}
+	widest := 0
+	for _, r := range rows {
+		widest = max(widest, hostapi.SegsWidth(r))
+	}
+	for y, r := range rows {
+		if len(r) > 0 && r[0].Band && hostapi.SegsWidth(r) < widest {
+			rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-hostapi.SegsWidth(r)), Hit: sel + 1, Band: true})
 		}
 	}
 	return rows
@@ -414,8 +424,8 @@ func switchSeg(on, locked bool) hostapi.Segment {
 }
 
 // listRows is the one list renderer (palette, completion, pickers,
-// overlays, memory, questions). The selected item gets "› " and bold text
-// on all its rows; descriptions stay dim. more rows, wrapped by the caller,
+// overlays, memory, questions). The selected item gets "› ", bold text and
+// the band on all its rows but its section header; descriptions stay dim. more rows, wrapped by the caller,
 // follow the label (or replace it when the label is empty). Every row of an
 // item carries its 1-based Hit. Past room rows the list shows a window of
 // whole items with the scrollbar; v keeps it across frames, so it moves only
@@ -435,7 +445,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 	var rows [][]hostapi.Segment
 	var keys map[int]hostapi.Segment // row -> key column
 	var cut, starts map[int]bool     // rows a scrolled window may end after, and start at
-	var selTop, selEnd int
+	var selTop, bandTop, selEnd int
 	// rows at maxW cells; the width depends on the bar, which the row count
 	// decides, so a list that overflows is built again a cell narrower
 	build := func(maxW int) {
@@ -455,7 +465,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			// the marker and the gap before a description take 2 cells each
 			labelW = max(min(labelW, maxW-4-keyW), 1)
 		}
-		rows, selTop, selEnd = nil, 0, 0
+		rows, selTop, bandTop, selEnd = nil, 0, 0, 0
 		section := ""
 		keys, cut, starts = map[int]hostapi.Segment{}, map[int]bool{}, map[int]bool{}
 		for i, it := range items {
@@ -467,10 +477,11 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			if it.section != section && it.section != "" {
 				rows = append(rows, []hostapi.Segment{{Text: it.section, HL: "Host:Title"}})
 			}
+			top := len(rows)
 			section = it.section
 			hit, hl, marker := i+1, "Host:Value", hostapi.Segment{Text: "  "}
 			if i == sel {
-				hl, marker = "Host:Title", hostapi.Segment{Text: "› ", HL: "Host:Title"}
+				hl, marker = "Host:Bold", hostapi.Segment{Text: "› ", HL: "Host:Title"}
 			}
 			// segments without hl take the row's, and inline colors bold with it
 			styled := func(r []hostapi.Segment) []hostapi.Segment {
@@ -531,7 +542,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			}
 			cut[len(rows)-1] = true
 			if i == sel {
-				selTop, selEnd = start, len(rows)
+				selTop, bandTop, selEnd = start, top, len(rows)
 			}
 		}
 	}
@@ -568,9 +579,12 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 		if k, ok := keys[y]; ok {
 			pad := hostapi.Segment{Text: strings.Repeat(" ", widest-hostapi.SegsWidth(r)-ansi.StringWidth(k.Text)), Hit: k.Hit}
 			rows[y] = append(r, pad, k)
-			continue
+		} else {
+			rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-hostapi.SegsWidth(r))})
 		}
-		rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-hostapi.SegsWidth(r))})
+		for k := range rows[y] {
+			rows[y][k].Band = y >= bandTop && y < selEnd
+		}
 	}
 	if !v.overflows() {
 		v.top = 0
@@ -603,13 +617,12 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 
 // matchSegs draws the runes at byte offsets pos of a row's text, a filter's
 // match, before the row's style fills the segments without one: in the
-// accent, or on the selected row, which is the accent already, in the bold
-// plain color.
+// accent, bold on the selected row.
 func matchSegs(segs []hostapi.Segment, pos []int, sel bool) []hostapi.Segment {
 	if len(pos) == 0 {
 		return segs
 	}
-	hl := map[bool]string{false: "Host:HintKey", true: "Host:Bold"}[sel]
+	hl := map[bool]string{false: "Host:HintKey", true: "Host:Title"}[sel]
 	var out []hostapi.Segment
 	j, off := 0, 0
 	for _, s := range segs {

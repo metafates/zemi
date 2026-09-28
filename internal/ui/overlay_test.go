@@ -137,7 +137,7 @@ func TestOverlayFilter(t *testing.T) {
 			var lit []string
 			for _, row := range a.overlayBox(&a.overlays[0], 80, 20) {
 				for _, s := range row {
-					if s.HL == "Host:Bold" && strings.Contains(fmt.Sprint(row), "●") {
+					if s.HL == "Host:Title" && s.Text != "› " && strings.Contains(fmt.Sprint(row), "●") {
 						lit = append(lit, s.Text)
 					}
 				}

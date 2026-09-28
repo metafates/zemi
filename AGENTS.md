@@ -986,8 +986,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   also why `Host.Markdown` renders glamour unwrapped (tables aside) and wraps it itself. A
   click acts on `Segment.Hit` (chrome rows) or `Segment.Click`/`Segment.Widget` (a widget's
   `on_click`, run on the background worker); a click id with no widget is a Go statusline pill
-  naming its command. Helpers that rebuild segments must copy those fields; only `dimRows`
-  drops them, because dimmed rows are not targets. Overlays (internal/ui/overlay.go) are data:
+  naming its command. Helpers that rebuild segments must copy those fields and `Band` (the
+  selected row's background); only `dimRows` drops them, because dimmed rows are not targets. Overlays (internal/ui/overlay.go) are data:
   an item with `detail` or `actions` pushes a detail view whose rows draw as the prompts'
   buttons, keyed by `hotkey` or position (`actionKey`), and `Body` is text above the items
   (markdown with `BodyMD`; `BodySegs` draws styled rows in its place, sanitized like `Body`,

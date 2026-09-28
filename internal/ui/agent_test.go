@@ -591,26 +591,29 @@ func lastToast(app *App) string {
 	return app.toasts[len(app.toasts)-1].body
 }
 
-// TestPaletteArgumentCompletion: past "/name " the palette lists the
-// command's argument candidates, tab fills the argument under the cursor,
-// enter runs the command with the highlighted one once the user moved to it
-// and a bare "/name " as typed.
+// TestMatchLook: a match is the accent on every row, bold on the selected
+// one, and the selection is its own channel, the band (^), which a section
+// header never takes.
 func TestMatchLook(t *testing.T) {
-	items := []listItem{{label: "sonnet", match: []int{3, 4, 5}}, {label: "opus", desc: "net"}, {label: "gpt", match: []int{0}}}
+	items := []listItem{
+		{label: "sonnet", section: "anthropic", match: []int{3, 4, 5}},
+		{label: "opus", section: "anthropic", desc: "net"},
+		{label: "gpt", section: "openai", match: []int{0}},
+	}
 	for _, c := range []struct {
 		name string
 		sel  int
 		want string
 	}{
-		{"a selected label match is bold plain on the accent row", 0, "[› /Host:Title son/Host:Title net/Host:Bold] [opus/Host:Value net/Host:Hint] [g/Host:HintKey pt/Host:Value]"},
-		{"a selected desc match keeps the same accent row", 1, "[son/Host:Value net/Host:HintKey] [› /Host:Title opus/Host:Title net/Host:Hint] [g/Host:HintKey pt/Host:Value]"},
+		{"the selected row is a band under its plain header, its match bold accent", 0, "[anthropic/Host:Title] [› /Host:Title^ son/Host:Bold^ net/Host:Title^] [opus/Host:Value net/Host:Hint] [openai/Host:Title] [g/Host:HintKey pt/Host:Value]"},
+		{"a selected row with a desc match keeps the band", 1, "[anthropic/Host:Title] [son/Host:Value net/Host:HintKey] [› /Host:Title^ opus/Host:Bold^ net/Host:Hint^] [openai/Host:Title] [g/Host:HintKey pt/Host:Value]"},
 	} {
 		var got []string
 		for _, row := range listRows(items, c.sel, nil, 20, 0) {
 			var segs []string
 			for _, s := range row {
 				if strings.TrimSpace(s.Text) != "" {
-					segs = append(segs, s.Text+"/"+s.HL)
+					segs = append(segs, s.Text+"/"+s.HL+map[bool]string{true: "^"}[s.Band])
 				}
 			}
 			if segs != nil {
@@ -623,6 +626,10 @@ func TestMatchLook(t *testing.T) {
 	}
 }
 
+// TestPaletteArgumentCompletion: past "/name " the palette lists the
+// command's argument candidates, tab fills the argument under the cursor,
+// enter runs the command with the highlighted one once the user moved to it
+// and a bare "/name " as typed.
 func TestPaletteArgumentCompletion(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 	ran := ""

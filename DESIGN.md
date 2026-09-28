@@ -1325,11 +1325,12 @@ UI extensibility contract:
   order, so sections stay whole and `/sessions` keeps recency. `@` files
   rank a file name the token begins first, then by the score of the name,
   or of the path when only the path matches. Every list draws the matched
-  runes of a label in the accent (`listRowsW`, `matchSegs`); the selected
-  row stays the bold accent whatever matched, and its matched runes take the
-  bold text color, so each state has one look in every list. It changes only
-  colors, never a row's width, and never underlines: that means a click
-  acts. Model-facing lookups
+  runes of a label in the accent (`listRowsW`, `matchSegs`), bold on the
+  selected row. The selection is its own channel: a band (`Segment.Band`,
+  `Host:Band`) under the row, the accent `›` and bold text, in every list
+  and every prompt's buttons, so a match and the selection never share a
+  color. It changes only colors, never a row's width, and never underlines:
+  that means a click acts. Model-facing lookups
   (`tool_search`, a mistyped path's siblings), command dispatch and every
   permission or path check stay exact.
 
@@ -1666,7 +1667,7 @@ provenance string.
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
   last, a yes/no one's `y` and `n`, an open memory, an overlay's detail view; a multi-select stays a list of
   switches) draws its buttons through one renderer, which puts
-  each answer's key in brackets beside its label, the selected answer marked `›` in the accent like a selected list row. The session `always` and `wider`
+  each answer's key in brackets beside its label, the selected answer marked like a selected list row, the band under the accent `›`. The session `always` and `wider`
   answers write allow rules to the rule store (§6.1),
   scoped to the `model` principal, with the prefix-glob patterns §6.2 lists; they last
   until zemi exits. Lasting rules normally come only from `zemi.permission.rule.add`

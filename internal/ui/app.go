@@ -1331,26 +1331,33 @@ func (a *App) hlStyle(hl string) uv.Style {
 	return st
 }
 
-func (a *App) segStyle(hl, over string) uv.Style {
-	if over == "" {
-		return a.hlStyle(hl)
+func (a *App) segStyle(hl, over string, band bool) uv.Style {
+	st := a.hlStyle(hl)
+	if over != "" {
+		st = a.thm.hover(st, over)
 	}
-	return a.thm.hover(a.hlStyle(hl), over)
+	if band {
+		st.Bg = a.hlStyle("Host:Band").Bg
+	}
+	return st
 }
 
 // sgrPrefix is the ANSI sequence a segment's style opens with, "" for the
 // terminal's own. It is cached for the frame: compose styles thousands of
 // segments and building the sequence for each is the biggest cost of
 // drawing one.
-func (a *App) sgrPrefix(hl, over string) string {
-	key := hl // no highlight name holds a NUL, and hover is the rare case
+func (a *App) sgrPrefix(hl, over string, band bool) string {
+	key := hl // no highlight name holds a NUL, and hover and the band are the rare cases
 	if over != "" {
 		key = hl + "\x00" + over
+	}
+	if band {
+		key += "\x00b"
 	}
 	if p, ok := a.prefixes[key]; ok {
 		return p
 	}
-	st := a.segStyle(hl, over)
+	st := a.segStyle(hl, over, band)
 	p := ""
 	if !st.IsZero() {
 		p = st.String()
@@ -1362,8 +1369,8 @@ func (a *App) sgrPrefix(hl, over string) string {
 // renderSegs styles and joins segments, truncating to w visible cells.
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 	var b strings.Builder
-	write := func(text, hl, over string) {
-		p := a.sgrPrefix(hl, over)
+	write := func(text, hl, over string, band bool) {
+		p := a.sgrPrefix(hl, over, band)
 		if p == "" {
 			b.WriteString(text)
 			return
@@ -1378,11 +1385,11 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 		}
 		if s.Effect == "shimmer" {
 			for _, r := range a.shimmer(s, a.frame()*frameMS, a.host.Settings.Bool("ui.animations")) {
-				write(r.Text, r.HL, s.Over)
+				write(r.Text, r.HL, s.Over, s.Band)
 			}
 			continue
 		}
-		write(s.Text, s.HL, s.Over)
+		write(s.Text, s.HL, s.Over, s.Band)
 	}
 	out := b.String()
 	if ansi.StringWidth(out) > w {
