@@ -981,7 +981,7 @@ func vetoDecision[T ~string](ret glua.LValue, allowed ...T) (tb *glua.LTable, de
 		return nil, "", fmt.Sprintf("a handler returned %s: return nil, or { decision = %q, reason = ... }",
 			ret.Type().String(), allowed[0])
 	}
-	if decision = T(rawString(tb, "decision")); !slices.Contains(allowed, decision) {
+	if decision = T(glua.LVAsString(tb.RawGetString("decision"))); !slices.Contains(allowed, decision) {
 		return nil, "", fmt.Sprintf("a handler returned decision %q: use nil or one of %s",
 			decision, strings.Join(strs(allowed), ", "))
 	}
@@ -1038,7 +1038,7 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 						// not read as consent where there is a closed side
 						outcomes[i] = outcome{denied: name == "permission.request", reason: bad}
 					case decision == "deny":
-						outcomes[i] = outcome{denied: true, reason: rawString(tb, "reason")}
+						outcomes[i] = outcome{denied: true, reason: glua.LVAsString(tb.RawGetString("reason"))}
 					}
 				}
 			}

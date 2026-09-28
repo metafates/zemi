@@ -351,17 +351,17 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 		name, spec := L.CheckString(1), L.CheckTable(2)
 		gate(L, "add")
 		def := PermModeDef{
-			Name: name, Base: rawString(spec, "base"), Description: rawString(spec, "description"), Prompt: rawString(spec, "prompt"),
+			Name: name, Base: rawString(L, spec, "base"), Description: rawString(L, spec, "description"), Prompt: rawString(L, spec, "prompt"),
 			Origin: h.RT.CurrentOrigin(L),
 		}
-		def.Decide, _ = spec.RawGetString("decide").(*glua.LFunction)
+		def.Decide, _ = opt[*glua.LFunction](L, spec, "decide")
 		if !modeName.MatchString(name) {
 			L.RaiseError("zemi.permission.mode.add: name %q must match [a-z][a-z0-9-]{0,15}", name)
 		}
 		if modeIndex(builtinModes, def.Base) < 0 {
 			L.RaiseError("zemi.permission.mode.add: base must be auto or yolo")
 		}
-		if rules, ok := spec.RawGetString("rules").(*glua.LTable); ok {
+		if rules, ok := opt[*glua.LTable](L, spec, "rules"); ok {
 			def.Rules = perm.NewStore()
 			var bad string
 			rules.ForEach(func(_, v glua.LValue) {
@@ -371,7 +371,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 					return
 				}
 				field := func(i int, key string) string {
-					if s := rawString(rt, key); s != "" {
+					if s := rawString(L, rt, key); s != "" {
 						return s
 					}
 					s, _ := rt.RawGetInt(i).(glua.LString)

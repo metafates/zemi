@@ -343,10 +343,10 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	case glua.LString:
 		prompt = string(v)
 		if opts, ok := L.Get(2).(*glua.LTable); ok {
-			name, desc, model = rawString(opts, "agent"), rawString(opts, "description"), rawString(opts, "model")
+			name, desc, model = rawString(L, opts, "agent"), rawString(L, opts, "description"), rawString(L, opts, "model")
 		}
 	case *glua.LTable:
-		prompt, name, desc, model = rawString(v, "prompt"), rawString(v, "agent"), rawString(v, "description"), rawString(v, "model")
+		prompt, name, desc, model = rawString(L, v, "prompt"), rawString(L, v, "agent"), rawString(L, v, "description"), rawString(L, v, "model")
 	}
 	if strings.TrimSpace(prompt) == "" {
 		L.RaiseError("agent: prompt is required")
@@ -708,8 +708,8 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		// agents act with the user's tools and permissions: only user config
 		// (and shipped code) may start them from Lua
 		h.refuseBelowUser(L, "workflow.run")
-		src := rawString(spec, "script")
-		if name := rawString(spec, "name"); name != "" {
+		src := rawString(L, spec, "script")
+		if name := rawString(L, spec, "name"); name != "" {
 			s, err := h.workflowSource(name)
 			if err != nil {
 				return luaResult(L, err)

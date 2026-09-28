@@ -606,8 +606,10 @@ in which milestone.
 
 ### 6.0 Conventions
 
-- **Errors**: calling an API wrongly (bad argument types, unknown member,
-  invalid enum) raises a Lua error, catchable with `pcall`. Operations that
+- **Errors**: calling an API wrongly (bad argument types, an option field
+  of the wrong type, unknown member, invalid enum) raises a Lua error,
+  catchable with `pcall`; an option field raises naming its key
+  (`nargs must be a string, not a number`, `opt` in helpers.go). Operations that
   can fail at runtime split two ways: async ones (jobs, HTTP, provider
   calls) return a handle and deliver failure through it; synchronous ones
   (`zemi.fs.read`/`write`, `zemi.state.get`/`set`, `zemi.json.decode`,

@@ -693,9 +693,9 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("request", L.NewFunction(func(L *glua.LState) int {
 		spec := L.CheckTable(1)
 		req := httpReq{
-			method:  strings.ToUpper(rawString(spec, "method")),
-			url:     rawString(spec, "url"),
-			body:    rawString(spec, "body"),
+			method:  strings.ToUpper(rawString(L, spec, "method")),
+			url:     rawString(L, spec, "url"),
+			body:    rawString(L, spec, "body"),
 			headers: map[string]string{},
 		}
 		if req.method == "" {
@@ -704,7 +704,7 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 		if req.url == "" {
 			L.RaiseError("zemi.http.request: url is required")
 		}
-		if hs, ok := spec.RawGetString("headers").(*glua.LTable); ok {
+		if hs, ok := opt[*glua.LTable](L, spec, "headers"); ok {
 			hs.ForEach(func(k, v glua.LValue) {
 				req.headers[k.String()] = v.String()
 			})
@@ -717,16 +717,16 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 				}
 			}
 		}
-		if ms, ok := spec.RawGetString("timeout_ms").(glua.LNumber); ok && ms > 0 {
+		if ms, ok := opt[glua.LNumber](L, spec, "timeout_ms"); ok && ms > 0 {
 			req.timeout = time.Duration(ms) * time.Millisecond
 		}
-		onDone, _ := spec.RawGetString("on_done").(*glua.LFunction)
+		onDone, _ := opt[*glua.LFunction](L, spec, "on_done")
 		return h.httpStart(L, req, onDone)
 	}))
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		var onDone *glua.LFunction
 		if opts, ok := L.Get(2).(*glua.LTable); ok {
-			onDone, _ = opts.RawGetString("on_done").(*glua.LFunction)
+			onDone, _ = opt[*glua.LFunction](L, opts, "on_done")
 		}
 		return h.httpStart(L, httpReq{method: "GET", url: L.CheckString(1), headers: map[string]string{}}, onDone)
 	}))
@@ -1068,16 +1068,16 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		if !ok {
 			L.RaiseError("zemi.job.start: spec must be a table")
 		}
-		cmdName := rawString(spec, "cmd")
+		cmdName := rawString(L, spec, "cmd")
 		if cmdName == "" {
 			L.RaiseError("zemi.job.start: cmd is required")
 		}
-		args := rawStrings(spec, "args")
+		args := rawStrings(L, spec, "args")
 		_, stub := h.luaGate(L, "lua.job.start", argvLine(cmdName, args), func() map[string]any {
-			return map[string]any{"cmd": cmdName, "args": args, "cwd": rawString(spec, "cwd")}
+			return map[string]any{"cmd": cmdName, "args": args, "cwd": rawString(L, spec, "cwd")}
 		})
 		extras := map[string]any{}
-		if envT, ok := spec.RawGetString("env").(*glua.LTable); ok {
+		if envT, ok := opt[*glua.LTable](L, spec, "env"); ok {
 			if v, err := lua.ToGo(envT); err == nil {
 				if m, ok := v.(map[string]any); ok {
 					extras = m
@@ -1092,7 +1092,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		// background grandchild holding stdout does not keep the job alive
 		cmd := proc.Command(cmdName, args...)
 		cmd.Dir = h.Dirs.ProjectDir
-		if cwd := rawString(spec, "cwd"); cwd != "" {
+		if cwd := rawString(L, spec, "cwd"); cwd != "" {
 			dir, err := h.resolveJailed(cwd, h.luaJails(L, false), false)
 			if err != nil {
 				L.RaiseError("zemi.job.start: cwd: %v", err)
@@ -1107,7 +1107,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		guard := func() string { return "" }
 		// a program that was not found is proc.Start's returned error, not a
 		// sandbox failure
-		if rawBool(spec, "sandbox") && cmd.Err == nil && stub == nil {
+		if rawBool(L, spec, "sandbox") && cmd.Err == nil && stub == nil {
 			pol := h.sandboxPolicy(h.readOnly(), h.ScratchDir())
 			// never an unconfined run in its place
 			if err := sandbox.Wrap(cmd, pol); err != nil {
@@ -1152,12 +1152,12 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		stopID := 0
 		switch {
 		case stub != nil:
-			if rawBool(spec, "stdin") {
+			if rawBool(L, spec, "stdin") {
 				jh.stdin = discard{io.Discard}
 			}
 		default:
 			// stdin stays closed unless asked for: cat, grep or rg would wait on it
-			if rawBool(spec, "stdin") {
+			if rawBool(L, spec, "stdin") {
 				stdin, err := cmd.StdinPipe()
 				if err != nil {
 					L.RaiseError("zemi.job.start: %v", err)
@@ -1173,7 +1173,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			}
 			stopID = h.stops.add(func() { proc.Kill(cmd) })
 		}
-		onExit, _ := spec.RawGetString("on_exit").(*glua.LFunction)
+		onExit, _ := opt[*glua.LFunction](L, spec, "on_exit")
 		h.GoSafe("job wait", func() {
 			code, err := exit()
 			h.stops.remove(stopID)
@@ -1257,7 +1257,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 		}
 		timeout := 60 * time.Second
 		if spec, ok := L.Get(1).(*glua.LTable); ok {
-			if ms, ok := spec.RawGetString("timeout_ms").(glua.LNumber); ok && ms > 0 {
+			if ms, ok := opt[glua.LNumber](L, spec, "timeout_ms"); ok && ms > 0 {
 				timeout = time.Duration(ms) * time.Millisecond
 			}
 		}

@@ -86,11 +86,11 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 			Gen:    h.currentGen(),
 		}
 		if opts := L.OptTable(3, nil); opts != nil {
-			cmd.Desc, cmd.NArgs = rawString(opts, "desc"), NArgs(rawString(opts, "nargs"))
+			cmd.Desc, cmd.NArgs = rawString(L, opts, "desc"), NArgs(rawString(L, opts, "nargs"))
 			if !slices.Contains(nargsSpecs, cmd.NArgs) {
 				L.RaiseError("zemi.command.add: invalid nargs %q (want one of %q)", cmd.NArgs, nargsSpecs)
 			}
-			cmd.Complete, _ = opts.RawGetString("complete").(*glua.LFunction)
+			cmd.Complete, _ = opt[*glua.LFunction](L, opts, "complete")
 		}
 		if _, err := h.Commands.Add(cmd); err != nil {
 			L.RaiseError("zemi.command.add: %v", err)

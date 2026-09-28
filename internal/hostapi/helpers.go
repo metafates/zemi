@@ -51,13 +51,26 @@ func luaResult(L *glua.LState, err error) int {
 	return 1
 }
 
-// rawString reads a string field off a raw spec table (specs that carry
-// Lua callbacks cannot be marshaled wholesale).
-func rawString(tb *glua.LTable, key string) string {
-	if s, ok := tb.RawGetString(key).(glua.LString); ok {
-		return string(s)
+// opt reads a field of a raw spec table (specs that carry Lua callbacks
+// cannot be marshaled wholesale): false when it is absent, and a raise at
+// the caller naming the key when it holds another type (DESIGN §6.0).
+func opt[T glua.LValue](L *glua.LState, tb *glua.LTable, key string) (T, bool) {
+	v := tb.RawGetString(key)
+	t, ok := v.(T)
+	if !ok && v != glua.LNil {
+		L.RaiseError("%s must be a %s, not a %s", key, t.Type(), v.Type())
 	}
-	return ""
+	return t, ok
+}
+
+func rawString(L *glua.LState, tb *glua.LTable, key string) string {
+	s, _ := opt[glua.LString](L, tb, key)
+	return string(s)
+}
+
+func rawBool(L *glua.LState, tb *glua.LTable, key string) bool {
+	b, _ := opt[glua.LBool](L, tb, key)
+	return bool(b)
 }
 
 // rawScalar reads a string, number or boolean as text (env PORT = 8080).
@@ -69,11 +82,10 @@ func rawScalar(v glua.LValue) (string, bool) {
 	return "", false
 }
 
-// rawStrings reads the scalars of a list field off a raw spec table as
-// strings; nil when the field is not a table, so a caller can tell absent
-// from empty.
-func rawStrings(tb *glua.LTable, key string) []string {
-	list, ok := tb.RawGetString(key).(*glua.LTable)
+// rawStrings reads the scalars of a list field as strings; nil when the
+// field is absent, so a caller can tell absent from empty.
+func rawStrings(L *glua.LState, tb *glua.LTable, key string) []string {
+	list, ok := opt[*glua.LTable](L, tb, key)
 	if !ok {
 		return nil
 	}
@@ -86,10 +98,10 @@ func rawStrings(tb *glua.LTable, key string) []string {
 	return out
 }
 
-// rawStringMap reads the string keys and scalar values of a map field off a
-// raw spec table, skipping other entries; nil when absent.
-func rawStringMap(tb *glua.LTable, key string) map[string]string {
-	m, ok := tb.RawGetString(key).(*glua.LTable)
+// rawStringMap reads the string keys and scalar values of a map field,
+// skipping other entries; nil when absent.
+func rawStringMap(L *glua.LState, tb *glua.LTable, key string) map[string]string {
+	m, ok := opt[*glua.LTable](L, tb, key)
 	if !ok {
 		return nil
 	}
@@ -102,11 +114,4 @@ func rawStringMap(tb *glua.LTable, key string) map[string]string {
 		}
 	})
 	return out
-}
-
-func rawBool(tb *glua.LTable, key string) bool {
-	if b, ok := tb.RawGetString(key).(glua.LBool); ok {
-		return bool(b)
-	}
-	return false
 }

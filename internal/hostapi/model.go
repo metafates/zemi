@@ -119,13 +119,13 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 // may not call it.
 func (h *Host) modelAsk(L *glua.LState) int {
 	spec := L.CheckTable(1)
-	prompt := rawString(spec, "prompt")
+	prompt := rawString(L, spec, "prompt")
 	if prompt == "" {
 		L.RaiseError("zemi.model.ask: prompt is required")
 	}
-	ref := cmp.Or(rawString(spec, "model"), "chat")
+	ref := cmp.Or(rawString(L, spec, "model"), "chat")
 	id := h.modelRef(ref)
-	system := rawString(spec, "system")
+	system := rawString(L, spec, "system")
 	var stub *stubReply
 	switch o := h.RT.CurrentOrigin(L); {
 	case o.Rank() <= lua.OriginProject.Rank():
@@ -134,10 +134,10 @@ func (h *Host) modelAsk(L *glua.LState) int {
 		_, stub = h.luaGate(L, "lua.model.ask", id, func() map[string]any { return map[string]any{"model": ref, "prompt": prompt, "system": system} })
 	}
 	maxOut := int64(1024)
-	if n, ok := spec.RawGetString("max_output").(glua.LNumber); ok && n > 0 {
+	if n, ok := opt[glua.LNumber](L, spec, "max_output"); ok && n > 0 {
 		maxOut = int64(n)
 	}
-	onDone, _ := spec.RawGetString("on_done").(*glua.LFunction)
+	onDone, _ := opt[*glua.LFunction](L, spec, "on_done")
 	sid, at := h.AgentSessionID(), h.callerOf(L)
 	ask := func(ctx context.Context) (string, error) {
 		res, err := h.generate(ctx, sid, system, prompt, &maxOut, nil, id)

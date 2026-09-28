@@ -140,7 +140,7 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 			opts = L.OptTable(2, nil)
 		}
 		if opts != nil {
-			focus, list = rawString(opts, "focus"), glua.LVAsBool(opts.RawGetString("list"))
+			focus, list = rawString(L, opts, "focus"), rawBool(L, opts, "list")
 		}
 		key, err := h.keySeq(L.CheckString(1), focus != "")
 		switch {
@@ -201,7 +201,7 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.keymap.set: action must be a function or a string, got %s", v.Type().String())
 		}
 		if opts != nil {
-			if d, ok := opts.RawGetString("desc").(glua.LString); ok {
+			if d, ok := opt[glua.LString](L, opts, "desc"); ok {
 				b.Desc = string(d)
 			}
 		}

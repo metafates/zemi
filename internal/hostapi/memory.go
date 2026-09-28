@@ -765,7 +765,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if o.Rank() <= lua.OriginProject.Rank() {
 			L.RaiseError("zemi.memory.add: %s code may not add memories", o)
 		}
-		scope := cmp.Or(store.Scope(rawString(opts, "scope")), store.ScopeProject)
+		scope := cmp.Or(store.Scope(rawString(L, opts, "scope")), store.ScopeProject)
 		if !slices.Contains(store.Scopes, scope) {
 			L.RaiseError("zemi.memory.add: scope must be project or user")
 		}
@@ -775,7 +775,7 @@ func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {
 		if tool, _ := h.modelLuaRun(L); !tool && o == lua.OriginUser {
 			memOrigin = store.OriginUser
 		}
-		res, err := h.proposeMemory(h.AgentSessionID(), memOrigin, scope, text, rawString(opts, "quote"), rawString(opts, "replaces"))
+		res, err := h.proposeMemory(h.AgentSessionID(), memOrigin, scope, text, rawString(L, opts, "quote"), rawString(L, opts, "replaces"))
 		if err != nil {
 			return luaResult(L, err)
 		}

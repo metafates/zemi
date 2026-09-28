@@ -651,15 +651,15 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.mcp.add: only user config may add MCP servers")
 		}
 		spec := MCPSpec{
-			Command: rawString(opts, "command"), Args: rawStrings(opts, "args"), Env: rawStringMap(opts, "env"),
-			URL: rawString(opts, "url"), Headers: rawStringMap(opts, "headers"),
-			ClientID: rawString(opts, "client_id"), ClientSecret: rawString(opts, "client_secret"),
-			EnabledTools: rawStrings(opts, "enabled_tools"), DisabledTools: rawStrings(opts, "disabled_tools"),
+			Command: rawString(L, opts, "command"), Args: rawStrings(L, opts, "args"), Env: rawStringMap(L, opts, "env"),
+			URL: rawString(L, opts, "url"), Headers: rawStringMap(L, opts, "headers"),
+			ClientID: rawString(L, opts, "client_id"), ClientSecret: rawString(L, opts, "client_secret"),
+			EnabledTools: rawStrings(L, opts, "enabled_tools"), DisabledTools: rawStrings(L, opts, "disabled_tools"),
 		}
-		if n, ok := opts.RawGetString("callback_port").(glua.LNumber); ok {
+		if n, ok := opt[glua.LNumber](L, opts, "callback_port"); ok {
 			spec.CallbackPort = int(n)
 		}
-		if n, ok := opts.RawGetString("timeout").(glua.LNumber); ok && n > 0 {
+		if n, ok := opt[glua.LNumber](L, opts, "timeout"); ok && n > 0 {
 			spec.Timeout = time.Duration(float64(n) * float64(time.Second))
 		}
 		if err := h.addMCP(name, spec); err != nil {

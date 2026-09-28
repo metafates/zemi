@@ -1853,7 +1853,7 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.provider.add: %v", err)
 			return 0
 		}
-		if err := h.Providers.Register(spec, rawString(L.CheckTable(1), "api_key")); err != nil {
+		if err := h.Providers.Register(spec, rawString(L, L.CheckTable(1), "api_key")); err != nil {
 			L.RaiseError("zemi.provider.add: %v", err)
 			return 0
 		}
@@ -1898,10 +1898,10 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		return agent.Spec{}, err
 	}
 	spec := agent.Spec{
-		ID:      rawString(tb, "id"),
-		Kind:    agent.Kind(rawString(tb, "kind")),
-		BaseURL: rawString(tb, "base_url"),
-		Headers: rawStringMap(tb, "headers"),
+		ID:      rawString(L, tb, "id"),
+		Kind:    agent.Kind(rawString(L, tb, "kind")),
+		BaseURL: rawString(L, tb, "base_url"),
+		Headers: rawStringMap(L, tb, "headers"),
 	}
 	switch b := fields["body"].(type) {
 	case map[string]any:
@@ -2540,14 +2540,14 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			return 0
 		}
 		h.refuseBelowUser(L, "agent.profile.add")
-		p := &Profile{Name: name, Model: rawString(spec, "model"), System: rawString(spec, "system"), ReadOnly: rawBool(spec, "read_only")}
-		if temp, ok := spec.RawGetString("temperature").(glua.LNumber); ok {
+		p := &Profile{Name: name, Model: rawString(L, spec, "model"), System: rawString(L, spec, "system"), ReadOnly: rawBool(L, spec, "read_only")}
+		if temp, ok := opt[glua.LNumber](L, spec, "temperature"); ok {
 			t := float64(temp)
 			p.Temperature = &t
 		}
-		p.Tools = rawStrings(spec, "tools")
-		if ctx, ok := spec.RawGetString("context").(*glua.LTable); ok {
-			p.ContextFiles = rawStrings(ctx, "files")
+		p.Tools = rawStrings(L, spec, "tools")
+		if ctx, ok := opt[*glua.LTable](L, spec, "context"); ok {
+			p.ContextFiles = rawStrings(L, ctx, "files")
 		}
 		h.agents.mu.Lock()
 		h.agents.profiles[name] = p
@@ -2661,12 +2661,12 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			return 0
 		}
 		r := perm.Rule{
-			Subject:  rawString(spec, "subject"),
-			Pattern:  rawString(spec, "pattern"),
-			Decision: perm.Decision(rawString(spec, "decision")),
-			NotMatch: rawString(spec, "not_match"),
+			Subject:  rawString(L, spec, "subject"),
+			Pattern:  rawString(L, spec, "pattern"),
+			Decision: perm.Decision(rawString(L, spec, "decision")),
+			NotMatch: rawString(L, spec, "not_match"),
 		}
-		switch rawString(spec, "scope") {
+		switch rawString(L, spec, "scope") {
 		case "", "session":
 		case "permanent":
 			L.RaiseError(`zemi.permission.rule.add: scope "permanent" was removed; a rule in init.lua applies on every start, so drop the scope field`)
@@ -2681,20 +2681,20 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 				L.RaiseError("zemi.permission.rule.add: allow rules may only come from user config")
 				return 0
 			}
-			if rawString(spec, "principal") != "" {
+			if rawString(L, spec, "principal") != "" {
 				L.RaiseError("zemi.permission.rule.add: only user config scopes a rule to a principal")
 				return 0
 			}
 			r.Source = string(origin)
 		}
-		if p := rawString(spec, "principal"); p != "" {
+		if p := rawString(L, spec, "principal"); p != "" {
 			if name, ok := perm.CutPluginPrincipal(p); !ok || name == "" {
 				L.RaiseError(`zemi.permission.rule.add: principal must be "plugin:<name>", got %q`, p)
 				return 0
 			}
 			r.Principal = p
 		}
-		if err := validateRule(&r, rawString(spec, "match"), rawString(spec, "not_match_example")); err != nil {
+		if err := validateRule(&r, rawString(L, spec, "match"), rawString(L, spec, "not_match_example")); err != nil {
 			L.RaiseError("zemi.permission.rule.add: %v", err)
 			return 0
 		}

@@ -115,7 +115,7 @@ func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		limit := 20
 		if opts, ok := L.Get(1).(*glua.LTable); ok {
-			if n, ok := opts.RawGetString("limit").(glua.LNumber); ok && n > 0 {
+			if n, ok := opt[glua.LNumber](L, opts, "limit"); ok && n > 0 {
 				limit = min(int(n), 200)
 			}
 		}
@@ -227,7 +227,7 @@ func (h *Host) callAssembleHandler(L *glua.LState, hd *EventHandler) (title, tex
 	case glua.LString:
 		return "", string(v)
 	case *glua.LTable:
-		return rawString(v, "title"), rawString(v, "text")
+		return glua.LVAsString(v.RawGetString("title")), glua.LVAsString(v.RawGetString("text"))
 	}
 	return "", ""
 }

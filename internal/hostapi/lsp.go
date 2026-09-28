@@ -562,11 +562,11 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.lsp.add: only user config may add language servers")
 		}
-		def := lspDef{Name: name, Command: rawString(opts, "command"), Args: rawStrings(opts, "args"), Env: rawStringMap(opts, "env")}
+		def := lspDef{Name: name, Command: rawString(L, opts, "command"), Args: rawStrings(L, opts, "args"), Env: rawStringMap(L, opts, "env")}
 		if def.Command == "" {
 			L.RaiseError("zemi.lsp.add: command is required")
 		}
-		for _, ft := range rawStrings(opts, "filetypes") {
+		for _, ft := range rawStrings(L, opts, "filetypes") {
 			def.Exts = append(def.Exts, "."+strings.TrimPrefix(ft, "."))
 		}
 		if len(def.Exts) == 0 {

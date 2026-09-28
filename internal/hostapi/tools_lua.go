@@ -148,25 +148,25 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		if !ok {
 			L.RaiseError("zemi.tool.add: spec must be a table")
 		}
-		fn, ok := spec.RawGetString("execute").(*glua.LFunction)
+		fn, ok := opt[*glua.LFunction](L, spec, "execute")
 		if !ok {
 			L.RaiseError("zemi.tool.add: execute callback is required")
 		}
-		name := rawString(spec, "name")
+		name := rawString(L, spec, "name")
 		if name == "" || !isToolName(name) {
 			L.RaiseError("zemi.tool.add: name must be an identifier")
 		}
 		if slices.Contains(h.builtinToolNames(), name) {
 			L.RaiseError("zemi.tool.add: %q is a builtin tool name", name)
 		}
-		desc := rawString(spec, "description")
+		desc := rawString(L, spec, "description")
 		if desc == "" {
 			L.RaiseError("zemi.tool.add: description is required; the model picks the tool by it")
 		}
 		// input is the parameters themselves, flat; what reaches the provider
 		// is only ever this map (tools.SchemaProperties)
 		schema := map[string]any{"type": "object"}
-		required := rawStrings(spec, "required")
+		required := rawStrings(L, spec, "required")
 		if v := spec.RawGetString("input"); v != glua.LNil {
 			props, err := lua.ToGo(v)
 			if err != nil {
@@ -192,14 +192,14 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.tool.add: required names parameters but there is no input")
 		}
 		timeout := 60 * time.Second
-		if ms, ok := spec.RawGetString("timeout_ms").(glua.LNumber); ok && ms > 0 {
+		if ms, ok := opt[glua.LNumber](L, spec, "timeout_ms"); ok && ms > 0 {
 			timeout = time.Duration(ms) * time.Millisecond
 		}
 		lt := &luaTool{
 			Name: name, Desc: desc,
 			Schema: schema, Required: required,
-			Prompt:   strings.TrimSpace(rawString(spec, "prompt")),
-			Parallel: rawBool(spec, "parallel"),
+			Prompt:   strings.TrimSpace(rawString(L, spec, "prompt")),
+			Parallel: rawBool(L, spec, "parallel"),
 			Timeout:  timeout, Fn: fn,
 			Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L),
 			Gen: h.currentGen(),
@@ -219,8 +219,8 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		if !ok {
 			L.RaiseError("zemi.tool.override: spec must be a table")
 		}
-		pre, _ := spec.RawGetString("pre").(*glua.LFunction)
-		post, _ := spec.RawGetString("post").(*glua.LFunction)
+		pre, _ := opt[*glua.LFunction](L, spec, "pre")
+		post, _ := opt[*glua.LFunction](L, spec, "post")
 		if pre == nil && post == nil {
 			L.RaiseError("zemi.tool.override: a pre or post callback is required")
 		}
@@ -478,7 +478,7 @@ func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input 
 	}
 	switch d {
 	case tools.PreDeny, tools.PreHalt:
-		return d, rawString(tb, "reason"), nil
+		return d, glua.LVAsString(tb.RawGetString("reason")), nil
 	case tools.PreRewrite:
 		rw, err := lua.ToGo(tb.RawGetString("input"))
 		if err != nil {

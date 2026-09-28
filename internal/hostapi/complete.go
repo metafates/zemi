@@ -348,9 +348,9 @@ func completionItems(v any) []CompletionItem {
 // addCompletion is zemi.composer.complete(spec).
 func (h *Host) addCompletion(L *glua.LState) int {
 	spec := L.CheckTable(1)
-	fn, _ := spec.RawGetString("items").(*glua.LFunction)
+	fn, _ := opt[*glua.LFunction](L, spec, "items")
 	s := completionSource{
-		id: rawString(spec, "id"), trigger: rawString(spec, "trigger"), command: rawString(spec, "command"),
+		id: rawString(L, spec, "id"), trigger: rawString(L, spec, "trigger"), command: rawString(L, spec, "command"),
 		fn: fn, origin: h.RT.CurrentOrigin(L), path: h.RT.CurrentPath(L), gen: h.currentGen(),
 	}
 	r, size := utf8.DecodeRuneInString(s.trigger)

@@ -547,10 +547,10 @@ func (t *PluginTest) render(L *glua.LState) int {
 	over := L.OptTable(2, nil)
 	width, height := 80, 1
 	if over != nil {
-		if n, ok := over.RawGetString("width").(glua.LNumber); ok {
+		if n, ok := opt[glua.LNumber](L, over, "width"); ok {
 			width = int(n)
 		}
-		if n, ok := over.RawGetString("height").(glua.LNumber); ok {
+		if n, ok := opt[glua.LNumber](L, over, "height"); ok {
 			height = int(n)
 		}
 	}

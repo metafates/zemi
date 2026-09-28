@@ -29,20 +29,20 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			L.RaiseError("zemi.ui.widget.add: expected a spec table")
 		}
 		w := &Widget{
-			ID:     rawString(tb, "id"),
-			Region: rawString(tb, "region"),
-			Wrap:   rawBool(tb, "wrap"),
+			ID:     rawString(L, tb, "id"),
+			Region: rawString(L, tb, "region"),
+			Wrap:   rawBool(L, tb, "wrap"),
 			Origin: h.RT.CurrentOrigin(L),
 			Path:   h.RT.CurrentPath(L),
 			Gen:    h.currentGen(),
 		}
-		if n, ok := tb.RawGetString("priority").(glua.LNumber); ok {
+		if n, ok := opt[glua.LNumber](L, tb, "priority"); ok {
 			w.Priority = int(n)
 		}
-		if fn, ok := tb.RawGetString("render").(*glua.LFunction); ok {
+		if fn, ok := opt[*glua.LFunction](L, tb, "render"); ok {
 			w.Render = fn
 		}
-		if fn, ok := tb.RawGetString("on_click").(*glua.LFunction); ok {
+		if fn, ok := opt[*glua.LFunction](L, tb, "on_click"); ok {
 			w.OnClick = fn
 		}
 		if _, err := h.Widgets.Add(w); err != nil {
@@ -138,21 +138,23 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			L.RaiseError("zemi.ui.overlay.open: expected a spec table")
 		}
 		o := Overlay{
-			ID:     rawString(tb, "id"),
-			Title:  rawString(tb, "title"),
-			Body:   rawString(tb, "body"),
-			BodyMD: tb.RawGetString("markdown") == glua.LTrue,
-			Empty:  rawString(tb, "empty"),
+			ID:     rawString(L, tb, "id"),
+			Title:  rawString(L, tb, "title"),
+			BodyMD: rawBool(L, tb, "markdown"),
+			Empty:  rawString(L, tb, "empty"),
 			Origin: h.RT.CurrentOrigin(L),
 			Path:   h.RT.CurrentPath(L),
 			Gen:    h.currentGen(),
-			Anchor: OverlayAnchor(rawString(tb, "anchor")),
+			Anchor: OverlayAnchor(rawString(L, tb, "anchor")),
 		}
 		if o.Anchor != "" && !slices.Contains(overlayAnchors, o.Anchor) {
 			L.RaiseError("zemi.ui.overlay.open: anchor must be one of %s or nil, got %q", strings.Join(strs(overlayAnchors), ", "), o.Anchor)
 		}
-		if lines, ok := tb.RawGetString("body").(*glua.LTable); ok {
-			v, err := lua.ToGo(lines)
+		switch body := tb.RawGetString("body").(type) {
+		case glua.LString:
+			o.Body = string(body)
+		case *glua.LTable:
+			v, err := lua.ToGo(body)
 			if err == nil {
 				o.BodySegs, err = convertSegments(v, "")
 			}
@@ -165,8 +167,12 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 				}
 				o.Body += "\n"
 			}
+		default:
+			if body != glua.LNil {
+				L.RaiseError("body must be a string or a table of lines, not a %s", body.Type())
+			}
 		}
-		if n, ok := tb.RawGetString("selected").(glua.LNumber); ok {
+		if n, ok := opt[glua.LNumber](L, tb, "selected"); ok {
 			o.Selected = int(n) - 1
 		}
 		if v := tb.RawGetString("items"); v != glua.LNil {
@@ -178,29 +184,29 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 				L.RaiseError("zemi.ui.overlay.open: %v", err)
 			}
 		}
-		render, _ := tb.RawGetString("render_item").(*glua.LFunction)
+		render, _ := opt[*glua.LFunction](L, tb, "render_item")
 		if render != nil {
 			o.ItemText = h.renderItems(L, o.ID, render, o.Items)
 		}
-		if fn, ok := tb.RawGetString("reload").(*glua.LFunction); ok {
+		if fn, ok := opt[*glua.LFunction](L, tb, "reload"); ok {
 			o.Reload = h.luaReload(o, fn, render)
 		}
-		if fn, ok := tb.RawGetString("on_select").(*glua.LFunction); ok {
+		if fn, ok := opt[*glua.LFunction](L, tb, "on_select"); ok {
 			o.OnSelect = fn
 		}
-		if fn, ok := tb.RawGetString("on_action").(*glua.LFunction); ok {
+		if fn, ok := opt[*glua.LFunction](L, tb, "on_action"); ok {
 			o.OnAction = fn
 		}
-		if fn, ok := tb.RawGetString("on_close").(*glua.LFunction); ok {
+		if fn, ok := opt[*glua.LFunction](L, tb, "on_close"); ok {
 			o.OnClose = fn
 		}
-		if keys, ok := tb.RawGetString("keys").(*glua.LTable); ok {
+		if keys, ok := opt[*glua.LTable](L, tb, "keys"); ok {
 			keys.ForEach(func(k, v glua.LValue) {
 				spec, _ := v.(*glua.LTable)
 				if spec == nil {
 					spec = L.NewTable()
 				}
-				fn, _ := spec.RawGetString("fn").(*glua.LFunction)
+				fn, _ := opt[*glua.LFunction](L, spec, "fn")
 				// one character, so no overlay can take esc or ctrl+c
 				if key := k.String(); utf8.RuneCountInString(key) != 1 || fn == nil {
 					L.RaiseError("zemi.ui.overlay.open: keys[%q] must be one character with { desc, fn }", key)
@@ -208,7 +214,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 				if strings.Contains(listOwnKeys, k.String()) {
 					L.RaiseError("zemi.ui.overlay.open: keys[%q] is the list's own key", k.String())
 				}
-				o.Keys = append(o.Keys, OverlayKey{Key: k.String(), Desc: rawString(spec, "desc"), Fn: fn})
+				o.Keys = append(o.Keys, OverlayKey{Key: k.String(), Desc: rawString(L, spec, "desc"), Fn: fn})
 			})
 			slices.SortFunc(o.Keys, func(a, b OverlayKey) int { return cmp.Compare(a.Key, b.Key) })
 		}
@@ -249,7 +255,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		}
 		o := Overlay{
 			ID:       fmt.Sprintf("select:%d", h.selectSeq.Add(1)),
-			Title:    rawString(opts, "prompt"),
+			Title:    rawString(L, opts, "prompt"),
 			Origin:   h.RT.CurrentOrigin(L),
 			Path:     h.RT.CurrentPath(L),
 			Gen:      h.currentGen(),
@@ -257,7 +263,7 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 			OnSelect: cb,
 			OnClose:  cb, // cb() gets nil, the vim.ui cancel shape
 		}
-		if fn, ok := opts.RawGetString("format_item").(*glua.LFunction); ok {
+		if fn, ok := opt[*glua.LFunction](L, opts, "format_item"); ok {
 			o.ItemText = h.renderItems(L, o.ID, fn, list)
 		}
 		if ui := h.hooks(); ui != nil {
@@ -274,12 +280,12 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		cb := L.CheckFunction(2)
 		o := Overlay{
 			ID:       fmt.Sprintf("input:%d", h.selectSeq.Add(1)),
-			Title:    rawString(opts, "prompt"),
+			Title:    rawString(L, opts, "prompt"),
 			Origin:   h.RT.CurrentOrigin(L),
 			Path:     h.RT.CurrentPath(L),
 			Gen:      h.currentGen(),
 			Input:    true,
-			Default:  rawString(opts, "default"),
+			Default:  rawString(L, opts, "default"),
 			OnSelect: cb,
 			OnClose:  cb,
 		}
@@ -311,10 +317,10 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		// gated by the written name like zemi.fs, so a secret-named link asks
 		h.luaGate(L, "lua.fs.read", h.projectAbs(path), nil)
 		line := 0
-		if n, ok := opts.RawGetString("line").(glua.LNumber); ok {
+		if n, ok := opt[glua.LNumber](L, opts, "line"); ok {
 			line = int(n)
 		}
-		title := rawString(opts, "title")
+		title := rawString(L, opts, "title")
 		if title == "" {
 			title = filepath.Base(resolved)
 		}
