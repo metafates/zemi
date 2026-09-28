@@ -22,7 +22,14 @@ local layout = {
 						stage = true,
 						min = 1,
 						children = {
-							{ kind = "region", id = "chat", region = "chat", scroll = "bottom", size = "fill", min = 3 },
+							{
+								kind = "region",
+								id = "chat",
+								region = "chat",
+								scroll = "bottom",
+								size = "fill",
+								min = 3,
+							},
 						},
 					},
 					{ kind = "spacer" },

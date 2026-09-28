@@ -4,7 +4,8 @@ syntax = "Lua51"
 column_width = 120
 line_endings = "Unix"
 indent_type = "Tabs"
-indent_width = 2
+# how wide a tab counts against column_width: four cells, as zemi draws one
+indent_width = 4
 quote_style = "AutoPreferDouble"
 call_parentheses = "Always"
 collapse_simple_statement = "Always"

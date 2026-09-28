@@ -275,7 +275,8 @@ zemi.ui.widget.add({
 			-- an agent's rows open its transcript (ids must differ between adjacent rows),
 			-- every other row (file tools included) expands the call
 			local click = (t.run or "") ~= "" and ("agent:" .. t.run) or ("tool:" .. idx)
-			local head = { mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = "AgentToolName" } }
+			local head =
+				{ mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = "AgentToolName" } }
 			if code and label == "" then
 				head[3] = { text = " ", hl = "Normal" }
 				for _, sg in ipairs(code[1] or {}) do
@@ -468,7 +469,9 @@ zemi.ui.widget.add({
 			elseif m.kind == "compact" or m.kind == "notice" then
 				gap("activity")
 				local row = { mark("note"), { text = m.text, hl = "Comment" } }
-				if (m.detail or "") ~= "" then row[3] = { text = " (" .. m.detail .. ")", hl = "Comment", copy = false } end
+				if (m.detail or "") ~= "" then
+					row[3] = { text = " (" .. m.detail .. ")", hl = "Comment", copy = false }
+				end
 				lines[#lines + 1] = row
 			elseif m.kind == "error" then
 				-- the headline, then the raw error as its detail
@@ -476,8 +479,10 @@ zemi.ui.widget.add({
 				local cancelled = m.status == "cancelled"
 				for n, text in ipairs(util.split(m.text, "\n")) do
 					if n == 1 then
-						lines[#lines + 1] =
-							{ mark(cancelled and "stop" or "err"), { text = text, hl = cancelled and "Comment" or "Danger" } }
+						lines[#lines + 1] = {
+							mark(cancelled and "stop" or "err"),
+							{ text = text, hl = cancelled and "Comment" or "Danger" },
+						}
 					else
 						lines[#lines + 1] = {
 							{ text = n == 2 and "  ⎿ " or "    ", hl = "Comment", copy = false },
@@ -500,7 +505,8 @@ zemi.ui.widget.add({
 				if (m.ended or 0) > 0 then parts[#parts + 1] = os.date("%H:%M", m.ended) end
 				if #parts > 0 then
 					gap("stats")
-					lines[#lines + 1] = { { text = "  ", copy = false }, { text = table.concat(parts, " · "), hl = "Comment" } }
+					lines[#lines + 1] =
+						{ { text = "  ", copy = false }, { text = table.concat(parts, " · "), hl = "Comment" } }
 				end
 			end
 			return { lines = lines, next = last + 1, hint = hinted }
@@ -508,7 +514,8 @@ zemi.ui.widget.add({
 
 		-- markdown and code carry the theme's colors: a light terminal's
 		-- variant renders them anew
-		local key = table.concat({ epoch, width, tostring(ctx.show_reasoning), ctx.cwd or "", zemi.ui.theme.get() }, "|")
+		local key =
+			table.concat({ epoch, width, tostring(ctx.show_reasoning), ctx.cwd or "", zemi.ui.theme.get() }, "|")
 		if key ~= units_key or epoch == 0 then
 			units, units_key, settled = {}, key, nil
 		end
@@ -606,8 +613,10 @@ zemi.ui.widget.add({
 			blank()
 			-- a header in the composer rule's voice: the name, how far along, and
 			-- a short meter of one cell per item
-			local head =
-				{ { text = "Todos ", hl = "TodoTitle" }, { text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Comment" } }
+			local head = {
+				{ text = "Todos ", hl = "TodoTitle" },
+				{ text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Comment" },
+			}
 			for n, td in ipairs(todos) do
 				if n > 12 then break end
 				head[#head + 1] = {
@@ -640,8 +649,10 @@ zemi.ui.widget.add({
 						if shown[i].td.status == "done" then done = done + 1 end
 					end
 					if done == hidden then
-						lines[#lines + 1] =
-							{ { text = "  ✓ ", hl = "TodoDone", copy = false }, { text = done .. " done", hl = "Comment" } }
+						lines[#lines + 1] = {
+							{ text = "  ✓ ", hl = "TodoDone", copy = false },
+							{ text = done .. " done", hl = "Comment" },
+						}
 					else
 						lines[#lines + 1] = {
 							{ text = "  … ", hl = "Comment", copy = false },

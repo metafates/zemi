@@ -168,7 +168,11 @@ end)
 
 test("a reply field no call reads is refused", function()
 	for _, c in ipairs({
-		{ "lua.http.get", { bdy = "x" }, "bdy is not a field of a http reply, which takes body, error, headers, status" },
+		{
+			"lua.http.get",
+			{ bdy = "x" },
+			"bdy is not a field of a http reply, which takes body, error, headers, status",
+		},
 		{ "lua.job.start", { code = "1" }, "code must be a number, not a string" },
 		{ "lua.agent.send", { text = "x" }, "text is not a field of a send reply, which takes no fields" },
 	}) do

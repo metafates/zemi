@@ -74,7 +74,8 @@ zemi.ui.widget.add({
 				parts = { { "attempt " .. ag.retry.attempt, 3 } }
 				if ag.retry.why ~= "" then parts[#parts + 1] = { ag.retry.why, 2 } end
 				tick = {
-					ag.retry.next_in > 0 and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true) or "retrying now",
+					ag.retry.next_in > 0 and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true)
+						or "retrying now",
 					5,
 					18,
 				}
@@ -135,8 +136,11 @@ zemi.ui.widget.add({
 		if text > 0 then
 			row[#row + 1] = { text = " " .. label, hl = "Comment", effect = "shimmer" }
 			row[#row + 1] = { text = after .. " ", hl = "Comment" }
-			row[#row + 1] =
-				{ text = string.rep("─", ctx.width - left - fmt.cells(label .. after) - 2), hl = "Rule", copy = false }
+			row[#row + 1] = {
+				text = string.rep("─", ctx.width - left - fmt.cells(label .. after) - 2),
+				hl = "Rule",
+				copy = false,
+			}
 		end
 		return { row }
 	end,

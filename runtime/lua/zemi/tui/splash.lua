@@ -68,8 +68,9 @@ function M.render(ctx)
 	-- the no-model hint names its fix, so it wraps under its label instead of clipping
 	local models = zemi.ui.wrap(ctx.model ~= "" and ctx.model or ("none yet: " .. ctx.model_hint), room - 9)
 	if ctx.init_error ~= "" then
-		models =
-			{ { { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" } } }
+		models = {
+			{ { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" } },
+		}
 	end
 	local base = 9 + #models
 	local extra = #recent > 0 and #recent + 3 or 0
