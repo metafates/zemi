@@ -118,11 +118,11 @@ for i = 1, 300 do test("case " .. i, function() end) end
 0 passed, 1 failed (2 files, (T))
 `},
 		{name: "raises that did not raise", args: []string{"<plugin>", "did not raise"}, code: 1, want: `FAIL tests/fail.lua:47: raises that did not raise
-  tests/fail.lua:48: did not raise
+  tests/fail.lua:48: did not raise, want an error containing "city"
 0 passed, 1 failed (2 files, (T))
 `},
 		{name: "a driver under pcall", args: []string{"<plugin>", "under pcall"}, code: 1, want: `FAIL tests/fail.lua:51: a driver under pcall
-  tests/fail.lua:53: tests/fail.lua:52: test.run("demo"): cannot wait inside pcall or a library callback such as table.sort
+  tests/fail.lua:53: tests/fail.lua:52: test.run("demo"): cannot wait inside pcall or a library callback such as table.sort; call it outside them, where a failure comes back as nil, err
 0 passed, 1 failed (2 files, (T))
 `},
 		{name: "a driver inside raises", args: []string{"<plugin>", "inside raises"}, code: 1, want: `FAIL tests/fail.lua:56: a driver inside raises

@@ -45,7 +45,7 @@ test("eq on lines", function() test.eq("one\ntwo\nthree\n", "one\ntwo\nthree!\n"
 test("contains", function() test.contains(test.render("demo.cost", { usage = { cost = 0.5 } })[1], "dollars") end)
 
 test("raises that did not raise", function()
-	test.raises(function() end)
+	test.raises(function() end, "city")
 end)
 
 test("a driver under pcall", function()

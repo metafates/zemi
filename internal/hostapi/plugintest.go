@@ -943,7 +943,7 @@ end
 function M.raises(fn, sub)
 	local ok, err = pcall(fn)
 	if ok then
-		fail("did not raise")
+		fail("did not raise" .. (sub and ", want an error containing " .. inspect(sub) or ""))
 	end
 	local msg = rel(tostring(err))
 	-- a driver inside fn raises for the pcall, not for the code under test
