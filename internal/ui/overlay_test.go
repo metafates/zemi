@@ -1064,6 +1064,12 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		{"a list's own key wins over an action's", "", `keys = { r = { desc = "rename", fn = function(item) zemi.notify({ body = "key " .. item.text }) end } }`, []string{"j", "r"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q, toast %q", ran, lastToast(app))}[ran == "" && lastToast(app) == "key s1"]
 		}},
+		{"a hotkey runs its own action, not the one at that position", `"current", { text = "s1", actions = { { text = "Delete", hl = "Danger", run = "del 1" }, { text = "Other", hotkey = "1", run = "res 1" } } }`, "", []string{"j", "1"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "res 1"]
+		}},
+		{"an action with a detail opens it over the list", `"current", { text = "s1", actions = { { text = "Read it", hotkey = "r", detail = "body" } } }`, "", []string{"j", "r"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("%d open", len(app.overlays))}[len(app.overlays) == 2 && app.overlays[1].o.Body == "body"]
+		}},
 		{"a row without actions ignores the key", "", "", []string{"r"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q, %d open", ran, len(app.overlays))}[ran == "" && len(app.overlays) == 1]
 		}},

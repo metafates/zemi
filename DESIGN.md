@@ -1487,10 +1487,12 @@ provenance string.
   arguments, `s` sign in or stop, `e` enable, `d` disable, `o` open, `u`
   update or use now, `c` change, and `x`, in the danger color, for what
   cannot be undone (delete, or `/mcp`'s sign out, which deletes the saved
-  token); `/health`'s one action per check takes its label's initial.
+  token); `/rewind`'s `r` is in the danger color too, and `/health`'s one
+  action per check takes its label's initial.
   A row's action keys act from the list too, on the selected row, as its
-  detail's button would; an action in the danger color opens the detail on
-  it instead, for a second press. When every row with actions offers the
+  detail's button would (an action with a view of its own opens it over the
+  list); an action in the danger color opens the detail on it instead, for
+  a second press. When every row with actions offers the
   same keys, the list's footer names them. `j`, `k`, `/`, `y` and `Y` are
   the list's own and cannot be hotkeys. A
   screen that manages things (`/skills`, `/mcp`, `/lsp`, `/permissions`,

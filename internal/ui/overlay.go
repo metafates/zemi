@@ -444,11 +444,17 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	// danger color opens the detail on it, for a second press
 	if n := st.actionAt(key); n >= 0 {
 		a.openDetail(st, st.visible[st.selected])
-		if d := &a.overlays[len(a.overlays)-1]; d.items[n].row.HL == "Danger" {
-			d.selected = n
+		d := &a.overlays[len(a.overlays)-1]
+		d.selected = n
+		r := d.items[n].row
+		if r.HL == "Danger" {
 			return nil
 		}
-		return a.overlayKey(key, text)
+		cmd := a.overlayKey("enter", "")
+		if hasDetail(r) { // the action's own view: esc returns to the list
+			a.overlays = slices.Delete(a.overlays, len(a.overlays)-2, len(a.overlays)-1)
+		}
+		return cmd
 	}
 	switch key {
 	case "y", "Y":
