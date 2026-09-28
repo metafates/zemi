@@ -1,6 +1,6 @@
 GO_FILES = $(shell git ls-files '*.go')
 
-.PHONY: all build run test race vet lint fmt golden luals stylua check install clean reset-db
+.PHONY: all build run first-run test race vet lint fmt golden luals stylua check install clean reset-db
 
 LUALS ?= lua-language-server
 STYLUA ?= stylua
@@ -13,6 +13,19 @@ build:
 
 run:
 	go run .
+
+# zemi as a newcomer sees it: a fresh HOME (no ~/.agents/skills, no zemi
+# dirs) and a new git repo, or DIR. Provider keys pass through unless
+# KEYS=0; ARGS are zemi's flags. The tree is deleted on exit.
+# NOTE: your real zemi dirs sit outside this HOME, so a sandboxed command
+# can read them during the run.
+first-run: build
+	@t=$$(mktemp -d); trap 'chmod -R u+w "$$t"; rm -rf "$$t"' EXIT; \
+	mkdir "$$t/project" && git -C "$$t/project" init -q; \
+	if [ "$(KEYS)" = 0 ]; then for v in $$(env | sed -n 's/^\([A-Za-z0-9_]*\)=.*/\1/p'); do \
+		case $$v in *_API_KEY|*_TOKEN|*_SECRET_KEY) unset $$v;; esac; done; fi; \
+	cd "$(or $(DIR),$$t/project)" && env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME \
+		-u ZEMI_CONFIG_HOME -u ZEMI_DATA_HOME -u ZEMI_STATE_HOME -u ZEMI_CACHE_HOME HOME="$$t" "$(CURDIR)/bin/zemi" $(ARGS)
 
 test:
 	go test ./...

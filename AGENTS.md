@@ -77,6 +77,7 @@ make luals              # lua-language-server over runtime/; prints a skip line 
 make stylua             # stylua --check over runtime/ and testdata/ (stylua.toml: tabs); a skip line without the binary
 make lint               # golangci-lint run (.golangci.yml: curated linters and the gofumpt, goimports, gci formatters); a skip line without the binary
 make build / make run   # go build -o bin/zemi . / run the TUI against your real ~/.config/zemi
+make first-run          # zemi as a newcomer sees it: fresh HOME and repo, deleted on exit; KEYS=0 without keys, DIR=<abs path>, ARGS=<flags>
 make test               # full suite (~20s, pure Go, no CGO; network only for one macOS TLS check)
 make race               # go test -race ./internal/...
 make golden             # regenerate internal/ui/testdata/*.golden, then read the diff
@@ -89,7 +90,8 @@ sandbox, so a confined `git commit` fails on `index.lock`.
 
 For a throwaway config tree, redirect all dirs: `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`,
 `ZEMI_STATE_HOME`, `ZEMI_CACHE_HOME` (internal/config/dirs.go), and `HOME` too when the
-skills in `~/.agents/skills`, which no override moves, must stay out; most tests inject
+skills in `~/.agents/skills`, which no override moves, must stay out (`make first-run` is that
+with a fresh `HOME`, for looking at a first run); most tests inject
 `config.Dirs{...}` with `t.TempDir()` instead. Tests boot with empty dirs and an untrusted
 project: call `h.SetProjectTrusted(true)` when one needs project instructions, language servers
 or settled builds.

@@ -16,7 +16,8 @@ or a session there. `zemi-safe` (next to this file) runs the binary with all fou
 `ZEMI_*_HOME` dirs under one scratch tree (`~/.agents/skills` still loads from `HOME`, so
 a prompt capture can differ by machine); it is a script, so it also works inside a tmux
 pane, where the caller's environment is not forwarded, and from fish, which does not split
-`$VAR` into words.
+`$VAR` into words. `make first-run` is for looking at a newcomer's screens (fresh `HOME`,
+real keys); `zemi-safe` is for tests (no keys, a fake model).
 
 ```sh
 S=$PWD/.agents/skills/zemi-tui-test; T=/tmp/zt
