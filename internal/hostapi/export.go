@@ -22,6 +22,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // CopyReply copies the live session's last reply as the model wrote it (a
@@ -149,7 +150,8 @@ func codeBlocks(md string) []codeBlock {
 
 // ExportSession writes the live session as markdown to path ("" picks
 // zemi-<id>.md in the project), says where, and returns the path written.
-func (h *Host) ExportSession(path string) (string, error) {
+// full adds reasoning, every tool call expanded and the subagent runs.
+func (h *Host) ExportSession(path string, full bool) (string, error) {
 	sid := h.AgentSessionID()
 	if sid == "" || h.DB == nil {
 		return "", Usagef("no session to export")
@@ -180,7 +182,24 @@ func (h *Host) ExportSession(path string) (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n_zemi session %s, %s_\n", title, sid, time.UnixMilli(sess.CreatedAt).Format(time.DateOnly+" "+ClockLayout))
 	_, tr := historyFrom(rows)
-	exportMarkdown(&b, tr)
+	exportMarkdown(&b, tr, 2, full)
+	if full {
+		// NOTE: raw tool results stay out, the rows' short output stands in;
+		// a reader who needs a whole result reads the store
+		runs, err := h.DB.ChildSessions(sid)
+		if err != nil {
+			return "", err
+		}
+		for _, run := range slices.Backward(runs) {
+			rows, err := h.DB.Messages(run.ID)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&b, "\n## Agent run %s (%s): %s\n", run.ID[:min(runIDLen, len(run.ID))], sanitize.String(run.Profile), sanitize.String(run.Title))
+			_, tr := historyFrom(rows)
+			exportMarkdown(&b, tr, 3, true)
+		}
+	}
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return "", err
 	}
@@ -188,36 +207,78 @@ func (h *Host) ExportSession(path string) (string, error) {
 	return path, nil
 }
 
-// exportMarkdown writes transcript rows as markdown, one header over each run
-// of rows by one speaker. Every string is sanitized: a file the user later
-// cats must not carry escapes, and historyFrom leaves message text raw.
-func exportMarkdown(b *strings.Builder, tr []ChatMessage) {
+// exportMarkdown writes transcript rows as markdown under level headers, one
+// over each run of rows by one speaker; full adds reasoning and expands every
+// tool call. Every string is sanitized: a file the user later cats must not
+// carry escapes, and historyFrom leaves message text raw.
+func exportMarkdown(b *strings.Builder, tr []ChatMessage, level int, full bool) {
 	speaker, list := "", false // list: the last line written is a tool row's
 	for _, m := range tr {
+		if m.Kind == RowReasoning && !full {
+			continue
+		}
 		who := "zemi"
 		if m.Role == fantasy.MessageRoleUser {
 			who = "You"
 		}
 		if who != speaker || who == "You" {
-			fmt.Fprintf(b, "\n## %s\n", who)
+			fmt.Fprintf(b, "\n%s %s\n", strings.Repeat("#", level), who)
 			speaker, list = who, false
 		}
 		text := strings.TrimSpace(sanitize.String(m.Text))
-		switch m.Kind {
-		case RowReasoning:
-			continue
-		case RowTool:
+		switch {
+		case m.Kind == RowReasoning:
+			head := "Thought"
+			if m.Stat != nil && m.Stat.ThoughtMS > 0 {
+				head += " for " + fmtDuration(time.Duration(m.Stat.ThoughtMS)*time.Millisecond)
+			}
+			fmt.Fprintf(b, "\n> _%s_\n>\n", head)
+			for l := range strings.Lines(text) {
+				b.WriteString(strings.TrimRight("> "+l, " \n") + "\n")
+			}
+		case m.Kind == RowTool && full:
+			head := strings.Join(strings.Fields(sanitize.String(m.Label)), " ")
+			if head == "" && !strings.Contains(text, "\n") {
+				head, text = text, ""
+			}
+			fmt.Fprintf(b, "\n**%s** %s%s\n", sanitize.String(m.Tool), head, callEnd(m.Status))
+			lang := ""
+			if m.Tool == tools.ToolBash {
+				lang = "sh"
+			}
+			for _, f := range [][2]string{{lang, text}, {"diff", m.Diff}, {"", m.Output}} {
+				if f[1] = strings.TrimRight(sanitize.String(f[1]), "\n"); f[1] != "" {
+					b.WriteString(codeFence(f[0], f[1]))
+				}
+			}
+			if m.Run != "" {
+				fmt.Fprintf(b, "run %s, below\n", sanitize.String(m.Run))
+			}
+		case m.Kind == RowTool:
 			if !list {
 				b.WriteString("\n")
 			}
 			fmt.Fprintf(b, "- `%s` %s%s\n", sanitize.String(m.Tool), sanitize.String(clipRunes(strings.Join(strings.Fields(cmp.Or(m.Label, m.Text)), " "), 120)), callEnd(m.Status))
-		case RowNotice, RowCompact:
+		case m.Kind == RowNotice, m.Kind == RowCompact:
 			fmt.Fprintf(b, "\n_%s_\n", text)
 		default:
 			fmt.Fprintf(b, "\n%s\n", text)
 		}
-		list = m.Kind == RowTool
+		list = m.Kind == RowTool && !full
 	}
+}
+
+// codeFence fences text in more backticks than any fence line inside it, so
+// a result holding ``` cannot close the block early.
+func codeFence(lang, text string) string {
+	n := 3
+	for l := range strings.Lines(text) {
+		if run := fenceRun(strings.TrimLeft(l, " \t")); strings.HasPrefix(run, "`") {
+			n = max(n, len(run)+1)
+		}
+	}
+	fence := strings.Repeat("`", n)
+	return fence + lang + "\n" + text + "\n" + fence + "\n"
 }
 
 // callEnd names a tool call that did not finish well, after its row.

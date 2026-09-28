@@ -24,7 +24,7 @@ func TestExportAndFork(t *testing.T) {
 	}
 	waitIdle(t, h)
 
-	path, err := h.ExportSession(filepath.Join(t.TempDir(), "s.md"))
+	path, err := h.ExportSession(filepath.Join(t.TempDir(), "s.md"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,8 +32,19 @@ func TestExportAndFork(t *testing.T) {
 	if !strings.Contains(string(md), "## You\n\nping") || !strings.Contains(string(md), "## zemi\n\npong") {
 		t.Fatalf("export:\n%s", md)
 	}
+	// full follows with each subagent run's transcript
+	run := "a1b2c3d4" + strings.Repeat("0", 24)
+	h.DB.CreateSession(run, h.AgentSessionID(), "look around", "explore")
+	addText(t, h, run, "user", "find the widget")
+	if path, err = h.ExportSession(path, true); err != nil {
+		t.Fatal(err)
+	}
+	md, _ = os.ReadFile(path)
+	if !strings.Contains(string(md), "\n## Agent run a1b2c3d4 (explore): look around\n\n### You\n\nfind the widget\n") {
+		t.Fatalf("full export:\n%s", md)
+	}
 	// the toast names the file as the user finds it, short enough to read whole
-	if _, err := h.ExportSession(""); err != nil {
+	if _, err := h.ExportSession("", false); err != nil {
 		t.Fatal(err)
 	}
 	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.body != "saved to zemi-"+h.AgentSessionID()[:8]+".md" {
@@ -106,31 +117,47 @@ func TestExportMarkdown(t *testing.T) {
 	bash := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "bash", Text: "go test ./...", Label: "run the tests", Status: CallOK}
 	failed := bash
 	failed.Status = CallErr
+	fenced := bash
+	fenced.Label, fenced.Output, fenced.Diff = "", "```\nx\n```", "- a\n+ b"
+	agentRow := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "agent", Label: "Find it", Run: "a1b2c3d4", Status: CallOK}
+	thought := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "hmm\n\nso", Stat: &TurnStat{ThoughtMS: 4200}}
 	for _, c := range []struct {
 		name string
+		full bool
 		tr   []ChatMessage
 		want string
 	}{
 		{
 			"speakers merge",
+			false,
 			[]ChatMessage{user("hi"), bash, bash, reply("done")},
 			"\n## You\n\nhi\n\n## zemi\n\n- `bash` run the tests\n- `bash` run the tests\n\ndone\n",
 		},
-		{"failed tool says so", []ChatMessage{failed}, "\n## zemi\n\n- `bash` run the tests (failed)\n"},
+		{"failed tool says so", false, []ChatMessage{failed}, "\n## zemi\n\n- `bash` run the tests (failed)\n"},
+		{"reasoning left out", false, []ChatMessage{user("hi"), thought, user("again")}, "\n## You\n\nhi\n\n## You\n\nagain\n"},
+		{"reasoning quoted in full", true, []ChatMessage{thought, reply("ok")}, "\n## zemi\n\n> _Thought for 4.2s_\n>\n> hmm\n>\n> so\n\nok\n"},
 		{
-			"reasoning left out",
-			[]ChatMessage{{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "hmm", Stat: &TurnStat{ThoughtMS: 4200}}, reply("ok")},
-			"\n## zemi\n\nok\n",
+			"tool expands in full",
+			true,
+			[]ChatMessage{failed, agentRow},
+			"\n## zemi\n\n**bash** run the tests (failed)\n```sh\ngo test ./...\n```\n\n**agent** Find it\nrun a1b2c3d4, below\n",
+		},
+		{
+			"fence outlasts backticks",
+			true,
+			[]ChatMessage{fenced},
+			"\n## zemi\n\n**bash** go test ./...\n```diff\n- a\n+ b\n```\n````\n```\nx\n```\n````\n",
 		},
 		{
 			"notice and compaction",
+			false,
 			[]ChatMessage{{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: "Compacted earlier messages"}, {Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "agent explore finished"}},
 			"\n## zemi\n\n_Compacted earlier messages_\n\n_agent explore finished_\n",
 		},
-		{"escapes stripped", []ChatMessage{reply("\x1b[31mred\x1b[0m")}, "\n## zemi\n\nred\n"},
+		{"escapes stripped", false, []ChatMessage{reply("\x1b[31mred\x1b[0m")}, "\n## zemi\n\nred\n"},
 	} {
 		var b strings.Builder
-		exportMarkdown(&b, c.tr)
+		exportMarkdown(&b, c.tr, 2, c.full)
 		if b.String() != c.want {
 			t.Errorf("%s:\n%q\nwant\n%q", c.name, b.String(), c.want)
 		}

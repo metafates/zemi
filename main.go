@@ -402,10 +402,11 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "init", Desc: "write AGENTS.md for this project", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.InitProject()
 		}},
-		{Name: "export", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "save this session as markdown", GoFn: func(h *hostapi.Host, args string) error {
-			_, err := h.ExportSession(strings.TrimSpace(args))
+		{Name: "export", Hidden: true, NArgs: hostapi.NArgsAny, Desc: "save this session as markdown", GoFn: func(h *hostapi.Host, args string) error {
+			path, full := strings.CutPrefix(strings.TrimSpace(args)+" ", "full ")
+			_, err := h.ExportSession(strings.TrimSpace(path), full)
 			return err
-		}},
+		}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"full"} }},
 		{Name: "copy", NArgs: hostapi.NArgsAny, Desc: "copy the last reply or a code block in it", GoFn: func(h *hostapi.Host, args string) error {
 			return h.CopyReply(args)
 		}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"reply", "code"} }},
