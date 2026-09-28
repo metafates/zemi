@@ -7,7 +7,6 @@ package hostapi
 
 import (
 	"cmp"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -179,43 +178,58 @@ func (h *Host) ExportSession(path string) (string, error) {
 		title = "zemi session"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n_zemi session %s, %s_\n", title, sid, time.UnixMilli(sess.CreatedAt).Format("2006-01-02 15:04"))
-	for _, r := range rows {
-		if text, ok := userText(r); ok {
-			fmt.Fprintf(&b, "\n## You\n\n%s\n", sanitize.String(text))
-			continue
-		}
-		var m fantasy.Message
-		if r.Role != string(fantasy.MessageRoleAssistant) || json.Unmarshal([]byte(r.PartsJSON), &m) != nil {
-			continue
-		}
-		var calls []string
-		for _, part := range m.Content {
-			if tc, ok := part.(fantasy.ToolCallPart); ok {
-				calls = append(calls, fmt.Sprintf("- `%s` %s", sanitize.String(tc.ToolName), sanitize.String(clipRunes(strings.Join(strings.Fields(toolSummary(tc.Input)), " "), 120))))
-			}
-		}
-		// a file the user later cats: model text must not carry escapes
-		text := strings.TrimSpace(sanitize.String(concatText(m.Content)))
-		if text == "" && len(calls) == 0 {
-			continue
-		}
-		b.WriteString("\n## zemi\n\n")
-		if text != "" {
-			b.WriteString(text + "\n")
-		}
-		if len(calls) > 0 {
-			if text != "" {
-				b.WriteString("\n")
-			}
-			b.WriteString(strings.Join(calls, "\n") + "\n")
-		}
-	}
+	fmt.Fprintf(&b, "# %s\n\n_zemi session %s, %s_\n", title, sid, time.UnixMilli(sess.CreatedAt).Format(time.DateOnly+" "+ClockLayout))
+	_, tr := historyFrom(rows)
+	exportMarkdown(&b, tr)
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return "", err
 	}
 	h.Notify(logging.Info, "Session exported", "saved to "+TildePath(h.relPath(path)))
 	return path, nil
+}
+
+// exportMarkdown writes transcript rows as markdown, one header over each run
+// of rows by one speaker. Every string is sanitized: a file the user later
+// cats must not carry escapes, and historyFrom leaves message text raw.
+func exportMarkdown(b *strings.Builder, tr []ChatMessage) {
+	speaker, list := "", false // list: the last line written is a tool row's
+	for _, m := range tr {
+		who := "zemi"
+		if m.Role == fantasy.MessageRoleUser {
+			who = "You"
+		}
+		if who != speaker || who == "You" {
+			fmt.Fprintf(b, "\n## %s\n", who)
+			speaker, list = who, false
+		}
+		text := strings.TrimSpace(sanitize.String(m.Text))
+		switch m.Kind {
+		case RowReasoning:
+			continue
+		case RowTool:
+			if !list {
+				b.WriteString("\n")
+			}
+			fmt.Fprintf(b, "- `%s` %s%s\n", sanitize.String(m.Tool), sanitize.String(clipRunes(strings.Join(strings.Fields(cmp.Or(m.Label, m.Text)), " "), 120)), callEnd(m.Status))
+		case RowNotice, RowCompact:
+			fmt.Fprintf(b, "\n_%s_\n", text)
+		default:
+			fmt.Fprintf(b, "\n%s\n", text)
+		}
+		list = m.Kind == RowTool
+	}
+}
+
+// callEnd names a tool call that did not finish well, after its row.
+func callEnd(s CallStatus) string {
+	switch s {
+	case CallErr:
+		return " (failed)"
+	case CallStopped:
+		return " (stopped)"
+	default:
+		return ""
+	}
 }
 
 // ForkSession copies the live session's messages into a new session and

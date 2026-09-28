@@ -100,6 +100,43 @@ func TestCopyReply(t *testing.T) {
 	}
 }
 
+func TestExportMarkdown(t *testing.T) {
+	user := func(s string) ChatMessage { return ChatMessage{Role: fantasy.MessageRoleUser, Text: s} }
+	reply := func(s string) ChatMessage { return ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s} }
+	bash := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "bash", Text: "go test ./...", Label: "run the tests", Status: CallOK}
+	failed := bash
+	failed.Status = CallErr
+	for _, c := range []struct {
+		name string
+		tr   []ChatMessage
+		want string
+	}{
+		{
+			"speakers merge",
+			[]ChatMessage{user("hi"), bash, bash, reply("done")},
+			"\n## You\n\nhi\n\n## zemi\n\n- `bash` run the tests\n- `bash` run the tests\n\ndone\n",
+		},
+		{"failed tool says so", []ChatMessage{failed}, "\n## zemi\n\n- `bash` run the tests (failed)\n"},
+		{
+			"reasoning left out",
+			[]ChatMessage{{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "hmm", Stat: &TurnStat{ThoughtMS: 4200}}, reply("ok")},
+			"\n## zemi\n\nok\n",
+		},
+		{
+			"notice and compaction",
+			[]ChatMessage{{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: "Compacted earlier messages"}, {Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "agent explore finished"}},
+			"\n## zemi\n\n_Compacted earlier messages_\n\n_agent explore finished_\n",
+		},
+		{"escapes stripped", []ChatMessage{reply("\x1b[31mred\x1b[0m")}, "\n## zemi\n\nred\n"},
+	} {
+		var b strings.Builder
+		exportMarkdown(&b, c.tr)
+		if b.String() != c.want {
+			t.Errorf("%s:\n%q\nwant\n%q", c.name, b.String(), c.want)
+		}
+	}
+}
+
 func TestCodeBlocks(t *testing.T) {
 	for _, c := range []struct {
 		name, md string
