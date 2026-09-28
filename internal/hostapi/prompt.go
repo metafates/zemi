@@ -90,19 +90,14 @@ Lead with the answer, as short as covers it: a word or a line when the ask is sm
 Help with defensive security, authorized testing, CTFs and security education; refuse malware, credential theft, destructive attacks and detection evasion aimed at systems the user is not authorized to test. Never print, log, commit or store secrets.`
 
 // zemiPrompt joins every main-agent prompt, a profile's own included: the
-// zemi skills and the exact config directories config-writing relies on.
-// A skill is named only to a run that has the skill tool.
-func (h *Host) zemiPrompt(toolset []fantasy.AgentTool) string {
+// exact config directories config-writing relies on.
+func (h *Host) zemiPrompt() string {
 	pdir := h.Dirs.ProjectConfigDir()
 	if !h.ProjectTrusted() {
 		// so the model does not write config that never loads
 		pdir += " (not loaded: the project is not trusted; the user runs /trust)"
 	}
-	var skill string
-	if hasTool(toolset, tools.ToolSkill) {
-		skill = " Anything about zemi itself (config, Lua API, keys, errors, what it learned) starts with the matching zemi-* skill: zemi-config before changing its settings, providers or permission rules, zemi-customize before extending or restyling it (plugins, subagents, commands, modes, UI)."
-	}
-	return "\n\n# zemi\nYou run inside zemi." + skill + " To change how zemi behaves for the user, use config, never its source." +
+	return "\n\n# zemi\nYou run inside zemi. To change how zemi behaves for the user, use config, never its source." +
 		" User config directory: " + h.Dirs.ConfigHome + " (this exact path, not ~/.config/zemi). Project config directory: " + pdir + "." +
 		" Local plugins directory: " + h.localPlugins() + "." +
 		" Reading the user config needs no approval; writing it does, so say first what you will write." +
@@ -147,7 +142,7 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string
 		}
 		files = p.ContextFiles
 	}
-	sys += h.zemiPrompt(toolset)
+	sys += h.zemiPrompt()
 	if p != nil && p.ReadOnly {
 		rest := planAsking
 		if !hasTool(toolset, tools.ToolPlan) {

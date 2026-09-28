@@ -2,8 +2,8 @@
 ---
 --- Type annotations for zemi's Lua API, in the LuaLS (lua-language-server)
 --- format. zemi rewrites this file on every start, so do not edit it: it is
---- a description of the API, never part of it. See the zemi-lua skill for
---- the rules behind the shapes.
+--- a description of the API, never part of it. See the zemi skill for the
+--- rules behind the shapes.
 ---
 --- zemi runs Lua 5.1 (gopher-lua) in a sandbox: no `io`, no `os.execute`,
 --- no C modules. Filesystem, network and processes go through `zemi.fs`,
@@ -336,7 +336,9 @@ zemi.keymap = {}
 --- sequences that start with a non-printable key: "ctrl+x s", "<leader>gs"
 --- (`<leader>` is the `keymap.leader` setting, ctrl+x by default). A key the
 --- terminal never reports ("ctrl-q", "control+q") or zemi keeps (ctrl+c)
---- raises rather than binding something nothing can press. Setting
+--- raises rather than binding something nothing can press, and so does a
+--- sequence that starts with a printable key without `opts.focus`, since
+--- the composer takes those. Setting
 --- the same key again from the same origin rebinds it; a key (or a prefix
 --- or extension of a key sequence) a more trusted origin bound raises.
 --- With `opts.focus` the binding is scoped to a focusable node: while it has
@@ -707,7 +709,7 @@ function zemi.event.stats() end
 ---@class zemi.Included
 ---@field instructions? string[] The project's instruction files, repo-relative; empty when it has none (what /init writes), nil when untrusted or at $HOME or /.
 ---@field memories integer Live memories of both scopes.
----@field skills integer Enabled skills other than the builtin zemi-* ones.
+---@field skills integer Enabled skills other than the builtin ones.
 ---@field mcp integer MCP servers configured.
 ---@field plugins integer Plugins that loaded without an error.
 
@@ -800,8 +802,10 @@ function zemi.event.stats() end
 ---@field waiting zemi.Waiting|"" The prompt holding the turn, else "".
 ---@field focus string Id of the layout node that has the keys, "" while the composer has them.
 
---- `render` may return true as a second result to render again next frame:
---- return what is ready and do the rest then. Never change a line table after
+--- `render` returns a list of lines. A bare string or a single line is taken
+--- as one line; a list of several strings raises, since it could mean one
+--- line or several. It may return true as a second result to render again
+--- next frame: return what is ready and do the rest then. Never change a line table after
 --- returning it, one seen in the last render is converted only once: build a
 --- new table for a line that changed.
 ---@class zemi.WidgetSpec
@@ -1700,7 +1704,7 @@ function zemi.composer.edit() end
 ---| "deny"
 
 ---@class zemi.RuleSpec
----@field subject string "tool.bash", "fs.read", "fs.write", "net.<host>", "lua.<ns.call>", "mcp.<server>".
+---@field subject string "tool.bash", "fs.read", "fs.write", "net.<host>", "lua.<ns.call>", "mcp.<server>", "memory.write"; any other family raises.
 ---@field pattern string Glob over the subject's argument.
 ---@field decision zemi.Decision Allow rules need user config.
 ---@field match string Required: an argument the rule must match, checked at registration.
@@ -1717,7 +1721,7 @@ function zemi.composer.edit() end
 ---@field principal? string
 
 ---@class zemi.PermModeSpec
----@field base? string The mode this one starts from.
+---@field base? string The mode this one starts from: "auto" or "yolo".
 ---@field description? string
 ---@field prompt? string A system prompt section while the mode is active.
 ---@field rules? table[] `{ subject, pattern, decision }` rules that answer what would otherwise ask while the mode is on.
@@ -1763,11 +1767,14 @@ function zemi.permission.rule.list() end
 ---@class zemi.permission.mode
 zemi.permission.mode = {}
 
---- Define a permission mode. User config only.
+--- Define a permission mode, or replace the one of that name: a lowercase
+--- letter, then up to 15 lowercase letters, digits and "-". User config only.
 ---@param name string
 ---@param spec zemi.PermModeSpec
 function zemi.permission.mode.add(name, spec) end
 
+--- Remove a mode. User config only; raises for a name no mode has and for
+--- the last mode.
 ---@param name string
 function zemi.permission.mode.del(name) end
 
@@ -1835,7 +1842,12 @@ function zemi.permission.mode.list() end
 ---@class zemi.tool
 zemi.tool = {}
 
---- Register a tool the model can call.
+--- Register a tool the model can call. A call is checked against `required`
+--- and the parameter types before `execute` runs, and a string parameter
+--- named `about` labels the call's row. It is gated as subject
+--- `tool.<name>` with the name as the argument, which auto mode never
+--- settles: it asks the user on every call until user config allows it
+--- (`{ subject = "tool.<name>", pattern = "*", decision = "allow", match = "<name>" }`).
 ---@param spec zemi.ToolSpec
 function zemi.tool.add(spec) end
 
@@ -1868,6 +1880,9 @@ function zemi.tool.list() end
 
 --- Paths resolve against the project directory and must stay inside the
 --- jail; reads pass the `lua.fs.read` gate and changes `lua.fs.write`.
+--- Writes reach only the launch directory (`ctx.cwd`, not
+--- `zemi.project.root()`: the dir a sandboxed command may write) and, for
+--- user config, `zemi.fs.data_dir`; each needs a `lua.fs.write` allow rule.
 ---@class zemi.fs
 zemi.fs = {}
 
@@ -1958,7 +1973,9 @@ function zemi.fs.grep(pattern) end
 
 --- http and https only, no userinfo. Loopback, RFC1918 and metadata
 --- addresses are refused at connect time, on every redirect hop; an
---- explicit user allow rule for the host is the localhost opt-in.
+--- explicit user allow rule for the host is the localhost opt-in. Gated as
+--- `lua.http.<method>` with the URL as the argument, redirects included;
+--- `net.<host>` rules are the model's `fetch` only.
 ---@class zemi.http
 zemi.http = {}
 
@@ -2304,7 +2321,9 @@ zemi.health = {}
 
 --- Add a row to /health. The check runs under the 50 ms handler deadline
 --- and may return a detail string instead of a table. Adding a name again
---- replaces its row; a name a more trusted origin holds raises.
+--- replaces its row; a name a more trusted origin holds raises. `--health`
+--- runs it right after boot, before work started on `app.ready` has
+--- reported, so a row over such state says it is not read yet.
 ---@param name string
 ---@param fn fun(): zemi.HealthResult|string
 function zemi.health.add(name, fn) end

@@ -48,8 +48,8 @@ test("found by name", function() assert(test.run("named")) end)`,
 	many := `local test = zemi.test
 for i = 1, 300 do test("case " .. i, function() end) end
 `
-	// the plugin and test zemi-customize shows, as an agent copies them
-	skill, err := fs.ReadFile(runtime.Skills, "skills/zemi-customize/SKILL.md")
+	// the plugin and test the zemi skill's plugins.md shows, as an agent copies them
+	skill, err := fs.ReadFile(runtime.Skills, "skills/zemi/plugins.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 		{name: "advance past what a duration holds", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
 			"init.lua": "", "tests/a_test.lua": `zemi.test("far", function() zemi.test.advance(math.huge) zemi.test.eq(os.date("!%Y"), "2318") end)`,
 		}, want: "1 passed (1 file, (T))\n"},
-		{name: "the zemi-customize example passes", args: []string{"<plugin>"}, code: 0, plugin: example, named: "branch", want: "2 passed (1 file, (T))\n"},
+		{name: "the plugins.md example passes", args: []string{"<plugin>"}, code: 0, plugin: example, named: "branch", want: "2 passed (1 file, (T))\n"},
 		{name: "a name the plugins step would load", args: []string{"named"}, code: 0, want: "1 passed (1 file, (T))\n"},
 		{
 			name: "300 boots in 256 spare file descriptors", args: []string{"<plugin>"}, spare: 256, code: 0,

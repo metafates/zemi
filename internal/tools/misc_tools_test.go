@@ -8,6 +8,7 @@ package tools
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -27,6 +28,7 @@ import (
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/runtime"
 )
 
 func toolNamed(t *testing.T, name string, p *Pipeline) fantasy.AgentTool {
@@ -290,6 +292,31 @@ func TestSkillLoadIndexAndGate(t *testing.T) {
 	resp = call(t, skill, `{"name":"alpha"}`)
 	if !resp.IsError || !strings.Contains(resp.Content, "skills unavailable") {
 		t.Fatalf("nil index: %+v", resp)
+	}
+}
+
+// TestBuiltinSkillFilesFitOneRead: a SKILL.md sends the model to the files
+// beside it, which it reads whole only when one read page holds them.
+func TestBuiltinSkillFilesFitOneRead(t *testing.T) {
+	err := fs.WalkDir(runtime.Skills, "skills", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || d.Name() == "SKILL.md" {
+			return err
+		}
+		data, err := fs.ReadFile(runtime.Skills, path)
+		lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+		// a page row is the line behind a 7-byte number column
+		if page := len(data) + 7*len(lines); page > readMaxBytes || len(lines) > readMaxLines {
+			t.Errorf("%s is a %d byte page of %d lines, one read holds %d bytes and %d lines", path, page, len(lines), readMaxBytes, readMaxLines)
+		}
+		for i, line := range lines {
+			if len(line) > readMaxLineLen {
+				t.Errorf("%s:%d is %d bytes, read cuts a line at %d", path, i+1, len(line), readMaxLineLen)
+			}
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -108,6 +108,9 @@ func (h *Host) HasUnseenErrors() bool {
 	return h.errs.unseen
 }
 
+// errorAskPrompt takes an error's time, source and text.
+const errorAskPrompt = "zemi recorded this error at %s from %s. Load the zemi skill and read its debug.md, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s"
+
 // OpenErrors runs /errors: it lists the recent errors newest first and
 // clears the badge; "<n>" selects one, "ask <n>" hands it to the agent to
 // explain and fix.
@@ -131,8 +134,7 @@ func (h *Host) OpenErrors(args string) error {
 		}
 		if f[0] == "ask" {
 			e := entries[i]
-			prompt := fmt.Sprintf("zemi recorded this error at %s from %s. Load the zemi-debug skill, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s",
-				e.at.Format(time.TimeOnly), e.source, e.msg)
+			prompt := fmt.Sprintf(errorAskPrompt, e.at.Format(time.TimeOnly), e.source, e.msg)
 			h.GoSafe("errors ask", func() {
 				if err := h.AgentSend(prompt); err != nil {
 					h.Notify(logging.Error, "Could not send", h.friendlyError(err))

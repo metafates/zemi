@@ -1,13 +1,4 @@
----
-name: zemi-worktrees
-description: "Load when the user wants several branches worked at once, or a change tried without touching their checkout: git worktrees under .agents/worktrees."
----
-
 # Parallel work with git worktrees
-
-A worktree is a second checkout of the same repository on its own branch, sharing one
-`.git`. Two features can be edited, built and tested at the same time without stashing or
-switching branches.
 
 Use one only when the user asks for parallel work, or when a change must be tried
 without disturbing the checkout they are looking at. For a single feature, a branch in the
@@ -28,7 +19,7 @@ git worktree add -b feat/retry .agents/worktrees/retry
   every read and write there needs approval, one prompt at a time.
 - zemi writes `.agents/worktrees/.gitignore` (`/*`) when the file is missing, at each start
   or reload of a trusted project and before a sandboxed command that may write it, so
-  `git status` stays clean, and `grep`, `glob` and ripgrep skip it, so a search does not
+  `git status` stays clean, and `grep`, `glob` and a command's `rg` skip it, so a search does not
   return every hit twice. Nothing under it is loaded as the outer
   project's config, skills, agents or commands.
 - `git worktree add` itself writes `.git`, so it needs approval once.

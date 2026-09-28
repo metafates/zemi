@@ -158,7 +158,7 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors." +
 			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, 10s at most between waits: no busy loops; a handle's wait or zemi.job.wait frees the interpreter until it returns." +
 			" A script that only reads (zemi.config.get, zemi.session.messages, zemi.errors.list, zemi.ui.screenshot, the zemi.fs readers, ...) runs at once; one that changes anything needs the user's approval once, so write every call out by name." +
-			" For calls not named here load the zemi-lua skill; a member a namespace lacks raises with the list it has." +
+			" For calls not named here load the zemi skill (lua.md); a member a namespace lacks raises with the list it has." +
 			" Keep scripts you reuse in the scratchpad and pass path instead of script.",
 		Parameters: map[string]any{
 			"description": map[string]any{"type": "string", "description": "what the script does in 3-6 words, shown to the user"},

@@ -447,7 +447,7 @@ refreshes the list when they end, unless the user closed it meanwhile. Three
 verbs need the screen, so only `/plugins` takes them: `toggle <name>`,
 `open <name>` (its `init.lua` in the editor, or its directory without one)
 and `new [what it should do]`, the list's first row, which sends the agent
-a short prompt pointing at zemi-customize, where the procedure lives.
+a short prompt pointing at the zemi skill's plugins.md, where the procedure lives.
 
 `zemi plugins test <name|dir> [pattern]` runs a plugin's
 `tests/*_test.lua` so an agent writing one tests it without a user's
@@ -2280,7 +2280,8 @@ skills/
 Discovery merges three sources, the higher-trust one winning a name
 clash: user (config dir, then `~/.agents/skills`, the dir other agents
 share, whose `zemi-skill.lua` never runs since installers write there)
-over builtin (zemi's own, embedded
+over builtin (zemi's own `zemi` skill, whose SKILL.md routes to
+reference files beside it that the model reads on demand, embedded
 under `runtime/skills/`, rewritten to `<data>/builtin-skills/` on every
 sync) over plugin (each enabled plugin's `skills/`, by plugin name, body
 only: its `zemi-skill.lua` never runs). All start enabled and toggle; a
@@ -2474,7 +2475,7 @@ internal/glob/              rg-style glob matching for the file tools and LSP
 internal/sanitize/          escape stripping at the render and log boundary
 internal/logging/           log files
 runtime/lua/                embedded Lua userland (tui: widgets, themes)
-runtime/skills/zemi-*/      zemi's own skills; runtime/workflows/, the builtin ones
+runtime/skills/zemi/        zemi's own skill: SKILL.md and the reference files it routes to; runtime/workflows/, the builtin workflows
 runtime/types/              the LuaLS `---@meta` description of the whole zemi.* API
 ```
 

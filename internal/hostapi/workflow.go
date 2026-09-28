@@ -518,7 +518,7 @@ func (h *Host) workflowTool(pipe *tools.Pipeline) fantasy.AgentTool {
 	return &workflowTool{h: h, pipe: pipe, saved: h.workflows()}
 }
 
-const workflowToolDesc = `Run a Lua script that coordinates subagents when code has to sit between them: stages that feed each other, loops, checking results. Independent tasks need no workflow. Pass a saved workflow's name, or a new script after loading the zemi-customize skill for the API.`
+const workflowToolDesc = `Run a Lua script that coordinates subagents when code has to sit between them: stages that feed each other, loops, checking results. Independent tasks need no workflow. Pass a saved workflow's name, or a new script after reading the zemi skill's workflows.md for the API.`
 
 func (t *workflowTool) Info() fantasy.ToolInfo {
 	var desc strings.Builder

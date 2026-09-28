@@ -1,8 +1,3 @@
----
-name: zemi-debug
-description: "Load when zemi misbehaves: a crash, an error in /errors, a silent model, a missing provider, config that does not load, or no learning."
----
-
 # Debugging zemi
 
 ## First look
@@ -10,76 +5,46 @@ description: "Load when zemi misbehaves: a crash, an error in /errors, a silent 
 1. Read the `/health` rows yourself with the Lua tool:
 
    ```lua
-   return zemi.health.list()   -- { level, name, detail } per check
+   return zemi.health.list() -- { level, name, detail } per check
    ```
 
    `/health` shows the same rows to the user, problems first.
-2. `/errors` lists recent errors: boot and reload failures, widget, keymap, click, command
-   and event-handler errors, and recovered panics; a command's bad argument is a warning
-   toast only. The red `errors /errors` statusline badge means
-   there are unseen ones. Enter opens one in full, with [a] Ask zemi to fix it (and
-   [r] Restart for an MCP or language server). In every list `/` filters, `y` copies the selected
-   row (in a detail view, the whole text) and `Y` copies the whole list, so the user can
-   paste an error back to you.
-3. Read the same entries yourself with the Lua tool instead of asking the user what the
-   screen says:
+2. `/errors` lists recent errors: boot and reload failures, widget, keymap, click, command and event-handler errors, and recovered panics; a command's bad argument is a warning toast only. The red `errors /errors` statusline badge means there are unseen ones. Enter opens one in full, with [a] Ask zemi to fix it (and [r] Restart for an MCP or language server). In every list `/` filters, `y` copies the selected row (in a detail view, the whole text) and `Y` copies the whole list, so the user can paste an error back to you.
+3. Read the same entries yourself with the Lua tool instead of asking the user what the screen says:
 
    ```lua
-   return zemi.errors.list()   -- newest first: { index, at, source, message }
+   return zemi.errors.list() -- newest first: { index, at, source, message }
    ```
 
-   `zemi.config.reload()` applies config you just wrote, the same as `/reload`.
-
-   For a question about what the model was told - a profile's `system`, an `agent.assemble`
-   section, an instruction file the budget cut, the memory digest - read the prompt itself:
+   For a question about what the model was told - a profile's `system`, an `agent.assemble` section, an instruction file the budget cut, the memory digest - read the prompt itself:
 
    ```lua
-   return zemi.agent.prompt()   -- the pinned system prompt, "" before the first send
+   return zemi.agent.prompt() -- the pinned system prompt, "" before the first send
    ```
 
-   `/prompt` shows the same text; `/usage` only measures it. The prompt is pinned for the
-   session, so it may lag the files on disk: an edit to a skill, a profile or an
-   `agent.assemble` handler shows after `/new` or `/compact`, and a hand edit to an
-   instruction file rides the next message instead.
-
-4. For anything about what is on the screen - a widget drawing wrong, a theme, an overlay
-   in the way, text wrapping badly, a statusline that lost a segment - look instead of
-   asking:
+   `/prompt` shows the same text; `/usage` only measures it. The prompt is pinned for the session, so it may lag the files on disk: an edit to a skill, a profile or an `agent.assemble` handler shows after `/new` or `/compact`, and a hand edit to an instruction file rides the next message instead.
+4. For anything about what is on the screen - a widget drawing wrong, a theme, an overlay in the way, text wrapping badly, a statusline that lost a segment - look instead of asking:
 
    ```lua
-   return zemi.ui.screenshot()   -- the drawn screen as plain text, nil, err before the first frame
+   return zemi.ui.screenshot() -- the drawn screen as plain text, nil, err before the first frame
    ```
 
-   It is the frame the user is looking at, at their real terminal width, with styling and
-   padding dropped. Save one before a change and one after and diff them; that is the whole
-   loop for UI work: edit config, `zemi.config.reload()`, screenshot, compare. Colors and
-   attributes do not survive it, so for a highlight question read the group with
-   `zemi.ui.hl.get(group)` instead. For a layout question, `zemi.ui.layout.rects()` says
-   where each node with an id, the stage and the composer landed, and `/health` names
-   widgets whose region the layout does not draw.
-
-5. A `print()` or `zemi.log` line from config code (a keymap, a widget render, a timer, an
-   event handler) is in `/messages` and `zemi.log.list()`, the last 100, newest first.
-   Headless (`-p`, `--health`) it goes only to the log file, as `print: ...` lines.
-
-6. Read the log of the run (reading the log directory needs the user's approval: MCP and LSP server output is
-   logged as written and may hold tokens). One file per start:
+   It is the frame the user is looking at, at their real terminal width, with styling and padding dropped. Save one before a change and one after and diff them. Colors and attributes do not survive it, so for a highlight question read the group with `zemi.ui.hl.get(group)` instead. For a layout question, `zemi.ui.layout.rects()` says where each node with an id, the stage and the composer landed, and `/health` names widgets whose region the layout does not draw.
+5. A `print()` or `zemi.log` line from config code (a keymap, a widget render, a timer, an event handler) is in `/messages` and `zemi.log.list()`, the last 100, newest first. Headless (`-p`, `--health`) it goes only to the log file, as `print: ...` lines.
+6. Read the log of the run (reading the log directory needs the user's approval: MCP and LSP server output is logged as written and may hold tokens). One file per start:
 
    ```sh
    ls -t ~/.local/state/zemi/logs/ | head -1
    grep -n 'ERROR\|WARN\|panic' ~/.local/state/zemi/logs/<file>.log
    ```
 
-   Each line is `time LEVEL source message key=value...`. Sources worth grepping:
-   `agent`, `reflector`, `memory`, `skills`, `trust`, `events`, `panic`, `ui`, `boot`,
-   `mcp`, `lsp`, `rewind`, `tools`, `commands`, `workflows`.
-   A recovered panic logs its full stack under source `panic`.
+   Each line is `time LEVEL source message key=value...`. Sources worth grepping: `agent`, `reflector`, `memory`, `skills`, `trust`, `events`, `panic`, `ui`, `boot`, `mcp`, `lsp`, `rewind`, `tools`, `commands`, `workflows`. A recovered panic logs its full stack under source `panic`.
 
 ## Common failures
 
 | Symptom | Cause and fix |
 | --- | --- |
-| "no model yet", or `/model` shows "No models yet" | no key exported and no provider in init.lua, or init.lua failed before `zemi.provider.add` (statusline `boot failed`, `/errors` has why); `/model` lists the builtin providers with their variables, zemi-config has `zemi.provider.add` |
+| "no model yet", or `/model` shows "No models yet" | no key exported and no provider in init.lua, or init.lua failed before `zemi.provider.add` (statusline `boot failed`, `/errors` has why); `/model` lists the builtin providers with their variables, `config.md` has `zemi.provider.add` |
 | 401 / unauthorized | the provider's key is empty or wrong: the exported builtin key, or the variable read with `zemi.env.get`, is not right in the shell that started zemi |
 | "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
 | statusline `boot failed` | init.lua, a plugin or project config raised during startup; `/errors` or the log (source `boot`) has the error |
@@ -104,18 +69,10 @@ description: "Load when zemi misbehaves: a crash, an error in /errors, a silent 
 
 SQLite, safe to inspect read-only (`sqlite3 -readonly <file>`):
 
-- `~/.local/state/zemi/zemi.db` (global): user-scope memories and their proposals,
-  skill enabled state (`skills`), `kv`.
-- `~/.local/state/zemi/projects/<hash of the repository root>/zemi.db` (per project,
-  shared by its subdirectories and worktrees): `sessions`, `messages`,
-  project memories and proposals, `todos`, `tool_calls`, `checkpoints` (file contents
-  `/rewind` restores). The same directory holds the project's `permissions` file and
-  `skills/` (recipes).
+- `~/.local/state/zemi/zemi.db` (global): user-scope memories and their proposals, skill enabled state (`skills`), `kv`.
+- `~/.local/state/zemi/projects/<hash of the repository root>/zemi.db` (per project, shared by its subdirectories and worktrees): `sessions`, `messages`, project memories and proposals, `todos`, `tool_calls`, `checkpoints` (file contents `/rewind` restores). The same directory holds the project's `permissions` file and `skills/` (recipes).
 
-Useful tables: `memory` (text, quote, origin, superseded_by), `proposals` (pending review,
-JSON payload), `sessions` (title, prompt_tokens, completion_tokens, cost),
-`messages` (role `tail` rows are copies of messages a compaction kept; resume starts at the
-last summary row).
+Useful tables: `memory` (text, quote, origin, superseded_by), `proposals` (pending review, JSON payload), `sessions` (title, prompt_tokens, completion_tokens, cost), `messages` (role `tail` rows are copies of messages a compaction kept; resume starts at the last summary row).
 
 ## Reproduce without touching the user's setup
 
@@ -127,6 +84,4 @@ Starts with empty config and stores. Copy only the pieces needed to reproduce.
 
 ## Reporting a bug
 
-Collect the `/errors` line, the matching log lines (with the `panic` stack if any), the
-`/health` output and the steps. Never paste API keys or `.env` contents, and check the log
-lines for tokens first: server output is logged as written.
+Collect the `/errors` line, the matching log lines (with the `panic` stack if any), the `/health` output and the steps. Never paste API keys or `.env` contents, and check the log lines for tokens first: server output is logged as written.

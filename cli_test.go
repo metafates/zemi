@@ -536,7 +536,7 @@ func TestPrintScreenCommands(t *testing.T) {
 		{"/mode", "", "zemi: /mode needs the TUI\n", 1},
 		{"/memory", "", "zemi: /memory needs the TUI\n", 1},
 		{"/skills", "", "zemi: /skills needs the TUI\n", 1},
-		{"/skills open zemi-lua", "", "zemi: /skills needs the TUI\n", 1},
+		{"/skills open zemi", "", "zemi: /skills needs the TUI\n", 1},
 		{"/agents", "", "zemi: /agents needs the TUI\n", 1},
 		{"/agents view x", "", "zemi: /agents needs the TUI\n", 1},
 		{"/workflow", "", "zemi: /workflow needs the TUI\n", 1},

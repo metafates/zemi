@@ -56,7 +56,7 @@ only changes foreground. A popup covers only its own cells. Polished UI must be 
 from Lua and ugly UI hard, so what Go draws comes from the layout and widget API rather than
 hardcoded strings.
 
-Docs follow the code in the same change: the AGENTS.md, DESIGN.md and `runtime/skills/zemi-*`
+Docs follow the code in the same change: the AGENTS.md, DESIGN.md and `runtime/skills/zemi`
 lines a change makes wrong are fixed with it. `make check` must be clean, and goldens are
 regenerated with `make golden` and the diff read. Commits are small, one lowercase line saying
 what changed, no prefixes, no body unless the why is not obvious. Never push unless asked.
@@ -131,7 +131,7 @@ cancels it, and appends its answer as a transcript row, which `-p` prints.
 exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
 reloads on the change. `test` is the one verb that boots Lua (below). `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
 `open` and `new` (the list's first row, which sends `newPluginPrompt` to the agent: the
-procedure lives in zemi-customize). Its list is built off the key loop from `plugins.List` and the last boot's
+procedure lives in the zemi skill's plugins.md). Its list is built off the key loop from `plugins.List` and the last boot's
 `pluginLoads`; install, update, check and delete run on `GoSafe`, toast, and refresh the list
 (`Overlay.Refresh`: it replaces an open one in place and opens nothing once esc closed it).
 `open` edits the plugin's `init.lua`, or its directory when it has none. Under `-p` it points at
@@ -548,7 +548,9 @@ registry, follow `internal/hostapi/registry.go`.
 Skills are file-based units, each a `SKILL.md` with YAML frontmatter: user skills under
 `<config>/skills/`, then `~/.agents/skills/` (`Dirs.AgentsHome`, in `UserTrees`; body only,
 since installers write there; the config dir wins a name clash), builtin (zemi's
-self-knowledge, `runtime/skills/zemi-*`, embedded and rewritten to `<data>/builtin-skills/` on
+self-knowledge, one `zemi` skill in `runtime/skills/zemi` whose SKILL.md routes to reference
+files the model reads on demand, each fitting one `read` page (`TestBuiltinSkillFilesFitOneRead`)
+and each named in SKILL.md (`TestBuiltinSkillReferences`), embedded and rewritten to `<data>/builtin-skills/` on
 every sync) and plugin (`skills.Plugin`, each enabled plugin's `skills/`, body only), all in the
 table and enabled by default. A trusted project adds its own (`.agents/skills`): body only,
 enabled, never in the table or `skillsReg`, scanned by `SetProjectTrusted`, which every reload
@@ -726,7 +728,7 @@ lua-language-server is installed.
   the script sees only base/string/table/math + the workflow API (no fs, net, `zemi.*`);
   `agent`/`parallel` are `lua.Suspending` wrappers, and both refuse under `pcall` or a library
   callback (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description
-  points at the zemi-customize skill for the API, which every request would otherwise pay for.
+  points at the zemi skill's workflows.md for the API, which every request would otherwise pay for.
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers an
   `agentRun` whose hooks build a live transcript, which `/agents view <id>` draws instead of
   the session's, and a submit while it runs goes to it through `MessageAgent`. A run's queue is
@@ -879,7 +881,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   digest: most stable first, so a provider that caches any shared prefix (OpenAI, DeepSeek,
   Gemini) shares the instructions across sessions. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
-  `delegationPrompt`, no `skill` tool drops the skills index and the zemi-* sentence, no `read`
+  `delegationPrompt`, no `skill` tool drops the skills index, no `read`
   drops its "Using tools" line, and a read-only agent without the `plan` tool
   (headless, a profile) ends in `planHeadless`. No kept tool's description names a dropped tool
   (`TestPromptFollowsToolSet`). Anything that varies per turn must be

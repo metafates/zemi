@@ -14,7 +14,7 @@ import (
 )
 
 // TestSplashExtends: user config can wrap the default splash through
-// require("zemi.tui").splash (the zemi-customize skill's example).
+// require("zemi.tui").splash (the zemi skill's ui.md example).
 func TestSplashExtends(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 30)
 	runLua(t, app, `

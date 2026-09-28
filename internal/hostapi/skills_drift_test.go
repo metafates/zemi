@@ -3,6 +3,7 @@ package hostapi
 import (
 	"context"
 	"io/fs"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -81,7 +82,41 @@ func TestBuiltinSkillsFitTheSkillTool(t *testing.T) {
 	}
 }
 
-// skillsText is every builtin SKILL.md joined.
+// TestBuiltinSkillReferences: every reference file the zemi skill or a
+// prompt names exists, and SKILL.md routes to every file beside it.
+func TestBuiltinSkillReferences(t *testing.T) {
+	bodies := builtinSkillBodies(t)
+	named := map[string]bool{}
+	rows := []struct{ name, text string }{
+		{"newPluginPrompt", newPluginPrompt},
+		{"errorAskPrompt", errorAskPrompt},
+		{"workflowToolDesc", workflowToolDesc},
+		{"the lua tool", (&luaEvalTool{}).Info().Description},
+	}
+	for path, body := range bodies {
+		rows = append(rows, struct{ name, text string }{path, body})
+	}
+	// a bare name: commands/<name>.md is a path, AGENTS.md no reference file
+	ref := regexp.MustCompile("(?:^|[\\s(`])([a-z]+\\.md)\\b")
+	for _, r := range rows {
+		for _, m := range ref.FindAllStringSubmatch(r.text, -1) {
+			file := m[1]
+			if _, ok := bodies["skills/zemi/"+file]; !ok {
+				t.Errorf("%s names %s, which the zemi skill does not have", r.name, file)
+			}
+			if r.name == "skills/zemi/SKILL.md" {
+				named[file] = true
+			}
+		}
+	}
+	for path := range bodies {
+		if file := strings.TrimPrefix(path, "skills/zemi/"); file != "SKILL.md" && !named[file] {
+			t.Errorf("SKILL.md never routes to %s", file)
+		}
+	}
+}
+
+// skillsText is every builtin skill file joined.
 func skillsText(t *testing.T) string {
 	t.Helper()
 	var b strings.Builder

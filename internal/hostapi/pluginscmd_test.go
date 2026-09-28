@@ -162,7 +162,7 @@ func TestPluginsOpen(t *testing.T) {
 }
 
 // TestPluginsNew: the list offers New plugin first, and /plugins new sends
-// the agent to zemi-customize with what the user typed.
+// the agent to the zemi skill's plugins.md with what the user typed.
 func TestPluginsNew(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")
@@ -184,7 +184,7 @@ func TestPluginsNew(t *testing.T) {
 	if err != nil || len(msgs) == 0 {
 		t.Fatalf("messages %v, %v", msgs, err)
 	}
-	if sent := msgs[0].PartsJSON; !strings.Contains(sent, "zemi-customize") || !strings.Contains(sent, "What it should do: a clock") {
+	if sent := msgs[0].PartsJSON; !strings.Contains(sent, "plugins.md") || !strings.Contains(sent, "What it should do: a clock") {
 		t.Fatalf("sent %s", sent)
 	}
 }

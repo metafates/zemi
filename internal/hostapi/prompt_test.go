@@ -46,7 +46,7 @@ func TestSystemPromptSections(t *testing.T) {
 		t.Errorf("the per-session environment at %d precedes the instructions at %d", j, i)
 	}
 	lean := h.buildSystem(&Profile{Tools: []string{"bash"}})
-	for _, gone := range []string{"# Delegating", "zemi-customize", "zemi-lua", "# Skills"} {
+	for _, gone := range []string{"# Delegating", "zemi skill (lua.md)", "# Skills"} {
 		if strings.Contains(lean, gone) {
 			t.Errorf("a bash-only prompt names %q", gone)
 		}
@@ -79,7 +79,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		gone []string
 		once []string
 	}{
-		{"default", nil, []string{"Scratchpad: ", "It is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "zemi-config before changing its settings", "say first what you will write"}, []string{"in one message", "keep your own files"}, []string{"in one response"}},
+		{"default", nil, []string{"Scratchpad: ", "It is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "say first what you will write"}, []string{"in one message", "keep your own files"}, []string{"in one response"}},
 		// subagents: explore reads and searches, and writes nothing; general
 		// is told its own directory in its task (TestSubagentOwnDir)
 		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "reading them needs no approval", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, []string{"Keep notes", "Keep temporary files", "keep your own files", "read for edit"}, nil},
@@ -87,7 +87,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		{
 			"lean", lean,
 			[]string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
-			[]string{"workflow", "zemi-lua", "job_start", `"lsp"`},
+			[]string{"workflow", "zemi skill (lua.md)", "job_start", `"lsp"`},
 			nil,
 		},
 		// the plan's shape lives in the plan tool's description only
