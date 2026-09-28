@@ -403,7 +403,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			}
 		}, true
 	}
-	pinID, pinSpan := a.pinAt(x, y)
+	pinID, pinSpan := a.pinAt(x, y, under)
 	switch top := a.topChrome(); {
 	case top == modalPerm:
 		pa := a.permAsk
@@ -490,11 +490,16 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 }
 
 // pinAt is the scrolled region whose pinned row's text holds (x, y), and
-// those cells; a zero span when there is none.
-func (a *App) pinAt(x, y int) (string, cellSpan) {
+// those cells; a zero span when there is none. The cell under the pointer
+// must be the pin's own (under), not a toast's drawn over it; a box placed
+// over the pin cuts its segment, so under may be a prefix of the pin's.
+func (a *App) pinAt(x, y int, under hostapi.Segment) (string, cellSpan) {
 	for _, id := range a.scrollIDs {
 		st := a.scrolls[id]
 		if st == nil || st.first == nil || st.rect.Min.Y != y {
+			continue
+		}
+		if own := dropCells(st.first, x-st.rect.Min.X); len(own) == 0 || own[0].HL != under.HL || !strings.HasPrefix(own[0].Text, under.Text) {
 			continue
 		}
 		text := strings.TrimRight(plainSegs(st.first), " ")

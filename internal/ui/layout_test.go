@@ -150,8 +150,8 @@ func TestPinned(t *testing.T) {
 }
 
 // BenchmarkPin is the pin's share of a painted frame: nothing for a view at
-// the content's top, a scan back and one row copy for one far below its
-// header.
+// the content's top, a scan back for one far below its header, and no
+// allocation while the pinned row stays the same.
 func BenchmarkPin(b *testing.B) {
 	lines := make([][]hostapi.Segment, 2000)
 	for i := range lines {
@@ -159,10 +159,11 @@ func BenchmarkPin(b *testing.B) {
 	}
 	for _, top := range []int{0, len(lines) - 10} {
 		b.Run(strconv.Itoa(top), func(b *testing.B) {
+			st := &scrollState{top: top}
+			st.pinRow(lines, 80)
+			b.ReportAllocs()
 			for b.Loop() {
-				if pin := pinned(lines, top); pin >= 0 {
-					_ = pinCopy(lines, pin, 80)
-				}
+				st.pinRow(lines, 80)
 			}
 		})
 	}

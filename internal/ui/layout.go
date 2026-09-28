@@ -539,8 +539,17 @@ type scrollState struct {
 	region    string
 	// the last paint's rows, shared with the widget cache, which replaces
 	// rows whole and never writes them in place
-	lines [][]hostapi.Segment
-	pin   int // the row drawn over the first one shown (pinned), -1 for none
+	lines  [][]hostapi.Segment
+	pin    int    // the row drawn over the first one shown (pinned), -1 for none
+	pinned pinKey // what first was copied from, so an unchanged pin allocates nothing
+}
+
+// pinKey names a pinned row's copy: the row by its first segment, which the
+// widget cache never reuses for another row, and what else shapes the copy.
+type pinKey struct {
+	row   *hostapi.Segment
+	more  bool
+	width int
 }
 
 // anchorRows is how many rows identify the viewport. One is not enough:
@@ -567,10 +576,7 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		}
 	}
 	st.clamp()
-	st.lines, st.pin, st.first = lines, pinned(lines, st.top), nil
-	if st.pin >= 0 {
-		st.first = pinCopy(lines, st.pin, w)
-	}
+	st.pinRow(lines, w)
 	rows := st.window(lines, w)
 	st.anchor, st.anchorOff = nil, 0
 	for i := max(st.top, 0); i < len(lines) && i < st.top+h; i++ {
@@ -595,8 +601,8 @@ func sticky(row []hostapi.Segment) bool { return len(row) > 0 && row[0].Sticky }
 // first row of the nearest header (a run of sticky rows) above top, or -1
 // when none is, or when a header is within the first three rows shown, so
 // the pin never stacks two headers with a gap row and a stats line between.
-// NOTE: a scan back to the header per painted frame, a few hundred bool
-// reads in a long turn; nothing while the content starts in view.
+// NOTE: a scan back to the header per painted frame of a view below one,
+// following a turn included: a few hundred bool reads in a long turn.
 func pinned(lines [][]hostapi.Segment, top int) int {
 	if top <= 0 {
 		return -1
@@ -616,15 +622,29 @@ func pinned(lines [][]hostapi.Segment, top int) int {
 	return i
 }
 
-// pinCopy is row pin of lines as the pin draws it: nothing in it copies or
-// acts but the pin's own click, and it ends in an ellipsis when the header
-// has more rows.
-func pinCopy(lines [][]hostapi.Segment, pin, width int) []hostapi.Segment {
-	row := slices.Clone(lines[pin])
+// pinRow sets the row pinned over the first one shown and its copy, made
+// again only when the pinned row, whether more header rows follow it, or the
+// width changed.
+func (st *scrollState) pinRow(lines [][]hostapi.Segment, width int) {
+	st.lines, st.pin = lines, pinned(lines, st.top)
+	if st.pin < 0 {
+		st.first, st.pinned = nil, pinKey{}
+		return
+	}
+	k := pinKey{&lines[st.pin][0], st.pin+1 < len(lines) && sticky(lines[st.pin+1]), width}
+	if k != st.pinned {
+		st.first, st.pinned = pinCopy(lines[st.pin], k.more, width), k
+	}
+}
+
+// pinCopy is row as the pin draws it: nothing in it copies or acts but the
+// pin's own click, and it ends in an ellipsis when the header has more rows.
+func pinCopy(row []hostapi.Segment, more bool, width int) []hostapi.Segment {
+	row = slices.Clone(row)
 	for i := range row {
 		row[i].NoCopy, row[i].Soft, row[i].Click, row[i].Widget = true, false, "", ""
 	}
-	if pin+1 < len(lines) && sticky(lines[pin+1]) {
+	if more {
 		hl := ""
 		for len(row) > 0 {
 			last := &row[len(row)-1]

@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/logging"
 )
 
 // fillChat appends 30 user/reply pairs to the transcript.
@@ -284,9 +285,9 @@ func TestChatScrollAnchorsThroughFill(t *testing.T) {
 
 // TestChatStickyPrompt: while a turn's rows fill the view, its prompt's
 // first row stands in for the chat's top row, cut with an ellipsis when the
-// prompt has more rows; it lights like a header, copies nothing, and a
-// click or alt+up scrolls back to the prompt. A report's notice heads its
-// turn the same way.
+// prompt has more rows and copied once; it lights like a header, copies
+// nothing, and a click or alt+up scrolls back to the prompt. A report's
+// notice heads its turn the same way.
 func TestChatStickyPrompt(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 	const prompt = "fix the flaky TestResume in internal/store: it fails about one run in twenty on the build machine"
@@ -302,6 +303,19 @@ func TestChatStickyPrompt(t *testing.T) {
 	if !st.follow || !strings.HasPrefix(row(), "▌ fix the flaky") || !strings.HasSuffix(row(), "…") {
 		t.Fatalf("following, the top row is %q", row())
 	}
+	if n := testing.AllocsPerRun(10, func() { st.pinRow(st.lines, st.rect.Dx()) }); n != 0 {
+		t.Fatalf("an unchanged pin allocates %v per frame", n)
+	}
+	// a toast over the pin takes its own cells and cuts the pin's short
+	app.pushToast(logging.Info, "saved", "")
+	app.Frame()
+	if _, _, onToast := app.target(70, y); onToast {
+		t.Fatal("a toast over the pin acts as the pin")
+	}
+	if _, _, beside := app.target(60, y); !beside {
+		t.Fatal("the pin beside a toast does not act")
+	}
+	app.toasts = nil
 
 	if dragTo(app, 3, y, 20, y); app.selectionText() != "" {
 		t.Fatalf("the pin copied %q", app.selectionText())
