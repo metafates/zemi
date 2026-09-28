@@ -56,8 +56,9 @@ first release, so no migration library came with it), `charm.land/glamour/v2`
 (markdown in chat, with `alecthomas/chroma/v2` for the code block
 formatter that marks glamour's own margins), `charmbracelet/x/exp/golden` (golden-file assertions
 for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty`
-(sandbox tests), `sahilm/fuzzy` (the one list filter, §6.6), and
-`go-readability` with `html-to-markdown` (the `fetch` tool: the article
+(sandbox tests), `sahilm/fuzzy` (the one list filter, §6.6),
+`lucasb-eyer/go-colorful` (OKLCH for the 16-color fallback, §6.6;
+already pulled in by `x/ansi`), and `go-readability` with `html-to-markdown` (the `fetch` tool: the article
 out of a page, as markdown the model can read). Tool input validation is a small hand-written
 schema check, not a JSON Schema library. `charm.land/catwalk` is taken
 for its embedded provider catalog and its client (§6.3): no network at
