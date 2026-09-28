@@ -42,10 +42,6 @@ var startsAtLine = regexp.MustCompile(`^[^\s:]+:\d+:`)
 // NOTE: the plugin's skills, agents and workflows load, but only a model
 // drives them, so no case can.
 func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) < 1 || len(args) > 2 {
-		fmt.Fprintln(stderr, "zemi: usage: zemi plugins test <name|dir> [pattern]")
-		return 2
-	}
 	fail := func(err error) int {
 		fmt.Fprintln(stderr, "zemi: plugins test:", err)
 		return 1

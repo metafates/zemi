@@ -211,7 +211,6 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 			name: "no such plugin", args: []string{"<plugin>/missing"}, code: 1,
 			want: "zemi: plugins test: lstat <plugin>/missing: no such file or directory\n",
 		},
-		{name: "usage", code: 2, want: "zemi: usage: zemi plugins test <name|dir> [pattern]\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := demo
