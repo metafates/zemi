@@ -305,7 +305,9 @@ redirect and env-assignment gates - internal/perm/bash.go, heavily table-tested;
 tables when touching it), and `perm.Store.CheckCommandFor`, the predicates on `perm.Normalized`,
 the ask hook and `alwaysChoice` all judge that one parse (`Request.Command`); a nested
 `sh -c` body or `eval` text is parsed again, and so is each segment `alwaysChoice` offers a rule for; a
-substitution inside double quotes is parsed like an unquoted one. An assignment prefix the normalizer strips downgrades an allow
+substitution inside double quotes is parsed like an unquoted one, and a heredoc body is data, parsed
+only when a shell in the command reads it (past runner prefixes, `source` and `eval` too), and an
+unquoted one for its substitutions. An assignment prefix the normalizer strips downgrades an allow
 verdict to ask, since the rules never see it and `GIT_EXTERNAL_DIFF=./x git diff` runs `./x`.
 A segment with a word that climbs (`docs/../x`) is judged as written and with the word cleaned,
 and the stricter verdict holds (`cleanDotDot`), so `cat docs/*` does not allow it; a path word

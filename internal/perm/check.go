@@ -20,7 +20,7 @@ func (s *Store) CheckCommand(cmd, principal string) Outcome {
 // way).
 func (s *Store) CheckCommandFor(subject string, n Normalized, principal string) Outcome {
 	if n.Fail != "" {
-		return Outcome{Decision: Deny, Reason: n.Fail}
+		return Outcome{Decision: Deny, Reason: "zemi cannot parse the command (" + n.Fail + "); fix the quoting"}
 	}
 	if n.ForceAsk != "" {
 		return Outcome{Decision: Ask, Reason: n.ForceAsk}

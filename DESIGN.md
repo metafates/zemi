@@ -1715,7 +1715,7 @@ provenance string.
   quotes, whose text the shell runs too; redirection and heredoc tokens
   (`[n]>&[m]`, `[n]<&[m]`, `&>`, `&>>`, `>|`, `<>`, `>&-`, `<&-`, `<<`,
   `<<-`, `<<<`) are recognized before the split so a redirect is never
-  cut by a separator; fail-closed on unbalanced quotes or parens), then
+  cut by a separator; fail-closed on a quote or paren not closed), then
   each segment is collapsed (whitespace, quote-aware argv split, `VAR=x`
   prefixes unwrapped from the matched form) and a `sh -c`/`bash -c`/`zsh -c`
   unwrap recurses into the inner string with the same split, re-applying
@@ -1764,9 +1764,11 @@ provenance string.
   `fs.write`; `<>` opens read-write, so its target gates as both
   `fs.read` (secret-shaped paths ask, below) and `fs.write`; a redirect
   whose target is emptied by the split (e.g. around process
-  substitution) fails the whole call; heredoc and herestring bodies
-  (`<<`, `<<-`, `<<<`) are shell-executed input, not inert text, so any
-  call using them forces `ask` for the whole call; other input targets
+  substitution) fails the whole call; any call using a heredoc or
+  herestring (`<<`, `<<-`, `<<<`) forces `ask` for the whole call, and a
+  heredoc body is parsed as commands when a shell (past runner prefixes,
+  `source` and `eval` included) in the call reads it, an unquoted one for
+  its substitutions otherwise, and a quoted one is data; other input targets
   gate as `fs.read` (secret-shaped paths ask, below), other output
   targets gate as `fs.write`, and only the inert character devices
   `/dev/null` and `/dev/zero` are exempt from both (`/dev/tty` and

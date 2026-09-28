@@ -406,6 +406,7 @@ func TestGitWrites(t *testing.T) {
 		{"xargs sh -c 'git add {}'", true},
 		{"timeout 5 bash -c 'git push'", true},
 		{`echo "$(git commit -m x)"`, true},
+		{"git commit -m \"$(cat <<'EOF'\nit's done\nEOF\n)\"", true},
 
 		{"git --no-pager log -5", false},
 		{"git status --short", false},

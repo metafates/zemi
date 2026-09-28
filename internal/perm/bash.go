@@ -32,7 +32,7 @@ type Normalized struct {
 	// to ask (CheckCommandFor): GIT_EXTERNAL_DIFF=./x git diff runs ./x.
 	Assign string
 	// Fail is a non-empty reason when the call must fail outright
-	// (unbalanced quotes or parens, emptied redirect target).
+	// (a quote or parenthesis not closed, a redirect with no target).
 	Fail string
 	// cmd is the text the segments came from, variables inlined, for what
 	// only the text shows (ReadCommand's expands)
@@ -169,12 +169,20 @@ const (
 	tokSep
 	tokRedirect
 	tokHeredoc
+	tokBody // a heredoc's body; quoted when its delimiter was
 )
 
 type token struct {
-	kind tokKind
-	text string
-	op   string
+	kind   tokKind
+	text   string
+	op     string
+	quoted bool
+}
+
+// heredoc is a << or <<- whose body starts after the line's newline.
+type heredoc struct {
+	delim        string
+	quoted, tabs bool
 }
 
 // scanner walks the command producing the token stream. Quote-aware:
@@ -184,8 +192,9 @@ type scanner struct {
 	// held are the tokens of substitutions inside double quotes, emitted
 	// where the segment holding the quoted word ends
 	held   []token
+	docs   []heredoc // opened on the current line
 	depth  int
-	failed bool // unbalanced quotes or parens
+	failed bool // a quote or parenthesis not closed
 }
 
 func (n *Normalized) scan(cmd string) {
@@ -304,6 +313,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			flush()
 			if r == '\n' {
 				sc.sep()
+				i = sc.bodies(rs, i)
 			}
 		case r == ';':
 			flush()
@@ -330,7 +340,12 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			i += n2 - 1
 			// classify: heredoc forms, fd forms, file forms
 			switch op {
-			case "<<", "<<-", "<<<":
+			case "<<", "<<-":
+				d := sc.delimiter(rs, &i)
+				d.tabs = op == "<<-"
+				sc.docs = append(sc.docs, d)
+				sc.toks = append(sc.toks, token{kind: tokHeredoc, op: op, text: d.delim, quoted: d.quoted})
+			case "<<<":
 				sc.toks = append(sc.toks, token{kind: tokHeredoc, op: op})
 			default:
 				sc.toks = append(sc.toks, token{kind: tokRedirect, op: op})
@@ -368,6 +383,68 @@ func (sc *scanner) quotedSub(n *Normalized, rs []rune, j int) (int, bool) {
 	return end, true
 }
 
+// delimiter reads the word after the << ending at rs[*i], leaving *i on its
+// last rune: quotes and backslashes go, and any of them makes the body
+// literal.
+func (sc *scanner) delimiter(rs []rune, i *int) heredoc {
+	var d heredoc
+	var b strings.Builder
+	j := *i + 1
+	for j < len(rs) && (rs[j] == ' ' || rs[j] == '\t') {
+		j++
+	}
+	for ; j < len(rs) && !strings.ContainsRune(" \t\n;&|<>()", rs[j]); j++ {
+		switch q := rs[j]; q {
+		case '\'', '"':
+			d.quoted = true
+			for j++; j < len(rs) && rs[j] != q; j++ {
+				b.WriteRune(rs[j])
+			}
+			sc.failed = sc.failed || j >= len(rs)
+		case '\\':
+			d.quoted = true
+			if j+1 < len(rs) {
+				j++
+				b.WriteRune(rs[j])
+			}
+		default:
+			b.WriteRune(q)
+		}
+	}
+	d.delim = b.String()
+	*i = j - 1
+	return d
+}
+
+// bodies takes the bodies of the heredocs opened on the line whose newline
+// is rs[i], each up to its delimiter line or the end, and returns the index
+// of the last rune taken.
+func (sc *scanner) bodies(rs []rune, i int) int {
+	for _, d := range sc.docs {
+		from := i + 1
+		body := rs[min(from, len(rs)):]
+		i = len(rs) - 1
+		for p := from; p < len(rs); {
+			e := len(rs)
+			if k := slices.Index(rs[p:], '\n'); k >= 0 {
+				e = p + k
+			}
+			line := string(rs[p:e])
+			if d.tabs {
+				line = strings.TrimLeft(line, "\t")
+			}
+			if line == d.delim {
+				body, i = rs[from:p], min(e, len(rs)-1)
+				break
+			}
+			p = e + 1
+		}
+		sc.toks = append(sc.toks, token{kind: tokBody, text: string(body), quoted: d.quoted})
+	}
+	sc.docs = nil
+	return i
+}
+
 // readRedirectOp reads a redirect operator starting at rs[i]; returns the
 // operator text and how many runes it consumed.
 func readRedirectOp(rs []rune, i int) (string, int) {
@@ -381,9 +458,18 @@ func readRedirectOp(rs []rune, i int) (string, int) {
 }
 
 // eat walks the token stream: redirects take the next word as target,
-// separators cut segments, heredocs force ask.
+// separators cut segments, heredocs force ask. A heredoc body is a script
+// when a shell in the command reads it; otherwise only an unquoted one's
+// substitutions run. Its segments go where the body is.
+// NOTE: a body another interpreter reads (python - <<EOF) is not parsed,
+// as python -c is not, nor one written to a file that runs later.
 func (n *Normalized) eat(sc *scanner) {
 	var seg []string
+	type doc struct {
+		at int
+		token
+	}
+	var docs []doc
 	toks := sc.toks
 	for i := 0; i < len(toks); i++ {
 		t := toks[i]
@@ -392,13 +478,20 @@ func (n *Normalized) eat(sc *scanner) {
 			n.fold(seg)
 			seg = nil
 		case tokHeredoc:
-			n.ForceAsk = "heredoc or herestring body is shell-executed input"
+			n.ForceAsk = "heredoc or herestring input"
+			if t.op != "<<<" && t.text == "" && !t.quoted {
+				n.Fail = "a redirect has no target"
+			}
+		case tokBody:
+			n.fold(seg)
+			seg = nil
+			docs = append(docs, doc{len(n.Args), t})
 		case tokRedirect:
 			if i+1 < len(toks) && toks[i+1].kind == tokWord {
 				n.gate(t.op, toks[i+1].text)
 				i++
 			} else {
-				n.Fail = "empty redirect target"
+				n.Fail = "a redirect has no target"
 			}
 		case tokWord:
 			seg = append(seg, t.text)
@@ -406,15 +499,60 @@ func (n *Normalized) eat(sc *scanner) {
 	}
 	n.fold(seg)
 	if sc.failed {
-		n.Fail = "unbalanced quotes or parens"
+		n.Fail = "a quote or parenthesis is not closed"
 	}
+	shell := n.readsScript()
+	for _, d := range slices.Backward(docs) {
+		switch {
+		case shell:
+			n.absorb(d.at, Normalize(d.text))
+		case !d.quoted:
+			n.absorb(d.at, substitutions(d.text))
+		}
+	}
+}
+
+// readsScript reports a segment whose program, or one a wrapper (sudo, env,
+// xargs) hands its input to, runs its stdin as shell: a shell, source or
+// eval.
+func (n *Normalized) readsScript() bool {
+	for _, f := range n.Args {
+		f = program(f)
+		for i, w := range f {
+			if i > 0 && !runner(f[0]) {
+				break
+			}
+			if isShell(w) || w == "source" || w == "." || w == "eval" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// substitutions parses the $( and backtick substitutions of text the shell
+// expands but does not split, an unquoted heredoc body.
+func substitutions(body string) Normalized {
+	var n Normalized
+	var sc scanner
+	rs := []rune(body)
+	for j := 0; j < len(rs); j++ {
+		if rs[j] == '\\' {
+			j++
+		} else if end, ok := sc.quotedSub(&n, rs, j); ok {
+			j = end
+		}
+	}
+	sc.toks = sc.held
+	n.eat(&sc)
+	return n
 }
 
 // gate classifies one redirect with its target into fs.read/fs.write
 // operations (device exemptions applied).
 func (n *Normalized) gate(op, target string) {
 	if target == "" {
-		n.Fail = "empty redirect target"
+		n.Fail = "a redirect has no target"
 		return
 	}
 	if devNull(target) || ((op == ">&" || op == "<&") && (isAllDigits(target) || target == "-")) {
@@ -507,7 +645,7 @@ func (n *Normalized) fold(seg []string) {
 	}
 	if isShell(argv[0]) {
 		if body, ok := shellBody(argv[1:]); ok {
-			n.absorb(Normalize(body))
+			n.absorb(len(n.Args), Normalize(body))
 			n.Opaque = true
 			return
 		}
@@ -516,9 +654,10 @@ func (n *Normalized) fold(seg []string) {
 	n.Args = append(n.Args, argv)
 }
 
-func (n *Normalized) absorb(inner Normalized) {
-	n.Segments = append(n.Segments, inner.Segments...)
-	n.Args = append(n.Args, inner.Args...)
+// absorb puts inner's segments at index at and takes its gates.
+func (n *Normalized) absorb(at int, inner Normalized) {
+	n.Segments = slices.Insert(n.Segments, at, inner.Segments...)
+	n.Args = slices.Insert(n.Args, at, inner.Args...)
 	n.ReadPaths = append(n.ReadPaths, inner.ReadPaths...)
 	n.WritePaths = append(n.WritePaths, inner.WritePaths...)
 	if inner.Fail != "" && n.Fail == "" {

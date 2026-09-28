@@ -226,6 +226,7 @@ func TestHiddenCommandsAsk(t *testing.T) {
 		{"git log # \\\nrm -rf x", Ask},
 		{"git log $(true)# it's\nrm -rf x\n'", Ask},
 		{"git log $'\\''\nrm -rf x\n'", Ask},
+		{"cat > n <<'EOF'\nit's\nEOF", Ask},
 	} {
 		if got := s.CheckCommand(c.cmd, "model").Decision; got != c.want {
 			t.Errorf("%s: got %v, want %v", c.cmd, got, c.want)
@@ -233,13 +234,36 @@ func TestHiddenCommandsAsk(t *testing.T) {
 	}
 }
 
-func TestNormalizeHeredocForcesAsk(t *testing.T) {
-	for _, cmd := range []string{`bash <<EOF
-echo hi
-EOF`, "cat <<< text"} {
-		n := Normalize(cmd)
-		if n.ForceAsk == "" {
-			t.Fatalf("heredoc/herestring must force ask: %q -> %+v", cmd, n)
+// TestNormalizeHeredoc: a heredoc always asks; its body is a script only
+// when a shell reads it, and an unquoted one's substitutions run anyway.
+func TestNormalizeHeredoc(t *testing.T) {
+	for _, c := range []struct {
+		cmd, segs         string
+		fail, destructive bool
+	}{
+		{"cat > a.lua <<'EOF'\nit's f(\"a\")\nEOF", "cat", false, false},
+		{"cat > a.txt <<'EOF'\nrm -rf /\nEOF", "cat", false, false},
+		{"cat <<EOF\nit's $(date)\nEOF", "cat|date", false, false},
+		{"echo \"$(cat <<'EOF'\n1) a\nEOF\n)\"", "echo $(cat <<'EOF'\n1) a\nEOF\n)|cat", false, false},
+		{"cat <<-EOF\n\tx\n\tEOF\necho after", "cat|echo after", false, false},
+		{"cat <<EOF\nno end", "cat", false, false},
+		{"cat <<< text", "cat text", false, false},
+		{"bash <<EOF\necho hi\nEOF", "bash|echo hi", false, false},
+		{"sh <<'EOF'\nrm -rf /\nEOF", "sh|rm -rf /", false, true},
+		{"cat <<'EOF' | sh\nrm -rf /\nEOF", "cat|sh|rm -rf /", false, true},
+		{"cat <<EOF\n$(rm -rf /)\nEOF", "cat|rm -rf /", false, true},
+		{"sudo sh <<'EOF'\nrm -rf .\nEOF", "sudo sh|rm -rf .", false, true},
+		{"source /dev/stdin <<'EOF'\nrm -rf .\nEOF", "source /dev/stdin|rm -rf .", false, true},
+		{"eval \"$(cat <<'EOF'\nrm -rf .\nEOF\n)\"", "eval $(cat <<'EOF'\nrm -rf .\nEOF\n)|cat|rm -rf .", false, true},
+		{"for f in a b; do sh <<EOF\nrm $f\nEOF\ndone", "for f in a b|do sh|rm $f|done", false, true},
+		{"sh <<'EOF'\necho 'it\nEOF", "sh|echo it\n", true, true},
+		{"cat <<", "cat", true, true},
+		{"cat <<'EOF\nx", "cat", true, true},
+	} {
+		n := Normalize(c.cmd)
+		if got := strings.Join(n.Segments, "|"); got != c.segs || (n.Fail != "") != c.fail || n.Fail == "" && n.ForceAsk == "" ||
+			(n.Destructive("") != "") != c.destructive {
+			t.Errorf("%q: segments %q, fail %q, ask %q, destructive %q", c.cmd, got, n.Fail, n.ForceAsk, n.Destructive(""))
 		}
 	}
 }
