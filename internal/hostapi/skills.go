@@ -22,6 +22,7 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
@@ -352,12 +353,15 @@ func (h *Host) SkillsUserHooksStep() lua.BootStep {
 
 // skillsCommand dispatches /skills [enable|disable <name> | use <name> [request]].
 func (h *Host) skillsCommand(args string) error {
-	fields := strings.Fields(args)
+	typed, stdin := agent.CutAttached(args)
+	fields := strings.Fields(typed)
 	switch {
 	case len(fields) == 0:
 		return h.openSkills()
 	case len(fields) >= 2 && fields[0] == "use":
-		return h.useSkill(fields[1], strings.Join(fields[2:], " "))
+		// the request stays as typed, line breaks included
+		request := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(typed), "use"))
+		return h.useSkill(fields[1], strings.TrimSpace(strings.TrimPrefix(request, fields[1])), stdin)
 	case len(fields) == 2 && (fields[0] == "enable" || fields[0] == "disable"):
 		if err := h.setSkillEnabled(fields[1], fields[0] == "enable"); err != nil {
 			return err
@@ -419,36 +423,24 @@ func (h *Host) openSkillFile(name string) error {
 	return Usagef("no skill %q", name)
 }
 
-// useSkill sends a skill's body as the next user message, the
-// deterministic path when the model did not load it on its own; request
-// is the task that follows it. A disabled skill is reachable here: naming
-// it is the request, so its description need not ride every prompt.
-func (h *Host) useSkill(name, request string) error {
+// useSkill sends the command line as typed with the skill behind
+// agent.AttachMarker, which the transcript, titles, rewind and memory quotes
+// cut off: the deterministic path when the model did not load it on its
+// own. A disabled skill is reachable here: naming it is the request, so its
+// description need not ride every prompt.
+func (h *Host) useSkill(name, request, stdin string) error {
 	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
 		if s.Name != name {
 			continue
 		}
-		msg, err := skillMessage(s, request)
+		text, err := tools.SkillText(s.Dir)
 		if err != nil {
 			return err
 		}
-		return h.AgentSend(msg)
+		line := strings.TrimSpace("/skills use " + name + " " + request)
+		return h.AgentSend(line + agent.Attached("skill", "The user loaded the skill "+name+" with the command above; follow it for their request.\n\n"+text) + stdin)
 	}
 	return Usagef("no skill %q", name)
-}
-
-// skillMessage is the user message /skills use sends: the body first, so
-// the model reads the procedure before the task it applies to.
-func skillMessage(s skills.Skill, request string) (string, error) {
-	body, err := skills.Body(s.Dir)
-	if err != nil {
-		return "", err
-	}
-	msg := "Follow this skill for the request below.\n<loaded_skill name=\"" + s.Name + "\">\nSkill directory: " + s.Dir + "\n\n" + body + "\n</loaded_skill>"
-	if request != "" {
-		msg += "\n\n" + request
-	}
-	return msg, nil
 }
 
 // openSkills lists discovered skills with their state; space toggles the

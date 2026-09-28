@@ -14,6 +14,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
@@ -207,35 +208,74 @@ func TestLearnListAndDecide(t *testing.T) {
 	}
 }
 
-// TestSkillsUse: /skills use sends the body without frontmatter ahead of
-// the request, enabled or not.
+// TestSkillsUse: /skills use sends the command line as typed and the skill
+// without frontmatter behind the marker, ahead of piped stdin, enabled or not.
 func TestSkillsUse(t *testing.T) {
 	h, _ := newTestHostSkills(t)
+	reflectStub(t, h, "ok")
 	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
-	h.syncSkills()
-	s := h.skillsReg.list()[slices.IndexFunc(h.skillsReg.list(), func(s skills.Skill) bool { return s.Name == "local-run" })]
-	msg, err := skillMessage(s, "make a landing page")
-	if err != nil {
+	big := filepath.Join(h.userSkillsDir(), "big")
+	if err := os.MkdirAll(big, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`<loaded_skill name="local-run">`, "Skill directory: " + s.Dir, "\n\nBody.\n</loaded_skill>\n\nmake a landing page"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("message lacks %q:\n%s", want, msg)
-		}
+	if err := os.WriteFile(filepath.Join(big, "SKILL.md"), []byte("---\nname: big\ndescription: huge\n---\n\n"+strings.Repeat("step\n", tools.SkillMaxOut/4)), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(msg, "description:") {
-		t.Errorf("frontmatter leaked:\n%s", msg)
-	}
+	h.syncSkills()
 	// a disabled skill is reviewed code: naming it is the request
 	if err := h.setSkillEnabled("local-run", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.skillsCommand("use local-run"); err != nil && strings.Contains(err.Error(), "no skill") {
-		t.Errorf("disabled user skill: err = %v", err)
+	stdin := agent.Attached("stdin", "the spec")
+	for _, c := range []struct {
+		name, args, typed string
+		tail              []string // in order
+	}{
+		{"plain request", "use local-run make a landing page", "/skills use local-run make a landing page", []string{"<skill>", "Skill directory: ", "Body."}},
+		{"line breaks survive", "use local-run first\n\nsecond", "/skills use local-run first\n\nsecond", []string{"Body."}},
+		{"stdin after the skill", "use local-run fix it" + stdin, "/skills use local-run fix it", []string{"Body.", stdin}},
+		{"no request", "use local-run", "/skills use local-run", []string{"Body."}},
+		{"a big skill is cut", "use big", "/skills use big", []string{"Read the cut lines with the read tool"}},
+	} {
+		if err := h.skillsCommand(c.args); err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		waitIdle(t, h)
+		typed, tail := agent.CutAttached(lastUserText(t, h))
+		if typed != c.typed || strings.Contains(tail, "run the local suite") {
+			t.Errorf("%s: typed %q, tail:\n%s", c.name, typed, tail)
+		}
+		rest := tail
+		for _, want := range c.tail {
+			_, after, ok := strings.Cut(rest, want)
+			if !ok {
+				t.Errorf("%s: tail lacks %q after what came before:\n%s", c.name, want, tail)
+				break
+			}
+			rest = after
+		}
 	}
 	if err := h.skillsCommand("use nothing"); err == nil || !strings.Contains(err.Error(), "no skill") {
 		t.Errorf("unknown skill: err = %v", err)
 	}
+}
+
+// lastUserText is the live session's last stored user message, whole.
+func lastUserText(t *testing.T, h *Host) string {
+	t.Helper()
+	rows, err := h.DB.Messages(h.AgentSessionID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range slices.Backward(rows) {
+		var m fantasy.Message
+		if r.Role == "user" && json.Unmarshal([]byte(r.PartsJSON), &m) == nil {
+			return concatText(m.Content)
+		}
+	}
+	t.Fatal("no user message stored")
+	return ""
 }
 
 // TestProjectSkills: a trusted project adds its skills to the index, an

@@ -583,7 +583,7 @@ and drops the pinned prompt. Invariants:
 - **Only user or builtin origin may enable/disable** (`refuseBelowUser` gate at the Lua
   namespace boundary - NOT inside the Go helper; off-interpreter goroutines read `OriginHost`,
   which would defeat a Go-side gate). A disabled skill leaves the index but `/skills use` still
-  sends it.
+  sends it (the body rides behind `agent.AttachMarker`, like a markdown command's).
 - **Token efficiency**: the prompt carries only the index (name + description, cut to 512 runes
   with a warning); bodies load on demand via the `skill` tool, after a permission check.
 - **Hook placement**: a `<config>/skills` skill's `zemi-skill.lua` runs once, in the boot

@@ -329,6 +329,23 @@ type SkillInfo struct {
 // (TestBuiltinSkillsFitTheSkillTool).
 const SkillMaxOut = 64000
 
+// SkillText is a skill as the model loads it: its directory, then the body.
+func SkillText(dir string) (string, error) {
+	body, err := skills.Body(dir)
+	if err != nil {
+		return "", err
+	}
+	// the body is the whole procedure, loaded once: a cut leaves the model
+	// acting on half of it, so say where the rest is, cutting the file whole
+	// so the marker's line numbers are read offsets
+	if len(body) > SkillMaxOut {
+		path := filepath.Join(dir, "SKILL.md")
+		raw, _ := os.ReadFile(path)
+		body = TruncOut(string(raw), SkillMaxOut) + "\nRead the cut lines with the read tool: " + path
+	}
+	return "Skill directory: " + dir + "\n\n" + body, nil
+}
+
 func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	if p.Skills == nil {
 		return fantasy.NewTextErrorResponse("skills unavailable"), nil
@@ -343,20 +360,13 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 				return fantasy.NewTextErrorResponse(DeniedText(v, "skill "+name)), nil
 			}
 			fi, _ := os.Stat(path)
-			body, err := skills.Body(s.Path)
+			text, err := SkillText(s.Path)
 			if err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
 			// loading is reading: a recipe can be corrected without a read
 			p.markRead(path, fi)
-			// the body is the whole procedure, loaded once: a cut leaves the
-			// model acting on half of it, so say where the rest is, cutting
-			// the file whole so the marker's line numbers are read offsets
-			if len(body) > SkillMaxOut {
-				raw, _ := os.ReadFile(path)
-				body = TruncOut(string(raw), SkillMaxOut) + "\nRead the cut lines with the read tool: " + path
-			}
-			return fantasy.NewTextResponse("Skill directory: " + s.Path + "\n\n" + body), nil
+			return fantasy.NewTextResponse(text), nil
 		}
 	}
 	slices.Sort(known)
