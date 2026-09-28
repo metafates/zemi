@@ -356,7 +356,10 @@ func (h *Host) runLuaTool(ctx context.Context, t *luaTool, callID string, input 
 			return out, nil
 		}
 	}
-	b, _ := json.Marshal(res[0])
+	b, err := json.Marshal(res[0])
+	if err != nil {
+		return "", fmt.Errorf("%s: the result is not JSON: %w", t.Name, err)
+	}
 	return string(b), nil
 }
 

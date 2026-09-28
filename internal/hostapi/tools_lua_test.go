@@ -70,6 +70,7 @@ func TestLuaToolFailures(t *testing.T) {
 			if args.id == "raise" then error("boom") end
 			if args.id == "spin" then while true do end end
 			if args.id == "fail" then return nil, "no such ticket" end
+			if args.id == "nan" then return { n = 0/0 } end
 			return "ticket " .. args.id
 		end,
 	})`)
@@ -77,6 +78,7 @@ func TestLuaToolFailures(t *testing.T) {
 	for input, want := range map[string]string{
 		`{"id":"raise"}`:               "boom",
 		`{"id":"fail","n":2,"x":null}`: "ticket: no such ticket",
+		`{"id":"nan"}`:                 "unsupported value: NaN",
 		`{}`:                           `missing required field "id"`,
 		`{"id":1}`:                     `field "id" must be string`,
 		`{"id":"a","n":"one"}`:         `field "n" must be integer`,
