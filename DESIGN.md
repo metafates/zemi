@@ -2014,7 +2014,10 @@ provenance string.
   (the roots by name, `Policy.WriteNames`); the path words come from the
   output's denial lines (`sandbox.DeniedPaths`), and only the escapes the
   run's schema carries are offered;
-  a timed-out bash run adopted as a job keeps it. Known
+  a timed-out bash run adopted as a job keeps it. The limits themselves are
+  the pinned environment's Sandbox block for a run with bash
+  (`Host.sandboxPrompt`), each clause read off `sandboxPolicy` and the
+  backend, so the text cannot drift from what the kernel enforces. Known
   ceiling: on Linux, where Landlock cannot hide `.env`, a sandboxed
   command in a trusted project can read it when it names it by a glob or
   a variable, or runs code that opens it.

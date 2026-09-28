@@ -584,3 +584,51 @@ func TestWorktreesDir(t *testing.T) {
 		}
 	}
 }
+
+// TestSandboxPrompt: every clause of the Sandbox block follows the policy
+// and the escapes the run has.
+func TestSandboxPrompt(t *testing.T) {
+	for _, c := range []struct {
+		name                            string
+		trusted, live, readOnly, escape bool
+		want, unwanted                  []string
+	}{
+		{"trusted", true, true, false, true, []string{
+			"They write only the project, $TMPDIR and $GOCACHE.\n",
+			".git and .agents are read-only to them: write .agents files with the write tool",
+			"Hidden from them: zemi's own dirs (", "Read zemi's files with the read tool.",
+			"secret-shaped files (.env, *.pem, *.key) outside $TMPDIR",
+			"Network: localhost only. network: true adds the network, sandbox: false drops every limit",
+		}, []string{"read-only while planning"}},
+		{"planning", true, true, true, true, []string{
+			"They write only $TMPDIR and $GOCACHE: the project is read-only while planning.\n",
+			"network: true adds the network (needs approval).",
+		}, []string{"sandbox: false", ".git and .agents"}},
+		{"nobody to approve", true, true, false, false, []string{"Nobody can approve more in this run."}, []string{"sandbox: false", "network: true"}},
+		{"untrusted", false, true, false, true, []string{"this project is not trusted"}, []string{"sandbox: false"}},
+		{"no backend", true, false, false, true, []string{"none on this machine"}, []string{"sandbox: false"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHost(t)
+			h.Dirs.ConfigHome, h.Dirs.DataHome, h.Dirs.StateHome = t.TempDir(), t.TempDir(), t.TempDir()
+			h.agents.sessionID = "s1"
+			s := &sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true}}
+			if !c.live {
+				s.err = errors.New("no backend")
+			}
+			h.sandbox.Store(s)
+			h.SetProjectTrusted(c.trusted)
+			got := h.sandboxPrompt(c.readOnly, c.escape, h.ScratchDir())
+			for _, w := range c.want {
+				if !strings.Contains(got, w) {
+					t.Errorf("lacks %q:\n%s", w, got)
+				}
+			}
+			for _, w := range c.unwanted {
+				if strings.Contains(got, w) {
+					t.Errorf("says %q:\n%s", w, got)
+				}
+			}
+		})
+	}
+}

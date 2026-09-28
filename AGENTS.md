@@ -437,7 +437,8 @@ before a run and checks them at exit: a created `.git` or `.agents` holds trust 
 `/trust`. Bash and `job_start` take two escapes no mode settles and each of which
 asks: `network: true` only adds sockets, `sandbox: false` drops the whole policy. A confined
 failure `sandbox.LikelyDenied` recognizes gets `Pipeline.sandboxHint`, which names the limit the
-denied path hit and the one next step (`sandbox.DeniedPaths`).
+denied path hit and the one next step (`sandbox.DeniedPaths`); the limits themselves are the
+environment's Sandbox block (`Host.sandboxPrompt`, from `sandboxPolicy`).
 
 `ReadCommand` is an allowlist of readers (internal/perm/safe.go, table-tested), which settle
 unconfined: no shell expansion outside quotes (`$` and backticks inside double quotes count),

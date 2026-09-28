@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -557,7 +556,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	case p.Pad != "" && has(func(l limit) bool { return l.kind == outside && sandbox.SystemTemp(l.path) }):
 		line = "/tmp is not writable: use $TMPDIR"
 	case len(pol.Write) > 0 && has(is(outside)):
-		line = "commands write only in " + joinAnd(pol.WriteNames(project)) + ": write there" + or(all, ", or call it again with sandbox: false (needs approval)")
+		line = "commands write only in " + pol.WriteNames(project) + ": write there" + or(all, ", or call it again with sandbox: false (needs approval)")
 	case all:
 		line += ": network: true adds the network, sandbox: false drops every limit; both need approval"
 	case net:
@@ -602,48 +601,6 @@ func limitOf(pol *sandbox.Policy, path string) limit {
 	return best
 }
 
-// joinAnd joins names as a sentence: a, b and c.
-func joinAnd(names []string) string {
-	if len(names) < 2 {
-		return strings.Join(names, "")
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
-}
-
-// sandboxLimits names what the live backend enforces on a settled command.
-func sandboxLimits() string { return policyLimits(nil) }
-
-// policyLimits names what the live backend enforces under pol, the policy a
-// command ran with; nil is the one a settled command gets. Every wrapped run
-// goes through sandbox.Probe's backend, so that is the one to describe.
-func policyLimits(pol *sandbox.Policy) string {
-	b, _ := sandbox.Probe()
-	// a backend that keeps .git read-only also gives loopback: seatbelt the
-	// machine's, the Linux namespace variant one of its own; Landlock +
-	// seccomp blocks every inet socket
-	// NOTE: a refused connection to a host service matches no LikelyDenied
-	// pattern, so on Linux it gets no hint; the limit text is all it gets.
-	net, write, sep := "no network", "writes only in the scratchpad (also $TMPDIR), the project read-only", ", "
-	switch {
-	case b.EnforcesProtect && runtime.GOOS == "linux":
-		net, sep = "no network at all, not even to servers running on this machine", "; "
-	case b.EnforcesProtect:
-		net = "no network beyond localhost"
-	}
-	// the project is a write root only where sandboxPolicy found it safe
-	if b.EnforcesProtect && (pol == nil || slices.Contains(pol.Write, workdir())) {
-		write = "writes only in a trusted project and the scratchpad (also $TMPDIR)" + sep + ".git and .agents read-only"
-	}
-	s := net + sep + write
-	if pol != nil && pol.Network {
-		s = write
-	}
-	if b.HidesSecretFiles {
-		return s + ", secret files unreadable"
-	}
-	return s + ", home credential files unreadable"
-}
-
 // NetworkProp is the middle tier: the sandbox stays, the command gets
 // sockets. It is the answer to almost every sandbox denial, since the file
 // rules are the ones a settled command is meant to keep.
@@ -651,9 +608,10 @@ func NetworkProp() map[string]any {
 	return map[string]any{"type": "boolean", "description": "true adds the network and keeps the rest of the sandbox (go mod download, npm install, curl). Needs the user's approval."}
 }
 
-// SandboxProp is bash's escape while a backend is live; job_start's points at it.
+// SandboxProp is bash's escape while a backend is live; job_start's points at
+// it. The limits are the system prompt's Sandbox block, built from the policy.
 func SandboxProp() map[string]any {
-	return map[string]any{"type": "boolean", "description": "Commands that run without the user's approval are sandboxed: " + sandboxLimits() + ". false drops every limit and needs approval; only when network: true was not enough."}
+	return map[string]any{"type": "boolean", "description": "false runs the command with no sandbox (Sandbox in the system prompt). Needs approval; only when network: true was not enough."}
 }
 
 func decidedBy(o perm.Outcome) string {

@@ -153,7 +153,7 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string
 	if def := h.permModeDef(); def.Prompt != "" {
 		sys += "\n\n# Permission mode: " + def.Name + "\n" + def.Prompt
 	}
-	return h.systemFor(sys, files, toolset, h.ScratchDir())
+	return h.systemFor(sys, files, toolset, h.ScratchDir(), p != nil && p.ReadOnly)
 }
 
 // planPrompt joins the system prompt for a read-only agent (Profile.ReadOnly);
@@ -175,17 +175,17 @@ const planHeadless = `
 2. Write the plan as your reply and stop: nothing in this run can approve it.`
 
 // systemWith appends the instruction files, the skills index, the
-// environment with the run's scratchpad pad and the session digest to a base
-// prompt.
-func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool, pad string) string {
-	out, _ := h.systemFor(sys, nil, toolset, pad)
+// environment with the run's scratchpad pad and sandbox (readOnly: a
+// read-only agent's) and the session digest to a base prompt.
+func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool) string {
+	out, _ := h.systemFor(sys, nil, toolset, pad, readOnly)
 	return out
 }
 
 // systemFor is systemWith with the section sizes it assembled. files names
 // explicit project files (a profile's context.files); nil means
 // instructionFiles.
-func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool, pad string) (string, promptParts) {
+func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool, pad string, readOnly bool) (string, promptParts) {
 	// a profile's files are repository content too
 	var tracked []string
 	if len(files) == 0 || !h.ProjectTrusted() {
@@ -218,7 +218,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	if sections != "" {
 		sections = "\n\n# Project instructions\nFrom the user and the repository, already loaded: do not read them again. They override the default rules above; a deeper directory's file wins over a shallower one, and the user's messages win over every file." + sections
 	}
-	env, luaSections, index := h.environmentFor(toolset, pad), h.assembleSections()+h.toolSections(toolset), ""
+	env, luaSections, index := h.environmentFor(toolset, pad, readOnly), h.assembleSections()+h.toolSections(toolset), ""
 	if hasTool(toolset, tools.ToolSkill) {
 		index = h.skillsIndexPrompt()
 	}
@@ -437,16 +437,16 @@ func (h *Host) instructionFile(p string) bool {
 // whoever approved a command. scratchOwn names a subagent run's own
 // directory in its task, since per run it would bust the cached prompt.
 const (
-	scratchUse   = "It is $TMPDIR in every command you run. Keep temporary files here, not in /tmp or the project: nothing here is part of the project. Reading, writing and editing here needs no approval, even for a read-only agent, and deleting here asks only where any command would. Its parent and siblings are not writable.\n"
-	scratchWrite = "Keep notes and drafts here, not in the project: nothing here is part of the project. Reading, writing and editing here needs no approval, even for a read-only agent. Its parent and siblings are not writable.\n"
+	scratchUse   = "It is $TMPDIR in every command you run. Keep temporary files here, not in /tmp or the project: nothing here is part of the project. Reading, writing and editing here needs no approval, even for a read-only agent, and deleting here asks only where any command would.\n"
+	scratchWrite = "Keep notes and drafts here, not in the project: nothing here is part of the project. Reading, writing and editing here needs no approval, even for a read-only agent.\n"
 	scratchRead  = "Other agents keep temporary files here; reading them needs no approval.\n"
 	scratchOwn   = "Other agents share the scratchpad: keep your own files in %s."
 	recipesUse   = "A procedure for this repository that took you many steps to find goes in <name>/SKILL.md there: yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. The skill tool loads it at once. Fix a stale step in place and date the fix. Never write a secret there; name the env var that holds it.\n"
 )
 
-// environmentFor is the pinned environment with the clauses toolset can use
-// and pad, the run's scratchpad.
-func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string) string {
+// environmentFor is the pinned environment with the clauses toolset can use,
+// pad, the run's scratchpad, and the sandbox its commands run in.
+func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly bool) string {
 	writes := hasTool(toolset, tools.ToolWrite) || hasTool(toolset, tools.ToolEdit)
 	scratch, recipes := "", ""
 	if pad != "" {
@@ -459,6 +459,10 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string) string {
 		default:
 			scratch += scratchRead
 		}
+	}
+	if i := slices.IndexFunc(toolset, func(t fantasy.AgentTool) bool { return t.Info().Name == tools.ToolBash }); i >= 0 {
+		_, escapes := toolset[i].Info().Parameters["sandbox"]
+		scratch += h.sandboxPrompt(readOnly, escapes, pad)
 	}
 	if writes {
 		recipes = recipesUse

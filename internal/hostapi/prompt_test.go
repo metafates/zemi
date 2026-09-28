@@ -100,7 +100,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		if i := slices.IndexFunc(builtinAgents, func(d AgentDef) bool { return d.Name == c.name }); i >= 0 {
 			def := builtinAgents[i]
 			toolset, _ = filterTools(tools.All(h.PipelineFor()), def.Tools, h.toolSkip(subagentExcluded))
-			text = h.systemWith(h.subagentSystem(def, toolset), toolset, h.ScratchDir())
+			text = h.systemWith(h.subagentSystem(def, toolset), toolset, h.ScratchDir(), false)
 		}
 		for _, tool := range toolset {
 			text += fmt.Sprintf("\n%q %s", tool.Info().Name, tool.Info().Description)
@@ -209,7 +209,7 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte(strings.Repeat("a", contextBudget+100)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got := h.systemWith("base", nil, "")
+	got := h.systemWith("base", nil, "", false)
 	if !strings.Contains(got, "my rules") {
 		t.Fatal("the repository file evicted the user's own instructions")
 	}

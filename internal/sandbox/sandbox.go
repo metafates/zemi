@@ -183,10 +183,11 @@ var systemTemp = regexp.MustCompile(`^(?:/private)?/(?:tmp|var/folders)(?:/|$)`)
 // SystemTemp reports a path in the shared temp dirs.
 func SystemTemp(path string) bool { return systemTemp.MatchString(path) }
 
-// WriteNames names each Write root as a prompt would: "the project" for
-// project, the Env variable that holds it ($TMPDIR before the others), a
-// path inside the project relative to it, else the path.
-func (p Policy) WriteNames(project string) []string {
+// WriteNames names the Write roots as a sentence would ("the project,
+// $TMPDIR and $GOCACHE"): "the project" for project, the Env variable that
+// holds a root ($TMPDIR before the others), a path inside the project
+// relative to it, else the path.
+func (p Policy) WriteNames(project string) string {
 	keys := slices.Sorted(maps.Keys(p.Env))
 	names := make([]string, len(p.Write))
 	for i, w := range p.Write {
@@ -205,7 +206,10 @@ func (p Policy) WriteNames(project string) []string {
 			names[i] = w
 		}
 	}
-	return names
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // within reports whether p is root or below it, on the strings as given:

@@ -167,6 +167,81 @@ func (h *Host) sandboxPolicy(readOnly bool, pad string) sandbox.Policy {
 	return p
 }
 
+// sandboxPrompt is the environment's Sandbox block: what a command runs
+// under without the user's approval, each clause read off the live policy,
+// so the text says what the backend enforces. escapes is whether bash
+// carries the network and sandbox parameters. It says auto mode, the one
+// that settles commands confined: keyed on the mode, it would cost a cache
+// miss per switch.
+func (h *Host) sandboxPrompt(readOnly, escapes bool, pad string) string {
+	switch {
+	case !h.sandboxLive():
+		return "Sandbox: none on this machine, so commands that change anything ask the user first.\n"
+	case !h.ProjectTrusted():
+		return "Sandbox: this project is not trusted, so only commands that just read run without asking (confined); any other command asks the user and runs unconfined once approved.\n"
+	}
+	pol, backend, d := h.sandboxPolicy(readOnly, pad), h.sandbox.Load().backend, h.Dirs
+	var b strings.Builder
+	b.WriteString("Sandbox (auto mode): commands you run without the user's approval are confined.\n")
+	switch {
+	case slices.Contains(pol.Write, d.ProjectDir):
+		fmt.Fprintf(&b, "- They write only %s.\n- .git and .agents are read-only to them", pol.WriteNames(d.ProjectDir))
+		for _, e := range filepath.SplitList(os.Getenv("PATH")) {
+			if rel, err := filepath.Rel(d.ProjectDir, e); err == nil && filepath.IsLocal(rel) && slices.Contains(pol.Protect, e) {
+				fmt.Fprintf(&b, ", and so is %s, which is on PATH", rel)
+			}
+		}
+		b.WriteString(": write .agents files with the write tool; git commands that change .git ask first.\n")
+	case readOnly:
+		fmt.Fprintf(&b, "- They write only %s: the project is read-only while planning.\n", pol.WriteNames(d.ProjectDir))
+	default:
+		fmt.Fprintf(&b, "- They write only %s: the project is read-only to them.\n", pol.WriteNames(d.ProjectDir))
+	}
+	var zemi []string
+	for _, z := range []string{d.ConfigHome, d.DataHome, d.StateHome} {
+		if z != "" && slices.Contains(pol.Hide, z) {
+			zemi = append(zemi, TildePath(z))
+		}
+	}
+	b.WriteString("- Hidden from them: ")
+	if len(zemi) > 0 {
+		fmt.Fprintf(&b, "zemi's own dirs (%s", strings.Join(zemi, ", "))
+		if len(pol.Read) > 0 {
+			b.WriteString("; a local plugin's code aside")
+		}
+		b.WriteString("), ")
+	}
+	b.WriteString("credential dirs (~/.ssh, ~/.aws and the like)")
+	if backend.HidesSecretFiles {
+		b.WriteString(" and secret-shaped files (.env, *.pem, *.key) outside $TMPDIR")
+	}
+	b.WriteString(".")
+	if len(zemi) > 0 {
+		b.WriteString(" Read zemi's files with the read tool.")
+	}
+	if pol.Env["TMPDIR"] != "" {
+		b.WriteString("\n- Other tools' caches are read-only: point one into $TMPDIR (npm_config_cache=$TMPDIR/npm).")
+	}
+	// seatbelt's localhost is the machine's, the namespace backend's its own
+	switch {
+	case backend.Name == "seatbelt":
+		b.WriteString("\n- Network: localhost only.")
+	case backend.EnforcesProtect:
+		b.WriteString("\n- Network: the sandbox's own localhost only, so servers already running here are unreachable.")
+	default:
+		b.WriteString("\n- Network: none.")
+	}
+	switch {
+	case !escapes:
+		b.WriteString(" Nobody can approve more in this run.\n")
+	case readOnly:
+		b.WriteString(" network: true adds the network (needs approval).\n")
+	default:
+		b.WriteString(" network: true adds the network, sandbox: false drops every limit; both need approval, so try network: true first.\n")
+	}
+	return b.String()
+}
+
 // localPluginCode is what of the hidden data dir a sandboxed command may
 // read, so zemi plugins test runs confined: each local plugin's code
 // (plugins.Code), and the names in the plugin dirs and the disabled list

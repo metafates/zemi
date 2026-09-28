@@ -282,7 +282,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	loaded := new(sync.Map) // what the main agent loaded says nothing about what this run needs
 	kept, active := h.deferMCP(kept, loaded)
-	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), kept, pipe.Pad))
+	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), kept, pipe.Pad, pipe.Plan != nil && pipe.Plan()))
 	runner.ActiveTools = active
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)
