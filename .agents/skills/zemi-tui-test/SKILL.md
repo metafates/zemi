@@ -56,8 +56,8 @@ tmux -L zt send-keys -t zt C-c C-c                      # quit
 tmux -L zt kill-session -t zt; pkill -f "fake_openai.py 18472"
 ```
 
-Headless checks need no tmux: `$S/zemi-safe $T --health`, `(cd $T/proj && $S/zemi-safe $T
---trust -p --output json "call read {\"path\":\"a.txt\"}" </dev/null)` (without `</dev/null` `-p` waits 3 s on a
+Headless checks need no tmux: `$S/zemi-safe $T health`, `$S/zemi-safe $T -C $T/proj run --trust
+--json "call read {\"path\":\"a.txt\"}" </dev/null` (without `</dev/null` `zemi run` waits 3 s on a
 non-tty stdin). `--profile`, `--mode` and `-m` apply after `init.lua`.
 
 ## 4. Reading a screen

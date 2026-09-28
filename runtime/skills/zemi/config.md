@@ -4,7 +4,7 @@ Everything here goes in the user's init.lua (`<config>/init.lua`, run at startup
 
 ## Providers and models
 
-The builtin providers (anthropic, openai, gemini, deepseek, openrouter, ...) are on while their key is exported in the shell that starts zemi (`ANTHROPIC_API_KEY`, ...); `/model` lists them and names the variable a missing one needs. Their models come from the catalog bundled with zemi; `/model update` (or `zemi -p "/model update"`) fetches the latest from catwalk.charm.land and keeps it for later starts, until a zemi upgrade brings a newer bundle; the `/health` catalog row says which is in use. A gateway, a local server or a provider zemi does not know:
+The builtin providers (anthropic, openai, gemini, deepseek, openrouter, ...) are on while their key is exported in the shell that starts zemi (`ANTHROPIC_API_KEY`, ...); `/model` lists them and names the variable a missing one needs. Their models come from the catalog bundled with zemi; `/model update` (or `zemi run "/model update"`) fetches the latest from catwalk.charm.land and keeps it for later starts, until a zemi upgrade brings a newer bundle; the `/health` catalog row says which is in use. A gateway, a local server or a provider zemi does not know:
 
 ```lua
 zemi.provider.add({
@@ -105,7 +105,7 @@ zemi.permission.mode.add("judged", {
 
 ## The sandbox
 
-The sandbox (seatbelt on macOS, Landlock on Linux) lets a command write only the project and the scratchpad, which is every model command's `$TMPDIR`, sandboxed or not (`/tmp` is not writable), keeps `.git` and `.agents` read-only (`.agents/worktrees` aside), allows no network beyond localhost, and hides credential files and zemi's own dirs; on macOS secret-shaped files (`.env`, `*.pem`, `*.key`) are unreadable to it outside the scratchpad, and `.agents` files are written with the write tool. On Linux with namespaces localhost is the sandbox's own; with `landlock + seccomp` the project is read-only and there is no network. A command that needs the network is retried with `network: true` (sockets added, sandbox kept), one that needs more with `sandbox: false`; both need the user's approval in every mode but yolo, so under `-p` without yolo both are denied. `permissions.env_keep` names secret-shaped env vars (`*TOKEN*`, `*KEY*`, ...) a child keeps; whatever is kept, the model can print.
+The sandbox (seatbelt on macOS, Landlock on Linux) lets a command write only the project and the scratchpad, which is every model command's `$TMPDIR`, sandboxed or not (`/tmp` is not writable), keeps `.git` and `.agents` read-only (`.agents/worktrees` aside), allows no network beyond localhost, and hides credential files and zemi's own dirs; on macOS secret-shaped files (`.env`, `*.pem`, `*.key`) are unreadable to it outside the scratchpad, and `.agents` files are written with the write tool. On Linux with namespaces localhost is the sandbox's own; with `landlock + seccomp` the project is read-only and there is no network. A command that needs the network is retried with `network: true` (sockets added, sandbox kept), one that needs more with `sandbox: false`; both need the user's approval in every mode but yolo, so in `zemi run` without yolo both are denied. `permissions.env_keep` names secret-shaped env vars (`*TOKEN*`, `*KEY*`, ...) a child keeps; whatever is kept, the model can print.
 
 ## MCP and language servers
 
@@ -126,7 +126,7 @@ Language servers (gopls, pyright, typescript-language-server, clangd, rust-analy
 
 ## Command line
 
-`zemi [flags] [prompt]`: `-p` answers on stdout without the TUI (piped stdin, 1 MiB at most, is attached to the prompt; from a script add `</dev/null`, or it waits 3 s for input), `--output json` with `-p`, `-c` continues the last session, `-r <id>` resumes one, `-m provider/model`, `--mode`, `--profile`, `--trust`, `--health` (exits 1 when a check errors). A prompt naming a command runs it: `zemi -p "/review HEAD~1"`; one that opens a screen fails with "/<name> needs the TUI", and `/btw` prints its answer. Under `-p` nobody can approve, so a call the mode does not allow is denied and stderr counts them. A `-p` run makes no title call; the first line of its first message names the session. `zemi plugins ...` manages plugins from a shell (`plugins.md`).
+`zemi [flags] [prompt]` opens the TUI; `zemi run [prompt | -]` answers on stdout without it (piped stdin, 1 MiB at most, is attached to the prompt, or is the prompt after `-`; from a script add `</dev/null`, or it waits 3 s for input), and `--json` prints its report instead. Both take `-c` (continue the last session), `-r <id>`, `-m provider/model`, `--mode`, `--profile` and `--trust`; `-C <dir>` runs any command as if started in dir. `zemi health` prints the checks (exits 1 when one errors). A prompt naming a command runs it: `zemi run "/review HEAD~1"`; one that opens a screen fails with "/<name> needs the TUI", and `/btw` prints its answer. In `zemi run` nobody can approve, so a call the mode does not allow is denied and stderr counts them. A `zemi run` makes no title call; the first line of its first message names the session. `zemi plugins ...` manages plugins from a shell (`plugins.md`), and `zemi completion <shell>` prints a completion script.
 
 ## Commands and input
 

@@ -10,7 +10,7 @@ import (
 var ErrReserved = errors.New("zemi: action is Go-reserved and cannot be bound or executed from Lua")
 
 // ErrNeedsTUI is what a command that opens a screen returns with none to
-// draw on (-p, --health); RunCommand puts the command's name in front.
+// draw on (zemi run); RunCommand puts the command's name in front.
 var ErrNeedsTUI = errors.New("needs the TUI")
 
 // ErrUsage marks a command error that is how it was asked: a bad argument,

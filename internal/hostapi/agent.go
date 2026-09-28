@@ -283,7 +283,7 @@ func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 }
 
 // headlessExcluded needs a user at a terminal: with no UI hooks these tools
-// can only refuse, so a print run does not pay for their schemas every step.
+// can only refuse, so a zemi run does not pay for their schemas every step.
 var headlessExcluded = map[string]bool{tools.ToolQuestion: true, tools.ToolPlan: true}
 
 // toolSkip adds the language server tools to skip when no server can start
@@ -869,7 +869,7 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag.mu.Unlock()
 	s.h.cutAssistantRows(rows)
 	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
-	if s.h.hooks() == nil { // print mode: the countdown is on no screen
+	if s.h.hooks() == nil { // headless: the countdown is on no screen
 		fmt.Fprintf(s.h.Stderr, "zemi: retrying in %s: %s\n", fmtDuration(delay), why)
 	}
 	s.h.agentStream()
@@ -1109,7 +1109,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == CallStopped })
 		ui.TurnDone(h.friendlyError(err), stopped)
 	}
-	// a print run exits before a title call answers: no UI, no title
+	// a zemi run exits before a title call answers: no UI, no title
 	if err == nil && strings.TrimSpace(text) != "" && ui != nil {
 		ag.mu.Lock()
 		first := !ag.titled && ag.sessionID == sid
@@ -1530,8 +1530,8 @@ Question: `
 
 // Btw runs /btw: a side question answered in an overlay from the
 // conversation so far, a running turn included, and never stored. Headless
-// the answer is a transcript row, which -p prints; the call claims the agent
-// like /compact, so -p waits on it and its ctrl+c cancels it. In the TUI it
+// the answer is a transcript row, which zemi run prints; the call claims the agent
+// like /compact, so zemi run waits on it and its ctrl+c cancels it. In the TUI it
 // is a busy job, which a double esc cancels.
 func (h *Host) Btw(question string) error {
 	ui := h.hooks()
@@ -2164,7 +2164,7 @@ func modelDesc(id string, m agent.Model) string {
 // list, "roles" the role list, "update" fetches the catalog, a role its
 // list, an id sets chat, and a role with an id, or "chat" to follow it,
 // sets that role. The config watches it fires run later on the interpreter
-// queue. warn toasts an id the provider does not list; --health leaves
+// queue. warn toasts an id the provider does not list; zemi health leaves
 // that to its model row.
 func (h *Host) SetModel(args string, warn bool) error {
 	f := strings.Fields(args)
@@ -2234,7 +2234,7 @@ func (h *Host) updateCatalog() error {
 		return nil
 	}
 	if headless {
-		// an interrupt ends -p with 130 (printTurn), which this fetch must not outlast
+		// an interrupt ends zemi run with 130 (printTurn), which this fetch must not outlast
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 		defer stop()
 		if err := run(ctx); err != nil {
@@ -2587,8 +2587,8 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		plugin := ""
 		if h.RT.CurrentOrigin(L) == lua.OriginPlugin {
 			if h.hooks() == nil {
-				// nothing bounds a chain of turns, and -p exits after its own
-				L.RaiseError("zemi.agent.send: a plugin cannot send in a print run (-p)")
+				// nothing bounds a chain of turns, and zemi run exits after its own
+				L.RaiseError("zemi.agent.send: a plugin cannot send in zemi run")
 			}
 			if _, stub := h.luaGate(L, "lua.agent.send", "*", func() map[string]any { return map[string]any{"text": text} }); stub != nil {
 				L.Push(glua.LTrue) // a test zemi's stub keeps the text and starts no turn

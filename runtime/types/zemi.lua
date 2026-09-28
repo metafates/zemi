@@ -1556,7 +1556,7 @@ function zemi.agent.current() end
 --- Send a message. Returns at once; the turn runs off the interpreter, so
 --- the error is what can be known before it starts (no model yet); during
 --- a turn it joins at the next step. Plugin code needs a user rule for
---- `lua.agent.send` with its principal, and raises in a print run (-p); its
+--- `lua.agent.send` with its principal, and raises in `zemi run`; its
 --- text reaches the model as the plugin's, never the user's words. Project
 --- code raises.
 ---@param text string
@@ -2361,7 +2361,7 @@ zemi.health = {}
 
 --- Add a row to /health. The check runs under the 50 ms handler deadline
 --- and may return a detail string instead of a table. Adding a name again
---- replaces its row; a name a more trusted origin holds raises. `--health`
+--- replaces its row; a name a more trusted origin holds raises. `zemi health`
 --- runs it right after boot, before work started on `app.ready` has
 --- reported, so a row over such state says it is not read yet.
 ---@param name string

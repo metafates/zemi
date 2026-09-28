@@ -422,7 +422,7 @@ func (h *Host) goHealthRows() []healthCheck {
 	h.errs.mu.Unlock()
 	if nerr > 0 {
 		// name one of them: headless there is no /errors to open, and a
-		// boot step that failed is an error so --health does not read green
+		// boot step that failed is an error so zemi health does not read green
 		level := HealthWarn
 		if boot {
 			level = HealthError
@@ -512,7 +512,7 @@ func (h *Host) healthChecks() []healthCheck {
 	return append(h.goHealthRows(), h.luaHealthRows()...)
 }
 
-// HealthRow is one check for a caller with no UI (zemi --health).
+// HealthRow is one check for a caller with no UI (zemi health).
 type HealthRow struct {
 	Level        HealthLevel
 	Name, Detail string
@@ -555,7 +555,7 @@ var healthActions = map[string]string{"errors": "Show errors", "trust": "Change 
 func (h *Host) OpenHealth() error {
 	ui, err := h.Screen()
 	if err != nil {
-		return fmt.Errorf("%w; --health prints the checks", err)
+		return fmt.Errorf("%w; zemi health prints the checks", err)
 	}
 	// A Go command runs on the key loop, and the checks do file IO and call
 	// Lua under the veto deadline: collect them off it, then open.

@@ -357,7 +357,7 @@ type Host struct {
 	// picked mirrors the picks kept in the global store as config:<path>
 	picked map[string]any
 	// KeepPicks lets a runtime pick outlive the process; main turns it on
-	// once the TUI's flags applied, so a flag, -p and --health keep none.
+	// once the TUI's flags applied, so a flag, zemi run and zemi health keep none.
 	KeepPicks atomic.Bool
 	agents    *agentHost
 	luaTools  *toolReg
@@ -642,7 +642,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	h.recentStale.Store(true)
 	h.includedStale.Store(true)
 	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
-	// sync: the first turn's tool schema and --health read it (the probe is fast)
+	// sync: the first turn's tool schema and zemi health read it (the probe is fast)
 	b, err := sandbox.Probe()
 	h.sandbox.Store(&sandboxProbe{b, err})
 	return h

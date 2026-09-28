@@ -96,7 +96,7 @@ func (h *Host) reflectOnClose(prevID string) {
 // ReflectSweep runs at startup, in the background so quitting never waits
 // on a model call (DESIGN §10.3): the newest due sessions that no window
 // has touched for reflectIdle are reflected in turn, which covers what a
-// quit, a crash or a -p run left unreflected.
+// quit, a crash or a zemi run left unreflected.
 func (h *Host) ReflectSweep() { h.reflectSweep(time.Now().Add(-reflectIdle)) }
 
 // reflectSweep reflects the due sessions quiet since before idle.

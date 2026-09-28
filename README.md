@@ -60,12 +60,25 @@ turns them on and off. `zemi plugins test <name>` runs a plugin's
 `tests/*.lua`, each case in a throwaway zemi with a fake clock and no
 network or processes.
 
-## Scripts and hooks
+## Command line
+
+```
+zemi [prompt...]                    open the TUI; a prompt is sent first
+zemi run [prompt... | -]            one turn, the reply on stdout
+zemi plugins [install|update|check|enable|disable|delete|test]
+zemi health                         the /health checks; 1 if any failed
+zemi completion bash|zsh|fish
+```
 
 ```sh
-zemi -p "explain main.go"
-git diff | zemi -p "review this"
+zemi run "explain main.go"
+git diff | zemi run "review this"
+zemi run - < task.md                # the prompt itself from stdin
+zemi -C ~/code/app run -c "and the tests?"
+zemi completion fish > ~/.config/fish/completions/zemi.fish
 ```
+
+`zemi <command> --help` says more.
 
 `/help` lists every key and command. [DESIGN.md](DESIGN.md) is the spec,
 [AGENTS.md](AGENTS.md) the internals.

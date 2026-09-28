@@ -17,7 +17,7 @@ AGENTS.md has the house rules and `make check`; these are the ones it leaves out
 
 - zemi keeps no migrations before its first release. A schema change bumps `schemaVersion` in `internal/store/store.go`; after merging it, `make reset-db` drops the owner's stores (allowed) instead of writing an ALTER.
 - Never `go install` or write `~/go/bin/zemi` from a branch: that is the owner's daily binary. Build into a scratch dir and run it through `zemi-safe`.
-- After a merge to main, boot the merged binary once with `zemi-safe <tree> --health`, the tree holding copies of `~/.config/zemi` and `~/.local/state/zemi`: `make check` cannot see a user's data.
+- After a merge to main, boot the merged binary once with `zemi-safe <tree> health`, the tree holding copies of `~/.config/zemi` and `~/.local/state/zemi`: `make check` cannot see a user's data.
 
 - Parallel workers in worktrees: never `git stash` (the stash is shared by every worktree of
   the repo), and write patch files with `git diff --no-ext-diff` (the repo sets a display

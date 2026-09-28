@@ -94,13 +94,21 @@ skills in `~/.agents/skills`, which no override moves, must stay out; most tests
 project: call `h.SetProjectTrusted(true)` when one needs project instructions, language servers
 or settled builds.
 
-## CLI (cli.go)
+## CLI (cli.go, run.go)
 
-`zemi` opens the TUI; a prompt argument is sent as the first message, or run as a command when
-it names one (`sendPrompt`, TUI and `-p` alike, so `/review` works from a git hook). `--help`
-lists the flags. Piped stdin (1 MiB at most) is attached behind the typed prompt and is a usage
-error without `-p`. Flags apply after boot so they win over `init.lua`, except `--trust`, which
-the trust boot step reads. `-m`, `/model <provider/model>` and `zemi.model.set` write
+The command line is a cobra tree (`execute`): `zemi` opens the TUI, `zemi run` answers one
+prompt on stdout, and `plugins`, `health`, cobra's `completion` and `help` are subcommands, each
+declaring its `Args` (cobra checks positionals only on the root). A prompt argument is sent as
+the first message, or run as a command when it names one (`sendPrompt`, TUI and `zemi run`
+alike, so `/review` works from a git hook); a prompt whose first word names a zemi command goes
+after `--`, and a lone word a near miss of one is refused (`options.finish`), since it would pay
+for a model call on a typo. Exit status 2 is anything that fails before the root's
+`PersistentPreRunE`, which cobra runs once flags and arguments passed; after it a command's
+error is 1, and one that printed its own diagnostic returns `exitStatus`. That hook runs `-C
+dir` (`enterDir`: `PWD` follows) before anything else. Piped stdin (1 MiB at most) is attached
+behind the typed prompt, is the typed prompt itself after `-`, and is a usage error for the TUI.
+Flags apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
+reads. `-m`, `/model <provider/model>` and `zemi.model.set` write
 `models.chat`, and refuse while the active profile sets its own model (`Host.ProfileModelErr`;
 `--profile` applies before `-m`), since the key would change and the conversation would not.
 `Host.SetModel` parses the rest of `/model` (`Host.CompleteModel` offers the same grammar in
@@ -115,7 +123,8 @@ statusline's profile segment clicks into) write `agent.profile` for the next sen
 changes the prompt and the tool set, so it busts the provider's prompt cache once; ctrl+t and
 ctrl+shift+t cycle it.
 
-`--health` and `-p` boot the same step list and skip only the TUI. `-p` runs one turn, then
+`zemi run` and `zemi health` boot headless (`bootHeadless`, the TUI's steps without it). `zemi
+run` runs one turn (`printTurn`; `--json` prints the report instead of the reply), then
 reports on stderr how many asks nobody could approve (`Host.HeadlessDenials`, subagents' too;
 `deniedHint` points at `--trust` or at an allow rule) and, on its own line, how many calls a
 rule, the mode or the profile denied. It also drops what needs a user (`headlessExcluded`), the
@@ -123,13 +132,12 @@ agent tool's `background` and `send_to` (a detached report would outlive the run
 prompt lines naming them, and a plugin's `zemi.agent.send` raises there (nothing would bound
 its chain of turns). A headless run with no saved trust decision runs untrusted and says
 so. With no UI `Host.Notify` prints a warning or an error to `Host.Stderr` as "zemi: <title>:
-<body>", so `-p` never swallows one. A command that opens a screen gets `Host.Screen`'s
+<body>", so `zemi run` never swallows one. A command that opens a screen gets `Host.Screen`'s
 `ErrNeedsTUI` there, which `RunCommand` names ("/help needs the TUI", status 1; `/trust`
-points at `--trust`); `/btw` claims the agent like `/compact`, so `-p` waits on it and ctrl+c
-cancels it, and appends its answer as a transcript row, which `-p` prints.
+points at `--trust`); `/btw` claims the agent like `/compact`, so `zemi run` waits on it and
+ctrl+c cancels it, and appends its answer as a transcript row, which `zemi run` prints.
 
-`zemi plugins <verb>` (`parseArgs`, when `plugins` is the first word) runs `plugins.Run` and
-exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
+`zemi plugins [verb]` (`pluginsCommand`) runs `plugins.Run` and exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
 reloads on the change. `test` is the one verb that boots Lua (below). `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
 `open`, `new` (the list's first row, which sends `newPluginPrompt` to the agent: the
 procedure lives in the zemi skill's plugins.md) and `modify <name> [what to change]` (a local
@@ -137,8 +145,8 @@ plugin's detail action fills it; it sends `modifyPluginPrompt` and records the p
 `madePlugins`). Its list is built off the key loop from `plugins.List` and the last boot's
 `pluginLoads`; install, update, check and delete run on `GoSafe`, toast, and refresh the list
 (`Overlay.Refresh`: it replaces an open one in place and opens nothing once esc closed it).
-`open` edits the plugin's `init.lua`, or its directory when it has none. Under `-p` it points at
-`zemi plugins`.
+`open` edits the plugin's `init.lua`, or its directory when it has none. Under `zemi run` it
+points at `zemi plugins`.
 
 `zemi plugins test <name|dir> [pattern]` (plugintest.go, hostapi/plugintest.go) runs a plugin's
 `tests/*.lua` (a top-level file with no case fails: shared code goes in `tests/lib/`): `testPlugins` resolves a name as the plugins step would (`hostapi.PluginDir`),
@@ -163,7 +171,7 @@ apply, never on a reload or after a failed init.lua). Builtin
 providers come from the catwalk catalog (`agent.LoadCatalog`, converted at boot by
 `agent.Builtin` with the key env vars resolved in Go, never stored in config, into the
 `Host.Builtin` pointer): the embedded one, or the one `/model update` (`agent.UpdateCatalog`,
-a busy job that reloads config; `-p` only saves) fetched from catwalk.charm.land into
+a busy job that reloads config; `zemi run` only saves) fetched from catwalk.charm.land into
 `<data>/catwalk.json`, never `<cache>`, which a sandbox can write, since the catalog picks
 where each key is sent. A fetched one reads only the variables the bundled one names
 (`bundledRef`), so the feed cannot pick which secret goes. No network at boot; a saved catalog from another bundled catwalk
@@ -191,8 +199,8 @@ this run. Every runtime write goes through `Host.writeSetting` (`setWatched`, an
 `zemi.config.set` and `zemi.model.set` past boot), whose `keepPick` keeps the value in the
 global store's kv as `config:<path>`, or deletes the row when the value is `cfgBase` (config's
 last write when init.lua wrote the key, else the default). It keeps nothing while booting or
-before `Host.KeepPicks`, which main turns on after the TUI's flags apply, so a flag, `-p` and
-`--health` keep none, and never a mode whose base is yolo (never fail open across restarts).
+before `Host.KeepPicks`, which main turns on after the TUI's flags apply, so a flag, `zemi run`
+and `zemi health` keep none, and never a mode whose base is yolo (never fail open across restarts).
 `NewHost` applies the rows before any Lua (`loadPicks`, each through `Settings.Check`, a yolo
 row left out since user Lua can write kv directly), so init.lua still wins; per user, not per project.
 
@@ -209,7 +217,7 @@ through their own setters; for any other key a refused value is a usage hint. A 
 `config.checkKind`, which also takes `default` for a "" choice, `zemi.config.set` included; every runtime write,
 those setters included, fires the key's watches through `setWatched`. `config lua`
 shows the keys off their default as `zemi.config.set` lines, read only, for `y` to copy. zemi
-never edits init.lua. Under `-p` only `config set` runs.
+never edits init.lua. Under `zemi run` only `config set` runs.
 
 ## Architecture and control flow
 
@@ -421,7 +429,7 @@ tool error, never an unconfined run. Rule-allowed and user-approved runs, `!comm
 `zemi.job`, MCP servers and `Host.git` stay unconfined, except under a read-only agent, whose
 every command runs confined whoever allowed it (`Request.ReadOnly`; `unsettled` then skips the
 `Destructive` and `GitWrites` asks, since the confined run fails on its own); language servers
-run under `serverPolicy`. `NewHost` probes the backend synchronously, so `--health` and the first turn's
+run under `serverPolicy`. `NewHost` probes the backend synchronously, so `zemi health` and the first turn's
 schema see it.
 
 `sandboxPolicy` writes the policy; the whys behind it: the sandbox temp dir (`TMPDIR`) is the
@@ -952,7 +960,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
 
 - **Not built**, whatever DESIGN §13 implies: M4 evals (no `zemi.eval`) and embeddings.
   Everything else it names ships, plus permission modes, rewind, scratchpads, the `lua` tool
-  and print mode.
+  and `zemi run`.
 - **`zemi.*` namespaces are frozen and integrity-checked.** Tables are metatable-locked,
   `rawset`/`rawequal` are stripped, and Go re-verifies namespace contents per request class. A
   runtime-mutable member must go through the Go side, and each Go function exposed to Lua runs

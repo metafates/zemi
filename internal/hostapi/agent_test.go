@@ -1768,7 +1768,7 @@ func TestAlwaysRuleSkipsSecrets(t *testing.T) {
 	}
 }
 
-// TestHeadlessToolsetDropsPrompts: a print run has nobody to answer a
+// TestHeadlessToolsetDropsPrompts: a zemi run has nobody to answer a
 // question, approve a plan, open an editor or watch a window, so those
 // schemas never ship with it, the prompt stops telling the model to use
 // them, and the agent tool drops background, whose report a run that exits

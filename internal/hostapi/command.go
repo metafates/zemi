@@ -274,7 +274,7 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 }
 
 // runLuaCommand runs a Lua command as a task. With a UI it returns once the
-// task suspends, so the worker runs the next key before its rest; -p waits
+// task suspends, so the worker runs the next key before its rest; zemi run waits
 // for the whole command.
 func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string) error {
 	t := lua.Task{

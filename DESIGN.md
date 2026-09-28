@@ -58,8 +58,8 @@ formatter that marks glamour's own margins), `charmbracelet/x/exp/golden` (golde
 for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty`
 (sandbox tests), `sahilm/fuzzy` (the one list filter, §6.6),
 `lucasb-eyer/go-colorful` (OKLCH for the 16-color fallback, §6.6;
-already pulled in by `x/ansi`), and `go-readability` with `html-to-markdown` (the `fetch` tool: the article
-out of a page, as markdown the model can read). Tool input validation is a small hand-written
+already pulled in by `x/ansi`), `go-readability` with `html-to-markdown` (the `fetch` tool: the article
+out of a page, as markdown the model can read), and `spf13/cobra` (the command line: subcommands, help, and bash, zsh and fish completion; kong was weighed and lost on completion). Tool input validation is a small hand-written
 schema check, not a JSON Schema library. `charm.land/catwalk` is taken
 for its embedded provider catalog and its client (§6.3): no network at
 boot, an update only when the user asks, the user's own
@@ -177,7 +177,7 @@ Contracts that make this safe:
   tool error, a dropped `decide` sends the ask to the user, a dropped
   `tool.post` leaves the output as it was. Keymaps and Lua commands run in
   order on the UI's worker per slice: a suspended one lets the next key's
-  handler run, and its rest reports its own failure (`-p` waits for a
+  handler run, and its rest reports its own failure (`zemi run` waits for a
   whole command). An overlay's `reload` holds the worker until it returns,
   since it hands back the items.
   NOTE: every task gets a fresh thread (~100 KB of garbage); a pool is the
@@ -440,7 +440,7 @@ fast-forward, and names only the plugins that moved; `check` fetches, so
 the list names each update from local refs; `enable`, `disable` and
 `delete` (an installed clone, else the local plugin; a symlink loses the
 link only). `zemi plugins` runs without the TUI or trust, and without the
-Lua boot but for `test`, so a prompt that starts with "plugins" is written
+Lua boot but for `test`; a prompt whose first word names a command goes
 after `--`.
 `/plugins` is a toggle list built off the key loop, local plugins first,
 each row's state first (`failed`, an update), then its version and the
@@ -689,7 +689,7 @@ A runtime pick outlives the process: the global store keeps it per key as
 and a start applies the rows before any Lua. The layers are schema default <
 saved pick < init.lua < this run: init.lua always wins a restart, and a pick
 over a key it sets lasts the run. A pick back to what the key would be without
-it forgets the row. Flags, `-p` and `--health` keep nothing, and neither does a
+it forgets the row. Flags, `zemi run` and `zemi health` keep nothing, and neither does a
 mode whose base is yolo: a flip made for one task must not start every later
 zemi, in any repository, allowing what the rules do not deny. zemi never edits
 init.lua; `/config lua` shows the settings as lines to copy, and the agent edits
@@ -999,8 +999,8 @@ cancels it. `zemi.agent.send` from a plugin asks `lua.agent.send` the same
 way; project code may not send at all. A plugin's text reaches the model
 behind `agent.Attached("plugin:<name>", ...)`, drawn as a notice row
 named after the plugin, so it is never the user's words (§10.4), and the
-send marks the session not local-only. A print run (`-p`) refuses a
-plugin's send: nothing would bound a chain of turns, and `-p` exits after
+send marks the session not local-only. `zemi run` refuses a
+plugin's send: nothing would bound a chain of turns, and `zemi run` exits after
 its own.
 
 Session/message persistence and cost/token accounting mirror crush's model
@@ -1391,7 +1391,7 @@ a snapshot the UI publishes and edits it applies on its own goroutine;
 edits from user config only, since a submitted line reaches slash
 commands and `!shell` and a paste reads the clipboard; the same actions are
 `zemi.composer.*` keymap strings only user config may bind), `zemi.health` (`add(name, fn)`,
-whose rows join the Go checks in `/health` and `zemi --health`, and `list`, which reads
+whose rows join the Go checks in `/health` and `zemi health`, and `list`, which reads
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `disable`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
@@ -1666,7 +1666,7 @@ provenance string.
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; `r` resumes the selected session, `x` opens its Delete, enter offers both), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/btw <question>` (a side question
-  answered in an overlay, on stdout under `-p`, from the conversation so far,
+  answered in an overlay, on stdout in `zemi run`, from the conversation so far,
   never stored), `/health` (one row per check, problems first: store, model
   key, context window, git,
   reflector, pending reviews, skills, recent errors, project trust, MCP
@@ -1676,7 +1676,7 @@ provenance string.
   `/skills`, `/reflect`, `/agents`, `/workflow`, `/review`, `/mcp`,
   `/lsp`, `/plugins`, `/win`) and `/trust` (§5). Enter on a help command row runs it, or
   fills the composer when the command needs an argument.
-  Under `-p` a command that opens a screen fails with "/<name> needs the TUI".
+  In `zemi run` a command that opens a screen fails with "/<name> needs the TUI".
   The menus share one list: a row that only a closer look should act on
   (an error, a server, a skill, a workflow, a rewind) opens a detail view
   in place of the list with its full text and the actions as a list, so a restart, a
@@ -2010,7 +2010,7 @@ provenance string.
   with Landlock plus user, network and mount namespaces where the kernel
   allows unprivileged user namespaces, else Landlock plus seccomp) is
   probed once in `NewHost`, before
-  boot (the probe is fast), so `--health` and the first turn's tool schema
+  boot (the probe is fast), so `zemi health` and the first turn's tool schema
   see the result; `/health` has a `sandbox` row. `sandboxPolicy`: everything
   readable but the home credential paths (`~/.ssh`, `~/.aws`, `~/.config/gh`,
   `~/.npmrc`, `~/.git-credentials`, shell histories, ...), zemi's config,
@@ -2210,7 +2210,7 @@ it cannot act at all, so its only output is the proposal document below.
 Triggered on `session.close` (`/new`, `/resume`) and by a startup sweep
 (once per process, not on a reload) over the newest sessions nothing has
 touched for ten minutes, at most three, so quitting never waits on a model
-call and a session a quit, a crash or a `-p` run left behind is still read;
+call and a session a quit, a crash or a `zemi run` left behind is still read;
 `/reflect` runs it by hand. It reads the delta since the seen count (kv
 `reflector.seen.<sid>`, clamped when a rewind cuts below it, a fork starting
 past its copied history), and only when that delta holds two user messages
@@ -2542,7 +2542,8 @@ the host-only proposal channel (§10.3), the user-only config.set and allow rule
 ## 12. Repository layout
 
 ```
-main.go, cli.go             wiring, boot steps, and the command line
+main.go, cli.go             wiring, boot steps, and the command line (cobra)
+run.go                      zemi run: one turn on stdout
 plugintest.go               zemi plugins test: the copy, a boot per case, the report
 internal/lua/               interpreter thread, Lua sandbox, origins, marshal, require
 internal/hostapi/           zemi.* namespaces and the host services behind them:
@@ -2584,8 +2585,8 @@ shipped in part: subagents, workflows, the MCP client, the LSP client and the
 plugin manager (§5) are in; embeddings-backed search is not. Shipped outside
 every milestone: permission modes (§9), workflows, rewind and checkpoints,
 per-session scratchpads, background agents with the `/agents` transcript view,
-the `lua` tool, markdown commands and `agents/*.md`, headless print mode (`-p`)
-and `--health`, and the `zemi.health`, `zemi.composer` and `zemi.json`
+the `lua` tool, markdown commands and `agents/*.md`, headless `zemi run`
+and `zemi health`, and the `zemi.health`, `zemi.composer` and `zemi.json`
 namespaces.
 
 - **M0, walk before running**: bubbletea shell, Lua host, sandbox, init.lua

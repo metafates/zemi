@@ -40,33 +40,41 @@ import (
 
 func main() {
 	sandbox.DispatchHelper()
-	os.Exit(run(os.Args[1:]))
+	os.Exit(execute(os.Args[1:], os.Stdout, os.Stderr, launch))
 }
 
-func run(args []string) int {
-	opts, code := parseArgs(args, os.Stdout, os.Stderr)
-	if code >= 0 {
-		return code
+// launch opens the TUI, or with o.run answers one prompt on stdout.
+func launch(o options) int {
+	usage := func(msg string) int {
+		fmt.Fprintf(os.Stderr, "zemi: %s\nRun '%s --help' for usage.\n", msg, map[bool]string{true: "zemi run", false: "zemi"}[o.run])
+		return 2
+	}
+	if err := o.readStdin(os.Stdin); err != nil {
+		return usage(err.Error())
+	}
+	if o.run {
+		if o.prompt == "" {
+			return usage("zemi run needs a prompt: an argument, - or piped stdin")
+		}
+		h, done, err := bootHeadless(o, os.Stderr)
+		if err != nil {
+			return failPrint(err, o.json, os.Stdout, os.Stderr)
+		}
+		defer done()
+		if err := applyOptions(h, o); err != nil {
+			return failPrint(err, o.json, os.Stdout, os.Stderr)
+		}
+		return printTurn(h, o.prompt, o.json, os.Stdout, os.Stderr)
+	}
+	// bubbletea draws to stdout: redirected, the TUI would run the agent unseen
+	if fi, err := os.Stdout.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 {
+		return usage("stdout is not a terminal; zemi run prints the answer")
 	}
 	fail := func(err error) int {
 		fmt.Fprintln(os.Stderr, "zemi:", err)
 		return 1
 	}
-	if err := opts.readStdin(os.Stdin); err != nil {
-		fmt.Fprintf(os.Stderr, "zemi: %v\nRun 'zemi --help' for usage.\n", err)
-		return 2
-	}
-	// bubbletea draws to stdout: redirected, the TUI would run the agent unseen
-	if fi, err := os.Stdout.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 && !opts.print && !opts.health {
-		fmt.Fprintln(os.Stderr, "zemi: stdout is not a terminal; use -p to print the answer\nRun 'zemi --help' for usage.")
-		return 2
-	}
-	if opts.print && opts.prompt == "" {
-		fmt.Fprintln(os.Stderr, "zemi: -p needs a prompt (an argument or stdin)\nRun 'zemi --help' for usage.")
-		return 2
-	}
 	ctx := context.Background()
-
 	dirs, err := config.ResolveDirs()
 	if err == nil {
 		err = dirs.Ensure()
@@ -76,79 +84,14 @@ func run(args []string) int {
 	}
 	log := logging.New(dirs.LogDir())
 	defer log.Close()
-	// --health and -p return without reaching the TUI cleanup, and boot may
-	// already have started MCP or language servers
-	defer proc.KillAll()
-
-	settings := config.NewStore()
-
-	rt := lua.NewRuntime(lua.RuntimeOptions{
-		Log:       log,
-		PathClass: pathClasses(dirs),
-		RuntimeFS: zemiRuntime.FS,
-	})
-	host := hostapi.NewHost(rt, log, settings, dirs)
-	catalog := agent.LoadCatalog(dirs.DataHome, os.Getenv)
-	host.Builtin.Store(&catalog)
-	rt.SetPrintHook(func(origin, line string) {
-		log.Info(origin, "print: "+line, nil)
-		host.RecordMessage(origin, line)
-	})
-	host.Version = versionString()
-	// Headless: nothing to quit, and a project with no saved decision runs
-	// untrusted instead of asking. Say so, or the run looks like it applied
-	// the project's setup.
-	quit := func() {}
-	notice := io.Writer(os.Stderr)
-	if opts.health {
-		notice = io.Discard // the trust row says it
-	}
-	trust := &trustGate{h: host, dirs: dirs, ask: headlessTrust(notice)}
-	if opts.trust != nil {
-		trust.session.Store(opts.trust)
-	}
-	var app *ui.App
-	if !opts.print && !opts.health {
-		app = ui.NewApp(host, log)
-		host.SetUIHooks(app)
-		quit, trust.ask = app.Quit, app.AskTrust
-	}
+	host, trust := newHost(dirs, log, o, io.Discard)
+	app := ui.NewApp(host, log)
+	host.SetUIHooks(app)
+	trust.ask = app.AskTrust
 
 	// reload is set before boot starts; /trust calls it after boot
 	var reload func()
-	soft := func(s lua.BootStep) lua.BootStep { return softStep(host, app == nil, s) }
-	steps := bootSteps(host, mainCommands(quit, trust.command(func() { reload() })),
-		[]lua.BootStep{soft(trust.step()), soft(host.ProjectPermissionsStep())},
-		soft(host.PluginsStep()),
-		[]lua.BootStep{
-			soft(lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)),
-			soft(host.SkillsUserHooksStep()),
-			soft(projectInitStep(host, dirs)),
-		},
-		app != nil)
-
-	if opts.health {
-		if err := rt.Boot(ctx, steps); err != nil {
-			return fail(err)
-		}
-		// the flags first, so the rows say what a run with them would use
-		if err := applyOptions(host, opts); err != nil {
-			return fail(err)
-		}
-		return printHealth(host, os.Stdout)
-	}
-
-	if opts.print {
-		jsonOut := opts.output == "json"
-		if err := rt.Boot(ctx, steps); err != nil {
-			return failPrint(err, jsonOut, os.Stdout, os.Stderr)
-		}
-		if err := applyOptions(host, opts); err != nil {
-			return failPrint(err, jsonOut, os.Stdout, os.Stderr)
-		}
-		return printTurn(host, opts.prompt, jsonOut, os.Stdout, os.Stderr)
-	}
-
+	steps := hostSteps(host, trust, app, func() { reload() })
 	p := tea.NewProgram(app)
 	app.SetProgram(p)
 	reload = func() {
@@ -176,7 +119,7 @@ func run(args []string) int {
 				app.SignalBoot(fmt.Errorf("boot panicked: %v (stack in %s)", r, dirs.LogDir()))
 			}
 		}()
-		err := rt.Boot(ctx, steps)
+		err := host.RT.Boot(ctx, steps)
 		app.SignalBoot(err)
 		if err != nil {
 			// /errors is where both the user and the agent look first
@@ -186,15 +129,15 @@ func run(args []string) int {
 		host.GoSafe("config watch", func() { watchConfig(host, dirs, reload) })
 		// A bad flag (no session to resume, say) is a toast, not a boot
 		// failure: the TUI is still usable.
-		if err := applyOptions(host, opts); err != nil {
+		if err := applyOptions(host, o); err != nil {
 			host.RecordError("flag", err.Error())
 			app.Notify(logging.Error, "Could not apply a flag", err.Error())
 		}
 		host.KeepPicks.Store(true)
 		// here, not in app.ready: once per process, after -m, never on a reload
 		host.OfferModel()
-		if opts.prompt != "" {
-			if err := sendPrompt(host, opts.prompt); err != nil {
+		if o.prompt != "" {
+			if err := sendPrompt(host, o.prompt); err != nil {
 				app.Notify(logging.Error, "Could not send", err.Error())
 			}
 		}
@@ -227,6 +170,73 @@ func run(args []string) int {
 		return fail(err)
 	}
 	return 0
+}
+
+// newHost builds the runtime and host over dirs, and the trust gate their
+// boot reads; notice gets the headless trust line.
+func newHost(dirs config.Dirs, log *logging.Logger, o options, notice io.Writer) (*hostapi.Host, *trustGate) {
+	rt := lua.NewRuntime(lua.RuntimeOptions{
+		Log:       log,
+		PathClass: pathClasses(dirs),
+		RuntimeFS: zemiRuntime.FS,
+	})
+	host := hostapi.NewHost(rt, log, config.NewStore(), dirs)
+	catalog := agent.LoadCatalog(dirs.DataHome, os.Getenv)
+	host.Builtin.Store(&catalog)
+	rt.SetPrintHook(func(origin, line string) {
+		log.Info(origin, "print: "+line, nil)
+		host.RecordMessage(origin, line)
+	})
+	host.Version = versionString()
+	// Headless, a project with no saved decision runs untrusted instead of
+	// asking. Say so, or the run looks like it applied the project's setup.
+	trust := &trustGate{h: host, dirs: dirs, ask: headlessTrust(notice)}
+	if o.trust != nil {
+		trust.session.Store(o.trust)
+	}
+	return host, trust
+}
+
+// hostSteps is the boot of a zemi; app is nil headless, where nothing
+// quits and a failing step says so on stderr.
+func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App, reload func()) []lua.BootStep {
+	quit := func() {}
+	if app != nil {
+		quit = app.Quit
+	}
+	soft := func(s lua.BootStep) lua.BootStep { return softStep(h, app == nil, s) }
+	return bootSteps(h, mainCommands(quit, trust.command(reload)),
+		[]lua.BootStep{soft(trust.step()), soft(h.ProjectPermissionsStep())},
+		soft(h.PluginsStep()),
+		[]lua.BootStep{
+			soft(lua.LoadFileStep("init", filepath.Join(h.Dirs.ConfigHome, "init.lua"), lua.OriginUser)),
+			soft(h.SkillsUserHooksStep()),
+			soft(projectInitStep(h, h.Dirs)),
+		},
+		app != nil)
+}
+
+// bootHeadless boots zemi with no TUI, for zemi run and zemi health; done
+// stops what boot started (MCP and language servers) and closes the log.
+func bootHeadless(o options, notice io.Writer) (*hostapi.Host, func(), error) {
+	dirs, err := config.ResolveDirs()
+	if err == nil {
+		err = dirs.Ensure()
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	log := logging.New(dirs.LogDir())
+	h, trust := newHost(dirs, log, o, notice)
+	done := func() {
+		proc.KillAll()
+		log.Close()
+	}
+	if err := h.RT.Boot(context.Background(), hostSteps(h, trust, nil, func() {})); err != nil {
+		done()
+		return nil, nil, err
+	}
+	return h, done, nil
 }
 
 // pathClasses is where each origin's files live (DESIGN §5).
@@ -466,7 +476,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 // or project config) from stopping boot: the error goes to the log and
 // /errors, and the remaining steps and the runtime still start, like
 // neovim reporting an init.lua error and opening anyway. Headless there is
-// no /errors to open, so the error goes to stderr as well: otherwise -p
+// no /errors to open, so the error goes to stderr as well: otherwise zemi run
 // answers as if the config had loaded, and a broken provider registration
 // then blames a config line that is already correct.
 func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
@@ -482,7 +492,7 @@ func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 			}
 			h.Log.Error("boot", s.Name+" failed", map[string]any{"error": err.Error()})
 			h.RecordError("boot "+s.Name, err.Error())
-			if headless { // no /errors pill to notice, and -p is the scriptable path
+			if headless { // no /errors pill to notice, and zemi run is the scriptable path
 				fmt.Fprintln(os.Stderr, "zemi: "+s.Name+": "+hostapi.Headline(err.Error()))
 			}
 		}
@@ -621,8 +631,8 @@ func writeTrust(path string, m map[string]string) error {
 
 // readyStep drops the builtin providers when init.lua turned them off
 // (config has run by now, and a replay re-seeds them first) and emits
-// app.ready. Only the TUI reflects at startup: -p and --health exit before
-// it could finish.
+// app.ready. Only the TUI reflects at startup: zemi run and zemi health
+// exit before it could finish.
 func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	// once per process: a reload replays the step
 	reflectLast := sync.OnceFunc(func() { h.GoSafe("reflect sweep", h.ReflectSweep) })

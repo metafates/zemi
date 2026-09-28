@@ -56,7 +56,7 @@ type modeReg struct {
 	headless Denials // asks denied because no UI could answer them
 }
 
-// Denials counts asks nobody could answer (-p), every pipeline's:
+// Denials counts asks nobody could answer (zemi run), every pipeline's:
 // subagents and workflows run no rows the main transcript shows.
 type Denials struct {
 	Asked       int // all of them
@@ -76,7 +76,7 @@ func (r *modeReg) noteHeadless(req tools.Request) {
 	}
 }
 
-// HeadlessDenials is the count so far; -p reads the change over a turn.
+// HeadlessDenials is the count so far; zemi run reads the change over a turn.
 func (h *Host) HeadlessDenials() Denials {
 	h.modes.mu.Lock()
 	defer h.modes.mu.Unlock()
