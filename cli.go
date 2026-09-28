@@ -183,8 +183,8 @@ func versionString() string {
 }
 
 // normalizeVersion is the one name a build answers to: --version, the
-// splash and /health all print this. A pseudo-version (a build off a tag or
-// none) says nothing to a person, so it reads "dev".
+// splash and /health all print this. A pseudo-version (a commit past a tag,
+// or no tag at all) says nothing to a person, so it reads "dev".
 func normalizeVersion(v string) string {
 	if v == "" || v == "(devel)" || module.IsPseudoVersion(v) {
 		return "dev"

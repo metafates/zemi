@@ -239,8 +239,8 @@ func (a *App) Quit() {
 	quit()
 }
 
-// leave quits the program. It runs on a goroutine: Quit waits on the Update
-// loop.
+// leave quits the program. It runs on a goroutine, since program.Quit waits
+// on the Update loop.
 func (a *App) leave() {
 	if a.program != nil {
 		a.program.Quit()
