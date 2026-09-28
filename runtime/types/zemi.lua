@@ -1846,8 +1846,10 @@ zemi.tool = {}
 --- and the parameter types before `execute` runs, and a string parameter
 --- named `about` labels the call's row. It is gated as subject
 --- `tool.<name>` with the name as the argument, which auto mode never
---- settles: it asks the user on every call until user config allows it
---- (`{ subject = "tool.<name>", pattern = "*", decision = "allow", match = "<name>" }`).
+--- settles: it asks until the user allows it, for the session at the prompt
+--- or for good with a user config rule
+--- (`{ subject = "tool.<name>", pattern = "*", decision = "allow", match = "<name>" }`);
+--- yolo allows it.
 ---@param spec zemi.ToolSpec
 function zemi.tool.add(spec) end
 
@@ -1972,10 +1974,10 @@ function zemi.fs.grep(pattern) end
 ---@field wait fun(self: zemi.HTTPHandle): zemi.HTTPResponse|nil, string|nil Suspends the task until the response, 120 seconds at most; raises outside a task (a tool's execute, a command, a keymap, an overlay callback, an on_done or on_exit, a mode's decide) and under pcall.
 
 --- http and https only, no userinfo. Loopback, RFC1918 and metadata
---- addresses are refused at connect time, on every redirect hop; an
---- explicit user allow rule for the host is the localhost opt-in. Gated as
---- `lua.http.<method>` with the URL as the argument, redirects included;
---- `net.<host>` rules are the model's `fetch` only.
+--- addresses are refused at connect time, on every redirect hop. Gated as
+--- `lua.http.<method>` with the URL as the argument, redirects included; a
+--- rule allowing it, not a one-time answer, is also the localhost opt-in.
+--- `net.<host>` rules gate only the model's `fetch` and `web_search`.
 ---@class zemi.http
 zemi.http = {}
 

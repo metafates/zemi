@@ -2475,7 +2475,7 @@ internal/glob/              rg-style glob matching for the file tools and LSP
 internal/sanitize/          escape stripping at the render and log boundary
 internal/logging/           log files
 runtime/lua/                embedded Lua userland (tui: widgets, themes)
-runtime/skills/zemi/        zemi's own skill: SKILL.md and the reference files it routes to; runtime/workflows/, the builtin workflows
+runtime/skills/zemi/        zemi's own skill; runtime/workflows/, the builtin ones
 runtime/types/              the LuaLS `---@meta` description of the whole zemi.* API
 ```
 
