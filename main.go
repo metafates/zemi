@@ -84,7 +84,7 @@ func launch(o options) int {
 	}
 	log := logging.New(dirs.LogDir())
 	defer log.Close()
-	host, trust := newHost(dirs, log, o, io.Discard)
+	host, trust := newHost(dirs, log, o)
 	app := ui.NewApp(host, log)
 	host.SetUIHooks(app)
 	trust.ask = app.AskTrust
@@ -173,8 +173,8 @@ func launch(o options) int {
 }
 
 // newHost builds the runtime and host over dirs, and the trust gate their
-// boot reads; notice gets the headless trust line.
-func newHost(dirs config.Dirs, log *logging.Logger, o options, notice io.Writer) (*hostapi.Host, *trustGate) {
+// boot reads.
+func newHost(dirs config.Dirs, log *logging.Logger, o options) (*hostapi.Host, *trustGate) {
 	rt := lua.NewRuntime(lua.RuntimeOptions{
 		Log:       log,
 		PathClass: pathClasses(dirs),
@@ -188,9 +188,7 @@ func newHost(dirs config.Dirs, log *logging.Logger, o options, notice io.Writer)
 		host.RecordMessage(origin, line)
 	})
 	host.Version = versionString()
-	// Headless, a project with no saved decision runs untrusted instead of
-	// asking. Say so, or the run looks like it applied the project's setup.
-	trust := &trustGate{h: host, dirs: dirs, ask: headlessTrust(notice)}
+	trust := &trustGate{h: host, dirs: dirs}
 	if o.trust != nil {
 		trust.session.Store(o.trust)
 	}
@@ -233,9 +231,12 @@ func bootHeadless(o options, inert bool, notice io.Writer) (*hostapi.Host, func(
 		hostDirs.StateHome, logDir, release = "", "", proc.Refuse()
 	}
 	log := logging.New(logDir)
-	h, trust := newHost(hostDirs, log, o, notice)
+	h, trust := newHost(hostDirs, log, o)
 	h.Inert = inert
 	trust.dirs = dirs // the saved decision; a headless answer saves none
+	// a project with no saved decision runs untrusted instead of asking; say
+	// so, or the run looks like it applied the project's setup
+	trust.ask = headlessTrust(notice)
 	done := func() {
 		proc.KillAll()
 		log.Close()
