@@ -441,17 +441,35 @@ function zemi.command.list() end
 -- zemi.event
 
 ---@alias zemi.EventName
----| "app.ready" | "app.quit" | "config.reloaded"
----| "session.new" | "session.open" | "session.close"
----| "agent.start" | "agent.step" | "agent.finish" | "agent.error" | "agent.assemble"
----| "agent.subagent.start" | "agent.subagent.finish"
----| "agent.text_delta" | "agent.reasoning_delta"
----| "tool.pre" | "tool.post" | "tool.denied"
----| "permission.request" | "permission.resolved"
----| "ui.resize" | "ui.theme"
----| "composer.change" | "composer.submit"
----| "memory.written" | "reflector.start" | "reflector.done"
----| "job.exit" | "lsp.request"
+---| "app.ready"
+---| "app.quit"
+---| "config.reloaded"
+---| "session.new"
+---| "session.open"
+---| "session.close"
+---| "agent.start"
+---| "agent.step"
+---| "agent.finish"
+---| "agent.error"
+---| "agent.assemble"
+---| "agent.subagent.start"
+---| "agent.subagent.finish"
+---| "agent.text_delta"
+---| "agent.reasoning_delta"
+---| "tool.pre"
+---| "tool.post"
+---| "tool.denied"
+---| "permission.request"
+---| "permission.resolved"
+---| "ui.resize"
+---| "ui.theme"
+---| "composer.change"
+---| "composer.submit"
+---| "memory.written"
+---| "reflector.start"
+---| "reflector.done"
+---| "job.exit"
+---| "lsp.request"
 
 --- The payload every handler receives, plus the event's own fields.
 ---@class zemi.Event
@@ -2422,7 +2440,7 @@ function zemi.project.root() end
 ---@field tool fun(name: string, input: table): string|nil, string? Call the plugin's tool as the model would, allowed: the output, or nil and the error the model gets, behind the tool's name ("weather_now: ..."). `test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C")`
 ---@field render fun(id: string, ctx?: table): string[], zemi.Line[] Draw the plugin's widget: its lines as text, then as segments; ctx's fields override width 80, height 1 and the rest. `test.eq(test.render("cost", { usage = { cost = 0.5 } }), { "50 cents" })`
 ---@field click fun(id: string, click: string): true|nil, string? Run the widget's on_click for a segment's click id. `assert(test.click("branch", "branch"))`
----@field emit fun(name: zemi.EventName|string, ev?: table): any Deliver a host event to the plugin's handlers: `tool.post` returns the output the model gets, a vetoable event its zemi.Veto or nil. `test.emit("tool.post", { tool = "bash", ok = false, output = "FAIL" })`
+---@field emit fun(name: zemi.EventName, ev?: table): any Deliver a host event to the plugin's handlers: `tool.post` returns the output the model gets, a vetoable event its zemi.Veto or nil. `test.emit("tool.post", { tool = "bash", ok = false, output = "FAIL" })`
 ---@field complete fun(line: string): string[] The rows the plugin's completion offers for a draft line, cursor at its end: a command's `complete` for a `/command` line, else its `zemi.composer.complete` source for the trigger that starts the last word. `test.eq(test.complete("/stars meta"), { "metafates/zemi" })`
 ---@field overlay fun(): { id: string, title: string, body: string, items: string[], input: boolean }? The top open overlay. `test.eq(test.overlay().items, { "review" })`
 ---@field answer fun(choice: integer|string|nil, action?: string): true|nil, string? Enter on an item (its index or text) or its detail action, type an input's text, or esc for nil; a row no callback takes runs its `run`, a command of the plugin. `assert(test.answer("review"))`
