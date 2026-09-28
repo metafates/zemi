@@ -92,3 +92,47 @@ func TestRecapWhenIdle(t *testing.T) {
 		}
 	}
 }
+
+// TestWindowTitle: the tab title leads with a spinner stepping every 200 ms
+// while a turn runs, ? while a prompt waits, and how a turn ended while the
+// window was away until it is focused again.
+func TestWindowTitle(t *testing.T) {
+	log := logging.New("")
+	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
+	running := func(app *App) { app.turnActive = true }
+	for _, c := range []struct {
+		name  string
+		still bool // ui.animations off
+		set   func(*App)
+		msgs  []tea.Msg
+		at    time.Duration
+		want  string
+	}{
+		{"idle", false, nil, nil, 0, "zemi"},
+		{"running", false, running, nil, 0, "⠋ zemi"},
+		{"running 100 ms on", false, running, nil, 100 * time.Millisecond, "⠋ zemi"},
+		{"running 200 ms on", false, running, nil, 200 * time.Millisecond, "⠙ zemi"},
+		{"animations off holds still", true, running, nil, 200 * time.Millisecond, "⠋ zemi"},
+		{"asking", false, func(app *App) { running(app); app.permAsk = &permAskPrompt{} }, nil, 0, "? zemi"},
+		{"done away", false, nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}}, 0, "✓ zemi"},
+		{"failed away", false, nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{err: "x"}}, 0, "✗ zemi"},
+		{"seen once focused", false, nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, tea.FocusMsg{}}, 0, "zemi"},
+		{"done here", false, nil, []tea.Msg{turnDoneMsg{}}, 0, "zemi"},
+		{"cancelled away", false, nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{stopped: true}}, 0, "zemi"},
+	} {
+		if _, err := host.Settings.SetQuiet("ui.animations", !c.still); err != nil {
+			t.Fatal(err)
+		}
+		app := NewApp(host, log)
+		app.now = func() time.Time { return time.UnixMilli(1_000_000).Add(c.at) }
+		for _, m := range c.msgs {
+			app.Update(m)
+		}
+		if c.set != nil {
+			c.set(app)
+		}
+		if got := app.windowTitle(); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}

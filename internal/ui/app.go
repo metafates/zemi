@@ -111,6 +111,7 @@ type App struct {
 	turnActive bool             // what onFrame last saw of the agent
 	turnEnd    time.Time        // when the last turn reported its end, so the mascot can bow
 	turnEnded  hostapi.TurnEnd  // how it ended
+	unseen     hostapi.TurnEnd  // how the last turn ended while the window was away, "" once seen
 	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
@@ -346,6 +347,10 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		} else if msg.err != "" {
 			a.turnEnded, a.recapAt = hostapi.TurnError, time.Time{}
 		}
+		a.unseen = ""
+		if !a.focused {
+			a.unseen = a.turnEnded
+		}
 		text := "zemi finished"
 		if msg.err != "" {
 			text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "…")
@@ -366,7 +371,9 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		a.host.SetLightTerminal(a.thm.light)
 		a.bump()
 	case tea.FocusMsg, tea.BlurMsg:
-		_, a.focused = msg.(tea.FocusMsg)
+		if _, a.focused = msg.(tea.FocusMsg); a.focused {
+			a.unseen = ""
+		}
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 		a.host.EmitAsync("ui.resize", map[string]any{"width": msg.Width, "height": msg.Height})
@@ -450,7 +457,7 @@ func (a *App) View() tea.View {
 	v.ReportFocus = true // notifyIfAway needs to know
 	// bubbletea resets it (OSC 111) on every exit path, a signal included
 	v.BackgroundColor = a.termBackground()
-	v.WindowTitle = a.host.TerminalTitle()
+	v.WindowTitle = a.windowTitle()
 	if a.progress {
 		v.ProgressBar = &tea.ProgressBar{State: tea.ProgressBarIndeterminate, Value: a.beat}
 	}
@@ -607,15 +614,45 @@ func (a *App) uiState() hostapi.UIState {
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
 		st.KeySeq = strings.Join(a.keySeq, " ")
 	}
+	st.Waiting = a.waiting()
+	return st
+}
+
+// waiting is the prompt holding the turn, "" for none.
+func (a *App) waiting() hostapi.Waiting {
 	switch {
 	case a.permAsk != nil:
-		st.Waiting = hostapi.WaitApproval
+		return hostapi.WaitApproval
 	case a.planAsk != nil:
-		st.Waiting = hostapi.WaitPlan
+		return hostapi.WaitPlan
 	case a.question != nil:
-		st.Waiting = hostapi.WaitAnswer
+		return hostapi.WaitAnswer
 	}
-	return st
+	return ""
+}
+
+// titleFrames is how many frames each spinner glyph of the tab title holds:
+// 200 ms, so a turn writes the title 5 times a second, not 20.
+const titleFrames = 4
+
+// titleSpin is chat.lua's BRAILLE, its running mark.
+var titleSpin = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// windowTitle is the tab title: the host's, behind a mark for a turn that
+// runs, waits on the user, or ended while the window was away.
+func (a *App) windowTitle() string {
+	t := a.host.TerminalTitle()
+	switch {
+	case a.waiting() != "":
+		return "? " + t
+	case a.turnActive:
+		return titleSpin[a.frame()/titleFrames%len(titleSpin)] + " " + t
+	case a.unseen == hostapi.TurnOK:
+		return "✓ " + t
+	case a.unseen == hostapi.TurnError:
+		return "✗ " + t
+	}
+	return t
 }
 
 // frame is the frame clock's tick, frameMS each: what the spinner, the eyes

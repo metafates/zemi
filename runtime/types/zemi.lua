@@ -1088,6 +1088,7 @@ zemi.ui.focus = {}
 --- Set the terminal tab's title (escapes stripped, whitespace collapsed);
 --- nil gives it back to zemi, which names it after the session. A reload
 --- that does not set it again gives it back too. User or builtin origin only.
+--- zemi puts its turn mark (a spinner, `?`, `✓` or `✗`) ahead of the text.
 ---@param text? string
 function zemi.ui.title(text) end
 

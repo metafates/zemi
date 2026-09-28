@@ -1252,7 +1252,10 @@ UI extensibility contract:
 - Terminal title: the tab is named after the session ("<title> · zemi");
   `zemi.ui.title(text)` from user config replaces it until `title(nil)` or a
   reload that does not set it again. Go strips escapes from it, so it cannot
-  smuggle a sequence into the terminal.
+  smuggle a sequence into the terminal. Either way a mark leads it: a braille
+  spinner stepping every 200 ms while a turn runs, `?` while a prompt waits on
+  the user, `✓` or `✗` after a turn that ended while the window was unfocused,
+  until it is focused again. An idle zemi writes no title.
 - Themes: palettes map names to colors; the `Normal` group's `bg` is the
   app's canvas, which every group without a fill of its own sits on and
   which OSC 11 gives the terminal too (reset on every exit), so the host's
