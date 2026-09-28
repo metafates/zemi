@@ -728,7 +728,7 @@ func (h *Host) luaReload(o Overlay, fn, render *glua.LFunction) func() ([]any, [
 			return nil, nil
 		}
 		_, err := h.RT.RunTask(context.Background(), t)
-		if err != nil && !isQuietLuaErr(err) {
+		if err != nil && !lua.Dropped(err) {
 			h.RecordError("overlay "+o.ID+" reload", err.Error())
 		}
 		return items, text

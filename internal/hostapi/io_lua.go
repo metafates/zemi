@@ -456,7 +456,7 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 				if !repeat {
 					h.refresh() // a repeating timer redraws itself with zemi.ui.redraw
 				}
-				if err != nil && !isQuietLuaErr(err) {
+				if err != nil && !lua.Dropped(err) {
 					h.Log.Warn("lua", "timer callback failed", map[string]any{"error": err.Error()})
 					h.RecordError("zemi.timer", err.Error())
 				}
@@ -901,14 +901,10 @@ func (h *Host) callLuaAsync(what string, at luaCaller, fn *glua.LFunction, args 
 // the log and /errors.
 func (h *Host) callbackDone(what string, err error) {
 	h.refresh() // without waiting for another redraw
-	if err != nil && !isQuietLuaErr(err) {
+	if err != nil && !lua.Dropped(err) {
 		h.Log.Warn("lua", "callback failed", map[string]any{"callback": what, "error": err.Error()})
 		h.RecordError(what, err.Error())
 	}
-}
-
-func isQuietLuaErr(err error) bool {
-	return errors.Is(err, lua.ErrHot) || errors.Is(err, lua.ErrReloaded) || errors.Is(err, lua.ErrCanceled)
 }
 
 // ---------------------------------------------------------------------------

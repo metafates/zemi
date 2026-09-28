@@ -59,6 +59,12 @@ var (
 	ErrCanceled = context.Canceled
 )
 
+// Dropped reports whether err is the runtime dropping a request (hot,
+// reloading, cancelled) rather than the Lua code failing.
+func Dropped(err error) bool {
+	return errors.Is(err, ErrHot) || errors.Is(err, ErrReloaded) || errors.Is(err, ErrCanceled)
+}
+
 // Fn runs on the interpreter goroutine. Return values are marshaled to the
 // waiting caller; a non-nil error fails the request.
 type Fn func(L *glua.LState) ([]any, error)

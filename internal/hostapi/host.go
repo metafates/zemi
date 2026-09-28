@@ -1797,7 +1797,7 @@ func (h *Host) callOverlay(ctx context.Context, o Overlay, what string, fn *glua
 		return nil
 	}
 	failed := func(err error) error {
-		if err != nil && !isQuietLuaErr(err) {
+		if err != nil && !lua.Dropped(err) {
 			h.Log.Error("ui", "overlay "+what+" failed", map[string]any{"id": o.ID, "error": err.Error()})
 			h.RecordError("overlay "+o.ID+" "+what, err.Error())
 		}

@@ -194,7 +194,7 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 			return []any{v}, err
 		})
 		if err != nil {
-			if !isQuietLuaErr(err) {
+			if !lua.Dropped(err) {
 				h.Log.Error("ui", "command completer failed", map[string]any{"command": name, "error": err.Error()})
 				h.RecordError("command "+name+" complete", err.Error())
 			}
@@ -292,7 +292,7 @@ func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string
 	}
 	return h.RT.StartTask(ctx, t, func(err error) {
 		h.refresh()
-		if err != nil && !isQuietLuaErr(err) {
+		if err != nil && !lua.Dropped(err) {
 			h.CommandFailed(cmd.Name, err)
 		}
 	})
@@ -320,7 +320,7 @@ func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) (err error) {
 	report := func(err error) {
 		switch {
 		case err == nil:
-		case isQuietLuaErr(err):
+		case lua.Dropped(err):
 			h.Log.Debug("ui", "keymap dropped", map[string]any{"keys": b.Key, "error": err.Error()})
 		default:
 			h.RecordError("keymap "+b.Key, err.Error())

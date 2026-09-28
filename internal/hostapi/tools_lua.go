@@ -546,7 +546,7 @@ func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, nam
 			}
 			return h.postOutput(pad, name, output, out)
 		case err != nil:
-			if !errors.Is(err, lua.ErrReloaded) && !errors.Is(err, lua.ErrHot) {
+			if !lua.Dropped(err) {
 				h.logHandlerError(hd, err)
 			}
 		case rewrite == nil:

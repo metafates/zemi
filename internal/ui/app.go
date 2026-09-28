@@ -11,7 +11,6 @@ package ui
 import (
 	"cmp"
 	"context"
-	"errors"
 	"image/color"
 	"slices"
 	"strings"
@@ -662,7 +661,8 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 			a.caches[msg.id] = c
 		}
 		c.gen, c.seq, c.width, c.height = msg.gen, msg.seq, msg.width, msg.height
-		if !isTolerableRenderErr(msg.err) && c.err != msg.err.Error() {
+		// a dropped request (hot mode, a reload) keeps the lines unflagged
+		if !lua.Dropped(msg.err) && c.err != msg.err.Error() {
 			c.err = msg.err.Error()
 			a.host.RecordError("widget "+msg.id, c.err)
 		}
@@ -686,12 +686,6 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 		}
 	}
 	a.caches[msg.id] = c
-}
-
-// isTolerableRenderErr reports failures the UI expects under load (hot
-// mode, reload in flight): they keep the cached lines without flagging.
-func isTolerableRenderErr(err error) bool {
-	return errors.Is(err, lua.ErrHot) || errors.Is(err, lua.ErrReloaded) || errors.Is(err, lua.ErrCanceled)
 }
 
 // renderStaleWidgetsCmd renders, as ui-class requests, the widgets rendered

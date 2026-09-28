@@ -7,7 +7,6 @@ package ui
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -561,7 +560,7 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 		err := a.host.ClickWidget(context.Background(), s.Widget, ev)
 		a.Refresh()
 		switch {
-		case err == nil, errors.Is(err, lua.ErrHot), errors.Is(err, lua.ErrReloaded):
+		case err == nil, lua.Dropped(err):
 		default:
 			a.host.RecordError("click "+s.Widget, err.Error())
 			a.Notify(logging.Error, "Could not handle the click on "+s.Widget, err.Error())
