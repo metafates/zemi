@@ -1323,11 +1323,6 @@ func (a *App) hlStyle(hl string) uv.Style {
 	} else if st.Bg == nil {
 		st.Bg = canvas
 	}
-	// with 16 colors the rule grey and a dark canvas both land on black,
-	// and every frame would vanish
-	if a.colors == colorprofile.ANSI && st.Fg != nil && st.Bg != nil && a.colors.Convert(st.Fg) == a.colors.Convert(st.Bg) {
-		st.Fg = ansi.BrightBlack
-	}
 	return st
 }
 
@@ -1338,6 +1333,13 @@ func (a *App) segStyle(hl, over string, band bool) uv.Style {
 	}
 	if band {
 		st.Bg = a.hlStyle("Host:Band").Bg
+	}
+	if a.colors == colorprofile.ANSI {
+		st.Fg = ansi16(st.Fg)
+		// a fg that lands on its own background (near black on a black canvas) would vanish
+		if st.Fg != nil && st.Bg != nil && a.colors.Convert(st.Fg) == a.colors.Convert(st.Bg) {
+			st.Fg = ansi.BrightBlack
+		}
 	}
 	return st
 }

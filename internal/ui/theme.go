@@ -6,6 +6,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/lucasb-eyer/go-colorful"
 
 	"github.com/metafates/zemi/internal/hostapi"
 )
@@ -200,4 +201,42 @@ func colorValue(ref string, theme *hostapi.Theme) color.Color {
 	}
 	col, _ := hexColor(ref)
 	return col
+}
+
+// ansi16 is what a 16-color terminal shows for a foreground: a grey by its
+// lightness, a hue by the ANSI hue its OKLCH hue falls in, bright when light.
+// The stock 256-to-16 table draws amber and apricot red and splits greys
+// at random (#7a7a7a is bright black, #828282 white).
+func ansi16(c color.Color) color.Color {
+	if _, basic := c.(ansi.BasicColor); basic || c == nil {
+		return c
+	}
+	col, ok := colorful.MakeColor(c)
+	if !ok {
+		return c
+	}
+	l, ch, h := col.OkLch()
+	if ch < 0.04 {
+		switch {
+		case l < 0.3:
+			return ansi.Black
+		case l < 0.72:
+			return ansi.BrightBlack
+		case l < 0.93:
+			return ansi.White
+		}
+		return ansi.BrightWhite
+	}
+	for _, r := range [...]struct {
+		upTo float64
+		c    ansi.BasicColor
+	}{{40, ansi.Red}, {115, ansi.Yellow}, {175, ansi.Green}, {235, ansi.Cyan}, {300, ansi.Blue}, {345, ansi.Magenta}, {361, ansi.Red}} {
+		if h < r.upTo {
+			if l > 0.65 {
+				return r.c + 8
+			}
+			return r.c
+		}
+	}
+	return c
 }

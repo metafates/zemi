@@ -1270,7 +1270,9 @@ UI extensibility contract:
   click acts with the pointer shape alone, so hovering one restyles nothing. The trust and permission prompts' choices keep
   the fixed `Host:Hover` (§8); `Host:` is Go's own, so a Lua segment naming
   one draws unstyled and cannot forge prompt chrome. Go resolves to the terminal's colorprofile
-  (truecolor/256/16, downgrading as needed). `zemi.ui.hl.get(group)` reads
+  (truecolor/256/16, downgrading as needed); on a 16-color terminal a
+  foreground takes the ANSI color its OKLCH lightness (a grey) or hue falls
+  in, bright when light. `zemi.ui.hl.get(group)` reads
   a group back resolved, and `zemi.ui.widget.del(id)` removes a widget
   (same or less trusted origin), shipped ones included. `zemi.ui.hl.set` and
   `zemi.ui.theme.set` are user or shipped code only: an override and the

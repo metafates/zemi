@@ -18,6 +18,7 @@ require (
 	github.com/charmbracelet/x/exp/golden v0.0.0-20250806222409-83e3a29d542f
 	github.com/creack/pty v1.1.24
 	github.com/goccy/go-yaml v1.19.2
+	github.com/lucasb-eyer/go-colorful v1.4.0
 	github.com/sahilm/fuzzy v0.1.3
 	github.com/yuin/gopher-lua v1.1.2
 	golang.org/x/mod v0.38.0
@@ -83,7 +84,6 @@ require (
 	github.com/itlightning/dateparse v0.2.1 // indirect
 	github.com/kaptinlin/jsonpointer v0.4.28 // indirect
 	github.com/kaptinlin/jsonschema v0.9.9 // indirect
-	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect

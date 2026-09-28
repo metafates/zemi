@@ -56,9 +56,9 @@ func TestTerminalBackground(t *testing.T) {
 	}
 }
 
-// TestRuleAt16Colors: the rule grey and the dark canvas both land on black
-// at 16 colors, so a rule, the host frame and the dim behind a popup take
-// bright black there, and keep their own grey at 256.
+// TestRuleAt16Colors: at 16 colors a rule, the host frame and the dim
+// behind a popup take bright black, never the dark canvas's black, and keep
+// their own grey at 256.
 func TestRuleAt16Colors(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 24)
 	for _, c := range []struct {
@@ -67,7 +67,7 @@ func TestRuleAt16Colors(t *testing.T) {
 	}{{colorprofile.ANSI, true}, {colorprofile.ANSI256, false}} {
 		app.Update(tea.ColorProfileMsg{Profile: c.profile})
 		for _, hl := range []string{"Rule", "Host:Rule", "Host:Dim"} {
-			if got := app.hlStyle(hl).Fg == ansi.BrightBlack; got != c.bright {
+			if got := app.segStyle(hl, "", false).Fg == ansi.BrightBlack; got != c.bright {
 				t.Errorf("%v %s: bright black %v, want %v", c.profile, hl, got, c.bright)
 			}
 		}
