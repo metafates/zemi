@@ -586,7 +586,7 @@ func TestPrintInterruptJSON(t *testing.T) {
 func TestPipedStdinIsNotTyped(t *testing.T) {
 	const diff = "diff --git a/x b/x"
 	for _, c := range []struct{ prompt, title string }{
-		{"/review", "Run the saved workflow"},
+		{"/review", "/review"},
 		{"", diff},
 	} {
 		h := printHost(t)

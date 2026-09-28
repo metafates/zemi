@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -11,20 +10,21 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugins"
 )
 
-// newPluginPrompt starts /plugins new; the procedure lives in the zemi skill.
-const newPluginPrompt = "I want a new zemi plugin. Load the zemi skill and follow the New plugin steps in its plugins.md, its tests written and passing.\n\nWhat it should do: %s"
+// newPluginPrompt rides behind /plugins new; the procedure lives in the zemi skill.
+const newPluginPrompt = "I want a new zemi plugin that does what the command above says; ask me when it says nothing. Load the zemi skill and follow the New plugin steps in its plugins.md, its tests written and passing."
 
 // pluginsCommands is /plugins: the zemi plugins verbs plus new, toggle and
 // open, which need the screen.
 func (h *Host) pluginsCommands() []*Command {
 	return []*Command{{
 		Name: "plugins", NArgs: NArgsAny, Desc: "install, update and turn plugins on or off",
-		GoFn: func(h *Host, args string) error { return h.pluginsCommand(strings.Fields(args)) },
+		GoFn: (*Host).pluginsCommand,
 		GoComplete: subcommandCompleter([]string{"new", "install", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
 			if sub == "new" || sub == "install" || sub == "check" {
 				return nil
@@ -39,11 +39,13 @@ func (h *Host) pluginsCommands() []*Command {
 	}}
 }
 
-func (h *Host) pluginsCommand(args []string) error {
+func (h *Host) pluginsCommand(line string) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return fmt.Errorf("%w; zemi plugins manages them from the shell", err)
 	}
+	typed, stdin := agent.CutAttached(line)
+	args := strings.Fields(typed)
 	verb := ""
 	if len(args) > 0 {
 		verb = args[0]
@@ -97,7 +99,9 @@ func (h *Host) pluginsCommand(args []string) error {
 			}
 		})
 	case verb == "new":
-		prompt := fmt.Sprintf(newPluginPrompt, cmp.Or(strings.Join(args[1:], " "), "ask me"))
+		// what the plugin should do stays as typed, line breaks included
+		what := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(typed), "new"))
+		prompt := strings.TrimSpace("/plugins new "+what) + agent.Attached("command", newPluginPrompt) + stdin
 		h.GoSafe("plugins new", func() {
 			if err := h.AgentSend(prompt); err != nil {
 				h.Notify(logging.Error, "Could not send", h.friendlyError(err))

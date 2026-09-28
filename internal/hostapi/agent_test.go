@@ -43,6 +43,41 @@ func newTestHostDB(t *testing.T) (*Host, *lua.Runtime) {
 	return h, r
 }
 
+// TestCommandSendsTypedLine: a builtin command that sends a ready prompt
+// shows the line the user typed; the prompt rides behind the marker.
+func TestCommandSendsTypedLine(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	m := reflectStub(t, h, "ok")
+	h.SetUIHooks(&fakeUI{})
+	h.RecordError("lua", "boom")
+	review := h.workflowCommands()[1].GoFn
+	for _, c := range []struct {
+		typed string
+		send  func() error
+	}{
+		{"/init", h.InitProject},
+		{"/plugins new show cost", func() error { return h.pluginsCommand("new show cost") }},
+		{"/errors ask 0", func() error { return h.OpenErrors("ask 0") }},
+		{"/review", func() error { return review(h, "") }},
+	} {
+		sent := m.streams.Load()
+		if err := c.send(); err != nil {
+			t.Errorf("%s: %v", c.typed, err)
+			continue
+		}
+		waitFor(t, func() error {
+			if m.streams.Load() == sent {
+				return errors.New("nothing sent")
+			}
+			return nil
+		})
+		waitIdle(t, h)
+		if typed, tail := agent.CutAttached(lastUserText(t, h)); typed != c.typed || !strings.Contains(tail, "<command>") {
+			t.Errorf("%s: typed %q, tail %q", c.typed, typed, tail)
+		}
+	}
+}
+
 // runExpectErr runs src as a user chunk and asserts it raises, matching
 // every substring in want. The timeout guard turns an interpreter wedge
 // into a loud failure (same contract as runUser).

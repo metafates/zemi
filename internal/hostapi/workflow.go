@@ -622,20 +622,12 @@ func (h *Host) workflowCommands() []*Command {
 		Name: "workflow", NArgs: NArgsAny, Desc: "run a saved workflow",
 		GoFn: func(h *Host, args string) error {
 			typed, attached := agent.CutAttached(args)
-			name, rest, _ := strings.Cut(strings.TrimSpace(typed), " ")
+			typed = strings.TrimSpace(typed)
+			name, rest, _ := strings.Cut(typed, " ")
 			if name == "" {
 				return h.openWorkflows()
 			}
-			if _, err := h.workflowSource(name); err != nil {
-				return err
-			}
-			// The agent runs it through the workflow tool, so progress,
-			// permissions and the result land in the conversation.
-			msg := "Run the saved workflow `" + name + "` with the workflow tool"
-			if rest = strings.TrimSpace(rest); rest != "" {
-				msg += " and args " + strconv.Quote(rest)
-			}
-			return h.AgentSend(msg + ", then relay its result." + attached)
+			return h.sendWorkflow("/workflow "+typed, name, rest, attached)
 		},
 		GoComplete: func(h *Host, _, _ string) []string {
 			var names []string
@@ -647,9 +639,25 @@ func (h *Host) workflowCommands() []*Command {
 	}, {
 		Name: "review", NArgs: NArgsOptional, Desc: "review your changes, a base ref or a commit, with several agents",
 		GoFn: func(h *Host, args string) error {
-			return h.RunCommand(context.Background(), "workflow", strings.TrimSpace("review "+args))
+			typed, attached := agent.CutAttached(args)
+			typed = strings.TrimSpace(typed)
+			return h.sendWorkflow(strings.TrimSpace("/review "+typed), "review", typed, attached)
 		},
 	}}
+}
+
+// sendWorkflow sends line, what the user typed, with the ask to run a saved
+// workflow through the workflow tool, so progress, permissions and the
+// result land in the conversation.
+func (h *Host) sendWorkflow(line, name, args, attached string) error {
+	if _, err := h.workflowSource(name); err != nil {
+		return err
+	}
+	msg := "Run the saved workflow `" + name + "` with the workflow tool"
+	if args = strings.TrimSpace(args); args != "" {
+		msg += " and args " + strconv.Quote(args)
+	}
+	return h.AgentSend(line + agent.Attached("command", msg+", then relay its result.") + attached)
 }
 
 func (h *Host) openWorkflows() error {

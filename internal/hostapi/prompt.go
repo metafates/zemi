@@ -14,6 +14,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -122,7 +123,9 @@ const delegationPrompt = `
 Hand work to subagents when an investigation would take many reads and you need only the conclusion, or when a task splits into independent parts. Do targeted work yourself, and do not repeat a search you delegated. Never delegate understanding: pass what you already know (paths, lines, what to change), not "based on your findings, fix it".`
 
 // InitProject asks the agent to write or refresh AGENTS.md (/init).
-func (h *Host) InitProject() error { return h.AgentSend(initPrompt) }
+func (h *Host) InitProject() error {
+	return h.AgentSend("/init" + agent.Attached("command", initPrompt))
+}
 
 const initPrompt = `Study this repository and write AGENTS.md at its root for future coding agents; if it exists, update it and keep what is still true. Cover, briefly and concretely: what the project is, in two sentences; the exact commands to build, test, lint and run, taken from the build files; the main packages and how control flows between them; conventions and non-obvious gotchas you confirmed in the code. No generic advice. In a large codebase, first explore different areas with parallel explore agents.`
 

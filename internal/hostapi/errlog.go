@@ -14,6 +14,7 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -108,7 +109,8 @@ func (h *Host) HasUnseenErrors() bool {
 	return h.errs.unseen
 }
 
-// errorAskPrompt takes an error's time, source and text.
+// errorAskPrompt takes an error's time, source and text; it rides behind
+// /errors ask.
 const errorAskPrompt = "zemi recorded this error at %s from %s. Load the zemi skill and read its debug.md, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s"
 
 // OpenErrors runs /errors: it lists the recent errors newest first and
@@ -134,7 +136,7 @@ func (h *Host) OpenErrors(args string) error {
 		}
 		if f[0] == "ask" {
 			e := entries[i]
-			prompt := fmt.Sprintf(errorAskPrompt, e.at.Format(time.TimeOnly), e.source, e.msg)
+			prompt := "/errors ask " + strconv.Itoa(i) + agent.Attached("command", fmt.Sprintf(errorAskPrompt, e.at.Format(time.TimeOnly), e.source, e.msg))
 			h.GoSafe("errors ask", func() {
 				if err := h.AgentSend(prompt); err != nil {
 					h.Notify(logging.Error, "Could not send", h.friendlyError(err))
