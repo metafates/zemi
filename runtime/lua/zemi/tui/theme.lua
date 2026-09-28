@@ -1,13 +1,12 @@
 -- whorl, the shipped theme: greys, one accent (periwinkle), one warm hue
--- (apricot) for text quoted as written, and the terminal's own red, green
--- and yellow so the user's palette decides those.
+-- (apricot) for text quoted as written, and red, amber and mint for state.
 --
 -- Widgets reach for the semantic groups - Accent, Dim, Rule, Title,
 -- Selected, Button, Literal, Danger, Warn, Ok - and everything else links
 -- to one of them. Periwinkle is zemi and what acts; apricot is inline code
--- and a string or number in code; red a failure or danger, yellow a
--- warning. A widget cannot pick a color off the identity, and retinting the
--- UI is a matter of changing the palette.
+-- and a string or number in code; red a failure or danger, amber a
+-- warning, mint done. A widget cannot pick a color off the identity, and
+-- retinting the UI is a matter of changing the palette.
 
 ---@param palette table<string, string>
 ---@return table
@@ -27,9 +26,9 @@ local function theme(palette)
 		Selected = { fg = "accent", bold = true },
 		Button = { fg = "accent" },
 		Literal = { fg = "literal" },
-		Danger = { fg = "red" },
-		Warn = { fg = "yellow" },
-		Ok = { fg = "green" },
+		Danger = { fg = "danger" },
+		Warn = { fg = "warn" },
+		Ok = { fg = "ok" },
 
 		Comment = { link = "Dim" },
 		UserMsg = { link = "Accent" },
@@ -46,13 +45,13 @@ local function theme(palette)
 		ThinkingMark = { link = "Accent" },
 		ThinkingBar = { link = "Rule" },
 		AgentToolName = { fg = "fg", bold = true },
-		-- a diff keeps the terminal's green and red on the sign and the line
-		-- number, and tints the row no further than it has to; the two tints
-		-- stay apart on a 256-color terminal
+		-- a diff marks the sign and the line number in Ok and Danger and tints
+		-- the row no further than it has to; the two tints stay apart on a
+		-- 256-color terminal
 		DiffAdd = { fg = "fg", bg = "addbg" },
-		DiffAddNum = { fg = "green", bg = "addbg" },
+		DiffAddNum = { fg = "ok", bg = "addbg" },
 		DiffDel = { fg = "fg", bg = "delbg" },
-		DiffDelNum = { fg = "red", bg = "delbg" },
+		DiffDelNum = { fg = "danger", bg = "delbg" },
 		DiffCtx = { link = "Normal" },
 		DiffCtxNum = { link = "Dim" },
 		TodoTitle = { link = "Title" },
@@ -90,10 +89,13 @@ zemi.ui.theme.add(
 	theme({
 		bg = "#141414",
 		fg = "#d8d8d8",
-		dim = "#7a7a7a",
+		dim = "#828282",
 		rule = "#3a3a3a",
 		accent = "#9aa5f2",
 		literal = "#ebaf7f",
+		ok = "#82d2a8",
+		warn = "#f0d680",
+		danger = "#e97170",
 		addbg = "#183018",
 		delbg = "#361010",
 	})
@@ -105,10 +107,15 @@ zemi.ui.theme.add(
 	theme({
 		bg = "#fafafa",
 		fg = "#1b1b1b",
-		dim = "#8e8e8e",
+		dim = "#737373",
 		rule = "#cfcfcf",
-		accent = "#6b78d6",
+		accent = "#6169c8",
 		literal = "#ab5d2b",
+		ok = "#2a7d57",
+		-- NOTE: 3.85:1 on white (APCA Lc 64); a darker amber reads as danger to
+		-- deuteranopes.
+		warn = "#a97500",
+		danger = "#c72d2e",
 		addbg = "#e7f2e2",
 		delbg = "#fae7e7",
 	})

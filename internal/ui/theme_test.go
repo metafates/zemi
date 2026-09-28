@@ -74,3 +74,32 @@ func TestDiffTintsApart(t *testing.T) {
 		}
 	}
 }
+
+// TestChromeIsWhorl: the host chrome's copy of the palette draws each
+// Host: style in the colors of the whorl group it stands for, dark and light.
+func TestChromeIsWhorl(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 24)
+	pairs := [][2]string{
+		{"Host:Value", "Normal"},
+		{"Host:Hint", "Dim"},
+		{"Host:HintKey", "Accent"},
+		{"Host:Rule", "Rule"},
+		{"Host:Title", "Title"},
+		{"Host:Ok", "Ok"},
+		{"Host:Warn", "Warn"},
+		{"Host:Danger", "Danger"},
+		{"Host:DiffAdd", "DiffAdd"},
+		{"Host:DiffAddNum", "DiffAddNum"},
+		{"Host:DiffDel", "DiffDel"},
+		{"Host:DiffDelNum", "DiffDelNum"},
+	}
+	for _, bg := range []uint32{0x141414, 0xfafafa} {
+		app.Update(tea.BackgroundColorMsg{Color: rgb(bg)})
+		for _, p := range pairs {
+			host, group := app.hlStyle(p[0]), app.hlStyle(p[1])
+			if !sameColor(host.Fg, group.Fg) || !sameColor(host.Bg, group.Bg) {
+				t.Errorf("bg %06x: %s is %v on %v, %s %v on %v", bg, p[0], host.Fg, host.Bg, p[1], group.Fg, group.Bg)
+			}
+		}
+	}
+}

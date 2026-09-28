@@ -31,17 +31,24 @@ func rgb(v uint32) ansi.RGBColor {
 	return ansi.RGBColor{R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v)}
 }
 
-// chrome is the host chrome's palette: greys and the one accent
-// (periwinkle), plus the faintest tint a diff row may take and the selected
-// row's band, the canvas tinted toward the accent (faintly: 256 colors round
-// a bluer tint to navy, not grey). Red, green and yellow stay the terminal's
-// own, so the user's palette decides them. The canvas is the theme's
-// (hlStyle fills it), so chrome and widgets share one.
-type chrome struct{ fg, dim, rule, accent, panel, add, del, band color.Color }
+// chrome is the host chrome's palette, whorl's own values (TestChromeIsWhorl
+// keeps them equal): no theme can restyle a prompt, and it still looks like
+// zemi. The canvas is the theme's (hlStyle fills it). The selected row's band
+// is the canvas tinted toward the accent (faintly: 256 colors round a bluer
+// tint to navy, not grey).
+type chrome struct{ fg, dim, rule, accent, panel, add, del, ok, warn, danger, band color.Color }
 
 var (
-	darkChrome  = chrome{rgb(0xd8d8d8), rgb(0x7a7a7a), rgb(0x3a3a3a), rgb(0x9aa5f2), rgb(0x1e1e1e), rgb(0x183018), rgb(0x361010), rgb(0x28292f)}
-	lightChrome = chrome{rgb(0x1b1b1b), rgb(0x8e8e8e), rgb(0xcfcfcf), rgb(0x6b78d6), rgb(0xf0f0f0), rgb(0xe7f2e2), rgb(0xfae7e7), rgb(0xe9eaf6)}
+	darkChrome = chrome{
+		rgb(0xd8d8d8), rgb(0x828282), rgb(0x3a3a3a), rgb(0x9aa5f2), rgb(0x1e1e1e),
+		rgb(0x183018), rgb(0x361010), rgb(0x82d2a8), rgb(0xf0d680), rgb(0xe97170),
+		rgb(0x28292f),
+	}
+	lightChrome = chrome{
+		rgb(0x1b1b1b), rgb(0x737373), rgb(0xcfcfcf), rgb(0x6169c8), rgb(0xf0f0f0),
+		rgb(0xe7f2e2), rgb(0xfae7e7), rgb(0x2a7d57), rgb(0xa97500), rgb(0xc72d2e),
+		rgb(0xe9eaf6),
+	}
 	// keyed by "the canvas is light" (hlStyle)
 	hostStyles = map[bool]map[string]uv.Style{false: chromeStyles(darkChrome), true: chromeStyles(lightChrome)}
 )
@@ -57,15 +64,15 @@ func chromeStyles(c chrome) map[string]uv.Style {
 		"Host:Value":       {Fg: c.fg},
 		"Host:Hint":        {Fg: c.dim},
 		"Host:HintKey":     {Fg: c.accent},
-		"Host:Warn":        {Fg: ansi.Yellow},
-		"Host:Ok":          {Fg: ansi.Green},
-		"Host:Danger":      {Fg: ansi.Red},
-		"Host:DangerPanel": {Fg: ansi.Red, Bg: c.panel, Attrs: uv.AttrBold},
+		"Host:Warn":        {Fg: c.warn},
+		"Host:Ok":          {Fg: c.ok},
+		"Host:Danger":      {Fg: c.danger},
+		"Host:DangerPanel": {Fg: c.danger, Bg: c.panel, Attrs: uv.AttrBold},
 		"Host:Panel":       {Fg: c.fg, Bg: c.panel},
 		"Host:DiffAdd":     {Fg: c.fg, Bg: c.add},
-		"Host:DiffAddNum":  {Fg: ansi.Green, Bg: c.add},
+		"Host:DiffAddNum":  {Fg: c.ok, Bg: c.add},
 		"Host:DiffDel":     {Fg: c.fg, Bg: c.del},
-		"Host:DiffDelNum":  {Fg: ansi.Red, Bg: c.del},
+		"Host:DiffDelNum":  {Fg: c.danger, Bg: c.del},
 		"Host:DiffCtx":     {Fg: c.fg},
 		"Host:DiffCtxNum":  {Fg: c.dim},
 		"Host:Selection":   {Attrs: uv.AttrReverse},
