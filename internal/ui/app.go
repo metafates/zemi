@@ -1334,12 +1334,18 @@ func (a *App) segStyle(hl, over string, band bool) uv.Style {
 	if band {
 		st.Bg = a.hlStyle("Host:Band").Bg
 	}
-	if a.colors == colorprofile.ANSI {
-		st.Fg = ansi16(st.Fg)
-		// a fg that lands on its own background (near black on a black canvas) would vanish
-		if st.Fg != nil && st.Bg != nil && a.colors.Convert(st.Fg) == a.colors.Convert(st.Bg) {
-			st.Fg = ansi.BrightBlack
-		}
+	if a.colors != colorprofile.ANSI {
+		return st
+	}
+	st.Fg = ansi16(st.Fg)
+	fg, ok := st.Fg.(ansi.BasicColor)
+	if !ok || st.Bg == nil {
+		return st
+	}
+	// a fg on its own color would vanish: near black on a black canvas, or a
+	// diff's red number on its red row, since a hue and its bright twin read as one
+	if bg, ok := a.colors.Convert(st.Bg).(ansi.BasicColor); ok && (fg == bg || fg%8 == bg%8 && fg%8 != ansi.Black && fg%8 != ansi.White) {
+		st.Fg = ansi.BrightBlack
 	}
 	return st
 }
