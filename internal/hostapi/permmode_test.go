@@ -367,7 +367,7 @@ func TestAutoResolvesPaths(t *testing.T) {
 	} {
 		ui.asked = nil
 		pipe.Check(tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, c.arg)})
-		if len(ui.asked) != 1 || ui.asked[0].Arg != c.shown {
+		if len(ui.asked) != 1 || ui.asked[0].Arg != TildePath(c.shown) {
 			t.Errorf("%s: asked %+v", c.arg, ui.asked)
 		}
 	}
