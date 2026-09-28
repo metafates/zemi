@@ -30,6 +30,7 @@ type overlayState struct {
 	text  textRows // the body's rows
 	back  bool     // a detail view: esc and its actions return to the overlay under it
 	item  any      // a detail view's item: a reload can swap the parent's under it
+	acts  []hintPair
 	size  boxSize
 	// the list rows as last built and what they were built from: items live
 	// as long as the state and visible follows query, so a frame that moved
@@ -236,8 +237,44 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		st.texts = append(st.texts, it.section+"  "+it.desc+"  "+r.Copy)
 	}
 	st.selected = o.Selected
+	st.acts = sharedActions(st.items)
 	st.apply()
 	return st
+}
+
+// sharedActions are the action keys every row with actions offers alike,
+// which the list's footer names; nil when rows differ.
+func sharedActions(items []listItem) []hintPair {
+	var shared []hintPair
+	seen := false
+	for _, it := range items {
+		if len(it.row.Actions) == 0 {
+			continue
+		}
+		var acts []hintPair
+		for _, a := range it.row.Actions {
+			if r, _ := hostapi.ParseOverlayItem(a); r.Hotkey != "" {
+				acts = append(acts, hintPair{sanitize.Line(r.Hotkey), strings.ToLower(sanitize.Line(r.Text))})
+			}
+		}
+		if seen && !slices.Equal(acts, shared) {
+			return nil
+		}
+		shared, seen = acts, true
+	}
+	return shared
+}
+
+// actionAt is the index of the selected row's action whose hotkey is key,
+// -1 in a detail view, with no row, or when none has it.
+func (st *overlayState) actionAt(key string) int {
+	if st.back || len(st.visible) == 0 || len([]rune(key)) != 1 {
+		return -1
+	}
+	return slices.IndexFunc(st.items[st.visible[st.selected]].row.Actions, func(a any) bool {
+		r, _ := hostapi.ParseOverlayItem(a)
+		return sanitize.Line(r.Hotkey) == key
+	})
 }
 
 var oneLine = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
@@ -404,6 +441,16 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		}
 		a.overlayCall(o, func() { a.host.OverlayKey(context.Background(), o, o.Keys[i], item) })
 		return nil
+	}
+	// an action's key acts on the selected row as its button does; one in the
+	// danger color opens the detail on it, for a second press
+	if n := st.actionAt(key); n >= 0 {
+		a.openDetail(st, st.visible[st.selected])
+		if d := &a.overlays[len(a.overlays)-1]; d.items[n].row.HL == "Danger" {
+			d.selected = n
+			return nil
+		}
+		return a.overlayKey(key, text)
 	}
 	switch key {
 	case "y", "Y":
@@ -626,6 +673,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			for _, k := range st.o.Keys {
 				hints = append(hints, hintPair{k.Key, k.Desc})
 			}
+			hints = append(hints, st.acts...)
 		}
 		var body [][]hostapi.Segment
 		if bodyN > 0 {

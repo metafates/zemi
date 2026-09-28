@@ -1483,7 +1483,12 @@ provenance string.
   arguments, `s` sign in or stop, `e` enable, `d` disable, `o` open, `u`
   update or use now, `c` change, and `x`, in the danger color, for what
   cannot be undone (delete, or `/mcp`'s sign out, which deletes the saved
-  token); `/health`'s one action per check takes its label's initial. A
+  token); `/health`'s one action per check takes its label's initial.
+  A row's action keys act from the list too, on the selected row, as its
+  detail's button would; an action in the danger color opens the detail on
+  it instead, for a second press. When every row with actions offers the
+  same keys, the list's footer names them. `j`, `k`, `/`, `y` and `Y` are
+  the list's own and cannot be hotkeys. A
   screen that manages things (`/skills`, `/mcp`, `/lsp`, `/permissions`,
   `/plugins`) is a toggle list, so an action returns to it rebuilt, and
   `/mcp`, `/lsp` and `/plugins` also rebuild in place when a server or a
@@ -1621,7 +1626,7 @@ provenance string.
   init.lua lines, which are wider: a config allow skips the secret re-ask the
   answer keeps, so the detail says so, and a network answer copies none),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
-  (list; enter offers Resume and Delete), `/resume [id]` (latest without an id; history and
+  (list; `r` resumes the selected session, `x` opens its Delete, enter offers both), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/btw <question>` (a side question
   answered in an overlay, on stdout under `-p`, from the conversation so far,
   never stored), `/health` (one row per check, problems first: store, model

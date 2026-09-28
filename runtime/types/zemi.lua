@@ -879,7 +879,7 @@ function zemi.event.stats() end
 ---@field actions? zemi.OverlayAction[] listed under the detail
 ---@field fill? string put in the composer (ignored while the overlay has an on_select, which takes enter instead)
 ---@field run? string a command line such as "mcp restart gitlab" (user and builtin overlays only; ignored while the overlay has an on_select)
----@field hotkey? string one character that acts like enter on this row (not while filtering; j, k and / stay the list's)
+---@field hotkey? string one character that acts like enter on this row (not while a filter types; j, k, /, y and Y are the list's and raise)
 ---@field copy? string the row's value: y copies it in place of the row's text, and enter copies it, keeping the list open, when the row does nothing else (no on_select, run, fill or detail); the filter matches it too
 ---@field verb? string enter's action in the hint where the default would say another: zemi's lists use "open" (another screen), "pick" (a value), "run" (a command), "toggle" and "fill"; space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
 
@@ -888,7 +888,7 @@ function zemi.event.stats() end
 ---@field text string
 ---@field id? string hands the action to the overlay's on_action, which takes it over fill and run
 ---@field hl? string highlight group of the label, such as "Danger"
----@field hotkey? string one character that acts like enter on this action; with none, its position ("1", "2", ...)
+---@field hotkey? string one character that acts like enter on this action, and from the list on the selected row (one with `hl = "Danger"` opens the detail on it, for a second press); with none, its position ("1", "2", ...). j, k, /, y and Y raise.
 ---@field detail? string enter opens it as a detail view of its own, over this one
 ---@field fill? string
 ---@field run? string

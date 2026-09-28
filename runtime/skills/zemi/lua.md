@@ -60,6 +60,8 @@ end)
 -- A list whose items open a detail view: enter shows `detail` with `actions` under
 -- it; an action fills the composer, runs a command (`run` only from user config) or,
 -- with an `id`, calls on_action; one with none goes back. esc goes back, y copies the text.
+-- An action's `hotkey` also acts on the selected row from the list (one with
+-- `hl = "Danger"` opens the detail on it); j, k, /, y and Y raise as hotkeys.
 -- The item a callback gets is a copy: match on an id field, never on the table. A callback
 -- closes the list unless it has `reload`; to stay open without one, open it again from the callback.
 zemi.ui.overlay.open({

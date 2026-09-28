@@ -990,7 +990,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   naming its command. Helpers that rebuild segments must copy those fields and `Band` (the
   selected row's background); only `dimRows` drops them, because dimmed rows are not targets. Overlays (internal/ui/overlay.go) are data:
   an item with `detail` or `actions` pushes a detail view whose rows draw as the prompts'
-  buttons, keyed by `hotkey` or position (`actionKey`), and `Body` is text above the items
+  buttons, keyed by `hotkey` or position (`actionKey`); the selected row's action keys act from the
+  list (`actionAt`: a `Danger` one opens the detail on it), and `Body` is text above the items
   (markdown with `BodyMD`; `BodySegs` draws styled rows in its place, sanitized like `Body`,
   which stays what `y` copies; a Go screen whose details open with `key: value` lines sets
   `Fields`, and `fieldRows` sets those lines as a table, prose after them, an `error:` last

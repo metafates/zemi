@@ -1029,6 +1029,54 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 	if got := lastToast(app); got != "gone:del" {
 		t.Fatalf("action under a rebuilt list: got %q", got)
 	}
+
+	// a row's action keys act from the list as its detail's buttons do
+	ran := ""
+	for _, name := range []string{"res", "del"} {
+		app.host.Commands.Add(&hostapi.Command{Name: name, NArgs: "?", GoFn: func(_ *hostapi.Host, args string) error { ran = name + " " + args; return nil }})
+	}
+	session := func(n string) string {
+		return `{ text = "s` + n + `", actions = { { text = "Resume", hotkey = "r", run = "res ` + n + `" }, { text = "Delete", hotkey = "x", hl = "Danger", run = "del ` + n + `" } } }`
+	}
+	footer := func() string { box := app.overlayBox(&app.overlays[0], 60, 16); return plainSegs(box[len(box)-2]) }
+	for _, c := range []struct {
+		name, items, keys string
+		press             []string
+		check             func() string
+	}{
+		{"r resumes from the list", "", "", []string{"j", "r"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("ran %q, %d open", ran, len(app.overlays))}[ran == "res 1" && len(app.overlays) == 0]
+		}},
+		{"x opens the detail on delete", "", "", []string{"j", "x"}, func() string {
+			d := app.overlays[len(app.overlays)-1]
+			return map[bool]string{false: fmt.Sprintf("ran %q, %d open, selected %d", ran, len(app.overlays), d.selected)}[ran == "" && d.back && d.selected == 1]
+		}},
+		{"x twice deletes", "", "", []string{"j", "x", "x"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("ran %q, %d open", ran, len(app.overlays))}[ran == "del 1" && len(app.overlays) == 0]
+		}},
+		{"a list's own key wins over an action's", "", `keys = { r = { desc = "rename", fn = function(item) zemi.notify({ body = "key " .. item.text }) end } }`, []string{"j", "r"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("ran %q, toast %q", ran, lastToast(app))}[ran == "" && lastToast(app) == "key s1"]
+		}},
+		{"a row without actions ignores the key", "", "", []string{"r"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("ran %q, %d open", ran, len(app.overlays))}[ran == "" && len(app.overlays) == 1]
+		}},
+		{"the footer names shared action keys", "", "", nil, func() string {
+			return map[bool]string{false: footer()}[strings.Contains(footer(), "r resume · x delete")]
+		}},
+		{"rows that differ name none", `"current", ` + session("1") + `, { text = "s2", actions = { { text = "Resume", hotkey = "r", run = "res 2" } } }`, "", nil, func() string {
+			return map[bool]string{true: footer()}[strings.Contains(footer(), "resume")]
+		}},
+	} {
+		ran = ""
+		app.overlays = nil
+		runLua(t, app, `zemi.ui.overlay.open({ id = "s", items = { `+cmp.Or(c.items, `"current", `+session("1")+`, `+session("2"))+` }, `+c.keys+` })`)
+		pressKeys(app, c.press...)
+		for app.Pump() {
+		}
+		if msg := c.check(); msg != "" {
+			t.Errorf("%s: %s", c.name, msg)
+		}
+	}
 }
 
 // TestLuaOverlayReload: a Lua overlay with reload stays open on space and

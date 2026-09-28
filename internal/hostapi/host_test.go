@@ -286,6 +286,10 @@ func TestOverlayItemsRenderOnOpen(t *testing.T) {
 			return { { text = s, hl = "Title" }, { text = "!" } }
 		end })
 		assert(not pcall(zemi.ui.overlay.open, { id = "t", anchor = "top" }), "an unknown anchor must raise")
+		for _, hk in ipairs({ "j", "/", "ab" }) do
+			assert(not pcall(zemi.ui.overlay.open, { id = "t", items = { { text = "a", hotkey = hk } } }), "item hotkey " .. hk)
+			assert(not pcall(zemi.ui.overlay.open, { id = "t", items = { { text = "a", actions = { { text = "b", hotkey = hk } } } } }), "action hotkey " .. hk)
+		end
 		assert(not pcall(zemi.ui.select, { prompt = "p" }, {}, function() end), "select with the args swapped must raise")
 	`)
 	if s := ui.opened[3]; s.Anchor != "bottom-right" || s.Selected != 1 || s.ItemText[0][0].HL != "Title" {
