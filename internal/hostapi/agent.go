@@ -752,12 +752,10 @@ func (h *Host) AgentTakeQueue() []string {
 	ag.mu.Lock()
 	var q, reports []string
 	for _, m := range ag.steering {
-		if strings.Contains(m, agent.AttachMarker) {
-			// a background report is for the model, not the composer: it
-			// waits for the next turn
+		if shown, report := queuedReport(m); report {
 			reports = append(reports, m)
 		} else {
-			q = append(q, m)
+			q = append(q, shown)
 		}
 	}
 	ag.steering = reports
@@ -766,6 +764,14 @@ func (h *Host) AgentTakeQueue() []string {
 		h.refresh()
 	}
 	return q
+}
+
+// queuedReport cuts a queued message at agent.AttachMarker and says whether
+// it is a report or a plugin send, which is for the model and waits for the
+// next turn; a command's attachment goes back with its typed line.
+func queuedReport(m string) (shown string, report bool) {
+	shown, tail, _ := strings.Cut(m, agent.AttachMarker)
+	return shown, len(reportHeads(tail)) > 0
 }
 
 // joinQueue makes queued messages one message with every shown part ahead
@@ -1751,7 +1757,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 		out.CtxWindow = h.contextWindow(out.Model)
 	}
 	for _, m := range ag.steering {
-		shown, _, report := strings.Cut(m, agent.AttachMarker)
+		shown, report := queuedReport(m)
 		out.Steering = append(out.Steering, shown)
 		if report {
 			out.Reports++

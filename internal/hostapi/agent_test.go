@@ -604,20 +604,24 @@ func TestSteeringQueue(t *testing.T) {
 		t.Fatalf("idle handoff = %q, active = %v", text, h.AgentActive())
 	}
 
-	// a cancelled turn starts nothing: the queue waits for the composer
+	// a cancelled turn starts nothing: the queue waits for the composer, a
+	// command as its typed line
 	scope = claim()
-	send("c")
+	send("c", "/init"+agent.Attached("command", "x"))
+	if st := h.AgentStream(); st.Reports != 0 {
+		t.Fatalf("a queued command counts as a report: %d", st.Reports)
+	}
 	h.AgentCancel()
 	if next, text := h.nextTurn(scope); next != nil || text != "" || h.AgentActive() {
 		t.Fatalf("cancelled handoff = %q, active = %v", text, h.AgentActive())
 	}
-	if q := h.AgentTakeQueue(); len(q) != 1 || q[0] != "c" {
+	if q := h.AgentTakeQueue(); len(q) != 2 || q[0] != "c" || q[1] != "/init" {
 		t.Fatalf("queue after a cancel = %q", q)
 	}
 
 	// a report's markup stays out of the composer, and joined messages keep
 	// every typed part ahead of the marker readers cut at
-	report := "Background agent x finished." + agent.AttachMarker + "\n<agent-report>\nr\n</agent-report>\n</attached-files>"
+	report := "Background agent x finished." + agent.AttachMarker + "\n<agent-report run=\"x\" agent=\"explore\" status=\"finished\" description=\"d\">\nr\n</agent-report>\n</attached-files>"
 	scope = claim()
 	send(report, "d")
 	if st := h.AgentStream(); len(st.Steering) != 2 || st.Steering[0] != "Background agent x finished." || st.Reports != 1 {
@@ -627,7 +631,7 @@ func TestSteeringQueue(t *testing.T) {
 		t.Fatalf("queue with a report = %q", q)
 	}
 	send("e")
-	if _, text := h.nextTurn(scope); !strings.HasPrefix(text, "Background agent x finished.\n\ne"+agent.AttachMarker) || !strings.Contains(text, "<agent-report>") {
+	if _, text := h.nextTurn(scope); !strings.HasPrefix(text, "Background agent x finished.\n\ne"+agent.AttachMarker) || !strings.Contains(text, "<agent-report run=") {
 		t.Fatalf("follow-up with a report = %q", text)
 	}
 
