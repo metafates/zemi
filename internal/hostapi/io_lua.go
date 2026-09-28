@@ -164,8 +164,9 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 // pipeline copy and an unresolved ask stays an ask for the gate to refuse.
 // req describes the call for a test zemi, where only a test.stub passes one
 // of the calls that do IO: its reply is returned and stands in for the
-// transport, and a call none answers is refused whatever rules exist; req
-// is a func so no other zemi builds it.
+// transport, a call none answers raises naming the stub to add, and a false
+// reply is refused whatever rules exist; req is a func so no other zemi
+// builds it.
 func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[string]any) (tools.Verdict, *stubReply) {
 	stubbed := false
 	if h.test != nil {

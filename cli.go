@@ -46,7 +46,7 @@ Plugins (a prompt that starts with "plugins" is written zemi -- plugins ...):
   zemi plugins check                    fetch, then list the updates
   zemi plugins enable|disable|delete <name>
   zemi plugins test <name|dir> [pattern]
-                                        run its tests/*_test.lua, each case in a
+                                        run its tests/*.lua, each case in a
                                         zemi of its own; 1 if any failed
 
 Flags:

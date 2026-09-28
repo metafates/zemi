@@ -35,7 +35,7 @@ const (
 var startsAtLine = regexp.MustCompile(`^[^\s:]+:\d+:`)
 
 // testPlugins is zemi plugins test <name|dir> [pattern] (DESIGN §5): every
-// case of the plugin's tests/*_test.lua whose "file: name" holds pattern
+// case of the plugin's tests/*.lua whose "file: name" holds pattern
 // runs in a zemi of its own, booted here from temp dirs that hold a copy of
 // the plugin and nothing else. It prints the failures and a summary line and
 // returns the exit status.
@@ -79,9 +79,9 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	if _, err := hostapi.PluginDir(dirs, name); err != nil {
 		return fail(fmt.Errorf("%s: zemi would not load it: %w", src, err))
 	}
-	files, _ := filepath.Glob(filepath.Join(copied, "tests", "*_test.lua"))
+	files, _ := filepath.Glob(filepath.Join(copied, "tests", "*.lua"))
 	if len(files) == 0 {
-		fmt.Fprintf(stdout, "no tests/*_test.lua in %s\n", src)
+		fmt.Fprintf(stdout, "no tests/*.lua in %s\n", src)
 		return 1
 	}
 
@@ -131,6 +131,11 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 			printFail(stdout, rel, bootError(pt, err), nil)
 			continue
 		}
+		if len(declared) == 0 {
+			failed++
+			printFail(stdout, rel, `declares no case; code the tests share goes in a subdirectory (tests/lib/) and loads with require("./lib/<name>")`, nil)
+			continue
+		}
 		cases += len(declared)
 		for i, c := range declared {
 			if !strings.Contains(rel+": "+c.Name, pattern) {
@@ -162,9 +167,6 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	switch {
 	case ctx.Err() != nil:
 		return 130
-	case failed == 0 && cases == 0:
-		fmt.Fprintf(stdout, "no cases (%d %s)\n", len(files), plural(len(files), "file", "files"))
-		return 1
 	case failed == 0 && ran == 0:
 		fmt.Fprintf(stdout, "no case matches %q (%d %s in %d %s)\n", pattern, cases, plural(cases, "case", "cases"), len(files), plural(len(files), "file", "files"))
 		return 1

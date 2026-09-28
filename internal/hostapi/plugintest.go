@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
@@ -100,7 +101,7 @@ func (t *PluginTest) Step() lua.BootStep {
 		for name, fn := range map[string]glua.LGFunction{"stub": t.stub, "overlay": t.overlay} {
 			tb.RawSetString(name, g.L.NewFunction(fn))
 		}
-		eq, err := g.SB.CompileChunk(eqLua, lua.OriginBuiltin.ChunkName("test.eq"))
+		asserts, err := g.SB.CompileChunk(assertLua, lua.OriginBuiltin.ChunkName("test.assert"))
 		if err != nil {
 			return err
 		}
@@ -108,16 +109,21 @@ func (t *PluginTest) Step() lua.BootStep {
 			L.Push(glua.LString(t.Rel(L.CheckString(1))))
 			return 1
 		})
-		if err := g.L.CallByParam(glua.P{Fn: eq, NRet: 1, Protect: true}, rel); err != nil {
+		if err := g.L.CallByParam(glua.P{Fn: asserts, NRet: 1, Protect: true}, rel); err != nil {
 			return err
 		}
-		tb.RawSetString("eq", g.L.Get(-1))
+		g.L.Get(-1).(*glua.LTable).ForEach(tb.RawSet)
 		g.L.Pop(1)
 		for name, fn := range map[string]glua.LGFunction{
 			"run": t.runCmd, "keys": t.keys, "tool": t.tool, "render": t.render, "click": t.click,
-			"emit": t.emit, "answer": t.answer, "advance": t.advance,
+			"emit": t.emit, "answer": t.answer, "advance": t.advance, "complete": t.complete,
 		} {
-			tb.RawSetString(name, lua.Suspending(g.L, g.L.NewFunction(fn)))
+			tb.RawSetString(name, lua.Suspending(g.L, g.L.NewFunction(func(L *glua.LState) int {
+				if t.h.RT.Booting() {
+					raise(L, "test.%s: drivers run inside a case: test(\"name\", function() ... end)", name)
+				}
+				return fn(L)
+			})))
 		}
 		if err := g.SB.RegisterCallableNamespace("zemi.test", tb, g.L.NewFunction(t.declare)); err != nil || t.file == "" {
 			return err
@@ -135,12 +141,21 @@ func (t *PluginTest) Run(ctx context.Context, timeout time.Duration) []string {
 	fail := func(msg string) []string {
 		t.mu.Lock()
 		defer t.mu.Unlock()
-		lines := slices.Concat([]string{msg}, t.log, t.pending)
-		for _, p := range t.prints {
-			lines = append(lines, "print: "+p)
+		// a log line goes when a line before it already holds its fact: a
+		// driver's error, or a note whole
+		lines := []string{t.Rel(msg)}
+		for _, l := range slices.Concat(t.log, t.pending) {
+			l = t.Rel(l)
+			fact := l
+			if _, err, ok := strings.Cut(l, " returned: "); ok && strings.HasPrefix(l, "test.") {
+				fact = err
+			}
+			if !slices.ContainsFunc(lines, func(k string) bool { return strings.Contains(k, fact) }) {
+				lines = append(lines, l)
+			}
 		}
-		for i, l := range lines {
-			lines[i] = t.Rel(l)
+		for _, p := range t.prints {
+			lines = append(lines, "print: "+t.Rel(p))
 		}
 		return lines
 	}
@@ -745,65 +760,203 @@ func (t *PluginTest) answer(L *glua.LState) int {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// eq
+// complete is test.complete(line): the texts of the rows the plugin offers
+// for a draft line, cursor at its end, as the palette and the completion
+// popup ask for them. A "/command" line asks the plugin's command and the
+// sources for it; any other line the source whose trigger starts its last word.
+func (t *PluginTest) complete(L *glua.LState) int {
+	line := L.CheckString(1)
+	lead := line[strings.LastIndexAny(line, " \t\n")+1:]
+	trigger, command := "", ""
+	if name, ok := strings.CutPrefix(line, "/"); ok {
+		name, _, _ = strings.Cut(name, " ")
+		command = t.command(L, "complete", name).Name
+	} else {
+		t.h.completions.mu.Lock()
+		srcs := slices.Clone(t.h.completions.list)
+		t.h.completions.mu.Unlock()
+		r, size := utf8.DecodeRuneInString(lead)
+		trigger = own(t, L, "complete", "completion trigger", string(r), srcs, func(s completionSource) (string, bool) {
+			return s.trigger, s.trigger != "" && t.mine(s.path)
+		}).trigger
+		lead = lead[size:]
+	}
+	return t.drive(L, "complete", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
+		var items []CompletionItem
+		if command != "" {
+			items = t.h.CompleteCommand(ctx, command, lead, line)
+		}
+		items = append(items, t.h.Complete(ctx, trigger, command, lead, line)...)
+		texts := []string{}
+		for _, it := range items {
+			texts = append(texts, it.Text)
+		}
+		return func(L *glua.LState) []glua.LValue { return []glua.LValue{lua.FromGo(L, texts)} }, nil
+	})
+}
 
-// eqLua is test.eq, Lua so it prints values with zemi.util.inspect. It
-// walks tables in key order, a pair met again counting as equal so cycles
-// end, and rel makes the plugin copy's paths relative before a long string
-// is cut around its first difference.
-const eqLua = `local rel = ...
+// ---------------------------------------------------------------------------
+// assertions
+
+// assertLua returns test.eq, neq, contains and raises, Lua so they print
+// values with zemi.util.inspect. diff walks tables in key order, a pair met
+// again counting as equal so cycles end, and rel makes the plugin copy's
+// paths relative before a message quotes a string.
+const assertLua = `local rel = ...
+-- required at the call: a boot with no embedded runtime registers these too
+local function inspect(v)
+	return require("zemi.util").inspect(v)
+end
 
 local function diff(got, want, path, seen)
 	if type(got) == "table" and type(want) == "table" then
 		seen[got] = seen[got] or {}
-		if seen[got][want] then return end
+		if seen[got][want] then
+			return
+		end
 		seen[got][want] = true
-		local both, u = {}, require("zemi.util")
-		for k in pairs(got) do both[k] = true end
-		for k in pairs(want) do both[k] = true end
-		for _, k in ipairs(u.keys(both)) do
-			local key = type(k) == "string" and k:find("^[%a_][%w_]*$") and "." .. k or "[" .. u.inspect(k) .. "]"
+		local both = {}
+		for k in pairs(got) do
+			both[k] = true
+		end
+		for k in pairs(want) do
+			both[k] = true
+		end
+		for _, k in ipairs(require("zemi.util").keys(both)) do
+			local key = type(k) == "string" and k:find("^[%a_][%w_]*$") and "." .. k or "[" .. inspect(k) .. "]"
 			local p, g, w = diff(got[k], want[k], path .. key, seen)
-			if p then return p, g, w end
+			if p then
+				return p, g, w
+			end
 		end
 	elseif got ~= want and (got == got or want == want) then -- NaN equals NaN
 		return path, got, want
 	end
 end
 
+-- clip quotes s from byte from to byte to, a cut inside a UTF-8 sequence
+-- moved to its edge
+local function clip(s, from, to)
+	while from > 1 and s:byte(from) >= 128 and s:byte(from) < 192 do
+		from = from - 1
+	end
+	while to < #s and s:byte(to + 1) >= 128 and s:byte(to + 1) < 192 do
+		to = to + 1
+	end
+	local q = inspect(s:sub(from, to))
+	if from > 1 then
+		q = '"...' .. q:sub(2)
+	end
+	if to < #s then
+		q = q:sub(1, -2) .. '..."'
+	end
+	return q
+end
+
 local function window(g, w)
 	local i = 1
-	while i <= #g and g:byte(i) == w:byte(i) do i = i + 1 end
+	while i <= #g and g:byte(i) == w:byte(i) do
+		i = i + 1
+	end
 	local function cut(s)
-		local from, to = math.max(1, i - 10), math.min(#s, i + 39)
-		-- a cut inside a UTF-8 sequence moves to its edge
-		while from > 1 and s:byte(from) >= 128 and s:byte(from) < 192 do from = from - 1 end
-		while to < #s and s:byte(to + 1) >= 128 and s:byte(to + 1) < 192 do to = to + 1 end
-		local q = require("zemi.util").inspect(s:sub(from, to))
-		if from > 1 then q = '"...' .. q:sub(2) end
-		if to < #s then q = q:sub(1, -2) .. '..."' end
-		return q
+		return clip(s, math.max(1, i - 10), math.min(#s, i + 39))
 	end
 	local chars = select(2, g:sub(1, i - 1):gsub("[^\128-\191]", "")) + 1
 	return ("got %s, want %s (first difference at char %d)"):format(cut(g), cut(w), chars)
 end
 
-return function(...)
-	if select("#", ...) < 2 then error("test.eq: takes the value got and the value wanted", 3) end
+-- lines splits s at "\n"; a trailing newline ends the last line
+local function lines(s)
+	local out = {}
+	for l in (s:sub(-1) == "\n" and s or s .. "\n"):gmatch("(.-)\n") do
+		out[#out + 1] = l
+	end
+	return out
+end
+
+-- strdiff says how two unequal strings differ, by line when either has several
+local function strdiff(g, w)
+	g, w = rel(g), rel(w)
+	local at = ""
+	if g:find("\n", 1, true) or w:find("\n", 1, true) then
+		local gl, wl, i = lines(g), lines(w), 1
+		while i <= math.max(#gl, #wl) and gl[i] == wl[i] do
+			i = i + 1
+		end
+		if i <= math.max(#gl, #wl) then -- else only a trailing newline differs
+			at = "line " .. i .. ": "
+			if not gl[i] or not wl[i] then
+				return at .. "got " .. inspect(gl[i]) .. ", want " .. inspect(wl[i])
+			end
+			g, w = gl[i], wl[i]
+		end
+	end
+	if math.max(#g, #w) > 40 then
+		return at .. window(g, w)
+	end
+	return at .. "got " .. inspect(g) .. ", want " .. inspect(w)
+end
+
+local function fail(msg)
+	error(msg, 4) -- 4: fail, the assertion, the case; gopher-lua counts error itself
+end
+
+local M = {}
+
+function M.eq(...)
+	if select("#", ...) < 2 then
+		fail("test.eq: takes the value got and the value wanted")
+	end
 	local got, want = ...
 	local path, g, w = diff(got, want, "", {})
-	if not path then return end
-	local inspect = require("zemi.util").inspect
-	local msg = "got " .. inspect(g) .. ", want " .. inspect(w)
-	if type(g) == "string" and type(w) == "string" and math.max(#g, #w) > 40 then msg = window(rel(g), rel(w)) end
+	if not path then
+		return
+	end
+	local msg = type(g) == "string" and type(w) == "string" and strdiff(g, w)
+		or "got " .. inspect(g) .. ", want " .. inspect(w)
 	if path ~= "" then
 		local gl, wl = inspect(got), inspect(want)
 		msg = path:gsub("^%.", "") .. ": " .. msg
-		if #gl + #wl <= 120 then msg = msg .. "\ngot  " .. gl .. "\nwant " .. wl end
+		if #gl + #wl <= 120 then
+			msg = msg .. "\ngot  " .. gl .. "\nwant " .. wl
+		end
 	end
-	error(msg, 3) -- 3: gopher-lua counts error itself
+	fail(msg)
 end
+
+function M.neq(got, other)
+	if not diff(got, other, "", {}) then
+		fail("got " .. inspect(got) .. ", want anything else")
+	end
+end
+
+function M.contains(s, sub)
+	if type(s) ~= "string" or type(sub) ~= "string" then
+		fail("test.contains: takes a string and the text it should hold, got a " .. type(s) .. " and a " .. type(sub))
+	end
+	s = rel(s)
+	if not s:find(sub, 1, true) then
+		fail("got " .. clip(s, 1, 200) .. ", want it to contain " .. inspect(sub))
+	end
+end
+
+function M.raises(fn, sub)
+	local ok, err = pcall(fn)
+	if ok then
+		fail("did not raise")
+	end
+	local msg = rel(tostring(err))
+	-- a driver inside fn raises for the pcall, not for the code under test
+	if msg:find("cannot wait inside pcall", 1, true) then
+		fail("a driver cannot run inside test.raises; drivers return nil, err instead of raising")
+	end
+	if sub and not msg:find(sub, 1, true) then
+		fail("raised " .. inspect(msg) .. ", want it to contain " .. inspect(sub))
+	end
+	return msg
+end
+
+return M
 `
 
 // ---------------------------------------------------------------------------
@@ -901,8 +1054,9 @@ type stubReply struct {
 }
 
 // reply is the reply of the newest stub matching a gated call, and whether
-// the call is one a stub answers; a call none answers gets a note naming
-// the stub that would.
+// the call is one a stub answers; nil and true is a false reply, which
+// refuses like a missing rule. A call no stub answers raises naming the
+// stub that would.
 // NOTE: a stub answers at once, so a handle's timeout goes untested; a
 // reply that waits for test.advance would reach it.
 func (t *PluginTest) reply(L *glua.LState, subject, arg string, req func() map[string]any) (*stubReply, bool) {
@@ -952,7 +1106,11 @@ func (t *PluginTest) reply(L *glua.LState, subject, arg string, req func() map[s
 		}
 		return &stubReply{fields: out}, true
 	}
-	t.note("no stub answered it; answer it with " + stubLine(kind, subject, arg, req()))
+	// noted too, so a pcall in the plugin that swallows the raise still
+	// leaves the fix in the report
+	msg := subject + " " + arg + ": no test.stub answers it; add " + stubLine(kind, subject, arg, req())
+	t.note(msg)
+	L.RaiseError("%s", msg)
 	return nil, true
 }
 

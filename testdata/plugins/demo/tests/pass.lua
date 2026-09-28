@@ -8,6 +8,7 @@ local git = test.stub(
 local body = zemi.json.encode({ current_condition = { { temp_C = "21", weatherDesc = { { value = "Sunny" } } } } })
 local wttr = test.stub("lua.http.get", "https://wttr.in/*", { body = body })
 local sent = test.stub("lua.agent.send")
+local snips = require("./lib/snips")
 
 test("the widget draws the branch git reports", function()
 	local text, lines = test.render("demo.branch")
@@ -32,7 +33,9 @@ test("outside a repository the widget draws nothing", function()
 end)
 
 test("a click on the branch toasts it", function()
+	local before = zemi.notify.list()
 	assert(test.click("demo.branch", "branch"))
+	test.neq(zemi.notify.list(), before)
 	test.eq(zemi.notify.list()[1].body, "main")
 end)
 
@@ -42,7 +45,7 @@ test(
 )
 
 test("a picked snippet goes to the agent", function()
-	assert(test.run("demo", "add review Review the diff"))
+	snips.add("review", "Review the diff")
 	assert(test.run("demo"))
 	local o = test.overlay()
 	test.eq({ o.title, o.items }, { "Snippets", { "review" } })
@@ -92,7 +95,7 @@ end)
 
 test("the schema refuses a missing city", function()
 	local _, err = test.tool("weather_now", {})
-	assert(err:find("city", 1, true), err)
+	test.contains(err, "city")
 	test.eq(#wttr, 0)
 end)
 
@@ -118,7 +121,7 @@ test("a missing rule is a health row", function()
 		row = r.name == "demo" and r or row
 	end
 	test.eq(row.level, "warn")
-	assert(row.detail:find('principal = "plugin:demo"', 1, true), row.detail)
+	test.contains(row.detail, 'principal = "plugin:demo"')
 end)
 
 test("a timer from another case is gone", function()
@@ -142,9 +145,11 @@ test("the user's config and skills stay out", function()
 end)
 
 test("gated calls fail closed, the mode unchanged", function()
-	assert(not pcall(zemi.permission.mode.set, "yolo"))
-	local ok, err = pcall(zemi.http.get, "https://example.com/")
-	assert(not ok and err:find("permission ask required", 1, true), err)
+	test.raises(function() zemi.permission.mode.set("yolo") end)
+	test.eq(
+		test.raises(function() zemi.http.get("https://example.com/") end),
+		'tests/pass.lua:150: lua.http.get https://example.com/: no test.stub answers it; add test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })'
+	)
 end)
 
 test("drivers reach only what the plugin registered", function()
@@ -161,8 +166,7 @@ test("drivers reach only what the plugin registered", function()
 			"reflector.done is not a handled event of plugin demo; it registered app.ready, tool.post",
 		},
 	}) do
-		local ok, err = pcall(c[1], c[2])
-		assert(not ok and err:find(c[3], 1, true), err)
+		test.raises(function() c[1](c[2]) end, c[3])
 	end
 end)
 
@@ -176,15 +180,25 @@ test("a reply field no call reads is refused", function()
 		{ "lua.job.start", { code = "1" }, "code must be a number, not a string" },
 		{ "lua.agent.send", { text = "x" }, "text is not a field of a send reply, which takes no fields" },
 	}) do
-		local ok, err = pcall(test.stub, c[1], "*", c[2])
-		assert(not ok and err:find(c[3], 1, true), err)
+		test.raises(function() test.stub(c[1], "*", c[2]) end, c[3])
 	end
 end)
 
 test("eq compares functions by identity and follows cycles", function()
-	assert(not pcall(test.eq, { a = 1, f = print }, { a = 1, f = tostring }))
+	test.raises(function() test.eq({ a = 1, f = print }, { a = 1, f = tostring }) end, "f: got ")
 	local a, b = {}, {}
 	a.self, b.self = a, {}
-	assert(not pcall(test.eq, a, b))
+	test.raises(function() test.eq(a, b) end)
 	test.eq({ 0 / 0 }, { 0 / 0 })
+	test.neq({ 1 }, { 2 })
+end)
+
+test("the command and the # source complete snippet names", function()
+	snips.add("review", "Review the diff")
+	snips.add("release", "Tag a release")
+	test.eq(test.complete("/demo "), { "add" })
+	test.eq(test.complete("/demo add re"), {})
+	test.eq(test.complete("see #re"), { "release", "review" })
+	test.eq(test.complete("#rev"), { "review" })
+	test.raises(function() test.complete("see @x") end, "@ is not a completion trigger of plugin demo; it registered #")
 end)

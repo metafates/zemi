@@ -2388,14 +2388,18 @@ function zemi.project.root() end
 -- ---------------------------------------------------------------------------
 -- zemi.test
 
---- A plugin's tests, in its `tests/*_test.lua`. Only a `zemi plugins test`
+--- A plugin's tests: each top-level file in its `tests/` is a test file
+--- (`tests/*.lua`), and code they share goes in a subdirectory
+--- (`tests/lib/x.lua`, `require("./lib/x")`). Only a `zemi plugins test`
 --- boot has `zemi.test`; reading it anywhere else raises. Each case runs in
 --- a fresh zemi holding only the plugin, after the file's top level (where
 --- init.lua would run) and `app.ready`, on a clock at 2026-01-01 00:00 UTC
---- that only `advance` moves. A driver returns once zemi is quiet, and an
---- error zemi logs meanwhile (a callback, a timer) fails the case at its
---- call. A job, HTTP request, model ask, agent send or `zemi.fs` write
---- raises unless a stub answers it, and the report names the stub to add.
+--- that only `advance` moves. Drivers (run, keys, tool, render, click, emit,
+--- complete, answer, advance) run only inside a case, never under `pcall`
+--- or `raises`; one returns once zemi is quiet, and an error zemi logs
+--- meanwhile (a callback, a timer) fails the case at its call. A job, HTTP
+--- request, model ask, agent send or `zemi.fs` write raises unless a stub
+--- answers it, naming the stub to add.
 --- A reply's fields and defaults: http `{ status = 200, body = "", headers = {} }`,
 --- job `{ code = 0, stdout = "", stderr = "" }` (stdout reaches `on_stdout`),
 --- model a string or `{ text }`, send and write none (a stubbed write
@@ -2403,19 +2407,23 @@ function zemi.project.root() end
 --- transport. Any other field raises. The requests a stub returns: http
 --- `{ method, url, headers, body }`, job `{ cmd, args, cwd }`, model
 --- `{ model, prompt, system }`, send `{ text }`, write `{ path }`. An error
---- a case catches names the test copy's path, which the report shows
---- relative: match its tail with `find`.
+--- a case catches names the test copy's path; `raises` and `contains` make
+--- it relative to the plugin.
 ---@class zemi.test
----@overload fun(name: string, fn: fun()) Declare a case, at the file's top level.
----@field eq fun(got: any, want: any) Compare deeply, functions by identity; raises naming the first difference.
----@field run fun(name: string, args?: string): true|nil, string? Run the plugin's command as typed.
----@field keys fun(seq: string): true|nil, string? Run what the plugin bound a global key sequence to.
----@field tool fun(name: string, input: table): string|nil, string? Call the plugin's tool as the model would, allowed: the output, or nil and the error the model gets, behind the tool's name ("weather_now: ...").
----@field render fun(id: string, ctx?: table): string[], zemi.Line[] Draw the plugin's widget: its lines as text, then as segments; ctx's fields override width 80, height 1 and the rest.
----@field click fun(id: string, click: string): true|nil, string? Run the widget's on_click for a segment's click id.
----@field emit fun(name: zemi.EventName, ev?: table): any Deliver a host event to the plugin's handlers: `tool.post` returns the output the model gets, a vetoable event its zemi.Veto or nil.
----@field overlay fun(): { id: string, title: string, body: string, items: string[], input: boolean }? The top open overlay.
----@field answer fun(choice: integer|string|nil, action?: string): true|nil, string? Enter on an item (its index or text) or its detail action, type an input's text, or esc for nil; a row no callback takes runs its `run`, a command of the plugin.
----@field stub fun(subject: string, pattern?: string, reply?: table|string|false|fun(req: table): (table|string|false)): table[] Answer the calls matching pattern ("*"): reply's fields, a function returning them, or false to refuse. The newest match answers; returns the requests it answered.
----@field advance fun(ms: number) Move the clock, firing due timers in order.
+---@overload fun(name: string, fn: fun()) Declare a case, at the file's top level. `test("shows the count", function() ... end)`
+---@field eq fun(got: any, want: any) Compare deeply, functions by identity; raises naming the first difference, by line for multi-line strings. `test.eq(test.render("clock"), { "00:00" })`
+---@field neq fun(got: any, other: any) Raises when got deep-equals other; prefer eq with the exact value. `test.neq(test.render("spin"), before)`
+---@field contains fun(s: string, sub: string) Raises unless s holds sub as plain text, the plugin's paths relative. `test.contains(row.detail, 'principal = "plugin:demo"')`
+---@field raises fun(fn: fun(), sub?: string): string Calls fn and raises unless it raised an error holding sub; returns the message, paths relative. A driver cannot run inside fn. `test.raises(function() test.stub("lua.nope") end, "not a call a stub answers")`
+---@field run fun(name: string, args?: string): true|nil, string? Run the plugin's command as typed. `assert(test.run("stars", "metafates/zemi"))`
+---@field keys fun(seq: string): true|nil, string? Run what the plugin bound a global key sequence to. `assert(test.keys("ctrl+x d"))`
+---@field tool fun(name: string, input: table): string|nil, string? Call the plugin's tool as the model would, allowed: the output, or nil and the error the model gets, behind the tool's name ("weather_now: ..."). `test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C")`
+---@field render fun(id: string, ctx?: table): string[], zemi.Line[] Draw the plugin's widget: its lines as text, then as segments; ctx's fields override width 80, height 1 and the rest. `test.eq(test.render("cost", { usage = { cost = 0.5 } }), { "50 cents" })`
+---@field click fun(id: string, click: string): true|nil, string? Run the widget's on_click for a segment's click id. `assert(test.click("branch", "branch"))`
+---@field emit fun(name: zemi.EventName, ev?: table): any Deliver a host event to the plugin's handlers: `tool.post` returns the output the model gets, a vetoable event its zemi.Veto or nil. `test.emit("tool.post", { tool = "bash", ok = false, output = "FAIL" })`
+---@field complete fun(line: string): string[] The rows the plugin's completion offers for a draft line, cursor at its end: a command's `complete` for a `/command` line, else its `zemi.composer.complete` source for the trigger that starts the last word. `test.eq(test.complete("/stars meta"), { "metafates/zemi" })`
+---@field overlay fun(): { id: string, title: string, body: string, items: string[], input: boolean }? The top open overlay. `test.eq(test.overlay().items, { "review" })`
+---@field answer fun(choice: integer|string|nil, action?: string): true|nil, string? Enter on an item (its index or text) or its detail action, type an input's text, or esc for nil; a row no callback takes runs its `run`, a command of the plugin. `assert(test.answer("review"))`
+---@field stub fun(subject: string, pattern?: string, reply?: table|string|false|fun(req: table): (table|string|false)): table[] Answer the calls matching pattern ("*"): reply's fields, a function returning them, or false to refuse the call the way a missing rule does. The newest match answers; returns the requests it answered. `local gets = test.stub("lua.http.get", "https://api.github.com/*", { body = '{"stargazers_count":5}' })`
+---@field advance fun(ms: number) Move the clock, firing due timers in order. `test.advance(30000)`
 zemi.test = {}

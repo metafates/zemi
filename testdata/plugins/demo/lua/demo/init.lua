@@ -6,7 +6,7 @@ local function poll()
 		cmd = "git",
 		args = { "rev-parse", "--abbrev-ref", "HEAD" },
 		on_exit = function(res)
-			-- the bug fail_test.lua finds: git printing nothing
+			-- the bug fail.lua finds: git printing nothing
 			M.branch = res.code == 0 and res.stdout:match("^(%S+)"):sub(1, 30) or nil
 		end,
 	})
@@ -34,15 +34,19 @@ zemi.event.on("app.ready", function()
 	zemi.timer.every(30000, poll)
 end)
 
-function M.pick()
-	local snips = zemi.state.get("snips") or {}
-	local names = {}
-	for name in pairs(snips) do
-		names[#names + 1] = name
+local function names(prefix)
+	local out = {}
+	for name in pairs(zemi.state.get("snips") or {}) do
+		if name:sub(1, #prefix) == prefix then out[#out + 1] = name end
 	end
-	if #names == 0 then return zemi.notify.info("add one with /demo add <name> <text>", "Nothing to pick yet") end
-	table.sort(names)
-	zemi.ui.select(names, { prompt = "Snippets" }, function(choice)
+	table.sort(out)
+	return out
+end
+
+function M.pick()
+	local snips, list = zemi.state.get("snips") or {}, names("")
+	if #list == 0 then return zemi.notify.info("add one with /demo add <name> <text>", "Nothing to pick yet") end
+	zemi.ui.select(list, { prompt = "Snippets" }, function(choice)
 		if choice then zemi.agent.send(snips[choice]) end
 	end)
 end
@@ -54,7 +58,14 @@ zemi.command.add("demo", function(a)
 	local snips = zemi.state.get("snips") or {}
 	snips[name] = text
 	zemi.state.set("snips", snips)
-end, { desc = "save a snippet, or send one to the agent", nargs = "*" })
+end, {
+	desc = "save a snippet, or send one to the agent",
+	nargs = "*",
+	complete = function(_, line) return line:find("^/demo%s+%S*$") and { "add" } or {} end,
+})
+
+-- #name in a draft completes a snippet's name
+zemi.composer.complete({ id = "demo.snips", trigger = "#", items = names })
 
 zemi.keymap.set("ctrl+x d", M.pick, { desc = "send a snippet" })
 zemi.keymap.set("ctrl+x h", "help", { desc = "zemi's help, a Go command" })

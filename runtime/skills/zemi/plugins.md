@@ -8,7 +8,7 @@ A plugin is a directory shaped like the config dir, in the local plugins directo
   lua/<name>/init.lua    require("<name>") from the plugin and the user's init.lua
   skills/  agents/  commands/  workflows/    as in the config dir; the user's and zemi's own win a
                          name, and a skill's zemi-skill.lua does not run
-  tests/<topic>_test.lua its tests (Testing, below)
+  tests/<topic>.lua     its tests (Testing, below); shared code in tests/lib/
 ```
 
 There is no manifest: the version is the checked-out `vX.Y.Z` tag, the source the `origin` remote. `installed/<name>/` holds the clones the user manages with `/plugins` (or `zemi plugins` in a shell: install from a git URL, check and update, turn on and off, delete, which removes a local plugin too); `<data>/plugins/disabled` lists the names turned off. You never write there; to change one, the user deletes it and you clone it into `local/`. A local plugin named like an installed one, or a symlink in `local/`, does not load.
@@ -21,7 +21,7 @@ The user asked for one, or `/plugins new` sent you here:
 2. Before writing code, check whether zemi already does it. With the Lua tool, read `zemi.config.schema()`, `zemi.command.list()`, `zemi.keymap.list()`, `zemi.ui.widget.list()` and `zemi.tool.list()`; also read the shipped UI source and the plugins directory. If a setting, a shipped command, a prompt command (`commands/<name>.md`) or a workflow does the job, say which, offer that instead, and write a plugin only if the user still wants one.
 3. Pick a name nothing registers yet and say in one message what you will write: `local/<name>/init.lua`, `lua/<name>/init.lua` and a `README.md` naming its commands, keys, `setup` options and every rule it needs.
 4. Write it to work with no line in the user's init.lua (below), `init.lua` first: that write creates the plugin and is the one the user approves, so it shows them the code. Then run `zemi.config.reload()`, and in a second Lua tool script check `zemi.errors.list()` and the plugin's `/plugins` row, and try what it registered (`zemi.command.run`, `zemi.ui.screenshot()`).
-5. Write `tests/<name>_test.lua`, run `zemi plugins test <name>` and fix until it passes.
+5. Write `tests/<name>.lua`, run `zemi plugins test <name>` and fix until it passes.
 6. Tell the user what it registered, that `/plugins` turns it off, and which README lines they may add to init.lua for more. Do not add them yourself.
 
 `init.lua` registers what the plugin is for, with defaults, so it works the moment it loads with no line in the user's init.lua: its commands, its widgets (rendering `{}` until they have something to say), its tool, and keys only where `zemi.keymap.get(key)` is nil. What the user did not ask for stays off until `setup(opts)` turns it on: timers and polling beyond what its own widgets need, event handlers that act (sending to the agent, vetoing a submit or a tool call), network calls, a key someone else holds. Keep `setup` safe to call again, and start gated calls on `app.ready`: the user's allow rules are added after the plugin's init.lua runs.
@@ -110,7 +110,7 @@ So a plugin looks like zemi: colors are theme groups (`Accent`, `Dim`, `Ok`, `Wa
 
 ## Testing
 
-`zemi plugins test <name|dir> [pattern]` runs each case of `tests/*_test.lua` in a fresh zemi holding only the plugin: no user config, no rules, and a clock only `test.advance` moves. The file's top level runs where init.lua would, before `app.ready`, so stub there what the plugin calls at boot. A job, HTTP request, model ask, agent send or `zemi.fs` write raises unless `test.stub` answers it, and a failing case prints the stub line to add. The drivers reach only what the plugin registered; `zemi.test` in the types lists them with the reply and request fields. Plugin code can tell it is under test, so passing tests are no review of what it does. `tests/branch_test.lua` for the plugin above:
+`zemi plugins test <name|dir> [pattern]` runs each case of `tests/*.lua` in a fresh zemi holding only the plugin: no user config, no rules, and a clock only `test.advance` moves. The file's top level runs where init.lua would, before `app.ready`, so stub there what the plugin calls at boot. A job, HTTP request, model ask, agent send or `zemi.fs` write raises unless `test.stub` answers it, and a failing case prints the stub line to add. The drivers reach only what the plugin registered; `zemi.test` in the types lists them with the reply and request fields. Plugin code can tell it is under test, so passing tests are no review of what it does. `tests/branch.lua` for the plugin above:
 
 ```lua
 local test = zemi.test

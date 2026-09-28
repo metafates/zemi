@@ -37,5 +37,22 @@ end)
 test("eq on an error naming a file", function()
 	local _, err = pcall(zemi.http.get, "https://example.com/")
 	pcall(zemi.http.get, "https://example.com/")
-	test.eq(err, "permission ask required")
+	test.eq(err, "lua.http.get https://example.com/: no test.stub answers it")
+end)
+
+test("eq on lines", function() test.eq("one\ntwo\nthree\n", "one\ntwo\nthree!\n") end)
+
+test("contains", function() test.contains(test.render("demo.cost", { usage = { cost = 0.5 } })[1], "dollars") end)
+
+test("raises that did not raise", function()
+	test.raises(function() end)
+end)
+
+test("a driver under pcall", function()
+	local ok, err = pcall(test.run, "demo")
+	assert(ok, err)
+end)
+
+test("a driver inside raises", function()
+	test.raises(function() test.run("demo", "add") end)
 end)

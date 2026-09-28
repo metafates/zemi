@@ -56,7 +56,7 @@ newest `vX.Y.Z` tag, and `zemi plugins update` stays in that major version.
 Write your own in `~/.local/share/zemi/plugins/local/<name>/`, or type
 `/plugins new <what it should do>` to have the agent write it. `/plugins`
 turns them on and off. `zemi plugins test <name>` runs a plugin's
-`tests/*_test.lua`, each case in a throwaway zemi with a fake clock and no
+`tests/*.lua`, each case in a throwaway zemi with a fake clock and no
 network or processes.
 
 ## Scripts and hooks

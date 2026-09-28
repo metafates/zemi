@@ -139,7 +139,7 @@ procedure lives in the zemi skill's plugins.md). Its list is built off the key l
 `zemi plugins`.
 
 `zemi plugins test <name|dir> [pattern]` (plugintest.go, hostapi/plugintest.go) runs a plugin's
-`tests/*_test.lua`: `testPlugins` resolves a name as the plugins step would (`hostapi.PluginDir`),
+`tests/*.lua` (a top-level file with no case fails: shared code goes in `tests/lib/`): `testPlugins` resolves a name as the plugins step would (`hostapi.PluginDir`),
 copies the plugin into temp dirs (`copyPlugin`: no dot entries or `node_modules`, a link only when
 relative and inside, capped), and boots one zemi per case in this process (`hostapi.NewPluginTest`,
 `bootSteps` with no trust and the test file where init.lua runs), which `Host.Close` ends. The
@@ -147,10 +147,12 @@ first boot collects the case names. `proc.Refuse` makes the process start nothin
 sandbox probe included. The test zemi runs on a fake `lua.Clock` only `test.advance` moves, with
 `WholeTasks` so a driver waits for what it started, and is quiet when no `GoSafe` goroutine runs
 (`goes`) and no timer is due. `luaGate` asks `PluginTest.reply` first about a call that does IO:
-only a `test.stub` reply passes, standing in for the transport at the call site, and an
-unanswered call raises the missing-rule error whatever rules exist. Drivers refuse what another
-origin registered, a Go command and a host action; an error recorded to /errors under another
-source while one runs fails the case at its call. `zemi.test` exists only there
+only a `test.stub` reply passes, standing in for the transport at the call site, an unanswered
+call raises naming the stub to add, and a `false` reply raises the missing-rule error whatever
+rules exist. Drivers refuse what another origin registered, a Go command and a host action, and
+raise at a file's top level; an error recorded to /errors under another source while one runs
+fails the case at its call. A failure's report drops a line an earlier one already holds
+(`PluginTest.Run`), and the assertions are one Lua chunk (`assertLua`). `zemi.test` exists only there
 (`TestNamespaceVersion`); `TestPluginsTest` runs it over `testdata/plugins/demo`.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`), and a TUI

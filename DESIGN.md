@@ -451,8 +451,11 @@ and `new [what it should do]`, the list's first row, which sends the agent
 a short prompt pointing at the zemi skill's plugins.md, where the procedure lives.
 
 `zemi plugins test <name|dir> [pattern]` runs a plugin's
-`tests/*_test.lua` so an agent writing one tests it without a user's
-session. Each case whose "file: name" holds the pattern runs in a zemi of
+`tests/*.lua` so an agent writing one tests it without a user's session.
+Each top-level file there is a test file, and one that declares no case
+fails: code the files share goes in a subdirectory (`tests/lib/`, loaded
+with `require("./lib/<name>")`), which the runner does not glob. Each case
+whose "file: name" holds the pattern runs in a zemi of
 its own, booted in the process from temp dirs holding a filtered copy of
 the plugin (no dot entries, `node_modules` or links leading out) and
 nothing else: no user or project config, no trust step, no other plugin,
@@ -462,23 +465,29 @@ registered only there, declares cases and drives what the plugin
 registered the way zemi runs it: `run`, `keys`, `tool` (through the
 adapter the model's call runs), `render`, `click`, `emit` (to the plugin's
 own handlers, `tool.post` as tasks and vetoable events with their
-deadline), `overlay` and `answer`, each refusing another origin's target, a
-Go command and a host action, and `eq` compares Lua values. The zemi does
+deadline), `complete` (a command's completer and the plugin's
+`zemi.composer.complete` sources, as the palette asks them), `overlay` and
+`answer`, each refusing another origin's target, a Go command and a host
+action, and a driver at a file's top level raises. `eq`, `neq`,
+`contains` and `raises` assert, `eq` naming the first difference (the line,
+in a multi-line string). The zemi does
 no IO by construction: the process starts no process (`proc.Refuse`), and
 a job, HTTP request, model ask, agent send or `zemi.fs` write passes the
 gate only when a `test.stub` answers it, its reply standing in for the
-transport, else it raises the missing-rule error whatever rules exist and
-the report names the stub line. Time is a fake clock at 2026-01-01 UTC
+transport; a call no stub answers raises naming the stub line to add, and
+a `false` reply refuses it as a missing rule does, whatever rules exist. Time is a fake clock at 2026-01-01 UTC
 that only `test.advance` moves, driving timers, `os.time`/`os.date`/`os.clock`,
 a render's `ctx.time` and log times; every driver returns once zemi is
 quiet (no host goroutine running, no timer due). An error zemi records in
 `/errors` while a driver runs fails the case. Output is the failures,
-paths relative to the plugin, and one summary line; the exit status is 1
-on any failure, no case or a pattern matching none, 2 on a usage error.
+paths relative to the plugin, each fact once, and one summary line; the exit status is 1
+on any failure or a pattern matching no case, 2 on a usage error.
 NOTE: one widget renders at a time (no screen layout), `keys` reaches no
 `{ focus = id }` binding, `answer` no list key or toggle list (a row
 it picks runs its `run` when no callback takes it, only a command of the
-plugin), a stub answers at once (a timeout is untested), and the plugin's
+plugin), a stub answers at once (a timeout is untested), an assertion in a
+`tests/lib/` helper names the helper's line (the case's is in the FAIL
+heading), and the plugin's
 skills, agents and workflows are not exercised.
 
 `require` rules:
