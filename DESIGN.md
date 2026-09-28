@@ -1711,7 +1711,8 @@ provenance string.
   `allow|ask|deny`; patterns are globs over the operation argument (path,
   url; commands match a normalized form: the raw string is first split on
   the shell's full separator set (`;`, `&`, `&&`, `||`, `|`, newline,
-  backticks, `$(`, `<(`, `>(`; redirection and heredoc tokens
+  backticks, `$(`, `<(`, `>(`, and a `$(` or backtick inside double
+  quotes, whose text the shell runs too; redirection and heredoc tokens
   (`[n]>&[m]`, `[n]<&[m]`, `&>`, `&>>`, `>|`, `<>`, `>&-`, `<&-`, `<<`,
   `<<-`, `<<<`) are recognized before the split so a redirect is never
   cut by a separator; fail-closed on unbalanced quotes or parens), then

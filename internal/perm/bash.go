@@ -82,9 +82,6 @@ func Normalize(cmd string) Normalized {
 	cmd = inlineVars(cmd)
 	n := Normalized{cmd: cmd}
 	n.scan(cmd)
-	if n.Fail == "" && n.ForceAsk == "" && quotedSubstitution(cmd) {
-		n.ForceAsk = "command substitution inside quotes"
-	}
 	return n
 }
 
@@ -165,28 +162,6 @@ var (
 	varRef        = regexp.MustCompile(`^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))`)
 )
 
-// quotedSubstitution reports a $(, backtick or <( inside double quotes. The
-// scanner keeps a quoted run as one literal word, but the shell still runs
-// what is in there, so no allow rule may cover it.
-func quotedSubstitution(cmd string) bool {
-	inSingle, inDouble := false, false
-	for i := 0; i < len(cmd); i++ {
-		switch c := cmd[i]; {
-		case inSingle:
-			inSingle = c != '\''
-		case c == '\\':
-			i++
-		case c == '"':
-			inDouble = !inDouble
-		case c == '\'':
-			inSingle = !inDouble
-		case inDouble && (c == '`' || ((c == '$' || c == '<') && i+1 < len(cmd) && cmd[i+1] == '(')):
-			return true
-		}
-	}
-	return false
-}
-
 type tokKind int
 
 const (
@@ -205,13 +180,33 @@ type token struct {
 // scanner walks the command producing the token stream. Quote-aware:
 // separators and redirects inside quotes are literal text.
 type scanner struct {
-	toks   []token
+	toks []token
+	// held are the tokens of substitutions inside double quotes, emitted
+	// where the segment holding the quoted word ends
+	held   []token
 	depth  int
 	failed bool // unbalanced quotes or parens
 }
 
 func (n *Normalized) scan(cmd string) {
 	var sc scanner
+	sc.words(n, []rune(cmd), 0, 0)
+	if sc.depth != 0 {
+		sc.failed = true
+	}
+	n.eat(&sc)
+}
+
+// sep ends a segment; the substitutions its quoted words held follow it.
+func (sc *scanner) sep() {
+	sc.toks = append(sc.toks, sc.held...)
+	sc.held = nil
+	sc.toks = append(sc.toks, token{kind: tokSep})
+}
+
+// words scans rs from i up to the rune stop outside quotes and parens (0:
+// to the end) and returns stop's index, or len(rs) when it never comes.
+func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 	var cur strings.Builder
 	any := false
 	flush := func() {
@@ -221,9 +216,11 @@ func (n *Normalized) scan(cmd string) {
 		cur.Reset()
 		any = false
 	}
-	rs := []rune(cmd)
-	for i := 0; i < len(rs); i++ {
+	for ; i < len(rs); i++ {
 		r := rs[i]
+		if stop != 0 && r == stop && sc.depth == 0 {
+			break
+		}
 		switch {
 		case r == '\'':
 			any = true
@@ -231,12 +228,7 @@ func (n *Normalized) scan(cmd string) {
 			for ; j < len(rs) && rs[j] != '\''; j++ {
 				cur.WriteRune(rs[j])
 			}
-			if j >= len(rs) {
-				sc.failed = true
-				flush()
-				n.eat(&sc)
-				return
-			}
+			sc.failed = sc.failed || j >= len(rs)
 			i = j
 		case r == '"':
 			any = true
@@ -244,18 +236,19 @@ func (n *Normalized) scan(cmd string) {
 			for ; j < len(rs) && rs[j] != '"'; j++ {
 				if rs[j] == '\\' && j+1 < len(rs) {
 					j++
-					if rs[j] == '\n' { // line continuation
-						continue
+					if rs[j] != '\n' { // line continuation
+						cur.WriteRune(rs[j])
 					}
+					continue
+				}
+				if end, ok := sc.quotedSub(n, rs, j); ok {
+					cur.WriteString(string(rs[j:min(end+1, len(rs))]))
+					j = end
+					continue
 				}
 				cur.WriteRune(rs[j])
 			}
-			if j >= len(rs) {
-				sc.failed = true
-				flush()
-				n.eat(&sc)
-				return
-			}
+			sc.failed = sc.failed || j >= len(rs)
 			i = j
 		case r == '\\' && i+1 < len(rs) && rs[i+1] == '\n': // line continuation
 			i++
@@ -267,12 +260,12 @@ func (n *Normalized) scan(cmd string) {
 			}
 		case r == '`':
 			flush()
-			sc.toks = append(sc.toks, token{kind: tokSep})
+			sc.sep()
 		case (r == '$' || r == '<' || r == '>') && i+1 < len(rs) && rs[i+1] == '(':
 			flush()
 			i++
 			sc.depth++
-			sc.toks = append(sc.toks, token{kind: tokSep})
+			sc.sep()
 		case r == '$' && i+1 < len(rs) && (rs[i+1] == '\'' || rs[i+1] == '"'):
 			// $'..' and $".." quote in bash (the $ goes) but not in dash; a
 			// backslash in $'..' can move where bash ends the quote, so ask
@@ -299,34 +292,34 @@ func (n *Normalized) scan(cmd string) {
 		case r == '(':
 			flush()
 			sc.depth++
-			sc.toks = append(sc.toks, token{kind: tokSep})
+			sc.sep()
 		case r == ')':
 			flush()
 			sc.depth--
 			if sc.depth < 0 {
 				sc.failed = true
 			}
-			sc.toks = append(sc.toks, token{kind: tokSep})
+			sc.sep()
 		case r == ' ' || r == '\t' || r == '\n': // sh splits on these only (NBSP, \v, \r are word text)
 			flush()
 			if r == '\n' {
-				sc.toks = append(sc.toks, token{kind: tokSep})
+				sc.sep()
 			}
 		case r == ';':
 			flush()
-			sc.toks = append(sc.toks, token{kind: tokSep})
+			sc.sep()
 		case r == '&':
 			flush()
 			if i+1 < len(rs) && rs[i+1] == '&' {
 				i++
 			}
-			sc.toks = append(sc.toks, token{kind: tokSep})
+			sc.sep()
 		case r == '|':
 			flush()
 			if i+1 < len(rs) && rs[i+1] == '|' {
 				i++
 			}
-			sc.toks = append(sc.toks, token{kind: tokSep})
+			sc.sep()
 		case r == '>' || r == '<':
 			if isAllDigits(cur.String()) { // the fd of 2>/dev/null is no argument
 				cur.Reset()
@@ -348,10 +341,31 @@ func (n *Normalized) scan(cmd string) {
 		}
 	}
 	flush()
-	if sc.depth != 0 {
-		sc.failed = true
+	sc.toks = append(sc.toks, sc.held...)
+	sc.held = nil
+	return i
+}
+
+// quotedSub scans the $( or backtick substitution at rs[j] inside double
+// quotes, which the shell runs like an unquoted one, and returns the index
+// of its close.
+func (sc *scanner) quotedSub(n *Normalized, rs []rune, j int) (int, bool) {
+	from, stop := j+1, '`'
+	switch {
+	case rs[j] == '$' && j+1 < len(rs) && rs[j+1] == '(':
+		from, stop = j+2, ')'
+	case rs[j] != '`':
+		return 0, false
 	}
-	n.eat(&sc)
+	var sub scanner
+	end := sub.words(n, rs, from, stop)
+	sc.failed = sc.failed || sub.failed || end >= len(rs)
+	sc.held = append(sc.held, token{kind: tokSep})
+	sc.held = append(append(sc.held, sub.toks...), token{kind: tokSep})
+	if n.ForceAsk == "" {
+		n.ForceAsk = "command substitution inside quotes"
+	}
+	return end, true
 }
 
 // readRedirectOp reads a redirect operator starting at rs[i]; returns the

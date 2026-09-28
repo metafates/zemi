@@ -179,7 +179,7 @@ func TestNormalizeSegments(t *testing.T) {
 }
 
 func TestSubstitutionIsSegment(t *testing.T) {
-	for _, cmd := range []string{"echo $(rm -rf x)", "echo `rm -rf x`"} {
+	for _, cmd := range []string{"echo $(rm -rf x)", "echo `rm -rf x`", `echo "$(rm -rf x)"`, "echo \"`rm -rf x`\""} {
 		if n := Normalize(cmd); !slices.Contains(n.Segments, "rm -rf x") {
 			t.Errorf("%s: substitution must cut into its own segment: %q", cmd, n.Segments)
 		}
@@ -327,7 +327,7 @@ func TestRedirectGates(t *testing.T) {
 }
 
 func TestUnbalancedFails(t *testing.T) {
-	for _, cmd := range []string{`echo "unterminated`, `echo $(unclosed`, `echo (x`} {
+	for _, cmd := range []string{`echo "unterminated`, `echo $(unclosed`, `echo (x`, `echo "$(ls"`, "echo \"`ls\""} {
 		if o := store(t, Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow}).CheckCommand(cmd, ""); o.Decision != Deny {
 			t.Fatalf("%q must fail closed, got %v", cmd, o.Decision)
 		}
