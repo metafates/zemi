@@ -483,7 +483,7 @@ func (h *Host) environmentPrompt() string {
 		return env
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n\n# Environment\nWorking directory: %s\nPlatform: %s/%s\nDate at session start: %s\n", h.Dirs.ProjectDir, runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"))
+	fmt.Fprintf(&b, "\n\n# Environment\nWorking directory: %s\nPlatform: %s/%s\nDate at session start: %s\n", h.Dirs.ProjectDir, runtime.GOOS, runtime.GOARCH, time.Now().Format(time.DateOnly))
 	// the run's own pad goes in {Scratch}: a subagent's may be another
 	// session's
 	h.ensureScratch()

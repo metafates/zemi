@@ -29,7 +29,7 @@ func (h *Host) logNamespace(L *glua.LState) *glua.LTable {
 		rows := []any{}
 		for _, e := range slices.Backward(h.messages()) {
 			rows = append(rows, map[string]any{
-				"at": e.at.Format("15:04:05"), "ts": float64(e.at.Unix()),
+				"at": e.at.Format(time.TimeOnly), "ts": float64(e.at.Unix()),
 				"source": e.source, "message": e.text,
 			})
 		}
@@ -98,7 +98,7 @@ func (h *Host) OpenMessages() error {
 	}
 	var b strings.Builder
 	for _, e := range slices.Backward(h.messages()) {
-		b.WriteString(e.at.Format("15:04:05") + " " + e.source + "  " + e.text + "\n")
+		b.WriteString(e.at.Format(time.TimeOnly) + " " + e.source + "  " + e.text + "\n")
 	}
 	o := Overlay{ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin, Body: strings.TrimRight(b.String(), "\n")}
 	if o.Body == "" {

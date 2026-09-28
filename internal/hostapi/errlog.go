@@ -92,7 +92,7 @@ func (h *Host) errorsNamespace(L *glua.LState) *glua.LTable {
 		rows := make([]any, 0, len(entries))
 		for i, e := range slices.Backward(entries) { // newest first, like /errors
 			rows = append(rows, map[string]any{
-				"index": i, "at": e.at.Format("15:04:05"), "source": e.source, "message": e.msg,
+				"index": i, "at": e.at.Format(time.TimeOnly), "source": e.source, "message": e.msg,
 			})
 		}
 		L.Push(lua.FromGo(L, rows))
@@ -132,7 +132,7 @@ func (h *Host) OpenErrors(args string) error {
 		if f[0] == "ask" {
 			e := entries[i]
 			prompt := fmt.Sprintf("zemi recorded this error at %s from %s. Load the zemi-debug skill, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s",
-				e.at.Format("15:04:05"), e.source, e.msg)
+				e.at.Format(time.TimeOnly), e.source, e.msg)
 			h.GoSafe("errors ask", func() {
 				if err := h.AgentSend(prompt); err != nil {
 					h.Notify(logging.Error, "Could not send", h.friendlyError(err))
@@ -145,7 +145,7 @@ func (h *Host) OpenErrors(args string) error {
 	items := make([]any, 0, len(entries))
 	noModel := h.modelErr(h.currentModelID(nil))
 	for i, e := range slices.Backward(entries) {
-		at := e.at.Format("15:04:05")
+		at := e.at.Format(time.TimeOnly)
 		var actions []any
 		if noModel == nil {
 			actions = append(actions, map[string]any{"text": "Ask zemi to fix it", "hotkey": "a", "run": fmt.Sprintf("errors ask %d", i)})

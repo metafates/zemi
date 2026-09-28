@@ -1423,10 +1423,13 @@ const (
 
 var waitings = []Waiting{WaitApproval, WaitPlan, WaitAnswer}
 
+// ClockLayout formats UIState.Time, the wall clock widgets show.
+const ClockLayout = "15:04"
+
 // UIState is the context snapshot passed to widget renders.
 type UIState struct {
-	Time  string
-	Frame int // the 50ms frame clock the spinner, eyes and shimmer step on; 0 with ui.animations off
+	Time  string // the wall clock in ClockLayout, stepped once a minute
+	Frame int    // the 50ms frame clock the spinner, eyes and shimmer step on; 0 with ui.animations off
 
 	Ended          TurnEnd // how the turn that ended a moment ago ended; "" after that
 	QuitArmed      bool    // a second ctrl+c quits

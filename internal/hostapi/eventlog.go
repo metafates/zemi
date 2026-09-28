@@ -90,7 +90,7 @@ func (h *Host) eventLogFn(L *glua.LState) int {
 			continue
 		}
 		ev := eventTable(e.name, e.from, e.payload)
-		ev["at"], ev["ts"] = e.at.Format("15:04:05"), float64(e.at.UnixMilli())/1000
+		ev["at"], ev["ts"] = e.at.Format(time.TimeOnly), float64(e.at.UnixMilli())/1000
 		rows = append(rows, ev)
 	}
 	L.Push(lua.FromGo(L, rows))
@@ -120,7 +120,7 @@ func (h *Host) notifyListFn(L *glua.LState) int {
 	rows := make([]any, 0, len(notes))
 	for _, n := range slices.Backward(notes) {
 		rows = append(rows, map[string]any{
-			"at": n.at.Format("15:04:05"), "ts": float64(n.at.UnixMilli()) / 1000,
+			"at": n.at.Format(time.TimeOnly), "ts": float64(n.at.UnixMilli()) / 1000,
 			"level": n.level, "title": n.title, "body": n.body,
 		})
 	}

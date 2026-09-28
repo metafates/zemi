@@ -458,11 +458,11 @@ func (s *Sandbox) date(L *glua.LState) int {
 				b.WriteString("PM")
 			}
 		case 'c':
-			b.WriteString(t.Format("Mon Jan _2 15:04:05 2006"))
+			b.WriteString(t.Format(time.ANSIC))
 		case 'x':
 			b.WriteString(t.Format("01/02/06"))
 		case 'X':
-			b.WriteString(t.Format("15:04:05"))
+			b.WriteString(t.Format(time.TimeOnly))
 		case '%':
 			b.WriteByte('%')
 		default:

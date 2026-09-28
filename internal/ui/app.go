@@ -561,7 +561,7 @@ func (a *App) onFrame() tea.Cmd {
 	now := time.Now()
 	a.pruneToasts(now)
 	// A minute change re-renders time-reading widgets.
-	if ts := now.Format("15:04"); ts != a.timeStr {
+	if ts := now.Format(hostapi.ClockLayout); ts != a.timeStr {
 		a.timeStr = ts
 		a.frameGen++
 	}
