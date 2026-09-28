@@ -760,15 +760,19 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 		req.Tool = t.info.Name
 		v := run.CheckDenied(req)
 		run.verdict = v
+		// a command is not echoed: the model has its call and the row shows it
+		what := req.Subject
+		switch {
+		case PathSubject(req.Subject):
+			what += " " + workRel(req.Arg) // as the ask showed it
+		case req.Subject != perm.SubjectBash:
+			what += " " + req.Arg
+		}
 		if v.Decision == perm.Deny {
-			what := req.Arg
-			if PathSubject(req.Subject) {
-				what = workRel(what) // as the ask showed it
-			}
-			return fantasy.NewTextErrorResponse(DeniedText(v, req.Subject+" "+what)), nil
+			return fantasy.NewTextErrorResponse(DeniedText(v, what)), nil
 		}
 		if v.Decision == perm.Ask {
-			return fantasy.NewTextErrorResponse("permission unresolved (ask failed): " + req.Subject + " " + req.Arg + ": " + v.Reason), nil
+			return fantasy.NewTextErrorResponse("permission unresolved (ask failed): " + what + ": " + v.Reason), nil
 		}
 		if pol := run.SandboxFor(req, v); pol != nil {
 			run.Sandboxed = pol

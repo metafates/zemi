@@ -323,7 +323,7 @@ func TestSandboxHintForPlanner(t *testing.T) {
 }
 
 // TestAskDenialText: a denied ask tells the model who decided and why it
-// asked, not how the rules failed to match.
+// asked, not how the rules failed to match, and does not echo the command.
 func TestAskDenialText(t *testing.T) {
 	for _, c := range []struct{ by, why, want string }{
 		{"user", "run outside the sandbox", "it asked because run outside the sandbox"},
@@ -333,7 +333,7 @@ func TestAskDenialText(t *testing.T) {
 		p, _ := testPipeline(t, false)
 		p.Ask = func(Request) (bool, string, string) { return false, c.by, c.why }
 		resp := call(t, All(p)[0], `{"command":"echo j > out.txt"}`)
-		if !resp.IsError || !strings.HasSuffix(resp.Content, "echo j > out.txt: "+c.want) {
+		if !resp.IsError || resp.Content != "permission denied ("+c.by+"): tool.bash: "+c.want {
 			t.Errorf("%s: %q", c.by, resp.Content)
 		}
 	}
