@@ -970,7 +970,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   the terminal never reports raises, `checkKey`). Printable and composer editing keys stay with
   the composer - scrolling is on `pgup`/`pgdown`/`shift+up`/`shift+down`/`ctrl+home`/`ctrl+end` - and chrome, an open
   palette and completion popups keep their keys before keymaps are consulted; a `list = true`
-  binding swaps a key for a move there first (`Keymaps.ListAlias`, in Go). A focused node
+  binding swaps a key for a move there first (`Keymaps.ListAlias`, in Go), but for a move a typed
+  line edits with while one types (`lineKey`, `App.typing`). A focused node
   takes every key but ctrl+c through `Keymaps.Lookup(focus, key)`: `{ focus = id }` bindings
   first unless a more trusted global binding holds the key; unbound keys drop and an unbound
   esc returns the keys.

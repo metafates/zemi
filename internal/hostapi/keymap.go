@@ -148,6 +148,9 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 			err = errors.New("focus and list do not combine")
 		case err == nil && list && strings.Contains(key, " "):
 			err = errors.New("a list key is one key")
+		case err == nil && list && slices.Contains([]string{"enter", "esc", "tab", "shift+tab", "space", "backspace"}, key):
+			// taking one would leave a prompt no way to answer or close
+			err = fmt.Errorf("%s is a key the lists answer with", key)
 		}
 		if err != nil && what != "get" {
 			L.RaiseError("zemi.keymap.%s: %v", what, err)

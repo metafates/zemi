@@ -684,11 +684,18 @@ func TestListAlias(t *testing.T) {
 			want := max(st.view.pageItems(len(st.visible))/2, 1)
 			return map[bool]string{false: fmt.Sprintf("selected %d, want %d", st.selected, want)}[st.selected == want && want > 1]
 		}},
+		{"an alias of ctrl+u leaves the draft under a popup alone", func(a *App) {
+			runLua(t, a, `zemi.command.add("aa", function() end)`)
+			pressKeys(a, "/a")
+		}, "ctrl+b", func(a *App) string {
+			return map[bool]string{false: fmt.Sprintf("composer %q", a.composer.text)}[a.composer.text == "/a"]
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, _ := bootAgentApp(t, 80, 20)
 			runLua(t, app, `zemi.keymap.set("ctrl+j", "down", { list = true })
-zemi.keymap.set("ctrl+f", "ctrl+d", { list = true })`)
+zemi.keymap.set("ctrl+f", "ctrl+d", { list = true })
+zemi.keymap.set("ctrl+b", "ctrl+u", { list = true })`)
 			c.setup(app)
 			pressKeys(app, c.key)
 			if msg := c.check(app); msg != "" {

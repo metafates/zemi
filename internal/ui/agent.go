@@ -199,14 +199,19 @@ var oneRow = [][]hostapi.Segment{nil}
 
 // scrollChoiceBody is a prompt's body fit to h rows: text scrolled in v at
 // textW, the choice rows act draws (compact once the box squeezes), and a
-// hint row w wide with the page keys while the text overflows.
-func scrollChoiceBody(h, w int, v *viewport, text func(int) [][]hostapi.Segment, textW int, act func(compact bool) [][]hostapi.Segment, hints ...hintPair) [][]hostapi.Segment {
+// hint row w wide with the page keys while the text overflows and no line
+// types, since a typed line keeps ctrl+u.
+func scrollChoiceBody(h, w int, v *viewport, text func(int) [][]hostapi.Segment, textW int, act func(compact bool) [][]hostapi.Segment, typing bool, hints ...hintPair) [][]hostapi.Segment {
 	return fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight := level > 0
 		list := act(level > 1)
 		v.viewH = max(h-2-len(stack(tight, oneRow, list, oneRow))+1, 1)
 		rows := v.window(v.wrap(text, textW), textW)
-		hintRow := hint(w, slices.Concat(hints, scrolls(*v))...)
+		pairs := hints
+		if !typing {
+			pairs = slices.Concat(hints, scrolls(*v))
+		}
+		hintRow := hint(w, pairs...)
 		return stack(tight, rows, list, [][]hostapi.Segment{hintRow}), v.viewH < min(v.rows, 3)
 	})
 }

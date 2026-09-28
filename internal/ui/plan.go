@@ -62,7 +62,7 @@ func (a *App) finishPlan(v tools.PlanVerdict, ok bool) {
 func (a *App) planKey(key, text string) {
 	p := a.planAsk
 	defer a.bump()
-	if !(p.typing && halfPage(key)) && scrollKey(&p.view, key, false) || !p.typing && moveSel(&p.sel, 2, 2, key) {
+	if !(p.typing && lineKey(key)) && scrollKey(&p.view, key, false) || !p.typing && moveSel(&p.sel, 2, 2, key) {
 		return
 	}
 	if p.typing {
@@ -113,7 +113,7 @@ func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 		}
 		return emptyRows("The plan is empty.", w)
 	})
-	body := scrollChoiceBody(h, inner, &p.view, md, planW, func(bool) [][]hostapi.Segment { return act }, hints...)
+	body := scrollChoiceBody(h, inner, &p.view, md, planW, func(bool) [][]hostapi.Segment { return act }, p.typing, hints...)
 	badge := ""
 	if p.mode != "" {
 		badge = "back to " + p.mode + " on approve"

@@ -334,7 +334,7 @@ func (a *App) memDetailBox(it hostapi.MemoryRow, w, h, inner int) [][]hostapi.Se
 		return rows
 	}
 	act := func(compact bool) [][]hostapi.Segment { return choiceRows(acts, mr.act, inner, compact) }
-	body := scrollChoiceBody(h, inner, &mr.body, text, textW, act, pickHint, hintPair{"esc", "back"})
+	body := scrollChoiceBody(h, inner, &mr.body, text, textW, act, false, pickHint, hintPair{"esc", "back"})
 	return promptBox("Memory / "+sanitize.Line(it.Text), "", body, w, h, 100, &mr.size)
 }
 

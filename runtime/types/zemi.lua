@@ -292,7 +292,7 @@ function zemi.config.reload() end
 ---@class zemi.KeymapOpts
 ---@field desc? string Shown in /help.
 ---@field focus? string A focusable layout node id: the binding works only while that node has the keys (zemi.ui.focus), and there it may start with a printable key ("j", "g g").
----@field list? boolean A list alias: while a list, a composer popup or a prompt has the keys, the key makes the move the action names ("up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"), resolved without calling Lua. One non-printable key. User config only.
+---@field list? boolean A list alias: while a list, a composer popup or a prompt has the keys, the key makes the move the action names ("up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"), resolved without calling Lua. One non-printable key, not one the lists answer with. User config only.
 
 ---@class zemi.Keymap
 ---@field key string
@@ -352,7 +352,9 @@ zemi.keymap = {}
 ---
 --- With `opts.list` the key moves in every list, popup and prompt, and stays
 --- what it was elsewhere: `zemi.keymap.set("ctrl+j", "down", { list = true })`
---- (ctrl+j is still the composer's newline).
+--- (ctrl+j is still the composer's newline). While a line types, an alias to
+--- home, end or ctrl+u keeps the key's own meaning, since the line edits with
+--- those. enter, esc, tab, shift+tab, space and backspace raise.
 ---
 --- Host actions: zemi.composer.{submit,history_prev,history_next,paste,edit},
 --- zemi.composer.insert <text> (these user config only),

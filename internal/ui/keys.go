@@ -28,8 +28,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// held key prefix never outlives a key that bypasses keySequence
 	elsewhere := top != noModal || a.palette.open || a.completion.shown()
 	// a list alias (zemi.keymap.set with list = true) swaps the key before
-	// any list, popup or prompt sees it
-	if b := a.host.Keymaps.ListAlias(key); elsewhere && b != nil {
+	// any list, popup or prompt sees it, but for a move a typed line edits with
+	if b := a.host.Keymaps.ListAlias(key); elsewhere && b != nil && !(lineKey(b.RHS.Move) && a.typing(top)) {
 		key, msg = b.RHS.Move, tea.KeyPressMsg{}
 	}
 	if elsewhere || key != a.armed.key {
@@ -205,9 +205,8 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	t := keyText(msg)
 	defer c.snapshot(composerSnap{c.text, c.cursor}, t != "" && t != " ")
 
-	// Popups take the list moves but for the ones that edit text: k, j,
-	// home, end and the half pages, which a ten-row popup has no use for.
-	popupMove := !slices.Contains([]string{"k", "j", "home", "end"}, key) && !halfPage(key)
+	// Popups take the list moves but for the ones that edit the draft.
+	popupMove := key != "k" && key != "j" && !lineKey(key)
 	if p := &a.palette; p.open {
 		if popupMove && moveSel(&p.selected, p.count(), p.view.viewH, key) {
 			p.moved = true
@@ -445,9 +444,30 @@ func listMove(key string) int {
 	return 0
 }
 
-// halfPage reports whether key is a half-page move, which an input row
-// takes for itself: ctrl+u deletes to the line start there.
-func halfPage(key string) bool { return key == "ctrl+d" || key == "ctrl+u" }
+// lineKey reports whether a list move is a key a typed line edits with,
+// which the line keeps: home, end and ctrl+u, which deletes to its start.
+func lineKey(key string) bool { return key == "home" || key == "end" || key == "ctrl+u" }
+
+// typing reports whether the keys go to a line being typed: the draft, a
+// filter, an input overlay or a typed answer.
+func (a *App) typing(top modal) bool {
+	switch top {
+	case noModal:
+		return true
+	case modalOverlay:
+		st := &a.overlays[len(a.overlays)-1]
+		return st.o.Input || st.active
+	case modalMemReview:
+		return a.memReview.active && !a.memReview.detail
+	case modalPlan:
+		return a.planAsk.typing
+	case modalQuestion:
+		qp := a.question
+		return !qp.reviewing() && qp.states[qp.at].typing
+	default:
+		return false
+	}
+}
 
 // runRHS executes a keymap right-hand side on the background worker.
 func (a *App) runRHS(b *hostapi.KeyBinding) {

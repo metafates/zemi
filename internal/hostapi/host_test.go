@@ -384,6 +384,7 @@ func TestKeymapFromLua(t *testing.T) {
 			{ "ctrl+k", "help", { list = true } }, -- not a move
 			{ "ctrl+k", function() end, { list = true } },
 			{ "ctrl+k", "down", { list = true, focus = "sidebar" } },
+			{ "enter", "down", { list = true } }, -- a key the lists answer with
 		}) do
 			assert(not pcall(zemi.keymap.set, bad[1], bad[2], bad[3]), "bound the alias " .. bad[1])
 		end

@@ -418,12 +418,10 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	if key == "space" && o.Reload != nil && !st.active {
 		text = "" // space toggles rows in a toggle list, and types into an open filter
 	}
-	// a body that overflows takes the scroll keys, and the list keys too
-	// when there is no list to move in
-	if !(st.active && halfPage(key)) && st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) {
-		return nil
-	}
-	if !st.back && st.edit(key, text) || moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
+	// a filter takes its keys first; then a body that overflows takes the
+	// scroll keys, and the list keys too when there is no list to move in
+	if !st.back && st.edit(key, text) || st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) ||
+		moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
 		return nil
 	}
 	// a row's key acts like enter on it; one printable character, so no

@@ -742,9 +742,13 @@ global binding holds, so a plugin panel cannot shadow the user's keys.
 A binding with `{ list = true }` is a list alias: while a list, a
 composer popup or a prompt has the keys, its key makes the move its action
 names (`down`, `ctrl+d`, ...), swapped in Go before the list sees it, so a
-list never waits on Lua. It is one non-printable key, and only user config
-binds one, since it reaches the permission prompt. This is neovim's
-`pumvisible()` mapping as data.
+list never waits on Lua; while a line types (the draft under a popup, a
+filter, a typed answer) a move the line edits with, `home`, `end` or
+`ctrl+u`, is not swapped and the key keeps its own meaning. It is one
+non-printable key other than the ones lists answer with (enter, esc, tab,
+shift+tab, space, backspace), and only user config binds one, since it
+reaches the permission prompt. This is neovim's `pumvisible()` mapping as
+data.
 Key notation
 matches bubbletea's strings (`ctrl+s`, `alt+enter`, `esc`; named keys are
 lowercased); a string action in `zemi.keymap.set` resolves to a registered
@@ -1615,7 +1619,9 @@ provenance string.
   transcript (the wheel too: mouse cell motion is captured because the altscreen has no
   native scrollback); in lists `ctrl+d`/`ctrl+u` move half a page, and
   scroll a box's text when it overflows, which the footer names as
-  `ctrl+d/u scroll`. A scrolled-back viewport is anchored on the rows it
+  `ctrl+d/u scroll`. A typed line keeps `ctrl+u` for its text, and the
+  composer popups keep `home` and `end` for the draft too, so while a line
+  types the footer names no scroll keys. A scrolled-back viewport is anchored on the rows it
   shows, not on a row number, so a resize, an expanded thought or a new
   turn leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`, `/mode`,

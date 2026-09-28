@@ -83,7 +83,8 @@ func TestPlanEditKeys(t *testing.T) {
 
 // TestPlanScroll: the plan's text scrolls a line on shift+arrows and half
 // the view on ctrl+d/u, the list keys move the buttons, and ctrl+u edits a
-// typed change. top counts lines plus halves of the view.
+// typed change while ctrl+d still scrolls. top counts lines plus halves of
+// the view.
 func TestPlanScroll(t *testing.T) {
 	for _, c := range []struct {
 		name               string
@@ -96,6 +97,7 @@ func TestPlanScroll(t *testing.T) {
 		{"ctrl+u goes back", []string{"ctrl+d", "ctrl+d", "ctrl+u"}, 0, 1, 0, ""},
 		{"j moves the button, not the text", []string{"j"}, 0, 0, 1, ""},
 		{"ctrl+u while typing changes edits the input", []string{"e", "xy", "ctrl+u", "z"}, 0, 0, 0, "z"},
+		{"ctrl+d while typing changes scrolls", []string{"e", "x", "ctrl+d"}, 0, 1, 0, "x"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, _ := bootAgentApp(t, 70, 18)
