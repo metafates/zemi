@@ -17,7 +17,7 @@ import (
 )
 
 // newPluginPrompt rides behind /plugins new; the procedure lives in the zemi skill.
-const newPluginPrompt = "I want a new zemi plugin that does what the command above says; ask me when it says nothing. Load the zemi skill and follow the New plugin steps in its plugins.md, its tests written and passing."
+const newPluginPrompt = "I want a new zemi plugin that does what the command above says; ask me when it says nothing. Load the zemi skill and follow the Plugin steps in its plugins.md: tests, not this session, are the check."
 
 // pluginsCommands is /plugins: the zemi plugins verbs plus new, toggle and
 // open, which need the screen.

@@ -8,21 +8,21 @@ A plugin is a directory shaped like the config dir, in the local plugins directo
   lua/<name>/init.lua    require("<name>") from the plugin and the user's init.lua
   skills/  agents/  commands/  workflows/    as in the config dir; the user's and zemi's own win a
                          name, and a skill's zemi-skill.lua does not run
-  tests/<topic>.lua     its tests (Testing, below); shared code in tests/lib/
+  tests/<topic>.lua      its tests (Testing, below); shared code in tests/lib/
 ```
 
 There is no manifest: the version is the checked-out `vX.Y.Z` tag, the source the `origin` remote. `installed/<name>/` holds the clones the user manages with `/plugins` (or `zemi plugins` in a shell: install from a git URL, check and update, turn on and off, delete, which removes a local plugin too); `<data>/plugins/disabled` lists the names turned off. You never write there; to change one, the user deletes it and you clone it into `local/`. A local plugin named like an installed one, or a symlink in `local/`, does not load.
 
-## New plugin
+## Plugin steps
 
-The user asked for one, or `/plugins new` sent you here:
+`/plugins new` sends you here, or the user asked for a plugin or a change to one. A plugin is checked by its tests, never by trying it in this session.
 
-1. Read `lua.md`. Unless the request already says, ask with the `question` tool what the plugin should do and where it shows up: a command, a key, a statusline widget, a tool the model calls, an event handler or a theme. Ask whether anything that runs on its own (a timer, an event handler that acts, a network call, a message to the agent) should be on from the start.
-2. Before writing code, check whether zemi already does it. With the Lua tool, read `zemi.config.schema()`, `zemi.command.list()`, `zemi.keymap.list()`, `zemi.ui.widget.list()` and `zemi.tool.list()`; also read the shipped UI source and the plugins directory. If a setting, a shipped command, a prompt command (`commands/<name>.md`) or a workflow does the job, say which, offer that instead, and write a plugin only if the user still wants one.
-3. Pick a name nothing registers yet and say in one message what you will write: `local/<name>/init.lua`, `lua/<name>/init.lua` and a `README.md` naming its commands, keys, `setup` options and every rule it needs.
-4. Write it to work with no line in the user's init.lua (below), `init.lua` first: that write creates the plugin and is the one the user approves, so it shows them the code. Then run `zemi.config.reload()`, and in a second Lua tool script check `zemi.errors.list()` and the plugin's `/plugins` row, and try what it registered (`zemi.command.run`, `zemi.ui.screenshot()`).
-5. Write `tests/<name>.lua`, run `zemi plugins test <name>` and fix until it passes.
-6. Tell the user what it registered, that `/plugins` turns it off, and which README lines they may add to init.lua for more. Do not add them yourself.
+1. New: unless the request already says, ask with the `question` tool what the plugin should do and where it shows up (a command, a key, a statusline widget, a tool the model calls, an event handler, a theme), and whether anything that runs on its own (a timer, an event handler that acts, a network call, a message to the agent) should be on from the start. In one Lua tool script, check that zemi does not do it already: `zemi.config.schema()`, `zemi.command.list()`, `zemi.keymap.list()`, `zemi.ui.widget.list()` (id, region, priority) and `zemi.tool.list()`. If a setting, a command, a prompt command (`commands/<name>.md`) or a workflow does the job, offer that instead. A change: read the plugin's files first and ask only if the request is unclear.
+2. Say in one message what you will write. A new plugin takes a name nothing registers yet and is `init.lua`, `lua/<name>/init.lua`, `tests/<topic>.lua`, a `README.md` naming its commands, keys, `setup` options and every rule it needs, and `stylua.toml` (below). Write `init.lua` first: that write creates the plugin and is the one the user approves, so it shows them the code.
+3. Write the code and its tests together, indented with tabs: each thing the user can see gets a case, and a fix starts with the case that fails without it. Read `lua.md` only for API you do not know (waiting on a job, HTTP or a model, a permission rule); for what a widget's render gets, grep `@class zemi.WidgetCtx` in the types file and read that block.
+4. Run `zemi plugins test <name>` with bash and fix until it passes. Name the plugin, not its path: with a sandbox, auto mode runs that without asking. The tests are the check: do not try the plugin in this session (`zemi.command.run`, keys, `zemi.ui.screenshot()`, widget listings) unless the user asks, and write the tests even then.
+5. Then, once: `zemi.config.reload()` alone in one Lua tool script and `zemi.errors.list()` in the next, since the reload lands after the script that asked for it returns. Only this shows a clash with the user's own config (a key or an id they hold). Fix a `plugin <name>:` error and go back to 4.
+6. Tell the user what it registered or what changed, that `/plugins` turns it off, and which README lines they may add to init.lua. Do not add them yourself.
 
 `init.lua` registers what the plugin is for, with defaults, so it works the moment it loads with no line in the user's init.lua: its commands, its widgets (rendering `{}` until they have something to say), its tool, and keys only where `zemi.keymap.get(key)` is nil. What the user did not ask for stays off until `setup(opts)` turns it on: timers and polling beyond what its own widgets need, event handlers that act (sending to the agent, vetoing a submit or a tool call), network calls, a key someone else holds. Keep `setup` safe to call again, and start gated calls on `app.ready`: the user's allow rules are added after the plugin's init.lua runs.
 
@@ -88,6 +88,26 @@ zemi.permission.rule.add({
 require("branch").setup({ interval = 10000 })
 ```
 
+`stylua.toml`, the same in every plugin, so the user's editor formats it the way zemi's own Lua is:
+
+```toml
+# Every option stylua 2.0 knows is pinned. block_newline_gaps (2.2+) is not:
+# its default is what older builds do, and naming it makes 2.0 and 2.1 refuse the file.
+syntax = "Lua51"
+column_width = 120
+line_endings = "Unix"
+indent_type = "Tabs"
+# how wide a tab counts against column_width: four cells, as zemi draws one
+indent_width = 4
+quote_style = "AutoPreferDouble"
+call_parentheses = "Always"
+collapse_simple_statement = "Always"
+space_after_function_names = "Never"
+
+[sort_requires]
+enabled = false
+```
+
 ## Identity and permissions
 
 Identity: a plugin's code runs as the plugin wherever it is called from, its `setup()` in the user's init.lua included. A command, keymap, widget, theme, tool, completion source or health row another plugin registered first (by name) is refused, with both named in `/errors`, and a user or builtin one always wins, so prefix ids with the plugin name and bind only keys nothing else uses. Its `zemi.state` keys are its own (stored under `plugin:<name>:`) and go when it is deleted or installed again. Only it answers `require("<name>...")`, and another plugin gets its modules read-only.
@@ -103,14 +123,35 @@ So a plugin looks like zemi: colors are theme groups (`Accent`, `Dim`, `Ok`, `Wa
 ## Developing one
 
 - Reads under `local/` need no approval. Writes ask the user, with no always answer and no mode but yolo settling them, since plugin code runs in every project; the exception is the plugin you created: once the user approved the write that created its directory, auto mode settles your later edits there until zemi exits (its `.git` aside), while any other plugin asks every time. Say in one message what you will write.
-- zemi reloads within a second of an edit once no turn runs; `zemi.config.reload()` from the Lua tool applies it as soon as the script returns. A load error is in `zemi.errors.list()` (`plugin <name>: ...`), and the plugin's `/plugins` row reads `failed` with the error in its detail.
+- zemi reloads within a second of an edit once no turn runs (Plugin steps say when to reload yourself). A load error is in `zemi.errors.list()` (`plugin <name>: ...`), and the plugin's `/plugins` row reads `failed` with the error in its detail.
 - zemi writes the plugin's `.luarc.json` (editor types, with this machine's paths): never write it, and add it to `.gitignore` when publishing.
 - The sandbox hides a plugin's `.git`, so git there needs `sandbox: false`, which asks each time outside yolo.
 - Moving a feature out of the config dir is the one plugin task that edits init.lua: say which lines leave it and which stay, and wait for the user's yes. Then put its registrations in `local/<name>/init.lua` and its modules in `lua/<name>/`, leave `require("<name>").setup(...)` in the user's init.lua, and keep there what only user config may do (replacing a shipped widget, `hl.set`, layout, settings). Its allow rules keep working (a rule with no `principal` covers every caller); add the principal to narrow them. Its old `zemi.state` keys stay behind.
 
 ## Testing
 
-`zemi plugins test <name|dir> [pattern]` runs each case of `tests/*.lua` in a fresh zemi holding only the plugin: no user config, no rules, and a clock only `test.advance` moves. The file's top level runs where init.lua would, before `app.ready`, so stub there what the plugin calls at boot. A job, HTTP request, model ask, agent send or `zemi.fs` write raises unless `test.stub` answers it, and a failing case prints the stub line to add. The drivers reach only what the plugin registered; `zemi.test` in the types lists them with the reply and request fields. Plugin code can tell it is under test, so passing tests are no review of what it does. `tests/branch.lua` for the plugin above:
+`zemi plugins test <name|dir> [pattern]` runs every case of `tests/*.lua` in a fresh zemi holding only the plugin: no user config, no rules, a clock at 2026-01-01 00:00 UTC that only `test.advance` moves. Each top-level file there is a test file, and one that declares no case fails; code the files share goes in a subdirectory (`tests/lib/x.lua`, loaded with `require("./lib/x")`). A file's top level runs where init.lua would, before `app.ready`: stub there what the plugin calls at boot. Drivers run only inside a case. A job, HTTP request, model ask, agent send or `zemi.fs` write raises unless a stub answers it, and the error names the stub to add. Drivers wait until zemi is quiet and return `nil, err` instead of raising, so call them bare, never under `pcall` or `test.raises`; an error zemi records meanwhile fails the case at the call.
+
+```
+local test = zemi.test
+test(name, fn)                  a case, at the file's top level
+test.run(cmd, args?)            the plugin's command as typed -> true | nil, err
+test.keys("ctrl+x d")           what the plugin bound a key sequence to -> true | nil, err
+test.tool(name, input)          the model's call of the plugin's tool -> output | nil, err
+test.render(id, ctx?)           a widget's lines as text, then as segments (width 80, height 1)
+test.click(id, click)           the widget's on_click for a segment's click id
+test.emit(event, ev?)           a host event to the plugin's handlers
+test.complete(line)             the rows the plugin's completion offers for a draft line
+test.overlay()                  the top overlay { id, title, body, items, input }, or nil
+test.answer(choice, action?)    enter on an item (index or text) or its action; nil is esc
+test.advance(ms)                move the clock, firing due timers
+test.stub(subject, pattern?, reply?) -> requests
+                                answer lua.http.<method>, lua.job.start, lua.model.ask,
+                                lua.agent.send or lua.fs.write; false refuses like a missing rule
+test.eq(got, want)  test.neq(got, other)  test.contains(s, sub)  test.raises(fn, sub?) -> message
+```
+
+Prefer `eq` with the exact value: `neq` passes on any wrong one. Reply fields and their defaults: http `{ status = 200, body = "", headers = {} }`, job `{ code = 0, stdout = "", stderr = "" }`, model a string or `{ text }`; `{ error = "..." }` fails at the transport. Plugin code can tell it is under test, so passing tests are no review of what it does. `tests/branch.lua` for the plugin above:
 
 ```lua
 local test = zemi.test

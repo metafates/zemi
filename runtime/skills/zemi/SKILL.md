@@ -12,7 +12,7 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 | settings, providers and models, permission rules and modes, the sandbox, MCP and language servers, trust, the command line, what a slash command or key does | `config.md` |
 | Lua in init.lua or the lua tool: the API, origins, events, what may wait | `lua.md` |
 | keymaps, widgets, the statusline, themes and colors, layout | `ui.md`, then `lua.md` for API |
-| a plugin: new, changed, tested, published | `plugins.md`, then `lua.md` for API |
+| a plugin: new, changed, tested, published | `plugins.md`, which says when `lua.md` is needed |
 | a subagent or a profile | `agents.md` |
 | a skill or a prompt command | `skills.md` |
 | a workflow script | `workflows.md` |
@@ -38,4 +38,4 @@ The system prompt names the exact user config, project config and local plugins 
 
 ## Check a change
 
-Run `zemi.config.reload()` alone, then read in a second Lua tool script, which needs no approval in a trusted project: `zemi.errors.list()` (what `/errors` shows, newest first), `zemi.health.list()` (the `/health` rows), `zemi.ui.screenshot()` (the screen as text) and `zemi.ui.layout.rects()` (where each layout node landed). An init.lua change may be tried live with the Lua tool first (one approval, gone at the next reload). A plugin also gets its tests (`plugins.md`). Then tell the user the path and how to undo it.
+For a config change (a plugin is checked by its tests instead, `plugins.md`): run `zemi.config.reload()` alone, then read in a second Lua tool script, which needs no approval in a trusted project: `zemi.errors.list()` (what `/errors` shows, newest first), `zemi.health.list()` (the `/health` rows), `zemi.ui.screenshot()` (the screen as text) and `zemi.ui.layout.rects()` (where each layout node landed). An init.lua change may be tried live with the Lua tool first (one approval, gone at the next reload). Then tell the user the path and how to undo it.

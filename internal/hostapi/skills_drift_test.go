@@ -116,6 +116,17 @@ func TestBuiltinSkillReferences(t *testing.T) {
 	}
 }
 
+// TestPluginsSkillNamesEveryTestMember: plugins.md is the zemi.test
+// reference an agent reads, so it cannot lose a driver or an assertion.
+func TestPluginsSkillNamesEveryTestMember(t *testing.T) {
+	skill := builtinSkillBodies(t)["skills/zemi/plugins.md"]
+	for _, m := range bootedNamespaces(t, true)["zemi.test"] {
+		if !strings.Contains(skill, "test."+m+"(") {
+			t.Errorf("plugins.md never shows test.%s(", m)
+		}
+	}
+}
+
 // skillsText is every builtin skill file joined.
 func skillsText(t *testing.T) string {
 	t.Helper()
