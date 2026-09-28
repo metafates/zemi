@@ -109,6 +109,9 @@ for a model call on a typo. Exit status 2 is anything that fails before the root
 error is 1, and one that printed its own diagnostic returns `exitStatus`. That hook runs `-C
 dir` (`enterDir`: `PWD` follows) before anything else. Piped stdin (1 MiB at most) is attached
 behind the typed prompt, is the typed prompt itself after `-`, and is a usage error for the TUI.
+Completion offers session ids from the project store (`completeSessions`) and plugin names
+from `plugins.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
+completion function.
 Flags apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
 reads. `-m`, `/model <provider/model>` and `zemi.model.set` write
 `models.chat`, and refuse while the active profile sets its own model (`Host.ProfileModelErr`;

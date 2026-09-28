@@ -86,6 +86,9 @@ func TestCLI(t *testing.T) {
 		{name: "delete with yes", args: []string{"plugins", "delete", "--yes", "zzq"}},
 		{name: "the delete took", args: []string{"plugins"}, stdout: "rub", notStdout: "zzq"},
 		{name: "completion script", args: []string{"completion", "fish"}, stdout: "complete -c zemi"},
+		{name: "complete a session id", args: []string{"__complete", "-r", ""}, stdout: sid + "\tfix the failing test\n"},
+		{name: "complete a plugin name", args: []string{"__complete", "plugins", "enable", ""}, stdout: "rub\n"},
+		{name: "complete no session without a store", args: []string{"__complete", "-C", dir, "-r", ""}, notStdout: sid},
 		{name: "-C a missing dir", args: []string{"-C", "nope", "hi"}, code: 2, stderr: "zemi: -C nope: no such file or directory"},
 		{name: "-C a dir", args: []string{"-C", dir, "run", "hi"}, want: &options{run: true, prompt: "hi", dir: dir}},
 	} {
@@ -117,6 +120,10 @@ func TestCLI(t *testing.T) {
 		if wd, _ := os.Getwd(); c.want.dir != "" && (wd != c.want.dir || os.Getenv("PWD") != c.want.dir) {
 			t.Errorf("%s: cwd %q, PWD %q", c.name, wd, os.Getenv("PWD"))
 		}
+	}
+	// a look at sessions, completion included, creates no store
+	if stores, _ := os.ReadDir(filepath.Join(home, "state", "projects")); len(stores) != 1 {
+		t.Errorf("%d project stores, want the seeded one", len(stores))
 	}
 }
 

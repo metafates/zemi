@@ -191,6 +191,57 @@ func turnFlags(c *cobra.Command, o *options) {
 	f.StringVar(&o.mode, "mode", "", "permission `mode`: auto, yolo or one init.lua adds")
 	f.StringVar(&o.profile, "profile", "", "agent `profile`: default, planner or one of init.lua's")
 	f.Bool("trust", false, "trust the project for this run; --trust=false does not")
+	_ = c.RegisterFlagCompletionFunc("resume", completeSessions)
+}
+
+// completionDirs are the dirs a completion reads, after -C: cobra runs no
+// hook before a completion function.
+func completionDirs(c *cobra.Command) (config.Dirs, error) {
+	if dir, _ := c.Flags().GetString("cd"); dir != "" {
+		if err := enterDir(dir); err != nil {
+			return config.Dirs{}, err
+		}
+	}
+	return config.ResolveDirs()
+}
+
+// completeSessions offers this project's session ids, titled.
+func completeSessions(c *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	var out []cobra.Completion
+	dirs, err := completionDirs(c)
+	if err != nil || c.Name() == "export" && len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	db, err := projectStore(dirs)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	defer db.Close()
+	list, _ := db.ListSessions(-1)
+	for _, s := range list {
+		title := []rune(strings.Join(strings.Fields(sanitize.String(s.Title)), " "))
+		out = append(out, cobra.CompletionWithDesc(s.ID, string(title[:min(len(title), 60)])))
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
+// completePlugins offers the plugin names: every argument of update, the
+// first of the other verbs, and test's first may be a directory too.
+func completePlugins(c *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	directive := cobra.ShellCompDirectiveNoFileComp
+	if c.Name() == "test" {
+		directive = cobra.ShellCompDirectiveDefault
+	}
+	dirs, err := completionDirs(c)
+	if err != nil || c.Name() != "update" && len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	ps, _ := plugins.Scan(dirs)
+	var out []cobra.Completion
+	for _, p := range ps {
+		out = append(out, p.Name)
+	}
+	return out, directive
 }
 
 // finish checks a turn's arguments and joins them into the prompt. A lone
@@ -269,20 +320,22 @@ func pluginsCommand() *cobra.Command {
 	for _, v := range []struct {
 		use, short string
 		args       cobra.PositionalArgs
+		names      cobra.CompletionFunc
 	}{
-		{"install <git url> [name]", "clone a plugin at its highest vX.Y.Z tag", cobra.RangeArgs(1, 2)},
-		{"update [name...]", "update within the major version; every plugin without a name", cobra.ArbitraryArgs},
-		{"check", "fetch, then list the updates", cobra.NoArgs},
-		{"enable <name>", "load the plugin from the next start", cobra.ExactArgs(1)},
-		{"disable <name>", "stop loading the plugin", cobra.ExactArgs(1)},
+		{"install <git url> [name]", "clone a plugin at its highest vX.Y.Z tag", cobra.RangeArgs(1, 2), nil},
+		{"update [name...]", "update within the major version; every plugin without a name", cobra.ArbitraryArgs, completePlugins},
+		{"check", "fetch, then list the updates", cobra.NoArgs, nil},
+		{"enable <name>", "load the plugin from the next start", cobra.ExactArgs(1), completePlugins},
+		{"disable <name>", "stop loading the plugin", cobra.ExactArgs(1), completePlugins},
 	} {
-		cmd.AddCommand(&cobra.Command{Use: v.use, Short: v.short, Args: v.args, RunE: run})
+		cmd.AddCommand(&cobra.Command{Use: v.use, Short: v.short, Args: v.args, ValidArgsFunction: v.names, RunE: run})
 	}
 	// a local plugin is the user's own code with no copy anywhere, and off a
 	// terminal nobody answers, so an agent's command cannot delete one
 	del := &cobra.Command{
-		Use:   "delete <name>",
-		Short: "delete a plugin and its files; asks first",
+		Use:               "delete <name>",
+		ValidArgsFunction: completePlugins,
+		Short:             "delete a plugin and its files; asks first",
 		Args: cobra.MatchAll(cobra.ExactArgs(1), func(_ *cobra.Command, args []string) error {
 			if !yes && !term.IsTerminal(os.Stdin.Fd()) {
 				return fmt.Errorf("plugins delete: stdin is not a terminal to ask on; pass --yes to delete %s", args[0])
@@ -294,9 +347,10 @@ func pluginsCommand() *cobra.Command {
 	del.Flags().BoolVar(&yes, "yes", false, "delete without asking")
 	cmd.AddCommand(del)
 	cmd.AddCommand(&cobra.Command{
-		Use:   "test <name|dir> [pattern]",
-		Short: "run its tests, each case in a zemi of its own",
-		Args:  cobra.RangeArgs(1, 2),
+		Use:               "test <name|dir> [pattern]",
+		ValidArgsFunction: completePlugins,
+		Short:             "run its tests, each case in a zemi of its own",
+		Args:              cobra.RangeArgs(1, 2),
 		RunE: func(c *cobra.Command, args []string) error {
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
@@ -334,9 +388,10 @@ func sessionsCommand() *cobra.Command {
 		},
 	}
 	cmd.AddCommand(&cobra.Command{
-		Use:   "export <id>",
-		Short: "print a session as markdown",
-		Args:  cobra.ExactArgs(1),
+		Use:               "export <id>",
+		ValidArgsFunction: completeSessions,
+		Short:             "print a session as markdown",
+		Args:              cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			dirs, err := config.ResolveDirs()
 			if err != nil {

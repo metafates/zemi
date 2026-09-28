@@ -77,6 +77,13 @@ zemi run "explain main.go"
 git diff | zemi run "review this"
 zemi run - < task.md                # the prompt itself from stdin
 zemi -C ~/code/app run -c "and the tests?"
+```
+
+Shell completion, session ids and plugin names included:
+
+```sh
+source <(zemi completion bash)                     # in ~/.bashrc
+zemi completion zsh > "${fpath[1]}/_zemi"
 zemi completion fish > ~/.config/fish/completions/zemi.fish
 ```
 
