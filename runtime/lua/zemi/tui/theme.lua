@@ -1,11 +1,13 @@
--- whorl, the shipped theme: greys, one accent (periwinkle), and the terminal's own
--- red, green and yellow so the user's palette decides those.
+-- whorl, the shipped theme: greys, one accent (periwinkle), one warm hue
+-- (apricot) for text quoted as written, and the terminal's own red, green
+-- and yellow so the user's palette decides those.
 --
--- Widgets should reach for the semantic groups - Accent, Dim, Rule, Title,
--- Selected, Button, Danger, Warn, Ok - and everything else links to one of
--- them. Red means a failure or danger, yellow a warning.
--- That way a widget cannot pick a color that is off the identity, and
--- retinting the UI is a matter of changing the palette.
+-- Widgets reach for the semantic groups - Accent, Dim, Rule, Title,
+-- Selected, Button, Literal, Danger, Warn, Ok - and everything else links
+-- to one of them. Periwinkle is zemi and what acts; apricot is inline code
+-- and a string or number in code; red a failure or danger, yellow a
+-- warning. A widget cannot pick a color off the identity, and retinting the
+-- UI is a matter of changing the palette.
 
 ---@param palette table<string, string>
 ---@return table
@@ -24,6 +26,7 @@ local function theme(palette)
 		Title = { fg = "accent", bold = true },
 		Selected = { fg = "accent", bold = true },
 		Button = { fg = "accent" },
+		Literal = { fg = "literal" },
 		Danger = { fg = "red" },
 		Warn = { fg = "yellow" },
 		Ok = { fg = "green" },
@@ -36,7 +39,7 @@ local function theme(palette)
 		MarkdownHeading = { link = "Title" },
 		-- an inline span reads by its color: a filled background would hang
 		-- off the text as a stray block where it wraps
-		MarkdownCode = { fg = "accent" },
+		MarkdownCode = { link = "Literal" },
 		MarkdownLink = { fg = "accent", underline = true },
 		MarkdownQuote = { fg = "dim", italic = true },
 		AgentReason = { link = "Dim" },
@@ -90,6 +93,7 @@ zemi.ui.theme.add(
 		dim = "#7a7a7a",
 		rule = "#3a3a3a",
 		accent = "#9aa5f2",
+		literal = "#ebaf7f",
 		addbg = "#183018",
 		delbg = "#361010",
 	})
@@ -104,6 +108,7 @@ zemi.ui.theme.add(
 		dim = "#8e8e8e",
 		rule = "#cfcfcf",
 		accent = "#6b78d6",
+		literal = "#ab5d2b",
 		addbg = "#e7f2e2",
 		delbg = "#fae7e7",
 	})

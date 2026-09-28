@@ -423,6 +423,7 @@ var codeGroups = [...]struct {
 }{
 	{chroma.Text, "Normal"},
 	{chroma.Keyword, "Accent"},
+	{chroma.Literal, "Literal"},
 	{chroma.Comment, "Dim"},
 	{chroma.Punctuation, "Dim"},
 	{chroma.Operator, "Dim"},

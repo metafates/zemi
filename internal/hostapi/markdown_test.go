@@ -323,7 +323,8 @@ func TestHighlight(t *testing.T) {
 			"keywords and comments", "for f in a; do cat $f; done # why", "bash", 0,
 			"[for|Accent][ f in a|Normal][;|Dim][ |Normal][do|Accent][ cat $f|Normal][;|Dim][ |Normal][done|Accent][ |Normal][# why|Dim]",
 		},
-		{"a row per line", "cat <<EOF\nhi\nEOF", "bash", 0, "[cat <<EOF|Normal]/[hi|Normal]/[EOF|Normal]"},
+		{"literals", "echo \"hi\" 42", "bash", 0, "[echo |Normal][\"hi\"|Literal][ |Normal][42|Literal]"},
+		{"a row per line", "cat <<EOF\nhi\nEOF", "bash", 0, "[cat |Normal][<<EOF|Literal]/[hi|Literal]/[EOF|Literal]"},
 		{"no lexer", "x\t<y>\x1b[31m", "nope", 0, "[x    <y>|]"},
 		{"wraps", "echo alpha beta gamma", "bash", 12, "[echo alpha |Normal]/[beta gamma|Normal]"},
 	} {

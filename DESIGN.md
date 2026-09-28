@@ -1231,8 +1231,8 @@ UI extensibility contract:
   into group names from the same table as the code blocks' chroma style
   (how the chat draws a bash command), plain rows when no lexer matches.
   Glamour's styles come from the active theme's groups (`Normal`,
-  `Markdown*`, `Rule`, `Dim`, `Accent` for code keywords and `DiffAdd`/`DiffDel`
-  for a diff fence's lines), the theme's
+  `Markdown*`, `Rule`, `Dim`, and for code `Accent` keywords, `Literal` strings
+  and numbers, `DiffAdd`/`DiffDel` a diff fence's lines), the theme's
   `-light` variant on a light terminal; its output is parsed back into segments whose `hl`
   is `sgr:<params>`, an inline SGR style that only ever decodes to
   colors and attributes, never other escapes. `effect = "shimmer"` asks Go

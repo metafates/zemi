@@ -1222,9 +1222,10 @@ function zemi.ui.markdown(text, width) end
 
 --- Highlight code in `lang` (a chroma lexer name, like "bash" or "go") into
 --- one widget row per line, in the groups markdown's code blocks draw in
---- (`Accent` keywords, `Dim` comments and punctuation, `Normal` the rest),
---- each wrapped to `width` cells when given. A `lang` with no lexer comes
---- back plain. Every segment copies, so a selection copies the code.
+--- (`Accent` keywords, `Literal` strings and numbers, `Dim` comments and
+--- punctuation, `Normal` the rest), each wrapped to `width` cells when
+--- given. A `lang` with no lexer comes back plain. Every segment copies, so
+--- a selection copies the code.
 ---@param text string
 ---@param lang string
 ---@param width? integer
