@@ -19,11 +19,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
+
+	"golang.org/x/mod/semver"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/proc"
@@ -40,12 +41,9 @@ type Plugin struct {
 	Enabled   bool
 }
 
-var (
-	// a dot dir, such as a clone in flight, is never a plugin, and no name
-	// holds a dot, which require("<name>") would read as a directory
-	nameRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
-	semverRe = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)$`)
-)
+// a dot dir, such as a clone in flight, is never a plugin, and no name
+// holds a dot, which require("<name>") would read as a directory
+var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 // netTimeout bounds a clone or a fetch; other git calls get proc.Git's.
 const netTimeout = 2 * time.Minute
@@ -141,7 +139,7 @@ func Install(ctx context.Context, d config.Dirs, url, name string) (Plugin, erro
 		return Plugin{}, err
 	}
 	tags, _ := git(ctx, tmp, "tag", "--list")
-	if top, _ := highest(tags, -1); top != "" {
+	if top := highest(tags, ""); top != "" {
 		if _, err := git(ctx, tmp, "checkout", "--quiet", "refs/tags/"+top); err != nil {
 			return Plugin{}, err
 		}
@@ -181,9 +179,9 @@ func Update(ctx context.Context, d config.Dirs, name string) (Plugin, error) {
 	ctx = context.WithoutCancel(ctx)
 	to := ""
 	here, _ := git(ctx, dir, "tag", "--points-at", "HEAD")
-	if cur, cv := highest(here, -1); cur != "" {
+	if cur := highest(here, ""); cur != "" {
 		tags, _ := git(ctx, dir, "tag", "--list")
-		if top, v := highest(tags, cv[0]); slices.Compare(v[:], cv[:]) > 0 {
+		if top := highest(tags, semver.Major(cur)); semver.Compare(top, cur) > 0 {
 			to = top
 		}
 	} else if to = tagAhead(ctx, dir); to == "" {
@@ -356,12 +354,13 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 	}
 	p.URL, _ = git(ctx, dir, "config", "--get", "remote.origin.url")
 	here, _ := git(ctx, dir, "tag", "--points-at", "HEAD")
-	if cur, cv := highest(here, -1); cur != "" {
+	if cur := highest(here, ""); cur != "" {
 		p.Version = cur
 		tags, _ := git(ctx, dir, "tag", "--list")
-		if top, v := highest(tags, cv[0]); slices.Compare(v[:], cv[:]) > 0 {
+		if top := highest(tags, semver.Major(cur)); semver.Compare(top, cur) > 0 {
 			p.Latest = top
-		} else if top, v := highest(tags, -1); v[0] > cv[0] {
+		} else if top := highest(tags, ""); semver.Compare(top, cur) > 0 {
+			// nothing newer in cur's major, so a newer top is a new major
 			p.Latest = top + " (major)"
 		}
 		return p
@@ -382,7 +381,7 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 // branch checkout moves: a release tagged behind the branch is a downgrade.
 func tagAhead(ctx context.Context, dir string) string {
 	tags, _ := git(ctx, dir, "tag", "--list")
-	top, _ := highest(tags, -1)
+	top := highest(tags, "")
 	if top == "" {
 		return ""
 	}
@@ -422,24 +421,18 @@ func InstallID(dir string) string {
 	return strings.TrimSpace(firstLine(filepath.Join(dir, ".git", idFile)))
 }
 
-// highest returns the highest semver tag among the lines of tags whose major
-// is major, or of any major when major is -1.
-func highest(tags string, major int) (string, [3]int) {
-	best, bv := "", [3]int{-1}
+// highest returns the highest vX.Y.Z tag among the lines of tags in major
+// ("v1"), or in any major when major is "". A prerelease, a build suffix or
+// a shorthand like v1.2 is no release.
+func highest(tags, major string) string {
+	best := ""
 	for t := range strings.FieldsSeq(tags) {
-		m := semverRe.FindStringSubmatch(t)
-		if m == nil {
-			continue
-		}
-		var v [3]int
-		for i := range v {
-			v[i], _ = strconv.Atoi(m[i+1])
-		}
-		if (major < 0 || v[0] == major) && slices.Compare(v[:], bv[:]) > 0 {
-			best, bv = t, v
+		if semver.Canonical(t) == t && semver.Prerelease(t) == "" &&
+			(major == "" || semver.Major(t) == major) && semver.Compare(t, best) > 0 {
+			best = t
 		}
 	}
-	return best, bv
+	return best
 }
 
 // free refuses a bad name and one a local or installed plugin already has.

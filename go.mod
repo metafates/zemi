@@ -20,6 +20,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2
 	github.com/sahilm/fuzzy v0.1.3
 	github.com/yuin/gopher-lua v1.1.2
+	golang.org/x/mod v0.38.0
 	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/text v0.41.0

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"golang.org/x/mod/module"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
@@ -182,10 +183,10 @@ func versionString() string {
 }
 
 // normalizeVersion is the one name a build answers to: --version, the
-// splash and /health all print this. A pseudo-version (untagged build)
-// says nothing to a person, so it reads "dev".
+// splash and /health all print this. A pseudo-version (a build off a tag or
+// none) says nothing to a person, so it reads "dev".
 func normalizeVersion(v string) string {
-	if v == "" || v == "(devel)" || strings.HasPrefix(v, "v0.0.0-") {
+	if v == "" || v == "(devel)" || module.IsPseudoVersion(v) {
 		return "dev"
 	}
 	return v

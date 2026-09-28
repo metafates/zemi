@@ -11,6 +11,15 @@ import (
 	"github.com/metafates/zemi/internal/proc"
 )
 
+func TestHighest(t *testing.T) {
+	tags := "v1.2.3 1.9.0 v1.10.0-rc.1 v1.3 v01.4.0 v1.2.4+meta v2.0.0 junk"
+	for major, want := range map[string]string{"": "v2.0.0", "v1": "v1.2.3", "v3": ""} {
+		if got := highest(tags, major); got != want {
+			t.Errorf("highest(%q) = %q, want %q", major, got, want)
+		}
+	}
+}
+
 // TestPlugins walks one plugin tree through the CLI verbs, in order.
 func TestPlugins(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {

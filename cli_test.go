@@ -100,7 +100,9 @@ func TestNormalizeVersion(t *testing.T) {
 		"":                             "dev",
 		"(devel)":                      "dev",
 		"v0.0.0-20240101120000-abcdef": "dev",
-		"v1.2.3":                       "v1.2.3",
+		"v0.1.1-0.20260928120000-abcdef123456+dirty": "dev",
+		"v1.2.3":       "v1.2.3",
+		"v1.2.3+dirty": "v1.2.3+dirty",
 	} {
 		if got := normalizeVersion(in); got != want {
 			t.Errorf("normalizeVersion(%q) = %q, want %q", in, got, want)
