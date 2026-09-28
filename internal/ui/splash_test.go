@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -167,14 +169,17 @@ func TestFarewell(t *testing.T) {
 		title     string
 		cost      float64
 		send      bool
+		booting   bool
 		want, not []string
 	}{
-		{"no messages", 80, colorprofile.TrueColor, "t", 0, false, nil, []string{"zemi"}},
-		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, []string{"@zemi", "Fix the flaky test", "╭────╮", "cost     $0.42"}, []string{"\x1b"}},
-		{"color", 80, colorprofile.TrueColor, "t", 0, true, []string{"\x1b[38;"}, []string{"[48;", ";48;2;"}},
-		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, []string{"  @zemi  t\n"}, []string{"╭────╮"}},
-		{"untitled", 80, colorprofile.NoTTY, "zemi", 0, true, []string{"fix the build"}, []string{"more", "cost"}},
-		{"control chars", 80, colorprofile.TrueColor, "a\x1b]52;c;x\x07b", 0, true, []string{"  ab\n"}, []string{"\x1b]52"}},
+		{"no messages", 80, colorprofile.TrueColor, "t", 0, false, false, nil, []string{"zemi"}},
+		// a quit during the trust prompt: that boot step never returns
+		{"booting", 80, colorprofile.TrueColor, "t", 0, false, true, nil, []string{"zemi"}},
+		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, false, []string{"@zemi", "Fix the flaky test", "╭────╮", "cost     $0.42"}, []string{"\x1b"}},
+		{"color", 80, colorprofile.TrueColor, "t", 0, true, false, []string{"\x1b[38;"}, []string{"[48;", ";48;2;"}},
+		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, false, []string{"  @zemi  t\n"}, []string{"╭────╮"}},
+		{"untitled", 80, colorprofile.NoTTY, "zemi", 0, true, false, []string{"fix the build"}, []string{"more", "cost"}},
+		{"control chars", 80, colorprofile.TrueColor, "a\x1b]52;c;x\x07b", 0, true, false, []string{"  ab\n"}, []string{"\x1b]52"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, c.width, 30)
@@ -198,9 +203,30 @@ func TestFarewell(t *testing.T) {
 				}
 				host.AppendMessage("user", "  fix the build\nmore")
 				// whole even where the terminal wraps it
-				c.want = append(c.want, "zemi -r "+sid)
+				c.want = append(c.want, hostapi.ResumeCommand(sid))
 			}
-			out := app.Farewell()
+			if c.booting {
+				block, reached := make(chan struct{}), make(chan struct{})
+				t.Cleanup(func() { close(block) })
+				go func() {
+					_ = host.RT.Boot(context.Background(), []lua.BootStep{host.NamespacesStep(), lua.RequireStep("zemi.tui"), {
+						Name: "trust", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
+							close(reached)
+							<-block
+							return nil
+						},
+					}})
+				}()
+				<-reached
+			}
+			done := make(chan string, 1)
+			go func() { done <- app.Farewell() }()
+			var out string
+			select {
+			case out = <-done:
+			case <-time.After(3 * time.Second):
+				t.Fatal("Farewell held the exit for 3s")
+			}
 			for _, w := range c.want {
 				if !strings.Contains(out, w) {
 					t.Errorf("missing %q:\n%s", w, out)

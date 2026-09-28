@@ -9,11 +9,12 @@ zemi.ui.widget.add({
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
-		if ctx.resume == "" or ctx.transcript_count == 0 then return {} end
+		if ctx.resume == "" then return {} end
 		local title = zemi.session.title()
 		-- "zemi" is an untitled session's placeholder (the auto title had not landed)
-		if title == "" or title == "zemi" then
-			title = ""
+		if title == "zemi" then title = "" end
+		-- a viewed agent run's transcript is the run's, not the session's
+		if title == "" and not ctx.view then
 			for _, r in ipairs(ctx.transcript) do
 				if r.role == "user" and r.kind == "" then
 					title = r.text:match("^%s*([^\n]*)")

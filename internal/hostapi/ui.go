@@ -39,6 +39,11 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		if n, ok := opt[glua.LNumber](L, tb, "priority"); ok {
 			w.Priority = int(n)
 		}
+		// the exit region prints to the shell, outside zemi's chrome, beside the
+		// resume command a user copies
+		if w.Region == RegionExit && w.Origin.Rank() < lua.OriginBuiltin.Rank() {
+			L.RaiseError("zemi.ui.widget.add: only user config draws the exit region")
+		}
 		if fn, ok := opt[*glua.LFunction](L, tb, "render"); ok {
 			w.Render = fn
 		}

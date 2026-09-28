@@ -252,13 +252,18 @@ func (a *App) leave() {
 // it only once p.Run returned, so no Update runs beside it. Foreground only:
 // the shell's background is not the theme's, nor is its default text color.
 func (a *App) Farewell() string {
+	// a boot waiting on a step nobody answers now (the trust prompt) never
+	// starts its dispatcher, so a render would wait past any deadline
+	if a.host.RT.Booting() {
+		return ""
+	}
 	var b strings.Builder
 	out := &colorprofile.Writer{Forward: &b, Profile: a.colors}
+	// a hot or wedged runtime prints nothing rather than hold the exit
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
 	for _, w := range a.host.Widgets.InRegion(hostapi.RegionExit) {
-		// a hot or wedged runtime prints nothing rather than hold the exit
-		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 		lines, _, err := a.host.RenderWidget(ctx, w, cmp.Or(a.width, 80), 0, a.uiState())
-		cancel()
 		if err != nil {
 			a.log.Warn("ui", "exit widget failed", map[string]any{"widget": w.ID, "error": err.Error()})
 			continue

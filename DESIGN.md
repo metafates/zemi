@@ -1216,8 +1216,8 @@ UI extensibility contract:
 - The screen is a layout tree of regions (`header`, `chat`, `working`, `composer`,
   `statusline`, or any name) that Lua sets with `zemi.ui.layout.set`
   and Go solves and paints every frame (§8), plus an overlay stack. No layout draws the
-  `exit` region: its widgets print once to the shell after zemi quits, foreground colors
-  only (the shipped `exit` widget prints the session, `zemi -r <id>` and the cost). The shipped chat and statusline are default Lua registrations
+  `exit` region: its widgets, user or builtin only, print once to the shell after zemi quits, foreground colors
+  only (the shipped `exit` widget prints the session, the command that resumes it and the cost). The shipped chat and statusline are default Lua registrations
   in `runtime/lua/zemi/tui/` (one module per part), replaceable by id. The module is
   `zemi.tui`, since `require("zemi.ui")` returns the frozen host namespace, whose `theme`
   and `layout` members would also shadow `theme.lua` and `layout.lua`. The composer is

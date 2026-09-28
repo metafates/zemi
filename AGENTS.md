@@ -883,8 +883,10 @@ go. A content-sized node's height is the most rows it could get, never
 its last draw, so a widget that pads to `ctx.height` can still shrink. Hit testing reads the
 painted segments, never the tree. `/health` has a `layout` row naming widgets in regions the
 layout does not draw (`exit` aside). No layout draws the `exit` region: `App.Farewell` renders
-it once after `p.Run` returns cleanly and main prints it to the shell, foreground colors only
-(the shell's ground and text color are not the theme's), plain on a terminal without color; the
+it once after `p.Run` returns cleanly (nothing while a boot step waits, which no dispatcher
+would answer) and main prints it to the shell, foreground colors only (the shell's ground and
+text color are not the theme's), plain on a terminal without color. Code below builtin may not
+add to it: its text lands outside zemi's chrome, beside the resume command a user copies. The
 shipped `exit` widget (`tui/exit.lua`) prints the session and `ctx.resume`, the command
 `hostapi.ResumeCommand` builds, the one place that names the CLI's resume flag. A `composer` node with `frame` draws the square frame around the composer
 and puts the first line of the widgets in its `top`, `left` and `right` regions into the rules

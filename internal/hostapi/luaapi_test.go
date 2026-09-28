@@ -252,13 +252,17 @@ func TestHighlightOverride(t *testing.T) {
 	}
 }
 
-// TestWidgetDel: a widget is removed by its own origin or a more trusted
-// one, and del reports whether there was one.
-func TestWidgetDel(t *testing.T) {
+// TestWidgetOrigins: a widget is removed by its own origin or a more trusted
+// one, del reports whether there was one, and code below builtin cannot
+// print to the shell on quit.
+func TestWidgetOrigins(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.ui.widget.add({ id = "w", region = "header", render = function() return {} end })`)
 	if err := r.ExecuteChunk(t.Context(), `zemi.ui.widget.del("w")`, "p.lua", lua.OriginProject); err == nil || h.Widgets.Get("w") == nil {
 		t.Fatalf("project code removed a user widget: %v", err)
+	}
+	if err := r.ExecuteChunk(t.Context(), `zemi.ui.widget.add({ id = "x", region = "exit", render = function() return {} end })`, "p.lua", lua.OriginProject); err == nil || h.Widgets.Get("x") != nil {
+		t.Fatalf("project code added an exit widget: %v", err)
 	}
 	runUser(t, r, `assert(zemi.ui.widget.del("w") == true and zemi.ui.widget.del("w") == false)`)
 }
