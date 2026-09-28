@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
@@ -158,24 +159,53 @@ func LikelyNetwork(out string, err error) bool {
 	return network.MatchString(out[max(0, len(out)-deniedTail):] + "\n" + err.Error())
 }
 
-// systemTemp matches a path in the shared temp dirs that starts a word, so a
-// project's own tmp/ is not one.
-var systemTemp = regexp.MustCompile(`(?:^|[\s'"=:(])((?:/private)?/(?:tmp|var/folders)/[^\s'":)]*)`)
-
-// LikelyTemp reports a denial naming a system temp path outside the write
-// roots, which the policy's own $TMPDIR would fix. /private is dropped on
-// both sides, since macOS output names /tmp and a resolved root /private/tmp.
-func LikelyTemp(out string, err error, write []string) bool {
-	if !LikelyDenied(out, err) {
-		return false
-	}
-	for _, m := range systemTemp.FindAllStringSubmatch(out[max(0, len(out)-deniedTail):], -1) {
-		path := strings.TrimPrefix(m[1], "/private")
-		if !slices.ContainsFunc(write, func(w string) bool { return within(path, strings.TrimPrefix(w, "/private")) }) {
-			return true
+// DeniedPaths are the path words on the output lines that carry a denial:
+// a word holding a / or starting with a dot.
+func DeniedPaths(out string) []string {
+	var paths []string
+	for line := range strings.Lines(out[max(0, len(out)-deniedTail):]) {
+		if !denied.MatchString(line) {
+			continue
+		}
+		for w := range strings.FieldsFuncSeq(line, func(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(`:'"()`, r) }) {
+			if strings.Contains(w, "/") || strings.HasPrefix(w, ".") {
+				paths = append(paths, w)
+			}
 		}
 	}
-	return false
+	return paths
+}
+
+// systemTemp matches the shared temp dirs, which the policy's own $TMPDIR
+// replaces.
+var systemTemp = regexp.MustCompile(`^(?:/private)?/(?:tmp|var/folders)(?:/|$)`)
+
+// SystemTemp reports a path in the shared temp dirs.
+func SystemTemp(path string) bool { return systemTemp.MatchString(path) }
+
+// WriteNames names each Write root as a prompt would: "the project" for
+// project, the Env variable that holds it ($TMPDIR before the others), a
+// path inside the project relative to it, else the path.
+func (p Policy) WriteNames(project string) []string {
+	keys := slices.Sorted(maps.Keys(p.Env))
+	names := make([]string, len(p.Write))
+	for i, w := range p.Write {
+		k := slices.IndexFunc(keys, func(k string) bool { return p.Env[k] == w })
+		rel, err := filepath.Rel(project, w)
+		switch {
+		case w == project:
+			names[i] = "the project"
+		case p.Env["TMPDIR"] == w:
+			names[i] = "$TMPDIR"
+		case k >= 0:
+			names[i] = "$" + keys[k]
+		case project != "" && err == nil && filepath.IsLocal(rel):
+			names[i] = rel
+		default:
+			names[i] = w
+		}
+	}
+	return names
 }
 
 // within reports whether p is root or below it, on the strings as given:

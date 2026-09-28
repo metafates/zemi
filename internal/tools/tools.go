@@ -21,7 +21,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"charm.land/fantasy"
 	"github.com/aymanbagabas/go-udiff"
@@ -492,63 +491,123 @@ func (p *Pipeline) guard() func() string {
 }
 
 // sandboxHint is the line a confined command's failure gets when the
-// sandbox may be why; "" otherwise. The sandbox: false retry is offered only
-// where someone can answer its ask.
+// sandbox may be why: the limit a denied path hit and the one next step; ""
+// otherwise. It offers only the escapes the run's schema carries: none
+// without a UI, and no sandbox: false for a read-only agent, which Check
+// denies.
 func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) string {
 	if !sandbox.LikelyDenied(out, err) {
 		return ""
 	}
-	limits := policyLimits(pol)
-	var write []string
-	if pol != nil {
-		write = pol.Write
+	if pol == nil {
+		pol = &sandbox.Policy{}
 	}
-	if len(write) > 0 {
-		// the exact paths, so a retry does not guess at a sibling of the
-		// scratchpad or a temp dir the policy never named
-		limits += ". Writable: " + strings.Join(write, ", ") + ", and what is below them"
-	}
-	network := pol != nil && pol.Network
 	plan := p.Plan != nil && p.Plan()
-	head := "\nThe sandbox may have blocked this: " + limits + "."
-	// the fix the model can make without an ask comes first; with no session
-	// there is no pad, so $TMPDIR is the denied system one and no fix exists
-	if sandbox.LikelyTemp(out, err, write) && p.Pad != "" {
-		head += " /tmp is not writable here: use $TMPDIR (" + p.Pad + ", the scratchpad) instead."
+	net, all := p.SandboxParam, p.SandboxParam && !plan
+	// or is a retry clause, when the escape it names is offered
+	or := func(offered bool, clause string) string {
+		if offered {
+			return clause
+		}
+		return ""
 	}
-	if secretNamed(out) {
-		head += " Secret-shaped files (.env, *.pem, *.key) cannot be read or written outside the scratchpad: if the file holds no secret, give it another name."
+	project := perm.RealPath(workdir())
+	var denied []limit
+	for _, d := range sandbox.DeniedPaths(out) {
+		denied = append(denied, limitOf(pol, cmp.Or(perm.RealPath(d), d)))
 	}
-	// sandbox: false is denied for a read-only agent, so it is not offered
-	if !p.SandboxParam || plan && network {
-		return head
+	// has finds the first denied path ok holds for and keeps it in l
+	var l limit
+	has := func(ok func(limit) bool) bool {
+		i := slices.IndexFunc(denied, ok)
+		if i >= 0 {
+			l = denied[i]
+		}
+		return i >= 0
 	}
-	if plan {
-		return head + " The project stays read-only while planning; network: true (needs approval) adds only the network."
-	}
-	retry := " It looks like a network failure: call it again with network: true, which keeps the sandbox and needs approval."
+	is := func(k limitKind) func(limit) bool { return func(l limit) bool { return l.kind == k } }
+	b, _ := sandbox.Probe()
+	netFail := sandbox.LikelyNetwork(out, err)
+	line := "a limit may have stopped it (Sandbox in the system prompt lists them)"
 	switch {
-	case network:
-		// the run had the network already: offering it again repeats the ask
-		retry = " If it needs more, call it again with sandbox: false (no limits), which needs approval."
-	case !sandbox.LikelyNetwork(out, err):
-		retry = " If it needs the network, call it again with network: true (sandbox kept); if it needs more, sandbox: false (no limits). Both need approval."
+	case plan && has(func(l limit) bool { _, in := perm.Under(project, l.path); return in && l.kind != hidden }):
+		return "\nSandbox: the project is read-only while planning; describe the change in the plan." + or(net && netFail, " network: true adds the network (needs approval).")
+	case pol.Network && netFail:
+		line = "it had the network already" + or(all, "; sandbox: false drops every limit (needs approval)")
+	case netFail:
+		line = "no network here" + or(net, ": call it again with network: true, which keeps the rest of the sandbox (needs approval)")
+	case has(is(hidden)):
+		line = l.root + " is hidden from commands: read it with the read, glob and grep tools" + or(all, ", or call it again with sandbox: false (needs approval)")
+	case b.HidesSecretFiles && has(func(l limit) bool {
+		return perm.PathIsStrictSecret(l.path) || strings.HasPrefix(filepath.Base(l.path), ".env.")
+	}):
+		line = "secret-shaped files (.env, *.pem, *.key) are unreadable to commands outside $TMPDIR" + or(all, "; if the command needs one, call it again with sandbox: false (needs approval)")
+	case has(is(protected)):
+		line = workRel(l.root) + " is read-only to commands"
+		switch {
+		case filepath.Base(l.root) == ".agents":
+			line += ": create and edit files there with the write and edit tools"
+		case slices.Contains(strings.Split(l.root, string(filepath.Separator)), ".git"):
+			line += ": git commands that change it ask first when they run on their own" + or(all, "; otherwise call it again with sandbox: false (needs approval)")
+		case slices.Contains(filepath.SplitList(os.Getenv("PATH")), l.root):
+			line += ": zemi runs programs from it unconfined" + or(all, "; call it again with sandbox: false (needs approval)")
+		default:
+			line += or(all, ": call it again with sandbox: false (needs approval)")
+		}
+	case p.Pad != "" && has(func(l limit) bool { return l.kind == outside && sandbox.SystemTemp(l.path) }):
+		line = "/tmp is not writable: use $TMPDIR"
+	case len(pol.Write) > 0 && has(is(outside)):
+		line = "commands write only in " + joinAnd(pol.WriteNames(project)) + ": write there" + or(all, ", or call it again with sandbox: false (needs approval)")
+	case all:
+		line += ": network: true adds the network, sandbox: false drops every limit; both need approval"
+	case net:
+		line += ": network: true adds the network (needs approval)"
 	}
-	return head + retry
+	return "\nSandbox: " + line + "."
 }
 
-// secretNamed reports a denial naming a file a backend that hides the
-// secret shapes refuses whatever the write roots but the pad.
-func secretNamed(out string) bool {
-	if b, _ := sandbox.Probe(); !b.HidesSecretFiles {
-		return false
-	}
-	for w := range strings.FieldsFuncSeq(out[max(0, len(out)-2000):], func(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(`:'"()`, r) }) {
-		if perm.PathIsStrictSecret(w) || strings.HasPrefix(filepath.Base(w), ".env.") {
-			return true
+// limit is what the policy does at a denied path: the entry deepest above
+// it, as the backend matches.
+type limit struct {
+	path, root string
+	kind       limitKind
+}
+
+type limitKind int
+
+const (
+	outside limitKind = iota // under no entry, or only a Read one: not writable
+	writable
+	protected
+	hidden
+)
+
+// limitOf finds the entry deepest above path; at one depth Hide beats
+// Protect beats the rest, as in the seatbelt profile.
+func limitOf(pol *sandbox.Policy, path string) limit {
+	best := limit{path: path}
+	depth := -1
+	try := func(roots []string, kind limitKind) {
+		for _, r := range roots {
+			real := cmp.Or(perm.RealPath(r), r)
+			if _, in := perm.Under(real, path); in && (len(real) > depth || len(real) == depth && kind > best.kind) {
+				best.root, best.kind, depth = r, kind, len(real)
+			}
 		}
 	}
-	return false
+	try(slices.Concat(pol.Read, pol.List), outside)
+	try(pol.Write, writable)
+	try(pol.Protect, protected)
+	try(pol.Hide, hidden)
+	return best
+}
+
+// joinAnd joins names as a sentence: a, b and c.
+func joinAnd(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // sandboxLimits names what the live backend enforces on a settled command.

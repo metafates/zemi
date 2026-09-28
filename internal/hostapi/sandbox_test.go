@@ -178,17 +178,17 @@ func TestSandboxedBash(t *testing.T) {
 		name, mode, path string
 		unsandboxed, net bool
 		approve          bool
-		made, hint       bool
-		asked            string
+		made             bool
+		hint, asked      string // hint: how the Sandbox line starts, "" for none
 	}{
-		{"project write", "sbx", project, false, false, false, true, false, ""},
-		{"private temp write", "sbx", private, false, false, false, true, false, ""},
-		{"binary planted in a PATH dir", "sbx", filepath.Join(venv, "git"), false, false, false, false, true, ""},
-		{"system temp write", "sbx", shared, false, false, false, false, true, ""},
-		{"write outside", "sbx", filepath.Join(outside, "x.txt"), false, false, false, false, true, ""},
-		{"sandbox false asks", "sbx", filepath.Join(outside, "y.txt"), true, false, false, false, false, "run outside the sandbox"},
-		{"network asks", "sbx", filepath.Join(h.Dirs.ProjectDir, "net.txt"), false, true, false, false, false, "needs the network, staying sandboxed"},
-		{"an approved network run stays confined", "sbx", filepath.Join(outside, "net.txt"), false, true, true, false, true, "needs the network, staying sandboxed"},
+		{"project write", "sbx", project, false, false, false, true, "", ""},
+		{"private temp write", "sbx", private, false, false, false, true, "", ""},
+		{"binary planted in a PATH dir", "sbx", filepath.Join(venv, "git"), false, false, false, false, venv + " is read-only to commands: zemi runs programs from it unconfined", ""},
+		{"system temp write", "sbx", shared, false, false, false, false, "/tmp is not writable: use $TMPDIR.", ""},
+		{"write outside", "sbx", filepath.Join(outside, "x.txt"), false, false, false, false, "/tmp is not writable: use $TMPDIR.", ""},
+		{"sandbox false asks", "sbx", filepath.Join(outside, "y.txt"), true, false, false, false, "", "run outside the sandbox"},
+		{"network asks", "sbx", filepath.Join(h.Dirs.ProjectDir, "net.txt"), false, true, false, false, "", "needs the network, staying sandboxed"},
+		{"an approved network run stays confined", "sbx", filepath.Join(outside, "net.txt"), false, true, true, false, "/tmp is not writable", "needs the network, staying sandboxed"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if err := h.SetPermMode(c.mode); err != nil {
@@ -207,8 +207,8 @@ func TestSandboxedBash(t *testing.T) {
 			if made := statErr == nil; made != c.made {
 				t.Errorf("made %v, want %v: %s", made, c.made, resp.Content)
 			}
-			if hint := strings.Contains(resp.Content, "sandbox: false"); hint != c.hint {
-				t.Errorf("hint %v, want %v: %s", hint, c.hint, resp.Content)
+			if _, hint, _ := strings.Cut(resp.Content, "\nSandbox: "); !strings.HasPrefix(hint, c.hint) || (hint == "") != (c.hint == "") {
+				t.Errorf("hint %q, want %q: %s", hint, c.hint, resp.Content)
 			}
 			if asked := len(ui.asked) > 0 && ui.asked[0].Reason == c.asked; asked != (c.asked != "") {
 				t.Errorf("asked %+v, want reason %q", ui.asked, c.asked)

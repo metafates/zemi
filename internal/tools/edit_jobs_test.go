@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -67,8 +68,8 @@ func TestJobReadAfterBufferDrop(t *testing.T) {
 }
 
 // TestJobReadSandboxHint: a sandboxed job's denial read while it ran still
-// gets the hint once, after it exits, naming the directories it may write, and the
-// sandbox: false retry is offered only where someone can answer the ask.
+// gets the hint once, after it exits, and the sandbox: false retry is offered
+// only where someone can answer the ask.
 func TestJobReadSandboxHint(t *testing.T) {
 	for _, param := range []bool{true, false} {
 		// job_read's own pipeline is unconfined: the job keeps its policy
@@ -77,7 +78,7 @@ func TestJobReadSandboxHint(t *testing.T) {
 		out := &proc.Buffer{Max: 1 << 20}
 		wait := make(chan error, 1)
 		id := p.Jobs.Adopt("touch x", nil, out, 0, wait, pol, func() string { return "\nguard note" })
-		out.Write([]byte("touch: x: Operation not permitted\n"))
+		out.Write([]byte("touch: /elsewhere/x: Operation not permitted\n"))
 		read := func() string {
 			res, _ := runJobRead(context.Background(), p, map[string]any{"id": id})
 			return res.Content
@@ -89,55 +90,108 @@ func TestJobReadSandboxHint(t *testing.T) {
 		j, _ := p.Jobs.Get(id)
 		<-j.done
 		got := read()
-		if !strings.Contains(got, "The sandbox may have blocked this") || !strings.Contains(got, "/pad/s1") ||
+		if !strings.Contains(got, "\nSandbox: commands write only in /pad/s1") ||
 			strings.Contains(got, "sandbox: false") != param || !strings.Contains(got, "guard note") {
 			t.Errorf("param %v: after exit %q", param, got)
 		}
-		if got := read(); strings.Contains(got, "sandbox may") || strings.Contains(got, "guard note") {
+		if got := read(); strings.Contains(got, "Sandbox:") || strings.Contains(got, "guard note") {
 			t.Errorf("param %v: the hint came twice: %q", param, got)
 		}
 	}
 }
 
-// TestSandboxHintFollowsPolicy: a run that had the network is not told to
-// ask for it again, a project left out of the write roots reads as
-// read-only, and a denied system temp path points at $TMPDIR first.
+// TestSandboxHintFollowsPolicy: a denial gets one line naming the limit the
+// denied path hit and the next step, offering only the escapes the run has:
+// none without a UI, no sandbox: false for a read-only agent.
 func TestSandboxHintFollowsPolicy(t *testing.T) {
 	denied := errors.New("exit status 1")
 	network := "curl: (6) Could not resolve host: example.com"
 	if !sandbox.LikelyDenied(network, denied) {
 		t.Skip("no denial pattern on this platform")
 	}
+	b, _ := sandbox.Probe()
+	proj := perm.RealPath(t.TempDir())
+	t.Chdir(proj)
+	t.Setenv("PATH", filepath.Join(proj, ".venv", "bin")+string(filepath.ListSeparator)+os.Getenv("PATH"))
+	const escapes = ": network: true adds the network, sandbox: false drops every limit; both need approval."
 	for _, c := range []struct {
-		name, out      string
-		plan, offline  bool
-		noPad          bool
-		want, unwanted []string
+		name, out              string
+		plan, noParam, network bool
+		noPad, skip            bool
+		want                   string
 	}{
-		{"network already given", network, false, false, false, []string{"sandbox: false", "the project read-only"}, []string{"no network", "network: true"}},
-		{"network already given while planning", network, true, false, false, []string{"the project read-only"}, []string{"no network", "network: true", "sandbox: false"}},
-		{"system temp", "/bin/sh: /tmp/x: Operation not permitted", false, false, false, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead. If it needs more"}, nil},
-		{"system temp while planning", "mktemp: mkstemp failed on /var/folders/x/T/a.XXXX: Operation not permitted", true, false, false, []string{"use $TMPDIR (/pad/s1, the scratchpad) instead."}, []string{"sandbox: false", "network: true"}},
-		{"system temp and no network", "downloading into /tmp/cache\n" + network, false, true, false, []string{"use $TMPDIR", "network failure: call it again with network: true"}, nil},
-		{"project under the system temp", "fatal: Unable to create '/tmp/proj/.git/index.lock': Operation not permitted", false, false, false, []string{"sandbox: false"}, []string{"/tmp is not writable"}},
-		{"system temp with no pad", "/bin/sh: /tmp/x: Operation not permitted", false, false, true, []string{"sandbox: false"}, []string{"/tmp is not writable"}},
+		{
+			"planner writes the project", "touch: PROJ/a: Operation not permitted", true, false, false, false, false,
+			"the project is read-only while planning; describe the change in the plan.",
+		},
+		{
+			"network already given", network, false, false, true, false, false,
+			"it had the network already; sandbox: false drops every limit (needs approval).",
+		},
+		{"network already given while planning", network, true, false, true, false, false, "it had the network already."},
+		{
+			"no network", network, false, false, false, false, false,
+			"no network here: call it again with network: true, which keeps the rest of the sandbox (needs approval).",
+		},
+		{
+			"hidden", "ls: /h/zemi/x: Operation not permitted", false, false, false, false, false,
+			"/h/zemi is hidden from commands: read it with the read, glob and grep tools, or call it again with sandbox: false (needs approval).",
+		},
+		{
+			"secret", "cat: PROJ/.env: Operation not permitted", false, false, false, false, !b.HidesSecretFiles,
+			"secret-shaped files (.env, *.pem, *.key) are unreadable to commands outside $TMPDIR; if the command needs one, call it again with sandbox: false (needs approval).",
+		},
+		{
+			".agents", "mkdir: .agents/workflows: Operation not permitted", false, false, false, false, false,
+			".agents is read-only to commands: create and edit files there with the write and edit tools.",
+		},
+		{
+			".git", "fatal: Unable to create 'PROJ/.git/index.lock': Operation not permitted", false, false, false, false, false,
+			".git is read-only to commands: git commands that change it ask first when they run on their own; otherwise call it again with sandbox: false (needs approval).",
+		},
+		{
+			"a PATH dir", "pip: PROJ/.venv/bin/x: Operation not permitted", false, false, false, false, false,
+			".venv/bin is read-only to commands: zemi runs programs from it unconfined; call it again with sandbox: false (needs approval).",
+		},
+		{"system temp", "/bin/sh: /tmp/x: Operation not permitted", false, false, false, false, false, "/tmp is not writable: use $TMPDIR."},
+		{
+			"system temp with no pad", "/bin/sh: /tmp/x: Operation not permitted", false, false, false, true, false,
+			"commands write only in the project and $GOCACHE: write there, or call it again with sandbox: false (needs approval).",
+		},
+		{
+			"outside the roots", "touch: /elsewhere/x: Operation not permitted", false, false, false, false, false,
+			"commands write only in the project, $TMPDIR and $GOCACHE: write there, or call it again with sandbox: false (needs approval).",
+		},
+		{
+			"outside the roots under -p", "touch: /elsewhere/x: Operation not permitted", false, true, false, false, false,
+			"commands write only in the project, $TMPDIR and $GOCACHE: write there.",
+		},
+		{
+			"nothing classified", "open x: operation not permitted", false, false, false, false, false,
+			"a limit may have stopped it (Sandbox in the system prompt lists them)" + escapes,
+		},
+		{
+			"nothing classified while planning", "open x: operation not permitted", true, false, false, false, false,
+			"a limit may have stopped it (Sandbox in the system prompt lists them): network: true adds the network (needs approval).",
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			p := &Pipeline{SandboxParam: true, Plan: func() bool { return c.plan }, Pad: "/pad/s1"}
-			pol := &sandbox.Policy{Network: !c.offline, Write: []string{"/pad/s1", "/private/tmp/proj"}}
+			if c.skip {
+				t.Skip("the backend hides no secret-shaped files")
+			}
+			p := &Pipeline{SandboxParam: !c.noParam, Plan: func() bool { return c.plan }, Pad: "/pad/s1"}
+			pol := &sandbox.Policy{
+				Network: c.network,
+				Write:   []string{proj, "/pad/s1", "/cache/go-build"},
+				Protect: []string{filepath.Join(proj, ".agents"), filepath.Join(proj, ".git"), filepath.Join(proj, ".venv", "bin")},
+				Hide:    []string{"/h/zemi"},
+				Env:     map[string]string{"TMPDIR": "/pad/s1", "TMP": "/pad/s1", "GOCACHE": "/cache/go-build"},
+			}
 			if c.noPad {
-				p.Pad, pol.Write = "", pol.Write[1:]
+				p.Pad, pol.Write = "", slices.Delete(pol.Write, 1, 2)
 			}
-			hint := p.sandboxHint(pol, c.out, denied)
-			for _, w := range c.want {
-				if !strings.Contains(hint, w) {
-					t.Errorf("hint lacks %q: %s", w, hint)
-				}
-			}
-			for _, w := range c.unwanted {
-				if strings.Contains(hint, w) {
-					t.Errorf("hint says %q: %s", w, hint)
-				}
+			if hint := p.sandboxHint(pol, strings.ReplaceAll(c.out, "PROJ", proj), denied); hint != "\nSandbox: "+c.want {
+				t.Errorf("got %q\nwant %q", hint, "\nSandbox: "+c.want)
 			}
 		})
 	}

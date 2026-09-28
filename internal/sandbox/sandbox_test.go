@@ -521,6 +521,20 @@ func TestLikelyDenied(t *testing.T) {
 	}
 }
 
+func TestDeniedPaths(t *testing.T) {
+	for _, c := range []struct{ out, want string }{
+		{"mkdir: .agents/workflows: Operation not permitted", ".agents/workflows"},
+		{"fatal: Unable to create '/p/.git/index.lock': Operation not permitted", "/p/.git/index.lock"},
+		{"cp /a/x /b/y\ncp: /b/y: Operation not permitted", "/b/y"},
+		{"downloading into /tmp/cache\ncurl: (6) Could not resolve host: example.com", ""},
+		{"PermissionError: [Errno 1] Operation not permitted: 'out.txt'", ""},
+	} {
+		if got := strings.Join(DeniedPaths(c.out), "|"); got != c.want {
+			t.Errorf("%q: got %q, want %q", c.out, got, c.want)
+		}
+	}
+}
+
 // A window program keeps its own terminal; the user's other terminals stay
 // out of reach.
 func TestTerminal(t *testing.T) {

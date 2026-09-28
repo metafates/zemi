@@ -436,8 +436,8 @@ backend binds only protected paths that exist, so `Pipeline.Guard` records the m
 before a run and checks them at exit: a created `.git` or `.agents` holds trust off until
 `/trust`. Bash and `job_start` take two escapes no mode settles and each of which
 asks: `network: true` only adds sockets, `sandbox: false` drops the whole policy. A confined
-failure `sandbox.LikelyDenied` recognizes gets `Pipeline.sandboxHint`, which names the writable
-dirs and offers `network: true` first.
+failure `sandbox.LikelyDenied` recognizes gets `Pipeline.sandboxHint`, which names the limit the
+denied path hit and the one next step (`sandbox.DeniedPaths`).
 
 `ReadCommand` is an allowlist of readers (internal/perm/safe.go, table-tested), which settle
 unconfined: no shell expansion outside quotes (`$` and backticks inside double quotes count),

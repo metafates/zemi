@@ -2007,8 +2007,13 @@ provenance string.
   confined run that fails with output that looks like a denial, or with
   none and an exit status above 1, like a silent `curl -s`
   (`sandbox.LikelyDenied`, a heuristic, over a job's whole retained tail)
-  gets one line naming the live backend's limits and the retry, `network: true`
-  first when the failure looks like a network one (`sandbox.LikelyNetwork`);
+  gets one line naming the limit the denied path hit and the one next step:
+  the network (`sandbox.LikelyNetwork`, `network: true`), a hidden path (the
+  file tools), a secret-shaped name, a protected one (`.agents`: the write
+  tool), the system temp dir (`$TMPDIR`), a path outside every write root
+  (the roots by name, `Policy.WriteNames`); the path words come from the
+  output's denial lines (`sandbox.DeniedPaths`), and only the escapes the
+  run's schema carries are offered;
   a timed-out bash run adopted as a job keeps it. Known
   ceiling: on Linux, where Landlock cannot hide `.env`, a sandboxed
   command in a trusted project can read it when it names it by a glob or
