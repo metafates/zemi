@@ -193,8 +193,8 @@ func CheckWait(L *glua.LState, api string) {
 	default:
 		return
 	}
-	// level 2: the caller of the Suspending wrapper
-	L.Error(glua.LString(msg), 2)
+	// level 3: the caller of the Suspending wrapper, which is level 2
+	L.Error(glua.LString(msg), 3)
 }
 
 // InGoCall reports a Go function between the one running on L and the
