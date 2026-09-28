@@ -110,8 +110,7 @@ function M.render(ctx)
 		local parts = {}
 		-- the first part is always there, so no count change adds or removes the row
 		local files = inc.instructions
-		-- ~, / and no root are never trusted, so /trust would not turn instructions on there
-		if not files and not ctx.trusted and ctx.project ~= "~" and ctx.project ~= "/" and ctx.project ~= "" then
+		if not files and not ctx.trusted and ctx.trustable then
 			parts[1] = { { text = "instructions off until ", hl = "Comment" }, { text = "/trust", hl = "SplashKey" } }
 		elseif not files then
 			parts[1] = { { text = "no project instructions", hl = "Comment" } }
@@ -144,7 +143,7 @@ function M.render(ctx)
 		local line = { { text = "try      ", hl = "Comment" } }
 		fill(line, {
 			{ { text = '"explain this project"', hl = "Normal" } },
-			{ { text = '"make zemi use a light theme"', hl = "Normal" } },
+			{ { text = '"make the snail green"', hl = "Normal" } },
 		}, { text = " · ", hl = "Comment" }, room)
 		row(line)
 	end

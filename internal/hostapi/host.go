@@ -1573,6 +1573,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		"agent":      func(L *glua.LState) glua.LValue { return agentTable(L, stream) },
 		"transcript": func(L *glua.LState) glua.LValue { return transcriptTable(L, transcript) },
 		"included":   func(L *glua.LState) glua.LValue { return h.includedTable(L) },
+		"trustable":  func(L *glua.LState) glua.LValue { return glua.LBool(!TrustUnsaved(h.trustRoot())) },
 		"resume": func(L *glua.LState) glua.LValue {
 			if id := h.AgentSessionID(); id != "" {
 				return glua.LString(ResumeCommand(id))

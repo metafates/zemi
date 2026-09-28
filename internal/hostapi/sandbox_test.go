@@ -536,7 +536,12 @@ func TestSandboxNestedConfig(t *testing.T) {
 
 func TestTrustUnsaved(t *testing.T) {
 	home, _ := filepath.EvalSymlinks(t.TempDir())
-	t.Setenv("HOME", home)
+	// roots are resolved, so a HOME spelled through a link must still match
+	link := filepath.Join(t.TempDir(), "home")
+	if err := os.Symlink(home, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", link)
 	for _, c := range []struct {
 		name, root string
 		want       bool
