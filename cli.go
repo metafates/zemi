@@ -482,14 +482,10 @@ func modelsCommand() *cobra.Command {
 	return cmd
 }
 
-// projectStore opens this project's store. A missing one is fs.ErrNotExist
-// and stays missing, so a look or a tab press creates no database.
+// projectStore opens this project's store read-only, so a look or a tab
+// press writes nothing, a missing store included (fs.ErrNotExist).
 func projectStore(dirs config.Dirs) (*store.DB, error) {
-	path := store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot())
-	if _, err := os.Stat(path); err != nil {
-		return nil, err
-	}
-	return store.Open(path)
+	return store.OpenRead(store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot()))
 }
 
 // confirm asks on stderr and reads the answer from stdin; only y or yes is

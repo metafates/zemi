@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,7 +55,8 @@ func TestCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db, err := store.Open(store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot()))
+	path := store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot())
+	db, err := store.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,6 +64,20 @@ func TestCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	db.Close()
+	// a running zemi holds the write lock: a look at sessions waits on none
+	writer, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	tx, err := writer.Begin()
+	if err == nil {
+		_, err = tx.Exec(`DELETE FROM kv`)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
 	for _, c := range []struct {
 		name           string
 		args           []string

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -60,6 +61,38 @@ func Open(path string) (*DB, error) {
 	// best effort: a failed sweep must never keep zemi from starting
 	_ = s.sweep()
 	return s, nil
+}
+
+// OpenRead opens an existing store read-only: no migration, no sweep and
+// no checkpoint on close, so a look waits on no lock a running zemi holds.
+// A missing file is fs.ErrNotExist.
+func OpenRead(path string) (*DB, error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+	uri := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro&_pragma=busy_timeout(5000)"}
+	d, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		return nil, fmt.Errorf("store: open %s: %w", path, err)
+	}
+	s := &DB{db: d, path: path}
+	var version int
+	if err := d.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		d.Close()
+		return nil, fmt.Errorf("store: read user_version: %w", err)
+	}
+	if err := s.checkVersion(version); err != nil {
+		d.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *DB) checkVersion(version int) error {
+	if version != schemaVersion {
+		return fmt.Errorf("store: %s has schema %d, this zemi needs %d: delete the file (zemi keeps no migrations yet)", s.path, version, schemaVersion)
+	}
+	return nil
 }
 
 // Close releases the handle.
@@ -177,8 +210,8 @@ func (s *DB) migrate() error {
 		if err := tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 			return fmt.Errorf("store: read user_version: %w", err)
 		}
-		if version != schemaVersion {
-			return fmt.Errorf("store: %s has schema %d, this zemi needs %d: delete the file (zemi keeps no migrations yet)", s.path, version, schemaVersion)
+		if err := s.checkVersion(version); err != nil {
+			return err
 		}
 	}
 	if _, err := tx.Exec(schema); err != nil {
