@@ -1148,7 +1148,10 @@ type Segment struct {
 	// Soft ends a row that wraps onto the next: a copy joins the two rows
 	// without a newline and drops the row's cells after this segment
 	Soft bool
-	Bar  bool // Go only: a viewport's scrollbar cell, kept to a box's right edge
+	// Sticky on a row's first segment makes the row head what follows: a
+	// scrolled region pins it while it is above the view
+	Sticky bool
+	Bar    bool // Go only: a viewport's scrollbar cell, kept to a box's right edge
 	// Band is Go only: the selected row of a list or prompt, drawn on
 	// Host:Band's background. A field, since hover rewrites Over and HL.
 	Band bool
@@ -1296,6 +1299,7 @@ func segment(field func(string) any, widget string) Segment {
 	seg.NoCopy = field("copy") == false
 	seg.NoHover = field("hover") == false
 	seg.Soft = field("soft_wrap") == true
+	seg.Sticky = field("sticky") == true
 	if id, ok := field("click").(string); ok && id != "" {
 		seg.Click, seg.Widget = id, widget
 	}
@@ -1909,7 +1913,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.97.0"))
+	api.RawSetString("version", glua.LString("0.98.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

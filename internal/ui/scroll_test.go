@@ -281,3 +281,41 @@ func TestChatScrollAnchorsThroughFill(t *testing.T) {
 		t.Fatalf("the fill moved the view (%d rows below, want %d):\n%s\nwant:\n%s", app.rowsBelow(), below, got, want)
 	}
 }
+
+// TestChatStickyPrompt: while a turn's rows fill the view, its prompt's
+// first row stands in for the chat's top row, cut with an ellipsis when the
+// prompt has more rows; it lights like a header, copies nothing, and a
+// click scrolls back to the prompt.
+func TestChatStickyPrompt(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+	const prompt = "fix the flaky TestResume in internal/store: it fails about one run in twenty on the build machine"
+	host.AppendMessage("user", prompt)
+	for i := range 20 {
+		appendReply(host, fmt.Sprintf("step %d", i), hostapi.TurnStat{})
+	}
+	app.renderSync(t)
+	app.Frame()
+	st := app.scrolls["chat"]
+	y := st.rect.Min.Y
+	row := func() string { return strings.TrimRight(plainSegs(app.lastRows[y][:len(app.lastRows[y])-1]), " ") }
+	if !st.follow || !strings.HasPrefix(row(), "▌ fix the flaky") || !strings.HasSuffix(row(), "…") {
+		t.Fatalf("following, the top row is %q", row())
+	}
+
+	if dragTo(app, 3, y, 20, y); app.selectionText() != "" {
+		t.Fatalf("the pin copied %q", app.selectionText())
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	app.Update(tea.MouseMotionMsg{X: 5, Y: y})
+	app.Frame()
+	if over := app.lastRows[y][1].Over; over != "Hover" {
+		t.Fatalf("hovered pin drew %q over its text", over)
+	}
+
+	clickAt(app, 5, y)
+	frame := ansi.Strip(app.Frame())
+	if st.follow || !sticky(st.lines[st.top]) || st.first != nil || strings.Count(frame, "fix the flaky") != 1 {
+		t.Fatalf("the click left top %d (follow %v):\n%s", st.top, st.follow, frame)
+	}
+}

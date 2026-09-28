@@ -107,13 +107,15 @@ zemi.ui.widget.add({
 		end
 		-- The user's own words, sent or queued: the bar on every row, and a tag
 		-- ahead of the first row's text. A placeholder word as wide as the tag
-		-- keeps that row short enough, then gives its cells to the tag.
+		-- keeps that row short enough, then gives its cells to the tag. A sent
+		-- message's rows are sticky: the chat pins its first row while the
+		-- turn's rows fill the view, and the bar never hovers there.
 		---@param text string
 		---@param tag string?
 		local function user_rows(text, tag)
 			local pad = tag and string.rep("_", #tag + 1) .. " " or ""
 			for i, segs in ipairs(zemi.ui.wrap(pad .. text, width - 2)) do
-				local row = { { text = "▌ ", hl = "UserMsg", copy = false } }
+				local row = { { text = "▌ ", hl = "UserMsg", copy = false, hover = false, sticky = not tag or nil } }
 				if i == 1 and tag then
 					segs[1].text = segs[1].text:sub(#pad + 1)
 					row[2] = { text = " " .. tag .. " ", hl = "Queued", copy = false }

@@ -402,6 +402,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 type viewport struct {
 	top, rows, viewH int
 	follow           bool
+	first            []hostapi.Segment // drawn in place of the first row shown, when set
 }
 
 func (v *viewport) clamp() {
@@ -478,7 +479,10 @@ func (v *viewport) window(lines [][]hostapi.Segment, width int) [][]hostapi.Segm
 			break
 		}
 		var row []hostapi.Segment
-		if j >= 0 {
+		switch {
+		case i == 0 && v.first != nil:
+			row = v.first
+		case j >= 0:
 			row = lines[j]
 		}
 		if bar.on() {
@@ -533,6 +537,10 @@ type scrollState struct {
 	filling   bool         // the rows drawn are a fill's latest, older ones still to land above
 	rect      uv.Rectangle // where it was drawn on the last frame
 	region    string
+	// the last paint's rows, shared with the widget cache, which replaces
+	// rows whole and never writes them in place
+	lines [][]hostapi.Segment
+	pin   int // the row drawn over the first one shown (pinned), -1 for none
 }
 
 // anchorRows is how many rows identify the viewport. One is not enough:
@@ -558,6 +566,11 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 			st.filling = true
 		}
 	}
+	st.clamp()
+	st.lines, st.pin, st.first = lines, pinned(lines, st.top), nil
+	if st.pin >= 0 {
+		st.first = pinCopy(lines, st.pin, w)
+	}
 	rows := st.window(lines, w)
 	st.anchor, st.anchorOff = nil, 0
 	for i := max(st.top, 0); i < len(lines) && i < st.top+h; i++ {
@@ -574,6 +587,55 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		rows[i] = padSegs(rows[i], w)
 	}
 	return rows
+}
+
+func sticky(row []hostapi.Segment) bool { return len(row) > 0 && row[0].Sticky }
+
+// pinned is the row a view scrolled to top draws over its first one: the
+// first row of the nearest header (a run of sticky rows) above top, or -1
+// when none is, or when a header is within the first three rows shown, so
+// the pin never stacks two headers with a gap row and a stats line between.
+// NOTE: a scan back to the header per painted frame, a few hundred bool
+// reads in a long turn; nothing while the content starts in view.
+func pinned(lines [][]hostapi.Segment, top int) int {
+	if top <= 0 {
+		return -1
+	}
+	for i := top; i < min(top+3, len(lines)); i++ {
+		if sticky(lines[i]) {
+			return -1
+		}
+	}
+	i := min(top, len(lines)) - 1
+	for i >= 0 && !sticky(lines[i]) {
+		i--
+	}
+	for i > 0 && sticky(lines[i-1]) {
+		i--
+	}
+	return i
+}
+
+// pinCopy is row pin of lines as the pin draws it: nothing in it copies or
+// acts but the pin's own click, and it ends in an ellipsis when the header
+// has more rows.
+func pinCopy(lines [][]hostapi.Segment, pin, width int) []hostapi.Segment {
+	row := slices.Clone(lines[pin])
+	for i := range row {
+		row[i].NoCopy, row[i].Soft, row[i].Click, row[i].Widget = true, false, "", ""
+	}
+	if pin+1 < len(lines) && sticky(lines[pin+1]) {
+		hl := ""
+		for len(row) > 0 {
+			last := &row[len(row)-1]
+			if hl, last.Text = last.HL, strings.TrimRight(last.Text, " "); last.Text != "" {
+				break
+			}
+			row = row[:len(row)-1]
+		}
+		row = append(truncateSegs(row, barInner(width)-1), hostapi.Segment{Text: "…", HL: hl, NoCopy: true})
+	}
+	return row
 }
 
 // scrollbar is the one-cell bar down the right edge of a viewport showing

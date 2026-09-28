@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -121,6 +122,47 @@ func TestViewport(t *testing.T) {
 			}
 			if v.top != c.top || len(out) != c.shown || bar != c.bar {
 				t.Fatalf("top %d, %d rows, bar %v; want %d, %d, %v", v.top, len(out), bar, c.top, c.shown, c.bar)
+			}
+		})
+	}
+}
+
+func TestPinned(t *testing.T) {
+	for _, c := range []struct {
+		name, rows string // s a sticky row, . any other
+		top, want  int
+	}{
+		{"top of content", "s . . . .", 0, -1},
+		{"header at top", ". s . . .", 1, -1},
+		{"header close under", "s . . . s .", 2, -1},
+		{"header three under", "s . . . . s", 2, 0},
+		{"block above", ". s s . . . .", 4, 1},
+		{"no header above", ". . . . . . s", 2, -1},
+	} {
+		var lines [][]hostapi.Segment
+		for f := range strings.FieldsSeq(c.rows) {
+			lines = append(lines, []hostapi.Segment{{Text: f, Sticky: f == "s"}})
+		}
+		if got := pinned(lines, c.top); got != c.want {
+			t.Errorf("%s: %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// BenchmarkPin is the pin's share of a painted frame: nothing for a view at
+// the content's top, a scan back and one row copy for one far below its
+// header.
+func BenchmarkPin(b *testing.B) {
+	lines := make([][]hostapi.Segment, 2000)
+	for i := range lines {
+		lines[i] = []hostapi.Segment{{Text: "▌ ", Sticky: i == 0}, {Text: "a row of text"}}
+	}
+	for _, top := range []int{0, len(lines) - 10} {
+		b.Run(strconv.Itoa(top), func(b *testing.B) {
+			for b.Loop() {
+				if pin := pinned(lines, top); pin >= 0 {
+					_ = pinCopy(lines, pin, 80)
+				}
 			}
 		})
 	}

@@ -403,6 +403,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			}
 		}, true
 	}
+	pinID, pinSpan := a.pinAt(x, y)
 	switch top := a.topChrome(); {
 	case top == modalPerm:
 		pa := a.permAsk
@@ -458,6 +459,14 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		p := &a.palette
 		spans, ok := item(p.count())
 		return spans, func() { p.selected = hit - 1; a.acceptPalette() }, ok
+	case top == noModal && pinSpan.hi > 0:
+		// found by where it is: a Hit would light it as a list row, and a
+		// Click with no widget runs a command
+		return []cellSpan{pinSpan}, func() {
+			if st := a.scrolls[pinID]; st != nil {
+				a.scrollRows(pinID, st.pin-st.top)
+			}
+		}, true
 	case top == noModal && under.Click != "":
 		act := func() { a.clickWidget(under, x, y) }
 		if under.Widget == "" { // a Go pill or dock entry names its command
@@ -478,6 +487,22 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		return firstRow(spans), act, ok
 	}
 	return nil, nil, false
+}
+
+// pinAt is the scrolled region whose pinned row's text holds (x, y), and
+// those cells; a zero span when there is none.
+func (a *App) pinAt(x, y int) (string, cellSpan) {
+	for _, id := range a.scrollIDs {
+		st := a.scrolls[id]
+		if st == nil || st.first == nil || st.rect.Min.Y != y {
+			continue
+		}
+		text := strings.TrimRight(plainSegs(st.first), " ")
+		if sp := (cellSpan{y, st.rect.Min.X, st.rect.Min.X + ansi.StringWidth(text)}); sp.lo <= x && x < sp.hi {
+			return id, sp
+		}
+	}
+	return "", cellSpan{}
 }
 
 // itemSpans is the cells of the item same matches on the contiguous rows

@@ -1597,7 +1597,10 @@ provenance string.
   off the tail;
   a scrolled view stays anchored while new lines fill underneath, and
   sending a message (or a `!command`) snaps back to the tail, a slash
-  command does not. Reasoning blocks
+  command does not. While a turn's prompt is above the view its first row
+  stays pinned over the chat's top row (a segment's `sticky`), ending in `…`
+  when the prompt has more rows; a click on it scrolls back to the prompt.
+  Reasoning blocks
   collapse to one `✻ Thought for Xs` line unless shown
   (default keymaps below); a finished tool call collapses the same way and a
   click on its row opens that one row, command and output, with the rest of
