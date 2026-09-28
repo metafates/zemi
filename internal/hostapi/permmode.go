@@ -535,6 +535,11 @@ func (h *Host) protectedWhy(p string) string {
 // would bring the asks back; tighten sandboxPolicy instead.
 func (h *Host) unsettled(req tools.Request) string {
 	n := req.Command()
+	// a plugin's tests, the command the plugin steps repeat, read only the
+	// plugin and start nothing, so confined they run in any project
+	if exe, _ := os.Executable(); h.sandboxLive() && n.PluginTest(exe) {
+		return ""
+	}
 	if !h.ProjectTrusted() || !h.sandboxLive() {
 		if n.ReadCommand(h.safeCommandPath(req.Pad)) {
 			return ""

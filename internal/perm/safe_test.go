@@ -435,6 +435,36 @@ func TestGitWrites(t *testing.T) {
 	}
 }
 
+func TestPluginTest(t *testing.T) {
+	for _, c := range []struct {
+		cmd  string
+		want bool
+	}{
+		{"zemi plugins test stars", true},
+		{"zemi plugins test stars 'shows the count'", true},
+		{"/opt/zemi/bin/zemi plugins test stars", true},
+
+		{"./zemi plugins test stars", false},
+		{"zemi plugins test ./stars", false},
+		{"zemi plugins test ~/stars", false},
+		{"zemi plugins test .", false},
+		{"zemi plugins test ..", false},
+		{"zemi plugins test", false},
+		{"zemi plugins test stars x y", false},
+		{"zemi plugins test stars > out", false},
+		{"zemi plugins test stars 2>&1 | tail", false},
+		{"zemi plugins test stars && rm -rf .", false},
+		{"ZEMI_DATA_HOME=/x zemi plugins test stars", false},
+		{"zemi plugins test $NAME", false},
+		{"zemi plugins install https://x/y", false},
+		{"zemi -p 'plugins test stars'", false},
+	} {
+		if got := Normalize(c.cmd).PluginTest("/opt/zemi/bin/zemi"); got != c.want {
+			t.Errorf("PluginTest(%q) = %v, want %v", c.cmd, got, c.want)
+		}
+	}
+}
+
 func TestSubcommand(t *testing.T) {
 	for _, c := range []struct {
 		cmd  string

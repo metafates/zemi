@@ -365,7 +365,8 @@ Trusted, zemi loads the project's `.agents` config and instruction files
 user-added; sandboxed when a backend is live, §9), auto mode and read-only agents settle builds and tests in the sandbox, and
 auto settles in-project edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
 is an instruction file, no language server starts, `.agents` edits trigger no reload, and auto mode and read-only agents
-settle only reads and `perm.Normalized.ReadCommand` commands. Either way zemi's own
+settle only reads, `perm.Normalized.ReadCommand` commands and, confined, a plugin's
+tests (§9). Either way zemi's own
 git calls (`proc.Git`) switch off `core.fsmonitor`, hooks, submodule
 recursion, LFS smudging, transports other than https, ssh and file, and
 repository filter drivers: a sandboxed command can plant a nested
@@ -1929,7 +1930,11 @@ provenance string.
   and script checks, arguments inside the project and not secret-shaped,
   recursive searches only over trees with no secret-shaped file and, unless
   the searcher skips hidden entries, no `.git` directory; no build
-  tool and no git, which runs programs `.git/config` names) go to the user.
+  tool and no git, which runs programs `.git/config` names) go to the user,
+  but for `zemi plugins test <name>` alone, which with a sandbox settles
+  confined (`perm.Normalized.PluginTest`): it reads only the named plugin
+  and starts no process, and it is the one command the plugin steps repeat.
+  A directory argument asks, since the runner copies it where the model reads.
   With no sandbox backend a trusted project also settles only
   `ReadCommand` commands, which run unconfined, and
   auto mode sends every other command to the user ("no

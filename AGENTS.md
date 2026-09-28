@@ -401,7 +401,9 @@ could only fail, so the ask comes before a wasted run) and, on a backend that ca
 files, one naming an existing secret-shaped file. Known ceiling: the sandbox policy is the only limit, so the model
 can write code and run it unattended, rewrite any project file and read what the policy does
 not hide, outside the project too. In an untrusted project both modes settle only `ReadCommand`
-commands (every program only reads, named without a path; no builds, no git) and auto settles
+commands (every program only reads, named without a path; no builds, no git) and, with a sandbox,
+`zemi plugins test <name>`, confined (`perm.Normalized.PluginTest`: a name, since the runner copies
+a directory it is given where the model reads), and auto settles
 no project writes (a `madePlugins` plugin is in no project). In a trusted project with no sandbox backend auto still settles jail writes, but
 commands settle only when `ReadCommand` holds, since an approved one would run unconfined.
 Asks reach the user one at a time (`Host.askMu`, held over the prompt stage only, never over

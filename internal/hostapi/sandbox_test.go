@@ -33,7 +33,8 @@ func fakeSandbox(h *Host, live bool) {
 
 // TestUnsettled: in a trusted project with a live backend every command
 // settles but a bulk delete outside the scratchpad and, where the backend cannot hide it, one
-// naming a secret-shaped file; elsewhere only readers. A read-only agent
+// naming a secret-shaped file; elsewhere only readers and, with a backend, a
+// plugin's tests. A read-only agent
 // settles the deleters too, since its run is confined whoever allowed it.
 func TestUnsettled(t *testing.T) {
 	h, _ := newTestHostDB(t)
@@ -66,6 +67,8 @@ func TestUnsettled(t *testing.T) {
 		{true, false, false, "wc -l main.go", true},
 		{false, true, false, "wc -l main.go", true},
 		{false, false, false, "wc -l main.go", true},
+		{false, true, false, "zemi plugins test stars", true}, // reads only the plugin, confined
+		{false, false, false, "zemi plugins test stars", false},
 	} {
 		h.SetProjectTrusted(c.trusted)
 		fakeSandbox(h, c.live)

@@ -114,6 +114,20 @@ func (n Normalized) ReadCommand(pathOK func(arg string, use ArgUse) bool) bool {
 	return safeArgs(n.ReadPaths, func(_ int, _, a string) bool { return check(a, ArgRead) })
 }
 
+// PluginTest reports the one command zemi plugins test <name> [pattern],
+// with nothing riding along. The plugin is named, never a directory: the
+// runner copies a directory it is given into the temp dir the model reads.
+// exe, the running zemi's path, may stand for zemi.
+func (n Normalized) PluginTest(exe string) bool {
+	if expands(n.cmd) || n.Fail != "" || n.ForceAsk != "" || n.Opaque || n.Assign != "" ||
+		len(n.ReadPaths)+len(n.WritePaths) > 0 || len(n.Args) != 1 {
+		return false
+	}
+	f := n.Args[0]
+	return (f[0] == "zemi" || f[0] == exe && exe != "") && (len(f) == 4 || len(f) == 5) &&
+		f[1] == "plugins" && f[2] == "test" && !strings.Contains(f[3], "/") && f[3] != "." && f[3] != ".."
+}
+
 func relativeArg(a string, _ ArgUse) bool {
 	return !strings.HasPrefix(a, "/") && !strings.HasPrefix(a, "~") && a != ".." && !strings.HasPrefix(a, "../") && !strings.Contains(a, "/../")
 }
