@@ -147,7 +147,7 @@ func (h *Host) sandboxPolicy(readOnly bool, pad string) sandbox.Policy {
 	// TMPDIR: its temp writes fail and the hint names no fix
 	p.Env = map[string]string{}
 	if pad != "" && os.MkdirAll(pad, 0o700) == nil {
-		p.Write = append(p.Write, pad)
+		p.Write, p.Pad = append(p.Write, pad), pad
 		p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = pad, pad, pad
 	}
 	if d.StateHome != "" {

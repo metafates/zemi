@@ -41,6 +41,7 @@ type Policy struct {
 	Hide     []string          // neither readable nor writable
 	Read     []string          // readable inside Hide, with all they hold but a deeper Hide
 	List     []string          // directories inside Hide whose names are readable, not what they hold
+	Pad      string            // the scratchpad, a Write root the secret shapes do not cover: only the session's own commands put files there
 	Loopback bool              // listen on and connect to localhost
 	Network  bool              // reach the network: the file rules still apply
 	Env      map[string]string // extra environment for the sandboxed command
@@ -106,6 +107,9 @@ func Wrap(cmd *exec.Cmd, p Policy) error {
 		}
 	}
 	p.Write, p.Protect, p.Hide, p.Read, p.List = real(p.Write), protect, real(p.Hide), real(p.Read), real(p.List)
+	if p.Pad != "" {
+		p.Pad = real([]string{p.Pad})[0]
+	}
 	return wrap(cmd, p)
 }
 

@@ -439,13 +439,10 @@ func (p *Pipeline) Check(req Request) Verdict {
 	} else {
 		o = p.Store.Evaluate(req.Subject, written, p.Principal)
 	}
-	// the pad is neither project nor zemi dir: what no rule decided there
-	// allows, a secret-shaped name aside, which the sandbox refuses there too
+	// the pad is neither project nor zemi dir, and only this session's own
+	// commands put files there: what no rule decided there allows, a
+	// secret-shaped name included (DESIGN §9)
 	if pad && !o.Ruled() {
-		if p.Secret != nil && p.Secret(written) {
-			req.Reason = strings.TrimPrefix(req.Reason+"; "+PadSecret, "; ")
-			return p.resolveAsk(req, PadSecret)
-		}
 		o = perm.Outcome{Decision: perm.Allow, Reason: "inside the scratchpad"}
 	}
 	switch o.Decision {
@@ -520,7 +517,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 		head += " /tmp is not writable here: use $TMPDIR (" + p.Pad + ", the scratchpad) instead."
 	}
 	if secretNamed(out) {
-		head += " Secret-shaped files (.env, *.pem, *.key) cannot be read or written here, not even in the scratchpad: if the file holds no secret, give it another name."
+		head += " Secret-shaped files (.env, *.pem, *.key) cannot be read or written outside the scratchpad: if the file holds no secret, give it another name."
 	}
 	// sandbox: false is denied for a read-only agent, so it is not offered
 	if !p.SandboxParam || plan && network {
@@ -541,7 +538,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 }
 
 // secretNamed reports a denial naming a file a backend that hides the
-// secret shapes refuses whatever the write roots, the pad's own included.
+// secret shapes refuses whatever the write roots but the pad.
 func secretNamed(out string) bool {
 	if b, _ := sandbox.Probe(); !b.HidesSecretFiles {
 		return false
@@ -553,9 +550,6 @@ func secretNamed(out string) bool {
 	}
 	return false
 }
-
-// PadSecret is why a secret-shaped name in the scratchpad asks.
-const PadSecret = "a secret-shaped name (.env, *.pem, *.key) asks even in the scratchpad; if the file holds no secret, give it another name"
 
 // sandboxLimits names what the live backend enforces on a settled command.
 func sandboxLimits() string { return policyLimits(nil) }

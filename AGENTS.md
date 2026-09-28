@@ -423,7 +423,8 @@ and `git` run; a denial naming `/tmp` gets a hint pointing at `$TMPDIR` before `
 poison another's build), the project is writable only when it is trusted, outside zemi's own
 dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect`), `.git`,
 `.agents` and every `PATH` dir under a write root stay read-only because zemi runs git, sh and
-servers unconfined by name, and home credential paths are hidden. Of the hidden data dir a local
+servers unconfined by name, and home credential paths are hidden. The secret shapes do not cover the
+pad (`Policy.Pad`): only the session's own commands put files there. Of the hidden data dir a local
 plugin's code (`plugins.Code`, through `Policy.Read`) and the names in the plugin dirs
 (`Policy.List`) read back, so `zemi plugins test` runs confined; its `.git`, and a dot entry or
 `node_modules` in its code (`plugins.Kept`), stay hidden. The exception is the repo's
@@ -754,7 +755,7 @@ lua-language-server is installed.
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. It is `TMPDIR`, `TMP` and
   `TEMP` in every command the model starts, confined or not (`Pipeline.childEnv`; the user's
   `!command` keeps the user's). `Pipeline.Check` allows reads and writes there that no rule
-  decided, a read-only agent's included, but a secret-shaped name (`tools.PadSecret`); `write`
+  decided, a read-only agent's included, a secret-shaped name too; `write`
   and `edit` need no prior read there (the stale check stays), a pad write is never
   checkpointed, and `Destructive` lets an `rm` whose every operand is below the pad
   (`$TMPDIR/...` or its literal path) settle. A file tool path starting with `$`, `~` or
