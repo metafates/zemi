@@ -83,6 +83,9 @@ func (h *Host) addMCP(name string, spec MCPSpec) error {
 		return errors.New("give exactly one of command or url")
 	}
 	s := &mcpServer{name: name, spec: spec, status: StatusStarting}
+	if h.Inert {
+		s.status = StatusOff
+	}
 	h.mcp.mu.Lock()
 	old, parked := h.mcp.servers[name], h.mcp.parked[name]
 	delete(h.mcp.parked, name)
@@ -100,7 +103,9 @@ func (h *Host) addMCP(name string, spec MCPSpec) error {
 			o.stop()
 		}
 	}
-	h.GoSafe("mcp start "+name, func() { h.startMCP(s) })
+	if !h.Inert {
+		h.GoSafe("mcp start "+name, func() { h.startMCP(s) })
+	}
 	return nil
 }
 

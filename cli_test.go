@@ -25,6 +25,14 @@ func TestCLI(t *testing.T) {
 	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
 		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
 	}
+	if err := os.MkdirAll(filepath.Join(home, "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initLua := `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "http://x", models = { { id = "m1" } } })
+		zemi.agent.profile.add("cheap", {})`
+	if err := os.WriteFile(filepath.Join(home, "config", "init.lua"), []byte(initLua), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"rub", "zzq"} {
 		if err := os.MkdirAll(filepath.Join(home, "data", "plugins", "local", name), 0o755); err != nil {
 			t.Fatal(err)
@@ -75,7 +83,11 @@ func TestCLI(t *testing.T) {
 		{name: "trust false", args: []string{"--trust=false"}, want: &options{trust: new(false)}},
 		{name: "version", args: []string{"--version"}, stdout: "zemi "},
 		{name: "health takes no args", args: []string{"health", "x"}, code: 2, stderr: "Run 'zemi health --help'"},
-		{name: "a parent takes no args", args: []string{"plugins", "are", "slow"}, code: 2, stderr: `unknown command "are" for "zemi plugins"`},
+		{name: "a parent takes no args", args: []string{"models", "are", "slow"}, code: 2, stderr: `unknown command "are" for "zemi models"`},
+		{name: "models lists what init.lua adds", args: []string{"models"}, stdout: "gw/m1\n"},
+		{name: "complete a model", args: []string{"__complete", "run", "-m", ""}, stdout: "gw/m1\n"},
+		{name: "complete a profile", args: []string{"__complete", "--profile", ""}, stdout: "cheap\n"},
+		{name: "complete a mode", args: []string{"__complete", "--mode", ""}, stdout: "yolo\n"},
 		{name: "a failure is 1", args: []string{"sessions", "export", "nope"}, code: 1, stderr: `zemi: sessions export: no session "nope"`},
 		{name: "sessions lists", args: []string{"sessions"}, stdout: sid + "  "},
 		{name: "export prints markdown", args: []string{"sessions", "export", sid}, stdout: "# fix the failing test\n"},

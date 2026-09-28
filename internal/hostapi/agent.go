@@ -2241,15 +2241,9 @@ func (h *Host) updateCatalog() error {
 
 // CompleteModel offers /model's arguments in SetModel's grammar.
 func (h *Host) CompleteModel(lead, line string) []string {
-	first := []string{"roles", "update"}
-	var ids []string
+	first, ids := []string{"roles", "update"}, h.ModelIDs()
 	for _, r := range roles {
 		first = append(first, r.Name)
-	}
-	for _, s := range h.Providers.List() {
-		for _, m := range s.Models {
-			ids = append(ids, s.ID+"/"+m.ID)
-		}
 	}
 	return SubcommandCompleter(append(first, ids...), func(_ *Host, sub string) []string {
 		switch {

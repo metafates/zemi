@@ -61,7 +61,7 @@ func TestStarterInitProviderBlock(t *testing.T) {
 		t.Fatalf("provider = %+v, %v", spec, ok)
 	}
 	for _, key := range []string{"models.chat", "models.titles"} {
-		if id := h.Settings.Str(key); !slices.Contains(h.modelIDs(), id) {
+		if id := h.Settings.Str(key); !slices.Contains(h.ModelIDs(), id) {
 			t.Fatalf("%s = %q is not in the catalog", key, id)
 		}
 	}

@@ -1,9 +1,20 @@
 package hostapi
 
 import (
+	"context"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/logging"
+	"github.com/metafates/zemi/internal/lua"
 )
 
 const rolesProvider = `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "big" }, { id = "small" } } })
@@ -105,4 +116,42 @@ func TestSetModelArgs(t *testing.T) {
 			local want = m.id == "a/big" and "memory" or "chat,agents,titles,compact"
 			assert(table.concat(m.roles, ",") == want, m.id .. ": " .. table.concat(m.roles, ","))
 		end`)
+}
+
+// TestInertBoot: an inert boot loads what config registers and does none of
+// its IO but reads: no MCP start, no job, no model call, no file sync.
+func TestInertBoot(t *testing.T) {
+	project, data := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(project, "f.txt"), []byte("read"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	log := logging.New("")
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: project, DataHome: data})
+	h.Inert = true
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		t.Error("an inert boot called a model")
+		return nil, errors.New("no")
+	}
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	runUser(t, r, `
+		zemi.mcp.add("loud", { command = "/nonexistent/loud" })
+		assert(zemi.fs.read("f.txt") == "read")
+		local ok, err = pcall(zemi.job.start, { cmd = "true" })
+		assert(not ok and tostring(err):find("permission denied (inert)", 1, true), tostring(err))
+		local sent, why = zemi.agent.send("hi")
+		assert(sent == nil and why, "send went through")
+		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })
+	`)
+	if s := h.mcp.servers["loud"]; s == nil || s.status != StatusOff {
+		t.Errorf("mcp server %+v, want registered and off", s)
+	}
+	if _, ok := h.Providers.Lookup("p"); !ok {
+		t.Error("the provider after the refused calls is missing")
+	}
+	if _, err := os.Stat(h.TypesDir()); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the types were synced: %v", err)
+	}
 }

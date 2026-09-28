@@ -419,6 +419,10 @@ type Host struct {
 
 	// Version is the zemi build version for the splash screen.
 	Version string
+	// Inert, set before boot, makes a boot that only reads config (zemi
+	// models, completion): no model call, no Lua IO but reads, no MCP start,
+	// no file sync.
+	Inert bool
 	// Stderr is where a run with no UI prints its warnings and errors.
 	Stderr io.Writer
 
@@ -1505,7 +1509,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("trusted", glua.LBool(h.ProjectTrusted()))
 	tb.RawSetString("init_error", glua.LString(h.InitError()))
 	tb.RawSetString("init_path", glua.LString(h.initPath()))
-	tb.RawSetString("model_hint", glua.LString(h.noModelHint()))
+	tb.RawSetString("model_hint", glua.LString(h.NoModelHint()))
 	tb.RawSetString("profile", glua.LString(stream.Profile))
 	tb.RawSetString("profile_read_only", glua.LBool(h.readOnly()))
 	tb.RawSetString("model", glua.LString(stream.Model))
@@ -1870,9 +1874,11 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 	L := g.L
 	h.gen.Store(g.ID)
 	h.Providers.Reset(*h.Builtin.Load())
-	h.syncSkills()
-	h.syncTypes()
-	h.GoSafe("git status", func() { h.gitStatus() })
+	if !h.Inert {
+		h.syncSkills()
+		h.syncTypes()
+		h.GoSafe("git status", func() { h.gitStatus() })
+	}
 
 	g.SB.SetGuard(h.guardLua)
 	register := func(name string, tbl *glua.LTable, call *glua.LFunction) error {

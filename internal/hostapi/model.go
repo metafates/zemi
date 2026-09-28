@@ -23,6 +23,9 @@ import (
 
 // resolveModel picks the agent model for a profile (tests stub modelFn).
 func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
+	if h.Inert {
+		return nil, errors.New("an inert boot calls no model")
+	}
 	if h.modelFn != nil {
 		return h.modelFn()
 	}
@@ -40,9 +43,9 @@ func (h *Host) initPath() string { return TildePath(filepath.Join(h.Dirs.ConfigH
 
 func (h *Host) addProvider() string { return "add a provider to " + h.initPath() }
 
-// noModelHint is the one sentence that says how to get a model: the first
+// NoModelHint is the one sentence that says how to get a model: the first
 // builtin provider's key to export, or where to add a provider.
-func (h *Host) noModelHint() string {
+func (h *Host) NoModelHint() string {
 	if missing := h.Providers.Missing(); len(missing) > 0 {
 		return "export " + missing[0].Env + " or add a provider to init.lua"
 	}
@@ -54,7 +57,7 @@ func (h *Host) noModelHint() string {
 // and a failed send share it.
 func (h *Host) modelErr(id string) error {
 	if id == "" {
-		hint := h.noModelHint()
+		hint := h.NoModelHint()
 		if len(h.Providers.Missing()) > 1 && h.hooks() != nil {
 			hint += "; /model lists every key"
 		}

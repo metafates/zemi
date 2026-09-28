@@ -168,6 +168,12 @@ func (h *Host) fsDefault(subject, arg string) perm.Decision {
 // reply is refused whatever rules exist; req is a func so no other zemi
 // builds it.
 func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[string]any) (tools.Verdict, *stubReply) {
+	// NOTE: a raise at a config file's top level ends the file, so an inert
+	// boot misses what it registers after the call; a handle that failed
+	// through its callback would keep the rest.
+	if h.Inert && subject != "lua.fs.read" {
+		L.RaiseError("%s %s: permission denied (inert)", subject, arg)
+	}
 	stubbed := false
 	if h.test != nil {
 		var reply *stubReply

@@ -56,7 +56,7 @@ func launch(o options) int {
 		if o.prompt == "" {
 			return usage("zemi run needs a prompt: an argument, - or piped stdin")
 		}
-		h, done, err := bootHeadless(o, os.Stderr)
+		h, done, err := bootHeadless(o, false, os.Stderr)
 		if err != nil {
 			return failPrint(err, o.json, os.Stdout, os.Stderr)
 		}
@@ -218,19 +218,28 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App, reload func()) []
 
 // bootHeadless boots zemi with no TUI, for zemi run and zemi health; done
 // stops what boot started (MCP and language servers) and closes the log.
-func bootHeadless(o options, notice io.Writer) (*hostapi.Host, func(), error) {
+// An inert boot (zemi models, completion) only reads config: no store, no
+// log file, no process, and Host.Inert's guards.
+func bootHeadless(o options, inert bool, notice io.Writer) (*hostapi.Host, func(), error) {
 	dirs, err := config.ResolveDirs()
-	if err == nil {
+	if err == nil && !inert {
 		err = dirs.Ensure()
 	}
 	if err != nil {
 		return nil, nil, err
 	}
-	log := logging.New(dirs.LogDir())
-	h, trust := newHost(dirs, log, o, notice)
+	hostDirs, logDir, release := dirs, dirs.LogDir(), func() {}
+	if inert {
+		hostDirs.StateHome, logDir, release = "", "", proc.Refuse()
+	}
+	log := logging.New(logDir)
+	h, trust := newHost(hostDirs, log, o, notice)
+	h.Inert = inert
+	trust.dirs = dirs // the saved decision; a headless answer saves none
 	done := func() {
 		proc.KillAll()
 		log.Close()
+		release()
 	}
 	if err := h.RT.Boot(context.Background(), hostSteps(h, trust, nil, func() {})); err != nil {
 		done()
@@ -462,14 +471,16 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				return h.OpenModePicker()
 			}
 			return h.SetPermMode(args)
-		}, GoComplete: func(h *hostapi.Host, _, _ string) []string {
-			var names []string
-			for _, m := range h.PermModeList() {
-				names = append(names, m.Name)
-			}
-			return names
-		}},
+		}, GoComplete: func(h *hostapi.Host, _, _ string) []string { return modeNames(h) }},
 	}
+}
+
+func modeNames(h *hostapi.Host) []string {
+	var names []string
+	for _, m := range h.PermModeList() {
+		names = append(names, m.Name)
+	}
+	return names
 }
 
 // softStep keeps a failing config step (a typo in init.lua, a broken plugin

@@ -624,8 +624,8 @@ func (h *Host) subagentModelID(def AgentDef) string {
 	return cmp.Or(h.modelRef(def.Model), h.roleModel("agents"))
 }
 
-// modelIDs lists every provider/model the config registered.
-func (h *Host) modelIDs() []string {
+// ModelIDs lists every provider/model the config registered.
+func (h *Host) ModelIDs() []string {
 	var out []string
 	for _, spec := range h.Providers.List() {
 		for _, m := range spec.Models {
@@ -638,10 +638,10 @@ func (h *Host) modelIDs() []string {
 // checkModelID refuses a model reference config does not know, naming the
 // ones it does. A role name always passes: an unset role follows chat.
 func (h *Host) checkModelID(id string) error {
-	if id == "" || isRole(id) || slices.Contains(h.modelIDs(), id) {
+	if id == "" || isRole(id) || slices.Contains(h.ModelIDs(), id) {
 		return nil
 	}
-	return fmt.Errorf("unknown model %q; roles: %s; configured models: %s", id, strings.Join(roleNames(), ", "), strings.Join(h.modelIDs(), ", "))
+	return fmt.Errorf("unknown model %q; roles: %s; configured models: %s", id, strings.Join(roleNames(), ", "), strings.Join(h.ModelIDs(), ", "))
 }
 
 // ---------------------------------------------------------------------------

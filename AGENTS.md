@@ -111,7 +111,10 @@ dir` (`enterDir`: `PWD` follows) before anything else. Piped stdin (1 MiB at mos
 behind the typed prompt, is the typed prompt itself after `-`, and is a usage error for the TUI.
 Completion offers session ids from the project store (`completeSessions`) and plugin names
 from `plugins.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
-completion function.
+completion function. `zemi models` and the `-m`, `--profile` and `--mode` completion boot
+inert (`bootHeadless` with `Host.Inert`): no store, no log file, `proc.Refuse`, and four
+guards (`resolveModel` calls no model, `luaGate` refuses all but reads, `addMCP` starts no
+server, `installNamespaces` syncs no files), so a tab press runs nothing config asks for.
 Flags apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
 reads. `-m`, `/model <provider/model>` and `zemi.model.set` write
 `models.chat`, and refuse while the active profile sets its own model (`Host.ProfileModelErr`;
@@ -186,7 +189,7 @@ where each key is sent. A fetched one reads only the variables the bundled one n
 version is ignored, so an upgrade brings its newer bundle back, and one that does not load is
 the `/health` catalog row's warning. Each builtin is on only while its key is
 exported, one without is in `Registry.Missing` (minus the ids config deleted or added) so the
-no-model hint (`noModelHint`, one sentence everywhere) can name the variable and `/model` lists it, copy only, after the usable models, `Registry.Reset` seeds every generation
+no-model hint (`NoModelHint`, one sentence everywhere) can name the variable and `/model` lists it, copy only, after the usable models, `Registry.Reset` seeds every generation
 before `init.lua`, a `zemi.provider.add` under a builtin id replaces it
 whole, `zemi.provider.del` drops one and `providers.builtin = false` (read once in `readyStep`)
 all of them. A `models.chat` config leaves unset runs `Registry.Default`: the first user-added provider's

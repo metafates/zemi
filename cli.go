@@ -169,7 +169,7 @@ call, so one the mode leaves to the user is denied and stderr counts them.`,
 		Short: "run the /health checks; 1 if any failed",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			h, done, err := bootHeadless(options{}, io.Discard) // the trust row says it
+			h, done, err := bootHeadless(options{}, false, io.Discard) // the trust row says it
 			if err != nil {
 				return err
 			}
@@ -192,6 +192,25 @@ func turnFlags(c *cobra.Command, o *options) {
 	f.StringVar(&o.profile, "profile", "", "agent `profile`: default, planner or one of init.lua's")
 	f.Bool("trust", false, "trust the project for this run; --trust=false does not")
 	_ = c.RegisterFlagCompletionFunc("resume", completeSessions)
+	_ = c.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))
+	_ = c.RegisterFlagCompletionFunc("profile", completeBooted((*hostapi.Host).ProfileNames))
+	_ = c.RegisterFlagCompletionFunc("mode", completeBooted(modeNames))
+}
+
+// completeBooted offers what only config knows (models, profiles, modes),
+// read by an inert boot.
+func completeBooted(names func(*hostapi.Host) []string) cobra.CompletionFunc {
+	return func(c *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		if _, err := completionDirs(c); err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		h, done, err := bootHeadless(options{}, true, io.Discard)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		defer done()
+		return names(h), cobra.ShellCompDirectiveNoFileComp
+	}
 }
 
 // completionDirs are the dirs a completion reads, after -C: cobra runs no
@@ -418,6 +437,20 @@ func modelsCommand() *cobra.Command {
 		Use:   "models",
 		Short: "list the models -m takes",
 		Args:  cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			h, done, err := bootHeadless(options{}, true, io.Discard)
+			if err != nil {
+				return err
+			}
+			defer done()
+			ids := h.ModelIDs()
+			if len(ids) == 0 {
+				fmt.Fprintln(c.ErrOrStderr(), "zemi: no models yet;", h.NoModelHint())
+				return exitStatus(1)
+			}
+			fmt.Fprintln(c.OutOrStdout(), strings.Join(ids, "\n"))
+			return nil
+		},
 	}
 	// the catalog picks where each key is sent, so it lives in <data>, which
 	// no sandbox writes; nothing boots
