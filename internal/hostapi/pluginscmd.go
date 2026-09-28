@@ -16,39 +16,54 @@ import (
 	"github.com/metafates/zemi/internal/plugins"
 )
 
-// newPluginPrompt rides behind /plugins new; the procedure lives in the zemi skill.
-const newPluginPrompt = "I want a new zemi plugin that does what the command above says; ask me when it says nothing. Load the zemi skill and follow the Plugin steps in its plugins.md: tests, not this session, are the check."
+// newPluginPrompt rides behind /plugins new and modifyPluginPrompt behind
+// /plugins modify; the procedure lives in the zemi skill.
+const (
+	newPluginPrompt    = "I want a new zemi plugin that does what the command above says; ask me when it says nothing. Load the zemi skill and follow the Plugin steps in its plugins.md: tests, not this session, are the check."
+	modifyPluginPrompt = "Change my zemi plugin %s in %s as the command above says; ask me when it says nothing. Load the zemi skill and follow the Plugin steps in its plugins.md: tests, not this session, are the check."
+)
 
-// pluginsCommands is /plugins: the zemi plugins verbs plus new, toggle and
-// open, which need the screen.
+// pluginsCommands is /plugins: the zemi plugins verbs plus new, modify,
+// toggle and open, which need the screen.
 func (h *Host) pluginsCommands() []*Command {
 	return []*Command{{
 		Name: "plugins", NArgs: NArgsAny, Desc: "install, update and turn plugins on or off",
 		GoFn: (*Host).pluginsCommand,
-		GoComplete: SubcommandCompleter([]string{"new", "install", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
+		GoComplete: SubcommandCompleter([]string{"new", "modify", "install", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
 			if sub == "new" || sub == "install" || sub == "check" {
 				return nil
 			}
 			ps, _ := plugins.Scan(h.Dirs)
 			var names []string
 			for _, p := range ps {
-				names = append(names, p.Name)
+				if sub != "modify" || p.Local {
+					names = append(names, p.Name)
+				}
 			}
 			return names
 		}),
 	}}
 }
 
+// pluginsCommand is /plugins; new and modify send the line as typed,
+// newlines included, with their prompt riding behind it.
 func (h *Host) pluginsCommand(line string) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return fmt.Errorf("%w; zemi plugins manages them from the shell", err)
 	}
 	typed, stdin := agent.CutAttached(line)
-	args := strings.Fields(typed)
-	verb := ""
+	args, verb := strings.Fields(typed), ""
 	if len(args) > 0 {
 		verb = args[0]
+	}
+	send := func(prompt string) {
+		msg := "/plugins " + strings.TrimSpace(typed) + agent.Attached("command", prompt) + stdin
+		h.GoSafe("plugins "+verb, func() {
+			if err := h.AgentSend(msg); err != nil {
+				h.Notify(logging.Error, "Could not send", h.friendlyError(err))
+			}
+		})
 	}
 	// git, or a big RemoveAll: off the key loop as a busy job, then the
 	// list again
@@ -99,14 +114,19 @@ func (h *Host) pluginsCommand(line string) error {
 			}
 		})
 	case verb == "new":
-		// what the plugin should do stays as typed, line breaks included
-		what := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(typed), "new"))
-		prompt := strings.TrimSpace("/plugins new "+what) + agent.Attached("command", newPluginPrompt) + stdin
-		h.GoSafe("plugins new", func() {
-			if err := h.AgentSend(prompt); err != nil {
-				h.Notify(logging.Error, "Could not send", h.friendlyError(err))
-			}
-		})
+		send(newPluginPrompt)
+	case verb == "modify" && len(args) >= 2:
+		p, err := h.pluginNamed(args[1])
+		if err != nil {
+			return err
+		}
+		if !p.Local {
+			return Usagef("%s is an installed plugin, and the agent changes only local ones: delete it and ask the agent to clone it into the local plugins directory", p.Name)
+		}
+		// the user asked for the change, as for a plugin whose creation they
+		// allowed: auto mode settles the agent's edits there until zemi exits
+		h.madePlugins.Store(h.localPluginDir(p.Dir), true)
+		send(fmt.Sprintf(modifyPluginPrompt, p.Name, TildePath(p.Dir)))
 	case verb == "enable" || verb == "disable":
 		// at once, so the list an action returns to shows it
 		return pluginsErr(plugins.Run(context.Background(), h.Dirs, args, io.Discard))
@@ -156,7 +176,7 @@ func (h *Host) pluginsCommand(line string) error {
 
 func pluginsErr(err error) error {
 	if errors.Is(err, plugins.ErrUsage) {
-		return Usagef("%v | new [what it does] | toggle <name> | open <name> (TUI only)", err)
+		return Usagef("%v | new [what it does] | modify <name> [what to change] | toggle <name> | open <name> (TUI only)", err)
 	}
 	return err
 }
@@ -240,9 +260,11 @@ func (h *Host) pluginItems() []any {
 		} else {
 			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": "plugins enable " + p.Name})
 		}
-		actions = append(actions,
-			map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "plugins open " + p.Name},
-			map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": "plugins delete " + p.Name})
+		actions = append(actions, map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "plugins open " + p.Name})
+		if p.Local {
+			actions = append(actions, map[string]any{"text": "Modify with the agent", "hotkey": "m", "fill": "/plugins modify " + p.Name + " "})
+		}
+		actions = append(actions, map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": "plugins delete " + p.Name})
 		items = append(items, map[string]any{
 			"text": p.Name, "desc": strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
 			"section": section, "on": p.Enabled, "run": "plugins toggle " + p.Name,

@@ -445,11 +445,15 @@ after `--`.
 each row's state first (`failed`, an update), then its version and the
 `init.lua` description; its detail names the source, the load status and
 what the plugin registered, and the git verbs run on a goroutine that
-refreshes the list when they end, unless the user closed it meanwhile. Three
+refreshes the list when they end, unless the user closed it meanwhile. Four
 verbs need the screen, so only `/plugins` takes them: `toggle <name>`,
-`open <name>` (its `init.lua` in the editor, or its directory without one)
-and `new [what it should do]`, the list's first row, which sends the agent
-a short prompt pointing at the zemi skill's plugins.md, where the procedure lives.
+`open <name>` (its `init.lua` in the editor, or its directory without one),
+`new [what it should do]`, the list's first row, and `modify <name> [what
+to change]`, which a local plugin's detail fills; the last two send the
+agent a short prompt pointing at the zemi skill's plugins.md, where the
+procedure lives. `modify` also lets auto mode edit that plugin until zemi
+exits, as an approved creating write does (§9); an installed clone is
+refused, since the agent never writes there.
 
 `zemi plugins test <name|dir> [pattern]` runs a plugin's
 `tests/*.lua` so an agent writing one tests it without a user's session.

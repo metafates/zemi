@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -160,11 +161,71 @@ func TestPluginsOpen(t *testing.T) {
 	}
 }
 
-// TestPluginsNew: the list offers New plugin first; TestCommandSendsTypedLine
-// covers what /plugins new sends.
-func TestPluginsNew(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	if got := fmt.Sprint(h.pluginItems()[0]); !strings.Contains(got, "fill:/plugins new  text:New plugin verb:fill") {
-		t.Fatalf("first row: %s", got)
+// TestPluginsSend: the list offers New plugin first and a local plugin's
+// detail Modify, and /plugins modify sends the typed line with the plugin's
+// prompt behind it and lets auto mode edit that local plugin, and refuses an
+// installed one; TestCommandSendsTypedLine covers /plugins new.
+func TestPluginsSend(t *testing.T) {
+	for _, c := range []struct {
+		args  string
+		err   string   // a usage error, which sends nothing
+		sent  []string // in the message the agent gets
+		grant bool     // auto mode edits the local plugin
+	}{
+		{args: "modify mine add a flag\nand a test", grant: true, sent: []string{`/plugins modify mine add a flag\nand a test`, "Change my zemi plugin mine in "}},
+		{args: "modify theirs fix it", err: "theirs is an installed plugin"},
+		{args: "modify", err: "modify <name> [what to change]"},
+	} {
+		t.Run(c.args, func(t *testing.T) {
+			data := t.TempDir()
+			for _, dir := range []string{"local/mine", "installed/theirs"} {
+				os.MkdirAll(filepath.Join(data, "plugins", dir), 0o755)
+			}
+			log := logging.New(t.TempDir())
+			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+			h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir(), DataHome: data})
+			if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+				t.Fatal(err)
+			}
+			m := reflectStub(t, h, "ok")
+			h.SetUIHooks(&fakeUI{})
+			items := fmt.Sprint(h.pluginItems())
+			if !strings.Contains(items, "fill:/plugins new  text:New plugin verb:fill") || strings.Count(items, "Modify with the agent") != 1 {
+				t.Fatalf("items: %s", items)
+			}
+			if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugins modify ")); got != "[mine]" {
+				t.Fatalf("/plugins modify completes %s", got)
+			}
+			err := h.pluginsCommand(c.args)
+			if c.err != "" {
+				if err == nil || !strings.Contains(err.Error(), c.err) {
+					t.Fatalf("err %v, want %q", err, c.err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if got := h.madePlugin(filepath.Join(data, "plugins", "local", "mine", "init.lua")); got != c.grant {
+				t.Errorf("auto mode edits the plugin: %v, want %v", got, c.grant)
+			}
+			if c.sent == nil {
+				return
+			}
+			waitFor(t, func() error {
+				if m.streams.Load() == 0 {
+					return errors.New("nothing sent")
+				}
+				return nil
+			})
+			waitIdle(t, h)
+			msgs, err := h.DB.Messages(h.AgentSessionID())
+			if err != nil || len(msgs) == 0 {
+				t.Fatalf("messages %v, %v", msgs, err)
+			}
+			for _, s := range c.sent {
+				if !strings.Contains(msgs[0].PartsJSON, s) {
+					t.Errorf("sent %s, want %q in it", msgs[0].PartsJSON, s)
+				}
+			}
+		})
 	}
 }

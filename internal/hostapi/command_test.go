@@ -37,6 +37,7 @@ func TestCompleteCommand(t *testing.T) {
 		{"en", "/skills en", "enable,disable"},
 		{"", "/skills enable ", "lint"},
 		{"li", "/skills enable li", "lint"},
+		{"", "/skills enable lint ", ""},
 	} {
 		if got := strings.Join(comp(h, c.lead, c.line), ","); got != c.want {
 			t.Errorf("%q: got %q, want %q", c.line, got, c.want)

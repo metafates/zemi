@@ -219,14 +219,14 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 }
 
 // SubcommandCompleter completes the first argument from a fixed list and,
-// when next is set, later arguments from next.
+// when next is set, the second from next: what follows is a value or text.
 func SubcommandCompleter(subs []string, next func(h *Host, sub string) []string) func(h *Host, lead, line string) []string {
 	return func(h *Host, lead, line string) []string {
 		fields, arg := argAt(lead, line)
 		switch {
 		case arg <= 1:
 			return subs
-		case next != nil:
+		case arg == 2 && next != nil:
 			return next(h, fields[1])
 		}
 		return nil

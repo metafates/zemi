@@ -131,8 +131,10 @@ cancels it, and appends its answer as a transcript row, which `-p` prints.
 `zemi plugins <verb>` (`parseArgs`, when `plugins` is the first word) runs `plugins.Run` and
 exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
 reloads on the change. `test` is the one verb that boots Lua (below). `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
-`open` and `new` (the list's first row, which sends `newPluginPrompt` to the agent: the
-procedure lives in the zemi skill's plugins.md). Its list is built off the key loop from `plugins.List` and the last boot's
+`open`, `new` (the list's first row, which sends `newPluginPrompt` to the agent: the
+procedure lives in the zemi skill's plugins.md) and `modify <name> [what to change]` (a local
+plugin's detail action fills it; it sends `modifyPluginPrompt` and records the plugin in
+`madePlugins`). Its list is built off the key loop from `plugins.List` and the last boot's
 `pluginLoads`; install, update, check and delete run on `GoSafe`, toast, and refresh the list
 (`Overlay.Refresh`: it replaces an open one in place and opens nothing once esc closed it).
 `open` edits the plugin's `init.lua`, or its directory when it has none. Under `-p` it points at
@@ -378,7 +380,7 @@ not secret-shaped (reads of the local plugins too), `tool.workflow` scripts (eac
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
 `.git` or zemi's own dirs (a local plugin included: it loads in every project, so like the
 recipes it asks every time, with no always answer, except one whose creating write the user or
-yolo allowed in this process (`madePlugins`, recorded by `askHook`), which auto then edits in any
+yolo allowed in this process (`madePlugins`, recorded by `askHook`, or by `/plugins modify`), which auto then edits in any
 project), to the Lua in any `.agents` (`init.lua`, `lua/`) and to a
 `.gitattributes` or `.gitmodules` are `protectedWrite`, checkouts in `.agents/worktrees` aside,
 which no rule settles, a mode's own included; the rest of `.agents` (skills, agents, commands,
