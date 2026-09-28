@@ -2019,7 +2019,9 @@ provenance string.
   a timed-out bash run adopted as a job keeps it. The limits themselves are
   the pinned environment's Sandbox block for a run with bash
   (`Host.sandboxPrompt`), each clause read off `sandboxPolicy` and the
-  backend, so the text cannot drift from what the kernel enforces. Known
+  backend, so the text cannot drift from what the kernel enforces; it skips
+  the project walk, which must not delay the first request, so on Linux a
+  project over `sandboxWalkMax` entries reads as writable there. Known
   ceiling: on Linux, where Landlock cannot hide `.env`, a sandboxed
   command in a trusted project can read it when it names it by a glob or
   a variable, or runs code that opens it.

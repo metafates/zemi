@@ -65,6 +65,13 @@ var secretDirs = []string{
 // Seatbelt denies binding a unix socket; the fix is a seatbelt rule allowing
 // bind under the pad.
 func (h *Host) sandboxPolicy(readOnly bool, pad string) sandbox.Policy {
+	return h.policyWalk(readOnly, pad, true)
+}
+
+// policyWalk is sandboxPolicy; walk false skips the project walk the
+// namespace backend needs, which must not sit between submit and the
+// provider request.
+func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 	d := h.Dirs
 	home, _ := os.UserHomeDir()
 	p := sandbox.Policy{Loopback: true}
@@ -112,7 +119,7 @@ func (h *Host) sandboxPolicy(readOnly bool, pad string) sandbox.Policy {
 		// Landlock rules only add access: a write root opens every hidden path inside it
 		backend.Name != "seatbelt" && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, d.ProjectDir) })
 	writable := h.ProjectTrusted() && !readOnly && backend.EnforcesProtect && d.ProjectDir != "" && home != "" && !h.inJail(home, d.ProjectDir) && !nested
-	if writable && backend.Name != "seatbelt" {
+	if writable && walk && backend.Name != "seatbelt" {
 		// seatbelt protects every .git and .agents by name, the namespace
 		// variant only the paths it binds
 		found, ok := configEntries(d.ProjectDir)
@@ -173,6 +180,8 @@ func (h *Host) sandboxPolicy(readOnly bool, pad string) sandbox.Policy {
 // carries the network and sandbox parameters. It says auto mode, the one
 // that settles commands confined: keyed on the mode, it would cost a cache
 // miss per switch.
+// NOTE: it reads the policy without the project walk, so on the namespace
+// backend a project over sandboxWalkMax entries reads as writable here.
 func (h *Host) sandboxPrompt(readOnly, escapes bool, pad string) string {
 	switch {
 	case !h.sandboxLive():
@@ -180,7 +189,7 @@ func (h *Host) sandboxPrompt(readOnly, escapes bool, pad string) string {
 	case !h.ProjectTrusted():
 		return "Sandbox: this project is not trusted, so only commands that just read run without asking (confined); any other command asks the user and runs unconfined once approved.\n"
 	}
-	pol, backend, d := h.sandboxPolicy(readOnly, pad), h.sandbox.Load().backend, h.Dirs
+	pol, backend, d := h.policyWalk(readOnly, pad, false), h.sandbox.Load().backend, h.Dirs
 	var b strings.Builder
 	b.WriteString("Sandbox (auto mode): commands you run without the user's approval are confined.\n")
 	switch {
