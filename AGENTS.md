@@ -452,7 +452,8 @@ and `git` run; a denial naming `/tmp` gets a hint pointing at `$TMPDIR`),
 poison another's build), the project is writable only when it is trusted, outside zemi's own
 dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect`), `.git`,
 `.agents` and every `PATH` dir under a write root stay read-only because zemi runs git, sh and
-servers unconfined by name, and home credential paths are hidden. The secret shapes do not cover the
+servers unconfined by name, and home credential paths are hidden, under `$HOME` and the account's
+home when `HOME` was moved (`homes`). The secret shapes do not cover the
 pad (`Policy.Pad`): only the session's own commands put files there. Of the hidden data dir a local
 plugin's code (`plugins.Code`, through `Policy.Read`) and the names in the plugin dirs
 (`Policy.List`) read back, so `zemi plugins test` runs confined; its `.git`, and a dot entry or

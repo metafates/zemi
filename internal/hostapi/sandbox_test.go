@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -374,6 +375,10 @@ func TestSandboxPolicy(t *testing.T) {
 			}
 			if !slices.Contains(p.Hide, h.Dirs.StateHome) || slices.Contains(p.Hide, h.Dirs.ConfigHome) == c.projectInConfig {
 				t.Errorf("hide %v", p.Hide)
+			}
+			// HOME moved: the account's own credentials stay hidden too
+			if u, err := user.Current(); c.secretInside != "" && (err != nil || !slices.Contains(p.Hide, filepath.Join(u.HomeDir, ".ssh"))) {
+				t.Errorf("account home's .ssh not hidden (%v): %v", err, p.Hide)
 			}
 			for _, dir := range []string{p.Env["GOCACHE"], p.Env["TMPDIR"]} {
 				if st, err := os.Stat(dir); err != nil || !st.IsDir() || !slices.Contains(p.Write, dir) || !strings.HasPrefix(dir, h.Dirs.StateHome) {

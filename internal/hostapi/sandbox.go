@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -43,6 +44,20 @@ var secretDirs = []string{
 	".local/share/keyrings", ".m2/settings.xml", ".gradle/gradle.properties", ".gem/credentials", ".boto", ".oci",
 	".config/doctl", ".config/fly", ".bash_history", ".zsh_history", ".local/share/fish/fish_history",
 	".psql_history", ".mysql_history", ".python_history", ".node_repl_history",
+}
+
+// homes are where secretDirs sit: $HOME and, when HOME was moved (a wrapper,
+// direnv, make first-run), the account's home from the user database.
+func homes() []string {
+	var hs []string
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		hs = append(hs, home)
+	}
+	if u, err := user.Current(); err == nil && u.HomeDir != "" && u.HomeDir != home {
+		hs = append(hs, u.HomeDir)
+	}
+	return hs
 }
 
 // sandboxPolicy is what a settled command may touch: the scratchpad pad,
@@ -107,7 +122,7 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 			p.Hide = append(p.Hide, z)
 		}
 	}
-	if home != "" {
+	for _, home := range homes() {
 		for _, s := range secretDirs {
 			p.Hide = append(p.Hide, filepath.Join(home, s))
 		}

@@ -2014,7 +2014,8 @@ provenance string.
   boot (the probe is fast), so `zemi health` and the first turn's tool schema
   see the result; `/health` has a `sandbox` row. `sandboxPolicy`: everything
   readable but the home credential paths (`~/.ssh`, `~/.aws`, `~/.config/gh`,
-  `~/.npmrc`, `~/.git-credentials`, shell histories, ...), zemi's config,
+  `~/.npmrc`, `~/.git-credentials`, shell histories, ..., under `$HOME` and
+  the account's home when `HOME` was moved), zemi's config,
   data and state dirs (sessions, logs, keys in `init.lua`; not when they
   hold the project, and the write roots inside them stay usable; of the
   data dir a local plugin's code, its `.lua` files and `lua`, `tests` and

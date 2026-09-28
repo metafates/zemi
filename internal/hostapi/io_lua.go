@@ -51,16 +51,14 @@ func (h *Host) secretPath(p string) bool {
 	})
 }
 
-// homeSecrets are the secretDirs under $HOME, resolved once: home does not
+// homeSecrets are the secretDirs under homes(), resolved once: home does not
 // move under a running zemi.
 var homeSecrets = sync.OnceValue(func() []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-	roots := make([]string, len(secretDirs))
-	for i, s := range secretDirs {
-		roots[i] = perm.CanonPath(filepath.Join(home, s))
+	var roots []string
+	for _, home := range homes() {
+		for _, s := range secretDirs {
+			roots = append(roots, perm.CanonPath(filepath.Join(home, s)))
+		}
 	}
 	return roots
 })
