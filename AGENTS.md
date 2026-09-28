@@ -969,7 +969,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   in the composer. Keymaps are keys or key sequences (`<leader>` is `keymap.leader`; a key name
   the terminal never reports raises, `checkKey`). Printable and composer editing keys stay with
   the composer - scrolling is on `pgup`/`pgdown`/`shift+up`/`shift+down`/`ctrl+home`/`ctrl+end` - and chrome, an open
-  palette and completion popups keep their keys before keymaps are consulted. A focused node
+  palette and completion popups keep their keys before keymaps are consulted; a `list = true`
+  binding swaps a key for a move there first (`Keymaps.ListAlias`, in Go). A focused node
   takes every key but ctrl+c through `Keymaps.Lookup(focus, key)`: `{ focus = id }` bindings
   first unless a more trusted global binding holds the key; unbound keys drop and an unbound
   esc returns the keys.

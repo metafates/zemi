@@ -739,6 +739,12 @@ only while that node has the keys, and may be a plain letter there; it
 comes before the global bindings unless a more trusted global binding
 holds the key, and it may not take a key or sequence a more trusted
 global binding holds, so a plugin panel cannot shadow the user's keys.
+A binding with `{ list = true }` is a list alias: while a list, a
+composer popup or a prompt has the keys, its key makes the move its action
+names (`down`, `ctrl+d`, ...), swapped in Go before the list sees it, so a
+list never waits on Lua. It is one non-printable key, and only user config
+binds one, since it reaches the permission prompt. This is neovim's
+`pumvisible()` mapping as data.
 Key notation
 matches bubbletea's strings (`ctrl+s`, `alt+enter`, `esc`; named keys are
 lowercased); a string action in `zemi.keymap.set` resolves to a registered

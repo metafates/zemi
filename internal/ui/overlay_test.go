@@ -651,6 +651,53 @@ func TestOverlayHints(t *testing.T) {
 	}
 }
 
+// TestListAlias: a list = true binding makes its key the move it names
+// wherever a list, popup or prompt has the keys, and nowhere else.
+func TestListAlias(t *testing.T) {
+	many := make([]any, 40)
+	for i := range many {
+		many[i] = fmt.Sprintf("row %d", i)
+	}
+	for _, c := range []struct {
+		name  string
+		setup func(a *App)
+		key   string
+		check func(a *App) string
+	}{
+		{"ctrl+j moves an overlay's selection", func(a *App) {
+			a.openOverlay(hostapi.Overlay{ID: "o", Origin: lua.OriginBuiltin, Items: []any{"a", "b"}})
+		}, "ctrl+j", func(a *App) string { return map[bool]string{false: "not moved"}[a.overlays[0].selected == 1] }},
+		{"ctrl+j moves the palette's selection", func(a *App) {
+			runLua(t, a, `zemi.command.add("aa", function() end) zemi.command.add("ab", function() end)`)
+			pressKeys(a, "/a")
+		}, "ctrl+j", func(a *App) string {
+			return map[bool]string{false: "not moved"}[a.palette.open && a.palette.selected == 1]
+		}},
+		{"ctrl+j on the bare composer is still a newline", func(a *App) { pressKeys(a, "hi") }, "ctrl+j", func(a *App) string {
+			return map[bool]string{false: fmt.Sprintf("composer %q", a.composer.text)}[a.composer.text == "hi\n"]
+		}},
+		{"an alias of ctrl+d moves half a page", func(a *App) {
+			a.openOverlay(hostapi.Overlay{ID: "o", Origin: lua.OriginBuiltin, Items: many})
+			a.overlayBox(&a.overlays[0], 80, 20)
+		}, "ctrl+f", func(a *App) string {
+			st := a.overlays[0]
+			want := max(st.view.pageItems(len(st.visible))/2, 1)
+			return map[bool]string{false: fmt.Sprintf("selected %d, want %d", st.selected, want)}[st.selected == want && want > 1]
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, _ := bootAgentApp(t, 80, 20)
+			runLua(t, app, `zemi.keymap.set("ctrl+j", "down", { list = true })
+zemi.keymap.set("ctrl+f", "ctrl+d", { list = true })`)
+			c.setup(app)
+			pressKeys(app, c.key)
+			if msg := c.check(app); msg != "" {
+				t.Fatal(msg)
+			}
+		})
+	}
+}
+
 func TestMoveSel(t *testing.T) {
 	for _, c := range []struct {
 		key                 string

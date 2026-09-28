@@ -83,10 +83,29 @@ func TestKeymapRegistry(t *testing.T) {
 		{"a focused key is not the global one", "k", "tree", lua.OriginUser, false, false},
 		{"user deletes a plugin focused key", "k", "todo", lua.OriginUser, true, false},
 	} {
-		removed, err := r.Del(d.origin, "", d.focus, d.key)
+		removed, err := r.Del(d.origin, "", d.focus, d.key, false)
 		if removed != d.removed || (err != nil) != d.wantErr {
 			t.Fatalf("%s: removed=%v err=%v", d.name, removed, err)
 		}
+	}
+	// a list alias lives beside a global binding of its key, and only Lookup
+	// sees that one
+	alias := func(origin lua.Origin) *KeyBinding {
+		return &KeyBinding{Key: "ctrl+j", List: true, RHS: RHS{Move: "down"}, Origin: origin}
+	}
+	for _, err := range []error{r.Set(alias(lua.OriginUser)), r.Set(bind("ctrl+j", "", lua.OriginPlugin))} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if b := r.ListAlias("ctrl+j"); b == nil || b.RHS.Move != "down" || r.ListAlias("ctrl+k") != nil || r.Lookup("", "ctrl+j").List {
+		t.Fatalf("ListAlias = %+v", b)
+	}
+	if err := r.Set(alias(lua.OriginPlugin)); err == nil {
+		t.Fatal("a plugin replaced a user list alias")
+	}
+	if removed, _ := r.Del(lua.OriginUser, "", "", "ctrl+j", true); !removed || r.ListAlias("ctrl+j") != nil || r.Lookup("", "ctrl+j") == nil {
+		t.Fatal("deleting the alias must leave the global binding")
 	}
 	r.Set(bind("q", "", lua.OriginUser))
 	r.Purge()
@@ -311,7 +330,7 @@ func TestPluginOwnership(t *testing.T) {
 			r.owner = owner
 			return ops{
 				func(p string) error { return r.Set(&KeyBinding{Key: "x", Origin: pl, Path: p}) },
-				func(p string) (bool, error) { return r.Del(pl, p, "", "x") },
+				func(p string) (bool, error) { return r.Del(pl, p, "", "x", false) },
 			}
 		}},
 		{"command", func() ops {

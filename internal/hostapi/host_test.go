@@ -94,7 +94,7 @@ func TestNamespaceVersion(t *testing.T) {
 	runUser(t, r, `
 		assert(type(zemi) == "table", "zemi root missing")
 		assert(type(zemi.api) == "table", "zemi.api missing")
-		assert(zemi.api.version == "0.95.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.96.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugins test")
 		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
 		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
@@ -370,7 +370,24 @@ func TestKeymapFromLua(t *testing.T) {
 		assert(cmd == "/hello", "action=" .. cmd)
 		zemi.keymap.set("ctrl+n", cmd) -- what get hands back rebinds as is
 		assert(zemi.keymap.get("ctrl+n").action == "/hello", "command binding does not round-trip")
+
+		zemi.keymap.set("ctrl+j", "down", { list = true })
+		local a = zemi.keymap.get("ctrl+j", { list = true })
+		assert(a and a.list and a.action == "down" and zemi.keymap.get("ctrl+j") == nil, "a list alias is its own binding")
+		for _, bad in ipairs({
+			{ "ctrl+x j", "down", { list = true } }, -- a sequence
+			{ "d", "down", { list = true } }, -- a letter
+			{ "ctrl+k", "help", { list = true } }, -- not a move
+			{ "ctrl+k", function() end, { list = true } },
+			{ "ctrl+k", "down", { list = true, focus = "sidebar" } },
+		}) do
+			assert(not pcall(zemi.keymap.set, bad[1], bad[2], bad[3]), "bound the alias " .. bad[1])
+		end
+		assert(zemi.keymap.del("ctrl+j", { list = true }) and zemi.keymap.get("ctrl+j", { list = true }) == nil, "del an alias")
 	`)
+	if err := r.ExecuteChunk(context.Background(), `zemi.keymap.set("ctrl+k", "up", { list = true })`, "p.lua", lua.OriginPlugin); err == nil || !strings.Contains(err.Error(), "only user config") {
+		t.Fatalf("a plugin bound a list alias: %v", err)
+	}
 	if b := h.Keymaps.Lookup("", "ctrl+g"); b == nil || b.Origin != lua.OriginUser {
 		t.Fatalf("ctrl+g = %+v", b)
 	}

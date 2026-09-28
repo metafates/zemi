@@ -864,6 +864,7 @@ func (h *Host) OpenHelp() error {
 	for _, k := range goKeys {
 		items = append(items, map[string]any{"text": k[0], "desc": k[1], "section": "Keys"})
 	}
+	var aliases []any
 	for _, b := range h.Keymaps.List() {
 		desc := b.Desc
 		if desc == "" {
@@ -872,11 +873,16 @@ func (h *Host) OpenHelp() error {
 		if b.Focus != "" {
 			desc += " (in " + b.Focus + ")"
 		}
+		if b.List {
+			aliases = append(aliases, map[string]any{"text": b.Key, "desc": cmp.Or(b.Desc, "same as "+b.RHS.Move), "section": "Lists"})
+			continue
+		}
 		items = append(items, map[string]any{"text": b.Key, "desc": desc, "section": "Keys"})
 	}
 	for _, k := range listKeys {
 		items = append(items, map[string]any{"text": k[0], "desc": k[1], "section": "Lists"})
 	}
+	items = append(items, aliases...)
 	// Hidden keeps a command out of the palette's default list, not out of
 	// /help: this is the index the README points people at.
 	for _, c := range h.Commands.List() {
@@ -897,6 +903,8 @@ func describeRHS(rhs RHS) string {
 		return "/" + rhs.Command
 	case rhs.API != "":
 		return rhs.API
+	case rhs.Move != "":
+		return rhs.Move
 	default:
 		return "<function>"
 	}
@@ -1900,7 +1908,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.95.0"))
+	api.RawSetString("version", glua.LString("0.96.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

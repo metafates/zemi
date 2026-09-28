@@ -27,6 +27,11 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// composer: an esc that answers a box in between does not count, and a
 	// held key prefix never outlives a key that bypasses keySequence
 	elsewhere := top != noModal || a.palette.open || a.completion.shown()
+	// a list alias (zemi.keymap.set with list = true) swaps the key before
+	// any list, popup or prompt sees it
+	if b := a.host.Keymaps.ListAlias(key); elsewhere && b != nil {
+		key, msg = b.RHS.Move, tea.KeyPressMsg{}
+	}
 	if elsewhere || key != a.armed.key {
 		a.armed = armed{}
 	}
@@ -428,7 +433,8 @@ func (a *App) focusedNode() string {
 }
 
 // listMove maps list navigation keys (arrows, k/j, ctrl+p/n) to -1 or 1;
-// 0 means the key is not a move. ctrl+k and ctrl+j stay the composer's.
+// 0 means the key is not a move. ctrl+k and ctrl+j stay the composer's
+// unless a list alias takes them.
 func listMove(key string) int {
 	switch key {
 	case "up", "k", "ctrl+p":

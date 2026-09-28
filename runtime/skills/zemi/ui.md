@@ -8,9 +8,13 @@ Everything on screen but the composer and the Go-drawn prompts is a Lua widget. 
 zemi.keymap.set("<leader>r", "review", { desc = "review changes" }) -- a command name or a host action
 zemi.keymap.set("ctrl+t", function() zemi.agent.send("run the tests") end, { desc = "run tests" })
 zemi.keymap.del("ctrl+y") -- shipped keys unbind too
+zemi.keymap.set("ctrl+j", "down", { list = true }) -- moves in every list, popup and prompt
+zemi.keymap.set("ctrl+k", "up", { list = true })
 ```
 
 A key is a non-printable key or a sequence that starts with one (`"ctrl+x s"`; `<leader>` is `keymap.leader`, ctrl+x). Binding a taken key rebinds it: ctrl+t above replaces the shipped next profile key. The shipped keys are in `keymaps.lua`. Host actions: `zemi.ui.help`, `zemi.model.pick`, `zemi.ui.reasoning.toggle`, `zemi.ui.scroll.up`, `zemi.ui.scroll.down`, `zemi.ui.scroll.top`, `zemi.ui.scroll.bottom`, `zemi.ui.scroll.line_up` and `zemi.ui.scroll.line_down` (each takes a node id after a space), `zemi.ui.focus.set <id>`, `zemi.ui.focus.next`, `zemi.ui.focus.prev`, `zemi.permission.mode.next`, `zemi.permission.mode.prev`, `zemi.agent.profile.next`, `zemi.agent.profile.prev`, and for the composer `zemi.composer.submit`, `zemi.composer.insert <text>`, `zemi.composer.history_prev`, `zemi.composer.history_next`, `zemi.composer.paste` and `zemi.composer.edit`. A command with its handler is in `lua.md`'s examples.
+
+Lists, popups and prompts keep their keys (`/help` lists them): up, down, j, k, ctrl+p and ctrl+n move, ctrl+d and ctrl+u move half a page or scroll a box's text. `list = true` adds a key for a move (`"up"`, `"down"`, `"pgup"`, `"pgdown"`, `"home"`, `"end"`, `"ctrl+d"`, `"ctrl+u"`); it is one non-printable key, user config only, and elsewhere the key stays what it was (ctrl+j is still the composer's newline).
 
 ## Widgets
 

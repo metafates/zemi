@@ -26,12 +26,18 @@ type RHS struct {
 	Fn      *glua.LFunction // Lua callback (interpreter goroutine only)
 	Command string          // registered command name
 	API     string          // dotted host-API call (zemi.*)
+	Move    string          // a list alias: the move it stands for ("down"), one of ListMoves
 }
+
+// ListMoves are the keys a list alias may stand for: moves only, so no
+// alias answers, confirms or copies on a prompt.
+var ListMoves = []string{"up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"}
 
 // KeyBinding maps one key to a right-hand side.
 type KeyBinding struct {
 	Key    string // bubbletea key string: "ctrl+s", "tab", "alt+enter"
 	Focus  string // the layout node id it works in while focused; "" everywhere
+	List   bool   // a list alias: live while a list, popup or prompt has the keys
 	RHS    RHS
 	Desc   string
 	Origin lua.Origin
@@ -40,7 +46,14 @@ type KeyBinding struct {
 	order  int // registration order, which /help and zemi.keymap.list keep
 }
 
-type bindKey struct{ focus, key string }
+// bindKey is a binding's slot. Lists take their keys before keymaps are
+// consulted, so an alias never overlaps a global binding or sequence.
+type bindKey struct {
+	focus, key string
+	list       bool
+}
+
+func (b *KeyBinding) slot() bindKey { return bindKey{b.Focus, b.Key, b.List} }
 
 // mayReplace refuses a registration or removal by a less trusted origin
 // than the holder's, and one plugin's over another's: both rank as plugin,
@@ -79,7 +92,7 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if old := r.bindings[bindKey{b.Focus, b.Key}]; old != nil {
+	if old := r.bindings[b.slot()]; old != nil {
 		if err := mayReplace(r.owner, "keymap "+b.Key, old.Origin, old.Path, b.Origin, b.Path); err != nil {
 			return err
 		}
@@ -87,7 +100,7 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	// a key fires before the longer sequences it starts, so overlapping a
 	// more trusted sequence would take it over (or be dead)
 	for k, old := range r.bindings {
-		related := k.focus == b.Focus || k.focus == "" || b.Focus == ""
+		related := k.list == b.List && (k.focus == b.Focus || k.focus == "" || b.Focus == "")
 		overlap := strings.HasPrefix(k.key, b.Key+" ") || strings.HasPrefix(b.Key, k.key+" ") || k.key == b.Key && k.focus == "" && b.Focus != ""
 		if !related || !overlap {
 			continue
@@ -96,23 +109,23 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 			return err
 		}
 	}
-	if old := r.bindings[bindKey{b.Focus, b.Key}]; old != nil {
+	if old := r.bindings[b.slot()]; old != nil {
 		b.order = old.order // a rebind keeps its place
 	} else {
 		r.next++
 		b.order = r.next
 	}
-	r.bindings[bindKey{b.Focus, b.Key}] = b
+	r.bindings[b.slot()] = b
 	return nil
 }
 
 // Del unbinds a key the caller may replace (mayReplace) and reports whether
 // there was one. Unbinding what is not bound is not an error: a reloaded
 // config must be idempotent.
-func (r *KeymapRegistry) Del(by lua.Origin, byPath, focus, key string) (bool, error) {
+func (r *KeymapRegistry) Del(by lua.Origin, byPath, focus, key string, list bool) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	k := bindKey{focus, key}
+	k := bindKey{focus, key, list}
 	b := r.bindings[k]
 	if b == nil {
 		return false, nil
@@ -129,11 +142,19 @@ func (r *KeymapRegistry) Del(by lua.Origin, byPath, focus, key string) (bool, er
 func (r *KeymapRegistry) Lookup(focus, key string) *KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	g := r.bindings[bindKey{"", key}]
-	if s := r.bindings[bindKey{focus, key}]; focus != "" && s != nil && (g == nil || s.Origin.Rank() >= g.Origin.Rank()) {
+	g := r.bindings[bindKey{"", key, false}]
+	if s := r.bindings[bindKey{focus, key, false}]; focus != "" && s != nil && (g == nil || s.Origin.Rank() >= g.Origin.Rank()) {
 		return s
 	}
 	return g
+}
+
+// ListAlias is the list alias bound to key, nil when none: the key loop
+// swaps the key for its move in Go, never calling Lua.
+func (r *KeymapRegistry) ListAlias(key string) *KeyBinding {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.bindings[bindKey{"", key, true}]
 }
 
 // IsPrefix reports whether seq begins a longer key sequence bound globally
@@ -142,7 +163,7 @@ func (r *KeymapRegistry) IsPrefix(focus, seq string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for k := range r.bindings {
-		if (k.focus == "" || k.focus == focus) && strings.HasPrefix(k.key, seq+" ") {
+		if !k.list && (k.focus == "" || k.focus == focus) && strings.HasPrefix(k.key, seq+" ") {
 			return true
 		}
 	}

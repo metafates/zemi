@@ -292,6 +292,7 @@ function zemi.config.reload() end
 ---@class zemi.KeymapOpts
 ---@field desc? string Shown in /help.
 ---@field focus? string A focusable layout node id: the binding works only while that node has the keys (zemi.ui.focus), and there it may start with a printable key ("j", "g g").
+---@field list? boolean A list alias: while a list, a composer popup or a prompt has the keys, the key makes the move the action names ("up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"), resolved without calling Lua. One non-printable key. User config only.
 
 ---@class zemi.Keymap
 ---@field key string
@@ -299,6 +300,7 @@ function zemi.config.reload() end
 ---@field origin zemi.Origin
 ---@field action string "/command", a host action, or "<function>".
 ---@field focus? string The node it is scoped to; nil for a global binding.
+---@field list? boolean A list alias; its action is the move.
 
 --- The host actions a keymap may name; some take an argument after a space.
 ---@alias zemi.HostAction
@@ -348,6 +350,10 @@ zemi.keymap = {}
 --- ctrl+e, ctrl+k, ctrl+u, ctrl+w, home, end) bind like any other, and the
 --- composer then no longer gets them.
 ---
+--- With `opts.list` the key moves in every list, popup and prompt, and stays
+--- what it was elsewhere: `zemi.keymap.set("ctrl+j", "down", { list = true })`
+--- (ctrl+j is still the composer's newline).
+---
 --- Host actions: zemi.composer.{submit,history_prev,history_next,paste,edit},
 --- zemi.composer.insert <text> (these user config only),
 --- zemi.ui.help, zemi.ui.reasoning.toggle, zemi.model.pick,
@@ -362,13 +368,14 @@ function zemi.keymap.set(key, action, opts) end
 --- Unbind a key the caller's origin or a less trusted one set, not another plugin's. A key
 --- nothing bound is `false`, not an error, so a reload unbinds idempotently.
 ---@param key string
----@param opts? { focus?: string }
+---@param opts? { focus?: string, list?: boolean }
 ---@return boolean removed
 function zemi.keymap.del(key, opts) end
 
---- The binding a key runs, while `opts.focus` has the keys when given.
+--- The binding a key runs, while `opts.focus` has the keys when given, or
+--- its list alias with `opts.list`.
 ---@param key string
----@param opts? { focus?: string }
+---@param opts? { focus?: string, list?: boolean }
 ---@return zemi.Keymap|nil
 function zemi.keymap.get(key, opts) end
 
