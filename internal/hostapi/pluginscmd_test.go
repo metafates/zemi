@@ -14,6 +14,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
 )
 
@@ -163,17 +164,21 @@ func TestPluginsOpen(t *testing.T) {
 
 // TestPluginsSend: the list offers New plugin first and a local plugin's
 // detail Modify, and /plugins modify sends the typed line with the plugin's
-// prompt behind it and lets auto mode edit that local plugin, and refuses an
-// installed one; TestCommandSendsTypedLine covers /plugins new.
+// prompt behind it and lets auto mode edit that local plugin and nothing
+// else, and refuses an installed or a symlinked one; TestCommandSendsTypedLine
+// covers /plugins new.
 func TestPluginsSend(t *testing.T) {
 	for _, c := range []struct {
 		args  string
 		err   string   // a usage error, which sends nothing
 		sent  []string // in the message the agent gets
 		grant bool     // auto mode edits the local plugin
+		link  bool     // the data dir is reached through a symlink
 	}{
 		{args: "modify mine add a flag\nand a test", grant: true, sent: []string{`/plugins modify mine add a flag\nand a test`, "Change my zemi plugin mine in "}},
+		{args: "modify mine", grant: true, link: true, sent: []string{"Change my zemi plugin mine in "}},
 		{args: "modify theirs fix it", err: "theirs is an installed plugin"},
+		{args: "modify linked", err: "linked is a symlink"},
 		{args: "modify", err: "modify <name> [what to change]"},
 	} {
 		t.Run(c.args, func(t *testing.T) {
@@ -181,9 +186,14 @@ func TestPluginsSend(t *testing.T) {
 			for _, dir := range []string{"local/mine", "installed/theirs"} {
 				os.MkdirAll(filepath.Join(data, "plugins", dir), 0o755)
 			}
+			if c.link {
+				link := filepath.Join(t.TempDir(), "data")
+				os.Symlink(data, link)
+				data = link
+			}
 			log := logging.New(t.TempDir())
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
-			h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir(), DataHome: data})
+			h := NewHost(r, log, config.NewStore(), config.Dirs{ConfigHome: t.TempDir(), StateHome: t.TempDir(), ProjectDir: t.TempDir(), DataHome: data})
 			if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 				t.Fatal(err)
 			}
@@ -196,6 +206,7 @@ func TestPluginsSend(t *testing.T) {
 			if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugins modify ")); got != "[mine]" {
 				t.Fatalf("/plugins modify completes %s", got)
 			}
+			os.Symlink("mine", filepath.Join(data, "plugins", "local", "linked"))
 			err := h.pluginsCommand(c.args)
 			if c.err != "" {
 				if err == nil || !strings.Contains(err.Error(), c.err) {
@@ -204,7 +215,10 @@ func TestPluginsSend(t *testing.T) {
 			} else if err != nil {
 				t.Fatal(err)
 			}
-			if got := h.madePlugin(filepath.Join(data, "plugins", "local", "mine", "init.lua")); got != c.grant {
+			if got := h.madePlugin(perm.RealPath(filepath.Join(h.Dirs.ConfigHome, "init.lua"))); got {
+				t.Error("auto mode edits init.lua")
+			}
+			if got := h.madePlugin(perm.RealPath(filepath.Join(data, "plugins", "local", "mine", "init.lua"))); got != c.grant {
 				t.Errorf("auto mode edits the plugin: %v, want %v", got, c.grant)
 			}
 			if c.sent == nil {

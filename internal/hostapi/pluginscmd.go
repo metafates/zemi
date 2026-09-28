@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugins"
 )
 
@@ -123,9 +125,12 @@ func (h *Host) pluginsCommand(line string) error {
 		if !p.Local {
 			return Usagef("%s is an installed plugin, and the agent changes only local ones: delete it and ask the agent to clone it into the local plugins directory", p.Name)
 		}
+		if fi, err := os.Lstat(p.Dir); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+			return Usagef("%s is a symlink, which zemi does not load: move the plugin into %s, then modify it", p.Name, TildePath(filepath.Dir(p.Dir)))
+		}
 		// the user asked for the change, as for a plugin whose creation they
 		// allowed: auto mode settles the agent's edits there until zemi exits
-		h.madePlugins.Store(h.localPluginDir(p.Dir), true)
+		h.madePlugins.Store(h.localPluginDir(perm.RealPath(p.Dir)), true)
 		send(fmt.Sprintf(modifyPluginPrompt, p.Name, TildePath(p.Dir)))
 	case verb == "enable" || verb == "disable":
 		// at once, so the list an action returns to shows it

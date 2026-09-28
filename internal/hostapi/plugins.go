@@ -207,8 +207,9 @@ func (h *Host) newPlugin(path string) string {
 // madePlugin says whether path is in a local plugin whose creation was
 // allowed in this process.
 func (h *Host) madePlugin(path string) bool {
-	_, ok := h.madePlugins.Load(h.localPluginDir(path))
-	return ok
+	dir := h.localPluginDir(path)
+	_, ok := h.madePlugins.Load(dir)
+	return ok && dir != ""
 }
 
 // layerFile is one <name><ext> file of a layered resource directory.
