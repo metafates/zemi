@@ -73,13 +73,13 @@ A Makefile wraps the plain Go toolchain (module `github.com/metafates/zemi`, Go 
 make check              # go vet + go test + make luals + make stylua + make lint + a gofmt check, all must be clean
 make luals              # lua-language-server over runtime/; prints a skip line without the binary
                         # not on PATH? make check LUALS=/path/to/lua-language-server
-make stylua             # stylua --check over runtime/ (stylua.toml); a skip line without the binary
+make stylua             # stylua --check over runtime/ and testdata/ (stylua.toml: tabs); a skip line without the binary
 make lint               # golangci-lint run (.golangci.yml: curated linters and the gofumpt, goimports, gci formatters); a skip line without the binary
 make build / make run   # go build -o bin/zemi . / run the TUI against your real ~/.config/zemi
 make test               # full suite (~20s, pure Go, no CGO; network only for one macOS TLS check)
 make race               # go test -race ./internal/...
 make golden             # regenerate internal/ui/testdata/*.golden, then read the diff
-make fmt                # golangci-lint fmt over the Go files (gofmt without the binary), and stylua over runtime/ Lua
+make fmt                # golangci-lint fmt over the Go files (gofmt without the binary), and stylua over the runtime/ and testdata/ Lua
 make reset-db           # delete the stores a schema bump refuses (ZEMI_STATE=<dir> for another tree)
 ```
 

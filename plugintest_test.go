@@ -74,45 +74,45 @@ for i = 1, 300 do test("case " .. i, function() end) end
 			name: "the passing cases pass", args: []string{"<plugin>", "pass_test"}, code: 0,
 			want: "22 passed (2 files, (T))\n",
 		},
-		{name: "eq on a string", args: []string{"<plugin>", "fail_test.lua: eq on a string"}, code: 1, want: `FAIL tests/fail_test.lua:7: eq on a string
-  tests/fail_test.lua:11: got "Oslo: 21C, Sunny", want "Oslo: 21C, sunny"
+		{name: "eq on a string", args: []string{"<plugin>", "fail_test.lua: eq on a string"}, code: 1, want: `FAIL tests/fail_test.lua:5: eq on a string
+  tests/fail_test.lua:9: got "Oslo: 21C, Sunny", want "Oslo: 21C, sunny"
   print: asking wttr.in
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "eq on a table", args: []string{"<plugin>", "eq on a table"}, code: 1, want: `FAIL tests/fail_test.lua:14: eq on a table
-  tests/fail_test.lua:15: [1]: got "main", want "fix-login"
+		{name: "eq on a table", args: []string{"<plugin>", "eq on a table"}, code: 1, want: `FAIL tests/fail_test.lua:12: eq on a table
+  tests/fail_test.lua:12: [1]: got "main", want "fix-login"
     got  { "main" }
     want { "fix-login" }
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "an unstubbed call", args: []string{"<plugin>", "no stub"}, code: 1, want: `FAIL tests/fail_test.lua:18: a call no stub answers
-  tests/fail_test.lua:19: got nil, want "Oslo: 21C, Sunny"
-  test.tool at tests/fail_test.lua:19 returned: weather_now: lua/demo/init.lua:85: lua.http.get https://wttr.in/Oslo?format=j1: permission ask required; allow it in config with zemi.permission.rule.add{ subject = "lua.http.get", pattern = "https://wttr.in/Oslo?format=j1", decision = "allow", match = "https://wttr.in/Oslo?format=j1", principal = "plugin:demo" }
+		{name: "an unstubbed call", args: []string{"<plugin>", "no stub"}, code: 1, want: `FAIL tests/fail_test.lua:14: a call no stub answers
+  tests/fail_test.lua:14: got nil, want "Oslo: 21C, Sunny"
+  test.tool at tests/fail_test.lua:14 returned: weather_now: lua/demo/init.lua:69: lua.http.get https://wttr.in/Oslo?format=j1: permission ask required; allow it in config with zemi.permission.rule.add{ subject = "lua.http.get", pattern = "https://wttr.in/Oslo?format=j1", decision = "allow", match = "https://wttr.in/Oslo?format=j1", principal = "plugin:demo" }
   no stub answered it; answer it with test.stub("lua.http.get", "https://wttr.in/*", { status = 200, body = "..." })
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a callback fails", args: []string{"<plugin>", "callback"}, code: 1, want: `FAIL tests/fail_test.lua:22: a callback that fails
-  error in zemi.job on_exit during test.advance at tests/fail_test.lua:24:
+		{name: "a callback fails", args: []string{"<plugin>", "callback"}, code: 1, want: `FAIL tests/fail_test.lua:16: a callback that fails
+  error in zemi.job on_exit during test.advance at tests/fail_test.lua:18:
     lua/demo/init.lua:10: attempt to index a non-table object(nil) with key 'sub'
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a render fails", args: []string{"<plugin>", "a render that fails"}, code: 1, want: `FAIL tests/fail_test.lua:27: a render that fails
-  tests/fail_test.lua:28: render demo.cost: lua/demo/init.lua:36: cannot perform mul operation between nil and number
+		{name: "a render fails", args: []string{"<plugin>", "a render that fails"}, code: 1, want: `FAIL tests/fail_test.lua:21: a render that fails
+  tests/fail_test.lua:23: render demo.cost: lua/demo/init.lua:29: cannot perform mul operation between nil and number
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a reply field nothing reads", args: []string{"<plugin>", "misspelled"}, code: 1, want: `FAIL tests/fail_test.lua:39: a reply function with a misspelled field
-  tests/fail_test.lua:43: got nil, want "Oslo: 21C, Sunny"
-  test.tool at tests/fail_test.lua:43 returned: weather_now: lua/demo/init.lua:85: test.stub reply: bdy is not a field of a http reply, which takes body, error, headers, status
+		{name: "a reply field nothing reads", args: []string{"<plugin>", "misspelled"}, code: 1, want: `FAIL tests/fail_test.lua:32: a reply function with a misspelled field
+  tests/fail_test.lua:34: got nil, want "Oslo: 21C, Sunny"
+  test.tool at tests/fail_test.lua:34 returned: weather_now: lua/demo/init.lua:69: test.stub reply: bdy is not a field of a http reply, which takes body, error, headers, status
   test.stub reply: bdy is not a field of a http reply, which takes body, error, headers, status
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "eq on an error naming a file", args: []string{"<plugin>", "naming a file"}, code: 1, want: `FAIL tests/fail_test.lua:46: eq on an error naming a file
-  tests/fail_test.lua:49: got "tests/fail_test.lua:47: lua.http.get htt...", want "permission ask required" (first difference at char 1)
+		{name: "eq on an error naming a file", args: []string{"<plugin>", "naming a file"}, code: 1, want: `FAIL tests/fail_test.lua:37: eq on an error naming a file
+  tests/fail_test.lua:40: got "tests/fail_test.lua:38: lua.http.get htt...", want "permission ask required" (first difference at char 1)
   no stub answered it; answer it with test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a case times out", args: []string{"<plugin>", "never settles"}, code: 1, want: `FAIL tests/fail_test.lua:31: a case that never settles
-  timed out after 300ms in test.advance(1) at tests/fail_test.lua:36
+		{name: "a case times out", args: []string{"<plugin>", "never settles"}, code: 1, want: `FAIL tests/fail_test.lua:26: a case that never settles
+  timed out after 300ms in test.advance(1) at tests/fail_test.lua:29
 0 passed, 1 failed (2 files, (T))
 `},
 		{name: "a driver still running at the deadline", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{

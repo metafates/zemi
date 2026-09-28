@@ -1,8 +1,6 @@
 local test = zemi.test
 local stdout = "main\n"
-test.stub("lua.job.start", "git rev-parse *", function()
-	return { stdout = stdout }
-end)
+test.stub("lua.job.start", "git rev-parse *", function() return { stdout = stdout } end)
 
 test("eq on a string", function()
 	local body = zemi.json.encode({ current_condition = { { temp_C = "21", weatherDesc = { { value = "Sunny" } } } } })
@@ -11,13 +9,9 @@ test("eq on a string", function()
 	test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C, sunny")
 end)
 
-test("eq on a table", function()
-	test.eq(test.render("demo.branch"), { "fix-login" })
-end)
+test("eq on a table", function() test.eq(test.render("demo.branch"), { "fix-login" }) end)
 
-test("a call no stub answers", function()
-	test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C, Sunny")
-end)
+test("a call no stub answers", function() test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C, Sunny") end)
 
 test("a callback that fails", function()
 	stdout = ""
@@ -25,21 +19,18 @@ test("a callback that fails", function()
 end)
 
 test("a render that fails", function()
-	test.render("demo.cost", { usage = {} })
+	local ctx = { usage = {} }
+	test.render("demo.cost", ctx)
 end)
 
 test("a case that never settles", function()
-	local function again()
-		zemi.timer.after(0, again)
-	end
+	local function again() zemi.timer.after(0, again) end
 	again()
 	test.advance(1)
 end)
 
 test("a reply function with a misspelled field", function()
-	test.stub("lua.http.get", "https://wttr.in/*", function()
-		return { bdy = "{}" }
-	end)
+	test.stub("lua.http.get", "https://wttr.in/*", function() return { bdy = "{}" } end)
 	test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C, Sunny")
 end)
 

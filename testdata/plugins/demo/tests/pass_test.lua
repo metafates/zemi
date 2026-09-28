@@ -1,8 +1,10 @@
 local test = zemi.test
 local branch = "main"
-local git = test.stub("lua.job.start", "git rev-parse *", function()
-	return branch and { stdout = branch .. "\n" } or { code = 128, stderr = "fatal: not a git repository" }
-end)
+local git = test.stub(
+	"lua.job.start",
+	"git rev-parse *",
+	function() return branch and { stdout = branch .. "\n" } or { code = 128, stderr = "fatal: not a git repository" } end
+)
 local body = zemi.json.encode({ current_condition = { { temp_C = "21", weatherDesc = { { value = "Sunny" } } } } })
 local wttr = test.stub("lua.http.get", "https://wttr.in/*", { body = body })
 local sent = test.stub("lua.agent.send")
@@ -34,9 +36,10 @@ test("a click on the branch toasts it", function()
 	test.eq(zemi.notify.list()[1].body, "main")
 end)
 
-test("the cost widget reads the usage a session would have", function()
-	test.eq(test.render("demo.cost", { usage = { cost = 0.5 } }), { "50 cents" })
-end)
+test(
+	"the cost widget reads the usage a session would have",
+	function() test.eq(test.render("demo.cost", { usage = { cost = 0.5 } }), { "50 cents" }) end
+)
 
 test("a picked snippet goes to the agent", function()
 	assert(test.run("demo", "add review Review the diff"))
@@ -81,9 +84,7 @@ test("a request that fails at the transport is an error too", function()
 	test.eq({ test.tool("weather_now", { city = "Oslo" }) }, { nil, "weather_now: dial tcp: i/o timeout" })
 	local done
 	zemi.http.get("https://wttr.in/Oslo", {
-		on_done = function(res)
-			done = res
-		end,
+		on_done = function(res) done = res end,
 	})
 	test.advance(0)
 	test.eq(done, { url = "https://wttr.in/Oslo", error = "dial tcp: i/o timeout" })
@@ -121,9 +122,7 @@ test("a missing rule is a health row", function()
 end)
 
 test("a timer from another case is gone", function()
-	zemi.timer.every(10, function()
-		zemi.state.set("ticks", (zemi.state.get("ticks") or 0) + 1)
-	end)
+	zemi.timer.every(10, function() zemi.state.set("ticks", (zemi.state.get("ticks") or 0) + 1) end)
 	test.advance(25)
 	test.eq(zemi.state.get("ticks"), 2)
 end)
@@ -156,7 +155,11 @@ test("drivers reach only what the plugin registered", function()
 		{ test.run, "help", "/help is not a command of plugin demo; it registered /demo" },
 		{ test.render, "chat", "chat is not a widget of plugin demo; it registered demo.branch, demo.cost" },
 		{ test.tool, "read", "read is not a tool of plugin demo; it registered weather_now" },
-		{ test.emit, "reflector.done", "reflector.done is not a handled event of plugin demo; it registered app.ready, tool.post" },
+		{
+			test.emit,
+			"reflector.done",
+			"reflector.done is not a handled event of plugin demo; it registered app.ready, tool.post",
+		},
 	}) do
 		local ok, err = pcall(c[1], c[2])
 		assert(not ok and err:find(c[3], 1, true), err)

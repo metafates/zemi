@@ -31,7 +31,7 @@ lint:
 # golangci-lint's formatters (gofumpt, goimports, gci); gofmt alone without it
 fmt:
 	@if command -v $(GOLANGCI) >/dev/null; then $(GOLANGCI) fmt ./...; else gofmt -w $(GO_FILES); fi
-	@if command -v $(STYLUA) >/dev/null; then $(STYLUA) runtime; fi
+	@if command -v $(STYLUA) >/dev/null; then $(STYLUA) runtime testdata; fi
 
 # regenerate internal/ui/testdata/*.golden, then review the diff
 golden:
@@ -46,9 +46,9 @@ luals:
 		st=$$?; rm -rf $$tmp; exit $$st; \
 	else echo "luals: $(LUALS) not installed, skipped (LUALS=/path/to/lua-language-server to point at one)"; fi
 
-# format check for runtime/ Lua; skipped without the binary
+# format check for the Lua in runtime/ and testdata/; skipped without the binary
 stylua:
-	@if command -v $(STYLUA) >/dev/null; then $(STYLUA) --check runtime; \
+	@if command -v $(STYLUA) >/dev/null; then $(STYLUA) --check runtime testdata; \
 	else echo "stylua: $(STYLUA) not installed, skipped (STYLUA=/path/to/stylua to point at one)"; fi
 
 check: vet test luals stylua lint
