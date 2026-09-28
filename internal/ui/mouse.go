@@ -339,7 +339,7 @@ func (a *App) setPointer(shape string) tea.Cmd {
 		return nil
 	}
 	a.pointer = shape
-	return tea.Raw("\x1b]22;" + shape + "\x07")
+	return tea.Raw(ansi.SetPointerShape(shape))
 }
 
 // click acts on the topmost thing under (x, y).

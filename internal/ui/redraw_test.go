@@ -12,22 +12,26 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
-// TestProgressReport: OSC 9;4 goes out when a turn starts, is resent to keep
-// terminals from hiding it, once when it ends, and not at all with the setting off.
+// TestProgressReport: the view reports OSC 9;4 while a turn runs, changes it
+// after the interval so the renderer resends it, and drops it when the turn
+// ends or with the setting off.
 func TestProgressReport(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 10)
-	if app.progressCmd(true) == nil || app.progressCmd(true) != nil {
-		t.Fatal("a running turn should report, and not again before the interval")
+	app.progressTick(true)
+	first := app.View().ProgressBar
+	app.progressTick(true)
+	if first == nil || *app.View().ProgressBar != *first {
+		t.Fatalf("a running turn should report, unchanged before the interval: %+v", first)
 	}
 	app.now = func() time.Time { return time.Now().Add(progressInterval + time.Second) }
-	if app.progressCmd(true) == nil {
-		t.Fatal("a running turn should report again after the refresh interval")
+	if app.progressTick(true); *app.View().ProgressBar == *first {
+		t.Fatal("a running turn should change the report after the interval")
 	}
-	if app.progressCmd(false) == nil {
+	if app.progressTick(false); app.View().ProgressBar != nil {
 		t.Fatal("the end of a turn should clear the report")
 	}
 	app.host.Settings.SetQuiet("ui.progress", false)
-	if app.progressCmd(true) != nil {
+	if app.progressTick(true); app.View().ProgressBar != nil {
 		t.Fatal("ui.progress off should report nothing")
 	}
 }

@@ -1024,7 +1024,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   cannot render at the 50 ms frame clock is a segment `effect` the UI applies (`shimmer`). The terminal itself
   gets the `ui.notify` alert when zemi is unfocused (OSC 9, a bell or a native notification,
   as `Host.NotifyStyle` resolves `auto`), OSC 9;4 (`ui.progress`: a running turn as taskbar
-  progress, resent every few seconds so terminals do not hide it, cleared on quit) and OSC 11
+  progress, resent every few seconds so terminals do not hide it, through
+  `tea.View.ProgressBar`, so bubbletea clears it on every exit) and OSC 11
   (the theme's Normal bg as its own background, through `tea.View.BackgroundColor` so bubbletea
   resets it on every exit, a signal included; only when it answered the query and the color
   profile shows the color). Host chrome has no canvas of its own: `hlStyle` fills it from

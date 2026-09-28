@@ -114,8 +114,9 @@ type App struct {
 	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
-	progress   bool             // the terminal was told a turn is running (OSC 9;4)
-	progressAt time.Time        // when the running sequence was last sent (progressInterval)
+	progress   bool             // the view reports a running turn (OSC 9;4)
+	progressAt time.Time        // when beat last flipped (progressInterval)
+	beat       int              // the report's value, flipped so the renderer resends it
 	focused    bool             // terminal focus (true until the terminal reports a blur)
 	keySeq     []string         // keys of a bound sequence typed so far
 	keySeqAt   time.Time
@@ -238,17 +239,12 @@ func (a *App) Quit() {
 	quit()
 }
 
-// leave clears the running-turn progress report while the host is still on
-// the alternate screen, then quits. It runs on a goroutine.
+// leave quits the program. It runs on a goroutine: Quit waits on the Update
+// loop.
 func (a *App) leave() {
-	if a.program == nil {
-		return
+	if a.program != nil {
+		a.program.Quit()
 	}
-	a.program.Send(tea.RawMsg{Msg: "\x1b]9;4;0\x07"})
-	// NOTE: raw output is written on the next frame and quitting leaves the
-	// alternate screen first, so wait out a frame
-	time.Sleep(50 * time.Millisecond)
-	a.program.Quit()
 }
 
 // ---------------------------------------------------------------------------
@@ -455,30 +451,22 @@ func (a *App) View() tea.View {
 	// bubbletea resets it (OSC 111) on every exit path, a signal included
 	v.BackgroundColor = a.termBackground()
 	v.WindowTitle = a.host.TerminalTitle()
+	if a.progress {
+		v.ProgressBar = &tea.ProgressBar{State: tea.ProgressBarIndeterminate, Value: a.beat}
+	}
 	return v
 }
 
-// progressCmd tells the terminal a turn is running with OSC 9;4, which
-// ghostty, WezTerm and Windows Terminal draw on the tab or taskbar. It sends
-// the running sequence when the turn starts and then every progressInterval,
-// since those terminals hide the indicator once it stops being sent, and sends
-// the clear once when the turn stops.
-func (a *App) progressCmd(running bool) tea.Cmd {
-	if running && !a.host.Settings.Bool("ui.progress") {
-		running = false
+// progressTick keeps the view's OSC 9;4 report, which ghostty, WezTerm and
+// Windows Terminal draw on the tab or taskbar, on while a turn runs. Those
+// terminals hide it once it stops being sent and the renderer writes it only
+// when it changes, so the value (which the indeterminate state never sends)
+// flips every progressInterval.
+func (a *App) progressTick(running bool) {
+	a.progress = running && a.host.Settings.Bool("ui.progress")
+	if now := a.now(); a.progress && now.Sub(a.progressAt) >= progressInterval {
+		a.progressAt, a.beat = now, 1-a.beat
 	}
-	if !running {
-		if !a.progress {
-			return nil
-		}
-		a.progress = false
-		return tea.Raw("\x1b]9;4;0\x07")
-	}
-	if a.progress && a.now().Sub(a.progressAt) < progressInterval {
-		return nil
-	}
-	a.progress, a.progressAt = true, a.now()
-	return tea.Raw("\x1b]9;4;3\x07")
 }
 
 // notifyIfAway alerts in the ui.notify style (Host.NotifyStyle) when zemi
@@ -490,7 +478,7 @@ func (a *App) notifyIfAway(text string) tea.Cmd {
 	text = sanitize.String(text)
 	switch style, _ := a.host.NotifyStyle(); style {
 	case "osc":
-		return tea.Raw("\x1b]9;" + text + "\x07")
+		return tea.Raw(ansi.Notify(text))
 	case "bell":
 		return tea.Raw("\a")
 	case "native":
@@ -592,11 +580,8 @@ func (a *App) onFrame() tea.Cmd {
 		a.lastState = st
 		a.frameGen++
 	}
-	cmds := []tea.Cmd{a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd(false), replay}
-	if c := a.progressCmd(active); c != nil {
-		cmds = append(cmds, c)
-	}
-	return tea.Batch(cmds...)
+	a.progressTick(active)
+	return tea.Batch(a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd(false), replay)
 }
 
 // termBackground is what the terminal's own background is set to (OSC 11)

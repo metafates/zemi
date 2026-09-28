@@ -25,6 +25,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
@@ -219,7 +220,7 @@ func run(args []string) int {
 	// hand the terminal its normal pointer back (hover sets OSC 22); an error
 	// that is not ErrProgramKilled means the program never started
 	if err == nil || errors.Is(err, tea.ErrProgramKilled) {
-		fmt.Print("\x1b]22;default\x07")
+		fmt.Print(ansi.SetPointerShape("default"))
 	}
 	time.AfterFunc(3*time.Second, func() { os.Exit(0) })
 	if err != nil {
