@@ -250,9 +250,8 @@ func (t *textRows) at(build func(int) [][]hostapi.Segment) func(int) [][]hostapi
 type promptChoice struct{ key, label, desc, hl string }
 
 // choiceRows draws a prompt's answers as buttons: "[y] Trust", the key right
-// next to what it does, the selected one marked like a selected list row,
-// its band padded to the widest button; a choice with no key keeps the
-// column blank. Labels and descriptions are two
+// next to what it does, the selected one marked like a selected list row;
+// a choice with no key keeps the column blank. Labels and descriptions are two
 // columns, each wrapping in its own, so every description starts at one x.
 // Every row carries the choice's 1-based Hit, so a click answers it. A label
 // wraps, since the user answers what it says, unless short cuts each choice
@@ -305,15 +304,6 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 				row[k].Hit, row[k].Band = i+1, i == sel
 			}
 			rows = append(rows, row)
-		}
-	}
-	widest := 0
-	for _, r := range rows {
-		widest = max(widest, hostapi.SegsWidth(r))
-	}
-	for y, r := range rows {
-		if len(r) > 0 && r[0].Band && hostapi.SegsWidth(r) < widest {
-			rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-hostapi.SegsWidth(r)), Hit: sel + 1, Band: true})
 		}
 	}
 	return rows
@@ -374,7 +364,9 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 			s.HL = cmp.Or(s.HL, "Host:Value")
 			row = append(row, s)
 		}
-		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, bw-4-hostapi.SegsWidth(line)-len(bar))), NoCopy: true})
+		// a selected row's band runs to the box's edge, however wide its text
+		band := len(line) > 0 && line[len(line)-1].Band
+		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, bw-4-hostapi.SegsWidth(line)-len(bar))), NoCopy: true, Band: band})
 		row = append(append(row, bar...), hostapi.Segment{Text: " │", HL: "Host:Rule", NoCopy: true})
 		box = append(box, row)
 	}
