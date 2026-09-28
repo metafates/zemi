@@ -406,10 +406,10 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			path, full := strings.CutPrefix(strings.TrimSpace(args)+" ", "full ")
 			_, err := h.ExportSession(strings.TrimSpace(path), full)
 			return err
-		}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"full"} }},
+		}, GoComplete: hostapi.SubcommandCompleter([]string{"full"}, nil)},
 		{Name: "copy", NArgs: hostapi.NArgsAny, Desc: "copy the last reply or a code block in it", GoFn: func(h *hostapi.Host, args string) error {
 			return h.CopyReply(args)
-		}, GoComplete: func(*hostapi.Host, string, string) []string { return []string{"reply", "code"} }},
+		}, GoComplete: hostapi.SubcommandCompleter([]string{"reply", "code"}, nil)},
 		{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session", GoFn: func(h *hostapi.Host, _ string) error {
 			_, err := h.ForkSession()
 			return err

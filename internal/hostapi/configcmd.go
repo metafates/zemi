@@ -21,7 +21,7 @@ func (h *Host) configCommands() []*Command {
 	return []*Command{{
 		Name: "config", NArgs: NArgsAny, Desc: "see and change every setting",
 		GoFn: func(h *Host, args string) error { return h.configCommand(args) },
-		GoComplete: subcommandCompleter([]string{"set", "toggle", "reset", "pick", "lua", "open"}, func(h *Host, sub string) []string {
+		GoComplete: SubcommandCompleter([]string{"set", "toggle", "reset", "pick", "lua", "open"}, func(h *Host, sub string) []string {
 			if sub == "lua" || sub == "open" {
 				return nil
 			}

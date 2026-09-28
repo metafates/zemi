@@ -25,7 +25,7 @@ func (h *Host) pluginsCommands() []*Command {
 	return []*Command{{
 		Name: "plugins", NArgs: NArgsAny, Desc: "install, update and turn plugins on or off",
 		GoFn: (*Host).pluginsCommand,
-		GoComplete: subcommandCompleter([]string{"new", "install", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
+		GoComplete: SubcommandCompleter([]string{"new", "install", "update", "check", "enable", "disable", "delete", "toggle", "open"}, func(h *Host, sub string) []string {
 			if sub == "new" || sub == "install" || sub == "check" {
 				return nil
 			}

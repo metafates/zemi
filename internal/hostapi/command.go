@@ -218,9 +218,9 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 	return out
 }
 
-// subcommandCompleter completes the first argument from a fixed list and,
+// SubcommandCompleter completes the first argument from a fixed list and,
 // when next is set, later arguments from next.
-func subcommandCompleter(subs []string, next func(h *Host, sub string) []string) func(h *Host, lead, line string) []string {
+func SubcommandCompleter(subs []string, next func(h *Host, sub string) []string) func(h *Host, lead, line string) []string {
 	return func(h *Host, lead, line string) []string {
 		fields, arg := argAt(lead, line)
 		switch {

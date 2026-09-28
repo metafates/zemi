@@ -31,7 +31,7 @@ func TestCompleteCommand(t *testing.T) {
 		t.Fatalf("failing completer = %v, errors %+v", got, h.errs.entries)
 	}
 
-	comp := subcommandCompleter([]string{"enable", "disable"}, func(*Host, string) []string { return []string{"lint"} })
+	comp := SubcommandCompleter([]string{"enable", "disable"}, func(*Host, string) []string { return []string{"lint"} })
 	for _, c := range []struct{ lead, line, want string }{
 		{"", "/skills ", "enable,disable"},
 		{"en", "/skills en", "enable,disable"},

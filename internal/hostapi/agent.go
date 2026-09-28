@@ -2271,7 +2271,7 @@ func (h *Host) CompleteModel(lead, line string) []string {
 			ids = append(ids, s.ID+"/"+m.ID)
 		}
 	}
-	return subcommandCompleter(append(first, ids...), func(_ *Host, sub string) []string {
+	return SubcommandCompleter(append(first, ids...), func(_ *Host, sub string) []string {
 		switch {
 		case sub == "chat":
 			return ids

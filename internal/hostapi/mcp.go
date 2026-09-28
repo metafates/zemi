@@ -709,7 +709,7 @@ func (h *Host) mcpCommands() []*Command {
 			}
 			return Usagef("unknown /mcp subcommand %q", sub)
 		},
-		GoComplete: subcommandCompleter([]string{"restart", "sign-in", "sign-out"}, func(h *Host, _ string) []string {
+		GoComplete: SubcommandCompleter([]string{"restart", "sign-in", "sign-out"}, func(h *Host, _ string) []string {
 			var names []string
 			for _, s := range h.mcp.list() {
 				names = append(names, s.name)
