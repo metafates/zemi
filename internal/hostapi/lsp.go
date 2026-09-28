@@ -623,7 +623,7 @@ func (h *Host) lspDiagnostics(path string) (string, error) {
 func (h *Host) noLSP(path string) error {
 	switch {
 	case !h.ProjectTrusted():
-		return errors.New("language servers are off: this project is not trusted (the user runs /trust)")
+		return errors.New("the project's language servers are off: it is not trusted (the user runs /trust)")
 	case path == "":
 		return fmt.Errorf("no language server for this project: none of %s is installed with its marker file here; zemi.lsp.add adds one", builtinCommands())
 	}
@@ -768,7 +768,7 @@ func (h *Host) lspCommands() []*Command {
 func (h *Host) lspOverlay(refresh bool) Overlay {
 	empty := "No language servers yet. Install " + builtinCommands() + ", or add one with zemi.lsp.add."
 	if !h.ProjectTrusted() {
-		empty = "Language servers are off: this project is not trusted."
+		empty = "The project's language servers are off: it is not trusted (/trust). zemi's own Lua, in your config and local plugins, still gets lua-language-server."
 	}
 	return Overlay{
 		ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.lspItems(),

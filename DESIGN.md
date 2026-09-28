@@ -365,7 +365,7 @@ Trusted, zemi loads the project's `.agents` config and instruction files
 user-added; sandboxed when a backend is live, §9; the Lua of zemi's own
 trees gets its server either way), auto mode and read-only agents settle builds and tests in the sandbox, and
 auto settles in-project edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
-is an instruction file, no language server starts, `.agents` edits trigger no reload, and auto mode and read-only agents
+is an instruction file, no project language server starts (zemi's own Lua still gets its own), `.agents` edits trigger no reload, and auto mode and read-only agents
 settle only reads, `perm.Normalized.ReadCommand` commands and, confined, a plugin's
 tests (§9). Either way zemi's own
 git calls (`proc.Git`) switch off `core.fsmonitor`, hooks, submodule

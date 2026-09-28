@@ -436,7 +436,7 @@ func (h *Host) goHealthRows() []healthCheck {
 	if h.ProjectTrusted() {
 		add(HealthOK, "trust", "trusted: "+TildePath(h.Dirs.TrustRoot()))
 	} else {
-		add(HealthWarn, "trust", "not trusted: project config, instructions and language servers are off; /trust")
+		add(HealthWarn, "trust", "not trusted: the project's config, instructions and language servers are off; /trust")
 	}
 	out[len(out)-1].run = "trust"
 
@@ -478,7 +478,7 @@ func (h *Host) goHealthRows() []healthCheck {
 	case len(lsps) > 0:
 		add(HealthOK, "lsp", strings.Join(lsps, ", "))
 	case !h.ProjectTrusted():
-		add(HealthOK, "lsp", "off: project not trusted (/trust)")
+		add(HealthOK, "lsp", "the project's servers are off: not trusted (/trust)")
 	default:
 		add(HealthOK, "lsp", "none for this project: install "+builtinCommands()+", or zemi.lsp.add one")
 	}
