@@ -236,6 +236,7 @@ type ChatMessage struct {
 	Run    string     // agent tool rows: the run id
 	Diff   string     // file tool rows: the applied change as "- "/"+ " lines
 	Output string     // tool rows: the last lines of the result (shortOutput)
+	Head   bool       // notice rows: a report, plugin send or nudge the rows after it answer, as a prompt's do
 	Stat   *TurnStat
 }
 
@@ -1722,7 +1723,7 @@ func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
 func transcriptTable(L *glua.LState, transcript []ChatMessage) *glua.LTable {
 	tr := L.CreateTable(len(transcript), 0)
 	for _, m := range transcript {
-		row := L.CreateTable(0, 14)
+		row := L.CreateTable(0, 16)
 		row.RawSetString("role", glua.LString(m.Role))
 		row.RawSetString("kind", glua.LString(m.Kind))
 		row.RawSetString("text", glua.LString(m.Text))
@@ -1733,6 +1734,7 @@ func transcriptTable(L *glua.LState, transcript []ChatMessage) *glua.LTable {
 		row.RawSetString("label", glua.LString(sanitize.String(m.Label)))
 		row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
 		row.RawSetString("output", glua.LString(m.Output))
+		row.RawSetString("head", glua.LBool(m.Head))
 		if m.Stat != nil {
 			row.RawSetString("in", glua.LNumber(m.Stat.In))
 			row.RawSetString("out", glua.LNumber(m.Stat.Out))

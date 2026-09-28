@@ -653,7 +653,7 @@ func (h *Host) startTurn(text string) {
 func (h *Host) appendUserRows(text string) bool {
 	shown, tail, _ := strings.Cut(text, agent.AttachMarker)
 	for _, head := range reportHeads(tail) {
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head})
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head, Head: true})
 	}
 	if shown == "" {
 		return false

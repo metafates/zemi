@@ -707,6 +707,7 @@ function zemi.event.stats() end
 ---@field run string Agent calls: the run id, else "".
 ---@field diff string
 ---@field output string Last lines of a tool result; a plan call's verdict ("approved", "changes requested: ..."); an answered question call's rows, each `question\tanswer` ("not answered" when left open).
+---@field head boolean Notice rows: a background report, plugin send or planner nudge that starts what follows, as a prompt does.
 ---@field ["in"] integer Prompt tokens.
 ---@field out integer Completion tokens.
 ---@field thought number

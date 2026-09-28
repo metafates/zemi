@@ -470,7 +470,9 @@ zemi.ui.widget.add({
 				end
 			elseif m.kind == "compact" or m.kind == "notice" then
 				gap("activity")
+				-- a report's notice heads the rows that answer it, as a prompt does
 				local row = { mark("note"), { text = m.text, hl = "Comment" } }
+				row[1].sticky = m.head or nil
 				if (m.detail or "") ~= "" then
 					row[3] = { text = " (" .. m.detail .. ")", hl = "Comment", copy = false }
 				end

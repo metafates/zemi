@@ -360,7 +360,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			var tail string
 			s, tail, _ = strings.Cut(s, agent.AttachMarker) // show what was typed
 			for _, head := range reportHeads(tail) {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head, Head: true})
 			}
 		}
 		if s = strings.TrimSpace(s); s != "" {

@@ -285,7 +285,8 @@ func TestChatScrollAnchorsThroughFill(t *testing.T) {
 // TestChatStickyPrompt: while a turn's rows fill the view, its prompt's
 // first row stands in for the chat's top row, cut with an ellipsis when the
 // prompt has more rows; it lights like a header, copies nothing, and a
-// click or alt+up scrolls back to the prompt.
+// click or alt+up scrolls back to the prompt. A report's notice heads its
+// turn the same way.
 func TestChatStickyPrompt(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 	const prompt = "fix the flaky TestResume in internal/store: it fails about one run in twenty on the build machine"
@@ -328,5 +329,15 @@ func TestChatStickyPrompt(t *testing.T) {
 		if app.Frame(); !st.follow {
 			t.Fatalf("alt+down left top %d short of the tail", st.top)
 		}
+	}
+
+	// a turn a background report started pins the report's notice
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowNotice, Text: "Background agent a1 (explore) finished", Head: true})
+	for i := range 20 {
+		appendReply(host, fmt.Sprintf("answer %d", i), hostapi.TurnStat{})
+	}
+	app.renderSync(t)
+	if app.Frame(); !strings.Contains(row(), "Background agent a1") {
+		t.Fatalf("after a report, the top row is %q", row())
 	}
 }
