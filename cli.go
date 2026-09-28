@@ -238,7 +238,7 @@ func completeSessions(c *cobra.Command, args []string, _ string) ([]cobra.Comple
 	defer db.Close()
 	list, _ := db.ListSessions(-1)
 	for _, s := range list {
-		title := []rune(strings.Join(strings.Fields(sanitize.String(s.Title)), " "))
+		title := []rune(sessionTitle(s))
 		out = append(out, cobra.CompletionWithDesc(s.ID, string(title[:min(len(title), 60)])))
 	}
 	return out, cobra.ShellCompDirectiveNoFileComp
@@ -402,7 +402,7 @@ func sessionsCommand() *cobra.Command {
 				return nil
 			}
 			for _, s := range list {
-				title := cmp.Or(strings.Join(strings.Fields(sanitize.String(s.Title)), " "), "(untitled)")
+				title := cmp.Or(sessionTitle(s), "(untitled)")
 				fmt.Fprintf(c.OutOrStdout(), "%s  %s  %s\n", s.ID, time.UnixMilli(s.UpdatedAt).Format(hostapi.StampLayout), title)
 			}
 			return err
@@ -488,6 +488,11 @@ func modelsCommand() *cobra.Command {
 // press writes nothing, a missing store included (fs.ErrNotExist).
 func projectStore(dirs config.Dirs) (*store.DB, error) {
 	return store.OpenRead(store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot()))
+}
+
+// sessionTitle is a session's title on one line.
+func sessionTitle(s *store.Session) string {
+	return strings.Join(strings.Fields(sanitize.String(s.Title)), " ")
 }
 
 // confirm asks on stderr and reads the answer from stdin; only y or yes is
