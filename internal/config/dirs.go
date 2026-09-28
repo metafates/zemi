@@ -107,7 +107,7 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- uncomment what you want, or ask zemi to change this file for you.
 
 -- Models: export a provider's key in your shell (ANTHROPIC_API_KEY,
--- OPENAI_API_KEY, DEEPSEEK_API_KEY, ...; /model lists them) and it is on.
+-- OPENAI_API_KEY, DEEPSEEK_API_KEY, ...; /model lists them), then start zemi.
 -- A provider zemi does not know, a local server, or a gateway in front of
 -- a known one (reuse its id: yours replaces it whole):
 -- zemi.provider.add({

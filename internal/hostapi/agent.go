@@ -2080,10 +2080,10 @@ func (h *Host) modelPicker(role string) Overlay {
 	// the builtin providers without a key close the list, so a user finds
 	// what else zemi supports and the variable that turns each on
 	for _, m := range h.Providers.Missing() {
-		o.Items = append(o.Items, map[string]any{"text": m.ID, "section": "Needs a key", "desc": "export " + m.Env, "copy": "export " + m.Env})
+		o.Items = append(o.Items, map[string]any{"text": m.ID, "section": "Needs a key", "desc": "export " + m.Env, "copy": "export " + m.Env + "="})
 	}
 	if !usable && len(o.Items) > 0 {
-		o.Body = "No models yet. Export one of these keys, or " + h.addProvider() + "."
+		o.Body = "No models yet. Export one of these keys in your shell and start zemi again, or " + h.addProvider() + "."
 	}
 	return o
 }
