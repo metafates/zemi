@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -118,6 +119,17 @@ func (i CatalogInfo) String() string {
 		return "bundled"
 	}
 	return "bundled (catwalk " + i.Version + ")"
+}
+
+// Summary counts what zemi supports of the catalog.
+func (i CatalogInfo) Summary() string {
+	n := func(k int, what string) string {
+		if k != 1 {
+			what += "s"
+		}
+		return strconv.Itoa(k) + " " + what
+	}
+	return n(i.Providers, "provider") + ", " + n(i.Models, "model")
 }
 
 // MissingKey is a builtin provider whose key env var is not exported.
@@ -292,6 +304,9 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 	c.Info.Version, c.Info.Fetched = info.Version, time.Now().UTC().Truncate(time.Second)
 	data, err := json.Marshal(savedCatalog{c.Info.Version, c.Info.Fetched, fresh})
 	if err != nil {
+		return Catalog{}, false, err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Catalog{}, false, err
 	}
 	if err := config.WriteFileAtomic(filepath.Join(dir, catalogFile), data, 0o600); err != nil {

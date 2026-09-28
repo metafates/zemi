@@ -257,6 +257,7 @@ func TestPrintScreenCommands(t *testing.T) {
 		{"/trust", "", "zemi: /trust needs the TUI; --trust trusts the project for one run\n", 1},
 		{"/health", "", "zemi: /health needs the TUI; zemi health prints the checks\n", 1},
 		{"/model", "", "zemi: /model needs the TUI\n", 1},
+		{"/model update", "", "zemi: /model needs the TUI; zemi models update fetches the catalog\n", 1},
 		{"/permissions", "", "zemi: /permissions needs the TUI\n", 1},
 		{"/mode", "", "zemi: /mode needs the TUI\n", 1},
 		{"/memory", "", "zemi: /memory needs the TUI\n", 1},

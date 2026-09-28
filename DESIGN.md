@@ -966,7 +966,7 @@ exploration. It keeps the run's model, and a run another session started
 refuses it.
 
 Builtin providers come from catwalk's embedded catalog, or the one
-`/model update` fetched from catwalk.charm.land and saved in the data
+`/model update` or `zemi models update` fetched from catwalk.charm.land and saved in the data
 dir (the catalog picks where each key is sent, so it lives where no
 sandbox writes, and it reads only the variables the bundled one names;
 one saved under another bundled catwalk version is ignored, so an

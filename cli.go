@@ -178,7 +178,7 @@ call, so one the mode leaves to the user is denied and stderr counts them.`,
 		},
 	}
 
-	root.AddCommand(run, sessionsCommand(), pluginsCommand(), health)
+	root.AddCommand(run, sessionsCommand(), pluginsCommand(), modelsCommand(), health)
 	return root
 }
 
@@ -353,6 +353,42 @@ func sessionsCommand() *cobra.Command {
 			}
 			fmt.Fprint(c.OutOrStdout(), md)
 			return err
+		},
+	})
+	return cmd
+}
+
+func modelsCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "models",
+		Short: "list the models -m takes",
+		Args:  cobra.NoArgs,
+	}
+	// the catalog picks where each key is sent, so it lives in <data>, which
+	// no sandbox writes; nothing boots
+	cmd.AddCommand(&cobra.Command{
+		Use:   "update",
+		Short: "fetch the latest model catalog",
+		Args:  cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+			defer stop()
+			dirs, err := config.ResolveDirs()
+			if err != nil {
+				return err
+			}
+			cat, changed, err := agent.UpdateCatalog(ctx, agent.CatalogURL, dirs.DataHome, os.Getenv)
+			switch {
+			case ctx.Err() != nil:
+				return exitStatus(130)
+			case err != nil:
+				return err
+			case changed:
+				fmt.Fprintln(c.OutOrStdout(), "Model catalog updated:", cat.Info.Summary())
+			default:
+				fmt.Fprintln(c.OutOrStdout(), "Model catalog is up to date")
+			}
+			return nil
 		},
 	})
 	return cmd

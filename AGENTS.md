@@ -175,7 +175,8 @@ apply, never on a reload or after a failed init.lua). Builtin
 providers come from the catwalk catalog (`agent.LoadCatalog`, converted at boot by
 `agent.Builtin` with the key env vars resolved in Go, never stored in config, into the
 `Host.Builtin` pointer): the embedded one, or the one `/model update` (`agent.UpdateCatalog`,
-a busy job that reloads config; `zemi run` only saves) fetched from catwalk.charm.land into
+a busy job that reloads config, or `zemi models update`, which boots nothing) fetched from
+catwalk.charm.land into
 `<data>/catwalk.json`, never `<cache>`, which a sandbox can write, since the catalog picks
 where each key is sent. A fetched one reads only the variables the bundled one names
 (`bundledRef`), so the feed cannot pick which secret goes. No network at boot; a saved catalog from another bundled catwalk

@@ -66,6 +66,7 @@ network or processes.
 zemi [prompt...]                    open the TUI; a prompt is sent first
 zemi run [prompt... | -]            one turn, the reply on stdout
 zemi sessions [export <id>]         this project's sessions; one as markdown
+zemi models update                  fetch the latest model catalog
 zemi plugins [install|update|check|enable|disable|delete|test]
 zemi health                         the /health checks; 1 if any failed
 zemi completion bash|zsh|fish

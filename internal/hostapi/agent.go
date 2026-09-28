@@ -11,13 +11,11 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/signal"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"charm.land/fantasy"
@@ -2203,51 +2201,33 @@ func (h *Host) SetModel(args string, warn bool) error {
 	return nil
 }
 
-// updateCatalog fetches the catwalk catalog for this and later boots. With
-// a UI it runs as a busy job and reloads config so the registry takes it,
-// even on a 304: another zemi may have saved the file this one never ran.
-// Headless it only saves, before the run exits, and says so on stderr.
+// updateCatalog fetches the catwalk catalog for this and later boots as a
+// busy job, and reloads config so the registry takes it, even on a 304:
+// another zemi may have saved the file this one never ran.
 func (h *Host) updateCatalog() error {
+	if _, err := h.Screen(); err != nil {
+		return fmt.Errorf("%w; zemi models update fetches the catalog", err)
+	}
 	kept := "bundled"
 	if !h.Builtin.Load().Info.Fetched.IsZero() {
 		kept = "saved"
-	}
-	headless := h.hooks() == nil
-	run := func(ctx context.Context) error {
-		c, changed, err := agent.UpdateCatalog(ctx, agent.CatalogURL, h.Dirs.DataHome, os.Getenv)
-		if err != nil {
-			return fmt.Errorf("%w; the %s one stays", err, kept)
-		}
-		h.Builtin.Store(&c)
-		title, body := "Model catalog is up to date", ""
-		if changed {
-			title, body = "Model catalog updated", fmt.Sprintf("%d %s, %d %s", c.Info.Providers, plural(c.Info.Providers, "provider", "providers"),
-				c.Info.Models, plural(c.Info.Models, "model", "models"))
-		}
-		if !headless {
-			h.Notify(logging.Info, title, body)
-		} else if body != "" {
-			fmt.Fprintf(h.Stderr, "zemi: %s: %s\n", title, body)
-		} else {
-			fmt.Fprintf(h.Stderr, "zemi: %s\n", title)
-		}
-		return nil
-	}
-	if headless {
-		// an interrupt ends zemi run with 130 (printTurn), which this fetch must not outlast
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-		defer stop()
-		if err := run(ctx); err != nil {
-			return fmt.Errorf("could not update the model catalog: %w", err)
-		}
-		return nil
 	}
 	h.GoSafe("model update", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		err := func() error {
 			defer h.Busy("Updating the model catalog", cancel)()
-			return run(ctx)
+			c, changed, err := agent.UpdateCatalog(ctx, agent.CatalogURL, h.Dirs.DataHome, os.Getenv)
+			if err != nil {
+				return fmt.Errorf("%w; the %s one stays", err, kept)
+			}
+			h.Builtin.Store(&c)
+			if changed {
+				h.Notify(logging.Info, "Model catalog updated", c.Info.Summary())
+			} else {
+				h.Notify(logging.Info, "Model catalog is up to date", "")
+			}
+			return nil
 		}()
 		switch {
 		case err == nil:
