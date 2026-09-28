@@ -8,7 +8,6 @@ package tools
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -289,42 +288,17 @@ func htmlToText(s string, base *url.URL) string {
 // anything else.
 const searchUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
-// searchURL builds the request URL: a SearXNG JSON endpoint when the user
-// set one (web.search_url), DuckDuckGo Lite otherwise.
-func searchURL(p *Pipeline, query string) (*url.URL, bool, error) {
-	base, searx := "https://lite.duckduckgo.com/lite/", false
-	if p.SearchURL != nil {
-		if s := p.SearchURL(); s != "" {
-			base, searx = s, true
-		}
-	}
-	u, err := ParseNetURL(base)
-	if err != nil {
-		return nil, searx, fmt.Errorf("web.search_url: %w", err)
-	}
-	q := u.Query()
-	q.Set("q", query)
-	if searx {
-		q.Set("format", "json")
-	}
-	u.RawQuery = q.Encode()
-	return u, searx, nil
-}
-
 func runWebSearch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	limit := 10
 	if v, ok := input["max_results"].(float64); ok && v >= 1 {
 		limit = int(min(v, 20))
 	}
-	// the URL the gate approved, parsed once in subjects
-	u, searx := p.search, p.searx
+	u := p.search
 	if u == nil {
 		return fantasy.NewTextErrorResponse("empty query"), nil
 	}
-	// The host is the user's (config), so a self-hosted SearXNG on a
-	// private address is allowed; redirects are refused so a hop cannot
-	// take that allowance elsewhere.
-	client := SafeClient(func(*url.URL) error { return fmt.Errorf("search redirect refused") }, searx)
+	// the gate approved this one URL, so a redirect elsewhere is refused
+	client := SafeClient(func(*url.URL) error { return fmt.Errorf("search redirect refused") }, false)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -339,15 +313,7 @@ func runWebSearch(ctx context.Context, p *Pipeline, input map[string]any) (fanta
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	var hits []searchHit
-	if searx {
-		if resp.StatusCode != http.StatusOK {
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("search: %s (SearXNG needs format json enabled)", resp.Status)), nil
-		}
-		hits, err = parseSearxng(body)
-	} else {
-		hits, err = parseDDGLite(resp.StatusCode, string(body))
-	}
+	hits, err := parseDDGLite(resp.StatusCode, string(body))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -368,7 +334,7 @@ var (
 // results".
 func parseDDGLite(status int, page string) ([]searchHit, error) {
 	if status == http.StatusAccepted || strings.Contains(page, "anomaly-modal") {
-		return nil, fmt.Errorf("DuckDuckGo answered with its bot check, so this network cannot search it; do not retry. Fetch known URLs directly, or ask the user to set web.search_url to a SearXNG instance")
+		return nil, fmt.Errorf("DuckDuckGo answered with its bot check, so this network cannot search it; do not retry. Fetch known URLs directly")
 	}
 	if status != http.StatusOK {
 		return nil, fmt.Errorf("search: HTTP %d", status)
@@ -403,20 +369,6 @@ func ddgTarget(href string) string {
 		}
 	}
 	return href
-}
-
-func parseSearxng(body []byte) ([]searchHit, error) {
-	var out struct {
-		Results []struct{ Title, URL, Content string }
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("search: bad SearXNG reply: %w", err)
-	}
-	hits := make([]searchHit, 0, len(out.Results))
-	for _, r := range out.Results {
-		hits = append(hits, searchHit{r.Title, r.URL, r.Content})
-	}
-	return hits, nil
 }
 
 func formatHits(hits []searchHit, limit int) string {

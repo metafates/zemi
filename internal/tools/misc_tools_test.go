@@ -468,11 +468,6 @@ func TestFetchGates(t *testing.T) {
 			t.Fatalf("fetch(%q) must refuse before the gate: %+v asked %+v", raw, res, *pastAsked)
 		}
 	}
-	bad, badAsked := testPipeline(t, true)
-	bad.SearchURL = func() string { return "ftp://x" }
-	if res := call(t, toolNamed(t, "web_search", bad), `{"query":"x"}`); !res.IsError || !strings.Contains(res.Content, "web.search_url") || len(*badAsked) != 0 {
-		t.Fatalf("a bad search url is a config error: %+v asked %+v", res, *badAsked)
-	}
 
 	allowed, asked := testPipeline(t, true)
 	mux := http.NewServeMux()
@@ -581,7 +576,7 @@ func TestHTMLToTextNoArticle(t *testing.T) {
 	}
 }
 
-func TestSearchParsers(t *testing.T) {
+func TestParseDDGLite(t *testing.T) {
 	lite := `<table><tr><td><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgo.dev%2Fdoc&amp;rut=x" class='result-link'>The <b>Go</b> docs</a></td></tr>
 <tr><td class='result-snippet'>Learn &amp; build</td></tr>
 <tr><td><a rel="nofollow" href="https://pkg.go.dev/" class='result-link'>pkg.go.dev</a></td></tr></table>`
@@ -602,10 +597,6 @@ func TestSearchParsers(t *testing.T) {
 		if _, err := parseDDGLite(c.status, c.page); err == nil || !strings.Contains(err.Error(), "bot check") {
 			t.Fatalf("bot check %d must be an error, got %v", c.status, err)
 		}
-	}
-	sx, err := parseSearxng([]byte(`{"results":[{"title":"A","url":"https://a.example/","content":"about a"}]}`))
-	if err != nil || formatHits(sx, 10) != "1. A\n   https://a.example/\n   about a\n" {
-		t.Fatalf("searxng: %q %v", formatHits(sx, 10), err)
 	}
 	if got := formatHits(nil, 10); got != "(no results)" {
 		t.Fatalf("empty: %q", got)

@@ -2942,7 +2942,6 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Pad:          h.ScratchDir(),
 		Protected:    h.protectedWhy,
 		Secret:       h.secretPath,
-		SearchURL:    func() string { return h.Settings.Str("web.search_url") },
 		Seen:         h.readLog(),
 		Instructions: h.mainInstructions,
 	}

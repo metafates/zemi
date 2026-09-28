@@ -71,7 +71,6 @@ func (s *Store) defineDefaults() {
 		{Path: "permissions.env_keep", Kind: KindString, Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},
 		{Path: "ui.theme", Kind: KindString, Default: "whorl", Desc: "theme name: whorl (the shipped one; whorl-light is picked on a light terminal) or one zemi.ui.theme.add registers"},
 		{Path: "ui.animations", Kind: KindBool, Default: true, Desc: "animate the working indicator (false keeps it static)"},
-		{Path: "web.search_url", Kind: KindString, Default: "", Desc: "SearXNG search endpoint for the web_search tool, such as http://localhost:8888/search, with the json format enabled (empty uses DuckDuckGo Lite)"},
 		{Path: "agent.effort", Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
 		{Path: "agent.profile", Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, planner, or a name defined with zemi.agent.profile.add"},
 		{Path: "session.auto_title", Kind: KindBool, Default: true, Desc: "name new sessions from their first exchange with a short model call"},

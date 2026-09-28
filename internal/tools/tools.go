@@ -263,9 +263,6 @@ type Pipeline struct {
 	// tools read and write without asking. Bound once, so a run that
 	// outlives its session keeps the pad its prompt names.
 	Pad string
-	// SearchURL returns the user's SearXNG endpoint for web_search; nil or
-	// "" = DuckDuckGo Lite.
-	SearchURL func() string
 
 	// Seen maps absolute paths to the modification time the model read
 	// them at: write tools refuse a file it has not seen as it is. nil = no
@@ -320,9 +317,8 @@ type Pipeline struct {
 	// the string again would follow a symlink swapped in after the check.
 	Path perm.Path
 	// search is web_search's URL as the gate approved it, set on the per-run
-	// copy by its subjects; searx says it is the user's SearXNG endpoint.
+	// copy by its subjects.
 	search *url.URL
-	searx  bool
 	// Protected says why a write to .git, the Lua in .agents or zemi's own dirs is
 	// protected, "" for any other: a rule allow for it still asks, since
 	// broad "always" globs cannot exclude every such path; nil = none.
@@ -1216,13 +1212,8 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				if query == "" {
 					return nil, errors.New("empty query")
 				}
-				// a bad search URL is the user's config, not a request to gate
-				u, searx, err := searchURL(p, query)
-				if err != nil {
-					return nil, err
-				}
-				p.search, p.searx = u, searx
-				return []Request{{Subject: "net." + u.Hostname(), Arg: u.String(), Reason: "web search"}}, nil
+				p.search = &url.URL{Scheme: "https", Host: "lite.duckduckgo.com", Path: "/lite/", RawQuery: url.Values{"q": {query}}.Encode()}
+				return []Request{{Subject: "net." + p.search.Hostname(), Arg: p.search.String(), Reason: "web search"}}, nil
 			},
 			runWebSearch),
 
