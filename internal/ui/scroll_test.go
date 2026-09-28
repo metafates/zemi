@@ -285,7 +285,7 @@ func TestChatScrollAnchorsThroughFill(t *testing.T) {
 // TestChatStickyPrompt: while a turn's rows fill the view, its prompt's
 // first row stands in for the chat's top row, cut with an ellipsis when the
 // prompt has more rows; it lights like a header, copies nothing, and a
-// click scrolls back to the prompt.
+// click or alt+up scrolls back to the prompt.
 func TestChatStickyPrompt(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 	const prompt = "fix the flaky TestResume in internal/store: it fails about one run in twenty on the build machine"
@@ -313,9 +313,20 @@ func TestChatStickyPrompt(t *testing.T) {
 		t.Fatalf("hovered pin drew %q over its text", over)
 	}
 
-	clickAt(app, 5, y)
-	frame := ansi.Strip(app.Frame())
-	if st.follow || !sticky(st.lines[st.top]) || st.first != nil || strings.Count(frame, "fix the flaky") != 1 {
-		t.Fatalf("the click left top %d (follow %v):\n%s", st.top, st.follow, frame)
+	// alt+up and a click on the pin both land on the prompt; alt+down with no
+	// prompt below returns to the tail
+	for _, jump := range []func(){
+		func() { press(t, app, tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModAlt}) },
+		func() { clickAt(app, 5, y) },
+	} {
+		jump()
+		frame := ansi.Strip(app.Frame())
+		if st.follow || !headerAt(st.lines, st.top) || st.first != nil || strings.Count(frame, "fix the flaky") != 1 {
+			t.Fatalf("the jump left top %d (follow %v):\n%s", st.top, st.follow, frame)
+		}
+		press(t, app, tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModAlt})
+		if app.Frame(); !st.follow {
+			t.Fatalf("alt+down left top %d short of the tail", st.top)
+		}
 	}
 }

@@ -1109,7 +1109,27 @@ func (a *App) applyScroll(kind hostapi.ScrollAction, id string) {
 		a.scrollRows(id, -1)
 	case hostapi.ScrollLineDown:
 		a.scrollRows(id, 1)
+	case hostapi.ScrollStickyUp:
+		for i := min(st.top, len(st.lines)) - 1; i >= 0; i-- {
+			if headerAt(st.lines, i) {
+				a.scrollRows(id, i-st.top)
+				return
+			}
+		}
+	case hostapi.ScrollStickyDown:
+		for i := max(st.top+1, 0); i < len(st.lines); i++ {
+			if headerAt(st.lines, i) {
+				a.scrollRows(id, i-st.top)
+				return
+			}
+		}
+		a.scrollRows(id, max(st.rows, 1))
 	}
+}
+
+// headerAt says row i starts a header: it is sticky and the row above is not.
+func headerAt(lines [][]hostapi.Segment, i int) bool {
+	return sticky(lines[i]) && (i == 0 || !sticky(lines[i-1]))
 }
 
 func (a *App) regionLines(region string, width int) [][]hostapi.Segment {

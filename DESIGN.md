@@ -1599,7 +1599,8 @@ provenance string.
   sending a message (or a `!command`) snaps back to the tail, a slash
   command does not. While a turn's prompt is above the view its first row
   stays pinned over the chat's top row (a segment's `sticky`), ending in `…`
-  when the prompt has more rows; a click on it scrolls back to the prompt.
+  when the prompt has more rows; a click on it scrolls back to the prompt,
+  and `alt+up`/`alt+down` move between prompts.
   Reasoning blocks
   collapse to one `✻ Thought for Xs` line unless shown
   (default keymaps below); a finished tool call collapses the same way and a
@@ -1625,7 +1626,8 @@ provenance string.
   empty composer twice within 2s quits), `ctrl+o` toggle reasoning,
   `pgup`/`pgdown`, `shift+up`/`shift+down` and `ctrl+home`/`ctrl+end` scroll the
   transcript (the wheel too: mouse cell motion is captured because the altscreen has no
-  native scrollback); in lists `ctrl+d`/`ctrl+u` move half a page, and
+  native scrollback), and `alt+up`/`alt+down` jump to the previous or next
+  prompt; in lists `ctrl+d`/`ctrl+u` move half a page, and
   scroll a box's text when it overflows, which the footer names as
   `ctrl+d/u scroll`. A typed line keeps `ctrl+u` for its text, and the
   composer popups keep `home` and `end` for the draft too, so while a line

@@ -169,19 +169,22 @@ const (
 )
 
 // ScrollAction moves a scrolled region: a page with a one-row overlap, to
-// an end, or a row.
+// an end, a row, or to the first row of a header (a run of sticky rows):
+// the nearest one above the view, or the next one below it, else the tail.
 type ScrollAction string
 
 const (
-	ScrollUp       ScrollAction = "up"
-	ScrollDown     ScrollAction = "down"
-	ScrollTop      ScrollAction = "top"
-	ScrollBottom   ScrollAction = "bottom"
-	ScrollLineUp   ScrollAction = "line_up"
-	ScrollLineDown ScrollAction = "line_down"
+	ScrollUp         ScrollAction = "up"
+	ScrollDown       ScrollAction = "down"
+	ScrollTop        ScrollAction = "top"
+	ScrollBottom     ScrollAction = "bottom"
+	ScrollLineUp     ScrollAction = "line_up"
+	ScrollLineDown   ScrollAction = "line_down"
+	ScrollStickyUp   ScrollAction = "sticky_up"
+	ScrollStickyDown ScrollAction = "sticky_down"
 )
 
-var scrollActions = []ScrollAction{ScrollUp, ScrollDown, ScrollTop, ScrollBottom, ScrollLineUp, ScrollLineDown}
+var scrollActions = []ScrollAction{ScrollUp, ScrollDown, ScrollTop, ScrollBottom, ScrollLineUp, ScrollLineDown, ScrollStickyUp, ScrollStickyDown}
 
 // RowKind is a transcript row's shape. RowReasoning is a finished thinking
 // block the chat widget collapses to a one-line summary.
@@ -616,6 +619,8 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		"zemi.ui.scroll.bottom":      func(h *Host, id string) error { h.scroll(ScrollBottom, id); return nil },
 		"zemi.ui.scroll.line_up":     func(h *Host, id string) error { h.scroll(ScrollLineUp, id); return nil },
 		"zemi.ui.scroll.line_down":   func(h *Host, id string) error { h.scroll(ScrollLineDown, id); return nil },
+		"zemi.ui.scroll.sticky_up":   func(h *Host, id string) error { h.scroll(ScrollStickyUp, id); return nil },
+		"zemi.ui.scroll.sticky_down": func(h *Host, id string) error { h.scroll(ScrollStickyDown, id); return nil },
 		"zemi.model.pick":            func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
 		"zemi.composer.submit":       composerAction(ComposerSubmit),
 		"zemi.composer.insert":       composerAction(ComposerInsert),

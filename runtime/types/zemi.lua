@@ -313,6 +313,8 @@ function zemi.config.reload() end
 ---| "zemi.ui.scroll.bottom"
 ---| "zemi.ui.scroll.line_up"
 ---| "zemi.ui.scroll.line_down"
+---| "zemi.ui.scroll.sticky_up"
+---| "zemi.ui.scroll.sticky_down"
 ---| "zemi.ui.focus.set"
 ---| "zemi.ui.focus.next"
 ---| "zemi.ui.focus.prev"
@@ -360,7 +362,8 @@ zemi.keymap = {}
 --- Host actions: zemi.composer.{submit,history_prev,history_next,paste,edit},
 --- zemi.composer.insert <text> (these user config only),
 --- zemi.ui.help, zemi.ui.reasoning.toggle, zemi.model.pick,
---- zemi.ui.scroll.{up,down,top,bottom} [id], zemi.ui.focus.set [id],
+--- zemi.ui.scroll.{up,down,top,bottom,line_up,line_down,sticky_up,sticky_down} [id],
+--- zemi.ui.focus.set [id],
 --- zemi.ui.focus.next, zemi.ui.focus.prev, zemi.permission.mode.{next,prev}
 --- and zemi.agent.profile.{next,prev} (user config only).
 ---@param key string
@@ -1101,6 +1104,8 @@ function zemi.ui.redraw() end
 ---| "bottom"
 ---| "line_up"
 ---| "line_down"
+---| "sticky_up"   # to the header (a run of sticky rows) above the view
+---| "sticky_down" # to the next header below it, else the tail
 
 --- Scroll a layout node, or the stage's scrolled region (the chat) without
 --- `id`, as the zemi.ui.scroll.* host actions do: for a click. Raises inside
