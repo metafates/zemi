@@ -91,6 +91,11 @@ func Normalize(cmd string) Normalized {
 // as is qualifies: one word, no quotes, no expansion beyond an earlier
 // variable, no glob. A command that assigns anything else is left alone.
 func inlineVars(cmd string) string {
+	// the shell expands no heredoc delimiter nor a line it compares against
+	// one, so inlining could move where zemi ends a body
+	if strings.Contains(cmd, "<<") {
+		return cmd
+	}
 	vars := map[string]string{}
 	rest := cmd
 	for {
@@ -194,7 +199,8 @@ type scanner struct {
 	held   []token
 	docs   []heredoc // opened on the current line
 	depth  int
-	failed bool // a quote or parenthesis not closed
+	arith  []int // the depths of the (( )) and $(( )) open, where << shifts
+	failed bool  // a quote or parenthesis not closed
 }
 
 func (n *Normalized) scan(cmd string) {
@@ -301,12 +307,18 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 		case r == '(':
 			flush()
 			sc.depth++
+			if i > 0 && rs[i-1] == '(' {
+				sc.arith = append(sc.arith, sc.depth)
+			}
 			sc.sep()
 		case r == ')':
 			flush()
 			sc.depth--
 			if sc.depth < 0 {
 				sc.failed = true
+			}
+			for len(sc.arith) > 0 && sc.depth < sc.arith[len(sc.arith)-1] {
+				sc.arith = sc.arith[:len(sc.arith)-1]
 			}
 			sc.sep()
 		case r == ' ' || r == '\t' || r == '\n': // sh splits on these only (NBSP, \v, \r are word text)
@@ -341,6 +353,10 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			// classify: heredoc forms, fd forms, file forms
 			switch op {
 			case "<<", "<<-":
+				if len(sc.arith) > 0 { // a shift: the lines below stay commands
+					sc.sep()
+					break
+				}
 				d := sc.delimiter(rs, &i)
 				d.tabs = op == "<<-"
 				sc.docs = append(sc.docs, d)
@@ -374,7 +390,19 @@ func (sc *scanner) quotedSub(n *Normalized, rs []rune, j int) (int, bool) {
 	}
 	var sub scanner
 	end := sub.words(n, rs, from, stop)
-	sc.failed = sc.failed || sub.failed || end >= len(rs)
+	// the ) of a case pattern ends it early, leaving the rest quoted text
+	// the shell runs: a case with no esac fails
+	sep, open := true, 0
+	for _, t := range sub.toks {
+		switch {
+		case sep && t.kind == tokWord && t.text == "case":
+			open++
+		case sep && t.kind == tokWord && t.text == "esac":
+			open--
+		}
+		sep = t.kind == tokSep || t.kind == tokWord && reserved[t.text]
+	}
+	sc.failed = sc.failed || sub.failed || open > 0 || end >= len(rs)
 	sc.held = append(sc.held, token{kind: tokSep})
 	sc.held = append(append(sc.held, sub.toks...), token{kind: tokSep})
 	if n.ForceAsk == "" {
@@ -459,10 +487,10 @@ func readRedirectOp(rs []rune, i int) (string, int) {
 
 // eat walks the token stream: redirects take the next word as target,
 // separators cut segments, heredocs force ask. A heredoc body is a script
-// when a shell in the command reads it; otherwise only an unquoted one's
-// substitutions run. Its segments go where the body is.
-// NOTE: a body another interpreter reads (python - <<EOF) is not parsed,
-// as python -c is not, nor one written to a file that runs later.
+// unless every program in the command is a dataReader; then only an
+// unquoted one's substitutions run. Its segments go where the body is.
+// NOTE: the command is judged whole, so one other program (bash x.sh) makes
+// every body a script, and a body with an open quote then fails the call.
 func (n *Normalized) eat(sc *scanner) {
 	var seg []string
 	type doc struct {
@@ -512,22 +540,17 @@ func (n *Normalized) eat(sc *scanner) {
 	}
 }
 
-// readsScript reports a segment whose program, or one a wrapper (sudo, env,
-// xargs) hands its input to, runs its stdin as shell: a shell, source or
-// eval.
+// dataReaders run none of their input, so a heredoc they read is data
+// (cat > f, git commit -F -); anything else may run it (fish, make -f -,
+// $SHELL, sudo sh).
+var dataReaders = []string{"cat", "tee", "echo", "printf", "git", "gh", "patch"}
+
+// readsScript reports a program in the command that is no dataReader.
 func (n *Normalized) readsScript() bool {
-	for _, f := range n.Args {
+	return slices.ContainsFunc(n.Args, func(f []string) bool {
 		f = program(f)
-		for i, w := range f {
-			if i > 0 && !runner(f[0]) {
-				break
-			}
-			if isShell(w) || w == "source" || w == "." || w == "eval" {
-				return true
-			}
-		}
-	}
-	return false
+		return len(f) > 0 && !slices.Contains(dataReaders, f[0])
+	})
 }
 
 // substitutions parses the $( and backtick substitutions of text the shell
