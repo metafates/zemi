@@ -2312,8 +2312,10 @@ zemi.lsp = {}
 
 --- Add a language server. User config only; it starts on the first
 --- matching file. Adding a builtin's name (gopls, pyright,
---- typescript, clangd) replaces it, which is how a builtin gets args, env
---- or settings. A server that never comes up only means no diagnostics.
+--- typescript, clangd, rust-analyzer, luals) replaces it, which is how a
+--- builtin gets args, env or settings; `luals` also serves the Lua of your
+--- config and local plugins. A server that never comes up only means no
+--- diagnostics.
 ---@param name string
 ---@param spec zemi.LSPSpec
 function zemi.lsp.add(name, spec) end
@@ -2420,7 +2422,7 @@ function zemi.project.root() end
 ---@field tool fun(name: string, input: table): string|nil, string? Call the plugin's tool as the model would, allowed: the output, or nil and the error the model gets, behind the tool's name ("weather_now: ..."). `test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C")`
 ---@field render fun(id: string, ctx?: table): string[], zemi.Line[] Draw the plugin's widget: its lines as text, then as segments; ctx's fields override width 80, height 1 and the rest. `test.eq(test.render("cost", { usage = { cost = 0.5 } }), { "50 cents" })`
 ---@field click fun(id: string, click: string): true|nil, string? Run the widget's on_click for a segment's click id. `assert(test.click("branch", "branch"))`
----@field emit fun(name: zemi.EventName, ev?: table): any Deliver a host event to the plugin's handlers: `tool.post` returns the output the model gets, a vetoable event its zemi.Veto or nil. `test.emit("tool.post", { tool = "bash", ok = false, output = "FAIL" })`
+---@field emit fun(name: zemi.EventName|string, ev?: table): any Deliver a host event to the plugin's handlers: `tool.post` returns the output the model gets, a vetoable event its zemi.Veto or nil. `test.emit("tool.post", { tool = "bash", ok = false, output = "FAIL" })`
 ---@field complete fun(line: string): string[] The rows the plugin's completion offers for a draft line, cursor at its end: a command's `complete` for a `/command` line, else its `zemi.composer.complete` source for the trigger that starts the last word. `test.eq(test.complete("/stars meta"), { "metafates/zemi" })`
 ---@field overlay fun(): { id: string, title: string, body: string, items: string[], input: boolean }? The top open overlay. `test.eq(test.overlay().items, { "review" })`
 ---@field answer fun(choice: integer|string|nil, action?: string): true|nil, string? Enter on an item (its index or text) or its detail action, type an input's text, or esc for nil; a row no callback takes runs its `run`, a command of the plugin. `assert(test.answer("review"))`

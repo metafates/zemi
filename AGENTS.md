@@ -832,7 +832,11 @@ lua-language-server is installed.
   `lsp.Config.Wrap` under `serverPolicy`: the project read-only, writes only to
   `<cache>/lsp/<trust key>/<server>`. A confined cargo cannot write a missing `Cargo.lock`, so
   rust-analyzer reports nothing until one exists; without a backend it (`RunsCode`) does not
-  start at all. The `diagnostics` and `lsp` tools leave the tool set when `lspDefs` is empty,
+  start at all. A `.lua` file of the user's config or a local plugin gets lua-language-server
+  (`zemiLua`: `luals`, or a user one of that name) rooted at that tree in any project, with
+  zemi's `.luarc.json` written first, whose Error severities are what a write reports; under
+  a backend `serverPolicy` also reads the types and that file. A file outside the repository
+  goes to no other server. The `diagnostics` and `lsp` tools leave the tool set when `lspDefs` is empty,
   so an untrusted project does not carry their schemas every step. A server re-reads a file
   only when told, so `lspSync` diffs two `git status` listings and sends
   `workspace/didChangeWatchedFiles` for what changed; it runs before a touch or query only once

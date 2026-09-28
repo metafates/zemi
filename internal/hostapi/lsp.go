@@ -3,7 +3,7 @@
 // and the diagnostics tool checks any file. Servers start lazily on the
 // first matching file: the builtin set when its binary is installed and the
 // project has its marker file (lsp.auto), plus servers user config adds with
-// zemi.lsp.add.
+// zemi.lsp.add, and lua-language-server for zemi's own Lua (zemiLua).
 package hostapi
 
 import (
@@ -43,6 +43,7 @@ type lspDef struct {
 	// RunsCode marks a builtin that executes project code while it loads a
 	// workspace, so it starts only confined
 	RunsCode bool
+	Root     string // the workspace; "" is the repository root
 }
 
 // builtinLSP start in a trusted repository with a marker. Servers run the
@@ -56,10 +57,31 @@ var builtinLSP = []lspDef{
 	{Name: "typescript", Command: "typescript-language-server", Args: []string{"--stdio"}, Exts: []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}, Markers: []string{"package.json", "tsconfig.json"}},
 	{Name: "clangd", Command: "clangd", Exts: []string{".c", ".h", ".cc", ".cpp", ".hpp", ".cxx"}, Markers: []string{"compile_commands.json", "CMakeLists.txt", ".clangd"}},
 	{Name: "rust-analyzer", Command: "rust-analyzer", Exts: []string{".rs"}, Markers: []string{"Cargo.toml"}, RunsCode: true},
+	// It runs a workspace's Lua (Lua.runtime.plugin) only once the client
+	// says yes, and zemi's never does (lsp.Client's server requests). With
+	// workspace diagnostics on, it would publish a file's before zemi opens
+	// it, and it never publishes an unchanged result again.
+	// NOTE: an edit that leaves a file's diagnostics as they were gets none
+	// back, so the write reports nothing rather than the same errors.
+	{
+		Name: "luals", Command: "lua-language-server", Exts: []string{".lua"},
+		Markers: []string{".luarc.json", ".luarc.jsonc", ".stylua.toml", "stylua.toml", "selene.toml", ".luacheckrc"},
+		Config:  map[string]any{"Lua": map[string]any{"diagnostics": map[string]any{"workspaceDelay": -1}}},
+	},
+}
+
+// builtinCommands names the programs of the builtin servers, for the text
+// that says what to install.
+func builtinCommands() string {
+	var cmds []string
+	for _, d := range builtinLSP {
+		cmds = append(cmds, d.Command)
+	}
+	return strings.Join(cmds[:len(cmds)-1], ", ") + " or " + cmds[len(cmds)-1]
 }
 
 var languageIDs = map[string]string{
-	".go": "go", ".py": "python", ".rs": "rust", ".ts": "typescript", ".tsx": "typescriptreact",
+	".go": "go", ".py": "python", ".rs": "rust", ".lua": "lua", ".ts": "typescript", ".tsx": "typescriptreact",
 	".js": "javascript", ".jsx": "javascriptreact", ".mjs": "javascript", ".cjs": "javascript",
 	".c": "c", ".h": "c", ".cc": "cpp", ".cpp": "cpp", ".hpp": "cpp", ".cxx": "cpp",
 }
@@ -119,9 +141,18 @@ func (p *lspProc) close() {
 	})
 }
 
-// lspFor picks the server for path: the first configured one handling its
-// extension (lspDefs order).
+// lspFor picks the server for path: lua-language-server for zemi's own Lua
+// (zemiLua), else the first configured one handling its extension
+// (lspDefs order). A file outside the repository gets none, since a server
+// answers from the workspace it was started in.
 func (h *Host) lspFor(path string) (lspDef, bool) {
+	path = h.projectAbs(path)
+	if d, ok := h.zemiLua(path); ok {
+		return d, true
+	}
+	if !h.inJail(path, h.Dirs.RepoRoot()) {
+		return lspDef{}, false
+	}
 	ext := strings.ToLower(filepath.Ext(path))
 	for _, d := range h.lspDefs(path) {
 		if slices.Contains(d.Exts, ext) {
@@ -129,6 +160,50 @@ func (h *Host) lspFor(path string) (lspDef, bool) {
 		}
 	}
 	return lspDef{}, false
+}
+
+// zemiLua is the lua-language-server for a .lua file of the user's config
+// or a local plugin, rooted at that tree whatever the project's trust: it is
+// the user's own code, and zemi writes the .luarc.json there, first, so a
+// plugin made this turn has zemi's types when its server starts. A user
+// zemi.lsp.add("luals", ...) replaces the builtin, and zemi.lsp.del or
+// lsp.auto off without one leaves the file without.
+// NOTE: a trusted project's .agents Lua is zemi's too, but zemi writes
+// nothing into a repository, so it goes to the project's server without
+// zemi's types.
+func (h *Host) zemiLua(path string) (lspDef, bool) {
+	if strings.ToLower(filepath.Ext(path)) != ".lua" {
+		return lspDef{}, false
+	}
+	real := perm.RealPath(path) // as pluginsRoot is
+	root, label := h.localPluginDir(real), "plugin "+h.PluginOf(real)
+	if root == "" {
+		if h.Dirs.ConfigHome == "" || !h.inJail(path, h.Dirs.ConfigHome) {
+			return lspDef{}, false
+		}
+		root, label = h.Dirs.ConfigHome, "config"
+	}
+	h.lsp.mu.Lock()
+	i := slices.IndexFunc(h.lsp.user, func(d lspDef) bool { return d.Name == "luals" })
+	def, off := lspDef{}, h.lsp.disabled["luals"]
+	if i >= 0 {
+		def = h.lsp.user[i]
+	}
+	h.lsp.mu.Unlock()
+	if i < 0 && h.Settings.Bool("lsp.auto") {
+		def = builtinLSP[slices.IndexFunc(builtinLSP, func(d lspDef) bool { return d.Name == "luals" })]
+		if _, err := exec.LookPath(def.Command); err != nil {
+			return lspDef{}, false
+		}
+	}
+	if off || !slices.Contains(def.Exts, ".lua") {
+		return lspDef{}, false
+	}
+	if err := writeLuarc(root, h.TypesDir()); err != nil {
+		h.Log.Warn("lsp", "luarc not written", map[string]any{"dir": root, "error": err.Error()})
+	}
+	def.Name, def.Root = "luals ("+label+")", root
+	return def, true
 }
 
 // lspDefs lists the servers this project can use: user definitions first,
@@ -235,8 +310,10 @@ type lspSig struct {
 // tool opens, and a git status before every read would cost more than it
 // finds.
 // NOTE: outside a git repository nothing is detected beyond the files zemi
-// itself writes; a repository too large for git status to answer in a few
-// hundred milliseconds pays that on every touch.
+// itself writes, so a zemi tree's server (zemiLua) hears of a change a
+// command made there only when the file is next opened; a repository too
+// large for git status to answer in a few hundred milliseconds pays that on
+// every touch.
 func (h *Host) lspSync() {
 	root := h.Dirs.RepoRoot()
 	if root == "" {
@@ -343,12 +420,12 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 			sctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			cfg := lsp.Config{
-				Command: def.Command, Args: def.Args, Env: env, Root: h.Dirs.RepoRoot(),
+				Command: def.Command, Args: def.Args, Env: env, Root: cmp.Or(def.Root, h.Dirs.RepoRoot()),
 				InitOptions: def.Init, Settings: def.Config,
 				Stderr: serverLogWriter{h: h, source: "lsp", server: def.Name},
 			}
 			if h.sandboxLive() {
-				policy := h.serverPolicy(def.Name)
+				policy := h.serverPolicy(def)
 				cfg.Wrap = func(cmd *exec.Cmd) error { return sandbox.Wrap(cmd, policy) }
 			}
 			p.client, p.err = lsp.Start(sctx, cfg)
@@ -548,7 +625,7 @@ func (h *Host) noLSP(path string) error {
 	case !h.ProjectTrusted():
 		return errors.New("language servers are off: this project is not trusted (the user runs /trust)")
 	case path == "":
-		return errors.New("no language server for this project: none of gopls, pyright, typescript-language-server, clangd or rust-analyzer is installed with its marker file here; zemi.lsp.add adds one")
+		return fmt.Errorf("no language server for this project: none of %s is installed with its marker file here; zemi.lsp.add adds one", builtinCommands())
 	}
 	return fmt.Errorf("no language server for %s files (install one, or add it with zemi.lsp.add)", filepath.Ext(path))
 }
@@ -689,7 +766,7 @@ func (h *Host) lspCommands() []*Command {
 
 // lspOverlay is /lsp; with refresh it only replaces an open one.
 func (h *Host) lspOverlay(refresh bool) Overlay {
-	empty := "No language servers yet. Install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or add one with zemi.lsp.add."
+	empty := "No language servers yet. Install " + builtinCommands() + ", or add one with zemi.lsp.add."
 	if !h.ProjectTrusted() {
 		empty = "Language servers are off: this project is not trusted."
 	}

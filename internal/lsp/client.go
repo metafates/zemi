@@ -665,7 +665,9 @@ func (c *Client) read(r *bufio.Reader) {
 		case m.Method != "" && len(m.ID) > 0:
 			// Server requests: configuration gets each item's section of the
 			// settings (null without any), the rest (capability registration,
-			// progress) a null result.
+			// progress) a null result. The null must stay for
+			// window/showMessageRequest: lua-language-server reads it as no
+			// to running a workspace's Lua (Lua.runtime.plugin).
 			var result any
 			switch m.Method {
 			case "client/registerCapability":

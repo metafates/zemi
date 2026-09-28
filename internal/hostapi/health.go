@@ -480,7 +480,7 @@ func (h *Host) goHealthRows() []healthCheck {
 	case !h.ProjectTrusted():
 		add(HealthOK, "lsp", "off: project not trusted (/trust)")
 	default:
-		add(HealthOK, "lsp", "none for this project: install gopls, pyright, typescript-language-server, clangd or rust-analyzer, or zemi.lsp.add one")
+		add(HealthOK, "lsp", "none for this project: install "+builtinCommands()+", or zemi.lsp.add one")
 	}
 	return out
 }

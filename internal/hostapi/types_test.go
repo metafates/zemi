@@ -131,8 +131,8 @@ func TestSyncTypesWritesAnnotations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), h.TypesDir()) {
-		t.Fatalf(".luarc.json does not point at the types dir:\n%s", data)
+	if !strings.Contains(string(data), h.TypesDir()) || !strings.Contains(string(data), `"undefined-global": "Error!"`) {
+		t.Fatalf(".luarc.json does not point at the types dir or raise the bug diagnostics:\n%s", data)
 	}
 	for dir, want := range map[string]bool{filepath.Join(root, "local", "mine"): true, filepath.Join(root, "installed", "clone"): false, elsewhere: false} {
 		got, err := os.ReadFile(filepath.Join(dir, ".luarc.json"))

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
@@ -15,6 +16,9 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/logging"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -254,6 +258,114 @@ func TestLSPBuiltins(t *testing.T) {
 		if got != want {
 			t.Fatalf("%s: tsserver = %q, want %q", c.name, got, want)
 		}
+	}
+}
+
+// TestLSPZemiLua: a .lua file of the user's config or a local plugin gets
+// lua-language-server rooted at that tree, trusted project or not, with
+// zemi's .luarc.json written first; an installed clone, a switched-off
+// server and a file outside the repository get none, and the project's Lua
+// gets the builtin only when trusted, like any builtin.
+func TestLSPZemiLua(t *testing.T) {
+	bin := t.TempDir()
+	os.WriteFile(filepath.Join(bin, "lua-language-server"), []byte("#!/bin/sh\n"), 0o755)
+	t.Setenv("PATH", bin)
+	data, _ := filepath.EvalSymlinks(t.TempDir()) // plugin paths are resolved
+	log := logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir(), ConfigHome: t.TempDir(), DataHome: data})
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, proj, outside := h.Dirs.ConfigHome, h.Dirs.ProjectDir, t.TempDir()
+	plugin := filepath.Join(h.Dirs.PluginsRoot(), "local", "stars")
+	os.MkdirAll(filepath.Join(plugin, "lua", "stars"), 0o755) // made by the write the check follows
+	os.WriteFile(filepath.Join(proj, ".luarc.json"), nil, 0o644)
+	for _, c := range []struct {
+		name, path, lua string // lua runs as user config first
+		trusted         bool
+		want, root      string // the server's name and root, "" for none
+	}{
+		{name: "config, untrusted", path: filepath.Join(cfg, "init.lua"), want: "luals (config)", root: cfg},
+		{name: "a local plugin", path: filepath.Join(plugin, "lua", "stars", "init.lua"), want: "luals (plugin stars)", root: plugin},
+		{name: "an installed clone", path: filepath.Join(h.Dirs.PluginsRoot(), "installed", "x", "init.lua"), trusted: true},
+		{name: "a plugin's non-Lua file", path: filepath.Join(plugin, "README.md"), trusted: true},
+		{name: "the project, untrusted", path: filepath.Join(proj, "a.lua")},
+		{name: "the project, trusted", path: filepath.Join(proj, "a.lua"), trusted: true, want: "luals"},
+		{name: "outside the repository", path: filepath.Join(outside, "a.lua"), trusted: true},
+		{name: "lsp.auto off", path: filepath.Join(cfg, "init.lua"), lua: `zemi.config.set("lsp.auto", false)`},
+		{name: "deleted", path: filepath.Join(cfg, "init.lua"), lua: `zemi.lsp.del("luals")`},
+		{name: "a user's own", path: filepath.Join(plugin, "init.lua"), lua: `zemi.lsp.add("luals", { command = "my-luals", filetypes = { "lua" } })`, want: "luals (plugin stars)", root: plugin},
+		{name: "a user's own without lua", path: filepath.Join(cfg, "init.lua"), lua: `zemi.lsp.add("luals", { command = "my-luals", filetypes = { "luau" } })`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h.lsp.stopAll()
+			runUser(t, r, `zemi.config.set("lsp.auto", true) `+c.lua)
+			h.SetProjectTrusted(c.trusted)
+			os.RemoveAll(filepath.Join(c.root, ".luarc.json"))
+			d, ok := h.lspFor(c.path)
+			if ok != (c.want != "") || d.Name != c.want || d.Root != c.root {
+				t.Fatalf("lspFor = %q rooted at %q (%v), want %q at %q", d.Name, d.Root, ok, c.want, c.root)
+			}
+			if _, err := os.Stat(filepath.Join(c.root, ".luarc.json")); c.root != "" && err != nil {
+				t.Errorf("no .luarc.json before the server starts: %v", err)
+			}
+		})
+	}
+}
+
+// TestLSPRealLuaLS runs the installed lua-language-server under the live
+// backend on a local plugin in an untrusted project: zemi's types reach it,
+// so a widget spec missing a field is an error, and the demo plugin, sound
+// code, has none (the Error severities in zemi's .luarc.json).
+func TestLSPRealLuaLS(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("starts a real language server")
+	}
+	if _, err := exec.LookPath("lua-language-server"); err != nil {
+		t.Skip("lua-language-server not installed")
+	}
+	data, _ := filepath.EvalSymlinks(t.TempDir()) // plugin paths are resolved
+	log := logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir(), CacheHome: t.TempDir(), DataHome: data})
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	defer h.lsp.stopAll()
+	if !h.sandboxLive() {
+		t.Skip("no sandbox")
+	}
+	h.syncTypes()
+	plugin := filepath.Join(h.Dirs.PluginsRoot(), "local", "demo")
+	if err := os.CopyFS(plugin, os.DirFS("../../testdata/plugins/demo")); err != nil {
+		t.Fatal(err)
+	}
+	bad := filepath.Join(plugin, "lua", "bad.lua")
+	var got string
+	for i, deadline := 0, time.Now().Add(2*time.Minute); !strings.Contains(got, "error ") && time.Now().Before(deadline); i++ {
+		// the server publishes a result only when it changed, so each try
+		// moves the error a line down
+		spec := strings.Repeat("\n", i) + "zemi.ui.widget.add({ id = \"x\", render = function() return {} end })\n"
+		os.WriteFile(bad, []byte(spec), 0o644)
+		got, _ = h.lspDiagnostics(bad)
+	}
+	if !strings.Contains(got, "error ") || !strings.Contains(got, "region") {
+		t.Fatalf("the planted spec: %q", got)
+	}
+	err := filepath.WalkDir(plugin, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(p) != ".lua" || p == bad {
+			return err
+		}
+		// a file it finds nothing in it publishes nothing for, which reads as no answer
+		if got, _ := h.lspDiagnostics(p); strings.Contains(got, "error ") {
+			t.Errorf("%s: %q", p, got)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

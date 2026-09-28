@@ -136,6 +136,12 @@ func writeLuarc(dir, typesDir string) error {
 			"basic": "disable", "io": "disable", "os": "disable", "debug": "disable", "utf8": "disable",
 		}},
 		"workspace": map[string]any{"library": []string{typesDir}, "checkThirdParty": false},
+		// near-certain bugs, raised to errors since those are what reach the
+		// agent after a write; the rest misfire on sound code (a pcall result)
+		"diagnostics": map[string]any{"severity": map[string]string{
+			"undefined-global": "Error!", "missing-fields": "Error!", "assign-type-mismatch": "Error!",
+			"missing-parameter": "Error!", "redundant-parameter": "Error!",
+		}},
 		"telemetry": map[string]any{"enable": false},
 	}, "", "  ")
 	if err != nil {

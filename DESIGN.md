@@ -362,7 +362,8 @@ origin is denylisted anyway (below).
 
 Trusted, zemi loads the project's `.agents` config and instruction files
 (and a profile's `context.files`), starts language servers (builtin and
-user-added; sandboxed when a backend is live, §9), auto mode and read-only agents settle builds and tests in the sandbox, and
+user-added; sandboxed when a backend is live, §9; the Lua of zemi's own
+trees gets its server either way), auto mode and read-only agents settle builds and tests in the sandbox, and
 auto settles in-project edits (§9). Untrusted, none of that: only the user's `<config>/AGENTS.md`
 is an instruction file, no language server starts, `.agents` edits trigger no reload, and auto mode and read-only agents
 settle only reads, `perm.Normalized.ReadCommand` commands and, confined, a plugin's
@@ -1989,11 +1990,22 @@ provenance string.
   for commands, loopback, the project read-only, and writable only
   `<cache>/lsp/<trust root hash>/<server>` (`ZEMI_CACHE_HOME`, default
   `~/.cache/zemi`), which `XDG_CACHE_HOME`, `GOCACHE`, `GOPLSCACHE`,
-  `CARGO_TARGET_DIR` and `TMPDIR` point at. It is not under the state dir:
+  `CARGO_TARGET_DIR`, `TMPDIR` and lua-language-server's `LLS_LOG_PATH`
+  and `LLS_META_PATH` point at. It is not under the state dir:
   seatbelt hides that dir's own metadata, which cargo stats. A confined
   cargo cannot create a missing `Cargo.lock`, so rust-analyzer reports
   nothing until one exists. Without a backend rust-analyzer does not
-  start; the other builtins and user-added servers run unconfined. The backend (seatbelt through
+  start; the other builtins and user-added servers run unconfined.
+  A `.lua` file of the user's config or a local plugin gets
+  lua-language-server (`luals`, or the user's server of that name) rooted
+  at that tree, in any project: it is the user's own code, zemi writes the
+  tree's `.luarc.json` first (`zemiLua`), and the server, which runs a
+  workspace's Lua only when the client agrees and zemi's never does,
+  also reads zemi's types and that `.luarc.json` (a config tree's `.git`
+  stays hidden). The `.luarc.json` raises the diagnostics that are
+  near-certain bugs (an unknown global, a missing field, a wrong type or
+  argument count) to errors, which is what a write reports. A file outside
+  the repository goes to no project server. The backend (seatbelt through
   `/usr/bin/sandbox-exec` on macOS; on Linux the `zemi __sandbox` helper
   with Landlock plus user, network and mount namespaces where the kernel
   allows unprivileged user namespaces, else Landlock plus seccomp) is

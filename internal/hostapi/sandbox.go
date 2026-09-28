@@ -307,14 +307,26 @@ func (h *Host) trustKey() string {
 // serverPolicy confines a language server, which runs project code
 // (build.rs, proc macros) the model may have written: it reads what a
 // sandboxed command reads and writes only <cache>/lsp/<trust key>/<name>,
-// which the cache, build and temp variables point at.
+// which the cache, build, temp and lua-language-server's log and meta
+// variables point at. A zemi tree's server (Root) also reads zemi's types
+// and the tree's .luarc.json.
 // NOTE: nothing sweeps it; a rust target dir there can be large.
-func (h *Host) serverPolicy(name string) sandbox.Policy {
+func (h *Host) serverPolicy(def lspDef) sandbox.Policy {
 	p := h.sandboxPolicy(true, "")
 	p.Write, p.Env = nil, map[string]string{}
+	switch def.Root {
+	case "":
+	case h.Dirs.ConfigHome:
+		// the read tool reads it too; its .git may hold tokens
+		p.Read = append(p.Read, h.TypesDir(), def.Root)
+		p.Hide = append(p.Hide, filepath.Join(def.Root, ".git"))
+	default: // a local plugin, whose code sandboxPolicy already reads
+		p.Read = append(p.Read, h.TypesDir(), filepath.Join(def.Root, ".luarc.json"))
+	}
 	if h.Dirs.CacheHome == "" {
 		return p
 	}
+	name := def.Name
 	if !filepath.IsLocal(name) {
 		name = hex.EncodeToString([]byte(name))
 	}
@@ -322,6 +334,7 @@ func (h *Host) serverPolicy(name string) sandbox.Policy {
 	for k, sub := range map[string]string{
 		"XDG_CACHE_HOME": "cache", "GOCACHE": "go-build", "GOPLSCACHE": "gopls",
 		"CARGO_TARGET_DIR": "target", "TMPDIR": "tmp", "TMP": "tmp", "TEMP": "tmp",
+		"LLS_LOG_PATH": "log", "LLS_META_PATH": "meta",
 	} {
 		if os.MkdirAll(filepath.Join(dir, sub), 0o700) == nil {
 			p.Env[k] = filepath.Join(dir, sub)
