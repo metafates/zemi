@@ -47,7 +47,7 @@ func (h *Host) addProvider() string { return "add a provider to " + h.initPath()
 // builtin provider's key to export (read at start), or where to add a provider.
 func (h *Host) NoModelHint() string {
 	if missing := h.Providers.Missing(); len(missing) > 0 {
-		return "export " + missing[0].Env + " and run zemi again, or add a provider to init.lua"
+		return "export " + missing[0].Env + " and start zemi again, or add a provider to init.lua"
 	}
 	return h.addProvider()
 }
@@ -69,7 +69,7 @@ func (h *Host) modelErr(id string) error {
 		// the id may come from a role, -m or a profile, so none is named
 		missing := h.Providers.Missing()
 		if i := slices.IndexFunc(missing, func(m agent.MissingKey) bool { return m.ID == prov }); i >= 0 {
-			return fmt.Errorf("builtin provider %q needs its key: export %s and run zemi again", prov, missing[i].Env)
+			return fmt.Errorf("builtin provider %q needs its key: export %s and start zemi again", prov, missing[i].Env)
 		}
 		return fmt.Errorf("provider %q is not registered: %s", prov, h.addProvider())
 	}

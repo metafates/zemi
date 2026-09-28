@@ -93,14 +93,14 @@ local default = require("zemi.tui")
 zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
-    ctx.model, ctx.model_hint = "`+model+`", "export ANTHROPIC_API_KEY and run zemi again, or add a provider to ~/.config/zemi/init.lua"
+    ctx.model, ctx.model_hint = "`+model+`", "export ANTHROPIC_API_KEY and start zemi again, or add a provider to ~/.config/zemi/init.lua"
     return default.splash(ctx)
   end,
 })`)
 		app.frameGen++
 		app.renderSync(t)
 		frame := ansi.Strip(app.Frame())
-		if model == "" && (!strings.Contains(frame, "none yet: export ANTHROPIC_API_KEY and run zemi again, or add") || !strings.Contains(frame, "         a provider to ~/.config/zemi/init.lua")) {
+		if model == "" && (!strings.Contains(frame, "none yet: export ANTHROPIC_API_KEY and start zemi again, or") || !strings.Contains(frame, "         add a provider to ~/.config/zemi/init.lua")) {
 			t.Fatalf("hint cut:\n%s", frame)
 		}
 		before, _, _ := strings.Cut(frame, "@zemi")

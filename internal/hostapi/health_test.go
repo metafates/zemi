@@ -177,9 +177,9 @@ func TestHealthProvidersRow(t *testing.T) {
 // own model gets a row of its own.
 func TestHealthModelRow(t *testing.T) {
 	for _, c := range []struct{ name, row, lua, level, detail string }{
-		{"none", "model", ``, "error", "no model yet: export OPENAI_API_KEY and run zemi again, or add a provider to init.lua"},
+		{"none", "model", ``, "error", "no model yet: export OPENAI_API_KEY and start zemi again, or add a provider to init.lua"},
 		{"unknown provider", "model", `zemi.config.set("models.chat", "nobody/m")`, "error", `provider "nobody" is not registered: add a provider to `},
-		{"builtin without key", "model", `zemi.config.set("models.chat", "openai/gpt-5")`, "error", `builtin provider "openai" needs its key: export OPENAI_API_KEY and run zemi again`},
+		{"builtin without key", "model", `zemi.config.set("models.chat", "openai/gpt-5")`, "error", `builtin provider "openai" needs its key: export OPENAI_API_KEY and start zemi again`},
 		{"empty key", "model", `zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "m" } } })`, "error", "a: api_key is empty in "},
 		{"unlisted model", "model", `zemi.provider.add({ id = "a", kind = "anthropic", api_key = "k", models = { { id = "m" } } })
 			zemi.config.set("models.chat", "a/other")`, "warn", "a/other: not in the provider's models list"},

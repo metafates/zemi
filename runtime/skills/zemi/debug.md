@@ -44,7 +44,7 @@
 
 | Symptom | Cause and fix |
 | --- | --- |
-| "no model yet", or `/model` shows "No models yet" | no key exported (zemi reads keys at start: export, then start it again) and no provider in init.lua, or init.lua failed before `zemi.provider.add` (statusline `boot failed`, `/errors` has why); `/model` lists the builtin providers with their variables, `config.md` has `zemi.provider.add` |
+| "no model yet", or `/model` shows "No models yet" | no key exported (zemi reads keys at start: export, then start zemi again) and no provider in init.lua, or init.lua failed before `zemi.provider.add` (statusline `boot failed`, `/errors` has why); `/model` lists the builtin providers with their variables, `config.md` has `zemi.provider.add` |
 | 401 / unauthorized | the provider's key is empty or wrong: the exported builtin key, or the variable read with `zemi.env.get`, is not right in the shell that started zemi |
 | "Retrying (attempt N)" then an error | network, VPN or `base_url`; the log has each retry's provider error |
 | statusline `boot failed` | init.lua, a plugin or project config raised during startup; `/errors` or the log (source `boot`) has the error |
