@@ -1567,7 +1567,7 @@ func (h *Host) workflowCommands() []*Command {
 				return nil
 			case "save":
 				path, err := h.saveFlow(id, arg(2))
-				return say("Saved as "+TildePath(path), err)
+				return say("Saved as "+perm.TildePath(path), err)
 			case "open":
 				return h.openFlowScript(id)
 			}
@@ -1726,7 +1726,7 @@ func (h *Host) workflowsOverlay() Overlay {
 			map[string]any{"text": "Run with arguments", "hotkey": "a", "fill": "/workflows run " + w.Name + " "},
 		}
 		if w.Source != lua.OriginBuiltin {
-			path = TildePath(w.Path)
+			path = perm.TildePath(w.Path)
 			actions = append(actions, map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "workflows open " + w.Name})
 		}
 		items = append(items, map[string]any{
@@ -1761,7 +1761,7 @@ func flowFields(f *flowRun, v flowView) []string {
 	}
 	script := ""
 	if f.script != "" {
-		script = TildePath(f.script)
+		script = perm.TildePath(f.script)
 	}
 	return []string{
 		"status", flowWord(v), "agents", fmt.Sprintf("%d/%d done · %d running · %d at once", v.done, len(v.agents), v.running, v.limit),

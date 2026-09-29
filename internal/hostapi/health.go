@@ -22,6 +22,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -436,7 +437,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	}
 
 	if h.ProjectTrusted() {
-		add(HealthOK, "trust", "trusted: "+TildePath(h.Dirs.TrustRoot()))
+		add(HealthOK, "trust", "trusted: "+perm.TildePath(h.Dirs.TrustRoot()))
 	} else {
 		add(HealthWarn, "trust", "not trusted: the project's config, instructions and language servers are off; /trust")
 	}

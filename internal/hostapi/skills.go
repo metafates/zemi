@@ -27,6 +27,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
@@ -503,7 +504,7 @@ func (h *Host) openSkills(confirm string) error {
 	ui.OpenOverlay(Overlay{
 		ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true, Confirm: confirm,
 		Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
-		Empty:  "No skills yet. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + " or " + TildePath(h.Dirs.AgentsHome) + ".",
+		Empty:  "No skills yet. Add one as skills/<name>/SKILL.md in " + perm.TildePath(h.Dirs.ConfigHome) + " or " + perm.TildePath(h.Dirs.AgentsHome) + ".",
 	})
 	return nil
 }
@@ -579,7 +580,7 @@ func (h *Host) skillItems() []any {
 		if s.Source == skill.Recipe {
 			item["actions"] = append(item["actions"].([]any), map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "skills delete " + s.Name + " --yes"})
 		}
-		item["fields"] = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "used by", h.usedBy(s, state == "on"), "path", TildePath(skillFile(s)))
+		item["fields"] = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "used by", h.usedBy(s, state == "on"), "path", perm.TildePath(skillFile(s)))
 		item["detail"] = s.Description
 		items = append(items, item)
 	}

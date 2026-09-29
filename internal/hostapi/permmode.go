@@ -213,7 +213,7 @@ func (h *Host) permItems() []any {
 			case "":
 				item["detail"] = "from config; edit permissions in your init.lua"
 			case "permissions":
-				item["detail"] = "from " + TildePath(h.projectPermissionsPath()) + "; edit that file"
+				item["detail"] = "from " + perm.TildePath(h.projectPermissionsPath()) + "; edit that file"
 			case "project":
 				item["detail"] = "from the project's .agents/init.lua"
 			default:

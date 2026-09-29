@@ -541,12 +541,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	case netFail:
 		line = "no network here" + or(net, ": call it again with network: true, which keeps the rest of the sandbox (needs approval)")
 	case has(is(hidden)):
-		root := l.root
-		if home, _ := os.UserHomeDir(); home != "" {
-			if rel, in := perm.Under(home, root); in {
-				root = "~/" + rel
-			}
-		}
+		root := perm.TildePath(l.root)
 		// a credential dir is no place to send the read tool either
 		if p.Secret != nil && p.Secret(l.root) {
 			line = root + " holds credentials and is hidden from commands" + or(all, "; if the command needs them, call it again with sandbox: false (needs approval)")

@@ -126,12 +126,12 @@ func (h *Host) pluginsCommand(line string) error {
 			return Usagef("%s is an installed plugin, and the agent changes only local ones: delete it and ask the agent to clone it into the local plugins directory", p.Name)
 		}
 		if fi, err := os.Lstat(p.Dir); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
-			return Usagef("%s is a symlink, which zemi does not load: move the plugin into %s, then modify it", p.Name, TildePath(filepath.Dir(p.Dir)))
+			return Usagef("%s is a symlink, which zemi does not load: move the plugin into %s, then modify it", p.Name, perm.TildePath(filepath.Dir(p.Dir)))
 		}
 		// the user asked for the change, as for a plugin whose creation they
 		// allowed: auto mode settles the agent's edits there until zemi exits
 		h.madePlugins.Store(h.localPluginDir(perm.RealPath(p.Dir)), true)
-		send(fmt.Sprintf(modifyPluginPrompt, p.Name, TildePath(p.Dir)))
+		send(fmt.Sprintf(modifyPluginPrompt, p.Name, perm.TildePath(p.Dir)))
 	case ask:
 		p, err := h.pluginNamed(args[1])
 		if err != nil {
@@ -275,7 +275,7 @@ func (h *Host) pluginItems() []any {
 			"section": section, "on": p.Enabled, "run": "plugins toggle " + p.Name,
 			"detail": p.Desc, "actions": actions,
 			"fields": fieldList("source", source, "status", string(status), "version", version, "latest", p.Latest,
-				"provides", strings.Join(provides[p.Name], " · "), "path", TildePath(p.Dir), "error", errText),
+				"provides", strings.Join(provides[p.Name], " · "), "path", perm.TildePath(p.Dir), "error", errText),
 		})
 	}
 	return items

@@ -26,6 +26,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -977,7 +978,7 @@ func (h *Host) openAgentFile(name string) error {
 	case err != nil:
 		return Usagef("%v", err)
 	case d.Path == "":
-		return Usagef("%s is builtin: agents/%s.md in %s replaces it", name, name, TildePath(h.Dirs.ConfigHome))
+		return Usagef("%s is builtin: agents/%s.md in %s replaces it", name, name, perm.TildePath(h.Dirs.ConfigHome))
 	}
 	h.openInEditor(ui, d.Path, "the agent")
 	return nil
@@ -1025,7 +1026,7 @@ func (h *Host) openAgents() error {
 		}
 		fields := []string{"source", h.sourceOf(d.Source, d.Path), "model", model, "tools", tools, "read only", readOnly}
 		if d.Path != "" {
-			fields = append(fields, "path", TildePath(d.Path))
+			fields = append(fields, "path", perm.TildePath(d.Path))
 			item["actions"] = []any{map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "agents open " + d.Name}}
 		}
 		item["fields"] = fieldList(fields...)

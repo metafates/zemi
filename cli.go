@@ -23,6 +23,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
@@ -404,7 +405,7 @@ func sessionsCommand() *cobra.Command {
 				list, err = db.ListSessions(-1)
 			}
 			if errors.Is(err, fs.ErrNotExist) || err == nil && len(list) == 0 {
-				fmt.Fprintf(c.ErrOrStderr(), "zemi: no sessions in %s yet\n", hostapi.TildePath(dirs.TrustRoot()))
+				fmt.Fprintf(c.ErrOrStderr(), "zemi: no sessions in %s yet\n", perm.TildePath(dirs.TrustRoot()))
 				return nil
 			}
 			for _, s := range list {
@@ -615,7 +616,7 @@ func (o *options) readStdin(stdin *os.File) error {
 // line saying what that turns off.
 func headlessTrust(stderr io.Writer) func(root, cwd, state string) string {
 	return func(root, _, _ string) string {
-		fmt.Fprintf(stderr, "zemi: %s is not trusted: project config, instructions and language servers are off and only read-only commands run without asking; pass --trust or run /trust in the TUI\n", hostapi.TildePath(root))
+		fmt.Fprintf(stderr, "zemi: %s is not trusted: project config, instructions and language servers are off and only read-only commands run without asking; pass --trust or run /trust in the TUI\n", perm.TildePath(root))
 		return "later"
 	}
 }

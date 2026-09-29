@@ -151,6 +151,14 @@ func subjectMatches(rule, subject string) bool {
 // into one; a rule for one then covers both.
 func CanonPath(p string) string { return FoldCase(RealPath(p)) }
 
+// TildePath shortens the home directory, or a path under it, to ~.
+func TildePath(p string) string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" && (p == home || strings.HasPrefix(p, home+"/")) {
+		return "~" + p[len(home):]
+	}
+	return p
+}
+
 // Under reports whether path is root or below it, and gives its path
 // relative to root. Both must already be resolved; run RealPath first when
 // either may hold a symlink. A real entry whose own name starts with ".."

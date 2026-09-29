@@ -21,6 +21,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/tools"
@@ -243,7 +244,7 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 	var zemi []string
 	for _, z := range []string{d.ConfigHome, d.DataHome, d.StateHome} {
 		if z != "" && slices.Contains(pol.Hide, z) {
-			zemi = append(zemi, TildePath(z))
+			zemi = append(zemi, perm.TildePath(z))
 		}
 	}
 	b.WriteString("- Hidden from them: ")

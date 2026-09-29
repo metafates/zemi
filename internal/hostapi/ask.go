@@ -272,7 +272,7 @@ func (h *Host) shownArg(req tools.Request) string {
 	if !tools.PathSubject(req.Subject) {
 		return req.Arg
 	}
-	return TildePath(h.relPath(req.Arg))
+	return perm.TildePath(h.relPath(req.Arg))
 }
 
 // relPath is path relative to the project, else to the trusted
@@ -429,9 +429,9 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		home, _ := os.UserHomeDir()
 		_, aboveHome := perm.Under(dir, perm.RealPath(home))
 		if h.secretPath(abs) || dir == "/" || home != "" && aboveHome {
-			return fmt.Sprintf("allow %s of %s", what, TildePath(h.relPath(abs))), []perm.Rule{rule(req.Subject, abs)}
+			return fmt.Sprintf("allow %s of %s", what, perm.TildePath(h.relPath(abs))), []perm.Rule{rule(req.Subject, abs)}
 		}
-		shown := TildePath(h.relPath(dir))
+		shown := perm.TildePath(h.relPath(dir))
 		// the rule's * spans separators, so the label says so
 		where := "in " + shown + "/ and below"
 		if shown == "." {

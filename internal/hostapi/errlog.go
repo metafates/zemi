@@ -18,6 +18,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -191,7 +192,7 @@ var chunkPath = regexp.MustCompile(`(?:@\w+:)?(/\S*/[^/:\s]+):`)
 // ShortChunk makes chunk names readable: the origin tag dropped and home
 // shortened to ~.
 func ShortChunk(s string) string {
-	return chunkPath.ReplaceAllStringFunc(s, func(m string) string { return TildePath(m[strings.Index(m, "/"):]) })
+	return chunkPath.ReplaceAllStringFunc(s, func(m string) string { return perm.TildePath(m[strings.Index(m, "/"):]) })
 }
 
 // Headline is an error's first line, chunk names shortened: what stderr,

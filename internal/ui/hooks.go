@@ -124,7 +124,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	explain := func(width int) [][]hostapi.Segment {
 		// a long path wraps at its slashes: the user trusts every character
 		var path []hostapi.Segment
-		for _, part := range strings.SplitAfter(hostapi.TildePath(tp.root), "/") {
+		for _, part := range strings.SplitAfter(perm.TildePath(tp.root), "/") {
 			path = append(path, hostapi.Segment{Text: part, HL: hostapi.ChromeBold})
 		}
 		rows := hostapi.WrapSegs(path, width)
@@ -135,7 +135,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		}
 		switch rel, in := perm.Under(tp.root, cwd); {
 		case !in:
-			rows = append(rows, wrapText("Started in "+hostapi.TildePath(tp.cwd)+", which this answer covers too.", hostapi.ChromeHint, width)...)
+			rows = append(rows, wrapText("Started in "+perm.TildePath(tp.cwd)+", which this answer covers too.", hostapi.ChromeHint, width)...)
 		case rel != ".":
 			rows = append(rows, wrapText("Covers the whole project, not only "+rel+".", hostapi.ChromeHint, width)...)
 		}

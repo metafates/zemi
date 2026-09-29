@@ -264,7 +264,7 @@ func rowOutput(tool, out string) string {
 	case tools.ToolPlan:
 		verdict, path := tools.PlanOutcome(out)
 		if out = verdict; path != "" {
-			out += ", saved to " + TildePath(path)
+			out += ", saved to " + perm.TildePath(path)
 		}
 	case tools.ToolQuestion:
 		if qa := tools.QuestionAnswers(out); qa != nil {
@@ -620,7 +620,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	h.Perm.EnvKeep = func() string { return settings.Str("permissions.env_keep") }
 	settings.SetChoices("agent.effort", append(slices.Clone(agent.Efforts), ""))
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
-	h.project = sync.OnceValue(func() string { return TildePath(h.trustRoot()) })
+	h.project = sync.OnceValue(func() string { return perm.TildePath(h.trustRoot()) })
 	h.pluginsRoot = sync.OnceValue(func() string {
 		root := dirs.PluginsRoot()
 		if r, err := filepath.EvalSymlinks(root); err == nil {
@@ -1533,14 +1533,6 @@ type Printed struct {
 	Live *StreamSnapshot
 }
 
-// TildePath shortens the home directory, or a path under it, to ~.
-func TildePath(p string) string {
-	if home, err := os.UserHomeDir(); err == nil && home != "" && (p == home || strings.HasPrefix(p, home+"/")) {
-		return "~" + p[len(home):]
-	}
-	return p
-}
-
 // widgetCtxTable builds a render's ctx. The fields that copy the transcript,
 // the live turn, todos, recent sessions or projects are built on first read, so a
 // widget that never reads them does not pay for them (a statusline widget
@@ -1573,7 +1565,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("waiting", glua.LString(state.Waiting))
 	tb.RawSetString("focus", glua.LString(state.Focus))
 	tb.RawSetString("version", glua.LString(h.Version))
-	tb.RawSetString("cwd", glua.LString(TildePath(sess.CWD)))
+	tb.RawSetString("cwd", glua.LString(perm.TildePath(sess.CWD)))
 	home, _ := os.UserHomeDir()
 	tb.RawSetString("home", glua.LString(home))
 	tb.RawSetString("project", glua.LString(h.project()))
@@ -1691,7 +1683,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 			out := L.NewTable()
 			for _, p := range ps {
 				row := L.NewTable()
-				row.RawSetString("path", glua.LString(sanitize.String(TildePath(p.Root))))
+				row.RawSetString("path", glua.LString(sanitize.String(perm.TildePath(p.Root))))
 				row.RawSetString("root", glua.LString(p.Root))
 				row.RawSetString("ago", glua.LString(ago(p.Opened.UnixMilli())))
 				out.Append(row)
@@ -2188,7 +2180,7 @@ func (h *Host) checkInits() error {
 		}
 		_, err = parse.Parse(bytes.NewReader(src), p)
 		if pe, ok := errors.AsType[*parse.Error](err); ok {
-			return lua.SyntaxErr(TildePath(p), string(src), pe)
+			return lua.SyntaxErr(perm.TildePath(p), string(src), pe)
 		}
 	}
 	return nil

@@ -143,7 +143,7 @@ func (h *Host) projectsCommands() []*Command {
 			var roots []string
 			for _, p := range ListProjects(h.Dirs, false) {
 				if p.Root != h.trustRoot() {
-					roots = append(roots, TildePath(p.Root))
+					roots = append(roots, perm.TildePath(p.Root))
 				}
 			}
 			return roots
@@ -176,17 +176,17 @@ func (h *Host) projectsCommand(line string) error {
 	}
 	switch {
 	case p.Root == h.trustRoot() && verb == "forget":
-		return Usagef("zemi runs in %s: /trust changes its trust", TildePath(p.Root))
+		return Usagef("zemi runs in %s: /trust changes its trust", perm.TildePath(p.Root))
 	case p.Root == h.trustRoot():
-		return Usagef("zemi runs in %s: delete its data from another project", TildePath(p.Root))
+		return Usagef("zemi runs in %s: delete its data from another project", perm.TildePath(p.Root))
 	case verb == "forget":
 		if p.Trust == "" {
-			return Usagef("no trust decision is saved for %s", TildePath(p.Root))
+			return Usagef("no trust decision is saved for %s", perm.TildePath(p.Root))
 		}
 		if err := h.forgetTrust(p.Root); err != nil {
 			return err
 		}
-		h.Notify(slog.LevelInfo, "Trust decision forgotten", TildePath(p.Root)+" asks again when zemi opens it")
+		h.Notify(slog.LevelInfo, "Trust decision forgotten", perm.TildePath(p.Root)+" asks again when zemi opens it")
 		if noUI == nil {
 			h.GoSafe("projects", func() { h.openProjects(ui, true, "") })
 		}
@@ -204,7 +204,7 @@ func (h *Host) projectsCommand(line string) error {
 	}
 	h.GoSafe("delete project", func() {
 		err := func() error {
-			defer h.Busy("Deleting "+TildePath(p.Root), nil)()
+			defer h.Busy("Deleting "+perm.TildePath(p.Root), nil)()
 			return h.deleteProject(p)
 		}()
 		if err != nil {
@@ -223,13 +223,13 @@ func (h *Host) switchProject(ui UIHooks, noUI error, arg string) error {
 		return err
 	}
 	if noUI != nil {
-		return fmt.Errorf("%w; zemi -C %s opens it", noUI, TildePath(dir))
+		return fmt.Errorf("%w; zemi -C %s opens it", noUI, perm.TildePath(dir))
 	}
 	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
-		return Usagef("%s is not a directory", TildePath(dir))
+		return Usagef("%s is not a directory", perm.TildePath(dir))
 	}
 	if perm.CanonPath(dir) == perm.CanonPath(h.Dirs.ProjectDir) {
-		return Usagef("zemi already runs in %s", TildePath(dir))
+		return Usagef("zemi already runs in %s", perm.TildePath(dir))
 	}
 	if h.AgentActive() {
 		return Usagef("a turn is running: esc esc stops it, then switch")
@@ -265,7 +265,7 @@ func (h *Host) projectNamed(arg string) (Project, error) {
 			return p, nil
 		}
 	}
-	return Project{}, Usagef("zemi keeps nothing for %s; /projects lists what it does", TildePath(root))
+	return Project{}, Usagef("zemi keeps nothing for %s; /projects lists what it does", perm.TildePath(root))
 }
 
 func (h *Host) forgetTrust(root string) error {
@@ -283,7 +283,7 @@ func (h *Host) forgetTrust(root string) error {
 func (h *Host) deleteProject(p Project) error {
 	ids, release, err := store.ClaimForDelete(store.ProjectDBPath(h.Dirs.StateHome, p.Root))
 	if errors.Is(err, store.ErrInUse) {
-		return Usagef("zemi has %s open in another window; quit it there first", TildePath(p.Root))
+		return Usagef("zemi has %s open in another window; quit it there first", perm.TildePath(p.Root))
 	}
 	if err != nil {
 		return err
@@ -302,7 +302,7 @@ func (h *Host) deleteProject(p Project) error {
 	if err = errors.Join(err, h.forgetTrust(p.Root)); err != nil {
 		return err
 	}
-	h.Notify(slog.LevelInfo, "Project data deleted", TildePath(p.Root))
+	h.Notify(slog.LevelInfo, "Project data deleted", perm.TildePath(p.Root))
 	return nil
 }
 
@@ -331,7 +331,7 @@ func (h *Host) projectItems() (items []any, sel int) {
 		if !p.Opened.IsZero() {
 			desc += " · " + ago(p.Opened.UnixMilli())
 		}
-		item := map[string]any{"text": sanitize.String(TildePath(p.Root)), "tail": true, "desc": strings.TrimRight(desc, " "), "fields": h.projectFields(p)}
+		item := map[string]any{"text": sanitize.String(perm.TildePath(p.Root)), "tail": true, "desc": strings.TrimRight(desc, " "), "fields": h.projectFields(p)}
 		switch {
 		case p.Root == h.trustRoot():
 			item["key"] = "current"
@@ -339,7 +339,7 @@ func (h *Host) projectItems() (items []any, sel int) {
 			items = append(items, item)
 			continue
 		case p.Missing:
-			item["detail"] = TildePath(p.Root) + " no longer exists. Delete erases what zemi kept for it."
+			item["detail"] = perm.TildePath(p.Root) + " no longer exists. Delete erases what zemi kept for it."
 		default:
 			item["detail"] = "Switch restarts zemi there: a job still running here stops, as on quit. Delete erases what zemi keeps for it: sessions, memories, recipes, allowed commands and the trust decision. The project's own files stay."
 		}
@@ -383,6 +383,6 @@ func (h *Host) projectFields(p Project) []any {
 	if p.StatsErr != nil {
 		errText = p.StatsErr.Error()
 	}
-	return fieldList("path", sanitize.String(TildePath(p.Root)), "trust", p.TrustWord(), "sessions", sessions, "memories", memories, "recipes", recipes,
-		"allowed", strings.Join(allowed, ", "), "data", TildePath(state), "error", errText)
+	return fieldList("path", sanitize.String(perm.TildePath(p.Root)), "trust", p.TrustWord(), "sessions", sessions, "memories", memories, "recipes", recipes,
+		"allowed", strings.Join(allowed, ", "), "data", perm.TildePath(state), "error", errText)
 }

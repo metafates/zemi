@@ -20,6 +20,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 )
 
 // resolveModel picks the agent model for a profile (tests stub modelFn).
@@ -40,7 +41,7 @@ func (h *Host) resolveModel(p *Profile) (fantasy.LanguageModel, error) {
 // ErrNoModel is the send failure when config registered no model.
 var ErrNoModel = errors.New("no model yet")
 
-func (h *Host) initPath() string { return TildePath(filepath.Join(h.Dirs.ConfigHome, "init.lua")) }
+func (h *Host) initPath() string { return perm.TildePath(filepath.Join(h.Dirs.ConfigHome, "init.lua")) }
 
 func (h *Host) addProvider() string { return "add a provider to " + h.initPath() }
 

@@ -21,6 +21,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -174,7 +175,7 @@ func (h *Host) ExportSession(path string, full bool) (string, error) {
 	if err := os.WriteFile(path, []byte(md), 0o644); err != nil {
 		return "", err
 	}
-	h.Notify(slog.LevelInfo, "Session exported", "saved to "+TildePath(h.relPath(path)))
+	h.Notify(slog.LevelInfo, "Session exported", "saved to "+perm.TildePath(h.relPath(path)))
 	return path, nil
 }
 

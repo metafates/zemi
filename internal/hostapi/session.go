@@ -23,6 +23,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -48,7 +49,7 @@ func ResumeCommand(dir, id string) string {
 		return "zemi -r " + id
 	}
 	word := tools.ShellQuote(dir)
-	if rest, ok := strings.CutPrefix(TildePath(dir), "~"); ok && tools.ShellQuote(rest) == rest {
+	if rest, ok := strings.CutPrefix(perm.TildePath(dir), "~"); ok && tools.ShellQuote(rest) == rest {
 		word = "~" + rest // the shell expands it only unquoted
 	}
 	return "zemi -C " + word + " -r " + id
