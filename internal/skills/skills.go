@@ -1,6 +1,6 @@
 // Package skills implements skill discovery and validation
 // (DESIGN §10.5): SKILL.md files with yaml frontmatter (name,
-// description), written under the config dir's skills/, shipped by a
+// description, the invocation fields), written under the config dir's skills/, shipped by a
 // plugin and, in a trusted project, its own skills dirs. Discovery only reports what is on disk.
 package skills
 
@@ -51,6 +51,11 @@ type Skill struct {
 	Source      Source
 	Description string
 	Hook        string // path to zemi-skill.lua, "" when absent
+	// UserInvocable: the skill is also /<name>. A skill the model may not
+	// load is the user's, so it is one unless its frontmatter says otherwise.
+	UserInvocable          bool
+	DisableModelInvocation bool
+	ArgumentHint           string
 }
 
 var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
@@ -83,13 +88,21 @@ func Parse(dir string, source Source) (Skill, error) {
 	if len(data) > MaxFileBytes {
 		return sk, fmt.Errorf("skills: %s: SKILL.md exceeds %d bytes", sk.Name, MaxFileBytes)
 	}
-	name, desc, err := frontmatter(data)
+	fm, err := frontmatter(data)
 	if err != nil {
 		return sk, fmt.Errorf("skills: %s: %w", sk.Name, err)
 	}
-	if name != sk.Name {
-		return sk, fmt.Errorf("skills: %s: frontmatter name %q must match the directory", sk.Name, name)
+	if fm.Name != sk.Name {
+		return sk, fmt.Errorf("skills: %s: frontmatter name %q must match the directory", sk.Name, fm.Name)
 	}
+	if source != Recipe { // a recipe is the model's own procedure
+		sk.DisableModelInvocation, sk.ArgumentHint = fm.DisableModelInvocation, fm.ArgumentHint
+		sk.UserInvocable = fm.DisableModelInvocation
+		if fm.UserInvocable != nil {
+			sk.UserInvocable = *fm.UserInvocable
+		}
+	}
+	desc := fm.Description
 	var cut error
 	if runes := []rune(desc); len(runes) > MaxDescriptionRunes {
 		desc = string(runes[:MaxDescriptionRunes])
@@ -123,29 +136,33 @@ func SplitFrontmatter(s string) (block, body string, err error) {
 	return block, body, nil
 }
 
-// frontmatter decodes the name and description of a SKILL.md.
-func frontmatter(data []byte) (name, description string, err error) {
+type front struct {
+	Name                   string `yaml:"name"`
+	Description            string `yaml:"description"`
+	UserInvocable          *bool  `yaml:"user-invocable"`
+	DisableModelInvocation bool   `yaml:"disable-model-invocation"`
+	ArgumentHint           string `yaml:"argument-hint"`
+}
+
+func frontmatter(data []byte) (front, error) {
+	var fm front
 	block, _, err := SplitFrontmatter(string(data))
 	if err != nil {
-		return "", "", err
+		return fm, err
 	}
 	if block == "" {
-		return "", "", errors.New("SKILL.md must start with a --- frontmatter block")
-	}
-	var fm struct {
-		Name        string `yaml:"name"`
-		Description string `yaml:"description"`
+		return fm, errors.New("SKILL.md must start with a --- frontmatter block")
 	}
 	if err := yaml.Unmarshal([]byte(block), &fm); err != nil {
-		return "", "", fmt.Errorf("frontmatter: %w", err)
+		return fm, fmt.Errorf("frontmatter: %w", err)
 	}
 	if fm.Name == "" {
-		return "", "", errors.New("frontmatter: name is required")
+		return fm, errors.New("frontmatter: name is required")
 	}
 	if strings.TrimSpace(fm.Description) == "" {
-		return "", "", errors.New("frontmatter: description is required")
+		return fm, errors.New("frontmatter: description is required")
 	}
-	return fm.Name, fm.Description, nil
+	return fm, nil
 }
 
 // Discover merges skill directories in the order given, higher trust

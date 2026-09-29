@@ -77,6 +77,37 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
+func TestParseInvocation(t *testing.T) {
+	cases := []struct {
+		name, extra  string
+		source       Source
+		user, hidden bool
+		hint         string
+		wantErr      bool
+	}{
+		{name: "plain", source: User},
+		{name: "user-invocable", extra: "user-invocable: true", source: User, user: true},
+		{name: "hidden from the model is a command", extra: "disable-model-invocation: true", source: User, user: true, hidden: true},
+		{name: "hidden and no command", extra: "disable-model-invocation: true\nuser-invocable: false", source: User, hidden: true},
+		{name: "hint", extra: "argument-hint: <pr>", source: Plugin, hint: "<pr>"},
+		{name: "a recipe takes neither", extra: "user-invocable: true\ndisable-model-invocation: true\nargument-hint: <x>", source: Recipe},
+		{name: "quoted bool", extra: `user-invocable: "true"`, source: User, wantErr: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "x")
+			writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: d\n"+c.extra+"\n---\nBody $ARGUMENTS.\n")
+			sk, err := Parse(dir, c.source)
+			if (err != nil) != c.wantErr {
+				t.Fatalf("err=%v", err)
+			}
+			if err == nil && (sk.UserInvocable != c.user || sk.DisableModelInvocation != c.hidden || sk.ArgumentHint != c.hint) {
+				t.Fatalf("got %+v", sk)
+			}
+		})
+	}
+}
+
 // A description over the cap is cut, not a reason to drop the skill:
 // published skills are written for longer limits than zemi's index.
 func TestParseDescriptionCap(t *testing.T) {
