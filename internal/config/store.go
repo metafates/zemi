@@ -82,13 +82,13 @@ func (s *Store) defineDefaults() {
 		{Path: "editor.command", Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
 		{Path: "keymap.leader", Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
 		{Path: "ui.mouse", Kind: KindBool, Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
-		{Path: "ui.notify", Kind: KindString, Default: "auto", Choices: []string{"auto", "osc", "native", "bell", "off"}, Desc: "how zemi alerts while its window is unfocused, as a turn ends or a prompt waits: osc (a terminal notification), native (osascript on macOS, notify-send on Linux), bell, off; auto picks per terminal, and /health names the pick"},
+		{Path: "ui.notify", Kind: KindString, Default: "auto", Choices: []string{"auto", "osc", "native", "bell", "off"}, Desc: "how zemi alerts while its window is unfocused, as a turn ends or a prompt waits: osc (a terminal notification), native (osascript or notify-send), bell, off; auto picks per terminal (/health names it)"},
 		{Path: "ui.progress", Kind: KindBool, Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
 		{Path: "ui.composer.multiline", Kind: KindBool, Default: true, Desc: "composer accepts embedded newlines (shift+enter, alt+enter, ctrl+j)"},
 		{Path: "ui.composer.history", Kind: KindInt, Default: 50, Desc: "composer history entries kept (0 disables)"},
 		{Path: "ui.completion.files", Kind: KindBool, Default: true, Desc: "complete file paths after @ in the composer"},
 		{Path: "ui.completion.max_items", Kind: KindInt, Default: 10, Desc: "completion popup rows"},
-		{Path: "memory.autonomy", Kind: KindString, Default: "auto", Choices: []string{"auto", "ask"}, Desc: "memories the model or the reflector propose: auto stores policy-clean ones at once, ask queues them for /memory; auto queues too in an untrusted project or a session that used fetch, web_search, the lua tool or a tool zemi does not ship (MCP, zemi.tool)"},
+		{Path: "memory.autonomy", Kind: KindString, Default: "auto", Choices: []string{"auto", "ask"}, Desc: "memories the model or the reflector propose: auto stores policy-clean ones at once, ask queues them for /memory; auto also queues in an untrusted project or after fetch, web_search, lua or a non-builtin tool"},
 	}
 	for _, def := range defaults {
 		s.schema[def.Path] = def
