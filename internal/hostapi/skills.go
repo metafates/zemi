@@ -147,8 +147,7 @@ func (h *Host) materializeBuiltinSkills() error {
 	return replaceDir(dir, sub)
 }
 
-// skillIndex resolves enabled skills for the skill tool (DESIGN §10.5:
-// discovery lists only enabled skills to the model).
+// skillIndex is what the skill tool may load (modelSkills).
 func (h *Host) skillIndex() []tools.SkillInfo {
 	var out []tools.SkillInfo
 	// recipes are read live: one written this session loads at once, while
