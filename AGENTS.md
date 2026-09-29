@@ -320,7 +320,7 @@ tables when touching it), and `perm.Store.CheckCommandFor`, the predicates on `p
 the ask hook and `alwaysChoice` all judge that one parse (`Request.Command`); a nested
 `sh -c` body or `eval` text is parsed again, and so is each segment `alwaysChoice` offers a rule for; a
 substitution inside double quotes is parsed like an unquoted one, a heredoc body as commands
-unless every program in the command is a reader that runs none of its input (`dataReaders`,
+unless every program in the command is a reader that runs none of its input (`dataReader`,
 DESIGN §9), and no variable is inlined in a command holding `<<`, since the shell expands no
 delimiter. An assignment prefix the normalizer strips downgrades an allow
 verdict to ask, since the rules never see it and `GIT_EXTERNAL_DIFF=./x git diff` runs `./x`.

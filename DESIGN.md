@@ -1980,7 +1980,10 @@ provenance string.
   herestring (`<<`, `<<-`, `<<<`) forces `ask` for the whole call, and a
   heredoc body is parsed as commands unless every program in the call is
   a reader that runs none of its input (`cat`, `tee`, `echo`, `printf`,
-  `git`, `gh`, `patch`), and then an unquoted one for its substitutions
+  `gh`, `patch`, and `git` only as a subcommand named first that reads a
+  message or a patch, `commit`, `tag`, `apply`, `am` and the like, since a
+  `-c` before it can define an alias that runs a shell), and then an
+  unquoted one for its substitutions
   and a quoted one is data (a `<<` inside `(( ))` is a shift, not a
   heredoc); a body that does not parse as commands fails the call only
   when a shell may run it, since an apostrophe in prose or in another

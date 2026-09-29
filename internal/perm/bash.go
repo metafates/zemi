@@ -566,10 +566,10 @@ func (n *Normalized) eat(sc *scanner) {
 	type doc struct {
 		at int
 		token
-		reader string // the program whose << it is, "" when no word before it names one
+		reader []string // the words from the program whose << it is on, nil when none is named
 	}
 	var docs []doc
-	var readers []string
+	var readers [][]string
 	toks := sc.toks
 	for i := 0; i < len(toks); i++ {
 		t := toks[i]
@@ -583,7 +583,7 @@ func (n *Normalized) eat(sc *scanner) {
 				n.Fail = "a redirect has no target"
 			}
 			if t.op != "<<<" {
-				readers = append(readers, program(seg))
+				readers = append(readers, stepRunners(ProgramWords(seg)))
 			}
 		case tokBody:
 			n.fold(seg)
@@ -611,14 +611,14 @@ func (n *Normalized) eat(sc *scanner) {
 	// a body is a script unless every program only reads it
 	script := slices.ContainsFunc(n.Args, func(f []string) bool {
 		f = ProgramWords(f)
-		return len(f) > 0 && !slices.Contains(dataReaders, f[0])
+		return len(f) > 0 && !dataReader(f)
 	})
 	// a data reader's body is data only while nothing in the command can run
 	// it: cat <<EOF | sh, or cat > x.sh <<EOF then bash x.sh
 	code := slices.ContainsFunc(n.Args, func(f []string) bool { return WrapperPrograms[program(f)] })
 	foreign := slices.ContainsFunc(n.Args, func(f []string) bool {
 		p := program(f)
-		return p != "" && !slices.Contains(dataReaders, p) && !isShell(p)
+		return p != "" && !dataReader(stepRunners(ProgramWords(f))) && !isShell(p)
 	})
 	if len(docs) > 0 {
 		n.shown = slices.Clone(n.Args)
@@ -632,9 +632,13 @@ func (n *Normalized) eat(sc *scanner) {
 			body = substitutions(d.text)
 		}
 		show := body
-		data := slices.Contains(dataReaders, d.reader)
+		reader := ""
+		if len(d.reader) > 0 {
+			reader = ProgramName(d.reader[0])
+		}
+		data := dataReader(d.reader)
 		switch {
-		case isShell(d.reader):
+		case isShell(reader):
 		case data && code: // listed as the script it may be, unless another language reads it
 			show.hidden = foreign
 		case data && d.quoted:
@@ -643,16 +647,16 @@ func (n *Normalized) eat(sc *scanner) {
 			show = substitutions(d.text)
 		// a body an interpreter reads is its code, which the reader's own
 		// runs-code mark covers; only an unquoted one's substitutions run first
-		case WrapperPrograms[d.reader] && d.quoted:
+		case WrapperPrograms[reader] && d.quoted:
 			show = Normalized{}
-		case WrapperPrograms[d.reader]:
+		case WrapperPrograms[reader]:
 			show = substitutions(d.text)
 		default:
 			show.hidden = true
 		}
 		body.hidden = show.hidden // Programs lists what is shown
 		// an apostrophe in prose or another language's code is no shell error
-		if !isShell(d.reader) && !slices.Contains([]string{"", "source", "."}, d.reader) && !(data && code && !foreign) {
+		if !isShell(reader) && !slices.Contains([]string{"", "source", "."}, reader) && !(data && code && !foreign) {
 			body.Fail = ""
 		}
 		n.absorb(d.at, body)
@@ -669,10 +673,20 @@ func program(seg []string) string {
 	return ""
 }
 
-// dataReaders run none of their input, so a heredoc they read is data
-// (cat > f, git commit -F -); anything else may run it (fish, make -f -,
-// $SHELL, sudo sh).
-var dataReaders = []string{"cat", "tee", "echo", "printf", "git", "gh", "patch"}
+// dataReader reports that the program f starts with runs none of its input,
+// so a heredoc it reads is data (cat > f); anything else may run it (fish,
+// make -f -, $SHELL, sudo sh). git counts only as a subcommand that reads a
+// message or a patch, named first: before it -c can define an alias that
+// runs a shell.
+func dataReader(f []string) bool {
+	if len(f) == 0 {
+		return false
+	}
+	if p := ProgramName(f[0]); p != "git" {
+		return slices.Contains([]string{"cat", "tee", "echo", "printf", "gh", "patch"}, p)
+	}
+	return len(f) > 1 && slices.Contains([]string{"commit", "tag", "notes", "apply", "am", "hash-object", "mktree", "mktag"}, f[1])
+}
 
 // substitutions parses the $( and backtick substitutions of text the shell
 // expands but does not split, an unquoted heredoc body.
