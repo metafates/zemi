@@ -268,8 +268,8 @@ func TestRunHeadless(t *testing.T) {
 }
 
 // TestRunScreenCommands: a command that opens a screen fails in zemi run
-// and says why, /trust and /health naming their flags; /btw prints its answer;
-// a /goal chain exits 1 when it leaves the goal set.
+// and says why, /trust and /health naming their flags; a /goal chain exits 1
+// when it leaves the goal set.
 func TestRunScreenCommands(t *testing.T) {
 	h := printHost(t)
 	if code, _, _ := runPrompt(t, h, options{prompt: "say hi", quiet: true}); code != 0 {
@@ -303,7 +303,6 @@ func TestRunScreenCommands(t *testing.T) {
 		{"/workflows", "", "zemi: /workflows needs the TUI\n", 1},
 		{"/mcp", "", "zemi: /mcp needs the TUI\n", 1},
 		{"/lsp", "", "zemi: /lsp needs the TUI\n", 1},
-		{"/btw why", "why", "", 0},
 		{"/goal", "", "zemi: /goal needs the TUI\n", 1},
 		{"/loop 5m check", "", "zemi: /loop needs the TUI; from a shell, run zemi run in a loop or from cron\n", 1},
 		// the fake model says what follows "say " in the goal, the check too

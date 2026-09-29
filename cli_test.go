@@ -27,14 +27,8 @@ func TestCLI(t *testing.T) {
 	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
 		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
 	}
-	if err := os.MkdirAll(filepath.Join(home, "config"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	initLua := `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "http://x", models = { { id = "m1" } } })
-		zemi.agent.profile.add("cheap", {})`
-	if err := os.WriteFile(filepath.Join(home, "config", "init.lua"), []byte(initLua), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeFile(t, filepath.Join(home, "config", "init.lua"), `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "http://x", models = { { id = "m1" } } })
+		zemi.agent.profile.add("cheap", {})`)
 	for _, name := range []string{"rub", "zzq"} {
 		if err := os.MkdirAll(filepath.Join(home, "data", "plugins", "local", name), 0o755); err != nil {
 			t.Fatal(err)
@@ -206,34 +200,6 @@ func TestNormalizeVersion(t *testing.T) {
 	}
 }
 
-// TestConfigFingerprint: edits to config files change the fingerprint,
-// git data does not.
-func TestConfigFingerprint(t *testing.T) {
-	dir := t.TempDir()
-	write := func(name, body string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("init.lua", "-- one")
-	skip := filepath.Join(dir, "worktrees")
-	base := configFingerprint(skip, dir)
-	write(".git/index", "x")
-	write("lua/node_modules/z/index.js", "x")
-	write("worktrees/w/init.lua", "x")
-	if configFingerprint(skip, dir) != base {
-		t.Fatal("git data, a dependency tree or a worktree changed the fingerprint")
-	}
-	write("init.lua", "-- two!")
-	if configFingerprint(skip, dir) == base {
-		t.Fatal("an init.lua edit went unnoticed")
-	}
-}
-
 // TestTrustGate: --trust or an earlier "not now" wins over the saved
 // decision, which wins over the prompt; only y and n are saved, the prompt
 // opens at most once per process, and only a trusted boot loads project
@@ -339,13 +305,7 @@ func TestHeadlessTrust(t *testing.T) {
 func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 	t.Helper()
 	project := t.TempDir()
-	cmds := filepath.Join(project, ".agents", "commands")
-	if err := os.MkdirAll(cmds, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(cmds, "x.md"), []byte("---\ndescription: x\n---\nhello"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeFile(t, filepath.Join(project, ".agents", "commands", "x.md"), "---\ndescription: x\n---\nhello")
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
 	dirs := config.Dirs{ProjectDir: project, StateHome: t.TempDir()}

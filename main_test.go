@@ -3,15 +3,18 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sandbox"
+	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
 // On Linux the sandbox probe and Wrap re-exec this binary as the helper.
@@ -35,16 +38,8 @@ func TestConfigFingerprintFollowsSymlinks(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			real, cfg := t.TempDir(), filepath.Join(t.TempDir(), "zemi")
-			write := func(name, body string) {
-				if err := os.MkdirAll(filepath.Dir(filepath.Join(real, name)), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(real, name), []byte(body), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			write("init.lua", "-- one")
-			write(c.edit, "-- one")
+			writeFile(t, filepath.Join(real, "init.lua"), "-- one")
+			writeFile(t, filepath.Join(real, c.edit), "-- one")
 			if err := os.MkdirAll(filepath.Dir(filepath.Join(cfg, c.link)), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -53,7 +48,7 @@ func TestConfigFingerprintFollowsSymlinks(t *testing.T) {
 			}
 			roots := append([]string{cfg}, config.Dirs{ConfigHome: cfg}.UserTrees()...)
 			base := configFingerprint("", roots...)
-			write(c.edit, "-- two!")
+			writeFile(t, filepath.Join(real, c.edit), "-- two!")
 			if got := configFingerprint("", roots...) != base; got != c.noticed {
 				t.Fatalf("edit to %s noticed = %v, want %v", c.edit, got, c.noticed)
 			}
@@ -61,14 +56,18 @@ func TestConfigFingerprintFollowsSymlinks(t *testing.T) {
 	}
 }
 
-// TestPluginRootsFingerprint: an edit to a local plugin, a toggle and an
-// install or update (a clone's git index) reload; a clone's files and one
-// still in flight are not walked.
-func TestPluginRootsFingerprint(t *testing.T) {
+// TestConfigFingerprint: an edit to config, a local plugin, a toggle and an
+// install or update (a clone's git index) reload; git data, dependency
+// trees, the skipped worktrees, a clone's files and one still in flight are
+// not walked.
+func TestConfigFingerprint(t *testing.T) {
 	for _, c := range []struct {
 		edit    string
 		noticed bool
 	}{
+		{"config/init.lua", true},
+		{"config/.git/index", false},
+		{"config/worktrees/w/init.lua", false},
 		{"local/x/init.lua", true},
 		{"disabled", true},
 		{"installed/y/.git/index", true},
@@ -80,40 +79,62 @@ func TestPluginRootsFingerprint(t *testing.T) {
 		{"local/worktrees/init.lua", true}, // only the project's worktrees are skipped
 	} {
 		root := t.TempDir()
-		write := func(name, body string) {
-			if err := os.MkdirAll(filepath.Dir(filepath.Join(root, name)), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
-				t.Fatal(err)
-			}
+		for _, f := range []string{"config/init.lua", "local/x/init.lua", "installed/y/init.lua", "installed/y/.git/index"} {
+			writeFile(t, filepath.Join(root, f), "one")
 		}
-		for _, f := range []string{"local/x/init.lua", "installed/y/init.lua", "installed/y/.git/index"} {
-			write(f, "one")
+		// the roots are read again each time, as setReload does
+		fingerprint := func() string {
+			return configFingerprint(filepath.Join(root, "config", "worktrees"), append(pluginRoots(root), filepath.Join(root, "config"))...)
 		}
-		base := configFingerprint("", pluginRoots(root)...)
-		write(c.edit, "two!")
-		if got := configFingerprint("", pluginRoots(root)...) != base; got != c.noticed {
+		base := fingerprint()
+		writeFile(t, filepath.Join(root, c.edit), "two!")
+		if got := fingerprint() != base; got != c.noticed {
 			t.Errorf("edit to %s noticed = %v, want %v", c.edit, got, c.noticed)
 		}
 	}
 }
 
-// TestMainCommandArgs: each command declares the arguments it reads, so a
-// stray one errors instead of being dropped (the host has no session store).
-func TestMainCommandArgs(t *testing.T) {
+// commandHost is a host with the builtin and main commands and no session
+// store.
+func commandHost(t *testing.T) *hostapi.Host {
+	t.Helper()
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := hostapi.NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
 	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(mainCommands(func() {}, func() {})...)}); err != nil {
 		t.Fatal(err)
 	}
+	return h
+}
+
+// TestMainCommandArgs: each command declares the arguments it reads, so a
+// stray one errors instead of being dropped.
+func TestMainCommandArgs(t *testing.T) {
+	h := commandHost(t)
 	for _, c := range []struct{ name, args, want string }{
 		{"new", "idea: add caching", "/new takes no arguments"},
 		{"resume", "some-id", "session store unavailable"},
 	} {
 		if got := fmt.Sprint(h.RunCommand(context.Background(), c.name, c.args)); got != c.want {
 			t.Errorf("/%s %s = %q, want %q", c.name, c.args, got, c.want)
+		}
+	}
+}
+
+// TestSkillsCoverBuiltinCommands: every Go-owned slash command appears in
+// the builtin skill (internal/hostapi covers the rest of the surface).
+func TestSkillsCoverBuiltinCommands(t *testing.T) {
+	var text strings.Builder
+	_ = fs.WalkDir(zemiruntime.Skills, "skills", func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			data, _ := fs.ReadFile(zemiruntime.Skills, path)
+			text.Write(data)
+		}
+		return err
+	})
+	for _, c := range commandHost(t).Commands.List() {
+		if !strings.Contains(text.String(), "/"+c.Name) {
+			t.Errorf("no builtin skill mentions /%s", c.Name)
 		}
 	}
 }
