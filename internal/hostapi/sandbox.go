@@ -181,6 +181,14 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 	// NOTE: a run outside any session (Lua at idle) has no pad and so no
 	// TMPDIR: its temp writes fail and the hint names no fix
 	p.Env = map[string]string{}
+	if p.Git != "" {
+		// git reports an upstream set though its config write failed, and auto
+		// maintenance may prune what a confined command left unreachable
+		// NOTE: a GIT_CONFIG_COUNT of the user's own is replaced in confined runs
+		p.Env["GIT_CONFIG_COUNT"] = "2"
+		p.Env["GIT_CONFIG_KEY_0"], p.Env["GIT_CONFIG_VALUE_0"] = "branch.autoSetupMerge", "false"
+		p.Env["GIT_CONFIG_KEY_1"], p.Env["GIT_CONFIG_VALUE_1"] = "maintenance.auto", "false"
+	}
 	if pad != "" && os.MkdirAll(pad, 0o700) == nil {
 		p.Write = append(p.Write, pad)
 		p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = pad, pad, pad

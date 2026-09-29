@@ -295,7 +295,7 @@ func TestSandboxedGit(t *testing.T) {
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	proj := h.Dirs.ProjectDir
 	t.Chdir(proj)
-	for _, args := range [][]string{{"init", "-q"}, {"config", "user.name", "t"}, {"config", "user.email", "t@t"}, {"commit", "-q", "--allow-empty", "-m", "init"}} {
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.name", "t"}, {"config", "user.email", "t@t"}, {"commit", "-q", "--allow-empty", "-m", "init"}, {"branch", "base"}, {"remote", "add", "o", "."}, {"fetch", "-q", "o"}} {
 		if out, err := h.git(proj, args...); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
@@ -311,7 +311,10 @@ func TestSandboxedGit(t *testing.T) {
 		hint, asked     string // how the Sandbox line and the ask's reason start, "" for none
 	}{
 		{"commit on a new branch", "git checkout -qb x && echo a > a && git add a && git commit -qm a && git stash list", "", true, "", ""},
-		{"branches, tags, stash, reset, gc and merge", "git branch y && git branch -D y && git tag v1 && git tag -d v1 && echo b > a && git stash && git stash pop && git reset -q --hard && git checkout -q -- . && git gc -q --auto && git merge -q x && git switch -qc r && git revert --no-edit HEAD && git switch -q x", "", true, "", ""},
+		{"branches, tags, stash, reset, merge and revert", "git branch y && git tag v1 && git tag -d v1 && echo b > a && git stash && git stash pop && git reset -q --hard && git checkout -q -- . && git merge -q x && git switch -qc r && git revert --no-edit HEAD && git switch -q x", "", true, "", ""},
+		{"a branch from a remote one claims no upstream", "out=$(git checkout -b t o/base 2>&1) && case $out in *track*) exit 1 ;; esac && git checkout -q x", "", true, "", ""},
+		{"a branch delete asks", "git branch -D y", "", false, "", "git branch writes what the sandbox keeps read-only"},
+		{"gc asks", "git gc -q", "", false, "", "git gc can drop unreachable commits"},
 		{"rebase asks", "git rebase -q HEAD~1", "", false, "", "git rebase writes what the sandbox keeps read-only"},
 		{"config asks", "git config core.hooksPath /tmp/x", "", false, "", "git config writes what the sandbox keeps read-only"},
 		{"push asks", "git push", "", false, "", "git push reaches the network"},

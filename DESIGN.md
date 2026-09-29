@@ -2201,7 +2201,10 @@ provenance string.
   (`perm.Normalized.GitWrites`: with the git dir open, below, config,
   remotes, worktrees, submodules and rebase state; with it shut, any write), reaches
   the network (push, fetch, pull, clone) or can drop unreachable commits
-  for good (`gc --prune`, `prune`, `repack`, `reflog expire`), since a
+  for good (`gc`, which prunes by object age, not by when a commit turned
+  unreachable, `prune`, `repack`, `reflog expire`, a branch delete, which
+  takes the branch's reflog along, `stash drop` and `clear`, `update-ref
+  -d`), since a
   confined run could only fail and the ask comes first; `reset --hard`
   and `checkout -- .` run, since the shell row's snapshot lets rewind
   restore the files and the reflog keeps the commits; and on a backend that cannot hide files
@@ -2379,9 +2382,13 @@ provenance string.
   backend keep `.git` read-only, where git writes ask; the Sandbox block
   says which holds. Known ceilings: a confined command can rewrite the
   repository's refs and objects (`rm -rf .git/objects` among them; the
-  `Destructive` list asks for the plain forms), a branch rename or an
-  upstream write fails on the config (`GitWrites` asks for the flags
-  that do it; `checkout -b x origin/x` sets one it cannot see).
+  `Destructive` list asks for the plain forms), and a branch's upstream
+  and section live in the config, so a rename, delete or upstream flag
+  asks. A confined command's environment sets `branch.autoSetupMerge`
+  off, since git would report an upstream set when its config write
+  failed (`checkout -b x origin/x`), and `maintenance.auto` off, since
+  the auto gc after a commit could prune what a confined command left
+  unreachable; `GIT_CONFIG_COUNT` carries both, replacing a user's own.
   Hooks run confined like the command that started them, so one that
   needs the network or a cache outside the roots fails with the hint.
   zemi's own temp files (the ctrl+g draft, a pasted image)

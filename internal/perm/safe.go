@@ -814,7 +814,7 @@ const (
 // still asks when the sandbox opens .git, "" when it then runs confined.
 var gitWriters = map[string]string{
 	"add": "", "am": gitConfig, "apply": "", "bisect": "", "checkout": "", "cherry-pick": "", "clone": gitNet,
-	"commit": "", "commit-tree": "", "fetch": gitNet, "filter-branch": "", "gc": "", "init": gitConfig, "maintenance": gitDrop,
+	"commit": "", "commit-tree": "", "fetch": gitNet, "filter-branch": "", "gc": gitDrop, "init": gitConfig, "maintenance": gitDrop,
 	"merge": "", "mergetool": "", "mv": "", "pack-refs": "", "prune": gitDrop, "pull": gitNet, "push": gitNet,
 	"read-tree": "", "rebase": gitConfig, "repack": gitDrop, "replace": "", "reset": "", "restore": "", "revert": "",
 	"rm": "", "sparse-checkout": gitConfig, "switch": "", "symbolic-ref": "", "update-index": "", "update-ref": "",
@@ -862,9 +862,9 @@ func (n Normalized) GitWrites(gitDir bool) string {
 		switch sub {
 		case "branch", "tag":
 			writes = len(words) > 0 || hasFlag(rest, "-d", "-D", "-m", "-M", "-c", "-C", "-u", "--delete", "--move", "--copy", "--set-upstream-to", "--unset-upstream", "--edit-description", "-f")
-			// a branch's upstream and description live in config, and a rename
-			// or copy moves its section there
-			if sub == "branch" && hasFlag(rest, "-u", "-t", "-m", "-M", "-c", "-C", "--track", "--move", "--copy", "--set-upstream-to", "--unset-upstream", "--edit-description") {
+			// a branch's upstream and description live in config, and a rename,
+			// copy or delete moves or drops its section there
+			if sub == "branch" && hasFlag(rest, "-u", "-t", "-m", "-M", "-c", "-C", "-d", "-D", "--track", "--move", "--copy", "--delete", "--set-upstream-to", "--unset-upstream", "--edit-description") {
 				why = gitConfig
 			}
 		case "checkout", "switch":
@@ -878,6 +878,13 @@ func (n Normalized) GitWrites(gitDir bool) string {
 			}
 		case "stash":
 			writes = first != "list" && first != "show"
+			if first == "drop" || first == "clear" {
+				why = gitDrop
+			}
+		case "update-ref":
+			if hasFlag(rest, "-d", "--stdin") {
+				why = gitDrop
+			}
 		case "remote":
 			writes, why = len(words) > 0 && first != "show" && first != "get-url", gitConfig
 		case "worktree", "submodule", "notes":
@@ -885,11 +892,6 @@ func (n Normalized) GitWrites(gitDir bool) string {
 			writes = first != "" && first != "list" && first != "status" && first != "summary" && first != "show"
 			if sub != "notes" {
 				why = gitConfig
-			}
-		case "gc":
-			// by default it keeps what turned unreachable in the last two weeks
-			if hasFlag(rest, "--prune") {
-				why = gitDrop
 			}
 		case "hash-object":
 			writes = hasFlag(rest, "-w")
