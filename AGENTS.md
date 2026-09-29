@@ -152,7 +152,8 @@ one. A command that opens a screen gets `Host.Screen`'s `ErrNeedsTUI` there, whi
 reloads on the change. `delete` asks on the terminal, `--yes` answers, and off a terminal it refuses,
 so an agent's command cannot delete a plugin. `test` is the one verb that boots Lua (below). `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
 `open`, `new` and `modify <name> [what to change]`, which send the agent a prompt pointing at
-the zemi skill's plugins.md (`modify` records the plugin in `madePlugins`). Its list is built
+the zemi skill's plugins.md (`modify` records the plugin in `madePlugins`), `zemi run` too. A
+usage error names only its verb's grammar (`pluginsErr`), which fits a toast. Its list is built
 off the key loop; the git verbs run on `GoSafe` and refresh the list (`Overlay.Refresh`: it
 replaces an open one in place and opens nothing once esc closed it).
 

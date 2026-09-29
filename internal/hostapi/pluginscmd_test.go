@@ -75,8 +75,8 @@ func TestPluginsCommand(t *testing.T) {
 		err        string // a usage error, which opens nothing
 		want, not  []string
 	}{
-		{name: "a verb /plugins does not take", args: "frob", err: "| toggle <name> | open <name> (TUI only)"},
-		{name: "toggle without a name", args: "toggle", err: "usage: plugins"},
+		{name: "a verb /plugins does not take", args: "frob", err: "| toggle <name> | open <name>"},
+		{name: "toggle without a name names its own grammar", args: "toggle", err: "usage: /plugins toggle <name>"},
 		{
 			name: "the list", args: "",
 			want: []string{
@@ -163,23 +163,25 @@ func TestPluginsOpen(t *testing.T) {
 }
 
 // TestPluginsSend: the list offers New plugin first and a local plugin's
-// detail Modify, and /plugins modify sends the typed line with the plugin's
+// detail Modify, and /plugins modify, headless too, sends the typed line with the plugin's
 // prompt behind it and lets auto mode edit that local plugin and nothing
 // else, and refuses an installed or a symlinked one; TestCommandSendsTypedLine
 // covers /plugins new.
 func TestPluginsSend(t *testing.T) {
 	for _, c := range []struct {
-		args  string
-		err   string   // a usage error, which sends nothing
-		sent  []string // in the message the agent gets
-		grant bool     // auto mode edits the local plugin
-		link  bool     // the data dir is reached through a symlink
+		args     string
+		err      string   // a usage error, which sends nothing
+		sent     []string // in the message the agent gets
+		grant    bool     // auto mode edits the local plugin
+		link     bool     // the data dir is reached through a symlink
+		headless bool     // no UI, as under zemi run
 	}{
 		{args: "modify mine add a flag\nand a test", grant: true, sent: []string{`/plugins modify mine add a flag\nand a test`, "Change my zemi plugin mine in "}},
 		{args: "modify mine", grant: true, link: true, sent: []string{"Change my zemi plugin mine in "}},
 		{args: "modify theirs fix it", err: "theirs is an installed plugin"},
 		{args: "modify linked", err: "linked is a symlink"},
-		{args: "modify", err: "modify <name> [what to change]"},
+		{args: "modify", err: "usage: /plugins modify <name> [what to change]"},
+		{args: "modify mine in zemi run", headless: true, grant: true, sent: []string{"Change my zemi plugin mine in "}},
 	} {
 		t.Run(c.args, func(t *testing.T) {
 			data := t.TempDir()
@@ -198,7 +200,9 @@ func TestPluginsSend(t *testing.T) {
 				t.Fatal(err)
 			}
 			m := reflectStub(t, h, "ok")
-			h.SetUIHooks(&fakeUI{})
+			if !c.headless {
+				h.SetUIHooks(&fakeUI{})
+			}
 			items := fmt.Sprint(h.pluginItems())
 			if !strings.Contains(items, "fill:/plugins new  text:New plugin verb:fill") || strings.Count(items, "Modify with the agent") != 1 {
 				t.Fatalf("items: %s", items)

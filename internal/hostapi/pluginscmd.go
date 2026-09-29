@@ -25,8 +25,8 @@ const (
 	modifyPluginPrompt = "Change my zemi plugin %s in %s as the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the Plugin steps in plugins.md there: tests, not this session, are the check."
 )
 
-// pluginsCommands is /plugins: the zemi plugins verbs plus new, modify,
-// toggle and open, which need the screen.
+// pluginsCommands is /plugins: the zemi plugins verbs, new and modify, which
+// send the agent a prompt, and toggle and open.
 func (h *Host) pluginsCommands() []*Command {
 	return []*Command{{
 		Name: "plugins", NArgs: NArgsAny, Desc: "install, update and turn plugins on or off",
@@ -60,17 +60,17 @@ func (h *Host) pluginsCommand(line string) error {
 	if verb == "delete" && len(args) == 3 && args[2] == "--yes" {
 		args = args[:2]
 	}
+	// new and modify only send, so zemi run takes them
 	ui, noUI := h.Screen()
-	if noUI != nil && !ask {
+	switch {
+	case noUI == nil || ask || verb == "new" || verb == "modify":
+	case verb == "open":
+		return noUI
+	default:
 		return fmt.Errorf("%w; zemi plugins manages them from the shell", noUI)
 	}
-	send := func(prompt string) {
-		msg := "/plugins " + strings.TrimSpace(typed) + agent.Attached("command", prompt) + stdin
-		h.GoSafe("plugins "+verb, func() {
-			if err := h.AgentSend(msg); err != nil {
-				h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
-			}
-		})
+	send := func(prompt string) error {
+		return h.AgentSend("/plugins " + strings.TrimSpace(typed) + agent.Attached("command", prompt) + stdin)
 	}
 	// git, or a big RemoveAll: off the key loop as a busy job, then the
 	// list again
@@ -87,7 +87,7 @@ func (h *Host) pluginsCommand(line string) error {
 				return fn(ctx)
 			}()
 			if err != nil && ctx.Err() == nil {
-				h.CommandFailed("plugins", pluginsErr(err))
+				h.CommandFailed("plugins", pluginsErr(verb, err))
 				if errors.Is(err, plugin.ErrUsage) {
 					return
 				}
@@ -103,7 +103,7 @@ func (h *Host) pluginsCommand(line string) error {
 		if err != nil {
 			return err
 		}
-		return pluginsErr(plugin.SetEnabled(h.Dirs, p.Name, !p.Enabled))
+		return pluginsErr(verb, plugin.SetEnabled(h.Dirs, p.Name, !p.Enabled))
 	case verb == "open" && len(args) == 2:
 		p, err := h.pluginNamed(args[1])
 		if err != nil {
@@ -116,7 +116,7 @@ func (h *Host) pluginsCommand(line string) error {
 		}
 		h.openInEditor(ui, path, "the plugin")
 	case verb == "new":
-		send(fmt.Sprintf(newPluginPrompt, h.zemiSkillDir()))
+		return send(fmt.Sprintf(newPluginPrompt, h.zemiSkillDir()))
 	case verb == "modify" && len(args) >= 2:
 		p, err := h.pluginNamed(args[1])
 		if err != nil {
@@ -131,7 +131,7 @@ func (h *Host) pluginsCommand(line string) error {
 		// the user asked for the change, as for a plugin whose creation they
 		// allowed: auto mode settles the agent's edits there until zemi exits
 		h.madePlugins.Store(h.localPluginDir(perm.RealPath(p.Dir)), true)
-		send(fmt.Sprintf(modifyPluginPrompt, p.Name, perm.TildePath(p.Dir), h.zemiSkillDir()))
+		return send(fmt.Sprintf(modifyPluginPrompt, p.Name, perm.TildePath(p.Dir), h.zemiSkillDir()))
 	case ask:
 		p, err := h.pluginNamed(args[1])
 		if err != nil {
@@ -147,7 +147,7 @@ func (h *Host) pluginsCommand(line string) error {
 		})
 	case verb == "enable" || verb == "disable":
 		// at once, so the list an action returns to shows it
-		return pluginsErr(plugin.Run(context.Background(), h.Dirs, args, io.Discard))
+		return pluginsErr(verb, plugin.Run(context.Background(), h.Dirs, args, io.Discard))
 	case verb == "check" && len(args) == 1:
 		background("Checking plugins", func(ctx context.Context) error {
 			ps, err := plugin.Check(ctx, h.Dirs)
@@ -187,16 +187,24 @@ func (h *Host) pluginsCommand(line string) error {
 			return err
 		})
 	default:
-		return pluginsErr(plugin.ErrUsage)
+		return pluginsErr(verb, plugin.ErrUsage)
 	}
 	return nil
 }
 
-func pluginsErr(err error) error {
-	if errors.Is(err, plugin.ErrUsage) {
-		return Usagef("%v | new [what it does] | modify <name> [what to change] | toggle <name> | open <name> (TUI only)", err)
+// pluginsErr turns a usage error into verb's own grammar, which fits a
+// toast, or the whole of it for a verb /plugins does not take.
+func pluginsErr(verb string, err error) error {
+	if !errors.Is(err, plugin.ErrUsage) {
+		return err
 	}
-	return err
+	all := strings.TrimPrefix(plugin.ErrUsage.Error(), "usage: plugins ") + " | new [what it does] | modify <name> [what to change] | toggle <name> | open <name>"
+	for form := range strings.SplitSeq(all, " | ") {
+		if form == verb || strings.HasPrefix(form, verb+" ") {
+			return Usagef("usage: /plugins %s", form)
+		}
+	}
+	return Usagef("usage: /plugins %s", all)
 }
 
 // pluginNamed finds a plugin by name, a local one first.
