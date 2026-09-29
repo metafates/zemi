@@ -2188,10 +2188,7 @@ func (h *Host) checkInits() error {
 		}
 		_, err = parse.Parse(bytes.NewReader(src), p)
 		if pe, ok := errors.AsType[*parse.Error](err); ok {
-			if pe.Pos.Line == parse.EOF {
-				return fmt.Errorf("%s:%d: %s at end of file", TildePath(p), bytes.Count(bytes.TrimRight(src, "\n"), []byte("\n"))+1, pe.Message)
-			}
-			return fmt.Errorf("%s:%d: %s near '%s'", TildePath(p), pe.Pos.Line, pe.Message, pe.Token)
+			return lua.SyntaxErr(TildePath(p), string(src), pe)
 		}
 	}
 	return nil

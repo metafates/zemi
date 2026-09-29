@@ -384,10 +384,7 @@ func chunkErr(rel, src string, origin Origin, err error) error {
 		return fmt.Errorf("%s: %w", rel, err)
 	}
 	if pe, ok := errors.AsType[*parse.Error](api.Cause); ok {
-		if pe.Pos.Line == parse.EOF {
-			return fmt.Errorf("%s:%d: %s at end of file", rel, strings.Count(strings.TrimRight(src, "\n"), "\n")+1, pe.Message)
-		}
-		return fmt.Errorf("%s:%d: %s near '%s'", rel, pe.Pos.Line, pe.Message, pe.Token)
+		return SyntaxErr(rel, src, pe)
 	}
 	untag := func(s string) string { return strings.ReplaceAll(s, origin.ChunkName(rel), rel) }
 	msg := untag(api.Object.String())
@@ -406,6 +403,14 @@ func chunkErr(rel, src string, origin Origin, err error) error {
 		msg += "\n" + untag(api.StackTrace)
 	}
 	return errors.New(msg)
+}
+
+// SyntaxErr is a parse error of src, the file rel, as rel:line: message.
+func SyntaxErr(rel, src string, pe *parse.Error) error {
+	if pe.Pos.Line == parse.EOF {
+		return fmt.Errorf("%s:%d: %s at end of file", rel, strings.Count(strings.TrimRight(src, "\n"), "\n")+1, pe.Message)
+	}
+	return fmt.Errorf("%s:%d: %s near '%s'", rel, pe.Pos.Line, pe.Message, pe.Token)
 }
 
 // usefulTrace reports a traceback with a Lua frame other than the main
