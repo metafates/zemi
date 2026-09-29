@@ -98,19 +98,7 @@ func (m *reflectStubModel) Stream(ctx context.Context, call fantasy.Call) (fanta
 	if pe := m.failOnce.Swap(nil); pe != nil {
 		return nil, pe
 	}
-	parts := []fantasy.StreamPart{
-		{Type: fantasy.StreamPartTypeTextStart, ID: "t"},
-		{Type: fantasy.StreamPartTypeTextDelta, ID: "t", Delta: m.resp},
-		{Type: fantasy.StreamPartTypeTextEnd, ID: "t"},
-		{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonStop},
-	}
-	return func(yield func(fantasy.StreamPart) bool) {
-		for _, p := range parts {
-			if !yield(p) {
-				return
-			}
-		}
-	}, nil
+	return slices.Values(textParts(m.resp)), nil
 }
 
 // sideCall reports a title, summary, reflector or recap call, which a turn's

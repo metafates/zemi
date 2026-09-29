@@ -60,13 +60,7 @@ func (m *scriptModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.St
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
-	return func(yield func(fantasy.StreamPart) bool) {
-		for _, p := range parts {
-			if !yield(p) {
-				return
-			}
-		}
-	}, nil
+	return slices.Values(parts), nil
 }
 
 func (m *scriptModel) GenerateObject(context.Context, fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
