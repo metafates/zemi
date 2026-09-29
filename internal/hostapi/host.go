@@ -2292,9 +2292,6 @@ func (h *Host) Close() {
 	h.RT.Close()
 	h.PurgeGeneration()
 	h.mcp.stopParked()
-	if h.DB != nil {
-		h.DB.Touch() // a project's age is its last use, not its last start
-	}
 	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
 		if db != nil {
 			db.Close()
