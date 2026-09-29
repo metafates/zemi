@@ -31,7 +31,6 @@ linters:
       disable: [fieldalignment, shadow]
     errcheck:
       exclude-functions:
-        - crypto/rand.Read
         - (io.Closer).Close
         - (*os.File).Close
         - (*database/sql.Tx).Rollback
@@ -43,7 +42,6 @@ linters:
         - fmt.Fprintln
         - (*net/http.Server).Close
         - (net.Listener).Close
-        - (net.Conn).Close
         - (*database/sql.DB).Close
         - (*net/http.Server).Serve
         - (*github.com/metafates/zemi/internal/mcp.Client).Close
