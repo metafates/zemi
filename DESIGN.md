@@ -2179,8 +2179,8 @@ provenance string.
   whichever verdict allowed it, the user's ask included; `sandbox: false`
   (`Request.Unsandboxed`) drops the policy whole, credential hiding included.
   Neither is settled by mode rules or by a base other than `yolo`: they go to
-  the user with the reason "needs the network, staying sandboxed" or "run
-  outside the sandbox" (headless nobody can answer, so the parameters and the
+  the user with the reason "the model asked for the network" or "the model
+  asked to leave the sandbox" (headless nobody can answer, so the parameters and the
   retry line are left out and the denial is by `network` or `unsandboxed`). A
   confined run that fails with output that looks like a denial, or with
   none and an exit status above 1, like a silent `curl -s`

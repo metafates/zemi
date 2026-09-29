@@ -32,6 +32,31 @@ func fakeSandbox(h *Host, live bool) {
 	h.sandbox.Store(s)
 }
 
+// TestRunsIn: the prompt says where a yes runs a command, as SandboxFor
+// runs it: a plain approved command, a delete auto asked about included,
+// leaves the sandbox.
+func TestRunsIn(t *testing.T) {
+	h, _ := newTestHost(t)
+	for _, c := range []struct {
+		name string
+		live bool
+		req  tools.Request
+		want RunsIn
+	}{
+		{"approved delete", true, tools.Request{Subject: "tool.bash", Arg: "rm -rf build"}, RunsOutside},
+		{"sandbox false", true, tools.Request{Subject: "tool.bash", Unsandboxed: true}, RunsOutside},
+		{"network", true, tools.Request{Subject: "tool.bash", Network: true}, RunsNetwork},
+		{"read-only agent", true, tools.Request{Subject: "tool.bash", ReadOnly: true}, RunsConfined},
+		{"no backend", false, tools.Request{Subject: "tool.bash", Network: true}, RunsNoSandbox},
+		{"not a command", true, tools.Request{Subject: "fs.read"}, ""},
+	} {
+		fakeSandbox(h, c.live)
+		if got := h.runsIn(c.req); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // TestUnsettled: in a trusted project with a live backend every command
 // settles but a bulk delete outside the scratchpad and, where the backend cannot hide it, one
 // naming a secret-shaped file; elsewhere only readers and, with a backend, a
@@ -189,9 +214,9 @@ func TestSandboxedBash(t *testing.T) {
 		{"private temp write", "sbx", private, false, false, false, true, "", ""},
 		{"binary planted in a PATH dir", "sbx", filepath.Join(venv, "git"), false, false, false, false, venv + " is read-only to commands: zemi runs programs from it unconfined", ""},
 		{"system temp write", "sbx", shared, false, false, false, false, "/tmp is not writable: use $TMPDIR.", ""},
-		{"sandbox false asks", "sbx", filepath.Join(outside, "y.txt"), true, false, false, false, "", "run outside the sandbox"},
-		{"network asks", "sbx", filepath.Join(h.Dirs.ProjectDir, "net.txt"), false, true, false, false, "", "needs the network, staying sandboxed"},
-		{"an approved network run stays confined", "sbx", filepath.Join(outside, "net.txt"), false, true, true, false, "/tmp is not writable", "needs the network, staying sandboxed"},
+		{"sandbox false asks", "sbx", filepath.Join(outside, "y.txt"), true, false, false, false, "", "the model asked to leave the sandbox"},
+		{"network asks", "sbx", filepath.Join(h.Dirs.ProjectDir, "net.txt"), false, true, false, false, "", "the model asked for the network"},
+		{"an approved network run stays confined", "sbx", filepath.Join(outside, "net.txt"), false, true, true, false, "/tmp is not writable", "the model asked for the network"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if err := h.SetPermMode(c.mode); err != nil {

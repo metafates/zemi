@@ -808,7 +808,7 @@ lua-language-server is installed.
 ### Subagents, workflows, agent runs, the Lua tool, MCP, LSP
 
 - **Subagents** (subagent.go) are fresh `agent.Runner`s over `PipelineFor()` (same permission
-  gate; asks are prefixed with the agent name). Definitions: builtin `explore`, `web`,
+  gate; an ask carries the agent's name in `Request.Agent`). Definitions: builtin `explore`, `web`,
   `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over plugin over a trusted
   repo's `.agents`; a file's `read_only: true` makes a read-only agent like `explore`).
   `/agents new`, the list's first row, sends `newAgentPrompt`, which points at the New agent

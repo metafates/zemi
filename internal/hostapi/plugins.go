@@ -191,6 +191,21 @@ func (h *Host) PluginOf(path string) string {
 	return name
 }
 
+// OriginBadge marks what plugins and project config draw or run
+// ("plugin:jira", "project:init.lua"), "" for the user's and zemi's own: a
+// plugin's name, else the file's, since a path leaves no room for a title.
+func (h *Host) OriginBadge(o lua.Origin, path string) string {
+	switch {
+	case o == lua.OriginBuiltin || o == lua.OriginUser:
+		return ""
+	case h.PluginOf(path) != "":
+		return string(o) + ":" + h.PluginOf(path)
+	case path != "":
+		return string(o) + ":" + filepath.Base(path)
+	}
+	return string(o)
+}
+
 // localPluginDir is the local/<name> directory holding path, or "".
 func (h *Host) localPluginDir(path string) string {
 	name := h.PluginOf(path)

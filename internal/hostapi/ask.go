@@ -118,11 +118,11 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		// a mode settles a command only to run it sandboxed; the Lua tool
 		// gives its own reason
 		if req.Subject == perm.SubjectBash {
-			req.Reason = "run outside the sandbox"
+			req.Reason = "the model asked to leave the sandbox"
 		}
 	case req.Network:
 		// the host is the model's, like a fetch URL, so no mode settles it
-		req.Reason = "needs the network, staying sandboxed"
+		req.Reason = "the model asked for the network"
 	case req.Explicit:
 		// whoever wrote the rule wanted to see this; only yolo overrides it
 		note("a rule asks for this")
@@ -158,8 +158,12 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 			note("no sandbox")
 		case req.Subject == perm.SubjectBash:
 			note(h.unsettled(req))
+		case tools.PathSubject(req.Subject):
+			note("this file is outside the project")
+		case strings.HasPrefix(req.Subject, "mcp."):
+			note(strings.TrimPrefix(req.Subject, "mcp.") + " does not mark " + req.Arg + " read-only")
 		default:
-			note("auto mode settles reads and edits inside the project")
+			note("zemi cannot tell what this tool does")
 		}
 	}
 	// a recipe is followed by later sessions, so say when this one could
@@ -169,7 +173,11 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	}
 	ui := h.hooks()
 	if ui == nil {
-		d := Denial{Tool: req.Tool, Subject: req.Subject, Arg: sanitize.String(h.shownArg(req)), Reason: sanitize.String(req.Reason), Why: DenyApproval}
+		why := req.Reason
+		if req.Agent != "" {
+			why = strings.TrimSuffix(req.Agent+": "+why, ": ")
+		}
+		d := Denial{Tool: req.Tool, Subject: req.Subject, Arg: sanitize.String(h.shownArg(req)), Reason: sanitize.String(why), Why: DenyApproval}
 		// only a command's sandbox escape is a sandbox matter; a Lua script
 		// or a memory edit is Unsandboxed for another reason
 		switch {
@@ -207,7 +215,15 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	label, rules := h.alwaysChoice(req)
 	wider, wideRules := h.repoChoice(req)
 	project, projectRules := h.projectChoice(req, label, rules)
-	allowed, by := ui.AskPermission(PermRequest{Tool: req.Tool, Always: label, Wider: wider, Project: project, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Preview: req.Preview, Description: req.Description, Outside: req.Unsandboxed && req.Subject == perm.SubjectBash})
+	pr := PermRequest{
+		Tool: req.Tool, Always: label, Wider: wider, Project: project, Subject: req.Subject, Arg: h.shownArg(req),
+		Reason: req.Reason, Preview: req.Preview, Description: req.Description, Outside: req.Unsandboxed && req.Subject == perm.SubjectBash,
+		Agent: req.Agent, Owner: req.Owner, Where: h.runsIn(req),
+	}
+	if req.Subject == perm.SubjectBash {
+		pr.Runs = req.Command().Programs(req.Pad)
+	}
+	allowed, by := ui.AskPermission(pr)
 	if by == "user:wider" {
 		rules = wideRules
 	}
@@ -220,6 +236,24 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		h.projectAllow(req.Arg, projectRules)
 	}
 	return resolved(allowed, by)
+}
+
+// runsIn is where a yes runs the command, as Pipeline.SandboxFor decides:
+// unconfined unless it asked for the network or a read-only agent runs it.
+func (h *Host) runsIn(req tools.Request) RunsIn {
+	switch {
+	case req.Subject != perm.SubjectBash:
+		return ""
+	case !h.sandboxLive():
+		return RunsNoSandbox
+	case req.Unsandboxed:
+		return RunsOutside
+	case req.Network:
+		return RunsNetwork
+	case req.ReadOnly:
+		return RunsConfined
+	}
+	return RunsOutside
 }
 
 // AsksWaiting is how many asks are at the prompt stage, the one shown
@@ -396,7 +430,13 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	if strings.ContainsAny(req.Arg, globMeta) {
 		return "", nil
 	}
-	return "allow this", []perm.Rule{rule(req.Subject, req.Arg)}
+	label := "allow this"
+	if server, ok := strings.CutPrefix(req.Subject, "mcp."); ok {
+		label = "allow " + req.Arg + " from " + server
+	} else if req.Subject == "tool."+req.Arg {
+		label = "allow the " + req.Arg + " tool" // a Lua tool
+	}
+	return label, []perm.Rule{rule(req.Subject, req.Arg)}
 }
 
 // bashAlwaysPatterns turns one command segment into the allow-lookup patterns

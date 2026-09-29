@@ -66,7 +66,28 @@ type PermRequest struct {
 	// Outside means this bash command escapes the sandbox and can reach the
 	// whole machine; the prompt shows a warning band for it
 	Outside bool
+	// Agent is the subagent asking, as the prompt names it ("explore
+	// agent"), "" for the main agent
+	Agent string
+	// Owner is whose code a Lua tool runs, as an overlay badge names it
+	// ("plugin:jira"), "" for the user's and zemi's own
+	Owner string
+	// Runs is what a command runs, nil when the parse cannot say
+	Runs []perm.Program
+	// Where is where a command runs once allowed, "" for any other request
+	Where RunsIn
 }
+
+// RunsIn is where a command runs once the user allows it
+// (Pipeline.SandboxFor).
+type RunsIn string
+
+const (
+	RunsOutside   RunsIn = "outside"  // unconfined, a sandbox exists
+	RunsNoSandbox RunsIn = "none"     // no backend on this machine
+	RunsNetwork   RunsIn = "network"  // confined, sockets added
+	RunsConfined  RunsIn = "confined" // a read-only agent's: confined whoever allows it
+)
 
 // StreamTool is one tool call in the live stream view (DESIGN §6.3).
 type StreamTool struct {

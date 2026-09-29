@@ -87,6 +87,12 @@ type Request struct {
 	// Pad is the checking pipeline's scratchpad (Pipeline.Pad); set by the
 	// pipeline
 	Pad string
+	// Agent is the subagent asking, as the prompt names it, "" for the main
+	// agent; set by its pipeline's asker
+	Agent string
+	// Owner is whose code a Lua tool runs, as an overlay badge names it
+	// ("plugin:jira"), "" for the user's and zemi's own
+	Owner string
 	// cmd is a tool.bash Arg as the gate parsed it; set by the pipeline
 	cmd *perm.Normalized
 	// gate is the pipeline and request as Check got them; set by the pipeline
@@ -1236,7 +1242,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 					return nil, errors.New("empty query")
 				}
 				p.search = &url.URL{Scheme: "https", Host: "lite.duckduckgo.com", Path: "/lite/", RawQuery: url.Values{"q": {query}}.Encode()}
-				return []Request{{Subject: "net." + p.search.Hostname(), Arg: p.search.String(), Reason: "web search"}}, nil
+				return []Request{{Subject: "net." + p.search.Hostname(), Arg: p.search.String()}}, nil
 			},
 			runWebSearch),
 

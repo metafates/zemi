@@ -274,7 +274,7 @@ func TestSubagentAsksAsAgent(t *testing.T) {
 			if _, _, err := h.runSubagent(context.Background(), def, "d", "look"); err != nil {
 				t.Fatal(err)
 			}
-			if len(ui.asked) != 1 || !strings.HasPrefix(ui.asked[0].Reason, "agent general: ") {
+			if len(ui.asked) != 1 || ui.asked[0].Agent != "general agent" {
 				t.Fatalf("asked: %+v", ui.asked)
 			}
 		})

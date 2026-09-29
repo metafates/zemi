@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -683,17 +682,7 @@ func (a *App) runOverlayRow(r hostapi.OverlayItem) {
 // §8): the body, then the list, then the keys that act on the selection.
 // h is the height the box may take.
 func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
-	// the origin badge marks boxes that plugins and project config draw
-	badge := ""
-	if st.o.Origin != lua.OriginBuiltin && st.o.Origin != lua.OriginUser {
-		badge = string(st.o.Origin)
-		// a plugin's name, else the file's: a path leaves no room for the title
-		if name := a.host.PluginOf(st.o.Path); name != "" {
-			badge += ":" + name
-		} else if st.o.Path != "" {
-			badge += ":" + filepath.Base(st.o.Path)
-		}
-	}
+	badge := a.host.OriginBadge(st.o.Origin, st.o.Path)
 	inner := boxInner(w)
 	if st.o.Input {
 		body := [][]hostapi.Segment{st.input.inputRow(inner), nil, hint(inner, sendHint, hintPair{"esc", "close"})}
