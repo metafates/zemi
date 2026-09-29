@@ -37,6 +37,11 @@ type Normalized struct {
 	// cmd is the text the segments came from, variables inlined, for what
 	// only the text shows (ReadCommand's expands)
 	cmd string
+	// hidden marks a program no segment names, so Programs lists none: one a
+	// substitution's output or a gated assignment picks, words after a
+	// substitution inside one word, arithmetic, an array, a heredoc body a
+	// program other than a shell reads, or quoting the scanner cannot place.
+	hidden bool
 }
 
 // envGateNames are the environment-affecting variables whose assignment
@@ -200,6 +205,8 @@ type scanner struct {
 	docs   []heredoc // opened on the current line
 	depth  int
 	arith  []int // the depths of the (( )) and $(( )) open, where << shifts
+	subs   []int // the depths of the $( <( >( open
+	tick   bool  // inside a backtick substitution
 	failed bool  // a quote or parenthesis not closed
 }
 
@@ -274,12 +281,20 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 				cur.WriteRune(rs[i])
 			}
 		case r == '`':
+			if sc.tick {
+				sc.closes(n, rs, i)
+			} else {
+				sc.opens(n, any, cur.String())
+			}
+			sc.tick = !sc.tick
 			flush()
 			sc.sep()
 		case (r == '$' || r == '<' || r == '>') && i+1 < len(rs) && rs[i+1] == '(':
+			sc.opens(n, any, cur.String())
 			flush()
 			i++
 			sc.depth++
+			sc.subs = append(sc.subs, sc.depth)
 			sc.sep()
 		case r == '$' && i+1 < len(rs) && (rs[i+1] == '\'' || rs[i+1] == '"'):
 			// $'..' and $".." quote in bash (the $ goes) but not in dash; a
@@ -287,6 +302,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			q := rs[i+2:]
 			if end := slices.Index(q, '\''); rs[i+1] == '\'' && end >= 0 && slices.Contains(q[:end], '\\') {
 				n.ForceAsk = "ANSI-C quoting with a backslash"
+				n.hidden = true
 			}
 		case r == '#' && !any:
 			end := slices.Index(rs[i:], '\n')
@@ -298,6 +314,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			if i > 0 && (rs[i-1] == ')' || rs[i-1] == '`') {
 				if slices.ContainsFunc(rs[i:i+end], func(c rune) bool { return c == '\'' || c == '"' || c == '\\' }) {
 					n.ForceAsk = "comment with a quote or backslash"
+					n.hidden = true
 				}
 				any = true
 				cur.WriteRune(r)
@@ -305,10 +322,15 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			}
 			i += end - 1 // sh passes no comment words
 		case r == '(':
+			// the words of an array (a=(x y)) or arithmetic are no commands
+			if any && strings.HasSuffix(cur.String(), "=") {
+				n.hidden = true
+			}
 			flush()
 			sc.depth++
 			if i > 0 && rs[i-1] == '(' {
 				sc.arith = append(sc.arith, sc.depth)
+				n.hidden = true
 			}
 			sc.sep()
 		case r == ')':
@@ -319,6 +341,10 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			}
 			for len(sc.arith) > 0 && sc.depth < sc.arith[len(sc.arith)-1] {
 				sc.arith = sc.arith[:len(sc.arith)-1]
+			}
+			if k := len(sc.subs); k > 0 && sc.depth < sc.subs[k-1] {
+				sc.subs = sc.subs[:k-1]
+				sc.closes(n, rs, i)
 			}
 			sc.sep()
 		case r == ' ' || r == '\t' || r == '\n': // sh splits on these only (NBSP, \v, \r are word text)
@@ -409,6 +435,48 @@ func (sc *scanner) quotedSub(n *Normalized, rs []rune, j int) (int, bool) {
 		n.ForceAsk = "command substitution inside quotes"
 	}
 	return end, true
+}
+
+// opens notes an unquoted substitution opening in the current segment,
+// glued to the word text before it when any: one in the program word runs
+// its output, which no segment names; one in an assignment is its value.
+func (sc *scanner) opens(n *Normalized, glued bool, word string) {
+	if _, assign := assignmentName(word); glued && assign {
+		return
+	}
+	// every word since the separator is a reserved word or an assignment
+	from := 0
+	for i, t := range sc.toks {
+		if t.kind == tokSep {
+			from = i + 1
+		}
+	}
+	for i := from; i < len(sc.toks); i++ {
+		switch t := sc.toks[i]; {
+		case t.kind == tokRedirect && i == len(sc.toks)-1:
+			return // the substitution names the redirect's target
+		case t.kind == tokRedirect:
+			i++
+		case t.kind == tokWord && !reserved[t.text]:
+			if _, assign := assignmentName(t.text); !assign {
+				return
+			}
+		}
+	}
+	n.hidden = true
+}
+
+// closes notes an unquoted substitution closing at rs[i]: words after it
+// before a separator belong to the command around it, which the scanner
+// splits into a segment of their own.
+func (sc *scanner) closes(n *Normalized, rs []rune, i int) {
+	j := i + 1
+	for j < len(rs) && (rs[j] == ' ' || rs[j] == '\t') {
+		j++
+	}
+	if j < len(rs) && !strings.ContainsRune(";&|)\n<>", rs[j]) && (j == i+1 || rs[j] != '#') {
+		n.hidden = true
+	}
 }
 
 // delimiter reads the word after the << ending at rs[*i], leaving *i on its
@@ -530,6 +598,16 @@ func (n *Normalized) eat(sc *scanner) {
 		n.Fail = "a quote or parenthesis is not closed"
 	}
 	shell := n.readsScript()
+	// a body a program other than a shell reads (python3 - <<EOF) is its code
+	if shell && len(docs) > 0 && slices.ContainsFunc(n.Args, func(f []string) bool {
+		f = program(f)
+		for ok := true; ok && len(f) > 1; {
+			f, ok = stepRunner(f)
+		}
+		return len(f) > 0 && !slices.Contains(dataReaders, f[0]) && !isShell(f[0])
+	}) {
+		n.hidden = true
+	}
 	for _, d := range slices.Backward(docs) {
 		switch {
 		case shell:
@@ -649,6 +727,7 @@ func (n *Normalized) fold(seg []string) {
 		}
 		if ok && EnvAssignmentGate(name) {
 			n.ForceAsk = "environment assignment: " + name
+			n.hidden = true
 			return
 		}
 	}
@@ -692,6 +771,7 @@ func (n *Normalized) absorb(at int, inner Normalized) {
 	if inner.Assign != "" && n.Assign == "" {
 		n.Assign = inner.Assign
 	}
+	n.hidden = n.hidden || inner.hidden
 }
 
 // isShell judges a command word by its lowercased base: `/bin/bash` and,

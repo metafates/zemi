@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"cmp"
 	"os"
 	"path"
 	"path/filepath"
@@ -813,6 +814,25 @@ func Subcommand(f []string) int {
 	return -1
 }
 
+// SubcommandPrograms are the programs whose second word is a subcommand;
+// for any other it may be a file ("cat notes").
+var SubcommandPrograms = map[string]bool{
+	"git": true, "go": true, "cargo": true, "npm": true, "pnpm": true, "yarn": true, "bun": true,
+	"make": true, "docker": true, "kubectl": true, "gh": true, "uv": true,
+}
+
+var subcommandWord = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+
+// SubcommandAt is the index in f of the subcommand of a SubcommandPrograms
+// program, when the word there is shaped like one; -1 otherwise.
+func SubcommandAt(f []string) int {
+	i := Subcommand(f)
+	if len(f) == 0 || !SubcommandPrograms[strings.ToLower(filepath.Base(f[0]))] || i < 0 || !subcommandWord.MatchString(f[i]) {
+		return -1
+	}
+	return i
+}
+
 var subcommandValues = map[string]bool{"-C": true, "-c": true, "--prefix": true, "--git-dir": true, "--work-tree": true, "--namespace": true}
 
 // plainFlags are the leading options known to take no value, per program:
@@ -1088,3 +1108,129 @@ func (n Normalized) destructive(repeated bool, pad string) string {
 	}
 	return ""
 }
+
+// ShellWords are the syntax and no-op words a segment may start with, which
+// run nothing worth naming: Programs lists no segment led by one, and an
+// always answer names none it allows.
+var ShellWords = map[string]bool{
+	"for": true, "select": true, "case": true, "done": true, "fi": true, "esac": true, "}": true,
+	"[": true, "[[": true, "]]": true, "set": true, "shopt": true, "true": true, "false": true, ":": true,
+	"break": true, "continue": true, "exit": true, "return": true, "wait": true,
+}
+
+// Risk is why the permission prompt marks a program.
+type Risk string
+
+const (
+	RiskDeletes Risk = "deletes"
+	RiskCode    Risk = "runs code"
+)
+
+// Program is one program a command runs, as the permission prompt names it.
+type Program struct {
+	Name string // base name, with the subcommand of a SubcommandPrograms one
+	Risk Risk
+}
+
+// Programs lists what the command runs, each name once in the order it
+// first runs, with the strongest mark it has; nil when the parse cannot
+// vouch for the list. pad is Destructive's.
+// NOTE: a segment's deletes mark sits on the last program it names, so
+// find . -exec grep x {} + -delete marks grep; only the first program an
+// exec flag runs is named.
+func (n Normalized) Programs(pad string) []Program {
+	if n.Fail != "" || n.hidden {
+		return nil
+	}
+	if !n.padIntact() {
+		pad = ""
+	}
+	out := []Program{}
+	loops := 0
+	for _, f := range n.Args {
+		g := program(f)
+		if slices.Contains(f[:len(f)-len(g)], "do") {
+			loops++
+		}
+		if len(f) > 0 && f[0] == "done" {
+			loops = max(loops-1, 0)
+		}
+		seg, ok := segmentPrograms(g)
+		if !ok {
+			return nil
+		}
+		if len(seg) > 0 && (Normalized{Args: [][]string{f}}).destructive(loops > 0, pad) != "" {
+			seg[len(seg)-1].Risk = RiskDeletes
+		}
+		for _, p := range seg {
+			switch i := slices.IndexFunc(out, func(q Program) bool { return q.Name == p.Name }); {
+			case i < 0:
+				out = append(out, p)
+			case p.Risk == RiskDeletes || out[i].Risk == "":
+				out[i].Risk = cmp.Or(p.Risk, out[i].Risk)
+			}
+		}
+	}
+	return out
+}
+
+// segmentPrograms names the programs one segment runs: a runner and what it
+// runs, find or fd and the first program an exec flag runs, a shell's -c body
+// or eval's text through Programs. ok is false when the shell still expands
+// a program word, so nothing says what runs.
+func segmentPrograms(f []string) (_ []Program, ok bool) {
+	var out []Program
+	// a leading fd redirect (>&2 echo x) stays a word of the segment
+	for len(f) > 0 && strings.IndexAny(strings.TrimLeft(f[0], "0123456789"), "<>") == 0 {
+		f = f[1:]
+	}
+	for len(f) > 0 {
+		w, base := f[0], filepath.Base(f[0])
+		name := strings.ToLower(base)
+		_, runs := runnerOpts[name]
+		switch {
+		case ShellWords[w]:
+			return out, true
+		case strings.ContainsAny(w, "$`*?[{"):
+			return nil, false
+		case isShell(w) || name == "eval":
+			body, ok := shellBody(f[1:])
+			if name == "eval" {
+				body, ok = strings.Join(f[1:], " "), true
+			}
+			if !ok {
+				return append(out, Program{Name: base, Risk: RiskCode}), true
+			}
+			inner := Normalize(body).Programs("")
+			if inner == nil {
+				return nil, false
+			}
+			return append(out, inner...), true
+		case runs:
+			out = append(out, Program{Name: base})
+			g, _ := stepRunner(f)
+			if len(g) == 0 || strings.HasPrefix(g[0], "-") {
+				return out, true
+			}
+			f = g
+		case name == "find" || name == "fd":
+			out = append(out, Program{Name: base})
+			i := slices.IndexFunc(f, func(a string) bool { return slices.Contains(execFlags, a) })
+			if i < 0 || i+1 >= len(f) {
+				return out, true
+			}
+			f = f[i+1:]
+		case WrapperPrograms[name]:
+			return append(out, Program{Name: base, Risk: RiskCode}), true
+		default:
+			if i := SubcommandAt(f); i > 0 && LeadKnown(f, i) {
+				base += " " + f[i]
+			}
+			return append(out, Program{Name: base}), true
+		}
+	}
+	return out, true
+}
+
+// execFlags are find's and fd's flags whose next word is a program they run.
+var execFlags = []string{"-exec", "-execdir", "-ok", "-okdir", "-x", "-X", "--exec", "--exec-batch"}

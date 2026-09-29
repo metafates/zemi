@@ -522,7 +522,7 @@ The overlay's "always" answer writes session allow rules scoped to the `model` p
 (`Rule.Network` when the ask was a `network: true` command, so `SandboxFor` keeps the policy and
 adds sockets instead of running the next call unconfined; `projectChoice` offers no file line
 for one), as prefix globs rather than the exact request (`alwaysChoice`, ask.go: a command's program, or
-program and subcommand for `git`, `go`, `cargo` and the other `subcommandPrograms`, leading
+program and subcommand for `git`, `go`, `cargo` and the other `perm.SubcommandPrograms`, leading
 options kept (`git -C sub status`, `perm.Subcommand`) and the exact segment when options leave
 no subcommand (`git --version`) or one not for sure (`npm -w web test`: `perm.LeadKnown`); a file's directory, or the file alone when that is `$HOME`, `/` or between,
 which hold every dotfile; a URL's host). A deleting program (`rm`, `mv`, `find`, `tar`, ...) or a segment

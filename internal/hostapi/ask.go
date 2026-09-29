@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -436,7 +435,7 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	p := commandPrefix(seg)
 	switch {
 	case p != "" && known:
-	case subcommandPrograms[programName(f[0])]:
+	case perm.SubcommandPrograms[programName(f[0])]:
 		// git --version and a bare git have no subcommand, and npm -w web test
 		// has none for sure; `git *` or `npm -w web *` would allow every one
 		return []string{seg}, true
@@ -509,15 +508,6 @@ func (h *Host) repoChoice(req tools.Request) (string, []perm.Rule) {
 // globMeta are perm's glob wildcards; its patterns have no escape
 const globMeta = "*?"
 
-var subcommandWord = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
-
-// programs whose second word is a subcommand; for any other it may be a
-// file ("cat notes"), and the prefix would allow any file after it
-var subcommandPrograms = map[string]bool{
-	"git": true, "go": true, "cargo": true, "npm": true, "pnpm": true, "yarn": true, "bun": true,
-	"make": true, "docker": true, "kubectl": true, "gh": true, "uv": true,
-}
-
 // wrapperSubcommands are the subcommand spellings of npx and uvx: the pair
 // runs whatever package follows, so an always answer offers nothing for it
 var wrapperSubcommands = map[string]bool{
@@ -555,8 +545,8 @@ func destructiveProgram(prog string) bool {
 // status" keeps its options), or "" when there is none.
 func commandPrefix(seg string) string {
 	f := strings.Fields(seg)
-	i := perm.Subcommand(f)
-	if !subcommandPrograms[programName(f[0])] || i < 0 || !subcommandWord.MatchString(f[i]) {
+	i := perm.SubcommandAt(f)
+	if i < 0 {
 		return ""
 	}
 	return strings.Join(f[:i+1], " ")

@@ -494,3 +494,54 @@ func TestSubcommand(t *testing.T) {
 		}
 	}
 }
+
+func TestPrograms(t *testing.T) {
+	pad := t.TempDir()
+	for _, c := range []struct {
+		name, cmd, pad string
+		want           string // name or name!risk, "-" for no list
+	}{
+		{"loop and pipes", "cd . && for f in $(git ls-files); do grep -c hi $f || true; done | sort | uniq -c", "", "cd git ls-files grep sort uniq"},
+		{"runner then delete", "sudo rm -rf build", "", "sudo rm!deletes"},
+		{"find delete", "find . -name '*.o' -delete", "", "find!deletes"},
+		{"find exec", "find . -name '*.go' -exec grep -l foo {} +", "", "find grep"},
+		{"shell body behind xargs", `xargs -I{} sh -c 'rm "{}"'`, "", "xargs rm!deletes"},
+		{"leading shell", "bash -c 'npm test && npm publish'", "", "npm test npm publish"},
+		{"eval text", "eval 'git status'", "", "git status"},
+		{"inline code", "python3 -c 'print(1)'", "", "python3!runs code"},
+		{"bare rm in a loop", "for f in *.o; do rm $f; done", "", "rm!deletes"},
+		{"pad rm", "rm -rf $TMPDIR/build", pad, "rm"},
+		{"subcommand past options", "git -C sub push origin main", "", "git push"},
+		{"unknown lead option", "npm -w web test", "", "npm"},
+		{"same name, strongest mark", "rm a; rm -rf b", "", "rm!deletes"},
+		{"no-ops only", "set -e; true; :", "", ""},
+		{"fd redirect first", ">&2 echo oops", "", "echo"},
+		{"quoted substitution", `echo "$(rm -rf x)"`, "", "echo rm!deletes"},
+		{"commit message heredoc", "git commit -m \"$(cat <<'EOF'\nfix: things\nEOF\n)\"", "", "git commit cat"},
+		{"data heredoc", "cat > n.txt <<EOT\nrm -rf x\nEOT", "", "cat"},
+		{"shell heredoc", "bash <<'EOF'\nrm -rf x\nEOF", "", "bash!runs code rm!deletes"},
+		{"assigned substitution", "v=$(git rev-parse HEAD); echo $v", "", "git rev-parse echo"},
+		{"dynamic program", "for c in ls pwd; do $c; done", "", "-"},
+		{"substitution as program", "$(which rm) -rf x", "", "-"},
+		{"words after a substitution", "cd $(git rev-parse --show-toplevel)/sub && ls", "", "-"},
+		{"arithmetic", "echo $((1+2))", "", "-"},
+		{"array", "a=(x y); echo ${a[0]}", "", "-"},
+		{"code heredoc", "python3 - <<'EOF'\nimport shutil\nEOF", "", "-"},
+		{"gated assignment", "PATH=./x ls", "", "-"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ps := Normalize(c.cmd).Programs(c.pad)
+			got := "-"
+			if ps != nil {
+				var words []string
+				for _, p := range ps {
+					words = append(words, strings.TrimSuffix(p.Name+"!"+string(p.Risk), "!"))
+				}
+				got = strings.Join(words, " ")
+			}
+			if got != c.want {
+				t.Errorf("Programs(%q) = %q, want %q", c.cmd, got, c.want)
+			}
+		})
+	}
+}
