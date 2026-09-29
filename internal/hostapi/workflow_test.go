@@ -856,7 +856,8 @@ func TestReviewTargetsACommit(t *testing.T) {
 }
 
 // TestFlowViewIDs: an agent row keeps its id when a later call lands in an
-// earlier phase, so a refresh never moves an open detail to another agent.
+// earlier phase, so a refresh never moves an open detail to another agent,
+// and a queued one opens like a started one, so enter's hint stays put.
 func TestFlowViewIDs(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	f := &flowRun{id: "0000000a", description: "d", status: RunRunning, limit: 1}
@@ -866,7 +867,11 @@ func TestFlowViewIDs(t *testing.T) {
 	ids := func() map[string]any {
 		m := map[string]any{}
 		for _, it := range h.flowOverlay(f).Items {
-			m[it.(map[string]any)["text"].(string)] = it.(map[string]any)["id"]
+			row, _ := ParseOverlayItem(it)
+			if row.Fields == nil {
+				t.Fatalf("%s opens nothing", row.Text)
+			}
+			m[row.Text] = row.ID
 		}
 		return m
 	}

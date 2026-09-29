@@ -1899,6 +1899,8 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) map[string]
 		desc += fmt.Sprintf(" · %d %s · %s tok · %s", a.calls, plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
 	}
 	item := map[string]any{"id": strconv.Itoa(a.call), "text": a.description, "desc": desc, "section": section}
+	// a queued row opens too, so starting it moves no footer text
+	item["fields"] = fieldList("status", string(a.status), "agent", a.def)
 	if a.id == "" {
 		return item
 	}
