@@ -56,18 +56,18 @@ func TestConfigFingerprintFollowsSymlinks(t *testing.T) {
 	}
 }
 
-// TestConfigFingerprint: an edit to config, a local plugin, a toggle and an
-// install or update (a clone's git index) reload; git data, dependency
-// trees, the skipped worktrees, a clone's files and one still in flight are
-// not walked.
+// TestConfigFingerprint: an edit to a config tree (here the project's
+// .agents), a local plugin, a toggle and an install or update (a clone's git
+// index) reload; git data, dependency trees, the .agents worktrees, a
+// clone's files and one still in flight are not walked.
 func TestConfigFingerprint(t *testing.T) {
 	for _, c := range []struct {
 		edit    string
 		noticed bool
 	}{
-		{"config/init.lua", true},
-		{"config/.git/index", false},
-		{"config/worktrees/w/init.lua", false},
+		{"agents/init.lua", true},
+		{"agents/.git/index", false},
+		{"agents/worktrees/w/init.lua", false},
 		{"local/x/init.lua", true},
 		{"disabled", true},
 		{"installed/y/.git/index", true},
@@ -79,12 +79,12 @@ func TestConfigFingerprint(t *testing.T) {
 		{"local/worktrees/init.lua", true}, // only the project's worktrees are skipped
 	} {
 		root := t.TempDir()
-		for _, f := range []string{"config/init.lua", "local/x/init.lua", "installed/y/init.lua", "installed/y/.git/index"} {
+		for _, f := range []string{"agents/init.lua", "local/x/init.lua", "installed/y/init.lua", "installed/y/.git/index"} {
 			writeFile(t, filepath.Join(root, f), "one")
 		}
 		// the roots are read again each time, as setReload does
 		fingerprint := func() string {
-			return configFingerprint(filepath.Join(root, "config", "worktrees"), append(pluginRoots(root), filepath.Join(root, "config"))...)
+			return configFingerprint(filepath.Join(root, "agents", "worktrees"), append(pluginRoots(root), filepath.Join(root, "agents"))...)
 		}
 		base := fingerprint()
 		writeFile(t, filepath.Join(root, c.edit), "two!")
