@@ -87,7 +87,7 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 		t.Fatalf("failed writes must not replace the list: %+v", stored)
 	}
 
-	broken := &Pipeline{Store: perm.NewStore()}
+	broken := &Pipeline{Store: new(perm.Store)}
 	resp = call(t, toolNamed(t, "todos", broken), `{}`)
 	if !resp.IsError || !strings.Contains(resp.Content, "todos unavailable") {
 		t.Fatalf("nil read hook: %+v", resp)

@@ -12,7 +12,7 @@ import (
 
 func store(t *testing.T, rules ...Rule) *Store {
 	t.Helper()
-	s := NewStore()
+	s := new(Store)
 	for _, r := range rules {
 		s.Add(r)
 	}
@@ -189,7 +189,7 @@ func TestSubstitutionIsSegment(t *testing.T) {
 // TestSubjectFamilyRule: a rule written as net.* covers the net.<host>
 // subject the fetch tool asks with, so an existing deny keeps denying.
 func TestSubjectFamilyRule(t *testing.T) {
-	s := NewStore()
+	s := new(Store)
 	s.Add(Rule{Subject: "net.*", Pattern: "*", Decision: Deny})
 	s.Add(Rule{Subject: "fs.read", Pattern: "*", Decision: Allow})
 	for _, c := range []struct {
@@ -211,7 +211,7 @@ func TestSubjectFamilyRule(t *testing.T) {
 // runs ("$( )", the lines after a quote opened in a comment or by an escape
 // in $'..') must not ride an allow rule covering the outer command.
 func TestHiddenCommandsAsk(t *testing.T) {
-	s := NewStore()
+	s := new(Store)
 	s.Add(Rule{Subject: "tool.bash", Pattern: "git log*", Decision: Allow})
 	for _, c := range []struct {
 		cmd  string

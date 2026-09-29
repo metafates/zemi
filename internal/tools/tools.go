@@ -1117,7 +1117,7 @@ Chain dependent steps with &&.`,
 			},
 			[]string{"path", "content"},
 			func(_ *Pipeline, in map[string]any) ([]Request, error) {
-				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff("write", in)}}, nil
+				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff(ToolWrite, in)}}, nil
 			},
 			runWrite))),
 
@@ -1130,7 +1130,7 @@ Chain dependent steps with &&.`,
 			},
 			[]string{"path", "old_string", "new_string"},
 			func(_ *Pipeline, in map[string]any) ([]Request, error) {
-				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff("edit", in)}}, nil
+				return []Request{{Subject: perm.SubjectWrite, Arg: str(in["path"]), Preview: ChangeDiff(ToolEdit, in)}}, nil
 			},
 			runEdit))),
 
@@ -1357,9 +1357,9 @@ func ChangeDiff(tool string, in map[string]any) string {
 	old := lf(string(data))
 	var updated string
 	switch tool {
-	case "write":
+	case ToolWrite:
 		updated = lf(str(in["content"]))
-	case "edit":
+	case ToolEdit:
 		var msg string
 		if updated, _, _, msg = editText(old, in, workRel(path)); msg != "" {
 			return ChangePreview(in)

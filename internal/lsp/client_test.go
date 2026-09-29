@@ -28,7 +28,7 @@ func TestMain(m *testing.M) {
 		serveBlocking(os.Stdin, os.Stdout)
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	m.Run()
 }
 
 // serveBlocking is a single-threaded server: as the message after

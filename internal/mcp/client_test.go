@@ -23,7 +23,7 @@ func TestMain(m *testing.M) {
 		mcptest.ServeStdio(os.Stdin, os.Stdout)
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	m.Run()
 }
 
 func TestClient(t *testing.T) {

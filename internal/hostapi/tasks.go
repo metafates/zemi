@@ -710,7 +710,7 @@ func (h *Host) refreshViewed(run *agentRun) {
 // session id or the run id that heads it.
 func (h *Host) loadRun(id string) (*agentRun, error) {
 	if h.DB == nil {
-		return nil, errors.New("session store unavailable")
+		return nil, errNoStore
 	}
 	sess, err := h.DB.FindSession(id)
 	if err != nil || sess.ParentID == "" {

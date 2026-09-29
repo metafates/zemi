@@ -28,6 +28,8 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
+var errNoStore = errors.New("session store unavailable")
+
 // NewSession closes the live session; the next send creates a fresh one.
 func (h *Host) NewSession() error {
 	if err := h.closeSession(nil); err != nil {
@@ -55,7 +57,7 @@ func ResumeCommand(dir, id string) string {
 // ResumeSession reopens a stored session ("" means the most recent other one).
 func (h *Host) ResumeSession(id string) error {
 	if h.DB == nil {
-		return errors.New("session store unavailable")
+		return errNoStore
 	}
 	live := h.AgentSessionID()
 	if id == "" {
@@ -129,7 +131,7 @@ func (h *Host) OpenSessions(confirm string) error {
 		return err
 	}
 	if h.DB == nil {
-		return errors.New("session store unavailable")
+		return errNoStore
 	}
 	list, err := h.DB.ListSessions(50)
 	if err != nil {
@@ -180,7 +182,7 @@ func (h *Host) OpenSessions(confirm string) error {
 // process exits when the command returns.
 func (h *Host) DeleteSession(id string, yes bool) error {
 	if h.DB == nil {
-		return errors.New("session store unavailable")
+		return errNoStore
 	}
 	if id == "" || id == h.AgentSessionID() {
 		return Usagef("the current session cannot be deleted; /new first")

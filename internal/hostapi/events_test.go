@@ -3,8 +3,13 @@ package hostapi
 import (
 	"context"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -67,6 +72,61 @@ func TestHostToolEvents(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+// TestHostEmitsAreCatalogued reads the source, since most host emits run
+// under a recover (GoSafe, a turn, a Lua call) that would swallow a failure.
+func TestHostEmitsAreCatalogued(t *testing.T) {
+	nameArg := map[string]int{"EmitAsync": 0, "EmitVetoable": 1, "emitVetoable": 1, "EmitOnState": 1, "recordEvent": 0}
+	files, _ := filepath.Glob("*.go")
+	for _, dir := range []string{"../ui", "../.."} {
+		more, _ := filepath.Glob(filepath.Join(dir, "*.go"))
+		files = append(files, more...)
+	}
+	seen := 0
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			var fn string
+			switch fun := call.Fun.(type) {
+			case *ast.Ident:
+				fn = fun.Name
+			case *ast.SelectorExpr:
+				fn = fun.Sel.Name
+			}
+			i, ok := nameArg[fn]
+			if !ok || len(call.Args) <= i {
+				return true
+			}
+			lit, ok := call.Args[i].(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				return true
+			}
+			if fn == "recordEvent" {
+				if from, ok := call.Args[1].(*ast.BasicLit); !ok || from.Value != `"host"` {
+					return true
+				}
+			}
+			name, _ := strconv.Unquote(lit.Value)
+			if seen++; !knownEvent(name) {
+				t.Errorf("%s: %s(%q) is not in eventCatalogue", file, fn, name)
+			}
+			return true
+		})
+	}
+	if seen == 0 {
+		t.Fatal("found no host emits")
+	}
 }
 
 // TestEmitKeepsNameAndFrom: a payload cannot rename an event or claim

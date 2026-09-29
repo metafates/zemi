@@ -95,9 +95,6 @@ type Store struct {
 	EnvKeep func() string
 }
 
-// NewStore returns an empty store.
-func NewStore() *Store { return &Store{} }
-
 // Add appends a rule unless an equal one is stored (config replays on every
 // boot and reload) and reports whether it did; evaluation re-sorts.
 func (s *Store) Add(r Rule) bool {

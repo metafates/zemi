@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -12,5 +11,5 @@ import (
 func TestMain(m *testing.M) {
 	sandbox.DispatchHelper()
 	time.Local = time.UTC // a turn's end time in a golden reads the same everywhere
-	os.Exit(m.Run())
+	m.Run()
 }

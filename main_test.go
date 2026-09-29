@@ -17,7 +17,7 @@ import (
 // On Linux the sandbox probe and Wrap re-exec this binary as the helper.
 func TestMain(m *testing.M) {
 	sandbox.DispatchHelper()
-	os.Exit(m.Run())
+	m.Run()
 }
 
 // TestConfigFingerprintFollowsSymlinks: a dotfiles setup links the config

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,7 +11,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 
 	"charm.land/fantasy"
@@ -354,11 +354,8 @@ func decodeLocations(raw json.RawMessage) []lsp.Location {
 // formatLocations renders path:line:col with the source line, grouped by
 // file in path order, at most limit rows.
 func formatLocations(locs []lsp.Location, limit int) string {
-	sort.SliceStable(locs, func(i, j int) bool {
-		if pi, pj := locs[i].Path(), locs[j].Path(); pi != pj {
-			return pi < pj
-		}
-		return locs[i].Range.Start.Line < locs[j].Range.Start.Line
+	slices.SortStableFunc(locs, func(a, b lsp.Location) int {
+		return cmp.Or(cmp.Compare(a.Path(), b.Path()), cmp.Compare(a.Range.Start.Line, b.Range.Start.Line))
 	})
 	files := map[string][]string{}
 	var b strings.Builder

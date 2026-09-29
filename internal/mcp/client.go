@@ -28,7 +28,10 @@ import (
 // one it speaks.
 const ProtocolVersion = "2025-06-18"
 
-const maxMessage = 32 << 20
+const (
+	maxMessage    = 32 << 20
+	sessionHeader = "Mcp-Session-Id"
+)
 
 // Config picks the transport: Command starts a child process, URL talks
 // streamable HTTP.
@@ -490,7 +493,7 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 		}
 	}
 	// the server forgot the session (a redeploy): the spec says start another
-	if old := resp.Request.Header.Get("Mcp-Session-Id"); resp.StatusCode == http.StatusNotFound && old != "" && ctx.Value(renewing{}) == nil {
+	if old := resp.Request.Header.Get(sessionHeader); resp.StatusCode == http.StatusNotFound && old != "" && ctx.Value(renewing{}) == nil {
 		resp.Body.Close()
 		if err := t.renew(ctx, old); err != nil {
 			return err
@@ -499,7 +502,7 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 			return err
 		}
 	}
-	if id := resp.Header.Get("Mcp-Session-Id"); id != "" {
+	if id := resp.Header.Get(sessionHeader); id != "" {
 		t.mu.Lock()
 		t.session = id
 		t.mu.Unlock()
@@ -588,7 +591,7 @@ func (t *httpTransport) post(ctx context.Context, msg []byte) (*http.Response, s
 	}
 	t.mu.Lock()
 	if t.session != "" {
-		req.Header.Set("Mcp-Session-Id", t.session)
+		req.Header.Set(sessionHeader, t.session)
 	}
 	if t.version != "" {
 		req.Header.Set("MCP-Protocol-Version", t.version)

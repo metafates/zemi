@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	m.Run()
 }
 
 // osActs are the verbs only one OS's test file can build.

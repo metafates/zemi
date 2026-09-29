@@ -236,13 +236,13 @@ func (sc *scanner) sep() {
 // to the end) and returns stop's index, or len(rs) when it never comes.
 func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 	var cur strings.Builder
-	any := false
+	inWord := false
 	flush := func() {
-		if any {
+		if inWord {
 			sc.toks = append(sc.toks, token{kind: tokWord, text: cur.String()})
 		}
 		cur.Reset()
-		any = false
+		inWord = false
 	}
 	for ; i < len(rs); i++ {
 		r := rs[i]
@@ -251,7 +251,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 		}
 		switch {
 		case r == '\'':
-			any = true
+			inWord = true
 			j := i + 1
 			for ; j < len(rs) && rs[j] != '\''; j++ {
 				cur.WriteRune(rs[j])
@@ -259,7 +259,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			sc.failed = sc.failed || j >= len(rs)
 			i = j
 		case r == '"':
-			any = true
+			inWord = true
 			j := i + 1
 			for ; j < len(rs) && rs[j] != '"'; j++ {
 				if rs[j] == '\\' && j+1 < len(rs) {
@@ -281,7 +281,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 		case r == '\\' && i+1 < len(rs) && rs[i+1] == '\n': // line continuation
 			i++
 		case r == '\\':
-			any = true
+			inWord = true
 			if i+1 < len(rs) {
 				i++
 				cur.WriteRune(rs[i])
@@ -290,13 +290,13 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			if sc.tick {
 				sc.closes(n, rs, i)
 			} else {
-				sc.opens(n, any, cur.String())
+				sc.opens(n, inWord, cur.String())
 			}
 			sc.tick = !sc.tick
 			flush()
 			sc.sep()
 		case (r == '$' || r == '<' || r == '>') && i+1 < len(rs) && rs[i+1] == '(':
-			sc.opens(n, any, cur.String())
+			sc.opens(n, inWord, cur.String())
 			flush()
 			i++
 			sc.depth++
@@ -310,7 +310,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 				n.ForceAsk = "ANSI-C quoting with a backslash"
 				n.hidden = true
 			}
-		case r == '#' && !any:
+		case r == '#' && !inWord:
 			end := slices.Index(rs[i:], '\n')
 			if end < 0 {
 				end = len(rs) - i
@@ -322,14 +322,14 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 					n.ForceAsk = "comment with a quote or backslash"
 					n.hidden = true
 				}
-				any = true
+				inWord = true
 				cur.WriteRune(r)
 				continue
 			}
 			i += end - 1 // sh passes no comment words
 		case r == '(':
 			// the words of an array (a=(x y)) or arithmetic are no commands
-			if any && strings.HasSuffix(cur.String(), "=") {
+			if inWord && strings.HasSuffix(cur.String(), "=") {
 				n.hidden = true
 			}
 			flush()
@@ -377,7 +377,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 		case r == '>' || r == '<':
 			if isAllDigits(cur.String()) { // the fd of 2>/dev/null is no argument
 				cur.Reset()
-				any = false
+				inWord = false
 			}
 			flush()
 			op, n2 := readRedirectOp(rs, i)
@@ -399,7 +399,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 				sc.toks = append(sc.toks, token{kind: tokRedirect, op: op})
 			}
 		default:
-			any = true
+			inWord = true
 			cur.WriteRune(r)
 		}
 	}

@@ -27,7 +27,7 @@ func FuzzNormalize(f *testing.F) {
 		n.Programs("") // the permission prompt lists them for every command asked about
 		// a command Normalize gates (fail or a forced ask) must never be
 		// allowed through by the full decision path, whatever the rules say
-		s := NewStore()
+		s := new(Store)
 		s.Add(Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow})
 		if (n.Fail != "" || n.ForceAsk != "") && s.CheckCommandFor(SubjectBash, n, "").Decision == Allow {
 			t.Fatalf("gated command allowed: %q (%s %s)", cmd, n.Fail, n.ForceAsk)
@@ -97,7 +97,7 @@ func FuzzEvaluate(f *testing.F) {
 		f.Add(seed[0], seed[1])
 	}
 	f.Fuzz(func(t *testing.T, pat, arg string) {
-		s := NewStore()
+		s := new(Store)
 		s.Add(Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow})
 		s.Add(Rule{Subject: "tool.bash", Pattern: pat, Decision: Deny})
 		if globMatch(pat, arg) && s.Evaluate("tool.bash", arg, "").Decision != Deny {
@@ -123,7 +123,7 @@ func FuzzNotMatch(f *testing.F) {
 		if not == "" {
 			return // an empty NotMatch means "no exclusion", not a matcher
 		}
-		s := NewStore()
+		s := new(Store)
 		s.Add(Rule{Subject: "tool.bash", Pattern: pat, Decision: Allow, NotMatch: not})
 		// an argument matching both pattern and NotMatch must be forced to Ask
 		arg := not

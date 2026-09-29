@@ -81,7 +81,7 @@ func TestResolveSchemaRefs(t *testing.T) {
 // allows it.
 func testPipeline(t *testing.T, overlayAllows bool, rules ...perm.Rule) (*Pipeline, *[]Request) {
 	t.Helper()
-	s := perm.NewStore()
+	s := new(perm.Store)
 	for _, r := range rules {
 		s.Add(r)
 	}

@@ -480,7 +480,7 @@ func (t *PluginTest) mine(path string) bool { return t.h.PluginOf(path) == t.plu
 // own is what of all the plugin registered under name, key naming each
 // entry and whether it is the plugin's; for any other name it raises,
 // listing the plugin's.
-func own[T any](t *PluginTest, L *glua.LState, driver, kind, name string, all []T, key func(T) (string, bool)) T {
+func (t *PluginTest) own[T any](L *glua.LState, driver, kind, name string, all []T, key func(T) (string, bool)) T {
 	var names []string
 	for _, x := range all {
 		if k, ok := key(x); ok && k == name {
@@ -496,7 +496,7 @@ func own[T any](t *PluginTest, L *glua.LState, driver, kind, name string, all []
 
 // command is the plugin's Lua command name, which driver runs.
 func (t *PluginTest) command(L *glua.LState, driver, name string) *Command {
-	return own(t, L, driver, "command", "/"+name, t.h.Commands.List(), func(c *Command) (string, bool) {
+	return t.own(L, driver, "command", "/"+name, t.h.Commands.List(), func(c *Command) (string, bool) {
 		return "/" + c.Name, c.GoFn == nil && t.mine(c.Path)
 	})
 }
@@ -512,7 +512,7 @@ func (t *PluginTest) runCmd(L *glua.LState) int {
 // set is test.set(path, value): one of the plugin's settings changed as the
 // user changes it in /config, its watches firing.
 func (t *PluginTest) set(L *glua.LState) int {
-	s := own(t, L, "set", "setting", L.CheckString(1), t.h.Settings.Schema(), func(s config.Setting) (string, bool) {
+	s := t.own(L, "set", "setting", L.CheckString(1), t.h.Settings.Schema(), func(s config.Setting) (string, bool) {
 		return s.Path, strings.HasPrefix(s.Path, "plugins."+t.plugin+".")
 	})
 	v := luaToGoChecked(L, 2, "test.set")
@@ -529,7 +529,7 @@ func (t *PluginTest) keys(L *glua.LState) int {
 	if err != nil {
 		raise(L, "test.keys: %v", err)
 	}
-	b := own(t, L, "keys", "Lua key binding", seq, t.h.Keymaps.List(), func(k *KeyBinding) (string, bool) {
+	b := t.own(L, "keys", "Lua key binding", seq, t.h.Keymaps.List(), func(k *KeyBinding) (string, bool) {
 		c := t.h.Commands.Lookup(k.RHS.Command)
 		return k.Key, k.Focus == "" && t.mine(k.Path) && k.RHS.API == "" && (k.RHS.Command == "" || c != nil && c.GoFn == nil && t.mine(c.Path))
 	})
@@ -543,7 +543,7 @@ func (t *PluginTest) keys(L *glua.LState) int {
 func (t *PluginTest) tool(L *glua.LState) int {
 	name := L.CheckString(1)
 	input := luaToGoChecked(L, 2, "test.tool")
-	lt := own(t, L, "tool", "tool", name, t.h.luaTools.list(), func(x *luaTool) (string, bool) { return x.Name, t.mine(x.Path) })
+	lt := t.own(L, "tool", "tool", name, t.h.luaTools.list(), func(x *luaTool) (string, bool) { return x.Name, t.mine(x.Path) })
 	if input == nil {
 		input = map[string]any{}
 	}
@@ -563,7 +563,7 @@ func (t *PluginTest) tool(L *glua.LState) int {
 }
 
 func (t *PluginTest) widget(L *glua.LState, driver string) *Widget {
-	return own(t, L, driver, "widget", L.CheckString(1), t.h.Widgets.List(), func(w *Widget) (string, bool) { return w.ID, t.mine(w.Path) })
+	return t.own(L, driver, "widget", L.CheckString(1), t.h.Widgets.List(), func(w *Widget) (string, bool) { return w.ID, t.mine(w.Path) })
 }
 
 // render is test.render(id [, ctx]): the widget's lines as text, then as
@@ -635,7 +635,7 @@ func (t *PluginTest) emit(L *glua.LState) int {
 		}
 		return slices.DeleteFunc(hs, func(hd *EventHandler) bool { return !t.mine(hd.Path) })
 	}
-	own(t, L, "emit", "handled event", name, slices.Sorted(maps.Keys(eventCatalogue)), func(e string) (string, bool) { return e, len(handlers(e)) > 0 })
+	t.own(L, "emit", "handled event", name, slices.Sorted(maps.Keys(eventCatalogue)), func(e string) (string, bool) { return e, len(handlers(e)) > 0 })
 	hs := handlers(name)
 	input, _ := ev["input"].(map[string]any)
 	return t.drive(L, "emit", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
@@ -789,7 +789,7 @@ func (t *PluginTest) complete(L *glua.LState) int {
 		srcs := slices.Clone(t.h.completions.list)
 		t.h.completions.mu.Unlock()
 		r, size := utf8.DecodeRuneInString(lead)
-		trigger = own(t, L, "complete", "completion trigger", string(r), srcs, func(s completionSource) (string, bool) {
+		trigger = t.own(L, "complete", "completion trigger", string(r), srcs, func(s completionSource) (string, bool) {
 			return s.trigger, s.trigger != "" && t.mine(s.path)
 		}).trigger
 		lead = lead[size:]

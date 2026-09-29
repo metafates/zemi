@@ -369,7 +369,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.permission.mode.add: base must be auto or yolo")
 		}
 		if rules, ok := opt[*glua.LTable](L, spec, "rules"); ok {
-			def.Rules = perm.NewStore()
+			def.Rules = new(perm.Store)
 			var bad string
 			rules.ForEach(func(_, v glua.LValue) {
 				rt, ok := v.(*glua.LTable)

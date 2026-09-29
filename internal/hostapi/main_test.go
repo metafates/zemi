@@ -16,5 +16,5 @@ func TestMain(m *testing.M) {
 		lsptest.Serve(os.Stdin, os.Stdout)
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	m.Run()
 }

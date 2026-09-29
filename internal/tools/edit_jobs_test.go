@@ -297,7 +297,7 @@ func TestFileToolsSymlinkRace(t *testing.T) {
 	t.Parallel()
 	proj, outside := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
 	os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0o600)
-	s := perm.NewStore()
+	s := new(perm.Store)
 	s.Default = func(subject, arg string) perm.Decision {
 		if strings.HasPrefix(perm.RealPath(arg), proj+string(filepath.Separator)) {
 			return perm.Allow

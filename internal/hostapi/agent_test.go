@@ -1260,7 +1260,7 @@ func TestAlwaysChoice(t *testing.T) {
 	}
 	// a whole-command rule lets the next run differ in its arguments
 	_, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "ls -la"})
-	s := perm.NewStore()
+	s := new(perm.Store)
 	for _, r := range rules {
 		s.Add(r)
 	}
@@ -1269,7 +1269,7 @@ func TestAlwaysChoice(t *testing.T) {
 	}
 	// a deleter's exact rule does not cover another target
 	_, del := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"})
-	s2 := perm.NewStore()
+	s2 := new(perm.Store)
 	for _, r := range del {
 		s2.Add(r)
 	}

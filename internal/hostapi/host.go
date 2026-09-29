@@ -603,7 +603,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		session:   &Session{Title: "zemi", CWD: dirs.ProjectDir},
 		watches:   newWatchReg(),
 		Providers: agent.NewRegistry(),
-		Perm:      perm.NewStore(),
+		Perm:      new(perm.Store),
 		agents:    newAgentHost(),
 		luaTools:  newToolReg(),
 		stops:     newStopReg(),
