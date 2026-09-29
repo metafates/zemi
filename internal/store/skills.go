@@ -7,7 +7,6 @@ package store
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 )
 
@@ -32,12 +31,7 @@ func scanSkill(row scanner) (*Skill, error) {
 
 // GetSkill returns one skill row by name.
 func (s *DB) GetSkill(name string) (*Skill, error) {
-	row := s.db.QueryRow(`SELECT name, path, source, enabled, created_at FROM skills WHERE name = ?`, name)
-	sk, err := scanSkill(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	return sk, err
+	return one(s.db.QueryRow(`SELECT name, path, source, enabled, created_at FROM skills WHERE name = ?`, name), scanSkill)
 }
 
 // ListSkills returns all skill rows ordered by name.
@@ -61,23 +55,18 @@ func (s *DB) SyncSkills(discovered []*Skill) (err error) {
 			err = fmt.Errorf("store: sync skills: %w", err)
 		}
 	}()
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	names := make([]string, len(discovered))
-	for i, sk := range discovered {
-		names[i] = sk.Name
-		if _, err := tx.Exec(`INSERT INTO skills (name, path, source, enabled, created_at)
-			VALUES (?, ?, ?, 1, ?)
-			ON CONFLICT(name) DO UPDATE SET path = excluded.path, source = excluded.source`,
-			sk.Name, sk.Path, sk.Source, now()); err != nil {
-			return err
+	return s.inTx(func(tx *sql.Tx) error {
+		names := make([]string, len(discovered))
+		for i, sk := range discovered {
+			names[i] = sk.Name
+			if _, err := tx.Exec(`INSERT INTO skills (name, path, source, enabled, created_at)
+				VALUES (?, ?, ?, 1, ?)
+				ON CONFLICT(name) DO UPDATE SET path = excluded.path, source = excluded.source`,
+				sk.Name, sk.Path, sk.Source, now()); err != nil {
+				return err
+			}
 		}
-	}
-	if _, err := tx.Exec(`DELETE FROM skills WHERE name NOT IN (SELECT value FROM json_each(?))`, jsonList(names)); err != nil {
+		_, err := tx.Exec(`DELETE FROM skills WHERE name NOT IN (SELECT value FROM json_each(?))`, jsonList(names))
 		return err
-	}
-	return tx.Commit()
+	})
 }

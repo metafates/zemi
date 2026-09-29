@@ -51,23 +51,13 @@ func scanSession(row scanner) (*Session, error) {
 
 // GetSession loads one session by id.
 func (s *DB) GetSession(id string) (*Session, error) {
-	row := s.db.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE id = ?`, id)
-	sess, err := scanSession(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	return sess, err
+	return one(s.db.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE id = ?`, id), scanSession)
 }
 
 // FindSession loads the session whose id starts with prefix: a subagent
 // run's id heads its child session's id.
 func (s *DB) FindSession(prefix string) (*Session, error) {
-	row := s.db.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE substr(id, 1, ?) = ? LIMIT 1`, len(prefix), prefix)
-	sess, err := scanSession(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	return sess, err
+	return one(s.db.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE substr(id, 1, ?) = ? LIMIT 1`, len(prefix), prefix), scanSession)
 }
 
 // ListSessions returns top-level sessions (subagent runs excluded) ordered
@@ -158,18 +148,15 @@ func (s *DB) AddMessage(m *Message) error { return insertMessage(s.db, m) }
 // that follow it in one transaction: a crash partway would leave a resumed
 // conversation missing the tail.
 func (s *DB) AddCompaction(sessionID string, summary *Message, tail []*Message) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for _, m := range append([]*Message{summary}, tail...) {
-		m.SessionID = sessionID
-		if err := insertMessage(tx, m); err != nil {
-			return err
+	return s.inTx(func(tx *sql.Tx) error {
+		for _, m := range append([]*Message{summary}, tail...) {
+			m.SessionID = sessionID
+			if err := insertMessage(tx, m); err != nil {
+				return err
+			}
 		}
-	}
-	return tx.Commit()
+		return nil
+	})
 }
 
 // ForkSession copies src into a new top-level session id: its messages
@@ -218,49 +205,43 @@ func (s *DB) ForkSession(src *Session, id, title string) (err error) {
 		return err
 	}
 	// every row is read before the transaction: one connection serves both
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	t := now()
-	if _, err := tx.Exec(`INSERT INTO sessions (id, title, profile, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		id, title, src.Profile, t, t); err != nil {
-		return err
-	}
-	ids := make(map[string]string, len(msgs))
-	for _, m := range msgs {
-		copied := &Message{SessionID: id, Role: m.Role, PartsJSON: m.PartsJSON, CreatedAt: m.CreatedAt}
-		if err := insertMessage(tx, copied); err != nil {
+	return s.inTx(func(tx *sql.Tx) error {
+		t := now()
+		if _, err := tx.Exec(`INSERT INTO sessions (id, title, profile, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+			id, title, src.Profile, t, t); err != nil {
 			return err
 		}
-		ids[m.ID] = copied.ID
-	}
-	for _, c := range cps {
-		if mid, ok := ids[c.mid]; ok {
-			if _, err := tx.Exec(`INSERT INTO checkpoints (message_id, session_id, path, existed, link, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				mid, id, c.Path, c.Existed, c.Link, c.Content, t); err != nil {
+		ids := make(map[string]string, len(msgs))
+		for _, m := range msgs {
+			copied := &Message{SessionID: id, Role: m.Role, PartsJSON: m.PartsJSON, CreatedAt: m.CreatedAt}
+			if err := insertMessage(tx, copied); err != nil {
+				return err
+			}
+			ids[m.ID] = copied.ID
+		}
+		for _, c := range cps {
+			if mid, ok := ids[c.mid]; ok {
+				if _, err := tx.Exec(`INSERT INTO checkpoints (message_id, session_id, path, existed, link, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+					mid, id, c.Path, c.Existed, c.Link, c.Content, t); err != nil {
+					return err
+				}
+			}
+		}
+		for _, c := range calls {
+			mid, ok := ids[c.MessageID]
+			if !ok && len(msgs) > 0 {
+				mid = ids[msgs[0].ID]
+			}
+			if mid == "" {
+				continue
+			}
+			if _, err := tx.Exec(`INSERT INTO tool_calls (message_id, tool, ok, created_at) VALUES (?, ?, ?, ?)`,
+				mid, c.Tool, c.OK, c.at); err != nil {
 				return err
 			}
 		}
-	}
-	for _, c := range calls {
-		mid, ok := ids[c.MessageID]
-		if !ok && len(msgs) > 0 {
-			mid = ids[msgs[0].ID]
-		}
-		if mid == "" {
-			continue
-		}
-		if _, err := tx.Exec(`INSERT INTO tool_calls (message_id, tool, ok, created_at) VALUES (?, ?, ?, ?)`,
-			mid, c.Tool, c.OK, c.at); err != nil {
-			return err
-		}
-	}
-	if err := setTodos(tx, id, todos); err != nil {
-		return err
-	}
-	return tx.Commit()
+		return setTodos(tx, id, todos)
+	})
 }
 
 // Messages returns a session's messages in insertion order: rowid, since a
@@ -268,10 +249,12 @@ func (s *DB) ForkSession(src *Session, id, title string) (err error) {
 func (s *DB) Messages(sessionID string) ([]*Message, error) {
 	rows, err := s.db.Query(`SELECT id, session_id, role, parts_json, created_at
 		FROM messages WHERE session_id = ? ORDER BY rowid`, sessionID)
-	return collect(rows, err, func(r scanner) (*Message, error) {
-		var m Message
-		return &m, r.Scan(&m.ID, &m.SessionID, &m.Role, &m.PartsJSON, &m.CreatedAt)
-	})
+	return collect(rows, err, scanMessage)
+}
+
+func scanMessage(r scanner) (*Message, error) {
+	var m Message
+	return &m, r.Scan(&m.ID, &m.SessionID, &m.Role, &m.PartsJSON, &m.CreatedAt)
 }
 
 // MessageCount is how many rows Messages would return, tool telemetry
@@ -291,10 +274,7 @@ func (s *DB) UserMessages(limit int) ([]*Message, error) {
 		FROM messages WHERE role = 'user'
 		AND session_id IN (SELECT id FROM sessions WHERE COALESCE(parent_id, '') = '')
 		ORDER BY rowid DESC LIMIT ?`, limit)
-	return collect(rows, err, func(r scanner) (*Message, error) {
-		var m Message
-		return &m, r.Scan(&m.ID, &m.SessionID, &m.Role, &m.PartsJSON, &m.CreatedAt)
-	})
+	return collect(rows, err, scanMessage)
 }
 
 // SessionPreview is what the session picker shows besides the title: how
@@ -352,15 +332,7 @@ type Todo struct {
 
 // SetTodos replaces a session's todo list.
 func (s *DB) SetTodos(sessionID string, todos []Todo) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err := setTodos(tx, sessionID, todos); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return s.inTx(func(tx *sql.Tx) error { return setTodos(tx, sessionID, todos) })
 }
 
 func setTodos(tx *sql.Tx, sessionID string, todos []Todo) error {
@@ -400,20 +372,17 @@ type ToolCall struct {
 // points at, in one transaction: a telemetry row that fails to land after
 // its message leaves an orphan and the reflector's counts short.
 func (s *DB) AddToolCall(m *Message, tc *ToolCall) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err := insertMessage(tx, m); err != nil {
-		return err
-	}
-	tc.MessageID = m.ID
-	if _, err := tx.Exec(`INSERT INTO tool_calls (message_id, tool, ok, created_at) VALUES (?, ?, ?, ?)`,
-		tc.MessageID, tc.Tool, tc.OK, now()); err != nil {
-		return fmt.Errorf("store: add tool call: %w", err)
-	}
-	return tx.Commit()
+	return s.inTx(func(tx *sql.Tx) error {
+		if err := insertMessage(tx, m); err != nil {
+			return err
+		}
+		tc.MessageID = m.ID
+		if _, err := tx.Exec(`INSERT INTO tool_calls (message_id, tool, ok, created_at) VALUES (?, ?, ?, ?)`,
+			tc.MessageID, tc.Tool, tc.OK, now()); err != nil {
+			return fmt.Errorf("store: add tool call: %w", err)
+		}
+		return nil
+	})
 }
 
 // ToolStat is one per-tool aggregate over a session's tool calls.
@@ -440,12 +409,7 @@ func (s *DB) ToolCallStats(sessionID, afterID string) ([]ToolStat, error) {
 
 // GetKV loads a json value by key; ErrNotFound when absent.
 func (s *DB) GetKV(key string) (string, error) {
-	var v string
-	err := s.db.QueryRow(`SELECT value_json FROM kv WHERE key = ?`, key).Scan(&v)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrNotFound
-	}
-	return v, err
+	return one(s.db.QueryRow(`SELECT value_json FROM kv WHERE key = ?`, key), scanString)
 }
 
 // SetKV writes a json value by key.
@@ -461,45 +425,27 @@ func (s *DB) SetKV(key, valueJSON string) error {
 // processes (SQLite serializes writers), so it is the primitive a
 // cross-process claim uses: two processes claiming the same key, one wins.
 func (s *DB) SetKVOnce(key, valueJSON string) (bool, error) {
-	res, err := s.db.Exec(`INSERT INTO kv (key, value_json, updated_at) VALUES (?, ?, ?)
+	return s.changed(`INSERT INTO kv (key, value_json, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(key) DO NOTHING`, key, valueJSON, now())
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n > 0, err
 }
 
 // ReclaimKVIfStale overwrites key when its updated_at is older than
 // olderThan, in one statement; it reports whether it did. The lease an
 // owner that crashed leaves behind is reclaimed this way.
 func (s *DB) ReclaimKVIfStale(key, valueJSON string, olderThan int64) (bool, error) {
-	res, err := s.db.Exec(`UPDATE kv SET value_json = ?, updated_at = ? WHERE key = ? AND updated_at < ?`,
+	return s.changed(`UPDATE kv SET value_json = ?, updated_at = ? WHERE key = ? AND updated_at < ?`,
 		valueJSON, now(), key, olderThan)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n > 0, err
 }
 
 // DelKV drops a key, reporting whether there was one.
 func (s *DB) DelKV(key string) (bool, error) {
-	res, err := s.db.Exec(`DELETE FROM kv WHERE key = ?`, key)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n > 0, err
+	return s.changed(`DELETE FROM kv WHERE key = ?`, key)
 }
 
 // KeysKV lists the keys with a prefix, sorted.
 func (s *DB) KeysKV(prefix string) ([]string, error) {
 	rows, err := s.db.Query(`SELECT key FROM kv WHERE key LIKE ? ESCAPE '\' ORDER BY key`, likePrefix(prefix))
-	return collect(rows, err, func(r scanner) (k string, err error) {
-		err = r.Scan(&k)
-		return k, err
-	})
+	return collect(rows, err, scanString)
 }
 
 // likePrefix escapes a LIKE prefix, so a key holding % or _ matches itself.

@@ -5,7 +5,6 @@
 package store
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 )
@@ -86,12 +85,7 @@ func (s *DB) AddMemory(m *Memory) error {
 
 // GetMemory loads one memory by id, superseded or not.
 func (s *DB) GetMemory(id string) (*Memory, error) {
-	row := s.db.QueryRow(`SELECT `+memoryCols+` FROM memory WHERE id = ?`, id)
-	m, err := scanMemory(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	return m, err
+	return one(s.db.QueryRow(`SELECT `+memoryCols+` FROM memory WHERE id = ?`, id), scanMemory)
 }
 
 // ListMemory returns a scope's memories, newest first; superseded rows are
@@ -130,10 +124,7 @@ func (s *DB) DeleteLearnedBetween(sessionID string, from, until int64) ([]string
 	defer s.memGen.Add(1)
 	rows, err := s.db.Query(`DELETE FROM memory WHERE origin = 'learned'
 		AND provenance_session_id = ? AND created_at BETWEEN ? AND ? RETURNING id`, sessionID, from, until)
-	return collect(rows, err, func(r scanner) (id string, err error) {
-		err = r.Scan(&id)
-		return id, err
-	})
+	return collect(rows, err, scanString)
 }
 
 // Unsupersede makes the memories ids replaced live again.

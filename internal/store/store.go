@@ -120,7 +120,7 @@ func ClaimForDelete(path string) (sessions []string, release func(), err error) 
 	}
 	if err == nil {
 		rows, qerr := d.Query(`SELECT id FROM sessions`)
-		sessions, err = collect(rows, qerr, func(r scanner) (id string, err error) { return id, r.Scan(&id) })
+		sessions, err = collect(rows, qerr, scanString)
 	}
 	if e, ok := errors.AsType[*sqlite.Error](err); ok && e.Code()&0xff == sqlite3.SQLITE_BUSY {
 		d.Close()
@@ -360,16 +360,53 @@ func collect[T any](rows *sql.Rows, err error, scan func(scanner) (T, error)) ([
 	return out, rows.Err()
 }
 
+// one scans a single row; no row is ErrNotFound.
+func one[T any](row *sql.Row, scan func(scanner) (T, error)) (T, error) {
+	v, err := scan(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrNotFound
+	}
+	return v, err
+}
+
+func scanString(r scanner) (s string, err error) {
+	err = r.Scan(&s)
+	return s, err
+}
+
+// changed runs a write and reports whether it touched a row.
+func (s *DB) changed(query string, args ...any) (bool, error) {
+	res, err := s.db.Exec(query, args...)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // execOne runs an update or delete of one row by key; no match is ErrNotFound.
 func (s *DB) execOne(what, query string, args ...any) error {
-	res, err := s.db.Exec(query, args...)
+	ok, err := s.changed(query, args...)
 	if err != nil {
 		return fmt.Errorf("store: %s: %w", what, err)
 	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
+	if !ok {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// inTx runs fn in one transaction, committed when fn returns nil.
+func (s *DB) inTx(fn func(*sql.Tx) error) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ProjectDBPath is the per-project database location: a hash of the
