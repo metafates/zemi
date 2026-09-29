@@ -115,7 +115,7 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 	}{
 		{
 			"planner writes the project", "touch: PROJ/a: Operation not permitted", true, false, false, false, false,
-			"the project is read-only while planning; describe the change in the plan.",
+			"the project is read-only to this agent; describe the change instead of making it.",
 		},
 		{
 			"network already given", network, false, false, true, false, false,

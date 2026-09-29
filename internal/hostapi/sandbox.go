@@ -235,7 +235,7 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 		}
 		b.WriteString("; git commands that change .git " + ask + ".\n")
 	case readOnly:
-		fmt.Fprintf(&b, "- They write only %s: the project is read-only while planning.\n", pol.WriteNames(d.ProjectDir))
+		fmt.Fprintf(&b, "- They write only %s: the project is read-only to this agent.\n", pol.WriteNames(d.ProjectDir))
 	default:
 		fmt.Fprintf(&b, "- They write only %s: the project is read-only to them.\n", pol.WriteNames(d.ProjectDir))
 	}

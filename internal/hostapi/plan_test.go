@@ -36,7 +36,7 @@ func TestPlanMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	// the reason says what the planner can do; it cannot pick another agent
-	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Deny || v.DecidedBy != "profile:readonly" || !strings.HasPrefix(v.Reason, "the user is planning: describe") {
+	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Deny || v.DecidedBy != tools.ByReadOnly || !strings.HasPrefix(v.Reason, "describe the change") {
 		t.Fatalf("read-only write = %v by %s: %s", v.Decision, v.DecidedBy, v.Reason)
 	}
 	if v := check("tool.bash", "make deploy"); v.Decision != perm.Ask {
@@ -48,7 +48,7 @@ func TestPlanMode(t *testing.T) {
 		h.Settings.SetQuiet("permissions.mode", mode)
 		pipe := h.PipelineFor()
 		pipe.Ask = func(tools.Request) (bool, string, string) { return true, "user", "" }
-		if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "make deploy", Unsandboxed: true}); v.Decision != perm.Deny || v.DecidedBy != "profile:readonly" {
+		if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "make deploy", Unsandboxed: true}); v.Decision != perm.Deny || v.DecidedBy != tools.ByReadOnly {
 			t.Fatalf("%s: sandbox: false for a planner = %v by %s: %s", mode, v.Decision, v.DecidedBy, v.Reason)
 		}
 	}

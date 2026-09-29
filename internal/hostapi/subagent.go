@@ -425,13 +425,16 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 }
 
 func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool) string {
-	read := ""
+	read, readOnly := "", ""
 	if hasTool(toolset, tools.ToolRead) {
 		read = readPrompt
 	}
+	if def.ReadOnly {
+		readOnly = "\n\nYou are read-only: you change no project file, only files in the scratchpad, and commands run with the project unwritable. Report a change instead of making it."
+	}
 	return "You are " + def.Name + ", a subagent of zemi. The caller sees only your final message, not your work:" +
 		" end with a complete, concise report of what it needs, citing path:line where it matters," +
-		" and say plainly what you did not find or could not verify.\n\n" + def.System +
+		" and say plainly what you did not find or could not verify.\n\n" + def.System + readOnly +
 		"\n\n# Using tools\n" + batchPrompt + read + "\n" + toolRules
 }
 

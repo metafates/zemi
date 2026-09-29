@@ -158,7 +158,7 @@ const (
 	ByDefault  = "default"
 	ByNobody   = "nobody" // an ask with no UI to answer it (zemi run)
 	ByUser     = "user"
-	ByReadOnly = "profile:readonly"
+	ByReadOnly = "read-only agent"
 	modePrefix = "mode:"
 	// ByRecheck is an asker's answer that the request's Recheck now settles;
 	// the pipeline returns that verdict whole, its Rule included
@@ -397,12 +397,12 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	pad := req.InPad()
 	if plan && req.Subject == perm.SubjectWrite && !pad {
-		return Verdict{Decision: perm.Deny, Reason: "the user is planning: describe this change in the plan instead of making it", DecidedBy: ByReadOnly}
+		return Verdict{Decision: perm.Deny, Reason: "describe the change instead of making it", DecidedBy: ByReadOnly}
 	}
 	// read-only holds under every mode: yolo would settle the escape and
 	// run the command unconfined, with the project writable
 	if plan && req.Subject == perm.SubjectBash && req.Unsandboxed {
-		return Verdict{Decision: perm.Deny, Reason: "the user is planning: commands stay in the sandbox, which keeps the project read-only", DecidedBy: ByReadOnly}
+		return Verdict{Decision: perm.Deny, Reason: "commands stay in the sandbox, which keeps the project read-only", DecidedBy: ByReadOnly}
 	}
 	// rule is the one that allowed the request, nil when a default did
 	loosen := func(v Verdict, rule *perm.Rule) Verdict {
@@ -535,7 +535,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	line := "a limit may have stopped it (Sandbox in the system prompt lists them)"
 	switch {
 	case plan && has(func(l limit) bool { _, in := perm.Under(project, l.path); return in && l.kind != hidden }):
-		return "\nSandbox: the project is read-only while planning; describe the change in the plan." + or(net && netFail, " network: true adds the network (needs approval).")
+		return "\nSandbox: the project is read-only to this agent; describe the change instead of making it." + or(net && netFail, " network: true adds the network (needs approval).")
 	case pol.Network && netFail:
 		line = "it had the network already" + or(all, "; sandbox: false drops every limit (needs approval)")
 	case netFail:

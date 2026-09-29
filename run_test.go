@@ -236,7 +236,7 @@ func TestRunHeadless(t *testing.T) {
 			if err := h.SetProfile("planner"); err != nil {
 				t.Fatal(err)
 			}
-		}, stderr: "permission denied (profile:readonly)", notErr: "nobody could answer"},
+		}, stderr: "permission denied (read-only agent)", notErr: "nobody could answer"},
 		{
 			name: "a subagent's unanswered ask is named", prompt: `call agent {"agent":"general","description":"d","prompt":"call write {\"path\":\"zz.txt\",\"content\":\"x\"}"}`,
 			stderr: "zemi: 1 ask nobody could answer in a headless run:\n  write  ", denied: 1,

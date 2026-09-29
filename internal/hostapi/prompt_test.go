@@ -74,6 +74,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defs := append(slices.Clone(builtinAgents), AgentDef{Name: "reviewer", ReadOnly: true})
 	for _, c := range []struct {
 		name string
 		p    *Profile
@@ -86,7 +87,9 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		// subagents: explore reads and searches, and writes nothing; general
 		// is told its own directory in its task (TestSubagentOwnDir)
 		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "reading them needs no approval", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, []string{"Keep notes", "Keep temporary files", "keep your own files", "read for edit"}, nil},
-		{"general", &Profile{Name: "general"}, []string{"Scratchpad: " + pad, "It is $TMPDIR in every command you run"}, []string{"keep your own files"}, nil},
+		{"general", &Profile{Name: "general"}, []string{"Scratchpad: " + pad, "It is $TMPDIR in every command you run"}, []string{"keep your own files", "You are read-only"}, nil},
+		// an agent file's read_only keeps its tools and is told what they can do
+		{"reviewer", &Profile{Name: "reviewer"}, []string{"You are read-only"}, nil, nil},
 		{
 			"lean", lean,
 			[]string{"offset and limit", `"read"`, `"edit"`, `"job_read"`, `"job_kill"`},
@@ -100,10 +103,10 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	} {
 		toolset := h.profileTools(c.p)
 		text, _ := h.buildSystemParts(c.p, toolset)
-		if i := slices.IndexFunc(builtinAgents, func(d AgentDef) bool { return d.Name == c.name }); i >= 0 {
-			def := builtinAgents[i]
+		if i := slices.IndexFunc(defs, func(d AgentDef) bool { return d.Name == c.name }); i >= 0 {
+			def := defs[i]
 			toolset, _ = filterTools(tools.All(h.PipelineFor()), def.Tools, h.toolSkip(subagentExcluded))
-			text = h.systemWith(h.subagentSystem(def, toolset), toolset, h.ScratchDir(), false)
+			text = h.systemWith(h.subagentSystem(def, toolset), toolset, h.ScratchDir(), def.ReadOnly)
 		}
 		for _, tool := range toolset {
 			text += fmt.Sprintf("\n%q %s", tool.Info().Name, tool.Info().Description)

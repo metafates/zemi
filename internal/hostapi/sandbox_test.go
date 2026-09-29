@@ -636,9 +636,9 @@ func TestSandboxPrompt(t *testing.T) {
 			"Hidden from them: zemi's own dirs (", "Read zemi's files with the read tool.",
 			"secret-shaped files (.env, *.pem, *.key), in $TMPDIR too",
 			"Network: localhost only. network: true adds the network, sandbox: false drops every limit",
-		}, []string{"read-only while planning"}},
-		{"planning", true, true, true, true, []string{
-			"They write only $TMPDIR and $GOCACHE: the project is read-only while planning.\n",
+		}, []string{"read-only to this agent"}},
+		{"read-only agent", true, true, true, true, []string{
+			"They write only $TMPDIR and $GOCACHE: the project is read-only to this agent.\n",
 			"network: true adds the network (needs approval).",
 		}, []string{"sandbox: false", ".git and .agents"}},
 		{"nobody to approve", true, true, false, false, []string{"Nobody can approve more in this run.", "change .git need the user's approval, which nobody can give"}, []string{"sandbox: false", "network: true", "ask first"}},
