@@ -318,7 +318,8 @@ func pluginsCommand() *cobra.Command {
 	run := func(c *cobra.Command, args []string) error {
 		// asked before the signal context, so ctrl+c at the prompt ends zemi
 		if c.Name() == "delete" && !yes && !confirm(c, "Delete the plugin "+args[0]+" and its files?") {
-			return exitError(1)
+			fmt.Fprintf(c.ErrOrStderr(), "zemi: kept the plugin %s\n", args[0]) // a declined prompt, as rm -i: not a failure
+			return nil
 		}
 		ctx, stop := signalContext()
 		defer stop()
