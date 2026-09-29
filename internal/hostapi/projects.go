@@ -158,7 +158,7 @@ func (h *Host) projectsCommand(line string) error {
 	ui, noUI := h.Screen()
 	if verb == "" {
 		if noUI != nil {
-			return noUI
+			return fmt.Errorf("%w; zemi projects lists them", noUI)
 		}
 		h.GoSafe("projects", func() { h.openProjects(ui, false, "") })
 		return nil

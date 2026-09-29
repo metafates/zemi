@@ -183,7 +183,7 @@ and stderr lists them at the end.`,
 		},
 	}
 
-	root.AddCommand(run, sessionsCommand(), pluginsCommand(), modelsCommand(), health)
+	root.AddCommand(run, sessionsCommand(), projectsCommand(), pluginsCommand(), modelsCommand(), health)
 	return root
 }
 
@@ -440,6 +440,34 @@ func sessionsCommand() *cobra.Command {
 	export.Flags().BoolVar(&full, "full", false, "add reasoning, every tool call expanded and the agent runs")
 	cmd.AddCommand(export)
 	return cmd
+}
+
+// projectsCommand is zemi projects: one line per project, the path last and
+// absolute at column 36, so cut -c36- hands it to zemi -C.
+func projectsCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "projects",
+		Short: "list the projects zemi keeps state for, last opened first",
+		Args:  cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			dirs, err := config.ResolveDirs()
+			if err != nil {
+				return err
+			}
+			ps := hostapi.ListProjects(dirs, true)
+			if len(ps) == 0 {
+				fmt.Fprintln(c.ErrOrStderr(), "zemi: no projects yet")
+			}
+			for _, p := range ps {
+				opened := "-"
+				if !p.Opened.IsZero() {
+					opened = p.Opened.Format(hostapi.StampLayout)
+				}
+				fmt.Fprintf(c.OutOrStdout(), "%-16s  %-9s  %4d  %s\n", opened, p.TrustWord(), p.Sessions, p.Root)
+			}
+			return nil
+		},
+	}
 }
 
 func modelsCommand() *cobra.Command {

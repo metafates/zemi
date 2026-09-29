@@ -101,7 +101,8 @@ or settled builds.
 The command line is a cobra tree (`execute`): `zemi` opens the TUI, `zemi run` answers one
 prompt on stdout, and `sessions` (and `sessions export [--full] <id>`, `hostapi.SessionMarkdown` on
 stdout, `--full` as `/export full`; `projectStore` opens the store through `store.OpenRead`, which creates, migrates and
-sweeps nothing and takes no lock a running zemi waits on), `models` (and `models update`),
+sweeps nothing and takes no lock a running zemi waits on), `projects` (`hostapi.ListProjects` with its
+stores read the same way, one line each, the absolute root at column 36 for `cut -c36-`), `models` (and `models update`),
 `plugins`, `health`, cobra's `completion` and `help` are subcommands, each declaring its
 `Args` (cobra checks positionals only on the root). A prompt argument is sent as
 the first message, or run as a command when it names one (`Host.SendPrompt`, TUI and `zemi run`

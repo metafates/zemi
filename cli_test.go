@@ -57,10 +57,11 @@ func TestCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot())
-	db, err := store.Open(path)
+	global, db, err := store.OpenForDirs(dirs.StateHome, dirs.TrustRoot())
 	if err != nil {
 		t.Fatal(err)
 	}
+	global.Close()
 	if err := db.CreateSession(sid, "", "fix the failing test", "default"); err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +111,8 @@ func TestCLI(t *testing.T) {
 		{name: "export prints markdown", args: []string{"sessions", "export", sid}, stdout: "# fix the failing test\n"},
 		{name: "export full", args: []string{"sessions", "export", "--full", sid}, stdout: "# fix the failing test\n"},
 		{name: "no store, no sessions", args: []string{"-C", dir, "sessions"}, stderr: "zemi: no sessions in "},
+		// the path at column 36, for cut -c36-
+		{name: "projects lists", args: []string{"projects"}, stdout: "  undecided     1  " + dirs.TrustRoot() + "\n"},
 		{name: "plugins arity", args: []string{"plugins", "enable"}, code: 2},
 		{name: "delete off a terminal", args: []string{"plugins", "delete", "zzq"}, code: 2, stderr: "pass --yes to delete zzq"},
 		{name: "plugins lists", args: []string{"plugins"}, stdout: "zzq"},
