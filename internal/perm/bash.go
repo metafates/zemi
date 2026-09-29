@@ -383,7 +383,11 @@ type walker struct {
 	memo map[string]Normalized
 }
 
-// inner is Normalize(text) for a body inside the command, read once per
+// readBoth reads a body handed to a shell (sh -c, eval) as bash and as
+// POSIX sh, since that shell may be bash whatever runs the command.
+func readBoth(text string) Normalized { return normalizeAll(text, false, map[string]Normalized{}) }
+
+// inner is readBoth(text) for a body inside the command, read once per
 // top-level call however many readings reach it.
 func (w *walker) inner(text string) Normalized {
 	n, ok := w.memo[text]

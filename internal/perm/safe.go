@@ -820,7 +820,7 @@ func (n Normalized) GitWrites() string {
 	}
 	for _, f := range n.Args {
 		for _, body := range shellBodies(f) {
-			if why := Normalize(body).GitWrites(); why != "" {
+			if why := readBoth(body).GitWrites(); why != "" {
 				return why
 			}
 		}
@@ -978,7 +978,7 @@ func (n Normalized) destructive(repeated bool, pad string) string {
 		f := r.args
 		repeated := repeated || r.loop
 		for _, body := range shellBodies(f) {
-			if why := Normalize(body).destructive(repeated || len(f) > 0 && repeats(f[0]), ""); why != "" {
+			if why := readBoth(body).destructive(repeated || len(f) > 0 && repeats(f[0]), ""); why != "" {
 				return why
 			}
 		}
@@ -989,7 +989,7 @@ func (n Normalized) destructive(repeated bool, pad string) string {
 			name, rest := ProgramName(w), f[i+1:]
 			switch {
 			case name == "eval":
-				if why := Normalize(strings.Join(rest, " ")).destructive(repeated, ""); why != "" {
+				if why := readBoth(strings.Join(rest, " ")).destructive(repeated, ""); why != "" {
 					return why
 				}
 				continue
@@ -1103,7 +1103,7 @@ func segmentPrograms(f []string) (_ []Program, ok bool) {
 			if !ok {
 				return append(out, Program{Name: base, Risk: RiskCode}), true
 			}
-			inner := Normalize(body).Programs("")
+			inner := readBoth(body).Programs("")
 			if inner == nil {
 				return nil, false
 			}

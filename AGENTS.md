@@ -333,7 +333,8 @@ bash-only syntax models write most, `posixForms`), as do `$'..'` (dash versions 
 `[[` and `source`. A failed parse, in either reading, is the bash and `job_start` tools' result
 before the gate (`bashRequests`, which hands the parse on in `Request.cmd`): the reason alone, no
 ask and no permission verdict. Where it is sh, which may be bash, and for every body another shell runs, the
-text is parsed as bash and as POSIX sh (`normalizeAll` with `dash` false) and every command either
+text is parsed as bash and as POSIX sh (`readBoth`, also for the body a runner such as `xargs` or
+`sudo` hands a shell) and every command either
 reading runs is judged; text either shell reads otherwise than both parses (an undecoded `$'..'`
 escape, a `$( )` bash 3.2 closes early at a `)` in a heredoc body, an extended glob: sh runs `x`
 in `!(x)`, a bash-only construct the POSIX parser refuses where dash reads on, unlike those

@@ -153,8 +153,10 @@ func TestReadCommand(t *testing.T) {
 		{"bin/ls", false},
 		{"/bin/ls", false},
 	} {
-		if got := Normalize(c.cmd).ReadCommand(nil); got != c.safe {
-			t.Errorf("ReadCommand(%q) = %v, want %v", c.cmd, got, c.safe)
+		for name, n := range readings(c.cmd) {
+			if got := n.ReadCommand(nil); got != c.safe {
+				t.Errorf("%s ReadCommand(%q) = %v, want %v", name, c.cmd, got, c.safe)
+			}
 		}
 	}
 }
@@ -211,8 +213,10 @@ func TestReadCommandPathCheck(t *testing.T) {
 		{"grep -r KEY # internal", false},
 		{"grep -r KEY\t# internal", false},
 	} {
-		if got := read(c.cmd).ReadCommand(notSecret); got != c.safe {
-			t.Errorf("ReadCommand(%q) = %v, want %v", c.cmd, got, c.safe)
+		for name, n := range readings(c.cmd) {
+			if got := n.ReadCommand(notSecret); got != c.safe {
+				t.Errorf("%s ReadCommand(%q) = %v, want %v", name, c.cmd, got, c.safe)
+			}
 		}
 	}
 }
@@ -397,9 +401,14 @@ func TestDestructive(t *testing.T) {
 		{sh("a=(1 2); for ((i=0;i<2;i++)); do echo ${a[i]}; done"), false},
 		// dash reads {fd} as a word and runs what follows
 		{"ls {fd}>o", true},
+		// sh or bash runs a body a runner hands it, whatever runs the line
+		{"xargs sh -c 'echo $(cat <<EOF\n) ; rm -rf z\nEOF\n)'", true},
+		{"sudo bash -c 'echo $(cat <<EOF\n) ; rm -rf z\nEOF\n)'", true},
 	} {
-		if got := read(strings.ReplaceAll(c.cmd, "PAD", pad)).Destructive(pad) != ""; got != c.asks {
-			t.Errorf("Destructive(%q) = %v, want %v", c.cmd, got, c.asks)
+		for name, n := range readings(strings.ReplaceAll(c.cmd, "PAD", pad)) {
+			if got := n.Destructive(pad) != ""; got != c.asks {
+				t.Errorf("%s Destructive(%q) = %v, want %v", name, c.cmd, got, c.asks)
+			}
 		}
 	}
 }
@@ -457,8 +466,10 @@ func TestGitWrites(t *testing.T) {
 		{"bash -lc 'git status'", false},
 		{"go build ./...", false},
 	} {
-		if got := Normalize(c.cmd).GitWrites() != ""; got != c.writes {
-			t.Errorf("GitWrites(%q) = %v, want %v", c.cmd, got, c.writes)
+		for name, n := range readings(c.cmd) {
+			if got := n.GitWrites() != ""; got != c.writes {
+				t.Errorf("%s GitWrites(%q) = %v, want %v", name, c.cmd, got, c.writes)
+			}
 		}
 	}
 }
@@ -492,8 +503,10 @@ func TestPluginTest(t *testing.T) {
 		{"zemi plugins install https://x/y", false},
 		{"zemi -p 'plugins test stars'", false},
 	} {
-		if got := Normalize(c.cmd).PluginTest("/opt/zemi/bin/zemi"); got != c.want {
-			t.Errorf("PluginTest(%q) = %v, want %v", c.cmd, got, c.want)
+		for name, n := range readings(c.cmd) {
+			if got := n.PluginTest("/opt/zemi/bin/zemi"); got != c.want {
+				t.Errorf("%s PluginTest(%q) = %v, want %v", name, c.cmd, got, c.want)
+			}
 		}
 	}
 }
@@ -546,6 +559,7 @@ func TestPrograms(t *testing.T) {
 		{"no-ops only", "set -e; true; :", "", ""},
 		{"test syntax runs arithmetic", sh("[[ -f go.mod ]] && ls"), "", "[[ ls"},
 		{"trap body", "trap 'rm -rf x' EXIT", "", "trap!runs code"},
+		{"body another shell runs", "xargs sh -c 'echo $(cat <<EOF\n) ; rm -rf z\nEOF\n)'", "", "-"},
 		{"fd redirect first", ">&2 echo oops", "", "echo"},
 		{"quoted substitution", `echo "$(rm -rf x)"`, "", "echo rm!deletes"},
 		{"commit message heredoc", "git commit -m \"$(cat <<'EOF'\nfix: things\nEOF\n)\"", "", "git commit cat"},
@@ -577,17 +591,18 @@ func TestPrograms(t *testing.T) {
 		{"gated assignment", "PATH=./x ls", "", "-"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			ps := read(c.cmd).Programs(c.pad)
-			got := "-"
-			if ps != nil {
-				var words []string
-				for _, p := range ps {
-					words = append(words, strings.TrimSuffix(p.Name+"!"+string(p.Risk), "!"))
+			for name, n := range readings(c.cmd) {
+				got := "-"
+				if ps := n.Programs(c.pad); ps != nil {
+					var words []string
+					for _, p := range ps {
+						words = append(words, strings.TrimSuffix(p.Name+"!"+string(p.Risk), "!"))
+					}
+					got = strings.Join(words, " ")
 				}
-				got = strings.Join(words, " ")
-			}
-			if got != c.want {
-				t.Errorf("Programs(%q) = %q, want %q", c.cmd, got, c.want)
+				if got != c.want {
+					t.Errorf("%s Programs(%q) = %q, want %q", name, c.cmd, got, c.want)
+				}
 			}
 		})
 	}

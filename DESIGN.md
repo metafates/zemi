@@ -1976,7 +1976,8 @@ provenance string.
   as `$` and a quote and a newer one decodes, and `[[` and `source`,
   which dash lacks. Where no dash is installed (Fedora, Arch, Alpine,
   whose sh is bash or busybox ash) zemi runs `sh -c`, and there, and for
-  every body another shell runs (a `sh -c`, `bash -c` or `zsh -c` text, a
+  every body another shell runs (a `sh -c`, `bash -c` or `zsh -c` text,
+  one `xargs`, `find -exec` or `sudo` hands a shell, `eval` text, a
   heredoc a shell reads), the text is parsed twice, as bash and as POSIX
   sh, since the grammars read `$'..'`, `[[ ]]`, `(( ))`, `&>` and arrays
   differently (dash runs `rm` in `echo $'\' ; rm -rf x ; #'`, bash only
