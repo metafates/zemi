@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -39,6 +40,12 @@ func appendReasoning(h *hostapi.Host, text string, stat hostapi.TurnStat) {
 // golden_test harness.
 func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	t.Helper()
+	return bootAgentAppOn(t, w, h, nil)
+}
+
+// bootAgentAppOn is bootAgentApp on clock, nil for the wall clock.
+func bootAgentAppOn(t testing.TB, w, h int, clock lua.Clock) (*App, *hostapi.Host) {
+	t.Helper()
 	ctx := context.Background()
 	cfg, data, state := tempConfig(t), t.TempDir(), t.TempDir()
 	resolve := func(p string) string {
@@ -56,7 +63,7 @@ func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 		{Prefix: cfg, Origin: lua.OriginUser},
 		{Prefix: filepath.Join(data, "plugins"), Origin: lua.OriginPlugin},
 	}
-	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiruntime.FS})
+	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiruntime.FS, Clock: clock})
 	host := hostapi.NewHost(rt, log, settings, config.Dirs{ConfigHome: cfg, DataHome: data, StateHome: state})
 	app := NewApp(host, log)
 	host.SetUIHooks(app)
@@ -131,31 +138,55 @@ func BenchmarkColdChatRender(b *testing.B) {
 	}
 }
 
-// TestColdChatRender: the first chat render of a long resumed session shows
-// its latest message and leaves the rest to the renders it asks for.
+// lagClock is a machine so slow or loaded that every read of the clock is
+// a second after the last: each render budget is spent before it starts.
+type lagClock struct{ s atomic.Int64 }
+
+func (c *lagClock) Now() time.Time { return time.Unix(c.s.Add(1), 0) }
+
+func (c *lagClock) AfterFunc(d time.Duration, f func()) func() bool {
+	return time.AfterFunc(d, f).Stop
+}
+
+// TestColdChatRender: however slow the machine, the first chat render of a
+// long resumed session fills the view back to its header, the prompt the
+// view pins, and leaves the rest to the renders it asks for; a reader
+// scrolled up keeps their place while a render fills in again.
 func TestColdChatRender(t *testing.T) {
-	app, host := bootAgentApp(t, 140, 40)
-	const turns = 500
-	seedResumedChat(host, turns)
-	chat := host.Widgets.Get("chat")
-	var lines [][]hostapi.Segment
-	for n := 0; n == 0 || !strings.Contains(plainSegs(lines[0]), "question 0"); n++ {
-		var more bool
-		var err error
-		if lines, more, err = host.RenderWidget(t.Context(), chat, 138, 30, app.uiState()); err != nil {
-			t.Fatal(err)
-		}
-		if len(lines) == 0 || n == 0 && !more || n > 2*turns {
-			t.Fatalf("render %d: %d lines, more %v", n, len(lines), more)
-		}
-		for _, latest := range []string{"question 499", "reply 499 "} {
-			if n == 0 && !slices.ContainsFunc(lines, func(l []hostapi.Segment) bool { return strings.Contains(plainSegs(l), latest) }) {
-				t.Fatalf("the first render leaves out %q", latest)
+	const turns = 50 // an exchange is ~58 lines
+	for _, c := range []struct {
+		height        int
+		first, before string
+	}{
+		{30, "question 49", "question 48"},
+		{100, "question 48", "question 47"}, // one exchange leaves the view short
+	} {
+		t.Run(strconv.Itoa(c.height), func(t *testing.T) {
+			app, host := bootAgentAppOn(t, 140, 40, &lagClock{})
+			seedResumedChat(host, turns)
+			chat := host.Widgets.Get("chat")
+			var lines [][]hostapi.Segment
+			has := func(s string) bool {
+				return slices.ContainsFunc(lines, func(l []hostapi.Segment) bool { return strings.Contains(plainSegs(l)+" ", s+" ") })
 			}
-		}
+			for n := 0; n == 0 || !strings.Contains(plainSegs(lines[0]), "question 0"); n++ {
+				var more bool
+				var err error
+				if lines, more, err = host.RenderWidget(t.Context(), chat, 138, c.height, app.uiState()); err != nil {
+					t.Fatal(err)
+				}
+				if len(lines) == 0 || n == 0 && !more || n > turns {
+					t.Fatalf("render %d: %d lines, more %v", n, len(lines), more)
+				}
+				if n == 0 && (!has(c.first) || has(c.before) || !has("reply 49")) {
+					t.Fatalf("the first render has %q %v, %q %v, want only the first", c.first, has(c.first), c.before, has(c.before))
+				}
+			}
+		})
 	}
 
-	// a reader scrolled up keeps their place while a render fills in again
+	app, host := bootAgentAppOn(t, 140, 40, &lagClock{})
+	seedResumedChat(host, turns)
 	app.renderSync(t)
 	app.Frame()
 	for range 60 {
@@ -167,8 +198,9 @@ func TestColdChatRender(t *testing.T) {
 	host.ToggleReasoning()
 	app.frameGen++
 	for more := true; more; app.Frame() {
+		var lines [][]hostapi.Segment
 		var err error
-		if lines, more, err = host.RenderWidget(t.Context(), chat, st.rect.Dx(), st.rect.Dy(), app.uiState()); err != nil {
+		if lines, more, err = host.RenderWidget(t.Context(), host.Widgets.Get("chat"), st.rect.Dx(), st.rect.Dy(), app.uiState()); err != nil {
 			t.Fatal(err)
 		}
 		app.onWidgetRendered(widgetRender{id: "chat", lines: lines, more: more, width: st.rect.Dx(), height: st.rect.Dy(), gen: app.frameGen})

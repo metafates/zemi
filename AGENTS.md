@@ -1034,7 +1034,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   `widgetCache.lineRows` wraps it once per width, and `Host.Session` shares the transcript
   rows, which are appended or replaced whole, never written in place. A render returning
   `true` second runs again next frame and wakes the tick, which is how `chat.lua` fills a
-  long session under a 30 ms budget, latest units first; a region scrolled up keeps the last
+  long session under a 30 ms budget, latest units first, each render at least a full view back
+  to a header (the prompt the view pins), so a loaded machine draws the view whole; a region scrolled up keeps the last
   whole render until the fill ends (`App.scrolledUp`), so the reader's rows stay put. A turn's `turnScope` context (host.go) covers compaction, the model and tools, so
   a second esc within 2s (`App.arm`, shared with the idle ctrl+c quit) stops all of them;
   a second ctrl+c while "Cancelling" quits. A job the user waits on that is not a turn

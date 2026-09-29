@@ -21,6 +21,7 @@ local HINT = "click or ctrl+o to read"
 ---@field lines zemi.Line[]
 ---@field next integer Index of the message after the unit.
 ---@field hint boolean The unit is the reasoning line that carries the expand hint.
+---@field head boolean The unit holds sticky rows: a prompt, or a notice heading a report.
 ---@type table<integer, zemi.tui.ChatUnit>
 local units = {}
 local units_key = ""
@@ -452,6 +453,7 @@ zemi.ui.widget.add({
 		local function unit(tr, first, last, hinted)
 			local m = tr[first]
 			lines, prev = {}, first > 1 and "above" or nil
+			local head = false
 			if m.kind == "reasoning" then
 				gap("activity")
 				add_reasoning(
@@ -481,6 +483,7 @@ zemi.ui.widget.add({
 				-- a report's notice heads the rows that answer it, as a prompt does
 				local row = { mark("note"), { text = m.text, hl = "Comment" } }
 				row[1].sticky = m.head or nil
+				head = m.head
 				if (m.detail or "") ~= "" then
 					row[3] = { text = " (" .. m.detail .. ")", hl = "Comment", copy = false }
 				end
@@ -506,6 +509,7 @@ zemi.ui.widget.add({
 				-- plain text: what the user typed is not markdown
 				gap("user")
 				user_rows(m.text)
+				head = true
 			else
 				gap("text")
 				add_markdown(m.text)
@@ -521,7 +525,7 @@ zemi.ui.widget.add({
 						{ { text = "  ", copy = false }, { text = table.concat(parts, " · "), hl = "Comment" } }
 				end
 			end
-			return { lines = lines, next = last + 1, hint = hinted }
+			return { lines = lines, next = last + 1, hint = hinted, head = head }
 		end
 
 		-- markdown and code carry the theme's colors: a light terminal's
@@ -533,7 +537,11 @@ zemi.ui.widget.add({
 		end
 		-- A long session resumed, a new width or ctrl+o leave every unit to
 		-- render, far more than one render may take: the latest come first, and
-		-- past the budget the render returns them and asks for another.
+		-- past 30 ms the render returns them and asks for another. It stops
+		-- only once the lines fill the view and begin at a header, so a slow or
+		-- loaded machine still draws the view whole, its pinned prompt included.
+		-- NOTE: one exchange of thousands of units renders whole at once; a
+		-- header rendered out of order would lift that ceiling.
 		local more = false
 		local ag = ctx.agent or {}
 		-- Only the latest collapsed reasoning line carries the expand hint: the
@@ -550,7 +558,7 @@ zemi.ui.widget.add({
 			local deadline = epoch ~= 0 and os.clock() + 0.03
 			---@type zemi.tui.ChatUnit[]
 			local shown = {}
-			local rendered = 0
+			local rendered, got = 0, 0
 			local last = #tr
 			while last >= 1 do
 				local first = last
@@ -559,7 +567,8 @@ zemi.ui.widget.add({
 				end
 				local u = units[first]
 				if not u or u.next ~= last + 1 or u.hint ~= (first == last_reason) then
-					if deadline and rendered > 0 and os.clock() > deadline then
+					local whole = rendered > 0 and got >= ctx.height and shown[#shown].head
+					if deadline and whole and os.clock() > deadline then
 						more = true
 						break
 					end
@@ -568,6 +577,7 @@ zemi.ui.widget.add({
 					rendered = rendered + 1
 				end
 				shown[#shown + 1] = u
+				got = got + #u.lines
 				last = first - 1
 			end
 			---@type zemi.Line[]
