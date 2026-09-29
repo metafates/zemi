@@ -551,10 +551,12 @@ func readRedirectOp(rs []rune, i int) (string, int) {
 // separators cut segments, heredocs force ask. A heredoc body is a script
 // unless every program in the command is a dataReader; then only an
 // unquoted one's substitutions run. Its segments go where the body is.
-// NOTE: the command is judged whole, so one other program (bash x.sh) makes
-// every body a script, and a body with an open quote then fails the call.
-// Programs names what runs by the body's reader instead (shown), while no
+// The command is judged whole, so one other program (mkdir, bash x.sh) makes
+// every body a script, but a body fails the call only when a shell may run
+// it. Programs names what runs by the body's reader instead (shown), while no
 // shell or interpreter in the command could run a data reader's body.
+// NOTE: a data body with an open quote hides the lines after it from
+// Destructive; the confined run is the limit there, as for any settled code.
 func (n *Normalized) eat(sc *scanner) {
 	var seg []string
 	type doc struct {
@@ -639,6 +641,10 @@ func (n *Normalized) eat(sc *scanner) {
 			show.hidden = true
 		}
 		body.hidden = show.hidden // Programs lists what is shown
+		// an apostrophe in prose or another language's code is no shell error
+		if !isShell(d.reader) && !slices.Contains([]string{"", "source", "."}, d.reader) && !(data && code && !foreign) {
+			body.Fail = ""
+		}
 		n.absorb(d.at, body)
 		n.shown = slices.Insert(n.shown, d.at, show.Args...)
 	}

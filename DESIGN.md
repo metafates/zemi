@@ -1980,7 +1980,9 @@ provenance string.
   a reader that runs none of its input (`cat`, `tee`, `echo`, `printf`,
   `git`, `gh`, `patch`), and then an unquoted one for its substitutions
   and a quoted one is data (a `<<` inside `(( ))` is a shift, not a
-  heredoc); other input targets
+  heredoc); a body that does not parse as commands fails the call only
+  when a shell may run it, since an apostrophe in prose or in another
+  language's code is no shell error; other input targets
   gate as `fs.read` (secret-shaped paths ask, below), other output
   targets gate as `fs.write`, and only the inert character devices
   `/dev/null` and `/dev/zero` are exempt from both (`/dev/tty` and
