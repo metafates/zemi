@@ -21,7 +21,6 @@ local HINT = "click or ctrl+o to read"
 ---@field lines zemi.Line[]
 ---@field next integer Index of the message after the unit.
 ---@field hint boolean The unit is the reasoning line that carries the expand hint.
----@field head boolean The unit holds sticky rows: a prompt, or a notice heading a report.
 ---@type table<integer, zemi.tui.ChatUnit>
 local units = {}
 local units_key = ""
@@ -453,7 +452,6 @@ zemi.ui.widget.add({
 		local function unit(tr, first, last, hinted)
 			local m = tr[first]
 			lines, prev = {}, first > 1 and "above" or nil
-			local head = false
 			if m.kind == "reasoning" then
 				gap("activity")
 				add_reasoning(
@@ -483,7 +481,6 @@ zemi.ui.widget.add({
 				-- a report's notice heads the rows that answer it, as a prompt does
 				local row = { mark("note"), { text = m.text, hl = "Comment" } }
 				row[1].sticky = m.head or nil
-				head = m.head
 				if (m.detail or "") ~= "" then
 					row[3] = { text = " (" .. m.detail .. ")", hl = "Comment", copy = false }
 				end
@@ -509,7 +506,6 @@ zemi.ui.widget.add({
 				-- plain text: what the user typed is not markdown
 				gap("user")
 				user_rows(m.text)
-				head = true
 			else
 				gap("text")
 				add_markdown(m.text)
@@ -525,7 +521,7 @@ zemi.ui.widget.add({
 						{ { text = "  ", copy = false }, { text = table.concat(parts, " · "), hl = "Comment" } }
 				end
 			end
-			return { lines = lines, next = last + 1, hint = hinted, head = head }
+			return { lines = lines, next = last + 1, hint = hinted }
 		end
 
 		-- markdown and code carry the theme's colors: a light terminal's
@@ -537,11 +533,9 @@ zemi.ui.widget.add({
 		end
 		-- A long session resumed, a new width or ctrl+o leave every unit to
 		-- render, far more than one render may take: the latest come first, and
-		-- past 30 ms the render returns them and asks for another. It stops
-		-- only once the lines fill the view and begin at a header, so a slow or
-		-- loaded machine still draws the view whole, its pinned prompt included.
-		-- NOTE: one exchange of thousands of units renders whole at once; a
-		-- header rendered out of order would lift that ceiling.
+		-- once they fill the view and 30 ms passed, the render returns them and
+		-- asks for another, so a slow or loaded machine still draws the view
+		-- whole; the header above them, the prompt the view pins, goes on top.
 		local more = false
 		local ag = ctx.agent or {}
 		-- Only the latest collapsed reasoning line carries the expand hint: the
@@ -559,26 +553,41 @@ zemi.ui.widget.add({
 			---@type zemi.tui.ChatUnit[]
 			local shown = {}
 			local rendered, got = 0, 0
+			local function stale(first, last)
+				local u = units[first]
+				return not u or u.next ~= last + 1 or u.hint ~= (first == last_reason)
+			end
+			local function cached(first, last)
+				if stale(first, last) then
+					units[first] = unit(tr, first, last, first == last_reason)
+					rendered = rendered + 1
+				end
+				return units[first]
+			end
 			local last = #tr
 			while last >= 1 do
 				local first = last
 				while first > 1 and tr[first].kind == "tool" and tr[first - 1].kind == "tool" do
 					first = first - 1
 				end
-				local u = units[first]
-				if not u or u.next ~= last + 1 or u.hint ~= (first == last_reason) then
-					local whole = rendered > 0 and got >= ctx.height and shown[#shown].head
-					if deadline and whole and os.clock() > deadline then
-						more = true
-						break
-					end
-					u = unit(tr, first, last, first == last_reason)
-					units[first] = u
-					rendered = rendered + 1
+				if deadline and rendered > 0 and got >= ctx.height and stale(first, last) and os.clock() > deadline then
+					more = true
+					break
 				end
+				local u = cached(first, last)
 				shown[#shown + 1] = u
 				got = got + #u.lines
 				last = first - 1
+			end
+			-- a prompt, or a notice heading a report: the rows the view pins
+			local function pins(m) return m.head or (m.kind or "") == "" and m.role == "user" end
+			if more and not pins(tr[last + 1]) then
+				for h = last, 1, -1 do
+					if pins(tr[h]) then
+						shown[#shown + 1] = cached(h, h)
+						break
+					end
+				end
 			end
 			---@type zemi.Line[]
 			local all = {}

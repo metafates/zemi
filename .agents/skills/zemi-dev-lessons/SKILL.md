@@ -31,7 +31,7 @@ Anything in the prefix that varies per request busts the provider cache for the 
 ## Tests that will not flake
 
 - Never synchronize on `time.Sleep`; wait on a channel, `waitIdle`, a hook or an observable state. A sleep fails under load or makes the assertion vacuous.
-- A budget measures work, never the clock: CPU time (`TestSendPrepCheap`, the snapshot cutoff). A wall-clock budget in the product gets a floor that holds on any machine, and its test runs on a clock that is always past the budget (`TestColdChatRender`'s `lagClock`); "returned before its deadline" is `ctx.Err() == nil` after the call. A limit a case must wait out is short only in that case (`TestPluginsTest`'s `hangs`).
+- A test's budget measures work, never the clock: CPU time (`TestSendPrepCheap`, the snapshot cutoff); "returned before its deadline" is `ctx.Err() == nil` after the call. A wall-clock slice in the product gets a floor that holds on any machine, bounded by what it draws rather than by the data, and its test runs on a clock always past the slice (`TestColdChatRender`'s `lagClock`). A limit a case must wait out is short only in that case (`TestPluginsTest`'s `hangs`).
 - Pure timer logic (watchdog, idle model, priority queues) runs under `testing/synctest`. It does not fit child processes, ptys, sockets, or a Host booted outside the bubble, whose Lua actor and `database/sql` goroutines never go idle.
 - `t.Parallel()` on slow process-driven tests (LSP, sandbox builds) more than halves the hostapi run. It is safe only with no `t.Setenv`, `t.Chdir`, package globals or shared ports.
 - Boot-time goroutines (the `git status` warm-up, MCP start) capture what they read by value; a test that mutates `h.Dirs` after boot races them.

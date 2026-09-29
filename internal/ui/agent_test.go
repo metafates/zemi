@@ -149,38 +149,53 @@ func (c *lagClock) AfterFunc(d time.Duration, f func()) func() bool {
 }
 
 // TestColdChatRender: however slow the machine, the first chat render of a
-// long resumed session fills the view back to its header, the prompt the
-// view pins, and leaves the rest to the renders it asks for; a reader
-// scrolled up keeps their place while a render fills in again.
+// long resumed session fills the view and tops it with the prompt the view
+// pins, however many rows answer that prompt, and leaves the rest to the
+// renders it asks for; a reader scrolled up keeps their place while a render
+// fills in again.
 func TestColdChatRender(t *testing.T) {
 	const turns = 50 // an exchange is ~58 lines
+	longTurn := func(host *hostapi.Host) {
+		host.AppendMessage("user", "question 0")
+		for i := range 100 {
+			appendReasoning(host, "thinking", hostapi.TurnStat{})
+			host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "x.go", Status: "ok"})
+			appendReply(host, fmt.Sprintf("reply %d", i), hostapi.TurnStat{})
+		}
+	}
 	for _, c := range []struct {
-		height        int
-		first, before string
+		name   string
+		seed   func(*hostapi.Host)
+		height int
+		has    [2]string
+		hasNot string
 	}{
-		{30, "question 49", "question 48"},
-		{100, "question 48", "question 47"}, // one exchange leaves the view short
+		{"view", func(h *hostapi.Host) { seedResumedChat(h, turns) }, 30, [2]string{"question 49", "reply 49"}, "question 48"},
+		{"exchange shorter than the view", func(h *hostapi.Host) { seedResumedChat(h, turns) }, 100, [2]string{"question 48", "reply 49"}, "question 47"},
+		{"one long turn", longTurn, 30, [2]string{"question 0", "reply 99"}, "reply 50"},
 	} {
-		t.Run(strconv.Itoa(c.height), func(t *testing.T) {
+		t.Run(c.name, func(t *testing.T) {
 			app, host := bootAgentAppOn(t, 140, 40, &lagClock{})
-			seedResumedChat(host, turns)
+			c.seed(host)
 			chat := host.Widgets.Get("chat")
 			var lines [][]hostapi.Segment
 			has := func(s string) bool {
 				return slices.ContainsFunc(lines, func(l []hostapi.Segment) bool { return strings.Contains(plainSegs(l)+" ", s+" ") })
 			}
-			for n := 0; n == 0 || !strings.Contains(plainSegs(lines[0]), "question 0"); n++ {
-				var more bool
+			for n, more := 0, true; more; n++ {
 				var err error
 				if lines, more, err = host.RenderWidget(t.Context(), chat, 138, c.height, app.uiState()); err != nil {
 					t.Fatal(err)
 				}
-				if len(lines) == 0 || n == 0 && !more || n > turns {
+				if len(lines) == 0 || n == 0 && !more || n > 500 {
 					t.Fatalf("render %d: %d lines, more %v", n, len(lines), more)
 				}
-				if n == 0 && (!has(c.first) || has(c.before) || !has("reply 49")) {
-					t.Fatalf("the first render has %q %v, %q %v, want only the first", c.first, has(c.first), c.before, has(c.before))
+				if n == 0 && (!has(c.has[0]) || !has(c.has[1]) || has(c.hasNot)) {
+					t.Fatalf("the first render has %q %v, %q %v, %q %v", c.has[0], has(c.has[0]), c.has[1], has(c.has[1]), c.hasNot, has(c.hasNot))
 				}
+			}
+			if !strings.Contains(plainSegs(lines[0]), "question 0") || !has("reply 0") {
+				t.Fatalf("the fill ends without the first exchange: %d lines from %q", len(lines), plainSegs(lines[0]))
 			}
 		})
 	}

@@ -1708,7 +1708,8 @@ provenance string.
   (`BenchmarkStreamingFrame`). A render returning `true` as a second result
   runs again next frame, that widget alone: the chat fills a long resumed
   session that way, latest messages first, 30 ms at a time but never less
-  than a full view back to the prompt it pins, and a region
+  than a full view, topped with the prompt it pins even when that prompt
+  sits hundreds of rows further back, and a region
   scrolled up keeps the last whole render until the new one is whole, so
   the reader's rows do not move. `View`
   asks each visible region for its cached widget lines; a generation change
