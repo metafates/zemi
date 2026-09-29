@@ -70,8 +70,11 @@ func (h *Host) SetLoop(args string) error {
 	}
 	var every time.Duration
 	if d, err := time.ParseDuration(first); err == nil {
-		if d < loopMin || d > loopMaxEvery {
+		if d > loopMaxEvery {
 			return Usagef("a loop runs every 1m to 24h; a longer wait belongs to cron and zemi run")
+		}
+		if d < loopMin {
+			return Usagef("a loop runs every 1m to 24h")
 		}
 		every, prompt = d, strings.TrimSpace(rest)
 	}

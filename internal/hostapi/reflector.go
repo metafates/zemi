@@ -1,4 +1,5 @@
-// reflector.go: after a session closes, or at startup once it sat idle, a
+// reflector.go: after a session closes, ten minutes past its last turn in
+// an open zemi, or at startup once it sat idle, a
 // tool-less model call reads what the session added since the last read,
 // its failed tool calls, the instruction files and the whole memory index,
 // and proposes memories (DESIGN §10.3). Each goes through intake and the

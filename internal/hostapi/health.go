@@ -350,7 +350,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	case reflectErr != nil:
 		add(HealthError, "reflector", "last run failed: "+reflectErr.Error())
 	default:
-		add(HealthOK, "reflector", "runs when a session closes and at startup for idle ones")
+		add(HealthOK, "reflector", "runs when a session closes, after ten minutes with no turn, and at startup for idle ones")
 	}
 
 	if mem := h.pendingMemory.Load(); mem > 0 {

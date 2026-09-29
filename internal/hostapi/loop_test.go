@@ -185,7 +185,7 @@ func TestSetLoopRefuses(t *testing.T) {
 	h, _ := newLoopHost(t)
 	for _, c := range []struct{ args, want string }{
 		{"30s check", "every 1m to 24h"},
-		{"48h check", "every 1m to 24h"},
+		{"48h check", "every 1m to 24h; a longer wait belongs to cron"},
 		{"2d check", "every 1m to 24h"},
 		{"5m", "/loop 5m <prompt>"},
 		{"5m /loop 1m x", "cannot run /loop"},

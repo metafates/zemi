@@ -259,7 +259,7 @@ func (r *taskReg) stillRunning(keep func(parent string) bool) error {
 	if what == nil {
 		return nil
 	}
-	return Usagef("%s still running; stop them from %s first", strings.Join(what, " and "), strings.Join(where, " or "))
+	return Usagef("%s still running; stop %s from %s first", strings.Join(what, " and "), plural(a+f, "it", "them"), strings.Join(where, " or "))
 }
 
 // find looks a run up by its id or its child session id.
