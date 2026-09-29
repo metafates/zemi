@@ -9,9 +9,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -329,12 +331,17 @@ func ProjectDBPath(stateHome, projectRoot string) string {
 	if projectRoot == "" {
 		return filepath.Join(stateHome, "zemi.db")
 	}
-	sum := sha256.Sum256([]byte(projectRoot))
-	return filepath.Join(stateHome, "projects", hex.EncodeToString(sum[:16]), "zemi.db")
+	return filepath.Join(stateHome, "projects", projectKey(projectRoot), "zemi.db")
+}
+
+func projectKey(root string) string {
+	sum := sha256.Sum256([]byte(root))
+	return hex.EncodeToString(sum[:16])
 }
 
 // OpenForDirs opens the global database and, when a project root is known,
-// the per-project one (DESIGN §7).
+// the per-project one (DESIGN §7), whose dir's root file it writes or, when
+// it names the root already, touches: its mtime is the last open.
 func OpenForDirs(stateHome, projectRoot string) (global, project *DB, err error) {
 	global, err = Open(filepath.Join(stateHome, "zemi.db"))
 	if err != nil {
@@ -346,6 +353,32 @@ func OpenForDirs(stateHome, projectRoot string) (global, project *DB, err error)
 			global.Close()
 			return nil, nil, err
 		}
+		// best effort, like the sweep: a failed write never stops zemi
+		dir := filepath.Dir(project.path)
+		if _, _, ok := ProjectRoot(dir); ok {
+			t := time.Now()
+			_ = os.Chtimes(filepath.Join(dir, "root"), t, t)
+		} else {
+			_ = os.WriteFile(filepath.Join(dir, "root"), []byte(projectRoot+"\n"), 0o600)
+		}
 	}
 	return global, project, nil
+}
+
+// ProjectRoot reads the root file of a project state dir: the trust root the
+// dir belongs to and when zemi last opened it. It is ok only when the root
+// hashes to the dir's name, so a copied or edited file names nothing.
+func ProjectRoot(dir string) (root string, opened time.Time, ok bool) {
+	f, err := os.Open(filepath.Join(dir, "root"))
+	if err != nil {
+		return "", time.Time{}, false
+	}
+	defer f.Close()
+	b, _ := io.ReadAll(io.LimitReader(f, 4096))
+	root, ok = strings.CutSuffix(string(b), "\n")
+	fi, err := f.Stat()
+	if !ok || err != nil || projectKey(root) != filepath.Base(dir) {
+		return "", time.Time{}, false
+	}
+	return root, fi.ModTime(), true
 }

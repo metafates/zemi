@@ -321,7 +321,8 @@ nested repo whose config zemi would run.
    kills the process with the terminal still in raw mode.
 7. **The store** (`internal/store`) is SQLite via modernc.org/sqlite (pure Go), WAL,
    `MaxOpenConns(1)`. Two handles: a global DB (memory, kv, skills) and a per-project one under
-   `<state>/projects/<hash of Dirs.TrustRoot()>/`, so a subdirectory and a worktree share the
+   `<state>/projects/<hash of Dirs.TrustRoot()>/`, whose `root` file names it (`store.ProjectRoot`
+   reads it only when it hashes to the dir), so a subdirectory and a worktree share the
    repository's sessions and memories. Schema is one `schema` const of `CREATE TABLE IF NOT
    EXISTS` run on open - add tables and columns there. There are no migrations before the
    first release: a schema change bumps `schemaVersion`, and a store stamped with another one

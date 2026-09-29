@@ -506,6 +506,52 @@ func TestOpenForDirs(t *testing.T) {
 	}
 }
 
+// TestProjectRoot: opening a project store names its root beside it, and a
+// root file names a root only when that hashes to its dir.
+func TestProjectRoot(t *testing.T) {
+	const root = "/tmp/someproj"
+	for _, c := range []struct {
+		name   string
+		before string // the root file before the open; "" for none
+		valid  bool   // it names root then
+	}{
+		{"a first open writes it", "", false},
+		{"a reopen touches it", root + "\n", true},
+		{"another root's file is rewritten", "/tmp/other\n", false},
+		{"a cut file is rewritten", root, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			state := t.TempDir()
+			dir := filepath.Dir(ProjectDBPath(state, root))
+			hour := time.Now().Add(-time.Hour)
+			if c.before != "" {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "root"), []byte(c.before), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chtimes(filepath.Join(dir, "root"), hour, hour); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, _, ok := ProjectRoot(dir); ok != c.valid {
+				t.Fatalf("before the open ok = %v, want %v", ok, c.valid)
+			}
+			g, p, err := OpenForDirs(state, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g.Close()
+			p.Close()
+			got, opened, ok := ProjectRoot(dir)
+			if !ok || got != root || !opened.After(hour.Add(time.Minute)) {
+				t.Fatalf("after the open: %q %v %v", got, opened, ok)
+			}
+		})
+	}
+}
+
 func TestUsageSince(t *testing.T) {
 	db := openTest(t)
 	for _, s := range []struct{ id, parent string }{{"a", ""}, {"b", ""}, {"child", "a"}} {

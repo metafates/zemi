@@ -320,6 +320,7 @@ Directories (XDG):
   zemi.db                 global store (user memory, skills, kv, revisions)
   scratch/<id prefix>/    per-session scratchpad, every model command's $TMPDIR (§9 write root)
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
+  projects/<hash>/root    the trust root the dir belongs to; its mtime is the last start there
   projects/<hash>/skills/<name>/SKILL.md  recipes: the project's private skills (§10.5)
   projects/<hash>/permissions  bash commands always allowed in the project (§6.1), read only when trusted
   trust.json              trust decisions by repository root
@@ -1481,7 +1482,8 @@ kv(key, value_json, updated_at)                                 -- zemi.state
 ```
 
 One file per scope: global DB at `~/.local/state/zemi/zemi.db`, per-project
-DBs at `~/.local/state/zemi/projects/<hash of trust root>/zemi.db`, the same
+DBs at `~/.local/state/zemi/projects/<hash of trust root>/zemi.db`, named in
+the dir's `root` file (read only when it hashes to the dir's name), the same
 repository identity trust uses, so a subdirectory or a linked worktree opens
 the same sessions and project memory rather than a blank store. The
 global DB holds user-scope memory, skills and kv; a project DB
