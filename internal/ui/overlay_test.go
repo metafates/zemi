@@ -674,6 +674,7 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle" + gap + " · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "detail": "d"}}, Reload: reload}, "", "enter open · space toggle" + gap + " · y copy · esc close"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run · y copy · e edit · esc close"},
+		{hostapi.Overlay{Keys: keys}, "", "e edit · esc close"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter done · esc clear"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run · y copy · e edit · esc clear"},
 		{hostapi.Overlay{Body: "text"}, "", "y copy · esc close"},
@@ -1204,6 +1205,12 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 	}
 	if d := app.overlays[len(app.overlays)-1]; d.selected != 1 || d.armed || ran != "" {
 		t.Fatalf("clicked back: selected %d, armed %v, ran %q", d.selected, d.armed, ran)
+	}
+	// an action with no danger a typed command names opens armed too, drawn as a danger one
+	if d := typed("res 2"); d.selected != 0 || !d.armed {
+		t.Fatalf("typed resume: selected %d, armed %v", d.selected, d.armed)
+	} else if box := slices.Concat(app.overlayBox(d, area.Dx(), area.Dy())...); !slices.ContainsFunc(box, func(s hostapi.Segment) bool { return s.Text == "Resume" && s.HL == hostapi.ChromeDanger }) {
+		t.Fatalf("typed resume drawn: %+v", box)
 	}
 	typed("del 9")
 	if toast := lastToast(app); !strings.Contains(toast, "/del 9 runs it without asking") {

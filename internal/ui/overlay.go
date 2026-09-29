@@ -180,7 +180,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 	top := &a.overlays[len(a.overlays)-1]
 	for idx, it := range top.items {
 		for n, act := range it.row.Actions {
-			if r, _ := hostapi.ParseOverlayItem(act); r.Danger && r.Run == o.Confirm {
+			if r, _ := hostapi.ParseOverlayItem(act); r.Run == o.Confirm {
 				top.selected = max(slices.Index(top.visible, idx), 0)
 				// sized as a drawn list, since its detail view opens at its size
 				area := boxArea(a.stage, a.width, a.height)
@@ -759,7 +759,9 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			// a detail view's rows are actions: draw them as the prompts' buttons
 			choices := make([]promptChoice, 0, len(st.visible))
 			for n, i := range st.visible {
-				choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: map[bool]string{true: hostapi.ChromeDanger}[st.items[i].row.Danger]})
+				// an action armed without danger (Overlay.Confirm) reads as a danger one
+				armed := st.armed && n == st.selected
+				choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: map[bool]string{true: hostapi.ChromeDanger}[st.items[i].row.Danger || armed]})
 			}
 			st.view.viewH = limit
 			list = choiceView(choices, st.selected, &st.view, inner, level > 1)
@@ -787,13 +789,14 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			if r := st.items[st.visible[st.selected]].row; verb != "toggle" && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
 				hints = append(hints, hintPair{"space", "toggle"})
 			}
-			for i, k := range st.o.Keys { // keys sharing a desc read as one hint: +/- at once
-				if n := len(hints) - 1; i > 0 && k.Desc == st.o.Keys[i-1].Desc {
-					hints[n].key += "/" + k.Key
-					continue
-				}
-				hints = append(hints, hintPair{k.Key, k.Desc})
+		}
+		// a list's own keys act with no row too, so an empty list names them
+		for i, k := range st.o.Keys { // keys sharing a desc read as one hint: +/- at once
+			if n := len(hints) - 1; i > 0 && k.Desc == st.o.Keys[i-1].Desc {
+				hints[n].key += "/" + k.Key
+				continue
 			}
+			hints = append(hints, hintPair{k.Key, k.Desc})
 		}
 		var body [][]hostapi.Segment
 		if bodyN > 0 {
