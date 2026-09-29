@@ -71,9 +71,10 @@ const (
 	// NOTE: a paused process that resumes applies its proposals too; the
 	// near-duplicate check turns the repeat into a skip, not a second row.
 	reflectLease = reflectTimeout + time.Minute
-	// reflectIdle is how long a session must have been quiet before the
-	// startup sweep reflects it: another window may still be typing in it.
-	reflectIdle = 10 * time.Minute
+	// ReflectIdle is how long a session must have had no turn before the
+	// startup sweep or an open zemi reflects it: a shorter pause is someone
+	// reading, and each run pays the prompt's fixed overhead again.
+	ReflectIdle = 10 * time.Minute
 	// reflectSweepMax bounds the model calls one startup makes.
 	reflectSweepMax = 3
 	// reflectTries is how many failed runs a delta gets before it is marked
@@ -83,21 +84,24 @@ const (
 	reflectTries = 2
 )
 
-// reflectOnClose is the session-close trigger (/new, /resume): the closed
-// session is reflected when it has messages the reflector has not seen.
-// The cross-process claim makes two windows on the same repository reflect
-// those messages once between them, not once each.
-func (h *Host) reflectOnClose(prevID string) {
-	if n, claim := h.claimReflect(prevID, h.reflectDue(prevID)); claim != "" {
-		h.GoSafe("reflector", func() { h.reflectClaimed(prevID, claim, n) })
+// reflectIfDue reflects a closed or idle session when it has messages the
+// reflector has not seen. The cross-process claim makes two windows on the
+// same repository reflect those messages once between them, not once each.
+func (h *Host) reflectIfDue(sid string) {
+	if n, claim := h.claimReflect(sid, h.reflectDue(sid)); claim != "" {
+		h.GoSafe("reflector", func() { h.reflectClaimed(sid, claim, n) })
 	}
 }
 
+// ReflectLive reflects the live session; the TUI calls it once the session
+// has had no turn for ReflectIdle, so its close finds the delta seen.
+func (h *Host) ReflectLive() { h.GoSafe("reflector", func() { h.reflectIfDue(h.AgentSessionID()) }) }
+
 // ReflectSweep runs at startup, in the background so quitting never waits
 // on a model call (DESIGN §10.3): the newest due sessions that no window
-// has touched for reflectIdle are reflected in turn, which covers what a
+// has touched for ReflectIdle are reflected in turn, which covers what a
 // quit, a crash or a zemi run left unreflected.
-func (h *Host) ReflectSweep() { h.reflectSweep(time.Now().Add(-reflectIdle)) }
+func (h *Host) ReflectSweep() { h.reflectSweep(time.Now().Add(-ReflectIdle)) }
 
 // reflectSweep reflects the due sessions quiet since before idle.
 func (h *Host) reflectSweep(idle time.Time) {

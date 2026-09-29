@@ -2272,9 +2272,11 @@ session summaries. Additional signals: explicit user teaching
 ### 10.3 Distillation: the reflector
 
 The reflector is Go (`internal/hostapi/reflector.go`), not a Lua plugin and
-not a profile: one tool-less model call over a closed session. With no tools
-it cannot act at all, so its only output is the proposal document below.
-Triggered on `session.close` (`/new`, `/resume`) and by a startup sweep
+not a profile: one tool-less model call over a closed or idle session. With no
+tools it cannot act at all, so its only output is the proposal document below.
+Triggered on `session.close` (`/new`, `/resume`), once an open zemi's session
+has had no turn for ten minutes (the same idle the sweep waits for, so the
+close finds the delta seen), and by a startup sweep
 (once per process, not on a reload) over the newest sessions nothing has
 touched for ten minutes, at most three, so quitting never waits on a model
 call and a session a quit, a crash or a `zemi run` left behind is still read;

@@ -743,9 +743,12 @@ lua-language-server is installed.
 - **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`; `o` opens the
   raw text through `EditFile` after the other marks apply, re-running intake as user origin and
   keeping the id.
-- **Reflector timing.** It runs on session close (`/new`, `/resume`) and in a startup sweep
-  (`ReflectSweep`, once per process, not on a reload) over the newest sessions idle for ten
-  minutes, at most three, never on quit. `reflectDue` reads the delta past kv
+- **Reflector timing.** It runs on session close (`/new`, `/resume`), once the open session
+  has had no turn for `ReflectIdle` (ten minutes: the TUI's `reflectAt`, armed with the recap
+  when the agent goes idle and cleared by no input, calls `Host.ReflectLive`; a rewind past
+  that run drops what it learned, `forgetLearned`), and in a startup sweep
+  (`ReflectSweep`, once per process, not on a reload) over the newest sessions idle as long,
+  at most three, never on quit. `reflectDue` reads the delta past kv
   `reflector.seen.<sid>` (`RewindTo` clamps it, `ForkSession` starts it at the copied history)
   and is due only when the delta has two user messages that are not compaction summaries and a
   tool call, or one failed tool call: one exchange that went fine would cost a model call at

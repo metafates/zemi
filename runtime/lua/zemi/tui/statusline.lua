@@ -154,7 +154,7 @@ zemi.event.on("reflector.done", function(ev)
 	add(ev.superseded, "memory superseded", "memories superseded")
 	-- a session with nothing worth keeping ends quietly
 	if #parts == 0 then return end
-	zemi.notify({ title = "Memories learned from the last session", body = table.concat(parts, ", ") })
+	zemi.notify({ title = "Memories learned", body = table.concat(parts, ", ") })
 end)
 
 -- Statusline right, drawn from the right edge: "$0.12 · 45% · 24.5k/200k ctx

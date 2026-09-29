@@ -267,7 +267,7 @@ func (h *Host) closeSession(open func()) error {
 	h.refreshPending()
 	if prev != "" {
 		h.EmitAsync("session.close", map[string]any{"id": prev})
-		h.reflectOnClose(prev)
+		h.reflectIfDue(prev)
 	}
 	return nil
 }

@@ -62,30 +62,31 @@ func TestNotifyWhenAway(t *testing.T) {
 	}
 }
 
-// TestRecapWhenIdle: a recap starts once recapDelay passes after the agent
-// went idle from a turn that ended well with no input since, and the next
-// input stops it.
+// TestRecapWhenIdle: once the agent went idle from a turn, a recap starts
+// after recapDelay when the turn ended well with no input since, and the
+// next input stops it; the reflector runs after ReflectIdle whatever came.
 func TestRecapWhenIdle(t *testing.T) {
 	log := logging.New("")
 	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
 	key := tea.KeyPressMsg{Code: 'x', Text: "x"}
 	for _, c := range []struct {
-		name  string
-		done  turnDoneMsg
-		input tea.Msg // after the turn ended
-		chain bool    // the agent reads active until the deadline
-		want  bool
+		name           string
+		done           turnDoneMsg
+		input          tea.Msg // after the turn ended
+		chain          bool    // the agent reads active on the first frame
+		recap, reflect bool
 	}{
-		{"away since a clean end", turnDoneMsg{}, nil, false, true},
-		{"a key since", turnDoneMsg{}, key, false, false},
-		{"focus back since", turnDoneMsg{}, tea.FocusMsg{}, false, false},
-		{"hover since is not input", turnDoneMsg{}, tea.MouseMotionMsg{}, false, true},
-		{"stopped", turnDoneMsg{stopped: true}, nil, false, false},
-		{"failed", turnDoneMsg{err: "boom"}, nil, false, false},
-		{"a chain goes on", turnDoneMsg{}, nil, true, false},
+		{"away since a clean end", turnDoneMsg{}, nil, false, true, true},
+		{"a key since", turnDoneMsg{}, key, false, false, true},
+		{"focus back since", turnDoneMsg{}, tea.FocusMsg{}, false, false, true},
+		{"hover since is not input", turnDoneMsg{}, tea.MouseMotionMsg{}, false, true, true},
+		{"stopped", turnDoneMsg{stopped: true}, nil, false, false, true},
+		{"failed", turnDoneMsg{err: "boom"}, nil, false, false, true},
+		{"a chain goes on", turnDoneMsg{}, nil, true, false, false},
 	} {
 		app := NewApp(host, log)
-		now := time.Unix(1000, 0)
+		start := time.Unix(1000, 0)
+		now := start
 		app.now = func() time.Time { return now }
 		app.Update(c.done)
 		if c.chain {
@@ -96,22 +97,26 @@ func TestRecapWhenIdle(t *testing.T) {
 		if c.input != nil {
 			app.Update(c.input)
 		}
-		now = now.Add(recapDelay - time.Second)
+		now = start.Add(recapDelay - time.Second)
 		app.Update(frameTickMsg{})
 		early := app.recapStop != nil
-		now = now.Add(time.Second)
+		now = start.Add(recapDelay)
 		app.Update(frameTickMsg{})
-		if started := app.recapStop != nil; early || started != c.want {
-			t.Errorf("%s: started early %v, at the deadline %v", c.name, early, started)
-			continue
+		if started := app.recapStop != nil; early || started != c.recap {
+			t.Errorf("%s: recap started early %v, at the deadline %v", c.name, early, started)
 		}
-		if c.want {
+		if c.recap {
 			stop, stopped := app.recapStop, false
 			app.recapStop = func() { stopped = true; stop() }
 			app.Update(key)
 			if !stopped {
 				t.Errorf("%s: a key did not stop the recap", c.name)
 			}
+		}
+		now = start.Add(hostapi.ReflectIdle)
+		app.Update(frameTickMsg{})
+		if reflected := app.reflectAt.IsZero(); reflected != c.reflect {
+			t.Errorf("%s: reflected at ReflectIdle %v, want %v", c.name, reflected, c.reflect)
 		}
 	}
 }

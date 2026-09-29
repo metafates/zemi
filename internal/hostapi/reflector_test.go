@@ -592,7 +592,7 @@ func TestReflectTimeout(t *testing.T) {
 	}
 }
 
-// reflectNow is reflectOnClose run inline: it reports whether a run
+// reflectNow is reflectIfDue run inline: it reports whether a run
 // happened.
 func reflectNow(h *Host, sid string) bool {
 	n, claim := h.claimReflect(sid, h.reflectDue(sid))
@@ -673,6 +673,18 @@ func TestReflectTrigger(t *testing.T) {
 		}, due: true},
 		{name: "sweep runs an idle due session", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
 			h.reflectSweep(time.Now().Add(time.Minute))
+		}, calls: 1},
+		{name: "an idle live session reflects once, and its close not again", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			h.ReflectLive()
+			waitFor(t, func() error {
+				if label, _, _ := h.BusyNow(); h.reflectDue(sid) != 0 || label != "" {
+					return errors.New("still reflecting")
+				}
+				return nil
+			})
+			if err := h.NewSession(); err != nil {
+				t.Fatal(err)
+			}
 		}, calls: 1},
 		{name: "prose sets seen without an error badge", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
 			m.resp = "no json here"

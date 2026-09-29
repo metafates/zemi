@@ -129,6 +129,9 @@ type App struct {
 	// an idle recap: when one is due (zero for none), and the stop of one in flight
 	recapAt   time.Time
 	recapStop context.CancelFunc
+	// when the live session is due for the reflector: no input clears it,
+	// since typing without sending changes nothing it would read
+	reflectAt time.Time
 
 	bootErr        error
 	streamPending  atomic.Bool   // a stream agentStreamMsg is queued
@@ -577,6 +580,10 @@ func (a *App) onFrame() tea.Cmd {
 		a.recapAt = time.Time{}
 		a.host.Recap(ctx)
 	}
+	if !active && !a.reflectAt.IsZero() && !a.now().Before(a.reflectAt) {
+		a.reflectAt = time.Time{}
+		a.host.ReflectLive()
+	}
 	// widgets read these flags, so a change re-renders them; the animation
 	// tick alone does not, it only matters while a turn bumps the frame
 	// anyway, and Ended turning on and off bumps at both ends by itself
@@ -595,10 +602,12 @@ func (a *App) onFrame() tea.Cmd {
 }
 
 // endTurn stamps how the last turn ended for the eyes and the tab title,
-// arms the recap and alerts an unfocused terminal.
+// arms the recap and the reflector, and alerts an unfocused terminal.
 func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 	a.turnEnd, a.turnEnded = a.now(), hostapi.TurnOK
 	a.recapAt = a.now().Add(recapDelay)
+	// a failed turn too: a failed tool call is what the reflector learns most from
+	a.reflectAt = a.now().Add(hostapi.ReflectIdle)
 	if msg.stopped {
 		a.turnEnded, a.recapAt = hostapi.TurnCancelled, time.Time{}
 	} else if msg.err != "" {
