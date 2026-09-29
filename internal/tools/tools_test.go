@@ -597,15 +597,30 @@ func TestEditSafety(t *testing.T) {
 		}
 	}
 
-	// a file changed since its read takes only an exact match, like an unread one
+	// a file changed since its read takes only an exact match, like an unread
+	// one, and stays unseen after it, so a write cannot drop the change
 	path := filepath.Join(dir, "stale")
 	os.WriteFile(path, []byte("x\n"), 0o644)
 	call(t, read, js(map[string]any{"path": path, "limit": 0}))
-	os.WriteFile(path, []byte("y\ny\n"), 0o644)
+	os.WriteFile(path, []byte("y\ny\nu\n"), 0o644)
 	later := time.Now().Add(time.Hour)
 	os.Chtimes(path, later, later)
-	if resp := call(t, edit, js(map[string]any{"path": path, "old_string": "y", "new_string": "z", "replace_all": true})); !strings.Contains(resp.Content, "not read its current version") {
-		t.Fatalf("changed file must be read again: %q", resp.Content)
+	for _, c := range []struct {
+		tool fantasy.AgentTool
+		in   map[string]any
+		want string
+	}{
+		{edit, map[string]any{"old_string": "y", "new_string": "z", "replace_all": true}, "not read its current version"},
+		{edit, map[string]any{"old_string": "u", "new_string": "v"}, "edited"},
+		{all[2], map[string]any{"content": "x\n"}, "changed since you read it"},
+	} {
+		c.in["path"] = path
+		if resp := call(t, c.tool, js(c.in)); !strings.Contains(resp.Content, c.want) {
+			t.Fatalf("%v: want %q, got %q", c.in, c.want, resp.Content)
+		}
+	}
+	if got, _ := os.ReadFile(path); string(got) != "y\ny\nv\n" {
+		t.Fatalf("file %q", got)
 	}
 
 	// a refused binary still counts as read: write replaces it whole

@@ -580,7 +580,8 @@ func (p *Pipeline) markRead(path string, fi os.FileInfo) {
 // read: its own command made it and nobody else edits there. Nor does an
 // edit: runEdit holds the edit of a file whose current version the model has
 // not read to one exact match, which proves it knows the text it replaces
-// and keeps every other change. "" when the view is current.
+// and keeps every other change, and leaves the file unseen. "" when the view
+// is current.
 func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
 	rel := workRel(path)
 	// before the read log: a directory listing never marks it seen, so the
@@ -597,7 +598,7 @@ func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
 	case !ok:
 		return "read " + rel + " with the read tool first, then repeat this call: this session has not read it, and cat, sed or grep in a shell command does not count."
 	case !t.(time.Time).Equal(fi.ModTime()):
-		return rel + " changed since you read it (a command you ran, the user's editor, a formatter or another agent). Read it again and redo the edit against the current content."
+		return rel + " changed since you read it (a command you ran, the user's editor, a formatter or another agent), and writing it whole would drop that change: read it again first."
 	}
 	return ""
 }
@@ -770,7 +771,8 @@ func runEdit(ctx context.Context, p *Pipeline, in map[string]any) (fantasy.ToolR
 	if msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
-	if p.unseen(path, fi) && (n != 1 || tolerant.count > 0) {
+	unseen := p.unseen(path, fi)
+	if unseen && (n != 1 || tolerant.count > 0) {
 		return fantasy.NewTextErrorResponse("read " + rel + " with the read tool first (the lines you change are enough), then repeat this call: this session has not read its current version, so old_string must match exactly once as written."), nil
 	}
 	// a mixed file takes its majority ending, so a stray line of the other
@@ -787,6 +789,10 @@ func runEdit(ctx context.Context, p *Pipeline, in map[string]any) (fantasy.ToolR
 		// the model never re-reads after a success, so what its text became
 		// under the file's indentation has to be in the result
 		res += "; matched ignoring whitespace and moved new_string to the file's indentation. Written as:" + numbered(strings.Split(out, "\n"), tolerant.at, tolerant.count)
+	}
+	if unseen {
+		// the match proves only the replaced text: a write must still read first
+		return fantasy.NewTextResponse(res + p.afterWrite(path)), nil
 	}
 	return fantasy.NewTextResponse(res + p.wrote(path)), nil
 }
