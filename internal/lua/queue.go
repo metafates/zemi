@@ -55,8 +55,6 @@ var (
 	// ErrAbandoned means the request exceeded ceiling+grace and the
 	// interpreter was left spinning (DESIGN §4).
 	ErrAbandoned = errors.New("zemi: lua request abandoned after grace period")
-	// ErrCanceled is delivered when the request context was canceled.
-	ErrCanceled = context.Canceled
 )
 
 // Dropped reports whether err is the runtime dropping a request (hot,
@@ -66,7 +64,7 @@ func Dropped(err error) bool {
 	if _, ok := errors.AsType[ceilingError](err); ok {
 		return false
 	}
-	return errors.Is(err, ErrHot) || errors.Is(err, ErrReloaded) || errors.Is(err, ErrCanceled)
+	return errors.Is(err, ErrHot) || errors.Is(err, ErrReloaded) || errors.Is(err, context.Canceled)
 }
 
 // Fn runs on the interpreter goroutine. Return values are marshaled to the
