@@ -707,9 +707,11 @@ lua-language-server is installed.
   an interrupt and as failed after an error. `historyFrom` splits text and merges reasoning the
   same way, so a resume draws the rows the live turn drew.
 - **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`. `/memory` is a
-  Go-built toggle list whose actions are `memoryCommand` verbs by row id, applied at once; each
-  pushes its reverse onto `Host.memUndo`, which `u` pops and opening the list empties. `o` opens
-  the raw text through `EditFile`, re-running intake as user origin and keeping the id.
+  Go-built toggle list whose actions are `memoryCommand` verbs by row id ending in `--yes`, which
+  no note takes, applied at once; each, and a saved edit (`o` opens the raw text through
+  `EditFile`, re-running intake as user origin and keeping the id), pushes its reverse onto
+  `Host.memUndo`, which `u` pops and opening the list empties, and rebuilds the whole list, since
+  its `u` key shows only while the stack holds a step.
 - **Reflector timing** (DESIGN §10.3). It runs on session close (`/new`, `/resume`), once the
   open session has had no turn for `ReflectIdle` (`Host.ReflectLive`), and in a startup sweep
   (`ReflectSweep`, once per process, not on a reload), never on quit. `reflectDue` reads the

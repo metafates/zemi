@@ -161,7 +161,9 @@ func redactNote(scrubbed bool) string {
 
 var (
 	errDuplicateMemory = errors.New("already remembered")
-	errNoMemory        = errors.New("no such memory")
+	// usage errors: a row another window already took is nothing to act on
+	errNoMemory        = Usagef("no such memory")
+	errUnknownProposal = Usagef("no such proposal")
 )
 
 // duplicateMemory finds a live memory in either scope, or a pending
@@ -231,28 +233,34 @@ func (h *Host) Remember(text string) error {
 	return nil
 }
 
-// memoryCommand dispatches /memory: the list, a note to keep, and the
-// list's actions on a row by id, which undo reverses newest first. A
-// forget typed without --yes asks first (AskFirst) on the list.
+// memoryCommand dispatches /memory: no argument opens the list, and
+// forget <id> asks there first (AskFirst). The list's actions on a row end
+// in --yes, a form no note takes, so any other text is a note to keep.
 func (h *Host) memoryCommand(args string) error {
-	fields := strings.Fields(args)
-	if len(fields) == 0 {
-		return h.openMemory("")
-	}
-	verb, id := fields[0], ""
-	if len(fields) > 1 {
-		id = fields[1]
-	}
+	f := strings.Fields(args)
 	switch {
-	case verb == "undo" && len(fields) == 1:
-		return h.undoMemory()
-	case verb == "forget" && (len(fields) == 2 || len(fields) == 3 && fields[2] == "--yes"):
-		db, m, err := h.locateMemory(id)
+	case len(f) == 0:
+		return h.openMemory("")
+	case len(f) == 2 && f[0] == "forget":
+		_, m, err := h.locateMemory(f[1])
 		if err != nil {
 			return err
 		}
-		if len(fields) == 2 {
-			return AskFirst("memory forget "+m.ID+" --yes", "", h.openMemory)
+		return AskFirst("memory forget "+m.ID+" --yes", "", h.openMemory)
+	case len(f) == 2 && f[0] == "undo" && f[1] == "--yes":
+		return h.undoMemory()
+	case len(f) != 3 || f[2] != "--yes":
+		if f[0] == "forget" {
+			return Usagef("usage: /memory forget <id> [--yes]")
+		}
+		return h.Remember(args)
+	}
+	id := f[1]
+	switch f[0] {
+	case "forget":
+		db, m, err := h.locateMemory(id)
+		if err != nil {
+			return err
 		}
 		if err := db.DeleteMemory(m.ID); err != nil {
 			return err
@@ -260,30 +268,28 @@ func (h *Host) memoryCommand(args string) error {
 		h.pushUndo(func() error { return db.AddMemory(m) })
 		h.Notify(slog.LevelInfo, "Memory forgotten", m.Text)
 		return nil
-	case verb == "forget":
-		return Usagef("usage: /memory forget <id> [--yes]")
-	case len(fields) != 2:
-	case verb == "accept":
-		return h.acceptMemory(id)
-	case verb == "reject":
+	case "accept":
+		undo := h.undoKeep(id)
+		if _, err := h.acceptProposal(id); err != nil {
+			return err
+		}
+		h.pushUndo(undo)
+		return nil
+	case "reject":
 		p := h.takeProposal(id)
 		if p == nil {
-			return fmt.Errorf("no such suggestion %q", id)
+			return fmt.Errorf("%w %q", errUnknownProposal, id)
 		}
 		h.pushUndo(func() error { return h.addProposal(*p) })
 		return nil
-	case verb == "move":
+	case "move":
 		return h.moveRow(id)
-	case verb == "edit":
+	case "edit":
 		ui, err := h.Screen()
 		if err != nil {
 			return err
 		}
-		// the editor blocks; the list shows the saved text once it closes
-		h.GoSafe("edit memory", func() {
-			h.editMemory(ui, id)
-			ui.RefreshOverlay("memory", h.memoryOverlay)
-		})
+		h.GoSafe("edit memory", func() { h.editMemory(ui, id) }) // the editor blocks
 		return nil
 	}
 	return h.Remember(args)
@@ -306,68 +312,82 @@ func (h *Host) openMemory(confirm string) error {
 }
 
 // memoryOverlay is /memory, a toggle list: an action applies at once and
-// the list rebuilds, and u undoes it.
+// the list rebuilds, and u undoes it while there is one to undo.
 func (h *Host) memoryOverlay() Overlay {
-	return Overlay{
+	o := Overlay{
 		ID: "memory", Title: "Memory", Origin: lua.OriginBuiltin, Items: h.memoryItems(),
-		Keys:   []OverlayKey{{Key: "u", Desc: "undo", Run: "memory undo"}},
 		Reload: func() ([]any, [][]Segment) { return h.memoryItems(), nil },
 		Empty:  "Nothing remembered yet. Type /memory <note> to save one.",
 	}
+	h.memUndo.Lock()
+	if len(h.memUndo.steps) > 0 {
+		o.Keys = []OverlayKey{{Key: "u", Desc: "undo", Run: "memory undo --yes"}}
+	}
+	h.memUndo.Unlock()
+	return o
 }
 
+// pushUndo records the reverse of a /memory action and rebuilds the whole
+// list, since Reload leaves its keys as they were.
 func (h *Host) pushUndo(step func() error) {
 	h.memUndo.Lock()
 	h.memUndo.steps = append(h.memUndo.steps, step)
 	h.memUndo.Unlock()
+	h.refreshMemory()
 }
 
 // undoMemory reverses the newest /memory action not undone yet.
 func (h *Host) undoMemory() error {
 	u := &h.memUndo
 	u.Lock()
-	defer u.Unlock()
 	n := len(u.steps)
 	if n == 0 {
+		u.Unlock()
 		return Usagef("nothing to undo")
 	}
 	step := u.steps[n-1]
 	u.steps = u.steps[:n-1]
+	u.Unlock()
+	defer h.refreshMemory()
 	return step()
 }
 
-// acceptMemory keeps suggestion id: it stores the memory, or deletes the
-// one a forget suggestion names.
-func (h *Host) acceptMemory(id string) error {
-	var gone *store.Memory
-	var goneDB *store.DB
+func (h *Host) refreshMemory() {
+	if ui, err := h.Screen(); err == nil {
+		ui.RefreshOverlay("memory", h.memoryOverlay)
+	}
+}
+
+// undoKeep returns the reverse of keeping suggestion id, taken before it is
+// kept: the stored copy goes, the memory it replaced or forgot comes back
+// as it was, age included, and the suggestion is queued again.
+func (h *Host) undoKeep(id string) func() error {
 	props := h.memoryProposals()
-	if i := slices.IndexFunc(props, func(p memoryProposal) bool { return p.ID == id && p.Forget }); i >= 0 {
-		goneDB, gone, _ = h.locateMemory(props[i].Supersedes)
+	i := slices.IndexFunc(props, func(p memoryProposal) bool { return p.ID == id })
+	if i < 0 {
+		return nil
 	}
-	p, err := h.acceptProposal(id)
-	if err != nil {
-		return err
+	p := props[i]
+	oldDB, old, _ := h.locateMemory(p.Supersedes)
+	if old != nil && old.SupersededBy != "" {
+		old = nil // not live, so nothing to bring back
 	}
-	h.pushUndo(func() error {
-		var err error
-		switch {
-		case gone != nil:
-			err = goneDB.AddMemory(gone)
-		case !p.Forget:
-			err = h.memoryDB(p.Scope).DeleteMemory(p.ID)
-			for _, db := range []*store.DB{h.DB, h.GlobalDB} {
-				if db != nil && err == nil {
-					err = db.Unsupersede([]string{p.ID}) // what it replaced is live again
-				}
+	return func() error {
+		if !p.Forget {
+			if err := h.memoryDB(p.Scope).DeleteMemory(p.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+				return err
 			}
 		}
-		if err != nil {
-			return err
+		if old != nil {
+			if err := oldDB.DeleteMemory(old.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+			if err := oldDB.AddMemory(old); err != nil {
+				return err
+			}
 		}
-		return h.addProposal(*p)
-	})
-	return nil
+		return h.addProposal(p)
+	}
 }
 
 // moveRow moves suggestion or memory id to the other scope. A suggestion
@@ -380,7 +400,7 @@ func (h *Host) moveRow(id string) error {
 		}
 		p := h.takeProposal(id)
 		if p == nil {
-			return fmt.Errorf("no such suggestion %q", id)
+			return fmt.Errorf("%w %q", errUnknownProposal, id)
 		}
 		to := otherScope(p.Scope)
 		moved := p.Memory
@@ -484,7 +504,8 @@ func (h *Host) editableMemory(id string) (string, error) {
 // rewriteMemory saves the user's edit of a memory: intake runs again as
 // user origin with the same scope and quote, and the memory keeps its
 // id. An edited suggestion is stored as the user's own. Empty or unchanged
-// text changes nothing, and so does a refusal, a full scope included.
+// text changes nothing, and so does a refusal, a full scope included; a
+// saved edit is on the /memory undo stack like the list's actions.
 func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	if strings.TrimSpace(text) == "" {
 		return false, nil
@@ -501,8 +522,9 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 		if _, over := h.scopeOver(res); over {
 			return false, errScopeFull(p.Scope)
 		}
+		undo := h.undoKeep(id)
 		if h.takeProposal(id) == nil {
-			return false, fmt.Errorf("no such proposal %q", id)
+			return false, fmt.Errorf("%w %q", errUnknownProposal, id)
 		}
 		if err := h.storeProposal(res); err != nil {
 			if qerr := h.addProposal(p); qerr != nil {
@@ -510,6 +532,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 			}
 			return false, err
 		}
+		h.pushUndo(undo)
 		return res.Scrubbed, nil
 	}
 	db, m, err := h.locateMemory(id)
@@ -528,7 +551,16 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 	if dup, _ := h.duplicateMemory(res.Memory, ""); dup != nil {
 		return false, fmt.Errorf("%w: %q", errDuplicateMemory, dup.Text)
 	}
-	return res.Scrubbed, db.UpdateMemoryText(m.ID, res.Memory.Text, store.OriginUser)
+	if err := db.UpdateMemoryText(m.ID, res.Memory.Text, store.OriginUser); err != nil {
+		return false, err
+	}
+	h.pushUndo(func() error { // the old row back whole, its age included
+		if err := db.DeleteMemory(m.ID); err != nil {
+			return err
+		}
+		return db.AddMemory(m)
+	})
+	return res.Scrubbed, nil
 }
 
 // takeProposal removes one pending memory proposal by id and returns it,
@@ -605,7 +637,7 @@ func (h *Host) moveMemory(id string, from, to store.Scope) error {
 func (h *Host) acceptProposal(id string) (*memoryProposal, error) {
 	p := h.takeProposal(id)
 	if p == nil {
-		return nil, fmt.Errorf("no such proposal %q", id)
+		return nil, fmt.Errorf("%w %q", errUnknownProposal, id)
 	}
 	var err error
 	if p.Forget {
@@ -705,13 +737,13 @@ func (h *Host) memoryItems() []any {
 		}
 		item := memoryItem(p.Memory, label, fmt.Sprintf("Suggested by zemi (%d)", len(props)), scopeWords[p.Scope], replaces)
 		acts := []any{
-			map[string]any{"text": "Keep", "hotkey": "a", "run": "memory accept " + p.ID},
-			map[string]any{"text": "Drop", "hotkey": "d", "run": "memory reject " + p.ID},
+			map[string]any{"text": "Keep", "hotkey": "a", "run": "memory accept " + p.ID + " --yes"},
+			map[string]any{"text": "Drop", "hotkey": "d", "run": "memory reject " + p.ID + " --yes"},
 		}
 		if p.Forget {
 			acts = []any{
-				map[string]any{"text": "Forget", "hotkey": "a", "run": "memory accept " + p.ID},
-				map[string]any{"text": "Keep", "hotkey": "d", "run": "memory reject " + p.ID},
+				map[string]any{"text": "Forget", "hotkey": "a", "run": "memory accept " + p.ID + " --yes"},
+				map[string]any{"text": "Keep", "hotkey": "d", "run": "memory reject " + p.ID + " --yes"},
 			}
 		}
 		item["actions"] = append(acts, moveAndEdit(p.Memory, p.Forget)...)
@@ -739,7 +771,7 @@ func memoryItem(m store.Memory, label, section, desc, replaces string) map[strin
 		updated = ago(m.UpdatedAt)
 	}
 	return map[string]any{
-		"id": m.ID, "text": clipRunes(label, 50), "desc": desc, "section": section, "preview": preview, "copy": m.Text,
+		"id": m.ID, "text": clipRunes(label, 40), "desc": desc, "section": section, "preview": preview, "copy": m.Text,
 		"fields": fieldList("text", m.Text, "quote", m.Quote, "replaces", replaces, "scope", scopeWords[m.Scope],
 			"origin", map[store.Origin]string{store.OriginUser: "saved by you", store.OriginLearned: "learned"}[m.Origin], "updated", updated),
 	}
@@ -752,8 +784,8 @@ func moveAndEdit(m store.Memory, forget bool) []any {
 		return nil
 	}
 	return []any{
-		map[string]any{"text": map[store.Scope]string{store.ScopeProject: "Use everywhere", store.ScopeUser: "Only this project"}[m.Scope], "hotkey": "s", "run": "memory move " + m.ID},
-		map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "memory edit " + m.ID},
+		map[string]any{"text": map[store.Scope]string{store.ScopeProject: "Use everywhere", store.ScopeUser: "Only this project"}[m.Scope], "hotkey": "s", "run": "memory move " + m.ID + " --yes"},
+		map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "memory edit " + m.ID + " --yes"},
 	}
 }
 

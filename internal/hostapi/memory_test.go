@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -503,9 +504,9 @@ func TestDigestAtSessionStart(t *testing.T) {
 	}
 }
 
-// TestMemoryListActions drives the /memory list's actions by id: each
-// applies at once, and as many undos as actions applied bring the stores
-// back to where they started.
+// TestMemoryListActions drives the /memory list's actions by id, and an
+// "id=text" edit: each applies at once, and as many undos as actions
+// applied bring the stores back to where they started, ages included.
 func TestMemoryListActions(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -513,25 +514,27 @@ func TestMemoryListActions(t *testing.T) {
 		cmds []string
 		want string // the stores after cmds; "" when a command fails and nothing moves
 	}{
-		{"keep a suggestion", []string{"accept p1"}, "?project:deploy runs bin/deploy, ?project:the build runs with make check, ?user:forget:short replies, project:deploy by hand, project:run make check first, user:short replies, user:the build runs with make check"},
-		{"keep a replacement retires what it replaces", []string{"accept p2"}, "?project:run make check first, ?project:the build runs with make check, ?user:forget:short replies, project:deploy runs bin/deploy, user:short replies, user:the build runs with make check"},
-		{"keep a forget", []string{"accept p3"}, "?project:deploy runs bin/deploy, ?project:run make check first, ?project:the build runs with make check, project:deploy by hand, user:the build runs with make check"},
-		{"drop a suggestion", []string{"reject p1"}, "?project:deploy runs bin/deploy, ?project:the build runs with make check, ?user:forget:short replies, project:deploy by hand, user:short replies, user:the build runs with make check"},
-		{"forget a memory", []string{"forget m1 --yes"}, "?project:deploy runs bin/deploy, ?project:run make check first, ?project:the build runs with make check, ?user:forget:short replies, user:short replies, user:the build runs with make check"},
-		{"move a memory everywhere", []string{"move m1"}, "?project:deploy runs bin/deploy, ?project:run make check first, ?project:the build runs with make check, ?user:forget:short replies, user:deploy by hand, user:short replies, user:the build runs with make check"},
-		{"move a suggestion everywhere", []string{"move p1"}, "?project:deploy runs bin/deploy, ?project:the build runs with make check, ?user:forget:short replies, ?user:run make check first, project:deploy by hand, user:short replies, user:the build runs with make check"},
+		{"keep a suggestion", []string{"accept p1"}, "?project:p2:deploy runs bin/deploy, ?project:p4:the build runs with make check, ?user:p3:forget:short replies, project:m1:user:1:deploy by hand, project:p1:learned:new:run make check first, user:m2:learned:2:short replies, user:m3:learned:3:the build runs with make check"},
+		{"keep a replacement retires what it replaces", []string{"accept p2"}, "?project:p1:run make check first, ?project:p4:the build runs with make check, ?user:p3:forget:short replies, project:p2:learned:new:deploy runs bin/deploy, user:m2:learned:2:short replies, user:m3:learned:3:the build runs with make check"},
+		{"keep a forget", []string{"accept p3"}, "?project:p1:run make check first, ?project:p2:deploy runs bin/deploy, ?project:p4:the build runs with make check, project:m1:user:1:deploy by hand, user:m3:learned:3:the build runs with make check"},
+		{"drop a suggestion", []string{"reject p1"}, "?project:p2:deploy runs bin/deploy, ?project:p4:the build runs with make check, ?user:p3:forget:short replies, project:m1:user:1:deploy by hand, user:m2:learned:2:short replies, user:m3:learned:3:the build runs with make check"},
+		{"forget a memory", []string{"forget m1"}, "?project:p1:run make check first, ?project:p2:deploy runs bin/deploy, ?project:p4:the build runs with make check, ?user:p3:forget:short replies, user:m2:learned:2:short replies, user:m3:learned:3:the build runs with make check"},
+		{"move a memory everywhere keeps its id and age", []string{"move m1"}, "?project:p1:run make check first, ?project:p2:deploy runs bin/deploy, ?project:p4:the build runs with make check, ?user:p3:forget:short replies, user:m1:user:1:deploy by hand, user:m2:learned:2:short replies, user:m3:learned:3:the build runs with make check"},
+		{"move a suggestion everywhere", []string{"move p1"}, "?project:p2:deploy runs bin/deploy, ?project:p4:the build runs with make check, ?user:p1:run make check first, ?user:p3:forget:short replies, project:m1:user:1:deploy by hand, user:m2:learned:2:short replies, user:m3:learned:3:the build runs with make check"},
 		{"a suggestion the other scope holds stays", []string{"move p4"}, ""},
 		{"a forget suggestion does not move", []string{"move p3"}, ""},
-		{"undo goes newest first", []string{"reject p1", "move m2", "forget m1 --yes"}, "?project:deploy runs bin/deploy, ?project:the build runs with make check, ?user:forget:short replies, project:short replies, user:the build runs with make check"},
+		{"edit a memory", []string{"m2=keep replies short"}, "?project:p1:run make check first, ?project:p2:deploy runs bin/deploy, ?project:p4:the build runs with make check, ?user:p3:forget:short replies, project:m1:user:1:deploy by hand, user:m2:user:new:keep replies short, user:m3:learned:3:the build runs with make check"},
+		{"edit a replacement keeps it as yours", []string{"p2=deploy runs bin/deploy --prod"}, "?project:p1:run make check first, ?project:p4:the build runs with make check, ?user:p3:forget:short replies, project:p2:user:new:deploy runs bin/deploy --prod, user:m2:learned:2:short replies, user:m3:learned:3:the build runs with make check"},
+		{"undo goes newest first, edits included", []string{"accept p1", "p1=run make check before a push", "reject p2", "move m2", "forget m1"}, "?project:p4:the build runs with make check, ?user:p3:forget:short replies, project:m2:learned:2:short replies, project:p1:user:new:run make check before a push, user:m3:learned:3:the build runs with make check"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
-			for _, m := range []*store.Memory{
+			for n, m := range []*store.Memory{
 				{ID: "m1", Scope: "project", Text: "deploy by hand", Origin: store.OriginUser},
 				{ID: "m2", Scope: "user", Text: "short replies", Origin: store.OriginLearned},
 				{ID: "m3", Scope: "user", Text: "the build runs with make check", Origin: store.OriginLearned},
 			} {
-				m.ProvenanceSessionID = "seed"
+				m.ProvenanceSessionID, m.CreatedAt, m.UpdatedAt = "seed", int64(n+1), int64(n+1)
 				if err := h.memoryDB(m.Scope).AddMemory(m); err != nil {
 					t.Fatal(err)
 				}
@@ -551,17 +554,27 @@ func TestMemoryListActions(t *testing.T) {
 				var out []string
 				live, _ := h.memoryList(false)
 				for _, m := range live {
-					out = append(out, string(m.Scope)+":"+m.Text)
+					age := "new" // written by this test's commands
+					if m.UpdatedAt < 10 {
+						age = strconv.FormatInt(m.UpdatedAt, 10)
+					}
+					out = append(out, strings.Join([]string{string(m.Scope), m.ID, string(m.Origin), age, m.Text}, ":"))
 				}
 				for _, p := range h.memoryProposals() {
-					out = append(out, "?"+string(p.Scope)+":"+map[bool]string{true: "forget:"}[p.Forget]+p.Text)
+					out = append(out, "?"+string(p.Scope)+":"+p.ID+":"+map[bool]string{true: "forget:"}[p.Forget]+p.Text)
 				}
 				slices.Sort(out)
 				return strings.Join(out, ", ")
 			}
 			start, applied := stores(), 0
 			for _, c := range tc.cmds {
-				if err := h.memoryCommand(c); err == nil {
+				var err error
+				if id, text, ok := strings.Cut(c, "="); ok {
+					_, err = h.rewriteMemory(id, text)
+				} else {
+					err = h.memoryCommand(c + " --yes")
+				}
+				if err == nil {
 					applied++
 				} else if tc.want != "" {
 					t.Fatalf("%s: %v", c, err)
@@ -570,15 +583,18 @@ func TestMemoryListActions(t *testing.T) {
 			if got := stores(); got != cmp.Or(tc.want, start) {
 				t.Fatalf("after %v:\n got %s\nwant %s", tc.cmds, got, cmp.Or(tc.want, start))
 			}
+			if keys := h.memoryOverlay().Keys; len(keys) != min(applied, 1) {
+				t.Fatalf("keys after %d actions: %+v", applied, keys)
+			}
 			for range applied {
-				if err := h.memoryCommand("undo"); err != nil {
+				if err := h.memoryCommand("undo --yes"); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if got := stores(); got != start {
 				t.Fatalf("undone:\n got %s\nwant %s", got, start)
 			}
-			if err := h.memoryCommand("undo"); err == nil || !strings.Contains(err.Error(), "nothing to undo") {
+			if err := h.memoryCommand("undo --yes"); !errors.Is(err, ErrUsage) || len(h.memoryOverlay().Keys) != 0 {
 				t.Fatalf("an undo past the first action: %v", err)
 			}
 		})
@@ -708,7 +724,14 @@ func TestMemoryCommandsRegistered(t *testing.T) {
 	if err := h.memoryCommand(""); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.memoryCommand("undo"); err == nil {
-		t.Fatal("an undo reached past the list's opening")
+	if err := h.memoryCommand("undo --yes"); !errors.Is(err, ErrUsage) {
+		t.Fatalf("an undo reached past the list's opening: %v", err)
+	}
+	// a row another window took is a usage error; a note may start with a verb
+	if err := h.memoryCommand("accept " + id + " --yes"); !errors.Is(err, ErrUsage) {
+		t.Fatalf("a gone row: %v", err)
+	}
+	if err := h.memoryCommand("edit tests first"); err != nil || projectMemories(t, h)[0].Text != "edit tests first" {
+		t.Fatalf("a note starting with a verb: %v", err)
 	}
 }

@@ -2446,10 +2446,13 @@ by the next startup sweep, since the session still has unseen messages.
   other store before it is deleted from its own), `o` edits one in the
   user's editor (the saved text passes intake again as user origin with
   the same scope and quote and keeps the id, an edited suggestion is
-  stored, empty or unchanged text changes nothing), and `u` undoes the
-  last action, newest first, until the list opens again. Since `u` undoes
-  them, no key there arms; only a typed `/memory forget <id>` opens with
-  its Forget armed.
+  stored, empty or unchanged text changes nothing), and `u`, named only
+  while there is something to undo, undoes the last of them, a saved edit
+  included, newest first and to the age a memory had, until the list opens
+  again. Since `u` undoes them, no key there arms; only a typed `/memory
+  forget <id>` opens with its Forget armed. The row keys run `/memory
+  <verb> <id> --yes`, a form no note takes, so `/memory` with any other
+  text keeps that text as a note.
 - **Memory intake is host-side**, regardless of autonomy: a length cap (300
   chars, and 160 for the quote), provenance required, the quote scrubbed
   like the text, and intake-time secret scrubbing (a span matching a key
