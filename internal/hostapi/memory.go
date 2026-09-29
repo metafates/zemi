@@ -17,10 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
-	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -746,7 +744,7 @@ func (h *Host) digestFor() string {
 func (h *Host) memoryCommands() []*Command {
 	return []*Command{{
 		Name: "memory", NArgs: NArgsAny, Desc: "review what zemi remembers; /memory <note> keeps one",
-		GoFn: func(h *Host, args string) error { return h.memoryCommand(args) },
+		GoFn: (*Host).memoryCommand,
 	}}
 }
 
@@ -976,24 +974,11 @@ func (h *Host) quoteInSession(sid, quote string) bool {
 		return false
 	}
 	want := foldSpace(quote)
-	for _, m := range msgs {
-		if m.Role != string(fantasy.MessageRoleUser) {
-			continue
-		}
-		var fm fantasy.Message
-		if json.Unmarshal([]byte(m.PartsJSON), &fm) != nil {
-			continue
-		}
-		if _, summary := summaryOf(fm); summary {
-			continue
-		}
-		// only what was typed: an attached file or a command's output is not the user's word
-		typed, _, _ := strings.Cut(concatText(fm.Content), agent.AttachMarker)
-		if strings.Contains(foldSpace(typed), want) {
-			return true
-		}
-	}
-	return false
+	// only what was typed: an attached file or a command's output is not the user's word
+	return slices.ContainsFunc(msgs, func(m *store.Message) bool {
+		typed, ok := userText(m)
+		return ok && strings.Contains(foldSpace(typed), want)
+	})
 }
 
 func foldSpace(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }

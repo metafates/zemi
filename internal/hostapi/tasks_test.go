@@ -61,7 +61,7 @@ func TestBackgroundAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
-	if n := h.tasks.running(); n != 1 {
+	if n := h.tasks.runningFor(h.AgentSessionID()); n != 1 {
 		t.Fatalf("background agents running = %d, want 1", n)
 	}
 	close(release)
@@ -168,7 +168,7 @@ func TestMessageAgent(t *testing.T) {
 				t.Fatalf("start: %v %s", err, resp.Content)
 			}
 			<-started
-			id := h.tasks.list(sid)[0].id
+			id := h.tasks.runsWhere(func(x *agentRun) bool { return x.parent == sid })[0].id
 			out, err := send(h, id, "also this")
 			if err != nil || (out != "" && !strings.Contains(out, "Queued")) {
 				t.Fatalf("send: %q %v", out, err)
@@ -303,8 +303,8 @@ func TestAgentSendsWhileBackground(t *testing.T) {
 	mu.Lock()
 	got := strings.Join(sent, "\n")
 	mu.Unlock()
-	if !strings.Contains(got, "user msg") || h.tasks.running() != 1 {
-		t.Fatalf("message waited on the background agent: sent %q, running %d", got, h.tasks.running())
+	if !strings.Contains(got, "user msg") || h.tasks.runningFor(run.parent) != 1 {
+		t.Fatalf("message waited on the background agent: sent %q, running %d", got, h.tasks.runningFor(run.parent))
 	}
 	run.finish(h, nil)
 	if err := h.AgentSend("Background agent finished: report"); err != nil {

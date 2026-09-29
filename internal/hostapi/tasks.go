@@ -207,41 +207,16 @@ func (r *taskReg) add(run *agentRun) error {
 	return nil
 }
 
-// list returns the runs parent started, newest first.
-func (r *taskReg) list(parent string) []*agentRun {
+// runsWhere returns the runs keep takes, newest first.
+func (r *taskReg) runsWhere(keep func(*agentRun) bool) []*agentRun {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var out []*agentRun
-	for _, x := range r.runs {
-		if x.parent == parent {
-			out = append(out, x)
-		}
-	}
+	out := slices.DeleteFunc(slices.Collect(maps.Values(r.runs)), func(x *agentRun) bool { return !keep(x) })
 	slices.SortFunc(out, func(a, b *agentRun) int { return b.startedAt().Compare(a.startedAt()) })
 	return out
 }
 
-// runningElsewhere returns the live runs other parents started, newest
-// first: /new leaves a background run behind, and its stop is in /agents.
-func (r *taskReg) runningElsewhere(parent string) []*agentRun {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	var out []*agentRun
-	for _, x := range r.runs {
-		if x.parent != parent && x.isRunning() {
-			out = append(out, x)
-		}
-	}
-	slices.SortFunc(out, func(a, b *agentRun) int { return b.startedAt().Compare(a.startedAt()) })
-	return out
-}
-
-// running counts every live run; runningFor only those parent started.
-func (r *taskReg) running() int {
-	a, f := r.live(func(string) bool { return true })
-	return a + f
-}
-
+// runningFor counts the live runs parent started.
 func (r *taskReg) runningFor(parent string) int {
 	a, f := r.live(func(p string) bool { return p == parent })
 	return a + f
@@ -760,16 +735,16 @@ func (h *Host) agentRunItems() []any {
 			"run":     "workflows view " + f.id,
 		})
 	}
-	for _, run := range h.tasks.list(sid) {
+	for _, run := range h.tasks.runsWhere(func(x *agentRun) bool { return x.parent == sid }) {
 		status, calls, took, runSID := run.state()
 		held[runSID] = true
 		if run.workflow == "" {
 			row(run.id, status, run.agent, took, run.description, fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
 		}
 	}
-	// a run another session started still writes files and blocks /rewind,
-	// so it is listed, named by that session
-	for _, run := range h.tasks.runningElsewhere(sid) {
+	// a run another session started (/new leaves a background run behind)
+	// still writes files and blocks /rewind, so it is listed, named by that session
+	for _, run := range h.tasks.runsWhere(func(x *agentRun) bool { return x.parent != sid && x.isRunning() }) {
 		status, calls, took, _ := run.state()
 		row(run.id, status, run.agent, took, run.description+" (from "+h.sessionName(run.parent)+")", fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
 	}

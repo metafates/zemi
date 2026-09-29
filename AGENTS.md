@@ -893,8 +893,8 @@ lua-language-server is installed.
   plugin send an esc leaves queued gets a toast saying it waits for the next message, and a
   report a closing session drops (`/new`, `/resume`) is stored in its own session and toasted
   (`notifyReport`), like one for a session that moved on.
-  `/agents` lists the live session's runs and, under Running, the live runs of every other session (`runningElsewhere`,
-  named by that session's title): they block `/rewind`, so their stop must be reachable.
+  `/agents` lists the live session's runs and, under Running, the live runs of every other session
+  (`agentRunItems`, named by that session's title): they block `/rewind`, so their stop must be reachable.
 - **Scratchpad** (scratch.go): `<state>/scratch/<first 12 of the session id>`, short so a unix
   socket path under it fits macOS's 104 bytes. A pipeline binds it once (`Pipeline.Pad`,
   `Request.Pad`): `PipelineFor` the live session's, a subagent run its parent session's, so a run
