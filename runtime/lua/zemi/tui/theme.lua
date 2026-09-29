@@ -76,6 +76,9 @@ local function theme(palette)
 		SplashKey = { link = "Button" },
 		ScrollbarTrack = { link = "Rule" },
 		ScrollbarThumb = { link = "Accent" },
+		-- a scrolled region's pinned header (a prompt over its turn): chrome, so
+		-- grey over a rule the width of the view, never read as a message
+		Pinned = { fg = "dim", underline = true },
 		-- hover draws over the text's own style: keys left out keep it. A row
 		-- header takes the accent and nothing else; body rows opt out entirely
 		-- (hover = false) and say a click acts with the pointer shape alone. A

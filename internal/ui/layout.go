@@ -643,25 +643,26 @@ func (st *scrollState) pinRow(lines [][]hostapi.Segment, width int) {
 	}
 }
 
-// pinCopy is row as the pin draws it: nothing in it copies or acts but the
-// pin's own click, and it ends in an ellipsis when the header has more rows.
+// pinCopy is row as the pin draws it, chrome rather than content: all in
+// Pinned (the chat's greys over a rule the width of the view), nothing in it
+// copying or acting but the pin's own click, and ending in an ellipsis when
+// the header has more rows.
 func pinCopy(row []hostapi.Segment, more bool, width int) []hostapi.Segment {
 	row = slices.Clone(row)
 	for i := range row {
-		row[i].NoCopy, row[i].Soft, row[i].Click, row[i].Widget = true, false, "", ""
+		row[i].HL, row[i].Effect, row[i].NoCopy, row[i].Soft, row[i].Click, row[i].Widget = "Pinned", "", true, false, "", ""
 	}
 	if more {
-		hl := ""
 		for len(row) > 0 {
 			last := &row[len(row)-1]
-			if hl, last.Text = last.HL, strings.TrimRight(last.Text, " "); last.Text != "" {
+			if last.Text = strings.TrimRight(last.Text, " "); last.Text != "" {
 				break
 			}
 			row = row[:len(row)-1]
 		}
-		row = append(truncateSegs(row, barInner(width)-1), hostapi.Segment{Text: "…", HL: hl, NoCopy: true})
+		row = append(truncateSegs(row, barInner(width)-1), hostapi.Segment{Text: "…", HL: "Pinned", NoCopy: true})
 	}
-	return row
+	return append(row, hostapi.Segment{Text: strings.Repeat(" ", max(barInner(width)-hostapi.SegsWidth(row), 0)), HL: "Pinned", NoCopy: true})
 }
 
 // scrollbar is the one-cell bar down the right edge of a viewport showing
