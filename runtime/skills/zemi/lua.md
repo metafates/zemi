@@ -142,7 +142,7 @@ end)
 -- Spend per turn
 zemi.event.on("agent.finish", function(ev) zemi.log.info(ev.model .. " $" .. ev.usage.cost) end)
 
--- Subagents and workflows run off the interpreter; callbacks fire when done
+-- Subagents and workflows run off the interpreter; callbacks fire when done, and a reload cancels them
 zemi.agent.run({ agent = "explore", prompt = "Where is the retry logic?" }, function(text, err)
 	zemi.notify({ title = "explore", body = text or err })
 end)

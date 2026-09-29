@@ -1713,7 +1713,7 @@ function zemi.agent.prompt() end
 ---@return zemi.AgentDef[]
 function zemi.agent.list() end
 
---- Run a subagent off the interpreter. User config only.
+--- Run a subagent off the interpreter. User config only; a reload cancels it.
 ---
 --- ```lua
 --- zemi.agent.run({ agent = "explore", prompt = "Where is the retry logic?" }, function(text, err)
@@ -1758,7 +1758,8 @@ zemi.workflow = {}
 ---@return zemi.WorkflowInfo[]
 function zemi.workflow.list() end
 
---- Run a workflow in its own Lua state. Config Lua, user or builtin origin only.
+--- Run a workflow in its own Lua state. Config Lua, user or builtin origin
+--- only; a reload cancels it.
 --- ```lua
 --- zemi.workflow.run({ name = "review" }, function(result, err) zemi.agent.send(result or err) end)
 --- ```

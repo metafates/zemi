@@ -267,18 +267,30 @@ func TestWidgetOrigins(t *testing.T) {
 	runUser(t, r, `assert(zemi.ui.widget.del("w") == true and zemi.ui.widget.del("w") == false)`)
 }
 
-// TestPurgeStopsLuaJobs: a reload stops the jobs Lua started, which would
-// otherwise run on with nobody left to hear from them.
-func TestPurgeStopsLuaJobs(t *testing.T) {
+// TestPurgeStopsLuaWork: a reload stops the jobs, agents and workflows Lua
+// started, which would otherwise run on with nobody left to hear from them.
+func TestPurgeStopsLuaWork(t *testing.T) {
 	h, r := newTestHostDB(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) { return newGate(), nil } // agents wait for the cancel
 	runUser(t, r, `
 		zemi.permission.rule.add({ subject = "lua.job.start", pattern = "sleep *", decision = "allow", match = "sleep 30" })
 		zemi.job.start({ cmd = "sleep", args = { "30" }, on_exit = function() zemi.state.set("sleep", "stopped") end })
+		zemi.agent.run({ prompt = "x" })
+		zemi.workflow.run({ script = "return zemi.workflow.agent('y')" })
 	`)
+	waitFor(t, func() error {
+		if a, f := h.tasks.live(func(string) bool { return true }); a != 1 || f != 1 {
+			return fmt.Errorf("%d agents and %d workflows running", a, f)
+		}
+		return nil
+	})
 	h.PurgeGeneration()
 	waitFor(t, func() error {
 		if v, _ := h.GlobalDB.GetKV("sleep"); v != `"stopped"` {
 			return errors.New("the job outlived the purge")
+		}
+		if a, f := h.tasks.live(func(string) bool { return true }); a+f != 0 {
+			return fmt.Errorf("%d agents and %d workflows outlived the purge", a, f)
 		}
 		return nil
 	})

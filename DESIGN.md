@@ -1227,8 +1227,8 @@ user or builtin keys; user and builtin code see the whole store, the others'
 keys included. A plugin's keys go when its directory does (§5).
 
 Async I/O returns handles (§6.0 convention): `h:wait()` in a task or pass
-callbacks; a reload stops the jobs, timers, HTTP requests and model asks
-of the generation it drops. A wait (`h:wait()`, `zemi.job.wait`) suspends the
+callbacks; a reload stops the jobs, timers, HTTP requests, model asks,
+agent runs and workflow runs of the generation it drops. A wait (`h:wait()`, `zemi.job.wait`) suspends the
 task and frees the interpreter until the handle is done, its timeout
 passes (`zemi.job.wait` then kills the command) or the task ends; it
 raises outside a task (§4), so an event handler or a render uses the

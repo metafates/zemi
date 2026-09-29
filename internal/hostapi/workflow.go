@@ -1996,7 +1996,9 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		}
 		n, _ := opt[glua.LNumber](L, spec, "concurrency")
 		at := h.callerOf(L)
+		stopID := make(chan int, 1) // a reload cancels the run, like a job
 		f, err := h.startFlow(context.Background(), flowSpec{name: rawString(L, spec, "name"), src: src, args: args, concurrency: int(n), background: true, done: func(f *flowRun) {
+			h.stops.remove(<-stopID)
 			switch {
 			case onDone == nil:
 			case f.err != nil:
@@ -2008,6 +2010,7 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			return luaResult(L, err)
 		}
+		stopID <- h.stops.add(f.cancel)
 		handle := L.NewTable()
 		handle.RawSetString("id", glua.LString(f.id))
 		handle.RawSetString("cancel", L.NewFunction(func(L *glua.LState) int {

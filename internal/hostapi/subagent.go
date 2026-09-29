@@ -1070,8 +1070,10 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		at := h.callerOf(L)
+		stopID := h.stops.add(cancel) // a reload cancels it, like a job
 		h.GoSafe("zemi.agent.run", func() {
 			defer cancel()
+			defer h.stops.remove(stopID)
 			_, text, err := h.runSubagent(ctx, def, desc, prompt)
 			switch {
 			case onDone == nil:
