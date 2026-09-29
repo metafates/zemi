@@ -264,7 +264,7 @@ func TestNormalizeHeredoc(t *testing.T) {
 		{"mkdir -p d && cat > d/a.md <<'EOF'\nDon't panic\nEOF", "mkdir -p d|cat|Dont panic\n", false, false},
 		{"python3 - <<'EOF'\nprint('it\\'s')\nEOF", "python3 -|print|it\\s)\n", false, false},
 		{"cat > x.sh <<'EOF'\necho it's\nEOF\nbash x.sh", "cat|echo its\n|bash x.sh", true, true},
-		{"git commit -F - <<'EOF'\nrm -rf . is gone\nEOF", "git commit -F -", false, false},
+		{"git add -A && git commit -F - <<'EOF'\nrm -rf . is gone\nEOF", "git add -A|git commit -F -", false, false},
 		{"git -c alias.x='!sh' x <<'EOF'\nrm -rf .\nEOF", "git -c alias.x=!sh x|rm -rf .", false, true},
 		{"sh <<'EOF'\necho 'it\nEOF", "sh|echo it\n", true, true},
 		{"cat <<", "cat", true, true},

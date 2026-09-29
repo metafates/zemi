@@ -301,12 +301,19 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			sc.subs = append(sc.subs, sc.depth)
 			sc.sep()
 		case r == '$' && i+1 < len(rs) && (rs[i+1] == '\'' || rs[i+1] == '"'):
-			// $'..' and $".." quote in bash (the $ goes) but not in dash; a
-			// backslash in $'..' can move where bash ends the quote, so ask
+			// $'..' and $".." quote in bash (the $ goes) but not in dash. Bash
+			// decodes $'..' escapes, which the words here keep as written: one
+			// past the blank and punctuation ones can spell a name or end the quote
 			q := rs[i+2:]
-			if end := slices.Index(q, '\''); rs[i+1] == '\'' && end >= 0 && slices.Contains(q[:end], '\\') {
-				n.ForceAsk = "ANSI-C quoting with a backslash"
-				n.hidden, n.doubt = true, n.ForceAsk
+			end := slices.Index(q, '\'')
+			for k := 0; rs[i+1] == '\'' && k < end; k++ {
+				if q[k] == '\\' {
+					if k++; !strings.ContainsRune(`abeEfnrtv\"?`, q[k]) {
+						n.ForceAsk = "an ANSI-C escape zemi does not decode"
+						n.hidden, n.doubt = true, n.ForceAsk
+						break
+					}
+				}
 			}
 		case r == '#' && !inWord:
 			end := slices.Index(rs[i:], '\n')
@@ -420,6 +427,9 @@ func (sc *scanner) quotedSub(n *Normalized, rs []rune, j int) (int, bool) {
 		sep = t.kind == tokSep || t.kind == tokWord && reserved[t.text]
 	}
 	sc.failed = sc.failed || sub.failed || open > 0 || end >= len(rs)
+	if open > 0 {
+		n.doubt = "a case pattern ends a quoted substitution"
+	}
 	sc.held = append(sc.held, token{kind: tokSep})
 	sc.held = append(append(sc.held, sub.toks...), token{kind: tokSep})
 	if n.ForceAsk == "" {
@@ -553,14 +563,15 @@ func readRedirectOp(rs []rune, i int) (string, int) {
 
 // eat walks the token stream: redirects take the next word as target,
 // separators cut segments, heredocs force ask. A heredoc body is a script
-// unless every program in the command is a dataReader; then only an
+// unless every program in the command runs none (inert); then only an
 // unquoted one's substitutions run. Its segments go where the body is.
 // The command is judged whole, so one other program (mkdir, bash x.sh) makes
 // every body a script, but a body fails the call only when a shell may run
 // it. Programs names what runs by the body's reader instead (shown), while no
 // shell or interpreter in the command could run a data reader's body.
-// NOTE: a data body with an open quote hides the lines after it from
-// Destructive; the confined run is the limit there, as for any settled code.
+// NOTE: a body no known shell reads ($SHELL, make, python3 -) hides the lines
+// after an open quote from Destructive, though its reader may split lines
+// otherwise; the confined run is the limit there, as for any settled code.
 func (n *Normalized) eat(sc *scanner) {
 	var seg []string
 	type doc struct {
@@ -611,14 +622,14 @@ func (n *Normalized) eat(sc *scanner) {
 	// a body is a script unless every program only reads it
 	script := slices.ContainsFunc(n.Args, func(f []string) bool {
 		f = ProgramWords(f)
-		return len(f) > 0 && !dataReader(f)
+		return len(f) > 0 && !inert(f)
 	})
 	// a data reader's body is data only while nothing in the command can run
 	// it: cat <<EOF | sh, or cat > x.sh <<EOF then bash x.sh
 	code := slices.ContainsFunc(n.Args, func(f []string) bool { return WrapperPrograms[program(f)] })
 	foreign := slices.ContainsFunc(n.Args, func(f []string) bool {
 		p := program(f)
-		return p != "" && !dataReader(stepRunners(ProgramWords(f))) && !isShell(p)
+		return p != "" && !inert(stepRunners(ProgramWords(f))) && !isShell(p)
 	})
 	if len(docs) > 0 {
 		n.shown = slices.Clone(n.Args)
@@ -686,6 +697,14 @@ func dataReader(f []string) bool {
 		return slices.Contains([]string{"cat", "tee", "echo", "printf", "gh", "patch"}, p)
 	}
 	return len(f) > 1 && slices.Contains([]string{"commit", "tag", "notes", "apply", "am", "hash-object", "mktree", "mktag"}, f[1])
+}
+
+// inert reports that the program f starts with runs no heredoc in the
+// command: a dataReader, or a git builtin no alias can shadow that runs no
+// program its words name (git add, unlike push --receive-pack or rebase -x).
+func inert(f []string) bool {
+	plain := []string{"add", "status", "diff", "log", "show", "branch", "switch", "checkout", "restore", "reset", "rm", "mv", "stash", "init", "rev-parse", "ls-files"}
+	return dataReader(f) || len(f) > 1 && ProgramName(f[0]) == "git" && slices.Contains(plain, f[1])
 }
 
 // substitutions parses the $( and backtick substitutions of text the shell

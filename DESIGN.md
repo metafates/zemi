@@ -1989,7 +1989,9 @@ provenance string.
   a reader that runs none of its input (`cat`, `tee`, `echo`, `printf`,
   `gh`, `patch`, and `git` only as a subcommand named first that reads a
   message or a patch, `commit`, `tag`, `apply`, `am` and the like, since a
-  `-c` before it can define an alias that runs a shell), and then an
+  `-c` before it can define an alias that runs a shell; beside the reader,
+  a git builtin that runs no program its words name, like `add` or
+  `status`, leaves the body data too), and then an
   unquoted one for its substitutions
   and a quoted one is data (a `<<` inside `(( ))` is a shift, not a
   heredoc); a body that does not parse as commands fails the call only
@@ -2083,8 +2085,10 @@ provenance string.
   every operand is below the scratchpad, as `$TMPDIR/...` or its literal
   path with no climb, settles while nothing in the command can have
   changed `$TMPDIR`; and any command whose quoting the shell may group
-  otherwise than zemi's segments, a nested backtick, a backslash in `$'..'`
-  or a quote in a comment after `)`, since the list cannot vouch for it),
+  or spell otherwise than zemi's segments, a nested backtick, a `$'..'`
+  escape past the blank and punctuation ones, a case pattern inside a quoted
+  substitution or a quote in a comment after `)`, since the list cannot
+  vouch for it),
   a git command that writes `.git` (`perm.Normalized.GitWrites`:
   the sandbox keeps `.git` read-only, so a confined commit could only
   fail and the ask comes first), and on a backend that cannot hide files
