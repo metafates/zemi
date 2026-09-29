@@ -1818,7 +1818,8 @@ provenance string.
   segment and `(runs code)` in Warn when it runs code the list cannot see,
   marked names first, two rows at most and the rest counted as `+N more`; when
   the parse cannot vouch for the list (a program a substitution or a variable
-  picks, a heredoc another language reads) it says `unknown: read the command`.
+  picks, a heredoc another language reads) it says `unknown: read the command`;
+  a heredoc `cat`, `tee` or another data reader reads adds only its substitutions.
   Then the command, diff or input, then the choices, a vertical list with their
   keys, each label saying how long and a dim column saying what it allows:
   `Yes` (`y`, or `o`), `Yes, this session` (`a`, only

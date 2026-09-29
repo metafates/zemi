@@ -40,8 +40,13 @@ type Normalized struct {
 	// hidden marks a program no segment names, so Programs lists none: one a
 	// substitution's output or a gated assignment picks, words after a
 	// substitution inside one word, arithmetic, an array, a heredoc body a
-	// program other than a shell reads, or quoting the scanner cannot place.
+	// program other than a shell or a dataReader reads, or quoting the
+	// scanner cannot place.
 	hidden bool
+	// shown are the rows Programs lists when a heredoc makes them differ
+	// from Args: a dataReader's body runs only its substitutions, though
+	// the rules judge it as commands.
+	shown [][]string
 }
 
 // envGateNames are the environment-affecting variables whose assignment
@@ -569,13 +574,16 @@ func readRedirectOp(rs []rune, i int) (string, int) {
 // unquoted one's substitutions run. Its segments go where the body is.
 // NOTE: the command is judged whole, so one other program (bash x.sh) makes
 // every body a script, and a body with an open quote then fails the call.
+// Programs names what runs by the body's reader instead (shown).
 func (n *Normalized) eat(sc *scanner) {
 	var seg []string
 	type doc struct {
 		at int
 		token
+		reader string // the program whose << it is, "" when no word before it names one
 	}
 	var docs []doc
+	var readers []string
 	toks := sc.toks
 	for i := 0; i < len(toks); i++ {
 		t := toks[i]
@@ -588,10 +596,17 @@ func (n *Normalized) eat(sc *scanner) {
 			if t.op != "<<<" && t.text == "" && !t.quoted {
 				n.Fail = "a redirect has no target"
 			}
+			if t.op != "<<<" {
+				readers = append(readers, program(seg))
+			}
 		case tokBody:
 			n.fold(seg)
 			seg = nil
-			docs = append(docs, doc{len(n.Args), t})
+			d := doc{at: len(n.Args), token: t}
+			if len(docs) < len(readers) {
+				d.reader = readers[len(docs)]
+			}
+			docs = append(docs, d)
 		case tokRedirect:
 			if i+1 < len(toks) && toks[i+1].kind == tokWord {
 				n.gate(t.op, toks[i+1].text)
@@ -608,24 +623,45 @@ func (n *Normalized) eat(sc *scanner) {
 		n.Fail = "a quote or parenthesis is not closed"
 	}
 	shell := n.readsScript()
-	// a body a program other than a shell reads (python3 - <<EOF) is its code
-	if shell && len(docs) > 0 && slices.ContainsFunc(n.Args, func(f []string) bool {
-		f = ProgramWords(f)
-		for ok := true; ok && len(f) > 1; {
-			f, ok = stepRunner(f)
-		}
-		return len(f) > 0 && !slices.Contains(dataReaders, f[0]) && !isShell(f[0])
-	}) {
-		n.hidden = true
+	if len(docs) > 0 {
+		n.shown = slices.Clone(n.Args)
 	}
 	for _, d := range slices.Backward(docs) {
+		var body Normalized
 		switch {
 		case shell:
-			n.absorb(d.at, Normalize(d.text))
+			body = Normalize(d.text)
 		case !d.quoted:
-			n.absorb(d.at, substitutions(d.text))
+			body = substitutions(d.text)
 		}
+		show := body
+		switch {
+		case isShell(d.reader):
+		case slices.Contains(dataReaders, d.reader) && d.quoted:
+			show = Normalized{}
+		case slices.Contains(dataReaders, d.reader):
+			show = substitutions(d.text)
+		default: // a body another program reads (python3 - <<EOF) is its code
+			show.hidden = true
+		}
+		hidden := n.hidden || show.hidden
+		n.absorb(d.at, body)
+		n.hidden = hidden
+		n.shown = slices.Insert(n.shown, d.at, show.Args...)
 	}
+}
+
+// program is the program a segment's words run, past assignments and
+// runners (sudo tee), "" when none is named yet.
+func program(seg []string) string {
+	f := ProgramWords(seg)
+	for ok := true; ok && len(f) > 1; {
+		f, ok = stepRunner(f)
+	}
+	if len(f) == 0 {
+		return ""
+	}
+	return f[0]
 }
 
 // dataReaders run none of their input, so a heredoc they read is data

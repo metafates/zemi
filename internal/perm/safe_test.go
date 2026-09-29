@@ -521,6 +521,8 @@ func TestPrograms(t *testing.T) {
 		{"quoted substitution", `echo "$(rm -rf x)"`, "", "echo rm!deletes"},
 		{"commit message heredoc", "git commit -m \"$(cat <<'EOF'\nfix: things\nEOF\n)\"", "", "git commit cat"},
 		{"data heredoc", "cat > n.txt <<EOT\nrm -rf x\nEOT", "", "cat"},
+		{"data heredoc beside a program", "cat > n.txt <<'EOF'\nrm -rf x\nEOF\ngo vet ./...", "", "cat go vet"},
+		{"data heredoc runs its substitutions", "cat > n.txt <<EOF\nby $(whoami)\nEOF\ngo vet ./...", "", "cat whoami go vet"},
 		{"shell heredoc", "bash <<'EOF'\nrm -rf x\nEOF", "", "bash!runs code rm!deletes"},
 		{"assigned substitution", "v=$(git rev-parse HEAD); echo $v", "", "git rev-parse echo"},
 		{"dynamic program", "for c in ls pwd; do $c; done", "", "-"},

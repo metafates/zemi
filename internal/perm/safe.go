@@ -1149,7 +1149,11 @@ func (n Normalized) Programs(pad string) []Program {
 	}
 	out := []Program{}
 	loops := 0
-	for _, f := range n.Args {
+	rows := n.Args
+	if n.shown != nil {
+		rows = n.shown
+	}
+	for _, f := range rows {
 		g := ProgramWords(f)
 		if slices.Contains(f[:len(f)-len(g)], "do") {
 			loops++
