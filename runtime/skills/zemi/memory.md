@@ -7,7 +7,7 @@ Memories reach you as the `# Memory` section of the system prompt: this project'
 - The `memory` tool's description has the writing rules; each scope holds 3 KB.
 - Under `memory.autonomy = "auto"` (the default) a memory stores at once unless it is instruction-shaped, replaces one the user saved, comes from an untrusted project, or comes from a session that used `fetch`, `web_search`, the `lua` tool or a tool zemi does not ship (MCP, `zemi.tool`), directly or through a subagent. Those wait for review; `ask` queues every one. Forgetting a memory the user saved needs the user's approval.
 - The reflector reads a session when it closes (`/new`, `/resume`), once it has had no turn for ten minutes in an open zemi, or at the next start once it has sat idle that long, if it has two new user messages and a tool call, or a failed tool call. It proposes memories under the same rules, never skills, and retirements of memories the session proved wrong, which always wait for review. `/reflect` runs it now.
-- The user reviews in `/memory`, whose footer names its keys; `/memory <note>` saves a note as the user's own, `/memory forget <id>` opens it there to confirm, and `/memory forget <id> --yes` drops it at once. The statusline counts the memories waiting for review.
+- The user reviews in `/memory`, where enter opens a row with its keys as buttons; `/memory <note>` saves a note as the user's own, `/memory forget <id>` opens it there to confirm, and `/memory forget <id> --yes` drops it at once. The statusline counts the memories waiting for review.
 
 ## Recipes
 

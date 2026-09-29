@@ -121,7 +121,8 @@ func TestGoldenMemoryDetail(t *testing.T) {
 
 // TestMemoryReviewFocus: a typed /memory forget opens its memory with Forget
 // armed, as a typed delete opens its detail: the second press forgets it once
-// the screen closes, and esc or any other key drops the arm.
+// the screen closes, and esc, any other key or a wheel that moves off it
+// drops the arm.
 func TestMemoryReviewFocus(t *testing.T) {
 	for _, c := range []struct {
 		name   string
@@ -134,6 +135,7 @@ func TestMemoryReviewFocus(t *testing.T) {
 		{"its key forgets too", []string{"d"}, "enter open", "delete project"},
 		{"esc drops the arm only", []string{"esc"}, "esc back", ""},
 		{"another key drops the arm", []string{"j"}, "esc back", ""},
+		{"a wheel off and back drops the arm", []string{"wheel down", "wheel up"}, "esc back", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, _ := bootAgentApp(t, 70, 16)
@@ -142,7 +144,13 @@ func TestMemoryReviewFocus(t *testing.T) {
 				done <- app.ReviewMemories([]hostapi.MemoryRow{{ID: "m1", Scope: "project", Text: "one"}, {ID: "m2", Scope: "project", Text: "two"}}, "m2")
 			}()
 			waitPrompt(t, app, func() bool { return app.memReview != nil })
-			pressKeys(app, c.press...)
+			for _, k := range c.press {
+				if b, ok := map[string]tea.MouseButton{"wheel down": tea.MouseWheelDown, "wheel up": tea.MouseWheelUp}[k]; ok {
+					app.Update(tea.MouseWheelMsg{Button: b})
+					continue
+				}
+				pressKeys(app, k)
+			}
 			if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, c.footer) {
 				t.Fatalf("no %q in:\n%s", c.footer, frame)
 			}
@@ -207,11 +215,12 @@ func TestMemoryReviewForgetAndWrap(t *testing.T) {
 		{ID: "f1", Scope: "project", Origin: "learned", Text: "forget: note", Queued: true, Forget: true, Supersedes: "m1"},
 		{ID: "m1", Scope: "project", Origin: "user", Text: "note"},
 	})
-	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	pressKeys(app, "j", "enter")
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "a forget · d keep") {
-		t.Fatalf("forget hints:\n%s", frame)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "[a] Forget") || !strings.Contains(frame, "[d] Keep") {
+		t.Fatalf("forget buttons:\n%s", frame)
 	}
+	pressKeys(app, "esc")
 	for _, key := range []rune{'a', 'u', 'a'} {
 		app.Update(tea.KeyPressMsg{Code: key, Text: string(key)})
 		app.renderSync(t)
@@ -237,7 +246,7 @@ func TestMemoryReviewScopeToggle(t *testing.T) {
 	})
 	app.Update(tea.KeyPressMsg{Code: 's', Text: "s"}) // m2, the suggestion, goes everywhere
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "everywhere · learned") || !strings.Contains(frame, "s only this project") {
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "everywhere · learned") {
 		t.Fatalf("toggled scope not shown:\n%s", frame)
 	}
 	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
@@ -257,8 +266,7 @@ func TestMemoryReviewScopeToggle(t *testing.T) {
 }
 
 // TestMemoryReviewScopeFixed: s leaves a suggestion that forgets a memory
-// in that memory's scope, and on a narrow screen the hint gives up its
-// middle keys, which the open row has as buttons, before esc.
+// in that memory's scope.
 func TestMemoryReviewScopeFixed(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 20)
 	done := openReview(t, app, []hostapi.MemoryRow{
@@ -268,10 +276,6 @@ func TestMemoryReviewScopeFixed(t *testing.T) {
 	for range 2 {
 		app.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 		app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	}
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "enter open · a keep · d drop · esc close") {
-		t.Fatalf("narrow hint:\n%s", frame)
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if got := reviewAnswer(t, done); len(got) != 1 || got["s1"] != " user" {
