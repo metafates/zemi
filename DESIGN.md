@@ -2061,7 +2061,9 @@ provenance string.
   included, makes the body literal); a body that does not parse as
   commands fails the call only
   when a shell may run it, since an apostrophe in prose or in another
-  language's code is no shell error; other input targets
+  language's code is no shell error, and is judged by what parses before
+  the error and line by line, since a shell runs the lines before it and
+  make runs each recipe line in a shell of its own; other input targets
   gate as `fs.read` (secret-shaped paths ask, below), other output
   targets gate as `fs.write`, and only the inert character devices
   `/dev/null` and `/dev/zero` are exempt from both (`/dev/tty` and

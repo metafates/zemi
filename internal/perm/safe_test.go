@@ -370,6 +370,9 @@ func TestDestructive(t *testing.T) {
 		{"rm -v x", false},
 		{"grep -rn rm Makefile", false},
 		{"echo rm -rf x", false},
+		// a shell runs the lines before the one that does not parse
+		{"$SHELL <<'EOF'\nrm -rf *\n`\nEOF", true},
+		{"cat > Makefile <<'EOF'\na;; b:\n\trm -rf .\nEOF\nmake", true},
 		// bash 3.2 ends the $( ) at the body's ) and runs rm z
 		{"echo $(cat <<EOF\n) ; rm z\nEOF\n)", true},
 		{"git commit -m \"$(cat <<'EOF'\n1) fix x\nEOF\n)\"", false},

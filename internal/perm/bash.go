@@ -120,28 +120,26 @@ func Normalize(cmd string) Normalized {
 	if strings.ContainsRune(cmd, '\r') {
 		n.doubtful("a carriage return, which sh reads as part of a word")
 	}
-	if n.Fail == "" {
-		p := normalize(cmd, syntax.LangPOSIX)
-		for _, r := range p.rows {
-			if !slices.ContainsFunc(n.rows, r.same) {
-				n.rows = append(n.rows, r)
-			}
+	p := normalize(cmd, syntax.LangPOSIX)
+	for _, r := range p.rows {
+		if !slices.ContainsFunc(n.rows, r.same) {
+			n.rows = append(n.rows, r)
 		}
-		if n.shown != nil || p.shown != nil {
-			if n.shown == nil {
-				n.shown = slices.Clone(n.rows)
-			}
-			if p.shown == nil {
-				p.shown = p.rows
-			}
-			for _, r := range p.shown {
-				if !slices.ContainsFunc(n.shown, r.same) {
-					n.shown = append(n.shown, r)
-				}
-			}
-		}
-		n.take(p)
 	}
+	if n.shown != nil || p.shown != nil {
+		if n.shown == nil {
+			n.shown = slices.Clone(n.rows)
+		}
+		if p.shown == nil {
+			p.shown = p.rows
+		}
+		for _, r := range p.shown {
+			if !slices.ContainsFunc(n.shown, r.same) {
+				n.shown = append(n.shown, r)
+			}
+		}
+	}
+	n.take(p)
 	for _, r := range n.rows {
 		n.Segments = append(n.Segments, strings.Join(r.args, " "))
 		n.Args = append(n.Args, r.args)
@@ -161,9 +159,9 @@ func (n Normalized) Rows() []Normalized {
 	return out
 }
 
-// normalize is one reading of cmd. A bash parse error fails the call; the
-// POSIX reading keeps what parses before its error, which dash would run
-// before it stops, since the bash reading covers the rest.
+// normalize is one reading of cmd: the statements that parse before an
+// error, which a shell runs before it stops there (a heredoc body a data
+// reader takes keeps them). A bash parse error also fails the call.
 func normalize(cmd string, lang syntax.LangVariant) (n Normalized) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -171,23 +169,27 @@ func normalize(cmd string, lang syntax.LangVariant) (n Normalized) {
 		}
 	}()
 	src, stmts, err := parse(cmd, lang)
+	fail := ""
 	if err != nil && lang == syntax.LangBash {
-		return Normalized{Fail: parseFailure(err)}
+		fail = parseFailure(err)
 	}
 	w := walker{src: src, skip: map[*syntax.Stmt]bool{}}
 	if w.inline(stmts) {
 		w.stmts(stmts)
 		// a name that reads other than as $NAME may be reassigned, and a
 		// builtin that sets names by a value zemi cannot see may reassign any
-		if !w.reassigns(stmts) && !slices.ContainsFunc(w.n.rows, func(r row) bool { return ShellState[r.args[0]] }) {
-			return w.finish(stmts)
+		if w.reassigns(stmts) || slices.ContainsFunc(w.n.rows, func(r row) bool { return ShellState[r.args[0]] }) {
+			// the tree holds the values now: parse again
+			src, stmts, _ = parse(cmd, lang)
+			w = walker{src: src, skip: map[*syntax.Stmt]bool{}}
+			w.stmts(stmts)
 		}
-		// the tree holds the values now: parse again
-		src, stmts, _ = parse(cmd, lang)
-		w = walker{src: src, skip: map[*syntax.Stmt]bool{}}
+	} else {
+		w.stmts(stmts)
 	}
-	w.stmts(stmts)
-	return w.finish(stmts)
+	n = w.finish(stmts)
+	n.Fail = cmp.Or(fail, n.Fail)
+	return n
 }
 
 const panicked = "zemi could not parse the command: "
@@ -793,9 +795,10 @@ func (w *walker) reassigns(stmts []*syntax.Stmt) bool {
 // a shell may run it. Programs names what runs by the body's reader instead
 // (shown), while no shell or interpreter in the command could run a data
 // reader's body.
-// NOTE: a body no known shell reads ($SHELL, make, python3 -) hides the lines
-// after an open quote from Destructive, though its reader may split lines
-// otherwise; the confined run is the limit there, as for any settled code.
+// NOTE: a body that does not parse is judged whole and line by line, so a
+// reader no known shell is ($SHELL, make) may still run a command spanning
+// lines that neither reading shows; the confined run is the limit there, as
+// for any settled code.
 func (w *walker) finish(stmts []*syntax.Stmt) Normalized {
 	for _, s := range stmts {
 		if !w.skipped(s) {
@@ -821,11 +824,23 @@ func (w *walker) finish(stmts []*syntax.Stmt) Normalized {
 		switch {
 		case script:
 			body = Normalize(d.text)
-			// sh still runs an unquoted body's substitutions
-			if body.Fail != "" && !d.quoted {
-				fail := body.Fail
-				body = d.subs
-				body.Fail = fail
+			if body.Fail == "" {
+				break
+			}
+			// a reader may still run it line by line (make runs each recipe
+			// line in a shell of its own), and sh expands an unquoted one first
+			more := []Normalized{d.subs}
+			for line := range strings.Lines(d.text) {
+				more = append(more, Normalize(line))
+			}
+			for _, m := range more {
+				for _, r := range m.rows {
+					if !slices.ContainsFunc(body.rows, r.same) {
+						body.rows = append(body.rows, r)
+					}
+				}
+				m.Fail = ""
+				body.take(m)
 			}
 		case !d.quoted:
 			body = d.subs
