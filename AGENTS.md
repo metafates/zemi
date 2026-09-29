@@ -1131,7 +1131,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   which stays what `y` copies; an item's `fields`, name and value pairs, draw as a table
   above its `detail` prose (`fieldRows`: a `status` value in its status color, an `error` one
   in Danger, an empty one left out), and `y` copies them as `name: value` lines). Opening the id of an open overlay replaces it in place
-  (`replaceOverlay`, keeping selection and filter; only an origin that may close it), and a
+  (`replaceOverlay`, keeping selection and filter; only an origin that may close it), a detail
+  view open over it rebuilt from its item or dropped with it (`refreshDetail`: a Go screen's
+  `Refresh` would leave it stale), and a Go screen's list-level key runs a command
+  (`OverlayKey.Run`, builtin and user lists only). A
   toggle list rebuilds when the overlay stacked on it closes (`closeOverlayByID`; a detail
   view only after an action) and after a reload (`SignalBoot`), so every caller acts first
   and closes after: the worker then runs the rebuild behind the action. A row that fills the

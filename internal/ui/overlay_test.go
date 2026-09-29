@@ -542,6 +542,33 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
+			"a refresh rebuilds the detail open over the list from its item, keeping the selected action, and drops it with the item",
+			hostapi.Overlay{ID: "p", Items: []any{detail("a", "b"), "x"}},
+			[]string{"enter", "down"},
+			func(a *App) string {
+				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Refresh: true, Items: []any{"x", map[string]any{"text": "err", "detail": "line three", "actions": []any{"a", "b"}}}})
+				if d := a.overlays[len(a.overlays)-1]; len(a.overlays) != 2 || d.o.Body != "line three" || d.selected != 1 {
+					return fmt.Sprintf("overlays=%d body=%q selected=%d", len(a.overlays), d.o.Body, d.selected)
+				}
+				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Refresh: true, Items: []any{"x"}})
+				return map[bool]string{false: "the gone item's detail stayed"}[len(a.overlays) == 1]
+			},
+		},
+		{
+			"a Go screen's list key runs its command",
+			hostapi.Overlay{ID: "p", Items: []any{"x"}, Keys: []hostapi.OverlayKey{{Key: "p", Desc: "pause", Run: "zz pause"}}},
+			nil,
+			func(a *App) string {
+				ran := ""
+				a.host.Commands.Add(&hostapi.Command{
+					Name: "zz", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+				})
+				a.overlayKey("p", "p")
+				return map[bool]string{false: "ran " + ran}[ran == "pause"]
+			},
+		},
+		{
 			"closing the parent drops its detail view",
 			hostapi.Overlay{ID: "p", Items: []any{detail()}},
 			[]string{"enter"},

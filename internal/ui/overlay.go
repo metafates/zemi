@@ -163,6 +163,7 @@ func emptyRows(text string, w int) [][]hostapi.Segment { return wrapText(text, "
 func (a *App) openOverlay(o hostapi.Overlay) {
 	if i := a.overlayIndex(o.ID); i >= 0 && mayClose(o.Origin, a.overlays[i].o) {
 		a.replaceOverlay(i, o)
+		a.refreshDetail(i)
 		return
 	}
 	if o.Refresh {
@@ -212,6 +213,33 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	}
 	st.apply()
 	a.overlays[i] = st
+}
+
+// refreshDetail rebuilds the detail view open over list i from its item
+// in the list's new items, keeping the selected action and the scroll, or
+// drops it with its item: a screen a Go job refreshes (a server starting, a
+// run moving) would otherwise show a stale detail.
+func (a *App) refreshDetail(i int) {
+	j := i + 1
+	if j >= len(a.overlays) || !a.overlays[j].back || a.overlays[j].o.ID != a.overlays[i].o.ID+"#detail" {
+		return
+	}
+	d := a.overlays[j]
+	idx := slices.IndexFunc(a.overlays[i].o.Items, func(it any) bool { return itemKey(it) == itemKey(d.item) })
+	if idx < 0 {
+		a.overlays = slices.Delete(a.overlays, j, j+1)
+		return
+	}
+	n := a.detailState(&a.overlays[i], idx)
+	n.selected, n.view, n.body = min(d.selected, max(0, len(n.visible)-1)), d.view, d.body
+	n.apply()
+	a.overlays[j] = n
+}
+
+// itemKey names an item across rebuilds: its id, else its text.
+func itemKey(item any) string {
+	r, _ := hostapi.ParseOverlayItem(item)
+	return cmp.Or(r.ID, r.Text)
 }
 
 func (a *App) overlayState(o hostapi.Overlay) overlayState {
@@ -354,6 +382,10 @@ func (st *overlayState) actionKey(n int) string {
 // body and its actions as the list, under the parent's origin so the badge
 // and the run gate stay the parent's.
 func (a *App) openDetail(parent *overlayState, idx int) {
+	a.overlays = append(a.overlays, a.detailState(parent, idx))
+}
+
+func (a *App) detailState(parent *overlayState, idx int) overlayState {
 	r := parent.items[idx].row
 	title := parent.items[idx].label
 	if parent.o.Title != "" {
@@ -362,7 +394,7 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 	p := parent.o
 	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: r.Fields, Items: r.Actions, OnAction: p.OnAction})
 	st.back, st.item, st.size = true, parent.o.Items[idx], parent.size
-	a.overlays = append(a.overlays, st)
+	return st
 }
 
 // openDetailOn opens item idx's detail view with action n selected.
@@ -481,6 +513,13 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		}
 	}
 	if i := slices.IndexFunc(o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == key }); i >= 0 {
+		if run := o.Keys[i].Run; run != "" && (o.Origin == lua.OriginBuiltin || o.Origin == lua.OriginUser) {
+			a.runOverlayRow(hostapi.OverlayItem{Run: run})
+			if o.Reload != nil {
+				a.reloadOverlay(o, nil)
+			}
+			return nil
+		}
 		var item any
 		if len(st.visible) > 0 {
 			item = o.Items[st.visible[st.selected]]

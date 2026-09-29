@@ -220,10 +220,12 @@ const (
 
 var callStatuses = []CallStatus{CallWait, CallRun, CallOK, CallErr, CallStopped, CallBG, CallCancelled}
 
-// OverlayKey is one character that runs Fn(selected item) on a list.
+// OverlayKey is one character that runs Fn(selected item) on a list, or on
+// a Go screen's list the command Run.
 type OverlayKey struct {
 	Key, Desc string
 	Fn        *glua.LFunction
+	Run       string
 }
 
 // ChatMessage is a transcript entry (composer submissions); assistant
