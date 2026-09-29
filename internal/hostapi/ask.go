@@ -215,7 +215,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	}
 	label, rules := h.alwaysChoice(req)
 	wider, wideRules := h.repoChoice(req)
-	project, projectRules := h.projectChoice(req, label, rules)
+	project, fileRules := h.projectChoice(req, label, rules)
 	pr := PermRequest{
 		Tool: req.Tool, Always: label, Wider: wider, Project: project != "", Subject: req.Subject, Arg: h.shownArg(req),
 		Reason: req.Reason, Preview: req.Preview, Description: req.Description, Agent: req.Agent, Owner: req.Owner, Where: h.runsIn(req),
@@ -233,7 +233,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		}
 	}
 	if allowed && by == "user:project" {
-		h.projectAllow(req.Arg, projectRules)
+		h.projectAllow(req.Arg, fileRules)
 	}
 	return resolved(allowed, by)
 }

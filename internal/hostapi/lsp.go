@@ -309,8 +309,9 @@ type lspSig struct {
 
 // lspSync tells every running server which files changed on disk since the
 // last call, from the diff of two git status listings (a file that left the
-// listing was restored, so it changed too). It runs only once something but
-// zemi's file tools, which open the document they touch, ran (lspDirty).
+// listing was restored, so it changed too). It runs only after something other
+// than zemi's file tools (which open the document they touch) changed the tree
+// (lspDirty): a git status before every read would cost more than it finds.
 // NOTE: outside a repository only zemi's own writes are seen, so a zemi
 // tree's server (zemiLua) hears of a command's change when the file is next
 // opened; a repository with a slow git status pays for it on every touch.
