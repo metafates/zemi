@@ -845,7 +845,7 @@ func (w *walker) text(node syntax.Node) string {
 // values the words then read in place of $D and ${D}, so path gates, rules
 // and ReadCommand see the path instead of an expansion. Only a value the
 // shell would leave as is qualifies: no quotes, no expansion but an earlier
-// inlined name, no glob or brace. Heredoc delimiters stay as written: sh
+// inlined name or $TMPDIR, no glob or brace. Heredoc delimiters stay as written: sh
 // expands none.
 func (w *walker) inline(stmts []*syntax.Stmt) {
 	w.vars, w.skip = map[string]string{}, map[*syntax.Stmt]bool{}
@@ -874,6 +874,10 @@ func (w *walker) inline(stmts []*syntax.Stmt) {
 				v.WriteString(p.Value)
 			case *syntax.ParamExp:
 				known, ok := vars[paramName(p)]
+				// the pad stays a name, which padOperands reads
+				if paramName(p) == "TMPDIR" {
+					known, ok = "$TMPDIR", true
+				}
 				if !ok {
 					return false
 				}
@@ -1096,7 +1100,9 @@ func (w *walker) scan(s *syntax.Stmt) {
 		case *syntax.Word:
 			n.expands = n.expands || !body && globs(x)
 		case *syntax.ParamExp:
-			if _, inlined := w.vars[paramName(x)]; inlined {
+			if v, inlined := w.vars[paramName(x)]; inlined {
+				// a value from $TMPDIR reads as $TMPDIR written in its place
+				n.expands = n.expands || strings.Contains(v, "$")
 				return false
 			}
 			n.expands = true
