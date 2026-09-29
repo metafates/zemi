@@ -122,9 +122,9 @@ func canonical(argv []string) string {
 
 // stepRunner steps past the runnerOpts runner f starts with and the options
 // and values it takes (timeout 5, nice -n 5); ok is false when f starts with
-// none.
+// none. The name folds like isShell's: Sudo runs sudo where names fold.
 func stepRunner(f []string) (_ []string, ok bool) {
-	opts, ok := runnerOpts[filepath.Base(f[0])]
+	opts, ok := runnerOpts[strings.ToLower(filepath.Base(f[0]))]
 	if !ok {
 		return f, false
 	}

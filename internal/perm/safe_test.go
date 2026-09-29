@@ -533,6 +533,7 @@ func TestPrograms(t *testing.T) {
 		{"substitution behind a runner", "cat list | xargs $(which rm)", "", "-"},
 		{"substitution behind runner options", "timeout 5 $(echo rm) ; ls", "", "-"},
 		{"substitution as an argument", "sudo ls $(pwd)", "", "sudo ls pwd"},
+		{"runner in capitals", "Command ls", "", "Command ls"},
 		{"words after a substitution", "cd $(git rev-parse --show-toplevel)/sub && ls", "", "-"},
 		{"arithmetic", "echo $((1+2))", "", "-"},
 		{"array", "a=(x y); echo ${a[0]}", "", "-"},

@@ -101,6 +101,7 @@ func TestDenyMeetsEverySpelling(t *testing.T) {
 		{"/usr/bin/git --no-pager push origin", Ask},
 		{"git -c alias.p=push p", Allow}, // the ceiling: an alias is decided at run time
 		{"command curl x", Deny},
+		{"Command curl x", Deny},
 		{"env A=1 curl x", Deny},
 		{"sudo -u root curl x", Deny},
 		{"timeout -s KILL 5 nice -n 5 curl x", Deny},
