@@ -151,6 +151,16 @@ func Normalize(cmd string) Normalized {
 
 func (r row) same(s row) bool { return slices.Equal(r.args, s.args) }
 
+// Rows are the command's segments, one Normalized each, for what judges a
+// segment on its own (an always answer).
+func (n Normalized) Rows() []Normalized {
+	out := make([]Normalized, len(n.rows))
+	for i, r := range n.rows {
+		out[i] = Normalized{Segments: n.Segments[i : i+1], Args: n.Args[i : i+1], rows: []row{r}}
+	}
+	return out
+}
+
 // normalize is one reading of cmd. A bash parse error fails the call; the
 // POSIX reading keeps what parses before its error, which dash would run
 // before it stops, since the bash reading covers the rest.

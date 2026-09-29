@@ -332,10 +332,10 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		var rules []perm.Rule
 		seen := map[string]bool{}
 		unnamed := 0 // segments allowed exactly as written, named only by count
-		for _, seg := range n.Segments {
+		for _, seg := range n.Rows() {
 			// a segment this manager already lets through, by a session rule or
 			// a user rule, is not new: add neither a name nor a rule for it
-			if h.Perm.CheckCommand(seg, perm.PrincipalModel).Decision == perm.Allow {
+			if h.Perm.CheckCommandFor(perm.SubjectBash, seg, perm.PrincipalModel).Decision == perm.Allow {
 				continue
 			}
 			patterns, ok := bashAlwaysPatterns(seg)
@@ -348,22 +348,20 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 				r.Network = req.Network
 				rules = append(rules, r)
 			}
-			// shell syntax (for, done, true) is named only when nothing else
-			// is; one pattern is an exact form, named first when it deletes, so
-			// the answer never hides it in a count; two (p, "p *") is a command
+			// a no-op builtin (true, set) is named only when nothing else is;
+			// one pattern is an exact form, named first when it deletes, so the
+			// answer never hides it in a count; two (p, "p *") is a command
 			// allowed as a whole
-			g := strings.Fields(patterns[0])
+			prog := seg.Args[0][0]
 			switch {
-			case len(g) == 0:
-				continue
-			case perm.ShellWords[g[0]] && len(patterns) > 1:
-				if !seen[g[0]] {
-					seen[g[0]] = true
-					syntax = append(syntax, g[0])
+			case perm.ShellWords[prog] && len(patterns) > 1:
+				if !seen[prog] {
+					seen[prog] = true
+					syntax = append(syntax, prog)
 				}
 				continue
-			case len(patterns) == 1 && deletes(strings.Join(g, " ")):
-				if d := perm.ProgramName(g[0]) + " (exact)"; !seen[d] {
+			case len(patterns) == 1 && deletes(seg):
+				if d := perm.ProgramName(prog) + " (exact)"; !seen[d] {
 					seen[d] = true
 					deleters = append(deleters, d)
 				}
@@ -372,7 +370,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 				unnamed++
 				continue
 			}
-			p := strings.Join(g, " ")
+			p := patterns[0]
 			if !seen[p] {
 				seen[p] = true
 				names = append(names, p)
@@ -462,9 +460,8 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 
 // deletes reports a segment that can delete or overwrite, whose always rule
 // stays exact.
-func deletes(seg string) bool {
-	f := strings.Fields(seg)
-	return len(f) > 0 && destructivePrograms[perm.ProgramName(f[0])] || perm.Normalize(seg).Destructive("") != ""
+func deletes(seg perm.Normalized) bool {
+	return destructivePrograms[perm.ProgramName(seg.Args[0][0])] || seg.Destructive("") != ""
 }
 
 // bashAlwaysPatterns turns one command segment into the allow-lookup patterns
@@ -474,12 +471,9 @@ func deletes(seg string) bool {
 // stays exact, and a wrapper program (sh -c, node -e) or a glob offers
 // nothing: a rule from those would widen to a command the user did not see.
 // ok is false when there is no safe rule.
-func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
+func bashAlwaysPatterns(row perm.Normalized) (patterns []string, ok bool) {
+	seg, f := row.Segments[0], row.Args[0]
 	if strings.ContainsAny(seg, globMeta) {
-		return nil, false
-	}
-	f := strings.Fields(seg)
-	if len(f) == 0 {
 		return nil, false
 	}
 	// judged by its name, kept as written: a rule for `/usr/bin/git push`
@@ -508,13 +502,13 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	// [[ and a builtin that sets variables by name evaluate a quoted
 	// subscript, where $(...) runs: "[[ *" would run any of those. An
 	// expansion is no exact text: rm $f deletes what a loop hands it
-	if f[0] == "[[" || perm.ShellState[f[0]] || deletes(seg) {
+	if f[0] == "[[" || perm.ShellState[f[0]] || deletes(row) {
 		if strings.ContainsAny(seg, "$`") {
 			return nil, false
 		}
 		return []string{seg}, true
 	}
-	p := commandPrefix(seg)
+	p := commandPrefix(f)
 	switch {
 	case p != "" && known:
 	case perm.SubcommandPrograms[prog]:
@@ -597,10 +591,9 @@ var destructivePrograms = map[string]bool{
 }
 
 // commandPrefix is the prefix through the subcommand the always answer
-// allows for a command segment ("go test ./..." is "go test", "git -C d
+// allows for a segment's words ("go test ./..." is "go test", "git -C d
 // status" keeps its options), or "" when there is none.
-func commandPrefix(seg string) string {
-	f := strings.Fields(seg)
+func commandPrefix(f []string) string {
 	i := perm.SubcommandAt(f)
 	if i < 0 {
 		return ""

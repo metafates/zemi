@@ -56,7 +56,7 @@ func projectRules(n perm.Normalized) (rules []perm.Rule, ok bool) {
 	if n.Fail != "" || n.ForceAsk != "" || n.Assign != "" || n.Opaque {
 		return nil, false
 	}
-	for _, seg := range n.Segments {
+	for _, seg := range n.Rows() {
 		ps, ok := bashAlwaysPatterns(seg)
 		if !ok {
 			return nil, false

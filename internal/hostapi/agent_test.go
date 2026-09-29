@@ -1176,6 +1176,8 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && git diff"}, "allow go test and git diff", []string{"go test", "go test *", "git diff", "git diff *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "allow ls", []string{"ls", "ls *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "allow cat", []string{"cat", "cat *"}},
+		// a quoted program name is one word: `my *` would allow program my
+		{tools.Request{Subject: "tool.bash", Arg: "'my tool' --x"}, "allow my tool", []string{"my tool", "my tool *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow go vet, git diff and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "ls", "ls *"}},
 		// shell syntax is no command, and a no-op builtin is not named
 		{tools.Request{Subject: "tool.bash", Arg: "for f in $(ls); do cat $f; done"}, "allow ls and cat", []string{"ls", "ls *", "cat", "cat *"}},
