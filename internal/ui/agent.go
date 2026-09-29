@@ -1031,10 +1031,11 @@ type hintPair struct{ key, verb string }
 // since a changing width shifts the row.
 var pickHint, sendHint = hintPair{"enter", "pick"}, hintPair{"enter", "send"}
 
-// hintSlot is where a pair sits in a footer: moving, enter, space,
-// scrolling, copy, letter keys, then esc. A screen's letter keys come and go
-// with its state (a workflow's run ending), so they sit last and their going
-// moves only esc.
+// hintSlot is where a pair sits in a footer: moving, enter, space, copy,
+// letter keys, esc, then scrolling. A screen's letter keys come and go with
+// its state (a workflow's run ending), so they sit late and their going
+// moves only esc; the scroll hint comes and goes as the text does, so it
+// sits last and its cells are trailing blanks while it is away.
 func hintSlot(p hintPair) int {
 	switch {
 	case p.verb == "next" || p.verb == "previous":
@@ -1043,14 +1044,14 @@ func hintSlot(p hintPair) int {
 		return 1
 	case p.key == "space":
 		return 2
-	case p == scrollHint || p == scrollGap:
-		return 3
 	case p.key == "y":
-		return 4
+		return 3
 	case p.key == "esc":
+		return 5
+	case p == scrollHint || p == scrollGap:
 		return 6
 	}
-	return 5
+	return 4
 }
 
 // hint is the one footer row every box draws: "enter pick · esc deny",

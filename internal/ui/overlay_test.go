@@ -696,7 +696,6 @@ func TestOverlayHints(t *testing.T) {
 		}
 		return plainSegs(box[len(box)-2])
 	}
-	gap := strings.Repeat(" ", len(" - ctrl+d/u scroll")) // a toggle list keeps the scroll hint's cells
 	for _, c := range []struct {
 		o      hostapi.Overlay
 		filter string
@@ -706,11 +705,11 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}, Verb: "run"}, "", "enter fill · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}, Verb: "pick"}, "", "enter open · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, "", "enter pick · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "verb": "open"}}, Verb: "pick", Reload: reload}, "", "enter open" + gap + " · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "verb": "open"}}, Verb: "pick", Reload: reload}, "", "enter open · y copy · esc close"},
 		{hostapi.Overlay{Items: run}, "", "enter run · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{"a"}, OnSelect: &glua.LFunction{}}, "", "enter pick · y copy · esc close"},
-		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle" + gap + " · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "detail": "d"}}, Reload: reload}, "", "enter open · space toggle" + gap + " · y copy · esc close"},
+		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "detail": "d"}}, Reload: reload}, "", "enter open · space toggle · y copy · esc close"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run · y copy · e edit · esc close"},
 		{hostapi.Overlay{Keys: keys}, "", "e edit · esc close"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter done · esc clear"},
@@ -718,7 +717,7 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Body: "text"}, "", "y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "copy": "export X"}}}, "", "enter copy · esc close"},
 		{hostapi.Overlay{Body: "text", Items: []any{map[string]any{"text": "a", "fill": "x"}}}, "/", "enter done · esc clear"},
-		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, "", "enter fill · ctrl+d/u scroll · y copy · esc close"},
+		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]any{map[string]any{"text": "a", "fill": "x"}}, 30)}, "", "enter fill · y copy · esc close · ctrl+d/u scroll"},
 	} {
 		if got := strings.Trim(hints(c.o, c.filter), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)
@@ -805,7 +804,7 @@ func TestHintOrder(t *testing.T) {
 		w    int
 		want string
 	}{
-		{80, "enter open · ctrl+d/u scroll · y copy · a keep · d drop · esc close"},
+		{80, "enter open · y copy · a keep · d drop · esc close · ctrl+d/u scroll"},
 		{55, "enter open · y copy · a keep · d drop · esc close"},
 		{40, "enter open · a keep · d drop · esc close"},
 		{5, "enter open · esc close"},
