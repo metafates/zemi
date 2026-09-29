@@ -1798,7 +1798,7 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 		t.Error("the headless agent tool still offers background")
 	}
 	sys := h.buildSystem(nil)
-	if strings.Contains(sys, "question tool") {
+	if strings.Contains(sys, "question tool") || strings.Contains(sys, "Ask before") || strings.Contains(sys, "ask why") {
 		t.Error("the headless prompt still tells the model to ask")
 	}
 	// every fetch and search would be denied: no rule allows one

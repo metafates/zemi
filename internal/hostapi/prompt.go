@@ -26,9 +26,9 @@ const contextBudget = 32 << 10
 
 // defaultSystemPrompt is the shipped prompt (no profile configured).
 func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
-	ask, read := askingPrompt, readPrompt
+	ask, read, care, denied := askingPrompt, readPrompt, carePrompt, deniedPrompt
 	if h.hooks() == nil {
-		ask = headlessAskingPrompt
+		ask, care, denied = headlessAskingPrompt, headlessCarePrompt, headlessDeniedPrompt
 	}
 	if !hasTool(toolset, tools.ToolQuestion) {
 		ask = strings.Replace(ask, " with the question tool", "", 1)
@@ -36,8 +36,18 @@ func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
 	if !hasTool(toolset, tools.ToolRead) {
 		read = ""
 	}
-	return strings.NewReplacer("{Asking}", ask, "{Batch}", batchPrompt, "{Read}", read, "{Rules}", toolRules).Replace(basePrompt)
+	return strings.NewReplacer("{Asking}", ask, "{Care}", care, "{Denied}", denied, "{Batch}", batchPrompt, "{Read}", read, "{Rules}", toolRules).Replace(basePrompt)
 }
+
+// carePrompt and deniedPrompt fill basePrompt's {Care} and {Denied}; a
+// headless run has nobody to ask or to explain a denial.
+const (
+	riskyActs            = "deleting files or branches, git reset --hard, checkout over uncommitted work, dropping data, changing dependencies or CI, posting anywhere"
+	carePrompt           = "Ask before what is hard to undo or leaves this machine: " + riskyActs + ". Approval for one action does not cover another."
+	headlessCarePrompt   = "Nobody can approve anything in this run, so do nothing hard to undo or that leaves this machine unless the task names it: " + riskyActs + "."
+	deniedPrompt         = "If the user denies a call, do not retry it: change approach or ask why."
+	headlessDeniedPrompt = "A denied call stays denied in this run: change approach, or say in your reply what you need."
+)
 
 // batchPrompt opens every run's tool guidance, a subagent's included.
 const batchPrompt = `- Each step re-sends the whole conversation, so call independent tools together in one response (several reads, the build and the tests, two hypotheses), not one per step. When a call needs another's result, wait for it; never guess a parameter.`
@@ -72,7 +82,7 @@ Do the work without asking: infer what the request leaves out from the code and 
 {Asking}
 
 # Acting with care
-Editing files and running tests need no confirmation. Ask before what is hard to undo or leaves this machine: deleting files or branches, git reset --hard, checkout over uncommitted work, dropping data, changing dependencies or CI, posting anywhere. Approval for one action does not cover another. Never bypass a safety check (--no-verify, deleting a test) to make an error go away. Unfamiliar files or branches may be the user's work in progress. If the user denies a call, do not retry it: change approach or ask why.
+Editing files and running tests need no confirmation. {Care} Never bypass a safety check (--no-verify, deleting a test) to make an error go away. Unfamiliar files or branches may be the user's work in progress. {Denied}
 
 # Using tools
 {Batch}{Read}
