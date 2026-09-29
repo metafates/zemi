@@ -183,8 +183,9 @@ func frontmatter(data []byte) (front, error) {
 // Discover merges skill directories in the order given, higher trust first:
 // on a name clash the earlier one wins (§10.5), with a warning only when two
 // plugins ship one name, since any other clash is an override by design.
-// An unreadable or invalid directory is skipped with a warning, never
-// fatal: a broken skill must not hide the others.
+// A skill that does not parse is skipped with a warning, never fatal: a
+// broken skill must not hide the others. A missing or unreadable directory
+// is skipped.
 func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
 	seen := map[string]Skill{}
 	for _, d := range dirs {
