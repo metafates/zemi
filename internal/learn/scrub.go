@@ -89,8 +89,8 @@ func ScrubShapes(text string) string {
 // oneBlob strips every redaction marker; what remains must be whitespace.
 var oneBlob = regexp.MustCompile(`\[redacted \d+ chars\]`)
 
-// IsOneBlob reports whether scrubbed text carries no surviving content,
-// the §10.4 "one blob" refusal shape.
+// IsOneBlob reports whether scrubbed text holds nothing but redaction
+// markers: a recipe that was only secret material.
 func IsOneBlob(scrubbed string) bool {
 	return strings.TrimSpace(oneBlob.ReplaceAllString(scrubbed, "")) == ""
 }
