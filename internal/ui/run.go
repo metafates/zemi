@@ -222,13 +222,18 @@ func (v *RunView) Close() {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	var b strings.Builder
+	v.clearTail(&b)
+	b.WriteString(exit.String())
+	_, _ = io.WriteString(v.w, b.String())
+}
+
+// clearTail erases the tail and shows the cursor again. v.mu held.
+func (v *RunView) clearTail(b *strings.Builder) {
 	if v.tail != "" {
-		v.erase(&b)
+		v.erase(b)
 		b.WriteString("\x1b[?25h")
 		v.tail = ""
 	}
-	b.WriteString(exit.String())
-	_, _ = io.WriteString(v.w, b.String())
 }
 
 // fail stops the view after a render error: the log gets it and stderr one
@@ -239,13 +244,9 @@ func (v *RunView) fail(err error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	var b strings.Builder
-	v.erase(&b)
-	if v.tail != "" {
-		b.WriteString("\x1b[?25h")
-	}
+	v.clearTail(&b)
 	fmt.Fprintf(&b, "zemi: run view: %s\n", hostapi.Headline(err.Error()))
 	_, _ = io.WriteString(v.w, b.String())
-	v.tail = ""
 }
 
 // Width is the columns a line gets before it wraps.
