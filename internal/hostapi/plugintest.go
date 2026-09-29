@@ -175,7 +175,9 @@ func (t *PluginTest) Run(ctx context.Context, timeout time.Duration) []string {
 	if msg := t.unowned(0, "", "during boot"); msg != "" {
 		return fail(msg)
 	}
-	mark := t.recordedLen()
+	t.mu.Lock()
+	mark := len(t.errs)
+	t.mu.Unlock()
 	_, err := t.h.RT.RunTask(ctx, lua.Task{
 		Class: lua.ClassIO, Origin: lua.OriginPlugin, Path: t.file,
 		Start: func(*glua.LState) (*glua.LFunction, []glua.LValue, error) { return t.fn, nil, nil },
@@ -423,12 +425,6 @@ func (t *PluginTest) recorded(source, msg string) {
 	t.mu.Lock()
 	t.errs = append(t.errs, errEntry{source: source, msg: msg})
 	t.mu.Unlock()
-}
-
-func (t *PluginTest) recordedLen() int {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return len(t.errs)
 }
 
 // unowned is the failure of the first error zemi recorded since mark under
