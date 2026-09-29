@@ -20,7 +20,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-// TestLuaAPIAdditions pins the 0.5.0 surface through Lua: json round trip,
+// TestLuaAPIAdditions pins through Lua: json round trip,
 // the composer snapshot, runtime failures as nil, err, and event
 // off/once.
 func TestLuaAPIAdditions(t *testing.T) {
@@ -117,7 +117,7 @@ func TestLuaHTTPNetworkRules(t *testing.T) {
 	}
 }
 
-// TestLuaAPIIO pins the 0.7.0 io surface: http.request with method,
+// TestLuaAPIIO pins the io surface: http.request with method,
 // headers and body; command del and inline run; fs list/stat/exists/mkdir/
 // remove and ** globs; streaming job callbacks ending with on_exit.
 func TestLuaAPIIO(t *testing.T) {
