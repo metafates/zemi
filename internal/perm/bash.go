@@ -444,26 +444,36 @@ func (sc *scanner) opens(n *Normalized, glued bool, word string) {
 	if _, assign := assignmentName(word); glued && assign {
 		return
 	}
-	// every word since the separator is a reserved word or an assignment
-	from := 0
-	for i, t := range sc.toks {
-		if t.kind == tokSep {
-			from = i + 1
-		}
+	from := len(sc.toks)
+	for from > 0 && sc.toks[from-1].kind != tokSep {
+		from--
 	}
+	// the words since the separator, the substitution last as ""
+	var f []string
 	for i := from; i < len(sc.toks); i++ {
 		switch t := sc.toks[i]; {
 		case t.kind == tokRedirect && i == len(sc.toks)-1:
 			return // the substitution names the redirect's target
 		case t.kind == tokRedirect:
 			i++
-		case t.kind == tokWord && !reserved[t.text]:
-			if _, assign := assignmentName(t.text); !assign {
-				return
-			}
+		case t.kind == tokWord:
+			f = append(f, t.text)
 		}
 	}
-	n.hidden = true
+	f = ProgramWords(append(f, ""))
+	for len(f) > 1 {
+		if _, assign := assignmentName(f[0]); !assign {
+			break
+		}
+		f = f[1:]
+	}
+	// a runner (xargs, sudo, timeout 5) leaves the program word open
+	for ok := true; ok && len(f) > 1; {
+		f, ok = stepRunner(f)
+	}
+	if len(f) == 0 || f[0] == "" { // function $(x) leaves nothing
+		n.hidden = true
+	}
 }
 
 // closes notes an unquoted substitution closing at rs[i]: words after it
