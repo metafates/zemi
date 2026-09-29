@@ -359,10 +359,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 		}
 	}
 	askText := st.text.at(func(w int) [][]hostapi.Segment {
-		var ask [][]hostapi.Segment
-		for l := range strings.SplitSeq(q.Question, "\n") {
-			ask = append(ask, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, w)...)
-		}
+		ask := hostapi.WrapText(q.Question, w)
 		if q.Description != "" {
 			ask = append(ask, nil)
 			ask = append(ask, a.host.Markdown(q.Description, w)...)
