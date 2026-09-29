@@ -311,7 +311,8 @@ func TestSandboxedGit(t *testing.T) {
 		hint, asked     string // how the Sandbox line and the ask's reason start, "" for none
 	}{
 		{"commit on a new branch", "git checkout -qb x && echo a > a && git add a && git commit -qm a && git stash list", "", true, "", ""},
-		{"branches, tags, stash, reset, gc and rebase", "git branch y && git branch -D y && git tag v1 && git tag -d v1 && echo b > a && git stash && git stash pop && git reset -q --hard && git checkout -q -- . && git gc -q --auto && git rebase -q HEAD~1 && git merge -q x", "", true, "", ""},
+		{"branches, tags, stash, reset, gc and merge", "git branch y && git branch -D y && git tag v1 && git tag -d v1 && echo b > a && git stash && git stash pop && git reset -q --hard && git checkout -q -- . && git gc -q --auto && git merge -q x && git switch -qc r && git revert --no-edit HEAD && git switch -q x", "", true, "", ""},
+		{"rebase asks", "git rebase -q HEAD~1", "", false, "", "git rebase writes what the sandbox keeps read-only"},
 		{"config asks", "git config core.hooksPath /tmp/x", "", false, "", "git config writes what the sandbox keeps read-only"},
 		{"push asks", "git push", "", false, "", "git push reaches the network"},
 		{"config through a script", "printf 'git config core.hooksPath /tmp/x\\n' > $TMPDIR/c.sh && sh $TMPDIR/c.sh", "", false, ".git/config is read-only to commands: git runs or follows what it names; call it again with sandbox: false", ""},

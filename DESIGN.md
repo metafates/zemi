@@ -2199,7 +2199,7 @@ provenance string.
   both parses, above, since the list cannot vouch for it),
   a git command that writes what the sandbox keeps read-only in `.git`
   (`perm.Normalized.GitWrites`: with the git dir open, below, config,
-  remotes, worktrees and submodules; with it shut, any write), reaches
+  remotes, worktrees, submodules and rebase state; with it shut, any write), reaches
   the network (push, fetch, pull, clone) or can drop unreachable commits
   for good (`gc --prune`, `prune`, `repack`, `reflog expire`), since a
   confined run could only fail and the ask comes first; `reset --hard`
@@ -2352,7 +2352,8 @@ provenance string.
   The git dir (`Policy.Git`): on seatbelt, when the writable project is
   the repository root with a real `.git` directory, `.git` opens to
   confined commands, so commit, add, checkout, switch, branch, tag, stash,
-  merge, rebase, reset and cherry-pick run with no ask. Read-only stay,
+  merge, reset and a one-commit cherry-pick or revert run with no ask.
+  Read-only stay,
   matched by name (case folded), so a part created, moved or hard linked
   there is caught too (gitrepository-layout names each): `config` and
   `config.worktree` (hooksPath, fsmonitor, sshCommand, pager, filter and
@@ -2361,8 +2362,15 @@ provenance string.
   drivers config names), `commondir` and `objects/info/alternates` and
   `http-alternates` (they send git to another directory's config, hooks
   or objects), `gitdir` (a linked worktree's way back), `modules/` (each
-  submodule's whole repo, hooks and config included), the same names in
-  each `worktrees/<id>/` admin dir, and any nested `.git` or `.agents`.
+  submodule's whole repo, hooks and config included), `rebase-merge/`,
+  `rebase-apply/` and `sequencer/` (a todo's `exec` lines and a merge
+  strategy, which git runs by name even as a relative path, run when the
+  user's own `git rebase --continue` or `cherry-pick --continue` does),
+  the same names in each `worktrees/<id>/` admin dir, `remotes/` and
+  `branches/` (the legacy remote definitions: they pick where a fetch or
+  push goes, which the ask would not show), and any nested `.git` or
+  `.agents`. So rebase, am and a cherry-pick or revert of more than one
+  commit ask, as a confined run could only fail.
   `.git` itself, `info`, `objects`, `objects/info`, `worktrees` and each
   `worktrees/<id>` cannot be made, moved or removed, only written into,
   since a directory moved in whole would bring one of those files with
@@ -2373,9 +2381,7 @@ provenance string.
   repository's refs and objects (`rm -rf .git/objects` among them; the
   `Destructive` list asks for the plain forms), a branch rename or an
   upstream write fails on the config (`GitWrites` asks for the flags
-  that do it; `checkout -b x origin/x` sets one it cannot see), and a
-  rebase left in progress can hold `exec` lines the user's
-  `git rebase --continue` would run, like any script in the project.
+  that do it; `checkout -b x origin/x` sets one it cannot see).
   Hooks run confined like the command that started them, so one that
   needs the network or a cache outside the roots fails with the hint.
   zemi's own temp files (the ctrl+g draft, a pasted image)

@@ -37,8 +37,10 @@ func nestedShapes(root string) string {
 // config and hooks run programs, info/attributes picks the drivers config
 // names, commondir and alternates send git to another dir's config or
 // objects, gitdir is a worktree's way back, modules holds whole submodule
-// repos, and a nested .git or .agents is another repo or zemi config.
-var gitCode = foldCase(`(worktrees/[^/]+/)?(config|config\.worktree|commondir|gitdir|hooks|info/attributes)|modules|objects/info/(http-)?alternates|(.*/)?\.(git|agents)`)
+// repos, the rebase and sequencer state holds exec lines and a merge
+// strategy git runs by name, remotes and branches name where fetch and push
+// go, and a nested .git or .agents is another repo or zemi config.
+var gitCode = foldCase(`(worktrees/[^/]+/)?(config|config\.worktree|commondir|gitdir|hooks|info/attributes|modules|rebase-merge|rebase-apply|sequencer)|remotes|branches|objects/info/(http-)?alternates|(.*/)?\.(git|agents)`)
 
 // gitParents are the dirs holding a gitCode file: a rule on a name misses a
 // dir moved in whole with the file inside, so they cannot be made, moved or

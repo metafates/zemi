@@ -806,17 +806,17 @@ func LeadKnown(f []string, i int) bool {
 // code.
 const (
 	gitNet    = "reaches the network, which the sandbox has not"
-	gitConfig = "writes what the sandbox keeps read-only in .git (config, hooks, links to other repos)"
+	gitConfig = "writes what the sandbox keeps read-only in .git (config, hooks, rebase state, links to other repos)"
 	gitDrop   = "can drop unreachable commits for good"
 )
 
 // gitWriters are the git subcommands that write .git, each with why it
 // still asks when the sandbox opens .git, "" when it then runs confined.
 var gitWriters = map[string]string{
-	"add": "", "am": "", "apply": "", "bisect": "", "checkout": "", "cherry-pick": "", "clone": gitNet,
+	"add": "", "am": gitConfig, "apply": "", "bisect": "", "checkout": "", "cherry-pick": "", "clone": gitNet,
 	"commit": "", "commit-tree": "", "fetch": gitNet, "filter-branch": "", "gc": "", "init": gitConfig, "maintenance": gitDrop,
 	"merge": "", "mergetool": "", "mv": "", "pack-refs": "", "prune": gitDrop, "pull": gitNet, "push": gitNet,
-	"read-tree": "", "rebase": "", "repack": gitDrop, "replace": "", "reset": "", "restore": "", "revert": "",
+	"read-tree": "", "rebase": gitConfig, "repack": gitDrop, "replace": "", "reset": "", "restore": "", "revert": "",
 	"rm": "", "sparse-checkout": gitConfig, "switch": "", "symbolic-ref": "", "update-index": "", "update-ref": "",
 }
 
@@ -869,6 +869,11 @@ func (n Normalized) GitWrites(gitDir bool) string {
 			}
 		case "checkout", "switch":
 			if hasFlag(rest, "-t", "--track") {
+				why = gitConfig
+			}
+		case "cherry-pick", "revert":
+			// more than one commit, or going on with them, keeps sequencer state
+			if len(words) != 1 || strings.Contains(first, "..") || hasFlag(rest, "--stdin") {
 				why = gitConfig
 			}
 		case "stash":
