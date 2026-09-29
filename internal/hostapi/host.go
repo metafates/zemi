@@ -1975,6 +1975,10 @@ func (h *Host) ReloadConfig() error {
 	if h.RT.Booting() {
 		return errors.New("config is still loading; a reload from config would repeat forever")
 	}
+	// headless, the process would end before the reload ran
+	if _, err := h.Screen(); err != nil {
+		return err
+	}
 	if h.reload == nil {
 		return errors.New("nothing to reload in this run")
 	}

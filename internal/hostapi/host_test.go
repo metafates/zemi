@@ -187,6 +187,7 @@ func TestReloadConfig(t *testing.T) {
 			log := logging.New(t.TempDir())
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 			h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+			h.SetUIHooks(&fakeUI{})
 			var reloads atomic.Int32
 			var mouse any
 			h.SetReload(func() error {
