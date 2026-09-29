@@ -1622,7 +1622,11 @@ provenance string.
   (`zemi.ui.input`, a typed answer, a multi-select's picks, a plan's
   changes, the question review's last row, whose question rows `open`):
   four letters each, so starting to type or moving the highlight never
-  shifts the footer. A row names its own (`verb`)
+  shifts the footer. The footer's pairs sit in one order: moving keys,
+  enter, space, scrolling, copy, the screen's own keys (a Lua list's
+  `keys`, a workflow view's `p` and `+/-`), then esc; the screen's keys come
+  and go with its state, so their going moves only esc, and a narrow footer
+  drops copy and scrolling before them. A row names its own (`verb`)
   where the list's default would say another: "open" on a row that runs a
   command opening a screen, "run" on `/model`'s "Update the model catalog".
   Space, which toggles a toggle list's rows outside an open filter (in one

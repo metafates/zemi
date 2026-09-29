@@ -1032,8 +1032,10 @@ type hintPair struct{ key, verb string }
 // since a changing width shifts the row.
 var pickHint, sendHint = hintPair{"enter", "pick"}, hintPair{"enter", "send"}
 
-// hintSlot is where a pair sits in a footer: moving, enter, space, letter
-// keys, scrolling, copy, then esc.
+// hintSlot is where a pair sits in a footer: moving, enter, space,
+// scrolling, copy, letter keys, then esc. A screen's letter keys come and go
+// with its state (a workflow's run ending), so they sit last and their going
+// moves only esc.
 func hintSlot(p hintPair) int {
 	switch {
 	case p.verb == "next" || p.verb == "previous":
@@ -1043,18 +1045,18 @@ func hintSlot(p hintPair) int {
 	case p.key == "space":
 		return 2
 	case p == scrollHint:
-		return 4
+		return 3
 	case p.key == "y":
-		return 5
+		return 4
 	case p.key == "esc":
 		return 6
 	}
-	return 3
+	return 5
 }
 
 // hint is the one footer row every box draws: "enter pick · esc deny",
-// the pairs in slot order. Past w cells the middle pairs give way, the last
-// first; enter and esc never do.
+// the pairs in slot order. Past w cells the middle pairs give way, copy and
+// scrolling first, then the last first; enter and esc never do.
 func hint(w int, pairs ...hintPair) []hostapi.Segment {
 	pairs = slices.Clone(pairs)
 	slices.SortStableFunc(pairs, func(a, b hintPair) int { return hintSlot(a) - hintSlot(b) })
@@ -1066,9 +1068,15 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 			}
 			out = append(out, hostapi.Segment{Text: p.key, HL: "Host:HintKey"}, hostapi.Segment{Text: " " + p.verb, HL: "Host:Hint"})
 		}
-		i := len(pairs) - 1
-		for i >= 0 && (pairs[i].key == "enter" || pairs[i].key == "esc") {
-			i--
+		i := slices.IndexFunc(pairs, func(p hintPair) bool { return p.key == "y" })
+		if i < 0 {
+			i = slices.Index(pairs, scrollHint)
+		}
+		if i < 0 {
+			i = len(pairs) - 1
+			for i >= 0 && (pairs[i].key == "enter" || pairs[i].key == "esc") {
+				i--
+			}
 		}
 		if hostapi.SegsWidth(out) <= w || i < 0 {
 			return out

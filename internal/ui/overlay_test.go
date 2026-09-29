@@ -667,9 +667,9 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Items: []any{"a"}, OnSelect: &glua.LFunction{}}, "", "enter pick · y copy · esc close"},
 		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "detail": "d"}}, Reload: reload}, "", "enter open · space toggle · y copy · esc close"},
-		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run · e edit · y copy · esc close"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run · y copy · e edit · esc close"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter done · esc clear"},
-		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run · e edit · y copy · esc clear"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run · y copy · e edit · esc clear"},
 		{hostapi.Overlay{Body: "text"}, "", "y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "copy": "export X"}}}, "", "enter copy · esc close"},
 		{hostapi.Overlay{Body: "text", Items: []any{map[string]any{"text": "a", "fill": "x"}}}, "/", "enter done · esc clear"},
@@ -753,14 +753,14 @@ func TestMoveSel(t *testing.T) {
 }
 
 // TestHintOrder: pairs sort into their slots, and a narrow row drops the
-// middle pairs last first, never enter or esc.
+// middle pairs, copy and scrolling first, never enter or esc.
 func TestHintOrder(t *testing.T) {
 	pairs := []hintPair{{"esc", "close"}, {"y", "copy"}, {"a", "keep"}, {"enter", "open"}, {"d", "drop"}, {"ctrl+d/u", "scroll"}}
 	for _, c := range []struct {
 		w    int
 		want string
 	}{
-		{80, "enter open · a keep · d drop · ctrl+d/u scroll · y copy · esc close"},
+		{80, "enter open · ctrl+d/u scroll · y copy · a keep · d drop · esc close"},
 		{40, "enter open · a keep · d drop · esc close"},
 		{5, "enter open · esc close"},
 	} {
@@ -1042,7 +1042,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { esc = { fn = functio
 assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { e = { desc = "no fn" } } }), "a key with no fn must raise")
 assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function() end } } }), "a key the list takes itself must raise")`)
 	box := app.overlayBox(&app.overlays[0], 60, 16)
-	if hint := plainSegs(box[len(box)-2]); !strings.Contains(hint, "e edit · y copy · esc close") {
+	if hint := plainSegs(box[len(box)-2]); !strings.Contains(hint, "y copy · e edit · esc close") {
 		t.Fatalf("footer: %q", hint)
 	}
 	for _, c := range []struct{ keys, want string }{
