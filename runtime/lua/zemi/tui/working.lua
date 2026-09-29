@@ -51,9 +51,10 @@ zemi.ui.widget.add({
 			-- starts together
 			for _, t in ipairs(ag.tools or {}) do
 				if t.status == "run" then
-					-- as its row reads: the verb, then the label or the input
-					local verb, rest =
-						fmt.head(t.name, t.label, (fmt.relpath(t.input, ctx.cwd, ctx.home):gsub("%s+", " ")))
+					-- as its row reads: the verb, then the label or the input, which
+					-- is converted only when read, since this runs every frame
+					local input = t.label == "" and (fmt.relpath(t.input, ctx.cwd, ctx.home):gsub("%s+", " ")) or ""
+					local verb, rest = fmt.head(t.name, t.label, input)
 					label = verb .. rest
 					if READS[t.name] then state = "reading" end
 					break
