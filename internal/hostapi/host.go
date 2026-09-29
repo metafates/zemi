@@ -1076,15 +1076,18 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 	return res
 }
 
-// setHandlerContext arms a per-handler deadline. gopher-lua's RemoveContext
-// also nils the context polled by any still-running VM loop, so a handler
-// invoked from a live Lua frame (e.g. zemi.event.emit under a chunk) must
-// restore the enclosing request context instead of removing it: the outer
-// mainLoopWithContext would otherwise dereference a nil ctx on its next
-// instruction.
-func setHandlerContext(L *glua.LState, deadline time.Duration) (context.Context, context.CancelFunc) {
+// setHandlerContext arms a per-handler deadline on clock, which zemi plugins
+// test fakes, so a loaded machine fails no plugin's case. gopher-lua's
+// RemoveContext also nils the context polled by any still-running VM loop,
+// so a handler invoked from a live Lua frame (e.g. zemi.event.emit under a
+// chunk) must restore the enclosing request context instead of removing it:
+// the outer mainLoopWithContext would otherwise dereference a nil ctx on its
+// next instruction.
+func setHandlerContext(L *glua.LState, clock lua.Clock, deadline time.Duration) (context.Context, context.CancelFunc) {
 	prev := L.Context()
-	handlerCtx, cancel := context.WithTimeout(context.Background(), deadline)
+	ctx, cancel := context.WithCancel(context.Background())
+	stop := clock.AfterFunc(deadline, cancel)
+	handlerCtx := deadlineCtx{ctx}
 	L.SetContext(handlerCtx)
 	return handlerCtx, func() {
 		if prev != nil {
@@ -1092,8 +1095,19 @@ func setHandlerContext(L *glua.LState, deadline time.Duration) (context.Context,
 		} else {
 			L.RemoveContext()
 		}
+		stop()
 		cancel()
 	}
+}
+
+// deadlineCtx ends as a deadline, which is what the Lua error names.
+type deadlineCtx struct{ context.Context }
+
+func (c deadlineCtx) Err() error {
+	if c.Context.Err() != nil {
+		return context.DeadlineExceeded
+	}
+	return nil
 }
 
 // eventTable sets name and from after the payload, so no emitter can pose
@@ -1115,7 +1129,7 @@ func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any, de
 		return glua.LNil, false, nil
 	}
 	defer h.RT.PushFrame(L, hd.Origin, hd.Path)()
-	handlerCtx, restore := setHandlerContext(L, deadline)
+	handlerCtx, restore := setHandlerContext(L, h.RT.Clock(), deadline)
 	defer restore()
 	base := L.GetTop()
 	defer L.SetTop(base)

@@ -167,7 +167,8 @@ copies the plugin into temp dirs (`copyPlugin`: no dot entries or `node_modules`
 relative and inside, capped), and boots one zemi per case in this process (`hostapi.NewPluginTest`,
 `bootSteps` with no trust and the test file where init.lua runs), which `Host.Close` ends. The
 first boot collects the case names. `proc.Refuse` makes the process start nothing, git and the
-sandbox probe included. The test zemi runs on a fake `lua.Clock` only `test.advance` moves, with
+sandbox probe included. The test zemi runs on a fake `lua.Clock` only `test.advance` moves (an
+event handler's deadline reads it too, so load fails no case), with
 `WholeTasks` so a driver waits for what it started, and is quiet when no `GoSafe` goroutine runs
 (`goes`) and no timer is due. `luaGate` asks `PluginTest.reply` first about a call that does IO:
 only a `test.stub` reply passes, standing in for the transport at the call site, an unanswered
