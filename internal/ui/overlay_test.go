@@ -653,6 +653,7 @@ func TestOverlayHints(t *testing.T) {
 		}
 		return plainSegs(box[len(box)-2])
 	}
+	gap := strings.Repeat(" ", len(" - ctrl+d/u scroll")) // a toggle list keeps the scroll hint's cells
 	for _, c := range []struct {
 		o      hostapi.Overlay
 		filter string
@@ -662,11 +663,11 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "fill": "x"}}, Verb: "run"}, "", "enter fill · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}, Verb: "pick"}, "", "enter open · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, "", "enter pick · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "verb": "open"}}, Verb: "pick", Reload: reload}, "", "enter open · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "verb": "open"}}, Verb: "pick", Reload: reload}, "", "enter open" + gap + " · y copy · esc close"},
 		{hostapi.Overlay{Items: run}, "", "enter run · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{"a"}, OnSelect: &glua.LFunction{}}, "", "enter pick · y copy · esc close"},
-		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle · y copy · esc close"},
-		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "detail": "d"}}, Reload: reload}, "", "enter open · space toggle · y copy · esc close"},
+		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle" + gap + " · y copy · esc close"},
+		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "detail": "d"}}, Reload: reload}, "", "enter open · space toggle" + gap + " · y copy · esc close"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run · y copy · e edit · esc close"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter done · esc clear"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run · y copy · e edit · esc clear"},
@@ -753,7 +754,7 @@ func TestMoveSel(t *testing.T) {
 }
 
 // TestHintOrder: pairs sort into their slots, and a narrow row drops the
-// middle pairs, copy and scrolling first, never enter or esc.
+// middle pairs, scrolling and copy first, never enter or esc.
 func TestHintOrder(t *testing.T) {
 	pairs := []hintPair{{"esc", "close"}, {"y", "copy"}, {"a", "keep"}, {"enter", "open"}, {"d", "drop"}, {"ctrl+d/u", "scroll"}}
 	for _, c := range []struct {
@@ -761,6 +762,7 @@ func TestHintOrder(t *testing.T) {
 		want string
 	}{
 		{80, "enter open · ctrl+d/u scroll · y copy · a keep · d drop · esc close"},
+		{55, "enter open · y copy · a keep · d drop · esc close"},
 		{40, "enter open · a keep · d drop · esc close"},
 		{5, "enter open · esc close"},
 	} {

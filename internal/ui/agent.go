@@ -1044,7 +1044,7 @@ func hintSlot(p hintPair) int {
 		return 1
 	case p.key == "space":
 		return 2
-	case p == scrollHint:
+	case p == scrollHint || p == scrollGap:
 		return 3
 	case p.key == "y":
 		return 4
@@ -1055,22 +1055,28 @@ func hintSlot(p hintPair) int {
 }
 
 // hint is the one footer row every box draws: "enter pick · esc deny",
-// the pairs in slot order. Past w cells the middle pairs give way, copy and
-// scrolling first, then the last first; enter and esc never do.
+// the pairs in slot order. Past w cells the middle pairs give way,
+// scrolling and copy first, then the last first; enter and esc never do.
 func hint(w int, pairs ...hintPair) []hostapi.Segment {
 	pairs = slices.Clone(pairs)
 	slices.SortStableFunc(pairs, func(a, b hintPair) int { return hintSlot(a) - hintSlot(b) })
 	for {
 		var out []hostapi.Segment
-		for i, p := range pairs {
-			if i > 0 {
+		for _, p := range pairs {
+			switch {
+			case p == scrollGap && len(out) > 0: // scrollHint's cells, its separator included
+				out = append(out, hostapi.Segment{Text: strings.Repeat(" ", 4+ansi.StringWidth(scrollHint.key+scrollHint.verb))})
+				continue
+			case p == scrollGap:
+				continue
+			case len(out) > 0:
 				out = append(out, hostapi.Segment{Text: " · ", HL: "Host:Hint"})
 			}
 			out = append(out, hostapi.Segment{Text: p.key, HL: "Host:HintKey"}, hostapi.Segment{Text: " " + p.verb, HL: "Host:Hint"})
 		}
-		i := slices.IndexFunc(pairs, func(p hintPair) bool { return p.key == "y" })
+		i := slices.IndexFunc(pairs, func(p hintPair) bool { return p == scrollHint || p == scrollGap })
 		if i < 0 {
-			i = slices.Index(pairs, scrollHint)
+			i = slices.IndexFunc(pairs, func(p hintPair) bool { return p.key == "y" })
 		}
 		if i < 0 {
 			i = len(pairs) - 1
@@ -1088,6 +1094,10 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 // scrollHint names the half-page keys, which every box's text scrolls on
 // and a laptop has.
 var scrollHint = hintPair{"ctrl+d/u", "scroll"}
+
+// scrollGap keeps scrollHint's cells blank in a list that can grow past its
+// view, so the hint coming moves none of the keys after it.
+var scrollGap = hintPair{verb: "scroll gap"}
 
 // scrolls is scrollHint while any of views overflows.
 func scrolls(views ...viewport) []hintPair {

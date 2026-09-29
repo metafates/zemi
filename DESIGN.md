@@ -1625,8 +1625,10 @@ provenance string.
   shifts the footer. The footer's pairs sit in one order: moving keys,
   enter, space, scrolling, copy, the screen's own keys (a Lua list's
   `keys`, a workflow view's `p` and `+/-`), then esc; the screen's keys come
-  and go with its state, so their going moves only esc, and a narrow footer
-  drops copy and scrolling before them. A row names its own (`verb`)
+  and go with its state, so their going moves only esc. A toggle list, which
+  can grow past its view, keeps scrolling's cells blank until it does, so
+  the hint coming moves nothing. A narrow footer drops scrolling and copy
+  before the screen's keys. A row names its own (`verb`)
   where the list's default would say another: "open" on a row that runs a
   command opening a screen, "run" on `/model`'s "Update the model catalog".
   Space, which toggles a toggle list's rows outside an open filter (in one

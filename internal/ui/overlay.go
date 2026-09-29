@@ -807,7 +807,11 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		if (bodyN > 0 || len(st.visible) > 0) && !enterCopies {
 			hints = append(hints, hintPair{"y", "copy"})
 		}
-		hints = st.filterHints(append(hints, scrolls(st.body, st.view)...), map[bool]string{true: "back", false: "close"}[st.back])
+		scroll := scrolls(st.body, st.view)
+		if scroll == nil && st.o.Reload != nil {
+			scroll = []hintPair{scrollGap}
+		}
+		hints = st.filterHints(append(hints, scroll...), map[bool]string{true: "back", false: "close"}[st.back])
 		foot := hint(inner, hints...)
 		if st.armed > 0 && st.armed == st.selected+1 && st.selected < len(st.visible) {
 			foot = armedHint(inner, cmp.Or(st.actionKey(st.selected), "enter"), st.items[st.visible[st.selected]].label)
