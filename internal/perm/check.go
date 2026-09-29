@@ -7,9 +7,9 @@ import (
 )
 
 // CheckCommand decides a bash call (DESIGN §9): the whole call asks when
-// the assignment gate or a heredoc fires, fails when normalization fails,
-// and is allowed only when every segment and every redirect target
-// matches an allow rule and no assignment prefix was stripped.
+// the assignment gate or a heredoc fires, fails when it does not parse, and
+// is allowed only when every segment and every redirect target matches an
+// allow rule and it reads no value the rules never see (Assign).
 func (s *Store) CheckCommand(cmd, principal string) Outcome {
 	return s.CheckCommandFor(SubjectBash, Normalize(cmd), principal)
 }
@@ -19,7 +19,7 @@ func (s *Store) CheckCommand(cmd, principal string) Outcome {
 // way).
 func (s *Store) CheckCommandFor(subject string, n Normalized, principal string) Outcome {
 	if n.Fail != "" {
-		return Outcome{Decision: Deny, Reason: "zemi cannot parse the command (" + n.Fail + "); fix the quoting"}
+		return Outcome{Decision: Deny, Reason: "the command does not parse: " + n.Fail}
 	}
 	if n.ForceAsk != "" {
 		return Outcome{Decision: Ask, Reason: n.ForceAsk}
@@ -101,14 +101,14 @@ var runnerOpts = map[string][]string{
 	"caffeinate": {"-t", "-w"}, "xargs": {"-n", "-I", "-P", "-L", "-d", "-E", "-s", "-a"},
 }
 
-// canonical is a segment as the program it runs: leading reserved words
-// dropped, runner prefixes (env, sudo, timeout 5, ...) stepped past, the
-// program by its ProgramName and without the options before its first
-// operand, so "git push" also names "/usr/bin/git -C . push".
+// canonical is a segment as the program it runs: runner prefixes (env,
+// sudo, timeout 5, ...) stepped past, the program by its ProgramName and
+// without the options before its first operand, so "git push" also names
+// "/usr/bin/git -C . push".
 // NOTE: best effort: a git alias (git -c alias.p=push p), a runner option
 // missing from runnerOpts or a program picked at run time still slips past.
 func canonical(argv []string) string {
-	f := stepRunners(ProgramWords(argv))
+	f := stepRunners(argv)
 	if len(f) == 0 {
 		return ""
 	}

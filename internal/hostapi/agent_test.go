@@ -1177,10 +1177,10 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "allow ls", []string{"ls", "ls *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "allow cat", []string{"cat", "cat *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow go vet, git diff and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "ls", "ls *"}},
-		// shell syntax is not named, and a loop's do stays in the rule: "do *"
-		// would allow any later loop body
-		{tools.Request{Subject: "tool.bash", Arg: "for f in $(ls); do cat $f; done"}, "allow ls and cat", []string{"for", "for *", "ls", "ls *", "do cat", "do cat *", "done", "done *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "if true; then ls; fi"}, "allow ls", []string{"if true", "if true *", "then ls", "then ls *", "fi", "fi *"}},
+		// shell syntax is no command, and a no-op builtin is not named
+		{tools.Request{Subject: "tool.bash", Arg: "for f in $(ls); do cat $f; done"}, "allow ls and cat", []string{"ls", "ls *", "cat", "cat *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "if true; then ls; fi"}, "allow ls", []string{"true", "true *", "ls", "ls *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "for f in $(ls); do rm $f; done"}, "", nil},
 		// syntax is named when nothing else is, so the label says what the rules allow
 		{tools.Request{Subject: "tool.bash", Arg: "set -e"}, "allow set", []string{"set", "set *"}},
 		// [[ and let evaluate a quoted subscript, which can run $(...): exact

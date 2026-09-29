@@ -1,6 +1,9 @@
 package perm
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The stuff a fuzzer can panic on is exactly the untrusted input the
 // sandbox gates judge (DESIGN §9): commands from the model, paths, and
@@ -24,6 +27,10 @@ func FuzzNormalize(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, cmd string) {
 		n := Normalize(cmd)
+		// the recover that fails such a call closed is a net, not a way out
+		if strings.HasPrefix(n.Fail, panicked) {
+			t.Fatalf("%q: %s", cmd, n.Fail)
+		}
 		n.Programs("") // the permission prompt lists them for every command asked about
 		// a command Normalize gates (fail or a forced ask) must never be
 		// allowed through by the full decision path, whatever the rules say

@@ -352,7 +352,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 			// is; one pattern is an exact form, named first when it deletes, so
 			// the answer never hides it in a count; two (p, "p *") is a command
 			// allowed as a whole
-			g := perm.ProgramWords(strings.Fields(patterns[0]))
+			g := strings.Fields(patterns[0])
 			switch {
 			case len(g) == 0:
 				continue
@@ -482,19 +482,6 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	if len(f) == 0 {
 		return nil, false
 	}
-	// the do or then leading a segment stays in its rules: "do *" would allow
-	// every command a later loop body runs
-	if g := perm.ProgramWords(f); len(g) < len(f) {
-		if len(g) == 0 {
-			return []string{seg}, true
-		}
-		lead := strings.Join(f[:len(f)-len(g)], " ") + " "
-		patterns, ok := bashAlwaysPatterns(strings.Join(g, " "))
-		for i := range patterns {
-			patterns[i] = lead + patterns[i]
-		}
-		return patterns, ok
-	}
 	// judged by its name, kept as written: a rule for `/usr/bin/git push`
 	// allows only that git
 	prog := perm.ProgramName(f[0])
@@ -519,8 +506,12 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	// to arbitrary later targets: the rule runs unconfined, and such a
 	// command has no write path to re-ask on
 	// [[ and a builtin that sets variables by name evaluate a quoted
-	// subscript, where $(...) runs: "[[ *" would run any of those
+	// subscript, where $(...) runs: "[[ *" would run any of those. An
+	// expansion is no exact text: rm $f deletes what a loop hands it
 	if f[0] == "[[" || perm.ShellState[f[0]] || deletes(seg) {
+		if strings.ContainsAny(seg, "$`") {
+			return nil, false
+		}
 		return []string{seg}, true
 	}
 	p := commandPrefix(seg)

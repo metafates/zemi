@@ -73,7 +73,7 @@ const (
 // or files outside the project. A nil pathOK refuses absolute, home and
 // parent paths. These settle where no sandbox would hold the command.
 func (n Normalized) ReadCommand(pathOK func(arg string, use ArgUse) bool) bool {
-	if expands(n.cmd) {
+	if n.expands {
 		return false
 	}
 	if pathOK == nil {
@@ -121,7 +121,7 @@ func (n Normalized) ReadCommand(pathOK func(arg string, use ArgUse) bool) bool {
 // runner copies a directory it is given into the temp dir the model reads.
 // exe, the running zemi's path, may stand for zemi.
 func (n Normalized) PluginTest(exe string) bool {
-	if expands(n.cmd) || n.Fail != "" || n.ForceAsk != "" || n.Opaque || n.Assign != "" ||
+	if n.expands || n.Fail != "" || n.ForceAsk != "" || n.Opaque || n.Assign != "" ||
 		len(n.ReadPaths)+len(n.WritePaths) > 0 || len(n.Args) != 1 {
 		return false
 	}
@@ -334,65 +334,6 @@ func walkFrom(first int, walk ArgUse) func(pos int) ArgUse {
 		}
 		return walk
 	}
-}
-
-// expands reports whether the shell would substitute anything: a backtick,
-// $ or process substitution outside single quotes, or a glob or brace list
-// outside any quotes (cat .e* reads .env past the path check).
-func expands(cmd string) bool {
-	inSingle, inDouble := false, false
-	for i := 0; i < len(cmd); i++ {
-		switch c := cmd[i]; {
-		case inSingle:
-			inSingle = c != '\''
-		case c == '\\':
-			i++
-		case c == '`' || c == '$':
-			return true
-		case c == '"':
-			inDouble = !inDouble
-		case inDouble:
-		case c == '\'':
-			inSingle = true
-		case (c == '<' || c == '>') && i+1 < len(cmd) && cmd[i+1] == '(':
-			return true
-		case c == '*' || c == '?':
-			return true
-		case c == '[' || c == '{':
-			// a bracket class or {a,b} / {1..3} list closed within the word
-			word := cmd[i+1 : wordEnd(cmd, i+1)]
-			if c == '[' && strings.Contains(word, "]") {
-				return true
-			}
-			if end := strings.IndexByte(word, '}'); c == '{' && end >= 0 && (strings.Contains(word[:end], ",") || strings.Contains(word[:end], "..")) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// wordEnd returns where the shell word running through cmd[i:] ends: at the
-// first blank or operator that is not quoted or escaped (.e["n "]v is one word).
-func wordEnd(cmd string, i int) int {
-	var quote byte
-	for ; i < len(cmd); i++ {
-		switch c := cmd[i]; {
-		case quote != 0:
-			if c == quote {
-				quote = 0
-			} else if c == '\\' && quote == '"' {
-				i++
-			}
-		case c == '\\':
-			i++
-		case c == '\'' || c == '"':
-			quote = c
-		case strings.IndexByte(" \t\n;&|<>()", c) >= 0:
-			return i
-		}
-	}
-	return len(cmd)
 }
 
 // safeArgs checks every argument that could name a file: plain arguments,
@@ -775,10 +716,6 @@ func ProgramName(word string) string {
 	}, filepath.Base(word)))
 }
 
-// reserved are the shell words a segment may start with before its program:
-// Normalize keeps "then rm -rf ." as one segment.
-var reserved = map[string]bool{"if": true, "then": true, "else": true, "elif": true, "while": true, "until": true, "do": true, "{": true, "!": true}
-
 // shellBodies are the commands the shells in f run through -c: f's own
 // program, or one a wrapper (xargs, env, timeout, find -exec) hands a shell.
 // Normalize folds only a segment's leading shell.
@@ -795,22 +732,6 @@ func shellBodies(f []string) []string {
 		}
 	}
 	return bodies
-}
-
-// ProgramWords is f without its leading reserved words; "function name" is
-// skipped as a pair (the () spelling makes Normalize split at the brace).
-func ProgramWords(f []string) []string {
-	for len(f) > 0 {
-		switch {
-		case f[0] == "function" && len(f) > 1:
-			f = f[2:]
-		case reserved[f[0]]:
-			f = f[1:]
-		default:
-			return f
-		}
-	}
-	return f
 }
 
 // Subcommand is the index in f of a program's subcommand word, past its
@@ -898,7 +819,6 @@ func (n Normalized) GitWrites() string {
 		return ""
 	}
 	for _, f := range n.Args {
-		f = ProgramWords(f)
 		for _, body := range shellBodies(f) {
 			if why := Normalize(body).GitWrites(); why != "" {
 				return why
@@ -970,15 +890,15 @@ func (n Normalized) Destructive(pad string) string {
 }
 
 // padIntact reports that $TMPDIR is the value zemi set: the text names it
-// only as $TMPDIR or ${TMPDIR}, unescaped and outside single quotes, nothing
-// is assigned, and no builtin runs that sets or unsets a variable by a name
-// it may build at run time (read, eval, declare "$n=x").
+// only as a plain $TMPDIR or ${TMPDIR}, nothing is assigned, and no builtin
+// runs that sets or unsets a variable by a name it may build at run time
+// (read, eval, declare "$n=x").
 func (n Normalized) padIntact() bool {
-	if n.Fail != "" || n.ForceAsk != "" || n.Opaque || n.Assign != "" {
+	if n.Fail != "" || n.ForceAsk != "" || n.Opaque || n.Assign != "" || n.tmpdir {
 		return false
 	}
-	for _, f := range n.Args {
-		for f = ProgramWords(f); len(f) > 0; {
+	for _, r := range n.rows {
+		for f := r.args; len(f) > 0; {
 			if ShellState[f[0]] || strings.ContainsAny(f[0], "$=") ||
 				f[0] == "printf" && slices.ContainsFunc(f, func(a string) bool { return strings.HasPrefix(a, "-v") }) {
 				return false
@@ -988,29 +908,6 @@ func (n Normalized) padIntact() bool {
 				break
 			}
 			f = g
-		}
-	}
-	const name = "TMPDIR"
-	inSingle, inDouble := false, false
-	for i := 0; i < len(n.cmd); i++ {
-		switch c, rest := n.cmd[i], n.cmd[i:]; {
-		case inSingle:
-			inSingle = c != '\''
-			if strings.HasPrefix(rest, name) {
-				return false
-			}
-		case c == '\\':
-			i++ // an escaped $ leaves the name to the last case
-		case c == '\'' && !inDouble:
-			inSingle = true
-		case c == '"':
-			inDouble = !inDouble
-		case strings.HasPrefix(rest, "${"+name+"}"):
-			i += len(name) + 2
-		case strings.HasPrefix(rest, "$"+name) && !nameByte(rest, len(name)+1):
-			i += len(name)
-		case strings.HasPrefix(rest, name):
-			return false
 		}
 	}
 	return true
@@ -1023,10 +920,6 @@ var ShellState = map[string]bool{
 	"eval": true, "source": true, ".": true, "export": true, "declare": true, "typeset": true, "local": true,
 	"readonly": true, "unset": true, "read": true, "mapfile": true, "readarray": true, "getopts": true,
 	"let": true, "alias": true, "trap": true, "select": true, "enable": true,
-}
-
-func nameByte(s string, i int) bool {
-	return i < len(s) && (s[i] == '_' || s[i] >= 'a' && s[i] <= 'z' || s[i] >= 'A' && s[i] <= 'Z' || s[i] >= '0' && s[i] <= '9')
 }
 
 // padOperands reports that args has operands and each names a path below
@@ -1075,23 +968,15 @@ func repeats(prog string) bool {
 }
 
 // destructive is Destructive with repeated set for a shell body a
-// repeating runner hands a shell (xargs sh -c 'rm "$@"'). A loop body
-// between do and done repeats too.
+// repeating runner hands a shell (xargs sh -c 'rm "$@"'). A loop repeats
+// its rows too.
 func (n Normalized) destructive(repeated bool, pad string) string {
 	if why := cmp.Or(n.Fail, n.doubt); why != "" {
 		return why
 	}
-	loops := 0
-	for _, f := range n.Args {
-		g := ProgramWords(f)
-		if slices.Contains(f[:len(f)-len(g)], "do") {
-			loops++
-		}
-		if len(f) > 0 && f[0] == "done" {
-			loops = max(loops-1, 0)
-		}
-		f = g
-		repeated := repeated || loops > 0
+	for _, r := range n.rows {
+		f := r.args
+		repeated := repeated || r.loop
 		for _, body := range shellBodies(f) {
 			if why := Normalize(body).destructive(repeated || len(f) > 0 && repeats(f[0]), ""); why != "" {
 				return why
@@ -1126,11 +1011,10 @@ func (n Normalized) destructive(repeated bool, pad string) string {
 	return ""
 }
 
-// ShellWords are the syntax and no-op words a segment may start with, which
-// run nothing worth naming: Programs lists no segment led by one, and an
-// always answer names none it allows.
+// ShellWords are the no-op builtins a segment may start with, which run
+// nothing worth naming: Programs lists no segment led by one, and an always
+// answer names none it allows.
 var ShellWords = map[string]bool{
-	"for": true, "select": true, "case": true, "done": true, "fi": true, "esac": true, "}": true,
 	"[": true, "set": true, "shopt": true, "true": true, "false": true, ":": true,
 	"break": true, "continue": true, "exit": true, "return": true, "wait": true,
 }
@@ -1173,24 +1057,16 @@ func (n Normalized) Programs(pad string) []Program {
 		pad = ""
 	}
 	out := []Program{}
-	loops := 0
-	rows := n.Args
+	rows := n.rows
 	if n.shown != nil {
 		rows = n.shown
 	}
-	for _, f := range rows {
-		g := ProgramWords(f)
-		if slices.Contains(f[:len(f)-len(g)], "do") {
-			loops++
-		}
-		if len(f) > 0 && f[0] == "done" {
-			loops = max(loops-1, 0)
-		}
-		seg, ok := segmentPrograms(g)
+	for _, r := range rows {
+		seg, ok := segmentPrograms(r.args)
 		if !ok {
 			return nil
 		}
-		if len(seg) > 0 && (Normalized{Args: [][]string{f}}).destructive(loops > 0, pad) != "" {
+		if len(seg) > 0 && (Normalized{rows: []row{r}}).destructive(false, pad) != "" {
 			seg[len(seg)-1].Risk = RiskDeletes
 		}
 		for _, p := range seg {
@@ -1211,10 +1087,6 @@ func (n Normalized) Programs(pad string) []Program {
 // a program word, so nothing says what runs.
 func segmentPrograms(f []string) (_ []Program, ok bool) {
 	var out []Program
-	// a leading fd redirect (>&2 echo x) stays a word of the segment
-	for len(f) > 0 && strings.IndexAny(strings.TrimLeft(f[0], "0123456789"), "<>") == 0 {
-		f = f[1:]
-	}
 	for len(f) > 0 {
 		w, base, name := f[0], shownName(f[0]), ProgramName(f[0])
 		_, runs := runnerOpts[name]
