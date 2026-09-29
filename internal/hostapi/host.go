@@ -388,8 +388,11 @@ type Host struct {
 	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3);
 	// modelFn stubs the agent and reflector model in tests.
 	reflectMu sync.Mutex
-	initFail  atomic.Pointer[string] // headline of the user init.lua failure this boot recorded
-	modelFn   func() (fantasy.LanguageModel, error)
+	// cutMu orders a rewind's cut against a reflector run's writes, so a run
+	// never stores what it read from rows a rewind removed.
+	cutMu    sync.Mutex
+	initFail atomic.Pointer[string] // headline of the user init.lua failure this boot recorded
+	modelFn  func() (fantasy.LanguageModel, error)
 
 	busyMu sync.Mutex
 	busy   []*busyJob // user-visible jobs that are not a turn, oldest first

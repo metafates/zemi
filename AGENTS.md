@@ -881,7 +881,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   touches it. `RewindTo` restores files first and only then truncates messages, so a failed
   restore leaves the conversation intact; then it drops what the session learned between the
   prompt and the last row (`forgetLearned`: a reflector run or an accept after it stays) and
-  rebuilds the todo list from the kept rows. A bash call's changes are checkpointed from the
+  rebuilds the todo list from the kept rows. The cut holds `cutMu`, which a reflector run takes
+  to store what it read, so a run whose rows a rewind removed during its model call stores nothing. A bash call's changes are checkpointed from the
   before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
   a repository, no submodule or secret-shaped file, and not once two slow snapshots switched the
   snapshot off); a symbolic link comes back as a link.

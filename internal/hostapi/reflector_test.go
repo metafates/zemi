@@ -656,6 +656,20 @@ func TestReflectTrigger(t *testing.T) {
 			addText(t, h, sid, "user", "again")
 			addTool(t, h, sid, true)
 		}},
+		{name: "a rewind during the run stores nothing and leaves what follows the cut due", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			m.resp = `{"memories":[{"scope":"project","text":"the deploy script requires the labels sequence bumped first"}]}`
+			msgs, _ := h.DB.Messages(sid)
+			m.during = func() {
+				if _, err := h.RewindTo(msgs[0].ID); err != nil {
+					t.Error(err)
+				}
+			}
+			if !reflectNow(h, sid) || h.agents.reflectErr != nil || len(projectMemories(t, h))+len(h.memoryProposals()) != 0 {
+				t.Fatalf("kept %d memories and %d proposals, /health news %v", len(projectMemories(t, h)), len(h.memoryProposals()), h.agents.reflectErr)
+			}
+			twoUsers(t, h, sid)
+			addTool(t, h, sid, true)
+		}, due: true, calls: 1},
 		{name: "sweep skips a session touched a minute ago", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
 			h.reflectSweep(time.Now().Add(-time.Minute))
 		}, due: true},

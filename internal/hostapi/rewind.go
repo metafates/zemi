@@ -168,11 +168,16 @@ func (h *Host) RewindTo(id string) (int, error) {
 	if len(failed) > 0 {
 		return 0, fmt.Errorf("could not restore %s", strings.Join(failed, "; "))
 	}
-	if err := h.DB.TruncateMessages(sid, id); err != nil {
+	h.cutMu.Lock()
+	err = h.DB.TruncateMessages(sid, id)
+	if err == nil {
+		h.clampReflectSeen(sid, cut)
+		h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt)
+	}
+	h.cutMu.Unlock()
+	if err != nil {
 		return 0, err
 	}
-	h.clampReflectSeen(sid, cut)
-	h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt)
 	todos := todosIn(rows[:cut])
 	if err := h.DB.SetTodos(sid, todos); err != nil {
 		h.Log.Warn("todo list not rewound", "origin", "rewind", "error", err)

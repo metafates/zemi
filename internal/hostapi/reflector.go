@@ -1,13 +1,14 @@
 // reflector.go: after a session closes, ten minutes past its last turn in
-// an open zemi, or at startup once it sat idle, a
-// tool-less model call reads what the session added since the last read,
-// its failed tool calls, the instruction files and the whole memory index,
-// and proposes memories (DESIGN §10.3). Each goes through intake and the
-// autonomy gate like one the live agent writes.
+// an open zemi, or at startup once it sat idle, a tool-less model call
+// reads what the session added since the last read, its failed tool calls,
+// the instruction files and the whole memory index, and proposes memories
+// (DESIGN §10.3). Each goes through intake and the autonomy gate like one
+// the live agent writes.
 
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -260,8 +261,8 @@ func (h *Host) reflectClaimed(sid, claim string, n int) bool {
 	try++
 	_ = h.DB.SetKV(reflectTriesKey(sid), strconv.Itoa(try))
 	err := h.reflectSession(ctx, sid)
-	if errors.Is(ctx.Err(), context.Canceled) {
-		// the user's double esc: no failure, so the try is given back
+	if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, errRewound) {
+		// the user's double esc or a rewind: no failure, so the try is given back
 		_ = h.DB.SetKV(reflectTriesKey(sid), strconv.Itoa(try-1))
 		return true
 	}
@@ -290,7 +291,7 @@ func (h *Host) reflectClaimed(sid, claim string, n int) bool {
 // reflectSession runs one full reflect cycle for a session: prompt, turn,
 // parse, route. Synchronous; the caller owns the timeout.
 func (h *Host) reflectSession(ctx context.Context, sid string) error {
-	prompt, seen, err := h.reflectPrompt(sid)
+	prompt, read, err := h.reflectPrompt(sid)
 	if err != nil {
 		return err
 	}
@@ -301,6 +302,13 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 	proposal, err := parseReflectProposal(concatText(res.Response.Content))
 	if err != nil {
 		return err
+	}
+	// a rewind during the model call cut rows the proposal may come from
+	h.cutMu.Lock()
+	defer h.cutMu.Unlock()
+	seen := len(read)
+	if rows, err := h.DB.Messages(sid); err != nil || len(rows) < seen || seen > 0 && rows[seen-1].ID != read[seen-1].ID {
+		return cmp.Or(err, errRewound)
 	}
 	stored, queued, superseded, skipped := h.applyReflectProposal(sid, proposal)
 	// what the prompt held, not the count now: the live session may have
@@ -316,12 +324,12 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 }
 
 // reflectPrompt builds the reflect prompt over what sid holds past the seen
-// count and returns how many of its stored messages that covers. Every
-// transcript line is scrubbed before it leaves the machine.
-func (h *Host) reflectPrompt(sid string) (string, int, error) {
+// count and returns the stored messages that covers. Every transcript line
+// is scrubbed before it leaves the machine.
+func (h *Host) reflectPrompt(sid string) (string, []*store.Message, error) {
 	all, seen, _, err := h.reflectDelta(sid)
 	if err != nil {
-		return "", 0, err
+		return "", nil, err
 	}
 	msgs := all[seen:]
 	var lines []string
@@ -382,7 +390,7 @@ func (h *Host) reflectPrompt(sid string) (string, int, error) {
 		}
 	}
 	b.WriteString("\nProduce the JSON now.")
-	return b.String(), len(all), nil
+	return b.String(), all, nil
 }
 
 // budgetUse renders a scope's budget use, marked full past 80%: the model
@@ -481,6 +489,10 @@ func clipRunes(s string, n int) string {
 // errNoProposal is a reflector reply that is not the JSON document asked
 // for.
 var errNoProposal = errors.New("returned no proposal")
+
+// errRewound ends a run whose session a rewind cut during the model call;
+// the cut's own delta is reflected later.
+var errRewound = errors.New("the session was rewound during the run")
 
 func parseReflectProposal(out string) (*reflectProposal, error) {
 	start := strings.Index(out, "{")
