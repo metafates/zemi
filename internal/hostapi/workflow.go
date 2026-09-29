@@ -11,18 +11,24 @@
 package hostapi
 
 import (
+	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"charm.land/fantasy"
@@ -131,6 +137,10 @@ type flowRun struct {
 	cancel                context.CancelFunc
 	wake                  chan struct{}    // buffered: a control that lets more agents start
 	progress              func(f *flowRun) // a foreground run's row, nil for none
+	script                string           // the script's file in the parent's pad, "" with no session
+	// journal is the held fd the scheduler appends to, never the path: a
+	// sandboxed command can plant a link at the name. nil with no session.
+	journal *os.File
 
 	mu       sync.Mutex
 	status   RunStatus
@@ -145,10 +155,11 @@ type flowRun struct {
 	err      error
 }
 
-// flowAgent is one zemi.workflow.agent call, queued until run is set.
+// flowAgent is one zemi.workflow.agent call: queued until run is set, or
+// ended as its row says when a journal answered it.
 type flowAgent struct {
-	def, description, phase string
-	run                     *agentRun
+	agentRow
+	run *agentRun
 }
 
 // flowSpec is what startFlow runs.
@@ -157,14 +168,38 @@ type flowSpec struct {
 	args                   any
 	concurrency            int // 0 is workflowConcurrency
 	background             bool
+	from                   string // a run of this session whose journal answers identical calls
 	progress               func(*flowRun)
 	done                   func(*flowRun) // a background run's end
+
+	cache map[string][]journalLine // from's finished agents by agentKey, in file order
 }
 
 // startFlow registers a run of spec and runs it to its end on the caller's
 // goroutine, or detached from ctx when spec.background, calling spec.done
 // once it ends. The error is a start's; the run's own is f.err.
 func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
+	parent := h.AgentSessionID()
+	pad := h.scratchFor(parent)
+	var cache map[string][]journalLine
+	if spec.from != "" {
+		old, err := readJournal(pad, spec.from)
+		if err != nil {
+			return nil, err
+		}
+		if spec.src == "" {
+			b, err := readPadFile(pad, flowFile(spec.from, ".lua"))
+			if err != nil {
+				return nil, err
+			}
+			spec.src = string(b)
+		}
+		if spec.args == nil {
+			spec.args = old.head.Args
+		}
+		spec.name, spec.description = cmp.Or(spec.name, old.head.Name), cmp.Or(spec.description, old.head.Description)
+		cache = old.cache()
+	}
 	limit := cmp.Or(spec.concurrency, workflowConcurrency)
 	if limit < 1 || limit > workflowMaxConcurrency {
 		return nil, Usagef("concurrency must be 1-%d, not %d", workflowMaxConcurrency, limit)
@@ -175,13 +210,26 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	f := &flowRun{
 		id: store.NewID()[:runIDLen], name: spec.name, description: cmp.Or(spec.description, spec.name, "workflow"),
-		parent: h.AgentSessionID(), background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), progress: spec.progress,
+		parent: parent, background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), progress: spec.progress,
 		status: RunRunning, limit: limit, started: time.Now(), restart: map[string]bool{},
+	}
+	if pad != "" {
+		var err error
+		head := journalLine{Workflow: f.id, Name: f.name, Description: f.description, Args: spec.args, Concurrency: limit, Started: f.started.UnixMilli()}
+		if f.journal, err = openJournal(pad, f.id, spec.src, head); err != nil {
+			cancel()
+			return nil, err
+		}
+		f.script = filepath.Join(pad, flowFile(f.id, ".lua"))
 	}
 	if err := h.tasks.addFlow(f); err != nil {
 		cancel()
+		if f.journal != nil {
+			f.journal.Close()
+		}
 		return nil, err
 	}
+	spec.cache = cache
 	if !spec.background {
 		h.runFlow(ctx, f, spec)
 		return f, nil
@@ -210,9 +258,9 @@ type wfTask struct {
 }
 
 type wfAgentReq struct {
-	def    AgentDef
-	prompt string
-	agent  *flowAgent
+	def         AgentDef
+	prompt, key string
+	agent       *flowAgent
 }
 
 type wfDone struct {
@@ -234,6 +282,7 @@ type wfRun struct {
 	running int
 	started int // agents started, restarts included: done holds one report each
 	done    chan wfDone
+	cache   map[string][]journalLine // an earlier run's answers, taken in order
 
 	ready []*wfTask // parents whose parallel() branches all finished
 
@@ -256,14 +305,19 @@ func (h *Host) runFlow(ctx context.Context, f *flowRun, spec flowSpec) {
 	default:
 		f.status = RunFailed
 	}
+	end := journalLine{Status: f.status, MS: f.finished.Sub(f.started).Milliseconds(), Result: jsonString(val), Err: errString(err)}
 	f.mu.Unlock()
+	f.note(end)
+	if f.journal != nil {
+		f.journal.Close()
+	}
 	f.changed()
 }
 
 // runScript is the scheduler loop: it resumes the script's coroutines as
 // agents report and control arrives, and returns the script's value.
 func (h *Host) runScript(ctx context.Context, f *flowRun, spec flowSpec) (string, error) {
-	r := &wfRun{h: h, f: f, ctx: ctx, tasks: map[*glua.LState]*wfTask{}, done: make(chan wfDone, workflowMaxAgents)}
+	r := &wfRun{h: h, f: f, ctx: ctx, tasks: map[*glua.LState]*wfTask{}, done: make(chan wfDone, workflowMaxAgents), cache: spec.cache}
 	L := r.open(spec.args)
 	defer L.Close()
 	L.SetContext(ctx)
@@ -326,12 +380,24 @@ func (r *wfRun) agentDone(d wfDone) {
 		return
 	}
 	r.dispatch()
+	status, calls, took, _ := d.run.state()
+	tokens, cost := d.run.usage()
+	line := journalLine{
+		Agent: d.run.id, Key: d.req.key, Def: d.req.def.Name, Description: d.run.description, Phase: d.run.phase,
+		Status: status, Calls: calls, Tokens: tokens, Cost: cost, MS: took.Milliseconds(),
+	}
 	switch {
 	case stopped:
-		r.resume(d.task, glua.LNil, glua.LString("stopped by the user"))
+		line.Err = "stopped by the user"
 	case d.err != nil:
-		r.resume(d.task, glua.LNil, glua.LString(r.h.friendlyError(d.err)))
+		line.Err = r.h.friendlyError(d.err)
 	default:
+		line.Result = jsonString(d.text)
+	}
+	f.note(line)
+	if line.Err != "" {
+		r.resume(d.task, glua.LNil, glua.LString(line.Err))
+	} else {
 		r.resume(d.task, glua.LString(d.text))
 	}
 }
@@ -489,19 +555,36 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	if model != "" {
 		def.Model = model
 	}
-	if r.started >= workflowMaxAgents {
-		L.RaiseError("agent: this workflow already started %d agents (the limit)", workflowMaxAgents)
-	}
 	if desc == "" {
 		first, _, _ := strings.Cut(prompt, "\n")
 		desc = clipRunes(first, 40)
 	}
-	r.started++
 	a := &flowAgent{def: def.Name, description: desc, phase: cmp.Or(phase, r.f.phase)}
+	key := agentKey(def.Name, model, prompt)
+	// an identical call an earlier run finished answers at once and starts
+	// nothing, so it does not count toward the cap
+	if q := r.cache[key]; len(q) > 0 {
+		hit := q[0]
+		r.cache[key] = q[1:]
+		a.id, a.status, a.reused, a.calls, a.tokens, a.cost, a.took = hit.Agent, RunDone, true, hit.Calls, hit.Tokens, hit.Cost, time.Duration(hit.MS)*time.Millisecond
+		r.f.mu.Lock()
+		r.f.agents = append(r.f.agents, a)
+		r.f.mu.Unlock()
+		hit.Description, hit.Phase, hit.Reused = a.description, a.phase, true
+		r.f.note(hit)
+		var v any
+		_ = json.Unmarshal(hit.Result, &v) // a line zemi did not write answers nil
+		L.Push(lua.FromGo(L, v))
+		return 1
+	}
+	if r.started >= workflowMaxAgents {
+		L.RaiseError("agent: this workflow already started %d agents (the limit)", workflowMaxAgents)
+	}
+	r.started++
 	r.f.mu.Lock()
 	r.f.agents = append(r.f.agents, a)
 	r.f.mu.Unlock()
-	t.req = &wfAgentReq{def: def, prompt: prompt, agent: a}
+	t.req = &wfAgentReq{def: def, prompt: prompt, key: key, agent: a}
 	return L.Yield()
 }
 
@@ -640,6 +723,7 @@ func (r *wfRun) finish(t *wfTask, val glua.LValue, err error) {
 type agentRow struct {
 	id, def, description, phase string
 	status                      RunStatus
+	reused                      bool // answered from an earlier run's journal
 	calls                       int
 	tokens                      int64
 	cost                        float64
@@ -650,13 +734,16 @@ type agentRow struct {
 func (f *flowRun) rows() []agentRow {
 	out := make([]agentRow, len(f.agents))
 	for i, a := range f.agents {
-		out[i] = agentRow{def: a.def, description: a.description, phase: a.phase, status: "queued"}
-		if a.run != nil {
-			r := &out[i]
+		r := a.agentRow
+		switch {
+		case a.run != nil:
 			r.id = a.run.id
 			r.status, r.calls, r.took, _ = a.run.state()
 			r.tokens, r.cost = a.run.usage()
+		case r.status == "":
+			r.status = "queued"
 		}
+		out[i] = r
 	}
 	return out
 }
@@ -836,6 +923,261 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 		return "Resumed workflow " + id, nil
 	}
 	return fmt.Sprintf("Workflow %s runs %d agents at once", id, n), nil
+}
+
+// ---------------------------------------------------------------------------
+// the run's files: its script and journal in the parent session's pad
+
+// journalLine is one line of a run's journal: the header (Workflow set),
+// an agent that ended (Agent set), or the end.
+type journalLine struct {
+	Workflow    string          `json:"workflow,omitempty"`
+	Name        string          `json:"name,omitempty"`
+	Args        any             `json:"args,omitempty"`
+	Concurrency int             `json:"concurrency,omitzero"`
+	Started     int64           `json:"started,omitzero"`
+	Agent       string          `json:"agent,omitempty"`
+	Key         string          `json:"key,omitempty"`
+	Def         string          `json:"def,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Phase       string          `json:"phase,omitempty"`
+	Status      RunStatus       `json:"status,omitempty"`
+	Reused      bool            `json:"reused,omitzero"`
+	Calls       int             `json:"calls,omitzero"`
+	Tokens      int64           `json:"tokens,omitzero"`
+	Cost        float64         `json:"cost,omitzero"`
+	MS          int64           `json:"ms,omitzero"`
+	Result      json.RawMessage `json:"result,omitempty"`
+	Err         string          `json:"err,omitempty"`
+}
+
+func jsonString(s string) json.RawMessage {
+	b, _ := json.Marshal(s)
+	return b
+}
+
+// agentKey is what makes two agent calls identical for a rerun.
+func agentKey(def, model, prompt string) string {
+	sum := sha256.Sum256([]byte(def + "\x00" + model + "\x00" + prompt))
+	return hex.EncodeToString(sum[:])
+}
+
+var flowIDShape = regexp.MustCompile(`^[0-9a-f]{8}$`)
+
+func flowFile(id, ext string) string { return "workflow-" + id + ext }
+
+// padOpen opens name in pad as a sandboxed command would attack it: the pad
+// is a write root, so a link planted at the name or a swapped parent fails
+// the open instead of leading zemi, which runs unconfined, elsewhere.
+func padOpen(pad, name string, flag int) (*os.File, error) {
+	p, err := perm.Lresolve(filepath.Join(pad, name))
+	if err != nil {
+		return nil, err
+	}
+	return p.Open(flag, 0o600)
+}
+
+// openJournal creates the run's script and journal, neither of which may
+// exist yet, and returns the journal with its header written.
+func openJournal(pad, id, src string, head journalLine) (*os.File, error) {
+	if err := os.MkdirAll(pad, 0o700); err != nil {
+		return nil, err
+	}
+	create := os.O_CREATE | os.O_EXCL | os.O_WRONLY
+	s, err := padOpen(pad, flowFile(id, ".lua"), create)
+	if err != nil {
+		return nil, err
+	}
+	_, err = s.WriteString(src)
+	if cerr := s.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return nil, err
+	}
+	j, err := padOpen(pad, flowFile(id, ".jsonl"), create|os.O_APPEND)
+	if err != nil {
+		return nil, err
+	}
+	b, _ := json.Marshal(head)
+	if _, err := j.Write(append(b, '\n')); err != nil {
+		j.Close()
+		return nil, err
+	}
+	return j, nil
+}
+
+// note appends a line to the journal; only the scheduler's goroutine
+// writes it. A lost line costs a rerun one reused answer, nothing more.
+func (f *flowRun) note(l journalLine) {
+	if f.journal == nil {
+		return
+	}
+	b, _ := json.Marshal(l)
+	_, _ = f.journal.Write(append(b, '\n'))
+}
+
+// readPadFile reads a regular file of at most 1 MiB from pad; O_NONBLOCK
+// keeps a planted fifo from holding the open.
+func readPadFile(pad, name string) ([]byte, error) {
+	f, err := padOpen(pad, name, os.O_RDONLY|syscall.O_NONBLOCK)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() || fi.Size() > maxAgentFileBytes {
+		return nil, fmt.Errorf("%s: not a regular file of at most %d bytes", f.Name(), maxAgentFileBytes)
+	}
+	return io.ReadAll(io.LimitReader(f, maxAgentFileBytes))
+}
+
+// journal is a run's journal read back; end is zero for a run that never
+// ended.
+type journal struct {
+	head        journalLine
+	agents      []journalLine
+	end         journalLine
+	pad, script string
+}
+
+// readJournal reads run id's journal from pad. Everything in it is model
+// grade: a sandboxed command may have written it.
+func readJournal(pad, id string) (journal, error) {
+	if !flowIDShape.MatchString(id) {
+		return journal{}, Usagef("%q is not a workflow run id", id)
+	}
+	if pad == "" {
+		return journal{}, Usagef("no session: workflow runs keep their files in its scratchpad")
+	}
+	b, err := readPadFile(pad, flowFile(id, ".jsonl"))
+	if err != nil {
+		return journal{}, err
+	}
+	j := journal{pad: pad, script: filepath.Join(pad, flowFile(id, ".lua"))}
+	for line := range bytes.SplitSeq(b, []byte("\n")) {
+		var l journalLine
+		switch {
+		case json.Unmarshal(line, &l) != nil: // a torn last line
+		case l.Workflow != "":
+			j.head = l
+		case l.Agent != "":
+			j.agents = append(j.agents, l)
+		default:
+			j.end = l
+		}
+	}
+	if j.head.Workflow != id {
+		return journal{}, fmt.Errorf("%s: no workflow header", flowFile(id, ".jsonl"))
+	}
+	return j, nil
+}
+
+// cache is the answers of the agents that finished, by agentKey in file
+// order: a repeated identical call takes them in turn, then runs live.
+func (j journal) cache() map[string][]journalLine {
+	c := map[string][]journalLine{}
+	for _, a := range j.agents {
+		if a.Status == RunDone && a.Key != "" {
+			c[a.Key] = append(c[a.Key], a)
+		}
+	}
+	return c
+}
+
+// loadFlow rebuilds a finished run of session sid from its journal, for
+// the screens; one with no end line reads as stopped.
+func (h *Host) loadFlow(sid, id string) (*flowRun, error) {
+	j, err := readJournal(h.scratchFor(sid), id)
+	if err != nil {
+		return nil, err
+	}
+	hd := j.head
+	f := &flowRun{
+		id: id, name: hd.Name, description: cmp.Or(hd.Description, "workflow"), parent: sid, started: time.UnixMilli(hd.Started),
+		cancel: func() {}, script: j.script, status: cmp.Or(j.end.Status, RunCancelled), limit: hd.Concurrency,
+	}
+	f.finished = f.started.Add(time.Duration(j.end.MS) * time.Millisecond)
+	_ = json.Unmarshal(j.end.Result, &f.result)
+	if j.end.Err != "" {
+		f.err = errors.New(j.end.Err)
+	}
+	for _, a := range j.agents {
+		f.agents = append(f.agents, &flowAgent{
+			id: a.Agent, def: a.Def, description: a.Description, phase: a.Phase, status: a.Status, reused: a.Reused,
+			calls: a.Calls, tokens: a.Tokens, cost: a.Cost, took: time.Duration(a.MS) * time.Millisecond,
+		})
+	}
+	return f, nil
+}
+
+// padFlows lists the run ids whose journals are in session sid's pad.
+func (h *Host) padFlows(sid string) []string {
+	ents, _ := os.ReadDir(h.scratchFor(sid))
+	var ids []string
+	for _, e := range ents {
+		if id, ok := strings.CutSuffix(strings.TrimPrefix(e.Name(), "workflow-"), ".jsonl"); ok && flowIDShape.MatchString(id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// flowAgentIDs are the agent run ids session sid's journals name: /agents
+// lists a workflow's agents as the workflow. A forged journal can only hide
+// this session's own agents from that list.
+func (h *Host) flowAgentIDs(sid string) map[string]bool {
+	ids := map[string]bool{}
+	for _, id := range h.padFlows(sid) {
+		if j, err := readJournal(h.scratchFor(sid), id); err == nil {
+			for _, a := range j.agents {
+				ids[a.Agent] = true
+			}
+		}
+	}
+	return ids
+}
+
+var savedName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// saveFlow copies run id's script to workflows/<name>.lua in the config
+// dir, headed by the run's description when it has no leading comment.
+func (h *Host) saveFlow(id, name string) (string, error) {
+	if !savedName.MatchString(name) {
+		return "", Usagef("a workflow name is lowercase letters, digits and dashes, not %q", name)
+	}
+	sid := h.AgentSessionID()
+	j, err := readJournal(h.scratchFor(sid), id)
+	if err != nil {
+		return "", err
+	}
+	src, err := readPadFile(j.pad, flowFile(id, ".lua"))
+	if err != nil {
+		return "", err
+	}
+	if desc := strings.Join(strings.Fields(j.head.Description), " "); leadingComment(string(src)) == "" && desc != "" {
+		src = append([]byte("-- "+desc+"\n"), src...)
+	}
+	dir := filepath.Join(h.Dirs.ConfigHome, "workflows")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, name+".lua")
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if errors.Is(err, fs.ErrExist) {
+		return "", Usagef("workflows/%s.lua exists: pick another name", name)
+	}
+	if err != nil {
+		return "", err
+	}
+	_, err = out.Write(src)
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	return path, err
 }
 
 // ---------------------------------------------------------------------------

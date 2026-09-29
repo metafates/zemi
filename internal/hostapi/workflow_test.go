@@ -1,6 +1,8 @@
 package hostapi
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -400,6 +402,138 @@ func TestWorkflowControl(t *testing.T) {
 	}
 }
 
+// TestWorkflowRerun runs a script, then reruns it from its journal and
+// reruns that rerun, counting the model calls each makes. The model answers
+// "<prompt>!<n>", n counting that prompt's calls, so an answer says which
+// call made it.
+func TestWorkflowRerun(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.agents.sessionID = "s1"
+	var mu sync.Mutex
+	calls, total := map[string]int{}, 0
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+			prompt, _, _ := strings.Cut(last, "\n")
+			mu.Lock()
+			defer mu.Unlock()
+			calls[prompt]++
+			total++
+			if prompt == "fail" {
+				return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: context.DeadlineExceeded}}
+			}
+			return textParts(fmt.Sprintf("%s!%d", prompt, calls[prompt]))
+		}}, nil
+	}
+	count := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return total
+	}
+	pad := h.scratchFor("s1")
+	link := func(name string) func(t *testing.T, f *flowRun) {
+		return func(t *testing.T, f *flowRun) {
+			path := filepath.Join(pad, flowFile(f.id, name))
+			elsewhere := filepath.Join(t.TempDir(), name)
+			if err := os.Rename(path, elsewhere); err != nil || os.Symlink(elsewhere, path) != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	const wf = "local wf = zemi.workflow\n"
+	for _, c := range []struct {
+		name, first, again string
+		args               any
+		change             func(t *testing.T, f *flowRun) // between the run and its rerun
+		from               string                         // the rerun's from, else the run's id
+		want               string                         // the rerun's result, or its error's text
+		calls, later       int                            // model calls the rerun and its own rerun make
+	}{
+		{name: "an unchanged script answers every call from the journal", first: `return wf.agent("a") .. wf.agent("b")`, want: "a!1b!1"},
+		{
+			name:  "an edited prompt runs only that agent",
+			first: `return wf.agent("c") .. wf.agent("d")`,
+			change: func(t *testing.T, f *flowRun) {
+				src, _ := os.ReadFile(f.script)
+				if err := os.WriteFile(f.script, bytes.ReplaceAll(src, []byte(`"d"`), []byte(`"e"`)), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: "c!1e!1", calls: 1,
+		},
+		{name: "a script passed with the rerun replaces the file", first: `return wf.agent("f")`, again: `return wf.agent("f") .. wf.agent("g")`, want: "f!1g!1", calls: 1},
+		{
+			name:  "repeated identical calls take the answers in order, then run live",
+			first: `return wf.agent("h") .. wf.agent("h")`, again: `return wf.agent("h") .. wf.agent("h") .. wf.agent("h")`,
+			want: "h!1h!2h!3", calls: 1,
+		},
+		{name: "a failed agent runs again", first: `return tostring(wf.agent("fail"))`, want: "nil", calls: 1, later: 1},
+		{name: "args default to the run's", first: `return wf.args .. wf.agent("i")`, args: "x", want: "xi!1"},
+		{name: "an id that is no run id is refused", first: `return "j"`, from: "../../x", want: "not a workflow run id"},
+		{name: "a missing journal names the file", first: `return "k"`, from: "0000000a", want: "workflow-0000000a.jsonl"},
+		{name: "a journal planted as a link is refused", first: `return "l"`, change: link(".jsonl"), want: "a symlink"},
+		{name: "a script planted as a link is refused", first: `return "m"`, change: link(".lua"), want: "a symlink"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f, err := h.startFlow(context.Background(), flowSpec{src: wf + c.first, args: c.args})
+			if err != nil || f.err != nil {
+				t.Fatal(err, f.err)
+			}
+			if old, err := h.loadFlow("s1", f.id); err != nil || old.result != f.result || len(old.agents) != len(f.agents) || old.status != RunDone {
+				t.Fatalf("loadFlow = %+v, %v", old, err)
+			}
+			for _, a := range f.view().agents {
+				if !h.flowAgentIDs("s1")[a.id] {
+					t.Fatalf("flowAgentIDs misses %s", a.id)
+				}
+			}
+			if c.change != nil {
+				c.change(t, f)
+			}
+			again := ""
+			if c.again != "" {
+				again = wf + c.again
+			}
+			for i, want := range []int{c.calls, c.later} {
+				before := count()
+				g, err := h.startFlow(context.Background(), flowSpec{src: again, from: cmp.Or(c.from, f.id)})
+				if err != nil {
+					if !strings.Contains(err.Error(), c.want) {
+						t.Fatalf("rerun: %v, want %q", err, c.want)
+					}
+					return
+				}
+				v := g.view()
+				reused := 0
+				for _, a := range v.agents {
+					if a.reused {
+						reused++
+					}
+				}
+				if g.err != nil || g.result != c.want || count()-before != want || reused != len(v.agents)-want {
+					t.Fatalf("rerun %d = %q, %v, %d calls, %d of %d reused; want %q, %d calls", i+1, g.result, g.err, count()-before, reused, len(v.agents), c.want, want)
+				}
+				f, again = g, ""
+			}
+		})
+	}
+	// a link planted at a new run's file name fails the start, and its
+	// target keeps what it held
+	victim := filepath.Join(t.TempDir(), "zshrc")
+	if err := os.WriteFile(victim, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(pad, flowFile("0000000b", ".jsonl"))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := openJournal(pad, "0000000b", "return 1", journalLine{Workflow: "0000000b"}); err == nil {
+		t.Fatal("a planted journal link was opened")
+	}
+	if got, _ := os.ReadFile(victim); string(got) != "keep" {
+		t.Fatalf("the link's target was written: %q", got)
+	}
+}
+
 // TestWorkflowCancel: cancelling the context stops a script that is
 // waiting on agents or spinning in Lua.
 func TestWorkflowCancel(t *testing.T) {
@@ -463,6 +597,29 @@ func TestSavedWorkflows(t *testing.T) {
 	acts := fmt.Sprint(ui.opened[0].Items[0].(map[string]any)["actions"])
 	if acts != "[map[hotkey:r run:workflow review text:Run] map[fill:/workflow review  hotkey:a text:Run with arguments]]" {
 		t.Fatalf("workflow actions: %s", acts)
+	}
+
+	// a run's script saves under workflows/, headed by its description
+	h.agents.sessionID = "s1"
+	f, err := h.startFlow(context.Background(), flowSpec{description: "Sum up", src: "return 1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ name, want string }{
+		{"sum-up", ""},
+		{"sum-up", "exists: pick another name"},
+		{"Sum Up", "lowercase letters"},
+	} {
+		path, err := h.saveFlow(f.id, c.name)
+		if c.want != "" {
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("save as %q: %v, want %q", c.name, err, c.want)
+			}
+			continue
+		}
+		if got, _ := os.ReadFile(path); err != nil || string(got) != "-- Sum up\nreturn 1" {
+			t.Fatalf("saved %q, %v", got, err)
+		}
 	}
 }
 

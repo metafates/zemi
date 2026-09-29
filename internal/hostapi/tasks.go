@@ -711,8 +711,9 @@ func (h *Host) agentRunItems() []any {
 	}
 	if h.DB != nil && sid != "" {
 		children, _ := h.DB.ChildSessions(sid)
+		inFlows := h.flowAgentIDs(sid)
 		for _, c := range children {
-			if !held[c.ID] {
+			if !held[c.ID] && !inFlows[c.ID[:min(len(c.ID), runIDLen)]] {
 				row(c.ID, RunDone, c.Profile, time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Title, "")
 			}
 		}

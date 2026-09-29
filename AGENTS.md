@@ -834,6 +834,14 @@ lua-language-server is installed.
   and restart cancels one running agent and queues the same call again, counting as a start
   toward the 100-agent cap. Controls write the run's fields under its lock and wake the
   scheduler, so none waits on a script busy in Lua. Its agents take the flow's parent session.
+  A run writes its script and a journal (`workflow-<id>.lua`, `.jsonl`: a header, one line per
+  agent that ended, an end line) into the pad of the session that started it, both created
+  `O_EXCL` through `perm.Lresolve` (no link at the name or above it) with the journal's fd held,
+  and read back no-follow, regular and capped (`readPadFile`), since a sandboxed command can
+  write the pad. A rerun (`flowSpec.from`) runs that script file, edited or not, and answers
+  each call identical to a finished one (`agentKey`: agent, model, prompt) from the journal in
+  order, starting no agent; `loadFlow` reads a run back for the screens, `flowAgentIDs` keeps a
+  workflow's stored agents out of /agents, and `saveFlow` copies a script to `workflows/`.
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers an
   `agentRun` (a workflow's carry `workflow` and `phase`, and /agents lists them as one row per
   workflow) whose hooks build a live transcript, which `/agents view <id>` draws instead of
