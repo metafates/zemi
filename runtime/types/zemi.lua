@@ -289,6 +289,14 @@ function zemi.config.add(spec) end
 --- Call fn whenever a setting changes. A path outside the schema raises,
 --- except a setting of a plugin that is off or failed to load, which
 --- returns nil.
+---
+--- ```lua
+--- local tick = zemi.timer.every(zemi.config.get("plugins.demo.interval"), poll)
+--- zemi.config.watch("plugins.demo.interval", function(ms)
+--- 	tick:stop()
+--- 	tick = zemi.timer.every(ms, poll)
+--- end)
+--- ```
 ---@param path string
 ---@param fn fun(new: any, old: any)
 ---@return string? watch_id
@@ -382,6 +390,12 @@ zemi.keymap = {}
 --- zemi.ui.focus.set [id],
 --- zemi.ui.focus.next, zemi.ui.focus.prev, zemi.permission.mode.{next,prev}
 --- and zemi.agent.profile.{next,prev} (user config only).
+---
+--- ```lua
+--- zemi.keymap.set("<leader>r", "/review", { desc = "review the diff" })
+--- zemi.keymap.set("<leader>k", "zemi.ui.scroll.up sidebar")
+--- zemi.keymap.set("j", "zemi.ui.scroll.line_down sidebar", { focus = "sidebar" })
+--- ```
 ---@param key string
 ---@param action zemi.HostAction|string|fun()
 ---@param opts? zemi.KeymapOpts
@@ -434,6 +448,14 @@ function zemi.keymap.list() end
 zemi.command = {}
 
 --- Register a slash command. The name is typed without the slash.
+---
+--- ```lua
+--- zemi.command.add("greet", function(a) zemi.notify(a.args) end, {
+--- 	desc = "say hello",
+--- 	nargs = "?",
+--- 	complete = function() return { "world", "zemi" } end,
+--- })
+--- ```
 ---@param name string
 ---@param fn fun(args: zemi.CommandArgs)
 ---@param opts? zemi.CommandOpts
@@ -620,6 +642,12 @@ zemi.event = {}
 --- A `tool.post` handler runs as a task and may return `{ output = "..." }`
 --- to replace what the model gets.
 --- `app.quit` vetoes from project code are ignored.
+---
+--- ```lua
+--- zemi.event.on("composer.submit", function(ev)
+--- 	if ev.text:find("rm %-rf") then return { decision = "deny", reason = "not from the composer" } end
+--- end)
+--- ```
 ---@param name zemi.EventName|string A catalogued name or `user.*`; anything else raises.
 ---@param fn fun(ev: zemi.Event): any
 ---@param opts? zemi.EventOpts
@@ -988,6 +1016,14 @@ zemi.ui.widget = {}
 
 --- Register a widget in a region. Registering the same id again from the
 --- same origin replaces it; a lower-trust origin is refused.
+---
+--- ```lua
+--- zemi.ui.widget.add({
+--- 	id = "clock",
+--- 	region = "statusline.right",
+--- 	render = function(ctx) return { { { text = ctx.time, hl = "Dim" } } } end,
+--- })
+--- ```
 ---@param spec zemi.WidgetSpec
 function zemi.ui.widget.add(spec) end
 
@@ -1208,6 +1244,14 @@ zemi.ui.overlay = {}
 --- and filter, when the caller may close it (see close); otherwise it opens
 --- over it. An item or action field of the wrong type raises (a list item's
 --- `id` and `hl` are its own data).
+---
+--- ```lua
+--- zemi.ui.overlay.open({
+--- 	id = "snippets",
+--- 	title = "Snippets",
+--- 	items = { { text = "review", desc = "review the diff", fill = "/review " } },
+--- })
+--- ```
 ---@param spec zemi.OverlaySpec
 function zemi.ui.overlay.open(spec) end
 
@@ -1218,6 +1262,12 @@ function zemi.ui.overlay.close(id) end
 
 --- A picker in the shape of `vim.ui.select`. on_choice gets the item on
 --- enter, nil on cancel. Items take the zemi.OverlayItem keys too.
+---
+--- ```lua
+--- zemi.ui.select({ "low", "medium", "high" }, { prompt = "Effort" }, function(choice)
+--- 	if choice then zemi.config.set("agent.effort", choice) end
+--- end)
+--- ```
 ---@param items any[]
 ---@param opts zemi.SelectOpts
 ---@param on_choice fun(item: any|nil)
@@ -1225,6 +1275,12 @@ function zemi.ui.select(items, opts, on_choice) end
 
 --- A one-line prompt in the shape of `vim.ui.input`: on_confirm gets the
 --- text on enter, which its footer names "send", nil on esc.
+---
+--- ```lua
+--- zemi.ui.input({ prompt = "Branch name" }, function(text)
+--- 	if text then zemi.notify(text) end
+--- end)
+--- ```
 ---@param opts zemi.InputOpts
 ---@param on_confirm fun(text: string|nil)
 function zemi.ui.input(opts, on_confirm) end
@@ -1238,6 +1294,12 @@ function zemi.ui.input(opts, on_confirm) end
 --- fullscreen over zemi, and call on_done when it exits: on_done(),
 --- or on_done(err) when it failed or exited non-zero.
 --- Never blocks the interpreter. Raises for a path outside those.
+---
+--- ```lua
+--- zemi.ui.edit(zemi.fs.data_dir("notes") .. "/todo.md", { line = 1 }, function(err)
+--- 	if err then zemi.notify.error(err) end
+--- end)
+--- ```
 ---@param path string
 ---@param opts? zemi.EditOpts
 ---@param on_done fun(err: string|nil)
@@ -1468,6 +1530,16 @@ zemi.provider.kind = {}
 --- provider has replaces it whole (a gateway in front of it keeps its
 --- base_url); the builtin ones are on while their key is exported. An unknown
 --- field on the spec or on a model entry raises.
+---
+--- ```lua
+--- zemi.provider.add({
+--- 	id = "gw",
+--- 	kind = zemi.provider.kind.OPENAI_COMPAT,
+--- 	base_url = "https://gw.example/v1",
+--- 	api_key = zemi.env.get("GW_API_KEY"),
+--- 	models = { { id = "deepseek-chat", context_window = 128000 } },
+--- })
+--- ```
 ---@param spec zemi.ProviderSpec
 function zemi.provider.add(spec) end
 
@@ -1524,6 +1596,10 @@ function zemi.model.set(id) end
 --- One tool-less model call, run off the interpreter and billed to the
 --- live session; a reload cancels it. Plugin code needs a user rule for
 --- `lua.model.ask` with its principal; project code raises.
+---
+--- ```lua
+--- local title, err = zemi.model.ask({ model = "titles", prompt = "Name this diff:\n" .. diff }):wait()
+--- ```
 ---@param spec zemi.ModelAsk
 ---@return zemi.ModelHandle
 function zemi.model.ask(spec) end
@@ -1610,6 +1686,12 @@ function zemi.agent.prompt() end
 function zemi.agent.list() end
 
 --- Run a subagent off the interpreter. User config only.
+---
+--- ```lua
+--- zemi.agent.run({ agent = "explore", prompt = "Where is the retry logic?" }, function(text, err)
+--- 	zemi.notify(text or err)
+--- end)
+--- ```
 ---@param spec zemi.AgentRunSpec
 ---@param on_done fun(text: string|nil, err: string|nil)
 ---@return zemi.RunHandle
@@ -1727,6 +1809,14 @@ zemi.composer = {}
 --- Register a completion source. Accepting a row puts its text after the
 --- trigger, or in place of the argument, followed by a space. Raises on a
 --- bad spec or an id a more trusted origin registered.
+---
+--- ```lua
+--- zemi.composer.complete({
+--- 	id = "issues",
+--- 	trigger = "#",
+--- 	items = function(lead) return { { text = "12", desc = "login fails on Safari" } } end,
+--- })
+--- ```
 ---@param spec zemi.CompletionSpec
 function zemi.composer.complete(spec) end
 
@@ -1821,6 +1911,15 @@ zemi.permission.rule = {}
 --- Add a permission rule. Any origin may add deny and ask rules; allow rules
 --- need user config. Ordering is deny > ask > allow, then
 --- fewest wildcards, then longest literal prefix.
+---
+--- ```lua
+--- zemi.permission.rule.add({
+--- 	subject = "tool.bash",
+--- 	pattern = "go test *",
+--- 	decision = zemi.permission.decision.ALLOW,
+--- 	match = "go test ./...",
+--- })
+--- ```
 ---@param spec zemi.RuleSpec
 function zemi.permission.rule.add(spec) end
 
@@ -1834,6 +1933,14 @@ zemi.permission.mode = {}
 
 --- Define a permission mode, or replace the one of that name: a lowercase
 --- letter, then up to 15 lowercase letters, digits and "-". User config only.
+---
+--- ```lua
+--- zemi.permission.mode.add("review", {
+--- 	base = "auto",
+--- 	description = "reads settle, the rest asks me",
+--- 	decide = function(req) return req.subject == "fs.read" and "allow" or nil end,
+--- })
+--- ```
 ---@param name string
 ---@param spec zemi.PermModeSpec
 function zemi.permission.mode.add(name, spec) end
@@ -1925,11 +2032,33 @@ zemi.tool = {}
 --- or for good with a user config rule
 --- (`{ subject = "tool.<name>", pattern = "*", decision = "allow", match = "<name>" }`);
 --- yolo allows it.
+---
+--- ```lua
+--- zemi.tool.add({
+--- 	name = "weather_now",
+--- 	description = "The weather in a city now.",
+--- 	input = { city = { type = "string" } },
+--- 	required = { "city" },
+--- 	execute = function(args)
+--- 		local res, err = zemi.http.get("https://wttr.in/" .. args.city .. "?format=3"):wait()
+--- 		if not res then return nil, err end
+--- 		return res.body
+--- 	end,
+--- })
+--- ```
 ---@param spec zemi.ToolSpec
 function zemi.tool.add(spec) end
 
 --- Hook one tool's calls: `pre` before it runs (a rewritten input re-enters
 --- at the permission gate), `post` after, to rewrite its output.
+---
+--- ```lua
+--- zemi.tool.override("bash", {
+--- 	pre = function(ev)
+--- 		if ev.input.command:find("^git push") then return { decision = "deny", reason = "push by hand" } end
+--- 	end,
+--- })
+--- ```
 ---@param name string
 ---@param spec zemi.ToolOverride
 function zemi.tool.override(name, spec) end
@@ -2056,10 +2185,29 @@ function zemi.fs.grep(pattern) end
 ---@class zemi.http
 zemi.http = {}
 
+--- Send a request; `on_done` or the handle's `wait` gets the response.
+---
+--- ```lua
+--- local res, err = zemi.http.request({
+--- 	url = "https://api.example.com/items",
+--- 	method = "POST",
+--- 	headers = { ["content-type"] = "application/json" },
+--- 	body = zemi.json.encode(item),
+--- }):wait()
+--- ```
 ---@param spec zemi.HTTPSpec
 ---@return zemi.HTTPHandle
 function zemi.http.request(spec) end
 
+--- A GET, with `on_done` where a handle cannot be waited on (a render, a timer).
+---
+--- ```lua
+--- zemi.http.get("https://wttr.in/Oslo?format=3", {
+--- 	on_done = function(res)
+--- 		if res.status == 200 then zemi.notify(res.body) end
+--- 	end,
+--- })
+--- ```
 ---@param url string
 ---@param opts? { on_done: fun(res: zemi.HTTPDone) }
 ---@return zemi.HTTPHandle
@@ -2101,6 +2249,15 @@ function zemi.http.get(url, opts) end
 ---@class zemi.job
 zemi.job = {}
 
+--- Start a process; `on_exit` or the handle's `wait` gets how it ended.
+---
+--- ```lua
+--- zemi.job.start({
+--- 	cmd = "git",
+--- 	args = { "fetch" },
+--- 	on_exit = function(res) zemi.notify("git fetch exited " .. res.code) end,
+--- })
+--- ```
 ---@param spec zemi.JobSpec
 ---@return zemi.JobHandle|nil handle
 ---@return string|nil err A process that could not start.
@@ -2109,6 +2266,10 @@ function zemi.job.start(spec) end
 --- Start a job and suspend the task until it finishes (spec.timeout_ms,
 --- default 60000, then kills it). Raises outside a task, like a handle's
 --- `wait`; there use `start` with `on_exit`.
+---
+--- ```lua
+--- local res, err = zemi.job.wait({ cmd = "go", args = { "vet", "./..." }, timeout_ms = 120000 })
+--- ```
 ---@param spec zemi.JobSpec
 ---@return zemi.JobResult|nil res
 ---@return string|nil err
@@ -2342,6 +2503,14 @@ zemi.mcp = {}
 
 --- Add an MCP server. User config only. Its tools arrive as
 --- `mcp_<server>_<tool>` and are gated as subject `mcp.<server>`.
+---
+--- ```lua
+--- zemi.mcp.add("github", {
+--- 	command = "npx",
+--- 	args = { "-y", "@modelcontextprotocol/server-github" },
+--- 	env = { GITHUB_TOKEN = zemi.env.get("GITHUB_TOKEN") },
+--- })
+--- ```
 ---@param name string
 ---@param spec zemi.MCPSpec
 function zemi.mcp.add(name, spec) end
@@ -2403,6 +2572,12 @@ zemi.health = {}
 --- replaces its row; a name a more trusted origin holds raises. `zemi health`
 --- runs it right after boot, before work started on `app.ready` has
 --- reported, so a row over such state says it is not read yet.
+---
+--- ```lua
+--- zemi.health.add("branch", function()
+--- 	return missing and { level = "warn", detail = missing } or "reading the branch"
+--- end)
+--- ```
 ---@param name string
 ---@param fn fun(): zemi.HealthResult|string
 function zemi.health.add(name, fn) end
