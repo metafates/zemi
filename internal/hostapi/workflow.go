@@ -191,13 +191,6 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 		if err != nil {
 			return nil, err
 		}
-		if spec.src == "" {
-			b, err := readPadFile(pad, flowFile(spec.from, ".lua"))
-			if err != nil {
-				return nil, err
-			}
-			spec.src = string(b)
-		}
 		if spec.args == nil {
 			spec.args = old.head.Args
 		}
@@ -831,13 +824,10 @@ func (f *flowRun) view() flowView {
 	if !f.finished.IsZero() {
 		v.took = f.finished.Sub(f.started)
 	}
+	v.done = ended(v.agents)
 	for _, a := range v.agents {
-		switch a.status {
-		case RunRunning:
+		if a.status == RunRunning {
 			v.running++
-		case "queued":
-		default:
-			v.done++
 		}
 		if !a.reused { // an earlier run spent it
 			v.tokens += a.tokens
@@ -845,6 +835,17 @@ func (f *flowRun) view() flowView {
 		}
 	}
 	return v
+}
+
+// ended counts the rows neither running nor queued.
+func ended(rows []agentRow) int {
+	n := 0
+	for _, a := range rows {
+		if a.status != RunRunning && a.status != "queued" {
+			n++
+		}
+	}
+	return n
 }
 
 func (f *flowRun) isRunning() bool {
@@ -897,21 +898,11 @@ func (f *flowRun) phases(rows []agentRow) (names []string, by map[string][]agent
 // statusText is what the tool's status action answers.
 func (f *flowRun) statusText() string {
 	v := f.view()
-	word := string(v.status)
-	if v.paused && v.status == RunRunning {
-		word = "paused"
-	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "workflow %s %s: %s · %d/%d agents · %d running · %d at once", f.id, f.description, word, v.done, len(v.agents), v.running, v.limit)
+	fmt.Fprintf(&b, "workflow %s %s: %s · %d/%d agents · %d running · %d at once", f.id, f.description, flowWord(v), v.done, len(v.agents), v.running, v.limit)
 	names, by := f.phases(v.agents)
 	for _, p := range names {
-		n := 0
-		for _, a := range by[p] {
-			if a.status != RunRunning && a.status != "queued" {
-				n++
-			}
-		}
-		fmt.Fprintf(&b, "\n%s %d/%d", p, n, len(by[p]))
+		fmt.Fprintf(&b, "\n%s %d/%d", p, ended(by[p]), len(by[p]))
 		for _, a := range by[p] {
 			fmt.Fprintf(&b, "\n  %s %s %s: %s", cmp.Or(a.id, "-"), a.def, a.description, a.status)
 			if a.status != "queued" {
@@ -1853,14 +1844,9 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 	var items []any
 	names, by := f.phases(v.agents)
 	for _, p := range names {
-		n := 0
+		section := fmt.Sprintf("%s  %d/%d", p, ended(by[p]), len(by[p]))
 		for _, a := range by[p] {
-			if a.status != RunRunning && a.status != "queued" {
-				n++
-			}
-		}
-		for _, a := range by[p] {
-			items = append(items, h.flowAgentItem(f, a, fmt.Sprintf("%s  %d/%d", p, n, len(by[p]))))
+			items = append(items, h.flowAgentItem(f, a, section))
 		}
 	}
 	o := Overlay{

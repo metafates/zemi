@@ -514,7 +514,14 @@ func TestWorkflowRerun(t *testing.T) {
 			}
 			for i, want := range []int{c.calls, c.later} {
 				before := count()
-				g, err := h.startFlow(context.Background(), flowSpec{src: again, from: cmp.Or(c.from, f.id)})
+				from, src, err := cmp.Or(c.from, f.id), again, error(nil)
+				if src == "" { // the tool's rerun reads the script the user approves
+					src, err = flowSource(pad, from)
+				}
+				var g *flowRun
+				if err == nil {
+					g, err = h.startFlow(context.Background(), flowSpec{src: src, from: from})
+				}
 				if err != nil {
 					if !strings.Contains(err.Error(), c.want) {
 						t.Fatalf("rerun: %v, want %q", err, c.want)
