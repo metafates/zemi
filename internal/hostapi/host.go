@@ -710,6 +710,15 @@ func (h *Host) hooks() UIHooks {
 	return h.ui
 }
 
+// trustHint names what trusts the project: /trust in the TUI, the flag of
+// a headless run.
+func (h *Host) trustHint() string {
+	if h.hooks() == nil {
+		return "--trust"
+	}
+	return "/trust"
+}
+
 // Screen is the UI to open a screen on; headless it is ErrNeedsTUI.
 func (h *Host) Screen() (UIHooks, error) {
 	if ui := h.hooks(); ui != nil {

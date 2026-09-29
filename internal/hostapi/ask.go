@@ -155,7 +155,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 				note("this changes a file outside the project")
 			}
 		case !h.ProjectTrusted():
-			note("this project is not trusted (/trust)")
+			note("this project is not trusted (" + h.trustHint() + ")")
 		case req.Subject == perm.SubjectBash && !h.sandboxLive():
 			// a settled command would run unconfined
 			note("no sandbox")

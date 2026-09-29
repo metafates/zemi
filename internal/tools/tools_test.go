@@ -309,7 +309,7 @@ func TestNotFoundNamesSiblings(t *testing.T) {
 func TestAskDenialText(t *testing.T) {
 	for _, c := range []struct{ by, why, want string }{
 		{"user", "the model asked to leave the sandbox", "it asked because the model asked to leave the sandbox"},
-		{"nobody", "this project is not trusted (/trust)", "no one can approve in a headless run: this project is not trusted (/trust)"},
+		{"nobody", "this project is not trusted (--trust)", "no one can approve in a headless run: this project is not trusted (--trust)"},
 		{"mode:auto", "", "denied by permission mode auto"},
 	} {
 		p, _ := testPipeline(t, false)

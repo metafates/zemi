@@ -314,7 +314,7 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 		if errors.Is(err, store.ErrNotFound) {
 			// project skills are not stored, so there is no flag to flip
 			if slices.ContainsFunc(h.projectOnlySkills(), func(s skill.Skill) bool { return s.Name == name }) {
-				return Usagef("skill %q belongs to this project and is on for as long as the project is trusted (/trust)", name)
+				return Usagef("skill %q belongs to this project and is on for as long as the project is trusted (%s)", name, h.trustHint())
 			}
 			return Usagef("no such skill %q", name)
 		}

@@ -126,7 +126,7 @@ func (h *Host) workflowSource(name string) (string, error) {
 	}
 	if pdir := h.Dirs.ProjectConfigDir(); pdir != "" && !h.ProjectTrusted() {
 		if _, err := os.Stat(filepath.Join(pdir, "workflows", name+".lua")); err == nil {
-			return "", Usagef("workflow %q is in %s, and this project is not trusted: the user runs /trust to load it (or it can be saved under %s)", name, pdir, filepath.Join(h.Dirs.ConfigHome, "workflows"))
+			return "", Usagef("workflow %q is in %s, and this project is not trusted: the user runs %s to load it (or it can be saved under %s)", name, pdir, h.trustHint(), filepath.Join(h.Dirs.ConfigHome, "workflows"))
 		}
 	}
 	if len(names) == 0 {

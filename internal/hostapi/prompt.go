@@ -107,7 +107,7 @@ func (h *Host) zemiPrompt() string {
 	pdir := h.Dirs.ProjectConfigDir()
 	if !h.ProjectTrusted() {
 		// so the model does not write config that never loads
-		pdir += " (not loaded: the project is not trusted; the user runs /trust)"
+		pdir += " (not loaded: the project is not trusted; the user runs " + h.trustHint() + ")"
 	}
 	return "\n\n# zemi\nYou run inside zemi. To change how zemi behaves for the user, use config, never its source." +
 		" User config directory: " + h.Dirs.ConfigHome + " (this exact path, not ~/.config/zemi). Project config directory: " + pdir + "." +

@@ -691,7 +691,7 @@ func (h *Host) lspDiagnostics(path string) (string, error) {
 func (h *Host) noLSP(path string) error {
 	switch {
 	case !h.ProjectTrusted():
-		return errors.New("the project's language servers are off: it is not trusted (the user runs /trust)")
+		return errors.New("the project's language servers are off: it is not trusted (the user runs " + h.trustHint() + ")")
 	case path == "":
 		return fmt.Errorf("no language server for this project: none of %s is installed with its marker file here; zemi.lsp.add adds one", builtinCommands())
 	}

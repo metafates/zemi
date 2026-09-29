@@ -135,7 +135,7 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 	}
 	if dir := h.projectAgentDir(); dir != "" && !h.ProjectTrusted() {
 		if _, err := os.Stat(filepath.Join(dir, name+".md")); err == nil {
-			return AgentDef{}, fmt.Errorf("agent %q is in %s, and this project is not trusted: the user runs /trust to load it", name, dir)
+			return AgentDef{}, fmt.Errorf("agent %q is in %s, and this project is not trusted: the user runs %s to load it", name, dir, h.trustHint())
 		}
 	}
 	return AgentDef{}, fmt.Errorf("unknown agent %q (have %s)", name, strings.Join(names, ", "))

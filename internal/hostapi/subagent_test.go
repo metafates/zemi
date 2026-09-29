@@ -415,7 +415,7 @@ func TestAgentDefs(t *testing.T) {
 	if _, ok := defs["tester"]; ok {
 		t.Fatal("project agents must wait for trust")
 	}
-	if _, err := h.agentDef("tester"); err == nil || !strings.Contains(err.Error(), "/trust") || !strings.Contains(err.Error(), ".agents") {
+	if _, err := h.agentDef("tester"); err == nil || !strings.Contains(err.Error(), "runs --trust") || !strings.Contains(err.Error(), ".agents") {
 		t.Fatalf("untrusted project agent = %v", err)
 	}
 	h.SetProjectTrusted(true)
