@@ -10,25 +10,27 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-// TestXDG: a relative override or XDG value is ignored, so every root stays
-// absolute; with no $HOME home is the passwd entry's.
+// TestXDG: every root stays absolute; with no $HOME home is the passwd
+// entry's.
 func TestXDG(t *testing.T) {
 	tmp := t.TempDir()
 	u, err := user.Current()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range []struct{ name, zemi, xdgHome, home, want string }{
-		{"zemi override", "/z", "/x", tmp, "/z"},
-		{"xdg", "", "/x", tmp, "/x/zemi"},
-		{"relative ignored", "z", "x", tmp, filepath.Join(tmp, ".config/zemi")},
-		{"no home", "", "", "", filepath.Join(u.HomeDir, ".config/zemi")},
+	for _, c := range []struct{ name, zemi, xdgHome, home, want, err string }{
+		{"zemi override", "/z", "/x", tmp, "/z", ""},
+		{"xdg", "", "/x", tmp, "/x/zemi", ""},
+		{"relative xdg ignored", "", "x", tmp, filepath.Join(tmp, ".config/zemi"), ""},
+		{"relative override refused", "z", "/x", tmp, "", `ZEMI_CONFIG_HOME="z" is a relative path`},
+		{"no home", "", "", "", filepath.Join(u.HomeDir, ".config/zemi"), ""},
 	} {
 		t.Setenv("ZEMI_CONFIG_HOME", c.zemi)
 		t.Setenv("XDG_CONFIG_HOME", c.xdgHome)
 		t.Setenv("HOME", c.home)
-		if d, err := ResolveDirs(); err != nil || d.ConfigHome != c.want {
-			t.Errorf("%s: ConfigHome = %q, %v, want %q", c.name, d.ConfigHome, err, c.want)
+		d, err := ResolveDirs()
+		if d.ConfigHome != c.want || (err == nil) != (c.err == "") || err != nil && !strings.Contains(err.Error(), c.err) {
+			t.Errorf("%s: ConfigHome = %q, %v, want %q, %q", c.name, d.ConfigHome, err, c.want, c.err)
 		}
 	}
 }

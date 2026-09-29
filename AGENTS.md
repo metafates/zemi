@@ -89,7 +89,8 @@ git commits are run unsandboxed (`sandbox: false`): `.git` is read-only inside t
 sandbox, so a confined `git commit` fails on `index.lock`.
 
 For a throwaway config tree, redirect all dirs: `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`,
-`ZEMI_STATE_HOME`, `ZEMI_CACHE_HOME` (internal/config/dirs.go), and `HOME` too when the
+`ZEMI_STATE_HOME`, `ZEMI_CACHE_HOME` (internal/config/dirs.go; a relative one stops the boot,
+where a relative `XDG_*` is ignored as the spec says), and `HOME` too when the
 skills in `~/.agents/skills`, which no override moves, must stay out (`make first-run` is that
 with a fresh `HOME`, for looking at a first run); most tests inject
 `config.Dirs{...}` with `t.TempDir()` instead. Tests boot with empty dirs and an untrusted

@@ -29,18 +29,23 @@ type Dirs struct {
 
 // xdg resolves one root: zemi's own override first, then the XDG variable
 // the default mirrors, then the default under home, "" when home is unknown.
-// A relative value is ignored, as the XDG spec says, so no root depends on the cwd.
-func xdg(home, env, xdgEnv, underHome string) string {
-	if v := os.Getenv(env); filepath.IsAbs(v) {
-		return v
+// No root depends on the cwd: a relative XDG value is ignored, as the spec
+// says, and a relative override is an error, since ignoring it would put a
+// throwaway tree's writes in the real dirs.
+func xdg(home, env, xdgEnv, underHome string) (string, error) {
+	if v := os.Getenv(env); v != "" {
+		if !filepath.IsAbs(v) {
+			return "", fmt.Errorf("%s=%q is a relative path; set an absolute one", env, v)
+		}
+		return v, nil
 	}
 	if v := os.Getenv(xdgEnv); filepath.IsAbs(v) {
-		return filepath.Join(v, "zemi")
+		return filepath.Join(v, "zemi"), nil
 	}
 	if home == "" {
-		return ""
+		return "", nil
 	}
-	return filepath.Join(home, underHome)
+	return filepath.Join(home, underHome), nil
 }
 
 // ResolveDirs computes the standard locations from the environment. With no
@@ -54,15 +59,24 @@ func ResolveDirs() (Dirs, error) {
 			home = u.HomeDir
 		}
 	}
+	var errs []error
+	root := func(env, xdgEnv, underHome string) string {
+		v, err := xdg(home, env, xdgEnv, underHome)
+		errs = append(errs, err)
+		return v
+	}
 	d := Dirs{
-		ConfigHome: xdg(home, "ZEMI_CONFIG_HOME", "XDG_CONFIG_HOME", ".config/zemi"),
-		DataHome:   xdg(home, "ZEMI_DATA_HOME", "XDG_DATA_HOME", ".local/share/zemi"),
-		StateHome:  xdg(home, "ZEMI_STATE_HOME", "XDG_STATE_HOME", ".local/state/zemi"),
-		CacheHome:  xdg(home, "ZEMI_CACHE_HOME", "XDG_CACHE_HOME", ".cache/zemi"),
+		ConfigHome: root("ZEMI_CONFIG_HOME", "XDG_CONFIG_HOME", ".config/zemi"),
+		DataHome:   root("ZEMI_DATA_HOME", "XDG_DATA_HOME", ".local/share/zemi"),
+		StateHome:  root("ZEMI_STATE_HOME", "XDG_STATE_HOME", ".local/state/zemi"),
+		CacheHome:  root("ZEMI_CACHE_HOME", "XDG_CACHE_HOME", ".cache/zemi"),
 	}
 	d.ProjectDir, _ = os.Getwd()
 	if home != "" {
 		d.AgentsHome = filepath.Join(home, ".agents")
+	}
+	if err := errors.Join(errs...); err != nil {
+		return d, err
 	}
 	if slices.Contains([]string{d.ConfigHome, d.DataHome, d.StateHome, d.CacheHome}, "") {
 		return d, errors.New("no home directory: set HOME or the ZEMI_*_HOME variables")
