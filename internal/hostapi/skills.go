@@ -320,13 +320,10 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 	h.skillsReg.setEnabledFlag(name, enabled)
 	h.includedStale.Store(true)
 	if s, ok := h.skillsReg.get(name); ok && s.UserInvocable {
-		if !enabled && h.hasSkillCommand(s) {
-			_, err := h.Commands.Remove(name, lua.Origin(s.Source), skillFile(s))
-			return err
-		}
-		if enabled {
-			h.addSkillCommand(s, h.currentGen())
-		}
+		// the markdown commands step builds /<name> or puts back the command the
+		// skill displaced; booting, it has yet to run, and zemi run has no TUI
+		// and runs no second command
+		_ = h.ReloadConfig()
 	}
 	return nil
 }

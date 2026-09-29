@@ -2436,9 +2436,9 @@ skill's origin, never over a builtin command or one of its own origin,
 and over a less trusted one by the registry's origin rule;
 `disable-model-invocation: true` keeps it out of the index and the skill
 tool, and makes it a command unless `user-invocable: false`. Recipes take
-neither. `/skills` browses, toggles (a toggle takes the command along)
-and uses them (a row's detail carries the whole body and opens it in the
-editor). Discovery lists only `enabled` skills to the model, and enable
+neither. `/skills` browses, toggles (toggling a skill with a command
+reloads config, which rebuilds the commands) and uses them (a row's
+detail carries the whole body and opens it in the editor). Discovery lists only `enabled` skills to the model, and enable
 goes through the host API (`zemi.skills.enable`, user or builtin origin).
 
 A trusted project's skills (`.agents/skills` at the repository root, the

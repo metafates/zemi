@@ -186,23 +186,19 @@ func TestSkillCommands(t *testing.T) {
 	}
 	both := func(a, b func(h *Host)) func(h *Host) { return func(h *Host) { a(h); b(h) } }
 	project := func(h *Host) { writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".agents", "skills"), "x", asks, "") }
-	toggle := func(on ...bool) func(h *Host) {
-		return func(h *Host) {
-			for _, o := range on {
-				if err := h.setSkillEnabled("x", o); err != nil {
-					t.Fatal(err)
-				}
-			}
-		}
+	projectCmd := func(h *Host) {
+		file(filepath.Join(h.Dirs.ProjectDir, ".agents", "commands", "x.md"), "the project's x\n")
 	}
 	const mine, other = "the model and /x", "the model; /x is another command"
 	for _, c := range []struct {
 		name      string
 		skill     string // "x" when empty
-		write, do func(h *Host)
+		write     func(h *Host)
+		toggle    []bool // after boot, each followed by the reload it asks for
 		untrusted bool
 		indexed   bool
 		cmd       lua.Origin // of the skill's own command
+		other     lua.Origin // of /<skill> when it is another command
 		err       string
 		used      string // its /skills detail's "used by"; "" when not listed
 	}{
@@ -210,51 +206,66 @@ func TestSkillCommands(t *testing.T) {
 		{name: "asks for a command", write: user(asks), indexed: true, cmd: lua.OriginUser, used: mine},
 		{name: "hidden from the model is a command", write: user("d\ndisable-model-invocation: true"), cmd: lua.OriginUser, used: "/x"},
 		{name: "hidden and no command", write: user("d\ndisable-model-invocation: true\nuser-invocable: false"), used: "/skills use only"},
-		{name: "a builtin command stays", skill: "skills", write: func(h *Host) { writeSkill(t, h.userSkillsDir(), "skills", asks, "") }, indexed: true, err: "skills: /skills is already a builtin command", used: "the model; /skills is another command"},
-		{name: "a markdown command of its origin stays", write: both(user(asks), userCmd), indexed: true, err: "/x is already a user command", used: other},
+		{name: "a builtin command stays", skill: "skills", write: func(h *Host) { writeSkill(t, h.userSkillsDir(), "skills", asks, "") }, indexed: true, other: lua.OriginBuiltin, err: "skills: /skills is already a builtin command", used: "the model; /skills is another command"},
+		{name: "a markdown command of its origin stays", write: both(user(asks), userCmd), indexed: true, other: lua.OriginUser, err: "/x is already a user command", used: other},
 		{name: "a lua command of its origin stays", write: both(user(asks), func(h *Host) {
 			file(filepath.Join(h.Dirs.ConfigHome, "init.lua"), `zemi.command.add("x", function() end)`)
-		}), indexed: true, err: "/x is already a user command", used: other},
-		{name: "a project command yields to a user skill", write: both(user(asks), func(h *Host) {
-			file(filepath.Join(h.Dirs.ProjectDir, ".agents", "commands", "x.md"), "the project's x\n")
-		}), indexed: true, cmd: lua.OriginUser, used: mine},
+		}), indexed: true, other: lua.OriginUser, err: "/x is already a user command", used: other},
+		{name: "a project command yields to a user skill", write: both(user(asks), projectCmd), indexed: true, cmd: lua.OriginUser, used: mine},
 		{name: "a plugin skill yields to a user command", write: both(userCmd, func(h *Host) {
 			writeSkill(t, filepath.Join(h.Dirs.DataHome, "plugins", "local", "p", "skills"), "x", asks, "")
-		}), indexed: true, err: "/x is already a user command", used: other},
+		}), indexed: true, other: lua.OriginUser, err: "/x is already a user command", used: other},
 		{name: "a trusted project skill", write: project, indexed: true, cmd: lua.OriginProject, used: mine},
 		{name: "an untrusted project skill", write: project, untrusted: true},
 		{name: "a recipe takes neither field", write: func(h *Host) {
 			writeSkill(t, h.recipesDir(), "x", "d\ndisable-model-invocation: true\nuser-invocable: true", "")
 		}, indexed: true, used: "the model"},
-		{name: "off drops the command", write: user(asks), do: toggle(false), used: "/skills use only"},
-		{name: "on brings it back", write: user(asks), do: toggle(false, true), indexed: true, cmd: lua.OriginUser, used: mine},
+		{name: "off puts back the command it displaced", write: both(user(asks), projectCmd), toggle: []bool{false}, other: lua.OriginProject, used: "/skills use only"},
+		{name: "on brings it back", write: user(asks), toggle: []bool{false, true}, indexed: true, cmd: lua.OriginUser, used: mine},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, r := newTestHostSkillsNoBoot(t)
 			c.write(h)
 			h.SetProjectTrusted(!c.untrusted)
-			if err := r.Boot(context.Background(), []lua.BootStep{
+			steps := []lua.BootStep{
 				h.NamespacesStep(), h.BuiltinCommandsStep(), h.PluginsStep(),
 				lua.LoadFileStep("init", filepath.Join(h.Dirs.ConfigHome, "init.lua"), lua.OriginUser),
 				h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
-			}); err != nil {
+			}
+			if err := r.Boot(context.Background(), steps); err != nil {
 				t.Fatal(err)
 			}
-			if c.do != nil {
-				c.do(h)
+			ui := &fakeUI{onReload: func() {
+				if err := h.ForceReload(context.Background(), steps); err != nil {
+					t.Error(err)
+				}
+			}}
+			h.SetUIHooks(ui)
+			for i, on := range c.toggle {
+				if err := h.setSkillEnabled("x", on); err != nil {
+					t.Fatal(err)
+				}
+				waitFor(t, func() error {
+					if n := ui.reloads.Load(); n != int32(i+1) {
+						return fmt.Errorf("reloads=%d", n)
+					}
+					return nil
+				})
 			}
 			name := cmp.Or(c.skill, "x")
 			indexed := slices.ContainsFunc(h.skillIndex(), func(s tools.SkillInfo) bool { return s.Name == name })
 			if prompt := strings.Contains(h.skillsIndexPrompt(), "- "+name+": "); indexed != c.indexed || prompt != c.indexed {
 				t.Errorf("skill tool %v, prompt %v, want %v", indexed, prompt, c.indexed)
 			}
-			var cmd lua.Origin
+			var cmd, other lua.Origin
 			if got := h.Commands.Lookup(name); got != nil && strings.HasSuffix(got.Path, filepath.Join(name, "SKILL.md")) {
 				cmd = got.Origin
+			} else if got != nil {
+				other = got.Origin
 			}
 			errs := fmt.Sprint(h.errs.entries)
-			if cmd != c.cmd || c.err == "" && strings.Contains(errs, "skills") || !strings.Contains(errs, c.err) {
-				t.Errorf("command origin %q, want %q; errors %s", cmd, c.cmd, errs)
+			if cmd != c.cmd || other != c.other || c.err == "" && strings.Contains(errs, "skills") || !strings.Contains(errs, c.err) {
+				t.Errorf("command origin %q, other %q, want %q, %q; errors %s", cmd, other, c.cmd, c.other, errs)
 			}
 			used := ""
 			for _, it := range h.skillItems() {
