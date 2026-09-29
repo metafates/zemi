@@ -86,7 +86,7 @@ Keep such state in a local, not `zemi.state`: that store is shared by every proj
 
 ## Colors and themes
 
-`zemi.ui.hl.set("Accent", { fg = "#c4a7e7" })` overrides one group, and groups that link to it follow. `zemi.ui.theme.add(name, { palette, hl })` defines a whole theme and a group it leaves out has no color, so copy the builder in `theme.lua` and change its palette. The shipped theme is `whorl` (`whorl-light` on a light terminal). A `<name>-light` theme beside it is used on a light terminal. `zemi.ui.theme.set(name)` or `ui.theme` picks one.
+`zemi.ui.hl.set("Accent", { fg = "#c4a7e7" })` overrides one group, and groups that link to it follow (`Snail`, the mascot's shell, links to `Accent`: set it to recolor the snail alone). `zemi.ui.theme.add(name, { palette, hl })` defines a whole theme and a group it leaves out has no color, so copy the builder in `theme.lua` and change its palette. The shipped theme is `whorl` (`whorl-light` on a light terminal). A `<name>-light` theme beside it is used on a light terminal. `zemi.ui.theme.set(name)` or `ui.theme` picks one.
 
 ## Layout
 

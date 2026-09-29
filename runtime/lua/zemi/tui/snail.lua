@@ -1,5 +1,5 @@
 -- zemi's mascot: a snail whose shell is the "@". Text only, and only the
--- shell takes the accent. It never leaves the left corner: the state shows in
+-- shell takes a color, the Snail group's. It never leaves the left corner: the state shows in
 -- its eyes, stepped by the 50ms frame clock (still with ui.animations off).
 ---@class zemi.tui.snail
 local M = {}
@@ -35,7 +35,7 @@ end
 function M.rule(state, frame, room)
 	local head = M.eyes(state, frame)
 	return {
-		{ text = "@", hl = "Accent", copy = false },
+		{ text = "@", hl = "Snail", copy = false },
 		{ text = head, hl = "Normal", copy = false },
 		{ text = string.rep("─", math.max(room - 1 - zemi.ui.width(head), 0)), hl = "Rule", copy = false },
 	}
@@ -53,7 +53,7 @@ function M.block(beside)
 	---@type zemi.Line[]
 	local rows = {}
 	for i = 1, #shell do
-		rows[i] = { { text = shell[i], hl = "Accent" }, { text = head[i], hl = "Normal" } }
+		rows[i] = { { text = shell[i], hl = "Snail" }, { text = head[i], hl = "Normal" } }
 		local seg = (beside or {})[i - 2]
 		if seg then
 			rows[i][3] = { text = string.rep(" ", M.MARK_COL - zemi.ui.width(shell[i] .. head[i])), copy = false }

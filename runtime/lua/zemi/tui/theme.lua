@@ -31,6 +31,8 @@ local function theme(palette)
 		Ok = { fg = "ok" },
 
 		Comment = { link = "Dim" },
+		-- the snail's shell, zemi's mark: hl.set("Snail", ...) recolors it alone
+		Snail = { link = "Accent" },
 		UserMsg = { link = "Accent" },
 		ToastInfo = { link = "Title" },
 		ToastWarn = { link = "Warn", bold = true },
