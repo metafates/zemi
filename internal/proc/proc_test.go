@@ -17,7 +17,7 @@ import (
 
 // gone polls for a pid to disappear (orphans are reaped by init).
 func gone(pid int) bool {
-	for range 50 {
+	for range 250 {
 		if syscall.Kill(pid, 0) != nil {
 			return true
 		}

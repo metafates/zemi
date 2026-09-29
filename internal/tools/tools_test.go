@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"charm.land/fantasy"
@@ -201,66 +202,68 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 // runner reports it through CallDone; another runner's CallDone releases
 // its own ids only, the same id included; a cancelled ctx gives up the wait.
 func TestCallOrderReleases(t *testing.T) {
-	p, _ := testPipeline(t, false,
-		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
-		perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
-	p.Seen = &sync.Map{}
-	read, edit := toolNamed(t, "read", p), toolNamed(t, "edit", p)
-	path := filepath.Join(perm.RealPath(t.TempDir()), "f.txt")
-	first := fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path)
-	second := fmt.Sprintf(`{"path":%q,"old_string":"b","new_string":"c"}`, path)
-	run := func(ctx context.Context, id, input string) fantasy.ToolResponse {
-		done := make(chan fantasy.ToolResponse, 1)
-		go func() { r, _ := edit.Run(ctx, fantasy.ToolCall{ID: id, Name: "edit", Input: input}); done <- r }()
-		select {
-		case r := <-done:
-			return r
-		case <-time.After(2 * time.Second):
-			t.Fatalf("%s blocked", id)
-			return fantasy.ToolResponse{}
+	synctest.Test(t, func(t *testing.T) {
+		p, _ := testPipeline(t, false,
+			perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow},
+			perm.Rule{Subject: "fs.read", Pattern: "*", Decision: perm.Allow})
+		p.Seen = &sync.Map{}
+		read, edit := toolNamed(t, "read", p), toolNamed(t, "edit", p)
+		path := filepath.Join(perm.RealPath(t.TempDir()), "f.txt")
+		first := fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path)
+		second := fmt.Sprintf(`{"path":%q,"old_string":"b","new_string":"c"}`, path)
+		run := func(ctx context.Context, id, input string) fantasy.ToolResponse {
+			done := make(chan fantasy.ToolResponse, 1)
+			go func() { r, _ := edit.Run(ctx, fantasy.ToolCall{ID: id, Name: "edit", Input: input}); done <- r }()
+			select {
+			case r := <-done:
+				return r
+			case <-time.After(2 * time.Second):
+				t.Fatalf("%s blocked", id)
+				return fantasy.ToolResponse{}
+			}
 		}
-	}
-	bg := context.Background()
-	cancelled, cancel := context.WithCancel(bg)
-	cancel()
-	for _, c := range []struct {
-		name    string
-		before  func()
-		ctx     context.Context
-		wantErr bool
-		want    string
-	}{
-		{"invalid first call answered", func() {
-			CallStart(bg, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a"}`, path))
-			CallStart(bg, "c2", "edit", second)
-			CallDone(bg, "c1")
-		}, context.Background(), true, "a\n"},
-		{"another runner's step done keeps the order", func() {
-			CallStart(bg, "c1", "edit", first)
-			CallStart(bg, "c2", "edit", second)
-			other := CallScope(bg)
-			CallStart(other, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path+".other"))
-			CallDone(other, "c1")
-			go func() {
-				time.Sleep(50 * time.Millisecond)
-				edit.Run(context.Background(), fantasy.ToolCall{ID: "c1", Name: "edit", Input: first})
-			}()
-		}, context.Background(), false, "c\n"},
-		{"cancelled ctx gives up", func() {
-			CallStart(bg, "c1", "edit", first)
-			CallStart(bg, "c2", "edit", second)
-		}, cancelled, true, "a\n"},
-	} {
-		os.WriteFile(path, []byte("a\n"), 0o644)
-		call(t, read, `{"path":"`+path+`","limit":0}`)
-		c.before()
-		r := run(c.ctx, "c2", second)
-		got, _ := os.ReadFile(path)
-		if r.IsError != c.wantErr || string(got) != c.want {
-			t.Errorf("%s: %+v file %q", c.name, r, got)
+		bg := context.Background()
+		cancelled, cancel := context.WithCancel(bg)
+		cancel()
+		for _, c := range []struct {
+			name    string
+			before  func()
+			ctx     context.Context
+			wantErr bool
+			want    string
+		}{
+			{"invalid first call answered", func() {
+				CallStart(bg, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a"}`, path))
+				CallStart(bg, "c2", "edit", second)
+				CallDone(bg, "c1")
+			}, context.Background(), true, "a\n"},
+			{"another runner's step done keeps the order", func() {
+				CallStart(bg, "c1", "edit", first)
+				CallStart(bg, "c2", "edit", second)
+				other := CallScope(bg)
+				CallStart(other, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path+".other"))
+				CallDone(other, "c1")
+				go func() {
+					time.Sleep(50 * time.Millisecond) // the bubble's clock moves only once c2 waits
+					edit.Run(context.Background(), fantasy.ToolCall{ID: "c1", Name: "edit", Input: first})
+				}()
+			}, context.Background(), false, "c\n"},
+			{"cancelled ctx gives up", func() {
+				CallStart(bg, "c1", "edit", first)
+				CallStart(bg, "c2", "edit", second)
+			}, cancelled, true, "a\n"},
+		} {
+			os.WriteFile(path, []byte("a\n"), 0o644)
+			call(t, read, `{"path":"`+path+`","limit":0}`)
+			c.before()
+			r := run(c.ctx, "c2", second)
+			got, _ := os.ReadFile(path)
+			if r.IsError != c.wantErr || string(got) != c.want {
+				t.Errorf("%s: %+v file %q", c.name, r, got)
+			}
+			CallDone(bg, "c1", "c2")
 		}
-		CallDone(bg, "c1", "c2")
-	}
+	})
 }
 
 // TestNotFoundNamesSiblings: a mistyped path names the three files nearest
