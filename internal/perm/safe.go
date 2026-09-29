@@ -1145,8 +1145,18 @@ const (
 
 // Program is one program a command runs, as the permission prompt names it.
 type Program struct {
-	Name string // base name, with the subcommand of a SubcommandPrograms one
+	Name string // shownName, with the subcommand of a SubcommandPrograms one
 	Risk Risk
+}
+
+// shownName is how a program word reads in the list: its base name when it
+// is a PATH lookup's (git, /usr/bin/git), else the path as written, so a
+// project's ./tools/git never reads as the system git.
+func shownName(w string) string {
+	if !strings.Contains(w, "/") || filepath.IsAbs(w) && slices.Contains(filepath.SplitList(os.Getenv("PATH")), filepath.Dir(w)) {
+		return filepath.Base(w)
+	}
+	return w
 }
 
 // Programs lists what the command runs, each name once in the order it
@@ -1206,7 +1216,7 @@ func segmentPrograms(f []string) (_ []Program, ok bool) {
 		f = f[1:]
 	}
 	for len(f) > 0 {
-		w, base, name := f[0], filepath.Base(f[0]), ProgramName(f[0])
+		w, base, name := f[0], shownName(f[0]), ProgramName(f[0])
 		_, runs := runnerOpts[name]
 		switch {
 		case ShellWords[w]:

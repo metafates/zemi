@@ -505,6 +505,7 @@ func TestSubcommand(t *testing.T) {
 
 func TestPrograms(t *testing.T) {
 	pad := t.TempDir()
+	t.Setenv("PATH", "/usr/bin:/bin")
 	for _, c := range []struct {
 		name, cmd, pad string
 		want           string // name or name!risk, "-" for no list
@@ -543,6 +544,9 @@ func TestPrograms(t *testing.T) {
 		{"substitution behind runner options", "timeout 5 $(echo rm) ; ls", "", "-"},
 		{"substitution as an argument", "sudo ls $(pwd)", "", "sudo ls pwd"},
 		{"runner in capitals", "Command ls", "", "Command ls"},
+		{"program in a PATH dir", "/bin/ls -la", "", "ls"},
+		{"program named by a relative path", "./tools/git status", "", "./tools/git status"},
+		{"program outside the PATH dirs", "/opt/x/bin/zemi run hi", "", "/opt/x/bin/zemi!runs code"},
 		{"words after a substitution", "cd $(git rev-parse --show-toplevel)/sub && ls", "", "-"},
 		{"arithmetic", "echo $((1+2))", "", "-"},
 		{"array", "a=(x y); echo ${a[0]}", "", "-"},

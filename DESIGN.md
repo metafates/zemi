@@ -1832,6 +1832,8 @@ provenance string.
   for a command, `file`, `url`, `workflow`), `why` zemi asked, and `says`, the
   model's own description, quoted and last since nothing checked it. `runs`
   lists what the command runs from the gate's one parse (`perm.Normalized.Programs`),
+  each by its base name unless a path names one outside the `PATH` dirs
+  (`./tools/git` reads as that path, never as the system git),
   a program marked `(deletes)` in Danger when `Destructive` would ask about its
   segment and `(runs code)` in Warn when it runs code the list cannot see,
   marked names first, two rows at most and the rest counted as `+N more`; when
