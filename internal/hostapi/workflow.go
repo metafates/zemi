@@ -1253,7 +1253,7 @@ func (h *Host) workflowTool(pipe *tools.Pipeline) fantasy.AgentTool {
 const workflowToolDesc = `Run a Lua script that coordinates subagents with code between them: stages that feed each other, fan-out over a list, loops, checks. For independent tasks send several agent calls at once instead.
 
 The script gets Lua's string, table and math, zemi.json and zemi.workflow:
-agent(prompt, {agent, description, phase, model, schema}) -> report, or nil, err; the prompt must stand alone; with schema (a JSON Schema object) the report is a table
+agent(prompt, {agent, description, phase, model, schema}) -> report, or nil, err; agent defaults to general; the prompt must stand alone; with schema (a JSON Schema object) the report is a table
 parallel({fn, ...}) -> results, errs: runs the functions at once
 pipeline(items, stage, ...) -> results, errs: each item through the stages, stage(prev, item, i), items independent
 phase(name) groups the agents after it; log(...) tells the user; args is the input's args
