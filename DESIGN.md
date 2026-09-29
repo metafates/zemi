@@ -1627,7 +1627,12 @@ provenance string.
   row's action keys act
   from the list too, on the selected row, as its detail's button would (an
   action with a view of its own opens it over the list); a danger one opens
-  the detail on it armed, so the view is its confirmation. A destructive
+  the detail on it armed, so the view is its confirmation. A Go screen
+  declares the action keys its rows offer (`/sessions`' `r resume · x
+  delete`, `/projects`' `s switch · x delete`) as list keys with no command,
+  so its footer names them whatever row is selected; on a row without the
+  action (the current session) the key toasts the row's detail, which says
+  why. A destructive
   command typed without the `--yes` its action's run ends in (`/plugins
   delete x`, `/skills delete x`, `/sessions delete <id>`, `/mcp sign-out x`)
   asks the same way: its screen opens on that detail, armed

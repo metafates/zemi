@@ -1278,6 +1278,22 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 			t.Errorf("%s: %s", c.name, msg)
 		}
 	}
+	// a Go screen's declared keys: the footer names them on every row, and
+	// on a row without the action the key says why
+	ran, app.overlays = "", nil
+	app.openOverlay(hostapi.Overlay{ID: "s", Origin: lua.OriginBuiltin, Keys: []hostapi.OverlayKey{{Key: "r", Desc: "resume"}, {Key: "x", Desc: "delete"}}, Items: []any{
+		map[string]any{"text": "current", "detail": "zemi runs it"},
+		map[string]any{"text": "s1", "actions": []any{map[string]any{"text": "Resume", "hotkey": "r", "run": "res 1"}}},
+	}})
+	if f := footer(); !strings.Contains(f, "r resume · x delete") {
+		t.Fatalf("declared keys: footer %q", f)
+	}
+	if pressKeys(app, "r"); ran != "" || lastToast(app) != "zemi runs it" {
+		t.Fatalf("declared key on a row without it: ran %q, toast %q", ran, lastToast(app))
+	}
+	if pressKeys(app, "j", "r"); ran != "res 1" {
+		t.Fatalf("declared key on a row with it: ran %q", ran)
+	}
 	// a destructive command typed without --yes opens its row's detail armed,
 	// as wide as the list would have drawn it; a run no row has says so
 	app.Update(tea.WindowSizeMsg{Width: 120, Height: 30})

@@ -228,7 +228,10 @@ var callStatuses = []CallStatus{CallWait, CallRun, CallOK, CallErr, CallStopped,
 
 // OverlayKey is one character that runs Fn(selected item) on a list, or on
 // a Go screen's list the command Run. A Danger key acts on its second press,
-// the footer saying so after the first, as a danger row does.
+// the footer saying so after the first, as a danger row does. A Go screen's
+// key with neither names the row action of that hotkey its rows offer, so the
+// footer shows it whatever row is selected; on a row without it, the key
+// toasts the row's detail, which says why.
 type OverlayKey struct {
 	Key, Desc string
 	Fn        *glua.LFunction

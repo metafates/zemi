@@ -318,6 +318,7 @@ func (h *Host) openProjects(ui UIHooks, refresh bool, confirm string) {
 	ui.OpenOverlay(Overlay{
 		ID: "projects", Title: "Projects", Origin: lua.OriginBuiltin, Items: items, Selected: sel,
 		Anchor: OverlayBottomLeft, Refresh: refresh, Confirm: confirm,
+		Keys: []OverlayKey{{Key: "s", Desc: "switch"}, {Key: "x", Desc: "delete"}},
 	})
 }
 

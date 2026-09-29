@@ -1019,7 +1019,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   view open over it rebuilt from its item or dropped with it (`refreshDetail`), and a Go
   screen's list-level key runs a command (`OverlayKey.Run`, builtin and user lists only; a
   `Danger` one on its second press, a refresh keeping the first and a click or a wheel
-  dropping it), and a `Wide` box takes `boxInner`'s width whatever opened it (the workflow
+  dropping it), or with neither command nor fn names the rows' action of that hotkey for the
+  footer, and a `Wide` box takes `boxInner`'s width whatever opened it (the workflow
   screens). A list shows the filter row only when it opened with `filterMin` rows or more,
   which a rebuild keeps (`listFilter.filterable`). A
   toggle list rebuilds when the overlay stacked on it closes (`closeOverlayByID`; a detail

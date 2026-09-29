@@ -517,7 +517,8 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			break
 		}
 	}
-	if i := slices.IndexFunc(o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == key }); i >= 0 {
+	declared := slices.IndexFunc(o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == key })
+	if i := declared; i >= 0 && (o.Keys[i].Run != "" || o.Keys[i].Fn != nil) {
 		if o.Keys[i].Danger && keyArmed != key {
 			st.keyArmed = key
 			return nil
@@ -556,6 +557,10 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.overlays = slices.Delete(a.overlays, len(a.overlays)-2, len(a.overlays)-1)
 		}
 		return cmd
+	}
+	if declared >= 0 && len(st.visible) > 0 {
+		a.pushToast(slog.LevelWarn, "Cannot "+o.Keys[declared].Desc, st.items[st.visible[st.selected]].row.Detail)
+		return nil
 	}
 	switch key {
 	case "y", "Y":

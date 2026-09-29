@@ -165,6 +165,7 @@ func (h *Host) OpenSessions(confirm string) error {
 		item := map[string]any{"text": cmp.Or(clipRunes(s.Title, 60), "Untitled"), "desc": strings.Join(desc, " · ")}
 		if s.ID == current {
 			item["key"] = "current"
+			item["detail"] = "zemi runs this session: /new leaves it, and then it can be resumed or deleted here."
 		} else {
 			item["fields"] = fieldList("updated", ago(s.UpdatedAt), "messages", count, "prompt", prompt)
 			item["detail"] = "Delete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
@@ -175,7 +176,10 @@ func (h *Host) OpenSessions(confirm string) error {
 		}
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Confirm: confirm, Empty: "No sessions in this project yet. Send a message to start one."})
+	ui.OpenOverlay(Overlay{
+		ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Confirm: confirm, Empty: "No sessions in this project yet. Send a message to start one.",
+		Keys: []OverlayKey{{Key: "r", Desc: "resume"}, {Key: "x", Desc: "delete"}},
+	})
 	return nil
 }
 
