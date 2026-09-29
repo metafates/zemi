@@ -569,7 +569,9 @@ func (c *Client) Published(path string) bool {
 // Done is closed when the server exits.
 func (c *Client) Done() <-chan struct{} { return c.done }
 
-// Close asks the server to shut down and kills it if it lingers.
+// Close asks the server to shut down, waits up to 2s for it to exit, then
+// kills its process group, so a build it started (rust-analyzer's cargo)
+// writes nothing once Close returns.
 func (c *Client) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -578,7 +580,11 @@ func (c *Client) Close() error {
 	c.wmu.Lock()
 	err := c.stdin.Close()
 	c.wmu.Unlock()
-	time.AfterFunc(2*time.Second, func() { proc.Kill(c.cmd) })
+	select {
+	case <-c.done:
+	case <-time.After(2 * time.Second):
+	}
+	proc.Kill(c.cmd)
 	return err
 }
 

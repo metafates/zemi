@@ -303,8 +303,11 @@ func TestChatStickyPrompt(t *testing.T) {
 	if !st.follow || !strings.HasPrefix(row(), "▌ fix the flaky") || !strings.HasSuffix(row(), "…") {
 		t.Fatalf("following, the top row is %q", row())
 	}
-	if n := testing.AllocsPerRun(10, func() { st.pinRow(st.lines, st.rect.Dx()) }); n != 0 {
-		t.Fatalf("an unchanged pin allocates %v per frame", n)
+	// the process-wide malloc count AllocsPerRun reads moves with the app's
+	// other goroutines, so the copy's identity says it was not made again
+	first := &st.first[0]
+	if st.pinRow(st.lines, st.rect.Dx()); &st.first[0] != first {
+		t.Fatal("an unchanged pin copies its row again")
 	}
 	// a toast over the pin takes its own cells and cuts the pin's short
 	app.pushToast(logging.Info, "saved", "")

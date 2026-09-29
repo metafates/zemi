@@ -18,6 +18,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
+	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
@@ -446,7 +447,18 @@ func TestLSPRealServersSandboxed(t *testing.T) {
 		t.Skip("starts real language servers")
 	}
 	h, _ := newTestHostDB(t)
-	defer h.lsp.stopAll()
+	// stopAll closes on goroutines; the temp dirs go once each server and
+	// the build it started have ended
+	defer func() {
+		h.lsp.mu.Lock()
+		procs := slices.Collect(maps.Values(h.lsp.running))
+		h.lsp.mu.Unlock()
+		for _, p := range procs {
+			if <-p.ready; p.client != nil {
+				p.client.Close()
+			}
+		}
+	}()
 	if !h.sandboxLive() {
 		t.Skip("no sandbox")
 	}
@@ -478,26 +490,34 @@ func TestLSPRealServersSandboxed(t *testing.T) {
 	}
 	// the group returns once its parallel servers have all reported
 	t.Run("servers", func(t *testing.T) {
-		for _, c := range []struct{ server, file, want string }{
-			{"gopls", "main.go", "error main.go:3"},
-			{"pyright-langserver", "a.py", "error a.py:1"},
-			{"rust-analyzer", "src/main.rs", "error src/main.rs:1"},
+		for _, c := range []struct {
+			server, file string
+			line         int
+		}{
+			{"gopls", "main.go", 3},
+			{"pyright-langserver", "a.py", 1},
+			{"rust-analyzer", "src/main.rs", 1},
 		} {
 			t.Run(c.server, func(t *testing.T) {
 				t.Parallel()
 				if _, err := exec.LookPath(c.server); err != nil {
 					t.Skip(c.server, " not installed")
 				}
-				var got string
-				var err error
-				for deadline := time.Now().Add(2 * time.Minute); ; time.Sleep(time.Second) {
-					got, err = h.lspDiagnostics(filepath.Join(proj, c.file))
-					if strings.Contains(got, c.want) || time.Now().After(deadline) {
-						break
-					}
+				ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+				defer cancel()
+				path := filepath.Join(proj, c.file)
+				s, err := h.lspOpen(ctx, path)
+				if err != nil {
+					t.Fatal(err)
 				}
-				if !strings.Contains(got, c.want) {
-					t.Fatalf("diagnostics %q (%v), want %q", got, err, c.want)
+				// read what the server publishes for the open file: touching it
+				// again waits a fixed floor a loaded server misses, and each miss
+				// counts toward the stall that restarts it
+				for !slices.ContainsFunc(s.Client.Diagnostics(path), func(d lsp.Diagnostic) bool { return d.Severity == 1 && d.Line == c.line }) {
+					if ctx.Err() != nil {
+						t.Fatalf("no error on line %d: %v", c.line, s.Client.Diagnostics(path))
+					}
+					time.Sleep(100 * time.Millisecond)
 				}
 			})
 		}
