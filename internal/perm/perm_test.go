@@ -277,6 +277,9 @@ func TestNormalizeHeredoc(t *testing.T) {
 		{"git add -A && git commit -F - <<'EOF'\nrm -rf . is gone\nEOF", "git add -A|git commit -F -", false, false},
 		{"git -c alias.x='!sh' x <<'EOF'\nrm -rf .\nEOF", "git -c alias.x=!sh x|rm -rf .", false, true},
 		{"sh <<'EOF'\necho 'it\nEOF", "sh", true, true},
+		// sh hands the body on with \` and \$ unescaped
+		{"sh <<EOF\necho \\`rm -rf x\\`\nEOF", "sh|echo `rm -rf x`|rm -rf x", false, true},
+		{"sh <<EOF\necho \\$(date)\nEOF", "sh|echo $(date)|date", false, false},
 		{"cat <<", "", true, true},
 		{"cat <<'EOF\nx", "", true, true},
 	} {

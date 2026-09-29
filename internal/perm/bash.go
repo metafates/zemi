@@ -42,9 +42,6 @@ type Normalized struct {
 	// shell cannot parse it, or a redirect has no target.
 	Fail string
 	rows []row
-	// amps are where a &> or &>> starts in the text, which dash reads as
-	// & then >: ls &>log rm -rf . runs rm there
-	amps []uint
 	// expands: the shell substitutes something somewhere in the text: a
 	// parameter, a command, arithmetic, a glob, a brace list or a tilde
 	expands bool
@@ -115,26 +112,23 @@ func envAssignmentGate(name string) bool {
 // reading runs is judged: an allow needs both. It never errors: problems
 // surface in Fail/ForceAsk.
 func Normalize(cmd string) Normalized {
+	return normalizeAll(cmd, map[string]Normalized{})
+}
+
+// normalizeAll is Normalize with memo holding the bodies (heredoc, sh -c)
+// this top-level call already read: both readings reach each one, so
+// nesting would otherwise double the work per level.
+func normalizeAll(cmd string, memo map[string]Normalized) Normalized {
 	if strings.ContainsRune(cmd, 0) { // mvdan.cc/sh drops it, exec refuses it
 		return Normalized{Fail: "the command holds a NUL byte"}
 	}
-	n := normalize(cmd, syntax.LangBash)
+	n := normalize(cmd, syntax.LangBash, memo)
 	// mvdan.cc/sh reads a carriage return as a blank, sh as a character
 	if strings.ContainsRune(cmd, '\r') {
 		n.doubtful("a carriage return, which sh reads as part of a word")
 	}
-	// the POSIX parser refuses &>, which dash runs as & then >: a ; there
-	// runs the same commands
-	dash := []byte(cmd)
-	for _, at := range n.amps {
-		dash[at] = ';'
-	}
-	p := normalize(string(dash), syntax.LangPOSIX)
-	for _, r := range p.rows {
-		if !slices.ContainsFunc(n.rows, r.same) {
-			n.rows = append(n.rows, r)
-		}
-	}
+	p := normalize(cmd, syntax.LangPOSIX, memo)
+	n.rows = addRows(n.rows, p.rows)
 	if n.shown != nil || p.shown != nil {
 		if n.shown == nil {
 			n.shown = slices.Clone(n.rows)
@@ -142,11 +136,7 @@ func Normalize(cmd string) Normalized {
 		if p.shown == nil {
 			p.shown = p.rows
 		}
-		for _, r := range p.shown {
-			if !slices.ContainsFunc(n.shown, r.same) {
-				n.shown = append(n.shown, r)
-			}
-		}
+		n.shown = addRows(n.shown, p.shown)
 	}
 	n.take(p)
 	for _, r := range n.rows {
@@ -154,6 +144,16 @@ func Normalize(cmd string) Normalized {
 		n.Args = append(n.Args, r.args)
 	}
 	return n
+}
+
+// addRows appends each row of src that dst does not hold yet.
+func addRows(dst, src []row) []row {
+	for _, r := range src {
+		if !slices.ContainsFunc(dst, r.same) {
+			dst = append(dst, r)
+		}
+	}
+	return dst
 }
 
 func (r row) same(s row) bool { return slices.Equal(r.args, s.args) }
@@ -170,41 +170,50 @@ func (n Normalized) Rows() []Normalized {
 
 // normalize is one reading of cmd: the statements that parse before an
 // error, which a shell runs before it stops there (a heredoc body a data
-// reader takes keeps them). A bash parse error also fails the call.
-func normalize(cmd string, lang syntax.LangVariant) (n Normalized) {
+// reader takes keeps them). A bash parse error also fails the call, and a
+// bash-only construct the POSIX parser refuses where dash does not stop
+// leaves the text in doubt.
+func normalize(cmd string, lang syntax.LangVariant, memo map[string]Normalized) (n Normalized) {
 	defer func() {
 		if r := recover(); r != nil {
 			n = Normalized{Fail: fmt.Sprint(panicked, r)}
 		}
 	}()
-	src, stmts, err := parse(cmd, lang)
-	fail := ""
-	if err != nil && lang == syntax.LangBash {
-		fail = parseFailure(err)
-	}
-	w := walker{src: src, lang: lang}
+	stmts, err := parse(cmd, lang)
+	w := walker{src: cmd, lang: lang, memo: memo}
 	w.inline(stmts)
 	w.stmts(stmts)
 	// a name that reads other than as $NAME may be reassigned, and a builtin
 	// that sets names by a value zemi cannot see may reassign any
 	if len(w.vars) > 0 && (w.reassigns(stmts) || slices.ContainsFunc(w.n.rows, func(r row) bool { return ShellState[r.args[0]] })) {
-		w = walker{src: src, lang: lang}
+		w = walker{src: cmd, lang: lang, memo: memo}
 		w.stmts(stmts)
 	}
 	n = w.finish(stmts)
-	n.Fail = cmp.Or(fail, n.Fail)
+	if err != nil && lang == syntax.LangBash {
+		n.Fail = parseFailure(err)
+	}
+	if e, ok := errors.AsType[syntax.LangError](err); ok && lang == syntax.LangPOSIX && !dashStops(e, cmd) {
+		n.doubtful("bash-only syntax dash may read otherwise: " + e.Feature)
+	}
 	return n
 }
 
 const panicked = "zemi could not parse the command: "
 
-// parse parses cmd, returning the statements before the first error.
-// NOTE: mvdan.cc/sh reads a backslash ending a comment as a line
-// continuation, which sh does not: that backslash is blanked out first.
-func parse(cmd string, lang syntax.LangVariant) (string, []*syntax.Stmt, error) {
+// parse parses cmd, returning the statements before the first error. The
+// text parsed differs from cmd only in bytes patched in place, so every
+// offset still points into cmd:
+//   - mvdan.cc/sh reads a backslash ending a comment as a line continuation,
+//     which sh does not: that backslash is blanked out;
+//   - the POSIX reading parses a ; for the & of a &>, which dash runs as & then >;
+//   - dash parses a ${...} it cannot expand and fails only when it expands it,
+//     so the POSIX reading parses one it refuses as ${1..1}, at most
+//     maxPatches of them.
+func parse(cmd string, lang syntax.LangVariant) ([]*syntax.Stmt, error) {
 	p := parsers[lang].Get().(*syntax.Parser)
 	defer parsers[lang].Put(p)
-	for {
+	for tries := 0; ; tries++ {
 		f, err := p.Parse(strings.NewReader(cmd), "")
 		fixed := cmd
 		for _, c := range comments(f, cmd) {
@@ -213,12 +222,20 @@ func parse(cmd string, lang syntax.LangVariant) (string, []*syntax.Stmt, error) 
 				fixed = fixed[:at] + " " + fixed[at+1:]
 			}
 		}
+		if e, ok := errors.AsType[syntax.LangError](err); ok && fixed == cmd && lang == syntax.LangPOSIX && tries < maxPatches {
+			at := int(e.Pos.Offset())
+			if strings.HasPrefix(cmd[at:], "&>") {
+				fixed = cmd[:at] + ";" + cmd[at+1:]
+			} else if a, b := braceAround(cmd, at); b-a > 3 {
+				fixed = cmd[:a] + "${" + strings.Repeat("1", b-a-3) + "}" + cmd[b:]
+			}
+		}
 		if fixed != cmd {
 			cmd = fixed
 			continue
 		}
 		if err == nil {
-			return cmd, f.Stmts, nil
+			return f.Stmts, nil
 		}
 		// NOTE: StmtsSeq yields again after a break once it failed, which
 		// panics, so the loop runs out instead
@@ -229,8 +246,55 @@ func parse(cmd string, lang syntax.LangVariant) (string, []*syntax.Stmt, error) 
 				stmts = append(stmts, s)
 			}
 		}
-		return cmd, stmts, err
+		return stmts, err
 	}
+}
+
+// maxPatches bounds the POSIX reading's reparses, one per patch.
+const maxPatches = 32
+
+// braceAround is the innermost ${...} the bash reading of cmd parses around
+// offset at, a == b for none.
+func braceAround(cmd string, at int) (a, b int) {
+	p := parsers[syntax.LangBash].Get().(*syntax.Parser)
+	defer parsers[syntax.LangBash].Put(p)
+	f, _ := p.Parse(strings.NewReader(cmd), "")
+	defer func() { _ = recover() }() // a node a failed parse left half built
+	syntax.Walk(f, func(x syntax.Node) bool {
+		switch x.(type) {
+		case *syntax.ParamExp, *syntax.CmdSubst:
+			s, e := int(x.Pos().Offset()), int(x.End().Offset())
+			if s <= at && at < e && e <= len(cmd) && strings.HasPrefix(cmd[s:], "${") && (b == a || e-s < b-a) {
+				a, b = s, e
+			}
+		}
+		return true
+	})
+	return a, b
+}
+
+// dashStops reports a bash-only construct dash refuses too, stopping where
+// the POSIX parse stops: a herestring, an array assignment, a c-style or
+// braced for, an extended glob, a ( or ) after a bash builtin's words
+// (local a=(1)). dash runs "function f {" as a command and reads on.
+func dashStops(e syntax.LangError, src string) bool {
+	s := src[e.Pos.Offset():]
+	if strings.HasPrefix(e.Feature, "the ") && strings.HasSuffix(e.Feature, " builtin") {
+		return strings.HasPrefix(s, "(") || strings.HasPrefix(s, ")")
+	}
+	switch e.Feature {
+	case "herestrings":
+		return strings.HasPrefix(s, "<<<")
+	case "arrays":
+		return strings.HasPrefix(s, "(")
+	case "c-style fors":
+		return strings.HasPrefix(s, "((")
+	case "for loops with braces":
+		return strings.HasPrefix(s, "{")
+	case "extended globs":
+		return len(s) > 1 && s[1] == '('
+	}
+	return false
 }
 
 // parsers keeps idle parsers per dialect: one is large, and a bash call
@@ -274,6 +338,21 @@ type walker struct {
 	docs []heredoc
 	vars map[string]string // the inlined assignments
 	skip map[*syntax.Stmt]bool
+	memo map[string]Normalized
+}
+
+// inner is Normalize(text) for a body inside the command, read once per
+// top-level call however many readings reach it.
+func (w *walker) inner(text string) Normalized {
+	n, ok := w.memo[text]
+	if !ok {
+		n = normalizeAll(text, w.memo)
+		w.memo[text] = n
+	}
+	// the caller edits its rows and appends to its paths
+	n.rows, n.shown = slices.Clone(n.rows), slices.Clone(n.shown)
+	n.ReadPaths, n.WritePaths = slices.Clip(n.ReadPaths), slices.Clip(n.WritePaths)
+	return n
 }
 
 // heredoc is a << body found in the walk.
@@ -373,8 +452,10 @@ func (w *walker) command(c syntax.Command) []string {
 	case *syntax.BinaryCmd:
 		w.stmt(c.X)
 		w.stmt(c.Y)
-	case *syntax.FuncDecl:
+	case *syntax.FuncDecl: // a body may run once per call
+		w.loop++
 		w.stmt(c.Body)
+		w.loop--
 	default: // (( )) and anything newer
 		w.subs(c)
 	}
@@ -469,9 +550,14 @@ func (w *walker) fold(args []string, pos syntax.Pos, at int) []string {
 			w.gate(name)
 		}
 	}
+	// sh expands an alias in the lines after it, so later rows may name
+	// another program than the one that runs
+	if program(args) == "alias" {
+		w.n.doubtful("an alias, which sh expands in later lines")
+	}
 	if isShell(args[0]) {
 		if body, ok := shellBody(args[1:]); ok {
-			inner := Normalize(body)
+			inner := w.inner(body)
 			for i := range inner.rows {
 				inner.rows[i].loop = inner.rows[i].loop || w.loop > 0
 				inner.rows[i].pos = pos.Offset()
@@ -501,24 +587,24 @@ func (w *walker) redirect(r *syntax.Redirect, reader []string) {
 			// End reaches past the delimiter line
 			var b strings.Builder
 			for _, p := range r.Hdoc.Parts {
-				if l, ok := p.(*syntax.Lit); ok {
+				switch l, ok := p.(*syntax.Lit); {
+				case ok && d.quoted:
 					b.WriteString(l.Value)
-				} else {
+				case ok:
+					b.WriteString(unescape(l.Value, heredocEscapes))
+				default:
 					b.WriteString(w.text(p))
 				}
 			}
 			d.text = b.String()
 			if !d.quoted {
-				sub := walker{src: w.src, lang: w.lang, loop: w.loop}
+				sub := walker{src: w.src, lang: w.lang, loop: w.loop, memo: w.memo}
 				sub.subs(r.Hdoc)
 				d.subs = sub.finish(nil)
 			}
 		}
 		w.docs = append(w.docs, d)
 		return
-	}
-	if r.Op == syntax.RdrAll || r.Op == syntax.AppAll {
-		w.n.amps = append(w.n.amps, r.OpPos.Offset())
 	}
 	target := w.word(r.Word)
 	op := r.Op.String()
@@ -560,7 +646,11 @@ func (w *walker) word(x *syntax.Word) string {
 func (w *walker) part(b *strings.Builder, p syntax.WordPart, inDouble bool) {
 	switch p := p.(type) {
 	case *syntax.Lit:
-		v := unescape(p.Value, inDouble)
+		escapes := ""
+		if inDouble {
+			escapes = dquoteEscapes
+		}
+		v := unescape(p.Value, escapes)
 		// a backslash ending the text: bash drops it, dash keeps it
 		if !inDouble && w.lang == syntax.LangBash && (len(p.Value)-len(strings.TrimRight(p.Value, `\`)))%2 == 1 {
 			v = strings.TrimSuffix(v, `\`)
@@ -589,15 +679,23 @@ func (w *walker) part(b *strings.Builder, p syntax.WordPart, inDouble bool) {
 	}
 }
 
-// unescape drops the backslashes the shell removes from literal text: any
-// outside quotes, and inside double quotes those before $ ` " \ and a newline.
-func unescape(s string, inDouble bool) string {
+// The characters a backslash escapes inside double quotes and in an
+// unquoted heredoc body; before any other it stays.
+const (
+	dquoteEscapes  = "$`\"\\\n"
+	heredocEscapes = "$`\\\n"
+)
+
+// unescape drops the backslashes the shell removes from literal text: those
+// before a character in escapes, or before any when escapes is "" (outside
+// quotes). A backslash and a newline both go.
+func unescape(s, escapes string) string {
 	if !strings.Contains(s, `\`) {
 		return s
 	}
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' && i+1 < len(s) && (!inDouble || strings.IndexByte("$`\"\\\n", s[i+1]) >= 0) {
+		if s[i] == '\\' && i+1 < len(s) && (escapes == "" || strings.IndexByte(escapes, s[i+1]) >= 0) {
 			if i++; s[i] == '\n' {
 				continue
 			}
@@ -819,7 +917,7 @@ func (w *walker) finish(stmts []*syntax.Stmt) Normalized {
 		var body Normalized
 		switch {
 		case script:
-			body = Normalize(d.text)
+			body = w.inner(d.text)
 			if body.Fail == "" {
 				break
 			}
@@ -827,14 +925,10 @@ func (w *walker) finish(stmts []*syntax.Stmt) Normalized {
 			// line in a shell of its own), and sh expands an unquoted one first
 			more := []Normalized{d.subs}
 			for line := range strings.Lines(d.text) {
-				more = append(more, Normalize(line))
+				more = append(more, w.inner(line))
 			}
 			for _, m := range more {
-				for _, r := range m.rows {
-					if !slices.ContainsFunc(body.rows, r.same) {
-						body.rows = append(body.rows, r)
-					}
-				}
+				body.rows = addRows(body.rows, m.rows)
 				m.Fail = ""
 				body.take(m)
 			}

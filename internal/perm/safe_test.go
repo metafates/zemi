@@ -318,6 +318,8 @@ func TestDestructive(t *testing.T) {
 		{`for f in src/*; do rm "$f"; done`, true},
 		{`ls | while read f; do rm "$f"; done`, true},
 		{"for f in a b\ndo\n  rm $f\ndone", true},
+		{"f() { rm $1; }; for x in a b; do f $x; done", true},
+		{"alias l=rm\nl -rf .", true},
 		{"X=-rf\nrm $X src", true},
 		{"rm *.txt", true},
 		{"rm -- *", true},
@@ -390,6 +392,11 @@ func TestDestructive(t *testing.T) {
 		{"make clean build", false},
 		{"python3 - <<'EOF'\nprint(1)\nEOF", false},
 		{"FOO=1 npm run build > out.log", false},
+		// dash parses these and fails only when it expands them
+		{"echo ${x//a/b} ${x:0:7} ${x^^} ${!x} && ls &>/dev/null", false},
+		{"a=(1 2); for ((i=0;i<2;i++)); do echo ${a[i]}; done", false},
+		// dash reads {fd} as a word and runs what follows
+		{"ls {fd}>o", true},
 	} {
 		if got := Normalize(strings.ReplaceAll(c.cmd, "PAD", pad)).Destructive(pad) != ""; got != c.asks {
 			t.Errorf("Destructive(%q) = %v, want %v", c.cmd, got, c.asks)

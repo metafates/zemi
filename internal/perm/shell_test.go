@@ -40,6 +40,11 @@ func TestRowsCoverShells(t *testing.T) {
 		"sudo -u root rm s; timeout 5 rm t",
 		"rm u\\",
 		"ls &>log rm v",
+		"cat $'\\' ; ls &>o rm -rf w ; #'",
+		"cat <<EOF\n$(ls &>o rm -rf x)\nEOF",
+		"true || echo ${y:1}\ncat $'\\' ; rm -rf y ; #'",
+		"sh <<EOF\necho \\`rm -rf z\\`\nEOF",
+		"alias l=rm\nl -rf aa",
 	}
 	stubs := t.TempDir()
 	names := map[string]bool{}
@@ -48,7 +53,8 @@ func TestRowsCoverShells(t *testing.T) {
 			names[n] = true
 		}
 	}
-	stub := "#!/bin/sh\n{ printf '%s\\037' \"${0##*/}\" \"$@\"; printf '\\036'; } >> \"$ZLOG\"\n[ \"${0##*/}\" = cat ] && [ $# = 0 ] && exec /bin/cat\nexit 0\n"
+	// one printf per record: a stub run in the background writes beside another
+	stub := "#!/bin/sh\nr=$(printf '%s\\037' \"${0##*/}\" \"$@\")\nprintf '%s\\036' \"$r\" >> \"$ZLOG\"\n[ \"${0##*/}\" = cat ] && [ $# = 0 ] && exec /bin/cat\nexit 0\n"
 	for n := range names {
 		if err := os.WriteFile(filepath.Join(stubs, n), []byte(stub), 0o755); err != nil {
 			t.Fatal(err)
@@ -84,28 +90,34 @@ func TestRowsCoverShells(t *testing.T) {
 	}
 }
 
-// runs reports that argv is what row, or the command a runner in it
-// leads to, runs: a word holding an expansion stands for any words.
+// runs reports that argv is what row, or the command a runner leading it
+// (sudo, timeout 5) hands on, runs.
 func runs(row, argv []string) bool {
-	for k := range row {
-		if matches(row[k:], argv) {
+	for ok := true; ok && len(row) > 0; row, ok = stepRunner(row) {
+		if matches(row, argv) {
 			return true
 		}
 	}
 	return false
 }
 
+// matches reports that row spells argv: a word holding an expansion stands
+// for one word, a bare $@ or $* for any number.
 func matches(row, argv []string) bool {
-	if len(row) == 0 {
+	switch {
+	case len(row) == 0:
 		return len(argv) == 0
-	}
-	if strings.ContainsAny(row[0], "$`*?[{~") {
+	case row[0] == "$@" || row[0] == "$*":
 		for i := range len(argv) + 1 {
 			if matches(row[1:], argv[i:]) {
 				return true
 			}
 		}
 		return false
+	case len(argv) == 0:
+		return false
+	case strings.ContainsAny(row[0], "$`*?[{~"):
+		return matches(row[1:], argv[1:])
 	}
-	return len(argv) > 0 && row[0] == argv[0] && matches(row[1:], argv[1:])
+	return row[0] == argv[0] && matches(row[1:], argv[1:])
 }

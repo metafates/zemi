@@ -1,6 +1,11 @@
 package perm
 
-import "testing"
+import (
+	"fmt"
+	"syscall"
+	"testing"
+	"time"
+)
 
 func BenchmarkNormalize(b *testing.B) {
 	cmds := []string{
@@ -19,5 +24,25 @@ func BenchmarkNormalize(b *testing.B) {
 		for _, c := range cmds {
 			Normalize(c)
 		}
+	}
+}
+
+// TestNormalizeNestedCheap: both readings reach every heredoc body, which
+// must not double the work per level of nesting. The budget is the
+// process's CPU time; the test runs alone (no t.Parallel).
+func TestNormalizeNestedCheap(t *testing.T) {
+	cpu := func() time.Duration {
+		var u syscall.Rusage
+		syscall.Getrusage(syscall.RUSAGE_SELF, &u)
+		return time.Duration(u.Utime.Nano() + u.Stime.Nano())
+	}
+	cmd := "ls"
+	for i := range 20 {
+		cmd = fmt.Sprintf("sh <<E%d\n%s\nE%d", i, cmd, i)
+	}
+	start := cpu()
+	Normalize(cmd)
+	if d := cpu() - start; d > 100*time.Millisecond {
+		t.Fatalf("20 nested heredocs took %s of CPU", d)
 	}
 }

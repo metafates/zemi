@@ -1973,38 +1973,43 @@ provenance string.
   `echo $'\' ; rm -rf x ; #'`, bash only `echo`; bash reads `cat .env\`
   as `cat .env`, dash keeps the backslash): every simple command
   either reading runs is a segment, so an allow needs both readings. The
-  POSIX reading keeps the statements that parse before its first error,
-  which is what dash runs before it stops, and reads `&>` as dash does, `&`
-  then `>` (`ls &>log rm -rf .` runs `rm` there); a bash parse error fails the
-  call with the parser's line, column and message, which a model can act
-  on. Text a shell reads otherwise than both grammars asks, and
+  POSIX reading reads `&>` as dash does, `&` then `>` (`ls &>log rm -rf .`
+  runs `rm` there), and a `${...}` the parser calls bash-only (`${x:1}`,
+  `${x//a/b}`, `${!x}`) as a plain parameter, since dash parses one and
+  fails only if it expands it. It stops where dash stops too, at a
+  herestring, an array, a c-style or braced `for`, an extended glob or a
+  `(` after a builtin's words, keeping the statements before it, which
+  are what dash runs; any other construct the parser calls bash-only
+  (`{fd}>x`, and `function f {`, which dash runs as a command before
+  reading on) asks like the doubtful text below. A bash parse error fails
+  the call with the parser's line, column and message, which a model can
+  act on. Text a shell reads otherwise than both grammars asks, and
   `Destructive` and the program list (§8) cannot vouch for it: a carriage
   return (the parser reads it as a blank, sh as a character), a `$'..'`
   escape zemi does not decode (`\x`, octal, `\u`, `\c`, which bash
-  versions decode differently and which can spell any name), and a `$( )`
+  versions decode differently and which can spell any name), a `$( )`
   or `<( )` bash 3.2 closes elsewhere (it finds the `)` by counting parens
   past quotes and comments, blind to heredoc bodies and case patterns, so
   macOS sh runs `rm z` in `echo $(cat <<EOF` / `) ; rm z` / `EOF` / `)`),
-  and an extended glob, which the parser reads whatever `extglob` says
-  while sh runs `x` in `!(x)`. The parser also reads a backslash ending a
-  comment as a line continuation, which no shell does; that backslash is
+  an extended glob, which the parser reads whatever `extglob` says
+  while sh runs `x` in `!(x)`, and an `alias`, which sh expands in the
+  lines after it (`alias l=rm` then `l -rf .` runs `rm`). The parser
+  also reads a backslash ending a comment as a line continuation, which no shell does; that backslash is
   blanked before the parse. Known ceilings: a `sh` that is neither (zsh in
-  sh emulation, busybox ash, mksh) is judged by these two readings, the
-  POSIX reading stops at a construct the parser calls bash-only where dash
-  may go on (`$[1]`), and a
+  sh emulation, busybox ash, mksh) is judged by these two readings, and a
   program word holding an expansion (`$X`, `rm$() -rf x`) names no program,
   so no deny rule and no `Destructive` check sees what it runs; the sandbox
   is the limit there. A segment is a simple command's words as the program receives
   them where they are static (quotes removed, `$'..'` decoded), an
   expansion kept as written; syntax (`if`, `do`, `done`, a function's
-  name) is no segment; a command in a loop body or a while condition is
-  marked as repeated; a substitution's commands, quoted or not, a
+  name) is no segment; a command in a loop body, a while condition or a
+  function body (which each call runs again) is marked as repeated; a substitution's commands, quoted or not, a
   function's body, a `time` or `coproc` command (as `time cmd`, how sh
   reads it) and a `sh -c`/`bash -c`/`zsh -c` body (parsed again the same
   way, the assignment gate included) are segments of their own. Before
   the walk, leading literal assignments (`D=/long/path; ls $D`, also
-  joined by `&&`) are substituted into the tree so gates and rules see the
-  real path; only a value the shell leaves as is qualifies (no quotes, no
+  joined by `&&`) are read in place of `$NAME` and `${NAME}` where the
+  words render, so gates and rules see the real path; only a value the shell leaves as is qualifies (no quotes, no
   glob or brace, no expansion but an earlier inlined name), heredoc
   delimiters stay as written, an assignment to a name already in the
   environment, to a variable the shell itself reads (`CDPATH`, `HOME`,
@@ -2066,7 +2071,9 @@ provenance string.
   `status`, leaves the body data too), and then an
   unquoted one for its substitutions
   and a quoted one is data (a delimiter with any quoting, `E"O"F`
-  included, makes the body literal); a body that does not parse as
+  included, makes the body literal); an unquoted body is read as the
+  shell hands it on, the backslashes before `$`, `` ` ``, `\` and a
+  newline removed (in `sh <<EOF`, `` echo \`rm x\` `` runs `rm`); a body that does not parse as
   commands fails the call only
   when a shell may run it, since an apostrophe in prose or in another
   language's code is no shell error, and is judged by what parses before
