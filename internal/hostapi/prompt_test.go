@@ -83,11 +83,11 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		once []string
 	}{
 		// untrusted: the lua tool asks about every script
-		{"default", nil, []string{"Scratchpad: ", "It is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "say first what you will write", "Every script needs the user's approval here", "lua.md"}, []string{"in one message", "keep your own files", "runs at once"}, []string{"in one response"}},
+		{"default", nil, []string{"Scratchpad: ", "is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "say first what you will write", "Every script needs the user's approval here", "lua.md"}, []string{"in one message", "keep your own files", "runs at once"}, []string{"in one response"}},
 		// subagents: explore reads and searches, and writes nothing; general
 		// is told its own directory in its task (TestSubagentOwnDir)
 		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "reading them needs no approval", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, []string{"Keep notes", "Keep temporary files", "keep your own files", "read for edit"}, nil},
-		{"general", &Profile{Name: "general"}, []string{"Scratchpad: " + pad, "It is $TMPDIR in every command you run"}, []string{"keep your own files", "You are read-only"}, nil},
+		{"general", &Profile{Name: "general"}, []string{"Scratchpad: " + pad, "is $TMPDIR in every command you run"}, []string{"keep your own files", "You are read-only"}, nil},
 		// an agent file's read_only keeps its tools and is told what they can do
 		{"reviewer", &Profile{Name: "reviewer"}, []string{"You are read-only"}, nil, nil},
 		{

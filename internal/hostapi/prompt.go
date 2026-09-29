@@ -247,7 +247,8 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	if project != "" {
 		project = "\n\n# Project instructions\nFrom the repository, already loaded: do not read them again. They override the default rules and the user's instructions; a deeper directory's file wins over a shallower one, and the user's messages win over every file." + project
 	}
-	env, luaSections, index := h.environmentFor(toolset, pad, readOnly), h.assembleSections()+h.toolSections(toolset), ""
+	rules, env := h.environmentFor(toolset, pad, readOnly)
+	luaSections, index := h.assembleSections()+h.toolSections(toolset), ""
 	if hasTool(toolset, tools.ToolSkill) {
 		index = h.skillsIndexPrompt()
 	}
@@ -261,7 +262,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	// The system prompt is the same for every session of the user, so the
 	// provider caches it with the tools once; what varies by project or
 	// session rides the context message after it.
-	system = sys + index + user + luaSections
+	system = sys + rules + index + user + luaSections
 	// last, where a small model weighs it most
 	ctxMsg = "<context>\nzemi's notes for this session, not the user's words." + project + env + digest + "\n\nReply in one or two short sentences.\n</context>"
 	parts = promptParts{instructions: len(user) + len(project), lua: len(luaSections), skills: len(index), digest: len(digest), files: mtimes}
@@ -470,49 +471,55 @@ func (h *Host) instructionFile(p string) bool {
 	return err == nil && fi.Mode().IsRegular() && !h.secretPath(p) && h.inJail(p, h.Dirs.RepoRoot())
 }
 
-// scratchUse, scratchWrite, scratchRead and recipesUse fill the pinned
-// environment's {Scratch} and {Recipes} for a run that can use them: each
-// tells a run only what its tools can follow, and claims only what holds
-// whoever approved a command. scratchOwn names a subagent run's own
-// directory in its task, since per run it would bust the cached prompt.
+// scratchUse, scratchWrite, scratchRead and recipesUse are the rules for
+// the scratchpad and the recipes a run can use: each tells a run only what
+// its tools can follow, and claims only what holds whoever approved a
+// command. scratchOwn names a subagent run's own directory in its task,
+// since per run it would bust the cached prompt.
 const (
-	scratchUse   = "It is $TMPDIR in every command you run. Keep temporary files here, not in /tmp or the project: nothing here is part of the project. Reading, writing and editing here needs no approval, even for a read-only agent, and deleting here asks only where any command would. Secret-shaped names (.env, *.pem, *.key) ask even here: use another name.\n"
-	scratchWrite = "Keep notes and drafts here, not in the project: nothing here is part of the project. Reading, writing and editing here needs no approval, even for a read-only agent. Secret-shaped names (.env, *.pem, *.key) ask even here: use another name.\n"
-	scratchRead  = "Other agents keep temporary files here; reading them needs no approval.\n"
+	scratchUse   = "The scratchpad (under Environment) is $TMPDIR in every command you run. Keep temporary files there, not in /tmp or the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent, and deleting there asks only where any command would. Secret-shaped names (.env, *.pem, *.key) ask even there: use another name.\n"
+	scratchWrite = "Keep notes and drafts in the scratchpad (under Environment), not in the project: nothing there is part of the project. Reading, writing and editing there needs no approval, even for a read-only agent. Secret-shaped names (.env, *.pem, *.key) ask even there: use another name.\n"
+	scratchRead  = "Other agents keep temporary files in the scratchpad (under Environment); reading them needs no approval.\n"
 	scratchOwn   = "Other agents share the scratchpad: keep your own files in %s."
-	recipesUse   = "A procedure for this repository that took you many steps to find goes in <name>/SKILL.md there: yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. The skill tool loads it at once. Fix a stale step in place and date the fix. Never write a secret there; name the env var that holds it.\n"
+	recipesUse   = "A procedure for this repository that took you many steps to find goes in <name>/SKILL.md in the recipes directory (under Environment): yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. The skill tool loads it at once. Fix a stale step in place and date the fix. Never write a secret there; name the env var that holds it.\n"
 )
 
-// environmentFor is the pinned environment with the clauses toolset can use,
-// pad, the run's scratchpad, and the sandbox its commands run in.
-func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly bool) string {
+// environmentFor gives the rules for the run's scratchpad, recipes and the
+// sandbox its commands run in, the clauses toolset can use, the same in
+// every project but one with a PATH dir inside it; and the pinned
+// environment, with pad, the run's scratchpad.
+func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly bool) (rules, env string) {
 	writes := hasTool(toolset, tools.ToolWrite) || hasTool(toolset, tools.ToolEdit)
-	scratch, recipes := "", ""
+	scratch := ""
 	if pad != "" {
 		scratch = "Scratchpad: " + pad + "\n"
 		switch {
 		case hasTool(toolset, tools.ToolShell):
-			scratch += scratchUse
+			rules = scratchUse
 		case writes:
-			scratch += scratchWrite
+			rules = scratchWrite
 		default:
-			scratch += scratchRead
+			rules = scratchRead
 		}
 	}
-	scratch += h.sandboxPrompt(toolset, readOnly, pad)
+	rules += h.sandboxPrompt(toolset, readOnly, pad)
 	// a read-only agent's write there is denied
-	if writes && !readOnly {
-		recipes = recipesUse
+	if writes && !readOnly && h.recipesDir() != "" && h.ProjectTrusted() {
+		recipes := recipesUse
 		if !hasTool(toolset, tools.ToolSkill) {
 			recipes = strings.Replace(recipes, " The skill tool loads it at once.", "", 1)
 		}
+		rules += recipes
+	}
+	if rules != "" {
+		rules = "\n\n# Scratchpad and sandbox\n" + rules
 	}
 	pdir := h.Dirs.ProjectConfigDir()
 	if !h.ProjectTrusted() {
 		// so the model does not write config that never loads
 		pdir += " (not loaded: the project is not trusted; the user runs " + h.trustHint() + ")"
 	}
-	return strings.NewReplacer("{Project}", "Project config directory: "+pdir+"\n", "{Scratch}", scratch, "{Recipes}", recipes).Replace(h.environmentPrompt())
+	return rules, strings.NewReplacer("{Project}", "Project config directory: "+pdir+"\n", "{Scratch}", scratch).Replace(h.environmentPrompt())
 }
 
 // environmentPrompt describes the machine and repository. It is pinned per
@@ -533,7 +540,7 @@ func (h *Host) environmentPrompt() string {
 	h.ensureScratch()
 	b.WriteString("{Project}" + topLevel(h.Dirs.ProjectDir) + "{Scratch}")
 	if dir := h.recipesDir(); dir != "" && h.ProjectTrusted() {
-		fmt.Fprintf(&b, "Recipes: %s\n{Recipes}", dir)
+		fmt.Fprintf(&b, "Recipes: %s\n", dir)
 	}
 	status := h.gitStatus()
 	if !h.ProjectTrusted() {

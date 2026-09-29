@@ -211,7 +211,7 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 	return p
 }
 
-// sandboxPrompt is the environment's Sandbox block, "" for a run without
+// sandboxPrompt is the system prompt's Sandbox block, "" for a run without
 // shell: what a command runs under without the user's approval, each clause
 // read off the live policy, so the text says what the backend enforces, and
 // naming only the escapes and tools toolset has. It says auto mode, the one

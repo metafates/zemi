@@ -479,7 +479,7 @@ before a run and checks them at exit: a created `.git` or `.agents` holds trust 
 `/trust`. The shell tool and `job_start` take two escapes no mode settles and each of which
 asks: `network: true` only adds sockets, `sandbox: false` drops the whole policy. A confined
 failure `sandbox.LikelyDenied` recognizes, a death by signal (`sandbox.Killed`) included, gets `Pipeline.sandboxHint`; the limits themselves
-are the environment's Sandbox block (`Host.sandboxPrompt`, from `sandboxPolicy` without the
+are the system prompt's Sandbox block (`Host.sandboxPrompt`, from `sandboxPolicy` without the
 project walk, which must not delay the first request).
 
 `ReadCommand` is an allowlist of readers (internal/perm/safe.go, table-tested), which settle

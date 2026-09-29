@@ -2424,7 +2424,7 @@ provenance string.
   output's denial lines (`sandbox.DeniedPaths`), and only the escapes the
   run's schema carries are offered;
   a timed-out shell run adopted as a job keeps it. The limits themselves are
-  the pinned environment's Sandbox block for a run with the shell tool
+  the pinned system prompt's Sandbox block for a run with the shell tool
   (`Host.sandboxPrompt`), each clause read off `sandboxPolicy` and the
   backend, so the text cannot drift from what the kernel enforces (on
   seatbelt it names the class the profile's deny default leaves out, the
