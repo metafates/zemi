@@ -12,10 +12,11 @@ const gitTimeout = 15 * time.Second
 
 // Git is one git command in a repository whose config cannot name a
 // program: fsmonitor, hooks (an index refresh runs post-index-change),
-// submodules, filter drivers, LFS smudging, the system gitconfig and every
-// transport but https, ssh and file are off. zemi's own checks need this in
-// a trusted project too, since a sandboxed command can plant a nested
-// repository there, and a plugin clone is someone else's repository.
+// submodules, filter drivers, LFS smudging, signature checks in log, the
+// system gitconfig and every transport but https, ssh and file are off.
+// zemi's own checks need this in a trusted project too, since a sandboxed
+// command can plant a nested repository there, and a plugin clone is
+// someone else's repository.
 // NOTE: with a filter off, status compares a stat-dirty filtered file's raw
 // bytes with the cleaned blob and lists it as modified (git-crypt, nbstripout).
 type Git struct {
@@ -43,6 +44,7 @@ func (g Git) Run(ctx context.Context, args ...string) (string, error) {
 	safe := []string{
 		"-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
 		"-c", "diff.ignoreSubmodules=all", "-c", "submodule.recurse=false",
+		"-c", "log.showSignature=false",
 		"-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
 		"-c", "protocol.ssh.allow=always", "-c", "protocol.file.allow=user",
 	}

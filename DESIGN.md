@@ -373,8 +373,8 @@ is an instruction file, no project language server starts (zemi's own Lua still 
 settle only reads, `perm.Normalized.ReadCommand` commands and, confined, a plugin's
 tests (§9). Either way zemi's own
 git calls (`proc.Git`) switch off `core.fsmonitor`, hooks, submodule
-recursion, LFS smudging, transports other than https, ssh and file, and
-repository filter drivers: a sandboxed command can plant a nested
+recursion, LFS smudging, log's signature checks (`gpg.program`),
+transports other than https, ssh and file, and repository filter drivers: a sandboxed command can plant a nested
 repository whose config would otherwise run unconfined on zemi's next
 `git status`. A plugin clone is someone else's repository, so its git
 calls blank the user's global filter drivers too.

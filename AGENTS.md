@@ -251,7 +251,7 @@ project skills, every project language server, the Lua tool's ask, the read jail
 launch dir to `Dirs.RepoRoot()`, and what auto mode and read-only agents settle. `Host.git` and
 `internal/plugin` shell out to the `git` binary (no git library in go.mod) through `proc.Git`,
 with `GIT_CONFIG_NOSYSTEM=1`, and switch off fsmonitor, hooks, submodule recursion, LFS
-smudging, every transport but https, ssh and file, and repo-local filter drivers (a plugin
+smudging, log's signature checks (`gpg.program`), every transport but https, ssh and file, and repo-local filter drivers (a plugin
 clone's global ones too) in every repository, trusted or not: a sandboxed command can plant a
 nested repo whose config zemi would run.
 

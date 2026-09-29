@@ -193,11 +193,22 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 				}
 			}
 			os.WriteFile(filepath.Join(dir, ".git", "hooks", "post-index-change"), []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755)
+			// a signed HEAD makes log run gpg.program where showSignature is on
+			gpg, commit := filepath.Join(t.TempDir(), "gpg"), filepath.Join(t.TempDir(), "commit")
+			os.WriteFile(gpg, []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755)
+			head, _ := h.git(dir, "cat-file", "commit", "HEAD")
+			os.WriteFile(commit, []byte(strings.Replace(head, "\n\n", "\ngpgsig -----BEGIN PGP SIGNATURE-----\n x\n -----END PGP SIGNATURE-----\n\n", 1)), 0o644)
+			signed, _ := h.git(dir, "hash-object", "-t", "commit", "-w", commit)
+			for _, args := range [][]string{{"update-ref", "HEAD", strings.TrimSpace(signed)}, {"config", "log.showSignature", "true"}, {"config", "gpg.program", gpg}} {
+				if out, err := h.git(dir, args...); err != nil {
+					t.Fatalf("git %v: %v %s", args, err, out)
+				}
+			}
 			// a stat-dirty file makes status refresh the index, which runs the hook
 			later := time.Now().Add(time.Hour)
 			os.Chtimes(filepath.Join(dir, "a"), later, later)
-			if _, err := h.git(dir, "status", "--short"); err != nil {
-				t.Fatal(err)
+			if s := h.gitStatusSection(dir); !strings.Contains(s, recentCommits) {
+				t.Fatal(s)
 			}
 			h.noSecretsUnder(dir, []string{h.Dirs.ProjectDir}, true)
 			if _, err := os.Stat(marker); err == nil {
