@@ -315,6 +315,59 @@ func TestLSPZemiLua(t *testing.T) {
 	}
 }
 
+// TestLSPReload: a reload stops only the servers whose definition it
+// changed or dropped, so the reload a config or plugin write causes leaves
+// the rest warm.
+func TestLSPReload(t *testing.T) {
+	t.Parallel()
+	cfg, _ := filepath.EvalSymlinks(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: cfg, Origin: lua.OriginUser}}})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir(), ConfigHome: cfg})
+	defer func() { h.lsp.stopAll()() }()
+	h.SetProjectTrusted(true)
+	initLua := filepath.Join(h.Dirs.ConfigHome, "init.lua")
+	reload := func(src string) {
+		t.Helper()
+		os.WriteFile(initLua, []byte(src), 0o644)
+		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add := func(name, ft, args string) string {
+		return fmt.Sprintf("zemi.lsp.add(%q, { command = %q, args = { %s }, env = { ZEMI_LSP_FAKE = \"1\" }, filetypes = { %q } })\n", name, os.Args[0], args, ft)
+	}
+	files := []string{filepath.Join(h.Dirs.ProjectDir, "a.txt"), initLua}
+	for _, c := range []struct {
+		name, init string
+		keep       []bool // by files
+	}{
+		{"the same config", add("fake", "txt", "") + add("luals", "lua", ""), []bool{true, true}},
+		{"changed args", add("fake", "txt", `"-v"`) + add("luals", "lua", ""), []bool{false, true}},
+		{"dropped", add("fake", "txt", ""), []bool{true, false}},
+	} {
+		reload(add("fake", "txt", "") + add("luals", "lua", ""))
+		var before []*lspProc
+		for _, f := range files {
+			def, _ := h.lspFor(f)
+			p, err := h.lspClient(t.Context(), def)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before = append(before, p)
+		}
+		reload(c.init)
+		for i, p := range before {
+			h.lsp.mu.Lock()
+			kept := h.lsp.running[p.def.Name] == p
+			h.lsp.mu.Unlock()
+			if kept != c.keep[i] {
+				t.Errorf("%s: %s kept = %v", c.name, p.def.Name, kept)
+			}
+		}
+	}
+}
+
 // TestLSPRealLuaLS runs the installed lua-language-server under the live
 // backend on a local plugin in an untrusted project: zemi's types reach it,
 // so a widget spec missing a field is an error, and the demo plugin, sound
@@ -344,14 +397,9 @@ func TestLSPRealLuaLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := filepath.Join(plugin, "lua", "bad.lua")
-	var got string
-	for i, deadline := 0, time.Now().Add(2*time.Minute); !strings.Contains(got, "error ") && time.Now().Before(deadline); i++ {
-		// the server publishes a result only when it changed, so each try
-		// moves the error a line down
-		spec := strings.Repeat("\n", i) + "zemi.ui.widget.add({ id = \"x\", render = function() return {} end })\n"
-		os.WriteFile(bad, []byte(spec), 0o644)
-		got, _ = h.lspDiagnostics(bad)
-	}
+	os.WriteFile(bad, []byte("zemi.ui.widget.add({ id = \"x\", render = function() return {} end })\n"), 0o644)
+	// the first check, which starts the server, finds it
+	got, _ := h.lspDiagnostics(bad)
 	if !strings.Contains(got, "error ") || !strings.Contains(got, "region") {
 		t.Fatalf("the planted spec: %q", got)
 	}

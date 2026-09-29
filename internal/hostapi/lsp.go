@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -118,12 +119,21 @@ func newLSPReg() *lspReg {
 	return &lspReg{running: map[string]*lspProc{}, attempts: map[string]int{}, disabled: map[string]bool{}}
 }
 
-// stopAll stops every server and forgets user definitions (reload replays
-// them). The servers stop on goroutines; wait returns once they all have.
+// forget drops what config defined, for a reload to replay; the running
+// servers stay until lspStopChanged compares them with the replay.
+func (r *lspReg) forget() {
+	r.mu.Lock()
+	r.user, r.attempts, r.disabled = nil, map[string]int{}, map[string]bool{}
+	r.mu.Unlock()
+}
+
+// stopAll stops every server and forgets the definitions. The servers stop
+// on goroutines; wait returns once they all have.
 func (r *lspReg) stopAll() (wait func()) {
+	r.forget()
 	r.mu.Lock()
 	procs := r.running
-	r.running, r.user, r.attempts, r.disabled = map[string]*lspProc{}, nil, map[string]int{}, map[string]bool{}
+	r.running = map[string]*lspProc{}
 	r.mu.Unlock()
 	var stopped []<-chan struct{}
 	for _, p := range procs {
@@ -192,6 +202,20 @@ func (h *Host) zemiLua(path string) (lspDef, bool) {
 		}
 		root, label = h.Dirs.ConfigHome, "config"
 	}
+	def, ok := h.lualsDef()
+	if !ok {
+		return lspDef{}, false
+	}
+	if err := writeLuarc(root, h.TypesDir()); err != nil {
+		h.Log.Warn("luarc not written", "origin", "lsp", "dir", root, "error", err)
+	}
+	def.Name, def.Root = "luals ("+label+")", root
+	return def, true
+}
+
+// lualsDef is the server zemiLua roots at a zemi tree: the user's "luals",
+// else the builtin one.
+func (h *Host) lualsDef() (lspDef, bool) {
 	h.lsp.mu.Lock()
 	i := slices.IndexFunc(h.lsp.user, func(d lspDef) bool { return d.Name == "luals" })
 	def, off := lspDef{}, h.lsp.disabled["luals"]
@@ -205,14 +229,7 @@ func (h *Host) zemiLua(path string) (lspDef, bool) {
 			return lspDef{}, false
 		}
 	}
-	if off || !slices.Contains(def.Exts, ".lua") {
-		return lspDef{}, false
-	}
-	if err := writeLuarc(root, h.TypesDir()); err != nil {
-		h.Log.Warn("luarc not written", "origin", "lsp", "dir", root, "error", err)
-	}
-	def.Name, def.Root = "luals ("+label+")", root
-	return def, true
+	return def, !off && slices.Contains(def.Exts, ".lua")
 }
 
 // lspDefs lists the servers this project can use: user definitions first,
@@ -222,6 +239,23 @@ func (h *Host) zemiLua(path string) (lspDef, bool) {
 // the root alone. An untrusted project gets none: a user-added server runs
 // the repository's code as much as a builtin does.
 func (h *Host) lspDefs(path string) []lspDef {
+	root := h.Dirs.RepoRoot()
+	dirs := []string{root}
+	if abs, err := filepath.Abs(path); err == nil && path != "" {
+		for dir := filepath.Dir(abs); dir != root && strings.HasPrefix(dir, root+string(filepath.Separator)); dir = filepath.Dir(dir) {
+			dirs = append(dirs, dir)
+		}
+	}
+	return slices.DeleteFunc(h.lspKnown(), func(d lspDef) bool {
+		return len(d.Markers) > 0 && !slices.ContainsFunc(dirs, func(dir string) bool {
+			return slices.ContainsFunc(d.Markers, func(m string) bool { _, err := os.Stat(filepath.Join(dir, m)); return err == nil })
+		})
+	})
+}
+
+// lspKnown is lspDefs before the marker check: every server a file of
+// this project could start.
+func (h *Host) lspKnown() []lspDef {
 	if !h.ProjectTrusted() {
 		return nil
 	}
@@ -230,13 +264,6 @@ func (h *Host) lspDefs(path string) []lspDef {
 	disabled := maps.Clone(h.lsp.disabled)
 	h.lsp.mu.Unlock()
 	if h.Settings.Bool("lsp.auto") {
-		root := h.Dirs.RepoRoot()
-		dirs := []string{root}
-		if abs, err := filepath.Abs(path); err == nil && path != "" {
-			for dir := filepath.Dir(abs); dir != root && strings.HasPrefix(dir, root+string(filepath.Separator)); dir = filepath.Dir(dir) {
-				dirs = append(dirs, dir)
-			}
-		}
 		for _, d := range builtinLSP {
 			if _, err := exec.LookPath(d.Command); err != nil {
 				continue
@@ -249,20 +276,47 @@ func (h *Host) lspDefs(path string) []lspDef {
 			}
 			if d.Name == "typescript" {
 				// without tsserver.path the server prefers node_modules/typescript
-				ts := globalTSServer(root)
+				ts := globalTSServer(h.Dirs.RepoRoot())
 				if ts == "" {
 					continue
 				}
 				d.Init = map[string]any{"tsserver": map[string]any{"path": ts}}
 			}
-			if slices.ContainsFunc(dirs, func(dir string) bool {
-				return slices.ContainsFunc(d.Markers, func(m string) bool { _, err := os.Stat(filepath.Join(dir, m)); return err == nil })
-			}) {
-				defs = append(defs, d)
-			}
+			defs = append(defs, d)
 		}
 	}
 	return slices.DeleteFunc(defs, func(d lspDef) bool { return disabled[d.Name] })
+}
+
+// lspStopChanged stops each running server whose definition a reload
+// changed or dropped, so a reload leaves the others warm: a cold server's
+// first check finds nothing, and every write to config or a plugin reloads.
+func (h *Host) lspStopChanged() {
+	known := h.lspKnown()
+	h.lsp.mu.Lock()
+	procs := maps.Clone(h.lsp.running)
+	h.lsp.mu.Unlock()
+	for name, p := range procs {
+		want, ok := lspDef{}, false
+		if p.def.Root != "" { // zemiLua's
+			want, ok = h.lualsDef()
+			want.Name, want.Root = p.def.Name, p.def.Root
+			if _, err := os.Stat(p.def.Root); err != nil {
+				ok = false // a deleted plugin
+			}
+		} else if i := slices.IndexFunc(known, func(d lspDef) bool { return d.Name == name }); i >= 0 {
+			want, ok = known[i], true
+		}
+		if ok && reflect.DeepEqual(want, p.def) {
+			continue
+		}
+		h.lsp.mu.Lock()
+		if h.lsp.running[name] == p {
+			delete(h.lsp.running, name)
+		}
+		h.lsp.mu.Unlock()
+		p.close()
+	}
 }
 
 // globalTSServer is the tsserver.js of the typescript whose tsserver is on
@@ -432,6 +486,11 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 			p.client, p.err = lsp.Start(sctx, cfg)
 			if p.err != nil {
 				h.Log.Warn("server failed to start", "origin", "lsp", "server", def.Name, "error", p.err)
+			} else if isLuals(def) {
+				// It never checks a file opened while it loads the workspace, and
+				// answers a symbol request only once loaded; the file needs not exist.
+				probe := lsp.DocumentURI(filepath.Join(cfg.Root, "zemi-ready.lua"))
+				_ = p.client.Call(sctx, "textDocument/documentSymbol", map[string]any{"textDocument": map[string]any{"uri": probe}}, nil)
 			}
 		})
 	}
@@ -490,6 +549,8 @@ func (h *Host) lspAnswered(ctx context.Context, p *lspProc, fresh bool) {
 	p.close()
 }
 
+func isLuals(def lspDef) bool { return filepath.Base(def.Command) == "lua-language-server" }
+
 // languageID is the LSP language id for a file: the known name, else the
 // extension without its dot, so a filetype from zemi.lsp.add still sends
 // something rather than an empty string.
@@ -535,7 +596,7 @@ func (h *Host) lspCheck(path string, afterWrite bool) (out string, ok bool) {
 	}
 	h.EmitAsync("lsp.request", map[string]any{"server": def.Name, "path": abs, "kind": "diagnostics"})
 	diags, err := p.client.Touch(ctx, abs, languageID(abs))
-	if errors.Is(err, lsp.ErrNoFresh) && filepath.Base(def.Command) == "lua-language-server" && p.client.Published(abs) {
+	if errors.Is(err, lsp.ErrNoFresh) && isLuals(def) && p.client.Published(abs) {
 		// lua-language-server publishes only a changed result, so its silence repeats the last one.
 		// NOTE: a check slower than Touch's floor reads the same, reporting the
 		// errors of the text before; a request per check (pull diagnostics) would not.

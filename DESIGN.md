@@ -2216,7 +2216,9 @@ provenance string.
   also reads zemi's types and that `.luarc.json` (a config tree's `.git`
   stays hidden). The `.luarc.json` raises the diagnostics that are
   near-certain bugs (an unknown global, a missing field, a wrong type or
-  argument count) to errors, which is what a write reports. A file outside
+  argument count) to errors, which is what a write reports; the reload a
+  write to the tree causes stops only a server whose definition changed,
+  so the next write finds it warm. A file outside
   the repository goes to no project server. The backend (seatbelt through
   `/usr/bin/sandbox-exec` on macOS; on Linux the `zemi __sandbox` helper
   with Landlock plus user, network and mount namespaces where the kernel
