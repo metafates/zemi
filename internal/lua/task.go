@@ -93,10 +93,10 @@ func (r *Runtime) next(ctx context.Context, tr *taskRun) ([]any, error) {
 	tr.wait = nil
 	if err := ctx.Err(); err != nil {
 		// only the actor may touch the thread the task leaves suspended
-		tr.gen.enqueue(newRequest(ClassIO, func(*glua.LState) ([]any, error) {
+		tr.gen.enqueue(newRequest(context.Background(), ClassIO, func(*glua.LState) ([]any, error) {
 			tr.gen.endTask(tr.th)
 			return nil, nil
-		}, context.Background(), 0, 0))
+		}, 0, 0))
 		return nil, err
 	}
 	if tr.gen.ctx.Err() != nil {

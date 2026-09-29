@@ -17,7 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
-	zemiRuntime "github.com/metafates/zemi/runtime"
+	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
 // TestCLI runs command lines through execute with a launch that records
@@ -347,7 +347,7 @@ func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 		t.Fatal(err)
 	}
 	log := logging.New(t.TempDir())
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiRuntime.FS})
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
 	dirs := config.Dirs{ProjectDir: project, StateHome: t.TempDir()}
 	h := hostapi.NewHost(r, log, config.NewStore(), dirs)
 	return &trustGate{h: h, dirs: dirs}, h, r

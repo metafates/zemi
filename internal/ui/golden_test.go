@@ -15,7 +15,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
-	zemiRuntime "github.com/metafates/zemi/runtime"
+	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
 // tempConfig is a config dir under a fresh, resolved $HOME, so the splash
@@ -78,7 +78,7 @@ zemi.ui.widget.add({
 		{Prefix: filepath.Join(data, "plugins"), Origin: lua.OriginPlugin},
 		{Prefix: filepath.Join(projectResolved, ".agents"), Origin: lua.OriginProject},
 	}
-	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiRuntime.FS})
+	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiruntime.FS})
 	host := hostapi.NewHost(rt, log, settings, dirs)
 	app := NewApp(host, log)
 	host.SetUIHooks(app)

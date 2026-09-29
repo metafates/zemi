@@ -56,7 +56,7 @@ func echoAgents(h *Host) *atomic.Int32 {
 }
 
 // runFlow runs src in the foreground and returns its value.
-func runFlow(h *Host, ctx context.Context, src string, args any) (string, error) {
+func runFlow(ctx context.Context, h *Host, src string, args any) (string, error) {
 	f, err := h.startFlow(ctx, flowSpec{src: src, args: args})
 	if err != nil {
 		return "", err
@@ -80,7 +80,7 @@ func TestWorkflowCancelBoundedDrain(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		_, err := runFlow(h, ctx, `zemi.workflow.agent("x")`, nil)
+		_, err := runFlow(ctx, h, `zemi.workflow.agent("x")`, nil)
 		done <- err
 	}()
 	// cancelled only once the agent runs: a cancel that beats it tests nothing
@@ -173,7 +173,7 @@ func TestWorkflowRun(t *testing.T) {
 		{name: "no file access", script: `return dofile("/etc/passwd")`, wantErr: true, want: "non-function"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			res, err := runFlow(h, context.Background(), "local wf = zemi.workflow\n"+c.script, c.args)
+			res, err := runFlow(context.Background(), h, "local wf = zemi.workflow\n"+c.script, c.args)
 			if c.wantErr {
 				if err == nil || !strings.Contains(err.Error(), c.want) {
 					t.Fatalf("err = %v, want %q", err, c.want)
@@ -581,7 +581,7 @@ func TestWorkflowSchema(t *testing.T) {
 		{"a required field it does not declare raises", `return wf.agent("x", {schema = {type = "object", properties = {a = {}}, required = {"b"}}})`, "schema must be"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := runFlow(h, context.Background(), "local wf = zemi.workflow\n"+c.script, nil)
+			got, err := runFlow(context.Background(), h, "local wf = zemi.workflow\n"+c.script, nil)
 			if err != nil {
 				got = err.Error()
 			}
@@ -731,7 +731,7 @@ func TestWorkflowCancel(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := runFlow(h, ctx, `zemi.workflow.agent("x") while true do end`, nil)
+		_, err := runFlow(ctx, h, `zemi.workflow.agent("x") while true do end`, nil)
 		done <- err
 	}()
 	select {
@@ -845,7 +845,7 @@ func TestReviewTargetsACommit(t *testing.T) {
 		{"main", "git diff --merge-base main"},
 		{"", "git diff HEAD"},
 	} {
-		res, err := runFlow(h, context.Background(), src, c.args)
+		res, err := runFlow(context.Background(), h, src, c.args)
 		if err != nil {
 			t.Fatalf("%q: %v", c.args, err)
 		}

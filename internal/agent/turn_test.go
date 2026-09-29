@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
-	anthropic "charm.land/fantasy/providers/anthropic"
-	openai "charm.land/fantasy/providers/openai"
+	"charm.land/fantasy/providers/anthropic"
+	"charm.land/fantasy/providers/openai"
 )
 
 // mockModel replays scripted stream parts; steps, when set, scripts one

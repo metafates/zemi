@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
-	anthropic "charm.land/fantasy/providers/anthropic"
+	"charm.land/fantasy/providers/anthropic"
 
 	"github.com/metafates/zemi/internal/tools"
 )

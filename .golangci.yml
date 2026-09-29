@@ -23,6 +23,7 @@ linters:
     - nolintlint
     - perfsprint
     - errname
+    - revive
   settings:
     govet:
       enable-all: true
@@ -60,6 +61,12 @@ linters:
       checks: ["all", "-QF1001", "-QF1008"]
     usestdlibvars:
       time-layout: true
+    revive:
+      rules:
+        - name: redundant-import-alias
+        - name: import-alias-naming
+        - name: context-as-argument
+          arguments: [{ allowTypesBefore: "*testing.T" }]
     nolintlint:
       require-explanation: true
       require-specific: true

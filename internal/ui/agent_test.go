@@ -24,7 +24,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
-	zemiRuntime "github.com/metafates/zemi/runtime"
+	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
 func appendReply(h *hostapi.Host, text string, stat hostapi.TurnStat) {
@@ -56,7 +56,7 @@ func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 		{Prefix: cfg, Origin: lua.OriginUser},
 		{Prefix: filepath.Join(data, "plugins"), Origin: lua.OriginPlugin},
 	}
-	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiRuntime.FS})
+	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiruntime.FS})
 	host := hostapi.NewHost(rt, log, settings, config.Dirs{ConfigHome: cfg, DataHome: data, StateHome: state})
 	app := NewApp(host, log)
 	host.SetUIHooks(app)

@@ -335,7 +335,7 @@ func (g *Generation) do(ctx context.Context, class Class, ceiling, grace time.Du
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	r := newRequest(class, fn, ctx, ceiling, grace)
+	r := newRequest(ctx, class, fn, ceiling, grace)
 	g.enqueue(r)
 	select {
 	case res := <-r.reply:

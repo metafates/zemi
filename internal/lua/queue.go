@@ -113,7 +113,7 @@ type result struct {
 	err  error
 }
 
-func newRequest(class Class, fn Fn, ctx context.Context, ceiling, grace time.Duration) *request {
+func newRequest(ctx context.Context, class Class, fn Fn, ceiling, grace time.Duration) *request {
 	return &request{
 		class:   class,
 		fn:      fn,
