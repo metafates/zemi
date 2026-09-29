@@ -974,7 +974,8 @@ user's tools and permissions. The reflector is not a subagent (§10.3).
 `/agents new` has the main agent write a definition: it sends the typed
 line with a short prompt pointing at the New agent steps in the zemi skill.
 Each ready prompt (`/agents new`, `/plugins new` and `modify`, `/errors ask`)
-names its zemi skill file by path (`zemiSkillDir`), which the read tool opens
+names its zemi skill files by path (`zemiSkillDir`), SKILL.md, whose rules
+every change follows, then the task's own, which the read tool opens
 with no ask, so it works with the skill switched off or no skill tool.
 A running subagent takes messages like the main agent's steering queue
 (§4): the main agent calls `agent` with `send_to` set to a background

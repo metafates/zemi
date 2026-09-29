@@ -45,7 +45,7 @@ func newTestHostDB(t *testing.T) (*Host, *lua.Runtime) {
 
 // TestCommandSendsTypedLine: a builtin command that sends a ready prompt
 // shows the line the user typed; the prompt rides behind the marker and
-// names the zemi skill file it follows by a path the read tool opens, which
+// names the zemi skill files it follows by a path the read tool opens, which
 // holds with the skill switched off.
 func TestCommandSendsTypedLine(t *testing.T) {
 	h, _ := newTestHostDB(t)
@@ -85,8 +85,10 @@ func TestCommandSendsTypedLine(t *testing.T) {
 		if c.file == "" {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(h.zemiSkillDir(), c.file)); err != nil || !strings.Contains(tail, c.file+" in "+h.zemiSkillDir()) {
-			t.Errorf("%s: the tail does not name %s by its path (%v): %q", c.typed, c.file, err, tail)
+		for _, f := range []string{"SKILL.md", c.file} {
+			if _, err := os.Stat(filepath.Join(h.zemiSkillDir(), f)); err != nil || !strings.Contains(tail, f) || !strings.Contains(tail, " in "+h.zemiSkillDir()) {
+				t.Errorf("%s: the tail does not name %s by its path (%v): %q", c.typed, f, err, tail)
+			}
 		}
 	}
 }

@@ -21,8 +21,8 @@ import (
 // newPluginPrompt rides behind /plugins new and modifyPluginPrompt behind
 // /plugins modify; the procedure lives in the zemi skill.
 const (
-	newPluginPrompt    = "I want a new zemi plugin that does what the command above says; ask me when it says nothing. Follow the Plugin steps in plugins.md in %s, the zemi skill's directory: tests, not this session, are the check."
-	modifyPluginPrompt = "Change my zemi plugin %s in %s as the command above says; ask me when it says nothing. Follow the Plugin steps in plugins.md in %s, the zemi skill's directory: tests, not this session, are the check."
+	newPluginPrompt    = "I want a new zemi plugin that does what the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the Plugin steps in plugins.md there: tests, not this session, are the check."
+	modifyPluginPrompt = "Change my zemi plugin %s in %s as the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the Plugin steps in plugins.md there: tests, not this session, are the check."
 )
 
 // pluginsCommands is /plugins: the zemi plugins verbs plus new, modify,

@@ -926,7 +926,7 @@ func fmtDuration(d time.Duration) string {
 
 // newAgentPrompt rides behind /agents new and takes zemiSkillDir, where the
 // procedure lives.
-const newAgentPrompt = "I want a new zemi subagent that does what the command above says; ask me when it says nothing. Follow the New agent steps in agents.md in %s, the zemi skill's directory."
+const newAgentPrompt = "I want a new zemi subagent that does what the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the New agent steps in agents.md there."
 
 // agentsCommands is /agents.
 func (h *Host) agentsCommands() []*Command {

@@ -129,7 +129,7 @@ func (h *Host) HasUnseenErrors() bool {
 // errorAskPrompt takes an error's time and source, zemiSkillDir and the
 // error's text; it rides behind the typed line, which names the error since
 // its index dies with the process.
-const errorAskPrompt = "zemi recorded this error at %s from %s. Read debug.md in %s, the zemi skill's directory, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s"
+const errorAskPrompt = "zemi recorded this error at %s from %s. Read SKILL.md, then debug.md, in %s, the zemi skill's directory, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s"
 
 // OpenErrors runs /errors: it lists the recent errors newest first and
 // clears the badge; "<n>" selects one, "ask <n>" hands it to the agent to
