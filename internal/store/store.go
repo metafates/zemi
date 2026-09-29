@@ -99,7 +99,8 @@ var ErrInUse = errors.New("store: open in another process")
 // files, and returns every session id in it, subagent runs too. Leaving WAL
 // needs every other connection gone, so another zemi's idle one fails it at
 // once (ErrInUse); the exclusive lock holds until release, which runs after
-// the files are gone. A missing file is no ids and a no-op release.
+// the files are gone. A missing file, or one SQLite cannot read (garbage, no
+// sessions table), is no ids: its sessions' pads age out on their own.
 // NOTE: a zemi started there while the files go waits on the lock, then
 // writes to the unlinked file and loses it; two windows racing on purpose.
 func ClaimForDelete(path string) (sessions []string, release func(), err error) {
@@ -112,23 +113,18 @@ func ClaimForDelete(path string) (sessions []string, release func(), err error) 
 		return nil, nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
 	d.SetMaxOpenConns(1)
-	fail := func(err error) ([]string, func(), error) {
-		d.Close()
-		if e, ok := errors.AsType[*sqlite.Error](err); ok && e.Code()&0xff == sqlite3.SQLITE_BUSY {
-			return nil, nil, ErrInUse
-		}
-		return nil, nil, fmt.Errorf("store: claim %s: %w", path, err)
-	}
 	// the one connection keeps the lock between these, since it is the pool's only one
-	if _, err := d.Exec(`PRAGMA journal_mode = DELETE`); err != nil {
-		return fail(err)
+	_, err = d.Exec(`PRAGMA journal_mode = DELETE`)
+	if err == nil {
+		_, err = d.Exec(`BEGIN EXCLUSIVE`)
 	}
-	if _, err := d.Exec(`BEGIN EXCLUSIVE`); err != nil {
-		return fail(err)
+	if err == nil {
+		rows, qerr := d.Query(`SELECT id FROM sessions`)
+		sessions, err = collect(rows, qerr, func(r scanner) (id string, err error) { return id, r.Scan(&id) })
 	}
-	rows, err := d.Query(`SELECT id FROM sessions`)
-	if sessions, err = collect(rows, err, func(r scanner) (id string, err error) { return id, r.Scan(&id) }); err != nil {
-		return fail(err)
+	if e, ok := errors.AsType[*sqlite.Error](err); ok && e.Code()&0xff == sqlite3.SQLITE_BUSY {
+		d.Close()
+		return nil, nil, ErrInUse
 	}
 	return sessions, func() {
 		_, _ = d.Exec(`ROLLBACK`)

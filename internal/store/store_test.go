@@ -555,11 +555,12 @@ func TestProjectRoot(t *testing.T) {
 
 // TestClaimForDelete: a store nobody else holds is claimed with every
 // session id and out of WAL, one another handle holds open is ErrInUse and
-// that handle keeps working, and a missing one claims nothing.
+// that handle keeps working, and a missing or unreadable one claims nothing.
 func TestClaimForDelete(t *testing.T) {
 	for _, c := range []struct {
 		name    string
 		missing bool
+		garbage bool
 		held    bool
 		want    []string
 		err     error
@@ -567,11 +568,16 @@ func TestClaimForDelete(t *testing.T) {
 		{name: "a free store", want: []string{"a", "b", "child"}},
 		{name: "a store open elsewhere", held: true, err: ErrInUse},
 		{name: "a missing store", missing: true},
+		{name: "a store that is not a database", garbage: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "zemi.db")
 			var db *DB
-			if !c.missing {
+			if c.garbage {
+				if err := os.WriteFile(path, []byte(strings.Repeat("not a database ", 64)), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			} else if !c.missing {
 				var err error
 				db, err = Open(path)
 				if err != nil {
