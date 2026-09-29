@@ -172,13 +172,13 @@ func (f *follower) call(evs []event, t hostapi.StreamTool) []event {
 	return append(evs, ev)
 }
 
-// failureLine is why a failed call failed: a bash result ends in its exit
+// failureLine is why a failed call failed: a shell result ends in its exit
 // status, signal or "stopped:" line under the command's output, so the last
 // such line (the output may hold one too), else the last line; other tools
 // lead with it.
 func failureLine(tool, output string) string {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if tool != tools.ToolBash {
+	if tool != tools.ToolShell {
 		return lines[0]
 	}
 	for _, l := range slices.Backward(lines) {

@@ -2,7 +2,7 @@
 // turn, its content is checkpointed against that turn's user message.
 // Rewinding to a message restores every file changed since, drops the
 // message and the rest of the conversation with what it learned and its todo
-// list, and hands its text back to the composer. A bash call's changes are
+// list, and hands its text back to the composer. A shell call's changes are
 // rewound only for repository files git does not ignore and the sandbox does
 // not hide, at most snapCheckpoints of them per call.
 
@@ -57,7 +57,7 @@ func (h *Host) turnMsgID() string {
 }
 
 // checkpoint records a file as it was before the running turn changed it:
-// the file tools read it from disk, a bash call's changes come from the
+// the file tools read it from disk, a shell call's changes come from the
 // tree treeDiff compared against. First write per turn wins in the store.
 func (h *Host) checkpoint(cp store.Checkpoint) {
 	if h.DB == nil {

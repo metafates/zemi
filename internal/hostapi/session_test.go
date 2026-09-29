@@ -212,7 +212,7 @@ func TestResumeKeepsToolDiffs(t *testing.T) {
 	for _, turn := range []struct {
 		tool string
 		diff string
-	}{{"edit", diff}, {"bash", ""}} {
+	}{{"edit", diff}, {"shell", ""}} {
 		if err := h.persistMessage(agent.UserMessage("run " + turn.tool)); err != nil {
 			t.Fatal(err)
 		}

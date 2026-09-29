@@ -255,7 +255,7 @@ func exportMarkdown(b *strings.Builder, tr []ChatMessage, level int, full bool) 
 			}
 			fmt.Fprintf(b, "\n**%s** %s%s\n", sanitize.String(m.Tool), head, callEnd(m.Status))
 			lang := ""
-			if m.Tool == tools.ToolBash {
+			if m.Tool == tools.ToolShell {
 				lang = "sh"
 			}
 			for _, f := range [][2]string{{lang, text}, {"diff", m.Diff}, {"", m.Output}} {

@@ -1126,7 +1126,7 @@ func (h *Host) markNotLocal(sid, who string) {
 // read text from outside the machine (fetch, web_search, a Lua or MCP tool,
 // any tool zemi does not ship, a plugin's text), where injected text would
 // come from.
-// NOTE: a bash command the user approved can fetch too and is not seen here.
+// NOTE: a shell command the user approved can fetch too and is not seen here.
 func (h *Host) sessionLocalOnly(sid string) bool {
 	if h.DB == nil {
 		return false

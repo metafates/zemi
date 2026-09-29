@@ -312,7 +312,7 @@ Directories (XDG):
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
   projects/<hash>/root    the trust root the dir belongs to; its mtime is the last use there
   projects/<hash>/skills/<name>/SKILL.md  recipes: the project's private skills (§10.5)
-  projects/<hash>/permissions  bash commands always allowed in the project (§6.1), read only when trusted
+  projects/<hash>/permissions  shell commands always allowed in the project (§6.1), read only when trusted
   trust.json              trust decisions by repository root
   logs/
 ~/.agents/skills/<name>/  user skills other agents read too, body only (§10.5)
@@ -719,9 +719,13 @@ user's pick), and a secret never goes in one: /config shows it.
 Permission rules are data with one API and an optional principal:
 
 ```lua
-zemi.permission.rule.add{ subject = "tool.bash", pattern = "make *",
+zemi.permission.rule.add{ subject = "tool.shell", pattern = "make *",
                           decision = zemi.permission.decision.DENY, match = "make check" }
 ```
+
+A rule on a subject no request carries raises when added, since it would
+never match: a `tool.*` rule names `tool.shell`, `tool.lua`, `tool.workflow`
+or a Lua tool added before it, and the error lists them.
 
 A Lua rule carries no principal and matches every principal, unless user
 config scopes it to one plugin with `principal = "plugin:<name>"` (§9),
@@ -738,7 +742,7 @@ Lua can forge one. Only the user's own config and `always` answers
 write allow rules (the widening direction; plugin and project rules are
 deny/ask only, so their globs can only tighten).
 
-A project's `permissions` file (§5, in its state dir) is a list of bash
+A project's `permissions` file (§5, in its state dir) is a list of shell
 commands zemi always allows in that project, read as a boot step only
 when the project is trusted. Each line is allowed as a whole with the
 overlay's rule shape (§8): no rule is written from a wrapper or deleting
@@ -761,7 +765,7 @@ zemi.command.add("Todo", function(args)
 	end, { desc = "show todos", nargs = "?", complete = function(prefix) return {} end })
 
 zemi.event.on("tool.pre", function(ev)
-		if ev.tool == "bash" and ev.input.command:match("^rm%s") then
+		if ev.tool == "shell" and ev.input.command:match("^rm%s") then
 			return { decision = "deny", reason = "no rm from the model" }
 		end
 	end, { id = "safety.no-rm" })
@@ -869,7 +873,7 @@ otherwise return a decision table:
   a rewrite never loosens an existing denial), so a rewrite can never
   ride a pre-existing allow glob. An `always` answer (key `a`, §8)
   stores session-scope allow rules scoped to the `model` principal, and
-  they are prefix globs, not exact values: for `tool.bash` one rule per
+  they are prefix globs, not exact values: for `tool.shell` one rule per
   normalized segment, each the segment's program (its program and
   subcommand for `git`, `go`, `cargo` and the like, with the options
   before the subcommand kept) plus that prefix with ` *`, while a deleting program (`rm`, `mv`, `find`, `tar`, ...) or a
@@ -917,7 +921,7 @@ handler runs no Lua.
 zemi.agent.profile.add("coder", {
 	model = "anthropic/claude-sonnet-4-5",
 	system = [[You are zemi, a coding agent...]],
-	tools = { "read", "edit", "bash", "glob", "grep" },
+	tools = { "read", "edit", "shell", "glob", "grep" },
 	context = { files = { "AGENTS.md", "CONTRIBUTING.md" } },
 	temperature = 0.2,
 })
@@ -1148,7 +1152,7 @@ zemi.tool.add({
 	end,
 })
 
-zemi.tool.override("bash", { pre = function(input)          -- wrap builtin;
+zemi.tool.override("shell", { pre = function(input)          -- wrap builtin;
 		if input.command:match("^rm%s") then                    -- nil = pass through
 			return { decision = "deny", reason = "no rm here" }
 		end
@@ -1158,7 +1162,7 @@ zemi.tool.list()          -- introspection for UI and reflector
 ```
 
 Built-ins ship in Go, modeled on crush's set (crush also ships `ls` and
-`download`, omitted; `skill` is zemi's own): `bash`, `read` (crush
+`download`, omitted; `skill` is zemi's own): `shell` (crush names it `bash`), `read` (crush
 names it `view`; it returns images as image content, lists a directory
 one level deep in place of crush's `ls`, and carries the
 nearest instruction file not already in the prompt, once per session),
@@ -1346,7 +1350,7 @@ UI extensibility contract:
   the `Diff*` groups, the renderer the permission prompt draws in its own
   chrome. `zemi.ui.highlight(text, lang, width?)` lexes code with chroma
   into group names from the same table as the code blocks' chroma style
-  (how the chat draws a bash command), plain rows when no lexer matches.
+  (how the chat draws a shell command), plain rows when no lexer matches.
   Glamour's styles come from the active theme's groups (`Normal`,
   `Markdown*`, `Rule`, `Dim`, and for code `Accent` keywords, `Literal` strings
   and numbers, `DiffAdd`/`DiffDel` a diff fence's lines), the theme's
@@ -1848,7 +1852,7 @@ provenance string.
   float; pulling past an edge selects to it, and a drag outside a modal
   selects nothing.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
-  overlay (diff preview for edits, command preview for bash, command
+  overlay (diff preview for edits, command preview for shell, command
   and env preview for job asks), and resume
   the pipeline. Concurrent ask-needing calls wait in the host: one overlay
   at a time, in arrival order, each waiter judged again (rules, mode,
@@ -1883,7 +1887,7 @@ provenance string.
   `Yes` (`y`, or `o`), `Yes, this session` (`a`, only
   when the request has an always choice; a command's scope ends in where the
   rule runs it, `outside the sandbox` or `with the network`; plus a wider read choice `r` and,
-  for a trusted project's safe bash command, `Yes, this project`
+  for a trusted project's safe shell command, `Yes, this project`
   (`p`)), `No` (`n` or `esc`), and `No, and tell zemi`
   (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
   down move, enter picks the highlighted one. Every Go-owned prompt
@@ -2098,7 +2102,7 @@ provenance string.
   targets gate as `fs.write`, and only the inert character devices
   `/dev/null` and `/dev/zero` are exempt from both (`/dev/tty` and
   every other device file gates like any outside-jail path). Every
-  bash call runs in a fresh shell process (`proc.Shell -c`: dash where
+  shell call runs in a fresh shell process (`proc.Shell -c`: dash where
   it is on `PATH`, looked up once per process, else sh): no fd, cwd, or
   env state persists between calls. Defaults: `fs.read` inside the jail is allow,
   `fs.write` is ask. Config ships conservative defaults; prompts during a
@@ -2165,15 +2169,15 @@ provenance string.
   `not_match` exclusion; `Request.Explicit`) is the user's under `auto`,
   so a project or plugin rule can tighten it. Two ship: `auto` and `yolo` (every surviving ask allows, an explicit one too). In a read-only agent
   (the shipped `planner` profile, `Profile.ReadOnly`)
-  `fs.write` is denied even under an allow rule, bash and `mcp.*` allows flip to `ask` unless
-  the bash command is a `perm.Normalized.ReadCommand`, and commands run sandboxed with the project
+  `fs.write` is denied even under an allow rule, shell and `mcp.*` allows flip to `ask` unless
+  the shell command is a `perm.Normalized.ReadCommand`, and commands run sandboxed with the project
   unwritable, which is what keeps a planning session read-only. `auto` settles
   locally first, without a model: reads and writes inside the jail that
   are not secret-shaped (writes under any `.git`, to the Lua in any `.agents`
   (`init.lua`, `lua/`), to a `.gitattributes` or `.gitmodules`, the git dir a project `.git` file
   names, or zemi's own config, data and state dirs excepted: those ask
   whatever rule allows them, a mode's own included), workflow scripts (the
-  script is sandboxed and each agent it starts is gated), and every bash
+  script is sandboxed and each agent it starts is gated), and every shell
   command, unparsed, since it runs sandboxed (below). Two kinds still ask
   (`Host.unsettled`): the short `perm.Normalized.Destructive` list (forced or
   recursive `rm`, or one with a glob operand, `git clean`, `find -delete`,
@@ -2244,7 +2248,7 @@ provenance string.
   current one, and an unknown value reads as `auto`, the default. A mode's `decide` that answers neither `allow` nor
   `deny` sends the ask to the user whatever its base settles, so a mode
   whose `decide` answers nothing is how a user gets every ask.
-- Sandbox (`internal/sandbox`, hostapi `sandbox.go`): a `tool.bash`
+- Sandbox (`internal/sandbox`, hostapi `sandbox.go`): a `tool.shell`
   or `job_start` call whose verdict a mode gave
   (`DecidedBy` `mode:<name>`, any base but `yolo`) or a read-only agent
   made runs confined, and so does one a session rule written from a
@@ -2333,7 +2337,7 @@ provenance string.
   binding a unix socket. zemi's own temp files (the ctrl+g draft, a pasted image)
   live in `<state>/tmp`. A
   wrap that fails is a tool error, never an unconfined run.
-  While a backend is live, bash and `job_start` take two escapes,
+  While a backend is live, the shell tool and `job_start` take two escapes,
   fixed per process so the prompt cache holds. `network: true`
   (`Request.Network`) keeps the sandbox and adds IP sockets, no unix one (`Policy.Network`),
   which is all a dependency fetch or a `gh` call needs, and it stays confined
@@ -2353,8 +2357,8 @@ provenance string.
   (the roots by name, `Policy.WriteNames`); the path words come from the
   output's denial lines (`sandbox.DeniedPaths`), and only the escapes the
   run's schema carries are offered;
-  a timed-out bash run adopted as a job keeps it. The limits themselves are
-  the pinned environment's Sandbox block for a run with bash
+  a timed-out shell run adopted as a job keeps it. The limits themselves are
+  the pinned environment's Sandbox block for a run with the shell tool
   (`Host.sandboxPrompt`), each clause read off `sandboxPolicy` and the
   backend, so the text cannot drift from what the kernel enforces; it skips
   the project walk, which must not delay the first request, so on Linux a
@@ -2433,9 +2437,9 @@ provenance string.
   environment minus the matching names the user did not keep
   (`permissions.env_keep`), plus only the extras the caller passed (a
   secret-shaped or environment-affecting extra name is refused
-  outright). The bash tool, `job_*`, Lua jobs, and the MCP and LSP
+  outright). The shell tool, `job_*`, Lua jobs, and the MCP and LSP
   server processes all start from it.
-- There is no turn-scoped resource budget: per-turn caps on bash
+- There is no turn-scoped resource budget: per-turn caps on shell
   commands, files touched, tokens spent, or Lua host-API calls are not
   implemented. What bounds a turn is the step limit (200 steps) and the
   doom-loop stop: a block of up to three tool steps (same calls, same
@@ -2806,7 +2810,7 @@ internal/hostapi/           zemi.* namespaces and the host services behind them:
                             lsp wiring, rewind, scratchpads, health, export,
                             zemi.test
 internal/agent/             the fantasy runner: one turn, steps, stops, retries
-internal/tools/             builtin tools (fs, bash, jobs, net, misc) and the tool
+internal/tools/             builtin tools (fs, shell, jobs, net, misc) and the tool
                             pipeline (validate, tool.pre, permission gate, run)
 internal/perm/              rules engine, bash normalizer, ReadCommand, env gates
 internal/sandbox/           OS confinement for settled commands: seatbelt, Landlock +

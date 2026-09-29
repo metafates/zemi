@@ -385,7 +385,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 					return string(s)
 				}
 				r := perm.Rule{Subject: field(1, "subject"), Pattern: field(2, "pattern"), Decision: perm.Decision(field(3, "decision"))}
-				if err := ruleShape(r); err != nil {
+				if err := h.ruleShape(r); err != nil {
 					bad = err.Error()
 					return
 				}
@@ -479,7 +479,7 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		// Plugin origin bounds it: it adds no allow rule, and gated calls need a
 		// rule, though a user one with no principal covers it too.
 		return (h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) || h.madePlugin(req.Arg)) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
-	case perm.SubjectBash:
+	case perm.SubjectShell:
 		return h.unsettled(req) == ""
 	case "tool.workflow":
 		return true // the script is sandboxed and each agent it starts is gated
@@ -522,7 +522,7 @@ func (h *Host) protectedWhy(p string) string {
 	return ""
 }
 
-// unsettled says why auto mode leaves a bash command to the user, or ""
+// unsettled says why auto mode leaves a shell command to the user, or ""
 // when it runs. In a trusted project with a sandbox every command runs,
 // confined (Pipeline.SandboxFor), but the few that delete in bulk outside
 // the request's scratchpad; a

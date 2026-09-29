@@ -7,7 +7,7 @@ A subagent is a model run the main agent starts for a self-contained task. It ge
 ```markdown
 ---
 description: Reviews the uncommitted change for bugs, missing tests and broken conventions; use after finishing a change, before calling it done
-tools: read, grep, glob, bash, lsp
+tools: read, grep, glob, shell, lsp
 read_only: true
 ---
 You review the uncommitted change in this repository.

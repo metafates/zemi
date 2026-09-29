@@ -29,7 +29,7 @@ type StreamHooks interface {
 	// ToolInputDelta is a piece of the pending call's JSON arguments.
 	ToolInputDelta(id, delta string)
 	ToolCallStart(id, name, input string)
-	// ToolCallRunning is when the call starts to run: a serial call (bash)
+	// ToolCallRunning is when the call starts to run: a serial call (shell)
 	// holds every later call of its step until it returns.
 	ToolCallRunning(id string)
 	ToolCallEnd(id, name string, ok bool, output, diff string)

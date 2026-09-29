@@ -40,7 +40,7 @@ python x.py
 		}
 	}
 	step()
-	if h.Perm.CheckCommandFor(perm.SubjectBash, perm.Normalize("make all"), "").Decision == perm.Allow {
+	if h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize("make all"), "").Decision == perm.Allow {
 		t.Error("an untrusted project must not load its permissions file")
 	}
 	h.SetProjectTrusted(true)
@@ -56,7 +56,7 @@ python x.py
 		{"curl https://example.com", false},
 	}
 	for _, c := range want {
-		if got := h.Perm.CheckCommandFor(perm.SubjectBash, perm.Normalize(c.cmd), "").Decision == perm.Allow; got != c.allow {
+		if got := h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize(c.cmd), "").Decision == perm.Allow; got != c.allow {
 			t.Errorf("CheckCommandFor(%q) allow=%v, want %v", c.cmd, got, c.allow)
 		}
 	}
@@ -79,9 +79,9 @@ func TestProjectAskPersists(t *testing.T) {
 	ui := &fakeUI{askAllowed: true, askBy: "user:project"}
 	h.SetUIHooks(ui)
 	cmd := "rm -rf /tmp/scratch"
-	v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: cmd})
+	v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: cmd})
 	if v.Decision != perm.Allow || v.DecidedBy != "user:project" {
-		t.Fatalf("project bash: %v by %q", v.Decision, v.DecidedBy)
+		t.Fatalf("project shell: %v by %q", v.Decision, v.DecidedBy)
 	}
 	if len(ui.asked) != 1 || !ui.asked[0].Project || ui.asked[0].Always != "allow this exact command outside the sandbox" {
 		t.Fatalf("asked: %+v", ui.asked)
@@ -97,7 +97,7 @@ func TestProjectAskPersists(t *testing.T) {
 
 	// the exact rule answers the same command again without asking
 	ui.asked = nil
-	if got := pipe.Check(tools.Request{Subject: "tool.bash", Arg: cmd}); got.Decision != perm.Allow {
+	if got := pipe.Check(tools.Request{Subject: "tool.shell", Arg: cmd}); got.Decision != perm.Allow {
 		t.Fatalf("ruled re-check: %v by %q", got.Decision, got.DecidedBy)
 	}
 	if len(ui.asked) != 0 {
@@ -105,8 +105,8 @@ func TestProjectAskPersists(t *testing.T) {
 	}
 }
 
-// TestProjectChoice: only a trusted project's safe single-line bash command
-// offers the project choice; anything else (untrusted, non-bash, unsafe or
+// TestProjectChoice: only a trusted project's safe single-line shell command
+// offers the project choice; anything else (untrusted, non-shell, unsafe or
 // multi-line) offers none.
 func TestProjectChoice(t *testing.T) {
 	h, _ := newTestHost(t)
@@ -117,7 +117,7 @@ func TestProjectChoice(t *testing.T) {
 		plabel, _ := h.projectChoice(req, label, rules)
 		return plabel
 	}
-	if plabel := choice(tools.Request{Subject: "tool.bash", Arg: "git push origin main"}); plabel != "" {
+	if plabel := choice(tools.Request{Subject: "tool.shell", Arg: "git push origin main"}); plabel != "" {
 		t.Fatalf("untrusted project must not offer project choice: %q", plabel)
 	}
 	h.SetProjectTrusted(true)
@@ -126,13 +126,13 @@ func TestProjectChoice(t *testing.T) {
 		req  tools.Request
 		want string
 	}{
-		{"safe bash", tools.Request{Subject: "tool.bash", Arg: "git push origin main"}, "allow git push"},
-		{"wrapper", tools.Request{Subject: "tool.bash", Arg: "sh -c 'x'"}, ""},
+		{"safe shell", tools.Request{Subject: "tool.shell", Arg: "git push origin main"}, "allow git push"},
+		{"wrapper", tools.Request{Subject: "tool.shell", Arg: "sh -c 'x'"}, ""},
 		{"file write", tools.Request{Subject: "fs.write", Arg: "/x"}, ""},
-		{"destructive", tools.Request{Subject: "tool.bash", Arg: "rm -rf /tmp/x"}, "allow this exact command"},
-		{"destructive subcommand", tools.Request{Subject: "tool.bash", Arg: "git clean -n"}, "allow this exact command"},
+		{"destructive", tools.Request{Subject: "tool.shell", Arg: "rm -rf /tmp/x"}, "allow this exact command"},
+		{"destructive subcommand", tools.Request{Subject: "tool.shell", Arg: "git clean -n"}, "allow this exact command"},
 		// a line continuation would load as two wider commands next boot
-		{"multi-line", tools.Request{Subject: "tool.bash", Arg: "git \\\npush"}, ""},
+		{"multi-line", tools.Request{Subject: "tool.shell", Arg: "git \\\npush"}, ""},
 	} {
 		if got := choice(c.req); got != c.want {
 			t.Errorf("%s: projectChoice = %q, want %q", c.name, got, c.want)
@@ -141,11 +141,11 @@ func TestProjectChoice(t *testing.T) {
 	// the file loads every segment of the line next boot, so a line with a
 	// segment the session answer skipped (a model rule allows it already)
 	// would persist a command the label never named
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "curl *", Decision: perm.Allow, Principal: "model"})
-	if label, _ := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example/a && go vet ./..."}); label != "allow go vet" {
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "curl *", Decision: perm.Allow, Principal: "model"})
+	if label, _ := h.alwaysChoice(tools.Request{Subject: "tool.shell", Arg: "curl https://x.example/a && go vet ./..."}); label != "allow go vet" {
 		t.Fatalf("session label = %q", label)
 	}
-	if got := choice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example/a && go vet ./..."}); got != "" {
+	if got := choice(tools.Request{Subject: "tool.shell", Arg: "curl https://x.example/a && go vet ./..."}); got != "" {
 		t.Errorf("skipped segment must offer no project choice: %q", got)
 	}
 }

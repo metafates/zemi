@@ -21,7 +21,7 @@ import (
 	"github.com/metafates/zemi/internal/sandbox"
 )
 
-// JobHandoff opens the bash result note for a command that outlived its
+// JobHandoff opens the shell result note for a command that outlived its
 // timeout; the chat widget keeps such a row by this phrase.
 const JobHandoff = "moved to the background as "
 
@@ -176,7 +176,7 @@ func (m *Jobs) Start(dir, line string, env []string, pol *sandbox.Policy, after 
 // Adopt registers a command that is already running, with the buffer it
 // writes to, the byte count the caller already delivered from it, a channel
 // carrying its Wait, its policy (nil when unconfined) and what runs at its
-// exit: a bash call past its timeout keeps going as a job instead of losing
+// exit: a shell call past its timeout keeps going as a job instead of losing
 // the work done so far.
 func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, wait <-chan error, pol *sandbox.Policy, after func() string) string {
 	j := &Job{Name: name, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}, policy: pol, after: after}
@@ -319,7 +319,7 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	}
 	// since() has already moved past what it returns, so a cut chunk is
 	// gone unless CmdOut spills it
-	// labels only when both streams have text: an adopted bash job's
+	// labels only when both streams have text: an adopted shell job's
 	// output is merged into stdout
 	both := out.text != "" && errOut.text != ""
 	for _, c := range []struct {

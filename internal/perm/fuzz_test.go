@@ -35,8 +35,8 @@ func FuzzNormalize(f *testing.F) {
 		// a command Normalize gates (fail or a forced ask) must never be
 		// allowed through by the full decision path, whatever the rules say
 		s := new(Store)
-		s.Add(Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow})
-		if (n.Fail != "" || n.ForceAsk != "") && s.CheckCommandFor(SubjectBash, n, "").Decision == Allow {
+		s.Add(Rule{Subject: "tool.shell", Pattern: "*", Decision: Allow})
+		if (n.Fail != "" || n.ForceAsk != "") && s.CheckCommandFor(SubjectShell, n, "").Decision == Allow {
 			t.Fatalf("gated command allowed: %q (%s %s)", cmd, n.Fail, n.ForceAsk)
 		}
 	})
@@ -105,9 +105,9 @@ func FuzzEvaluate(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, pat, arg string) {
 		s := new(Store)
-		s.Add(Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow})
-		s.Add(Rule{Subject: "tool.bash", Pattern: pat, Decision: Deny})
-		if Match(pat, arg) && s.Evaluate("tool.bash", arg, "").Decision != Deny {
+		s.Add(Rule{Subject: "tool.shell", Pattern: "*", Decision: Allow})
+		s.Add(Rule{Subject: "tool.shell", Pattern: pat, Decision: Deny})
+		if Match(pat, arg) && s.Evaluate("tool.shell", arg, "").Decision != Deny {
 			t.Fatalf("deny %q matched %q but verdict is not Deny", pat, arg)
 		}
 	})
@@ -131,10 +131,10 @@ func FuzzNotMatch(f *testing.F) {
 			return // an empty NotMatch means "no exclusion", not a matcher
 		}
 		s := new(Store)
-		s.Add(Rule{Subject: "tool.bash", Pattern: pat, Decision: Allow, NotMatch: not})
+		s.Add(Rule{Subject: "tool.shell", Pattern: pat, Decision: Allow, NotMatch: not})
 		// an argument matching both pattern and NotMatch must be forced to Ask
 		arg := not
-		if o := s.Evaluate("tool.bash", arg, ""); o.Decision == Allow {
+		if o := s.Evaluate("tool.shell", arg, ""); o.Decision == Allow {
 			t.Fatalf("not_match %q excluded arg %q of rule %q but verdict is Allow", not, arg, pat)
 		}
 	})

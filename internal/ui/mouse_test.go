@@ -97,7 +97,7 @@ func TestMouseClicks(t *testing.T) {
 
 	done := make(chan bool)
 	go func() {
-		ok, _ := app.AskPermission(hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"})
+		ok, _ := app.AskPermission(hostapi.PermRequest{Tool: "shell", Subject: "tool.shell", Arg: "make deploy"})
 		done <- ok
 	}()
 	waitPrompt(t, app, func() bool { return app.permAsk != nil })
@@ -115,7 +115,7 @@ func TestMouseHover(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 20)
 	done := make(chan bool)
 	go func() {
-		ok, _ := app.AskPermission(hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"})
+		ok, _ := app.AskPermission(hostapi.PermRequest{Tool: "shell", Subject: "tool.shell", Arg: "make deploy"})
 		done <- ok
 	}()
 	waitPrompt(t, app, func() bool { return app.permAsk != nil })
@@ -203,7 +203,7 @@ func TestHoverTargets(t *testing.T) {
 		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"a much longer row than the other", map[string]any{"text": "alpha", "key": "current"}}})
 	}
 	perm := func(app *App) {
-		app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Tool: "bash", Subject: "tool.bash", Arg: "make deploy"}, answer: make(chan permAnswer, 1)}
+		app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Tool: "shell", Subject: "tool.shell", Arg: "make deploy"}, answer: make(chan permAnswer, 1)}
 	}
 	thought := func(app *App) {
 		app.host.AppendMessage("user", "why?")
@@ -458,7 +458,7 @@ func TestToolRowClickExpands(t *testing.T) {
 	appendReasoning(host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
 	long := "go test ./internal/hostapi -run TestSomethingWithAVeryLongName -count=1 -race"
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
-		{ID: "1", Name: "bash", Label: "run the hostapi tests", Input: long, Status: "ok", Output: "ok  github.com/metafates/zemi/internal/hostapi"},
+		{ID: "1", Name: "shell", Label: "run the hostapi tests", Input: long, Status: "ok", Output: "ok  github.com/metafates/zemi/internal/hostapi"},
 	}})
 	app.renderSync(t)
 	if strings.Contains(ansi.Strip(app.Frame()), "-race") {

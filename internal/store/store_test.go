@@ -248,7 +248,7 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	// Tool telemetry rows stay out of the picker preview; the call and the
 	// message it points at land together.
 	if err := db.AddToolCall(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`},
-		&ToolCall{Tool: "bash", OK: false}); err != nil {
+		&ToolCall{Tool: "shell", OK: false}); err != nil {
 		t.Fatal(err)
 	}
 	if stats, err := db.ToolCallStats("s1", ""); err != nil || len(stats) != 1 || stats[0].Calls != 1 {
@@ -261,7 +261,7 @@ func TestMessagesAndToolCalls(t *testing.T) {
 		t.Fatalf("tool stats after an unknown message = %+v, %v", stats, err)
 	}
 	if err := db.AddToolCall(&Message{SessionID: "ghost", Role: "tool", PartsJSON: `{}`},
-		&ToolCall{Tool: "bash", OK: true}); err == nil {
+		&ToolCall{Tool: "shell", OK: true}); err == nil {
 		t.Fatal("an unknown session must fail")
 	}
 	prev, err := db.SessionPreviews([]string{"s1"})
@@ -385,7 +385,7 @@ func TestDeleteSession(t *testing.T) {
 	}
 	for _, sid := range []string{"s1", "c1"} {
 		m := &Message{SessionID: sid, Role: "user", PartsJSON: `{"text":"` + secret + `"}`}
-		if err := db.AddToolCall(m, &ToolCall{Tool: "bash"}); err != nil {
+		if err := db.AddToolCall(m, &ToolCall{Tool: "shell"}); err != nil {
 			t.Fatal(err)
 		}
 		if err := db.AddCheckpoint(sid, m.ID, Checkpoint{Path: "/f", Existed: true, Content: []byte(secret)}); err != nil {

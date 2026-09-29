@@ -74,7 +74,7 @@ func TestPadBoundPerPipeline(t *testing.T) {
 	old, pad := h.PipelineFor(), h.ScratchDir()
 	h.agents.sessionID = "s2"
 	// a host tool's output, its error and a tool.post rewrite spill where the run's
-	// prompt says, like bash's
+	// prompt says, like shell's
 	for _, tool := range h.luaFantasyTools(old) {
 		resp, err := tool.Run(t.Context(), fantasy.ToolCall{Input: "{}"})
 		if err != nil || resp.IsError != (tool.Info().Name == "failing") || len(resp.Content) > 31_000 || !strings.Contains(resp.Content, "(output saved to "+pad+string(filepath.Separator)) {
@@ -103,7 +103,7 @@ func TestPadBoundPerPipeline(t *testing.T) {
 			t.Errorf("%s: %s (%s), want %s", c.name, v.Decision, v.Reason, c.want)
 		}
 	}
-	pol := old.SandboxFor(tools.Request{Subject: perm.SubjectBash, Arg: "ls"}, tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByMode("auto")})
+	pol := old.SandboxFor(tools.Request{Subject: perm.SubjectShell, Arg: "ls"}, tools.Verdict{Decision: perm.Allow, DecidedBy: tools.ByMode("auto")})
 	if pol == nil || pol.Env["TMPDIR"] != pad || !slices.Contains(pol.Write, pad) {
 		t.Errorf("the run's sandbox lost its pad %s: %+v", pad, pol)
 	}

@@ -25,7 +25,7 @@ import (
 
 func TestFollower(t *testing.T) {
 	tool := func(id string, s hostapi.CallStatus) hostapi.StreamTool {
-		return hostapi.StreamTool{ID: id, Name: "bash", Input: "ls", Status: s, Output: "x\nexit status 1"}
+		return hostapi.StreamTool{ID: id, Name: "shell", Input: "ls", Status: s, Output: "x\nexit status 1"}
 	}
 	row := func(t hostapi.StreamTool) hostapi.ChatMessage {
 		return hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowTool, ID: t.ID, Tool: t.Name, Text: t.Input, Status: t.Status, Output: t.Output}
@@ -232,8 +232,8 @@ func TestRunHeadless(t *testing.T) {
 		denied            int
 	}{
 		{name: "escapes are stripped", prompt: "say \x1b]52;c;SGk=\a\x1b[31mhi", stdout: "hi", stderr: "resume   zemi -r ", notStdout: "\x1b", notErr: "\x1b"},
-		{name: "a deny rule's call is a failed row", prompt: `call bash {"command":"ls -la"}`, setup: func(h *hostapi.Host) {
-			h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "ls*", Decision: perm.Deny})
+		{name: "a deny rule's call is a failed row", prompt: `call shell {"command":"ls -la"}`, setup: func(h *hostapi.Host) {
+			h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "ls*", Decision: perm.Deny})
 		}, stderr: "✗ Run ls -la", notErr: "nobody could answer"},
 		{name: "the planner does not write", prompt: `call write {"path":"x.txt","content":"x"}`, setup: func(h *hostapi.Host) {
 			if err := h.SetProfile("planner"); err != nil {

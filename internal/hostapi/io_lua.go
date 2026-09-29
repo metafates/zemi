@@ -192,7 +192,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	case stubbed:
 		v = tools.Verdict{Decision: perm.Ask}
 	case subject == "lua.job.start":
-		// a command line, normalized like bash so rules can scope arguments
+		// a command line, normalized like a shell command so rules can scope arguments
 		// and a second command cannot ride an allow
 		o := pipe.Store.CheckCommandFor(subject, perm.Normalize(arg), pipe.Principal)
 		v = tools.Verdict{Decision: o.Decision, Reason: o.Reason, DecidedBy: tools.ByDefault}

@@ -1,5 +1,5 @@
 // sandbox.go confines the commands a permission mode settles (DESIGN §9):
-// the backend is probed once in NewHost, and bash and job_start runs a
+// the backend is probed once in NewHost, and shell and job_start runs a
 // mode allowed start under sandboxPolicy.
 
 package hostapi
@@ -196,7 +196,7 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 }
 
 // sandboxPrompt is the environment's Sandbox block, "" for a run without
-// bash: what a command runs under without the user's approval, each clause
+// shell: what a command runs under without the user's approval, each clause
 // read off the live policy, so the text says what the backend enforces, and
 // naming only the escapes and tools toolset has. It says auto mode, the one
 // that settles commands confined: keyed on the mode, it would cost a cache
@@ -204,7 +204,7 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 // NOTE: it reads the policy without the project walk, so on the namespace
 // backend a project over sandboxWalkMax entries reads as writable here.
 func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad string) string {
-	i := slices.IndexFunc(toolset, func(t fantasy.AgentTool) bool { return t.Info().Name == tools.ToolBash })
+	i := slices.IndexFunc(toolset, func(t fantasy.AgentTool) bool { return t.Info().Name == tools.ToolShell })
 	if i < 0 {
 		return ""
 	}

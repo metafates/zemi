@@ -15,7 +15,7 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-func TestBashChanges(t *testing.T) {
+func TestShellChanges(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Dirs.StateHome = t.TempDir()
 	dir := h.Dirs.ProjectDir
@@ -41,7 +41,7 @@ func TestBashChanges(t *testing.T) {
 	for pid := range stores {
 		os.MkdirAll(filepath.Join(tmp, fmt.Sprintf("snap-%d-0.objects", pid)), 0o700)
 	}
-	if note, diff, _ := h.bashChanges(dir)(); note != "" || diff != "" {
+	if note, diff, _ := h.shellChanges(dir)(); note != "" || diff != "" {
 		t.Fatalf("nothing changed, got %q %q", note, diff)
 	}
 	for pid, kept := range stores {
@@ -49,7 +49,7 @@ func TestBashChanges(t *testing.T) {
 			t.Errorf("store of pid %d kept: %v, want %v", pid, err == nil, kept)
 		}
 	}
-	done := h.bashChanges(dir)
+	done := h.shellChanges(dir)
 	write("a.txt", "one\nTWO\n")
 	write("new.txt", "hi\n")
 	write("blob.bin", "\x00\x01")
@@ -101,7 +101,7 @@ func TestBashChanges(t *testing.T) {
 	h.agents.mu.Lock()
 	h.agents.sessionID, h.agents.turnMsgID = "s", "m1"
 	h.agents.mu.Unlock()
-	late, now := h.bashChanges(dir), h.bashChanges(dir)
+	late, now := h.shellChanges(dir), h.shellChanges(dir)
 	write("a.txt", "three\n")
 	h.agents.mu.Lock()
 	h.agents.turnMsgID = "m2"
@@ -116,7 +116,7 @@ func TestBashChanges(t *testing.T) {
 	}
 
 	// two calls at once cannot be told apart
-	first, second := h.bashChanges(dir), h.bashChanges(dir)
+	first, second := h.shellChanges(dir), h.shellChanges(dir)
 	write("b.txt", "b\n")
 	first()
 	if _, diff, _ := second(); !strings.HasPrefix(diff, snapOverlap) {
@@ -127,7 +127,7 @@ func TestBashChanges(t *testing.T) {
 	t.Setenv("GIT_TRACE", trace)
 	write("big.log", strings.Repeat("w", maxCheckpointBytes+1))
 	for _, fill := range []string{"x", "y"} {
-		done := h.bashChanges(dir)
+		done := h.shellChanges(dir)
 		write("big.log", strings.Repeat(fill, maxCheckpointBytes+1))
 		done()
 	}
@@ -153,14 +153,14 @@ func TestBashChanges(t *testing.T) {
 	if _, _, tree := h.snapshot(dir); tree == "" {
 		t.Error("no snapshot after a prune")
 	}
-	if _, diff, _ := h.bashChanges(t.TempDir())(); diff != "" {
+	if _, diff, _ := h.shellChanges(t.TempDir())(); diff != "" {
 		t.Errorf("no repository, got %q", diff)
 	}
 }
 
 // TestSnapshotRacyEntry: a file rewritten at the same size in the second its
 // index was written looks clean by stat alone; the first snapshot must still
-// hash it, or a bash row misses the change and a rewind restores the old text.
+// hash it, or a shell row misses the change and a rewind restores the old text.
 func TestSnapshotRacyEntry(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	dir := h.Dirs.ProjectDir

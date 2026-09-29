@@ -172,7 +172,7 @@ zemi.ui.widget.add({
 			glob = { "searched for", "pattern", "patterns" },
 			grep = { "searched for", "pattern", "patterns" },
 			web_search = { "searched the web for", "query", "queries" },
-			bash = { "ran", "command", "commands" },
+			shell = { "ran", "command", "commands" },
 			fetch = { "fetched", "page", "pages" },
 			skill = { "loaded", "skill", "skills" },
 			memory = { "saved", "memory", "memories" },
@@ -211,7 +211,7 @@ zemi.ui.widget.add({
 					order[#order + 1] = key
 				end
 				seen[key].n = seen[key].n + 1
-				if tool_name(t) == "bash" then
+				if tool_name(t) == "shell" then
 					commands[#commands + 1] = (t.label or "") ~= "" and fmt.lower(t.label)
 						or relpath(t.text or t.input or ""):gsub("%s+", " ")
 				end
@@ -223,7 +223,7 @@ zemi.ui.widget.add({
 			for _, key in ipairs(order) do
 				local c, n = seen[key].c, seen[key].n
 				local part = c[2] and c[1] .. " " .. fmt.count(n, c[2], c[3]) or c[1]
-				if c == COUNT.bash then
+				if c == COUNT.shell then
 					-- last, so the commands read as its list
 					ran = part .. ": " .. table.concat(commands, ", ")
 				else
@@ -271,7 +271,7 @@ zemi.ui.widget.add({
 			local verb, rest = fmt.head(name, label, input)
 			-- a command is highlighted where it is what the row reads, the head and
 			-- an opened row; collapsed under its label it stays a Comment detail
-			local code = name == "bash"
+			local code = name == "shell"
 					and input ~= ""
 					and (open or label == "")
 					and zemi.ui.highlight(open and body or fit(input, width - fmt.cells(verb) - 13), "bash")
@@ -354,14 +354,14 @@ zemi.ui.widget.add({
 					or name == "question"
 					or name == "plan"
 					or expanded[idx]
-					or (ctx.show_reasoning and name == "bash")
+					or (ctx.show_reasoning and name == "shell")
 				)
 			then
 				local out = util.split(output, "\n")
 				-- a collapsed failure shows three lines where it says what went
 				-- wrong: a tool's first, a command's last (its stderr and exit
 				-- status); a click shows the rest
-				local err, tail = t.status == "err", name == "bash"
+				local err, tail = t.status == "err", name == "shell"
 				local first, last = 1, #out
 				if err and not open and #out > 3 then
 					if tail then

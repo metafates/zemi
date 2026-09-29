@@ -963,7 +963,7 @@ func TestOverlayClosesOnOutsideClick(t *testing.T) {
 		t.Fatal("a click outside the box left it open")
 	}
 
-	go app.AskPermission(hostapi.PermRequest{Subject: "tool.bash", Arg: "make test"})
+	go app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make test"})
 	waitPrompt(t, app, func() bool { return app.permAsk != nil })
 	app.renderSync(t)
 	app.Frame()

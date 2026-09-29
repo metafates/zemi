@@ -22,9 +22,9 @@ import (
 func TestRunView(t *testing.T) {
 	user := hostapi.ChatMessage{Role: "user", Text: "why does TestFlushOrder fail?"}
 	thought := hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowReasoning, Text: "hmm", Stat: &hostapi.TurnStat{ThoughtMS: 2400}}
-	failed := hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowTool, Tool: "bash", Text: "go test ./internal/hostapi", Label: "Run the flush tests", Status: hostapi.CallErr, Output: "--- FAIL: TestFlushOrder\nexit status 1"}
+	failed := hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowTool, Tool: "shell", Text: "go test ./internal/hostapi", Label: "Run the flush tests", Status: hostapi.CallErr, Output: "--- FAIL: TestFlushOrder\nexit status 1"}
 	reply := hostapi.ChatMessage{Role: "assistant", Text: "It fails because the reply lands first."}
-	running := hostapi.StreamSnapshot{Active: true, Elapsed: 6 * time.Second, Tools: []hostapi.StreamTool{{ID: "t1", Name: "bash", Input: "go test ./internal/hostapi", Label: "Run the flush tests", Status: hostapi.CallRun}}}
+	running := hostapi.StreamSnapshot{Active: true, Elapsed: 6 * time.Second, Tools: []hostapi.StreamTool{{ID: "t1", Name: "shell", Input: "go test ./internal/hostapi", Label: "Run the flush tests", Status: hostapi.CallRun}}}
 	for _, c := range []struct {
 		name    string
 		live    bool

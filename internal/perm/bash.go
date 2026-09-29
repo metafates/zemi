@@ -338,7 +338,7 @@ func dashStops(e syntax.LangError, src string) bool {
 	return false
 }
 
-// parsers keeps idle parsers per dialect: one is large, and a bash call
+// parsers keeps idle parsers per dialect: one is large, and a shell call
 // parses a few times.
 var parsers = map[syntax.LangVariant]*sync.Pool{syntax.LangBash: pool(syntax.LangBash), syntax.LangPOSIX: pool(syntax.LangPOSIX)}
 

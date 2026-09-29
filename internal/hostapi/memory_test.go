@@ -412,7 +412,7 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 		tool, inTool string // a tool the session called, one its subagent called
 		stored, fork bool
 	}{
-		{name: "trusted, local tools", tool: "bash", inTool: "read", stored: true},
+		{name: "trusted, local tools", tool: "shell", inTool: "read", stored: true},
 		{name: "untrusted project", untrusted: true},
 		{name: "fetch in the session", tool: "fetch"},
 		{name: "web search in a subagent", inTool: "web_search"},

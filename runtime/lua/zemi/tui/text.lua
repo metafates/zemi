@@ -103,7 +103,7 @@ M.VERB = {
 	grep = "Search",
 	fetch = "Fetch",
 	web_search = "Search web",
-	bash = "Run",
+	shell = "Run",
 	job_start = "Start",
 	job_read = "Check job",
 	job_list = "List jobs",
@@ -140,7 +140,7 @@ end
 ---@return string verb
 ---@return string rest
 function M.head(name, label, input)
-	if name == "bash" and label ~= "" then
+	if name == "shell" and label ~= "" then
 		local verb, rest = label:match("^(%S+)(.*)$")
 		return verb:sub(1, 1):upper() .. verb:sub(2), rest
 	end

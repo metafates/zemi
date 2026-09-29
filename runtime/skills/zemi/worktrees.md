@@ -29,7 +29,7 @@ memories.
 
 ## Running work in one
 
-The path is just a directory: `cd .agents/worktrees/retry && go test ./...` in one bash call (every
+The path is just a directory: `cd .agents/worktrees/retry && go test ./...` in one shell call (every
 call starts in the project directory). Two rules:
 
 - One branch per worktree: git refuses to check a branch out twice, which keeps two changes apart.

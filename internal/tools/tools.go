@@ -34,7 +34,7 @@ import (
 // by name (the registry here, and the host's gate, prompt and history logic)
 // uses these, so renaming a tool is one line, not a recount of literals.
 const (
-	ToolBash        = "bash"
+	ToolShell       = "shell"
 	ToolRead        = "read"
 	ToolWrite       = "write"
 	ToolEdit        = "edit"
@@ -62,8 +62,8 @@ const (
 
 // Request is one permission check the pipeline needs answered.
 type Request struct {
-	Tool    string // the tool asking (bash, edit, mcp_github_search); set by the pipeline
-	Subject string // tool.bash, fs.read, fs.write, net.<host>
+	Tool    string // the tool asking (shell, edit, mcp_github_search); set by the pipeline
+	Subject string // tool.shell, fs.read, fs.write, net.<host>
 	Arg     string // path, url or normalized command segment
 	Reason  string // human-facing description for the overlay
 	Preview string // a file tool's unified diff, a script, or a memory's text
@@ -93,7 +93,7 @@ type Request struct {
 	// Owner is whose code a Lua tool runs, as an overlay badge names it
 	// ("plugin:jira"), "" for the user's and zemi's own
 	Owner string
-	// cmd is a tool.bash Arg parsed; set by bashRequests or the pipeline
+	// cmd is a tool.shell Arg parsed; set by shellRequests or the pipeline
 	cmd *perm.Normalized
 	// gate is the pipeline and request as Check got them; set by the pipeline
 	gate *checked
@@ -121,7 +121,7 @@ func (r Request) Recheck() (Verdict, Request) {
 	return Verdict{Decision: perm.Ask, Reason: "still asks", DecidedBy: ByDefault}, *asked
 }
 
-// Command is a tool.bash request's command, parsed once by the gate, or
+// Command is a tool.shell request's command, parsed once by the gate, or
 // here for a request that never went through it.
 func (r Request) Command() perm.Normalized {
 	if r.cmd != nil {
@@ -310,7 +310,7 @@ type Pipeline struct {
 	// (Plan, which a read-only subagent sets on its copy); nil or a nil
 	// result = unconfined (no backend, yolo).
 	Sandbox func(readOnly bool, pad string) *sandbox.Policy
-	// SandboxParam gives bash and job_start the sandbox: false escape; set
+	// SandboxParam gives shell and job_start the sandbox: false escape; set
 	// while a backend is live and someone can answer the ask.
 	SandboxParam bool
 	// Sandboxed is this run's policy, set on the per-run copy once the gate
@@ -334,7 +334,7 @@ type Pipeline struct {
 	// Guard runs before a sandboxed command starts; the func it returns runs
 	// once the command exited, and its text ends the result. nil = none.
 	Guard func(sandbox.Policy) func() string
-	// Changes runs before a bash command starts in dir; the func it returns
+	// Changes runs before a shell command starts in dir; the func it returns
 	// runs once it ended and reports the files it changed: a line for the
 	// model, a diff for the row (the result's Metadata) and every path. nil = none.
 	Changes func(dir string) func() (note, diff string, paths []string)
@@ -342,7 +342,7 @@ type Pipeline struct {
 	// nil = none.
 	Progress func(callID, line string)
 
-	// changed is what a bash run found changed, kept on its per-run copy for post
+	// changed is what a shell run found changed, kept on its per-run copy for post
 	changed []string
 	// verdict is the gate's answer to the run's last request, kept on the
 	// per-run copy: fetch reads which rule allowed the URL
@@ -374,7 +374,7 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 	return v
 }
 
-// Check decides one request; for tool.bash the store normalizes the
+// Check decides one request; for tool.shell the store normalizes the
 // command (segments, redirect gates, assignment gate) in one call.
 func (p *Pipeline) Check(req Request) Verdict {
 	req.gate = &checked{p, req}
@@ -391,7 +391,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	plan := p.Plan != nil && p.Plan()
 	req.ReadOnly, req.Pad = plan, p.Pad
-	if req.Subject == perm.SubjectBash && req.cmd == nil {
+	if req.Subject == perm.SubjectShell && req.cmd == nil {
 		n := perm.Normalize(req.Arg)
 		req.cmd = &n
 	}
@@ -401,7 +401,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	// read-only holds under every mode: yolo would settle the escape and
 	// run the command unconfined, with the project writable
-	if plan && req.Subject == perm.SubjectBash && req.Unsandboxed {
+	if plan && req.Subject == perm.SubjectShell && req.Unsandboxed {
 		return Verdict{Decision: perm.Deny, Reason: "commands stay in the sandbox, which keeps the project read-only", DecidedBy: ByReadOnly}
 	}
 	// rule is the one that allowed the request, nil when a default did
@@ -423,7 +423,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 			return p.resolveAsk(req, "this file looks like it holds secrets")
 		// "allow cat" was answered for a file the user saw; a project file
 		// line names the program alone. The user's init.lua rule stays.
-		case req.Subject == perm.SubjectBash && rule != nil && (rule.Principal == perm.PrincipalModel || rule.Source == "permissions") && p.Secret != nil && req.cmd.ReadsSecret(p.Secret):
+		case req.Subject == perm.SubjectShell && rule != nil && (rule.Principal == perm.PrincipalModel || rule.Source == "permissions") && p.Secret != nil && req.cmd.ReadsSecret(p.Secret):
 			return p.resolveAsk(req, "this file looks like it holds secrets")
 		// the user allowed the command confined; an Unsandboxed ask is never
 		// mode-settled, so dropping the sandbox reaches them
@@ -431,15 +431,15 @@ func (p *Pipeline) Check(req Request) Verdict {
 			return p.resolveAsk(req, "the rule keeps the sandbox; sandbox: false drops it")
 		// the rule was written for an agent that may change things; a reader
 		// keeps the allow
-		case plan && req.Subject == perm.SubjectBash && req.cmd.ReadCommand(nil):
-		case plan && (req.Subject == perm.SubjectBash || strings.HasPrefix(req.Subject, "mcp.")):
+		case plan && req.Subject == perm.SubjectShell && req.cmd.ReadCommand(nil):
+		case plan && (req.Subject == perm.SubjectShell || strings.HasPrefix(req.Subject, "mcp.")):
 			return p.resolveAsk(req, "read-only agent: commands that change things ask")
 		}
 		return v
 	}
 	var o perm.Outcome
-	if req.Subject == perm.SubjectBash {
-		o = p.Store.CheckCommandFor(perm.SubjectBash, *req.cmd, p.Principal)
+	if req.Subject == perm.SubjectShell {
+		o = p.Store.CheckCommandFor(perm.SubjectShell, *req.cmd, p.Principal)
 	} else {
 		o = p.Store.Evaluate(req.Subject, written, p.Principal)
 	}
@@ -467,7 +467,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 // mode settled or a read-only agent runs confined, rule-allowed and
 // user-approved ones as they are. nil = unconfined.
 func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
-	if p.Sandbox == nil || req.Subject != perm.SubjectBash || v.Decision != perm.Allow || req.Unsandboxed {
+	if p.Sandbox == nil || req.Subject != perm.SubjectShell || v.Decision != perm.Allow || req.Unsandboxed {
 		return nil
 	}
 	// network: true keeps the sandbox, which is what the model and the user
@@ -623,7 +623,7 @@ func networkProp() map[string]any {
 	return map[string]any{"type": "boolean", "description": "true adds the network and keeps the rest of the sandbox (go mod download, npm install, curl). Needs the user's approval."}
 }
 
-// sandboxProp is bash's escape while a backend is live; job_start's points at
+// sandboxProp is shell's escape while a backend is live; job_start's points at
 // it. The limits are the system prompt's Sandbox block, built from the policy.
 func sandboxProp() map[string]any {
 	return map[string]any{"type": "boolean", "description": "false runs the command with no sandbox (Sandbox in the system prompt). Needs approval; only when network: true was not enough."}
@@ -791,7 +791,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 		switch {
 		case PathSubject(req.Subject):
 			what += " " + workRel(req.Arg) // as the ask showed it
-		case req.Subject != perm.SubjectBash:
+		case req.Subject != perm.SubjectShell:
 			what += " " + req.Arg
 		}
 		if v.Decision == perm.Deny {
@@ -1092,7 +1092,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 
 	return []fantasy.AgentTool{
-		mk(ToolBash, `Run a command with sh -c in the working directory. The shell is POSIX sh, not bash: write [ ] not [[ ]], >file 2>&1 not &>, . not source, printf not $'..', a file or a pipe not <( ), each word written out not {a,b} or {1..3}, and no arrays; for pipefail or a bash script run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged; long output keeps its start and end, and the result names a file holding all of it. A command still running at the timeout keeps running as a job; the result gives its id.
+		mk(ToolShell, `Run a command with sh -c in the working directory. The shell is POSIX sh, not bash: write [ ] not [[ ]], >file 2>&1 not &>, . not source, printf not $'..', a file or a pipe not <( ), each word written out not {a,b} or {1..3}, and no arrays; for pipefail or a bash script run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged; long output keeps its start and end, and the result names a file holding all of it. A command still running at the timeout keeps running as a job; the result gives its id.
 Not for what does not exit on its own (npm run dev, tsc -w, tail -f): & and nohup do not help, since what a command leaves running is stopped when it returns. Not for reading, searching or editing files: cat, sed -n or head output is not a read for edit.
 Chain dependent steps with &&.`,
 			false,
@@ -1104,8 +1104,8 @@ Chain dependent steps with &&.`,
 				"timeout_ms": map[string]any{"type": "integer", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
 			}, sandboxProp(), networkProp()),
 			[]string{"command"},
-			bashRequests,
-			runBash),
+			shellRequests,
+			runShell),
 
 		gated(mk(ToolRead, readDesc+" Each line starts with its number and a tab, which are not part of the file. Do not read lines you already have again unless something other than your own edits changed the file.", true,
 			map[string]any{
@@ -1130,7 +1130,7 @@ Chain dependent steps with &&.`,
 			},
 			runWrite))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read first (a window around the change is enough; cat or sed in bash does not count), unless it is in the scratchpad. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. Several edit calls to one file sent together apply in order.", true,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read first (a window around the change is enough; cat or sed in a shell command does not count), unless it is in the scratchpad. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. Several edit calls to one file sent together apply in order.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
@@ -1260,9 +1260,9 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			withSandbox(map[string]any{
 				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server."},
 				"command": map[string]any{"type": "string"},
-			}, map[string]any{"type": "boolean", "description": "as bash's sandbox"}, map[string]any{"type": "boolean", "description": "as bash's network"}),
+			}, map[string]any{"type": "boolean", "description": "as shell's sandbox"}, map[string]any{"type": "boolean", "description": "as shell's network"}),
 			[]string{"command"},
-			bashRequests,
+			shellRequests,
 			runJobStart),
 
 		mk(ToolJobRead, "Read what a background job printed since your last read of it, and whether it is still running.",
@@ -1403,17 +1403,17 @@ func changePreview(in map[string]any) string {
 	return strings.Join(lines, "\n")
 }
 
-// bashRequests routes the whole command through the tool.bash subject;
+// shellRequests routes the whole command through the tool.shell subject;
 // the store's CheckCommandFor judges it by segment. Text the shell will
 // not run fails here, before any ask, and the model reads why (the POSIX
 // form of bash-only syntax) rather than a permission verdict.
-func bashRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
+func shellRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
 	n := perm.Normalize(str(in["command"]))
 	if n.Fail != "" {
 		return nil, errors.New(n.Fail)
 	}
 	return []Request{{
-		Subject: perm.SubjectBash, Arg: str(in["command"]), Description: str(in["about"]),
+		Subject: perm.SubjectShell, Arg: str(in["command"]), Description: str(in["about"]),
 		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true, cmd: &n,
 	}}, nil
 }

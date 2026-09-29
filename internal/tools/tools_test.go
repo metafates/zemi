@@ -119,9 +119,9 @@ func onPath(t *testing.T, p *Pipeline, path string) *Pipeline {
 	return &run
 }
 
-func TestBashGate(t *testing.T) {
+func TestShellGate(t *testing.T) {
 	allow := func(pattern string) perm.Rule {
-		return perm.Rule{Subject: "tool.bash", Pattern: pattern, Decision: perm.Allow}
+		return perm.Rule{Subject: "tool.shell", Pattern: pattern, Decision: perm.Allow}
 	}
 	rewrite := func(tool string, input map[string]any) (PreVerdict, string, map[string]any, bool) {
 		if str(input["command"]) == "rewrite-me" {
@@ -317,7 +317,7 @@ func TestAskDenialText(t *testing.T) {
 		p, _ := testPipeline(t, false)
 		p.Ask = func(Request) (bool, string, string) { return false, c.by, c.why }
 		resp := call(t, All(p)[0], `{"command":"echo j > out.txt"}`)
-		if !resp.IsError || resp.Content != "permission denied ("+c.by+"): tool.bash: "+c.want {
+		if !resp.IsError || resp.Content != "permission denied ("+c.by+"): tool.shell: "+c.want {
 			t.Errorf("%s: %q", c.by, resp.Content)
 		}
 	}
@@ -325,11 +325,11 @@ func TestAskDenialText(t *testing.T) {
 
 func TestPreHookDenyRewriteReentry(t *testing.T) {
 	p, _ := testPipeline(t, false,
-		perm.Rule{Subject: "tool.bash", Pattern: "*", Decision: perm.Allow})
+		perm.Rule{Subject: "tool.shell", Pattern: "*", Decision: perm.Allow})
 	denied := 0
 	rewrites := 0
 	p.Pre = func(tool string, input map[string]any) (PreVerdict, string, map[string]any, bool) {
-		if tool != "bash" {
+		if tool != "shell" {
 			return "", "", nil, false
 		}
 		cmd := str(input["command"])
@@ -677,7 +677,7 @@ func TestScratchpad(t *testing.T) {
 	if entries, _ := os.ReadDir(proj); len(entries) > 0 {
 		t.Errorf("a path was taken literally: %v", entries)
 	}
-	if res, _ := runBash(context.Background(), p, map[string]any{"command": `printf %s "$TMPDIR"`}); res.Content != pad {
+	if res, _ := runShell(context.Background(), p, map[string]any{"command": `printf %s "$TMPDIR"`}); res.Content != pad {
 		t.Errorf("unconfined $TMPDIR is %q, want %q", res.Content, pad)
 	}
 }
@@ -700,10 +700,10 @@ func TestReadSaysWhatTheModelSees(t *testing.T) {
 	}
 }
 
-// TestReadAndBashShapes: read returns images as images, lists a directory
-// without secret-shaped names, and refuses binaries and offsets past the end; bash keeps stdout and stderr in order, strips
+// TestReadAndShellShapes: read returns images as images, lists a directory
+// without secret-shaped names, and refuses binaries and offsets past the end; shell keeps stdout and stderr in order, strips
 // colors, and saves cut output to the scratchpad.
-func TestReadAndBashShapes(t *testing.T) {
+func TestReadAndShellShapes(t *testing.T) {
 	dir := perm.RealPath(t.TempDir())
 	var pngData bytes.Buffer
 	png.Encode(&pngData, image.NewGray(image.Rect(0, 0, 1, 1)))
@@ -737,17 +737,17 @@ func TestReadAndBashShapes(t *testing.T) {
 	if res, _ := runRead(ctx, onPath(t, p, filepath.Join(dir, "i.png")), nil); res.Type != "text" || !strings.Contains(res.Content, "does not take images") {
 		t.Errorf("text-only model: %+v", res)
 	}
-	if res, _ := runBash(ctx, p, map[string]any{"command": "echo out; echo err >&2; echo out2"}); res.Content != "out\nerr\nout2" {
+	if res, _ := runShell(ctx, p, map[string]any{"command": "echo out; echo err >&2; echo out2"}); res.Content != "out\nerr\nout2" {
 		t.Fatalf("merged output: %q", res.Content)
 	}
 	// just over the cap: the cut marker is longer than what it cuts
-	res, _ := runBash(ctx, p, map[string]any{"command": `head -c 10002 /dev/zero | tr '\0' x; printf '\n\033[31mEND\033[0m\n'`})
+	res, _ := runShell(ctx, p, map[string]any{"command": `head -c 10002 /dev/zero | tr '\0' x; printf '\n\033[31mEND\033[0m\n'`})
 	_, name, _ := strings.Cut(res.Content, "END\n(output saved to ")
 	if full, err := os.ReadFile(strings.TrimSuffix(name, ")")); err != nil || len(full) < 10002 {
 		t.Fatalf("cut output not saved (%v): %q", err, res.Content[len(res.Content)-100:])
 	}
 	// past the 1 MB buffer the note counts what no spill file holds
-	if res, _ := runBash(ctx, p, map[string]any{"command": "seq 1 300000"}); !strings.Contains(res.Content, "more bytes in the middle were not kept") {
+	if res, _ := runShell(ctx, p, map[string]any{"command": "seq 1 300000"}); !strings.Contains(res.Content, "more bytes in the middle were not kept") {
 		t.Fatalf("buffer drop not counted: %q", res.Content[len(res.Content)-200:])
 	}
 }
@@ -810,7 +810,7 @@ func TestValidationErrors(t *testing.T) {
 
 func TestPostHookRuns(t *testing.T) {
 	p, _ := testPipeline(t, false,
-		perm.Rule{Subject: "tool.bash", Pattern: "echo *", Decision: perm.Allow},
+		perm.Rule{Subject: "tool.shell", Pattern: "echo *", Decision: perm.Allow},
 		perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
 	var posts []string
 	p.Post = func(_ context.Context, _, tool string, input map[string]any, ok bool, output string, changed []string, _ time.Duration) string {
@@ -818,7 +818,7 @@ func TestPostHookRuns(t *testing.T) {
 		return "rewritten"
 	}
 	p.Changes = func(string) func() (string, string, []string) {
-		return func() (string, string, []string) { return "", "", []string{"/by/bash"} }
+		return func() (string, string, []string) { return "", "", []string{"/by/shell"} }
 	}
 	ag := All(p)[0]
 	if res := call(t, ag, `{"command":"echo posted"}`); res.Content != "rewritten" {
@@ -830,7 +830,7 @@ func TestPostHookRuns(t *testing.T) {
 	if len(posts) != 3 {
 		t.Fatalf("post must run for success and denial: %+v", posts)
 	}
-	for i, want := range []string{"changed=[/by/bash]", "changed=[]", "changed=[" + file + "]"} {
+	for i, want := range []string{"changed=[/by/shell]", "changed=[]", "changed=[" + file + "]"} {
 		if !strings.HasSuffix(posts[i], want) {
 			t.Errorf("post %d = %q, want %s", i, posts[i], want)
 		}

@@ -65,7 +65,7 @@ const (
 	ArgText
 )
 
-// ReadCommand reports whether a bash command only reads: every segment runs
+// ReadCommand reports whether a shell command only reads: every segment runs
 // an allowlisted reader named without a path (no build or test tool, which
 // runs the project's code, and no git, which runs programs the repository's
 // config names), nothing is written through a redirect, the shell expands

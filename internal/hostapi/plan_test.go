@@ -23,7 +23,7 @@ import (
 func TestPlanMode(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "make deploy*", Decision: perm.Allow})
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "make deploy*", Decision: perm.Allow})
 	check := func(subject, arg string) tools.Verdict {
 		pipe := h.PipelineFor()
 		pipe.Ask = nil
@@ -39,8 +39,8 @@ func TestPlanMode(t *testing.T) {
 	if v := check("fs.write", "/p/a.go"); v.Decision != perm.Deny || v.DecidedBy != tools.ByReadOnly || !strings.HasPrefix(v.Reason, "describe the change") {
 		t.Fatalf("read-only write = %v by %s: %s", v.Decision, v.DecidedBy, v.Reason)
 	}
-	if v := check("tool.bash", "make deploy"); v.Decision != perm.Ask {
-		t.Fatalf("read-only bash = %v", v.Decision)
+	if v := check("tool.shell", "make deploy"); v.Decision != perm.Ask {
+		t.Fatalf("read-only shell = %v", v.Decision)
 	}
 	// the sandbox is what keeps the project read-only, so leaving it is denied
 	// before any mode (yolo would settle it) or the user sees the ask
@@ -48,7 +48,7 @@ func TestPlanMode(t *testing.T) {
 		h.Settings.SetQuiet("permissions.mode", mode)
 		pipe := h.PipelineFor()
 		pipe.Ask = func(tools.Request) (bool, string, string) { return true, "user", "" }
-		if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "make deploy", Unsandboxed: true}); v.Decision != perm.Deny || v.DecidedBy != tools.ByReadOnly {
+		if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "make deploy", Unsandboxed: true}); v.Decision != perm.Deny || v.DecidedBy != tools.ByReadOnly {
 			t.Fatalf("%s: sandbox: false for a planner = %v by %s: %s", mode, v.Decision, v.DecidedBy, v.Reason)
 		}
 	}
@@ -334,7 +334,7 @@ func TestShellNotes(t *testing.T) {
 			return textParts("ok")
 		}}, nil
 	}
-	// the model reads it as a bash result: escapes stripped
+	// the model reads it as a shell result: escapes stripped
 	h.RunShell(`printf '\033[1mshell-output\033[0m\n'`)
 	waitFor(t, func() error {
 		if tr := h.Session().Transcript; len(tr) != 1 || tr[0].Kind != "shell" || tr[0].Detail != "shell-output" {

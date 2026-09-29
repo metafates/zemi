@@ -147,12 +147,12 @@ func seedTranscript(t *testing.T, h *Host, sid string) {
 	addText(t, h, sid, "user", "the deploy script keeps failing")
 	addText(t, h, sid, "assistant", "fixed: it needs the labels sequence bumped first")
 	if err := h.DB.AddMessage(&store.Message{
-		SessionID: sid, Role: "tool", PartsJSON: `{"tool":"bash","output":"ok"}`,
+		SessionID: sid, Role: "tool", PartsJSON: `{"tool":"shell","output":"ok"}`,
 	}); err != nil {
 		t.Fatalf("AddMessage: %v", err)
 	}
 	if err := h.DB.AddToolCall(&store.Message{SessionID: sid, Role: "tool", PartsJSON: `{}`},
-		&store.ToolCall{Tool: "bash", OK: false}); err != nil {
+		&store.ToolCall{Tool: "shell", OK: false}); err != nil {
 		t.Fatalf("AddToolCall: %v", err)
 	}
 }
@@ -356,7 +356,7 @@ func must[T any](v T, err error) T {
 // use and quotes, the recipes, and a trusted project's instruction files.
 func TestReflectPrompt(t *testing.T) {
 	const secret = "api_key = sk-abcdefghijklmnopqrs"
-	failedLine := "- bash: " + learn.ScrubShapes("exit status 1: "+secret)
+	failedLine := "- shell: " + learn.ScrubShapes("exit status 1: "+secret)
 	notes := func(t *testing.T, h *Host, sid string) {
 		for i := range reflectMsgsMax + 5 {
 			addText(t, h, sid, "user", fmt.Sprintf("note %d.", i))
@@ -371,7 +371,7 @@ func TestReflectPrompt(t *testing.T) {
 		{
 			name: "the tail of the delta", seed: notes,
 			want:   []string{fmt.Sprintf("note %d.", reflectMsgsMax+4), "earlier messages omitted", "summary: the gist"},
-			absent: []string{"tool bash", "deploy script keeps failing", "note 0."},
+			absent: []string{"tool shell", "deploy script keeps failing", "note 0."},
 		},
 		{name: "only what came after seen", seed: func(t *testing.T, h *Host, sid string) {
 			notes(t, h, sid)
@@ -382,7 +382,7 @@ func TestReflectPrompt(t *testing.T) {
 		}, want: []string{fmt.Sprintf("note %d.", reflectMsgsMax+3)}, absent: []string{fmt.Sprintf("note %d.", reflectMsgsMax+2), "omitted"}},
 		{name: "failed tool results, first line, scrubbed, once after a compaction", seed: func(t *testing.T, h *Host, sid string) {
 			addToolResult(t, h, sid, "read", "package main", "")
-			addToolResult(t, h, sid, "bash", "", "exit status 1: "+secret+"\nsecond line")
+			addToolResult(t, h, sid, "shell", "", "exit status 1: "+secret+"\nsecond line")
 			msgs, _ := h.DB.Messages(sid)
 			var tail []*store.Message
 			for _, m := range msgs[len(msgs)-2:] {
@@ -589,7 +589,7 @@ func reflectNow(h *Host, sid string) bool {
 
 func addTool(t *testing.T, h *Host, sid string, ok bool) {
 	t.Helper()
-	if err := h.DB.AddToolCall(&store.Message{SessionID: sid, Role: "tool", PartsJSON: `{}`}, &store.ToolCall{Tool: "bash", OK: ok}); err != nil {
+	if err := h.DB.AddToolCall(&store.Message{SessionID: sid, Role: "tool", PartsJSON: `{}`}, &store.ToolCall{Tool: "shell", OK: ok}); err != nil {
 		t.Fatal(err)
 	}
 }

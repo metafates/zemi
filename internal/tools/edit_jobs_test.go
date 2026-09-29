@@ -79,7 +79,7 @@ func TestJobReadSandboxHint(t *testing.T) {
 	}
 }
 
-// TestEscapesOnlyWhereOffered: bash and job_start name network and sandbox
+// TestEscapesOnlyWhereOffered: shell and job_start name network and sandbox
 // only when their schema carries them.
 func TestEscapesOnlyWhereOffered(t *testing.T) {
 	for _, param := range []bool{false, true} {
@@ -194,12 +194,12 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 	}
 }
 
-// TestBashTimeoutBecomesJob: a command still running at its timeout keeps
+// TestShellTimeoutBecomesJob: a command still running at its timeout keeps
 // going as a job, so a slow build is not thrown away half done.
-func TestBashTimeoutBecomesJob(t *testing.T) {
+func TestShellTimeoutBecomesJob(t *testing.T) {
 	t.Parallel()
 	p := &Pipeline{Jobs: NewJobs()}
-	res, _ := runBash(context.Background(), p, map[string]any{
+	res, _ := runShell(context.Background(), p, map[string]any{
 		"command": "echo started; sleep 30", "timeout_ms": float64(400),
 	})
 	if res.IsError || !strings.Contains(res.Content, JobHandoff+"job-1") {
@@ -220,11 +220,11 @@ func TestBashTimeoutBecomesJob(t *testing.T) {
 	}
 }
 
-// TestBashOrphanIsNotAnError: a command that leaves a child holding the
+// TestShellOrphanIsNotAnError: a command that leaves a child holding the
 // pipe exited 0; the child is stopped and named, not reported as a failure.
-func TestBashOrphanIsNotAnError(t *testing.T) {
+func TestShellOrphanIsNotAnError(t *testing.T) {
 	t.Parallel()
-	res, _ := runBash(context.Background(), &Pipeline{}, map[string]any{"command": "sleep 30 &\necho started"})
+	res, _ := runShell(context.Background(), &Pipeline{}, map[string]any{"command": "sleep 30 &\necho started"})
 	if res.IsError || !strings.HasPrefix(res.Content, "started\na background process it started was stopped") {
 		t.Fatalf("orphan: %+v", res)
 	}
@@ -342,15 +342,15 @@ func TestFileToolsSymlinkRace(t *testing.T) {
 	}
 }
 
-// TestBashResultText pins what the model reads back: binary is named, not
+// TestShellResultText pins what the model reads back: binary is named, not
 // sent, and a failure ends in its exit status.
-func TestBashResultText(t *testing.T) {
+func TestShellResultText(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ cmd, want string }{
 		{`printf 'a\0b'`, "(binary output, 3 bytes)"},
 		{"echo hi; exit 3", "hi\nexit status 3"},
 	} {
-		res, _ := runBash(context.Background(), &Pipeline{}, map[string]any{"command": tc.cmd})
+		res, _ := runShell(context.Background(), &Pipeline{}, map[string]any{"command": tc.cmd})
 		if res.Content != tc.want {
 			t.Errorf("%s: %q, want %q", tc.cmd, res.Content, tc.want)
 		}

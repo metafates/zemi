@@ -77,8 +77,8 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		!(req.Subject == perm.SubjectWrite && !req.InPad() && h.protectedWrite(req.Arg))
 	if def.Rules != nil {
 		o := def.Rules.Evaluate(req.Subject, req.Arg, "")
-		if req.Subject == perm.SubjectBash {
-			o = def.Rules.CheckCommandFor(perm.SubjectBash, req.Command(), "")
+		if req.Subject == perm.SubjectShell {
+			o = def.Rules.CheckCommandFor(perm.SubjectShell, req.Command(), "")
 		}
 		switch {
 		case o.Decision == perm.Allow && settleable:
@@ -109,14 +109,14 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		base = ""
 	}
 	switch {
-	case base == "yolo" && req.ReadOnly && (req.Subject == perm.SubjectBash && !h.sandboxLive() || strings.HasPrefix(req.Subject, "mcp.")) && !h.autoLocal(req):
+	case base == "yolo" && req.ReadOnly && (req.Subject == perm.SubjectShell && !h.sandboxLive() || strings.HasPrefix(req.Subject, "mcp.")) && !h.autoLocal(req):
 		note("read-only agent: nothing confines this call")
 	case base == "yolo":
 		return resolved(true, tools.ByMode(def.Name))
 	case req.Unsandboxed:
 		// a mode settles a command only to run it sandboxed; the Lua tool
 		// gives its own reason
-		if req.Subject == perm.SubjectBash {
+		if req.Subject == perm.SubjectShell {
 			req.Reason = "the model asked to leave the sandbox"
 		}
 	case req.Network:
@@ -156,10 +156,10 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 			}
 		case !h.ProjectTrusted():
 			note("this project is not trusted (" + h.trustHint() + ")")
-		case req.Subject == perm.SubjectBash && !h.sandboxLive():
+		case req.Subject == perm.SubjectShell && !h.sandboxLive():
 			// a settled command would run unconfined
 			note("no sandbox")
-		case req.Subject == perm.SubjectBash:
+		case req.Subject == perm.SubjectShell:
 			note(h.unsettled(req))
 		case tools.PathSubject(req.Subject):
 			note("this file is outside the project")
@@ -184,7 +184,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		// only a command's sandbox escape is a sandbox matter; a Lua script
 		// or a memory edit is Unsandboxed for another reason
 		switch {
-		case req.Unsandboxed && req.Subject == perm.SubjectBash:
+		case req.Unsandboxed && req.Subject == perm.SubjectShell:
 			d.Why = DenyOutsideSandbox
 		case req.Network:
 			d.Why = DenyNetwork
@@ -222,7 +222,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		Tool: req.Tool, Always: label, Wider: wider, Project: project != "", Subject: req.Subject, Arg: h.shownArg(req),
 		Reason: req.Reason, Preview: req.Preview, Description: req.Description, Agent: req.Agent, Owner: req.Owner, Where: h.runsIn(req),
 	}
-	if req.Subject == perm.SubjectBash {
+	if req.Subject == perm.SubjectShell {
 		pr.Runs = req.Command().Programs(req.Pad)
 	}
 	allowed, by := ui.AskPermission(pr)
@@ -244,7 +244,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 // unconfined unless it asked for the network or a read-only agent runs it.
 func (h *Host) runsIn(req tools.Request) RunsIn {
 	switch {
-	case req.Subject != perm.SubjectBash:
+	case req.Subject != perm.SubjectShell:
 		return ""
 	case !h.sandboxLive():
 		return RunsNoSandbox
@@ -321,7 +321,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		return perm.Rule{Subject: subject, Pattern: pattern, Decision: perm.Allow, Principal: perm.PrincipalModel}
 	}
 	switch {
-	case req.Subject == perm.SubjectBash:
+	case req.Subject == perm.SubjectShell:
 		n := req.Command()
 		// Opaque is an inner shell (sh -c) or a stripped assignment: what the
 		// rule would match is not what the user read
@@ -335,15 +335,15 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		for _, seg := range n.Rows() {
 			// a segment this manager already lets through, by a session rule or
 			// a user rule, is not new: add neither a name nor a rule for it
-			if h.Perm.CheckCommandFor(perm.SubjectBash, seg, perm.PrincipalModel).Decision == perm.Allow {
+			if h.Perm.CheckCommandFor(perm.SubjectShell, seg, perm.PrincipalModel).Decision == perm.Allow {
 				continue
 			}
-			patterns, ok := bashAlwaysPatterns(seg)
+			patterns, ok := shellAlwaysPatterns(seg)
 			if !ok {
 				return "", nil
 			}
 			for _, p := range patterns {
-				r := rule(perm.SubjectBash, p)
+				r := rule(perm.SubjectShell, p)
 				// the ask said the run stays sandboxed, so the rule keeps it
 				r.Network = req.Network
 				rules = append(rules, r)
@@ -464,14 +464,14 @@ func deletes(seg perm.Normalized) bool {
 	return destructivePrograms[perm.ProgramName(seg.Args[0][0])] || seg.Destructive("") != ""
 }
 
-// bashAlwaysPatterns turns one command segment into the allow-lookup patterns
+// shellAlwaysPatterns turns one command segment into the allow-lookup patterns
 // the "always" answer (and a project permissions file) uses: it allows the
 // command as a whole, its program plus the subcommand when it has one,
 // whatever the arguments, since arguments differ every run. A deleting program
 // stays exact, and a wrapper program (sh -c, node -e) or a glob offers
 // nothing: a rule from those would widen to a command the user did not see.
 // ok is false when there is no safe rule.
-func bashAlwaysPatterns(row perm.Normalized) (patterns []string, ok bool) {
+func shellAlwaysPatterns(row perm.Normalized) (patterns []string, ok bool) {
 	seg, f := row.Segments[0], row.Args[0]
 	if strings.ContainsAny(seg, globMeta) {
 		return nil, false
@@ -528,7 +528,7 @@ func bashAlwaysPatterns(row perm.Normalized) (patterns []string, ok bool) {
 // unconfined), or when the file would load more than the label names: the
 // session answer skips a segment a model rule allows, the file outlives it.
 func (h *Host) projectChoice(req tools.Request, alwaysLabel string, alwaysRules []perm.Rule) (string, []perm.Rule) {
-	if req.Subject != perm.SubjectBash || req.Network || !h.ProjectTrusted() || alwaysLabel == "" || strings.ContainsAny(req.Arg, "\n") {
+	if req.Subject != perm.SubjectShell || req.Network || !h.ProjectTrusted() || alwaysLabel == "" || strings.ContainsAny(req.Arg, "\n") {
 		return "", nil
 	}
 	rules, ok := projectRules(req.Command())

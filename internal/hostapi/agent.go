@@ -48,7 +48,7 @@ type Profile struct {
 
 // PermRequest is one interactive permission ask for the overlay.
 type PermRequest struct {
-	Tool string // the asking tool (bash, edit, mcp_github_search)
+	Tool string // the asking tool (shell, edit, mcp_github_search)
 	// Always is what the session-long choice allows ("allow go test"),
 	// "" when none is offered
 	Always string
@@ -56,7 +56,7 @@ type PermRequest struct {
 	// read's whole repository), "" when there is none
 	Wider string
 	// Project offers Always's scope written to the project's permissions
-	// file (a trusted bash command)
+	// file (a trusted shell command)
 	Project bool
 	Subject string
 	Arg     string
@@ -92,7 +92,7 @@ type StreamTool struct {
 	ID      string
 	Label   string // the model's short description of a command
 	Started time.Time
-	Detail  string // live progress line (subagents, workflows, a bash command's last output line)
+	Detail  string // live progress line (subagents, workflows, a shell command's last output line)
 	Run     string // agent tool: the run id, so the row can open its transcript
 	Diff    string // file tools: the change as "- "/"+ " lines
 	Output  string // the last lines of the result (shortOutput)
@@ -1113,9 +1113,9 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 				t.Diff = "" // the change did not happen
 			}
 			if changed != "" {
-				t.Diff = changed // bash: what the command changed, failed or not
+				t.Diff = changed // shell: what the command changed, failed or not
 			}
-			if name == tools.ToolBash {
+			if name == tools.ToolShell {
 				t.Detail = "" // its last output line, which the result now holds
 			}
 			row = *t
@@ -1139,7 +1139,7 @@ func toolStatus(name string, ok bool, output string, cancelled bool) CallStatus 
 	switch {
 	case name == tools.ToolAgent && strings.HasPrefix(output, bgAgentStarted),
 		name == tools.ToolWorkflow && strings.HasPrefix(output, bgWorkflowStarted),
-		name == tools.ToolBash && strings.Contains(output, "so it "+tools.JobHandoff),
+		name == tools.ToolShell && strings.Contains(output, "so it "+tools.JobHandoff),
 		name == tools.ToolJobStart && ok:
 		return CallBG
 	case ok:
@@ -2836,7 +2836,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 			}
 			r.Principal = p
 		}
-		if err := validateRule(&r, rawString(L, spec, "match"), rawString(L, spec, "not_match_example")); err != nil {
+		if err := h.validateRule(&r, rawString(L, spec, "match"), rawString(L, spec, "not_match_example")); err != nil {
 			L.RaiseError("zemi.permission.rule.add: %v", err)
 			return 0
 		}
@@ -2867,24 +2867,27 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// knownSubject: "bash" is not a subject, "tool.bash" is; a rule outside the
-// namespaces would sit in the store and never match.
-func knownSubject(subject string) bool {
-	return slices.ContainsFunc(perm.SubjectPrefixes, func(p string) bool { return strings.HasPrefix(subject, p) })
+// toolSubjects are the tool.* subjects a request can carry: the tools that
+// ask as themselves and the Lua tools added so far.
+func (h *Host) toolSubjects() []string {
+	subjects := []string{"tool.*", perm.SubjectShell, "tool.lua", "tool.workflow"}
+	for _, t := range h.luaTools.list() {
+		subjects = append(subjects, "tool."+t.Name)
+	}
+	return subjects
 }
 
-func badSubject(subject string) error {
-	return fmt.Errorf("subject %q starts with none of %s", subject, strings.Join(perm.SubjectPrefixes, " "))
-}
-
-// ruleShape checks what every rule intake needs: a known subject, a
-// pattern and a decision.
-func ruleShape(r perm.Rule) error {
+// ruleShape checks what every rule intake needs: a subject some request
+// carries, a pattern and a decision. A rule on any other subject would sit
+// in the store and never match.
+func (h *Host) ruleShape(r perm.Rule) error {
 	switch {
 	case r.Subject == "" || r.Pattern == "":
 		return errors.New("subject and pattern are required")
-	case !knownSubject(r.Subject):
-		return badSubject(r.Subject)
+	case !slices.ContainsFunc(perm.SubjectPrefixes, func(p string) bool { return strings.HasPrefix(r.Subject, p) }):
+		return fmt.Errorf("subject %q starts with none of %s", r.Subject, strings.Join(perm.SubjectPrefixes, " "))
+	case strings.HasPrefix(r.Subject, "tool.") && !slices.Contains(h.toolSubjects(), r.Subject):
+		return fmt.Errorf("no tool asks as %q: tool subjects are %s, and a Lua tool's once zemi.tool.add added it", r.Subject, strings.Join(h.toolSubjects(), " "))
 	case r.Decision != perm.Allow && r.Decision != perm.Ask && r.Decision != perm.Deny:
 		return errors.New("decision must be allow, ask or deny")
 	}
@@ -2894,8 +2897,8 @@ func ruleShape(r perm.Rule) error {
 // validateRule checks a Lua rule. Examples are required (DESIGN §9): the match example must match
 // the pattern without being excluded, the not_match example must be
 // excluded; a guard needs both examples.
-func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
-	if err := ruleShape(*r); err != nil {
+func (h *Host) validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
+	if err := h.ruleShape(*r); err != nil {
 		return err
 	}
 	if r.NotMatch == "" {
@@ -3059,7 +3062,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Ask:         h.askHook(),
 		Checkpoint:  h.checkpointFile,
 		AfterWrite:  h.afterWrite,
-		Changes:     h.bashChanges,
+		Changes:     h.shellChanges,
 		Progress:    func(id, line string) { h.setToolDetail(id, sanitize.String(line)) },
 		Diagnostics: h.lspDiagnostics,
 		LSP:         h.lspOpen,

@@ -55,11 +55,11 @@ func TestEvaluateDecisions(t *testing.T) {
 	}
 	// a command segment is already split at unquoted newlines, so a quoted
 	// one is one argument the approved pattern covers
-	s.Add(Rule{Subject: "tool.bash", Pattern: "git commit *", Decision: Allow})
-	if o := s.CheckCommandFor(SubjectBash, Normalize("git commit -m 'title\n\nbody'"), ""); o.Decision != Allow {
+	s.Add(Rule{Subject: "tool.shell", Pattern: "git commit *", Decision: Allow})
+	if o := s.CheckCommandFor(SubjectShell, Normalize("git commit -m 'title\n\nbody'"), ""); o.Decision != Allow {
 		t.Fatalf("a quoted newline under an allowed prefix, got %v (%s)", o.Decision, o.Reason)
 	}
-	if o := s.CheckCommandFor(SubjectBash, Normalize("git commit -m x\nrm -rf /"), ""); o.Decision != Ask {
+	if o := s.CheckCommandFor(SubjectShell, Normalize("git commit -m x\nrm -rf /"), ""); o.Decision != Ask {
 		t.Fatalf("an unquoted newline is a second segment, got %v", o.Decision)
 	}
 	if o := s.Evaluate("fs.write", "/tmp/../etc/passwd", ""); o.Decision != Ask {
@@ -101,13 +101,13 @@ func TestEvaluateCanonicalPaths(t *testing.T) {
 // options before its subcommand; an allow stays judged as written.
 func TestDenyMeetsEverySpelling(t *testing.T) {
 	s := store(t,
-		Rule{Subject: "tool.bash", Pattern: "git *", Decision: Allow, NotMatch: "git push*"},
-		Rule{Subject: "tool.bash", Pattern: "curl *", Decision: Deny},
-		Rule{Subject: "tool.bash", Pattern: "make deploy*", Decision: Ask},
-		Rule{Subject: "tool.bash", Pattern: "env *", Decision: Allow},
-		Rule{Subject: "tool.bash", Pattern: "make *", Decision: Allow},
-		Rule{Subject: "tool.bash", Pattern: "docker push*", Decision: Ask},
-		Rule{Subject: "tool.bash", Pattern: "ssh *", Decision: Deny},
+		Rule{Subject: "tool.shell", Pattern: "git *", Decision: Allow, NotMatch: "git push*"},
+		Rule{Subject: "tool.shell", Pattern: "curl *", Decision: Deny},
+		Rule{Subject: "tool.shell", Pattern: "make deploy*", Decision: Ask},
+		Rule{Subject: "tool.shell", Pattern: "env *", Decision: Allow},
+		Rule{Subject: "tool.shell", Pattern: "make *", Decision: Allow},
+		Rule{Subject: "tool.shell", Pattern: "docker push*", Decision: Ask},
+		Rule{Subject: "tool.shell", Pattern: "ssh *", Decision: Deny},
 	)
 	for _, c := range []struct {
 		cmd  string
@@ -133,7 +133,7 @@ func TestDenyMeetsEverySpelling(t *testing.T) {
 	} {
 		// an ask must stay ruled, or a mode settles it as a default ask
 		for name, n := range readings(c.cmd) {
-			if o := s.CheckCommandFor(SubjectBash, n, ""); o.Decision != c.want || o.Decision == Ask && !o.Ruled() {
+			if o := s.CheckCommandFor(SubjectShell, n, ""); o.Decision != c.want || o.Decision == Ask && !o.Ruled() {
 				t.Errorf("%s %q: got %v (%s, ruled %v), want %v", name, c.cmd, o.Decision, o.Reason, o.Ruled(), c.want)
 			}
 		}
@@ -142,12 +142,12 @@ func TestDenyMeetsEverySpelling(t *testing.T) {
 
 func TestEvaluateNotMatch(t *testing.T) {
 	s := store(t,
-		Rule{Subject: "tool.bash", Pattern: "git *", Decision: Allow, NotMatch: "git push*"},
+		Rule{Subject: "tool.shell", Pattern: "git *", Decision: Allow, NotMatch: "git push*"},
 	)
-	if o := s.Evaluate("tool.bash", "git status", ""); o.Decision != Allow {
+	if o := s.Evaluate("tool.shell", "git status", ""); o.Decision != Allow {
 		t.Fatalf("want allow, got %v", o.Decision)
 	}
-	o := s.Evaluate("tool.bash", "git push origin main", "")
+	o := s.Evaluate("tool.shell", "git push origin main", "")
 	if o.Decision != Ask {
 		t.Fatalf("not_match falls through to ask, got %v", o.Decision)
 	}
@@ -238,7 +238,7 @@ func TestSubjectFamilyRule(t *testing.T) {
 // ride an allow rule covering the outer command.
 func TestHiddenCommandsAsk(t *testing.T) {
 	s := new(Store)
-	s.Add(Rule{Subject: "tool.bash", Pattern: "git log*", Decision: Allow})
+	s.Add(Rule{Subject: "tool.shell", Pattern: "git log*", Decision: Allow})
 	for _, c := range []struct {
 		cmd  string
 		want Decision
@@ -260,7 +260,7 @@ func TestHiddenCommandsAsk(t *testing.T) {
 		{"cat > n <<'EOF'\nit's\nEOF", Ask},
 	} {
 		for name, n := range readings(c.cmd) {
-			if got := s.CheckCommandFor(SubjectBash, n, "model").Decision; got != c.want {
+			if got := s.CheckCommandFor(SubjectShell, n, "model").Decision; got != c.want {
 				t.Errorf("%s %q: got %v, want %v", name, c.cmd, got, c.want)
 			}
 		}
@@ -357,7 +357,7 @@ func TestAssignmentGate(t *testing.T) {
 		`export $"PATH"=/tmp/x; make`,
 	} {
 		for name, n := range readings(cmd) {
-			if o := store(t, Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectBash, n, ""); o.Decision != Ask {
+			if o := store(t, Rule{Subject: "tool.shell", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectShell, n, ""); o.Decision != Ask {
 				t.Errorf("%s %q must ask, got %v", name, cmd, o.Decision)
 			}
 		}
@@ -368,8 +368,8 @@ func TestAssignmentGate(t *testing.T) {
 // allow rule for the bare command must not carry the variable with it.
 func TestAssignmentPrefixNeverAllows(t *testing.T) {
 	s := store(t,
-		Rule{Subject: "tool.bash", Pattern: "git log*", Decision: Allow},
-		Rule{Subject: "tool.bash", Pattern: "rm*", Decision: Deny},
+		Rule{Subject: "tool.shell", Pattern: "git log*", Decision: Allow},
+		Rule{Subject: "tool.shell", Pattern: "rm*", Decision: Deny},
 	)
 	for _, c := range []struct {
 		cmd  string
@@ -382,7 +382,7 @@ func TestAssignmentPrefixNeverAllows(t *testing.T) {
 		{"FOO=1 rm -rf x", Deny},
 	} {
 		for name, n := range readings(c.cmd) {
-			if o := s.CheckCommandFor(SubjectBash, n, ""); o.Decision != c.want {
+			if o := s.CheckCommandFor(SubjectShell, n, ""); o.Decision != c.want {
 				t.Errorf("%s %q: got %v (%s), want %v", name, c.cmd, o.Decision, o.Reason, c.want)
 			}
 		}
@@ -390,39 +390,39 @@ func TestAssignmentPrefixNeverAllows(t *testing.T) {
 }
 
 func TestCompoundRidesNoBroadAllow(t *testing.T) {
-	s := store(t, Rule{Subject: "tool.bash", Pattern: "ls*", Decision: Allow})
-	if o := s.CheckCommandFor(SubjectBash, Normalize("ls; rm -rf x"), ""); o.Decision != Ask {
+	s := store(t, Rule{Subject: "tool.shell", Pattern: "ls*", Decision: Allow})
+	if o := s.CheckCommandFor(SubjectShell, Normalize("ls; rm -rf x"), ""); o.Decision != Ask {
 		t.Fatalf("compound needs every segment allowed, got %v", o.Decision)
 	}
-	if o := s.CheckCommandFor(SubjectBash, Normalize("ls -la"), ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectShell, Normalize("ls -la"), ""); o.Decision != Allow {
 		t.Fatalf("plain ls should allow: %v (%s)", o.Decision, o.Reason)
 	}
-	if o := s.CheckCommandFor(SubjectBash, Normalize("ls && ls"), ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectShell, Normalize("ls && ls"), ""); o.Decision != Allow {
 		t.Fatalf("two allowed segments: %v", o.Decision)
 	}
 }
 
 func TestRedirectGates(t *testing.T) {
 	s := store(t,
-		Rule{Subject: "tool.bash", Pattern: "ls*", Decision: Allow},
+		Rule{Subject: "tool.shell", Pattern: "ls*", Decision: Allow},
 		Rule{Subject: "fs.write", Pattern: "/tmp/*", Decision: Allow},
 	)
-	if o := s.CheckCommandFor(SubjectBash, Normalize("ls > /tmp/out"), ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectShell, Normalize("ls > /tmp/out"), ""); o.Decision != Allow {
 		t.Fatalf("allowed write target: %v (%s)", o.Decision, o.Reason)
 	}
-	if o := s.CheckCommandFor(SubjectBash, Normalize("ls > /etc/hosts"), ""); o.Decision != Ask {
+	if o := s.CheckCommandFor(SubjectShell, Normalize("ls > /etc/hosts"), ""); o.Decision != Ask {
 		t.Fatalf("redirect write gates fs.write: %v", o.Decision)
 	}
-	if o := s.CheckCommandFor(SubjectBash, Normalize("ls 2>&1"), ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectShell, Normalize("ls 2>&1"), ""); o.Decision != Allow {
 		t.Fatalf("fd dup gates nothing: %v (%s)", o.Decision, o.Reason)
 	}
-	if o := s.CheckCommandFor(SubjectBash, Normalize("ls > /dev/null"), ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectShell, Normalize("ls > /dev/null"), ""); o.Decision != Allow {
 		t.Fatalf("/dev/null exempt: %v", o.Decision)
 	}
-	if o := s.CheckCommandFor(SubjectBash, Normalize("cat < /etc/passwd"), ""); o.Decision != Ask {
+	if o := s.CheckCommandFor(SubjectShell, Normalize("cat < /etc/passwd"), ""); o.Decision != Ask {
 		t.Fatalf("input redirect gates fs.read: %v", o.Decision)
 	}
-	if o := s.CheckCommandFor(SubjectBash, Normalize("ls >> /tmp/a 2>&1"), ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectShell, Normalize("ls >> /tmp/a 2>&1"), ""); o.Decision != Allow {
 		t.Fatalf("mixed: %v (%s)", o.Decision, o.Reason)
 	}
 }
@@ -441,7 +441,7 @@ func TestUnbalancedFails(t *testing.T) {
 		{`echo x > ""`, "a redirect has no target"},
 	} {
 		for name, n := range readings(c.cmd) {
-			if o := store(t, Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectBash, n, ""); o.Decision != Deny || !strings.HasPrefix(o.Reason, c.reason) {
+			if o := store(t, Rule{Subject: "tool.shell", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectShell, n, ""); o.Decision != Deny || !strings.HasPrefix(o.Reason, c.reason) {
 				t.Errorf("%s %q: %v %q, want deny %q", name, c.cmd, o.Decision, o.Reason, c.reason)
 			}
 		}
@@ -584,11 +584,11 @@ func TestRealPathResolvesDotDotAfterSymlinks(t *testing.T) {
 
 func TestDotDotRidesNoDirectoryAllow(t *testing.T) {
 	s := store(t,
-		Rule{Subject: "tool.bash", Pattern: "cat docs/*", Decision: Allow},
-		Rule{Subject: "tool.bash", Pattern: "gen --out=build/*", Decision: Allow},
-		Rule{Subject: "tool.bash", Pattern: "rm /tmp/*", Decision: Allow},
-		Rule{Subject: "tool.bash", Pattern: "rm /etc/*", Decision: Deny},
-		Rule{Subject: "tool.bash", Pattern: "ls *..*", Decision: Deny},
+		Rule{Subject: "tool.shell", Pattern: "cat docs/*", Decision: Allow},
+		Rule{Subject: "tool.shell", Pattern: "gen --out=build/*", Decision: Allow},
+		Rule{Subject: "tool.shell", Pattern: "rm /tmp/*", Decision: Allow},
+		Rule{Subject: "tool.shell", Pattern: "rm /etc/*", Decision: Deny},
+		Rule{Subject: "tool.shell", Pattern: "ls *..*", Decision: Deny},
 	)
 	for _, c := range []struct {
 		cmd  string
@@ -614,7 +614,7 @@ func TestDotDotRidesNoDirectoryAllow(t *testing.T) {
 		{"ls a/../b", Deny}, // a deny the raw spelling meets holds
 	} {
 		for name, n := range readings(c.cmd) {
-			if o := s.CheckCommandFor(SubjectBash, n, ""); o.Decision != c.want {
+			if o := s.CheckCommandFor(SubjectShell, n, ""); o.Decision != c.want {
 				t.Errorf("%s %q: got %v (%s), want %v", name, c.cmd, o.Decision, o.Reason, c.want)
 			}
 		}

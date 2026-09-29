@@ -102,7 +102,7 @@ end)
 test("the third failing run asks the titles model", function()
 	local asks = test.stub("lua.model.ask", "*", "The fixture is missing.")
 	local function fail()
-		return test.emit("tool.post", { tool = "bash", ok = false, output = "FAIL", input = { command = "go test" } })
+		return test.emit("tool.post", { tool = "shell", ok = false, output = "FAIL", input = { command = "go test" } })
 	end
 	fail()
 	fail()

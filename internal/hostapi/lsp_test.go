@@ -463,7 +463,7 @@ func TestLSPSyncFromGit(t *testing.T) {
 	if got := refs(); got != "2 references" {
 		t.Fatalf("baseline: %q", got)
 	}
-	// each change is made behind the server's back, as a bash command
+	// each change is made behind the server's back, as a shell command
 	// would, and marked dirty the way running one does
 	os.WriteFile(b, []byte("x := Foo()\n"), 0o644)
 	h.lspDirty()

@@ -344,7 +344,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		}
 	}
 	// in the task, not the system prompt, which runs of one agent share
-	writes := hasTool(kept, tools.ToolBash) || hasTool(kept, tools.ToolWrite) || hasTool(kept, tools.ToolEdit)
+	writes := hasTool(kept, tools.ToolShell) || hasTool(kept, tools.ToolWrite) || hasTool(kept, tools.ToolEdit)
 	if len(runner.History) == 0 && pipe.Pad != "" && writes {
 		prompt += "\n\n" + fmt.Sprintf(scratchOwn, filepath.Join(pipe.Pad, def.Name+"-"+run.id))
 	}
@@ -566,7 +566,7 @@ func (s *subagentHooks) ToolCallEnd(id, name string, ok bool, out, diff string) 
 		t.Status, t.Output = toolStatus(name, ok, out, s.ctx != nil && s.ctx.Err() != nil), shortOutput(out)
 		switch {
 		case diff != "":
-			t.Diff = diff // bash: what the command changed
+			t.Diff = diff // shell: what the command changed
 		case !ok:
 			t.Diff = "" // the change did not happen
 		}

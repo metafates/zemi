@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// CheckCommandFor decides a bash call (DESIGN §9), its segments matched
+// CheckCommandFor decides a shell call (DESIGN §9), its segments matched
 // under subject (lua.job.start gates Lua-started programs the same way): the
 // whole call asks when the assignment gate or a heredoc fires, fails when it
 // does not parse, and is allowed only when every segment and every redirect

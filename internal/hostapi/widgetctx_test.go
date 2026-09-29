@@ -71,7 +71,7 @@ func TestPrintedRender(t *testing.T) {
 	h := newTestHostUI(t)
 	rows := []ChatMessage{
 		{Role: "assistant", Kind: RowReasoning, Text: "hmm", Stat: &TurnStat{ThoughtMS: 1200}},
-		{Role: "assistant", Kind: RowTool, Tool: "bash", Text: "go test", Status: CallErr, Output: "FAIL\nexit status 1"},
+		{Role: "assistant", Kind: RowTool, Tool: "shell", Text: "go test", Status: CallErr, Output: "FAIL\nexit status 1"},
 		{Role: "assistant", Text: "it fails"},
 	}
 	h.setTranscript("t", rows)

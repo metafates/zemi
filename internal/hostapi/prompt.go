@@ -490,7 +490,7 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly 
 	if pad != "" {
 		scratch = "Scratchpad: " + pad + "\n"
 		switch {
-		case hasTool(toolset, tools.ToolBash):
+		case hasTool(toolset, tools.ToolShell):
 			scratch += scratchUse
 		case writes:
 			scratch += scratchWrite

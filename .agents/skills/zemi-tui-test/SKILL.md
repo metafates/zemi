@@ -55,7 +55,7 @@ L
 ```sh
 tmux -L zt new-session -d -s zt -x 140 -y 40 "cd $T/proj && $S/zemi-safe $T --trust"
 sleep 1.5; tmux -L zt capture-pane -t zt -p            # -e keeps colors (SGR) for theme checks
-tmux -L zt send-keys -t zt "call bash {\"command\":\"ls\",\"about\":\"list\"}" Enter
+tmux -L zt send-keys -t zt "call shell {\"command\":\"ls\",\"about\":\"list\"}" Enter
 sleep 1; tmux -L zt capture-pane -t zt -p
 tmux -L zt send-keys -t zt "/model" Enter               # pickers, palettes, overlays
 tmux -L zt send-keys -t zt Escape

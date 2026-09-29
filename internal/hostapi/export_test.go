@@ -116,10 +116,10 @@ func TestCopyReply(t *testing.T) {
 func TestExportMarkdown(t *testing.T) {
 	user := func(s string) ChatMessage { return ChatMessage{Role: fantasy.MessageRoleUser, Text: s} }
 	reply := func(s string) ChatMessage { return ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s} }
-	bash := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "bash", Text: "go test ./...", Label: "run the tests", Status: CallOK}
-	failed := bash
+	shell := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "go test ./...", Label: "run the tests", Status: CallOK}
+	failed := shell
 	failed.Status = CallErr
-	fenced := bash
+	fenced := shell
 	fenced.Label, fenced.Output, fenced.Diff = "", "```\nx\n```", "- a\n+ b"
 	agentRow := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "agent", Label: "Find it", Run: "a1b2c3d4", Status: CallOK}
 	thought := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "hmm\n\nso", Stat: &TurnStat{ThoughtMS: 4200}}
@@ -132,23 +132,23 @@ func TestExportMarkdown(t *testing.T) {
 		{
 			"speakers merge",
 			false,
-			[]ChatMessage{user("hi"), bash, bash, reply("done")},
-			"\n## You\n\nhi\n\n## zemi\n\n- `bash` run the tests\n- `bash` run the tests\n\ndone\n",
+			[]ChatMessage{user("hi"), shell, shell, reply("done")},
+			"\n## You\n\nhi\n\n## zemi\n\n- `shell` run the tests\n- `shell` run the tests\n\ndone\n",
 		},
-		{"failed tool says so", false, []ChatMessage{failed}, "\n## zemi\n\n- `bash` run the tests (failed)\n"},
+		{"failed tool says so", false, []ChatMessage{failed}, "\n## zemi\n\n- `shell` run the tests (failed)\n"},
 		{"reasoning left out", false, []ChatMessage{user("hi"), thought, user("again")}, "\n## You\n\nhi\n\n## You\n\nagain\n"},
 		{"reasoning quoted in full", true, []ChatMessage{thought, reply("ok")}, "\n## zemi\n\n> _Thought for 4.2s_\n>\n> hmm\n>\n> so\n\nok\n"},
 		{
 			"tool expands in full",
 			true,
 			[]ChatMessage{failed, agentRow},
-			"\n## zemi\n\n**bash** run the tests (failed)\n```sh\ngo test ./...\n```\n\n**agent** Find it\nrun a1b2c3d4, below\n",
+			"\n## zemi\n\n**shell** run the tests (failed)\n```sh\ngo test ./...\n```\n\n**agent** Find it\nrun a1b2c3d4, below\n",
 		},
 		{
 			"fence outlasts backticks",
 			true,
 			[]ChatMessage{fenced},
-			"\n## zemi\n\n**bash** go test ./...\n```diff\n- a\n+ b\n```\n````\n```\nx\n```\n````\n",
+			"\n## zemi\n\n**shell** go test ./...\n```diff\n- a\n+ b\n```\n````\n```\nx\n```\n````\n",
 		},
 		{
 			"notice and compaction",
@@ -248,7 +248,7 @@ func TestToolLabel(t *testing.T) {
 func TestPendingRowLabel(t *testing.T) {
 	h, _ := newTestHost(t)
 	s := &streamAdapter{h: h}
-	s.ToolCallPending("1", "bash")
+	s.ToolCallPending("1", "shell")
 	label := func() string {
 		h.agents.mu.Lock()
 		defer h.agents.mu.Unlock()

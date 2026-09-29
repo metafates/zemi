@@ -1,4 +1,4 @@
-// snapshot.go shows what a bash call changed: a git tree of the working
+// snapshot.go shows what a shell call changed: a git tree of the working
 // directory before and after it, and the diff between the two.
 
 package hostapi
@@ -27,7 +27,7 @@ const (
 	snapSlow        = 300 * time.Millisecond
 	snapStall       = 3 * time.Second
 	snapFiles       = 5       // files a row's diff shows
-	snapCheckpoints = 100     // files a bash call checkpoints for rewind
+	snapCheckpoints = 100     // files a shell call checkpoints for rewind
 	snapBytes       = 4 << 10 // and the bytes they may take
 	snapNoteMax     = 10      // paths the model's line names
 	snapOverlap     = "may include changes from concurrent commands"
@@ -42,7 +42,7 @@ type snapshots struct {
 	skipped sync.Map // turn and path a rewind was said not to restore
 
 	state sync.Mutex
-	open  int                 // bash calls between their two snapshots
+	open  int                 // shell calls between their two snapshots
 	mixed bool                // two of them overlapped
 	wrote map[string][32]byte // what file tools wrote meanwhile, by content
 }
@@ -135,7 +135,7 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 	if wall := time.Since(start); cpu < snapSlow && wall < snapStall {
 		s.slow = 0
 	} else if s.slow++; s.slow == 2 {
-		h.Log.Warn("snapshots are slow in this repository; bash rows show no diff", "origin", "snapshot", "cpu_ms", cpu.Milliseconds(), "ms", wall.Milliseconds())
+		h.Log.Warn("snapshots are slow in this repository; shell rows show no diff", "origin", "snapshot", "cpu_ms", cpu.Milliseconds(), "ms", wall.Milliseconds())
 	}
 	return root, env, strings.TrimSpace(out)
 }
@@ -161,10 +161,10 @@ func processGone(pid int) bool {
 	return err != nil || errors.Is(p.Signal(syscall.Signal(0)), os.ErrProcessDone)
 }
 
-// bashChanges is the pipeline's Changes hook: it snapshots dir now, and the
+// shellChanges is the pipeline's Changes hook: it snapshots dir now, and the
 // func it returns snapshots again and reports what differs, as one line for
 // the model and a diff for the row.
-func (h *Host) bashChanges(dir string) func() (note, diff string, paths []string) {
+func (h *Host) shellChanges(dir string) func() (note, diff string, paths []string) {
 	s := &h.snaps
 	s.state.Lock()
 	s.open++
@@ -198,8 +198,8 @@ func (h *Host) jobsRunningCount() int {
 	return h.jobs.Running()
 }
 
-// noteWrite records a file tool's write while a bash call is open: its row
-// shows that change already, so the bash row leaves the path out.
+// noteWrite records a file tool's write while a shell call is open: its row
+// shows that change already, so the shell row leaves the path out.
 func (h *Host) noteWrite(path string) {
 	s := &h.snaps
 	s.state.Lock()

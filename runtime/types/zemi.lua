@@ -562,7 +562,7 @@ function zemi.command.list() end
 ---@field ok boolean
 ---@field output string The full text the model gets, as the handler before this one left it.
 ---@field ms integer The call's time from the permission gate, an ask's wait included.
----@field changed string[] Absolute paths of the files the call changed: the file a write or edit wrote, and what a bash command changed in its repository (ignored files and other tools are not tracked). Commands running at the same time each list the other's changes too.
+---@field changed string[] Absolute paths of the files the call changed: the file a write or edit wrote, and what a shell command changed in its repository (ignored files and other tools are not tracked). Commands running at the same time each list the other's changes too.
 
 ---@class zemi.ev.ToolDenied: zemi.Event
 ---@field tool string
@@ -894,7 +894,7 @@ function zemi.event.stats() end
 ---@field pending_memory integer
 ---@field agents_running integer Agents of this session still running outside a workflow: the turn's own and background ones, whose reports arrive as messages.
 ---@field workflows_running integer Workflows of this session still running, paused ones included.
----@field jobs_running integer Background jobs (job_start, or a bash call that outlived its timeout) still running.
+---@field jobs_running integer Background jobs (job_start, or a shell call that outlived its timeout) still running.
 ---@field goal? zemi.GoalCtx The session's goal while one is set (/goal).
 ---@field loop? zemi.LoopCtx The session's loop while one runs (/loop).
 ---@field quit_armed boolean A second ctrl+c quits.
@@ -1940,7 +1940,7 @@ function zemi.composer.edit() end
 ---| "deny"
 
 ---@class zemi.RuleSpec
----@field subject string "tool.bash", "fs.read", "fs.write", "net.<host>", "lua.<ns.call>", "mcp.<server>", "memory.write"; any other family raises.
+---@field subject string "tool.shell", "fs.read", "fs.write", "net.<host>", "lua.<ns.call>", "mcp.<server>", "memory.write"; any other family raises.
 ---@field pattern string Glob over the subject's argument.
 ---@field decision zemi.Decision Allow rules need user config.
 ---@field match string Required: an argument the rule must match, checked at registration.
@@ -1995,7 +1995,7 @@ zemi.permission.rule = {}
 ---
 --- ```lua
 --- zemi.permission.rule.add({
---- 	subject = "tool.bash",
+--- 	subject = "tool.shell",
 --- 	pattern = "go test *",
 --- 	decision = zemi.permission.decision.ALLOW,
 --- 	match = "go test ./...",
@@ -2134,7 +2134,7 @@ function zemi.tool.add(spec) end
 --- at the permission gate), `post` after, to rewrite its output.
 ---
 --- ```lua
---- zemi.tool.override("bash", {
+--- zemi.tool.override("shell", {
 --- 	pre = function(ev)
 --- 		if ev.input.command:find("^git push") then return { decision = "deny", reason = "push by hand" } end
 --- 	end,
@@ -2302,7 +2302,7 @@ function zemi.http.get(url, opts) end
 ---@field args? string[]
 ---@field env? table<string, string>
 ---@field cwd? string The project dir by default; any dir `zemi.fs` reads. A missing dir is the returned error.
----@field sandbox? boolean Run under the sandbox policy a mode-settled bash command gets; raises when it cannot be confined.
+---@field sandbox? boolean Run under the sandbox policy a mode-settled shell command gets; raises when it cannot be confined.
 ---@field stdin? boolean Needed before `write`.
 ---@field timeout_ms? integer `zemi.job.wait` only; 60000 by default.
 ---@field on_stdout? fun(lines: string[]) Lines as they arrive, batched; the result's `stdout` fills all the same.
@@ -2325,7 +2325,7 @@ function zemi.http.get(url, opts) end
 
 --- Child processes run in their own session and process group, with the
 --- project directory as their working directory. Needs `lua.job.start`
---- allowed for the command line: rules match it normalized like `tool.bash`
+--- allowed for the command line: rules match it normalized like `tool.shell`
 --- patterns (`go test *`), with cmd and args as its words.
 ---@class zemi.job
 zemi.job = {}
@@ -2819,7 +2819,7 @@ function zemi.test.click(id, click) end
 --- output the model gets, a vetoable event its zemi.Veto or nil.
 ---
 --- ```lua
---- test.eq(test.emit("tool.post", { tool = "bash", ok = false, output = "FAIL" }), "FAIL")
+--- test.eq(test.emit("tool.post", { tool = "shell", ok = false, output = "FAIL" }), "FAIL")
 --- ```
 ---@param name zemi.EventName
 ---@param ev? table

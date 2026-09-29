@@ -43,11 +43,11 @@ func TestRunsIn(t *testing.T) {
 		req  tools.Request
 		want RunsIn
 	}{
-		{"approved delete", true, tools.Request{Subject: "tool.bash", Arg: "rm -rf build"}, RunsOutside},
-		{"sandbox false", true, tools.Request{Subject: "tool.bash", Unsandboxed: true}, RunsOutside},
-		{"network", true, tools.Request{Subject: "tool.bash", Network: true}, RunsNetwork},
-		{"read-only agent", true, tools.Request{Subject: "tool.bash", ReadOnly: true}, RunsConfined},
-		{"no backend", false, tools.Request{Subject: "tool.bash", Network: true}, RunsNoSandbox},
+		{"approved delete", true, tools.Request{Subject: "tool.shell", Arg: "rm -rf build"}, RunsOutside},
+		{"sandbox false", true, tools.Request{Subject: "tool.shell", Unsandboxed: true}, RunsOutside},
+		{"network", true, tools.Request{Subject: "tool.shell", Network: true}, RunsNetwork},
+		{"read-only agent", true, tools.Request{Subject: "tool.shell", ReadOnly: true}, RunsConfined},
+		{"no backend", false, tools.Request{Subject: "tool.shell", Network: true}, RunsNoSandbox},
 		{"not a command", true, tools.Request{Subject: "fs.read"}, ""},
 	} {
 		fakeSandbox(h, c.live)
@@ -98,7 +98,7 @@ func TestUnsettled(t *testing.T) {
 	} {
 		h.SetProjectTrusted(c.trusted)
 		fakeSandbox(h, c.live)
-		if got := h.unsettled(tools.Request{Subject: perm.SubjectBash, Arg: c.cmd, ReadOnly: c.readOnly, Pad: h.ScratchDir()}) == ""; got != c.want {
+		if got := h.unsettled(tools.Request{Subject: perm.SubjectShell, Arg: c.cmd, ReadOnly: c.readOnly, Pad: h.ScratchDir()}) == ""; got != c.want {
 			t.Errorf("trusted=%v live=%v readOnly=%v %q: got %v", c.trusted, c.live, c.readOnly, c.cmd, got)
 		}
 	}
@@ -107,7 +107,7 @@ func TestUnsettled(t *testing.T) {
 	// started, under yolo too
 	h.SetProjectTrusted(true)
 	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "fake", EnforcesProtect: true}})
-	req := tools.Request{Subject: "tool.bash", Arg: "rm -rf build"}
+	req := tools.Request{Subject: "tool.shell", Arg: "rm -rf build"}
 	for _, mode := range []string{"auto", "yolo"} {
 		h.SetPermMode(mode)
 		for _, profile := range []string{"planner", "default"} {
@@ -125,32 +125,32 @@ func TestUnsettled(t *testing.T) {
 	// a rule an "always" answer wrote from a network ask keeps the sandbox
 	// and adds sockets when the next call comes without the flag
 	h.SetProfile("default")
-	_, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example", Network: true})
+	_, rules := h.alwaysChoice(tools.Request{Subject: "tool.shell", Arg: "curl https://x.example", Network: true})
 	if len(rules) != 2 || !rules[0].Network || !rules[1].Network {
 		t.Fatalf("network always rules: %+v", rules)
 	}
-	if label, _ := h.projectChoice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example", Network: true}, "allow curl", rules); label != "" {
+	if label, _ := h.projectChoice(tools.Request{Subject: "tool.shell", Arg: "curl https://x.example", Network: true}, "allow curl", rules); label != "" {
 		t.Errorf("a network ask offers a project line: %q", label)
 	}
 	for _, r := range rules {
 		h.Perm.Add(r)
 	}
-	o := h.Perm.CheckCommandFor(perm.SubjectBash, perm.Normalize("curl https://x.example -o /tmp/x"), "model")
+	o := h.Perm.CheckCommandFor(perm.SubjectShell, perm.Normalize("curl https://x.example -o /tmp/x"), "model")
 	if o.Decision != perm.Allow || o.Rule == nil || !o.Rule.Network {
 		t.Fatalf("network rule lookup: %+v", o)
 	}
-	if pol := h.PipelineFor().SandboxFor(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example -o /tmp/x"}, tools.Verdict{Decision: perm.Allow, DecidedBy: "rule", Rule: o.Rule}); pol == nil || !pol.Network {
+	if pol := h.PipelineFor().SandboxFor(tools.Request{Subject: "tool.shell", Arg: "curl https://x.example -o /tmp/x"}, tools.Verdict{Decision: perm.Allow, DecidedBy: "rule", Rule: o.Rule}); pol == nil || !pol.Network {
 		t.Errorf("network rule: policy %+v", pol)
 	}
 	// sandbox: false is not what the rule allowed
-	if v := h.PipelineFor().Check(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example -o /tmp/x", Unsandboxed: true}); v.Decision == perm.Allow {
+	if v := h.PipelineFor().Check(tools.Request{Subject: "tool.shell", Arg: "curl https://x.example -o /tmp/x", Unsandboxed: true}); v.Decision == perm.Allow {
 		t.Errorf("network rule allowed an unsandboxed run: %+v", v)
 	}
 }
 
-// sandboxedBash is a trusted host on the live seatbelt backend and its bash
+// sandboxedShell is a trusted host on the live seatbelt backend and its shell
 // tool.
-func sandboxedBash(t *testing.T) (*Host, *lua.Runtime, *fakeUI, func(map[string]any) fantasy.ToolResponse) {
+func sandboxedShell(t *testing.T) (*Host, *lua.Runtime, *fakeUI, func(map[string]any) fantasy.ToolResponse) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("the end-to-end check drives seatbelt")
 	}
@@ -166,18 +166,18 @@ func sandboxedBash(t *testing.T) (*Host, *lua.Runtime, *fakeUI, func(map[string]
 	h.SetUIHooks(ui)
 	return h, r, ui, func(in map[string]any) fantasy.ToolResponse {
 		input, _ := json.Marshal(in)
-		var bash fantasy.AgentTool
+		var shell fantasy.AgentTool
 		for _, tl := range tools.All(h.PipelineFor()) {
-			if tl.Info().Name == "bash" {
-				bash = tl
+			if tl.Info().Name == "shell" {
+				shell = tl
 			}
 		}
 		for _, prop := range []string{"sandbox", "network"} {
-			if _, ok := bash.Info().Parameters[prop]; !ok {
-				t.Fatalf("bash has no %s parameter with a live backend", prop)
+			if _, ok := shell.Info().Parameters[prop]; !ok {
+				t.Fatalf("shell has no %s parameter with a live backend", prop)
 			}
 		}
-		resp, err := bash.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "bash", Input: string(input)})
+		resp, err := shell.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "shell", Input: string(input)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,19 +185,19 @@ func sandboxedBash(t *testing.T) (*Host, *lua.Runtime, *fakeUI, func(map[string]
 	}
 }
 
-// TestSandboxedBash runs the real bash tool under seatbelt: a command a
+// TestSandboxedShell runs the real shell tool under seatbelt: a command a
 // mode settled writes the project and its own temp dir, the scratchpad the
 // read tool reads without an ask, but nothing outside them, the system temp
 // dir included (xcrun_db there picks what /usr/bin/make runs), gets the hint
 // when denied, and sandbox: false goes to the user instead.
-func TestSandboxedBash(t *testing.T) {
-	h, r, ui, run := sandboxedBash(t)
+func TestSandboxedShell(t *testing.T) {
+	h, r, ui, run := sandboxedShell(t)
 	outside := t.TempDir()
 	// a probe beside xcrun_db, not the file itself: the rule is for the dir
 	shared := filepath.Join(os.TempDir(), fmt.Sprintf("zemi-sandbox-probe-%d", os.Getpid()))
 	t.Cleanup(func() { os.Remove(shared) })
 	runUser(t, r, `
-		zemi.permission.mode.add("sbx", { base = "auto", rules = { { "tool.bash", "touch *", "allow" } } })`)
+		zemi.permission.mode.add("sbx", { base = "auto", rules = { { "tool.shell", "touch *", "allow" } } })`)
 	project := filepath.Join(h.Dirs.ProjectDir, "made.txt")
 	venv := filepath.Join(h.Dirs.ProjectDir, ".venv", "bin")
 	os.MkdirAll(venv, 0o755)
@@ -276,7 +276,7 @@ func TestSandboxedBash(t *testing.T) {
 	})
 	t.Run("a network policy keeps the file rules", func(t *testing.T) {
 		pol := h.PipelineFor().SandboxFor(
-			tools.Request{Subject: "tool.bash", Arg: "curl https://example.com", Network: true},
+			tools.Request{Subject: "tool.shell", Arg: "curl https://example.com", Network: true},
 			tools.Verdict{Decision: perm.Allow, DecidedBy: "user"},
 		)
 		if pol == nil || !pol.Network || len(pol.Write) == 0 {
@@ -289,7 +289,7 @@ func TestSandboxedBash(t *testing.T) {
 // ask, side by side on one host.
 func TestSandboxedBuilds(t *testing.T) {
 	t.Parallel()
-	h, _, ui, run := sandboxedBash(t)
+	h, _, ui, run := sandboxedShell(t)
 	if err := h.SetPermMode("auto"); err != nil {
 		t.Fatal(err)
 	}

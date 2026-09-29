@@ -173,12 +173,12 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		}
 	}
 	// a mode rule outside the subject namespaces would sit in its store and never match
-	if err := r.ExecuteChunk(context.Background(), `zemi.permission.mode.add("x", { base = "auto", rules = { { "bash", "ls *", "allow" } } })`, "u.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), `subject "bash" starts with none of`) {
+	if err := r.ExecuteChunk(context.Background(), `zemi.permission.mode.add("x", { base = "auto", rules = { { "shell", "ls *", "allow" } } })`, "u.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), `subject "shell" starts with none of`) {
 		t.Fatalf("mode rule with a bare subject: %v", err)
 	}
 	runUser(t, r, `
 		zemi.config.set("permissions.mode", "yolo")
-		zemi.permission.mode.add("x", { base = "auto", rules = { { "tool.bash", "ls *", "allow" } } })
+		zemi.permission.mode.add("x", { base = "auto", rules = { { "tool.shell", "ls *", "allow" } } })
 		zemi.permission.mode.del("x")
 		zemi.lsp.del("gopls")
 		zemi.keymap.set("<leader>y", "zemi.permission.mode.next")
@@ -221,7 +221,7 @@ func TestToolPreOnce(t *testing.T) {
 	runUser(t, r, `zemi.event.on("tool.pre", function() return { decision = "deny", reason = "once" } end, { once = true })`)
 	pre := h.toolPreHook()
 	for i, want := range []tools.PreVerdict{tools.PreDeny, ""} {
-		if d, _, _, _ := pre("bash", map[string]any{"command": "ls"}); d != want {
+		if d, _, _, _ := pre("shell", map[string]any{"command": "ls"}); d != want {
 			t.Fatalf("call %d: decision %q, want %q", i+1, d, want)
 		}
 	}
@@ -262,7 +262,7 @@ func TestVetoShape(t *testing.T) {
 	if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}); !res.Denied || res.Reason != "nope" {
 		t.Errorf("permission.request = %+v, want denied with reason nope", res)
 	}
-	if d, reason, _, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"}); d != "halt" || reason != "stop" {
+	if d, reason, _, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "halt" || reason != "stop" {
 		t.Errorf("tool.pre = %q %q, want halt stop", d, reason)
 	}
 }
@@ -284,7 +284,7 @@ func TestVetoBadShapeFailsClosed(t *testing.T) {
 			if res := h.EmitVetoable(t.Context(), "app.quit", map[string]any{}); res.Denied {
 				t.Errorf("app.quit = %+v, want proceed", res)
 			}
-			if d, _, _, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"}); d != "deny" {
+			if d, _, _, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "deny" {
 				t.Errorf("tool.pre = %q, want deny", d)
 			}
 		})
@@ -311,7 +311,7 @@ func TestHotRuntimeVetoesFailClosed(t *testing.T) {
 	if res := h.EmitVetoable(context.Background(), "app.quit", map[string]any{}); res.Denied {
 		t.Errorf("app.quit while hot = %+v, want proceed", res)
 	}
-	if d, _, _, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"}); d != "deny" {
+	if d, _, _, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "deny" {
 		t.Errorf("tool.pre while hot = %q, want deny", d)
 	}
 }
@@ -335,7 +335,7 @@ func TestToolPreRewrite(t *testing.T) {
 			if err := r.ExecuteChunk(context.Background(), c.src, "c.lua", c.origin); err != nil {
 				t.Fatal(err)
 			}
-			d, _, rw, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"})
+			d, _, rw, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"})
 			cmd, _ := rw["command"].(string)
 			if d != c.wantDecision || cmd != c.wantCommand {
 				t.Fatalf("decision %q command %q, want %q %q", d, cmd, c.wantDecision, c.wantCommand)

@@ -97,9 +97,9 @@ zemi.tool.add({
 	end,
 })
 
--- the third failing bash run in a row asks the titles model why
+-- the third failing shell run in a row asks the titles model why
 zemi.event.on("tool.post", function(ev)
-	if ev.tool ~= "bash" or ev.ok then return end
+	if ev.tool ~= "shell" or ev.ok then return end
 	local fails = (zemi.state.get("fails") or 0) + 1
 	zemi.state.set("fails", fails % 3)
 	if fails < 3 then return end

@@ -10,7 +10,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-// ProjectPermissionsStep loads the project's permissions file, the bash
+// ProjectPermissionsStep loads the project's permissions file, the shell
 // commands always allowed in a trusted project. Allow rules are safe here
 // where project Lua is not: the file lives in zemi's state dir, where no
 // repository can ship it and no sandbox can write it (DESIGN §5).
@@ -49,7 +49,7 @@ func permissionLines(path string) []string {
 }
 
 // projectRules are the allow rules a permissions file line loads, each
-// segment in the shape the "always" answer offers (bashAlwaysPatterns). ok
+// segment in the shape the "always" answer offers (shellAlwaysPatterns). ok
 // is false, and the line loads nothing, when any part has no safe rule: an
 // inner shell, an assignment, text that does not parse, a wrapper, a glob.
 func projectRules(n perm.Normalized) (rules []perm.Rule, ok bool) {
@@ -57,12 +57,12 @@ func projectRules(n perm.Normalized) (rules []perm.Rule, ok bool) {
 		return nil, false
 	}
 	for _, seg := range n.Rows() {
-		ps, ok := bashAlwaysPatterns(seg)
+		ps, ok := shellAlwaysPatterns(seg)
 		if !ok {
 			return nil, false
 		}
 		for _, p := range ps {
-			rules = append(rules, perm.Rule{Subject: perm.SubjectBash, Pattern: p, Decision: perm.Allow, Source: "permissions"})
+			rules = append(rules, perm.Rule{Subject: perm.SubjectShell, Pattern: p, Decision: perm.Allow, Source: "permissions"})
 		}
 	}
 	return rules, true

@@ -24,8 +24,8 @@ import (
 func TestRewind(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "*", Decision: perm.Allow})
-	t.Chdir(h.Dirs.ProjectDir) // where bash runs and snapshots
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "*", Decision: perm.Allow})
+	t.Chdir(h.Dirs.ProjectDir) // where shell runs and snapshots
 	edited := filepath.Join(h.Dirs.ProjectDir, "a.txt")
 	created := filepath.Join(h.Dirs.ProjectDir, "sub", "new.txt")
 	if err := os.WriteFile(edited, []byte("v1"), 0o644); err != nil {
@@ -56,7 +56,7 @@ func TestRewind(t *testing.T) {
 				return write(created, "x")
 			// a command deletes one file and overwrites another: rewind restores both
 			case last == "third":
-				return toolCallParts("c-rm", "bash", fmt.Sprintf(`{"command":"rm %s && echo y > %s"}`, edited, created))
+				return toolCallParts("c-rm", "shell", fmt.Sprintf(`{"command":"rm %s && echo y > %s"}`, edited, created))
 			case toolResult:
 				return textParts("done")
 			}
@@ -287,9 +287,9 @@ func TestRestoreRefusesSwappedSymlink(t *testing.T) {
 	}
 }
 
-// TestRewindBashSymlink: a rewind puts back a symbolic link a command
+// TestRewindShellSymlink: a rewind puts back a symbolic link a command
 // deleted or retargeted and removes one it created.
-func TestRewindBashSymlink(t *testing.T) {
+func TestRewindShellSymlink(t *testing.T) {
 	for _, c := range []struct {
 		name, path string
 		run        func(dir string) error
@@ -323,7 +323,7 @@ func TestRewindBashSymlink(t *testing.T) {
 				t.Fatal(err)
 			}
 			h.agents.turnMsgID = m.ID
-			done := h.bashChanges(dir)
+			done := h.shellChanges(dir)
 			if err := c.run(dir); err != nil {
 				t.Fatal(err)
 			}

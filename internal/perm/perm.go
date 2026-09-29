@@ -1,5 +1,5 @@
 // Package perm is the permission engine (DESIGN §9): rules
-// (subject, pattern, decision) evaluated per operation, with a bash
+// (subject, pattern, decision) evaluated per operation, with a shell
 // command normalizer that splits compound payloads and gates environment
 // assignments. Decisions: deny beats ask beats allow; within one decision
 // the most specific pattern wins.
@@ -32,7 +32,7 @@ const (
 // The subjects zemi's own tools ask about; the set is open (net.<host>,
 // lua.<ns.call>, mcp.<server>).
 const (
-	SubjectBash  = "tool.bash"
+	SubjectShell = "tool.shell"
 	SubjectRead  = "fs.read"
 	SubjectWrite = "fs.write"
 )
@@ -57,7 +57,7 @@ var SubjectPrefixes = []string{"tool.", "fs.", "net.", "lua.", "mcp.", "memory."
 // optional runtime exclusion: an argument matching Pattern but also
 // NotMatch falls through to the next rule.
 type Rule struct {
-	Subject   string   `json:"subject"`   // tool.bash, fs.read, net.host, lua.fs.read
+	Subject   string   `json:"subject"`   // tool.shell, fs.read, net.host, lua.fs.read
 	Pattern   string   `json:"pattern"`   // glob
 	Decision  Decision `json:"decision"`  // allow | ask | deny
 	NotMatch  string   `json:"not_match"` // optional exclusion glob

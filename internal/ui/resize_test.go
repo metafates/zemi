@@ -120,7 +120,7 @@ func TestResizeSweep(t *testing.T) {
 	host.AppendMessage("user", "show me")
 	appendReply(host, "# Heading\n\nsome **bold** and `code` with a verylongunbreakableidentifierthatneverfits\n\n```go\nfunc main() { println(\"a long line of code that overflows\") }\n```\n\n- item one\n- item two\n", hostapi.TurnStat{Out: 10})
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: time.Second, Tools: []hostapi.StreamTool{
-		{Name: "bash", Input: strings.Repeat("ёж ", 60), Status: "run"},
+		{Name: "shell", Input: strings.Repeat("ёж ", 60), Status: "run"},
 	}})
 
 	// Before any popup covers it: the long tool input stays on one row, cut
@@ -142,7 +142,7 @@ func TestResizeSweep(t *testing.T) {
 	if len(app.overlays) != 1 {
 		t.Fatal("help overlay did not open")
 	}
-	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.bash", Arg: "rm -rf build && go test ./..."}}
+	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.shell", Arg: "rm -rf build && go test ./..."}}
 
 	sizes := []struct{ w, h int }{
 		{1, 1}, {2, 3}, {5, 2}, {12, 6}, {20, 10}, {40, 8}, {80, 24}, {33, 50}, {200, 60}, {7, 40},

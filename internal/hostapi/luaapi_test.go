@@ -356,8 +356,8 @@ func TestToolPromptFollowsTheTool(t *testing.T) {
 func TestReloadBrokenInit(t *testing.T) {
 	const whole = `
 		zemi.permission.mode.add("strict", { base = "auto" })
-		zemi.permission.rule.add({ subject = "tool.bash", pattern = "curl *", decision = "deny", match = "curl x" })
-		zemi.permission.rule.add({ subject = "tool.bash", pattern = "ls *", decision = "allow", match = "ls x" })
+		zemi.permission.rule.add({ subject = "tool.shell", pattern = "curl *", decision = "deny", match = "curl x" })
+		zemi.permission.rule.add({ subject = "tool.shell", pattern = "ls *", decision = "allow", match = "ls x" })
 		zemi.config.set("permissions.mode", "strict")
 		zemi.config.set("models.chat", "fake/m")`
 	for _, c := range []struct {
@@ -405,7 +405,7 @@ func TestReloadBrokenInit(t *testing.T) {
 				}
 			}
 			model, _ := h.Settings.Get("models.chat")
-			decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.bash", cmd, "model").Decision }
+			decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.shell", cmd, "model").Decision }
 			got := fmt.Sprintf("curl %v, ls %v, model %v", decision("curl x"), decision("ls x"), model)
 			if !c.untrust { // which mode runs once strict is gone is permModeDef's to pin
 				got += ", mode " + h.PermMode()

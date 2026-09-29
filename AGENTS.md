@@ -42,7 +42,7 @@ never weakened.
 
 Fast is a feature. Nothing slow sits between submit and the provider request, an idle zemi
 redraws nothing, and there are no per-frame Lua or allocation hot spots. Cosmetics never cost a
-model call: the model supplies its own labels, like a bash call's `about`, as it streams the
+model call: the model supplies its own labels, like a shell call's `about`, as it streams the
 call.
 
 Safety comes from the sandbox, not from nagging. Auto mode does not ask for what the sandbox
@@ -321,7 +321,7 @@ MCP and Lua tools) call the gate themselves and run the events through `preCheck
 refuses a rewrite with an error result), `postNotify` and `Pipeline.CheckDenied`. A command a
 permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`).
 
-Bash is special: `Pipeline.Check` normalizes the command once (`perm.Normalize`, internal/perm/bash.go:
+The shell tool is special: `Pipeline.Check` normalizes the command once (`perm.Normalize`, internal/perm/bash.go:
 mvdan.cc/sh's `syntax` parser, never `interp` or `expand`, walked into one segment per simple
 command plus the redirect and env-assignment gates; heavily table-tested, extend those tables when
 touching it), and `perm.Store.CheckCommandFor`, the predicates on `perm.Normalized`, the ask hook
@@ -330,8 +330,8 @@ nested `sh -c` body, `eval` text or a heredoc body a shell may run is parsed aga
 is read as the shell that runs it reads it (DESIGN §9). Where `proc.Shell` is dash it is parsed
 once as POSIX sh, and any parse error fails the call (`bashism`, naming the POSIX form of the
 bash-only syntax models write most, `posixForms`), as do `$'..'` (dash versions disagree on it),
-`[[`, `source` and a word bash would brace-expand (`{a,b}`, `{1..3}`: dash runs it as written). A failed parse, in either reading, is the bash and `job_start` tools' result
-before the gate (`bashRequests`, which hands the parse on in `Request.cmd`): the reason alone, no
+`[[`, `source` and a word bash would brace-expand (`{a,b}`, `{1..3}`: dash runs it as written). A failed parse, in either reading, is the shell and `job_start` tools' result
+before the gate (`shellRequests`, which hands the parse on in `Request.cmd`): the reason alone, no
 ask and no permission verdict. Where it is sh, which may be bash, and for every body another shell runs, the
 text is parsed as bash and as POSIX sh (`readBoth`, also for the body a runner such as `xargs` or
 `sudo` hands a shell) and every command either
@@ -385,8 +385,8 @@ none). grep and a directory listing leave out the strict secret shapes
 count of their hits would leak a key one bit per call. Output too long for a result is cut
 head and tail at line breaks, the marker naming the cut lines, and saved to the scratchpad
 (`tools.Spill`); command output, `!command` included, goes through `tools.CmdOut`, which also
-counts what the 1 MB buffer dropped. A bash command still running at its timeout is handed to `Jobs.Adopt` instead of being killed
-(which is why it is not bound to the turn's context; an interrupt still kills it). A bash row
+counts what the 1 MB buffer dropped. A shell command still running at its timeout is handed to `Jobs.Adopt` instead of being killed
+(which is why it is not bound to the turn's context; an interrupt still kills it). A shell row
 shows what the command changed (hostapi/snapshot.go, `Pipeline.Changes`): a git tree of the
 repository before and after, written through a warm temp index and object directory so the
 user's index and object store are never touched; it leaves out the secret shapes the sandbox
@@ -397,8 +397,10 @@ AGENTS.md reaches the model.
 
 ### Permission engine (internal/perm)
 
-Rules `(subject, pattern, decision, not_match?, principal?)`, subjects like `tool.bash`,
-`fs.read`, `fs.write`, `net.<host>`, `lua.<ns.call>`. Ordering: deny > ask > allow; within one
+Rules `(subject, pattern, decision, not_match?, principal?)`, subjects like `tool.shell`,
+`fs.read`, `fs.write`, `net.<host>`, `lua.<ns.call>`; a rule on a subject no request carries
+raises when added (`Host.ruleShape`: a `tool.*` one must name `tool.shell`, `tool.lua`,
+`tool.workflow` or a Lua tool added before it). Ordering: deny > ask > allow; within one
 decision, fewest wildcards then longest literal prefix wins. A `not_match` hit falls through
 and **forces ask**. The default when nothing matches is `Store.Default` (host wires
 `fsDefault`: jail reads and the model's reads of the plugins, minus any `.git`, allow except
@@ -409,7 +411,7 @@ is no fail-open path. New host-API side effects need the same `lua.` subject.
 the `permission.request` veto, and it is deterministic: no model screens anything. `yolo`
 allows, an ask a rule asked for included (an `ask` rule, a `not_match` exclusion:
 `Request.Explicit`, which `auto` and a mode's own rules leave to the user). `auto` settles what `autoLocal` covers - reads and edits **inside the jail** that are
-not secret-shaped (reads of the local plugins too), `tool.workflow` scripts (each agent they start is gated), bash commands
+not secret-shaped (reads of the local plugins too), `tool.workflow` scripts (each agent they start is gated), shell commands
 (`unsettled`), and MCP tools a server annotates
 read-only - and hands the rest to the user with a reason naming why (`askHook`; writes under
 `.git` or zemi's own dirs (a local plugin included: it loads in every project, so like the
@@ -443,9 +445,9 @@ the veto or `decide`), and a waiter is judged again once it holds it (`Request.R
 the mode and trust with no Lua), so an answer, a switch to yolo or new trust settles the asks
 behind it, a rule's verdict returned whole (`tools.ByRecheck`) so a network rule keeps the sandbox.
 
-**Sandbox** (internal/sandbox, internal/hostapi/sandbox.go, DESIGN §9): a `tool.bash` verdict a
+**Sandbox** (internal/sandbox, internal/hostapi/sandbox.go, DESIGN §9): a `tool.shell` verdict a
 mode gave (`DecidedBy` `mode:<name>`, base not yolo) makes `Pipeline.SandboxFor` return
-`h.sandboxPolicy(readOnly, pad)`; `tool.Run` puts it on the per-run pipeline copy, and `runBash`,
+`h.sandboxPolicy(readOnly, pad)`; `tool.Run` puts it on the per-run pipeline copy, and `runShell`,
 `Jobs.Start`/`Adopt` call `sandbox.Wrap` before starting. A wrap error is a
 tool error, never an unconfined run. Rule-allowed and user-approved runs, `!command`,
 `zemi.job`, MCP servers and `Host.git` stay unconfined, except under a read-only agent, whose
@@ -466,7 +468,7 @@ in its own `.gitignore` (`Dirs.WorktreesIgnore`, written only when missing), wit
 checkout's own `.git` and `.agents` protected and nothing loaded from it. The namespace
 backend binds only protected paths that exist, so `Pipeline.Guard` records the missing ones
 before a run and checks them at exit: a created `.git` or `.agents` holds trust off until
-`/trust`. Bash and `job_start` take two escapes no mode settles and each of which
+`/trust`. The shell tool and `job_start` take two escapes no mode settles and each of which
 asks: `network: true` only adds sockets, `sandbox: false` drops the whole policy. A confined
 failure `sandbox.LikelyDenied` recognizes gets `Pipeline.sandboxHint`; the limits themselves
 are the environment's Sandbox block (`Host.sandboxPrompt`, from `sandboxPolicy` without the
@@ -490,7 +492,7 @@ and an "always" answer lasts until zemi exits. There is no rule file and zemi ma
 commits (`scope = "permanent"` raises and points at init.lua). Untouched by that "no rule
 file": a trusted project's `permissions` file in its state dir (`<state>/projects/<hash>/`,
 next to the recipes, where no repository can ship it and no sandbox can write it;
-`ProjectPermissionsStep`, internal/hostapi/projectperm.go) lists bash commands always allowed in that project, each by
+`ProjectPermissionsStep`, internal/hostapi/projectperm.go) lists shell commands always allowed in that project, each by
 the `alwaysChoice` rule shape (a wrapper or deleting program or a glob line offers no rule);
 it is read as a Go boot step, so it never goes through the Lua origin gate below, and a
 permission overlay's `p` answer appends the command to it, offered only when
@@ -727,7 +729,7 @@ lua-language-server is installed.
   moved during the call.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
-  anything that does not decode as a fantasy message, and reads a file tool's or a bash call's
+  anything that does not decode as a fantasy message, and reads a file tool's or a shell call's
   diff, an agent call's run and summary line and a step's thought time back from the
   telemetry rows that carry them (a resume could not rebuild them).
 - **Live equals settled.** The live turn holds one stretch in stream order (reasoning, calls,
@@ -917,13 +919,13 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   restore leaves the conversation intact; then it drops what the session learned between the
   prompt and the last row (`forgetLearned`: a reflector run or an accept after it stays) and
   rebuilds the todo list from the kept rows. The cut holds `cutMu`, which a reflector run takes
-  to store what it read, so a run whose rows a rewind removed during its model call stores nothing. A bash call's changes are checkpointed from the
+  to store what it read, so a run whose rows a rewind removed during its model call stores nothing. A shell call's changes are checkpointed from the
   before tree `treeDiff` compares against (repository files only: not ignored ones, not outside
   a repository, no submodule or secret-shaped file, and not once two slow snapshots switched the
   snapshot off); a symbolic link comes back as a link.
 - **Read-only agents** (the planner profile, `Profile.ReadOnly`) are enforced in
   `tools.Pipeline.Check` (`Plan` hook): `fs.write` denied even under allow rules, `mcp.*`
-  allows and a rule's bash allow other than `ReadCommand` flip to ask; the sandbox keeps the
+  allows and a rule's shell allow other than `ReadCommand` flip to ask; the sandbox keeps the
   project unwritable. Approving the plan returns to the agent and mode that ran before: the read-only
   turn ends (the read-only pipeline cannot implement) and `nextTurn` hands the claim to a
   fresh send as the restored agent (`planApproved`, the plan already in history), so the
@@ -1056,8 +1058,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   and closes after: the worker then runs the rebuild behind the action. A row that fills the
   composer closes a toggle list, which would keep the keys. A row's `verb` names enter's action
   in the hint and keeps space from toggling it.
-- **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua jobs,
-  MCP and LSP servers, git). The model's command lines (bash, `job_start`, and so an adopted job)
+- **Every child process goes through `internal/proc`** (shell tool, `!command`, jobs, Lua jobs,
+  MCP and LSP servers, git). The model's command lines (shell, `job_start`, and so an adopted job)
   start through `proc.ShellCommand`: `proc.Shell` is dash where `PATH` has one, looked up once
   per process, else sh; the user's `!command` runs sh. A child runs in its own session: no controlling terminal (nothing
   can read the TUI's keys or hang on a password prompt) and its own process group, which

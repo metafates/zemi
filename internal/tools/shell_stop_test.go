@@ -12,9 +12,9 @@ import (
 	"charm.land/fantasy"
 )
 
-// TestBashProgress: the last output line reaches Progress while the command
+// TestShellProgress: the last output line reaches Progress while the command
 // runs, and nothing clears it: the result replaces the row in one change.
-func TestBashProgress(t *testing.T) {
+func TestShellProgress(t *testing.T) {
 	p, _ := testPipeline(t, true)
 	ctx, stop := context.WithCancel(t.Context())
 	var mu sync.Mutex
@@ -27,7 +27,7 @@ func TestBashProgress(t *testing.T) {
 	}
 	// one write, so no poll lands between the lines
 	input := `{"command":"printf 'one\\ntwo\\n'; sleep 30"}`
-	if _, err := toolNamed(t, "bash", p).Run(ctx, fantasy.ToolCall{ID: "t1", Name: "bash", Input: input}); err != nil {
+	if _, err := toolNamed(t, "shell", p).Run(ctx, fantasy.ToolCall{ID: "t1", Name: "shell", Input: input}); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()
@@ -37,9 +37,9 @@ func TestBashProgress(t *testing.T) {
 	}
 }
 
-// TestBashStops: an interrupt or a timeout ends a command whose children
+// TestShellStops: an interrupt or a timeout ends a command whose children
 // keep its output pipe open, instead of waiting on them forever.
-func TestBashStops(t *testing.T) {
+func TestShellStops(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
 		name   string
@@ -58,7 +58,7 @@ func TestBashStops(t *testing.T) {
 				time.AfterFunc(200*time.Millisecond, cancel)
 			}
 			start := time.Now()
-			res, err := runBash(ctx, &Pipeline{}, c.input)
+			res, err := runShell(ctx, &Pipeline{}, c.input)
 			if err != nil || time.Since(start) > 5*time.Second || !strings.Contains(res.Content, c.want) {
 				t.Fatalf("after %s: %v %q", time.Since(start), err, res.Content)
 			}

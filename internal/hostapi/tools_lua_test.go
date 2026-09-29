@@ -63,7 +63,7 @@ func TestToolPreHandlerErrorRecorded(t *testing.T) {
 	} {
 		h, r := newTestHost(t)
 		runUser(t, r, `zemi.event.on("tool.pre", function(ev) `+c.body+` end)`)
-		if d, _, _, _ := h.toolPreHook()("bash", map[string]any{"command": "cat .env"}); string(d) != c.want || !h.HasUnseenErrors() {
+		if d, _, _, _ := h.toolPreHook()("shell", map[string]any{"command": "cat .env"}); string(d) != c.want || !h.HasUnseenErrors() {
 			t.Errorf("%s: decision %q, want %q; unseen errors %v", c.body, d, c.want, h.HasUnseenErrors())
 		}
 	}
@@ -141,8 +141,8 @@ func TestToolRegCollision(t *testing.T) {
 // through one (DESIGN §9).
 func TestDeferredCallbackKeepsOrigin(t *testing.T) {
 	cases := map[string]string{
-		"timer override":   `zemi.timer.after(0, function() zemi.tool.override("bash", { pre = function() end }) end)`,
-		"ui.edit override": `zemi.ui.edit("f.txt", {}, function() zemi.tool.override("bash", { pre = function() end }) end)`,
+		"timer override":   `zemi.timer.after(0, function() zemi.tool.override("shell", { pre = function() end }) end)`,
+		"ui.edit override": `zemi.ui.edit("f.txt", {}, function() zemi.tool.override("shell", { pre = function() end }) end)`,
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -163,7 +163,7 @@ func TestDeferredCallbackKeepsOrigin(t *testing.T) {
 				}
 				return fmt.Errorf("callback was not refused: %+v", h.errs.entries)
 			})
-			if len(h.luaTools.overridesFor("bash")) != 0 || len(h.luaTools.list()) != 0 {
+			if len(h.luaTools.overridesFor("shell")) != 0 || len(h.luaTools.list()) != 0 {
 				t.Fatal("project callback registered a tool or override")
 			}
 		})

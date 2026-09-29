@@ -47,10 +47,10 @@ func TestSystemPromptSections(t *testing.T) {
 	if i, j := strings.Index(sys, "# Project instructions"), strings.Index(sys, "# Environment"); i >= j {
 		t.Errorf("the per-session environment at %d precedes the instructions at %d", j, i)
 	}
-	lean := h.buildSystem(&Profile{Tools: []string{"bash"}})
+	lean := h.buildSystem(&Profile{Tools: []string{"shell"}})
 	for _, gone := range []string{"# Delegating", "lua.md", "# Skills"} {
 		if strings.Contains(lean, gone) {
-			t.Errorf("a bash-only prompt names %q", gone)
+			t.Errorf("a shell-only prompt names %q", gone)
 		}
 	}
 	if env := h.environmentPrompt(); env != h.environmentPrompt() {
@@ -63,7 +63,7 @@ func TestSystemPromptSections(t *testing.T) {
 
 // TestPromptFollowsToolSet: the prompt and the kept tools' descriptions name
 // no tool the profile dropped, the shipped lean one included, which must
-// keep the file tools and what bash hands a timed out command to.
+// keep the file tools and what shell hands a timed out command to.
 func TestPromptFollowsToolSet(t *testing.T) {
 	h := newTestHostUI(t)
 	h.agents.sessionID = "s1" // a session has a scratchpad, whose line is part of the prompt

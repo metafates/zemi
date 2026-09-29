@@ -102,7 +102,7 @@ func TestReadJailCoversRepo(t *testing.T) {
 // TestJobCwdAndSandbox: cwd stays in the read jail, and sandbox = true runs
 // under the policy, which keeps writes inside it.
 func TestJobCwdAndSandbox(t *testing.T) {
-	h, r, _, _ := sandboxedBash(t)
+	h, r, _, _ := sandboxedShell(t)
 	h.Perm.Add(perm.Rule{Subject: "lua.job.start", Pattern: "*", Decision: perm.Allow})
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, "sub"), 0o755); err != nil {
 		t.Fatal(err)

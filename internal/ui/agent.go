@@ -738,7 +738,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	target, why, says := permFacts(req, a.host.Dirs.ProjectDir, inner, h)
 	build := func(w int) [][]hostapi.Segment {
 		switch {
-		case req.Subject == perm.SubjectBash:
+		case req.Subject == perm.SubjectShell:
 			return codePanel(req.Arg, w)
 		case isDiff:
 			rows := hostapi.DiffRows(req.Preview, w)
@@ -872,7 +872,7 @@ var runsTitle = map[hostapi.RunsIn]string{
 // permTitle is the question a request asks, from its typed fields.
 func permTitle(req hostapi.PermRequest) string {
 	switch server, mcp := strings.CutPrefix(req.Subject, "mcp."); {
-	case req.Subject == perm.SubjectBash:
+	case req.Subject == perm.SubjectShell:
 		return cmp.Or(runsTitle[req.Where], "Run this command?")
 	case req.Subject == perm.SubjectRead && req.Tool == tools.ToolSkill:
 		return "Load this skill?"
@@ -910,7 +910,7 @@ func permTitle(req hostapi.PermRequest) string {
 func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, says [][]hostapi.Segment) {
 	name, val := permTarget(req, root)
 	// a command's programs, unless it is only shell syntax (set -e; true)
-	runs := req.Subject == perm.SubjectBash && (req.Runs == nil || len(req.Runs) > 0)
+	runs := req.Subject == perm.SubjectShell && (req.Runs == nil || len(req.Runs) > 0)
 	if runs {
 		name = "runs"
 	}
@@ -955,7 +955,7 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 		return segs
 	}
 	switch arg := req.Arg; {
-	case req.Subject == perm.SubjectBash:
+	case req.Subject == perm.SubjectShell:
 		return "", nil
 	case tools.PathSubject(req.Subject), req.Subject == "tool.lua" && arg != "script":
 		if rel, ok := perm.Under(root, arg); ok && root != "" && filepath.IsAbs(arg) {

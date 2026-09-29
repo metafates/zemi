@@ -55,16 +55,16 @@ A tool call meets the rules first; what they leave open goes to the permission m
 
 ```lua
 zemi.permission.rule.add({
-	subject = "tool.bash",
+	subject = "tool.shell",
 	pattern = "git push*",
 	decision = zemi.permission.decision.DENY,
 	match = "git push origin main",
 })
 ```
 
-A rule in init.lua is added again every start. `match` is an argument the pattern must catch, checked when the rule is added. Deny beats ask beats allow; within one decision the most specific pattern wins. Subjects: `tool.<name>` (`tool.bash` matches the normalized command), `fs.read` and `fs.write` (paths), `net.<host>` (the model's `fetch` and `web_search`), `mcp.<server>` (the tool name), `memory.write`, and `lua.fs.write` (path), `lua.job.start` (command line), `lua.http.<method>` (URL) for calls config code makes. A `lua.*` call never shows a prompt in any mode: without an allow rule it raises with the rule to add. A subject ending in `.*` covers its family. In a command pattern `*` spans spaces and `/`, so `cat docs/*` also allows `cat docs/a /etc/passwd`; an argument with `..` or one the shell may still expand gets the stricter verdict.
+A rule in init.lua is added again every start. `match` is an argument the pattern must catch, checked when the rule is added. Deny beats ask beats allow; within one decision the most specific pattern wins. Subjects: `tool.shell` (the normalized command), `tool.lua`, `tool.workflow` and `tool.<name>` of a Lua tool added before the rule (a rule on any other tool subject raises), `fs.read` and `fs.write` (paths), `net.<host>` (the model's `fetch` and `web_search`), `mcp.<server>` (the tool name), `memory.write`, and `lua.fs.write` (path), `lua.job.start` (command line), `lua.http.<method>` (URL) for calls config code makes. A `lua.*` call never shows a prompt in any mode: without an allow rule it raises with the rule to add. A subject ending in `.*` covers its family. In a command pattern `*` spans spaces and `/`, so `cat docs/*` also allows `cat docs/a /etc/passwd`; an argument with `..` or one the shell may still expand gets the stricter verdict.
 
-Model tool names, for `tool.<name>` rules and the `tools` of a profile or agent: `bash`, `read`, `write`, `edit`, `glob`, `grep`, `fetch`, `web_search`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`, `memory`, `skill`, `diagnostics`, `lsp`, `agent`, `workflow`, `lua`, `mcp_<server>_<tool>` and tools added from Lua.
+Model tool names, for the `tools` of a profile or agent: `shell`, `read`, `write`, `edit`, `glob`, `grep`, `fetch`, `web_search`, `todos`, `question`, `plan`, `job_start`, `job_read`, `job_list`, `job_kill`, `memory`, `skill`, `diagnostics`, `lsp`, `agent`, `workflow`, `lua`, `mcp_<server>_<tool>` and tools added from Lua.
 
 At a prompt `y` allows once, `a` for the session (a command's program, with its subcommand for git, go, cargo and the like; a file's directory; a URL's host), `r` a file read anywhere in the repository, `p` for this project, `n` denies and `t` denies and stops the turn so the user can say what to do instead. `p` appends the command to `<state>/projects/<hash>/permissions`, one command per line, editable by hand and read only while the project is trusted (a repository cannot ship one). A deleting program stays exact, and a shell, interpreter, `sudo`, `xargs` or `zemi` gets no always answer. `/permissions` lists the mode and every rule, and deletes session ones.
 
@@ -77,7 +77,7 @@ Planning is the `planner` profile (`/profile planner`, ctrl+t): file writes are 
 
 ## Custom permission modes (user config only)
 
-`zemi.permission.mode.add(name, { base = "auto" or "yolo", description, prompt, rules, decide })` adds a mode to `/mode` or replaces one of that name (a lowercase letter, then lowercase letters, digits and `-`, 16 at most), `zemi.permission.mode.del(name)` takes one out, `zemi.permission.mode.get()` returns the active one (`{ name, base, description }`), and `permissions.mode` is the start mode. A mode acts like its base; `rules` (`{ "tool.bash", "go test*", "allow" }`) answer what would otherwise need the user's approval, `prompt` joins the system prompt while it is on, and `decide(req)` answers a request the rules left open (`req.agent` names the subagent asking, "" for the main agent). `decide` returns `"allow"` or `"deny"`; anything else (nil, an error, its 60 s ceiling) sends the request to the user even where the base would have allowed it. A `wait` in it frees the interpreter. Neither `rules` nor `decide` can allow `sandbox: false`, `network: true`, a request an `ask` rule covers, or a write to `.git`, the Lua in `.agents` or zemi's own files.
+`zemi.permission.mode.add(name, { base = "auto" or "yolo", description, prompt, rules, decide })` adds a mode to `/mode` or replaces one of that name (a lowercase letter, then lowercase letters, digits and `-`, 16 at most), `zemi.permission.mode.del(name)` takes one out, `zemi.permission.mode.get()` returns the active one (`{ name, base, description }`), and `permissions.mode` is the start mode. A mode acts like its base; `rules` (`{ "tool.shell", "go test*", "allow" }`) answer what would otherwise need the user's approval, `prompt` joins the system prompt while it is on, and `decide(req)` answers a request the rules left open (`req.agent` names the subagent asking, "" for the main agent). `decide` returns `"allow"` or `"deny"`; anything else (nil, an error, its 60 s ceiling) sends the request to the user even where the base would have allowed it. A `wait` in it frees the interpreter. Neither `rules` nor `decide` can allow `sandbox: false`, `network: true`, a request an `ask` rule covers, or a write to `.git`, the Lua in `.agents` or zemi's own files.
 
 ```lua
 -- every request reaches the user
@@ -94,7 +94,7 @@ zemi.permission.mode.add("judged", {
 	base = "auto",
 	description = "a local model approves commands",
 	decide = function(req)
-		if req.subject ~= "tool.bash" then return end
+		if req.subject ~= "tool.shell" then return end
 		local body = zemi.json.encode({ model = "llama3", stream = false, prompt = "Reply allow or deny. Command: " .. req.arg })
 		local res = zemi.http.request({ method = "POST", url = "http://localhost:11434/api/generate", body = body }):wait()
 		local out = res and zemi.json.decode(res.body)
@@ -105,7 +105,7 @@ zemi.permission.mode.add("judged", {
 
 ## The shell and the sandbox
 
-The bash tool and `job_start` run a command with dash, a POSIX sh, where it is installed (macOS, Debian, Ubuntu), else with sh; the `/health` shell row names which. bash-only syntax fails before it runs, naming the POSIX form: `[ ]` for `[[ ]]`, `>file 2>&1` for `&>`, `.` for `source`, `printf` for `$'..'`, a file or a pipe for `<( )`, each word written out for `{a,b}` and `$(seq 1 3)` for `{1..3}`, no arrays. `bash -c '...'` runs a bash script. The user's `!command` runs sh.
+The shell tool and `job_start` run a command with dash, a POSIX sh, where it is installed (macOS, Debian, Ubuntu), else with sh; the `/health` shell row names which. bash-only syntax fails before it runs, naming the POSIX form: `[ ]` for `[[ ]]`, `>file 2>&1` for `&>`, `.` for `source`, `printf` for `$'..'`, a file or a pipe for `<( )`, each word written out for `{a,b}` and `$(seq 1 3)` for `{1..3}`, no arrays. `bash -c '...'` runs a bash script. The user's `!command` runs sh.
 
 The sandbox (seatbelt on macOS, Landlock on Linux) lets a command write only the project and the scratchpad, which is every model command's `$TMPDIR`, sandboxed or not (`/tmp` is not writable), keeps `.git` and `.agents` read-only (`.agents/worktrees` aside), allows no network beyond localhost, and hides credential files and zemi's own dirs; on macOS secret-shaped files (`.env`, `*.pem`, `*.key`) are unreadable to it, in the scratchpad too, and `.agents` files are written with the write tool. On Linux with namespaces localhost is the sandbox's own; with `landlock + seccomp` the project is read-only and there is no network. A command that needs the network is retried with `network: true` (sockets added, sandbox kept), one that needs more with `sandbox: false`; both need the user's approval in every mode but yolo, so in `zemi run` without yolo both are denied. `permissions.env_keep` names secret-shaped env vars (`*TOKEN*`, `*KEY*`, ...) a child keeps; whatever is kept, the model can print.
 

@@ -58,9 +58,9 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "gitstore", "hooks", "pre-commit"), false, false},
 		{"fs.read", inside, true, true},
 		{"fs.write", inside, true, false},
-		{"tool.bash", "go test ./...", true, false},
-		{"tool.bash", "git status", true, false},
-		{"tool.bash", "ls && sed -n 1,5p main.go", true, true},
+		{"tool.shell", "go test ./...", true, false},
+		{"tool.shell", "git status", true, false},
+		{"tool.shell", "ls && sed -n 1,5p main.go", true, true},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, ".git", "config"), false, false},
 		{"fs.write", filepath.Join(h.Dirs.ProjectDir, "sub", ".git", "hooks", "pre-commit"), false, false},
 		{"fs.write", filepath.Join(h.Dirs.ConfigHome, "init.lua"), false, false},
@@ -74,13 +74,13 @@ func TestAutoModeLocalApprovals(t *testing.T) {
 		{"fs.read", filepath.Join(h.Dirs.LogDir(), "run.log"), false, false}, // server stderr may hold tokens
 		{"fs.read", h.Dirs.ProjectDir + "/out/../loot.txt", false, false},
 		{"fs.write", h.Dirs.ProjectDir + "/out/../victim.txt", false, false},
-		{"tool.bash", "cat out/../loot.txt", true, false}, // the sandbox holds it
-		{"tool.bash", "rm -rf out", false, false},
-		{"tool.bash", "cat main.go", true, true},
+		{"tool.shell", "cat out/../loot.txt", true, false}, // the sandbox holds it
+		{"tool.shell", "rm -rf out", false, false},
+		{"tool.shell", "cat main.go", true, true},
 		{"fs.read", filepath.Join(os.Getenv("HOME"), ".ssh", "id_ed25519"), false, false},
 		// a local plugin reads like the project, and a write loads it everywhere
 		{"fs.read", plugin, true, true},
-		{"tool.bash", "cat " + plugin, true, true},
+		{"tool.shell", "cat " + plugin, true, true},
 		{"fs.write", plugin, false, false},
 		{"fs.write", filepath.Join(h.Dirs.PluginsRoot(), "installed", "p", "init.lua"), false, false},
 		{"net.evil.tld", "https://evil.tld/?d=leak", false, false},
@@ -153,9 +153,9 @@ func TestUntrustedModes(t *testing.T) {
 		// no server annotated it read-only, so no rule settles it
 		{"auto", true, true, "mcp.gh", "run", false},
 		{"auto", false, true, "mcp.gh", "run", false},
-		{"auto", false, true, "tool.bash", "cat main.go", true},
-		{"auto", true, true, "tool.bash", "make out", true},
-		{"auto", true, false, "tool.bash", "make out", false},
+		{"auto", false, true, "tool.shell", "cat main.go", true},
+		{"auto", true, true, "tool.shell", "make out", true},
+		{"auto", true, false, "tool.shell", "make out", false},
 		{"auto", true, true, "fs.write", filepath.Join(os.Getenv("HOME"), ".gitconfig"), false},
 	} {
 		if err := h.SetPermMode(c.mode); err != nil {
@@ -236,9 +236,9 @@ func TestReadOnlyUnderYolo(t *testing.T) {
 		subject, arg string
 		want         bool
 	}{
-		{true, "tool.bash", "sed -i s/a/b/ main.go", true},
-		{false, "tool.bash", "sed -i s/a/b/ main.go", false},
-		{false, "tool.bash", "ls", true},
+		{true, "tool.shell", "sed -i s/a/b/ main.go", true},
+		{false, "tool.shell", "sed -i s/a/b/ main.go", false},
+		{false, "tool.shell", "ls", true},
 		{true, "mcp.gitlab", "create_merge_request", false},
 	} {
 		fakeSandbox(h, c.live)
@@ -340,7 +340,7 @@ func TestAutoModeReadCommands(t *testing.T) {
 		{"rg --hidden TOKEN nest", false},
 		{"diff -r nest nest", false},
 	} {
-		if got := h.autoLocal(tools.Request{Subject: "tool.bash", Arg: c.cmd, Pad: pad}); got != c.want {
+		if got := h.autoLocal(tools.Request{Subject: "tool.shell", Arg: c.cmd, Pad: pad}); got != c.want {
 			t.Errorf("%s: got %v, want %v", c.cmd, got, c.want)
 		}
 	}
@@ -398,15 +398,15 @@ func TestPermModeDecide(t *testing.T) {
 		by   string
 		why  DenialWhy // the denial noted, "" for none
 	}{
-		{"allowed", tools.Request{Subject: "tool.bash", Arg: "ls"}, true, "mode:review", ""},
-		{"denied", tools.Request{Subject: "tool.bash", Arg: "rm -rf /"}, false, "mode:review", ""},
-		{"a subagent's", tools.Request{Subject: "tool.bash", Arg: "ls", Agent: "explore agent"}, false, "mode:review", ""},
-		{"left to the user", tools.Request{Subject: "tool.bash", Arg: "cat x"}, false, tools.ByNobody, DenyApproval},
+		{"allowed", tools.Request{Subject: "tool.shell", Arg: "ls"}, true, "mode:review", ""},
+		{"denied", tools.Request{Subject: "tool.shell", Arg: "rm -rf /"}, false, "mode:review", ""},
+		{"a subagent's", tools.Request{Subject: "tool.shell", Arg: "ls", Agent: "explore agent"}, false, "mode:review", ""},
+		{"left to the user", tools.Request{Subject: "tool.shell", Arg: "cat x"}, false, tools.ByNobody, DenyApproval},
 		// what the mode's own rules may not settle, decide may not either
-		{"a rule asked for it", tools.Request{Subject: "tool.bash", Arg: "ls", Explicit: true}, false, tools.ByNobody, DenyApproval},
+		{"a rule asked for it", tools.Request{Subject: "tool.shell", Arg: "ls", Explicit: true}, false, tools.ByNobody, DenyApproval},
 		{"a protected write", tools.Request{Subject: "fs.write", Arg: filepath.Join(h.Dirs.ProjectDir, ".git", "hooks", "pre-commit")}, false, tools.ByNobody, DenyApproval},
-		{"unsandboxed", tools.Request{Tool: "bash", Subject: "tool.bash", Arg: "ls", Unsandboxed: true}, false, tools.ByNobody, DenyOutsideSandbox},
-		{"network", tools.Request{Tool: "bash", Subject: "tool.bash", Arg: "curl x", Network: true}, false, tools.ByNobody, DenyNetwork},
+		{"unsandboxed", tools.Request{Tool: "shell", Subject: "tool.shell", Arg: "ls", Unsandboxed: true}, false, tools.ByNobody, DenyOutsideSandbox},
+		{"network", tools.Request{Tool: "shell", Subject: "tool.shell", Arg: "curl x", Network: true}, false, tools.ByNobody, DenyNetwork},
 		{"a lua script", tools.Request{Tool: tools.ToolLua, Subject: "tool.lua", Arg: "zemi.x()", Unsandboxed: true}, false, tools.ByNobody, DenyNeedsTUI},
 	} {
 		before := len(h.HeadlessDenials())
@@ -458,11 +458,11 @@ func TestAskWaitsOutReload(t *testing.T) {
 	h.SetUIHooks(ui)
 	pipe := h.PipelineFor()
 	done := make(chan struct{})
-	go func() { pipe.Check(tools.Request{Subject: "tool.bash", Arg: "ls"}); close(done) }()
+	go func() { pipe.Check(tools.Request{Subject: "tool.shell", Arg: "ls"}); close(done) }()
 	for h.AsksWaiting() < 1 {
 		runtime.Gosched()
 	}
-	second := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "pwd"})
+	second := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "pwd"})
 	<-done
 	if err := <-reloaded; err != nil {
 		t.Fatal(err)
@@ -482,17 +482,17 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 	h.SetUIHooks(ui)
 	// one always answer writes both forms
 	for _, p := range []string{"git push", "git push *"} {
-		h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: p, Decision: perm.Allow, Principal: "model"})
+		h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: p, Decision: perm.Allow, Principal: "model"})
 	}
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "rm -rf *", Decision: perm.Deny})
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "make *", Decision: perm.Allow, Source: "permissions"})
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "curl *", Decision: perm.Ask, Source: "project"})
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "rm -rf *", Decision: perm.Deny})
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "make *", Decision: perm.Allow, Source: "permissions"})
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "curl *", Decision: perm.Ask, Source: "project"})
 	h.Perm.Add(perm.Rule{Subject: "lua.http.get", Pattern: "https://x/*", Decision: perm.Allow, Principal: "plugin:foo"})
 	if err := h.OpenPermissions(); err != nil || len(ui.opened) != 1 {
 		t.Fatalf("open: %v %+v", err, ui.opened)
 	}
 	rows := fmt.Sprint(ui.opened[0].Items)
-	if strings.Count(rows, "text:tool.bash git push") != 1 || !strings.Contains(rows, "text:tool.bash git push *") || !strings.Contains(rows, "map[hotkey:x run:permissions forget tool.bash git push text:Delete]") || !strings.Contains(rows, "key:session section:") {
+	if strings.Count(rows, "text:tool.shell git push") != 1 || !strings.Contains(rows, "text:tool.shell git push *") || !strings.Contains(rows, "map[hotkey:x run:permissions forget tool.shell git push text:Delete]") || !strings.Contains(rows, "key:session section:") {
 		t.Fatalf("the answer is not one row with a way back:\n%s", rows)
 	}
 	// each rule says where to edit it, under a section named like every other
@@ -501,14 +501,14 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 			t.Fatalf("missing %q:\n%s", want, rows)
 		}
 	}
-	if err := h.ForgetRule("tool.bash rm -rf *"); err == nil {
+	if err := h.ForgetRule("tool.shell rm -rf *"); err == nil {
 		t.Error("a config rule must not be removable: a reload brings it back")
 	}
-	if err := h.ForgetRule("tool.bash git push"); err != nil {
+	if err := h.ForgetRule("tool.shell git push"); err != nil {
 		t.Fatal(err)
 	}
 	for _, cmd := range []string{"git push", "git push origin main"} {
-		if h.Perm.Evaluate("tool.bash", cmd, "model").Decision != perm.Ask {
+		if h.Perm.Evaluate("tool.shell", cmd, "model").Decision != perm.Ask {
 			t.Errorf("%s: half of the removed answer still allows", cmd)
 		}
 	}
@@ -521,7 +521,7 @@ func TestPermissionsOverlayRemovesAlways(t *testing.T) {
 	}
 	runUser(t, r, lines)
 	for _, cmd := range []string{"git push", "git push origin main"} {
-		if h.Perm.Evaluate("tool.bash", cmd, "model").Decision != perm.Allow {
+		if h.Perm.Evaluate("tool.shell", cmd, "model").Decision != perm.Allow {
 			t.Errorf("%s: the copied lines do not allow it:\n%s", cmd, lines)
 		}
 	}
@@ -539,15 +539,15 @@ func TestExplicitAskReachesUser(t *testing.T) {
 	proj := h.Dirs.ProjectDir
 	os.MkdirAll(filepath.Join(proj, "vendor"), 0o755)
 	os.WriteFile(filepath.Join(proj, "vendor", "x.go"), []byte("package x"), 0o644)
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "go test*", Decision: perm.Ask})
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "go test*", Decision: perm.Ask})
 	h.Perm.Add(perm.Rule{Subject: "fs.read", Pattern: filepath.Join(proj, "*"), Decision: perm.Allow, NotMatch: filepath.Join(proj, "vendor", "*")})
 	p := h.PipelineFor()
 	for _, c := range []struct {
 		subject, arg string
 		settled      bool
 	}{
-		{"tool.bash", "go test ./...", false},
-		{"tool.bash", "go vet ./...", true},
+		{"tool.shell", "go test ./...", false},
+		{"tool.shell", "go vet ./...", true},
 		{"fs.read", filepath.Join(proj, "vendor", "x.go"), false},
 	} {
 		v := p.Check(tools.Request{Subject: c.subject, Arg: c.arg})
@@ -572,7 +572,7 @@ func TestAskWaiterJudgedAgain(t *testing.T) {
 		os.WriteFile(p, nil, 0o600)
 		return tools.Request{Subject: "fs.read", Arg: p}
 	}
-	curl := tools.Request{Subject: "tool.bash", Arg: "curl example.com"}
+	curl := tools.Request{Subject: "tool.shell", Arg: "curl example.com"}
 	netCurl := curl
 	netCurl.Network = true
 	for _, c := range []struct {

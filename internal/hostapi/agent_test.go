@@ -163,30 +163,34 @@ func TestPermissionRuleValidation(t *testing.T) {
 	h, r := newTestHost(t)
 
 	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "tool.bash", pattern = "git status", decision = "allow",
+		subject = "tool.shell", pattern = "git status", decision = "allow",
 	})`, "needs a match example")
 
 	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "tool.bash", pattern = "git status", decision = "allow",
+		subject = "tool.shell", pattern = "git status", decision = "allow",
 		match = "git push",
 	})`, "does not match pattern")
 
 	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "tool.bash", pattern = "git status", decision = "allow",
+		subject = "tool.shell", pattern = "git status", decision = "allow",
 		match = "git status", scope = "permanent",
 	})`, "a rule in init.lua applies on every start")
 
 	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "tool.bash", pattern = "git *", decision = "allow",
+		subject = "tool.shell", pattern = "git *", decision = "allow",
 		not_match = "git push*", match = "git status",
 	})`, "needs both examples")
 
 	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "bash", pattern = "git status", decision = "allow", match = "git status",
+		subject = "shell", pattern = "git status", decision = "allow", match = "git status",
 	})`, "starts with none of")
 
+	runExpectErr(t, r, `zemi.permission.rule.add({
+		subject = "tool.ticket", pattern = "*", decision = "deny", match = "x",
+	})`, `no tool asks as "tool.ticket": tool subjects are tool.* tool.shell tool.lua tool.workflow,`)
+
 	runUser(t, r, `zemi.permission.rule.add({
-		subject = "tool.bash", pattern = "git status", decision = "allow",
+		subject = "tool.shell", pattern = "git status", decision = "allow",
 		match = "git status",
 	})`)
 	runUser(t, r, `
@@ -197,7 +201,7 @@ func TestPermissionRuleValidation(t *testing.T) {
 	`)
 
 	err := r.ExecuteChunk(context.Background(), `zemi.permission.rule.add({
-		subject = "tool.bash", pattern = "git status", decision = "allow",
+		subject = "tool.shell", pattern = "git status", decision = "allow",
 		match = "git status",
 	})`, "plugin.lua", lua.OriginPlugin)
 	if err == nil || !strings.Contains(err.Error(), "only come from user config") {
@@ -206,17 +210,19 @@ func TestPermissionRuleValidation(t *testing.T) {
 
 	// Lua may always deny, from any origin.
 	runUser(t, r, `zemi.permission.rule.add({
-		subject = "tool.bash", pattern = "rm -rf *", decision = "deny",
+		subject = "tool.shell", pattern = "rm -rf *", decision = "deny",
 		match = "rm -rf /tmp/x",
-	})`)
+	})
+	zemi.tool.add({ name = "ticket", description = "a ticket", execute = function() end })
+	zemi.permission.rule.add({ subject = "tool.ticket", pattern = "*", decision = "deny", match = "x" })`)
 
-	if out := h.Perm.Evaluate("tool.bash", "git status", "model"); out.Decision != perm.Allow {
+	if out := h.Perm.Evaluate("tool.shell", "git status", "model"); out.Decision != perm.Allow {
 		t.Fatalf("git status: %v (%s)", out.Decision, out.Reason)
 	}
-	if out := h.Perm.Evaluate("tool.bash", "git push", "model"); out.Decision != perm.Ask {
+	if out := h.Perm.Evaluate("tool.shell", "git push", "model"); out.Decision != perm.Ask {
 		t.Fatalf("git push: %v (%s)", out.Decision, out.Reason)
 	}
-	if out := h.Perm.Evaluate("tool.bash", "rm -rf /tmp/x", "model"); out.Decision != perm.Deny {
+	if out := h.Perm.Evaluate("tool.shell", "rm -rf /tmp/x", "model"); out.Decision != perm.Deny {
 		t.Fatalf("rm -rf: %v (%s)", out.Decision, out.Reason)
 	}
 
@@ -240,7 +246,7 @@ func TestPermissionRuleValidation(t *testing.T) {
 	}
 
 	// A reload replays config, so its rules go; an "always" answer keeps its.
-	always := perm.Rule{Subject: "tool.bash", Pattern: "go test *", Decision: perm.Allow, Principal: "model"}
+	always := perm.Rule{Subject: "tool.shell", Pattern: "go test *", Decision: perm.Allow, Principal: "model"}
 	h.Perm.Add(always)
 	for range 2 {
 		if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
@@ -372,14 +378,14 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 	}
 	initLua := filepath.Join(dir, "init.lua")
 	src := `
-		zemi.permission.rule.add({ subject = "tool.bash", pattern = "rm *", decision = "deny", match = "rm x" })
+		zemi.permission.rule.add({ subject = "tool.shell", pattern = "rm *", decision = "deny", match = "rm x" })
 		zemi.event.on("tool.pre", function() return { decision = "deny", reason = "vetoed" } end)`
 	if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	runUser(t, r, src+`
-		zemi.permission.rule.add({ subject = "tool.bash", pattern = "curl *", decision = "deny", match = "curl x" })`)
-	decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.bash", cmd, "model").Decision }
+		zemi.permission.rule.add({ subject = "tool.shell", pattern = "curl *", decision = "deny", match = "curl x" })`)
+	decision := func(cmd string) perm.Decision { return h.Perm.Evaluate("tool.shell", cmd, "model").Decision }
 
 	pre := h.toolPreHook()
 	var vetoed tools.PreVerdict
@@ -389,7 +395,7 @@ func TestReloadKeepsUserVetoes(t *testing.T) {
 			t.Errorf("mid-reload rm x = %v, want deny", d)
 		}
 		go func() {
-			vetoed, _, _, _ = pre("bash", map[string]any{"command": "ls"})
+			vetoed, _, _, _ = pre("shell", map[string]any{"command": "ls"})
 			close(done)
 		}()
 		select {
@@ -430,7 +436,7 @@ func TestToolRegisterValidation(t *testing.T) {
 
 	for _, c := range []struct{ src, want string }{
 		{`{ name = "x" }`, "execute callback is required"},
-		{`{ name = "bash", execute = function() end }`, "builtin tool name"},
+		{`{ name = "shell", execute = function() end }`, "builtin tool name"},
 		{`{ name = "tool_search", execute = function() end }`, "builtin tool name"},
 		{`{ name = "my tool", execute = function() end }`, "identifier"},
 		{`{ name = "x", execute = function() end }`, "description is required"},
@@ -706,23 +712,23 @@ func TestPipelineForCheck(t *testing.T) {
 	pipe := h.PipelineFor()
 
 	// No rules, no UI: the ask hook fails closed.
-	if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "git status"}); v.Decision != perm.Deny || v.DecidedBy != tools.ByNobody {
-		t.Fatalf("unruled bash: %v by %q (%s)", v.Decision, v.DecidedBy, v.Reason)
+	if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); v.Decision != perm.Deny || v.DecidedBy != tools.ByNobody {
+		t.Fatalf("unruled shell: %v by %q (%s)", v.Decision, v.DecidedBy, v.Reason)
 	}
 
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "git status", Decision: perm.Allow, Principal: "model"})
-	if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "git status"}); v.Decision != perm.Allow {
-		t.Fatalf("ruled bash: %v (%s)", v.Decision, v.Reason)
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "git status", Decision: perm.Allow, Principal: "model"})
+	if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); v.Decision != perm.Allow {
+		t.Fatalf("ruled shell: %v (%s)", v.Decision, v.Reason)
 	}
-	if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "git push"}); v.Decision != perm.Deny {
-		t.Fatalf("other bash: %v (%s)", v.Decision, v.Reason)
+	if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "git push"}); v.Decision != perm.Deny {
+		t.Fatalf("other shell: %v (%s)", v.Decision, v.Reason)
 	}
 
 	// An asker (the UI overlay) resolves the leftover ask.
 	pipe2 := h.PipelineFor()
 	pipe2.Ask = func(req tools.Request) (bool, string, string) { return true, "user:once", "" }
-	if v := pipe2.Check(tools.Request{Subject: "tool.bash", Arg: "git push"}); v.Decision != perm.Allow || v.DecidedBy != "user:once" {
-		t.Fatalf("asked bash: %v by %q", v.Decision, v.DecidedBy)
+	if v := pipe2.Check(tools.Request{Subject: "tool.shell", Arg: "git push"}); v.Decision != perm.Allow || v.DecidedBy != "user:once" {
+		t.Fatalf("asked shell: %v by %q", v.Decision, v.DecidedBy)
 	}
 }
 
@@ -847,9 +853,9 @@ func TestAskHookAlwaysStoresRules(t *testing.T) {
 	h.SetUIHooks(ui)
 
 	pipe := h.PipelineFor()
-	v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "git push origin main"})
+	v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "git push origin main"})
 	if v.Decision != perm.Allow || v.DecidedBy != "user:always" {
-		t.Fatalf("always bash: %v by %q", v.Decision, v.DecidedBy)
+		t.Fatalf("always shell: %v by %q", v.Decision, v.DecidedBy)
 	}
 	if len(ui.asked) != 1 || ui.asked[0].Arg != "git push origin main" || ui.asked[0].Always != "allow git push outside the sandbox" {
 		t.Fatalf("asked: %+v", ui.asked)
@@ -860,7 +866,7 @@ func TestAskHookAlwaysStoresRules(t *testing.T) {
 	}
 
 	// The prefix rule answers the next push without asking again.
-	if got := h.PipelineFor().Check(tools.Request{Subject: "tool.bash", Arg: "git push origin feature"}); got.Decision != perm.Allow {
+	if got := h.PipelineFor().Check(tools.Request{Subject: "tool.shell", Arg: "git push origin feature"}); got.Decision != perm.Allow {
 		t.Fatalf("ruled re-check: %v by %q", got.Decision, got.DecidedBy)
 	}
 	if len(ui.asked) != 1 {
@@ -1129,8 +1135,8 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 	sa := h.streamHooks()
 	sa.ReasoningDelta("pondering")
 	sa.TextDelta("answer")
-	sa.ToolCallStart("t1", "bash", "ls")
-	sa.ToolCallEnd("t1", "bash", true, "", "")
+	sa.ToolCallStart("t1", "shell", "ls")
+	sa.ToolCallEnd("t1", "shell", true, "", "")
 	sa.TextDelta("done")
 	sa.TurnDone(nil, fantasy.Usage{InputTokens: 100, OutputTokens: 20, TotalTokens: 120})
 
@@ -1179,64 +1185,64 @@ func TestAlwaysChoice(t *testing.T) {
 		label    string
 		patterns []string
 	}{
-		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && git diff"}, "allow go test and git diff", []string{"go test", "go test *", "git diff", "git diff *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "ls -la"}, "allow ls", []string{"ls", "ls *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "cat notes"}, "allow cat", []string{"cat", "cat *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "go test ./... && git diff"}, "allow go test and git diff", []string{"go test", "go test *", "git diff", "git diff *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "ls -la"}, "allow ls", []string{"ls", "ls *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "cat notes"}, "allow cat", []string{"cat", "cat *"}},
 		// a quoted program name is one word: `my *` would allow program my
-		{tools.Request{Subject: "tool.bash", Arg: "'my tool' --x"}, "allow my tool", []string{"my tool", "my tool *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "go vet && git diff && make && ls"}, "allow go vet, git diff and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "ls", "ls *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "'my tool' --x"}, "allow my tool", []string{"my tool", "my tool *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "go vet && git diff && make && ls"}, "allow go vet, git diff and 2 more", []string{"go vet", "go vet *", "git diff", "git diff *", "make", "ls", "ls *"}},
 		// shell syntax is no command, and a no-op builtin is not named
-		{tools.Request{Subject: "tool.bash", Arg: "for f in $(ls); do cat $f; done"}, "allow ls and cat", []string{"ls", "ls *", "cat", "cat *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "if true; then ls; fi"}, "allow ls", []string{"true", "true *", "ls", "ls *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "for f in $(ls); do rm $f; done"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "for f in $(ls); do cat $f; done"}, "allow ls and cat", []string{"ls", "ls *", "cat", "cat *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "if true; then ls; fi"}, "allow ls", []string{"true", "true *", "ls", "ls *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "for f in $(ls); do rm $f; done"}, "", nil},
 		// syntax is named when nothing else is, so the label says what the rules allow
-		{tools.Request{Subject: "tool.bash", Arg: "set -e"}, "allow set", []string{"set", "set *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "set -e"}, "allow set", []string{"set", "set *"}},
 		// [[ and let evaluate a quoted subscript, which can run $(...): exact
-		{tools.Request{Subject: "tool.bash", Arg: "[[ -f go.mod ]] && ls"}, bracket, bracketRules},
-		{tools.Request{Subject: "tool.bash", Arg: "let n=1"}, "allow this exact command", []string{"let n=1"}},
+		{tools.Request{Subject: "tool.shell", Arg: "[[ -f go.mod ]] && ls"}, bracket, bracketRules},
+		{tools.Request{Subject: "tool.shell", Arg: "let n=1"}, "allow this exact command", []string{"let n=1"}},
 		// a deleter stays exact: the rule runs unconfined and has no write path to ask on
-		{tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"}, "allow this exact command", []string{"rm build.tmp"}},
-		{tools.Request{Subject: "tool.bash", Arg: "git status && rm -rf build && rm -f x"}, "allow rm (exact) and git status", []string{"git status", "git status *", "rm -rf build", "rm -f x"}},
-		{tools.Request{Subject: "tool.bash", Arg: "/bin/rm old"}, "allow this exact command", []string{"/bin/rm old"}},
-		{tools.Request{Subject: "tool.bash", Arg: "find . -type f"}, "allow this exact command", []string{"find . -type f"}},
-		{tools.Request{Subject: "tool.bash", Arg: "tar czf a.tgz src"}, "allow this exact command", []string{"tar czf a.tgz src"}},
-		{tools.Request{Subject: "tool.bash", Arg: "find . -delete"}, "allow this exact command", []string{"find . -delete"}},
+		{tools.Request{Subject: "tool.shell", Arg: "rm build.tmp"}, "allow this exact command", []string{"rm build.tmp"}},
+		{tools.Request{Subject: "tool.shell", Arg: "git status && rm -rf build && rm -f x"}, "allow rm (exact) and git status", []string{"git status", "git status *", "rm -rf build", "rm -f x"}},
+		{tools.Request{Subject: "tool.shell", Arg: "/bin/rm old"}, "allow this exact command", []string{"/bin/rm old"}},
+		{tools.Request{Subject: "tool.shell", Arg: "find . -type f"}, "allow this exact command", []string{"find . -type f"}},
+		{tools.Request{Subject: "tool.shell", Arg: "tar czf a.tgz src"}, "allow this exact command", []string{"tar czf a.tgz src"}},
+		{tools.Request{Subject: "tool.shell", Arg: "find . -delete"}, "allow this exact command", []string{"find . -delete"}},
 		// a destructive subcommand too: `git clean` as a whole covers -fdx
-		{tools.Request{Subject: "tool.bash", Arg: "git clean -n"}, "allow this exact command", []string{"git clean -n"}},
-		{tools.Request{Subject: "tool.bash", Arg: "PATH=/tmp ls"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "git clean -n"}, "allow this exact command", []string{"git clean -n"}},
+		{tools.Request{Subject: "tool.shell", Arg: "PATH=/tmp ls"}, "", nil},
 		// a leading option keeps the subcommand pair, never the bare program
-		{tools.Request{Subject: "tool.bash", Arg: "git --no-pager log -5"}, "allow git --no-pager log", []string{"git --no-pager log", "git --no-pager log *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "git -C sub status"}, "allow git -C sub status", []string{"git -C sub status", "git -C sub status *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "cargo +nightly build"}, "allow cargo +nightly build", []string{"cargo +nightly build", "cargo +nightly build *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "git -C /other/repo status"}, "allow git -C /other/repo status", []string{"git -C /other/repo status", "git -C /other/repo status *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "git --version"}, "allow this exact command", []string{"git --version"}},
+		{tools.Request{Subject: "tool.shell", Arg: "git --no-pager log -5"}, "allow git --no-pager log", []string{"git --no-pager log", "git --no-pager log *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "git -C sub status"}, "allow git -C sub status", []string{"git -C sub status", "git -C sub status *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "cargo +nightly build"}, "allow cargo +nightly build", []string{"cargo +nightly build", "cargo +nightly build *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "git -C /other/repo status"}, "allow git -C /other/repo status", []string{"git -C /other/repo status", "git -C /other/repo status *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "git --version"}, "allow this exact command", []string{"git --version"}},
 		// kubectl's -s takes a value, so prod is not its subcommand
-		{tools.Request{Subject: "tool.bash", Arg: "kubectl -s prod get pods"}, "allow this exact command", []string{"kubectl -s prod get pods"}},
+		{tools.Request{Subject: "tool.shell", Arg: "kubectl -s prod get pods"}, "allow this exact command", []string{"kubectl -s prod get pods"}},
 		// a path or capitalized spelling is the same program: `/usr/bin/git *` would be every subcommand
-		{tools.Request{Subject: "tool.bash", Arg: "/usr/bin/git push"}, "allow /usr/bin/git push", []string{"/usr/bin/git push", "/usr/bin/git push *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "Git push"}, "allow Git push", []string{"Git push", "Git push *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "/usr/bin/git"}, "allow this exact command", []string{"/usr/bin/git"}},
+		{tools.Request{Subject: "tool.shell", Arg: "/usr/bin/git push"}, "allow /usr/bin/git push", []string{"/usr/bin/git push", "/usr/bin/git push *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "Git push"}, "allow Git push", []string{"Git push", "Git push *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "/usr/bin/git"}, "allow this exact command", []string{"/usr/bin/git"}},
 		// a bare subcommand program stays exact too: `git *` is every subcommand
-		{tools.Request{Subject: "tool.bash", Arg: "git"}, "allow this exact command", []string{"git"}},
-		{tools.Request{Subject: "tool.bash", Arg: "npx prettier --check ."}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "git"}, "allow this exact command", []string{"git"}},
+		{tools.Request{Subject: "tool.shell", Arg: "npx prettier --check ."}, "", nil},
 		// interpreters and wrappers run whatever they are handed: no rule
 		// written from one of these says what the next call would run
-		{tools.Request{Subject: "tool.bash", Arg: "bash -c 'go test ./...'"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "/bin/sh -lc 'ls'"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "baſh -c id"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "zsh script.sh"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "node -e 'x'"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "python3 -c 'x'"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "perl -e 'x'"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "ruby -e 'x'"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "env FOO=1 ls"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "sudo ls"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "xargs rm"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "nohup ls"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "time ls"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "trap 'rm -rf x' EXIT"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "coproc ls"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && sudo ls"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "bash -c 'go test ./...'"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "/bin/sh -lc 'ls'"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "baſh -c id"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "zsh script.sh"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "node -e 'x'"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "python3 -c 'x'"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "perl -e 'x'"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "ruby -e 'x'"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "env FOO=1 ls"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "sudo ls"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "xargs rm"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "nohup ls"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "time ls"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "trap 'rm -rf x' EXIT"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "coproc ls"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "go test ./... && sudo ls"}, "", nil},
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}, "allow edits in internal/ and below", []string{filepath.Join(proj, "internal", "*")}},
 		// home, / and above hold every dotfile: only the file, named with ~
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(home, ".zshrc")}, "allow edits of ~/.zshrc", []string{filepath.Join(home, ".zshrc")}},
@@ -1248,24 +1254,24 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "fs.read", Arg: ".env"}, "allow reads of .env", []string{filepath.Join(proj, ".env")}},
 		{tools.Request{Subject: "fs.read", Arg: "main.go"}, "allow reads anywhere in the project", []string{filepath.Join(proj, "*")}},
 		// the subcommand spellings of npx and uvx, and a wrapper name, offer nothing
-		{tools.Request{Subject: "tool.bash", Arg: "npm exec prettier -- --check ."}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "pnpm dlx x"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "uv run x.py"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "npm exec prettier -- --check ."}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "pnpm dlx x"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "uv run x.py"}, "", nil},
 		// an unknown option may take the next word, so the subcommand is not sure
-		{tools.Request{Subject: "tool.bash", Arg: "npm -w web test"}, "allow this exact command", []string{"npm -w web test"}},
-		{tools.Request{Subject: "tool.bash", Arg: "uv --directory sub run pytest"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "busybox ls"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "zemi plugins"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "awk '{print}' f"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "npm run build"}, "allow npm run", []string{"npm run", "npm run *"}},
-		{tools.Request{Subject: "tool.bash", Arg: "sed -n 1p f"}, "allow this exact command", []string{"sed -n 1p f"}},
+		{tools.Request{Subject: "tool.shell", Arg: "npm -w web test"}, "allow this exact command", []string{"npm -w web test"}},
+		{tools.Request{Subject: "tool.shell", Arg: "uv --directory sub run pytest"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "busybox ls"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "zemi plugins"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "awk '{print}' f"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "npm run build"}, "allow npm run", []string{"npm run", "npm run *"}},
+		{tools.Request{Subject: "tool.shell", Arg: "sed -n 1p f"}, "allow this exact command", []string{"sed -n 1p f"}},
 		{tools.Request{Subject: "net.*", Arg: "https://pkg.go.dev/fmt"}, "allow pkg.go.dev", []string{"https://pkg.go.dev", "https://pkg.go.dev/*"}},
 		{tools.Request{Subject: "tool.workflow", Arg: "script"}, "", nil},
 		{tools.Request{Subject: "memory.write", Arg: "e9865952"}, "", nil},
 		{tools.Request{Subject: "tool.jira_create", Arg: "jira_create"}, "allow the jira_create tool", []string{"jira_create"}},
 		{tools.Request{Subject: "mcp.github", Arg: "create_issue"}, "allow create_issue from github", []string{"create_issue"}},
-		{tools.Request{Subject: "tool.bash", Arg: "rm *.tmp"}, "", nil},
-		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && ls ?"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "rm *.tmp"}, "", nil},
+		{tools.Request{Subject: "tool.shell", Arg: "go test ./... && ls ?"}, "", nil},
 		{tools.Request{Subject: "fs.read", Arg: filepath.Join(proj, "*", "notes.md")}, "", nil},
 		{tools.Request{Subject: "net.*", Arg: "https://*/"}, "", nil},
 	} {
@@ -1279,21 +1285,21 @@ func TestAlwaysChoice(t *testing.T) {
 		}
 	}
 	// a whole-command rule lets the next run differ in its arguments
-	_, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "ls -la"})
+	_, rules := h.alwaysChoice(tools.Request{Subject: "tool.shell", Arg: "ls -la"})
 	s := new(perm.Store)
 	for _, r := range rules {
 		s.Add(r)
 	}
-	if o := s.CheckCommandFor(perm.SubjectBash, perm.Normalize("ls -R src"), "model"); o.Decision != perm.Allow {
+	if o := s.CheckCommandFor(perm.SubjectShell, perm.Normalize("ls -R src"), "model"); o.Decision != perm.Allow {
 		t.Errorf("ls -R src after allow `ls` = %v, want allow", o)
 	}
 	// a deleter's exact rule does not cover another target
-	_, del := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"})
+	_, del := h.alwaysChoice(tools.Request{Subject: "tool.shell", Arg: "rm build.tmp"})
 	s2 := new(perm.Store)
 	for _, r := range del {
 		s2.Add(r)
 	}
-	if o := s2.CheckCommandFor(perm.SubjectBash, perm.Normalize("rm src.orig"), "model"); o.Decision == perm.Allow {
+	if o := s2.CheckCommandFor(perm.SubjectShell, perm.Normalize("rm src.orig"), "model"); o.Decision == perm.Allow {
 		t.Errorf("rm src.orig after allow `rm build.tmp` must ask, got %v", o)
 	}
 	// a read deep in a tree also offers the whole repository
@@ -1333,8 +1339,8 @@ func TestAlwaysChoice(t *testing.T) {
 	}
 	// a segment this manager already allows for the session is not listed or
 	// re-ruled: only the still-new programs get a name and a rule
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "go test *", Decision: perm.Allow, Principal: "model"})
-	label, rules = h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "go test ./x && go vet"})
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "go test *", Decision: perm.Allow, Principal: "model"})
+	label, rules = h.alwaysChoice(tools.Request{Subject: "tool.shell", Arg: "go test ./x && go vet"})
 	if label != "allow go vet" {
 		t.Errorf("already-allowed segment must not be listed: %q", label)
 	}
@@ -1347,15 +1353,15 @@ func TestAlwaysChoice(t *testing.T) {
 	}
 	// when everything is already allowed there is nothing to offer: a label
 	// with no rules would still let the project answer persist the line
-	if label, rules := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "go test ./x"}); label != "" || len(rules) != 0 {
+	if label, rules := h.alwaysChoice(tools.Request{Subject: "tool.shell", Arg: "go test ./x"}); label != "" || len(rules) != 0 {
 		t.Errorf("all-allowed command must offer nothing: %q %+v", label, rules)
 	}
 	// the label says where the allowed command will run
 	fakeSandbox(h, true)
 	for req, want := range map[tools.Request]string{
-		{Subject: "tool.bash", Arg: "ls -la"}:                 "allow ls outside the sandbox",
-		{Subject: "tool.bash", Arg: "ls -la", Network: true}:  "allow ls with the network",
-		{Subject: "tool.bash", Arg: "ls -la", ReadOnly: true}: "allow ls outside the sandbox",
+		{Subject: "tool.shell", Arg: "ls -la"}:                 "allow ls outside the sandbox",
+		{Subject: "tool.shell", Arg: "ls -la", Network: true}:  "allow ls with the network",
+		{Subject: "tool.shell", Arg: "ls -la", ReadOnly: true}: "allow ls outside the sandbox",
 	} {
 		if label, _ := h.alwaysChoice(req); label != want {
 			t.Errorf("%+v: label %q, want %q", req, label, want)
@@ -1571,7 +1577,7 @@ func TestProfileSwitch(t *testing.T) {
 	for p, want := range map[*Profile]string{
 		{}:                        "every tool",
 		{Tools: []string{"-lua"}}: "every tool but lua",
-		{Model: "a/m", Tools: []string{"bash", "read"}}: "a/m · only bash, read",
+		{Model: "a/m", Tools: []string{"shell", "read"}}: "a/m · only shell, read",
 	} {
 		if got := profileDesc(p); got != want {
 			t.Errorf("desc %q, want %q", got, want)
@@ -1769,9 +1775,9 @@ func TestAlwaysRuleSkipsSecrets(t *testing.T) {
 	// "allow cat" was answered for a file the user saw; a later cat of a
 	// secret-shaped file, or of a glob that may expand to one, asks again
 	t.Chdir(proj)
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "cat *", Decision: perm.Allow, Principal: "model"})
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "make *", Decision: perm.Allow, Source: "permissions"})
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "head *", Decision: perm.Allow, Source: "permissions"})
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "cat *", Decision: perm.Allow, Principal: "model"})
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "make *", Decision: perm.Allow, Source: "permissions"})
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "head *", Decision: perm.Allow, Source: "permissions"})
 	for _, c := range []struct {
 		cmd  string
 		want perm.Decision
@@ -1788,12 +1794,12 @@ func TestAlwaysRuleSkipsSecrets(t *testing.T) {
 		{"head deploy/prod.pem", perm.Deny},
 		{"cat main.go && head .npmrc", perm.Deny},
 	} {
-		if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: c.cmd}); v.Decision != c.want {
+		if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: c.cmd}); v.Decision != c.want {
 			t.Errorf("%s: %s (%s), want %s", c.cmd, v.Decision, v.Reason, c.want)
 		}
 	}
-	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "cat .env", Decision: perm.Allow})
-	if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "cat .env"}); v.Decision != perm.Allow {
+	h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "cat .env", Decision: perm.Allow})
+	if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "cat .env"}); v.Decision != perm.Allow {
 		t.Errorf("a user rule for cat: %s (%s)", v.Decision, v.Reason)
 	}
 }
@@ -1853,10 +1859,10 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 func TestProfileToolsRecordUnknown(t *testing.T) {
 	h, _ := newTestHost(t)
 	names := map[string]bool{}
-	for _, tool := range h.profileTools(&Profile{Name: "lean", Tools: []string{"Read", "Grep", "bash"}}) {
+	for _, tool := range h.profileTools(&Profile{Name: "lean", Tools: []string{"Read", "Grep", "shell"}}) {
 		names[tool.Info().Name] = true
 	}
-	if !names["bash"] || names["read"] {
+	if !names["shell"] || names["read"] {
 		t.Errorf("kept %v", slices.Sorted(maps.Keys(names)))
 	}
 	if !h.HasUnseenErrors() || !strings.Contains(h.errs.entries[0].msg, "no tool is named Read, Grep") {

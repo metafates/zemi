@@ -78,9 +78,9 @@ func (p *Pipeline) progress(ctx context.Context, buf *proc.Buffer) func() {
 	}
 }
 
-// runBash executes the command in the session directory with a timeout
+// runShell executes the command in the session directory with a timeout
 // (default 60s, capped at 10min). Every call is a fresh process.
-func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
+func runShell(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
 	cmd := str(input["command"])
 	if strings.TrimSpace(cmd) == "" {
 		return fantasy.NewTextErrorResponse("empty command"), nil
@@ -144,7 +144,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	// the count goes with the text: job_read resumes exactly after it
 	raw, written := buf.Snapshot()
 	var b strings.Builder
-	b.WriteString(CmdOut(p.Pad, "bash", raw, written-int64(buf.Max)))
+	b.WriteString(CmdOut(p.Pad, "shell", raw, written-int64(buf.Max)))
 	if timedOut {
 		if b.Len() > 0 {
 			b.WriteString("\n")
@@ -545,7 +545,7 @@ func readGated(path perm.Path) (data []byte, fi os.FileInfo, err error) {
 	}
 	defer f.Close()
 	if fi.Size() > editMaxBytes {
-		return nil, fi, fmt.Errorf("%s is %d bytes, over edit's %d MB limit; make this change with a command in bash", workRel(path.String()), fi.Size(), editMaxBytes>>20)
+		return nil, fi, fmt.Errorf("%s is %d bytes, over edit's %d MB limit; make this change with a shell command", workRel(path.String()), fi.Size(), editMaxBytes>>20)
 	}
 	data, err = io.ReadAll(f)
 	return data, fi, err
@@ -571,7 +571,7 @@ func (p *Pipeline) markRead(path string, fi os.FileInfo) {
 
 // stale refuses changing a file the model has not read, or one that changed
 // since (a command it ran, the user's editor, a formatter, another agent):
-// writing over it would silently drop those changes. bash never updates
+// writing over it would silently drop those changes. A shell call never updates
 // Seen, so the model re-reads what a command rewrote. A pad file needs no
 // read: its own command made it and nobody else edits there. "" when the
 // view is current.
@@ -589,7 +589,7 @@ func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	switch {
 	case !ok && inPad(p.Pad, path):
 	case !ok:
-		return "read " + rel + " with the read tool first (the lines you change are enough), then repeat this call: this session has not read it, and cat, sed or grep in bash does not count."
+		return "read " + rel + " with the read tool first (the lines you change are enough), then repeat this call: this session has not read it, and cat, sed or grep in a shell command does not count."
 	case !t.(time.Time).Equal(fi.ModTime()):
 		return rel + " changed since you read it (a command you ran, the user's editor, a formatter or another agent). Read it again and redo the edit against the current content."
 	}
@@ -1378,7 +1378,7 @@ func skipDir(name string) bool {
 	return false
 }
 
-// workdir is the bash execution root.
+// workdir is the shell execution root.
 func workdir() string {
 	wd, err := os.Getwd()
 	if err != nil {

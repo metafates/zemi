@@ -47,7 +47,7 @@ func (h *Host) RunShell(cmd string) {
 		case err != nil:
 			status, text = CallErr, strings.TrimSpace(text+"\n"+err.Error())
 		}
-		// the model reads the output as a bash call's, through shellNotes; the
+		// the model reads the output as a shell call's, through shellNotes; the
 		// row keeps its head and its tail, where the failure is
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Kind: RowShell, Text: sanitize.String(cmd), Detail: shortOutput(text), Status: status})
 		ag := h.agents
