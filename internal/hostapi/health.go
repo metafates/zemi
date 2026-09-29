@@ -40,7 +40,7 @@ var healthLevels = []HealthLevel{HealthOK, HealthWarn, HealthError}
 type HealthRow struct {
 	Level        HealthLevel
 	Name, Detail string
-	run          string // the command the row's detail action runs
+	Run          string // the command the row's detail action runs
 }
 
 // healthReg holds the checks Lua registered with zemi.health.add;
@@ -354,7 +354,7 @@ func (h *Host) goHealthRows() []HealthRow {
 
 	if mem := h.pendingMemory.Load(); mem > 0 {
 		add(HealthWarn, "learning", fmt.Sprintf("%d %s to review in /memory", mem, plural(int(mem), "memory", "memories")))
-		out[len(out)-1].run = "memory"
+		out[len(out)-1].Run = "memory"
 	} else {
 		add(HealthOK, "learning", "nothing to review")
 	}
@@ -407,7 +407,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	default:
 		add(HealthWarn, "plugins", fmt.Sprintf("%s: %d failed, %d ready", n, failed, len(loads)-failed))
 	}
-	out[len(out)-1].run = "plugins"
+	out[len(out)-1].Run = "plugins"
 
 	h.errs.mu.Lock()
 	nerr := len(h.errs.entries)
@@ -430,7 +430,7 @@ func (h *Host) goHealthRows() []HealthRow {
 			level = HealthError
 		}
 		add(level, "errors", fmt.Sprintf("%d since start, %s: %s", nerr, shown.source, Headline(shown.msg)))
-		out[len(out)-1].run = "errors"
+		out[len(out)-1].Run = "errors"
 	} else {
 		add(HealthOK, "errors", "none since start")
 	}
@@ -440,7 +440,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	} else {
 		add(HealthWarn, "trust", "not trusted: the project's config, instructions and language servers are off; /trust")
 	}
-	out[len(out)-1].run = "trust"
+	out[len(out)-1].Run = "trust"
 
 	counts, servers := map[ServiceStatus]int{}, h.mcp.list()
 	for _, s := range servers {
@@ -465,7 +465,7 @@ func (h *Host) goHealthRows() []HealthRow {
 		add(level, "mcp", fmt.Sprintf("%d %s: %s", len(servers), plural(len(servers), "server", "servers"), strings.Join(parts, ", ")))
 	}
 	if len(servers) > 0 {
-		out[len(out)-1].run = "mcp"
+		out[len(out)-1].Run = "mcp"
 	}
 
 	var lsps []string
@@ -563,12 +563,12 @@ func (h *Host) healthItems() []any {
 	for _, c := range h.HealthRows() {
 		item := map[string]any{"text": c.Name, "desc": c.Detail, "section": "OK"}
 		// a detail view that only repeats a short, fine row leads nowhere
-		if c.run != "" || c.Level != HealthOK || utf8.RuneCountInString(c.Detail) > 48 {
+		if c.Run != "" || c.Level != HealthOK || utf8.RuneCountInString(c.Detail) > 48 {
 			item["detail"] = c.Detail
 		}
-		if c.run != "" {
-			label := healthActions[c.run]
-			item["actions"] = []any{map[string]any{"text": label, "hotkey": strings.ToLower(label[:1]), "run": c.run}}
+		if c.Run != "" {
+			label := healthActions[c.Run]
+			item["actions"] = []any{map[string]any{"text": label, "hotkey": strings.ToLower(label[:1]), "run": c.Run}}
 		}
 		if c.Level == HealthOK {
 			ok = append(ok, item)
