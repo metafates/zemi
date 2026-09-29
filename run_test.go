@@ -317,7 +317,6 @@ func TestRunScreenCommands(t *testing.T) {
 			t.Errorf("%s: code %d, stdout %q, stderr %q", c.prompt, code, out, errOut)
 		}
 	}
-
 }
 
 // TestRunInterruptJSON: an interrupted run, /btw included, still ends in its
