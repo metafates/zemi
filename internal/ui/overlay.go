@@ -204,10 +204,15 @@ func (a *App) overlayIndex(id string) int {
 	return slices.IndexFunc(a.overlays, func(st overlayState) bool { return st.o.ID == id && !st.back })
 }
 
-// replaceOverlay swaps o in at stack index i, keeping the selection, the
-// filter and the box's size, and the scroll while the body is the same.
+// replaceOverlay swaps o in at stack index i, keeping the filter and the
+// box's size, the scroll while the body is the same, and the selection on
+// its row wherever the rebuild moved it, else at its place.
 func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	old := a.overlays[i]
+	sel := "" // read before apply, which reuses old.visible's array
+	if old.selected < len(old.visible) {
+		sel = itemKey(old.o.Items[old.visible[old.selected]])
+	}
 	st := a.overlayState(o)
 	f := old.listFilter
 	f.labels, f.texts = st.labels, st.texts
@@ -216,6 +221,9 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 		st.body = old.body
 	}
 	st.apply()
+	if n := slices.IndexFunc(st.visible, func(idx int) bool { return sel != "" && itemKey(st.o.Items[idx]) == sel }); n >= 0 {
+		st.selected = n
+	}
 	a.overlays[i] = st
 }
 

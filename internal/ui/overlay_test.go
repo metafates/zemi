@@ -519,13 +519,18 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
-			"opening an open id replaces it in place with the selection kept, unless a lower origin opens it",
+			"opening an open id replaces it in place with the selection on its row, else at its place, unless a lower origin opens it",
 			hostapi.Overlay{ID: "p", Items: []any{"a", "b"}},
 			[]string{"down"},
 			func(a *App) string {
-				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Items: []any{"c", "d"}})
-				if len(a.overlays) != 1 || a.overlays[0].selected != 1 || a.overlays[0].labels[1] != "d" {
-					return fmt.Sprintf("overlays=%d selected=%d", len(a.overlays), a.overlays[0].selected)
+				for _, c := range []struct {
+					items []any
+					sel   int
+				}{{[]any{"x", "y", "b"}, 2}, {[]any{"c", "d", "e"}, 2}} {
+					a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Items: c.items})
+					if len(a.overlays) != 1 || a.overlays[0].selected != c.sel {
+						return fmt.Sprintf("%v: overlays=%d selected=%d", c.items, len(a.overlays), a.overlays[0].selected)
+					}
 				}
 				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginPlugin, Items: []any{"e"}})
 				return map[bool]string{false: "a plugin replaced a builtin list"}[len(a.overlays) == 2 && a.overlays[0].labels[0] == "c"]

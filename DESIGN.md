@@ -1581,7 +1581,8 @@ provenance string.
   and after a reload; a row that fills the composer closes the list, which would keep
   the keys); Go still draws the box, the origin badge, the
   filter and the hints, where a list's own `keys` are named. Opening the id
-  of an open overlay replaces it in place, keeping selection and filter, when
+  of an open overlay replaces it in place, keeping the filter and the
+  selection on its row wherever the rebuild moved it, when
   the opener may close it (user, builtin or its own origin). Go parses each
   item once (`hostapi.ParseOverlayItem`), and an item or action field of the
   wrong type raises from `open` (§6.0) instead of drawing a row that ignores it

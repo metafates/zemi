@@ -227,8 +227,8 @@ func (a *App) dragBar(y int) {
 
 // dismissOutside closes a menu or popup a click landed outside of, and
 // reports whether it did. A blocking ask (permission, trust, question,
-// memory review) stays: a tool waits on its answer, so a stray click must
-// not decide it.
+// plan) stays: a tool waits on its answer, so a stray click must not decide
+// it.
 func (a *App) dismissOutside(x, y int) bool {
 	out := func(r uv.Rectangle) bool { return !r.Empty() && !(uv.Position{X: x, Y: y}).In(r) }
 	switch {

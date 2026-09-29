@@ -1000,7 +1000,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   selected row's background); only `dimRows` drops them, because dimmed rows are not targets. Overlays (internal/ui/overlay.go) are data
   (DESIGN §8 has the detail views, `danger` arming and `AskFirst`); `BodySegs` is sanitized like
   `Body`, which stays what `y` copies. Opening the id of an open overlay replaces it in place
-  (`replaceOverlay`, keeping selection and filter; only an origin that may close it), a detail
+  (`replaceOverlay`, keeping the filter and the selection on its row; only an origin that may close it), a detail
   view open over it rebuilt from its item or dropped with it (`refreshDetail`), and a Go
   screen's list-level key runs a command (`OverlayKey.Run`, builtin and user lists only). A
   toggle list rebuilds when the overlay stacked on it closes (`closeOverlayByID`; a detail
