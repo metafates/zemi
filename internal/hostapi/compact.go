@@ -44,10 +44,7 @@ const (
 )
 
 const (
-	// compactLead is what every summary row starts with, whatever wording
-	// follows it, so summaryOf reads rows an older zemi stored too.
-	compactLead   = "The earlier part of this session was compacted into the summary below"
-	compactPrefix = compactLead + "; messages after this one are verbatim. The user's latest request is the active one: continue it without recapping or acknowledging the summary.\n\n<summary>\n"
+	compactPrefix = "The earlier part of this session was compacted into the summary below; messages after this one are verbatim. The user's latest request is the active one: continue it without recapping or acknowledging the summary.\n\n<summary>\n"
 	compactSuffix = "\n</summary>"
 )
 
@@ -508,14 +505,13 @@ func summaryOf(m fantasy.Message) (string, bool) {
 	if m.Role != fantasy.MessageRoleUser || len(m.Content) == 0 {
 		return "", false
 	}
-	p, ok := m.Content[0].(fantasy.TextPart)
-	if ok && strings.HasPrefix(p.Text, compactLead) {
-		if _, rest, found := strings.Cut(p.Text, "\n\n<summary>\n"); found {
-			s, _, _ := strings.Cut(rest, compactSuffix)
-			return s, true
-		}
+	p, _ := m.Content[0].(fantasy.TextPart)
+	rest, ok := strings.CutPrefix(p.Text, compactPrefix)
+	if !ok {
+		return "", false
 	}
-	return "", false
+	s, _, _ := strings.Cut(rest, compactSuffix)
+	return s, true
 }
 
 // tailKeep is the verbatim tail's token budget under a compaction threshold.

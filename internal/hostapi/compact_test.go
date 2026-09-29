@@ -435,15 +435,6 @@ func TestTranscriptTextNotesAttachments(t *testing.T) {
 	}
 }
 
-// TestSummaryOfOlderWording: a summary row stored under an earlier prefix
-// wording still reads as a summary.
-func TestSummaryOfOlderWording(t *testing.T) {
-	old := agent.UserMessage(compactLead + ". Recent messages follow verbatim.\n\n<summary>\nthe gist" + compactSuffix)
-	if s, ok := summaryOf(old); !ok || s != "the gist" {
-		t.Fatalf("summaryOf = %q, %v", s, ok)
-	}
-}
-
 func toolResult(id string, tokens int) fantasy.Message {
 	return fantasy.Message{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{
 		fantasy.ToolResultPart{ToolCallID: id, Output: fantasy.ToolResultOutputContentText{Text: strings.Repeat("r", tokens*4)}},
