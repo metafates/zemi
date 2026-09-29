@@ -11,12 +11,9 @@ import (
 )
 
 // ProjectPermissionsStep loads the project's permissions file, the bash
-// commands always allowed in a trusted project. Lines reuse the ask
-// overlay's rule shapes (bashAlwaysPatterns), so a command is allowed as a
-// whole, program plus subcommand, and a deleting or wrapper program offers
-// nothing. Allow rules are safe here where project Lua is not: the file lives
-// in zemi's state dir, where no repository can ship it and no sandbox can
-// write it, and is only read when the project is trusted (DESIGN §5).
+// commands always allowed in a trusted project. Allow rules are safe here
+// where project Lua is not: the file lives in zemi's state dir, where no
+// repository can ship it and no sandbox can write it (DESIGN §5).
 func (h *Host) ProjectPermissionsStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "project permissions",
@@ -24,62 +21,51 @@ func (h *Host) ProjectPermissionsStep() lua.BootStep {
 			if !h.ProjectTrusted() {
 				return nil
 			}
-			h.projectPermissions()
+			for _, line := range permissionLines(h.projectPermissionsPath()) {
+				rules, ok := projectRules(perm.Normalize(line))
+				if !ok {
+					h.Log.Warn("skipping unsafe command", "origin", "permissions", "command", line)
+					continue
+				}
+				for _, r := range rules {
+					h.addPermissionRule(r)
+				}
+			}
 			return nil
 		},
 	}
 }
 
-// projectPermissions reads the permissions file and registers its allow rules. A
-// line an inner shell, assignment or malformed text (nothing a rule from it
-// would match is what the user read) is skipped whole, as is one whose command
-// a wrapper or a glob makes unsafe: no rule from a command the user did not
-// see.
-func (h *Host) projectPermissions() {
-	b, err := os.ReadFile(h.projectPermissionsPath())
-	if err != nil {
-		return // no file is the common case
-	}
+// permissionLines are the commands a permissions file lists.
+func permissionLines(path string) []string {
+	b, _ := os.ReadFile(path) // no file is the common case
+	var out []string
 	for line := range strings.Lines(string(b)) {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		n := perm.Normalize(line)
-		if n.Fail != "" || n.ForceAsk != "" || n.Assign != "" || n.Opaque {
-			h.permissionSkipped(line)
-			continue
-		}
-		patterns, ok := bashRulePatterns(n)
-		if !ok {
-			h.permissionSkipped(line)
-			continue
-		}
-		for _, ps := range patterns {
-			for _, p := range ps {
-				h.addPermissionRule(perm.Rule{Subject: perm.SubjectBash, Pattern: p, Decision: perm.Allow, Source: "permissions"})
-			}
+		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+			out = append(out, line)
 		}
 	}
+	return out
 }
 
-// bashRulePatterns turns one normalized command into the allow-rule patterns
-// for each of its segments: shared by the project permissions file loader and
-// the "for this project" ask answer. ok is false when any segment has no safe
-// rule (a wrapper, glob or deleting program).
-func bashRulePatterns(n perm.Normalized) (patterns [][]string, ok bool) {
+// projectRules are the allow rules a permissions file line loads, each
+// segment in the shape the "always" answer offers (bashAlwaysPatterns). ok
+// is false, and the line loads nothing, when any part has no safe rule: an
+// inner shell, an assignment, text that does not parse, a wrapper, a glob.
+func projectRules(n perm.Normalized) (rules []perm.Rule, ok bool) {
+	if n.Fail != "" || n.ForceAsk != "" || n.Assign != "" || n.Opaque {
+		return nil, false
+	}
 	for _, seg := range n.Segments {
-		ps, good := bashAlwaysPatterns(seg)
-		if !good {
+		ps, ok := bashAlwaysPatterns(seg)
+		if !ok {
 			return nil, false
 		}
-		patterns = append(patterns, ps)
+		for _, p := range ps {
+			rules = append(rules, perm.Rule{Subject: perm.SubjectBash, Pattern: p, Decision: perm.Allow, Source: "permissions"})
+		}
 	}
-	return patterns, true
-}
-
-func (h *Host) permissionSkipped(line string) {
-	h.Log.Warn("skipping unsafe command", "origin", "permissions", "command", line)
+	return rules, true
 }
 
 // projectPermissionsPath is the project's always-allow file, "" without a
@@ -92,9 +78,8 @@ func (h *Host) projectPermissionsPath() string {
 }
 
 // projectAllow answers the ask's "for this project" choice: append cmd to the
-// project permissions file so it allows on every later boot, and register its
-// rules now so it holds for this session too. A failed write still applies
-// in-memory (the choice degrades to a session allow) but is logged.
+// project permissions file for every later boot, and register its rules now.
+// A failed write still applies for this session, and is logged.
 func (h *Host) projectAllow(cmd string, rules []perm.Rule) {
 	path := h.projectPermissionsPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -110,7 +95,6 @@ func (h *Host) projectAllow(cmd string, rules []perm.Rule) {
 		f.Close()
 	}
 	for _, r := range rules {
-		r.Source = "permissions"
 		h.addPermissionRule(r)
 	}
 }

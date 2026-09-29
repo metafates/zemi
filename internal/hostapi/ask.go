@@ -478,7 +478,10 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 		}
 		return patterns, ok
 	}
-	if wrapperProgram(f[0]) {
+	// judged by its name, kept as written: a rule for `/usr/bin/git push`
+	// allows only that git
+	prog := perm.ProgramName(f[0])
+	if perm.WrapperPrograms[prog] {
 		return nil, false
 	}
 	// npm exec, uv run and the like run a package named after them, as npx
@@ -491,7 +494,7 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 		if !known {
 			words = f[i:]
 		}
-		if slices.ContainsFunc(words, func(w string) bool { return wrapperSubcommands[perm.ProgramName(f[0])+" "+w] }) {
+		if slices.ContainsFunc(words, func(w string) bool { return wrapperSubcommands[prog+" "+w] }) {
 			return nil, false
 		}
 	}
@@ -500,13 +503,13 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	// command has no write path to re-ask on
 	// [[ and a builtin that sets variables by name evaluate a quoted
 	// subscript, where $(...) runs: "[[ *" would run any of those
-	if destructiveProgram(perm.ProgramName(f[0])) || f[0] == "[[" || perm.ShellState[f[0]] || perm.Normalize(seg).Destructive("") != "" {
+	if destructivePrograms[prog] || f[0] == "[[" || perm.ShellState[f[0]] || perm.Normalize(seg).Destructive("") != "" {
 		return []string{seg}, true
 	}
 	p := commandPrefix(seg)
 	switch {
 	case p != "" && known:
-	case perm.SubcommandPrograms[perm.ProgramName(f[0])]:
+	case perm.SubcommandPrograms[prog]:
 		// git --version and a bare git have no subcommand, and npm -w web test
 		// has none for sure; `git *` or `npm -w web *` would allow every one
 		return []string{seg}, true
@@ -516,29 +519,17 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	return []string{p, p + " *"}, true
 }
 
-// projectChoice is the ask's "for this project" answer: the session always
-// label kept, the rules the permissions file loads from the command allowed
-// un-scoped now, and the command persisted to the file so it applies again
-// on every boot. Empty when the project is untrusted (the file is only read
-// then), for a non-bash request, when the command has no safe rule
-// (alwaysLabel is ""), for a multi-line command (each file line loads as its
-// own command, so a line continuation there would widen what the user
-// approved), for a network ask (a file line runs unconfined, and the ask
-// said the command stays sandboxed), and when the file would load more than the label names: the
-// session answer skips a segment a model rule already allows, but the file
-// outlives that rule.
+// projectChoice is the ask's "for this project" answer: the always label,
+// and the rules the permissions file will load for the command. None in an
+// untrusted project (the file is not read), for a line continuation (each
+// file line loads as its own command), for a network ask (a file line runs
+// unconfined), or when the file would load more than the label names: the
+// session answer skips a segment a model rule allows, the file outlives it.
 func (h *Host) projectChoice(req tools.Request, alwaysLabel string, alwaysRules []perm.Rule) (string, []perm.Rule) {
-	// a file line runs unconfined, which a network ask promised not to
 	if req.Subject != perm.SubjectBash || req.Network || !h.ProjectTrusted() || alwaysLabel == "" || strings.ContainsAny(req.Arg, "\n") {
 		return "", nil
 	}
-	patterns, ok := bashRulePatterns(req.Command())
-	var rules []perm.Rule
-	for _, ps := range patterns {
-		for _, p := range ps {
-			rules = append(rules, perm.Rule{Subject: perm.SubjectBash, Pattern: p, Decision: perm.Allow})
-		}
-	}
+	rules, ok := projectRules(req.Command())
 	if !ok || len(rules) != len(alwaysRules) {
 		return "", nil
 	}
@@ -586,10 +577,6 @@ var wrapperSubcommands = map[string]bool{
 	"uv run": true, "uv tool": true,
 }
 
-func wrapperProgram(prog string) bool {
-	return perm.WrapperPrograms[perm.ProgramName(prog)]
-}
-
 // destructivePrograms are programs that, with one more argument, can delete
 // or overwrite without a write path the pipeline would re-ask on (rm and
 // friends delete by syscall, find -exec and rsync run real deleters). An
@@ -599,10 +586,6 @@ var destructivePrograms = map[string]bool{
 	"find": true, "tar": true, "rsync": true, "shred": true, "truncate": true, "dd": true,
 	"ln": true, "tee": true, "chmod": true, "chown": true, "chgrp": true,
 	"sed": true, // -i and the w command overwrite, like tee
-}
-
-func destructiveProgram(prog string) bool {
-	return destructivePrograms[prog]
 }
 
 // commandPrefix is the prefix through the subcommand the always answer

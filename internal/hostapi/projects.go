@@ -376,16 +376,10 @@ func (h *Host) projectFields(p Project) []any {
 	if dirs, _ := os.ReadDir(filepath.Join(state, "skills")); len(dirs) > 0 {
 		recipes = strconv.Itoa(len(dirs))
 	}
-	var allowed []string
-	b, _ := os.ReadFile(filepath.Join(state, "permissions"))
-	for line := range strings.Lines(string(b)) {
-		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
-			allowed = append(allowed, sanitize.String(line))
-		}
-	}
+	allowed := sanitize.String(strings.Join(permissionLines(filepath.Join(state, "permissions")), ", "))
 	if p.StatsErr != nil {
 		errText = p.StatsErr.Error()
 	}
 	return fieldList("path", sanitize.String(TildePath(p.Root)), "trust", p.TrustWord(), "sessions", sessions, "memories", memories, "recipes", recipes,
-		"allowed", strings.Join(allowed, ", "), "data", TildePath(state), "error", errText)
+		"allowed", allowed, "data", TildePath(state), "error", errText)
 }
