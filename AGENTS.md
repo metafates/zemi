@@ -961,7 +961,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   (`agent.Runner.Context`), a user message every request sends after the system prompt and never
   in `History`: the repository's instruction files under `# Project instructions` (a 32 KB budget
   spent deepest file first, so a huge root `AGENTS.md` cannot squeeze out the package's own; the
-  user's file gets its own budget), the per-session pinned `environmentPrompt` and the digest.
+  user's file gets its own budget), the per-session pinned `environmentPrompt`, the digest and,
+  for the main agent on the shipped prompt, `replyReminder` last.
   The main agent stores it as a `context` row (`contextRow`, which no transcript reader reads)
   whenever the pin is built anew, and a resume sends the stored one again while `contextKey`
   (the pin key, working directory and scratchpad) holds, so the provider's cache of the whole

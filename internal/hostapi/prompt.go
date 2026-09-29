@@ -172,8 +172,16 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (system
 	if def := h.permModeDef(); def.Prompt != "" {
 		sys += "\n\n# Permission mode: " + def.Name + "\n" + def.Prompt
 	}
-	return h.systemFor(sys, files, toolset, h.ScratchDir(), p != nil && p.ReadOnly)
+	reply := ""
+	if p == nil || p.System == "" {
+		reply = replyReminder
+	}
+	return h.systemFor(sys, files, toolset, h.ScratchDir(), p != nil && p.ReadOnly, reply)
 }
+
+// replyReminder closes the main agent's context message, where a small model
+// weighs it most; a subagent's report and a profile's own prompt keep theirs.
+const replyReminder = "\n\nEnd with a reply as # Replies says: under 150 characters besides output the user asked for, unless they ask for detail or the change spans many files."
 
 // planPrompt joins the system prompt for a read-only agent (Profile.ReadOnly);
 // the pipeline enforces it (Pipeline.Plan), the prompt only saves wasted attempts.
@@ -204,14 +212,14 @@ const planAssuming = `
 // files, the environment with the run's scratchpad pad and sandbox
 // (readOnly: a read-only agent's) and the session digest.
 func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool) (system, ctxMsg string) {
-	system, ctxMsg, _ = h.systemFor(sys, nil, toolset, pad, readOnly)
+	system, ctxMsg, _ = h.systemFor(sys, nil, toolset, pad, readOnly, "")
 	return system, ctxMsg
 }
 
 // systemFor is systemWith with the section sizes it assembled. files names
 // explicit project files (a profile's context.files); nil means
-// instructionFiles.
-func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool, pad string, readOnly bool) (system, ctxMsg string, parts promptParts) {
+// instructionFiles. last closes the context message.
+func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool, pad string, readOnly bool, last string) (system, ctxMsg string, parts promptParts) {
 	// a profile's files are repository content too
 	var tracked []string
 	if len(files) == 0 || !h.ProjectTrusted() {
@@ -263,8 +271,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	// provider caches it with the tools once; what varies by project or
 	// session rides the context message after it.
 	system = sys + rules + index + user + luaSections
-	// last, where a small model weighs it most
-	ctxMsg = "<context>\nzemi's notes for this session, not the user's words." + project + env + digest + "\n\nReply in one or two short sentences, under 150 characters besides output the user asked to see.\n</context>"
+	ctxMsg = "<context>\nzemi's notes for this session, not the user's words." + project + env + digest + last + "\n</context>"
 	parts = promptParts{instructions: len(user) + len(project), lua: len(luaSections), skills: len(index), digest: len(digest), files: mtimes}
 	parts.base = len(system) + len(ctxMsg) - parts.instructions - parts.lua - parts.skills - parts.digest
 	return system, ctxMsg, parts
