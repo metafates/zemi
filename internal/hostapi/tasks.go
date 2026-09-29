@@ -54,8 +54,9 @@ var runStatuses = []RunStatus{RunRunning, RunDone, RunFailed, RunCancelled}
 // run is registered, but cancel, which a continuation renews.
 type agentRun struct {
 	id, agent, description string
-	parent                 string // the session that started the run
-	workflow, phase        string // the flow that started it, "" for none
+	parent                 string         // the session that started the run
+	workflow, phase        string         // the flow that started it, "" for none
+	schema                 map[string]any // the report must be a JSON object matching it
 	// the model reference it started on
 	// NOTE: "" for a run loadRun rebuilt, which continues on its definition's
 	// model: sessions keep no model column.

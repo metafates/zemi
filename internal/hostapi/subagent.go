@@ -353,6 +353,20 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	for next := run.followUp(err); next != ""; next = run.followUp(err) {
 		err = h.sendPruning(ctx, runner, modelID, next)
 	}
+	// NOTE: tools.Validate checks required fields and types, not every
+	// keyword (enum, bounds); a deeper validator is the upgrade.
+	var report string
+	for tries := 0; err == nil && run.schema != nil; tries++ {
+		var bad error
+		if report, bad = schemaReport(run.schema, lastAssistantText(runner.History)); bad == nil {
+			break
+		}
+		if tries == 2 {
+			err = fmt.Errorf("the report is not the JSON asked for: %w", bad)
+			break
+		}
+		err = h.sendPruning(ctx, runner, modelID, "Your reply is not the JSON asked for: "+bad.Error()+". Reply with only the JSON object.")
+	}
 	h.EmitAsync("agent.subagent.finish", map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
 	// history keeps the steps finished before a failure: text is then the
 	// last thing the agent said, for callers that show a partial report
@@ -362,6 +376,9 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	if err != nil {
 		return text, err
+	}
+	if run.schema != nil {
+		return report, nil
 	}
 	if text == "" {
 		text = "(the agent finished without a reply)"
@@ -415,6 +432,27 @@ func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool) string 
 		" end with a complete, concise report of what it needs, citing path:line where it matters," +
 		" and say plainly what you did not find or could not verify.\n\n" + def.System +
 		"\n\n# Using tools\n" + batchPrompt + read + "\n" + toolRules
+}
+
+// schemaReport cuts the outermost {...} out of a reply, which models wrap
+// in prose and fences, and checks it against schema.
+func schemaReport(schema map[string]any, reply string) (string, error) {
+	i, j := strings.Index(reply, "{"), strings.LastIndex(reply, "}")
+	if i < 0 || j < i {
+		return "", errors.New("it holds no JSON object")
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(reply[i:j+1]), &m); err != nil {
+		return "", err
+	}
+	req := []string{}
+	list, _ := schema["required"].([]any)
+	for _, r := range list {
+		name, _ := r.(string)
+		req = append(req, name)
+	}
+	info := fantasy.ToolInfo{Parameters: tools.SchemaProperties(schema), Required: req}
+	return reply[i : j+1], tools.Validate(info, m, tools.SchemaOpen(schema))
 }
 
 func lastAssistantText(history []fantasy.Message) string {

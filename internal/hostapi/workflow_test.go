@@ -538,6 +538,46 @@ func TestWorkflowRerun(t *testing.T) {
 	}
 }
 
+// TestWorkflowSchema: a schema call's report is the JSON object cut out of
+// the reply, checked, asked for again at most twice, and a table in Lua.
+func TestWorkflowSchema(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+			switch first, _, _ := strings.Cut(last, "\n"); {
+			case first == "fenced":
+				return textParts("Here:\n```json\n{\"n\": 1}\n```")
+			case strings.HasPrefix(first, "Your reply is not the JSON"):
+				return textParts(`{"n": 1}`)
+			}
+			return textParts(`{}`)
+		}}, nil
+	}
+	const n = `{type = "object", properties = {n = {type = "number"}}, required = {"n"}}`
+	for _, c := range []struct{ name, script, want string }{
+		{"a fenced reply is a table", `return wf.agent("fenced", {schema = ` + n + `}).n`, "1"},
+		{"a mismatch is asked for again", `return wf.agent("retry", {schema = ` + n + `}).n`, "1"},
+		{
+			"a mismatch fails after two retries",
+			`local r, err = wf.agent("never", {schema = {type = "object", properties = {m = {type = "string"}}, required = {"m"}}}) return tostring(r) .. " " .. err`,
+			"nil the report is not the JSON asked for",
+		},
+		{"a schema that is no object schema raises", `return wf.agent("x", {schema = {type = "string"}})`, "schema must be a JSON Schema object"},
+		{"a required field it does not declare raises", `return wf.agent("x", {schema = {type = "object", properties = {a = {}}, required = {"b"}}})`, "schema must be"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := runFlow(h, context.Background(), "local wf = zemi.workflow\n"+c.script, nil)
+			if err != nil {
+				got = err.Error()
+			}
+			if !strings.Contains(got, c.want) {
+				t.Fatalf("= %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
 // TestWorkflowToolInput: which fields go together, what a rerun asks
 // about, and what headless leaves out.
 func TestWorkflowToolInput(t *testing.T) {

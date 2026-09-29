@@ -830,7 +830,9 @@ lua-language-server is installed.
   `run` for action `rerun`); `run` with an action is `flowControl`, `background` delivers the
   result like a background agent's report (`deliverFlow` through `deliverReport`, whose head
   reads `Workflow <id> finished`), and a failed run's result says how to rerun it. A workflow
-  agent's asks name the workflow and the agent.
+  agent's asks name the workflow and the agent. `agent`'s `schema` asks in the task for a JSON
+  object and `runAgent` checks the reply's outermost `{...}` with `tools.Validate`, asking again
+  at most twice (`schemaReport`); the script gets a table, and the journal keeps the object.
   A run (`flowRun`, `startFlow`, registered in `taskReg.flows`) is live work until its script
   ends, paused or between agents too: `taskReg.live` counts it, and not its agents, for rewind,
   fork, session delete, the queue drain and the statusline, and `stillRunning` names where to
