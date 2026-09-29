@@ -120,8 +120,8 @@ type Layout struct {
 	Floats []LayoutFloat
 }
 
-// Regions are the region names the layout places, hidden nodes included.
-func (l *Layout) Regions() map[string]bool {
+// regions are the region names the layout places, hidden nodes included.
+func (l *Layout) regions() map[string]bool {
 	out := map[string]bool{}
 	var walk func(n *LayoutNode)
 	walk = func(n *LayoutNode) {
@@ -141,9 +141,9 @@ func (l *Layout) Regions() map[string]bool {
 	return out
 }
 
-// Focusables are the ids of the focusable regions and floats, in tree
+// focusables are the ids of the focusable regions and floats, in tree
 // order and then float order: the order focus cycles in.
-func (l *Layout) Focusables() []string {
+func (l *Layout) focusables() []string {
 	var out []string
 	var walk func(n *LayoutNode)
 	walk = func(n *LayoutNode) {
@@ -219,7 +219,7 @@ func (h *Host) layoutNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.ui.layout.set: only user config may set the layout, not %s code", o)
 		}
 		raw := luaToGoChecked(L, 1, "zemi.ui.layout.set")
-		lay, err := ParseLayout(raw)
+		lay, err := parseLayout(raw)
 		if err != nil {
 			L.RaiseError("zemi.ui.layout.set: %v", err)
 		}
@@ -283,7 +283,7 @@ func (h *Host) SetFocus(id string) {
 // focusNode moves the focus to a focusable node of the layout in force, or
 // to the composer with "".
 func (h *Host) focusNode(id string) error {
-	if id != "" && !slices.Contains(h.Layout().Focusables(), id) {
+	if id != "" && !slices.Contains(h.Layout().focusables(), id) {
 		return fmt.Errorf("the layout has no focusable node %q", id)
 	}
 	h.SetFocus(id)
@@ -299,7 +299,7 @@ func (h *Host) cycleFocus(step int) error {
 	}
 	drawn := ui.LayoutRects()
 	ids := []string{""}
-	for _, id := range h.Layout().Focusables() {
+	for _, id := range h.Layout().focusables() {
 		if _, ok := drawn[id]; ok {
 			ids = append(ids, id)
 		}
@@ -311,7 +311,7 @@ func (h *Host) cycleFocus(step int) error {
 // dropStaleFocus hands the keys back to the composer when the layout in
 // force no longer has the focused node.
 func (h *Host) dropStaleFocus() {
-	if f := h.Focus(); f != "" && !slices.Contains(h.Layout().Focusables(), f) {
+	if f := h.Focus(); f != "" && !slices.Contains(h.Layout().focusables(), f) {
 		h.SetFocus("")
 	}
 }
@@ -356,9 +356,9 @@ type layoutParser struct {
 	stages    int
 }
 
-// ParseLayout turns zemi.ui.layout.set's table into a Layout, or says what
+// parseLayout turns zemi.ui.layout.set's table into a Layout, or says what
 // is wrong with it (DESIGN §6.0: misuse raises).
-func ParseLayout(v any) (*Layout, error) {
+func parseLayout(v any) (*Layout, error) {
 	m, ok := v.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("expected a layout table")

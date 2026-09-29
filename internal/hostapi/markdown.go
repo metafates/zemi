@@ -616,9 +616,9 @@ func swatchColors(row []Segment) []Segment {
 	return out
 }
 
-// WrapText wraps plain text into rows of at most w cells, one logical line
+// wrapText wraps plain text into rows of at most w cells, one logical line
 // per line break, sanitized like markdown (zemi.ui.wrap).
-func WrapText(text string, w int) [][]Segment {
+func wrapText(text string, w int) [][]Segment {
 	var rows [][]Segment
 	for line := range strings.SplitSeq(text, "\n") {
 		rows = append(rows, WrapSegs([]Segment{{Text: sanitize.String(line)}}, w)...)

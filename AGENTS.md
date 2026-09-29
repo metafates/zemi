@@ -986,7 +986,7 @@ lua-language-server is installed.
 
 ### Screen layout (internal/hostapi/layout.go, internal/ui/layout.go)
 
-`zemi.ui.layout.set` hands Go a layout table; `ParseLayout` validates it into immutable
+`zemi.ui.layout.set` hands Go a layout table; `parseLayout` validates it into immutable
 `hostapi.Layout` data (no closures) behind an atomic pointer `compose` reads every frame, so
 drawing never waits on Lua. The shipped `tui/layout.lua` sets the default, user config
 may replace it, lower origins are refused. A reload keeps the old layout drawn (the spec is

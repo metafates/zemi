@@ -34,8 +34,8 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// MCPSpec is one server registration.
-type MCPSpec struct {
+// mcpSpec is one server registration.
+type mcpSpec struct {
 	Command       string
 	Args          []string
 	Env           map[string]string
@@ -51,7 +51,7 @@ type MCPSpec struct {
 
 type mcpServer struct {
 	name string
-	spec MCPSpec
+	spec mcpSpec
 
 	mu      sync.Mutex
 	client  *mcp.Client
@@ -76,7 +76,7 @@ func newMCPReg() *mcpReg {
 var mcpServerName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
 // addMCP registers (or replaces) a server and starts it in the background.
-func (h *Host) addMCP(name string, spec MCPSpec) error {
+func (h *Host) addMCP(name string, spec mcpSpec) error {
 	if !mcpServerName.MatchString(name) {
 		return fmt.Errorf("server name %q must match [a-z0-9][a-z0-9-]{0,31}", name)
 	}
@@ -112,7 +112,7 @@ func (h *Host) addMCP(name string, spec MCPSpec) error {
 
 // keeps reports whether s can serve spec as it is: a failed server restarts,
 // one waiting for a sign-in keeps waiting, since a start would fail the same way.
-func (s *mcpServer) keeps(spec MCPSpec) bool {
+func (s *mcpServer) keeps(spec mcpSpec) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return (s.status == StatusReady || s.status == StatusStarting || s.status == StatusSignIn) && reflect.DeepEqual(s.spec, spec)
@@ -647,7 +647,7 @@ func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.mcp.add: only user config may add MCP servers")
 		}
-		spec := MCPSpec{
+		spec := mcpSpec{
 			Command: rawString(L, opts, "command"), Args: rawStrings(L, opts, "args"), Env: rawStringMap(L, opts, "env"),
 			URL: rawString(L, opts, "url"), Headers: rawStringMap(L, opts, "headers"),
 			ClientID: rawString(L, opts, "client_id"), ClientSecret: rawString(L, opts, "client_secret"),

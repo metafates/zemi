@@ -350,7 +350,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("wrap", L.NewFunction(func(L *glua.LState) int {
-		L.Push(linesTable(L, WrapText(L.CheckString(1), L.CheckInt(2))))
+		L.Push(linesTable(L, wrapText(L.CheckString(1), L.CheckInt(2))))
 		return 1
 	}))
 	tb.RawSetString("diff", L.NewFunction(func(L *glua.LState) int {
