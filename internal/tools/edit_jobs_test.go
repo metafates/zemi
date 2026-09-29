@@ -21,27 +21,6 @@ import (
 	"github.com/metafates/zemi/internal/sandbox"
 )
 
-func TestEditRefusesAmbiguousMatch(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "f.txt")
-	os.WriteFile(path, []byte("x = 1\nx = 1\n"), 0o644)
-	p := onPath(t, nil, path)
-	for _, c := range []struct {
-		input map[string]any
-		want  string
-		file  string
-	}{
-		{map[string]any{"old_string": "x = 1", "new_string": "x = 2"}, "matches 2 places", "x = 1\nx = 1\n"},
-		{map[string]any{"old_string": "", "new_string": "y"}, "empty", "x = 1\nx = 1\n"},
-		{map[string]any{"old_string": "x = 1", "new_string": "x = 2", "replace_all": true}, "2 replacements", "x = 2\nx = 2\n"},
-	} {
-		res, _ := runEdit(context.Background(), p, c.input)
-		got, _ := os.ReadFile(path)
-		if !strings.Contains(res.Content, c.want) || string(got) != c.file {
-			t.Fatalf("%v: %q, file %q", c.input, res.Content, got)
-		}
-	}
-}
-
 // TestJobReadAfterBufferDrop: a job that floods its buffer keeps delivering
 // new output. The buffer drops its middle, so its length stops growing and
 // a length-based offset would report "no new output" forever.

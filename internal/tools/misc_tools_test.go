@@ -199,7 +199,7 @@ func TestYesNoOptions(t *testing.T) {
 		name, input string
 		want        []string
 	}{
-		{"explicit options kept", `{"questions":[{"type":"yes_no","question":"x","options":[{"label":"Yes"},{"label":"No"}]}]}`, []string{"Yes", "No"}},
+		{"explicit options kept", `{"questions":[{"type":"yes_no","question":"x","options":[{"label":"Sure"},{"label":"Never"}]}]}`, []string{"Sure", "Never"}},
 		{"defaults when omitted", `{"questions":[{"type":"yes_no","question":"x"}]}`, []string{"Yes", "No"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
