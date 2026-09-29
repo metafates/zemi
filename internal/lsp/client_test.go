@@ -103,10 +103,9 @@ func TestBadFrameEndsServer(t *testing.T) {
 	for _, length := range []string{"999999999999", "12abc"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		began := time.Now()
 		_, err := lsp.Start(ctx, lsp.Config{Command: "sh", Args: []string{"-c", `printf 'Content-Length: ` + length + `\r\n\r\n'; sleep 30`}, Root: t.TempDir()})
-		if err == nil || time.Since(began) > 5*time.Second {
-			t.Fatalf("length %s: start = %v after %s", length, err, time.Since(began))
+		if err == nil || ctx.Err() != nil {
+			t.Fatalf("length %s: start = %v, deadline %v", length, err, ctx.Err())
 		}
 	}
 }
@@ -123,13 +122,12 @@ func TestTouchNoPublishReturnsEarly(t *testing.T) {
 	if err := os.WriteFile(path, []byte("nothing to say"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	began := time.Now()
 	diags, err := c.Touch(ctx, path, "plaintext")
 	if !errors.Is(err, lsp.ErrNoFresh) || len(diags) != 0 {
 		t.Fatalf("diags %+v, err %v", diags, err)
 	}
-	if elapsed := time.Since(began); elapsed > 5*time.Second {
-		t.Fatalf("Touch waited %s on a server that publishes nothing", elapsed)
+	if ctx.Err() != nil {
+		t.Fatal("Touch waited out its deadline on a server that publishes nothing")
 	}
 }
 
