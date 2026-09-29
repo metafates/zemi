@@ -600,7 +600,7 @@ func (n *Normalized) eat(sc *scanner) {
 	shell := n.readsScript()
 	// a body a program other than a shell reads (python3 - <<EOF) is its code
 	if shell && len(docs) > 0 && slices.ContainsFunc(n.Args, func(f []string) bool {
-		f = program(f)
+		f = ProgramWords(f)
 		for ok := true; ok && len(f) > 1; {
 			f, ok = stepRunner(f)
 		}
@@ -626,7 +626,7 @@ var dataReaders = []string{"cat", "tee", "echo", "printf", "git", "gh", "patch"}
 // readsScript reports a program in the command that is no dataReader.
 func (n *Normalized) readsScript() bool {
 	return slices.ContainsFunc(n.Args, func(f []string) bool {
-		f = program(f)
+		f = ProgramWords(f)
 		return len(f) > 0 && !slices.Contains(dataReaders, f[0])
 	})
 }

@@ -109,7 +109,7 @@ var runnerOpts = map[string][]string{
 // NOTE: best effort: a git alias (git -c alias.p=push p), a runner option
 // missing from runnerOpts or a program picked at run time still slips past.
 func canonical(argv []string) string {
-	f := program(argv)
+	f := ProgramWords(argv)
 	for ok := true; ok && len(f) > 1; {
 		f, ok = stepRunner(f)
 	}

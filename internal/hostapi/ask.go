@@ -312,13 +312,18 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 				r.Network = req.Network
 				rules = append(rules, r)
 			}
-			// one pattern is the exact form of a deleting command, named only
-			// by count; two (p, "p *") is a command allowed as a whole
-			if len(patterns) == 1 {
+			// shell syntax (for, done, true) is neither named nor counted; one
+			// pattern is the exact form of a deleting command, named only by
+			// count; two (p, "p *") is a command allowed as a whole
+			g := perm.ProgramWords(strings.Fields(patterns[0]))
+			switch {
+			case len(g) == 0 || perm.ShellWords[g[0]]:
+				continue
+			case len(patterns) == 1:
 				unnamed++
 				continue
 			}
-			p := patterns[0]
+			p := strings.Join(g, " ")
 			if !seen[p] {
 				seen[p] = true
 				names = append(names, p)
@@ -408,6 +413,19 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	f := strings.Fields(seg)
 	if len(f) == 0 {
 		return nil, false
+	}
+	// the do or then leading a segment stays in its rules: "do *" would allow
+	// every command a later loop body runs
+	if g := perm.ProgramWords(f); len(g) < len(f) {
+		if len(g) == 0 {
+			return []string{seg}, true
+		}
+		lead := strings.Join(f[:len(f)-len(g)], " ") + " "
+		patterns, ok := bashAlwaysPatterns(strings.Join(g, " "))
+		for i := range patterns {
+			patterns[i] = lead + patterns[i]
+		}
+		return patterns, ok
 	}
 	if wrapperProgram(f[0]) {
 		return nil, false

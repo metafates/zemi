@@ -524,7 +524,9 @@ adds sockets instead of running the next call unconfined; `projectChoice` offers
 for one), as prefix globs rather than the exact request (`alwaysChoice`, ask.go: a command's program, or
 program and subcommand for `git`, `go`, `cargo` and the other `perm.SubcommandPrograms`, leading
 options kept (`git -C sub status`, `perm.Subcommand`) and the exact segment when options leave
-no subcommand (`git --version`) or one not for sure (`npm -w web test`: `perm.LeadKnown`); a file's directory, or the file alone when that is `$HOME`, `/` or between,
+no subcommand (`git --version`) or one not for sure (`npm -w web test`: `perm.LeadKnown`), a
+leading `do` or `then` kept in the rule (`do cat *`, never `do *`) and shell syntax (`for`,
+`done`, `perm.ShellWords`) left out of the label; a file's directory, or the file alone when that is `$HOME`, `/` or between,
 which hold every dotfile; a URL's host). A deleting program (`rm`, `mv`, `find`, `tar`, ...) or a segment
 `perm.Normalized.Destructive` names stays exact, since its rule would run unconfined. A file read is also
 offered the wider `repoChoice` ("allow reads anywhere in <repo>", answered as `user:wider`),

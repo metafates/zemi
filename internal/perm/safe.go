@@ -781,9 +781,9 @@ func shellBodies(f []string) []string {
 	return bodies
 }
 
-// program is f without its leading reserved words; "function name" is
+// ProgramWords is f without its leading reserved words; "function name" is
 // skipped as a pair (the () spelling makes Normalize split at the brace).
-func program(f []string) []string {
+func ProgramWords(f []string) []string {
 	for len(f) > 0 {
 		switch {
 		case f[0] == "function" && len(f) > 1:
@@ -882,7 +882,7 @@ func (n Normalized) GitWrites() string {
 		return ""
 	}
 	for _, f := range n.Args {
-		f = program(f)
+		f = ProgramWords(f)
 		for _, body := range shellBodies(f) {
 			if why := Normalize(body).GitWrites(); why != "" {
 				return why
@@ -962,7 +962,7 @@ func (n Normalized) padIntact() bool {
 		return false
 	}
 	for _, f := range n.Args {
-		for f = program(f); len(f) > 0; {
+		for f = ProgramWords(f); len(f) > 0; {
 			if shellState[f[0]] || strings.ContainsAny(f[0], "$=") ||
 				f[0] == "printf" && slices.ContainsFunc(f, func(a string) bool { return strings.HasPrefix(a, "-v") }) {
 				return false
@@ -1066,7 +1066,7 @@ func (n Normalized) destructive(repeated bool, pad string) string {
 	}
 	loops := 0
 	for _, f := range n.Args {
-		g := program(f)
+		g := ProgramWords(f)
 		if slices.Contains(f[:len(f)-len(g)], "do") {
 			loops++
 		}
@@ -1148,7 +1148,7 @@ func (n Normalized) Programs(pad string) []Program {
 	out := []Program{}
 	loops := 0
 	for _, f := range n.Args {
-		g := program(f)
+		g := ProgramWords(f)
 		if slices.Contains(f[:len(f)-len(g)], "do") {
 			loops++
 		}
