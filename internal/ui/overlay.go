@@ -933,8 +933,8 @@ func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hos
 	y0 := area.Min.Y + (bottom-area.Min.Y-bh)/2
 	lo, hi := w, 0
 	for i := range bh {
-		// a blank column each side is the box's own, and the one past it
-		// holds what the box does not cover off its gutter
+		// a blank gutter column each side is part of the box (the rect reports
+		// it); one more blank column outside keeps chat text off it
 		x0 := area.Min.X + max((area.Dx()-hostapi.SegsWidth(box[i]))/2, 2)
 		rows = placeBox(rows, [][]hostapi.Segment{margined(margined(box[i]))}, x0-2, y0+i, w)
 		lo, hi = min(lo, x0-1), max(hi, x0+hostapi.SegsWidth(box[i])+1)

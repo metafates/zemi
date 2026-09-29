@@ -764,7 +764,7 @@ func runner(prog string) bool {
 
 // ProgramName is the name a command word is judged by: its base, case
 // folded as APFS matches names, so /bin/RM runs rm and U+017F (long s) in
-// ſh runs sh. Each rune becomes the least of its fold orbit, then lowercase.
+// ſh runs sh.
 func ProgramName(word string) string {
 	return strings.ToLower(strings.Map(func(r rune) rune {
 		least := r
