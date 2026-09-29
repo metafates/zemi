@@ -1583,7 +1583,7 @@ provenance string.
   `danger` (those `x` rows, `/rewind`'s `r`; not the `/permissions` Delete,
   which the next "always" answer undoes) draws in the danger color, and its
   first enter or key only arms it: the footer turns to `x again to delete ·
-  esc cancel` in that color, the same key or enter runs it, esc disarms and
+  esc cancel` in that color, the same key, enter or space runs it, esc disarms and
   stays, and any other key, or a click or wheel that moves the selection,
   disarms and then acts. A detail view whose only action it is (`/rewind`'s)
   states the effect and is itself the confirmation, so it runs at once. A

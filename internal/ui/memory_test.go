@@ -134,6 +134,7 @@ func TestMemoryReviewFocus(t *testing.T) {
 		{"opens armed", nil, "d again to forget · esc cancel", ""},
 		{"the second press forgets", []string{"enter"}, "enter open", "delete project"},
 		{"its key forgets too", []string{"d"}, "enter open", "delete project"},
+		{"space forgets as on an overlay row", []string{"space"}, "enter open", "delete project"},
 		{"esc drops the arm only", []string{"esc"}, "esc back", ""},
 		{"another key drops the arm", []string{"j"}, "esc back", ""},
 		{"a wheel off and back drops the arm", []string{"wheel down", "wheel up"}, "esc back", ""},

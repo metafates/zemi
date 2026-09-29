@@ -1122,6 +1122,9 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		{"x twice deletes", "", "", []string{"j", "x", "x"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q, %d open", ran, len(app.overlays))}[ran == "del 1" && len(app.overlays) == 0]
 		}},
+		{"x then space deletes", "", "", []string{"j", "x", "space"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "del 1"]
+		}},
 		{"x then enter deletes", "", "", []string{"j", "enter", "x", "enter"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "del 1"]
 		}},

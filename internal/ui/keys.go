@@ -150,17 +150,12 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		mr := a.memReview
 		if mr.detail && mr.at() < len(mr.items) {
 			acts := memActions(mr.items[mr.at()], len(mr.undo) > 0)
-			// an armed button runs on enter or its key; any other key drops the
-			// arm first, and esc only that
-			if mr.armed {
-				mr.armed = false
-				if key == "enter" || key == acts[mr.act].key {
-					a.memAct(acts[mr.act].key)
-					return nil
-				}
-				if key == "esc" {
-					return nil
-				}
+			confirmed, swallowed := pressArmed(&mr.armed, key, func() string { return acts[mr.act].key })
+			if confirmed {
+				a.memAct(acts[mr.act].key)
+			}
+			if confirmed || swallowed {
+				return nil
 			}
 			if mr.body.overflows() && scrollKey(&mr.body, key, false) || moveSel(&mr.act, len(acts), len(acts), key) {
 				return nil

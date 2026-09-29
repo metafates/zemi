@@ -455,14 +455,9 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		return nil
 	}
 	a.bump()
-	// a danger row acts on a second press of enter, space or its key while it
-	// stays selected; any other key drops the arm first, and esc only that
-	confirmed := st.armed && (key == "enter" || key == "space" || key == st.actionKey(st.selected))
-	if st.armed && !confirmed {
-		st.armed = false
-		if key == "esc" {
-			return nil
-		}
+	confirmed, swallowed := pressArmed(&st.armed, key, func() string { return st.actionKey(st.selected) })
+	if swallowed {
+		return nil
 	}
 	if key == "space" && o.Reload != nil && !st.active {
 		text = "" // space toggles rows in a toggle list, and types into an open filter
@@ -529,7 +524,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		verb := st.enterVerb(idx)
 		sel := func() { a.host.SelectOverlay(context.Background(), o, idx) }
 		switch {
-		case key == "space" && (o.Reload == nil || r.Verb != ""):
+		case key == "space" && !confirmed && (o.Reload == nil || r.Verb != ""):
 		case key == "enter" && hasDetail(r):
 			a.openDetail(st, idx, 0)
 		case r.Danger && !confirmed && !(st.back && len(st.visible) == 1):
@@ -827,6 +822,21 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		body = slices.Insert(body, len(body)-tail, make([][]hostapi.Segment, n)...)
 	}
 	return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
+}
+
+// pressArmed is key on a screen whose selected danger button may be armed:
+// enter, space and the button's key confirm it; any other key drops the arm,
+// and esc does only that. button is read only while armed, when a row is
+// selected.
+func pressArmed(armed *bool, key string, button func() string) (confirmed, swallowed bool) {
+	if !*armed {
+		return false, false
+	}
+	if key == "enter" || key == "space" || key == button() {
+		return true, false
+	}
+	*armed = false
+	return false, key == "esc"
 }
 
 // armedHint is the footer of a press that waits for a second one: what the
