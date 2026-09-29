@@ -50,14 +50,19 @@ func (h *Host) pluginsCommands() []*Command {
 // pluginsCommand is /plugins; new and modify send the line as typed,
 // newlines included, with their prompt riding behind it.
 func (h *Host) pluginsCommand(line string) error {
-	ui, err := h.Screen()
-	if err != nil {
-		return fmt.Errorf("%w; zemi plugins manages them from the shell", err)
-	}
 	typed, stdin := agent.CutAttached(line)
 	args, verb := strings.Fields(typed), ""
 	if len(args) > 0 {
 		verb = args[0]
+	}
+	// a delete typed without --yes asks first (AskFirst)
+	ask := verb == "delete" && len(args) == 2
+	if verb == "delete" && len(args) == 3 && args[2] == "--yes" {
+		args = args[:2]
+	}
+	ui, noUI := h.Screen()
+	if noUI != nil && !ask {
+		return fmt.Errorf("%w; zemi plugins manages them from the shell", noUI)
 	}
 	send := func(prompt string) {
 		msg := "/plugins " + strings.TrimSpace(typed) + agent.Attached("command", prompt) + stdin
@@ -87,12 +92,12 @@ func (h *Host) pluginsCommand(line string) error {
 					return
 				}
 			}
-			h.openPlugins(ui, true)
+			h.openPlugins(ui, true, "")
 		})
 	}
 	switch {
 	case len(args) == 0:
-		h.GoSafe("plugins", func() { h.openPlugins(ui, false) })
+		h.GoSafe("plugins", func() { h.openPlugins(ui, false, "") })
 	case verb == "toggle" && len(args) == 2:
 		p, err := h.pluginNamed(args[1])
 		if err != nil {
@@ -132,6 +137,19 @@ func (h *Host) pluginsCommand(line string) error {
 		// allowed: auto mode settles the agent's edits there until zemi exits
 		h.madePlugins.Store(h.localPluginDir(perm.RealPath(p.Dir)), true)
 		send(fmt.Sprintf(modifyPluginPrompt, p.Name, TildePath(p.Dir)))
+	case ask:
+		p, err := h.pluginNamed(args[1])
+		if err != nil {
+			return err
+		}
+		line := "plugins delete " + p.Name + " --yes"
+		return AskFirst(line, "zemi "+line, func(confirm string) error {
+			if noUI != nil {
+				return noUI
+			}
+			h.GoSafe("plugins", func() { h.openPlugins(ui, false, confirm) })
+			return nil
+		})
 	case verb == "enable" || verb == "disable":
 		// at once, so the list an action returns to shows it
 		return pluginsErr(plugins.Run(context.Background(), h.Dirs, args, io.Discard))
@@ -199,11 +217,12 @@ func (h *Host) pluginNamed(name string) (plugins.Plugin, error) {
 }
 
 // openPlugins opens /plugins, or replaces the open list in place; a refresh
-// after a slow action opens nothing once the user closed it. It reads git, so
-// it never runs on the key loop.
-func (h *Host) openPlugins(ui UIHooks, refresh bool) {
+// after a slow action opens nothing once the user closed it, and confirm arms
+// the action that runs it (Overlay.Confirm). It reads git, so it never runs
+// on the key loop.
+func (h *Host) openPlugins(ui UIHooks, refresh bool, confirm string) {
 	ui.OpenOverlay(Overlay{
-		ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.pluginItems(),
+		ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.pluginItems(), Confirm: confirm,
 		Reload: func() ([]any, [][]Segment) { return h.pluginItems(), nil },
 	})
 }
@@ -255,7 +274,7 @@ func (h *Host) pluginItems() []any {
 		if p.Local {
 			actions = append(actions, map[string]any{"text": "Modify with the agent", "hotkey": "m", "fill": "/plugins modify " + p.Name + " "})
 		}
-		actions = append(actions, map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": "plugins delete " + p.Name})
+		actions = append(actions, map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "plugins delete " + p.Name + " --yes"})
 		items = append(items, map[string]any{
 			"text": p.Name, "desc": strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
 			"section": section, "on": p.Enabled, "run": "plugins toggle " + p.Name,

@@ -31,6 +31,7 @@ type overlayState struct {
 	item  any      // a detail view's item: a reload can swap the parent's under it
 	acts  []hintPair
 	size  boxSize
+	armed int // the visible row plus one whose danger act waits for a second press, 0 for none
 	// the list rows as last built and what they were built from: items live
 	// as long as the state and visible follows query, so a frame that moved
 	// nothing measures no item
@@ -164,6 +165,19 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		return
 	}
 	a.overlays = append(a.overlays, a.overlayState(o))
+	if o.Confirm == "" {
+		return
+	}
+	st := &a.overlays[len(a.overlays)-1]
+	for idx, it := range st.items {
+		for n, act := range it.row.Actions {
+			if r, _ := hostapi.ParseOverlayItem(act); r.Danger && r.Run == o.Confirm {
+				st.selected = max(slices.Index(st.visible, idx), 0)
+				a.openDetailOn(st, idx, n).armed = n + 1
+				return
+			}
+		}
+	}
 }
 
 // mayClose also gates replacing o by id.
@@ -235,6 +249,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 				it.segs = append(it.segs, hostapi.Segment{Text: oneLine.Replace(sanitize.String(seg.Text)), HL: hostapi.UserHL(seg.HL)})
 			}
 			it.label = plainSegs(it.segs) // spaces kept: a filter's offsets index the segments
+		} else if r.Danger {
+			it.segs = []hostapi.Segment{{Text: it.label, HL: "Host:Danger"}}
 		}
 		st.items = append(st.items, it)
 		st.labels = append(st.labels, it.label)
@@ -341,6 +357,14 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 	a.overlays = append(a.overlays, st)
 }
 
+// openDetailOn opens item idx's detail view with action n selected.
+func (a *App) openDetailOn(parent *overlayState, idx, n int) *overlayState {
+	a.openDetail(parent, idx)
+	d := &a.overlays[len(a.overlays)-1]
+	d.selected = n
+	return d
+}
+
 // detailAction runs action idx of the detail view on top, then closes it.
 // An action with an id goes to on_action; one that runs or fills something
 // ends the parent too, unless a toggle list runs it, which rebuilds as the
@@ -421,6 +445,16 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		return nil
 	}
 	a.bump()
+	// a danger row acts on a second press of enter, space or its key while it
+	// stays selected; any other key drops the arm first, and esc only that
+	confirmed := st.armed > 0 && st.armed == st.selected+1 && st.selected < len(st.visible) &&
+		(key == "enter" || key == "space" || key == st.actionKey(st.selected))
+	if st.armed > 0 && !confirmed {
+		st.armed = 0
+		if key == "esc" {
+			return nil
+		}
+	}
 	if key == "space" && o.Reload != nil && !st.active {
 		text = "" // space toggles rows in a toggle list, and types into an open filter
 	}
@@ -446,14 +480,13 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		a.overlayCall(o, func() { a.host.OverlayKey(context.Background(), o, o.Keys[i], item) })
 		return nil
 	}
-	// an action's key acts on the selected row as its button does; one in the
-	// danger color opens the detail on it, for a second press
+	// an action's key acts on the selected row as its button does; a danger
+	// one opens the detail on it armed, so the view is its confirmation
 	if n := st.actionAt(key); n >= 0 {
-		a.openDetail(st, st.visible[st.selected])
-		d := &a.overlays[len(a.overlays)-1]
-		d.selected = n
+		d := a.openDetailOn(st, st.visible[st.selected], n)
 		r := d.items[n].row
-		if r.HL == "Danger" {
+		if r.Danger {
+			d.armed = n + 1
 			return nil
 		}
 		cmd := a.overlayKey("enter", "")
@@ -476,6 +509,8 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		case key == "space" && (o.Reload == nil || r.Verb != ""):
 		case key == "enter" && hasDetail(r):
 			a.openDetail(st, idx)
+		case r.Danger && !confirmed:
+			st.armed = st.selected + 1
 		case verb == "copy":
 			return a.copied(st.value(idx))
 		case st.back:
@@ -666,7 +701,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			// a detail view's rows are actions: draw them as the prompts' buttons
 			choices := make([]promptChoice, 0, len(st.visible))
 			for n, i := range st.visible {
-				choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: hostapi.UserHL(st.items[i].row.HL)})
+				choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: map[bool]string{true: "Host:Danger"}[st.items[i].row.Danger]})
 			}
 			st.view.viewH = limit
 			list = choiceView(choices, st.selected, &st.view, inner, level > 1)
@@ -709,7 +744,14 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			hints = append(hints, hintPair{"y", "copy"})
 		}
 		hints = st.filterHints(append(hints, scrolls(st.body, st.view)...), map[bool]string{true: "back", false: "close"}[st.back])
-		rows := stack(tight, body, slices.Concat(head, list, fixed), [][]hostapi.Segment{hint(inner, hints...)})
+		foot := hint(inner, hints...)
+		if st.armed > 0 && st.armed == st.selected+1 && st.selected < len(st.visible) {
+			// the footer says what the next press does, in the danger color
+			label := strings.ToLower(st.items[st.visible[st.selected]].label)
+			foot = hint(inner, hintPair{cmp.Or(st.actionKey(st.selected), "enter"), "again to " + label}, hintPair{"esc", "cancel"})
+			foot[0].HL, foot[1].HL = "Host:Danger", "Host:Danger"
+		}
+		rows := stack(tight, body, slices.Concat(head, list, fixed), [][]hostapi.Segment{foot})
 		return rows, bodyN > 0 && st.body.viewH < min(bodyN, 3) || len(listPH) > 0 && st.view.viewH < min(st.view.rows, 3)
 	})
 	return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)

@@ -430,7 +430,7 @@ func TestRecipes(t *testing.T) {
 			}
 		}, prompt: late, tool: written},
 		{name: "delete removes it and pins again", do: func() {
-			if err := h.skillsCommand("delete late"); err != nil {
+			if err := h.skillsCommand("delete late --yes"); err != nil {
 				t.Error(err)
 			}
 		}, prompt: []string{"rig", "tok"}, tool: []string{"rig", "tok"}},

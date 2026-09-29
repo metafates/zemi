@@ -903,6 +903,7 @@ function zemi.event.stats() end
 ---@field key? string right-aligned tag
 ---@field on? boolean draws the on/off switch in the tag's place
 ---@field locked? boolean draws the switch on with nothing to switch
+---@field danger? boolean cannot be undone: drawn in Danger, and the first enter only arms it (never the open of a row with a detail view); the footer then says to press it again, and any other key disarms
 ---@field section? string a change of section starts with a header row; the filter matches it too
 ---@field detail? string body of the detail view
 ---@field fields? zemi.OverlayField[] the detail view's facts, set as a table above detail
@@ -917,8 +918,8 @@ function zemi.event.stats() end
 ---@class zemi.OverlayAction
 ---@field text string
 ---@field id? string hands the action to the overlay's on_action, which takes it over fill and run
----@field hl? string highlight group of the label, such as "Danger"
----@field hotkey? string one character that acts like enter on this action, and from the list on the selected row (one with `hl = "Danger"` opens the detail on it, for a second press); with none, its position ("1", "2", ...). j, k, /, y and Y raise.
+---@field danger? boolean cannot be undone: drawn in Danger, and the first enter or hotkey only arms it; the footer then says to press it again, and any other key disarms
+---@field hotkey? string one character that acts like enter on this action, and from the list on the selected row (a `danger` one opens the detail on it armed); with none, its position ("1", "2", ...). j, k, /, y and Y raise.
 ---@field detail? string enter opens it as a detail view of its own, over this one
 ---@field fields? zemi.OverlayField[] that view's facts, set as a table above detail
 ---@field fill? string

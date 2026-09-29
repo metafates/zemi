@@ -60,8 +60,9 @@ end)
 -- A list whose items open a detail view: enter shows `fields` as a table, `detail`
 -- under them and `actions` under that; an action fills the composer, runs a command (`run` only from user config) or,
 -- with an `id`, calls on_action; one with none goes back. esc goes back, y copies the text.
--- An action's `hotkey` also acts on the selected row from the list (one with
--- `hl = "Danger"` opens the detail on it); j, k, /, y and Y raise as hotkeys.
+-- An action's `hotkey` also acts on the selected row from the list; j, k, /, y and Y
+-- raise as hotkeys. `danger = true` (an item or an action that cannot be undone) draws
+-- it red, and its first press only arms it: the same key or enter runs it.
 -- The item a callback gets is a copy: match on an id field, never on the table. A callback
 -- closes the list unless it has `reload`; to stay open without one, open it again from the callback.
 zemi.ui.overlay.open({
@@ -75,7 +76,7 @@ zemi.ui.overlay.open({
 			section = "Failed",
 			fields = { { "status", "failed" }, { "exit", "1" } },
 			detail = "The migration timed out.",
-			actions = { { text = "Retry", run = "deploy api" }, { text = "Drop", id = "drop", hl = "Danger" } },
+			actions = { { text = "Retry", run = "deploy api" }, { text = "Drop", id = "drop", danger = true } },
 		},
 		{ text = "web", desc = "live, 1h ago", section = "Live", fill = "/deploy web " },
 	},

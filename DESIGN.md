@@ -1505,20 +1505,28 @@ provenance string.
   the opener may close it (user, builtin or its own origin). Go parses each
   item once (`hostapi.ParseOverlayItem`), and an item or action field of the
   wrong type raises from `open` (§6.0) instead of drawing a row that ignores it
-  (a list item's `id` and `hl` are its own data). A detail view's rows are actions
+  (a list item's `id` is its own data). A detail view's rows are actions
   (`fill`, `run`, or an `id` handed to the list's `on_action`), so they draw as
   the prompts' buttons ("[r] Read it"), keyed by their `hotkey` or their
   position. Go screens key every action by its verb's initial, one verb per
   letter on a screen: `r` restart, resume or run, `a` ask or run with
   arguments, `s` sign in or stop, `e` enable, `d` disable, `o` open, `u`
-  update or use now, `c` change, and `x`, in the danger color, for what
-  cannot be undone (delete, or `/mcp`'s sign out, which deletes the saved
-  token); `/rewind`'s `r` is in the danger color too, and `/health`'s one
-  action per check takes its label's initial.
-  A row's action keys act from the list too, on the selected row, as its
-  detail's button would (an action with a view of its own opens it over the
-  list); an action in the danger color opens the detail on it instead, for
-  a second press. When every row with actions offers the
+  update or use now, `c` change, and `x` for what cannot be undone (delete,
+  or `/mcp`'s sign out, which deletes the saved token); `/health`'s one
+  action per check takes its label's initial. An item or action with
+  `danger` (those `x` rows, `/rewind`'s `r`; not the `/permissions` Delete,
+  which the next "always" answer undoes) draws in the danger color, and its
+  first enter or key only arms it: the footer turns to `x again to delete ·
+  esc cancel` in that color, the same key or enter runs it, esc disarms and
+  stays, and any other key disarms and then acts. A row's action keys act
+  from the list too, on the selected row, as its detail's button would (an
+  action with a view of its own opens it over the list); a danger one opens
+  the detail on it armed, so the view is its confirmation. A destructive
+  command typed without the `--yes` its action's run ends in (`/plugins
+  delete x`, `/skills delete x`, `/sessions delete <id>`, `/mcp sign-out x`)
+  asks the same way: its screen opens on that detail, armed
+  (`hostapi.AskFirst`, `Overlay.Confirm`); in `zemi run` it refuses, naming
+  the command that runs it without asking (`zemi plugins delete x --yes`). When every row with actions offers the
   same keys, the list's footer names them. `j`, `k`, `/`, `y` and `Y` are
   the list's own and cannot be hotkeys. A
   screen that manages things (`/skills`, `/mcp`, `/lsp`, `/permissions`,

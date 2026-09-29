@@ -106,8 +106,9 @@ func (h *Host) ResumeSession(id string) error {
 	return nil
 }
 
-// OpenSessions lists recent sessions; enter on a row resumes it.
-func (h *Host) OpenSessions() error {
+// OpenSessions lists recent sessions; enter on a row resumes it. confirm
+// arms the Delete that runs it (Overlay.Confirm).
+func (h *Host) OpenSessions(confirm string) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
@@ -148,19 +149,20 @@ func (h *Host) OpenSessions() error {
 			item["detail"] = "Delete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
 			item["actions"] = []any{
 				map[string]any{"text": "Resume", "hotkey": "r", "run": "resume " + s.ID},
-				map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": "sessions delete " + s.ID},
+				map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "sessions delete " + s.ID + " --yes"},
 			}
 		}
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Empty: "No sessions in this project yet. Send a message to start one."})
+	ui.OpenOverlay(Overlay{ID: "sessions", Title: "Sessions", Origin: lua.OriginBuiltin, Items: items, Confirm: confirm, Empty: "No sessions in this project yet. Send a message to start one."})
 	return nil
 }
 
 // DeleteSession removes a stored session other than the live one, with its
-// subagent runs and scratchpad. The rewrite that clears the text from disk
-// takes a while on a large store, so it runs off the caller's goroutine.
-func (h *Host) DeleteSession(id string) error {
+// subagent runs and scratchpad, once yes confirms it (AskFirst). The rewrite
+// that clears the text from disk takes a while on a large store, so it runs
+// off the caller's goroutine.
+func (h *Host) DeleteSession(id string, yes bool) error {
 	if h.DB == nil {
 		return errors.New("session store unavailable")
 	}
@@ -171,6 +173,12 @@ func (h *Host) DeleteSession(id string) error {
 		if run.isRunning() {
 			return Usagef("an agent from that session is still running; /agents stops it")
 		}
+	}
+	if _, err := h.DB.GetSession(id); err != nil {
+		return Usagef("no session %q in this project", id)
+	}
+	if !yes {
+		return AskFirst("sessions delete "+id+" --yes", "", h.OpenSessions)
 	}
 	h.GoSafe("delete session", func() {
 		title := ""

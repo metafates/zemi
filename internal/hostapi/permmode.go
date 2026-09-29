@@ -191,7 +191,7 @@ func (h *Host) permItems() []any {
 			answers[id] = item
 			forget := "permissions forget " + id
 			item["key"] = "session"
-			item["actions"] = []any{map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": forget}}
+			item["actions"] = []any{map[string]any{"text": "Delete", "hotkey": "x", "run": forget}}
 			item["detail"] = "an always answer this session; deleting it makes the next call ask again"
 			if !r.Network {
 				item["copy"] = line

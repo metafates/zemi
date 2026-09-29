@@ -699,7 +699,7 @@ func (h *Host) mcpCommands() []*Command {
 			sub, name, _ := strings.Cut(strings.TrimSpace(args), " ")
 			switch sub {
 			case "":
-				return h.openMCP()
+				return h.openMCP("")
 			case "restart":
 				name = strings.TrimSpace(name)
 				if err := h.restartMCP(name); err != nil {
@@ -710,7 +710,8 @@ func (h *Host) mcpCommands() []*Command {
 			case "sign-in":
 				return h.signInMCP(strings.TrimSpace(name))
 			case "sign-out":
-				return h.signOutMCP(strings.TrimSpace(name))
+				name, yes := strings.CutSuffix(strings.TrimSpace(name), " --yes")
+				return h.signOutMCP(name, yes)
 			}
 			return Usagef("unknown /mcp subcommand %q", sub)
 		},
@@ -732,12 +733,15 @@ func (h *Host) restartMCP(name string) error {
 	return h.addMCP(name, s.spec)
 }
 
-func (h *Host) openMCP() error {
+// openMCP is /mcp; confirm arms the action that runs it (Overlay.Confirm).
+func (h *Host) openMCP(confirm string) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
-	ui.OpenOverlay(h.mcpOverlay(false))
+	o := h.mcpOverlay(false)
+	o.Confirm = confirm
+	ui.OpenOverlay(o)
 	return nil
 }
 
@@ -784,7 +788,7 @@ func (h *Host) mcpItems() []any {
 			actions = append(actions, map[string]any{"text": "Sign in", "hotkey": "s", "run": "mcp sign-in " + s.name})
 		}
 		if _, err := os.Stat(h.mcpAuth(s).Path); s.spec.URL != "" && err == nil {
-			actions = append(actions, map[string]any{"text": "Sign out", "hotkey": "x", "hl": "Danger", "run": "mcp sign-out " + s.name})
+			actions = append(actions, map[string]any{"text": "Sign out", "hotkey": "x", "danger": true, "run": "mcp sign-out " + s.name + " --yes"})
 		}
 		items = append(items, map[string]any{"text": s.name, "desc": desc, "fields": fields, "actions": actions})
 	}
@@ -858,7 +862,8 @@ func (h *Host) signInMCP(name string) error {
 	return nil
 }
 
-func (h *Host) signOutMCP(name string) error {
+// signOutMCP deletes a server's saved token once yes confirms it (AskFirst).
+func (h *Host) signOutMCP(name string, yes bool) error {
 	s, err := h.mcpServerNamed(name)
 	if err != nil {
 		return err
@@ -866,6 +871,9 @@ func (h *Host) signOutMCP(name string) error {
 	auth := h.mcpAuth(s)
 	if _, err := os.Stat(auth.Path); s.spec.URL == "" || err != nil {
 		return Usagef("%s is not signed in", name)
+	}
+	if !yes {
+		return AskFirst("mcp sign-out "+name+" --yes", "", h.openMCP)
 	}
 	if err := auth.Logout(); err != nil {
 		return err

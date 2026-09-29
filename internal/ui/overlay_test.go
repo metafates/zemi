@@ -969,14 +969,14 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", body = { 1 } }), "a body that
 func TestOverlayItemFields(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 16)
 	runLua(t, app, `zemi.ui.overlay.open({ id = "f", items = { { text = "t", desc = "d", key = "k", section = "s", detail = "x", verb = "v",
-  hotkey = "h", fill = "f", copy = "c", run = "r", id = "i", hl = "Danger", on = false, locked = true, actions = { "a" }, fields = { { "a", "b" } } } } })
-for _, bad in ipairs({ { text = 1 }, { on = "yes" }, { actions = "x" }, { actions = { { id = 1 } } }, { fields = { "x" } } }) do
+  hotkey = "h", fill = "f", copy = "c", run = "r", id = "i", danger = true, on = false, locked = true, actions = { "a" }, fields = { { "a", "b" } } } } })
+for _, bad in ipairs({ { text = 1 }, { on = "yes" }, { actions = "x" }, { actions = { { id = 1 } } }, { fields = { "x" } }, { danger = "yes" } }) do
   assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { bad } }), "a field of the wrong type must raise")
 end
 assert(pcall(zemi.ui.overlay.open, { id = "x", items = { { id = 1 } } }), "a list item's id is its own data")`)
 	want := hostapi.OverlayItem{
 		Text: "t", Desc: "d", Key: "k", Section: "s", Detail: "x", Verb: "v", Hotkey: "h", Fill: "f", Copy: "c",
-		Run: "r", ID: "i", HL: "Danger", Switch: true, Locked: true, Actions: []any{"a"}, Fields: []hostapi.Field{{Name: "a", Value: "b"}},
+		Run: "r", ID: "i", Danger: true, Switch: true, Locked: true, Actions: []any{"a"}, Fields: []hostapi.Field{{Name: "a", Value: "b"}},
 	}
 	if got := app.overlays[0].items[0].row; !reflect.DeepEqual(got, want) {
 		t.Fatalf("row %+v", got)
@@ -988,7 +988,7 @@ assert(pcall(zemi.ui.overlay.open, { id = "x", items = { { id = 1 } } }), "a lis
 // its fn with the selected item; both close the list like on_select.
 func TestOverlayActionsAndKeys(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 16)
-	open := `zemi.ui.overlay.open({ id = "k", items = { "a", { text = "b", actions = { { text = "Delete", id = "del", hl = "Danger" }, { text = "Back" } } } },
+	open := `zemi.ui.overlay.open({ id = "k", items = { "a", { text = "b", actions = { { text = "Delete", id = "del", danger = true }, { text = "Back" } } } },
   on_action = function(item, action) zemi.notify({ body = item.text .. ":" .. action.id }) end,
   keys = { e = { desc = "edit", fn = function(item) zemi.notify({ body = "e:" .. item.text }) end } } })`
 	runLua(t, app, open+`
@@ -1000,8 +1000,8 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		t.Fatalf("footer: %q", hint)
 	}
 	for _, c := range []struct{ keys, want string }{
-		{"j enter 2", "k"}, // Back has no id: it returns to the list
-		{"j enter 1", "b:del"},
+		{"j enter 2", "k"},       // Back has no id: it returns to the list
+		{"j enter 1 1", "b:del"}, // a danger action's first press arms it
 		{"j e", "e:b"},
 	} {
 		if len(app.overlays) == 0 {
@@ -1009,9 +1009,9 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		}
 		keys := strings.Fields(c.keys)
 		pressKeys(app, keys[:len(keys)-1]...)
-		if len(keys) == 3 {
+		if len(keys) > 2 {
 			box := slices.Concat(app.overlayBox(&app.overlays[1], 60, 16)...)
-			if i := slices.IndexFunc(box, func(s hostapi.Segment) bool { return s.Text == "Delete" }); i < 0 || box[i].HL != "Danger" {
+			if i := slices.IndexFunc(box, func(s hostapi.Segment) bool { return s.Text == "Delete" }); i < 0 || box[i].HL != "Host:Danger" {
 				t.Fatalf("action rows: %+v", box)
 			}
 		}
@@ -1046,9 +1046,13 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		app.host.Commands.Add(&hostapi.Command{Name: name, NArgs: "?", GoFn: func(_ *hostapi.Host, args string) error { ran = name + " " + args; return nil }})
 	}
 	session := func(n string) string {
-		return `{ text = "s` + n + `", actions = { { text = "Resume", hotkey = "r", run = "res ` + n + `" }, { text = "Delete", hotkey = "x", hl = "Danger", run = "del ` + n + `" } } }`
+		return `{ text = "s` + n + `", actions = { { text = "Resume", hotkey = "r", run = "res ` + n + `" }, { text = "Delete", hotkey = "x", danger = true, run = "del ` + n + `" } } }`
 	}
-	footer := func() string { box := app.overlayBox(&app.overlays[0], 60, 16); return plainSegs(box[len(box)-2]) }
+	footer := func() string {
+		box := app.overlayBox(&app.overlays[len(app.overlays)-1], 60, 16)
+		return plainSegs(box[len(box)-2])
+	}
+	armed := func() int { return app.overlays[len(app.overlays)-1].armed }
 	for _, c := range []struct {
 		name, items, keys string
 		press             []string
@@ -1057,17 +1061,34 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		{"r resumes from the list", "", "", []string{"j", "r"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q, %d open", ran, len(app.overlays))}[ran == "res 1" && len(app.overlays) == 0]
 		}},
-		{"x opens the detail on delete", "", "", []string{"j", "x"}, func() string {
+		{"x opens the detail on delete, armed", "", "", []string{"j", "x"}, func() string {
 			d := app.overlays[len(app.overlays)-1]
-			return map[bool]string{false: fmt.Sprintf("ran %q, %d open, selected %d", ran, len(app.overlays), d.selected)}[ran == "" && d.back && d.selected == 1]
+			ok := ran == "" && d.back && d.selected == 1 && strings.Contains(footer(), "x again to delete · esc cancel")
+			return map[bool]string{false: fmt.Sprintf("ran %q, %d open, selected %d, footer %q", ran, len(app.overlays), d.selected, footer())}[ok]
 		}},
 		{"x twice deletes", "", "", []string{"j", "x", "x"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q, %d open", ran, len(app.overlays))}[ran == "del 1" && len(app.overlays) == 0]
 		}},
+		{"x then enter deletes", "", "", []string{"j", "enter", "x", "enter"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "del 1"]
+		}},
+		{"esc drops the arm and keeps the detail", "", "", []string{"j", "x", "esc"}, func() string {
+			ok := ran == "" && len(app.overlays) == 2 && armed() == 0 && strings.Contains(footer(), "enter pick")
+			return map[bool]string{false: fmt.Sprintf("ran %q, %d open, armed %d, footer %q", ran, len(app.overlays), armed(), footer())}[ok]
+		}},
+		{"another key drops the arm, and the action's key arms it again", "", "", []string{"j", "x", "k", "x"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("ran %q, armed %d", ran, armed())}[ran == "" && armed() == 2]
+		}},
+		{"a danger row arms on enter", `"current", { text = "wipe", danger = true, run = "del w" }`, "", []string{"j", "enter"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("ran %q, footer %q", ran, footer())}[ran == "" && strings.Contains(footer(), "enter again to wipe")]
+		}},
+		{"a danger row runs on the second enter", `"current", { text = "wipe", danger = true, run = "del w" }`, "", []string{"j", "enter", "enter"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "del w"]
+		}},
 		{"a list's own key wins over an action's", "", `keys = { r = { desc = "rename", fn = function(item) zemi.notify({ body = "key " .. item.text }) end } }`, []string{"j", "r"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q, toast %q", ran, lastToast(app))}[ran == "" && lastToast(app) == "key s1"]
 		}},
-		{"a hotkey runs its own action, not the one at that position", `"current", { text = "s1", actions = { { text = "Delete", hl = "Danger", run = "del 1" }, { text = "Other", hotkey = "1", run = "res 1" } } }`, "", []string{"j", "1"}, func() string {
+		{"a hotkey runs its own action, not the one at that position", `"current", { text = "s1", actions = { { text = "Delete", danger = true, run = "del 1" }, { text = "Other", hotkey = "1", run = "res 1" } } }`, "", []string{"j", "1"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "res 1"]
 		}},
 		{"an action with a detail opens it over the list", `"current", { text = "s1", actions = { { text = "Read it", hotkey = "r", detail = "body" } } }`, "", []string{"j", "r"}, func() string {
@@ -1092,6 +1113,18 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		if msg := c.check(); msg != "" {
 			t.Errorf("%s: %s", c.name, msg)
 		}
+	}
+	// a destructive command typed without --yes opens its row's detail armed
+	ran, app.overlays = "", nil
+	app.openOverlay(hostapi.Overlay{ID: "s", Origin: lua.OriginBuiltin, Confirm: "del 2", Items: []any{"current", map[string]any{"text": "s2", "actions": []any{
+		map[string]any{"text": "Resume", "hotkey": "r", "run": "res 2"}, map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "del 2"},
+	}}}})
+	if d := app.overlays[len(app.overlays)-1]; !d.back || d.selected != 1 || d.armed != 2 {
+		t.Fatalf("typed delete: %d open, selected %d, armed %d", len(app.overlays), d.selected, d.armed)
+	}
+	pressKeys(app, "enter")
+	if ran != "del 2" {
+		t.Fatalf("typed delete confirmed: ran %q", ran)
 	}
 }
 

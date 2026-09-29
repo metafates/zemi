@@ -357,7 +357,7 @@ func (h *Host) skillsCommand(args string) error {
 	fields := strings.Fields(typed)
 	switch {
 	case len(fields) == 0:
-		return h.openSkills()
+		return h.openSkills("")
 	case len(fields) >= 2 && fields[0] == "use":
 		// the request stays as typed, line breaks included
 		request := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(typed), "use"))
@@ -372,20 +372,23 @@ func (h *Host) skillsCommand(args string) error {
 		return h.setSkillEnabled(fields[1], !h.skillsReg.isEnabled(fields[1]))
 	case len(fields) == 2 && fields[0] == "open":
 		return h.openSkillFile(fields[1])
-	case len(fields) == 2 && fields[0] == "delete":
-		return h.deleteRecipe(fields[1])
+	case (len(fields) == 2 || len(fields) == 3 && fields[2] == "--yes") && fields[0] == "delete":
+		return h.deleteRecipe(fields[1], len(fields) == 3)
 	default:
 		return Usagef("usage: /skills | /skills enable|disable|open|delete <name> | /skills use <name> [request]")
 	}
 }
 
-// deleteRecipe removes a recipe and drops the pinned prompt: the index moves
-// once, by the user's own act. Every other source lives in files the user or
-// the repository owns.
-func (h *Host) deleteRecipe(name string) error {
+// deleteRecipe removes a recipe once yes confirms it (AskFirst) and drops
+// the pinned prompt: the index moves once, by the user's own act. Every other
+// source lives in files the user or the repository owns.
+func (h *Host) deleteRecipe(name string, yes bool) error {
 	for _, s := range h.projectOnlySkills() {
 		if s.Name != name || s.Source != skills.Recipe {
 			continue
+		}
+		if !yes {
+			return AskFirst("skills delete "+name+" --yes", "", h.openSkills)
 		}
 		if err := os.RemoveAll(s.Dir); err != nil {
 			return err
@@ -446,13 +449,14 @@ func (h *Host) useSkill(name, request, stdin string) error {
 // openSkills lists discovered skills with their state; space toggles the
 // selected one through the same enable/disable path as the command and the
 // list stays open, enter opens its detail.
-func (h *Host) openSkills() error {
+// openSkills is /skills; confirm arms the action that runs it (Overlay.Confirm).
+func (h *Host) openSkills(confirm string) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
 	ui.OpenOverlay(Overlay{
-		ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true,
+		ID: "skills", Title: "Skills", Origin: lua.OriginBuiltin, Items: h.skillItems(), BodyMD: true, Confirm: confirm,
 		Reload: func() ([]any, [][]Segment) { return h.skillItems(), nil },
 		Empty:  "No skills yet. Add one as skills/<name>/SKILL.md in " + TildePath(h.Dirs.ConfigHome) + " or " + TildePath(h.Dirs.AgentsHome) + ".",
 	})
@@ -524,7 +528,7 @@ func (h *Host) skillItems() []any {
 			map[string]any{"text": "Use now", "hotkey": "u", "fill": "/skills use " + s.Name + " "},
 		)
 		if s.Source == skills.Recipe {
-			item["actions"] = append(item["actions"].([]any), map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": "skills delete " + s.Name})
+			item["actions"] = append(item["actions"].([]any), map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "skills delete " + s.Name + " --yes"})
 		}
 		item["fields"] = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "path", TildePath(filepath.Join(s.Dir, "SKILL.md")))
 		item["detail"] = s.Description

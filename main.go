@@ -370,9 +370,10 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		}},
 		{Name: "sessions", NArgs: hostapi.NArgsAny, Desc: "resume or delete an earlier session", GoFn: func(h *hostapi.Host, args string) error {
 			if id, ok := strings.CutPrefix(strings.TrimSpace(args), "delete "); ok {
-				return h.DeleteSession(strings.TrimSpace(id))
+				id, yes := strings.CutSuffix(strings.TrimSpace(id), " --yes")
+				return h.DeleteSession(id, yes)
 			}
-			return h.OpenSessions()
+			return h.OpenSessions("")
 		}},
 		{Name: "resume", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "resume the latest session, or the one with this id", GoFn: func(h *hostapi.Host, args string) error {
 			return h.ResumeSession(strings.TrimSpace(args))

@@ -134,32 +134,37 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 
 	// /sessions delete: the live session is refused, another one goes with its scratchpad
-	if err := h.DeleteSession(first); err == nil {
+	if err := h.DeleteSession(first, true); err == nil {
 		t.Fatal("deleted the live session")
 	}
 	if err := h.ResumeSession(second); err != nil {
 		t.Fatal(err)
 	}
-	// another session's detail keys its actions by letter, the permanent one in the danger color
+	// typed, a delete asks first: headless nobody can answer, with a screen
+	// its Delete opens armed
+	if err := h.DeleteSession(first, false); err == nil || !strings.Contains(err.Error(), "/sessions delete "+first+" --yes runs it without asking") {
+		t.Fatalf("a headless delete: %v", err)
+	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if err := h.OpenSessions(); err != nil {
-		t.Fatal(err)
+	if err := h.DeleteSession(first, false); err != nil || ui.opened[0].Confirm != "sessions delete "+first+" --yes" {
+		t.Fatalf("a typed delete: %v, %+v", err, ui.opened)
 	}
+	// another session's detail keys its actions by letter, the permanent one a danger
 	acts := ""
 	for _, it := range ui.opened[0].Items {
 		if a, ok := it.(map[string]any)["actions"]; ok {
 			acts = fmt.Sprint(a)
 		}
 	}
-	if acts != "[map[hotkey:r run:resume "+first+" text:Resume] map[hl:Danger hotkey:x run:sessions delete "+first+" text:Delete]]" {
+	if acts != "[map[hotkey:r run:resume "+first+" text:Resume] map[danger:true hotkey:x run:sessions delete "+first+" --yes text:Delete]]" {
 		t.Fatalf("session actions: %s", acts)
 	}
 	pad := h.scratchFor(first)
 	if err := os.MkdirAll(pad, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.DeleteSession(first); err != nil {
+	if err := h.DeleteSession(first, true); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {

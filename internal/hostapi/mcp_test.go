@@ -66,7 +66,7 @@ func TestMCPBridge(t *testing.T) {
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if err := h.openMCP(); err != nil || ui.overlays()[0].Items[0].(map[string]any)["desc"] != "ready · 2 of 3 tools" || ui.overlays()[0].Reload == nil {
+	if err := h.openMCP(""); err != nil || ui.overlays()[0].Items[0].(map[string]any)["desc"] != "ready · 2 of 3 tools" || ui.overlays()[0].Reload == nil {
 		t.Errorf("/mcp row = %v, %v", ui.overlays(), err)
 	}
 	run := func(i int, input string) fantasy.ToolResponse {
@@ -156,7 +156,7 @@ func TestMCPBridge(t *testing.T) {
 	if err := os.WriteFile(grant, []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.signOutMCP("fake"); err != nil {
+	if err := h.signOutMCP("fake", true); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := h.mcpServerNamed("fake")
@@ -176,7 +176,7 @@ func TestMCPBridge(t *testing.T) {
 		t.Errorf("no /mcp refresh shows the sign-out: %+v", ui.overlays()[n:])
 	}
 	// the grant is gone now, so a second sign-out has nothing to park
-	if err := h.signOutMCP("fake"); err == nil || !strings.Contains(err.Error(), "not signed in") {
+	if err := h.signOutMCP("fake", true); err == nil || !strings.Contains(err.Error(), "not signed in") {
 		t.Errorf("sign-out with no grant = %v, want a refusal", err)
 	}
 }

@@ -115,6 +115,9 @@ type Overlay struct {
 	Selected int
 	Verb     string
 	Refresh  bool // only replaces the open overlay with this ID, so one the user closed stays closed
+	// Confirm is the run of a danger action to open armed in its row's
+	// detail view: a destructive command typed without --yes asks there
+	Confirm string
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text.
