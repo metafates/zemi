@@ -196,11 +196,12 @@ func colorValue(ref string, theme *hostapi.Theme) color.Color {
 		}
 		ref = theme.Palette[ref]
 	}
-	if !strings.HasPrefix(ref, "#") {
+	col, err := colorful.Hex(ref)
+	if err != nil {
 		return nil
 	}
-	col, _ := hexColor(ref)
-	return col
+	r, g, b := col.RGB255()
+	return ansi.RGBColor{R: r, G: g, B: b}
 }
 
 // ansi16 is what a 16-color terminal shows for a foreground: a grey by its
