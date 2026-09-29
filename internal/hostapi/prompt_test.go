@@ -106,7 +106,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		if i := slices.IndexFunc(defs, func(d AgentDef) bool { return d.Name == c.name }); i >= 0 {
 			def := defs[i]
 			toolset, _ = filterTools(tools.All(h.PipelineFor()), def.Tools, h.toolSkip(subagentExcluded))
-			text = h.systemWith(h.subagentSystem(def, toolset), toolset, h.ScratchDir(), def.ReadOnly)
+			text = h.systemWith(h.subagentSystem(def, toolset, def.ReadOnly), toolset, h.ScratchDir(), def.ReadOnly)
 		}
 		for _, tool := range toolset {
 			text += fmt.Sprintf("\n%q %s", tool.Info().Name, tool.Info().Description)

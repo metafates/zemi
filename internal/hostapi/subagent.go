@@ -257,9 +257,9 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 			return dup
 		})
 	}
-	if def.ReadOnly {
-		pipe.Plan = func() bool { return true } // no file changes, whatever a tool could do
-	}
+	// a run the planner starts is read-only too, whatever its definition says
+	readOnly := def.ReadOnly || pipe.Plan()
+	pipe.Plan = func() bool { return readOnly }
 	// its session's pad even when the live session moved on (a background
 	// run, a continuation after /new)
 	if run.parent != "" {
@@ -290,7 +290,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	loaded := new(sync.Map) // what the main agent loaded says nothing about what this run needs
 	kept, active := h.deferMCP(kept, loaded)
-	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept), kept, pipe.Pad, pipe.Plan != nil && pipe.Plan()))
+	runner := agent.NewRunner(model, kept, h.systemWith(h.subagentSystem(def, kept, readOnly), kept, pipe.Pad, readOnly))
 	runner.ActiveTools = active
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)
@@ -424,17 +424,17 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 	}
 }
 
-func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool) string {
-	read, readOnly := "", ""
+func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool, readOnly bool) string {
+	read, readOnlyLine := "", ""
 	if hasTool(toolset, tools.ToolRead) {
 		read = readPrompt
 	}
-	if def.ReadOnly {
-		readOnly = "\n\nYou are read-only: you change no project file, only files in the scratchpad, and commands run with the project unwritable. Report a change instead of making it."
+	if readOnly {
+		readOnlyLine = "\n\nYou are read-only: you change no project file, only files in the scratchpad, and commands run with the project unwritable. Report a change instead of making it."
 	}
 	return "You are " + def.Name + ", a subagent of zemi. The caller sees only your final message, not your work:" +
 		" end with a complete, concise report of what it needs, citing path:line where it matters," +
-		" and say plainly what you did not find or could not verify.\n\n" + def.System + readOnly +
+		" and say plainly what you did not find or could not verify.\n\n" + def.System + readOnlyLine +
 		"\n\n# Using tools\n" + batchPrompt + read + "\n" + toolRules
 }
 
