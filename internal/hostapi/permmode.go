@@ -58,9 +58,13 @@ type modeReg struct {
 
 // Denial is an ask nobody could answer because no UI runs (zemi run), any
 // pipeline's: subagents and workflows run no rows the main transcript shows.
+// Arg and Reason are sanitized.
 type Denial struct {
-	Tool, Subject, Arg, Reason string
-	Why                        DenialWhy
+	Tool    string    `json:"tool"`
+	Subject string    `json:"subject"`
+	Arg     string    `json:"arg"`
+	Reason  string    `json:"reason"`
+	Why     DenialWhy `json:"why"`
 }
 
 // DenialWhy is what a denied ask needed.

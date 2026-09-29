@@ -15,6 +15,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -169,7 +170,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	}
 	ui := h.hooks()
 	if ui == nil {
-		d := Denial{Tool: req.Tool, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Why: DenyApproval}
+		d := Denial{Tool: req.Tool, Subject: req.Subject, Arg: sanitize.String(h.shownArg(req)), Reason: sanitize.String(req.Reason), Why: DenyApproval}
 		// only a command's sandbox escape is a sandbox matter; a Lua script
 		// or a memory edit is Unsandboxed for another reason
 		switch {

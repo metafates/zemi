@@ -248,6 +248,12 @@ func (v *RunView) fail(err error) {
 	v.tail = ""
 }
 
+// Width is the columns a line gets before it wraps.
+func (v *RunView) Width() int {
+	w, _ := v.dims()
+	return w
+}
+
 // dims is the terminal's size, or a plain log's width.
 func (v *RunView) dims() (int, int) {
 	if v.size == nil {

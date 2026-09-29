@@ -38,17 +38,18 @@ func TestFollower(t *testing.T) {
 		name    string
 		frames  []hostapi.RunFrame
 		denials [][]hostapi.Denial // the run's denials at each frame
-		want    string             // the events' types, and a tool event's id and status
+		want    string             // the events' types, and a tool event's id, status and error
 		result  string
 		isError bool
 		denied  int
 	}{
 		{name: "a fast call gets its start before its end", frames: []hostapi.RunFrame{live(tool("a", hostapi.CallOK))}, want: "tool_start:a tool_end:a:ok"},
+		{name: "a call handed to the background has no error", frames: []hostapi.RunFrame{live(tool("a", hostapi.CallBG))}, want: "tool_start:a tool_end:a:bg"},
 		{name: "a running call starts once", frames: []hostapi.RunFrame{live(tool("a", hostapi.CallWait)), live(tool("a", hostapi.CallRun)), live(tool("a", hostapi.CallRun))}, want: "tool_start:a"},
 		{
 			name:   "a finished live call ends before its row settles, and the row sends nothing",
 			frames: []hostapi.RunFrame{live(tool("a", hostapi.CallRun)), {Pending: []hostapi.ChatMessage{row(tool("a", hostapi.CallErr))}}, {Settled: []hostapi.ChatMessage{row(tool("a", hostapi.CallErr))}}},
-			want:   "tool_start:a tool_end:a:err",
+			want:   "tool_start:a tool_end:a:err:exit status 1",
 		},
 		{
 			name:   "the last message is the result",
@@ -78,6 +79,9 @@ func TestFollower(t *testing.T) {
 				if ev.Status != "" {
 					s += ":" + ev.Status
 				}
+				if ev.Error != "" {
+					s += ":" + ev.Error
+				}
 				got = append(got, s)
 			}
 		}
@@ -98,7 +102,7 @@ func TestDeniedHint(t *testing.T) {
 		{hostapi.DenyOutsideSandbox, true, "outside the sandbox needs the TUI"},
 		{hostapi.DenyNeedsTUI, true, "only the TUI approves a Lua script"},
 	} {
-		if got := deniedHint([]denial{{Why: string(c.why)}}, c.trusted); !strings.Contains(got, c.want) {
+		if got := deniedHint([]hostapi.Denial{{Why: c.why}}, c.trusted); !strings.Contains(got, c.want) {
 			t.Errorf("%s, trusted %v: %q", c.why, c.trusted, got)
 		}
 	}

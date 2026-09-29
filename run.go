@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -56,16 +57,16 @@ type event struct {
 // doneEvent is the last line, a failed boot or send's too: what a script
 // that reads one line (tail -n1) needs.
 type doneEvent struct {
-	Type        string     `json:"type"`
-	Result      string     `json:"result"` // the last message
-	IsError     bool       `json:"is_error"`
-	Error       string     `json:"error,omitempty"`
-	Session     string     `json:"session"`
-	DurationMS  int64      `json:"duration_ms"`
-	Usage       runUsage   `json:"usage"`
-	Compactions int        `json:"compactions"`
-	Denied      []denial   `json:"denied"`
-	Tools       []doneTool `json:"tools"`
+	Type        string           `json:"type"`
+	Result      string           `json:"result"` // the last message
+	IsError     bool             `json:"is_error"`
+	Error       string           `json:"error,omitempty"`
+	Session     string           `json:"session"`
+	DurationMS  int64            `json:"duration_ms"`
+	Usage       runUsage         `json:"usage"`
+	Compactions int              `json:"compactions"`
+	Denied      []hostapi.Denial `json:"denied"`
+	Tools       []doneTool       `json:"tools"`
 }
 
 type runUsage struct {
@@ -73,15 +74,6 @@ type runUsage struct {
 	Output    int64   `json:"output_tokens"`
 	CacheRead int64   `json:"cache_read_tokens"`
 	CostUSD   float64 `json:"cost_usd"`
-}
-
-// denial is an ask nobody could answer, as done.denied lists it.
-type denial struct {
-	Tool    string `json:"tool"`
-	Subject string `json:"subject"`
-	Arg     string `json:"arg"`
-	Reason  string `json:"reason"`
-	Why     string `json:"why"`
 }
 
 type doneTool struct {
@@ -112,9 +104,8 @@ func newFollower() *follower {
 func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 	var evs []event
 	for _, d := range denials[len(f.done.Denied):] {
-		dn := denial{Tool: d.Tool, Subject: d.Subject, Arg: sanitize.String(d.Arg), Reason: sanitize.String(d.Reason), Why: string(d.Why)}
-		f.done.Denied = append(f.done.Denied, dn)
-		evs = append(evs, event{Type: "ask", Tool: dn.Tool, Subject: dn.Subject, Arg: dn.Arg, Reason: dn.Reason, Why: dn.Why})
+		f.done.Denied = append(f.done.Denied, d)
+		evs = append(evs, event{Type: "ask", Tool: d.Tool, Subject: d.Subject, Arg: d.Arg, Reason: d.Reason, Why: string(d.Why)})
 	}
 	if s := fr.Stream; s.Retries > f.retries {
 		evs = append(evs, event{Type: "retry", Attempt: s.Retries, InMS: s.RetryIn.Milliseconds(), Error: sanitize.String(s.RetryWhy)})
@@ -161,7 +152,7 @@ func (f *follower) call(evs []event, t hostapi.StreamTool) []event {
 	if t.Status == hostapi.CallWait || t.ID != "" && f.ended[t.ID] {
 		return evs
 	}
-	ev := event{Type: "tool_start", ID: t.ID, Tool: t.Name, Input: t.Input, Label: t.Label}
+	ev := event{Type: "tool_start", ID: t.ID, Tool: t.Name, Input: t.Input, Label: sanitize.String(t.Label)}
 	if !f.started[t.ID] || t.ID == "" {
 		f.started[t.ID] = true
 		evs = append(evs, ev)
@@ -170,8 +161,8 @@ func (f *follower) call(evs []event, t hostapi.StreamTool) []event {
 		return evs
 	}
 	f.ended[t.ID] = true
-	ev.Type, ev.Status, ev.Output, ev.Diff, ev.Detail = "tool_end", string(t.Status), t.Output, t.Diff, t.Detail
-	if t.Status != hostapi.CallOK {
+	ev.Type, ev.Status, ev.Output, ev.Diff, ev.Detail = "tool_end", string(t.Status), t.Output, sanitize.String(t.Diff), t.Detail
+	if t.Status == hostapi.CallErr || t.Status == hostapi.CallStopped {
 		ev.Error = failureLine(t.Name, t.Output)
 	}
 	f.done.Tools = append(f.done.Tools, doneTool{ID: t.ID, Tool: t.Name, Input: t.Input, Status: ev.Status, Error: ev.Error})
@@ -206,11 +197,12 @@ func runFailed(err error, jsonOut bool, stdout, stderr io.Writer) int {
 	return 1
 }
 
+// writeEvent writes one line. A byte that is not UTF-8 becomes U+FFFD, so
+// no event is dropped; the fixed event types leave Marshal nothing else to
+// refuse.
 func writeEvent(w io.Writer, ev any) {
-	b, err := json.Marshal(ev)
-	if err == nil {
-		_, _ = w.Write(append(b, '\n'))
-	}
+	b, _ := json.Marshal(ev, jsontext.AllowInvalidUTF8(true))
+	_, _ = w.Write(append(b, '\n'))
 }
 
 // runHeadless runs o.prompt with no TUI: the run view on stderr, and on
@@ -243,6 +235,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 	})
 
 	sending, interrupted, started := true, false, false
+	gone := false // left without waiting for the turn to stop
 	var sendErr error
 	var leave <-chan time.Time
 	tick := time.NewTicker(100 * time.Millisecond)
@@ -251,8 +244,8 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 		select {
 		case <-sig:
 			if interrupted {
-				proc.KillAll()
-				return 130
+				gone = true
+				break
 			}
 			interrupted = true
 			cancelSend()
@@ -260,8 +253,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 			h.CancelBusy()
 			leave = time.After(5 * time.Second)
 		case <-leave:
-			proc.KillAll()
-			return 130
+			gone = true
 		case sendErr = <-sent:
 			sending = false
 			// a command that swapped the session (/new, /resume) ran no turn,
@@ -275,7 +267,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 			}
 		case <-tick.C:
 		}
-		over = !sending && !h.AgentActive()
+		over = gone || !sending && !h.AgentActive()
 		fr := h.RunFrame(next)
 		if sending { // rows a command swaps in are not this run's
 			fr.Settled, fr.Pending, fr.Next = nil, nil, next
@@ -301,8 +293,6 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 	case interrupted:
 		proc.KillAll()
 		d.IsError, d.Error = true, "interrupted"
-	case sendErr != nil && errors.Is(sendErr, context.Canceled):
-		return 130
 	case sendErr != nil:
 		h.Log.Error("run", sendErr.Error(), nil) // stderr gets the headline, the log the traceback
 		if !o.json && errors.Is(sendErr, hostapi.ErrNoModel) && h.InitError() != "" {
@@ -329,7 +319,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 	if out, ok := stdout.(*os.File); !o.json && d.Result != "" && !(onTerminal && ok && term.IsTerminal(out.Fd())) {
 		fmt.Fprintln(stdout, sanitize.String(d.Result))
 	}
-	printDenied(view, d.Denied, h.ProjectTrusted())
+	printDenied(view, view.Width(), d.Denied, h.ProjectTrusted())
 	if d.IsError {
 		if interrupted {
 			return 130
@@ -340,8 +330,9 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 }
 
 // printDenied lists the asks nobody could answer, subagents' included, which
-// no row shows, and the one change that would let them through.
-func printDenied(w io.Writer, denied []denial, trusted bool) {
+// no row shows, and the one change that would let them through, in width
+// columns.
+func printDenied(w io.Writer, width int, denied []hostapi.Denial, trusted bool) {
 	if len(denied) == 0 {
 		return
 	}
@@ -354,12 +345,12 @@ func printDenied(w io.Writer, denied []denial, trusted bool) {
 	}
 	for _, d := range shown {
 		arg := clip(d.Arg, 40)
-		fmt.Fprintf(w, "  %-*s  %s%s  %s\n", toolW, d.Tool, arg, strings.Repeat(" ", argW-ansi.StringWidth(arg)), clip(d.Reason, 60))
+		fmt.Fprintf(w, "  %-*s  %s%s  %s\n", toolW, d.Tool, arg, strings.Repeat(" ", argW-ansi.StringWidth(arg)), clip(d.Reason, max(10, width-toolW-argW-6)))
 	}
 	if n := len(denied) - len(shown); n > 0 {
 		fmt.Fprintf(w, "  … %d more\n", n)
 	}
-	fmt.Fprintln(w, "  "+deniedHint(denied, trusted))
+	fmt.Fprintf(w, "  %s;\n  an allow rule (zemi.permission.rule.add in init.lua) lets a call through\n", deniedHint(denied, trusted))
 }
 
 func plural(n int, one, many string) string {
@@ -370,18 +361,17 @@ func plural(n int, one, many string) string {
 }
 
 // deniedHint says what would let zemi run's denied calls through.
-func deniedHint(denied []denial, trusted bool) string {
-	const rule = "an allow rule (zemi.permission.rule.add in init.lua) lets a call through"
+func deniedHint(denied []hostapi.Denial, trusted bool) string {
 	has := func(why hostapi.DenialWhy) bool {
-		return slices.ContainsFunc(denied, func(d denial) bool { return d.Why == string(why) })
+		return slices.ContainsFunc(denied, func(d hostapi.Denial) bool { return d.Why == why })
 	}
 	switch {
 	case has(hostapi.DenyOutsideSandbox):
-		return "running outside the sandbox needs the TUI; " + rule
+		return "running outside the sandbox needs the TUI"
 	case has(hostapi.DenyNeedsTUI):
-		return "only the TUI approves a Lua script or a memory edit; " + rule
+		return "only the TUI approves a Lua script or a memory edit"
 	case !trusted:
-		return "--trust trusts this project for the run; " + rule
+		return "--trust trusts this project for the run"
 	}
-	return "the mode left it to the user; " + rule
+	return "the mode left it to the user"
 }
