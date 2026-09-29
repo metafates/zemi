@@ -356,13 +356,13 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		ID, Diff, Run, Detail string
 		ThoughtMS             int64 `json:"thought_ms"`
 	}
-	calls := map[string]telemetry{}
-	for _, row := range rows {
-		var tc telemetry
-		if row.Role == "tool" && json.Unmarshal([]byte(row.PartsJSON), &tc) == nil && tc.ID != "" {
-			calls[tc.ID] = tc
-		}
-	}
+	// A call's telemetry is stored as its tool ends, before the step's
+	// messages, so a call takes the nearest one before it: a provider may
+	// number ids per turn, and t1 then names many calls in one session.
+	// NOTE: a cancelled step can leave telemetry without its call; a user
+	// row clears what is pending, so only a call in that same turn reusing
+	// the id could take it.
+	pending := map[string]telemetry{}
 	reasoning := -1 // the transcript index of the latest reasoning row
 	for _, row := range rows {
 		if row.Role == goalRole {
@@ -375,9 +375,18 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			continue
 		}
 		var tc telemetry
-		if row.Role == "tool" && json.Unmarshal([]byte(row.PartsJSON), &tc) == nil && tc.ThoughtMS > 0 && reasoning >= 0 {
-			tr[reasoning].Stat.ThoughtMS += tc.ThoughtMS
-			continue
+		if row.Role == "tool" && json.Unmarshal([]byte(row.PartsJSON), &tc) == nil {
+			if tc.ID != "" {
+				pending[tc.ID] = tc
+				continue
+			}
+			if tc.ThoughtMS > 0 && reasoning >= 0 {
+				tr[reasoning].Stat.ThoughtMS += tc.ThoughtMS
+				continue
+			}
+		}
+		if row.Role == string(fantasy.MessageRoleUser) {
+			clear(pending)
 		}
 		var m fantasy.Message
 		if json.Unmarshal([]byte(row.PartsJSON), &m) != nil || len(m.Content) == 0 {
@@ -414,7 +423,8 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			case fantasy.ToolCallPart:
 				reply()
 				toolRow[p.ToolCallID] = len(tr)
-				tc := calls[p.ToolCallID]
+				tc := pending[p.ToolCallID]
+				delete(pending, p.ToolCallID)
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: p.ToolName, Text: toolSummary(p.ToolName, p.Input), Label: toolLabel(p.Input), Status: CallOK, Diff: tc.Diff, Run: tc.Run, Detail: tc.Detail})
 			case fantasy.ToolResultPart:
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {

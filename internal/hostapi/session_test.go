@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -180,22 +181,31 @@ func TestSessionLifecycle(t *testing.T) {
 }
 
 // TestResumeKeepsToolDiffs: the diff a file tool showed live is stored
-// with its call, so a resumed session renders it instead of a bare row.
+// as the tool ends, before its call's message, so a resumed session renders
+// it on that call and not on a later one a provider gave the same id.
 func TestResumeKeepsToolDiffs(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.reflectMu.Lock()
 	defer h.reflectMu.Unlock()
 	sid := seedSession(t, h)
-	if err := h.persistMessage(agent.UserMessage("edit it")); err != nil {
-		t.Fatal(err)
+	const diff = "12 +added\n13 -gone"
+	for _, turn := range []struct {
+		tool string
+		diff string
+	}{{"edit", diff}, {"bash", ""}} {
+		if err := h.persistMessage(agent.UserMessage("run " + turn.tool)); err != nil {
+			t.Fatal(err)
+		}
+		if turn.diff != "" {
+			h.recordToolCall(sid, StreamTool{ID: "c1", Name: turn.tool, Diff: turn.diff}, true)
+		}
+		call := fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+			fantasy.ToolCallPart{ToolCallID: "c1", ToolName: turn.tool, Input: `{"path":"x.go"}`},
+		}}
+		if err := h.persistMessage(call); err != nil {
+			t.Fatal(err)
+		}
 	}
-	call := fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
-		fantasy.ToolCallPart{ToolCallID: "c1", ToolName: "edit", Input: `{"path":"x.go"}`},
-	}}
-	if err := h.persistMessage(call); err != nil {
-		t.Fatal(err)
-	}
-	h.recordToolCall(sid, StreamTool{ID: "c1", Name: "edit", Diff: "12 +added\n13 -gone"}, true)
 
 	if err := h.NewSession(); err != nil {
 		t.Fatal(err)
@@ -203,15 +213,15 @@ func TestResumeKeepsToolDiffs(t *testing.T) {
 	if err := h.ResumeSession(sid); err != nil {
 		t.Fatal(err)
 	}
+	var diffs []string
 	for _, m := range h.Session().Transcript {
-		if m.Kind == "tool" {
-			if m.Diff != "12 +added\n13 -gone" {
-				t.Fatalf("resumed tool row diff = %q", m.Diff)
-			}
-			return
+		if m.Kind == RowTool {
+			diffs = append(diffs, m.Diff)
 		}
 	}
-	t.Fatalf("no tool row: %+v", h.Session().Transcript)
+	if !slices.Equal(diffs, []string{diff, ""}) {
+		t.Fatalf("resumed tool row diffs = %q", diffs)
+	}
 }
 
 // TestResumeSeedsReads: a resumed session keeps the files its conversation
