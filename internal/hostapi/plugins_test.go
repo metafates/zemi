@@ -292,8 +292,8 @@ func TestPluginsStep(t *testing.T) {
 			}
 			h.errs.mu.Unlock()
 			for _, row := range h.goHealthRows() {
-				if row.name == "plugins" {
-					fmt.Fprintf(&out, "health: %s\n", row.detail)
+				if row.Name == "plugins" {
+					fmt.Fprintf(&out, "health: %s\n", row.Detail)
 				}
 			}
 			got := out.String()

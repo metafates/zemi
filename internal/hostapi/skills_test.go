@@ -431,9 +431,9 @@ func TestProjectSkills(t *testing.T) {
 		t.Fatalf("trusted: %v", got)
 	}
 	// /health explains the prompt, so it counts the project's skills too
-	for _, row := range h.healthChecks() {
-		if row.name == "skills" && !strings.Contains(row.detail, "(2 from this project)") {
-			t.Fatalf("skills row = %q", row.detail)
+	for _, row := range h.HealthRows() {
+		if row.Name == "skills" && !strings.Contains(row.Detail, "(2 from this project)") {
+			t.Fatalf("skills row = %q", row.Detail)
 		}
 	}
 	h.SetProjectTrusted(false)

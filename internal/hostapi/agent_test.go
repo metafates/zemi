@@ -1496,7 +1496,7 @@ func TestModelPickerOdd(t *testing.T) {
 	if last := o.Items[4].(map[string]any); last["text"] != "deepseek" || last["run"] != nil || last["copy"] != "export DEEPSEEK_API_KEY=" || o.Body != "" {
 		t.Fatalf("missing builtins after the models: %+v body %q", o.Items, o.Body)
 	}
-	if w := h.modelRow().detail; !strings.HasPrefix(w, "a/typo: not in the provider's models list") {
+	if w := h.modelRow().Detail; !strings.HasPrefix(w, "a/typo: not in the provider's models list") {
 		t.Fatalf("warning %q", w)
 	}
 	if h.OfferModel(); len(ui.opened) != 3 {

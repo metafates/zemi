@@ -31,12 +31,12 @@ func TestHealthLuaChecks(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "registered by user config") {
 		t.Errorf("plugin replacing a user check: %v", err)
 	}
-	got := map[string]healthCheck{}
-	for _, c := range h.healthChecks() {
-		if _, dup := got[c.name]; dup {
-			t.Errorf("two %s rows", c.name)
+	got := map[string]HealthRow{}
+	for _, c := range h.HealthRows() {
+		if _, dup := got[c.Name]; dup {
+			t.Errorf("two %s rows", c.Name)
 		}
-		got[c.name] = c
+		got[c.Name] = c
 	}
 	for _, c := range []struct{ name, level, detail string }{
 		{"disk", "warn", "low"},
@@ -47,7 +47,7 @@ func TestHealthLuaChecks(t *testing.T) {
 		{"unset", "ok", "fine"},
 	} {
 		row := got[c.name]
-		if string(row.level) != c.level || !strings.Contains(row.detail, c.detail) {
+		if string(row.Level) != c.level || !strings.Contains(row.Detail, c.detail) {
 			t.Errorf("%s = %+v, want level %s containing %q", c.name, row, c.level, c.detail)
 		}
 	}
@@ -72,18 +72,18 @@ func TestHealthChecks(t *testing.T) {
 	runUser(t, h.RT, `
 		zemi.ui.widget.add({ id = "lost", region = "nowhere", render = function() return {} end })
 		zemi.ui.widget.add({ id = "bye", region = "exit", render = function() return {} end })`)
-	got := map[string]healthCheck{}
-	for _, c := range h.healthChecks() {
-		got[c.name] = c
+	got := map[string]HealthRow{}
+	for _, c := range h.HealthRows() {
+		got[c.Name] = c
 	}
 	// no layout draws the exit region: it prints on quit
-	if d := got["layout"].detail; !strings.Contains(d, "lost") || strings.Contains(d, "bye") {
+	if d := got["layout"].Detail; !strings.Contains(d, "lost") || strings.Contains(d, "bye") {
 		t.Errorf("layout row %q", d)
 	}
 	for name, level := range map[string]string{
 		"store": "ok", "model": "error", "reflector": "warn", "learning": "ok", "skills": "ok", "lua": "ok", "mcp": "ok", "layout": "warn",
 	} {
-		if string(got[name].level) != level {
+		if string(got[name].Level) != level {
 			t.Errorf("%s = %+v, want level %s", name, got[name], level)
 		}
 	}
@@ -110,14 +110,14 @@ func TestHealthChecksProfileModel(t *testing.T) {
 		zemi.agent.profile.add("p", { model = "b/m" })
 		zemi.config.set("agent.profile", "p")
 	`)
-	got := map[string]healthCheck{}
-	for _, c := range h.healthChecks() {
-		got[c.name] = c
+	got := map[string]HealthRow{}
+	for _, c := range h.HealthRows() {
+		got[c.Name] = c
 	}
-	if c := got["model"]; c.level != "ok" || c.detail != "b/m" {
+	if c := got["model"]; c.Level != "ok" || c.Detail != "b/m" {
 		t.Errorf("model = %+v, want b/m", c)
 	}
-	if c := got["context"]; c.level != "warn" || !strings.Contains(c.detail, "unknown for b/m: no context percent, no auto compaction; a/m: subagents") {
+	if c := got["context"]; c.Level != "warn" || !strings.Contains(c.Detail, "unknown for b/m: no context percent, no auto compaction; a/m: subagents") {
 		t.Errorf("context window = %+v, want a warning naming both models", c)
 	}
 }
@@ -136,8 +136,8 @@ func TestHealthContextRoles(t *testing.T) {
 			zemi.provider.add({ id = "b", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", api_key = "k", models = { { id = "m" } } })
 			zemi.model.set("a/m")
 		`+c.lua)
-		for _, row := range h.healthChecks() {
-			if row.name == "context" && string(row.level) != c.level {
+		for _, row := range h.HealthRows() {
+			if row.Name == "context" && string(row.Level) != c.level {
 				t.Errorf("%s: context = %+v, want %s", c.name, row, c.level)
 			}
 		}
@@ -160,13 +160,13 @@ func TestHealthProvidersRow(t *testing.T) {
 		h, r := newTestHostDB(t)
 		h.Providers.Reset(agent.Catalog{Missing: c.missing})
 		runUser(t, r, c.lua)
-		row := healthCheck{}
-		for _, x := range h.healthChecks() {
-			if x.name == "providers" {
+		row := HealthRow{}
+		for _, x := range h.HealthRows() {
+			if x.Name == "providers" {
 				row = x
 			}
 		}
-		if string(row.level) != c.level || !strings.HasPrefix(row.detail, c.detail) {
+		if string(row.Level) != c.level || !strings.HasPrefix(row.Detail, c.detail) {
 			t.Errorf("%s: providers row = %+v", c.name, row)
 		}
 	}
@@ -189,13 +189,13 @@ func TestHealthModelRow(t *testing.T) {
 		h, r := newTestHostDB(t)
 		h.Providers.Reset(agent.Catalog{Missing: []agent.MissingKey{{ID: "openai", Env: "OPENAI_API_KEY"}}})
 		runUser(t, r, c.lua)
-		row := healthCheck{}
-		for _, x := range h.healthChecks() {
-			if x.name == c.row {
+		row := HealthRow{}
+		for _, x := range h.HealthRows() {
+			if x.Name == c.row {
 				row = x
 			}
 		}
-		if string(row.level) != c.level || !strings.HasPrefix(row.detail, c.detail) {
+		if string(row.Level) != c.level || !strings.HasPrefix(row.Detail, c.detail) {
 			t.Errorf("%s: %s row = %+v", c.name, c.row, row)
 		}
 		if c.level == "error" && c.row == "model" {
@@ -222,8 +222,8 @@ func TestHealthMCPRow(t *testing.T) {
 		for i, st := range c.statuses {
 			h.mcp.servers[strconv.Itoa(i)] = &mcpServer{status: st}
 		}
-		i := slices.IndexFunc(h.goHealthRows(), func(r healthCheck) bool { return r.name == "mcp" })
-		if row := h.goHealthRows()[i]; string(row.level) != c.level || row.detail != c.detail {
+		i := slices.IndexFunc(h.goHealthRows(), func(r HealthRow) bool { return r.Name == "mcp" })
+		if row := h.goHealthRows()[i]; string(row.Level) != c.level || row.Detail != c.detail {
 			t.Errorf("%v: mcp row = %+v", c.statuses, row)
 		}
 	}

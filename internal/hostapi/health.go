@@ -36,15 +36,15 @@ const (
 
 var healthLevels = []HealthLevel{HealthOK, HealthWarn, HealthError}
 
-type healthCheck struct {
-	level  HealthLevel
-	name   string
-	detail string
-	run    string // the command the row's detail action runs
+// HealthRow is one /health check.
+type HealthRow struct {
+	Level        HealthLevel
+	Name, Detail string
+	run          string // the command the row's detail action runs
 }
 
 // healthReg holds the checks Lua registered with zemi.health.add;
-// healthChecks runs them after the built-in rows.
+// HealthRows runs them after the built-in rows.
 type healthReg struct {
 	mu   sync.Mutex
 	list []luaHealthCheck
@@ -99,7 +99,7 @@ func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		rows := []any{}
 		for _, c := range append(h.goHealthRows(), h.inlineHealthRows(L)...) {
-			rows = append(rows, map[string]any{"level": c.level, "name": c.name, "detail": c.detail})
+			rows = append(rows, map[string]any{"level": c.Level, "name": c.Name, "detail": c.Detail})
 		}
 		L.Push(lua.FromGo(L, rows))
 		return 1
@@ -108,33 +108,33 @@ func (h *Host) healthNamespace(L *glua.LState) *glua.LTable {
 }
 
 // inlineHealthRows runs the registered checks on the calling state.
-func (h *Host) inlineHealthRows(L *glua.LState) []healthCheck {
+func (h *Host) inlineHealthRows(L *glua.LState) []HealthRow {
 	h.healthReg.mu.Lock()
 	list := slices.Clone(h.healthReg.list)
 	h.healthReg.mu.Unlock()
 	gen := h.currentGen()
-	var out []healthCheck
+	var out []HealthRow
 	for _, c := range list {
 		if c.gen != gen {
 			continue
 		}
-		row := healthCheck{level: HealthOK, name: c.name}
+		row := HealthRow{Level: HealthOK, Name: c.name}
 		func() {
 			defer h.RT.PushFrame(L, c.origin, c.path)()
 			base := L.GetTop()
 			L.Push(c.fn)
 			if err := L.PCall(0, 1, nil); err != nil {
 				L.SetTop(base)
-				row.level, row.detail = HealthError, sanitize.String(err.Error())
+				row.Level, row.Detail = HealthError, sanitize.String(err.Error())
 				return
 			}
 			v, err := lua.ToGo(L.Get(-1))
 			L.SetTop(base)
 			if err == nil {
-				row.level, row.detail, err = healthResult(v)
+				row.Level, row.Detail, err = healthResult(v)
 			}
 			if err != nil {
-				row.level, row.detail = HealthError, sanitize.String(err.Error())
+				row.Level, row.Detail = HealthError, sanitize.String(err.Error())
 			}
 		}()
 		out = append(out, row)
@@ -145,7 +145,7 @@ func (h *Host) inlineHealthRows(L *glua.LState) []healthCheck {
 // luaHealthRows runs the registered checks through the queue, bounded by
 // the veto deadline: /health is Go-side, so the checks must not run on the
 // calling goroutine.
-func (h *Host) luaHealthRows() []healthCheck {
+func (h *Host) luaHealthRows() []HealthRow {
 	h.healthReg.mu.Lock()
 	n := len(h.healthReg.list)
 	h.healthReg.mu.Unlock()
@@ -158,9 +158,9 @@ func (h *Host) luaHealthRows() []healthCheck {
 		return []any{h.inlineHealthRows(L)}, nil
 	})
 	if err != nil || len(vals) == 0 {
-		return []healthCheck{{level: HealthError, name: "health checks", detail: sanitize.String(fmt.Sprint(err))}}
+		return []HealthRow{{Level: HealthError, Name: "health checks", Detail: sanitize.String(fmt.Sprint(err))}}
 	}
-	rows, _ := vals[0].([]healthCheck)
+	rows, _ := vals[0].([]HealthRow)
 	return rows
 }
 
@@ -249,10 +249,10 @@ func NotifyArgv(text string) []string {
 }
 
 // goHealthRows are the Go-side checks, in the order /health shows them.
-func (h *Host) goHealthRows() []healthCheck {
-	var out []healthCheck
+func (h *Host) goHealthRows() []HealthRow {
+	var out []HealthRow
 	add := func(level HealthLevel, name, detail string) {
-		out = append(out, healthCheck{level: level, name: name, detail: detail})
+		out = append(out, HealthRow{Level: level, Name: name, Detail: detail})
 	}
 
 	if h.DB == nil || h.GlobalDB == nil {
@@ -294,7 +294,7 @@ func (h *Host) goHealthRows() []healthCheck {
 		m := h.roleModel(r.Name)
 		if !slices.Contains(ids, m) {
 			ids = append(ids, m)
-			if row := h.modelCheck(r.Name+" model", m); row.level != HealthOK {
+			if row := h.modelCheck(r.Name+" model", m); row.Level != HealthOK {
 				out = append(out, row)
 			}
 		}
@@ -489,19 +489,19 @@ func (h *Host) goHealthRows() []healthCheck {
 
 // modelRow is the conversation's model check. A reload toasts it, so a
 // models.chat nobody can run is not silent.
-func (h *Host) modelRow() healthCheck { return h.modelCheck("model", h.sessionModelID()) }
+func (h *Host) modelRow() HealthRow { return h.modelCheck("model", h.sessionModelID()) }
 
 // modelCheck is what a call on id would fail with, or an id the provider's
 // list does not carry (a typo runs until the provider refuses it).
-func (h *Host) modelCheck(name, id string) healthCheck {
+func (h *Host) modelCheck(name, id string) HealthRow {
 	_, known := h.modelSpec(id)
 	switch err := h.modelErr(id); {
 	case err != nil:
-		return healthCheck{level: HealthError, name: name, detail: err.Error()}
+		return HealthRow{Level: HealthError, Name: name, Detail: err.Error()}
 	case !known:
-		return healthCheck{level: HealthWarn, name: name, detail: unlistedDetail(id)}
+		return HealthRow{Level: HealthWarn, Name: name, Detail: unlistedDetail(id)}
 	}
-	return healthCheck{level: HealthOK, name: name, detail: id}
+	return HealthRow{Level: HealthOK, Name: name, Detail: id}
 }
 
 // unlistedDetail is the warning for an id the provider's models list
@@ -510,24 +510,10 @@ func unlistedDetail(id string) string {
 	return id + ": not in the provider's models list; the provider decides whether it exists"
 }
 
-func (h *Host) healthChecks() []healthCheck {
-	return append(h.goHealthRows(), h.luaHealthRows()...)
-}
-
-// HealthRow is one check for a caller with no UI (zemi health).
-type HealthRow struct {
-	Level        HealthLevel
-	Name, Detail string
-}
-
-// HealthRows runs the checks and returns them as plain data.
+// HealthRows runs every check; each has side effects and file IO, so a
+// caller runs them once.
 func (h *Host) HealthRows() []HealthRow {
-	checks := h.healthChecks() // once: every check has side effects and file IO
-	out := make([]HealthRow, 0, len(checks))
-	for _, c := range checks {
-		out = append(out, HealthRow{Level: c.level, Name: c.name, Detail: c.detail})
-	}
-	return out
+	return append(h.goHealthRows(), h.luaHealthRows()...)
 }
 
 // WaitMCP returns once no MCP server is starting, or when ctx ends. A
@@ -574,17 +560,17 @@ func (h *Host) OpenHealth() error {
 // healthItems are the /health rows, problems first.
 func (h *Host) healthItems() []any {
 	var problems, ok []any
-	for _, c := range h.healthChecks() {
-		item := map[string]any{"text": c.name, "desc": c.detail, "section": "OK"}
+	for _, c := range h.HealthRows() {
+		item := map[string]any{"text": c.Name, "desc": c.Detail, "section": "OK"}
 		// a detail view that only repeats a short, fine row leads nowhere
-		if c.run != "" || c.level != HealthOK || utf8.RuneCountInString(c.detail) > 48 {
-			item["detail"] = c.detail
+		if c.run != "" || c.Level != HealthOK || utf8.RuneCountInString(c.Detail) > 48 {
+			item["detail"] = c.Detail
 		}
 		if c.run != "" {
 			label := healthActions[c.run]
 			item["actions"] = []any{map[string]any{"text": label, "hotkey": strings.ToLower(label[:1]), "run": c.run}}
 		}
-		if c.level == HealthOK {
+		if c.Level == HealthOK {
 			ok = append(ok, item)
 			continue
 		}

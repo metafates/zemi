@@ -2403,8 +2403,8 @@ func (h *Host) modelSetErr(role, id string) error {
 // config the provider does not list would otherwise run silently until the
 // provider refuses it.
 func (h *Host) WarnModel() {
-	if row := h.modelRow(); row.level != HealthOK {
-		h.Notify(slog.LevelWarn, map[HealthLevel]string{HealthError: "Model unavailable", HealthWarn: unlistedTitle}[row.level], row.detail)
+	if row := h.modelRow(); row.Level != HealthOK {
+		h.Notify(slog.LevelWarn, map[HealthLevel]string{HealthError: "Model unavailable", HealthWarn: unlistedTitle}[row.Level], row.Detail)
 	}
 }
 
@@ -2412,7 +2412,7 @@ func (h *Host) WarnModel() {
 // so a first run starts on the keys to export rather than a failed send. A
 // failed init.lua is its own news: the providers it adds never ran.
 func (h *Host) OfferModel() {
-	if h.InitError() == "" && h.modelRow().level == HealthError {
+	if h.InitError() == "" && h.modelRow().Level == HealthError {
 		_ = h.OpenModelPicker("")
 	}
 }
