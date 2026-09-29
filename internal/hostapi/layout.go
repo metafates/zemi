@@ -381,9 +381,9 @@ func ParseLayout(v any) (*Layout, error) {
 		return nil, fmt.Errorf("at most one node may be the stage, found %d", p.stages)
 	}
 	lay, nodeIDs := &Layout{Root: root}, maps.Clone(p.ids)
-	floats, err := list(m["floats"], "floats")
-	if err != nil {
-		return nil, err
+	floats, ok := luaList(m["floats"])
+	if !ok {
+		return nil, fmt.Errorf("floats: expected a list")
 	}
 	for i, fv := range floats {
 		f, err := p.float(fv, fmt.Sprintf("floats[%d]", i+1))
@@ -547,9 +547,9 @@ func (p *layoutParser) node(v any, at string, depth int, dir LayoutDir, hiddenAb
 		}
 		return n, nil
 	}
-	kids, err := list(m["children"], at+".children")
-	if err != nil {
-		return nil, err
+	kids, ok := luaList(m["children"])
+	if !ok {
+		return nil, fmt.Errorf("%s.children: expected a list", at)
 	}
 	for i, kv := range kids {
 		k, err := p.node(kv, fmt.Sprintf("%s.children[%d]", at, i+1), depth+1, n.Dir, hiddenAbove || n.Hidden || n.Collapse)
@@ -644,19 +644,18 @@ func parseSize(v any, at string) (Size, error) {
 	return Size{}, bad
 }
 
-// list reads an array; nil and an empty table are an empty one.
-func list(v any, at string) ([]any, error) {
+// luaList reads a Lua list: nil and an empty table, which marshals as an
+// empty map, are an empty one.
+func luaList(v any) ([]any, bool) {
 	switch l := v.(type) {
 	case nil:
-		return nil, nil
+		return nil, true
 	case []any:
-		return l, nil
+		return l, true
 	case map[string]any:
-		if len(l) == 0 {
-			return nil, nil
-		}
+		return nil, len(l) == 0
 	}
-	return nil, fmt.Errorf("%s: expected a list", at)
+	return nil, false
 }
 
 // onlyKeys refuses a field the table's kind does not take, so a typo is an

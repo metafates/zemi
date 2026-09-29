@@ -242,10 +242,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.ui.select: %v", err)
 		}
-		list, ok := items.([]any)
-		if m, empty := items.(map[string]any); empty && len(m) == 0 {
-			ok = true // Lua's {} marshals as an empty map: no items
-		}
+		list, ok := luaList(items)
 		if !ok {
 			L.RaiseError("zemi.ui.select: items must be a list; the order is select(items, opts, on_choice)")
 		}
@@ -661,30 +658,23 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 		}
 	}
 	_, p.Switch = m["on"].(bool)
-	switch v := m["fields"].(type) {
-	case nil:
-	case []any:
-		for _, f := range v {
-			pair, _ := f.([]any)
-			name, value, ok := "", "", len(pair) == 2
-			if ok {
-				name, ok = pair[0].(string)
-			}
-			if ok {
-				value, ok = pair[1].(string)
-			}
-			if !ok {
-				bad("fields", "a list of { name, value } pairs", v)
-				break
-			}
-			p.Fields = append(p.Fields, Field{name, value})
+	fields, ok := luaList(m["fields"])
+	for _, f := range fields {
+		pair, _ := f.([]any)
+		var name, value string
+		if ok = len(pair) == 2; ok {
+			name, ok = pair[0].(string)
 		}
-	case map[string]any:
-		if len(v) > 0 {
-			bad("fields", "a list of { name, value } pairs", v)
+		if ok {
+			value, ok = pair[1].(string)
 		}
-	default:
-		bad("fields", "a list of { name, value } pairs", v)
+		if !ok {
+			break
+		}
+		p.Fields = append(p.Fields, Field{name, value})
+	}
+	if !ok {
+		bad("fields", "a list of { name, value } pairs", m["fields"])
 	}
 	switch v := m["actions"].(type) {
 	case nil:
@@ -712,10 +702,7 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 
 // overlayItems is a Lua items list with every item's fields checked.
 func overlayItems(v any) ([]any, error) {
-	if m, ok := v.(map[string]any); ok && len(m) == 0 {
-		return nil, nil // Lua's {} marshals as an empty map
-	}
-	list, ok := v.([]any)
+	list, ok := luaList(v)
 	if !ok {
 		return nil, fmt.Errorf("items must be a list, got %s", luaShape(v))
 	}
