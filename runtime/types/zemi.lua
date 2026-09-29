@@ -1791,7 +1791,6 @@ function zemi.composer.edit() end
 ---@field name string
 ---@field base string
 ---@field description string
----@field active boolean
 
 ---@class zemi.permission
 zemi.permission = {}
@@ -1835,6 +1834,16 @@ function zemi.permission.mode.del(name) end
 ---@return true|nil ok, string? err
 function zemi.permission.mode.set(name) end
 
+--- The active mode: the one `permissions.mode` names, or auto when that
+--- names no mode. A mode built on yolo has `base = "yolo"`.
+---
+--- ```lua
+--- if zemi.permission.mode.get().base == "yolo" then zemi.permission.mode.set("auto") end
+--- ```
+---@return zemi.PermMode
+function zemi.permission.mode.get() end
+
+--- Every mode, in /mode order.
 ---@return zemi.PermMode[]
 function zemi.permission.mode.list() end
 

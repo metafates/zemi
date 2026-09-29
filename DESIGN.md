@@ -1398,7 +1398,7 @@ whose rows join the Go checks in `/health` and `zemi health`, and `list`, which 
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `disable`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
-and `zemi.permission.mode` (`add`, `del`, `set`, `list`; user config only, §9).
+and `zemi.permission.mode` (`add`, `del`, `set` user config only, §9; `get`, `list`).
 There is no `zemi.eval`: the eval harness was never built (§10.6).
 
 `zemi.learn.decide` and `zemi.skills.enable` require a user or builtin

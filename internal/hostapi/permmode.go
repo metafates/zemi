@@ -339,7 +339,7 @@ func (h *Host) cyclePermMode(step int) error {
 
 var modeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,15}$`)
 
-// modeNamespace is zemi.permission.mode: add, del and list modes from
+// modeNamespace is zemi.permission.mode: add, del and set modes from
 // user config (a mode answers permission asks, so no other origin may).
 func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
@@ -420,7 +420,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 		h.refresh()
 		return 0
 	}))
-	// set(name) switches the active mode; list() says which one that is.
+	// set(name) switches the active mode; get() reads it back.
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		gate(L, "set")
@@ -436,21 +436,27 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 		L.Push(glua.LTrue)
 		return 1
 	}))
+	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
+		L.Push(modeRow(L, h.permModeDef()))
+		return 1
+	}))
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		out := L.NewTable()
-		cur := h.PermMode()
 		for _, d := range h.PermModeList() {
-			row := L.NewTable()
-			row.RawSetString("name", glua.LString(d.Name))
-			row.RawSetString("base", glua.LString(d.Base))
-			row.RawSetString("description", glua.LString(d.Description))
-			row.RawSetString("active", glua.LBool(d.Name == cur))
-			out.Append(row)
+			out.Append(modeRow(L, d))
 		}
 		L.Push(out)
 		return 1
 	}))
 	return tb
+}
+
+func modeRow(L *glua.LState, d PermModeDef) *glua.LTable {
+	row := L.NewTable()
+	row.RawSetString("name", glua.LString(d.Name))
+	row.RawSetString("base", glua.LString(d.Base))
+	row.RawSetString("description", glua.LString(d.Description))
+	return row
 }
 
 // autoLocal is everything auto mode settles: reading and editing files

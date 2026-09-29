@@ -564,3 +564,36 @@ func TestAskWaiterJudgedAgain(t *testing.T) {
 		})
 	}
 }
+
+// TestYoloToggle: the shipped ctrl+y reads the mode through get() and
+// returns to the mode it left, a user mode included; a mode built on yolo
+// counts as yolo.
+func TestYoloToggle(t *testing.T) {
+	for _, c := range []struct {
+		name, setup string
+		want        []string // get().name first, then after each press
+	}{
+		{"auto flips to yolo and back", ``, []string{"auto", "yolo", "auto"}},
+		{"a user mode comes back after yolo", `zemi.permission.mode.add("review", { base = "auto" })
+			zemi.permission.mode.set("review")`, []string{"review", "yolo", "review"}},
+		{"a yolo-based user mode leaves yolo", `zemi.permission.mode.add("fast", { base = "yolo" })
+			zemi.permission.mode.set("fast")`, []string{"fast", "auto"}},
+		{"an unknown permissions.mode reads as auto", `zemi.config.set("permissions.mode", "gone")
+			assert(zemi.config.get("permissions.mode") == "gone")`, []string{"auto"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newTestHostUI(t)
+			runUser(t, h.RT, c.setup)
+			for i, want := range c.want {
+				if i > 0 {
+					if err := h.RunRHS(context.Background(), h.Keymaps.Lookup("", "ctrl+y")); err != nil {
+						t.Fatal(err)
+					}
+				}
+				runUser(t, h.RT, fmt.Sprintf(`local m = zemi.permission.mode.get()
+					assert(m.name == %q, "mode " .. m.name)
+					for _, row in ipairs(zemi.permission.mode.list()) do assert(row.active == nil) end`, want))
+			}
+		})
+	}
+}

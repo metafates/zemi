@@ -11,12 +11,7 @@ zemi.keymap.set("ctrl+o", "zemi.ui.reasoning.toggle", { desc = "show thinking an
 -- next press restores it whatever the mode list holds.
 local before
 zemi.keymap.set("ctrl+y", function()
-	---@type zemi.PermMode?
-	local cur
-	for _, m in ipairs(zemi.permission.mode.list()) do
-		if m.active then cur = m end
-	end
-	if not cur then return end
+	local cur = zemi.permission.mode.get()
 	if cur.base == "yolo" then
 		zemi.permission.mode.set(before or "auto")
 		before = nil
