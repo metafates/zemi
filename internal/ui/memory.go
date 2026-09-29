@@ -8,6 +8,7 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -67,16 +68,19 @@ type memUndo struct {
 
 // ReviewMemories implements hostapi.UIHooks: blocks the caller (the
 // host's review goroutine) until the screen closes.
-func (a *App) ReviewMemories(items []hostapi.MemoryRow) []hostapi.MemoryRow {
+func (a *App) ReviewMemories(items []hostapi.MemoryRow, focus string) []hostapi.MemoryRow {
 	ch := make(chan []hostapi.MemoryRow, 1)
 	// the caller keeps reading its own slice after this returns, so the
 	// screen edits a copy
 	rows := slices.Clone(items)
 	a.await(func() tea.Cmd {
 		// the host reopens the screen after an edit, on the edited row
-		sel := max(0, slices.IndexFunc(rows, func(r hostapi.MemoryRow) bool { return r.ID == a.memEdited }))
+		sel := slices.IndexFunc(rows, func(r hostapi.MemoryRow) bool { return r.ID == cmp.Or(focus, a.memEdited) })
 		a.memReview, a.memEdited = &memReviewPrompt{items: rows, answer: ch}, ""
-		a.memReview.seek(sel)
+		a.memReview.seek(max(sel, 0))
+		if focus != "" && sel >= 0 {
+			a.memReview.open() // a stored memory's first action is Forget
+		}
 		return nil
 	})
 	return <-ch

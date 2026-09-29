@@ -61,7 +61,9 @@ type UIHooks interface {
 	// says the user ended it by dismissing a question or plan.
 	TurnDone(err string, stopped bool)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
-	ReviewMemories(items []MemoryRow) []MemoryRow // the rows with Action and Scope as edited
+	// ReviewMemories returns the rows with Action and Scope as edited; the
+	// screen opens on row focus's actions when set
+	ReviewMemories(items []MemoryRow, focus string) []MemoryRow
 	// Screenshot is the last drawn frame as plain text, "" before the
 	// first one; safe from any goroutine.
 	Screenshot() string

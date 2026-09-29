@@ -751,6 +751,7 @@ type fakeUI struct {
 	asked        []PermRequest
 	reviewItems  [][]MemoryRow
 	reviewResult []MemoryRow
+	reviewFocus  string
 	qAsked       []tools.Question
 	qAnswer      string
 	qOK          bool
@@ -811,8 +812,8 @@ func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 	return f.askAllowed, f.askBy
 }
 
-func (f *fakeUI) ReviewMemories(items []MemoryRow) []MemoryRow {
-	f.reviewItems = append(f.reviewItems, items)
+func (f *fakeUI) ReviewMemories(items []MemoryRow, focus string) []MemoryRow {
+	f.reviewItems, f.reviewFocus = append(f.reviewItems, items), focus
 	return f.reviewResult
 }
 

@@ -1533,8 +1533,9 @@ provenance string.
   delete x`, `/skills delete x`, `/sessions delete <id>`, `/mcp sign-out x`)
   asks the same way: its screen opens on that detail, armed
   (`hostapi.AskFirst`, `Overlay.Confirm`), or, for a row the list does not
-  hold (a session past the 50 it shows), a toast names the `--yes` form.
-  In `zemi run` such a command refuses, naming
+  hold (a session past the 50 it shows), a toast names the `--yes` form;
+  `/memory forget <id>` opens `/memory` on that memory, its Forget button
+  selected. In `zemi run` such a command refuses, naming
   the command that runs it without asking (`zemi plugins delete x --yes`). When every row with actions offers the
   same keys, the list's footer names them. `j`, `k`, `/`, `y` and `Y` are
   the list's own and cannot be hotkeys. A

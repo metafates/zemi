@@ -522,7 +522,7 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 	}
 
 	// First open: two rows, the queued proposal first. Mark nothing.
-	h.openMemoryReview(ui)
+	h.openMemoryReview(ui, "")
 	if len(ui.reviewItems) != 1 || len(ui.reviewItems[0]) != 2 {
 		t.Fatalf("review rows: %+v", ui.reviewItems)
 	}
@@ -542,7 +542,7 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 	moved := slices.Clone(ui.reviewItems[0])
 	moved[1].Scope = "user"
 	ui.reviewResult = moved
-	h.openMemoryReview(ui)
+	h.openMemoryReview(ui, "")
 	if rows := projectMemories(t, h); len(rows) != 0 {
 		t.Fatalf("moved note still in the project: %+v", rows)
 	}
@@ -554,7 +554,7 @@ func TestMemoryReviewOverlayApply(t *testing.T) {
 	ui.reviewResult = slices.Clone(ui.reviewItems[1])
 	ui.reviewResult[0].Action = "accept"
 	ui.reviewResult[1].Action = "delete"
-	h.openMemoryReview(ui)
+	h.openMemoryReview(ui, "")
 	if queued := len(h.memoryProposals()); queued != 0 {
 		t.Fatalf("proposals left: %d", queued)
 	}
@@ -586,7 +586,7 @@ func TestMemoryReviewMovesProposals(t *testing.T) {
 	}
 	runUser(t, r, `zemi.memory.add("run make check first")`)
 
-	h.openMemoryReview(ui)
+	h.openMemoryReview(ui, "")
 	rows := slices.Clone(ui.reviewItems[0])
 	for i := range rows {
 		if rows[i].Queued {
@@ -597,7 +597,7 @@ func TestMemoryReviewMovesProposals(t *testing.T) {
 		}
 	}
 	ui.reviewResult = rows
-	h.openMemoryReview(ui)
+	h.openMemoryReview(ui, "")
 	if live, _ := h.DB.ListMemory("project", false); len(live) != 0 {
 		t.Fatalf("the replaced memory is still live: %+v", live)
 	}
@@ -610,7 +610,7 @@ func TestMemoryReviewMovesProposals(t *testing.T) {
 	}
 
 	ui.reviewResult = []MemoryRow{{ID: moved[0].ID, Scope: "user", Action: "accept"}}
-	h.openMemoryReview(ui)
+	h.openMemoryReview(ui, "")
 	if live, _ := h.GlobalDB.ListMemory("user", false); len(live) != 2 {
 		t.Fatalf("kept suggestion not stored everywhere: %+v", live)
 	}
@@ -632,7 +632,7 @@ func TestMemoryReviewMoveOntoDuplicate(t *testing.T) {
 	}
 
 	ui.reviewResult = []MemoryRow{{ID: "p1", Scope: "user"}}
-	h.openMemoryReview(ui)
+	h.openMemoryReview(ui, "")
 	got := h.memoryProposals()
 	if len(got) != 1 || got[0].ID != "p1" || got[0].Scope != "project" {
 		t.Fatalf("suggestion after a refused move: %+v", got)
@@ -737,7 +737,28 @@ func TestMemoryCommandsRegistered(t *testing.T) {
 	if err := h.Remember("deploy by hand"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.memoryCommand("forget " + projectMemories(t, h)[0].ID[:8]); err != nil {
+	// typed, a forget asks first: headless it names the --yes form, and with
+	// a screen /memory opens on that memory
+	id := projectMemories(t, h)[0].ID
+	if err := h.memoryCommand("forget " + id[:8]); err == nil || !strings.Contains(err.Error(), "/memory forget "+id+" --yes runs it without asking") {
+		t.Fatalf("a headless forget: %v", err)
+	}
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.memoryCommand("forget " + id[:8]); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if !h.memReview.TryLock() {
+			return errors.New("the review is still open")
+		}
+		h.memReview.Unlock()
+		return nil
+	})
+	if ui.reviewFocus != id || len(projectMemories(t, h)) != 1 {
+		t.Fatalf("a typed forget: focus %q, %d memories", ui.reviewFocus, len(projectMemories(t, h)))
+	}
+	if err := h.memoryCommand("forget " + id[:8] + " --yes"); err != nil {
 		t.Fatal(err)
 	}
 	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.title != "Memory forgotten" || n.body != "deploy by hand" {

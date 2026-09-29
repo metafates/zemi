@@ -248,28 +248,20 @@ func (h *Host) Remember(text string) error {
 	return nil
 }
 
-// memoryCommand dispatches /memory; no args opens the review overlay on
-// its own goroutine so the UI goroutine never blocks on the hook.
+// memoryCommand dispatches /memory; a forget typed without --yes asks
+// first (AskFirst) on the review screen.
 func (h *Host) memoryCommand(args string) error {
 	fields := strings.Fields(args)
 	switch {
 	case len(fields) == 0:
-		ui, err := h.Screen()
-		if err != nil {
-			return err
-		}
-		if h.memReview.TryLock() {
-			h.GoSafe("memory review", func() {
-				defer h.memReview.Unlock()
-				h.openMemoryReview(ui)
-			})
-			return nil
-		}
-		return Usagef("memory review already open")
-	case fields[0] == "forget" && len(fields) == 2:
+		return h.openMemory("")
+	case fields[0] == "forget" && (len(fields) == 2 || len(fields) == 3 && fields[2] == "--yes"):
 		db, m, err := h.locateMemory(fields[1])
 		if err != nil {
 			return err
+		}
+		if len(fields) == 2 {
+			return AskFirst("memory forget "+m.ID+" --yes", "", func(string) error { return h.openMemory(m.ID) })
 		}
 		if err := db.DeleteMemory(m.ID); err != nil {
 			return err
@@ -277,10 +269,27 @@ func (h *Host) memoryCommand(args string) error {
 		h.Notify(logging.Info, "Memory forgotten", m.Text)
 		return nil
 	case fields[0] == "forget":
-		return Usagef("usage: /memory forget <id>")
+		return Usagef("usage: /memory forget <id> [--yes]")
 	default:
 		return h.Remember(args)
 	}
+}
+
+// openMemory opens the review screen on its own goroutine, since the hook
+// blocks, with memory focus open on its Forget when set.
+func (h *Host) openMemory(focus string) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	if !h.memReview.TryLock() {
+		return Usagef("memory review already open")
+	}
+	h.GoSafe("memory review", func() {
+		defer h.memReview.Unlock()
+		h.openMemoryReview(ui, focus)
+	})
+	return nil
 }
 
 // openMemoryReview shows pending proposals plus stored memories from both
@@ -289,14 +298,15 @@ func (h *Host) memoryCommand(args string) error {
 // memories removed from their scope's DB. A row marked for editing opens
 // in the user's editor after the other decisions apply, then the screen
 // opens again.
-func (h *Host) openMemoryReview(ui UIHooks) {
-	for h.reviewMemoriesOnce(ui) {
+func (h *Host) openMemoryReview(ui UIHooks, focus string) {
+	for h.reviewMemoriesOnce(ui, focus) {
+		focus = ""
 	}
 }
 
 // reviewMemoriesOnce runs the screen once and reports whether a row was
 // edited, so the caller shows it again.
-func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
+func (h *Host) reviewMemoriesOnce(ui UIHooks, focus string) bool {
 	rows := h.memoryRows()
 	was := map[string]MemoryRow{}
 	for _, r := range rows {
@@ -304,7 +314,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks) bool {
 	}
 	var accepted, rejected, deleted, moved int
 	edit := ""
-	for _, r := range ui.ReviewMemories(rows) {
+	for _, r := range ui.ReviewMemories(rows, focus) {
 		old, ok := was[r.ID]
 		if !ok {
 			continue

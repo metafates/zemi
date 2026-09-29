@@ -37,7 +37,7 @@ func reviewAnswer(t *testing.T, done chan []hostapi.MemoryRow) map[string]string
 func openReview(t *testing.T, app *App, rows []hostapi.MemoryRow) chan []hostapi.MemoryRow {
 	t.Helper()
 	done := make(chan []hostapi.MemoryRow, 1)
-	go func() { done <- app.ReviewMemories(rows) }()
+	go func() { done <- app.ReviewMemories(rows, "") }()
 	waitPrompt(t, app, func() bool { return app.memReview != nil })
 	return done
 }
@@ -115,6 +115,21 @@ func TestGoldenMemoryDetail(t *testing.T) {
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if got := reviewAnswer(t, done); len(got) != 2 || got["m1"] != "reject project" {
+		t.Fatalf("answer = %v", got)
+	}
+}
+
+// TestMemoryReviewFocus: a typed /memory forget opens its memory with Forget
+// selected, so enter and closing the screen forget it.
+func TestMemoryReviewFocus(t *testing.T) {
+	app, _ := bootAgentApp(t, 70, 16)
+	done := make(chan []hostapi.MemoryRow, 1)
+	go func() {
+		done <- app.ReviewMemories([]hostapi.MemoryRow{{ID: "m1", Scope: "project", Text: "one"}, {ID: "m2", Scope: "project", Text: "two"}}, "m2")
+	}()
+	waitPrompt(t, app, func() bool { return app.memReview != nil })
+	pressKeys(app, "enter", "esc")
+	if got := reviewAnswer(t, done); len(got) != 1 || got["m2"] != "delete project" {
 		t.Fatalf("answer = %v", got)
 	}
 }
