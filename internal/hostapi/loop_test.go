@@ -54,6 +54,23 @@ func TestLoop(t *testing.T) {
 		{name: "an interrupted run stops it", args: "5m check it", reply: "hang", steps: []step{{runs: 1, next: 5 * time.Minute, held: true}, {do: func(h *Host) {
 			h.AgentCancel()
 		}, runs: 1}}, notices: []string{"loop run 1: check it", "loop stopped: the run was interrupted (1 run)"}},
+		{name: "a replaced loop's run moves nothing", args: "5m check a", reply: "hang", steps: []step{
+			{runs: 1, next: 5 * time.Minute, held: true},
+			{do: func(h *Host) {
+				if err := h.SetLoop("5m check b"); err != nil {
+					panic(err)
+				}
+				waitFor(t, func() error {
+					if h.RT.Clock().(*fakeClock).armed() == 0 {
+						return errors.New("b has not tried to run")
+					}
+					return nil
+				})
+				h.AgentCancel()
+				waitIdle(t, h)
+			}, after: loopRetry, runs: 2, next: loopRetry + 5*time.Minute, held: true},
+			{do: func(h *Host) { h.AgentCancel() }, runs: 2},
+		}, notices: []string{"loop run 1: check a", "loop run 1: check b", "loop stopped: the run was interrupted (1 run)"}},
 		{name: "a busy agent delays a run, keeping its time", args: "5m check it", reply: "ok", steps: []step{
 			{runs: 1, next: 5 * time.Minute},
 			{do: func(h *Host) {
@@ -63,7 +80,7 @@ func TestLoop(t *testing.T) {
 			}, after: 5 * time.Minute, runs: 1, next: 5 * time.Minute, held: true},
 			{do: func(h *Host) { h.AgentCancel(); waitIdle(t, h) }, after: loopRetry, runs: 2, next: 5*time.Minute + loopRetry + 5*time.Minute},
 		}},
-		{name: "it expires", args: "24h check it", reply: "ok", steps: []step{
+		{name: "it expires", args: "1d check it", reply: "ok", steps: []step{
 			{runs: 1, next: 24 * time.Hour}, {after: 24 * time.Hour, runs: 2, next: 48 * time.Hour}, {after: 24 * time.Hour, runs: 3, next: 72 * time.Hour}, {after: 24 * time.Hour, runs: 3},
 		}, notices: []string{"loop run 1: check it", "loop run 2: check it", "loop run 3: check it", "loop stopped after 72h (3 runs)"}},
 		{name: "a new session stops it quietly", args: "5m check it", reply: "ok", steps: []step{{runs: 1, next: 5 * time.Minute}, {do: func(h *Host) {
@@ -169,6 +186,7 @@ func TestSetLoopRefuses(t *testing.T) {
 	for _, c := range []struct{ args, want string }{
 		{"30s check", "every 1m to 24h"},
 		{"48h check", "every 1m to 24h"},
+		{"2d check", "every 1m to 24h"},
 		{"5m", "/loop 5m <prompt>"},
 		{"5m /loop 1m x", "cannot run /loop"},
 		{"/goal the tests pass", "cannot run /goal"},

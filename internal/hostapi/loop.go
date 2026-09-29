@@ -3,6 +3,7 @@ package hostapi
 import (
 	"cmp"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,6 +63,11 @@ func (h *Host) SetLoop(args string) error {
 	typed, _ := agent.CutAttached(args)
 	prompt := strings.TrimSpace(typed)
 	first, rest, _ := strings.Cut(prompt, " ")
+	if n, ok := strings.CutSuffix(first, "d"); ok {
+		if days, err := strconv.Atoi(n); err == nil {
+			first = strconv.Itoa(days*24) + "h"
+		}
+	}
 	var every time.Duration
 	if d, err := time.ParseDuration(first); err == nil {
 		if d < loopMin || d > loopMaxEvery {
@@ -111,10 +117,11 @@ func (h *Host) armLoop(l *Loop, d time.Duration, retry bool) {
 }
 
 // fireLoop sends l's next run, the way the user would: when the agent is
-// busy it tries again loopRetry later, so a run never steers into someone
+// busy it tries again loopRetry later, and a plain prompt claims the agent
+// under the lock that saw it idle, so its run never steers into someone
 // else's turn. The fallback timer is armed before the send, so the next run
 // is always known; a self-paced run's reply may move it (loopTurnEnded).
-// NOTE: runs are not jittered.
+// NOTE: runs are not jittered, and a command prompt claims nothing ahead.
 func (h *Host) fireLoop(l *Loop) {
 	ag := h.agents
 	ag.mu.Lock()
@@ -134,14 +141,23 @@ func (h *Host) fireLoop(l *Loop) {
 	l.Runs++
 	h.armLoop(l, cmp.Or(l.Every, loopFallback), false)
 	note := loopNote(l)
+	ag.loopRun = l
+	cmd := strings.HasPrefix(l.Prompt, "/")
+	var scope *turnScope
+	if !cmd {
+		ag.active = true
+		scope = h.beginScope()
+	}
 	ag.mu.Unlock()
 	h.refresh()
-	// a command gets the note as its attachment, as it would piped stdin
-	text := note
-	if strings.HasPrefix(l.Prompt, "/") {
-		text = l.Prompt + note
+	var err error
+	if cmd {
+		// a command gets the note as its attachment, as it would piped stdin
+		err = h.SendPrompt(l.Prompt + note)
+	} else {
+		err = h.sendClaimed(scope, note)
 	}
-	if err := h.SendPrompt(text); err != nil {
+	if err != nil {
 		_ = h.stopLoop(l, "loop stopped: "+h.friendlyError(err))
 	}
 }
@@ -154,15 +170,19 @@ func loopNote(l *Loop) string {
 	return agent.Attached("loop", fmt.Sprintf("Run %d of: %s\n%s", l.Runs, l.Prompt, next))
 }
 
-// loopTurnEnded runs after each turn: a loop run that was interrupted or
-// failed stops the loop, and a self-paced one's last line schedules the
-// next run or ends the loop.
+// loopTurnEnded runs after each turn: a run of the live loop that was
+// interrupted or failed stops it, and a self-paced one's last line schedules
+// the next run or ends the loop. A run of a loop since replaced moves nothing.
 func (h *Host) loopTurnEnded(runner *agent.Runner, text string, err error, cancelled bool) {
+	if !strings.Contains(text, loopTag) {
+		return
+	}
 	ag := h.agents
 	ag.mu.Lock()
-	l := ag.loop
+	l, run := ag.loop, ag.loopRun
+	ag.loopRun = nil
 	ag.mu.Unlock()
-	if l == nil || !strings.Contains(text, loopTag) {
+	if l == nil || l != run {
 		return
 	}
 	runs := fmt.Sprintf("%d %s", l.Runs, plural(l.Runs, "run", "runs"))

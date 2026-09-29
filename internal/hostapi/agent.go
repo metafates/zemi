@@ -210,9 +210,10 @@ type agentHost struct {
 	goalRuns     int
 	checkingGoal bool
 	// loop is the session's loop (/loop), nil for none; loopStop stops its
-	// armed timer
+	// armed timer, and loopRun is the loop whose run was sent last
 	loop     *Loop
 	loopStop func() bool
+	loopRun  *Loop
 
 	// titled is false for a new session until its first exchange named it
 	// (autoTitle); firstUser is that session's first message.

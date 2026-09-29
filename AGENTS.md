@@ -736,11 +736,13 @@ lua-language-server is installed.
   `Loop` per live session in this process: never stored, stopped by `/loop stop`,
   `closeSession`, an interrupted or failed run, `next: done` and `loopExpiry`. Its timer is
   `lua.Clock.AfterFunc`, so the fake clock drives it in tests. `fireLoop` sends like the user
-  would, through `Host.SendPrompt`: the note alone behind `agent.Attached("loop")`, which
-  `reportHeads` draws as a `loop run N` notice, or after a command prompt as its attachment. It
+  would: the note alone behind `agent.Attached("loop")`, which `reportHeads` draws as a
+  `loop run N` notice, on a claim taken under the lock that saw the agent idle, or after a
+  command prompt as its attachment through `Host.SendPrompt`. It
   arms the next run before sending (the interval, or `loopFallback` for a self-paced loop), and
   a busy agent re-arms it `loopRetry` later with `Next` kept. `loopTurnEnded` (in `runTurns`)
-  knows a loop run by `loopTag` in the turn's text and reads a self-paced run's last line
+  knows a loop run by `loopTag` in the turn's text, acts only while `ag.loopRun`, the loop
+  that sent the last run, is the live one, and reads a self-paced run's last line
   (`parseNext`: `next: 10m`, clamped to 1m..1h, or `next: done`).
 - **Side questions.** `/btw` (`Host.btw`) sends `Runner.Snapshot` (mid-turn, the running
   step's input) plus the question on the runner the next send would build, one step through
