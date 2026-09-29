@@ -376,10 +376,13 @@ func (h *Host) projectFields(p Project) []any {
 	if dirs, _ := os.ReadDir(filepath.Join(state, "skills")); len(dirs) > 0 {
 		recipes = strconv.Itoa(len(dirs))
 	}
-	allowed := sanitize.String(strings.Join(permissionLines(filepath.Join(state, "permissions")), ", "))
+	allowed := permissionLines(filepath.Join(state, "permissions"))
+	for i, l := range allowed {
+		allowed[i] = sanitize.String(l) // per line: an unterminated escape runs to the end of its string
+	}
 	if p.StatsErr != nil {
 		errText = p.StatsErr.Error()
 	}
 	return fieldList("path", sanitize.String(TildePath(p.Root)), "trust", p.TrustWord(), "sessions", sessions, "memories", memories, "recipes", recipes,
-		"allowed", allowed, "data", TildePath(state), "error", errText)
+		"allowed", strings.Join(allowed, ", "), "data", TildePath(state), "error", errText)
 }

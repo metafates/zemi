@@ -57,7 +57,7 @@ func TestProjectsCommand(t *testing.T) {
 	}
 	for _, f := range files {
 		os.MkdirAll(filepath.Dir(f), 0o755)
-		os.WriteFile(f, []byte("go test ./...\n"), 0o600)
+		os.WriteFile(f, []byte("echo \x1b]x\ngo test ./...\n"), 0o600) // an unterminated escape hides only its own line
 	}
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
@@ -78,7 +78,7 @@ func TestProjectsCommand(t *testing.T) {
 		{
 			name: "the list", args: "",
 			want: []string{
-				"key:current", "undecided                · now", "trusted   · 1 session    · now", "[sessions 1 · latest now: fix the flaky test]", "[allowed go test ./...]",
+				"key:current", "undecided                · now", "trusted   · 1 session    · now", "[sessions 1 · latest now: fix the flaky test]", "[allowed echo , go test ./...]",
 				"hotkey:s run:projects switch " + other, "hotkey:f run:projects forget " + other, "danger:true hotkey:x run:projects delete " + other + " --yes", "Selected:1",
 			},
 		},
