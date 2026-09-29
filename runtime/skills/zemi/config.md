@@ -103,7 +103,9 @@ zemi.permission.mode.add("judged", {
 })
 ```
 
-## The sandbox
+## The shell and the sandbox
+
+The bash tool and `job_start` run a command with dash, a POSIX sh, where it is installed (macOS, Debian, Ubuntu), else with sh; the `/health` shell row names which. bash-only syntax fails before it runs, naming the POSIX form: `[ ]` for `[[ ]]`, `>file 2>&1` for `&>`, `.` for `source`, `printf` for `$'..'`, a file or a pipe for `<( )`, no arrays. `bash -c '...'` runs a bash script. The user's `!command` runs sh.
 
 The sandbox (seatbelt on macOS, Landlock on Linux) lets a command write only the project and the scratchpad, which is every model command's `$TMPDIR`, sandboxed or not (`/tmp` is not writable), keeps `.git` and `.agents` read-only (`.agents/worktrees` aside), allows no network beyond localhost, and hides credential files and zemi's own dirs; on macOS secret-shaped files (`.env`, `*.pem`, `*.key`) are unreadable to it, in the scratchpad too, and `.agents` files are written with the write tool. On Linux with namespaces localhost is the sandbox's own; with `landlock + seccomp` the project is read-only and there is no network. A command that needs the network is retried with `network: true` (sockets added, sandbox kept), one that needs more with `sandbox: false`; both need the user's approval in every mode but yolo, so in `zemi run` without yolo both are denied. `permissions.env_keep` names secret-shaped env vars (`*TOKEN*`, `*KEY*`, ...) a child keeps; whatever is kept, the model can print.
 

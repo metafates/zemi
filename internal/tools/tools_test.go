@@ -136,9 +136,11 @@ func TestBashGate(t *testing.T) {
 		noOverlay bool
 		command   string
 		want      string
+		lead      bool // want starts the result
 		wantErr   bool
 		wantAsks  []string
 	}{
+		{name: "text the shell will not run fails before the gate", rule: allow("*"), command: "echo (x", want: "the command does not parse", lead: true, wantErr: true},
 		{name: "allowed runs without asking", rule: allow("echo *"), command: "echo hello", want: "hello"},
 		{name: "unmatched asks the denying overlay", rule: allow("echo *"), command: "ls /etc", want: "(overlay)", wantErr: true, wantAsks: []string{"ls /etc"}},
 		{name: "compound needs every segment", rule: allow("ls*"), command: "ls; rm -rf x", wantErr: true, wantAsks: []string{"ls; rm -rf x"}},
@@ -152,7 +154,7 @@ func TestBashGate(t *testing.T) {
 			}
 			p.Pre = c.pre
 			resp := call(t, All(p)[0], `{"command":"`+c.command+`"}`)
-			if resp.IsError != c.wantErr || !strings.Contains(resp.Content, c.want) {
+			if resp.IsError != c.wantErr || !strings.Contains(resp.Content, c.want) || c.lead && !strings.HasPrefix(resp.Content, c.want) {
 				t.Fatalf("got %+v", resp)
 			}
 			var args []string

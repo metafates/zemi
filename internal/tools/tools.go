@@ -93,7 +93,7 @@ type Request struct {
 	// Owner is whose code a Lua tool runs, as an overlay badge names it
 	// ("plugin:jira"), "" for the user's and zemi's own
 	Owner string
-	// cmd is a tool.bash Arg as the gate parsed it; set by the pipeline
+	// cmd is a tool.bash Arg parsed; set by bashRequests or the pipeline
 	cmd *perm.Normalized
 	// gate is the pipeline and request as Check got them; set by the pipeline
 	gate *checked
@@ -391,7 +391,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 	}
 	plan := p.Plan != nil && p.Plan()
 	req.ReadOnly, req.Pad = plan, p.Pad
-	if req.Subject == perm.SubjectBash {
+	if req.Subject == perm.SubjectBash && req.cmd == nil {
 		n := perm.Normalize(req.Arg)
 		req.cmd = &n
 	}
@@ -1092,7 +1092,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 
 	return []fantasy.AgentTool{
-		mk(ToolBash, `Run a command with sh -c in the working directory. POSIX sh, not bash: for [[ ]], arrays or pipefail run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged; long output keeps its start and end, and the result names a file holding all of it. A command still running at the timeout keeps running as a job; the result gives its id.
+		mk(ToolBash, `Run a command with sh -c in the working directory. The shell is POSIX sh, not bash: write [ ] not [[ ]], >file 2>&1 not &>, . not source, printf not $'..', a file or a pipe not <( ), and no arrays; for pipefail or a bash script run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged; long output keeps its start and end, and the result names a file holding all of it. A command still running at the timeout keeps running as a job; the result gives its id.
 Not for what does not exit on its own (npm run dev, tsc -w, tail -f): & and nohup do not help, since what a command leaves running is stopped when it returns. Not for reading, searching or editing files: cat, sed -n or head output is not a read for edit.
 Chain dependent steps with &&.`,
 			false,
@@ -1404,11 +1404,17 @@ func changePreview(in map[string]any) string {
 }
 
 // bashRequests routes the whole command through the tool.bash subject;
-// the store's CheckCommandFor judges it by segment.
+// the store's CheckCommandFor judges it by segment. Text the shell will
+// not run fails here, before any ask, and the model reads why (the POSIX
+// form of bash-only syntax) rather than a permission verdict.
 func bashRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
+	n := perm.Normalize(str(in["command"]))
+	if n.Fail != "" {
+		return nil, errors.New(n.Fail)
+	}
 	return []Request{{
 		Subject: perm.SubjectBash, Arg: str(in["command"]), Description: str(in["about"]),
-		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true,
+		Unsandboxed: in["sandbox"] == false, Network: in["network"] == true, cmd: &n,
 	}}, nil
 }
 

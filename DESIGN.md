@@ -1969,7 +1969,8 @@ provenance string.
   mvdan.cc/sh's `syntax` package (no hand scanner) as the shell that runs
   it reads it. Where `proc.Shell` is dash (macOS since 10.15, Debian,
   Ubuntu) the command is parsed once, as POSIX sh, which is how dash reads
-  it, and any parse error fails the call before it runs: bash-only syntax
+  it, and any parse error fails the call before it runs, before any ask
+  too, the tool's result being the reason alone: bash-only syntax
   fails naming the POSIX form to write (`&>` is `>file 2>&1` there,
   `<( )` a file or a pipe), and so do `$'..'`, which an older dash reads
   as `$` and a quote and a newer one decodes, and `[[` and `source`,

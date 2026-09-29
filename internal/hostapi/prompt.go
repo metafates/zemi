@@ -19,6 +19,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -520,7 +521,7 @@ func (h *Host) environmentPrompt() string {
 		return env
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n\n# Environment\nWorking directory: %s\nPlatform: %s/%s\nDate at session start: %s\n", h.Dirs.ProjectDir, runtime.GOOS, runtime.GOARCH, time.Now().Format(time.DateOnly))
+	fmt.Fprintf(&b, "\n\n# Environment\nWorking directory: %s\nPlatform: %s/%s\nShell: %s\nDate at session start: %s\n", h.Dirs.ProjectDir, runtime.GOOS, runtime.GOARCH, filepath.Base(proc.Shell()), time.Now().Format(time.DateOnly))
 	// the run's own pad goes in {Scratch}: a subagent's may be another
 	// session's
 	h.ensureScratch()
