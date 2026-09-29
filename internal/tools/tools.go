@@ -541,7 +541,18 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	case netFail:
 		line = "no network here" + or(net, ": call it again with network: true, which keeps the rest of the sandbox (needs approval)")
 	case has(is(hidden)):
-		line = l.root + " is hidden from commands: read it with the read, glob and grep tools" + or(all, ", or call it again with sandbox: false (needs approval)")
+		root := l.root
+		if home, _ := os.UserHomeDir(); home != "" {
+			if rel, in := perm.Under(home, root); in {
+				root = "~/" + rel
+			}
+		}
+		// a credential dir is no place to send the read tool either
+		if p.Secret != nil && p.Secret(l.root) {
+			line = root + " holds credentials and is hidden from commands" + or(all, "; if the command needs them, call it again with sandbox: false (needs approval)")
+			break
+		}
+		line = root + " is hidden from commands: read it with the read, glob and grep tools" + or(all, ", or call it again with sandbox: false (needs approval)")
 	case b.HidesSecretFiles && has(func(l limit) bool {
 		return perm.PathIsStrictSecret(l.path) || strings.HasPrefix(filepath.Base(l.path), ".env.")
 	}):

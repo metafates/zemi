@@ -117,6 +117,10 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 			"/h/zemi is hidden from commands: read it with the read, glob and grep tools, or call it again with sandbox: false (needs approval).",
 		},
 		{
+			"hidden credentials", "cat: /h/.ssh/id: Operation not permitted", false, false, false, false, false,
+			"/h/.ssh holds credentials and is hidden from commands; if the command needs them, call it again with sandbox: false (needs approval).",
+		},
+		{
 			"secret", "cat: PROJ/.env: Operation not permitted", false, false, false, false, !b.HidesSecretFiles,
 			"secret-shaped files (.env, *.pem, *.key) are unreadable to commands, in $TMPDIR too: if the file holds no secret, give it another name; if the command needs a real one, call it again with sandbox: false (needs approval).",
 		},
@@ -158,12 +162,12 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 			if c.skip {
 				t.Skip("the backend hides no secret-shaped files")
 			}
-			p := &Pipeline{SandboxParam: !c.noParam, Plan: func() bool { return c.plan }, Pad: "/pad/s1"}
+			p := &Pipeline{SandboxParam: !c.noParam, Plan: func() bool { return c.plan }, Pad: "/pad/s1", Secret: func(path string) bool { return filepath.Base(path) == ".ssh" }}
 			pol := &sandbox.Policy{
 				Network: c.network,
 				Write:   []string{proj, "/pad/s1", "/cache/go-build"},
 				Protect: []string{filepath.Join(proj, ".agents"), filepath.Join(proj, ".git"), filepath.Join(proj, ".venv", "bin")},
-				Hide:    []string{"/h/zemi"},
+				Hide:    []string{"/h/zemi", "/h/.ssh"},
 				Env:     map[string]string{"TMPDIR": "/pad/s1", "TMP": "/pad/s1", "GOCACHE": "/cache/go-build"},
 			}
 			if c.noPad {
