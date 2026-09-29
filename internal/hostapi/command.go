@@ -257,7 +257,7 @@ func (h *Host) CommandFailed(name string, err error) {
 
 // SendPrompt sends a prompt as the composer would: one naming a registered
 // command runs it with its attachment, so /review, /workflow and the
-// markdown commands reach a script or a git hook; anything else is
+// markdown commands reach a script, a git hook or a loop; anything else is
 // a message for the model.
 func (h *Host) SendPrompt(prompt string) error {
 	typed, attached := agent.CutAttached(prompt)

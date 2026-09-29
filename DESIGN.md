@@ -1043,6 +1043,17 @@ run` exits 1 when the chain leaves the goal set. Lua reads it (`ctx.goal`,
 `ctx.agent.checking_goal`) and does not drive it: the check must hold the
 claim, and a plugin-driven chain of turns is what `zemi run` refuses.
 
+`/loop [interval] <prompt>` sends a prompt again while the session stays
+open in this zemi: every interval (1m to 24h), or, with none, when the model
+says in its reply's last line (`next: 10m`, 1m to 1h, 20m when it names none;
+`next: done` ends the loop). The first run goes at once. A run is a message
+with the prompt in a note, or a command with the note attached, sent only
+when the agent is idle (a busy one delays it 30s), and each is a notice row.
+One loop per session; it is never stored, so a resumed session starts
+nothing on its own, and it stops on `/loop stop`, a session change, an
+interrupted or failed run, and after 72h. `zemi run` refuses it: a process
+that stayed up for it would be a daemon nobody asked for.
+
 Session/message persistence and cost/token accounting mirror crush's model
 (SQLite, summary message, todos), simplified: sessions, messages (JSON parts),
 tool-call telemetry.
@@ -1729,7 +1740,8 @@ provenance string.
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; `r` resumes the selected session, `x` opens its Delete, enter offers both), `/resume [id]` (latest without an id; history and
   transcript rebuilt from the store), `/compact`, `/goal <condition>` (work until
-  it holds, §6.3; alone, what it spent; `stop` drops it), `/btw <question>` (a side question
+  it holds, §6.3; alone, what it spent; `stop` drops it), `/loop [interval] <prompt>`
+  (§6.3; alone, what it ran; `stop` stops it), `/btw <question>` (a side question
   answered in an overlay, on stdout in `zemi run`, from the conversation so far,
   never stored), `/health` (one row per check, problems first: store, model
   key, context window, git,

@@ -63,6 +63,21 @@ zemi.ui.widget.add({
 	end,
 })
 
+-- The session's loop and when its next run fires, five cells whatever the
+-- time, so a reschedule moves nothing.
+zemi.ui.widget.add({
+	id = "statusline.loop",
+	region = "statusline.left",
+	priority = 21,
+	on_click = run_click,
+	---@param ctx zemi.WidgetCtx
+	---@return zemi.Line[]
+	render = function(ctx)
+		if not ctx.loop then return {} end
+		return { fmt.hint("↻ " .. os.date("%H:%M", ctx.loop.next), "/loop", "loop") }
+	end,
+})
+
 -- Subagents at work: the turn's own, background ones, workflows and Lua.
 zemi.ui.widget.add({
 	id = "statusline.agents",

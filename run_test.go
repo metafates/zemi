@@ -305,6 +305,7 @@ func TestRunScreenCommands(t *testing.T) {
 		{"/lsp", "", "zemi: /lsp needs the TUI\n", 1},
 		{"/btw why", "why", "", 0},
 		{"/goal", "", "zemi: /goal needs the TUI\n", 1},
+		{"/loop 5m check", "", "zemi: /loop needs the TUI; from a shell, run zemi run in a loop or from cron\n", 1},
 		// the fake model says what follows "say " in the goal, the check too
 		{"/goal say MET: yes", "MET: yes", "", 0},
 		{"/goal say BLOCKED: needs a key", "BLOCKED", "zemi: goal blocked: needs a key\n", 1},

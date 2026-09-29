@@ -1567,6 +1567,14 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		gt.RawSetString("reason", glua.LString(sanitize.String(g.Reason)))
 		tb.RawSetString("goal", gt)
 	}
+	if l, ok := h.Loop(); ok {
+		lt := L.CreateTable(0, 4)
+		lt.RawSetString("prompt", glua.LString(sanitize.String(l.Prompt)))
+		lt.RawSetString("every", glua.LNumber(l.Every.Seconds()))
+		lt.RawSetString("next", glua.LNumber(l.Next.Unix()))
+		lt.RawSetString("runs", glua.LNumber(l.Runs))
+		tb.RawSetString("loop", lt)
+	}
 	// Showing an agent run, the chat renders its transcript alone: the
 	// session's live turn and todos stay out of it.
 	run := h.viewedRun()

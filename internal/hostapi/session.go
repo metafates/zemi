@@ -259,6 +259,11 @@ func (h *Host) closeSession(open func()) error {
 	ag.dropPin()
 	ag.todoInProgress, ag.todoSteps, ag.todoPending, ag.todoNag = "", 0, false, ""
 	ag.goal, ag.goalRuns = nil, 0
+	// the loop ran in the conversation leaving view: it stops without a word
+	if ag.loopStop != nil {
+		ag.loopStop()
+	}
+	ag.loop, ag.loopStop = nil, nil
 	if open != nil {
 		open()
 	}

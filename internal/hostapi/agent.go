@@ -209,6 +209,10 @@ type agentHost struct {
 	goal         *Goal
 	goalRuns     int
 	checkingGoal bool
+	// loop is the session's loop (/loop), nil for none; loopStop stops its
+	// armed timer
+	loop     *Loop
+	loopStop func() bool
 
 	// titled is false for a new session until its first exchange named it
 	// (autoTitle); firstUser is that session's first message.
@@ -640,6 +644,7 @@ func (h *Host) runTurns(runner *agent.Runner, scope *turnScope, text string) {
 			h.compactReporting(scope.ctx, runner, compactAuto, "")
 		}
 		err := h.sendCompacting(scope.ctx, runner, text)
+		h.loopTurnEnded(runner, text, err, scope.ctx.Err() != nil)
 		scope, text = h.nextTurn(scope, err)
 	}
 }

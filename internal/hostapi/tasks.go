@@ -455,10 +455,13 @@ var reportAttrs = regexp.MustCompile(`<agent-report run="([^"]*)" agent="([^"]*)
 // NOTE: text that carries the marker itself still draws one.
 var pluginSent = regexp.MustCompile(`(?:\A|` + regexp.QuoteMeta(agent.AttachMarker) + `)\n<(plugin:[^>\s]+)>\n([^\n]*)`)
 
+// loopRun is a /loop run's note, read the way pluginSent is.
+var loopRun = regexp.MustCompile(`(?:\A|` + regexp.QuoteMeta(agent.AttachMarker) + `)\n<loop>\nRun (\d+) of: ([^\n]*)`)
+
 // reportHeads rebuilds the notice rows from the reports behind a message's
-// agent.AttachMarker (a joined queue may carry several), the plugins' sends
-// and the planner's nudge, so a reply that follows no user row says why;
-// none for none of them.
+// agent.AttachMarker (a joined queue may carry several), the plugins' sends,
+// the loop's runs and the planner's nudge, so a reply that follows no user
+// row says why; none for none of them.
 func reportHeads(tail string) []string {
 	var heads []string
 	for _, m := range reportAttrs.FindAllStringSubmatch(tail, -1) {
@@ -466,6 +469,9 @@ func reportHeads(tail string) []string {
 	}
 	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
 		heads = append(heads, m[1]+": "+clipRunes(sanitize.String(m[2]), 200))
+	}
+	for _, m := range loopRun.FindAllStringSubmatch(tail, -1) {
+		heads = append(heads, "loop run "+m[1]+": "+clipRunes(sanitize.String(m[2]), 200))
 	}
 	if strings.Contains(tail, planNudgeText) {
 		heads = append(heads, "Asked the planner to end with the plan or question tool.")

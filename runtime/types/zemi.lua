@@ -716,6 +716,13 @@ function zemi.event.stats() end
 ---@field turns integer Turns it was checked after.
 ---@field reason string The last check, "not yet: <why>" or "blocked: <why>"; "" before the first.
 
+--- The session's loop (/loop).
+---@class zemi.LoopCtx
+---@field prompt string What each run sends.
+---@field every integer Seconds between runs; 0 while the model paces them.
+---@field next integer When the next run fires, in unix seconds.
+---@field runs integer Runs so far.
+
 --- The live turn, as the chat widget sees it.
 ---@class zemi.AgentCtx
 ---@field active boolean
@@ -879,6 +886,7 @@ function zemi.event.stats() end
 ---@field agents_running integer Background agents of this session still running; their reports arrive as messages.
 ---@field jobs_running integer Background jobs (job_start, or a bash call that outlived its timeout) still running.
 ---@field goal? zemi.GoalCtx The session's goal while one is set (/goal).
+---@field loop? zemi.LoopCtx The session's loop while one runs (/loop).
 ---@field quit_armed boolean A second ctrl+c quits.
 ---@field interrupt_armed boolean A second esc interrupts the turn.
 ---@field key_seq string Keys of a bound sequence typed so far, space-separated; "" when none.

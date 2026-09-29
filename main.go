@@ -482,6 +482,14 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			}
 			return nil
 		}},
+		{Name: "loop", NArgs: hostapi.NArgsAny, Desc: "run a prompt again on a timer; alone, show it", GoFn: func(h *hostapi.Host, args string) error {
+			return h.SetLoop(args)
+		}, GoComplete: func(h *hostapi.Host, lead, line string) []string {
+			if _, ok := h.Loop(); ok {
+				return hostapi.SubcommandCompleter([]string{"stop"}, nil)(h, lead, line)
+			}
+			return nil
+		}},
 		{Name: "btw", NArgs: hostapi.NArgsSome, Desc: "ask a side question the conversation does not keep", GoFn: func(h *hostapi.Host, args string) error {
 			return h.Btw(args)
 		}},

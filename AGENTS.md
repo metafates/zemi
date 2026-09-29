@@ -137,7 +137,7 @@ ctrl+shift+t cycle it.
 `zemi run` and `zemi health` boot headless (`bootHeadless`, the TUI's steps without it; its
 `stderr` is `Host.Stderr`, which `zemi run` makes its view before boot, so a diagnostic prints
 above the tail). `zemi run` (`runHeadless`, run.go) runs one turn, or a goal's chain
-of them, exiting 1 when the chain leaves the goal set. It sends on `GoSafe` and polls
+of them, exiting 1 when the chain leaves the goal set (`/loop` is refused there). It sends on `GoSafe` and polls
 `Host.RunFrame` every 100 ms: `ui.RunView` renders the chat and working widgets over the
 frame with `UIState.Printed` (`ctx.headless`), printing settled rows once and, on a terminal,
 redrawing the pending rows, live turn and working rule as a tail under them; the `follower`
@@ -732,6 +732,16 @@ lua-language-server is installed.
   A message queued during the check goes instead of the note; an interrupt records nothing. Each
   verdict is a `goal` row (`goalNotice` draws it live and in `historyFrom`), and `goalIn` reads
   the goal back on resume and rewind; no other reader looks at role `goal`.
+- **Loops.** `/loop [interval] <prompt>` (loop.go, `Host.SetLoop`; the TUI only) keeps one
+  `Loop` per live session in this process: never stored, stopped by `/loop stop`,
+  `closeSession`, an interrupted or failed run, `next: done` and `loopExpiry`. Its timer is
+  `lua.Clock.AfterFunc`, so the fake clock drives it in tests. `fireLoop` sends like the user
+  would, through `Host.SendPrompt`: the note alone behind `agent.Attached("loop")`, which
+  `reportHeads` draws as a `loop run N` notice, or after a command prompt as its attachment. It
+  arms the next run before sending (the interval, or `loopFallback` for a self-paced loop), and
+  a busy agent re-arms it `loopRetry` later with `Next` kept. `loopTurnEnded` (in `runTurns`)
+  knows a loop run by `loopTag` in the turn's text and reads a self-paced run's last line
+  (`parseNext`: `next: 10m`, clamped to 1m..1h, or `next: done`).
 - **Side questions.** `/btw` (`Host.btw`) sends `Runner.Snapshot` (mid-turn, the running
   step's input) plus the question on the runner the next send would build, one step through
   `Runner.Aside`: same tools and tool choice, since Anthropic drops the message cache when

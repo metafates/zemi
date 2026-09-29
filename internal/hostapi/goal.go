@@ -151,18 +151,19 @@ func (h *Host) openGoal() error {
 	}
 	ui.OpenOverlay(Overlay{
 		ID: "goal", Title: "Goal", Origin: lua.OriginBuiltin,
-		Fields: []Field{{"goal", g.Condition}, {"running", running}, {"spent", h.goalSpend(g)}, {"last", g.Reason}},
-		Items: []any{map[string]any{"text": "Stop the goal", "run": "goal stop", "verb": "stop"}},
+		Fields: []Field{{"goal", g.Condition}, {"running", running}, {"spent", h.spentSince(g.Tokens, g.Cost)}, {"last", g.Reason}},
+		Items:  []any{map[string]any{"text": "Stop the goal", "run": "goal stop", "verb": "stop"}},
 	})
 	return nil
 }
 
-// goalSpend is what the session spent since g was set; $ only with a price.
-func (h *Host) goalSpend(g Goal) string {
+// spentSince is what the session spent since it had spent tokens and cost;
+// $ only with a price.
+func (h *Host) spentSince(tokens int64, cost float64) string {
 	s := h.AgentStream()
-	out := fmtTokens(s.SessionIn+s.SessionOut-g.Tokens) + " tokens"
-	if cost := s.SessionCost - g.Cost; cost > 0 {
-		out += fmt.Sprintf(", $%.2f", cost)
+	out := fmtTokens(s.SessionIn+s.SessionOut-tokens) + " tokens"
+	if spent := s.SessionCost - cost; spent > 0 {
+		out += fmt.Sprintf(", $%.2f", spent)
 	}
 	return out
 }
@@ -199,7 +200,7 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	ag.mu.Unlock()
 	row := goalRow{Event: ev, Text: reason}
 	if ev == goalMet {
-		row.Detail = fmt.Sprintf("%d %s, %s, %s", g.Turns, plural(g.Turns, "turn", "turns"), fmtDuration(time.Since(g.Since)), h.goalSpend(*g))
+		row.Detail = fmt.Sprintf("%d %s, %s, %s", g.Turns, plural(g.Turns, "turn", "turns"), fmtDuration(time.Since(g.Since)), h.spentSince(g.Tokens, g.Cost))
 	}
 	h.recordGoal(sid, row)
 	if ev != goalNotYet {
