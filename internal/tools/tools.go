@@ -536,12 +536,12 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	switch {
 	case plan && has(func(l limit) bool { _, in := perm.Under(project, l.path); return in && l.kind != hidden }):
 		return "\nSandbox: the project is read-only to this agent; describe the change instead of making it." + or(net && netFail, " network: true adds the network (needs approval).")
-	case sandbox.Killed(err):
-		line = "it was killed by a signal, as a program that needs the window server or a system service is when confined (a browser, a GUI app, docker)"
+	case sandbox.Killed(out, err):
+		line = "it died from a signal: if it needs a system service (a browser, a GUI app, docker), "
 		if all {
-			line += ": call it again with sandbox: false (needs approval)"
+			line += "call it again with sandbox: false (needs approval); a crash of its own repeats there"
 		} else {
-			line += "; it cannot run here: do not retry it another way, say what you could not check"
+			line += "it cannot run here: say what you could not check"
 		}
 	case pol.Network && netFail:
 		line = "it had the network already" + or(all, "; sandbox: false drops every limit (needs approval)")
@@ -563,7 +563,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 		line = workRel(l.root) + " is read-only to commands"
 		switch {
 		case pol.Git == l.root:
-			line = workRel(l.path) + " is read-only to commands: git runs or follows what it names" + or(all, "; call it again with sandbox: false (needs approval)")
+			line = workRel(l.path) + " is read-only to commands: git would run what it names" + or(all, "; call it again with sandbox: false (needs approval)")
 		case filepath.Base(l.root) == ".agents":
 			line += ": create and edit files there with the write and edit tools"
 		case slices.Contains(strings.Split(l.root, string(filepath.Separator)), ".git"):

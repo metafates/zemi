@@ -2406,13 +2406,18 @@ provenance string.
   retry line are left out and the denial is by `network` or `unsandboxed`). A
   confined run that fails with output that looks like a denial, with
   none and an exit status above 1, like a silent `curl -s`, or from a
-  signal (`sandbox.Killed`: its own death or the shell's 128+n, "Abort
-  trap: 6", which is how a browser or GUI app dies once seatbelt denies the
-  window server and the other mach services it needs, printing no path)
+  crash signal (`sandbox.Killed`: abort, trap, kill, segfault, bus error,
+  illegal instruction or bad system call, as its own death, the shell's
+  128+n, or the shell's "Abort trap: 6" line, which a pipe leaves in a
+  command that exits 0; this is how a browser or GUI app dies once
+  seatbelt denies the window server and the other mach services it
+  needs, printing no path; never a hangup, so git's usage exit 129 is
+  none, nor a job `job_kill` or `/agents kill` stopped)
   (`sandbox.LikelyDenied`, a heuristic, over a job's whole retained tail)
   gets one line naming the limit the denied path hit and the one next step:
-  a signal (`sandbox: false`, or, where the schema has no escape, stop and
-  say what could not be checked), the network (`sandbox.LikelyNetwork`, `network: true`), a hidden path (the
+  a signal (if the program needs a system service, `sandbox: false`, where
+  a crash of its own repeats; where the schema has no escape, say what
+  could not be checked), the network (`sandbox.LikelyNetwork`, `network: true`), a hidden path (the
   file tools), a secret-shaped name, a protected one (`.agents`: the write
   tool), the system temp dir (`$TMPDIR`), a path outside every write root
   (the roots by name, `Policy.WriteNames`); the path words come from the

@@ -186,6 +186,10 @@ func runShell(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	if b.Len() == 0 {
 		b.WriteString("(no output)")
 	}
+	if p.Sandboxed != nil {
+		// a crash a pipe hid from the exit status
+		b.WriteString(p.sandboxHint(p.Sandboxed, raw, nil))
+	}
 	b.WriteString(note)
 	return changed(fantasy.NewTextResponse(b.String()))
 }

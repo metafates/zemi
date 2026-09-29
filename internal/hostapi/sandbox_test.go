@@ -318,7 +318,7 @@ func TestSandboxedGit(t *testing.T) {
 		{"rebase asks", "git rebase -q HEAD~1", "", false, "", "git rebase writes what the sandbox keeps read-only"},
 		{"config asks", "git config core.hooksPath /tmp/x", "", false, "", "git config writes what the sandbox keeps read-only"},
 		{"push asks", "git push", "", false, "", "git push reaches the network"},
-		{"config through a script", "printf 'git config core.hooksPath /tmp/x\\n' > $TMPDIR/c.sh && sh $TMPDIR/c.sh", "", false, ".git/config is read-only to commands: git runs or follows what it names; call it again with sandbox: false", ""},
+		{"config through a script", "printf 'git config core.hooksPath /tmp/x\\n' > $TMPDIR/c.sh && sh $TMPDIR/c.sh", "", false, ".git/config is read-only to commands: git would run what it names; call it again with sandbox: false", ""},
 		{"a hook write", "echo x > .git/hooks/pre-commit", "", false, ".git/hooks/pre-commit is read-only to commands", ""},
 		{"a hook that writes outside", "git commit -q --allow-empty -m b", hook, false, "/tmp is not writable", ""},
 	} {
@@ -718,7 +718,7 @@ func TestSandboxPrompt(t *testing.T) {
 		}, []string{"read-only to this agent"}},
 		{"trusted with a .git dir", true, true, false, true, true, []string{
 			".agents and .git's config and hooks are read-only to them",
-			"git commit and checkout run, git config, remote, push and fetch ask the user first.",
+			"git commit, checkout and stash run confined; git config, remote, rebase, push and fetch ask the user first.",
 		}, []string{"change .git"}},
 		{"read-only agent", true, true, true, true, false, []string{
 			"They write only $TMPDIR and $GOCACHE: the project is read-only to this agent.\n",

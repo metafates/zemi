@@ -78,6 +78,21 @@ func TestJobReadSandboxHint(t *testing.T) {
 			t.Errorf("param %v: the hint came twice: %q", param, got)
 		}
 	}
+	// a job job_kill stopped died from zemi's signal, not the sandbox's
+	p := &Pipeline{Jobs: NewJobs(), SandboxParam: true}
+	c := proc.Command("sleep", "100")
+	if err := proc.Start(c); err != nil {
+		t.Fatal(err)
+	}
+	wait := make(chan error, 1)
+	go func() { wait <- proc.Wait(c) }()
+	id := p.Jobs.Adopt("sleep 100", c, &proc.Buffer{Max: 1 << 20}, 0, wait, &sandbox.Policy{}, func() string { return "" })
+	runJobKill(context.Background(), p, map[string]any{"id": id})
+	j, _ := p.Jobs.Get(id)
+	<-j.done
+	if res, _ := runJobRead(context.Background(), p, map[string]any{"id": id}); strings.Contains(res.Content, "Sandbox:") {
+		t.Errorf("a killed job got the hint: %q", res.Content)
+	}
 }
 
 // TestEscapesOnlyWhereOffered: shell and job_start name network and sandbox
@@ -151,7 +166,7 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 		},
 		{
 			"a code part of an open .git", "error: could not lock config file PROJ/.git/config: Operation not permitted", false, false, false, false, false, false, true,
-			".git/config is read-only to commands: git runs or follows what it names; call it again with sandbox: false (needs approval).",
+			".git/config is read-only to commands: git would run what it names; call it again with sandbox: false (needs approval).",
 		},
 		{
 			"a PATH dir", "pip: PROJ/.venv/bin/x: Operation not permitted", false, false, false, false, false, false, false,
@@ -172,11 +187,11 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 		},
 		{
 			"killed by a signal", "Abort trap: 6", false, false, false, false, false, true, false,
-			"it was killed by a signal, as a program that needs the window server or a system service is when confined (a browser, a GUI app, docker): call it again with sandbox: false (needs approval).",
+			"it died from a signal: if it needs a system service (a browser, a GUI app, docker), call it again with sandbox: false (needs approval); a crash of its own repeats there.",
 		},
 		{
 			"killed by a signal under -p", "Abort trap: 6", false, true, false, false, false, true, false,
-			"it was killed by a signal, as a program that needs the window server or a system service is when confined (a browser, a GUI app, docker); it cannot run here: do not retry it another way, say what you could not check.",
+			"it died from a signal: if it needs a system service (a browser, a GUI app, docker), it cannot run here: say what you could not check.",
 		},
 		{
 			"nothing classified", "open x: operation not permitted", false, false, false, false, false, false, false,
@@ -368,11 +383,24 @@ func TestFileToolsSymlinkRace(t *testing.T) {
 // sent, and a failure ends in its exit status.
 func TestShellResultText(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct{ cmd, want string }{
-		{`printf 'a\0b'`, "(binary output, 3 bytes)"},
-		{"echo hi; exit 3", "hi\nexit status 3"},
+	_, noBackend := sandbox.Probe()
+	for _, tc := range []struct {
+		cmd, want string
+		confined  bool
+	}{
+		{`printf 'a\0b'`, "(binary output, 3 bytes)", false},
+		{"echo hi; exit 3", "hi\nexit status 3", false},
+		// the shell's report of a crash a pipe hid from the exit status
+		{"echo 'Abort trap: 6'", "Abort trap: 6\nSandbox: it died from a signal: if it needs a system service (a browser, a GUI app, docker), it cannot run here: say what you could not check.", true},
 	} {
-		res, _ := runShell(context.Background(), &Pipeline{}, map[string]any{"command": tc.cmd})
+		p := &Pipeline{}
+		if tc.confined {
+			if noBackend != nil {
+				continue
+			}
+			p.Sandboxed = &sandbox.Policy{}
+		}
+		res, _ := runShell(context.Background(), p, map[string]any{"command": tc.cmd})
 		if res.Content != tc.want {
 			t.Errorf("%s: %q, want %q", tc.cmd, res.Content, tc.want)
 		}

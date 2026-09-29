@@ -255,7 +255,7 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 			b.WriteString(": write .agents files with the write tool")
 		}
 		if pol.Git != "" {
-			b.WriteString("; git commit and checkout run, git config, remote, push and fetch " + ask + ".\n")
+			b.WriteString(". git commit, checkout and stash run confined; git config, remote, rebase, push and fetch " + ask + ".\n")
 		} else {
 			b.WriteString("; git commands that change .git " + ask + ".\n")
 		}

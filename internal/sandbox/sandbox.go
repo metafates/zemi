@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"unicode"
 
 	"github.com/metafates/zemi/internal/perm"
@@ -128,13 +129,13 @@ const deniedTail = 8 << 10
 // and a program's own EPERM reads as denied.
 func LikelyDenied(out string, err error) bool {
 	if err == nil {
-		return false
+		return Killed(out, nil)
 	}
 	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 		switch code := ee.ExitCode(); {
 		case code == 126 || code == 127: // not executable, not found
 			return false
-		case Killed(err):
+		case Killed(out, err):
 			return true
 		case code > 1 && strings.TrimSpace(out) == "":
 			// a silent failure (curl -s) has no text to match; exit 1 is
@@ -145,17 +146,33 @@ func LikelyDenied(out string, err error) bool {
 	return denied.MatchString(out[max(0, len(out)-deniedTail):] + "\n" + err.Error())
 }
 
-// Killed reports a command that died from a signal, itself (exit code -1)
-// or as the shell reports a child (128+n, "Abort trap: 6"): a confined
-// program crashes when a service it needs is denied, printing no path.
-func Killed(err error) bool {
-	ee, ok := errors.AsType[*exec.ExitError](err)
-	if !ok {
-		return false
+// Killed reports a command that died from a signal a confined program gets
+// when a service it needs is denied, printing no path: the process itself,
+// a child the shell reports by its 128+n exit, or the shell's report line,
+// which a pipe (| tail) leaves in the output of a command that exits 0.
+func Killed(out string, err error) bool {
+	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
+		sig := syscall.Signal(ee.ExitCode() - 128)
+		if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			sig = ws.Signal()
+		}
+		if sig > 0 && crashSignal.MatchString(sig.String()) {
+			return true
+		}
 	}
-	code := ee.ExitCode()
-	return code == -1 || code > 128 && code < 128+32
+	return shellReport.MatchString(out[max(0, len(out)-deniedTail):])
 }
+
+// crash is a signal a denial crashes a program with, as strsignal spells it
+// on macOS and Linux; never a hangup (129 is git's usage exit), an interrupt
+// or a term, which come from outside.
+const crash = `(?:Abort trap|Aborted|Killed|Bad system call|Trace/BPT trap|Trace/breakpoint trap|Segmentation fault|Bus error|Illegal instruction)(?:: \d+)?(?: \(core dumped\))?`
+
+var (
+	crashSignal = regexp.MustCompile(`(?i)^` + crash + `$`)
+	// dash's "Abort trap: 6", bash's "sh: line 1: 4242 Abort trap: 6   chrome"
+	shellReport = regexp.MustCompile(`(?m)^(?:` + crash + `|.*: line \d+: +\d+ ` + crash + ` .*)$`)
+)
 
 // network matches the half of a denial that a socket would fix: a failed
 // lookup, a refused or unreachable connection, a TLS handshake that never
@@ -167,7 +184,7 @@ var network = regexp.MustCompile(`(?i)could not resolve host|` + deniedLookups +
 // LikelyNetwork reports a failure the network tier would fix, so the hint
 // can offer network: true before the full escape.
 func LikelyNetwork(out string, err error) bool {
-	if !LikelyDenied(out, err) {
+	if err == nil || !LikelyDenied(out, err) {
 		return false
 	}
 	return network.MatchString(out[max(0, len(out)-deniedTail):] + "\n" + err.Error())

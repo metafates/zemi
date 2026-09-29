@@ -47,6 +47,7 @@ type Job struct {
 	after  func() string // runs at exit (Pipeline.Guard)
 	note   string        // what after returned
 	told   bool          // the exit's hint and note were read
+	killed bool          // Jobs.Kill ended it, so its signal is no sandbox's
 	sent   [2]int64      // bytes of stdout/stderr already read, see since
 	mu     sync.Mutex
 }
@@ -272,6 +273,9 @@ func (m *Jobs) Kill(id string) error {
 	if !j.Running() {
 		return fmt.Errorf("%s already exited", id)
 	}
+	j.mu.Lock()
+	j.killed = true
+	j.mu.Unlock()
 	proc.Kill(j.cmd)
 	return nil
 }
@@ -353,12 +357,15 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 	}
 	if !running && j.policy != nil {
 		j.mu.Lock()
-		werr, note, told := j.werr, j.note, j.told
+		werr, note, told, killed := j.werr, j.note, j.told, j.killed
 		j.told = true
 		j.mu.Unlock()
-		if !told {
+		if !told && !killed {
 			// the whole retained tail: a denial may have been read while it ran
-			b.WriteString(p.sandboxHint(j.policy, j.Output(), werr) + note)
+			note = p.sandboxHint(j.policy, j.Output(), werr) + note
+		}
+		if !told {
+			b.WriteString(note)
 		}
 	}
 	return fantasy.NewTextResponse(b.String()), nil
