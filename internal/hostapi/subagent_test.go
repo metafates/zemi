@@ -561,9 +561,9 @@ func TestAgentsList(t *testing.T) {
 		not  []string
 	}{
 		{id, []string{"up", "hotkey:s run:agents kill " + id}, nil},
-		{"reviewer", []string{"[path ", "reviewer.md]", "[read only yes]", "run:agents open reviewer"}, nil},
-		{"general", []string{"[read only no]"}, []string{"[path ", "actions:"}},
-		{"explore", []string{"[read only yes]"}, []string{"actions:"}},
+		{"reviewer", []string{"[path ", "reviewer.md]", "[access read only]", "run:agents open reviewer"}, nil},
+		{"general", []string{"[access can change files]"}, []string{"[path ", "actions:"}},
+		{"explore", []string{"[access read only]"}, []string{"actions:"}},
 	} {
 		for _, w := range c.want {
 			if !strings.Contains(rows[c.row], w) {

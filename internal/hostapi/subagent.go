@@ -1014,12 +1014,12 @@ func (h *Host) openAgents() error {
 		items = append(items, item)
 	}
 	for _, d := range defs {
-		model, tools, readOnly := cmp.Or(d.Model, "agents"), "every tool a subagent may use", "no"
+		model, tools, access := cmp.Or(d.Model, "agents"), "every tool a subagent may use", "can change files"
 		if d.Tools != nil {
 			tools = strings.Join(d.Tools, ", ")
 		}
 		if d.ReadOnly {
-			readOnly = "yes"
+			access = "read only"
 		}
 		item := map[string]any{
 			"text":    d.Name,
@@ -1027,7 +1027,7 @@ func (h *Host) openAgents() error {
 			"section": sourceSection(d.Source) + " agents", // apart from the runs above
 			"detail":  d.Description,
 		}
-		fields := []string{"source", h.sourceOf(d.Source, d.Path), "model", model, "tools", tools, "read only", readOnly}
+		fields := []string{"source", h.sourceOf(d.Source, d.Path), "model", model, "tools", tools, "access", access}
 		if d.Path != "" {
 			fields = append(fields, "path", perm.TildePath(d.Path))
 			item["actions"] = []any{map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "agents open " + d.Name}}
