@@ -450,7 +450,7 @@ schema see it.
 and never the shared system temp dir, `GOCACHE` per trust root, the project writable only when
 it is trusted, outside zemi's own dirs and on a backend that can protect paths inside it
 (`Backend.EnforcesProtect`), `.git`, `.agents` and every `PATH` dir under a write root read-only
-because zemi runs git, sh and servers unconfined by name, home credential paths hidden (`homes`),
+because zemi runs git, the shell and servers unconfined by name, home credential paths hidden (`homes`),
 the secret shapes hidden in the pad too (a command can move a directory there), and a local plugin's code readable back
 (`plugin.Code`, `Policy.Read`, `Policy.List`) so `zemi plugins test` runs confined. The
 repo's `.agents/worktrees` (`Dirs.WorktreesDir`) is a write root of its own, ignored by the `/*`
@@ -1049,7 +1049,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   composer closes a toggle list, which would keep the keys. A row's `verb` names enter's action
   in the hint and keeps space from toggling it.
 - **Every child process goes through `internal/proc`** (bash tool, `!command`, jobs, Lua jobs,
-  MCP and LSP servers, git). A child runs in its own session: no controlling terminal (nothing
+  MCP and LSP servers, git). The model's command lines (bash, `job_start`, and so an adopted job)
+  start through `proc.ShellCommand`: `proc.Shell` is dash where `PATH` has one, looked up once
+  per process, else sh; the user's `!command` runs sh. A child runs in its own session: no controlling terminal (nothing
   can read the TUI's keys or hang on a password prompt) and its own process group, which
   cancel, timeout, `proc.Wait` and `proc.KillAll` on exit kill whole. A plain `exec.Command`
   here is a bug (a cancelled `sh -c` pipeline once hung the turn forever), with three exceptions:

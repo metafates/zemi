@@ -2085,8 +2085,9 @@ provenance string.
   targets gate as `fs.write`, and only the inert character devices
   `/dev/null` and `/dev/zero` are exempt from both (`/dev/tty` and
   every other device file gates like any outside-jail path). Every
-  bash call runs in a fresh `sh -c` process: no fd, cwd, or env state
-  persists between calls. Defaults: `fs.read` inside the jail is allow,
+  bash call runs in a fresh shell process (`proc.Shell -c`: dash where
+  it is on `PATH`, looked up once per process, else sh): no fd, cwd, or
+  env state persists between calls. Defaults: `fs.read` inside the jail is allow,
   `fs.write` is ask. Config ships conservative defaults; prompts during a
   session add session rules. Evaluation order: `deny`
   beats `ask` beats `allow` regardless of registration order; within one
@@ -2300,7 +2301,7 @@ provenance string.
   directory a `PATH` dir, and the backend keeps protected paths
   read-only inside it (`Backend.EnforcesProtect`); `.git` (and a `gitdir:`
   target), `.agents` (its `worktrees` aside, a write root of its own), zemi's dirs and every `PATH` dir inside a write root
-  (an activated `.venv/bin`: zemi runs git, sh, language servers and
+  (an activated `.venv/bin`: zemi runs git, the shell, language servers and
   clipboard helpers unconfined by name) stay read-only (the scratchpad and
   cache re-allowed); localhost network only. Seatbelt's localhost is the
   machine's; the namespace variant has a loopback of its own, so servers

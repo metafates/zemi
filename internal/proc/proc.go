@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"maps"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -57,6 +58,25 @@ func CommandContext(ctx context.Context, name string, args ...string) *exec.Cmd 
 	cmd.WaitDelay = waitDelay
 	return cmd
 }
+
+// Shell is the shell that runs the model's command lines: dash where it is
+// installed, which reads a line alike on every platform, else sh, which is
+// bash on some systems and ash on others. Looked up once, on PATH like every
+// program zemi runs by name.
+var Shell = sync.OnceValue(func() string {
+	for _, name := range []string{"dash", "sh"} {
+		if path, err := exec.LookPath(name); err == nil {
+			return path
+		}
+	}
+	return "sh"
+})
+
+// Dash reports that Shell is dash.
+func Dash() bool { return filepath.Base(Shell()) == "dash" }
+
+// ShellCommand is Command running line with Shell.
+func ShellCommand(line string) *exec.Cmd { return Command(Shell(), "-c", line) }
 
 // ErrRefused is every start's error while a Refuse holds.
 var ErrRefused = errors.New("zemi plugins test starts no process")

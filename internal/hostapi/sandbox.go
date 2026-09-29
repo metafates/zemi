@@ -184,8 +184,9 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 			p.Env["GOCACHE"] = cache
 		}
 	}
-	// zemi runs git, sh, language servers and clipboard helpers unconfined by
-	// name, so a PATH dir inside a write root (.venv/bin) must not take a binary
+	// zemi runs git, the shell (proc.Shell), language servers and clipboard
+	// helpers unconfined by name, so a PATH dir inside a write root (.venv/bin)
+	// must not take a binary
 	for _, e := range path {
 		if filepath.IsAbs(e) && h.inJail(e, p.Write...) {
 			p.Protect = append(p.Protect, e)

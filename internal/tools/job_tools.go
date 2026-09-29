@@ -140,7 +140,7 @@ func NewJobs() *Jobs {
 	return &Jobs{jobs: map[string]*Job{}}
 }
 
-// Start runs a shell line with sh -c in dir with env, confined by pol
+// Start runs a shell line with proc.Shell in dir with env, confined by pol
 // unless it is nil, and runs after once it exits; returns the
 // job id. Output is captured as it arrives, so job_read shows a server's
 // lines while it runs.
@@ -148,7 +148,7 @@ func (m *Jobs) Start(dir, line string, env []string, pol *sandbox.Policy, after 
 	if strings.TrimSpace(line) == "" {
 		return "", errors.New("command is required")
 	}
-	cmd := proc.Command("sh", "-c", line)
+	cmd := proc.ShellCommand(line)
 	cmd.Dir = dir
 	cmd.Env = env
 	j := &Job{

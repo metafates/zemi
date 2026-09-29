@@ -23,6 +23,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -321,6 +322,12 @@ func (h *Host) goHealthRows() []HealthRow {
 		add(HealthWarn, "git", "not found; the prompt has no git status, glob, grep and @ completion read no .gitignore, and git commands that print file content ask")
 	} else {
 		add(HealthOK, "git", "found")
+	}
+
+	if proc.Dash() {
+		add(HealthOK, "shell", "the model's commands run in "+proc.Shell())
+	} else {
+		add(HealthOK, "shell", "no dash on PATH, so the model's commands run in "+proc.Shell()+", which may be bash; each is read as bash and as POSIX sh, and text the two read otherwise asks")
 	}
 
 	switch style, why := h.NotifyStyle(); {

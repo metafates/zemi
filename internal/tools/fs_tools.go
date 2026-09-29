@@ -94,7 +94,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	// pipelines and backgrounded children too, and nothing reads the TUI's tty.
 	// Not bound to the turn's context: a command that outlives the timeout
 	// becomes a job, which outlives the turn.
-	c := proc.Command("sh", "-c", cmd)
+	c := proc.ShellCommand(cmd)
 	c.Dir = workdir()
 	env, err := p.childEnv()
 	if err != nil {
