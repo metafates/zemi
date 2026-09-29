@@ -20,7 +20,7 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/skills"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
@@ -286,7 +286,7 @@ func TestTypesEnums(t *testing.T) {
 		{"zemi.MemoryOrigin", "", strs(store.Origins)},
 		{"zemi.TodoStatus", "", strs(store.TodoStatuses)},
 		{"zemi.ToolVerdict", "", strs(tools.PreVerdicts)},
-		{"zemi.SkillSource", "", strs(skills.Sources)},
+		{"zemi.SkillSource", "", strs(skill.Sources)},
 		{"zemi.Role", "", strs([]fantasy.MessageRole{fantasy.MessageRoleUser, fantasy.MessageRoleAssistant})},
 		{"zemi.LearnAction", "", learnActions},
 		{"zemi.HealthLevel", "", strs(healthLevels)},

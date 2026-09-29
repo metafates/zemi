@@ -27,7 +27,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/skills"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -211,7 +211,7 @@ func readFrontmatterFile(path string) (block, body string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	block, body, err = skills.SplitFrontmatter(data)
+	block, body, err = skill.SplitFrontmatter(data)
 	if err != nil {
 		return "", "", fmt.Errorf("%s: %w", path, err)
 	}

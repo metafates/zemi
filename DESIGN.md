@@ -2712,7 +2712,7 @@ internal/sandbox/           OS confinement for settled commands: seatbelt, Landl
 internal/ui/                program, regions, widgets, themes, palette, overlays,
                             composer, mouse, and zemi run's view of a run
 internal/learn/             memory intake policy: caps, scrubber, near-duplicate check, digest
-internal/skills/            SKILL.md discovery and parsing
+internal/skill/             SKILL.md discovery and parsing
 internal/store/             sqlite schema, its version stamp and queries
 internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server

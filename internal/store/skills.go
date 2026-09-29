@@ -1,6 +1,6 @@
 // skills.go is the skills table (DESIGN §7, §10.5): the
 // enabled-state store for discovered skills. Skills are user-scope: they
-// live in the global DB. Discovery (internal/skills) drives which rows
+// live in the global DB. Discovery (internal/skill) drives which rows
 // exist; SyncSkills reconciles the table with the filesystem.
 
 package store

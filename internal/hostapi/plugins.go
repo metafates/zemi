@@ -15,7 +15,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugin"
-	"github.com/metafates/zemi/internal/skills"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -243,7 +243,7 @@ type layerFile struct {
 // layerFiles hands load the <name><ext> files in sub of the user config,
 // each enabled plugin, then a trusted project's .agents. The first file of a
 // name load accepts wins, so a broken one hides nothing; /errors records a
-// name no skills.ValidName and one a plugin ships under a name another
+// name no skill.ValidName and one a plugin ships under a name another
 // plugin took first.
 func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 	var dirs []layerFile
@@ -271,7 +271,7 @@ func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 				}
 				continue
 			}
-			if !skills.ValidName(name) {
+			if !skill.ValidName(name) {
 				h.RecordErrorOnce(sub, path+": name must match [a-z0-9][a-z0-9-]*")
 				continue
 			}

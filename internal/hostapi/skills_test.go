@@ -20,7 +20,7 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/skills"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -418,7 +418,7 @@ func TestProjectSkills(t *testing.T) {
 	index := func() map[string]string {
 		got := map[string]string{}
 		for _, s := range h.enabledSkills() {
-			if s.Source != skills.Builtin {
+			if s.Source != skill.Builtin {
 				got[s.Name] = s.Description
 			}
 		}
@@ -484,7 +484,7 @@ func TestAgentsHomeSkills(t *testing.T) {
 	}
 	shared, _ := h.skillsReg.get("shared")
 	deploy, _ := h.skillsReg.get("deploy")
-	if shared.Source != skills.User || !h.skillsReg.isEnabled("shared") || deploy.Description != "the config deploy" {
+	if shared.Source != skill.User || !h.skillsReg.isEnabled("shared") || deploy.Description != "the config deploy" {
 		t.Errorf("shared %+v, deploy %q", shared, deploy.Description)
 	}
 	if h.HasUnseenErrors() {

@@ -28,7 +28,7 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/skills"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	zemiruntime "github.com/metafates/zemi/runtime"
@@ -39,24 +39,24 @@ import (
 // index read (agent goroutine), hence the mutex.
 type skillReg struct {
 	mu      sync.RWMutex
-	byName  map[string]skills.Skill
+	byName  map[string]skill.Skill
 	enabled map[string]bool
 }
 
-func (r *skillReg) set(all []skills.Skill, enabled map[string]bool) {
+func (r *skillReg) set(all []skill.Skill, enabled map[string]bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.byName = make(map[string]skills.Skill, len(all))
+	r.byName = make(map[string]skill.Skill, len(all))
 	for _, s := range all {
 		r.byName[s.Name] = s
 	}
 	r.enabled = enabled
 }
 
-func (r *skillReg) list() []skills.Skill {
+func (r *skillReg) list() []skill.Skill {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return slices.SortedFunc(maps.Values(r.byName), func(a, b skills.Skill) int { return cmp.Compare(a.Name, b.Name) })
+	return slices.SortedFunc(maps.Values(r.byName), func(a, b skill.Skill) int { return cmp.Compare(a.Name, b.Name) })
 }
 
 func (r *skillReg) isEnabled(name string) bool {
@@ -65,7 +65,7 @@ func (r *skillReg) isEnabled(name string) bool {
 	return r.enabled[name]
 }
 
-func (r *skillReg) get(name string) (skills.Skill, bool) {
+func (r *skillReg) get(name string) (skill.Skill, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.byName[name]
@@ -88,13 +88,13 @@ func (h *Host) syncSkills() {
 	if err := h.materializeBuiltinSkills(); err != nil {
 		h.Log.Warn("skills", "builtin skills not written", map[string]any{"error": err.Error()})
 	}
-	dirs := []skills.Dir{
-		{Path: h.userSkillsDir(), Source: skills.User},
-		{Path: h.agentsSkillsDir(), Source: skills.User},
-		{Path: h.builtinSkillsDir(), Source: skills.Builtin},
+	dirs := []skill.Dir{
+		{Path: h.userSkillsDir(), Source: skill.User},
+		{Path: h.agentsSkillsDir(), Source: skill.User},
+		{Path: h.builtinSkillsDir(), Source: skill.Builtin},
 	}
 	for _, p := range h.pluginDirs() {
-		dirs = append(dirs, skills.Dir{Path: filepath.Join(p, "skills"), Source: skills.Plugin})
+		dirs = append(dirs, skill.Dir{Path: filepath.Join(p, "skills"), Source: skill.Plugin})
 	}
 	found := h.discoverSkills(dirs...)
 	rows := make([]*store.Skill, 0, len(found))
@@ -160,15 +160,15 @@ func (h *Host) skillIndex() []tools.SkillInfo {
 }
 
 // enabledSkills is the registry's enabled skills, then the project's.
-func (h *Host) enabledSkills() []skills.Skill {
-	enabled := slices.DeleteFunc(h.skillsReg.list(), func(s skills.Skill) bool { return !h.skillsReg.isEnabled(s.Name) })
+func (h *Host) enabledSkills() []skill.Skill {
+	enabled := slices.DeleteFunc(h.skillsReg.list(), func(s skill.Skill) bool { return !h.skillsReg.isEnabled(s.Name) })
 	return append(enabled, h.projectOnlySkills()...)
 }
 
 // modelSkills is what the model may load: the enabled skills but the ones
 // kept for the user (disable-model-invocation).
-func (h *Host) modelSkills() []skills.Skill {
-	return slices.DeleteFunc(h.enabledSkills(), func(s skills.Skill) bool { return s.DisableModelInvocation })
+func (h *Host) modelSkills() []skill.Skill {
+	return slices.DeleteFunc(h.enabledSkills(), func(s skill.Skill) bool { return s.DisableModelInvocation })
 }
 
 // recipesDir holds a project's recipes: skills private to this machine, kept
@@ -186,11 +186,11 @@ func projectState(stateHome, root string) string {
 	return filepath.Dir(store.ProjectDBPath(stateHome, root))
 }
 
-func (h *Host) discoverRecipes() []skills.Skill {
+func (h *Host) discoverRecipes() []skill.Skill {
 	if !h.ProjectTrusted() || h.recipesDir() == "" {
 		return nil
 	}
-	return h.discoverSkills(skills.Dir{Path: h.recipesDir(), Source: skills.Recipe})
+	return h.discoverSkills(skill.Dir{Path: h.recipesDir(), Source: skill.Recipe})
 }
 
 // recipeAfterWrite checks a recipe the model just wrote and scrubs it where
@@ -227,10 +227,10 @@ func (h *Host) recipeAfterWrite(path string) string {
 	if !strings.EqualFold(filepath.Base(path), "SKILL.md") {
 		return strings.TrimSuffix(note, "\n\nrecipe: ")
 	}
-	sk, err := skills.Parse(filepath.Dir(path), skills.Recipe)
-	loads := func(s skills.Skill) bool { return s.Source == skills.Recipe && s.Name == sk.Name }
+	sk, err := skill.Parse(filepath.Dir(path), skill.Recipe)
+	loads := func(s skill.Skill) bool { return s.Source == skill.Recipe && s.Name == sk.Name }
 	switch {
-	case err != nil && !errors.Is(err, skills.ErrDescriptionCut):
+	case err != nil && !errors.Is(err, skill.ErrDescriptionCut):
 		return note + "will not load: " + strings.TrimPrefix(err.Error(), "skills: ")
 	case !slices.ContainsFunc(h.projectOnlySkills(), loads):
 		return note + "will not load: another skill is named " + sk.Name + ", or the file is not <Recipes>/<name>/SKILL.md"
@@ -244,16 +244,16 @@ func (h *Host) recipeAfterWrite(path string) string {
 
 // discoverProjectSkills scans the repository's .agents/skills, which other
 // agents share. They are body only: a zemi-skill.lua there never runs.
-func (h *Host) discoverProjectSkills() []skills.Skill {
+func (h *Host) discoverProjectSkills() []skill.Skill {
 	pdir := h.Dirs.ProjectConfigDir()
 	if pdir == "" {
 		return nil
 	}
-	return h.discoverSkills(skills.Dir{Path: filepath.Join(pdir, "skills"), Source: skills.Project})
+	return h.discoverSkills(skill.Dir{Path: filepath.Join(pdir, "skills"), Source: skill.Project})
 }
 
-func (h *Host) discoverSkills(dirs ...skills.Dir) []skills.Skill {
-	found, warns := skills.Discover(dirs...)
+func (h *Host) discoverSkills(dirs ...skill.Dir) []skill.Skill {
+	found, warns := skill.Discover(dirs...)
 	for _, w := range warns {
 		h.RecordErrorOnce("skills", strings.TrimPrefix(w, "skills: "))
 	}
@@ -263,16 +263,16 @@ func (h *Host) discoverSkills(dirs ...skills.Dir) []skills.Skill {
 // projectOnlySkills is the project's skills and recipes whose names no
 // user or builtin skill takes, enabled or not. Recipes are read live and
 // come after the repository's skills: a recipe loses every name clash.
-func (h *Host) projectOnlySkills() []skills.Skill {
+func (h *Host) projectOnlySkills() []skill.Skill {
 	recipes := h.discoverRecipes()
-	var all []skills.Skill
+	var all []skill.Skill
 	if p := h.projectSkills.Load(); p != nil {
 		all = slices.Clone(*p)
 	}
 	seen := map[string]bool{}
 	// NOTE: every recipe is a line of every prompt; past a few dozen, rank
 	// them with FTS over the descriptions.
-	return slices.DeleteFunc(append(all, recipes...), func(s skills.Skill) bool {
+	return slices.DeleteFunc(append(all, recipes...), func(s skill.Skill) bool {
 		_, taken := h.skillsReg.get(s.Name)
 		taken = taken || seen[s.Name]
 		seen[s.Name] = true
@@ -307,7 +307,7 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 	if _, err := h.GlobalDB.GetSkill(name); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			// project skills are not stored, so there is no flag to flip
-			if slices.ContainsFunc(h.projectOnlySkills(), func(s skills.Skill) bool { return s.Name == name }) {
+			if slices.ContainsFunc(h.projectOnlySkills(), func(s skill.Skill) bool { return s.Name == name }) {
 				return Usagef("skill %q belongs to this project and is on for as long as the project is trusted (/trust)", name)
 			}
 			return Usagef("no such skill %q", name)
@@ -328,10 +328,10 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 	return nil
 }
 
-func skillFile(s skills.Skill) string { return filepath.Join(s.Dir, "SKILL.md") }
+func skillFile(s skill.Skill) string { return filepath.Join(s.Dir, "SKILL.md") }
 
 // hasSkillCommand reports whether /<name> is the skill's own command.
-func (h *Host) hasSkillCommand(s skills.Skill) bool {
+func (h *Host) hasSkillCommand(s skill.Skill) bool {
 	c := h.Commands.Lookup(s.Name)
 	return c != nil && c.Path == skillFile(s)
 }
@@ -340,7 +340,7 @@ func (h *Host) hasSkillCommand(s skills.Skill) bool {
 // yields to a builtin command and to one of its own origin: a file in
 // commands/ or a zemi.command.add says "I want /x", a flag in a skill an
 // installer wrote does not. A less trusted holder is replaced.
-func (h *Host) addSkillCommand(s skills.Skill, gen Gen) {
+func (h *Host) addSkillCommand(s skill.Skill, gen Gen) {
 	origin := lua.Origin(s.Source)
 	old := h.Commands.Lookup(s.Name)
 	if old != nil && old.Path == skillFile(s) {
@@ -364,7 +364,7 @@ func (h *Host) addSkillCommand(s skills.Skill, gen Gen) {
 
 // runSkillHook evaluates one skill's zemi-skill.lua inline (we are on the
 // interpreter goroutine) as user origin: only user skills carry one.
-func (h *Host) runSkillHook(ctx context.Context, L *glua.LState, s skills.Skill) error {
+func (h *Host) runSkillHook(ctx context.Context, L *glua.LState, s skill.Skill) error {
 	if s.Hook == "" {
 		return nil
 	}
@@ -388,7 +388,7 @@ func (h *Host) SkillsUserHooksStep() lua.BootStep {
 			h.syncSkills()
 			for _, s := range h.enabledSkills() {
 				// installers write ~/.agents/skills: a hook there would run as user at every boot
-				if s.Source == skills.User && filepath.Dir(s.Dir) == h.userSkillsDir() {
+				if s.Source == skill.User && filepath.Dir(s.Dir) == h.userSkillsDir() {
 					_ = h.runSkillHook(ctx, g.L, s)
 				}
 			}
@@ -430,7 +430,7 @@ func (h *Host) skillsCommand(args string) error {
 // source lives in files the user or the repository owns.
 func (h *Host) deleteRecipe(name string, yes bool) error {
 	for _, s := range h.projectOnlySkills() {
-		if s.Name != name || s.Source != skills.Recipe {
+		if s.Name != name || s.Source != skill.Recipe {
 			continue
 		}
 		if !yes {
@@ -488,7 +488,7 @@ func (h *Host) useSkill(name, request, stdin string) error {
 
 // sendSkill sends line with the skill attached, $ARGUMENTS in it filled
 // with the request; the model loading a skill on its own sees it as written.
-func (h *Host) sendSkill(s skills.Skill, line, request, stdin string) error {
+func (h *Host) sendSkill(s skill.Skill, line, request, stdin string) error {
 	text, err := tools.SkillText(s.Dir)
 	if err != nil {
 		return err
@@ -552,7 +552,7 @@ func sortBySource[T any, S ~string](rows []T, source func(T) S) {
 
 func (h *Host) skillItems() []any {
 	all := append(h.skillsReg.list(), h.projectOnlySkills()...)
-	sortBySource(all, func(s skills.Skill) skills.Source { return s.Source })
+	sortBySource(all, func(s skill.Skill) skill.Source { return s.Source })
 	items := make([]any, 0, len(all))
 	for _, s := range all {
 		toggle := "skills toggle " + s.Name
@@ -569,7 +569,7 @@ func (h *Host) skillItems() []any {
 			state, item["on"], item["run"] = "off", false, toggle
 			actions = append(actions, map[string]any{"text": "Enable", "hotkey": "e", "run": toggle})
 		}
-		body, err := skills.Body(s.Dir)
+		body, err := skill.Body(s.Dir)
 		if err != nil {
 			body = "could not read it: " + err.Error()
 		}
@@ -582,7 +582,7 @@ func (h *Host) skillItems() []any {
 			map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "skills open " + s.Name},
 			map[string]any{"text": "Use now", "hotkey": "u", "fill": use},
 		)
-		if s.Source == skills.Recipe {
+		if s.Source == skill.Recipe {
 			item["actions"] = append(item["actions"].([]any), map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "skills delete " + s.Name + " --yes"})
 		}
 		item["fields"] = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "used by", h.usedBy(s, state == "on"), "path", TildePath(skillFile(s)))
@@ -594,7 +594,7 @@ func (h *Host) skillItems() []any {
 
 // usedBy says who runs a skill: the model through its index, the user
 // through its command.
-func (h *Host) usedBy(s skills.Skill, on bool) string {
+func (h *Host) usedBy(s skill.Skill, on bool) string {
 	var who []string
 	if on && !s.DisableModelInvocation {
 		who = append(who, "the model")

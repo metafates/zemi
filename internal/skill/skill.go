@@ -1,8 +1,8 @@
-// Package skills implements skill discovery and validation
+// Package skill implements skill discovery and validation
 // (DESIGN §10.5): SKILL.md files with yaml frontmatter (name,
 // description, the invocation fields), written under the config dir's skills/, shipped by a
 // plugin and, in a trusted project, its own skills dirs. Discovery only reports what is on disk.
-package skills
+package skill
 
 import (
 	"errors"

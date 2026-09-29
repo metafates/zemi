@@ -18,7 +18,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/skills"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -332,7 +332,7 @@ const SkillMaxOut = 64000
 
 // SkillText is a skill as the model loads it: its directory, then the body.
 func SkillText(dir string) (string, error) {
-	body, err := skills.Body(dir)
+	body, err := skill.Body(dir)
 	if err != nil {
 		return "", err
 	}

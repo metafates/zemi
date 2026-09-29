@@ -14,7 +14,7 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/skills"
+	"github.com/metafates/zemi/internal/skill"
 )
 
 // TestPluginsStep boots plugins laid out under installed/ and local/, then
@@ -261,10 +261,10 @@ func TestPluginsStep(t *testing.T) {
 			}
 			fmt.Fprintf(&out, "mode: %s\n", h.PermMode())
 			for _, s := range h.skillsReg.list() {
-				if s.Source != skills.Builtin {
+				if s.Source != skill.Builtin {
 					fmt.Fprintf(&out, "skill %s %s %v\n", s.Name, h.sourceOf(string(s.Source), s.Dir), h.skillsReg.isEnabled(s.Name))
 				}
-				if s.Source == skills.Plugin {
+				if s.Source == skill.Plugin {
 					md := filepath.Join(s.Dir, "SKILL.md")
 					fmt.Fprintf(&out, "read %s %s %s\n", s.Name, h.fsDefault("fs.read", md), h.fsDefault("lua.fs.read", md))
 				}

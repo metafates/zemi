@@ -9,7 +9,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/skills"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/tools"
 	"github.com/metafates/zemi/runtime"
 )
@@ -61,13 +61,13 @@ func TestBuiltinSkillDescriptionsFitIndex(t *testing.T) {
 	if err := h.materializeBuiltinSkills(); err != nil {
 		t.Fatal(err)
 	}
-	found, warns := skills.Discover(skills.Dir{Path: h.builtinSkillsDir(), Source: skills.Builtin})
+	found, warns := skill.Discover(skill.Dir{Path: h.builtinSkillsDir(), Source: skill.Builtin})
 	if len(found) == 0 || len(warns) > 0 {
 		t.Fatalf("builtin skills: %d found, warnings %v", len(found), warns)
 	}
 	for _, s := range found {
-		if n := len([]rune(s.Description)); n > skills.MaxDescriptionRunes {
-			t.Errorf("%s description is %d runes, index shows %d", s.Name, n, skills.MaxDescriptionRunes)
+		if n := len([]rune(s.Description)); n > skill.MaxDescriptionRunes {
+			t.Errorf("%s description is %d runes, index shows %d", s.Name, n, skill.MaxDescriptionRunes)
 		}
 	}
 }

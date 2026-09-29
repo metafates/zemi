@@ -611,7 +611,7 @@ origin), overlays can be closed only by user, builtin or the origin that opened
 them, and `app.quit` denials from project handlers are ignored. When adding a
 registry, follow `internal/hostapi/registry.go`.
 
-### Skills (internal/skills, internal/hostapi/skills.go)
+### Skills (internal/skill, internal/hostapi/skills.go)
 
 Skills are file-based units, each a `SKILL.md` with YAML frontmatter: user skills under
 `<config>/skills/`, then `~/.agents/skills/` (`Dirs.AgentsHome`, in `UserTrees`; body only,
@@ -619,10 +619,10 @@ since installers write there; the config dir wins a name clash), builtin (zemi's
 self-knowledge, one `zemi` skill in `runtime/skills/zemi` whose SKILL.md routes to reference
 files the model reads on demand, each fitting one `read` page (`TestBuiltinSkillFilesFitOneRead`)
 and each named in SKILL.md (`TestBuiltinSkillReferences`), embedded and rewritten to `<data>/builtin-skills/` on
-every sync) and plugin (`skills.Plugin`, each enabled plugin's `skills/`, body only), all in the
+every sync) and plugin (`skill.Plugin`, each enabled plugin's `skills/`, body only), all in the
 table and enabled by default. A trusted project adds its own (`.agents/skills`): body only,
 enabled, never in the table or `skillsReg`, scanned by `SetProjectTrusted`, which every reload
-runs, so a skill written mid-session loads with the reload the config watcher starts. Recipes (`skills.Recipe`) are the project's
+runs, so a skill written mid-session loads with the reload the config watcher starts. Recipes (`skill.Recipe`) are the project's
 private skills under `<state>/projects/<hash>/skills` (`recipesDir`, a read jail root no sandbox
 policy can write): trusted only, body only, enabled, and they lose every name clash. The
 pinned prompt (`ag.pin`, below) lists the ones found when it was built; `skillIndex` and

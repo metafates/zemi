@@ -16,7 +16,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/skills"
+	"github.com/metafates/zemi/internal/skill"
 )
 
 var positionalArg = regexp.MustCompile(`\$([1-9])`)
@@ -59,8 +59,8 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 			return false
 		}
 		var fm struct {
-			Description  string      `yaml:"description"`
-			ArgumentHint skills.Hint `yaml:"argument-hint"`
+			Description  string     `yaml:"description"`
+			ArgumentHint skill.Hint `yaml:"argument-hint"`
 		}
 		if err := yaml.Unmarshal([]byte(block), &fm); err != nil {
 			warn("frontmatter: " + err.Error())

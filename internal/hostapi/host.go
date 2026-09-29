@@ -29,7 +29,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/skills"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -536,7 +536,7 @@ type Host struct {
 	trustHeld atomic.Bool
 	// projectSkills is a trusted project's skills, found when the decision
 	// is set, which every reload does
-	projectSkills atomic.Pointer[[]skills.Skill]
+	projectSkills atomic.Pointer[[]skill.Skill]
 }
 
 // SetProjectTrusted records the trust decision and rescans the project's
@@ -546,7 +546,7 @@ func (h *Host) SetProjectTrusted(ok bool) {
 	if prev && !ok {
 		h.trustDropped.Store(true)
 	}
-	var found []skills.Skill
+	var found []skill.Skill
 	if ok {
 		found = h.discoverProjectSkills()
 	}
@@ -1761,7 +1761,7 @@ func (h *Host) includedData() included {
 	mems, err := h.memoryList(false)
 	inc.memories = len(mems)
 	// the builtin zemi skill ships with every install: counting it is noise
-	inc.skills = len(slices.DeleteFunc(h.modelSkills(), func(s skills.Skill) bool { return s.Source == skills.Builtin }))
+	inc.skills = len(slices.DeleteFunc(h.modelSkills(), func(s skill.Skill) bool { return s.Source == skill.Builtin }))
 	if err == nil { // a short count from a failed read is not cached
 		h.included = inc
 	}
