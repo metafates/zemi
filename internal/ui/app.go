@@ -1065,7 +1065,7 @@ func dimRows(rows [][]hostapi.Segment) {
 	for i, r := range rows {
 		out := make([]hostapi.Segment, len(r))
 		for j, s := range r {
-			out[j] = hostapi.Segment{Text: s.Text, HL: "Host:Dim"}
+			out[j] = hostapi.Segment{Text: s.Text, HL: hostapi.ChromeDim}
 			if strings.ContainsRune(s.Text, kitty.Placeholder) {
 				out[j] = s
 			}
@@ -1408,9 +1408,9 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 		rows = wrapText(t.body, "Normal", inner)
 	}
 	if len(rows) > toastRows {
-		more := []hostapi.Segment{{Text: hostapi.MoreLines(len(rows) - toastRows + 1), HL: "Host:Hint"}}
+		more := []hostapi.Segment{{Text: hostapi.MoreLines(len(rows) - toastRows + 1), HL: hostapi.ChromeHint}}
 		if t.recorded {
-			more = append(more, hostapi.Segment{Text: " /errors", HL: "Host:Hint"})
+			more = append(more, hostapi.Segment{Text: " /errors", HL: hostapi.ChromeHint})
 		}
 		rows = append(rows[:toastRows-1], more)
 	}
@@ -1444,7 +1444,7 @@ func (a *App) segStyle(hl, over string, band bool) uv.Style {
 		st = a.thm.hover(st, over)
 	}
 	if band {
-		st.Bg = a.hlStyle("Host:Band").Bg
+		st.Bg = a.hlStyle(hostapi.ChromeBand).Bg
 	}
 	if a.colors != colorprofile.ANSI {
 		return st

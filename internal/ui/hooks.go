@@ -57,27 +57,27 @@ var (
 // chrome: no theme can restyle them, so nothing can dress up a prompt.
 func chromeStyles(c chrome) map[string]uv.Style {
 	return map[string]uv.Style{
-		"Host:Bold":       {Fg: c.fg, Attrs: uv.AttrBold},
-		"Host:Title":      {Fg: c.accent, Attrs: uv.AttrBold},
-		"Host:Rule":       {Fg: c.rule},
-		"Host:Cursor":     {Attrs: uv.AttrReverse},
-		"Host:Value":      {Fg: c.fg},
-		"Host:Hint":       {Fg: c.dim},
-		"Host:HintKey":    {Fg: c.accent},
-		"Host:Warn":       {Fg: c.warn},
-		"Host:Ok":         {Fg: c.ok},
-		"Host:Danger":     {Fg: c.danger},
-		"Host:Panel":      {Fg: c.fg, Bg: c.panel},
-		"Host:DiffAdd":    {Fg: c.fg, Bg: c.add},
-		"Host:DiffAddNum": {Fg: c.ok, Bg: c.add},
-		"Host:DiffDel":    {Fg: c.fg, Bg: c.del},
-		"Host:DiffDelNum": {Fg: c.danger, Bg: c.del},
-		"Host:DiffCtx":    {Fg: c.fg},
-		"Host:DiffCtxNum": {Fg: c.dim},
-		"Host:Selection":  {Attrs: uv.AttrReverse},
-		"Host:Hover":      {Underline: uv.UnderlineSingle},
-		"Host:Dim":        {Fg: c.rule},
-		"Host:Band":       {Bg: c.band},
+		hostapi.ChromeBold:       {Fg: c.fg, Attrs: uv.AttrBold},
+		hostapi.ChromeTitle:      {Fg: c.accent, Attrs: uv.AttrBold},
+		hostapi.ChromeRule:       {Fg: c.rule},
+		hostapi.ChromeCursor:     {Attrs: uv.AttrReverse},
+		hostapi.ChromeValue:      {Fg: c.fg},
+		hostapi.ChromeHint:       {Fg: c.dim},
+		hostapi.ChromeHintKey:    {Fg: c.accent},
+		hostapi.ChromeWarn:       {Fg: c.warn},
+		hostapi.ChromeOk:         {Fg: c.ok},
+		hostapi.ChromeDanger:     {Fg: c.danger},
+		hostapi.ChromePanel:      {Fg: c.fg, Bg: c.panel},
+		hostapi.ChromeDiffAdd:    {Fg: c.fg, Bg: c.add},
+		hostapi.ChromeDiffAddNum: {Fg: c.ok, Bg: c.add},
+		hostapi.ChromeDiffDel:    {Fg: c.fg, Bg: c.del},
+		hostapi.ChromeDiffDelNum: {Fg: c.danger, Bg: c.del},
+		hostapi.ChromeDiffCtx:    {Fg: c.fg},
+		hostapi.ChromeDiffCtxNum: {Fg: c.dim},
+		hostapi.ChromeSelection:  {Attrs: uv.AttrReverse},
+		hostapi.ChromeHover:      {Underline: uv.UnderlineSingle},
+		hostapi.ChromeDim:        {Fg: c.rule},
+		hostapi.ChromeBand:       {Bg: c.band},
 	}
 }
 
@@ -134,7 +134,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		// a long path wraps at its slashes: the user trusts every character
 		var path []hostapi.Segment
 		for _, part := range strings.SplitAfter(hostapi.TildePath(tp.root), "/") {
-			path = append(path, hostapi.Segment{Text: part, HL: "Host:Bold"})
+			path = append(path, hostapi.Segment{Text: part, HL: hostapi.ChromeBold})
 		}
 		rows := hostapi.WrapSegs(path, width)
 		// the root is resolved and a linked worktree maps to its main checkout
@@ -144,12 +144,12 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		}
 		switch rel, in := perm.Under(tp.root, cwd); {
 		case !in:
-			rows = append(rows, wrapText("Started in "+hostapi.TildePath(tp.cwd)+", which this answer covers too.", "Host:Hint", width)...)
+			rows = append(rows, wrapText("Started in "+hostapi.TildePath(tp.cwd)+", which this answer covers too.", hostapi.ChromeHint, width)...)
 		case rel != ".":
-			rows = append(rows, wrapText("Covers the whole project, not only "+rel+".", "Host:Hint", width)...)
+			rows = append(rows, wrapText("Covers the whole project, not only "+rel+".", hostapi.ChromeHint, width)...)
 		}
 		if tp.state != "" {
-			rows = append(append(rows, nil), wrapText("Currently "+tp.state+".", "Host:Hint", width)...)
+			rows = append(append(rows, nil), wrapText("Currently "+tp.state+".", hostapi.ChromeHint, width)...)
 		}
 		rows = append(rows, nil)
 		rows = append(rows, wrapText("Trusting lets this "+what+" run code and steer zemi:", "", width)...)
@@ -159,9 +159,9 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 			"language servers, which can build the project",
 			"auto mode edits, builds and tests without asking",
 		} {
-			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: "  - "}, {Text: g, HL: "Host:Value"}}, width)...)
+			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: "  - "}, {Text: g, HL: hostapi.ChromeValue}}, width)...)
 		}
-		return append(append(rows, nil), wrapText("Without trust, zemi asks before anything but reads. Either answer is "+saved+".", "Host:Hint", width)...)
+		return append(append(rows, nil), wrapText("Without trust, zemi asks before anything but reads. Either answer is "+saved+".", hostapi.ChromeHint, width)...)
 	}
 	laterDesc := "ask again next start"
 	if tp.state != "" {

@@ -129,14 +129,14 @@ func (f *listFilter) set(query string) {
 // filterRow is the query line above a list, a hint while no query is open
 // so opening one adds no row.
 func (f *listFilter) filterRow() []hostapi.Segment {
-	slash := hostapi.Segment{Text: "/ ", HL: "Host:HintKey"}
+	slash := hostapi.Segment{Text: "/ ", HL: hostapi.ChromeHintKey}
 	switch r := []rune(f.query); {
 	case f.active:
-		return append([]hostapi.Segment{slash}, cursorSegs(r, len(r), "Host:Bold")...)
+		return append([]hostapi.Segment{slash}, cursorSegs(r, len(r), hostapi.ChromeBold)...)
 	case f.query != "":
-		return []hostapi.Segment{slash, {Text: f.query, HL: "Host:Value"}}
+		return []hostapi.Segment{slash, {Text: f.query, HL: hostapi.ChromeValue}}
 	}
-	return []hostapi.Segment{{Text: "/", HL: "Host:HintKey"}, {Text: " filter", HL: "Host:Hint"}}
+	return []hostapi.Segment{{Text: "/", HL: hostapi.ChromeHintKey}, {Text: " filter", HL: hostapi.ChromeHint}}
 }
 
 // filterHints are the footer's keys while a filter types, since every
@@ -153,7 +153,7 @@ func (f *listFilter) filterHints(hints []hintPair, esc string) []hintPair {
 
 // emptyRows is how every empty list or view reads: a sentence in the hint
 // grey, wrapped to w.
-func emptyRows(text string, w int) [][]hostapi.Segment { return wrapText(text, "Host:Hint", w) }
+func emptyRows(text string, w int) [][]hostapi.Segment { return wrapText(text, hostapi.ChromeHint, w) }
 
 // openOverlay pushes an overlay, or replaces the open one with its id in
 // place when o's origin may close it; Lua rendered its items when it opened,
@@ -289,7 +289,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 			}
 			it.label = plainSegs(it.segs) // spaces kept: a filter's offsets index the segments
 		} else if r.Danger {
-			it.segs = []hostapi.Segment{{Text: it.label, HL: "Host:Danger"}}
+			it.segs = []hostapi.Segment{{Text: it.label, HL: hostapi.ChromeDanger}}
 		}
 		st.items = append(st.items, it)
 		st.labels = append(st.labels, it.label)
@@ -751,7 +751,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		if previews {
 			pane = make([][]hostapi.Segment, map[bool]int{true: 1, false: st.paneN}[level > 1])
 			if len(st.visible) > 0 {
-				copy(pane, capRows(wrapText(st.items[st.visible[st.selected]].row.Preview, "Host:Hint", bodyW), len(pane), bodyW))
+				copy(pane, capRows(wrapText(st.items[st.visible[st.selected]].row.Preview, hostapi.ChromeHint, bodyW), len(pane), bodyW))
 			}
 		}
 		room := h - 2 - len(stack(tight, bodyPH, slices.Concat(head, listPH, fixed), pane, oneRow)) + len(bodyPH) + len(listPH)
@@ -762,7 +762,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			// a detail view's rows are actions: draw them as the prompts' buttons
 			choices := make([]promptChoice, 0, len(st.visible))
 			for n, i := range st.visible {
-				choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: map[bool]string{true: "Host:Danger"}[st.items[i].row.Danger]})
+				choices = append(choices, promptChoice{key: st.actionKey(n), label: st.items[i].label, desc: st.items[i].desc, hl: map[bool]string{true: hostapi.ChromeDanger}[st.items[i].row.Danger]})
 			}
 			st.view.viewH = limit
 			list = choiceView(choices, st.selected, &st.view, inner, level > 1)
@@ -831,7 +831,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 // next press does, in the danger color.
 func armedHint(w int, key, label string) []hostapi.Segment {
 	foot := hint(w, hintPair{key, "again to " + strings.ToLower(label)}, hintPair{"esc", "cancel"})
-	foot[0].HL, foot[1].HL = "Host:Danger", "Host:Danger"
+	foot[0].HL, foot[1].HL = hostapi.ChromeDanger, hostapi.ChromeDanger
 	return foot
 }
 
@@ -839,8 +839,8 @@ func armedHint(w int, key, label string) []hostapi.Segment {
 //
 //exhaustive:enforce
 var statusHL = map[hostapi.ServiceStatus]string{
-	hostapi.StatusIdle: "Host:Hint", hostapi.StatusStarting: "Host:Warn", hostapi.StatusReady: "Host:Ok", hostapi.StatusFailed: "Host:Danger",
-	hostapi.StatusSignIn: "Host:Warn", hostapi.StatusStopped: "Host:Hint", hostapi.StatusOff: "Host:Hint",
+	hostapi.StatusIdle: hostapi.ChromeHint, hostapi.StatusStarting: hostapi.ChromeWarn, hostapi.StatusReady: hostapi.ChromeOk, hostapi.StatusFailed: hostapi.ChromeDanger,
+	hostapi.StatusSignIn: hostapi.ChromeWarn, hostapi.StatusStopped: hostapi.ChromeHint, hostapi.StatusOff: hostapi.ChromeHint,
 }
 
 // fieldRows sets a detail view's fields as a table: dim names in one
@@ -862,7 +862,7 @@ func fieldRows(fields []hostapi.Field, w int) [][]hostapi.Segment {
 		hl := ""
 		switch f.Name {
 		case "error":
-			hl = "Host:Danger"
+			hl = hostapi.ChromeDanger
 		case "status":
 			hl = statusHL[hostapi.ServiceStatus(f.Value)]
 		}
@@ -884,7 +884,7 @@ func fieldRows(fields []hostapi.Field, w int) [][]hostapi.Segment {
 // under the name the column is blank, and a copy rejoins the value.
 func fieldRow(name string, kw int, rows [][]hostapi.Segment) [][]hostapi.Segment {
 	for i, r := range rows {
-		rows[i] = append([]hostapi.Segment{{Text: fmt.Sprintf("%-*s", kw, name), HL: "Host:Hint", NoCopy: name == ""}}, r...)
+		rows[i] = append([]hostapi.Segment{{Text: fmt.Sprintf("%-*s", kw, name), HL: hostapi.ChromeHint, NoCopy: name == ""}}, r...)
 		name = ""
 	}
 	return rows
@@ -894,7 +894,7 @@ func fieldRow(name string, kw int, rows [][]hostapi.Segment) [][]hostapi.Segment
 // wrapped to w, or the value alone under a name already drawn.
 func fieldLine(name string, val []hostapi.Segment, w int) [][]hostapi.Segment {
 	if name != "" {
-		val = append([]hostapi.Segment{{Text: name + ": ", HL: "Host:Hint"}}, val...)
+		val = append([]hostapi.Segment{{Text: name + ": ", HL: hostapi.ChromeHint}}, val...)
 	}
 	return hostapi.WrapSegs(val, w)
 }

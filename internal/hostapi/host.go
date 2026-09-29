@@ -1363,11 +1363,38 @@ func (h *Host) ClickWidget(ctx context.Context, id string, ev map[string]any) er
 	return err
 }
 
+// Chrome groups are the fixed Go styles of prompts and other host chrome
+// (ui.chromeStyles); no theme restyles them and UserHL drops them from Lua.
+const (
+	ChromePrefix     = "Host:"
+	ChromeBold       = ChromePrefix + "Bold"
+	ChromeTitle      = ChromePrefix + "Title"
+	ChromeRule       = ChromePrefix + "Rule"
+	ChromeCursor     = ChromePrefix + "Cursor"
+	ChromeValue      = ChromePrefix + "Value"
+	ChromeHint       = ChromePrefix + "Hint"
+	ChromeHintKey    = ChromePrefix + "HintKey"
+	ChromeWarn       = ChromePrefix + "Warn"
+	ChromeOk         = ChromePrefix + "Ok"
+	ChromeDanger     = ChromePrefix + "Danger"
+	ChromePanel      = ChromePrefix + "Panel"
+	ChromeDiffAdd    = ChromePrefix + "DiffAdd"
+	ChromeDiffAddNum = ChromePrefix + "DiffAddNum"
+	ChromeDiffDel    = ChromePrefix + "DiffDel"
+	ChromeDiffDelNum = ChromePrefix + "DiffDelNum"
+	ChromeDiffCtx    = ChromePrefix + "DiffCtx"
+	ChromeDiffCtxNum = ChromePrefix + "DiffCtxNum"
+	ChromeSelection  = ChromePrefix + "Selection"
+	ChromeHover      = ChromePrefix + "Hover"
+	ChromeDim        = ChromePrefix + "Dim"
+	ChromeBand       = ChromePrefix + "Band"
+)
+
 // UserHL drops a "Host:*" style from a Lua segment: those are the fixed
 // Go chrome styles (internal/ui/hooks.go), so a widget or overlay row
 // could otherwise paint itself as a permission prompt.
 func UserHL(hl string) string {
-	if strings.HasPrefix(hl, "Host:") {
+	if strings.HasPrefix(hl, ChromePrefix) {
 		return ""
 	}
 	return hl

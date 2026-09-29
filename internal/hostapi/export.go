@@ -380,7 +380,7 @@ func (h *Host) OpenUsage() error {
 		if len(rows) > 0 {
 			rows = append(rows, []Segment{})
 		}
-		rows = append(rows, []Segment{text("Host:Title", title), text("Host:Hint", note)})
+		rows = append(rows, []Segment{text(ChromeTitle, title), text(ChromeHint, note)})
 	}
 	// bar is a meter of w cells, part/whole of it filled
 	bar := func(part, whole int64, w int, hl string) []Segment {
@@ -388,19 +388,19 @@ func (h *Host) OpenUsage() error {
 		if whole > 0 {
 			n = int(min(max(part*int64(w)/whole, min(part, 1)), int64(w))) // anything at all gets a cell
 		}
-		return []Segment{{Text: strings.Repeat("█", n), HL: hl, NoCopy: true}, {Text: strings.Repeat("░", w-n) + "  ", HL: "Host:Rule", NoCopy: true}}
+		return []Segment{{Text: strings.Repeat("█", n), HL: hl, NoCopy: true}, {Text: strings.Repeat("░", w-n) + "  ", HL: ChromeRule, NoCopy: true}}
 	}
 	if s.CtxWindow > 0 && s.LastIn > 0 { // a resumed session has no estimate before its first turn
 		pct := s.LastIn * 100 / s.CtxWindow
-		hl := "Host:HintKey"
+		hl := ChromeHintKey
 		if pct >= 90 {
-			hl = "Host:Danger"
+			hl = ChromeDanger
 		} else if pct >= 70 {
-			hl = "Host:Warn"
+			hl = ChromeWarn
 		}
 		section("Context", "")
 		rows = append(rows, append(append([]Segment{text("", "  ")}, bar(s.LastIn, s.CtxWindow, 32, hl)...),
-			text("Host:Value", fmtTokens(s.LastIn)), text("Host:Hint", fmt.Sprintf(" of %s · %d%%", fmtTokens(s.CtxWindow), pct))))
+			text(ChromeValue, fmtTokens(s.LastIn)), text(ChromeHint, fmt.Sprintf(" of %s · %d%%", fmtTokens(s.CtxWindow), pct))))
 	}
 	if parts, total := h.promptBreakdown(); total > 0 {
 		section("Prompt", "  "+fmtTokens(total)+" sent with every request")
@@ -414,9 +414,9 @@ func (h *Host) OpenUsage() error {
 			if p.chars == 0 {
 				continue
 			}
-			row := append([]Segment{text("Host:Value", fmt.Sprintf("  %-14s", p.name))}, bar(int64(p.chars), int64(sum), 16, "Host:HintKey")...)
-			rows = append(rows, append(row, text("Host:Value", fmt.Sprintf("%6s", fmtTokens(int64(p.chars/4)))),
-				text("Host:Hint", fmt.Sprintf("  %3d%%", p.chars*100/sum))))
+			row := append([]Segment{text(ChromeValue, fmt.Sprintf("  %-14s", p.name))}, bar(int64(p.chars), int64(sum), 16, ChromeHintKey)...)
+			rows = append(rows, append(row, text(ChromeValue, fmt.Sprintf("%6s", fmtTokens(int64(p.chars/4)))),
+				text(ChromeHint, fmt.Sprintf("  %3d%%", p.chars*100/sum))))
 		}
 	}
 	type window struct {
@@ -455,19 +455,19 @@ func (h *Host) OpenUsage() error {
 		if w.u.Sessions > 0 {
 			count = strconv.Itoa(w.u.Sessions)
 		}
-		row := []Segment{text("Host:Value", fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTokens(w.u.Prompt), fmtTokens(w.u.Completion))), text("Host:Hint", fmt.Sprintf("%10s", count))}
+		row := []Segment{text(ChromeValue, fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTokens(w.u.Prompt), fmtTokens(w.u.Completion))), text(ChromeHint, fmt.Sprintf("%10s", count))}
 		if priced {
-			row = append(row, text("Host:Value", fmt.Sprintf("%10s", fmt.Sprintf("$%.2f", w.u.Cost))))
+			row = append(row, text(ChromeValue, fmt.Sprintf("%10s", fmt.Sprintf("$%.2f", w.u.Cost))))
 		}
 		// a broken cache prefix (a per-turn system section, a model switch) has
 		// no other symptom than the bill
 		if i == 0 && s.CacheBilled > 0 { // the live session
-			row = append(row, text("Host:Hint", fmt.Sprintf("   %d%% cached", s.CacheRead*100/s.CacheBilled)))
+			row = append(row, text(ChromeHint, fmt.Sprintf("   %d%% cached", s.CacheRead*100/s.CacheBilled)))
 		}
 		rows = append(rows, row)
 	}
 	if id != "" && !priced {
-		rows = append(rows, []Segment{}, []Segment{text("Host:Hint", "No cost: "+id+" has no prices. Set cost_per_1m_in and cost_per_1m_out on the model.")})
+		rows = append(rows, []Segment{}, []Segment{text(ChromeHint, "No cost: "+id+" has no prices. Set cost_per_1m_in and cost_per_1m_out on the model.")})
 	}
 	var plain strings.Builder
 	for _, r := range rows {

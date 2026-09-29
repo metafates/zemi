@@ -313,7 +313,7 @@ func (a *App) highlightSelection(rows [][]hostapi.Segment, w int) {
 		if from, to, ok := a.mouse.span(y, w); ok {
 			rows[y] = restyle(rows[y], from, to, func(s *hostapi.Segment) {
 				if !s.NoCopy {
-					s.HL, s.Over = "Host:Selection", ""
+					s.HL, s.Over = hostapi.ChromeSelection, ""
 				}
 			})
 		}
@@ -346,7 +346,7 @@ func (a *App) highlightHover(rows [][]hostapi.Segment) {
 	}
 	style := func(s *hostapi.Segment) { s.Over = "Hover" }
 	if top := a.topChrome(); top == modalPerm || top == modalTrust {
-		style = func(s *hostapi.Segment) { s.HL = "Host:Hover" }
+		style = func(s *hostapi.Segment) { s.HL = hostapi.ChromeHover }
 	} else if rest := dropCells(rows[a.hoverY], a.hoverX); len(rest) > 0 && rest[0].Hit > 0 {
 		style = func(s *hostapi.Segment) { s.Over = "HoverItem" }
 	}

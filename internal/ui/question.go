@@ -268,13 +268,13 @@ func questionTabs(qp *questionPrompt) []hostapi.Segment {
 		label := "Review"
 		if i < len(qp.qs) {
 			label = cmp.Or(qp.qs[i].Header, fmt.Sprintf("Q%d", i+1))
-			mark := hostapi.Segment{Text: "· ", HL: "Host:Hint"}
+			mark := hostapi.Segment{Text: "· ", HL: hostapi.ChromeHint}
 			if qp.states[i].answered != "" {
-				mark = hostapi.Segment{Text: "✓ ", HL: "Host:Ok"}
+				mark = hostapi.Segment{Text: "✓ ", HL: hostapi.ChromeOk}
 			}
 			row = append(row, mark)
 		}
-		row = append(row, hostapi.Segment{Text: label, HL: map[bool]string{true: "Host:Title", false: "Host:Hint"}[i == qp.at]})
+		row = append(row, hostapi.Segment{Text: label, HL: map[bool]string{true: hostapi.ChromeTitle, false: hostapi.ChromeHint}[i == qp.at]})
 	}
 	return row
 }
@@ -323,9 +323,9 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	if qp.reviewing() {
 		items := make([]listItem, 0, len(qp.qs)+1)
 		for i, q := range qp.qs {
-			ans := hostapi.Segment{Text: "  " + strings.ReplaceAll(qp.states[i].answered, " (Recommended)", ""), HL: "Host:Value"}
+			ans := hostapi.Segment{Text: "  " + strings.ReplaceAll(qp.states[i].answered, " (Recommended)", ""), HL: hostapi.ChromeValue}
 			if qp.states[i].answered == "" {
-				ans = hostapi.Segment{Text: "  not answered", HL: "Host:Warn"}
+				ans = hostapi.Segment{Text: "  not answered", HL: hostapi.ChromeWarn}
 			}
 			items = append(items, listItem{label: strings.ReplaceAll(q.Question, "\n", " "), more: [][]hostapi.Segment{{ans}}})
 		}

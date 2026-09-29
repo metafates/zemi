@@ -494,7 +494,7 @@ func cursorSegs(r []rune, cursor int, hl string) []hostapi.Segment {
 	if cursor < len(r) {
 		under, rest = string(r[cursor]), string(r[cursor+1:])
 	}
-	return []hostapi.Segment{{Text: string(r[:cursor]), HL: hl}, {Text: under, HL: "Host:Cursor"}, {Text: rest, HL: hl}}
+	return []hostapi.Segment{{Text: string(r[:cursor]), HL: hl}, {Text: under, HL: hostapi.ChromeCursor}, {Text: rest, HL: hl}}
 }
 
 // wrapComposer splits the text into visual rows of at most w cells, on

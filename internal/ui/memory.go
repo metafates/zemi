@@ -235,16 +235,16 @@ func (a *App) memAct(key string) {
 func (a *App) memMore(it hostapi.MemoryRow) [][]hostapi.Segment {
 	var meta []hostapi.Segment
 	if it.Action == "accept" {
-		meta = append(meta, hostapi.Segment{Text: "kept · ", HL: "Host:Ok"})
+		meta = append(meta, hostapi.Segment{Text: "kept · ", HL: hostapi.ChromeOk})
 	}
 	info := []string{memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == store.OriginLearned]}
 	if it.Updated != 0 {
 		info = append(info, strings.TrimSpace(learn.Age(it.Updated, a.now())))
 	}
-	meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: "Host:Hint"})
+	meta = append(meta, hostapi.Segment{Text: strings.Join(slices.DeleteFunc(info, func(s string) bool { return s == "" }), " · "), HL: hostapi.ChromeHint})
 	more := [][]hostapi.Segment{{{Text: sanitize.String(it.Text)}}}
 	if it.Quote != "" {
-		more = append(more, []hostapi.Segment{{Text: `"` + sanitize.String(it.Quote) + `"`, HL: "Host:Hint"}})
+		more = append(more, []hostapi.Segment{{Text: `"` + sanitize.String(it.Quote) + `"`, HL: hostapi.ChromeHint}})
 	}
 	return append(more, meta)
 }
@@ -329,7 +329,7 @@ func (a *App) memDetailBox(it hostapi.MemoryRow, w, h, inner int) [][]hostapi.Se
 	mr.act = min(mr.act, len(acts)-1)
 	armed := mr.armed == mr.act+1
 	if armed {
-		acts[mr.act].hl = "Host:Danger"
+		acts[mr.act].hl = hostapi.ChromeDanger
 	}
 	textW := min(inner, mr.size.w)
 	text := func(w int) (rows [][]hostapi.Segment) {

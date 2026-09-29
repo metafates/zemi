@@ -102,7 +102,7 @@ func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	act := choiceRows([]promptChoice{{key: "a", label: "Approve"}, {key: "e", label: "Request changes"}}, p.sel, inner, true)
 	hints := []hintPair{pickHint, {"esc", "dismiss"}}
 	if p.typing {
-		act = [][]hostapi.Segment{{{Text: "What should change?", HL: "Host:Hint"}}, p.input.inputRow(inner)}
+		act = [][]hostapi.Segment{{{Text: "What should change?", HL: hostapi.ChromeHint}}, p.input.inputRow(inner)}
 		hints = []hintPair{sendHint, {"esc", "back"}}
 	}
 	// a text view is 72 cells

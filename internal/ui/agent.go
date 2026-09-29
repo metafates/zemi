@@ -173,7 +173,7 @@ func promptBox(title, badge string, body [][]hostapi.Segment, w, h, maxW int, si
 	if size.h > 0 { // a kept box cuts a longer title (a detail view's breadcrumb) instead of widening
 		title = ansi.Truncate(title, size.w-1-map[bool]int{true: ansi.StringWidth(badge) + 2}[badge != ""], "…")
 	}
-	box := hostBox(title, "Host:Title", badge, body, w, maxW, size.w)
+	box := hostBox(title, hostapi.ChromeTitle, badge, body, w, maxW, size.w)
 	size.w, size.h = max(size.w, hostapi.SegsWidth(box[0])-4), max(size.h, len(box))
 	return box
 }
@@ -289,14 +289,14 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 			open, shut = " ", " "
 		}
 		btn, textHL := []hostapi.Segment{
-			{Text: "  " + open, HL: "Host:Hint"}, {Text: c.key, HL: "Host:HintKey"}, {Text: shut + pad, HL: "Host:Hint"},
-		}, "Host:Value"
+			{Text: "  " + open, HL: hostapi.ChromeHint}, {Text: c.key, HL: hostapi.ChromeHintKey}, {Text: shut + pad, HL: hostapi.ChromeHint},
+		}, hostapi.ChromeValue
 		if i == sel {
-			btn, textHL = []hostapi.Segment{{Text: "› ", HL: "Host:Title"}, {Text: open, HL: "Host:Hint"}, {Text: c.key, HL: "Host:HintKey"}, {Text: shut + pad, HL: "Host:Hint"}}, "Host:Bold"
+			btn, textHL = []hostapi.Segment{{Text: "› ", HL: hostapi.ChromeTitle}, {Text: open, HL: hostapi.ChromeHint}, {Text: c.key, HL: hostapi.ChromeHintKey}, {Text: shut + pad, HL: hostapi.ChromeHint}}, hostapi.ChromeBold
 		}
 		labelW, desc := textW, [][]hostapi.Segment(nil)
 		if c.desc != "" {
-			labelW, desc = lw, hostapi.WrapSegs([]hostapi.Segment{{Text: c.desc, HL: "Host:Hint"}}, descW)
+			labelW, desc = lw, hostapi.WrapSegs([]hostapi.Segment{{Text: c.desc, HL: hostapi.ChromeHint}}, descW)
 		}
 		label := hostapi.WrapSegs([]hostapi.Segment{{Text: c.label, HL: cmp.Or(c.hl, textHL)}}, labelW)
 		if short {
@@ -308,7 +308,7 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 				r = label[j]
 			}
 			if j < len(desc) {
-				r = slices.Concat(r, []hostapi.Segment{{Text: strings.Repeat(" ", max(lw+2-hostapi.SegsWidth(r), 2)), HL: "Host:Hint"}}, desc[j])
+				r = slices.Concat(r, []hostapi.Segment{{Text: strings.Repeat(" ", max(lw+2-hostapi.SegsWidth(r), 2)), HL: hostapi.ChromeHint}}, desc[j])
 			}
 			row := slices.Concat(btn, r)
 			if j > 0 {
@@ -360,11 +360,11 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 	title = label(title, bw-3-ansi.StringWidth(badge))
 	fill := bw - 2 - ansi.StringWidth(title) - ansi.StringWidth(badge)
 	box := [][]hostapi.Segment{{
-		{Text: "┌", HL: "Host:Rule", NoCopy: true},
+		{Text: "┌", HL: hostapi.ChromeRule, NoCopy: true},
 		{Text: title, HL: titleHL},
-		{Text: strings.Repeat("─", fill), HL: "Host:Rule", NoCopy: true},
-		{Text: badge, HL: "Host:Hint"},
-		{Text: "┐", HL: "Host:Rule", NoCopy: true},
+		{Text: strings.Repeat("─", fill), HL: hostapi.ChromeRule, NoCopy: true},
+		{Text: badge, HL: hostapi.ChromeHint},
+		{Text: "┐", HL: hostapi.ChromeRule, NoCopy: true},
 	}}
 	for _, r := range body {
 		var bar []hostapi.Segment
@@ -373,18 +373,18 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 		}
 		line := ellipsizeSegs(r, bw-4-len(bar))
 		row := make([]hostapi.Segment, 0, len(line)+4)
-		row = append(row, hostapi.Segment{Text: "│ ", HL: "Host:Rule", NoCopy: true})
+		row = append(row, hostapi.Segment{Text: "│ ", HL: hostapi.ChromeRule, NoCopy: true})
 		for _, s := range line {
-			s.HL = cmp.Or(s.HL, "Host:Value")
+			s.HL = cmp.Or(s.HL, hostapi.ChromeValue)
 			row = append(row, s)
 		}
 		// a selected row's band runs to the box's edge, however wide its text
 		band := len(line) > 0 && line[len(line)-1].Band
 		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, bw-4-hostapi.SegsWidth(line)-len(bar))), NoCopy: true, Band: band})
-		row = append(append(row, bar...), hostapi.Segment{Text: " │", HL: "Host:Rule", NoCopy: true})
+		row = append(append(row, bar...), hostapi.Segment{Text: " │", HL: hostapi.ChromeRule, NoCopy: true})
 		box = append(box, row)
 	}
-	box = append(box, []hostapi.Segment{{Text: "└" + strings.Repeat("─", bw-2) + "┘", HL: "Host:Rule", NoCopy: true}})
+	box = append(box, []hostapi.Segment{{Text: "└" + strings.Repeat("─", bw-2) + "┘", HL: hostapi.ChromeRule, NoCopy: true}})
 	return box
 }
 
@@ -432,7 +432,7 @@ type listItem struct {
 }
 
 // tagSeg is a key column tag: a word that names, never a binary state.
-func tagSeg(s string) hostapi.Segment { return hostapi.Segment{Text: s, HL: "Host:HintKey"} }
+func tagSeg(s string) hostapi.Segment { return hostapi.Segment{Text: s, HL: hostapi.ChromeHintKey} }
 
 // switchSeg is the one on/off switch: 5 cells in every state, so a toggle
 // never moves text, and a filled or hollow square and the word read without
@@ -440,11 +440,11 @@ func tagSeg(s string) hostapi.Segment { return hostapi.Segment{Text: s, HL: "Hos
 func switchSeg(on, locked bool) hostapi.Segment {
 	switch {
 	case locked:
-		return hostapi.Segment{Text: "  on ", HL: "Host:Hint"}
+		return hostapi.Segment{Text: "  on ", HL: hostapi.ChromeHint}
 	case on:
-		return hostapi.Segment{Text: "■ on ", HL: "Host:Ok"}
+		return hostapi.Segment{Text: "■ on ", HL: hostapi.ChromeOk}
 	}
-	return hostapi.Segment{Text: "□ off", HL: "Host:Hint"}
+	return hostapi.Segment{Text: "□ off", HL: hostapi.ChromeHint}
 }
 
 // listRows is the one list renderer (palette, completion, pickers,
@@ -505,13 +505,13 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			start := len(rows)
 			starts[start] = true
 			if it.section != section && it.section != "" {
-				rows = append(rows, []hostapi.Segment{{Text: it.section, HL: "Host:Title"}})
+				rows = append(rows, []hostapi.Segment{{Text: it.section, HL: hostapi.ChromeTitle}})
 			}
 			top := len(rows)
 			section = it.section
-			hit, hl, marker := i+1, "Host:Value", hostapi.Segment{Text: "  "}
+			hit, hl, marker := i+1, hostapi.ChromeValue, hostapi.Segment{Text: "  "}
 			if i == sel {
-				hl, marker = "Host:Bold", hostapi.Segment{Text: "› ", HL: "Host:Title"}
+				hl, marker = hostapi.ChromeBold, hostapi.Segment{Text: "› ", HL: hostapi.ChromeTitle}
 			}
 			// segments without hl take the row's, and inline colors bold with it
 			styled := func(r []hostapi.Segment) []hostapi.Segment {
@@ -548,7 +548,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 					row = tailSegs(row, maxW-2-kw) // before the row's cut, which keeps the start
 				}
 				if it.desc != "" && !under && (descW < 0 || descW > 2) {
-					desc := []hostapi.Segment{{Text: it.desc, HL: "Host:Hint"}}
+					desc := []hostapi.Segment{{Text: it.desc, HL: hostapi.ChromeHint}}
 					if descW > 0 {
 						desc = ellipsizeSegs(desc, descW)
 					}
@@ -561,7 +561,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 				}
 				itemRows = append(itemRows, row)
 				if under && it.desc != "" {
-					itemRows = append(itemRows, ellipsizeSegs([]hostapi.Segment{{Text: it.desc, HL: "Host:Hint"}}, maxW-2))
+					itemRows = append(itemRows, ellipsizeSegs([]hostapi.Segment{{Text: it.desc, HL: hostapi.ChromeHint}}, maxW-2))
 				}
 			}
 			for _, r := range it.more {
@@ -660,7 +660,7 @@ func matchSegs(segs []hostapi.Segment, pos []int, sel bool) []hostapi.Segment {
 	if len(pos) == 0 {
 		return segs
 	}
-	hl := map[bool]string{false: "Host:HintKey", true: "Host:Title"}[sel]
+	hl := map[bool]string{false: hostapi.ChromeHintKey, true: hostapi.ChromeTitle}[sel]
 	var out []hostapi.Segment
 	j, off := 0, 0
 	for _, s := range segs {
@@ -734,17 +734,17 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	build := func(w int) [][]hostapi.Segment {
 		switch {
 		case req.Subject == perm.SubjectBash:
-			return codePanel(req.Arg, "Host:Panel", w)
+			return codePanel(req.Arg, hostapi.ChromePanel, w)
 		case isDiff:
 			rows := hostapi.DiffRows(req.Preview, w)
 			for _, r := range rows {
 				for i := range r {
-					r[i].HL = "Host:" + r[i].HL // the fixed chrome's Diff* styles
+					r[i].HL = hostapi.ChromePrefix + r[i].HL // the fixed chrome's Diff* styles
 				}
 			}
 			return rows
 		case req.Preview != "":
-			return codePanel(req.Preview, "Host:Panel", w)
+			return codePanel(req.Preview, hostapi.ChromePanel, w)
 		}
 		return nil
 	}
@@ -930,15 +930,15 @@ func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, say
 	case val != nil:
 		target = fact(name, val)
 		if n := max(h/3, 3); len(target) > n {
-			more := fieldRow("", kw, [][]hostapi.Segment{{{Text: hostapi.MoreLines(len(target) - n + 1), HL: "Host:Hint"}}})
+			more := fieldRow("", kw, [][]hostapi.Segment{{{Text: hostapi.MoreLines(len(target) - n + 1), HL: hostapi.ChromeHint}}})
 			target = slices.Concat(target[:n-2], more, target[len(target)-1:])
 		}
 	}
 	if req.Reason != "" {
-		why = capRows(fact("why", []hostapi.Segment{{Text: sanitize.Line(req.Reason), HL: "Host:Value"}}), 2, w)
+		why = capRows(fact("why", []hostapi.Segment{{Text: sanitize.Line(req.Reason), HL: hostapi.ChromeValue}}), 2, w)
 	}
 	if req.Description != "" {
-		says = capRows(fact("says", []hostapi.Segment{{Text: `"` + sanitize.Line(req.Description) + `"`, HL: "Host:Hint"}}), 2, w)
+		says = capRows(fact("says", []hostapi.Segment{{Text: `"` + sanitize.Line(req.Description) + `"`, HL: hostapi.ChromeHint}}), 2, w)
 	}
 	return target, why, says
 }
@@ -952,7 +952,7 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 	parts := func(s string) []hostapi.Segment {
 		var segs []hostapi.Segment
 		for _, p := range strings.SplitAfter(s, "/") {
-			segs = append(segs, hostapi.Segment{Text: p, HL: "Host:Value"})
+			segs = append(segs, hostapi.Segment{Text: p, HL: hostapi.ChromeValue})
 		}
 		return segs
 	}
@@ -968,11 +968,11 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 		// the host is what the session answer allows and where a look-alike hides
 		if u, err := url.Parse(arg); err == nil && u.Host != "" {
 			before, after, _ := strings.Cut(arg, u.Host)
-			return "url", slices.Concat([]hostapi.Segment{{Text: before, HL: "Host:Value"}, {Text: u.Host, HL: "Host:Bold"}}, parts(after))
+			return "url", slices.Concat([]hostapi.Segment{{Text: before, HL: hostapi.ChromeValue}, {Text: u.Host, HL: hostapi.ChromeBold}}, parts(after))
 		}
 		return "url", parts(arg)
 	case req.Subject == "tool.workflow" && arg != "script":
-		return "workflow", []hostapi.Segment{{Text: arg, HL: "Host:Value"}}
+		return "workflow", []hostapi.Segment{{Text: arg, HL: hostapi.ChromeValue}}
 	case strings.HasPrefix(req.Subject, "mcp."), req.Subject == "tool."+req.Tool, req.Subject == "memory.write", arg == "script":
 		return "", nil
 	}
@@ -982,7 +982,7 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 // riskRank and riskHL order and color the marks of the runs row.
 var (
 	riskRank = map[perm.Risk]int{perm.RiskDeletes: 2, perm.RiskCode: 1}
-	riskHL   = map[perm.Risk]string{perm.RiskDeletes: "Host:Danger", perm.RiskCode: "Host:Warn"}
+	riskHL   = map[perm.Risk]string{perm.RiskDeletes: hostapi.ChromeDanger, perm.RiskCode: hostapi.ChromeWarn}
 )
 
 // runsRows lays out what a command runs in at most two rows w wide, each
@@ -991,13 +991,13 @@ var (
 // more". nil runs is a list the parse could not vouch for.
 func runsRows(runs []perm.Program, w int) [][]hostapi.Segment {
 	if runs == nil {
-		return [][]hostapi.Segment{{{Text: "unknown: read the command", HL: "Host:Warn"}}}
+		return [][]hostapi.Segment{{{Text: "unknown: read the command", HL: hostapi.ChromeWarn}}}
 	}
 	runs = slices.Clone(runs)
 	slices.SortStableFunc(runs, func(a, b perm.Program) int { return riskRank[b.Risk] - riskRank[a.Risk] })
 	items := make([]hostapi.Segment, len(runs))
 	for i, p := range runs {
-		items[i] = hostapi.Segment{Text: p.Name, HL: "Host:Value"}
+		items[i] = hostapi.Segment{Text: p.Name, HL: hostapi.ChromeValue}
 		if p.Risk != "" {
 			items[i] = hostapi.Segment{Text: p.Name + " (" + string(p.Risk) + ")", HL: riskHL[p.Risk]}
 		}
@@ -1005,7 +1005,7 @@ func runsRows(runs []perm.Program, w int) [][]hostapi.Segment {
 	for n := len(items); ; n-- {
 		shown := items[:n]
 		if n < len(items) {
-			shown = append(slices.Clone(shown), hostapi.Segment{Text: fmt.Sprintf("+%d more", len(items)-n), HL: "Host:Hint"})
+			shown = append(slices.Clone(shown), hostapi.Segment{Text: fmt.Sprintf("+%d more", len(items)-n), HL: hostapi.ChromeHint})
 		}
 		var rows [][]hostapi.Segment
 		var row []hostapi.Segment
@@ -1013,7 +1013,7 @@ func runsRows(runs []perm.Program, w int) [][]hostapi.Segment {
 			switch {
 			case len(row) == 0:
 			case hostapi.SegsWidth(row)+3+ansi.StringWidth(it.Text) <= w:
-				row = append(row, hostapi.Segment{Text: " · ", HL: "Host:Hint"})
+				row = append(row, hostapi.Segment{Text: " · ", HL: hostapi.ChromeHint})
 			default:
 				rows, row = append(rows, row), nil
 			}
@@ -1071,9 +1071,9 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 			case p == scrollGap:
 				continue
 			case len(out) > 0:
-				out = append(out, hostapi.Segment{Text: " · ", HL: "Host:Hint"})
+				out = append(out, hostapi.Segment{Text: " · ", HL: hostapi.ChromeHint})
 			}
-			out = append(out, hostapi.Segment{Text: p.key, HL: "Host:HintKey"}, hostapi.Segment{Text: " " + p.verb, HL: "Host:Hint"})
+			out = append(out, hostapi.Segment{Text: p.key, HL: hostapi.ChromeHintKey}, hostapi.Segment{Text: " " + p.verb, HL: hostapi.ChromeHint})
 		}
 		i := slices.IndexFunc(pairs, func(p hintPair) bool { return p == scrollHint || p == scrollGap })
 		if i < 0 {

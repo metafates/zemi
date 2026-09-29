@@ -242,7 +242,7 @@ func (a *App) acceptCompletion() {
 func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	f := &a.completion
 	note := func(text string) []hostapi.Segment {
-		return []hostapi.Segment{{Text: text, HL: "Host:Hint"}}
+		return []hostapi.Segment{{Text: text, HL: hostapi.ChromeHint}}
 	}
 	if f.count() == 0 && f.scanning && len(f.files) == 0 {
 		return [][]hostapi.Segment{note("scanning files…")}
