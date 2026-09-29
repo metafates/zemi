@@ -3,6 +3,7 @@ package hostapi
 import (
 	"context"
 	"io/fs"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -87,13 +88,16 @@ func TestBuiltinSkillsFitTheSkillTool(t *testing.T) {
 func TestBuiltinSkillReferences(t *testing.T) {
 	bodies := builtinSkillBodies(t)
 	named := map[string]bool{}
+	h, _ := newTestHost(t)
+	// the lua tool names its file by the synced path
+	lua := strings.ReplaceAll((&luaEvalTool{h: h}).Info().Description, filepath.Join(h.builtinSkillsDir(), "zemi")+"/", " ")
 	rows := []struct{ name, text string }{
 		{"newPluginPrompt", newPluginPrompt},
 		{"modifyPluginPrompt", modifyPluginPrompt},
 		{"newAgentPrompt", newAgentPrompt},
 		{"errorAskPrompt", errorAskPrompt},
 		{"workflowToolDesc", workflowToolDesc},
-		{"the lua tool", (&luaEvalTool{}).Info().Description},
+		{"the lua tool", lua},
 	}
 	for path, body := range bodies {
 		rows = append(rows, struct{ name, text string }{path, body})

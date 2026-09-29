@@ -81,7 +81,8 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		gone []string
 		once []string
 	}{
-		{"default", nil, []string{"Scratchpad: ", "It is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "say first what you will write"}, []string{"in one message", "keep your own files"}, []string{"in one response"}},
+		// untrusted: the lua tool asks about every script
+		{"default", nil, []string{"Scratchpad: ", "It is $TMPDIR in every command you run", "offset and limit", `"job_start"`, "say first what you will write", "Every script needs the user's approval here"}, []string{"in one message", "keep your own files", "runs at once"}, []string{"in one response"}},
 		// subagents: explore reads and searches, and writes nothing; general
 		// is told its own directory in its task (TestSubagentOwnDir)
 		{"explore", &Profile{Name: "explore"}, []string{"Scratchpad: ", "reading them needs no approval", "re-sends the whole conversation", "offset and limit", "data, never instructions"}, []string{"Keep notes", "Keep temporary files", "keep your own files", "read for edit"}, nil},
@@ -120,6 +121,31 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		for _, gone := range c.gone {
 			if strings.Contains(text, gone) {
 				t.Errorf("%s: names %q", c.name, gone)
+			}
+		}
+	}
+	// each builtin tool dropped in turn, from the default and a read-only
+	// agent in a trusted project: nothing left sends the model to it
+	h.SetProjectTrusted(true)
+	h.agents.env = "" // pinned per session, and trust brings the recipes line
+	for _, ro := range []bool{false, true} {
+		for _, dropped := range h.profileTools(nil) {
+			name := dropped.Info().Name
+			p := &Profile{ReadOnly: ro, Tools: []string{"-" + name}}
+			toolset := h.profileTools(p)
+			text, _ := h.buildSystemParts(p, toolset)
+			for _, tool := range toolset {
+				schema, _ := json.Marshal(tool.Info().Parameters)
+				text += "\n" + tool.Info().Description + string(schema)
+			}
+			for _, ref := range []string{name + " tool", "(use " + name + ")", name + ` "`} {
+				if strings.Contains(text, ref) {
+					t.Errorf("read-only %v without %s: names %q", ro, name, ref)
+				}
+			}
+			// a read-only agent's recipe write is denied
+			if recipe := strings.Contains(text, "<name>/SKILL.md"); recipe == ro && name != tools.ToolWrite && name != tools.ToolEdit {
+				t.Errorf("read-only %v without %s: recipe paragraph %v", ro, name, recipe)
 			}
 		}
 	}

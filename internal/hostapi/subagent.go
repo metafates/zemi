@@ -751,7 +751,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	}
 	if t.h.hooks() != nil {
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the report arrives later as a message"}
-		params["send_to"] = map[string]any{"type": "string", "description": "id of a run to continue: a running one reads prompt at its next step, a finished one answers it with its history kept; agent and description are then ignored"}
+		params["send_to"] = map[string]any{"type": "string", "description": "id of a run to continue, a workflow's agent too: a running one reads prompt at its next step, a finished one answers it with its history kept; agent and description are then ignored"}
 	}
 	return fantasy.ToolInfo{
 		Name:        tools.ToolAgent,

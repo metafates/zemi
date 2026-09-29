@@ -18,9 +18,12 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sandbox"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 type sandboxProbe struct {
@@ -190,15 +193,20 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 	return p
 }
 
-// sandboxPrompt is the environment's Sandbox block: what a command runs
-// under without the user's approval, each clause read off the live policy,
-// so the text says what the backend enforces. escapes is whether bash
-// carries the network and sandbox parameters. It says auto mode, the one
+// sandboxPrompt is the environment's Sandbox block, "" for a run without
+// bash: what a command runs under without the user's approval, each clause
+// read off the live policy, so the text says what the backend enforces, and
+// naming only the escapes and tools toolset has. It says auto mode, the one
 // that settles commands confined: keyed on the mode, it would cost a cache
 // miss per switch.
 // NOTE: it reads the policy without the project walk, so on the namespace
 // backend a project over sandboxWalkMax entries reads as writable here.
-func (h *Host) sandboxPrompt(readOnly, escapes bool, pad string) string {
+func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad string) string {
+	i := slices.IndexFunc(toolset, func(t fantasy.AgentTool) bool { return t.Info().Name == tools.ToolBash })
+	if i < 0 {
+		return ""
+	}
+	_, escapes := toolset[i].Info().Parameters["sandbox"]
 	// without a UI an ask is denied, so no clause promises one
 	ask := "ask the user first"
 	if h.hooks() == nil {
@@ -223,7 +231,10 @@ func (h *Host) sandboxPrompt(readOnly, escapes bool, pad string) string {
 				fmt.Fprintf(&b, ", and so is %s, which is on PATH", rel)
 			}
 		}
-		b.WriteString(": write .agents files with the write tool; git commands that change .git " + ask + ".\n")
+		if hasTool(toolset, tools.ToolWrite) {
+			b.WriteString(": write .agents files with the write tool")
+		}
+		b.WriteString("; git commands that change .git " + ask + ".\n")
 	case readOnly:
 		fmt.Fprintf(&b, "- They write only %s: the project is read-only while planning.\n", pol.WriteNames(d.ProjectDir))
 	default:
@@ -248,7 +259,7 @@ func (h *Host) sandboxPrompt(readOnly, escapes bool, pad string) string {
 		b.WriteString(" and secret-shaped files (.env, *.pem, *.key), in $TMPDIR too")
 	}
 	b.WriteString(".")
-	if len(zemi) > 0 {
+	if len(zemi) > 0 && hasTool(toolset, tools.ToolRead) {
 		b.WriteString(" Read zemi's files with the read tool.")
 	}
 	if pol.Env["TMPDIR"] != "" {

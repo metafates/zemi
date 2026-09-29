@@ -660,7 +660,7 @@ func TestSandboxPrompt(t *testing.T) {
 				h.SetUIHooks(&fakeUI{})
 			}
 			h.SetProjectTrusted(c.trusted)
-			got := h.sandboxPrompt(c.readOnly, c.escape, h.ScratchDir())
+			got := h.sandboxPrompt(tools.All(&tools.Pipeline{SandboxParam: c.escape}), c.readOnly, h.ScratchDir())
 			for _, w := range c.want {
 				if !strings.Contains(got, w) {
 					t.Errorf("lacks %q:\n%s", w, got)

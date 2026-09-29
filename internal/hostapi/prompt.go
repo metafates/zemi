@@ -158,11 +158,18 @@ func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string
 	}
 	sys += h.zemiPrompt()
 	if p != nil && p.ReadOnly {
-		rest := planAsking
-		if !hasTool(toolset, tools.ToolPlan) {
-			rest = planHeadless
+		sys += planPrompt
+		if hasTool(toolset, tools.ToolAgent) {
+			sys += planDelegate
 		}
-		sys += planPrompt + rest
+		switch {
+		case !hasTool(toolset, tools.ToolPlan):
+			sys += planHeadless
+		case !hasTool(toolset, tools.ToolQuestion):
+			sys += planAssuming
+		default:
+			sys += planAsking
+		}
 	}
 	if def := h.permModeDef(); def.Prompt != "" {
 		sys += "\n\n# Permission mode: " + def.Name + "\n" + def.Prompt
@@ -176,10 +183,12 @@ const planPrompt = `
 
 # Planning
 You are planning, which overrides Doing tasks and Asking the user above: read, search and plan, and change nothing. The project is read-only, so a command that changes it fails or needs approval. A request for a change is a request to plan it.
-1. Read the code the task touches. For more than a focused fix, have the plan subagent (agent "plan") read and draft: its report is your draft, and its open questions go to step 2.`
+1. Read the code the task touches.`
 
-// planAsking is the rest of the planning prompt for a run with the plan tool; a
-// headless run and a profile that drops it have none.
+const planDelegate = ` For more than a focused fix, have the plan subagent (agent "plan") read and draft: its report is your draft, and its open questions go to step 2.`
+
+// planAsking is the rest of the planning prompt for a run with the plan and
+// question tools; a headless run and a profile that drops one have none.
 const planAsking = `
 2. Ask what only the user can decide (goal, scope, behavior, tradeoffs) with the question tool. A vague request needs several rounds; a focused fix may need none.
 3. When nothing is left to decide, call the plan tool.
@@ -187,6 +196,10 @@ End every turn with the question or plan tool, never plain text; after answering
 
 const planHeadless = `
 2. Write the plan as your reply and stop: nothing in this run can approve it.`
+
+const planAssuming = `
+2. What only the user can decide (goal, scope, behavior, tradeoffs) goes in the plan as a stated assumption.
+3. Then call the plan tool, and end every turn with it, never plain text.`
 
 // systemWith appends the instruction files, the skills index, the
 // environment with the run's scratchpad pad and sandbox (readOnly: a
@@ -474,12 +487,13 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly 
 			scratch += scratchRead
 		}
 	}
-	if i := slices.IndexFunc(toolset, func(t fantasy.AgentTool) bool { return t.Info().Name == tools.ToolBash }); i >= 0 {
-		_, escapes := toolset[i].Info().Parameters["sandbox"]
-		scratch += h.sandboxPrompt(readOnly, escapes, pad)
-	}
-	if writes {
+	scratch += h.sandboxPrompt(toolset, readOnly, pad)
+	// a read-only agent's write there is denied
+	if writes && !readOnly {
 		recipes = recipesUse
+		if !hasTool(toolset, tools.ToolSkill) {
+			recipes = strings.Replace(recipes, " The skill tool loads it at once.", "", 1)
+		}
 	}
 	return strings.NewReplacer("{Scratch}", scratch, "{Recipes}", recipes).Replace(h.environmentPrompt())
 }

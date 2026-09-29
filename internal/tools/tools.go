@@ -1124,7 +1124,7 @@ Chain dependent steps with &&.`,
 			},
 			runRead)),
 
-		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read with the read tool, unless it is in the scratchpad, and not changed since. To change part of a file use edit.", true,
+		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, unless it is in the scratchpad, and not changed since. To change part of a file use edit.", true,
 			map[string]any{
 				"path":    map[string]any{"type": "string"},
 				"content": map[string]any{"type": "string"},
@@ -1135,7 +1135,7 @@ Chain dependent steps with &&.`,
 			},
 			runWrite))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read with the read tool (a window around the change is enough; cat or sed in bash does not count), unless it is in the scratchpad. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. Several edit calls to one file sent together apply in order.", true,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read first (a window around the change is enough; cat or sed in bash does not count), unless it is in the scratchpad. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. Several edit calls to one file sent together apply in order.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
@@ -1208,7 +1208,7 @@ Chain dependent steps with &&.`,
 			nil,
 			runTodos),
 
-		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, behavior, preferences, tradeoffs; never what reading code would tell you, approval for a routine action, or whether a plan is ready (use plan). Put independent questions in one call; ask separately when one answer changes another. Choice questions take 2-4 options with 1-5 word labels, the one you recommend first with its label ending in "(Recommended)". Never add an "Other" option: the user can always type their own answer.`,
+		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, behavior, preferences, tradeoffs; never what reading code would tell you, approval for a routine action, or whether a plan is ready. Put independent questions in one call; ask separately when one answer changes another. Choice questions take 2-4 options with 1-5 word labels, the one you recommend first with its label ending in "(Recommended)". Never add an "Other" option: the user can always type their own answer.`,
 			false,
 			map[string]any{
 				"questions": map[string]any{"type": "array", "items": map[string]any{
@@ -1234,7 +1234,7 @@ Chain dependent steps with &&.`,
 			nil,
 			runQuestion),
 
-		mk(ToolPlan, `Present an implementation plan and wait for the user's verdict before changing anything. Call it only before a large or ambiguous change (a clear task is done, not planned, and a question is answered), or as a read-only agent once nothing is left to decide. Ask open questions with the question tool first.
+		mk(ToolPlan, `Present an implementation plan and wait for the user's verdict before changing anything. Call it only before a large or ambiguous change (a clear task is done, not planned, and a question is answered), or as a read-only agent once nothing is left to decide.
 
 The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most.`,
 			false,

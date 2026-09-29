@@ -1284,7 +1284,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 	}
 	// a detached run outlives a headless turn, which would throw its result away
 	if tui {
-		desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; send_to on the agent tool messages one of its agents (status lists them).")
+		desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; status lists the run ids of its agents.")
 		actions = []string{string(actStatus), string(actPause), string(actResume), string(actStop), "rerun"}
 		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the result arrives later as a message"}
 	}
