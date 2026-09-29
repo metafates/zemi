@@ -468,7 +468,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "init", Desc: "write AGENTS.md for this project", GoFn: func(h *hostapi.Host, _ string) error {
 			return h.InitProject()
 		}},
-		{Name: "export", Hidden: true, NArgs: hostapi.NArgsAny, Desc: "save this session as markdown", GoFn: func(h *hostapi.Host, args string) error {
+		{Name: "export", Hidden: true, NArgs: hostapi.NArgsAny, Desc: "save this session as markdown ([full] [path]; full adds reasoning, tool calls and agent runs)", GoFn: func(h *hostapi.Host, args string) error {
 			path, full := strings.CutPrefix(strings.TrimSpace(args)+" ", "full ")
 			_, err := h.ExportSession(strings.TrimSpace(path), full)
 			return err
