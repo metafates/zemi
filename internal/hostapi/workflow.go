@@ -1283,9 +1283,7 @@ The script's return value is the result.
 
 local wf = zemi.workflow
 local notes = wf.pipeline(wf.args, function(dir) return wf.agent("Summarize " .. dir .. ", citing file:line.", { agent = "explore" }) end)
-return wf.agent("Write a design note from:\n" .. table.concat(notes, "\n"))
-
-The result names the run's script file. To change a run, edit that file and pass run with action rerun: agent calls identical to its finished ones answer at once.`
+return wf.agent("Write a design note from:\n" .. table.concat(notes, "\n"))`
 
 // bgWorkflowStarted opens the result of a workflow call that went on in the
 // background, whose row reads as still running (toolStatus).
@@ -1302,7 +1300,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 		"args":        map[string]any{"description": "the script's zemi.workflow.args"},
 		"description": map[string]any{"type": "string", "description": "3-6 word label shown to the user"},
 		"concurrency": map[string]any{"type": "integer", "description": fmt.Sprintf("agents running at once, 1-%d (default %d); with run, changes a running workflow's", workflowMaxConcurrency, workflowConcurrency)},
-		"run":         map[string]any{"type": "string", "description": "id of a workflow run in this session to act on"},
+		"run":         map[string]any{"type": "string", "description": "id of a workflow run in this session to act on; rerun reruns its edited script file, and finished agent calls answer at once"},
 	}
 	// a detached run outlives a headless turn, which would throw its result away
 	if tui {

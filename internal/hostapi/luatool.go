@@ -165,10 +165,9 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
 		Name: tools.ToolLua,
 		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors." +
-			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, 10s at most between waits: no busy loops; a handle's wait or zemi.job.wait frees the interpreter until it returns." +
+			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, 10s at most between waits: no busy loops." +
 			approval +
-			" For calls not named here read " + filepath.Join(t.h.builtinSkillsDir(), "zemi", "lua.md") + "; a member a namespace lacks raises with the list it has." +
-			" Keep scripts you reuse in the scratchpad and pass path instead of script.",
+			" For calls not named here read " + filepath.Join(t.h.builtinSkillsDir(), "zemi", "lua.md") + "; a member a namespace lacks raises with the list it has.",
 		Parameters: map[string]any{
 			"description": map[string]any{"type": "string", "description": "what the script does in 3-6 words, shown to the user"},
 			"script":      map[string]any{"type": "string", "description": "Lua source"},

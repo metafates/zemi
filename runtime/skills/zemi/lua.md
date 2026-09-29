@@ -30,7 +30,7 @@ A handle's `wait()` (`zemi.http`, `zemi.job` and `zemi.model.ask` handles) and `
 
 ## The lua tool
 
-Its description covers what comes back, the 10 s ceiling between waits and which calls need the user's approval. A script runs as `user` origin, so an approved one can do what init.lua can, secret-shaped `zemi.env` names included. A call reached through a name built from strings, `_G` or `load` needs approval too, and one the scan misses raises; in an untrusted project or a read-only agent every script needs approval. After the run, callbacks the script registered keep only the read-only calls and its globals are gone, so lasting behavior belongs in init.lua. SKILL.md's Check a change has the loop for checking config you wrote.
+Its description covers what comes back, the 10 s ceiling between waits and which calls need the user's approval. Keep a script you reuse in the scratchpad and pass `path` instead of `script`. A script runs as `user` origin, so an approved one can do what init.lua can, secret-shaped `zemi.env` names included. A call reached through a name built from strings, `_G` or `load` needs approval too, and one the scan misses raises; in an untrusted project or a read-only agent every script needs approval. After the run, callbacks the script registered keep only the read-only calls and its globals are gone, so lasting behavior belongs in init.lua. SKILL.md's Check a change has the loop for checking config you wrote.
 
 ## The API
 
