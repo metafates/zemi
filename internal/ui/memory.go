@@ -145,11 +145,12 @@ func (a *App) markMemory(key string) {
 		}
 		if it.Forget {
 			mr.gone = append(mr.gone, it) // a kept forget remembers nothing
-		} else if at := rememberedAt(mr.items); at <= sel {
-			mr.items = slices.Insert(mr.items, at, it)
-			sel++ // the row moved past the cursor
 		} else {
+			at := rememberedAt(mr.items)
 			mr.items = slices.Insert(mr.items, at, it)
+			if at <= sel {
+				sel++ // the row moved past the cursor
+			}
 		}
 		if n := rememberedAt(mr.items); sel >= n && n > 0 {
 			sel = 0 // past the last suggestion: back to the first one left
