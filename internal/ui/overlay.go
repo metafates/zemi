@@ -692,12 +692,11 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		body := [][]hostapi.Segment{st.input.inputRow(inner), nil, hint(inner, sendHint, hintPair{"esc", "close"})}
 		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
-	// a list fits its content, 56 cells at least, a text view or a list with
-	// previews, which read as text, 72, and a detail view opens at its
+	// a list with previews reads as text; a detail view opens at its
 	// parent's size
 	previews := !st.back && slices.ContainsFunc(st.items, func(it listItem) bool { return it.row.Preview != "" })
 	if !st.back {
-		st.size.w = max(st.size.w, map[bool]int{true: 56, false: 72}[len(st.o.Items) > 0 && !previews])
+		st.size.w = max(st.size.w, map[bool]int{true: listBoxW, false: textBoxW}[len(st.o.Items) > 0 && !previews])
 	}
 	bodyW := min(inner, st.size.w)
 	if previews && st.paneW != bodyW {

@@ -103,8 +103,7 @@ func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 		act = [][]hostapi.Segment{{{Text: "What should change?", HL: hostapi.ChromeHint}}, p.input.inputRow(inner)}
 		hints = []hintPair{sendHint, {"esc", "back"}}
 	}
-	// a text view is 72 cells
-	p.size.w = max(p.size.w, 72)
+	p.size.w = max(p.size.w, textBoxW)
 	planW := min(inner, p.size.w)
 	md := p.text.at(func(w int) [][]hostapi.Segment {
 		if rows := a.host.Markdown(p.plan, w); len(rows) > 0 {

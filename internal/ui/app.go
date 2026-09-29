@@ -1112,7 +1112,7 @@ func (a *App) floatPopup(lay screenLayout, h int) ([][]hostapi.Segment, int, uv.
 		return nil, 0, uv.Rectangle{}
 	}
 	maxW := boxInner(width)
-	size.w = max(size.w, 56) // a list fits its content, 56 cells at least
+	size.w = max(size.w, listBoxW)
 	rows := append(render(maxW, bottom-top-4, size.w), nil, hint(maxW, hints...))
 	box := promptBox("", "", rows, width, bottom-top, 100, size)
 	if up {

@@ -317,7 +317,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 			moves = []hintPair{{"shift+tab", "previous"}}
 		}
 	}
-	qp.size.w = max(qp.size.w, 56)
+	qp.size.w = max(qp.size.w, listBoxW)
 	if qp.reviewing() {
 		items := make([]listItem, 0, len(qp.qs)+1)
 		for i, q := range qp.qs {

@@ -270,7 +270,7 @@ func (a *App) memReviewBox(w, h int) [][]hostapi.Segment {
 		false: fmt.Sprintf("Remembered (%d) · this project %s · everywhere %s", len(mr.items)-n, kb(store.ScopeProject), kb(store.ScopeUser)),
 	}
 	inner := boxInner(w)
-	mr.size.w = max(mr.size.w, 56)
+	mr.size.w = max(mr.size.w, listBoxW)
 	if i := mr.at(); mr.detail && i < len(mr.items) {
 		return a.memDetailBox(mr.items[i], w, h, inner)
 	}

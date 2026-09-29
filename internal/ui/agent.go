@@ -168,6 +168,10 @@ func boxInner(w int) int { return max(min(w-4, 100)-4, 1) }
 // shrinks or moves the box; w counts the cells inside the padding.
 type boxSize struct{ w, h int }
 
+// listBoxW and textBoxW are the fewest cells inside a box of a list, and of
+// a box that reads as text.
+const listBoxW, textBoxW = 56, 72
+
 // promptBox is the frame every modal draws in; body ends in its hint row.
 // Blank rows before the hint pad it to size's height, within h rows, and
 // its rows pad to size's width; size then grows to the box drawn.
@@ -792,9 +796,9 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		hints = append(hints, scrollHint)
 	}
 	hintRow := hint(inner, hints...)
-	// panels span the box, and the box fits its content (at least 56 wide):
-	// a padded panel counts by its text, other rows whole as hostBox counts them
-	fit, bar := 56, 0
+	// panels span the box, and the box fits its content: a padded panel
+	// counts by its text, other rows whole as hostBox counts them
+	fit, bar := listBoxW, 0
 	if len(content) > pa.view.viewH {
 		bar = 1 // a scrolled panel's text keeps its cells beside the bar
 	}
