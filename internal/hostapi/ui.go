@@ -45,12 +45,8 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		if w.Region == RegionExit && w.Origin.Rank() < lua.OriginBuiltin.Rank() {
 			L.RaiseError("zemi.ui.widget.add: only user config draws the exit region")
 		}
-		if fn, ok := opt[*glua.LFunction](L, tb, "render"); ok {
-			w.Render = fn
-		}
-		if fn, ok := opt[*glua.LFunction](L, tb, "on_click"); ok {
-			w.OnClick = fn
-		}
+		w.Render, _ = opt[*glua.LFunction](L, tb, "render")
+		w.OnClick, _ = opt[*glua.LFunction](L, tb, "on_click")
 		if _, err := h.Widgets.Add(w); err != nil {
 			L.RaiseError("zemi.ui.widget.add: %v", err)
 		}
@@ -197,15 +193,9 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		if fn, ok := opt[*glua.LFunction](L, tb, "reload"); ok {
 			o.Reload = h.luaReload(o, fn, render)
 		}
-		if fn, ok := opt[*glua.LFunction](L, tb, "on_select"); ok {
-			o.OnSelect = fn
-		}
-		if fn, ok := opt[*glua.LFunction](L, tb, "on_action"); ok {
-			o.OnAction = fn
-		}
-		if fn, ok := opt[*glua.LFunction](L, tb, "on_close"); ok {
-			o.OnClose = fn
-		}
+		o.OnSelect, _ = opt[*glua.LFunction](L, tb, "on_select")
+		o.OnAction, _ = opt[*glua.LFunction](L, tb, "on_action")
+		o.OnClose, _ = opt[*glua.LFunction](L, tb, "on_close")
 		if keys, ok := opt[*glua.LTable](L, tb, "keys"); ok {
 			keys.ForEach(func(k, v glua.LValue) {
 				spec, _ := v.(*glua.LTable)
