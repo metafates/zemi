@@ -921,29 +921,23 @@ func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, say
 			kw = max(kw, ansi.StringWidth(n)+2)
 		}
 	}
-	fact := func(name string, val []hostapi.Segment) [][]hostapi.Segment {
-		if w-kw < 20 {
-			return fieldLine(name, val, w)
-		}
-		return fieldRow(name, kw, hostapi.WrapSegs(val, w-kw))
-	}
 	switch {
 	case runs && w-kw < 20:
 		target = append(fieldLine(name, nil, w), runsRows(req.Runs, w)...)
 	case runs:
 		target = fieldRow(name, kw, runsRows(req.Runs, w-kw))
 	case val != nil:
-		target = fact(name, val)
+		target = field(name, kw, val, w)
 		if n := max(h/3, 3); len(target) > n {
 			more := fieldRow("", kw, [][]hostapi.Segment{{{Text: hostapi.MoreLines(len(target) - n + 1), HL: hostapi.ChromeHint}}})
 			target = slices.Concat(target[:n-2], more, target[len(target)-1:])
 		}
 	}
 	if req.Reason != "" {
-		why = capRows(fact("why", []hostapi.Segment{{Text: sanitize.Line(req.Reason), HL: hostapi.ChromeValue}}), 2, w)
+		why = capRows(field("why", kw, []hostapi.Segment{{Text: sanitize.Line(req.Reason), HL: hostapi.ChromeValue}}, w), 2, w)
 	}
 	if req.Description != "" {
-		says = capRows(fact("says", []hostapi.Segment{{Text: `"` + sanitize.Line(req.Description) + `"`, HL: hostapi.ChromeHint}}), 2, w)
+		says = capRows(field("says", kw, []hostapi.Segment{{Text: `"` + sanitize.Line(req.Description) + `"`, HL: hostapi.ChromeHint}}, w), 2, w)
 	}
 	return target, why, says
 }

@@ -721,9 +721,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		case st.o.BodyMD:
 			rows = append(rows, a.host.Markdown(strings.TrimRight(st.o.Body, "\n"), w)...)
 		default:
-			for l := range strings.SplitSeq(strings.TrimRight(st.o.Body, "\n"), "\n") {
-				rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, w)...)
-			}
+			rows = append(rows, wrapText(st.o.Body, "", w)...)
 		}
 		return rows
 	})
@@ -872,16 +870,20 @@ func fieldRows(fields []hostapi.Field, w int) [][]hostapi.Segment {
 		}
 		name := f.Name
 		for l := range strings.SplitSeq(f.Value, "\n") {
-			val := []hostapi.Segment{{Text: l, HL: hl}}
-			if w-kw < 20 {
-				rows = append(rows, fieldLine(name, val, w)...)
-			} else {
-				rows = append(rows, fieldRow(name, kw, hostapi.WrapSegs(val, w-kw))...)
-			}
+			rows = append(rows, field(name, kw, []hostapi.Segment{{Text: l, HL: hl}}, w)...)
 			name = ""
 		}
 	}
 	return rows
+}
+
+// field sets a value beside its name in a column kw wide, or as a "name:
+// value" line when w leaves the value under 20 cells.
+func field(name string, kw int, val []hostapi.Segment, w int) [][]hostapi.Segment {
+	if w-kw < 20 {
+		return fieldLine(name, val, w)
+	}
+	return fieldRow(name, kw, hostapi.WrapSegs(val, w-kw))
 }
 
 // fieldRow sets a field's value rows beside its name in a column kw wide;
