@@ -182,17 +182,8 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 			if h.currentGen() != cmd.Gen {
 				return nil, lua.ErrReloaded
 			}
-			defer h.RT.PushFrame(L, cmd.Origin, cmd.Path)()
-			base := L.GetTop()
-			defer L.SetTop(base)
-			L.Push(cmd.Complete)
-			L.Push(glua.LString(lead))
-			L.Push(glua.LString(line))
-			if err := L.PCall(2, 1, nil); err != nil {
-				return nil, err
-			}
-			v, err := lua.ToGo(L.Get(-1))
-			return []any{v}, err
+			items, err := h.callCompleter(L, cmd.Complete, cmd.Origin, cmd.Path, lead, line)
+			return []any{items}, err
 		})
 		if err != nil {
 			if !lua.Dropped(err) {
@@ -201,7 +192,7 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 			}
 			return nil
 		}
-		cands = completionItems(res[0])
+		cands = res[0].([]CompletionItem)
 	}
 	// lead narrows and ranks here, before the cap: the one hit may sit past it
 	labels := make([]string, len(cands))

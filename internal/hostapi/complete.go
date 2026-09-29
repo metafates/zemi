@@ -268,10 +268,15 @@ const maxCompletions = 50
 // HasCompletions reports whether a Lua source completes after trigger, or
 // the arguments of command, so the UI calls Lua only when one does.
 func (h *Host) HasCompletions(trigger, command string) bool {
-	h.completions.mu.Lock()
-	defer h.completions.mu.Unlock()
-	return slices.ContainsFunc(h.completions.list, func(s completionSource) bool {
-		return s.trigger == trigger && strings.EqualFold(s.command, command)
+	return len(h.completions.sources(trigger, command)) > 0
+}
+
+// sources is the sources for trigger or command, in registration order.
+func (r *completeReg) sources(trigger, command string) []completionSource {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.DeleteFunc(slices.Clone(r.list), func(s completionSource) bool {
+		return s.trigger != trigger || !strings.EqualFold(s.command, command)
 	})
 }
 
@@ -280,14 +285,7 @@ func (h *Host) HasCompletions(trigger, command string) bool {
 // failing source offers nothing and lands in /errors. It waits on the
 // interpreter: never call it on the UI goroutine.
 func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string) []CompletionItem {
-	h.completions.mu.Lock()
-	var srcs []completionSource
-	for _, s := range h.completions.list {
-		if s.trigger == trigger && strings.EqualFold(s.command, command) {
-			srcs = append(srcs, s)
-		}
-	}
-	h.completions.mu.Unlock()
+	srcs := h.completions.sources(trigger, command)
 	if len(srcs) == 0 {
 		return nil
 	}
@@ -297,7 +295,7 @@ func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string
 			if s.gen != h.currentGen() || len(out) >= maxCompletions {
 				continue
 			}
-			items, err := h.callSource(L, s, lead, line)
+			items, err := h.callCompleter(L, s.fn, s.origin, s.path, lead, line)
 			if err != nil {
 				h.Log.Error("completion source failed", "origin", "ui", "id", s.id, "error", err)
 				h.RecordError("completion "+s.id, err.Error())
@@ -310,11 +308,12 @@ func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string
 	return out[:min(len(out), maxCompletions)]
 }
 
-func (h *Host) callSource(L *glua.LState, s completionSource, lead, line string) ([]CompletionItem, error) {
-	defer h.RT.PushFrame(L, s.origin, s.path)()
+// callCompleter runs a Lua completer fn(lead, line) under its origin.
+func (h *Host) callCompleter(L *glua.LState, fn *glua.LFunction, origin lua.Origin, path, lead, line string) ([]CompletionItem, error) {
+	defer h.RT.PushFrame(L, origin, path)()
 	base := L.GetTop()
 	defer L.SetTop(base)
-	L.Push(s.fn)
+	L.Push(fn)
 	L.Push(glua.LString(lead))
 	L.Push(glua.LString(line))
 	if err := L.PCall(2, 1, nil); err != nil {
