@@ -174,7 +174,7 @@ func (h *Host) spentSince(tokens int64, cost float64) string {
 	s := h.AgentStream()
 	out := fmtTokens(s.SessionIn+s.SessionOut-tokens) + " tokens"
 	if spent := s.SessionCost - cost; spent > 0 {
-		out += fmt.Sprintf(", $%.2f", spent)
+		out += ", " + fmtCost(spent)
 	}
 	return out
 }

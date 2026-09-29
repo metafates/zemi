@@ -890,7 +890,7 @@ func (f *flowRun) summary() string {
 	}
 	parts = append(parts, fmt.Sprintf("%d %s", len(v.agents), plural(len(v.agents), "agent", "agents")))
 	if v.cost > 0 {
-		parts = append(parts, fmt.Sprintf("$%.2f", v.cost))
+		parts = append(parts, fmtCost(v.cost))
 	}
 	return strings.Join(append(parts, fmtDuration(v.took)), " · ")
 }
@@ -1813,7 +1813,7 @@ func flowWord(v flowView) string {
 func flowFields(f *flowRun, v flowView) []string {
 	usage := fmtTokens(v.tokens) + " tok"
 	if v.cost > 0 {
-		usage += fmt.Sprintf(" · $%.2f", v.cost)
+		usage += " · " + fmtCost(v.cost)
 	}
 	script := ""
 	if f.script != "" {
@@ -1830,7 +1830,7 @@ func flowFields(f *flowRun, v flowView) []string {
 func flowDesc(f *flowRun, v flowView) string {
 	desc := fmt.Sprintf("%s · %s · %d/%d agents · %s", statusCol(flowWord(v)), f.id, v.done, len(v.agents), fmtDuration(v.took))
 	if v.cost > 0 {
-		desc += fmt.Sprintf(" · $%.2f", v.cost)
+		desc += " · " + fmtCost(v.cost)
 	}
 	return desc
 }
@@ -1942,7 +1942,7 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) map[string]
 	}
 	usage, detail := fmt.Sprintf("%d %s · %s tok", a.calls, plural(a.calls, "call", "calls"), fmtTokens(a.tokens)), ""
 	if a.cost > 0 {
-		usage += fmt.Sprintf(" · $%.2f", a.cost)
+		usage += " · " + fmtCost(a.cost)
 	}
 	actions := []any{map[string]any{"text": "View its transcript", "hotkey": "v", "run": "workflows view " + f.id + " " + a.id}}
 	if run != nil {

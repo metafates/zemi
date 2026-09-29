@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -288,6 +289,22 @@ func TestToolSummary(t *testing.T) {
 			t.Errorf("toolSummary(%s, %s) = %q, want %q", c.tool, c.in, got, c.want)
 		}
 	}
+}
+
+// TestCost: Go's fmtCost and the widgets' text.cost agree, and a cost under
+// half a cent reads as one, not as free.
+func TestCost(t *testing.T) {
+	r := newTestHostUI(t).RT
+	for _, c := range []struct {
+		usd  float64
+		want string
+	}{{0.00375, "<$0.01"}, {0.005, "$0.01"}, {0.42, "$0.42"}} {
+		if got := fmtCost(c.usd); got != c.want {
+			t.Errorf("fmtCost(%v) = %q, want %q", c.usd, got, c.want)
+		}
+		runUser(t, r, fmt.Sprintf(`local got = require("zemi.tui.text").cost(%v); assert(got == %q, tostring(got))`, c.usd, c.want))
+	}
+	runUser(t, r, `assert(require("zemi.tui.text").cost(0) == nil, "no cost reads as one")`)
 }
 
 // TestUsageBreaksThePromptDown: the fixed prompt rides every request, so

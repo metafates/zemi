@@ -363,6 +363,14 @@ func fmtTokens(n int64) string {
 	return strconv.FormatInt(n, 10)
 }
 
+// fmtCost is a cost in dollars to the cent; one under half a cent is not free.
+func fmtCost(usd float64) string {
+	if usd > 0 && usd < 0.005 {
+		return "<$0.01"
+	}
+	return fmt.Sprintf("$%.2f", usd)
+}
+
 // OpenUsage shows how full the context is, what the fixed prompt is made of,
 // and token use and cost: the live session, then today, the last 7 days and
 // all time across this project's sessions.
@@ -458,7 +466,7 @@ func (h *Host) OpenUsage() error {
 		}
 		row := []Segment{text(ChromeValue, fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTokens(w.u.Prompt), fmtTokens(w.u.Completion))), text(ChromeHint, fmt.Sprintf("%10s", count))}
 		if priced {
-			row = append(row, text(ChromeValue, fmt.Sprintf("%10s", fmt.Sprintf("$%.2f", w.u.Cost))))
+			row = append(row, text(ChromeValue, fmt.Sprintf("%10s", fmtCost(w.u.Cost))))
 		}
 		// a broken cache prefix (a per-turn system section, a model switch) has
 		// no other symptom than the bill
