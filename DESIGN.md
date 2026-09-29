@@ -1,18 +1,14 @@
 # zemi: a self-improving, Lua-extensible AI agent harness
 
-Status: draft v1
+Status: draft
 Module: `github.com/metafates/zemi`
 
 zemi is a terminal AI agent harness (coding agent first, general assistant by
-configuration) whose entire userland, including its default UI and its own
-learning machinery, is written in embedded Lua. Go owns the runtime (agent
+configuration) whose entire userland, including its default UI, is written
+in embedded Lua. Go owns the runtime (agent
 loop, providers, I/O, rendering); Lua owns behavior. The user configures,
 extends, and observes the agent the same way a neovim user configures an
 editor: from `init.lua` against a stable host API.
-
-The learning system runs through the same extensibility surface: the agent
-improves by writing the same Lua that a user would write, through the same
-reviewed pipeline.
 
 Prior art studied: `charmbracelet/crush` (local checkout), `charm.land/fantasy`,
 neovim's Lua architecture, pi, opencode, codex, hermes-agent.
@@ -20,10 +16,9 @@ neovim's Lua architecture, pi, opencode, codex, hermes-agent.
 ## 1. Design principles
 
 1. **Core is small, behavior is Lua.** Go code ships primitives; policies,
-   keymaps, widgets, tools, prompts, and the learning loop live in Lua.
-   Anything users can do, the built-in config can do, because they use the
-   same API; the self-improvement system uses the same API too, minus the
-   capabilities its origin denylist withholds (§5, §10).
+   keymaps, widgets, tools and prompts live in Lua. Anything users can do,
+   the built-in config can do, because they use the same API. The reflector
+   is Go and only proposes memories through the gated intake (§10).
 2. **Every side effect is permissioned.** Filesystem, network, subprocess, and
    memory writes all flow through one gate, used by both model-invoked tools
    and Lua code. Nothing the agent learns changes a permission.
@@ -33,8 +28,7 @@ neovim's Lua architecture, pi, opencode, codex, hermes-agent.
    permission gate.
 4. **Learning is typed and reviewable.** The agent stores facts (memories)
    and procedures (recipes) as distinct, inspectable objects with
-   provenance; a structural change is a config file edit under the
-   permission gate.
+   provenance.
 5. **Boring concurrency model.** One Lua interpreter thread (an actor),
    bubbletea on the main goroutine, agent streams and I/O on workers. All
    Lua access funnels through one queue.
@@ -257,7 +251,7 @@ Contracts that make this safe:
   force-reload is the Go-reserved `/reload` command plus the Go-reserved
   cancel trigger, never routed through Lua (while hot, every Lua keymap is
   dead; the reserved cancel and reload triggers are not, they dispatch
-  before any Lua-visible keymap and are fixed in v1). Reloading builds a
+  before any Lua-visible keymap and are fixed). Reloading builds a
   fresh `LState`:
   new requests run normally, requests that arrived while hot got the
   "reloading" error immediately, stale timer/job callbacks are dropped and
@@ -282,7 +276,7 @@ Contracts that make this safe:
   cancels the turn and returns the queue to the composer.
 
 Cancellation: `ctrl+c` (the cancel trigger, §8; the action is
-Go-reserved, §6.2, and in v1 its trigger is fixed: no origin, the user
+Go-reserved, §6.2, and its trigger is fixed: no origin, the user
 included, rebinds it) cancels the running
 turn by cancelling the fantasy
 context; in-flight Lua tool calls get the catchable "context canceled"
@@ -802,7 +796,7 @@ whether there was a binding. The actions behind cancel-turn and
 force-reload are Go-reserved: their triggers (the cancel key and the
 exact, case-sensitive, non-abbreviable `/reload` command, checked on
 composer submit before any Lua-visible command lookup) are fixed
-in v1 (no origin, user included, rebinds them), so a compromised config
+(no origin, user included, rebinds them), so a compromised config
 cannot relocate the panic button or put a decoy on it (case-variant
 command names are refused by the §11 collision rules). `<leader>`
 expands to `ctrl+x` (the `keymap.leader` setting); multi-key sequences arm a
@@ -811,7 +805,7 @@ prefix the next key breaks or the timeout ends replays as plain keys.
 Command `nargs` follows Vim's spec strings (`?` = 0 or 1, `+` = 1 or more,
 `*` = 0 or more).
 
-Event catalogue (v1, each emitted on the interpreter thread):
+Event catalogue (each emitted on the interpreter thread):
 
 - app: `app.ready`, `app.quit` (vetoable), `config.reloaded`
 - session: `session.new`, `session.open`, `session.close`
@@ -1307,7 +1301,7 @@ UI extensibility contract:
   `$VISUAL`/`$EDITOR` handoff for the draft. Lua reacts to
   `composer.change`/`composer.submit`, reads and edits the draft through
   `zemi.composer` (§6.7), and registers decoration widgets around it,
-  but cannot replace it in v1.
+  but cannot replace it.
 - Widgets return lines of `{ text, hl, click, effect, copy, soft_wrap }` segments; Go measures, wraps
   (opt-in per widget), styles, and diffs via bubbletea v2. `copy = false`
   marks decoration (gutter bars, bullets, borders, line numbers): a
@@ -2719,4 +2713,4 @@ runtime/types/              the LuaLS `---@meta` description of the whole zemi.*
 - Streaming render cost: a long transcript re-renders per generation
   bump; needs a per-widget invalidation design and a measured budget.
 - Platform support statement: the doc assumes Unix throughout (XDG
-  paths, termios); v1 scope for Windows is undecided.
+  paths, termios); Windows support is undecided.

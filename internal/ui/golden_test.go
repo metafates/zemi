@@ -35,9 +35,9 @@ func tempConfig(t testing.TB) string {
 	return cfg
 }
 
-// User init.lua rebinds a default key and
-// adds a statusline segment; the composed frame is pinned as a golden.
-func TestGoldenM0Frame(t *testing.T) {
+// User init.lua rebinds a default key and adds a statusline segment; the
+// composed frame is pinned as a golden.
+func TestGoldenFrame(t *testing.T) {
 	ctx := context.Background()
 	cfg, data, state, project := tempConfig(t), t.TempDir(), t.TempDir(), t.TempDir()
 	// Classify on EvalSymlinks-resolved prefixes (DESIGN §5): on macOS
