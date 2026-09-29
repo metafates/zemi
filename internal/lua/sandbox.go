@@ -207,7 +207,7 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 	})
 	frozen.RawSetString("_G", glua.LNil)
 	s.frozen = frozen
-	s.FreezeTable(frozen, "stdlib surface")
+	s.freezeTable(frozen, "stdlib surface")
 	// The zemi binding itself is write-guarded from the start (DESIGN §5):
 	// namespace registrations mark their dotted names, but the root name is
 	// protected even before any namespace exists.
@@ -505,11 +505,11 @@ func (s *Sandbox) SetRequire(fn *glua.LFunction) {
 	s.protected["require"] = struct{}{}
 }
 
-// FreezeTable locks a shared table: writes through it raise, setmetatable
+// freezeTable locks a shared table: writes through it raise, setmetatable
 // on it is refused via the __metatable lock, and Lua cannot get at the real
-// metatable to swap events. Used for the frozen surface itself; shared leaf
-// tables get protectTable instead (see below).
-func (s *Sandbox) FreezeTable(tb *glua.LTable, what string) {
+// metatable to swap events. The stdlib surface and each registered namespace
+// root get it; Lua reaches namespaces only through protectNamespace proxies.
+func (s *Sandbox) freezeTable(tb *glua.LTable, what string) {
 	s.L.SetMetatable(tb, s.lockedMeta(what))
 }
 
@@ -662,7 +662,7 @@ func (s *Sandbox) RegisterNamespace(name string, tbl *glua.LTable, call *glua.LF
 	if call != nil && call.IsG {
 		call = guardFunc(s.L, call, short, guard)
 	}
-	s.FreezeTable(tbl, "namespace "+name)
+	s.freezeTable(tbl, "namespace "+name)
 	s.deepProtect(tbl, name)
 	proxy := s.protectNamespace(tbl, "namespace "+name, name)
 	if call != nil {
@@ -729,7 +729,7 @@ func (s *Sandbox) RegisterProtectedValue(path string, v glua.LValue) error {
 		return fmt.Errorf("protected value %q already registered", path)
 	}
 	if tb, ok := v.(*glua.LTable); ok {
-		s.FreezeTable(tb, "protected value "+path)
+		s.freezeTable(tb, "protected value "+path)
 		s.deepProtect(tb, path)
 		v = s.protectNamespace(tb, "protected value "+path, path)
 	}

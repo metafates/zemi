@@ -19,7 +19,7 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
-func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
+func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	widget := L.NewTable()
@@ -494,12 +494,6 @@ func (h *Host) uiNamespace(L *glua.LState, sb *lua.Sandbox) *glua.LTable {
 		_ = h.OpenHelp() // headless there is nothing to open it on, like every overlay
 		return 0
 	}))
-
-	sb.FreezeTable(widget, "namespace zemi.ui.widget")
-	sb.FreezeTable(theme, "namespace zemi.ui.theme")
-	sb.FreezeTable(overlay, "namespace zemi.ui.overlay")
-	sb.FreezeTable(focus, "namespace zemi.ui.focus")
-	sb.FreezeTable(hl, "namespace zemi.ui.hl")
 
 	return tb
 }

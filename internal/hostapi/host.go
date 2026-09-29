@@ -2006,7 +2006,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.event", h.eventNamespace(L), nil},
 		{"zemi.log", h.logNamespace(L), h.logCall(L)},
 		{"zemi.notify", h.notifyNamespace(L), h.notifyCall(L)},
-		{"zemi.ui", h.uiNamespace(L, g.SB), nil},
+		{"zemi.ui", h.uiNamespace(L), nil},
 		{"zemi.env", h.envNamespace(L), nil},
 		{"zemi.state", h.stateNamespace(L), nil},
 		{"zemi.timer", h.timerNamespace(L), nil},
