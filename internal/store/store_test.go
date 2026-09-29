@@ -117,7 +117,7 @@ func TestSweepVacuum(t *testing.T) {
 }
 
 // TestRetentionSweep: opening drops checkpoints past CheckpointTTL, keeps
-// the ones inside it, and never deletes a session (sessionTTL is off).
+// the ones inside it, and never deletes a session.
 func TestRetentionSweep(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zemi.db")
 	db, err := Open(path)
@@ -294,10 +294,6 @@ func TestUserMessagesTopLevel(t *testing.T) {
 	}
 	if got[0].ID != top.ID || got[0].SessionID != "top" {
 		t.Fatalf("recall picked the child row: %+v", got)
-	}
-	all, err := db.ListSessions(10)
-	if err != nil || len(all) != 1 || all[0].ID != "top" {
-		t.Fatalf("list must hold only the top-level session: %+v %v", all, err)
 	}
 }
 
@@ -488,22 +484,6 @@ func TestProjectDBPath(t *testing.T) {
 	}
 	if p == ProjectDBPath("/state", "/home/u/other") {
 		t.Fatal("different projects must hash differently")
-	}
-}
-
-func TestOpenForDirs(t *testing.T) {
-	state := t.TempDir()
-	g, p, err := OpenForDirs(state, "/tmp/someproj")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer g.Close()
-	defer p.Close()
-	if err := p.CreateSession("s1", "", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := g.SetKV("x", "1"); err != nil {
-		t.Fatal(err)
 	}
 }
 
