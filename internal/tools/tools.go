@@ -1084,6 +1084,8 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	withSandbox := func(props, sandbox, network map[string]any) map[string]any {
 		if p != nil && p.SandboxParam {
 			props["sandbox"], props["network"] = sandbox, network
+			about := props["about"].(map[string]any)
+			about["description"] = about["description"].(string) + " With network or sandbox set, also why it needs that."
 		}
 		return props
 	}
@@ -1102,7 +1104,7 @@ Chain dependent steps with &&.`,
 			withSandbox(map[string]any{
 				// "about", not "description": a schema's properties reach the model
 				// sorted by name, and this one has to stream before the command
-				"about":      map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user, e.g. Run the unit tests. With network or sandbox set, also why it needs that."},
+				"about":      map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user, e.g. Run the unit tests."},
 				"command":    map[string]any{"type": "string"},
 				"timeout_ms": map[string]any{"type": "integer", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
 			}, sandboxProp(), networkProp()),
@@ -1261,7 +1263,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) with sh -c and return a job id at once. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
 			true,
 			withSandbox(map[string]any{
-				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server. With network or sandbox set, also why it needs that."},
+				"about":   map[string]any{"type": "string", "description": "what the process is in 3-6 words, shown to the user, e.g. Dev server."},
 				"command": map[string]any{"type": "string"},
 			}, map[string]any{"type": "boolean", "description": "as bash's sandbox"}, map[string]any{"type": "boolean", "description": "as bash's network"}),
 			[]string{"command"},

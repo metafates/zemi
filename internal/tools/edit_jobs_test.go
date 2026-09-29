@@ -79,6 +79,20 @@ func TestJobReadSandboxHint(t *testing.T) {
 	}
 }
 
+// TestEscapesOnlyWhereOffered: bash and job_start name network and sandbox
+// only when their schema carries them.
+func TestEscapesOnlyWhereOffered(t *testing.T) {
+	for _, param := range []bool{false, true} {
+		for _, tool := range All(&Pipeline{SandboxParam: param}) {
+			info := tool.Info()
+			_, has := info.Parameters["sandbox"]
+			if about, ok := info.Parameters["about"].(map[string]any); ok && strings.Contains(about["description"].(string), "sandbox") != has {
+				t.Errorf("%s with the param %v: about %q", info.Name, param, about["description"])
+			}
+		}
+	}
+}
+
 // TestSandboxHintFollowsPolicy: a denial gets one line naming the limit the
 // denied path hit and the next step, offering only the escapes the run has:
 // none without a UI, no sandbox: false for a read-only agent.
