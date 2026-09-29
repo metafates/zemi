@@ -1225,7 +1225,7 @@ zemi.ui.overlay.open({ id = "toggles", title = "Toggles", items = items(),
   render_item = function(it) return (it.on and "[x] " or "[ ] ") .. it.text end,
   on_select = function(it) on[it.text] = not on[it.text] end,
   reload = function()
-    if on.a and on.b then error("boom") end
+    if on.a and on.b then return nil end
     return items()
   end })`)
 	pressKeys(app, "j", "space")

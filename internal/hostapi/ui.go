@@ -700,10 +700,11 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	return p, err
 }
 
-// overlayItems is a Lua items list with every item's fields checked.
+// overlayItems is a Lua items list with every item's fields checked. nil is
+// no list, so a reload that returns nothing keeps the old items.
 func overlayItems(v any) ([]any, error) {
 	list, ok := luaList(v)
-	if !ok {
+	if !ok || v == nil {
 		return nil, fmt.Errorf("items must be a list, got %s", luaShape(v))
 	}
 	for i, item := range list {
