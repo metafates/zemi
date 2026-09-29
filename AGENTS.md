@@ -760,7 +760,8 @@ lua-language-server is installed.
   in Lua. A run's script and journal in the pad are created `O_EXCL` through `perm.Lresolve`
   and read back no-follow, regular and capped (`readPadFile`), since a sandboxed command can
   write the pad, and a rerun the user starts asks about the script as the tool's does
-  (`approveRerun`), since the model can rewrite it.
+  (`approveRerun`), since the model can rewrite it; for that reason `/workflows save`
+  saves the source the run held (`flowRun.src`), and only for a run this process holds.
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers an
   `agentRun` (a workflow's carry `workflow` and `phase`, and /agents lists them as one row per
   workflow) whose hooks build a live transcript, which `/agents view <id>` draws instead of

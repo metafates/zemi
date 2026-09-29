@@ -142,6 +142,7 @@ type flowRun struct {
 	wake                  chan struct{}    // buffered: a control that lets more agents start
 	progress              func(f *flowRun) // a foreground run's row, nil for none
 	script                string           // the script's file in the parent's pad, "" with no session
+	src                   string           // the script as approved and run: the pad's copy is the model's to rewrite
 	// journal is the held fd the scheduler appends to, never the path: a
 	// sandboxed command can plant a link at the name. nil with no session.
 	journal *os.File
@@ -208,7 +209,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	f := &flowRun{
 		id: store.NewID()[:runIDLen], name: spec.name, description: cmp.Or(spec.description, spec.name, clipRunes(leadingComment(spec.src), 60), "workflow"),
-		parent: parent, background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), progress: spec.progress,
+		parent: parent, background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), progress: spec.progress, src: spec.src,
 		status: RunRunning, limit: limit, started: time.Now(), restart: map[string]bool{},
 	}
 	if spec.name != "" {
@@ -1197,22 +1198,20 @@ func (h *Host) flowAgentIDs(sid string) map[string]bool {
 
 var savedName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-// saveFlow copies run id's script to workflows/<name>.lua in the config
-// dir, headed by the run's description when it has no leading comment.
+// saveFlow copies run id's script as it ran to workflows/<name>.lua in the
+// config dir, headed by the run's description when it has no leading
+// comment. Only a run this process holds has that script: the pad's copy
+// is the model's to rewrite, and a saved one runs by name in every project.
 func (h *Host) saveFlow(id, name string) (string, error) {
 	if !savedName.MatchString(name) {
 		return "", Usagef("a workflow name is lowercase letters, digits and dashes, not %q", name)
 	}
-	sid := h.AgentSessionID()
-	j, err := readJournal(h.scratchFor(sid), id)
-	if err != nil {
-		return "", err
+	f := h.tasks.flow(id)
+	if f == nil || f.parent != h.AgentSessionID() {
+		return "", Usagef("run %s is not one this zemi ran in this session: run it again, then save it", id)
 	}
-	src, err := readPadFile(j.pad, flowFile(id, ".lua"))
-	if err != nil {
-		return "", err
-	}
-	if desc := strings.Join(strings.Fields(j.head.Description), " "); leadingComment(string(src)) == "" && desc != "" {
+	src := []byte(f.src)
+	if desc := strings.Join(strings.Fields(f.description), " "); leadingComment(f.src) == "" && desc != "" {
 		src = append([]byte("-- "+desc+"\n"), src...)
 	}
 	dir := filepath.Join(h.Dirs.ConfigHome, "workflows")

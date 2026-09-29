@@ -818,6 +818,10 @@ func TestSavedWorkflows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// what ran saves, whatever a command wrote to the pad's copy since
+	if err := os.WriteFile(f.script, []byte("return 2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct{ name, want string }{
 		{"sum-up", ""},
 		{"sum-up", "exists: pick another name"},
