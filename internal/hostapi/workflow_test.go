@@ -684,7 +684,8 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 
 // TestWorkflowUserStart: /workflows run starts the saved workflow with no
 // model call first, and its report reaches the model: detached in the TUI,
-// on the claimed agent headless, which zemi run waits on.
+// on the claimed agent headless, which zemi run waits on. The run belongs to
+// the session its report lands in, even when it opened no session first.
 func TestWorkflowUserStart(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -725,6 +726,9 @@ func TestWorkflowUserStart(t *testing.T) {
 				return nil
 			})
 			waitIdle(t, h)
+			if f, sid := h.tasks.flowList()[0], h.AgentSessionID(); sid == "" || f.parent != sid {
+				t.Fatalf("the run belongs to session %q, the report went to %q", f.parent, sid)
+			}
 		})
 	}
 }

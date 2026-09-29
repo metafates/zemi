@@ -1618,6 +1618,14 @@ func (h *Host) runSaved(line, attached, name, args string) error {
 // zemi run waits on it and ctrl+c stops it, and its report starts the turn
 // under line, what the user typed, with attached (piped stdin) behind it.
 func (h *Host) startUserFlow(spec flowSpec, line, attached string) error {
+	// the run's report, pad, agents and spend belong to a session
+	p, err := h.resolveProfile("")
+	if err != nil {
+		return err
+	}
+	if err := h.ensureSession(p, line+attached); err != nil {
+		return err
+	}
 	if h.hooks() != nil {
 		spec.background, spec.done = true, h.deliverFlow
 		f, err := h.startFlow(context.Background(), spec)
