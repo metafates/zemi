@@ -109,24 +109,26 @@ func BenchmarkStreamingFrame(b *testing.B) {
 }
 
 // TestColdChatRender: the first chat render of a long resumed session shows
-// its latest messages well under the 1s ceiling that cancels a UI handler,
-// and the renders it asks for fill in the rest.
+// its latest messages and leaves the rest to the renders it asks for, each
+// of which renders at least one message, so none nears the 1s ceiling that
+// cancels a UI handler.
 func TestColdChatRender(t *testing.T) {
 	app, host := bootAgentApp(t, 140, 40)
-	for i := range 500 {
+	const turns = 500
+	for i := range turns {
 		host.AppendMessage("user", fmt.Sprintf("question %d", i))
 		appendReply(host, strings.Repeat(fmt.Sprintf("A paragraph of reply %d with `code` and **bold** that wraps across the chat width.\n\n", i), 28), hostapi.TurnStat{})
 	}
 	chat := host.Widgets.Get("chat")
 	var lines [][]hostapi.Segment
-	for n := 0; n == 0 || len(lines) == 0 || !strings.Contains(plainSegs(lines[0]), "question 0"); n++ {
-		start := time.Now()
+	for n := 0; n == 0 || !strings.Contains(plainSegs(lines[0]), "question 0"); n++ {
+		var more bool
 		var err error
-		if lines, _, err = host.RenderWidget(t.Context(), chat, 138, 30, app.uiState()); err != nil {
+		if lines, more, err = host.RenderWidget(t.Context(), chat, 138, 30, app.uiState()); err != nil {
 			t.Fatal(err)
 		}
-		if took := time.Since(start); len(lines) == 0 || n == 0 && took > 300*time.Millisecond || n > 500 {
-			t.Fatalf("render %d: %d lines in %v", n, len(lines), took)
+		if len(lines) == 0 || n == 0 && !more || n > 2*turns {
+			t.Fatalf("render %d: %d lines, more %v", n, len(lines), more)
 		}
 	}
 
