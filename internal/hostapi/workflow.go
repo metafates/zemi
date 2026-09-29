@@ -393,8 +393,11 @@ func (r *wfRun) agentDone(d wfDone) {
 	stopped := errors.Is(d.err, context.Canceled) && r.ctx.Err() == nil
 	if again && stopped && r.started < workflowMaxAgents {
 		r.started++
+		spent, cost := d.run.usage() // billed already, so the row and the journal keep it
 		f.mu.Lock()
 		d.req.agent.run = nil // queued again, which a paused run holds
+		d.req.agent.tokens += spent
+		d.req.agent.cost += cost
 		f.mu.Unlock()
 		d.task.req = d.req
 		r.queue = append([]*wfTask{d.task}, r.queue...)
@@ -404,6 +407,9 @@ func (r *wfRun) agentDone(d wfDone) {
 	r.dispatch()
 	status, calls, took, _ := d.run.state()
 	tokens, cost := d.run.usage()
+	f.mu.Lock()
+	tokens, cost = tokens+d.req.agent.tokens, cost+d.req.agent.cost
+	f.mu.Unlock()
 	line := journalLine{
 		Agent: d.run.id, Key: d.req.key, Def: d.req.def.Name, Description: d.run.description, Phase: d.run.phase,
 		Status: status, Calls: calls, Tokens: tokens, Cost: cost, MS: took.Milliseconds(),
@@ -798,7 +804,8 @@ func (f *flowRun) rows() []agentRow {
 		case a.run != nil:
 			r.id = a.run.id
 			r.status, r.calls, r.took, _ = a.run.state()
-			r.tokens, r.cost = a.run.usage()
+			tokens, cost := a.run.usage()
+			r.tokens, r.cost = r.tokens+tokens, r.cost+cost // a restart's first attempts are in the row
 		case r.status == "":
 			r.status = "queued"
 		}

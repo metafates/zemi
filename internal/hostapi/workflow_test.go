@@ -336,11 +336,15 @@ func TestWorkflowControl(t *testing.T) {
 			want: "nil stopped by the user",
 		},
 		{
-			name:   "a restart runs the call again and the script sees only the second answer",
+			name:   "a restart runs the call again, the script sees only the second answer, and the row keeps the first attempt's spend",
 			script: `return wf.agent("a")`,
 			drive: func(c ctl) {
 				running(1)(c)
-				act(c, actRestart, 0, c.f.view().agents[0].id)
+				first := c.h.tasks.find(c.f.view().agents[0].id)
+				first.mu.Lock()
+				first.tokens = 110
+				first.mu.Unlock()
+				act(c, actRestart, 0, first.id)
 				waitFor(c.t, func() error {
 					if n := c.m.count("a"); n != 2 {
 						return fmt.Errorf("calls %d", n)
@@ -348,6 +352,9 @@ func TestWorkflowControl(t *testing.T) {
 					return nil
 				})
 				running(1)(c)
+				if v := c.f.view(); v.tokens != 110 || v.agents[0].tokens != 110 {
+					c.t.Fatalf("after the restart the run shows %d tokens, its row %d", v.tokens, v.agents[0].tokens)
+				}
 				c.m.release <- struct{}{}
 			},
 			want: "a!",
