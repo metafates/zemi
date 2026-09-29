@@ -1241,6 +1241,7 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "sed -n 1p f"}, "allow this exact command", []string{"sed -n 1p f"}},
 		{tools.Request{Subject: "net.*", Arg: "https://pkg.go.dev/fmt"}, "allow pkg.go.dev", []string{"https://pkg.go.dev", "https://pkg.go.dev/*"}},
 		{tools.Request{Subject: "tool.workflow", Arg: "script"}, "", nil},
+		{tools.Request{Subject: "memory.write", Arg: "e9865952"}, "", nil},
 		{tools.Request{Subject: "tool.jira_create", Arg: "jira_create"}, "allow the jira_create tool", []string{"jira_create"}},
 		{tools.Request{Subject: "mcp.github", Arg: "create_issue"}, "allow create_issue from github", []string{"create_issue"}},
 		{tools.Request{Subject: "tool.bash", Arg: "rm *.tmp"}, "", nil},

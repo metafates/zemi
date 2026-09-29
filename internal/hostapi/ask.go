@@ -429,6 +429,8 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		return fmt.Sprintf("allow %s %s", what, where), []perm.Rule{rule(req.Subject, filepath.Join(dir, "*"))}
 	case req.Subject == "tool.workflow" && req.Arg == "script", req.Subject == "tool.lua":
 		return "", nil // a pattern for "script" would allow every future inline script
+	case req.Subject == "memory.write":
+		return "", nil // a memory is forgotten once, so its rule would never match again
 	case strings.HasPrefix(req.Subject, "net."):
 		if u, err := url.Parse(req.Arg); err == nil && u.Host != "" && !strings.ContainsAny(u.Host, globMeta) {
 			base := u.Scheme + "://" + u.Host
