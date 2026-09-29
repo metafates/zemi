@@ -1518,8 +1518,8 @@ func (h *Host) workflowCommands() []*Command {
 			if id == "" {
 				return Usagef("/workflows %s needs a run id or a name: /workflows lists them", verb)
 			}
-			// a key on a run's view runs these too: its screens rebuild at once,
-			// keys included, so a second press acts on what the first did
+			// a run's view's keys run these too, and the open screens rebuild at
+			// once, keys included
 			say := func(out string, err error) error {
 				if err == nil {
 					h.refreshFlows()
@@ -1547,7 +1547,11 @@ func (h *Host) workflowCommands() []*Command {
 			case "concurrency":
 				n, err := strconv.Atoi(arg(2))
 				if err != nil {
-					return Usagef("/workflows concurrency <id> <1-%d>", workflowMaxConcurrency)
+					return Usagef("/workflows concurrency <id> <1-%d, or +n or -n>", workflowMaxConcurrency)
+				}
+				// relative, so a key pressed twice before its view rebuilds acts twice
+				if f := h.tasks.flow(id); f != nil && strings.ContainsAny(arg(2)[:1], "+-") {
+					n += f.view().limit
 				}
 				return say(h.flowControl(id, actConcurrency, n, ""))
 			case "restart":
@@ -1876,8 +1880,8 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 		}
 		o.Keys = []OverlayKey{
 			pause,
-			{Key: "+", Desc: "at once", Run: fmt.Sprintf("workflows concurrency %s %d", f.id, min(v.limit+1, workflowMaxConcurrency))},
-			{Key: "-", Desc: "at once", Run: fmt.Sprintf("workflows concurrency %s %d", f.id, max(v.limit-1, 1))},
+			{Key: "+", Desc: "at once", Run: "workflows concurrency " + f.id + " +1"},
+			{Key: "-", Desc: "at once", Run: "workflows concurrency " + f.id + " -1"},
 		}
 	}
 	return o

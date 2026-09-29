@@ -853,7 +853,8 @@ lua-language-server is installed.
   session's earlier ones (held, then read from its pad), then the saved workflows; a run's detail
   pauses, stops, reruns, opens or saves it, and `v` opens its view (`flowOverlay`, overlay id
   `workflow:<id>`): its fields, then its agents under their phases, `p`, `+` and `-` as
-  `OverlayKey.Run` keys, and an agent's detail whose View opens the transcript through
+  `OverlayKey.Run` keys (`/workflows concurrency <id> +1`: relative, so a second press before
+  the view rebuilds still counts), and an agent's detail whose View opens the transcript through
   `ViewAgentFrom`, so esc (`LeaveAgentView`) reopens the view. While any run lives, one
   `watchFlows` ticker rebuilds whichever of the two is open once a second
   (`UIHooks.RefreshOverlay`, which builds nothing for a closed one), and a control from them
