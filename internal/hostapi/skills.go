@@ -319,7 +319,50 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 	}
 	h.skillsReg.setEnabledFlag(name, enabled)
 	h.includedStale.Store(true)
+	if s, ok := h.skillsReg.get(name); ok && s.UserInvocable {
+		if !enabled && h.hasSkillCommand(s) {
+			_, err := h.Commands.Remove(name, lua.Origin(s.Source), skillFile(s))
+			return err
+		}
+		if enabled {
+			h.addSkillCommand(s, h.currentGen())
+		}
+	}
 	return nil
+}
+
+func skillFile(s skills.Skill) string { return filepath.Join(s.Dir, "SKILL.md") }
+
+// hasSkillCommand reports whether /<name> is the skill's own command.
+func (h *Host) hasSkillCommand(s skills.Skill) bool {
+	c := h.Commands.Lookup(s.Name)
+	return c != nil && c.Path == skillFile(s)
+}
+
+// addSkillCommand makes a skill that asks for it the command /<name>. It
+// yields to a builtin command and to one of its own origin: a file in
+// commands/ or a zemi.command.add says "I want /x", a flag in a skill an
+// installer wrote does not. A less trusted holder is replaced.
+func (h *Host) addSkillCommand(s skills.Skill, gen Gen) {
+	origin := lua.Origin(s.Source)
+	old := h.Commands.Lookup(s.Name)
+	if old != nil && old.Path == skillFile(s) {
+		return
+	}
+	if old == nil || (old.Origin != lua.OriginBuiltin && old.Origin != origin) {
+		var err error
+		if old, err = h.Commands.Add(&Command{
+			Name: s.Name, NArgs: NArgsAny, Desc: strings.TrimSpace(listDesc(s.Description) + " " + s.ArgumentHint),
+			Origin: origin, Path: skillFile(s), Gen: gen,
+			GoFn: func(h *Host, args string) error {
+				typed, stdin := agent.CutAttached(args)
+				return h.sendSkill(s, strings.TrimSpace("/"+s.Name+" "+typed), strings.TrimSpace(typed), stdin)
+			},
+		}); err == nil {
+			return
+		}
+	}
+	h.RecordErrorOnce("skills", fmt.Sprintf("%s: /%s is already a %s command; /skills use %s sends the skill", s.Name, s.Name, old.Origin, s.Name))
 }
 
 // runSkillHook evaluates one skill's zemi-skill.lua inline (we are on the
@@ -439,17 +482,22 @@ func (h *Host) openSkillFile(name string) error {
 // description need not ride every prompt.
 func (h *Host) useSkill(name, request, stdin string) error {
 	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
-		if s.Name != name {
-			continue
+		if s.Name == name {
+			return h.sendSkill(s, strings.TrimSpace("/skills use "+name+" "+request), request, stdin)
 		}
-		text, err := tools.SkillText(s.Dir)
-		if err != nil {
-			return err
-		}
-		line := strings.TrimSpace("/skills use " + name + " " + request)
-		return h.AgentSend(line + agent.Attached("skill", "The user loaded the skill "+name+" with the command above; follow it for their request.\n\n"+text) + stdin)
 	}
 	return Usagef("no skill %q", name)
+}
+
+// sendSkill sends line with the skill attached, $ARGUMENTS in it filled
+// with the request; the model loading a skill on its own sees it as written.
+func (h *Host) sendSkill(s skills.Skill, line, request, stdin string) error {
+	text, err := tools.SkillText(s.Dir)
+	if err != nil {
+		return err
+	}
+	text = strings.ReplaceAll(text, "$ARGUMENTS", request)
+	return h.AgentSend(line + agent.Attached("skill", "The user loaded the skill "+s.Name+" with the command above; follow it for their request.\n\n"+text) + stdin)
 }
 
 // openSkills lists discovered skills with their state; space toggles the
@@ -528,19 +576,40 @@ func (h *Host) skillItems() []any {
 		if err != nil {
 			body = "could not read it: " + err.Error()
 		}
+		use := "/skills use " + s.Name + " "
+		if h.hasSkillCommand(s) {
+			use = "/" + s.Name + " "
+		}
 		item["actions"] = append(actions,
 			map[string]any{"text": "Read it", "hotkey": "r", "detail": body},
 			map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "skills open " + s.Name},
-			map[string]any{"text": "Use now", "hotkey": "u", "fill": "/skills use " + s.Name + " "},
+			map[string]any{"text": "Use now", "hotkey": "u", "fill": use},
 		)
 		if s.Source == skills.Recipe {
 			item["actions"] = append(item["actions"].([]any), map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "skills delete " + s.Name + " --yes"})
 		}
-		item["fields"] = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "path", TildePath(filepath.Join(s.Dir, "SKILL.md")))
+		item["fields"] = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "used by", h.usedBy(s, state == "on"), "path", TildePath(skillFile(s)))
 		item["detail"] = s.Description
 		items = append(items, item)
 	}
 	return items
+}
+
+// usedBy says who runs a skill: the model through its index, the user
+// through its command.
+func (h *Host) usedBy(s skills.Skill, on bool) string {
+	var who []string
+	if on && !s.DisableModelInvocation {
+		who = append(who, "the model")
+	}
+	if h.hasSkillCommand(s) {
+		who = append(who, "/"+s.Name)
+	}
+	out := cmp.Or(strings.Join(who, " and "), "/skills use only")
+	if on && s.UserInvocable && !h.hasSkillCommand(s) {
+		out += "; /" + s.Name + " is another command"
+	}
+	return out
 }
 
 // skillsCommands is /skills.

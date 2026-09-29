@@ -246,7 +246,7 @@ and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
 `require("zemi.tui")` (shipped theme, widgets and keymaps, one module each) -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
 `init.lua` -> user skill hooks -> a trusted project's `.agents/init.lua` -> markdown commands
-(`commands/*.md`: user, each plugin's, then a trusted repo's `.agents`) -> `app.ready`.
+(`commands/*.md`: user, each plugin's, then a trusted repo's `.agents`, then skill commands) -> `app.ready`.
 Boot runs on its own goroutine and may block on the trust prompt.
 
 **Project trust** (main.go `trustGate`, DESIGN §5): one decision per repository, keyed by
@@ -624,6 +624,10 @@ and drops the pinned prompt. Invariants:
   with a warning); bodies load on demand via the `skill` tool, after a permission check.
 - **Hook placement**: a `<config>/skills` skill's `zemi-skill.lua` runs once, in the boot
   step after user init.lua, as user origin; enabling later does not run it.
+- **Invocation**: `user-invocable` registers `/<name>` last in `MarkdownCommandsStep`, never
+  over a builtin or same-origin command and over a less trusted one by `mayReplace`
+  (`addSkillCommand`; a toggle adds or removes it); `disable-model-invocation` leaves
+  `modelSkills`, which feeds the index, the skill tool and `ctx.included`; recipes ignore both.
 
 ### Type annotations (internal/hostapi/types.go, runtime/types/zemi.lua)
 

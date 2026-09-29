@@ -383,7 +383,7 @@ decision (the prompt above; before any config that may start an MCP
 server) -> plugins (each enabled plugin's `init.lua`, sorted by name) ->
 user `init.lua` -> user skills' enable hooks -> a trusted project's
 `.agents/init.lua` -> markdown commands (user, then each plugin's, then a
-trusted repo's `.agents`) ->
+trusted repo's `.agents`, then the skills that ask for one, §10.5) ->
 `app.ready`. Boot runs on its own goroutine, so it may block on the
 trust prompt without holding the UI. Agents and workflows are read when
 used: the user's, then the builtin ones, then each plugin's, then the
@@ -2412,7 +2412,8 @@ Skill format (agentskills.io compatible, crush parity):
 ```
 skills/
   local-integration/
-    SKILL.md            # yaml frontmatter: name, description; body = instructions
+    SKILL.md            # yaml frontmatter: name, description, user-invocable,
+                        # disable-model-invocation, argument-hint; body = instructions
     zemi-skill.lua      # optional: zemi.tool.add / command.add on enable
 ```
 
@@ -2426,8 +2427,14 @@ sync) over plugin (each enabled plugin's `skills/`, by plugin name, body
 only: its `zemi-skill.lua` never runs). All start enabled and toggle; a
 plugin skill's flag goes with the plugin when it is turned off. The model sees name +
 description in context and the full body on demand through the `skill`
-tool; there is no `/skill` command, only `/skills` to browse, toggle and
-use them (a row's detail carries the whole body and opens it in the
+tool. A skill whose frontmatter says `user-invocable: true` is also the
+command `/<name>`, registered after every other command under the
+skill's origin, never over a builtin command or one of its own origin,
+and over a less trusted one by the registry's origin rule;
+`disable-model-invocation: true` keeps it out of the index and the skill
+tool, and makes it a command unless `user-invocable: false`. Recipes take
+neither. `/skills` browses, toggles (a toggle takes the command along)
+and uses them (a row's detail carries the whole body and opens it in the
 editor). Discovery lists only `enabled` skills to the model, and enable
 goes through the host API (`zemi.skills.enable`, user or builtin origin).
 

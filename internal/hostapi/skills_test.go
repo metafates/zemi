@@ -168,31 +168,102 @@ func TestSkillsUserHooksStep(t *testing.T) {
 }
 
 // TestSkillCommands: the invocation fields decide whether the model sees a
-// skill; a recipe takes neither.
+// skill and whether it is a command, which yields to a builtin command and
+// to one of its own origin, and replaces a less trusted one.
 func TestSkillCommands(t *testing.T) {
+	const asks = "d\nuser-invocable: true"
+	file := func(path, content string) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	userCmd := func(h *Host) { file(filepath.Join(h.Dirs.ConfigHome, "commands", "x.md"), "the user's x\n") }
+	user := func(desc string) func(h *Host) {
+		return func(h *Host) { writeSkill(t, h.userSkillsDir(), "x", desc, "") }
+	}
+	both := func(a, b func(h *Host)) func(h *Host) { return func(h *Host) { a(h); b(h) } }
+	project := func(h *Host) { writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".agents", "skills"), "x", asks, "") }
+	toggle := func(on ...bool) func(h *Host) {
+		return func(h *Host) {
+			for _, o := range on {
+				if err := h.setSkillEnabled("x", o); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	const mine, other = "the model and /x", "the model; /x is another command"
 	for _, c := range []struct {
-		name    string
-		write   func(h *Host) // the skill named "x"
-		indexed bool
+		name      string
+		skill     string // "x" when empty
+		write, do func(h *Host)
+		untrusted bool
+		indexed   bool
+		cmd       lua.Origin // of the skill's own command
+		err       string
+		used      string // its /skills detail's "used by"; "" when not listed
 	}{
-		{"plain", func(h *Host) { writeSkill(t, h.userSkillsDir(), "x", "d", "") }, true},
-		{"hidden from the model", func(h *Host) { writeSkill(t, h.userSkillsDir(), "x", "d\ndisable-model-invocation: true", "") }, false},
-		{"a recipe takes neither field", func(h *Host) {
+		{name: "plain", write: user("d"), indexed: true, used: "the model"},
+		{name: "asks for a command", write: user(asks), indexed: true, cmd: lua.OriginUser, used: mine},
+		{name: "hidden from the model is a command", write: user("d\ndisable-model-invocation: true"), cmd: lua.OriginUser, used: "/x"},
+		{name: "hidden and no command", write: user("d\ndisable-model-invocation: true\nuser-invocable: false"), used: "/skills use only"},
+		{name: "a builtin command stays", skill: "skills", write: func(h *Host) { writeSkill(t, h.userSkillsDir(), "skills", asks, "") }, indexed: true, err: "skills: /skills is already a builtin command", used: "the model; /skills is another command"},
+		{name: "a markdown command of its origin stays", write: both(user(asks), userCmd), indexed: true, err: "/x is already a user command", used: other},
+		{name: "a lua command of its origin stays", write: both(user(asks), func(h *Host) {
+			file(filepath.Join(h.Dirs.ConfigHome, "init.lua"), `zemi.command.add("x", function() end)`)
+		}), indexed: true, err: "/x is already a user command", used: other},
+		{name: "a project command yields to a user skill", write: both(user(asks), func(h *Host) {
+			file(filepath.Join(h.Dirs.ProjectDir, ".agents", "commands", "x.md"), "the project's x\n")
+		}), indexed: true, cmd: lua.OriginUser, used: mine},
+		{name: "a plugin skill yields to a user command", write: both(userCmd, func(h *Host) {
+			writeSkill(t, filepath.Join(h.Dirs.DataHome, "plugins", "local", "p", "skills"), "x", asks, "")
+		}), indexed: true, err: "/x is already a user command", used: other},
+		{name: "a trusted project skill", write: project, indexed: true, cmd: lua.OriginProject, used: mine},
+		{name: "an untrusted project skill", write: project, untrusted: true},
+		{name: "a recipe takes neither field", write: func(h *Host) {
 			writeSkill(t, h.recipesDir(), "x", "d\ndisable-model-invocation: true\nuser-invocable: true", "")
-		}, true},
+		}, indexed: true, used: "the model"},
+		{name: "off drops the command", write: user(asks), do: toggle(false), used: "/skills use only"},
+		{name: "on brings it back", write: user(asks), do: toggle(false, true), indexed: true, cmd: lua.OriginUser, used: mine},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, r := newTestHostSkillsNoBoot(t)
-			h.SetProjectTrusted(true)
 			c.write(h)
+			h.SetProjectTrusted(!c.untrusted)
 			if err := r.Boot(context.Background(), []lua.BootStep{
-				h.NamespacesStep(), h.BuiltinCommandsStep(), h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
+				h.NamespacesStep(), h.BuiltinCommandsStep(), h.PluginsStep(),
+				lua.LoadFileStep("init", filepath.Join(h.Dirs.ConfigHome, "init.lua"), lua.OriginUser),
+				h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
 			}); err != nil {
 				t.Fatal(err)
 			}
-			indexed := slices.ContainsFunc(h.skillIndex(), func(s tools.SkillInfo) bool { return s.Name == "x" })
-			if prompt := strings.Contains(h.skillsIndexPrompt(), "- x: "); indexed != c.indexed || prompt != c.indexed {
-				t.Fatalf("skill tool %v, prompt %v, want %v", indexed, prompt, c.indexed)
+			if c.do != nil {
+				c.do(h)
+			}
+			name := cmp.Or(c.skill, "x")
+			indexed := slices.ContainsFunc(h.skillIndex(), func(s tools.SkillInfo) bool { return s.Name == name })
+			if prompt := strings.Contains(h.skillsIndexPrompt(), "- "+name+": "); indexed != c.indexed || prompt != c.indexed {
+				t.Errorf("skill tool %v, prompt %v, want %v", indexed, prompt, c.indexed)
+			}
+			var cmd lua.Origin
+			if got := h.Commands.Lookup(name); got != nil && strings.HasSuffix(got.Path, filepath.Join(name, "SKILL.md")) {
+				cmd = got.Origin
+			}
+			errs := fmt.Sprint(h.errs.entries)
+			if cmd != c.cmd || c.err == "" && strings.Contains(errs, "skills") || !strings.Contains(errs, c.err) {
+				t.Errorf("command origin %q, want %q; errors %s", cmd, c.cmd, errs)
+			}
+			used := ""
+			for _, it := range h.skillItems() {
+				if m := it.(map[string]any); m["text"] == name && m["section"] != "Builtin" {
+					used = fmt.Sprint(m["fields"])
+				}
+			}
+			if c.used == "" && used != "" || c.used != "" && !strings.Contains(used, "[used by "+c.used+"]") {
+				t.Errorf("fields %q, want used by %q", used, c.used)
 			}
 		})
 	}
@@ -239,20 +310,27 @@ func TestLearnListAndDecide(t *testing.T) {
 	}
 }
 
-// TestSkillsUse: /skills use sends the command line as typed and the skill
-// without frontmatter behind the marker, ahead of piped stdin, enabled or not.
+// TestSkillsUse: /skills use and a skill's own command send the command line
+// as typed and the skill without frontmatter behind the marker, $ARGUMENTS
+// filled, ahead of piped stdin; /skills use reaches a disabled skill too.
 func TestSkillsUse(t *testing.T) {
-	h, _ := newTestHostSkills(t)
-	reflectStub(t, h, "ok")
+	h, r := newTestHostSkillsNoBoot(t)
 	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
-	big := filepath.Join(h.userSkillsDir(), "big")
-	if err := os.MkdirAll(big, 0o755); err != nil {
+	for name, body := range map[string]string{
+		"big":       "description: huge\n---\n\n" + strings.Repeat("step\n", tools.SkillMaxOut/4),
+		"review-pr": "description: review a PR\nuser-invocable: true\n---\nReview PR $ARGUMENTS.\n",
+	} {
+		if err := os.MkdirAll(filepath.Join(h.userSkillsDir(), name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(h.userSkillsDir(), name, "SKILL.md"), []byte("---\nname: "+name+"\n"+body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(), h.MarkdownCommandsStep()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(big, "SKILL.md"), []byte("---\nname: big\ndescription: huge\n---\n\n"+strings.Repeat("step\n", tools.SkillMaxOut/4)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	h.syncSkills()
+	reflectStub(t, h, "ok")
 	// a disabled skill is reviewed code: naming it is the request
 	if err := h.setSkillEnabled("local-run", false); err != nil {
 		t.Fatal(err)
@@ -262,13 +340,16 @@ func TestSkillsUse(t *testing.T) {
 		name, args, typed string
 		tail              []string // in order
 	}{
-		{"plain request", "use local-run make a landing page", "/skills use local-run make a landing page", []string{"<skill>", "Skill directory: ", "Body."}},
-		{"line breaks survive", "use local-run first\n\nsecond", "/skills use local-run first\n\nsecond", []string{"Body."}},
-		{"stdin after the skill", "use local-run fix it" + stdin, "/skills use local-run fix it", []string{"Body.", stdin}},
-		{"no request", "use local-run", "/skills use local-run", []string{"Body."}},
-		{"a big skill is cut", "use big", "/skills use big", []string{"Read the cut lines with the read tool"}},
+		{"plain request", "skills use local-run make a landing page", "/skills use local-run make a landing page", []string{"<skill>", "Skill directory: ", "Body."}},
+		{"line breaks survive", "skills use local-run first\n\nsecond", "/skills use local-run first\n\nsecond", []string{"Body."}},
+		{"stdin after the skill", "skills use local-run fix it" + stdin, "/skills use local-run fix it", []string{"Body.", stdin}},
+		{"no request", "skills use local-run", "/skills use local-run", []string{"Body."}},
+		{"a big skill is cut", "skills use big", "/skills use big", []string{"Read the cut lines with the read tool"}},
+		{"arguments filled", "skills use review-pr 12", "/skills use review-pr 12", []string{"Review PR 12."}},
+		{"the skill's own command", "review-pr 12" + stdin, "/review-pr 12", []string{"Review PR 12.", stdin}},
 	} {
-		if err := h.skillsCommand(c.args); err != nil {
+		name, args, _ := strings.Cut(c.args, " ")
+		if err := h.RunCommand(context.Background(), name, args); err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
 		}

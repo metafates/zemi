@@ -2,9 +2,11 @@
 // under the config dir (user origin), an enabled plugin (plugin origin) or a
 // trusted repository's .agents (project origin). Running /<name> args sends the body to the agent with $ARGUMENTS
 // and $1..$9 filled in, behind the typed "/<name> args". Files are read at boot; /reload picks up changes.
+// The step also registers the /<name> commands of skills that ask for one.
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"regexp"
 	"strings"
@@ -67,13 +69,8 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 			warn("empty prompt")
 			return false
 		}
-		desc := fm.Description
-		if desc == "" {
-			desc = clipRunes(strings.SplitN(body, "\n", 2)[0], 60)
-		}
-		if fm.ArgumentHint != "" {
-			desc += " " + fm.ArgumentHint
-		}
+		desc := listDesc(cmp.Or(fm.Description, clipRunes(strings.SplitN(body, "\n", 2)[0], 60)))
+		desc = strings.TrimSpace(desc + " " + fm.ArgumentHint)
 		_, err = h.Commands.Add(&Command{
 			Name: name, NArgs: NArgsAny, Desc: desc, Path: path, Origin: f.origin, Gen: gen,
 			// the typed line stays the user's words; the body is the file's
@@ -88,4 +85,10 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 		}
 		return true
 	})
+	// last, so a skill that asks for a command yields to every one above
+	for _, s := range h.enabledSkills() {
+		if s.UserInvocable {
+			h.addSkillCommand(s, gen)
+		}
+	}
 }
