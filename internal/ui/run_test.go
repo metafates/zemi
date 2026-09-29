@@ -1,15 +1,20 @@
 package ui
 
 import (
+	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/exp/golden"
+	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -25,21 +30,26 @@ func TestRunView(t *testing.T) {
 		live    bool
 		profile colorprofile.Profile
 		frames  []hostapi.RunFrame
+		diag    bool // the actor writes a diagnostic as the first Show starts
 	}{
 		{"a plain log prints settled rows once", false, colorprofile.NoTTY, []hostapi.RunFrame{
 			{Settled: []hostapi.ChatMessage{user, thought}, Pending: []hostapi.ChatMessage{failed}, Stream: running},
 			{Pending: []hostapi.ChatMessage{failed}, Stream: running},
 			{Settled: []hostapi.ChatMessage{failed, reply}},
-		}},
+		}, false},
 		{"the live tail redraws in place and commits above itself", true, colorprofile.NoTTY, []hostapi.RunFrame{
 			{Pending: []hostapi.ChatMessage{user}, Stream: running},
 			{Settled: []hostapi.ChatMessage{user}, Stream: running},
 			{Stream: running}, // unchanged: nothing written
 			{Settled: []hostapi.ChatMessage{thought, failed, reply}},
-		}},
+		}, false},
 		{"NO_COLOR keeps bold and drops color", false, colorprofile.ASCII, []hostapi.RunFrame{
 			{Settled: []hostapi.ChatMessage{user, failed}},
-		}},
+		}, false},
+		{"a write from the actor never waits on a render", true, colorprofile.NoTTY, []hostapi.RunFrame{
+			{Pending: []hostapi.ChatMessage{user}, Stream: running},
+			{Settled: []hostapi.ChatMessage{user}, Stream: running},
+		}, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, h := bootAgentApp(t, 100, 30)
@@ -60,6 +70,19 @@ func TestRunView(t *testing.T) {
 			v := &RunView{w: &out, profile: c.profile, now: func() time.Time { return time.UnixMilli(0) }}
 			if c.live {
 				v.size = func() (int, int) { return 100, 30 }
+			}
+			if c.diag {
+				// the actor holds the write while Show goes on to render
+				v.size = sync.OnceValues(func() (int, int) {
+					writing := make(chan struct{})
+					go h.RT.Do(context.Background(), lua.ClassUI, 0, 0, func(*glua.LState) ([]any, error) {
+						close(writing)
+						fmt.Fprintln(v, "zemi: warning: tick")
+						return nil, nil
+					})
+					<-writing
+					return 100, 30
+				})
 			}
 			v.Start(h)
 			for _, fr := range c.frames {

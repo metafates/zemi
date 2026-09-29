@@ -1807,7 +1807,9 @@ provenance string.
   redrawn in place under them (`Host.RunFrame`: while a turn runs, a row
   settles only below the running step's start, which a provider retry cuts
   back to). Off a terminal it is plain lines; `-q` and `--json` leave only
-  diagnostics, which print above the tail since the view is `Host.Stderr`.
+  diagnostics, which print above the tail since the view is `Host.Stderr`;
+  the view renders with no lock held, so a diagnostic the Lua actor writes
+  never waits on a render queued behind it.
   Where stdout and stderr are both terminals and the view drew the answer,
   stdout stays empty. An ask nobody can answer is denied (`tools.ByNobody`),
   recorded with its tool, argument and reason (`Host.HeadlessDenials`, any

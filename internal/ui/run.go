@@ -56,12 +56,15 @@ type RunView struct {
 	quiet   bool // -q or --json: diagnostics only
 	now     func() time.Time
 
-	mu      sync.Mutex
+	// the run loop's alone: renders wait on the Lua actor, which may be
+	// writing a diagnostic, so none runs under mu
 	h       *hostapi.Host
 	thm     themeResolver
-	tail    string // the tail on screen, "" for none
-	printed bool   // settled rows went out, so the next batch starts with a gap
-	dead    bool   // a render failed or Close ran: the view draws nothing more
+	printed bool // settled rows went out, so the next batch starts with a gap
+	dead    bool // a render failed or Close ran: the view draws nothing more
+
+	mu   sync.Mutex // held over each write to w
+	tail string     // the tail on screen, "" for none
 }
 
 // NewRunView prints to f; quiet prints diagnostics only.
@@ -80,17 +83,14 @@ func NewRunView(f *os.File, quiet bool) *RunView {
 }
 
 // Start draws h's run from now on; before it the view only forwards writes.
+// Start, On, Show and Close run on the run loop only.
 func (v *RunView) Start(h *hostapi.Host) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
 	v.h, v.thm = h, themeResolver{host: h, sgr: map[string]uv.Style{}}
 }
 
 // On reports whether the view draws (not quiet, started, no render failed
 // and not closed) and whether it draws to a terminal.
 func (v *RunView) On() (on, terminal bool) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
 	return v.on(), v.on() && v.tty
 }
 
@@ -98,8 +98,6 @@ func (v *RunView) on() bool { return !v.quiet && !v.dead && v.h != nil }
 
 // Show prints fr's settled rows above the tail and redraws the tail.
 func (v *RunView) Show(fr hostapi.RunFrame, cancelling bool) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
 	if !v.on() {
 		return
 	}
@@ -117,7 +115,7 @@ func (v *RunView) Show(fr hostapi.RunFrame, cancelling bool) {
 		v.printed = v.printed || len(lines) > 0
 		printLines(&b, v.thm, v.profile, lines)
 	}
-	tail := v.tail
+	var tail string
 	if v.size != nil {
 		var err error
 		if tail, err = v.drawTail(fr, cancelling, width, height); err != nil {
@@ -125,6 +123,8 @@ func (v *RunView) Show(fr hostapi.RunFrame, cancelling bool) {
 			return
 		}
 	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	if b.Len() == 0 && tail == v.tail {
 		return
 	}
@@ -164,7 +164,7 @@ func (v *RunView) drawTail(fr hostapi.RunFrame, cancelling bool, width, height i
 
 // redraw erases the tail, prints above what it covered, and draws tail in
 // its place, in one synchronized write (a terminal without mode 2026
-// ignores it). The cursor stays hidden while a tail is up.
+// ignores it). The cursor stays hidden while a tail is up. v.mu held.
 func (v *RunView) redraw(above, tail string) {
 	if v.size == nil { // a log gets the rows alone
 		_, _ = io.WriteString(v.w, above)
@@ -209,6 +209,16 @@ func (v *RunView) Write(p []byte) (int, error) {
 // Close erases the tail, shows the cursor and prints the exit region: how
 // to come back to the session.
 func (v *RunView) Close() {
+	var exit strings.Builder
+	if v.on() {
+		width, height := v.dims()
+		lines, err := v.region(hostapi.RegionExit, width, height, hostapi.UIState{Printed: &hostapi.Printed{}})
+		if err != nil {
+			v.h.Log.Warn("run", "exit widget failed", map[string]any{"error": err.Error()})
+		}
+		printLines(&exit, v.thm, v.profile, lines)
+	}
+	v.dead = true
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	var b strings.Builder
@@ -217,22 +227,17 @@ func (v *RunView) Close() {
 		b.WriteString("\x1b[?25h")
 		v.tail = ""
 	}
-	if v.on() {
-		width, height := v.dims()
-		lines, err := v.region(hostapi.RegionExit, width, height, hostapi.UIState{Printed: &hostapi.Printed{}})
-		if err != nil {
-			v.h.Log.Warn("run", "exit widget failed", map[string]any{"error": err.Error()})
-		}
-		printLines(&b, v.thm, v.profile, lines)
-	}
+	b.WriteString(exit.String())
 	_, _ = io.WriteString(v.w, b.String())
-	v.dead = true
 }
 
 // fail stops the view after a render error: the log gets it and stderr one
 // line, and the reply goes to stdout since the view did not draw it.
 func (v *RunView) fail(err error) {
 	v.h.Log.Error("run", "run view failed", map[string]any{"error": err.Error()})
+	v.dead = true
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	var b strings.Builder
 	v.erase(&b)
 	if v.tail != "" {
@@ -240,7 +245,7 @@ func (v *RunView) fail(err error) {
 	}
 	fmt.Fprintf(&b, "zemi: run view: %s\n", hostapi.Headline(err.Error()))
 	_, _ = io.WriteString(v.w, b.String())
-	v.tail, v.dead = "", true
+	v.tail = ""
 }
 
 // dims is the terminal's size, or a plain log's width.

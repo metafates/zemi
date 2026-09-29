@@ -1,0 +1,14 @@
+zemi: warning: tick
+[?2026h[?25l▌ why does TestFlushOrder fail?
+
+⠋ Run the flush tests
+  ⎿ go test ./internal/hostapi
+
+@··────────────────────── Run the flush tests · ctrl+c stop · 6s ─────────────────────────────────[?2026l[?2026h[5A[J▌ why does TestFlushOrder fail?
+[?25l
+⠋ Run the flush tests
+  ⎿ go test ./internal/hostapi
+
+@··────────────────────── Run the flush tests · ctrl+c stop · 6s ─────────────────────────────────[?2026l[4A[J[?25h
+  resume   zemi -r 5c0e9d1f8a4b4e2f9a3c7d6e1b2f4a8c
+
