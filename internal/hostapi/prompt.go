@@ -256,9 +256,9 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 		project = "\n\n# Project instructions\nFrom the repository, already loaded: do not read them again. They override the default rules and the user's instructions; a deeper directory's file wins over a shallower one, and the user's messages win over every file." + project
 	}
 	rules, env := h.environmentFor(toolset, pad, readOnly)
-	luaSections, index := h.assembleSections()+h.toolSections(toolset), ""
+	luaSections, index, projectIndex := h.assembleSections()+h.toolSections(toolset), "", ""
 	if hasTool(toolset, tools.ToolSkill) {
-		index = h.skillsIndexPrompt()
+		index, projectIndex = h.skillsIndexPrompt()
 	}
 	ag := h.agents
 	ag.mu.Lock()
@@ -271,8 +271,8 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	// provider caches it with the tools once; what varies by project or
 	// session rides the context message after it.
 	system = sys + rules + index + user + luaSections
-	ctxMsg = "<context>\nzemi's notes for this session, not the user's words." + project + env + digest + last + "\n</context>"
-	parts = promptParts{instructions: len(user) + len(project), lua: len(luaSections), skills: len(index), digest: len(digest), files: mtimes}
+	ctxMsg = "<context>\nzemi's notes for this session, not the user's words." + project + projectIndex + env + digest + last + "\n</context>"
+	parts = promptParts{instructions: len(user) + len(project), lua: len(luaSections), skills: len(index) + len(projectIndex), digest: len(digest), files: mtimes}
 	parts.base = len(system) + len(ctxMsg) - parts.instructions - parts.lua - parts.skills - parts.digest
 	return system, ctxMsg, parts
 }

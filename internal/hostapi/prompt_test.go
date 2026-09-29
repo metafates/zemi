@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
@@ -438,6 +440,46 @@ func (h *Host) buildSystem(p *Profile) string {
 func (h *Host) systemText(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool) string {
 	sys, ctx := h.systemWith(sys, toolset, pad, readOnly)
 	return sys + "\n\n" + ctx
+}
+
+// TestPromptSameAcrossProjects: the system prompt and the tools are the
+// same bytes for two sessions of one user in two projects, one with its own
+// skill and a recipe, so the provider caches them once for every session.
+func TestPromptSameAcrossProjects(t *testing.T) {
+	cfg, data, state := t.TempDir(), t.TempDir(), t.TempDir()
+	var sys, ctx, infos [2]string
+	for i := range 2 {
+		log := slog.New(slog.DiscardHandler)
+		r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+		h := NewHost(r, log, config.NewStore(), config.Dirs{ConfigHome: cfg, DataHome: data, StateHome: state, ProjectDir: t.TempDir()})
+		if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+			t.Fatal(err)
+		}
+		h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", HidesSecretFiles: true, EnforcesProtect: true}})
+		h.SetUIHooks(&fakeUI{})
+		os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755)
+		if i == 1 {
+			writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".agents", "skills"), "lint", "project lint", "")
+			writeSkill(t, h.recipesDir(), "rig", "recipe rig", "")
+		}
+		h.SetProjectTrusted(true)
+		h.syncSkills()
+		h.agents.sessionID = fmt.Sprint("session", i)
+		toolset, _ := h.profileTools(nil)
+		out, s, c, _ := h.pinPrompt(nil, toolset)
+		var info []fantasy.ToolInfo
+		for _, tool := range out {
+			info = append(info, tool.Info())
+		}
+		b, _ := json.Marshal(info)
+		sys[i], ctx[i], infos[i] = s, c, string(b)
+	}
+	if sys[0] != sys[1] || infos[0] != infos[1] {
+		t.Errorf("the prefix differs: system equal %v, tools equal %v", sys[0] == sys[1], infos[0] == infos[1])
+	}
+	if !strings.Contains(ctx[1], "- lint: project lint") || !strings.Contains(ctx[1], "- rig: recipe rig") {
+		t.Errorf("the project's skills are not in its context message:\n%s", ctx[1])
+	}
 }
 
 // TestPromptBudget: what the default request carries before the first

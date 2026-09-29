@@ -2773,14 +2773,16 @@ There are none: no eval harness, mock provider or CI gate.
 
 ### 10.7 Context assembly (how learning reaches the model)
 
-The system prompt is the same for every session of a user, so a
-provider that caches a shared prefix keeps it and the tool definitions
-after it across sessions: the base prompt + **skills index** (name +
-description only) + the user's `<config>/AGENTS.md` + Lua sections (§6.3).
-What varies by project or session follows it as the context message, a
-user-role message before the conversation that the session stores and a
-resume sends again byte for byte while the memories are the same: the repository's context files
-(AGENTS.md, else CLAUDE.md, injected verbatim) + the environment +
+The system prompt is the same for every session of a user in projects
+of the same trust, so a provider that caches a shared prefix keeps it and
+the tool definitions after it across sessions: the base prompt + **skills
+index** (name + description only; the user's, builtin and plugin skills) +
+the user's `<config>/AGENTS.md` + Lua sections (§6.3; a trusted project's
+own Lua can add one). What varies by project or session follows it as the
+context message, a user-role message before the conversation that the
+session stores and a resume sends again byte for byte while the memories
+are the same: the repository's context files (AGENTS.md, else CLAUDE.md,
+injected verbatim) + the project's skills and recipes + the environment +
 **memory digest** (every live memory, this project then
 every project, newest first, each scope cut at a 3 KB budget the write
 gate keeps it under (§10.4), each line prefixed with id, origin and age in

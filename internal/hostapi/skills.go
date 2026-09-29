@@ -304,20 +304,28 @@ func (h *Host) projectOnlySkills() []skill.Skill {
 	})
 }
 
-// skillsIndexPrompt renders the §10.7 skills index section: one line per
-// skill the model may load, description capped: the prompt carries the index
-// only, bodies load on demand through the skill tool.
-func (h *Host) skillsIndexPrompt() string {
-	enabled := h.modelSkills()
-	if len(enabled) == 0 {
-		return ""
+// skillsIndexPrompt renders the §10.7 skills index: one line per skill the
+// model may load, description capped: the prompt carries the index only,
+// bodies load on demand through the skill tool. The project's skills and
+// recipes go in project, for the context message, so the system prompt
+// stays the same in every project.
+func (h *Host) skillsIndexPrompt() (mine, project string) {
+	var lines [2]strings.Builder
+	for _, s := range h.modelSkills() {
+		i := 0
+		if !s.Source.Stored() {
+			i = 1
+		}
+		lines[i].WriteString("- " + s.Name + ": " + s.Description + "\n")
 	}
-	var b strings.Builder
-	b.WriteString("\n\n# Skills\nA description says when a skill applies; its body is the procedure. When a task matches one, load that skill with the skill tool before the first tool call and follow it, even for a task you know how to do; when none matches, load none.\n")
-	for _, s := range enabled {
-		b.WriteString("- " + s.Name + ": " + s.Description + "\n")
+	rule := "A description says when a skill applies; its body is the procedure. When a task matches one, load that skill with the skill tool before the first tool call and follow it, even for a task you know how to do; when none matches, load none.\n"
+	if lines[0].Len() > 0 {
+		mine, rule = "\n\n# Skills\n"+rule+lines[0].String(), "Loaded and followed like the skills in the system prompt.\n"
 	}
-	return b.String()
+	if lines[1].Len() > 0 {
+		project = "\n\n# Project skills\n" + rule + lines[1].String()
+	}
+	return mine, project
 }
 
 // setSkillEnabled flips the stored enabled state; a hook already ran in

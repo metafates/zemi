@@ -89,7 +89,7 @@ func TestBuiltinSkillsShipEnabled(t *testing.T) {
 	if !ok || s.Source != "builtin" || !h.skillsReg.isEnabled("zemi") {
 		t.Errorf("zemi: found=%v source=%q enabled=%v", ok, s.Source, h.skillsReg.isEnabled("zemi"))
 	}
-	if !strings.Contains(h.skillsIndexPrompt(), "- zemi: ") {
+	if mine, _ := h.skillsIndexPrompt(); !strings.Contains(mine, "- zemi: ") {
 		t.Fatal("the builtin skill is missing from the prompt index")
 	}
 }

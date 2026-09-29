@@ -263,7 +263,8 @@ func TestSkillCommands(t *testing.T) {
 			}
 			name := cmp.Or(c.skill, "x")
 			indexed := slices.ContainsFunc(h.skillIndex(), func(s tools.SkillInfo) bool { return s.Name == name })
-			if prompt := strings.Contains(h.skillsIndexPrompt(), "- "+name+": "); indexed != c.indexed || prompt != c.indexed {
+			mine, project := h.skillsIndexPrompt()
+			if prompt := strings.Contains(mine+project, "- "+name+": "); indexed != c.indexed || prompt != c.indexed {
 				t.Errorf("skill tool %v, prompt %v, want %v", indexed, prompt, c.indexed)
 			}
 			var cmd, other lua.Origin
@@ -533,8 +534,8 @@ func TestRecipes(t *testing.T) {
 	written := []string{"late", "rig", "tok"}
 	pinned := func() string {
 		toolset, _ := h.profileTools(nil)
-		_, sys, _, _ := h.pinPrompt(nil, toolset)
-		return sys
+		_, sys, ctx, _ := h.pinPrompt(nil, toolset)
+		return sys + ctx
 	}
 
 	for _, c := range []struct {
