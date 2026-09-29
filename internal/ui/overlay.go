@@ -55,6 +55,9 @@ type listKey struct {
 // so sections stay whole, match their labels' matched offsets, and selected
 // indexes visible.
 type listFilter struct {
+	// the list opened with filterMin rows or more; a rebuild keeps it, so a
+	// row going or coming never adds or drops the filter row
+	filterable    bool
 	active        bool // "/" was pressed: keys type into query
 	query         string
 	labels, texts []string // per row
@@ -133,12 +136,6 @@ func (f *listFilter) set(query string) {
 // filterMin is the fewest rows a list filters: a shorter one reads at a
 // glance, so it shows no filter row and "/" does nothing there.
 const filterMin = 5
-
-// filters reports whether the list takes a filter: filterMin rows or more,
-// or a query still open from when it had them.
-func (st *overlayState) filters() bool {
-	return len(st.o.Items) >= filterMin || st.active || st.query != ""
-}
 
 // filterRow is the query line above a list, a hint while no query is open
 // so opening one adds no row.
@@ -310,7 +307,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	for i, f := range o.Fields {
 		o.Fields[i] = hostapi.Field{Name: sanitize.Line(f.Name), Value: sanitize.String(f.Value)}
 	}
-	st := overlayState{o: o}
+	st := overlayState{o: o, filterable: len(o.Items) >= filterMin}
 	if o.Input {
 		st.input.insert(sanitize.String(o.Default))
 		return st
@@ -506,7 +503,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	}
 	// a filter takes its keys first; then a body that overflows takes the
 	// scroll keys, and the list keys too when there is no list to move in
-	if !st.back && st.filters() && st.edit(key, text) || st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) ||
+	if !st.back && st.filterable && st.edit(key, text) || st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) ||
 		moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
 		return nil
 	}
@@ -613,8 +610,12 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 
 // disarmIfMoved returns what drops the top overlay's arm once a click, a
 // wheel or a bar drag moved its selection, as any other key does, so moving
-// back never finds the row armed.
-func (a *App) disarmIfMoved() func() {
+// back never finds the row armed. A click or a wheel (acts) drops an armed
+// list key at once, as any other key does.
+func (a *App) disarmIfMoved(acts bool) func() {
+	if n := len(a.overlays); acts && n > 0 {
+		a.overlays[n-1].keyArmed = ""
+	}
 	i := len(a.overlays) - 1
 	if i < 0 || !a.overlays[i].armed {
 		return func() {}
@@ -775,7 +776,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		switch {
 		case st.back && len(st.o.Items) > 0:
 		case len(st.o.Items) > 0:
-			if st.filters() {
+			if st.filterable {
 				head = [][]hostapi.Segment{st.filterRow()}
 			}
 			if len(st.visible) == 0 {

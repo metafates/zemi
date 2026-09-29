@@ -628,7 +628,7 @@ func (a *App) pasteChrome(text string) bool {
 		st := &a.overlays[len(a.overlays)-1]
 		if st.o.Input {
 			st.input.insert(line)
-		} else if st.filters() {
+		} else if st.filterable {
 			st.edit("", line)
 		}
 	case modalPerm, modalTrust: // no text input: swallowed

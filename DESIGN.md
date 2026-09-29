@@ -1611,7 +1611,8 @@ provenance string.
   first enter or key only arms it: the footer turns to `x again to delete ·
   esc cancel` in that color, the same key, enter or space runs it, esc disarms and
   stays, and any other key, or a click or wheel that moves the selection,
-  disarms and then acts. A detail view whose only action it is (`/rewind`'s)
+  disarms and then acts; a screen's own danger key (a workflow view's `x`)
+  waits the same way, and any click or wheel drops it. A detail view whose only action it is (`/rewind`'s)
   states the effect and is itself the confirmation, so it runs at once. A
   row's action keys act
   from the list too, on the selected row, as its detail's button would (an
@@ -1649,12 +1650,14 @@ provenance string.
   changes, the question review's last row, whose question rows `open`):
   four letters each, so starting to type or moving the highlight never
   shifts the footer. The footer's pairs sit in one order: moving keys,
-  enter, space, scrolling, copy, the screen's own keys (a Lua list's
-  `keys`, `/memory`'s `u`, a workflow view's `p` and `+/-`), then esc; the screen's keys come
-  and go with its state, so their going moves only esc. A toggle list, which
-  can grow past its view, keeps scrolling's cells blank until it does, so
-  the hint coming moves nothing. A narrow footer drops scrolling and copy
-  before the screen's keys. A row names its own (`verb`)
+  enter, space, copy, the screen's own keys (a Lua list's `keys`,
+  `/memory`'s `u`, a workflow view's `p`, `+/-`, `x`, `r`, `o`, `s`), esc,
+  then scrolling; the screen's keys come and go with its state, so their
+  going moves only esc, and the scroll hint comes and goes with the text,
+  so it sits last and its cells are trailing blanks while it is away. A
+  toggle list, which can grow past its view, keeps scrolling's cells blank
+  until it does, so the hint coming moves nothing. A narrow footer drops
+  scrolling and copy before the screen's keys. A row names its own (`verb`)
   where the list's default would say another: "open" on a row that runs a
   command opening a screen, "run" on `/model`'s "Update the model catalog".
   Space, which toggles a toggle list's rows outside an open filter (in one
@@ -1664,8 +1667,9 @@ provenance string.
   sentence-case verb phrases above its sections, with no section of their
   own ("Install a plugin", "Follow the chat model"); the values sit under
   section headers, so an action never reads as one of them. `/` starts a
-  filter on a list of five rows or more; a shorter one reads at a glance and
-  shows no filter row. While it types, every one-character key types,
+  filter on a list that opened with five rows or more; a shorter one reads at
+  a glance and shows no filter row, and a rebuild keeps what it opened with,
+  so a row going or coming adds or drops no filter row. While it types, every one-character key types,
   so the footer says only `enter done · esc clear`; enter keeps the query and
   gives the keys back to the list (j and k move in the narrowed rows, `/`
   types on), and esc clears it, then closes. A detail view opens with its

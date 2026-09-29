@@ -406,10 +406,11 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		a.publishComposer()
 		return cmd
 	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg:
-		defer a.disarmIfMoved()()
+		_, click := msg.(tea.MouseClickMsg)
+		defer a.disarmIfMoved(click)()
 		return a.handleMouse(msg)
 	case tea.MouseWheelMsg:
-		defer a.disarmIfMoved()()
+		defer a.disarmIfMoved(true)()
 		a.mouse = mouseSel{}
 		a.hoverKey = "" // the content under the pointer moves
 		step := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]

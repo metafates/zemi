@@ -1017,8 +1017,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   (`replaceOverlay`, keeping the filter and the selection on its row; only an origin that may close it), a detail
   view open over it rebuilt from its item or dropped with it (`refreshDetail`), and a Go
   screen's list-level key runs a command (`OverlayKey.Run`, builtin and user lists only; a
-`Danger` one on its second press, a refresh keeping the first), and a `Wide` box takes
-`boxInner`'s width whatever opened it (the workflow screens). A
+  `Danger` one on its second press, a refresh keeping the first and a click or a wheel
+  dropping it), and a `Wide` box takes `boxInner`'s width whatever opened it (the workflow
+  screens). A list shows the filter row only when it opened with `filterMin` rows or more,
+  which a rebuild keeps (`listFilter.filterable`). A
   toggle list rebuilds when the overlay stacked on it closes (`closeOverlayByID`; a detail
   view only after an action) and after a reload (`SignalBoot`), so every caller acts first
   and closes after: the worker then runs the rebuild behind the action. A row that fills the
