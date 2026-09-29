@@ -1135,17 +1135,17 @@ func stubLine(kind, subject, arg string, req map[string]any) string {
 		if u, err := url.Parse(arg); err == nil && u.Host != "" {
 			pattern = u.Scheme + "://" + u.Host + "/*"
 		}
-		return fmt.Sprintf(`test.stub(%q, %q, { status = 200, body = "..." })`, subject, pattern)
+		return fmt.Sprintf(`test.stub(%s, %s, { status = 200, body = "..." })`, luaLiteral(subject), luaLiteral(pattern))
 	case "job":
 		pattern, _ := req["cmd"].(string)
 		if args, _ := req["args"].([]string); len(args) > 0 {
 			pattern += " *"
 		}
-		return fmt.Sprintf(`test.stub("lua.job.start", %q, { stdout = "..." })`, pattern)
+		return `test.stub("lua.job.start", ` + luaLiteral(pattern) + `, { stdout = "..." })`
 	case "model":
 		return `test.stub("lua.model.ask", "*", "...")`
 	}
-	return fmt.Sprintf("test.stub(%q)", subject)
+	return "test.stub(" + luaLiteral(subject) + ")"
 }
 
 // ---------------------------------------------------------------------------

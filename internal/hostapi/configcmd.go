@@ -261,27 +261,3 @@ func (h *Host) configLua() string {
 	}
 	return strings.Join(lines, "\n")
 }
-
-// luaLiteral writes a string with only the escapes Lua 5.1 reads; other
-// bytes, UTF-8 included, stay as they are.
-func luaLiteral(v any) string {
-	s, ok := v.(string)
-	if !ok {
-		return fmt.Sprint(v)
-	}
-	var b strings.Builder
-	b.WriteByte('"')
-	for _, c := range []byte(s) {
-		switch {
-		case c == '"' || c == '\\':
-			b.WriteByte('\\')
-			b.WriteByte(c)
-		case c < ' ' || c == 0x7f:
-			fmt.Fprintf(&b, `\%03d`, c)
-		default:
-			b.WriteByte(c)
-		}
-	}
-	b.WriteByte('"')
-	return b.String()
-}

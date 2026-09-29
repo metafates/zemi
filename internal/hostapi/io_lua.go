@@ -225,15 +225,13 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 }
 
 // allowLine is the init.lua line of an allow rule, match its example.
-// NOTE: %q writes \u and \x escapes gopher-lua cannot read, so a pattern with
-// a non-printable rune (a non-breaking space) needs editing by hand.
 func allowLine(subject, pattern, match, principal string) string {
 	scope := ""
 	if principal != "" {
-		scope = fmt.Sprintf(", principal = %q", principal)
+		scope = ", principal = " + luaLiteral(principal)
 	}
-	return fmt.Sprintf(`zemi.permission.rule.add{ subject = %q, pattern = %q, decision = "allow", match = %q%s }`,
-		subject, pattern, match, scope)
+	return fmt.Sprintf(`zemi.permission.rule.add{ subject = %s, pattern = %s, decision = "allow", match = %s%s }`,
+		luaLiteral(subject), luaLiteral(pattern), luaLiteral(match), scope)
 }
 
 // ---------------------------------------------------------------------------
