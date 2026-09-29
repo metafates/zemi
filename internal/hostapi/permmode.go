@@ -498,14 +498,10 @@ func (h *Host) autoLocal(req tools.Request) bool {
 
 func (h *Host) protectedWrite(p string) bool { return h.protectedWhy(p) != "" }
 
-// protectedWhy says why a write under any .git, to the Lua in any .agents
-// (init.lua, lua/), to a .gitattributes or .gitmodules, the git dir a
-// project .git file names (git init --separate-git-dir) or zemi's own dirs,
-// local plugins included but one whose creation was allowed in this
-// process, needs the user, "" for any other path: git runs
-// what those name, and the rest changes what zemi runs or allows. The rest
-// of .agents (skills, agents, commands, workflows) is an ordinary project
-// write.
+// protectedWhy says why a write needs the user, "" when it does not: git
+// runs what .git, a .gitattributes or .gitmodules names, and the Lua in
+// .agents, zemi's own dirs and a local plugin (but one whose creation was
+// allowed in this process) change what zemi runs or allows.
 func (h *Host) protectedWhy(p string) string {
 	d, base := h.Dirs, filepath.Base(p)
 	const git = "which decides what git runs"

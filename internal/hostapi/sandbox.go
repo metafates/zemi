@@ -63,13 +63,13 @@ func homes() []string {
 
 // sandboxPolicy is what a settled command may touch: the scratchpad pad,
 // also its $TMPDIR, a Go build cache of its own and, when trusted and not
-// in plan mode, the project; never .git, .agents or zemi's own dirs, and zemi's dirs
-// are unreadable too (sessions, logs, keys in init.lua). The project is
-// writable only with a backend that keeps those read-only inside it, and
-// never when it is $HOME or above, holds one of zemi's dirs or sits in one,
-// holds a hidden path on a backend other than seatbelt, or its .git or .agents
-// is a symlink: the backend protects the resolved target, so the link itself
-// could be replaced.
+// for a read-only agent, the project; never .git, .agents or zemi's own
+// dirs, and zemi's are unreadable too (sessions, logs, keys in init.lua).
+// The project is writable only with a backend that keeps those read-only
+// inside it, and never when it is $HOME or above, holds one of zemi's dirs
+// or sits in one, holds a hidden path on a backend other than seatbelt, or
+// its .git or .agents is a symlink: the backend protects the resolved
+// target, so the link itself could be replaced.
 // NOTE: GOCACHE points at a cache only sandboxed runs use, one per trust
 // root: Go fails a build it cannot cache, and the user's cache written from
 // here could poison a later unconfined build. Other tools' caches stay

@@ -308,21 +308,12 @@ type lspSig struct {
 }
 
 // lspSync tells every running server which files changed on disk since the
-// last call, before a query or touch, so a server does not answer from a
-// copy of a file that bash, a formatter, git or the user's editor rewrote.
-// The listing is one git status: files that differ from the index and
-// untracked files. Diffing two listings catches every change a server could
-// have seen in between: a file that left the listing was restored to the
-// index, so it changed too.
-// It only runs once something other than zemi's own file tools touched the
-// tree (lspDirty); those the servers hear about through the document the
-// tool opens, and a git status before every read would cost more than it
-// finds.
-// NOTE: outside a git repository nothing is detected beyond the files zemi
-// itself writes, so a zemi tree's server (zemiLua) hears of a change a
-// command made there only when the file is next opened; a repository too
-// large for git status to answer in a few hundred milliseconds pays that on
-// every touch.
+// last call, from the diff of two git status listings (a file that left the
+// listing was restored, so it changed too). It runs only once something but
+// zemi's file tools, which open the document they touch, ran (lspDirty).
+// NOTE: outside a repository only zemi's own writes are seen, so a zemi
+// tree's server (zemiLua) hears of a command's change when the file is next
+// opened; a repository with a slow git status pays for it on every touch.
 func (h *Host) lspSync() {
 	root := h.Dirs.RepoRoot()
 	if root == "" {

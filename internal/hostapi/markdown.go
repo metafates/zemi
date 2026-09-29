@@ -266,8 +266,9 @@ func splitTables(text string) []mdChunk {
 
 // Decorations glamour draws (bullets, list numbers, task marks, the quote
 // bar) are bracketed by private-use runes that styledLines strips, marking
-// the text between them NoCopy and Dim. A close with no open ends a run that began at the line start or the previous close: a
-// list number and code block margins are written before any hook can open.
+// the text between them NoCopy and Dim. A close with no open ends a run
+// from the line start or the previous close: glamour writes a list number
+// and a code block's margin before any hook can open one.
 const (
 	markOpen     = "\ue000"
 	markClose    = "\ue001"

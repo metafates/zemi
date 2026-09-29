@@ -1,9 +1,8 @@
-// mcp.go bridges MCP servers (DESIGN §13, M5). User config registers them
-// with zemi.mcp.add; each starts
-// in the background, and every tool it lists becomes a model tool named
-// mcp_<server>_<tool>. Calls run tool.pre and the permission gate under
-// subject mcp.<server> with the tool name as argument (ask by default).
-// Descriptions are labeled with their server: they are third-party text.
+// mcp.go bridges MCP servers (DESIGN §13, M5). User config adds them with
+// zemi.mcp.add; each starts in the background, and every tool it lists
+// becomes a model tool named mcp_<server>_<tool>, gated as subject
+// mcp.<server> with the tool name as argument. Descriptions are labeled
+// with their server: they are third-party text.
 
 package hostapi
 
