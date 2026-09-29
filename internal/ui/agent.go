@@ -739,7 +739,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	build := func(w int) [][]hostapi.Segment {
 		switch {
 		case req.Subject == perm.SubjectBash:
-			return codePanel(req.Arg, hostapi.ChromePanel, w)
+			return codePanel(req.Arg, w)
 		case isDiff:
 			rows := hostapi.DiffRows(req.Preview, w)
 			for _, r := range rows {
@@ -749,7 +749,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 			}
 			return rows
 		case req.Preview != "":
-			return codePanel(req.Preview, hostapi.ChromePanel, w)
+			return codePanel(req.Preview, w)
 		}
 		return nil
 	}
@@ -1109,16 +1109,12 @@ func scrolls(views ...viewport) []hintPair {
 	return nil
 }
 
-// codePanel shows text on a panel background in hl, wrapped to width.
-func codePanel(text, hl string, width int) [][]hostapi.Segment {
-	var rows [][]hostapi.Segment
-	for l := range strings.SplitSeq(strings.TrimRight(text, "\n"), "\n") {
-		l = strings.ReplaceAll(l, "\t", "    ")
-		for _, wrapped := range hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, width-2) {
-			line := plainSegs(wrapped)
-			pad := width - 2 - ansi.StringWidth(line)
-			rows = append(rows, []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, pad)) + " ", HL: hl}})
-		}
+// codePanel shows text on the chrome panel, wrapped to width.
+func codePanel(text string, width int) [][]hostapi.Segment {
+	rows := wrapText(text, "", width-2)
+	for i, r := range rows {
+		line := plainSegs(r)
+		rows[i] = []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, width-2-ansi.StringWidth(line))) + " ", HL: hostapi.ChromePanel}}
 	}
 	return rows
 }
