@@ -91,6 +91,7 @@ func TestDenyMeetsEverySpelling(t *testing.T) {
 		Rule{Subject: "tool.bash", Pattern: "env *", Decision: Allow},
 		Rule{Subject: "tool.bash", Pattern: "make *", Decision: Allow},
 		Rule{Subject: "tool.bash", Pattern: "docker push*", Decision: Ask},
+		Rule{Subject: "tool.bash", Pattern: "ssh *", Decision: Deny},
 	)
 	for _, c := range []struct {
 		cmd  string
@@ -111,6 +112,8 @@ func TestDenyMeetsEverySpelling(t *testing.T) {
 		{"env A=1 make -j4 deploy", Ask},
 		{"env A=1 make test", Allow},
 		{"/usr/bin/docker push x", Ask},
+		{"ſſh host", Deny},
+		{"env ſſh host", Deny},
 	} {
 		// an ask must stay ruled, or a mode settles it as a default ask
 		if o := s.CheckCommand(c.cmd, ""); o.Decision != c.want || o.Decision == Ask && !o.Ruled() {

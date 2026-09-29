@@ -1198,6 +1198,7 @@ func TestAlwaysChoice(t *testing.T) {
 		// written from one of these says what the next call would run
 		{tools.Request{Subject: "tool.bash", Arg: "bash -c 'go test ./...'"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "/bin/sh -lc 'ls'"}, "", nil},
+		{tools.Request{Subject: "tool.bash", Arg: "baſh -c id"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "zsh script.sh"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "node -e 'x'"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "python3 -c 'x'"}, "", nil},

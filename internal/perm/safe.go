@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 // SecretPathShape matches secret-shaped filesystem paths (§9); reads ask.
@@ -761,10 +762,17 @@ func runner(prog string) bool {
 	return WrapperPrograms[prog] || prog == "find" || prog == "fd"
 }
 
-// ProgramName is the name a command word is judged by: its base, lowercased,
-// since /bin/RM runs rm on a case-folding filesystem.
+// ProgramName is the name a command word is judged by: its base, case
+// folded as APFS matches names, so /bin/RM runs rm and U+017F (long s) in
+// ſh runs sh. Each rune becomes the least of its fold orbit, then lowercase.
 func ProgramName(word string) string {
-	return strings.ToLower(filepath.Base(word))
+	return strings.ToLower(strings.Map(func(r rune) rune {
+		least := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			least = min(least, f)
+		}
+		return least
+	}, filepath.Base(word)))
 }
 
 // reserved are the shell words a segment may start with before its program:

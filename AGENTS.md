@@ -332,7 +332,7 @@ into an ask (`expandsToDotDot`). A deny, ask or not_match rule also meets the se
 by `perm.ProgramName`, its leading options dropped), so `git -C . push` meets a `git push*` rule; an
 allow is judged as written, and a git alias still slips past (NOTE in the code). Every
 program lookup in perm and the always answer goes through `perm.ProgramName`, the base name
-lowercased, since `/bin/RM` runs rm on a case-folding filesystem.
+case folded as APFS folds it, since `/bin/RM` runs rm and `ſh` (long s) runs sh.
 
 File tools (internal/tools/fs_tools.go): `write` and `edit` refuse a file the
 model has not read (outside the scratchpad), or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get

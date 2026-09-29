@@ -263,6 +263,8 @@ func TestDestructive(t *testing.T) {
 		{"echo `echo \\`rm -rf victim\\``", true},
 		{"/bin/rm --recursive x", true},
 		{"RM -rf .", true},
+		{"ſh -c 'rm -rf .'", true},
+		{"ls | xargſ rm", true},
 		{"cd x && git clean -fdx", true},
 		{"git -C sub clean -n", true},
 		{"find . -name '*.tmp' -delete", true},
