@@ -263,7 +263,6 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 	r.booting.Store(true)
 	defer r.booting.Store(false)
 	prefixResolution.Clear()
-	var gen *Generation
 	sb, err := NewSandbox(r.CurrentOrigin, r.clock.Now)
 	if err != nil {
 		return nil, err
@@ -273,7 +272,7 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 			r.printHook(origin, line)
 		}
 	})
-	gen = &Generation{
+	gen := &Generation{
 		ID:      r.seq.Add(1),
 		rt:      r,
 		SB:      sb,
