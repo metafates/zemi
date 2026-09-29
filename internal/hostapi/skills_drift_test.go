@@ -90,6 +90,7 @@ func TestBuiltinSkillReferences(t *testing.T) {
 	rows := []struct{ name, text string }{
 		{"newPluginPrompt", newPluginPrompt},
 		{"modifyPluginPrompt", modifyPluginPrompt},
+		{"newAgentPrompt", newAgentPrompt},
 		{"errorAskPrompt", errorAskPrompt},
 		{"workflowToolDesc", workflowToolDesc},
 		{"the lua tool", (&luaEvalTool{}).Info().Description},

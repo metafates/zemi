@@ -240,8 +240,8 @@ func TestSavedWorkflows(t *testing.T) {
 	}
 }
 
-// TestAgentsOverlayConfigDir: the list names where to add one, and the
-// user's own come first, as on every list.
+// TestAgentsOverlayConfigDir: the list names where a file agent lives, and
+// the user's own come first under New agent, as on every list.
 func TestAgentsOverlayConfigDir(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	ui := &fakeUI{}
@@ -254,7 +254,7 @@ func TestAgentsOverlayConfigDir(t *testing.T) {
 	if err := h.openAgents(); err != nil || len(ui.opened) != 1 || !strings.Contains(fmt.Sprint(ui.opened[0].Items), TildePath(h.Dirs.ConfigHome)) {
 		t.Fatalf("agents overlay = %v %+v", err, ui.opened)
 	}
-	if s := ui.opened[0].Items[0].(map[string]any)["section"]; s != "User agents" {
+	if s := ui.opened[0].Items[1].(map[string]any)["section"]; s != "User agents" {
 		t.Fatalf("first section %v, want User agents", s)
 	}
 }

@@ -520,9 +520,10 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 	}
 }
 
-// TestAgentsListsJobs: /agents shows a model's background job with its
-// output and stops it through the [s] Stop action's command.
-func TestAgentsListsJobs(t *testing.T) {
+// TestAgentsList: /agents leads with New agent, shows a model's background
+// job with its output and stops it through the [s] Stop action's command,
+// and details each agent, opening the ones that are files.
+func TestAgentsList(t *testing.T) {
 	h, r := newTestHost(t)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
 		t.Fatal(err)
@@ -537,18 +538,45 @@ func TestAgentsListsJobs(t *testing.T) {
 	for deadline := time.Now().Add(3 * time.Second); j.Output() == "" && time.Now().Before(deadline); {
 		time.Sleep(10 * time.Millisecond)
 	}
+	h.Dirs.ConfigHome = t.TempDir()
+	if err := os.MkdirAll(filepath.Join(h.Dirs.ConfigHome, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "agents", "reviewer.md"), []byte("---\ndescription: reviews diffs\nread_only: true\n---\nx\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	agents := h.Commands.Lookup("agents")
 	if err := agents.GoFn(h, ""); err != nil || len(ui.opened) != 1 {
 		t.Fatalf("open: %v", err)
 	}
-	var row map[string]any
+	rows := map[string]string{}
 	for _, it := range ui.opened[0].Items {
-		if m := it.(map[string]any); m["text"] == id {
-			row = m
-		}
+		m := it.(map[string]any)
+		rows[fmt.Sprint(m["text"])] = fmt.Sprint(m)
 	}
-	if !strings.Contains(fmt.Sprint(row["detail"]), "up") || !strings.Contains(fmt.Sprint(row["actions"]), "hotkey:s run:agents kill "+id) {
-		t.Fatalf("job row = %v", row)
+	if first := fmt.Sprint(ui.opened[0].Items[0]); !strings.Contains(first, "fill:/agents new ") || !strings.Contains(first, "text:New agent") {
+		t.Errorf("first row = %s", first)
+	}
+	for _, c := range []struct {
+		row  string
+		want []string
+		not  []string
+	}{
+		{id, []string{"up", "hotkey:s run:agents kill " + id}, nil},
+		{"reviewer", []string{"[path ", "reviewer.md]", "[access read only]", "run:agents open reviewer"}, nil},
+		{"general", []string{"[access can change files]"}, []string{"[path ", "actions:"}},
+		{"explore", []string{"[access read only]"}, []string{"actions:"}},
+	} {
+		for _, w := range c.want {
+			if !strings.Contains(rows[c.row], w) {
+				t.Errorf("%s row lacks %q: %s", c.row, w, rows[c.row])
+			}
+		}
+		for _, w := range c.not {
+			if strings.Contains(rows[c.row], w) {
+				t.Errorf("%s row has %q: %s", c.row, w, rows[c.row])
+			}
+		}
 	}
 	if err := agents.GoFn(h, "kill "+id); err != nil {
 		t.Fatal(err)

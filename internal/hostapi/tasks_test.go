@@ -269,11 +269,12 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "look (from Other work)") || !strings.Contains(rows, "agents view agent-9") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
-	// enter on a run opens its transcript, and the footer says so
+	// enter on a run opens its transcript, and the footer says so; the
+	// running run, under New agent, is selected
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if err := h.openAgents(); err != nil || ui.opened[0].Verb != "open" {
-		t.Fatalf("agents verb %q, %v", ui.opened[0].Verb, err)
+	if err := h.openAgents(); err != nil || ui.opened[0].Verb != "open" || ui.opened[0].Selected != 1 {
+		t.Fatalf("agents verb %q, selected %d, %v", ui.opened[0].Verb, ui.opened[0].Selected, err)
 	}
 }
 

@@ -6,18 +6,35 @@ A subagent is a model run the main agent starts for a self-contained task. It ge
 
 ```markdown
 ---
-description: Reviews Go code for concurrency bugs; use for any change touching goroutines
-tools: read, grep, glob
-model: anthropic/claude-haiku-4-5
+description: Reviews the uncommitted change for bugs, missing tests and broken conventions; use after finishing a change, before calling it done
+tools: read, grep, glob, bash, lsp
+read_only: true
 ---
-You review Go code for data races, deadlocks and leaked goroutines. Cite file:line.
+You review the uncommitted change in this repository.
+
+1. Run `git status` and `git diff HEAD`, then read each changed file around the change and its callers.
+2. Check that the change does what the task says, errors are handled, each new branch has a test, and nothing else changed.
+3. Run the narrowest test that covers the change.
+
+Report a one-line verdict (ready, or fix first), then each finding as `path:line: problem -> fix`, most severe first, then what you could not check.
 ```
 
 - The file name is the agent's name: lowercase letters, digits, `-`. A `name` field is ignored. The builtin agents are `explore`, `general`, `web` and `plan`; a user file with one of those names replaces it.
-- `description` is required and is what the model reads when it picks an agent, so say when to use it.
-- `model` is a role (`chat`, `agents`, `titles`, `compact`, `memory`: the model that role runs on) or a `provider/model`; omitted or `inherit`, `models.agents`.
-- `tools` is an allowlist, or `-name` entries that remove from the full set, so later tools still arrive; omitted, everything but `agent`, `workflow`, `todos`, `question`, `plan` and `lua`, which no subagent gets. `config.md` lists the tool names. An unknown tool name fails the agent.
+- `description` (required) is how the main agent picks the agent: it reads every description, cut at 200 characters, on every request. Say what it does and when to use it, in one sentence specific enough that no other agent matches. "Use after X" or "use for any Y" gets it used without being named.
+- `tools` is an allowlist (`read, grep, glob`), or `-name` entries that remove from the full set (`-fetch, -web_search`), so later tools still arrive; omitted, everything but `agent`, `workflow`, `todos`, `question`, `plan` and `lua`, which no subagent gets. Names are the lowercase tool names you call yourself (`config.md` lists them; MCP tools are `mcp_<server>_<tool>`). An unknown tool name fails the agent.
 - `read_only: true` denies file writes and runs its commands with the project unwritable, whatever its tools and the mode, like `explore`. Use it for any agent that should only look, even one that runs commands.
+- `model` is a role (`chat`, `agents`, `titles`, `compact`, `memory`: the model that role runs on) or a `provider/model`; omitted or `inherit`, `models.agents`.
+- The body is the job, in under 40 lines: its one job in a line; the steps, with this project's real commands and paths; what to check; the report's shape; what it must not do.
+- `/agents` lists every agent; its first row, New agent, fills `/agents new`, and `/agents open <name>` edits a file agent.
+
+New agent (`/agents new` sends you here, or the user asked for one):
+
+1. Unless the request already says, ask in one `question` call: what the agent does and when the main agent should hand it work; whether it only looks (`read_only`) or changes files; and where it lives: this repository (`.agents/agents/`, shared through git, loaded while the project is trusted) or every project (the user config's `agents/`). Recommend the repository for an agent about this code base and every project otherwise; outside a git repository offer only every project, and in a project the user has not trusted say that a repository agent loads only after `/trust`. Without the `question` tool (`zemi run`) take the recommended answers and say which.
+2. The `agent` tool's description lists every agent zemi has. If one already does the job, say which and offer to use or change it instead. Pick a name nothing there uses.
+3. Read what the agent will work on (the instruction files, the build and test commands, the directories it will search), so its steps name real commands and paths.
+4. Write the file in one write: the fewest tools that do the job, `read_only` unless it must change files, no `model` unless the user asked for one. A user config file asks for approval, which shows the user the file.
+5. Check it loaded with one Lua tool script: `zemi.agent.list()` lists it with its description, and `zemi.errors.list()` has no `agents` entry for it.
+6. Tell the user the path and that from their next message "use the <name> agent to ..." runs it, or that the main agent picks it on its own when a task matches its description. Do not run it yourself unless they ask.
 
 ## Profiles (`init.lua`)
 

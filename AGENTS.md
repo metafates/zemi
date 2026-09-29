@@ -770,7 +770,9 @@ lua-language-server is installed.
 - **Subagents** (subagent.go) are fresh `agent.Runner`s over `PipelineFor()` (same permission
   gate; asks are prefixed with the agent name). Definitions: builtin `explore`, `web`,
   `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over plugin over a trusted
-  repo's `.agents`; a file's `read_only: true` makes a read-only agent like `explore`). They never get `agent`, `workflow`, `todos`, `question`,
+  repo's `.agents`; a file's `read_only: true` makes a read-only agent like `explore`).
+  `/agents new`, the list's first row, sends `newAgentPrompt`, which points at the New agent
+  steps in the zemi skill's agents.md; `/agents open` edits a file agent. They never get `agent`, `workflow`, `todos`, `question`,
   `plan` or `lua` (nesting depth 1). A run is a child session (`parent_id`);
   `ListSessions` hides children. They have no summarizer: `sendPruning` clears their own old
   tool output when the window fills and, with none left to clear, drops the middle of the

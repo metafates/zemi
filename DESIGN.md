@@ -971,6 +971,8 @@ runner over the same tool pipeline, in a child session recorded with
 `question`, `plan` or `lua`, so nesting stops at depth 1, and `zemi.agent.run`
 is refused to every origin but user and builtin: an agent acts with the
 user's tools and permissions. The reflector is not a subagent (§10.3).
+`/agents new` has the main agent write a definition: it sends the typed
+line with a short prompt pointing at the New agent steps in the zemi skill.
 A running subagent takes messages like the main agent's steering queue
 (§4): the main agent calls `agent` with `send_to` set to a background
 run's id, and the user submits while the chat shows that run. A message

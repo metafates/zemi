@@ -24,6 +24,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
@@ -865,15 +866,25 @@ func fmtDuration(d time.Duration) string {
 // ---------------------------------------------------------------------------
 // /agents and zemi.agent.run
 
+// newAgentPrompt rides behind /agents new; the procedure lives in the zemi
+// skill.
+const newAgentPrompt = "I want a new zemi subagent that does what the command above says; ask me when it says nothing. Load the zemi skill and follow the New agent steps in its agents.md."
+
 // agentsCommands is /agents.
 func (h *Host) agentsCommands() []*Command {
 	return []*Command{{
-		Name: "agents", NArgs: NArgsAny, Desc: "see running agents and the ones zemi can start",
+		Name: "agents", NArgs: NArgsAny, Desc: "see running agents and the ones zemi can start, or make one",
 		GoFn: func(h *Host, args string) error {
-			sub, id, _ := strings.Cut(strings.TrimSpace(args), " ")
+			typed, stdin := agent.CutAttached(args)
+			sub, id, _ := strings.Cut(strings.TrimSpace(typed), " ")
 			switch id = strings.TrimSpace(id); sub {
 			case "":
 				return h.openAgents()
+			case "new":
+				// the line as typed, newlines included, with the prompt behind it
+				return h.AgentSend("/agents " + strings.TrimSpace(typed) + agent.Attached("command", newAgentPrompt) + stdin)
+			case "open":
+				return h.openAgentFile(id)
 			case "view":
 				return h.ViewAgent(id)
 			case "stop":
@@ -881,9 +892,40 @@ func (h *Host) agentsCommands() []*Command {
 			case "kill":
 				return h.jobs.Kill(id)
 			}
-			return Usagef("unknown /agents subcommand %q (view <id>, stop [id], kill <job id>)", sub)
+			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, view <id>, stop [id], kill <job id>)", sub)
 		},
+		GoComplete: SubcommandCompleter([]string{"new", "open", "view", "stop", "kill"}, func(h *Host, sub string) []string {
+			var names []string
+			for _, d := range h.agentDefs() {
+				if sub == "open" && d.Path != "" {
+					names = append(names, d.Name)
+				}
+			}
+			return names
+		}),
 	}}
+}
+
+// openAgentFile opens an agent's file in the user's editor.
+func (h *Host) openAgentFile(name string) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	d, err := h.agentDef(name)
+	switch {
+	case err != nil:
+		return Usagef("%v", err)
+	case d.Path == "":
+		return Usagef("%s is builtin, its prompt is in zemi: agents/%s.md in %s replaces it", name, name, TildePath(h.Dirs.ConfigHome))
+	}
+	// the editor blocks and a Go command runs on the key loop
+	h.GoSafe("agents open", func() {
+		if err := ui.EditFile(context.Background(), EditRequest{Path: d.Path, Title: "the agent"}); err != nil {
+			h.Notify(logging.Error, "Could not open the agent", err.Error())
+		}
+	})
+	return nil
 }
 
 func (h *Host) openAgents() error {
@@ -893,7 +935,12 @@ func (h *Host) openAgents() error {
 	}
 	defs := h.agentDefs()
 	sortBySource(defs, func(d AgentDef) lua.Origin { return d.Source })
-	items := h.agentRunItems()
+	runs := h.agentRunItems()
+	sel := 0
+	if len(runs) > 0 && runs[0].(map[string]any)["section"] == "Running" { // runs list running first
+		sel = 1
+	}
+	items := append([]any{map[string]any{"text": "New agent", "verb": "fill", "fill": "/agents new "}}, runs...)
 	// jobs belong to the host, so a server started in an earlier session shows too
 	for _, j := range h.jobs.List() {
 		item := map[string]any{
@@ -909,19 +956,28 @@ func (h *Host) openAgents() error {
 		items = append(items, item)
 	}
 	for _, d := range defs {
-		model, tools := cmp.Or(d.Model, "agents"), "every tool a subagent may use"
+		model, tools, access := cmp.Or(d.Model, "agents"), "every tool a subagent may use", "can change files"
 		if d.Tools != nil {
 			tools = strings.Join(d.Tools, ", ")
 		}
-		items = append(items, map[string]any{
+		if d.ReadOnly {
+			access = "read only"
+		}
+		item := map[string]any{
 			"text":    d.Name,
 			"desc":    listDesc(d.Description),
 			"section": sourceSection(d.Source) + " agents", // apart from the runs above
-			"fields":  fieldList("source", h.sourceOf(d.Source, d.Path), "model", model, "tools", tools),
-			"detail":  fmt.Sprintf("%s\n\nAdd your own as agents/<name>.md in %s or .agents.", d.Description, TildePath(h.Dirs.ConfigHome)),
-		})
+			"detail":  d.Description,
+		}
+		fields := []string{"source", h.sourceOf(d.Source, d.Path)}
+		if d.Path != "" {
+			fields = append(fields, "path", TildePath(d.Path))
+			item["actions"] = []any{map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "agents open " + d.Name}}
+		}
+		item["fields"] = fieldList(append(fields, "model", model, "tools", tools, "access", access)...)
+		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Verb: "open"})
+	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "open"})
 	return nil
 }
 
