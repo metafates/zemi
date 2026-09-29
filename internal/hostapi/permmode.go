@@ -435,13 +435,7 @@ func (h *Host) modeNamespace(L *glua.LState) *glua.LTable {
 			L.Push(glua.LTrue)
 			return 1
 		}
-		if err := h.SetPermMode(name); err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
-		}
-		L.Push(glua.LTrue)
-		return 1
+		return luaResult(L, h.SetPermMode(name))
 	}))
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		L.Push(modeRow(L, h.permModeDef()))

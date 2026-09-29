@@ -2692,9 +2692,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			_, err = h.resolveModel(p)
 		}
 		if err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
+			return luaResult(L, err)
 		}
 		h.GoSafe("zemi.agent.send", func() {
 			if plugin != "" {
