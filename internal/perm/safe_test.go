@@ -258,6 +258,9 @@ func TestDestructive(t *testing.T) {
 	}{
 		{"rm -rf build", true},
 		{"rm -f x", true},
+		{"echo $'\\'' ; rm -rf victim ; #'", true},
+		{"echo $(true)#'\nrm -rf victim #'", true},
+		{"echo `echo \\`rm -rf victim\\``", true},
 		{"/bin/rm --recursive x", true},
 		{"RM -rf .", true},
 		{"cd x && git clean -fdx", true},

@@ -1070,8 +1070,8 @@ func repeats(prog string) bool {
 // repeating runner hands a shell (xargs sh -c 'rm "$@"'). A loop body
 // between do and done repeats too.
 func (n Normalized) destructive(repeated bool, pad string) string {
-	if n.Fail != "" {
-		return n.Fail
+	if why := cmp.Or(n.Fail, n.doubt); why != "" {
+		return why
 	}
 	loops := 0
 	for _, f := range n.Args {

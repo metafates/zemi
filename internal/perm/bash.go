@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"regexp"
@@ -38,6 +39,9 @@ type Normalized struct {
 	cmd string
 	// hidden marks a program no segment names, so Programs lists none.
 	hidden bool
+	// doubt says why the shell may group the text otherwise than the
+	// segments show, so Destructive cannot vouch for them either
+	doubt string
 	// shown are the rows Programs lists when a heredoc makes them differ
 	// from Args: a dataReader's body runs only its substitutions while
 	// nothing in the command runs code, though the rules judge it as commands.
@@ -274,7 +278,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			// which the words here would keep as text
 			if sc.tick && i+1 < len(rs) && rs[i+1] == '`' {
 				n.ForceAsk = "nested backtick substitution"
-				n.hidden = true
+				n.hidden, n.doubt = true, n.ForceAsk
 			}
 			if i+1 < len(rs) {
 				i++
@@ -302,7 +306,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			q := rs[i+2:]
 			if end := slices.Index(q, '\''); rs[i+1] == '\'' && end >= 0 && slices.Contains(q[:end], '\\') {
 				n.ForceAsk = "ANSI-C quoting with a backslash"
-				n.hidden = true
+				n.hidden, n.doubt = true, n.ForceAsk
 			}
 		case r == '#' && !inWord:
 			end := slices.Index(rs[i:], '\n')
@@ -314,7 +318,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			if i > 0 && (rs[i-1] == ')' || rs[i-1] == '`') {
 				if slices.ContainsFunc(rs[i:i+end], func(c rune) bool { return c == '\'' || c == '"' || c == '\\' }) {
 					n.ForceAsk = "comment with a quote or backslash"
-					n.hidden = true
+					n.hidden, n.doubt = true, n.ForceAsk
 				}
 				inWord = true
 				cur.WriteRune(r)
@@ -810,6 +814,7 @@ func (n *Normalized) absorb(at int, inner Normalized) {
 	if inner.Assign != "" && n.Assign == "" {
 		n.Assign = inner.Assign
 	}
+	n.doubt = cmp.Or(n.doubt, inner.doubt)
 	n.hidden = n.hidden || inner.hidden
 }
 

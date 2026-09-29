@@ -2072,7 +2072,10 @@ provenance string.
   loop body or a shell body `xargs` or `find -exec` repeats; an `rm` whose
   every operand is below the scratchpad, as `$TMPDIR/...` or its literal
   path with no climb, settles while nothing in the command can have
-  changed `$TMPDIR`), a git command that writes `.git` (`perm.Normalized.GitWrites`:
+  changed `$TMPDIR`; and any command whose quoting the shell may group
+  otherwise than zemi's segments, a nested backtick, a backslash in `$'..'`
+  or a quote in a comment after `)`, since the list cannot vouch for it),
+  a git command that writes `.git` (`perm.Normalized.GitWrites`:
   the sandbox keeps `.git` read-only, so a confined commit could only
   fail and the ask comes first), and on a backend that cannot hide files
   a command naming an existing secret-shaped file. Anything a
