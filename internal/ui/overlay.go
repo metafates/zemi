@@ -30,7 +30,9 @@ type overlayState struct {
 	back  bool     // a detail view: esc and its actions return to the overlay under it
 	item  any      // a detail view's item: a reload can swap the parent's under it
 	size  boxSize
-	armed int // the visible row plus one whose danger act waits for a second press, 0 for none
+	// the selected row's danger act waits for a second press; a key or a
+	// click that moves the selection drops it
+	armed bool
 	// the preview pane's rows at paneW cells: the most any item's preview
 	// wraps to, 4 at most, so moving or filtering never resizes the box
 	paneW, paneN int
@@ -183,7 +185,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 				// sized as a drawn list, since its detail view opens at its size
 				area := boxArea(a.stage, a.width, a.height)
 				a.overlayBox(top, area.Dx(), area.Dy())
-				a.openDetail(top, idx, n).armed = n + 1
+				a.openDetail(top, idx, n).armed = true
 				return
 			}
 		}
@@ -461,10 +463,9 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	a.bump()
 	// a danger row acts on a second press of enter, space or its key while it
 	// stays selected; any other key drops the arm first, and esc only that
-	confirmed := st.armed > 0 && st.armed == st.selected+1 && st.selected < len(st.visible) &&
-		(key == "enter" || key == "space" || key == st.actionKey(st.selected))
-	if st.armed > 0 && !confirmed {
-		st.armed = 0
+	confirmed := st.armed && (key == "enter" || key == "space" || key == st.actionKey(st.selected))
+	if st.armed && !confirmed {
+		st.armed = false
 		if key == "esc" {
 			return nil
 		}
@@ -507,7 +508,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		d := a.openDetail(st, st.visible[st.selected], n)
 		r := d.items[n].row
 		if r.Danger {
-			d.armed = n + 1
+			d.armed = true
 			return nil
 		}
 		cmd := a.overlayKey("enter", "")
@@ -533,7 +534,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		case r.Danger && !confirmed && !(st.back && len(st.visible) == 1):
 			// a detail view whose only action it is states the effect and holds
 			// nothing a stray key hits: it is the confirmation
-			st.armed = st.selected + 1
+			st.armed = true
 		case verb == "copy":
 			return a.copied(st.value(idx))
 		case st.back:
@@ -572,22 +573,22 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 // arm once a click, a wheel or a bar drag moved its selection, as any other
 // key does, so moving back never finds the row armed.
 func (a *App) disarmIfMoved() func() {
-	if mr := a.memReview; mr != nil && mr.armed > 0 {
+	if mr := a.memReview; mr != nil && mr.armed {
 		act := mr.act
 		return func() {
 			if mr.act != act {
-				mr.armed = 0
+				mr.armed = false
 			}
 		}
 	}
 	i := len(a.overlays) - 1
-	if i < 0 || a.overlays[i].armed == 0 {
+	if i < 0 || !a.overlays[i].armed {
 		return func() {}
 	}
 	sel := a.overlays[i].selected
 	return func() {
 		if i < len(a.overlays) && a.overlays[i].selected != sel {
-			a.overlays[i].armed = 0
+			a.overlays[i].armed = false
 		}
 	}
 }
@@ -816,7 +817,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		}
 		hints = st.filterHints(append(hints, scroll...), map[bool]string{true: "back", false: "close"}[st.back])
 		foot := hint(inner, hints...)
-		if st.armed > 0 && st.armed == st.selected+1 && st.selected < len(st.visible) {
+		if st.armed {
 			foot = armedHint(inner, cmp.Or(st.actionKey(st.selected), "enter"), st.items[st.visible[st.selected]].label)
 		}
 		tail = len(stack(tight, pane, oneRow))

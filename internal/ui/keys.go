@@ -152,8 +152,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			acts := memActions(mr.items[mr.at()], len(mr.undo) > 0)
 			// an armed button runs on enter or its key; any other key drops the
 			// arm first, and esc only that
-			if mr.armed == mr.act+1 {
-				mr.armed = 0
+			if mr.armed {
+				mr.armed = false
 				if key == "enter" || key == acts[mr.act].key {
 					a.memAct(acts[mr.act].key)
 					return nil

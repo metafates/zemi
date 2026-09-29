@@ -28,7 +28,7 @@ type memReviewPrompt struct {
 	listFilter
 	detail bool     // the selected row is open, its actions as buttons
 	act    int      // the selected button
-	armed  int      // the button plus one a typed /memory forget armed, so moving off it disarms
+	armed  bool     // a typed /memory forget armed the selected button; moving off it disarms
 	body   viewport // the open row's text
 	size   boxSize
 	undo   []memUndo
@@ -45,7 +45,7 @@ func (mr *memReviewPrompt) at() int {
 
 // open shows the selected row with its actions as buttons.
 func (mr *memReviewPrompt) open() {
-	mr.detail, mr.act, mr.body, mr.armed = mr.at() < len(mr.items), 0, viewport{}, 0
+	mr.detail, mr.act, mr.body, mr.armed = mr.at() < len(mr.items), 0, viewport{}, false
 }
 
 // seek filters the rows again and selects item i, or the first shown after
@@ -83,7 +83,7 @@ func (a *App) ReviewMemories(items []hostapi.MemoryRow, focus string) []hostapi.
 		if focus != "" && sel >= 0 {
 			// a stored memory's first action is Forget, armed as a typed delete's is
 			a.memReview.open()
-			a.memReview.armed = 1
+			a.memReview.armed = true
 		}
 		return nil
 	})
@@ -215,7 +215,7 @@ func memActions(it hostapi.MemoryRow, undo bool) []promptChoice {
 
 // memAct runs action key on the selected row and closes an open one.
 func (a *App) memAct(key string) {
-	a.memReview.detail, a.memReview.armed = false, 0
+	a.memReview.detail, a.memReview.armed = false, false
 	switch key {
 	case "a":
 		a.markMemory("keep")
@@ -327,8 +327,7 @@ func (a *App) memDetailBox(it hostapi.MemoryRow, w, h, inner int) [][]hostapi.Se
 	mr := a.memReview
 	acts := memActions(it, len(mr.undo) > 0)
 	mr.act = min(mr.act, len(acts)-1)
-	armed := mr.armed == mr.act+1
-	if armed {
+	if mr.armed {
 		acts[mr.act].hl = hostapi.ChromeDanger
 	}
 	textW := min(inner, mr.size.w)
@@ -340,7 +339,7 @@ func (a *App) memDetailBox(it hostapi.MemoryRow, w, h, inner int) [][]hostapi.Se
 	}
 	act := func(compact bool) [][]hostapi.Segment { return choiceRows(acts, mr.act, inner, compact) }
 	body := scrollChoiceBody(h, inner, &mr.body, text, textW, act, false, pickHint, hintPair{"esc", "back"})
-	if armed { // the footer is the body's last row
+	if mr.armed { // the footer is the body's last row
 		body[len(body)-1] = armedHint(inner, acts[mr.act].key, acts[mr.act].label)
 	}
 	return promptBox("Memory / "+sanitize.Line(it.Text), "", body, w, h, 100, &mr.size)

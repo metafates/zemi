@@ -1100,7 +1100,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		box := app.overlayBox(&app.overlays[len(app.overlays)-1], 60, 16)
 		return plainSegs(box[len(box)-2])
 	}
-	armed := func() int { return app.overlays[len(app.overlays)-1].armed }
+	armed := func() bool { return app.overlays[len(app.overlays)-1].armed }
 	for _, c := range []struct {
 		name, items, keys string
 		press             []string
@@ -1121,11 +1121,12 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "del 1"]
 		}},
 		{"esc drops the arm and keeps the detail", "", "", []string{"j", "x", "esc"}, func() string {
-			ok := ran == "" && len(app.overlays) == 2 && armed() == 0 && strings.Contains(footer(), "enter pick")
-			return map[bool]string{false: fmt.Sprintf("ran %q, %d open, armed %d, footer %q", ran, len(app.overlays), armed(), footer())}[ok]
+			ok := ran == "" && len(app.overlays) == 2 && !armed() && strings.Contains(footer(), "enter pick")
+			return map[bool]string{false: fmt.Sprintf("ran %q, %d open, armed %v, footer %q", ran, len(app.overlays), armed(), footer())}[ok]
 		}},
 		{"another key drops the arm, and the action's key arms it again", "", "", []string{"j", "x", "k", "x"}, func() string {
-			return map[bool]string{false: fmt.Sprintf("ran %q, armed %d", ran, armed())}[ran == "" && armed() == 2]
+			sel := app.overlays[len(app.overlays)-1].selected
+			return map[bool]string{false: fmt.Sprintf("ran %q, armed %v on %d", ran, armed(), sel)}[ran == "" && armed() && sel == 1]
 		}},
 		{"a danger row arms on enter", `"current", { text = "wipe", danger = true, run = "del w" }`, "", []string{"j", "enter"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q, footer %q", ran, footer())}[ran == "" && strings.Contains(footer(), "enter again to wipe")]
@@ -1179,8 +1180,8 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 	}
 	boxW := func(st *overlayState) int { return hostapi.SegsWidth(app.overlayBox(st, area.Dx(), area.Dy())[0]) }
 	listed := boxW(typed("", "j", "x"))
-	if d := typed("del 2"); !d.back || d.selected != 1 || d.armed != 2 || boxW(d) != listed {
-		t.Fatalf("typed delete: %d open, selected %d, armed %d, width %d, want %d", len(app.overlays), d.selected, d.armed, boxW(d), listed)
+	if d := typed("del 2"); !d.back || d.selected != 1 || !d.armed || boxW(d) != listed {
+		t.Fatalf("typed delete: %d open, selected %d, armed %v, width %d, want %d", len(app.overlays), d.selected, d.armed, boxW(d), listed)
 	}
 	pressKeys(app, "enter")
 	if ran != "del 2" {
@@ -1193,8 +1194,8 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		x, y := findCell(t, app, label)
 		clickAt(app, x, y)
 	}
-	if d := app.overlays[len(app.overlays)-1]; d.selected != 1 || d.armed != 0 || ran != "" {
-		t.Fatalf("clicked back: selected %d, armed %d, ran %q", d.selected, d.armed, ran)
+	if d := app.overlays[len(app.overlays)-1]; d.selected != 1 || d.armed || ran != "" {
+		t.Fatalf("clicked back: selected %d, armed %v, ran %q", d.selected, d.armed, ran)
 	}
 	typed("del 9")
 	if toast := lastToast(app); !strings.Contains(toast, "/del 9 runs it without asking") {
