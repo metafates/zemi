@@ -244,7 +244,6 @@ func (a *App) Farewell() string {
 		return ""
 	}
 	var b strings.Builder
-	out := &colorprofile.Writer{Forward: &b, Profile: a.colors}
 	// a hot or wedged runtime prints nothing rather than hold the exit
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
@@ -254,18 +253,7 @@ func (a *App) Farewell() string {
 			a.log.Warn("ui", "exit widget failed", map[string]any{"widget": w.ID, "error": err.Error()})
 			continue
 		}
-		for _, line := range lines {
-			for _, s := range line {
-				if s.HL == "" || s.HL == "Normal" {
-					_, _ = out.WriteString(s.Text)
-					continue
-				}
-				st := a.hlStyle(s.HL)
-				st.Bg = nil
-				_, _ = out.WriteString(st.Styled(s.Text))
-			}
-			_, _ = out.WriteString("\n")
-		}
+		printLines(&b, a.thm, a.colors, lines)
 	}
 	return b.String()
 }
