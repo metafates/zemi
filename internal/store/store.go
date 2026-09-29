@@ -276,30 +276,17 @@ func (s *DB) migrate() error {
 	return tx.Commit()
 }
 
-// Retention windows (DESIGN §7 keeps no archive): checkpoints hold a whole
-// file each, so they go first, and a session takes its messages, tool calls
-// and todos with it. Both windows are generous, and the sweep runs at open,
-// before the live session exists, so it can never cut the conversation in
-// progress.
-const (
-	CheckpointTTL = 30 * 24 * time.Hour
-	// 0 keeps every session forever: losing a conversation costs more than
-	// the disk it holds, so zemi never deletes one on its own. Set a
-	// duration here to sweep sessions nobody has touched since.
-	sessionTTL = 0
-)
+// CheckpointTTL is how long a checkpoint, a whole file each, is kept. The
+// sweep runs at open, before the live session exists, so it never cuts the
+// conversation in progress. Sessions are never swept: losing a conversation
+// costs more than the disk it holds.
+const CheckpointTTL = 30 * 24 * time.Hour
 
-// sweep drops aged rows and reclaims their pages once enough are free.
+// sweep drops aged checkpoints and reclaims their pages once enough are free.
 func (s *DB) sweep() error {
 	if _, err := s.db.Exec(`DELETE FROM checkpoints WHERE created_at < ?`,
 		time.Now().Add(-CheckpointTTL).UnixMilli()); err != nil {
 		return fmt.Errorf("store: sweep checkpoints: %w", err)
-	}
-	if sessionTTL > 0 {
-		if _, err := s.db.Exec(`DELETE FROM sessions WHERE updated_at < ?`,
-			time.Now().Add(-sessionTTL).UnixMilli()); err != nil {
-			return fmt.Errorf("store: sweep sessions: %w", err)
-		}
 	}
 	// NOTE: VACUUM rewrites the whole file before the UI starts, so it waits
 	// until a quarter of the pages are free; SQLite reuses the rest, and

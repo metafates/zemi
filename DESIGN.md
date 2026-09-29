@@ -1495,7 +1495,7 @@ global DB holds user-scope memory, skills and kv; a project DB
 holds its
 sessions, messages, todos, tool_calls, checkpoints, proposals, and
 project-scope memory. Opening a store sweeps checkpoints older than 30
-days; sessions are never swept (the session TTL is 0, and zemi deletes a
+days; sessions are never swept (zemi deletes a
 session only when the user says to: Delete in `/sessions` removes it and its subagent
 runs, then VACUUMs and truncates the WAL so the text leaves the disk).
 Indexes: `messages(session_id)`,
