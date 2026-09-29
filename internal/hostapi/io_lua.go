@@ -690,13 +690,10 @@ func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("request", L.NewFunction(func(L *glua.LState) int {
 		spec := L.CheckTable(1)
 		req := httpReq{
-			method:  strings.ToUpper(rawString(L, spec, "method")),
+			method:  cmp.Or(strings.ToUpper(rawString(L, spec, "method")), "GET"),
 			url:     rawString(L, spec, "url"),
 			body:    rawString(L, spec, "body"),
 			headers: map[string]string{},
-		}
-		if req.method == "" {
-			req.method = "GET"
 		}
 		if req.url == "" {
 			L.RaiseError("zemi.http.request: url is required")
@@ -811,10 +808,6 @@ func (h *Host) httpFetch(ctx context.Context, subject, principal string, allowPr
 	if _, err := tools.ParseNetURL(r.url); err != nil {
 		return nil, err
 	}
-	timeout := r.timeout
-	if timeout <= 0 {
-		timeout = 30 * time.Second
-	}
 	client := tools.SafeClient(func(hop *url.URL) error {
 		if _, err := tools.ParseNetURL(hop.String()); err != nil {
 			return err
@@ -824,7 +817,7 @@ func (h *Host) httpFetch(ctx context.Context, subject, principal string, allowPr
 		}
 		return nil
 	}, allowPrivate)
-	client.Timeout = timeout
+	client.Timeout = cmp.Or(r.timeout, 30*time.Second)
 	var body io.Reader
 	if r.body != "" {
 		body = strings.NewReader(r.body)
@@ -1137,14 +1130,14 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 				code, _ := stub.fields["code"].(float64)
 				return int(code), nil
 			}
-			var ee *exec.ExitError
-			switch err := proc.Wait(cmd); {
-			case errors.As(err, &ee):
+			err := proc.Wait(cmd)
+			if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 				return ee.ExitCode(), nil
-			case err != nil && !errors.Is(err, exec.ErrWaitDelay):
-				return 0, err
 			}
-			return 0, nil
+			if errors.Is(err, exec.ErrWaitDelay) {
+				return 0, nil
+			}
+			return 0, err
 		}
 		stopID := 0
 		switch {

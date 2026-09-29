@@ -27,10 +27,6 @@ var eventCatalogue = map[string]bool{
 	"lsp.request": true,
 }
 
-func knownEvent(name string) bool {
-	return eventCatalogue[name] || strings.HasPrefix(name, "user.")
-}
-
 // eventNames lists the catalogue for an error message: a near miss
 // ("agent.done") is fixed from the list without a doc lookup.
 func eventNames() string {
@@ -43,7 +39,7 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("on", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		fn := L.CheckFunction(2)
-		if !knownEvent(name) {
+		if !eventCatalogue[name] && !strings.HasPrefix(name, "user.") {
 			L.RaiseError("zemi.event.on: unknown event %q (%s, or a user.* name)", name, eventNames())
 		}
 		hd := &EventHandler{
@@ -92,11 +88,7 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 		}
 		from := string(h.RT.CurrentOrigin(L))
 		h.recordEvent(name, from, payload)
-		handlers := h.Events.Handlers(name)
-		if len(handlers) == 0 {
-			return 0
-		}
-		h.emitSync(L, handlers, name, payload, from)
+		h.emitSync(L, h.Events.Handlers(name), name, payload, from)
 		return 0
 	}))
 	tb.RawSetString("log", L.NewFunction(h.eventLogFn))

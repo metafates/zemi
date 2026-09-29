@@ -460,7 +460,7 @@ func (h *Host) openSkillFile(name string) error {
 		if s.Name != name {
 			continue
 		}
-		h.openInEditor(ui, filepath.Join(s.Dir, "SKILL.md"), "the skill")
+		h.openInEditor(ui, skillFile(s), "the skill")
 		return nil
 	}
 	return Usagef("no skill %q", name)

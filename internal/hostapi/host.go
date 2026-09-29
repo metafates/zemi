@@ -954,9 +954,7 @@ func describeRHS(rhs RHS) string {
 func (h *Host) ToggleReasoning() {
 	ag := h.agents
 	ag.mu.Lock()
-	v := h.reasoningShown()
-	nv := !v
-	ag.reasoningShown = &nv
+	ag.reasoningShown = new(!h.reasoningShown())
 	ag.mu.Unlock()
 	h.refresh()
 }

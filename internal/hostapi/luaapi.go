@@ -4,6 +4,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"strings"
@@ -193,13 +194,7 @@ func (h *Host) assembleSections() string {
 				if text = strings.TrimSpace(text); text == "" || b.Len() >= assembleTotalMax {
 					continue
 				}
-				if len(text) > assembleSectionMax {
-					text = text[:assembleSectionMax]
-				}
-				if title == "" {
-					title = "context"
-				}
-				b.WriteString("\n\n## " + title + " (from " + string(hd.Origin) + " config)\n" + text)
+				b.WriteString("\n\n## " + cmp.Or(title, "context") + " (from " + string(hd.Origin) + " config)\n" + text[:min(len(text), assembleSectionMax)])
 			}
 			return nil, nil
 		})

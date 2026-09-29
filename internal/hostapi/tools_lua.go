@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -116,24 +117,11 @@ func (r *toolReg) overridesFor(tool string) []*overrideRec {
 func (r *toolReg) purge(gen Gen) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for name, t := range r.byName {
-		if t.Gen == gen {
-			delete(r.byName, name)
-		}
-	}
+	maps.DeleteFunc(r.byName, func(_ string, t *luaTool) bool { return t.Gen == gen })
 	for tool, list := range r.overrides {
-		var keep []*overrideRec
-		for _, o := range list {
-			if o.Gen != gen {
-				keep = append(keep, o)
-			}
-		}
-		if len(keep) == 0 {
-			delete(r.overrides, tool)
-		} else {
-			r.overrides[tool] = keep
-		}
+		r.overrides[tool] = slices.DeleteFunc(list, func(o *overrideRec) bool { return o.Gen == gen })
 	}
+	maps.DeleteFunc(r.overrides, func(_ string, list []*overrideRec) bool { return len(list) == 0 })
 }
 
 // builtinToolNames are the names Lua tools may not take: the provider would
@@ -160,7 +148,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.tool.add: execute callback is required")
 		}
 		name := rawString(L, spec, "name")
-		if name == "" || !isToolName(name) {
+		if !toolName.MatchString(name) {
 			L.RaiseError("zemi.tool.add: name must be an identifier")
 		}
 		if slices.Contains(h.builtinToolNames(), name) {
@@ -254,16 +242,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-func isToolName(s string) bool {
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_':
-		default:
-			return false
-		}
-	}
-	return len(s) > 0 && s[0] >= 'a' && s[0] <= 'z'
-}
+var toolName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // luaFantasyTools wraps every registered Lua tool as a fantasy agent tool,
 // checked through pipe.
