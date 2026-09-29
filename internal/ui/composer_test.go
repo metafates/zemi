@@ -342,7 +342,8 @@ func TestCompletionPartialNote(t *testing.T) {
 }
 
 // TestCompletionListWidth: the popup keeps its width while the selection
-// scrolls away from its widest path, and lists at most listMaxFiles.
+// scrolls away from its widest path, which a narrow one cuts at the head,
+// and lists at most listMaxFiles.
 func TestCompletionListWidth(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.composerKey("@", tea.KeyPressMsg{Text: "@"})
@@ -352,6 +353,9 @@ func TestCompletionListWidth(t *testing.T) {
 	}
 	app.onFilesScanned(filesScannedMsg{gen: app.completion.walkGen, files: files})
 	first := hostapi.SegsWidth(app.completionRows(76, 10, 0)[0])
+	if row := strings.TrimSpace(plainSegs(app.completionRows(30, 10, 0)[0])); !strings.Contains(row, "_here.txt") {
+		t.Fatalf("a cut path lost its name: %q", row)
+	}
 	app.completion.selected = app.completion.count() - 1
 	rows := app.completionRows(76, 10, 0)
 	if w := hostapi.SegsWidth(rows[0]); w != first || app.completion.count() != listMaxFiles || !strings.Contains(plainSegs(rows[len(rows)-1]), "more files") {

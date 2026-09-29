@@ -187,11 +187,12 @@ func (f *fileCompleter) matchFiles(lo, hi int) ([]hostapi.Hit, int) {
 	return hostapi.Rank(hits, f.files, listMaxFiles), len(hits)
 }
 
-// candRows are completion candidates as list rows.
+// candRows are completion candidates as list rows; a path keeps its tail
+// when cut, where its name is.
 func candRows(cands []hostapi.CompletionItem) []listItem {
 	rows := make([]listItem, 0, len(cands))
 	for _, c := range cands {
-		rows = append(rows, listItem{label: c.Text, desc: c.Desc})
+		rows = append(rows, listItem{label: c.Text, desc: c.Desc, row: hostapi.OverlayItem{Tail: strings.Contains(c.Text, "/")}})
 	}
 	return rows
 }
@@ -256,7 +257,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	}
 	items := append([]listItem(nil), f.extra...)
 	for _, m := range f.matches {
-		items = append(items, listItem{label: f.files[m.Index], match: m.Pos})
+		items = append(items, listItem{label: f.files[m.Index], match: m.Pos, row: hostapi.OverlayItem{Tail: true}})
 	}
 	rows := listRowsW(items, items, f.selected, &f.view, min(a.completionMax(), room), minW, maxW)
 	if f.partial {
