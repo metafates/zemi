@@ -573,9 +573,10 @@ func (p *Pipeline) markRead(path string, fi os.FileInfo) {
 // since (a command it ran, the user's editor, a formatter, another agent):
 // writing over it would silently drop those changes. A shell call never updates
 // Seen, so the model re-reads what a command rewrote. A pad file needs no
-// read: its own command made it and nobody else edits there. "" when the
-// view is current.
-func (p *Pipeline) stale(path string, fi os.FileInfo) string {
+// read: its own command made it and nobody else edits there. Nor does an
+// edit: runEdit holds an unread file's edit to one exact match, which proves
+// the model knows the text it replaces. "" when the view is current.
+func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
 	rel := workRel(path)
 	// before the read log: a directory listing never marks it seen, so the
 	// "read it first" advice would loop
@@ -587,13 +588,22 @@ func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	}
 	t, ok := p.Seen.Load(perm.CanonPath(path))
 	switch {
-	case !ok && inPad(p.Pad, path):
+	case !ok && (edit || inPad(p.Pad, path)):
 	case !ok:
-		return "read " + rel + " with the read tool first (the lines you change are enough), then repeat this call: this session has not read it, and cat, sed or grep in a shell command does not count."
+		return "read " + rel + " with the read tool first, then repeat this call: this session has not read it, and cat, sed or grep in a shell command does not count."
 	case !t.(time.Time).Equal(fi.ModTime()):
 		return rel + " changed since you read it (a command you ran, the user's editor, a formatter or another agent). Read it again and redo the edit against the current content."
 	}
 	return ""
+}
+
+// unread reports a file outside the pad that the session has not read.
+func (p *Pipeline) unread(path string) bool {
+	if p.Seen == nil || inPad(p.Pad, path) {
+		return false
+	}
+	_, ok := p.Seen.Load(perm.CanonPath(path))
+	return !ok
 }
 
 var fileLocks sync.Map // perm.CanonPath -> *sync.Mutex
@@ -696,7 +706,7 @@ func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	content := str(input["content"])
 	defer lockFile(path)()
 	if fi, err := os.Stat(path); err == nil {
-		if msg := p.stale(path, fi); msg != "" {
+		if msg := p.stale(path, fi, false); msg != "" {
 			return fantasy.NewTextErrorResponse(msg), nil
 		}
 	}
@@ -739,7 +749,7 @@ func runEdit(ctx context.Context, p *Pipeline, in map[string]any) (fantasy.ToolR
 	if err != nil {
 		return fantasy.NewTextErrorResponse(p.notFound(path, err)), nil
 	}
-	if msg := p.stale(path, fi); msg != "" {
+	if msg := p.stale(path, fi, true); msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
 	data, _, err := readGated(p.Path)
@@ -750,6 +760,9 @@ func runEdit(ctx context.Context, p *Pipeline, in map[string]any) (fantasy.ToolR
 	out, n, tolerant, msg := editText(lf(string(data)), in, rel)
 	if msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
+	}
+	if p.unread(path) && (n != 1 || tolerant.count > 0) {
+		return fantasy.NewTextErrorResponse("read " + rel + " with the read tool first (the lines you change are enough), then repeat this call: this session has not read it, so old_string must match exactly once as written."), nil
 	}
 	// a mixed file takes its majority ending, so a stray line of the other
 	// kind never rewrites every line

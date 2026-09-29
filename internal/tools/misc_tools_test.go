@@ -254,7 +254,7 @@ func TestSkillLoadIndexAndGate(t *testing.T) {
 		t.Fatalf("load alpha must strip frontmatter and name the directory: %+v", resp)
 	}
 	// a loaded body was read: an edit of it needs no read first
-	if fi, _ := os.Stat(filepath.Join(alpha, "SKILL.md")); p.stale(filepath.Join(alpha, "SKILL.md"), fi) != "" {
+	if fi, _ := os.Stat(filepath.Join(alpha, "SKILL.md")); p.stale(filepath.Join(alpha, "SKILL.md"), fi, false) != "" {
 		t.Fatal("a loaded skill must count as read")
 	}
 	resp = call(t, skill, `{"name":"dup"}`)

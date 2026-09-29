@@ -549,7 +549,9 @@ func TestEditSafety(t *testing.T) {
 		input        map[string]any
 		want, result string
 	}{
-		{"unread", "a\n", true, map[string]any{"old_string": "a", "new_string": "b"}, "read ", "a\n"},
+		{"unread, one exact match", "a\n", true, map[string]any{"old_string": "a", "new_string": "b"}, "edited", "b\n"},
+		{"unread, replace all", "x\nx\n", true, map[string]any{"old_string": "x", "new_string": "y", "replace_all": true}, "read ", "x\nx\n"},
+		{"unread, whitespace differs", "\tif x {\n\t}\n", true, map[string]any{"old_string": "if x {\n}", "new_string": "if y {\n}"}, "read ", "\tif x {\n\t}\n"},
 		{"crlf", "one\r\ntwo\r\n", false, map[string]any{"old_string": "one\ntwo", "new_string": "1\n2"}, "edited", "1\r\n2\r\n"},
 		{"mostly crlf", "one\r\ntwo\r\nthree\n", false, map[string]any{"old_string": "one", "new_string": "1"}, "edited", "1\r\ntwo\r\nthree\r\n"},
 		{"mostly lf", "one\ntwo\nthree\r\n", false, map[string]any{"old_string": "one", "new_string": "1"}, "edited", "1\ntwo\nthree\n"},

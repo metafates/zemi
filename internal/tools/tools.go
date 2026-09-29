@@ -768,7 +768,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 		// the tool then refuses; the tool checks again under the file lock
 		switch fi, err := os.Stat(str(input["path"])); {
 		case err == nil:
-			if msg := pipe.stale(str(input["path"]), fi); msg != "" {
+			if msg := pipe.stale(str(input["path"]), fi, t.info.Name == ToolEdit); msg != "" {
 				return fantasy.NewTextErrorResponse(msg), nil
 			}
 		case t.info.Name != ToolWrite && errors.Is(err, os.ErrNotExist):
@@ -1093,7 +1093,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 
 	return []fantasy.AgentTool{
 		mk(ToolShell, `Run a command with sh -c in the working directory. The shell is POSIX sh, not bash: write [ ] not [[ ]], >file 2>&1 not &>, . not source, printf not $'..', a file or a pipe not <( ), each word written out not {a,b} or {1..3}, and no arrays; for pipefail or a bash script run bash -c '...'. Each call is a new shell, so cd and exports do not carry over. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged; long output keeps its start and end, and the result names a file holding all of it. A command still running at the timeout keeps running as a job; the result gives its id.
-Not for what does not exit on its own (npm run dev, tsc -w, tail -f): & and nohup do not help, since what a command leaves running is stopped when it returns. Not for reading, searching or editing files: cat, sed -n or head output is not a read for edit.
+Not for what does not exit on its own (npm run dev, tsc -w, tail -f): & and nohup do not help, since what a command leaves running is stopped when it returns. Not for reading, searching or editing files: cat, sed -n or head output is not a read for write or edit.
 Chain dependent steps with &&.`,
 			false,
 			withSandbox(map[string]any{
@@ -1130,7 +1130,7 @@ Chain dependent steps with &&.`,
 			},
 			runWrite))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. The file must have been read first (a window around the change is enough; cat or sed in a shell command does not count), unless it is in the scratchpad. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. Several edit calls to one file sent together apply in order.", true,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. A file this session has not read (a window around the change is enough) takes only an old_string that matches exactly once as written. old_string must match exactly once unless replace_all is set, indentation included and without read's line-number prefix; keep it as small as still unique. Several edit calls to one file sent together apply in order.", true,
 			map[string]any{
 				"path":        map[string]any{"type": "string"},
 				"old_string":  map[string]any{"type": "string"},
