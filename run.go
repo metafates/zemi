@@ -234,7 +234,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 	h.GoSafe("zemi run", func() {
 		err := errors.New("the send panicked; the log has the stack")
 		defer func() { sent <- err }() // a panic still ends the wait
-		err = sendPrompt(sendCtx, h, o.prompt)
+		err = sendPrompt(sendCtx, h, o.prompt, o.text)
 	})
 
 	sending, interrupted, started := true, false, false
@@ -265,7 +265,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 			// check (a markdown command's quick reply) reads as a swap and
 			// prints nothing; a swap the command reported itself would tell
 			// them apart.
-			if strings.HasPrefix(o.prompt, "/") && h.AgentSessionID() != sid && !h.AgentActive() {
+			if !o.text && strings.HasPrefix(o.prompt, "/") && h.AgentSessionID() != sid && !h.AgentActive() {
 				next, before = len(h.Session().Transcript), h.AgentStream()
 			}
 		case <-tick.C:

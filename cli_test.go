@@ -163,7 +163,7 @@ func TestReadStdin(t *testing.T) {
 		want, err           string
 	}{
 		{name: "attached", prompt: "review", stdin: "diff\n", want: "review" + agent.Attached("stdin", "diff")},
-		{name: "dash is the prompt", prompt: "-", stdin: "fix it\n", want: "fix it"},
+		{name: "dash is the prompt", prompt: "-", stdin: "/fix it\n", want: "/fix it"},
 		{name: "dash with nothing", prompt: "-", err: "which is empty"},
 		{name: "over the cap", stdin: strings.Repeat("x", 1<<20+1), err: "over 1 MiB"},
 		{name: "the tui refuses a pipe", tui: true, stdin: "x", err: "zemi run answers from a pipe"},
@@ -179,7 +179,7 @@ func TestReadStdin(t *testing.T) {
 		o := options{run: !c.tui, prompt: c.prompt}
 		err = o.readStdin(r)
 		r.Close()
-		if c.err != "" && !strings.Contains(fmt.Sprint(err), c.err) || c.err == "" && (err != nil || o.prompt != c.want) {
+		if c.err != "" && !strings.Contains(fmt.Sprint(err), c.err) || c.err == "" && (err != nil || o.prompt != c.want || o.text != (c.prompt == "-")) {
 			t.Errorf("%s: prompt %q, err %v", c.name, o.prompt, err)
 		}
 	}

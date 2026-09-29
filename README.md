@@ -77,7 +77,7 @@ zemi completion bash|zsh|fish
 ```sh
 zemi run "explain main.go"
 git diff | zemi run "review this"
-zemi run - < task.md                # the prompt itself from stdin
+zemi run - < task.md                # the prompt itself from stdin, never a /command
 zemi run "/goal make check is clean" # turns until it holds; 1 if blocked
 zemi -C ~/code/app run -c "and the tests?"
 zemi -C "$(zemi projects | fzf | cut -c36-)"   # open a project picked from the list

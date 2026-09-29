@@ -137,7 +137,7 @@ func launch(o options) int {
 		// here, not in app.ready: once per process, after -m, never on a reload
 		host.OfferModel()
 		if o.prompt != "" {
-			if err := sendPrompt(ctx, host, o.prompt); err != nil {
+			if err := sendPrompt(ctx, host, o.prompt, false); err != nil {
 				app.Notify(slog.LevelError, "Could not send", err.Error())
 			}
 		}

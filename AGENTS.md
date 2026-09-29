@@ -114,7 +114,8 @@ error is 1, and one that printed its own diagnostic returns `exitError`. That ho
 dir` (`enterDir`: `PWD` follows) before anything else, and a switch from `/projects` is an exec
 of `zemi -C <dir>` and nothing else (`relaunch`), so no flag of this run widens to another
 project. Piped stdin (1 MiB at most) is attached
-behind the typed prompt, is the typed prompt itself after `-`, and is a usage error for the TUI.
+behind the typed prompt, is the typed prompt itself after `-` (`options.text`: sent to the model even
+when it starts with `/`, so piped text runs no command), and is a usage error for the TUI.
 Completion offers session ids from the project store (`completeSessions`) and plugin names
 from `plugin.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
 completion function. `zemi models` and the `-m`, `--profile` and `--mode` completion boot

@@ -275,6 +275,10 @@ func TestRunScreenCommands(t *testing.T) {
 	if code, _, _ := runPrompt(t, h, options{prompt: "say hi", quiet: true}); code != 0 {
 		t.Fatal("first turn failed")
 	}
+	// stdin after - is always a prompt: piped text starting with / runs nothing
+	if code, _, errOut := runPrompt(t, h, options{prompt: "/help", text: true, quiet: true}); code != 0 || errOut != "" {
+		t.Errorf("/help from stdin: code %d, stderr %q", code, errOut)
+	}
 	for _, c := range []struct {
 		prompt, stdout, stderr string
 		code                   int
@@ -313,6 +317,7 @@ func TestRunScreenCommands(t *testing.T) {
 			t.Errorf("%s: code %d, stdout %q, stderr %q", c.prompt, code, out, errOut)
 		}
 	}
+
 }
 
 // TestRunInterruptJSON: an interrupted run, /btw included, still ends in its

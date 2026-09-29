@@ -53,6 +53,7 @@ type options struct {
 	resume, model    string
 	mode, profile    string
 	prompt           string
+	text             bool   // the prompt came from stdin after -: a leading / is text, never a command
 	dir              string // -C
 	trust            *bool  // --trust for this run; nil when not given
 }
@@ -603,7 +604,7 @@ func (o *options) readStdin(stdin *os.File) error {
 	case dash && in == "":
 		return errors.New("- reads the prompt from stdin, which is empty")
 	case dash:
-		o.prompt = in
+		o.prompt, o.text = in, true
 	case in != "":
 		o.prompt += agent.Attached("stdin", in)
 	}
@@ -673,12 +674,15 @@ func signalContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), sigs...)
 }
 
-// sendPrompt sends a command-line prompt (Host.SendPrompt) once no MCP
-// server is starting, since its one send builds the tool set, unless ctx
-// ends the wait.
-func sendPrompt(ctx context.Context, h *hostapi.Host, prompt string) error {
+// sendPrompt sends a command-line prompt (Host.SendPrompt, or as text to
+// the model when text) once no MCP server is starting, since its one send
+// builds the tool set, unless ctx ends the wait.
+func sendPrompt(ctx context.Context, h *hostapi.Host, prompt string, text bool) error {
 	if h.WaitMCP(ctx); ctx.Err() != nil {
 		return ctx.Err()
+	}
+	if text {
+		return h.AgentSend(prompt)
 	}
 	return h.SendPrompt(prompt)
 }
