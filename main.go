@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -604,7 +603,7 @@ func (tg *trustGate) decide() (bool, error) {
 		return *s, nil
 	}
 	root := tg.dirs.TrustRoot()
-	if v, ok := readTrust(tg.dirs.TrustFile())[root]; ok {
+	if v, ok := tg.dirs.ReadTrust()[root]; ok {
 		return v == "trusted", nil
 	}
 	if hostapi.TrustUnsaved(root) {
@@ -618,9 +617,9 @@ func (tg *trustGate) decide() (bool, error) {
 func (tg *trustGate) record(root, answer string) (bool, error) {
 	ok := answer == "trust"
 	if answer != "later" && !hostapi.TrustUnsaved(root) {
-		saved := readTrust(tg.dirs.TrustFile())
+		saved := tg.dirs.ReadTrust()
 		saved[root] = map[bool]string{true: "trusted", false: "untrusted"}[ok]
-		err := writeTrust(tg.dirs.TrustFile(), saved)
+		err := tg.dirs.WriteTrust(saved)
 		if err == nil {
 			tg.session.Store(nil)
 			return ok, nil
@@ -651,24 +650,6 @@ func (tg *trustGate) command() func() {
 			tg.h.Retrust(ok)
 		})
 	}
-}
-
-func readTrust(path string) map[string]string {
-	out := map[string]string{}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return out
-	}
-	_ = json.Unmarshal(data, &out)
-	return out
-}
-
-func writeTrust(path string, m map[string]string) error {
-	data, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return err
-	}
-	return config.WriteFileAtomic(path, data, 0o600)
 }
 
 // readyStep drops the builtin providers when init.lua turned them off

@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -277,9 +278,27 @@ func (d Dirs) LogDir() string {
 	return filepath.Join(d.StateHome, "logs")
 }
 
-// TrustFile maps trust roots to "trusted" or "untrusted".
-func (d Dirs) TrustFile() string {
-	return filepath.Join(d.StateHome, "trust.json")
+// ReadTrust is the saved trust decisions: trust roots to "trusted" or
+// "untrusted".
+func (d Dirs) ReadTrust() map[string]string {
+	out := map[string]string{}
+	data, err := os.ReadFile(filepath.Join(d.StateHome, "trust.json"))
+	if err != nil {
+		return out
+	}
+	_ = json.Unmarshal(data, &out)
+	return out
+}
+
+// WriteTrust replaces the saved trust decisions with m.
+// NOTE: callers read, change and write, so two windows writing at once can
+// lose one decision, which the next start asks again.
+func (d Dirs) WriteTrust(m map[string]string) error {
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	return WriteFileAtomic(filepath.Join(d.StateHome, "trust.json"), data, 0o600)
 }
 
 // TrustRoot is the directory a trust decision belongs to: the repository

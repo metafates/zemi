@@ -257,7 +257,7 @@ func TestTrustGate(t *testing.T) {
 			t.Fatal(err)
 		}
 		if c.saved != "" {
-			if err := writeTrust(tg.dirs.TrustFile(), map[string]string{root: c.saved}); err != nil {
+			if err := tg.dirs.WriteTrust(map[string]string{root: c.saved}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -279,7 +279,7 @@ func TestTrustGate(t *testing.T) {
 		if want := map[bool]int{true: 1, false: 0}[c.answer != ""]; asked != want {
 			t.Errorf("%s: prompt opened %d times", c.name, asked)
 		}
-		if got := readTrust(tg.dirs.TrustFile())[root]; got != c.wantSaved {
+		if got := tg.dirs.ReadTrust()[root]; got != c.wantSaved {
 			t.Errorf("%s: saved %q", c.name, got)
 		}
 	}
@@ -317,7 +317,7 @@ func TestTrustCommand(t *testing.T) {
 					t.Errorf("%s: no reload", c.answer)
 				}
 			}
-			if got := readTrust(tg.dirs.TrustFile())[tg.dirs.TrustRoot()]; got != c.wantSaved {
+			if got := tg.dirs.ReadTrust()[tg.dirs.TrustRoot()]; got != c.wantSaved {
 				t.Errorf("%s: saved %q", c.answer, got)
 			}
 		})
