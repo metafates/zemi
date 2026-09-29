@@ -775,7 +775,7 @@ func (h *Host) lspOverlay(refresh bool) Overlay {
 		empty = "The project's language servers are off: it is not trusted (/trust). zemi's own Lua, in your config and local plugins, still gets lua-language-server."
 	}
 	return Overlay{
-		ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.lspItems(),
+		ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.lspItems(),
 		Reload: func() ([]any, [][]Segment) { return h.lspItems(), nil }, Empty: empty,
 	}
 }
@@ -783,14 +783,14 @@ func (h *Host) lspOverlay(refresh bool) Overlay {
 func (h *Host) lspItems() []any {
 	var items []any
 	for _, row := range h.lspRows() {
-		detail := fmt.Sprintf("command: %s\nstatus: %s\nfiles: %s", row.Command, row.Status, row.Filetypes)
+		files := row.Filetypes
 		if row.Status == StatusIdle {
-			detail += " (starts on the first one)"
+			files += " (starts on the first one)"
 		}
-		if row.Error != "" {
-			detail += "\nerror: " + row.Error
+		item := map[string]any{
+			"text": row.Name, "desc": string(row.Status) + " · " + row.Filetypes,
+			"fields": fieldList("command", row.Command, "status", string(row.Status), "files", files, "error", row.Error),
 		}
-		item := map[string]any{"text": row.Name, "desc": string(row.Status) + " · " + row.Filetypes, "detail": detail}
 		if row.Status != StatusIdle {
 			item["actions"] = []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "lsp restart " + row.Name}}
 		}

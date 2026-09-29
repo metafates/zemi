@@ -1552,9 +1552,11 @@ provenance string.
   filter on a list with rows. While it types, every one-character key types,
   so the footer says only `enter done · esc clear`; enter keeps the query and
   gives the keys back to the list (j and k move in the narrowed rows, `/`
-  types on), and esc clears it, then closes. A Go screen's detail opens with
-  `key: value` lines set as a table (prose after them is text as written), and its
-  `status:` line colors the status words every screen shares: `starting`,
+  types on), and esc clears it, then closes. A detail view opens with its
+  item's `fields` set as a table (names in a dim column, a field with no value
+  left out), then its `detail` prose, then the actions; `y` copies the fields
+  as `name: value` lines above the prose. A `status` field colors the status
+  words every screen shares: `starting`,
   `ready`, `failed`, `stopped`, `idle` (a language server waiting for its
   first file) and `off` (disabled). A list grouped by source
   (`/skills`, `/agents`, `/workflows`) puts the user's first,

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -127,19 +128,24 @@ func (h *Host) OpenSessions() error {
 	items := make([]any, 0, len(list))
 	for _, s := range list {
 		p := previews[s.ID]
-		desc := []string{ago(s.UpdatedAt)}
+		desc, count, prompt := []string{ago(s.UpdatedAt)}, "", firstUserLine(p.FirstJSON)
 		if p.Count > 0 {
+			count = strconv.Itoa(p.Count)
 			desc = append(desc, fmt.Sprintf("%d %s", p.Count, plural(p.Count, "message", "messages")))
 		}
-		if line := firstUserLine(p.FirstJSON); line != "" && !strings.EqualFold(line, s.Title) {
-			desc = append(desc, clipRunes(line, 60))
+		if strings.EqualFold(prompt, s.Title) {
+			prompt = ""
+		}
+		if prompt != "" {
+			desc = append(desc, clipRunes(prompt, 60))
 		}
 		// a list gives its labels room before descriptions: a whole title would hide the age
 		item := map[string]any{"text": cmp.Or(clipRunes(s.Title, 60), "Untitled"), "desc": strings.Join(desc, " · ")}
 		if s.ID == current {
 			item["key"] = "current"
 		} else {
-			item["detail"] = strings.Join(desc, " · ") + "\n\nDelete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
+			item["fields"] = fieldList("updated", ago(s.UpdatedAt), "messages", count, "prompt", prompt)
+			item["detail"] = "Delete removes the conversation, its subagent runs and its scratchpad for good. Memories learned from it stay."
 			item["actions"] = []any{
 				map[string]any{"text": "Resume", "hotkey": "r", "run": "resume " + s.ID},
 				map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": "sessions delete " + s.ID},

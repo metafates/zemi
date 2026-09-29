@@ -1035,9 +1035,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   buttons, keyed by `hotkey` or position (`actionKey`); the selected row's action keys act from the
   list (`actionAt`: a `Danger` one opens the detail on it), and `Body` is text above the items
   (markdown with `BodyMD`; `BodySegs` draws styled rows in its place, sanitized like `Body`,
-  which stays what `y` copies; a Go screen whose details open with `key: value` lines sets
-  `Fields`, and `fieldRows` sets those lines as a table, prose after them, an `error:` last
-  since every line after it is its text). Opening the id of an open overlay replaces it in place
+  which stays what `y` copies; an item's `fields`, name and value pairs, draw as a table
+  above its `detail` prose (`fieldRows`: a `status` value in its status color, an `error` one
+  in Danger, an empty one left out), and `y` copies them as `name: value` lines). Opening the id of an open overlay replaces it in place
   (`replaceOverlay`, keeping selection and filter; only an origin that may close it), and a
   toggle list rebuilds when the overlay stacked on it closes (`closeOverlayByID`; a detail
   view only after an action) and after a reload (`SignalBoot`), so every caller acts first

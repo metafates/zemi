@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -206,6 +205,11 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	for i := range o.Keys {
 		o.Keys[i].Key, o.Keys[i].Desc = sanitize.Line(o.Keys[i].Key), sanitize.Line(o.Keys[i].Desc)
 	}
+	// an item's fields reach the screen only as its detail view's, which is here
+	o.Fields = slices.Clone(o.Fields)
+	for i, f := range o.Fields {
+		o.Fields[i] = hostapi.Field{Name: sanitize.Line(f.Name), Value: sanitize.String(f.Value)}
+	}
 	st := overlayState{o: o}
 	if o.Input {
 		st.input.insert(sanitize.String(o.Default))
@@ -308,7 +312,9 @@ func (st *overlayState) enterVerb(idx int) string {
 	return ""
 }
 
-func hasDetail(r hostapi.OverlayItem) bool { return r.Detail != "" || r.Actions != nil }
+func hasDetail(r hostapi.OverlayItem) bool {
+	return r.Detail != "" || r.Fields != nil || r.Actions != nil
+}
 
 // actionKey is the key that acts on visible row n: the item's own hotkey,
 // and in a detail view, whose rows are actions, its position when it has
@@ -330,7 +336,7 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 		title = parent.o.Title + " / " + title
 	}
 	p := parent.o
-	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: p.Fields, Items: r.Actions, OnAction: p.OnAction})
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: r.Fields, Items: r.Actions, OnAction: p.OnAction})
 	st.back, st.item, st.size = true, parent.o.Items[idx], parent.size
 	a.overlays = append(a.overlays, st)
 }
@@ -504,19 +510,31 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	return nil
 }
 
-// copyOverlay copies the body of a view, or the selected row (all rows):
-// an error or a diagnostic is worth nothing if it cannot leave the terminal.
+// copyOverlay copies the text of a view, its fields as "name: value" lines
+// before its body, or the selected row (all rows): an error or a diagnostic
+// is worth nothing if it cannot leave the terminal.
 func (a *App) copyOverlay(st *overlayState, all bool) tea.Cmd {
 	var lines []string
+	for _, f := range st.o.Fields {
+		if f.Value != "" {
+			lines = append(lines, f.Name+": "+f.Value)
+		}
+	}
+	if lines != nil && st.o.Body != "" {
+		lines = append(lines, "")
+	}
+	if st.o.Body != "" {
+		lines = append(lines, st.o.Body)
+	}
 	switch {
-	case st.o.Body != "" && !all:
-		lines = []string{st.o.Body}
+	case lines != nil && !all:
 	case all:
+		lines = nil
 		for _, i := range st.visible {
 			lines = append(lines, st.value(i))
 		}
 	case len(st.visible) > 0:
-		lines = append(lines, st.value(st.visible[st.selected]))
+		lines = []string{st.value(st.visible[st.selected])}
 	}
 	if len(lines) == 0 {
 		return nil
@@ -600,15 +618,17 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	}
 	bodyW := min(inner, st.size.w)
 	buildBody := st.text.at(func(w int) (rows [][]hostapi.Segment) {
+		if rows = fieldRows(st.o.Fields, w); rows != nil && st.o.Body != "" {
+			rows = append(rows, nil)
+		}
 		switch {
 		case st.o.BodySegs != nil:
 			for _, row := range st.o.BodySegs {
 				rows = append(rows, hostapi.WrapSegs(row, w)...)
 			}
+		case st.o.Body == "":
 		case st.o.BodyMD:
-			rows = a.host.Markdown(strings.TrimRight(st.o.Body, "\n"), w)
-		case st.o.Fields:
-			rows = fieldRows(st.o.Body, w)
+			rows = append(rows, a.host.Markdown(strings.TrimRight(st.o.Body, "\n"), w)...)
 		default:
 			for l := range strings.SplitSeq(strings.TrimRight(st.o.Body, "\n"), "\n") {
 				rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, w)...)
@@ -617,7 +637,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		return rows
 	})
 	bodyN := 0
-	if st.o.Body != "" {
+	if st.o.Body != "" || st.o.Fields != nil {
 		bodyN = len(buildBody(bodyW))
 	}
 	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
@@ -633,7 +653,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			if len(st.visible) == 0 {
 				listPH, fixed = nil, emptyRows("No matches.", inner)
 			}
-		case st.o.Body == "" || st.o.Empty != "":
+		case bodyN == 0 || st.o.Empty != "":
 			listPH, fixed = nil, emptyRows(cmp.Or(st.o.Empty, "Nothing here."), inner)
 		default:
 			listPH = nil
@@ -695,9 +715,6 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 }
 
-// fieldLine is a "key: value" line of a detail body.
-var fieldLine = regexp.MustCompile(`^([a-z][a-z -]{0,14}): (.*)$`)
-
 // statusHL colors the status words every screen shares.
 //
 //exhaustive:enforce
@@ -706,50 +723,44 @@ var statusHL = map[hostapi.ServiceStatus]string{
 	hostapi.StatusSignIn: "Host:Warn", hostapi.StatusStopped: "Host:Hint", hostapi.StatusOff: "Host:Hint",
 }
 
-// fieldRows wraps a plain body, setting the "key: value" lines it opens
-// with as a table: dim keys in one column, each value wrapped beside its
-// key, an error's in the danger color and a status word in its own. Only the
-// opening lines are fields, so prose after them never is, whatever its shape.
-// A blank line ends them, and every line after an error's first continues
-// it, so a traceback stays its text.
-func fieldRows(body string, w int) [][]hostapi.Segment {
-	lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
-	block := make([][]string, len(lines)) // key and value, key "" continuing; nil is text
-	kw, inErr := 0, false
-fields:
-	for i, l := range lines {
-		switch m := fieldLine.FindStringSubmatch(l); {
-		case m != nil && !inErr:
-			block[i], inErr = m[1:], m[1] == "error"
-			kw = max(kw, len(m[1])+2)
-		case i > 0 && l != "":
-			block[i] = []string{"", l}
-		default:
-			break fields
+// fieldRows sets a detail view's fields as a table: dim names in one
+// column, each value's lines wrapped beside its name, an error's in the
+// danger color and a status word in its own. A field with no value is left
+// out; too narrow for the column, a field is a "name: value" line.
+func fieldRows(fields []hostapi.Field, w int) [][]hostapi.Segment {
+	kw := 0
+	for _, f := range fields {
+		if f.Value != "" {
+			kw = max(kw, ansi.StringWidth(f.Name)+2)
 		}
 	}
 	var rows [][]hostapi.Segment
-	hl := ""
-	for i, l := range lines {
-		if w-kw < 20 || block[i] == nil {
-			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: l}}, w)...)
+	for _, f := range fields {
+		if f.Value == "" {
 			continue
 		}
-		key, val := block[i][0], block[i][1]
-		switch key {
-		case "":
+		hl := ""
+		switch f.Name {
 		case "error":
 			hl = "Host:Danger"
 		case "status":
-			hl = statusHL[hostapi.ServiceStatus(val)]
-		default:
-			hl = ""
+			hl = statusHL[hostapi.ServiceStatus(f.Value)]
 		}
-		for j, r := range hostapi.WrapSegs([]hostapi.Segment{{Text: val, HL: hl}}, w-kw) {
-			if j > 0 {
-				key = ""
+		name := f.Name
+		for i, l := range strings.Split(f.Value, "\n") {
+			if w-kw < 20 {
+				segs := []hostapi.Segment{{Text: l, HL: hl}}
+				if i == 0 {
+					segs = append([]hostapi.Segment{{Text: name + ": ", HL: "Host:Hint"}}, segs...)
+				}
+				rows = append(rows, hostapi.WrapSegs(segs, w)...)
+				continue
 			}
-			rows = append(rows, append([]hostapi.Segment{{Text: fmt.Sprintf("%-*s", kw, key), HL: "Host:Hint"}}, r...))
+			for _, r := range hostapi.WrapSegs([]hostapi.Segment{{Text: l, HL: hl}}, w-kw) {
+				// under a name the column is blank, and a copy rejoins the value
+				rows = append(rows, append([]hostapi.Segment{{Text: fmt.Sprintf("%-*s", kw, name), HL: "Host:Hint", NoCopy: name == ""}}, r...))
+				name = ""
+			}
 		}
 	}
 	return rows

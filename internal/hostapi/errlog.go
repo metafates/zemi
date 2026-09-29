@@ -160,11 +160,11 @@ func (h *Host) OpenErrors(args string) error {
 		items = append(items, map[string]any{
 			"text":    e.source,
 			"desc":    at + " · " + Headline(e.msg),
-			"detail":  "at: " + at + "\nerror: " + ShortChunk(e.msg),
+			"fields":  fieldList("at", at, "error", ShortChunk(e.msg)),
 			"actions": actions,
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Fields: true, Items: items, Selected: sel, Empty: "No errors yet."})
+	ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No errors yet."})
 	return nil
 }
 

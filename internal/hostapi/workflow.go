@@ -669,23 +669,23 @@ func (h *Host) openWorkflows() error {
 	list := h.workflows()
 	sortBySource(list, func(w Workflow) lua.Origin { return w.Source })
 	for _, w := range list {
-		detail := "source: " + h.sourceOf(w.Source, w.Path)
-		if w.Source != lua.OriginBuiltin {
-			detail += "\npath: " + TildePath(w.Path)
+		path := TildePath(w.Path)
+		if w.Source == lua.OriginBuiltin {
+			path = ""
 		}
-		detail = strings.TrimSuffix(detail+"\n\n"+w.Description, "\n\n")
 		items = append(items, map[string]any{
 			"text":    w.Name,
 			"desc":    listDesc(w.Description),
 			"section": sourceSection(w.Source),
-			"detail":  detail,
+			"fields":  fieldList("source", h.sourceOf(w.Source, w.Path), "path", path),
+			"detail":  w.Description,
 			"actions": []any{
 				map[string]any{"text": "Run", "hotkey": "r", "run": "workflow " + w.Name},
 				map[string]any{"text": "Run with arguments", "hotkey": "a", "fill": "/workflow " + w.Name + " "},
 			},
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Fields: true, Items: items})
+	ui.OpenOverlay(Overlay{ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items})
 	return nil
 }
 

@@ -588,8 +588,25 @@ func hlSpec(L *glua.LState, where string, m map[string]any, palette map[string]s
 // them, else a value whose text is the row. Callbacks get the raw item.
 type OverlayItem struct {
 	Text, Desc, Key, Section, Detail, Verb, Hotkey, Fill, Copy, Run, ID, HL string
-	Switch, On, Locked                                                      bool  // Switch: on is set, so the row draws the switch
-	Actions                                                                 []any // a detail view's items; nil when it has none
+	Switch, On, Locked                                                      bool    // Switch: on is set, so the row draws the switch
+	Actions                                                                 []any   // a detail view's items; nil when it has none
+	Fields                                                                  []Field // the detail view's facts, set above Detail
+}
+
+// Field is a name and value a detail view sets as a table above its text.
+type Field struct{ Name, Value string }
+
+// fieldList is an item's "fields" from name, value pairs, in the shape a Lua
+// list marshals to, so Go items stay plain Lua data.
+func fieldList(kv ...string) []any {
+	if len(kv)%2 != 0 {
+		panic("fieldList: a name without a value")
+	}
+	out := make([]any, 0, len(kv)/2)
+	for i := 0; i < len(kv); i += 2 {
+		out = append(out, []any{kv[i], kv[i+1]})
+	}
+	return out
 }
 
 // ParseOverlayItem reads item's fields, leaving out one of the wrong type,
@@ -647,6 +664,31 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 		}
 	}
 	_, p.Switch = m["on"].(bool)
+	switch v := m["fields"].(type) {
+	case nil:
+	case []any:
+		for _, f := range v {
+			pair, _ := f.([]any)
+			name, value, ok := "", "", len(pair) == 2
+			if ok {
+				name, ok = pair[0].(string)
+			}
+			if ok {
+				value, ok = pair[1].(string)
+			}
+			if !ok {
+				bad("fields", "a list of { name, value } pairs", v)
+				break
+			}
+			p.Fields = append(p.Fields, Field{name, value})
+		}
+	case map[string]any:
+		if len(v) > 0 {
+			bad("fields", "a list of { name, value } pairs", v)
+		}
+	default:
+		bad("fields", "a list of { name, value } pairs", v)
+	}
 	switch v := m["actions"].(type) {
 	case nil:
 	case []any:

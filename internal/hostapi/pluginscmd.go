@@ -203,7 +203,7 @@ func (h *Host) pluginNamed(name string) (plugins.Plugin, error) {
 // it never runs on the key loop.
 func (h *Host) openPlugins(ui UIHooks, refresh bool) {
 	ui.OpenOverlay(Overlay{
-		ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.pluginItems(),
+		ID: "plugins", Title: "Plugins", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.pluginItems(),
 		Reload: func() ([]any, [][]Segment) { return h.pluginItems(), nil },
 	})
 }
@@ -231,26 +231,12 @@ func (h *Host) pluginItems() []any {
 			desc = append(desc, "update "+p.Latest)
 		}
 		desc = append(desc, p.Version, p.Desc)
-		source, section := p.URL, "Installed"
+		source, section, version, errText := p.URL, "Installed", p.Version, ""
 		if p.Local {
-			source, section = "local", "Local"
+			source, section, version = "local", "Local", ""
 		}
-		detail := []string{"source: " + source}
-		if !p.Local {
-			detail = append(detail, "version: "+p.Version)
-		}
-		if p.Latest != "" {
-			detail = append(detail, "latest: "+p.Latest)
-		}
-		detail = append(detail, "path: "+TildePath(p.Dir), "status: "+string(status))
-		if l := provides[p.Name]; l != nil {
-			detail = append(detail, "provides: "+strings.Join(l, " · "))
-		}
-		if loadErr != nil { // last: every line after it is its text
-			detail = append(detail, "error: "+loadErr.Error())
-		}
-		if p.Desc != "" {
-			detail = append(detail, "", p.Desc)
+		if loadErr != nil {
+			errText = loadErr.Error()
 		}
 		var actions []any
 		if p.Latest != "" && !strings.HasSuffix(p.Latest, "(major)") {
@@ -273,7 +259,9 @@ func (h *Host) pluginItems() []any {
 		items = append(items, map[string]any{
 			"text": p.Name, "desc": strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
 			"section": section, "on": p.Enabled, "run": "plugins toggle " + p.Name,
-			"detail": strings.Join(detail, "\n"), "actions": actions,
+			"detail": p.Desc, "actions": actions,
+			"fields": fieldList("source", source, "version", version, "latest", p.Latest, "path", TildePath(p.Dir),
+				"status", string(status), "provides", strings.Join(provides[p.Name], " · "), "error", errText),
 		})
 	}
 	return items

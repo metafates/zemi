@@ -66,7 +66,7 @@ func TestLSPDiagnostics(t *testing.T) {
 				t.Fatalf("%s %s = %q, want %q", c.tool, c.name, got, c.want)
 			}
 		}
-		if row := fmt.Sprint(h.lspItems()); !strings.Contains(row, "status: ready") || !strings.Contains(row, "hotkey:r run:lsp restart fake") {
+		if row := fmt.Sprint(h.lspItems()); !strings.Contains(row, "[status ready]") || !strings.Contains(row, "hotkey:r run:lsp restart fake") {
 			t.Fatalf("/lsp row = %s", row)
 		}
 	})

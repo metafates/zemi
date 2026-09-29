@@ -905,6 +905,7 @@ function zemi.event.stats() end
 ---@field locked? boolean draws the switch on with nothing to switch
 ---@field section? string a change of section starts with a header row; the filter matches it too
 ---@field detail? string body of the detail view
+---@field fields? zemi.OverlayField[] the detail view's facts, set as a table above detail
 ---@field actions? zemi.OverlayAction[] listed under the detail
 ---@field fill? string put in the composer (ignored while the overlay has an on_select, which takes enter instead)
 ---@field run? string a command line such as "mcp restart gitlab" (user and builtin overlays only; ignored while the overlay has an on_select)
@@ -919,8 +920,17 @@ function zemi.event.stats() end
 ---@field hl? string highlight group of the label, such as "Danger"
 ---@field hotkey? string one character that acts like enter on this action, and from the list on the selected row (one with `hl = "Danger"` opens the detail on it, for a second press); with none, its position ("1", "2", ...). j, k, /, y and Y raise.
 ---@field detail? string enter opens it as a detail view of its own, over this one
+---@field fields? zemi.OverlayField[] that view's facts, set as a table above detail
 ---@field fill? string
 ---@field run? string
+
+--- A detail view's fact: its name in the dim column, its value beside it. A
+--- "status" value colors the status words every screen shares, an "error" one
+--- draws in Danger, and an empty value leaves the row out.
+--- `fields = { { "status", "ready" }, { "error", err or "" } }`
+---@class zemi.OverlayField
+---@field [1] string name
+---@field [2] string value
 
 ---@class zemi.OverlayKey
 ---@field desc? string named next to the key in the footer

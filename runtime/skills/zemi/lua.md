@@ -57,8 +57,8 @@ zemi.ui.select({ "patch", "minor" }, { prompt = "Bump" }, function(choice)
 	if choice then zemi.agent.send("bump the " .. choice .. " version") end
 end)
 
--- A list whose items open a detail view: enter shows `detail` with `actions` under
--- it; an action fills the composer, runs a command (`run` only from user config) or,
+-- A list whose items open a detail view: enter shows `fields` as a table, `detail`
+-- under them and `actions` under that; an action fills the composer, runs a command (`run` only from user config) or,
 -- with an `id`, calls on_action; one with none goes back. esc goes back, y copies the text.
 -- An action's `hotkey` also acts on the selected row from the list (one with
 -- `hl = "Danger"` opens the detail on it); j, k, /, y and Y raise as hotkeys.
@@ -73,7 +73,8 @@ zemi.ui.overlay.open({
 			text = "api",
 			desc = "failed, 2m ago",
 			section = "Failed",
-			detail = "exit 1: migration timed out",
+			fields = { { "status", "failed" }, { "exit", "1" } },
+			detail = "The migration timed out.",
 			actions = { { text = "Retry", run = "deploy api" }, { text = "Drop", id = "drop", hl = "Danger" } },
 		},
 		{ text = "web", desc = "live, 1h ago", section = "Live", fill = "/deploy web " },

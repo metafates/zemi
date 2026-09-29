@@ -394,7 +394,7 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
-			"a detail is text unless its list holds fields",
+			"a detail's prose is never a field",
 			hostapi.Overlay{Items: []any{map[string]any{"text": "trust", "detail": "trusted: ~/x"}}},
 			[]string{"enter"},
 			func(a *App) string {
@@ -403,12 +403,15 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
-			"a fields list's detail sets them as a table",
-			hostapi.Overlay{Fields: true, Items: []any{map[string]any{"text": "mcp", "detail": "status: ready"}}},
+			"an item's fields are set as a table, and y copies them as lines",
+			hostapi.Overlay{Items: []any{map[string]any{"text": "mcp", "detail": "prose", "fields": []any{[]any{"status", "ready"}}}}},
 			[]string{"enter"},
 			func(a *App) string {
-				box := fmt.Sprint(a.overlayBox(&a.overlays[1], 80, 20))
-				return map[bool]string{false: box}[strings.Contains(box, "{ready Host:Ok")]
+				if box := fmt.Sprint(a.overlayBox(&a.overlays[1], 80, 20)); !strings.Contains(box, "{ready Host:Ok") {
+					return box
+				}
+				batch, _ := a.overlayKey("y", "")().(tea.BatchMsg)
+				return map[bool]string{false: fmt.Sprintf("y copied %q", fmt.Sprint(batch[0]()))}[fmt.Sprint(batch[0]()) == "status: ready\n\nprose"]
 			},
 		},
 		{
@@ -966,14 +969,14 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", body = { 1 } }), "a body that
 func TestOverlayItemFields(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 16)
 	runLua(t, app, `zemi.ui.overlay.open({ id = "f", items = { { text = "t", desc = "d", key = "k", section = "s", detail = "x", verb = "v",
-  hotkey = "h", fill = "f", copy = "c", run = "r", id = "i", hl = "Danger", on = false, locked = true, actions = { "a" } } } })
-for _, bad in ipairs({ { text = 1 }, { on = "yes" }, { actions = "x" }, { actions = { { id = 1 } } } }) do
+  hotkey = "h", fill = "f", copy = "c", run = "r", id = "i", hl = "Danger", on = false, locked = true, actions = { "a" }, fields = { { "a", "b" } } } } })
+for _, bad in ipairs({ { text = 1 }, { on = "yes" }, { actions = "x" }, { actions = { { id = 1 } } }, { fields = { "x" } } }) do
   assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { bad } }), "a field of the wrong type must raise")
 end
 assert(pcall(zemi.ui.overlay.open, { id = "x", items = { { id = 1 } } }), "a list item's id is its own data")`)
 	want := hostapi.OverlayItem{
 		Text: "t", Desc: "d", Key: "k", Section: "s", Detail: "x", Verb: "v", Hotkey: "h", Fill: "f", Copy: "c",
-		Run: "r", ID: "i", HL: "Danger", Switch: true, Locked: true, Actions: []any{"a"},
+		Run: "r", ID: "i", HL: "Danger", Switch: true, Locked: true, Actions: []any{"a"}, Fields: []hostapi.Field{{Name: "a", Value: "b"}},
 	}
 	if got := app.overlays[0].items[0].row; !reflect.DeepEqual(got, want) {
 		t.Fatalf("row %+v", got)
@@ -1161,24 +1164,32 @@ func TestOverlayCloseRules(t *testing.T) {
 
 func TestFieldRows(t *testing.T) {
 	for _, c := range []struct {
-		name, body string
-		want       []string
+		name   string
+		fields []hostapi.Field
+		w      int
+		want   []string
 	}{
 		{
-			"an error's value runs to the blank line", "url: https://x.dev/mcp\nerror: one two three four five six seven eight nine ten\nstack traceback:\n\nplain text",
-			[]string{"url    https://x.dev/mcp ", "error  one two three four five six  Host:Danger", "       seven eight nine ten Host:Danger", "       stack traceback: Host:Danger", "", "plain text"},
+			"an error value keeps its lines, in Danger",
+			[]hostapi.Field{{Name: "url", Value: "https://x.dev/mcp"}, {Name: "error", Value: "one two three four five six seven eight nine ten\nstack traceback:"}},
+			40,
+			[]string{"url    https://x.dev/mcp ", "error  one two three four five six  Host:Danger", "       seven eight nine ten Host:Danger", "       stack traceback: Host:Danger"},
 		},
 		{
-			"a key inside an error is its text", "at: x.lua:1\nerror: boom\npanic: runtime error",
-			[]string{"at     x.lua:1 ", "error  boom Host:Danger", "       panic: runtime error Host:Danger"},
+			"a status word takes its color, an empty value is left out",
+			[]hostapi.Field{{Name: "status", Value: "ready"}, {Name: "latest", Value: ""}},
+			40,
+			[]string{"status  ready Host:Ok"},
 		},
 		{
-			"only the opening lines are fields", "status: ready\n\nsecurity: audits the auth code\n\nsource: user",
-			[]string{"status  ready Host:Ok", "", "security: audits the auth code", "", "source: user"},
+			"too narrow for a column, a field is a line",
+			[]hostapi.Field{{Name: "status", Value: "ready"}},
+			24,
+			[]string{"status: ready Host:Ok"},
 		},
 	} {
 		var got []string
-		for _, r := range fieldRows(c.body, 40) {
+		for _, r := range fieldRows(c.fields, c.w) {
 			hl := ""
 			if len(r) > 1 {
 				hl = " " + r[1].HL

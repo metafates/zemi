@@ -526,10 +526,8 @@ func (h *Host) skillItems() []any {
 		if s.Source == skills.Recipe {
 			item["actions"] = append(item["actions"].([]any), map[string]any{"text": "Delete", "hotkey": "x", "hl": "Danger", "run": "skills delete " + s.Name})
 		}
-		// the description leads, then where it comes from and where it lives;
-		// the markdown renderer keeps the line break inside the paragraph
-		item["detail"] = fmt.Sprintf("%s\n\n*%s · %s*\n*%s*",
-			s.Description, h.sourceOf(s.Source, s.Dir), state, TildePath(filepath.Join(s.Dir, "SKILL.md")))
+		item["fields"] = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "path", TildePath(filepath.Join(s.Dir, "SKILL.md")))
+		item["detail"] = s.Description
 		items = append(items, item)
 	}
 	return items

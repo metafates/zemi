@@ -47,11 +47,10 @@ func (h *Host) configCommand(args string) error {
 	switch verb {
 	case "":
 		o := Overlay{
-			ID: "config", Title: "Config", Origin: lua.OriginBuiltin, Fields: true, Items: h.configItems(),
+			ID: "config", Title: "Config", Origin: lua.OriginBuiltin, Items: h.configItems(),
 			Reload: func() ([]any, [][]Segment) { return h.configItems(), nil },
-		}
-		if e := h.InitError(); e != "" { // what init.lua sets past the error never ran
-			o.Body = "error: " + e
+			// what init.lua sets past its error never ran
+			Fields: []Field{{"error", h.InitError()}},
 		}
 		ui.OpenOverlay(o)
 	case "toggle", "reset":
@@ -163,7 +162,8 @@ func (h *Host) configItems() []any {
 		// holds its switch; one width, so a change moves no text.
 		item := map[string]any{
 			"text": s.Path, "desc": fmt.Sprintf("%-8s · %s%s", source, value, s.Desc), "section": sourceSection(section),
-			"detail": fmt.Sprintf("kind: %s\ndefault: %s\nvalue: %s\nsource: %s\n\n%s%s", s.Kind, showSetting(s.Default), showSetting(v), source, s.Desc, note),
+			"fields": fieldList("kind", string(s.Kind), "default", showSetting(s.Default), "value", showSetting(v), "source", source),
+			"detail": s.Desc + note,
 		}
 		edit := map[string]any{"text": "Edit", "hotkey": "e", "fill": fmt.Sprintf("/config set %s %v", s.Path, v)}
 		switch pick := h.configPicker(s.Path); {

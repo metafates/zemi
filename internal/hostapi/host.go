@@ -109,7 +109,7 @@ type Overlay struct {
 	// enter does to a row, when the list's default word does not say it.
 	Body     string
 	BodyMD   bool        // render Body (and every detail view's) as markdown
-	Fields   bool        // set the "key: value" lines a plain Body (and every detail view) opens with as a table
+	Fields   []Field     // set as a table above Body
 	BodySegs [][]Segment // Body as styled rows, drawn in its place; Body is what y copies
 	Empty    string
 	Selected int
@@ -1936,7 +1936,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.100.0"))
+	api.RawSetString("version", glua.LString("0.101.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

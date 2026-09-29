@@ -744,7 +744,7 @@ func (h *Host) openMCP() error {
 // mcpOverlay is /mcp; with refresh it only replaces an open one.
 func (h *Host) mcpOverlay(refresh bool) Overlay {
 	return Overlay{
-		ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Fields: true, Refresh: refresh, Items: h.mcpItems(),
+		ID: "mcp", Title: "MCP servers", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.mcpItems(),
 		Reload: func() ([]any, [][]Segment) { return h.mcpItems(), nil },
 		Empty:  `No MCP servers yet. Add one in init.lua: zemi.mcp.add("name", { command = "..." }).`,
 	}
@@ -770,23 +770,15 @@ func (h *Host) mcpItems() []any {
 				desc = fmt.Sprintf("ready · %d of %d tools", len(tools), all)
 			}
 		}
-		detail := "command: " + strings.Join(append([]string{s.spec.Command}, s.spec.Args...), " ")
+		where := []string{"command", strings.Join(append([]string{s.spec.Command}, s.spec.Args...), " ")}
 		if s.spec.URL != "" {
-			detail = "url: " + s.spec.URL
-		}
-		detail += "\nstatus: " + string(status)
-		if signIn != "" {
-			detail += "\nsign in at: " + signIn
+			where = []string{"url", s.spec.URL}
 		}
 		if len(tools) > 20 {
 			tools = append(tools[:20], "…")
 		}
-		if len(tools) > 0 {
-			detail += "\ntools: " + strings.Join(tools, ", ")
-		}
-		if errText != "" { // last: every line after it is its text
-			detail += "\nerror: " + strings.TrimPrefix(errText, "mcp: ")
-		}
+		fields := fieldList(where[0], where[1], "status", string(status), "sign in at", signIn,
+			"tools", strings.Join(tools, ", "), "error", strings.TrimPrefix(errText, "mcp: "))
 		actions := []any{map[string]any{"text": "Restart", "hotkey": "r", "run": "mcp restart " + s.name}}
 		if status == StatusSignIn {
 			actions = append(actions, map[string]any{"text": "Sign in", "hotkey": "s", "run": "mcp sign-in " + s.name})
@@ -794,7 +786,7 @@ func (h *Host) mcpItems() []any {
 		if _, err := os.Stat(h.mcpAuth(s).Path); s.spec.URL != "" && err == nil {
 			actions = append(actions, map[string]any{"text": "Sign out", "hotkey": "x", "hl": "Danger", "run": "mcp sign-out " + s.name})
 		}
-		items = append(items, map[string]any{"text": s.name, "desc": desc, "detail": detail, "actions": actions})
+		items = append(items, map[string]any{"text": s.name, "desc": desc, "fields": fields, "actions": actions})
 	}
 	return items
 }

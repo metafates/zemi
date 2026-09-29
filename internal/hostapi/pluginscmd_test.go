@@ -81,22 +81,22 @@ func TestPluginsCommand(t *testing.T) {
 			name: "the list", args: "",
 			want: []string{
 				"text:Install a plugin verb:fill", "run:plugins check text:Check for updates verb:run",
-				"desc:a todo list", "provides: command /todo", "on:true run:plugins toggle a section:Local text:a",
-				"desc:failed", "status: failed\nerror: ", "broken", "hotkey:d run:plugins disable a",
+				"desc:a todo list", "[provides command /todo]", "on:true run:plugins toggle a section:Local text:a",
+				"desc:failed", "[status failed]", "broken", "hotkey:d run:plugins disable a",
 				"hl:Danger hotkey:x run:plugins delete a text:Delete",
 			},
 			not: []string{"hotkey:u"},
 		},
 		{
 			name: "toggle flips the switch before any reload", args: "toggle a", reload: true,
-			want: []string{"on:false run:plugins toggle a", "status: off", "hotkey:e run:plugins enable a"},
+			want: []string{"on:false run:plugins toggle a", "[status off]", "hotkey:e run:plugins enable a"},
 		},
 		{name: "delete a local plugin", args: "delete b", want: []string{"info: Plugin deleted: b"}, not: []string{"text:b"}},
 		{
 			name: "install from a bare repo", args: "install file://" + filepath.Join(tmp, "src", "x.git"),
 			want: []string{
 				"info: Plugin installed: x v1.0.0", "section:Installed text:x", "desc:v1.0.0 · the x plugin",
-				"version: v1.0.0", "status: starting", "hl:Danger hotkey:x run:plugins delete x text:Delete",
+				"[version v1.0.0]", "[status starting]", "hl:Danger hotkey:x run:plugins delete x text:Delete",
 			},
 		},
 		{name: "check with nothing newer", args: "check", want: []string{"info: Plugins up to date: ", "text:x"}},

@@ -898,7 +898,8 @@ func (h *Host) openAgents() error {
 			"text":    j.ID,
 			"desc":    j.Status() + " · " + j.Name,
 			"section": "Background jobs (all sessions)",
-			"detail":  "name: " + j.Name + "\nstatus: " + j.Status() + "\n\n" + cmp.Or(shortOutput(j.Output()), "(no output)"),
+			"fields":  fieldList("name", j.Name, "status", j.Status()),
+			"detail":  cmp.Or(shortOutput(j.Output()), "(no output)"),
 		}
 		if j.Running() {
 			item["actions"] = []any{map[string]any{"text": "Stop", "hotkey": "s", "run": "agents kill " + j.ID}}
@@ -914,11 +915,11 @@ func (h *Host) openAgents() error {
 			"text":    d.Name,
 			"desc":    listDesc(d.Description),
 			"section": sourceSection(d.Source) + " agents", // apart from the runs above
-			"detail": fmt.Sprintf("source: %s\nmodel: %s\ntools: %s\n\n%s\n\nAdd your own as agents/<name>.md in %s or .agents.",
-				h.sourceOf(d.Source, d.Path), model, tools, d.Description, TildePath(h.Dirs.ConfigHome)),
+			"fields":  fieldList("source", h.sourceOf(d.Source, d.Path), "model", model, "tools", tools),
+			"detail":  fmt.Sprintf("%s\n\nAdd your own as agents/<name>.md in %s or .agents.", d.Description, TildePath(h.Dirs.ConfigHome)),
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Fields: true, Items: items, Verb: "open"})
+	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Verb: "open"})
 	return nil
 }
 
