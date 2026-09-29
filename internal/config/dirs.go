@@ -2,6 +2,7 @@
 package config
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,8 +59,8 @@ func ResolveDirs() (Dirs, error) {
 		DataHome:   xdg(home, "ZEMI_DATA_HOME", "XDG_DATA_HOME", ".local/share/zemi"),
 		StateHome:  xdg(home, "ZEMI_STATE_HOME", "XDG_STATE_HOME", ".local/state/zemi"),
 		CacheHome:  xdg(home, "ZEMI_CACHE_HOME", "XDG_CACHE_HOME", ".cache/zemi"),
-		ProjectDir: projectRoot(),
 	}
+	d.ProjectDir, _ = os.Getwd()
 	if home != "" {
 		d.AgentsHome = filepath.Join(home, ".agents")
 	}
@@ -67,14 +68,6 @@ func ResolveDirs() (Dirs, error) {
 		return d, errors.New("no home directory: set HOME or the ZEMI_*_HOME variables")
 	}
 	return d, nil
-}
-
-func projectRoot() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	return wd
 }
 
 // Ensure creates the directories zemi writes into, and the starter
@@ -314,10 +307,7 @@ func (d Dirs) TrustRoot() string {
 	if r, err := filepath.EvalSymlinks(root); err == nil {
 		root = r
 	}
-	if main := mainCheckout(root); main != "" {
-		return main
-	}
-	return root
+	return cmp.Or(mainCheckout(root), root)
 }
 
 // mainCheckout is the main checkout of the linked worktree at root, or "".

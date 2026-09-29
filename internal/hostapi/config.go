@@ -419,7 +419,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 			origin: h.RT.CurrentOrigin(L),
 			src:    h.RT.CurrentPath(L),
 		}
-		id, err := h.Settings.AddWatch(config.Watcher{Path: path})
+		id, err := h.Settings.AddWatch(path)
 		if err != nil {
 			L.RaiseError("zemi.config.watch: %v", err)
 		}

@@ -3,6 +3,7 @@ package config
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -35,7 +36,7 @@ type Store struct {
 	mu       sync.RWMutex
 	values   map[string]any
 	schema   map[string]Setting
-	watchers []Watcher
+	watchers []watcher
 	watchSeq int
 }
 
@@ -45,10 +46,9 @@ type WatchFired struct {
 	Old, New any
 }
 
-// Watcher is a registered change observer.
-type Watcher struct {
-	ID   int // assigned by AddWatch
-	Path string
+type watcher struct {
+	id   int
+	path string
 }
 
 func NewStore() *Store {
@@ -127,12 +127,7 @@ func (s *Store) Del(path string) {
 func (s *Store) Schema() []Setting {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Setting, 0, len(s.schema))
-	for _, v := range s.schema {
-		out = append(out, v)
-	}
-	slices.SortFunc(out, func(a, b Setting) int { return cmp.Compare(a.Path, b.Path) })
-	return out
+	return slices.SortedFunc(maps.Values(s.schema), func(a, b Setting) int { return cmp.Compare(a.Path, b.Path) })
 }
 
 // Default is the schema default of path, nil for a key outside the schema.
@@ -188,8 +183,8 @@ func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
 	s.values[path] = val
 	var fired []WatchFired
 	for _, w := range s.watchers {
-		if w.Path == path {
-			fired = append(fired, WatchFired{ID: w.ID, Old: old, New: val})
+		if w.path == path {
+			fired = append(fired, WatchFired{ID: w.id, Old: old, New: val})
 		}
 	}
 	s.mu.Unlock()
@@ -224,32 +219,27 @@ func (s *Store) SetChoices[T ~string](path string, choices []T) {
 	s.schema[path] = def
 }
 
-// AddWatch registers a change observer and returns its handle id. A path
+// AddWatch registers a change observer of path and returns its id. A path
 // outside the schema is refused: watchers match by exact path, so a typo
 // would sit there and never fire.
-func (s *Store) AddWatch(w Watcher) (int, error) {
+func (s *Store) AddWatch(path string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.schema[w.Path]; !ok {
-		return 0, fmt.Errorf("unknown config key: %s", w.Path)
+	if _, ok := s.schema[path]; !ok {
+		return 0, fmt.Errorf("unknown config key: %s", path)
 	}
 	s.watchSeq++
-	w.ID = s.watchSeq
-	s.watchers = append(s.watchers, w)
-	return w.ID, nil
+	s.watchers = append(s.watchers, watcher{s.watchSeq, path})
+	return s.watchSeq, nil
 }
 
 // RemoveWatch drops one watcher by id; returns false if it was gone.
 func (s *Store) RemoveWatch(id int) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for i, w := range s.watchers {
-		if w.ID == id {
-			s.watchers = append(s.watchers[:i], s.watchers[i+1:]...)
-			return true
-		}
-	}
-	return false
+	n := len(s.watchers)
+	s.watchers = slices.DeleteFunc(s.watchers, func(w watcher) bool { return w.id == id })
+	return len(s.watchers) < n
 }
 
 // BadValueError means the value has the wrong kind or is outside the key's
