@@ -113,6 +113,7 @@ type Overlay struct {
 	Body     string
 	BodyMD   bool        // render Body (and every detail view's) as markdown
 	Fields   []Field     // set as a table above Body
+	Mark     string      // a Marks key ahead of the "status" field's value
 	BodySegs [][]Segment // Body as styled rows, drawn in its place; Body is what y copies
 	Empty    string
 	Selected int

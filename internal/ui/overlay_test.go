@@ -1412,35 +1412,44 @@ func TestFieldRows(t *testing.T) {
 	for _, c := range []struct {
 		name   string
 		fields []hostapi.Field
+		mark   string
 		w      int
 		want   []string
 	}{
 		{
 			"an error value keeps its lines, in Danger",
 			[]hostapi.Field{{Name: "url", Value: "https://x.dev/mcp"}, {Name: "error", Value: "one two three four five six seven eight nine ten\nstack traceback:"}},
-			40,
-			[]string{"url    https://x.dev/mcp ", "error  one two three four five six  Host:Danger", "       seven eight nine ten Host:Danger", "       stack traceback: Host:Danger"},
+			"", 40,
+			[]string{"url    https://x.dev/mcp", "error  one two three four five six  Host:Danger", "       seven eight nine ten Host:Danger", "       stack traceback: Host:Danger"},
 		},
 		{
 			"a status word takes its color, an empty value is left out",
 			[]hostapi.Field{{Name: "status", Value: "ready"}, {Name: "latest", Value: ""}},
-			40,
+			"", 40,
 			[]string{"status  ready Host:Ok"},
 		},
 		{
+			"the view's mark leads the status word, which keeps its own color",
+			[]hostapi.Field{{Name: "status", Value: "running"}, {Name: "agent", Value: "explore"}},
+			"spin", 40,
+			[]string{"status  ⠋ running Dim", "agent   explore"},
+		},
+		{
 			"too narrow for a column, a field is a line",
-			[]hostapi.Field{{Name: "status", Value: "ready"}},
-			24,
-			[]string{"status: ready Host:Ok"},
+			[]hostapi.Field{{Name: "status", Value: "failed"}},
+			"err", 24,
+			[]string{"status: ✗ failed Danger Host:Danger"},
 		},
 	} {
 		var got []string
-		for _, r := range fieldRows(c.fields, c.w) {
-			hl := ""
-			if len(r) > 1 {
-				hl = " " + r[1].HL
+		for _, r := range fieldRows(c.fields, c.mark, c.w) {
+			row := plainSegs(r)
+			for _, s := range r[1:] {
+				if s.HL != "" {
+					row += " " + s.HL
+				}
 			}
-			got = append(got, plainSegs(r)+hl)
+			got = append(got, row)
 		}
 		if !slices.Equal(got, c.want) {
 			t.Errorf("%s: rows %q, want %q", c.name, got, c.want)

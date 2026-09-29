@@ -375,11 +375,16 @@ func TestWorkflowControl(t *testing.T) {
 			want: "a!",
 		},
 		{
-			name:   "stop cancels the run",
-			script: `return wf.agent("a")`,
+			name:   "stop cancels the run and the agent it never started",
+			script: `return table.concat(wf.parallel({function() return wf.agent("a") end, function() return wf.agent("b") end}))`,
+			limit:  1,
 			drive: func(c ctl) {
 				running(1)(c)
 				act(c, actStop, 0, "")
+				v := tick(c, func(v flowView) bool { return v.status == RunCancelled })
+				if st := v.agents[1].status; st != RunCancelled {
+					c.t.Fatalf("the agent a stopped run never started reads %q", st)
+				}
 			},
 			want: "context canceled",
 		},

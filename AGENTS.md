@@ -813,10 +813,12 @@ lua-language-server is installed.
   closing session drops (`/new`, `/resume`) is stored in its own session and toasted
   (`notifyReport`). `/agents` lists the live session's runs and, under Running and Workflows, the live runs and
   workflows of every other session (`agentRunItems`, the desc ending in that session's title,
-  `fromSession`): they block `/rewind`, so their stop must be reachable. Every run and agent
-  row there and in `/workflows` leads with the chat's mark for its status word (`RunMarks`
-  into `hostapi.Marks`, the one table `zemi.ui.marks` hands chat.lua), and a run's view heads
-  each phase with its rows' combined mark (`Overlay.Phases`).
+  `fromSession`): they block `/rewind`, so their stop must be reachable. Every run, agent and job
+  row there and in `/workflows` leads with the chat's mark for its status word (`RunMarks`,
+  `tools.Job.Mark`, into `hostapi.Marks`, the one table `zemi.ui.marks` hands chat.lua), as
+  does the status field of its detail and of a run's view (`Overlay.Mark`), and a run's view
+  heads each phase with its rows' combined mark (`Overlay.Phases`); an agent its run never
+  started reads cancelled once the run ended.
 - **Scratchpad** (scratch.go): `<state>/scratch/<first 12 of the session id>`, short so a unix
   socket path under it fits macOS's 104 bytes. A pipeline binds it once (`Pipeline.Pad`,
   `Request.Pad`): `PipelineFor` the live session's, a subagent run its parent session's, so a run

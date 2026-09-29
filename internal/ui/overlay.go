@@ -428,7 +428,7 @@ func (a *App) detailState(parent *overlayState, idx int) overlayState {
 		title = parent.o.Title + " / " + title
 	}
 	p := parent.o
-	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: r.Fields, Items: r.Actions, OnAction: p.OnAction})
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: r.Fields, Mark: r.Mark, Items: r.Actions, OnAction: p.OnAction})
 	// opening a view is navigation: it keeps the list's width and takes its
 	// own height, which it then keeps while open
 	st.back, st.item, st.size = true, parent.o.Items[idx], boxSize{w: parent.size.w}
@@ -770,7 +770,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		}
 	}
 	buildBody := st.text.at(func(w int) (rows [][]hostapi.Segment) {
-		if rows = fieldRows(fields, w); rows != nil && st.o.Body != "" {
+		if rows = fieldRows(fields, st.o.Mark, w); rows != nil && st.o.Body != "" {
 			rows = append(rows, nil)
 		}
 		switch {
@@ -949,9 +949,10 @@ var statusHL = map[hostapi.ServiceStatus]string{
 
 // fieldRows sets a detail view's fields as a table: dim names in one
 // column, each value's lines wrapped beside its name, an error's in the
-// danger color and a status word in its own. A field with no value is left
-// out; too narrow for the column, a field is a "name: value" line.
-func fieldRows(fields []hostapi.Field, w int) [][]hostapi.Segment {
+// danger color and a status word in its own behind mark. A field with no
+// value is left out; too narrow for the column, a field is a "name: value"
+// line.
+func fieldRows(fields []hostapi.Field, mark string, w int) [][]hostapi.Segment {
 	kw := 0
 	for _, f := range fields {
 		if f.Value != "" {
@@ -963,24 +964,21 @@ func fieldRows(fields []hostapi.Field, w int) [][]hostapi.Segment {
 		if f.Value == "" {
 			continue
 		}
-		hl, mark := "", hostapi.Segment{}
+		hl, lead := "", hostapi.Segment{}
 		switch f.Name {
 		case "error":
 			hl = hostapi.ChromeDanger
 		case "status":
-			hl = statusHL[hostapi.ServiceStatus(f.Value)]
-			if m := hostapi.RunMarks[f.Value]; m != "" {
-				hl, mark = hostapi.Marks[m].HL, markSeg(m)
-			}
+			hl, lead = statusHL[hostapi.ServiceStatus(f.Value)], markSeg(mark)
 		}
 		name := f.Name
 		for l := range strings.SplitSeq(f.Value, "\n") {
 			val := []hostapi.Segment{{Text: l, HL: hl}}
-			if mark.Text != "" {
-				val = []hostapi.Segment{mark, val[0]}
+			if lead.Text != "" {
+				val = []hostapi.Segment{lead, val[0]}
 			}
 			rows = append(rows, field(name, kw, val, w)...)
-			name = ""
+			name, lead = "", hostapi.Segment{}
 		}
 	}
 	return rows

@@ -782,7 +782,7 @@ func (r *wfRun) finish(t *wfTask, val glua.LValue, err error) {
 }
 
 // agentRow is a flowAgent as the views read it; status "queued" before it
-// starts.
+// starts, cancelled once its run ended first.
 type agentRow struct {
 	call                        int // its index in the run's agents
 	id, def, description, phase string
@@ -806,8 +806,10 @@ func (f *flowRun) rows() []agentRow {
 			r.status, r.calls, r.took, _ = a.run.state()
 			tokens, cost := a.run.usage()
 			r.tokens, r.cost = r.tokens+tokens, r.cost+cost // a restart's first attempts are in the row
-		case r.status == "":
+		case r.status == "" && f.status == RunRunning:
 			r.status = "queued"
+		case r.status == "": // the run ended before it started, so it never will
+			r.status = RunCancelled
 		}
 		out[i] = r
 	}
@@ -1887,6 +1889,7 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 	}
 	o := Overlay{
 		ID: "workflow:" + f.id, Title: "Workflows / " + f.description, Origin: lua.OriginBuiltin, Items: items, Wide: true, Phases: true,
+		Mark: RunMarks[flowWord(v)],
 		// one row, so a long one never pushes the list down
 		Body: clipRunes(strings.Join(strings.Fields(f.about), " "), 76), Empty: "No agent has started yet.",
 		Reload: func() ([]any, [][]Segment) { return h.flowOverlay(f).Items, nil },

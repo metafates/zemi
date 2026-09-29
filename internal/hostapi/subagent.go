@@ -1006,6 +1006,7 @@ func (h *Host) openAgents() error {
 			"desc":    j.Status() + " · " + j.Name,
 			"section": "Background jobs (all sessions)",
 			"fields":  fieldList("name", j.Name, "status", j.Status()),
+			"mark":    j.Mark(),
 			"detail":  cmp.Or(shortOutput(j.Output()), "(no output)"),
 		}
 		if j.Running() {

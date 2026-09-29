@@ -87,6 +87,20 @@ func (j *Job) Status() string {
 	return state
 }
 
+// Mark is Status as a hostapi.Marks key: spin while it runs, stop once
+// killed, ok after a clean exit 0, else err.
+func (j *Job) Mark() string {
+	switch {
+	case j.Running():
+		return "spin"
+	case j.code < 0:
+		return "stop"
+	case j.code == 0 && j.err == "":
+		return "ok"
+	}
+	return "err"
+}
+
 // Output is what the job's buffers still hold, stdout then stderr.
 func (j *Job) Output() string {
 	so, _ := j.stdout.Snapshot()

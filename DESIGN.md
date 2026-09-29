@@ -1020,9 +1020,10 @@ first, then this session's earlier ones (another session's live run ends
 its desc with that session's title), then the saved workflows; enter on a
 run opens its view, at the one width every workflow screen takes: its
 fields, its agents under their phases (each run and agent row, in
-`/agents` too, and each phase header leads with the chat's mark for its
-state: a phase is failed once one agent failed, else running while one
-runs, done when all are), and keys acting on the run, `p`,
+`/agents` too, its status field and each phase header lead with the
+chat's mark for its state: a phase is failed once one agent failed, else
+running while one runs, done when all are; an agent the run never started
+reads cancelled once it ended), and keys acting on the run, `p`,
 `+` and `-` (relative, so a second press before the view rebuilds still
 counts) and `x` (stop, on its second press) while it runs, `r` (rerun,
 whose view takes the ended one's place) once it ended, and `o` (open its
