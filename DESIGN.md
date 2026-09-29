@@ -1793,8 +1793,10 @@ provenance string.
   request's typed fields, and for a command says where a yes runs it ("Run
   this command outside the sandbox?", "in the sandbox, with the network?",
   "in the sandbox?" for a read-only agent's, and "Run this command?" with no
-  backend). The badge names the subagent asking, whose code a Lua tool runs
-  (`plugin:<name>`) and the queue ("1 of 3"). Under the title a facts table,
+  backend). The badge names the subagent asking (`explore agent`, a
+  workflow's by its run id, never the model's descriptions), whose code a
+  Lua tool runs (`plugin:<name>`) and the queue ("1 of 3"), in what the
+  title leaves. Under the title a facts table,
   dim names beside their values like a detail view's fields: the target (`runs`
   for a command, `file`, `url`, `workflow`), `why` zemi asked, and `says`, the
   model's own description, quoted and last since nothing checked it. `runs`

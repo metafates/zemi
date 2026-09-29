@@ -791,7 +791,11 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		badge = append(badge, fmt.Sprintf("1 of %d", n))
 	}
 	body := stack(tight, facts, content, list, [][]hostapi.Segment{hintRow})
-	return promptBox(permTitle(req), strings.Join(slices.DeleteFunc(badge, func(s string) bool { return s == "" }), " · "), body, w, h, maxW, &pa.size)
+	// the title says where a yes runs, so the badge gets what it leaves, a
+	// third of the box at least
+	title, bw := permTitle(req), min(w-4, maxW)
+	who := ansi.Truncate(strings.Join(slices.DeleteFunc(badge, func(s string) bool { return s == "" }), " · "), max(bw-ansi.StringWidth(title)-7, bw/3), "…")
+	return promptBox(title, who, body, w, h, maxW, &pa.size)
 }
 
 // capRows keeps the first n of wrapped rows, ending the last kept one in

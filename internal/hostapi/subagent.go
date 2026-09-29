@@ -275,7 +275,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	if ask := pipe.Ask; ask != nil {
 		who := def.Name + " agent"
 		if f := h.tasks.flow(run.workflow); f != nil {
-			who = "workflow " + f.description + " · " + run.description + " (" + def.Name + ")"
+			who = "workflow " + f.id + " · " + who // its descriptions are the model's words
 		}
 		pipe.Ask = func(req tools.Request) (bool, string, string) {
 			req.Agent = who
