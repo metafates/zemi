@@ -1903,8 +1903,11 @@ provenance string.
   outside it runs up to its border; at any other time a plugin
   overlay carries a Go-stamped origin badge (`plugin:<name>`, `project:<file>`). While a box
   stays open its width and height only grow (a filter narrowing a menu,
-  a question batch's tabs, a detail view, which opens at its list's size,
-  the palette as you type), and a click outside it closes it.
+  a question batch's tabs, a detail view, the palette as you type), and a
+  click outside it closes it. Opening a detail view is navigation: it keeps
+  its list's width, widened to show its breadcrumb title where the screen has
+  room, and takes its own height; a field repeating the title's item (a
+  project's path) shows only when the title is cut.
 - **Sanitization**: every model-influenced string is sanitized by Go at
   the cell boundary before it reaches any widget: tool output, assistant
   and reasoning text (before glamour), overlay diff, command, and env

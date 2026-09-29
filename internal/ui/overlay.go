@@ -191,7 +191,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		for n, act := range it.row.Actions {
 			if r, _ := hostapi.ParseOverlayItem(act); r.Run == o.Confirm {
 				top.selected = max(slices.Index(top.visible, idx), 0)
-				// sized as a drawn list, since its detail view opens at its size
+				// sized as a drawn list, since its detail view opens at its width
 				area := boxArea(a.stage, a.width, a.height)
 				a.overlayBox(top, area.Dx(), area.Dy())
 				a.openDetail(top, idx, n).armed = true
@@ -272,7 +272,7 @@ func (a *App) refreshDetail(i int) {
 		return
 	}
 	n := a.detailState(&a.overlays[i], idx)
-	n.selected, n.view, n.body = min(d.selected, max(0, len(n.visible)-1)), d.view, d.body
+	n.selected, n.view, n.body, n.size = min(d.selected, max(0, len(n.visible)-1)), d.view, d.body, d.size
 	n.armed = d.armed && sameDanger(d.selectedRow(), n.selectedRow())
 	a.overlays[j] = n
 }
@@ -420,7 +420,9 @@ func (a *App) detailState(parent *overlayState, idx int) overlayState {
 	}
 	p := parent.o
 	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: r.Fields, Items: r.Actions, OnAction: p.OnAction})
-	st.back, st.item, st.size = true, parent.o.Items[idx], parent.size
+	// opening a view is navigation: it keeps the list's width and takes its
+	// own height, which it then keeps while open
+	st.back, st.item, st.size = true, parent.o.Items[idx], boxSize{w: parent.size.w}
 	return st
 }
 
@@ -727,10 +729,18 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		body := [][]hostapi.Segment{st.input.inputRow(inner), nil, hint(inner, sendHint, hintPair{"esc", "close"})}
 		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
-	// a list with previews reads as text; a detail view opens at its
-	// parent's size
+	// a list with previews reads as text; a detail view widens to its
+	// breadcrumb title where the screen has room, and a field repeating the
+	// title's item (a project's path) shows only when the title is cut
 	previews := !st.back && slices.ContainsFunc(st.items, func(it listItem) bool { return it.row.Preview != "" })
-	if !st.back {
+	fields := st.o.Fields
+	if st.back {
+		title := ansi.StringWidth(st.o.Title) + 1 + map[bool]int{true: ansi.StringWidth(badge) + 2}[badge != ""]
+		st.size.w = max(st.size.w, min(title, inner))
+		if title <= inner {
+			fields = slices.DeleteFunc(slices.Clone(fields), func(f hostapi.Field) bool { return strings.HasSuffix(st.o.Title, " / "+f.Value) })
+		}
+	} else {
 		st.size.w = max(st.size.w, map[bool]int{true: listBoxW, false: textBoxW}[len(st.o.Items) > 0 && !previews])
 	}
 	if st.o.Wide {
@@ -746,7 +756,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		}
 	}
 	buildBody := st.text.at(func(w int) (rows [][]hostapi.Segment) {
-		if rows = fieldRows(st.o.Fields, w); rows != nil && st.o.Body != "" {
+		if rows = fieldRows(fields, w); rows != nil && st.o.Body != "" {
 			rows = append(rows, nil)
 		}
 		switch {

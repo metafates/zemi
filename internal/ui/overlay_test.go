@@ -425,12 +425,33 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
-			"a breadcrumb longer than the list is cut, never widening the detail view",
-			hostapi.Overlay{Title: "A long parent title", Items: []any{map[string]any{"text": strings.Repeat("x", 50), "detail": "d"}}},
+			"a detail view takes its own height and widens to its breadcrumb",
+			hostapi.Overlay{Title: "A long parent title", Items: []any{map[string]any{"text": strings.Repeat("x", 50), "detail": "d"}, "b", "c", "d", "e", "f", "g"}},
 			[]string{"enter"},
 			func(a *App) string {
-				list, detail := hostapi.SegsWidth(a.overlayBox(&a.overlays[0], 120, 20)[0]), a.overlayBox(&a.overlays[1], 120, 20)[0]
-				return map[bool]string{false: fmt.Sprintf("list %d wide, detail %q", list, plainSegs(detail))}[hostapi.SegsWidth(detail) == list]
+				list, detail := a.overlayBox(&a.overlays[0], 120, 20), a.overlayBox(&a.overlays[1], 120, 20)
+				if len(detail) >= len(list) || hostapi.SegsWidth(detail[0]) <= hostapi.SegsWidth(list[0]) || strings.Contains(plainSegs(detail[0]), "…") {
+					return fmt.Sprintf("list %d rows %d wide, detail %d rows %q", len(list), hostapi.SegsWidth(list[0]), len(detail), plainSegs(detail[0]))
+				}
+				return ""
+			},
+		},
+		{
+			"a field repeating the breadcrumb shows only when the title is cut",
+			hostapi.Overlay{Title: "Projects", Items: []any{map[string]any{"text": "~/code/app", "fields": []any{[]any{"trust", "trusted"}, []any{"path", "~/code/app"}}}}},
+			[]string{"enter"},
+			func(a *App) string {
+				body := func(w int) string {
+					var out []string
+					for _, r := range a.overlayBox(&a.overlays[1], w, 20) {
+						out = append(out, plainSegs(r))
+					}
+					return strings.Join(out, "\n")
+				}
+				if wide, narrow := body(120), body(24); strings.Contains(wide, "path") || !strings.Contains(narrow, "path") {
+					return fmt.Sprintf("wide:\n%s\nnarrow:\n%s", wide, narrow)
+				}
+				return ""
 			},
 		},
 		{

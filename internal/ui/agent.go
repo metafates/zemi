@@ -164,8 +164,8 @@ func (a *App) dropAnsweredPerm() {
 func boxInner(w int) int { return max(min(w-4, 100)-4, 1) }
 
 // boxSize is how big a modal's box has been while it stays open. It only
-// grows, so filtering, switching tabs or opening a detail view never
-// shrinks or moves the box; w counts the cells inside the padding.
+// grows, so filtering or switching tabs never shrinks or moves the box; w
+// counts the cells inside the padding.
 type boxSize struct{ w, h int }
 
 // listBoxW and textBoxW are the fewest cells inside a box of a list, and of
