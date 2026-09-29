@@ -58,10 +58,6 @@ type Goal struct {
 	Cost      float64
 }
 
-// goalHead opens the brief a /goal message carries; persistMessage sets the
-// goal when a user row with it is stored.
-const goalHead = "The session's goal: "
-
 const goalBrief = `Work until the conversation shows it holds: run the checks that prove it and keep their output in view. After each of your turns zemi checks the goal against the conversation and sends you back while it does not hold. If only the user can unblock it, say what you need and stop.`
 
 const goalCheckPrompt = `Judge whether the session's goal holds now; do not work on it. Call no tools: none will run.
@@ -98,20 +94,35 @@ func (h *Host) SetGoal(args string) error {
 	case h.readOnly():
 		return Usagef("the planner cannot work toward a goal; ctrl+t switches the agent")
 	}
-	return h.AgentSend("/goal " + cond + attached + agent.Attached("goal", goalHead+cond+"\n"+goalBrief))
-}
-
-// setGoalFrom sets the goal a stored /goal message names and records it
-// after that message, so a rewind to it cuts the goal too.
-func (h *Host) setGoalFrom(sid string, msg fantasy.Message) {
-	_, tail, _ := strings.Cut(concatText(msg.Content), agent.AttachMarker)
-	_, rest, ok := strings.Cut(tail, "\n<goal>\n"+goalHead)
-	if !ok {
-		return
-	}
-	cond, _, _ := strings.Cut(rest, "\n")
 	ag := h.agents
 	ag.mu.Lock()
+	ag.goalPending = cond
+	ag.mu.Unlock()
+	err := h.AgentSend("/goal " + cond + attached + goalAttached(cond))
+	if err != nil {
+		ag.mu.Lock()
+		ag.goalPending = ""
+		ag.mu.Unlock()
+	}
+	return err
+}
+
+func goalAttached(cond string) string {
+	return agent.Attached("goal", "The session's goal: "+cond+"\n"+goalBrief)
+}
+
+// setGoalFrom sets the goal when msg carries the brief SetGoal last sent,
+// never one that attached text (a plugin send, a file, a report) quotes,
+// and records it after msg, so a rewind to it cuts the goal too.
+func (h *Host) setGoalFrom(sid string, msg fantasy.Message) {
+	ag := h.agents
+	ag.mu.Lock()
+	cond := ag.goalPending
+	if cond == "" || !strings.Contains(concatText(msg.Content), goalAttached(cond)) {
+		ag.mu.Unlock()
+		return
+	}
+	ag.goalPending = ""
 	old := ag.goal
 	g := &Goal{Condition: cond, Since: time.Now(), Tokens: ag.sessIn + ag.sessOut, Cost: ag.sessCost}
 	ag.goal = g
@@ -178,8 +189,11 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 		return ""
 	}
 	ev, reason, ok := parseVerdict(reply)
-	if !ok {
-		h.Log.Debug("goal", "no verdict", map[string]any{"error": fmt.Sprint(err), "reply": clipRunes(reply, 200)})
+	switch {
+	case err != nil:
+		ev, reason = goalPaused, "the check failed: "+h.friendlyError(err)
+	case !ok:
+		h.Log.Debug("goal", "no verdict", map[string]any{"reply": clipRunes(reply, 200)})
 		ev, reason = goalPaused, "the check gave no verdict"
 	}
 	ag := h.agents

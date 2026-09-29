@@ -203,10 +203,12 @@ type agentHost struct {
 	// in plain text; it is not told again until the user speaks
 	planNudged bool
 
-	// goal is the session's goal (/goal), nil for none; goalRuns counts the
-	// turns it started in a row, and checkingGoal holds while nextTurn asks
-	// whether it holds.
+	// goal is the session's goal (/goal), nil for none; goalPending the
+	// condition of a /goal sent and not yet stored; goalRuns counts the turns
+	// it started in a row, and checkingGoal holds while nextTurn asks whether
+	// it holds.
 	goal         *Goal
+	goalPending  string
 	goalRuns     int
 	checkingGoal bool
 	// loop is the session's loop (/loop), nil for none; loopStop stops its
@@ -758,11 +760,16 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 func (h *Host) continueGoal(next *turnScope, g *Goal) (*turnScope, string) {
 	h.agentStream()
 	note := h.checkGoal(next.ctx, g)
+	stopped := next.ctx.Err()
+	if stopped != nil {
+		// before the claim goes, or the UI ends the chain as the last turn ended
+		h.streamHooks().TurnDone(stopped, fantasy.Usage{})
+	}
 	ag := h.agents
 	ag.mu.Lock()
 	ag.checkingGoal = false
 	switch {
-	case next.ctx.Err() != nil:
+	case stopped != nil:
 		note = ""
 	case len(ag.steering) > 0:
 		note, ag.steering, ag.goalRuns = joinQueue(ag.steering), nil, 0

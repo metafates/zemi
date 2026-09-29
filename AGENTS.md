@@ -722,14 +722,16 @@ lua-language-server is installed.
   set goal's continuation is the other follow-up `nextTurn` starts under the claim.
 - **Goals.** `/goal <condition>` (goal.go, `Host.SetGoal`) sends the typed line with a brief
   behind `agent.Attached("goal")`; `persistMessage` sets `ag.goal` when it stores a user row
-  carrying it (`setGoalFrom`) and writes a row with role `goal` after it, so a queued /goal
+  carrying the brief `SetGoal` last sent (`ag.goalPending`, `setGoalFrom`: attached text that
+  quotes one sets nothing) and writes a row with role `goal` after it, so a queued /goal
   a cancel hands back sets nothing. After a turn that ended cleanly (`sendCompacting` returns its
   error), with nothing queued, no background run of the session and a profile that is not
   read-only, `nextTurn` keeps the claim and `continueGoal` has `Host.aside` judge it
   (`checkGoal`; `ctx.agent.checking_goal` meanwhile): `MET` clears it, `NOT YET` sends the
-  reason as the next turn, `BLOCKED` and a reply with no verdict (`parseVerdict`) stop and keep
-  it, and a not yet after `goalMaxRuns` turns the goal started in a row is written as paused.
-  A message queued during the check goes instead of the note; an interrupt records nothing. Each
+  reason as the next turn, `BLOCKED`, a reply with no verdict (`parseVerdict`) and a failed check stop
+  and keep it, and a not yet after `goalMaxRuns` turns the goal started in a row is written as paused.
+  A message queued during the check goes instead of the note; an interrupt records nothing and
+  ends the chain as interrupted (`TurnDone`). Each
   verdict is a `goal` row (`goalNotice` draws it live and in `historyFrom`), and `goalIn` reads
   the goal back on resume and rewind; no other reader looks at role `goal`.
 - **Loops.** `/loop [interval] <prompt>` (loop.go, `Host.SetLoop`; the TUI only) keeps one

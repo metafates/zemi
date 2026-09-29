@@ -45,7 +45,7 @@ func (h *Host) endTurnAfterPanic() {
 	h.logPanic("agent turn", r)
 	ag := h.agents
 	ag.mu.Lock()
-	ag.active, ag.compacting = false, false
+	ag.active, ag.compacting, ag.checkingGoal = false, false, false
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.turnStart, ag.retryAt = time.Time{}, time.Time{}
 	ag.mu.Unlock()

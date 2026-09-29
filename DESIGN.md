@@ -1027,11 +1027,13 @@ its own.
 
 `/goal <condition>` gives a session a finish line. The message carries a
 brief naming the condition, and storing it sets the goal (a `goal` row after
-it, with the session's spend then). After each turn that ended cleanly with
+it, with the session's spend then); only the brief `/goal` just sent counts,
+so a plugin's text, a file or a report quoting one sets nothing. After each turn that ended cleanly with
 nothing queued and no background run of the session going, the model judges
 the goal as a side question on the cached conversation (`Host.aside`, the
 call `/btw` uses): `MET` clears it, `NOT YET` sends the next turn with the
-reason, `BLOCKED` stops and keeps it, as does a reply with no verdict. The
+reason, `BLOCKED` stops and keeps it, as do a reply with no verdict and a check
+that failed, whose reason the paused row names. The
 check and the turns it starts run under the claim the first turn took, so a
 submit queues and `zemi run` waits for the whole chain; a message queued
 during the check goes instead of the note, an interrupt or a failed turn
