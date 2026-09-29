@@ -173,18 +173,13 @@ func normalize(cmd string, lang syntax.LangVariant) (n Normalized) {
 	if err != nil && lang == syntax.LangBash {
 		fail = parseFailure(err)
 	}
-	w := walker{src: src, skip: map[*syntax.Stmt]bool{}}
-	if w.inline(stmts) {
-		w.stmts(stmts)
-		// a name that reads other than as $NAME may be reassigned, and a
-		// builtin that sets names by a value zemi cannot see may reassign any
-		if w.reassigns(stmts) || slices.ContainsFunc(w.n.rows, func(r row) bool { return ShellState[r.args[0]] }) {
-			// the tree holds the values now: parse again
-			src, stmts, _ = parse(cmd, lang)
-			w = walker{src: src, skip: map[*syntax.Stmt]bool{}}
-			w.stmts(stmts)
-		}
-	} else {
+	w := walker{src: src}
+	w.inline(stmts)
+	w.stmts(stmts)
+	// a name that reads other than as $NAME may be reassigned, and a builtin
+	// that sets names by a value zemi cannot see may reassign any
+	if len(w.vars) > 0 && (w.reassigns(stmts) || slices.ContainsFunc(w.n.rows, func(r row) bool { return ShellState[r.args[0]] })) {
+		w = walker{src: src}
 		w.stmts(stmts)
 	}
 	n = w.finish(stmts)
@@ -559,6 +554,13 @@ func (w *walker) part(b *strings.Builder, p syntax.WordPart, inDouble bool) {
 		for _, q := range p.Parts {
 			w.part(b, q, true)
 		}
+	case *syntax.ParamExp:
+		if v, ok := w.vars[paramName(p)]; ok {
+			b.WriteString(v)
+			return
+		}
+		b.WriteString(w.text(p))
+		w.subs(p)
 	default:
 		b.WriteString(w.text(p))
 		w.subs(p)
@@ -638,13 +640,15 @@ func (w *walker) text(node syntax.Node) string {
 	return w.src[node.Pos().Offset():node.End().Offset()]
 }
 
-// inline substitutes the leading plain assignments (D=/long/path; ls $D)
-// into the tree, so path gates, rules and ReadCommand see the path instead of
-// an expansion, and reports whether it did. Only a value the shell would
-// leave as is qualifies: no quotes, no expansion but an earlier inlined
-// name, no glob or brace. Heredoc delimiters stay as written: sh expands none.
-func (w *walker) inline(stmts []*syntax.Stmt) bool {
-	vars := map[string]string{}
+// inline takes the leading plain assignments (D=/long/path; ls $D), whose
+// values the words then read in place of $D and ${D}, so path gates, rules
+// and ReadCommand see the path instead of an expansion. Only a value the
+// shell would leave as is qualifies: no quotes, no expansion but an earlier
+// inlined name, no glob or brace. Heredoc delimiters stay as written: sh
+// expands none.
+func (w *walker) inline(stmts []*syntax.Stmt) {
+	w.vars, w.skip = map[string]string{}, map[*syntax.Stmt]bool{}
+	vars := w.vars
 	leading(stmts, func(s *syntax.Stmt) bool {
 		c, ok := s.Cmd.(*syntax.CallExpr)
 		if !ok || len(c.Args) > 0 || len(c.Assigns) != 1 || len(s.Redirs) > 0 || s.Negated || s.Background {
@@ -686,14 +690,6 @@ func (w *walker) inline(stmts []*syntax.Stmt) bool {
 		delete(vars, s.Cmd.(*syntax.CallExpr).Assigns[0].Name.Value)
 		delete(w.skip, s)
 	}
-	if len(vars) == 0 {
-		return false
-	}
-	w.vars = vars
-	for _, s := range stmts {
-		syntax.Walk(s, w.substitute)
-	}
-	return true
 }
 
 var plainValue = regexp.MustCompile(`^[A-Za-z0-9_./:@%+,=-]+$`)
@@ -739,52 +735,30 @@ func paramName(p *syntax.ParamExp) string {
 	return p.Param.Value
 }
 
-// substitute replaces each $NAME the inlining knows with its value, outside
-// single quotes and heredoc delimiters.
-func (w *walker) substitute(x syntax.Node) bool {
-	var parts []syntax.WordPart
-	switch x := x.(type) {
-	case *syntax.Redirect:
-		if x.Op == syntax.Hdoc || x.Op == syntax.DashHdoc {
-			if x.Hdoc != nil {
-				syntax.Walk(x.Hdoc, w.substitute)
-			}
-			return false
-		}
-	case *syntax.Word:
-		parts = x.Parts
-	case *syntax.DblQuoted:
-		parts = x.Parts
-	}
-	for i, p := range parts {
-		if pe, ok := p.(*syntax.ParamExp); ok {
-			if v, ok := w.vars[paramName(pe)]; ok {
-				parts[i] = &syntax.Lit{ValuePos: pe.Pos(), ValueEnd: pe.End(), Value: v}
-			}
-		}
-	}
-	return true
-}
-
-// reassigns reports a statement past the inlined ones naming an inlined
+// reassigns reports a word past the inlined statements naming an inlined
 // variable other than as $NAME: D=, for D, read D, eval $X=/ with X=D.
 func (w *walker) reassigns(stmts []*syntax.Stmt) bool {
-	found := false
 	for name := range w.vars {
 		re := regexp.MustCompile(`(^|[^$\w{])` + name + `\b`)
+		found := slices.ContainsFunc(w.n.rows, func(r row) bool { return slices.ContainsFunc(r.args, re.MatchString) })
 		for _, s := range stmts {
 			syntax.Walk(s, func(x syntax.Node) bool {
-				if s, ok := x.(*syntax.Stmt); ok && w.skipped(s) {
-					return false
-				}
-				if l, ok := x.(*syntax.Lit); ok && re.MatchString(l.Value) {
-					found = true
+				switch x := x.(type) {
+				case *syntax.Stmt:
+					return !w.skipped(x) && !found
+				case *syntax.ParamExp:
+					return paramName(x) != name // $D itself
+				case *syntax.Lit:
+					found = found || re.MatchString(x.Value)
 				}
 				return !found
 			})
 		}
+		if found {
+			return true
+		}
 	}
-	return found
+	return false
 }
 
 // finish takes the heredoc bodies and the text-wide flags.
@@ -924,6 +898,9 @@ func (w *walker) scan(s *syntax.Stmt) {
 		case *syntax.Word:
 			n.expands = n.expands || !body && globs(x)
 		case *syntax.ParamExp:
+			if _, inlined := w.vars[paramName(x)]; inlined {
+				return false
+			}
 			n.expands = true
 			if x.Index != nil || x.Slice != nil {
 				w.arith(x)
