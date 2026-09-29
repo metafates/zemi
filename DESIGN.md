@@ -2448,8 +2448,8 @@ by the next startup sweep, since the session still has unseen messages.
   chars, and 160 for the quote), provenance required, the quote scrubbed
   like the text, and intake-time secret scrubbing (a span matching a key
   shape or above an entropy threshold in the quote is redacted with a
-  `[redacted n chars]` marker; one in the text refuses the memory, since a
-  redacted row would never load, and the error says to name the env var
+  `[redacted n chars]` marker; one in the text refuses the memory, since the
+  fact it named is gone with the secret, and the error says to name the env var
   instead). Text phrased as instructions ("always run X", "ignore previous
   instructions") is flagged by a recall-biased heuristic pass (imperative
   verbs, second person, instruction-override phrasings) and routes to the

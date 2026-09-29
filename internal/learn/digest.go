@@ -32,15 +32,13 @@ var scopeTitles = []struct {
 
 // Digest renders rows, given newest first, into the framed section: the
 // project scope first, each scope cut once its lines reach budget bytes.
-// A redacted row, stored before intake refused them, never reaches it
-// (DESIGN §10.4).
 // No line at all yields "".
 func Digest(rows []*store.Memory, at time.Time, budget int) string {
 	var b strings.Builder
 	for _, sc := range scopeTitles {
 		used, first := 0, true
 		for _, m := range rows {
-			if m == nil || m.Scope != sc.scope || strings.Contains(m.Text, "[redacted") {
+			if m == nil || m.Scope != sc.scope {
 				continue
 			}
 			if used += LineSize(m.Text); used > budget {

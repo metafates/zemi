@@ -41,16 +41,12 @@ func projectMemories(t *testing.T, h *Host) []*store.Memory {
 }
 
 // TestRememberStoresUserOrigin covers /memory <note>: user origin,
-// project scope, autonomy gate bypassed, secrets scrubbed, one-blob and
-// empty text refused.
+// project scope, autonomy gate bypassed, a secret and empty text refused.
 func TestRememberStoresUserOrigin(t *testing.T) {
 	h, _ := newTestHostDB(t)
 
 	if err := h.Remember("   "); err == nil {
 		t.Fatal("empty remember must fail")
-	}
-	if err := h.Remember("AKIAIOSFODNN7EXAMPLE"); err == nil || !strings.Contains(err.Error(), "blob") {
-		t.Fatalf("one-blob remember: %v", err)
 	}
 	if err := h.Remember("deploy script lives in bin/deploy, api_key = sk-abcdefghijklmnopqrs"); !errors.Is(err, learn.ErrRefused) {
 		t.Fatalf("secret remember: %v", err)

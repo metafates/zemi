@@ -27,9 +27,8 @@ type Result struct {
 // Intake validates and cleans one memory (DESIGN §10.4). Errors are
 // ErrRefused (empty text, a secret in the text), ErrBadOrigin or
 // ErrNoProvenance; everything else is cleaned into the result. A text
-// with a secret is refused rather than stored redacted: the digest never
-// loads a redacted row, so storing one only says "saved" for a memory
-// nobody will read.
+// with a secret is refused rather than stored redacted: the fact it named
+// is gone with the secret.
 func Intake(scope store.Scope, origin store.Origin, text, quote, provenance string) (*Result, error) {
 	if !slices.Contains(store.Origins, origin) {
 		return nil, ErrBadOrigin
@@ -42,11 +41,8 @@ func Intake(scope store.Scope, origin store.Origin, text, quote, provenance stri
 	if clean == "" {
 		return nil, fmt.Errorf("%w: empty text", ErrRefused)
 	}
-	if IsOneBlob(clean) {
-		return nil, fmt.Errorf("%w: text is one secret blob", ErrRefused)
-	}
 	if scrubbed {
-		return nil, fmt.Errorf("%w: a secret was redacted and a redacted memory never loads; name the env var that holds it instead", ErrRefused)
+		return nil, fmt.Errorf("%w: a memory cannot hold a secret; name the env var that holds it instead", ErrRefused)
 	}
 	q, qs := scrubCapped(quote, MaxQuoteLen)
 

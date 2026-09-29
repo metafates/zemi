@@ -27,7 +27,7 @@ func TestIntakeCleansAndFlags(t *testing.T) {
 }
 
 func TestIntakeScrubsSecrets(t *testing.T) {
-	// a secret in the text refuses the memory: a redacted row never loads
+	// a secret in the text refuses the memory
 	for _, text := range []string{
 		"deploy token is ghp_0123456789abcdefghijklmnopqrstuv ok",
 		"api_key = supersecretvalue123 is set in CI",
@@ -197,7 +197,7 @@ func TestInstructionShaped(t *testing.T) {
 }
 
 // TestDigestBudget: the section lists every scope newest first as given,
-// stops a scope at its budget, skips redacted rows, and renders nothing
+// stops a scope at its budget, and renders nothing
 // for an empty store.
 func TestDigestBudget(t *testing.T) {
 	at := time.UnixMilli(1700000000000)
@@ -206,7 +206,6 @@ func TestDigestBudget(t *testing.T) {
 	}
 	rows := []*store.Memory{
 		mem("project", "aaaa0000ffffffff", "newest project fact", store.OriginLearned, 0),
-		mem("project", "bbbb0000ffffffff", "token [redacted 24 chars] stored", store.OriginUser, 0),
 		mem("project", "cccc0000ffffffff", "older project fact", store.OriginUser, 72*time.Hour),
 		mem("project", "dddd0000ffffffff", "oldest project fact, past the budget", store.OriginUser, 96*time.Hour),
 		mem("user", "eeee0000ffffffff", "the user prefers short replies", store.OriginUser, 0),

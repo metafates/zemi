@@ -143,7 +143,7 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 		id := strconv.Quote(plugin.InstallID(p.Dir))
 		was, err := h.GlobalDB.GetKV("plugin:" + p.Name)
 		if errors.Is(err, store.ErrNotFound) {
-			was = `""` // no id yet: a local plugin, or a clone made before ids
+			was = `""` // no id kept: a local plugin, or a clone no sweep has seen
 		} else if err != nil {
 			was = id // a failed read must not drop the plugin's keys
 		}

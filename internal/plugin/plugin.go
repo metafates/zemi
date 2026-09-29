@@ -415,8 +415,7 @@ func firstLine(path string) string {
 const idFile = "zemi-install"
 
 // InstallID tells one install of a plugin from another under the same name,
-// so the host can drop the state a deleted one left; "" for a local plugin
-// or a clone made before ids.
+// so the host can drop the state a deleted one left; "" for a local plugin.
 func InstallID(dir string) string {
 	return strings.TrimSpace(firstLine(filepath.Join(dir, ".git", idFile)))
 }
