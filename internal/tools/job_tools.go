@@ -44,7 +44,7 @@ type Job struct {
 	// policy confines the job, nil when unconfined; its failure may need
 	// the sandbox hint, which names the policy's writable dirs
 	policy *sandbox.Policy
-	after  func() string // runs at exit for a confined job (Pipeline.Guard)
+	after  func() string // runs at exit (Pipeline.Guard), may be nil
 	note   string        // what after returned
 	told   bool          // the exit's hint and note were read
 	sent   [2]int64      // bytes of stdout/stderr already read, see since
@@ -177,8 +177,8 @@ func (m *Jobs) Start(dir, line string, env []string, pol *sandbox.Policy, after 
 
 // Adopt registers a command that is already running, with the buffer it
 // writes to, the byte count the caller already delivered from it, a channel
-// carrying its Wait and, for a sandboxed one, its policy and what runs at
-// exit (both nil when unconfined): a bash call past its timeout keeps going
+// carrying its Wait, its policy (nil when unconfined) and what runs at its
+// exit, which may be nil: a bash call past its timeout keeps going
 // as a job instead of losing the work done so far.
 func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, wait <-chan error, pol *sandbox.Policy, after func() string) string {
 	j := &Job{Name: name, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}, policy: pol, after: after}

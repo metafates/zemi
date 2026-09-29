@@ -483,13 +483,9 @@ func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
 	return pol
 }
 
-// guard starts Guard for a sandboxed run: nil when the run is unconfined,
-// never nil otherwise.
+// guard starts Guard for a sandboxed run and returns what runs at its exit.
 func (p *Pipeline) guard() func() string {
-	switch {
-	case p.Sandboxed == nil:
-		return nil
-	case p.Guard == nil:
+	if p.Sandboxed == nil || p.Guard == nil {
 		return func() string { return "" }
 	}
 	return p.Guard(*p.Sandboxed)

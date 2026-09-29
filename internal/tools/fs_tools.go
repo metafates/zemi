@@ -110,12 +110,6 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 	}
 	after := p.guard()
-	finish := func() string {
-		if after == nil {
-			return ""
-		}
-		return after()
-	}
 	changes := func() (string, string, []string) { return "", "", nil }
 	if p.Changes != nil {
 		changes = p.Changes(c.Dir)
@@ -130,7 +124,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return res, nil
 	}
 	if err = proc.Start(c); err != nil {
-		finish()
+		after()
 		return changed(fantasy.NewTextErrorResponse(err.Error()))
 	}
 	wait := make(chan error, 1)
@@ -164,10 +158,10 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		proc.Kill(c)
 		<-wait
 		b.WriteString("timed out after " + timeout.String() + " and was stopped. Servers, watch modes and other commands that do not exit belong in job_start.")
-		b.WriteString(finish())
+		b.WriteString(after())
 		return changed(fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true})
 	}
-	note := finish()
+	note := after()
 	// the shell exited 0; a child it left behind held the pipe until
 	// WaitDelay, and proc.Wait killed it
 	if errors.Is(err, exec.ErrWaitDelay) {
