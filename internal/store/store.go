@@ -446,9 +446,9 @@ func (s *DB) Touch() bool {
 }
 
 // ProjectRoot reads the root file of a project state dir: the trust root the
-// dir belongs to and when zemi last opened it. It is ok only when the root
+// dir belongs to and when zemi last used it. It is ok only when the root
 // hashes to the dir's name, so a copied or edited file names nothing.
-func ProjectRoot(dir string) (root string, opened time.Time, ok bool) {
+func ProjectRoot(dir string) (root string, used time.Time, ok bool) {
 	f, err := os.Open(filepath.Join(dir, "root"))
 	if err != nil {
 		return "", time.Time{}, false

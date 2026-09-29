@@ -136,7 +136,7 @@ func (h *Host) reflectSweep(idle time.Time) {
 // alternative is to never reflect the session again.
 func (h *Host) reflectDelta(sid string) (msgs []*store.Message, seen int, after string, err error) {
 	if h.DB == nil {
-		return nil, 0, "", errors.New("reflector: session store unavailable")
+		return nil, 0, "", fmt.Errorf("reflector: %w", errNoStore)
 	}
 	if msgs, err = h.DB.Messages(sid); err != nil {
 		return nil, 0, "", err

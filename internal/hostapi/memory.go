@@ -161,10 +161,10 @@ func redactNote(scrubbed bool) string {
 
 var (
 	errDuplicateMemory = errors.New("already remembered")
+	errNoMemoryStore   = errors.New("memory store unavailable")
 	// usage errors: a row another window already took is nothing to act on
 	errNoMemory        = Usagef("no such memory")
 	errUnknownProposal = Usagef("no such proposal")
-	errNoMemoryStore   = errors.New("memory store unavailable")
 )
 
 // duplicateMemory finds a live memory in either scope, or a pending

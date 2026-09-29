@@ -173,7 +173,7 @@ func launch(o options) int {
 		return fail(err)
 	}
 	if host.DB != nil {
-		host.DB.Touch() // a project's age is its last use, not its last start
+		host.DB.Touch()
 	}
 	// before a relaunch too: the scrollback keeps how to resume this session
 	fmt.Print(app.Farewell())

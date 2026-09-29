@@ -801,7 +801,7 @@ function zemi.event.stats() end
 ---@class zemi.RecentProject
 ---@field path string The project root, ~-shortened.
 ---@field root string The project root, absolute: what `/projects switch` takes.
----@field ago string When zemi last started there: "now", "5m ago", "2d ago".
+---@field ago string When zemi was last used there: "now", "5m ago", "2d ago".
 
 --- What a send carries besides the conversation.
 ---@class zemi.Included

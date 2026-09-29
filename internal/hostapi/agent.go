@@ -1626,7 +1626,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 	}
 	if h.DB == nil {
 		ag.mu.Unlock()
-		return errors.New("agent: session store unavailable")
+		return fmt.Errorf("agent: %w", errNoStore)
 	}
 	sid := store.NewID()
 	name := ""

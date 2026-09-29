@@ -467,7 +467,7 @@ func (h *Host) openSkillFile(name string) error {
 			continue
 		}
 		if s.Source == skill.Builtin {
-			return Usagef("%s ships with zemi, which rewrites it on every start; its row's Read it shows it", name)
+			return Usagef("zemi rewrites the %s skill on every start, so there is no file to edit; Read it in its /skills row shows the text", name)
 		}
 		h.openInEditor(ui, skillFile(s), "the skill")
 		return nil

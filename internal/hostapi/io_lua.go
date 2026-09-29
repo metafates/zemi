@@ -288,6 +288,8 @@ func (h *Host) stateScope(L *glua.LState) string {
 	return ""
 }
 
+var errNoStateStore = errors.New("state store unavailable")
+
 func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	// get(key) -> value; a key nobody set is nil with no error, a store or
@@ -295,7 +297,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		key := h.stateScope(L) + L.CheckString(1)
 		if h.GlobalDB == nil {
-			return luaResult(L, errors.New("store unavailable"))
+			return luaResult(L, errNoStateStore)
 		}
 		v, err := h.GlobalDB.GetKV(key)
 		switch {
@@ -316,7 +318,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		key := h.stateScope(L) + L.CheckString(1)
 		v := luaToGoChecked(L, 2, "zemi.state.set")
 		if h.GlobalDB == nil {
-			return luaResult(L, errors.New("store unavailable"))
+			return luaResult(L, errNoStateStore)
 		}
 		b, err := json.Marshal(v)
 		if err != nil {
@@ -329,7 +331,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		key := h.stateScope(L) + L.CheckString(1)
 		if h.GlobalDB == nil {
-			return luaResult(L, errors.New("store unavailable"))
+			return luaResult(L, errNoStateStore)
 		}
 		removed, err := h.GlobalDB.DelKV(key)
 		if err != nil {
@@ -341,7 +343,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	// keys(prefix?) -> the keys set, sorted
 	tb.RawSetString("keys", L.NewFunction(func(L *glua.LState) int {
 		if h.GlobalDB == nil {
-			return luaResult(L, errors.New("store unavailable"))
+			return luaResult(L, errNoStateStore)
 		}
 		scope := h.stateScope(L)
 		keys, err := h.GlobalDB.KeysKV(scope + L.OptString(1, ""))
