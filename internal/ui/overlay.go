@@ -849,12 +849,18 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				hints = append(hints, hintPair{"space", "toggle"})
 			}
 		}
-		// a list's own keys act with no row too, so an empty list names them
-		for i, k := range st.o.Keys { // keys sharing a desc read as one hint: +/- at once
-			if n := len(hints) - 1; i > 0 && k.Desc == st.o.Keys[i-1].Desc {
-				hints[n].key += "/" + k.Key
+		// a key with a Run or Fn acts with no row too, so an empty list names
+		// it; one naming its rows' action waits for a row
+		last := -1
+		for i, k := range st.o.Keys {
+			if k.Run == "" && k.Fn == nil && len(st.visible) == 0 {
 				continue
 			}
+			if last >= 0 && k.Desc == st.o.Keys[last].Desc { // keys sharing a desc read as one hint: +/- at once
+				hints[len(hints)-1].key += "/" + k.Key
+				continue
+			}
+			last = i
 			hints = append(hints, hintPair{k.Key, k.Desc})
 		}
 		var body [][]hostapi.Segment

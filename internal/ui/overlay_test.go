@@ -752,7 +752,7 @@ func TestOverlayNavigation(t *testing.T) {
 func TestOverlayHints(t *testing.T) {
 	reload := func() ([]any, [][]hostapi.Segment) { return nil, nil }
 	run := []any{map[string]any{"text": "a", "run": "x"}}
-	keys := []hostapi.OverlayKey{{Key: "e", Desc: "edit"}}
+	keys := []hostapi.OverlayKey{{Key: "e", Desc: "edit", Run: "edit"}}
 	hints := func(o hostapi.Overlay, filter string) string {
 		a := newTestApp(t, t.TempDir())
 		o.Origin = lua.OriginBuiltin
@@ -781,6 +781,7 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "detail": "d"}}, Reload: reload}, "", "enter open · space toggle · y copy · esc close"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run · y copy · e edit · esc close"},
 		{hostapi.Overlay{Keys: keys}, "", "e edit · esc close"},
+		{hostapi.Overlay{Keys: []hostapi.OverlayKey{{Key: "r", Desc: "resume"}}}, "", "esc close"}, // a row's key waits for a row
 		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter done · esc clear"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run · y copy · e edit · esc clear"},
 		{hostapi.Overlay{Body: "text"}, "", "y copy · esc close"},
