@@ -558,7 +558,21 @@ func (h *Host) notifyReport(id, agentName, status, description, report string) {
 	h.Notify(level, reportHead(id, agentName, status, description), description+"\n"+clipRunes(strings.TrimPrefix(report, reportFailed), 300))
 }
 
-var reportBody = regexp.MustCompile(`(?s)<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")>\n(.*?)\n</agent-report>`)
+// reportTag is a report's opening tag up to its closing bracket.
+const reportTag = `<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")`
+
+// attachedTag opens an element right behind agent.AttachMarker (the tail
+// starts past the first one), so a stray line in a file or a send draws no row.
+// NOTE: text that carries the marker itself still draws one.
+var attachedTag = `(?:\A|` + regexp.QuoteMeta(agent.AttachMarker) + `)\n<`
+
+var (
+	reportAttrs = regexp.MustCompile(reportTag)
+	reportBody  = regexp.MustCompile(`(?s)` + reportTag + `>\n(.*?)\n</agent-report>`)
+	// a zemi.agent.send from a plugin, with its first line
+	pluginSent = regexp.MustCompile(attachedTag + `(plugin:[^>\s]+)>\n([^\n]*)`)
+	loopSent   = regexp.MustCompile(attachedTag + `loop>\nRun (\d+) of: ([^\n]*)`)
+)
 
 // notifyReports tells the user of the queued reports a closing session drops.
 func (h *Host) notifyReports(queued []string) {
@@ -569,17 +583,6 @@ func (h *Host) notifyReports(queued []string) {
 		}
 	}
 }
-
-var reportAttrs = regexp.MustCompile(`<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")`)
-
-// pluginSent is a zemi.agent.send from a plugin, with its first line: a tag
-// right behind agent.AttachMarker (the tail starts past the first one), so a
-// stray line in a file or a send draws no row.
-// NOTE: text that carries the marker itself still draws one.
-var pluginSent = regexp.MustCompile(`(?:\A|` + regexp.QuoteMeta(agent.AttachMarker) + `)\n<(plugin:[^>\s]+)>\n([^\n]*)`)
-
-// loopRun is a /loop run's note, read the way pluginSent is.
-var loopRun = regexp.MustCompile(`(?:\A|` + regexp.QuoteMeta(agent.AttachMarker) + `)\n<loop>\nRun (\d+) of: ([^\n]*)`)
 
 // reportHeads rebuilds the notice rows from the reports behind a message's
 // agent.AttachMarker (a joined queue may carry several), the plugins' sends,
@@ -594,7 +597,7 @@ func reportHeads(tail string) []string {
 	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
 		heads = append(heads, m[1]+": "+clipRunes(sanitize.String(m[2]), 200))
 	}
-	for _, m := range loopRun.FindAllStringSubmatch(tail, -1) {
+	for _, m := range loopSent.FindAllStringSubmatch(tail, -1) {
 		heads = append(heads, "loop run "+m[1]+": "+clipRunes(sanitize.String(m[2]), 200))
 	}
 	if strings.Contains(tail, planNudgeText) {
