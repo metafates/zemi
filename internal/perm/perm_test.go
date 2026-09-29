@@ -327,6 +327,9 @@ func TestDashReading(t *testing.T) {
 		{"[[ -f go.mod ]] && ls", "", "use [ ] (test)"},
 		{"source .venv/bin/activate && pytest", "", "use . file"},
 		{"echo ${x:1}", "", "(slicing): sh here is dash, so write it in POSIX sh or run bash -c"},
+		{"mkdir -p a/{b,c}", "", "({a,b}): sh here is dash, so write each word out"},
+		{"for i in {1..3}; do echo $i; done", "", "$(seq 1 3)"},
+		{"find . -exec ls {} + && git show HEAD@{1} && echo \\{a,b} '{a,b}'", "find . -exec ls {} +|git show HEAD@{1}|echo {a,b} {a,b}", ""},
 		{"echo $(cat <<EOF\n) ; rm z\nEOF\n)", "echo $(cat <<EOF\n) ; rm z\nEOF\n)|cat", ""},
 		{"cat .env\\", "cat .env\\", ""},
 		{"bash -c '[[ -f x ]] && ls &>/dev/null'", "[[ -f x ]]|ls", ""},
@@ -598,10 +601,10 @@ func TestDotDotRidesNoDirectoryAllow(t *testing.T) {
 		{"cat docs/./../.env", Ask},
 		{"cat docs/..", Ask},
 		{"sh -c 'cat docs/../.env'", Ask},
-		{"cat docs/{..,a}/.env", Ask}, // the shell expands these after the rules saw them
+		{sh("cat docs/{..,a}/.env"), Ask}, // bash expands these after the rules saw them
 		{"cat docs/.?/.env", Ask},
 		{"cat docs/.*/.env", Ask},
-		{"cat docs/a{/.,}./.env", Ask},
+		{sh("cat docs/a{/.,}./.env"), Ask},
 		{"cat docs/$X/.env", Ask},
 		{"cat docs/*.md", Allow},
 		{"rm /etc/{a,b}", Deny},

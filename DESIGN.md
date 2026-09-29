@@ -1973,8 +1973,9 @@ provenance string.
   too, the tool's result being the reason alone: bash-only syntax
   fails naming the POSIX form to write (`&>` is `>file 2>&1` there,
   `<( )` a file or a pipe), and so do `$'..'`, which an older dash reads
-  as `$` and a quote and a newer one decodes, and `[[` and `source`,
-  which dash lacks. Where no dash is installed (Fedora, Arch, Alpine,
+  as `$` and a quote and a newer one decodes, `[[` and `source`,
+  which dash lacks, and a word bash would brace-expand (`mkdir a/{b,c}`,
+  `{1..3}`), which dash runs as written. Where no dash is installed (Fedora, Arch, Alpine,
   whose sh is bash or busybox ash) zemi runs `sh -c`, and there, and for
   every body another shell runs (a `sh -c`, `bash -c` or `zsh -c` text,
   one `xargs`, `find -exec` or `sudo` hands a shell, `eval` text, a

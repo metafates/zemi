@@ -330,7 +330,7 @@ nested `sh -c` body, `eval` text or a heredoc body a shell may run is parsed aga
 is read as the shell that runs it reads it (DESIGN §9). Where `proc.Shell` is dash it is parsed
 once as POSIX sh, and any parse error fails the call (`bashism`, naming the POSIX form of the
 bash-only syntax models write most, `posixForms`), as do `$'..'` (dash versions disagree on it),
-`[[` and `source`. A failed parse, in either reading, is the bash and `job_start` tools' result
+`[[`, `source` and a word bash would brace-expand (`{a,b}`, `{1..3}`: dash runs it as written). A failed parse, in either reading, is the bash and `job_start` tools' result
 before the gate (`bashRequests`, which hands the parse on in `Request.cmd`): the reason alone, no
 ask and no permission verdict. Where it is sh, which may be bash, and for every body another shell runs, the
 text is parsed as bash and as POSIX sh (`readBoth`, also for the body a runner such as `xargs` or

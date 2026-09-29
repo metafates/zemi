@@ -218,7 +218,7 @@ func normalize(cmd string, lang syntax.LangVariant, dash bool, memo map[string]N
 var posixForms = map[string]string{
 	"arrays": `use set -- a b and "$@", or a loop over words`, "`&>` redirects": "use >file 2>&1",
 	"<( )": "use a file in $TMPDIR, or a pipe", "$'..'": `use printf for escapes: printf 'a\tb'`,
-	"[[": "use [ ] (test)", "source": "use . file",
+	"[[": "use [ ] (test)", "source": "use . file", "{a,b}": "write each word out: a/b a/c, or $(seq 1 3)",
 }
 
 // bashism says why dash will not run text whose parse failed: bash-only
@@ -475,6 +475,7 @@ func (w *walker) command(c syntax.Command) []string {
 		if it, ok := c.Loop.(*syntax.WordIter); ok {
 			w.gate(it.Name.Value)
 			for _, x := range it.Items {
+				w.braces(x)
 				w.word(x)
 			}
 		} else {
@@ -540,9 +541,22 @@ func (w *walker) call(lead []string, c *syntax.CallExpr) []string {
 		if w.lang == syntax.LangBash && x.Lit() == `\` {
 			continue
 		}
+		w.braces(x)
 		args = append(args, w.word(x))
 	}
 	return w.fold(args, c.Pos(), at)
+}
+
+// braces fails a word bash would brace-expand, which dash runs as written:
+// mkdir a/{b,c} would make one directory named a/{b,c}.
+func (w *walker) braces(x *syntax.Word) {
+	c := *x
+	if w.dash && syntax.SplitBraces(&c) && slices.ContainsFunc(c.Parts, func(p syntax.WordPart) bool {
+		_, ok := p.(*syntax.BraceExp)
+		return ok
+	}) {
+		w.n.Fail = cmp.Or(w.n.Fail, bashOnly("{a,b}"))
+	}
 }
 
 // assign walks an assignment and returns it as its words read.
