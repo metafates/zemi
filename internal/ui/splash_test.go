@@ -162,7 +162,7 @@ func TestSplashContext(t *testing.T) {
 
 // TestSplashProjects: with another project known the splash lists it where
 // recent sessions go, a click on its path switches there, and with none it
-// offers what to try.
+// offers what to try, which a click puts in the composer.
 func TestSplashProjects(t *testing.T) {
 	for _, c := range []struct {
 		name      string
@@ -202,6 +202,14 @@ func TestSplashProjects(t *testing.T) {
 				if seg := dropCells(app.lastRows[y], x)[0]; seg.Click != "projects switch "+root || seg.Widget != "splash" {
 					t.Fatalf("the path's segment: %+v", seg)
 				}
+				return
+			}
+			x, y := findCell(t, app, "make the snail green")
+			clickAt(app, x, y)
+			for app.Pump() {
+			}
+			if app.composer.text != "make the snail green" {
+				t.Fatalf("a click on a suggestion left the composer %q", app.composer.text)
 			}
 		})
 	}

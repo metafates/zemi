@@ -148,10 +148,12 @@ function M.render(ctx)
 		-- zemi is configured by asking it, which no other screen says
 		---@type zemi.Line
 		local line = { fmt.label("try") }
-		fill(line, {
-			{ { text = '"explain this project"', hl = "Normal" } },
-			{ { text = '"make the snail green"', hl = "Normal" } },
-		}, { text = " · ", hl = "Comment" }, room)
+		---@type zemi.Segment[][]
+		local tries = {}
+		for _, s in ipairs({ "explain this project", "make the snail green" }) do
+			tries[#tries + 1] = { { text = '"' .. s .. '"', hl = "Normal", click = "fill " .. s } }
+		end
+		fill(line, tries, { text = " · ", hl = "Comment" }, room)
 		row(line)
 	end
 	if #recent > 0 then

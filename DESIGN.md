@@ -1837,7 +1837,8 @@ provenance string.
   (`zemi.ui.reasoning.toggle()`), an agent tool row (`agent:<run id>`,
   from the row's `run` field, opens that run's transcript) and a tool row
   (`tool:<idx>`, expands that row); the splash's rows resume a session or
-  switch to a project. The boot
+  switch to a project, and its suggestions fill the composer (a `fill
+  <text>` click id, which `zemi.tui.text`'s `run_click` puts there). The boot
   failed, stuck and errors pills stay Go-drawn, since they report a broken
   Lua layer that could not draw its own alarm; a click on boot failed or
   errors opens `/errors`, on stuck reloads. A drag selects inside the pane

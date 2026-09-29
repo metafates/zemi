@@ -78,9 +78,12 @@ function M.hint(noun, cmd, click, hl)
 end
 
 --- The on_click of a widget whose click ids are a command and its
---- arguments ("resume 3f9c", "mode").
+--- arguments ("resume 3f9c", "mode"), or "fill <text>", which puts the text
+--- in the composer for the user to send.
 ---@param ev zemi.WidgetClick
 function M.run_click(ev)
+	local fill = ev.id:match("^fill (.*)$")
+	if fill then return zemi.composer.set(fill) end
 	local name, args = ev.id:match("^(%S+)%s*(.*)$")
 	assert(zemi.command.run(name, args))
 end
