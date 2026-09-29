@@ -1208,7 +1208,7 @@ func (h *Host) saveFlow(id, name string) (string, error) {
 	}
 	f := h.tasks.flow(id)
 	if f == nil || f.parent != h.AgentSessionID() {
-		return "", Usagef("run %s is not one this zemi ran in this session: run it again, then save it", id)
+		return "", Usagef("zemi no longer holds run %s of this session: rerun it, then save it", id)
 	}
 	src := []byte(f.src)
 	if desc := strings.Join(strings.Fields(f.description), " "); leadingComment(f.src) == "" && desc != "" {
@@ -1795,9 +1795,10 @@ func (h *Host) flowItem(f *flowRun, section, from string) map[string]any {
 		actions = append(actions, map[string]any{"text": "Rerun", "hotkey": "r", "run": "workflows rerun " + f.id})
 	}
 	if f.script != "" && f.parent == h.AgentSessionID() {
-		actions = append(actions,
-			map[string]any{"text": "Open the script", "hotkey": "o", "run": "workflows open " + f.id},
-			map[string]any{"text": "Save", "hotkey": "s", "fill": "/workflows save " + f.id + " " + slug(f.description)})
+		actions = append(actions, map[string]any{"text": "Open the script", "hotkey": "o", "run": "workflows open " + f.id})
+	}
+	if f.src != "" && f.parent == h.AgentSessionID() { // what saveFlow takes
+		actions = append(actions, map[string]any{"text": "Save", "hotkey": "s", "fill": "/workflows save " + f.id + " " + slug(f.description)})
 	}
 	return map[string]any{
 		"id": f.id, "text": f.description + from, "desc": flowDesc(f, v), "section": section,

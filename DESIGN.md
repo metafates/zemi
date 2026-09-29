@@ -998,7 +998,8 @@ that script file, edited or not, and answers each call identical to a
 finished one (agent, model, schema, prompt) from the journal in order,
 starting no agent. `/workflows` lists the runs, live ones of every session
 first, then this session's earlier ones, then the saved workflows; a run's
-detail pauses, stops, reruns, opens or saves it (to `workflows/`), and `v`
+detail pauses, stops, reruns, opens or, while this process still holds
+the script it ran, saves it (to `workflows/`), and `v`
 opens its view: its fields, its agents under their phases, `p`, `+` and
 `-` (relative, so a second press before the view rebuilds still counts),
 and an agent's transcript, from which esc comes back. While any run lives

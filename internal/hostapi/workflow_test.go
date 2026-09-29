@@ -838,6 +838,16 @@ func TestSavedWorkflows(t *testing.T) {
 			t.Fatalf("saved %q, %v", got, err)
 		}
 	}
+	// a run rebuilt from its journal holds no script as it ran, so offers no Save
+	loaded, err := h.loadFlow("s1", f.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for run, want := range map[*flowRun]bool{f: true, loaded: false} {
+		if got := strings.Contains(fmt.Sprint(h.flowItem(run, "", "")["actions"]), "text:Save"); got != want {
+			t.Errorf("Save offered %v, want %v", got, want)
+		}
+	}
 }
 
 // TestReviewTargetsACommit: a sha reviews what that commit introduced. Its
