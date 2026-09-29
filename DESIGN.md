@@ -1812,7 +1812,7 @@ provenance string.
   when the request has an always choice; a command's scope ends in where the
   rule runs it, `outside the sandbox` or `with the network`; plus a wider read choice `r` and,
   for a trusted project's safe bash command, `Yes, this project`
-  `p`), `No` (`n` or `esc`), and `No, and tell zemi`
+  (`p`)), `No` (`n` or `esc`), and `No, and tell zemi`
   (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
   down move, enter picks the highlighted one. Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
@@ -1822,8 +1822,8 @@ provenance string.
   answers write allow rules to the rule store (§6.1),
   scoped to the `model` principal, with the prefix-glob patterns §6.2 lists; they last
   until zemi exits. Lasting rules normally come only from `zemi.permission.rule.add`
-  lines in the user's own config. The one exception is the `for this project`
-  answer: it appends the command to the project's `permissions` file in its state
+  lines in the user's own config. The one exception is the `Yes, this project`
+  answer (`p`): it appends the command to the project's `permissions` file in its state
   dir (§5) and registers its rules un-scoped, so a trusted project re-reads them on every
   boot. The overlay
   is Go-owned and non-replaceable: a plugin cannot whitelist itself; Lua

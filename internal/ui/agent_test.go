@@ -1471,9 +1471,12 @@ func TestPermTitle(t *testing.T) {
 		{hostapi.PermRequest{Tool: "memory", Subject: "memory.write", Arg: "prefers tabs"}, "Forget this memory?", ""},
 		{hostapi.PermRequest{Subject: "lua.fs.write", Arg: "x"}, "Allow lua.fs.write?", "arg x"},
 	} {
-		name, val := permTarget(c.req, "/p")
-		target := strings.TrimSpace(name + " " + plainSegs(val))
-		if title := permTitle(c.req); title != c.title || target != c.target {
+		rows, _, _ := permFacts(c.req, "/p", 200, 40)
+		var words []string
+		for _, r := range rows {
+			words = append(words, strings.Fields(plainSegs(r))...)
+		}
+		if title, target := permTitle(c.req), strings.Join(words, " "); title != c.title || target != c.target {
 			t.Errorf("%+v: %q %q", c.req, title, target)
 		}
 	}

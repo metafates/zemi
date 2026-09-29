@@ -93,7 +93,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	// base would settle, so a decide that never answers is how a user
 	// asks to see every request.
 	base := def.Base
-	// a reason joins what the asker said (a subagent's name)
+	// a reason joins what the asker said
 	note := func(s string) { req.Reason = strings.TrimPrefix(req.Reason+"; "+s, "; ") }
 	// what decide sent to the user stays with the user
 	if def.Decide != nil && !held {

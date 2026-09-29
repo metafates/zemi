@@ -60,7 +60,7 @@ func (pa *permAskPrompt) choices() []permChoice {
 		out = append(out, permChoice{"Yes, this session", pa.req.Wider, "r", "user:wider", true, false})
 	}
 	if pa.req.Project {
-		out = append(out, permChoice{"Yes, this project", "the same, saved for this project", "p", "user:project", true, false})
+		out = append(out, permChoice{"Yes, this project", "the same, kept after zemi exits", "p", "user:project", true, false})
 	}
 	return append(out, permChoice{"No", "", "n", tools.ByUser, false, false},
 		permChoice{"No, and tell zemi", "stop the turn and say what to do instead", "t", tools.ByUser, false, true})
@@ -877,8 +877,13 @@ func permTitle(req hostapi.PermRequest) string {
 // third of the screen, keeping its first and last rows.
 func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, says [][]hostapi.Segment) {
 	name, val := permTarget(req, root)
+	// a command's programs, unless it is only shell syntax (set -e; true)
+	runs := req.Subject == perm.SubjectBash && (req.Runs == nil || len(req.Runs) > 0)
+	if runs {
+		name = "runs"
+	}
 	kw := 0
-	for n, on := range map[string]bool{name: val != nil, "why": req.Reason != "", "says": req.Description != ""} {
+	for n, on := range map[string]bool{name: val != nil || runs, "why": req.Reason != "", "says": req.Description != ""} {
 		if on {
 			kw = max(kw, ansi.StringWidth(n)+2)
 		}
@@ -890,7 +895,9 @@ func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, say
 		return fieldRow(name, kw, hostapi.WrapSegs(val, w-kw))
 	}
 	switch {
-	case val != nil && req.Subject == perm.SubjectBash && w-kw >= 20:
+	case runs && w-kw < 20:
+		target = append(fieldLine(name, nil, w), runsRows(req.Runs, w)...)
+	case runs:
 		target = fieldRow(name, kw, runsRows(req.Runs, w-kw))
 	case val != nil:
 		target = fact(name, val)
@@ -909,7 +916,8 @@ func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, say
 }
 
 // permTarget is the facts table's first row: what a request acts on, as
-// its name and value; no value when the title names it (a tool, a memory).
+// its name and value; no value when the title names it (a tool, a memory)
+// or for a command, whose runs row permFacts lays out.
 func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment) {
 	// a path or URL wraps at its slashes: its file name and its query are
 	// what the user approves
@@ -921,10 +929,8 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 		return segs
 	}
 	switch arg := req.Arg; {
-	case req.Subject == perm.SubjectBash && req.Runs != nil && len(req.Runs) == 0:
-		return "", nil // only shell syntax (set -e; true)
 	case req.Subject == perm.SubjectBash:
-		return "runs", slices.Concat(runsRows(req.Runs, 1<<20)...)
+		return "", nil
 	case tools.PathSubject(req.Subject), req.Subject == "tool.lua" && arg != "script":
 		if rel, ok := perm.Under(root, arg); ok && root != "" && filepath.IsAbs(arg) {
 			arg = rel

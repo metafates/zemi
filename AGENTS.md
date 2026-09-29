@@ -509,7 +509,7 @@ next to the recipes, where no repository can ship it and no sandbox can write it
 `ProjectPermissionsStep`, internal/hostapi/projectperm.go) lists bash commands always allowed in that project, each by
 the `alwaysChoice` rule shape (a wrapper or deleting program or a glob line offers no rule);
 it is read as a Go boot step, so it never goes through the Lua origin gate below, and a
-permission overlay's `for this project` answer appends the command to it, offered only when
+permission overlay's `Yes, this project` answer (`p`) appends the command to it, offered only when
 the file would load exactly the rules the label names (`projectChoice`). Only `user`
 origin may add allow rules (project may tighten only), scope a rule to one plugin
 (`principal = "plugin:<name>"`, which a plugin's refused call puts in the rule line it names;

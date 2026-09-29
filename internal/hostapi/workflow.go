@@ -1420,7 +1420,7 @@ func (h *Host) approveRerun(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if v := pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: "tool.workflow", Arg: id, Description: "rerun " + id, Preview: src}); v.Decision != perm.Allow {
+	if v := pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: "tool.workflow", Arg: id, Preview: src}); v.Decision != perm.Allow {
 		return "", errors.New(tools.DeniedText(v, "workflow "+id))
 	}
 	return src, nil
