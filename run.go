@@ -300,6 +300,10 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 		}
 		d.IsError, d.Error = true, sendErr.Error()
 	}
+	// a goal the chain left set was blocked or paused; a met one is cleared
+	if g, ok := h.Goal(); ok && !d.IsError && g.Reason != "" {
+		d.IsError, d.Error = true, "goal "+g.Reason
+	}
 	after := h.AgentStream()
 	d.Session, d.DurationMS = h.AgentSessionID(), time.Since(began).Milliseconds()
 	d.Usage = runUsage{Input: after.SessionIn - before.SessionIn, Output: after.SessionOut - before.SessionOut, CacheRead: after.CacheRead - before.CacheRead, CostUSD: after.SessionCost - before.SessionCost}

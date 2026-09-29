@@ -94,6 +94,7 @@ func (h *Host) ResumeSession(id string) error {
 		// had until the next step reports a real count.
 		ag.lastIn = estTokens(history...) + ag.promptTokens
 		ag.digest, ag.env = digest, ""
+		ag.goal = goalIn(rows)
 	})
 	if err != nil {
 		return err
@@ -257,6 +258,7 @@ func (h *Host) closeSession(open func()) error {
 	ag.digest, ag.memAuto, ag.pin = "", 0, promptPin{}
 	ag.dropPin()
 	ag.todoInProgress, ag.todoSteps, ag.todoPending, ag.todoNag = "", 0, false, ""
+	ag.goal, ag.goalRuns = nil, 0
 	if open != nil {
 		open()
 	}
@@ -327,6 +329,15 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	}
 	reasoning := -1 // the transcript index of the latest reasoning row
 	for _, row := range rows {
+		if row.Role == goalRole {
+			var g goalRow
+			if json.Unmarshal([]byte(row.PartsJSON), &g) == nil {
+				if m, ok := goalNotice(g); ok {
+					tr = append(tr, m)
+				}
+			}
+			continue
+		}
 		var tc telemetry
 		if row.Role == "tool" && json.Unmarshal([]byte(row.PartsJSON), &tc) == nil && tc.ThoughtMS > 0 && reasoning >= 0 {
 			tr[reasoning].Stat.ThoughtMS += tc.ThoughtMS

@@ -136,7 +136,8 @@ ctrl+shift+t cycle it.
 
 `zemi run` and `zemi health` boot headless (`bootHeadless`, the TUI's steps without it; its
 `stderr` is `Host.Stderr`, which `zemi run` makes its view before boot, so a diagnostic prints
-above the tail). `zemi run` (`runHeadless`, run.go) sends on `GoSafe` and polls
+above the tail). `zemi run` (`runHeadless`, run.go) runs one turn, or a goal's chain
+of them, exiting 1 when the chain leaves the goal set. It sends on `GoSafe` and polls
 `Host.RunFrame` every 100 ms: `ui.RunView` renders the chat and working widgets over the
 frame with `UIState.Printed` (`ctx.headless`), printing settled rows once and, on a terminal,
 redrawing the pending rows, live turn and working rule as a tail under them; the `follower`
@@ -717,12 +718,25 @@ lua-language-server is installed.
   boundary through fantasy's `PrepareStep`, which rebuilds step input from scratch, so steered
   messages are re-inserted every step. Leftovers become one follow-up turn, and `active` stays
   held across that handoff (`nextTurn`) so a submit cannot jump the queue; `/compact` and
-  rewind claim `active` and a `turnScope` together for the same reason.
+  rewind claim `active` and a `turnScope` together for the same reason. With nothing left, a
+  set goal's continuation is the other follow-up `nextTurn` starts under the claim.
+- **Goals.** `/goal <condition>` (goal.go, `Host.SetGoal`) sends the typed line with a brief
+  behind `agent.Attached("goal")`; `persistMessage` sets `ag.goal` when it stores a user row
+  carrying it (`setGoalFrom`) and writes a row with role `goal` after it, so a queued /goal
+  a cancel hands back sets nothing. After a turn that ended cleanly (`sendCompacting` returns its
+  error), with nothing queued, no background run of the session and a profile that is not
+  read-only, `nextTurn` keeps the claim and `continueGoal` has `Host.aside` judge it
+  (`checkGoal`; `ctx.agent.checking_goal` meanwhile): `MET` clears it, `NOT YET` sends the
+  reason as the next turn, `BLOCKED` and a reply with no verdict (`parseVerdict`) stop and keep
+  it, and a not yet after `goalMaxRuns` turns the goal started in a row is written as paused.
+  A message queued during the check goes instead of the note; an interrupt records nothing. Each
+  verdict is a `goal` row (`goalNotice` draws it live and in `historyFrom`), and `goalIn` reads
+  the goal back on resume and rewind; no other reader looks at role `goal`.
 - **Side questions.** `/btw` (`Host.btw`) sends `Runner.Snapshot` (mid-turn, the running
   step's input) plus the question on the runner the next send would build, one step through
   `Runner.Aside`: same tools and tool choice, since Anthropic drops the message cache when
   tool choice changes, with every tool refusing to run. Billed, never persisted.
-  `Host.aside` is that call; the idle recap (`Host.Recap`, `session.recap`) is one more: the UI
+  `Host.aside` is that call, the goal check another; the idle recap (`Host.Recap`, `session.recap`) is one more: the UI
   calls it `recapDelay` (3 min, inside Anthropic's 5-minute cache) after a turn that ended well
   with no key, paste, click, wheel or focus since, which also cancel it; a turn that ran a tool
   gets a live-only `recap: ...` notice row, dropped when the transcript moved during the call;

@@ -203,6 +203,13 @@ type agentHost struct {
 	// in plain text; it is not told again until the user speaks
 	planNudged bool
 
+	// goal is the session's goal (/goal), nil for none; goalRuns counts the
+	// turns it started in a row, and checkingGoal holds while nextTurn asks
+	// whether it holds.
+	goal         *Goal
+	goalRuns     int
+	checkingGoal bool
+
 	// titled is false for a new session until its first exchange named it
 	// (autoTitle); firstUser is that session's first message.
 	titled    bool
@@ -559,6 +566,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string) error {
 	ag.runner = runner
 	ag.modelSeed = ""
 	ag.turnModel = h.currentModelID(p)
+	ag.goalRuns = 0 // not a turn the goal started
 	ag.beginTurn()
 	ag.mu.Unlock()
 	h.startTurn(text)
@@ -631,8 +639,8 @@ func (h *Host) runTurns(runner *agent.Runner, scope *turnScope, text string) {
 		if h.compactDue() {
 			h.compactReporting(scope.ctx, runner, compactAuto, "")
 		}
-		h.sendCompacting(scope.ctx, runner, text)
-		scope, text = h.nextTurn(scope)
+		err := h.sendCompacting(scope.ctx, runner, text)
+		scope, text = h.nextTurn(scope, err)
 	}
 }
 
@@ -668,8 +676,12 @@ func (h *Host) appendUserRows(text string) bool {
 // is a follow-up too, kept under the same claim, but sent afresh: the
 // restored profile needs its own runner, not the planner's. After a
 // cancelled turn nothing starts: the queue waits for the UI to hand it back
-// to the composer.
-func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
+// to the composer. After a turn that ended cleanly with nothing queued, a
+// set goal is checked under the same claim (continueGoal). err is how the
+// turn ended.
+func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
+	// the profile the check skips: a read-only agent cannot act on a goal
+	readOnly := h.readOnly()
 	ag := h.agents
 	ag.mu.Lock()
 	text, handoff := "", false
@@ -690,19 +702,31 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 	if ag.todoNag != "" {
 		ag.todoNag, ag.todoPending = "", false
 	}
+	// a background run's report starts its own turn, which is checked after
+	goal := ag.goal
+	if text != "" || err != nil || done.ctx.Err() != nil || readOnly || h.tasks.runningFor(ag.sessionID) > 0 {
+		goal = nil
+	}
+	if text != "" {
+		ag.goalRuns = 0
+	}
 	var next *turnScope
 	switch {
-	case text == "":
+	case text == "" && goal == nil:
 		ag.active = false
 		h.turn.Store(nil)
 	case handoff:
 		next = h.beginScope() // sendClaimed begins the turn
 	default:
 		ag.beginTurn()
+		ag.checkingGoal = goal != nil
 		next = h.beginScope()
 	}
 	ag.mu.Unlock()
 	done.cancel()
+	if goal != nil {
+		return h.continueGoal(next, goal)
+	}
 	switch {
 	case text == "":
 		// its notice row is drawn when the model reads it; say now that it waits
@@ -719,6 +743,40 @@ func (h *Host) nextTurn(done *turnScope) (*turnScope, string) {
 		h.startTurn(text)
 	}
 	return next, text
+}
+
+// continueGoal checks g under the claim nextTurn kept with next. Its note
+// that g does not hold yet is the next turn, unless a message queued during
+// the check, which is more current and goes instead; anything else, an
+// interrupt included, ends the chain with the goal as the check left it.
+func (h *Host) continueGoal(next *turnScope, g *Goal) (*turnScope, string) {
+	h.agentStream()
+	note := h.checkGoal(next.ctx, g)
+	ag := h.agents
+	ag.mu.Lock()
+	ag.checkingGoal = false
+	switch {
+	case next.ctx.Err() != nil:
+		note = ""
+	case len(ag.steering) > 0:
+		note, ag.steering, ag.goalRuns = joinQueue(ag.steering), nil, 0
+	case note != "":
+		ag.goalRuns++
+	}
+	if note == "" {
+		ag.active = false
+		h.turn.Store(nil)
+	} else {
+		ag.beginTurn()
+	}
+	ag.mu.Unlock()
+	if note == "" {
+		next.cancel()
+		h.refresh()
+		return nil, ""
+	}
+	h.startTurn(note)
+	return next, note
 }
 
 // deliverSteering hands the queue to the running turn at a step boundary.
@@ -1399,6 +1457,7 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 		h.agents.mu.Lock()
 		h.agents.turnMsgID = row.ID
 		h.agents.mu.Unlock()
+		h.setGoalFrom(sid, msg)
 	}
 	return nil
 }
@@ -1697,6 +1756,8 @@ type StreamSnapshot struct {
 	Retries    int           // provider retries this turn
 	RetryWhy   string        // what failed, for the retry countdown
 	Compacting bool          // history is being summarized before the turn
+	// the goal is being checked after a turn (/goal); the agent stays active
+	CheckingGoal bool
 
 	// usage tally (DESIGN §8 statusline): session totals, the last prompt
 	// size (the current-context estimate), and the context window used for
@@ -1790,7 +1851,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 		}
 	}
 	out.Tools = append(out.Tools, ag.tools...)
-	out.Retries, out.Compacting, out.SessionCost = ag.retries, ag.compacting, ag.sessCost
+	out.Retries, out.Compacting, out.CheckingGoal, out.SessionCost = ag.retries, ag.compacting, ag.checkingGoal, ag.sessCost
 	if !ag.retryAt.IsZero() {
 		out.Retrying, out.RetryIn, out.RetryWhy = true, max(time.Until(ag.retryAt), 0), ag.retryWhy
 	}

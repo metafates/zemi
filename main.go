@@ -474,6 +474,14 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "compact", NArgs: hostapi.NArgsAny, Desc: "summarize the conversation to free context; text after it says what to keep", GoFn: func(h *hostapi.Host, args string) error {
 			return h.CompactNow(args)
 		}},
+		{Name: "goal", NArgs: hostapi.NArgsAny, Desc: "keep working until a condition holds; alone, show it", GoFn: func(h *hostapi.Host, args string) error {
+			return h.SetGoal(args)
+		}, GoComplete: func(h *hostapi.Host, lead, line string) []string {
+			if _, ok := h.Goal(); ok {
+				return hostapi.SubcommandCompleter([]string{"stop"}, nil)(h, lead, line)
+			}
+			return nil
+		}},
 		{Name: "btw", NArgs: hostapi.NArgsSome, Desc: "ask a side question the conversation does not keep", GoFn: func(h *hostapi.Host, args string) error {
 			return h.Btw(args)
 		}},

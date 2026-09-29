@@ -280,7 +280,8 @@ Contracts that make this safe:
 - **Steering.** Messages sent while a turn runs queue in arrival order
   and join the running turn as user-role messages at the next step
   boundary (before the next model call). Whatever is still queued when
-  the turn ends starts one follow-up turn. `up` on an empty composer
+  the turn ends starts one follow-up turn; with nothing queued, a set goal
+  is checked and may start the next (§6.3). `up` on an empty composer
   takes the queue back for editing; a second `esc` within 2s or `ctrl+c`
   cancels the turn and returns the queue to the composer.
 
@@ -1024,6 +1025,24 @@ send marks the session not local-only. `zemi run` refuses a
 plugin's send: nothing would bound a chain of turns, and `zemi run` exits after
 its own.
 
+`/goal <condition>` gives a session a finish line. The message carries a
+brief naming the condition, and storing it sets the goal (a `goal` row after
+it, with the session's spend then). After each turn that ended cleanly with
+nothing queued and no background run of the session going, the model judges
+the goal as a side question on the cached conversation (`Host.aside`, the
+call `/btw` uses): `MET` clears it, `NOT YET` sends the next turn with the
+reason, `BLOCKED` stops and keeps it, as does a reply with no verdict. The
+check and the turns it starts run under the claim the first turn took, so a
+submit queues and `zemi run` waits for the whole chain; a message queued
+during the check goes instead of the note, an interrupt or a failed turn
+ends the chain with the goal kept, and at 20 turns in a row the goal
+started itself it pauses. Each verdict is a `goal` row, drawn as a notice
+line live and on resume, so a rewind, a fork and a delete handle it like the
+rest of the conversation. A read-only agent is never checked, and `zemi
+run` exits 1 when the chain leaves the goal set. Lua reads it (`ctx.goal`,
+`ctx.agent.checking_goal`) and does not drive it: the check must hold the
+claim, and a plugin-driven chain of turns is what `zemi run` refuses.
+
 Session/message persistence and cost/token accounting mirror crush's model
 (SQLite, summary message, todos), simplified: sessions, messages (JSON parts),
 tool-call telemetry.
@@ -1433,7 +1452,8 @@ origins that may not register.
 ```
 sessions(id, parent_id, title, profile, created_at, updated_at,
          prompt_tokens, completion_tokens, cost)
-messages(id, session_id, role, parts_json, created_at)          -- fantasy messages
+messages(id, session_id, role, parts_json, created_at)          -- fantasy messages, tool telemetry,
+                                                                -- compaction tails, goal events
 todos(id, session_id, content, status, active_form, ord, created_at)
 tool_calls(id, message_id, tool, ok, created_at)                -- per-tool counts for the reflector
 memory(id, scope, text, quote, provenance_session_id,
@@ -1708,7 +1728,8 @@ provenance string.
   answer keeps, so the detail says so, and a network answer copies none),
   `/new` (close the session: reflector trigger, clean slate), `/sessions`
   (list; `r` resumes the selected session, `x` opens its Delete, enter offers both), `/resume [id]` (latest without an id; history and
-  transcript rebuilt from the store), `/compact`, `/btw <question>` (a side question
+  transcript rebuilt from the store), `/compact`, `/goal <condition>` (work until
+  it holds, §6.3; alone, what it spent; `stop` drops it), `/btw <question>` (a side question
   answered in an overlay, on stdout in `zemi run`, from the conversation so far,
   never stored), `/health` (one row per check, problems first: store, model
   key, context window, git,

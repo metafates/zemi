@@ -147,8 +147,9 @@ func contextTooLarge(err error) bool {
 
 // sendCompacting runs one turn inside the context window: a turn Full cut
 // at a step boundary continues after compaction, and a prompt the provider
-// refuses as too long is compacted and resent once.
-func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text string) {
+// refuses as too long is compacted and resent once. It returns the error
+// that ended the turn.
+func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text string) error {
 	ag := h.agents
 	retried, capDropped, imagesDropped := false, false, false
 	for {
@@ -201,7 +202,7 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 		case err == nil && runner.CutShort():
 			// Full stopped the turn before the model read its tool results
 		default:
-			return
+			return err
 		}
 		// the held TurnDone zeroed the turn clock; the working rule shows
 		// "Compacting", the elapsed time and the esc hint only with one
@@ -215,7 +216,7 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 				err = ctx.Err()
 			}
 			h.streamHooks().TurnDone(err, fantasy.Usage{})
-			return
+			return err
 		}
 	}
 }

@@ -188,6 +188,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	ag.runner, ag.turnModel = &agent.Runner{History: history}, ""
 	// the stored rows keep tool output a prune cleared, so compactDue must see them
 	ag.lastIn, ag.turnMsgID = estTokens(history...)+ag.promptTokens, ""
+	ag.goal, ag.goalRuns = goalIn(rows[:cut]), 0
 	ag.mu.Unlock()
 	h.forgetInstructions()
 	h.setTranscript(sess.Title, tr)

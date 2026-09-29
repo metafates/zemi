@@ -77,6 +77,7 @@ zemi completion bash|zsh|fish
 zemi run "explain main.go"
 git diff | zemi run "review this"
 zemi run - < task.md                # the prompt itself from stdin
+zemi run "/goal make check is clean" # turns until it holds; 1 if blocked
 zemi -C ~/code/app run -c "and the tests?"
 zemi run -q "write the commit message for the staged diff" | git commit -F -
 ```

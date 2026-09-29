@@ -268,7 +268,8 @@ func TestRunHeadless(t *testing.T) {
 }
 
 // TestRunScreenCommands: a command that opens a screen fails in zemi run
-// and says why, /trust and /health naming their flags; /btw prints its answer.
+// and says why, /trust and /health naming their flags; /btw prints its answer;
+// a /goal chain exits 1 when it leaves the goal set.
 func TestRunScreenCommands(t *testing.T) {
 	h := printHost(t)
 	if code, _, _ := runPrompt(t, h, options{prompt: "say hi", quiet: true}); code != 0 {
@@ -303,6 +304,10 @@ func TestRunScreenCommands(t *testing.T) {
 		{"/mcp", "", "zemi: /mcp needs the TUI\n", 1},
 		{"/lsp", "", "zemi: /lsp needs the TUI\n", 1},
 		{"/btw why", "why", "", 0},
+		{"/goal", "", "zemi: /goal needs the TUI\n", 1},
+		// the fake model says what follows "say " in the goal, the check too
+		{"/goal say MET: yes", "MET: yes", "", 0},
+		{"/goal say BLOCKED: needs a key", "BLOCKED", "zemi: goal blocked: needs a key\n", 1},
 	} {
 		if code, out, errOut := runPrompt(t, h, options{prompt: c.prompt, quiet: true}); code != c.code || !strings.Contains(out, c.stdout) || c.stdout == "" && out != "" || errOut != c.stderr {
 			t.Errorf("%s: code %d, stdout %q, stderr %q", c.prompt, code, out, errOut)

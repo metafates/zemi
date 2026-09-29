@@ -593,7 +593,7 @@ func TestSteeringQueue(t *testing.T) {
 	}
 
 	send("a", "b")
-	next, text := h.nextTurn(scope)
+	next, text := h.nextTurn(scope, nil)
 	if text != "a\n\nb" || !h.AgentActive() {
 		t.Fatalf("follow-up = %q, active = %v", text, h.AgentActive())
 	}
@@ -601,7 +601,7 @@ func TestSteeringQueue(t *testing.T) {
 	if next.ctx.Err() == nil {
 		t.Fatal("a cancel during the handoff missed the follow-up turn")
 	}
-	if next, text := h.nextTurn(claim()); next != nil || text != "" || h.AgentActive() {
+	if next, text := h.nextTurn(claim(), nil); next != nil || text != "" || h.AgentActive() {
 		t.Fatalf("idle handoff = %q, active = %v", text, h.AgentActive())
 	}
 
@@ -613,7 +613,7 @@ func TestSteeringQueue(t *testing.T) {
 		t.Fatalf("a queued command counts as a report: %d", st.Reports)
 	}
 	h.AgentCancel()
-	if next, text := h.nextTurn(scope); next != nil || text != "" || h.AgentActive() {
+	if next, text := h.nextTurn(scope, nil); next != nil || text != "" || h.AgentActive() {
 		t.Fatalf("cancelled handoff = %q, active = %v", text, h.AgentActive())
 	}
 	if q := h.AgentTakeQueue(); len(q) != 2 || q[0] != "c" || q[1] != "/init" {
@@ -632,7 +632,7 @@ func TestSteeringQueue(t *testing.T) {
 		t.Fatalf("queue with a report = %q", q)
 	}
 	send("e")
-	if _, text := h.nextTurn(scope); !strings.HasPrefix(text, "Background agent x finished.\n\ne"+agent.AttachMarker) || !strings.Contains(text, "<agent-report run=") {
+	if _, text := h.nextTurn(scope, nil); !strings.HasPrefix(text, "Background agent x finished.\n\ne"+agent.AttachMarker) || !strings.Contains(text, "<agent-report run=") {
 		t.Fatalf("follow-up with a report = %q", text)
 	}
 
@@ -650,7 +650,7 @@ func TestSteeringQueue(t *testing.T) {
 	scope = claim()
 	send(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>")
 	h.AgentCancel()
-	h.nextTurn(scope)
+	h.nextTurn(scope, nil)
 	if !strings.Contains(notes(), "Waiting for your next message: Background agent a1 (explore) finished") {
 		t.Fatalf("no waiting notice: %q", notes())
 	}
@@ -1021,7 +1021,7 @@ func TestTodoNag(t *testing.T) {
 		seedSession(t, h)
 		set(h, both)
 		engage(h, todoNagAfter) // a StopTurn step (a dismissed question) past the threshold
-		if next, text := h.nextTurn(h.beginScope()); next != nil || text != "" || h.AgentActive() {
+		if next, text := h.nextTurn(h.beginScope(), nil); next != nil || text != "" || h.AgentActive() {
 			t.Fatalf("the nag started a turn: %q", text)
 		}
 		if got := takeNag(h); got != "" {

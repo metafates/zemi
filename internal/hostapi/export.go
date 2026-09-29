@@ -350,6 +350,17 @@ func (h *Host) todoSnapshot() []store.Todo {
 	return h.todos
 }
 
+// fmtTokens reads a token count as the statusline does: 1234 is 1.2k.
+func fmtTokens(n int64) string {
+	switch {
+	case n >= 1_000_000:
+		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e6), ".0") + "M"
+	case n >= 1000:
+		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e3), ".0") + "k"
+	}
+	return strconv.FormatInt(n, 10)
+}
+
 // OpenUsage shows how full the context is, what the fixed prompt is made of,
 // and token use and cost: the live session, then today, the last 7 days and
 // all time across this project's sessions.
@@ -362,15 +373,6 @@ func (h *Host) OpenUsage() error {
 		return errors.New("usage needs the session store")
 	}
 	s := h.AgentStream()
-	fmtTok := func(n int64) string {
-		switch {
-		case n >= 1_000_000:
-			return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e6), ".0") + "M"
-		case n >= 1000:
-			return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e3), ".0") + "k"
-		}
-		return strconv.FormatInt(n, 10)
-	}
 	var rows [][]Segment
 	text := func(hl, t string) Segment { return Segment{Text: t, HL: hl} }
 	section := func(title, note string) {
@@ -397,10 +399,10 @@ func (h *Host) OpenUsage() error {
 		}
 		section("Context", "")
 		rows = append(rows, append(append([]Segment{text("", "  ")}, bar(s.LastIn, s.CtxWindow, 32, hl)...),
-			text("Host:Value", fmtTok(s.LastIn)), text("Host:Hint", fmt.Sprintf(" of %s · %d%%", fmtTok(s.CtxWindow), pct))))
+			text("Host:Value", fmtTokens(s.LastIn)), text("Host:Hint", fmt.Sprintf(" of %s · %d%%", fmtTokens(s.CtxWindow), pct))))
 	}
 	if parts, total := h.promptBreakdown(); total > 0 {
-		section("Prompt", "  "+fmtTok(total)+" sent with every request")
+		section("Prompt", "  "+fmtTokens(total)+" sent with every request")
 		parts = slices.Clone(parts)
 		slices.SortStableFunc(parts, func(a, b promptPart) int { return cmp.Compare(b.chars, a.chars) })
 		sum := 0
@@ -412,7 +414,7 @@ func (h *Host) OpenUsage() error {
 				continue
 			}
 			row := append([]Segment{text("Host:Value", fmt.Sprintf("  %-14s", p.name))}, bar(int64(p.chars), int64(sum), 16, "Host:HintKey")...)
-			rows = append(rows, append(row, text("Host:Value", fmt.Sprintf("%6s", fmtTok(int64(p.chars/4)))),
+			rows = append(rows, append(row, text("Host:Value", fmt.Sprintf("%6s", fmtTokens(int64(p.chars/4)))),
 				text("Host:Hint", fmt.Sprintf("  %3d%%", p.chars*100/sum))))
 		}
 	}
@@ -452,7 +454,7 @@ func (h *Host) OpenUsage() error {
 		if w.u.Sessions > 0 {
 			count = strconv.Itoa(w.u.Sessions)
 		}
-		row := []Segment{text("Host:Value", fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTok(w.u.Prompt), fmtTok(w.u.Completion))), text("Host:Hint", fmt.Sprintf("%10s", count))}
+		row := []Segment{text("Host:Value", fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTokens(w.u.Prompt), fmtTokens(w.u.Completion))), text("Host:Hint", fmt.Sprintf("%10s", count))}
 		if priced {
 			row = append(row, text("Host:Value", fmt.Sprintf("%10s", fmt.Sprintf("$%.2f", w.u.Cost))))
 		}

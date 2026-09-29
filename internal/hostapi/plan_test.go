@@ -288,7 +288,7 @@ func TestNextTurnHandsOffApprovedPlan(t *testing.T) {
 	scope := h.beginScope()
 	h.agents.mu.Unlock()
 	h.setPlanApproved(implementNow)
-	if next, text := h.nextTurn(scope); next != nil || text != "" {
+	if next, text := h.nextTurn(scope, nil); next != nil || text != "" {
 		t.Fatalf("the handoff must not run on the ended runner: %v %q", next, text)
 	}
 	if h.takePlanApproved() != "" {
