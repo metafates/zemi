@@ -1060,7 +1060,7 @@ check and the turns it starts run under the claim the first turn took, so a
 submit queues and `zemi run` waits for the whole chain; a message queued
 during the check goes instead of the note, an interrupt or a failed turn
 ends the chain with the goal kept, and at 20 turns in a row the goal
-started itself it pauses. Each verdict is a `goal` row, drawn as a notice
+started itself it pauses; a loop run does not reset that count. Each verdict is a `goal` row, drawn as a notice
 line live and on resume, so a rewind, a fork and a delete handle it like the
 rest of the conversation. A read-only agent is never checked, and `zemi
 run` exits 1 when the chain leaves the goal set. Lua reads it (`ctx.goal`,
@@ -1074,9 +1074,12 @@ says in its reply's last line (`next: 10m`, 1m to 1h, 20m when it names none;
 with the prompt in a note, or a command with the note attached, sent only
 when the agent is idle (a busy one delays it 30s), and each is a notice row.
 One loop per session; it is never stored, so a resumed session starts
-nothing on its own, and it stops on `/loop stop`, a session change, an
-interrupted or failed run, and after 72h. `zemi run` refuses it: a process
-that stayed up for it would be a daemon nobody asked for.
+nothing on its own, and it stops on `/loop stop`, a session change, a
+failed run, an interrupt of any turn nobody typed (a run, a goal's turn or
+check, a report's turn: esc means stop working on your own), and after 72h.
+A chain of turns a run began arms no idle recap and sends no `ui.notify`
+alert, since nobody waits on it; the loop's end alerts. `zemi run` refuses
+it: a process that stayed up for it would be a daemon nobody asked for.
 
 Session/message persistence and cost/token accounting mirror crush's model
 (SQLite, summary message, todos), simplified: sessions, messages (JSON parts),

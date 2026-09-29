@@ -110,6 +110,7 @@ type App struct {
 	turnDone   *turnDoneMsg     // the last turn's end, waiting for a frame that reads the agent idle
 	turnEnd    time.Time        // when the agent went idle after a turn, so the mascot can bow
 	turnEnded  hostapi.TurnEnd  // how it ended
+	looping    bool             // what onFrame last saw of the session's /loop
 	unseen     hostapi.TurnEnd  // how the last turn ended while the window was away, "" once seen
 	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
 	now        func() time.Time // animation clock; tests pin it
@@ -595,6 +596,13 @@ func (a *App) onFrame() tea.Cmd {
 		ended = a.endTurn(*a.turnDone)
 		a.turnDone = nil
 	}
+	// a loop's runs end quietly (endTurn); the loop's end is worth an alert
+	if _, on := a.host.Loop(); on != a.looping {
+		if a.looping {
+			ended = tea.Batch(ended, a.notifyIfAway("zemi: the loop ended"))
+		}
+		a.looping = on
+	}
 	if !active && !a.recapAt.IsZero() && !a.now().Before(a.recapAt) {
 		var ctx context.Context
 		ctx, a.recapStop = context.WithCancel(context.Background())
@@ -623,10 +631,15 @@ func (a *App) onFrame() tea.Cmd {
 }
 
 // endTurn stamps how the last turn ended for the eyes and the tab title,
-// arms the recap and the reflector, and alerts an unfocused terminal.
+// arms the recap and the reflector, and alerts an unfocused terminal; a
+// chain a loop run began arms no recap and alerts nobody, since no one waits
+// on it.
 func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
+	byLoop := a.host.AgentStream().ByLoop
 	a.turnEnd, a.turnEnded = a.now(), hostapi.TurnOK
-	a.recapAt = a.now().Add(recapDelay)
+	if !byLoop {
+		a.recapAt = a.now().Add(recapDelay)
+	}
 	// a failed turn too: a failed tool call is what the reflector learns most from
 	a.reflectAt = a.now().Add(hostapi.ReflectIdle)
 	if msg.stopped {
@@ -641,6 +654,9 @@ func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 	text := "zemi finished"
 	if msg.err != "" {
 		text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "…")
+	}
+	if byLoop {
+		return nil
 	}
 	return a.notifyIfAway(text)
 }

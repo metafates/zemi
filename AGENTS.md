@@ -688,7 +688,11 @@ lua-language-server is installed.
   `lua.Clock.AfterFunc`, so the fake clock drives it in tests. `fireLoop` sends like the user
   would, on a claim taken under the lock that saw the agent idle, and arms the next run before
   sending. `loopTurnEnded` (in `runTurns`) knows a loop run by `loopTag` in the turn's text and
-  acts only while `ag.loopRun`, the loop that sent the last run, is the live one.
+  acts only while `ag.loopRun`, the loop that sent the last run, is the live one, except
+  that an interrupt of any turn nobody typed stops the live loop (`loopInterrupted`, which
+  `continueGoal` calls for an interrupted check too). `ag.byLoop` marks a chain a run began:
+  it leaves `goalRuns` alone, and the UI arms no recap and sends no alert for it
+  (`StreamSnapshot.ByLoop`), only for the loop's end.
 - **Side questions.** `/btw` (`Host.btw`) sends `Runner.Snapshot` (mid-turn, the running
   step's input) plus the question on the runner the next send would build, one step through
   `Runner.Aside`: same tools and tool choice, since Anthropic drops the message cache when

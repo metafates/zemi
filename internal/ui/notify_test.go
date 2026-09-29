@@ -14,7 +14,8 @@ import (
 )
 
 // TestNotifyWhenAway: a finished turn notifies in the ui.notify style only
-// while the terminal reports zemi unfocused, once the agent reads idle.
+// while the terminal reports zemi unfocused, once the agent reads idle; a
+// loop's run ends quietly, and the loop's end notifies.
 func TestNotifyWhenAway(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
@@ -33,14 +34,18 @@ func TestNotifyWhenAway(t *testing.T) {
 		name, style string
 		focus       tea.Msg
 		chain       bool   // the agent still reads active on the first frame
+		loop        bool   // a loop run began the chain
+		looped      bool   // a loop was on, and is no more
 		want        string // the raw bytes sent, "" for no notification
 	}{
-		{"focused", "osc", nil, false, ""},
-		{"away", "osc", tea.BlurMsg{}, false, "\x1b]9;zemi finished\x07"},
-		{"away as a chain goes on", "osc", nil, true, "\x1b]9;zemi finished\x07"},
-		{"away with a bell", "bell", nil, false, "\a"},
-		{"away and off", "off", nil, false, ""},
-		{"back", "osc", tea.FocusMsg{}, false, ""},
+		{"focused", "osc", nil, false, false, false, ""},
+		{"away", "osc", tea.BlurMsg{}, false, false, false, "\x1b]9;zemi finished\x07"},
+		{"away as a chain goes on", "osc", nil, true, false, false, "\x1b]9;zemi finished\x07"},
+		{"away after a loop's run", "osc", nil, false, true, false, ""},
+		{"away as the loop ends", "osc", nil, false, true, true, "\x1b]9;zemi: the loop ended\x07"},
+		{"away with a bell", "bell", nil, false, false, false, "\a"},
+		{"away and off", "off", nil, false, false, false, ""},
+		{"back", "osc", tea.FocusMsg{}, false, false, false, ""},
 	} {
 		if _, err := host.Settings.SetQuiet("ui.notify", c.style); err != nil {
 			t.Fatal(err)
@@ -54,8 +59,9 @@ func TestNotifyWhenAway(t *testing.T) {
 			if got := frame(); got != "" {
 				t.Errorf("%s: sent %q while the agent is active", c.name, got)
 			}
-			host.SeedStream(hostapi.StreamSnapshot{})
 		}
+		host.SeedStream(hostapi.StreamSnapshot{ByLoop: c.loop})
+		app.looping = c.looped
 		if got := frame(); got != c.want {
 			t.Errorf("%s: sent %q, want %q", c.name, got, c.want)
 		}
@@ -74,24 +80,24 @@ func TestRecapWhenIdle(t *testing.T) {
 		done           turnDoneMsg
 		input          tea.Msg // after the turn ended
 		chain          bool    // the agent reads active on the first frame
+		loop           bool    // a loop run began the chain
 		recap, reflect bool
 	}{
-		{"away since a clean end", turnDoneMsg{}, nil, false, true, true},
-		{"a key since", turnDoneMsg{}, key, false, false, true},
-		{"focus back since", turnDoneMsg{}, tea.FocusMsg{}, false, false, true},
-		{"hover since is not input", turnDoneMsg{}, tea.MouseMotionMsg{}, false, true, true},
-		{"stopped", turnDoneMsg{stopped: true}, nil, false, false, true},
-		{"failed", turnDoneMsg{err: "boom"}, nil, false, false, true},
-		{"a chain goes on", turnDoneMsg{}, nil, true, false, false},
+		{"away since a clean end", turnDoneMsg{}, nil, false, false, true, true},
+		{"a key since", turnDoneMsg{}, key, false, false, false, true},
+		{"focus back since", turnDoneMsg{}, tea.FocusMsg{}, false, false, false, true},
+		{"hover since is not input", turnDoneMsg{}, tea.MouseMotionMsg{}, false, false, true, true},
+		{"stopped", turnDoneMsg{stopped: true}, nil, false, false, false, true},
+		{"failed", turnDoneMsg{err: "boom"}, nil, false, false, false, true},
+		{"a chain goes on", turnDoneMsg{}, nil, true, false, false, false},
+		{"a loop's run", turnDoneMsg{}, nil, false, true, false, true},
 	} {
 		app := NewApp(host, log)
 		start := time.Unix(1000, 0)
 		now := start
 		app.now = func() time.Time { return now }
 		app.Update(c.done)
-		if c.chain {
-			host.SeedStream(hostapi.StreamSnapshot{Active: true})
-		}
+		host.SeedStream(hostapi.StreamSnapshot{Active: c.chain, ByLoop: c.loop})
 		app.Update(frameTickMsg{})
 		host.SeedStream(hostapi.StreamSnapshot{})
 		if c.input != nil {

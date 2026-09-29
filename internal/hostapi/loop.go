@@ -172,25 +172,28 @@ func loopNote(l *Loop) string {
 	return agent.Attached("loop", fmt.Sprintf("Run %d of: %s\n%s", l.Runs, l.Prompt, next))
 }
 
-// loopTurnEnded runs after each turn: a run of the live loop that was
-// interrupted or failed stops it, and a self-paced one's last line schedules
-// the next run or ends the loop. A run of a loop since replaced moves nothing.
+// loopTurnEnded runs after each turn: an interrupted turn nobody typed stops
+// the loop (loopInterrupted), a run of the live loop that failed stops it,
+// and a self-paced one's last line schedules the next run or ends the loop.
+// Otherwise a run of a loop since replaced moves nothing.
 func (h *Host) loopTurnEnded(runner *agent.Runner, text string, err error, cancelled bool) {
-	if !strings.Contains(text, loopTag) {
-		return
-	}
+	own := strings.Contains(text, loopTag)
 	ag := h.agents
 	ag.mu.Lock()
 	l, run := ag.loop, ag.loopRun
-	ag.loopRun = nil
+	if own {
+		ag.loopRun = nil
+	}
 	ag.mu.Unlock()
-	if l == nil || l != run {
+	if typed, _ := agent.CutAttached(text); cancelled && (own || strings.TrimSpace(typed) == "") {
+		h.loopInterrupted()
+		return
+	}
+	if !own || cancelled || l == nil || l != run {
 		return
 	}
 	runs := fmt.Sprintf("%d %s", l.Runs, plural(l.Runs, "run", "runs"))
 	switch {
-	case cancelled:
-		_ = h.stopLoop(l, "loop stopped: the run was interrupted ("+runs+")")
 	case err != nil:
 		_ = h.stopLoop(l, "loop stopped: the run failed ("+runs+")")
 	case l.Every == 0:
@@ -205,6 +208,22 @@ func (h *Host) loopTurnEnded(runner *agent.Runner, text string, err error, cance
 		}
 		ag.mu.Unlock()
 		h.refresh()
+	}
+}
+
+// loopInterrupted stops the live loop after an interrupt of work nobody
+// typed (a loop run, a goal's turn or check, a report's turn): esc means stop
+// working on your own.
+func (h *Host) loopInterrupted() {
+	ag := h.agents
+	ag.mu.Lock()
+	l, n := ag.loop, 0
+	if l != nil {
+		n = l.Runs
+	}
+	ag.mu.Unlock()
+	if l != nil {
+		_ = h.stopLoop(l, fmt.Sprintf("loop stopped: interrupted (%d %s)", n, plural(n, "run", "runs")))
 	}
 }
 

@@ -17,7 +17,9 @@ import (
 // TestGoalLoop drives /goal against a model that works and, asked to
 // judge, answers from the case's verdicts: what each check decides, what
 // stops the chain, the notice rows it leaves, and that a resume draws the
-// same rows and restores the same goal while a rewind to /goal drops it.
+// same rows and restores the same goal while a rewind to /goal drops it. An
+// interrupt of the goal's own work stops a loop too; one of a typed turn
+// does not.
 func TestGoalLoop(t *testing.T) {
 	paused := append(slices.Repeat([]string{"goal not met yet: x"}, goalMaxRuns), "goal paused: after 20 turns without you; send a message to go on")
 	for _, c := range []struct {
@@ -28,6 +30,7 @@ func TestGoalLoop(t *testing.T) {
 		cancel  bool                            // the first turn is interrupted
 		turns   int
 		goal    bool     // left set
+		loopOff bool     // the loop set before it was stopped
 		notices []string // the notice rows, in order
 		saw     string   // what the last turn read
 	}{
@@ -46,6 +49,10 @@ func TestGoalLoop(t *testing.T) {
 		{name: "a failed turn is not checked", fail: true, turns: 1, goal: true},
 		{name: "an interrupted turn is not checked", cancel: true, turns: 1, goal: true},
 		{name: "the planner is not checked", planner: true, turns: 1, goal: true},
+		{name: "an interrupted check stops the loop", verdict: func(h *Host, _ int) string {
+			h.AgentCancel()
+			return "NOT YET: a"
+		}, turns: 1, goal: true, loopOff: true},
 		{name: "a message queued during the check goes next", verdict: func(h *Host, n int) string {
 			if n == 0 {
 				if err := h.AgentSend("also this"); err != nil {
@@ -82,6 +89,9 @@ func TestGoalLoop(t *testing.T) {
 					return textParts("worked")
 				}}, nil
 			}
+			h.agents.mu.Lock()
+			h.agents.loop = &Loop{Prompt: "watch"}
+			h.agents.mu.Unlock()
 			if err := h.SetGoal("the  tests\npass"); err != nil {
 				t.Fatal(err)
 			}
@@ -100,6 +110,9 @@ func TestGoalLoop(t *testing.T) {
 			}
 			if s, _ := saw.Load().(string); !strings.Contains(s, c.saw) {
 				t.Errorf("the last turn read %q, want %q in it", s, c.saw)
+			}
+			if _, on := h.Loop(); on == c.loopOff {
+				t.Errorf("loop on %v, want %v", on, !c.loopOff)
 			}
 			g, set := h.Goal()
 			if set != c.goal || set && g.Condition != "the tests pass" {

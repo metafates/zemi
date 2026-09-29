@@ -13,6 +13,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -53,8 +54,8 @@ func TestLoop(t *testing.T) {
 		},
 		{name: "an interrupted run stops it", args: "5m check it", reply: "hang", steps: []step{{runs: 1, next: 5 * time.Minute, held: true}, {do: func(h *Host) {
 			h.AgentCancel()
-		}, runs: 1}}, notices: []string{"loop run 1: check it", "loop stopped: the run was interrupted (1 run)"}},
-		{name: "a replaced loop's run moves nothing", args: "5m check a", reply: "hang", steps: []step{
+		}, runs: 1}}, notices: []string{"loop run 1: check it", "loop stopped: interrupted (1 run)"}},
+		{name: "an interrupt stops the loop that replaced the run's", args: "5m check a", reply: "hang", steps: []step{
 			{runs: 1, next: 5 * time.Minute, held: true},
 			{do: func(h *Host) {
 				if err := h.SetLoop("5m check b"); err != nil {
@@ -68,9 +69,32 @@ func TestLoop(t *testing.T) {
 				})
 				h.AgentCancel()
 				waitIdle(t, h)
-			}, after: loopRetry, runs: 2, next: loopRetry + 5*time.Minute, held: true},
-			{do: func(h *Host) { h.AgentCancel() }, runs: 2},
-		}, notices: []string{"loop run 1: check a", "loop run 1: check b", "loop stopped: the run was interrupted (1 run)"}},
+			}, runs: 1},
+		}, notices: []string{"loop run 1: check a", "loop stopped: interrupted (0 runs)"}},
+		{name: "an interrupted turn nobody typed stops it", args: "5m check it", reply: "ok", steps: []step{
+			{runs: 1, next: 5 * time.Minute},
+			{do: func(h *Host) {
+				if err := h.AgentSend(agent.AttachMarker + "\nhang"); err != nil {
+					panic(err)
+				}
+			}, runs: 1, next: 5 * time.Minute, held: true},
+			{do: func(h *Host) { h.AgentCancel() }, runs: 1},
+		}, notices: []string{"loop run 1: check it", "loop stopped: interrupted (1 run)"}},
+		{name: "a run leaves the goal's count of turns", args: "5m check it", reply: "ok", steps: []step{
+			{runs: 1, next: 5 * time.Minute},
+			{do: func(h *Host) {
+				h.agents.mu.Lock()
+				h.agents.goalRuns = 7
+				h.agents.mu.Unlock()
+			}, after: 5 * time.Minute, runs: 2, next: 10 * time.Minute},
+			{do: func(h *Host) {
+				h.agents.mu.Lock()
+				defer h.agents.mu.Unlock()
+				if h.agents.goalRuns != 7 {
+					panic(fmt.Sprintf("a loop run reset the goal's count to %d", h.agents.goalRuns))
+				}
+			}, runs: 2, next: 10 * time.Minute},
+		}},
 		{name: "a busy agent delays a run, keeping its time", args: "5m check it", reply: "ok", steps: []step{
 			{runs: 1, next: 5 * time.Minute},
 			{do: func(h *Host) {

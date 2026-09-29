@@ -231,10 +231,12 @@ type agentHost struct {
 	goalRuns     int
 	checkingGoal bool
 	// loop is the session's loop (/loop), nil for none; loopStop stops its
-	// armed timer, and loopRun is the loop whose run was sent last
+	// armed timer, loopRun is the loop whose run was sent last, and byLoop
+	// says the running or last chain of turns began with a loop run
 	loop     *Loop
 	loopStop func() bool
 	loopRun  *Loop
+	byLoop   bool
 
 	// titled is false for a new session until its first exchange named it
 	// (autoTitle); firstUser is that session's first message.
@@ -607,7 +609,9 @@ func (h *Host) sendClaimed(scope *turnScope, text string) error {
 	ag.runner = runner
 	ag.modelSeed = ""
 	ag.turnModel = h.currentModelID(p)
-	ag.goalRuns = 0 // not a turn the goal started
+	if ag.byLoop = strings.Contains(text, loopTag); !ag.byLoop {
+		ag.goalRuns = 0 // someone started it: neither the goal nor a loop
+	}
 	ag.beginTurn()
 	ag.mu.Unlock()
 	h.startTurn(text)
@@ -754,7 +758,7 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 		goal = nil
 	}
 	if text != "" {
-		ag.goalRuns = 0
+		ag.goalRuns, ag.byLoop = 0, false
 	}
 	var next *turnScope
 	switch {
@@ -819,6 +823,9 @@ func (h *Host) continueGoal(next *turnScope, g *Goal) (*turnScope, string) {
 		ag.beginTurn()
 	}
 	ag.mu.Unlock()
+	if stopped != nil {
+		h.loopInterrupted()
+	}
 	if note == "" {
 		next.cancel()
 		h.refresh()
@@ -1816,6 +1823,9 @@ type StreamSnapshot struct {
 	Compacting bool          // history is being summarized before the turn
 	// the goal is being checked after a turn (/goal); the agent stays active
 	CheckingGoal bool
+	// the running or last chain of turns began with a loop run, which no one
+	// waits on: its end arms no recap and sends no alert
+	ByLoop bool
 
 	// usage tally (DESIGN §8 statusline): session totals, the last prompt
 	// size (the current-context estimate), and the context window used for
@@ -1892,7 +1902,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 		Thought: thought, Elapsed: elapsed,
 		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
 		CacheRead: ag.cacheRead, CacheBilled: ag.cacheBilled,
-		CtxWindow: ag.ctxWin,
+		CtxWindow: ag.ctxWin, ByLoop: ag.byLoop,
 	}
 	out.Model = ag.modelSeed
 	if out.Model == "" {
@@ -1924,6 +1934,7 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	ag.active = s.Active
+	ag.byLoop = s.ByLoop
 	ag.textBuf = s.Text
 	ag.reasonBuf = s.Reasoning
 	ag.tools = s.Tools
