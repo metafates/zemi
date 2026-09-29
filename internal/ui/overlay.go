@@ -527,6 +527,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		idx := st.visible[st.selected]
 		r := st.items[idx].row
 		verb := st.enterVerb(idx)
+		sel := func() { a.host.SelectOverlay(context.Background(), o, idx) }
 		switch {
 		case key == "space" && (o.Reload == nil || r.Verb != ""):
 		case key == "enter" && hasDetail(r):
@@ -541,11 +542,11 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.detailAction(idx)
 		case o.Reload != nil && r.Fill == "":
 			a.runOverlayRow(r)
-			a.reloadOverlay(o, func() { a.host.SelectOverlay(context.Background(), o, idx) })
+			a.reloadOverlay(o, sel)
 		case o.Reload != nil: // a fill hands the keys to the composer, so the list closes
 			a.runOverlayRow(r)
 			if o.OnSelect != nil {
-				a.background(func() { a.host.SelectOverlay(context.Background(), o, idx) })
+				a.background(sel)
 			}
 			a.closeOverlayByID(o.ID)
 		case verb == "":
@@ -553,7 +554,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			a.runOverlayRow(r) // the screen it opens goes over this list, so esc comes back
 		default:
 			if o.OnSelect != nil {
-				a.background(func() { a.host.SelectOverlay(context.Background(), o, idx) })
+				a.background(sel)
 			} else {
 				a.runOverlayRow(r)
 			}
