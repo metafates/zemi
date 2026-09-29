@@ -628,12 +628,7 @@ func (tg *trustGate) command() func() {
 			if err != nil {
 				tg.h.Notify(logging.Error, "Could not save the trust decision", err.Error())
 			}
-			// set before the reload: a boot that fails before the trust step
-			// must not leave the old decision in force
-			tg.h.SetProjectTrusted(ok)
-			if ok != was {
-				tg.h.Reload()
-			}
+			tg.h.Retrust(ok)
 		})
 	}
 }

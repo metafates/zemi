@@ -1967,6 +1967,20 @@ func (h *Host) Reload() {
 	}
 }
 
+// Retrust sets the trust /trust decided and reloads when it changed. It
+// holds the watcher's lock, so the watcher cannot reload first for the
+// config trees the change moved; set before the reload, a boot that fails
+// before the trust step does not leave the old decision in force.
+func (h *Host) Retrust(ok bool) {
+	h.reloadCheck.Lock()
+	defer h.reloadCheck.Unlock()
+	was := h.ProjectTrusted()
+	h.SetProjectTrusted(ok)
+	if ok != was && h.reload != nil {
+		_ = h.reload()
+	}
+}
+
 // ReloadConfig runs the /reload command (palette, keymaps,
 // zemi.command.run), so config zemi wrote for itself takes effect without a
 // restart.

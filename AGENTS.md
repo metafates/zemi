@@ -255,9 +255,10 @@ dotfiles repo is nobody's root; a linked worktree maps to its main checkout by r
 `.git` file, never by running git) and saved in `<state>/trust.json`. Order: a decision held
 for this process (`--trust`, a Later answer, `/trust` where saving is impossible), the saved
 one, then the Go-owned prompt. `$HOME` and `/` are never asked about or saved
-(`hostapi.TrustUnsaved`). `/trust` reopens the prompt off the UI goroutine, saves, calls
-`Host.SetProjectTrusted` and reloads when the decision changed (a reload that fails before the
-trust step must not leave the old decision in force). `Host.ProjectTrusted()` gates project
+(`hostapi.TrustUnsaved`). `/trust` reopens the prompt off the UI goroutine, saves, and calls `Host.Retrust`, which sets
+the decision and reloads when it changed (a reload that fails before the trust step must not
+leave the old decision in force) under the watcher's lock, so the watcher does not reload first
+for the tree the change moved. `Host.ProjectTrusted()` gates project
 `.agents` (`Dirs.ProjectConfigDir`, at the repo root only: init.lua, lua, skills, agents,
 commands, workflows), instruction files (AGENTS.md, else CLAUDE.md, per directory) and profile `context.files`,
 project skills, every project language server, the Lua tool's ask, the read jail reaching past the
