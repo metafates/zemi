@@ -287,7 +287,7 @@ func TestRunScreenCommands(t *testing.T) {
 		code                   int
 	}{
 		{"/help", "", "zemi: /help needs the TUI\n", 1},
-		{"/sessions", "", "zemi: /sessions needs the TUI\n", 1},
+		{"/sessions", "", "zemi: /sessions needs the TUI; zemi sessions lists them\n", 1},
 		{"/rewind", "", "zemi: /rewind needs the TUI\n", 1},
 		{"/profile", "", "zemi: /profile needs the TUI\n", 1},
 		{"/usage", "", "zemi: /usage needs the TUI\n", 1},
@@ -298,7 +298,7 @@ func TestRunScreenCommands(t *testing.T) {
 		{"/errors", "", "zemi: /errors needs the TUI\n", 1},
 		{"/trust", "", "zemi: /trust needs the TUI; --trust trusts the project for one run\n", 1},
 		{"/health", "", "zemi: /health needs the TUI; zemi health prints the checks\n", 1},
-		{"/model", "", "zemi: /model needs the TUI\n", 1},
+		{"/model", "", "zemi: /model needs the TUI; zemi models lists the ids, /model [<role>] <id> sets one\n", 1},
 		{"/model update", "", "zemi: /model needs the TUI; zemi models update fetches the catalog\n", 1},
 		{"/permissions", "", "zemi: /permissions needs the TUI\n", 1},
 		{"/mode", "", "zemi: /mode needs the TUI\n", 1},

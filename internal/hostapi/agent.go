@@ -2334,15 +2334,22 @@ func modelDesc(id string, m agent.Model) string {
 // that to its model row.
 func (h *Host) SetModel(args string, warn bool) error {
 	f := strings.Fields(args)
+	picker := func(role string) error {
+		err := h.OpenModelPicker(role)
+		if errors.Is(err, ErrNeedsTUI) {
+			err = fmt.Errorf("%w; zemi models lists the ids, /model [<role>] <id> sets one", err)
+		}
+		return err
+	}
 	switch {
 	case len(f) == 0:
-		return h.OpenModelPicker("")
+		return picker("")
 	case len(f) == 1 && f[0] == "roles":
 		return h.OpenModelRoles()
 	case len(f) == 1 && f[0] == "update":
 		return h.updateCatalog()
 	case len(f) == 1 && isRole(f[0]):
-		return h.OpenModelPicker(f[0])
+		return picker(f[0])
 	case len(f) == 1:
 		f = []string{"chat", f[0]}
 	case len(f) > 2 || !isRole(f[0]):

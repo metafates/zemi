@@ -419,7 +419,11 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				id, yes := strings.CutSuffix(strings.TrimSpace(id), " --yes")
 				return h.DeleteSession(id, yes)
 			}
-			return h.OpenSessions("")
+			err := h.OpenSessions("")
+			if errors.Is(err, hostapi.ErrNeedsTUI) {
+				err = fmt.Errorf("%w; zemi sessions lists them", err)
+			}
+			return err
 		}},
 		{Name: "resume", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "resume the latest session, or the one with this id", GoFn: func(h *hostapi.Host, args string) error {
 			return h.ResumeSession(strings.TrimSpace(args))
