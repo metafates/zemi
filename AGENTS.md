@@ -598,7 +598,8 @@ and drops the pinned prompt. Invariants:
 `runtime/types/zemi.lua` is the LuaLS (`---@meta`) description of the whole `zemi.*` API, never
 loaded by the interpreter. `syncTypes` rewrites it plus a copy of `runtime/lua/` to
 `<data>/types/` on every start, and the `.luarc.json` in `<config>` and in each local plugin whenever
-its content moved (an editor reloads on each write; the config watcher skips it). `TestTypes*` keep it
+its content moved (an editor reloads on each write; the config watcher skips it), as `/workflows`
+does in `<state>/scratch` before it opens a run's script. `TestTypes*` keep it
 honest: every API member annotated, nothing annotated that zemi dropped, and the
 `zemi.EventName`, `zemi.HostAction` and `zemi.WidgetCtx` aliases pinned to their Go sources, like
 each constant table (`enumTable`, keyed by the value upper-cased) and the alias that types the

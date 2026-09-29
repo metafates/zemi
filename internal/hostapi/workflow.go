@@ -1681,6 +1681,11 @@ func (h *Host) openFlowScript(id string) error {
 		if _, err := readPadFile(pad, flowFile(id, ".lua")); err != nil { // no link the editor would follow
 			return err
 		}
+		// above every pad, where no sandboxed command writes, so the editor's
+		// language server knows zemi.workflow
+		if err := writeLuarc(filepath.Dir(pad), h.TypesDir()); err != nil {
+			h.Log.Warn("luarc not written", "origin", "workflows", "dir", filepath.Dir(pad), "error", err)
+		}
 		h.openInEditor(ui, filepath.Join(pad, flowFile(id, ".lua")), "the workflow")
 		return nil
 	}
