@@ -10,8 +10,7 @@ import (
 
 // String removes ANSI escape sequences (CSI, OSC, other C1 controls) and
 // collapses C0 controls other than newline and tab, and kitty image
-// placeholders, into spaces. Runes are
-// preserved otherwise, including wide characters.
+// placeholders, into spaces. Other runes stay, wide ones included.
 func String(s string) string {
 	if !needsWork(s) {
 		return s
@@ -60,34 +59,20 @@ func skipEscape(s string, i int) int {
 	}
 	switch s[j] {
 	case '[': // CSI: parameter, intermediate and final bytes
-		j++
-		for j < len(s) {
-			c := s[j]
-			if c >= 0x40 && c <= 0x7e {
+		for j++; j < len(s); j++ {
+			if s[j] >= 0x40 && s[j] <= 0x7e {
 				return j + 1
 			}
-			j++
 		}
 		return j
-	case ']': // OSC: terminated by BEL or ST (ESC \)
-		j++
-		for j < len(s) {
-			if s[j] == 0x07 {
+	case ']', 'P', 'X', '^', '_': // OSC, DCS, SOS, PM, APC: ended by ST (ESC \), OSC by BEL too
+		for j++; j < len(s); j++ {
+			if s[j] == 0x07 && s[i+1] == ']' {
 				return j + 1
 			}
 			if s[j] == 0x1b && j+1 < len(s) && s[j+1] == '\\' {
 				return j + 2
 			}
-			j++
-		}
-		return j
-	case 'P', 'X', '^', '_': // DCS, SOS, PM, APC: terminated by ST
-		j++
-		for j < len(s) {
-			if s[j] == 0x1b && j+1 < len(s) && s[j+1] == '\\' {
-				return j + 2
-			}
-			j++
 		}
 		return j
 	default:

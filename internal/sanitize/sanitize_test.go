@@ -8,6 +8,7 @@ func TestSanitize(t *testing.T) {
 	}{
 		{"plain ascii", "a\tb\nc", "a\tb\nc"},
 		{"csi and osc stripped", "a\x1b[31mb\x1b]0;t\x07c", "abc"},
+		{"dcs ends at st, not bel", "a\x1bPq\x07b\x1b\\c", "ac"},
 		{"short escapes keep the next char", "\x1b7Hi\x1b8 a\x1b(Bb", "Hi ab"},
 		{"c0 and del become spaces", "a\x00b\x7fc", "a b c"},
 		{"bidi override alone is stripped", "a\u202eb", "ab"},

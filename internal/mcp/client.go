@@ -304,9 +304,13 @@ func (c *Client) call(ctx context.Context, method string, params, out any) error
 		}
 		return json.Unmarshal(m.Result, out)
 	case <-ctx.Done():
-		// initialize is the one request the protocol forbids cancelling.
+		// initialize is the one request the protocol forbids cancelling;
+		// without the notice the server keeps working for nobody
 		if method != "initialize" {
-			c.cancelCall(id)
+			c.sendAsync(map[string]any{
+				"jsonrpc": "2.0", "method": "notifications/cancelled",
+				"params": map[string]any{"requestId": id, "reason": "client cancelled"},
+			})
 		}
 		return ctx.Err()
 	case <-c.done:
@@ -314,17 +318,13 @@ func (c *Client) call(ctx context.Context, method string, params, out any) error
 	}
 }
 
-// cancelCall tells the server to stop working on a request its caller gave
-// up on; without it the server keeps going and its late reply arrives with
-// nothing waiting for it.
-func (c *Client) cancelCall(id int64) {
+// sendAsync sends v off the caller's goroutine: the reader must not wait on
+// a server that stopped reading, and neither must a cancelled call.
+func (c *Client) sendAsync(v any) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_ = c.send(ctx, map[string]any{
-			"jsonrpc": "2.0", "method": "notifications/cancelled",
-			"params": map[string]any{"requestId": id, "reason": "client cancelled"},
-		})
+		_ = c.send(ctx, v)
 	}()
 }
 
@@ -358,12 +358,7 @@ func (c *Client) handle(data []byte) {
 		} else {
 			resp["error"] = rpcError{Code: -32601, Message: "method not found"}
 		}
-		b, _ := json.Marshal(resp)
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			_ = c.t.send(ctx, b)
-		}()
+		c.sendAsync(resp)
 	case m.Method == "notifications/tools/list_changed":
 		if c.onToolsChanged != nil {
 			c.onToolsChanged()
