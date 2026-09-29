@@ -924,9 +924,9 @@ func fmtDuration(d time.Duration) string {
 // ---------------------------------------------------------------------------
 // /agents and zemi.agent.run
 
-// newAgentPrompt rides behind /agents new; the procedure lives in the zemi
-// skill.
-const newAgentPrompt = "I want a new zemi subagent that does what the command above says; ask me when it says nothing. Load the zemi skill and follow the New agent steps in its agents.md."
+// newAgentPrompt rides behind /agents new and takes zemiSkillDir, where the
+// procedure lives.
+const newAgentPrompt = "I want a new zemi subagent that does what the command above says; ask me when it says nothing. Follow the New agent steps in agents.md in %s, the zemi skill's directory."
 
 // agentsCommands is /agents.
 func (h *Host) agentsCommands() []*Command {
@@ -940,7 +940,7 @@ func (h *Host) agentsCommands() []*Command {
 				return h.openAgents()
 			case "new":
 				// the line as typed, newlines included, with the prompt behind it
-				return h.AgentSend("/agents " + strings.TrimSpace(typed) + agent.Attached("command", newAgentPrompt) + stdin)
+				return h.AgentSend("/agents " + strings.TrimSpace(typed) + agent.Attached("command", fmt.Sprintf(newAgentPrompt, h.zemiSkillDir())) + stdin)
 			case "open":
 				return h.openAgentFile(id)
 			case "view":

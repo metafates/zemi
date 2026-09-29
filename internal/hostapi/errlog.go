@@ -126,9 +126,10 @@ func (h *Host) HasUnseenErrors() bool {
 	return h.errs.unseen
 }
 
-// errorAskPrompt takes an error's time, source and text; it rides behind
-// the typed line, which names the error since its index dies with the process.
-const errorAskPrompt = "zemi recorded this error at %s from %s. Load the zemi skill and read its debug.md, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s"
+// errorAskPrompt takes an error's time and source, zemiSkillDir and the
+// error's text; it rides behind the typed line, which names the error since
+// its index dies with the process.
+const errorAskPrompt = "zemi recorded this error at %s from %s. Read debug.md in %s, the zemi skill's directory, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s"
 
 // OpenErrors runs /errors: it lists the recent errors newest first and
 // clears the badge; "<n>" selects one, "ask <n>" hands it to the agent to
@@ -153,7 +154,7 @@ func (h *Host) OpenErrors(args string) error {
 		}
 		if f[0] == "ask" {
 			e := entries[i]
-			prompt := "/errors ask " + e.source + ": " + Headline(e.msg) + agent.Attached("command", fmt.Sprintf(errorAskPrompt, e.at.Format(time.TimeOnly), e.source, e.msg))
+			prompt := "/errors ask " + e.source + ": " + Headline(e.msg) + agent.Attached("command", fmt.Sprintf(errorAskPrompt, e.at.Format(time.TimeOnly), e.source, h.zemiSkillDir(), e.msg))
 			h.GoSafe("errors ask", func() {
 				if err := h.AgentSend(prompt); err != nil {
 					h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))

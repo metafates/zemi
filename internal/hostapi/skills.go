@@ -135,6 +135,11 @@ func (h *Host) agentsSkillsDir() string { return joinIf(h.Dirs.AgentsHome, "skil
 // skill tool reads them from disk like any other skill.
 func (h *Host) builtinSkillsDir() string { return joinIf(h.Dirs.DataHome, "builtin-skills") }
 
+// zemiSkillDir is where a ready prompt sends the model for the zemi skill's
+// files: the read tool opens them with no ask, also when /skills switched the
+// skill off or the profile has no skill tool.
+func (h *Host) zemiSkillDir() string { return filepath.Join(h.builtinSkillsDir(), "zemi") }
+
 // materializeBuiltinSkills rewrites the builtin skills on every sync, so an
 // upgraded zemi replaces them and drops the ones it no longer ships.
 func (h *Host) materializeBuiltinSkills() error {

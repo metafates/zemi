@@ -44,20 +44,27 @@ func newTestHostDB(t *testing.T) (*Host, *lua.Runtime) {
 }
 
 // TestCommandSendsTypedLine: a builtin command that sends a ready prompt
-// shows the line the user typed; the prompt rides behind the marker.
+// shows the line the user typed; the prompt rides behind the marker and
+// names the zemi skill file it follows by a path the read tool opens, which
+// holds with the skill switched off.
 func TestCommandSendsTypedLine(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")
 	h.SetUIHooks(&fakeUI{})
 	h.RecordError("lua", "boom")
+	h.Dirs.DataHome = t.TempDir()
+	if err := h.materializeBuiltinSkills(); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct {
 		typed string
 		send  func() error
+		file  string
 	}{
-		{"/init", h.InitProject},
-		{"/plugins new show cost", func() error { return h.pluginsCommand("new show cost") }},
-		{"/agents new reviews my diffs", func() error { return h.agentsCommands()[0].GoFn(h, "new reviews my diffs") }},
-		{"/errors ask lua: boom", func() error { return h.OpenErrors("ask 0") }},
+		{"/init", h.InitProject, ""},
+		{"/plugins new show cost", func() error { return h.pluginsCommand("new show cost") }, "plugins.md"},
+		{"/agents new reviews my diffs", func() error { return h.agentsCommands()[0].GoFn(h, "new reviews my diffs") }, "agents.md"},
+		{"/errors ask lua: boom", func() error { return h.OpenErrors("ask 0") }, "debug.md"},
 	} {
 		sent := m.streams.Load()
 		if err := c.send(); err != nil {
@@ -71,8 +78,15 @@ func TestCommandSendsTypedLine(t *testing.T) {
 			return nil
 		})
 		waitIdle(t, h)
-		if typed, tail := agent.CutAttached(lastUserText(t, h)); typed != c.typed || !strings.Contains(tail, "<command>") {
+		typed, tail := agent.CutAttached(lastUserText(t, h))
+		if typed != c.typed || !strings.Contains(tail, "<command>") {
 			t.Errorf("%s: typed %q, tail %q", c.typed, typed, tail)
+		}
+		if c.file == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(h.zemiSkillDir(), c.file)); err != nil || !strings.Contains(tail, c.file+" in "+h.zemiSkillDir()) {
+			t.Errorf("%s: the tail does not name %s by its path (%v): %q", c.typed, c.file, err, tail)
 		}
 	}
 }
