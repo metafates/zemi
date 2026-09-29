@@ -21,8 +21,10 @@ import (
 )
 
 const (
-	// git CPU time that makes a snapshot slow
+	// git CPU time, or a wall time load alone does not reach, that makes a
+	// snapshot slow
 	snapSlow        = 300 * time.Millisecond
+	snapStall       = 3 * time.Second
 	snapFiles       = 5       // files a row's diff shows
 	snapCheckpoints = 100     // files a bash call checkpoints for rewind
 	snapBytes       = 4 << 10 // and the bytes they may take
@@ -75,9 +77,9 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 	if err != nil {
 		return "", nil, ""
 	}
-	// CPU time, not wall time: a loaded machine slows every snapshot, and
-	// only a large repository makes one cost work.
-	// NOTE: a slow disk's waits are not counted.
+	// CPU time, so a loaded machine does not switch snapshots off, and a
+	// long wall bound for a disk git waits on.
+	start := time.Now()
 	var cpu time.Duration
 	git := func(dir string, env []string, args ...string) (string, error) {
 		return proc.Git{Dir: dir, Env: env, CPU: &cpu}.Run(context.Background(), args...)
@@ -129,10 +131,11 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 		h.Log.Warn("snapshot", "snapshot failed", map[string]any{"error": err.Error()})
 		return "", nil, ""
 	}
-	if cpu < snapSlow {
+	if wall := time.Since(start); cpu < snapSlow && wall < snapStall {
 		s.slow = 0
 	} else if s.slow++; s.slow == 2 {
-		h.Log.Warn("snapshot", "snapshots are slow in this repository; bash rows show no diff", map[string]any{"cpu_ms": cpu.Milliseconds()})
+		h.Log.Warn("snapshot", "snapshots are slow in this repository; bash rows show no diff",
+			map[string]any{"cpu_ms": cpu.Milliseconds(), "ms": wall.Milliseconds()})
 	}
 	return root, env, strings.TrimSpace(out)
 }
