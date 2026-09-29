@@ -774,8 +774,9 @@ lua-language-server is installed.
   the message wherever the model reads it (`appendUserRows`: a new turn, a step boundary, a
   drained queue, a resume), so it sits under the rows of the turn it arrived in. A report a
   closing session drops (`/new`, `/resume`) is stored in its own session and toasted
-  (`notifyReport`). `/agents` lists the live session's runs and, under Running, the live runs of every other session (`agentRunItems`,
-  named by that session's title): they block `/rewind`, so their stop must be reachable.
+  (`notifyReport`). `/agents` lists the live session's runs and, under Running and Workflows, the live runs and
+  workflows of every other session (`agentRunItems`, the desc ending in that session's title,
+  `fromSession`): they block `/rewind`, so their stop must be reachable.
 - **Scratchpad** (scratch.go): `<state>/scratch/<first 12 of the session id>`, short so a unix
   socket path under it fits macOS's 104 bytes. A pipeline binds it once (`Pipeline.Pad`,
   `Request.Pad`): `PipelineFor` the live session's, a subagent run its parent session's, so a run

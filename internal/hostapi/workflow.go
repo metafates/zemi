@@ -1705,13 +1705,11 @@ func (h *Host) workflowsOverlay() Overlay {
 	held := map[string]bool{}
 	for _, f := range h.tasks.flowList() {
 		held[f.id] = true
-		switch live := f.isRunning(); {
-		case live && f.parent != sid:
-			running = append(running, h.flowItem(f, "Running", " (from "+h.sessionName(f.parent)+")"))
-		case live:
-			running = append(running, h.flowItem(f, "Running", ""))
+		switch {
+		case f.isRunning():
+			running = append(running, h.flowItem(f, "Running"))
 		case f.parent == sid:
-			earlier = append(earlier, h.flowItem(f, "Earlier in this session", ""))
+			earlier = append(earlier, h.flowItem(f, "Earlier in this session"))
 		}
 	}
 	var stored []*flowRun
@@ -1722,7 +1720,7 @@ func (h *Host) workflowsOverlay() Overlay {
 	}
 	slices.SortFunc(stored, func(a, b *flowRun) int { return b.started.Compare(a.started) })
 	for _, f := range stored {
-		earlier = append(earlier, h.flowItem(f, "Earlier in this session", ""))
+		earlier = append(earlier, h.flowItem(f, "Earlier in this session"))
 	}
 	items := slices.Concat(running, earlier)
 	// NOTE: while a run lives, an open list reads the saved files and the
@@ -1789,7 +1787,7 @@ func flowDesc(f *flowRun, v flowView) string {
 
 // flowItem is a run's row in /workflows: its detail acts on it, and v
 // opens its agents.
-func (h *Host) flowItem(f *flowRun, section, from string) map[string]any {
+func (h *Host) flowItem(f *flowRun, section string) map[string]any {
 	v := f.view()
 	actions := []any{map[string]any{"text": "View its agents", "hotkey": "v", "run": "workflows view " + f.id}}
 	switch {
@@ -1809,7 +1807,7 @@ func (h *Host) flowItem(f *flowRun, section, from string) map[string]any {
 		actions = append(actions, map[string]any{"text": "Save", "hotkey": "s", "fill": "/workflows save " + f.id + " " + slug(f.description)})
 	}
 	return map[string]any{
-		"id": f.id, "text": f.description + from, "desc": flowDesc(f, v), "section": section,
+		"id": f.id, "text": f.description, "desc": flowDesc(f, v) + h.fromSession(f.parent), "section": section,
 		"fields": fieldList(flowFields(f, v)...), "detail": f.about, "actions": actions,
 	}
 }

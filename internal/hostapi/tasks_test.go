@@ -265,9 +265,19 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	if err := h.tasks.add(run); err != nil {
 		t.Fatal(err)
 	}
+	// a paused workflow of that session is one row, its agent none
+	if err := h.tasks.addFlow(&flowRun{id: "0000000f", description: "slow scan", parent: "other", status: RunRunning, paused: true, limit: 1, started: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.tasks.add(&agentRun{id: "agent-8", agent: "general", description: "scan part1", parent: "other", workflow: "0000000f", status: "running", started: time.Now(), cancel: func() {}}); err != nil {
+		t.Fatal(err)
+	}
 	rows := fmt.Sprint(h.agentRunItems())
-	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "look (from Other work)") || !strings.Contains(rows, "agents view agent-9") || !strings.Contains(rows, "0 tool calls") {
+	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "look · from Other work") || !strings.Contains(rows, "agents view agent-9") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
+	}
+	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "· from Other work run:workflows view 0000000f section:Workflows") {
+		t.Fatalf("another session's workflow is not one row:\n%s", rows)
 	}
 	// enter on a run opens its transcript, and the footer says so; the
 	// running run, under New agent, is selected

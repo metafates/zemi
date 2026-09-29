@@ -733,12 +733,13 @@ func (h *Host) agentRunItems() []any {
 		}
 		earlier = append(earlier, item)
 	}
-	// a workflow's agents are one row, its own
+	// a workflow's agents are one row, its own; another session's live one
+	// is listed like its runs below
 	held := map[string]bool{}
-	for _, f := range h.tasks.flowsOf(sid) {
+	for _, f := range slices.DeleteFunc(h.tasks.flowList(), func(f *flowRun) bool { return f.parent != sid && !f.isRunning() }) {
 		flows = append(flows, map[string]any{
 			"text":    f.description,
-			"desc":    flowDesc(f, f.view()),
+			"desc":    flowDesc(f, f.view()) + h.fromSession(f.parent),
 			"section": "Workflows",
 			"run":     "workflows view " + f.id,
 		})
@@ -752,9 +753,9 @@ func (h *Host) agentRunItems() []any {
 	}
 	// a run another session started (/new leaves a background run behind)
 	// still writes files and blocks /rewind, so it is listed, named by that session
-	for _, run := range slices.DeleteFunc(h.tasks.runList(), func(x *agentRun) bool { return x.parent == sid || !x.isRunning() }) {
+	for _, run := range slices.DeleteFunc(h.tasks.runList(), func(x *agentRun) bool { return x.parent == sid || x.workflow != "" || !x.isRunning() }) {
 		status, calls, took, _ := run.state()
-		row(run.id, status, run.agent, took, run.description+" (from "+h.sessionName(run.parent)+")", fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
+		row(run.id, status, run.agent, took, run.description+h.fromSession(run.parent), fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
 	}
 	if h.DB != nil && sid != "" {
 		children, _ := h.DB.ChildSessions(sid)
@@ -768,15 +769,19 @@ func (h *Host) agentRunItems() []any {
 	return slices.Concat(running, flows, earlier)
 }
 
-// sessionName names the session a run of another one came from: its title,
-// else "another session".
-func (h *Host) sessionName(id string) string {
+// fromSession ends the desc of a run another session started with that
+// session's title, else "another session"; last, so a long title clips
+// there and widens no label column.
+func (h *Host) fromSession(parent string) string {
+	if parent == h.AgentSessionID() {
+		return ""
+	}
 	if h.DB != nil {
-		if sess, err := h.DB.GetSession(id); err == nil && sess.Title != "" {
-			return clipRunes(sess.Title, 60)
+		if sess, err := h.DB.GetSession(parent); err == nil && sess.Title != "" {
+			return " · from " + clipRunes(sess.Title, 60)
 		}
 	}
-	return "another session"
+	return " · from another session"
 }
 
 // statusCol pads a run's status or a project's trust word to the widest, so
