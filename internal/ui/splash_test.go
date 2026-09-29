@@ -67,7 +67,7 @@ local default = require("zemi.tui")
 zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
-    ctx.recent = { { ago = "1m ago", title = "a" }, { ago = "2m ago", title = "b" }, { ago = "3m ago", title = "c" } }
+    ctx.recent = { { id = "a", ago = "1m ago", title = "a" }, { id = "b", ago = "2m ago", title = "b" }, { id = "c", ago = "3m ago", title = "c" } }
     return default.splash(ctx)
   end,
 })`)
@@ -157,6 +157,53 @@ func TestSplashContext(t *testing.T) {
 		if !strings.Contains(frame, c.want) || c.not != "" && strings.Contains(frame, c.not) {
 			t.Errorf("%s: want %q, not %q\n%s", c.name, c.want, c.not, frame)
 		}
+	}
+}
+
+// TestSplashProjects: with another project known the splash lists it where
+// recent sessions go, a click on its path switches there, and with none it
+// offers what to try.
+func TestSplashProjects(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		other     bool
+		want, not []string
+	}{
+		{"no other project", false, []string{`try      "explain this project"`}, []string{"projects"}},
+		{"another project", true, []string{"projects", "now      ", "/projects switches, or type to stay here"}, []string{"try"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, host := bootAgentApp(t, 100, 30)
+			root := t.TempDir()
+			if c.other {
+				g, p, err := store.OpenForDirs(host.Dirs.StateHome, root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				g.Close()
+				p.Close()
+				c.want = append(c.want, root[:20]) // the rest clips
+			}
+			app.frameGen++
+			app.renderSync(t)
+			frame := ansi.Strip(app.Frame())
+			for _, w := range c.want {
+				if !strings.Contains(frame, w) {
+					t.Errorf("no %q in\n%s", w, frame)
+				}
+			}
+			for _, n := range c.not {
+				if strings.Contains(frame, n) {
+					t.Errorf("%q in\n%s", n, frame)
+				}
+			}
+			if c.other {
+				x, y := findCell(t, app, root[:20])
+				if seg := dropCells(app.lastRows[y], x)[0]; seg.Click != "projects switch "+root || seg.Widget != "splash" {
+					t.Fatalf("the path's segment: %+v", seg)
+				}
+			}
+		})
 	}
 }
 

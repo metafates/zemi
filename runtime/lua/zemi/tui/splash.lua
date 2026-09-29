@@ -63,7 +63,10 @@ function M.render(ctx)
 	-- a short chat drops the recent sessions first, then the mascot, then the
 	-- context row, so the bottom-anchored chat never cuts the block's first
 	-- rows (it shows height - 1 of them)
-	local recent, fit = ctx.recent or {}, (ctx.height or 0) > 0 and ctx.height - 1 or math.huge
+	-- where zemi is rarely the pick (~, /, a new dir outside a repository) Go
+	-- sets projects to switch to, which take the recent block's place and shape
+	local projects = ctx.projects
+	local recent, fit = projects or ctx.recent or {}, (ctx.height or 0) > 0 and ctx.height - 1 or math.huge
 	-- taken before the fit check empties recent: a project with sessions never shows it
 	local try = #recent == 0
 	-- the no-model hint names its fix, so it wraps under its label instead of clipping
@@ -149,17 +152,28 @@ function M.render(ctx)
 	end
 	if #recent > 0 then
 		row({ { text = "" } })
-		row({ { text = "recent", hl = "Title" } })
+		row({ { text = projects and "projects" or "recent", hl = "Title" } })
 		for _, r in ipairs(recent) do
-			local title = (r.title ~= "" and r.title) or "(untitled)"
-			row({ { text = string.format("  %-8s ", r.ago), hl = "Comment" }, { text = title, hl = "Normal" } })
+			local label = projects and r.path or (r.title ~= "" and r.title) or "(untitled)"
+			local click = projects and ("projects switch " .. r.root) or ("resume " .. r.id)
+			row({
+				{ text = string.format("  %-8s ", r.ago), hl = "Comment" },
+				{ text = label, hl = "Normal", click = click },
+			})
 		end
-		row({
-			{ text = "  /resume", hl = "SplashKey" },
-			{ text = " continues the latest, ", hl = "Comment" },
-			{ text = "/sessions", hl = "SplashKey" },
-			{ text = " lists them", hl = "Comment" },
-		})
+		if projects then
+			row({
+				{ text = "  /projects", hl = "SplashKey" },
+				{ text = " switches, or type to stay here", hl = "Comment" },
+			})
+		else
+			row({
+				{ text = "  /resume", hl = "SplashKey" },
+				{ text = " continues the latest, ", hl = "Comment" },
+				{ text = "/sessions", hl = "SplashKey" },
+				{ text = " lists them", hl = "Comment" },
+			})
+		end
 	end
 	row({ { text = "" } })
 	row(tip)
@@ -178,7 +192,7 @@ function M.render(ctx)
 			local left = room - n
 			if left <= 0 then break end
 			local text = fmt.clip(seg.text, left)
-			clipped[#clipped + 1] = { text = text, hl = seg.hl }
+			clipped[#clipped + 1] = { text = text, hl = seg.hl, click = seg.click }
 			n = n + fmt.cells(text)
 		end
 		out[#out + 1] = clipped
@@ -191,11 +205,17 @@ function M.render(ctx)
 end
 
 -- Register a widget with id "splash" in init.lua to replace it (ctx carries
--- version, model, cwd, included, recent, width and height).
+-- version, model, cwd, included, recent, projects, width and height).
 zemi.ui.widget.add({
 	id = "splash",
 	region = "chat",
 	priority = 5,
+	-- a row's click id is a command and its arguments
+	---@param ev zemi.WidgetClick
+	on_click = function(ev)
+		local name, args = ev.id:match("^(%S+)%s*(.*)$")
+		assert(zemi.command.run(name, args))
+	end,
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)

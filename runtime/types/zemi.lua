@@ -796,6 +796,11 @@ function zemi.event.stats() end
 ---@field title string
 ---@field ago string "now", "5m ago", "2d ago".
 
+---@class zemi.RecentProject
+---@field path string The project root, ~-shortened.
+---@field root string The project root, absolute: what `/projects switch` takes.
+---@field ago string When zemi last started there: "now", "5m ago", "2d ago".
+
 --- What a send carries besides the conversation.
 ---@class zemi.Included
 ---@field instructions? string[] The project's instruction files, repo-relative; empty when it has none (what /init writes), nil when untrusted or at $HOME or /.
@@ -844,7 +849,7 @@ function zemi.event.stats() end
 --- What a widget's render function is given. Everything is a snapshot:
 --- render must be pure and finish in about 10 ms: only the read-only
 --- `zemi.*` calls other than `zemi.fs.*` and a handle's `wait` work inside
---- it, any other raises. `transcript`, `agent`, `todos`, `recent` and
+--- it, any other raises. `transcript`, `agent`, `todos`, `recent`, `projects` and
 --- `included` are built on first read, so a widget that does
 --- not read them does not pay for them; kept past the render, a ctx reads
 --- nil for the ones render did not read.
@@ -875,6 +880,7 @@ function zemi.event.stats() end
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
 ---@field todos zemi.Todo[]
 ---@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
+---@field projects? zemi.RecentProject[] The three projects zemi started in last besides this one, newest first; only while the transcript is empty and zemi runs in ~, / or outside a repository with no session here.
 ---@field resume string The shell command that reopens this session from its project ; "" before the first send.
 ---@field included zemi.Included What a send carries. Cached: rebuilt after a boot or reload, a trust change, a new session, a skill toggle or recipe delete, and a memory write.
 ---@field usage zemi.Usage

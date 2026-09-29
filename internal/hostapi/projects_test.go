@@ -146,6 +146,62 @@ func TestProjectsCommand(t *testing.T) {
 	}
 }
 
+// TestSplashProjects: the splash offers the other projects that still exist
+// in ~ always and outside a repository only while the dir has no session.
+func TestSplashProjects(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	for _, c := range []struct {
+		name    string
+		dir     string // under a temp dir, or home when "~"
+		repo    bool
+		session bool
+		listed  bool
+	}{
+		{name: "home with a session", dir: "~", session: true, listed: true},
+		{name: "a new dir outside a repository", dir: "plain", listed: true},
+		{name: "a dir with a session", dir: "plain", session: true},
+		{name: "a repository", dir: "repo", repo: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			tmp, _ := filepath.EvalSymlinks(t.TempDir())
+			state, other, gone := filepath.Join(tmp, "state"), filepath.Join(tmp, "other"), filepath.Join(tmp, "gone")
+			dir := filepath.Join(tmp, c.dir)
+			if c.dir == "~" {
+				dir = home
+			}
+			for _, d := range []string{dir, other, gone} {
+				os.MkdirAll(d, 0o755)
+				if d == dir {
+					continue
+				}
+				g, p, err := store.OpenForDirs(state, d)
+				if err != nil {
+					t.Fatal(err)
+				}
+				g.Close()
+				p.Close()
+			}
+			os.Remove(gone)
+			if c.repo {
+				os.Mkdir(filepath.Join(dir, ".git"), 0o755)
+			}
+			log := logging.New(t.TempDir())
+			h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{ProjectDir: dir, StateHome: state})
+			t.Cleanup(h.Close)
+			if c.session {
+				h.DB.CreateSession("s", "", "", "")
+			}
+			var got []string
+			for _, p := range h.splashProjects() {
+				got = append(got, p.Root)
+			}
+			if want := map[bool][]string{true: {other}}[c.listed]; !slices.Equal(got, want) {
+				t.Fatalf("splashProjects = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 // TestListProjects: every root with a checked root file or a trust decision
 // is listed, the last opened first, with its trust word and session count.
 func TestListProjects(t *testing.T) {

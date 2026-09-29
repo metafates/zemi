@@ -107,6 +107,33 @@ func (p Project) TrustWord() string {
 	return p.Trust
 }
 
+// splashProjects is what the splash offers in place of recent sessions: the
+// three projects zemi last started in besides this one, where zemi is rarely
+// the user's pick. That is ~ or /, where a terminal starts, and a directory
+// outside a repository while it has no session. Cached: the splash renders
+// every frame a job runs; forget and delete mark it stale.
+func (h *Host) splashProjects() []Project {
+	root := h.trustRoot()
+	if !TrustUnsaved(root) && len(h.recentSessions()) > 0 {
+		return nil
+	}
+	h.splashMu.Lock()
+	defer h.splashMu.Unlock()
+	if !h.splashStale.Swap(false) {
+		return h.splash
+	}
+	h.splash = nil
+	if _, err := os.Stat(filepath.Join(h.Dirs.RepoRoot(), ".git")); err == nil && !TrustUnsaved(root) {
+		return nil
+	}
+	for _, p := range ListProjects(h.Dirs, false) {
+		if p.Root != root && !p.Missing && !p.Opened.IsZero() && len(h.splash) < 3 {
+			h.splash = append(h.splash, p)
+		}
+	}
+	return h.splash
+}
+
 func (h *Host) projectsCommands() []*Command {
 	return []*Command{{
 		Name: "projects", NArgs: NArgsAny, Desc: "switch to another project, forget its trust or delete its data",
@@ -270,6 +297,7 @@ func (h *Host) deleteProject(p Project) error {
 		err = errors.Join(err, os.RemoveAll(filepath.Join(h.Dirs.CacheHome, "lsp", key)))
 	}
 	release()
+	h.splashStale.Store(true)
 	if err = errors.Join(err, h.forgetTrust(p.Root)); err != nil {
 		return err
 	}

@@ -449,6 +449,9 @@ type Host struct {
 	recentMu    sync.Mutex
 	recent      []*store.Session
 	recentStale atomic.Bool
+	splashMu    sync.Mutex // guards splash, splashProjects' cache
+	splash      []Project
+	splashStale atomic.Bool
 
 	includedMu    sync.Mutex
 	included      included
@@ -665,6 +668,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 	}
 	h.refreshPending()
 	h.recentStale.Store(true)
+	h.splashStale.Store(true)
 	h.includedStale.Store(true)
 	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
 	// sync: the first turn's tool schema and zemi health read it (the probe is fast)
@@ -1511,7 +1515,7 @@ func TildePath(p string) string {
 }
 
 // widgetCtxTable builds a render's ctx. The fields that copy the transcript,
-// the live turn, todos or recent sessions are built on first read, so a
+// the live turn, todos, recent sessions or projects are built on first read, so a
 // widget that never reads them does not pay for them (a statusline widget
 // over a long session renders 50 times faster), and read nil once the
 // render returned, so a ctx kept in an upvalue pins nothing. done ends it.
@@ -1651,6 +1655,21 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 				recent.Append(row)
 			}
 			return recent
+		},
+		"projects": func(L *glua.LState) glua.LValue {
+			ps := h.splashProjects()
+			if len(sess.Transcript) > 0 || len(ps) == 0 {
+				return glua.LNil
+			}
+			out := L.NewTable()
+			for _, p := range ps {
+				row := L.NewTable()
+				row.RawSetString("path", glua.LString(sanitize.String(TildePath(p.Root))))
+				row.RawSetString("root", glua.LString(p.Root))
+				row.RawSetString("ago", glua.LString(ago(p.Opened.UnixMilli())))
+				out.Append(row)
+			}
+			return out
 		},
 	}
 	live := true

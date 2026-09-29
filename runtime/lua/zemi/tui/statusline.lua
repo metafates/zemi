@@ -26,7 +26,7 @@ zemi.ui.widget.add({
 })
 
 -- The project: its path when short, else its name (the splash has the whole
--- path), and whether it is untrusted.
+-- path), and whether it is untrusted. A click on the path opens /projects.
 zemi.ui.widget.add({
 	id = "statusline.cwd",
 	region = "statusline.left",
@@ -38,7 +38,7 @@ zemi.ui.widget.add({
 		local p = ctx.project or ctx.cwd or ""
 		if fmt.cells(p) > math.floor((ctx.width or 80) / 4) then p = p:match("([^/]+)/*$") or p end
 		---@type zemi.Line
-		local line = { { text = p, hl = "Comment" } }
+		local line = { { text = p, hl = "Comment", click = "projects" } }
 		if ctx.trusted == false then
 			line = p == "" and {} or { line[1], { text = " · ", hl = "Comment" } }
 			for _, seg in ipairs(fmt.hint("untrusted", "/trust", "trust")) do
