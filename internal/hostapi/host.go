@@ -435,6 +435,8 @@ type Host struct {
 
 	// Version is the zemi build version for the splash screen.
 	Version string
+	// ResumeDir is the -C dir of this run, which ctx.resume names; "" for none.
+	ResumeDir string
 	// Inert, set before boot, makes a boot that only reads config (zemi
 	// models, completion): no model call, no Lua IO but reads, no MCP start,
 	// no file sync.
@@ -1638,7 +1640,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		"trustable":  func(L *glua.LState) glua.LValue { return glua.LBool(!TrustUnsaved(h.trustRoot())) },
 		"resume": func(L *glua.LState) glua.LValue {
 			if id := h.AgentSessionID(); id != "" {
-				return glua.LString(ResumeCommand(id))
+				return glua.LString(ResumeCommand(h.ResumeDir, id))
 			}
 			return glua.LString("")
 		},

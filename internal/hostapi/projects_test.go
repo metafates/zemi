@@ -146,6 +146,23 @@ func TestProjectsCommand(t *testing.T) {
 	}
 }
 
+// TestResumeCommand: a run started with -C names its dir as one shell word,
+// ~-shortened only where the shell expands it.
+func TestResumeCommand(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	for dir, want := range map[string]string{
+		"":                  "zemi -r id",
+		"/tmp/a":            "zemi -C /tmp/a -r id",
+		"/tmp/a b":          "zemi -C '/tmp/a b' -r id",
+		home + "/code/app":  "zemi -C ~/code/app -r id",
+		home + "/it's here": "zemi -C '" + home + "/it'\\''s here' -r id",
+	} {
+		if got := ResumeCommand(dir, "id"); got != want {
+			t.Errorf("ResumeCommand(%q) = %q, want %q", dir, got, want)
+		}
+	}
+}
+
 // TestSplashProjects: the splash offers the other projects that still exist
 // in ~ always and outside a repository only while the dir has no session.
 func TestSplashProjects(t *testing.T) {

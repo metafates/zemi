@@ -24,6 +24,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // NewSession closes the live session; the next send creates a fresh one.
@@ -35,9 +36,20 @@ func (h *Host) NewSession() error {
 	return nil
 }
 
-// ResumeCommand is the shell command that reopens session id, run from its
-// project; the one place that names the CLI's resume flag.
-func ResumeCommand(id string) string { return "zemi -r " + id }
+// ResumeCommand is the shell command that reopens session id; the one place
+// that names the CLI's resume flag. A run started with -C names its dir, since
+// the shell is not there (a /projects switch is such a run); dir is "" for
+// none, and the command then runs from the project.
+func ResumeCommand(dir, id string) string {
+	if dir == "" {
+		return "zemi -r " + id
+	}
+	word := tools.ShellQuote(dir)
+	if rest, ok := strings.CutPrefix(TildePath(dir), "~"); ok && tools.ShellQuote(rest) == rest {
+		word = "~" + rest // the shell expands it only unquoted
+	}
+	return "zemi -C " + word + " -r " + id
+}
 
 // ResumeSession reopens a stored session ("" means the most recent other one).
 func (h *Host) ResumeSession(id string) error {

@@ -999,7 +999,7 @@ would answer) and main prints it to the shell, foreground colors only (the shell
 text color are not the theme's), plain on a terminal without color. Code below builtin may not
 add to it: its text lands outside zemi's chrome, beside the resume command a user copies. The
 shipped `exit` widget (`tui/exit.lua`) prints the session and `ctx.resume`, the command
-`hostapi.ResumeCommand` builds, the one place that names the CLI's resume flag. A `composer` node with `frame` draws the square frame around the composer
+`hostapi.ResumeCommand` builds, the one place that names the CLI's resume flag, with `-C` and the dir when the run started with one (`Host.ResumeDir`: after a `/projects` switch the shell is elsewhere). A `composer` node with `frame` draws the square frame around the composer
 and puts the first line of the widgets in its `top`, `left` and `right` regions into the rules
 (`composerFrame`, ui/composer.go; `top` gets the whole rule, whose left corner holds the
 snail of `tui/snail.lua`, its eyes showing the state, how a turn ended included

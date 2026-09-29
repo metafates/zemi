@@ -881,7 +881,7 @@ function zemi.event.stats() end
 ---@field todos zemi.Todo[]
 ---@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
 ---@field projects? zemi.RecentProject[] The three projects zemi started in last besides this one, newest first; only while the transcript is empty and zemi runs in ~, / or outside a repository with no session here.
----@field resume string The shell command that reopens this session from its project ; "" before the first send.
+---@field resume string The shell command that reopens this session: from its project, or with the -C dir this run started with; "" before the first send.
 ---@field included zemi.Included What a send carries. Cached: rebuilt after a boot or reload, a trust change, a new session, a skill toggle or recipe delete, and a memory write.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage

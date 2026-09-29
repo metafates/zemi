@@ -250,7 +250,7 @@ func TestFarewell(t *testing.T) {
 				}
 				host.AppendMessage("user", "  fix the build\nmore")
 				// whole even where the terminal wraps it
-				c.want = append(c.want, hostapi.ResumeCommand(sid))
+				c.want = append(c.want, hostapi.ResumeCommand("", sid))
 			}
 			if c.booting {
 				block, reached := make(chan struct{}), make(chan struct{})

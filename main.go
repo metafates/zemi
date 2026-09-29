@@ -205,6 +205,9 @@ func newHost(dirs config.Dirs, log *logging.Logger, o options) (*hostapi.Host, *
 		host.RecordMessage(origin, line)
 	})
 	host.Version = versionString()
+	if o.dir != "" {
+		host.ResumeDir = dirs.ProjectDir // absolute: -C ran first
+	}
 	trust := &trustGate{h: host, dirs: dirs}
 	if o.trust != nil {
 		trust.session.Store(o.trust)
