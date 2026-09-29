@@ -37,13 +37,13 @@ import (
 // ReadOnly makes it a planning agent: the project is read-only to it and
 // the pipeline denies file changes and confines commands (see h.readOnly).
 type Profile struct {
-	Name         string   `json:"name"`
-	Model        string   `json:"model"`
-	System       string   `json:"system"`
-	Tools        []string `json:"tools"`
-	ContextFiles []string `json:"context_files"`
-	ReadOnly     bool     `json:"read_only"`
-	Temperature  *float64 `json:"temperature,omitempty"`
+	Name         string
+	Model        string
+	System       string
+	Tools        []string
+	ContextFiles []string
+	ReadOnly     bool
+	Temperature  *float64
 }
 
 // PermRequest is one interactive permission ask for the overlay.
