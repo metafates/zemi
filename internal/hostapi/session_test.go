@@ -164,18 +164,17 @@ func TestSessionLifecycle(t *testing.T) {
 	if err := os.MkdirAll(pad, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// headless the delete is done when the command returns: zemi run exits then
+	h.SetUIHooks(nil)
 	if err := h.DeleteSession(first, true); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() error {
-		if _, err := os.Stat(pad); err == nil {
-			return errors.New("scratchpad still there")
-		}
-		if _, err := h.DB.GetSession(first); err == nil {
-			return errors.New("session still stored")
-		}
-		return nil
-	})
+	if _, err := os.Stat(pad); err == nil {
+		t.Error("scratchpad still there")
+	}
+	if _, err := h.DB.GetSession(first); err == nil {
+		t.Error("session still stored")
+	}
 }
 
 // TestResumeKeepsToolDiffs: the diff a file tool showed live is stored

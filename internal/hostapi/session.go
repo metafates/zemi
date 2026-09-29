@@ -160,8 +160,9 @@ func (h *Host) OpenSessions(confirm string) error {
 
 // DeleteSession removes a stored session other than the live one, with its
 // subagent runs and scratchpad, once yes confirms it (AskFirst). The rewrite
-// that clears the text from disk takes a while on a large store, so it runs
-// off the caller's goroutine.
+// that clears the text from disk takes a while on a large store, so with a UI
+// it runs off the caller's goroutine; headless it runs inline, since the
+// process exits when the command returns.
 func (h *Host) DeleteSession(id string, yes bool) error {
 	if h.DB == nil {
 		return errors.New("session store unavailable")
@@ -174,25 +175,32 @@ func (h *Host) DeleteSession(id string, yes bool) error {
 			return Usagef("an agent from that session is still running; /agents stops it")
 		}
 	}
-	if _, err := h.DB.GetSession(id); err != nil {
+	s, err := h.DB.GetSession(id)
+	if errors.Is(err, store.ErrNotFound) {
 		return Usagef("no session %q in this project", id)
+	} else if err != nil {
+		return err
 	}
 	if !yes {
 		return AskFirst("sessions delete "+id+" --yes", "", h.OpenSessions)
 	}
-	h.GoSafe("delete session", func() {
-		title := ""
-		if s, err := h.DB.GetSession(id); err == nil {
-			title = s.Title
-		}
+	del := func() error {
 		if err := h.DB.DeleteSession(id); err != nil {
-			h.Notify(logging.Error, "Could not delete the session", err.Error())
-			return
+			return err
 		}
 		h.recentStale.Store(true)
 		// "" when there is no state dir, which RemoveAll ignores
 		_ = os.RemoveAll(h.scratchFor(id))
-		h.Notify(logging.Info, "Session deleted", title)
+		h.Notify(logging.Info, "Session deleted", s.Title)
+		return nil
+	}
+	if _, err := h.Screen(); err != nil {
+		return del()
+	}
+	h.GoSafe("delete session", func() {
+		if err := del(); err != nil {
+			h.Notify(logging.Error, "Could not delete the session", err.Error())
+		}
 	})
 	return nil
 }
