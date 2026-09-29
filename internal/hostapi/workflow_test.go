@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"charm.land/fantasy"
@@ -49,7 +50,8 @@ func echoAgents(h *Host) *atomic.Int32 {
 }
 
 // TestWorkflowCancelBoundedDrain: an agent that never notices the cancel
-// must not hold runWorkflow open past the drain grace.
+// must not hold runWorkflow open past the drain grace. The run checks that a
+// cancel ends it; the bubble checks the bound.
 func TestWorkflowCancelBoundedDrain(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -67,16 +69,27 @@ func TestWorkflowCancelBoundedDrain(t *testing.T) {
 		done <- err
 	}()
 	// cancelled only once the agent runs: a cancel that beats it tests nothing
-	<-running
+	select {
+	case <-running:
+	case err := <-done:
+		t.Fatalf("runWorkflow returned before its agent ran: %v", err)
+	}
 	cancel()
 	select {
 	case err := <-done:
 		if err == nil {
 			t.Fatal("cancelled workflow returned no error")
 		}
-	case <-time.After(workflowDrainGrace + time.Minute):
+	case <-time.After(time.Minute):
 		t.Fatal("runWorkflow waited on an agent that ignores cancellation")
 	}
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		(&wfRun{running: 1}).drainAgents()
+		if d := time.Since(start); d != workflowDrainGrace {
+			t.Fatalf("drained for %v, want %v", d, workflowDrainGrace)
+		}
+	})
 }
 
 func TestWorkflowRun(t *testing.T) {
