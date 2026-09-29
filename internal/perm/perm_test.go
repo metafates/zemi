@@ -169,6 +169,10 @@ func TestNormalizeSegments(t *testing.T) {
 		{"echo $(true)#; echo b", "echo|true|#|echo b"},
 		{"(echo a)# x", "echo a|# x"},
 		{"grep K\u00a0a\vb\rc\fd", "grep K\u00a0a\vb\rc\fd"},
+		{"echo $(rm -rf x)", "echo|rm -rf x"},
+		{"echo `rm -rf x`", "echo|rm -rf x"},
+		{`echo "$(rm -rf x)"`, "echo $(rm -rf x)|rm -rf x"},
+		{"echo \"`rm -rf x`\"", "echo `rm -rf x`|rm -rf x"},
 	} {
 		if got := strings.Join(Normalize(c.cmd).Segments, "|"); got != c.want {
 			t.Errorf("%q: got %q, want %q", c.cmd, got, c.want)
@@ -176,14 +180,6 @@ func TestNormalizeSegments(t *testing.T) {
 	}
 	if Normalize("PATH=/evil; ls").ForceAsk == "" {
 		t.Fatal("a gated name must still force ask")
-	}
-}
-
-func TestSubstitutionIsSegment(t *testing.T) {
-	for _, cmd := range []string{"echo $(rm -rf x)", "echo `rm -rf x`", `echo "$(rm -rf x)"`, "echo \"`rm -rf x`\""} {
-		if n := Normalize(cmd); !slices.Contains(n.Segments, "rm -rf x") {
-			t.Errorf("%s: substitution must cut into its own segment: %q", cmd, n.Segments)
-		}
 	}
 }
 
