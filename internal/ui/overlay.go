@@ -183,7 +183,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 				// sized as a drawn list, since its detail view opens at its size
 				area := boxArea(a.stage, a.width, a.height)
 				a.overlayBox(top, area.Dx(), area.Dy())
-				a.openDetailOn(top, idx, n).armed = n + 1
+				a.openDetail(top, idx, n).armed = n + 1
 				return
 			}
 		}
@@ -357,11 +357,14 @@ func (st *overlayState) actionKey(n int) string {
 	return strconv.Itoa(n + 1)
 }
 
-// openDetail pushes the detail view of item idx: its detail text as the
-// body and its actions as the list, under the parent's origin so the badge
-// and the run gate stay the parent's.
-func (a *App) openDetail(parent *overlayState, idx int) {
+// openDetail pushes the detail view of item idx with action n selected: its
+// detail text as the body and its actions as the list, under the parent's
+// origin so the badge and the run gate stay the parent's.
+func (a *App) openDetail(parent *overlayState, idx, n int) *overlayState {
 	a.overlays = append(a.overlays, a.detailState(parent, idx))
+	d := &a.overlays[len(a.overlays)-1]
+	d.selected = n
+	return d
 }
 
 func (a *App) detailState(parent *overlayState, idx int) overlayState {
@@ -374,14 +377,6 @@ func (a *App) detailState(parent *overlayState, idx int) overlayState {
 	st := a.overlayState(hostapi.Overlay{ID: p.ID + "#detail", Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Fields: r.Fields, Items: r.Actions, OnAction: p.OnAction})
 	st.back, st.item, st.size = true, parent.o.Items[idx], parent.size
 	return st
-}
-
-// openDetailOn opens item idx's detail view with action n selected.
-func (a *App) openDetailOn(parent *overlayState, idx, n int) *overlayState {
-	a.openDetail(parent, idx)
-	d := &a.overlays[len(a.overlays)-1]
-	d.selected = n
-	return d
 }
 
 // detailAction runs action idx of the detail view on top, then closes it.
@@ -509,7 +504,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	// an action's key acts on the selected row as its button does; a danger
 	// one opens the detail on it armed, so the view is its confirmation
 	if n := st.actionAt(key); n >= 0 {
-		d := a.openDetailOn(st, st.visible[st.selected], n)
+		d := a.openDetail(st, st.visible[st.selected], n)
 		r := d.items[n].row
 		if r.Danger {
 			d.armed = n + 1
@@ -534,7 +529,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		switch {
 		case key == "space" && (o.Reload == nil || r.Verb != ""):
 		case key == "enter" && hasDetail(r):
-			a.openDetail(st, idx)
+			a.openDetail(st, idx, 0)
 		case r.Danger && !confirmed && !(st.back && len(st.visible) == 1):
 			// a detail view whose only action it is states the effect and holds
 			// nothing a stray key hits: it is the confirmation

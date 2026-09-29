@@ -90,8 +90,9 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 			a.cancelOverlay(a.overlays[i].o)
 		case a.host.AgentActive() && a.cancelling:
-			// the turn did not stop: leave anyway, children die on exit
-			a.forceQuit()
+			// the turn did not stop: leave anyway, past the app.quit veto;
+			// children die on exit
+			go a.leave()
 		case a.host.AgentActive():
 			a.interrupt()
 		case !a.composer.empty():
@@ -321,11 +322,6 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return a.updateCompletion()
-}
-
-// forceQuit leaves without the app.quit veto.
-func (a *App) forceQuit() {
-	go a.leave()
 }
 
 // interrupt cancels the running turn and hands queued messages back to the

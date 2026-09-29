@@ -443,7 +443,7 @@ func (a *App) composerFrame(n *hostapi.LayoutNode, w int) [][]hostapi.Segment {
 	inner := frameInner(w)
 	// the top region draws its rule corner to corner; its "Rule" cells take
 	// the frame's tint
-	top := truncateSegs(a.statuslineSegments(n.Top), w-2)
+	top := truncateSegs(joinItems(a.statusItems(n.Top), false), w-2)
 	for i := range top {
 		if top[i].HL == "Rule" {
 			top[i].HL = hl

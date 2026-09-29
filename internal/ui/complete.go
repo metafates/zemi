@@ -42,8 +42,6 @@ const scanMaxFiles = 50000
 // whole list, and nobody scrolls past a few hundred paths to find one.
 const listMaxFiles = 200
 
-func (a *App) completionEnabled() bool { return a.host.Settings.Bool("ui.completion.files") }
-
 // completionMax is the rows the popup shows, clamped to what a popup can show.
 func (a *App) completionMax() int {
 	return min(max(a.host.Settings.Int("ui.completion.max_items"), 1), 50)
@@ -62,7 +60,7 @@ func (a *App) updateCompletion() tea.Cmd {
 	for i > 0 && r[i-1] != '\n' && r[i-1] != ' ' && r[i-1] != '\t' {
 		i--
 	}
-	files := i < cur && r[i] == '@' && a.completionEnabled()
+	files := i < cur && r[i] == '@' && a.host.Settings.Bool("ui.completion.files")
 	lua := i < cur && a.host.HasCompletions(string(r[i]), "")
 	if !files && !lua {
 		a.completion.close()

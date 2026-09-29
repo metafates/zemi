@@ -18,15 +18,6 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
-// fixedStyle returns the style of a "Host:*" highlight name: Go-owned
-// security chrome rendered in fixed colors that no theme group can restyle
-// (DESIGN §8). light picks the variant for a light terminal. Returning
-// false leaves the segment to theme resolution.
-func fixedStyle(hl string, light bool) (uv.Style, bool) {
-	st, ok := hostStyles[light][hl]
-	return st, ok
-}
-
 func rgb(v uint32) ansi.RGBColor {
 	return ansi.RGBColor{R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v)}
 }

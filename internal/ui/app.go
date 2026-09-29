@@ -472,7 +472,7 @@ func (a *App) View() tea.View {
 	// Cell motion: the wheel scrolls the transcript (the altscreen buffer has
 	// no native scrollback), drags select and clicks press. ui.mouse = false
 	// leaves the mouse to the terminal.
-	if a.mouseEnabled() {
+	if a.host.Settings.Bool("ui.mouse") {
 		v.MouseMode = tea.MouseModeAllMotion // motion without a button drives hover
 	}
 	v.ReportFocus = true // notifyIfAway needs to know
@@ -1381,10 +1381,6 @@ func (a *App) statusItems(region string) []statusItem {
 	return out
 }
 
-func (a *App) statuslineSegments(region string) []hostapi.Segment {
-	return joinItems(a.statusItems(region), false)
-}
-
 // toastBox lays a toast out in the frame every other box uses, the title in
 // the top rule in the level's color, the body word-wrapped under it. A lone
 // title or body sits inside the box in the level's color, under an empty rule.
@@ -1429,7 +1425,7 @@ func (a *App) hlStyle(hl string) uv.Style {
 	if canvas != nil {
 		light = luma(canvas) > 1<<15
 	}
-	st, ok := fixedStyle(hl, light)
+	st, ok := hostStyles[light][hl]
 	if !ok {
 		st = a.thm.style(hl)
 	} else if st.Bg == nil {

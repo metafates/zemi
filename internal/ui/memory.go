@@ -237,7 +237,7 @@ func (a *App) memMore(it hostapi.MemoryRow) [][]hostapi.Segment {
 	if it.Action == "accept" {
 		meta = append(meta, hostapi.Segment{Text: "kept · ", HL: hostapi.ChromeOk})
 	}
-	info := []string{memScope(it), map[bool]string{true: "learned", false: "saved by you"}[it.Origin == store.OriginLearned]}
+	info := []string{map[bool]string{true: "everywhere", false: "this project"}[it.Scope == store.ScopeUser], map[bool]string{true: "learned", false: "saved by you"}[it.Origin == store.OriginLearned]}
 	if it.Updated != 0 {
 		info = append(info, strings.TrimSpace(learn.Age(it.Updated, a.now())))
 	}
@@ -344,11 +344,4 @@ func (a *App) memDetailBox(it hostapi.MemoryRow, w, h, inner int) [][]hostapi.Se
 		body[len(body)-1] = armedHint(inner, acts[mr.act].key, acts[mr.act].label)
 	}
 	return promptBox("Memory / "+sanitize.Line(it.Text), "", body, w, h, 100, &mr.size)
-}
-
-func memScope(it hostapi.MemoryRow) string {
-	if it.Scope == store.ScopeUser {
-		return "everywhere"
-	}
-	return "this project"
 }

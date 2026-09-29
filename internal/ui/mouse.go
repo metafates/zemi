@@ -108,8 +108,6 @@ func boxText(r uv.Rectangle) uv.Rectangle {
 	return uv.Rect(r.Min.X+2, r.Min.Y+1, max(r.Dx()-4, 0), max(r.Dy()-2, 0))
 }
 
-func (a *App) mouseEnabled() bool { return a.host.Settings.Bool("ui.mouse") }
-
 func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 	switch m := msg.(type) {
 	case tea.MouseClickMsg:
