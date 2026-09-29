@@ -75,9 +75,7 @@ func (a *App) planKey(key, text string) {
 		case "esc":
 			p.typing = false // back to the plan, draft kept
 		default:
-			if !p.input.editKey(key) && text != "" {
-				p.input.insert(strings.ReplaceAll(text, "\n", " "))
-			}
+			p.input.typeKey(key, text)
 		}
 		return
 	}

@@ -222,6 +222,13 @@ func (c *composerState) editKey(key string) bool {
 	return true
 }
 
+// typeKey applies an editing key, else types text: a one-line field's keys.
+func (c *composerState) typeKey(key, text string) {
+	if !c.editKey(key) {
+		c.insert(text)
+	}
+}
+
 // replace swaps the runes from start to the cursor for s.
 func (c *composerState) replace(start int, s string) {
 	r := c.runes()

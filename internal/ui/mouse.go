@@ -233,12 +233,7 @@ func (a *App) dismissOutside(x, y int) bool {
 	out := func(r uv.Rectangle) bool { return !r.Empty() && !(uv.Position{X: x, Y: y}).In(r) }
 	switch {
 	case a.topChrome() == modalOverlay && out(a.chromeRect):
-		// the whole menu goes, not only a detail view drawn over it
-		i := len(a.overlays) - 1
-		for i > 0 && a.overlays[i].back {
-			i--
-		}
-		a.cancelOverlay(a.overlays[i].o)
+		a.cancelMenu()
 	case a.topChrome() != noModal:
 		return false
 	case a.palette.open && out(a.popRect):
@@ -455,14 +450,14 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		pa := a.permAsk
 		choices := pa.choices()
 		spans, ok := item(len(choices))
-		if !ok || (a.program != nil && a.now().Sub(pa.opened) < permGrace) {
+		if !ok || a.fresh(pa.opened) {
 			return nil, nil, false
 		}
 		c := choices[hit-1]
 		return spans, func() { a.choosePerm(c) }, true
 	case top == modalTrust:
 		spans, ok := item(len(trustAnswers))
-		if !ok || (a.program != nil && a.now().Sub(a.trust.opened) < permGrace) {
+		if !ok || a.fresh(a.trust.opened) {
 			return nil, nil, false
 		}
 		answer := trustAnswers[hit-1]

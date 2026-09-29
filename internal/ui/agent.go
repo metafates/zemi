@@ -43,6 +43,11 @@ type permAskPrompt struct {
 // message should not approve a command by accident.
 const permGrace = 400 * time.Millisecond
 
+// fresh reports whether a prompt opened within permGrace.
+func (a *App) fresh(opened time.Time) bool {
+	return a.program != nil && a.now().Sub(opened) < permGrace
+}
+
 // permChoice is one answer of the permission prompt: the label says how
 // long, desc what it allows.
 type permChoice struct {

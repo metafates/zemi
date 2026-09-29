@@ -83,12 +83,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case top == modalTrust:
 			a.answerTrust("later")
 		case top == modalOverlay:
-			// the whole menu closes, not only a detail view on top of it
-			i := len(a.overlays) - 1
-			for i > 0 && a.overlays[i].back {
-				i--
-			}
-			a.cancelOverlay(a.overlays[i].o)
+			a.cancelMenu()
 		case a.host.AgentActive() && a.cancelling:
 			// the turn did not stop: leave anyway, past the app.quit veto;
 			// children die on exit
@@ -111,7 +106,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// Go-owned chrome and Lua overlays capture all keys (§8, §10.4).
 	switch top {
 	case modalTrust:
-		if a.program != nil && a.now().Sub(a.trust.opened) < permGrace {
+		if a.fresh(a.trust.opened) {
 			return nil
 		}
 		tp := a.trust
@@ -130,7 +125,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	case modalPerm:
 		pa := a.permAsk
-		if pa.answer == nil || a.program != nil && a.now().Sub(pa.opened) < permGrace {
+		if pa.answer == nil || a.fresh(pa.opened) {
 			return nil
 		}
 		choices := pa.choices()

@@ -142,9 +142,7 @@ func (a *App) questionKey(key, text string) {
 			}
 			st.typing = false
 		default:
-			if !st.input.editKey(key) && text != "" {
-				st.input.insert(strings.ReplaceAll(text, "\n", " "))
-			}
+			st.input.typeKey(key, text)
 		}
 		return
 	}

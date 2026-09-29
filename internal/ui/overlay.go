@@ -643,9 +643,7 @@ func (a *App) inputKey(st *overlayState, key, text string) {
 	case "esc":
 		a.cancelOverlay(st.o)
 	default:
-		if !in.editKey(key) && text != "" {
-			in.insert(strings.ReplaceAll(text, "\n", " "))
-		}
+		in.typeKey(key, text)
 	}
 	a.bump()
 }
@@ -658,6 +656,16 @@ func (a *App) cancelOverlay(o hostapi.Overlay) {
 	}
 	a.closeOverlayByID(o.ID)
 	a.bump()
+}
+
+// cancelMenu cancels the top overlay's whole menu, not only a detail view
+// drawn over it.
+func (a *App) cancelMenu() {
+	i := len(a.overlays) - 1
+	for i > 0 && a.overlays[i].back {
+		i--
+	}
+	a.cancelOverlay(a.overlays[i].o)
 }
 
 // runOverlayRow applies a row's "fill" (into the composer, like tab in the
