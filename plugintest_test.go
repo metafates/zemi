@@ -42,9 +42,6 @@ test("found by name", function() assert(test.run("named")) end)`,
 		writeFile(t, filepath.Join(home, path), body)
 	}
 	demoSum, homeSum := treeSum(t, demo), treeSum(t, home)
-	old := caseTimeout
-	caseTimeout = 300 * time.Millisecond
-	t.Cleanup(func() { caseTimeout = old })
 	many := `local test = zemi.test
 for i = 1, 300 do test("case " .. i, function() end) end
 `
@@ -67,6 +64,7 @@ for i = 1, 300 do test("case " .. i, function() end) end
 		args   []string          // <plugin> stands for its dir
 		spare  uint64            // file descriptors the run may open past those the test process holds
 		cancel bool              // interrupted before it starts
+		hangs  bool              // runs until a 2s caseTimeout; the rest run under zemi's own, which no loaded boot nears
 		code   int
 		want   string // (T) stands for the time a run took
 	}{
@@ -129,13 +127,15 @@ for i = 1, 300 do test("case " .. i, function() end) end
   tests/fail.lua:57: a driver cannot run inside test.raises; drivers return nil, err instead of raising
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a case times out", args: []string{"<plugin>", "never settles"}, code: 1, want: `FAIL tests/fail.lua:26: a case that never settles
-  timed out after 300ms in test.advance(1) at tests/fail.lua:29
+		{name: "a case times out", args: []string{"<plugin>", "never settles"}, code: 1, hangs: true, want: `FAIL tests/fail.lua:26: a case that never settles
+  timed out after 2s in test.advance(1) at tests/fail.lua:29
 0 passed, 1 failed (2 files, (T))
 `},
-		{name: "a driver still running at the deadline", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
-			"init.lua": `zemi.command.add("spin", function() while true do end end)`, "tests/a.lua": `zemi.test("spins", function() zemi.test.run("spin") end)`,
-		}, want: "FAIL tests/a.lua:1: spins\n  timed out after 300ms in test.run(\"spin\") at tests/a.lua:1\n0 passed, 1 failed (1 file, (T))\n"},
+		// waits, so no one slice meets the 1s ceiling that stops a Lua spin first
+		{name: "a driver still running at the deadline", args: []string{"<plugin>"}, code: 1, hangs: true, plugin: map[string]string{
+			"init.lua":    `zemi.command.add("spin", function() while true do zemi.http.get("https://example.com/"):wait() end end)`,
+			"tests/a.lua": `zemi.test.stub("lua.http.get", "*", {}) zemi.test("spins", function() zemi.test.run("spin") end)`,
+		}, want: "FAIL tests/a.lua:1: spins\n  timed out after 2s in test.run(\"spin\") at tests/a.lua:1\n0 passed, 1 failed (1 file, (T))\n"},
 		{
 			name: "a pattern matching nothing", args: []string{"<plugin>", "wether"}, code: 1,
 			want: "no case matches \"wether\" (36 cases in 2 files)\n",
@@ -143,9 +143,9 @@ for i = 1, 300 do test("case " .. i, function() end) end
 		{name: "a plugin that does not load", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
 			"init.lua": `require("cp")`, "lua/cp/init.lua": `require("cp.util")`, "tests/a.lua": `zemi.test("a", function() end)`,
 		}, want: "FAIL init.lua:1: require: lua/cp/init.lua:1: require: module \"cp.util\" not found on runtimepath\n0 passed, 1 failed (1 file, (T))\n"},
-		{name: "a plugin whose load never ends", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
+		{name: "a plugin whose load never ends", args: []string{"<plugin>"}, code: 1, hangs: true, plugin: map[string]string{
 			"init.lua": "while true do end", "tests/a.lua": `zemi.test("a", function() end)`,
-		}, want: "FAIL init.lua:1: timed out after 300ms\n0 passed, 1 failed (1 file, (T))\n"},
+		}, want: "FAIL init.lua:1: timed out after 2s\n0 passed, 1 failed (1 file, (T))\n"},
 		{name: "a test file that does not parse", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
 			"init.lua": "", "tests/a.lua": "zemi.test(\"a\", function()\n  local x =\nend)\n",
 		}, want: "FAIL tests/a.lua:3: syntax error near 'end'\n0 passed, 1 failed (1 file, (T))\n"},
@@ -236,6 +236,11 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 			}
 			tmp := t.TempDir()
 			t.Setenv("TMPDIR", tmp)
+			if c.hangs {
+				old := caseTimeout
+				caseTimeout = 2 * time.Second
+				defer func() { caseTimeout = old }()
+			}
 			if c.spare > 0 {
 				var was syscall.Rlimit
 				if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &was); err != nil {
