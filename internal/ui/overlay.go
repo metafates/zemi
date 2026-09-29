@@ -30,7 +30,6 @@ type overlayState struct {
 	text  textRows // the body's rows
 	back  bool     // a detail view: esc and its actions return to the overlay under it
 	item  any      // a detail view's item: a reload can swap the parent's under it
-	acts  []hintPair
 	size  boxSize
 	armed int // the visible row plus one whose danger act waits for a second press, 0 for none
 	// the preview pane's rows at paneW cells: the most any item's preview
@@ -298,32 +297,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		st.texts = append(st.texts, it.section+"  "+it.desc+"  "+r.Copy+"  "+r.Preview)
 	}
 	st.selected = o.Selected
-	st.acts = sharedActions(st.items)
 	st.apply()
 	return st
-}
-
-// sharedActions are the action keys every row with actions offers alike,
-// which the list's footer names; nil when rows differ.
-func sharedActions(items []listItem) []hintPair {
-	var shared []hintPair
-	seen := false
-	for _, it := range items {
-		if len(it.row.Actions) == 0 {
-			continue
-		}
-		var acts []hintPair
-		for _, a := range it.row.Actions {
-			if r, _ := hostapi.ParseOverlayItem(a); r.Hotkey != "" {
-				acts = append(acts, hintPair{sanitize.Line(r.Hotkey), strings.ToLower(sanitize.Line(r.Text))})
-			}
-		}
-		if seen && !slices.Equal(acts, shared) {
-			return nil
-		}
-		shared, seen = acts, true
-	}
-	return shared
 }
 
 // actionAt is the index of the selected row's action whose hotkey is key,
@@ -825,7 +800,6 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 				}
 				hints = append(hints, hintPair{k.Key, k.Desc})
 			}
-			hints = append(hints, st.acts...)
 		}
 		var body [][]hostapi.Segment
 		if bodyN > 0 {

@@ -1127,10 +1127,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		{"a row without actions ignores the key", "", "", []string{"r"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q, %d open", ran, len(app.overlays))}[ran == "" && len(app.overlays) == 1]
 		}},
-		{"the footer names shared action keys", "", "", nil, func() string {
-			return map[bool]string{false: footer()}[strings.Contains(footer(), "r resume · x delete")]
-		}},
-		{"rows that differ name none", `"current", ` + session("1") + `, { text = "s2", actions = { { text = "Resume", hotkey = "r", run = "res 2" } } }`, "", nil, func() string {
+		{"the footer names no action key", "", "", nil, func() string {
 			return map[bool]string{true: footer()}[strings.Contains(footer(), "resume")]
 		}},
 	} {
