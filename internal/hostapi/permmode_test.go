@@ -383,7 +383,7 @@ func TestAutoResolvesPaths(t *testing.T) {
 func TestPermModeDecide(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.permission.mode.add("review", { base = "auto", decide = function(req)
-		if req.arg == "rm -rf /" then return "deny" end
+		if req.arg == "rm -rf /" or req.agent == "explore agent" then return "deny" end
 		if req.arg ~= "cat x" then return "allow" end
 	end })`)
 	if err := h.SetPermMode("review"); err != nil {
@@ -399,6 +399,7 @@ func TestPermModeDecide(t *testing.T) {
 	}{
 		{"allowed", tools.Request{Subject: "tool.bash", Arg: "ls"}, true, "mode:review", ""},
 		{"denied", tools.Request{Subject: "tool.bash", Arg: "rm -rf /"}, false, "mode:review", ""},
+		{"a subagent's", tools.Request{Subject: "tool.bash", Arg: "ls", Agent: "explore agent"}, false, "mode:review", ""},
 		{"left to the user", tools.Request{Subject: "tool.bash", Arg: "cat x"}, false, tools.ByNobody, DenyApproval},
 		// what the mode's own rules may not settle, decide may not either
 		{"a rule asked for it", tools.Request{Subject: "tool.bash", Arg: "ls", Explicit: true}, false, tools.ByNobody, DenyApproval},

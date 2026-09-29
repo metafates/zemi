@@ -748,7 +748,7 @@ func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
 		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
 			return def.Decide, []glua.LValue{lua.FromGo(L, map[string]any{
 				"subject": req.Subject, "arg": h.shownArg(req), "tool": req.Tool,
-				"reason": req.Reason, "preview": req.Preview, "description": req.Description,
+				"reason": req.Reason, "preview": req.Preview, "description": req.Description, "agent": req.Agent,
 			})}, nil
 		},
 		Done: func(L *glua.LState, rets []glua.LValue) ([]any, error) {

@@ -573,6 +573,7 @@ function zemi.command.list() end
 ---@field subject string
 ---@field arg string
 ---@field reason? string
+---@field agent? string The subagent asking, such as "explore agent"; "" for the main agent.
 ---@field post_hoc? boolean A Lua API call already refused for want of an ask; a veto changes nothing.
 
 ---@class zemi.ev.PermissionResolved: zemi.Event
@@ -1959,6 +1960,7 @@ function zemi.composer.edit() end
 ---@field reason string
 ---@field preview string
 ---@field description string
+---@field agent string The subagent asking, such as "explore agent"; "" for the main agent.
 
 ---@class zemi.PermMode
 ---@field name string
