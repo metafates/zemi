@@ -1172,7 +1172,7 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "let n=1"}, "allow this exact command", []string{"let n=1"}},
 		// a deleter stays exact: the rule runs unconfined and has no write path to ask on
 		{tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"}, "allow this exact command", []string{"rm build.tmp"}},
-		{tools.Request{Subject: "tool.bash", Arg: "git status && rm -rf build"}, "allow rm (exact) and git status", []string{"git status", "git status *", "rm -rf build"}},
+		{tools.Request{Subject: "tool.bash", Arg: "git status && rm -rf build && rm -f x"}, "allow rm (exact) and git status", []string{"git status", "git status *", "rm -rf build", "rm -f x"}},
 		{tools.Request{Subject: "tool.bash", Arg: "/bin/rm old"}, "allow this exact command", []string{"/bin/rm old"}},
 		{tools.Request{Subject: "tool.bash", Arg: "find . -type f"}, "allow this exact command", []string{"find . -type f"}},
 		{tools.Request{Subject: "tool.bash", Arg: "tar czf a.tgz src"}, "allow this exact command", []string{"tar czf a.tgz src"}},

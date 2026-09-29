@@ -363,7 +363,10 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 				}
 				continue
 			case len(patterns) == 1 && deletes(strings.Join(g, " ")):
-				deleters = append(deleters, perm.ProgramName(g[0])+" (exact)")
+				if d := perm.ProgramName(g[0]) + " (exact)"; !seen[d] {
+					seen[d] = true
+					deleters = append(deleters, d)
+				}
 				continue
 			case len(patterns) == 1:
 				unnamed++
