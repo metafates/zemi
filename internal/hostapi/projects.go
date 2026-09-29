@@ -363,7 +363,7 @@ func (h *Host) projectFields(p Project) []any {
 	if p.Latest != nil {
 		sessions = fmt.Sprintf("%d · latest %s", p.Sessions, ago(p.Latest.UpdatedAt))
 		if t := strings.Join(strings.Fields(sanitize.String(p.Latest.Title)), " "); t != "" {
-			sessions += ": " + t
+			sessions += ": " + clipRunes(t, 60) // as /sessions draws it
 		}
 	}
 	if p.Memories > 0 {
