@@ -1940,7 +1940,7 @@ function zemi.composer.edit() end
 ---| "deny"
 
 ---@class zemi.RuleSpec
----@field subject string "tool.shell", "fs.read", "fs.write", "net.<host>", "lua.<ns.call>", "mcp.<server>", "memory.write"; any other family raises.
+---@field subject string "tool.shell", "tool.lua", "tool.workflow", "tool.<a Lua tool>", "fs.read", "fs.write", "net.<host>", "lua.<ns.call>", "mcp.<server>", "memory.write". Any other family, or another builtin tool, raises; a tool no config adds is an /errors entry once boot is done.
 ---@field pattern string Glob over the subject's argument.
 ---@field decision zemi.Decision Allow rules need user config.
 ---@field match string Required: an argument the rule must match, checked at registration.
@@ -2131,7 +2131,8 @@ zemi.tool = {}
 function zemi.tool.add(spec) end
 
 --- Hook one tool's calls: `pre` before it runs (a rewritten input re-enters
---- at the permission gate), `post` after, to rewrite its output.
+--- at the permission gate), `post` after, to rewrite its output. A name no
+--- builtin, Lua or `mcp_` tool has is an /errors entry once boot is done.
 ---
 --- ```lua
 --- zemi.tool.override("shell", {

@@ -186,8 +186,8 @@ func TestPermissionRuleValidation(t *testing.T) {
 	})`, "starts with none of")
 
 	runExpectErr(t, r, `zemi.permission.rule.add({
-		subject = "tool.ticket", pattern = "*", decision = "deny", match = "x",
-	})`, `no tool asks as "tool.ticket": tool subjects are tool.* tool.shell tool.lua tool.workflow,`)
+		subject = "tool.read", pattern = "*", decision = "deny", match = "x",
+	})`, `no tool asks as "tool.read": tool subjects are tool.* tool.shell tool.lua tool.workflow and tool.<a Lua tool>`)
 
 	runUser(t, r, `zemi.permission.rule.add({
 		subject = "tool.shell", pattern = "git status", decision = "allow",
@@ -213,8 +213,21 @@ func TestPermissionRuleValidation(t *testing.T) {
 		subject = "tool.shell", pattern = "rm -rf *", decision = "deny",
 		match = "rm -rf /tmp/x",
 	})
+	zemi.permission.rule.add({ subject = "tool.ticket", pattern = "*", decision = "deny", match = "x" })
 	zemi.tool.add({ name = "ticket", description = "a ticket", execute = function() end })
-	zemi.permission.rule.add({ subject = "tool.ticket", pattern = "*", decision = "deny", match = "x" })`)
+	zemi.permission.rule.add({ subject = "tool.bash", pattern = "*", decision = "deny", match = "x" })
+	for _, name in ipairs({ "shell", "ticket", "mcp_gh_search", "bash" }) do
+		zemi.tool.override(name, { pre = function() end })
+	end`)
+	// only what no tool answers to once boot is done is named
+	h.CheckToolNames()
+	var named []string
+	for _, e := range h.errs.entries {
+		named = append(named, e.msg[:strings.Index(e.msg, ",")])
+	}
+	if want := []string{`no tool asks as "tool.bash"`, `zemi.tool.override names "bash"`}; !slices.Equal(named, want) {
+		t.Fatalf("recorded %q, want %q", named, want)
+	}
 
 	if out := h.Perm.Evaluate("tool.shell", "git status", "model"); out.Decision != perm.Allow {
 		t.Fatalf("git status: %v (%s)", out.Decision, out.Reason)

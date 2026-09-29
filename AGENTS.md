@@ -399,9 +399,11 @@ AGENTS.md reaches the model.
 ### Permission engine (internal/perm)
 
 Rules `(subject, pattern, decision, not_match?, principal?)`, subjects like `tool.shell`,
-`fs.read`, `fs.write`, `net.<host>`, `lua.<ns.call>`; a rule on a subject no request carries
-raises when added (`Host.ruleShape`: a `tool.*` one must name `tool.shell`, `tool.lua`,
-`tool.workflow` or a Lua tool added before it). Ordering: deny > ask > allow; within one
+`fs.read`, `fs.write`, `net.<host>`, `lua.<ns.call>`; a subject outside those families, or
+a builtin tool other than `tool.shell`, `tool.lua` and `tool.workflow`, raises when added
+(`Host.ruleShape`), and once boot is done `Host.CheckToolNames` records each `tool.*` rule
+and `zemi.tool.override` no tool answers to (a Lua tool may come from a project or a
+plugin, so the call cannot tell). Ordering: deny > ask > allow; within one
 decision, fewest wildcards then longest literal prefix wins. A `not_match` hit falls through
 and **forces ask**. The default when nothing matches is `Store.Default` (host wires
 `fsDefault`: jail reads and the model's reads of the plugins, minus any `.git`, allow except

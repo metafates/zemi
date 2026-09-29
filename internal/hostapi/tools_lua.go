@@ -114,6 +114,12 @@ func (r *toolReg) overridesFor(tool string) []*overrideRec {
 	return slices.Clone(r.overrides[tool])
 }
 
+func (r *toolReg) overridden() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Sorted(maps.Keys(r.overrides))
+}
+
 func (r *toolReg) purge(gen Gen) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

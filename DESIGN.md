@@ -723,9 +723,12 @@ zemi.permission.rule.add{ subject = "tool.shell", pattern = "make *",
                           decision = zemi.permission.decision.DENY, match = "make check" }
 ```
 
-A rule on a subject no request carries raises when added, since it would
-never match: a `tool.*` rule names `tool.shell`, `tool.lua`, `tool.workflow`
-or a Lua tool added before it, and the error lists them.
+A rule outside the subject families, or on a builtin tool other than
+`tool.shell`, `tool.lua` and `tool.workflow`, raises when added, since it
+would never match. Once boot is done, each `tool.*` rule and tool override
+no tool answers to is an `/errors` entry naming the ones there are: the Lua
+tool a rule names may come from a project or a plugin, so the call that
+adds the rule cannot tell.
 
 A Lua rule carries no principal and matches every principal, unless user
 config scopes it to one plugin with `principal = "plugin:<name>"` (§9),

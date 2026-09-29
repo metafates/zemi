@@ -2867,31 +2867,64 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// toolSubjects are the tool.* subjects a request can carry: the tools that
-// ask as themselves and the Lua tools added so far.
+// askingSubjects are the builtin tools' own subjects; every other builtin
+// asks under fs., net. or memory., if at all.
+var askingSubjects = []string{"tool.*", perm.SubjectShell, perm.SubjectLua, perm.SubjectWorkflow}
+
+// toolSubjects are the tool.* subjects a request can carry: the builtin
+// tools' and the Lua tools'.
 func (h *Host) toolSubjects() []string {
-	subjects := []string{"tool.*", perm.SubjectShell, perm.SubjectLua, perm.SubjectWorkflow}
+	subjects := slices.Clone(askingSubjects)
 	for _, t := range h.luaTools.list() {
 		subjects = append(subjects, "tool."+t.Name)
 	}
 	return subjects
 }
 
-// ruleShape checks what every rule intake needs: a subject some request
-// carries, a pattern and a decision. A rule on any other subject would sit
-// in the store and never match.
+// ruleShape checks what every rule intake needs: a subject in a known
+// family, a pattern and a decision. A tool.<builtin> subject no builtin asks
+// as raises here; any other tool.<name> may be a Lua tool config adds later,
+// so CheckToolNames judges it once boot is done.
 func (h *Host) ruleShape(r perm.Rule) error {
+	name, isTool := strings.CutPrefix(r.Subject, "tool.")
 	switch {
 	case r.Subject == "" || r.Pattern == "":
 		return errors.New("subject and pattern are required")
 	case !slices.ContainsFunc(perm.SubjectPrefixes, func(p string) bool { return strings.HasPrefix(r.Subject, p) }):
 		return fmt.Errorf("subject %q starts with none of %s", r.Subject, strings.Join(perm.SubjectPrefixes, " "))
-	case strings.HasPrefix(r.Subject, "tool.") && !slices.Contains(h.toolSubjects(), r.Subject):
-		return fmt.Errorf("no tool asks as %q: tool subjects are %s, and a Lua tool's once zemi.tool.add added it", r.Subject, strings.Join(h.toolSubjects(), " "))
+	case isTool && slices.Contains(h.builtinToolNames(), name) && !slices.Contains(askingSubjects, r.Subject):
+		return fmt.Errorf("no tool asks as %q: tool subjects are %s and tool.<a Lua tool>", r.Subject, strings.Join(askingSubjects, " "))
 	case r.Decision != perm.Allow && r.Decision != perm.Ask && r.Decision != perm.Deny:
 		return errors.New("decision must be allow, ask or deny")
 	}
 	return nil
+}
+
+// CheckToolNames records each tool.* rule and tool override no tool answers
+// to, once boot has added every Lua tool: the tool one names may come from a
+// project or a plugin, so the call that adds it cannot tell.
+func (h *Host) CheckToolNames() {
+	subjects := h.toolSubjects()
+	rules := h.Perm.Rules()
+	for _, m := range h.PermModeList() {
+		if m.Rules != nil {
+			rules = append(rules, m.Rules.Rules()...)
+		}
+	}
+	for _, r := range rules {
+		if strings.HasPrefix(r.Subject, "tool.") && !slices.Contains(subjects, r.Subject) {
+			h.RecordErrorOnce("permissions", fmt.Sprintf("no tool asks as %q, so its rule never matches: tool subjects are %s", r.Subject, strings.Join(subjects, " ")))
+		}
+	}
+	names := h.builtinToolNames()
+	for _, t := range h.luaTools.list() {
+		names = append(names, t.Name)
+	}
+	for _, name := range h.luaTools.overridden() {
+		if !slices.Contains(names, name) && !strings.HasPrefix(name, "mcp_") {
+			h.RecordErrorOnce("tools", fmt.Sprintf("zemi.tool.override names %q, which no tool is, so it never runs: tools are %s and mcp_<server>_<tool>", name, strings.Join(names, " ")))
+		}
+	}
 }
 
 // validateRule checks a Lua rule. Examples are required (DESIGN §9): the match example must match
