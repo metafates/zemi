@@ -118,25 +118,35 @@ func newLSPReg() *lspReg {
 }
 
 // stopAll stops every server and forgets user definitions (reload replays
-// them).
-func (r *lspReg) stopAll() {
+// them). The servers stop on goroutines; wait returns once they all have.
+func (r *lspReg) stopAll() (wait func()) {
 	r.mu.Lock()
 	procs := r.running
 	r.running, r.user, r.attempts, r.disabled = map[string]*lspProc{}, nil, map[string]int{}, map[string]bool{}
 	r.mu.Unlock()
+	var stopped []<-chan struct{}
 	for _, p := range procs {
-		p.close()
+		stopped = append(stopped, p.close())
+	}
+	return func() {
+		for _, c := range stopped {
+			<-c
+		}
 	}
 }
 
-// close stops the server once its start attempt ends.
-func (p *lspProc) close() {
+// close stops the server once its start attempt ends, closing the channel
+// it returns after.
+func (p *lspProc) close() <-chan struct{} {
+	done := make(chan struct{})
 	p.h.GoSafe("lsp stop "+p.def.Name, func() {
+		defer close(done)
 		<-p.ready
 		if p.client != nil {
 			p.client.Close()
 		}
 	})
+	return done
 }
 
 // lspFor picks the server for path: lua-language-server for zemi's own Lua

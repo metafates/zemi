@@ -30,7 +30,7 @@ func TestLSPDiagnostics(t *testing.T) {
 	t.Parallel()
 	setup := func(t *testing.T) (*Host, func(tool, name, content string) string) {
 		h, r := newTestHostDB(t)
-		t.Cleanup(h.lsp.stopAll)
+		t.Cleanup(func() { h.lsp.stopAll() })
 		h.SetProjectTrusted(true)
 		runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt", "quiet", "hang" } })`, os.Args[0]))
 		h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
@@ -96,7 +96,7 @@ func TestLSPDiagnostics(t *testing.T) {
 func TestLSPTool(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHostDB(t)
-	defer h.lsp.stopAll()
+	defer func() { h.lsp.stopAll()() }()
 	h.SetProjectTrusted(true)
 	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt" } })`, os.Args[0]))
 	h.Perm.Add(perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
@@ -161,7 +161,7 @@ func TestLSPTool(t *testing.T) {
 // and settings, disables one, and list shows what the project can use.
 func TestLSPConfig(t *testing.T) {
 	h, r := newTestHostDB(t)
-	defer h.lsp.stopAll()
+	defer func() { h.lsp.stopAll()() }()
 	runUser(t, r, `
 		zemi.lsp.add("gopls", { command = "gopls-wrapper", args = { "-rpc", 1, true, {} }, env = { A = "x", PORT = 8080, V = false, T = {}, [1] = "N=1" }, filetypes = { "go" }, settings = { gopls = { staticcheck = true } }, init_options = { x = 1 } })
 		zemi.lsp.add("zls", { command = "zls", filetypes = { "zig" } })
@@ -334,7 +334,7 @@ func TestLSPRealLuaLS(t *testing.T) {
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
-	defer h.lsp.stopAll()
+	defer func() { h.lsp.stopAll()() }()
 	if !h.sandboxLive() {
 		t.Skip("no sandbox")
 	}
@@ -384,7 +384,7 @@ func TestLSPSyncFromGit(t *testing.T) {
 		t.Skip("git not installed")
 	}
 	h, r := newTestHostDB(t)
-	defer h.lsp.stopAll()
+	defer func() { h.lsp.stopAll()() }()
 	h.SetProjectTrusted(true)
 	runUser(t, r, fmt.Sprintf(`zemi.lsp.add("fake", { command = %q, env = { ZEMI_LSP_FAKE = "1" }, filetypes = { "txt" } })`, os.Args[0]))
 	dir := h.Dirs.ProjectDir
@@ -447,18 +447,8 @@ func TestLSPRealServersSandboxed(t *testing.T) {
 		t.Skip("starts real language servers")
 	}
 	h, _ := newTestHostDB(t)
-	// stopAll closes on goroutines; the temp dirs go once each server and
-	// the build it started have ended
-	defer func() {
-		h.lsp.mu.Lock()
-		procs := slices.Collect(maps.Values(h.lsp.running))
-		h.lsp.mu.Unlock()
-		for _, p := range procs {
-			if <-p.ready; p.client != nil {
-				p.client.Close()
-			}
-		}
-	}()
+	// the temp dirs go once each server and the build it started have ended
+	defer func() { h.lsp.stopAll()() }()
 	if !h.sandboxLive() {
 		t.Skip("no sandbox")
 	}
