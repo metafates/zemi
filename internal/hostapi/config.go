@@ -348,12 +348,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		path := L.CheckString(1)
-		v, ok := h.Settings.Get(path)
-		if !ok {
-			L.Push(glua.LNil)
-			return 1
-		}
+		v, _ := h.Settings.Get(L.CheckString(1))
 		L.Push(lua.FromGo(L, v))
 		return 1
 	}))

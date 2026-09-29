@@ -296,13 +296,8 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	// decode failure is nil, err
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
 		key := h.stateScope(L) + L.CheckString(1)
-		fail := func(err error) int {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
-		}
 		if h.GlobalDB == nil {
-			return fail(errors.New("store unavailable"))
+			return luaResult(L, errors.New("store unavailable"))
 		}
 		v, err := h.GlobalDB.GetKV(key)
 		switch {
@@ -310,11 +305,11 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 			L.Push(glua.LNil)
 			return 1
 		case err != nil:
-			return fail(err)
+			return luaResult(L, err)
 		}
 		var decoded any
 		if err := json.Unmarshal([]byte(v), &decoded); err != nil {
-			return fail(err)
+			return luaResult(L, err)
 		}
 		L.Push(lua.FromGo(L, decoded))
 		return 1
@@ -340,9 +335,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		}
 		removed, err := h.GlobalDB.DelKV(key)
 		if err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
+			return luaResult(L, err)
 		}
 		L.Push(glua.LBool(removed))
 		return 1
@@ -355,9 +348,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		scope := h.stateScope(L)
 		keys, err := h.GlobalDB.KeysKV(scope + L.OptString(1, ""))
 		if err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
+			return luaResult(L, err)
 		}
 		out := L.NewTable()
 		for _, k := range keys {
