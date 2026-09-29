@@ -534,16 +534,19 @@ func TestLSPRealServersSandboxed(t *testing.T) {
 		for _, c := range []struct {
 			server, file string
 			line         int
+			source       string // "" for any
 		}{
-			{"gopls", "main.go", 3},
-			{"pyright-langserver", "a.py", 1},
-			{"rust-analyzer", "src/main.rs", 1},
+			{"gopls", "main.go", 3, ""},
+			{"pyright-langserver", "a.py", 1, ""},
+			// cargo check's error, which comes after build.rs ran; rust-analyzer's own may come first
+			{"rust-analyzer", "src/main.rs", 1, "rustc"},
 		} {
 			t.Run(c.server, func(t *testing.T) {
 				t.Parallel()
 				if _, err := exec.LookPath(c.server); err != nil {
 					t.Skip(c.server, " not installed")
 				}
+				// only a hang guard: a server that exits ends the wait
 				ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 				defer cancel()
 				path := filepath.Join(proj, c.file)
@@ -554,11 +557,16 @@ func TestLSPRealServersSandboxed(t *testing.T) {
 				// read what the server publishes for the open file: touching it
 				// again waits a fixed floor a loaded server misses, and each miss
 				// counts toward the stall that restarts it
-				for !slices.ContainsFunc(s.Client.Diagnostics(path), func(d lsp.Diagnostic) bool { return d.Severity == 1 && d.Line == c.line }) {
-					if ctx.Err() != nil {
+				for tick := time.Tick(100 * time.Millisecond); !slices.ContainsFunc(s.Client.Diagnostics(path), func(d lsp.Diagnostic) bool {
+					return d.Severity == 1 && d.Line == c.line && (c.source == "" || d.Source == c.source)
+				}); {
+					select {
+					case <-s.Client.Done():
+						t.Fatalf("%s exited before reporting", c.server)
+					case <-ctx.Done():
 						t.Fatalf("no error on line %d: %v", c.line, s.Client.Diagnostics(path))
+					case <-tick:
 					}
-					time.Sleep(100 * time.Millisecond)
 				}
 			})
 		}
@@ -566,14 +574,8 @@ func TestLSPRealServersSandboxed(t *testing.T) {
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		return
 	}
-	ran := func() bool {
-		m, _ := filepath.Glob(filepath.Join(h.Dirs.CacheHome, "lsp", trustKey(h.trustRoot()), "rust-analyzer", "target", "*", "build", "*", "out", "ran"))
-		return len(m) > 0
-	}
-	for deadline := time.Now().Add(2 * time.Minute); time.Now().Before(deadline) && !ran(); time.Sleep(time.Second) {
-	}
-	if !ran() {
-		t.Fatal("rust-analyzer never ran build.rs")
+	if m, _ := filepath.Glob(filepath.Join(h.Dirs.CacheHome, "lsp", trustKey(h.trustRoot()), "rust-analyzer", "target", "*", "build", "*", "out", "ran")); len(m) == 0 {
+		t.Fatal("cargo check reported without running build.rs")
 	}
 	if _, err := os.Stat(outside); err == nil {
 		t.Fatal("build.rs wrote outside its sandbox")
