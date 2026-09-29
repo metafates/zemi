@@ -34,10 +34,17 @@ make all
 # a wrapper program is refused: no rule from a command the user did not see
 python x.py
 `)
-	h.SetProjectTrusted(true)
-	if err := h.ProjectPermissionsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {
-		t.Fatalf("step: %v", err)
+	step := func() {
+		if err := h.ProjectPermissionsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {
+			t.Fatalf("step: %v", err)
+		}
 	}
+	step()
+	if h.Perm.CheckCommand("make all", "").Decision == perm.Allow {
+		t.Error("an untrusted project must not load its permissions file")
+	}
+	h.SetProjectTrusted(true)
+	step()
 	want := []struct {
 		cmd   string
 		allow bool
@@ -52,18 +59,6 @@ python x.py
 		if got := h.Perm.CheckCommand(c.cmd, "").Decision == perm.Allow; got != c.allow {
 			t.Errorf("CheckCommand(%q) allow=%v, want %v", c.cmd, got, c.allow)
 		}
-	}
-}
-
-func TestProjectPermissionsUntrusted(t *testing.T) {
-	h, _ := newTestHost(t)
-	h.Dirs.StateHome = t.TempDir()
-	writePermissions(t, h.projectPermissionsPath(), "git push\n")
-	if err := h.ProjectPermissionsStep().Run(context.Background(), h.RT, &lua.Generation{ID: 1}); err != nil {
-		t.Fatalf("step: %v", err)
-	}
-	if h.Perm.CheckCommand("git push", "").Decision == perm.Allow {
-		t.Error("an untrusted project must not load its permissions file")
 	}
 }
 
@@ -117,9 +112,8 @@ func TestProjectChoice(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.StateHome = t.TempDir()
 	fakeSandbox(h, false)
-	always := func(req tools.Request) (string, []perm.Rule) { return h.alwaysChoice(req) }
 	choice := func(req tools.Request) string {
-		label, rules := always(req)
+		label, rules := h.alwaysChoice(req)
 		plabel, _ := h.projectChoice(req, label, rules)
 		return plabel
 	}
@@ -148,7 +142,7 @@ func TestProjectChoice(t *testing.T) {
 	// segment the session answer skipped (a model rule allows it already)
 	// would persist a command the label never named
 	h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "curl *", Decision: perm.Allow, Principal: "model"})
-	if label, _ := always(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example/a && go vet ./..."}); label != "allow go vet" {
+	if label, _ := h.alwaysChoice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example/a && go vet ./..."}); label != "allow go vet" {
 		t.Fatalf("session label = %q", label)
 	}
 	if got := choice(tools.Request{Subject: "tool.bash", Arg: "curl https://x.example/a && go vet ./..."}); got != "" {
