@@ -364,8 +364,8 @@ program lookup in perm and the always answer goes through `perm.ProgramName`, th
 case folded as APFS folds it, since `/bin/RM` runs rm and `ſh` (long s) runs sh.
 
 File tools (internal/tools/fs_tools.go): `write` refuses a file the
-model has not read (outside the scratchpad) and `edit` takes one only when `old_string` matches exactly once as written (the match proves the model knows the text), and both refuse one whose mtime moved since (`Pipeline.Seen`, per session; subagents get
-their own), and hold a per-path lock, so a concurrent agent or the user's editor cannot lose
+model has not read (outside the scratchpad) or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get
+their own), and `edit` takes either only when `old_string` matches exactly once as written (the match proves the model knows the text, and every other change stays); both hold a per-path lock, so a concurrent agent or the user's editor cannot lose
 changes; within one step the lock is taken in call order (`tools.CallStart` from fantasy's
 `OnToolCall`, which fires for every call before any is dispatched; `tools.CallDone` from
 `OnToolResult`, which fires for a call fantasy refused to run too, and once more for the

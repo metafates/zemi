@@ -573,13 +573,14 @@ func (p *Pipeline) markRead(path string, fi os.FileInfo) {
 	}
 }
 
-// stale refuses changing a file the model has not read, or one that changed
+// stale refuses writing a file the model has not read, or one that changed
 // since (a command it ran, the user's editor, a formatter, another agent):
 // writing over it would silently drop those changes. A shell call never updates
 // Seen, so the model re-reads what a command rewrote. A pad file needs no
 // read: its own command made it and nobody else edits there. Nor does an
-// edit: runEdit holds an unread file's edit to one exact match, which proves
-// the model knows the text it replaces. "" when the view is current.
+// edit: runEdit holds the edit of a file whose current version the model has
+// not read to one exact match, which proves it knows the text it replaces
+// and keeps every other change. "" when the view is current.
 func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
 	rel := workRel(path)
 	// before the read log: a directory listing never marks it seen, so the
@@ -592,7 +593,7 @@ func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
 	}
 	t, ok := p.Seen.Load(perm.CanonPath(path))
 	switch {
-	case !ok && (edit || inPad(p.Pad, path)):
+	case edit, !ok && inPad(p.Pad, path):
 	case !ok:
 		return "read " + rel + " with the read tool first, then repeat this call: this session has not read it, and cat, sed or grep in a shell command does not count."
 	case !t.(time.Time).Equal(fi.ModTime()):
@@ -601,13 +602,17 @@ func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
 	return ""
 }
 
-// unread reports a file outside the pad that the session has not read.
-func (p *Pipeline) unread(path string) bool {
-	if p.Seen == nil || inPad(p.Pad, path) {
+// unseen reports a file whose current version the session has not read:
+// one changed since its read, or one never read outside the pad.
+func (p *Pipeline) unseen(path string, fi os.FileInfo) bool {
+	if p.Seen == nil {
 		return false
 	}
-	_, ok := p.Seen.Load(perm.CanonPath(path))
-	return !ok
+	t, ok := p.Seen.Load(perm.CanonPath(path))
+	if !ok {
+		return !inPad(p.Pad, path)
+	}
+	return !t.(time.Time).Equal(fi.ModTime())
 }
 
 var fileLocks sync.Map // perm.CanonPath -> *sync.Mutex
@@ -765,8 +770,8 @@ func runEdit(ctx context.Context, p *Pipeline, in map[string]any) (fantasy.ToolR
 	if msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
-	if p.unread(path) && (n != 1 || tolerant.count > 0) {
-		return fantasy.NewTextErrorResponse("read " + rel + " with the read tool first (the lines you change are enough), then repeat this call: this session has not read it, so old_string must match exactly once as written."), nil
+	if p.unseen(path, fi) && (n != 1 || tolerant.count > 0) {
+		return fantasy.NewTextErrorResponse("read " + rel + " with the read tool first (the lines you change are enough), then repeat this call: this session has not read its current version, so old_string must match exactly once as written."), nil
 	}
 	// a mixed file takes its majority ending, so a stray line of the other
 	// kind never rewrites every line

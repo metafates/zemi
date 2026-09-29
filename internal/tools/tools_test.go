@@ -597,13 +597,14 @@ func TestEditSafety(t *testing.T) {
 		}
 	}
 
+	// a file changed since its read takes only an exact match, like an unread one
 	path := filepath.Join(dir, "stale")
 	os.WriteFile(path, []byte("x\n"), 0o644)
 	call(t, read, js(map[string]any{"path": path, "limit": 0}))
-	os.WriteFile(path, []byte("y\n"), 0o644)
+	os.WriteFile(path, []byte("y\ny\n"), 0o644)
 	later := time.Now().Add(time.Hour)
 	os.Chtimes(path, later, later)
-	if resp := call(t, edit, js(map[string]any{"path": path, "old_string": "y", "new_string": "z"})); !strings.Contains(resp.Content, "changed since") {
+	if resp := call(t, edit, js(map[string]any{"path": path, "old_string": "y", "new_string": "z", "replace_all": true})); !strings.Contains(resp.Content, "not read its current version") {
 		t.Fatalf("changed file must be read again: %q", resp.Content)
 	}
 
@@ -651,11 +652,11 @@ func TestScratchpad(t *testing.T) {
 		{"write a new file", ToolWrite, `{"path":"PAD/notes/n.md","content":"x"}`, nil, "wrote", false},
 		{"edit what a command made, unread", ToolEdit, `{"path":"PAD/made.txt","old_string":"a","new_string":"b"}`, nil, "edited", false},
 		{"read", ToolRead, `{"path":"PAD/stale.txt","limit":0}`, nil, "1\ta", false},
-		{"edit what changed since the read", ToolEdit, `{"path":"PAD/stale.txt","old_string":"b","new_string":"c"}`, func() {
+		{"edit what changed since the read", ToolEdit, `{"path":"PAD/stale.txt","old_string":"b","new_string":"c","replace_all":true}`, func() {
 			later := time.Now().Add(time.Hour)
-			os.WriteFile(filepath.Join(pad, "stale.txt"), []byte("b\n"), 0o644)
+			os.WriteFile(filepath.Join(pad, "stale.txt"), []byte("b\nb\n"), 0o644)
 			os.Chtimes(filepath.Join(pad, "stale.txt"), later, later)
-		}, "changed since", false},
+		}, "not read its current version", false},
 		{"secret-shaped name", ToolWrite, `{"path":"PAD/cert.pem","content":"x"}`, nil, "give it another name", true},
 		{"$TMPDIR", ToolWrite, `{"path":"$TMPDIR/n.md","content":"x"}`, nil, `directory called "$TMPDIR" in the project. Write the absolute path: the scratchpad, $TMPDIR in commands, is PAD.`, false},
 		{"~", ToolRead, `{"path":"~/n.md","limit":0}`, nil, "home is", false},
