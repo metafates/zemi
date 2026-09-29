@@ -190,13 +190,16 @@ func TestLuaToolCeiling(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := luaToolCeiling
-	luaToolCeiling = 50 * time.Millisecond
 	t.Cleanup(func() { luaToolCeiling = old })
 	tool := h.luaEvalTool(h.PipelineFor())
-	for _, c := range []struct{ script, want string }{
-		{"while true do end", "error: stopped after its 50ms ceiling"},
-		{"error({ code = 1 })", `error: lua-tool: {"code":1}`},
+	for _, c := range []struct {
+		script, want string
+		ceiling      time.Duration
+	}{
+		{"while true do end", "error: stopped after its 50ms ceiling", 50 * time.Millisecond},
+		{"error({ code = 1 })", `error: lua-tool: {"code":1}`, old},
 	} {
+		luaToolCeiling = c.ceiling
 		input, _ := json.Marshal(map[string]string{"description": "x", "script": c.script})
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 		if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) || strings.Contains(resp.Content, "context canceled") {

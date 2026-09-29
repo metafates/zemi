@@ -240,7 +240,7 @@ func TestHotRuntimeVetoesFailClosed(t *testing.T) {
 		zemi.event.on("app.quit", function() end)
 		zemi.event.on("tool.pre", function() end)`)
 	if _, err := r.Do(context.Background(), lua.ClassIO, 10*time.Millisecond, 10*time.Millisecond, func(*glua.LState) ([]any, error) {
-		time.Sleep(200 * time.Millisecond)
+		<-t.Context().Done()
 		return nil, nil
 	}); !r.IsHot() {
 		t.Fatalf("runtime not hot: %v", err)

@@ -584,7 +584,7 @@ func TestReflectTimeout(t *testing.T) {
 	sid := seedSession(t, h)
 	seedTranscript(t, h, sid)
 	m := reflectStub(t, h, `{"memories":[]}`)
-	m.block = 2 * time.Second
+	m.block = time.Hour
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	if err := h.reflectSession(ctx, sid); !errors.Is(err, context.DeadlineExceeded) {
@@ -698,13 +698,15 @@ func TestReflectTrigger(t *testing.T) {
 			}
 		}, due: true, calls: 1},
 		{name: "two concurrent /reflect start one run", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
-			m.block = 100 * time.Millisecond
+			release := make(chan struct{})
+			m.during = func() { <-release }
 			if err := h.reflectCommand(); err != nil {
 				t.Fatal(err)
 			}
 			if err := h.reflectCommand(); err == nil {
 				t.Fatal("the second /reflect must be refused")
 			}
+			close(release)
 			waitFor(t, func() error {
 				if label, _, _ := h.BusyNow(); m.calls.Load() == 0 || label != "" {
 					return errors.New("still reflecting")
