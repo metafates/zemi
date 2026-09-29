@@ -173,13 +173,13 @@ func normalize(cmd string, lang syntax.LangVariant) (n Normalized) {
 	if err != nil && lang == syntax.LangBash {
 		fail = parseFailure(err)
 	}
-	w := walker{src: src}
+	w := walker{src: src, lang: lang}
 	w.inline(stmts)
 	w.stmts(stmts)
 	// a name that reads other than as $NAME may be reassigned, and a builtin
 	// that sets names by a value zemi cannot see may reassign any
 	if len(w.vars) > 0 && (w.reassigns(stmts) || slices.ContainsFunc(w.n.rows, func(r row) bool { return ShellState[r.args[0]] })) {
-		w = walker{src: src}
+		w = walker{src: src, lang: lang}
 		w.stmts(stmts)
 	}
 	n = w.finish(stmts)
@@ -259,6 +259,7 @@ func parseFailure(err error) string {
 // walker builds one reading's Normalized from its statements.
 type walker struct {
 	src  string
+	lang syntax.LangVariant
 	n    Normalized
 	loop int // how many loops enclose the walk
 	docs []heredoc
@@ -399,6 +400,10 @@ func (w *walker) call(lead []string, c *syntax.CallExpr) []string {
 	}
 	args := slices.Clone(lead)
 	for _, x := range c.Args {
+		// bash drops a backslash ending the text, and with it a word of one
+		if w.lang == syntax.LangBash && x.Lit() == `\` {
+			continue
+		}
 		args = append(args, w.word(x))
 	}
 	return w.fold(args, c.Pos(), at)
@@ -495,7 +500,7 @@ func (w *walker) redirect(r *syntax.Redirect, reader []string) {
 			}
 			d.text = b.String()
 			if !d.quoted {
-				sub := walker{src: w.src, loop: w.loop}
+				sub := walker{src: w.src, lang: w.lang, loop: w.loop}
 				sub.subs(r.Hdoc)
 				d.subs = sub.finish(nil)
 			}
@@ -543,7 +548,12 @@ func (w *walker) word(x *syntax.Word) string {
 func (w *walker) part(b *strings.Builder, p syntax.WordPart, inDouble bool) {
 	switch p := p.(type) {
 	case *syntax.Lit:
-		b.WriteString(unescape(p.Value, inDouble))
+		v := unescape(p.Value, inDouble)
+		// a backslash ending the text: bash drops it, dash keeps it
+		if !inDouble && w.lang == syntax.LangBash && (len(p.Value)-len(strings.TrimRight(p.Value, `\`)))%2 == 1 {
+			v = strings.TrimSuffix(v, `\`)
+		}
+		b.WriteString(v)
 	case *syntax.SglQuoted:
 		if p.Dollar {
 			b.WriteString(w.ansiC(p.Value))

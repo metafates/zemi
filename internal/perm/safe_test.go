@@ -169,6 +169,8 @@ func TestReadCommandPathCheck(t *testing.T) {
 		safe bool
 	}{
 		{"cat .env", false},
+		// bash drops the backslash ending the text and reads .env
+		{"cat .env\\", false},
 		{"cat main.go", true},
 		{"cat ſecrets.yml", false},
 		{"cat .ssh/id_rſa", false},

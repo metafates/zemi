@@ -1970,7 +1970,8 @@ provenance string.
   POSIX sh, since zemi runs `sh -c`, which is bash 3.2 in POSIX mode on
   macOS and dash on Debian, and the two grammars read `$'..'`, `[[ ]]`,
   `(( ))`, `&>` and arrays differently (dash runs `rm` in
-  `echo $'\' ; rm -rf x ; #'`, bash only `echo`): every simple command
+  `echo $'\' ; rm -rf x ; #'`, bash only `echo`; bash reads `cat .env\`
+  as `cat .env`, dash keeps the backslash): every simple command
   either reading runs is a segment, so an allow needs both readings. The
   POSIX reading keeps the statements that parse before its first error,
   which is what dash runs before it stops; a bash parse error fails the
