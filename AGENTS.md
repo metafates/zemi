@@ -125,55 +125,37 @@ Flags apply after boot so they win over `init.lua`, except `--trust`, which the 
 reads. `-m`, `/model <provider/model>` and `zemi.model.set` write
 `models.chat`, and refuse while the active profile sets its own model (`Host.ProfileModelErr`;
 `--profile` applies before `-m`), since the key would change and the conversation would not.
-`Host.SetModel` parses the rest of `/model` (`Host.CompleteModel` offers the same grammar in
-the palette): `roles` opens the role list (`OpenModelRoles`, a `Reload` list that rebuilds
-when the role's model list over it closes, and that opens over `/model` from its "Choose a
-model per role" row, so esc goes back), `update` fetches the catalog (below; the row under
-it), `<role>` that role's model list (`chat` too, titled like the others), `<role> <id>` or
-`<role> chat` sets the role or makes it follow chat (`chat chat` returns `models.chat` to the
-default).
-`--profile` and `/profile` (`Host.SetProfile`; no argument opens the picker, which the
-statusline's profile segment clicks into) write `agent.profile` for the next send: a switch
-changes the prompt and the tool set, so it busts the provider's prompt cache once; ctrl+t and
-ctrl+shift+t cycle it.
+`Host.SetModel` parses the rest of `/model` and `Host.CompleteModel` offers the same grammar.
+`--profile` and `/profile` (`Host.SetProfile`) write `agent.profile` for the next send: a switch
+changes the prompt and the tool set, so it busts the provider's prompt cache once.
 
 `zemi run` and `zemi health` boot headless (`bootHeadless`, the TUI's steps without it; its
 `stderr` is `Host.Stderr`, which `zemi run` makes its view before boot, so a diagnostic prints
-above the tail). `zemi run` (`runHeadless`, run.go) runs one turn, or a goal's chain
-of them, exiting 1 when the chain leaves the goal set (`/loop` is refused there). It sends on `GoSafe` and polls
-`Host.RunFrame` every 100 ms: `ui.RunView` renders the chat and working widgets over the
-frame with `UIState.Printed` (`ctx.headless`), printing settled rows once and, on a terminal,
-redrawing the pending rows, live turn and working rule as a tail under them; the `follower`
-turns the same frames into `--json` events, each once (a call by `ChatMessage.ID`, which
-`flushOutput` sets). stdout gets the last message, or nothing where the view drew it on a
-terminal both streams share; `-q` and `--json` keep stderr to diagnostics, `--reasoning`
-switches `ui.reasoning`'s view on. An ask no UI can answer is denied as `tools.ByNobody` and
-recorded (`Host.HeadlessDenials`, subagents' too), and stderr ends with the list and the one
-change that lets them through (`deniedHint`). It also drops what needs a user (`headlessExcluded`), the
-agent tool's `background` and `send_to` (a detached report would outlive the run), the workflow
-tool's `background` and every `action` but `status` and `rerun`, and the prompt lines naming them, and a plugin's `zemi.agent.send` raises there (nothing would bound
-its chain of turns). A headless run with no saved trust decision runs untrusted and says
-so. With no UI `Host.Notify` prints a warning or an error to `Host.Stderr` as "zemi: <title>:
-<body>", so `zemi run` never swallows one. A command that opens a screen gets `Host.Screen`'s
-`ErrNeedsTUI` there, which `RunCommand` names ("/help needs the TUI", status 1; `/trust`
-points at `--trust`); `/btw` claims the agent like `/compact`, so `zemi run` waits on it and
-ctrl+c cancels it, and appends its answer as a transcript row, which `zemi run` prints.
+above the tail). `zemi run` (`runHeadless`, run.go; DESIGN §8 Printed runs) runs one turn, or a
+goal's chain of them. It sends on `GoSafe` and polls `Host.RunFrame` every 100 ms: `ui.RunView`
+renders the chat and working widgets over the frame with `UIState.Printed` (`ctx.headless`),
+and the `follower` turns the same frames into `--json` events, each once (a call by
+`ChatMessage.ID`, which `flushOutput` sets). An ask no UI can answer is denied as
+`tools.ByNobody` and recorded (`Host.HeadlessDenials`, subagents' too). It also drops what
+needs a user (`headlessExcluded`), the agent tool's `background` and `send_to` (a detached
+report would outlive the run), the workflow tool's `background` and every `action` but
+`status` and `rerun`, and the prompt lines naming them, and a plugin's `zemi.agent.send`
+raises there (nothing would bound its chain of turns). With no UI `Host.Notify` prints a
+warning or an error to `Host.Stderr` as "zemi: <title>: <body>", so `zemi run` never swallows
+one. A command that opens a screen gets `Host.Screen`'s `ErrNeedsTUI` there, which
+`RunCommand` names ("/help needs the TUI", status 1); `/btw` claims the agent like
+`/compact`, so `zemi run` waits on it and ctrl+c cancels it.
 
 `zemi plugins [verb]` (`pluginsCommand`) runs `plugin.Run` and exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
-reloads on the change. Bare, it lists (`plugin.Table`: no header, the source last; the empty
-hint on stderr). `delete` asks on the terminal, `--yes` answers, and off a terminal it refuses,
+reloads on the change. `delete` asks on the terminal, `--yes` answers, and off a terminal it refuses,
 so an agent's command cannot delete a plugin. `test` is the one verb that boots Lua (below). `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
-`open`, `new` (the list's first row, which sends `newPluginPrompt` to the agent: the
-procedure lives in the zemi skill's plugins.md) and `modify <name> [what to change]` (a local
-plugin's detail action fills it; it sends `modifyPluginPrompt` and records the plugin in
-`madePlugins`). Its list is built off the key loop from `plugin.List` and the last boot's
-`pluginLoads`; install, update, check and delete run on `GoSafe`, toast, and refresh the list
-(`Overlay.Refresh`: it replaces an open one in place and opens nothing once esc closed it).
-`open` edits the plugin's `init.lua`, or its directory when it has none. Under `zemi run` it
-points at `zemi plugins`.
+`open`, `new` and `modify <name> [what to change]`, which send the agent a prompt pointing at
+the zemi skill's plugins.md (`modify` records the plugin in `madePlugins`). Its list is built
+off the key loop; the git verbs run on `GoSafe` and refresh the list (`Overlay.Refresh`: it
+replaces an open one in place and opens nothing once esc closed it).
 
-`zemi plugins test <name|dir> [pattern]` (plugintest.go, hostapi/plugintest.go) runs a plugin's
-`tests/*.lua` (a top-level file with no case fails: shared code goes in `tests/lib/`): `testPlugins` resolves a name as the plugins step would (`hostapi.PluginDir`),
+`zemi plugins test <name|dir> [pattern]` (plugintest.go, hostapi/plugintest.go; DESIGN §5) runs a
+plugin's `tests/*.lua`: `testPlugins` resolves a name as the plugins step would (`hostapi.PluginDir`),
 copies the plugin into temp dirs (`copyPlugin`: no dot entries or `node_modules`, a link only when
 relative and inside, capped), and boots one zemi per case in this process (`hostapi.NewPluginTest`,
 `bootSteps` with no trust and the test file where init.lua runs), which `Host.Close` ends. The
@@ -181,12 +163,8 @@ first boot collects the case names. `proc.Refuse` makes the process start nothin
 sandbox probe included. The test zemi runs on a fake `lua.Clock` only `test.advance` moves, with
 `WholeTasks` so a driver waits for what it started, and is quiet when no `GoSafe` goroutine runs
 (`goes`) and no timer is due. `luaGate` asks `PluginTest.reply` first about a call that does IO:
-only a `test.stub` reply passes, standing in for the transport at the call site, an unanswered
-call raises naming the stub to add, and a `false` reply raises the missing-rule error whatever
-rules exist. Drivers refuse what another origin registered, a Go command and a host action, and
-raise at a file's top level; an error recorded to /errors under another source while one runs
-fails the case at its call. A failure's report drops a line an earlier one already holds
-(`PluginTest.Run`), and the assertions are one Lua chunk (`assertLua`). `zemi.test` exists only there
+only a `test.stub` reply passes, standing in for the transport at the call site, and a `false`
+reply raises the missing-rule error whatever rules exist. `zemi.test` exists only there
 (`TestNamespaceVersion`); `TestPluginsTest` runs it over `testdata/plugins/demo`.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`), and a TUI
@@ -194,20 +172,13 @@ boot no model can run opens the `/model` picker once (`Host.OfferModel`, after t
 apply, never on a reload or after a failed init.lua). Builtin
 providers come from the catwalk catalog (`agent.LoadCatalog`, converted at boot by
 `agent.Builtin` with the key env vars resolved in Go, never stored in config, into the
-`Host.Builtin` pointer): the embedded one, or the one `/model update` (`agent.UpdateCatalog`,
-a busy job that reloads config, or `zemi models update`, which boots nothing) fetched from
-catwalk.charm.land into
-`<data>/catwalk.json`, never `<cache>`, which a sandbox can write, since the catalog picks
-where each key is sent. A fetched one reads only the variables the bundled one names
-(`bundledRef`), so the feed cannot pick which secret goes. No network at boot; a saved catalog from another bundled catwalk
-version is ignored, so an upgrade brings its newer bundle back, and one that does not load is
-the `/health` catalog row's warning. Each builtin is on only while its key is
-exported, one without is in `Registry.Missing` (minus the ids config deleted or added) so the
-no-model hint (`NoModelHint`, one sentence everywhere) can name the variable and `/model` lists it, copy only, after the usable models, `Registry.Reset` seeds every generation
-before `init.lua`, a `zemi.provider.add` under a builtin id replaces it
-whole, `zemi.provider.del` drops one and `providers.builtin = false` (read once in `readyStep`)
-all of them. A `models.chat` config leaves unset runs `Registry.Default`: the first user-added provider's
-default model, else the first builtin's in catalog order (anthropic, openai, gemini first).
+`Host.Builtin` pointer): the embedded one, or the one `/model update` or `zemi models update`
+(`agent.UpdateCatalog`) fetched into `<data>/catwalk.json`, never `<cache>`, which a sandbox
+can write, since the catalog picks where each key is sent. A fetched one reads only the
+variables the bundled one names (`bundledRef`), so the feed cannot pick which secret goes. No
+network at boot. Each builtin is on only while its key is exported, one without is in
+`Registry.Missing` so the no-model hint (`NoModelHint`) can name the variable, and
+`Registry.Reset` seeds every generation before `init.lua` (DESIGN §6.3).
 Config reload is not fsnotify: main hands the host its reload and a fingerprint of the config
 trees (`setReload`, `Host.SetReload`; past dot-directories, `node_modules` and `.luarc.json`,
 plus the local plugins, the plugins' `disabled` file and each clone's git index, `pluginRoots`;
@@ -233,26 +204,17 @@ row left out since user Lua can write kv directly), so init.lua still wins; per 
 A plugin key's row waits unchecked in `picked` until `zemi.config.add` registers the key and
 applies it, and `sweepPluginState` drops a deleted or reinstalled plugin's rows.
 
-`/config` (hostapi/configcmd.go) is a `Reload` list of every schema key by section, each
-row's description its `cfgSource` (`init.lua` when the live value is config's last write;
-`saved` when it is the kept pick of a key init.lua does not write; `default`; `this run` for
-anything a restart drops, which the detail explains for a key init.lua sets; padded to one
-width, so a change moves no text) and the value, which a bool draws as its switch instead;
-the key's description shows whole under the list while its row is selected (an item's
-`preview`). Space toggles a bool; every other row opens its
-detail, whose actions pick or fill `/config set`, and reset a value off its `cfgBase` ("Reset
-to init.lua" or "Reset to default", which forgets the kept pick). `/config` and `/effort` write through
+`/config` (hostapi/configcmd.go) lists every schema key with its `cfgSource` (`init.lua`,
+`saved`, `default` or `this run`) and value. `/config` and `/effort` write through
 `Host.SetConfig`, which sends `models.*`, `permissions.mode`, `agent.profile` and `ui.theme`
-through their own setters; for any other key a refused value is a usage hint. A key's
-`Choices` (the effort levels and "", `memory.autonomy`'s auto or ask) refuse any other value in
-`config.checkKind`, which also takes `default` for a "" choice, `zemi.config.set` included; every runtime write,
-those setters included, fires the key's watches through `setWatched`. `config lua`
-shows the keys off their default as `zemi.config.set` lines, read only, for `y` to copy. zemi
-never edits init.lua. Under `zemi run` only `config set` runs.
+through their own setters. A key's `Choices` refuse any other value in `config.checkKind`,
+which also takes `default` for a "" choice, `zemi.config.set` included; every runtime write,
+those setters included, fires the key's watches through `setWatched`. zemi never edits
+init.lua. Under `zemi run` only `config set` runs.
 
 ## Architecture and control flow
 
-`main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `steps` in main.go),
+`main.go` is wiring only. Boot order (each step is a `lua.BootStep`, see `bootSteps` in main.go),
 and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
 `require("zemi.tui")` (shipped theme, widgets and keymaps, one module each) -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
@@ -267,12 +229,11 @@ dotfiles repo is nobody's root; a linked worktree maps to its main checkout by r
 for this process (`--trust`, a Later answer, `/trust` where saving is impossible), the saved
 one, then the Go-owned prompt. `$HOME` and `/` are never asked about or saved
 (`hostapi.TrustUnsaved`). `/projects` (hostapi/projects.go) lists every root zemi keeps state
-for (`ListProjects`: `trust.json` plus each state dir's checked `root` file), switches by
-restarting (`UIHooks.Relaunch`, past the quit veto, then main's exec: the project is bound at
-start and never changes in place; refused while a turn, an agent run or a workflow lives), forgets another
-project's decision without opening it, never granting one, and deletes another project's data
-(`deleteProject`: its state dir, its sessions' pads and plans, its caches and decision;
-`store.ClaimForDelete` refuses while another zemi has the store open). `/trust` reopens the prompt off the UI goroutine, saves, and calls `Host.Retrust`, which sets
+for (`ListProjects`), switches by restarting (`UIHooks.Relaunch`, past the quit veto, then
+main's exec: the project is bound at start and never changes in place; refused while a turn,
+an agent run or a workflow lives), forgets another project's decision, never granting one, and
+deletes another project's data (`deleteProject`; `store.ClaimForDelete` refuses while another
+zemi has the store open). `/trust` reopens the prompt off the UI goroutine, saves, and calls `Host.Retrust`, which sets
 the decision and reloads when it changed (a reload that fails before the trust step must not
 leave the old decision in force) under the watcher's lock, so the watcher does not reload first
 for the tree the change moved. `Host.ProjectTrusted()` gates project
@@ -357,11 +318,10 @@ redirect and env-assignment gates - internal/perm/bash.go, heavily table-tested;
 tables when touching it), and `perm.Store.CheckCommandFor`, the predicates on `perm.Normalized`,
 the ask hook and `alwaysChoice` all judge that one parse (`Request.Command`); a nested
 `sh -c` body or `eval` text is parsed again, and so is each segment `alwaysChoice` offers a rule for; a
-substitution inside double quotes is parsed like an unquoted one (one holding a `case` with no
-`esac` fails), and a heredoc body is parsed as commands unless every program in the command is a
-reader that runs none of its input (`dataReaders`: `cat`, `git`, ...), and then an unquoted one for
-its substitutions; a `<<` inside `(( ))` is a shift, and no variable is inlined in a command
-holding `<<`, since the shell expands no delimiter. An assignment prefix the normalizer strips downgrades an allow
+substitution inside double quotes is parsed like an unquoted one, a heredoc body as commands
+unless every program in the command is a reader that runs none of its input (`dataReaders`,
+DESIGN §9), and no variable is inlined in a command holding `<<`, since the shell expands no
+delimiter. An assignment prefix the normalizer strips downgrades an allow
 verdict to ask, since the rules never see it and `GIT_EXTERNAL_DIFF=./x git diff` runs `./x`.
 A segment with a word that climbs (`docs/../x`) is judged as written and with the word cleaned,
 and the stricter verdict holds (`cleanDotDot`), so `cat docs/*` does not allow it; a path word
@@ -380,15 +340,12 @@ changes; within one step the lock is taken in call order (`tools.CallStart` from
 `OnToolCall`, which fires for every call before any is dispatched; `tools.CallDone` from
 `OnToolResult`, which fires for a call fantasy refused to run too, and once more for the
 runner's ids when its turn ends, so a call nothing ran never holds the file), so two edits to
-one file emitted together apply as written. A live call's row waits (`wait`, drawn with no
-timer) until fantasy starts it (`agent.runningTool`): a serial call (bash, lsp) holds the rest
-of its step. A mistyped path names up to three siblings it could have meant, nearest first (`Pipeline.notFound`), for read and edit alike, before any ask.
+one file emitted together apply as written.
 `ResumeSession` rebuilds that map from the stored rows (`seedReads`), leaving out
 files touched after the last message. `tool.Run` runs the same check before the gate
 (`tool.edits`), so nobody approves a change the tool would then refuse, and resolves the path
 once (`perm.Resolve`) before the gate into the per-run `Pipeline.Path`; the tools open exactly
-that `perm.Path` (`Path.Open`, an `openat` walk with `O_NOFOLLOW` through search-only directory fds, so a
-confined zemi, as `zemi plugins test` runs, passes a parent it may not list) and never the input string,
+that `perm.Path` (`Path.Open`, an `openat` walk with `O_NOFOLLOW`, DESIGN §9) and never the input string,
 so a sandboxed command cannot swap a directory for a symlink between check and open.
 `zemi.fs`, `@file` attachments and the `lua` tool's `path` open through a `perm.Path` too
 (`resolveJailed`). Both writers refuse a path whose last component is a symbolic link
@@ -442,14 +399,10 @@ Network requests are never settled: the URL is the model's. A mode from config m
 whatever the base would settle, which is how a user gets every ask); it runs as a task for at
 most 60s, long enough for a model call of its own, and, like the mode's own rules,
 cannot allow an `Unsandboxed` or `Network` request, an `Explicit` one or a `protectedWrite`. In a trusted project with a live sandbox `unsettled` parses nothing:
-every command runs confined, except the short `perm.Normalized.Destructive` list (forced or recursive
-`rm`, or one with a glob operand, `git clean`, `find -delete`, `shred`, `truncate`, `dd`,
-`rsync --delete`, also behind `xargs`, `find -exec`, `sh -c`, `eval` or a shell keyword, and a
-bare `rm` in a loop body or in a shell body `xargs` or `find -exec` repeats; not an `rm` whose
-every operand is below the scratchpad, while nothing in the command can have changed `$TMPDIR`), a git command that writes `.git`
-(`perm.Normalized.GitWrites`: commit, checkout, stash and the like, which the sandbox's read-only `.git`
-could only fail, so the ask comes before a wasted run) and, on a backend that cannot hide
-files, one naming an existing secret-shaped file. Known ceiling: the sandbox policy is the only limit, so the model
+every command runs confined, except the short `perm.Normalized.Destructive` list (bulk deletes,
+DESIGN §9), a git command that writes `.git` (`perm.Normalized.GitWrites`, which the sandbox's
+read-only `.git` could only fail, so the ask comes before a wasted run) and, on a backend that
+cannot hide files, one naming an existing secret-shaped file. Known ceiling: the sandbox policy is the only limit, so the model
 can write code and run it unattended, rewrite any project file and read what the policy does
 not hide, outside the project too. In an untrusted project both modes settle only `ReadCommand`
 commands (every program only reads, named without a path; no builds, no git) and, with a sandbox,
@@ -473,32 +426,23 @@ every command runs confined whoever allowed it (`Request.ReadOnly`; `unsettled` 
 run under `serverPolicy`. `NewHost` probes the backend synchronously, so `zemi health` and the first turn's
 schema see it.
 
-`sandboxPolicy` writes the policy; the whys behind it: the sandbox temp dir (`TMPDIR`) is the
-pipeline's scratchpad, as it is for every model command, so the file tools read what a command
-left there without an ask, and never the shared system one (macOS keeps the `xcrun_db` there that picks what `/usr/bin/make`
-and `git` run; a denial naming `/tmp` gets a hint pointing at `$TMPDIR`),
-`GOCACHE` is one per trust root (Go trusts cache entries, so a shared one lets one project
-poison another's build), the project is writable only when it is trusted, outside zemi's own
-dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect`), `.git`,
-`.agents` and every `PATH` dir under a write root stay read-only because zemi runs git, sh and
-servers unconfined by name, and home credential paths are hidden, under `$HOME` and the account's
-home when `HOME` was moved (`homes`). The secret shapes do not cover the
-pad (`Policy.Pad`): only the session's own commands put files there. Of the hidden data dir a local
-plugin's code (`plugin.Code`, through `Policy.Read`) and the names in the plugin dirs
-(`Policy.List`) read back, so `zemi plugins test` runs confined; its `.git`, and a dot entry or
-`node_modules` in its code (`plugin.Kept`), stay hidden. The exception is the repo's
-`.agents/worktrees` (`Dirs.WorktreesDir`), where the agent keeps git worktrees: a write root of
-its own, ignored by the `/*` in its own `.gitignore` (`Dirs.WorktreesIgnore`, written only
-when missing, by the trust step of a trusted boot and by `sandboxPolicy`), with
-each checkout's own `.git` and `.agents` protected and nothing loaded from it. The namespace
+`sandboxPolicy` writes the policy; DESIGN §9 has the whys behind it: the scratchpad as `TMPDIR`
+and never the shared system temp dir, `GOCACHE` per trust root, the project writable only when
+it is trusted, outside zemi's own dirs and on a backend that can protect paths inside it
+(`Backend.EnforcesProtect`), `.git`, `.agents` and every `PATH` dir under a write root read-only
+because zemi runs git, sh and servers unconfined by name, home credential paths hidden (`homes`),
+the pad outside the secret shapes (`Policy.Pad`), and a local plugin's code readable back
+(`plugin.Code`, `Policy.Read`, `Policy.List`) so `zemi plugins test` runs confined. The
+repo's `.agents/worktrees` (`Dirs.WorktreesDir`) is a write root of its own, ignored by the `/*`
+in its own `.gitignore` (`Dirs.WorktreesIgnore`, written only when missing), with each
+checkout's own `.git` and `.agents` protected and nothing loaded from it. The namespace
 backend binds only protected paths that exist, so `Pipeline.Guard` records the missing ones
 before a run and checks them at exit: a created `.git` or `.agents` holds trust off until
 `/trust`. Bash and `job_start` take two escapes no mode settles and each of which
 asks: `network: true` only adds sockets, `sandbox: false` drops the whole policy. A confined
-failure `sandbox.LikelyDenied` recognizes gets `Pipeline.sandboxHint`, which names the limit the
-denied path hit and the one next step (`sandbox.DeniedPaths`); the limits themselves are the
-environment's Sandbox block (`Host.sandboxPrompt`, from `sandboxPolicy` without the project walk,
-which must not delay the first request).
+failure `sandbox.LikelyDenied` recognizes gets `Pipeline.sandboxHint`; the limits themselves
+are the environment's Sandbox block (`Host.sandboxPrompt`, from `sandboxPolicy` without the
+project walk, which must not delay the first request).
 
 `ReadCommand` is an allowlist of readers (internal/perm/safe.go, table-tested), which settle
 unconfined: no shell expansion outside quotes (`$` and backticks inside double quotes count),
@@ -521,7 +465,7 @@ next to the recipes, where no repository can ship it and no sandbox can write it
 `ProjectPermissionsStep`, internal/hostapi/projectperm.go) lists bash commands always allowed in that project, each by
 the `alwaysChoice` rule shape (a wrapper or deleting program or a glob line offers no rule);
 it is read as a Go boot step, so it never goes through the Lua origin gate below, and a
-permission overlay's `Yes, this project` answer (`p`) appends the command to it, offered only when
+permission overlay's `p` answer appends the command to it, offered only when
 the file would load exactly the rules the label names (`projectChoice`). Only `user`
 origin may add allow rules (project may tighten only), scope a rule to one plugin
 (`principal = "plugin:<name>"`, which a plugin's refused call puts in the rule line it names;
@@ -537,9 +481,8 @@ for one), as prefix globs rather than the exact request (`alwaysChoice`, ask.go:
 program and subcommand for `git`, `go`, `cargo` and the other `perm.SubcommandPrograms`, leading
 options kept (`git -C sub status`, `perm.Subcommand`) and the exact segment when options leave
 no subcommand (`git --version`) or one not for sure (`npm -w web test`: `perm.LeadKnown`), a
-leading `do` or `then` kept in the rule (`do cat *`, never `do *`) and shell syntax (`for`,
-`done`, `perm.ShellWords`) left out of the label unless nothing else is named; a file's directory, or the file alone when that is `$HOME`, `/` or between,
-which hold every dotfile; a URL's host). A deleting program (`rm`, `mv`, `find`, `tar`, ...) or a segment
+leading `do` or `then` kept in the rule (`do cat *`, never `do *`); a file's directory, or the
+file alone when that is `$HOME`, `/` or between, which hold every dotfile; a URL's host). A deleting program (`rm`, `mv`, `find`, `tar`, ...) or a segment
 `perm.Normalized.Destructive` names stays exact, since its rule would run unconfined, and so
 do `[[` and the `perm.ShellState` builtins (`let`, `read`, ...), which evaluate a quoted
 array subscript, where `$(...)` runs. A file read is also
@@ -556,11 +499,8 @@ its exact path: a directory glob cannot exclude the secret shapes, so `Pipeline.
 sends a file request a `model` glob rule allowed back to the ask when `Secret` matches, and a command whose
 reader names one (`perm.Normalized.ReadsSecret`: `cat .env`, `cat .e*`) when a `model` rule or a
 permissions file line allowed it (`perm.Rule.Source`); a user-config rule has no `Source` and
-no `model` principal, stays authoritative, and shows read-only in `/permissions` with its
-source (init.lua, the permissions file, a project's `.agents/init.lua`) and, when it scopes one
-plugin, that `plugin:<name>` principal as its tag, while each always answer is one row (its
-bare and wildcard rules, `answerKey`) whose Delete drops both; the row has no `run`, so
-space deletes nothing.
+no `model` principal, stays authoritative, and shows read-only in `/permissions`, while each
+always answer is one row (its bare and wildcard rules, `answerKey`) whose Delete drops both.
 `sandbox: false` is denied outright for a read-only agent (`Pipeline.Check`, before any mode
 could settle it), and its sandbox hint offers only `network: true`.
 
@@ -593,14 +533,11 @@ would drop a frame. A metamethod leaves no frame of the code that set it, so the
 `setmetatable` (tables only) lets code below builtin install only its own origin's Lua
 functions as handlers, and a plugin only its own plugin's, copied at the call, and a plugin module
 that exports a Go function fails to require (`exportsGo`: `obj:method()` would run it as the caller
-with the module table as its argument). Plugins (hostapi/plugins.go, `PluginsStep`): `plugin.Scan` lists
-`installed/` (clones) and `local/` (developed in place) minus `disabled`, sorted by name; a local
-plugin named like an installed one or a symlinked dir does not load, and a gone or
-reinstalled plugin's `zemi.state` keys are dropped (`sweepPluginState`: the key `plugin:<name>`
-holds the id `plugin.Install` writes into the clone's `.git`). The same pick, fixed for the generation (`Host.pluginDirs`),
-gives the plugins' skills, agents, markdown commands and workflows, loaded after the user's and
-the builtin ones, init.lua failed or not; a name two plugins ship goes to the first by name, and
-`/errors` names both. `Host.PluginOf` names a plugin by its directory: its state keys are
+with the module table as its argument). Plugins (hostapi/plugins.go, `PluginsStep`, DESIGN §5):
+`plugin.Scan` lists `installed/` and `local/` minus `disabled`, sorted by name, and the same
+pick, fixed for the generation (`Host.pluginDirs`), gives the plugins' skills, agents, markdown
+commands and workflows; a gone or reinstalled plugin's `zemi.state` keys are dropped
+(`sweepPluginState`). `Host.PluginOf` names a plugin by its directory: its state keys are
 `plugin:<name>:<key>`, its Lua permission principal and its overlay badge `plugin:<name>`
 (`Host.principal` raises for plugin code with no file of its plugin on the stack), and a call from plugin a into plugin b's function runs as a. Registries enforce: cross-origin
 collision is **refused** with the higher-trust origin winning; within one origin it is
@@ -661,12 +598,10 @@ loaded by the interpreter. `syncTypes` rewrites it plus a copy of `runtime/lua/`
 its content moved (an editor reloads on each write; the config watcher skips it). `TestTypes*` keep it
 honest: every API member annotated, nothing annotated that zemi dropped, and the
 `zemi.EventName`, `zemi.HostAction` and `zemi.WidgetCtx` aliases pinned to their Go sources, like
-each constant table (`enumTable`: `zemi.provider.kind`, `zemi.permission.decision`,
-`zemi.memory.scope`, `zemi.model.role`, `zemi.model.effort`, `zemi.notify.level`, keyed by the
-value upper-cased) and the alias that types the fields taking one (`TestTypesEnums`), and every
-other closed set Lua sees (a Go `type X string` with a slice of its values: `RowKind`, `CallStatus`,
-`HealthLevel`, ...) as a multi-line `---|` alias, the layout kinds as the `kind` literals of the
-`zemi.LayoutNode` classes (`TestTypesLayoutKinds`). A member whose call shape its signature
+each constant table (`enumTable`, keyed by the value upper-cased) and the alias that types the
+fields taking one (`TestTypesEnums`), and every other closed set Lua sees (a Go `type X string`
+with a slice of its values) as a multi-line `---|` alias (`TestTypesLayoutKinds` for the layout
+kinds). A member whose call shape its signature
 and description do not tell (a callback and its return, a handle to wait on, a surprising spec
 field, a string grammar, a return shape unlike its siblings, a call order) carries a fenced
 ```` ```lua ```` example of one to four real lines before its `---@param`s, and one whose
@@ -684,9 +619,7 @@ lua-language-server is installed.
   reflector) each follow it while empty (`roleModel`). Nothing falls back to a cheaper model on
   its own, so the `/model roles` list shows every mapping. A `models.*` value is `""` or an id
   with a `/` (`config.set` refuses a role name), so roles never nest. A profile's own model
-  runs the conversation and moves no role: `chat` is always `models.chat` (`roleIDs`,
-  `zemi.model.list`, a `"chat"` reference), and the `/model roles` chat row tags the override
-  `profile <name>`. Anything that takes a
+  runs the conversation and moves no role: `chat` is always `models.chat` (`roleIDs`). Anything that takes a
   model - a profile, an agent definition, a workflow - takes a role name or a
   `provider/model` id (`modelRef`). `/health` checks each distinct role model.
 - **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
@@ -738,41 +671,27 @@ lua-language-server is installed.
   held across that handoff (`nextTurn`) so a submit cannot jump the queue; `/compact` and
   rewind claim `active` and a `turnScope` together for the same reason. With nothing left, a
   set goal's continuation is the other follow-up `nextTurn` starts under the claim.
-- **Goals.** `/goal <condition>` (goal.go, `Host.SetGoal`) sends the typed line with a brief
-  behind `agent.Attached("goal")`; `persistMessage` sets `ag.goal` when it stores a user row
-  carrying the brief `SetGoal` last sent (`ag.goalPending`, `setGoalFrom`: attached text that
-  quotes one sets nothing) and writes a row with role `goal` after it, so a queued /goal
-  a cancel hands back sets nothing. After a turn that ended cleanly (`sendCompacting` returns its
-  error), with nothing queued, no background run of the session and a profile that is not
-  read-only, `nextTurn` keeps the claim and `continueGoal` has `Host.aside` judge it
-  (`checkGoal`; `ctx.agent.checking_goal` meanwhile): `MET` clears it, `NOT YET` sends the
-  reason as the next turn, `BLOCKED`, a reply with no verdict (`parseVerdict`) and a failed check stop
-  and keep it, and a not yet after `goalMaxRuns` turns the goal started in a row is written as paused.
-  A message queued during the check goes instead of the note; an interrupt records nothing and
-  ends the chain as interrupted (`TurnDone`). Each
-  verdict is a `goal` row (`goalNotice` draws it live and in `historyFrom`), and `goalIn` reads
-  the goal back on resume and rewind; no other reader looks at role `goal`.
-- **Loops.** `/loop [interval] <prompt>` (loop.go, `Host.SetLoop`; the TUI only) keeps one
-  `Loop` per live session in this process: never stored, stopped by `/loop stop`,
-  `closeSession`, an interrupted or failed run, `next: done` and `loopExpiry`. Its timer is
+- **Goals.** `/goal <condition>` (goal.go, `Host.SetGoal`, DESIGN §6.3) sends the typed line with
+  a brief behind `agent.Attached("goal")`; `persistMessage` sets `ag.goal` only when it stores a
+  user row carrying the brief `SetGoal` last sent (`ag.goalPending`, `setGoalFrom`), so attached
+  text that quotes one, or a queued /goal a cancel hands back, sets nothing. After a turn that
+  ended cleanly `nextTurn` keeps the claim and `continueGoal` has `Host.aside` judge it
+  (`checkGoal`, `parseVerdict`). Each verdict is a `goal` row, and `goalIn` reads the goal back
+  on resume and rewind; no other reader looks at role `goal`.
+- **Loops.** `/loop [interval] <prompt>` (loop.go, `Host.SetLoop`; the TUI only, DESIGN §6.3)
+  keeps one `Loop` per live session in this process, never stored. Its timer is
   `lua.Clock.AfterFunc`, so the fake clock drives it in tests. `fireLoop` sends like the user
-  would: the note alone behind `agent.Attached("loop")`, which `reportHeads` draws as a
-  `loop run N` notice, on a claim taken under the lock that saw the agent idle, or after a
-  command prompt as its attachment through `Host.SendPrompt`. It
-  arms the next run before sending (the interval, or `loopFallback` for a self-paced loop), and
-  a busy agent re-arms it `loopRetry` later with `Next` kept. `loopTurnEnded` (in `runTurns`)
-  knows a loop run by `loopTag` in the turn's text, acts only while `ag.loopRun`, the loop
-  that sent the last run, is the live one, and reads a self-paced run's last line
-  (`parseNext`: `next: 10m`, clamped to 1m..1h, or `next: done`).
+  would, on a claim taken under the lock that saw the agent idle, and arms the next run before
+  sending. `loopTurnEnded` (in `runTurns`) knows a loop run by `loopTag` in the turn's text and
+  acts only while `ag.loopRun`, the loop that sent the last run, is the live one.
 - **Side questions.** `/btw` (`Host.btw`) sends `Runner.Snapshot` (mid-turn, the running
   step's input) plus the question on the runner the next send would build, one step through
   `Runner.Aside`: same tools and tool choice, since Anthropic drops the message cache when
   tool choice changes, with every tool refusing to run. Billed, never persisted.
   `Host.aside` is that call, the goal check another; the idle recap (`Host.Recap`, `session.recap`) is one more: the UI
   calls it `recapDelay` (3 min, inside Anthropic's 5-minute cache) after a turn that ended well
-  with no key, paste, click, wheel or focus since, which also cancel it; a turn that ran a tool
-  gets a live-only `recap: ...` notice row, dropped when the transcript moved during the call;
-  the first one ever (kv `recap.hinted`) carries the uncopied hint `(off in /config)`.
+  with no input since, and its live-only `recap: ...` notice row is dropped when the transcript
+  moved during the call.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
   anything that does not decode as a fantasy message, and reads a file tool's or a bash call's
@@ -789,32 +708,19 @@ lua-language-server is installed.
 - **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`; `o` opens the
   raw text through `EditFile` after the other marks apply, re-running intake as user origin and
   keeping the id.
-- **Reflector timing.** It runs on session close (`/new`, `/resume`), once the open session
-  has had no turn for `ReflectIdle` (ten minutes: the TUI's `reflectAt`, armed with the recap
-  when the agent goes idle and not cleared by input, calls `Host.ReflectLive`; a rewind past
-  that run drops what it learned, `forgetLearned`), and in a startup sweep
-  (`ReflectSweep`, once per process, not on a reload) over the newest sessions idle as long,
-  at most three, never on quit. `reflectDue` reads the delta past kv
-  `reflector.seen.<sid>` (`RewindTo` clamps it, `ForkSession` starts it at the copied history)
-  and is due only when the delta has two user messages that are not compaction summaries and a
-  tool call, or one failed tool call: one exchange that went fine would cost a model call at
-  every launch; `/reflect` skips the floor. `claimReflect` takes an atomic kv claim per session
-  (`reflector.claim.<sid>`, leased), so two windows never reflect it at once, and
-  `reflectClaimed` runs it (one at a time; a skipped run releases its claim). It runs on
-  `models.memory`; a reply that is not the JSON document asked for marks
-  the delta seen and is the `/health` reflector row's news, never an `/errors` entry, and a
-  second failed try (kv `reflector.tries.<sid>`) marks it seen too. Its prompt carries the
-  scrubbed delta (`reflectLine`), the newest failed tool results (`failedCalls`, read from the
-  history rows: the telemetry rows keep no text), the instruction files (`instructionSections`,
-  shared with `systemWith`), the whole memory index with budget use and quotes, and the
-  project's skills and recipes by name, so it leaves a repository's procedure to a recipe. It
-  proposes memories only, no skills: each entry passes `learn.Intake` with its `quote` and
-  `gateMemory` like the `memory` tool's (stored at once under `memory.autonomy = "auto"` when
-  policy-clean, queued for `/memory` otherwise, a quote not in the session dropped, DESIGN
-  §10.4); an entry with empty text and `replaces` queues a forget proposal, never auto-applied.
-  There is no config-patch pipeline, the agent edits config files directly. `digestFor()`
-  renders every live memory, newest first per scope, under `learn.ScopeBudget` (3 KB per
-  scope); no search, no ranking.
+- **Reflector timing** (DESIGN §10.3). It runs on session close (`/new`, `/resume`), once the
+  open session has had no turn for `ReflectIdle` (`Host.ReflectLive`), and in a startup sweep
+  (`ReflectSweep`, once per process, not on a reload), never on quit. `reflectDue` reads the
+  delta past kv `reflector.seen.<sid>` (`RewindTo` clamps it, `ForkSession` starts it at the
+  copied history) and holds a floor, since one exchange that went fine would cost a model call
+  at every launch; `/reflect` skips it. `claimReflect` takes an atomic kv claim per session
+  (`reflector.claim.<sid>`, leased), so two windows never reflect it at once. A reply that is
+  not the JSON document asked for marks the delta seen and is the `/health` reflector row's
+  news, never an `/errors` entry. It proposes memories only: each entry passes `learn.Intake`
+  and `gateMemory` like the `memory` tool's, and an entry with empty text and `replaces`
+  queues a forget proposal, never auto-applied. There is no config-patch pipeline, the agent
+  edits config files directly. `digestFor()` renders every live memory, newest first per
+  scope, under `learn.ScopeBudget`; no search, no ranking.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages
   `fantasy.TextPart`; `concatText` handles both. A stub that returns the wrong one hides real
   provider bugs (this once made the reflector read empty output everywhere).
@@ -827,59 +733,29 @@ lua-language-server is installed.
   gate; an ask carries the agent's name in `Request.Agent`). Definitions: builtin `explore`, `web`,
   `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over plugin over a trusted
   repo's `.agents`; a file's `read_only: true` makes a read-only agent like `explore`).
-  `/agents new`, the list's first row, sends `newAgentPrompt`, which points at the New agent
-  steps in the zemi skill's agents.md; `/agents open` edits a file agent. They never get `agent`, `workflow`, `todos`, `question`,
+  They never get `agent`, `workflow`, `todos`, `question`,
   `plan` or `lua` (nesting depth 1). A run is a child session (`parent_id`);
   `ListSessions` hides children. They have no summarizer: `sendPruning` clears their own old
   tool output when the window fills and, with none left to clear, drops the middle of the
   history once, keeping the task and a recent tail. The delegation guidance lives in
   `delegationPrompt`: without it models rarely delegate.
-- **Workflows** (workflow.go) are Lua scripts (model-written via the `workflow` tool, saved
-  under `workflows/`, builtin in `runtime/workflows/`, a plugin's after both). They run in their **own** gopher-lua
-  state on a host goroutine, never on the interpreter (DESIGN §4): a coroutine per branch,
-  `zemi.workflow.agent`/`parallel` yield and the scheduler resumes them as subagents finish
-  (`pipeline` is Lua over `parallel`, `workflowPrelude`). Invariants: the script sees only
-  base/string/table/math, `zemi.workflow` and `zemi.json` (no fs, net or other `zemi.*`; a bare
-  `agent` or `print` raises naming its `zemi.workflow` spelling);
-  `agent`/`parallel` are `lua.Suspending` wrappers, and both refuse under `pcall` or a library
-  callback (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description
-  carries the whole script API, inline first (a model sent to a skill wrote a file instead);
-  `TestPromptBudget` counts it. The tool takes one of `script`, `name` or `run` (`script` joins
-  `run` for action `rerun`); `run` with an action is `flowControl`, `background` delivers the
-  result like a background agent's report (`deliverFlow` through `deliverReport`, whose head
-  reads `Workflow <id> (<description>) finished`), and a failed run's result says how to rerun it. A workflow
-  agent's asks name the workflow and the agent. `agent`'s `schema` asks in the task for a JSON
-  object and `runAgent` checks the reply's outermost `{...}` with `tools.Validate`, asking again
-  at most twice (`schemaReport`); the script gets a table, and the journal keeps the object.
-  A run (`flowRun`, `startFlow`, registered in `taskReg.flows`) is live work until its script
-  ends, paused or between agents too: `taskReg.live` counts it, and not its agents, for rewind,
-  fork, session delete, the queue drain and the statusline, and `stillRunning` names where to
-  stop what blocks. `flowControl` is the one control path: pause stops dispatching and lets
-  running agents finish, stop cancels the run, concurrency (1-16) applies at the next dispatch,
-  and restart cancels one running agent and queues the same call again, counting as a start
-  toward the 100-agent cap. Controls write the run's fields under its lock and wake the
-  scheduler, so none waits on a script busy in Lua. Its agents take the flow's parent session.
-  A run writes its script and a journal (`workflow-<id>.lua`, `.jsonl`: a header, one line per
-  agent that ended, an end line) into the pad of the session that started it, both created
-  `O_EXCL` through `perm.Lresolve` (no link at the name or above it) with the journal's fd held,
+- **Workflows** (workflow.go, DESIGN §6.3) are Lua scripts (model-written via the `workflow`
+  tool, saved under `workflows/`, builtin in `runtime/workflows/`, a plugin's after both). They
+  run in their **own** gopher-lua state on a host goroutine, never on the interpreter (DESIGN
+  §4): a coroutine per branch, `zemi.workflow.agent`/`parallel` yield and the scheduler resumes
+  them as subagents finish. Invariants: the script sees only base/string/table/math,
+  `zemi.workflow` and `zemi.json` (no fs, net or other `zemi.*`); `agent`/`parallel` are
+  `lua.Suspending` wrappers, and both refuse under `pcall` or a library callback
+  (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description carries the
+  whole script API, inline first (a model sent to a skill wrote a file instead);
+  `TestPromptBudget` counts it. A run (`flowRun`) is live work until its script ends, paused or
+  between agents too: `taskReg.live` counts it, and not its agents, for rewind, fork, session
+  delete, the queue drain and the statusline. `flowControl` is the one control path; controls
+  write the run's fields under its lock and wake the scheduler, so none waits on a script busy
+  in Lua. A run's script and journal in the pad are created `O_EXCL` through `perm.Lresolve`
   and read back no-follow, regular and capped (`readPadFile`), since a sandboxed command can
-  write the pad. A rerun (`flowSpec.from`) runs that script file, edited or not, and answers
-  each call identical to a finished one (`agentKey`: agent, model, schema, prompt) from the journal in
-  order, starting no agent; `loadFlow` reads a run back for the screens, `flowAgentIDs` keeps a
-  workflow's stored agents out of /agents, and `saveFlow` copies a script to `workflows/`.
-  `/workflows` (`workflowsOverlay`) lists the runs, live ones of every session first, then this
-  session's earlier ones (held, then read from its pad), then the saved workflows; a run's detail
-  pauses, stops, reruns, opens or saves it, and `v` opens its view (`flowOverlay`, overlay id
-  `workflow:<id>`): its fields, then its agents under their phases, `p`, `+` and `-` as
-  `OverlayKey.Run` keys (`/workflows concurrency <id> +1`: relative, so a second press before
-  the view rebuilds still counts), and an agent's detail whose View opens the transcript through
-  `ViewAgentFrom`, so esc (`LeaveAgentView`) reopens the view. While any run lives, one
-  `watchFlows` ticker rebuilds whichever of the two is open once a second
-  (`UIHooks.RefreshOverlay`, which builds nothing for a closed one), and a control from them
-  rebuilds them at once, keys and body too, and toasts. A rerun the user starts asks about
-  the pad's script as the tool's does (`approveRerun`), since the model can rewrite it. The user starts a saved one with `/workflows run` or `/review`
-  (`startUserFlow`: detached in the TUI with a live notice row; headless on the claimed agent,
-  as `/btw`), no model call before the work.
+  write the pad, and a rerun the user starts asks about the script as the tool's does
+  (`approveRerun`), since the model can rewrite it.
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers an
   `agentRun` (a workflow's carry `workflow` and `phase`, and /agents lists them as one row per
   workflow) whose hooks build a live transcript, which `/agents view <id>` draws instead of
@@ -889,12 +765,10 @@ lua-language-server is installed.
   message is never accepted and then dropped. Background runs report through `AgentSend` behind
   `agent.AttachMarker`, which the live transcript and resume cut off; the notice row is drawn from
   the message wherever the model reads it (`appendUserRows`: a new turn, a step boundary, a
-  drained queue, a resume), so it sits under the rows of the turn it arrived in. A report or a
-  plugin send an esc leaves queued gets a toast saying it waits for the next message, and a
-  report a closing session drops (`/new`, `/resume`) is stored in its own session and toasted
-  (`notifyReport`), like one for a session that moved on.
-  `/agents` lists the live session's runs and, under Running, the live runs of every other session
-  (`agentRunItems`, named by that session's title): they block `/rewind`, so their stop must be reachable.
+  drained queue, a resume), so it sits under the rows of the turn it arrived in. A report a
+  closing session drops (`/new`, `/resume`) is stored in its own session and toasted
+  (`notifyReport`). `/agents` lists the live session's runs and, under Running, the live runs of every other session (`agentRunItems`,
+  named by that session's title): they block `/rewind`, so their stop must be reachable.
 - **Scratchpad** (scratch.go): `<state>/scratch/<first 12 of the session id>`, short so a unix
   socket path under it fits macOS's 104 bytes. A pipeline binds it once (`Pipeline.Pad`,
   `Request.Pad`): `PipelineFor` the live session's, a subagent run its parent session's, so a run
@@ -912,38 +786,25 @@ lua-language-server is installed.
   pad and hands `sweepScratch` to `GoSafe`, off the send path, which removes pads with nothing
   in them changed for a week, never the live one (NOTE: another window's pad unused that long
   goes too).
-- **Lua tool** (luatool.go, tool name `lua`): model Lua runs through `Runtime.Eval` as `user`
-  origin, default-deny: without approval it may call only `luaReadOnly` members. Every Go
-  function in a namespace passes the sandbox guard (`Sandbox.SetGuard` -> `guardLua`), which
-  raises for tool code (frame path `lua-tool*`) unless the innermost tool code is an approved
-  run, and, while a widget render runs, for anything but the `luaReadOnly` members other than
-  `zemi.fs.*` and a handle's `wait`. `luaUnlisted` tokenizes the script first: any zemi path
-  off the list, a non-read handle method call, or dynamic access (`_G`, `load`, `require`,
-  ...) asks `tool.lua` once, as `Request.Unsandboxed` so no mode settles it, and the approved
-  run evaluates as chunk `lua-tool#<n>`. In an untrusted project or a read-only agent's run
-  every script asks. A new API member is guarded until added to `luaReadOnly`;
-  `TestLuaToolDefaultDeny` checks every member. Not a new
-  origin: the gate is a flag on the chunk name. A `path` script is a `.lua` file read through
-  the read tool's `fs.read` check. Runs on the interpreter as a task (10s ceiling per slice),
-  main agent only. Once approved, a changed config reloads before the script
-  (`ReloadIfChanged`), whose note leads the result: the model never schedules a reload,
-  since no caller can outlive the generation its reload retires.
-- **Model memory writes**: the one `memory` tool goes through `memoryTool` -> `gateMemory`: a
-  near-duplicate (`learn.Similar` over both scopes and the pending proposals) is refused with
-  its id and text to merge through `replaces` (a pending one only as queued); a learned
-  user-scope memory needs a `quote`, checked against the typed part of the session's user rows
-  (`quoteInSession`, cut at `agent.AttachMarker`), and a quote not found drops it; a scope over
-  `learn.ScopeBudget` queues with the oldest ids to replace, and `acceptProposal`, `moveMemory`
-  and `rewriteMemory` refuse, pointing at the oldest in `/memory`. Text with `replaces`
-  supersedes, empty text with it forgets (`forgetMemory`): a memory the user saved asks
-  (`memory.write` as `Unsandboxed`, so no mode settles it), a learned one goes at once when
-  `memoryAuto` holds (autonomy auto, a trusted project, no `fetch`, `web_search`, `lua` or
-  non-builtin tool call in the session or its subagents'; `subagentHooks` records those,
-  `ForkSession` copies them, and `markNotLocal` records a plugin's send or `tool.post`
-  rewrite the same way, once per session and in a subagent run's own) and is proposed for
-  review otherwise. A plugin's send reaches the model behind
-  `agent.Attached("plugin:<name>")`, so no quote comes from it, and draws as a notice row
-  (`reportHeads`).
+- **Lua tool** (luatool.go, tool name `lua`; DESIGN §9): model Lua runs through `Runtime.Eval`
+  as `user` origin, default-deny: without approval it may call only `luaReadOnly` members,
+  which the sandbox guard (`Sandbox.SetGuard` -> `guardLua`) enforces on every Go function in
+  a namespace, and a script `luaUnlisted` finds reaching past them asks `tool.lua` once, as
+  `Request.Unsandboxed` so no mode settles it. A new API member is guarded until added to
+  `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new origin: the gate is a
+  flag on the chunk name (`lua-tool#<n>` for an approved run). Runs on the interpreter as a
+  task (10s ceiling per slice), main agent only. Once approved, a changed config reloads
+  before the script (`ReloadIfChanged`), whose note leads the result: the model never
+  schedules a reload, since no caller can outlive the generation its reload retires.
+- **Model memory writes** (DESIGN §10.4): the one `memory` tool goes through `memoryTool` ->
+  `gateMemory`, as the reflector's entries do: `learn.Similar` refuses a near-duplicate, a
+  learned user-scope memory's `quote` is checked against the typed part of the session's user
+  rows (`quoteInSession`, cut at `agent.AttachMarker`), and a scope over `learn.ScopeBudget`
+  queues. A forget (`forgetMemory`) of a memory the user saved asks (`memory.write` as
+  `Unsandboxed`), and a learned one goes at once only when `memoryAuto` holds; `subagentHooks`
+  and `markNotLocal` record what makes a session not local-only, once per session and in a
+  subagent run's own. A plugin's send reaches the model behind
+  `agent.Attached("plugin:<name>")`, so no quote comes from it.
 - **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
   with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
   `callback_port` for one without dynamic registration). Servers come from `zemi.mcp.add` (user
@@ -958,12 +819,10 @@ lua-language-server is installed.
   from the history's `mcp_` calls; a subagent run has its own). Every MCP tool stays
   registered, so a call to one not loaded still runs; the catalog changes only with the
   servers, and each load costs one prompt-cache miss. A start's outcome and a sign-in
-  request go through `setMCP`, which refreshes an open `/mcp` (`Overlay.Refresh`, as a
-  language server's finished start refreshes `/lsp`), as do a sign-out and the sign-in link. A
-  sign-out stops the server and leaves it `needs sign-in` with no start, assuming a start would
-  fail the same way (NOTE in the code: a server whose auth is optional waits until Restart). `ServiceStatus` (host.go) is the one status word of `/mcp`, `/lsp`, `/plugins`,
-  `/health` and `zemi.mcp.list`/`zemi.lsp.list`, colored by the UI's `statusHL`, a map the
-  exhaustive linter keeps complete. Test against `internal/mcp/mcptest`.
+  request go through `setMCP`, which refreshes an open `/mcp`. `ServiceStatus` (host.go) is the
+  one status word of `/mcp`, `/lsp`, `/plugins`, `/health` and `zemi.mcp.list`/`zemi.lsp.list`,
+  colored by the UI's `statusHL`, a map the exhaustive linter keeps complete. Test against
+  `internal/mcp/mcptest`.
 - **LSP** (lsp.go, internal/lsp): servers start lazily on the first matching file, and only in
   a trusted project: they run repo code (rust-analyzer build scripts), so `lspDefs` returns
   nothing untrusted and `noLSP` says why. With a live backend every server starts through
@@ -971,10 +830,7 @@ lua-language-server is installed.
   `<cache>/lsp/<trust key>/<server>`. A confined cargo cannot write a missing `Cargo.lock`, so
   rust-analyzer reports nothing until one exists; without a backend it (`RunsCode`) does not
   start at all. A `.lua` file of the user's config or a local plugin gets lua-language-server
-  (`zemiLua`: `luals`, or a user one of that name) rooted at that tree in any project, with
-  zemi's `.luarc.json` written first, whose Error severities are what a write reports; under
-  a backend `serverPolicy` also reads the types and that file. A file outside the repository
-  goes to no other server. The `diagnostics` and `lsp` tools leave the tool set when `lspDefs` is empty,
+  (`zemiLua`, DESIGN §9) in any project. A file outside the repository goes to no other server. The `diagnostics` and `lsp` tools leave the tool set when `lspDefs` is empty,
   so an untrusted project does not carry their schemas every step. A server re-reads a file
   only when told, so `lspSync` diffs two `git status` listings and sends
   `workspace/didChangeWatchedFiles` for what changed; it runs before a touch or query only once
@@ -996,14 +852,11 @@ cells, percent, content and weighted fill, takes cells back from fill first when
 fit, and never fails (`FuzzSpan`). The stage node is where prompts, overlays and toasts
 go. A content-sized node's height is the most rows it could get, never
 its last draw, so a widget that pads to `ctx.height` can still shrink. Hit testing reads the
-painted segments, never the tree. `/health` has a `layout` row naming widgets in regions the
-layout does not draw (`exit` aside). No layout draws the `exit` region: `App.Farewell` renders
+painted segments, never the tree. No layout draws the `exit` region: `App.Farewell` renders
 it once after `p.Run` returns cleanly (nothing while a boot step waits, which no dispatcher
-would answer) and main prints it to the shell, foreground colors only (the shell's ground and
-text color are not the theme's), plain on a terminal without color. Code below builtin may not
-add to it: its text lands outside zemi's chrome, beside the resume command a user copies. The
-shipped `exit` widget (`tui/exit.lua`) prints the session and `ctx.resume`, the command
-`hostapi.ResumeCommand` builds, the one place that names the CLI's resume flag, with `-C` and the dir when the run started with one (`Host.ResumeDir`: after a `/projects` switch the shell is elsewhere). A `composer` node with `frame` draws the square frame around the composer
+would answer) and main prints it to the shell. Code below builtin may not add to it: its text
+lands outside zemi's chrome, beside the resume command a user copies (`ctx.resume`, which
+`hostapi.ResumeCommand` builds, the one place that names the CLI's resume flag). A `composer` node with `frame` draws the square frame around the composer
 and puts the first line of the widgets in its `top`, `left` and `right` regions into the rules
 (`composerFrame`, ui/composer.go; `top` gets the whole rule, whose left corner holds the
 snail of `tui/snail.lua`, its eyes showing the state, how a turn ended included
@@ -1030,12 +883,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   turn ends (the read-only pipeline cannot implement) and `nextTurn` hands the claim to a
   fresh send as the restored agent (`planApproved`, the plan already in history), so the
   agent never passes through idle. A read-only turn that ends in plain text instead of the
-  `question` or `plan` tool is nudged once per user message (`planFollowup`, `planNudge`,
-  drawn as a notice row by `reportHeads`):
+  `question` or `plan` tool is nudged once per user message (`planFollowup`, `planNudge`):
   a question or a report is not a plan, so the text is never presented for approval.
 - **Go-owned prompts** (permission, trust, question) share one renderer in ui/agent.go
-  (`promptBox`, `choiceRows`), and the permission prompt's facts table sets its rows with a
-  detail view's `fieldRow`. The permission prompt reads only typed fields (`PermRequest.Where`,
+  (`promptBox`, `choiceRows`). The permission prompt reads only typed fields (`PermRequest.Where`,
   `Runs`, `Agent`, `Owner`), never meaning parsed back out of a reason or preview string.
   Lua reads the composer through a snapshot the UI publishes and
   edits it through `UIHooks.ComposerEdit`, applied on the UI goroutine.
@@ -1062,13 +913,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   build a drop overtook is not stored); rewind keeps it, and a reload drops nothing, since the config watcher reloads on
   any config-tree write, the model's own skill writes included. So instruction files, skills,
   descriptions (saved workflows, agent definitions) and `agent.assemble` output are read only
-  when it is built, and a hit costs no file read and no Lua. An instruction file the pin read,
-  or one created where it would load (`instructionPaths`), whose mtime moved rides the next
-  user message once (`instructionEdits`, beside `takeShellNotes` in `expandAttachments`,
-  framed like `nearestInstructions` by `instructionBlock`, after the same `instructionFile`
-  check), unless the read log holds that mtime: the model read or wrote it itself. A rewind
-  (`forgetInstructions`) lets it ride again. The main agent's reads count the pinned files as
-  in the prompt.
+  when it is built, and a hit costs no file read and no Lua. The one exception, an instruction
+  file edited by hand, rides the next user message once (`instructionEdits`, DESIGN §6.3).
   Subagents build theirs once per run (`systemWith`). `TestPromptBudget` caps what the default
   request carries before the first message (system text and tool definitions); raise it only
   with a reason.
@@ -1097,9 +943,6 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
 
 ## Gotchas and non-obvious conventions
 
-- **Not built**, whatever DESIGN §13 implies: M4 evals (no `zemi.eval`) and embeddings.
-  Everything else it names ships, plus permission modes, rewind, scratchpads, the `lua` tool
-  and `zemi run`.
 - **`zemi.*` namespaces are frozen and integrity-checked.** Tables are metatable-locked,
   `rawset`/`rawequal` are stripped, and Go re-verifies namespace contents per request class. A
   runtime-mutable member must go through the Go side, and each Go function exposed to Lua runs
@@ -1152,27 +995,12 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   click acts on `Segment.Hit` (chrome rows) or `Segment.Click`/`Segment.Widget` (a widget's
   `on_click`, run on the background worker); a click id with no widget is a Go statusline pill
   naming its command. Helpers that rebuild segments must copy those fields and `Band` (the
-  selected row's background); only `dimRows` drops them, because dimmed rows are not targets. Overlays (internal/ui/overlay.go) are data:
-  an item with `detail` or `actions` pushes a detail view whose rows draw as the prompts'
-  buttons, keyed by `hotkey` or position (`actionKey`); the selected row's action keys act from the
-  list (`actionAt`: a `danger` one opens the detail on it armed); a `danger` item or action
-  draws in Danger and its first enter or key only arms it (`overlayState.armed`, the footer
-  says what the next press does; a key, click or wheel that moves the selection drops it,
-  `disarmIfMoved`; a detail view whose only action it is runs it at once), and a destructive
-  command typed without the `--yes` its action's run ends in opens that detail armed
-  (`AskFirst`, `Overlay.Confirm`, a toast naming the `--yes` form when no row has it;
-  `zemi run` refuses it, naming the command that runs it without asking), and `Body` is text above the items
-  (markdown with `BodyMD`; `BodySegs` draws styled rows in its place, sanitized like `Body`,
-  which stays what `y` copies; an item's `fields`, name and value pairs, draw as a table
-  above its `detail` prose (`fieldRows`: a `status` value in its status color, an `error` one
-  in Danger, an empty one left out), and `y` copies them as `name: value` lines). Opening the id of an open overlay replaces it in place
+  selected row's background); only `dimRows` drops them, because dimmed rows are not targets. Overlays (internal/ui/overlay.go) are data
+  (DESIGN §8 has the detail views, `danger` arming and `AskFirst`); `BodySegs` is sanitized like
+  `Body`, which stays what `y` copies. Opening the id of an open overlay replaces it in place
   (`replaceOverlay`, keeping selection and filter; only an origin that may close it), a detail
-  view open over it rebuilt from its item or dropped with it (`refreshDetail`: a Go screen's
-  `Refresh` would leave it stale), and a Go screen's list-level key runs a command
-  (`OverlayKey.Run`, builtin and user lists only). A row's or a key's desc keeps its runs of
-  spaces, so a padded column (`statusCol`, `/config`'s source) or footer word moves nothing
-  after it, and keys sharing a desc read as one hint (`+/- at once`). An overlay opened over
-  another takes its width, so stacked frames line up. A
+  view open over it rebuilt from its item or dropped with it (`refreshDetail`), and a Go
+  screen's list-level key runs a command (`OverlayKey.Run`, builtin and user lists only). A
   toggle list rebuilds when the overlay stacked on it closes (`closeOverlayByID`; a detail
   view only after an action) and after a reload (`SignalBoot`), so every caller acts first
   and closes after: the worker then runs the rebuild behind the action. A row that fills the
@@ -1215,16 +1043,12 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
 - **Widgets read UI flags, never Go-drawn text.** The composer frame's rules and the quit, key
   sequence and scroll flags are `tui/` widgets reading `hostapi.UIState`; a new flag goes
   into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget
-  cannot render at the 50 ms frame clock is a segment `effect` the UI applies (`shimmer`). The terminal itself
-  gets the `ui.notify` alert when zemi is unfocused (OSC 9, a bell or a native notification,
-  as `Host.NotifyStyle` resolves `auto`; once per chain of turns: `onFrame` applies a turn's end,
-  the done eyes and the recap timer too, on the first frame that reads the agent idle), OSC 9;4 (`ui.progress`: a running turn as taskbar
-  progress, resent every few seconds so terminals do not hide it, through
-  `tea.View.ProgressBar`, so bubbletea clears it on every exit) and OSC 11
-  (the theme's Normal bg as its own background, through `tea.View.BackgroundColor` so bubbletea
-  resets it on every exit, a signal included; only when it answered the query and the color
-  profile shows the color). Host chrome has no canvas of its own: `hlStyle` fills it from
-  Normal.bg like any group.
+  cannot render at the 50 ms frame clock is a segment `effect` the UI applies (`shimmer`). A
+  turn's end (the `ui.notify` alert, the done eyes, the recap timer) applies once per chain of
+  turns, on the first frame that reads the agent idle (`onFrame`). OSC 9;4 progress and the OSC
+  11 background go through `tea.View.ProgressBar` and `tea.View.BackgroundColor`, so bubbletea
+  resets them on every exit, a signal included. Host chrome has no canvas of its own:
+  `hlStyle` fills it from Normal.bg like any group.
 - **Drag and drop is a paste.** `ui/drop.go` turns a paste made only of existing paths into
   attachment tokens. Files from outside the project are copied to `<data>/drops` and referenced
   as `@drop:<name>`; `expandAttachments` resolves `drop:` only inside that directory, so a
