@@ -350,7 +350,8 @@ decides one run without saving; a headless run with nothing saved is
 untrusted and says so on stderr. The home directory and `/` are never
 asked about or saved (their prompt says it applies to this run only).
 `/projects` lists every root zemi keeps state for, switches to one by
-restarting zemi there, forgets another
+restarting zemi there (trust, origins, stores and the sandbox are bound at
+start, so one process runs one project), forgets another
 project's decision (the next start there asks again) and deletes its data; it
 never grants trust.
 `/trust` reopens the prompt at any time, showing the current decision (Later keeps
@@ -2775,9 +2776,6 @@ namespaces.
 
 ## 14. Open questions
 
-- One project per process: `/projects` switches by restarting zemi in the
-  other directory (an exec of `zemi -C <dir>`), since trust, origins, stores
-  and the sandbox are bound at start.
 - Credential storage and auth flow (keys read with `zemi.env.get` today).
 - Streaming render cost: a long transcript re-renders per generation
   bump; needs a per-widget invalidation design and a measured budget.
