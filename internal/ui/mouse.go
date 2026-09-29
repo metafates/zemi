@@ -551,15 +551,8 @@ func (a *App) pinAt(x, y int, under hostapi.Segment) (string, cellSpan) {
 	return "", cellSpan{}
 }
 
-// itemSpans is the cells of the item same matches on the contiguous rows
-// around y that carry it, one span per run of text. Blank ends of a segment are dropped
-// unless painted (a themed background such as a code span).
-// NOTE: only the top chrome box takes input, so contiguity scopes an item;
-// two boxes stacked edge to edge with the same ids would merge (bound by the
-// box's columns if that ever happens).
 // painted is true of a segment filled with something other than the app's
-// own canvas: its cells are content, not backdrop, so a list's label/key
-// spacers (which ride the item's id) never widen the target.
+// canvas: its cells are content, while a list's blank spacers are backdrop.
 func (a *App) painted(s hostapi.Segment) bool {
 	bg := a.hlStyle(s.HL).Bg
 	if bg == nil {
@@ -571,6 +564,11 @@ func (a *App) painted(s hostapi.Segment) bool {
 	return true
 }
 
+// itemSpans is the cells of the item same matches on the contiguous rows
+// around y that carry it, one span per run of text; blank ends not painted
+// are dropped.
+// NOTE: only the top box takes input, so contiguity scopes an item; two boxes
+// stacked edge to edge with the same ids would merge.
 func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 	carries := func(y int) bool {
 		return y >= 0 && y < len(a.lastRows) && slices.ContainsFunc(a.lastRows[y], same)

@@ -217,7 +217,7 @@ func matchRows(rows []listItem, query string, narrow bool) []listItem {
 	return out
 }
 
-// accept replaces the token after the trigger with the selected match (plus
+// acceptCompletion replaces the token after the trigger with the selected match (plus
 // a trailing space) and closes the popup. The trigger stays: "@path" is what
 // attaches the file.
 func (a *App) acceptCompletion() {

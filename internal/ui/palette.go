@@ -11,13 +11,9 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// cmdPalette is the composer's slash-command popup (DESIGN §6.6): typing
-// "/" as the first character lists the registered commands filtered as you
-// type; up/down navigate, tab accepts, esc closes. Enter runs the "/name
-// args" line instead of sending a message, with the highlighted command in
-// place of a typed name that is none or that the user moved off: what is
-// highlighted is what runs. The exact "/reload" is the Go-reserved
-// force-reload trigger and never reaches the command registry (DESIGN §4).
+// cmdPalette is the composer's slash-command popup (DESIGN §6.6): what is
+// highlighted is what enter runs, but the exact "/reload", the Go-reserved
+// force reload, which no row claims (DESIGN §4).
 type cmdPalette struct {
 	open     bool
 	matches  []*hostapi.Command

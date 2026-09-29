@@ -452,15 +452,11 @@ func switchSeg(on, locked bool) hostapi.Segment {
 	return hostapi.Segment{Text: "□ off", HL: hostapi.ChromeHint}
 }
 
-// listRows is the one list renderer (palette, completion, pickers,
-// overlays, memory, questions). The selected item gets "› ", bold text and
-// the band on all its rows but its section header; descriptions stay dim. more rows, wrapped by the caller,
-// follow the label (or replace it when the label is empty). Every row of an
-// item carries its 1-based Hit. Past room rows the list shows a window of
-// whole items with the scrollbar; v keeps it across frames, so it moves only
-// when the selection leaves it and a click never moves the item under the
-// pointer (nil for a list that keeps no position). Rows fit maxW cells when
-// it is set, the bar and the gap before it included.
+// listRows is the one list renderer: the selected item gets "› ", bold text
+// and the band; more rows, wrapped by the caller, follow the label; every row
+// carries its item's 1-based Hit. Past room rows it windows whole items in v
+// (nil keeps no position), which moves only when the selection leaves it.
+// Rows fit maxW cells when it is set, the bar included.
 func listRows(items []listItem, sel int, v *viewport, room, maxW int) [][]hostapi.Segment {
 	return listRowsW(items, items, sel, v, room, 0, maxW)
 }
