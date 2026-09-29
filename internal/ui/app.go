@@ -235,7 +235,7 @@ func (a *App) RelaunchDir() string {
 func (a *App) quitTo(dir string) {
 	quit := func() {
 		if res := a.host.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
-			a.Notify(logging.Warn, "Quit blocked", res.Reason)
+			a.Notify(logging.Warn, map[bool]string{true: "Quit blocked", false: "Switch blocked"}[dir == ""], res.Reason)
 			return
 		}
 		a.relaunch.Store(&dir)
