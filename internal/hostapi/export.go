@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -273,11 +274,35 @@ func exportMarkdown(b *strings.Builder, tr []ChatMessage, level int, full bool) 
 		case m.Kind == RowNotice, m.Kind == RowCompact:
 			fmt.Fprintf(b, "\n_%s_\n", text)
 		default:
-			fmt.Fprintf(b, "\n%s\n", text)
+			fmt.Fprintf(b, "\n%s\n", demoteHeadings(text, level))
 		}
 		list = m.Kind == RowTool && !full
 	}
 }
+
+// demoteHeadings sinks each ATX heading outside a code fence by level, so a
+// message's own "## Plan" stays under the speaker header it is written in.
+// NOTE: a setext heading (a line underlined with === or ---) is not demoted.
+func demoteHeadings(s string, level int) string {
+	var b strings.Builder
+	fence := ""
+	for line := range strings.SplitAfterSeq(s, "\n") {
+		body := strings.TrimLeft(line, " ")
+		f := fenceRun(body)
+		switch {
+		case fence == "" && f != "":
+			fence = f
+		case fence != "" && strings.HasPrefix(f, fence):
+			fence = ""
+		case fence == "" && len(line)-len(body) < 4 && atxHeading.MatchString(body):
+			line = strings.Repeat("#", level) + body
+		}
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
+var atxHeading = regexp.MustCompile(`^#{1,6}(\s|$)`)
 
 // codeFence fences text in more backticks than any fence line inside it, so
 // a result holding ``` cannot close the block early.

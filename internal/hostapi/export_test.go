@@ -156,6 +156,12 @@ func TestExportMarkdown(t *testing.T) {
 			[]ChatMessage{{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: "Compacted earlier messages"}, {Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "agent explore finished"}},
 			"\n## zemi\n\n_Compacted earlier messages_\n\n_agent explore finished_\n",
 		},
+		{
+			"headings sink below the speaker outside fences",
+			false,
+			[]ChatMessage{reply("## Plan\n~~~\n# not a heading\n```\n# still code\n~~~\n# Summary")},
+			"\n## zemi\n\n#### Plan\n~~~\n# not a heading\n```\n# still code\n~~~\n### Summary\n",
+		},
 		{"escapes stripped", false, []ChatMessage{reply("\x1b[31mred\x1b[0m")}, "\n## zemi\n\nred\n"},
 	} {
 		var b strings.Builder
