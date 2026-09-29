@@ -207,13 +207,18 @@ func (r *taskReg) add(run *agentRun) error {
 	return nil
 }
 
-// runsWhere returns the runs keep takes, newest first.
-func (r *taskReg) runsWhere(keep func(*agentRun) bool) []*agentRun {
+// runList returns every agent run this process holds, newest first.
+func (r *taskReg) runList() []*agentRun {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := slices.DeleteFunc(slices.Collect(maps.Values(r.runs)), func(x *agentRun) bool { return !keep(x) })
+	out := slices.Collect(maps.Values(r.runs))
 	slices.SortFunc(out, func(a, b *agentRun) int { return b.startedAt().Compare(a.startedAt()) })
 	return out
+}
+
+// runsOf returns the runs parent started, newest first.
+func (r *taskReg) runsOf(parent string) []*agentRun {
+	return slices.DeleteFunc(r.runList(), func(x *agentRun) bool { return x.parent != parent })
 }
 
 // runningFor counts the live runs parent started.
@@ -738,7 +743,7 @@ func (h *Host) agentRunItems() []any {
 			"run":     "workflows view " + f.id,
 		})
 	}
-	for _, run := range h.tasks.runsWhere(func(x *agentRun) bool { return x.parent == sid }) {
+	for _, run := range h.tasks.runsOf(sid) {
 		status, calls, took, runSID := run.state()
 		held[runSID] = true
 		if run.workflow == "" {
@@ -747,7 +752,7 @@ func (h *Host) agentRunItems() []any {
 	}
 	// a run another session started (/new leaves a background run behind)
 	// still writes files and blocks /rewind, so it is listed, named by that session
-	for _, run := range h.tasks.runsWhere(func(x *agentRun) bool { return x.parent != sid && x.isRunning() }) {
+	for _, run := range slices.DeleteFunc(h.tasks.runList(), func(x *agentRun) bool { return x.parent == sid || !x.isRunning() }) {
 		status, calls, took, _ := run.state()
 		row(run.id, status, run.agent, took, run.description+" (from "+h.sessionName(run.parent)+")", fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
 	}

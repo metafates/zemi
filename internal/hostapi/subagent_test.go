@@ -138,7 +138,7 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	// /agents: the run keeps its transcript, the chat can show it, and a run
 	// this process no longer holds reads the same rows from the store.
 	sid := h.AgentSessionID()
-	runs := h.tasks.runsWhere(func(x *agentRun) bool { return x.parent == sid })
+	runs := h.tasks.runsOf(sid)
 	if len(runs) != 1 || runID != runs[0].id {
 		t.Fatalf("runs = %v", runs)
 	}

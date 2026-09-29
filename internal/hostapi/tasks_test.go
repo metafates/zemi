@@ -168,7 +168,7 @@ func TestMessageAgent(t *testing.T) {
 				t.Fatalf("start: %v %s", err, resp.Content)
 			}
 			<-started
-			id := h.tasks.runsWhere(func(x *agentRun) bool { return x.parent == sid })[0].id
+			id := h.tasks.runsOf(sid)[0].id
 			out, err := send(h, id, "also this")
 			if err != nil || (out != "" && !strings.Contains(out, "Queued")) {
 				t.Fatalf("send: %q %v", out, err)
