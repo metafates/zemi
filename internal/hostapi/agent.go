@@ -2866,7 +2866,7 @@ func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
 		if matchEx == "" {
 			return fmt.Errorf(`rule %s %q needs a match example: add match = "<an argument the pattern should match>"`, r.Subject, r.Pattern)
 		}
-		if !perm.MatchExample(r.Pattern, matchEx) {
+		if !perm.Match(r.Pattern, matchEx) {
 			return fmt.Errorf("match example %q does not match pattern %q", matchEx, r.Pattern)
 		}
 		return nil
@@ -2874,10 +2874,10 @@ func validateRule(r *perm.Rule, matchEx, notMatchEx string) error {
 	if matchEx == "" || notMatchEx == "" {
 		return fmt.Errorf("rule %s %q with not_match needs both examples: match and not_match_example", r.Subject, r.Pattern)
 	}
-	if !perm.MatchExample(r.Pattern, matchEx) || perm.MatchExample(r.NotMatch, matchEx) {
+	if !perm.Match(r.Pattern, matchEx) || perm.Match(r.NotMatch, matchEx) {
 		return fmt.Errorf("match example %q must match %q and not be excluded by %q", matchEx, r.Pattern, r.NotMatch)
 	}
-	if perm.MatchExample(r.Pattern, notMatchEx) && !perm.MatchExample(r.NotMatch, notMatchEx) {
+	if perm.Match(r.Pattern, notMatchEx) && !perm.Match(r.NotMatch, notMatchEx) {
 		return fmt.Errorf("not_match example %q must be excluded by %q", notMatchEx, r.NotMatch)
 	}
 	return nil

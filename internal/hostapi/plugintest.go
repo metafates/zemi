@@ -1078,7 +1078,7 @@ func (t *PluginTest) reply(L *glua.LState, subject, arg string, req func() map[s
 		return nil, false
 	}
 	for _, s := range slices.Backward(t.stubs) {
-		if s.subject != subject || !perm.MatchExample(s.pattern, arg) {
+		if s.subject != subject || !perm.Match(s.pattern, arg) {
 			continue
 		}
 		reqTb := lua.FromGo(L, req())

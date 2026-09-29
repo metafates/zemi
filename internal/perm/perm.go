@@ -123,10 +123,9 @@ func (s *Store) Rules() []Rule {
 	return slices.Clone(s.rules)
 }
 
-// MatchExample reports whether a rule pattern matches the whole of s: `*`
-// spans any characters (separators included), `?` matches one. The rules
-// match with it, and zemi.permission.rule checks a rule's examples.
-func MatchExample(pattern, s string) bool { return globRegexp(pattern).MatchString(s) }
+// Match reports whether a rule pattern matches the whole of s: `*` spans
+// any characters (separators included), `?` matches one.
+func Match(pattern, s string) bool { return globRegexp(pattern).MatchString(s) }
 
 // Outcome is the aggregated verdict for one operation.
 type Outcome struct {
@@ -350,7 +349,7 @@ func (s *Store) evaluator(subject, principal string, segment bool) func(arg stri
 		}
 		for _, pr := range rules {
 			r := pr.Rule
-			if !MatchExample(pr.pattern, match) {
+			if !Match(pr.pattern, match) {
 				continue
 			}
 			// globs span newlines so deny and ask rules hold, but an allow for
@@ -358,7 +357,7 @@ func (s *Store) evaluator(subject, principal string, segment bool) func(arg stri
 			if r.Decision == Allow && !segment && strings.Contains(arg, "\n") && !strings.Contains(r.Pattern, "\n") {
 				continue
 			}
-			if r.NotMatch != "" && MatchExample(pr.notMatch, match) {
+			if r.NotMatch != "" && Match(pr.notMatch, match) {
 				fellThru = append(fellThru, r.Pattern)
 				continue
 			}

@@ -100,7 +100,7 @@ func FuzzEvaluate(f *testing.F) {
 		s := new(Store)
 		s.Add(Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow})
 		s.Add(Rule{Subject: "tool.bash", Pattern: pat, Decision: Deny})
-		if MatchExample(pat, arg) && s.Evaluate("tool.bash", arg, "").Decision != Deny {
+		if Match(pat, arg) && s.Evaluate("tool.bash", arg, "").Decision != Deny {
 			t.Fatalf("deny %q matched %q but verdict is not Deny", pat, arg)
 		}
 	})
