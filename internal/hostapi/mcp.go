@@ -322,26 +322,21 @@ func mcpToolName(server, tool string) string {
 	return n
 }
 
-// mcpFantasyTools exposes the ready servers' tools, checked through pipe.
 // mcpReadOnly reports a tool the server marked read-only and not
 // destructive. It is the server's own word, which is the trust the user
 // already extends by adding the server (zemi.mcp.add is user config only).
 func (h *Host) mcpReadOnly(server, tool string) bool {
-	for _, s := range h.mcp.list() {
-		if s.name != server {
-			continue
-		}
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		for _, t := range s.tools {
-			if t.Name == tool {
-				return t.ReadOnly()
-			}
-		}
+	s, _ := h.mcpServerNamed(server)
+	if s == nil {
+		return false
 	}
-	return false
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := slices.IndexFunc(s.tools, func(t mcp.Tool) bool { return t.Name == tool })
+	return i >= 0 && s.tools[i].ReadOnly()
 }
 
+// mcpFantasyTools exposes the ready servers' tools, checked through pipe.
 func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	var out []fantasy.AgentTool
 	seen := map[string]bool{} // "a.b" and "a_b" map to one tool name
@@ -564,16 +559,16 @@ func (t *mcpTool) Info() fantasy.ToolInfo {
 }
 
 func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
-	h, name := t.h, t.srv.name
-	if resp, stop := h.preCheck(mcpToolName(name, t.tool.Name), call.Input); stop {
+	h, name, tool := t.h, t.srv.name, mcpToolName(t.srv.name, t.tool.Name)
+	if resp, stop := h.preCheck(tool, call.Input); stop {
 		return resp, nil
 	}
-	defer h.postNotify(ctx, t.pipe.Pad, mcpToolName(name, t.tool.Name), call.Input, &reply, time.Now())
+	defer h.postNotify(ctx, t.pipe.Pad, tool, call.Input, &reply, time.Now())
 	args, err := tools.ParseInput(t.Info(), call.Input, tools.SchemaOpen(t.tool.InputSchema))
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	req := tools.Request{Tool: mcpToolName(name, t.tool.Name), Subject: "mcp." + name, Arg: t.tool.Name, Preview: call.Input}
+	req := tools.Request{Tool: tool, Subject: "mcp." + name, Arg: t.tool.Name, Preview: call.Input}
 	if v := t.pipe.CheckDenied(req); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "mcp."+name+" "+t.tool.Name)), nil
 	}
@@ -586,11 +581,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 	if client == nil {
 		return fantasy.NewTextErrorResponse("MCP server " + name + " is not running or no longer offers " + t.tool.Name + " (/mcp shows why)"), nil
 	}
-	timeout := s.spec.Timeout
-	if timeout <= 0 {
-		timeout = 2 * time.Minute
-	}
-	cctx, cancel := context.WithTimeout(ctx, timeout)
+	cctx, cancel := context.WithTimeout(ctx, cmp.Or(s.spec.Timeout, 2*time.Minute))
 	defer cancel()
 	res, err := client.CallTool(cctx, t.tool.Name, args)
 	if errors.Is(err, mcp.ErrAuthRequired) {
