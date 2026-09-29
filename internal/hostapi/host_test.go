@@ -50,22 +50,27 @@ func newTestHostUI(t *testing.T) *Host {
 }
 
 // runUser executes src as a user-origin chunk and fails the test on error.
-// The select guard turns an interpreter deadlock into a loud failure
-// instead of a hung test binary (the watch-delivery regression in
-// TestConfigWatchNoDeadlock used to wedge the queue permanently).
+// A slice gets 30s, not the interpreter's 1s ceiling, which a loaded machine
+// reaches on a chunk that starts processes. The select guard turns an
+// interpreter deadlock into a loud failure instead of a hung test binary
+// (the watch-delivery regression in TestConfigWatchNoDeadlock used to wedge
+// the queue permanently).
 func runUser(t *testing.T, r *lua.Runtime, src string) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- r.ExecuteChunk(ctx, src, "test.lua", lua.OriginUser) }()
+	go func() {
+		_, err := r.Eval(ctx, src, "test.lua", lua.OriginUser, 30*time.Second, nil)
+		done <- err
+	}()
 	select {
 	case err := <-done:
 		if err != nil {
 			t.Fatalf("user chunk: %v", err)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("user chunk did not complete within 3s (interpreter deadlock?)")
+	case <-time.After(30 * time.Second):
+		t.Fatal("user chunk did not complete within 30s (interpreter deadlock?)")
 	}
 }
 
@@ -635,13 +640,12 @@ func TestSetModelFiresWatches(t *testing.T) {
 		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "m" }, { id = "o" } } })`)
 	check := func(want string) {
 		t.Helper()
-		for range 200 {
-			if v, _ := h.GlobalDB.GetKV("picked"); v == `"`+want+`"` {
-				return
+		waitFor(t, func() error {
+			if v, _ := h.GlobalDB.GetKV("picked"); v != `"`+want+`"` {
+				return fmt.Errorf("models.chat watch never saw %q", want)
 			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		t.Fatalf("models.chat watch never saw %q", want)
+			return nil
+		})
 	}
 	if err := h.SetModel("p/m", true); err != nil {
 		t.Fatal(err)

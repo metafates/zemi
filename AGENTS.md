@@ -962,8 +962,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
 
 - `internal/hostapi/host_test.go` has the canonical helpers: `newTestHost(t)` boots a fresh
   runtime + namespaces step with temp dirs; `runUser(t, r, luaSrc)` runs a chunk as user origin
-  **with a 3s guard so an interpreter deadlock fails loudly instead of hanging the binary** -
-  reuse it for any test that runs Lua.
+  **with a 30s guard so an interpreter deadlock fails loudly instead of hanging the binary**
+  (and a 30s slice ceiling, which load does not reach) - reuse it for any test that runs Lua.
 - The Lua API surface is pinned by `TestNamespaceVersion`, the rendered UI by the golden files.
 - Drive behavior through Lua where the Lua contract is the thing being pinned; Go-internal
   units (perm normalizer, learn intake, store) get table tests.
