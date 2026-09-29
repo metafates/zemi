@@ -169,7 +169,7 @@ and stderr lists them at the end.`,
 	turnFlags(run, o)
 	run.Flags().BoolVar(&o.json, "json", false, "print one JSON event per line, the done report last")
 	run.Flags().BoolVarP(&o.quiet, "quiet", "q", false, "show no run on stderr, only what went wrong")
-	run.Flags().BoolVar(&o.reasoning, "reasoning", false, "show reasoning, every call and whole command output, as ctrl+o does")
+	run.Flags().BoolVar(&o.reasoning, "reasoning", false, "show reasoning and every call, as ctrl+o does")
 
 	health := &cobra.Command{
 		Use:   "health",
