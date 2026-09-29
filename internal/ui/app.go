@@ -650,7 +650,7 @@ func (a *App) termBackground() color.Color {
 	if a.termBG == nil || a.colors < colorprofile.ANSI256 {
 		return nil
 	}
-	return appBG(a.thm, a.thm.active())
+	return a.thm.canvas()
 }
 
 func (a *App) uiState() hostapi.UIState {
@@ -1421,7 +1421,7 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 func (a *App) hlStyle(hl string) uv.Style {
 	// chrome sits on the theme's canvas like any group, so it takes the
 	// canvas's shade: whorl-light picked in a dark terminal paints a light one
-	canvas, light := appBG(a.thm, a.thm.active()), a.thm.light
+	canvas, light := a.thm.canvas(), a.thm.light
 	if canvas != nil {
 		light = luma(canvas) > 1<<15
 	}

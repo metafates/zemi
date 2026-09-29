@@ -24,7 +24,7 @@ func (t themeResolver) style(hl string) uv.Style {
 	if params, ok := strings.CutPrefix(hl, hostapi.SGRPrefix); ok {
 		st := t.sgrStyle(params)
 		if st.Bg == nil {
-			st.Bg = appBG(t, t.active()) // a raw span without a fill sits on the canvas
+			st.Bg = t.canvas() // a raw span without a fill sits on the canvas
 		}
 		return st
 	}
@@ -32,19 +32,20 @@ func (t themeResolver) style(hl string) uv.Style {
 	if !ok {
 		// an unstyled span (a draft's typed text) still sits on the canvas
 		// with the terminal's own foreground
-		return uv.Style{Bg: appBG(t, t.active())}
+		return uv.Style{Bg: t.canvas()}
 	}
 	st := drawOver(uv.Style{}, spec, theme)
 	if st.Bg == nil {
-		st.Bg = appBG(t, theme)
+		st.Bg = t.canvas()
 	}
 	return st
 }
 
-// appBG is the active theme's background, the "bg" of its Normal group.
+// canvas is the active theme's background, the "bg" of its Normal group.
 // Every group without a fill of its own sits on it, so the app paints one
 // canvas and the terminal's background never shows through a gap.
-func appBG(t themeResolver, theme *hostapi.Theme) color.Color {
+func (t themeResolver) canvas() color.Color {
+	theme := t.active()
 	if theme == nil {
 		return nil
 	}

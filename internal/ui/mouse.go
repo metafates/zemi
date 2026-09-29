@@ -558,7 +558,7 @@ func (a *App) painted(s hostapi.Segment) bool {
 	if bg == nil {
 		return false
 	}
-	if canvas := appBG(a.thm, a.thm.active()); canvas != nil {
+	if canvas := a.thm.canvas(); canvas != nil {
 		return !sameColor(bg, canvas)
 	}
 	return true
