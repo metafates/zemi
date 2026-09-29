@@ -270,6 +270,12 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 			i++
 		case r == '\\':
 			inWord = true
+			// inside backticks \` opens a nested substitution the shell runs,
+			// which the words here would keep as text
+			if sc.tick && i+1 < len(rs) && rs[i+1] == '`' {
+				n.ForceAsk = "nested backtick substitution"
+				n.hidden = true
+			}
 			if i+1 < len(rs) {
 				i++
 				cur.WriteRune(rs[i])
@@ -395,7 +401,7 @@ func (sc *scanner) quotedSub(n *Normalized, rs []rune, j int) (int, bool) {
 	case rs[j] != '`':
 		return 0, false
 	}
-	var sub scanner
+	sub := scanner{tick: stop == '`'}
 	end := sub.words(n, rs, from, stop)
 	// the ) of a case pattern ends it early, leaving the rest quoted text
 	// the shell runs: a case with no esac fails

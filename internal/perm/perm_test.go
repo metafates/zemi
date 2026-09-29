@@ -224,6 +224,7 @@ func TestHiddenCommandsAsk(t *testing.T) {
 		{"git log # \\\nrm -rf x", Ask},
 		{"git log $(true)# it's\nrm -rf x\n'", Ask},
 		{"git log $'\\''\nrm -rf x\n'", Ask},
+		{"git log `git log \\`rm -rf x\\``", Ask},
 		{"cat > n <<'EOF'\nit's\nEOF", Ask},
 	} {
 		if got := s.CheckCommand(c.cmd, "model").Decision; got != c.want {
