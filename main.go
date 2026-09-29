@@ -236,7 +236,7 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 		[]lua.BootStep{
 			soft(lua.LoadFileStep("init", filepath.Join(h.Dirs.ConfigHome, "init.lua"), lua.OriginUser)),
 			soft(h.SkillsUserHooksStep()),
-			soft(projectInitStep(h, h.Dirs)),
+			soft(projectInitStep(h)),
 		},
 		app != nil)
 }
@@ -609,11 +609,11 @@ func (tg *trustGate) step() lua.BootStep {
 
 // projectInitStep loads <repo>/.agents/init.lua in a trusted project.
 // Agents, commands and workflows read the decision when they are used.
-func projectInitStep(h *hostapi.Host, dirs config.Dirs) lua.BootStep {
+func projectInitStep(h *hostapi.Host) lua.BootStep {
 	return lua.BootStep{
 		Name: "project config",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			init := filepath.Join(dirs.ProjectConfigDir(), "init.lua")
+			init := filepath.Join(h.Dirs.ProjectConfigDir(), "init.lua")
 			if _, err := os.Stat(init); err != nil || !h.ProjectTrusted() {
 				return nil
 			}

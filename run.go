@@ -111,10 +111,13 @@ func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 		evs = append(evs, event{Type: "retry", Attempt: s.Retries, InMS: s.RetryIn.Milliseconds(), Error: sanitize.String(s.RetryWhy)})
 	}
 	f.retries = fr.Stream.Retries
+	asCall := func(m hostapi.ChatMessage) hostapi.StreamTool {
+		return hostapi.StreamTool{ID: m.ID, Name: m.Tool, Input: m.Text, Label: m.Label, Status: m.Status, Output: m.Output, Diff: m.Diff, Detail: m.Detail}
+	}
 	for _, m := range fr.Settled {
 		switch {
 		case m.Kind == hostapi.RowTool:
-			evs = f.call(evs, hostapi.StreamTool{ID: m.ID, Name: m.Tool, Input: m.Text, Label: m.Label, Status: m.Status, Output: m.Output, Diff: m.Diff, Detail: m.Detail})
+			evs = f.call(evs, asCall(m))
 		case m.Role != fantasy.MessageRoleAssistant:
 		case m.Kind == hostapi.RowMessage:
 			f.done.Result = m.Text
@@ -137,7 +140,7 @@ func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 	}
 	for _, m := range fr.Pending {
 		if m.Kind == hostapi.RowTool && m.ID != "" {
-			evs = f.call(evs, hostapi.StreamTool{ID: m.ID, Name: m.Tool, Input: m.Text, Label: m.Label, Status: m.Status, Output: m.Output, Diff: m.Diff, Detail: m.Detail})
+			evs = f.call(evs, asCall(m))
 		}
 	}
 	for _, t := range fr.Stream.Tools {

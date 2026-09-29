@@ -318,7 +318,7 @@ func pluginsCommand() *cobra.Command {
 		if c.Name() == "delete" && !yes && !confirm(c, "Delete the plugin "+args[0]+" and its files?") {
 			return exitError(1)
 		}
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		ctx, stop := signalContext()
 		defer stop()
 		dirs, err := config.ResolveDirs()
 		switch {
@@ -378,7 +378,7 @@ func pluginsCommand() *cobra.Command {
 		Short:             "run its tests, each case in a zemi of its own",
 		Args:              cobra.RangeArgs(1, 2),
 		RunE: func(c *cobra.Command, args []string) error {
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			ctx, stop := signalContext()
 			defer stop()
 			return status(testPlugins(ctx, args, c.OutOrStdout(), c.ErrOrStderr()))
 		},
@@ -497,7 +497,7 @@ func modelsCommand() *cobra.Command {
 		Short: "fetch the latest model catalog",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+			ctx, stop := signalContext()
 			defer stop()
 			dirs, err := config.ResolveDirs()
 			if err != nil {
@@ -647,7 +647,7 @@ func applyOptions(h *hostapi.Host, o options) error {
 // check makes the exit status 1, so a script can gate on it. MCP servers
 // settle first, so their row says what a run would get.
 func printHealth(h *hostapi.Host, stdout io.Writer) int {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	ctx, stop := signalContext()
 	defer stop()
 	if h.WaitMCP(ctx); ctx.Err() != nil {
 		return 130
@@ -660,6 +660,12 @@ func printHealth(h *hostapi.Host, stdout io.Writer) int {
 		fmt.Fprintf(stdout, "%-5s %-12s %s\n", r.Level, r.Name, r.Detail)
 	}
 	return code
+}
+
+// signalContext ends on an interrupt, a kill or the terminal closing, which
+// a command reports as exit status 130.
+func signalContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 }
 
 // sendPrompt sends a command-line prompt (Host.SendPrompt) once no MCP
