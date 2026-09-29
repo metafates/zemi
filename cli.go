@@ -305,8 +305,23 @@ func polish(c *cobra.Command) {
 			s.Short = "show the help of a command"
 		case "completion":
 			s.Short = "print a shell completion script"
+			s.Long = s.Short + "; each shell's help says where it goes"
+			for _, sh := range s.Commands() {
+				sh.Short = "print the " + sh.Name() + " completion script"
+			}
 		}
 		polish(s)
+	}
+}
+
+// nargs checks that a command has one to maxN positional arguments, naming
+// what its Use line takes.
+func nargs(maxN int) cobra.PositionalArgs {
+	return func(c *cobra.Command, args []string) error {
+		if len(args) < 1 || len(args) > maxN {
+			return fmt.Errorf("%s takes %s", strings.TrimPrefix(c.CommandPath(), c.Root().Name()+" "), strings.TrimPrefix(c.Use, c.Name()+" "))
+		}
+		return nil
 	}
 }
 
@@ -351,11 +366,11 @@ func pluginsCommand() *cobra.Command {
 		args       cobra.PositionalArgs
 		names      cobra.CompletionFunc
 	}{
-		{"install <git url> [name]", "clone a plugin at its highest vX.Y.Z tag", cobra.RangeArgs(1, 2), nil},
+		{"install <git url> [name]", "clone a plugin at its highest vX.Y.Z tag", nargs(2), nil},
 		{"update [name...]", "update within the major version; every plugin without a name", cobra.ArbitraryArgs, completePlugins},
 		{"check", "fetch, then list the updates", cobra.NoArgs, nil},
-		{"enable <name>", "load the plugin from the next start", cobra.ExactArgs(1), completePlugins},
-		{"disable <name>", "stop loading the plugin", cobra.ExactArgs(1), completePlugins},
+		{"enable <name>", "load the plugin from the next start", nargs(1), completePlugins},
+		{"disable <name>", "stop loading the plugin", nargs(1), completePlugins},
 	} {
 		cmd.AddCommand(&cobra.Command{Use: v.use, Short: v.short, Args: v.args, ValidArgsFunction: v.names, RunE: run})
 	}
@@ -365,7 +380,7 @@ func pluginsCommand() *cobra.Command {
 		Use:               "delete <name>",
 		ValidArgsFunction: completePlugins,
 		Short:             "delete a plugin and its files; asks first",
-		Args: cobra.MatchAll(cobra.ExactArgs(1), func(_ *cobra.Command, args []string) error {
+		Args: cobra.MatchAll(nargs(1), func(_ *cobra.Command, args []string) error {
 			if !yes && !term.IsTerminal(os.Stdin.Fd()) {
 				return fmt.Errorf("plugins delete: stdin is not a terminal to ask on; pass --yes to delete %s", args[0])
 			}
@@ -379,7 +394,7 @@ func pluginsCommand() *cobra.Command {
 		Use:               "test <name|dir> [pattern]",
 		ValidArgsFunction: completePlugins,
 		Short:             "run its tests, each case in a zemi of its own",
-		Args:              cobra.RangeArgs(1, 2),
+		Args:              nargs(2),
 		RunE: func(c *cobra.Command, args []string) error {
 			ctx, stop := signalContext()
 			defer stop()
@@ -421,7 +436,7 @@ func sessionsCommand() *cobra.Command {
 		Use:               "export <id>",
 		ValidArgsFunction: completeSessions,
 		Short:             "print a session as markdown",
-		Args:              cobra.ExactArgs(1),
+		Args:              nargs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			dirs, err := config.ResolveDirs()
 			if err != nil {
