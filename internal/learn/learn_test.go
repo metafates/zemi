@@ -46,13 +46,6 @@ func TestIntakeScrubsSecrets(t *testing.T) {
 	}
 }
 
-func TestIntakeRefusesOneBlob(t *testing.T) {
-	_, err := Intake("project", store.OriginUser, "sk-abcdefghijklmnopqrs0123456789ABCDEFGH", "", "s1")
-	if !errors.Is(err, ErrRefused) {
-		t.Fatalf("want ErrRefused, got %v", err)
-	}
-}
-
 func TestIntakeValidation(t *testing.T) {
 	for _, tc := range []struct {
 		scope      store.Scope
@@ -63,6 +56,7 @@ func TestIntakeValidation(t *testing.T) {
 		{"project", "robot", "t", "s", ErrBadOrigin},
 		{"project", "user", "t", "  ", ErrNoProvenance},
 		{"project", "user", "   ", "s", ErrRefused},
+		{"project", "user", "sk-abcdefghijklmnopqrs0123456789ABCDEFGH", "s", ErrRefused},
 	} {
 		if _, err := Intake(tc.scope, tc.origin, tc.text, "", tc.prov); !errors.Is(err, tc.want) {
 			t.Fatalf("Intake(%q,%q,%q,%q) = %v, want %v", tc.scope, tc.origin, tc.text, tc.prov, err, tc.want)
