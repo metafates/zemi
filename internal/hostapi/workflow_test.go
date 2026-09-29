@@ -41,25 +41,28 @@ func echoAgents(h *Host) *atomic.Int32 {
 func TestWorkflowCancelBoundedDrain(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
+	running := make(chan struct{}, 1)
 	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
-			time.Sleep(30 * time.Second)
-			return textParts(last)
+		return &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
+			running <- struct{}{}
+			select {} // never returns, so runWorkflow returning is the drain giving up
 		}}, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
+	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
 		_, err := h.runWorkflow(ctx, `agent("x")`, nil, nil)
 		done <- err
 	}()
+	// cancelled only once the agent runs: a cancel that beats it tests nothing
+	<-running
+	cancel()
 	select {
 	case err := <-done:
 		if err == nil {
 			t.Fatal("cancelled workflow returned no error")
 		}
-	case <-time.After(workflowDrainGrace + 3*time.Second):
+	case <-time.After(workflowDrainGrace + time.Minute):
 		t.Fatal("runWorkflow waited on an agent that ignores cancellation")
 	}
 }
