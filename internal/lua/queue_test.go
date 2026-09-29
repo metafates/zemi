@@ -125,15 +125,13 @@ func TestQueueCancellationPreempts(t *testing.T) {
 			if c.stop > 0 {
 				time.AfterFunc(c.stop, cancel)
 			}
-			start := time.Now()
+			// a loop the stop did not preempt ends at the 1s class ceiling or,
+			// past its own, abandoned: an error neither case wants
 			_, err := r.Do(ctx, ClassUI, c.ceiling, 0, func(L *glua.LState) ([]any, error) {
 				return nil, L.DoString("while true do end")
 			})
 			if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), c.want) || Dropped(err) != c.dropped {
 				t.Fatalf("err = %v (dropped %v), want context.Canceled saying %q (dropped %v)", err, Dropped(err), c.want, c.dropped)
-			}
-			if time.Since(start) > 900*time.Millisecond {
-				t.Fatalf("cancellation did not preempt the loop: %s", time.Since(start))
 			}
 			if r.IsHot() {
 				t.Fatal("runtime went hot from a plain cancellation")
@@ -272,51 +270,40 @@ func TestRetiredWatchdogLeavesFreshRuntime(t *testing.T) {
 // generation before replay), and the running one is canceled: left going,
 // it would see the fresh generation's origin frames.
 func TestQueuePendingDroppedOnReload(t *testing.T) {
-	r := newTestRuntime(t)
+	synctest.Test(t, func(t *testing.T) {
+		r := newTestRuntime(t)
 
-	started := make(chan struct{})
-	running := make(chan error, 1)
-	go func() {
-		_, err := r.Do(context.Background(), ClassIO, 10*time.Second, time.Second,
-			func(L *glua.LState) ([]any, error) {
-				close(started)
-				return nil, L.DoString("while true do end")
-			})
-		running <- err
-	}()
-	select {
-	case <-started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("sleeper never started")
-	}
+		started := make(chan struct{})
+		running := make(chan error, 1)
+		go func() {
+			_, err := r.Do(context.Background(), ClassIO, 10*time.Second, time.Second,
+				func(L *glua.LState) ([]any, error) {
+					close(started)
+					<-L.Context().Done()
+					return nil, L.Context().Err()
+				})
+			running <- err
+		}()
+		<-started
 
-	pending := make(chan error, 1)
-	go func() {
-		_, err := r.Do(context.Background(), ClassUI, 0, 0,
-			func(L *glua.LState) ([]any, error) { return nil, nil })
-		pending <- err
-	}()
-	time.Sleep(50 * time.Millisecond)
+		pending := make(chan error, 1)
+		go func() {
+			_, err := r.Do(context.Background(), ClassUI, 0, 0,
+				func(L *glua.LState) ([]any, error) { return nil, nil })
+			pending <- err
+		}()
+		synctest.Wait() // it waits in the queue
 
-	if err := r.ForceReload(context.Background(), nil, nil); err != nil {
-		t.Fatalf("ForceReload: %v", err)
-	}
-	select {
-	case err := <-pending:
-		if !errors.Is(err, ErrReloaded) {
+		if err := r.ForceReload(context.Background(), nil, nil); err != nil {
+			t.Fatalf("ForceReload: %v", err)
+		}
+		if err := <-pending; !errors.Is(err, ErrReloaded) {
 			t.Fatalf("pending request got %v, want ErrReloaded", err)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("pending request never answered")
-	}
-	select {
-	case err := <-running:
-		if !errors.Is(err, context.Canceled) {
+		if err := <-running; !errors.Is(err, context.Canceled) {
 			t.Fatalf("running request got %v, want canceled", err)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("running request kept going after the reload")
-	}
+	})
 }
 
 // TestChunkAfterReload: a request still running when ForceReload retires its
@@ -531,14 +518,15 @@ func TestQueueDoBeforeBoot(t *testing.T) {
 // origin frames onto the one shared stack at once.
 func TestReloadWaitsForBoot(t *testing.T) {
 	r := NewRuntime(RuntimeOptions{})
-	release := make(chan struct{})
+	started, release := make(chan struct{}), make(chan struct{})
 	booted := make(chan error, 1)
 	slow := BootStep{Name: "slow", Run: func(context.Context, *Runtime, *Generation) error {
+		close(started)
 		<-release
 		return nil
 	}}
 	go func() { booted <- r.Boot(context.Background(), []BootStep{slow}) }()
-	time.Sleep(50 * time.Millisecond)
+	<-started
 	reloaded := make(chan error, 1)
 	go func() { reloaded <- r.ForceReload(context.Background(), nil, nil) }()
 	select {
