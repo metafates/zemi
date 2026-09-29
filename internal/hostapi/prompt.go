@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"charm.land/fantasy"
 
@@ -521,17 +522,26 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly 
 	if rules != "" {
 		rules = "\n\n# Scratchpad and sandbox\n" + rules
 	}
-	pdir := h.Dirs.ProjectConfigDir()
-	if !h.ProjectTrusted() {
+	env, pdir, top, recipes := h.environmentPrompt(), h.Dirs.ProjectConfigDir(), "", ""
+	if h.ProjectTrusted() {
+		top = h.topLevel()
+		if dir := h.recipesDir(); dir != "" {
+			recipes = "Recipes: " + dir + "\n"
+		}
+	} else {
 		// so the model does not write config that never loads
 		pdir += " (not loaded: the project is not trusted; the user runs " + h.trustHint() + ")"
+		// file names and commit subjects are the repository's free text,
+		// which steers the model like its instruction files
+		env, _, _ = strings.Cut(env, recentCommits)
 	}
-	return rules, strings.NewReplacer("{Project}", "Project config directory: "+pdir+"\n", "{Scratch}", scratch).Replace(h.environmentPrompt())
+	return rules, strings.NewReplacer("{Project}", "Project config directory: "+pdir+"\n", "{Top}", top, "{Scratch}", scratch, "{Recipes}", recipes).Replace(env)
 }
 
 // environmentPrompt describes the machine and repository. It is pinned per
 // session and again after a compaction, like the digest, so a changing git
-// status does not bust the prompt cache every turn.
+// status does not bust the prompt cache every turn; environmentFor fills
+// in what the run and trust decide.
 func (h *Host) environmentPrompt() string {
 	ag := h.agents
 	ag.mu.Lock()
@@ -545,17 +555,7 @@ func (h *Host) environmentPrompt() string {
 	// the run's own pad goes in {Scratch}: a subagent's may be another
 	// session's
 	h.ensureScratch()
-	b.WriteString("{Project}" + topLevel(h.Dirs.ProjectDir) + "{Scratch}")
-	if dir := h.recipesDir(); dir != "" && h.ProjectTrusted() {
-		fmt.Fprintf(&b, "Recipes: %s\n", dir)
-	}
-	status := h.gitStatus()
-	if !h.ProjectTrusted() {
-		// commit subjects are the repository's free text, which steers the model
-		// like its instruction files
-		status, _, _ = strings.Cut(status, recentCommits)
-	}
-	b.WriteString(status)
+	b.WriteString("{Project}{Top}{Scratch}{Recipes}" + h.gitStatus())
 	env = b.String()
 	ag.mu.Lock()
 	ag.env = env
@@ -565,19 +565,38 @@ func (h *Host) environmentPrompt() string {
 
 const recentCommits = "\nRecent commits:\n"
 
-// topLevel lists the working directory's entries, so a session's first call
-// is not an ls: directories end in a slash, dot entries and secret-shaped
-// names are left out.
-func topLevel(dir string) string {
-	entries, _ := os.ReadDir(dir)
+// topLevel lists a repository's top level, so a session's first call is
+// not an ls: directories end in a slash, and what the read tool's listing
+// hides is left out, as are dot entries and a name with a control
+// character, which would write a line of its own here.
+func (h *Host) topLevel() string {
+	if h.Dirs.RepoRoot() == "" {
+		return ""
+	}
+	f, err := os.Open(h.Dirs.ProjectDir)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	// a directory this big is no orientation, and reading it whole would
+	// delay the first request
+	const most = 200
+	entries, _ := f.ReadDir(most)
+	if len(entries) == most {
+		return ""
+	}
+	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+	ruledOut := (&tools.Pipeline{Store: h.Perm, Principal: perm.PrincipalModel}).RuledOut()
 	var names []string
 	for _, e := range entries {
-		if name := e.Name(); !strings.HasPrefix(name, ".") && !perm.PathIsStrictSecret(name) {
-			if e.IsDir() {
-				name += "/"
-			}
-			names = append(names, name)
+		name := e.Name()
+		if strings.HasPrefix(name, ".") || perm.PathIsStrictSecret(name) || strings.ContainsFunc(name, unicode.IsControl) || ruledOut(filepath.Join(h.Dirs.ProjectDir, name)) {
+			continue
 		}
+		if e.IsDir() {
+			name += "/"
+		}
+		names = append(names, name)
 	}
 	if len(names) == 0 {
 		return ""

@@ -27,21 +27,39 @@ import (
 // TestSystemPromptSections: the environment is pinned per session and
 // follows the instructions, so a shared prefix spans sessions,
 // project instructions sit under their own heading, and a profile's own
-// prompt still carries the zemi section.
+// prompt still carries the zemi section. The top level lists what the read
+// tool's listing would, and it and the commit subjects go out only while
+// the project is trusted.
 func TestSystemPromptSections(t *testing.T) {
-	h, _ := newTestHost(t)
-	h.Dirs.ConfigHome = t.TempDir()
+	h, r := newTestHostSkillsNoBoot(t)
 	os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "AGENTS.md"), []byte("my own rules"), 0o644)
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("run make test"), 0o644)
+	for _, name := range []string{"a/", "b.go", "id_rsa", "private/", "x\ny"} {
+		if dir, ok := strings.CutSuffix(name, "/"); ok {
+			os.Mkdir(filepath.Join(h.Dirs.ProjectDir, dir), 0o755)
+		} else {
+			os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), nil, 0o644)
+		}
+	}
+	// before the boot, which runs git status once
+	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "subject that steers"}} {
+		if out, err := h.git(h.Dirs.ProjectDir, args...); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	h.Perm.Add(perm.Rule{Subject: perm.SubjectRead, Pattern: filepath.Join(h.Dirs.ProjectDir, "private"), Decision: perm.Deny})
 	// an untrusted repository's instructions stay out, a profile's files too
 	for _, p := range []*Profile{nil, {ContextFiles: []string{"AGENTS.md"}}} {
-		if sys := h.buildSystem(p); !strings.Contains(sys, "my own rules") || strings.Contains(sys, "run make test") || !strings.Contains(sys, "not trusted") {
+		if sys := h.buildSystem(p); !strings.Contains(sys, "my own rules") || strings.Contains(sys, "run make test") || !strings.Contains(sys, "not trusted") || strings.Contains(sys, "Top level") || strings.Contains(sys, "steers") {
 			t.Errorf("untrusted prompt: %.300q", sys)
 		}
 	}
 	h.SetProjectTrusted(true)
 	sys := h.buildSystem(nil)
-	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "override the default rules above", "run make test", "# zemi", h.Dirs.ConfigHome} {
+	for _, want := range []string{"# Delegating", "# Environment", "# Project instructions", "override the default rules above", "run make test", "# zemi", h.Dirs.ConfigHome, "Top level: AGENTS.md a/ b.go\n", "subject that steers"} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("default prompt misses %q", want)
 		}
@@ -57,6 +75,10 @@ func TestSystemPromptSections(t *testing.T) {
 	}
 	if env := h.environmentPrompt(); env != h.environmentPrompt() {
 		t.Error("environment must be pinned")
+	}
+	h.SetProjectTrusted(false)
+	if sys := h.buildSystem(nil); strings.Contains(sys, "Top level") || strings.Contains(sys, "steers") {
+		t.Errorf("trust taken back: %.300q", sys)
 	}
 	if sys := h.buildSystem(&Profile{System: "custom"}); !strings.HasPrefix(sys, "custom") || !strings.Contains(sys, "# zemi") {
 		t.Errorf("profile prompt: %.200q", sys)
@@ -132,7 +154,6 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	// each builtin tool dropped in turn, from the default and a read-only
 	// agent in a trusted project: nothing left sends the model to it
 	h.SetProjectTrusted(true)
-	h.agents.env = "" // pinned per session, and trust brings the recipes line
 	for _, ro := range []bool{false, true} {
 		all, _ := h.profileTools(nil)
 		for _, dropped := range all {

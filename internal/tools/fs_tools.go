@@ -493,7 +493,7 @@ func listDir(p *Pipeline, path perm.Path) fantasy.ToolResponse {
 		return fantasy.NewTextErrorResponse(relErr(err).Error())
 	}
 	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
-	ruledOut, shown, secret := p.ruledOut(), []string{}, []string{}
+	ruledOut, shown, secret := p.RuledOut(), []string{}, []string{}
 	for i, e := range entries {
 		if len(shown) == globMaxFiles {
 			shown = append(shown, fmt.Sprintf("... (up to %d more; narrow it with glob)", len(entries)-i))
@@ -825,7 +825,7 @@ func (p *Pipeline) notFound(path string, err error) string {
 	}
 	base := strings.ToLower(filepath.Base(path))
 	stem := stemOf(base)
-	ruledOut, dir := p.ruledOut(), filepath.Dir(path)
+	ruledOut, dir := p.RuledOut(), filepath.Dir(path)
 	type sibling struct {
 		name       string
 		stem, full int // edit distances
@@ -1083,10 +1083,10 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		out = append(out, note)
 	}
 	// a check resolves symlinks, so only as many hits are checked as are shown
-	ruledOut, shown := p.ruledOut(), 0
+	ruledOut, shown := p.RuledOut(), 0
 	for i, rel := range rels {
 		if shown == globMaxFiles {
-			// "up to": ruledOut may hide some of the rest
+			// "up to": RuledOut may hide some of the rest
 			out = append(out, fmt.Sprintf("... (up to %d more; narrow the pattern or path)", len(rels)-i))
 			break
 		}
@@ -1137,7 +1137,7 @@ func runGrep(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	}
 	capped := len(files) == ListLimit
 	files = slices.DeleteFunc(files, func(rel string) bool { return !match(rel) || perm.PathIsStrictSecret(rel) })
-	ruledOut := p.ruledOut()
+	ruledOut := p.RuledOut()
 	hits, err := Grep(ctx, root, files, re, grepMaxMatches, func(rel string) bool { return !ruledOut(filepath.Join(root, rel)) })
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -1340,9 +1340,10 @@ func anchorsText(re *syntax.Regexp) bool {
 	return re.Op == syntax.OpBeginText || re.Op == syntax.OpEndText || slices.ContainsFunc(re.Sub, anchorsText)
 }
 
-// ruledOut reports whether a deny or ask rule covers reading path: glob
-// and grep are gated on their root only, so each hit meets the read rules.
-func (p *Pipeline) ruledOut() func(path string) bool {
+// RuledOut reports whether a deny or ask rule covers reading path: glob,
+// grep and a listing are gated on their root only, so each name meets the
+// read rules.
+func (p *Pipeline) RuledOut() func(path string) bool {
 	if p.Store == nil {
 		return func(string) bool { return false }
 	}
