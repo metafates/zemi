@@ -40,16 +40,6 @@ zemi.keymap.set("ctrl+j", "zemi.ui.scroll.down side")
 zemi.command.add("hello", function() end, { desc = "says hello" })
 `
 
-// rowOf is the screen row holding text, -1 when none does.
-func rowOf(frame, text string) (y, x int) {
-	for y, line := range strings.Split(ansi.Strip(frame), "\r\n") {
-		if before, _, ok := strings.Cut(line, text); ok {
-			return y, ansi.StringWidth(before)
-		}
-	}
-	return -1, -1
-}
-
 // TestRelayout: a user layout moves every piece and the UI keeps working
 // in it: widget clicks and hover, scrolling a region by id and by wheel,
 // popups, prompts and windows land over the stage, and a narrow screen
@@ -72,13 +62,12 @@ func TestRelayout(t *testing.T) {
 		t.Fatalf("clock float at %+v, stage %+v", clock, rects["stage"])
 	}
 
-	y, x := rowOf(app.Frame(), "item 3")
+	x, y := findCell(t, app, "item 3")
 	app.hover(x+1, y)
 	if spans, _, ok := app.target(x+1, y); !ok || len(spans) != 1 {
 		t.Fatalf("sidebar item is not a target: %v", spans)
 	}
-	app.Update(tea.MouseClickMsg{X: x + 1, Y: y, Button: tea.MouseLeft})
-	app.Update(tea.MouseReleaseMsg{X: x + 1, Y: y, Button: tea.MouseLeft})
+	clickAt(app, x+1, y)
 	runLua(t, app, `assert(zemi.state.get("clicked") == "item3", tostring(zemi.state.get("clicked")))`)
 
 	press(t, app, tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
@@ -99,7 +88,7 @@ func TestRelayout(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 
 	runLua(t, app, `zemi.ui.select({ "alpha", "beta" }, { prompt = "Pick" }, function() end)`)
-	if y, x := rowOf(app.Frame(), "alpha"); y < 1 || x < app.stage.Min.X {
+	if x, y := findCell(t, app, "alpha"); y < 1 || x < app.stage.Min.X {
 		t.Fatalf("the select box is at %d,%d, outside the stage %v", x, y, app.stage)
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})

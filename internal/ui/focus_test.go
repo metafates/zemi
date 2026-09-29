@@ -80,9 +80,9 @@ func TestFocusTodoPanel(t *testing.T) {
 	}
 
 	// a click on the panel focuses it, one on the composer takes the keys back
-	y, x := rowOf(app.screen(t), "write tests")
-	app.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
-	app.Update(tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
+	app.screen(t)
+	x, y := findCell(t, app, "write tests")
+	clickAt(app, x, y)
 	if host.Focus() != "todo" {
 		t.Fatalf("a click on the panel did not focus it: %q", host.Focus())
 	}
@@ -93,8 +93,7 @@ func TestFocusTodoPanel(t *testing.T) {
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	c := app.LayoutRects()["composer"]
-	app.Update(tea.MouseClickMsg{X: c.X + 3, Y: c.Y, Button: tea.MouseLeft})
-	app.Update(tea.MouseReleaseMsg{X: c.X + 3, Y: c.Y, Button: tea.MouseLeft})
+	clickAt(app, c.X+3, c.Y)
 	if host.Focus() != "" {
 		t.Fatalf("a click on the composer should focus it: %q", host.Focus())
 	}
