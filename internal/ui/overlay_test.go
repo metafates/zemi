@@ -179,11 +179,10 @@ func TestTopChromeTakesInput(t *testing.T) {
 	}
 
 	a.openOverlay(hostapi.Overlay{Items: []any{"a", "b", "c"}})
-	a.memReview = &memReviewPrompt{items: make([]hostapi.MemoryRow, 3)}
-	a.memReview.seek(0)
+	a.permAsk = &permAskPrompt{answer: perm}
 	a.wheel(0, 0, 1)
-	if a.memReview.at() != 1 || a.overlays[0].selected != 0 {
-		t.Fatalf("wheel: memory sel=%d overlay sel=%d", a.memReview.at(), a.overlays[0].selected)
+	if a.permAsk.sel != 1 || a.overlays[0].selected != 0 {
+		t.Fatalf("wheel: prompt sel=%d overlay sel=%d", a.permAsk.sel, a.overlays[0].selected)
 	}
 }
 

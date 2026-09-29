@@ -743,28 +743,25 @@ func TestStoreBackedState(t *testing.T) {
 
 // fakeUI is a UIHooks stub driving the host-side overlay paths in tests.
 type fakeUI struct {
-	askAllowed   bool
-	askBy        string
-	onAsk        func(PermRequest) (bool, string) // answers in place of askAllowed and askBy
-	asked        []PermRequest
-	reviewItems  [][]MemoryRow
-	reviewResult []MemoryRow
-	reviewFocus  string
-	qAsked       []tools.Question
-	qAnswer      string
-	qOK          bool
-	planVerdict  tools.PlanVerdict
-	planOK       bool
-	planAsked    int
-	mu           sync.Mutex // guards opened: a status change opens off the test goroutine
-	opened       []Overlay
-	closed       []string
-	closedLua    int
-	turnsDone    atomic.Int32
-	screenshot   string
-	copied       string
-	edit         func(path string) // what the user does in the editor
-	relaunched   string
+	askAllowed  bool
+	askBy       string
+	onAsk       func(PermRequest) (bool, string) // answers in place of askAllowed and askBy
+	asked       []PermRequest
+	qAsked      []tools.Question
+	qAnswer     string
+	qOK         bool
+	planVerdict tools.PlanVerdict
+	planOK      bool
+	planAsked   int
+	mu          sync.Mutex // guards opened: a status change opens off the test goroutine
+	opened      []Overlay
+	closed      []string
+	closedLua   int
+	turnsDone   atomic.Int32
+	screenshot  string
+	copied      string
+	edit        func(path string) // what the user does in the editor
+	relaunched  string
 }
 
 func (f *fakeUI) Notify(slog.Level, string, string) {}
@@ -804,11 +801,6 @@ func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 		return f.onAsk(req)
 	}
 	return f.askAllowed, f.askBy
-}
-
-func (f *fakeUI) ReviewMemories(items []MemoryRow, focus string) []MemoryRow {
-	f.reviewItems, f.reviewFocus = append(f.reviewItems, items), focus
-	return f.reviewResult
 }
 
 func (f *fakeUI) Screenshot() string { return f.screenshot }

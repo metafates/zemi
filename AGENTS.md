@@ -272,7 +272,7 @@ nested repo whose config zemi would run.
    direction. Corollary: never call `program.Send`/`program.Quit` from inside `Update` (or
    anything it calls) - bubbletea v2's `p.msgs` channel is unbuffered, so the loop would wait
    on itself (the `/quit` hang). Wrap such calls in a goroutine, like `App.Quit` does. Blocking
-   hooks (`AskPermission`, `AskTrust`, `AskQuestion`, `ReviewMemories`) must only run on non-UI
+   hooks (`AskPermission`, `AskTrust`, `AskQuestion`, `AskPlan`) must only run on non-UI
    goroutines.
 4. **UI-critical Lua handlers (keymaps, widget render, event handlers) must be fast** (~10 ms).
    Long work belongs in `zemi.job` / `zemi.http` / `zemi.timer`. `wait()` suspends a task (a
@@ -706,9 +706,10 @@ lua-language-server is installed.
   frame draws a row twice or not at all; `TurnDone` settles a call still open as stopped after
   an interrupt and as failed after an error. `historyFrom` splits text and merges reasoning the
   same way, so a resume draws the rows the live turn drew.
-- **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`; `o` opens the
-  raw text through `EditFile` after the other marks apply, re-running intake as user origin and
-  keeping the id.
+- **Proposals persist** in the scope DB until `/memory` or `zemi.learn.decide`. `/memory` is a
+  Go-built toggle list whose actions are `memoryCommand` verbs by row id, applied at once; each
+  pushes its reverse onto `Host.memUndo`, which `u` pops and opening the list empties. `o` opens
+  the raw text through `EditFile`, re-running intake as user origin and keeping the id.
 - **Reflector timing** (DESIGN §10.3). It runs on session close (`/new`, `/resume`), once the
   open session has had no turn for `ReflectIdle` (`Host.ReflectLive`), and in a startup sweep
   (`ReflectSweep`, once per process, not on a reload), never on quit. `reflectDue` reads the

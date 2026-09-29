@@ -565,18 +565,10 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	return nil
 }
 
-// disarmIfMoved returns what drops the top overlay's or the memory screen's
-// arm once a click, a wheel or a bar drag moved its selection, as any other
-// key does, so moving back never finds the row armed.
+// disarmIfMoved returns what drops the top overlay's arm once a click, a
+// wheel or a bar drag moved its selection, as any other key does, so moving
+// back never finds the row armed.
 func (a *App) disarmIfMoved() func() {
-	if mr := a.memReview; mr != nil && mr.armed {
-		act := mr.act
-		return func() {
-			if mr.act != act {
-				mr.armed = false
-			}
-		}
-	}
 	i := len(a.overlays) - 1
 	if i < 0 || !a.overlays[i].armed {
 		return func() {}

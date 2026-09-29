@@ -239,7 +239,7 @@ func TestMemoryGate(t *testing.T) {
 			want: "queued for the user's review",
 			check: func(t *testing.T, h *Host, ui *fakeUI, _ string) {
 				p := h.memoryProposals()
-				if _, err := h.acceptProposal(p[0].ID, ""); err == nil || !strings.Contains(err.Error(), "project memory is full") {
+				if _, err := h.acceptProposal(p[0].ID); err == nil || !strings.Contains(err.Error(), "project memory is full") {
 					t.Fatalf("accept: %v", err)
 				}
 				if len(h.memoryProposals()) != 1 || len(projectMemories(t, h)) != 11 {
@@ -503,135 +503,85 @@ func TestDigestAtSessionStart(t *testing.T) {
 	}
 }
 
-// TestMemoryReviewOverlayApply drives the Go-owned review loop through the
-// fake UI: queued proposals drop, stored memories delete, scoped rows are
-// all listed.
-func TestMemoryReviewOverlayApply(t *testing.T) {
-	h, r := newTestHostDB(t)
-	seedSession(t, h)
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-
-	runUser(t, r, `zemi.memory.add("queued proposal text")`)
-	if err := h.Remember("user remembered note"); err != nil {
-		t.Fatalf("remember: %v", err)
-	}
-
-	// First open: two rows, the queued proposal first. Mark nothing.
-	h.openMemoryReview(ui, "")
-	if len(ui.reviewItems) != 1 || len(ui.reviewItems[0]) != 2 {
-		t.Fatalf("review rows: %+v", ui.reviewItems)
-	}
-	if !ui.reviewItems[0][0].Queued || ui.reviewItems[0][0].Origin != store.OriginUser {
-		t.Fatalf("first row: %+v", ui.reviewItems[0][0])
-	}
-	if ui.reviewItems[0][1].Origin != store.OriginUser {
-		t.Fatalf("second row: %+v", ui.reviewItems[0][1])
-	}
-	if rows := projectMemories(t, h); len(rows) != 1 {
-		t.Fatalf("no-mark review changed the store: %d rows", len(rows))
-	}
-
-	// Second open: move the remembered note everywhere, with its age, keep
-	// the proposal here.
-	before := projectMemories(t, h)[0]
-	moved := slices.Clone(ui.reviewItems[0])
-	moved[1].Scope = "user"
-	ui.reviewResult = moved
-	h.openMemoryReview(ui, "")
-	if rows := projectMemories(t, h); len(rows) != 0 {
-		t.Fatalf("moved note still in the project: %+v", rows)
-	}
-	if rows, _ := h.GlobalDB.ListMemory("user", false); len(rows) != 1 || rows[0].ID != moved[1].ID || rows[0].UpdatedAt != before.UpdatedAt {
-		t.Fatalf("moved note not in the user store as it was (%+v): %+v", before, rows)
-	}
-
-	// Third open: accept the proposal, delete the moved note.
-	ui.reviewResult = slices.Clone(ui.reviewItems[1])
-	ui.reviewResult[0].Action = "accept"
-	ui.reviewResult[1].Action = "delete"
-	h.openMemoryReview(ui, "")
-	if queued := len(h.memoryProposals()); queued != 0 {
-		t.Fatalf("proposals left: %d", queued)
-	}
-	if rows := projectMemories(t, h); len(rows) != 1 || rows[0].Text != "queued proposal text" {
-		t.Fatalf("after accept+delete: %+v", rows)
-	}
-	if rows, _ := h.GlobalDB.ListMemory("user", false); len(rows) != 0 {
-		t.Fatalf("delete missed the user store: %+v", rows)
-	}
-}
-
-// TestMemoryReviewMovesProposals: a suggestion moved to the other scope
-// waits there under its id and is stored there when kept; one that
-// replaces a memory still retires it from the scope it left.
-func TestMemoryReviewMovesProposals(t *testing.T) {
-	h, r := newTestHostDB(t)
-	seedSession(t, h)
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-	if err := h.Remember("deploy by hand"); err != nil {
-		t.Fatal(err)
-	}
-	old := projectMemories(t, h)[0]
-	runUser(t, r, `zemi.memory.add("deploy runs bin/deploy")`)
-	p := h.takeProposal(h.memoryProposals()[0].ID)
-	p.Supersedes = old.ID
-	if err := h.addProposal(*p); err != nil {
-		t.Fatal(err)
-	}
-	runUser(t, r, `zemi.memory.add("run make check first")`)
-
-	h.openMemoryReview(ui, "")
-	rows := slices.Clone(ui.reviewItems[0])
-	for i := range rows {
-		if rows[i].Queued {
-			rows[i].Scope = "user"
-			if strings.HasSuffix(rows[i].Text, `(replaces "deploy by hand")`) {
-				rows[i].Action = "accept"
+// TestMemoryListActions drives the /memory list's actions by id: each
+// applies at once, and as many undos as actions applied bring the stores
+// back to where they started.
+func TestMemoryListActions(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		cmds []string
+		want string // the stores after cmds; "" when a command fails and nothing moves
+	}{
+		{"keep a suggestion", []string{"accept p1"}, "?project:deploy runs bin/deploy, ?project:the build runs with make check, ?user:forget:short replies, project:deploy by hand, project:run make check first, user:short replies, user:the build runs with make check"},
+		{"keep a replacement retires what it replaces", []string{"accept p2"}, "?project:run make check first, ?project:the build runs with make check, ?user:forget:short replies, project:deploy runs bin/deploy, user:short replies, user:the build runs with make check"},
+		{"keep a forget", []string{"accept p3"}, "?project:deploy runs bin/deploy, ?project:run make check first, ?project:the build runs with make check, project:deploy by hand, user:the build runs with make check"},
+		{"drop a suggestion", []string{"reject p1"}, "?project:deploy runs bin/deploy, ?project:the build runs with make check, ?user:forget:short replies, project:deploy by hand, user:short replies, user:the build runs with make check"},
+		{"forget a memory", []string{"forget m1 --yes"}, "?project:deploy runs bin/deploy, ?project:run make check first, ?project:the build runs with make check, ?user:forget:short replies, user:short replies, user:the build runs with make check"},
+		{"move a memory everywhere", []string{"move m1"}, "?project:deploy runs bin/deploy, ?project:run make check first, ?project:the build runs with make check, ?user:forget:short replies, user:deploy by hand, user:short replies, user:the build runs with make check"},
+		{"move a suggestion everywhere", []string{"move p1"}, "?project:deploy runs bin/deploy, ?project:the build runs with make check, ?user:forget:short replies, ?user:run make check first, project:deploy by hand, user:short replies, user:the build runs with make check"},
+		{"a suggestion the other scope holds stays", []string{"move p4"}, ""},
+		{"a forget suggestion does not move", []string{"move p3"}, ""},
+		{"undo goes newest first", []string{"reject p1", "move m2", "forget m1 --yes"}, "?project:deploy runs bin/deploy, ?project:the build runs with make check, ?user:forget:short replies, project:short replies, user:the build runs with make check"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			for _, m := range []*store.Memory{
+				{ID: "m1", Scope: "project", Text: "deploy by hand", Origin: store.OriginUser},
+				{ID: "m2", Scope: "user", Text: "short replies", Origin: store.OriginLearned},
+				{ID: "m3", Scope: "user", Text: "the build runs with make check", Origin: store.OriginLearned},
+			} {
+				m.ProvenanceSessionID = "seed"
+				if err := h.memoryDB(m.Scope).AddMemory(m); err != nil {
+					t.Fatal(err)
+				}
 			}
-		}
-	}
-	ui.reviewResult = rows
-	h.openMemoryReview(ui, "")
-	if live, _ := h.DB.ListMemory("project", false); len(live) != 0 {
-		t.Fatalf("the replaced memory is still live: %+v", live)
-	}
-	moved := h.memoryProposals()
-	if len(moved) != 1 || moved[0].Scope != "user" {
-		t.Fatalf("moved suggestion: %+v", moved)
-	}
-	if got, _ := h.GlobalDB.Proposals(); len(got) != 1 || got[0].ID != moved[0].ID {
-		t.Fatalf("moved suggestion not in the user store: %+v", got)
-	}
-
-	ui.reviewResult = []MemoryRow{{ID: moved[0].ID, Scope: "user", Action: "accept"}}
-	h.openMemoryReview(ui, "")
-	if live, _ := h.GlobalDB.ListMemory("user", false); len(live) != 2 {
-		t.Fatalf("kept suggestion not stored everywhere: %+v", live)
-	}
-}
-
-// TestMemoryReviewMoveOntoDuplicate: the destination scope already holds
-// the text, so the suggestion stays where it was instead of vanishing.
-func TestMemoryReviewMoveOntoDuplicate(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	seedSession(t, h)
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-	if err := h.GlobalDB.AddMemory(&store.Memory{ID: "m1", Scope: "user", Text: "the build runs with make check", ProvenanceSessionID: "seed", Origin: store.OriginUser}); err != nil {
-		t.Fatal(err)
-	}
-	p := memoryProposal{ID: "p1", Scope: "project", Text: "the build runs with make check", ProvenanceSessionID: "seed", Origin: store.OriginLearned}
-	if err := h.addProposal(p); err != nil {
-		t.Fatal(err)
-	}
-
-	ui.reviewResult = []MemoryRow{{ID: "p1", Scope: "user"}}
-	h.openMemoryReview(ui, "")
-	got := h.memoryProposals()
-	if len(got) != 1 || got[0].ID != "p1" || got[0].Scope != "project" {
-		t.Fatalf("suggestion after a refused move: %+v", got)
+			for _, p := range []memoryProposal{
+				{ID: "p1", Scope: "project", Text: "run make check first"},
+				{ID: "p2", Scope: "project", Text: "deploy runs bin/deploy", Supersedes: "m1"},
+				{ID: "p3", Scope: "user", Text: "short replies", Supersedes: "m2", Forget: true},
+				{ID: "p4", Scope: "project", Text: "the build runs with make check"},
+			} {
+				p.ProvenanceSessionID, p.Origin = "seed", store.OriginLearned
+				if err := h.addProposal(p); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stores := func() string {
+				var out []string
+				live, _ := h.memoryList(false)
+				for _, m := range live {
+					out = append(out, string(m.Scope)+":"+m.Text)
+				}
+				for _, p := range h.memoryProposals() {
+					out = append(out, "?"+string(p.Scope)+":"+map[bool]string{true: "forget:"}[p.Forget]+p.Text)
+				}
+				slices.Sort(out)
+				return strings.Join(out, ", ")
+			}
+			start, applied := stores(), 0
+			for _, c := range tc.cmds {
+				if err := h.memoryCommand(c); err == nil {
+					applied++
+				} else if tc.want != "" {
+					t.Fatalf("%s: %v", c, err)
+				}
+			}
+			if got := stores(); got != cmp.Or(tc.want, start) {
+				t.Fatalf("after %v:\n got %s\nwant %s", tc.cmds, got, cmp.Or(tc.want, start))
+			}
+			for range applied {
+				if err := h.memoryCommand("undo"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := stores(); got != start {
+				t.Fatalf("undone:\n got %s\nwant %s", got, start)
+			}
+			if err := h.memoryCommand("undo"); err == nil || !strings.Contains(err.Error(), "nothing to undo") {
+				t.Fatalf("an undo past the first action: %v", err)
+			}
+		})
 	}
 }
 
@@ -710,7 +660,7 @@ func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
 	if err := h.DB.AddProposal(&store.Proposal{ID: "p1", Payload: string(payload)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.acceptProposal("p1", ""); err == nil {
+	if _, err := h.acceptProposal("p1"); err == nil {
 		t.Fatal("accept stored a memory without origin")
 	}
 	if props := h.memoryProposals(); len(props) != 1 || props[0].ID != "p1" {
@@ -744,20 +694,21 @@ func TestMemoryCommandsRegistered(t *testing.T) {
 	if err := h.memoryCommand("forget " + id[:8]); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() error {
-		if !h.memReview.TryLock() {
-			return errors.New("the review is still open")
-		}
-		h.memReview.Unlock()
-		return nil
-	})
-	if ui.reviewFocus != id || len(projectMemories(t, h)) != 1 {
-		t.Fatalf("a typed forget: focus %q, %d memories", ui.reviewFocus, len(projectMemories(t, h)))
+	confirm := "memory forget " + id + " --yes"
+	if o := ui.overlays(); len(o) != 1 || o[0].Confirm != confirm || !strings.Contains(fmt.Sprint(o[0].Items), confirm) || len(projectMemories(t, h)) != 1 {
+		t.Fatalf("a typed forget: %+v, %d memories", o, len(projectMemories(t, h)))
 	}
 	if err := h.memoryCommand("forget " + id[:8] + " --yes"); err != nil {
 		t.Fatal(err)
 	}
 	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.title != "Memory forgotten" || n.body != "deploy by hand" {
 		t.Fatalf("toast: %+v", n)
+	}
+	// opening the list starts with nothing to undo
+	if err := h.memoryCommand(""); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.memoryCommand("undo"); err == nil {
+		t.Fatal("an undo reached past the list's opening")
 	}
 }

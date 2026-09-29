@@ -62,9 +62,6 @@ type UIHooks interface {
 	// says the user ended it by dismissing a question or plan.
 	TurnDone(err string, stopped bool)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
-	// ReviewMemories returns the rows with Action and Scope as edited; the
-	// screen opens on row focus's actions when set
-	ReviewMemories(items []MemoryRow, focus string) []MemoryRow
 	// Screenshot is the last drawn frame as plain text, "" before the
 	// first one; safe from any goroutine.
 	Screenshot() string
@@ -381,9 +378,12 @@ type Host struct {
 	// test is set, before boot, only in a zemi plugins test zemi
 	test *PluginTest
 
-	// memReview serializes the /memory review overlay; the hook runs off
-	// the UI goroutine.
-	memReview sync.Mutex
+	// memUndo reverses the /memory list's actions, newest last; opening the
+	// list empties it, so an undo reaches no further than the list shows.
+	memUndo struct {
+		sync.Mutex
+		steps []func() error
+	}
 
 	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3);
 	// modelFn stubs the agent and reflector model in tests.

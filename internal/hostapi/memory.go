@@ -30,22 +30,6 @@ import (
 // per session, mirroring the auto-applied-rules cap (DESIGN §10.4).
 const memoryAutoApplyCap = 20
 
-// MemoryRow is one review-overlay row: a queued proposal or a stored
-// memory from either scope.
-type MemoryRow struct {
-	ID         string
-	Scope      store.Scope
-	Origin     store.Origin
-	Text       string
-	Quote      string // the user's words behind a memory about them
-	Queued     bool   // proposal awaiting review, not yet stored
-	Forget     bool   // proposal to forget a stored memory, which stays in its scope
-	Supersedes string // the stored memory a forget or a replacement retires
-	Updated    int64  // last write of a stored memory, unix ms
-	Action     string // set by the review screen: accept, reject, delete or ""
-	Edit       bool   // set by the review screen: open this row in the editor, then reopen
-}
-
 // memoryDB returns the store owning a scope: user scope in the global DB,
 // project scope in the project DB (DESIGN §7).
 func (h *Host) memoryDB(scope store.Scope) *store.DB {
@@ -247,144 +231,200 @@ func (h *Host) Remember(text string) error {
 	return nil
 }
 
-// memoryCommand dispatches /memory; a forget typed without --yes asks
-// first (AskFirst) on the review screen.
+// memoryCommand dispatches /memory: the list, a note to keep, and the
+// list's actions on a row by id, which undo reverses newest first. A
+// forget typed without --yes asks first (AskFirst) on the list.
 func (h *Host) memoryCommand(args string) error {
 	fields := strings.Fields(args)
-	switch {
-	case len(fields) == 0:
+	if len(fields) == 0 {
 		return h.openMemory("")
-	case fields[0] == "forget" && (len(fields) == 2 || len(fields) == 3 && fields[2] == "--yes"):
-		db, m, err := h.locateMemory(fields[1])
+	}
+	verb, id := fields[0], ""
+	if len(fields) > 1 {
+		id = fields[1]
+	}
+	switch {
+	case verb == "undo" && len(fields) == 1:
+		return h.undoMemory()
+	case verb == "forget" && (len(fields) == 2 || len(fields) == 3 && fields[2] == "--yes"):
+		db, m, err := h.locateMemory(id)
 		if err != nil {
 			return err
 		}
 		if len(fields) == 2 {
-			return AskFirst("memory forget "+m.ID+" --yes", "", func(string) error { return h.openMemory(m.ID) })
+			return AskFirst("memory forget "+m.ID+" --yes", "", h.openMemory)
 		}
 		if err := db.DeleteMemory(m.ID); err != nil {
 			return err
 		}
+		h.pushUndo(func() error { return db.AddMemory(m) })
 		h.Notify(slog.LevelInfo, "Memory forgotten", m.Text)
 		return nil
-	case fields[0] == "forget":
+	case verb == "forget":
 		return Usagef("usage: /memory forget <id> [--yes]")
-	default:
-		return h.Remember(args)
+	case len(fields) != 2:
+	case verb == "accept":
+		return h.acceptMemory(id)
+	case verb == "reject":
+		p := h.takeProposal(id)
+		if p == nil {
+			return fmt.Errorf("no such suggestion %q", id)
+		}
+		h.pushUndo(func() error { return h.addProposal(*p) })
+		return nil
+	case verb == "move":
+		return h.moveRow(id)
+	case verb == "edit":
+		ui, err := h.Screen()
+		if err != nil {
+			return err
+		}
+		// the editor blocks; the list shows the saved text once it closes
+		h.GoSafe("edit memory", func() {
+			h.editMemory(ui, id)
+			ui.RefreshOverlay("memory", h.memoryOverlay)
+		})
+		return nil
 	}
+	return h.Remember(args)
 }
 
-// openMemory opens the review screen on its own goroutine, since the hook
-// blocks, with memory focus open on its Forget when set.
-func (h *Host) openMemory(focus string) error {
+// openMemory opens /memory with nothing to undo; confirm arms the action
+// that runs it (Overlay.Confirm).
+func (h *Host) openMemory(confirm string) error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
-	if !h.memReview.TryLock() {
-		return Usagef("memory review already open")
+	h.memUndo.Lock()
+	h.memUndo.steps = nil
+	h.memUndo.Unlock()
+	o := h.memoryOverlay()
+	o.Confirm = confirm
+	ui.OpenOverlay(o)
+	return nil
+}
+
+// memoryOverlay is /memory, a toggle list: an action applies at once and
+// the list rebuilds, and u undoes it.
+func (h *Host) memoryOverlay() Overlay {
+	return Overlay{
+		ID: "memory", Title: "Memory", Origin: lua.OriginBuiltin, Items: h.memoryItems(),
+		Keys:   []OverlayKey{{Key: "u", Desc: "undo", Run: "memory undo"}},
+		Reload: func() ([]any, [][]Segment) { return h.memoryItems(), nil },
+		Empty:  "Nothing remembered yet. Type /memory <note> to save one.",
 	}
-	h.GoSafe("memory review", func() {
-		defer h.memReview.Unlock()
-		h.openMemoryReview(ui, focus)
+}
+
+func (h *Host) pushUndo(step func() error) {
+	h.memUndo.Lock()
+	h.memUndo.steps = append(h.memUndo.steps, step)
+	h.memUndo.Unlock()
+}
+
+// undoMemory reverses the newest /memory action not undone yet.
+func (h *Host) undoMemory() error {
+	u := &h.memUndo
+	u.Lock()
+	defer u.Unlock()
+	n := len(u.steps)
+	if n == 0 {
+		return Usagef("nothing to undo")
+	}
+	step := u.steps[n-1]
+	u.steps = u.steps[:n-1]
+	return step()
+}
+
+// acceptMemory keeps suggestion id: it stores the memory, or deletes the
+// one a forget suggestion names.
+func (h *Host) acceptMemory(id string) error {
+	var gone *store.Memory
+	var goneDB *store.DB
+	props := h.memoryProposals()
+	if i := slices.IndexFunc(props, func(p memoryProposal) bool { return p.ID == id && p.Forget }); i >= 0 {
+		goneDB, gone, _ = h.locateMemory(props[i].Supersedes)
+	}
+	p, err := h.acceptProposal(id)
+	if err != nil {
+		return err
+	}
+	h.pushUndo(func() error {
+		var err error
+		switch {
+		case gone != nil:
+			err = goneDB.AddMemory(gone)
+		case !p.Forget:
+			err = h.memoryDB(p.Scope).DeleteMemory(p.ID)
+			for _, db := range []*store.DB{h.DB, h.GlobalDB} {
+				if db != nil && err == nil {
+					err = db.Unsupersede([]string{p.ID}) // what it replaced is live again
+				}
+			}
+		}
+		if err != nil {
+			return err
+		}
+		return h.addProposal(*p)
 	})
 	return nil
 }
 
-// openMemoryReview shows pending proposals plus stored memories from both
-// scopes in the Go-owned review overlay and applies the decisions by row
-// id: accepted proposals are stored, rejected ones dropped, deleted
-// memories removed from their scope's DB. A row marked for editing opens
-// in the user's editor after the other decisions apply, then the screen
-// opens again.
-func (h *Host) openMemoryReview(ui UIHooks, focus string) {
-	for h.reviewMemoriesOnce(ui, focus) {
-		focus = ""
+// moveRow moves suggestion or memory id to the other scope. A suggestion
+// the other scope already holds stays where it was.
+func (h *Host) moveRow(id string) error {
+	props := h.memoryProposals()
+	if i := slices.IndexFunc(props, func(p memoryProposal) bool { return p.ID == id }); i >= 0 {
+		if props[i].Forget {
+			return Usagef("a forget suggestion stays with its memory")
+		}
+		p := h.takeProposal(id)
+		if p == nil {
+			return fmt.Errorf("no such suggestion %q", id)
+		}
+		to := otherScope(p.Scope)
+		moved := p.Memory
+		moved.Scope = to
+		if !h.queueProposal(&learn.Result{Memory: moved, Supersedes: p.Supersedes}) {
+			if err := h.addProposal(*p); err != nil {
+				return err
+			}
+			return Usagef("%s memory already has that text", scopeWords[to])
+		}
+		h.pushUndo(func() error {
+			h.takeProposal(id)
+			return h.addProposal(*p)
+		})
+		return nil
 	}
+	db, m, err := h.locateMemory(id)
+	if err != nil {
+		return err
+	}
+	to := otherScope(m.Scope)
+	if err := h.moveMemory(m.ID, m.Scope, to); err != nil {
+		return err
+	}
+	h.pushUndo(func() error {
+		// a move that merged into a copy left nothing under the id
+		if err := h.memoryDB(to).DeleteMemory(m.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+		return db.AddMemory(m)
+	})
+	return nil
 }
 
-// reviewMemoriesOnce runs the screen once and reports whether a row was
-// edited, so the caller shows it again.
-func (h *Host) reviewMemoriesOnce(ui UIHooks, focus string) bool {
-	rows := h.memoryRows()
-	was := map[string]MemoryRow{}
-	for _, r := range rows {
-		was[r.ID] = r
+func otherScope(s store.Scope) store.Scope {
+	if s == store.ScopeUser {
+		return store.ScopeProject
 	}
-	var accepted, rejected, deleted, moved int
-	edit := ""
-	for _, r := range ui.ReviewMemories(rows, focus) {
-		old, ok := was[r.ID]
-		if !ok {
-			continue
-		}
-		if r.Edit {
-			edit = r.ID
-		}
-		if r.Scope != store.ScopeUser {
-			r.Scope = store.ScopeProject
-		}
-		if old.Forget {
-			r.Scope = old.Scope // it names the memory where it is
-		}
-		switch {
-		case old.Queued && r.Action == "reject":
-			if h.takeProposal(r.ID) != nil {
-				rejected++
-			}
-		case old.Queued && r.Action == "accept":
-			if _, err := h.acceptProposal(r.ID, r.Scope); err != nil {
-				h.Notify(slog.LevelWarn, "Could not accept a memory", err.Error())
-				continue
-			}
-			accepted++
-		case old.Queued && r.Scope != old.Scope:
-			p := h.takeProposal(r.ID)
-			if p == nil {
-				continue
-			}
-			p.Memory.Scope = r.Scope
-			if h.queueProposal(&learn.Result{Memory: p.Memory, Supersedes: p.Supersedes}) {
-				moved++
-				continue
-			}
-			// the other scope already holds the text: it is out of its
-			// queue by now, so put it back rather than lose it
-			p.Memory.Scope = old.Scope
-			if err := h.addProposal(*p); err != nil {
-				h.Log.Warn("move rollback failed", "origin", "memory", "id", r.ID, "error", err)
-			}
-			h.Notify(slog.LevelWarn, "Could not move a memory", "the "+string(r.Scope)+" scope already has that text")
-		case old.Queued:
-		case r.Action == "delete":
-			if db := h.memoryDB(old.Scope); db != nil && db.DeleteMemory(r.ID) == nil {
-				deleted++
-			}
-		case r.Scope != old.Scope:
-			if err := h.moveMemory(r.ID, old.Scope, r.Scope); err != nil {
-				h.Notify(slog.LevelWarn, "Could not move a memory", err.Error())
-				continue
-			}
-			moved++
-		}
-	}
-	var parts []string
-	for _, c := range []struct {
-		n    int
-		what string
-	}{{accepted, "accepted"}, {rejected, "rejected"}, {deleted, "deleted"}, {moved, "moved"}} {
-		if c.n > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", c.n, c.what))
-		}
-	}
-	if len(parts) > 0 {
-		h.Notify(slog.LevelInfo, "Memory updated", strings.Join(parts, ", "))
-	}
-	if edit != "" {
-		h.editMemory(ui, edit)
-	}
-	return edit != ""
+	return store.ScopeUser
 }
+
+// scopeWords name a scope in /memory: its section, a suggestion's desc and
+// the move action.
+var scopeWords = map[store.Scope]string{store.ScopeProject: "this project", store.ScopeUser: "everywhere"}
 
 // editMemory opens a memory or a pending suggestion in the user's editor
 // and saves what comes back through rewriteMemory; a failure is a toast.
@@ -558,11 +598,11 @@ func (h *Host) moveMemory(id string, from, to store.Scope) error {
 	return src.DeleteMemory(id)
 }
 
-// acceptProposal stores a pending proposal (in scope when one is given), or deletes the memory a forget
+// acceptProposal stores a pending proposal, or deletes the memory a forget
 // proposal names (one already gone counts as done, one rewritten since drops
 // the proposal). A full scope or a store failure other than a duplicate puts
 // it back in the queue, so the decision can be made again.
-func (h *Host) acceptProposal(id string, scope store.Scope) (*memoryProposal, error) {
+func (h *Host) acceptProposal(id string) (*memoryProposal, error) {
 	p := h.takeProposal(id)
 	if p == nil {
 		return nil, fmt.Errorf("no such proposal %q", id)
@@ -582,7 +622,6 @@ func (h *Host) acceptProposal(id string, scope store.Scope) (*memoryProposal, er
 			err = db.DeleteMemory(p.Supersedes)
 		}
 	} else {
-		p.Memory.Scope = cmp.Or(scope, p.Memory.Scope)
 		res := &learn.Result{Memory: p.Memory, Supersedes: p.Supersedes}
 		if _, over := h.scopeOver(res); over {
 			err = errScopeFull(p.Memory.Scope)
@@ -637,39 +676,85 @@ func (h *Host) refreshPending() {
 	h.refresh()
 }
 
-// memoryRows merges pending proposals (first) and stored memories from
-// both scopes, newest first within a scope.
-func (h *Host) memoryRows() []MemoryRow {
-	var rows []MemoryRow
-	for _, m := range h.memoryProposals() {
-		text := m.Text
-		switch {
-		case m.Forget:
-			text = "forget: " + text
-		case m.Supersedes != "":
-			// the screen shows no ids, so the row names the memory by its text
-			what := "a memory since deleted"
-			if _, old, err := h.locateMemory(m.Supersedes); err == nil {
-				what = `"` + clipRunes(old.Text, 40) + `"`
-				if old.Scope != m.Scope {
-					what = string(old.Scope) + " memory " + what
+// memoryItems lists the suggestions, then the memories of this project and
+// of everywhere, newest first; each section title counts its rows, and a
+// scope's names its share of learn.ScopeBudget. A row is one line: the
+// preview and the detail hold the whole text.
+func (h *Host) memoryItems() []any {
+	props := h.memoryProposals()
+	live, _ := h.memoryList(false)
+	count, used := map[store.Scope]int{}, map[store.Scope]int{}
+	for _, m := range live {
+		count[m.Scope]++
+		used[m.Scope] += learn.LineSize(m.Text)
+	}
+	items := make([]any, 0, len(props)+len(live))
+	for _, p := range props {
+		label, replaces := p.Text, ""
+		if p.Forget {
+			label = "forget: " + label
+		} else if p.Supersedes != "" {
+			// the list shows no ids, so the row names the memory by its text
+			replaces = "a memory since deleted"
+			if _, old, err := h.locateMemory(p.Supersedes); err == nil {
+				replaces = old.Text
+				if old.Scope != p.Scope {
+					replaces += " (" + scopeWords[old.Scope] + ")"
 				}
 			}
-			text += " (replaces " + what + ")"
 		}
-		rows = append(rows, MemoryRow{
-			ID: m.ID, Scope: m.Scope, Origin: m.Origin,
-			Text: text, Quote: m.Quote, Queued: true, Forget: m.Forget, Supersedes: m.Supersedes,
-		})
+		item := memoryItem(p.Memory, label, fmt.Sprintf("Suggested by zemi (%d)", len(props)), scopeWords[p.Scope], replaces)
+		acts := []any{
+			map[string]any{"text": "Keep", "hotkey": "a", "run": "memory accept " + p.ID},
+			map[string]any{"text": "Drop", "hotkey": "d", "run": "memory reject " + p.ID},
+		}
+		if p.Forget {
+			acts = []any{
+				map[string]any{"text": "Forget", "hotkey": "a", "run": "memory accept " + p.ID},
+				map[string]any{"text": "Keep", "hotkey": "d", "run": "memory reject " + p.ID},
+			}
+		}
+		item["actions"] = append(acts, moveAndEdit(p.Memory, p.Forget)...)
+		items = append(items, item)
 	}
-	list, _ := h.memoryList(false)
-	for _, m := range list {
-		rows = append(rows, MemoryRow{
-			ID: m.ID, Scope: m.Scope, Origin: m.Origin,
-			Text: m.Text, Quote: m.Quote, Updated: m.UpdatedAt,
-		})
+	for _, m := range live {
+		desc := map[store.Origin]string{store.OriginUser: "by you", store.OriginLearned: "learned"}[m.Origin] + " · " + ago(m.UpdatedAt)
+		section := fmt.Sprintf("%s (%d) · %.1f/%d KB", sourceSection(scopeWords[m.Scope]), count[m.Scope], float64(used[m.Scope])/1024, learn.ScopeBudget/1024)
+		item := memoryItem(*m, m.Text, section, desc, "")
+		item["actions"] = append([]any{map[string]any{"text": "Forget", "hotkey": "d", "run": "memory forget " + m.ID + " --yes"}}, moveAndEdit(*m, false)...)
+		items = append(items, item)
 	}
-	return rows
+	return items
+}
+
+// memoryItem is m's row under section: label cut to one line, its whole
+// text and quote in the preview, and its facts in the detail.
+func memoryItem(m store.Memory, label, section, desc, replaces string) map[string]any {
+	preview := m.Text
+	if m.Quote != "" {
+		preview += "\n\"" + m.Quote + "\""
+	}
+	updated := ""
+	if m.UpdatedAt != 0 {
+		updated = ago(m.UpdatedAt)
+	}
+	return map[string]any{
+		"id": m.ID, "text": clipRunes(label, 50), "desc": desc, "section": section, "preview": preview, "copy": m.Text,
+		"fields": fieldList("text", m.Text, "quote", m.Quote, "replaces", replaces, "scope", scopeWords[m.Scope],
+			"origin", map[store.Origin]string{store.OriginUser: "saved by you", store.OriginLearned: "learned"}[m.Origin], "updated", updated),
+	}
+}
+
+// moveAndEdit are the actions of a row that can move and be edited; a
+// forget suggestion does neither.
+func moveAndEdit(m store.Memory, forget bool) []any {
+	if forget {
+		return nil
+	}
+	return []any{
+		map[string]any{"text": map[store.Scope]string{store.ScopeProject: "Use everywhere", store.ScopeUser: "Only this project"}[m.Scope], "hotkey": "s", "run": "memory move " + m.ID},
+		map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "memory edit " + m.ID},
+	}
 }
 
 // locateMemory finds a memory id across both scopes and returns the DB

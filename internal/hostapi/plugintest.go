@@ -1048,16 +1048,15 @@ func (u *testUI) CloseLuaOverlays() {
 	u.mu.Unlock()
 }
 
-func (*testUI) Notify(slog.Level, string, string)              {}
-func (*testUI) Refresh()                                       {}
-func (*testUI) Scroll(ScrollAction, string)                    {}
-func (*testUI) LayoutRects() map[string]Rect                   { return nil }
-func (*testUI) AgentStream()                                   {}
-func (*testUI) TurnDone(string, bool)                          {}
-func (*testUI) AskPermission(PermRequest) (bool, string)       { return false, tools.ByUser }
-func (*testUI) ReviewMemories([]MemoryRow, string) []MemoryRow { return nil }
-func (*testUI) Screenshot() string                             { return "" }
-func (*testUI) AskQuestion([]tools.Question) ([]string, bool)  { return nil, false }
+func (*testUI) Notify(slog.Level, string, string)             {}
+func (*testUI) Refresh()                                      {}
+func (*testUI) Scroll(ScrollAction, string)                   {}
+func (*testUI) LayoutRects() map[string]Rect                  { return nil }
+func (*testUI) AgentStream()                                  {}
+func (*testUI) TurnDone(string, bool)                         {}
+func (*testUI) AskPermission(PermRequest) (bool, string)      { return false, tools.ByUser }
+func (*testUI) Screenshot() string                            { return "" }
+func (*testUI) AskQuestion([]tools.Question) ([]string, bool) { return nil, false }
 func (*testUI) AskPlan(string, string) (tools.PlanVerdict, bool) {
 	return tools.PlanVerdict{}, false
 }

@@ -1377,7 +1377,7 @@ UI extensibility contract:
   active theme sit above every other theme, the user's own included.
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks,
-  question/memory overlays) -> the topmost overlay (Lua, or Go-built
+  question and plan prompts) -> the topmost overlay (Lua, or Go-built
   lists like the mode and model pickers) -> a focused layout node (its scoped keymaps, then the global ones; an
   unbound key does nothing, an unbound esc gives the keys back) ->
   open composer popup -> keymap (keys and key sequences; printable keys
@@ -1425,13 +1425,13 @@ UI extensibility contract:
   pending. A trigger popup with nothing to offer is
   not drawn and takes no keys, so prose with a `#` in it still submits.
 - One matcher (`hostapi.Match`, over `sahilm/fuzzy`) filters every list a
-  human narrows by typing: the palette, argument candidates, `@` files,
-  overlays and `/memory`. Every word of the query must match a row: its
+  human narrows by typing: the palette, argument candidates, `@` files
+  and overlays. Every word of the query must match a row: its
   label fuzzily when the label is one token (a name, an id, a path, a
   dotted key), or as a substring when the label is prose (it holds a
   space), since a subsequence finds nearly every line of prose; any word
   may instead appear in the row's other text. Popups under the composer
-  rank best first (`hostapi.Rank`); overlays and `/memory` keep list
+  rank best first (`hostapi.Rank`); overlays keep list
   order, so sections stay whole and `/sessions` keeps recency. `@` files
   rank a file name the token begins first, then by the score of the name,
   or of the path when only the path matches. Every list draws the matched
@@ -1595,7 +1595,8 @@ provenance string.
   or `/mcp`'s sign out, which deletes the saved token); `/health`'s one
   action per check takes its label's initial. An item or action with
   `danger` (those `x` rows, `/rewind`'s `r`; not the `/permissions` Delete,
-  which the next "always" answer undoes) draws in the danger color, and its
+  which the next "always" answer undoes, nor `/memory`'s actions, which `u`
+  undoes) draws in the danger color, and its
   first enter or key only arms it: the footer turns to `x again to delete ·
   esc cancel` in that color, the same key, enter or space runs it, esc disarms and
   stays, and any other key, or a click or wheel that moves the selection,
@@ -1617,7 +1618,7 @@ provenance string.
   the footer's text would move with them; the detail's buttons name them. `j`, `k`, `/`, `y` and `Y` are
   the list's own and cannot be hotkeys. A
   screen that manages things (`/skills`, `/mcp`, `/lsp`, `/permissions`,
-  `/plugins`, `/workflows` and a workflow's view) is a toggle list, so an
+  `/plugins`, `/memory`, `/workflows` and a workflow's view) is a toggle list, so an
   action returns to it rebuilt, and `/mcp`, `/lsp`, `/plugins`, `/workflows`
   and a workflow's view also rebuild in place when a server, a run or a
   slow action changes their state off the key loop (`Overlay.Refresh`, for
@@ -1638,7 +1639,7 @@ provenance string.
   four letters each, so starting to type or moving the highlight never
   shifts the footer. The footer's pairs sit in one order: moving keys,
   enter, space, scrolling, copy, the screen's own keys (a Lua list's
-  `keys`, a workflow view's `p` and `+/-`), then esc; the screen's keys come
+  `keys`, `/memory`'s `u`, a workflow view's `p` and `+/-`), then esc; the screen's keys come
   and go with its state, so their going moves only esc. A toggle list, which
   can grow past its view, keeps scrolling's cells blank until it does, so
   the hint coming moves nothing. A narrow footer drops scrolling and copy
@@ -1848,7 +1849,7 @@ provenance string.
   (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
   down move, enter picks the highlighted one. Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
-  last, a yes/no one's `y` and `n`, an open memory, an overlay's detail view; a multi-select stays a list of
+  last, a yes/no one's `y` and `n`, an overlay's detail view; a multi-select stays a list of
   switches) draws its buttons through one renderer, which puts
   each answer's key in brackets beside its label, the selected answer marked like a selected list row, the band under the accent `›`. The session `always` and `wider`
   answers write allow rules to the rule store (§6.1),
@@ -2434,18 +2435,20 @@ by the next startup sweep, since the session still has unseen messages.
 
 - Pending memory proposals persist in their scope's store (`proposals`
   table) until accepted or rejected, so restarts never lose them; the
-  statusline shows how many wait for `/memory`. In `/memory`, `a` accepts
-  a proposal, `d` rejects one or deletes a stored memory, `s` moves one
-  between this project and everywhere (a stored memory is added to the
+  statusline shows how many wait for `/memory`. `/memory` is a toggle list
+  (§8): the suggestions, then this project's memories and everywhere's,
+  each section title counting its rows and a scope's naming its share of
+  the budget; a row is one line, and the preview pane and the detail hold
+  the whole text, its quote, origin and age. A row's keys act at once: `a`
+  accepts a proposal, `d` rejects one or forgets a stored memory, `s` moves
+  one between this project and everywhere (a stored memory is added to the
   other store before it is deleted from its own), `o` edits one in the
-  user's editor (the marks apply first; the saved text passes intake again
-  as user origin with the same scope and quote and keeps the id, an
-  edited suggestion is stored, empty or unchanged text changes nothing,
-  and the screen reopens on that row), `u` undoes the last mark, enter
-  opens a row with those keys as its buttons, and esc closes the screen and
-  applies the marks. Since `u` undoes any mark until then, no key there
-  arms; only a typed `/memory forget <id>` opens with its Forget armed.
-  Stored rows show their age.
+  user's editor (the saved text passes intake again as user origin with
+  the same scope and quote and keeps the id, an edited suggestion is
+  stored, empty or unchanged text changes nothing), and `u` undoes the
+  last action, newest first, until the list opens again. Since `u` undoes
+  them, no key there arms; only a typed `/memory forget <id>` opens with
+  its Forget armed.
 - **Memory intake is host-side**, regardless of autonomy: a length cap (300
   chars, and 160 for the quote), provenance required, the quote scrubbed
   like the text, and intake-time secret scrubbing (a span matching a key

@@ -78,9 +78,8 @@ type Rule struct {
 type Store struct {
 	rules []Rule
 
-	// mu guards rules: rules are added from the Lua actor goroutine, the
-	// permission-ask hook and the review overlay goroutine, and read
-	// concurrently by agent turns.
+	// mu guards rules: rules are added from the Lua actor goroutine and the
+	// permission-ask hook, and read concurrently by agent turns.
 	mu sync.Mutex
 
 	// Default applies when no rule matched a subject+arg (DESIGN §9

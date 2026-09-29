@@ -268,7 +268,7 @@ func TestReflectApply(t *testing.T) {
 				if _, queued, _, _ := h.applyReflectProposal(sid, again); queued != 0 {
 					t.Fatalf("a duplicate of a pending proposal counted as queued: %d", queued)
 				}
-				if _, err := h.acceptProposal(p.ID, ""); err != nil {
+				if _, err := h.acceptProposal(p.ID); err != nil {
 					t.Fatal(err)
 				}
 				if old, _ := h.DB.GetMemory(p.Supersedes); old.SupersededBy != p.ID {
@@ -488,14 +488,14 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			local p = zemi.learn.list()
 			assert(#p == 1 and p[1].forget == true and p[1].text == "deploy by hand", "forget row")
 		`)
-		if rows := h.memoryRows(); rows[0].Text != "forget: deploy by hand" {
+		if rows := h.memoryItems(); rows[0].(map[string]any)["text"] != "forget: deploy by hand" {
 			t.Fatalf("review row: %+v", rows[0])
 		}
 		want := 1
 		switch decide {
 		case "accept":
 			want = 0
-			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {
+			if _, err := h.acceptProposal(props[0].ID); err != nil {
 				t.Fatal(err)
 			}
 		case "reject":
@@ -506,7 +506,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			if err := h.DB.UpdateMemoryText(old.ID, "deploy with bin/deploy", store.OriginUser); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := h.acceptProposal(props[0].ID, ""); err == nil || len(h.memoryProposals()) != 0 {
+			if _, err := h.acceptProposal(props[0].ID); err == nil || len(h.memoryProposals()) != 0 {
 				t.Fatalf("stale forget: err %v, proposals %d", err, len(h.memoryProposals()))
 			}
 		case "moved":
@@ -521,7 +521,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 				t.Fatalf("move lost the memory: %v", err)
 			}
 			want = 0
-			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {
+			if _, err := h.acceptProposal(props[0].ID); err != nil {
 				t.Fatal(err)
 			}
 		case "merged":
@@ -532,7 +532,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 				t.Fatal(err)
 			}
 			want = 0
-			if _, err := h.acceptProposal(props[0].ID, ""); err != nil {
+			if _, err := h.acceptProposal(props[0].ID); err != nil {
 				t.Fatal(err)
 			}
 		case "deleted":

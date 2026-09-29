@@ -477,14 +477,6 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			return spans, func() { *sel = hit - 1; a.questionKey("enter", "") }, ok
 		}
 		return list(n, sel, func() { a.questionKey("enter", "") })
-	case top == modalMemReview:
-		mr := a.memReview
-		if mr.detail {
-			acts := memActions(mr.items[mr.at()], len(mr.undo) > 0)
-			spans, ok := item(len(acts))
-			return spans, func() { a.memAct(acts[hit-1].key) }, ok
-		}
-		return list(len(mr.visible), &mr.selected, mr.open)
 	case top == modalOverlay:
 		st := &a.overlays[len(a.overlays)-1]
 		var open func()

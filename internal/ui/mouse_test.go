@@ -196,16 +196,8 @@ func TestFilterKeys(t *testing.T) {
 // TestHoverTargets: hover and click act on whole items, and only with the
 // pointer over the item's own cells.
 func TestHoverTargets(t *testing.T) {
-	long := "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau"
-	memories := func(app *App) {
-		app.memReview = &memReviewPrompt{items: []hostapi.MemoryRow{
-			{ID: "a", Scope: "user", Origin: "user", Text: "short one", Queued: true},
-			{ID: "b", Scope: "user", Origin: "user", Text: long},
-		}}
-		app.memReview.seek(0)
-	}
 	overlay := func(app *App) {
-		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"beta and a much longer row", "alpha"}})
+		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"beta and a much longer row", "alpha", map[string]any{"text": "gamma", "section": "Remembered"}}})
 	}
 	keyed := func(app *App) {
 		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"a much longer row than the other", map[string]any{"text": "alpha", "key": "current"}}})
@@ -236,10 +228,7 @@ func TestHoverTargets(t *testing.T) {
 		rows int    // rows lit, 0 = not a target
 		lit  string // the hover group, or the fixed prompt style
 	}{
-		{"memory text row lights the whole item", memories, "sigma", 1, 3, "HoverItem"},
-		{"right of memory text is not a target", memories, "sigma", 40, 0, ""},
-		{"the selected memory opens on a click", memories, "short one", 1, 2, "HoverItem"},
-		{"memory section header is not a target", memories, "Remembered", 1, 0, ""},
+		{"a section header is not a target", overlay, "Remembered", 1, 0, ""},
 		{"overlay row text is a target", overlay, "alpha", 1, 1, "HoverItem"},
 		{"overlay row padding is not a target", overlay, "alpha", 6, 0, ""},
 		{"overlay gutter is not a target", overlay, "beta and", -1, 0, ""},

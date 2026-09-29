@@ -74,8 +74,6 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		switch {
 		case top == modalPerm && a.permAsk.answer != nil:
 			a.answerPerm(false, tools.ByUser)
-		case top == modalMemReview:
-			a.answerMemReview()
 		case top == modalPlan:
 			a.finishPlan(tools.PlanVerdict{}, false)
 		case top == modalQuestion:
@@ -145,45 +143,6 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 					a.choosePerm(c)
 				}
 			}
-		}
-	case modalMemReview:
-		mr := a.memReview
-		if mr.detail && mr.at() < len(mr.items) {
-			acts := memActions(mr.items[mr.at()], len(mr.undo) > 0)
-			confirmed, swallowed := pressArmed(&mr.armed, key, func() string { return acts[mr.act].key })
-			if confirmed {
-				a.memAct(acts[mr.act].key)
-			}
-			if confirmed || swallowed {
-				return nil
-			}
-			if mr.body.overflows() && scrollKey(&mr.body, key, false) || moveSel(&mr.act, len(acts), len(acts), key) {
-				return nil
-			}
-			switch {
-			case key == "esc":
-				mr.detail = false
-			case key == "enter":
-				a.memAct(acts[mr.act].key)
-			case slices.ContainsFunc(acts, func(c promptChoice) bool { return c.key == key }):
-				a.memAct(key)
-			}
-			return nil
-		}
-		if mr.edit(key, keyText(msg)) || moveSel(&mr.selected, len(mr.visible), mr.view.pageItems(len(mr.visible)), key) {
-			return nil
-		}
-		switch key {
-		case "a", "y":
-			a.memAct("a")
-		case "d", "x":
-			a.memAct("d")
-		case "s", "o", "u":
-			a.memAct(key)
-		case "enter":
-			mr.open()
-		case "esc":
-			a.answerMemReview()
 		}
 	case modalPlan:
 		a.planKey(key, keyText(msg))
@@ -457,8 +416,6 @@ func (a *App) typing(top modal) bool {
 	case modalOverlay:
 		st := &a.overlays[len(a.overlays)-1]
 		return st.o.Input || st.active
-	case modalMemReview:
-		return a.memReview.active && !a.memReview.detail
 	case modalPlan:
 		return a.planAsk.typing
 	case modalQuestion:
@@ -564,7 +521,6 @@ type modal int
 const (
 	noModal modal = iota
 	modalPerm
-	modalMemReview
 	modalPlan
 	modalQuestion
 	modalTrust
@@ -572,13 +528,11 @@ const (
 )
 
 // topChrome is the prompt drawn on top. It mirrors the splice order in
-// compose: perm over memReview, question, trust, then Lua overlays.
+// compose: perm over question, trust, then Lua overlays.
 func (a *App) topChrome() modal {
 	switch {
 	case a.permAsk != nil:
 		return modalPerm
-	case a.memReview != nil:
-		return modalMemReview
 	case a.planAsk != nil:
 		return modalPlan
 	case a.question != nil:
@@ -623,12 +577,6 @@ func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 		text, sel, n = &a.permAsk.view, &a.permAsk.sel, len(a.permAsk.choices())
 	case modalPlan:
 		text = &a.planAsk.view
-	case modalMemReview:
-		if mr := a.memReview; mr.detail {
-			text, sel, n = &mr.body, &mr.act, len(memActions(mr.items[mr.at()], len(mr.undo) > 0))
-		} else {
-			sel, n = &mr.selected, len(mr.visible)
-		}
 	case modalQuestion:
 		if qp := a.question; !qp.reviewing() {
 			text = &qp.states[qp.at].ask
@@ -683,7 +631,7 @@ func (a *App) pasteChrome(text string) bool {
 		} else {
 			st.edit("", line)
 		}
-	case modalPerm, modalMemReview, modalTrust: // no text input: swallowed
+	case modalPerm, modalTrust: // no text input: swallowed
 	}
 	a.bump()
 	return true

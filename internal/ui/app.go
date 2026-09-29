@@ -78,11 +78,9 @@ type App struct {
 	toasts   []toast
 
 	// Go-owned agent chrome (DESIGN §6.3, §8)
-	permAsk   *permAskPrompt
-	memReview *memReviewPrompt
-	memEdited string // the row the next memory screen opens on
-	planAsk   *planAskPrompt
-	question  *questionPrompt
+	permAsk  *permAskPrompt
+	planAsk  *planAskPrompt
+	question *questionPrompt
 
 	mouse          mouseSel
 	press          mousePress
@@ -968,9 +966,6 @@ func (a *App) compose(w, h int) string {
 	}
 	if a.question != nil {
 		splice(a.questionBox(a.question, area.Dx(), area.Dy()))
-	}
-	if a.memReview != nil {
-		splice(a.memReviewBox(area.Dx(), area.Dy()))
 	}
 	if a.permAsk != nil {
 		splice(a.permBox(a.permAsk, area.Dx(), area.Dy()))
