@@ -329,7 +329,12 @@ func (h *Host) projectItems() (items []any, sel int) {
 		if !p.Opened.IsZero() {
 			desc = append(desc, ago(p.Opened.UnixMilli()))
 		}
-		item := map[string]any{"text": sanitize.String(TildePath(p.Root)), "desc": strings.Join(desc, " · "), "fields": h.projectFields(p)}
+		// a long path keeps its tail, where the name that tells rows apart is
+		path := []rune(sanitize.String(TildePath(p.Root)))
+		if len(path) > 60 {
+			path = append([]rune("…"), path[len(path)-59:]...)
+		}
+		item := map[string]any{"text": string(path), "desc": strings.Join(desc, " · "), "fields": h.projectFields(p)}
 		switch {
 		case p.Root == h.trustRoot():
 			item["key"] = "current"

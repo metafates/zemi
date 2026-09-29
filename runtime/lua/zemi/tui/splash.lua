@@ -30,6 +30,20 @@ local function fill(line, items, sep, room)
 	return used
 end
 
+--- Cuts a path that is wider than w cells to its tail, where its name is.
+---@param path string
+---@param w integer
+---@return string
+local function tail(path, w)
+	if fmt.cells(path) <= w or w <= 1 then return path end
+	---@type string[]
+	local chars = {}
+	for ch in path:gmatch(fmt.UTF8_CHAR) do
+		chars[#chars + 1] = ch
+	end
+	return "…" .. table.concat(chars, "", #chars - w + 2)
+end
+
 --- The splash rows: the mascot and wordmark, what zemi will run with, recent sessions
 --- to pick up and the keys worth knowing, centered in ctx.width by ctx.height.
 ---@param ctx zemi.WidgetCtx
@@ -95,17 +109,7 @@ function M.render(ctx)
 		table.insert(segs, 1, { text = i == 1 and "model    " or string.rep(" ", 9), hl = "Comment" })
 		row(segs)
 	end
-	local cwd, cwdw = ctx.cwd or "", room - 10
-	if fmt.cells(cwd) > cwdw and cwdw > 1 then
-		-- keep the tail: the project name is at the end
-		---@type string[]
-		local chars = {}
-		for ch in cwd:gmatch(fmt.UTF8_CHAR) do
-			chars[#chars + 1] = ch
-		end
-		cwd = "…" .. table.concat(chars, "", #chars - cwdw + 2)
-	end
-	row({ { text = "project  ", hl = "Comment" }, { text = cwd, hl = "Normal" } })
+	row({ { text = "project  ", hl = "Comment" }, { text = tail(ctx.cwd or "", room - 10), hl = "Normal" } })
 	-- built only when shown: ctx.included reads the store when its cache went stale
 	if showctx then
 		local inc = ctx.included
@@ -154,7 +158,7 @@ function M.render(ctx)
 		row({ { text = "" } })
 		row({ { text = projects and "projects" or "recent", hl = "Title" } })
 		for _, r in ipairs(recent) do
-			local label = projects and r.path or (r.title ~= "" and r.title) or "(untitled)"
+			local label = projects and tail(r.path, room - 11) or (r.title ~= "" and r.title) or "(untitled)"
 			local click = projects and ("projects switch " .. r.root) or ("resume " .. r.id)
 			row({
 				{ text = string.format("  %-8s ", r.ago), hl = "Comment" },

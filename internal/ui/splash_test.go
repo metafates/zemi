@@ -182,7 +182,7 @@ func TestSplashProjects(t *testing.T) {
 				}
 				g.Close()
 				p.Close()
-				c.want = append(c.want, root[:20]) // the rest clips
+				c.want = append(c.want, root[len(root)-20:]) // a long path keeps its tail
 			}
 			app.frameGen++
 			app.renderSync(t)
@@ -198,7 +198,7 @@ func TestSplashProjects(t *testing.T) {
 				}
 			}
 			if c.other {
-				x, y := findCell(t, app, root[:20])
+				x, y := findCell(t, app, root[len(root)-20:])
 				if seg := dropCells(app.lastRows[y], x)[0]; seg.Click != "projects switch "+root || seg.Widget != "splash" {
 					t.Fatalf("the path's segment: %+v", seg)
 				}
