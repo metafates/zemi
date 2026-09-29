@@ -849,3 +849,47 @@ func TestReviewTargetsACommit(t *testing.T) {
 		}
 	}
 }
+
+// TestFlowViewIDs: an agent row keeps its id when a later call lands in an
+// earlier phase, so a refresh never moves an open detail to another agent.
+func TestFlowViewIDs(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	f := &flowRun{id: "0000000a", description: "d", status: RunRunning, limit: 1}
+	add := func(desc, phase string) {
+		f.agents = append(f.agents, &flowAgent{description: desc, phase: phase})
+	}
+	ids := func() map[string]any {
+		m := map[string]any{}
+		for _, it := range h.flowOverlay(f).Items {
+			m[it.(map[string]any)["text"].(string)] = it.(map[string]any)["id"]
+		}
+		return m
+	}
+	add("a1", "A")
+	add("b1", "B")
+	before := ids()
+	add("a2", "A")
+	for desc, id := range before {
+		if got := ids()[desc]; got != id {
+			t.Fatalf("%s's row id moved from %v to %v", desc, id, got)
+		}
+	}
+}
+
+// TestWatchFlows: one ticker claims the views, and it lets go only once no
+// run lives.
+func TestWatchFlows(t *testing.T) {
+	r := newTaskReg()
+	if !r.watch() || r.watch() {
+		t.Fatal("watch claimed the ticker twice or not at all")
+	}
+	f := &flowRun{status: RunRunning}
+	r.flows["x"] = f
+	if r.unwatch() {
+		t.Fatal("the ticker stopped while a run lives")
+	}
+	f.status = RunDone
+	if !r.unwatch() || !r.watch() {
+		t.Fatal("the ticker did not stop after the last run ended")
+	}
+}

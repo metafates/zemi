@@ -854,8 +854,10 @@ lua-language-server is installed.
   pauses, stops, reruns, opens or saves it, and `v` opens its view (`flowOverlay`, overlay id
   `workflow:<id>`): its fields, then its agents under their phases, `p`, `+` and `-` as
   `OverlayKey.Run` keys, and an agent's detail whose View opens the transcript through
-  `ViewAgentFrom`, so esc (`LeaveAgentView`) reopens the view. While a run lives, `watchFlow`
-  refreshes both once a second. The user starts a saved one with `/workflows run` or `/review`
+  `ViewAgentFrom`, so esc (`LeaveAgentView`) reopens the view. While any run lives, one
+  `watchFlows` ticker rebuilds whichever of the two is open once a second
+  (`UIHooks.RefreshOverlay`, which builds nothing for a closed one), and a control from them
+  rebuilds them at once, keys and body too, and toasts. The user starts a saved one with `/workflows run` or `/review`
   (`startUserFlow`: detached in the TUI with a live notice row; headless on the claimed agent,
   as `/btw`), no model call before the work.
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers an
@@ -1143,8 +1145,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   (`replaceOverlay`, keeping selection and filter; only an origin that may close it), a detail
   view open over it rebuilt from its item or dropped with it (`refreshDetail`: a Go screen's
   `Refresh` would leave it stale), and a Go screen's list-level key runs a command
-  (`OverlayKey.Run`, builtin and user lists only). A row's desc keeps its runs of spaces, so a
-  padded column (`statusCol`, `/config`'s source) moves nothing after it. A
+  (`OverlayKey.Run`, builtin and user lists only). A row's or a key's desc keeps its runs of
+  spaces, so a padded column (`statusCol`, `/config`'s source) or footer word moves nothing
+  after it, and keys sharing a desc read as one hint (`+/- at once`). An overlay opened over
+  another takes its width, so stacked frames line up. A
   toggle list rebuilds when the overlay stacked on it closes (`closeOverlayByID`; a detail
   view only after an action) and after a reload (`SignalBoot`), so every caller acts first
   and closes after: the worker then runs the rebuild behind the action. A row that fills the

@@ -83,9 +83,10 @@ type agentRun struct {
 }
 
 type taskReg struct {
-	mu    sync.Mutex
-	runs  map[string]*agentRun
-	flows map[string]*flowRun
+	mu       sync.Mutex
+	runs     map[string]*agentRun
+	flows    map[string]*flowRun
+	watching bool // a watchFlows ticker runs
 }
 
 func newTaskReg() *taskReg {
@@ -134,6 +135,29 @@ func (r *taskReg) addFlow(f *flowRun) error {
 		}
 	}
 	return nil
+}
+
+// watch claims the one ticker of the workflow views; false when it runs.
+func (r *taskReg) watch() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	was := r.watching
+	r.watching = true
+	return !was
+}
+
+// unwatch releases the ticker once no workflow runs; a run registered
+// after it claims a new one with watch.
+func (r *taskReg) unwatch() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for f := range maps.Values(r.flows) {
+		if f.isRunning() {
+			return false
+		}
+	}
+	r.watching = false
+	return true
 }
 
 func (r *taskReg) flow(id string) *flowRun {
@@ -293,6 +317,16 @@ func (run *agentRun) isRunning() bool {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	return run.status == RunRunning
+}
+
+// prompt is the task the run was given, "" for a stored run with none.
+func (run *agentRun) prompt() string {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	if len(run.tr) == 0 || run.tr[0].Role != fantasy.MessageRoleUser {
+		return ""
+	}
+	return run.tr[0].Text
 }
 
 func (run *agentRun) usage() (int64, float64) {
@@ -718,10 +752,9 @@ func (h *Host) agentRunItems() []any {
 	// a workflow's agents are one row, its own
 	held := map[string]bool{}
 	for _, f := range h.tasks.flowsOf(sid) {
-		v := f.view()
 		flows = append(flows, map[string]any{
 			"text":    f.description,
-			"desc":    fmt.Sprintf("%s · %d/%d agents · %s", statusCol(flowWord(v)), v.done, len(v.agents), fmtDuration(v.took)),
+			"desc":    flowDesc(f, f.view()),
 			"section": "Workflows",
 			"run":     "workflows view " + f.id,
 		})
@@ -737,11 +770,7 @@ func (h *Host) agentRunItems() []any {
 	// so it is listed, named by that session
 	for _, run := range h.tasks.runningElsewhere(sid) {
 		status, calls, took, _ := run.state()
-		from := "another session"
-		if sess, err := h.DB.GetSession(run.parent); h.DB != nil && err == nil && sess.Title != "" {
-			from = clipRunes(sess.Title, 60)
-		}
-		row(run.id, status, run.agent, took, run.description+" (from "+from+")", fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
+		row(run.id, status, run.agent, took, run.description+" (from "+h.sessionName(run.parent)+")", fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
 	}
 	if h.DB != nil && sid != "" {
 		children, _ := h.DB.ChildSessions(sid)
@@ -753,6 +782,17 @@ func (h *Host) agentRunItems() []any {
 		}
 	}
 	return slices.Concat(running, flows, earlier)
+}
+
+// sessionName names the session a run of another one came from: its title,
+// else "another session".
+func (h *Host) sessionName(id string) string {
+	if h.DB != nil {
+		if sess, err := h.DB.GetSession(id); err == nil && sess.Title != "" {
+			return clipRunes(sess.Title, 60)
+		}
+	}
+	return "another session"
 }
 
 // statusCol pads a status word to the widest, so a row whose run ends moves

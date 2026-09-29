@@ -169,19 +169,23 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 	if o.Refresh {
 		return
 	}
-	a.overlays = append(a.overlays, a.overlayState(o))
+	st := a.overlayState(o)
+	if n := len(a.overlays); n > 0 && !o.Input { // stacked lists line up, as a detail view does
+		st.size.w = a.overlays[n-1].size.w
+	}
+	a.overlays = append(a.overlays, st)
 	if o.Confirm == "" {
 		return
 	}
-	st := &a.overlays[len(a.overlays)-1]
-	for idx, it := range st.items {
+	top := &a.overlays[len(a.overlays)-1]
+	for idx, it := range top.items {
 		for n, act := range it.row.Actions {
 			if r, _ := hostapi.ParseOverlayItem(act); r.Danger && r.Run == o.Confirm {
-				st.selected = max(slices.Index(st.visible, idx), 0)
+				top.selected = max(slices.Index(top.visible, idx), 0)
 				// sized as a drawn list, since its detail view opens at its size
 				area := boxArea(a.stage, a.width, a.height)
-				a.overlayBox(st, area.Dx(), area.Dy())
-				a.openDetailOn(st, idx, n).armed = n + 1
+				a.overlayBox(top, area.Dx(), area.Dy())
+				a.openDetailOn(top, idx, n).armed = n + 1
 				return
 			}
 		}
@@ -252,8 +256,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 			row[i] = hostapi.Segment{Text: sanitize.String(row[i].Text), HL: row[i].HL}
 		}
 	}
-	for i := range o.Keys {
-		o.Keys[i].Key, o.Keys[i].Desc = sanitize.Line(o.Keys[i].Key), sanitize.Line(o.Keys[i].Desc)
+	for i := range o.Keys { // a desc keeps its spaces, as a row's does: "pause " is as wide as "resume"
+		o.Keys[i].Key, o.Keys[i].Desc = sanitize.Line(o.Keys[i].Key), oneLine.Replace(sanitize.String(o.Keys[i].Desc))
 	}
 	// an item's fields reach the screen only as its detail view's, which is here
 	o.Fields = slices.Clone(o.Fields)
@@ -814,7 +818,11 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			if r := st.items[st.visible[st.selected]].row; verb != "toggle" && st.o.Reload != nil && r.Verb == "" && (st.o.OnSelect != nil || r.Run != "") {
 				hints = append(hints, hintPair{"space", "toggle"})
 			}
-			for _, k := range st.o.Keys {
+			for i, k := range st.o.Keys { // keys sharing a desc read as one hint: +/- at once
+				if n := len(hints) - 1; i > 0 && k.Desc == st.o.Keys[i-1].Desc {
+					hints[n].key += "/" + k.Key
+					continue
+				}
 				hints = append(hints, hintPair{k.Key, k.Desc})
 			}
 			hints = append(hints, st.acts...)

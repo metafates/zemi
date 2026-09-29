@@ -774,6 +774,8 @@ func (f *fakeUI) OpenOverlay(o Overlay) {
 	f.mu.Unlock()
 }
 
+func (f *fakeUI) RefreshOverlay(string, func() Overlay) {}
+
 func (f *fakeUI) overlays() []Overlay {
 	f.mu.Lock()
 	defer f.mu.Unlock()

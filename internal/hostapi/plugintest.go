@@ -1183,6 +1183,17 @@ func (u *testUI) OpenOverlay(o Overlay) {
 	}
 }
 
+func (u *testUI) RefreshOverlay(id string, build func() Overlay) {
+	u.mu.Lock()
+	open := slices.ContainsFunc(u.overlays, func(o Overlay) bool { return o.ID == id })
+	u.mu.Unlock()
+	if open {
+		o := build()
+		o.Refresh = true
+		u.OpenOverlay(o)
+	}
+}
+
 // CloseOverlay runs the overlay's on_close off the interpreter, as the UI's
 // worker does.
 func (u *testUI) CloseOverlay(id string, origin lua.Origin) {

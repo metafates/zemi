@@ -39,6 +39,9 @@ import (
 type UIHooks interface {
 	Notify(level logging.Level, title, body string)
 	OpenOverlay(o Overlay)
+	// RefreshOverlay replaces the open overlay id with what build returns,
+	// calling build only while it is open: for a screen a clock refreshes.
+	RefreshOverlay(id string, build func() Overlay)
 	// CloseOverlay closes an overlay and runs its on_close, but only for a
 	// caller of user or builtin origin or the origin that opened it: a
 	// project timer must not dismiss the errors it caused.

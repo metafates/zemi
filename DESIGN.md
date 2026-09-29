@@ -1599,8 +1599,8 @@ provenance string.
   action returns to it rebuilt, and `/mcp`, `/lsp`, `/plugins`, `/workflows`
   and a workflow's view also rebuild in place when a server, a run or a
   slow action changes their state off the key loop (`Overlay.Refresh`, for
-  a run from a 1 s ticker that lives only as long as the run), a detail open
-  over them too; `/sessions` and `/agents` close on an action instead: a resume
+  a run a 1 s ticker's `RefreshOverlay` that lives only as long as some run
+  does and builds only an open screen), a detail open over them too; `/sessions` and `/agents` close on an action instead: a resume
   and an agent's transcript move to another screen, which a rebuilt
   list would cover. A row's binary state (a skill or plugin on or off, a
   picked option of a multi-select) is one 5-cell switch in the key column,

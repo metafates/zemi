@@ -192,6 +192,20 @@ func (a *App) OpenOverlay(o hostapi.Overlay) {
 	a.do(func() { a.openOverlay(o) })
 }
 
+// RefreshOverlay rebuilds the open overlay id with build on the worker and
+// replaces it in place, Body and Keys too; a closed one builds nothing.
+func (a *App) RefreshOverlay(id string, build func() hostapi.Overlay) {
+	a.do(func() {
+		if a.overlayIndex(id) >= 0 {
+			a.background(func() {
+				o := build()
+				o.Refresh = true
+				a.do(func() { a.openOverlay(o) })
+			})
+		}
+	})
+}
+
 // CloseOverlay posts the close: waiting on the UI goroutine from the
 // interpreter could deadlock. An origin that neither opened the overlay nor
 // outranks it closes nothing, and the close runs on_close, so a picker's

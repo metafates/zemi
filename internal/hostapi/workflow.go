@@ -133,12 +133,12 @@ func (h *Host) workflowSource(name string) (string, error) {
 // under it; the screens, the tool and flowControl read and steer them.
 type flowRun struct {
 	id, name, description string
+	about                 string // a saved workflow's leading comment, "" for an inline script
 	parent                string // the session that started it, its agents' parent too
 	background            bool
 	started               time.Time
 	cancel                context.CancelFunc
 	wake                  chan struct{}    // buffered: a control that lets more agents start
-	ended                 chan struct{}    // closed once the run recorded how it ended
 	progress              func(f *flowRun) // a foreground run's row, nil for none
 	script                string           // the script's file in the parent's pad, "" with no session
 	// journal is the held fd the scheduler appends to, never the path: a
@@ -214,12 +214,15 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	f := &flowRun{
 		id: store.NewID()[:runIDLen], name: spec.name, description: cmp.Or(spec.description, spec.name, clipRunes(leadingComment(spec.src), 60), "workflow"),
-		parent: parent, background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), ended: make(chan struct{}), progress: spec.progress,
+		parent: parent, background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), progress: spec.progress,
 		status: RunRunning, limit: limit, started: time.Now(), restart: map[string]bool{},
+	}
+	if spec.name != "" {
+		f.about = leadingComment(spec.src)
 	}
 	if pad != "" {
 		var err error
-		head := journalLine{Workflow: f.id, Name: f.name, Description: f.description, Args: spec.args, Concurrency: limit, Started: f.started.UnixMilli()}
+		head := journalLine{Workflow: f.id, Name: f.name, Description: f.description, About: f.about, Args: spec.args, Concurrency: limit, Started: f.started.UnixMilli()}
 		if f.journal, err = openJournal(pad, f.id, spec.src, head); err != nil {
 			cancel()
 			return nil, err
@@ -236,7 +239,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 		return nil, err
 	}
 	spec.cache = cache
-	h.watchFlow(f)
+	h.watchFlows()
 	if !spec.background {
 		h.runFlow(ctx, f, spec)
 		return f, nil
@@ -326,7 +329,6 @@ func (f *flowRun) end(val string, err error) {
 	if f.journal != nil {
 		f.journal.Close()
 	}
-	close(f.ended)
 	f.changed()
 }
 
@@ -775,6 +777,7 @@ func (r *wfRun) finish(t *wfTask, val glua.LValue, err error) {
 // agentRow is a flowAgent as the views read it; status "queued" before it
 // starts.
 type agentRow struct {
+	call                        int // its index in the run's agents
 	id, def, description, phase string
 	status                      RunStatus
 	reused                      bool // answered from an earlier run's journal
@@ -789,6 +792,7 @@ func (f *flowRun) rows() []agentRow {
 	out := make([]agentRow, len(f.agents))
 	for i, a := range f.agents {
 		r := a.agentRow
+		r.call = i
 		switch {
 		case a.run != nil:
 			r.id = a.run.id
@@ -989,6 +993,7 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 type journalLine struct {
 	Workflow    string          `json:"workflow,omitempty"`
 	Name        string          `json:"name,omitempty"`
+	About       string          `json:"about,omitempty"`
 	Args        any             `json:"args,omitempty"`
 	Concurrency int             `json:"concurrency,omitzero"`
 	Started     int64           `json:"started,omitzero"`
@@ -1154,7 +1159,7 @@ func (h *Host) loadFlow(sid, id string) (*flowRun, error) {
 	}
 	hd := j.head
 	f := &flowRun{
-		id: id, name: hd.Name, description: cmp.Or(hd.Description, "workflow"), parent: sid, started: time.UnixMilli(hd.Started),
+		id: id, name: hd.Name, description: cmp.Or(hd.Description, "workflow"), about: hd.About, parent: sid, started: time.UnixMilli(hd.Started),
 		cancel: func() {}, script: j.script, status: cmp.Or(j.end.Status, RunCancelled), limit: hd.Concurrency,
 	}
 	f.finished = f.started.Add(time.Duration(j.end.MS) * time.Millisecond)
@@ -1492,8 +1497,11 @@ func (h *Host) workflowCommands() []*Command {
 			if id == "" {
 				return Usagef("/workflows %s needs a run id or a name: /workflows lists them", verb)
 			}
+			// a key on a run's view runs these too: its screens rebuild at once,
+			// keys included, so a second press acts on what the first did
 			say := func(out string, err error) error {
 				if err == nil {
+					h.refreshFlows()
 					h.Notify(logging.Info, out, "")
 				}
 				return err
@@ -1513,20 +1521,14 @@ func (h *Host) workflowCommands() []*Command {
 					return nil
 				}
 				return h.openFlow(id)
-			// the view and the statusline show a pause and a limit; a toast
-			// would cover the view
-			case "pause", "resume":
-				_, err := h.flowControl(id, flowAction(verb), 0, "")
-				return err
+			case "pause", "resume", "stop":
+				return say(h.flowControl(id, flowAction(verb), 0, ""))
 			case "concurrency":
 				n, err := strconv.Atoi(arg(2))
 				if err != nil {
 					return Usagef("/workflows concurrency <id> <1-%d>", workflowMaxConcurrency)
 				}
-				_, err = h.flowControl(id, actConcurrency, n, "")
-				return err
-			case "stop":
-				return say(h.flowControl(id, actStop, 0, ""))
+				return say(h.flowControl(id, actConcurrency, n, ""))
 			case "restart":
 				return say(h.flowControl(id, actRestart, 0, arg(2)))
 			case "rerun":
@@ -1657,14 +1659,14 @@ func (h *Host) openWorkflows() error {
 	if err != nil {
 		return err
 	}
-	ui.OpenOverlay(h.workflowsOverlay(false))
+	ui.OpenOverlay(h.workflowsOverlay())
 	return nil
 }
 
 // workflowsOverlay is /workflows: the runs, live ones first (another
 // session's too: they block /rewind), then this session's earlier ones,
 // then the saved workflows by source.
-func (h *Host) workflowsOverlay(refresh bool) Overlay {
+func (h *Host) workflowsOverlay() Overlay {
 	sid := h.AgentSessionID()
 	var running, earlier []any
 	held := map[string]bool{}
@@ -1672,11 +1674,7 @@ func (h *Host) workflowsOverlay(refresh bool) Overlay {
 		held[f.id] = true
 		switch live := f.isRunning(); {
 		case live && f.parent != sid:
-			from := "another session"
-			if sess, err := h.DB.GetSession(f.parent); h.DB != nil && err == nil && sess.Title != "" {
-				from = clipRunes(sess.Title, 60)
-			}
-			running = append(running, h.flowItem(f, "Running", " (from "+from+")"))
+			running = append(running, h.flowItem(f, "Running", " (from "+h.sessionName(f.parent)+")"))
 		case live:
 			running = append(running, h.flowItem(f, "Running", ""))
 		case f.parent == sid:
@@ -1694,8 +1692,8 @@ func (h *Host) workflowsOverlay(refresh bool) Overlay {
 		earlier = append(earlier, h.flowItem(f, "Earlier in this session", ""))
 	}
 	items := slices.Concat(running, earlier)
-	// NOTE: a live run's refresh reads the saved files each second; cache
-	// them if a large workflows/ ever shows in a profile.
+	// NOTE: while a run lives, an open list reads the saved files and the
+	// pad's journals each second; cache them if a large pad shows in a profile.
 	for _, w := range h.workflows() {
 		path := ""
 		actions := []any{
@@ -1716,8 +1714,8 @@ func (h *Host) workflowsOverlay(refresh bool) Overlay {
 		})
 	}
 	return Overlay{
-		ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items, Refresh: refresh,
-		Reload: func() ([]any, [][]Segment) { return h.workflowsOverlay(false).Items, nil },
+		ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items,
+		Reload: func() ([]any, [][]Segment) { return h.workflowsOverlay().Items, nil },
 	}
 }
 
@@ -1729,11 +1727,12 @@ func flowWord(v flowView) string {
 	return string(v.status)
 }
 
-// flowFields are the name, value pairs a run's detail and view open with.
+// flowFields are the name, value pairs a run's detail and view open with,
+// each there from the start, so a run that moves adds no row.
 func flowFields(f *flowRun, v flowView) []string {
-	cost := ""
-	if v.cost > 0 || v.tokens > 0 {
-		cost = strings.TrimPrefix(fmt.Sprintf("$%.2f · ", v.cost), "$0.00 · ") + fmtTokens(v.tokens) + " tok"
+	usage := fmtTokens(v.tokens) + " tok"
+	if v.cost > 0 {
+		usage += fmt.Sprintf(" · $%.2f", v.cost)
 	}
 	script := ""
 	if f.script != "" {
@@ -1741,18 +1740,24 @@ func flowFields(f *flowRun, v flowView) []string {
 	}
 	return []string{
 		"status", flowWord(v), "agents", fmt.Sprintf("%d/%d done · %d running · %d at once", v.done, len(v.agents), v.running, v.limit),
-		"cost", cost, "time", fmtDuration(v.took), "script", script,
+		"usage", usage, "time", fmtDuration(v.took), "run", f.id, "script", script,
 	}
+}
+
+// flowDesc is a run's row desc in /workflows and /agents: the padded status
+// and the id, then what grows, the cost last since it appears late.
+func flowDesc(f *flowRun, v flowView) string {
+	desc := fmt.Sprintf("%s · %s · %d/%d agents · %s", statusCol(flowWord(v)), f.id, v.done, len(v.agents), fmtDuration(v.took))
+	if v.cost > 0 {
+		desc += fmt.Sprintf(" · $%.2f", v.cost)
+	}
+	return desc
 }
 
 // flowItem is a run's row in /workflows: its detail acts on it, and v
 // opens its agents.
 func (h *Host) flowItem(f *flowRun, section, from string) map[string]any {
 	v := f.view()
-	desc := fmt.Sprintf("%s · %d/%d agents", statusCol(flowWord(v)), v.done, len(v.agents))
-	if v.cost > 0 {
-		desc += fmt.Sprintf(" · $%.2f", v.cost)
-	}
 	actions := []any{map[string]any{"text": "View its agents", "hotkey": "v", "run": "workflows view " + f.id}}
 	switch {
 	case v.status == RunRunning:
@@ -1770,8 +1775,8 @@ func (h *Host) flowItem(f *flowRun, section, from string) map[string]any {
 			map[string]any{"text": "Save", "hotkey": "s", "fill": "/workflows save " + f.id + " " + slug(f.description)})
 	}
 	return map[string]any{
-		"id": f.id, "text": f.description + from, "desc": desc + " · " + fmtDuration(v.took), "section": section,
-		"fields": fieldList(flowFields(f, v)...), "detail": f.description, "actions": actions,
+		"id": f.id, "text": f.description + from, "desc": flowDesc(f, v), "section": section,
+		"fields": fieldList(flowFields(f, v)...), "detail": f.about, "actions": actions,
 	}
 }
 
@@ -1795,18 +1800,17 @@ func (h *Host) openFlow(id string) error {
 			return err
 		}
 	}
-	ui.OpenOverlay(h.flowOverlay(f, false))
+	ui.OpenOverlay(h.flowOverlay(f))
 	return nil
 }
 
 // flowOverlay is a run's view: its fields, then its agents under their
 // phases; enter on one opens its detail, whose actions view, restart or
 // stop it. p pauses or resumes, + and - change how many run at once.
-func (h *Host) flowOverlay(f *flowRun, refresh bool) Overlay {
+func (h *Host) flowOverlay(f *flowRun) Overlay {
 	v := f.view()
 	var items []any
 	names, by := f.phases(v.agents)
-	i := 0
 	for _, p := range names {
 		n := 0
 		for _, a := range by[p] {
@@ -1815,35 +1819,36 @@ func (h *Host) flowOverlay(f *flowRun, refresh bool) Overlay {
 			}
 		}
 		for _, a := range by[p] {
-			items = append(items, h.flowAgentItem(f, a, i, fmt.Sprintf("%s  %d/%d", p, n, len(by[p]))))
-			i++
+			items = append(items, h.flowAgentItem(f, a, fmt.Sprintf("%s  %d/%d", p, n, len(by[p]))))
 		}
 	}
 	o := Overlay{
-		ID: "workflow:" + f.id, Title: "Workflows / " + f.description, Origin: lua.OriginBuiltin, Items: items, Refresh: refresh,
-		Body: clipRunes(strings.Join(strings.Fields(f.description), " "), 76), Empty: "No agent has started yet.",
-		Reload: func() ([]any, [][]Segment) { return h.flowOverlay(f, false).Items, nil },
+		ID: "workflow:" + f.id, Title: "Workflows / " + f.description, Origin: lua.OriginBuiltin, Items: items,
+		// one row, so a long one never pushes the list down
+		Body: clipRunes(strings.Join(strings.Fields(f.about), " "), 76), Empty: "No agent has started yet.",
+		Reload: func() ([]any, [][]Segment) { return h.flowOverlay(f).Items, nil },
 	}
 	for kv := flowFields(f, v); len(kv) > 0; kv = kv[2:] {
 		o.Fields = append(o.Fields, Field{kv[0], kv[1]})
 	}
 	if v.status == RunRunning {
-		// words of one width, so pausing shifts no footer text
-		pause := OverlayKey{Key: "p", Desc: "pause", Run: "workflows pause " + f.id}
+		// pause is padded to resume's width, so pausing shifts no footer text
+		pause := OverlayKey{Key: "p", Desc: "pause ", Run: "workflows pause " + f.id}
 		if v.paused {
-			pause = OverlayKey{Key: "p", Desc: "go on", Run: "workflows resume " + f.id}
+			pause = OverlayKey{Key: "p", Desc: "resume", Run: "workflows resume " + f.id}
 		}
 		o.Keys = []OverlayKey{
 			pause,
-			{Key: "+", Desc: "more", Run: fmt.Sprintf("workflows concurrency %s %d", f.id, min(v.limit+1, workflowMaxConcurrency))},
-			{Key: "-", Desc: "fewer", Run: fmt.Sprintf("workflows concurrency %s %d", f.id, max(v.limit-1, 1))},
+			{Key: "+", Desc: "at once", Run: fmt.Sprintf("workflows concurrency %s %d", f.id, min(v.limit+1, workflowMaxConcurrency))},
+			{Key: "-", Desc: "at once", Run: fmt.Sprintf("workflows concurrency %s %d", f.id, max(v.limit-1, 1))},
 		}
 	}
 	return o
 }
 
-// flowAgentItem is an agent's row in a run's view, i its call's index.
-func (h *Host) flowAgentItem(f *flowRun, a agentRow, i int, section string) map[string]any {
+// flowAgentItem is an agent's row in a run's view, keyed by its call's
+// index, which a call made later in an earlier phase does not move.
+func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) map[string]any {
 	word := statusCol(string(a.status))
 	desc := word + " · " + a.def
 	if a.reused {
@@ -1852,22 +1857,22 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, i int, section string) map[
 	if a.status != "queued" {
 		desc += fmt.Sprintf(" · %d %s · %s tok · %s", a.calls, plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
 	}
-	item := map[string]any{"id": strconv.Itoa(i), "text": a.description, "desc": desc, "section": section}
+	item := map[string]any{"id": strconv.Itoa(a.call), "text": a.description, "desc": desc, "section": section}
 	if a.id == "" {
 		return item
 	}
-	def, usage, detail := a.def, fmt.Sprintf("%d %s · %s tok", a.calls, plural(a.calls, "call", "calls"), fmtTokens(a.tokens)), ""
+	run := h.tasks.find(a.id)
+	def := a.def
+	if run != nil && run.model != "" {
+		def += " · " + run.model
+	}
+	usage, detail := fmt.Sprintf("%d %s · %s tok", a.calls, plural(a.calls, "call", "calls"), fmtTokens(a.tokens)), ""
 	if a.cost > 0 {
 		usage += fmt.Sprintf(" · $%.2f", a.cost)
 	}
 	actions := []any{map[string]any{"text": "View its transcript", "hotkey": "v", "run": "workflows view " + f.id + " " + a.id}}
-	if run := h.tasks.find(a.id); run != nil {
-		if run.model != "" {
-			def += " · " + run.model
-		}
-		if tr := run.transcript(); len(tr) > 0 {
-			detail = tr[0].Text
-		}
+	if run != nil {
+		detail = run.prompt()
 		if a.status == RunRunning {
 			actions = append(actions,
 				map[string]any{"text": "Restart", "hotkey": "r", "run": "workflows restart " + f.id + " " + a.id},
@@ -1879,28 +1884,33 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, i int, section string) map[
 	return item
 }
 
-// watchFlow keeps the open /workflows and the run's view current while f
-// runs, once a second, and once more when it ends; an idle zemi runs none.
-func (h *Host) watchFlow(f *flowRun) {
+// watchFlows keeps the open /workflows and run views current once a second
+// while any run lives, one ticker for every run; an idle zemi runs none.
+func (h *Host) watchFlows() {
+	if h.hooks() == nil || !h.tasks.watch() {
+		return
+	}
+	h.GoSafe("workflow views", func() {
+		for range time.Tick(time.Second) {
+			last := h.tasks.unwatch() // read first, so the last refresh shows the end
+			h.refreshFlows()
+			if last {
+				return
+			}
+		}
+	})
+}
+
+// refreshFlows rebuilds /workflows and the run views that are open.
+func (h *Host) refreshFlows() {
 	ui := h.hooks()
 	if ui == nil {
 		return
 	}
-	h.GoSafe("workflow views", func() {
-		t := time.NewTicker(time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-t.C:
-			case <-f.ended:
-				ui.OpenOverlay(h.workflowsOverlay(true))
-				ui.OpenOverlay(h.flowOverlay(f, true))
-				return
-			}
-			ui.OpenOverlay(h.workflowsOverlay(true))
-			ui.OpenOverlay(h.flowOverlay(f, true))
-		}
-	})
+	ui.RefreshOverlay("workflows", h.workflowsOverlay)
+	for _, f := range h.tasks.flowList() {
+		ui.RefreshOverlay("workflow:"+f.id, func() Overlay { return h.flowOverlay(f) })
+	}
 }
 
 // workflowNamespace is zemi.workflow: list() and run(spec, on_done), where

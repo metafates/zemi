@@ -18,8 +18,9 @@ import (
 
 // TestGoldenWorkflows pins a run's view at 80 columns, running and then
 // paused: pausing changes the status value and the footer's word, and no
-// other cell. The agents talk to a fake provider that answers the collect
-// agent and holds the reviewers until the test ends.
+// other cell of the view. The agents talk to a fake provider that answers
+// the collect agent, billing its tokens, and holds the reviewers until the
+// test ends.
 func TestGoldenWorkflows(t *testing.T) {
 	hold := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +35,7 @@ func TestGoldenWorkflows(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		for _, chunk := range []string{
 			`{"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"two files changed"},"finish_reason":null}]}`,
-			`{"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+			`{"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1200,"completion_tokens":300,"total_tokens":1500}}`,
 			`[DONE]`,
 		} {
 			fmt.Fprintf(w, "data: %s\n\n", chunk)
@@ -65,13 +66,17 @@ func TestGoldenWorkflows(t *testing.T) {
 		]] })`, srv.URL+"/v1"))
 
 	// durations tick while the test runs; each is under 10s, so one width
-	elapsed := regexp.MustCompile(`\d\.\ds`)
+	elapsed, runID := regexp.MustCompile(`\d\.\ds`), regexp.MustCompile(`run +([0-9a-f]{8})`)
 	frame := func() string {
 		t.Helper()
 		for app.Pump() {
 		}
 		app.renderSync(t)
-		return elapsed.ReplaceAllString(app.Frame(), "0.0s")
+		out := elapsed.ReplaceAllString(app.Frame(), "0.0s")
+		if m := runID.FindStringSubmatch(ansi.Strip(out)); m != nil {
+			out = strings.ReplaceAll(out, m[1], "0000000a")
+		}
+		return out
 	}
 	if err := host.RunCommand(ctx, "workflows", ""); err != nil {
 		t.Fatal(err)
@@ -92,6 +97,7 @@ func TestGoldenWorkflows(t *testing.T) {
 
 	pressKeys(app, "p")
 	waitPrompt(t, app, func() bool { return strings.Contains(frame(), "paused") })
+	app.toasts = nil // the pause's toast sits above the view
 	paused := frame()
 	t.Run("paused", func(t *testing.T) { golden.RequireEqual(t, paused) })
 
@@ -102,7 +108,7 @@ func TestGoldenWorkflows(t *testing.T) {
 			moved = append(moved, ansi.Strip(b[i]))
 		}
 	}
-	if len(a) != len(b) || len(moved) != 2 || !strings.Contains(moved[0], "paused") || !strings.Contains(moved[1], "p go on") {
+	if len(a) != len(b) || len(moved) != 2 || !strings.Contains(moved[0], "paused") || !strings.Contains(moved[1], "p resume") {
 		t.Fatalf("pausing moved more than the status and the footer word: %q", moved)
 	}
 }
