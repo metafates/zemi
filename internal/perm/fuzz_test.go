@@ -24,6 +24,7 @@ func FuzzNormalize(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, cmd string) {
 		n := Normalize(cmd)
+		n.Programs("") // the permission prompt lists them for every command asked about
 		// a command Normalize gates (fail or a forced ask) must never be
 		// allowed through by the full decision path, whatever the rules say
 		s := NewStore()
