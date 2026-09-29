@@ -845,13 +845,17 @@ func (w *walker) text(node syntax.Node) string {
 // values the words then read in place of $D and ${D}, so path gates, rules
 // and ReadCommand see the path instead of an expansion. Only a value the
 // shell would leave as is qualifies: no quotes, no expansion but an earlier
-// inlined name or $TMPDIR, no glob or brace. Heredoc delimiters stay as written: sh
+// inlined name or $TMPDIR, bare or in double quotes, no glob or brace. A
+// set -e before them is stepped over. Heredoc delimiters stay as written: sh
 // expands none.
 func (w *walker) inline(stmts []*syntax.Stmt) {
 	w.vars, w.skip = map[string]string{}, map[*syntax.Stmt]bool{}
 	vars := w.vars
 	leading(stmts, func(s *syntax.Stmt) bool {
 		c, ok := s.Cmd.(*syntax.CallExpr)
+		if ok && setsOptions(c) && len(s.Redirs) == 0 {
+			return true
+		}
 		if !ok || len(c.Args) > 0 || len(c.Assigns) != 1 || len(s.Redirs) > 0 || s.Negated || s.Background {
 			return false
 		}
@@ -865,7 +869,12 @@ func (w *walker) inline(stmts []*syntax.Stmt) {
 			return false
 		}
 		var v strings.Builder
-		for _, p := range a.Value.Parts {
+		parts := a.Value.Parts
+		// "$TMPDIR/x" is the same value quoted
+		if q, ok := parts[0].(*syntax.DblQuoted); ok && len(parts) == 1 && !q.Dollar {
+			parts = q.Parts
+		}
+		for _, p := range parts {
 			switch p := p.(type) {
 			case *syntax.Lit:
 				if !plainValue.MatchString(p.Value) {
@@ -896,6 +905,17 @@ func (w *walker) inline(stmts []*syntax.Stmt) {
 		delete(w.skip, s)
 	}
 }
+
+// setsOptions reports a set -e, -u or -x, which assigns nothing: set -a
+// would export what follows, and set -- sets the arguments.
+func setsOptions(c *syntax.CallExpr) bool {
+	if len(c.Assigns) > 0 || len(c.Args) < 2 || c.Args[0].Lit() != "set" {
+		return false
+	}
+	return !slices.ContainsFunc(c.Args[1:], func(w *syntax.Word) bool { return !setOption.MatchString(w.Lit()) })
+}
+
+var setOption = regexp.MustCompile(`^[-+][eux]+$`)
 
 var plainValue = regexp.MustCompile(`^[A-Za-z0-9_./:@%+,=-]+$`)
 
