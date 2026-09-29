@@ -92,7 +92,10 @@ func EnvAssignmentGate(name string) bool {
 func Normalize(cmd string) Normalized {
 	cmd = inlineVars(cmd)
 	n := Normalized{cmd: cmd}
-	n.scan(cmd)
+	var sc scanner
+	sc.words(&n, []rune(cmd), 0, 0)
+	sc.failed = sc.failed || sc.depth != 0
+	n.eat(&sc)
 	return n
 }
 
@@ -214,15 +217,6 @@ type scanner struct {
 	subs   []int // the depths of the $( <( >( open
 	tick   bool  // inside a backtick substitution
 	failed bool  // a quote or parenthesis not closed
-}
-
-func (n *Normalized) scan(cmd string) {
-	var sc scanner
-	sc.words(n, []rune(cmd), 0, 0)
-	if sc.depth != 0 {
-		sc.failed = true
-	}
-	n.eat(&sc)
 }
 
 // sep ends a segment; the substitutions its quoted words held follow it.
@@ -359,20 +353,8 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 				sc.sep()
 				i = sc.bodies(rs, i)
 			}
-		case r == ';':
+		case r == ';' || r == '&' || r == '|': // && and || are two empty separators
 			flush()
-			sc.sep()
-		case r == '&':
-			flush()
-			if i+1 < len(rs) && rs[i+1] == '&' {
-				i++
-			}
-			sc.sep()
-		case r == '|':
-			flush()
-			if i+1 < len(rs) && rs[i+1] == '|' {
-				i++
-			}
 			sc.sep()
 		case r == '>' || r == '<':
 			if isAllDigits(cur.String()) { // the fd of 2>/dev/null is no argument
@@ -404,8 +386,7 @@ func (sc *scanner) words(n *Normalized, rs []rune, i int, stop rune) int {
 		}
 	}
 	flush()
-	sc.toks = append(sc.toks, sc.held...)
-	sc.held = nil
+	sc.sep()
 	return i
 }
 
@@ -474,10 +455,7 @@ func (sc *scanner) opens(n *Normalized, glued bool, word string) {
 		f = f[1:]
 	}
 	// a runner (xargs, sudo, timeout 5) leaves the program word open
-	for ok := true; ok && len(f) > 1; {
-		f, ok = stepRunner(f)
-	}
-	if len(f) == 0 || f[0] == "" { // function $(x) leaves nothing
+	if f = stepRunners(f); len(f) == 0 || f[0] == "" { // function $(x) leaves nothing
 		n.hidden = true
 	}
 }
@@ -624,7 +602,11 @@ func (n *Normalized) eat(sc *scanner) {
 	if sc.failed {
 		n.Fail = "a quote or parenthesis is not closed"
 	}
-	shell := n.readsScript()
+	// a body is a script unless every program only reads it
+	script := slices.ContainsFunc(n.Args, func(f []string) bool {
+		f = ProgramWords(f)
+		return len(f) > 0 && !slices.Contains(dataReaders, f[0])
+	})
 	// a data reader's body is data only while nothing in the command can run
 	// it: cat <<EOF | sh, or cat > x.sh <<EOF then bash x.sh
 	code := slices.ContainsFunc(n.Args, func(f []string) bool { return WrapperPrograms[program(f)] })
@@ -638,7 +620,7 @@ func (n *Normalized) eat(sc *scanner) {
 	for _, d := range slices.Backward(docs) {
 		var body Normalized
 		switch {
-		case shell:
+		case script:
 			body = Normalize(d.text)
 		case !d.quoted:
 			body = substitutions(d.text)
@@ -656,38 +638,25 @@ func (n *Normalized) eat(sc *scanner) {
 		default: // a body another program reads (python3 - <<EOF) is its code
 			show.hidden = true
 		}
-		hidden := n.hidden || show.hidden
+		body.hidden = show.hidden // Programs lists what is shown
 		n.absorb(d.at, body)
-		n.hidden = hidden
 		n.shown = slices.Insert(n.shown, d.at, show.Args...)
 	}
 }
 
-// program is the program a segment's words run, past assignments and
+// program is the program a segment's words run, past reserved words and
 // runners (sudo tee), "" when none is named yet.
 func program(seg []string) string {
-	f := ProgramWords(seg)
-	for ok := true; ok && len(f) > 1; {
-		f, ok = stepRunner(f)
+	if f := stepRunners(ProgramWords(seg)); len(f) > 0 {
+		return f[0]
 	}
-	if len(f) == 0 {
-		return ""
-	}
-	return f[0]
+	return ""
 }
 
 // dataReaders run none of their input, so a heredoc they read is data
 // (cat > f, git commit -F -); anything else may run it (fish, make -f -,
 // $SHELL, sudo sh).
 var dataReaders = []string{"cat", "tee", "echo", "printf", "git", "gh", "patch"}
-
-// readsScript reports a program in the command that is no dataReader.
-func (n *Normalized) readsScript() bool {
-	return slices.ContainsFunc(n.Args, func(f []string) bool {
-		f = ProgramWords(f)
-		return len(f) > 0 && !slices.Contains(dataReaders, f[0])
-	})
-}
 
 // substitutions parses the $( and backtick substitutions of text the shell
 // expands but does not split, an unquoted heredoc body.

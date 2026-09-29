@@ -109,10 +109,7 @@ var runnerOpts = map[string][]string{
 // NOTE: best effort: a git alias (git -c alias.p=push p), a runner option
 // missing from runnerOpts or a program picked at run time still slips past.
 func canonical(argv []string) string {
-	f := ProgramWords(argv)
-	for ok := true; ok && len(f) > 1; {
-		f, ok = stepRunner(f)
-	}
+	f := stepRunners(ProgramWords(argv))
 	if len(f) == 0 {
 		return ""
 	}
@@ -144,6 +141,14 @@ func stepRunner(f []string) (_ []string, ok bool) {
 		}
 	}
 	return f, true
+}
+
+// stepRunners steps past every runner f starts with (sudo timeout 5 x).
+func stepRunners(f []string) []string {
+	for ok := true; ok && len(f) > 1; {
+		f, ok = stepRunner(f)
+	}
+	return f
 }
 
 // Ruled reports an outcome a rule decided: a deny, ask or allow rule, or an
