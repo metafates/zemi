@@ -72,9 +72,9 @@ var shellVarNames = []string{
 	"bash_command", "bash_subshell", "bash_lineno", "bash_argv0", "bash_rematch",
 }
 
-// EnvAssignmentGate reports whether a name matches the environment-affecting
+// envAssignmentGate reports whether a name matches the environment-affecting
 // denylist (case-insensitive). Job env extras are refused on it outright.
-func EnvAssignmentGate(name string) bool {
+func envAssignmentGate(name string) bool {
 	n := strings.ToLower(name)
 	if slices.Contains(envGateNames, n) {
 		return true
@@ -114,7 +114,7 @@ func inlineVars(cmd string) string {
 	rest := cmd
 	for {
 		m := leadingAssign.FindStringSubmatch(rest)
-		if m == nil || EnvAssignmentGate(m[1]) {
+		if m == nil || envAssignmentGate(m[1]) {
 			break
 		}
 		// An exported name (HOME, GOFLAGS) reaches every child process and a
@@ -752,7 +752,7 @@ func (n *Normalized) fold(seg []string) {
 		if assigns && !ok {
 			name, ok = assignmentName(strings.TrimPrefix(a, "-v") + "=")
 		}
-		if ok && EnvAssignmentGate(name) {
+		if ok && envAssignmentGate(name) {
 			n.ForceAsk = "environment assignment: " + name
 			n.hidden = true
 			return
@@ -893,7 +893,7 @@ func (s *Store) ChildEnv(extras map[string]any) ([]string, error) {
 	}
 	for k, v := range extras {
 		// a key carrying = would set the name before it (PATH=/tmp/x:)
-		if !isName(k) || EnvIsSecret(k) || EnvAssignmentGate(k) {
+		if !isName(k) || EnvIsSecret(k) || envAssignmentGate(k) {
 			return nil, fmt.Errorf("env var %q is refused by the environment gate", k)
 		}
 		out = append(out, k+"="+fmt.Sprint(v))

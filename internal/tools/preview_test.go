@@ -16,7 +16,7 @@ func TestChangePreview(t *testing.T) {
 		{"write", map[string]any{"path": "f", "content": "a\nb\n"}, "--- f\n+++ f\n@@\n+a\n+b"},
 		{"edit with a deletion", map[string]any{"path": "f", "old_string": "1\n3", "new_string": "2"}, "--- f\n+++ f\n@@\n-1\n-3\n+2"},
 	} {
-		if got := ChangePreview(c.in); got != c.want {
+		if got := changePreview(c.in); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}
 	}

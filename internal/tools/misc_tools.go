@@ -201,7 +201,7 @@ const (
 	TypeFreeText QuestionType = "free_text"
 )
 
-var QuestionTypes = []QuestionType{TypeYesNo, TypeSingle, TypeMulti, TypeFreeText}
+var questionTypes = []QuestionType{TypeYesNo, TypeSingle, TypeMulti, TypeFreeText}
 
 // Question is one structured ask to the user, drawn by a Go-owned overlay.
 // Type must be one of the four: yes_no and single_choice ask one option,
@@ -249,7 +249,7 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 			Description: str(m["description"]),
 			Header:      str(m["header"]),
 		}
-		if !slices.Contains(QuestionTypes, q.Type) {
+		if !slices.Contains(questionTypes, q.Type) {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: type must be yes_no, single_choice, multi_choice or free_text", i+1)), nil
 		}
 		if q.Type == TypeFreeText {

@@ -159,14 +159,14 @@ const (
 	ByNobody   = "nobody" // an ask with no UI to answer it (zemi run)
 	ByUser     = "user"
 	ByReadOnly = "profile:readonly"
-	ModePrefix = "mode:"
+	modePrefix = "mode:"
 	// ByRecheck is an asker's answer that the request's Recheck now settles;
 	// the pipeline returns that verdict whole, its Rule included
 	ByRecheck = "recheck"
 )
 
 // ByMode is a verdict the permission mode name settled.
-func ByMode(name string) string { return ModePrefix + name }
+func ByMode(name string) string { return modePrefix + name }
 
 // DeniedText is the tool error a refused gate returns: who decided, what
 // it was about, and the reason the asker gave.
@@ -473,7 +473,7 @@ func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
 	// is what keeps the project unwritable, and Check denies the escape
 	plan := p.Plan != nil && p.Plan()
 	network := req.Network || v.Rule != nil && v.Rule.Network
-	if !plan && !strings.HasPrefix(v.DecidedBy, ModePrefix) && !network {
+	if !plan && !strings.HasPrefix(v.DecidedBy, modePrefix) && !network {
 		return nil
 	}
 	pol := p.Sandbox(plan, p.Pad)
@@ -603,16 +603,16 @@ func limitOf(pol *sandbox.Policy, path string) limit {
 	return best
 }
 
-// NetworkProp is the middle tier: the sandbox stays, the command gets
+// networkProp is the middle tier: the sandbox stays, the command gets
 // sockets. It is the answer to almost every sandbox denial, since the file
 // rules are the ones a settled command is meant to keep.
-func NetworkProp() map[string]any {
+func networkProp() map[string]any {
 	return map[string]any{"type": "boolean", "description": "true adds the network and keeps the rest of the sandbox (go mod download, npm install, curl). Needs the user's approval."}
 }
 
-// SandboxProp is bash's escape while a backend is live; job_start's points at
+// sandboxProp is bash's escape while a backend is live; job_start's points at
 // it. The limits are the system prompt's Sandbox block, built from the policy.
-func SandboxProp() map[string]any {
+func sandboxProp() map[string]any {
 	return map[string]any{"type": "boolean", "description": "false runs the command with no sandbox (Sandbox in the system prompt). Needs approval; only when network: true was not enough."}
 }
 
@@ -641,7 +641,7 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 	}
 	// who said no and why it asked; the rule text ("no rule matched") says neither
 	who := "denied (" + by + ")"
-	mode, byMode := strings.CutPrefix(by, ModePrefix)
+	mode, byMode := strings.CutPrefix(by, modePrefix)
 	switch {
 	case strings.HasPrefix(by, ByUser):
 		// they saw the request and refused it: the ask's reason says why it
@@ -1087,7 +1087,7 @@ Chain dependent steps with &&.`,
 				"about":      map[string]any{"type": "string", "description": "what the command does in 5-10 words, shown to the user, e.g. Run the unit tests. With network or sandbox set, also why it needs that."},
 				"command":    map[string]any{"type": "string"},
 				"timeout_ms": map[string]any{"type": "integer", "description": "default 60000, max 600000; raise it for slow builds and test suites"},
-			}, SandboxProp(), NetworkProp()),
+			}, sandboxProp(), networkProp()),
 			[]string{"command"},
 			bashRequests,
 			runBash),
@@ -1194,7 +1194,7 @@ Chain dependent steps with &&.`,
 				"questions": map[string]any{"type": "array", "items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"type":        map[string]any{"type": "string", "enum": QuestionTypes, "description": "yes_no gets Yes and No; multi_choice lets the user mark several; free_text is typed"},
+						"type":        map[string]any{"type": "string", "enum": questionTypes, "description": "yes_no gets Yes and No; multi_choice lets the user mark several; free_text is typed"},
 						"question":    map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
 						"description": map[string]any{"type": "string", "description": "markdown shown under the question"},
 						"header":      map[string]any{"type": "string", "description": "a 1-3 word label, e.g. Auth method"},
@@ -1338,14 +1338,14 @@ func runMemory(_ context.Context, p *Pipeline, in map[string]any) (fantasy.ToolR
 
 // ChangeDiff renders what write or edit would do to its file as
 // a unified diff against the current content. When an edit does not apply
-// (the tool will report that), it falls back to ChangePreview.
+// (the tool will report that), it falls back to changePreview.
 func ChangeDiff(tool string, in map[string]any) string {
 	path := str(in["path"])
 	// it runs before the gate, on the model's path: a FIFO or /dev/zero
 	// must not block or exhaust memory
 	fi, err := os.Stat(path)
 	if err == nil && (!fi.Mode().IsRegular() || fi.Size() > 1<<20) {
-		return ChangePreview(in)
+		return changePreview(in)
 	}
 	data, _ := os.ReadFile(path)
 	old := lf(string(data))
@@ -1356,18 +1356,18 @@ func ChangeDiff(tool string, in map[string]any) string {
 	case ToolEdit:
 		var msg string
 		if updated, _, _, msg = editText(old, in, workRel(path)); msg != "" {
-			return ChangePreview(in)
+			return changePreview(in)
 		}
 	default:
-		return ChangePreview(in)
+		return changePreview(in)
 	}
 	return udiff.Unified(path, path, old, updated)
 }
 
-// ChangePreview renders a file tool's change for the permission overlay
+// changePreview renders a file tool's change for the permission overlay
 // from the input alone (the file is not read before the gate): a unified
 // diff with one unnumbered hunk per replaced or new text.
-func ChangePreview(in map[string]any) string {
+func changePreview(in map[string]any) string {
 	lines := []string{"--- " + str(in["path"]), "+++ " + str(in["path"])}
 	hunk := func(old, new string) {
 		if old == "" && new == "" {
