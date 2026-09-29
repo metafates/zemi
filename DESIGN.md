@@ -1836,7 +1836,9 @@ provenance string.
   segment and `(runs code)` in Warn when it runs code the list cannot see,
   marked names first, two rows at most and the rest counted as `+N more`; when
   the parse cannot vouch for the list (a program a substitution or a variable
-  picks, a heredoc another language reads) it says `unknown: read the command`;
+  picks, a heredoc a program it does not know reads) it says `unknown: read the command`;
+  a heredoc an interpreter reads (`python3 - <<EOF`) is the interpreter's code,
+  so it adds only an unquoted body's substitutions;
   a heredoc `cat`, `tee` or another data reader reads adds only its substitutions
   when no shell or interpreter in the command could run it (`cat <<EOF | sh`
   lists the body's programs, `cat <<EOF | python3` is `unknown`).

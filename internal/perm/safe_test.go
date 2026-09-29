@@ -541,7 +541,9 @@ func TestPrograms(t *testing.T) {
 		{"words after a substitution", "cd $(git rev-parse --show-toplevel)/sub && ls", "", "-"},
 		{"arithmetic", "echo $((1+2))", "", "-"},
 		{"array", "a=(x y); echo ${a[0]}", "", "-"},
-		{"code heredoc", "python3 - <<'EOF'\nimport shutil\nEOF", "", "-"},
+		{"code heredoc", "python3 - <<'EOF'\nimport shutil\nEOF", "", "python3!runs code"},
+		{"code heredoc runs its substitutions", "python3 <<EOF\nprint(\"$(rm -rf x)\")\nEOF", "", "python3!runs code rm!deletes"},
+		{"heredoc an unknown program reads", "psql <<'EOF'\nselect 1;\nEOF", "", "-"},
 		{"gated assignment", "PATH=./x ls", "", "-"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

@@ -637,7 +637,13 @@ func (n *Normalized) eat(sc *scanner) {
 			show = Normalized{}
 		case data:
 			show = substitutions(d.text)
-		default: // a body another program reads (python3 - <<EOF) is its code
+		// a body an interpreter reads is its code, which the reader's own
+		// runs-code mark covers; only an unquoted one's substitutions run first
+		case WrapperPrograms[d.reader] && d.quoted:
+			show = Normalized{}
+		case WrapperPrograms[d.reader]:
+			show = substitutions(d.text)
+		default:
 			show.hidden = true
 		}
 		body.hidden = show.hidden // Programs lists what is shown
