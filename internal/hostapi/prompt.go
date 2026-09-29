@@ -264,7 +264,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	// session rides the context message after it.
 	system = sys + rules + index + user + luaSections
 	// last, where a small model weighs it most
-	ctxMsg = "<context>\nzemi's notes for this session, not the user's words." + project + env + digest + "\n\nReply in one or two short sentences.\n</context>"
+	ctxMsg = "<context>\nzemi's notes for this session, not the user's words." + project + env + digest + "\n\nReply in one or two short sentences, under 150 characters besides output the user asked to see.\n</context>"
 	parts = promptParts{instructions: len(user) + len(project), lua: len(luaSections), skills: len(index), digest: len(digest), files: mtimes}
 	parts.base = len(system) + len(ctxMsg) - parts.instructions - parts.lua - parts.skills - parts.digest
 	return system, ctxMsg, parts
