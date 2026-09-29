@@ -651,9 +651,10 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	}
 	// a list fits its content, 56 cells at least, a text view or a list with
 	// previews, which read as text, 72, and a detail view opens at its
-	// parent's size
+	// parent's size, or a list's when it opened before its list was drawn
+	// (Overlay.Confirm)
 	previews := !st.back && slices.ContainsFunc(st.items, func(it listItem) bool { return it.row.Preview != "" })
-	if !st.back {
+	if !st.back || st.size.w == 0 {
 		st.size.w = max(st.size.w, map[bool]int{true: 56, false: 72}[len(st.o.Items) > 0 && !previews])
 	}
 	bodyW := min(inner, st.size.w)

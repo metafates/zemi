@@ -1119,8 +1119,9 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 	app.openOverlay(hostapi.Overlay{ID: "s", Origin: lua.OriginBuiltin, Confirm: "del 2", Items: []any{"current", map[string]any{"text": "s2", "actions": []any{
 		map[string]any{"text": "Resume", "hotkey": "r", "run": "res 2"}, map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "del 2"},
 	}}}})
-	if d := app.overlays[len(app.overlays)-1]; !d.back || d.selected != 1 || d.armed != 2 {
-		t.Fatalf("typed delete: %d open, selected %d, armed %d", len(app.overlays), d.selected, d.armed)
+	// its list was never drawn, so the detail takes a list's width, not none
+	if d := &app.overlays[len(app.overlays)-1]; !d.back || d.selected != 1 || d.armed != 2 || hostapi.SegsWidth(app.overlayBox(d, 80, 20)[0]) < 60 {
+		t.Fatalf("typed delete: %d open, selected %d, armed %d, box %q", len(app.overlays), d.selected, d.armed, plainSegs(app.overlayBox(d, 80, 20)[0]))
 	}
 	pressKeys(app, "enter")
 	if ran != "del 2" {
