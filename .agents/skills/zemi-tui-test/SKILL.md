@@ -19,11 +19,18 @@ pane, where the caller's environment is not forwarded, and from fish, which does
 `$VAR` into words. `make first-run` is for looking at a newcomer's screens (fresh `HOME`,
 real keys); `zemi-safe` is for tests (no keys, a fake model).
 
+Nor type `zemi` in a pane's shell: that is the owner's installed binary on the real config.
+When the model under test must find `zemi` on `PATH` (`zemi plugins test`), put a wrapper
+that execs `zemi-safe` first on the pane's `PATH`.
+
 ```sh
 S=$PWD/.agents/skills/zemi-tui-test; T=/tmp/zt
 mkdir -p $T/proj $T/config && (cd $T/proj && git init -q)
 make build                       # or: go build -o $T/zemi . && export ZEMI_BIN=$T/zemi
 ```
+
+Testers running in parallel each take their own `$T`, tmux server name and port: on a shared
+port the other tester's server answers, and on a shared tree its `init.lua` loads.
 
 ## 2. A fake model
 
@@ -61,6 +68,11 @@ Headless checks need no tmux: `$S/zemi-safe $T health`, `$S/zemi-safe $T -C $T/p
 --json "call read {\"path\":\"a.txt\"}" </dev/null` (without `</dev/null` `zemi run` waits 3 s on a
 non-tty stdin). `--profile`, `--mode` and `-m` apply after `init.lua`.
 
+Colors: a pane gets 256 colors, since a detached tmux has no client to report RGB and
+`COLORTERM` is ignored under `TERM=tmux*`. For the theme's exact hues start the pane's command
+with `env TERM=xterm-256color COLORTERM=truecolor`; `capture-pane -e` then shows `38;2;r;g;b`.
+For the light palette add `zemi.ui.theme.set("whorl-light")` to the tree's `init.lua`.
+
 ## 4. Reading a screen
 
 - A permission ask is a prompt box under the chat; answer with the key its rows show
@@ -74,4 +86,5 @@ non-tty stdin). `--profile`, `--mode` and `-m` apply after `init.lua`.
 ## 5. Clean up
 
 Kill the tmux session and the server; leave nothing running. Delete `$T` when done: a stale
-tree with an old `init.lua` shape is the usual cause of a confusing second run.
+tree with an old `init.lua` shape is the usual cause of a confusing second run, and each
+scratch binary is 100 MB.

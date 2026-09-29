@@ -1,6 +1,6 @@
 ---
 name: zemi-dev-lessons
-description: "Load before a non-trivial change to zemi: checks against real user data, prompt-cache traps, tests that do not flake, landing on main."
+description: "Load before a non-trivial change to zemi: checks against real user data, fail-opens in the bash scanner and sandbox, prompt-cache traps, tests that do not flake, landing on main."
 ---
 
 # Lessons for changing zemi
@@ -12,6 +12,8 @@ AGENTS.md has the house rules and `make check`; these are the ones it leaves out
 - lua-language-server is installed here, so `make check` runs the luals step: a wrong `---@param` union in `runtime/lua` fails it.
 - A rename or removal also greps README.md. A stale tool or key name in `runtime/skills` costs the model real turns.
 - Work on a branch, `git merge --ff-only` into main, delete the branch. Never push.
+- A rebase that meets main's api version bump takes the next minor above main's, in `host.go` and `TestNamespaceVersion` together.
+- golangci-lint holds one lock per machine: while another worktree lints, `make check` fails with "parallel golangci-lint is running". Run it again; that is no finding.
 
 ## Every commit boots
 
@@ -23,6 +25,15 @@ AGENTS.md has the house rules and `make check`; these are the ones it leaves out
   the repo), and write patch files with `git diff --no-ext-diff` (the repo sets a display
   diff tool that `git apply` cannot read). When copying state for a boot check, leave out
   `sandbox-cache`, `scratch` and `tmp`, which run to gigabytes.
+
+## The bash scanner and the sandbox
+
+A change that lets the scanner skip text (a heredoc body as data, a quoted word as literal) or
+that exempts a path from the policy is where a fail-open comes from, a fix included.
+
+- Try what runs the skipped text under another name: `$SHELL`, `busybox sh`, `make -f -`, `eval "$(cat)"`, a pipe into a shell, a git alias, `RM` on a case-insensitive disk, an escape that spells a name (`$'\x72m'`).
+- A rule keyed on a file's name is judged where the file is, so a writable root exempt from it takes a renamed directory with the files inside.
+- A rewrite of `perm/bash.go` that must change no verdict is checked against a copy of main's package: every string literal of the perm and hostapi tests through both, then a few minutes of fuzzing the difference. The tables alone missed a panic and an endless loop.
 
 ## Prompt cache
 
@@ -42,3 +53,5 @@ Anything in the prefix that varies per request busts the provider cache for the 
 
 - Agents sharing one working tree must not commit concurrently; give each a package or run them in sequence.
 - gopher-lua: once `pcall` catches an error, closures made before it stop sharing locals with their maker. Share state through a table.
+- Lua's `os.clock` is wall time on the runtime's `lua.Clock`, not CPU time.
+- Builds fill the disk: a worktree's builds add to the Go build cache and a binary is 100 MB. Check `df` between rounds of parallel workers and delete scratch binaries.
