@@ -1116,7 +1116,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget
   cannot render at the 50 ms frame clock is a segment `effect` the UI applies (`shimmer`). The terminal itself
   gets the `ui.notify` alert when zemi is unfocused (OSC 9, a bell or a native notification,
-  as `Host.NotifyStyle` resolves `auto`), OSC 9;4 (`ui.progress`: a running turn as taskbar
+  as `Host.NotifyStyle` resolves `auto`; once per chain of turns: `onFrame` applies a turn's end,
+  the done eyes and the recap timer too, on the first frame that reads the agent idle), OSC 9;4 (`ui.progress`: a running turn as taskbar
   progress, resent every few seconds so terminals do not hide it, through
   `tea.View.ProgressBar`, so bubbletea clears it on every exit) and OSC 11
   (the theme's Normal bg as its own background, through `tea.View.BackgroundColor` so bubbletea

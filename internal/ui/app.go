@@ -110,7 +110,8 @@ type App struct {
 	frameGen   int64
 	timeStr    string
 	turnActive bool             // what onFrame last saw of the agent
-	turnEnd    time.Time        // when the last turn reported its end, so the mascot can bow
+	turnDone   *turnDoneMsg     // the last turn's end, waiting for a frame that reads the agent idle
+	turnEnd    time.Time        // when the agent went idle after a turn, so the mascot can bow
 	turnEnded  hostapi.TurnEnd  // how it ended
 	unseen     hostapi.TurnEnd  // how the last turn ended while the window was away, "" once seen
 	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
@@ -349,23 +350,10 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		a.bump()
 		a.streamPending.Store(false)
 	case turnDoneMsg:
+		// onFrame applies it once the agent reads idle, so a chain of turns
+		// (a queued follow-up, a goal) ends once, the way its last turn did
 		a.bump()
-		a.turnEnd, a.turnEnded = a.now(), hostapi.TurnOK
-		a.recapAt = a.now().Add(recapDelay)
-		if msg.stopped {
-			a.turnEnded, a.recapAt = hostapi.TurnCancelled, time.Time{}
-		} else if msg.err != "" {
-			a.turnEnded, a.recapAt = hostapi.TurnError, time.Time{}
-		}
-		a.unseen = ""
-		if !a.focused {
-			a.unseen = a.turnEnded
-		}
-		text := "zemi finished"
-		if msg.err != "" {
-			text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "…")
-		}
-		return a.notifyIfAway(text)
+		a.turnDone = &msg
 	case hookMsg:
 		cmd := a.update(msg.inner)
 		// Re-arm the persistent drain: each delivered hookMsg re-arms
@@ -577,9 +565,12 @@ func (a *App) onFrame() tea.Cmd {
 	if busy, _, _ := a.host.BusyNow(); active || busy != "" {
 		a.frameGen++
 	}
-	// the outcome is stamped by turnDoneMsg alone: the host can still read
-	// active a moment after it, and uiState hides Ended while active
 	a.turnActive = active
+	var ended tea.Cmd
+	if !active && a.turnDone != nil {
+		ended = a.endTurn(*a.turnDone)
+		a.turnDone = nil
+	}
 	if !active && !a.recapAt.IsZero() && !a.now().Before(a.recapAt) {
 		var ctx context.Context
 		ctx, a.recapStop = context.WithCancel(context.Background())
@@ -600,7 +591,28 @@ func (a *App) onFrame() tea.Cmd {
 		a.frameGen++
 	}
 	a.progressTick(active)
-	return tea.Batch(a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd(false), replay)
+	return tea.Batch(a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd(false), replay, ended)
+}
+
+// endTurn stamps how the last turn ended for the eyes and the tab title,
+// arms the recap and alerts an unfocused terminal.
+func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
+	a.turnEnd, a.turnEnded = a.now(), hostapi.TurnOK
+	a.recapAt = a.now().Add(recapDelay)
+	if msg.stopped {
+		a.turnEnded, a.recapAt = hostapi.TurnCancelled, time.Time{}
+	} else if msg.err != "" {
+		a.turnEnded, a.recapAt = hostapi.TurnError, time.Time{}
+	}
+	a.unseen = ""
+	if !a.focused {
+		a.unseen = a.turnEnded
+	}
+	text := "zemi finished"
+	if msg.err != "" {
+		text = "zemi stopped: " + ansi.Truncate(msg.err, 80, "…")
+	}
+	return a.notifyIfAway(text)
 }
 
 // termBackground is what the terminal's own background is set to (OSC 11)
