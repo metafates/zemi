@@ -173,7 +173,7 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 		p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = pad, pad, pad
 	}
 	if d.StateHome != "" {
-		cache := filepath.Join(d.StateHome, "sandbox-cache", h.trustKey(), "go-build")
+		cache := filepath.Join(d.StateHome, "sandbox-cache", trustKey(h.trustRoot()), "go-build")
 		if os.MkdirAll(cache, 0o700) == nil {
 			p.Write = append(p.Write, cache)
 			p.Env["GOCACHE"] = cache
@@ -314,8 +314,8 @@ func localPluginCode(d config.Dirs) (read, list, hide []string) {
 // trustKey names the trust root in cache paths. Caches are kept one per
 // trust root: Go trusts its cache entries, so a shared one lets one
 // project's build plant what another's links.
-func (h *Host) trustKey() string {
-	key := sha256.Sum256([]byte(h.trustRoot()))
+func trustKey(root string) string {
+	key := sha256.Sum256([]byte(root))
 	return hex.EncodeToString(key[:8])
 }
 
@@ -345,7 +345,7 @@ func (h *Host) serverPolicy(def lspDef) sandbox.Policy {
 	if !filepath.IsLocal(name) {
 		name = hex.EncodeToString([]byte(name))
 	}
-	dir := filepath.Join(h.Dirs.CacheHome, "lsp", h.trustKey(), name)
+	dir := filepath.Join(h.Dirs.CacheHome, "lsp", trustKey(h.trustRoot()), name)
 	for k, sub := range map[string]string{
 		"XDG_CACHE_HOME": "cache", "GOCACHE": "go-build", "GOPLSCACHE": "gopls",
 		"CARGO_TARGET_DIR": "target", "TMPDIR": "tmp", "TMP": "tmp", "TEMP": "tmp",

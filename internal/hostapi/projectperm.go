@@ -88,7 +88,7 @@ func (h *Host) projectPermissionsPath() string {
 	if h.Dirs.StateHome == "" {
 		return ""
 	}
-	return filepath.Join(h.projectState(), "permissions")
+	return filepath.Join(projectState(h.Dirs.StateHome, h.trustRoot()), "permissions")
 }
 
 // projectAllow answers the ask's "for this project" choice: append cmd to the

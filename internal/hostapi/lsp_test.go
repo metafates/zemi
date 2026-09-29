@@ -516,7 +516,7 @@ func TestLSPRealServersSandboxed(t *testing.T) {
 		return
 	}
 	ran := func() bool {
-		m, _ := filepath.Glob(filepath.Join(h.Dirs.CacheHome, "lsp", h.trustKey(), "rust-analyzer", "target", "*", "build", "*", "out", "ran"))
+		m, _ := filepath.Glob(filepath.Join(h.Dirs.CacheHome, "lsp", trustKey(h.trustRoot()), "rust-analyzer", "target", "*", "build", "*", "out", "ran"))
 		return len(m) > 0
 	}
 	for deadline := time.Now().Add(2 * time.Minute); time.Now().Before(deadline) && !ran(); time.Sleep(time.Second) {

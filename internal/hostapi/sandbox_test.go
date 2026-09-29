@@ -437,7 +437,7 @@ func TestSandboxPolicy(t *testing.T) {
 	}
 	h.Dirs.CacheHome = t.TempDir()
 	server := h.serverPolicy(lspDef{Name: "rust-analyzer"})
-	dir := filepath.Join(h.Dirs.CacheHome, "lsp", h.trustKey(), "rust-analyzer")
+	dir := filepath.Join(h.Dirs.CacheHome, "lsp", trustKey(h.trustRoot()), "rust-analyzer")
 	if !slices.Equal(server.Write, []string{dir}) || !server.Loopback || !slices.Contains(server.Hide, h.Dirs.StateHome) {
 		t.Errorf("server policy %+v", server)
 	}
