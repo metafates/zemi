@@ -131,31 +131,6 @@ func TestTouchNoPublishReturnsEarly(t *testing.T) {
 	}
 }
 
-// TestTouchThroughSymlink: a server that answers with the canonicalized
-// path still keys the file the caller asked about.
-func TestTouchThroughSymlink(t *testing.T) {
-	t.Parallel()
-	root := t.TempDir()
-	real := filepath.Join(root, "real")
-	if err := os.Mkdir(real, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(real, filepath.Join(root, "link")); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	c := start(t, ctx, root)
-	path := filepath.Join(root, "link", "a.txt")
-	if err := os.WriteFile(path, []byte("ok\nBROKEN here"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	diags, err := c.Touch(ctx, path, "plaintext")
-	if err != nil || len(diags) != 1 {
-		t.Fatalf("diags %+v, err %v", diags, err)
-	}
-}
-
 // TestTouchConcurrentVersions: concurrent syncs of one file must reach the
 // server with increasing versions; the fake reports any regression.
 func TestTouchConcurrentVersions(t *testing.T) {
@@ -238,8 +213,9 @@ func TestTouch(t *testing.T) {
 	}
 }
 
-// TestTouchSymlinkSpellings: a file touched through a symlink and then by
-// its real path is one document to the server.
+// TestTouchSymlinkSpellings: a file touched through a symlink, which the
+// server answers about by its canonical path, and then by its real path is
+// one document to the server.
 func TestTouchSymlinkSpellings(t *testing.T) {
 	t.Parallel()
 	real, link := t.TempDir(), filepath.Join(t.TempDir(), "link")
