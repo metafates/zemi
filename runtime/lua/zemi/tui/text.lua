@@ -51,20 +51,6 @@ function M.clock(t) return os.date("%H:%M", t) end
 ---@return string
 function M.count(n, one, many) return n .. " " .. (n == 1 and one or many) end
 
---- Row marks, one glyph and one meaning each: finished, failed, stopped by
---- the user, going on in the background, waiting on the user, reasoning and
---- a notice.
----@type table<string, { [1]: string, [2]: string }>
-M.MARK = {
-	ok = { "✓", "Ok" },
-	err = { "✗", "Danger" },
-	stop = { "■", "Dim" },
-	bg = { "⧗", "Dim" },
-	wait = { "·", "Dim" },
-	thought = { "✻", "ThinkingMark" },
-	note = { "◦", "Dim" },
-}
-
 --- A pointer to what deals with something: the noun in Title (hl overrides
 --- it, Danger for a failure), then the command or key in Comment ("errors
 --- /errors", "↓ 25 ctrl+end"). Both segments click as click.

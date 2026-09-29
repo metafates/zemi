@@ -301,6 +301,7 @@ func TestTypesEnums(t *testing.T) {
 		{"zemi.FloatAnchor", "", strs(floatAnchors)},
 		{"zemi.RowKind", "", strs(rowKinds)},
 		{"zemi.CallStatus", "", strs(callStatuses)},
+		{"zemi.MarkKind", "", slices.Collect(maps.Keys(Marks))},
 		{"zemi.TurnEnd", "", strs(turnEnds)},
 		{"zemi.Waiting", "", strs(waitings)},
 		{"zemi.RunStatus", "", strs(runStatuses)},

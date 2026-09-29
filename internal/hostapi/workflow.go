@@ -1838,9 +1838,10 @@ func flowDesc(f *flowRun, v flowView) string {
 // flowItem is a run's row in /workflows: enter opens its view, whose keys
 // act on it.
 func (h *Host) flowItem(f *flowRun, section string) map[string]any {
+	v := f.view()
 	return map[string]any{
-		"id": f.id, "text": f.description, "desc": flowDesc(f, f.view()) + h.fromSession(f.parent), "section": section,
-		"run": "workflows view " + f.id, "verb": "open",
+		"id": f.id, "text": f.description, "desc": flowDesc(f, v) + h.fromSession(f.parent), "section": section,
+		"run": "workflows view " + f.id, "verb": "open", "mark": RunMarks[flowWord(v)],
 	}
 }
 
@@ -1885,7 +1886,7 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 		}
 	}
 	o := Overlay{
-		ID: "workflow:" + f.id, Title: "Workflows / " + f.description, Origin: lua.OriginBuiltin, Items: items, Wide: true,
+		ID: "workflow:" + f.id, Title: "Workflows / " + f.description, Origin: lua.OriginBuiltin, Items: items, Wide: true, Phases: true,
 		// one row, so a long one never pushes the list down
 		Body: clipRunes(strings.Join(strings.Fields(f.about), " "), 76), Empty: "No agent has started yet.",
 		Reload: func() ([]any, [][]Segment) { return h.flowOverlay(f).Items, nil },
@@ -1929,7 +1930,7 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) map[string]
 	if a.status != "queued" {
 		desc += fmt.Sprintf(" · %d %s · %s tok · %s", a.calls, plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
 	}
-	item := map[string]any{"id": strconv.Itoa(a.call), "text": a.description, "desc": desc, "section": section}
+	item := map[string]any{"id": strconv.Itoa(a.call), "text": a.description, "desc": desc, "section": section, "mark": RunMarks[string(a.status)]}
 	// a queued row opens too, so starting it moves no footer text
 	item["fields"] = fieldList("status", string(a.status), "agent", a.def)
 	if a.id == "" {

@@ -1019,7 +1019,10 @@ starting no agent. `/workflows` lists the runs, live ones of every session
 first, then this session's earlier ones (another session's live run ends
 its desc with that session's title), then the saved workflows; enter on a
 run opens its view, at the one width every workflow screen takes: its
-fields, its agents under their phases, and keys acting on the run, `p`,
+fields, its agents under their phases (each run and agent row, in
+`/agents` too, and each phase header leads with the chat's mark for its
+state: a phase is failed once one agent failed, else running while one
+runs, done when all are), and keys acting on the run, `p`,
 `+` and `-` (relative, so a second press before the view rebuilds still
 counts) and `x` (stop, on its second press) while it runs, `r` (rerun,
 whose view takes the ended one's place) once it ended, and `o` (open its
@@ -1361,8 +1364,11 @@ UI extensibility contract:
   is `sgr:<params>`, an inline SGR style that only ever decodes to
   colors and attributes, never other escapes. `effect = "shimmer"` asks Go
   to sweep a bright band across the text every frame (widgets render at
-  about 8/s, the effect needs 30), blending `hl` toward `Normal`;
-  `ui.animations = false` keeps it static.
+  about 8/s, the effect needs 30), blending `hl` toward `Normal`, and
+  `effect = "spin"` steps a segment's first glyph through the running
+  spinner; `ui.animations = false` keeps both static. The state marks
+  (`zemi.ui.marks`: running, done, failed, stopped, waiting, ...) are
+  one Go table the chat's rows and the host's lists draw alike.
 - Clicks: a segment's `click` is a plain string id and the widget spec
   carries one `on_click(ev)` (`ev = { id, button, clicks, mods, x, y }`),
   the shape of neovim's statusline `%N@Func@`. Render stays pure data, so

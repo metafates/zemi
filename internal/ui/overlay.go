@@ -323,7 +323,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		if !runs {
 			r.Run = ""
 		}
-		it := listItem{label: sanitize.Line(r.Text), desc: r.Desc, key: tagSeg(r.Key), section: r.Section, row: r} // a newline would break the box
+		it := listItem{label: sanitize.Line(r.Text), desc: r.Desc, key: tagSeg(r.Key), section: r.Section, mark: markSeg(r.Mark), row: r} // a newline would break the box
 		if r.Switch || r.Locked {
 			it.key = switchSeg(r.On, r.Locked)
 		}
@@ -339,6 +339,15 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		st.items = append(st.items, it)
 		st.labels = append(st.labels, it.label)
 		st.texts = append(st.texts, it.section+"  "+it.desc+"  "+r.Copy+"  "+r.Preview)
+	}
+	if o.Phases {
+		marks := map[string][]string{}
+		for _, it := range st.items {
+			marks[it.section] = append(marks[it.section], it.row.Mark)
+		}
+		for i, it := range st.items {
+			st.items[i].head = markSeg(phaseMark(marks[it.section]))
+		}
 	}
 	st.selected = o.Selected
 	st.apply()
@@ -918,6 +927,18 @@ func armedHint(w int, key, label string) []hostapi.Segment {
 	return foot
 }
 
+// phaseMark is a phase's state from its rows' marks: failed once one
+// failed, else running while one runs, waiting while one waits, stopped
+// when one stopped, done when every row is.
+func phaseMark(marks []string) string {
+	for _, m := range []string{"err", "spin", "wait", "stop"} {
+		if slices.Contains(marks, m) {
+			return m
+		}
+	}
+	return "ok"
+}
+
 // statusHL colors the status words every screen shares.
 //
 //exhaustive:enforce
@@ -942,16 +963,23 @@ func fieldRows(fields []hostapi.Field, w int) [][]hostapi.Segment {
 		if f.Value == "" {
 			continue
 		}
-		hl := ""
+		hl, mark := "", hostapi.Segment{}
 		switch f.Name {
 		case "error":
 			hl = hostapi.ChromeDanger
 		case "status":
 			hl = statusHL[hostapi.ServiceStatus(f.Value)]
+			if m := hostapi.RunMarks[f.Value]; m != "" {
+				hl, mark = hostapi.Marks[m].HL, markSeg(m)
+			}
 		}
 		name := f.Name
 		for l := range strings.SplitSeq(f.Value, "\n") {
-			rows = append(rows, field(name, kw, []hostapi.Segment{{Text: l, HL: hl}}, w)...)
+			val := []hostapi.Segment{{Text: l, HL: hl}}
+			if mark.Text != "" {
+				val = []hostapi.Segment{mark, val[0]}
+			}
+			rows = append(rows, field(name, kw, val, w)...)
 			name = ""
 		}
 	}

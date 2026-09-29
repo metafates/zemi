@@ -1478,3 +1478,21 @@ func TestListPreview(t *testing.T) {
 		}
 	}
 }
+
+func TestPhaseMark(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		marks []string
+		want  string
+	}{
+		{"a failure outranks a running row", []string{"ok", "spin", "err"}, "err"},
+		{"a running row outranks a queued one", []string{"wait", "spin", "ok"}, "spin"},
+		{"a paused phase waits", []string{"ok", "wait"}, "wait"},
+		{"a stopped row marks the phase stopped", []string{"ok", "stop"}, "stop"},
+		{"done when every row is", []string{"ok", "ok"}, "ok"},
+	} {
+		if got := phaseMark(c.marks); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}

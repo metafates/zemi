@@ -216,7 +216,7 @@ function debug.traceback(msg) end
 ---@field text string
 ---@field hl? string
 ---@field click? string Widget rows only: the id a click passes to the widget's `on_click`.
----@field effect? "shimmer" A bright band sweeps across the text every frame, blending `hl` toward Normal (static with ui.animations off).
+---@field effect? "shimmer"|"spin" `shimmer`: a bright band sweeps across the text every frame, blending `hl` toward Normal. `spin`: the first glyph steps through the running spinner, `zemi.ui.marks.spin`'s. Both static with ui.animations off.
 ---@field copy? boolean `false` marks decoration (a gutter bar, a bullet, a border, a line number): a selection neither lights nor copies it.
 ---@field hover? boolean `false` marks a clickable body row (a diff line, a detail line): the pointer still shows a click acts, but hovering it restyles nothing.
 ---@field soft_wrap? boolean The line continues on the next one: a copy joins the two and drops what follows this segment on the row. Go's own wrapping sets it.
@@ -975,6 +975,7 @@ function zemi.event.stats() end
 ---@field locked? boolean draws the switch on with nothing to switch
 ---@field danger? boolean cannot be undone: drawn in Danger, and the first enter only arms it (never the open of a row with a detail view); the footer then says to press it again, and any other key disarms
 ---@field tail? boolean a text too wide for its column is cut from the left, keeping its end: a path's name
+---@field mark? zemi.MarkKind a state mark ahead of the text, as the chat draws it (`zemi.ui.marks`); a running one spins
 ---@field section? string a change of section starts with a header row; the filter matches it too
 ---@field detail? string body of the detail view
 ---@field fields? zemi.OverlayField[] the detail view's facts, set as a table above detail
@@ -1356,6 +1357,33 @@ function zemi.ui.hl.get(group) end
 ---@param text string
 ---@return integer
 function zemi.ui.width(text) end
+
+--- The state marks the chat's rows and the host's lists share, one glyph
+--- (one cell) and theme group each.
+---@class zemi.ui.marks
+---@field spin zemi.Mark running: draw it with `effect = "spin"` so the UI steps it
+---@field ok zemi.Mark finished
+---@field err zemi.Mark failed
+---@field stop zemi.Mark stopped by the user
+---@field bg zemi.Mark going on in the background
+---@field wait zemi.Mark waiting: queued, paused or on the user
+---@field thought zemi.Mark reasoning
+---@field note zemi.Mark a notice
+zemi.ui.marks = {}
+
+---@class zemi.Mark
+---@field glyph string
+---@field hl string
+
+---@alias zemi.MarkKind
+---| "spin"
+---| "ok"
+---| "err"
+---| "stop"
+---| "bg"
+---| "wait"
+---| "thought"
+---| "note"
 
 --- Render markdown into widget rows of at most `width` cells.
 --- Decoration glamour draws (bullets, quote bars, code margins) comes back

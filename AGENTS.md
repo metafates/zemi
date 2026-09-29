@@ -813,7 +813,10 @@ lua-language-server is installed.
   closing session drops (`/new`, `/resume`) is stored in its own session and toasted
   (`notifyReport`). `/agents` lists the live session's runs and, under Running and Workflows, the live runs and
   workflows of every other session (`agentRunItems`, the desc ending in that session's title,
-  `fromSession`): they block `/rewind`, so their stop must be reachable.
+  `fromSession`): they block `/rewind`, so their stop must be reachable. Every run and agent
+  row there and in `/workflows` leads with the chat's mark for its status word (`RunMarks`
+  into `hostapi.Marks`, the one table `zemi.ui.marks` hands chat.lua), and a run's view heads
+  each phase with its rows' combined mark (`Overlay.Phases`).
 - **Scratchpad** (scratch.go): `<state>/scratch/<first 12 of the session id>`, short so a unix
   socket path under it fits macOS's 104 bytes. A pipeline binds it once (`Pipeline.Pad`,
   `Request.Pad`): `PipelineFor` the live session's, a subagent run its parent session's, so a run
@@ -1079,7 +1082,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   sources and a toggle list's `Overlay.Reload` run in order on one worker goroutine
   (`App.background`); Go commands stay inline. Keymaps, clicks, one-shot timers and async
   callbacks call `refresh` when they return. The frame tick sleeps 250 ms unless something
-  moves by itself (a turn, a toast, an armed flag) and always lands on a 50 ms wall boundary,
+  moves by itself (a turn, a drawn spinner, a toast, an armed flag) and always lands on a 50 ms wall boundary,
   so `ctx.frame` steps one per tick while a turn re-renders every one; a change goes through
   `App.bump`, which wakes it, and all stale widgets render as one message; a widget a message
   resized (a composer newline, a resize) renders on that message, so no frame draws lines
@@ -1104,7 +1107,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
 - **Widgets read UI flags, never Go-drawn text.** The composer frame's rules and the quit, key
   sequence and scroll flags are `tui/` widgets reading `hostapi.UIState`; a new flag goes
   into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget
-  cannot render at the 50 ms frame clock is a segment `effect` the UI applies (`shimmer`). A
+  cannot render at the 50 ms frame clock is a segment `effect` the UI applies (`shimmer`, and `spin`, which steps a `hostapi.Marks` spinner). A
   turn's end (the `ui.notify` alert, the done eyes, the recap timer) applies once per chain of
   turns, on the first frame that reads the agent idle (`onFrame`). OSC 9;4 progress and the OSC
   11 background go through `tea.View.ProgressBar` and `tea.View.BackgroundColor`, so bubbletea

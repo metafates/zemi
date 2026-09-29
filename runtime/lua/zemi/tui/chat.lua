@@ -2,10 +2,6 @@
 local fmt = require("zemi.tui.text")
 local util = require("zemi.util")
 
--- The one per-row "running now" mark: a braille spinner, stepped by
--- ctx.frame (50 ms a step), so a row that only shows live animates cleanly.
-local BRAILLE = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
-
 -- The expand hint on the latest collapsed reasoning line.
 local HINT = "click or ctrl+o to read"
 
@@ -97,16 +93,14 @@ zemi.ui.widget.add({
 				lines[#lines + 1] = row
 			end
 		end
-		-- A row's mark: the spinner while it runs, else how it ended (text.MARK).
-		-- A mark never hovers: a hovered header changes only its text.
-		---@param kind string A text.MARK key, or "spin".
+		-- A row's mark: the spinner while it runs, else how it ended. A mark
+		-- never hovers: a hovered header changes only its text.
+		---@param kind string A zemi.ui.marks key.
 		---@return zemi.Segment
 		local function mark(kind)
-			if kind == "spin" then
-				return { text = BRAILLE[ctx.frame % #BRAILLE + 1] .. " ", hl = "Dim", copy = false, hover = false }
-			end
-			local m = fmt.MARK[kind]
-			return { text = m[1] .. " ", hl = m[2], copy = false, hover = false }
+			local m = zemi.ui.marks[kind]
+			local effect = kind == "spin" and "spin" or nil
+			return { text = m.glyph .. " ", hl = m.hl, copy = false, hover = false, effect = effect }
 		end
 		-- The user's own words, sent or queued: the bar on every row, and a tag
 		-- ahead of the first row's text. A placeholder word as wide as the tag

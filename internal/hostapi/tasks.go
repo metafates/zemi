@@ -52,6 +52,13 @@ const (
 
 var runStatuses = []RunStatus{RunRunning, RunDone, RunFailed, RunCancelled}
 
+// RunMarks are the Marks a run's or an agent's status word draws, as the
+// chat marks a call: queued and paused wait, running spins.
+var RunMarks = map[string]string{
+	"queued": "wait", "paused": "wait", string(RunRunning): "spin", string(RunDone): "ok",
+	string(RunFailed): "err", string(RunCancelled): "stop",
+}
+
 // agentRun is one subagent run. The fields above mu never change once the
 // run is registered, but cancel, which a continuation renews.
 type agentRun struct {
@@ -734,6 +741,7 @@ func (h *Host) agentRunItems() []any {
 			"desc":    statusCol(string(status)) + " · " + fmtDuration(took) + calls + " · " + desc,
 			"run":     "agents view " + id,
 			"section": "Earlier in this session",
+			"mark":    RunMarks[string(status)],
 		}
 		if status == RunRunning {
 			item["section"] = "Running"
@@ -746,12 +754,7 @@ func (h *Host) agentRunItems() []any {
 	// is listed like its runs below
 	held := map[string]bool{}
 	for _, f := range slices.DeleteFunc(h.tasks.flowList(), func(f *flowRun) bool { return f.parent != sid && !f.isRunning() }) {
-		flows = append(flows, map[string]any{
-			"text":    f.description,
-			"desc":    flowDesc(f, f.view()) + h.fromSession(f.parent),
-			"section": "Workflows",
-			"run":     "workflows view " + f.id,
-		})
+		flows = append(flows, h.flowItem(f, "Workflows"))
 	}
 	for _, run := range h.tasks.runsOf(sid) {
 		status, calls, took, runSID := run.state()

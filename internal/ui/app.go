@@ -18,6 +18,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
@@ -105,6 +106,7 @@ type App struct {
 	pending    map[string]renderKey // widget id -> the render in flight
 	renderSeq  int64                // counts render dispatches, so the latest one wins
 	frameGen   int64
+	spun       bool // the last frame drew a spinner, so the tick keeps stepping it
 	timeStr    string
 	turnActive bool             // what onFrame last saw of the agent
 	turnDone   *turnDoneMsg     // the last turn's end, waiting for a frame that reads the agent idle
@@ -568,10 +570,11 @@ func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
 }
 
 // tickInterval is idleInterval unless something on screen moves by itself:
-// a turn's readouts, a toast's or the done frame's expiry. Everything else bumps.
+// a turn's readouts, a spinner, a toast's or the done frame's expiry.
+// Everything else bumps.
 func (a *App) tickInterval() time.Duration {
 	st := a.lastState
-	if busy, _, _ := a.host.BusyNow(); a.turnActive || busy != "" || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 {
+	if busy, _, _ := a.host.BusyNow(); a.turnActive || busy != "" || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun {
 		return frameInterval
 	}
 	return idleInterval
@@ -706,9 +709,6 @@ func (a *App) waiting() hostapi.Waiting {
 // 200 ms, so a turn writes the title 5 times a second, not 20.
 const titleFrames = 4
 
-// titleSpin is chat.lua's BRAILLE, its running mark.
-var titleSpin = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
 // windowTitle is the tab title: the host's, behind a mark for a turn that
 // runs, waits on the user, or ended while the window was away.
 func (a *App) windowTitle() string {
@@ -717,7 +717,7 @@ func (a *App) windowTitle() string {
 	case a.waiting() != "":
 		return "? " + t
 	case a.turnActive:
-		return titleSpin[a.frame()/titleFrames%len(titleSpin)] + " " + t
+		return hostapi.Spinner[a.frame()/titleFrames%len(hostapi.Spinner)] + " " + t
 	case a.unseen == hostapi.TurnOK:
 		return "✓ " + t
 	case a.unseen == hostapi.TurnError:
@@ -1027,6 +1027,7 @@ func (a *App) compose(w, h int) string {
 	a.highlightHover(rows)
 
 	var b strings.Builder
+	a.spun = false
 	for i, row := range rows {
 		if i > 0 {
 			b.WriteString("\r\n")
@@ -1516,11 +1517,16 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 		if s.Text == "" {
 			continue
 		}
-		if s.Effect == "shimmer" {
+		switch s.Effect {
+		case "shimmer":
 			for _, r := range a.shimmer(s, a.frame()*frameMS, a.host.Settings.Bool("ui.animations")) {
 				write(r.Text, r.HL, s.Over, s.Band)
 			}
 			continue
+		case "spin":
+			_, n := utf8.DecodeRuneInString(s.Text)
+			s.Text = hostapi.Spinner[a.frame()%len(hostapi.Spinner)] + s.Text[n:]
+			a.spun = a.spun || a.frame() != 0
 		}
 		write(s.Text, s.HL, s.Over, s.Band)
 	}

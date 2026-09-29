@@ -434,10 +434,21 @@ type listItem struct {
 	label, desc string
 	key         hostapi.Segment // right-aligned column: a tag in Host:HintKey or a switchSeg
 	section     string          // a change of section starts with a header row
+	mark, head  hostapi.Segment // the state mark ahead of the label, and ahead of its section's header
 	more        [][]hostapi.Segment
 	segs        []hostapi.Segment   // the label styled; label keeps its plain text
 	match       []int               // byte offsets of the label's runes a filter matched
 	row         hostapi.OverlayItem // an overlay row's fields (overlayState)
+}
+
+// markSeg is a hostapi.Marks state mark and its gap, as the chat draws it;
+// none for "".
+func markSeg(kind string) hostapi.Segment {
+	m, ok := hostapi.Marks[kind]
+	if !ok {
+		return hostapi.Segment{}
+	}
+	return hostapi.Segment{Text: m.Glyph + " ", HL: m.HL, NoCopy: true, Effect: map[bool]string{true: "spin"}[kind == "spin"]}
 }
 
 // tagSeg is a key column tag: a word that names, never a binary state.
@@ -481,7 +492,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 		labelW, keyW, tailDesc := 0, 0, 0
 		for _, it := range all {
 			if it.desc != "" { // a row with no description needs no column
-				labelW = max(labelW, ansi.StringWidth(it.label))
+				labelW = max(labelW, ansi.StringWidth(it.mark.Text+it.label))
 			}
 			if it.desc != "" && it.row.Tail {
 				tailDesc = max(tailDesc, ansi.StringWidth(it.desc))
@@ -510,7 +521,11 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			start := len(rows)
 			starts[start] = true
 			if it.section != section && it.section != "" {
-				rows = append(rows, []hostapi.Segment{{Text: it.section, HL: hostapi.ChromeTitle}})
+				head := []hostapi.Segment{{Text: it.section, HL: hostapi.ChromeTitle}}
+				if it.head.Text != "" {
+					head = append([]hostapi.Segment{it.head}, head...)
+				}
+				rows = append(rows, head)
 			}
 			top := len(rows)
 			section = it.section
@@ -539,6 +554,9 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 					row = []hostapi.Segment{{Text: it.label}}
 				}
 				row = styled(matchSegs(row, it.match, i == sel))
+				if it.mark.Text != "" {
+					row = append([]hostapi.Segment{it.mark}, row...)
+				}
 				descW := -1 // no cut
 				kw := map[bool]int{true: 2 + ansi.StringWidth(it.key.Text)}[it.key.Text != ""]
 				cut := ellipsizeSegs

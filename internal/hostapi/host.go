@@ -124,6 +124,9 @@ type Overlay struct {
 	// Wide boxes take the widest a screen shows whatever opened them, so a
 	// screen reached from a list or a command draws at one width
 	Wide bool
+	// Phases heads each section with its rows' combined mark: failed,
+	// running, waiting, stopped or done
+	Phases bool
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text.
@@ -225,6 +228,22 @@ const (
 )
 
 var callStatuses = []CallStatus{CallWait, CallRun, CallOK, CallErr, CallStopped, CallBG, CallCancelled}
+
+// Mark is a row's state mark: a glyph one cell wide and its theme group.
+type Mark struct{ Glyph, HL string }
+
+// Marks are the state marks every row shares, the chat's calls and the
+// lists' runs alike (zemi.ui.marks), one glyph and one meaning each:
+// running, finished, failed, stopped by the user, going on in the
+// background, waiting, reasoning and a notice. "spin" is drawn with the
+// "spin" effect, which steps its glyph through Spinner.
+var Marks = map[string]Mark{
+	"spin": {Spinner[0], "Dim"}, "ok": {"✓", "Ok"}, "err": {"✗", "Danger"}, "stop": {"■", "Dim"},
+	"bg": {"⧗", "Dim"}, "wait": {"·", "Dim"}, "thought": {"✻", "ThinkingMark"}, "note": {"◦", "Dim"},
+}
+
+// Spinner is the running mark's frames, one per frame tick.
+var Spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // OverlayKey is one character that runs Fn(selected item) on a list, or on
 // a Go screen's list the command Run. A Danger key acts on its second press,
@@ -1192,7 +1211,7 @@ type Segment struct {
 	// statusline pill sets it with no Widget
 	Click  string
 	Widget string
-	Effect string // "shimmer": the UI animates the text, blending hl toward Normal
+	Effect string // "shimmer": the UI animates the text, blending hl toward Normal; "spin": its first glyph steps through Spinner
 	Over   string // Go only: a hover group drawn over HL
 	// NoCopy marks decoration (gutters, bullets, borders): a selection
 	// neither lights nor copies it

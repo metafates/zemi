@@ -276,7 +276,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "look · from Other work") || !strings.Contains(rows, "agents view agent-9") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
-	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "· from Other work run:workflows view 0000000f section:Workflows") {
+	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "· from Other work id:0000000f mark:wait run:workflows view 0000000f section:Workflows") {
 		t.Fatalf("another session's workflow is not one row:\n%s", rows)
 	}
 	// enter on a run opens its transcript, and the footer says so; the

@@ -341,6 +341,15 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
+	marks := L.CreateTable(0, len(Marks))
+	for k, m := range Marks {
+		mt := L.CreateTable(0, 2)
+		mt.RawSetString("glyph", glua.LString(m.Glyph))
+		mt.RawSetString("hl", glua.LString(m.HL))
+		marks.RawSetString(k, mt)
+	}
+	tb.RawSetString("marks", marks)
+
 	tb.RawSetString("markdown", L.NewFunction(func(L *glua.LState) int {
 		L.Push(linesTable(L, h.Markdown(L.CheckString(1), L.CheckInt(2))))
 		return 1
@@ -580,6 +589,7 @@ func hlSpec(L *glua.LState, where string, m map[string]any, palette map[string]s
 // them, else a value whose text is the row. Callbacks get the raw item.
 type OverlayItem struct {
 	Text, Desc, Key, Section, Detail, Verb, Hotkey, Fill, Copy, Run, ID, Preview string
+	Mark                                                                         string  // a Marks key, drawn ahead of the text
 	Switch, On, Locked                                                           bool    // Switch: on is set, so the row draws the switch
 	Danger                                                                       bool    // cannot be undone: drawn in Danger, and its first enter or key only arms it
 	Tail                                                                         bool    // a text too wide is cut from the left: a path's name is at its end
@@ -631,7 +641,7 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	for _, f := range []struct {
 		key string
 		dst *string
-	}{{"text", &p.Text}, {"desc", &p.Desc}, {"key", &p.Key}, {"section", &p.Section}, {"detail", &p.Detail}, {"verb", &p.Verb}, {"hotkey", &p.Hotkey}, {"fill", &p.Fill}, {"copy", &p.Copy}, {"run", &p.Run}, {"id", &p.ID}, {"preview", &p.Preview}} {
+	}{{"text", &p.Text}, {"desc", &p.Desc}, {"key", &p.Key}, {"section", &p.Section}, {"detail", &p.Detail}, {"verb", &p.Verb}, {"hotkey", &p.Hotkey}, {"fill", &p.Fill}, {"copy", &p.Copy}, {"run", &p.Run}, {"id", &p.ID}, {"preview", &p.Preview}, {"mark", &p.Mark}} {
 		switch v := m[f.key].(type) {
 		case nil:
 		case string:
@@ -644,6 +654,10 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	}
 	if _, ok := m["text"].(string); !ok {
 		p.Text = fmt.Sprint(item)
+	}
+	if _, ok := Marks[p.Mark]; !ok && p.Mark != "" {
+		bad("mark", "a zemi.ui.marks key", m["mark"])
+		p.Mark = ""
 	}
 	for _, f := range []struct {
 		key string
