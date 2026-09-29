@@ -373,10 +373,21 @@ func TestRedirectGates(t *testing.T) {
 	}
 }
 
+// TestUnbalancedFails: text that does not parse fails closed, and the reason
+// says where, counted from the text that fails.
 func TestUnbalancedFails(t *testing.T) {
-	for _, cmd := range []string{`echo "unterminated`, `echo $(unclosed`, `echo (x`, `echo "$(ls"`, "echo \"`ls\""} {
-		if o := store(t, Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectBash, Normalize(cmd), ""); o.Decision != Deny {
-			t.Fatalf("%q must fail closed, got %v", cmd, o.Decision)
+	for _, c := range []struct{ cmd, reason string }{
+		{`echo "unterminated`, "the command does not parse: line 1 col 6: "},
+		{`echo $(unclosed`, "the command does not parse: line 1 col 6: "},
+		{`echo (x`, "the command does not parse: line 1 col 1: "},
+		{`echo "$(ls"`, "the command does not parse: line 1 col 11: "},
+		{"echo \"`ls\"", "the command does not parse: line 1 col 10: "},
+		{"echo ok; bash -c 'if true; then ls'", "in the bash -c text: the command does not parse: line 1 col 1: "},
+		{"git status\nsh <<'EOF'\nls\necho 'it\nEOF", "in the heredoc body from line 3: the command does not parse: line 2 col 6: "},
+		{`echo x > ""`, "a redirect has no target"},
+	} {
+		if o := store(t, Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectBash, Normalize(c.cmd), ""); o.Decision != Deny || !strings.HasPrefix(o.Reason, c.reason) {
+			t.Errorf("%q: %v %q, want deny %q", c.cmd, o.Decision, o.Reason, c.reason)
 		}
 	}
 }

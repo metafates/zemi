@@ -324,9 +324,9 @@ func comments(f *syntax.File, src string) (cs []*syntax.Comment) {
 // parseFailure says where and why the shell cannot parse the command.
 func parseFailure(err error) string {
 	if e, ok := errors.AsType[syntax.ParseError](err); ok {
-		return fmt.Sprintf("line %d col %d: %s", e.Pos.Line(), e.Pos.Col(), e.Text)
+		return fmt.Sprintf("the command does not parse: line %d col %d: %s", e.Pos.Line(), e.Pos.Col(), e.Text)
 	}
-	return err.Error()
+	return "the command does not parse: " + err.Error()
 }
 
 // walker builds one reading's Normalized from its statements.
@@ -558,6 +558,9 @@ func (w *walker) fold(args []string, pos syntax.Pos, at int) []string {
 	if isShell(args[0]) {
 		if body, ok := shellBody(args[1:]); ok {
 			inner := w.inner(body)
+			if inner.Fail != "" {
+				inner.Fail = fmt.Sprintf("in the %s -c text: %s", ProgramName(args[0]), inner.Fail)
+			}
 			for i := range inner.rows {
 				inner.rows[i].loop = inner.rows[i].loop || w.loop > 0
 				inner.rows[i].pos = pos.Offset()
@@ -921,6 +924,7 @@ func (w *walker) finish(stmts []*syntax.Stmt) Normalized {
 			if body.Fail == "" {
 				break
 			}
+			body.Fail = fmt.Sprintf("in the heredoc body from line %d: %s", strings.Count(w.src[:d.pos], "\n")+1, body.Fail)
 			// a reader may still run it line by line (make runs each recipe
 			// line in a shell of its own), and sh expands an unquoted one first
 			more := []Normalized{d.subs}

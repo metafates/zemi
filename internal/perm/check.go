@@ -14,7 +14,7 @@ import (
 // (Assign).
 func (s *Store) CheckCommandFor(subject string, n Normalized, principal string) Outcome {
 	if n.Fail != "" {
-		return Outcome{Decision: Deny, Reason: "the command does not parse: " + n.Fail}
+		return Outcome{Decision: Deny, Reason: n.Fail}
 	}
 	if n.ForceAsk != "" {
 		return Outcome{Decision: Ask, Reason: n.ForceAsk}

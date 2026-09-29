@@ -28,7 +28,7 @@ func FuzzNormalize(f *testing.F) {
 	f.Fuzz(func(t *testing.T, cmd string) {
 		n := Normalize(cmd)
 		// the recover that fails such a call closed is a net, not a way out
-		if strings.HasPrefix(n.Fail, panicked) {
+		if strings.Contains(n.Fail, panicked) {
 			t.Fatalf("%q: %s", cmd, n.Fail)
 		}
 		n.Programs("") // the permission prompt lists them for every command asked about

@@ -1983,8 +1983,10 @@ provenance string.
   (`{fd}>x`, and `function f {`, which dash runs as a command before
   reading on) asks like the doubtful text below. A bash parse error fails
   the call with the parser's line, column and message, which a model can
-  act on. Text a shell reads otherwise than both grammars asks, and
-  `Destructive` and the program list (§8) cannot vouch for it: a carriage
+  act on; one in a `sh -c` text or a heredoc body says which
+  (`in the bash -c text: ...`, `in the heredoc body from line 3: ...`),
+  its position counted from there. Text a shell reads otherwise than both
+  grammars asks, and `Destructive` and the program list (§8) cannot vouch for it: a carriage
   return (the parser reads it as a blank, sh as a character), a `$'..'`
   escape zemi does not decode (`\x`, octal, `\u`, `\c`, which bash
   versions decode differently and which can spell any name), a `$( )`
