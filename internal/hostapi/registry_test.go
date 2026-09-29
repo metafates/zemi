@@ -231,13 +231,14 @@ func TestEventRegistry(t *testing.T) {
 }
 
 // TestPluginOwnership: one plugin neither replaces nor removes another's
-// registration, and replaces and removes its own from any of its files.
+// registration, and replaces and removes its own from any of its files; a
+// project neither replaces nor removes the user's.
 func TestPluginOwnership(t *testing.T) {
 	owner := func(p string) string { name, _, _ := strings.Cut(p, "/"); return name }
-	const pl = lua.OriginPlugin
+	const pl, user, proj = lua.OriginPlugin, lua.OriginUser, lua.OriginProject
 	type ops struct {
-		add func(path string) error         // nil: ids are fresh, so only removal can clash
-		del func(path string) (bool, error) // nil: no removal
+		add func(o lua.Origin, path string) error         // nil: ids are fresh, so only removal can clash
+		del func(o lua.Origin, path string) (bool, error) // nil: no removal
 	}
 	for _, c := range []struct {
 		name string
@@ -247,78 +248,92 @@ func TestPluginOwnership(t *testing.T) {
 			r := NewKeymapRegistry()
 			r.owner = owner
 			return ops{
-				func(p string) error { return r.Set(&KeyBinding{Key: "x", Origin: pl, Path: p}) },
-				func(p string) (bool, error) { return r.Del(pl, p, "", "x", false) },
+				func(o lua.Origin, p string) error { return r.Set(&KeyBinding{Key: "x", Origin: o, Path: p}) },
+				func(o lua.Origin, p string) (bool, error) { return r.Del(o, p, "", "x", false) },
 			}
 		}},
 		{"command", func() ops {
 			r := NewCommandRegistry()
 			r.owner = owner
 			return ops{
-				func(p string) error {
-					_, err := r.Add(&Command{Name: "x", Fn: noopFn, Origin: pl, Path: p})
+				func(o lua.Origin, p string) error {
+					_, err := r.Add(&Command{Name: "x", Fn: noopFn, Origin: o, Path: p})
 					return err
 				},
-				func(p string) (bool, error) { return r.Remove("x", pl, p) },
+				func(o lua.Origin, p string) (bool, error) { return r.Remove("x", o, p) },
 			}
 		}},
 		{"widget", func() ops {
 			r := NewWidgetRegistry()
 			r.owner = owner
 			return ops{
-				func(p string) error {
-					_, err := r.Add(&Widget{ID: "x", Region: "r", Render: noopFn, Origin: pl, Path: p})
+				func(o lua.Origin, p string) error {
+					_, err := r.Add(&Widget{ID: "x", Region: "r", Render: noopFn, Origin: o, Path: p})
 					return err
 				},
-				func(p string) (bool, error) { return r.Remove("x", pl, p) },
+				func(o lua.Origin, p string) (bool, error) { return r.Remove("x", o, p) },
 			}
 		}},
 		{"event handler", func() ops {
 			r := NewEventRegistry()
 			r.owner = owner
 			return ops{
-				func(p string) error {
-					_, err := r.Add(&EventHandler{ID: "x", Event: "permission.request", Fn: noopFn, Origin: pl, Path: p})
+				func(o lua.Origin, p string) error {
+					_, err := r.Add(&EventHandler{ID: "x", Event: "permission.request", Fn: noopFn, Origin: o, Path: p})
 					return err
 				},
-				func(p string) (bool, error) { return r.Remove("x", pl, p) },
+				func(o lua.Origin, p string) (bool, error) { return r.Remove("x", o, p) },
 			}
 		}},
 		{"theme", func() ops {
 			r := NewThemeRegistry()
 			r.owner = owner
-			return ops{add: func(p string) error { _, err := r.Add(&Theme{Name: "x", Origin: pl, Path: p}); return err }}
+			return ops{add: func(o lua.Origin, p string) error { _, err := r.Add(&Theme{Name: "x", Origin: o, Path: p}); return err }}
 		}},
 		{"tool", func() ops {
 			r := newToolReg()
 			r.owner = owner
-			return ops{add: func(p string) error { return r.add(&luaTool{Name: "x", Origin: pl, Path: p}) }}
+			return ops{add: func(o lua.Origin, p string) error { return r.add(&luaTool{Name: "x", Origin: o, Path: p}) }}
 		}},
 		{"config watch", func() ops {
 			r := newWatchReg()
 			r.owner = owner
 			r.add(1, watchRec{origin: pl, src: "a/init.lua"})
-			return ops{del: func(p string) (bool, error) { return r.del(1, pl, p) }}
+			return ops{del: func(o lua.Origin, p string) (bool, error) { return r.del(1, o, p) }}
 		}},
 	} {
 		o := c.reg()
 		if o.add != nil {
-			if err := o.add("a/init.lua"); err != nil {
+			if err := o.add(pl, "a/init.lua"); err != nil {
 				t.Fatalf("%s: plugin a adds: %v", c.name, err)
 			}
-			if err := o.add("b/init.lua"); err == nil || !strings.Contains(err.Error(), "registered by plugin a, not b") {
+			if err := o.add(pl, "b/init.lua"); err == nil || !strings.Contains(err.Error(), "registered by plugin a, not b") {
 				t.Fatalf("%s: plugin b replaces a's: %v", c.name, err)
 			}
-			if err := o.add("a/lua/a/x.lua"); err != nil {
+			if err := o.add(pl, "a/lua/a/x.lua"); err != nil {
 				t.Fatalf("%s: plugin a replaces its own: %v", c.name, err)
 			}
 		}
 		if o.del != nil {
-			if ok, err := o.del("b/init.lua"); ok || err == nil {
+			if ok, err := o.del(pl, "b/init.lua"); ok || err == nil {
 				t.Fatalf("%s: plugin b removes a's: %v %v", c.name, ok, err)
 			}
-			if ok, err := o.del("a/init.lua"); !ok || err != nil {
+			if ok, err := o.del(pl, "a/init.lua"); !ok || err != nil {
 				t.Fatalf("%s: plugin a removes its own: %v %v", c.name, ok, err)
+			}
+		}
+		if o.add == nil {
+			continue
+		}
+		if err := o.add(user, "init.lua"); err != nil {
+			t.Fatalf("%s: user adds over a plugin: %v", c.name, err)
+		}
+		if err := o.add(proj, ".agents/init.lua"); err == nil || !strings.Contains(err.Error(), "registered by user config") {
+			t.Fatalf("%s: project replaces the user's: %v", c.name, err)
+		}
+		if o.del != nil {
+			if ok, err := o.del(proj, ".agents/init.lua"); ok || err == nil {
+				t.Fatalf("%s: project removes the user's: %v %v", c.name, ok, err)
 			}
 		}
 	}
