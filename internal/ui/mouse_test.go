@@ -570,3 +570,57 @@ func TestWheelUnderPointer(t *testing.T) {
 		})
 	}
 }
+
+// TestSelectionStaysInItsPane: a drag selects inside the box or pane it
+// started in, a drag outside a modal selects nothing, and no drag closes one.
+func TestSelectionStaysInItsPane(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		overlay bool
+		// the drag runs from the cell of from, dx columns on, to the cell of
+		// to, the screen's last cell for ""
+		from, to string
+		dx       int
+		want     string
+	}{
+		{"a view over the chat copies its text only", true, "first body", "second body", 0, "first body line\ns"},
+		{"a drag past the box's bottom selects to its last row", true, "first body", "", 0, "first body line\nsecond body line\n\ny copy · esc close"},
+		{"a press outside a modal selects nothing", true, "chat line 5", "", 0, ""},
+		{"a drag out of the box from its last cell keeps it open", true, "close", "", 4, "e"},
+		{"a drag from the chat stops at the composer", false, "chat line 11", "typed draft", 0, "chat line 11 behind the box\n\nchat line 12 behind the box"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, host := bootAgentApp(t, 100, 24)
+			for i := range 12 {
+				host.AppendMessage("user", fmt.Sprintf("chat line %d behind the box", i+1))
+			}
+			app.composer.text = "typed draft"
+			app.renderSync(t)
+			if c.overlay {
+				app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Body: "first body line\nsecond body line"})
+			}
+			x0, y0 := findCell(t, app, c.from)
+			x1, y1 := app.width-1, app.height-1
+			if c.to != "" {
+				x1, y1 = findCell(t, app, c.to)
+			}
+			dragTo(app, x0+c.dx, y0, x1, y1)
+			if got := app.selectionText(); got != c.want {
+				t.Errorf("selection = %q, want %q", got, c.want)
+			}
+			if open := len(app.overlays) > 0; open != c.overlay {
+				t.Errorf("overlay open = %v, a drag closes nothing", open)
+			}
+			app.Frame()
+			for y, row := range app.lastRows {
+				x := 0
+				for _, s := range row {
+					if s.HL == "Host:Selection" && !(uv.Position{X: x, Y: y}).In(app.mouse.clip) {
+						t.Fatalf("cell %d,%d outside %v is lit", x, y, app.mouse.clip)
+					}
+					x += ansi.StringWidth(s.Text)
+				}
+			}
+		})
+	}
+}

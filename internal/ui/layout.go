@@ -125,6 +125,9 @@ type screenLayout struct {
 	// focusable is the focusable node and float ids in focus order; a float
 	// that draws nothing gets no rect
 	focusable []string
+	// panes are the cells a selection may not leave: the leaves, then the
+	// floats, then the composer again, since paintFloats keeps it on top
+	panes []uv.Rectangle
 }
 
 // placedFloat is a Lua float's region with the cells it renders at and
@@ -164,6 +167,9 @@ func (a *App) layout(w, h int) screenLayout {
 				s.focusable = append(s.focusable, n.ID)
 			}
 		case hostapi.LayoutBox, hostapi.LayoutSpacer:
+		}
+		if len(l.kids) == 0 && n.Kind != hostapi.LayoutSpacer {
+			s.panes = append(s.panes, l.rect)
 		}
 		for _, k := range l.kids {
 			walk(k, inStage)
@@ -809,9 +815,13 @@ func (a *App) paintFloats(rows [][]hostapi.Segment, s *screenLayout, w, h int) {
 			box[i] = padSegs(line, fw)
 		}
 		placeBox(rows, box, x, y, w)
+		s.panes = append(s.panes, uv.Rect(x, y, fw, fh))
 		if f.ID != "" {
 			s.rects[f.ID] = uv.Rect(x, y, fw, fh)
 		}
+	}
+	if c, ok := s.rects["composer"]; ok {
+		s.panes = append(s.panes, c)
 	}
 	for _, k := range keep {
 		placeBox(rows, [][]hostapi.Segment{k.segs}, k.x, k.y, w)

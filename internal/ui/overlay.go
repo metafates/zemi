@@ -756,8 +756,8 @@ fields:
 }
 
 // spliceBox composites box rows centered over the chat area; what the box
-// does not cover stays visible. It reports the cells the box took, which a
-// click outside closes it on.
+// does not cover stays visible. It reports the box's own cells, which a
+// click outside closes it on and a drag inside selects in.
 func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hostapi.Segment, uv.Rectangle) {
 	if len(rows) == 0 || len(box) == 0 {
 		return rows, uv.Rectangle{}
@@ -772,7 +772,7 @@ func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hos
 	for i := range bh {
 		x0 := area.Min.X + max((area.Dx()-hostapi.SegsWidth(box[i]))/2, 1)
 		rows = placeBox(rows, [][]hostapi.Segment{margined(box[i])}, x0-1, y0+i, w)
-		lo, hi = min(lo, x0-1), max(hi, x0+hostapi.SegsWidth(box[i])+1)
+		lo, hi = min(lo, x0), max(hi, x0+hostapi.SegsWidth(box[i]))
 	}
 	return rows, uv.Rect(lo, y0, max(hi-lo, 0), bh)
 }

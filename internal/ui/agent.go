@@ -577,7 +577,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			pad := hostapi.Segment{Text: strings.Repeat(" ", widest-hostapi.SegsWidth(r)-ansi.StringWidth(k.Text)), Hit: k.Hit}
 			rows[y] = append(r, pad, k)
 		} else {
-			rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-hostapi.SegsWidth(r))})
+			rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-hostapi.SegsWidth(r)), NoCopy: true})
 		}
 		for k := range rows[y] {
 			rows[y][k].Band = y >= bandTop && y < selEnd

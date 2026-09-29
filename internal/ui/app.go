@@ -91,6 +91,7 @@ type App struct {
 	hoverKey       string              // what the pointer is over, to redraw only on change
 	pointer        string              // the OSC 22 shape last set
 	lastRows       [][]hostapi.Segment // the last composed frame, for clicks and copy
+	panes          []uv.Rectangle      // the last frame's screenLayout.panes
 	stage          uv.Rectangle        // where the last frame's stage was
 	popRect        uv.Rectangle        // the cells a completion popup took on the last frame
 	chromeRect     uv.Rectangle        // the cells the topmost modal box took
@@ -986,7 +987,7 @@ func (a *App) compose(w, h int) string {
 		toasts()
 	}
 
-	a.lastRows, a.stage, a.popRect = rows, stage, pop
+	a.lastRows, a.stage, a.popRect, a.panes = rows, stage, pop, lay.panes
 	a.highlightSelection(rows, w)
 	a.highlightHover(rows)
 

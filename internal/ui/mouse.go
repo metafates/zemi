@@ -36,21 +36,26 @@ type mousePress struct {
 type mouseSel struct {
 	pressed, dragged bool
 	x0, y0, x1, y1   int
+	// the text cells of the box or pane the press landed in: a selection
+	// never takes another pane's text
+	clip uv.Rectangle
 }
 
-// span is the selected cell range [from, to) of screen row y.
+// span is the selected cell range [from, to) of screen row y. Both ends are
+// held inside clip, so a drag past its edge selects to the edge.
 func (s mouseSel) span(y, w int) (from, to int, ok bool) {
-	if !s.dragged {
+	if !s.dragged || s.clip.Empty() {
 		return 0, 0, false
 	}
-	ay, ax, by, bx := s.y0, s.x0, s.y1, s.x1
+	ax, ay := clamp(s.clip, s.x0, s.y0)
+	bx, by := clamp(s.clip, s.x1, s.y1)
 	if by < ay || (by == ay && bx < ax) {
 		ay, ax, by, bx = by, bx, ay, ax
 	}
 	if y < ay || y > by {
 		return 0, 0, false
 	}
-	from, to = 0, w
+	from, to = s.clip.Min.X, min(s.clip.Max.X, w)
 	if y == ay {
 		from = ax
 	}
@@ -58,6 +63,48 @@ func (s mouseSel) span(y, w int) (from, to int, ok bool) {
 		to = bx + 1
 	}
 	return from, to, to > from
+}
+
+// clamp holds (x, y) inside r: a point below it goes to its last cell, one
+// above to its first, else x is held in its columns.
+func clamp(r uv.Rectangle, x, y int) (int, int) {
+	switch {
+	case y >= r.Max.Y:
+		return r.Max.X - 1, r.Max.Y - 1
+	case y < r.Min.Y:
+		return r.Min.X, r.Min.Y
+	}
+	return max(r.Min.X, min(x, r.Max.X-1)), y
+}
+
+// selClip is where a drag pressed at (x, y) may select: the top modal's
+// text, a composer popup's, else the layout pane under it; nothing outside
+// a modal, whose backdrop is dimmed, or on a separator or spacer.
+// NOTE: a toast is not a pane, so a drag under one copies its cells too;
+// recording toast rects in compose is the fix if that matters.
+func (a *App) selClip(x, y int) uv.Rectangle {
+	p := uv.Position{X: x, Y: y}
+	switch {
+	case a.topChrome() != noModal:
+		if p.In(a.chromeRect) {
+			return boxText(a.chromeRect)
+		}
+		return uv.Rectangle{}
+	case p.In(a.popRect):
+		return boxText(a.popRect)
+	}
+	for _, r := range slices.Backward(a.panes) {
+		if p.In(r) {
+			return r
+		}
+	}
+	return uv.Rectangle{}
+}
+
+// boxText is the text cells of a promptBox at r: inside its border and the
+// pad beside it.
+func boxText(r uv.Rectangle) uv.Rectangle {
+	return uv.Rect(r.Min.X+2, r.Min.Y+1, max(r.Dx()-4, 0), max(r.Dy()-2, 0))
 }
 
 func (a *App) mouseEnabled() bool { return a.host.Settings.Bool("ui.mouse") }
@@ -84,7 +131,7 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 			a.dragBar(m.Y)
 			return nil
 		}
-		a.mouse = mouseSel{pressed: true, x0: m.X, y0: m.Y, x1: m.X, y1: m.Y}
+		a.mouse = mouseSel{pressed: true, x0: m.X, y0: m.Y, x1: m.X, y1: m.Y, clip: a.selClip(m.X, m.Y)}
 		a.bump()
 	case tea.MouseMotionMsg:
 		if a.barDrag.h > 0 {

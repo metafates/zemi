@@ -1022,7 +1022,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   a target, and lists scroll at the edge instead of recentering, so a click does not move the
   row under the pointer. `Segment.NoHover` marks a row that acts without lighting up, which is
   how chat body rows stay quiet. Selection and clicks are zemi's own (internal/ui/mouse.go): a
-  drag copies the last frame's segments, leaving out `Segment.NoCopy` cells (decoration) and
+  drag copies the last frame's segments inside the pane or box it started in (`App.selClip`:
+  the top modal's text cells, a composer popup's, else a layout leaf or float), leaving out `Segment.NoCopy` cells (decoration) and
   rejoining a row that ends in a `Segment.Soft` one with the next. `hostapi.WrapSegs` sets
   both, so a wrapped prompt, reply or code block copies as the text that was written, which is
   also why `Host.Markdown` renders glamour unwrapped (tables aside) and wraps it itself. A

@@ -1698,7 +1698,10 @@ provenance string.
   (`tool:<idx>`, expands that row). The boot
   failed, stuck and errors pills stay Go-drawn, since they report a broken
   Lua layer that could not draw its own alarm; a click on boot failed or
-  errors opens `/errors`, on stuck reloads.
+  errors opens `/errors`, on stuck reloads. A drag selects inside the pane
+  or box it starts in: a modal's text, a popup's, a layout leaf or a
+  float; pulling past an edge selects to it, and a drag outside a modal
+  selects nothing.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for bash, command
   and env preview for job asks), and resume
