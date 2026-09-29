@@ -244,7 +244,15 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 			defer h.luaApproved.Delete(rel)
 		}
 	}
+	// the script sees what is on disk, and the result says whether it loaded
+	note := h.ReloadIfChanged()
 	out, err := h.runModelLua(ctx, src, rel)
+	if err == nil && out == "" {
+		out = "(no output)"
+	}
+	if note != "" {
+		out = note + "\n" + out
+	}
 	if err != nil {
 		msg := err.Error()
 		if in.Path != "" {
@@ -253,9 +261,6 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 			msg = strings.ReplaceAll(msg, rel+":", in.Path+":")
 		}
 		return fantasy.NewTextErrorResponse(h.truncOutput(t.pipe.Pad, "lua", strings.TrimSpace(out+"\nerror: "+msg))), nil
-	}
-	if out == "" {
-		out = "(no output)"
 	}
 	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "lua", out)), nil
 }

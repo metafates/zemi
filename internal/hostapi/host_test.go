@@ -108,7 +108,6 @@ func TestNamespaceVersion(t *testing.T) {
 		assert(type(zemi.health.add) == "function" and type(zemi.health.list) == "function", "zemi.health missing")
 		assert(type(zemi.errors.list) == "function", "zemi.errors.list missing")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
-		assert(type(zemi.config.reload) == "function", "zemi.config.reload missing")
 		assert(zemi.provider.kind.OPENAI_COMPAT == "openai_compat" and zemi.provider.kind.ANTHROPIC == "anthropic" and zemi.provider.kind.OPENAI == "openai" and zemi.provider.kind.GOOGLE == "google" and zemi.provider.kind.OPENROUTER == "openrouter" and zemi.provider.kind.VERCEL == "vercel", "zemi.provider.kind missing")
 		assert(zemi.permission.decision.ALLOW == "allow" and zemi.memory.scope.PROJECT == "project" and zemi.model.role.TITLES == "titles" and zemi.notify.level.WARN == "warn" and zemi.model.effort.HIGH == "high", "an enum table is missing")
 		for _, fn in ipairs({ "add", "del", "set", "get", "list" }) do

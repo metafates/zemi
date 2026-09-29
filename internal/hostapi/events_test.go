@@ -97,7 +97,7 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 		`zemi.composer.set("!touch x")`, `zemi.composer.insert("x")`, `zemi.composer.submit()`,
 		`zemi.session.new()`, `zemi.session.resume("x")`, `zemi.session.rewind("x")`,
 		`zemi.memory.add("x")`,
-		`zemi.model.set("p/m")`, `zemi.config.reload()`, `assert(zemi.command.run("usercmd"))`,
+		`zemi.model.set("p/m")`, `assert(zemi.command.run("usercmd"))`,
 		`zemi.ui.focus.set()`, `zemi.ui.focus.next()`, `zemi.ui.focus.prev()`,
 		`zemi.ui.hl.set("Normal", { fg = "#ff0000" })`, `zemi.ui.theme.set("whorl")`,
 		`zemi.keymap.set("<leader>y", "zemi.ui.focus.set side")`,

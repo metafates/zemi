@@ -451,7 +451,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		}},
 		{Name: "reload", Hidden: true, Desc: "reload config now", GoFn: func(h *hostapi.Host, _ string) error {
 			// the composer matches /reload before the registry; this
-			// serves the palette, keymaps and zemi.config.reload
+			// serves the palette, keymaps and zemi.command.run
 			return h.ReloadConfig()
 		}},
 		{Name: "errors", NArgs: hostapi.NArgsAny, Desc: "show errors zemi recorded", GoFn: func(h *hostapi.Host, args string) error {

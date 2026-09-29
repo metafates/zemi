@@ -816,7 +816,9 @@ lua-language-server is installed.
   `TestLuaToolDefaultDeny` checks every member. Not a new
   origin: the gate is a flag on the chunk name. A `path` script is a `.lua` file read through
   the read tool's `fs.read` check. Runs on the interpreter as a task (10s ceiling per slice),
-  main agent only.
+  main agent only. Once approved, a changed config reloads before the script
+  (`ReloadIfChanged`), whose note leads the result: the model never schedules a reload,
+  since no caller can outlive the generation its reload retires.
 - **Model memory writes**: the one `memory` tool goes through `memoryTool` -> `gateMemory`: a
   near-duplicate (`learn.Similar` over both scopes and the pending proposals) is refused with
   its id and text to merge through `replaces` (a pending one only as queued); a learned

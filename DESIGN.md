@@ -396,7 +396,7 @@ its capability denylist is mechanical: no `tool.pre` rewrite handlers, no
 `zemi.provider.add`, no `zemi.agent.profile.add` and no `agent.profile`
 config write (prompt authorship is a stronger lever than any
 `tool.pre` rewrite), no `agent.send`, no `agent.assemble` section
-injection, no `zemi.memory.add`, no `zemi.model.set` or `zemi.config.reload`,
+injection, no `zemi.memory.add`, no `zemi.model.set`,
 no `zemi.command.run` of a more trusted origin's command (its body runs
 under that origin), no keymap that is a prefix or an extension of a more trusted
 binding's key, no `app.quit` denial (ignored), no registration of a builtin tool name
