@@ -37,12 +37,9 @@ type Normalized struct {
 	// cmd is the text the segments came from, variables inlined, for what
 	// only the text shows (ReadCommand's expands)
 	cmd string
-	// hidden marks a program no segment names, so Programs lists none: one a
-	// substitution's output or a gated assignment picks, words after a
-	// substitution inside one word, arithmetic, an array, a heredoc body a
-	// program other than a shell or a dataReader reads (a dataReader's too
-	// when another language runs in the command), or quoting the scanner
-	// cannot place.
+	// hidden marks a program no segment names (a substitution picks it, a
+	// heredoc body another language reads, quoting the scanner cannot place),
+	// so Programs lists none.
 	hidden bool
 	// shown are the rows Programs lists when a heredoc makes them differ
 	// from Args: a dataReader's body runs only its substitutions while

@@ -607,15 +607,11 @@ func lockFile(path string) func() {
 	return mu.Unlock
 }
 
-// callOrder keeps the write tools' calls on one file in the order the
-// model made them: fantasy runs a parallel step's calls as goroutines, and
-// the second of two edits to one file, run first, finds text the first was
-// to write. Ids arrive from CallStart, which fantasy fires for every call of
-// a step before it dispatches any; Run waits until its id leads its file.
-// The maps are shared by every runner, so nothing here clears more than the
-// ids a caller names, and ids are keyed by the turn's CallScope: a provider
-// that numbers calls per conversation (functions.edit:0) repeats them
-// across agents.
+// callOrder keeps the write tools' calls on one file in the order the model
+// made them, though fantasy runs a step's calls in parallel: CallStart records
+// every call of a step before any runs, and Run waits until its id leads its
+// file. Shared by every runner, it clears only the ids a caller names, keyed by
+// the turn's CallScope: a provider may number calls per conversation.
 var callOrder = struct {
 	mu    sync.Mutex
 	cond  *sync.Cond
