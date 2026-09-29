@@ -326,7 +326,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		if n.Fail != "" || n.ForceAsk != "" || n.Assign != "" || n.Opaque {
 			return "", nil
 		}
-		var names, syntax []string
+		var names, syntax, deleters []string
 		var rules []perm.Rule
 		seen := map[string]bool{}
 		unnamed := 0 // segments allowed exactly as written, named only by count
@@ -347,8 +347,9 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 				rules = append(rules, r)
 			}
 			// shell syntax (for, done, true) is named only when nothing else
-			// is; one pattern is the exact form of a deleting command, named
-			// only by count; two (p, "p *") is a command allowed as a whole
+			// is; one pattern is an exact form, named first when it deletes, so
+			// the answer never hides it in a count; two (p, "p *") is a command
+			// allowed as a whole
 			g := perm.ProgramWords(strings.Fields(patterns[0]))
 			switch {
 			case len(g) == 0:
@@ -358,6 +359,9 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 					seen[g[0]] = true
 					syntax = append(syntax, g[0])
 				}
+				continue
+			case len(patterns) == 1 && deletes(strings.Join(g, " ")):
+				deleters = append(deleters, perm.ProgramName(g[0])+" (exact)")
 				continue
 			case len(patterns) == 1:
 				unnamed++
@@ -390,6 +394,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		if len(names) == 0 {
 			return "allow this exact command" + effect, rules
 		}
+		names = append(deleters, names...)
 		shown := names
 		if len(shown) > 2 {
 			shown = names[:2]
@@ -450,6 +455,13 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 	return label, []perm.Rule{rule(req.Subject, req.Arg)}
 }
 
+// deletes reports a segment that can delete or overwrite, whose always rule
+// stays exact.
+func deletes(seg string) bool {
+	f := strings.Fields(seg)
+	return len(f) > 0 && destructivePrograms[perm.ProgramName(f[0])] || perm.Normalize(seg).Destructive("") != ""
+}
+
 // bashAlwaysPatterns turns one command segment into the allow-lookup patterns
 // the "always" answer (and a project permissions file) uses: it allows the
 // command as a whole, its program plus the subcommand when it has one,
@@ -503,7 +515,7 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	// command has no write path to re-ask on
 	// [[ and a builtin that sets variables by name evaluate a quoted
 	// subscript, where $(...) runs: "[[ *" would run any of those
-	if destructivePrograms[prog] || f[0] == "[[" || perm.ShellState[f[0]] || perm.Normalize(seg).Destructive("") != "" {
+	if f[0] == "[[" || perm.ShellState[f[0]] || deletes(seg) {
 		return []string{seg}, true
 	}
 	p := commandPrefix(seg)
