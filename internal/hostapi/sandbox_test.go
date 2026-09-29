@@ -642,8 +642,8 @@ func TestSandboxPrompt(t *testing.T) {
 			"network: true adds the network (needs approval).",
 		}, []string{"sandbox: false", ".git and .agents"}},
 		{"nobody to approve", true, true, false, false, []string{"Nobody can approve more in this run.", "change .git need the user's approval, which nobody can give"}, []string{"sandbox: false", "network: true", "ask first"}},
-		{"untrusted", false, true, false, true, []string{"this project is not trusted", "asks the user"}, []string{"sandbox: false"}},
-		{"untrusted with nobody to approve", false, true, false, false, []string{"any other command needs the user's approval, which nobody can give"}, []string{"asks the user", "unconfined"}},
+		{"untrusted", false, true, false, true, []string{"this project is not trusted", "ask the user first, and run unconfined"}, []string{"sandbox: false"}},
+		{"untrusted with nobody to approve", false, true, false, false, []string{"other commands need the user's approval, which nobody can give"}, []string{"ask the user", "unconfined"}},
 		{"no backend", true, false, false, true, []string{"none on this machine", "ask the user first"}, []string{"sandbox: false"}},
 		{"no backend with nobody to approve", true, false, false, false, []string{"which nobody can give in this run"}, []string{"ask the user first"}},
 	} {

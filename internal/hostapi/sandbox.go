@@ -209,17 +209,15 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 	}
 	_, escapes := toolset[i].Info().Parameters["sandbox"]
 	// without a UI an ask is denied, so no clause promises one
-	ask := "ask the user first"
+	ask, approved := "ask the user first", ", and run unconfined once approved"
 	if h.hooks() == nil {
-		ask = "need the user's approval, which nobody can give in this run"
+		ask, approved = "need the user's approval, which nobody can give in this run", ""
 	}
 	switch {
 	case !h.sandboxLive():
 		return "Sandbox: none on this machine, so commands that change anything " + ask + ".\n"
-	case !h.ProjectTrusted() && h.hooks() == nil:
-		return "Sandbox: this project is not trusted, so only commands that just read run (confined); any other command needs the user's approval, which nobody can give in this run.\n"
 	case !h.ProjectTrusted():
-		return "Sandbox: this project is not trusted, so only commands that just read run without asking (confined); any other command asks the user and runs unconfined once approved.\n"
+		return "Sandbox: this project is not trusted, so only commands that just read run without asking (confined); other commands " + ask + approved + ".\n"
 	}
 	pol, backend, d := h.policyWalk(readOnly, pad, false), h.sandbox.Load().backend, h.Dirs
 	var b strings.Builder
