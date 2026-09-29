@@ -114,18 +114,8 @@ func (h *Host) zemiPrompt() string {
 		" User config directory: " + h.Dirs.ConfigHome + " (this exact path, not ~/.config/zemi). Project config directory: " + pdir + "." +
 		" Local plugins directory: " + h.localPlugins() + "." +
 		" Reading the user config needs no approval; writing it does, so say first what you will write." +
-		" The shipped Lua UI is readable in " + filepath.Join(h.TypesDir(), "zemi", "tui") + "." + zemiCLI
+		" The shipped Lua UI is readable in " + filepath.Join(h.TypesDir(), "zemi", "tui") + "."
 }
-
-// zemiCLI names this binary, read once: replaced in place, Linux would name
-// it "(deleted)" and move the pinned prompt. With no path it says nothing.
-var zemiCLI = func() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	return " This zemi runs from " + exe + ": use that path for its CLI (plugins test), since another zemi on PATH may be older."
-}()
 
 // delegationPrompt tells the main agent when subagents and workflows pay
 // off; without it models rarely reach for them unprompted.

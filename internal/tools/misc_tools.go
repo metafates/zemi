@@ -324,6 +324,7 @@ func QuestionAnswers(output string) [][2]string {
 type SkillInfo struct {
 	Name string
 	Path string
+	Note string // put after the body: what only the running process knows
 }
 
 // SkillMaxOut caps a skill body; every shipped skill fits it whole
@@ -367,7 +368,7 @@ func runSkill(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			}
 			// loading is reading: a recipe can be corrected without a read
 			p.markRead(path, fi)
-			return fantasy.NewTextResponse(text), nil
+			return fantasy.NewTextResponse(text + s.Note), nil
 		}
 	}
 	slices.Sort(known)

@@ -154,13 +154,31 @@ func (h *Host) materializeBuiltinSkills() error {
 	return replaceDir(dir, sub)
 }
 
+// zemiCLI names this binary at the end of the zemi skill, read once: replaced
+// in place, Linux would name it "(deleted)". With no path it says nothing.
+var zemiCLI = func() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return "\n\nThis zemi runs from " + exe + ": use that path for its CLI (plugins test), since another zemi on PATH may be older."
+}()
+
+// skillNote is what only this process knows, put after a skill's body.
+func skillNote(s skill.Skill) string {
+	if s.Source == skill.Builtin && s.Name == "zemi" {
+		return zemiCLI
+	}
+	return ""
+}
+
 // skillIndex is what the skill tool may load (modelSkills).
 func (h *Host) skillIndex() []tools.SkillInfo {
 	var out []tools.SkillInfo
 	// recipes are read live: one written this session loads at once, while
 	// the pinned prompt keeps the list it was built with
 	for _, s := range h.modelSkills() {
-		out = append(out, tools.SkillInfo{Name: s.Name, Path: s.Dir})
+		out = append(out, tools.SkillInfo{Name: s.Name, Path: s.Dir, Note: skillNote(s)})
 	}
 	return out
 }
@@ -295,7 +313,7 @@ func (h *Host) skillsIndexPrompt() string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\n\n# Skills\nA description says when a skill applies; its body is the procedure. Before the first tool call of a task a skill covers, load that skill with the skill tool and follow it, even for a task you know how to do.\n")
+	b.WriteString("\n\n# Skills\nA description says when a skill applies; its body is the procedure. When a task matches one, load that skill with the skill tool before the first tool call and follow it, even for a task you know how to do; when none matches, load none.\n")
 	for _, s := range enabled {
 		b.WriteString("- " + s.Name + ": " + s.Description + "\n")
 	}
@@ -496,7 +514,7 @@ func (h *Host) sendSkill(s skill.Skill, line, request, stdin string) error {
 	if err != nil {
 		return err
 	}
-	text = strings.ReplaceAll(text, "$ARGUMENTS", request)
+	text = strings.ReplaceAll(text, "$ARGUMENTS", request) + skillNote(s)
 	return h.AgentSend(line + agent.Attached("skill", "The user loaded the skill "+s.Name+" with the command above; follow it for their request.\n\n"+text) + stdin)
 }
 
