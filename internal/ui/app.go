@@ -146,6 +146,7 @@ type App struct {
 	rects     map[string]hostapi.Rect
 
 	program   *tea.Program
+	relaunch  atomic.Pointer[string] // RelaunchDir
 	hooks     chan tea.Msg
 	testQueue chan tea.Msg // CaptureHooks (tests): hooks wait here for Pump
 }
@@ -213,14 +214,31 @@ func (a *App) SignalBoot(err error) {
 	})
 }
 
-// Quit asks the program to exit (/quit). The veto waits on the interpreter
-// and program.Quit must not run inside Update, so both run on a goroutine.
-func (a *App) Quit() {
+// Quit asks the program to exit (/quit).
+func (a *App) Quit() { a.quitTo("") }
+
+// Relaunch leaves like Quit, then main starts zemi again in dir.
+func (a *App) Relaunch(dir string) { a.quitTo(dir) }
+
+// RelaunchDir is the dir of a Relaunch that got past the quit veto, "" for
+// none.
+func (a *App) RelaunchDir() string {
+	if dir := a.relaunch.Load(); dir != nil {
+		return *dir
+	}
+	return ""
+}
+
+// quitTo quits, then main starts zemi in dir unless it is "". The veto waits
+// on the interpreter and program.Quit must not run inside Update, so both run
+// on a goroutine.
+func (a *App) quitTo(dir string) {
 	quit := func() {
 		if res := a.host.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
 			a.Notify(logging.Warn, "Quit blocked", res.Reason)
 			return
 		}
+		a.relaunch.Store(&dir)
 		a.leave()
 	}
 	if a.program != nil {

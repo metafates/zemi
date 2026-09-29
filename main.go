@@ -162,13 +162,31 @@ func launch(o options) int {
 		fmt.Print(ansi.SetPointerShape("default"))
 	}
 	time.AfterFunc(3*time.Second, func() { os.Exit(0) })
-	if err == nil {
-		fmt.Print(app.Farewell())
-	}
 	if err != nil {
 		return fail(err)
 	}
+	// before a relaunch too: the scrollback keeps how to resume this session
+	fmt.Print(app.Farewell())
+	if dir := app.RelaunchDir(); dir != "" {
+		log.Close() // an exec runs no defers
+		return fail(relaunch(dir))
+	}
 	return 0
+}
+
+// relaunch replaces this process with zemi -C dir, flags left behind. Every
+// project fact (trust, origins, stores, sandbox) is bound at start, so a
+// switch is a restart, never a change in place; an exec keeps the PID, so the
+// shell's wait and the terminal's foreground group do not change. The one
+// start of a program outside internal/proc besides the editor and the sandbox
+// probes: the children are gone (proc.KillAll) and the terminal restored.
+// NOTE: Windows has no exec; there it names the command to run instead.
+func relaunch(dir string) error {
+	exe, err := os.Executable()
+	if err == nil {
+		err = syscall.Exec(exe, []string{os.Args[0], "-C", dir}, os.Environ())
+	}
+	return fmt.Errorf("could not start zemi in %s (%w): run zemi -C %s", dir, err, dir)
 }
 
 // newHost builds the runtime and host over dirs, and the trust gate their

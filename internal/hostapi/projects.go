@@ -109,9 +109,9 @@ func (p Project) TrustWord() string {
 
 func (h *Host) projectsCommands() []*Command {
 	return []*Command{{
-		Name: "projects", NArgs: NArgsAny, Desc: "list the projects zemi keeps state for, forget or delete one",
+		Name: "projects", NArgs: NArgsAny, Desc: "switch to another project, forget its trust or delete its data",
 		GoFn: (*Host).projectsCommand,
-		GoComplete: SubcommandCompleter([]string{"forget", "delete"}, func(h *Host, _ string) []string {
+		GoComplete: SubcommandCompleter([]string{"switch", "forget", "delete"}, func(h *Host, _ string) []string {
 			var roots []string
 			for _, p := range ListProjects(h.Dirs, false) {
 				if p.Root != h.trustRoot() {
@@ -136,8 +136,11 @@ func (h *Host) projectsCommand(line string) error {
 		h.GoSafe("projects", func() { h.openProjects(ui, false, "") })
 		return nil
 	}
+	if verb == "switch" {
+		return h.switchProject(ui, noUI, arg)
+	}
 	if verb != "forget" && verb != "delete" {
-		return Usagef("/projects takes forget <dir> or delete <dir>")
+		return Usagef("/projects takes switch, forget or delete and a project's directory")
 	}
 	p, err := h.projectNamed(arg)
 	if err != nil {
@@ -184,17 +187,51 @@ func (h *Host) projectsCommand(line string) error {
 	return nil
 }
 
-// projectNamed is the listed project at dir, which may start with ~ and is
+// switchProject restarts zemi in dir (UIHooks.Relaunch), which any
+// directory may be. It refuses while live work would stop with this zemi.
+func (h *Host) switchProject(ui UIHooks, noUI error, arg string) error {
+	dir, err := h.argDir(arg)
+	if err != nil {
+		return err
+	}
+	if noUI != nil {
+		return fmt.Errorf("%w; zemi -C %s opens it", noUI, TildePath(dir))
+	}
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		return Usagef("%s is not a directory", TildePath(dir))
+	}
+	if perm.CanonPath(dir) == perm.CanonPath(h.Dirs.ProjectDir) {
+		return Usagef("zemi already runs in %s", TildePath(dir))
+	}
+	if h.AgentActive() {
+		return Usagef("a turn is running: esc esc stops it, then switch")
+	}
+	if err := h.tasks.stillRunning(func(string) bool { return true }); err != nil {
+		return err
+	}
+	ui.Relaunch(dir)
+	return nil
+}
+
+// argDir is a directory a /projects verb names: it may start with ~ and is
 // taken from the launch dir when relative.
-func (h *Host) projectNamed(dir string) (Project, error) {
-	if dir == "" {
-		return Project{}, Usagef("/projects forget and delete take a project's directory")
+func (h *Host) argDir(arg string) (string, error) {
+	if arg == "" {
+		return "", Usagef("/projects switch, forget and delete take a project's directory")
 	}
-	root := perm.ExpandHome(dir)
-	if !filepath.IsAbs(root) {
-		root = filepath.Join(h.Dirs.ProjectDir, root)
+	dir := perm.ExpandHome(arg)
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(h.Dirs.ProjectDir, dir)
 	}
-	root = filepath.Clean(root)
+	return filepath.Clean(dir), nil
+}
+
+// projectNamed is the listed project at the directory arg names.
+func (h *Host) projectNamed(arg string) (Project, error) {
+	root, err := h.argDir(arg)
+	if err != nil {
+		return Project{}, err
+	}
 	for _, p := range ListProjects(h.Dirs, false) {
 		if p.Root == root {
 			return p, nil
@@ -268,18 +305,21 @@ func (h *Host) projectItems() (items []any, sel int) {
 		switch {
 		case p.Root == h.trustRoot():
 			item["key"] = "current"
-			item["detail"] = "zemi runs here: /trust changes its trust and /permissions its allowed commands. Delete its data from another project."
+			item["detail"] = "zemi runs here: /trust changes its trust and /permissions its allowed commands. Switch to another project to delete this one's data."
 			items = append(items, item)
 			continue
 		case p.Missing:
 			item["detail"] = TildePath(p.Root) + " no longer exists. Delete erases what zemi kept for it."
 		default:
-			item["detail"] = "Delete erases what zemi keeps for it: sessions, memories, recipes, allowed commands and the trust decision. The project's own files stay."
+			item["detail"] = "Switch restarts zemi there: a job still running here stops, as on quit. Delete erases what zemi keeps for it: sessions, memories, recipes, allowed commands and the trust decision. The project's own files stay."
 		}
 		if sel < 0 {
 			sel = i
 		}
 		var actions []any
+		if !p.Missing {
+			actions = append(actions, map[string]any{"text": "Switch to it", "hotkey": "s", "run": "projects switch " + p.Root})
+		}
 		if p.Trust != "" {
 			actions = append(actions, map[string]any{"text": "Forget trust", "hotkey": "f", "run": "projects forget " + p.Root})
 		}

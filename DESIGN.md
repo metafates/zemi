@@ -349,7 +349,8 @@ move the cursor, enter picks it, a click answers a row. `--trust` or `--trust=fa
 decides one run without saving; a headless run with nothing saved is
 untrusted and says so on stderr. The home directory and `/` are never
 asked about or saved (their prompt says it applies to this run only).
-`/projects` lists every root zemi keeps state for, forgets another
+`/projects` lists every root zemi keeps state for, switches to one by
+restarting zemi there, forgets another
 project's decision (the next start there asks again) and deletes its data; it
 never grants trust.
 `/trust` reopens the prompt at any time, showing the current decision (Later keeps
@@ -1762,7 +1763,7 @@ provenance string.
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/workflows`, `/review`, `/mcp`,
-  `/lsp`, `/plugins`, `/projects` (the projects zemi keeps state for), `/win`)
+  `/lsp`, `/plugins`, `/projects` (the projects zemi keeps state for; switch restarts zemi there), `/win`)
   and `/trust` (§5). Enter on a help command row runs it, or
   fills the composer when the command needs an argument.
   In `zemi run` a command that opens a screen fails with "/<name> needs the TUI".
@@ -2773,8 +2774,9 @@ namespaces.
 
 ## 14. Open questions
 
-- Two projects side by side in one zemi: per-project Lua states?
-  Defer, but keep session/store APIs project-scoped from day one.
+- One project per process: `/projects` switches by restarting zemi in the
+  other directory (an exec of `zemi -C <dir>`), since trust, origins, stores
+  and the sandbox are bound at start.
 - Credential storage and auth flow (keys read with `zemi.env.get` today).
 - Streaming render cost: a long transcript re-renders per generation
   bump; needs a per-widget invalidation design and a measured budget.

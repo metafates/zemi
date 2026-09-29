@@ -765,6 +765,7 @@ type fakeUI struct {
 	screenshot   string
 	copied       string
 	edit         func(path string) // what the user does in the editor
+	relaunched   string
 }
 
 func (f *fakeUI) Notify(logging.Level, string, string) {}
@@ -795,7 +796,8 @@ func (f *fakeUI) EditFile(_ context.Context, req EditRequest) error {
 	}
 	return nil
 }
-func (f *fakeUI) Copy(text string) { f.copied = text }
+func (f *fakeUI) Copy(text string)    { f.copied = text }
+func (f *fakeUI) Relaunch(dir string) { f.relaunched = dir }
 
 func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 	f.asked = append(f.asked, req)

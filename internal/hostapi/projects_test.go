@@ -72,14 +72,20 @@ func TestProjectsCommand(t *testing.T) {
 		err        string   // a usage error, which opens nothing
 		want, not  []string // in the list it opens and the toasts
 		gone       bool     // the other project's files are deleted
+		relaunch   string   // the dir zemi restarts in, which opens nothing
+		busy       bool     // a turn runs
 	}{
 		{
 			name: "the list", args: "",
 			want: []string{
 				"key:current", "trusted · 1 session · now", "[sessions 1 · latest now: fix the flaky test]", "[allowed go test ./...]",
-				"hotkey:f run:projects forget " + other, "danger:true hotkey:x run:projects delete " + other + " --yes", "Selected:1",
+				"hotkey:s run:projects switch " + other, "hotkey:f run:projects forget " + other, "danger:true hotkey:x run:projects delete " + other + " --yes", "Selected:1",
 			},
 		},
+		{name: "switch", args: "switch " + other + "/sub/..", relaunch: other},
+		{name: "switch mid-turn", args: "switch " + other, busy: true, err: "a turn is running"},
+		{name: "switch to this project", args: "switch " + cur, err: "zemi already runs in"},
+		{name: "switch to a missing dir", args: "switch " + filepath.Join(tmp, "nope"), err: "is not a directory"},
 		{name: "forget this project", args: "forget " + cur, err: "/trust changes its trust"},
 		{name: "delete this project", args: "delete " + cur + " --yes", err: "delete its data from another project"},
 		{name: "an unknown dir", args: "forget " + filepath.Join(tmp, "nope"), err: "zemi keeps nothing for"},
@@ -88,6 +94,10 @@ func TestProjectsCommand(t *testing.T) {
 		{name: "delete a store another zemi holds", args: "delete " + held + " --yes", want: []string{"open in another window", "text:" + held}},
 		{name: "delete", args: "delete " + other + " --yes", want: []string{"Project data deleted"}, not: []string{"text:" + other}, gone: true},
 	} {
+		h.agents.mu.Lock()
+		h.agents.active = c.busy
+		h.agents.mu.Unlock()
+		ui.relaunched = ""
 		if err := h.RunCommand(t.Context(), "projects", c.args); c.err != "" {
 			if err == nil || !strings.Contains(err.Error(), c.err) || len(ui.opened) > 0 {
 				t.Fatalf("%s: err %v, %d lists opened", c.name, err, len(ui.opened))
@@ -95,6 +105,12 @@ func TestProjectsCommand(t *testing.T) {
 			continue
 		} else if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
+		}
+		if c.relaunch != "" {
+			if ui.relaunched != c.relaunch || len(ui.opened) > 0 {
+				t.Fatalf("%s: relaunched in %q, %d lists opened", c.name, ui.relaunched, len(ui.opened))
+			}
+			continue
 		}
 		var list Overlay
 		select {
@@ -123,8 +139,10 @@ func TestProjectsCommand(t *testing.T) {
 		}
 	}
 	h.SetUIHooks(nil)
-	if err := h.RunCommand(t.Context(), "projects", ""); !errors.Is(err, ErrNeedsTUI) {
-		t.Fatalf("headless: %v", err)
+	for _, args := range []string{"", "switch " + other} {
+		if err := h.RunCommand(t.Context(), "projects", args); !errors.Is(err, ErrNeedsTUI) {
+			t.Fatalf("headless /projects %s: %v", args, err)
+		}
 	}
 }
 

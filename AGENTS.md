@@ -110,7 +110,9 @@ after `--`, and a lone word a near miss of one is refused (`options.finish`), si
 for a model call on a typo. Exit status 2 is anything that fails before the root's
 `PersistentPreRunE`, which cobra runs once flags and arguments passed; after it a command's
 error is 1, and one that printed its own diagnostic returns `exitStatus`. That hook runs `-C
-dir` (`enterDir`: `PWD` follows) before anything else. Piped stdin (1 MiB at most) is attached
+dir` (`enterDir`: `PWD` follows) before anything else, and a switch from `/projects` is an exec
+of `zemi -C <dir>` and nothing else (`relaunch`), so no flag of this run widens to another
+project. Piped stdin (1 MiB at most) is attached
 behind the typed prompt, is the typed prompt itself after `-`, and is a usage error for the TUI.
 Completion offers session ids from the project store (`completeSessions`) and plugin names
 from `plugins.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
@@ -264,7 +266,9 @@ dotfiles repo is nobody's root; a linked worktree maps to its main checkout by r
 for this process (`--trust`, a Later answer, `/trust` where saving is impossible), the saved
 one, then the Go-owned prompt. `$HOME` and `/` are never asked about or saved
 (`hostapi.TrustUnsaved`). `/projects` (hostapi/projects.go) lists every root zemi keeps state
-for (`ListProjects`: `trust.json` plus each state dir's checked `root` file), forgets another
+for (`ListProjects`: `trust.json` plus each state dir's checked `root` file), switches by
+restarting (`UIHooks.Relaunch`, past the quit veto, then main's exec: the project is bound at
+start and never changes in place; refused while a turn, an agent run or a workflow lives), forgets another
 project's decision without opening it, never granting one, and deletes another project's data
 (`deleteProject`: its state dir, its sessions' pads and plans, its caches and decision;
 `store.ClaimForDelete` refuses while another zemi has the store open). `/trust` reopens the prompt off the UI goroutine, saves, and calls `Host.Retrust`, which sets
@@ -1172,9 +1176,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   MCP and LSP servers, git). A child runs in its own session: no controlling terminal (nothing
   can read the TUI's keys or hang on a password prompt) and its own process group, which
   cancel, timeout, `proc.Wait` and `proc.KillAll` on exit kill whole. A plain `exec.Command`
-  here is a bug (a cancelled `sh -c` pipeline once hung the turn forever), with two exceptions:
-  the user's editor (ui/editor.go, which needs the controlling terminal `Setsid` drops) and
-  the sandbox backend probes.
+  here is a bug (a cancelled `sh -c` pipeline once hung the turn forever), with three exceptions:
+  the user's editor (ui/editor.go, which needs the controlling terminal `Setsid` drops),
+  the sandbox backend probes, and main's `relaunch`, the exec that replaces zemi with
+  `zemi -C <dir>` once the TUI restored the terminal and `proc.KillAll` ended the children.
 - **The key loop never waits on Lua.** Keymap right-hand sides, Lua commands, completion
   sources and a toggle list's `Overlay.Reload` run in order on one worker goroutine
   (`App.background`); Go commands stay inline. Keymaps, clicks, one-shot timers and async

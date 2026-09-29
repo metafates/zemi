@@ -1232,4 +1232,5 @@ func (*testUI) ComposerEdit(ComposerOp, string, int) {}
 func (*testUI) EditFile(context.Context, EditRequest) error {
 	return errors.New("a test zemi has no editor")
 }
-func (*testUI) Copy(string) {}
+func (*testUI) Copy(string)     {}
+func (*testUI) Relaunch(string) {}

@@ -80,6 +80,9 @@ type UIHooks interface {
 	EditFile(ctx context.Context, req EditRequest) error
 	// Copy puts text on the clipboard and says so.
 	Copy(text string)
+	// Relaunch leaves like /quit, its veto included, and has main start
+	// zemi again in dir.
+	Relaunch(dir string)
 }
 
 // EditRequest is one editor handoff: an absolute path, a 1-based line to
