@@ -33,6 +33,8 @@ type overlayState struct {
 	// the selected row's danger act waits for a second press; a key or a
 	// click that moves the selection drops it
 	armed bool
+	// the danger list key that waits for its second press, "" for none
+	keyArmed string
 	// the preview pane's rows at paneW cells: the most any item's preview
 	// wraps to, 4 at most, so moving or filtering never resizes the box
 	paneW, paneN int
@@ -236,6 +238,10 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 		st.selected = n
 	}
 	st.armed = old.armed && sameDanger(was, st.selectedRow())
+	// the same danger key running the same command keeps its press
+	if k := slices.IndexFunc(st.o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == old.keyArmed }); k >= 0 && st.o.Keys[k].Danger && slices.Contains(old.o.Keys, st.o.Keys[k]) {
+		st.keyArmed = old.keyArmed
+	}
 	a.overlays[i] = st
 }
 
@@ -491,7 +497,8 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	}
 	a.bump()
 	confirmed, swallowed := pressArmed(&st.armed, key, func() string { return st.actionKey(st.selected) })
-	if swallowed {
+	keyArmed := st.keyArmed
+	if st.keyArmed = ""; swallowed || keyArmed != "" && key == "esc" {
 		return nil
 	}
 	if key == "space" && o.Reload != nil && !st.active {
@@ -512,6 +519,10 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		}
 	}
 	if i := slices.IndexFunc(o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == key }); i >= 0 {
+		if o.Keys[i].Danger && keyArmed != key {
+			st.keyArmed = key
+			return nil
+		}
 		if run := o.Keys[i].Run; run != "" {
 			a.runOverlayRow(hostapi.OverlayItem{Run: run})
 			if o.Reload != nil {
@@ -721,6 +732,9 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	if !st.back {
 		st.size.w = max(st.size.w, map[bool]int{true: listBoxW, false: textBoxW}[len(st.o.Items) > 0 && !previews])
 	}
+	if st.o.Wide {
+		st.size.w = max(st.size.w, inner)
+	}
 	bodyW := min(inner, st.size.w)
 	if previews && st.paneW != bodyW {
 		st.paneW, st.paneN = bodyW, 0
@@ -844,6 +858,9 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		foot := hint(inner, hints...)
 		if st.armed {
 			foot = armedHint(inner, cmp.Or(st.actionKey(st.selected), "enter"), st.items[st.visible[st.selected]].label)
+		}
+		if i := slices.IndexFunc(st.o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == st.keyArmed }); i >= 0 {
+			foot = armedHint(inner, st.keyArmed, st.o.Keys[i].Desc)
 		}
 		tail = len(stack(tight, pane, oneRow))
 		rows := stack(tight, body, slices.Concat(head, list, fixed), pane, [][]hostapi.Segment{foot})

@@ -823,7 +823,8 @@ func TestSavedWorkflows(t *testing.T) {
 		t.Fatalf("workflow actions: %s", acts)
 	}
 
-	// a run's script saves under workflows/, headed by its description
+	// a run's script saves under workflows/, headed by its description and
+	// named after it when no name is given
 	h.agents.sessionID = "s1"
 	f, err := h.startFlow(context.Background(), flowSpec{description: "Sum up", src: "return 1"})
 	if err != nil {
@@ -834,8 +835,8 @@ func TestSavedWorkflows(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range []struct{ name, want string }{
-		{"sum-up", ""},
-		{"sum-up", "exists: pick another name"},
+		{"", ""},
+		{"sum-up", "exists: /workflows save "},
 		{"Sum Up", "lowercase letters"},
 	} {
 		path, err := h.saveFlow(f.id, c.name)
@@ -855,7 +856,7 @@ func TestSavedWorkflows(t *testing.T) {
 		t.Fatal(err)
 	}
 	for run, want := range map[*flowRun]bool{f: true, loaded: false} {
-		if got := strings.Contains(fmt.Sprint(h.flowItem(run, "", "")["actions"]), "text:Save"); got != want {
+		if got := slices.ContainsFunc(h.flowOverlay(run).Keys, func(k OverlayKey) bool { return k.Key == "s" }); got != want {
 			t.Errorf("Save offered %v, want %v", got, want)
 		}
 	}

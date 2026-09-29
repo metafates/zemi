@@ -1213,15 +1213,16 @@ var savedName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // saveFlow copies run id's script as it ran to workflows/<name>.lua in the
 // config dir, headed by the run's description when it has no leading
-// comment. Only a run this process holds has that script: the pad's copy
-// is the model's to rewrite, and a saved one runs by name in every project.
+// comment; no name names it after the description. Only a run this process
+// holds has that script: the pad's copy is the model's to rewrite, and a
+// saved one runs by name in every project.
 func (h *Host) saveFlow(id, name string) (string, error) {
-	if !savedName.MatchString(name) {
-		return "", Usagef("a workflow name is lowercase letters, digits and dashes, not %q", name)
-	}
 	f := h.tasks.flow(id)
 	if f == nil || f.parent != h.AgentSessionID() {
 		return "", Usagef("zemi no longer holds run %s of this session: rerun it, then save it", id)
+	}
+	if name = cmp.Or(name, slug(f.description)); !savedName.MatchString(name) {
+		return "", Usagef("a workflow name is lowercase letters, digits and dashes, not %q", name)
 	}
 	src := []byte(f.src)
 	if desc := strings.Join(strings.Fields(f.description), " "); leadingComment(f.src) == "" && desc != "" {
@@ -1234,7 +1235,7 @@ func (h *Host) saveFlow(id, name string) (string, error) {
 	path := filepath.Join(dir, name+".lua")
 	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if errors.Is(err, fs.ErrExist) {
-		return "", Usagef("workflows/%s.lua exists: pick another name", name)
+		return "", Usagef("workflows/%s.lua exists: /workflows save %s <name> saves it under another", name, id)
 	}
 	if err != nil {
 		return "", err
@@ -1763,7 +1764,7 @@ func (h *Host) workflowsOverlay() Overlay {
 		})
 	}
 	return Overlay{
-		ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items,
+		ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items, Wide: true,
 		Reload: func() ([]any, [][]Segment) { return h.workflowsOverlay().Items, nil },
 	}
 }
@@ -1803,30 +1804,12 @@ func flowDesc(f *flowRun, v flowView) string {
 	return desc
 }
 
-// flowItem is a run's row in /workflows: its detail acts on it, and v
-// opens its agents.
+// flowItem is a run's row in /workflows: enter opens its view, whose keys
+// act on it.
 func (h *Host) flowItem(f *flowRun, section string) map[string]any {
-	v := f.view()
-	actions := []any{map[string]any{"text": "View its agents", "hotkey": "v", "run": "workflows view " + f.id}}
-	switch {
-	case v.status == RunRunning:
-		pause := map[string]any{"text": "Pause", "hotkey": "p", "run": "workflows pause " + f.id}
-		if v.paused {
-			pause = map[string]any{"text": "Resume", "hotkey": "p", "run": "workflows resume " + f.id}
-		}
-		actions = append(actions, pause, map[string]any{"text": "Stop", "hotkey": "x", "run": "workflows stop " + f.id, "danger": true})
-	case f.script != "" && f.parent == h.AgentSessionID():
-		actions = append(actions, map[string]any{"text": "Rerun", "hotkey": "r", "run": "workflows rerun " + f.id})
-	}
-	if f.script != "" && f.parent == h.AgentSessionID() {
-		actions = append(actions, map[string]any{"text": "Open the script", "hotkey": "o", "run": "workflows open " + f.id})
-	}
-	if f.src != "" && f.parent == h.AgentSessionID() { // what saveFlow takes
-		actions = append(actions, map[string]any{"text": "Save", "hotkey": "s", "fill": "/workflows save " + f.id + " " + slug(f.description)})
-	}
 	return map[string]any{
-		"id": f.id, "text": f.description, "desc": flowDesc(f, v) + h.fromSession(f.parent), "section": section,
-		"fields": fieldList(flowFields(f, v)...), "detail": f.about, "actions": actions,
+		"id": f.id, "text": f.description, "desc": flowDesc(f, f.view()) + h.fromSession(f.parent), "section": section,
+		"run": "workflows view " + f.id, "verb": "open",
 	}
 }
 
@@ -1856,7 +1839,10 @@ func (h *Host) openFlow(id string) error {
 
 // flowOverlay is a run's view: its fields, then its agents under their
 // phases; enter on one opens its detail, whose actions view, restart or
-// stop it. p pauses or resumes, + and - change how many run at once.
+// stop it. Its keys act on the run: while it runs p pauses or resumes, + and
+// - change how many run at once and x stops it; once it ended r reruns it,
+// and a run of this session opens its script and, while this process holds
+// the script it ran, saves it.
 func (h *Host) flowOverlay(f *flowRun) Overlay {
 	v := f.view()
 	var items []any
@@ -1868,7 +1854,7 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 		}
 	}
 	o := Overlay{
-		ID: "workflow:" + f.id, Title: "Workflows / " + f.description, Origin: lua.OriginBuiltin, Items: items,
+		ID: "workflow:" + f.id, Title: "Workflows / " + f.description, Origin: lua.OriginBuiltin, Items: items, Wide: true,
 		// one row, so a long one never pushes the list down
 		Body: clipRunes(strings.Join(strings.Fields(f.about), " "), 76), Empty: "No agent has started yet.",
 		Reload: func() ([]any, [][]Segment) { return h.flowOverlay(f).Items, nil },
@@ -1886,7 +1872,17 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 			pause,
 			{Key: "+", Desc: "at once", Run: "workflows concurrency " + f.id + " +1"},
 			{Key: "-", Desc: "at once", Run: "workflows concurrency " + f.id + " -1"},
+			{Key: "x", Desc: "stop workflow", Run: "workflows stop " + f.id, Danger: true},
 		}
+	}
+	if f.script != "" && f.parent == h.AgentSessionID() {
+		if v.status != RunRunning {
+			o.Keys = append(o.Keys, OverlayKey{Key: "r", Desc: "rerun", Run: "workflows rerun " + f.id})
+		}
+		o.Keys = append(o.Keys, OverlayKey{Key: "o", Desc: "script", Run: "workflows open " + f.id})
+	}
+	if f.src != "" && f.parent == h.AgentSessionID() { // what saveFlow takes
+		o.Keys = append(o.Keys, OverlayKey{Key: "s", Desc: "save", Run: "workflows save " + f.id})
 	}
 	return o
 }

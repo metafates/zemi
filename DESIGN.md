@@ -997,12 +997,16 @@ an end line) into the pad of the session that started it; a rerun runs
 that script file, edited or not, and answers each call identical to a
 finished one (agent, model, schema, prompt) from the journal in order,
 starting no agent. `/workflows` lists the runs, live ones of every session
-first, then this session's earlier ones, then the saved workflows; a run's
-detail pauses, stops, reruns, opens or, while this process still holds
-the script it ran, saves it (to `workflows/`), and `v`
-opens its view: its fields, its agents under their phases, `p`, `+` and
-`-` (relative, so a second press before the view rebuilds still counts),
-and an agent's transcript, from which esc comes back. While any run lives
+first, then this session's earlier ones (another session's live run ends
+its desc with that session's title), then the saved workflows; enter on a
+run opens its view, at the one width every workflow screen takes: its
+fields, its agents under their phases, and keys acting on the run, `p`,
+`+` and `-` (relative, so a second press before the view rebuilds still
+counts) and `x` (stop, on its second press) while it runs, `r` (rerun) once
+it ended, and `o` and `s` (open its script or, while this process still
+holds the script it ran, save it to `workflows/` under its description's
+name) for a run of this session. An agent's detail views its transcript,
+from which esc comes back, restarts or stops it. While any run lives
 one ticker rebuilds whichever of the two is open once a second. The user
 starts a saved one with `/workflows run` or `/review`, with no model call
 before the work: detached in the TUI with a live notice row, and headless

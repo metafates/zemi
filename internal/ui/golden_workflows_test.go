@@ -16,9 +16,9 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// TestGoldenWorkflows pins a run's view at 80 columns, running and then
-// paused: pausing changes the status value and the footer's word, and no
-// other cell of the view. The agents talk to a fake provider that answers
+// TestGoldenWorkflows pins a run's view at 80 columns, opened by enter on its
+// /workflows row, running and then paused: pausing changes the status value
+// and the footer's word, and no other cell of the view. The agents talk to a fake provider that answers
 // the collect agent, billing its tokens, and holds the reviewers until the
 // test ends.
 func TestGoldenWorkflows(t *testing.T) {
@@ -82,7 +82,7 @@ func TestGoldenWorkflows(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 })
-	pressKeys(app, "v")
+	pressKeys(app, "enter")
 	waitPrompt(t, app, func() bool {
 		return len(app.overlays) == 2 && strings.Contains(frame(), "2 running")
 	})
@@ -90,7 +90,7 @@ func TestGoldenWorkflows(t *testing.T) {
 	// wider box of a text view
 	pressKeys(app, "esc")
 	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 })
-	pressKeys(app, "v")
+	pressKeys(app, "enter")
 	waitPrompt(t, app, func() bool { return len(app.overlays) == 2 })
 	running := frame()
 	t.Run("running", func(t *testing.T) { golden.RequireEqual(t, running) })

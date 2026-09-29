@@ -619,6 +619,41 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
+			"a danger list key acts on its second press, which esc drops and a refresh keeps",
+			hostapi.Overlay{ID: "p", Items: []any{"x"}},
+			nil,
+			func(a *App) string {
+				ran := ""
+				a.host.Commands.Add(&hostapi.Command{
+					Name: "zz", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+				})
+				o := hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Items: []any{"x"}, Keys: []hostapi.OverlayKey{{Key: "x", Desc: "stop workflow", Run: "zz stop", Danger: true}}}
+				a.openOverlay(o)
+				a.overlayKey("x", "x")
+				a.overlayKey("esc", "")
+				if a.overlayKey("x", "x"); ran != "" || len(a.overlays) != 1 {
+					return "the first press ran " + ran
+				}
+				if foot := plainSegs(a.overlayBox(&a.overlays[0], 80, 20)[3]); !strings.Contains(foot, "x again to stop workflow") {
+					return "footer " + foot
+				}
+				o.Refresh = true
+				a.openOverlay(o)
+				a.overlayKey("x", "x")
+				return map[bool]string{false: "the second press ran " + ran}[ran == "stop"]
+			},
+		},
+		{
+			"a wide box takes the widest a screen shows, whatever opened it",
+			hostapi.Overlay{ID: "p", Items: []any{"x"}, Wide: true},
+			nil,
+			func(a *App) string {
+				a.overlayBox(&a.overlays[0], 120, 30)
+				return map[bool]string{false: fmt.Sprintf("%d cells wide", a.overlays[0].size.w)}[a.overlays[0].size.w == boxInner(120)]
+			},
+		},
+		{
 			"closing the parent drops its detail view",
 			hostapi.Overlay{ID: "p", Items: []any{detail()}},
 			[]string{"enter"},

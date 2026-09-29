@@ -121,6 +121,9 @@ type Overlay struct {
 	// Confirm is the run of an action to open armed in its row's detail
 	// view: a destructive command typed without --yes asks there
 	Confirm string
+	// Wide boxes take the widest a screen shows whatever opened them, so a
+	// screen reached from a list or a command draws at one width
+	Wide bool
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
 	// starts with Default; OnSelect receives the text.
@@ -224,11 +227,13 @@ const (
 var callStatuses = []CallStatus{CallWait, CallRun, CallOK, CallErr, CallStopped, CallBG, CallCancelled}
 
 // OverlayKey is one character that runs Fn(selected item) on a list, or on
-// a Go screen's list the command Run.
+// a Go screen's list the command Run. A Danger key acts on its second press,
+// the footer saying so after the first, as a danger row does.
 type OverlayKey struct {
 	Key, Desc string
 	Fn        *glua.LFunction
 	Run       string
+	Danger    bool
 }
 
 // ChatMessage is a transcript entry (composer submissions); assistant
