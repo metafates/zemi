@@ -819,8 +819,10 @@ lua-language-server is installed.
 - **Workflows** (workflow.go) are Lua scripts (model-written via the `workflow` tool, saved
   under `workflows/`, builtin in `runtime/workflows/`, a plugin's after both). They run in their **own** gopher-lua
   state on a host goroutine, never on the interpreter (DESIGN §4): a coroutine per branch,
-  `agent()`/`parallel()` yield and the scheduler resumes them as subagents finish. Invariants:
-  the script sees only base/string/table/math + the workflow API (no fs, net, `zemi.*`);
+  `zemi.workflow.agent`/`parallel` yield and the scheduler resumes them as subagents finish
+  (`pipeline` is Lua over `parallel`, `workflowPrelude`). Invariants: the script sees only
+  base/string/table/math, `zemi.workflow` and `zemi.json` (no fs, net or other `zemi.*`; a bare
+  `agent` or `print` raises naming its `zemi.workflow` spelling);
   `agent`/`parallel` are `lua.Suspending` wrappers, and both refuse under `pcall` or a library
   callback (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description
   points at the zemi skill's workflows.md for the API, which every request would otherwise pay for.

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+	glua "github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
 
 	"github.com/metafates/zemi/internal/agent"
@@ -220,9 +221,10 @@ func typesSource(t *testing.T) string {
 }
 
 // bootedNamespaces installs the host API on a fresh runtime and reports
-// what it registered: namespace -> dotted member paths; with test, zemi.test
-// too, as a plugin test boot registers it.
-func bootedNamespaces(t *testing.T, test bool) map[string][]string {
+// what it registered: namespace -> dotted member paths; with other, the
+// members other states hold too: zemi.test, as a plugin test boot registers
+// it, and a workflow script's zemi.workflow.
+func bootedNamespaces(t *testing.T, other bool) map[string][]string {
 	t.Helper()
 	log := logging.New(t.TempDir())
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
@@ -233,12 +235,20 @@ func bootedNamespaces(t *testing.T, test bool) map[string][]string {
 		return nil
 	}}
 	steps := []lua.BootStep{h.NamespacesStep(), capture}
-	if test {
+	if other {
 		steps = []lua.BootStep{h.NamespacesStep(), (&PluginTest{h: h}).Step(), capture}
 	}
 	if err := r.Boot(context.Background(), steps); err != nil {
 		t.Fatal(err)
 	}
+	if !other {
+		return out
+	}
+	L := (&wfRun{h: h}).open(nil)
+	defer L.Close()
+	L.GetGlobal("zemi").(*glua.LTable).RawGetString("workflow").(*glua.LTable).ForEach(func(k, _ glua.LValue) {
+		out["zemi.workflow"] = append(out["zemi.workflow"], k.String())
+	})
 	return out
 }
 

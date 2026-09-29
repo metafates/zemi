@@ -11,6 +11,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -141,9 +142,8 @@ type wfTask struct {
 }
 
 type wfAgentReq struct {
-	def         AgentDef
-	description string
-	prompt      string
+	def                        AgentDef
+	description, phase, prompt string
 }
 
 type wfDone struct {
@@ -176,28 +176,15 @@ type wfRun struct {
 	over      bool
 }
 
-// runWorkflow executes src to completion. args is exposed to the script as
-// the global args (a string or a decoded JSON value).
+// runWorkflow executes src to completion. args is the script's
+// zemi.workflow.args (a string or a decoded JSON value).
 func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress func(string)) (WorkflowResult, error) {
-	L := glua.NewState(glua.Options{SkipOpenLibs: true, CallStackSize: 256})
-	defer L.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	run := &wfRun{h: h, ctx: ctx, tasks: map[*glua.LState]*wfTask{}, done: make(chan wfDone, workflowMaxAgents), progress: progress}
+	L := run.open(args)
+	defer L.Close()
 	L.SetContext(ctx)
-	for _, lib := range []struct {
-		name string
-		fn   glua.LGFunction
-	}{{"", glua.OpenBase}, {glua.TabLibName, glua.OpenTable}, {glua.StringLibName, glua.OpenString}, {glua.MathLibName, glua.OpenMath}} {
-		L.Push(L.NewFunction(lib.fn))
-		L.Push(glua.LString(lib.name))
-		L.Call(1, 0)
-	}
-	for _, name := range []string{"dofile", "loadfile", "module", "require", "_printregs", "xpcall", "newproxy"} {
-		L.SetGlobal(name, glua.LNil)
-	}
-	lua.FixStringLib(L)
-	run := &wfRun{h: h, ctx: ctx, L: L, tasks: map[*glua.LState]*wfTask{}, done: make(chan wfDone, workflowMaxAgents), progress: progress}
-	run.install(args)
 
 	fn, err := L.LoadString(src)
 	if err != nil {
@@ -216,7 +203,7 @@ func (h *Host) runWorkflow(ctx context.Context, src string, args any, progress f
 			break
 		}
 		if run.running == 0 && len(run.queue) == 0 {
-			return WorkflowResult{Log: run.log, Agents: run.agents}, errors.New("workflow stalled: every branch is waiting (was agent() called inside pcall?)")
+			return WorkflowResult{Log: run.log, Agents: run.agents}, errors.New("workflow stalled: every branch is waiting (was zemi.workflow.agent called inside pcall?)")
 		}
 		select {
 		case d := <-run.done:
@@ -284,17 +271,68 @@ func luaResultString(v glua.LValue) string {
 	return string(b)
 }
 
-func (r *wfRun) install(args any) {
-	L := r.L
-	L.SetGlobal("args", lua.FromGo(L, args))
-	L.SetGlobal("agent", lua.Suspending(L, L.NewFunction(r.luaAgent)))
-	L.SetGlobal("parallel", lua.Suspending(L, L.NewFunction(r.luaParallel)))
-	L.SetGlobal("phase", L.NewFunction(func(L *glua.LState) int {
+// workflowPrelude is the part of zemi.workflow written in Lua.
+const workflowPrelude = `
+local parallel = zemi.workflow.parallel
+function zemi.workflow.pipeline(items, ...)
+	local stages, fns = { ... }, {}
+	for i, item in ipairs(items) do
+		fns[i] = function()
+			local v, err = item, nil
+			for _, stage in ipairs(stages) do
+				v, err = stage(v, item, i)
+				if v == nil then return nil, err end
+			end
+			return v
+		end
+	end
+	return parallel(fns)
+end`
+
+// misnamed are the bare names a model used to other harnesses reaches for:
+// a pointed error beats "attempt to call a non-function object".
+var misnamed = map[string]string{
+	"agent": "zemi.workflow.agent", "parallel": "zemi.workflow.parallel", "pipeline": "zemi.workflow.pipeline",
+	"phase": "zemi.workflow.phase", "log": "zemi.workflow.log", "print": "zemi.workflow.log",
+	"args": "zemi.workflow.args", "json": "zemi.json",
+}
+
+// open builds the script's own state (DESIGN §4): base, string, table and
+// math, and a zemi table holding only workflow and json.
+func (r *wfRun) open(args any) *glua.LState {
+	L := glua.NewState(glua.Options{SkipOpenLibs: true, CallStackSize: 256})
+	r.L = L
+	for _, lib := range []struct {
+		name string
+		fn   glua.LGFunction
+	}{{"", glua.OpenBase}, {glua.TabLibName, glua.OpenTable}, {glua.StringLibName, glua.OpenString}, {glua.MathLibName, glua.OpenMath}} {
+		L.Push(L.NewFunction(lib.fn))
+		L.Push(glua.LString(lib.name))
+		L.Call(1, 0)
+	}
+	for _, name := range []string{"dofile", "loadfile", "module", "require", "_printregs", "xpcall", "newproxy", "print"} {
+		L.SetGlobal(name, glua.LNil)
+	}
+	lua.FixStringLib(L)
+	mt := L.NewTable()
+	mt.RawSetString("__index", L.NewFunction(func(L *glua.LState) int {
+		if to, ok := misnamed[L.CheckString(2)]; ok {
+			L.RaiseError("%s is %s in a workflow script", L.CheckString(2), to)
+		}
+		return 0
+	}))
+	L.SetMetatable(L.G.Global, mt)
+
+	wf := L.NewTable()
+	wf.RawSetString("args", lua.FromGo(L, args))
+	wf.RawSetString("agent", lua.Suspending(L, L.NewFunction(r.luaAgent)))
+	wf.RawSetString("parallel", lua.Suspending(L, L.NewFunction(r.luaParallel)))
+	wf.RawSetString("phase", L.NewFunction(func(L *glua.LState) int {
 		r.phase = L.CheckString(1)
 		r.report()
 		return 0
 	}))
-	logFn := L.NewFunction(func(L *glua.LState) int {
+	wf.RawSetString("log", L.NewFunction(func(L *glua.LState) int {
 		parts := make([]string, 0, L.GetTop())
 		for i := 1; i <= L.GetTop(); i++ {
 			parts = append(parts, L.ToStringMeta(L.Get(i)).String())
@@ -302,34 +340,19 @@ func (r *wfRun) install(args any) {
 		r.log = append(r.log, strings.Join(parts, " "))
 		r.report()
 		return 0
-	})
-	L.SetGlobal("log", logFn)
-	L.SetGlobal("print", logFn)
-	js := L.NewTable()
-	js.RawSetString("encode", L.NewFunction(jsonEncode("json.encode")))
-	js.RawSetString("decode", L.NewFunction(func(L *glua.LState) int {
-		var v any
-		// Model replies often wrap JSON in prose or fences: take the
-		// outermost object or array.
-		s := L.CheckString(1)
-		if i := strings.IndexAny(s, "{["); i >= 0 {
-			if j := strings.LastIndexAny(s, "}]"); j > i {
-				s = s[i : j+1]
-			}
-		}
-		if err := json.Unmarshal([]byte(s), &v); err != nil {
-			L.Push(glua.LNil)
-			L.Push(glua.LString(err.Error()))
-			return 2
-		}
-		L.Push(lua.FromGo(L, v))
-		return 1
 	}))
-	L.SetGlobal("json", js)
+	zemi := L.NewTable()
+	zemi.RawSetString("workflow", wf)
+	zemi.RawSetString("json", r.h.jsonNamespace(L))
+	L.SetGlobal("zemi", zemi)
+	if err := L.DoString(workflowPrelude); err != nil {
+		panic(err) // a constant: every workflow test fails first
+	}
+	return L
 }
 
-// agent(prompt [, opts]) or agent({prompt=, agent=, description=, model=}):
-// returns the agent's report, or nil and an error.
+// luaAgent is zemi.workflow.agent(prompt [, opts]): the agent's report, or
+// nil and an error.
 func (r *wfRun) luaAgent(L *glua.LState) int {
 	t := r.tasks[L]
 	switch {
@@ -338,16 +361,9 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	case lua.InGoCall(L):
 		L.RaiseError("agent() cannot wait inside pcall or a library callback such as table.sort; it returns nil, err on failure instead")
 	}
-	var prompt, name, desc, model string
-	switch v := L.Get(1).(type) {
-	case glua.LString:
-		prompt = string(v)
-		if opts, ok := L.Get(2).(*glua.LTable); ok {
-			name, desc, model = rawString(L, opts, "agent"), rawString(L, opts, "description"), rawString(L, opts, "model")
-		}
-	case *glua.LTable:
-		prompt, name, desc, model = rawString(L, v, "prompt"), rawString(L, v, "agent"), rawString(L, v, "description"), rawString(L, v, "model")
-	}
+	prompt := L.CheckString(1)
+	opts := L.OptTable(2, L.NewTable())
+	name, desc, model, phase := rawString(L, opts, "agent"), rawString(L, opts, "description"), rawString(L, opts, "model"), rawString(L, opts, "phase")
 	if strings.TrimSpace(prompt) == "" {
 		L.RaiseError("agent: prompt is required")
 	}
@@ -369,7 +385,7 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		desc = clipRunes(first, 40)
 	}
 	r.started++
-	t.req = &wfAgentReq{def: def, description: desc, prompt: prompt}
+	t.req = &wfAgentReq{def: def, description: desc, phase: cmp.Or(phase, r.phase), prompt: prompt}
 	return L.Yield()
 }
 

@@ -1715,12 +1715,19 @@ function zemi.agent.list() end
 function zemi.agent.run(spec, on_done) end
 
 -- ---------------------------------------------------------------------------
--- zemi.workflow
+-- zemi.workflow: run() and list() in config Lua; the rest exist only inside
+-- a workflow script, which also has zemi.json and nothing else of zemi.
 
 ---@class zemi.WorkflowRunSpec
 ---@field script? string Workflow source to run.
 ---@field name? string A script saved under workflows/ instead.
----@field args? any Passed to the script as the `args` global.
+---@field args? any The script's zemi.workflow.args.
+
+---@class zemi.WorkflowAgentOpts
+---@field agent? string Agent definition, default "general".
+---@field description? string Row label; default the prompt's first line.
+---@field phase? string Group for this agent; default the last phase().
+---@field model? string A role or provider/model id.
 
 ---@class zemi.WorkflowInfo
 ---@field name string
@@ -1729,17 +1736,56 @@ function zemi.agent.run(spec, on_done) end
 ---@field path string
 
 ---@class zemi.workflow
+---@field args any Workflow scripts only: the args the run was given.
 zemi.workflow = {}
 
 ---@return zemi.WorkflowInfo[]
 function zemi.workflow.list() end
 
---- Run a workflow in its own Lua state. User or builtin origin only.
+--- Run a workflow in its own Lua state. Config Lua, user or builtin origin only.
+--- ```lua
+--- zemi.workflow.run({ name = "review" }, function(result, err) zemi.agent.send(result or err) end)
+--- ```
 ---@param spec zemi.WorkflowRunSpec
 ---@param on_done? fun(result: string|nil, err: string|nil, log: string[]) A result that is not a string arrives as JSON.
 ---@return zemi.RunHandle|nil handle
 ---@return string|nil err No such saved workflow, or one in an untrusted project.
 function zemi.workflow.run(spec, on_done) end
+
+--- Workflow scripts only. Runs a subagent and waits for its report.
+--- ```lua
+--- local plan, err = zemi.workflow.agent("Plan the change to x.go", { agent = "plan" })
+--- ```
+---@param prompt string Everything the agent needs: it does not see the conversation.
+---@param opts? zemi.WorkflowAgentOpts
+---@return string|nil report
+---@return string|nil err
+function zemi.workflow.agent(prompt, opts) end
+
+--- Workflow scripts only. Runs the functions at once.
+---@param fns (fun(): any)[]
+---@return any[] results In order; nil where a function failed.
+---@return string[]|nil errs nil when none failed.
+function zemi.workflow.parallel(fns) end
+
+--- Workflow scripts only. Runs each item through the stages; items do not wait for each other.
+--- ```lua
+--- local fixed = zemi.workflow.pipeline(files, function(f) return zemi.workflow.agent("Find bugs in " .. f) end,
+--- 	function(bugs, f) return zemi.workflow.agent("Fix these in " .. f .. ":\n" .. bugs) end)
+--- ```
+---@param items any[]
+---@param ... fun(prev: any, item: any, i: integer): any
+---@return any[] results In item order; nil where a stage ended the item.
+---@return string[]|nil errs Where a stage returned nil, err.
+function zemi.workflow.pipeline(items, ...) end
+
+--- Workflow scripts only. Groups the agents started after it.
+---@param name string
+function zemi.workflow.phase(name) end
+
+--- Workflow scripts only. A line the user sees; the result carries it.
+---@param ... any
+function zemi.workflow.log(...) end
 
 -- ---------------------------------------------------------------------------
 -- zemi.session

@@ -1448,7 +1448,8 @@ commands and `!shell` and a paste reads the clipboard; the same actions are
 `zemi.composer.*` keymap strings only user config may bind), `zemi.health` (`add(name, fn)`,
 whose rows join the Go checks in `/health` and `zemi health`, and `list`, which reads
 those rows back from Lua),
-`zemi.workflow` (`run`, `list`), `zemi.lsp` (`add`, `disable`, `list`),
+`zemi.workflow` (`run`, `list`; inside a workflow script `agent`, `parallel`, `pipeline`,
+`phase`, `log` and `args` instead), `zemi.lsp` (`add`, `disable`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
 and `zemi.permission.mode` (`add`, `del`, `set` user config only, §9; `get`, `list`).
 There is no `zemi.eval`: the eval harness was never built (§10.6).
