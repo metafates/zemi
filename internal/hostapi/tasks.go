@@ -55,6 +55,7 @@ var runStatuses = []RunStatus{RunRunning, RunDone, RunFailed, RunCancelled}
 type agentRun struct {
 	id, agent, description string
 	parent                 string // the session that started the run
+	workflow, phase        string // the flow that started it, "" for none
 	// the model reference it started on
 	// NOTE: "" for a run loadRun rebuilt, which continues on its definition's
 	// model: sessions keep no model column.
@@ -69,6 +70,8 @@ type agentRun struct {
 	status    RunStatus
 	finished  time.Time
 	calls     int
+	tokens    int64          // billed input and output of its steps
+	cost      float64        // 0 when the model has no prices
 	tr        []ChatMessage  // the prompt, tool rows and replies so far
 	text      string         // reply text streamed since the last row
 	rows      map[string]int // tool call id -> tr index
@@ -78,11 +81,78 @@ type agentRun struct {
 }
 
 type taskReg struct {
-	mu   sync.Mutex
-	runs map[string]*agentRun
+	mu    sync.Mutex
+	runs  map[string]*agentRun
+	flows map[string]*flowRun
 }
 
-func newTaskReg() *taskReg { return &taskReg{runs: map[string]*agentRun{}} }
+func newTaskReg() *taskReg {
+	return &taskReg{runs: map[string]*agentRun{}, flows: map[string]*flowRun{}}
+}
+
+// detached refuses one more detached run past maxBackgroundAgents, agents
+// and workflows alike (r.mu held).
+func (r *taskReg) detached() error {
+	n := 0
+	for _, x := range r.runs {
+		if x.background && x.isRunning() {
+			n++
+		}
+	}
+	for _, f := range r.flows {
+		if f.background && f.isRunning() {
+			n++
+		}
+	}
+	if n >= maxBackgroundAgents {
+		return fmt.Errorf("%d background agents and workflows are already running; wait for one or run this one in the foreground", maxBackgroundAgents)
+	}
+	return nil
+}
+
+// addFlow registers a workflow run, as add does an agent run.
+func (r *taskReg) addFlow(f *flowRun) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if f.background {
+		if err := r.detached(); err != nil {
+			return err
+		}
+	}
+	r.flows[f.id] = f
+	if len(r.flows) > maxKeptRuns {
+		var oldest *flowRun
+		for _, x := range r.flows {
+			if !x.isRunning() && (oldest == nil || x.started.Before(oldest.started)) {
+				oldest = x
+			}
+		}
+		if oldest != nil {
+			delete(r.flows, oldest.id)
+		}
+	}
+	return nil
+}
+
+func (r *taskReg) flow(id string) *flowRun {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.flows[id]
+}
+
+// flowsOf returns the workflows parent started, newest first.
+func (r *taskReg) flowsOf(parent string) []*flowRun {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []*flowRun
+	for _, f := range r.flows {
+		if f.parent == parent {
+			out = append(out, f)
+		}
+	}
+	slices.SortFunc(out, func(a, b *flowRun) int { return b.started.Compare(a.started) })
+	return out
+}
 
 // add registers a run; a background run past maxBackgroundAgents is
 // refused. Counting and inserting share one lock: parallel tool calls race here.
@@ -90,14 +160,8 @@ func (r *taskReg) add(run *agentRun) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if run.background {
-		n := 0
-		for _, x := range r.runs {
-			if x.background && x.isRunning() {
-				n++
-			}
-		}
-		if n >= maxBackgroundAgents {
-			return fmt.Errorf("%d background agents are already running; wait for one or run this one in the foreground", maxBackgroundAgents)
+		if err := r.detached(); err != nil {
+			return err
 		}
 	}
 	r.runs[run.id] = run
@@ -147,23 +211,48 @@ func (r *taskReg) runningElsewhere(parent string) []*agentRun {
 
 // running counts every live run; runningFor only those parent started.
 func (r *taskReg) running() int {
-	return r.count(func(*agentRun) bool { return true })
+	a, f := r.live(func(string) bool { return true })
+	return a + f
 }
 
 func (r *taskReg) runningFor(parent string) int {
-	return r.count(func(x *agentRun) bool { return x.parent == parent })
+	a, f := r.live(func(p string) bool { return p == parent })
+	return a + f
 }
 
-func (r *taskReg) count(keep func(*agentRun) bool) int {
+// live counts the running agents and workflows of the parents keep takes.
+// A workflow is live until its script ends, paused or between agents too,
+// and its agents count as it.
+func (r *taskReg) live(keep func(parent string) bool) (agents, flows int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	n := 0
 	for _, x := range r.runs {
-		if keep(x) && x.isRunning() {
-			n++
+		if x.workflow == "" && keep(x.parent) && x.isRunning() {
+			agents++
 		}
 	}
-	return n
+	for _, f := range r.flows {
+		if keep(f.parent) && f.isRunning() {
+			flows++
+		}
+	}
+	return agents, flows
+}
+
+// stillRunning refuses what live work would undo, naming where to stop it.
+func (r *taskReg) stillRunning(keep func(parent string) bool) error {
+	a, f := r.live(keep)
+	var what, where []string
+	if a > 0 {
+		what, where = append(what, fmt.Sprintf("%d background %s", a, plural(a, "agent", "agents"))), append(where, "/agents")
+	}
+	if f > 0 {
+		what, where = append(what, fmt.Sprintf("%d %s", f, plural(f, "workflow", "workflows"))), append(where, "/workflows")
+	}
+	if what == nil {
+		return nil
+	}
+	return Usagef("%s still running; stop them from %s first", strings.Join(what, " and "), strings.Join(where, " or "))
 }
 
 // find looks a run up by its id or its child session id.
@@ -202,6 +291,12 @@ func (run *agentRun) isRunning() bool {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	return run.status == RunRunning
+}
+
+func (run *agentRun) usage() (int64, float64) {
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.tokens, run.cost
 }
 
 // state is the run's list row data.
@@ -572,11 +667,11 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 // stored ones this process does not hold included; enter shows a transcript.
 func (h *Host) agentRunItems() []any {
 	sid := h.AgentSessionID()
-	var running, earlier []any
+	var running, flows, earlier []any
 	row := func(id string, status RunStatus, agent string, took time.Duration, desc, calls string) {
 		item := map[string]any{
 			"text":    agent,
-			"desc":    string(status) + " · " + fmtDuration(took) + calls + " · " + desc,
+			"desc":    statusCol(string(status)) + " · " + fmtDuration(took) + calls + " · " + desc,
 			"run":     "agents view " + id,
 			"section": "Earlier in this session",
 		}
@@ -587,11 +682,22 @@ func (h *Host) agentRunItems() []any {
 		}
 		earlier = append(earlier, item)
 	}
+	// a workflow's agents are one row, its own
 	held := map[string]bool{}
+	for _, f := range h.tasks.flowsOf(sid) {
+		v := f.view()
+		flows = append(flows, map[string]any{
+			"text":    f.description,
+			"desc":    fmt.Sprintf("%s · %d/%d agents · %s", statusCol(string(v.status)), v.done, len(v.agents), fmtDuration(v.took)),
+			"section": "Workflows",
+		})
+	}
 	for _, run := range h.tasks.list(sid) {
 		status, calls, took, runSID := run.state()
 		held[runSID] = true
-		row(run.id, status, run.agent, took, run.description, fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
+		if run.workflow == "" {
+			row(run.id, status, run.agent, took, run.description, fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
+		}
 	}
 	// a run another session started still writes files and blocks /rewind,
 	// so it is listed, named by that session
@@ -611,5 +717,9 @@ func (h *Host) agentRunItems() []any {
 			}
 		}
 	}
-	return append(running, earlier...)
+	return slices.Concat(running, flows, earlier)
 }
+
+// statusCol pads a status word to the widest, so a row whose run ends moves
+// nothing after it.
+func statusCol(s string) string { return fmt.Sprintf("%-9s", s) }

@@ -117,8 +117,8 @@ func (h *Host) RewindTo(id string) (int, error) {
 	ag.mu.Unlock()
 	defer h.handOff(scope)
 	// a detached run writing files would undo the restore right after it
-	if n := h.tasks.running(); n > 0 {
-		return 0, Usagef("%d background %s still running; stop them from /agents first", n, plural(n, "agent", "agents"))
+	if err := h.tasks.stillRunning(func(string) bool { return true }); err != nil {
+		return 0, err
 	}
 	if sid == "" || h.DB == nil {
 		return 0, Usagef("no session to rewind")

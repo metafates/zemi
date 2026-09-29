@@ -49,8 +49,17 @@ func echoAgents(h *Host) *atomic.Int32 {
 	return &peak
 }
 
+// runFlow runs src in the foreground and returns its value.
+func runFlow(h *Host, ctx context.Context, src string, args any) (string, error) {
+	f, err := h.startFlow(ctx, flowSpec{src: src, args: args})
+	if err != nil {
+		return "", err
+	}
+	return f.result, f.err
+}
+
 // TestWorkflowCancelBoundedDrain: an agent that never notices the cancel
-// must not hold runWorkflow open past the drain grace. The run checks that a
+// must not hold the run open past the drain grace. The run checks that a
 // cancel ends it; the bubble checks the bound.
 func TestWorkflowCancelBoundedDrain(t *testing.T) {
 	t.Parallel()
@@ -59,20 +68,20 @@ func TestWorkflowCancelBoundedDrain(t *testing.T) {
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
 			running <- struct{}{}
-			select {} // never returns, so runWorkflow returning is the drain giving up
+			select {} // never returns, so the run ending is the drain giving up
 		}}, nil
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		_, err := h.runWorkflow(ctx, `zemi.workflow.agent("x")`, nil, nil)
+		_, err := runFlow(h, ctx, `zemi.workflow.agent("x")`, nil)
 		done <- err
 	}()
 	// cancelled only once the agent runs: a cancel that beats it tests nothing
 	select {
 	case <-running:
 	case err := <-done:
-		t.Fatalf("runWorkflow returned before its agent ran: %v", err)
+		t.Fatalf("the run ended before its agent ran: %v", err)
 	}
 	cancel()
 	select {
@@ -81,7 +90,7 @@ func TestWorkflowCancelBoundedDrain(t *testing.T) {
 			t.Fatal("cancelled workflow returned no error")
 		}
 	case <-time.After(time.Minute):
-		t.Fatal("runWorkflow waited on an agent that ignores cancellation")
+		t.Fatal("the run waited on an agent that ignores cancellation")
 	}
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()
@@ -101,7 +110,6 @@ func TestWorkflowRun(t *testing.T) {
 		args         any
 		want         string // result, or the error substring when wantErr
 		wantErr      bool
-		ran          string // an agent line a failed run keeps
 	}{
 		{name: "sequential chain", script: `local a = wf.agent("x") return wf.agent(a .. "y")`, want: "x!y!"},
 		{
@@ -153,38 +161,242 @@ func TestWorkflowRun(t *testing.T) {
 		{name: "print is gone", script: `print("x")`, wantErr: true, want: "print is zemi.workflow.log"},
 		{name: "no other zemi namespace", script: `return zemi.fs.read("x")`, wantErr: true, want: "attempt to index"},
 		{name: "syntax error", script: `return (`, wantErr: true, want: "workflow script"},
-		{name: "a failed script names the agents that ran", script: `local x = wf.agent("quick") local t = nil return t.field`, wantErr: true, want: "attempt to index", ran: "general done: quick"},
+		{name: "a script error after an agent", script: `local x = wf.agent("quick") local t = nil return t.field`, wantErr: true, want: "attempt to index"},
 		{name: "string.rep over the cap", script: `return ("x"):rep(1e13)`, wantErr: true, want: "byte cap"},
 		{name: "string.rep under the cap", script: `return string.rep("ab", 2) .. string.rep("x", -1)`, want: "abab"},
 		{name: "no file access", script: `return dofile("/etc/passwd")`, wantErr: true, want: "non-function"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			res, err := h.runWorkflow(context.Background(), "local wf = zemi.workflow\n"+c.script, c.args, nil)
+			res, err := runFlow(h, context.Background(), "local wf = zemi.workflow\n"+c.script, c.args)
 			if c.wantErr {
 				if err == nil || !strings.Contains(err.Error(), c.want) {
 					t.Fatalf("err = %v, want %q", err, c.want)
-				}
-				// each line leads with an id send_to continues
-				for _, l := range res.Agents {
-					if h.tasks.find(strings.Fields(l)[0]) == nil || c.ran == "" || !strings.Contains(l, c.ran) {
-						t.Fatalf("agents = %q, want %q", res.Agents, c.ran)
-					}
-				}
-				if c.ran != "" && len(res.Agents) == 0 {
-					t.Fatalf("no agents listed, want %q", c.ran)
 				}
 				return
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.HasPrefix(res.Value, c.want) {
-				t.Fatalf("result = %q, want %q", res.Value, c.want)
+			if !strings.HasPrefix(res, c.want) {
+				t.Fatalf("result = %q, want %q", res, c.want)
 			}
 		})
 	}
 	if peak.Load() < 2 {
 		t.Fatalf("parallel agents never overlapped (peak %d)", peak.Load())
+	}
+}
+
+// gateModel holds every agent until release lets one answer "<prompt>!",
+// or its context ends it; calls counts the calls by prompt. The prompt is
+// the task's first line: the scratchpad line runAgent adds names the run.
+type gateModel struct {
+	scriptModel
+	release chan struct{}
+	running atomic.Int32
+	mu      sync.Mutex
+	calls   map[string]int
+}
+
+func newGate() *gateModel {
+	m := &gateModel{release: make(chan struct{}), calls: map[string]int{}}
+	m.script = func(_, last string, _ bool) []fantasy.StreamPart {
+		prompt, _, _ := strings.Cut(last, "\n")
+		m.mu.Lock()
+		m.calls[prompt]++
+		m.mu.Unlock()
+		return textParts(prompt + "!")
+	}
+	return m
+}
+
+func (m *gateModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	resp, err := m.scriptModel.Stream(ctx, call)
+	m.running.Add(1)
+	defer m.running.Add(-1)
+	select {
+	case <-m.release:
+		return resp, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (m *gateModel) count(prompt string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls[prompt]
+}
+
+// TestWorkflowControl drives flowControl against agents the test holds. A
+// tick is the scheduler's report after it handled an event, so a state
+// seen there is one no later dispatch in that step changed.
+func TestWorkflowControl(t *testing.T) {
+	t.Parallel()
+	type ctl struct {
+		t     *testing.T
+		h     *Host
+		m     *gateModel
+		f     *flowRun
+		ticks chan flowView
+	}
+	// tick waits for the scheduler to report a state cond accepts
+	tick := func(c ctl, cond func(flowView) bool) flowView {
+		c.t.Helper()
+		for {
+			select {
+			case v := <-c.ticks:
+				if cond(v) {
+					return v
+				}
+			case <-time.After(3 * time.Second):
+				c.t.Fatal("the run never reached the state")
+			}
+		}
+	}
+	act := func(c ctl, a flowAction, n int, agent string) string {
+		c.t.Helper()
+		out, err := c.h.flowControl(c.f.id, a, n, agent)
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		return out
+	}
+	running := func(n int32) func(c ctl) {
+		return func(c ctl) {
+			waitFor(c.t, func() error {
+				if got := c.m.running.Load(); got != n {
+					return fmt.Errorf("agents running %d, want %d", got, n)
+				}
+				return nil
+			})
+		}
+	}
+	for _, c := range []struct {
+		name, script string
+		limit        int
+		drive        func(c ctl)
+		want         string // the result, or the error's text
+	}{
+		{
+			name:   "pause holds a queued agent that blocks rewind; resume starts it with the flow's session as parent",
+			script: `return wf.agent("a") .. wf.agent("b")`,
+			drive: func(c ctl) {
+				running(1)(c)
+				act(c, actPause, 0, "")
+				c.m.release <- struct{}{}
+				v := tick(c, func(v flowView) bool { return len(v.agents) == 2 })
+				if v.agents[1].status != "queued" || v.running != 0 {
+					c.t.Fatalf("paused run started %+v", v.agents[1])
+				}
+				if c.h.tasks.stillRunning(func(string) bool { return true }) == nil {
+					c.t.Fatal("a paused workflow does not block a rewind")
+				}
+				c.h.agents.mu.Lock()
+				c.h.agents.sessionID = "s2"
+				c.h.agents.mu.Unlock()
+				act(c, actResume, 0, "")
+				running(1)(c)
+				if p := c.h.tasks.find(c.f.view().agents[1].id).parent; p != "s1" {
+					c.t.Fatalf("the agent started after /new has parent %q", p)
+				}
+				c.m.release <- struct{}{}
+			},
+			want: "a!b!",
+		},
+		{
+			name:   "raising the concurrency starts the queued agents",
+			script: `return table.concat(wf.parallel({function() return wf.agent("a") end, function() return wf.agent("b") end, function() return wf.agent("c") end}))`,
+			limit:  1,
+			drive: func(c ctl) {
+				running(1)(c)
+				act(c, actConcurrency, 3, "")
+				running(3)(c)
+				for range 3 {
+					c.m.release <- struct{}{}
+				}
+			},
+			want: "a!b!c!",
+		},
+		{
+			name:   "stopping one agent hands the script nil and the reason",
+			script: `local r, err = wf.agent("a") return tostring(r) .. " " .. err`,
+			drive: func(c ctl) {
+				running(1)(c)
+				if err := c.h.stopRun(c.f.view().agents[0].id); err != nil {
+					c.t.Fatal(err)
+				}
+			},
+			want: "nil stopped by the user",
+		},
+		{
+			name:   "a restart runs the call again and the script sees only the second answer",
+			script: `return wf.agent("a")`,
+			drive: func(c ctl) {
+				running(1)(c)
+				act(c, actRestart, 0, c.f.view().agents[0].id)
+				waitFor(c.t, func() error {
+					if n := c.m.count("a"); n != 2 {
+						return fmt.Errorf("calls %d", n)
+					}
+					return nil
+				})
+				running(1)(c)
+				c.m.release <- struct{}{}
+			},
+			want: "a!",
+		},
+		{
+			name:   "stop cancels the run",
+			script: `return wf.agent("a")`,
+			drive: func(c ctl) {
+				running(1)(c)
+				act(c, actStop, 0, "")
+			},
+			want: "context canceled",
+		},
+		{
+			name:   "an action on a finished run says it is not running",
+			script: `return "x"`,
+			drive: func(c ctl) {
+				tick(c, func(v flowView) bool { return v.status == RunDone })
+				if _, err := c.h.flowControl(c.f.id, actPause, 0, ""); err == nil || !strings.Contains(err.Error(), "not running") {
+					c.t.Fatalf("pause on a finished run: %v", err)
+				}
+			},
+			want: "x",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h, _ := newTestHostDB(t)
+			h.agents.sessionID = "s1"
+			m := newGate()
+			h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
+			ticks, ended := make(chan flowView, 256), make(chan struct{})
+			f, err := h.startFlow(context.Background(), flowSpec{
+				src: "local wf = zemi.workflow\n" + c.script, concurrency: c.limit, background: true,
+				progress: func(f *flowRun) {
+					select {
+					case ticks <- f.view():
+					default: // a case that reads no ticks
+					}
+				},
+				done: func(*flowRun) { close(ended) },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.drive(ctl{t, h, m, f, ticks})
+			<-ended
+			got := f.result
+			if f.err != nil {
+				got = f.err.Error()
+			}
+			if got != c.want {
+				t.Fatalf("result %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 
@@ -197,7 +409,7 @@ func TestWorkflowCancel(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := h.runWorkflow(ctx, `zemi.workflow.agent("x") while true do end`, nil, nil)
+		_, err := runFlow(h, ctx, `zemi.workflow.agent("x") while true do end`, nil)
 		done <- err
 	}()
 	select {
@@ -270,12 +482,12 @@ func TestReviewTargetsACommit(t *testing.T) {
 		{"main", "git diff --merge-base main"},
 		{"", "git diff HEAD"},
 	} {
-		res, err := h.runWorkflow(context.Background(), src, c.args, nil)
+		res, err := runFlow(h, context.Background(), src, c.args)
 		if err != nil {
 			t.Fatalf("%q: %v", c.args, err)
 		}
-		if !strings.Contains(res.Value, c.want) {
-			t.Errorf("/review %q collected with %q", c.args, res.Value)
+		if !strings.Contains(res, c.want) {
+			t.Errorf("/review %q collected with %q", c.args, res)
 		}
 	}
 }

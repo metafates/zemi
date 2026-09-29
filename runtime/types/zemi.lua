@@ -883,7 +883,8 @@ function zemi.event.stats() end
 ---@field ended zemi.TurnEnd|"" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
 ---@field busy? { label: string, elapsed: number, cancellable: boolean } The newest job the user waits on that is not a turn (/btw, a plugin install, the reflector): its label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
 ---@field pending_memory integer
----@field agents_running integer Background agents of this session still running; their reports arrive as messages.
+---@field agents_running integer Agents of this session still running outside a workflow: the turn's own and background ones, whose reports arrive as messages.
+---@field workflows_running integer Workflows of this session still running, paused ones included.
 ---@field jobs_running integer Background jobs (job_start, or a bash call that outlived its timeout) still running.
 ---@field goal? zemi.GoalCtx The session's goal while one is set (/goal).
 ---@field loop? zemi.LoopCtx The session's loop while one runs (/loop).
@@ -1722,6 +1723,10 @@ function zemi.agent.run(spec, on_done) end
 ---@field script? string Workflow source to run.
 ---@field name? string A script saved under workflows/ instead.
 ---@field args? any The script's zemi.workflow.args.
+---@field concurrency? integer Agents at once, 1-16 (default 5).
+
+---@class zemi.WorkflowHandle: zemi.RunHandle
+---@field id string The run's id, as /agents shows it.
 
 ---@class zemi.WorkflowAgentOpts
 ---@field agent? string Agent definition, default "general".
@@ -1748,7 +1753,7 @@ function zemi.workflow.list() end
 --- ```
 ---@param spec zemi.WorkflowRunSpec
 ---@param on_done? fun(result: string|nil, err: string|nil, log: string[]) A result that is not a string arrives as JSON.
----@return zemi.RunHandle|nil handle
+---@return zemi.WorkflowHandle|nil handle
 ---@return string|nil err No such saved workflow, or one in an untrusted project.
 function zemi.workflow.run(spec, on_done) end
 

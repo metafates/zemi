@@ -171,10 +171,8 @@ func (h *Host) DeleteSession(id string, yes bool) error {
 	if id == "" || id == h.AgentSessionID() {
 		return Usagef("the current session cannot be deleted; /new first")
 	}
-	for _, run := range h.tasks.list(id) {
-		if run.isRunning() {
-			return Usagef("an agent from that session is still running; /agents stops it")
-		}
+	if err := h.tasks.stillRunning(func(p string) bool { return p == id }); err != nil {
+		return err
 	}
 	s, err := h.DB.GetSession(id)
 	if errors.Is(err, store.ErrNotFound) {

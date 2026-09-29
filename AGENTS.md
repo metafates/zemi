@@ -826,8 +826,17 @@ lua-language-server is installed.
   `agent`/`parallel` are `lua.Suspending` wrappers, and both refuse under `pcall` or a library
   callback (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description
   points at the zemi skill's workflows.md for the API, which every request would otherwise pay for.
+  A run (`flowRun`, `startFlow`, registered in `taskReg.flows`) is live work until its script
+  ends, paused or between agents too: `taskReg.live` counts it, and not its agents, for rewind,
+  fork, session delete, the queue drain and the statusline, and `stillRunning` names where to
+  stop what blocks. `flowControl` is the one control path: pause stops dispatching and lets
+  running agents finish, stop cancels the run, concurrency (1-16) applies at the next dispatch,
+  and restart cancels one running agent and queues the same call again, counting as a start
+  toward the 100-agent cap. Controls write the run's fields under its lock and wake the
+  scheduler, so none waits on a script busy in Lua. Its agents take the flow's parent session.
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers an
-  `agentRun` whose hooks build a live transcript, which `/agents view <id>` draws instead of
+  `agentRun` (a workflow's carry `workflow` and `phase`, and /agents lists them as one row per
+  workflow) whose hooks build a live transcript, which `/agents view <id>` draws instead of
   the session's, and a submit while it runs goes to it through `MessageAgent`. A run's queue is
   its `Runner.Steer`; what arrives after its last step boundary becomes one more `Send`
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a

@@ -87,10 +87,11 @@ zemi.ui.widget.add({
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
-		local agents, jobs = ctx.agents_running or 0, ctx.jobs_running or 0
-		if agents == 0 and jobs == 0 then return {} end
+		local flows, agents, jobs = ctx.workflows_running or 0, ctx.agents_running or 0, ctx.jobs_running or 0
+		if flows == 0 and agents == 0 and jobs == 0 then return {} end
 		---@type string[]
 		local parts = {}
+		if flows > 0 then parts[#parts + 1] = fmt.count(flows, "workflow", "workflows") end
 		if agents > 0 then parts[#parts + 1] = fmt.count(agents, "agent", "agents") end
 		if jobs > 0 then parts[#parts + 1] = fmt.count(jobs, "job", "jobs") end
 		return { fmt.hint("⧗ " .. table.concat(parts, ", "), "/agents", "agents") }

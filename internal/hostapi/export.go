@@ -312,8 +312,8 @@ func (h *Host) ForkSession() (string, error) {
 	if h.AgentActive() {
 		return "", Usagef("a turn is running; esc twice interrupts it")
 	}
-	if n := h.tasks.runningFor(sid); n > 0 {
-		return "", Usagef("%d background %s still running; stop them from /agents first", n, plural(n, "agent", "agents"))
+	if err := h.tasks.stillRunning(func(p string) bool { return p == sid }); err != nil {
+		return "", err
 	}
 	sess, err := h.DB.GetSession(sid)
 	if err != nil {

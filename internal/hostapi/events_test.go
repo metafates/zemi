@@ -150,9 +150,9 @@ func TestBuiltinReviewWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	echoAgents(h)
-	res, err := h.runWorkflow(context.Background(), src, nil, nil)
-	if err != nil || !strings.HasPrefix(res.Value, "Verify these review findings") {
-		t.Fatalf("review run = %q, %v", res.Value, err)
+	res, err := runFlow(h, context.Background(), src, nil)
+	if err != nil || !strings.HasPrefix(res, "Verify these review findings") {
+		t.Fatalf("review run = %q, %v", res, err)
 	}
 }
 

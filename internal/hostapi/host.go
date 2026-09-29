@@ -1558,7 +1558,10 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		tb.RawSetString("busy", b)
 	}
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
-	tb.RawSetString("agents_running", glua.LNumber(h.tasks.runningFor(h.AgentSessionID())))
+	sid := h.AgentSessionID()
+	agents, flows := h.tasks.live(func(p string) bool { return p == sid })
+	tb.RawSetString("agents_running", glua.LNumber(agents))
+	tb.RawSetString("workflows_running", glua.LNumber(flows))
 	tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))
 	if g, ok := h.Goal(); ok {
 		gt := L.CreateTable(0, 3)
