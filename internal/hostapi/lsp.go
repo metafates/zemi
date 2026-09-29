@@ -834,10 +834,12 @@ func (h *Host) lspCommands() []*Command {
 
 // lspOverlay is /lsp; with refresh it only replaces an open one.
 func (h *Host) lspOverlay(refresh bool) Overlay {
-	empty := "No language servers yet. Install " + builtinCommands() + ", or add one with zemi.lsp.add."
-	if !h.ProjectTrusted() {
-		empty = "The project's language servers are off: it is not trusted (/trust). zemi's own Lua, in your config and local plugins, still gets lua-language-server."
+	empty := "The project's language servers are off: it is not trusted (/trust)."
+	if h.ProjectTrusted() {
+		why := h.noLSP("").Error()
+		empty = strings.ToUpper(why[:1]) + why[1:] + ". A server also starts on the first file below its marker in a subdirectory."
 	}
+	empty += " zemi's own Lua, in your config and local plugins, gets lua-language-server."
 	return Overlay{
 		ID: "lsp", Title: "Language servers", Origin: lua.OriginBuiltin, Refresh: refresh, Items: h.lspItems(),
 		Reload: func() ([]any, [][]Segment) { return h.lspItems(), nil }, Empty: empty,
