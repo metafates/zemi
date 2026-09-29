@@ -965,7 +965,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   for the main agent on the shipped prompt, `replyReminder` last.
   The main agent stores it as a `context` row (`contextRow`, which no transcript reader reads)
   whenever the pin is built anew, and a resume sends the stored one again while `contextKey`
-  (the pin key, working directory and scratchpad) holds, so the provider's cache of the whole
+  (the pin key, working directory, scratchpad and digest) holds, so the provider's cache of the whole
   conversation holds too; `dropPin` forgets it. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index, no `read`

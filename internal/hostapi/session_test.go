@@ -101,6 +101,9 @@ func TestSessionLifecycle(t *testing.T) {
 		waitIdle(t, h)
 	}
 
+	if err := h.Remember("deploy by hand"); err != nil {
+		t.Fatal(err)
+	}
 	send("one")
 	first := h.AgentSessionID()
 	if err := h.NewSession(); err != nil {
@@ -139,6 +142,23 @@ func TestSessionLifecycle(t *testing.T) {
 	// The composer history spans sessions, oldest first.
 	if got := h.InputHistory(10); len(got) != 3 || got[0] != "one" || got[1] != "two" || got[2] != "three" {
 		t.Fatalf("input history = %q", got)
+	}
+	// a memory forgotten since the context was stored is not sent again
+	if err := h.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.memoryCommand("forget " + projectMemories(t, h)[0].ID + " --yes"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ResumeSession(first); err != nil {
+		t.Fatal(err)
+	}
+	send("four")
+	m.mu.Lock()
+	ctx0, ctx1 := concatText(m.prompts[0][1].Content), concatText(m.prompts[len(m.prompts)-1][1].Content)
+	m.mu.Unlock()
+	if !strings.Contains(ctx0, "deploy by hand") || strings.Contains(ctx1, "deploy by hand") {
+		t.Fatalf("context before the forget:\n%s\nafter it:\n%s", ctx0, ctx1)
 	}
 
 	// /sessions delete: the live session is refused, another one goes with its scratchpad

@@ -459,9 +459,10 @@ type contextRow struct {
 }
 
 // contextKey is what a stored context message is valid for: the pin key,
-// and the working directory and scratchpad it names (a fork has its own).
-func (h *Host) contextKey(pinKey string) string {
-	sum := sha256.Sum256([]byte(pinKey + "\x00" + h.Dirs.ProjectDir + "\x00" + h.ScratchDir()))
+// the working directory and scratchpad it names (a fork has its own) and
+// the digest, so a memory dropped since is not sent again.
+func (h *Host) contextKey(pinKey, digest string) string {
+	sum := sha256.Sum256([]byte(pinKey + "\x00" + h.Dirs.ProjectDir + "\x00" + h.ScratchDir() + "\x00" + digest))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -509,7 +510,7 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy
 	k := strings.Join(key, "\x00")
 	ag := h.agents
 	ag.mu.Lock()
-	pin, drops := ag.pin, ag.pinDrops
+	pin, drops, digest := ag.pin, ag.pinDrops, ag.digest
 	ag.mu.Unlock()
 	if pin.key != k {
 		pin = promptPin{key: k, infos: map[string]fantasy.ToolInfo{}}
@@ -517,7 +518,7 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy
 		for _, info := range infos {
 			pin.infos[info.Name] = info
 		}
-		ctxKey, mine := h.contextKey(k), filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
+		ctxKey, mine := h.contextKey(k, digest), filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
 		var stored *contextRow
 		ag.mu.Lock()
 		// a drop during the build means it may have read what the drop replaced

@@ -2779,7 +2779,7 @@ after it across sessions: the base prompt + **skills index** (name +
 description only) + the user's `<config>/AGENTS.md` + Lua sections (§6.3).
 What varies by project or session follows it as the context message, a
 user-role message before the conversation that the session stores and a
-resume sends again byte for byte: the repository's context files
+resume sends again byte for byte while the memories are the same: the repository's context files
 (AGENTS.md, else CLAUDE.md, injected verbatim) + the environment +
 **memory digest** (every live memory, this project then
 every project, newest first, each scope cut at a 3 KB budget the write
