@@ -17,6 +17,7 @@ You review Go code for data races, deadlocks and leaked goroutines. Cite file:li
 - `description` is required and is what the model reads when it picks an agent, so say when to use it.
 - `model` is a role (`chat`, `agents`, `titles`, `compact`, `memory`: the model that role runs on) or a `provider/model`; omitted or `inherit`, `models.agents`.
 - `tools` is an allowlist, or `-name` entries that remove from the full set, so later tools still arrive; omitted, everything but `agent`, `workflow`, `todos`, `question`, `plan` and `lua`, which no subagent gets. `config.md` lists the tool names. An unknown tool name fails the agent.
+- `read_only: true` denies file writes and runs its commands with the project unwritable, whatever its tools and the mode, like `explore`. Use it for any agent that should only look, even one that runs commands.
 
 ## Profiles (`init.lua`)
 

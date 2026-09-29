@@ -396,7 +396,7 @@ func TestAgentDefs(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(proj, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	write(filepath.Join(cfg, "agents"), "reviewer.md", "---\ndescription: reviews diffs\ntools: read, grep\nmodel: inherit\n---\nBe harsh.\n")
+	write(filepath.Join(cfg, "agents"), "reviewer.md", "---\ndescription: reviews diffs\ntools: read, grep\nmodel: inherit\nread_only: true\n---\nBe harsh.\n")
 	write(filepath.Join(cfg, "agents"), "explore.md", "---\ndescription: my explorer\ntools: [read]\n---\nmine\n")
 	write(filepath.Join(cfg, "agents"), "broken.md", "---\ntools: read\n---\nno description\n")
 	write(filepath.Join(proj, ".agents", "agents"), "general.md", "---\ndescription: project override\n---\nx\n")
@@ -425,17 +425,20 @@ func TestAgentDefs(t *testing.T) {
 	}
 	h.SetProjectTrusted(true)
 	defs = get()
-	for _, c := range []struct{ name, source, desc, tools, system string }{
-		{"reviewer", "user", "reviews diffs", "read,grep", "Be harsh."},
-		{"explore", "user", "my explorer", "read", "mine"},
-		{"general", "builtin", builtinAgents[1].Description, "", builtinAgents[1].System},
-		{"tester", "project", "runs tests", "", "x"},
+	for _, c := range []struct {
+		name, source, desc, tools, system string
+		readOnly                          bool
+	}{
+		{"reviewer", "user", "reviews diffs", "read,grep", "Be harsh.", true},
+		{"explore", "user", "my explorer", "read", "mine", false},
+		{"general", "builtin", builtinAgents[1].Description, "", builtinAgents[1].System, false},
+		{"tester", "project", "runs tests", "", "x", false},
 	} {
 		d, ok := defs[c.name]
 		if !ok {
 			t.Fatalf("%s missing", c.name)
 		}
-		if string(d.Source) != c.source || d.Description != c.desc || strings.Join(d.Tools, ",") != c.tools || d.System != c.system || d.Model != "" {
+		if string(d.Source) != c.source || d.Description != c.desc || strings.Join(d.Tools, ",") != c.tools || d.System != c.system || d.Model != "" || d.ReadOnly != c.readOnly {
 			t.Fatalf("%s = %+v", c.name, d)
 		}
 	}

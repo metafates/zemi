@@ -148,6 +148,7 @@ func parseAgentFile(name, path string, source lua.Origin) (AgentDef, error) {
 		Description string `yaml:"description"`
 		Model       string `yaml:"model"`
 		Tools       any    `yaml:"tools"`
+		ReadOnly    bool   `yaml:"read_only"`
 	}
 	if err := yaml.Unmarshal([]byte(block), &fm); err != nil {
 		return AgentDef{}, fmt.Errorf("%s: frontmatter: %w", path, err)
@@ -159,6 +160,7 @@ func parseAgentFile(name, path string, source lua.Origin) (AgentDef, error) {
 		System:      strings.TrimSpace(body),
 		Source:      source,
 		Path:        path,
+		ReadOnly:    fm.ReadOnly,
 	}
 	if d.Model == "inherit" {
 		d.Model = ""
