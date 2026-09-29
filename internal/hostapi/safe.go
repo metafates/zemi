@@ -34,9 +34,10 @@ func (h *Host) safe(where string, fn func()) {
 	fn()
 }
 
-// endTurnAfterPanic is deferred in turn goroutines: a panic mid-turn stops
-// the turn and clears its live state, so the agent is not stuck "active"
-// with nothing running. The panic is logged, then the app goes on.
+// endTurnAfterPanic is deferred in turn goroutines and in sendClaimed: a
+// panic mid-turn, or before one started on a claim, stops the turn and clears
+// its live state, so the agent is not stuck "active" with nothing running.
+// The panic is logged, then the app goes on.
 func (h *Host) endTurnAfterPanic() {
 	r := recover()
 	if r == nil {
@@ -45,7 +46,8 @@ func (h *Host) endTurnAfterPanic() {
 	h.logPanic("agent turn", r)
 	ag := h.agents
 	ag.mu.Lock()
-	ag.active, ag.compacting, ag.checkingGoal = false, false, false
+	h.release()
+	ag.compacting, ag.checkingGoal = false, false
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.turnStart, ag.retryAt = time.Time{}, time.Time{}
 	ag.mu.Unlock()

@@ -290,7 +290,8 @@ nested repo whose config zemi would run.
    While the runtime is hot those handlers cannot run, so both deny until `/reload`.
 6. **No bare goroutines in hostapi.** Start them with `h.GoSafe(where, fn)`: a panic is logged
    with its stack, shown in `/errors`, and zemi keeps running. Turn goroutines also defer
-   `h.endTurnAfterPanic()` so the agent is not left "active". A panic in a plain `go func()`
+   `h.endTurnAfterPanic()` so the agent is not left "active", and so does `sendClaimed`, which
+   every caller reaches holding the claim. A panic in a plain `go func()`
    kills the process with the terminal still in raw mode.
 7. **The store** (`internal/store`) is SQLite via modernc.org/sqlite (pure Go), WAL,
    `MaxOpenConns(1)`. Two handles: a global DB (memory, kv, skills) and a per-project one under

@@ -574,6 +574,7 @@ func (h *Host) drainQueue() {
 
 // sendClaimed starts a turn for text on an agent already claimed with scope.
 func (h *Host) sendClaimed(scope *turnScope, text string) error {
+	defer h.endTurnAfterPanic()
 	ag := h.agents
 	fail := func(err error) error {
 		h.endScope(scope)
