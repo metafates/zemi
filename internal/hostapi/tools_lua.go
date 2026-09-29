@@ -302,7 +302,8 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 		return resp, nil
 	}
 	defer a.h.postNotify(ctx, a.pipe.Pad, a.t.Name, call.Input, &reply, time.Now())
-	req := tools.Request{Tool: a.t.Name, Subject: "tool." + a.t.Name, Arg: a.t.Name, Preview: call.Input, Owner: a.h.OriginBadge(a.t.Origin, a.t.Path)}
+	about, _ := input["about"].(string) // the prompt quotes it as bash's
+	req := tools.Request{Tool: a.t.Name, Subject: "tool." + a.t.Name, Arg: a.t.Name, Description: about, Preview: call.Input, Owner: a.h.OriginBadge(a.t.Origin, a.t.Path)}
 	if v := a.pipe.CheckDenied(req); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse("permission " + string(v.Decision) + " (" + v.DecidedBy + "): " + req.Subject + ": " + v.Reason), nil
 	}
