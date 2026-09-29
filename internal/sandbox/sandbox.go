@@ -130,6 +130,8 @@ func LikelyDenied(out string, err error) bool {
 		switch code := ee.ExitCode(); {
 		case code == 126 || code == 127: // not executable, not found
 			return false
+		case Killed(err):
+			return true
 		case code > 1 && strings.TrimSpace(out) == "":
 			// a silent failure (curl -s) has no text to match; exit 1 is
 			// grep or test finding nothing
@@ -137,6 +139,18 @@ func LikelyDenied(out string, err error) bool {
 		}
 	}
 	return denied.MatchString(out[max(0, len(out)-deniedTail):] + "\n" + err.Error())
+}
+
+// Killed reports a command that died from a signal, itself (exit code -1)
+// or as the shell reports a child (128+n, "Abort trap: 6"): a confined
+// program crashes when a service it needs is denied, printing no path.
+func Killed(err error) bool {
+	ee, ok := errors.AsType[*exec.ExitError](err)
+	if !ok {
+		return false
+	}
+	code := ee.ExitCode()
+	return code == -1 || code > 128 && code < 128+32
 }
 
 // network matches the half of a denial that a socket would fix: a failed

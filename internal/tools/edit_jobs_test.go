@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -98,6 +99,7 @@ func TestEscapesOnlyWhereOffered(t *testing.T) {
 // none without a UI, no sandbox: false for a read-only agent.
 func TestSandboxHintFollowsPolicy(t *testing.T) {
 	denied := errors.New("exit status 1")
+	killed := exec.Command("sh", "-c", "exit 134").Run()
 	network := "curl: (6) Could not resolve host: example.com"
 	if !sandbox.LikelyDenied(network, denied) {
 		t.Skip("no denial pattern on this platform")
@@ -110,65 +112,73 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 	for _, c := range []struct {
 		name, out              string
 		plan, noParam, network bool
-		noPad, skip            bool
+		noPad, skip, killed    bool
 		want                   string
 	}{
 		{
-			"planner writes the project", "touch: PROJ/a: Operation not permitted", true, false, false, false, false,
+			"planner writes the project", "touch: PROJ/a: Operation not permitted", true, false, false, false, false, false,
 			"the project is read-only to this agent; describe the change instead of making it.",
 		},
 		{
-			"network already given", network, false, false, true, false, false,
+			"network already given", network, false, false, true, false, false, false,
 			"it had the network already; sandbox: false drops every limit (needs approval).",
 		},
-		{"network already given while planning", network, true, false, true, false, false, "it had the network already."},
+		{"network already given while planning", network, true, false, true, false, false, false, "it had the network already."},
 		{
-			"no network", network, false, false, false, false, false,
+			"no network", network, false, false, false, false, false, false,
 			"no network here: call it again with network: true, which keeps the rest of the sandbox (needs approval).",
 		},
 		{
-			"hidden", "ls: /h/zemi/x: Operation not permitted", false, false, false, false, false,
+			"hidden", "ls: /h/zemi/x: Operation not permitted", false, false, false, false, false, false,
 			"/h/zemi is hidden from commands: read it with the read, glob and grep tools, or call it again with sandbox: false (needs approval).",
 		},
 		{
-			"hidden credentials", "cat: /h/.ssh/id: Operation not permitted", false, false, false, false, false,
+			"hidden credentials", "cat: /h/.ssh/id: Operation not permitted", false, false, false, false, false, false,
 			"/h/.ssh holds credentials and is hidden from commands; if the command needs them, call it again with sandbox: false (needs approval).",
 		},
 		{
-			"secret", "cat: PROJ/.env: Operation not permitted", false, false, false, false, !b.HidesSecretFiles,
+			"secret", "cat: PROJ/.env: Operation not permitted", false, false, false, false, !b.HidesSecretFiles, false,
 			"secret-shaped files (.env, *.pem, *.key) are unreadable to commands, in $TMPDIR too: if the file holds no secret, give it another name; if the command needs a real one, call it again with sandbox: false (needs approval).",
 		},
 		{
-			".agents", "mkdir: .agents/workflows: Operation not permitted", false, false, false, false, false,
+			".agents", "mkdir: .agents/workflows: Operation not permitted", false, false, false, false, false, false,
 			".agents is read-only to commands: create and edit files there with the write and edit tools.",
 		},
 		{
-			".git", "fatal: Unable to create 'PROJ/.git/index.lock': Operation not permitted", false, false, false, false, false,
+			".git", "fatal: Unable to create 'PROJ/.git/index.lock': Operation not permitted", false, false, false, false, false, false,
 			".git is read-only to commands: git commands that change it ask first when they run on their own; otherwise call it again with sandbox: false (needs approval).",
 		},
 		{
-			"a PATH dir", "pip: PROJ/.venv/bin/x: Operation not permitted", false, false, false, false, false,
+			"a PATH dir", "pip: PROJ/.venv/bin/x: Operation not permitted", false, false, false, false, false, false,
 			".venv/bin is read-only to commands: zemi runs programs from it unconfined; call it again with sandbox: false (needs approval).",
 		},
-		{"system temp", "/bin/sh: /tmp/x: Operation not permitted", false, false, false, false, false, "/tmp is not writable: use $TMPDIR."},
+		{"system temp", "/bin/sh: /tmp/x: Operation not permitted", false, false, false, false, false, false, "/tmp is not writable: use $TMPDIR."},
 		{
-			"system temp with no pad", "/bin/sh: /tmp/x: Operation not permitted", false, false, false, true, false,
+			"system temp with no pad", "/bin/sh: /tmp/x: Operation not permitted", false, false, false, true, false, false,
 			"commands write only in the project and $GOCACHE: write there, or call it again with sandbox: false (needs approval).",
 		},
 		{
-			"outside the roots", "touch: /elsewhere/x: Operation not permitted", false, false, false, false, false,
+			"outside the roots", "touch: /elsewhere/x: Operation not permitted", false, false, false, false, false, false,
 			"commands write only in the project, $TMPDIR and $GOCACHE: write there, or call it again with sandbox: false (needs approval).",
 		},
 		{
-			"outside the roots under -p", "touch: /elsewhere/x: Operation not permitted", false, true, false, false, false,
+			"outside the roots under -p", "touch: /elsewhere/x: Operation not permitted", false, true, false, false, false, false,
 			"commands write only in the project, $TMPDIR and $GOCACHE: write there.",
 		},
 		{
-			"nothing classified", "open x: operation not permitted", false, false, false, false, false,
+			"killed by a signal", "Abort trap: 6", false, false, false, false, false, true,
+			"it was killed by a signal, as a program that needs the window server or a system service is when confined (a browser, a GUI app, docker): call it again with sandbox: false (needs approval).",
+		},
+		{
+			"killed by a signal under -p", "Abort trap: 6", false, true, false, false, false, true,
+			"it was killed by a signal, as a program that needs the window server or a system service is when confined (a browser, a GUI app, docker); it cannot run here: do not retry it another way, say what you could not check.",
+		},
+		{
+			"nothing classified", "open x: operation not permitted", false, false, false, false, false, false,
 			"a limit may have stopped it (Sandbox in the system prompt lists them)" + escapes,
 		},
 		{
-			"nothing classified while planning", "open x: operation not permitted", true, false, false, false, false,
+			"nothing classified while planning", "open x: operation not permitted", true, false, false, false, false, false,
 			"a limit may have stopped it (Sandbox in the system prompt lists them): network: true adds the network (needs approval).",
 		},
 	} {
@@ -187,7 +197,11 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 			if c.noPad {
 				p.Pad, pol.Write = "", slices.Delete(pol.Write, 1, 2)
 			}
-			if hint := p.sandboxHint(pol, strings.ReplaceAll(c.out, "PROJ", proj), denied); hint != "\nSandbox: "+c.want {
+			err := denied
+			if c.killed {
+				err = killed
+			}
+			if hint := p.sandboxHint(pol, strings.ReplaceAll(c.out, "PROJ", proj), err); hint != "\nSandbox: "+c.want {
 				t.Errorf("got %q\nwant %q", hint, "\nSandbox: "+c.want)
 			}
 		})

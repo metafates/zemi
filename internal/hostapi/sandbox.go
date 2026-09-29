@@ -268,6 +268,13 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 	// seatbelt's localhost is the machine's, the namespace backend's its own
 	switch {
 	case backend.Name == "seatbelt":
+		// its profile denies almost every mach service
+		b.WriteString("\n- System services are off: a browser, GUI app, docker or the keychain fails or crashes (Abort trap: 6). ")
+		if escapes && !readOnly {
+			b.WriteString("Run one with sandbox: false.")
+		} else {
+			b.WriteString("Do not run one: say what you could not check.")
+		}
 		b.WriteString("\n- Network: localhost only.")
 	case backend.EnforcesProtect:
 		b.WriteString("\n- Network: the sandbox's own localhost only, so servers already running here are unreachable.")

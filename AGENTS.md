@@ -473,7 +473,7 @@ backend binds only protected paths that exist, so `Pipeline.Guard` records the m
 before a run and checks them at exit: a created `.git` or `.agents` holds trust off until
 `/trust`. The shell tool and `job_start` take two escapes no mode settles and each of which
 asks: `network: true` only adds sockets, `sandbox: false` drops the whole policy. A confined
-failure `sandbox.LikelyDenied` recognizes gets `Pipeline.sandboxHint`; the limits themselves
+failure `sandbox.LikelyDenied` recognizes, a death by signal (`sandbox.Killed`) included, gets `Pipeline.sandboxHint`; the limits themselves
 are the environment's Sandbox block (`Host.sandboxPrompt`, from `sandboxPolicy` without the
 project walk, which must not delay the first request).
 

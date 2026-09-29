@@ -536,6 +536,13 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	switch {
 	case plan && has(func(l limit) bool { _, in := perm.Under(project, l.path); return in && l.kind != hidden }):
 		return "\nSandbox: the project is read-only to this agent; describe the change instead of making it." + or(net && netFail, " network: true adds the network (needs approval).")
+	case sandbox.Killed(err):
+		line = "it was killed by a signal, as a program that needs the window server or a system service is when confined (a browser, a GUI app, docker)"
+		if all {
+			line += ": call it again with sandbox: false (needs approval)"
+		} else {
+			line += "; it cannot run here: do not retry it another way, say what you could not check"
+		}
 	case pol.Network && netFail:
 		line = "it had the network already" + or(all, "; sandbox: false drops every limit (needs approval)")
 	case netFail:

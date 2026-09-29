@@ -2356,11 +2356,15 @@ provenance string.
   the user with the reason "the model asked for the network" or "the model
   asked to leave the sandbox" (headless nobody can answer, so the parameters and the
   retry line are left out and the denial is by `network` or `unsandboxed`). A
-  confined run that fails with output that looks like a denial, or with
-  none and an exit status above 1, like a silent `curl -s`
+  confined run that fails with output that looks like a denial, with
+  none and an exit status above 1, like a silent `curl -s`, or from a
+  signal (`sandbox.Killed`: its own death or the shell's 128+n, "Abort
+  trap: 6", which is how a browser or GUI app dies once seatbelt denies the
+  window server and the other mach services it needs, printing no path)
   (`sandbox.LikelyDenied`, a heuristic, over a job's whole retained tail)
   gets one line naming the limit the denied path hit and the one next step:
-  the network (`sandbox.LikelyNetwork`, `network: true`), a hidden path (the
+  a signal (`sandbox: false`, or, where the schema has no escape, stop and
+  say what could not be checked), the network (`sandbox.LikelyNetwork`, `network: true`), a hidden path (the
   file tools), a secret-shaped name, a protected one (`.agents`: the write
   tool), the system temp dir (`$TMPDIR`), a path outside every write root
   (the roots by name, `Policy.WriteNames`); the path words come from the
@@ -2369,7 +2373,10 @@ provenance string.
   a timed-out shell run adopted as a job keeps it. The limits themselves are
   the pinned environment's Sandbox block for a run with the shell tool
   (`Host.sandboxPrompt`), each clause read off `sandboxPolicy` and the
-  backend, so the text cannot drift from what the kernel enforces; it skips
+  backend, so the text cannot drift from what the kernel enforces (on
+  seatbelt it names the class the profile's deny default leaves out, the
+  window server and system services, with the program kinds that need
+  them, so a model runs one with `sandbox: false` or not at all); it skips
   the project walk, which must not delay the first request, so on Linux a
   project over `sandboxWalkMax` entries reads as writable there. Known
   ceiling: on Linux, where Landlock cannot hide `.env`, a sandboxed
