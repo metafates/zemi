@@ -34,15 +34,19 @@ func (h *Host) safe(where string, fn func()) {
 	fn()
 }
 
-// endTurnAfterPanic is deferred in turn goroutines and in sendClaimed: a
-// panic mid-turn, or before one started on a claim, stops the turn and clears
-// its live state, so the agent is not stuck "active" with nothing running.
-// The panic is logged, then the app goes on.
+// endTurnAfterPanic is deferred in turn goroutines: a panic mid-turn stops
+// the turn and clears its live state, so the agent is not stuck "active" with
+// nothing running. The panic is logged, then the app goes on.
 func (h *Host) endTurnAfterPanic() {
-	r := recover()
-	if r == nil {
-		return
+	if r := recover(); r != nil {
+		h.clearCrashedTurn(r)
+		h.Notify(slog.LevelError, "Turn crashed", "it was stopped; /errors has the cause")
+		h.refresh()
 	}
+}
+
+// clearCrashedTurn logs a turn's panic and lets the agent go idle.
+func (h *Host) clearCrashedTurn(r any) {
 	h.logPanic("agent turn", r)
 	ag := h.agents
 	ag.mu.Lock()
@@ -51,8 +55,6 @@ func (h *Host) endTurnAfterPanic() {
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.turnStart, ag.retryAt = time.Time{}, time.Time{}
 	ag.mu.Unlock()
-	h.Notify(slog.LevelError, "Turn crashed", "it was stopped; /errors has the cause")
-	h.refresh()
 }
 
 // logPanic records a recovered panic: full stack in the log, one line in

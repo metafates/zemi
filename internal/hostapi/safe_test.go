@@ -41,7 +41,7 @@ func TestPanicsDoNotKillZemi(t *testing.T) {
 	}
 	// a panic before the turn starts releases the claim the send holds
 	h.modelFn = func() (fantasy.LanguageModel, error) { panic("model exploded") }
-	if err := h.AgentSend("hi"); err != nil || h.AgentActive() {
+	if err := h.AgentSend("hi"); err == nil || h.AgentActive() {
 		t.Fatalf("send %v, agent active %v", err, h.AgentActive())
 	}
 }

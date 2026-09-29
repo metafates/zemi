@@ -575,8 +575,17 @@ func (h *Host) drainQueue() {
 }
 
 // sendClaimed starts a turn for text on an agent already claimed with scope.
-func (h *Host) sendClaimed(scope *turnScope, text string) error {
-	defer h.endTurnAfterPanic()
+// A panic before the turn goroutine starts is an error, so the caller keeps
+// the text and a loop stops.
+func (h *Host) sendClaimed(scope *turnScope, text string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			h.clearCrashedTurn(r)
+			scope.cancel()
+			h.refresh()
+			err = errors.New("it crashed; /errors has the cause")
+		}
+	}()
 	ag := h.agents
 	fail := func(err error) error {
 		h.endScope(scope)
