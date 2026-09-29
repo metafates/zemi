@@ -23,7 +23,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/plugins"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -260,7 +260,7 @@ func completePlugins(c *cobra.Command, args []string, _ string) ([]cobra.Complet
 	if err != nil || c.Name() != "update" && len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	ps, _ := plugins.Scan(dirs)
+	ps, _ := plugin.Scan(dirs)
 	var out []cobra.Completion
 	for _, p := range ps {
 		out = append(out, p.Name)
@@ -324,13 +324,13 @@ func pluginsCommand() *cobra.Command {
 		switch {
 		case err != nil:
 		case c.Name() == "plugins":
-			var ps []plugins.Plugin
-			if ps, err = plugins.List(ctx, dirs); err == nil && len(ps) == 0 {
+			var ps []plugin.Plugin
+			if ps, err = plugin.List(ctx, dirs); err == nil && len(ps) == 0 {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no plugins yet; zemi plugins install <git url> adds one")
 			}
-			err = errors.Join(err, plugins.Table(c.OutOrStdout(), ps))
+			err = errors.Join(err, plugin.Table(c.OutOrStdout(), ps))
 		default:
-			err = plugins.Run(ctx, dirs, append([]string{c.Name()}, args...), c.OutOrStdout())
+			err = plugin.Run(ctx, dirs, append([]string{c.Name()}, args...), c.OutOrStdout())
 		}
 		if ctx.Err() != nil {
 			return exitError(130)

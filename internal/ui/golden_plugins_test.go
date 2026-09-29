@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/x/exp/golden"
 
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/plugins"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
 )
 
@@ -45,7 +45,7 @@ func TestGoldenPlugins(t *testing.T) {
 	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"commit", "-qm", "x"}, {"tag", "v1.4.0"}, {"commit", "-qm", "y", "--allow-empty"}, {"tag", "v1.5.0"}} {
 		gitIn(src, args...)
 	}
-	if _, err := plugins.Install(t.Context(), host.Dirs, src, "git-status"); err != nil {
+	if _, err := plugin.Install(t.Context(), host.Dirs, src, "git-status"); err != nil {
 		t.Fatal(err)
 	}
 	clone := filepath.Join(host.Dirs.PluginsRoot(), "installed", "git-status")

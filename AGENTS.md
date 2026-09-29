@@ -116,7 +116,7 @@ of `zemi -C <dir>` and nothing else (`relaunch`), so no flag of this run widens 
 project. Piped stdin (1 MiB at most) is attached
 behind the typed prompt, is the typed prompt itself after `-`, and is a usage error for the TUI.
 Completion offers session ids from the project store (`completeSessions`) and plugin names
-from `plugins.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
+from `plugin.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
 completion function. `zemi models` and the `-m`, `--profile` and `--mode` completion boot
 inert (`bootHeadless` with `Host.Inert`): no store, no log file, `proc.Refuse`, and four
 guards (`resolveModel` calls no model, `luaGate` refuses all but reads, `addMCP` starts no
@@ -159,14 +159,14 @@ so. With no UI `Host.Notify` prints a warning or an error to `Host.Stderr` as "z
 points at `--trust`); `/btw` claims the agent like `/compact`, so `zemi run` waits on it and
 ctrl+c cancels it, and appends its answer as a transcript row, which `zemi run` prints.
 
-`zemi plugins [verb]` (`pluginsCommand`) runs `plugins.Run` and exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
-reloads on the change. Bare, it lists (`plugins.Table`: no header, the source last; the empty
+`zemi plugins [verb]` (`pluginsCommand`) runs `plugin.Run` and exits: no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
+reloads on the change. Bare, it lists (`plugin.Table`: no header, the source last; the empty
 hint on stderr). `delete` asks on the terminal, `--yes` answers, and off a terminal it refuses,
 so an agent's command cannot delete a plugin. `test` is the one verb that boots Lua (below). `/plugins` (hostapi/pluginscmd.go) takes the same verbs plus `toggle`,
 `open`, `new` (the list's first row, which sends `newPluginPrompt` to the agent: the
 procedure lives in the zemi skill's plugins.md) and `modify <name> [what to change]` (a local
 plugin's detail action fills it; it sends `modifyPluginPrompt` and records the plugin in
-`madePlugins`). Its list is built off the key loop from `plugins.List` and the last boot's
+`madePlugins`). Its list is built off the key loop from `plugin.List` and the last boot's
 `pluginLoads`; install, update, check and delete run on `GoSafe`, toast, and refresh the list
 (`Overlay.Refresh`: it replaces an open one in place and opens nothing once esc closed it).
 `open` edits the plugin's `init.lua`, or its directory when it has none. Under `zemi run` it
@@ -280,7 +280,7 @@ for the tree the change moved. `Host.ProjectTrusted()` gates project
 commands, workflows), instruction files (AGENTS.md, else CLAUDE.md, per directory) and profile `context.files`,
 project skills, every project language server, the Lua tool's ask, the read jail reaching past the
 launch dir to `Dirs.RepoRoot()`, and what auto mode and read-only agents settle. `Host.git` and
-`internal/plugins` shell out to the `git` binary (no git library in go.mod) through `proc.Git`,
+`internal/plugin` shell out to the `git` binary (no git library in go.mod) through `proc.Git`,
 with `GIT_CONFIG_NOSYSTEM=1`, and switch off fsmonitor, hooks, submodule recursion, LFS
 smudging, every transport but https, ssh and file, and repo-local filter drivers (a plugin
 clone's global ones too) in every repository, trusted or not: a sandboxed command can plant a
@@ -482,9 +482,9 @@ dirs and on a backend that can protect paths inside it (`Backend.EnforcesProtect
 servers unconfined by name, and home credential paths are hidden, under `$HOME` and the account's
 home when `HOME` was moved (`homes`). The secret shapes do not cover the
 pad (`Policy.Pad`): only the session's own commands put files there. Of the hidden data dir a local
-plugin's code (`plugins.Code`, through `Policy.Read`) and the names in the plugin dirs
+plugin's code (`plugin.Code`, through `Policy.Read`) and the names in the plugin dirs
 (`Policy.List`) read back, so `zemi plugins test` runs confined; its `.git`, and a dot entry or
-`node_modules` in its code (`plugins.Kept`), stay hidden. The exception is the repo's
+`node_modules` in its code (`plugin.Kept`), stay hidden. The exception is the repo's
 `.agents/worktrees` (`Dirs.WorktreesDir`), where the agent keeps git worktrees: a write root of
 its own, ignored by the `/*` in its own `.gitignore` (`Dirs.WorktreesIgnore`, written only
 when missing, by the trust step of a trusted boot and by `sandboxPolicy`), with
@@ -591,11 +591,11 @@ would drop a frame. A metamethod leaves no frame of the code that set it, so the
 `setmetatable` (tables only) lets code below builtin install only its own origin's Lua
 functions as handlers, and a plugin only its own plugin's, copied at the call, and a plugin module
 that exports a Go function fails to require (`exportsGo`: `obj:method()` would run it as the caller
-with the module table as its argument). Plugins (hostapi/plugins.go, `PluginsStep`): `plugins.Scan` lists
+with the module table as its argument). Plugins (hostapi/plugins.go, `PluginsStep`): `plugin.Scan` lists
 `installed/` (clones) and `local/` (developed in place) minus `disabled`, sorted by name; a local
 plugin named like an installed one or a symlinked dir does not load, and a gone or
 reinstalled plugin's `zemi.state` keys are dropped (`sweepPluginState`: the key `plugin:<name>`
-holds the id `plugins.Install` writes into the clone's `.git`). The same pick, fixed for the generation (`Host.pluginDirs`),
+holds the id `plugin.Install` writes into the clone's `.git`). The same pick, fixed for the generation (`Host.pluginDirs`),
 gives the plugins' skills, agents, markdown commands and workflows, loaded after the user's and
 the builtin ones, init.lua failed or not; a name two plugins ship goes to the first by name, and
 `/errors` names both. `Host.PluginOf` names a plugin by its directory: its state keys are

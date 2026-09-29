@@ -19,7 +19,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/logging"
-	"github.com/metafates/zemi/internal/plugins"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sandbox"
 )
 
@@ -269,9 +269,9 @@ func (h *Host) sandboxPrompt(readOnly, escapes bool, pad string) string {
 
 // localPluginCode is what of the hidden data dir a sandboxed command may
 // read, so zemi plugins test runs confined: each local plugin's code
-// (plugins.Code), and the names in the plugin dirs and the disabled list
+// (plugin.Code), and the names in the plugin dirs and the disabled list
 // the runner resolves a name with; hide is what below the code the runner
-// does not copy (plugins.Kept). A plugin's .git and the rest stay hidden.
+// does not copy (plugin.Kept). A plugin's .git and the rest stay hidden.
 // NOTE: on Landlock, which hides no secret file by name, a key.pem in the
 // code is readable, and a List dir lists the names of every dir below it.
 func localPluginCode(d config.Dirs) (read, list, hide []string) {
@@ -292,13 +292,13 @@ func localPluginCode(d config.Dirs) (read, list, hide []string) {
 		// a link reads as its target, which a rule on its own path never opens
 		files, _ := os.ReadDir(dir)
 		for _, f := range files {
-			if !plugins.Code(f.Name(), f.IsDir()) {
+			if !plugin.Code(f.Name(), f.IsDir()) {
 				continue
 			}
 			code := filepath.Join(dir, f.Name())
 			read = append(read, code)
 			_ = filepath.WalkDir(code, func(p string, e fs.DirEntry, err error) error {
-				if err != nil || plugins.Kept(e.Name()) {
+				if err != nil || plugin.Kept(e.Name()) {
 					return nil
 				}
 				hide = append(hide, p)

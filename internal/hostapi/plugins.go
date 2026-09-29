@@ -14,7 +14,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/plugins"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/skills"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -34,7 +34,7 @@ func (h *Host) PluginsStep() lua.BootStep {
 	return lua.BootStep{
 		Name: "plugins",
 		Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
-			ps, err := plugins.Scan(h.Dirs)
+			ps, err := plugin.Scan(h.Dirs)
 			if err == nil {
 				// a failed scan lists no plugins, and the sweep would take every
 				// plugin's saved tokens with it
@@ -70,14 +70,14 @@ func (h *Host) PluginsStep() lua.BootStep {
 
 // pickPlugins sorts the enabled plugins by name and splits them into those
 // the loader runs and those it refuses, with why.
-func pickPlugins(ps []plugins.Plugin) (run []plugins.Plugin, refused []pluginLoad) {
+func pickPlugins(ps []plugin.Plugin) (run []plugin.Plugin, refused []pluginLoad) {
 	installed := map[string]bool{}
 	for _, p := range ps {
 		if !p.Local {
 			installed[p.Name] = true
 		}
 	}
-	slices.SortStableFunc(ps, func(a, b plugins.Plugin) int { return cmp.Compare(a.Name, b.Name) })
+	slices.SortStableFunc(ps, func(a, b plugin.Plugin) int { return cmp.Compare(a.Name, b.Name) })
 	for _, p := range ps {
 		fi, err := os.Lstat(p.Dir)
 		switch {
@@ -98,7 +98,7 @@ func pickPlugins(ps []plugins.Plugin) (run []plugins.Plugin, refused []pluginLoa
 // PluginDir is the directory of the plugin named name that the plugins step
 // would load, turned off or not, or why it would load none.
 func PluginDir(d config.Dirs, name string) (string, error) {
-	ps, err := plugins.Scan(d)
+	ps, err := plugin.Scan(d)
 	if err != nil {
 		return "", err
 	}
@@ -134,13 +134,13 @@ func (h *Host) pluginDirs() []string {
 // the same name, even one installed before this boot. The key "plugin:<name>", which no plugin can
 // write, holds the install's id as a JSON string, since kv holds JSON that
 // a user zemi.state read decodes.
-func (h *Host) sweepPluginState(ps []plugins.Plugin) {
+func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 	if h.GlobalDB == nil {
 		return
 	}
 	ids, fresh := map[string]string{}, map[string]bool{}
 	for _, p := range ps {
-		id := strconv.Quote(plugins.InstallID(p.Dir))
+		id := strconv.Quote(plugin.InstallID(p.Dir))
 		was, err := h.GlobalDB.GetKV("plugin:" + p.Name)
 		if errors.Is(err, store.ErrNotFound) {
 			was = `""` // no id yet: a local plugin, or a clone made before ids

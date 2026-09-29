@@ -15,7 +15,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/metafates/zemi/internal/plugins"
+	"github.com/metafates/zemi/internal/plugin"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
@@ -36,7 +36,7 @@ func (h *Host) syncTypes() {
 		return
 	}
 	luarcs := []string{h.Dirs.ConfigHome}
-	ps, err := plugins.Scan(h.Dirs)
+	ps, err := plugin.Scan(h.Dirs)
 	if err != nil {
 		h.Log.Warn("types", "plugins not scanned for luarc", map[string]any{"error": err.Error()})
 	}

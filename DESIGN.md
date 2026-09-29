@@ -438,7 +438,7 @@ watcher reads `local/` whole, the `disabled` file and each clone's git
 index, so an edit, a toggle, an install, an update and a delete each
 reload.
 
-`/plugins` and `zemi plugins` manage the tree through `internal/plugins`,
+`/plugins` and `zemi plugins` manage the tree through `internal/plugin`,
 which is plain git and runs no Lua: `install <git url> [name]` clones into a
 dot dir, checks out the highest `vX.Y.Z` tag and renames it into place;
 `update [name...]` fetches, then moves a tag within its major version, a
@@ -2717,7 +2717,7 @@ internal/store/             sqlite schema, its version stamp and queries
 internal/config/            dirs, settings store, defaults
 internal/mcp/, internal/lsp/   the two clients, each with its own test server
 internal/proc/              every child process (own session and process group) and hardened git
-internal/plugins/           plugin install, update, check and delete over plain git, and on/off
+internal/plugin/            plugin install, update, check and delete over plain git, and on/off
 internal/glob/              rg-style glob matching for the file tools and LSP
 internal/sanitize/          escape stripping at the render and log boundary
 internal/logging/           log files

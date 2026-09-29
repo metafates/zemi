@@ -15,7 +15,7 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/plugins"
+	"github.com/metafates/zemi/internal/plugin"
 )
 
 // newPluginPrompt rides behind /plugins new and modifyPluginPrompt behind
@@ -35,7 +35,7 @@ func (h *Host) pluginsCommands() []*Command {
 			if sub == "new" || sub == "install" || sub == "check" {
 				return nil
 			}
-			ps, _ := plugins.Scan(h.Dirs)
+			ps, _ := plugin.Scan(h.Dirs)
 			var names []string
 			for _, p := range ps {
 				if sub != "modify" || p.Local {
@@ -88,7 +88,7 @@ func (h *Host) pluginsCommand(line string) error {
 			}()
 			if err != nil && ctx.Err() == nil {
 				h.CommandFailed("plugins", pluginsErr(err))
-				if errors.Is(err, plugins.ErrUsage) {
+				if errors.Is(err, plugin.ErrUsage) {
 					return
 				}
 			}
@@ -103,7 +103,7 @@ func (h *Host) pluginsCommand(line string) error {
 		if err != nil {
 			return err
 		}
-		return pluginsErr(plugins.SetEnabled(h.Dirs, p.Name, !p.Enabled))
+		return pluginsErr(plugin.SetEnabled(h.Dirs, p.Name, !p.Enabled))
 	case verb == "open" && len(args) == 2:
 		p, err := h.pluginNamed(args[1])
 		if err != nil {
@@ -152,10 +152,10 @@ func (h *Host) pluginsCommand(line string) error {
 		})
 	case verb == "enable" || verb == "disable":
 		// at once, so the list an action returns to shows it
-		return pluginsErr(plugins.Run(context.Background(), h.Dirs, args, io.Discard))
+		return pluginsErr(plugin.Run(context.Background(), h.Dirs, args, io.Discard))
 	case verb == "check" && len(args) == 1:
 		background("Checking plugins", func(ctx context.Context) error {
-			ps, err := plugins.Check(ctx, h.Dirs)
+			ps, err := plugin.Check(ctx, h.Dirs)
 			var names []string
 			for _, p := range ps {
 				if p.Latest != "" {
@@ -165,7 +165,7 @@ func (h *Host) pluginsCommand(line string) error {
 			if len(names) > 0 {
 				h.Notify(logging.Info, "Updates available", strings.Join(names, ", "))
 			} else if err == nil {
-				h.Notify(logging.Info, plugins.UpToDate, "")
+				h.Notify(logging.Info, plugin.UpToDate, "")
 			}
 			return err
 		})
@@ -173,15 +173,15 @@ func (h *Host) pluginsCommand(line string) error {
 		// install takes a URL and an optional name, the last word either way
 		name := "plugins"
 		if len(args) > 1 {
-			name = plugins.Name(args[len(args)-1])
+			name = plugin.Name(args[len(args)-1])
 		}
 		label := map[string]string{"install": "Installing ", "update": "Updating ", "delete": "Deleting "}[verb] + name
 		background(label, func(ctx context.Context) error {
 			var out strings.Builder
-			err := plugins.Run(ctx, h.Dirs, args, &out)
+			err := plugin.Run(ctx, h.Dirs, args, &out)
 			title := map[string]string{"install": "Plugin installed", "update": "Plugin updated", "delete": "Plugin deleted"}[verb]
 			body := strings.TrimSpace(out.String())
-			if body == plugins.UpToDate {
+			if body == plugin.UpToDate {
 				title, body = body, ""
 			} else if verb == "delete" && err == nil {
 				body = args[1]
@@ -192,28 +192,28 @@ func (h *Host) pluginsCommand(line string) error {
 			return err
 		})
 	default:
-		return pluginsErr(plugins.ErrUsage)
+		return pluginsErr(plugin.ErrUsage)
 	}
 	return nil
 }
 
 func pluginsErr(err error) error {
-	if errors.Is(err, plugins.ErrUsage) {
+	if errors.Is(err, plugin.ErrUsage) {
 		return Usagef("%v | new [what it does] | modify <name> [what to change] | toggle <name> | open <name> (TUI only)", err)
 	}
 	return err
 }
 
 // pluginNamed finds a plugin by name, a local one first.
-func (h *Host) pluginNamed(name string) (plugins.Plugin, error) {
-	ps, err := plugins.Scan(h.Dirs)
+func (h *Host) pluginNamed(name string) (plugin.Plugin, error) {
+	ps, err := plugin.Scan(h.Dirs)
 	if err != nil {
-		return plugins.Plugin{}, err
+		return plugin.Plugin{}, err
 	}
-	if i := slices.IndexFunc(ps, func(p plugins.Plugin) bool { return p.Name == name }); i >= 0 {
+	if i := slices.IndexFunc(ps, func(p plugin.Plugin) bool { return p.Name == name }); i >= 0 {
 		return ps[i], nil
 	}
-	return plugins.Plugin{}, Usagef("no plugin is named %q", name)
+	return plugin.Plugin{}, Usagef("no plugin is named %q", name)
 }
 
 // openPlugins opens /plugins, or replaces the open list in place; a refresh
@@ -230,7 +230,7 @@ func (h *Host) openPlugins(ui UIHooks, refresh bool, confirm string) {
 // pluginItems lists the plugins under three action rows, which carry the empty
 // state, so a rebuild keeps it true.
 func (h *Host) pluginItems() []any {
-	ps, err := plugins.List(context.Background(), h.Dirs)
+	ps, err := plugin.List(context.Background(), h.Dirs)
 	if err != nil {
 		h.Notify(logging.Error, "Could not read the plugins", err.Error())
 	}
@@ -288,7 +288,7 @@ func (h *Host) pluginItems() []any {
 
 // pluginStatus is how the last boot left p: "starting" when it is on but no
 // boot has run it yet.
-func (h *Host) pluginStatus(p plugins.Plugin) (ServiceStatus, error) {
+func (h *Host) pluginStatus(p plugin.Plugin) (ServiceStatus, error) {
 	if !p.Enabled {
 		return StatusOff, nil
 	}

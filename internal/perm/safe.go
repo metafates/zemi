@@ -129,7 +129,7 @@ func (n Normalized) PluginTest(exe string) bool {
 		f[1] == "plugins" && f[2] == "test" && pluginName.MatchString(f[3])
 }
 
-// pluginName is internal/plugins' name shape, which no shell expansion
+// pluginName is internal/plugin' name shape, which no shell expansion
 // (~, {a,b}, a glob) can match.
 var pluginName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 

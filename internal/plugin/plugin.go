@@ -1,8 +1,8 @@
-// Package plugins manages the plugin tree under <data>/plugins: git clones
+// Package plugin manages the plugin tree under <data>/plugins: git clones
 // in installed/, directories the user develops in place in local/, and the
 // names turned off in disabled. It runs no Lua and needs no Host, so the
 // /plugins command and the zemi plugins CLI share it.
-package plugins
+package plugin
 
 import (
 	"bufio"

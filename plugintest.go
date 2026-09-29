@@ -18,7 +18,7 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/plugins"
+	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
 )
 
@@ -238,7 +238,7 @@ func pluginSource(arg string) (string, error) {
 }
 
 // copyPlugin copies the plugin at src to dst the way a test zemi should
-// load it: its code (plugins.Code, plugins.Kept), a
+// load it: its code (plugin.Code, plugin.Kept), a
 // symbolic link only when it is relative and stays inside the plugin, at
 // most copyFiles files and copyBytes bytes.
 func copyPlugin(src, dst string) error {
@@ -248,7 +248,7 @@ func copyPlugin(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		if p != src && (!plugins.Kept(d.Name()) || filepath.Dir(p) == src && !plugins.Code(d.Name(), d.IsDir())) {
+		if p != src && (!plugin.Kept(d.Name()) || filepath.Dir(p) == src && !plugin.Code(d.Name(), d.IsDir())) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
