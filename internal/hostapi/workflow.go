@@ -106,6 +106,12 @@ func leadingComment(src string) string {
 	return strings.TrimSpace(strings.Join(lines, " "))
 }
 
+// flowLabel names a run: its description, else the saved workflow's name,
+// else the script's leading comment; the chat row names it the same way.
+func flowLabel(description, name, src string) string {
+	return cmp.Or(description, name, clipRunes(leadingComment(src), 60))
+}
+
 func (h *Host) workflowSource(name string) (string, error) {
 	var names []string
 	for _, w := range h.workflows() {
@@ -208,7 +214,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	f := &flowRun{
-		id: store.NewID()[:runIDLen], name: spec.name, description: cmp.Or(spec.description, spec.name, clipRunes(leadingComment(spec.src), 60), "workflow"),
+		id: store.NewID()[:runIDLen], name: spec.name, description: cmp.Or(flowLabel(spec.description, spec.name, spec.src), "workflow"),
 		parent: parent, background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), progress: spec.progress, src: spec.src,
 		status: RunRunning, limit: limit, started: time.Now(), restart: map[string]bool{},
 	}

@@ -10,6 +10,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestExportAndFork: a finished exchange exports as markdown, /copy takes
@@ -258,28 +259,33 @@ func TestPendingRowLabel(t *testing.T) {
 }
 
 func TestToolSummary(t *testing.T) {
-	for in, want := range map[string]string{
-		`{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`: "2 todos, 1 done",
-		`{"command":"python3","args":["-m","http.server","8765"]}`:                       "python3 -m http.server 8765",
-		`{"id":"job-1"}`: "job-1",
-		`{"questions":[{"question":"Which color?","options":[]},{"question":"Size?"}]}`: "Which color? +1 more",
-		`{"plan":"\n# Goal\n\n1. write x.txt"}`:                                         "Goal",
-		`{"plan":"# Plan\n1. x"}`:                                                       "",
-		`{"plan":"# Plan: add caching\n1. x"}`:                                          "add caching",
-		`{"plan":"# Planning notes"}`:                                                   "Planning notes",
-		`{"plan":"# Plan: ȺȺȺȺȺ İş"}`:                                                   "ȺȺȺȺȺ İş",
-		`{"action":"text","title":"Results","text":"# Build\n| a | b |"}`:               "text Results",
-		`{"action":"keys","id":3,"keys":"hello<cr>"}`:                                   "keys hello<cr>",
-		`{"action":"close","id":2}`:                                                     "close 2",
-		`{"action":"definition","path":"/p/a.go","symbol":"Run"}`:                       "definition Run",
-		`{"agent":"explore","prompt":"look\n around"}`:                                  "explore: look around",
-		`{"agent":"explore","description":"Look around","prompt":"x"}`:                  "Look around",
-		`{"limit":5,"filter":{"a":"b"},"q":"open","z":"x"}`:                             "open",
-		`{"limit":5}`: `{"limit":5}`,
-		`{"send_to":"dc11086e","prompt":"second question"}`: "to dc11086e: second question",
+	for _, c := range []struct{ tool, in, want string }{
+		{"", `{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`, "2 todos, 1 done"},
+		{"", `{"command":"python3","args":["-m","http.server","8765"]}`, "python3 -m http.server 8765"},
+		{"", `{"id":"job-1"}`, "job-1"},
+		{"", `{"questions":[{"question":"Which color?","options":[]},{"question":"Size?"}]}`, "Which color? +1 more"},
+		{"", `{"plan":"\n# Goal\n\n1. write x.txt"}`, "Goal"},
+		{"", `{"plan":"# Plan\n1. x"}`, ""},
+		{"", `{"plan":"# Plan: add caching\n1. x"}`, "add caching"},
+		{"", `{"plan":"# Planning notes"}`, "Planning notes"},
+		{"", `{"plan":"# Plan: ȺȺȺȺȺ İş"}`, "ȺȺȺȺȺ İş"},
+		{"", `{"action":"text","title":"Results","text":"# Build\n| a | b |"}`, "text Results"},
+		{"", `{"action":"keys","id":3,"keys":"hello<cr>"}`, "keys hello<cr>"},
+		{"", `{"action":"close","id":2}`, "close 2"},
+		{"", `{"action":"definition","path":"/p/a.go","symbol":"Run"}`, "definition Run"},
+		{"", `{"agent":"explore","prompt":"look\n around"}`, "explore: look around"},
+		{"", `{"agent":"explore","description":"Look around","prompt":"x"}`, "Look around"},
+		{"", `{"limit":5,"filter":{"a":"b"},"q":"open","z":"x"}`, "open"},
+		{"", `{"limit":5}`, `{"limit":5}`},
+		{"", `{"send_to":"dc11086e","prompt":"second question"}`, "to dc11086e: second question"},
+		{tools.ToolWorkflow, `{"script":"local wf = zemi.workflow\nreturn 1"}`, "workflow"},
+		{tools.ToolWorkflow, `{"script":"-- scan the tree\nreturn 1"}`, "scan the tree"},
+		{tools.ToolWorkflow, `{"run":"abc123","action":"rerun","description":"slow scan again"}`, "slow scan again"},
+		{tools.ToolWorkflow, `{"run":"abc123","action":"stop"}`, "stop abc123"},
+		{tools.ToolWorkflow, `{"run":"abc123"}`, "status abc123"},
 	} {
-		if got := toolSummary(in); got != want {
-			t.Errorf("toolSummary(%s) = %q, want %q", in, got, want)
+		if got := toolSummary(c.tool, c.in); got != c.want {
+			t.Errorf("toolSummary(%s, %s) = %q, want %q", c.tool, c.in, got, c.want)
 		}
 	}
 }

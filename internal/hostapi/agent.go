@@ -1039,7 +1039,7 @@ func inputDiff(name, input string) string {
 }
 
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
-	row := StreamTool{ID: id, Name: name, Input: toolSummary(input), Label: toolLabel(input), Status: CallWait, Diff: inputDiff(name, input)}
+	row := StreamTool{ID: id, Name: name, Input: toolSummary(name, input), Label: toolLabel(input), Status: CallWait, Diff: inputDiff(name, input)}
 	ag := s.h.agents
 	ag.mu.Lock()
 	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
@@ -1378,7 +1378,7 @@ func (s *streamAdapter) ToolInputDelta(id, delta string) {
 
 // toolSummary picks the argument a person reads first (a command, path or
 // query) out of a tool's JSON input; anything else stays raw.
-func toolSummary(input string) string {
+func toolSummary(tool, input string) string {
 	var m map[string]any
 	if json.Unmarshal([]byte(input), &m) != nil {
 		return input
@@ -1423,6 +1423,13 @@ func toolSummary(input string) string {
 			}
 		}
 		return cmd
+	}
+	if tool == tools.ToolWorkflow { // the run as /workflows names it, else what a control does to which run
+		str := func(k string) string { s, _ := m[k].(string); return s }
+		if label := flowLabel(str("description"), str("name"), str("script")); label != "" || str("run") == "" {
+			return cmp.Or(label, "workflow")
+		}
+		return cmp.Or(str("action"), string(actStatus)) + " " + str("run")
 	}
 	// the lsp tool names what it does in "action"; without it a row would
 	// read as the whole body of what it is about to show

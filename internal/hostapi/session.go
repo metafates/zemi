@@ -415,7 +415,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				reply()
 				toolRow[p.ToolCallID] = len(tr)
 				tc := calls[p.ToolCallID]
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: p.ToolName, Text: toolSummary(p.Input), Label: toolLabel(p.Input), Status: CallOK, Diff: tc.Diff, Run: tc.Run, Detail: tc.Detail})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: p.ToolName, Text: toolSummary(p.ToolName, p.Input), Label: toolLabel(p.Input), Status: CallOK, Diff: tc.Diff, Run: tc.Run, Detail: tc.Detail})
 			case fantasy.ToolResultPart:
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
 					out := agent.ToolOutput(p.Output)
