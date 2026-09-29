@@ -279,8 +279,8 @@ func (h *Host) pluginItems() []any {
 			"text": p.Name, "desc": strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
 			"section": section, "on": p.Enabled, "run": "plugins toggle " + p.Name,
 			"detail": p.Desc, "actions": actions,
-			"fields": fieldList("source", source, "version", version, "latest", p.Latest, "path", TildePath(p.Dir),
-				"status", string(status), "provides", strings.Join(provides[p.Name], " · "), "error", errText),
+			"fields": fieldList("source", source, "status", string(status), "version", version, "latest", p.Latest,
+				"provides", strings.Join(provides[p.Name], " · "), "path", TildePath(p.Dir), "error", errText),
 		})
 	}
 	return items

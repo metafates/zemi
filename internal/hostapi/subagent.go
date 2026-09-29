@@ -1024,12 +1024,12 @@ func (h *Host) openAgents() error {
 			"section": sourceSection(d.Source) + " agents", // apart from the runs above
 			"detail":  d.Description,
 		}
-		fields := []string{"source", h.sourceOf(d.Source, d.Path)}
+		fields := []string{"source", h.sourceOf(d.Source, d.Path), "model", model, "tools", tools, "read only", readOnly}
 		if d.Path != "" {
 			fields = append(fields, "path", TildePath(d.Path))
 			item["actions"] = []any{map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "agents open " + d.Name}}
 		}
-		item["fields"] = fieldList(append(fields, "model", model, "tools", tools, "read only", readOnly)...)
+		item["fields"] = fieldList(fields...)
 		items = append(items, item)
 	}
 	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "open"})
