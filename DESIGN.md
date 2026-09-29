@@ -1775,11 +1775,9 @@ provenance string.
   sending a message (or a `!command`) snaps back to the tail, a slash
   command does not. While a turn's prompt is above the view its first row
   stays pinned over the chat's top row (a segment's `sticky`) as chrome,
-  grey over a rule the width of the view (`Pinned`), ending in `…` when
+  dimmed (`Pinned`), ending in `…` when
   the prompt has more rows; a click on it scrolls back to the prompt,
-  and `alt+up`/`alt+down` move between prompts. The notice of a background
-  report, a plugin send or the planner nudge heads the rows that answer it
-  the same way.
+  and `alt+up`/`alt+down` move between prompts.
   Reasoning blocks
   collapse to one `✻ Thought for Xs` line unless shown
   (default keymaps below); a finished tool call collapses the same way and a

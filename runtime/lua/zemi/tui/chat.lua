@@ -472,9 +472,7 @@ zemi.ui.widget.add({
 				end
 			elseif m.kind == "compact" or m.kind == "notice" then
 				gap("activity")
-				-- a report's notice heads the rows that answer it, as a prompt does
 				local row = { mark("note"), { text = m.text, hl = "Comment" } }
-				row[1].sticky = m.head or nil
 				if (m.detail or "") ~= "" then
 					row[3] = { text = " (" .. m.detail .. ")", hl = "Comment", copy = false }
 				end
@@ -573,8 +571,8 @@ zemi.ui.widget.add({
 				got = got + #u.lines
 				last = first - 1
 			end
-			-- a prompt, or a notice heading a report: the rows the view pins
-			local function pins(m) return m.head or (m.kind or "") == "" and m.role == "user" end
+			-- a prompt: the row the view pins
+			local function pins(m) return (m.kind or "") == "" and m.role == "user" end
 			if more and not pins(tr[last + 1]) then
 				for h = last, 1, -1 do
 					if pins(tr[h]) then

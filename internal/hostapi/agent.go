@@ -731,7 +731,7 @@ func (h *Host) appendUserRows(text string) bool {
 		h.AppendMessage(fantasy.MessageRoleUser, shown)
 	}
 	for _, head := range reportHeads(tail) {
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head, Head: true})
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head})
 	}
 	return shown != ""
 }

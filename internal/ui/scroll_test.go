@@ -348,13 +348,13 @@ func TestChatStickyPrompt(t *testing.T) {
 		}
 	}
 
-	// a turn a background report started pins the report's notice
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowNotice, Text: "Background agent a1 (explore) finished", Head: true})
+	// a report's notice pins nothing: only a prompt does
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowNotice, Text: "Background agent a1 (explore) finished"})
 	for i := range 20 {
 		appendReply(host, fmt.Sprintf("answer %d", i), hostapi.TurnStat{})
 	}
 	app.renderSync(t)
-	if app.Frame(); !strings.Contains(row(), "Background agent a1") {
+	if app.Frame(); strings.Contains(row(), "Background agent a1") {
 		t.Fatalf("after a report, the top row is %q", row())
 	}
 }

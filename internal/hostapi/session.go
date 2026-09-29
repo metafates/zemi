@@ -456,7 +456,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: s})
 			}
 			for _, head := range reportHeads(tail) {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head, Head: true})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head})
 			}
 			continue
 		}

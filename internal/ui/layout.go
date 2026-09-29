@@ -644,7 +644,7 @@ func (st *scrollState) pinRow(lines [][]hostapi.Segment, width int) {
 }
 
 // pinCopy is row as the pin draws it, chrome rather than content: all in
-// Pinned (the chat's greys over a rule the width of the view), nothing in it
+// Pinned (dimmed), nothing in it
 // copying or acting but the pin's own click, and ending in an ellipsis when
 // the header has more rows.
 func pinCopy(row []hostapi.Segment, more bool, width int) []hostapi.Segment {
@@ -662,7 +662,7 @@ func pinCopy(row []hostapi.Segment, more bool, width int) []hostapi.Segment {
 		}
 		row = append(truncateSegs(row, barInner(width)-1), hostapi.Segment{Text: "…", HL: "Pinned", NoCopy: true})
 	}
-	return append(row, hostapi.Segment{Text: strings.Repeat(" ", max(barInner(width)-hostapi.SegsWidth(row), 0)), HL: "Pinned", NoCopy: true})
+	return row
 }
 
 // scrollbar is the one-cell bar down the right edge of a viewport showing
