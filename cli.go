@@ -663,9 +663,14 @@ func printHealth(h *hostapi.Host, stdout io.Writer) int {
 }
 
 // signalContext ends on an interrupt, a kill or the terminal closing, which
-// a command reports as exit status 130.
+// a command reports as exit status 130. A hangup ignored at start (nohup)
+// stays ignored, since Notify would install a handler for it.
 func signalContext() (context.Context, context.CancelFunc) {
-	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	sigs := []os.Signal{os.Interrupt, syscall.SIGTERM}
+	if !signal.Ignored(syscall.SIGHUP) {
+		sigs = append(sigs, syscall.SIGHUP)
+	}
+	return signal.NotifyContext(context.Background(), sigs...)
 }
 
 // sendPrompt sends a command-line prompt (Host.SendPrompt) once no MCP
