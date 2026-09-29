@@ -99,8 +99,8 @@ or settled builds.
 ## CLI (cli.go, run.go)
 
 The command line is a cobra tree (`execute`): `zemi` opens the TUI, `zemi run` answers one
-prompt on stdout, and `sessions` (and `sessions export <id>`, `hostapi.SessionMarkdown` on
-stdout; `projectStore` opens the store through `store.OpenRead`, which creates, migrates and
+prompt on stdout, and `sessions` (and `sessions export [--full] <id>`, `hostapi.SessionMarkdown` on
+stdout, `--full` as `/export full`; `projectStore` opens the store through `store.OpenRead`, which creates, migrates and
 sweeps nothing and takes no lock a running zemi waits on), `models` (and `models update`),
 `plugins`, `health`, cobra's `completion` and `help` are subcommands, each declaring its
 `Args` (cobra checks positionals only on the root). A prompt argument is sent as

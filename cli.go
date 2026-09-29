@@ -408,7 +408,8 @@ func sessionsCommand() *cobra.Command {
 			return err
 		},
 	}
-	cmd.AddCommand(&cobra.Command{
+	full := false
+	export := &cobra.Command{
 		Use:               "export <id>",
 		ValidArgsFunction: completeSessions,
 		Short:             "print a session as markdown",
@@ -422,7 +423,7 @@ func sessionsCommand() *cobra.Command {
 			md := ""
 			if err == nil {
 				defer db.Close()
-				md, err = hostapi.SessionMarkdown(db, args[0], false)
+				md, err = hostapi.SessionMarkdown(db, args[0], full)
 			}
 			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, store.ErrNotFound) {
 				return fmt.Errorf("no session %q; zemi sessions lists them", args[0])
@@ -430,7 +431,9 @@ func sessionsCommand() *cobra.Command {
 			fmt.Fprint(c.OutOrStdout(), md)
 			return err
 		},
-	})
+	}
+	export.Flags().BoolVar(&full, "full", false, "add reasoning, every tool call expanded and the agent runs")
+	cmd.AddCommand(export)
 	return cmd
 }
 
