@@ -169,6 +169,47 @@ func TestTypesParse(t *testing.T) {
 	}
 }
 
+// TestTypesExamples: every ```lua example in the annotations parses and
+// names only members zemi registers (`test.x` is zemi.test.x), so a renamed
+// or dropped call fails here.
+// NOTE: examples are parsed, not run or type-checked, so a changed argument
+// order or field name passes; running them needs origins, stubs and rules
+// per example.
+func TestTypesExamples(t *testing.T) {
+	live := map[string]bool{}
+	for ns, members := range bootedNamespaces(t, true) {
+		for _, m := range members {
+			for p := ns + "." + m; strings.Contains(p, "."); p = trimLast(p) {
+				live[p] = true
+			}
+		}
+	}
+	var (
+		reBlock   = regexp.MustCompile("(?s)--- ```lua\n(.*?)--- ```")
+		reComment = regexp.MustCompile(`(?m)^--- ?`)
+		reString  = regexp.MustCompile(`"[^"]*"|'[^']*'`)
+		reRef     = regexp.MustCompile(`\b(?:zemi|test)(?:\.[A-Za-z_]\w*)+`)
+	)
+	blocks := reBlock.FindAllStringSubmatch(typesSource(t), -1)
+	if len(blocks) == 0 {
+		t.Fatal("no examples found")
+	}
+	for _, b := range blocks {
+		code := reComment.ReplaceAllString(b[1], "")
+		if _, err := parse.Parse(strings.NewReader(code), "example"); err != nil {
+			t.Errorf("an example does not parse: %v\n%s", err, code)
+		}
+		for _, ref := range reRef.FindAllString(reString.ReplaceAllString(code, `""`), -1) {
+			if path, ok := strings.CutPrefix(ref, "test."); ok {
+				ref = "zemi.test." + path
+			}
+			if !live[ref] {
+				t.Errorf("an example names %s, which zemi does not register:\n%s", ref, code)
+			}
+		}
+	}
+}
+
 func typesSource(t *testing.T) string {
 	t.Helper()
 	data, err := zemiruntime.Types.ReadFile("types/zemi.lua")
