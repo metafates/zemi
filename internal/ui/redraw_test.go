@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -110,46 +111,50 @@ func TestIdleDrawsNothing(t *testing.T) {
 	}
 }
 
-// TestBumpWakesIdleTick: a change while the tick sleeps idle reaches the
-// screen at frame rate, and every stale widget comes back in one message.
+// TestBumpWakesIdleTick: a change while the tick sleeps idle wakes it, and
+// every stale widget comes back in one message.
 func TestBumpWakesIdleTick(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 24)
-	tick := app.frameTickCmd(idleInterval)
-	start := time.Now()
-	app.bump()
-	tick()
-	if d := time.Since(start); d >= idleInterval {
-		t.Fatalf("the bump waited out the idle tick: %v", d)
+	woke := func() bool {
+		select {
+		case <-app.wake:
+			return true
+		default:
+			return false
+		}
+	}
+	woke()
+	if app.bump(); !woke() {
+		t.Fatal("the bump left the idle tick asleep")
 	}
 	if msg, ok := app.renderStaleWidgetsCmd(false)().(widgetsRenderedMsg); !ok || len(msg) < 2 {
 		t.Fatalf("stale widgets should render as one message, got %T %v", msg, msg)
 	}
-	tick = app.frameTickCmd(idleInterval)
-	start = time.Now()
-	app.onWidgetRendered(widgetRender{id: "chat", more: true})
-	tick()
-	if d := time.Since(start); d >= idleInterval {
-		t.Fatalf("a render asking to run again waited out the idle tick: %v", d)
+	if app.onWidgetRendered(widgetRender{id: "chat", more: true}); !woke() {
+		t.Fatal("a render asking to run again left the idle tick asleep")
 	}
 }
 
-// TestFrameClock: a tick lands on a frame boundary and never twice in one
-// frame, from the timer and from a wake alike, so the spinner and the eyes
-// step one glyph per tick. Load can only skip a frame, which this allows.
+// TestFrameClock: a tick lands on the next frame boundary, from the timer
+// and from a wake alike, so the spinner and the eyes step one glyph per
+// tick.
 func TestFrameClock(t *testing.T) {
-	a := &App{wake: make(chan struct{}, 1)}
-	last := time.Now().UnixMilli() / frameMS
-	for i := range 6 {
-		if i%2 == 1 {
-			a.wakeTick()
+	synctest.Test(t, func(t *testing.T) {
+		a := &App{wake: make(chan struct{}, 1)}
+		time.Sleep(frameInterval / 3) // off a boundary
+		last := time.Now().UnixMilli() / frameMS
+		for i := range 6 {
+			if i%2 == 1 {
+				a.wakeTick()
+			}
+			a.frameTickCmd(frameInterval)()
+			f := time.Now().UnixMilli() / frameMS
+			if f != last+1 || time.Now().UnixMilli()%frameMS != 0 {
+				t.Fatalf("tick %d ran at %v, after one in frame %d", i, time.Now(), last)
+			}
+			last = f
 		}
-		a.frameTickCmd(frameInterval)()
-		f := time.Now().UnixMilli() / frameMS
-		if f <= last {
-			t.Fatalf("tick %d ran in frame %d, after one in frame %d", i, f, last)
-		}
-		last = f
-	}
+	})
 }
 
 // TestComposerGrowResizesSplash: newlines typed faster than the tick
