@@ -30,7 +30,8 @@ func waitIdle(t *testing.T, h *Host) {
 
 // TestResumeDrawsLiveRows: a turn that thinks, says what it will do, calls
 // a tool, thinks again and answers keeps its rows in the order they
-// streamed, and a resume rebuilds the same rows from the store.
+// streamed, and a resume rebuilds the same rows from the store. A report
+// riding the typed message draws under it.
 func TestResumeDrawsLiveRows(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	think := func(text string) []fantasy.StreamPart {
@@ -49,7 +50,7 @@ func TestResumeDrawsLiveRows(t *testing.T) {
 			return append(step, toolCallParts("c1", "glob", `{"pattern":"*.go"}`)...)
 		}}, nil
 	}
-	if err := h.AgentSend("go"); err != nil {
+	if err := h.AgentSend("go" + agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"d\">\nr\n</agent-report>\n</attached-files>"); err != nil {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
@@ -62,6 +63,7 @@ func TestResumeDrawsLiveRows(t *testing.T) {
 	}
 	live := shape(h.Session().Transcript)
 	want := `user/   "go"
+assistant/notice   "Background agent a1 (explore) finished"
 assistant/reasoning   "look first"
 assistant/   "I will look first."
 assistant/tool glob err "*.go"

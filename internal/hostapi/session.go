@@ -432,16 +432,16 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			}
 			var tail string
 			s, tail, _ = strings.Cut(s, agent.AttachMarker) // show what was typed
+			if s = strings.TrimSpace(s); s != "" {
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: s})
+			}
 			for _, head := range reportHeads(tail) {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head, Head: true})
 			}
+			continue
 		}
 		if s = strings.TrimSpace(s); s != "" {
-			role := fantasy.MessageRoleAssistant
-			if m.Role == fantasy.MessageRoleUser {
-				role = fantasy.MessageRoleUser
-			}
-			tr = append(tr, ChatMessage{Role: role, Text: s})
+			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s})
 		}
 	}
 	return history, tr

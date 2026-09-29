@@ -700,19 +700,18 @@ func (h *Host) startTurn(text string) {
 	h.EmitAsync("agent.start", map[string]any{"text": text})
 }
 
-// appendUserRows shows one message as the model reads it: the notice row
-// of each background report behind agent.AttachMarker, then what was typed, the
-// same cut a resumed transcript makes. Reports whether anything was typed.
+// appendUserRows shows one message as the model reads it: what was typed,
+// then the notice row of each background report behind agent.AttachMarker,
+// the same cut a resumed transcript makes. Reports whether anything was typed.
 func (h *Host) appendUserRows(text string) bool {
 	shown, tail, _ := strings.Cut(text, agent.AttachMarker)
+	if shown != "" {
+		h.AppendMessage(fantasy.MessageRoleUser, shown)
+	}
 	for _, head := range reportHeads(tail) {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head, Head: true})
 	}
-	if shown == "" {
-		return false
-	}
-	h.AppendMessage(fantasy.MessageRoleUser, shown)
-	return true
+	return shown != ""
 }
 
 // nextTurn runs after each turn: messages queued after the last step

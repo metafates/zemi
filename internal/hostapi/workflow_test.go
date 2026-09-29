@@ -692,7 +692,7 @@ func TestWorkflowUserStart(t *testing.T) {
 		ui   bool
 		want []string // the transcript rows' texts, in order
 	}{
-		{"the TUI runs it detached and says so", true, []string{"Started workflow count ", "Workflow ", "ok"}},
+		{"the TUI runs it detached and says so", true, []string{"Started workflow ", "Workflow ", "ok"}},
 		{"headless it holds the agent until the report's turn ends", false, []string{"Workflow ", "ok"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
