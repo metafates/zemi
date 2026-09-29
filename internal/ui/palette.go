@@ -210,10 +210,8 @@ func (a *App) runSlashCommand(text string) {
 	raw := strings.TrimPrefix(text, "/")
 	if raw == "reload" {
 		a.clearComposer()
-		if a.reload != nil {
-			// off the UI goroutine: replaying project config may ask for trust
-			go a.reload()
-		}
+		// off the UI goroutine: replaying project config may ask for trust
+		go a.host.Reload()
 		return
 	}
 	name, args := hostapi.SplitCommand(raw)

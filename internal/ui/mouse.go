@@ -521,8 +521,8 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			act = func() {
 				if name != "reload" {
 					a.runCommand(name, args)
-				} else if a.reload != nil {
-					go a.reload() // off the UI goroutine, as the typed /reload
+				} else {
+					go a.host.Reload() // off the UI goroutine, as the typed /reload
 				}
 			}
 		} else if w := a.host.Widgets.Get(under.Widget); w == nil || w.OnClick == nil {

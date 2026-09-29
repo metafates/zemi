@@ -84,7 +84,7 @@ func TestMouseClicks(t *testing.T) {
 		t.Fatal("clicking the mode pill should run /mode")
 	}
 
-	app.reload = func() { ran <- "reload" }
+	host.SetReload(func() error { ran <- "reload"; return nil }, nil)
 	app.lastRows = [][]hostapi.Segment{{{Text: " stuck /reload ", Click: "reload"}}}
 	if _, act, ok := app.target(2, 0); ok {
 		act()

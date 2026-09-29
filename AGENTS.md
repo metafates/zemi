@@ -197,10 +197,12 @@ before `init.lua`, a `zemi.provider.add` under a builtin id replaces it
 whole, `zemi.provider.del` drops one and `providers.builtin = false` (read once in `readyStep`)
 all of them. A `models.chat` config leaves unset runs `Registry.Default`: the first user-added provider's
 default model, else the first builtin's in catalog order (anthropic, openai, gemini first).
-Config reload is not fsnotify:
-`watchConfig` walks the config trees once a second (past dot-directories, `node_modules` and `.luarc.json`),
-plus the local plugins, the plugins' `disabled` file and each clone's git index (`pluginRoots`),
-and reloads when a fingerprint moved and no turn is active; an untrusted project's `.agents` is not watched (a trusted one's is, `worktrees` aside). A replay that writes a key the
+Config reload is not fsnotify: main hands the host its reload and a fingerprint of the config
+trees (`setReload`, `Host.SetReload`; past dot-directories, `node_modules` and `.luarc.json`,
+plus the local plugins, the plugins' `disabled` file and each clone's git index, `pluginRoots`;
+an untrusted project's `.agents` is not in it, a trusted one's is, `worktrees` aside), whose
+baseline every reload moves. Once a second while no turn is active the watcher calls
+`Host.ReloadIfChanged`, which reloads when the fingerprint moved; `zemi run` has no watcher. A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`, which `zemi.config.set` and the setters with
 a key of their own, `zemi.ui.theme.set`, `zemi.permission.mode.set` and `zemi.model.set`, all
 run a valid value through) and a key the new config writes fewer

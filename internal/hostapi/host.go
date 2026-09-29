@@ -45,8 +45,6 @@ type UIHooks interface {
 	CloseOverlay(id string, origin lua.Origin)
 	// CloseLuaOverlays drops every overlay the interpreter owns (Gen != 0).
 	CloseLuaOverlays()
-	// Reload replays the boot steps on a fresh generation (/reload).
-	Reload()
 	Refresh()
 	// Scroll moves a scrolled region of the layout: the node id, or the
 	// stage's when id is "".
@@ -484,6 +482,11 @@ type Host struct {
 	reloads    int
 	reloadSeq  uint64
 	reloadDone chan struct{}
+	// reload and changed are main's (SetReload): a reload that moves the
+	// baseline changed compares against, set before boot and never after
+	reload      func() error
+	changed     func() bool
+	reloadCheck sync.Mutex
 
 	// projectTrusted is the trust boot step's decision (DESIGN §5): project
 	// config, instructions and language servers load only when it is set,
@@ -1947,24 +1950,58 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 
 func (h *Host) currentGen() Gen { return Gen(h.gen.Load()) }
 
-// ReloadConfig runs /reload: main owns the closure and the UI dispatches
-// it, so config zemi wrote for itself takes effect without a restart.
+// SetReload installs main's reload and its check for config that moved on
+// disk since the last one. Call it before boot.
+func (h *Host) SetReload(reload func() error, changed func() bool) {
+	h.reload, h.changed = reload, changed
+}
+
+// Reload runs the reload now, for callers off the interpreter (the typed
+// /reload, the stuck pill), which must not wait on a wedged one.
+func (h *Host) Reload() {
+	if h.reload != nil {
+		_ = h.reload()
+	}
+}
+
+// ReloadConfig runs the /reload command (palette, keymaps,
+// zemi.command.run), so config zemi wrote for itself takes effect without a
+// restart.
 func (h *Host) ReloadConfig() error {
 	// config that reloads while it is loading would replay itself forever
 	if h.RT.Booting() {
 		return errors.New("config is still loading; a reload from config would repeat forever")
 	}
-	ui, err := h.Screen()
-	if err != nil {
-		return err
+	if h.reload == nil {
+		return errors.New("nothing to reload in this run")
 	}
 	h.GoSafe("reload", func() {
 		// a reload cancels what the interpreter runs, which is the caller when
 		// Lua asked for it: wait for it to return (a wedged one times out)
 		_, _ = h.RT.Do(context.Background(), lua.ClassIO, 0, 0, func(*glua.LState) ([]any, error) { return nil, nil })
-		ui.Reload()
+		_ = h.reload()
 	})
 	return nil
+}
+
+// ReloadIfChanged reloads when config on disk moved since the last reload
+// and says how it went: "" when nothing ran, else a first line and one
+// error line per boot step that failed.
+func (h *Host) ReloadIfChanged() string {
+	h.reloadCheck.Lock()
+	defer h.reloadCheck.Unlock()
+	if h.reload == nil || h.RT.Booting() || !h.changed() {
+		return ""
+	}
+	t, gen := h.now(), h.currentGen()
+	if err := h.reload(); err != nil && h.currentGen() == gen {
+		return "(the changed config did not load; the old one still runs)\nerror: " + Headline(err.Error())
+	}
+	errs := h.errorsSince(t, "boot ")
+	if len(errs) == 0 {
+		return "(zemi reloaded the changed config)"
+	}
+	return fmt.Sprintf("(zemi reloaded the changed config; %d %s)\n%s", len(errs), plural(len(errs), "error", "errors"), strings.Join(errs, "\n"))
 }
 
 // ForceReload replays the boot steps on a fresh generation (DESIGN §4).

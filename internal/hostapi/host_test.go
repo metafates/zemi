@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -171,70 +172,80 @@ func TestNamespaceVersion(t *testing.T) {
 	`)
 }
 
-// TestReloadDuringBootRefused: config calling zemi.config.reload() while it
-// is loading would replay the very steps it runs in, over and over.
-func TestReloadDuringBootRefused(t *testing.T) {
-	log := logging.New(t.TempDir())
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-	// A boot step is where config code runs. It cannot go through the queue
-	// here: boot starts the dispatcher only after the steps, so a chunk run
-	// from inside one would wait on a loop that has not started.
-	cfg := lua.BootStep{Name: "config", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
-		if err := h.ReloadConfig(); err == nil {
-			t.Error("a reload asked for while config loads must be refused")
-		}
-		return nil
-	}}
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), cfg}); err != nil {
-		t.Fatalf("Boot: %v", err)
+// TestReloadConfig: config asking for a reload while it loads would replay
+// the very steps it runs in, over and over; after boot the reload waits for
+// its Lua caller, which it would cancel.
+func TestReloadConfig(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		booting bool
+	}{
+		{"refused while config loads", true},
+		{"runs once its caller returned", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			log := logging.New(t.TempDir())
+			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+			h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+			var reloads atomic.Int32
+			var mouse any
+			h.SetReload(func() error {
+				mouse, _ = h.Settings.Get("ui.mouse")
+				reloads.Add(1)
+				return nil
+			}, nil)
+			h.Commands.Add(&Command{Name: "reload", GoFn: func(h *Host, _ string) error { return h.ReloadConfig() }, Origin: lua.OriginBuiltin})
+			// A boot step is where config code runs. It cannot go through the
+			// queue: boot starts the dispatcher only after the steps.
+			cfg := lua.BootStep{Name: "config", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
+				if err := h.ReloadConfig(); err == nil {
+					t.Error("a reload asked for while config loads must be refused")
+				}
+				return nil
+			}}
+			steps := []lua.BootStep{h.NamespacesStep()}
+			if c.booting {
+				steps = append(steps, cfg)
+			}
+			if err := r.Boot(context.Background(), steps); err != nil {
+				t.Fatal(err)
+			}
+			if c.booting {
+				if n := reloads.Load(); n != 0 {
+					t.Fatalf("boot ran %d reloads", n)
+				}
+				return
+			}
+			runUser(t, r, `
+				assert(zemi.command.run("reload"))
+				local t = os.clock()
+				while os.clock() - t < 0.05 do end
+				zemi.config.set("ui.mouse", false)
+			`)
+			waitFor(t, func() error {
+				if n := reloads.Load(); n != 1 {
+					return fmt.Errorf("reloads=%d, want 1", n)
+				}
+				return nil
+			})
+			if mouse != false {
+				t.Fatalf("the reload ran before its caller returned: ui.mouse = %v", mouse)
+			}
+		})
 	}
-	if n := ui.reloads.Load(); n != 0 {
-		t.Fatalf("boot dispatched %d reloads", n)
-	}
-	if err := h.ReloadConfig(); err != nil { // once boot is done it works
-		t.Fatalf("reload after boot: %v", err)
-	}
-	waitFor(t, func() error {
-		if n := ui.reloads.Load(); n != 1 {
-			return fmt.Errorf("reloads=%d, want 1", n)
-		}
-		return nil
-	})
 }
 
-// TestErrorsAndReloadFromLua: the agent reads zemi's own failures and
-// applies config it just wrote, both through namespaces the lua tool can
-// reach, so debugging zemi does not depend on the user reading the screen.
-// The reload waits for its caller, which it would cancel.
-func TestErrorsAndReloadFromLua(t *testing.T) {
+// TestErrorsFromLua: the agent reads zemi's own failures through the lua
+// tool, so debugging zemi does not depend on the user reading the screen.
+func TestErrorsFromLua(t *testing.T) {
 	h, r := newTestHost(t)
-	ui := &fakeUI{}
-	var mouse any
-	ui.onReload = func() { mouse, _ = h.Settings.Get("ui.mouse") }
-	h.SetUIHooks(ui)
 	h.RecordError("boot", `init.lua:1: zemi.provider.add: provider "x" already registered`)
 	runUser(t, r, `
 		local rows = zemi.errors.list()
 		assert(#rows == 1, "rows=" .. #rows)
 		assert(rows[1].source == "boot", "source=" .. tostring(rows[1].source))
 		assert(rows[1].message:find("already registered", 1, true) ~= nil, "message=" .. tostring(rows[1].message))
-		zemi.config.reload()
-		local t = os.clock()
-		while os.clock() - t < 0.05 do end
-		zemi.config.set("ui.mouse", false)
 	`)
-	waitFor(t, func() error {
-		if n := ui.reloads.Load(); n != 1 {
-			return fmt.Errorf("reload dispatched %d times, want 1", n)
-		}
-		return nil
-	})
-	if mouse != false {
-		t.Fatalf("the reload ran before its caller returned: ui.mouse = %v", mouse)
-	}
 }
 
 // TestOverlayFromRetiredGenerationIsDropped: an overlay still open across a

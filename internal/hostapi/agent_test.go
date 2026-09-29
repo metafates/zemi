@@ -762,9 +762,7 @@ type fakeUI struct {
 	opened       []Overlay
 	closed       []string
 	closedLua    int
-	reloads      atomic.Int32
 	turnsDone    atomic.Int32
-	onReload     func()
 	screenshot   string
 	copied       string
 	edit         func(path string) // what the user does in the editor
@@ -784,12 +782,6 @@ func (f *fakeUI) overlays() []Overlay {
 }
 func (f *fakeUI) CloseOverlay(id string, _ lua.Origin) { f.closed = append(f.closed, id) }
 func (f *fakeUI) CloseLuaOverlays()                    { f.closedLua++ }
-func (f *fakeUI) Reload() {
-	if f.onReload != nil {
-		f.onReload()
-	}
-	f.reloads.Add(1)
-}
 func (f *fakeUI) Refresh()                             {}
 func (f *fakeUI) Scroll(ScrollAction, string)          {}
 func (f *fakeUI) LayoutRects() map[string]Rect         { return nil }

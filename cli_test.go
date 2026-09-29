@@ -303,7 +303,8 @@ func TestTrustCommand(t *testing.T) {
 				return c.answer
 			}
 			reloaded := make(chan struct{}, 1)
-			tg.command(func() { reloaded <- struct{}{} })()
+			tg.h.SetReload(func() error { reloaded <- struct{}{}; return nil }, nil)
+			tg.command()()
 			select {
 			case <-reloaded:
 				if !c.reloads {

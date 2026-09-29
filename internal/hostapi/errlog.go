@@ -56,6 +56,21 @@ func (h *Host) RecordError(source, msg string) {
 	h.refresh()
 }
 
+// errorsSince is the errors recorded at or after t under a source starting
+// with prefix, oldest first, one "error: <source>: <headline>" line each.
+func (h *Host) errorsSince(t time.Time, prefix string) []string {
+	l := &h.errs
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var out []string
+	for _, e := range l.entries {
+		if !e.at.Before(t) && strings.HasPrefix(e.source, prefix) {
+			out = append(out, "error: "+e.source+": "+Headline(e.msg))
+		}
+	}
+	return out
+}
+
 // Recorded reports whether msg is the newest recorded error: a toast of it
 // can point at /errors for the rest.
 func (h *Host) Recorded(msg string) bool {

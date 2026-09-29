@@ -89,24 +89,10 @@ func launch(o options) int {
 	host.SetUIHooks(app)
 	trust.ask = app.AskTrust
 
-	// reload is set before boot starts; /trust calls it after boot
-	var reload func()
-	steps := hostSteps(host, trust, app, func() { reload() })
+	steps := hostSteps(host, trust, app)
 	p := tea.NewProgram(app)
 	app.SetProgram(p)
-	reload = func() {
-		if err := host.ForceReload(ctx, steps); err != nil {
-			log.Error("reload", "force reload failed", map[string]any{"error": err.Error()})
-			host.RecordError("reload", err.Error())
-			app.Notify(logging.Error, "Could not reload the config", err.Error())
-			return
-		}
-		app.SignalBoot(nil)
-		app.Notify(logging.Info, "Config reloaded", "")
-		host.WarnModel()
-		host.EmitAsync("config.reloaded", nil)
-	}
-	app.SetReload(reload)
+	markConfig := setReload(host, steps, app)
 
 	// Boot runs on its own goroutine (it may block on the trust prompt);
 	// the outcome reaches the UI through the hook channel.
@@ -126,7 +112,15 @@ func launch(o options) int {
 			host.RecordError("boot", err.Error())
 			return
 		}
-		host.GoSafe("config watch", func() { watchConfig(host, dirs, reload) })
+		markConfig()
+		// an edit made mid-turn applies after it, or at the lua tool's next call
+		host.GoSafe("config watch", func() {
+			for range time.Tick(time.Second) {
+				if !host.AgentActive() {
+					host.ReloadIfChanged()
+				}
+			}
+		})
 		// A bad flag (no session to resume, say) is a toast, not a boot
 		// failure: the TUI is still usable.
 		if err := applyOptions(host, o); err != nil {
@@ -200,13 +194,13 @@ func newHost(dirs config.Dirs, log *logging.Logger, o options) (*hostapi.Host, *
 
 // hostSteps is the boot of a zemi; app is nil headless, where nothing
 // quits and a failing step says so on stderr.
-func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App, reload func()) []lua.BootStep {
+func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 	quit := func() {}
 	if app != nil {
 		quit = app.Quit
 	}
 	soft := func(s lua.BootStep) lua.BootStep { return softStep(h, app == nil, s) }
-	return bootSteps(h, mainCommands(quit, trust.command(reload)),
+	return bootSteps(h, mainCommands(quit, trust.command()),
 		[]lua.BootStep{soft(trust.step()), soft(h.ProjectPermissionsStep())},
 		soft(h.PluginsStep()),
 		[]lua.BootStep{
@@ -245,10 +239,16 @@ func bootHeadless(o options, inert bool, notice io.Writer) (*hostapi.Host, func(
 		log.Close()
 		release()
 	}
-	if err := h.RT.Boot(context.Background(), hostSteps(h, trust, nil, func() {})); err != nil {
+	steps := hostSteps(h, trust, nil)
+	markConfig := func() {}
+	if !inert {
+		markConfig = setReload(h, steps, nil)
+	}
+	if err := h.RT.Boot(context.Background(), steps); err != nil {
 		done()
 		return nil, nil, err
 	}
+	markConfig()
 	return h, done, nil
 }
 
@@ -275,31 +275,42 @@ func bootSteps(h *hostapi.Host, cmds []*hostapi.Command, trust []lua.BootStep, p
 		[]lua.BootStep{h.MarkdownCommandsStep(), readyStep(h, reflect)})
 }
 
-// watchConfig reloads when files under the user or a trusted project's
-// config or a plugin change, once no turn is running (an edit made mid-turn
-// applies after it).
-func watchConfig(h *hostapi.Host, dirs config.Dirs, reload func()) {
-	fingerprint := func() (string, bool) {
+// setReload gives the host its reload of steps and the check that the
+// config trees moved since the last one; app is nil headless. Call the
+// returned mark once boot is done: before it, nothing reads as changed, and
+// trust, which picks the trees, is not decided.
+func setReload(h *hostapi.Host, steps []lua.BootStep, app *ui.App) (mark func()) {
+	fingerprint := func() string {
 		// a sandboxed command that created project config turns trust off first
 		h.CheckSandboxed()
-		roots := append(append([]string{dirs.ConfigHome}, dirs.UserTrees()...), pluginRoots(dirs.PluginsRoot())...)
+		roots := append(append([]string{h.Dirs.ConfigHome}, h.Dirs.UserTrees()...), pluginRoots(h.Dirs.PluginsRoot())...)
 		if h.ProjectTrusted() {
-			return configFingerprint(dirs.WorktreesDir(), append(roots, dirs.ProjectConfigDir())...), true
+			return configFingerprint(h.Dirs.WorktreesDir(), append(roots, h.Dirs.ProjectConfigDir())...)
 		}
-		return configFingerprint("", roots...), false
+		return configFingerprint("", roots...)
 	}
-	last, trusted := fingerprint()
-	for range time.Tick(time.Second) {
-		fp, t := fingerprint()
-		switch {
-		case t != trusted:
-			// /trust reloaded already; only the watched trees changed
-			last, trusted = fp, t
-		case fp != last && !h.AgentActive():
-			last = fp
-			reload()
+	var last atomic.Pointer[string]
+	mark = func() { last.Store(new(fingerprint())) }
+	h.SetReload(func() error {
+		mark()
+		if err := h.ForceReload(context.Background(), steps); err != nil {
+			h.Log.Error("reload", "force reload failed", map[string]any{"error": err.Error()})
+			h.RecordError("reload", err.Error())
+			h.Notify(logging.Error, "Could not reload the config", err.Error())
+			return err
 		}
-	}
+		if app != nil {
+			app.SignalBoot(nil)
+		}
+		h.Notify(logging.Info, "Config reloaded", "")
+		h.WarnModel()
+		h.EmitAsync("config.reloaded", nil)
+		return nil
+	}, func() bool {
+		prev := last.Load()
+		return prev != nil && *prev != fingerprint()
+	})
+	return mark
 }
 
 // pluginRoots are what the watcher reads of the plugins tree: every local
@@ -603,7 +614,7 @@ func (tg *trustGate) record(root, answer string) (bool, error) {
 
 // command is /trust: it always opens the prompt, so neither Lua nor the
 // model can change trust without the user's keypress.
-func (tg *trustGate) command(reload func()) func() {
+func (tg *trustGate) command() func() {
 	return func() {
 		// the prompt blocks until answered: off the UI goroutine
 		tg.h.GoSafe("trust", func() {
@@ -621,7 +632,7 @@ func (tg *trustGate) command(reload func()) func() {
 			// must not leave the old decision in force
 			tg.h.SetProjectTrusted(ok)
 			if ok != was {
-				reload()
+				tg.h.Reload()
 			}
 		})
 	}
