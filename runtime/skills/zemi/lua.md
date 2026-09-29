@@ -78,7 +78,8 @@ zemi.ui.overlay.open({
 			detail = "The migration timed out.",
 			actions = { { text = "Retry", run = "deploy api" }, { text = "Drop", id = "drop", danger = true } },
 		},
-		{ text = "web", desc = "live, 1h ago", section = "Live", fill = "/deploy web " },
+		-- preview: shown whole under the list while the row is selected
+		{ text = "web", desc = "live, 1h ago", section = "Live", fill = "/deploy web ", preview = "Deployed from main." },
 	},
 	on_action = function(item, action) zemi.notify({ body = action.id .. " " .. item.text }) end,
 	keys = { l = { desc = "logs", fn = function(item) zemi.agent.send("show the logs of " .. item.text) end } },

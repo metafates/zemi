@@ -587,11 +587,11 @@ func hlSpec(L *glua.LState, where string, m map[string]any, palette map[string]s
 // OverlayItem is an overlay row's fields, parsed from its item: a table of
 // them, else a value whose text is the row. Callbacks get the raw item.
 type OverlayItem struct {
-	Text, Desc, Key, Section, Detail, Verb, Hotkey, Fill, Copy, Run, ID string
-	Switch, On, Locked                                                  bool    // Switch: on is set, so the row draws the switch
-	Danger                                                              bool    // cannot be undone: drawn in Danger, and its first enter or key only arms it
-	Actions                                                             []any   // a detail view's items; nil when it has none
-	Fields                                                              []Field // the detail view's facts, set above Detail
+	Text, Desc, Key, Section, Detail, Verb, Hotkey, Fill, Copy, Run, ID, Preview string
+	Switch, On, Locked                                                           bool    // Switch: on is set, so the row draws the switch
+	Danger                                                                       bool    // cannot be undone: drawn in Danger, and its first enter or key only arms it
+	Actions                                                                      []any   // a detail view's items; nil when it has none
+	Fields                                                                       []Field // the detail view's facts, set above Detail
 }
 
 // Field is a name and value a detail view sets as a table above its text.
@@ -638,7 +638,7 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	for _, f := range []struct {
 		key string
 		dst *string
-	}{{"text", &p.Text}, {"desc", &p.Desc}, {"key", &p.Key}, {"section", &p.Section}, {"detail", &p.Detail}, {"verb", &p.Verb}, {"hotkey", &p.Hotkey}, {"fill", &p.Fill}, {"copy", &p.Copy}, {"run", &p.Run}, {"id", &p.ID}} {
+	}{{"text", &p.Text}, {"desc", &p.Desc}, {"key", &p.Key}, {"section", &p.Section}, {"detail", &p.Detail}, {"verb", &p.Verb}, {"hotkey", &p.Hotkey}, {"fill", &p.Fill}, {"copy", &p.Copy}, {"run", &p.Run}, {"id", &p.ID}, {"preview", &p.Preview}} {
 		switch v := m[f.key].(type) {
 		case nil:
 		case string:

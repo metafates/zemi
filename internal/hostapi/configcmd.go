@@ -143,14 +143,15 @@ func (h *Host) SetConfig(path string, val any) error {
 // bool and passes the other rows by.
 func (h *Host) configItems() []any {
 	items := []any{
-		map[string]any{"text": "Show as Lua", "verb": "open", "run": "config lua"},
-		map[string]any{"text": "Open init.lua", "verb": "open", "run": "config open"},
+		map[string]any{"text": "Show as Lua", "verb": "open", "run": "config lua", "preview": "every setting off its default, as the zemi.config.set lines init.lua would write"},
+		map[string]any{"text": "Open init.lua", "verb": "open", "run": "config open", "preview": "your config in the editor; zemi reloads when you save it"},
 	}
 	for _, s := range h.Settings.Schema() {
 		v, _ := h.Settings.Get(s.Path)
-		source, value := h.cfgSource(s.Path), showSetting(v)+" · "
+		source := h.cfgSource(s.Path)
+		desc := fmt.Sprintf("%-8s · %s", source, showSetting(v))
 		if s.Kind == config.KindBool {
-			value = "" // the switch in the key column draws it
+			desc = source // the switch in the key column draws the value
 		}
 		section, _, _ := strings.Cut(s.Path, ".")
 		base, set := h.cfgBase(s.Path)
@@ -159,9 +160,10 @@ func (h *Host) configItems() []any {
 			note = "\n\ninit.lua sets this key; the pick lasts until restart"
 		}
 		// The source leads every row's description, since a bool's key column
-		// holds its switch; one width, so a change moves no text.
+		// holds its switch; one width, so a change moves no text. The key's
+		// description is the preview, whole under the list.
 		item := map[string]any{
-			"text": s.Path, "desc": fmt.Sprintf("%-8s · %s%s", source, value, s.Desc), "section": sourceSection(section),
+			"text": s.Path, "desc": desc, "preview": s.Desc, "section": sourceSection(section),
 			"fields": fieldList("kind", string(s.Kind), "default", showSetting(s.Default), "value", showSetting(v), "source", source),
 			"detail": s.Desc + note,
 		}

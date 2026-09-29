@@ -1488,6 +1488,10 @@ provenance string.
   styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
   an item's `hotkey`, one character, acts like enter on that row while no filter types,
+  an item's `preview` shows whole in a pane under the list while its row is
+  selected, the pane as tall as the longest preview (4 rows at most, and the
+  list 72 cells wide, like text), so moving never resizes the box, and the
+  filter matches it (`/config` puts each key's description there),
   an item's `copy` is the row's value, which `y` copies in place of the row
   (`/model`'s full model id, the init.lua lines of a `/permissions` always
   answer) and enter copies, keeping the list open, when the row does nothing else,

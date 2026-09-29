@@ -32,6 +32,9 @@ type overlayState struct {
 	acts  []hintPair
 	size  boxSize
 	armed int // the visible row plus one whose danger act waits for a second press, 0 for none
+	// the preview pane's rows at paneW cells: the most any item's preview
+	// wraps to, 4 at most, so moving or filtering never resizes the box
+	paneW, paneN int
 	// the list rows as last built and what they were built from: items live
 	// as long as the state and visible follows query, so a frame that moved
 	// nothing measures no item
@@ -235,7 +238,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		r, _ := hostapi.ParseOverlayItem(item)
 		r.Desc, r.Key, r.Section, r.Verb = sanitize.Line(r.Desc), sanitize.Line(r.Key), sanitize.Line(r.Section), sanitize.Line(r.Verb)
 		r.Hotkey = sanitize.Line(r.Hotkey)
-		r.Fill, r.Copy = sanitize.String(r.Fill), sanitize.String(r.Copy) // Detail is the detail view's Body, sanitized there
+		r.Fill, r.Copy, r.Preview = sanitize.String(r.Fill), sanitize.String(r.Copy), sanitize.String(r.Preview) // Detail is the detail view's Body, sanitized there
 		if o.Origin != lua.OriginBuiltin && o.Origin != lua.OriginUser {
 			r.Run = "" // so a plugin row label cannot disguise a command
 		}
@@ -254,7 +257,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		}
 		st.items = append(st.items, it)
 		st.labels = append(st.labels, it.label)
-		st.texts = append(st.texts, it.section+"  "+it.desc+"  "+r.Copy)
+		st.texts = append(st.texts, it.section+"  "+it.desc+"  "+r.Copy+"  "+r.Preview)
 	}
 	st.selected = o.Selected
 	st.acts = sharedActions(st.items)
@@ -646,12 +649,22 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		body := [][]hostapi.Segment{st.input.inputRow(inner), nil, hint(inner, sendHint, hintPair{"esc", "close"})}
 		return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 	}
-	// a list fits its content, 56 cells at least, a text view is 72, and a
-	// detail view opens at its parent's size
+	// a list fits its content, 56 cells at least, a text view or a list with
+	// previews, which read as text, 72, and a detail view opens at its
+	// parent's size
+	previews := !st.back && slices.ContainsFunc(st.items, func(it listItem) bool { return it.row.Preview != "" })
 	if !st.back {
-		st.size.w = max(st.size.w, map[bool]int{true: 56, false: 72}[len(st.o.Items) > 0])
+		st.size.w = max(st.size.w, map[bool]int{true: 56, false: 72}[len(st.o.Items) > 0 && !previews])
 	}
 	bodyW := min(inner, st.size.w)
+	if previews && st.paneW != bodyW {
+		st.paneW, st.paneN = bodyW, 0
+		for _, it := range st.items {
+			if it.row.Preview != "" {
+				st.paneN = max(st.paneN, min(len(wrapText(it.row.Preview, "", bodyW)), 4))
+			}
+		}
+	}
 	buildBody := st.text.at(func(w int) (rows [][]hostapi.Segment) {
 		if rows = fieldRows(st.o.Fields, w); rows != nil && st.o.Body != "" {
 			rows = append(rows, nil)
@@ -693,7 +706,15 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		default:
 			listPH = nil
 		}
-		room := h - 2 - len(stack(tight, bodyPH, slices.Concat(head, listPH, fixed), oneRow)) + len(bodyPH) + len(listPH)
+		// the selected row's preview, in rows every row's fits
+		var pane [][]hostapi.Segment
+		if previews {
+			pane = make([][]hostapi.Segment, map[bool]int{true: 1, false: st.paneN}[level > 1])
+			if len(st.visible) > 0 {
+				copy(pane, capRows(wrapText(st.items[st.visible[st.selected]].row.Preview, "Host:Hint", bodyW), len(pane), bodyW))
+			}
+		}
+		room := h - 2 - len(stack(tight, bodyPH, slices.Concat(head, listPH, fixed), pane, oneRow)) + len(bodyPH) + len(listPH)
 		limit := max(room-min(bodyN, 3), 1) // the list's rows; the body keeps three
 		enterCopies := false
 		switch {
@@ -751,7 +772,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			foot = hint(inner, hintPair{cmp.Or(st.actionKey(st.selected), "enter"), "again to " + label}, hintPair{"esc", "cancel"})
 			foot[0].HL, foot[1].HL = "Host:Danger", "Host:Danger"
 		}
-		rows := stack(tight, body, slices.Concat(head, list, fixed), [][]hostapi.Segment{foot})
+		rows := stack(tight, body, slices.Concat(head, list, fixed), pane, [][]hostapi.Segment{foot})
 		return rows, bodyN > 0 && st.body.viewH < min(bodyN, 3) || len(listPH) > 0 && st.view.viewH < min(st.view.rows, 3)
 	})
 	return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)

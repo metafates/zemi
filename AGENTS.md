@@ -219,10 +219,12 @@ and `zemi health` keep none, and never a mode whose base is yolo (never fail ope
 row left out since user Lua can write kv directly), so init.lua still wins; per user, not per project.
 
 `/config` (hostapi/configcmd.go) is a `Reload` list of every schema key by section, each
-description led by its `cfgSource` (`init.lua` when the live value is config's last write;
+row's description its `cfgSource` (`init.lua` when the live value is config's last write;
 `saved` when it is the kept pick of a key init.lua does not write; `default`; `this run` for
 anything a restart drops, which the detail explains for a key init.lua sets; padded to one
-width, so a change moves no text) and then the value, which a bool draws as its switch instead. Space toggles a bool; every other row opens its
+width, so a change moves no text) and the value, which a bool draws as its switch instead;
+the key's description shows whole under the list while its row is selected (an item's
+`preview`). Space toggles a bool; every other row opens its
 detail, whose actions pick or fill `/config set`, and reset a value off its `cfgBase` ("Reset
 to init.lua" or "Reset to default", which forgets the kept pick). `/config` and `/effort` write through
 `Host.SetConfig`, which sends `models.*`, `permissions.mode`, `agent.profile` and `ui.theme`

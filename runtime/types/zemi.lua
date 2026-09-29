@@ -900,6 +900,7 @@ function zemi.event.stats() end
 ---@class zemi.OverlayItem
 ---@field text string the label: a filter word matches it fuzzily, or as a substring when the text holds a space (prose)
 ---@field desc? string dim column after the text; the filter finds words in it
+---@field preview? string shown whole under the list while this row is selected, in a pane as tall as the longest preview (4 rows at most), so moving never shifts a row; the filter matches it too
 ---@field key? string right-aligned tag
 ---@field on? boolean draws the on/off switch in the tag's place
 ---@field locked? boolean draws the switch on with nothing to switch

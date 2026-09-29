@@ -1234,3 +1234,33 @@ func TestFieldRows(t *testing.T) {
 		}
 	}
 }
+
+// TestListPreview: the selected row's preview shows under the list in a
+// pane as tall as the longest preview, so moving or filtering never changes
+// the box's height, and the filter matches preview words.
+func TestListPreview(t *testing.T) {
+	short, long := "one short line", strings.Repeat("a preview that wraps ", 6)+"xylophone"
+	for _, c := range []struct {
+		keys []string
+		want string // the preview's first words, "" for a blank pane
+	}{
+		{nil, short},
+		{[]string{"j"}, "a preview that wraps"},
+		{[]string{"j", "j"}, ""},
+		{[]string{"/", "xylo"}, "a preview that wraps"},
+	} {
+		app, _ := bootAgentApp(t, 60, 30)
+		runLua(t, app, `zemi.ui.overlay.open({ id = "p", items = { { text = "a", preview = "`+short+`" }, { text = "b", preview = "`+long+`" }, { text = "c" } } })`)
+		rows := len(app.overlayBox(&app.overlays[0], 60, 30))
+		pressKeys(app, c.keys...)
+		box := app.overlayBox(&app.overlays[0], 60, 30)
+		pane := plainSegs(slices.Concat(box[len(box)-6 : len(box)-2]...))
+		name := strings.Join(c.keys, " ")
+		if len(box) != rows {
+			t.Errorf("%q: %d rows, want %d", name, len(box), rows)
+		}
+		if got := strings.Contains(pane, "a preview") || strings.Contains(pane, short); c.want == "" && got || c.want != "" && !strings.Contains(pane, c.want) {
+			t.Errorf("%q: pane %q, want %q", name, pane, c.want)
+		}
+	}
+}
