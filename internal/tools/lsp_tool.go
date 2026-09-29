@@ -138,7 +138,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		// the list already shows every line the note would name
 		if len(lines) > 1 && !slices.ContainsFunc(lines[1:], func(l int) bool {
 			return !slices.ContainsFunc(locs, func(loc lsp.Location) bool {
-				return absPath(loc.Path()) == absPath(path) && loc.Range.Start.Line+1 == l
+				return perm.CanonPath(loc.Path()) == perm.CanonPath(path) && loc.Range.Start.Line+1 == l
 			})
 		}) {
 			note = ""
@@ -247,7 +247,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		}
 		// every other file passes the same gate the named one did
 		for _, f := range slices.Sorted(maps.Keys(byPath)) {
-			if absPath(f) == absPath(path) {
+			if perm.CanonPath(f) == perm.CanonPath(path) {
 				continue
 			}
 			if v := p.Check(Request{Tool: "lsp", Subject: perm.SubjectWrite, Arg: f, Reason: "rename " + symbol + " to " + newName}); v.Decision != perm.Allow {

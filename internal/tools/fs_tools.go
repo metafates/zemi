@@ -369,13 +369,6 @@ func (p *Pipeline) childEnv() ([]string, error) {
 	return env, nil
 }
 
-func (p *Pipeline) spill(name, s string) string {
-	if p == nil {
-		return ""
-	}
-	return Spill(p.Pad, name, s)
-}
-
 const (
 	readMaxLines   = 2000
 	readMaxBytes   = 50_000
@@ -578,7 +571,7 @@ func WriteFile(path perm.Path, data []byte, mode os.FileMode) error {
 // taken before the read, so a change during it reads as stale.
 func (p *Pipeline) markRead(path string, fi os.FileInfo) {
 	if p != nil && p.Seen != nil && fi != nil {
-		p.Seen.Store(absPath(path), fi.ModTime())
+		p.Seen.Store(perm.CanonPath(path), fi.ModTime())
 	}
 }
 
@@ -598,7 +591,7 @@ func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	if p == nil || p.Seen == nil {
 		return ""
 	}
-	t, ok := p.Seen.Load(absPath(path))
+	t, ok := p.Seen.Load(perm.CanonPath(path))
 	switch {
 	case !ok && inPad(p.Pad, path):
 	case !ok:
@@ -609,12 +602,12 @@ func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	return ""
 }
 
-var fileLocks sync.Map // absolute path -> *sync.Mutex
+var fileLocks sync.Map // perm.CanonPath -> *sync.Mutex
 
 // lockFile serializes read-modify-write of one file across concurrent
 // agents and returns the unlock.
 func lockFile(path string) func() {
-	m, _ := fileLocks.LoadOrStore(absPath(path), &sync.Mutex{})
+	m, _ := fileLocks.LoadOrStore(perm.CanonPath(path), &sync.Mutex{})
 	mu := m.(*sync.Mutex)
 	mu.Lock()
 	return mu.Unlock
@@ -661,7 +654,7 @@ func CallStart(ctx context.Context, id, tool, input string) bool {
 	if json.Unmarshal([]byte(input), &in) != nil || in.Path == "" {
 		return false
 	}
-	key, id := absPath(in.Path), callKey(ctx, id)
+	key, id := perm.CanonPath(in.Path), callKey(ctx, id)
 	callOrder.mu.Lock()
 	callOrder.path[id] = key
 	callOrder.ahead[key] = append(callOrder.ahead[key], id)
@@ -706,11 +699,6 @@ func turn(ctx context.Context, id string) func() {
 }
 
 func init() { callOrder.cond = sync.NewCond(&callOrder.mu) }
-
-// absPath is the key both the read log and the file locks use, the same
-// form fs rules match: an alias and its target, or main.go and Main.go
-// where the filesystem folds case, take the same lock.
-func absPath(path string) string { return perm.CanonPath(path) }
 
 // runWrite creates or overwrites a file (parents created).
 func runWrite(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
