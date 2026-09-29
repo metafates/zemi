@@ -549,7 +549,7 @@ func TestWheelUnderPointer(t *testing.T) {
 			for i := range 12 {
 				body = append(body, fmt.Sprintf("intro %d", i))
 			}
-			app.openOverlay(hostapi.Overlay{Title: "Model", Origin: lua.OriginBuiltin, Body: strings.Join(body, "\n"), Items: []any{"alpha", "beta", "gamma"}})
+			app.openOverlay(hostapi.Overlay{Title: "Model", Origin: lua.OriginBuiltin, Body: strings.Join(body, "\n"), Items: []any{"alpha", "beta", "gamma", "delta", "epsilon"}})
 			app.renderSync(t)
 			x, y := findCell(t, app, c.over)
 			app.Update(tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelDown})

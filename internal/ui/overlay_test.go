@@ -31,7 +31,7 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 		if on {
 			mark = "● b"
 		}
-		return []any{map[string]any{"text": "a"}, map[string]any{"text": mark}}
+		return []any{map[string]any{"text": "a"}, map[string]any{"text": mark}, "c", "d", "e"} // filterMin rows
 	}
 	a.openOverlay(hostapi.Overlay{ID: "t", Origin: lua.OriginBuiltin, Items: items(), Reload: func() ([]any, [][]hostapi.Segment) { on = !on; return items(), nil }})
 	a.overlayKey("ctrl+n", "")
@@ -75,7 +75,7 @@ func TestReloadClosesLuaOverlays(t *testing.T) {
 // selects its first match.
 func TestOverlayFilter(t *testing.T) {
 	var fixture []any
-	for _, s := range []string{"alpha one", "Beta two", "gamma three"} {
+	for _, s := range []string{"alpha one", "Beta two", "gamma three", "xyz", "qqq"} { // filterMin rows
 		fixture = append(fixture, map[string]any{"text": s, "fill": s})
 	}
 	hotkeyed := slices.Clone(fixture)
@@ -84,6 +84,8 @@ func TestOverlayFilter(t *testing.T) {
 		map[string]any{"text": "gpt", "section": "openai"},
 		map[string]any{"text": "sonnet", "section": "anthropic"},
 		map[string]any{"text": "opus", "section": "anthropic", "copy": "anthropic/opus"},
+		map[string]any{"text": "llama", "section": "meta"},
+		map[string]any{"text": "qwen", "section": "meta"},
 	}
 	runes := func(s string, keys ...string) []string { return append(strings.Split(s, ""), keys...) }
 	state := func(a *App, active bool, query string, rows, sel int) string {
@@ -111,15 +113,20 @@ func TestOverlayFilter(t *testing.T) {
 		{"typing narrows", hostapi.Overlay{}, runes("/t"), func(a *App) string { return state(a, true, "t", 2, 0) }},
 		{"every word must match, backspace widens", hostapi.Overlay{}, runes("/two b", "backspace", "backspace"), func(a *App) string { return state(a, true, "two", 1, 0) }},
 		{"enter keeps the query and gives j to the list", hostapi.Overlay{}, runes("/t", "enter", "j"), func(a *App) string { return state(a, false, "t", 2, 1) }},
-		{"esc while typing clears and keeps the row", hostapi.Overlay{}, runes("/ga", "esc"), func(a *App) string { return state(a, false, "", 3, 2) }},
+		{"esc while typing clears and keeps the row", hostapi.Overlay{}, runes("/ga", "esc"), func(a *App) string { return state(a, false, "", 5, 2) }},
 		{"esc on a kept query clears, a second closes", hostapi.Overlay{}, runes("/t", "enter", "esc", "esc"), func(a *App) string { return closedWith(a, "") }},
 		{"/ on a kept query types on", hostapi.Overlay{}, runes("/t", "enter", "/", "w"), func(a *App) string { return state(a, true, "tw", 1, 0) }},
-		{"backspace on an empty query stops typing", hostapi.Overlay{}, runes("/", "backspace"), func(a *App) string { return state(a, false, "", 3, 0) }},
-		{"j moves while no filter types", hostapi.Overlay{}, runes("jj"), func(a *App) string { return state(a, false, "", 3, 2) }},
+		{"backspace on an empty query stops typing", hostapi.Overlay{}, runes("/", "backspace"), func(a *App) string { return state(a, false, "", 5, 0) }},
+		{"j moves while no filter types", hostapi.Overlay{}, runes("jj"), func(a *App) string { return state(a, false, "", 5, 2) }},
 		{"enter on a kept query acts on the row", hostapi.Overlay{}, runes("/e", "enter", "enter"), func(a *App) string { return closedWith(a, "alpha one") }},
 		{"a typing filter takes the hotkey", hostapi.Overlay{Items: hotkeyed}, runes("/3"), func(a *App) string { return state(a, true, "3", 0, 0) }},
 		{"a hotkey runs its row", hostapi.Overlay{Items: hotkeyed}, runes("3"), func(a *App) string { return closedWith(a, "gamma three") }},
-		{"/ on a list with no rows is inert", hostapi.Overlay{Items: []any{}}, runes("/"), func(a *App) string { return state(a, false, "", 0, 0) }},
+		{"/ on a list of fewer than filterMin rows is inert and draws no filter row", hostapi.Overlay{Items: []any{"a", "b"}}, runes("/"), func(a *App) string {
+			if box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20)); strings.Contains(box, "filter") {
+				return box
+			}
+			return state(a, false, "", 2, 0)
+		}},
 		{"a section name narrows to its rows and drops the other header", hostapi.Overlay{Items: models}, runes("/anthropic"), func(a *App) string {
 			if v := a.overlays[0].visible; !slices.Equal(v, []int{1, 2}) || strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20)), "openai") {
 				return fmt.Sprint(v)
@@ -133,7 +140,7 @@ func TestOverlayFilter(t *testing.T) {
 			st := a.overlays[0]
 			return map[bool]string{false: fmt.Sprint(st.visible, st.match)}[slices.Equal(st.visible, []int{1}) && fmt.Sprint(st.match) == "[[0 2 5]]"]
 		}},
-		{"a render_item row keeps its spaces, so the highlight lands on what matched", hostapi.Overlay{Items: []any{"x"}, ItemText: [][]hostapi.Segment{{{Text: "●  "}, {Text: "sonnet", HL: "Ok"}}}}, runes("/net"), func(a *App) string {
+		{"a render_item row keeps its spaces, so the highlight lands on what matched", hostapi.Overlay{Items: []any{"x", "q1", "q2", "q3", "q4"}, ItemText: [][]hostapi.Segment{{{Text: "●  "}, {Text: "sonnet", HL: "Ok"}}}}, runes("/net"), func(a *App) string {
 			var lit []string
 			for _, row := range a.overlayBox(&a.overlays[0], 80, 20) {
 				for _, s := range row {
@@ -1008,7 +1015,7 @@ func TestOverlaySegmentLabel(t *testing.T) {
 		{{Text: "a label far too long for a forty cell wide box", HL: "Title"}},
 	}})
 	rows := app.overlayBox(&app.overlays[0], 40, 20)
-	first, second := rows[2], rows[3]
+	first, second := rows[1], rows[2]
 	if first[2].HL != "ToastErr" || first[2].Click != "" || first[3].HL != "Host:Value" {
 		t.Fatalf("first row: %+v", first)
 	}
@@ -1377,7 +1384,7 @@ func TestListPreview(t *testing.T) {
 		{[]string{"/", "xylo"}, "a preview that wraps"},
 	} {
 		app, _ := bootAgentApp(t, 60, 30)
-		runLua(t, app, `zemi.ui.overlay.open({ id = "p", items = { { text = "a", preview = "`+short+`" }, { text = "b", preview = "`+long+`" }, { text = "c" } } })`)
+		runLua(t, app, `zemi.ui.overlay.open({ id = "p", items = { { text = "a", preview = "`+short+`" }, { text = "b", preview = "`+long+`" }, { text = "c" }, { text = "d" }, { text = "e" } } })`)
 		rows := len(app.overlayBox(&app.overlays[0], 60, 30))
 		pressKeys(app, c.keys...)
 		box := app.overlayBox(&app.overlays[0], 60, 30)

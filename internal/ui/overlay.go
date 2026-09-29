@@ -128,6 +128,16 @@ func (f *listFilter) set(query string) {
 	}
 }
 
+// filterMin is the fewest rows a list filters: a shorter one reads at a
+// glance, so it shows no filter row and "/" does nothing there.
+const filterMin = 5
+
+// filters reports whether the list takes a filter: filterMin rows or more,
+// or a query still open from when it had them.
+func (st *overlayState) filters() bool {
+	return len(st.o.Items) >= filterMin || st.active || st.query != ""
+}
+
 // filterRow is the query line above a list, a hint while no query is open
 // so opening one adds no row.
 func (f *listFilter) filterRow() []hostapi.Segment {
@@ -489,7 +499,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	}
 	// a filter takes its keys first; then a body that overflows takes the
 	// scroll keys, and the list keys too when there is no list to move in
-	if !st.back && st.edit(key, text) || st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) ||
+	if !st.back && st.filters() && st.edit(key, text) || st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) ||
 		moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
 		return nil
 	}
@@ -751,7 +761,9 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		switch {
 		case st.back && len(st.o.Items) > 0:
 		case len(st.o.Items) > 0:
-			head = [][]hostapi.Segment{st.filterRow()}
+			if st.filters() {
+				head = [][]hostapi.Segment{st.filterRow()}
+			}
 			if len(st.visible) == 0 {
 				listPH, fixed = nil, emptyRows("No matches.", inner)
 			}

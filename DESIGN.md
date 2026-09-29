@@ -1658,7 +1658,8 @@ provenance string.
   sentence-case verb phrases above its sections, with no section of their
   own ("Install a plugin", "Follow the chat model"); the values sit under
   section headers, so an action never reads as one of them. `/` starts a
-  filter on a list with rows. While it types, every one-character key types,
+  filter on a list of five rows or more; a shorter one reads at a glance and
+  shows no filter row. While it types, every one-character key types,
   so the footer says only `enter done · esc clear`; enter keeps the query and
   gives the keys back to the list (j and k move in the narrowed rows, `/`
   types on), and esc clears it, then closes. A detail view opens with its
