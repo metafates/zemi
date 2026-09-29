@@ -546,6 +546,16 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
+			"a refresh of a closed list builds nothing and wakes no frame",
+			hostapi.Overlay{ID: "p", Items: []any{"a"}},
+			[]string{"esc"},
+			func(a *App) string {
+				gen, built := a.frameGen, false
+				a.RefreshOverlay("p", func() hostapi.Overlay { built = true; return hostapi.Overlay{} })
+				return map[bool]string{false: fmt.Sprintf("built %v, frame moved %d", built, a.frameGen-gen)}[!built && a.frameGen == gen]
+			},
+		},
+		{
 			"a refresh rebuilds the detail open over the list from its item, keeping the selected action, and drops it with the item",
 			hostapi.Overlay{ID: "p", Items: []any{detail("a", "b"), "x"}},
 			[]string{"enter", "down"},

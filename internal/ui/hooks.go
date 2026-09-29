@@ -183,9 +183,10 @@ func (a *App) OpenOverlay(o hostapi.Overlay) {
 }
 
 // RefreshOverlay rebuilds the open overlay id with build on the worker and
-// replaces it in place, Body and Keys too; a closed one builds nothing.
+// replaces it in place, Body and Keys too; a closed one builds and draws
+// nothing, so a job refreshing each second keeps an idle zemi idle.
 func (a *App) RefreshOverlay(id string, build func() hostapi.Overlay) {
-	a.do(func() {
+	a.dispatch(uiProbe(func() {
 		if a.overlayIndex(id) >= 0 {
 			a.background(func() {
 				o := build()
@@ -193,7 +194,7 @@ func (a *App) RefreshOverlay(id string, build func() hostapi.Overlay) {
 				a.do(func() { a.openOverlay(o) })
 			})
 		}
-	})
+	}))
 }
 
 // CloseOverlay posts the close: waiting on the UI goroutine from the

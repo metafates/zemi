@@ -316,6 +316,10 @@ type uiFunc func() tea.Cmd
 // do posts fn to run on the Update goroutine.
 func (a *App) do(fn func()) { a.dispatch(uiFunc(func() tea.Cmd { fn(); return nil })) }
 
+// uiProbe is a posted look at UI state that changes nothing itself, so it
+// wakes no frame; what it finds to change it posts as a uiFunc.
+type uiProbe func()
+
 type permAnswer struct {
 	ok bool
 	by string
@@ -363,6 +367,8 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 	case uiFunc:
 		a.bump()
 		return msg()
+	case uiProbe:
+		msg()
 	case agentStreamMsg:
 		// Stream state lives in the host; just invalidate the frame.
 		a.bump()
