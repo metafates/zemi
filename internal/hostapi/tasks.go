@@ -795,6 +795,6 @@ func (h *Host) sessionName(id string) string {
 	return "another session"
 }
 
-// statusCol pads a status word to the widest, so a row whose run ends moves
-// nothing after it.
+// statusCol pads a run's status or a project's trust word to the widest, so
+// a row whose word changes moves nothing after it.
 func statusCol(s string) string { return fmt.Sprintf("%-9s", s) }

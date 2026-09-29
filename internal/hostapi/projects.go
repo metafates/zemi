@@ -321,14 +321,16 @@ func (h *Host) openProjects(ui UIHooks, refresh bool, confirm string) {
 func (h *Host) projectItems() (items []any, sel int) {
 	sel = -1
 	for i, p := range ListProjects(h.Dirs, true) {
-		desc := []string{statusCol(p.TrustWord())} // padded, so the columns after it line up
+		// each column padded, blank when empty, so the age lines up
+		sessions := ""
 		if p.Sessions > 0 {
-			desc = append(desc, fmt.Sprintf("%d %s", p.Sessions, plural(p.Sessions, "session", "sessions")))
+			sessions = fmt.Sprintf(" · %d %s", p.Sessions, plural(p.Sessions, "session", "sessions"))
 		}
+		desc := statusCol(p.TrustWord()) + fmt.Sprintf("%-15s", sessions)
 		if !p.Opened.IsZero() {
-			desc = append(desc, ago(p.Opened.UnixMilli()))
+			desc += " · " + ago(p.Opened.UnixMilli())
 		}
-		item := map[string]any{"text": sanitize.String(TildePath(p.Root)), "tail": true, "desc": strings.Join(desc, " · "), "fields": h.projectFields(p)}
+		item := map[string]any{"text": sanitize.String(TildePath(p.Root)), "tail": true, "desc": strings.TrimRight(desc, " "), "fields": h.projectFields(p)}
 		switch {
 		case p.Root == h.trustRoot():
 			item["key"] = "current"
