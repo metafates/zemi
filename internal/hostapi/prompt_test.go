@@ -414,10 +414,19 @@ func TestPromptBudget(t *testing.T) {
 	for _, s := range sizes {
 		n += s.chars
 	}
+	// the paths the prompt names (project, pad, zemi's dirs, the binary) are
+	// the machine's: each counts as a fixed short one, so TMPDIR moves nothing
+	text := sys
+	for _, tool := range toolset {
+		schema, _ := json.Marshal(tool.Info().Parameters)
+		text += tool.Info().Description + string(schema)
+	}
+	root, exe := filepath.Dir(h.Dirs.ProjectDir), must(os.Executable())
+	n += len(strings.NewReplacer(perm.RealPath(root), "/tmp/t", root, "/tmp/t", exe, "/usr/local/bin/zemi").Replace(text)) - len(text)
 	// NOTE: chars, not tokens (about 4.3 per o200k token): the owner's limit
-	// is 10k tokens, and this ceiling sits just above today's size, so any
-	// growth is a decision. Raise it only with a reason.
-	const ceiling = 22000
+	// is 10k tokens. The ceiling is today's size rounded up to the next 500,
+	// so any real growth is a decision; raise it only with a reason.
+	const ceiling = 21500
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}
