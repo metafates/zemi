@@ -3,6 +3,7 @@
 package hostapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -15,10 +16,12 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/store"
 )
 
 const (
+	// git CPU time that makes a snapshot slow
 	snapSlow        = 300 * time.Millisecond
 	snapFiles       = 5       // files a row's diff shows
 	snapCheckpoints = 100     // files a bash call checkpoints for rewind
@@ -72,8 +75,14 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 	if err != nil {
 		return "", nil, ""
 	}
-	start := time.Now()
-	out, err := h.git(dir, "rev-parse", "--show-toplevel", "--git-path", "index", "--git-path", "objects")
+	// CPU time, not wall time: a loaded machine slows every snapshot, and
+	// only a large repository makes one cost work.
+	// NOTE: a slow disk's waits are not counted.
+	var cpu time.Duration
+	git := func(dir string, env []string, args ...string) (string, error) {
+		return proc.Git{Dir: dir, Env: env, CPU: &cpu}.Run(context.Background(), args...)
+	}
+	out, err := git(dir, nil, "rev-parse", "--show-toplevel", "--git-path", "index", "--git-path", "objects")
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	if err != nil || len(lines) != 3 {
 		return "", nil, ""
@@ -107,8 +116,8 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 				os.Remove(warm)
 			}
 		}
-		if _, err = h.gitEnv(root, env, append([]string{"add", "-A"}, snapPathspec...)...); err == nil {
-			out, err = h.gitEnv(root, env, "write-tree")
+		if _, err = git(root, env, append([]string{"add", "-A"}, snapPathspec...)...); err == nil {
+			out, err = git(root, env, "write-tree")
 		}
 		if err == nil || retry {
 			break
@@ -120,10 +129,10 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 		h.Log.Warn("snapshot", "snapshot failed", map[string]any{"error": err.Error()})
 		return "", nil, ""
 	}
-	if time.Since(start) < snapSlow {
+	if cpu < snapSlow {
 		s.slow = 0
 	} else if s.slow++; s.slow == 2 {
-		h.Log.Warn("snapshot", "snapshots are slow in this repository; bash rows show no diff", map[string]any{"ms": time.Since(start).Milliseconds()})
+		h.Log.Warn("snapshot", "snapshots are slow in this repository; bash rows show no diff", map[string]any{"cpu_ms": cpu.Milliseconds()})
 	}
 	return root, env, strings.TrimSpace(out)
 }

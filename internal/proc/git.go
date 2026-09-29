@@ -25,6 +25,7 @@ type Git struct {
 	// checks keep so status sees what the user's git sees: a plugin's
 	// .gitattributes must not run a program the user installed.
 	Foreign bool
+	CPU     *time.Duration // when set, gains the CPU time the call's processes took
 }
 
 // noFilter holds the commands that run no filter driver as zemi calls them,
@@ -78,6 +79,9 @@ func (g Git) run(ctx context.Context, args ...string) (string, error) {
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
+	if g.CPU != nil && cmd.ProcessState != nil {
+		*g.CPU += cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()
+	}
 	if err != nil {
 		err = fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
