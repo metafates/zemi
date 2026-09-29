@@ -1,5 +1,5 @@
 // Package sanitize strips terminal control sequences from model-influenced
-// strings at the boundary before they reach widgets, overlays, or the log.
+// strings at the boundary before they reach widgets or overlays.
 package sanitize
 
 import (
