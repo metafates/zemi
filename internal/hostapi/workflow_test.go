@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,16 +14,27 @@ import (
 	"charm.land/fantasy"
 )
 
-// echoAgents stubs every subagent to answer "<prompt>!" after a short
-// delay, recording the highest number of agents running at once.
+// echoAgents stubs every subagent to answer "<prompt>!", recording the
+// highest number of agents running at once. The parallel case's first
+// branches (p1 to p4) wait for a second agent, so they overlap under any load.
 func echoAgents(h *Host) *atomic.Int32 {
 	var running, peak atomic.Int32
+	two := make(chan struct{})
+	closeTwo := sync.OnceFunc(func() { close(two) })
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
 			n := running.Add(1)
 			for p := peak.Load(); n > p && !peak.CompareAndSwap(p, n); p = peak.Load() {
 			}
-			time.Sleep(30 * time.Millisecond)
+			if n >= 2 {
+				closeTwo()
+			}
+			if len(last) == 2 && last[0] == 'p' {
+				select {
+				case <-two:
+				case <-time.After(10 * time.Second): // branches run one at a time: the peak stays 1
+				}
+			}
 			running.Add(-1)
 			if last == "panic" {
 				panic("agent boom")
