@@ -2,10 +2,8 @@ package hostapi
 
 import (
 	"cmp"
-	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -71,12 +69,7 @@ func (h *Host) configCommand(args string) error {
 	case "lua":
 		ui.OpenOverlay(Overlay{ID: "config lua", Title: "Config as Lua", Origin: lua.OriginBuiltin, Body: h.configLua()})
 	case "open":
-		// the editor blocks and a Go command runs on the key loop
-		h.GoSafe("config open", func() {
-			if err := ui.EditFile(context.Background(), EditRequest{Path: filepath.Join(h.Dirs.ConfigHome, "init.lua"), Title: "init.lua"}); err != nil {
-				h.Notify(slog.LevelError, "Could not open init.lua", err.Error())
-			}
-		})
+		h.openInEditor(ui, filepath.Join(h.Dirs.ConfigHome, "init.lua"), "init.lua")
 	default:
 		return Usagef("usage: /config [set <key> <value> | toggle <key> | reset <key> | pick <key> | lua | open]")
 	}

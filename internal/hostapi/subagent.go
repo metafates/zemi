@@ -976,13 +976,18 @@ func (h *Host) openAgentFile(name string) error {
 	case d.Path == "":
 		return Usagef("%s is builtin: agents/%s.md in %s replaces it", name, name, TildePath(h.Dirs.ConfigHome))
 	}
-	// the editor blocks and a Go command runs on the key loop
-	h.GoSafe("agents open", func() {
-		if err := ui.EditFile(context.Background(), EditRequest{Path: d.Path, Title: "the agent"}); err != nil {
-			h.Notify(slog.LevelError, "Could not open the agent", err.Error())
+	h.openInEditor(ui, d.Path, "the agent")
+	return nil
+}
+
+// openInEditor opens path in the user's editor off the caller's goroutine:
+// the editor blocks, and a Go command runs on the key loop.
+func (h *Host) openInEditor(ui UIHooks, path, title string) {
+	h.GoSafe("open "+title, func() {
+		if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: title}); err != nil {
+			h.Notify(slog.LevelError, "Could not open "+title, err.Error())
 		}
 	})
-	return nil
 }
 
 func (h *Host) openAgents() error {

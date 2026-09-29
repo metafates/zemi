@@ -114,12 +114,7 @@ func (h *Host) pluginsCommand(line string) error {
 		if _, err := os.Stat(path); err != nil {
 			path = p.Dir
 		}
-		// the editor blocks and a Go command runs on the key loop
-		h.GoSafe("plugins open", func() {
-			if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: "the plugin"}); err != nil {
-				h.Notify(slog.LevelError, "Could not open the plugin", err.Error())
-			}
-		})
+		h.openInEditor(ui, path, "the plugin")
 	case verb == "new":
 		send(newPluginPrompt)
 	case verb == "modify" && len(args) >= 2:

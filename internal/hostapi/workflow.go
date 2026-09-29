@@ -1663,26 +1663,20 @@ func (h *Host) openFlowScript(id string) error {
 	if err != nil {
 		return err
 	}
-	path := ""
 	if flowIDShape.MatchString(id) {
 		pad := h.ScratchDir()
 		if _, err := readPadFile(pad, flowFile(id, ".lua")); err != nil { // no link the editor would follow
 			return err
 		}
-		path = filepath.Join(pad, flowFile(id, ".lua"))
-	} else {
-		i := slices.IndexFunc(h.workflows(), func(w Workflow) bool { return w.Name == id && w.Source != lua.OriginBuiltin })
-		if i < 0 {
-			return Usagef("no workflow run or saved file %q", id)
-		}
-		path = h.workflows()[i].Path
+		h.openInEditor(ui, filepath.Join(pad, flowFile(id, ".lua")), "the workflow")
+		return nil
 	}
-	// the editor blocks and a Go command runs on the key loop
-	h.GoSafe("workflows open", func() {
-		if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: "the workflow"}); err != nil {
-			h.Notify(slog.LevelError, "Could not open the workflow", err.Error())
-		}
-	})
+	saved := h.workflows()
+	i := slices.IndexFunc(saved, func(w Workflow) bool { return w.Name == id && w.Source != lua.OriginBuiltin })
+	if i < 0 {
+		return Usagef("no workflow run or saved file %q", id)
+	}
+	h.openInEditor(ui, saved[i].Path, "the workflow")
 	return nil
 }
 

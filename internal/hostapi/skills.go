@@ -460,13 +460,7 @@ func (h *Host) openSkillFile(name string) error {
 		if s.Name != name {
 			continue
 		}
-		path := filepath.Join(s.Dir, "SKILL.md")
-		// the editor blocks and a Go command runs on the key loop
-		h.GoSafe("skills open", func() {
-			if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: "the skill"}); err != nil {
-				h.Notify(slog.LevelError, "Could not open the skill", err.Error())
-			}
-		})
+		h.openInEditor(ui, filepath.Join(s.Dir, "SKILL.md"), "the skill")
 		return nil
 	}
 	return Usagef("no skill %q", name)
