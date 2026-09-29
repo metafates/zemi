@@ -87,8 +87,10 @@ func act(verb, arg string) error {
 		return os.Rename(arg, arg+".moved")
 	case "moveread":
 		src, dst, _ := strings.Cut(arg, "|")
+		// 126 is no denial to LikelyDenied: only the read may be the one tested
 		if err := os.Rename(src, dst); err != nil {
-			return err
+			fmt.Println(err)
+			os.Exit(126)
 		}
 		_, err := os.ReadFile(filepath.Join(dst, ".env"))
 		return err
