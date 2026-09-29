@@ -99,10 +99,7 @@ func SafeClient(onHop func(u *url.URL) error, allowPrivate bool) *http.Client {
 			if len(via) >= 5 {
 				return fmt.Errorf("stopped after 5 redirects")
 			}
-			if onHop != nil {
-				return onHop(req.URL)
-			}
-			return nil
+			return onHop(req.URL)
 		},
 	}
 }

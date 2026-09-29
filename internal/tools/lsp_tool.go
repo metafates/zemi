@@ -48,7 +48,7 @@ func lspRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
 }
 
 func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.ToolResponse, error) {
-	if p == nil || p.LSP == nil {
+	if p.LSP == nil {
 		return fantasy.NewTextErrorResponse("no language server support"), nil
 	}
 	action, path, symbol := str(input["action"]), str(input["path"]), str(input["symbol"])
@@ -92,11 +92,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		}
 		var b strings.Builder
 		for _, sym := range syms[:min(len(syms), 50)] {
-			kind := "symbol"
-			if sym.Kind > 0 && sym.Kind < len(symbolKinds) {
-				kind = symbolKinds[sym.Kind]
-			}
-			fmt.Fprintf(&b, "%s %s  %s:%d\n", kind, sym.Name, workRel(sym.Location.Path()), sym.Location.Range.Start.Line+1)
+			fmt.Fprintf(&b, "%s %s  %s:%d\n", symbolKind(sym.Kind), sym.Name, workRel(sym.Location.Path()), sym.Location.Range.Start.Line+1)
 		}
 		if len(syms) > 50 {
 			fmt.Fprintf(&b, "... %d more\n", len(syms)-50)
@@ -156,52 +152,32 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		if len(prepared) == 0 {
 			return fantasy.NewTextResponse("no call hierarchy for " + symbol + note), nil
 		}
-		arg := map[string]any{"item": prepared[0]}
-		calls := func(method, side string) (lines []string, err error) {
+		dirs := []string{"incoming", "outgoing"}
+		if d := str(input["direction"]); slices.Contains(dirs, d) {
+			dirs = []string{d}
+		}
+		for _, dir := range dirs {
 			var res []struct {
 				From callHierarchyItem `json:"from"`
 				To   callHierarchyItem `json:"to"`
 			}
-			if err = c.Call(ctx, method, arg, &res); err != nil {
-				return nil, err
+			if err := c.Call(ctx, "callHierarchy/"+dir+"Calls", map[string]any{"item": prepared[0]}, &res); err != nil {
+				return fail(err)
+			}
+			title := "callees"
+			if dir == "incoming" {
+				title = "callers"
+			}
+			fmt.Fprintf(&b, "%s of %s:\n", title, symbol)
+			if len(res) == 0 {
+				b.WriteString("  none\n")
 			}
 			for _, r := range res {
 				it := r.To
-				if side == "from" {
+				if dir == "incoming" {
 					it = r.From
 				}
-				lines = append(lines, fmt.Sprintf("  %s:%d: %s", workRel(lsp.Location{URI: it.URI}.Path()), it.Range.Start.Line+1, it.Name))
-			}
-			return lines, nil
-		}
-		write := func(title, method, side string) error {
-			fmt.Fprintf(&b, "%s of %s:\n", title, symbol)
-			lines, err := calls(method, side)
-			if err != nil {
-				return err
-			}
-			if len(lines) == 0 {
-				b.WriteString("  none\n")
-			} else {
-				b.WriteString(strings.Join(lines, "\n") + "\n")
-			}
-			return nil
-		}
-		switch str(input["direction"]) {
-		case "incoming":
-			if err := write("callers", "callHierarchy/incomingCalls", "from"); err != nil {
-				return fail(err)
-			}
-		case "outgoing":
-			if err := write("callees", "callHierarchy/outgoingCalls", "to"); err != nil {
-				return fail(err)
-			}
-		default:
-			if err := write("callers", "callHierarchy/incomingCalls", "from"); err != nil {
-				return fail(err)
-			}
-			if err := write("callees", "callHierarchy/outgoingCalls", "to"); err != nil {
-				return fail(err)
+				fmt.Fprintf(&b, "  %s:%d: %s\n", workRel(lsp.Location{URI: it.URI}.Path()), it.Range.Start.Line+1, it.Name)
 			}
 		}
 		return fantasy.NewTextResponse(strings.TrimSuffix(b.String(), "\n") + note), nil
@@ -389,8 +365,14 @@ type callHierarchyItem struct {
 	Range lsp.Range `json:"range"`
 }
 
-// symbolKinds names the LSP SymbolKind values.
-var symbolKinds = [...]string{"", "file", "module", "namespace", "package", "class", "method", "property", "field", "constructor", "enum", "interface", "function", "variable", "constant", "string", "number", "boolean", "array", "object", "key", "null", "enum member", "struct", "event", "operator", "type parameter"}
+// symbolKind names an LSP SymbolKind value.
+func symbolKind(k int) string {
+	kinds := [...]string{"", "file", "module", "namespace", "package", "class", "method", "property", "field", "constructor", "enum", "interface", "function", "variable", "constant", "string", "number", "boolean", "array", "object", "key", "null", "enum member", "struct", "event", "operator", "type parameter"}
+	if k > 0 && k < len(kinds) {
+		return kinds[k]
+	}
+	return "symbol"
+}
 
 // formatSymbols renders a documentSymbol result, hierarchical or flat.
 func formatSymbols(raw json.RawMessage) string {
@@ -417,11 +399,7 @@ func formatSymbols(raw json.RawMessage) string {
 			if r.End == (lsp.Position{}) {
 				r = s.Location.Range
 			}
-			kind := "symbol"
-			if s.Kind > 0 && s.Kind < len(symbolKinds) {
-				kind = symbolKinds[s.Kind]
-			}
-			fmt.Fprintf(&b, "%s%s %s", strings.Repeat("  ", depth), kind, s.Name)
+			fmt.Fprintf(&b, "%s%s %s", strings.Repeat("  ", depth), symbolKind(s.Kind), s.Name)
 			if s.Detail != "" {
 				fmt.Fprintf(&b, " %s", s.Detail)
 			}

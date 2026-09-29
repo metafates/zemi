@@ -27,7 +27,6 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 		return fantasy.NewTextErrorResponse("todos unavailable"), nil
 	}
 	if out, cancelled, ok, err := ParseTodos(input); ok {
-		note := ""
 		if p.TodosWrite == nil {
 			return fantasy.NewTextErrorResponse("todos unavailable"), nil
 		}
@@ -49,6 +48,7 @@ func runTodos(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 			case store.TodoPending:
 			}
 		}
+		note := ""
 		if cancelled > 0 {
 			note = fmt.Sprintf("; dropped %d cancelled", cancelled)
 		}

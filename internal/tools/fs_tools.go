@@ -44,7 +44,7 @@ import (
 // result replaces it, so the row changes once.
 func (p *Pipeline) progress(ctx context.Context, buf *proc.Buffer) func() {
 	id, _ := ctx.Value(callIDKey{}).(string)
-	if p == nil || p.Progress == nil || id == "" {
+	if p.Progress == nil || id == "" {
 		return func() {}
 	}
 	done, stopped := make(chan struct{}), make(chan struct{})
@@ -117,7 +117,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		return after()
 	}
 	changes := func() (string, string, []string) { return "", "", nil }
-	if p != nil && p.Changes != nil {
+	if p.Changes != nil {
 		changes = p.Changes(c.Dir)
 	}
 	changed := func(res fantasy.ToolResponse) (fantasy.ToolResponse, error) {
@@ -156,7 +156,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			b.WriteString("\n")
 		}
 		// the work so far is not thrown away: it keeps running as a job
-		if p != nil && p.Jobs != nil {
+		if p.Jobs != nil {
 			id := p.Jobs.Adopt(cmd, c, buf, written, wait, p.Sandboxed, after)
 			fmt.Fprintf(&b, "still running after %s, so it %s%s: read the rest with job_read (wait_ms blocks until it exits or goes quiet), stop it with job_kill.", timeout, JobHandoff, id)
 			return changed(fantasy.NewTextResponse(b.String()))
@@ -182,7 +182,7 @@ func runBash(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 			b.WriteString("stopped: the user interrupted the command")
 		} else {
 			b.WriteString(err.Error())
-			if p != nil && p.Sandboxed != nil {
+			if p.Sandboxed != nil {
 				b.WriteString(p.sandboxHint(p.Sandboxed, raw, err))
 			}
 		}
@@ -450,7 +450,7 @@ func runRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 		}
 		return fantasy.NewTextResponse("(empty file)"), nil
 	}
-	if p != nil && p.Instructions != nil {
+	if p.Instructions != nil {
 		b.WriteString(p.Instructions(path))
 	}
 	return fantasy.NewTextResponse(b.String()), nil
@@ -570,7 +570,7 @@ func WriteFile(path perm.Path, data []byte, mode os.FileMode) error {
 // markRead records the modification time the model saw path at; fi is
 // taken before the read, so a change during it reads as stale.
 func (p *Pipeline) markRead(path string, fi os.FileInfo) {
-	if p != nil && p.Seen != nil && fi != nil {
+	if p.Seen != nil && fi != nil {
 		p.Seen.Store(perm.CanonPath(path), fi.ModTime())
 	}
 }
@@ -588,7 +588,7 @@ func (p *Pipeline) stale(path string, fi os.FileInfo) string {
 	if fi.IsDir() {
 		return rel + " is a directory"
 	}
-	if p == nil || p.Seen == nil {
+	if p.Seen == nil {
 		return ""
 	}
 	t, ok := p.Seen.Load(perm.CanonPath(path))
@@ -939,13 +939,8 @@ func editError(src, old string, n int, all bool, where string) string {
 			return fmt.Sprintf("old_string not found in %s; its first line matches lines %s, so a later line differs: read the block you meant and copy it exactly", where, strings.Join(hits, ", "))
 		}
 		if len(hits) == 1 {
-			var b strings.Builder
-			fmt.Fprintf(&b, "old_string not found in %s; its first line matches line %d, so a later line differs. The file there reads (copy it without the line numbers):", where, at+1)
-			n := min(strings.Count(strings.Trim(old, "\n"), "\n")+1, 30)
-			for j := at; j < min(at+n, len(lines)); j++ {
-				fmt.Fprintf(&b, "\n%6d\t%s", j+1, lines[j])
-			}
-			return b.String()
+			return fmt.Sprintf("old_string not found in %s; its first line matches line %d, so a later line differs. The file there reads (copy it without the line numbers):", where, at+1) +
+				numbered(lines, at, strings.Count(strings.Trim(old, "\n"), "\n")+1)
 		}
 	}
 	return "old_string not found in " + where + "; read the file again and copy the text exactly"
@@ -1330,7 +1325,7 @@ func anchorsText(re *syntax.Regexp) bool {
 // ruledOut reports whether a deny or ask rule covers reading path: glob
 // and grep are gated on their root only, so each hit meets the read rules.
 func (p *Pipeline) ruledOut() func(path string) bool {
-	if p == nil || p.Store == nil {
+	if p.Store == nil {
 		return func(string) bool { return false }
 	}
 	eval := p.Store.Evaluator(perm.SubjectRead, p.Principal)

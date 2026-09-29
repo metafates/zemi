@@ -150,9 +150,7 @@ func (m *Jobs) Start(dir, line string, env []string, pol *sandbox.Policy, after 
 	}
 	cmd := proc.Command("sh", "-c", line)
 	cmd.Dir = dir
-	if env != nil {
-		cmd.Env = env
-	}
+	cmd.Env = env
 	j := &Job{
 		Name: line, cmd: cmd, done: make(chan struct{}), policy: pol,
 		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20}, after: after,

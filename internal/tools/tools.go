@@ -204,9 +204,7 @@ func VerdictResponse(v PreVerdict, reason string) (resp fantasy.ToolResponse, do
 	case PreDeny:
 		return fantasy.NewTextErrorResponse("denied by hook: " + reason), true
 	case PreHalt:
-		resp = fantasy.NewTextErrorResponse("halted by hook: " + reason)
-		resp.StopTurn = true
-		return resp, true
+		return stopTurn("halted by hook: " + reason), true
 	default:
 		return resp, false
 	}
@@ -489,7 +487,7 @@ func (p *Pipeline) SandboxFor(req Request, v Verdict) *sandbox.Policy {
 // never nil otherwise.
 func (p *Pipeline) guard() func() string {
 	switch {
-	case p == nil || p.Sandboxed == nil:
+	case p.Sandboxed == nil:
 		return nil
 	case p.Guard == nil:
 		return func() string { return "" }
@@ -1049,7 +1047,7 @@ func edits(t fantasy.AgentTool) fantasy.AgentTool {
 	return t
 }
 
-// All returns the builtin tools bound to a pipeline.
+// All returns the builtin tools bound to a pipeline; nil gives their schemas.
 func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name, desc string, parallel bool, props map[string]any, required []string,
 		subjects func(*Pipeline, map[string]any) ([]Request, error),
