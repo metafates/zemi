@@ -591,14 +591,14 @@ func sedScriptSafe(s string, brackets bool) bool {
 	}
 	for {
 		space(" \t\n;")
-		if i == len(s) {
+		if i >= len(s) {
 			return true
 		}
 		if !address() || i < len(s) && s[i] == ',' && func() bool { i++; return !address() }() {
 			return false
 		}
 		space("! \t")
-		if i == len(s) {
+		if i >= len(s) {
 			return false
 		}
 		cmd := s[i]
@@ -617,6 +617,7 @@ func sedScriptSafe(s string, brackets bool) bool {
 				i++
 			}
 		case cmd == 'a' || cmd == 'i' || cmd == 'c' || cmd == '#':
+			// a trailing backslash leaves i past the end
 			for ; i < len(s) && s[i] != '\n'; i++ {
 				if s[i] == '\\' && cmd != '#' {
 					i++
