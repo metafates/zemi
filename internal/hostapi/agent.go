@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"os"
 	"regexp"
 	"slices"
@@ -791,6 +792,9 @@ func joinQueue(msgs []string) string {
 func (ag *agentHost) beginTurn() {
 	ag.textBuf, ag.reasonBuf = "", ""
 	ag.tools = nil
+	// no step has started, so a retry before one (compact's) takes nothing
+	// back, the last turn's rows included
+	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought = "", "", nil, math.MaxInt, 0
 	ag.turnStart = time.Now()
 	ag.thinkStart, ag.thinking, ag.thought = time.Time{}, false, 0
 	ag.retryAt, ag.retries, ag.retryWhy = time.Time{}, 0, ""
@@ -1159,7 +1163,7 @@ func (h *Host) flushOutput(stat TurnStat) {
 		done = len(ag.tools)
 	}
 	for _, t := range ag.tools[:done] {
-		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: t.Name, Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
+		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, ID: t.ID, Tool: t.Name, Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Run: t.Run, Diff: t.Diff, Output: t.Output})
 	}
 	if strings.TrimSpace(ag.textBuf) != "" {
 		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: ag.textBuf, Stat: &stat})
@@ -1724,6 +1728,32 @@ func (h *Host) liveView() (Session, StreamSnapshot) {
 	h.agents.mu.Lock()
 	defer h.agents.mu.Unlock()
 	return h.Session(), h.streamLocked()
+}
+
+// RunFrame is what a printed run shows at one moment, read like liveView.
+type RunFrame struct {
+	Settled []ChatMessage // rows from the asked index on that no retry can cut
+	Pending []ChatMessage // the rows after them, which the running step may still cut
+	Stream  StreamSnapshot
+	Next    int // the index after Settled
+}
+
+// RunFrame reads the transcript from index from on. A provider retry cuts
+// the rows its step moved in (Retrying), so while a turn runs only the rows
+// before the step's start are settled.
+// NOTE: a row settles one step after it was flushed, so a plain log lags the
+// model by a step; a terminal's live tail shows the pending rows meanwhile.
+func (h *Host) RunFrame(from int) RunFrame {
+	ag := h.agents
+	ag.mu.Lock()
+	tr, stream := h.Session().Transcript, h.streamLocked()
+	end := len(tr)
+	if ag.active {
+		end = min(end, ag.stepRows)
+	}
+	ag.mu.Unlock()
+	from = min(max(from, 0), end)
+	return RunFrame{Settled: tr[from:end], Pending: tr[end:], Stream: stream, Next: end}
 }
 
 // streamLocked is AgentStream with ag.mu held.

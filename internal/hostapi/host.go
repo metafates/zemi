@@ -241,6 +241,7 @@ type ChatMessage struct {
 	Output string     // tool rows: the last lines of the result (shortOutput)
 	Head   bool       // notice rows: a report, plugin send or nudge the rows after it answer, as a prompt's do
 	Stat   *TurnStat
+	ID     string // the live turn's tool rows: the call id, so zemi run reports a call once
 }
 
 var cutLines = regexp.MustCompile(`^\.\.\. \(lines (\d+)-(\d+) of \d+ cut\) \.\.\.$`)
