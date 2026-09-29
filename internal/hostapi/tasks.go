@@ -114,6 +114,14 @@ func (r *taskReg) detached() error {
 	return nil
 }
 
+// canDetach is detached for a check before the start. NOTE: a run started
+// in between makes the start refuse after the caller acted on the check.
+func (r *taskReg) canDetach() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.detached()
+}
+
 // addFlow registers a workflow run, as add does an agent run.
 func (r *taskReg) addFlow(f *flowRun) error {
 	r.mu.Lock()
@@ -496,20 +504,21 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 		if err != nil {
 			report = strings.TrimSpace(reportFailed + h.friendlyError(err) + "\n\n" + text)
 		}
-		h.deliverReport(run.parent, run.id, def.Name, map[bool]string{true: "finished", false: "failed"}[err == nil], description, report)
+		h.deliverReport(run.parent, run.id, def.Name, map[bool]string{true: "finished", false: "failed"}[err == nil], description, report, "")
 	})
 	return run.id, nil
 }
 
 // deliverReport hands a detached run's report to the session that started
-// it: to the model when that session is live, else stored there and toasted.
-func (h *Host) deliverReport(parent, id, agentName, status, description, report string) {
+// it: to the model, attached behind it, when that session is live, else
+// stored there and toasted.
+func (h *Host) deliverReport(parent, id, agentName, status, description, report, attached string) {
 	if h.AgentSessionID() != parent {
 		// the user moved on; do not drop the report into another conversation
 		h.notifyReport(id, agentName, status, description, report)
 		return
 	}
-	if err := h.AgentSend(h.reportMessage(h.scratchFor(parent), id, agentName, status, description, report)); err != nil {
+	if err := h.AgentSend(h.reportMessage(h.scratchFor(parent), id, agentName, status, description, report) + attached); err != nil {
 		h.Notify(slog.LevelError, "Could not send the report of "+id, h.friendlyError(err))
 	}
 }

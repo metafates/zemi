@@ -1221,7 +1221,14 @@ func (h *Host) saveFlow(id, name string) (string, error) {
 	if f == nil || f.parent != h.AgentSessionID() {
 		return "", Usagef("zemi no longer holds run %s of this session: rerun it, then save it", id)
 	}
-	if name = cmp.Or(name, slug(f.description)); !savedName.MatchString(name) {
+	if name == "" {
+		// a default name never shadows a builtin or plugin workflow unseen
+		name = slug(f.description)
+		if slices.ContainsFunc(h.workflows(), func(w Workflow) bool { return w.Name == name }) {
+			return "", Usagef("a workflow %s exists: /workflows save %s <name> saves it under another", name, id)
+		}
+	}
+	if !savedName.MatchString(name) {
 		return "", Usagef("a workflow name is lowercase letters, digits and dashes, not %q", name)
 	}
 	src := []byte(f.src)
@@ -1383,7 +1390,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "workflow "+arg)), nil
 	}
 	if spec.background {
-		spec.done = h.deliverFlow
+		spec.done = h.deliverFlow("")
 		f, err := h.startFlow(ctx, spec)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -1464,13 +1471,16 @@ func (f *flowRun) report() (string, bool) {
 }
 
 // deliverFlow hands a background run's report to the session that started
-// it, as a background agent's; a stopped one has none.
-func (h *Host) deliverFlow(f *flowRun) {
-	if errors.Is(f.err, context.Canceled) {
-		return
+// it, as a background agent's, with attached (a loop's note) behind it; a
+// stopped one has none.
+func (h *Host) deliverFlow(attached string) func(*flowRun) {
+	return func(f *flowRun) {
+		if errors.Is(f.err, context.Canceled) {
+			return
+		}
+		attr, status, report := f.reportAs()
+		h.deliverReport(f.parent, f.id, attr, status, f.description, report, attached)
 	}
-	attr, status, report := f.reportAs()
-	h.deliverReport(f.parent, f.id, attr, status, f.description, report)
 }
 
 // reportAs is an ended run's report with the agent attribute and status it
@@ -1562,19 +1572,26 @@ func (h *Host) workflowCommands() []*Command {
 			case "restart":
 				return say(h.flowControl(id, actRestart, 0, arg(2)))
 			case "rerun":
-				rerun := func() error {
+				rerun := func() (string, error) {
 					src, err := h.approveRerun(id)
 					if err != nil {
-						return err
+						return "", err
 					}
 					return h.startUserFlow(flowSpec{from: id, src: src}, "/workflows rerun "+id, attached)
 				}
 				if h.hooks() == nil {
-					return rerun()
+					_, err := rerun()
+					return err
 				}
 				// its ask blocks, and a Go command runs on the key loop
 				h.GoSafe("workflows rerun", func() {
-					if err := rerun(); err != nil {
+					next, err := rerun()
+					if err == nil {
+						// the new run's view in the old one's place, where its keys act on it
+						h.hooks().CloseOverlay("workflow:"+id, lua.OriginBuiltin)
+						err = h.openFlow(next)
+					}
+					if err != nil {
 						h.CommandFailed("workflows", err)
 					}
 				})
@@ -1623,7 +1640,8 @@ func (h *Host) runSaved(line, attached, name, args string) error {
 	if args != "" {
 		spec.args = args
 	}
-	return h.startUserFlow(spec, line, attached)
+	_, err = h.startUserFlow(spec, line, attached)
+	return err
 }
 
 // startUserFlow starts a run the user asked for, with no model call before
@@ -1631,32 +1649,45 @@ func (h *Host) runSaved(line, attached, name, args string) error {
 // like a background agent. Headless it claims the agent as /btw does, so
 // zemi run waits on it and ctrl+c stops it, and its report starts the turn
 // under line, what the user typed, with attached (piped stdin) behind it.
-func (h *Host) startUserFlow(spec flowSpec, line, attached string) error {
-	// the run's report, pad, agents and spend belong to a session
+// It returns the TUI's run id, "" headless.
+func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, error) {
 	p, err := h.resolveProfile("")
 	if err != nil {
-		return err
+		return "", err
 	}
-	if err := h.ensureSession(p, line+attached); err != nil {
-		return err
+	// the refusals before the session row, so a start that cannot run leaves
+	// no empty session
+	if _, err := h.resolveModel(p); err != nil {
+		return "", err
 	}
 	if h.hooks() != nil {
-		spec.background, spec.done = true, h.deliverFlow
+		if err := h.tasks.canDetach(); err != nil {
+			return "", err
+		}
+		// the run's report, pad, agents and spend belong to a session
+		if err := h.ensureSession(p, line+attached); err != nil {
+			return "", err
+		}
+		spec.background, spec.done = true, h.deliverFlow(attached)
 		f, err := h.startFlow(context.Background(), spec)
 		if err != nil {
-			return err
+			return "", err
 		}
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: fmt.Sprintf("Started workflow %s (%s) · /workflows", f.id, clipRunes(sanitize.Line(f.description), 60))})
-		return nil
+		return f.id, nil
 	}
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.active {
 		ag.mu.Unlock()
-		return errors.New("a turn is running; start the workflow after it")
+		return "", errors.New("a turn is running; start the workflow after it")
 	}
 	scope := h.claim()
 	ag.mu.Unlock()
+	if err := h.ensureSession(p, line+attached); err != nil {
+		h.endScope(scope)
+		return "", err
+	}
 	h.GoSafe("workflow", func() {
 		defer h.endTurnAfterPanic()
 		f, err := h.startFlow(scope.ctx, spec)
@@ -1674,7 +1705,7 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) error {
 			h.Log.Warn("report not sent", "origin", "workflows", "error", err)
 		}
 	})
-	return nil
+	return "", nil
 }
 
 // openFlowScript opens a run's script, or a saved workflow's file, in the
@@ -1840,9 +1871,9 @@ func (h *Host) openFlow(id string) error {
 // flowOverlay is a run's view: its fields, then its agents under their
 // phases; enter on one opens its detail, whose actions view, restart or
 // stop it. Its keys act on the run: while it runs p pauses or resumes, + and
-// - change how many run at once and x stops it; once it ended r reruns it,
-// and a run of this session opens its script and, while this process holds
-// the script it ran, saves it.
+// - change how many run at once and x stops it; once it ended r reruns it
+// in a view of its own, and a run of this session opens its script, which s
+// saves when the model wrote it and this process still holds it as it ran.
 func (h *Host) flowOverlay(f *flowRun) Overlay {
 	v := f.view()
 	var items []any
@@ -1881,7 +1912,7 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 		}
 		o.Keys = append(o.Keys, OverlayKey{Key: "o", Desc: "script", Run: "workflows open " + f.id})
 	}
-	if f.src != "" && f.parent == h.AgentSessionID() { // what saveFlow takes
+	if f.src != "" && f.name == "" && f.parent == h.AgentSessionID() { // what saveFlow takes; a saved workflow's run is saved already
 		o.Keys = append(o.Keys, OverlayKey{Key: "s", Desc: "save", Run: "workflows save " + f.id})
 	}
 	return o
@@ -1919,7 +1950,8 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) map[string]
 		if a.status == RunRunning {
 			actions = append(actions,
 				map[string]any{"text": "Restart", "hotkey": "r", "run": "workflows restart " + f.id + " " + a.id},
-				map[string]any{"text": "Stop", "hotkey": "x", "run": "agents stop " + a.id, "danger": true})
+				// no hotkey: x on the view stops the whole run
+				map[string]any{"text": "Stop", "run": "agents stop " + a.id, "danger": true})
 		}
 	}
 	item["fields"] = fieldList("status", string(a.status), "time", fmtDuration(a.took), "agent", def, "usage", usage, "run", a.id)

@@ -17,6 +17,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -692,7 +693,8 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 // TestWorkflowUserStart: /workflows run starts the saved workflow with no
 // model call first, and its report reaches the model: detached in the TUI,
 // on the claimed agent headless, which zemi run waits on. The run belongs to
-// the session its report lands in, even when it opened no session first.
+// the session its report lands in, even when it opened no session first, and
+// a start that cannot run opens none.
 func TestWorkflowUserStart(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -707,15 +709,22 @@ func TestWorkflowUserStart(t *testing.T) {
 			if c.ui {
 				h.SetUIHooks(&fakeUI{})
 			}
-			h.modelFn = func() (fantasy.LanguageModel, error) {
-				return &scriptModel{script: func(string, string, bool) []fantasy.StreamPart { return textParts("ok") }}, nil
-			}
 			h.Dirs.ConfigHome = t.TempDir()
 			dir := filepath.Join(h.Dirs.ConfigHome, "workflows")
 			if err := os.MkdirAll(dir, 0o755); err != nil || os.WriteFile(filepath.Join(dir, "count.lua"), []byte(`return zemi.workflow.agent("x")`), 0o644) != nil {
 				t.Fatal(err)
 			}
-			if err := h.workflowCommands()[0].GoFn(h, "run count"); err != nil {
+			h.modelFn = func() (fantasy.LanguageModel, error) { return nil, ErrNoModel }
+			if err := h.workflowCommands()[0].GoFn(h, "run count"); err == nil || h.AgentSessionID() != "" {
+				t.Fatalf("a start with no model: %v, session %q", err, h.AgentSessionID())
+			}
+			// the report's turn carries what the command had attached, a loop's note
+			h.modelFn = func() (fantasy.LanguageModel, error) {
+				return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+					return textParts(map[bool]string{true: "ok", false: "no note"}[strings.Contains(last, loopTag)])
+				}}, nil
+			}
+			if err := h.workflowCommands()[0].GoFn(h, "run count"+agent.Attached("loop", "Run 1 of: /workflows run count")); err != nil {
 				t.Fatal(err)
 			}
 			waitFor(t, func() error {
@@ -824,22 +833,31 @@ func TestSavedWorkflows(t *testing.T) {
 	}
 
 	// a run's script saves under workflows/, headed by its description and
-	// named after it when no name is given
+	// named after it when no name is given, a name no other workflow has
 	h.agents.sessionID = "s1"
-	f, err := h.startFlow(context.Background(), flowSpec{description: "Sum up", src: "return 1"})
-	if err != nil {
-		t.Fatal(err)
+	var runs []*flowRun
+	for _, desc := range []string{"Sum up", "Review"} {
+		f, err := h.startFlow(context.Background(), flowSpec{description: desc, src: "return 1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		runs = append(runs, f)
 	}
+	f := runs[0]
 	// what ran saves, whatever a command wrote to the pad's copy since
 	if err := os.WriteFile(f.script, []byte("return 2"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range []struct{ name, want string }{
-		{"", ""},
-		{"sum-up", "exists: /workflows save "},
-		{"Sum Up", "lowercase letters"},
+	for _, c := range []struct {
+		run        int
+		name, want string
+	}{
+		{0, "", ""},
+		{0, "sum-up", "exists: /workflows save "},
+		{0, "Sum Up", "lowercase letters"},
+		{1, "", "a workflow review exists"},
 	} {
-		path, err := h.saveFlow(f.id, c.name)
+		path, err := h.saveFlow(runs[c.run].id, c.name)
 		if c.want != "" {
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("save as %q: %v, want %q", c.name, err, c.want)

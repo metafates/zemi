@@ -1002,11 +1002,13 @@ its desc with that session's title), then the saved workflows; enter on a
 run opens its view, at the one width every workflow screen takes: its
 fields, its agents under their phases, and keys acting on the run, `p`,
 `+` and `-` (relative, so a second press before the view rebuilds still
-counts) and `x` (stop, on its second press) while it runs, `r` (rerun) once
-it ended, and `o` and `s` (open its script or, while this process still
-holds the script it ran, save it to `workflows/` under its description's
-name) for a run of this session. An agent's detail views its transcript,
-from which esc comes back, restarts or stops it. While any run lives
+counts) and `x` (stop, on its second press) while it runs, `r` (rerun,
+whose view takes the ended one's place) once it ended, and `o` (open its
+script) for a run of this session, with `s` (save it to `workflows/` under
+its description's name, never one another workflow has) when the model
+wrote the script and this process still holds it as it ran. An agent's
+detail views its transcript, from which esc comes back, restarts or stops
+it; its stop has no hotkey, since `x` there stops the run. While any run lives
 one ticker rebuilds whichever of the two is open once a second. The user
 starts a saved one with `/workflows run` or `/review`, with no model call
 before the work: detached in the TUI with a live notice row, and headless
