@@ -211,19 +211,21 @@ func TestTrustGate(t *testing.T) {
 		answer      string // "" means the prompt must not open
 		trusted     bool
 		wantSaved   string
-		offers      bool // another project is known, which the splash offers
+		offers      bool // another project is known
+		noSplash    bool // a prompt or a resume fills the first screen
 	}{
-		{"saved trusted", "trusted", nil, "", true, "trusted", false},
-		{"saved untrusted", "untrusted", nil, "", false, "untrusted", false},
-		{"flag over saved", "trusted", new(false), "", false, "trusted", false},
-		{"flag trusts", "", new(true), "", true, "", false},
-		{"prompt y", "", nil, "trust", true, "trusted", false},
-		{"prompt n", "", nil, "untrust", false, "untrusted", false},
-		{"prompt esc", "", nil, "later", false, "", false},
-		{"projects offered", "", nil, "", false, "", true},
+		{"saved trusted", "trusted", nil, "", true, "trusted", false, false},
+		{"saved untrusted", "untrusted", nil, "", false, "untrusted", false, false},
+		{"flag over saved", "trusted", new(false), "", false, "trusted", false, false},
+		{"flag trusts", "", new(true), "", true, "", false, false},
+		{"prompt y", "", nil, "trust", true, "trusted", false, false},
+		{"prompt n", "", nil, "untrust", false, "untrusted", false, false},
+		{"prompt esc", "", nil, "later", false, "", false, false},
+		{"projects offered", "", nil, "", false, "", true, false},
+		{"projects offered, no splash", "", nil, "trust", true, "trusted", true, true},
 	} {
 		tg, h, r := newTrustGate(t)
-		tg.tui = true
+		tg.splash = !c.noSplash
 		if c.offers {
 			g, p, err := store.OpenForDirs(tg.dirs.StateHome, t.TempDir())
 			if err != nil {

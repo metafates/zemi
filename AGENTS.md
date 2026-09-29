@@ -231,8 +231,9 @@ dotfiles repo is nobody's root; a linked worktree maps to its main checkout by r
 `.git` file, never by running git) and saved in `<state>/trust.json`. Order: a decision held
 for this process (`--trust`, a Later answer, `/trust` where saving is impossible), the saved
 one, then the Go-owned prompt. `$HOME` and `/` are never asked about or saved
-(`hostapi.TrustUnsaved`), and the TUI does not ask at start where the splash offers other
-projects (`Host.OffersProjects`: a dir outside a repository), which runs untrusted as after Later. `/projects` (hostapi/projects.go) lists every root zemi keeps state
+(`hostapi.TrustUnsaved`), and the TUI does not ask at start where the splash, its first screen
+with no prompt argument and no resume, offers other projects (`Host.OffersProjects`: a dir
+outside a repository), which runs untrusted as after Later. `/projects` (hostapi/projects.go) lists every root zemi keeps state
 for (`ListProjects`), switches by restarting (`UIHooks.Relaunch`, past the quit veto, then
 main's exec: the project is bound at start and never changes in place; refused while a turn,
 an agent run or a workflow lives), forgets another project's decision, never granting one, and

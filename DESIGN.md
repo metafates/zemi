@@ -340,7 +340,7 @@ decides one run without saving; a headless run with nothing saved is
 untrusted and says so on stderr. The home directory and `/` are never
 asked about or saved (their prompt says it applies to this run only), and
 the TUI does not ask at start in a directory outside a repository where the
-splash offers other projects (`Host.OffersProjects`): the user may be there
+splash, its first screen with no prompt argument and no resume, offers other projects (`Host.OffersProjects`): the user may be there
 only to pick one, so it runs untrusted as after Later and the statusline
 keeps `/trust`.
 `/projects` lists every root zemi keeps state for, switches to one by

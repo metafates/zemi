@@ -93,7 +93,8 @@ func launch(o options) int {
 	host, trust := newHost(dirs, log, o)
 	app := ui.NewApp(host, log)
 	host.SetUIHooks(app)
-	trust.ask, trust.tui = app.AskTrust, true
+	// a prompt or a resumed session fills the transcript, so no splash offers projects
+	trust.ask, trust.splash = app.AskTrust, o.prompt == "" && !o.cont && o.resume == ""
 
 	steps := hostSteps(host, trust, app)
 	p := tea.NewProgram(app)
@@ -582,10 +583,10 @@ func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 // decision held for this process (--trust, "not now"), then the saved one
 // in the state dir, then the prompt. Trust is keyed by Dirs.TrustRoot.
 type trustGate struct {
-	h    *hostapi.Host
-	dirs config.Dirs
-	ask  func(root, cwd, state string) string
-	tui  bool // the splash can offer other projects instead of the prompt
+	h      *hostapi.Host
+	dirs   config.Dirs
+	ask    func(root, cwd, state string) string
+	splash bool // the first screen is the splash, which offers other projects
 	// session outranks the saved decision; nil when there is none
 	session atomic.Pointer[bool]
 }
@@ -641,7 +642,7 @@ func (tg *trustGate) decide() (bool, error) {
 	if hostapi.TrustUnsaved(root) {
 		return false, nil
 	}
-	if tg.tui && tg.h.OffersProjects() {
+	if tg.splash && tg.h.OffersProjects() {
 		// the user may be here only to pick a project: no question about
 		// this dir first, which runs untrusted until /trust, as on "not now"
 		return tg.record(root, "later")
