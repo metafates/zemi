@@ -862,8 +862,5 @@ func stripImages(history []fantasy.Message, why string) []fantasy.Message {
 }
 
 func isErrResult(c fantasy.ToolResultContent) bool {
-	if c.Result == nil {
-		return false
-	}
-	return c.Result.GetType() == fantasy.ToolResultContentTypeError
+	return c.Result != nil && c.Result.GetType() == fantasy.ToolResultContentTypeError
 }

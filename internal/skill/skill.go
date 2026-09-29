@@ -1,7 +1,7 @@
-// Package skill implements skill discovery and validation
-// (DESIGN §10.5): SKILL.md files with yaml frontmatter (name,
-// description, the invocation fields), written under the config dir's skills/, shipped by a
-// plugin and, in a trusted project, its own skills dirs. Discovery only reports what is on disk.
+// Package skill discovers and validates skills (DESIGN §10.5): SKILL.md
+// files with yaml frontmatter (name, description, the invocation fields)
+// under the config dir's skills/, a plugin's, or a trusted project's.
+// Discovery only reports what is on disk.
 package skill
 
 import (
@@ -180,13 +180,11 @@ func frontmatter(data []byte) (front, error) {
 	return fm, nil
 }
 
-// Discover merges skill directories in the order given, higher trust
-// first: on a name clash the earlier one wins (user over builtin,
-// §10.5), with a warning when two plugins ship one name: <config>/skills
-// over ~/.agents/skills is a choice the user made.
-// Unreadable or invalid directories are skipped with a
-// returned warning per failure, never fatal: a broken skill must not hide
-// the others.
+// Discover merges skill directories in the order given, higher trust first:
+// on a name clash the earlier one wins (§10.5), with a warning only when two
+// plugins ship one name, since any other clash is an override by design.
+// An unreadable or invalid directory is skipped with a warning, never
+// fatal: a broken skill must not hide the others.
 func Discover(dirs ...Dir) (skills []Skill, warnings []string) {
 	seen := map[string]Skill{}
 	for _, d := range dirs {

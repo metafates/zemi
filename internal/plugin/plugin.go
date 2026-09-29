@@ -448,10 +448,10 @@ func free(d config.Dirs, name string) error {
 	return nil
 }
 
-// clone returns the directory of an installed plugin: a direct child of
-// installed/ that is a directory and no symlink.
 var errLocal = errors.New("a local plugin, which zemi never changes")
 
+// clone returns the directory of an installed plugin: a direct child of
+// installed/ that is a directory and no symlink.
 func clone(d config.Dirs, name string) (string, error) {
 	if !nameRe.MatchString(name) {
 		return "", fmt.Errorf("no plugin is named %q", name)

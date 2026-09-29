@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -185,8 +186,7 @@ func (g *Generation) pop() *request {
 		}
 	}
 	r := g.heap[best]
-	g.heap[best] = nil
-	g.heap = append(g.heap[:best], g.heap[best+1:]...)
+	g.heap = slices.Delete(g.heap, best, best+1)
 	return r
 }
 

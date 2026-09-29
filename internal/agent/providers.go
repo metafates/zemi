@@ -471,10 +471,7 @@ func (r *Registry) Lookup(providerID string) (Spec, bool) {
 
 // HasKey reports whether the provider has an API key. Values are never
 // exposed.
-func (r *Registry) HasKey(providerID string) bool {
-	_, ok := r.Lookup(providerID)
-	return ok && r.apiKey(providerID) != ""
-}
+func (r *Registry) HasKey(providerID string) bool { return r.apiKey(providerID) != "" }
 
 func (r *Registry) apiKey(providerID string) string {
 	r.mu.RLock()

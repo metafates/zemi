@@ -13,9 +13,6 @@ import (
 	"unicode/utf8"
 )
 
-// RedactedMarker is the placeholder left in place of a redacted span.
-const RedactedMarker = "[redacted %d chars]"
-
 var keyShapes = []*regexp.Regexp{
 	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
 	regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{16,}\b`),
@@ -75,7 +72,7 @@ func ScrubSecrets(text string) (string, bool) {
 func ScrubShapes(text string) string {
 	out := urlPassword.ReplaceAllStringFunc(text, func(m string) string {
 		i := urlPassword.FindStringSubmatchIndex(m)
-		return m[:i[2]] + redactMarker(utf8.RuneCountInString(m[i[2]:i[3]])) + m[i[3]:]
+		return m[:i[2]] + redacted(m[i[2]:i[3]]) + m[i[3]:]
 	})
 	for _, re := range keyShapes {
 		out = redactAll(out, re.FindAllString(out, -1))
@@ -106,13 +103,14 @@ func redactAll(s string, spans []string) string {
 	}
 	pairs := make([]string, 0, 2*len(spans))
 	for _, m := range spans {
-		pairs = append(pairs, m, redactMarker(utf8.RuneCountInString(m)))
+		pairs = append(pairs, m, redacted(m))
 	}
 	return strings.NewReplacer(pairs...).Replace(s)
 }
 
-func redactMarker(n int) string {
-	return fmt.Sprintf(RedactedMarker, n)
+// redacted is the marker left in place of span.
+func redacted(span string) string {
+	return fmt.Sprintf("[redacted %d chars]", utf8.RuneCountInString(span))
 }
 
 // shannon computes bits of entropy per byte of s.

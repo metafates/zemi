@@ -10,8 +10,7 @@ import (
 	"strings"
 )
 
-// Match compiles a glob with rg's rules: ** crosses
-// directories, {a,b} alternates, and a pattern without / matches base names.
+// Match compiles pattern into a matcher of relative paths.
 func Match(pattern string) (func(rel string) bool, error) {
 	var b strings.Builder
 	depth := 0
