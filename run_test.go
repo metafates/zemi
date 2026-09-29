@@ -238,6 +238,7 @@ func TestRunHeadless(t *testing.T) {
 			stderr: "zemi: 1 ask nobody could answer in a headless run:\n  write  ", denied: 1,
 		},
 		{name: "a swapped-in session is not this run's", first: []string{"say hi", "/new"}, prompt: "/resume", notStdout: "hi"},
+		{name: "/btw prints only its answer", first: []string{"say hello"}, prompt: "/btw why", stdout: "why", notErr: "hello"},
 	} {
 		h := printHost(t)
 		if c.setup != nil {

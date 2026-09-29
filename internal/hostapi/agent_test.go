@@ -2119,7 +2119,7 @@ func TestRunFrame(t *testing.T) {
 	}{
 		{name: "an idle session settles every row", stepRows: 2, from: 1, next: 5},
 		{name: "rows of the running step wait", active: true, stepRows: 3, from: 1, next: 3, pending: 2},
-		{name: "from past the settled end settles nothing", active: true, stepRows: 3, from: 4, next: 3, pending: 2},
+		{name: "a stale step start keeps the cursor", active: true, stepRows: 0, from: 4, next: 4, pending: 1},
 	} {
 		h.agents.mu.Lock()
 		h.agents.active, h.agents.stepRows = c.active, c.stepRows

@@ -1541,6 +1541,7 @@ func (h *Host) Btw(question string) error {
 			return errors.New("a turn is running; ask after it")
 		}
 		ag.active = true
+		ag.beginTurn()
 		scope := h.beginScope()
 		ag.mu.Unlock()
 		h.GoSafe("btw", func() {
@@ -1736,19 +1737,20 @@ type RunFrame struct {
 
 // RunFrame reads the transcript from index from on. A provider retry cuts
 // the rows its step moved in (Retrying), so while a turn runs only the rows
-// before the step's start are settled.
+// before the step's start are settled. Next never falls below from: a claim
+// with no beginTurn yet leaves a stale step start.
 // NOTE: a row settles one step after it was flushed, so a plain log lags the
 // model by a step; a terminal's live tail shows the pending rows meanwhile.
 func (h *Host) RunFrame(from int) RunFrame {
 	ag := h.agents
 	ag.mu.Lock()
 	tr, stream := h.Session().Transcript, h.streamLocked()
+	from = min(max(from, 0), len(tr))
 	end := len(tr)
 	if ag.active {
-		end = min(end, ag.stepRows)
+		end = max(from, min(end, ag.stepRows))
 	}
 	ag.mu.Unlock()
-	from = min(max(from, 0), end)
 	return RunFrame{Settled: tr[from:end], Pending: tr[end:], Stream: stream, Next: end}
 }
 
