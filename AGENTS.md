@@ -773,7 +773,7 @@ lua-language-server is installed.
   keeping the id.
 - **Reflector timing.** It runs on session close (`/new`, `/resume`), once the open session
   has had no turn for `ReflectIdle` (ten minutes: the TUI's `reflectAt`, armed with the recap
-  when the agent goes idle and cleared by no input, calls `Host.ReflectLive`; a rewind past
+  when the agent goes idle and not cleared by input, calls `Host.ReflectLive`; a rewind past
   that run drops what it learned, `forgetLearned`), and in a startup sweep
   (`ReflectSweep`, once per process, not on a reload) over the newest sessions idle as long,
   at most three, never on quit. `reflectDue` reads the delta past kv
