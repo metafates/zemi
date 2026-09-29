@@ -140,6 +140,8 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 			// Check's reason says why already (tools.PadSecret)
 		case tools.PathSubject(req.Subject) && h.secretPath(req.Arg):
 			note("this file looks like it holds secrets")
+		case strings.HasPrefix(req.Subject, "net.") && req.Tool == tools.ToolWebSearch:
+			note("a search always asks: the model chose the query")
 		case strings.HasPrefix(req.Subject, "net."):
 			note("a fetch always asks: the model chose the address")
 		case req.Subject == perm.SubjectWrite && !req.InPad() && !h.inJail(req.Arg, h.writeJails()...):

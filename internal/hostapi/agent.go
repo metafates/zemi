@@ -318,16 +318,37 @@ func (h *Host) builtinTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 // can only refuse, so a zemi run does not pay for their schemas every step.
 var headlessExcluded = map[string]bool{tools.ToolQuestion: true, tools.ToolPlan: true}
 
-// toolSkip adds the language server tools to skip when no server can start
-// in this project (untrusted, or none installed for it): both could then
-// only answer with why they cannot, and their schemas ride every step.
+// toolSkip adds to base the tools that could only answer with why they
+// cannot, whose schemas would ride every step: the language server tools
+// when no server can start in this project (untrusted, or none installed
+// for it), and the web tools when webOff.
 func (h *Host) toolSkip(base map[string]bool) map[string]bool {
-	if len(h.lspDefs("")) > 0 {
-		return base
+	skip := maps.Clone(base)
+	if skip == nil {
+		skip = map[string]bool{}
 	}
-	skip := map[string]bool{tools.ToolLSP: true, tools.ToolDiagnostics: true}
-	maps.Copy(skip, base)
+	if len(h.lspDefs("")) == 0 {
+		skip[tools.ToolLSP], skip[tools.ToolDiagnostics] = true, true
+	}
+	if h.webOff() {
+		skip[tools.ToolFetch], skip[tools.ToolWebSearch] = true, true
+	}
 	return skip
+}
+
+// webOff reports a run whose every fetch and search is denied: no UI to
+// approve one (the model picks each address, so only yolo settles them), and
+// no allow rule, yolo base or decide function in the mode to allow one.
+func (h *Host) webOff() bool {
+	if h.hooks() != nil {
+		return false
+	}
+	def := h.permModeDef()
+	if def.Base == "yolo" || def.Decide != nil {
+		return false
+	}
+	allows := func(r perm.Rule) bool { return r.Decision == perm.Allow && strings.HasPrefix(r.Subject, "net.") }
+	return !slices.ContainsFunc(h.Perm.Rules(), allows) && (def.Rules == nil || !slices.ContainsFunc(def.Rules.Rules(), allows))
 }
 
 // profileTools selects the tool set: a profile's names filter the builtin,

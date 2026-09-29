@@ -710,7 +710,11 @@ type agentTool struct {
 }
 
 func (h *Host) agentTool(pipe *tools.Pipeline) fantasy.AgentTool {
-	return &agentTool{h: h, pipe: pipe, defs: h.agentDefs()}
+	defs := h.agentDefs()
+	if h.webOff() { // it would have only the read tools
+		defs = slices.DeleteFunc(defs, func(d AgentDef) bool { return d.Name == "web" && d.Source == lua.OriginBuiltin })
+	}
+	return &agentTool{h: h, pipe: pipe, defs: defs}
 }
 
 // names lists the agents this tool offers.

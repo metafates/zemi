@@ -1801,6 +1801,14 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	if strings.Contains(sys, "question tool") {
 		t.Error("the headless prompt still tells the model to ask")
 	}
+	// every fetch and search would be denied: no rule allows one
+	if names()[tools.ToolFetch] || names()[tools.ToolWebSearch] || slices.Contains(h.agentTool(nil).(*agentTool).names(), "web") {
+		t.Error("the headless toolset ships the web tools no rule allows")
+	}
+	h.Perm.Add(perm.Rule{Subject: "net.*", Pattern: "https://docs.example.com/*", Decision: perm.Allow})
+	if !names()[tools.ToolFetch] || !slices.Contains(h.agentTool(nil).(*agentTool).names(), "web") {
+		t.Error("a net allow rule does not bring the web tools back")
+	}
 
 	h.SetUIHooks(&fakeUI{})
 	for name := range headlessExcluded {

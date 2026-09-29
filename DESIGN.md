@@ -1907,6 +1907,9 @@ provenance string.
   recorded with its tool, argument and reason (`Host.HeadlessDenials`, any
   agent's), and listed on stderr at the end with the change that would let
   it through; the model reads "no one can approve in a headless run".
+  Since the model picks every URL, which only yolo settles, a run with no
+  `net.*` allow rule, yolo base or `decide` in its mode ships neither
+  `fetch`, `web_search` nor the `web` agent (`Host.webOff`).
 - **Golden tests**: headless mode renders the frame's segment rows to a string;
   golden files per widget and per full frame via `charmbracelet/x/exp/golden`
   (`go test ./internal/ui/... -update` regenerates).

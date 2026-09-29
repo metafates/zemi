@@ -176,11 +176,12 @@ func TestUntrustedModes(t *testing.T) {
 	fakeSandbox(h, true)
 	h.SetPermMode("auto")
 	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, ".env"), []byte("K=1"), 0o600)
-	for _, c := range []struct{ subject, arg, why string }{
-		{"fs.read", filepath.Join(h.Dirs.ProjectDir, ".env"), "this file looks like it holds secrets"},
-		{"net.example.com", "https://example.com/", "a fetch always asks: the model chose the address"},
+	for _, c := range []struct{ tool, subject, arg, why string }{
+		{"read", "fs.read", filepath.Join(h.Dirs.ProjectDir, ".env"), "this file looks like it holds secrets"},
+		{"fetch", "net.example.com", "https://example.com/", "a fetch always asks: the model chose the address"},
+		{"web_search", "net.lite.duckduckgo.com", "https://lite.duckduckgo.com/lite/?q=x", "a search always asks: the model chose the query"},
 	} {
-		if ok, _, why := ask(tools.Request{Subject: c.subject, Arg: c.arg}); ok || why != c.why {
+		if ok, _, why := ask(tools.Request{Tool: c.tool, Subject: c.subject, Arg: c.arg}); ok || why != c.why {
 			t.Errorf("%s %s: allowed %v, reason %q", c.subject, c.arg, ok, why)
 		}
 	}
