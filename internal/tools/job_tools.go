@@ -44,7 +44,7 @@ type Job struct {
 	// policy confines the job, nil when unconfined; its failure may need
 	// the sandbox hint, which names the policy's writable dirs
 	policy *sandbox.Policy
-	after  func() string // runs at exit (Pipeline.Guard), may be nil
+	after  func() string // runs at exit (Pipeline.Guard)
 	note   string        // what after returned
 	told   bool          // the exit's hint and note were read
 	sent   [2]int64      // bytes of stdout/stderr already read, see since
@@ -141,7 +141,7 @@ func NewJobs() *Jobs {
 }
 
 // Start runs a shell line with sh -c in dir with env, confined by pol
-// unless it is nil, and runs after (if not nil) once it exits; returns the
+// unless it is nil, and runs after once it exits; returns the
 // job id. Output is captured as it arrives, so job_read shows a server's
 // lines while it runs.
 func (m *Jobs) Start(dir, line string, env []string, pol *sandbox.Policy, after func() string) (string, error) {
@@ -157,9 +157,7 @@ func (m *Jobs) Start(dir, line string, env []string, pol *sandbox.Policy, after 
 	}
 	cmd.Stdout, cmd.Stderr = j.stdout, j.stderr
 	fail := func(err error) (string, error) {
-		if after != nil {
-			after()
-		}
+		after()
 		return "", err
 	}
 	if pol != nil {
@@ -178,8 +176,8 @@ func (m *Jobs) Start(dir, line string, env []string, pol *sandbox.Policy, after 
 // Adopt registers a command that is already running, with the buffer it
 // writes to, the byte count the caller already delivered from it, a channel
 // carrying its Wait, its policy (nil when unconfined) and what runs at its
-// exit, which may be nil: a bash call past its timeout keeps going
-// as a job instead of losing the work done so far.
+// exit: a bash call past its timeout keeps going as a job instead of losing
+// the work done so far.
 func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, wait <-chan error, pol *sandbox.Policy, after func() string) string {
 	j := &Job{Name: name, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}, policy: pol, after: after}
 	j.sent[0] = sent
@@ -195,10 +193,7 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 	m.mu.Unlock()
 	go func() {
 		err := <-wait
-		note := ""
-		if j.after != nil {
-			note = j.after()
-		}
+		note := j.after()
 		j.mu.Lock()
 		j.werr, j.note = err, note
 		var exit *exec.ExitError
