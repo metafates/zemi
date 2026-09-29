@@ -448,8 +448,8 @@ func (h *Host) useSkill(name, request, stdin string) error {
 
 // openSkills lists discovered skills with their state; space toggles the
 // selected one through the same enable/disable path as the command and the
-// list stays open, enter opens its detail.
-// openSkills is /skills; confirm arms the action that runs it (Overlay.Confirm).
+// list stays open, enter opens its detail; confirm arms the action that runs
+// it (Overlay.Confirm).
 func (h *Host) openSkills(confirm string) error {
 	ui, err := h.Screen()
 	if err != nil {

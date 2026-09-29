@@ -274,11 +274,9 @@ func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 	return h.runLuaCommand(ctx, cmd, argString)
 }
 
-// AskFirst is a destructive command typed without the --yes its danger
-// action's run ends in: open opens its screen with that action armed
-// (Overlay.Confirm is line), so one more enter or key runs it. Headless
-// nobody can answer, so it refuses, naming what runs it without asking:
-// shell, or the command itself.
+// AskFirst opens a destructive command's screen with the action whose run is
+// line armed (Overlay.Confirm); headless it refuses, naming shell, or /line,
+// as what runs it without asking.
 func AskFirst(line, shell string, open func(confirm string) error) error {
 	err := open(line)
 	if errors.Is(err, ErrNeedsTUI) {
