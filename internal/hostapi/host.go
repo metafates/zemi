@@ -1313,7 +1313,7 @@ func (w *Widget) tableSegments(v glua.LValue) (out [][]Segment, ok bool) {
 			for j := 1; j <= m; j++ {
 				switch c := lt.RawGetInt(j).(type) {
 				case glua.LString:
-					line = append(line, Segment{Text: sanitize.String(string(c))})
+					line = append(line, Segment{Text: sanitize.Row(string(c))})
 				case *glua.LTable:
 					if c.Len() > 0 {
 						return nil, false
@@ -1343,7 +1343,7 @@ func (w *Widget) tableSegments(v glua.LValue) (out [][]Segment, ok bool) {
 func segment(field func(string) any, widget string) Segment {
 	seg := Segment{}
 	if t, ok := field("text").(string); ok {
-		seg.Text = sanitize.String(t)
+		seg.Text = sanitize.Row(t)
 	}
 	if hl, ok := field("hl").(string); ok {
 		seg.HL = UserHL(hl)
@@ -1487,7 +1487,7 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 		for _, cell := range cells {
 			switch c := cell.(type) {
 			case string:
-				line = append(line, Segment{Text: sanitize.String(c)})
+				line = append(line, Segment{Text: sanitize.Row(c)})
 			case map[string]any:
 				line = append(line, segment(func(k string) any { return c[k] }, widget))
 			default:

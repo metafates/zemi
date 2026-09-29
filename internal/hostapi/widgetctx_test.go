@@ -177,14 +177,15 @@ func TestConvertSegments(t *testing.T) {
 }
 
 // TestTableSegments: the direct path gives what ToGo and convertSegments
-// give, sanitizing included, leaves odd shapes to them, and converts a line
-// table it saw in the last render only once.
+// give, sanitizing included (a segment is one row, so a newline is a space),
+// leaves odd shapes to them, and converts a line table it saw in the last
+// render only once.
 func TestTableSegments(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		local kept = { { text = "kept" } }
 		local shapes = {
-			{ { "a\27[31m", { text = "b\27]0;x\7", hl = "Host:BtnSel", click = "go", copy = false, hover = false, soft_wrap = true, effect = "shimmer" } }, kept },
+			{ { "a\27[31m\n", { text = "b\27]0;x\7\nc", hl = "Host:BtnSel", click = "go", copy = false, hover = false, soft_wrap = true, effect = "shimmer" } }, kept },
 			{ kept },
 			{ {} },
 			{ { { "nested" } } },
@@ -212,7 +213,7 @@ func TestTableSegments(t *testing.T) {
 			}
 			if v, err := lua.ToGo(ret); ok && err == nil {
 				got, _ = convertSegments(v, w.ID)
-				if i == 0 && (!reflect.DeepEqual(lines, got) || strings.ContainsRune(lines[0][0].Text+lines[0][1].Text, 0x1b)) {
+				if i == 0 && (!reflect.DeepEqual(lines, got) || strings.ContainsAny(lines[0][0].Text+lines[0][1].Text, "\x1b\n")) {
 					t.Errorf("direct %+v, generic %+v", lines, got)
 				}
 				got = lines

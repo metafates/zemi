@@ -90,3 +90,7 @@ func skipEscape(s string, i int) int {
 // Line is String with every run of whitespace collapsed to one space, so
 // the text fits one row.
 func Line(s string) string { return strings.Join(strings.Fields(String(s)), " ") }
+
+// Row is String for text drawn on one row that keeps its spacing: a newline
+// becomes a space, and a tab stays for the drawing to expand.
+func Row(s string) string { return strings.ReplaceAll(String(s), "\n", " ") }
