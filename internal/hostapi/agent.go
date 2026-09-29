@@ -1298,15 +1298,12 @@ func capLines(s string, n int) string {
 }
 
 // toolLabel is what a model says a call is about, shown in place of its
-// input. Command rows stored before the argument was renamed hold
-// "description", which other tools use for something else. A question call
-// is its headers, so its row never repeats the question it shows below.
+// input. A question call is its headers, so its row never repeats the
+// question it shows below.
 func toolLabel(input string) string {
 	var in struct {
-		Command     string `json:"command"`
-		About       string `json:"about"`
-		Description string `json:"description"`
-		Questions   []struct {
+		About     string `json:"about"`
+		Questions []struct {
 			Header string `json:"header"`
 		} `json:"questions"`
 	}
@@ -1325,10 +1322,7 @@ func toolLabel(input string) string {
 		}
 		return cleanLabel(strings.Join(heads, ", "))
 	}
-	if in.Command == "" {
-		in.Description = ""
-	}
-	return cleanLabel(cmp.Or(in.About, in.Description))
+	return cleanLabel(in.About)
 }
 
 func cleanLabel(s string) string {

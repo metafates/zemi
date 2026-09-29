@@ -223,8 +223,7 @@ func TestTurnExtras(t *testing.T) {
 
 func TestToolLabel(t *testing.T) {
 	for in, want := range map[string]string{
-		`{"command":"go test ./...","description":"Run the  unit tests"}`: "Run the unit tests",
-		`{"about":"Run the tests","command":"go test ./..."}`:             "Run the tests",
+		`{"about":"Run the  tests","command":"go test ./..."}`: "Run the tests",
 		`{"command":"ls"}`:                                        "",
 		`{"about":"Look up the ticket","id":"FE-1"}`:              "Look up the ticket",
 		`{"description":"Find the config loader","prompt":"..."}`: "",
