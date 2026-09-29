@@ -337,7 +337,7 @@ func (h *Host) ForkSession() (string, error) {
 		return "", Usagef("no session to fork")
 	}
 	if h.AgentActive() {
-		return "", Usagef("a turn is running; esc twice interrupts it")
+		return "", errTurnRunning
 	}
 	if err := h.tasks.stillRunning(func(p string) bool { return p == sid }); err != nil {
 		return "", err

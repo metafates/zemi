@@ -232,7 +232,7 @@ func (h *Host) switchProject(ui UIHooks, noUI error, arg string) error {
 		return Usagef("zemi already runs in %s", perm.TildePath(dir))
 	}
 	if h.AgentActive() {
-		return Usagef("a turn is running: esc esc stops it, then switch")
+		return errTurnRunning
 	}
 	if err := h.tasks.stillRunning(func(string) bool { return true }); err != nil {
 		return err

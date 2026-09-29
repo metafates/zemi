@@ -180,6 +180,26 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 }
 
+// TestTurnRunningRefusals: what cannot run mid-turn is refused as a usage
+// error, which warns, never as a failure /errors records.
+func TestTurnRunningRefusals(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	seedSession(t, h)
+	h.agents.mu.Lock()
+	h.agents.active = true
+	h.agents.mu.Unlock()
+	for name, run := range map[string]func() error{
+		"new":    h.NewSession,
+		"fork":   func() error { _, err := h.ForkSession(); return err },
+		"rewind": func() error { _, err := h.RewindTo("x"); return err },
+		"btw":    func() error { return h.Btw("why") },
+	} {
+		if err := run(); !errors.Is(err, ErrUsage) || !strings.Contains(err.Error(), "a turn is running") {
+			t.Errorf("%s mid-turn: %v", name, err)
+		}
+	}
+}
+
 // TestResumeKeepsToolDiffs: the diff a file tool showed live is stored
 // as the tool ends, before its call's message, so a resumed session renders
 // it on that call and not on a later one a provider gave the same id.

@@ -1673,7 +1673,7 @@ func (h *Host) Btw(question string) error {
 		ag.mu.Lock()
 		if ag.active {
 			ag.mu.Unlock()
-			return errors.New("a turn is running; ask after it")
+			return Usagef("a turn is running; ask after it")
 		}
 		ag.beginTurn()
 		scope := h.claim()

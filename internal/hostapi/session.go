@@ -31,6 +31,9 @@ import (
 
 var errNoStore = errors.New("session store unavailable")
 
+// errTurnRunning refuses what would cut or leave the conversation mid-turn.
+var errTurnRunning = Usagef("a turn is running; esc twice interrupts it")
+
 // NewSession closes the live session; the next send creates a fresh one.
 func (h *Host) NewSession() error {
 	if err := h.closeSession(nil); err != nil {
@@ -274,7 +277,7 @@ func (h *Host) closeSession(open func()) error {
 	ag.mu.Lock()
 	if ag.active {
 		ag.mu.Unlock()
-		return errors.New("a turn is running; esc twice interrupts it")
+		return errTurnRunning
 	}
 	prev, reports := ag.sessionID, ag.steering
 	h.recentStale.Store(true)

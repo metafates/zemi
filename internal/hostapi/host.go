@@ -1510,7 +1510,8 @@ const (
 
 var waitings = []Waiting{WaitApproval, WaitPlan, WaitAnswer}
 
-// ClockLayout formats UIState.Time, the wall clock widgets show.
+// ClockLayout formats UIState.Time, the wall clock widgets show; clock in
+// zemi.tui.text spells it for Lua.
 const ClockLayout = "15:04"
 
 // StampLayout dates a session in an export and in zemi sessions.

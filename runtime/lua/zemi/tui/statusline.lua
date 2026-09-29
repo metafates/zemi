@@ -70,7 +70,7 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		if not ctx.loop then return {} end
-		return { fmt.hint("↻ " .. os.date("%H:%M", ctx.loop.next), "/loop", "loop") }
+		return { fmt.hint("↻ " .. fmt.clock(ctx.loop.next), "/loop", "loop") }
 	end,
 })
 

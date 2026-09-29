@@ -73,7 +73,7 @@ func (h *Host) addProposal(p memoryProposal) error {
 	}
 	db := h.memoryDB(p.Scope)
 	if db == nil {
-		return errors.New("memory store unavailable")
+		return errNoMemoryStore
 	}
 	payload, err := json.Marshal(p)
 	if err == nil {
@@ -164,6 +164,7 @@ var (
 	// usage errors: a row another window already took is nothing to act on
 	errNoMemory        = Usagef("no such memory")
 	errUnknownProposal = Usagef("no such proposal")
+	errNoMemoryStore   = errors.New("memory store unavailable")
 )
 
 // duplicateMemory finds a live memory in either scope, or a pending
@@ -194,7 +195,7 @@ func (h *Host) duplicateMemory(m store.Memory, replaces string) (dup *store.Memo
 func (h *Host) storeProposal(res *learn.Result) error {
 	db := h.memoryDB(res.Memory.Scope)
 	if db == nil {
-		return errors.New("memory store unavailable")
+		return errNoMemoryStore
 	}
 	m := &res.Memory
 	if dup, _ := h.duplicateMemory(*m, res.Supersedes); dup != nil {
@@ -589,7 +590,7 @@ func (h *Host) takeProposal(id string) *memoryProposal {
 func (h *Host) moveMemory(id string, from, to store.Scope) error {
 	src, dst := h.memoryDB(from), h.memoryDB(to)
 	if src == nil || dst == nil {
-		return errors.New("memory store unavailable")
+		return errNoMemoryStore
 	}
 	m, err := src.GetMemory(id)
 	if err != nil {

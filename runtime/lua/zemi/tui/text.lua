@@ -39,6 +39,11 @@ function M.duration(s, whole)
 	return string.format("%dh %02dm", math.floor(s / 3600), math.floor(s / 60) % 60)
 end
 
+--- A unix time as a wall clock, "14:05", as ctx.time reads.
+---@param t integer
+---@return string
+function M.clock(t) return os.date("%H:%M", t) end
+
 --- A count with its noun: "1 file", "3 files".
 ---@param n integer
 ---@param one string

@@ -1680,7 +1680,7 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, erro
 	ag.mu.Lock()
 	if ag.active {
 		ag.mu.Unlock()
-		return "", errors.New("a turn is running; start the workflow after it")
+		return "", Usagef("a turn is running; start the workflow after it")
 	}
 	scope := h.claim()
 	ag.mu.Unlock()

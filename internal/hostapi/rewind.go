@@ -110,7 +110,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	ag.mu.Lock()
 	if ag.active {
 		ag.mu.Unlock()
-		return 0, Usagef("a turn is running; esc twice interrupts it")
+		return 0, errTurnRunning
 	}
 	// claimed like a turn, so no send starts on the history being cut
 	sid, scope := ag.sessionID, h.claim()
