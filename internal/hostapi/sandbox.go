@@ -67,8 +67,9 @@ func homes() []string {
 
 // sandboxPolicy is what a settled command may touch: the scratchpad pad,
 // also its $TMPDIR, a Go build cache of its own and, when trusted and not
-// for a read-only agent, the project; never .git, .agents or zemi's own
-// dirs, and zemi's are unreadable too (sessions, logs, keys in init.lua).
+// for a read-only agent, the project; never .agents, zemi's own dirs or
+// the parts of .git that run code (all of it but on seatbelt), and zemi's
+// are unreadable too (sessions, logs, keys in init.lua).
 // The project is writable only with a backend that keeps those read-only
 // inside it, and never when it is $HOME or above, holds one of zemi's dirs
 // or sits in one, holds a hidden path on a backend other than seatbelt, or
@@ -157,6 +158,13 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 	relative := slices.ContainsFunc(path, func(e string) bool { return !filepath.IsAbs(e) })
 	if writable && !linked && !relative {
 		p.Write = append(p.Write, d.ProjectDir)
+		// seatbelt keeps what git runs or follows read-only by name, so the
+		// rest of .git opens; a .git file's git dir (a linked worktree) stays shut
+		if gd := filepath.Join(d.ProjectDir, ".git"); backend.Name == "seatbelt" {
+			if fi, err := os.Lstat(gd); err == nil && fi.IsDir() {
+				p.Git = []string{gd}
+			}
+		}
 		// the one part of .agents a command may write; a real dir, since the
 		// backend would open a link's target
 		own, err := d.WorktreesIgnore()
@@ -225,7 +233,11 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 	b.WriteString("Sandbox (auto mode): commands you run without the user's approval are confined.\n")
 	switch {
 	case slices.Contains(pol.Write, d.ProjectDir):
-		fmt.Fprintf(&b, "- They write only %s.\n- .git and .agents are read-only to them", pol.WriteNames(d.ProjectDir))
+		ro := ".git and .agents are"
+		if len(pol.Git) > 0 {
+			ro = ".agents and .git's config and hooks are"
+		}
+		fmt.Fprintf(&b, "- They write only %s.\n- %s read-only to them", pol.WriteNames(d.ProjectDir), ro)
 		for _, e := range filepath.SplitList(os.Getenv("PATH")) {
 			if rel, err := filepath.Rel(d.ProjectDir, e); err == nil && filepath.IsLocal(rel) && slices.Contains(pol.Protect, e) {
 				fmt.Fprintf(&b, ", and so is %s, which is on PATH", rel)
@@ -234,7 +246,11 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 		if hasTool(toolset, tools.ToolWrite) {
 			b.WriteString(": write .agents files with the write tool")
 		}
-		b.WriteString("; git commands that change .git " + ask + ".\n")
+		if len(pol.Git) > 0 {
+			b.WriteString("; git commit and checkout run, git config, remote, push and fetch " + ask + ".\n")
+		} else {
+			b.WriteString("; git commands that change .git " + ask + ".\n")
+		}
 	case readOnly:
 		fmt.Fprintf(&b, "- They write only %s: the project is read-only to this agent.\n", pol.WriteNames(d.ProjectDir))
 	default:

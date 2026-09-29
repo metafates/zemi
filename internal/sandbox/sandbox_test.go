@@ -94,6 +94,17 @@ func act(verb, arg string) error {
 		}
 		_, err := os.ReadFile(filepath.Join(dst, ".env"))
 		return err
+	case "symlink":
+		return os.Symlink("/tmp", arg)
+	case "link":
+		src, dst, _ := strings.Cut(arg, "|")
+		return os.Link(src, dst)
+	case "movein":
+		src, dst, _ := strings.Cut(arg, "|")
+		if err := os.MkdirAll(src, 0o755); err != nil {
+			return err
+		}
+		return os.Rename(src, dst)
 	case "renameonto":
 		if err := os.MkdirAll(arg+".src", 0o755); err != nil {
 			return err
@@ -174,7 +185,7 @@ func TestPolicy(t *testing.T) {
 	t.Log("backend:", b.Name)
 	root, outside, hide, state := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	scratch, cache := filepath.Join(state, "scratch"), filepath.Join(state, "sandbox-cache", "k", "go-build")
-	for _, d := range []string{filepath.Join(root, ".git"), filepath.Join(root, "agents-real"), filepath.Join(root, "backend"), scratch, cache} {
+	for _, d := range []string{filepath.Join(root, ".git", "info"), filepath.Join(root, ".git", "objects", "info"), filepath.Join(root, ".git", "worktrees", "w"), filepath.Join(root, "agents-real"), filepath.Join(root, "backend"), scratch, cache} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -186,7 +197,7 @@ func TestPolicy(t *testing.T) {
 		}
 	}
 	for _, f := range []string{
-		filepath.Join(root, "plain.txt"), filepath.Join(root, ".env"), filepath.Join(root, "backend", ".env"), filepath.Join(hide, "id"), filepath.Join(state, "zemi.db"),
+		filepath.Join(root, "plain.txt"), filepath.Join(root, ".git", "config"), filepath.Join(root, ".env"), filepath.Join(root, "backend", ".env"), filepath.Join(hide, "id"), filepath.Join(state, "zemi.db"),
 		filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua", "p", "init.lua"), filepath.Join(plugin, ".git", "config"),
 		filepath.Join(plugin, "lua", "p", ".git", "config"),
 	} {
@@ -200,6 +211,7 @@ func TestPolicy(t *testing.T) {
 	p := Policy{
 		Write:    []string{root, scratch, cache},
 		Protect:  []string{filepath.Join(root, ".git"), filepath.Join(root, ".agents"), state},
+		Git:      []string{filepath.Join(root, ".git")},
 		Hide:     []string{hide, state, filepath.Join(plugin, "lua", "p", ".git")},
 		Read:     []string{filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua")},
 		List:     []string{plugin},
@@ -207,6 +219,7 @@ func TestPolicy(t *testing.T) {
 		Env:      map[string]string{"ZEMI_SANDBOX_TEST": "on"},
 	}
 	_, caseFolds := os.Stat(filepath.Join(root, ".GIT"))
+	gd, seatbelt := filepath.Join(root, ".git"), b.Name == "seatbelt"
 	// a short dir: socket paths are capped near 100 bytes
 	sockDir, err := os.MkdirTemp("/tmp", "zs")
 	if err != nil {
@@ -246,6 +259,34 @@ func TestPolicy(t *testing.T) {
 		{"write .github", "mkwrite", filepath.Join(root, ".github", "x.yml"), true, false},
 		{"create a .git in a root without protected paths", "mkwrite", filepath.Join(scratch, "repo", ".git", "config"), true, false},
 		{"rename .git", "rename", filepath.Join(root, ".git"), false, !b.EnforcesProtect},
+		// Git opens the git dir again on seatbelt alone; elsewhere it stays read-only
+		{"write the index", "write", filepath.Join(gd, "index"), true, !seatbelt},
+		{"write a ref", "mkwrite", filepath.Join(gd, "refs", "heads", "f"), true, !seatbelt},
+		{"write an object", "mkwrite", filepath.Join(gd, "objects", "ab", "cd"), true, !seatbelt},
+		{"write the commit graph", "mkwrite", filepath.Join(gd, "objects", "info", "commit-graph"), true, !seatbelt},
+		{"write info/exclude", "mkwrite", filepath.Join(gd, "info", "exclude"), true, !seatbelt},
+		{"write a worktree's index", "mkwrite", filepath.Join(gd, "worktrees", "w", "index"), true, !seatbelt},
+		{"write the index where Git is off", "write", filepath.Join(gd, "index"), false, seatbelt || !b.EnforcesProtect},
+		{"create a hook", "mkwrite", filepath.Join(gd, "hooks", "pre-commit"), false, !b.EnforcesProtect},
+		{"create a hook in HOOKS", "mkwrite", filepath.Join(gd, "HOOKS", "pre-commit"), false, !b.EnforcesProtect || caseFolds != nil},
+		{"write config.worktree", "write", filepath.Join(gd, "config.worktree"), false, !b.EnforcesProtect},
+		{"write commondir", "write", filepath.Join(gd, "commondir"), false, !b.EnforcesProtect},
+		{"write info/attributes", "mkwrite", filepath.Join(gd, "info", "attributes"), false, !b.EnforcesProtect},
+		{"write alternates", "mkwrite", filepath.Join(gd, "objects", "info", "alternates"), false, !b.EnforcesProtect},
+		{"write http-alternates", "mkwrite", filepath.Join(gd, "objects", "info", "http-alternates"), false, !b.EnforcesProtect},
+		{"write a submodule's config", "mkwrite", filepath.Join(gd, "modules", "m", "config"), false, !b.EnforcesProtect},
+		{"write a worktree's commondir", "mkwrite", filepath.Join(gd, "worktrees", "w", "commondir"), false, !b.EnforcesProtect},
+		{"write a worktree's gitdir", "mkwrite", filepath.Join(gd, "worktrees", "w", "gitdir"), false, !b.EnforcesProtect},
+		{"write a worktree's config.worktree", "mkwrite", filepath.Join(gd, "worktrees", "w", "config.worktree"), false, !b.EnforcesProtect},
+		{"create a .git in the git dir", "mkwrite", filepath.Join(gd, "x", ".git", "config"), false, !b.EnforcesProtect},
+		{"symlink in the git dir", "symlink", filepath.Join(gd, "info2"), false, !b.EnforcesProtect},
+		// a dir moved in whole would bring an attributes, alternates or commondir file
+		{"move a dir in as a worktree's", "movein", filepath.Join(root, "wt") + "|" + filepath.Join(gd, "worktrees", "v"), false, !b.EnforcesProtect},
+		{"rename info", "rename", filepath.Join(gd, "info"), false, !b.EnforcesProtect},
+		{"rename objects/info", "rename", filepath.Join(gd, "objects", "info"), false, !b.EnforcesProtect},
+		{"rename objects", "rename", filepath.Join(gd, "objects"), false, !b.EnforcesProtect},
+		{"rename worktrees", "rename", filepath.Join(gd, "worktrees"), false, !b.EnforcesProtect},
+		{"hard link the config out", "link", filepath.Join(gd, "config") + "|" + filepath.Join(root, "cfg"), false, !b.EnforcesProtect},
 		{"write through a protected symlink", "write", filepath.Join(root, ".agents", "init.lua"), false, !b.EnforcesProtect},
 		// NOTE: see setupNamespaces
 		{"rename a protected symlink", "rename", filepath.Join(root, ".agents"), false, !b.EnforcesProtect || runtime.GOOS == "linux"},

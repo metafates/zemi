@@ -553,10 +553,12 @@ func (h *Host) unsettled(req tools.Request) string {
 		if why := n.Destructive(req.Pad); why != "" {
 			return why
 		}
-		// a confined git write can only fail; asking first saves the failed
-		// run and the sandbox: false retry
-		if why := n.GitWrites(); why != "" {
-			return why
+		// a git write that can only fail confined asks first, which saves the
+		// failed run and the sandbox: false retry
+		if why := n.GitWrites(false); why != "" {
+			if why = n.GitWrites(len(h.policyWalk(false, req.Pad, false).Git) > 0); why != "" {
+				return why
+			}
 		}
 	}
 	if h.sandbox.Load().backend.HidesSecretFiles {

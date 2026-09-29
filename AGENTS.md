@@ -85,8 +85,9 @@ make fmt                # golangci-lint fmt over the Go files (gofmt without the
 make reset-db           # delete the stores a schema bump refuses (ZEMI_STATE=<dir> for another tree)
 ```
 
-git commits are run unsandboxed (`sandbox: false`): `.git` is read-only inside the
-sandbox, so a confined `git commit` fails on `index.lock`.
+git commits run confined on macOS in the main checkout, where the sandbox opens `.git` but for
+what runs code; in a linked worktree or on Linux `.git` is read-only inside the sandbox, so a
+confined `git commit` fails on `index.lock` and runs unsandboxed (`sandbox: false`).
 
 For a throwaway config tree, redirect all dirs: `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`,
 `ZEMI_STATE_HOME`, `ZEMI_CACHE_HOME` (internal/config/dirs.go; a relative one stops the boot,
@@ -433,8 +434,10 @@ whatever the base would settle, which is how a user gets every ask); it runs as 
 most 60s, long enough for a model call of its own, and, like the mode's own rules,
 cannot allow an `Unsandboxed` or `Network` request, an `Explicit` one or a `protectedWrite`. In a trusted project with a live sandbox `unsettled` parses nothing:
 every command runs confined, except the short `perm.Normalized.Destructive` list (bulk deletes,
-DESIGN §9), a git command that writes `.git` (`perm.Normalized.GitWrites`, which the sandbox's
-read-only `.git` could only fail, so the ask comes before a wasted run) and, on a backend that
+DESIGN §9), a git command that writes what the sandbox keeps read-only in `.git`, reaches the
+network or can drop commits for good (`perm.Normalized.GitWrites`, whose `gitDir` says whether the
+policy opens `.git`, `Policy.Git`: a confined run could only fail, so the ask comes before a
+wasted run) and, on a backend that
 cannot hide files, one naming an existing secret-shaped file. Known ceiling: the sandbox policy is the only limit, so the model
 can write code and run it unattended, rewrite any project file and read what the policy does
 not hide, outside the project too. In an untrusted project both modes settle only `ReadCommand`
@@ -463,7 +466,9 @@ schema see it.
 and never the shared system temp dir, `GOCACHE` per trust root, the project writable only when
 it is trusted, outside zemi's own dirs and on a backend that can protect paths inside it
 (`Backend.EnforcesProtect`), `.git`, `.agents` and every `PATH` dir under a write root read-only
-because zemi runs git, the shell and servers unconfined by name, home credential paths hidden (`homes`),
+because zemi runs git, the shell and servers unconfined by name (on seatbelt a repository root's
+`.git` opens but for what git runs or follows, `Policy.Git`, whose rules and the whys are in
+DESIGN §9 and `seatbelt_darwin.go`'s `gitCode`), home credential paths hidden (`homes`),
 the secret shapes hidden in the pad too (a command can move a directory there), and a local plugin's code readable back
 (`plugin.Code`, `Policy.Read`, `Policy.List`) so `zemi plugins test` runs confined. The
 repo's `.agents/worktrees` (`Dirs.WorktreesDir`) is a write root of its own, ignored by the `/*`

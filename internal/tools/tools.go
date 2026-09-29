@@ -562,6 +562,8 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	case has(is(protected)):
 		line = workRel(l.root) + " is read-only to commands"
 		switch {
+		case slices.Contains(pol.Git, l.root):
+			line = workRel(l.path) + " is read-only to commands: git runs or follows what it names" + or(all, "; call it again with sandbox: false (needs approval)")
 		case filepath.Base(l.root) == ".agents":
 			line += ": create and edit files there with the write and edit tools"
 		case slices.Contains(strings.Split(l.root, string(filepath.Separator)), ".git"):

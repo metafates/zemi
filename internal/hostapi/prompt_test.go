@@ -432,6 +432,10 @@ func TestPromptBudget(t *testing.T) {
 	h.SetUIHooks(&fakeUI{})
 	h.SetProjectTrusted(true)
 	h.agents.sessionID = "s1"
+	// a repository, as most projects are: the Sandbox block says what of .git opens
+	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := h.Settings.SetQuiet("lsp.auto", false); err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +461,7 @@ func TestPromptBudget(t *testing.T) {
 	// NOTE: chars, not tokens (about 4.3 per o200k token): the owner's limit
 	// is 10k tokens. The ceiling is today's size rounded up to the next 500,
 	// so any real growth is a decision; raise it only with a reason.
-	const ceiling = 21500
+	const ceiling = 22000
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}

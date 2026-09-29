@@ -285,6 +285,63 @@ func TestSandboxedShell(t *testing.T) {
 	})
 }
 
+// TestSandboxedGit runs real git under seatbelt in auto mode: commits and
+// branches run confined with no ask, what writes config or reaches the
+// network asks, and what git runs or follows stays read-only, a hook's
+// failure included, each with the hint.
+func TestSandboxedGit(t *testing.T) {
+	h, _, ui, run := sandboxedShell(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	proj := h.Dirs.ProjectDir
+	t.Chdir(proj)
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.name", "t"}, {"config", "user.email", "t@t"}, {"commit", "-q", "--allow-empty", "-m", "init"}} {
+		if out, err := h.git(proj, args...); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	h.SetProjectTrusted(true) // the policy reads the .git just made
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	hook := "#!/bin/sh\ntouch " + filepath.Join(t.TempDir(), "hooked") + "\n"
+	for _, c := range []struct {
+		name, cmd, hook string
+		ok              bool
+		hint, asked     string // how the Sandbox line and the ask's reason start, "" for none
+	}{
+		{"commit on a new branch", "git checkout -qb x && echo a > a && git add a && git commit -qm a && git stash list", "", true, "", ""},
+		{"branches, tags, stash, reset, gc and rebase", "git branch y && git branch -D y && git tag v1 && git tag -d v1 && echo b > a && git stash && git stash pop && git reset -q --hard && git checkout -q -- . && git gc -q --auto && git rebase -q HEAD~1 && git merge -q x", "", true, "", ""},
+		{"config asks", "git config core.hooksPath /tmp/x", "", false, "", "git config writes what the sandbox keeps read-only"},
+		{"push asks", "git push", "", false, "", "git push reaches the network"},
+		{"config through a script", "printf 'git config core.hooksPath /tmp/x\\n' > $TMPDIR/c.sh && sh $TMPDIR/c.sh", "", false, ".git/config is read-only to commands: git runs or follows what it names; call it again with sandbox: false", ""},
+		{"a hook write", "echo x > .git/hooks/pre-commit", "", false, ".git/hooks/pre-commit is read-only to commands", ""},
+		{"a hook that writes outside", "git commit -q --allow-empty -m b", hook, false, "/tmp is not writable", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if c.hook != "" {
+				if err := os.WriteFile(filepath.Join(proj, ".git", "hooks", "pre-commit"), []byte(c.hook), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ui.asked = nil
+			resp := run(map[string]any{"command": c.cmd})
+			if resp.IsError == c.ok {
+				t.Errorf("ok %v, want %v: %s", !resp.IsError, c.ok, resp.Content)
+			}
+			if _, hint, _ := strings.Cut(resp.Content, "\nSandbox: "); !strings.HasPrefix(hint, c.hint) || (hint == "") != (c.hint == "") {
+				t.Errorf("hint %q, want %q: %s", hint, c.hint, resp.Content)
+			}
+			if asked := len(ui.asked) > 0 && strings.HasPrefix(ui.asked[0].Reason, c.asked); asked != (c.asked != "") || len(ui.asked) > 0 && c.asked == "" {
+				t.Errorf("asked %+v, want reason %q", ui.asked, c.asked)
+			}
+		})
+	}
+	if out, err := h.git(proj, "log", "-1", "--format=%s", "x"); err != nil || strings.TrimSpace(out) != "a" {
+		t.Errorf("branch x: %v %s", err, out)
+	}
+}
+
 // TestSandboxedBuilds: go test and cargo build pass in the sandbox without an
 // ask, side by side on one host.
 func TestSandboxedBuilds(t *testing.T) {
@@ -418,6 +475,22 @@ func TestSandboxPolicy(t *testing.T) {
 			}
 		})
 	}
+	// seatbelt opens a .git dir but for what runs code; a .git file's git dir
+	// (a linked worktree) stays shut
+	h.SetProjectTrusted(true)
+	h.sandbox.Store(&sandboxProbe{backend: sandbox.Backend{Name: "seatbelt", EnforcesProtect: true}})
+	gd := filepath.Join(project, ".git")
+	for _, dir := range []bool{true, false} {
+		if dir {
+			os.Mkdir(gd, 0o755)
+		} else if err := os.RemoveAll(gd); err != nil || os.WriteFile(gd, []byte("gitdir: "+t.TempDir()), 0o644) != nil {
+			t.Fatal(err)
+		}
+		if p := h.sandboxPolicy(false, h.ScratchDir()); slices.Equal(p.Git, []string{gd}) != dir || !slices.Contains(p.Protect, gd) {
+			t.Errorf(".git a dir %v: git %v, protect %v", dir, p.Git, p.Protect)
+		}
+	}
+	os.Remove(gd)
 	venv := filepath.Join(project, ".venv", "bin")
 	for _, c := range []struct {
 		name, path        string
@@ -628,9 +701,10 @@ func TestSandboxPrompt(t *testing.T) {
 	for _, c := range []struct {
 		name                            string
 		trusted, live, readOnly, escape bool
+		gitDir                          bool
 		want, unwanted                  []string
 	}{
-		{"trusted", true, true, false, true, []string{
+		{"trusted", true, true, false, true, false, []string{
 			"They write only the project, $TMPDIR and $GOCACHE.\n",
 			".git and .agents are read-only to them: write .agents files with the write tool",
 			"Hidden from them: zemi's own dirs (", "Read zemi's files with the read tool.",
@@ -638,15 +712,19 @@ func TestSandboxPrompt(t *testing.T) {
 			"Network: localhost only. network: true adds the network, sandbox: false drops every limit",
 			"a browser, GUI app, docker or the keychain fails or crashes (Abort trap: 6). Run one with sandbox: false.",
 		}, []string{"read-only to this agent"}},
-		{"read-only agent", true, true, true, true, []string{
+		{"trusted with a .git dir", true, true, false, true, true, []string{
+			".agents and .git's config and hooks are read-only to them",
+			"git commit and checkout run, git config, remote, push and fetch ask the user first.",
+		}, []string{"change .git"}},
+		{"read-only agent", true, true, true, true, false, []string{
 			"They write only $TMPDIR and $GOCACHE: the project is read-only to this agent.\n",
 			"network: true adds the network (needs approval).", "Do not run one: say what you could not check.",
 		}, []string{"sandbox: false", ".git and .agents"}},
-		{"nobody to approve", true, true, false, false, []string{"Nobody can approve more in this run.", "Do not run one", "change .git need the user's approval, which nobody can give"}, []string{"sandbox: false", "network: true", "ask first"}},
-		{"untrusted", false, true, false, true, []string{"this project is not trusted", "ask the user first, and run unconfined"}, []string{"sandbox: false"}},
-		{"untrusted with nobody to approve", false, true, false, false, []string{"other commands need the user's approval, which nobody can give"}, []string{"ask the user", "unconfined"}},
-		{"no backend", true, false, false, true, []string{"none on this machine", "ask the user first"}, []string{"sandbox: false"}},
-		{"no backend with nobody to approve", true, false, false, false, []string{"which nobody can give in this run"}, []string{"ask the user first"}},
+		{"nobody to approve", true, true, false, false, false, []string{"Nobody can approve more in this run.", "Do not run one", "change .git need the user's approval, which nobody can give"}, []string{"sandbox: false", "network: true", "ask first"}},
+		{"untrusted", false, true, false, true, false, []string{"this project is not trusted", "ask the user first, and run unconfined"}, []string{"sandbox: false"}},
+		{"untrusted with nobody to approve", false, true, false, false, false, []string{"other commands need the user's approval, which nobody can give"}, []string{"ask the user", "unconfined"}},
+		{"no backend", true, false, false, true, false, []string{"none on this machine", "ask the user first"}, []string{"sandbox: false"}},
+		{"no backend with nobody to approve", true, false, false, false, false, []string{"which nobody can give in this run"}, []string{"ask the user first"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHost(t)
@@ -659,6 +737,9 @@ func TestSandboxPrompt(t *testing.T) {
 			h.sandbox.Store(s)
 			if c.escape {
 				h.SetUIHooks(&fakeUI{})
+			}
+			if c.gitDir {
+				os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755)
 			}
 			h.SetProjectTrusted(c.trusted)
 			got := h.sandboxPrompt(tools.All(&tools.Pipeline{SandboxParam: c.escape}), c.readOnly, h.ScratchDir())

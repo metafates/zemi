@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 // sandboxExec is never looked up on PATH: a planted one would run unconfined.
@@ -30,6 +31,31 @@ func nestedShapes(root string) string {
 		anchor = "" // unquotable: match anywhere, which only denies more
 	}
 	return `(regex #"` + anchor + `(/.*)?/\.([gG][iI][tT]|[aA][gG][eE][nN][tT][sS])(/|$)")`
+}
+
+// gitCode is what of a git dir git runs or follows (gitrepository-layout):
+// config and hooks run programs, info/attributes picks the drivers config
+// names, commondir and alternates send git to another dir's config or
+// objects, gitdir is a worktree's way back, modules holds whole submodule
+// repos, and a nested .git or .agents is another repo or zemi config.
+var gitCode = foldCase(`(worktrees/[^/]+/)?(config|config\.worktree|commondir|gitdir|hooks|info/attributes)|modules|objects/info/(http-)?alternates|(.*/)?\.(git|agents)`)
+
+// gitParents are the dirs holding a gitCode file: a rule on a name misses a
+// dir moved in whole with the file inside, so they cannot be made, moved or
+// removed, only written into.
+var gitParents = foldCase(`info|objects(/info)?|worktrees(/[^/]+)?`)
+
+// foldCase matches a regex's letters in either case, as APFS does.
+func foldCase(re string) string {
+	var b strings.Builder
+	for _, r := range re {
+		if unicode.IsLetter(r) {
+			fmt.Fprintf(&b, "[%c%c]", unicode.ToLower(r), unicode.ToUpper(r))
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 //go:embed profile.sb
@@ -167,6 +193,24 @@ func profile(p Policy) (string, []string) {
 		}
 		if hole || slices.ContainsFunc(p.Protect, func(pr string) bool { return pr != w && within(pr, w) }) {
 			fmt.Fprintf(&b, "(deny file-write* (require-all (subpath %s) %s))\n", param("NESTED", i, w), nestedShapes(w))
+		}
+	}
+	// A git dir is writable again but for what git runs or follows, in it and
+	// in each linked worktree's admin dir (DESIGN §9): matched by name, so a
+	// part created or moved there is caught too, and no symlink may redirect one.
+	for i, g := range p.Git {
+		if strings.ContainsAny(g, "\"\n") {
+			continue // unquotable: it stays protected
+		}
+		name := param("GIT", i, g)
+		fmt.Fprintf(&b, "(allow file-write* (subpath %s))\n", name)
+		q := regexp.QuoteMeta(g)
+		fmt.Fprintf(&b, "(deny file-write* (literal %s) (regex #\"^%s/(%s)(/|$)\" #\"^%s/(%s)$\"))\n", name, q, gitCode, q, gitParents)
+		fmt.Fprintf(&b, "(deny file-write-create (require-all (subpath %s) (vnode-type SYMLINK)))\n", name)
+		for j, pr := range p.Protect {
+			if pr != g && within(pr, g) {
+				fmt.Fprintf(&b, "(deny file-write* (subpath %s))\n", param("GITPROTECT", j, pr))
+			}
 		}
 	}
 	b.WriteString("(deny file-read* file-write* " + secretShapes + ")\n")

@@ -2197,9 +2197,14 @@ provenance string.
   path with no climb, settles while nothing in the command can have
   changed `$TMPDIR`; and any command a shell may read otherwise than
   both parses, above, since the list cannot vouch for it),
-  a git command that writes `.git` (`perm.Normalized.GitWrites`:
-  the sandbox keeps `.git` read-only, so a confined commit could only
-  fail and the ask comes first), and on a backend that cannot hide files
+  a git command that writes what the sandbox keeps read-only in `.git`
+  (`perm.Normalized.GitWrites`: with the git dir open, below, config,
+  remotes, worktrees and submodules; with it shut, any write), reaches
+  the network (push, fetch, pull, clone) or can drop unreachable commits
+  for good (`gc --prune`, `prune`, `repack`, `reflog expire`), since a
+  confined run could only fail and the ask comes first; `reset --hard`
+  and `checkout -- .` run, since the shell row's snapshot lets rewind
+  restore the files and the reflog keeps the commits; and on a backend that cannot hide files
   a command naming an existing secret-shaped file. Anything a
   mode cannot settle goes to the user's ask carrying the reason it did
   not: no model screens permission requests.
@@ -2326,7 +2331,7 @@ provenance string.
   resolved target, not the link), no relative `PATH` entry makes every
   directory a `PATH` dir, and the backend keeps protected paths
   read-only inside it (`Backend.EnforcesProtect`); `.git` (and a `gitdir:`
-  target), `.agents` (its `worktrees` aside, a write root of its own), zemi's dirs and every `PATH` dir inside a write root
+  target; on seatbelt only what runs code, below), `.agents` (its `worktrees` aside, a write root of its own), zemi's dirs and every `PATH` dir inside a write root
   (an activated `.venv/bin`: zemi runs git, the shell, language servers and
   clipboard helpers unconfined by name) stay read-only (the scratchpad and
   cache re-allowed); localhost network only. Seatbelt's localhost is the
@@ -2343,7 +2348,37 @@ provenance string.
   every inet socket is refused. Known ceilings: other tools' caches
   (`~/.cache/uv`, `~/.npm`) stay read-only, so uv and npm fail confined
   until each gets a per-session cache variable, and seatbelt denies
-  binding a unix socket. zemi's own temp files (the ctrl+g draft, a pasted image)
+  binding a unix socket.
+  The git dir (`Policy.Git`): on seatbelt, when the writable project is
+  the repository root with a real `.git` directory, `.git` opens to
+  confined commands, so commit, add, checkout, switch, branch, tag, stash,
+  merge, rebase, reset and cherry-pick run with no ask. Read-only stay,
+  matched by name (case folded), so a part created, moved or hard linked
+  there is caught too (gitrepository-layout names each): `config` and
+  `config.worktree` (hooksPath, fsmonitor, sshCommand, pager, filter and
+  diff drivers, aliases: every program git runs), `hooks/`, which the
+  user's own git runs unconfined later, `info/attributes` (it picks the
+  drivers config names), `commondir` and `objects/info/alternates` and
+  `http-alternates` (they send git to another directory's config, hooks
+  or objects), `gitdir` (a linked worktree's way back), `modules/` (each
+  submodule's whole repo, hooks and config included), the same names in
+  each `worktrees/<id>/` admin dir, and any nested `.git` or `.agents`.
+  `.git` itself, `info`, `objects`, `objects/info`, `worktrees` and each
+  `worktrees/<id>` cannot be made, moved or removed, only written into,
+  since a directory moved in whole would bring one of those files with
+  it, and no symbolic link may be created in `.git`. A linked worktree
+  (a `.git` file), a project below the repository root and every other
+  backend keep `.git` read-only, where git writes ask; the Sandbox block
+  says which holds. Known ceilings: a confined command can rewrite the
+  repository's refs and objects (`rm -rf .git/objects` among them; the
+  `Destructive` list asks for the plain forms), a branch rename or an
+  upstream write fails on the config (`GitWrites` asks for the flags
+  that do it; `checkout -b x origin/x` sets one it cannot see), and a
+  rebase left in progress can hold `exec` lines the user's
+  `git rebase --continue` would run, like any script in the project.
+  Hooks run confined like the command that started them, so one that
+  needs the network or a cache outside the roots fails with the hint.
+  zemi's own temp files (the ctrl+g draft, a pasted image)
   live in `<state>/tmp`. A
   wrap that fails is a tool error, never an unconfined run.
   While a backend is live, the shell tool and `job_start` take two escapes,

@@ -802,25 +802,36 @@ func LeadKnown(f []string, i int) bool {
 	return true
 }
 
-// gitWriters are the git subcommands that write .git, which the sandbox
-// keeps read-only, so a confined run can only fail on it.
-var gitWriters = map[string]bool{
-	"add": true, "am": true, "apply": true, "bisect": true, "checkout": true, "cherry-pick": true, "clone": true,
-	"commit": true, "commit-tree": true, "fetch": true, "filter-branch": true, "gc": true, "init": true, "maintenance": true,
-	"merge": true, "mergetool": true, "mv": true, "pack-refs": true, "prune": true, "pull": true, "push": true,
-	"read-tree": true, "rebase": true, "repack": true, "replace": true, "reset": true, "restore": true, "revert": true,
-	"rm": true, "sparse-checkout": true, "switch": true, "symbolic-ref": true, "update-index": true, "update-ref": true,
+// Why a git write still asks when the sandbox opens .git but for what runs
+// code.
+const (
+	gitNet    = "reaches the network, which the sandbox has not"
+	gitConfig = "writes what the sandbox keeps read-only in .git (config, hooks, links to other repos)"
+	gitDrop   = "can drop unreachable commits for good"
+)
+
+// gitWriters are the git subcommands that write .git, each with why it
+// still asks when the sandbox opens .git, "" when it then runs confined.
+var gitWriters = map[string]string{
+	"add": "", "am": "", "apply": "", "bisect": "", "checkout": "", "cherry-pick": "", "clone": gitNet,
+	"commit": "", "commit-tree": "", "fetch": gitNet, "filter-branch": "", "gc": "", "init": gitConfig, "maintenance": gitDrop,
+	"merge": "", "mergetool": "", "mv": "", "pack-refs": "", "prune": gitDrop, "pull": gitNet, "push": gitNet,
+	"read-tree": "", "rebase": "", "repack": gitDrop, "replace": "", "reset": "", "restore": "", "revert": "",
+	"rm": "", "sparse-checkout": gitConfig, "switch": "", "symbolic-ref": "", "update-index": "", "update-ref": "",
 }
 
-// GitWrites says why a git command cannot run with .git read-only: its
-// subcommand writes the repository. Empty when it only reads, or is no git.
-func (n Normalized) GitWrites() string {
+// GitWrites says why a git command cannot run confined: its subcommand
+// writes .git, which the sandbox keeps read-only, or, with gitDir (the
+// sandbox opens .git but for what runs code), writes those parts, reaches
+// the network or can drop commits for good. Empty when it may run, or is no
+// git.
+func (n Normalized) GitWrites(gitDir bool) string {
 	if n.Fail != "" {
 		return ""
 	}
 	for _, f := range n.Args {
 		for _, body := range shellBodies(f) {
-			if why := readBoth(body).GitWrites(); why != "" {
+			if why := readBoth(body).GitWrites(gitDir); why != "" {
 				return why
 			}
 		}
@@ -847,26 +858,47 @@ func (n Normalized) GitWrites() string {
 		if len(words) > 0 {
 			first = words[0]
 		}
-		writes := gitWriters[sub]
+		why, writes := gitWriters[sub]
 		switch sub {
 		case "branch", "tag":
 			writes = len(words) > 0 || hasFlag(rest, "-d", "-D", "-m", "-M", "-c", "-C", "-u", "--delete", "--move", "--copy", "--set-upstream-to", "--unset-upstream", "--edit-description", "-f")
+			// a branch's upstream and description live in config, and a rename
+			// or copy moves its section there
+			if sub == "branch" && hasFlag(rest, "-u", "-t", "-m", "-M", "-c", "-C", "--track", "--move", "--copy", "--set-upstream-to", "--unset-upstream", "--edit-description") {
+				why = gitConfig
+			}
+		case "checkout", "switch":
+			if hasFlag(rest, "-t", "--track") {
+				why = gitConfig
+			}
 		case "stash":
 			writes = first != "list" && first != "show"
 		case "remote":
-			writes = len(words) > 0 && first != "show" && first != "get-url"
+			writes, why = len(words) > 0 && first != "show" && first != "get-url", gitConfig
 		case "worktree", "submodule", "notes":
 			// bare, they list
 			writes = first != "" && first != "list" && first != "status" && first != "summary" && first != "show"
+			if sub != "notes" {
+				why = gitConfig
+			}
+		case "gc":
+			// by default it keeps what turned unreachable in the last two weeks
+			if hasFlag(rest, "--prune") {
+				why = gitDrop
+			}
 		case "hash-object":
 			writes = hasFlag(rest, "-w")
 		case "config":
-			writes = len(words) > 1 || hasFlag(rest, "--unset", "--unset-all", "--add", "--replace-all", "--edit", "-e", "--remove-section", "--rename-section")
+			writes, why = len(words) > 1 || hasFlag(rest, "--unset", "--unset-all", "--add", "--replace-all", "--edit", "-e", "--remove-section", "--rename-section"), gitConfig
 		case "reflog":
-			writes = first == "expire" || first == "delete"
+			writes, why = first == "expire" || first == "delete", gitDrop
 		}
-		if writes {
+		switch {
+		case !writes:
+		case !gitDir:
 			return "git " + sub + " writes .git, which stays read-only in the sandbox; allowing runs it unconfined"
+		case why != "":
+			return "git " + sub + " " + why + "; allowing runs it unconfined"
 		}
 	}
 	return ""
