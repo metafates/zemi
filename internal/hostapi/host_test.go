@@ -520,7 +520,7 @@ func TestEmitVetoable(t *testing.T) {
 			return {decision = "deny", reason = "no"}
 		end)
 	`)
-	res := h.EmitVetoable(context.Background(), "composer.submit", nil, lua.VetoDeadline)
+	res := h.EmitVetoable(context.Background(), "composer.submit", nil)
 	if !res.Denied || !res.Handled {
 		t.Fatalf("veto result = %+v, want Denied/Handled", res)
 	}
@@ -535,7 +535,7 @@ func TestEmitVetoable(t *testing.T) {
 		zemi.event.on("tool.pre", function(ev) while true do end end)
 	`)
 	start := time.Now()
-	res2 := h.EmitVetoable(context.Background(), "tool.pre", nil, lua.VetoDeadline)
+	res2 := h.EmitVetoable(context.Background(), "tool.pre", nil)
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Fatalf("veto deadline not honored: %s", elapsed)
 	}

@@ -986,7 +986,7 @@ func (h *Host) reasoningShown() bool {
 func (h *Host) emitSync(L *glua.LState, handlers []*EventHandler, name string, payload map[string]any, from string) {
 	ev := eventTable(name, from, payload)
 	for _, hd := range handlers {
-		if _, _, err := h.callEvent(L, hd, ev, lua.VetoDeadline); err != nil {
+		if _, _, err := h.callEvent(L, hd, ev); err != nil {
 			h.logHandlerError(hd, err)
 		}
 	}
@@ -1031,11 +1031,11 @@ type VetoResult struct {
 // by the veto deadline (armed at handler start); a timed-out handler
 // contributes nothing and the aggregated decision or the default wins
 // (DESIGN §4, §6.2).
-func (h *Host) EmitVetoable(ctx context.Context, name string, payload map[string]any, deadline time.Duration) VetoResult {
-	return h.emitVetoable(ctx, name, h.Events.Handlers(name), payload, deadline)
+func (h *Host) EmitVetoable(ctx context.Context, name string, payload map[string]any) VetoResult {
+	return h.emitVetoable(ctx, name, h.Events.Handlers(name), payload)
 }
 
-func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventHandler, payload map[string]any, deadline time.Duration) VetoResult {
+func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventHandler, payload map[string]any) VetoResult {
 	h.recordEvent(name, "host", payload)
 	if len(handlers) == 0 {
 		return VetoResult{}
@@ -1047,10 +1047,10 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 	}
 	outcomes := make([]outcome, len(handlers))
 	ev := eventTable(name, "host", payload)
-	_, err := h.RT.Do(ctx, lua.ClassUI, time.Duration(len(handlers))*deadline+2*time.Second, 0,
+	_, err := h.RT.Do(ctx, lua.ClassUI, time.Duration(len(handlers))*lua.VetoDeadline+2*time.Second, 0,
 		func(L *glua.LState) ([]any, error) {
 			for i, hd := range handlers {
-				ret, timedOut, err := h.callEvent(L, hd, ev, deadline)
+				ret, timedOut, err := h.callEvent(L, hd, ev)
 				switch {
 				case timedOut:
 					outcomes[i].timed = true
@@ -1109,9 +1109,9 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 // restore the enclosing request context instead of removing it: the outer
 // mainLoopWithContext would otherwise dereference a nil ctx on its next
 // instruction.
-func setHandlerContext(L *glua.LState, deadline time.Duration) (context.Context, context.CancelFunc) {
+func setHandlerContext(L *glua.LState) (context.Context, context.CancelFunc) {
 	prev := L.Context()
-	handlerCtx, cancel := context.WithTimeout(context.Background(), deadline)
+	handlerCtx, cancel := context.WithTimeout(context.Background(), lua.VetoDeadline)
 	L.SetContext(handlerCtx)
 	return handlerCtx, func() {
 		if prev != nil {
@@ -1137,12 +1137,12 @@ func eventTable(name, from string, payload map[string]any) map[string]any {
 // callEvent runs one handler fn(ev) under its origin with the deadline armed
 // at start and returns its first result. A handler that ran past the
 // deadline reports timedOut and no result, even if it returned.
-func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any, deadline time.Duration) (ret glua.LValue, timedOut bool, err error) {
+func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any) (ret glua.LValue, timedOut bool, err error) {
 	if hd.Once && !h.Events.drop(hd) {
 		return glua.LNil, false, nil
 	}
 	defer h.RT.PushFrame(L, hd.Origin, hd.Path)()
-	handlerCtx, restore := setHandlerContext(L, deadline)
+	handlerCtx, restore := setHandlerContext(L)
 	defer restore()
 	base := L.GetTop()
 	defer L.SetTop(base)

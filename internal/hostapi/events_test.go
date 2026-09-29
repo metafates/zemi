@@ -187,7 +187,7 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 	if err := r.ExecuteChunk(context.Background(), `zemi.event.on("app.quit", function() return { decision = "deny" } end)`, "p.lua", lua.OriginProject); err != nil {
 		t.Fatal(err)
 	}
-	if res := h.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
+	if res := h.EmitVetoable(context.Background(), "app.quit", map[string]any{}); res.Denied {
 		t.Errorf("project app.quit deny = %+v, want ignored", res)
 	}
 }
@@ -259,7 +259,7 @@ func TestVetoShape(t *testing.T) {
 	runUser(t, r, `
 		zemi.event.on("permission.request", function() return { decision = "deny", reason = "nope" } end)
 		zemi.event.on("tool.pre", function() return { decision = "halt", reason = "stop" } end)`)
-	if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}, lua.VetoDeadline); !res.Denied || res.Reason != "nope" {
+	if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}); !res.Denied || res.Reason != "nope" {
 		t.Errorf("permission.request = %+v, want denied with reason nope", res)
 	}
 	if d, reason, _, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"}); d != "halt" || reason != "stop" {
@@ -278,10 +278,10 @@ func TestVetoBadShapeFailsClosed(t *testing.T) {
 				zemi.event.on("permission.request", function() return `+ret+` end)
 				zemi.event.on("app.quit", function() return `+ret+` end)
 				zemi.event.on("tool.pre", function() return `+ret+` end)`)
-			if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}, lua.VetoDeadline); !res.Denied {
+			if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}); !res.Denied {
 				t.Errorf("permission.request = %+v, want denied", res)
 			}
-			if res := h.EmitVetoable(t.Context(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
+			if res := h.EmitVetoable(t.Context(), "app.quit", map[string]any{}); res.Denied {
 				t.Errorf("app.quit = %+v, want proceed", res)
 			}
 			if d, _, _, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"}); d != "deny" {
@@ -305,10 +305,10 @@ func TestHotRuntimeVetoesFailClosed(t *testing.T) {
 	}); !r.IsHot() {
 		t.Fatalf("runtime not hot: %v", err)
 	}
-	if res := h.EmitVetoable(context.Background(), "permission.request", map[string]any{}, lua.VetoDeadline); !res.Denied {
+	if res := h.EmitVetoable(context.Background(), "permission.request", map[string]any{}); !res.Denied {
 		t.Errorf("permission.request while hot = %+v, want denied", res)
 	}
-	if res := h.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
+	if res := h.EmitVetoable(context.Background(), "app.quit", map[string]any{}); res.Denied {
 		t.Errorf("app.quit while hot = %+v, want proceed", res)
 	}
 	if d, _, _, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"}); d != "deny" {

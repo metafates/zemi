@@ -212,7 +212,7 @@ func (h *Host) assembleSections() string {
 
 func (h *Host) callAssembleHandler(L *glua.LState, hd *EventHandler) (title, text string) {
 	ev := map[string]any{"name": "agent.assemble", "from": "host", "cwd": h.Dirs.ProjectDir}
-	ret, timedOut, err := h.callEvent(L, hd, ev, lua.VetoDeadline)
+	ret, timedOut, err := h.callEvent(L, hd, ev)
 	switch {
 	case timedOut:
 		h.Log.Warn("agent.assemble handler timed out", "origin", "events", "id", hd.ID, "from", string(hd.Origin))

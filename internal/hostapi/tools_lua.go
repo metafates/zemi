@@ -477,7 +477,7 @@ func (h *Host) toolPre(name string, input map[string]any, handlers []*EventHandl
 // callToolPre runs one pre handler and parses the decision table.
 func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input map[string]any) (decision tools.PreVerdict, reason string, rewritten map[string]any) {
 	ev := map[string]any{"name": "tool.pre", "from": "host", "tool": tool, "input": input}
-	ret, _, err := h.callEvent(L, hd, ev, lua.VetoDeadline)
+	ret, _, err := h.callEvent(L, hd, ev)
 	if err != nil {
 		h.logHandlerError(hd, err) // proceed is the tool.pre default (DESIGN §4)
 		return "", "", nil

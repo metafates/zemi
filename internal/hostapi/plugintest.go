@@ -663,7 +663,7 @@ func (t *PluginTest) emit(L *glua.LState) int {
 			d, reason, rewritten, _ := t.h.toolPre(tool, input, hs)
 			return veto(string(d), reason, rewritten), nil
 		case "permission.request", "app.quit", "composer.submit":
-			if res := t.h.emitVetoable(ctx, name, hs, ev, lua.VetoDeadline); res.Denied {
+			if res := t.h.emitVetoable(ctx, name, hs, ev); res.Denied {
 				return veto("deny", res.Reason, nil), nil
 			}
 			return veto("", "", nil), nil

@@ -8,7 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/lua"
 )
 
 // cmdPalette is the composer's slash-command popup (DESIGN §6.6): enter runs
@@ -224,7 +223,7 @@ func (a *App) runSlashCommand(text string) {
 // sendMessage runs the composer.submit vetoable event, then appends the
 // message to the transcript and drives the agent.
 func (a *App) sendMessage(text string) {
-	res := a.host.EmitVetoable(context.Background(), "composer.submit", map[string]any{"text": text}, lua.VetoDeadline)
+	res := a.host.EmitVetoable(context.Background(), "composer.submit", map[string]any{"text": text})
 	if res.Denied {
 		a.pushToast(slog.LevelWarn, "Message blocked", res.Reason)
 		return

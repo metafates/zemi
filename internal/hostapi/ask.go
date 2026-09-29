@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
@@ -63,8 +62,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		// would see the ask twice
 		if !held {
 			res = h.EmitVetoable(context.Background(), "permission.request",
-				map[string]any{"subject": req.Subject, "arg": req.Arg, "reason": req.Reason, "agent": req.Agent},
-				lua.VetoDeadline)
+				map[string]any{"subject": req.Subject, "arg": req.Arg, "reason": req.Reason, "agent": req.Agent})
 		}
 		def = h.permModeDef()
 	})
