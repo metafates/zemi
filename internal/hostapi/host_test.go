@@ -92,83 +92,16 @@ func waitFor(t *testing.T, cond func() error) {
 	}
 }
 
-// TestNamespaceVersion pins the frozen API surface: the zemi root and the
-// boot-installed namespaces resolve from user chunks, and zemi.api reports
-// the pinned version.
+// TestNamespaceVersion pins zemi.api's version and keeps zemi.test to a
+// plugin test boot; TestTypesCoverAPI and TestTypesDeclareNothingExtra pin
+// every member.
 func TestNamespaceVersion(t *testing.T) {
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(type(zemi) == "table", "zemi root missing")
-		assert(type(zemi.api) == "table", "zemi.api missing")
 		assert(zemi.api.version == "0.107.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugins test")
-		assert(type(zemi.event.log) == "function", "zemi.event.log missing")
-		assert(type(zemi.event.stats) == "function", "zemi.event.stats missing")
-		assert(type(zemi.notify.list) == "function", "zemi.notify.list missing")
-		assert(type(zemi.health.add) == "function" and type(zemi.health.list) == "function", "zemi.health missing")
-		assert(type(zemi.errors.list) == "function", "zemi.errors.list missing")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
-		assert(zemi.provider.kind.OPENAI_COMPAT == "openai_compat" and zemi.provider.kind.ANTHROPIC == "anthropic" and zemi.provider.kind.OPENAI == "openai" and zemi.provider.kind.GOOGLE == "google" and zemi.provider.kind.OPENROUTER == "openrouter" and zemi.provider.kind.VERCEL == "vercel", "zemi.provider.kind missing")
-		assert(zemi.permission.decision.ALLOW == "allow" and zemi.memory.scope.PROJECT == "project" and zemi.model.role.TITLES == "titles" and zemi.notify.level.WARN == "warn" and zemi.model.effort.HIGH == "high", "an enum table is missing")
-		for _, fn in ipairs({ "add", "del", "set", "get", "list" }) do
-			assert(type(zemi.permission.mode[fn]) == "function", "zemi.permission.mode." .. fn .. " missing")
-		end
-		assert(type(zemi.config.get) == "function", "zemi.config.get missing")
-		assert(type(zemi.config.add) == "function", "zemi.config.add missing")
-		assert(type(zemi.config.set) == "function", "zemi.config.set missing")
-		for _, fn in ipairs({ "set", "del", "get", "list" }) do
-			assert(type(zemi.keymap[fn]) == "function", "zemi.keymap." .. fn .. " missing")
-		end
-		assert(type(zemi.command.add) == "function", "zemi.command.add missing")
-		assert(type(zemi.event.emit) == "function", "zemi.event.emit missing")
-		assert(type(zemi.log) == "table" and type(zemi.log.list) == "function", "zemi.log missing")
-		assert(type(zemi.notify) == "table", "zemi.notify missing")
-		for _, fn in ipairs({ "add", "set", "get", "list" }) do
-			assert(type(zemi.ui.theme[fn]) == "function", "zemi.ui.theme." .. fn .. " missing")
-		end
-		assert(type(zemi.ui.markdown) == "function" and type(zemi.ui.wrap) == "function" and type(zemi.ui.highlight) == "function", "zemi.ui.markdown, wrap or highlight missing")
-		assert(zemi.ui.width("日本") == 4, "zemi.ui.width missing or not in cells")
-		assert(type(zemi.ui.select) == "function", "zemi.ui.select missing")
-		assert(type(zemi.ui.input) == "function", "zemi.ui.input missing")
-		assert(type(zemi.ui.hl.set) == "function", "zemi.ui.hl.set missing")
-		assert(type(zemi.ui.redraw) == "function" and type(zemi.ui.title) == "function", "zemi.ui.redraw or title missing")
-		assert(type(zemi.ui.hl.get) == "function" and type(zemi.ui.widget.del) == "function", "zemi.ui.hl.get or widget.del missing")
-		assert(type(zemi.ui.reasoning.toggle) == "function", "zemi.ui.reasoning.toggle missing")
-		for _, fn in ipairs({ "set", "get", "rects" }) do
-			assert(type(zemi.ui.layout[fn]) == "function", "zemi.ui.layout." .. fn .. " missing")
-		end
-		for _, fn in ipairs({ "set", "get", "next", "prev" }) do
-			assert(type(zemi.ui.focus[fn]) == "function", "zemi.ui.focus." .. fn .. " missing")
-		end
-		assert(type(zemi.skills.list) == "function", "zemi.skills.list missing")
-		assert(type(zemi.skills.enable) == "function", "zemi.skills.enable missing")
-		assert(type(zemi.skills.disable) == "function", "zemi.skills.disable missing")
-		assert(type(zemi.learn.list) == "function", "zemi.learn.list missing")
-		assert(type(zemi.learn.decide) == "function", "zemi.learn.decide missing")
-		for _, fn in ipairs({ "encode", "decode" }) do
-			assert(type(zemi.json[fn]) == "function", "zemi.json." .. fn .. " missing")
-		end
-		for _, fn in ipairs({ "get", "set", "insert", "submit", "history_prev", "history_next", "paste", "edit", "complete" }) do
-			assert(type(zemi.composer[fn]) == "function", "zemi.composer." .. fn .. " missing")
-		end
-		assert(type(zemi.event.off) == "function", "zemi.event.off missing")
-		assert(type(zemi.http.request) == "function", "zemi.http.request missing")
-		for _, fn in ipairs({ "del", "run" }) do
-			assert(type(zemi.command[fn]) == "function", "zemi.command." .. fn .. " missing")
-		end
-		for _, fn in ipairs({ "list", "stat", "exists", "mkdir", "remove" }) do
-			assert(type(zemi.fs[fn]) == "function", "zemi.fs." .. fn .. " missing")
-		end
-		assert(type(zemi.mcp.add) == "function" and type(zemi.mcp.list) == "function", "zemi.mcp missing")
-		assert(type(zemi.lsp.add) == "function" and type(zemi.lsp.list) == "function" and type(zemi.lsp.del) == "function", "zemi.lsp missing")
-		for _, fn in ipairs({ "list", "new", "resume", "todos", "rewind" }) do
-			assert(type(zemi.session[fn]) == "function", "zemi.session." .. fn .. " missing")
-		end
-		assert(type(zemi.agent.prompt) == "function", "zemi.agent.prompt missing")
-		for _, fn in ipairs({ "run", "list" }) do
-			assert(type(zemi.agent[fn]) == "function", "zemi.agent." .. fn .. " missing")
-			assert(type(zemi.workflow[fn]) == "function", "zemi.workflow." .. fn .. " missing")
-		end
+		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")
 	`)
 }
 
