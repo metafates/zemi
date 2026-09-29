@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -17,7 +18,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // DB is one SQLite database handle. All methods are safe for concurrent
@@ -88,6 +90,58 @@ func OpenRead(path string) (*DB, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// ErrInUse is a store another connection holds open: another zemi.
+var ErrInUse = errors.New("store: open in another process")
+
+// ClaimForDelete takes a store no other zemi has open, for deleting its
+// files, and returns every session id in it, subagent runs too. Leaving WAL
+// needs every other connection gone, so another zemi's idle one fails it at
+// once (ErrInUse); the exclusive lock holds until release, which runs after
+// the files are gone. A missing file is no ids and a no-op release.
+// NOTE: a zemi started there while the files go waits on the lock, then
+// writes to the unlinked file and loses it; two windows racing on purpose.
+func ClaimForDelete(path string) (sessions []string, release func(), err error) {
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		return nil, func() {}, nil
+	}
+	uri := url.URL{Scheme: "file", Path: path, RawQuery: "_pragma=busy_timeout(0)&_pragma=locking_mode(EXCLUSIVE)"}
+	d, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		return nil, nil, fmt.Errorf("store: open %s: %w", path, err)
+	}
+	d.SetMaxOpenConns(1)
+	fail := func(err error) ([]string, func(), error) {
+		d.Close()
+		if e, ok := errors.AsType[*sqlite.Error](err); ok && e.Code()&0xff == sqlite3.SQLITE_BUSY {
+			return nil, nil, ErrInUse
+		}
+		return nil, nil, fmt.Errorf("store: claim %s: %w", path, err)
+	}
+	// the one connection keeps the lock between these, since it is the pool's only one
+	if _, err := d.Exec(`PRAGMA journal_mode = DELETE`); err != nil {
+		return fail(err)
+	}
+	if _, err := d.Exec(`BEGIN EXCLUSIVE`); err != nil {
+		return fail(err)
+	}
+	rows, err := d.Query(`SELECT id FROM sessions`)
+	if sessions, err = collect(rows, err, func(r scanner) (id string, err error) { return id, r.Scan(&id) }); err != nil {
+		return fail(err)
+	}
+	return sessions, func() {
+		_, _ = d.Exec(`ROLLBACK`)
+		d.Close()
+	}, nil
+}
+
+// Counts is how many top-level sessions and live memories the store holds.
+func (s *DB) Counts() (sessions, memories int, err error) {
+	err = s.db.QueryRow(`SELECT
+		(SELECT count(*) FROM sessions WHERE COALESCE(parent_id, '') = ''),
+		(SELECT count(*) FROM memory WHERE superseded_by IS NULL)`).Scan(&sessions, &memories)
+	return sessions, memories, err
 }
 
 func (s *DB) checkVersion(version int) error {

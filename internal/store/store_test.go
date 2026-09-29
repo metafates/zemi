@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -547,6 +548,68 @@ func TestProjectRoot(t *testing.T) {
 			got, opened, ok := ProjectRoot(dir)
 			if !ok || got != root || !opened.After(hour.Add(time.Minute)) {
 				t.Fatalf("after the open: %q %v %v", got, opened, ok)
+			}
+		})
+	}
+}
+
+// TestClaimForDelete: a store nobody else holds is claimed with every
+// session id and out of WAL, one another handle holds open is ErrInUse and
+// that handle keeps working, and a missing one claims nothing.
+func TestClaimForDelete(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		missing bool
+		held    bool
+		want    []string
+		err     error
+	}{
+		{name: "a free store", want: []string{"a", "b", "child"}},
+		{name: "a store open elsewhere", held: true, err: ErrInUse},
+		{name: "a missing store", missing: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "zemi.db")
+			var db *DB
+			if !c.missing {
+				var err error
+				db, err = Open(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, s := range []struct{ id, parent string }{{"a", ""}, {"b", ""}, {"child", "a"}} {
+					if err := db.CreateSession(s.id, s.parent, s.id, ""); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if n, _, err := db.Counts(); err != nil || n != 2 {
+					t.Fatalf("Counts = %d, %v; want the 2 top-level sessions", n, err)
+				}
+				if c.held {
+					defer db.Close()
+				} else {
+					db.Close()
+				}
+			}
+			ids, release, err := ClaimForDelete(path)
+			if !errors.Is(err, c.err) {
+				t.Fatalf("err = %v, want %v", err, c.err)
+			}
+			if c.held {
+				if err := db.CreateSession("c", "", "c", ""); err != nil {
+					t.Fatalf("the holder broke: %v", err)
+				}
+			}
+			if err != nil {
+				return
+			}
+			defer release()
+			slices.Sort(ids)
+			if !slices.Equal(ids, c.want) {
+				t.Fatalf("ids = %v, want %v", ids, c.want)
+			}
+			if _, err := os.Stat(path + "-wal"); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("the claim left a -wal file: %v", err)
 			}
 		})
 	}
