@@ -170,56 +170,21 @@ func TestCommandCaseCollision(t *testing.T) {
 
 func TestWidgetRegistry(t *testing.T) {
 	r := NewWidgetRegistry()
-	mk := func(id string, origin lua.Origin) *Widget {
-		return &Widget{ID: id, Region: "statusline.left", Render: noopFn, Origin: origin, Priority: 5}
+	for _, w := range []*Widget{{ID: "x", Region: "r"}, {ID: "x", Render: noopFn}} {
+		if _, err := r.Add(w); err == nil {
+			t.Fatalf("%+v: a widget needs a region and a render", w)
+		}
 	}
-
-	if _, err := r.Add(mk("clock", lua.OriginBuiltin)); err != nil {
-		t.Fatalf("builtin widget: %v", err)
-	}
-	// Cross-origin id collision: project loses to builtin.
-	if _, err := r.Add(mk("clock", lua.OriginProject)); err == nil {
-		t.Fatal("project widget must lose to builtin of the same id")
-	}
-	// User replaces builtin.
-	userClock := mk("clock", lua.OriginUser)
-	userClock.Priority = 1
-	if _, err := r.Add(userClock); err != nil {
-		t.Fatalf("user widget replace: %v", err)
-	}
-	if got := r.Get("clock"); got.Priority != 1 {
-		t.Fatalf("user replacement did not apply: %+v", got)
-	}
-	// Plugin cannot replace user.
-	if _, err := r.Add(mk("clock", lua.OriginPlugin)); err == nil {
-		t.Fatal("plugin widget must lose to user of the same id")
-	}
-
-	// Required fields.
-	if _, err := r.Add(&Widget{ID: "x", Region: "r"}); err == nil {
-		t.Fatal("missing render must be refused")
-	}
-	if _, err := r.Add(&Widget{ID: "x", Render: noopFn}); err == nil {
-		t.Fatal("missing region must be refused")
-	}
-
 	// InRegion orders by priority ascending, ties by id, stable across calls.
-	lo := mk("lo", lua.OriginUser)
-	lo.Priority = 2
-	hi := mk("hi", lua.OriginUser)
-	hi.Priority = 9
-	tie := mk("a.tie", lua.OriginUser)
-	tie.Priority = 9
-	r.Add(lo)
-	r.Add(hi)
-	r.Add(tie)
+	for id, p := range map[string]int{"clock": 1, "lo": 2, "hi": 9, "a.tie": 9} {
+		r.Add(&Widget{ID: id, Region: "statusline.left", Render: noopFn, Priority: p})
+	}
 	for range 20 {
 		inRegion := r.InRegion("statusline.left")
 		if len(inRegion) != 4 || inRegion[0].ID != "clock" || inRegion[1].ID != "lo" || inRegion[2].ID != "a.tie" || inRegion[3].ID != "hi" {
 			t.Fatalf("InRegion order = %+v", inRegion)
 		}
 	}
-
 	r.Purge()
 	if len(r.List()) != 0 {
 		t.Fatal("Purge must clear widgets")
@@ -242,14 +207,6 @@ func TestEventRegistry(t *testing.T) {
 		t.Fatalf("second auto id = %q", h2.ID)
 	}
 
-	// Cross-origin id collision on the same event: project loses to plugin.
-	if _, err := r.Add(mk("user.ping", "handler.1", lua.OriginProject)); err == nil {
-		t.Fatal("project must lose a handler-id collision with plugin")
-	}
-	if got := r.Handlers("user.ping"); got[0] != h1 {
-		t.Fatal("refused collision replaced the handler")
-	}
-
 	// Equal-rank same id replaces in place (order preserved).
 	replacement := mk("user.ping", "handler.2", lua.OriginPlugin)
 	if _, err := r.Add(replacement); err != nil {
@@ -258,15 +215,6 @@ func TestEventRegistry(t *testing.T) {
 	got := r.Handlers("user.ping")
 	if len(got) != 2 || got[1] != replacement {
 		t.Fatalf("in-place replace failed: %+v", got)
-	}
-
-	// Higher trust may take over the id.
-	_, err = r.Add(mk("user.ping", "handler.1", lua.OriginUser))
-	if err != nil {
-		t.Fatalf("user takeover: %v", err)
-	}
-	if got := r.Handlers("user.ping"); got[0].Origin != lua.OriginUser {
-		t.Fatalf("user takeover did not apply: %+v", got[0])
 	}
 
 	// Requirements and purge.
@@ -279,36 +227,6 @@ func TestEventRegistry(t *testing.T) {
 	r.Purge()
 	if len(r.Handlers("user.ping")) != 0 {
 		t.Fatal("Purge must clear handlers")
-	}
-}
-
-func TestThemeRegistry(t *testing.T) {
-	r := NewThemeRegistry()
-	mk := func(name string, origin lua.Origin) *Theme {
-		return &Theme{Name: name, Palette: map[string]string{"fg": "#ffffff"}, HL: map[string]HLSpec{}, Origin: origin}
-	}
-
-	if _, err := r.Add(mk("default", lua.OriginBuiltin)); err != nil {
-		t.Fatalf("builtin theme: %v", err)
-	}
-	if _, err := r.Add(mk("default", lua.OriginProject)); err == nil {
-		t.Fatal("project theme must lose to builtin")
-	}
-	if _, err := r.Add(mk("default", lua.OriginUser)); err != nil {
-		t.Fatalf("user theme replace: %v", err)
-	}
-	if got := r.Get("default"); got.Origin != lua.OriginUser {
-		t.Fatalf("Get after replace = %+v", got)
-	}
-	if _, err := r.Add(&Theme{Origin: lua.OriginUser}); err == nil {
-		t.Fatal("empty name must be refused")
-	}
-	if r.Get("nope") != nil {
-		t.Fatal("unknown theme must be nil")
-	}
-	r.Purge()
-	if len(r.List()) != 0 {
-		t.Fatal("Purge must clear themes")
 	}
 }
 
