@@ -822,7 +822,8 @@ func (h *Host) continueGoal(next *turnScope, g *Goal) (*turnScope, string) {
 	case stopped != nil:
 		note = ""
 	case len(ag.steering) > 0:
-		note, ag.steering, ag.goalRuns = joinQueue(ag.steering), nil, 0
+		note, ag.steering = joinQueue(ag.steering), nil
+		ag.goalRuns, ag.byLoop = 0, false
 	case note != "":
 		ag.goalRuns++
 	}
