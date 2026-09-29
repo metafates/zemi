@@ -177,8 +177,8 @@ func TestTurnStreamsAndPersists(t *testing.T) {
 	var persisted []string
 	r := NewRunner(m, nil, "sys")
 	r.Hooks = hooks
-	r.Persist = func(role string, msg fantasy.Message) error {
-		persisted = append(persisted, role)
+	r.Persist = func(msg fantasy.Message) error {
+		persisted = append(persisted, string(msg.Role))
 		return nil
 	}
 	if err := r.Send(context.Background(), "hi"); err != nil {
@@ -223,8 +223,8 @@ func TestSteerJoinsAtStepBoundary(t *testing.T) {
 	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
 	r.Hooks = newRecHooks()
 	var roles []string
-	r.Persist = func(role string, _ fantasy.Message) error {
-		roles = append(roles, role)
+	r.Persist = func(msg fantasy.Message) error {
+		roles = append(roles, string(msg.Role))
 		return nil
 	}
 	polls := 0
@@ -290,8 +290,8 @@ func TestFailedTurnKeepsCompletedSteps(t *testing.T) {
 	hooks := newRecHooks()
 	r.Hooks = hooks
 	var roles []string
-	r.Persist = func(role string, _ fantasy.Message) error {
-		roles = append(roles, role)
+	r.Persist = func(msg fantasy.Message) error {
+		roles = append(roles, string(msg.Role))
 		return nil
 	}
 	polls := 0
@@ -464,8 +464,8 @@ func TestFullCutsAtStepBoundary(t *testing.T) {
 	var used []int64
 	r.Full = func(n int64) bool { used = append(used, n); return n >= 100 }
 	var roles []string
-	r.Persist = func(role string, _ fantasy.Message) error {
-		roles = append(roles, role)
+	r.Persist = func(msg fantasy.Message) error {
+		roles = append(roles, string(msg.Role))
 		return nil
 	}
 	for _, c := range []struct {
@@ -734,7 +734,7 @@ func TestOpenAIResponses(t *testing.T) {
 		for _, text := range []string{"hi", "again"} {
 			r := NewRunner(rec, nil, "sys")
 			r.History, r.Hooks, r.ProviderOptions = history, newRecHooks(), reg.CallOptions(c.model, "", "")
-			r.Persist = func(_ string, msg fantasy.Message) error {
+			r.Persist = func(msg fantasy.Message) error {
 				b, err := json.Marshal(msg)
 				stored = append(stored, string(b))
 				return err

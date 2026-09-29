@@ -552,7 +552,7 @@ func TestSessionNamespace(t *testing.T) {
 	if h.AgentSessionID() == "" {
 		t.Fatal("session id still empty after ensureSession")
 	}
-	if err := h.persistMessage("assistant", fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi there"}}}); err != nil {
+	if err := h.persistMessage(fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi there"}}}); err != nil {
 		t.Fatal(err)
 	}
 	runUser(t, r, `assert(zemi.session.id() ~= "", "session id missing")

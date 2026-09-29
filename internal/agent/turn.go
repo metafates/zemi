@@ -58,21 +58,18 @@ type Step struct {
 	Tools            int // tool calls it made
 }
 
-// PersistFunc receives every message of the turn (user first, then the
-// step messages) as serializable fantasy messages; role is the message
-// role.
-type PersistFunc func(role string, msg fantasy.Message) error
-
 // Runner runs one conversation: history in, streaming turns out. Send is
 // safe for one concurrent turn; a second Send while one runs returns
 // ErrTurnActive (mid-turn messages go through Steer instead, DESIGN §4).
 type Runner struct {
-	mu          sync.Mutex
-	agent       fantasy.Agent
-	last        *LastErr
-	History     []fantasy.Message
-	Hooks       StreamHooks
-	Persist     PersistFunc
+	mu      sync.Mutex
+	agent   fantasy.Agent
+	last    *LastErr
+	History []fantasy.Message
+	Hooks   StreamHooks
+	// Persist receives every message of the turn, user first, then the
+	// step messages, as each happens
+	Persist     func(msg fantasy.Message) error
 	Temperature *float64
 
 	// MaxOutputTokens caps each reply; 0 leaves the provider default.
@@ -276,7 +273,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	if userText != "" {
 		msg := r.compose(userText)
 		if persist != nil {
-			if err := persist(string(msg.Role), msg); err != nil {
+			if err := persist(msg); err != nil {
 				hooks.TurnDone(err, fantasy.Usage{})
 				return err
 			}
@@ -401,7 +398,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	save := func(msgs ...fantasy.Message) {
 		for _, m := range msgs {
 			if persist != nil && persistErr == nil {
-				persistErr = persist(string(m.Role), m)
+				persistErr = persist(m)
 			}
 		}
 	}

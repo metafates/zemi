@@ -335,12 +335,12 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid, ctx: ctx, base: base}
 	runner.Hooks = hooks
 	if sid != "" {
-		runner.Persist = func(role string, msg fantasy.Message) error {
+		runner.Persist = func(msg fantasy.Message) error {
 			parts, err := json.Marshal(msg)
 			if err != nil {
 				return err
 			}
-			return h.DB.AddMessage(&store.Message{SessionID: sid, Role: role, PartsJSON: string(parts)})
+			return h.DB.AddMessage(&store.Message{SessionID: sid, Role: string(msg.Role), PartsJSON: string(parts)})
 		}
 	}
 	// in the task, not the system prompt, which runs of one agent share

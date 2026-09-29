@@ -1468,7 +1468,7 @@ func errString(err error) string {
 	return err.Error()
 }
 
-func (h *Host) persistMessage(role string, msg fantasy.Message) error {
+func (h *Host) persistMessage(msg fantasy.Message) error {
 	sid := h.AgentSessionID()
 	if h.DB == nil || sid == "" {
 		return nil
@@ -1477,7 +1477,7 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 	if err != nil {
 		return err
 	}
-	row := &store.Message{SessionID: sid, Role: role, PartsJSON: string(parts)}
+	row := &store.Message{SessionID: sid, Role: string(msg.Role), PartsJSON: string(parts)}
 	if err := h.DB.AddMessage(row); err != nil {
 		return err
 	}
@@ -1496,7 +1496,7 @@ func (h *Host) persistMessage(role string, msg fantasy.Message) error {
 			return err
 		}
 	}
-	if role == string(fantasy.MessageRoleUser) {
+	if msg.Role == fantasy.MessageRoleUser {
 		h.agents.mu.Lock()
 		h.agents.turnMsgID = row.ID
 		h.agents.mu.Unlock()

@@ -184,13 +184,13 @@ func TestResumeKeepsToolDiffs(t *testing.T) {
 	h.reflectMu.Lock()
 	defer h.reflectMu.Unlock()
 	sid := seedSession(t, h)
-	if err := h.persistMessage("user", agent.UserMessage("edit it")); err != nil {
+	if err := h.persistMessage(agent.UserMessage("edit it")); err != nil {
 		t.Fatal(err)
 	}
 	call := fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
 		fantasy.ToolCallPart{ToolCallID: "c1", ToolName: "edit", Input: `{"path":"x.go"}`},
 	}}
-	if err := h.persistMessage("assistant", call); err != nil {
+	if err := h.persistMessage(call); err != nil {
 		t.Fatal(err)
 	}
 	h.recordToolCall(sid, StreamTool{ID: "c1", Name: "edit", Diff: "12 +added\n13 -gone"}, true)
@@ -234,7 +234,7 @@ func TestResumeSeedsReads(t *testing.T) {
 		fantasy.ToolCallPart{ToolCallID: "c1", ToolName: "read", Input: `{"path":"` + read + `"}`},
 		fantasy.ToolCallPart{ToolCallID: "c2", ToolName: "edit", Input: `{"path":"` + touched + `"}`},
 	}}
-	if err := h.persistMessage("assistant", call); err != nil {
+	if err := h.persistMessage(call); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.NewSession(); err != nil {
