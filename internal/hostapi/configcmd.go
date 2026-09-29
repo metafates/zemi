@@ -142,7 +142,7 @@ func (h *Host) configItems() []any {
 	for _, s := range h.Settings.Schema() {
 		v, _ := h.Settings.Get(s.Path)
 		source := h.cfgSource(s.Path)
-		desc := fmt.Sprintf("%-8s · %s", source, showSetting(v))
+		desc := fmt.Sprintf("%-8s  %s", source, showSetting(v)) // columns, as a table
 		if s.Kind == config.KindBool {
 			desc = source // the switch in the key column draws the value
 		}
