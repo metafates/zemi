@@ -219,6 +219,8 @@ before `Host.KeepPicks`, which main turns on after the TUI's flags apply, so a f
 and `zemi health` keep none, and never a mode whose base is yolo (never fail open across restarts).
 `NewHost` applies the rows before any Lua (`loadPicks`, each through `Settings.Check`, a yolo
 row left out since user Lua can write kv directly), so init.lua still wins; per user, not per project.
+A plugin key's row waits unchecked in `picked` until `zemi.config.add` registers the key and
+applies it, and `sweepPluginState` drops a deleted or reinstalled plugin's rows.
 
 `/config` (hostapi/configcmd.go) is a `Reload` list of every schema key by section, each
 row's description its `cfgSource` (`init.lua` when the live value is config's last write;
@@ -1002,7 +1004,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   `learn.Similar` refuses a near-duplicate (the user's own text only a word-for-word repeat),
   `origin` (`user` or `learned`) gates autonomy and the replacement guard, no kind.
   `memory.autonomy` is user config only.
-- **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema; only
+- **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema plus
+  the `plugins.<name>.*` keys a plugin registers while it loads (`zemi.config.add`, `Store.Add`;
+  `dropPluginKeys` takes the ones a replay did not register again, and `settingOff` makes a
+  `set` or `watch` of one whose plugin did not load do nothing); only
   user config sets them, and a read of a key outside it panics under `go test`. Providers ship
   none; user config registers them, keys included (`api_key = zemi.env.get("NAME")`;
   `zemi.env.get` reads secret-shaped names for user and builtin origin only). Config fields

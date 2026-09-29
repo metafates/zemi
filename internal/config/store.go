@@ -95,6 +95,33 @@ func (s *Store) defineDefaults() {
 	}
 }
 
+// Add registers a key beside the builtin ones. One registered again with
+// the same kind, default and choices keeps its value and takes the new
+// Desc; a new or changed one starts at its default, and changed says so.
+func (s *Store) Add(def Setting) (changed bool, err error) {
+	if def.Default, err = checkKind(def, def.Default); err != nil {
+		return false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if old, ok := s.schema[def.Path]; ok && old.Kind == def.Kind && old.Default == def.Default && slices.Equal(old.Choices, def.Choices) {
+		old.Desc = def.Desc
+		s.schema[def.Path] = old
+		return false, nil
+	}
+	s.schema[def.Path] = def
+	s.values[def.Path] = def.Default
+	return true, nil
+}
+
+// Del drops a key Add registered, with its value.
+func (s *Store) Del(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.schema, path)
+	delete(s.values, path)
+}
+
 // Schema returns the sorted setting list (for introspection).
 func (s *Store) Schema() []Setting {
 	s.mu.RLock()

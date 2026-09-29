@@ -114,6 +114,7 @@ func TestNamespaceVersion(t *testing.T) {
 			assert(type(zemi.permission.mode[fn]) == "function", "zemi.permission.mode." .. fn .. " missing")
 		end
 		assert(type(zemi.config.get) == "function", "zemi.config.get missing")
+		assert(type(zemi.config.add) == "function", "zemi.config.add missing")
 		assert(type(zemi.config.set) == "function", "zemi.config.set missing")
 		for _, fn in ipairs({ "set", "del", "get", "list" }) do
 			assert(type(zemi.keymap[fn]) == "function", "zemi.keymap." .. fn .. " missing")

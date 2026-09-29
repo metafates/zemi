@@ -4,6 +4,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"reflect"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -231,6 +233,10 @@ func (h *Host) loadPicks() {
 		if err == nil {
 			err = json.Unmarshal([]byte(raw), &v)
 		}
+		if _, known := h.Settings.Get(path); err == nil && !known && strings.HasPrefix(path, "plugins.") {
+			h.picked[path] = v // zemi.config.add checks and applies it
+			continue
+		}
 		if err == nil {
 			v, err = h.Settings.Check(path, v)
 		}
@@ -245,6 +251,96 @@ func (h *Host) loadPicks() {
 			continue
 		}
 		h.picked[path] = v
+	}
+}
+
+var settingKey = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+
+// addSetting is zemi.config.add: a plugin registers its own
+// plugins.<name>.<key> settings while it loads, so the schema changes only
+// with a load. A new or changed key takes its kept pick; one the new spec
+// refuses is forgotten.
+func (h *Host) addSetting(L *glua.LState, spec *glua.LTable) {
+	if h.RT.CurrentOrigin(L) != lua.OriginPlugin {
+		L.RaiseError("zemi.config.add: only a plugin registers settings; user config sets values with zemi.config.set")
+	}
+	if !h.RT.Booting() {
+		L.RaiseError("zemi.config.add: register settings when the plugin loads, from its init.lua")
+	}
+	name := h.PluginOf(h.RT.CurrentPath(L))
+	def := config.Setting{
+		Path: rawString(L, spec, "path"), Kind: config.Kind(rawString(L, spec, "kind")),
+		Desc: listDesc(rawString(L, spec, "desc")), Choices: rawStrings(L, spec, "choices"),
+	}
+	key, ok := strings.CutPrefix(def.Path, "plugins."+name+".")
+	switch {
+	case name == "" || !ok || !settingKey.MatchString(key):
+		L.RaiseError("zemi.config.add: path %q must be plugins.%s.<key>, the key a lowercase letter, then up to 31 lowercase letters, digits and _", def.Path, name)
+	case !slices.Contains(config.Kinds, def.Kind):
+		L.RaiseError("zemi.config.add: kind must be string, int or bool")
+	case def.Choices != nil && def.Kind != config.KindString:
+		L.RaiseError("zemi.config.add: only a string key takes choices")
+	case def.Desc == "":
+		L.RaiseError("zemi.config.add: desc is what /config shows for the key")
+	}
+	def.Default, _ = lua.ToGo(spec.RawGetString("default"))
+	changed, err := h.Settings.Add(def)
+	if err != nil {
+		L.RaiseError("zemi.config.add: default: %v", err)
+	}
+	h.cfgMu.Lock()
+	defer h.cfgMu.Unlock()
+	h.pluginKeys[def.Path] = h.currentGen()
+	pick, picked := h.picked[def.Path]
+	if !changed {
+		return
+	}
+	h.cfgRotate()
+	delete(h.cfgPrev, def.Path) // it starts at its default, so init.lua's write is no replay
+	if !picked {
+		return
+	}
+	v, err := h.Settings.Check(def.Path, pick)
+	if err == nil {
+		_, err = h.Settings.SetQuiet(def.Path, v)
+	}
+	if err != nil {
+		h.Log.Warn("config", "kept pick dropped", map[string]any{"path": def.Path, "error": err.Error()})
+		delete(h.picked, def.Path)
+		_, _ = h.GlobalDB.DelKV("config:" + def.Path)
+		return
+	}
+	h.picked[def.Path] = v
+}
+
+// settingOff reports a plugins.<name>.<key> path the schema lacks whose
+// plugin is off, gone or failed to load, so init.lua's line for it does
+// nothing; for a plugin that loaded it is a typo, which raises.
+func (h *Host) settingOff(path string) bool {
+	rest, ok := strings.CutPrefix(path, "plugins.")
+	if _, known := h.Settings.Get(path); !ok || known {
+		return false
+	}
+	name, _, _ := strings.Cut(rest, ".")
+	if p := h.pluginLoads.Load(); p != nil && slices.ContainsFunc(*p, func(l pluginLoad) bool { return l.name == name && l.err == nil }) {
+		return false
+	}
+	h.Log.Info("config", "setting of a plugin that did not load skipped", map[string]any{"path": path})
+	return true
+}
+
+// dropPluginKeys forgets, after a replay, the settings it did not register
+// again: their plugin is off, gone or stopped registering them.
+func (h *Host) dropPluginKeys() {
+	h.cfgMu.Lock()
+	defer h.cfgMu.Unlock()
+	h.cfgRotate()
+	for path, gen := range h.pluginKeys {
+		if gen != h.currentGen() {
+			h.Settings.Del(path)
+			delete(h.pluginKeys, path)
+			delete(h.cfgNow, path)
+		}
 	}
 }
 
@@ -276,6 +372,11 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
+	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
+		h.addSetting(L, L.CheckTable(1))
+		return 0
+	}))
+
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		path := L.CheckString(1)
 		v, err := lua.ToGo(L.Get(2))
@@ -284,6 +385,9 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		}
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.config.set: only user config may set %q", path)
+		}
+		if h.settingOff(path) {
+			return 0
 		}
 		// the stored form, so a Lua number matches the int it becomes
 		if v, err = h.Settings.Check(path, v); err != nil {
@@ -305,6 +409,9 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("watch", L.NewFunction(func(L *glua.LState) int {
 		path := L.CheckString(1)
 		fn := L.CheckFunction(2)
+		if h.settingOff(path) {
+			return 0
+		}
 		rec := watchRec{
 			gen:    h.currentGen(),
 			path:   path,

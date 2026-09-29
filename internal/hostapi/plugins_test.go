@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -295,6 +296,178 @@ func TestPluginsStep(t *testing.T) {
 					fmt.Fprintf(&out, "health: %s\n", row.detail)
 				}
 			}
+			got := out.String()
+			for _, w := range c.want {
+				if !strings.Contains(got, w) {
+					t.Errorf("missing %q in:\n%s", w, got)
+				}
+			}
+			for _, n := range c.not {
+				if strings.Contains(got, n) {
+					t.Errorf("unexpected %q in:\n%s", n, got)
+				}
+			}
+		})
+	}
+}
+
+// TestPluginSettings: a plugin's zemi.config.add keys layer like the builtin
+// ones (default < saved pick < init.lua < this run) across restarts and
+// reloads, leave with their plugin without breaking init.lua's lines for
+// them, and only the plugin registers its own, while it loads.
+func TestPluginSettings(t *testing.T) {
+	const (
+		key    = "plugins.br.interval"
+		reg    = `zemi.config.add({ path = "plugins.br.interval", kind = "int", default = 30000, desc = "How often the branch is read, in ms." })`
+		regStr = `zemi.config.add({ path = "plugins.br.interval", kind = "string", default = "x", desc = "d" })`
+		off    = "off" // the plugin turned off; "-" deletes it
+	)
+	type phase struct {
+		plugin, user string // local/br/init.lua and the user's init.lua
+		restart      bool   // a new zemi over the same dirs, else a reload
+		pick         any    // a /config write after it
+		after        string // user Lua run after it
+	}
+	for _, c := range []struct {
+		name      string
+		phases    []phase
+		want, not []string
+	}{
+		{
+			name: "a registered key reads its default and lists in schema()", phases: []phase{{plugin: reg, user: `
+				for _, s in ipairs(zemi.config.schema()) do if s.path == "plugins.br.interval" then print(s.desc) end end`}},
+			want: []string{"value 30000 default", "user|how often the branch is read, in ms\n"},
+		},
+		{
+			name:   "init.lua sets it",
+			phases: []phase{{plugin: reg, user: `zemi.config.set("plugins.br.interval", 10000)`}},
+			want:   []string{"value 10000 init.lua"},
+		},
+		{
+			name:   "a runtime pick outlives a restart",
+			phases: []phase{{plugin: reg, pick: 5000}, {plugin: reg, restart: true}},
+			want:   []string{"value 5000 saved", "config:plugins.br.interval\n"},
+		},
+		{
+			name: "a replay with init.lua unchanged keeps the pick",
+			phases: []phase{
+				{plugin: reg, user: `zemi.config.set("plugins.br.interval", 10000)`, pick: 5000},
+				{plugin: reg, user: `zemi.config.set("plugins.br.interval", 10000)`},
+			},
+			want: []string{"value 5000 this run"},
+		},
+		{
+			name:   "a replay after the kind changed drops the pick",
+			phases: []phase{{plugin: reg, pick: 5000}, {plugin: regStr}},
+			want:   []string{"value x default"},
+			not:    []string{"config:plugins.br.interval"},
+		},
+		{
+			name: "a plugin turned off takes its key, skips init.lua's set and watch and keeps the pick",
+			phases: []phase{
+				{plugin: reg, user: `zemi.config.set("plugins.br.interval", 10000)`, pick: 5000},
+				{plugin: off, user: `zemi.config.set("plugins.br.interval", 10000) print("watch", zemi.config.watch("plugins.br.interval", print))`},
+				{plugin: off, user: `zemi.config.set("plugins.br.interval", 10000) print("watch", zemi.config.watch("plugins.br.interval", print))`, restart: true},
+			},
+			want: []string{"user|watch 1\n", "value <nil>", "user|watch\n", "config:plugins.br.interval\n"},
+			not:  []string{"error"},
+		},
+		{
+			name:   "a deleted plugin's picks go",
+			phases: []phase{{plugin: reg, pick: 5000}, {plugin: "-", restart: true}},
+			not:    []string{"config:plugins.br.interval"},
+		},
+		{
+			name:   "a key a loaded plugin did not register raises",
+			phases: []phase{{plugin: reg, user: `print(pcall(zemi.config.set, "plugins.br.intervl", 1))`}},
+			want:   []string{"user|false", "unknown config key: plugins.br.intervl"},
+		},
+		{
+			name: "only a plugin registers, its own keys, while it loads, a default the kind and choices take",
+			phases: []phase{{
+				plugin: `print(pcall(zemi.config.add, { path = "plugins.other.x", kind = "int", default = 1, desc = "d" }))
+					print(pcall(zemi.config.add, { path = "ui.theme", kind = "string", default = "x", desc = "d" }))
+					print(pcall(zemi.config.add, { path = "plugins.br.units", kind = "string", default = "kelvin", choices = { "metric" }, desc = "d" }))
+					print(pcall(zemi.config.add, { path = "plugins.br.n", kind = "int", default = "1", desc = "d" }))
+					zemi.command.add("late", function() print(pcall(zemi.config.add, { path = "plugins.br.late", kind = "int", default = 1, desc = "d" })) end, {})`,
+				user:  `print(pcall(zemi.config.add, { path = "plugins.br.x", kind = "int", default = 1, desc = "d" }))`,
+				after: `zemi.command.run("late")`,
+			}},
+			want: []string{
+				`zemi.config.add: path "plugins.other.x" must be plugins.br.<key>`, `path "ui.theme" must be plugins.br.<key>`,
+				"plugins.br.units expects metric", "plugins.br.n expects int",
+				"zemi.config.add: only a plugin registers settings",
+				"zemi.config.add: register settings when the plugin loads",
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			tmp, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			dirs := config.Dirs{ProjectDir: filepath.Join(tmp, "proj"), ConfigHome: filepath.Join(tmp, "cfg"), DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
+			write := func(p, src string) {
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var out strings.Builder
+			var h *Host
+			var steps []lua.BootStep
+			for _, p := range c.phases {
+				disabled := filepath.Join(dirs.PluginsRoot(), "disabled")
+				switch p.plugin {
+				case "-":
+					_ = os.RemoveAll(filepath.Join(dirs.PluginsRoot(), "local", "br"))
+				case off:
+					write(disabled, "br\n")
+				default:
+					_ = os.Remove(disabled)
+					write(filepath.Join(dirs.PluginsRoot(), "local", "br", "init.lua"), p.plugin)
+				}
+				write(filepath.Join(dirs.ConfigHome, "init.lua"), p.user)
+				if h == nil || p.restart {
+					if h != nil {
+						h.Close()
+					}
+					log := logging.New(t.TempDir())
+					r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{
+						{Prefix: dirs.ConfigHome, Origin: lua.OriginUser},
+						{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
+					}})
+					r.SetPrintHook(func(origin, line string) { fmt.Fprintf(&out, "%s|%s\n", origin, line) })
+					h = NewHost(r, log, config.NewStore(), dirs)
+					t.Cleanup(h.Close)
+					steps = []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(), h.PluginsStep(), lua.LoadFileStep("init", filepath.Join(dirs.ConfigHome, "init.lua"), lua.OriginUser)}
+					if err := r.Boot(context.Background(), steps); err != nil {
+						t.Fatal(err)
+					}
+					h.KeepPicks.Store(true)
+				} else if err := h.ForceReload(context.Background(), steps); err != nil {
+					t.Fatal(err)
+				}
+				if p.pick != nil {
+					if err := h.SetConfig(key, p.pick); err != nil {
+						t.Fatal(err)
+					}
+				}
+				runUser(t, h.RT, p.after)
+			}
+			v, _ := h.Settings.Get(key)
+			fmt.Fprintf(&out, "value %v %s\n", cmp.Or(fmt.Sprint(v), "<nil>"), h.cfgSource(key))
+			keys, _ := h.GlobalDB.KeysKV("config:")
+			for _, k := range keys {
+				fmt.Fprintf(&out, "%s\n", k)
+			}
+			h.errs.mu.Lock()
+			for _, e := range h.errs.entries {
+				fmt.Fprintf(&out, "error: %s: %s\n", e.source, e.msg)
+			}
+			h.errs.mu.Unlock()
 			got := out.String()
 			for _, w := range c.want {
 				if !strings.Contains(got, w) {

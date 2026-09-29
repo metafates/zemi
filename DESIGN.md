@@ -637,7 +637,8 @@ in which milestone.
   returns `nil, err` when the caller's origin may not run the command.
 - **One verb per job**: `add` registers (`zemi.command`, `zemi.tool`,
   `zemi.provider`, `zemi.health`, `zemi.mcp`, `zemi.lsp`, `zemi.ui.widget`,
-  `zemi.ui.theme`, `zemi.permission.rule`, `zemi.permission.mode`), `set`
+  `zemi.ui.theme`, `zemi.permission.rule`, `zemi.permission.mode`,
+  `zemi.config`), `set`
   writes a value, `get` and `list` read back, `del` removes and reports
   whether it did. A new call takes the verb its shape already has, so the
   surface stays guessable without the type annotations open.
@@ -695,6 +696,21 @@ mode whose base is yolo: a flip made for one task must not start every later
 zemi, in any repository, allowing what the rules do not deny. zemi never edits
 init.lua; `/config lua` shows the settings as lines to copy, and the agent edits
 config files through the permission-gated file tools. zemi makes no commits.
+
+A plugin's options are settings of its own: `zemi.config.add` registers
+`plugins.<name>.<key>` keys (a string, an int, a bool, or one of a list) with
+their defaults, from the plugin's init.lua while it loads, and only under its
+own name. They are schema rows like the builtin ones, so `/config` lists them
+under Plugins and every layer above applies unchanged; a kept pick waits in
+the store until its key registers (checked then, forgotten when the new spec
+refuses it). A replay that registers a key again with the same spec keeps its
+value; a key the replay did not register (the plugin is off, gone, or stopped
+registering it) leaves after it. A `set` or `watch` of a key its plugin did
+not register raises as a typo when the plugin loaded and does nothing when it
+is off or failed, so turning a plugin off never breaks init.lua, and a
+deleted or reinstalled plugin's picks go with its `zemi.state`. A plugin
+reads its settings and never writes them (its write would be kept as the
+user's pick), and a secret never goes in one: /config shows it.
 
 Permission rules are data with one API and an optional principal:
 

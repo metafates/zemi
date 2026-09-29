@@ -243,10 +243,10 @@ zemi.api = {}
 ---| "bool"
 
 ---@class zemi.SettingSchema
----@field path string Dotted key, e.g. "ui.theme".
+---@field path string Dotted key, e.g. "ui.theme"; a plugin's are "plugins.<name>.<key>".
 ---@field kind zemi.SettingKind
 ---@field default any
----@field desc string
+---@field desc string What /config shows: a lowercase fragment.
 ---@field choices? string[] The only values a string key takes; nil takes any. `zemi.config.set` also takes "default" for a "" choice.
 
 ---@class zemi.config
@@ -263,14 +263,35 @@ function zemi.config.get(path) end
 --- alone, so a runtime pick (/model, /effort) stays. A call made after boot
 --- (a keymap, a timer, an event handler) is a runtime pick: zemi keeps it for
 --- every later start, in every project, unless init.lua sets that key.
+--- A setting of a plugin that is off or failed to load is skipped, so
+--- turning a plugin off never breaks init.lua.
 ---@param path string
 ---@param value any
 function zemi.config.set(path, value) end
 
---- Call fn whenever a setting changes. A path outside the schema raises.
+--- Register one of the calling plugin's settings, from its init.lua. The
+--- path is `plugins.<plugin>.<key>`, the key a lowercase letter, then up to
+--- 31 lowercase letters, digits and `_`. It shows in /config, keeps a pick
+--- across starts, takes `zemi.config.set` from the user's init.lua, and
+--- leaves when the plugin is turned off. Plugins load before the user's
+--- init.lua, so read it with `zemi.config.get` where it is used, or watch
+--- it, never once at load. Plugin origin only; raises past load, for another
+--- plugin's path, or for a default the kind or choices refuse. Never a
+--- secret: /config shows it and the store keeps it.
+---
+--- ```lua
+--- zemi.config.add({ path = "plugins.branch.interval", kind = "int", default = 30000,
+--- 	desc = "how often the branch is read, in ms" })
+--- ```
+---@param spec zemi.SettingSchema
+function zemi.config.add(spec) end
+
+--- Call fn whenever a setting changes. A path outside the schema raises,
+--- except a setting of a plugin that is off or failed to load, which
+--- returns nil.
 ---@param path string
 ---@param fn fun(new: any, old: any)
----@return string watch_id
+---@return string? watch_id
 function zemi.config.watch(path, fn) end
 
 --- Drop a watch by the id `zemi.config.watch` returned.

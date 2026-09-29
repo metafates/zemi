@@ -128,10 +128,10 @@ func (h *Host) pluginDirs() []string {
 	return nil
 }
 
-// sweepPluginState drops the zemi.state keys of a plugin whose directory is
-// gone or holds another install than the one that wrote them, so a deleted
-// plugin's saved tokens never reach a new one of the same name, even one
-// installed before this boot. The key "plugin:<name>", which no plugin can
+// sweepPluginState drops the zemi.state keys and kept setting picks of a
+// plugin whose directory is gone or holds another install than the one that
+// wrote them, so a deleted plugin's saved tokens never reach a new one of
+// the same name, even one installed before this boot. The key "plugin:<name>", which no plugin can
 // write, holds the install's id as a JSON string, since kv holds JSON that
 // a user zemi.state read decodes.
 func (h *Host) sweepPluginState(ps []plugins.Plugin) {
@@ -150,10 +150,17 @@ func (h *Host) sweepPluginState(ps []plugins.Plugin) {
 		ids[p.Name], fresh[p.Name] = id, was != id
 	}
 	keys, _ := h.GlobalDB.KeysKV("plugin:")
-	for _, k := range keys {
-		name, _, _ := strings.Cut(strings.TrimPrefix(k, "plugin:"), ":")
+	picks, _ := h.GlobalDB.KeysKV("config:plugins.")
+	h.cfgMu.Lock()
+	defer h.cfgMu.Unlock()
+	for _, k := range append(keys, picks...) {
+		// a name holds no "." or ":"; its state keys are plugin:<name>:<key>,
+		// its kept settings config:plugins.<name>.<key>
+		name, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(k, "plugin:"), "config:plugins."), ":")
+		name, _, _ = strings.Cut(name, ".")
 		if _, ok := ids[name]; !ok || fresh[name] {
 			_, _ = h.GlobalDB.DelKV(k)
+			delete(h.picked, strings.TrimPrefix(k, "config:"))
 		}
 	}
 	for name, id := range ids {

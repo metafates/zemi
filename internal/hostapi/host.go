@@ -357,8 +357,11 @@ type Host struct {
 	cfgGen  Gen
 	cfgPrev map[string][]any
 	cfgNow  map[string][]any
-	// picked mirrors the picks kept in the global store as config:<path>
+	// picked mirrors the picks kept in the global store as config:<path>,
+	// unchecked for a plugin key not registered yet
 	picked map[string]any
+	// pluginKeys is the generation that last registered each plugin setting
+	pluginKeys map[string]Gen
 	// KeepPicks lets a runtime pick outlive the process; main turns it on
 	// once the TUI's flags applied, so a flag, zemi run and zemi health keep none.
 	KeepPicks atomic.Bool
@@ -616,7 +619,7 @@ func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs 
 		// and a worktree are the same project, with the same sessions
 		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, h.trustRoot())
 	}
-	h.picked = map[string]any{}
+	h.picked, h.pluginKeys = map[string]any{}, map[string]Gen{}
 	if h.GlobalDB != nil {
 		h.loadPicks()
 	}
@@ -2049,6 +2052,7 @@ func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
 	})
 	h.luaRulesMu.Unlock()
 	if err == nil {
+		h.dropPluginKeys()
 		h.cfgSettle()
 		h.dropStaleLayout()
 	}
