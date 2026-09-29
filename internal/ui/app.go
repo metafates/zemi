@@ -420,8 +420,10 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		a.publishComposer()
 		return cmd
 	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg:
+		defer a.disarmIfMoved()()
 		return a.handleMouse(msg)
 	case tea.MouseWheelMsg:
+		defer a.disarmIfMoved()()
 		a.mouse = mouseSel{}
 		a.hoverKey = "" // the content under the pointer moves
 		step := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]
@@ -811,6 +813,16 @@ type toast struct {
 // the transcript.
 const toastRows = 3
 
+// boxArea is what a modal box centers over: the stage, or the w by h screen
+// when the stage is too small for a prompt.
+func boxArea(stage uv.Rectangle, w, h int) uv.Rectangle {
+	if stage.Dx() < 40 || stage.Dy() < 8 {
+		// NOTE: no box fits a stage under 8 rows, so it covers the screen, composer included
+		return uv.Rect(0, 0, w, h)
+	}
+	return stage
+}
+
 func (a *App) pushToast(level logging.Level, title, body string) {
 	title = hostapi.ToastTitle(level, title)
 	// news goes quickly, what needs reading or acting on stays
@@ -916,13 +928,7 @@ func (a *App) compose(w, h int) string {
 	// prompts, bottom to top (topChrome must match this order so input
 	// reaches the box drawn on top). What lies under the top box is dimmed,
 	// so no text beside it can pass for its chrome (DESIGN §8).
-	// It centers over the stage, or the screen when the stage is too small
-	// for a prompt.
-	area := stage
-	if area.Dx() < 40 || area.Dy() < 8 {
-		// NOTE: no box fits a stage under 8 rows, so it covers the screen, composer included
-		area = uv.Rect(0, 0, w, h)
-	}
+	area := boxArea(stage, w, h)
 	frame := lay.rects["composer"]
 	if frame.Empty() {
 		frame = area

@@ -1037,9 +1037,11 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   buttons, keyed by `hotkey` or position (`actionKey`); the selected row's action keys act from the
   list (`actionAt`: a `danger` one opens the detail on it armed); a `danger` item or action
   draws in Danger and its first enter or key only arms it (`overlayState.armed`, the footer
-  says what the next press does), and a destructive command typed without the `--yes` its
-  action's run ends in opens that detail armed (`AskFirst`, `Overlay.Confirm`; `zemi run`
-  refuses it, naming the command that runs it without asking), and `Body` is text above the items
+  says what the next press does; a key, click or wheel that moves the selection drops it,
+  `disarmIfMoved`; a detail view whose only action it is runs it at once), and a destructive
+  command typed without the `--yes` its action's run ends in opens that detail armed
+  (`AskFirst`, `Overlay.Confirm`, a toast naming the `--yes` form when no row has it;
+  `zemi run` refuses it, naming the command that runs it without asking), and `Body` is text above the items
   (markdown with `BodyMD`; `BodySegs` draws styled rows in its place, sanitized like `Body`,
   which stays what `y` copies; an item's `fields`, name and value pairs, draw as a table
   above its `detail` prose (`fieldRows`: a `status` value in its status color, an `error` one

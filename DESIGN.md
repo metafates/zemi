@@ -1522,14 +1522,19 @@ provenance string.
   which the next "always" answer undoes) draws in the danger color, and its
   first enter or key only arms it: the footer turns to `x again to delete ·
   esc cancel` in that color, the same key or enter runs it, esc disarms and
-  stays, and any other key disarms and then acts. A row's action keys act
+  stays, and any other key, or a click or wheel that moves the selection,
+  disarms and then acts. A detail view whose only action it is (`/rewind`'s)
+  states the effect and is itself the confirmation, so it runs at once. A
+  row's action keys act
   from the list too, on the selected row, as its detail's button would (an
   action with a view of its own opens it over the list); a danger one opens
   the detail on it armed, so the view is its confirmation. A destructive
   command typed without the `--yes` its action's run ends in (`/plugins
   delete x`, `/skills delete x`, `/sessions delete <id>`, `/mcp sign-out x`)
   asks the same way: its screen opens on that detail, armed
-  (`hostapi.AskFirst`, `Overlay.Confirm`); in `zemi run` it refuses, naming
+  (`hostapi.AskFirst`, `Overlay.Confirm`), or, for a row the list does not
+  hold (a session past the 50 it shows), a toast names the `--yes` form.
+  In `zemi run` such a command refuses, naming
   the command that runs it without asking (`zemi plugins delete x --yes`). When every row with actions offers the
   same keys, the list's footer names them. `j`, `k`, `/`, `y` and `Y` are
   the list's own and cannot be hotkeys. A

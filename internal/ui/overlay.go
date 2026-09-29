@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 )
@@ -176,11 +177,15 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		for n, act := range it.row.Actions {
 			if r, _ := hostapi.ParseOverlayItem(act); r.Danger && r.Run == o.Confirm {
 				st.selected = max(slices.Index(st.visible, idx), 0)
+				// sized as a drawn list, since its detail view opens at its size
+				area := boxArea(a.stage, a.width, a.height)
+				a.overlayBox(st, area.Dx(), area.Dy())
 				a.openDetailOn(st, idx, n).armed = n + 1
 				return
 			}
 		}
 	}
+	a.pushToast(logging.Error, "Not in "+o.Title, "/"+o.Confirm+" runs it without asking")
 }
 
 // mayClose also gates replacing o by id.
@@ -512,7 +517,9 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		case key == "space" && (o.Reload == nil || r.Verb != ""):
 		case key == "enter" && hasDetail(r):
 			a.openDetail(st, idx)
-		case r.Danger && !confirmed:
+		case r.Danger && !confirmed && !(st.back && len(st.visible) == 1):
+			// a detail view whose only action it is states the effect and holds
+			// nothing a stray key hits: it is the confirmation
 			st.armed = st.selected + 1
 		case verb == "copy":
 			return a.copied(st.value(idx))
@@ -546,6 +553,22 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		a.cancelOverlay(o)
 	}
 	return nil
+}
+
+// disarmIfMoved returns what drops the top overlay's arm once a click, a
+// wheel or a bar drag moved its selection, as any other key does, so moving
+// back never finds the row armed.
+func (a *App) disarmIfMoved() func() {
+	i := len(a.overlays) - 1
+	if i < 0 || a.overlays[i].armed == 0 {
+		return func() {}
+	}
+	sel := a.overlays[i].selected
+	return func() {
+		if i < len(a.overlays) && a.overlays[i].selected != sel {
+			a.overlays[i].armed = 0
+		}
+	}
 }
 
 // copyOverlay copies the text of a view, its fields as "name: value" lines
@@ -651,10 +674,9 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	}
 	// a list fits its content, 56 cells at least, a text view or a list with
 	// previews, which read as text, 72, and a detail view opens at its
-	// parent's size, or a list's when it opened before its list was drawn
-	// (Overlay.Confirm)
+	// parent's size
 	previews := !st.back && slices.ContainsFunc(st.items, func(it listItem) bool { return it.row.Preview != "" })
-	if !st.back || st.size.w == 0 {
+	if !st.back {
 		st.size.w = max(st.size.w, map[bool]int{true: 56, false: 72}[len(st.o.Items) > 0 && !previews])
 	}
 	bodyW := min(inner, st.size.w)
@@ -689,6 +711,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 	if st.o.Body != "" || st.o.Fields != nil {
 		bodyN = len(buildBody(bodyW))
 	}
+	tail := 1 // the rows the box's padding goes above: the footer, and a preview pane
 	body := fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight := level > 0
 		var head, list [][]hostapi.Segment // the filter row, and the list's rows
@@ -773,9 +796,14 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 			foot = hint(inner, hintPair{cmp.Or(st.actionKey(st.selected), "enter"), "again to " + label}, hintPair{"esc", "cancel"})
 			foot[0].HL, foot[1].HL = "Host:Danger", "Host:Danger"
 		}
+		tail = len(stack(tight, pane, oneRow))
 		rows := stack(tight, body, slices.Concat(head, list, fixed), pane, [][]hostapi.Segment{foot})
 		return rows, bodyN > 0 && st.body.viewH < min(bodyN, 3) || len(listPH) > 0 && st.view.viewH < min(st.view.rows, 3)
 	})
+	// a filter that shortens the list moves the preview pane no more than the footer
+	if n := min(st.size.h, h) - len(body) - 2; n > 0 && tail > 1 {
+		body = slices.Insert(body, len(body)-tail, make([][]hostapi.Segment, n)...)
+	}
 	return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
 }
 

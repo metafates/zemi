@@ -1085,6 +1085,9 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 		{"a danger row runs on the second enter", `"current", { text = "wipe", danger = true, run = "del w" }`, "", []string{"j", "enter", "enter"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "del w"]
 		}},
+		{"a detail view with one danger action is its confirmation", `"current", { text = "p", detail = "rewinds", actions = { { text = "Rewind", hotkey = "r", danger = true, run = "del p" } } }`, "", []string{"j", "enter", "r"}, func() string {
+			return map[bool]string{false: fmt.Sprintf("ran %q", ran)}[ran == "del p"]
+		}},
 		{"a list's own key wins over an action's", "", `keys = { r = { desc = "rename", fn = function(item) zemi.notify({ body = "key " .. item.text }) end } }`, []string{"j", "r"}, func() string {
 			return map[bool]string{false: fmt.Sprintf("ran %q, toast %q", ran, lastToast(app))}[ran == "" && lastToast(app) == "key s1"]
 		}},
@@ -1114,18 +1117,43 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 			t.Errorf("%s: %s", c.name, msg)
 		}
 	}
-	// a destructive command typed without --yes opens its row's detail armed
-	ran, app.overlays = "", nil
-	app.openOverlay(hostapi.Overlay{ID: "s", Origin: lua.OriginBuiltin, Confirm: "del 2", Items: []any{"current", map[string]any{"text": "s2", "actions": []any{
+	// a destructive command typed without --yes opens its row's detail armed,
+	// as wide as the list would have drawn it; a run no row has says so
+	app.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	app.renderSync(t)
+	area := boxArea(app.stage, app.width, app.height)
+	s2 := []any{"current", map[string]any{"text": "s2", "desc": strings.Repeat("a long description ", 4), "actions": []any{
 		map[string]any{"text": "Resume", "hotkey": "r", "run": "res 2"}, map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "del 2"},
-	}}}})
-	// its list was never drawn, so the detail takes a list's width, not none
-	if d := &app.overlays[len(app.overlays)-1]; !d.back || d.selected != 1 || d.armed != 2 || hostapi.SegsWidth(app.overlayBox(d, 80, 20)[0]) < 60 {
-		t.Fatalf("typed delete: %d open, selected %d, armed %d, box %q", len(app.overlays), d.selected, d.armed, plainSegs(app.overlayBox(d, 80, 20)[0]))
+	}}}
+	typed := func(confirm string, keys ...string) *overlayState {
+		ran, app.overlays = "", nil
+		app.openOverlay(hostapi.Overlay{ID: "s", Title: "Sessions", Origin: lua.OriginBuiltin, Confirm: confirm, Items: s2})
+		app.overlayBox(&app.overlays[0], area.Dx(), area.Dy())
+		pressKeys(app, keys...)
+		return &app.overlays[len(app.overlays)-1]
+	}
+	boxW := func(st *overlayState) int { return hostapi.SegsWidth(app.overlayBox(st, area.Dx(), area.Dy())[0]) }
+	listed := boxW(typed("", "j", "x"))
+	if d := typed("del 2"); !d.back || d.selected != 1 || d.armed != 2 || boxW(d) != listed {
+		t.Fatalf("typed delete: %d open, selected %d, armed %d, width %d, want %d", len(app.overlays), d.selected, d.armed, boxW(d), listed)
 	}
 	pressKeys(app, "enter")
 	if ran != "del 2" {
 		t.Fatalf("typed delete confirmed: ran %q", ran)
+	}
+	// a click away and back drops the arm, as another key does
+	typed("del 2")
+	app.renderSync(t)
+	for _, label := range []string{"Resume", "Delete"} {
+		x, y := findCell(t, app, label)
+		clickAt(app, x, y)
+	}
+	if d := app.overlays[len(app.overlays)-1]; d.selected != 1 || d.armed != 0 || ran != "" {
+		t.Fatalf("clicked back: selected %d, armed %d, ran %q", d.selected, d.armed, ran)
+	}
+	typed("del 9")
+	if toast := lastToast(app); !strings.Contains(toast, "/del 9 runs it without asking") {
+		t.Fatalf("no row for the typed run: toast %q", toast)
 	}
 }
 
@@ -1255,12 +1283,13 @@ func TestListPreview(t *testing.T) {
 		rows := len(app.overlayBox(&app.overlays[0], 60, 30))
 		pressKeys(app, c.keys...)
 		box := app.overlayBox(&app.overlays[0], 60, 30)
-		pane := plainSegs(slices.Concat(box[len(box)-6 : len(box)-2]...))
+		// the pane's first row stays put above the footer, a filter or not
+		pane, top := plainSegs(slices.Concat(box[len(box)-6:len(box)-3]...)), strings.TrimLeft(plainSegs(box[len(box)-6]), "│ ")
 		name := strings.Join(c.keys, " ")
 		if len(box) != rows {
 			t.Errorf("%q: %d rows, want %d", name, len(box), rows)
 		}
-		if got := strings.Contains(pane, "a preview") || strings.Contains(pane, short); c.want == "" && got || c.want != "" && !strings.Contains(pane, c.want) {
+		if got := strings.Contains(pane, "a preview") || strings.Contains(pane, short); c.want == "" && got || c.want != "" && !strings.HasPrefix(top, c.want) {
 			t.Errorf("%q: pane %q, want %q", name, pane, c.want)
 		}
 	}
