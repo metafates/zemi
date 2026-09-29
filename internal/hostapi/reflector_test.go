@@ -318,7 +318,7 @@ func TestReflectApply(t *testing.T) {
 			seedSession(t, h) // the reflected session is closed, another one is live
 			m := reflectStub(t, h, strings.ReplaceAll(c.doc, "OLD", id))
 			m.during = func() { addText(t, h, sid, "user", "sent while the reflector ran") }
-			if err := h.reflectSession(t.Context(), sid); err != nil {
+			if _, err := h.reflectSession(t.Context(), sid); err != nil {
 				t.Fatalf("reflectSession: %v", err)
 			}
 			if msgs, seen, _, _ := h.reflectDelta(sid); seen != len(msgs)-1 {
@@ -477,7 +477,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 			t.Fatal(err)
 		}
 		reflectStub(t, h, `{"memories":[{"text":"","replaces":"`+old.ID[:8]+`"},{"text":" ","replaces":"`+old.ID+`"},{"text":"","replaces":"ghost123"}]}`)
-		if err := h.reflectSession(t.Context(), sid); err != nil {
+		if _, err := h.reflectSession(t.Context(), sid); err != nil {
 			t.Fatal(err)
 		}
 		props := h.memoryProposals()
@@ -558,7 +558,7 @@ func TestReflectBadOutput(t *testing.T) {
 	seedTranscript(t, h, sid)
 	for _, out := range []string{"no json here at all", `{"memories": [`} {
 		reflectStub(t, h, out)
-		if err := h.reflectSession(context.Background(), sid); !errors.Is(err, errNoProposal) {
+		if _, err := h.reflectSession(context.Background(), sid); !errors.Is(err, errNoProposal) {
 			t.Fatalf("%q: %v, want errNoProposal", out, err)
 		}
 	}
@@ -575,7 +575,7 @@ func TestReflectTimeout(t *testing.T) {
 	m.block = time.Hour
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if err := h.reflectSession(ctx, sid); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := h.reflectSession(ctx, sid); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("want deadline exceeded, got %v", err)
 	}
 }
@@ -583,8 +583,8 @@ func TestReflectTimeout(t *testing.T) {
 // reflectNow is reflectIfDue run inline: it reports whether a run
 // happened.
 func reflectNow(h *Host, sid string) bool {
-	n, claim := h.claimReflect(sid, h.reflectDue(sid))
-	return claim != "" && h.reflectClaimed(sid, claim, n)
+	claim := h.claimReflect(sid, h.reflectDue(sid))
+	return claim != "" && h.reflectClaimed(sid, claim)
 }
 
 func addTool(t *testing.T, h *Host, sid string, ok bool) {
@@ -656,8 +656,8 @@ func TestReflectTrigger(t *testing.T) {
 			addText(t, h, sid, "user", "again")
 			addTool(t, h, sid, true)
 		}},
-		{name: "a rewind during the run stores nothing and leaves what follows the cut due", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
-			m.resp = `{"memories":[{"scope":"project","text":"the deploy script requires the labels sequence bumped first"}]}`
+		{name: "a rewind during the run marks nothing seen and leaves what follows the cut due", seed: seedTranscript, act: func(t *testing.T, h *Host, sid string, m *reflectStubModel) {
+			m.resp = "no json here"
 			msgs, _ := h.DB.Messages(sid)
 			m.during = func() {
 				if _, err := h.RewindTo(msgs[0].ID); err != nil {
