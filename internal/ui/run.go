@@ -94,6 +94,9 @@ func (v *RunView) On() (on, terminal bool) {
 	return v.on(), v.on() && v.tty
 }
 
+// Tails reports whether the view draws the live tail.
+func (v *RunView) Tails() bool { return v.on() && v.size != nil }
+
 func (v *RunView) on() bool { return !v.quiet && !v.dead && v.h != nil }
 
 // Show prints fr's settled rows above the tail and redraws the tail.

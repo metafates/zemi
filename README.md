@@ -107,7 +107,7 @@ out, and every string is what the chat row holds:
 | `ask` | `tool`, `subject`, `arg`, `reason`, `why` (`approval`, `outside_sandbox`, `network`, `needs_tui`) | an ask nobody could answer was denied, a subagent's too |
 | `notice` | `text` | a notice row: a background report, the plan nudge |
 | `compact` | `text` | the conversation was compacted or old tool output cleared |
-| `retry` | `attempt`, `in_ms`, `error` | the provider call failed and is retried |
+| `retry` | `attempt` (the one about to run, 2 for the first retry), `in_ms`, `error` | the provider call failed and is retried |
 | `error` | `text` | the turn ended with an error |
 | `done` | `result`, `is_error`, `error`, `session`, `duration_ms`, `usage` (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cost_usd`), `compactions`, `denied` (the `ask` fields), `tools` (`id`, `tool`, `input`, `status`, `error`) | last, a failed boot or send included |
 

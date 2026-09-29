@@ -108,7 +108,7 @@ func (f *follower) step(fr hostapi.RunFrame, denials []hostapi.Denial) []event {
 		evs = append(evs, event{Type: "ask", Tool: d.Tool, Subject: d.Subject, Arg: d.Arg, Reason: d.Reason, Why: string(d.Why)})
 	}
 	if s := fr.Stream; s.Retries > f.retries {
-		evs = append(evs, event{Type: "retry", Attempt: s.Retries, InMS: s.RetryIn.Milliseconds(), Error: sanitize.String(s.RetryWhy)})
+		evs = append(evs, event{Type: "retry", Attempt: s.Retries + 1, InMS: s.RetryIn.Milliseconds(), Error: sanitize.String(s.RetryWhy)})
 	}
 	f.retries = fr.Stream.Retries
 	asCall := func(m hostapi.ChatMessage) hostapi.StreamTool {
@@ -281,7 +281,8 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 		}
 		retries := f.retries
 		evs := f.step(fr, h.HeadlessDenials()[asked:])
-		if s := fr.Stream; s.Retries > retries {
+		// the tail's working rule shows a retry itself
+		if s := fr.Stream; s.Retries > retries && !view.Tails() {
 			fmt.Fprintf(view, "zemi: retrying in %s: %s\n", s.RetryIn.Round(time.Second), sanitize.String(s.RetryWhy))
 		}
 		next = fr.Next

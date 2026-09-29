@@ -59,9 +59,9 @@ func TestFollower(t *testing.T) {
 		{name: "an error row makes the run an error", frames: []hostapi.RunFrame{{Settled: []hostapi.ChatMessage{{Role: "assistant", Kind: hostapi.RowError, Text: "rate limited"}}}}, want: "error", isError: true},
 		{name: "a denial is an ask and a done.denied row", frames: []hostapi.RunFrame{{}, {}}, denials: [][]hostapi.Denial{{ask}, {ask}}, want: "ask", denied: 1},
 		{
-			name:   "a retry is one event per attempt",
+			name:   "a retry is one event per attempt, numbered as the working rule does",
 			frames: []hostapi.RunFrame{{Stream: hostapi.StreamSnapshot{Retries: 1}}, {Stream: hostapi.StreamSnapshot{Retries: 1}}, {Stream: hostapi.StreamSnapshot{Retries: 2}}},
-			want:   "retry retry",
+			want:   "retry:2 retry:3",
 		},
 	} {
 		f := newFollower()
@@ -81,6 +81,9 @@ func TestFollower(t *testing.T) {
 				}
 				if ev.Error != "" {
 					s += ":" + ev.Error
+				}
+				if ev.Attempt != 0 {
+					s += fmt.Sprint(":", ev.Attempt)
 				}
 				got = append(got, s)
 			}
