@@ -5,17 +5,13 @@
 -- goes sits inner, where it moves nothing.
 local fmt = require("zemi.tui.text")
 
---- Runs the command a statusline segment names in its click id.
----@param ev zemi.WidgetClick
-local function run_click(ev) assert(zemi.command.run(ev.id)) end
-
 -- The permission mode, colored like the composer prompt. A click opens the
 -- mode picker.
 zemi.ui.widget.add({
 	id = "statusline.mode",
 	region = "statusline.left",
 	priority = 5,
-	on_click = run_click,
+	on_click = fmt.run_click,
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
@@ -31,7 +27,7 @@ zemi.ui.widget.add({
 	id = "statusline.cwd",
 	region = "statusline.left",
 	priority = 10,
-	on_click = run_click,
+	on_click = fmt.run_click,
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
@@ -54,7 +50,7 @@ zemi.ui.widget.add({
 	id = "statusline.goal",
 	region = "statusline.left",
 	priority = 20,
-	on_click = run_click,
+	on_click = fmt.run_click,
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
@@ -69,7 +65,7 @@ zemi.ui.widget.add({
 	id = "statusline.loop",
 	region = "statusline.left",
 	priority = 21,
-	on_click = run_click,
+	on_click = fmt.run_click,
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
@@ -83,7 +79,7 @@ zemi.ui.widget.add({
 	id = "statusline.agents",
 	region = "statusline.left",
 	priority = 25,
-	on_click = run_click,
+	on_click = fmt.run_click,
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
@@ -104,7 +100,7 @@ zemi.ui.widget.add({
 	id = "statusline.learn",
 	region = "statusline.left",
 	priority = 30,
-	on_click = run_click,
+	on_click = fmt.run_click,
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
@@ -250,7 +246,7 @@ for _, part in ipairs(right) do
 		id = "statusline." .. part[1],
 		region = "statusline.right",
 		priority = part[2],
-		on_click = run_click,
+		on_click = fmt.run_click,
 		---@param ctx zemi.WidgetCtx
 		---@return zemi.Line[]
 		render = function(ctx)

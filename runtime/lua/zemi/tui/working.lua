@@ -51,11 +51,9 @@ zemi.ui.widget.add({
 			-- starts together
 			for _, t in ipairs(ag.tools or {}) do
 				if t.status == "run" then
-					local verb, rest = fmt.head(t.name, t.label)
-					-- an unlabelled call reads as its row does: the verb and its input
-					if t.label == "" and t.input ~= "" then
-						rest = " " .. fmt.relpath(t.input, ctx.cwd, ctx.home):gsub("%s+", " ")
-					end
+					-- as its row reads: the verb, then the label or the input
+					local verb, rest =
+						fmt.head(t.name, t.label, (fmt.relpath(t.input, ctx.cwd, ctx.home):gsub("%s+", " ")))
 					label = verb .. rest
 					if READS[t.name] then state = "reading" end
 					break

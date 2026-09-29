@@ -268,8 +268,7 @@ zemi.ui.widget.add({
 			---@param room integer
 			---@return string
 			local function fit(text, room) return open and text or fmt.clip(text, room) end
-			local verb, rest = fmt.head(name, label)
-			if label == "" and input ~= "" then rest = " " .. input end
+			local verb, rest = fmt.head(name, label, input)
 			-- a command is highlighted where it is what the row reads, the head and
 			-- an opened row; collapsed under its label it stays a Comment detail
 			local code = name == "bash"

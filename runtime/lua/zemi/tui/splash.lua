@@ -106,10 +106,10 @@ function M.render(ctx)
 	end
 	row({ { text = "" } })
 	for i, segs in ipairs(models) do
-		table.insert(segs, 1, { text = i == 1 and "model    " or string.rep(" ", 9), hl = "Comment" })
+		table.insert(segs, 1, fmt.label(i == 1 and "model" or ""))
 		row(segs)
 	end
-	row({ { text = "project  ", hl = "Comment" }, { text = tail(ctx.cwd or "", room - 10), hl = "Normal" } })
+	row({ fmt.label("project"), { text = tail(ctx.cwd or "", room - 10), hl = "Normal" } })
 	-- built only when shown: ctx.included reads the store when its cache went stale
 	if showctx then
 		local inc = ctx.included
@@ -140,14 +140,14 @@ function M.render(ctx)
 			if c[1] > 0 then parts[#parts + 1] = { { text = fmt.count(c[1], c[2], c[3]), hl = "Normal" } } end
 		end
 		---@type zemi.Line
-		local context = { { text = "context  ", hl = "Comment" } }
+		local context = { fmt.label("context") }
 		fill(context, parts, { text = " · ", hl = "Comment" }, room)
 		row(context)
 	end
 	if try then
 		-- zemi is configured by asking it, which no other screen says
 		---@type zemi.Line
-		local line = { { text = "try      ", hl = "Comment" } }
+		local line = { fmt.label("try") }
 		fill(line, {
 			{ { text = '"explain this project"', hl = "Normal" } },
 			{ { text = '"make the snail green"', hl = "Normal" } },
@@ -214,12 +214,7 @@ zemi.ui.widget.add({
 	id = "splash",
 	region = "chat",
 	priority = 5,
-	-- a row's click id is a command and its arguments
-	---@param ev zemi.WidgetClick
-	on_click = function(ev)
-		local name, args = ev.id:match("^(%S+)%s*(.*)$")
-		assert(zemi.command.run(name, args))
-	end,
+	on_click = fmt.run_click,
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)

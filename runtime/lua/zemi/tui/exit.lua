@@ -37,9 +37,9 @@ zemi.ui.widget.add({
 			end
 			rows[#rows + 1] = blank
 		end
-		rows[#rows + 1] = { { text = "resume   ", hl = "Comment" }, { text = ctx.resume, hl = "SplashKey" } }
+		rows[#rows + 1] = { fmt.label("resume"), { text = ctx.resume, hl = "SplashKey" } }
 		local cost = fmt.cost(ctx.usage.cost)
-		if cost then rows[#rows + 1] = { { text = "cost     ", hl = "Comment" }, { text = cost } } end
+		if cost then rows[#rows + 1] = { fmt.label("cost"), { text = cost } } end
 		rows[#rows + 1] = blank
 		-- a 2-cell gutter, like the shell output around it
 		for _, r in ipairs(rows) do

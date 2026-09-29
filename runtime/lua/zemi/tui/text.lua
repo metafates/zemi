@@ -71,6 +71,19 @@ function M.hint(noun, cmd, click, hl)
 	return { { text = noun, hl = hl or "Title", click = click }, { text = " " .. cmd, hl = "Comment", click = click } }
 end
 
+--- The on_click of a widget whose click ids are a command and its
+--- arguments ("resume 3f9c", "mode").
+---@param ev zemi.WidgetClick
+function M.run_click(ev)
+	local name, args = ev.id:match("^(%S+)%s*(.*)$")
+	assert(zemi.command.run(name, args))
+end
+
+--- The label a splash or exit row leads with, padded so the values line up.
+---@param name string
+---@return zemi.Segment
+function M.label(name) return { text = string.format("%-9s", name), hl = "Comment" } end
+
 --- What a tool call does, as its row and the working rule say it.
 ---@type table<string, string>
 M.VERB = {
@@ -110,17 +123,20 @@ function M.title(name)
 end
 
 --- A call's headline as a verb and the rest: "Read", " a.go". A command's
---- about is itself a verb phrase ("Run the tests"), so its first word is the verb.
+--- about is itself a verb phrase ("Run the tests"), so its first word is the
+--- verb; an unlabelled call reads as its input.
 ---@param name string
 ---@param label string The model's description of the call, or "".
+---@param input string The call's input as the row shows it, or "".
 ---@return string verb
 ---@return string rest
-function M.head(name, label)
+function M.head(name, label, input)
 	if name == "bash" and label ~= "" then
 		local verb, rest = label:match("^(%S+)(.*)$")
 		return verb:sub(1, 1):upper() .. verb:sub(2), rest
 	end
-	return M.VERB[name] or M.title(name), label ~= "" and " " .. M.lower(label) or ""
+	local rest = label ~= "" and " " .. M.lower(label) or input ~= "" and " " .. input or ""
+	return M.VERB[name] or M.title(name), rest
 end
 
 --- Text with its first letter lowercased, so it reads on after a verb,
