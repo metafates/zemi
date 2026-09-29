@@ -13,8 +13,6 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
-	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
@@ -255,21 +253,6 @@ func TestHotRuntimeVetoesFailClosed(t *testing.T) {
 	}
 	if d, _, _, _ := h.toolPreHook()("bash", map[string]any{"command": "ls"}); d != "deny" {
 		t.Errorf("tool.pre while hot = %q, want deny", d)
-	}
-}
-
-// TestHandlerDeadlineClock: a handler's deadline runs on the runtime's
-// clock, so under zemi plugins test's fake one no deadline passes while a
-// handler runs, however loaded the machine.
-func TestHandlerDeadlineClock(t *testing.T) {
-	r := lua.NewRuntime(lua.RuntimeOptions{Clock: &fakeClock{now: testEpoch}})
-	h := NewHost(r, logging.New(t.TempDir()), config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
-		t.Fatal(err)
-	}
-	runUser(t, r, `zemi.event.on("tool.pre", function() for _ = 1, 1e5 do end end)`)
-	if res := h.EmitVetoable(t.Context(), "tool.pre", nil, time.Nanosecond); res.TimedOut {
-		t.Fatal("a 1ns deadline passed on a clock nothing moved")
 	}
 }
 

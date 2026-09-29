@@ -136,6 +136,10 @@ for i = 1, 300 do test("case " .. i, function() end) end
 			"init.lua":    `zemi.command.add("spin", function() while true do zemi.http.get("https://example.com/"):wait() end end)`,
 			"tests/a.lua": `zemi.test.stub("lua.http.get", "*", {}) zemi.test("spins", function() zemi.test.run("spin") end)`,
 		}, want: "FAIL tests/a.lua:1: spins\n  timed out after 2s in test.run(\"spin\") at tests/a.lua:1\n0 passed, 1 failed (1 file, (T))\n"},
+		{name: "a handler past its deadline", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
+			"init.lua":    `zemi.event.on("tool.pre", function() while true do end end)`,
+			"tests/a.lua": `zemi.test("spins", function() zemi.test.emit("tool.pre", { tool = "bash", input = {} }) end)`,
+		}, want: "FAIL tests/a.lua:1: spins\n  error in event tool.pre during test.emit at tests/a.lua:1:\n    init.lua:1: context deadline exceeded\n0 passed, 1 failed (1 file, (T))\n"},
 		{
 			name: "a pattern matching nothing", args: []string{"<plugin>", "wether"}, code: 1,
 			want: "no case matches \"wether\" (36 cases in 2 files)\n",
