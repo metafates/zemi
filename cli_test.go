@@ -320,7 +320,7 @@ func TestTrustCommand(t *testing.T) {
 // what is off and how to turn it on, and never trusts.
 func TestHeadlessTrust(t *testing.T) {
 	var out strings.Builder
-	if got := headlessTrust(&out)("/repo", "/repo", ""); got != "later" || !strings.HasPrefix(out.String(), "zemi: /repo is not trusted") || !strings.Contains(out.String(), "--trust") || len(out.String()) > 90 {
+	if got := headlessTrust(&out)("/repo", "/repo", ""); got != "later" || !strings.HasPrefix(out.String(), "zemi: /repo is not trusted") || !strings.Contains(out.String(), "AGENTS.md") || !strings.Contains(out.String(), "--trust") || len(out.String()) > 90 {
 		t.Fatalf("answer %q, stderr %q", got, out.String())
 	}
 }

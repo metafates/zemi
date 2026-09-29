@@ -633,7 +633,7 @@ func (o *options) readStdin(stdin *os.File) error {
 // line saying what that turns off.
 func headlessTrust(stderr io.Writer) func(root, cwd, state string) string {
 	return func(root, _, _ string) string {
-		fmt.Fprintf(stderr, "zemi: %s is not trusted: no project config, and only read-only commands run; --trust\n", perm.TildePath(root))
+		fmt.Fprintf(stderr, "zemi: %s is not trusted: no .agents or AGENTS.md, only read-only commands run; --trust\n", perm.TildePath(root))
 		return "later"
 	}
 }
