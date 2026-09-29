@@ -605,7 +605,8 @@ policy can write): trusted only, body only, enabled, and they lose every name cl
 pinned prompt (`ag.pin`, below) lists the ones found when it was built; `skillIndex` and
 `enabledSkills` discover the dir live, so a recipe written mid-session loads without moving the
 prompt, and `runSkill` marks the file read so an `edit` can follow. The agent writes recipes with
-the plain file tools (the environment prompt's `Recipes:` line says how); the dir is a
+the plain file tools (the environment's `Recipes:` line names the dir, the system prompt's
+`recipesUse` says how); the dir is a
 `protectedWrite`: no rule and neither auto mode nor a read-only agent settles a write (yolo still
 allows), and the ask says when `sessionLocalOnly` fails.
 `recipeAfterWrite` (the `AfterWrite` hook, run before the writers' `markRead` because it may

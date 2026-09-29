@@ -19,7 +19,7 @@
    For a question about what the model was told - a profile's `system`, an `agent.assemble` section, an instruction file the budget cut, the memory digest - read the prompt itself:
 
    ```lua
-   return zemi.agent.prompt() -- the pinned system prompt, "" before the first send
+   return zemi.agent.prompt() -- the pinned system prompt and context message, "" before the first send
    ```
 
    `/prompt` shows the same text; `/usage` only measures it. The prompt is pinned for the session, so it may lag the files on disk: an edit to a skill, a profile or an `agent.assemble` handler shows after `/new` or `/compact`, and a hand edit to an instruction file rides the next message instead.

@@ -1,5 +1,5 @@
-// prompt.go assembles the agent's system prompt: the shipped text,
-// instruction files, the environment and the pinned digest.
+// prompt.go assembles the agent's system prompt and context message: the
+// shipped text, instruction files, the environment and the pinned digest.
 
 package hostapi
 
@@ -77,7 +77,7 @@ Most requests are small: find the code, read the part that matters, make the cha
 - Something new (a page, a demo, a document) is the opposite: make it complete and good-looking, in the form its name implies (a landing page is a web page, not a README section), with a real visual direction and the details a person would expect without asking.
 - Fix root causes. Read the whole error before changing approach, never repeat an identical failing call, and do not drop a sound approach after one failure. Do not fix unrelated bugs and failing tests; name one in a line if it matters.
 - Verify with the one narrowest check that covers the change, from the project instructions or build files, and stop once it passes: no vet, lint or format run on top, no second run. Add no tooling the project lacks and no tests for a trivial change.
-- A question needs only the code that answers it: answer once you have read it, without surveying callers or related code.
+- A question needs only the code that answers it: answer as soon as what you read settles it.
 - Report results as they are: say so when a check failed or did not run. Never invent output or file contents, and never end a turn by promising to do something.
 
 # Asking the user
@@ -254,7 +254,7 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 		user = "\n\n# User instructions\nThe user's own, for every project, already loaded: do not read them again. They override the default rules above, and the user's messages win over them." + user
 	}
 	if project != "" {
-		project = "\n\n# Project instructions\nFrom the repository, already loaded: do not read them again. They override the default rules and the user's instructions; a deeper directory's file wins over a shallower one, and the user's messages win over every file." + project
+		project = "\n\n# Project instructions\nFrom the repository, already loaded: do not read them again. They override the default rules; a deeper directory's file wins over a shallower one, and the user's messages win over every file." + project
 	}
 	rules, env := h.environmentFor(toolset, pad, readOnly)
 	luaSections, index, projectIndex := h.assembleSections()+h.toolSections(toolset), "", ""
@@ -663,8 +663,8 @@ func (h *Host) forgetInstructions() {
 	}
 }
 
-// OpenPrompt shows the pinned system prompt the last send carried, which /usage
-// only measures.
+// OpenPrompt shows the pinned system prompt and context message the last
+// send carried, which /usage only measures.
 func (h *Host) OpenPrompt() error {
 	ui, err := h.Screen()
 	if err != nil {
