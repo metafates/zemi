@@ -55,20 +55,21 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		}
 		return allowed, by, req.Reason
 	}
-	// a rule answer changes no handler's verdict, and audit handlers
-	// would see the ask twice
-	if !held {
-		var res VetoResult
-		h.outsideReload(func() {
+	var res VetoResult
+	var def PermModeDef
+	h.outsideReload(func() {
+		// a rule answer changes no handler's verdict, and audit handlers
+		// would see the ask twice
+		if !held {
 			res = h.EmitVetoable(context.Background(), "permission.request",
 				map[string]any{"subject": req.Subject, "arg": req.Arg, "reason": req.Reason},
 				lua.VetoDeadline)
-		})
-		if res.Denied {
-			return resolved(false, "event")
 		}
+		def = h.permModeDef()
+	})
+	if res.Denied {
+		return resolved(false, "event")
 	}
-	def := h.permModeDef()
 	// what a mode's rules and decide may never allow, only yolo or the user:
 	// a command leaving the sandbox or reaching the network, an ask a rule
 	// asked for, and a protected write, which Pipeline.Check re-asks

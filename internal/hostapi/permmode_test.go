@@ -13,6 +13,9 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/logging"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -403,6 +406,60 @@ func TestPermModeDecide(t *testing.T) {
 		if ok, by, _ := ask(c.req); ok != c.want {
 			t.Errorf("%s: allowed %v by %s", c.name, ok, by)
 		}
+	}
+}
+
+// TestAskWaitsOutReload: mid-reload the config's modes are purged, so an
+// ask judged then, like one that waited behind a prompt, waits for the
+// replay instead of falling back to auto.
+func TestAskWaitsOutReload(t *testing.T) {
+	dir, log := t.TempDir(), logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	h.SetProjectTrusted(true)
+	fakeSandbox(h, true)
+	initLua := filepath.Join(dir, "init.lua")
+	if err := os.WriteFile(initLua, []byte(`zemi.permission.mode.add("review", { base = "auto", decide = function() end })`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	steps := []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}
+	if err := r.Boot(context.Background(), steps); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.SetPermMode("review"); err != nil {
+		t.Fatal(err)
+	}
+	reloading, reloaded := make(chan struct{}), make(chan error)
+	probe := lua.BootStep{Name: "probe", Run: func(context.Context, *lua.Runtime, *lua.Generation) error {
+		close(reloading)
+		time.Sleep(50 * time.Millisecond) // the waiter's judgement lands inside the replay
+		return nil
+	}}
+	ui := &fakeUI{}
+	ui.onAsk = func(PermRequest) (bool, string) {
+		if len(ui.asked) == 1 {
+			for h.AsksWaiting() < 2 {
+				runtime.Gosched()
+			}
+			go func() { reloaded <- h.ForceReload(context.Background(), []lua.BootStep{steps[0], probe, steps[1]}) }()
+			<-reloading
+		}
+		return false, "user:once"
+	}
+	h.SetUIHooks(ui)
+	pipe := h.PipelineFor()
+	done := make(chan struct{})
+	go func() { pipe.Check(tools.Request{Subject: "tool.bash", Arg: "ls"}); close(done) }()
+	for h.AsksWaiting() < 1 {
+		runtime.Gosched()
+	}
+	second := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "pwd"})
+	<-done
+	if err := <-reloaded; err != nil {
+		t.Fatal(err)
+	}
+	if len(ui.asked) != 2 || second.DecidedBy != "user:once" {
+		t.Fatalf("%d prompts, the waiter decided by %q", len(ui.asked), second.DecidedBy)
 	}
 }
 

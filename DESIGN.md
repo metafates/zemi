@@ -210,8 +210,8 @@ Contracts that make this safe:
   overrides, timers, jobs) before replay, so no callback can fire into a
   dropped `LState`. Lua-added permission rules are the exception: they stay
   in force until the replay succeeds (a failed one keeps the deny and ask
-  ones; then those it did not add again are dropped), and `tool.pre` and `permission.request` vetoes wait for a
-  running reload, so no tool call is checked against half a config.
+  ones; then those it did not add again are dropped), and `tool.pre` and `permission.request` vetoes and the mode an ask reads
+  wait for a running reload, so no tool call is checked against half a config.
 - **Vetoable events never block.** `permission.request`, `app.quit`, and
   `composer.submit` handlers must answer without waiting on async work. At
   the 50 ms deadline the host cancels the handler's context (the

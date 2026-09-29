@@ -284,7 +284,7 @@ nested repo whose config zemi would run.
    so never keep a pointer into an old generation. `ForceReload` refuses an init.lua that does
    not parse and keeps the old Lua permission rules (`staleRules`) until the replay succeeds (a
    failed one, an init.lua error included, keeps the deny and ask ones and skips `cfgSettle`),
-   and `tool.pre` and `permission.request` vetoes wait out a reload, so a turn is never checked
+   and `tool.pre` and `permission.request` vetoes and the mode an ask reads wait out a reload, so a turn is never checked
    against half a config.
 3. **UI single-writer.** All `ui.App` state mutates on the bubbletea Update goroutine; work
    from other goroutines is funneled through a hook channel (internal/ui/hooks.go). hostapi

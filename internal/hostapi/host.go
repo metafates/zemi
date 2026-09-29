@@ -2132,14 +2132,14 @@ func (h *Host) awaitReload() uint64 {
 	}
 }
 
-// outsideReload runs a tool veto until no reload overlapped it. Mid-reload
-// the handlers are purged or not yet replayed, and a veto with no handler
-// is no objection, so the user's tool.pre and permission.request denials
-// would be skipped.
-func (h *Host) outsideReload(veto func()) {
+// outsideReload runs a tool veto, or a read of the config's modes, until no
+// reload overlapped it. Mid-reload the handlers and modes are purged or not
+// yet replayed: a veto with no handler is no objection and the mode falls
+// back to auto, so the user's denials would be skipped.
+func (h *Host) outsideReload(fn func()) {
 	seq := h.awaitReload()
 	for {
-		veto()
+		fn()
 		next := h.awaitReload()
 		if next == seq {
 			return
