@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1826,7 +1825,8 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	h, _ := newTestHost(t)
 	names := func() map[string]bool {
 		out := map[string]bool{}
-		for _, tool := range h.profileTools(nil) {
+		toolset, _ := h.profileTools(nil)
+		for _, tool := range toolset {
 			out[tool.Info().Name] = true
 		}
 		return out
@@ -1867,19 +1867,21 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 	}
 }
 
-// TestProfileToolsRecordUnknown: another harness's spelling in a profile
-// leaves the main agent almost toolless, so the name lands in /errors.
-func TestProfileToolsRecordUnknown(t *testing.T) {
+// TestProfileToolsUnknown: another harness's spelling in a profile leaves
+// the main agent almost toolless, so the name lands in /errors; a "-name"
+// nothing answers to fails, since the tool it meant to drop may run under
+// another name.
+func TestProfileToolsUnknown(t *testing.T) {
 	h, _ := newTestHost(t)
-	names := map[string]bool{}
-	for _, tool := range h.profileTools(&Profile{Name: "lean", Tools: []string{"Read", "Grep", "shell"}}) {
-		names[tool.Info().Name] = true
-	}
-	if !names["shell"] || names["read"] {
-		t.Errorf("kept %v", slices.Sorted(maps.Keys(names)))
+	toolset, err := h.profileTools(&Profile{Name: "lean", Tools: []string{"Read", "Grep", "shell"}})
+	if err != nil || !hasTool(toolset, "shell") || hasTool(toolset, "read") {
+		t.Errorf("kept %d tools, %v", len(toolset), err)
 	}
 	if !h.HasUnseenErrors() || !strings.Contains(h.errs.entries[0].msg, "no tool is named Read, Grep") {
 		t.Errorf("errors = %+v", h.errs.entries)
+	}
+	if _, err := h.profileTools(&Profile{Name: "docs", Tools: []string{"-bash", "-plan"}}); err == nil || !strings.Contains(err.Error(), "profile docs drops bash, which no tool is named") {
+		t.Errorf("an unknown drop: %v", err)
 	}
 }
 

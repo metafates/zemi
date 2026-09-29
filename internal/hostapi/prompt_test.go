@@ -101,7 +101,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		{"read-only no plan", &Profile{ReadOnly: true, Tools: []string{"-plan", "-question"}}, []string{"plan as your reply"}, []string{"plan tool", "question tool"}, nil},
 		{"no read", &Profile{Tools: []string{"-read"}}, nil, []string{"offset and limit"}, nil},
 	} {
-		toolset := h.profileTools(c.p)
+		toolset, _ := h.profileTools(c.p)
 		text, _ := h.buildSystemParts(c.p, toolset)
 		if i := slices.IndexFunc(defs, func(d AgentDef) bool { return d.Name == c.name }); i >= 0 {
 			def := defs[i]
@@ -132,10 +132,11 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	h.SetProjectTrusted(true)
 	h.agents.env = "" // pinned per session, and trust brings the recipes line
 	for _, ro := range []bool{false, true} {
-		for _, dropped := range h.profileTools(nil) {
+		all, _ := h.profileTools(nil)
+		for _, dropped := range all {
 			name := dropped.Info().Name
 			p := &Profile{ReadOnly: ro, Tools: []string{"-" + name}}
-			toolset := h.profileTools(p)
+			toolset, _ := h.profileTools(p)
 			text, _ := h.buildSystemParts(p, toolset)
 			for _, tool := range toolset {
 				schema, _ := json.Marshal(tool.Info().Parameters)
@@ -269,7 +270,7 @@ func TestSendPrepCheap(t *testing.T) {
 	}
 	start := cpu()
 	for range 5 {
-		toolset := h.profileTools(nil)
+		toolset, _ := h.profileTools(nil)
 		_, parts := h.buildSystemParts(nil, toolset)
 		promptSizes(parts, toolset)
 	}
@@ -417,7 +418,8 @@ zemi.event.on("agent.assemble", function() n = n + 1; return "build " .. n end)`
 // buildSystem renders the system prompt with context files appended
 // (capped; DESIGN §6.3 context.files).
 func (h *Host) buildSystem(p *Profile) string {
-	sys, _ := h.buildSystemParts(p, h.profileTools(p))
+	toolset, _ := h.profileTools(p)
+	sys, _ := h.buildSystemParts(p, toolset)
 	return sys
 }
 
@@ -433,7 +435,7 @@ func TestPromptBudget(t *testing.T) {
 	if _, err := h.Settings.SetQuiet("lsp.auto", false); err != nil {
 		t.Fatal(err)
 	}
-	toolset := h.profileTools(nil)
+	toolset, _ := h.profileTools(nil)
 	sys, parts := h.buildSystemParts(nil, toolset)
 	if !strings.Contains(sys, "# Skills") || !strings.Contains(sys, "Sandbox (auto mode)") {
 		t.Fatal("no skills index or Sandbox block: the count would be less than users get")

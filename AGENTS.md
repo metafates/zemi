@@ -668,7 +668,9 @@ lua-language-server is installed.
   a key config stopped writing to `default`, so deleting a profile and its `config.set` line
   runs the shipped one; a name nothing defines (a typo, a pick of a since deleted profile)
   fails the send. A profile is defined with `zemi.agent.profile.add`: a `-name` denylist or an
-  allowlist of tools, so a new tool is in the default set until a profile drops it.
+  allowlist of tools, so a new tool is in the default set until a profile drops it. An allowed
+  name no tool has is an `/errors` entry; a `-name` no tool has fails the send, since the tool
+  it meant to drop may run under another name (`profileTools`).
 - **One runner per send, one conversation.** `ensureRunner` rebuilds the runner (model and
   tools may change; the prompt comes from `ag.pin`); `AgentSend` carries the previous idle runner's conversation over (`Runner.Continue`), and
   every step's input passes `Runner.signed`, which drops the thinking whose signed prefix

@@ -354,9 +354,10 @@ func (h *Host) webOff() bool {
 }
 
 // profileTools selects the tool set: a profile's names filter the builtin,
-// Lua and MCP tools alike, and a name nothing answers to is recorded rather
-// than dropped, so one misspelling does not leave the agent toolless.
-func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
+// Lua and MCP tools alike. A kept name nothing answers to is recorded, so
+// one misspelling does not leave the agent toolless; a "-name" one fails,
+// since the tool it meant to drop may run under another name.
+func (h *Host) profileTools(p *Profile) ([]fantasy.AgentTool, error) {
 	var want []string
 	if p != nil {
 		want = p.Tools
@@ -373,10 +374,13 @@ func (h *Host) profileTools(p *Profile) []fantasy.AgentTool {
 	pipe.Images = func() bool { return h.takesImages(id) }
 	all := append(append(h.builtinTools(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
 	out, unknown := filterTools(all, want, skip)
+	if dropped := slices.DeleteFunc(slices.Clone(unknown), func(n string) bool { return !slices.Contains(want, "-"+n) }); len(dropped) > 0 {
+		return nil, fmt.Errorf("profile %s drops %s, which no tool is named", p.Name, strings.Join(dropped, ", "))
+	}
 	if len(unknown) > 0 {
 		h.RecordError("profile "+p.Name, "no tool is named "+strings.Join(unknown, ", "))
 	}
-	return out
+	return out, nil
 }
 
 func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
@@ -384,8 +388,12 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	if err != nil {
 		return nil, err
 	}
+	all, err := h.profileTools(p)
+	if err != nil {
+		return nil, err
+	}
 	_, loaded := h.sessionLogs()
-	toolset, active := h.deferMCP(h.profileTools(p), loaded)
+	toolset, active := h.deferMCP(all, loaded)
 	toolset, sys, parts := h.pinPrompt(p, toolset)
 	r := agent.NewRunner(model, toolset, sys)
 	r.ActiveTools = active
@@ -2575,7 +2583,11 @@ const planNudgeText = "Your reply ended in plain text, which the user cannot app
 // planHeadless asks for the plan as the reply, so there is nothing to
 // present it with.
 func (h *Host) nudgesPlan(p *Profile) bool {
-	return p != nil && p.ReadOnly && hasTool(h.profileTools(p), tools.ToolPlan)
+	if p == nil || !p.ReadOnly {
+		return false
+	}
+	toolset, _ := h.profileTools(p)
+	return hasTool(toolset, tools.ToolPlan)
 }
 
 // planFollowup runs after a turn goroutine ends. An approved plan left for

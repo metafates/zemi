@@ -37,7 +37,7 @@ New agent (`/agents new` sends you here, or the user asked for one):
 
 ## Profiles (`init.lua`)
 
-A profile sets the main conversation's model, prompt and tools; `/profile <name>`, ctrl+t, `--profile` or `zemi.config.set("agent.profile", name)` picks one. `tools` works as in an agent file:
+A profile sets the main conversation's model, prompt and tools; `/profile <name>`, ctrl+t, `--profile` or `zemi.config.set("agent.profile", name)` picks one. `tools` works as in an agent file, except that an allowed name no tool has is only an /errors entry (a `-name` one still fails the send):
 
 ```lua
 -- no workflows, Lua tool, background jobs or LSP queries: fewer schemas on every request

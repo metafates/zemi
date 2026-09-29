@@ -1645,7 +1645,7 @@ function zemi.model.pick(role) end
 ---@field model? string A role name (the model that role runs on) or a "provider/model" id.
 ---@field system? string Replaces the system prompt.
 ---@field temperature? number
----@field tools? string[] Allowed tool names; "-name" removes one and keeps the rest.
+---@field tools? string[] Allowed tool names; "-name" removes one and keeps the rest, and fails the send when no tool has that name.
 ---@field context? { files: string[] } Files pinned into the prompt.
 ---@field read_only? boolean A read-only (planning) agent: the project is read-only to it and it presents plans for approval.
 

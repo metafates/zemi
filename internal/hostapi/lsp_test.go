@@ -173,7 +173,8 @@ func TestLSPConfig(t *testing.T) {
 	// with no server to talk to, the model does not carry their schemas
 	lspTools := func() int {
 		n := 0
-		for _, tl := range h.profileTools(nil) {
+		toolset, _ := h.profileTools(nil)
+		for _, tl := range toolset {
 			if name := tl.Info().Name; name == "lsp" || name == "diagnostics" {
 				n++
 			}
