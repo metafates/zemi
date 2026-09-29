@@ -199,9 +199,16 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 // NOTE: it reads the policy without the project walk, so on the namespace
 // backend a project over sandboxWalkMax entries reads as writable here.
 func (h *Host) sandboxPrompt(readOnly, escapes bool, pad string) string {
+	// without a UI an ask is denied, so no clause promises one
+	ask := "ask the user first"
+	if h.hooks() == nil {
+		ask = "need the user's approval, which nobody can give in this run"
+	}
 	switch {
 	case !h.sandboxLive():
-		return "Sandbox: none on this machine, so commands that change anything ask the user first.\n"
+		return "Sandbox: none on this machine, so commands that change anything " + ask + ".\n"
+	case !h.ProjectTrusted() && h.hooks() == nil:
+		return "Sandbox: this project is not trusted, so only commands that just read run (confined); any other command needs the user's approval, which nobody can give in this run.\n"
 	case !h.ProjectTrusted():
 		return "Sandbox: this project is not trusted, so only commands that just read run without asking (confined); any other command asks the user and runs unconfined once approved.\n"
 	}
@@ -216,7 +223,7 @@ func (h *Host) sandboxPrompt(readOnly, escapes bool, pad string) string {
 				fmt.Fprintf(&b, ", and so is %s, which is on PATH", rel)
 			}
 		}
-		b.WriteString(": write .agents files with the write tool; git commands that change .git ask first.\n")
+		b.WriteString(": write .agents files with the write tool; git commands that change .git " + ask + ".\n")
 	case readOnly:
 		fmt.Fprintf(&b, "- They write only %s: the project is read-only while planning.\n", pol.WriteNames(d.ProjectDir))
 	default:
