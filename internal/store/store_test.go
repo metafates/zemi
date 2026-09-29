@@ -487,8 +487,9 @@ func TestProjectDBPath(t *testing.T) {
 	}
 }
 
-// TestProjectRoot: opening a project store names its root beside it, and a
-// root file names a root only when that hashes to its dir.
+// TestProjectRoot: opening a project store names its root beside it, a
+// root file names a root only when that hashes to its dir, and Touch moves
+// its last use.
 func TestProjectRoot(t *testing.T) {
 	const root = "/tmp/someproj"
 	for _, c := range []struct {
@@ -524,10 +525,19 @@ func TestProjectRoot(t *testing.T) {
 				t.Fatal(err)
 			}
 			g.Close()
-			p.Close()
+			defer p.Close()
 			got, opened, ok := ProjectRoot(dir)
 			if !ok || got != root || !opened.After(hour.Add(time.Minute)) {
 				t.Fatalf("after the open: %q %v %v", got, opened, ok)
+			}
+			if err := os.Chtimes(filepath.Join(dir, "root"), hour, hour); err != nil {
+				t.Fatal(err)
+			}
+			if !p.Touch() {
+				t.Fatal("Touch found no root file")
+			}
+			if _, opened, _ = ProjectRoot(dir); !opened.After(hour.Add(time.Minute)) {
+				t.Fatalf("after Touch the last use is %v", opened)
 			}
 		})
 	}

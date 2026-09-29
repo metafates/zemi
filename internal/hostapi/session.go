@@ -309,6 +309,9 @@ func (h *Host) closeSession(open func()) error {
 	if prev != "" {
 		h.EmitAsync("session.close", map[string]any{"id": prev})
 		h.reflectIfDue(prev)
+		if h.DB != nil {
+			h.DB.Touch() // a project's age is its last use, not its last start
+		}
 	}
 	return nil
 }

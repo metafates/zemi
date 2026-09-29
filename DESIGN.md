@@ -310,7 +310,7 @@ Directories (XDG):
   zemi.db                 global store (user memory and its proposals, skills, kv)
   scratch/<id prefix>/    per-session scratchpad, every model command's $TMPDIR (§9 write root)
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
-  projects/<hash>/root    the trust root the dir belongs to; its mtime is the last start there
+  projects/<hash>/root    the trust root the dir belongs to; its mtime is the last use there
   projects/<hash>/skills/<name>/SKILL.md  recipes: the project's private skills (§10.5)
   projects/<hash>/permissions  bash commands always allowed in the project (§6.1), read only when trusted
   trust.json              trust decisions by repository root
@@ -338,12 +338,19 @@ habit means untrusted until the next start (a reload does not ask again); up and
 move the cursor, enter picks it, a click answers a row. `--trust` or `--trust=false`
 decides one run without saving; a headless run with nothing saved is
 untrusted and says so on stderr. The home directory and `/` are never
-asked about or saved (their prompt says it applies to this run only).
+asked about or saved (their prompt says it applies to this run only), and
+the TUI does not ask at start in a directory outside a repository where the
+splash offers other projects (`Host.OffersProjects`): the user may be there
+only to pick one, so it runs untrusted as after Later and the statusline
+keeps `/trust`.
 `/projects` lists every root zemi keeps state for, switches to one by
 restarting zemi there (trust, origins, stores and the sandbox are bound at
 start, so one process runs one project), forgets another
 project's decision (the next start there asks again) and deletes its data; it
-never grants trust.
+never grants trust. Its ages are the last use: the root file is touched when
+zemi starts there, closes a session and quits. This project's row names the
+running decision when it differs from the saved one (`untrusted this run`),
+as the statusline does.
 `/trust` reopens the prompt at any time, showing the current decision (Later keeps
 it), saves the answer, applies it
 before the reload it triggers when the decision changed, so a revoke holds

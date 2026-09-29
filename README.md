@@ -67,7 +67,7 @@ zemi [prompt...]                    open the TUI; a prompt is sent first
 zemi run [prompt... | -]            one turn: the run on stderr, the answer on stdout
 zemi sessions [export [--full] <id>]
                                     this project's sessions; one as markdown
-zemi projects                       every project zemi keeps state for, last opened first
+zemi projects                       every project zemi keeps state for, last used first
 zemi models [update]                the ids -m takes; fetch the latest catalog
 zemi plugins [install|update|check|enable|disable|delete|test]
 zemi health                         the /health checks; 1 if any failed

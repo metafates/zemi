@@ -449,7 +449,7 @@ func sessionsCommand() *cobra.Command {
 func projectsCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "projects",
-		Short: "list the projects zemi keeps state for, last opened first",
+		Short: "list the projects zemi keeps state for, last used first",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			dirs, err := config.ResolveDirs()
@@ -461,11 +461,11 @@ func projectsCommand() *cobra.Command {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no projects yet")
 			}
 			for _, p := range ps {
-				opened := "-"
-				if !p.Opened.IsZero() {
-					opened = p.Opened.Format(hostapi.StampLayout)
+				used := "-"
+				if !p.Used.IsZero() {
+					used = p.Used.Format(hostapi.StampLayout)
 				}
-				fmt.Fprintf(c.OutOrStdout(), "%-16s  %-9s  %4d  %s\n", opened, p.TrustWord(), p.Sessions, p.Root)
+				fmt.Fprintf(c.OutOrStdout(), "%-16s  %-9s  %4d  %s\n", used, p.TrustWord(), p.Sessions, p.Root)
 			}
 			return nil
 		},

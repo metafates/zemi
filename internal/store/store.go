@@ -413,7 +413,7 @@ func projectKey(root string) string {
 
 // OpenForDirs opens the global database and, when a project root is known,
 // the per-project one (DESIGN §7), whose dir's root file it writes or, when
-// it names the root already, touches: its mtime is the last open.
+// it names the root already, touches: its mtime is the last use.
 func OpenForDirs(stateHome, projectRoot string) (global, project *DB, err error) {
 	global, err = Open(filepath.Join(stateHome, "zemi.db"))
 	if err != nil {
@@ -426,15 +426,23 @@ func OpenForDirs(stateHome, projectRoot string) (global, project *DB, err error)
 			return nil, nil, err
 		}
 		// best effort, like the sweep: a failed write never stops zemi
-		dir := filepath.Dir(project.path)
-		if _, _, ok := ProjectRoot(dir); ok {
-			t := time.Now()
-			_ = os.Chtimes(filepath.Join(dir, "root"), t, t)
-		} else {
-			_ = os.WriteFile(filepath.Join(dir, "root"), []byte(projectRoot+"\n"), 0o600)
+		if !project.Touch() {
+			_ = os.WriteFile(filepath.Join(filepath.Dir(project.path), "root"), []byte(projectRoot+"\n"), 0o600)
 		}
 	}
 	return global, project, nil
+}
+
+// Touch marks a project store used now, best effort: its root file's mtime
+// is the project's last use. It reports whether the store has a root file.
+func (s *DB) Touch() bool {
+	dir := filepath.Dir(s.path)
+	if _, _, ok := ProjectRoot(dir); !ok {
+		return false
+	}
+	t := time.Now()
+	_ = os.Chtimes(filepath.Join(dir, "root"), t, t)
+	return true
 }
 
 // ProjectRoot reads the root file of a project state dir: the trust root the

@@ -93,7 +93,7 @@ func launch(o options) int {
 	host, trust := newHost(dirs, log, o)
 	app := ui.NewApp(host, log)
 	host.SetUIHooks(app)
-	trust.ask = app.AskTrust
+	trust.ask, trust.tui = app.AskTrust, true
 
 	steps := hostSteps(host, trust, app)
 	p := tea.NewProgram(app)
@@ -582,6 +582,7 @@ type trustGate struct {
 	h    *hostapi.Host
 	dirs config.Dirs
 	ask  func(root, cwd, state string) string
+	tui  bool // the splash can offer other projects instead of the prompt
 	// session outranks the saved decision; nil when there is none
 	session atomic.Pointer[bool]
 }
@@ -636,6 +637,11 @@ func (tg *trustGate) decide() (bool, error) {
 	}
 	if hostapi.TrustUnsaved(root) {
 		return false, nil
+	}
+	if tg.tui && tg.h.OffersProjects() {
+		// the user may be here only to pick a project: no question about
+		// this dir first, which runs untrusted until /trust, as on "not now"
+		return tg.record(root, "later")
 	}
 	return tg.record(root, tg.ask(root, tg.dirs.ProjectDir, ""))
 }

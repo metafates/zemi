@@ -1694,7 +1694,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 				row := L.NewTable()
 				row.RawSetString("path", glua.LString(sanitize.String(perm.TildePath(p.Root))))
 				row.RawSetString("root", glua.LString(p.Root))
-				row.RawSetString("ago", glua.LString(ago(p.Opened.UnixMilli())))
+				row.RawSetString("ago", glua.LString(ago(p.Used.UnixMilli())))
 				out.Append(row)
 			}
 			return out
@@ -2289,6 +2289,9 @@ func (h *Host) Close() {
 	h.RT.Close()
 	h.PurgeGeneration()
 	h.mcp.stopParked()
+	if h.DB != nil {
+		h.DB.Touch() // a project's age is its last use, not its last start
+	}
 	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
 		if db != nil {
 			db.Close()

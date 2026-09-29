@@ -18,16 +18,17 @@ import (
 )
 
 // TestProjectsCommand runs /projects verbs in order over one state tree:
-// this project, another with a session, its files and a decision, and a
-// third a store handle holds open, as another zemi would.
+// this project, another with a session, its files and a decision, a third a
+// store handle holds open, as another zemi would, and a trusted one since
+// deleted, used last.
 func TestProjectsCommand(t *testing.T) {
 	tmp, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	cur, other, held := filepath.Join(tmp, "cur"), filepath.Join(tmp, "other"), filepath.Join(tmp, "held")
+	cur, other, held, gone := filepath.Join(tmp, "cur"), filepath.Join(tmp, "other"), filepath.Join(tmp, "held"), filepath.Join(tmp, "gone")
 	dirs := config.Dirs{ProjectDir: cur, StateHome: filepath.Join(tmp, "state"), DataHome: filepath.Join(tmp, "data"), CacheHome: filepath.Join(tmp, "cache")}
-	for _, root := range []string{cur, other, held} {
+	for _, root := range []string{cur, other, held, gone} {
 		os.MkdirAll(root, 0o755)
 		if root == cur {
 			continue // the host opens it
@@ -41,10 +42,15 @@ func TestProjectsCommand(t *testing.T) {
 			defer p.Close()
 			continue
 		}
+		if root == gone {
+			p.Close()
+			os.Remove(gone)
+			continue
+		}
 		p.CreateSession("sid-other", "", "fix the flaky test", "")
 		p.Close()
 	}
-	if err := dirs.WriteTrust(map[string]string{other: "trusted"}); err != nil {
+	if err := dirs.WriteTrust(map[string]string{other: "trusted", gone: "trusted"}); err != nil {
 		t.Fatal(err)
 	}
 	key := trustKey(other)
@@ -67,6 +73,12 @@ func TestProjectsCommand(t *testing.T) {
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
 		t.Fatal(err)
 	}
+	// a verb completes only the roots it acts on
+	for verb, want := range map[string][]string{"switch": {held, other}, "forget": {gone, other}, "delete": {gone, held, other}} {
+		if got := h.Commands.Lookup("projects").GoComplete(h, "", "/projects "+verb+" "); !slices.Equal(got, want) {
+			t.Errorf("/projects %s completes %q, want %q", verb, got, want)
+		}
+	}
 	for _, c := range []struct {
 		name, args string
 		err        string   // a usage error, which opens nothing
@@ -78,10 +90,16 @@ func TestProjectsCommand(t *testing.T) {
 		{
 			name: "the list", args: "",
 			want: []string{
-				"key:current", "undecided                · now", "trusted   · 1 session    · now", "[sessions 1 · latest now: fix the flaky test]", "[allowed echo , go test ./...]",
-				"hotkey:s run:projects switch " + other, "hotkey:f run:projects forget " + other, "danger:true hotkey:x run:projects delete " + other + " --yes", "Selected:1",
+				// the running decision beside the saved one, and a gone root's decision in its detail
+				"desc:untrusted this run                · now", "[trust untrusted this run]", "key:current",
+				"desc:missing                           · now", "[trust trusted] [sessions ]",
+				"trusted            · 1 session    · now", "[sessions 1 · latest now: fix the flaky test]", "[allowed echo , go test ./...]",
+				"hotkey:s run:projects switch " + other, "hotkey:f run:projects forget " + other, "danger:true hotkey:x run:projects delete " + other + " --yes",
+				"Selected:2", // held: the gone root, used last, has nothing to switch to
 			},
+			not: []string{"run:projects switch " + gone},
 		},
+		{name: "forget a gone root", args: "forget " + gone, want: []string{"Trust decision forgotten"}},
 		{name: "switch", args: "switch " + other + "/sub/..", relaunch: other},
 		{name: "switch mid-turn", args: "switch " + other, busy: true, err: "a turn is running"},
 		{name: "switch to this project", args: "switch " + cur, err: "zemi already runs in"},
@@ -220,7 +238,7 @@ func TestSplashProjects(t *testing.T) {
 }
 
 // TestListProjects: every root with a checked root file or a trust decision
-// is listed, the last opened first, with its trust word and session count.
+// is listed, the last used first, with its trust word and session count.
 func TestListProjects(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	tmp := t.TempDir()

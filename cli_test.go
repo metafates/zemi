@@ -202,8 +202,8 @@ func TestNormalizeVersion(t *testing.T) {
 
 // TestTrustGate: --trust or an earlier "not now" wins over the saved
 // decision, which wins over the prompt; only y and n are saved, the prompt
-// opens at most once per process, and only a trusted boot loads project
-// commands.
+// opens at most once per process and not where the splash offers other
+// projects, and only a trusted boot loads project commands.
 func TestTrustGate(t *testing.T) {
 	for _, c := range []struct {
 		name, saved string
@@ -211,16 +211,27 @@ func TestTrustGate(t *testing.T) {
 		answer      string // "" means the prompt must not open
 		trusted     bool
 		wantSaved   string
+		offers      bool // another project is known, which the splash offers
 	}{
-		{"saved trusted", "trusted", nil, "", true, "trusted"},
-		{"saved untrusted", "untrusted", nil, "", false, "untrusted"},
-		{"flag over saved", "trusted", new(false), "", false, "trusted"},
-		{"flag trusts", "", new(true), "", true, ""},
-		{"prompt y", "", nil, "trust", true, "trusted"},
-		{"prompt n", "", nil, "untrust", false, "untrusted"},
-		{"prompt esc", "", nil, "later", false, ""},
+		{"saved trusted", "trusted", nil, "", true, "trusted", false},
+		{"saved untrusted", "untrusted", nil, "", false, "untrusted", false},
+		{"flag over saved", "trusted", new(false), "", false, "trusted", false},
+		{"flag trusts", "", new(true), "", true, "", false},
+		{"prompt y", "", nil, "trust", true, "trusted", false},
+		{"prompt n", "", nil, "untrust", false, "untrusted", false},
+		{"prompt esc", "", nil, "later", false, "", false},
+		{"projects offered", "", nil, "", false, "", true},
 	} {
 		tg, h, r := newTrustGate(t)
+		tg.tui = true
+		if c.offers {
+			g, p, err := store.OpenForDirs(tg.dirs.StateHome, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			g.Close()
+			p.Close()
+		}
 		root := tg.dirs.TrustRoot()
 		if err := os.MkdirAll(tg.dirs.WorktreesDir(), 0o755); err != nil {
 			t.Fatal(err)

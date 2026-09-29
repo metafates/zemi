@@ -28,7 +28,7 @@ type Project struct {
 	Root    string    // the trust root, absolute
 	Trust   string    // the saved decision, "trusted" or "untrusted"; "" for none
 	Missing bool      // Root no longer exists
-	Opened  time.Time // when zemi last started there; zero with no root file
+	Used    time.Time // when zemi was last started or left there; zero with no root file
 
 	// read with stats: a store zemi cannot read leaves them zero and says why
 	Sessions, Memories int
@@ -36,7 +36,7 @@ type Project struct {
 	StatsErr           error
 }
 
-// ListProjects lists every root zemi keeps state for, the last opened first
+// ListProjects lists every root zemi keeps state for, the last used first
 // and the ones never opened since the root files came last. A root file is
 // read only when it hashes to its dir (store.ProjectRoot); a dir with none is
 // listed only through a trust decision for its root. With stats it opens
@@ -51,14 +51,14 @@ func ListProjects(dirs config.Dirs, stats bool) []Project {
 	}
 	entries, _ := os.ReadDir(filepath.Join(dirs.StateHome, "projects"))
 	for _, e := range entries {
-		root, opened, ok := store.ProjectRoot(filepath.Join(dirs.StateHome, "projects", e.Name()))
+		root, used, ok := store.ProjectRoot(filepath.Join(dirs.StateHome, "projects", e.Name()))
 		if !ok {
 			continue
 		}
 		if byRoot[root] == nil {
 			byRoot[root] = &Project{Root: root}
 		}
-		byRoot[root].Opened = opened
+		byRoot[root].Used = used
 	}
 	out := make([]Project, 0, len(byRoot))
 	for _, p := range byRoot {
@@ -71,7 +71,7 @@ func ListProjects(dirs config.Dirs, stats bool) []Project {
 		out = append(out, *p)
 	}
 	slices.SortFunc(out, func(a, b Project) int {
-		return cmp.Or(b.Opened.Compare(a.Opened), cmp.Compare(a.Root, b.Root))
+		return cmp.Or(b.Used.Compare(a.Used), cmp.Compare(a.Root, b.Root))
 	})
 	return out
 }
@@ -109,7 +109,7 @@ func (p Project) TrustWord() string {
 }
 
 // splashProjects is what the splash offers in place of recent sessions: the
-// three projects zemi last started in besides this one, where zemi is rarely
+// three projects zemi was last used in besides this one, where zemi is rarely
 // the user's pick. That is ~ or /, where a terminal starts, and a directory
 // outside a repository while it has no session. Cached: the splash renders
 // every frame a job runs; forget and delete mark it stale.
@@ -128,21 +128,25 @@ func (h *Host) splashProjects() []Project {
 		return nil
 	}
 	for _, p := range ListProjects(h.Dirs, false) {
-		if p.Root != root && !p.Missing && !p.Opened.IsZero() && len(h.splash) < 3 {
+		if p.Root != root && !p.Missing && !p.Used.IsZero() && len(h.splash) < 3 {
 			h.splash = append(h.splash, p)
 		}
 	}
 	return h.splash
 }
 
+// OffersProjects reports whether the splash offers other projects here.
+func (h *Host) OffersProjects() bool { return len(h.splashProjects()) > 0 }
+
 func (h *Host) projectsCommands() []*Command {
 	return []*Command{{
 		Name: "projects", NArgs: NArgsAny, Desc: "switch to another project, forget its trust or delete its data",
 		GoFn: (*Host).projectsCommand,
-		GoComplete: SubcommandCompleter([]string{"switch", "forget", "delete"}, func(h *Host, _ string) []string {
+		// a verb is offered only the roots it acts on, as the list's actions are
+		GoComplete: SubcommandCompleter([]string{"switch", "forget", "delete"}, func(h *Host, sub string) []string {
 			var roots []string
 			for _, p := range ListProjects(h.Dirs, false) {
-				if p.Root != h.trustRoot() {
+				if p.Root != h.trustRoot() && !(sub == "switch" && p.Missing) && !(sub == "forget" && p.Trust == "") {
 					roots = append(roots, perm.TildePath(p.Root))
 				}
 			}
@@ -318,18 +322,24 @@ func (h *Host) openProjects(ui UIHooks, refresh bool, confirm string) {
 }
 
 // projectItems is a row per project, the selection on the first that zemi
-// does not run in.
+// does not run in and that exists.
 func (h *Host) projectItems() (items []any, sel int) {
 	sel = -1
-	for i, p := range ListProjects(h.Dirs, true) {
+	projects := ListProjects(h.Dirs, true)
+	words, trustW := make([]string, len(projects)), 9
+	for i, p := range projects {
+		words[i] = h.trustWord(p)
+		trustW = max(trustW, len(words[i]))
+	}
+	for i, p := range projects {
 		// each column padded, blank when empty, so the age lines up
 		sessions := ""
 		if p.Sessions > 0 {
 			sessions = fmt.Sprintf(" · %d %s", p.Sessions, plural(p.Sessions, "session", "sessions"))
 		}
-		desc := statusCol(p.TrustWord()) + fmt.Sprintf("%-15s", sessions)
-		if !p.Opened.IsZero() {
-			desc += " · " + ago(p.Opened.UnixMilli())
+		desc := fmt.Sprintf("%-*s%-15s", trustW, words[i], sessions)
+		if !p.Used.IsZero() {
+			desc += " · " + ago(p.Used.UnixMilli())
 		}
 		item := map[string]any{"text": sanitize.String(perm.TildePath(p.Root)), "tail": true, "desc": strings.TrimRight(desc, " "), "fields": h.projectFields(p)}
 		switch {
@@ -343,7 +353,7 @@ func (h *Host) projectItems() (items []any, sel int) {
 		default:
 			item["detail"] = "Switch restarts zemi there: a job still running here stops, as on quit. Delete erases what zemi keeps for it: sessions, memories, recipes, allowed commands and the trust decision. The project's own files stay."
 		}
-		if sel < 0 {
+		if sel < 0 && !p.Missing {
 			sel = i
 		}
 		var actions []any
@@ -359,8 +369,23 @@ func (h *Host) projectItems() (items []any, sel int) {
 	return items, max(sel, 0)
 }
 
+// trustWord is a project's trust word in /projects: TrustWord, or for this
+// project the running decision when it differs, so the list and the
+// statusline name one state.
+func (h *Host) trustWord(p Project) string {
+	word := p.TrustWord()
+	if p.Root != h.trustRoot() {
+		return word
+	}
+	if run := map[bool]string{true: "trusted", false: "untrusted"}[h.ProjectTrusted()]; run != word {
+		return run + " this run"
+	}
+	return word
+}
+
 // projectFields is what a project's detail says of it; an empty value is
-// left out.
+// left out. Its trust is the decision a gone root keeps too, and its path
+// repeats the detail's title, which the UI shows only when the title clips.
 func (h *Host) projectFields(p Project) []any {
 	sessions, memories, recipes, errText := "", "", "", ""
 	if p.Latest != nil {
@@ -383,6 +408,7 @@ func (h *Host) projectFields(p Project) []any {
 	if p.StatsErr != nil {
 		errText = p.StatsErr.Error()
 	}
-	return fieldList("path", sanitize.String(perm.TildePath(p.Root)), "trust", p.TrustWord(), "sessions", sessions, "memories", memories, "recipes", recipes,
-		"allowed", strings.Join(allowed, ", "), "data", perm.TildePath(state), "error", errText)
+	trust := h.trustWord(Project{Root: p.Root, Trust: p.Trust})
+	return fieldList("trust", trust, "sessions", sessions, "memories", memories, "recipes", recipes,
+		"allowed", strings.Join(allowed, ", "), "path", sanitize.String(perm.TildePath(p.Root)), "data", perm.TildePath(state), "error", errText)
 }
