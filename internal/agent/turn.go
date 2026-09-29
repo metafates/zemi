@@ -286,8 +286,6 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 		r.History = stripImages(r.History, noImages)
 	}
 	history := append([]fantasy.Message(nil), r.History...)
-	temp := r.Temperature
-	provOpts, headers := r.ProviderOptions, r.Headers
 	r.mu.Unlock()
 
 	// Full goes first: fantasy stops at the first condition that holds, and
@@ -331,64 +329,52 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			firstToken = time.Since(stepStart)
 		}
 	}
-	call := fantasy.AgentStreamCall{
-		Messages: history,
-		StopWhen: stops,
-		OnStepStart: func(int) error {
-			pending, stepStart, firstToken = "", time.Now(), 0
-			hooks.StepStart()
-			return nil
-		},
-		OnTextDelta:      func(id, text string) error { token(); hooks.TextDelta(text); return nil },
-		OnReasoningDelta: func(id, text string) error { token(); hooks.ReasoningDelta(text); return nil },
-		OnToolInputStart: func(id, name string) error {
-			token()
-			pending = name
-			hooks.ToolCallPending(id, name)
-			return nil
-		},
-		OnToolInputDelta: func(id, delta string) error {
-			hooks.ToolInputDelta(id, delta)
-			return nil
-		},
-		OnToolCall: func(tc fantasy.ToolCallContent) error {
-			if tools.CallStart(tctx, tc.ToolCallID, tc.ToolName, tc.Input) {
-				recorded = append(recorded, tc.ToolCallID)
-			}
-			hooks.ToolCallStart(tc.ToolCallID, tc.ToolName, tc.Input)
-			return nil
-		},
-		OnToolResult: func(res fantasy.ToolResultContent) error {
-			// fires for a call fantasy refused to run too, which Run never releases
-			tools.CallDone(tctx, res.ToolCallID)
-			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result), res.ClientMetadata)
-			return nil
-		},
-		OnStreamFinish: func(u fantasy.Usage, _ fantasy.FinishReason, _ fantasy.ProviderMetadata) error {
-			usage.InputTokens += u.InputTokens
-			usage.OutputTokens += u.OutputTokens
-			usage.TotalTokens += u.TotalTokens
-			// cache reads and writes are billed apart from input, and providers
-			// report them apart: keep them for the price
-			usage.CacheReadTokens += u.CacheReadTokens
-			usage.CacheCreationTokens += u.CacheCreationTokens
-			hooks.StreamDone(u)
-			return nil
-		},
-		OnRetry: func(_ *fantasy.ProviderError, delay time.Duration) {
-			firstToken = 0 // the call streams again from its first delta
-			hooks.Retrying(r.last.Err, delay)
-		},
-		MaxRetries:      &maxRetries,
-		ProviderOptions: provOpts,
-		Headers:         headers,
+	call := r.baseCall(history)
+	call.StopWhen = stops
+	call.OnStepStart = func(int) error {
+		pending, stepStart, firstToken = "", time.Now(), 0
+		hooks.StepStart()
+		return nil
 	}
-	if temp != nil {
-		t := *temp
-		call.Temperature = &t
+	call.OnTextDelta = func(id, text string) error { token(); hooks.TextDelta(text); return nil }
+	call.OnReasoningDelta = func(id, text string) error { token(); hooks.ReasoningDelta(text); return nil }
+	call.OnToolInputStart = func(id, name string) error {
+		token()
+		pending = name
+		hooks.ToolCallPending(id, name)
+		return nil
 	}
-	if n := r.MaxOutputTokens; n > 0 {
-		call.MaxOutputTokens = &n
+	call.OnToolInputDelta = func(id, delta string) error {
+		hooks.ToolInputDelta(id, delta)
+		return nil
+	}
+	call.OnToolCall = func(tc fantasy.ToolCallContent) error {
+		if tools.CallStart(tctx, tc.ToolCallID, tc.ToolName, tc.Input) {
+			recorded = append(recorded, tc.ToolCallID)
+		}
+		hooks.ToolCallStart(tc.ToolCallID, tc.ToolName, tc.Input)
+		return nil
+	}
+	call.OnToolResult = func(res fantasy.ToolResultContent) error {
+		// fires for a call fantasy refused to run too, which Run never releases
+		tools.CallDone(tctx, res.ToolCallID)
+		hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result), res.ClientMetadata)
+		return nil
+	}
+	call.OnStreamFinish = func(u fantasy.Usage, _ fantasy.FinishReason, _ fantasy.ProviderMetadata) error {
+		usage.InputTokens += u.InputTokens
+		usage.OutputTokens += u.OutputTokens
+		usage.TotalTokens += u.TotalTokens
+		// cache reads and writes are billed apart from input, and providers
+		// report them apart: keep them for the price
+		usage.CacheReadTokens += u.CacheReadTokens
+		usage.CacheCreationTokens += u.CacheCreationTokens
+		hooks.StreamDone(u)
+		return nil
+	}
+	call.OnRetry = func(_ *fantasy.ProviderError, delay time.Duration) {
+		firstToken = 0 // the call streams again from its first delta
+		hooks.Retrying(r.last.Err, delay)
 	}
 	// Each finished step and each steered message is stored as it happens, so
 	// a turn that fails or is cancelled later keeps the work done before.
@@ -500,28 +486,31 @@ func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text stri
 	for i, t := range r.tools {
 		inert[i] = inertTool{t}
 	}
+	call := r.baseCall(msgs)
+	call.StopWhen = []fantasy.StopCondition{fantasy.StepCountIs(1)}
+	// past lastErr, which the turn this may run beside writes
+	call.ModelProvider = func() fantasy.LanguageModel { return r.last.LanguageModel }
+	call.PrepareStep = func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
+		res := fantasy.PrepareStepResult{Tools: inert}
+		if r.ActiveTools != nil {
+			res.ActiveTools = r.ActiveTools()
+		}
+		res.Messages = withCacheBreakpoints(r.signed(o.Messages, res.ActiveTools, false))
+		return ctx, res, nil
+	}
+	return r.agent.Stream(ctx, call)
+}
+
+// baseCall is what every request of the runner carries.
+func (r *Runner) baseCall(msgs []fantasy.Message) fantasy.AgentStreamCall {
 	call := fantasy.AgentStreamCall{
-		Messages:        msgs,
-		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
-		Temperature:     r.Temperature,
-		MaxRetries:      &maxRetries,
-		ProviderOptions: r.ProviderOptions,
-		Headers:         r.Headers,
-		// past lastErr, which the turn this may run beside writes
-		ModelProvider: func() fantasy.LanguageModel { return r.last.LanguageModel },
-		PrepareStep: func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
-			res := fantasy.PrepareStepResult{Tools: inert}
-			if r.ActiveTools != nil {
-				res.ActiveTools = r.ActiveTools()
-			}
-			res.Messages = withCacheBreakpoints(r.signed(o.Messages, res.ActiveTools, false))
-			return ctx, res, nil
-		},
+		Messages: msgs, Temperature: r.Temperature, MaxRetries: &maxRetries,
+		ProviderOptions: r.ProviderOptions, Headers: r.Headers,
 	}
 	if n := r.MaxOutputTokens; n > 0 {
 		call.MaxOutputTokens = &n
 	}
-	return r.agent.Stream(ctx, call)
+	return call
 }
 
 // inertTool sends a tool's schema and refuses to run it.
