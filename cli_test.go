@@ -17,6 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
+	zemiRuntime "github.com/metafates/zemi/runtime"
 )
 
 // TestCLI runs command lines through execute with a launch that records
@@ -92,7 +93,7 @@ func TestCLI(t *testing.T) {
 		{name: "dash dash keeps a dashed prompt", args: []string{"run", "--", "-v", "means", "verbose?"}, want: &options{run: true, prompt: "-v means verbose?"}},
 		{name: "dash dash keeps a command name", args: []string{"--", "plugins", "x"}, want: &options{prompt: "plugins x"}},
 		{name: "one-word typo", args: []string{"helth"}, code: 2, stderr: "did you mean health"},
-		{name: "run", args: []string{"run", "--json", "hi"}, want: &options{run: true, json: true, prompt: "hi"}},
+		{name: "run", args: []string{"run", "--json", "-q", "--reasoning", "hi"}, want: &options{run: true, json: true, quiet: true, reasoning: true, prompt: "hi"}},
 		{name: "run dash", args: []string{"run", "-"}, want: &options{run: true, prompt: "-"}},
 		{name: "continue with resume", args: []string{"-c", "-r", "s1"}, code: 2, stderr: "cannot be combined"},
 		{name: "print flag is gone", args: []string{"-p", "hi"}, code: 2, stderr: "unknown shorthand flag: 'p'"},
@@ -343,7 +344,7 @@ func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 		t.Fatal(err)
 	}
 	log := logging.New(t.TempDir())
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiRuntime.FS})
 	dirs := config.Dirs{ProjectDir: project, StateHome: t.TempDir()}
 	h := hostapi.NewHost(r, log, config.NewStore(), dirs)
 	return &trustGate{h: h, dirs: dirs}, h, r
@@ -368,13 +369,13 @@ func TestSendPromptRunsCommands(t *testing.T) {
 		{"/note" + stdin, stdin},
 	} {
 		got = "unset"
-		if err := sendPrompt(h, c.prompt); err != nil || got != c.args {
+		if err := sendPrompt(context.Background(), h, c.prompt); err != nil || got != c.args {
 			t.Errorf("%q: ran with %q, %v", c.prompt, got, err)
 		}
 	}
 	// no such command: the text is the model's, and this host has no model
 	got = "unset"
-	if err := sendPrompt(h, "/notes please"); err == nil || got != "unset" {
+	if err := sendPrompt(context.Background(), h, "/notes please"); err == nil || got != "unset" {
 		t.Fatalf("an unknown command must reach the agent: %v, ran %q", err, got)
 	}
 }
@@ -413,7 +414,7 @@ func TestHeadlessNotices(t *testing.T) {
 			return r.ExecuteChunk(context.Background(), `zemi.notify.warn("w")`, "init.lua", lua.OriginUser)
 		}},
 		{"screen command", "", func() error {
-			if err := sendPrompt(h, "/screen"); err == nil || err.Error() != "/screen needs the TUI" {
+			if err := sendPrompt(context.Background(), h, "/screen"); err == nil || err.Error() != "/screen needs the TUI" {
 				return fmt.Errorf("got %w", err)
 			}
 			return nil

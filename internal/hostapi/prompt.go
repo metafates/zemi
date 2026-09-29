@@ -54,7 +54,7 @@ const readPrompt = `
 // there only buys a tool call that cannot resolve.
 const askingPrompt = `When you must ask, finish the unblocked work first, then ask with the question tool. When stuck, say what you tried and the smallest thing you need. For something interactive (a login, a password prompt), ask the user to type ! and the command in zemi.`
 
-const headlessAskingPrompt = `Nobody can answer in this run and there is no tool to ask with: take the most likely reading, say in one line which assumption you made, and carry the task through. Anything you cannot decide goes in your reply as what you need and why.`
+const headlessAskingPrompt = `Nobody can answer in this run and there is no tool to ask with: take the most likely reading, say in one line which assumption you made, and carry the task through. Anything you cannot decide goes in your reply as what you need and why. Your last message is what this run prints: give the whole answer there, after your last tool call.`
 
 const basePrompt = `You are zemi, a coding agent in the user's terminal.
 

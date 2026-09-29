@@ -134,11 +134,18 @@ statusline's profile segment clicks into) write `agent.profile` for the next sen
 changes the prompt and the tool set, so it busts the provider's prompt cache once; ctrl+t and
 ctrl+shift+t cycle it.
 
-`zemi run` and `zemi health` boot headless (`bootHeadless`, the TUI's steps without it). `zemi
-run` runs one turn (`printTurn`; `--json` prints the report instead of the reply), then
-reports on stderr how many asks nobody could approve (`Host.HeadlessDenials`, subagents' too;
-`deniedHint` points at `--trust` or at an allow rule) and, on its own line, how many calls a
-rule, the mode or the profile denied. It also drops what needs a user (`headlessExcluded`), the
+`zemi run` and `zemi health` boot headless (`bootHeadless`, the TUI's steps without it; its
+`stderr` is `Host.Stderr`, which `zemi run` makes its view before boot, so a diagnostic prints
+above the tail). `zemi run` (`runHeadless`, run.go) sends on `GoSafe` and polls
+`Host.RunFrame` every 100 ms: `ui.RunView` renders the chat and working widgets over the
+frame with `UIState.Printed` (`ctx.headless`), printing settled rows once and, on a terminal,
+redrawing the pending rows, live turn and working rule as a tail under them; the `follower`
+turns the same frames into `--json` events, each once (a call by `ChatMessage.ID`, which
+`flushOutput` sets). stdout gets the last message, or nothing where the view drew it on a
+terminal both streams share; `-q` and `--json` keep stderr to diagnostics, `--reasoning`
+switches `ui.reasoning`'s view on. An ask no UI can answer is denied as `tools.ByNobody` and
+recorded (`Host.HeadlessDenials`, subagents' too), and stderr ends with the list and the one
+change that lets them through (`deniedHint`). It also drops what needs a user (`headlessExcluded`), the
 agent tool's `background` and `send_to` (a detached report would outlive the run), and the
 prompt lines naming them, and a plugin's `zemi.agent.send` raises there (nothing would bound
 its chain of turns). A headless run with no saved trust decision runs untrusted and says

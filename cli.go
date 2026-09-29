@@ -48,12 +48,13 @@ Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 var version string
 
 type options struct {
-	run, cont, json bool
-	resume, model   string
-	mode, profile   string
-	prompt          string
-	dir             string // -C
-	trust           *bool  // --trust for this run; nil when not given
+	run, cont, json  bool
+	quiet, reasoning bool
+	resume, model    string
+	mode, profile    string
+	prompt           string
+	dir              string // -C
+	trust            *bool  // --trust for this run; nil when not given
 }
 
 // exitStatus is the error of a command that printed its own diagnostic.
@@ -148,9 +149,11 @@ or run when it names a command (zemi "/review HEAD~1").`,
 	run := &cobra.Command{
 		Use:   "run [prompt... | -]",
 		Short: "answer one prompt on stdout and exit",
-		Long: `Answer one prompt on stdout and exit, with no TUI. Piped stdin is attached
-behind the prompt; - reads the prompt itself from stdin. Nobody can approve a
-call, so one the mode leaves to the user is denied and stderr counts them.`,
+		Long: `Answer one prompt and exit, with no TUI. stdout gets the last message, or
+with --json one JSON event per line; stderr shows the run as the chat draws it.
+Piped stdin is attached behind the prompt; - reads the prompt itself from
+stdin. Nobody can approve a call, so one the mode leaves to the user is denied
+and stderr lists them at the end.`,
 		Example: `  zemi run "explain main.go"
   git diff | zemi run "review this"
   zemi run - < task.md
@@ -162,14 +165,16 @@ call, so one the mode leaves to the user is denied and stderr counts them.`,
 		},
 	}
 	turnFlags(run, o)
-	run.Flags().BoolVar(&o.json, "json", false, "print JSON for a script instead of the reply")
+	run.Flags().BoolVar(&o.json, "json", false, "print one JSON event per line, the done report last")
+	run.Flags().BoolVarP(&o.quiet, "quiet", "q", false, "show no run on stderr, only what went wrong")
+	run.Flags().BoolVar(&o.reasoning, "reasoning", false, "show reasoning, every call and whole command output, as ctrl+o does")
 
 	health := &cobra.Command{
 		Use:   "health",
 		Short: "run the /health checks; 1 if any failed",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			h, done, err := bootHeadless(options{}, false, io.Discard) // the trust row says it
+			h, done, err := bootHeadless(options{}, false, os.Stderr, io.Discard) // the trust row says it
 			if err != nil {
 				return err
 			}
@@ -204,7 +209,7 @@ func completeBooted(names func(*hostapi.Host) []string) cobra.CompletionFunc {
 		if _, err := completionDirs(c); err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
-		h, done, err := bootHeadless(options{}, true, io.Discard)
+		h, done, err := bootHeadless(options{}, true, os.Stderr, io.Discard)
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
@@ -443,7 +448,7 @@ func modelsCommand() *cobra.Command {
 		Short: "list the models -m takes",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			h, done, err := bootHeadless(options{}, true, io.Discard)
+			h, done, err := bootHeadless(options{}, true, os.Stderr, io.Discard)
 			if err != nil {
 				return err
 			}
@@ -633,9 +638,11 @@ func printHealth(h *hostapi.Host, stdout io.Writer) int {
 // registered command runs it, as the composer would, so /review, /workflow
 // and the markdown commands reach a script or a git hook; anything else is
 // a message for the model. Its one send builds the tool set, so MCP servers
-// still starting get to finish first.
-func sendPrompt(h *hostapi.Host, prompt string) error {
-	h.WaitMCP(context.Background())
+// still starting get to finish first, unless ctx ends the wait.
+func sendPrompt(ctx context.Context, h *hostapi.Host, prompt string) error {
+	if h.WaitMCP(ctx); ctx.Err() != nil {
+		return ctx.Err()
+	}
 	typed, attached := agent.CutAttached(prompt)
 	if rest, ok := strings.CutPrefix(typed, "/"); ok {
 		name, args := hostapi.SplitCommand(rest)

@@ -64,7 +64,7 @@ network or processes.
 
 ```
 zemi [prompt...]                    open the TUI; a prompt is sent first
-zemi run [prompt... | -]            one turn, the reply on stdout
+zemi run [prompt... | -]            one turn: the run on stderr, the answer on stdout
 zemi sessions [export [--full] <id>]
                                     this project's sessions; one as markdown
 zemi models [update]                the ids -m takes; fetch the latest catalog
@@ -78,7 +78,43 @@ zemi run "explain main.go"
 git diff | zemi run "review this"
 zemi run - < task.md                # the prompt itself from stdin
 zemi -C ~/code/app run -c "and the tests?"
+zemi run -q "write the commit message for the staged diff" | git commit -F -
 ```
+
+`zemi run` puts the answer on stdout and nothing else: the run's last message,
+plain. stderr shows the run as the chat draws it, live on a terminal and as
+plain lines in a log; where both streams are one terminal the answer is drawn
+once. `-q` keeps stderr to what went wrong, and `--reasoning` shows what ctrl+o
+shows. Nobody can approve a call, so one the mode leaves to the user is denied,
+and stderr ends with those asks and what would let them through. The first
+ctrl+c stops the turn, the second leaves. Exit status: 0 done, 1 the send or
+the turn failed, 2 usage, 130 interrupted.
+
+`--json` turns the view off and stdout into one JSON object per line, `done`
+always last, so `tail -n1` is the report. A field a line does not carry is left
+out, and every string is what the chat row holds:
+
+| type | fields | when |
+|---|---|---|
+| `start` | `session`, `model`, `profile`, `mode`, `trusted`, `cwd` | once the run's session exists |
+| `reasoning` | `text`, `ms` | a thinking block settled |
+| `message` | `text` | an assistant message settled, narration or the answer |
+| `tool_start` | `id`, `tool`, `input`, `label` | a call started running |
+| `tool_end` | `id`, `tool`, `input`, `label`, `status` (`ok`, `err`, `stopped`, `bg`), `output`, `error`, `diff`, `detail` | a call finished |
+| `ask` | `tool`, `subject`, `arg`, `reason`, `why` (`approval`, `outside_sandbox`, `network`, `needs_tui`) | an ask nobody could answer was denied, a subagent's too |
+| `notice` | `text` | a notice row: a background report, the plan nudge |
+| `compact` | `text` | the conversation was compacted or old tool output cleared |
+| `retry` | `attempt`, `in_ms`, `error` | the provider call failed and is retried |
+| `error` | `text` | the turn ended with an error |
+| `done` | `result`, `is_error`, `error`, `session`, `duration_ms`, `usage` (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cost_usd`), `compactions`, `denied` (the `ask` fields), `tools` (`id`, `tool`, `input`, `status`, `error`) | last, a failed boot or send included |
+
+`input` is the argument a person reads first, `label` the model's own words
+for a command, `output` the result's last lines, `detail` an agent's or a
+workflow's progress. Pair tool events by `id`: a `tool_end` goes out once the
+call finishes, while a message or a thought goes out once no provider retry
+can take it back, one model step later, so narration can follow the next
+call's `tool_start`. A subagent or a workflow is one call; its own calls are
+not events.
 
 Shell completion, with session ids, plugin names, models, profiles and modes:
 

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,84 +20,86 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/tools"
+	"github.com/metafates/zemi/internal/ui"
 )
 
-// TestFailPrintJSON: a failure before the turn still reaches a script on
-// stdout as the report it parses.
-func TestFailPrintJSON(t *testing.T) {
-	var out, errOut strings.Builder
-	if code := failPrint(errors.New("no model configured"), true, &out, &errOut); code != 1 || errOut.Len() != 0 {
-		t.Fatalf("code=%d stderr=%q", code, errOut.String())
+func TestFollower(t *testing.T) {
+	tool := func(id string, s hostapi.CallStatus) hostapi.StreamTool {
+		return hostapi.StreamTool{ID: id, Name: "bash", Input: "ls", Status: s, Output: "x\nexit status 1"}
 	}
-	var rep report
-	if err := json.Unmarshal([]byte(out.String()), &rep); err != nil || !rep.IsError || rep.Error != "no model configured" {
-		t.Fatalf("stdout = %q (%v)", out.String(), err)
+	row := func(t hostapi.StreamTool) hostapi.ChatMessage {
+		return hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowTool, ID: t.ID, Tool: t.Name, Text: t.Input, Status: t.Status, Output: t.Output}
 	}
-	out.Reset()
-	if code := failPrint(errors.New("boom"), false, &out, &errOut); code != 1 || out.Len() != 0 || !strings.Contains(errOut.String(), "boom") {
-		t.Fatalf("text mode: code=%d stdout=%q stderr=%q", code, out.String(), errOut.String())
+	live := func(ts ...hostapi.StreamTool) hostapi.RunFrame {
+		return hostapi.RunFrame{Stream: hostapi.StreamSnapshot{Tools: ts}}
 	}
-}
-
-func TestTurnReport(t *testing.T) {
-	rep := turnReport([]hostapi.ChatMessage{
-		{Role: "user", Text: "go"},
-		{Role: "assistant", Text: "looking"},
-		{Role: "assistant", Kind: "tool", Tool: "agent", Text: "find it", Status: "ok", Detail: "explore · 3 tool calls"},
-		{Role: "assistant", Kind: "tool", Tool: "bash", Text: "rm -rf /", Status: "err", Output: "rm: /: is a directory\nexit status 1\nchanged: x"},
+	ask := hostapi.Denial{Tool: "write", Subject: "fs.write", Arg: "x", Reason: "agent general: untrusted", Why: hostapi.DenyApproval}
+	for _, c := range []struct {
+		name    string
+		frames  []hostapi.RunFrame
+		denials [][]hostapi.Denial // the run's denials at each frame
+		want    string             // the events' types, and a tool event's id and status
+		result  string
+		isError bool
+		denied  int
+	}{
+		{name: "a fast call gets its start before its end", frames: []hostapi.RunFrame{live(tool("a", hostapi.CallOK))}, want: "tool_start:a tool_end:a:ok"},
+		{name: "a running call starts once", frames: []hostapi.RunFrame{live(tool("a", hostapi.CallWait)), live(tool("a", hostapi.CallRun)), live(tool("a", hostapi.CallRun))}, want: "tool_start:a"},
 		{
-			Role: "assistant", Kind: "tool", Tool: "write", Text: "x.go", Status: "err",
-			Output: "permission denied (mode): fs.write /x.go: print mode cannot ask",
+			name:   "a finished live call ends before its row settles, and the row sends nothing",
+			frames: []hostapi.RunFrame{live(tool("a", hostapi.CallRun)), {Pending: []hostapi.ChatMessage{row(tool("a", hostapi.CallErr))}}, {Settled: []hostapi.ChatMessage{row(tool("a", hostapi.CallErr))}}},
+			want:   "tool_start:a tool_end:a:err",
 		},
 		{
-			Role: "assistant", Kind: "tool", Tool: tools.ToolLua, Text: "zemi.mcp.add{}", Status: "err",
-			Output: "permission denied (mode): tool.lua: print mode cannot ask",
+			name:   "the last message is the result",
+			frames: []hostapi.RunFrame{{Settled: []hostapi.ChatMessage{{Role: "user", Text: "go"}, {Role: "assistant", Text: "looking"}, {Role: "assistant", Kind: hostapi.RowCompact, Text: "cleared"}, {Role: "assistant", Text: "found"}}}},
+			want:   "message compact message", result: "found",
 		},
+		{name: "an error row makes the run an error", frames: []hostapi.RunFrame{{Settled: []hostapi.ChatMessage{{Role: "assistant", Kind: hostapi.RowError, Text: "rate limited"}}}}, want: "error", isError: true},
+		{name: "a denial is an ask and a done.denied row", frames: []hostapi.RunFrame{{}, {}}, denials: [][]hostapi.Denial{{ask}, {ask}}, want: "ask", denied: 1},
 		{
-			Role: "assistant", Kind: "tool", Tool: tools.ToolMemory, Text: "forget x", Status: "err",
-			Output: "permission denied (nobody): memory.write: no one can approve in a headless run",
+			name:   "a retry is one event per attempt",
+			frames: []hostapi.RunFrame{{Stream: hostapi.StreamSnapshot{Retries: 1}}, {Stream: hostapi.StreamSnapshot{Retries: 1}}, {Stream: hostapi.StreamSnapshot{Retries: 2}}},
+			want:   "retry retry",
 		},
-		{Role: "assistant", Kind: "compact", Text: "cleared 40k tokens of old tool output"},
-		{Role: "assistant", Text: "found"},
-	})
-	if rep.Result != "looking\n\nfound" || rep.IsError || rep.Compactions != 1 || len(rep.Tools) != 5 || !rep.Tools[0].OK || rep.Tools[1].OK || rep.Tools[0].Detail == "" {
-		t.Fatalf("report = %+v", rep)
-	}
-	// a failed call says why and whether the gate refused it
-	if rt := rep.Tools[1]; rt.Error != "exit status 1" || rt.Denied || rep.Tools[0].Error != "" {
-		t.Fatalf("bash row = %+v", rt)
-	}
-	if rt := rep.Tools[2]; !rt.Denied || !strings.HasPrefix(rt.Error, "permission denied (mode)") {
-		t.Fatalf("write row = %+v", rt)
-	}
-	// an unanswered ask is the gate's to count; the rest were refused
-	if rep.refused != 2 {
-		t.Fatalf("refused = %d, want 2", rep.refused)
-	}
-	if rep := turnReport([]hostapi.ChatMessage{{Role: "assistant", Kind: "error", Text: "rate limited"}}); !rep.IsError || rep.Error != "rate limited" {
-		t.Fatalf("error report = %+v", rep)
+	} {
+		f := newFollower()
+		var got []string
+		for i, fr := range c.frames {
+			var ds []hostapi.Denial
+			if i < len(c.denials) {
+				ds = c.denials[i]
+			}
+			for _, ev := range f.step(fr, ds) {
+				s := ev.Type
+				if ev.ID != "" {
+					s += ":" + ev.ID
+				}
+				if ev.Status != "" {
+					s += ":" + ev.Status
+				}
+				got = append(got, s)
+			}
+		}
+		if strings.Join(got, " ") != c.want || f.done.Result != c.result || f.done.IsError != c.isError || len(f.done.Denied) != c.denied {
+			t.Errorf("%s: %q, done %+v", c.name, got, f.done)
+		}
 	}
 }
 
 func TestDeniedHint(t *testing.T) {
 	for _, c := range []struct {
-		name        string
-		unsandboxed int
-		trusted     bool
-		want        string
+		why     hostapi.DenialWhy
+		trusted bool
+		want    string
 	}{
-		{"untrusted", 0, false, "try --trust"},
-		{"trusted", 0, true, "the mode left it to the user"},
-		{"outside the sandbox", 1, true, "outside the sandbox needs the TUI"},
-		{"lua script", 0, true, "only the TUI can approve a Lua script"},
+		{hostapi.DenyApproval, false, "--trust trusts this project"},
+		{hostapi.DenyApproval, true, "the mode left it to the user"},
+		{hostapi.DenyOutsideSandbox, true, "outside the sandbox needs the TUI"},
+		{hostapi.DenyNeedsTUI, true, "only the TUI approves a Lua script"},
 	} {
-		rep := report{Denied: 1, unsandboxed: c.unsandboxed}
-		if c.name == "lua script" {
-			rep.tuiOnly = 1
-		}
-		if got := deniedHint(rep, c.trusted); !strings.Contains(got, c.want) {
-			t.Errorf("%s: %q", c.name, got)
+		if got := deniedHint([]denial{{Why: string(c.why)}}, c.trusted); !strings.Contains(got, c.want) {
+			t.Errorf("%s, trusted %v: %q", c.why, c.trusted, got)
 		}
 	}
 }
@@ -165,13 +166,14 @@ func fakeOpenAI(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "data: [DONE]\n\n")
 }
 
-// printHost is a host with /new and a fake model, in an untrusted project.
+// printHost is a host with /new, the shipped widgets and a fake model, in
+// an untrusted project.
 func printHost(t *testing.T) *hostapi.Host {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(fakeOpenAI))
 	t.Cleanup(srv.Close)
 	_, h, r := newTrustGate(t)
-	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(mainCommands(func() {}, func() {})...)}); err != nil {
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(mainCommands(func() {}, func() {})...), lua.RequireStep("zemi.tui")}); err != nil {
 		t.Fatal(err)
 	}
 	cfg := fmt.Sprintf(`zemi.provider.add({ id = "fake", kind = zemi.provider.kind.OPENAI_COMPAT, api_key = "x", base_url = %q, models = { { id = "m", context_window = 128000 } } })
@@ -182,8 +184,38 @@ func printHost(t *testing.T) *hostapi.Host {
 	return h
 }
 
-// TestPrintTurn: what zemi run prints for a turn, and why calls were denied.
-func TestPrintTurn(t *testing.T) {
+// runPrompt is one zemi run over h, its stderr a file as a CI log is.
+func runPrompt(t *testing.T, h *hostapi.Host, o options) (code int, stdout, stderr string) {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	view := ui.NewRunView(f, o.quiet || o.json)
+	h.Stderr = view
+	var out strings.Builder
+	code = runHeadless(h, view, o, &out)
+	b, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return code, out.String(), string(b)
+}
+
+// lastDone is the done line a --json run ends with.
+func lastDone(t *testing.T, stdout string) doneEvent {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	var d doneEvent
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &d); err != nil || d.Type != "done" {
+		t.Fatalf("last line of %q: %v", stdout, err)
+	}
+	return d
+}
+
+// TestRunHeadless: what zemi run prints for a turn, and which asks it names.
+func TestRunHeadless(t *testing.T) {
 	for _, c := range []struct {
 		name, prompt      string
 		first             []string // turns run before, -c style
@@ -192,18 +224,18 @@ func TestPrintTurn(t *testing.T) {
 		notStdout, notErr string
 		denied            int
 	}{
-		{name: "escapes are stripped", prompt: "say \x1b]52;c;SGk=\a\x1b[31mhi", stdout: "hi", notStdout: "\x1b"},
-		{name: "a deny rule is no ask", prompt: `call bash {"command":"ls -la"}`, setup: func(h *hostapi.Host) {
+		{name: "escapes are stripped", prompt: "say \x1b]52;c;SGk=\a\x1b[31mhi", stdout: "hi", stderr: "resume   zemi -r ", notStdout: "\x1b", notErr: "\x1b"},
+		{name: "a deny rule's call is a failed row", prompt: `call bash {"command":"ls -la"}`, setup: func(h *hostapi.Host) {
 			h.Perm.Add(perm.Rule{Subject: "tool.bash", Pattern: "ls*", Decision: perm.Deny})
-		}, stderr: "1 tool call denied by a rule", notErr: "allow rule"},
+		}, stderr: "✗ Run ls -la", notErr: "nobody could answer"},
 		{name: "the planner does not write", prompt: `call write {"path":"x.txt","content":"x"}`, setup: func(h *hostapi.Host) {
 			if err := h.SetProfile("planner"); err != nil {
 				t.Fatal(err)
 			}
-		}, stderr: "1 tool call denied by a rule", notErr: "allow rule"},
+		}, stderr: "permission denied (profile:readonly)", notErr: "nobody could answer"},
 		{
-			name: "a subagent's unanswered ask counts", prompt: `call agent {"agent":"general","description":"d","prompt":"call write {\"path\":\"zz.txt\",\"content\":\"x\"}"}`,
-			stderr: "1 tool call denied; nobody can approve a call in zemi run", denied: 1,
+			name: "a subagent's unanswered ask is named", prompt: `call agent {"agent":"general","description":"d","prompt":"call write {\"path\":\"zz.txt\",\"content\":\"x\"}"}`,
+			stderr: "zemi: 1 ask nobody could answer in a headless run:\n  write  ", denied: 1,
 		},
 		{name: "a swapped-in session is not this run's", first: []string{"say hi", "/new"}, prompt: "/resume", notStdout: "hi"},
 	} {
@@ -212,32 +244,29 @@ func TestPrintTurn(t *testing.T) {
 			c.setup(h)
 		}
 		for _, p := range c.first {
-			if printTurn(h, p, false, io.Discard, io.Discard) != 0 {
+			if code, _, _ := runPrompt(t, h, options{prompt: p, quiet: true}); code != 0 {
 				t.Fatalf("%s: %q failed", c.name, p)
 			}
 		}
-		var out, errOut strings.Builder
-		code := printTurn(h, c.prompt, false, &out, &errOut)
-		if code != 0 || !strings.Contains(out.String(), c.stdout) || !strings.Contains(errOut.String(), c.stderr) ||
-			c.notStdout != "" && strings.Contains(out.String(), c.notStdout) || c.notErr != "" && strings.Contains(errOut.String(), c.notErr) {
-			t.Errorf("%s: code %d, stdout %q, stderr %q", c.name, code, out.String(), errOut.String())
+		code, out, errOut := runPrompt(t, h, options{prompt: c.prompt})
+		if code != 0 || !strings.Contains(out, c.stdout) || !strings.Contains(errOut, c.stderr) ||
+			c.notStdout != "" && strings.Contains(out, c.notStdout) || c.notErr != "" && strings.Contains(errOut, c.notErr) {
+			t.Errorf("%s: code %d, stdout %q, stderr %q", c.name, code, out, errOut)
 		}
-		out.Reset()
 		if c.denied > 0 {
-			var rep report
-			printTurn(h, c.prompt, true, &out, io.Discard)
-			if err := json.Unmarshal([]byte(out.String()), &rep); err != nil || rep.Denied != c.denied {
-				t.Errorf("%s: json denied = %d (%v)", c.name, rep.Denied, err)
+			_, out, _ := runPrompt(t, h, options{prompt: c.prompt, json: true})
+			if d := lastDone(t, out); len(d.Denied) != c.denied || !strings.Contains(out, `{"type":"ask","tool":"write"`) {
+				t.Errorf("%s: --json denied %+v in %s", c.name, d.Denied, out)
 			}
 		}
 	}
 }
 
-// TestPrintScreenCommands: a command that opens a screen fails in zemi run
+// TestRunScreenCommands: a command that opens a screen fails in zemi run
 // and says why, /trust and /health naming their flags; /btw prints its answer.
-func TestPrintScreenCommands(t *testing.T) {
+func TestRunScreenCommands(t *testing.T) {
 	h := printHost(t)
-	if printTurn(h, "say hi", false, io.Discard, io.Discard) != 0 {
+	if code, _, _ := runPrompt(t, h, options{prompt: "say hi", quiet: true}); code != 0 {
 		t.Fatal("first turn failed")
 	}
 	for _, c := range []struct {
@@ -270,28 +299,33 @@ func TestPrintScreenCommands(t *testing.T) {
 		{"/lsp", "", "zemi: /lsp needs the TUI\n", 1},
 		{"/btw why", "why", "", 0},
 	} {
-		var out, errOut strings.Builder
-		if code := printTurn(h, c.prompt, false, &out, &errOut); code != c.code || !strings.Contains(out.String(), c.stdout) || c.stdout == "" && out.Len() > 0 || errOut.String() != c.stderr {
-			t.Errorf("%s: code %d, stdout %q, stderr %q", c.prompt, code, out.String(), errOut.String())
+		if code, out, errOut := runPrompt(t, h, options{prompt: c.prompt, quiet: true}); code != c.code || !strings.Contains(out, c.stdout) || c.stdout == "" && out != "" || errOut != c.stderr {
+			t.Errorf("%s: code %d, stdout %q, stderr %q", c.prompt, code, out, errOut)
 		}
 	}
 }
 
-// TestPrintInterruptJSON: an interrupted run, /btw included, still prints
-// its report, so a script keeps the session id it resumes.
-func TestPrintInterruptJSON(t *testing.T) {
+// TestRunInterruptJSON: an interrupted run, /btw included, still ends in its
+// done line, so a script keeps the session id it resumes.
+func TestRunInterruptJSON(t *testing.T) {
 	for _, prompt := range []string{"hang", "/btw hang"} {
 		h := printHost(t)
-		if printTurn(h, "say hi", false, io.Discard, io.Discard) != 0 {
+		if code, _, _ := runPrompt(t, h, options{prompt: "say hi", quiet: true}); code != 0 {
 			t.Fatal("first turn failed")
 		}
-		var out strings.Builder
-		code := make(chan int, 1)
-		go func() { code <- printTurn(h, prompt, true, &out, io.Discard) }()
+		type result struct {
+			code int
+			out  string
+		}
+		done := make(chan result, 1)
+		go func() {
+			code, out, _ := runPrompt(t, h, options{prompt: prompt, json: true})
+			done <- result{code, out}
+		}()
 		for !h.AgentActive() {
 			select {
-			case c := <-code:
-				t.Fatalf("%s: ended with %d before the interrupt", prompt, c)
+			case r := <-done:
+				t.Fatalf("%s: ended with %d before the interrupt", prompt, r.code)
 			default:
 				runtime.Gosched()
 			}
@@ -299,10 +333,21 @@ func TestPrintInterruptJSON(t *testing.T) {
 		if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
 			t.Fatal(err)
 		}
-		var rep report
-		if c := <-code; c != 130 || json.Unmarshal([]byte(out.String()), &rep) != nil || !rep.IsError || rep.Error != "interrupted" || rep.SessionID == "" || h.AgentActive() {
-			t.Errorf("%s: code %d, stdout %q, still active %v", prompt, c, out.String(), h.AgentActive())
+		r := <-done
+		if d := lastDone(t, r.out); r.code != 130 || !d.IsError || d.Error != "interrupted" || d.Session == "" || h.AgentActive() {
+			t.Errorf("%s: code %d, stdout %q, still active %v", prompt, r.code, r.out, h.AgentActive())
 		}
+	}
+}
+
+// TestRunFailedJSON: a run that fails before its turn is one done line.
+func TestRunFailedJSON(t *testing.T) {
+	var out, errOut strings.Builder
+	if code := runFailed(errors.New("no model configured"), true, &out, &errOut); code != 1 || errOut.Len() != 0 {
+		t.Fatalf("code=%d stderr=%q", code, errOut.String())
+	}
+	if d := lastDone(t, out.String()); !d.IsError || d.Error != "no model configured" || strings.Count(out.String(), "\n") != 1 {
+		t.Fatalf("stdout = %q", out.String())
 	}
 }
 
@@ -319,7 +364,7 @@ func TestPipedStdinIsNotTyped(t *testing.T) {
 		if _, err := h.Settings.SetQuiet("session.auto_title", false); err != nil {
 			t.Fatal(err)
 		}
-		if code := printTurn(h, c.prompt+agent.Attached("stdin", diff), false, io.Discard, io.Discard); code != 0 {
+		if code, _, _ := runPrompt(t, h, options{prompt: c.prompt + agent.Attached("stdin", diff), quiet: true}); code != 0 {
 			t.Fatalf("%q: code %d", c.prompt, code)
 		}
 		for _, r := range h.Session().Transcript {

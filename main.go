@@ -56,15 +56,18 @@ func launch(o options) int {
 		if o.prompt == "" {
 			return usage("zemi run needs a prompt: an argument, - or piped stdin")
 		}
-		h, done, err := bootHeadless(o, false, os.Stderr)
+		// the view is the run's stderr from boot on, so a diagnostic prints
+		// above its tail
+		view := ui.NewRunView(os.Stderr, o.quiet || o.json)
+		h, done, err := bootHeadless(o, false, view, view)
 		if err != nil {
-			return failPrint(err, o.json, os.Stdout, os.Stderr)
+			return runFailed(err, o.json, os.Stdout, view)
 		}
 		defer done()
 		if err := applyOptions(h, o); err != nil {
-			return failPrint(err, o.json, os.Stdout, os.Stderr)
+			return runFailed(err, o.json, os.Stdout, view)
 		}
-		return printTurn(h, o.prompt, o.json, os.Stdout, os.Stderr)
+		return runHeadless(h, view, o, os.Stdout)
 	}
 	// bubbletea draws to stdout: redirected, the TUI would run the agent unseen
 	if fi, err := os.Stdout.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 {
@@ -131,7 +134,7 @@ func launch(o options) int {
 		// here, not in app.ready: once per process, after -m, never on a reload
 		host.OfferModel()
 		if o.prompt != "" {
-			if err := sendPrompt(host, o.prompt); err != nil {
+			if err := sendPrompt(ctx, host, o.prompt); err != nil {
 				app.Notify(logging.Error, "Could not send", err.Error())
 			}
 		}
@@ -213,9 +216,10 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 
 // bootHeadless boots zemi with no TUI, for zemi run and zemi health; done
 // stops what boot started (MCP and language servers) and closes the log.
-// An inert boot (zemi models, completion) only reads config: no store, no
-// log file, no process, and Host.Inert's guards.
-func bootHeadless(o options, inert bool, notice io.Writer) (*hostapi.Host, func(), error) {
+// stderr gets its diagnostics, notice the untrusted-project line. An inert
+// boot (zemi models, completion) only reads config: no store, no log file,
+// no process, and Host.Inert's guards.
+func bootHeadless(o options, inert bool, stderr, notice io.Writer) (*hostapi.Host, func(), error) {
 	dirs, err := config.ResolveDirs()
 	if err == nil && !inert {
 		err = dirs.Ensure()
@@ -229,7 +233,7 @@ func bootHeadless(o options, inert bool, notice io.Writer) (*hostapi.Host, func(
 	}
 	log := logging.New(logDir)
 	h, trust := newHost(hostDirs, log, o)
-	h.Inert = inert
+	h.Inert, h.Stderr = inert, stderr
 	trust.dirs = dirs // the saved decision; a headless answer saves none
 	// a project with no saved decision runs untrusted instead of asking; say
 	// so, or the run looks like it applied the project's setup
@@ -520,7 +524,7 @@ func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 			h.Log.Error("boot", s.Name+" failed", map[string]any{"error": err.Error()})
 			h.RecordError("boot "+s.Name, err.Error())
 			if headless { // no /errors pill to notice, and zemi run is the scriptable path
-				fmt.Fprintln(os.Stderr, "zemi: "+s.Name+": "+hostapi.Headline(err.Error()))
+				fmt.Fprintln(h.Stderr, "zemi: "+s.Name+": "+hostapi.Headline(err.Error()))
 			}
 		}
 		return nil

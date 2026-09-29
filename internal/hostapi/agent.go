@@ -867,13 +867,9 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag.retries++
 	ag.retryAt = time.Now().Add(delay)
 	ag.retryWhy, _ = s.h.explain(err) // the advice is to wait, which the countdown says
-	why := ag.retryWhy
 	ag.mu.Unlock()
 	s.h.cutAssistantRows(rows)
 	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
-	if s.h.hooks() == nil { // headless: the countdown is on no screen
-		fmt.Fprintf(s.h.Stderr, "zemi: retrying in %s: %s\n", fmtDuration(delay), why)
-	}
 	s.h.agentStream()
 }
 

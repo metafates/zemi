@@ -50,7 +50,8 @@ func printLines(w io.Writer, t themeResolver, p colorprofile.Profile, lines [][]
 // a run echo into the tail.
 type RunView struct {
 	w       io.Writer
-	size    func() (width, height int) // nil when w is no terminal a cursor moves on: no tail
+	tty     bool                       // w is a terminal
+	size    func() (width, height int) // nil when no cursor moves on w: no tail
 	profile colorprofile.Profile
 	quiet   bool // -q or --json: diagnostics only
 	now     func() time.Time
@@ -60,13 +61,13 @@ type RunView struct {
 	thm     themeResolver
 	tail    string // the tail on screen, "" for none
 	printed bool   // settled rows went out, so the next batch starts with a gap
-	dead    bool   // a render failed: the view printed its last line
+	dead    bool   // a render failed or Close ran: the view draws nothing more
 }
 
 // NewRunView prints to f; quiet prints diagnostics only.
 func NewRunView(f *os.File, quiet bool) *RunView {
-	v := &RunView{w: f, profile: colorprofile.Detect(f, os.Environ()), quiet: quiet, now: time.Now}
-	if term.IsTerminal(f.Fd()) && os.Getenv("TERM") != "dumb" {
+	v := &RunView{w: f, tty: term.IsTerminal(f.Fd()), profile: colorprofile.Detect(f, os.Environ()), quiet: quiet, now: time.Now}
+	if v.tty && os.Getenv("TERM") != "dumb" {
 		v.size = func() (int, int) {
 			w, h, err := term.GetSize(f.Fd())
 			if err != nil || w <= 0 {
@@ -85,11 +86,12 @@ func (v *RunView) Start(h *hostapi.Host) {
 	v.h, v.thm = h, themeResolver{host: h, sgr: map[string]uv.Style{}}
 }
 
-// On reports whether the view draws: not quiet, started, no render failed.
-func (v *RunView) On() bool {
+// On reports whether the view draws (not quiet, started, no render failed
+// and not closed) and whether it draws to a terminal.
+func (v *RunView) On() (on, terminal bool) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return v.on()
+	return v.on(), v.on() && v.tty
 }
 
 func (v *RunView) on() bool { return !v.quiet && !v.dead && v.h != nil }
@@ -131,8 +133,11 @@ func (v *RunView) Show(fr hostapi.RunFrame, cancelling bool) {
 
 // drawTail is the tail's text: the chat's pending rows and live turn, cut
 // to their last rows so a redraw stays off the top of the screen, a blank
-// row, and the working rule. No trailing newline, so it fills no extra row.
+// row, and the working rule. No trailing newline, so it fills no extra row,
+// and two cells short of the edge, so the ^C a terminal echoes after it does
+// not wrap to a row the next erase would miss.
 func (v *RunView) drawTail(fr hostapi.RunFrame, cancelling bool, width, height int) (string, error) {
+	width -= 2
 	state := hostapi.UIState{Printed: &hostapi.Printed{Rows: fr.Pending, Live: &fr.Stream}, Cancelling: cancelling}
 	if v.h.Settings.Bool("ui.animations") {
 		state.Frame = int(v.now().UnixMilli() / frameMS)
@@ -221,6 +226,7 @@ func (v *RunView) Close() {
 		printLines(&b, v.thm, v.profile, lines)
 	}
 	_, _ = io.WriteString(v.w, b.String())
+	v.dead = true
 }
 
 // fail stops the view after a render error: the log gets it and stderr one

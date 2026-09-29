@@ -61,6 +61,7 @@
 | `module "..." at ... is outside plugin <name>` | a relative require or a symlink left the plugin's own directory, or reached a disabled plugin |
 | `plugin code running with no file of its plugin on the stack has no principal` | user code called a function a plugin handed out that is not the plugin's own file (a user module it required, a `load` chunk); call it through the plugin's own code |
 | `zemi run "..."` from a script sits 3 seconds before it starts | stdin is an open pipe nobody writes to, and zemi waits that long for piped input; add `</dev/null` |
+| a script's `zemi run` log is full of chat rows | stderr shows the run as the chat draws it; `-q` keeps it to what went wrong, and stdout has only the answer |
 | one plugin fails at boot | the others still load; `/errors` has the message (`plugin <name>: ...`) and the `/health` plugins row counts the failed ones. A local plugin named like an installed one, or a symlinked plugin dir, never loads |
 | a plugin registers nothing, with no error | it has no `init.lua` at `<data>/plugins/installed/<name>/` or `local/<name>/` (a library-only plugin has just `lua/`), or its name is in `<data>/plugins/disabled` |
 | `... is registered by plugin x, not y` | two plugins want one command, key, widget, theme, event handler id, tool, completion source or health row, or y tried to remove x's; the first by name keeps it |

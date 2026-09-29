@@ -1795,6 +1795,24 @@ provenance string.
   sanitized the same way, and the log sink collapses C0 control bytes
   (newlines included: one record, one line) and strips C1, so a `tail -f`
   of the log cannot execute escape sequences or forge entries.
+- **Printed runs** (`zemi run`; run.go, ui/run.go): one observer, two
+  outputs. stdout is the answer and nothing else: the run's last message
+  (the headless prompt tells the model to put the whole answer there, after
+  its last call), or with `--json` one event per line, `done` last (the
+  schema is in README.md). stderr is the run view: the chat and working
+  widgets rendered over the run's rows with `UIState.Printed`, which widgets
+  read as `ctx.headless` (no click or key hints, the splash stays out, the
+  exit region drops its banner). Rows print once they settle, and on a
+  terminal the pending rows, the live turn and the working rule are a tail
+  redrawn in place under them (`Host.RunFrame`: while a turn runs, a row
+  settles only below the running step's start, which a provider retry cuts
+  back to). Off a terminal it is plain lines; `-q` and `--json` leave only
+  diagnostics, which print above the tail since the view is `Host.Stderr`.
+  Where stdout and stderr are both terminals and the view drew the answer,
+  stdout stays empty. An ask nobody can answer is denied (`tools.ByNobody`),
+  recorded with its tool, argument and reason (`Host.HeadlessDenials`, any
+  agent's), and listed on stderr at the end with the change that would let
+  it through; the model reads "no one can approve in a headless run".
 - **Golden tests**: headless mode renders the frame's segment rows to a string;
   golden files per widget and per full frame via `charmbracelet/x/exp/golden`
   (`go test ./internal/ui/... -update` regenerates).
@@ -2597,7 +2615,7 @@ the host-only proposal channel (§10.3), the user-only config.set and allow rule
 
 ```
 main.go, cli.go             wiring, boot steps, and the command line (cobra)
-run.go                      zemi run: one turn on stdout
+run.go                      zemi run: the loop, the answer or the JSON events
 plugintest.go               zemi plugins test: the copy, a boot per case, the report
 internal/lua/               interpreter thread, Lua sandbox, origins, marshal, require
 internal/hostapi/           zemi.* namespaces and the host services behind them:
@@ -2613,7 +2631,7 @@ internal/perm/              rules engine, bash normalizer, ReadCommand, env gate
 internal/sandbox/           OS confinement for settled commands: seatbelt, Landlock +
                             seccomp, the namespace variant and the helper re-exec
 internal/ui/                program, regions, widgets, themes, palette, overlays,
-                            composer, mouse
+                            composer, mouse, and zemi run's view of a run
 internal/learn/             memory intake policy: caps, scrubber, near-duplicate check, digest
 internal/skills/            SKILL.md discovery and parsing
 internal/store/             sqlite schema, its version stamp and queries
