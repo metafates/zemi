@@ -743,6 +743,7 @@ var WrapperPrograms = map[string]bool{
 	"nohup": true, "time": true, "timeout": true, "watch": true, "setsid": true, "stdbuf": true, "script": true,
 	"nice": true, "ionice": true, "chrt": true, "caffeinate": true, "parallel": true, "ssh": true, "command": true, "builtin": true,
 	"npx": true, "pnpx": true, "bunx": true, "uvx": true, "pipx": true, "busybox": true, "toybox": true,
+	"trap": true, "coproc": true,
 	"awk":  true, // an inline program, like perl -e
 	"zemi": true, // zemi run runs a model, and plugins install fetches code that runs in every project
 }
@@ -963,7 +964,7 @@ func (n Normalized) padIntact() bool {
 	}
 	for _, f := range n.Args {
 		for f = ProgramWords(f); len(f) > 0; {
-			if shellState[f[0]] || strings.ContainsAny(f[0], "$=") ||
+			if ShellState[f[0]] || strings.ContainsAny(f[0], "$=") ||
 				f[0] == "printf" && slices.ContainsFunc(f, func(a string) bool { return strings.HasPrefix(a, "-v") }) {
 				return false
 			}
@@ -1000,9 +1001,10 @@ func (n Normalized) padIntact() bool {
 	return true
 }
 
-// shellState are the builtins that set or unset the shell variables their
-// arguments name.
-var shellState = map[string]bool{
+// ShellState are the builtins that set or unset the shell variables their
+// arguments name. bash evaluates a subscript in a name as arithmetic, where
+// a quoted $(...) runs.
+var ShellState = map[string]bool{
 	"eval": true, "source": true, ".": true, "export": true, "declare": true, "typeset": true, "local": true,
 	"readonly": true, "unset": true, "read": true, "mapfile": true, "readarray": true, "getopts": true,
 	"let": true, "alias": true, "trap": true, "select": true, "enable": true,
@@ -1114,7 +1116,7 @@ func (n Normalized) destructive(repeated bool, pad string) string {
 // always answer names none it allows.
 var ShellWords = map[string]bool{
 	"for": true, "select": true, "case": true, "done": true, "fi": true, "esac": true, "}": true,
-	"[": true, "[[": true, "]]": true, "set": true, "shopt": true, "true": true, "false": true, ":": true,
+	"[": true, "set": true, "shopt": true, "true": true, "false": true, ":": true,
 	"break": true, "continue": true, "exit": true, "return": true, "wait": true,
 }
 
@@ -1191,7 +1193,7 @@ func segmentPrograms(f []string) (_ []Program, ok bool) {
 		switch {
 		case ShellWords[w]:
 			return out, true
-		case strings.ContainsAny(w, "$`*?[{"):
+		case w != "[[" && strings.ContainsAny(w, "$`*?[{"):
 			return nil, false
 		case isShell(w) || name == "eval":
 			body, ok := shellBody(f[1:])

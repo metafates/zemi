@@ -526,9 +526,11 @@ program and subcommand for `git`, `go`, `cargo` and the other `perm.SubcommandPr
 options kept (`git -C sub status`, `perm.Subcommand`) and the exact segment when options leave
 no subcommand (`git --version`) or one not for sure (`npm -w web test`: `perm.LeadKnown`), a
 leading `do` or `then` kept in the rule (`do cat *`, never `do *`) and shell syntax (`for`,
-`done`, `perm.ShellWords`) left out of the label; a file's directory, or the file alone when that is `$HOME`, `/` or between,
+`done`, `perm.ShellWords`) left out of the label unless nothing else is named; a file's directory, or the file alone when that is `$HOME`, `/` or between,
 which hold every dotfile; a URL's host). A deleting program (`rm`, `mv`, `find`, `tar`, ...) or a segment
-`perm.Normalized.Destructive` names stays exact, since its rule would run unconfined. A file read is also
+`perm.Normalized.Destructive` names stays exact, since its rule would run unconfined, and so
+do `[[` and the `perm.ShellState` builtins (`let`, `read`, ...), which evaluate a quoted
+array subscript, where `$(...)` runs. A file read is also
 offered the wider `repoChoice` ("allow reads anywhere in <repo>", answered as `user:wider`),
 because in a deep tree the directory rule is the same ask again one package over. No always
 option is offered at all for a gate-forced ask (heredoc, env assignment), a pattern holding a

@@ -1169,6 +1169,11 @@ func TestAlwaysChoice(t *testing.T) {
 		// would allow any later loop body
 		{tools.Request{Subject: "tool.bash", Arg: "for f in $(ls); do cat $f; done"}, "allow ls and cat", []string{"for", "for *", "ls", "ls *", "do cat", "do cat *", "done", "done *"}},
 		{tools.Request{Subject: "tool.bash", Arg: "if true; then ls; fi"}, "allow ls", []string{"if true", "if true *", "then ls", "then ls *", "fi", "fi *"}},
+		// syntax is named when nothing else is, so the label says what the rules allow
+		{tools.Request{Subject: "tool.bash", Arg: "set -e"}, "allow set", []string{"set", "set *"}},
+		// [[ and let evaluate a quoted subscript, which can run $(...): exact
+		{tools.Request{Subject: "tool.bash", Arg: "[[ -f go.mod ]] && ls"}, "allow ls and 1 more", []string{"[[ -f go.mod ]]", "ls", "ls *"}},
+		{tools.Request{Subject: "tool.bash", Arg: "let n=1"}, "allow this exact command", []string{"let n=1"}},
 		// a deleter stays exact: the rule runs unconfined and has no write path to ask on
 		{tools.Request{Subject: "tool.bash", Arg: "rm build.tmp"}, "allow this exact command", []string{"rm build.tmp"}},
 		{tools.Request{Subject: "tool.bash", Arg: "/bin/rm old"}, "allow this exact command", []string{"/bin/rm old"}},
@@ -1207,6 +1212,8 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.bash", Arg: "xargs rm"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "nohup ls"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "time ls"}, "", nil},
+		{tools.Request{Subject: "tool.bash", Arg: "trap 'rm -rf x' EXIT"}, "", nil},
+		{tools.Request{Subject: "tool.bash", Arg: "coproc ls"}, "", nil},
 		{tools.Request{Subject: "tool.bash", Arg: "go test ./... && sudo ls"}, "", nil},
 		{tools.Request{Subject: "fs.write", Arg: filepath.Join(proj, "internal", "a.go")}, "allow edits in internal/ and below", []string{filepath.Join(proj, "internal", "*")}},
 		// home, / and above hold every dotfile: only the file, named with ~

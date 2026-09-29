@@ -515,6 +515,8 @@ func TestPrograms(t *testing.T) {
 		{"unknown lead option", "npm -w web test", "", "npm"},
 		{"same name, strongest mark", "rm a; rm -rf b", "", "rm!deletes"},
 		{"no-ops only", "set -e; true; :", "", ""},
+		{"test syntax runs arithmetic", "[[ -f go.mod ]] && ls", "", "[[ ls"},
+		{"trap body", "trap 'rm -rf x' EXIT", "", "trap!runs code"},
 		{"fd redirect first", ">&2 echo oops", "", "echo"},
 		{"quoted substitution", `echo "$(rm -rf x)"`, "", "echo rm!deletes"},
 		{"commit message heredoc", "git commit -m \"$(cat <<'EOF'\nfix: things\nEOF\n)\"", "", "git commit cat"},

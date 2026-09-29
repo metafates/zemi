@@ -325,7 +325,7 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		if n.Fail != "" || n.ForceAsk != "" || n.Assign != "" || n.Opaque {
 			return "", nil
 		}
-		var names []string
+		var names, syntax []string
 		var rules []perm.Rule
 		seen := map[string]bool{}
 		unnamed := 0 // segments allowed exactly as written, named only by count
@@ -341,16 +341,22 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 			}
 			for _, p := range patterns {
 				r := rule(perm.SubjectBash, p)
-				// the ask said "staying sandboxed", so the rule keeps it
+				// the ask said the run stays sandboxed, so the rule keeps it
 				r.Network = req.Network
 				rules = append(rules, r)
 			}
-			// shell syntax (for, done, true) is neither named nor counted; one
-			// pattern is the exact form of a deleting command, named only by
-			// count; two (p, "p *") is a command allowed as a whole
+			// shell syntax (for, done, true) is named only when nothing else
+			// is; one pattern is the exact form of a deleting command, named
+			// only by count; two (p, "p *") is a command allowed as a whole
 			g := perm.ProgramWords(strings.Fields(patterns[0]))
 			switch {
-			case len(g) == 0 || perm.ShellWords[g[0]]:
+			case len(g) == 0:
+				continue
+			case perm.ShellWords[g[0]] && len(patterns) > 1:
+				if !seen[g[0]] {
+					seen[g[0]] = true
+					syntax = append(syntax, g[0])
+				}
 				continue
 			case len(patterns) == 1:
 				unnamed++
@@ -377,6 +383,9 @@ func (h *Host) alwaysChoice(req tools.Request) (string, []perm.Rule) {
 		}
 		// long lists name two programs and count the rest, so the label
 		// still says how much it covers
+		if len(names) == 0 {
+			names = syntax
+		}
 		if len(names) == 0 {
 			return "allow this exact command" + effect, rules
 		}
@@ -486,7 +495,9 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	// a program or subcommand that can delete or overwrite must not broaden
 	// to arbitrary later targets: the rule runs unconfined, and such a
 	// command has no write path to re-ask on
-	if destructiveProgram(programName(f[0])) || perm.Normalize(seg).Destructive("") != "" {
+	// [[ and a builtin that sets variables by name evaluate a quoted
+	// subscript, where $(...) runs: "[[ *" would run any of those
+	if destructiveProgram(programName(f[0])) || f[0] == "[[" || perm.ShellState[f[0]] || perm.Normalize(seg).Destructive("") != "" {
 		return []string{seg}, true
 	}
 	p := commandPrefix(seg)
