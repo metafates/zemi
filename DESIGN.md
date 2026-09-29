@@ -1590,7 +1590,7 @@ provenance string.
   (`hostapi.AskFirst`, `Overlay.Confirm`), or, for a row the list does not
   hold (a session past the 50 it shows), a toast names the `--yes` form;
   `/memory forget <id>` opens `/memory` on that memory, its Forget button
-  selected. In `zemi run` such a command refuses, naming
+  armed. In `zemi run` such a command refuses, naming
   the command that runs it without asking (`zemi plugins delete x --yes`). The list's footer
   names no action key, since the keys a row offers move with its state and
   the footer's text would move with them; the detail's buttons name them. `j`, `k`, `/`, `y` and `Y` are
@@ -2389,14 +2389,15 @@ by the next startup sweep, since the session still has unseen messages.
   statusline shows how many wait for `/memory`. In `/memory`, `a` accepts
   a proposal, `d` rejects one or deletes a stored memory, `s` moves one
   between this project and everywhere (a stored memory is added to the
-  other store before it is deleted from its own), `e` edits one in the
+  other store before it is deleted from its own), `o` edits one in the
   user's editor (the marks apply first; the saved text passes intake again
   as user origin with the same scope and quote and keeps the id, an
   edited suggestion is stored, empty or unchanged text changes nothing,
   and the screen reopens on that row), `u` undoes the last mark, enter
   opens a row with those keys as its buttons, and esc closes the screen and
-  applies the marks. Stored rows show their
-  age.
+  applies the marks. Since `u` undoes any mark until then, no key there
+  arms; only a typed `/memory forget <id>` opens with its Forget armed.
+  Stored rows show their age.
 - **Memory intake is host-side**, regardless of autonomy: a length cap (300
   chars, and 160 for the quote), provenance required, the quote scrubbed
   like the text, and intake-time secret scrubbing (a span matching a key

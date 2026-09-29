@@ -813,10 +813,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		hints = st.filterHints(append(hints, scrolls(st.body, st.view)...), map[bool]string{true: "back", false: "close"}[st.back])
 		foot := hint(inner, hints...)
 		if st.armed > 0 && st.armed == st.selected+1 && st.selected < len(st.visible) {
-			// the footer says what the next press does, in the danger color
-			label := strings.ToLower(st.items[st.visible[st.selected]].label)
-			foot = hint(inner, hintPair{cmp.Or(st.actionKey(st.selected), "enter"), "again to " + label}, hintPair{"esc", "cancel"})
-			foot[0].HL, foot[1].HL = "Host:Danger", "Host:Danger"
+			foot = armedHint(inner, cmp.Or(st.actionKey(st.selected), "enter"), st.items[st.visible[st.selected]].label)
 		}
 		tail = len(stack(tight, pane, oneRow))
 		rows := stack(tight, body, slices.Concat(head, list, fixed), pane, [][]hostapi.Segment{foot})
@@ -827,6 +824,14 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		body = slices.Insert(body, len(body)-tail, make([][]hostapi.Segment, n)...)
 	}
 	return promptBox(st.o.Title, badge, body, w, h, 100, &st.size)
+}
+
+// armedHint is the footer of a press that waits for a second one: what the
+// next press does, in the danger color.
+func armedHint(w int, key, label string) []hostapi.Segment {
+	foot := hint(w, hintPair{key, "again to " + strings.ToLower(label)}, hintPair{"esc", "cancel"})
+	foot[0].HL, foot[1].HL = "Host:Danger", "Host:Danger"
+	return foot
 }
 
 // statusHL colors the status words every screen shares.

@@ -120,17 +120,39 @@ func TestGoldenMemoryDetail(t *testing.T) {
 }
 
 // TestMemoryReviewFocus: a typed /memory forget opens its memory with Forget
-// selected, so enter and closing the screen forget it.
+// armed, as a typed delete opens its detail: the second press forgets it once
+// the screen closes, and esc or any other key drops the arm.
 func TestMemoryReviewFocus(t *testing.T) {
-	app, _ := bootAgentApp(t, 70, 16)
-	done := make(chan []hostapi.MemoryRow, 1)
-	go func() {
-		done <- app.ReviewMemories([]hostapi.MemoryRow{{ID: "m1", Scope: "project", Text: "one"}, {ID: "m2", Scope: "project", Text: "two"}}, "m2")
-	}()
-	waitPrompt(t, app, func() bool { return app.memReview != nil })
-	pressKeys(app, "enter", "esc")
-	if got := reviewAnswer(t, done); len(got) != 1 || got["m2"] != "delete project" {
-		t.Fatalf("answer = %v", got)
+	for _, c := range []struct {
+		name   string
+		press  []string
+		footer string // after the presses
+		want   string // m2's answer
+	}{
+		{"opens armed", nil, "d again to forget · esc cancel", ""},
+		{"the second press forgets", []string{"enter"}, "enter open", "delete project"},
+		{"its key forgets too", []string{"d"}, "enter open", "delete project"},
+		{"esc drops the arm only", []string{"esc"}, "esc back", ""},
+		{"another key drops the arm", []string{"j"}, "esc back", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, _ := bootAgentApp(t, 70, 16)
+			done := make(chan []hostapi.MemoryRow, 1)
+			go func() {
+				done <- app.ReviewMemories([]hostapi.MemoryRow{{ID: "m1", Scope: "project", Text: "one"}, {ID: "m2", Scope: "project", Text: "two"}}, "m2")
+			}()
+			waitPrompt(t, app, func() bool { return app.memReview != nil })
+			pressKeys(app, c.press...)
+			if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, c.footer) {
+				t.Fatalf("no %q in:\n%s", c.footer, frame)
+			}
+			for app.memReview != nil {
+				pressKeys(app, "esc")
+			}
+			if got := reviewAnswer(t, done); strings.TrimSpace(got["m2"]) != c.want || len(got) > 1 {
+				t.Fatalf("answer = %v", got)
+			}
+		})
 	}
 }
 
