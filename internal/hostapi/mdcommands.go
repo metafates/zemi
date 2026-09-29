@@ -15,6 +15,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/skills"
 )
 
 var positionalArg = regexp.MustCompile(`\$([1-9])`)
@@ -57,8 +58,8 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 			return false
 		}
 		var fm struct {
-			Description  string `yaml:"description"`
-			ArgumentHint string `yaml:"argument-hint"`
+			Description  string      `yaml:"description"`
+			ArgumentHint skills.Hint `yaml:"argument-hint"`
 		}
 		if err := yaml.Unmarshal([]byte(block), &fm); err != nil {
 			warn("frontmatter: " + err.Error())
@@ -70,7 +71,7 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 			return false
 		}
 		desc := listDesc(cmp.Or(fm.Description, clipRunes(strings.SplitN(body, "\n", 2)[0], 60)))
-		desc = strings.TrimSpace(desc + " " + fm.ArgumentHint)
+		desc = strings.TrimSpace(desc + " " + string(fm.ArgumentHint))
 		_, err = h.Commands.Add(&Command{
 			Name: name, NArgs: NArgsAny, Desc: desc, Path: path, Origin: f.origin, Gen: gen,
 			// the typed line stays the user's words; the body is the file's

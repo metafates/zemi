@@ -90,6 +90,7 @@ func TestParseInvocation(t *testing.T) {
 		{name: "hidden from the model is a command", extra: "disable-model-invocation: true", source: User, user: true, hidden: true},
 		{name: "hidden and no command", extra: "disable-model-invocation: true\nuser-invocable: false", source: User, hidden: true},
 		{name: "hint", extra: "argument-hint: <pr>", source: Plugin, hint: "<pr>"},
+		{name: "hint as a flow list", extra: "argument-hint: [pr-number]", source: User, hint: "[pr-number]"},
 		{name: "a recipe takes neither", extra: "user-invocable: true\ndisable-model-invocation: true\nargument-hint: <x>", source: Recipe},
 		{name: "quoted bool", extra: `user-invocable: "true"`, source: User, wantErr: true},
 	}

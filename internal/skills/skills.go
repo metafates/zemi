@@ -96,7 +96,7 @@ func Parse(dir string, source Source) (Skill, error) {
 		return sk, fmt.Errorf("skills: %s: frontmatter name %q must match the directory", sk.Name, fm.Name)
 	}
 	if source != Recipe { // a recipe is the model's own procedure
-		sk.DisableModelInvocation, sk.ArgumentHint = fm.DisableModelInvocation, fm.ArgumentHint
+		sk.DisableModelInvocation, sk.ArgumentHint = fm.DisableModelInvocation, string(fm.ArgumentHint)
 		sk.UserInvocable = fm.DisableModelInvocation
 		if fm.UserInvocable != nil {
 			sk.UserInvocable = *fm.UserInvocable
@@ -141,7 +141,22 @@ type front struct {
 	Description            string `yaml:"description"`
 	UserInvocable          *bool  `yaml:"user-invocable"`
 	DisableModelInvocation bool   `yaml:"disable-model-invocation"`
-	ArgumentHint           string `yaml:"argument-hint"`
+	ArgumentHint           Hint   `yaml:"argument-hint"`
+}
+
+// Hint is argument-hint, which Claude Code's docs write as a flow list
+// (`[pr-number]`): any shape is its text, so a cosmetic key never drops a file.
+type Hint string
+
+func (h *Hint) UnmarshalYAML(unmarshal func(any) error) error {
+	var v any
+	if err := unmarshal(&v); err != nil {
+		return err
+	}
+	if v != nil {
+		*h = Hint(fmt.Sprint(v))
+	}
+	return nil
 }
 
 func frontmatter(data []byte) (front, error) {
