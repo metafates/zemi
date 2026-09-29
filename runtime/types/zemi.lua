@@ -710,6 +710,12 @@ function zemi.event.stats() end
 -- ---------------------------------------------------------------------------
 -- zemi.ui
 
+--- The session's goal (/goal).
+---@class zemi.GoalCtx
+---@field condition string What must hold.
+---@field turns integer Turns it was checked after.
+---@field reason string The last check, "not yet: <why>" or "blocked: <why>"; "" before the first.
+
 --- The live turn, as the chat widget sees it.
 ---@class zemi.AgentCtx
 ---@field active boolean
@@ -722,6 +728,7 @@ function zemi.event.stats() end
 ---@field elapsed number Seconds since the turn started.
 ---@field reports integer Background agent reports among steering; they stay queued, so the rule does not count them as queued.
 ---@field compacting boolean History is being summarized.
+---@field checking_goal boolean The goal is being checked after a turn (/goal); the agent stays active.
 ---@field retry? { attempt: integer, why: string, next_in: number } Set while a provider retry waits or is under way (next_in 0).
 
 ---@alias zemi.CallStatus
@@ -871,6 +878,7 @@ function zemi.event.stats() end
 ---@field pending_memory integer
 ---@field agents_running integer Background agents of this session still running; their reports arrive as messages.
 ---@field jobs_running integer Background jobs (job_start, or a bash call that outlived its timeout) still running.
+---@field goal? zemi.GoalCtx The session's goal while one is set (/goal).
 ---@field quit_armed boolean A second ctrl+c quits.
 ---@field interrupt_armed boolean A second esc interrupts the turn.
 ---@field key_seq string Keys of a bound sequence typed so far, space-separated; "" when none.

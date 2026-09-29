@@ -69,6 +69,9 @@ zemi.ui.widget.add({
 			if ag.compacting then
 				label, state = "Compacting", "reading"
 			end
+			if ag.checking_goal then
+				label, state = "Checking the goal", "reading"
+			end
 			if ag.retry then
 				label, state = "Retrying", "error"
 				parts = { { "attempt " .. ag.retry.attempt, 3 } }

@@ -49,6 +49,20 @@ zemi.ui.widget.add({
 	end,
 })
 
+-- The session's goal, while one is set; no count, so a check moves nothing.
+zemi.ui.widget.add({
+	id = "statusline.goal",
+	region = "statusline.left",
+	priority = 20,
+	on_click = run_click,
+	---@param ctx zemi.WidgetCtx
+	---@return zemi.Line[]
+	render = function(ctx)
+		if not ctx.goal then return {} end
+		return { fmt.hint("⚑ goal", "/goal", "goal") }
+	end,
+})
+
 -- Subagents at work: the turn's own, background ones, workflows and Lua.
 zemi.ui.widget.add({
 	id = "statusline.agents",

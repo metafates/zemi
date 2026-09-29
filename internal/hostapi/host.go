@@ -1560,6 +1560,13 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
 	tb.RawSetString("agents_running", glua.LNumber(h.tasks.runningFor(h.AgentSessionID())))
 	tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))
+	if g, ok := h.Goal(); ok {
+		gt := L.CreateTable(0, 3)
+		gt.RawSetString("condition", glua.LString(sanitize.String(g.Condition)))
+		gt.RawSetString("turns", glua.LNumber(g.Turns))
+		gt.RawSetString("reason", glua.LString(sanitize.String(g.Reason)))
+		tb.RawSetString("goal", gt)
+	}
 	// Showing an agent run, the chat renders its transcript alone: the
 	// session's live turn and todos stay out of it.
 	run := h.viewedRun()
@@ -1737,6 +1744,7 @@ func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
 	at.RawSetString("elapsed", glua.LNumber(stream.Elapsed.Seconds()))
 	at.RawSetString("reports", glua.LNumber(stream.Reports))
 	at.RawSetString("compacting", glua.LBool(stream.Compacting))
+	at.RawSetString("checking_goal", glua.LBool(stream.CheckingGoal))
 	if stream.Retrying {
 		retry := L.CreateTable(0, 3)
 		retry.RawSetString("attempt", glua.LNumber(stream.Retries+1))
@@ -1967,7 +1975,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.103.0"))
+	api.RawSetString("version", glua.LString("0.104.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
