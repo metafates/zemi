@@ -53,34 +53,38 @@ type modeReg struct {
 	prePlanMode    string        // the mode active before a read-only agent was picked
 	prePlanProfile string        // the agent active before a read-only agent was picked
 
-	headless Denials // asks denied because no UI could answer them
+	headless []Denial // asks denied because no UI could answer them
 }
 
-// Denials counts asks nobody could answer (zemi run), every pipeline's:
-// subagents and workflows run no rows the main transcript shows.
-type Denials struct {
-	Asked       int // all of them
-	Unsandboxed int // of those, a command asking to leave the sandbox
-	TUIOnly     int // of those, a Lua script or a memory edit
+// Denial is an ask nobody could answer because no UI runs (zemi run), any
+// pipeline's: subagents and workflows run no rows the main transcript shows.
+type Denial struct {
+	Tool, Subject, Arg, Reason string
+	Why                        DenialWhy
 }
 
-func (r *modeReg) noteHeadless(req tools.Request) {
+// DenialWhy is what a denied ask needed.
+type DenialWhy string
+
+const (
+	DenyApproval       DenialWhy = "approval"        // the mode left it to the user
+	DenyOutsideSandbox DenialWhy = "outside_sandbox" // a command asked to leave the sandbox
+	DenyNetwork        DenialWhy = "network"         // a command asked for sockets
+	DenyNeedsTUI       DenialWhy = "needs_tui"       // a Lua script or a memory edit
+)
+
+func (r *modeReg) noteHeadless(d Denial) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.headless.Asked++
-	switch {
-	case req.Unsandboxed && req.Subject == perm.SubjectBash:
-		r.headless.Unsandboxed++
-	case req.Tool == tools.ToolLua || req.Tool == tools.ToolMemory:
-		r.headless.TUIOnly++
-	}
+	r.headless = append(r.headless, d)
 }
 
-// HeadlessDenials is the count so far; zemi run reads the change over a turn.
-func (h *Host) HeadlessDenials() Denials {
+// HeadlessDenials is every ask denied so far; zemi run reads the ones past
+// its start.
+func (h *Host) HeadlessDenials() []Denial {
 	h.modes.mu.Lock()
 	defer h.modes.mu.Unlock()
-	return h.modes.headless
+	return slices.Clip(h.modes.headless)
 }
 
 func (h *Host) PermModeList() []PermModeDef {

@@ -57,7 +57,7 @@ func TestTurnReport(t *testing.T) {
 		},
 		{
 			Role: "assistant", Kind: "tool", Tool: tools.ToolMemory, Text: "forget x", Status: "err",
-			Output: "permission denied (default): memory.write: nobody could answer the ask",
+			Output: "permission denied (nobody): memory.write: no one can approve in a headless run",
 		},
 		{Role: "assistant", Kind: "compact", Text: "cleared 40k tokens of old tool output"},
 		{Role: "assistant", Text: "found"},

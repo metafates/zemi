@@ -85,8 +85,16 @@ wait:
 		proc.KillAll()
 		rep.IsError, rep.Error = true, "interrupted"
 	}
-	d := h.HeadlessDenials()
-	rep.Denied, rep.unsandboxed, rep.tuiOnly = d.Asked-denied.Asked, d.Unsandboxed-denied.Unsandboxed, d.TUIOnly-denied.TUIOnly
+	for _, d := range h.HeadlessDenials()[len(denied):] {
+		rep.Denied++
+		switch d.Why {
+		case hostapi.DenyOutsideSandbox:
+			rep.unsandboxed++
+		case hostapi.DenyNeedsTUI:
+			rep.tuiOnly++
+		case hostapi.DenyApproval, hostapi.DenyNetwork:
+		}
+	}
 	if jsonOut {
 		after := h.AgentStream()
 		rep.SessionID, rep.DurationMS = h.AgentSessionID(), time.Since(began).Milliseconds()
@@ -213,7 +221,7 @@ func turnReport(rows []hostapi.ChatMessage) report {
 				rt.Denied = strings.HasPrefix(strings.TrimSpace(m.Output), "permission denied (")
 			}
 			// an unanswered ask is counted at the gate (Host.HeadlessDenials)
-			if by, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(m.Output), "permission denied ("), ")"); rt.Denied && by != tools.ByDefault && by != "unsandboxed" && by != "network" {
+			if by, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(m.Output), "permission denied ("), ")"); rt.Denied && by != tools.ByNobody {
 				rep.refused++
 			}
 			rep.Tools = append(rep.Tools, rt)

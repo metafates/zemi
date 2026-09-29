@@ -394,17 +394,24 @@ func TestPermModeDecide(t *testing.T) {
 		name string
 		req  tools.Request
 		want bool
+		by   string
+		why  DenialWhy // the denial noted, "" for none
 	}{
-		{"allowed", tools.Request{Subject: "tool.bash", Arg: "ls"}, true},
-		{"denied", tools.Request{Subject: "tool.bash", Arg: "rm -rf /"}, false},
-		{"left to the user", tools.Request{Subject: "tool.bash", Arg: "cat x"}, false},
+		{"allowed", tools.Request{Subject: "tool.bash", Arg: "ls"}, true, "mode:review", ""},
+		{"denied", tools.Request{Subject: "tool.bash", Arg: "rm -rf /"}, false, "mode:review", ""},
+		{"left to the user", tools.Request{Subject: "tool.bash", Arg: "cat x"}, false, tools.ByNobody, DenyApproval},
 		// what the mode's own rules may not settle, decide may not either
-		{"a rule asked for it", tools.Request{Subject: "tool.bash", Arg: "ls", Explicit: true}, false},
-		{"a protected write", tools.Request{Subject: "fs.write", Arg: filepath.Join(h.Dirs.ProjectDir, ".git", "hooks", "pre-commit")}, false},
-		{"unsandboxed", tools.Request{Subject: "tool.bash", Arg: "ls", Unsandboxed: true}, false},
+		{"a rule asked for it", tools.Request{Subject: "tool.bash", Arg: "ls", Explicit: true}, false, tools.ByNobody, DenyApproval},
+		{"a protected write", tools.Request{Subject: "fs.write", Arg: filepath.Join(h.Dirs.ProjectDir, ".git", "hooks", "pre-commit")}, false, tools.ByNobody, DenyApproval},
+		{"unsandboxed", tools.Request{Tool: "bash", Subject: "tool.bash", Arg: "ls", Unsandboxed: true}, false, tools.ByNobody, DenyOutsideSandbox},
+		{"network", tools.Request{Tool: "bash", Subject: "tool.bash", Arg: "curl x", Network: true}, false, tools.ByNobody, DenyNetwork},
+		{"a lua script", tools.Request{Tool: tools.ToolLua, Subject: "tool.lua", Arg: "zemi.x()", Unsandboxed: true}, false, tools.ByNobody, DenyNeedsTUI},
 	} {
-		if ok, by, _ := ask(c.req); ok != c.want {
-			t.Errorf("%s: allowed %v by %s", c.name, ok, by)
+		before := len(h.HeadlessDenials())
+		ok, by, _ := ask(c.req)
+		d := h.HeadlessDenials()[before:]
+		if ok != c.want || by != c.by || (c.why == "") != (len(d) == 0) || len(d) > 0 && (d[0].Why != c.why || d[0].Subject != c.req.Subject) {
+			t.Errorf("%s: allowed %v by %s, noted %+v", c.name, ok, by, d)
 		}
 	}
 }

@@ -169,17 +169,19 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	}
 	ui := h.hooks()
 	if ui == nil {
-		h.modes.noteHeadless(req)
-		// only a command's sandbox escape is a sandbox matter; a Lua
-		// script or a memory edit is Unsandboxed for another reason and
-		// must not be reported as one
-		if req.Unsandboxed && req.Subject == perm.SubjectBash {
-			return resolved(false, "unsandboxed")
+		d := Denial{Tool: req.Tool, Subject: req.Subject, Arg: h.shownArg(req), Reason: req.Reason, Why: DenyApproval}
+		// only a command's sandbox escape is a sandbox matter; a Lua script
+		// or a memory edit is Unsandboxed for another reason
+		switch {
+		case req.Unsandboxed && req.Subject == perm.SubjectBash:
+			d.Why = DenyOutsideSandbox
+		case req.Network:
+			d.Why = DenyNetwork
+		case req.Tool == tools.ToolLua || req.Tool == tools.ToolMemory:
+			d.Why = DenyNeedsTUI
 		}
-		if req.Network {
-			return resolved(false, "network")
-		}
-		return resolved(false, tools.ByDefault)
+		h.modes.noteHeadless(d)
+		return resolved(false, tools.ByNobody)
 	}
 	if !held {
 		cut := h.askCut.Load()

@@ -692,7 +692,7 @@ func TestPipelineForCheck(t *testing.T) {
 	pipe := h.PipelineFor()
 
 	// No rules, no UI: the ask hook fails closed.
-	if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "git status"}); v.Decision != perm.Deny || v.DecidedBy != "default" {
+	if v := pipe.Check(tools.Request{Subject: "tool.bash", Arg: "git status"}); v.Decision != perm.Deny || v.DecidedBy != tools.ByNobody {
 		t.Fatalf("unruled bash: %v by %q (%s)", v.Decision, v.DecidedBy, v.Reason)
 	}
 

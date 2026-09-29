@@ -150,6 +150,7 @@ type Verdict struct {
 const (
 	ByRule     = "rule"
 	ByDefault  = "default"
+	ByNobody   = "nobody" // an ask with no UI to answer it (zemi run)
 	ByUser     = "user"
 	ByReadOnly = "profile:readonly"
 	ModePrefix = "mode:"
@@ -650,8 +651,8 @@ func (p *Pipeline) resolveAsk(req Request, reason string) Verdict {
 			return Verdict{Decision: perm.Deny, Reason: "it asked because " + why, DecidedBy: by}
 		}
 		return Verdict{Decision: perm.Deny, DecidedBy: by}
-	case by == ByDefault || by == "unsandboxed":
-		who = "nobody could answer the ask"
+	case by == ByNobody:
+		who = "no one can approve in a headless run"
 		// nobody saw the ask, so the reason it asked is all the caller gets
 		if why == "" {
 			why = req.Reason
