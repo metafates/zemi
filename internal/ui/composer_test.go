@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -23,7 +23,7 @@ import (
 // completion, and cmdline tests (no widgets, no Lua calls).
 func newTestApp(t *testing.T, projectDir string) *App {
 	t.Helper()
-	log := logging.New("")
+	log := slog.New(slog.DiscardHandler)
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	host := hostapi.NewHost(rt, log, config.NewStore(), config.Dirs{ProjectDir: projectDir})
 	app := NewApp(host, log)

@@ -1457,8 +1457,8 @@ function zemi.notify.error(body, title) end
 ---@return zemi.NotifyEntry[]
 function zemi.notify.list() end
 
---- The run's log file, one record per line. Callable:
---- `zemi.log("message", { key = value })`.
+--- The run's log file, one record per line, a field written as `ctx.key=`.
+--- Callable: `zemi.log("message", { key = value })`.
 ---@class zemi.log
 ---@overload fun(message: string, fields?: table)
 zemi.log = {}

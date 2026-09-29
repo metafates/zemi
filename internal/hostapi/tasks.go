@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"regexp"
 	"slices"
@@ -23,7 +24,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -530,7 +530,7 @@ func (h *Host) deliverReport(parent, id, agentName, status, description, report 
 		return
 	}
 	if err := h.AgentSend(h.reportMessage(h.scratchFor(parent), id, agentName, status, description, report)); err != nil {
-		h.Notify(logging.Error, "Could not send the report of "+id, h.friendlyError(err))
+		h.Notify(slog.LevelError, "Could not send the report of "+id, h.friendlyError(err))
 	}
 }
 
@@ -573,12 +573,12 @@ func (h *Host) notifyReport(id, agentName, status, description, report string) {
 			err = h.DB.AddMessage(&store.Message{SessionID: parent, Role: string(fantasy.MessageRoleUser), PartsJSON: string(parts)})
 		}
 		if err != nil {
-			h.Log.Warn("agents", "report not stored", map[string]any{"run": id, "error": err.Error()})
+			h.Log.Warn("report not stored", "origin", "agents", "run", id, "error", err)
 		}
 	}
-	level := logging.Warn
+	level := slog.LevelWarn
 	if status == "finished" {
-		level = logging.Info
+		level = slog.LevelInfo
 	}
 	h.Notify(level, reportHead(id, agentName, status, description), description+"\n"+clipRunes(strings.TrimPrefix(report, reportFailed), 300))
 }

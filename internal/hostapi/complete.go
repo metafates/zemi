@@ -299,7 +299,7 @@ func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string
 			}
 			items, err := h.callSource(L, s, lead, line)
 			if err != nil {
-				h.Log.Error("ui", "completion source failed", map[string]any{"id": s.id, "error": err.Error()})
+				h.Log.Error("completion source failed", "origin", "ui", "id", s.id, "error", err)
 				h.RecordError("completion "+s.id, err.Error())
 				continue
 			}

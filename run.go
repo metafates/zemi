@@ -294,7 +294,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 		proc.KillAll()
 		d.IsError, d.Error = true, "interrupted"
 	case sendErr != nil:
-		h.Log.Error("run", sendErr.Error(), nil) // stderr gets the headline, the log the traceback
+		h.Log.Error(sendErr.Error(), "origin", "run") // stderr gets the headline, the log the traceback
 		if !o.json && errors.Is(sendErr, hostapi.ErrNoModel) && h.InitError() != "" {
 			return 1 // the init failure on stderr is the cause
 		}

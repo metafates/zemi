@@ -204,7 +204,7 @@ func (h *Host) assembleSections() string {
 			return nil, nil
 		})
 	if err != nil {
-		h.Log.Warn("events", "agent.assemble skipped", map[string]any{"error": err.Error()})
+		h.Log.Warn("agent.assemble skipped", "origin", "events", "error", err)
 		return ""
 	}
 	return b.String()
@@ -215,7 +215,7 @@ func (h *Host) callAssembleHandler(L *glua.LState, hd *EventHandler) (title, tex
 	ret, timedOut, err := h.callEvent(L, hd, ev, lua.VetoDeadline)
 	switch {
 	case timedOut:
-		h.Log.Warn("events", "agent.assemble handler timed out", map[string]any{"id": hd.ID, "origin": string(hd.Origin)})
+		h.Log.Warn("agent.assemble handler timed out", "origin", "events", "id", hd.ID, "from", string(hd.Origin))
 	case err != nil:
 		h.logHandlerError(hd, err)
 	}

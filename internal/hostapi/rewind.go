@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,7 +23,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -44,7 +44,7 @@ func (h *Host) checkpointFile(path string) {
 	data, err := os.ReadFile(abs)
 	existed := err == nil
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		h.Log.Warn("rewind", "cannot checkpoint file", map[string]any{"path": abs, "error": err.Error()})
+		h.Log.Warn("cannot checkpoint file", "origin", "rewind", "path", abs, "error", err)
 		return
 	}
 	h.checkpoint(store.Checkpoint{Path: abs, Existed: existed, Content: data})
@@ -72,7 +72,7 @@ func (h *Host) checkpoint(cp store.Checkpoint) {
 		return
 	}
 	if err := h.DB.AddCheckpoint(sid, mid, cp); err != nil {
-		h.Log.Warn("rewind", "checkpoint failed", map[string]any{"path": cp.Path, "error": err.Error()})
+		h.Log.Warn("checkpoint failed", "origin", "rewind", "path", cp.Path, "error", err)
 	}
 }
 
@@ -83,8 +83,8 @@ func (h *Host) uncheckpointed(abs, why string) {
 	if _, said := h.snaps.skipped.LoadOrStore(h.turnMsgID()+"\x00"+abs, true); said {
 		return
 	}
-	h.Log.Warn("rewind", "file not checkpointed", map[string]any{"path": abs, "why": why})
-	h.Notify(logging.Warn, "Checkpoint skipped", filepath.Base(abs)+" "+why+"; a rewind will not restore it")
+	h.Log.Warn("file not checkpointed", "origin", "rewind", "path", abs, "why", why)
+	h.Notify(slog.LevelWarn, "Checkpoint skipped", filepath.Base(abs)+" "+why+"; a rewind will not restore it")
 }
 
 // userText returns what the user typed in a stored user message; compaction
@@ -152,9 +152,9 @@ func (h *Host) RewindTo(id string) (int, error) {
 	}
 	switch {
 	case aged > 0 && len(cps) == 0:
-		h.Notify(logging.Warn, "Files not restored", "their snapshots for that turn have aged out; only the conversation is cut")
+		h.Notify(slog.LevelWarn, "Files not restored", "their snapshots for that turn have aged out; only the conversation is cut")
 	case aged > 0:
-		h.Notify(logging.Warn, "Some files not restored", fmt.Sprintf("snapshots older than %d days have aged out (%d of those %s); files changed then may not go back",
+		h.Notify(slog.LevelWarn, "Some files not restored", fmt.Sprintf("snapshots older than %d days have aged out (%d of those %s); files changed then may not go back",
 			int(store.CheckpointTTL.Hours()/24), aged, plural(aged, "turn", "turns")))
 	}
 	var failed []string
@@ -176,7 +176,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 	h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt)
 	todos := todosIn(rows[:cut])
 	if err := h.DB.SetTodos(sid, todos); err != nil {
-		h.Log.Warn("rewind", "todo list not rewound", map[string]any{"error": err.Error()})
+		h.Log.Warn("todo list not rewound", "origin", "rewind", "error", err)
 	}
 	h.todosStale.Store(true)
 	h.resetTodoNag(todos)
@@ -214,14 +214,14 @@ func (h *Host) forgetLearned(sid string, from, until int64) {
 		}
 		ids, err := db.DeleteLearnedBetween(sid, from, until)
 		if err = errors.Join(err, db.DeleteProposalsBetween(sid, from, until)); err != nil {
-			h.Log.Warn("rewind", "learned memories not rewound", map[string]any{"error": err.Error()})
+			h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
 		}
 		gone = append(gone, ids...)
 	}
 	for _, db := range dbs {
 		if db != nil && len(gone) > 0 {
 			if err := db.Unsupersede(gone); err != nil {
-				h.Log.Warn("rewind", "replaced memories not restored", map[string]any{"error": err.Error()})
+				h.Log.Warn("replaced memories not restored", "origin", "rewind", "error", err)
 			}
 		}
 	}

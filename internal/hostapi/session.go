@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -21,7 +22,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
@@ -67,7 +67,7 @@ func (h *Host) ResumeSession(id string) error {
 		}
 		i := slices.IndexFunc(list, func(s *store.Session) bool { return s.ID != live })
 		if i < 0 {
-			h.Notify(logging.Warn, "Nothing to resume", "no other session in this project yet")
+			h.Notify(slog.LevelWarn, "Nothing to resume", "no other session in this project yet")
 			return nil
 		}
 		id = list[i].ID
@@ -205,7 +205,7 @@ func (h *Host) DeleteSession(id string, yes bool) error {
 		}
 		h.recentStale.Store(true)
 		h.removeSessionFiles(id)
-		h.Notify(logging.Info, "Session deleted", s.Title)
+		h.Notify(slog.LevelInfo, "Session deleted", s.Title)
 		return nil
 	}
 	if _, err := h.Screen(); err != nil {
@@ -213,7 +213,7 @@ func (h *Host) DeleteSession(id string, yes bool) error {
 	}
 	h.GoSafe("delete session", func() {
 		if err := del(); err != nil {
-			h.Notify(logging.Error, "Could not delete the session", err.Error())
+			h.Notify(slog.LevelError, "Could not delete the session", err.Error())
 		}
 	})
 	return nil
@@ -462,7 +462,7 @@ func (h *Host) autoTitle(sid, user, reply string) {
 		defer cancel()
 		res, err := h.generate(ctx, sid, titleSystem, "<conversation>\nuser: "+truncRunes(user, 2000)+"\n\nassistant: "+truncRunes(reply, 2000)+"\n</conversation>", nil, nil, "titles")
 		if err != nil {
-			h.Log.Debug("session", "title generation failed", map[string]any{"error": err.Error()})
+			h.Log.Debug("title generation failed", "origin", "session", "error", err)
 			return
 		}
 		first, _, _ := strings.Cut(strings.TrimSpace(concatText(res.Response.Content)), "\n")

@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"io/fs"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/runtime"
 )
@@ -24,7 +24,7 @@ func TestSkillsCoverBuiltinCommands(t *testing.T) {
 		}
 		return err
 	})
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := hostapi.NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
 	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(mainCommands(func() {}, func() {})...)}); err != nil {

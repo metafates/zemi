@@ -1,68 +1,34 @@
-// Package logging writes sanitized, one-record-per-line entries to a file.
+// Package logging opens zemi's log file: one per launch, pruned to the
+// newest keepLogs, written through log/slog.
 package logging
 
 import (
-	"fmt"
-	"io"
-	"maps"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
-	"sync"
 	"time"
-
-	"github.com/metafates/zemi/internal/sanitize"
 )
-
-// Level is a log severity.
-type Level int
-
-const (
-	Debug Level = iota
-	Info
-	Warn
-	Error
-)
-
-func (l Level) String() string {
-	switch l {
-	case Debug:
-		return "DEBUG"
-	case Info:
-		return "INFO"
-	case Warn:
-		return "WARN"
-	default:
-		return "ERROR"
-	}
-}
-
-// Fields are structured key/value pairs appended to a record.
-type Fields map[string]any
-
-// Logger is safe for concurrent use.
-type Logger struct {
-	mu   sync.Mutex
-	file io.WriteCloser
-}
 
 // keepLogs bounds the log directory: one file per launch, newest kept.
 const keepLogs = 20
 
-// New opens (or creates) the log file under dir.
-func New(dir string) *Logger {
-	l := &Logger{}
-	if dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err == nil {
-			prune(dir, keepLogs)
-			path := filepath.Join(dir, time.Now().Format("2006-01-02_150405")+".log")
-			if f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
-				l.file = f
-			}
-		}
+// New returns a logger writing one record per line to a new file under
+// dir, and the func that closes the file; with no dir, or no file, the
+// logger discards. The text handler quotes any key or value holding a
+// newline, an escape or another unprintable rune, so Lua and the model
+// cannot forge a record or reach the terminal of whoever reads the file.
+func New(dir string) (*slog.Logger, func()) {
+	if dir == "" || os.MkdirAll(dir, 0o755) != nil {
+		return slog.New(slog.DiscardHandler), func() {}
 	}
-	return l
+	prune(dir, keepLogs)
+	path := filepath.Join(dir, time.Now().Format("2006-01-02_150405")+".log")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return slog.New(slog.DiscardHandler), func() {}
+	}
+	return slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: slog.LevelDebug})), func() { _ = f.Close() }
 }
 
 // prune deletes all but the newest keep log files. The name is a
@@ -77,33 +43,3 @@ func prune(dir string, keep int) {
 		_ = os.Remove(p)
 	}
 }
-
-// Close flushes and closes the file sink.
-func (l *Logger) Close() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.file != nil {
-		_ = l.file.Close()
-		l.file = nil
-	}
-}
-
-// Log writes one record.
-func (l *Logger) Log(level Level, origin, msg string, fields Fields) {
-	// Lua picks the field keys, so they are sanitized like the values
-	var line strings.Builder
-	fmt.Fprintf(&line, "%s %s %s %s", time.Now().Format(time.RFC3339Nano), level, sanitize.LogLine(origin), sanitize.LogLine(msg))
-	for _, k := range slices.Sorted(maps.Keys(fields)) {
-		fmt.Fprintf(&line, " %s=%s", sanitize.LogLine(k), sanitize.LogLine(fmt.Sprint(fields[k])))
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.file != nil {
-		fmt.Fprintln(l.file, line.String())
-	}
-}
-
-func (l *Logger) Debug(origin, msg string, fields Fields) { l.Log(Debug, origin, msg, fields) }
-func (l *Logger) Info(origin, msg string, fields Fields)  { l.Log(Info, origin, msg, fields) }
-func (l *Logger) Warn(origin, msg string, fields Fields)  { l.Log(Warn, origin, msg, fields) }
-func (l *Logger) Error(origin, msg string, fields Fields) { l.Log(Error, origin, msg, fields) }

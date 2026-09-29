@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -26,7 +27,6 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/mcp"
 	"github.com/metafates/zemi/internal/perm"
@@ -153,7 +153,7 @@ func (h *Host) startMCP(s *mcpServer) {
 		if !h.setMCP(s, StatusFailed, err.Error()) {
 			return
 		}
-		h.Log.Warn("mcp", "server failed", map[string]any{"server": s.name, "error": err.Error()})
+		h.Log.Warn("server failed", "origin", "mcp", "server", s.name, "error", err)
 		h.RecordError("mcp "+s.name, err.Error())
 	}
 	client, err := mcp.Start(ctx, cfg)
@@ -175,7 +175,7 @@ func (h *Host) startMCP(s *mcpServer) {
 		client.Close()
 		return
 	}
-	h.Log.Info("mcp", "server ready", map[string]any{"server": s.name, "tools": len(list)})
+	h.Log.Info("server ready", "origin", "mcp", "server", s.name, "tools", len(list))
 	h.GoSafe("mcp watch "+s.name, func() {
 		<-client.Done()
 		fail(client.Err())
@@ -191,7 +191,7 @@ func (h *Host) refreshMCPTools(s *mcpServer) {
 	defer cancel()
 	list, err := c.Tools(ctx)
 	if err != nil {
-		h.Log.Warn("mcp", "tool list refresh failed", map[string]any{"server": s.name, "error": err.Error()})
+		h.Log.Warn("tool list refresh failed", "origin", "mcp", "server", s.name, "error", err)
 		return
 	}
 	s.mu.Lock()
@@ -240,7 +240,7 @@ func (h *Host) mcpChanged() {
 
 func (h *Host) needsSignIn(s *mcpServer) {
 	if h.setMCP(s, StatusSignIn, "") {
-		h.Notify(logging.Warn, "Sign-in needed", s.name+"; open /mcp")
+		h.Notify(slog.LevelWarn, "Sign-in needed", s.name+"; open /mcp")
 	}
 }
 
@@ -301,7 +301,7 @@ type serverLogWriter struct {
 }
 
 func (w serverLogWriter) Write(p []byte) (int, error) {
-	w.h.Log.Debug(w.source, "stderr: "+truncRunes(strings.TrimSpace(string(p)), 500), map[string]any{"server": w.server})
+	w.h.Log.Debug("stderr: "+truncRunes(strings.TrimSpace(string(p)), 500), "origin", w.source, "server", w.server)
 	return len(p), nil
 }
 
@@ -358,15 +358,15 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 			}
 			name := mcpToolName(s.name, t.Name)
 			if seen[name] {
-				h.Log.Warn("mcp", "tool name collides, skipped", map[string]any{"server": s.name, "tool": t.Name})
+				h.Log.Warn("tool name collides, skipped", "origin", "mcp", "server", s.name, "tool", t.Name)
 				continue
 			}
 			seen[name] = true
 			props, err := tools.ResolveSchemaRefs(t.InputSchema)
 			if err != nil {
-				h.Log.Warn("mcp", "tool schema cannot be flattened, skipped", map[string]any{
-					"server": s.name, "tool": t.Name, "error": err.Error(),
-				})
+				h.Log.Warn("tool schema cannot be flattened, skipped", "origin", "mcp",
+					"server", s.name, "tool", t.Name, "error", err,
+				)
 				continue
 			}
 			out = append(out, &mcpTool{h: h, srv: s, tool: t, pipe: pipe, props: props})
@@ -706,7 +706,7 @@ func (h *Host) mcpCommands() []*Command {
 				if err := h.restartMCP(name); err != nil {
 					return err
 				}
-				h.Notify(logging.Info, "Server restarting", name)
+				h.Notify(slog.LevelInfo, "Server restarting", name)
 				return nil
 			case "sign-in":
 				return h.signInMCP(strings.TrimSpace(name))
@@ -843,7 +843,7 @@ func (h *Host) signInMCP(name string) error {
 			s.signIn = u
 			s.mu.Unlock()
 			h.mcpChanged()
-			h.Notify(logging.Info, "Browser opened", "sign in to "+name+" there, or open /mcp for the link")
+			h.Notify(slog.LevelInfo, "Browser opened", "sign in to "+name+" there, or open /mcp for the link")
 			h.openBrowser(u)
 		})
 		s.mu.Lock()
@@ -852,12 +852,12 @@ func (h *Host) signInMCP(name string) error {
 		h.mcpChanged()
 		if err != nil {
 			h.RecordError("mcp "+name, err.Error())
-			h.Notify(logging.Error, "Could not sign in to "+name, err.Error())
+			h.Notify(slog.LevelError, "Could not sign in to "+name, err.Error())
 			return
 		}
-		h.Notify(logging.Info, "Signed in", name)
+		h.Notify(slog.LevelInfo, "Signed in", name)
 		if err := h.restartMCP(name); err != nil {
-			h.Notify(logging.Error, "Could not restart "+name, err.Error())
+			h.Notify(slog.LevelError, "Could not restart "+name, err.Error())
 		}
 	})
 	return nil
@@ -892,7 +892,7 @@ func (h *Host) signOutMCP(name string, yes bool) error {
 	if swapped {
 		s.stop()
 	}
-	h.Notify(logging.Info, "Signed out", name)
+	h.Notify(slog.LevelInfo, "Signed out", name)
 	h.mcpChanged()
 	return nil
 }

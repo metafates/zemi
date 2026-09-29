@@ -240,11 +240,11 @@ func (h *Host) clampReflectSeen(sid string, n int) {
 func (h *Host) reflectClaimed(sid, claim string, n int) bool {
 	release := func() {
 		if _, err := h.DB.DelKV(claim); err != nil {
-			h.Log.Warn("reflector", "claim not released; its lease ends it", map[string]any{"session": sid, "error": err.Error()})
+			h.Log.Warn("claim not released; its lease ends it", "origin", "reflector", "session", sid, "error", err)
 		}
 	}
 	if !h.reflectMu.TryLock() {
-		h.Log.Debug("reflector", "run skipped: another run is active", map[string]any{"session": sid})
+		h.Log.Debug("run skipped: another run is active", "origin", "reflector", "session", sid)
 		release()
 		return false
 	}
@@ -280,7 +280,7 @@ func (h *Host) reflectClaimed(sid, claim string, n int) bool {
 	h.agents.reflectErr = err
 	h.agents.mu.Unlock()
 	if err != nil {
-		h.Log.Warn("reflector", "run failed", map[string]any{"session": sid, "error": err.Error()})
+		h.Log.Warn("run failed", "origin", "reflector", "session", sid, "error", err)
 		h.EmitAsync("reflector.done", map[string]any{"session": sid, "error": err.Error()})
 	}
 	return true
@@ -309,7 +309,7 @@ func (h *Host) reflectSession(ctx context.Context, sid string) error {
 		"session": sid, "stored": stored, "queued": queued,
 		"superseded": superseded, "skipped": skipped,
 	}
-	h.Log.Info("reflector", "run complete", result)
+	h.Log.Info("run complete", "origin", "reflector", "result", result)
 	h.EmitAsync("reflector.done", result)
 	return nil
 }
@@ -508,13 +508,13 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 		}
 		if !slices.Contains(store.Scopes, scope) {
 			skipped++
-			h.Log.Debug("reflector", "memory skipped: bad scope", map[string]any{"scope": scope})
+			h.Log.Debug("memory skipped: bad scope", "origin", "reflector", "scope", scope)
 			continue
 		}
 		if strings.TrimSpace(pm.Text) == "" && pm.Replaces != "" {
 			if added, err := h.queueForget(sid, pm.Replaces); err != nil {
 				skipped++
-				h.Log.Debug("reflector", "retirement skipped", map[string]any{"id": pm.Replaces, "error": err.Error()})
+				h.Log.Debug("retirement skipped", "origin", "reflector", "id", pm.Replaces, "error", err)
 			} else if added {
 				queued++
 			}
@@ -523,7 +523,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 		res, err := learn.Intake(scope, store.OriginLearned, pm.Text, pm.Quote, sid)
 		if err != nil {
 			skipped++
-			h.Log.Debug("reflector", "memory skipped by intake", map[string]any{"error": err.Error()})
+			h.Log.Debug("memory skipped by intake", "origin", "reflector", "error", err)
 			continue
 		}
 		// the index shows the 8-character prefix; the gate compares full ids
@@ -531,7 +531,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			_, old, err := h.locateMemory(pm.Replaces)
 			if err != nil {
 				skipped++
-				h.Log.Debug("reflector", "memory skipped: replaces unknown", map[string]any{"id": pm.Replaces})
+				h.Log.Debug("memory skipped: replaces unknown", "origin", "reflector", "id", pm.Replaces)
 				continue
 			}
 			res.Supersedes = old.ID
@@ -546,7 +546,7 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 		switch out, err := h.gateMemory(res); {
 		case err != nil:
 			skipped++
-			h.Log.Warn("reflector", "apply failed", map[string]any{"error": err.Error()})
+			h.Log.Warn("apply failed", "origin", "reflector", "error", err)
 		case out.Duplicate != nil || out.Dropped:
 			skipped++
 		case out.ID == "":
@@ -566,11 +566,11 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 func (h *Host) linkSupersede(oldID string, fresh store.Memory) {
 	db, old, err := h.locateMemory(oldID)
 	if err != nil {
-		h.Log.Debug("reflector", "supersede skipped: old memory missing", map[string]any{"id": oldID})
+		h.Log.Debug("supersede skipped: old memory missing", "origin", "reflector", "id", oldID)
 		return
 	}
 	if err := db.SupersedeMemory(old.ID, fresh.ID); err != nil {
-		h.Log.Warn("reflector", "supersede failed", map[string]any{"id": oldID, "error": err.Error()})
+		h.Log.Warn("supersede failed", "origin", "reflector", "id", oldID, "error", err)
 	}
 }
 

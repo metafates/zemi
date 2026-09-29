@@ -40,7 +40,7 @@ func (h *Host) ensureScratch() {
 		return
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		h.Log.Warn("scratch", "scratchpad not created", map[string]any{"error": err.Error()})
+		h.Log.Warn("scratchpad not created", "origin", "scratch", "error", err)
 		return
 	}
 	now := time.Now()

@@ -71,7 +71,7 @@ func (r *Runtime) StartTask(ctx context.Context, t Task, end func(error)) error 
 		defer func() {
 			if p := recover(); p != nil {
 				err = fmt.Errorf("zemi bug: task panicked: %v", p)
-				r.log.Error("lua", err.Error(), nil)
+				r.log.Error(err.Error(), "origin", "lua")
 			}
 			end(err)
 		}()

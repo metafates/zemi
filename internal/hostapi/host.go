@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -24,7 +25,6 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
@@ -37,7 +37,7 @@ import (
 // UIHooks is what the host API needs from the UI layer. Implemented by
 // internal/ui; hostapi never imports the UI.
 type UIHooks interface {
-	Notify(level logging.Level, title, body string)
+	Notify(level slog.Level, title, body string)
 	OpenOverlay(o Overlay)
 	// RefreshOverlay replaces the open overlay id with what build returns,
 	// calling build only while it is open: for a screen a clock refreshes.
@@ -318,7 +318,7 @@ type TurnStat struct {
 // Host bundles the core services the zemi.* namespaces adapt.
 type Host struct {
 	RT       *lua.Runtime
-	Log      *logging.Logger
+	Log      *slog.Logger
 	Settings *config.Store
 	Dirs     config.Dirs
 
@@ -588,7 +588,7 @@ type Session struct {
 
 // NewHost wires the registries and opens the stores (best effort:
 // failures surface at the namespaces boot step).
-func NewHost(rt *lua.Runtime, log *logging.Logger, settings *config.Store, dirs config.Dirs) *Host {
+func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs config.Dirs) *Host {
 	h := &Host{
 		RT:        rt,
 		Log:       log,
@@ -793,11 +793,11 @@ func (h *Host) refresh() {
 }
 
 // ToastTitle is a toast's title, Warning or Error for an untitled one.
-func ToastTitle(level logging.Level, title string) string {
+func ToastTitle(level slog.Level, title string) string {
 	switch {
-	case title != "" || level < logging.Warn:
+	case title != "" || level < slog.LevelWarn:
 		return title
-	case level == logging.Warn:
+	case level == slog.LevelWarn:
 		return "Warning"
 	}
 	return "Error"
@@ -808,13 +808,13 @@ func ToastTitle(level logging.Level, title string) string {
 // happened, in sentence case with no period: "<Kind> <past participle>" with
 // the name in the body, "Could not <verb> <object>" with the cause in the
 // body, "Nothing to <verb> [yet]" with a reason only when it is not obvious.
-func (h *Host) Notify(level logging.Level, title, body string) {
+func (h *Host) Notify(level slog.Level, title, body string) {
 	h.recordNotify(level, title, body)
 	if ui := h.hooks(); ui != nil {
 		ui.Notify(level, title, body)
 		return
 	}
-	if level < logging.Warn {
+	if level < slog.LevelWarn {
 		return
 	}
 	line := "zemi: " + ToastTitle(level, title)
@@ -1094,11 +1094,11 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		}
 	}
 	if res.Denied {
-		h.Log.Info("events", "vetoable event denied", map[string]any{
-			"event": name, "reason": res.Reason,
-		})
+		h.Log.Info("vetoable event denied", "origin", "events",
+			"event", name, "reason", res.Reason,
+		)
 	} else if res.TimedOut {
-		h.Log.Warn("events", "vetoable event timed out; host default applies", map[string]any{"event": name})
+		h.Log.Warn("vetoable event timed out; host default applies", "origin", "events", "event", name)
 	}
 	return res
 }
@@ -1156,9 +1156,9 @@ func (h *Host) callEvent(L *glua.LState, hd *EventHandler, ev map[string]any, de
 }
 
 func (h *Host) logHandlerError(hd *EventHandler, err error) {
-	h.Log.Error("events", "event handler failed", map[string]any{
-		"event": hd.Event, "id": hd.ID, "origin": string(hd.Origin), "error": err.Error(),
-	})
+	h.Log.Error("event handler failed", "origin", "events",
+		"event", hd.Event, "id", hd.ID, "from", string(hd.Origin), "error", err,
+	)
 	h.RecordError("event "+hd.Event, err.Error())
 }
 
@@ -1943,7 +1943,7 @@ func (h *Host) callOverlay(ctx context.Context, o Overlay, what string, fn *glua
 	}
 	failed := func(err error) error {
 		if err != nil && !lua.Dropped(err) {
-			h.Log.Error("ui", "overlay "+what+" failed", map[string]any{"id": o.ID, "error": err.Error()})
+			h.Log.Error("overlay "+what+" failed", "origin", "ui", "id", o.ID, "error", err)
 			h.RecordError("overlay "+o.ID+" "+what, err.Error())
 		}
 		return err

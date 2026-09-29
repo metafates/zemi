@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -10,7 +11,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 )
 
 // fillChat appends 30 user/reply pairs to the transcript.
@@ -310,7 +310,7 @@ func TestChatStickyPrompt(t *testing.T) {
 		t.Fatal("an unchanged pin copies its row again")
 	}
 	// a toast over the pin takes its own cells and cuts the pin's short
-	app.pushToast(logging.Info, "saved", "")
+	app.pushToast(slog.LevelInfo, "saved", "")
 	app.Frame()
 	if _, _, onToast := app.target(70, y); onToast {
 		t.Fatal("a toast over the pin acts as the pin")

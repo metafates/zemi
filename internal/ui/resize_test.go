@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"slices"
@@ -17,7 +18,6 @@ import (
 	"github.com/charmbracelet/x/exp/golden"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -135,7 +135,7 @@ func TestResizeSweep(t *testing.T) {
 	if len(toolRows) != 1 || !strings.Contains(toolRows[0], "Run ёж") || !strings.HasSuffix(strings.TrimRight(toolRows[0], " "), "…") {
 		t.Fatalf("tool row must be one truncated row, got %q", toolRows)
 	}
-	app.pushToast(logging.Warn, "a rather long toast title that must truncate", "line one of the body\nline two which is long enough to need wrapping at small widths")
+	app.pushToast(slog.LevelWarn, "a rather long toast title that must truncate", "line one of the body\nline two which is long enough to need wrapping at small widths")
 	host.OpenHelp()
 	for app.Pump() {
 	}
@@ -244,7 +244,7 @@ func TestToastCap(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	body := "@user:" + home + "/.config/zemi/init.lua:10: " + strings.Repeat("something went wrong ", 12) + "\nstack traceback:\n\t[G]: in function 'error'"
 	host.RecordError("keymap ctrl+t", body)
-	app.pushToast(logging.Error, "Could not run ctrl+t", body)
+	app.pushToast(slog.LevelError, "Could not run ctrl+t", body)
 	var rows []string
 	for _, r := range toastBox(app.toasts[0], 80) {
 		rows = append(rows, strings.TrimSpace(plainSegs(r)))
@@ -252,12 +252,12 @@ func TestToastCap(t *testing.T) {
 	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Could not run ctrl+t ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasPrefix(rows[toastRows], "│ … 4 more lines /errors ") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
 		t.Fatalf("toast rows: %q", rows)
 	}
-	app.pushToast(logging.Warn, "", "line one\nline two\nline three\nline four\nline five")
+	app.pushToast(slog.LevelWarn, "", "line one\nline two\nline three\nline four\nline five")
 	if r := plainSegs(toastBox(app.toasts[1], 80)[toastRows]); !strings.HasPrefix(strings.TrimSpace(r), "│ … 3 more lines ") || strings.Contains(r, "/errors") {
 		t.Fatalf("multi-line cut: %q", r)
 	}
 	// an untitled failure still says it is one
-	app.pushToast(logging.Error, "", "x")
+	app.pushToast(slog.LevelError, "", "x")
 	if top := plainSegs(toastBox(app.toasts[2], 80)[0]); !strings.HasPrefix(top, "┌ Error ─") {
 		t.Fatalf("untitled error toast: %q", top)
 	}
@@ -265,7 +265,7 @@ func TestToastCap(t *testing.T) {
 		title, body string
 		rows        int
 	}{{"Config reloaded", "", 3}, {"", "saved", 3}, {"Session exported", "saved to x", 3}} {
-		app.pushToast(logging.Info, c.title, c.body)
+		app.pushToast(slog.LevelInfo, c.title, c.body)
 		box := toastBox(app.toasts[len(app.toasts)-1], 80)
 		lone := c.title == "" || c.body == ""
 		if inner := plainSegs(box[1]); len(box) != c.rows || !strings.Contains(inner, cmp.Or(c.body, c.title)) || lone != strings.HasPrefix(plainSegs(box[0]), "┌─") {

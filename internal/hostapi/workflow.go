@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -36,7 +37,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -1524,7 +1524,7 @@ func (h *Host) workflowCommands() []*Command {
 			say := func(out string, err error) error {
 				if err == nil {
 					h.refreshFlows()
-					h.Notify(logging.Info, out, "")
+					h.Notify(slog.LevelInfo, out, "")
 				}
 				return err
 			}
@@ -1660,7 +1660,7 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) error {
 		attr, status, report := f.reportAs()
 		msg := h.reportMessage(h.scratchFor(f.parent), f.id, attr, status, f.description, report)
 		if err := h.sendClaimed(scope, line+msg+attached); err != nil {
-			h.Log.Warn("workflows", "report not sent", map[string]any{"error": err.Error()})
+			h.Log.Warn("report not sent", "origin", "workflows", "error", err)
 		}
 	})
 	return nil
@@ -1690,7 +1690,7 @@ func (h *Host) openFlowScript(id string) error {
 	// the editor blocks and a Go command runs on the key loop
 	h.GoSafe("workflows open", func() {
 		if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: "the workflow"}); err != nil {
-			h.Notify(logging.Error, "Could not open the workflow", err.Error())
+			h.Notify(slog.LevelError, "Could not open the workflow", err.Error())
 		}
 	})
 	return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
@@ -27,7 +27,7 @@ type pluginsUI struct {
 }
 
 func (u *pluginsUI) OpenOverlay(o Overlay) { u.opened <- o }
-func (u *pluginsUI) Notify(level logging.Level, title, body string) {
+func (u *pluginsUI) Notify(level slog.Level, title, body string) {
 	u.notes <- notifyName(level) + ": " + title + ": " + body
 }
 
@@ -59,7 +59,7 @@ func TestPluginsCommand(t *testing.T) {
 			t.Fatal(err, out)
 		}
 	}
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin}}})
 	h := NewHost(r, log, config.NewStore(), dirs)
 	ui := &pluginsUI{opened: make(chan Overlay, 4), notes: make(chan string, 4)}
@@ -144,7 +144,7 @@ func TestPluginsOpen(t *testing.T) {
 		os.MkdirAll(filepath.Join(dirs.PluginsRoot(), "local", name), 0o755)
 	}
 	os.WriteFile(filepath.Join(dirs.PluginsRoot(), "local", "lua", "init.lua"), nil, 0o644)
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), dirs)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
@@ -191,7 +191,7 @@ func TestPluginsSend(t *testing.T) {
 				os.Symlink(data, link)
 				data = link
 			}
-			log := logging.New(t.TempDir())
+			log := slog.New(slog.DiscardHandler)
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 			h := NewHost(r, log, config.NewStore(), config.Dirs{ConfigHome: t.TempDir(), StateHome: t.TempDir(), ProjectDir: t.TempDir(), DataHome: data})
 			if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {

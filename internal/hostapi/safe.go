@@ -6,10 +6,9 @@ package hostapi
 
 import (
 	"fmt"
+	"log/slog"
 	"runtime/debug"
 	"time"
-
-	"github.com/metafates/zemi/internal/logging"
 )
 
 func (h *Host) GoSafe(where string, fn func()) {
@@ -50,15 +49,15 @@ func (h *Host) endTurnAfterPanic() {
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.turnStart, ag.retryAt = time.Time{}, time.Time{}
 	ag.mu.Unlock()
-	h.Notify(logging.Error, "Turn crashed", "it was stopped; /errors has the cause")
+	h.Notify(slog.LevelError, "Turn crashed", "it was stopped; /errors has the cause")
 	h.refresh()
 }
 
 // logPanic records a recovered panic: full stack in the log, one line in
 // /errors.
 func (h *Host) logPanic(where string, r any) {
-	h.Log.Error("panic", fmt.Sprintf("recovered panic in %s: %v", where, r), map[string]any{
-		"stack": string(debug.Stack()),
-	})
+	h.Log.Error(fmt.Sprintf("recovered panic in %s: %v", where, r), "origin", "panic",
+		"stack", string(debug.Stack()),
+	)
 	h.RecordError("panic "+where, fmt.Sprint(r))
 }

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -18,7 +19,6 @@ import (
 	"strings"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sandbox"
 )
@@ -157,7 +157,7 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 		// backend would open a link's target
 		own, err := d.WorktreesIgnore()
 		if err != nil {
-			h.Log.Warn("sandbox", "cannot write .agents/worktrees/.gitignore", map[string]any{"error": err.Error()})
+			h.Log.Warn("cannot write .agents/worktrees/.gitignore", "origin", "sandbox", "error", err)
 		}
 		if wt := d.WorktreesDir(); own && h.inJail(wt, d.ProjectDir) {
 			p.Write = append(p.Write, wt)
@@ -534,8 +534,8 @@ func (h *Host) holdTrust(why string) {
 	}
 	h.trustHeld.Store(true)
 	h.SetProjectTrusted(false)
-	h.Log.Warn("sandbox", why, nil)
-	h.Notify(logging.Warn, "Trust is off", why)
+	h.Log.Warn(why, "origin", "sandbox")
+	h.Notify(slog.LevelWarn, "Trust is off", why)
 }
 
 // TrustHeld reports trust held off by holdTrust.

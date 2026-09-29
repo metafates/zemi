@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -508,7 +508,7 @@ func (a *App) background(fn func()) {
 				func() {
 					defer func() {
 						if r := recover(); r != nil {
-							a.log.Error("panic", fmt.Sprintf("keymap or command panicked: %v", r), map[string]any{"stack": string(debug.Stack())})
+							a.log.Error(fmt.Sprintf("keymap or command panicked: %v", r), "origin", "panic", "stack", string(debug.Stack()))
 						}
 					}()
 					f()
@@ -519,7 +519,7 @@ func (a *App) background(fn func()) {
 	select {
 	case a.work <- fn:
 	default:
-		a.pushToast(logging.Warn, "Key dropped", "an earlier key or command is still running")
+		a.pushToast(slog.LevelWarn, "Key dropped", "an earlier key or command is still running")
 	}
 }
 

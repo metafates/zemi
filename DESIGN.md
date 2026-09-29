@@ -1866,9 +1866,9 @@ provenance string.
   C1 controls) are stripped and C0 controls other than newline and tab
   are collapsed at the same boundary, so streamed content cannot restyle the
   frame, set titles, or fake host-drawn chrome. Plugin `render` output is
-  sanitized the same way, and the log sink collapses C0 control bytes
-  (newlines included: one record, one line) and strips C1, so a `tail -f`
-  of the log cannot execute escape sequences or forge entries.
+  sanitized the same way, and the log's slog text handler quotes every key
+  and value holding a control byte, a newline or another unprintable rune,
+  so a `tail -f` of the log cannot execute escape sequences or forge entries.
 - **Printed runs** (`zemi run`; run.go, ui/run.go): one observer, two
   outputs. stdout is the answer and nothing else: the run's last message
   (the headless prompt tells the model to put the whole answer there, after
@@ -2719,8 +2719,8 @@ internal/mcp/, internal/lsp/   the two clients, each with its own test server
 internal/proc/              every child process (own session and process group) and hardened git
 internal/plugin/            plugin install, update, check and delete over plain git, and on/off
 internal/glob/              rg-style glob matching for the file tools and LSP
-internal/sanitize/          escape stripping at the render and log boundary
-internal/logging/           log files
+internal/sanitize/          escape stripping at the render boundary (the log's slog handler quotes)
+internal/logging/           the slog log file, one per launch
 runtime/lua/                embedded Lua userland (tui: widgets, themes)
 runtime/skills/zemi/        zemi's own skill; runtime/workflows/, the builtin ones
 runtime/types/              the LuaLS `---@meta` description of the whole zemi.* API

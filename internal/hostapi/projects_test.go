@@ -3,6 +3,7 @@ package hostapi
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -59,7 +59,7 @@ func TestProjectsCommand(t *testing.T) {
 		os.MkdirAll(filepath.Dir(f), 0o755)
 		os.WriteFile(f, []byte("go test ./...\n"), 0o600)
 	}
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), dirs)
 	ui := &pluginsUI{opened: make(chan Overlay, 4), notes: make(chan string, 4)}
@@ -202,7 +202,7 @@ func TestSplashProjects(t *testing.T) {
 			if c.repo {
 				os.Mkdir(filepath.Join(dir, ".git"), 0o755)
 			}
-			log := logging.New(t.TempDir())
+			log := slog.New(slog.DiscardHandler)
 			h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{ProjectDir: dir, StateHome: state})
 			t.Cleanup(h.Close)
 			if c.session {

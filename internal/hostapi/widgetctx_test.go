@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"log/slog"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -11,7 +12,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -39,7 +39,7 @@ end
 func BenchmarkWidgetCtx(b *testing.B) {
 	for _, rows := range []int{0, 500} {
 		b.Run(strconv.Itoa(rows), func(b *testing.B) {
-			log := logging.New(b.TempDir())
+			log := slog.New(slog.DiscardHandler)
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 			h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: b.TempDir()})
 			if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {

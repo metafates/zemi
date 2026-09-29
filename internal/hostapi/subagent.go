@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -25,7 +26,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
@@ -321,7 +321,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		// run the process no longer holds (a resume, or one past maxKeptRuns)
 		sid = run.id + store.NewID()[len(run.id):]
 		if err := h.DB.CreateSession(sid, parent, run.description, def.Name); err != nil {
-			h.Log.Warn("agents", "subagent session not recorded", map[string]any{"error": err.Error()})
+			h.Log.Warn("subagent session not recorded", "origin", "agents", "error", err)
 			sid = ""
 		}
 		run.mu.Lock()
@@ -414,7 +414,7 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 				// NOTE: the dropped steps are lost unsummarized, a follow-up
 				// message older than the tail among them, and a run that
 				// fills the window again ends with the error.
-				h.Log.Warn("agent", "subagent context full, dropping history", map[string]any{"messages": start - 1})
+				h.Log.Warn("subagent context full, dropping history", "origin", "agent", "messages", start-1)
 				dropped, history = true, append(history[:1:1], history[start:]...)
 			}
 			runner.History = history
@@ -979,7 +979,7 @@ func (h *Host) openAgentFile(name string) error {
 	// the editor blocks and a Go command runs on the key loop
 	h.GoSafe("agents open", func() {
 		if err := ui.EditFile(context.Background(), EditRequest{Path: d.Path, Title: "the agent"}); err != nil {
-			h.Notify(logging.Error, "Could not open the agent", err.Error())
+			h.Notify(slog.LevelError, "Could not open the agent", err.Error())
 		}
 	})
 	return nil

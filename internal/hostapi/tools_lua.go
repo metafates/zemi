@@ -444,7 +444,7 @@ func (h *Host) toolPre(name string, input map[string]any, handlers []*EventHandl
 				return nil, nil
 			case d == tools.PreRewrite && rw != nil && hd.Origin.Rank() <= lua.OriginProject.Rank():
 				// same denial as zemi.tool.override (DESIGN §5)
-				h.Log.Warn("tools", "tool.pre rewrite ignored", map[string]any{"tool": name, "origin": string(hd.Origin)})
+				h.Log.Warn("tool.pre rewrite ignored", "origin", "tools", "tool", name, "from", string(hd.Origin))
 			case d == tools.PreRewrite && rw != nil:
 				maps.Copy(merged, rw)
 				decision, rewritten = tools.PreRewrite, merged
@@ -464,7 +464,7 @@ func (h *Host) toolPre(name string, input map[string]any, handlers []*EventHandl
 		return nil, nil
 	})
 	if err != nil {
-		h.Log.Warn("tools", "tool.pre run failed", map[string]any{"tool": name, "error": err.Error()})
+		h.Log.Warn("tool.pre run failed", "origin", "tools", "tool", name, "error", err)
 		if !errors.Is(err, lua.ErrAbandoned) {
 			// a hot runtime cannot run the deny hooks: fail closed
 			return tools.PreDeny, "tool.pre hooks could not run (lua runtime unavailable, /reload): " + err.Error(), nil, false
@@ -563,7 +563,7 @@ func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, nam
 			}
 		case rewrite == nil:
 		case hd.Origin.Rank() <= lua.OriginProject.Rank():
-			h.Log.Warn("tools", "tool.post rewrite ignored", map[string]any{"tool": name, "origin": string(hd.Origin)})
+			h.Log.Warn("tool.post rewrite ignored", "origin", "tools", "tool", name, "from", string(hd.Origin))
 		default:
 			out = *rewrite
 			if hd.Origin == lua.OriginPlugin {

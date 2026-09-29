@@ -3,6 +3,7 @@ package hostapi
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -17,7 +18,6 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skill"
@@ -226,7 +226,7 @@ func typesSource(t *testing.T) string {
 // it, and a workflow script's zemi.workflow.
 func bootedNamespaces(t *testing.T, other bool) map[string][]string {
 	t.Helper()
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
 	var out map[string][]string

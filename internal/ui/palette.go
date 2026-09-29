@@ -2,12 +2,12 @@ package ui
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -217,7 +217,7 @@ func (a *App) runSlashCommand(text string) {
 	name, args := hostapi.SplitCommand(raw)
 	cmd := a.host.Commands.Lookup(name)
 	if cmd == nil {
-		a.pushToast(logging.Warn, "Unknown command", "/"+name+"; /help lists them")
+		a.pushToast(slog.LevelWarn, "Unknown command", "/"+name+"; /help lists them")
 		return
 	}
 	a.clearComposer()
@@ -229,7 +229,7 @@ func (a *App) runSlashCommand(text string) {
 func (a *App) sendMessage(text string) {
 	res := a.host.EmitVetoable(context.Background(), "composer.submit", map[string]any{"text": text}, lua.VetoDeadline)
 	if res.Denied {
-		a.pushToast(logging.Warn, "Message blocked", res.Reason)
+		a.pushToast(slog.LevelWarn, "Message blocked", res.Reason)
 		return
 	}
 	draft := a.composer.text
@@ -242,7 +242,7 @@ func (a *App) sendMessage(text string) {
 		_ = a.host.ViewAgent("") // the run is over: messages go to the session, so show it
 	}
 	if err := a.host.AgentSend(text); err != nil {
-		a.pushToast(logging.Error, "Could not send", err.Error())
+		a.pushToast(slog.LevelError, "Could not send", err.Error())
 		a.composer.text = draft
 		a.composer.cursor = len(a.composer.runes())
 		a.publishComposer()

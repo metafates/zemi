@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"unicode"
@@ -12,7 +13,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 )
@@ -196,7 +196,7 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 		})
 		if err != nil {
 			if !lua.Dropped(err) {
-				h.Log.Error("ui", "command completer failed", map[string]any{"command": name, "error": err.Error()})
+				h.Log.Error("command completer failed", "origin", "ui", "command", name, "error", err)
 				h.RecordError("command "+name+" complete", err.Error())
 			}
 			return nil
@@ -248,11 +248,11 @@ func argAt(lead, line string) ([]string, int) {
 // (ErrUsage) is a warn, anything else did not happen and is recorded.
 func (h *Host) CommandFailed(name string, err error) {
 	if errors.Is(err, ErrUsage) {
-		h.Notify(logging.Warn, "Could not run /"+name, err.Error())
+		h.Notify(slog.LevelWarn, "Could not run /"+name, err.Error())
 		return
 	}
 	h.RecordError("command "+name, err.Error())
-	h.Notify(logging.Error, "Could not run /"+name, err.Error())
+	h.Notify(slog.LevelError, "Could not run /"+name, err.Error())
 }
 
 // SendPrompt sends a prompt as the composer would: one naming a registered
@@ -348,11 +348,11 @@ func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) (err error) {
 		switch {
 		case err == nil:
 		case lua.Dropped(err):
-			h.Log.Debug("ui", "keymap dropped", map[string]any{"keys": b.Key, "error": err.Error()})
+			h.Log.Debug("keymap dropped", "origin", "ui", "keys", b.Key, "error", err)
 		default:
 			h.RecordError("keymap "+b.Key, err.Error())
-			h.Log.Error("ui", "keymap rhs failed", map[string]any{"keys": b.Key, "error": err.Error()})
-			h.Notify(logging.Error, "Could not run "+b.Key, err.Error())
+			h.Log.Error("keymap rhs failed", "origin", "ui", "keys", b.Key, "error", err)
+			h.Notify(slog.LevelError, "Could not run "+b.Key, err.Error())
 		}
 	}
 	defer func() { report(err) }()

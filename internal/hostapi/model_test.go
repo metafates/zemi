@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,7 +14,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -125,7 +125,7 @@ func TestInertBoot(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(project, "f.txt"), []byte("read"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	log := logging.New("")
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: project, DataHome: data})
 	h.Inert = true

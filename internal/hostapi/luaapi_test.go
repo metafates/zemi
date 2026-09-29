@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,7 +16,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 )
@@ -367,7 +367,7 @@ func TestReloadBrokenInit(t *testing.T) {
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			dir, log := t.TempDir(), logging.New(t.TempDir())
+			dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 			h := NewHost(r, log, config.NewStore(), config.Dirs{ConfigHome: dir, ProjectDir: t.TempDir()})
 			initLua := filepath.Join(dir, "init.lua")

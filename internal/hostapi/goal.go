@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
@@ -129,7 +129,7 @@ func (h *Host) setGoalFrom(sid string, msg fantasy.Message) {
 	ag.mu.Unlock()
 	h.storeGoal(sid, goalRow{Event: goalSet, Text: cond, Tokens: g.Tokens, Cost: g.Cost})
 	if old != nil {
-		h.Notify(logging.Info, "Replaced the goal", old.Condition)
+		h.Notify(slog.LevelInfo, "Replaced the goal", old.Condition)
 	}
 	h.refresh()
 }
@@ -193,7 +193,7 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	case err != nil:
 		ev, reason = goalPaused, "the check failed: "+h.friendlyError(err)
 	case !ok:
-		h.Log.Debug("goal", "no verdict", map[string]any{"reply": clipRunes(reply, 200)})
+		h.Log.Debug("no verdict", "origin", "goal", "reply", clipRunes(reply, 200))
 		ev, reason = goalPaused, "the check gave no verdict"
 	}
 	ag := h.agents
@@ -241,7 +241,7 @@ func (h *Host) storeGoal(sid string, row goalRow) {
 	}
 	parts, _ := json.Marshal(row)
 	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: goalRole, PartsJSON: string(parts)}); err != nil {
-		h.Log.Warn("goal", "event not stored", map[string]any{"error": err.Error()})
+		h.Log.Warn("event not stored", "origin", "goal", "error", err)
 	}
 }
 

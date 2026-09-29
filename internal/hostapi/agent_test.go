@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -21,7 +22,6 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -31,7 +31,7 @@ import (
 // newTestHostDB boots a host with a real session store in temp dirs.
 func newTestHostDB(t *testing.T) (*Host, *lua.Runtime) {
 	t.Helper()
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{
 		StateHome:  t.TempDir(),
@@ -241,7 +241,7 @@ func TestPermissionRuleValidation(t *testing.T) {
 // an edited config value wins. A kept pick outlives a restart under
 // init.lua. /config tags the value by where it came from.
 func TestReloadKeepsRuntimePicks(t *testing.T) {
-	dir, log := t.TempDir(), logging.New(t.TempDir())
+	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
 	dirs := config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()}
 	initLua := filepath.Join(dir, "init.lua")
 	const head = `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "a" }, { id = "b" }, { id = "c" }, { id = "e" }, { id = "z" } } })
@@ -347,7 +347,7 @@ zemi.permission.mode.add("wild", { base = "yolo" })
 // still checked against the old Lua rules and wait for the tool.pre handlers
 // to come back instead of passing without them.
 func TestReloadKeepsUserVetoes(t *testing.T) {
-	dir, log := t.TempDir(), logging.New(t.TempDir())
+	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
 	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
@@ -768,7 +768,7 @@ type fakeUI struct {
 	relaunched   string
 }
 
-func (f *fakeUI) Notify(logging.Level, string, string) {}
+func (f *fakeUI) Notify(slog.Level, string, string) {}
 func (f *fakeUI) OpenOverlay(o Overlay) {
 	f.mu.Lock()
 	f.opened = append(f.opened, o)
@@ -1841,7 +1841,7 @@ func TestProfileToolsRecordUnknown(t *testing.T) {
 // false, del drops one, and the roles fall back to the first usable
 // provider's default, a user one first.
 func TestBuiltinProvidersSeed(t *testing.T) {
-	dir, log := t.TempDir(), logging.New(t.TempDir())
+	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
 	h.Builtin.Store(&agent.Catalog{Specs: []agent.Spec{

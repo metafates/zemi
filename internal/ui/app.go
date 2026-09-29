@@ -12,6 +12,7 @@ import (
 	"cmp"
 	"context"
 	"image/color"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
@@ -25,7 +26,6 @@ import (
 	"github.com/charmbracelet/x/ansi/kitty"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -47,7 +47,7 @@ const (
 // App is the root bubbletea model. It implements hostapi.UIHooks.
 type App struct {
 	host *hostapi.Host
-	log  *logging.Logger
+	log  *slog.Logger
 	thm  themeResolver
 
 	// termBG is the terminal's own background color as it answered an OSC
@@ -177,7 +177,7 @@ type widgetCache struct {
 
 // NewApp builds the root model; host hooks are attached by the caller via
 // host.SetUIHooks(app).
-func NewApp(host *hostapi.Host, log *logging.Logger) *App {
+func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 	return &App{
 		host:     host,
 		log:      log,
@@ -202,7 +202,7 @@ func (a *App) SignalBoot(err error) {
 	a.do(func() {
 		a.bootErr = err
 		if err != nil {
-			a.log.Error("ui", "boot failed", map[string]any{"error": err.Error()})
+			a.log.Error("boot failed", "origin", "ui", "error", err)
 			return
 		}
 		// a toggle list open across a reload rebuilds from the new state
@@ -235,7 +235,7 @@ func (a *App) RelaunchDir() string {
 func (a *App) quitTo(dir string) {
 	quit := func() {
 		if res := a.host.EmitVetoable(context.Background(), "app.quit", map[string]any{}, lua.VetoDeadline); res.Denied {
-			a.Notify(logging.Warn, map[bool]string{true: "Quit blocked", false: "Switch blocked"}[dir == ""], res.Reason)
+			a.Notify(slog.LevelWarn, map[bool]string{true: "Quit blocked", false: "Switch blocked"}[dir == ""], res.Reason)
 			return
 		}
 		a.relaunch.Store(&dir)
@@ -272,7 +272,7 @@ func (a *App) Farewell() string {
 	for _, w := range a.host.Widgets.InRegion(hostapi.RegionExit) {
 		lines, _, err := a.host.RenderWidget(ctx, w, cmp.Or(a.width, 80), 0, a.uiState())
 		if err != nil {
-			a.log.Warn("ui", "exit widget failed", map[string]any{"widget": w.ID, "error": err.Error()})
+			a.log.Warn("exit widget failed", "origin", "ui", "widget", w.ID, "error", err)
 			continue
 		}
 		printLines(&b, a.thm, a.colors, lines)
@@ -419,7 +419,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		return nil
 	case editorMsg:
 		if msg.err != nil {
-			a.pushToast(logging.Error, "Could not open the editor", msg.err.Error())
+			a.pushToast(slog.LevelError, "Could not open the editor", msg.err.Error())
 			return nil
 		}
 		text := sanitize.String(msg.text)
@@ -434,7 +434,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		return a.updateCompletion()
 	case clipboardMsg:
 		if msg.err != nil {
-			a.pushToast(logging.Error, "Could not paste", msg.err.Error())
+			a.pushToast(slog.LevelError, "Could not paste", msg.err.Error())
 			return nil
 		}
 		a.insertToken(msg.token)
@@ -739,9 +739,9 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 			c.err = msg.err.Error()
 			a.host.RecordError("widget "+msg.id, c.err)
 		}
-		a.log.Debug("ui", "widget render failed; keeping last good lines", map[string]any{
-			"widget": msg.id, "error": msg.err.Error(),
-		})
+		a.log.Debug("widget render failed; keeping last good lines", "origin", "ui",
+			"widget", msg.id, "error", msg.err,
+		)
 		return
 	}
 	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen, seq: msg.seq, partial: msg.more}
@@ -815,7 +815,7 @@ func (a *App) widgetLines(id string) [][]hostapi.Segment {
 
 // toast is a transient notification (zemi.notify, DESIGN §6.1).
 type toast struct {
-	level       logging.Level
+	level       slog.Level
 	title, body string
 	expires     time.Time
 	recorded    bool // its caller recorded the whole error in /errors
@@ -835,17 +835,17 @@ func boxArea(stage uv.Rectangle, w, h int) uv.Rectangle {
 	return stage
 }
 
-func (a *App) pushToast(level logging.Level, title, body string) {
+func (a *App) pushToast(level slog.Level, title, body string) {
 	title = hostapi.ToastTitle(level, title)
 	// news goes quickly, what needs reading or acting on stays
 	ttl := 8 * time.Second
-	if level < logging.Warn {
+	if level < slog.LevelWarn {
 		ttl = 4 * time.Second
 	}
 	t := toast{level: level, title: title, body: body, expires: time.Now().Add(ttl)}
 	short, _, _ := strings.Cut(body, "stack traceback:")
 	t.body = hostapi.ShortChunk(strings.TrimRight(short, " \t\n"))
-	t.recorded = level == logging.Error && a.host.Recorded(body)
+	t.recorded = level == slog.LevelError && a.host.Recorded(body)
 	// the same failure again (a second send with no model) restarts the
 	// toast instead of stacking a twin under it
 	if n := len(a.toasts); n > 0 && a.toasts[n-1].level == level && a.toasts[n-1].title == title && a.toasts[n-1].body == t.body {
@@ -877,7 +877,7 @@ func (a *App) dispatch(msg tea.Msg) bool {
 	case q <- msg:
 		return true
 	default:
-		a.log.Warn("ui", "hook queue full; dropping message", nil)
+		a.log.Warn("hook queue full; dropping message", "origin", "ui")
 		return false
 	}
 }
@@ -1391,9 +1391,9 @@ func (a *App) statuslineSegments(region string) []hostapi.Segment {
 func toastBox(t toast, w int) [][]hostapi.Segment {
 	var level string
 	switch t.level {
-	case logging.Warn:
+	case slog.LevelWarn:
 		level = "ToastWarn"
-	case logging.Error:
+	case slog.LevelError:
 		level = "ToastErr"
 	default:
 		level = "ToastInfo"

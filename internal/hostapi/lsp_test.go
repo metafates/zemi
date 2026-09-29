@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"os"
 	"os/exec"
@@ -17,7 +18,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -272,7 +272,7 @@ func TestLSPZemiLua(t *testing.T) {
 	os.WriteFile(filepath.Join(bin, "lua-language-server"), []byte("#!/bin/sh\n"), 0o755)
 	t.Setenv("PATH", bin)
 	data, _ := filepath.EvalSymlinks(t.TempDir()) // plugin paths are resolved
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir(), ConfigHome: t.TempDir(), DataHome: data})
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
@@ -328,7 +328,7 @@ func TestLSPRealLuaLS(t *testing.T) {
 		t.Skip("lua-language-server not installed")
 	}
 	data, _ := filepath.EvalSymlinks(t.TempDir()) // plugin paths are resolved
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir(), CacheHome: t.TempDir(), DataHome: data})
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
@@ -21,7 +22,6 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -74,11 +74,11 @@ func (h *Host) storeMemory(sid string, scope store.Scope, origin store.Origin, t
 // decisions travel by id.
 func (h *Host) queueProposal(res *learn.Result) bool {
 	if dup, _ := h.duplicateMemory(res.Memory, res.Supersedes); dup != nil {
-		h.Log.Debug("memory", "duplicate proposal dropped", nil)
+		h.Log.Debug("duplicate proposal dropped", "origin", "memory")
 		return false
 	}
 	if err := h.addProposal(memoryProposal{Memory: res.Memory, Supersedes: res.Supersedes}); err != nil {
-		h.Log.Warn("memory", "proposal dropped", map[string]any{"error": err.Error()})
+		h.Log.Warn("proposal dropped", "origin", "memory", "error", err)
 		return false
 	}
 	return true
@@ -136,7 +136,7 @@ func (h *Host) applyProposal(res *learn.Result) error {
 		ag.memAuto++
 	}
 	ag.mu.Unlock()
-	h.Notify(logging.Info, "Memory saved", res.Memory.Text+redactNote(res.Scrubbed))
+	h.Notify(slog.LevelInfo, "Memory saved", res.Memory.Text+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -245,7 +245,7 @@ func (h *Host) Remember(text string) error {
 	if err := h.storeProposal(res); err != nil {
 		return err
 	}
-	h.Notify(logging.Info, "Memory saved for this project", "press s on it in /memory to keep it for every project"+redactNote(res.Scrubbed))
+	h.Notify(slog.LevelInfo, "Memory saved for this project", "press s on it in /memory to keep it for every project"+redactNote(res.Scrubbed))
 	return nil
 }
 
@@ -267,7 +267,7 @@ func (h *Host) memoryCommand(args string) error {
 		if err := db.DeleteMemory(m.ID); err != nil {
 			return err
 		}
-		h.Notify(logging.Info, "Memory forgotten", m.Text)
+		h.Notify(slog.LevelInfo, "Memory forgotten", m.Text)
 		return nil
 	case fields[0] == "forget":
 		return Usagef("usage: /memory forget <id> [--yes]")
@@ -336,7 +336,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks, focus string) bool {
 			}
 		case old.Queued && r.Action == "accept":
 			if _, err := h.acceptProposal(r.ID, r.Scope); err != nil {
-				h.Notify(logging.Warn, "Could not accept a memory", err.Error())
+				h.Notify(slog.LevelWarn, "Could not accept a memory", err.Error())
 				continue
 			}
 			accepted++
@@ -354,9 +354,9 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks, focus string) bool {
 			// queue by now, so put it back rather than lose it
 			p.Memory.Scope = old.Scope
 			if err := h.addProposal(*p); err != nil {
-				h.Log.Warn("memory", "move rollback failed", map[string]any{"id": r.ID, "error": err.Error()})
+				h.Log.Warn("move rollback failed", "origin", "memory", "id", r.ID, "error", err)
 			}
-			h.Notify(logging.Warn, "Could not move a memory", "the "+string(r.Scope)+" scope already has that text")
+			h.Notify(slog.LevelWarn, "Could not move a memory", "the "+string(r.Scope)+" scope already has that text")
 		case old.Queued:
 		case r.Action == "delete":
 			if db := h.memoryDB(old.Scope); db != nil && db.DeleteMemory(r.ID) == nil {
@@ -364,7 +364,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks, focus string) bool {
 			}
 		case r.Scope != old.Scope:
 			if err := h.moveMemory(r.ID, old.Scope, r.Scope); err != nil {
-				h.Notify(logging.Warn, "Could not move a memory", err.Error())
+				h.Notify(slog.LevelWarn, "Could not move a memory", err.Error())
 				continue
 			}
 			moved++
@@ -380,7 +380,7 @@ func (h *Host) reviewMemoriesOnce(ui UIHooks, focus string) bool {
 		}
 	}
 	if len(parts) > 0 {
-		h.Notify(logging.Info, "Memory updated", strings.Join(parts, ", "))
+		h.Notify(slog.LevelInfo, "Memory updated", strings.Join(parts, ", "))
 	}
 	if edit != "" {
 		h.editMemory(ui, edit)
@@ -423,9 +423,9 @@ func (h *Host) editMemory(ui UIHooks, id string) {
 	}()
 	switch {
 	case err != nil:
-		h.Notify(logging.Error, "Could not edit the memory", err.Error())
+		h.Notify(slog.LevelError, "Could not edit the memory", err.Error())
 	case scrubbed:
-		h.Notify(logging.Info, "Memory updated", "secrets redacted")
+		h.Notify(slog.LevelInfo, "Memory updated", "secrets redacted")
 	}
 }
 
@@ -468,7 +468,7 @@ func (h *Host) rewriteMemory(id, text string) (scrubbed bool, err error) {
 		}
 		if err := h.storeProposal(res); err != nil {
 			if qerr := h.addProposal(p); qerr != nil {
-				h.Log.Warn("memory", "proposal dropped", map[string]any{"error": qerr.Error()})
+				h.Log.Warn("proposal dropped", "origin", "memory", "error", qerr)
 			}
 			return false, err
 		}
@@ -595,7 +595,7 @@ func (h *Host) acceptProposal(id string, scope store.Scope) (*memoryProposal, er
 	if err != nil {
 		if !errors.Is(err, errDuplicateMemory) {
 			if qerr := h.addProposal(*p); qerr != nil {
-				h.Log.Warn("memory", "proposal dropped", map[string]any{"error": qerr.Error()})
+				h.Log.Warn("proposal dropped", "origin", "memory", "error", qerr)
 			}
 		}
 		return nil, err
@@ -620,7 +620,7 @@ func (h *Host) memoryProposals() []memoryProposal {
 		}
 		rows, err := db.Proposals()
 		if err != nil {
-			h.Log.Warn("memory", "proposal list failed", map[string]any{"error": err.Error()})
+			h.Log.Warn("proposal list failed", "origin", "memory", "error", err)
 			continue
 		}
 		for _, p := range rows {
@@ -726,7 +726,7 @@ func (h *Host) memoryList(includeSuperseded bool) ([]*store.Memory, error) {
 		}
 		rows, err := db.ListMemory(scope, includeSuperseded)
 		if err != nil {
-			h.Log.Warn("memory", "list failed", map[string]any{"scope": scope, "error": err.Error()})
+			h.Log.Warn("list failed", "origin", "memory", "scope", scope, "error", err)
 			errs = append(errs, err)
 			continue
 		}
@@ -905,7 +905,7 @@ func (h *Host) gateMemory(res *learn.Result) (memoryOutcome, error) {
 		return memoryOutcome{Duplicate: dup, DupQueued: queued}, nil
 	}
 	if m.Origin == store.OriginLearned && m.Quote != "" && !h.quoteInSession(m.ProvenanceSessionID, m.Quote) {
-		h.Log.Info("memory", "dropped: quote not in the session", map[string]any{"text": m.Text, "quote": m.Quote})
+		h.Log.Info("dropped: quote not in the session", "origin", "memory", "text", m.Text, "quote", m.Quote)
 		return memoryOutcome{Dropped: true}, nil
 	}
 	reason, review := h.memoryReview(res)

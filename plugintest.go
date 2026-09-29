@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
@@ -88,7 +88,7 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		d := dirs
 		d.StateHome = filepath.Join(tmp, "boot", strconv.Itoa(boots), "state")
 		d.ProjectDir = filepath.Join(tmp, "boot", strconv.Itoa(boots), "project")
-		h, pt := hostapi.NewPluginTest(logging.New(""), pathClasses(d), d, file, run)
+		h, pt := hostapi.NewPluginTest(slog.New(slog.DiscardHandler), pathClasses(d), d, file, run)
 		end := func() {
 			h.Close()
 			os.RemoveAll(filepath.Dir(d.ProjectDir))

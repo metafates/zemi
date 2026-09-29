@@ -1,6 +1,9 @@
 package hostapi
 
 import (
+	"context"
+	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -8,7 +11,6 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 )
@@ -18,10 +20,10 @@ import (
 func (h *Host) logNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	tb.RawSetString("debug", L.NewFunction(h.logFn(logging.Debug, 1)))
-	tb.RawSetString("info", L.NewFunction(h.logFn(logging.Info, 1)))
-	tb.RawSetString("warn", L.NewFunction(h.logFn(logging.Warn, 1)))
-	tb.RawSetString("error", L.NewFunction(h.logFn(logging.Error, 1)))
+	tb.RawSetString("debug", L.NewFunction(h.logFn(slog.LevelDebug, 1)))
+	tb.RawSetString("info", L.NewFunction(h.logFn(slog.LevelInfo, 1)))
+	tb.RawSetString("warn", L.NewFunction(h.logFn(slog.LevelWarn, 1)))
+	tb.RawSetString("error", L.NewFunction(h.logFn(slog.LevelError, 1)))
 
 	// list() is the /messages ring: the log file is per launch and outside
 	// the read jails, so a widget reads the recent lines from here.
@@ -41,15 +43,15 @@ func (h *Host) logNamespace(L *glua.LState) *glua.LTable {
 
 // logCall skips the table, which __call passes as the first argument.
 func (h *Host) logCall(L *glua.LState) *glua.LFunction {
-	return L.NewFunction(h.logFn(logging.Info, 2))
+	return L.NewFunction(h.logFn(slog.LevelInfo, 2))
 }
 
 // logFn logs the message at arg first with an optional context table after it.
-func (h *Host) logFn(level logging.Level, first int) glua.LGFunction {
+func (h *Host) logFn(level slog.Level, first int) glua.LGFunction {
 	return func(L *glua.LState) int {
 		msg := L.CheckString(first)
 		origin := string(h.RT.CurrentOrigin(L))
-		h.Log.Log(level, origin, msg, logFields(L, first+1))
+		h.Log.Log(context.Background(), level, msg, logArgs(L, origin, first+1)...)
 		h.RecordMessage(origin+" "+strings.ToLower(level.String()), msg)
 		return 0
 	}
@@ -108,10 +110,13 @@ func (h *Host) OpenMessages() error {
 	return nil
 }
 
-// logFields converts an optional trailing context table to log fields.
-func logFields(L *glua.LState, idx int) logging.Fields {
+// logArgs is origin and the optional context table at idx as key/value
+// pairs, the table's keys sorted and prefixed "ctx." so none can pose as
+// the record's level, msg or origin.
+func logArgs(L *glua.LState, origin string, idx int) []any {
+	args := []any{"origin", origin}
 	if L.GetTop() < idx || L.Get(idx) == glua.LNil {
-		return nil
+		return args
 	}
 	v, err := lua.ToGo(L.Get(idx))
 	if err != nil {
@@ -121,5 +126,8 @@ func logFields(L *glua.LState, idx int) logging.Fields {
 	if !ok {
 		L.RaiseError("zemi.log: context must be a table of key/values")
 	}
-	return logging.Fields(m)
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		args = append(args, "ctx."+k, m[k])
+	}
+	return args
 }

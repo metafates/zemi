@@ -32,13 +32,13 @@ func (h *Host) syncTypes() {
 		return
 	}
 	if err := h.writeTypes(dir); err != nil {
-		h.Log.Warn("types", "annotations not written", map[string]any{"error": err.Error()})
+		h.Log.Warn("annotations not written", "origin", "types", "error", err)
 		return
 	}
 	luarcs := []string{h.Dirs.ConfigHome}
 	ps, err := plugin.Scan(h.Dirs)
 	if err != nil {
-		h.Log.Warn("types", "plugins not scanned for luarc", map[string]any{"error": err.Error()})
+		h.Log.Warn("plugins not scanned for luarc", "origin", "types", "error", err)
 	}
 	for _, p := range ps {
 		// a clone is git's, and zemi does not load a symlinked dir
@@ -48,7 +48,7 @@ func (h *Host) syncTypes() {
 	}
 	for _, d := range luarcs {
 		if err := writeLuarc(d, dir); err != nil {
-			h.Log.Warn("types", "luarc not written", map[string]any{"dir": d, "error": err.Error()})
+			h.Log.Warn("luarc not written", "origin", "types", "dir", d, "error", err)
 		}
 	}
 }

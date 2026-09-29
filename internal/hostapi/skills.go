@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -25,7 +26,6 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/learn"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/skill"
@@ -86,7 +86,7 @@ func (h *Host) syncSkills() {
 		return
 	}
 	if err := h.materializeBuiltinSkills(); err != nil {
-		h.Log.Warn("skills", "builtin skills not written", map[string]any{"error": err.Error()})
+		h.Log.Warn("builtin skills not written", "origin", "skills", "error", err)
 	}
 	dirs := []skill.Dir{
 		{Path: h.userSkillsDir(), Source: skill.User},
@@ -102,12 +102,12 @@ func (h *Host) syncSkills() {
 		rows = append(rows, &store.Skill{Name: s.Name, Path: s.Dir, Source: string(s.Source)})
 	}
 	if err := h.GlobalDB.SyncSkills(rows); err != nil {
-		h.Log.Error("skills", "sync failed", map[string]any{"error": err.Error()})
+		h.Log.Error("sync failed", "origin", "skills", "error", err)
 		return
 	}
 	stored, err := h.GlobalDB.ListSkills()
 	if err != nil {
-		h.Log.Error("skills", "list failed", map[string]any{"error": err.Error()})
+		h.Log.Error("list failed", "origin", "skills", "error", err)
 		return
 	}
 	enabled := make(map[string]bool, len(stored))
@@ -374,7 +374,7 @@ func (h *Host) runSkillHook(ctx context.Context, L *glua.LState, s skill.Skill) 
 		h.RecordErrorOnce("skills", s.Name+": enable hook failed: "+err.Error())
 		return err
 	}
-	h.Log.Info("skills", "enable hook ran", map[string]any{"skill": s.Name})
+	h.Log.Info("enable hook ran", "origin", "skills", "skill", s.Name)
 	return nil
 }
 
@@ -412,7 +412,7 @@ func (h *Host) skillsCommand(args string) error {
 		if err := h.setSkillEnabled(fields[1], fields[0] == "enable"); err != nil {
 			return err
 		}
-		h.Notify(logging.Info, "Skill "+fields[0]+"d", fields[1])
+		h.Notify(slog.LevelInfo, "Skill "+fields[0]+"d", fields[1])
 		return nil
 	case len(fields) == 2 && fields[0] == "toggle": // the /skills list, whose marks show the state
 		return h.setSkillEnabled(fields[1], !h.skillsReg.isEnabled(fields[1]))
@@ -443,7 +443,7 @@ func (h *Host) deleteRecipe(name string, yes bool) error {
 		h.agents.dropPin()
 		h.agents.mu.Unlock()
 		h.includedStale.Store(true)
-		h.Notify(logging.Info, "Recipe deleted", name)
+		h.Notify(slog.LevelInfo, "Recipe deleted", name)
 		return nil
 	}
 	return Usagef("no recipe %q: only a recipe can be deleted here", name)
@@ -464,7 +464,7 @@ func (h *Host) openSkillFile(name string) error {
 		// the editor blocks and a Go command runs on the key loop
 		h.GoSafe("skills open", func() {
 			if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: "the skill"}); err != nil {
-				h.Notify(logging.Error, "Could not open the skill", err.Error())
+				h.Notify(slog.LevelError, "Could not open the skill", err.Error())
 			}
 		})
 		return nil

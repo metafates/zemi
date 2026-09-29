@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
@@ -71,7 +71,7 @@ zemi.ui.widget.add({
 	}
 
 	dirs := config.Dirs{ConfigHome: cfg, DataHome: data, StateHome: state, ProjectDir: "/tmp/zemi-golden-project"}
-	log := logging.New("")
+	log := slog.New(slog.DiscardHandler)
 	settings := config.NewStore()
 	classes := lua.PathClasses{
 		{Prefix: cfg, Origin: lua.OriginUser},

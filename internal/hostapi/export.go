@@ -10,6 +10,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,7 +20,6 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
@@ -36,7 +36,7 @@ func (h *Host) CopyReply(args string) error {
 	}
 	sid := h.AgentSessionID()
 	if sid == "" || h.DB == nil {
-		h.Notify(logging.Warn, "Nothing to copy", "")
+		h.Notify(slog.LevelWarn, "Nothing to copy", "")
 		return nil
 	}
 	rows, err := h.DB.Messages(sid)
@@ -46,7 +46,7 @@ func (h *Host) CopyReply(args string) error {
 	history, _ := historyFrom(rows)
 	text := sanitize.String(lastAssistantText(history))
 	if text == "" {
-		h.Notify(logging.Warn, "Nothing to copy", "")
+		h.Notify(slog.LevelWarn, "Nothing to copy", "")
 		return nil
 	}
 	blocks := codeBlocks(text)
@@ -174,7 +174,7 @@ func (h *Host) ExportSession(path string, full bool) (string, error) {
 	if err := os.WriteFile(path, []byte(md), 0o644); err != nil {
 		return "", err
 	}
-	h.Notify(logging.Info, "Session exported", "saved to "+TildePath(h.relPath(path)))
+	h.Notify(slog.LevelInfo, "Session exported", "saved to "+TildePath(h.relPath(path)))
 	return path, nil
 }
 
@@ -332,7 +332,7 @@ func (h *Host) ForkSession() (string, error) {
 	if err := h.ResumeSession(id); err != nil {
 		return "", err
 	}
-	h.Notify(logging.Info, "Session forked", "the original stays in /sessions")
+	h.Notify(slog.LevelInfo, "Session forked", "the original stays in /sessions")
 	return id, nil
 }
 

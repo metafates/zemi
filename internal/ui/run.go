@@ -214,7 +214,7 @@ func (v *RunView) Close() {
 		width, height := v.dims()
 		lines, err := v.region(hostapi.RegionExit, width, height, hostapi.UIState{Printed: &hostapi.Printed{}})
 		if err != nil {
-			v.h.Log.Warn("run", "exit widget failed", map[string]any{"error": err.Error()})
+			v.h.Log.Warn("exit widget failed", "origin", "run", "error", err)
 		}
 		printLines(&exit, v.thm, v.profile, lines)
 	}
@@ -234,7 +234,7 @@ func (v *RunView) Close() {
 // fail stops the view after a render error: the log gets it and stderr one
 // line, and the reply goes to stdout since the view did not draw it.
 func (v *RunView) fail(err error) {
-	v.h.Log.Error("run", "run view failed", map[string]any{"error": err.Error()})
+	v.h.Log.Error("run view failed", "origin", "run", "error", err)
 	v.dead = true
 	v.mu.Lock()
 	defer v.mu.Unlock()

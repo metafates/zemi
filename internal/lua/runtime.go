@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,15 +17,13 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
-
-	"github.com/metafates/zemi/internal/logging"
 )
 
 // Runtime owns the interpreter lifecycle: one live generation at a time, a
 // hot flag, and the actor queue contract (DESIGN §4). Only the dispatcher
 // goroutine of the current generation touches the LState.
 type Runtime struct {
-	log   *logging.Logger
+	log   *slog.Logger
 	paths PathClasses
 	rfs   fs.FS // embedded runtime/ tree (lua/ under it)
 
@@ -66,7 +65,7 @@ type frame struct {
 
 // RuntimeOptions configures a Runtime.
 type RuntimeOptions struct {
-	Log       *logging.Logger
+	Log       *slog.Logger
 	PathClass PathClasses
 	RuntimeFS fs.FS // embedded FS rooted at runtime/ (containing lua/...)
 	Clock     Clock // nil is the wall clock
@@ -84,7 +83,7 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 		wholeTasks: opts.WholeTasks,
 	}
 	if r.log == nil {
-		r.log = logging.New("")
+		r.log = slog.New(slog.DiscardHandler)
 	}
 	return r
 }
@@ -200,7 +199,7 @@ func (r *Runtime) goHot(g *Generation, cause error) {
 	if stale {
 		return
 	}
-	r.log.Error("lua", "runtime marked hot: "+cause.Error(), nil)
+	r.log.Error("runtime marked hot: "+cause.Error(), "origin", "lua")
 	g.drain(ErrHot)
 }
 
@@ -235,7 +234,7 @@ func (r *Runtime) ForceReload(ctx context.Context, steps []BootStep, purge func(
 	if err != nil {
 		return err
 	}
-	r.log.Info("lua", "generation booted", map[string]any{"gen": gen.ID})
+	r.log.Info("generation booted", "origin", "lua", "gen", gen.ID)
 	return nil
 }
 
@@ -257,7 +256,7 @@ func (r *Runtime) retire() {
 	r.hotMu.Lock()
 	r.cur.Store(nil)
 	r.hotMu.Unlock()
-	r.log.Info("lua", "generation retired", map[string]any{"gen": old.ID})
+	r.log.Info("generation retired", "origin", "lua", "gen", old.ID)
 }
 
 func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, error) {

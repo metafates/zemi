@@ -6,11 +6,10 @@ package hostapi
 
 import (
 	"fmt"
+	"log/slog"
 	"slices"
 
 	glua "github.com/yuin/gopher-lua"
-
-	"github.com/metafates/zemi/internal/logging"
 )
 
 // learnActions are what zemi.learn.decide takes.
@@ -48,14 +47,14 @@ func (h *Host) learnNamespace(L *glua.LState) *glua.LTable {
 			if h.takeProposal(id) == nil {
 				return luaResult(L, fmt.Errorf("no such proposal %q", id))
 			}
-			h.Notify(logging.Info, "Memory dropped", "")
+			h.Notify(slog.LevelInfo, "Memory dropped", "")
 			return luaResult(L, nil)
 		}
 		p, err := h.acceptProposal(id, "")
 		if err != nil {
 			return luaResult(L, err)
 		}
-		h.Notify(logging.Info, map[bool]string{false: "Memory saved", true: "Memory forgotten"}[p.Forget], p.Text)
+		h.Notify(slog.LevelInfo, map[bool]string{false: "Memory saved", true: "Memory forgotten"}[p.Forget], p.Text)
 		return luaResult(L, nil)
 	}))
 

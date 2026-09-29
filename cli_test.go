@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 	zemiruntime "github.com/metafates/zemi/runtime"
@@ -346,7 +346,7 @@ func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 	if err := os.WriteFile(filepath.Join(cmds, "x.md"), []byte("---\ndescription: x\n---\nhello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
 	dirs := config.Dirs{ProjectDir: project, StateHome: t.TempDir()}
 	h := hostapi.NewHost(r, log, config.NewStore(), dirs)
@@ -411,8 +411,8 @@ func TestHeadlessNotices(t *testing.T) {
 			}
 			return nil
 		}},
-		{"info", "", func() error { h.Notify(logging.Info, "Copied", "3 chars"); return nil }},
-		{"untitled error", "zemi: Error: first\n  second\n", func() error { h.Notify(logging.Error, "", "first\nsecond"); return nil }},
+		{"info", "", func() error { h.Notify(slog.LevelInfo, "Copied", "3 chars"); return nil }},
+		{"untitled error", "zemi: Error: first\n  second\n", func() error { h.Notify(slog.LevelError, "", "first\nsecond"); return nil }},
 		{"zemi.notify.warn", "zemi: Warning: w\n", func() error {
 			return r.ExecuteChunk(context.Background(), `zemi.notify.warn("w")`, "init.lua", lua.OriginUser)
 		}},

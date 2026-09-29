@@ -6,6 +6,7 @@ package hostapi
 
 import (
 	"fmt"
+	"log/slog"
 	"regexp"
 	"slices"
 	"strconv"
@@ -16,7 +17,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 )
@@ -91,7 +91,7 @@ func (h *Host) RecordErrorOnce(source, msg string) {
 	dup := slices.ContainsFunc(l.entries, func(e errEntry) bool { return e.source == source && e.msg == msg })
 	l.mu.Unlock()
 	if !dup {
-		h.Log.Warn(source, msg, nil)
+		h.Log.Warn(msg, "origin", source)
 		h.RecordError(source, msg)
 	}
 }
@@ -155,7 +155,7 @@ func (h *Host) OpenErrors(args string) error {
 			prompt := "/errors ask " + e.source + ": " + Headline(e.msg) + agent.Attached("command", fmt.Sprintf(errorAskPrompt, e.at.Format(time.TimeOnly), e.source, e.msg))
 			h.GoSafe("errors ask", func() {
 				if err := h.AgentSend(prompt); err != nil {
-					h.Notify(logging.Error, "Could not send", h.friendlyError(err))
+					h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
 				}
 			})
 			return nil

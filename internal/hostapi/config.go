@@ -132,7 +132,7 @@ func (h *Host) cfgSettle() {
 				back = h.Settings.Default(path)
 			}
 			if _, err := h.Settings.SetQuiet(path, back); err != nil {
-				h.Log.Warn("config", "settle failed", map[string]any{"path": path, "error": err.Error()})
+				h.Log.Warn("settle failed", "origin", "config", "path", path, "error", err)
 			}
 		}
 	}
@@ -142,7 +142,7 @@ func (h *Host) cfgSettle() {
 			continue
 		}
 		if _, err := h.Settings.SetQuiet(path, now[len(now)-1]); err != nil {
-			h.Log.Warn("config", "settle failed", map[string]any{"path": path, "error": err.Error()})
+			h.Log.Warn("settle failed", "origin", "config", "path", path, "error", err)
 		}
 	}
 }
@@ -214,7 +214,7 @@ func (h *Host) keepPick(path string) {
 		h.picked[path] = live
 	}
 	if err != nil {
-		h.Log.Warn("config", "could not keep a pick", map[string]any{"path": path, "error": err.Error()})
+		h.Log.Warn("could not keep a pick", "origin", "config", "path", path, "error", err)
 	}
 }
 
@@ -224,7 +224,7 @@ func (h *Host) keepPick(path string) {
 func (h *Host) loadPicks() {
 	keys, err := h.GlobalDB.KeysKV("config:")
 	if err != nil {
-		h.Log.Warn("config", "could not read the kept picks", map[string]any{"error": err.Error()})
+		h.Log.Warn("could not read the kept picks", "origin", "config", "error", err)
 	}
 	for _, k := range keys {
 		path := strings.TrimPrefix(k, "config:")
@@ -247,7 +247,7 @@ func (h *Host) loadPicks() {
 			_, err = h.Settings.SetQuiet(path, v)
 		}
 		if err != nil {
-			h.Log.Warn("config", "kept pick left out", map[string]any{"path": path, "error": err.Error()})
+			h.Log.Warn("kept pick left out", "origin", "config", "path", path, "error", err)
 			continue
 		}
 		h.picked[path] = v
@@ -305,7 +305,7 @@ func (h *Host) addSetting(L *glua.LState, spec *glua.LTable) {
 		_, err = h.Settings.SetQuiet(def.Path, v)
 	}
 	if err != nil {
-		h.Log.Warn("config", "kept pick dropped", map[string]any{"path": def.Path, "error": err.Error()})
+		h.Log.Warn("kept pick dropped", "origin", "config", "path", def.Path, "error", err)
 		delete(h.picked, def.Path)
 		_, _ = h.GlobalDB.DelKV("config:" + def.Path)
 		return
@@ -325,7 +325,7 @@ func (h *Host) settingOff(path string) bool {
 	if p := h.pluginLoads.Load(); p != nil && slices.ContainsFunc(*p, func(l pluginLoad) bool { return l.name == name && l.err == nil }) {
 		return false
 	}
-	h.Log.Info("config", "setting of a plugin that did not load skipped", map[string]any{"path": path})
+	h.Log.Info("setting of a plugin that did not load skipped", "origin", "config", "path", path)
 	return true
 }
 
@@ -459,9 +459,9 @@ func (h *Host) deliverFired(L *glua.LState, fired []config.WatchFired) {
 			continue
 		}
 		if err := h.callWatch(L, rec, f.Old, f.New); err != nil {
-			h.Log.Error("config", "config watch failed", map[string]any{
-				"path": rec.path, "watch": f.ID, "error": err.Error(),
-			})
+			h.Log.Error("config watch failed", "origin", "config",
+				"path", rec.path, "watch", f.ID, "error", err,
+			)
 		}
 	}
 }

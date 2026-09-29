@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -13,7 +14,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -169,7 +169,7 @@ func (c *fakeClock) armed() int {
 
 func newLoopHost(t *testing.T) (*Host, *fakeClock) {
 	t.Helper()
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	clock := &fakeClock{now: testEpoch}
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, Clock: clock})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir()})

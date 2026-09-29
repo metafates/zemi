@@ -759,7 +759,7 @@ func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items 
 			}
 		}
 		if err != nil {
-			h.Log.Debug("ui", "overlay render_item failed", map[string]any{"id": id, "error": err.Error()})
+			h.Log.Debug("overlay render_item failed", "origin", "ui", "id", id, "error", err)
 			out[i] = []Segment{{Text: fmt.Sprint(item)}}
 		}
 		L.SetTop(base)
@@ -817,7 +817,7 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 		})
 		h.refresh()
 		if err != nil {
-			h.Log.Debug("events", "async emit dropped", map[string]any{"event": name, "error": err.Error()})
+			h.Log.Debug("async emit dropped", "origin", "events", "event", name, "error", err)
 		}
 	})
 }

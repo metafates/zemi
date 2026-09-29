@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"os/exec"
@@ -24,7 +25,6 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -209,7 +209,7 @@ func (h *Host) zemiLua(path string) (lspDef, bool) {
 		return lspDef{}, false
 	}
 	if err := writeLuarc(root, h.TypesDir()); err != nil {
-		h.Log.Warn("lsp", "luarc not written", map[string]any{"dir": root, "error": err.Error()})
+		h.Log.Warn("luarc not written", "origin", "lsp", "dir", root, "error", err)
 	}
 	def.Name, def.Root = "luals ("+label+")", root
 	return def, true
@@ -439,7 +439,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 			}
 			p.client, p.err = lsp.Start(sctx, cfg)
 			if p.err != nil {
-				h.Log.Warn("lsp", "server failed to start", map[string]any{"server": def.Name, "error": p.err.Error()})
+				h.Log.Warn("server failed to start", "origin", "lsp", "server", def.Name, "error", p.err)
 			}
 		})
 	}
@@ -494,7 +494,7 @@ func (h *Host) lspAnswered(ctx context.Context, p *lspProc, fresh bool) {
 		return
 	}
 	delete(h.lsp.running, p.def.Name)
-	h.Log.Warn("lsp", "server stopped answering, restarting", map[string]any{"server": p.def.Name})
+	h.Log.Warn("server stopped answering, restarting", "origin", "lsp", "server", p.def.Name)
 	p.close()
 }
 
@@ -766,7 +766,7 @@ func (h *Host) lspCommands() []*Command {
 				if p != nil { // else it capped out earlier; the counter is clear now
 					p.close()
 				}
-				h.Notify(logging.Info, "Language server stopped", name+"; it starts again on the next file it serves")
+				h.Notify(slog.LevelInfo, "Language server stopped", name+"; it starts again on the next file it serves")
 				return nil
 			}
 			ui, err := h.Screen()

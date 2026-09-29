@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -87,8 +88,8 @@ func launch(o options) int {
 	if err != nil {
 		return fail(err)
 	}
-	log := logging.New(dirs.LogDir())
-	defer log.Close()
+	log, closeLog := logging.New(dirs.LogDir())
+	defer closeLog()
 	host, trust := newHost(dirs, log, o)
 	app := ui.NewApp(host, log)
 	host.SetUIHooks(app)
@@ -106,7 +107,7 @@ func launch(o options) int {
 		// of killing the process with the terminal still in raw mode.
 		defer func() {
 			if r := recover(); r != nil {
-				log.Error("panic", fmt.Sprintf("boot panicked: %v", r), map[string]any{"stack": string(debug.Stack())})
+				log.Error(fmt.Sprintf("boot panicked: %v", r), "origin", "panic", "stack", string(debug.Stack()))
 				app.SignalBoot(fmt.Errorf("boot panicked: %v (stack in %s)", r, dirs.LogDir()))
 			}
 		}()
@@ -130,14 +131,14 @@ func launch(o options) int {
 		// failure: the TUI is still usable.
 		if err := applyOptions(host, o); err != nil {
 			host.RecordError("flag", err.Error())
-			app.Notify(logging.Error, "Could not apply a flag", err.Error())
+			app.Notify(slog.LevelError, "Could not apply a flag", err.Error())
 		}
 		host.KeepPicks.Store(true)
 		// here, not in app.ready: once per process, after -m, never on a reload
 		host.OfferModel()
 		if o.prompt != "" {
 			if err := sendPrompt(ctx, host, o.prompt); err != nil {
-				app.Notify(logging.Error, "Could not send", err.Error())
+				app.Notify(slog.LevelError, "Could not send", err.Error())
 			}
 		}
 	}()
@@ -173,7 +174,7 @@ func launch(o options) int {
 	// before a relaunch too: the scrollback keeps how to resume this session
 	fmt.Print(app.Farewell())
 	if dir := app.RelaunchDir(); dir != "" {
-		log.Close() // an exec runs no defers
+		closeLog() // an exec runs no defers
 		return fail(relaunch(dir))
 	}
 	return 0
@@ -197,7 +198,7 @@ func relaunch(dir string) error {
 
 // newHost builds the runtime and host over dirs, and the trust gate their
 // boot reads.
-func newHost(dirs config.Dirs, log *logging.Logger, o options) (*hostapi.Host, *trustGate) {
+func newHost(dirs config.Dirs, log *slog.Logger, o options) (*hostapi.Host, *trustGate) {
 	rt := lua.NewRuntime(lua.RuntimeOptions{
 		Log:       log,
 		PathClass: pathClasses(dirs),
@@ -207,7 +208,7 @@ func newHost(dirs config.Dirs, log *logging.Logger, o options) (*hostapi.Host, *
 	catalog := agent.LoadCatalog(dirs.DataHome, os.Getenv)
 	host.Builtin.Store(&catalog)
 	rt.SetPrintHook(func(origin, line string) {
-		log.Info(origin, "print: "+line, nil)
+		log.Info("print: "+line, "origin", origin)
 		host.RecordMessage(origin, line)
 	})
 	host.Version = versionString()
@@ -257,7 +258,7 @@ func bootHeadless(o options, inert bool, stderr, notice io.Writer) (*hostapi.Hos
 	if inert {
 		hostDirs.StateHome, logDir, release = "", "", proc.Refuse()
 	}
-	log := logging.New(logDir)
+	log, closeLog := logging.New(logDir)
 	h, trust := newHost(hostDirs, log, o)
 	h.Inert, h.Stderr = inert, stderr
 	trust.dirs = dirs // the saved decision; a headless answer saves none
@@ -266,7 +267,7 @@ func bootHeadless(o options, inert bool, stderr, notice io.Writer) (*hostapi.Hos
 	trust.ask = headlessTrust(notice)
 	done := func() {
 		proc.KillAll()
-		log.Close()
+		closeLog()
 		release()
 	}
 	steps := hostSteps(h, trust, nil)
@@ -324,15 +325,15 @@ func setReload(h *hostapi.Host, steps []lua.BootStep, app *ui.App) (mark func())
 	h.SetReload(func() error {
 		mark()
 		if err := h.ForceReload(context.Background(), steps); err != nil {
-			h.Log.Error("reload", "force reload failed", map[string]any{"error": err.Error()})
+			h.Log.Error("force reload failed", "origin", "reload", "error", err)
 			h.RecordError("reload", err.Error())
-			h.Notify(logging.Error, "Could not reload the config", err.Error())
+			h.Notify(slog.LevelError, "Could not reload the config", err.Error())
 			return err
 		}
 		if app != nil {
 			app.SignalBoot(nil)
 		}
-		h.Notify(logging.Info, "Config reloaded", "")
+		h.Notify(slog.LevelInfo, "Config reloaded", "")
 		h.WarnModel()
 		h.EmitAsync("config.reloaded", nil)
 		return nil
@@ -429,7 +430,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				if n == 1 {
 					files = "file"
 				}
-				h.Notify(logging.Info, "Session rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
+				h.Notify(slog.LevelInfo, "Session rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
 			}
 			return err
 		}},
@@ -444,7 +445,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 				if eff := h.Effort(h.AgentStream().Model); eff != pick {
 					cur += " (" + cmp.Or(eff, "none") + " on this model)"
 				}
-				h.Notify(logging.Info, "Reasoning effort is "+cur, "/effort "+config.OrList(efforts)+" sets it")
+				h.Notify(slog.LevelInfo, "Reasoning effort is "+cur, "/effort "+config.OrList(efforts)+" sets it")
 				return nil
 			}
 			return h.SetConfig("agent.effort", args)
@@ -563,7 +564,7 @@ func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 			if s.Name == "init" {
 				h.SetInitError(hostapi.Headline(err.Error()))
 			}
-			h.Log.Error("boot", s.Name+" failed", map[string]any{"error": err.Error()})
+			h.Log.Error(s.Name+" failed", "origin", "boot", "error", err)
 			h.RecordError("boot "+s.Name, err.Error())
 			if headless { // no /errors pill to notice, and zemi run is the scriptable path
 				fmt.Fprintln(h.Stderr, "zemi: "+s.Name+": "+hostapi.Headline(err.Error()))
@@ -598,7 +599,7 @@ func (tg *trustGate) step() lua.BootStep {
 			tg.h.SetProjectTrusted(trusted)
 			if trusted { // so git status never lists the checkouts, sandbox or not
 				if _, werr := tg.dirs.WorktreesIgnore(); werr != nil {
-					tg.h.Log.Warn("trust", "cannot write .agents/worktrees/.gitignore", map[string]any{"error": werr.Error()})
+					tg.h.Log.Warn("cannot write .agents/worktrees/.gitignore", "origin", "trust", "error", werr)
 				}
 			}
 			return err
@@ -616,7 +617,7 @@ func projectInitStep(h *hostapi.Host, dirs config.Dirs) lua.BootStep {
 			if _, err := os.Stat(init); err != nil || !h.ProjectTrusted() {
 				return nil
 			}
-			h.Log.Info("boot", "loading project config", map[string]any{"path": init})
+			h.Log.Info("loading project config", "origin", "boot", "path", init)
 			return lua.LoadFileStep("project init", init, lua.OriginProject).Run(ctx, r, g)
 		},
 	}
@@ -672,7 +673,7 @@ func (tg *trustGate) command() func() {
 			tg.h.ReleaseTrust()
 			ok, err := tg.record(root, answer)
 			if err != nil {
-				tg.h.Notify(logging.Error, "Could not save the trust decision", err.Error())
+				tg.h.Notify(slog.LevelError, "Could not save the trust decision", err.Error())
 			}
 			tg.h.Retrust(ok)
 		})

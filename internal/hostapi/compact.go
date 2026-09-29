@@ -13,13 +13,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -134,7 +134,7 @@ func (h *Host) compactFailed(cause string) bool {
 	off := ag.compactFails == compactMaxFails
 	ag.mu.Unlock()
 	if off {
-		h.Notify(logging.Warn, "Auto compaction off", cause+"; /compact or /new")
+		h.Notify(slog.LevelWarn, "Auto compaction off", cause+"; /compact or /new")
 	}
 	return off
 }
@@ -164,7 +164,7 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 		err := runner.Send(ctx, text)
 		text = "" // history holds the user message from here on
 		if err != nil && !errors.Is(err, agent.ErrTurnActive) {
-			h.Log.Error("agent", "turn failed", map[string]any{"error": err.Error()})
+			h.Log.Error("turn failed", "origin", "agent", "error", err)
 		}
 		// a model whose ceiling is lower than the cap zemi asked for: drop
 		// the cap, remember it, and send again rather than failing every turn
@@ -188,11 +188,11 @@ func (h *Host) sendCompacting(ctx context.Context, runner *agent.Runner, text st
 			ag.mu.Unlock()
 			if imageTooLarge(err) {
 				runner.DropImages("too large to send")
-				h.Notify(logging.Warn, "Image left out", "too large for "+model+"; the turn goes on without it")
+				h.Notify(slog.LevelWarn, "Image left out", "too large for "+model+"; the turn goes on without it")
 			} else {
 				runner.TextOnly = true
 				imagesRejected.Store(model, true)
-				h.Notify(logging.Warn, "Images left out", model+" takes no images; vision = false on its model entry skips this")
+				h.Notify(slog.LevelWarn, "Images left out", model+" takes no images; vision = false on its model entry skips this")
 			}
 			continue
 		}
@@ -235,7 +235,7 @@ func (h *Host) CompactNow(focus string) error {
 		return Usagef("a turn is running; compact after it")
 	case runner == nil || len(runner.History) < 2:
 		ag.mu.Unlock()
-		h.Notify(logging.Warn, "Nothing to compact yet", "")
+		h.Notify(slog.LevelWarn, "Nothing to compact yet", "")
 		return nil
 	}
 	ag.active = true
@@ -261,16 +261,16 @@ func (h *Host) compactReporting(ctx context.Context, runner *agent.Runner, reaso
 		return true
 	}
 	if !errors.Is(err, context.Canceled) {
-		h.Log.Warn("agent", "compaction failed", map[string]any{"error": err.Error(), "reason": reason})
+		h.Log.Warn("compaction failed", "origin", "agent", "error", err, "reason", reason)
 		switch {
 		case errors.Is(err, errNothingToCompact):
-			h.Notify(logging.Warn, "Nothing to compact yet", "")
+			h.Notify(slog.LevelWarn, "Nothing to compact yet", "")
 		case reason == compactManual:
-			h.Notify(logging.Error, "Could not compact", h.friendlyError(err))
+			h.Notify(slog.LevelError, "Could not compact", h.friendlyError(err))
 		default:
 			// the turn goes on, or ends on its own error
 			if cause := h.friendlyError(err); !h.compactFailed(cause) {
-				h.Notify(logging.Warn, "Could not compact", cause)
+				h.Notify(slog.LevelWarn, "Could not compact", cause)
 			}
 		}
 	}
@@ -347,7 +347,7 @@ func (h *Host) compact(ctx context.Context, runner *agent.Runner, reason, focus 
 	case reason != compactManual && (errors.Is(err, errNoSummary) || contextTooLarge(err)):
 		// NOTE: the earlier history is lost unsummarized; still better than a
 		// session that can never send again.
-		h.Log.Warn("agent", "summary failed, dropping history", map[string]any{"error": err.Error(), "messages": len(head)})
+		h.Log.Warn("summary failed, dropping history", "origin", "agent", "error", err, "messages", len(head))
 		out = strings.TrimSpace(fmt.Sprintf("%s\n\n(%d earlier messages were dropped unsummarized to fit the context window)", prev, len(head)))
 	default:
 		return err

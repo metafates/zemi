@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -9,14 +10,13 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestNotifyWhenAway: a finished turn notifies in the ui.notify style only
 // while the terminal reports zemi unfocused, once the agent reads idle.
 func TestNotifyWhenAway(t *testing.T) {
-	log := logging.New("")
+	log := slog.New(slog.DiscardHandler)
 	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
 	app := NewApp(host, log)
 	frame := func() string {
@@ -66,7 +66,7 @@ func TestNotifyWhenAway(t *testing.T) {
 // after recapDelay when the turn ended well with no input since, and the
 // next input stops it; the reflector runs after ReflectIdle whatever came.
 func TestRecapWhenIdle(t *testing.T) {
-	log := logging.New("")
+	log := slog.New(slog.DiscardHandler)
 	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
 	key := tea.KeyPressMsg{Code: 'x', Text: "x"}
 	for _, c := range []struct {
@@ -125,7 +125,7 @@ func TestRecapWhenIdle(t *testing.T) {
 // while a turn runs, ? while a prompt waits, and how a turn ended while the
 // window was away until it is focused again.
 func TestWindowTitle(t *testing.T) {
-	log := logging.New("")
+	log := slog.New(slog.DiscardHandler)
 	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
 	running := func(app *App) { app.turnActive = true }
 	for _, c := range []struct {

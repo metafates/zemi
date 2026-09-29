@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -17,7 +18,6 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skill"
@@ -40,7 +40,7 @@ func newTestHostSkills(t *testing.T) (*Host, *lua.Runtime) {
 // generation, so all steps that must share state must pass in ONE call.
 func newTestHostSkillsNoBoot(t *testing.T) (*Host, *lua.Runtime) {
 	t.Helper()
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	cfg, data, state, proj := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: cfg, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{
@@ -446,7 +446,7 @@ func TestProjectSkills(t *testing.T) {
 // tree. Its files must stay inside the read jail and classify as user
 // origin, or every skill body asks and every hook is refused.
 func TestSymlinkedSkillsDir(t *testing.T) {
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	cfg, real := t.TempDir(), t.TempDir()
 	if err := os.Symlink(real, filepath.Join(cfg, "skills")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)

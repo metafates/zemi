@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
@@ -403,7 +403,7 @@ func TestAgentDefs(t *testing.T) {
 	write(filepath.Join(proj, ".agents", "agents"), "tester.md", "---\ndescription: runs tests\n---\nx\n")
 	write(filepath.Join(proj, ".claude", "agents"), "claudely.md", "---\ndescription: not read\n---\nx\n")
 
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{ConfigHome: cfg, ProjectDir: proj})
 	get := func() map[string]AgentDef {
 		out := map[string]AgentDef{}

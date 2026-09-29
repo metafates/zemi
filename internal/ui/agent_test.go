@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -19,7 +20,6 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -50,7 +50,7 @@ func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	}
 	cfg, data, state = resolve(cfg), resolve(data), resolve(state)
 
-	log := logging.New("")
+	log := slog.New(slog.DiscardHandler)
 	settings := config.NewStore()
 	classes := lua.PathClasses{
 		{Prefix: cfg, Origin: lua.OriginUser},
@@ -1405,7 +1405,7 @@ func TestReasoningWrapKeepsWords(t *testing.T) {
 }
 
 func TestStreamEventsCoalesce(t *testing.T) {
-	app := &App{testQueue: make(chan tea.Msg, hookQueueSize), log: logging.New(""), focused: true, now: time.Now}
+	app := &App{testQueue: make(chan tea.Msg, hookQueueSize), log: slog.New(slog.DiscardHandler), focused: true, now: time.Now}
 	for range 3 * hookQueueSize {
 		app.AgentStream()
 	}

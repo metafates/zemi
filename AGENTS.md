@@ -1106,8 +1106,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   raises; runtime failure of a sync op returns `nil, err`; async ops deliver through their
   handle.
 - **Sanitize at boundaries.** Model-influenced strings pass through `internal/sanitize` before
-  reaching widgets, overlays or the log. Secrets are scrubbed by the learn intake scrubber at
-  the memory/store boundary - don't log raw tool output or memory text.
+  reaching widgets or overlays; the log's slog handler quotes any key or value holding a
+  newline or an unprintable rune. Secrets are scrubbed by the learn intake scrubber at the
+  memory/store boundary - don't log raw tool output or memory text.
 - **Memory intake policy** (`internal/learn`): text cap 300 and quote 160, provenance required,
   `learn.Similar` refuses a near-duplicate (the user's own text only a word-for-word repeat),
   `origin` (`user` or `learned`) gates autonomy and the replacement guard, no kind.

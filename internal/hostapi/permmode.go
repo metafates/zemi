@@ -246,7 +246,7 @@ func (h *Host) ForgetRule(arg string) error {
 	if !gone {
 		return Usagef("no session rule allows %s %s", subject, pattern)
 	}
-	h.Log.Info("permissions", "session rule removed", map[string]any{"subject": subject, "pattern": pattern})
+	h.Log.Info("session rule removed", "origin", "permissions", "subject", subject, "pattern", pattern)
 	h.refresh()
 	return nil
 }
@@ -756,7 +756,7 @@ func (h *Host) modeDecide(def PermModeDef, req tools.Request) string {
 		},
 	})
 	if err != nil {
-		h.Log.Warn("permissions", "mode decide failed", map[string]any{"mode": def.Name, "error": err.Error()})
+		h.Log.Warn("mode decide failed", "origin", "permissions", "mode", def.Name, "error", err)
 		return ""
 	}
 	if len(out) == 0 {

@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
@@ -68,7 +68,7 @@ func (h *Host) pluginsCommand(line string) error {
 		msg := "/plugins " + strings.TrimSpace(typed) + agent.Attached("command", prompt) + stdin
 		h.GoSafe("plugins "+verb, func() {
 			if err := h.AgentSend(msg); err != nil {
-				h.Notify(logging.Error, "Could not send", h.friendlyError(err))
+				h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
 			}
 		})
 	}
@@ -117,7 +117,7 @@ func (h *Host) pluginsCommand(line string) error {
 		// the editor blocks and a Go command runs on the key loop
 		h.GoSafe("plugins open", func() {
 			if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: "the plugin"}); err != nil {
-				h.Notify(logging.Error, "Could not open the plugin", err.Error())
+				h.Notify(slog.LevelError, "Could not open the plugin", err.Error())
 			}
 		})
 	case verb == "new":
@@ -163,9 +163,9 @@ func (h *Host) pluginsCommand(line string) error {
 				}
 			}
 			if len(names) > 0 {
-				h.Notify(logging.Info, "Updates available", strings.Join(names, ", "))
+				h.Notify(slog.LevelInfo, "Updates available", strings.Join(names, ", "))
 			} else if err == nil {
-				h.Notify(logging.Info, plugin.UpToDate, "")
+				h.Notify(slog.LevelInfo, plugin.UpToDate, "")
 			}
 			return err
 		})
@@ -187,7 +187,7 @@ func (h *Host) pluginsCommand(line string) error {
 				body = args[1]
 			}
 			if err == nil || body != "" {
-				h.Notify(logging.Info, title, body)
+				h.Notify(slog.LevelInfo, title, body)
 			}
 			return err
 		})
@@ -232,7 +232,7 @@ func (h *Host) openPlugins(ui UIHooks, refresh bool, confirm string) {
 func (h *Host) pluginItems() []any {
 	ps, err := plugin.List(context.Background(), h.Dirs)
 	if err != nil {
-		h.Notify(logging.Error, "Could not read the plugins", err.Error())
+		h.Notify(slog.LevelError, "Could not read the plugins", err.Error())
 	}
 	install := map[string]any{"text": "Install a plugin", "verb": "fill", "fill": "/plugins install "}
 	if len(ps) == 0 && err == nil {

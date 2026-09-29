@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"math"
 	"net/url"
@@ -26,7 +27,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
@@ -78,7 +78,7 @@ type testStub struct {
 // whole, and a host whose overlays wait for test.answer. It runs case run of
 // the file, none when run is -1. Boot it with Step where init.lua would
 // run, then Run it and Close the host.
-func NewPluginTest(log *logging.Logger, classes lua.PathClasses, dirs config.Dirs, file string, run int) (*Host, *PluginTest) {
+func NewPluginTest(log *slog.Logger, classes lua.PathClasses, dirs config.Dirs, file string, run int) (*Host, *PluginTest) {
 	clock := &fakeClock{now: testEpoch}
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiruntime.FS, Clock: clock, WholeTasks: true})
 	h := NewHost(rt, log, config.NewStore(), dirs)
@@ -1216,7 +1216,7 @@ func (u *testUI) CloseLuaOverlays() {
 	u.mu.Unlock()
 }
 
-func (*testUI) Notify(logging.Level, string, string)           {}
+func (*testUI) Notify(slog.Level, string, string)              {}
 func (*testUI) Refresh()                                       {}
 func (*testUI) Scroll(ScrollAction, string)                    {}
 func (*testUI) LayoutRects() map[string]Rect                   { return nil }

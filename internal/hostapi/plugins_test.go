@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -11,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/skill"
@@ -222,7 +222,7 @@ func TestPluginsStep(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			log := logging.New(t.TempDir())
+			log := slog.New(slog.DiscardHandler)
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{
 				{Prefix: dirs.ConfigHome, Origin: lua.OriginUser},
 				{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
@@ -434,7 +434,7 @@ func TestPluginSettings(t *testing.T) {
 					if h != nil {
 						h.Close()
 					}
-					log := logging.New(t.TempDir())
+					log := slog.New(slog.DiscardHandler)
 					r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{
 						{Prefix: dirs.ConfigHome, Origin: lua.OriginUser},
 						{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},

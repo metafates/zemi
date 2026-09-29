@@ -3,6 +3,7 @@ package hostapi
 import (
 	"cmp"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -97,7 +97,7 @@ func (h *Host) SetLoop(args string) error {
 	ag.loop, ag.loopStop = l, nil
 	ag.mu.Unlock()
 	if old != nil {
-		h.Notify(logging.Info, "Replaced the loop", old.Prompt)
+		h.Notify(slog.LevelInfo, "Replaced the loop", old.Prompt)
 	}
 	h.GoSafe("loop", func() { h.fireLoop(l) })
 	return nil

@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
@@ -54,7 +54,7 @@ func TestLayoutOrigins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS, PathClass: lua.PathClasses{{Prefix: cfg, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ConfigHome: cfg, ProjectDir: t.TempDir()})
 	initLua := filepath.Join(cfg, "init.lua")

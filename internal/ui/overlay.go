@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
 )
@@ -188,7 +188,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 			}
 		}
 	}
-	a.pushToast(logging.Error, "Not in "+o.Title, "/"+o.Confirm+" runs it without asking")
+	a.pushToast(slog.LevelError, "Not in "+o.Title, "/"+o.Confirm+" runs it without asking")
 }
 
 // mayClose also gates replacing o by id.

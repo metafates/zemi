@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image/color"
+	"log/slog"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -182,7 +182,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 
 // Notify shows a toast from any goroutine. Title and body are sanitized
 // here.
-func (a *App) Notify(level logging.Level, title, body string) {
+func (a *App) Notify(level slog.Level, title, body string) {
 	title, body = sanitize.String(title), sanitize.String(body)
 	a.do(func() { a.pushToast(level, title, body) })
 }
@@ -217,7 +217,7 @@ func (a *App) CloseOverlay(id string, origin lua.Origin) {
 		}
 		o := a.overlays[i].o
 		if !mayClose(origin, o) {
-			a.log.Debug("ui", "overlay close refused", map[string]any{"id": id, "origin": string(origin)})
+			a.log.Debug("overlay close refused", "origin", "ui", "id", id, "from", string(origin))
 			return
 		}
 		a.cancelOverlay(o)

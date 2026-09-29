@@ -79,7 +79,7 @@ func bashRulePatterns(n perm.Normalized) (patterns [][]string, ok bool) {
 }
 
 func (h *Host) permissionSkipped(line string) {
-	h.Log.Warn("permissions", "skipping unsafe command", map[string]any{"command": line})
+	h.Log.Warn("skipping unsafe command", "origin", "permissions", "command", line)
 }
 
 // projectPermissionsPath is the project's always-allow file, "" without a
@@ -98,14 +98,14 @@ func (h *Host) projectPermissionsPath() string {
 func (h *Host) projectAllow(cmd string, rules []perm.Rule) {
 	path := h.projectPermissionsPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		h.Log.Warn("permissions", "create dir failed", map[string]any{"error": err.Error()})
+		h.Log.Warn("create dir failed", "origin", "permissions", "error", err)
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
-		h.Log.Warn("permissions", "append failed", map[string]any{"error": err.Error()})
+		h.Log.Warn("append failed", "origin", "permissions", "error", err)
 	} else {
 		if _, werr := f.WriteString(strings.TrimSpace(cmd) + "\n"); werr != nil {
-			h.Log.Warn("permissions", "append failed", map[string]any{"error": werr.Error()})
+			h.Log.Warn("append failed", "origin", "permissions", "error", werr)
 		}
 		f.Close()
 	}

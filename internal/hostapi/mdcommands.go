@@ -50,7 +50,7 @@ func (h *Host) addMarkdownCommands(gen Gen) {
 	h.layerFiles("commands", ".md", func(f layerFile) bool {
 		name, path := f.name, f.path
 		warn := func(msg string) {
-			h.Log.Warn("commands", path+": "+msg, nil)
+			h.Log.Warn(path+": "+msg, "origin", "commands")
 			h.RecordError("command "+name, msg)
 		}
 		block, body, err := readFrontmatterFile(path)

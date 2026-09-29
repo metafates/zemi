@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"math"
 	"os"
@@ -24,7 +25,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sandbox"
@@ -554,7 +554,7 @@ func (h *Host) drainQueue() {
 	scope := h.beginScope()
 	ag.mu.Unlock()
 	if err := h.sendClaimed(scope, text); err != nil {
-		h.Notify(logging.Error, "Could not send", h.friendlyError(err))
+		h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
 	}
 }
 
@@ -650,7 +650,7 @@ func (h *Host) handOff(scope *turnScope) {
 	// sending waits on the interpreter, and rewind may be called from Lua
 	h.GoSafe("agent send", func() {
 		if err := h.sendClaimed(scope, queued); err != nil {
-			h.Notify(logging.Error, "Could not send", h.friendlyError(err))
+			h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
 		}
 	})
 }
@@ -758,12 +758,12 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	case text == "":
 		// its notice row is drawn when the model reads it; say now that it waits
 		if len(waiting) > 0 {
-			h.Notify(logging.Info, "Waiting for your next message", strings.Join(waiting, "\n"))
+			h.Notify(slog.LevelInfo, "Waiting for your next message", strings.Join(waiting, "\n"))
 		}
 		h.refresh()
 	case handoff:
 		if err := h.sendClaimed(next, text); err != nil {
-			h.Notify(logging.Error, "Could not start the implementation", h.friendlyError(err))
+			h.Notify(slog.LevelError, "Could not start the implementation", h.friendlyError(err))
 		}
 		return nil, ""
 	default:
@@ -959,7 +959,7 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag.retryWhy, _ = s.h.explain(err) // the advice is to wait, which the countdown says
 	ag.mu.Unlock()
 	s.h.cutAssistantRows(rows)
-	s.h.Log.Warn("agent", "provider retry", map[string]any{"error": errString(err), "delay_ms": delay.Milliseconds()})
+	s.h.Log.Warn("provider retry", "origin", "agent", "error", errString(err), "delay_ms", delay.Milliseconds())
 	s.h.agentStream()
 }
 
@@ -1522,7 +1522,7 @@ func (h *Host) recordToolCall(sid string, t StreamTool, ok bool) {
 	parts, _ := json.Marshal(row)
 	msg := &store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}
 	if err := h.DB.AddToolCall(msg, &store.ToolCall{Tool: t.Name, OK: ok}); err != nil {
-		h.Log.Warn("agent", "tool call persist failed", map[string]any{"error": err.Error()})
+		h.Log.Warn("tool call persist failed", "origin", "agent", "error", err)
 	}
 }
 
@@ -1666,9 +1666,9 @@ func (h *Host) Btw(question string) error {
 		switch {
 		case ctx.Err() != nil:
 		case errors.Is(err, errNothingToAsk):
-			h.Notify(logging.Warn, "Nothing to ask about yet", "")
+			h.Notify(slog.LevelWarn, "Nothing to ask about yet", "")
 		case err != nil:
-			h.Notify(logging.Error, "Could not answer the side question", h.friendlyError(err))
+			h.Notify(slog.LevelError, "Could not answer the side question", h.friendlyError(err))
 		default:
 			ui.OpenOverlay(Overlay{ID: fmt.Sprintf("btw:%d", h.selectSeq.Add(1)), Title: "Side question", Origin: lua.OriginBuiltin, Body: answer, BodyMD: true})
 		}
@@ -1748,7 +1748,7 @@ func (h *Host) recap(ctx context.Context) {
 	lines := slices.DeleteFunc(strings.Split(answer, "\n"), func(l string) bool { return strings.TrimSpace(l) == "" })
 	text := sanitize.String(clipRunes(strings.Join(strings.Fields(strings.Join(lines[:min(2, len(lines))], " ")), " "), 300))
 	if err != nil || text == "" {
-		h.Log.Debug("session", "no recap", map[string]any{"error": fmt.Sprint(err)})
+		h.Log.Debug("no recap", "origin", "session", "error", fmt.Sprint(err))
 		return
 	}
 	if h.AgentSessionID() != sid {
@@ -2355,9 +2355,9 @@ func (h *Host) updateCatalog() error {
 			}
 			h.Builtin.Store(&c)
 			if changed {
-				h.Notify(logging.Info, "Model catalog updated", c.Info.Summary())
+				h.Notify(slog.LevelInfo, "Model catalog updated", c.Info.Summary())
 			} else {
-				h.Notify(logging.Info, "Model catalog is up to date", "")
+				h.Notify(slog.LevelInfo, "Model catalog is up to date", "")
 			}
 			return nil
 		}()
@@ -2365,7 +2365,7 @@ func (h *Host) updateCatalog() error {
 		case err == nil:
 			_ = h.ReloadConfig()
 		case ctx.Err() == nil: // not esc
-			h.Notify(logging.Error, "Could not update the model catalog", err.Error())
+			h.Notify(slog.LevelError, "Could not update the model catalog", err.Error())
 		}
 	})
 	return nil
@@ -2394,7 +2394,7 @@ const unlistedTitle = "Model not listed"
 // not the model row: mid-turn the row is the running turn's model.
 func (h *Host) warnUnlisted(id string) {
 	if _, ok := h.modelSpec(id); !ok {
-		h.Notify(logging.Warn, unlistedTitle, unlistedDetail(id))
+		h.Notify(slog.LevelWarn, unlistedTitle, unlistedDetail(id))
 	}
 }
 
@@ -2417,7 +2417,7 @@ func (h *Host) modelSetErr(role, id string) error {
 // provider refuses it.
 func (h *Host) WarnModel() {
 	if row := h.modelRow(); row.level != HealthOK {
-		h.Notify(logging.Warn, map[HealthLevel]string{HealthError: "Model unavailable", HealthWarn: unlistedTitle}[row.level], row.detail)
+		h.Notify(slog.LevelWarn, map[HealthLevel]string{HealthError: "Model unavailable", HealthWarn: unlistedTitle}[row.level], row.detail)
 	}
 }
 
@@ -2560,14 +2560,14 @@ func (h *Host) planFollowup(runner *agent.Runner, nudge bool) {
 		return
 	}
 	if err := h.AgentSend(planNudge); err != nil {
-		h.Log.Error("agent", "plan nudge send failed", map[string]any{"error": err.Error()})
+		h.Log.Error("plan nudge send failed", "origin", "agent", "error", err)
 	}
 }
 
 // startImplementation sends the approved-plan handoff to the restored agent.
 func (h *Host) startImplementation(msg string) {
 	if err := h.AgentSend(msg); err != nil {
-		h.Log.Error("agent", "implementation send failed", map[string]any{"error": err.Error()})
+		h.Log.Error("implementation send failed", "origin", "agent", "error", err)
 	}
 }
 
@@ -2721,8 +2721,8 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			err := h.AgentSend(text)
 			switch {
 			case err != nil:
-				h.Log.Warn("agent", "zemi.agent.send failed", map[string]any{"error": err.Error()})
-				h.Notify(logging.Error, "Could not send", h.friendlyError(err))
+				h.Log.Warn("zemi.agent.send failed", "origin", "agent", "error", err)
+				h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
 			case plugin != "":
 				h.markNotLocal(h.AgentSessionID(), plugin) // a fresh session exists only now
 			}

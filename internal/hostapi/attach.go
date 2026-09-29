@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,7 +23,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -149,9 +149,9 @@ func (h *Host) expandAttachments(text string) (string, []fantasy.FilePart) {
 	case 0:
 	case 1:
 		rel, why, _ := strings.Cut(refused[0], ": ")
-		h.Notify(logging.Warn, "Could not attach "+rel, why)
+		h.Notify(slog.LevelWarn, "Could not attach "+rel, why)
 	default:
-		h.Notify(logging.Warn, fmt.Sprintf("Could not attach %d files", len(refused)), strings.Join(refused, "\n"))
+		h.Notify(slog.LevelWarn, fmt.Sprintf("Could not attach %d files", len(refused)), strings.Join(refused, "\n"))
 	}
 	b.WriteString(h.instructionEdits())
 	b.WriteString(h.takeShellNotes())

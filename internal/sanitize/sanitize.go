@@ -105,14 +105,3 @@ func skipEscape(s string, i int) int {
 // Line is String with every run of whitespace collapsed to one space, so
 // the text fits one row.
 func Line(s string) string { return strings.Join(strings.Fields(String(s)), " ") }
-
-// LogLine is String with newlines and tabs also turned into spaces, so one
-// log record is one line.
-func LogLine(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r == '\n' || r == '\t' {
-			return ' '
-		}
-		return r
-	}, String(s))
-}

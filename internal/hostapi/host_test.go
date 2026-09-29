@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,7 +18,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -28,7 +28,7 @@ import (
 // newTestHost boots a fresh runtime with the full host API installed.
 func newTestHost(t *testing.T) (*Host, *lua.Runtime) {
 	t.Helper()
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
 	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
@@ -41,7 +41,7 @@ func newTestHost(t *testing.T) (*Host, *lua.Runtime) {
 // loaded, and a state dir.
 func newTestHostUI(t *testing.T) *Host {
 	t.Helper()
-	log := logging.New(t.TempDir())
+	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()})
 	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.tui")}); err != nil {
@@ -184,7 +184,7 @@ func TestReloadConfig(t *testing.T) {
 		{"runs once its caller returned", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			log := logging.New(t.TempDir())
+			log := slog.New(slog.DiscardHandler)
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 			h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
 			h.SetUIHooks(&fakeUI{})
@@ -673,7 +673,7 @@ func TestEventLogFromLua(t *testing.T) {
 	h, r := newTestHost(t)
 	h.SetUIHooks(&fakeUI{})
 	h.EmitAsync("agent.text_delta", map[string]any{"text": "x"})
-	h.Notify(logging.Info, "first", "one")
+	h.Notify(slog.LevelInfo, "first", "one")
 	runUser(t, r, `
 		zemi.event.emit("user.ping", { n = 1 })
 		zemi.event.emit("user.ping", { n = 2 })
@@ -727,7 +727,7 @@ func TestStoreKeyedOnRepo(t *testing.T) {
 		}
 	}
 	host := func(dir string) *Host {
-		log := logging.New(t.TempDir())
+		log := slog.New(slog.DiscardHandler)
 		h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{StateHome: state, ProjectDir: dir})
 		t.Cleanup(func() { h.DB.Close(); h.GlobalDB.Close() })
 		return h

@@ -129,14 +129,13 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 		os.Remove(warm)
 	}
 	if err != nil {
-		h.Log.Warn("snapshot", "snapshot failed", map[string]any{"error": err.Error()})
+		h.Log.Warn("snapshot failed", "origin", "snapshot", "error", err)
 		return "", nil, ""
 	}
 	if wall := time.Since(start); cpu < snapSlow && wall < snapStall {
 		s.slow = 0
 	} else if s.slow++; s.slow == 2 {
-		h.Log.Warn("snapshot", "snapshots are slow in this repository; bash rows show no diff",
-			map[string]any{"cpu_ms": cpu.Milliseconds(), "ms": wall.Milliseconds()})
+		h.Log.Warn("snapshots are slow in this repository; bash rows show no diff", "origin", "snapshot", "cpu_ms", cpu.Milliseconds(), "ms", wall.Milliseconds())
 	}
 	return root, env, strings.TrimSpace(out)
 }

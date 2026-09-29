@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -12,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -74,7 +74,7 @@ func (h *Host) configCommand(args string) error {
 		// the editor blocks and a Go command runs on the key loop
 		h.GoSafe("config open", func() {
 			if err := ui.EditFile(context.Background(), EditRequest{Path: filepath.Join(h.Dirs.ConfigHome, "init.lua"), Title: "init.lua"}); err != nil {
-				h.Notify(logging.Error, "Could not open init.lua", err.Error())
+				h.Notify(slog.LevelError, "Could not open init.lua", err.Error())
 			}
 		})
 	default:

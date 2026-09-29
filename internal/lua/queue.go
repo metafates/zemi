@@ -266,9 +266,9 @@ func (g *Generation) execute(r *request) {
 	var fired atomic.Bool
 	go func() {
 		slow := time.AfterFunc(SoftBudget, func() {
-			g.rt.log.Warn("lua", "handler exceeded soft budget", map[string]any{
-				"class": r.class.String(), "budget": SoftBudget.String(),
-			})
+			g.rt.log.Warn("handler exceeded soft budget", "origin", "lua",
+				"class", r.class.String(), "budget", SoftBudget.String(),
+			)
 		})
 		defer slow.Stop()
 		hard := time.AfterFunc(ceiling, func() { fired.Store(true); cancel() })
@@ -309,9 +309,9 @@ func (g *Generation) execute(r *request) {
 
 	elapsed := time.Since(started)
 	if err == nil && elapsed > SoftBudget && reqCtx.Err() == nil {
-		g.rt.log.Debug("lua", "slow handler completed", map[string]any{
-			"class": r.class.String(), "elapsed": elapsed.String(),
-		})
+		g.rt.log.Debug("slow handler completed", "origin", "lua",
+			"class", r.class.String(), "elapsed", elapsed.String(),
+		)
 	}
 
 	// The watchdog may abandon the request up to this point; whoever
@@ -367,7 +367,7 @@ func (g *Generation) safeRun(r *request) (vals []any, err error) {
 	}))
 	if perr := g.L.PCall(0, 0, nil); perr != nil {
 		err = fmt.Errorf("zemi bug: lua host function panicked: %w", perr)
-		g.rt.log.Error("lua", err.Error(), nil)
+		g.rt.log.Error(err.Error(), "origin", "lua")
 	}
 	return vals, err
 }

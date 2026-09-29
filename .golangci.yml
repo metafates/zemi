@@ -24,6 +24,7 @@ linters:
     - perfsprint
     - errname
     - revive
+    - sloglint
   settings:
     govet:
       enable-all: true
@@ -67,6 +68,9 @@ linters:
         - name: import-alias-naming
         - name: context-as-argument
           arguments: [{ allowTypesBefore: "*testing.T" }]
+    sloglint:
+      kv-only: true
+      no-global: all
     nolintlint:
       require-explanation: true
       require-specific: true

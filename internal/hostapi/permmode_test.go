@@ -3,6 +3,7 @@ package hostapi
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,7 +15,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
@@ -421,7 +421,7 @@ func TestPermModeDecide(t *testing.T) {
 // ask judged then, like one that waited behind a prompt, waits for the
 // replay instead of falling back to auto.
 func TestAskWaitsOutReload(t *testing.T) {
-	dir, log := t.TempDir(), logging.New(t.TempDir())
+	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
 	h.SetProjectTrusted(true)

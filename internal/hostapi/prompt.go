@@ -5,6 +5,7 @@ package hostapi
 
 import (
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -16,7 +17,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
@@ -584,7 +584,7 @@ func (h *Host) OpenPrompt() error {
 	}
 	sys := h.SystemPrompt()
 	if sys == "" {
-		h.Notify(logging.Warn, "Nothing to show yet", "the prompt is assembled on the first send")
+		h.Notify(slog.LevelWarn, "Nothing to show yet", "the prompt is assembled on the first send")
 		return nil
 	}
 	ui.OpenOverlay(Overlay{ID: "prompt", Title: "System prompt", Origin: lua.OriginBuiltin, Body: sys, BodyMD: true})

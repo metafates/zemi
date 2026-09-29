@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"regexp"
@@ -14,7 +15,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 )
 
 // composerState is the multiline input editor (DESIGN §8): text with a
@@ -555,7 +555,7 @@ type editorMsg struct {
 // EditFile, off the UI goroutine; the saved text comes back as editorMsg.
 func (a *App) openEditor() tea.Cmd {
 	fail := func(err error) tea.Cmd {
-		a.pushToast(logging.Error, "Could not open the editor", err.Error())
+		a.pushToast(slog.LevelError, "Could not open the editor", err.Error())
 		return nil
 	}
 	dir, err := a.host.TempDir()

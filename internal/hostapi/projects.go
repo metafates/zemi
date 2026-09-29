@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,7 +17,6 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -186,7 +186,7 @@ func (h *Host) projectsCommand(line string) error {
 		if err := h.forgetTrust(p.Root); err != nil {
 			return err
 		}
-		h.Notify(logging.Info, "Trust decision forgotten", TildePath(p.Root)+" asks again when zemi opens it")
+		h.Notify(slog.LevelInfo, "Trust decision forgotten", TildePath(p.Root)+" asks again when zemi opens it")
 		if noUI == nil {
 			h.GoSafe("projects", func() { h.openProjects(ui, true, "") })
 		}
@@ -302,7 +302,7 @@ func (h *Host) deleteProject(p Project) error {
 	if err = errors.Join(err, h.forgetTrust(p.Root)); err != nil {
 		return err
 	}
-	h.Notify(logging.Info, "Project data deleted", TildePath(p.Root))
+	h.Notify(slog.LevelInfo, "Project data deleted", TildePath(p.Root))
 	return nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -20,7 +21,6 @@ import (
 	"github.com/charmbracelet/x/ansi/kitty"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/proc"
 )
@@ -641,7 +641,7 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 		case err == nil, lua.Dropped(err):
 		default:
 			a.host.RecordError("click "+s.Widget, err.Error())
-			a.Notify(logging.Error, "Could not handle the click on "+s.Widget, err.Error())
+			a.Notify(slog.LevelError, "Could not handle the click on "+s.Widget, err.Error())
 		}
 	})
 }
@@ -652,7 +652,7 @@ func (a *App) copied(text string) tea.Cmd {
 	if n := strings.Count(text, "\n") + 1; n > 1 {
 		size = fmt.Sprintf("%d lines, %s", n, size)
 	}
-	a.pushToast(logging.Info, "Copied", size)
+	a.pushToast(slog.LevelInfo, "Copied", size)
 	return copyCmd(text)
 }
 

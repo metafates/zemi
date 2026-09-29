@@ -1,11 +1,13 @@
 package logging
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"unicode"
 )
 
 func TestPruneKeepsNewestLogs(t *testing.T) {
@@ -32,15 +34,17 @@ func TestPruneKeepsNewestLogs(t *testing.T) {
 
 func TestLogIsOneLine(t *testing.T) {
 	dir := t.TempDir()
-	l := New(dir)
-	l.Info("lua\nWARN", "msg\nERROR forged", Fields{"k\nERROR forged": "v\n"})
-	l.Close()
+	l, closeLog := New(dir)
+	forged := "\nERROR forged\x1b[31m\u009b\x9b\u202e\t"
+	l.Info("msg"+forged, "origin", "lua"+forged, "k"+forged, "v"+forged, "error", errors.New("e"+forged))
+	closeLog()
 	names, _ := filepath.Glob(filepath.Join(dir, "*.log"))
 	data, err := os.ReadFile(names[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(string(data), "\n"); n != 1 {
-		t.Fatalf("%d lines: %q", n, data)
+	line, ok := strings.CutSuffix(string(data), "\n")
+	if !ok || strings.ContainsFunc(line, func(r rune) bool { return !unicode.IsPrint(r) && r != ' ' }) {
+		t.Fatalf("not one printable line: %q", data)
 	}
 }
