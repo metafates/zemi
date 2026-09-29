@@ -326,19 +326,15 @@ func (h *Host) openProjects(ui UIHooks, refresh bool, confirm string) {
 // does not run in and that exists.
 func (h *Host) projectItems() (items []any, sel int) {
 	sel = -1
-	projects := ListProjects(h.Dirs, true)
-	words, trustW := make([]string, len(projects)), 9
-	for i, p := range projects {
-		words[i] = h.trustWord(p)
-		trustW = max(trustW, len(words[i]))
-	}
-	for i, p := range projects {
-		// each column padded, blank when empty, so the age lines up
+	for i, p := range ListProjects(h.Dirs, true) {
+		// each column padded, blank when empty, so the age lines up; a word
+		// like "untrusted this run" fills the sessions column's blank, or
+		// moves only its own row's age
 		sessions := ""
 		if p.Sessions > 0 {
 			sessions = fmt.Sprintf(" · %d %s", p.Sessions, plural(p.Sessions, "session", "sessions"))
 		}
-		desc := fmt.Sprintf("%-*s%-15s", trustW, words[i], sessions)
+		desc := fmt.Sprintf("%-24s", fmt.Sprintf("%-9s%s", h.trustWord(p), sessions))
 		if !p.Used.IsZero() {
 			desc += " · " + ago(p.Used.UnixMilli())
 		}
