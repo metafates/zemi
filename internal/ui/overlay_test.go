@@ -555,7 +555,7 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
-			"a Go screen's list key runs its command",
+			"a Go screen's list key runs its command, a plugin list's none",
 			hostapi.Overlay{ID: "p", Items: []any{"x"}, Keys: []hostapi.OverlayKey{{Key: "p", Desc: "pause", Run: "zz pause"}}},
 			nil,
 			func(a *App) string {
@@ -564,8 +564,13 @@ func TestOverlayNavigation(t *testing.T) {
 					Name: "zz", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
 					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
 				})
+				if a.overlayKey("p", "p"); ran != "pause" {
+					return "ran " + ran
+				}
+				ran = ""
+				a.openOverlay(hostapi.Overlay{ID: "q", Origin: lua.OriginPlugin, Items: []any{"x"}, Keys: []hostapi.OverlayKey{{Key: "p", Desc: "pause", Run: "zz pause"}}})
 				a.overlayKey("p", "p")
-				return map[bool]string{false: "ran " + ran}[ran == "pause"]
+				return map[bool]string{false: "a plugin list's key ran " + ran}[ran == ""]
 			},
 		},
 		{

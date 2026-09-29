@@ -236,7 +236,6 @@ func (a *App) refreshDetail(i int) {
 	}
 	n := a.detailState(&a.overlays[i], idx)
 	n.selected, n.view, n.body = min(d.selected, max(0, len(n.visible)-1)), d.view, d.body
-	n.apply()
 	a.overlays[j] = n
 }
 
@@ -256,8 +255,14 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 			row[i] = hostapi.Segment{Text: sanitize.String(row[i].Text), HL: row[i].HL}
 		}
 	}
+	// only builtin and user lists run commands, so a plugin's label cannot
+	// disguise one
+	runs := o.Origin == lua.OriginBuiltin || o.Origin == lua.OriginUser
 	for i := range o.Keys { // a desc keeps its spaces, as a row's does: "pause " is as wide as "resume"
 		o.Keys[i].Key, o.Keys[i].Desc = sanitize.Line(o.Keys[i].Key), oneLine.Replace(sanitize.String(o.Keys[i].Desc))
+		if !runs {
+			o.Keys[i].Run = ""
+		}
 	}
 	// an item's fields reach the screen only as its detail view's, which is here
 	o.Fields = slices.Clone(o.Fields)
@@ -277,8 +282,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		r.Desc, r.Key, r.Section, r.Verb = oneLine.Replace(sanitize.String(r.Desc)), sanitize.Line(r.Key), sanitize.Line(r.Section), sanitize.Line(r.Verb)
 		r.Hotkey = sanitize.Line(r.Hotkey)
 		r.Fill, r.Copy, r.Preview = sanitize.String(r.Fill), sanitize.String(r.Copy), sanitize.String(r.Preview) // Detail is the detail view's Body, sanitized there
-		if o.Origin != lua.OriginBuiltin && o.Origin != lua.OriginUser {
-			r.Run = "" // so a plugin row label cannot disguise a command
+		if !runs {
+			r.Run = ""
 		}
 		it := listItem{label: sanitize.Line(r.Text), desc: r.Desc, key: tagSeg(r.Key), section: r.Section, row: r} // a newline would break the box
 		if r.Switch || r.Locked {
@@ -409,17 +414,6 @@ func (a *App) detailAction(idx int) {
 	a.closeOverlayByID(d.o.ID)
 }
 
-// overlayCall runs a Lua callback of a list on the worker: a toggle list
-// stays open and rebuilds, any other closes, like on_select.
-func (a *App) overlayCall(o hostapi.Overlay, call func()) {
-	if o.Reload != nil {
-		a.reloadOverlay(o, call)
-		return
-	}
-	a.background(call)
-	a.closeOverlayByID(o.ID)
-}
-
 // reloadOverlay runs call (nil for none) and rebuilds a toggle list's items,
 // both on the worker, then swaps the items in while it is still open,
 // keeping selection and filter.
@@ -488,7 +482,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		}
 	}
 	if i := slices.IndexFunc(o.Keys, func(k hostapi.OverlayKey) bool { return k.Key == key }); i >= 0 {
-		if run := o.Keys[i].Run; run != "" && (o.Origin == lua.OriginBuiltin || o.Origin == lua.OriginUser) {
+		if run := o.Keys[i].Run; run != "" {
 			a.runOverlayRow(hostapi.OverlayItem{Run: run})
 			if o.Reload != nil {
 				a.reloadOverlay(o, nil)
@@ -499,7 +493,13 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		if len(st.visible) > 0 {
 			item = o.Items[st.visible[st.selected]]
 		}
-		a.overlayCall(o, func() { a.host.OverlayKey(context.Background(), o, o.Keys[i], item) })
+		call := func() { a.host.OverlayKey(context.Background(), o, o.Keys[i], item) }
+		if o.Reload != nil { // a toggle list stays open and rebuilds
+			a.reloadOverlay(o, call)
+			return nil
+		}
+		a.background(call)
+		a.closeOverlayByID(o.ID)
 		return nil
 	}
 	// an action's key acts on the selected row as its button does; a danger
