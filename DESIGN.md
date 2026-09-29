@@ -874,14 +874,15 @@ otherwise return a decision table:
   subcommand for `git`, `go`, `cargo` and the like, with the options
   before the subcommand kept) plus that prefix with ` *`, while a deleting program (`rm`, `mv`, `find`, `tar`, ...) or a
   segment §9 calls destructive stores its exact normalized string, since
-  the rule runs unconfined; for `fs.read` and `fs.write` the file's directory
+  the rule runs unconfined, and none when a word in it is an expansion
+  (`rm $f` deletes whatever a loop hands it); for `fs.read` and `fs.write` the file's directory
   with `/*`; for `net.*` both `scheme://host` and `scheme://host/*`;
   for anything else the exact argument. A file read is also offered a
   wider choice covering its whole repository, since in a deep tree the
   directory rule is the same ask again one package over. A call §9
   gate-forces to `ask` (heredoc/herestring, dangerous assignment), a
   pattern holding a glob wildcard, an opaque segment (an inner `sh -c`,
-  a stripped assignment), a wrapper program that runs what it is
+  a value the rules never see), a wrapper program that runs what it is
   handed (a shell, an interpreter, `sudo`, `xargs`, `busybox`, `zemi`
   itself, whose `plugins install` fetches code that runs everywhere, and the
   `npm exec`/`uv run` spellings of `npx`) offer no `always` option at
@@ -1964,23 +1965,47 @@ provenance string.
   `lua.<ns.call>` for host-API calls from Lua (`lua.fs.read` checks the
   same jail as `fs.read`, again at the Lua boundary). Decisions
   `allow|ask|deny`; patterns are globs over the operation argument (path,
-  url; commands match a normalized form: the raw string is first split on
-  the shell's full separator set (`;`, `&`, `&&`, `||`, `|`, newline,
-  backticks, `$(`, `<(`, `>(`, and a `$(` or backtick inside double
-  quotes, whose text the shell runs too; redirection and heredoc tokens
-  (`[n]>&[m]`, `[n]<&[m]`, `&>`, `&>>`, `>|`, `<>`, `>&-`, `<&-`, `<<`,
-  `<<-`, `<<<`) are recognized before the split so a redirect is never
-  cut by a separator; fail-closed on a quote or paren not closed), then
-  each segment is collapsed (whitespace, quote-aware argv split, `VAR=x`
-  prefixes unwrapped from the matched form) and a `sh -c`/`bash -c`/`zsh -c`
-  unwrap recurses into the inner string with the same split, re-applying
-  the collapse and the assignment gate below to the inner segments).
-  Before the split, leading literal assignments (`D=/long/path; ls $D`)
-  are inlined into the command so gates and rules see the real path; an
-  assignment to a name already in the environment or to a variable the
-  shell itself reads (`CDPATH`, `HOME`, `PWD`, `OLDPWD`, `GLOBIGNORE`,
-  `TMPDIR`, ...) or on the assignment gate's list is never inlined, and
-  inlining stops at it.
+  url; commands match a normalized form: the command is parsed with
+  mvdan.cc/sh's `syntax` package (no hand scanner), twice, as bash and as
+  POSIX sh, since zemi runs `sh -c`, which is bash 3.2 in POSIX mode on
+  macOS and dash on Debian, and the two grammars read `$'..'`, `[[ ]]`,
+  `(( ))`, `&>` and arrays differently (dash runs `rm` in
+  `echo $'\' ; rm -rf x ; #'`, bash only `echo`): every simple command
+  either reading runs is a segment, so an allow needs both readings. The
+  POSIX reading keeps the statements that parse before its first error,
+  which is what dash runs before it stops; a bash parse error fails the
+  call with the parser's line, column and message, which a model can act
+  on. Text a shell reads otherwise than both grammars asks, and
+  `Destructive` and the program list (§8) cannot vouch for it: a carriage
+  return (the parser reads it as a blank, sh as a character), a `$'..'`
+  escape zemi does not decode (`\x`, octal, `\u`, `\c`, which bash
+  versions decode differently and which can spell any name), and a `$( )`
+  or `<( )` bash 3.2 closes elsewhere (it finds the `)` by counting parens
+  past quotes and comments, blind to heredoc bodies and case patterns, so
+  macOS sh runs `rm z` in `echo $(cat <<EOF` / `) ; rm z` / `EOF` / `)`).
+  The parser also reads a backslash ending a comment as a line
+  continuation, which no shell does; that backslash is blanked before the
+  parse. Known ceiling: a `sh` that is neither (zsh in sh emulation,
+  busybox ash, mksh) is judged by these two readings. A segment is a simple command's words as the program receives
+  them where they are static (quotes removed, `$'..'` decoded), an
+  expansion kept as written; syntax (`if`, `do`, `done`, a function's
+  name) is no segment; a command in a loop body or a while condition is
+  marked as repeated; a substitution's commands, quoted or not, a
+  function's body, a `time` or `coproc` command (as `time cmd`, how sh
+  reads it) and a `sh -c`/`bash -c`/`zsh -c` body (parsed again the same
+  way, the assignment gate included) are segments of their own. Before
+  the walk, leading literal assignments (`D=/long/path; ls $D`, also
+  joined by `&&`) are substituted into the tree so gates and rules see the
+  real path; only a value the shell leaves as is qualifies (no quotes, no
+  glob or brace, no expansion but an earlier inlined name), heredoc
+  delimiters stay as written, an assignment to a name already in the
+  environment, to a variable the shell itself reads (`CDPATH`, `HOME`,
+  `PWD`, `OLDPWD`, `GLOBIGNORE`, `TMPDIR`, ...) or on the assignment
+  gate's list is never inlined and stops the inlining, the last statement
+  is never inlined (it sets nothing a command reads), and a later mention
+  of the name other than as `$NAME` (`D=`, `for D`, `read D`, `eval $X=`
+  with `X=D`) or a builtin that sets names by a value the parse cannot see
+  (`eval`, `read`, `declare`, `source`, ...) cancels it.
   Every segment is matched on its own: the call is allowed only if each
   segment matches an allow rule, so a compound payload (including
   `cmd1\nrm -rf x` and `cmd1 & cmd2`) cannot ride a broad allow. A
@@ -1989,14 +2014,18 @@ provenance string.
   `cat docs/*` does not allow `cat docs/../.env`; the cleaning is lexical,
   the working directory being unknown to the rules, so a path word the
   shell may still expand into a climb (`docs/{..,a}`, `docs/$X`,
-  `docs/.*`) turns an allow into an ask. The
-  assignment gate is a token scan: every argv token of every collapsed
-  segment, dequoted with full shell word semantics (embedded quotes
-  removed, so `PA'TH'=/tmp/x` is the name `PATH`), shaped `NAME=value`
-  or `NAME+=value` (at
-  prefix position, mid-segment, a whole-segment assignment, or as an
-  argument to `export`/`declare`/`env`/`sudo`) naming an
-  environment-affecting variable forces `ask` for the whole call
+  `docs/.*`) turns an allow into an ask. An assignment prefix
+  (`GIT_EXTERNAL_DIFF=./x git diff` runs `./x`) and arithmetic naming a
+  variable (`$((x))`, `[[ $x -eq 1 ]]`, `${a[$i]}`: bash evaluates the
+  value as an expression, where a subscript's `$(...)` runs) read a value
+  the rules never see, so either turns an allow into an ask. The
+  assignment gate checks every assignment the parse finds (a prefix, a
+  bare assignment, a `for` variable, an `export`/`declare`/`local`
+  argument), every segment word shaped `NAME=value` or `NAME+=value`
+  after its quotes are removed (an argument to `env` or `sudo`, and
+  `PA'TH'=/tmp/x`, which sh runs as a program, is the name `PATH`), and
+  the names `read`, `mapfile`, `getopts` and `printf -v` assign; one
+  naming an environment-affecting variable forces `ask` for the whole call
   regardless of allow rules: the name list (`PATH`, `LD_*`, `DYLD_*`,
   `BASH_ENV`, `ENV`, `IFS`, `PYTHONPATH`, `PYTHONHOME`,
   `PYTHONSTARTUP`, `NODE_OPTIONS`, `NODE_PATH`, `RUBYOPT`, `RUBYLIB`,
@@ -2018,8 +2047,7 @@ provenance string.
   `fs.read`; `&>`, `&>>`, and `>|` are writes whose target gates as
   `fs.write`; `<>` opens read-write, so its target gates as both
   `fs.read` (secret-shaped paths ask, below) and `fs.write`; a redirect
-  whose target is emptied by the split (e.g. around process
-  substitution) fails the whole call; any call using a heredoc or
+  whose target is empty (`> ""`) fails the whole call; any call using a heredoc or
   herestring (`<<`, `<<-`, `<<<`) forces `ask` for the whole call, and a
   heredoc body is parsed as commands unless every program in the call is
   a reader that runs none of its input (`cat`, `tee`, `echo`, `printf`,
@@ -2029,8 +2057,9 @@ provenance string.
   a git builtin that runs no program its words name, like `add` or
   `status`, leaves the body data too), and then an
   unquoted one for its substitutions
-  and a quoted one is data (a `<<` inside `(( ))` is a shift, not a
-  heredoc); a body that does not parse as commands fails the call only
+  and a quoted one is data (a delimiter with any quoting, `E"O"F`
+  included, makes the body literal); a body that does not parse as
+  commands fails the call only
   when a shell may run it, since an apostrophe in prose or in another
   language's code is no shell error; other input targets
   gate as `fs.read` (secret-shaped paths ask, below), other output
@@ -2120,11 +2149,8 @@ provenance string.
   loop body or a shell body `xargs` or `find -exec` repeats; an `rm` whose
   every operand is below the scratchpad, as `$TMPDIR/...` or its literal
   path with no climb, settles while nothing in the command can have
-  changed `$TMPDIR`; and any command whose quoting the shell may group
-  or spell otherwise than zemi's segments, a nested backtick, a `$'..'`
-  escape past the blank and punctuation ones, a case pattern inside a quoted
-  substitution or a quote in a comment after `)`, since the list cannot
-  vouch for it),
+  changed `$TMPDIR`; and any command a shell may read otherwise than
+  both parses, above, since the list cannot vouch for it),
   a git command that writes `.git` (`perm.Normalized.GitWrites`:
   the sandbox keeps `.git` read-only, so a confined commit could only
   fail and the ask comes first), and on a backend that cannot hide files

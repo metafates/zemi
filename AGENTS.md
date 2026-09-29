@@ -321,21 +321,27 @@ MCP and Lua tools) call the gate themselves and run the events through `preCheck
 refuses a rewrite with an error result), `postNotify` and `Pipeline.CheckDenied`. A command a
 permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`).
 
-Bash is special: `Pipeline.Check` normalizes the command once (`perm.Normalize`: compound splitting,
-redirect and env-assignment gates - internal/perm/bash.go, heavily table-tested; extend those
-tables when touching it), and `perm.Store.CheckCommandFor`, the predicates on `perm.Normalized`,
-the ask hook and `alwaysChoice` all judge that one parse (`Request.Command`); a nested
-`sh -c` body or `eval` text is parsed again, and so is each segment `alwaysChoice` offers a rule for; a
-substitution inside double quotes is parsed like an unquoted one, a heredoc body as commands
-unless every program in the command runs none of it (`inert`: a `dataReader` or a plain git builtin,
-DESIGN §9), and no variable is inlined in a command holding `<<`, since the shell expands no
-delimiter. An assignment prefix the normalizer strips downgrades an allow
-verdict to ask, since the rules never see it and `GIT_EXTERNAL_DIFF=./x git diff` runs `./x`.
+Bash is special: `Pipeline.Check` normalizes the command once (`perm.Normalize`, internal/perm/bash.go:
+mvdan.cc/sh's `syntax` parser, never `interp` or `expand`, walked into one segment per simple
+command plus the redirect and env-assignment gates; heavily table-tested, extend those tables when
+touching it), and `perm.Store.CheckCommandFor`, the predicates on `perm.Normalized`, the ask hook
+and `alwaysChoice` (per segment, `Normalized.Rows`) all judge that one parse (`Request.Command`); a
+nested `sh -c` body, `eval` text or a heredoc body a shell may run is parsed again. The command
+is parsed as bash and as POSIX sh and every command either reading runs is judged, since `sh` is
+bash 3.2 on macOS and dash on Debian (DESIGN §9); text either shell reads otherwise than both
+parses (a carriage return, an undecoded `$'..'` escape, a `$( )` bash 3.2 closes early at a `)`
+in a heredoc body) is `Normalized.doubtful`: it asks, and `Destructive` and `Programs` do not vouch
+for it. `TestRowsCoverShells` runs a sample under every sh, dash and bash found with a PATH of
+stubs and checks each program they ran is a segment. A heredoc body is commands unless every
+program in the command runs none of it (`inert`: a `dataReader` or a plain git builtin), and
+leading assignments are inlined as a tree rewrite (never into a heredoc delimiter). An assignment
+prefix, or arithmetic naming a variable, downgrades an allow verdict to ask (`Assign`), since the
+rules never see the value and `GIT_EXTERNAL_DIFF=./x git diff` runs `./x`.
 A segment with a word that climbs (`docs/../x`) is judged as written and with the word cleaned,
 and the stricter verdict holds (`cleanDotDot`), so `cat docs/*` does not allow it; a path word
 the shell could still expand into a climb (`{`, `$`, a glob after a leading dot) turns an allow
 into an ask (`expandsToDotDot`). A deny, ask or not_match rule also meets the segment's `perm.canonical` form
-(reserved words and runner prefixes like `env`, `sudo`, `timeout 5` stepped past, the program
+(runner prefixes like `env`, `sudo`, `timeout 5` stepped past, the program
 by `perm.ProgramName`, its leading options dropped), so `git -C . push` meets a `git push*` rule; an
 allow is judged as written, and a git alias still slips past (NOTE in the code). Every
 program lookup in perm and the always answer goes through `perm.ProgramName`, the base name
@@ -488,12 +494,12 @@ adds sockets instead of running the next call unconfined; `projectChoice` offers
 for one), as prefix globs rather than the exact request (`alwaysChoice`, ask.go: a command's program, or
 program and subcommand for `git`, `go`, `cargo` and the other `perm.SubcommandPrograms`, leading
 options kept (`git -C sub status`, `perm.Subcommand`) and the exact segment when options leave
-no subcommand (`git --version`) or one not for sure (`npm -w web test`: `perm.LeadKnown`), a
-leading `do` or `then` kept in the rule (`do cat *`, never `do *`); a file's directory, or the
+no subcommand (`git --version`) or one not for sure (`npm -w web test`: `perm.LeadKnown`); a file's directory, or the
 file alone when that is `$HOME`, `/` or between, which hold every dotfile; a URL's host). A deleting program (`rm`, `mv`, `find`, `tar`, ...) or a segment
 `perm.Normalized.Destructive` names stays exact, since its rule would run unconfined, and so
 do `[[` and the `perm.ShellState` builtins (`let`, `read`, ...), which evaluate a quoted
-array subscript, where `$(...)` runs. A file read is also
+array subscript, where `$(...)` runs; such an exact form holding an expansion offers no rule
+(`rm $f` deletes whatever a loop hands it). A file read is also
 offered the wider `repoChoice` ("allow reads anywhere in <repo>", answered as `user:wider`),
 because in a deep tree the directory rule is the same ask again one package over. No always
 option is offered at all for a gate-forced ask (heredoc, env assignment), a pattern holding a

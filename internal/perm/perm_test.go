@@ -212,9 +212,9 @@ func TestSubjectFamilyRule(t *testing.T) {
 	}
 }
 
-// TestHiddenCommandsAsk: text the scanner keeps in one word but the shell
-// runs ("$( )", the lines after a quote opened in a comment or by an escape
-// in $'..') must not ride an allow rule covering the outer command.
+// TestHiddenCommandsAsk: what a shell runs inside a word ("$( )") or past a
+// quote one shell ends early (dash ends $'\' at the backslash) must not
+// ride an allow rule covering the outer command.
 func TestHiddenCommandsAsk(t *testing.T) {
 	s := new(Store)
 	s.Add(Rule{Subject: "tool.bash", Pattern: "git log*", Decision: Allow})

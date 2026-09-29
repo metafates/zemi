@@ -1,6 +1,6 @@
 ---
 name: zemi-dev-lessons
-description: "Load before a non-trivial change to zemi: checks against real user data, fail-opens in the bash scanner and sandbox, prompt-cache traps, tests that do not flake, landing on main."
+description: "Load before a non-trivial change to zemi: checks against real user data, fail-opens in the bash parse and sandbox, prompt-cache traps, tests that do not flake, landing on main."
 ---
 
 # Lessons for changing zemi
@@ -26,14 +26,16 @@ AGENTS.md has the house rules and `make check`; these are the ones it leaves out
   diff tool that `git apply` cannot read). When copying state for a boot check, leave out
   `sandbox-cache`, `scratch` and `tmp`, which run to gigabytes.
 
-## The bash scanner and the sandbox
+## The bash parse and the sandbox
 
-A change that lets the scanner skip text (a heredoc body as data, a quoted word as literal) or
-that exempts a path from the policy is where a fail-open comes from, a fix included.
+A change that treats text as data (a heredoc body, a quoted word) or that exempts a path from
+the policy is where a fail-open comes from, a fix included. mvdan.cc/sh reads the grammar right;
+what fails open is a shell that reads the same text otherwise.
 
-- Try what runs the skipped text under another name: `$SHELL`, `busybox sh`, `make -f -`, `eval "$(cat)"`, a pipe into a shell, a git alias, `RM` on a case-insensitive disk, an escape that spells a name (`$'\x72m'`).
+- Try what runs the text under another name: `$SHELL`, `busybox sh`, `make -f -`, `eval "$(cat)"`, a pipe into a shell, a git alias, `RM` on a case-insensitive disk, an escape that spells a name (`$'\x72m'`).
+- Try what the other shells make of it. macOS `sh` is bash 3.2: it closes a `$( )` at a `)` in a heredoc body and runs the rest, and fails on an apostrophe there. Debian's is dash: it ends `$'\'` at the backslash and runs the words of `[[ ]]` and `(( ))` as commands. The parser itself reads a comment's trailing backslash and a carriage return otherwise than every shell. Run the text under /bin/sh, /bin/dash and /bin/bash with a PATH of stubs that log their argv, in an empty dir (`TestRowsCoverShells`), never with the real PATH.
 - A rule keyed on a file's name is judged where the file is, so a writable root exempt from it takes a renamed directory with the files inside.
-- A rewrite of `perm/bash.go` that must change no verdict is checked against a copy of main's package: every string literal of the perm and hostapi tests through both, then a few minutes of fuzzing the difference. The tables alone missed a panic and an endless loop.
+- A rewrite of `perm/bash.go` that must change no verdict is checked against a copy of main's package: every string literal of the perm, hostapi and tools tests through both, then a few minutes of fuzzing the difference, and each difference that loosens a verdict run under the shells as above. The tables alone missed a panic and an endless loop.
 
 ## Prompt cache
 
