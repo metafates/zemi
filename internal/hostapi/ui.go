@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -496,6 +497,16 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	return tb
+}
+
+// openInEditor opens path in the user's editor off the caller's goroutine:
+// the editor blocks, and a Go command runs on the key loop.
+func (h *Host) openInEditor(ui UIHooks, path, title string) {
+	h.GoSafe("open "+title, func() {
+		if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: title}); err != nil {
+			h.Notify(slog.LevelError, "Could not open "+title, err.Error())
+		}
+	})
 }
 
 // tableArg reads argument n as a table; anything else raises (DESIGN §6.0),

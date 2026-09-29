@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -978,16 +977,6 @@ func (h *Host) openAgentFile(name string) error {
 	}
 	h.openInEditor(ui, d.Path, "the agent")
 	return nil
-}
-
-// openInEditor opens path in the user's editor off the caller's goroutine:
-// the editor blocks, and a Go command runs on the key loop.
-func (h *Host) openInEditor(ui UIHooks, path, title string) {
-	h.GoSafe("open "+title, func() {
-		if err := ui.EditFile(context.Background(), EditRequest{Path: path, Title: title}); err != nil {
-			h.Notify(slog.LevelError, "Could not open "+title, err.Error())
-		}
-	})
 }
 
 func (h *Host) openAgents() error {
