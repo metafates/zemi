@@ -157,10 +157,10 @@ func TestExportMarkdown(t *testing.T) {
 			"\n## zemi\n\n_Compacted earlier messages_\n\n_agent explore finished_\n",
 		},
 		{
-			"headings sink below the speaker outside fences",
+			"headings sink below the speaker outside fences, to six hashes at most",
 			false,
-			[]ChatMessage{reply("## Plan\n~~~\n# not a heading\n```\n# still code\n~~~\n# Summary")},
-			"\n## zemi\n\n#### Plan\n~~~\n# not a heading\n```\n# still code\n~~~\n### Summary\n",
+			[]ChatMessage{reply("## Plan\n~~~\n# not a heading\n```\n# still code\n~~~\n# Summary\n##### Deep")},
+			"\n## zemi\n\n#### Plan\n~~~\n# not a heading\n```\n# still code\n~~~\n### Summary\n###### Deep\n",
 		},
 		{"escapes stripped", false, []ChatMessage{reply("\x1b[31mred\x1b[0m")}, "\n## zemi\n\nred\n"},
 	} {

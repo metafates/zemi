@@ -280,8 +280,9 @@ func exportMarkdown(b *strings.Builder, tr []ChatMessage, level int, full bool) 
 	}
 }
 
-// demoteHeadings sinks each ATX heading outside a code fence by level, so a
-// message's own "## Plan" stays under the speaker header it is written in.
+// demoteHeadings sinks each ATX heading outside a code fence by level, to six
+// hashes at most (seven are no heading), so a message's own "## Plan" stays
+// under the speaker header it is written in.
 // NOTE: a setext heading (a line underlined with === or ---) is not demoted.
 func demoteHeadings(s string, level int) string {
 	var b strings.Builder
@@ -295,7 +296,8 @@ func demoteHeadings(s string, level int) string {
 		case fence != "" && strings.HasPrefix(f, fence):
 			fence = ""
 		case fence == "" && len(line)-len(body) < 4 && atxHeading.MatchString(body):
-			line = strings.Repeat("#", level) + body
+			n := len(body) - len(strings.TrimLeft(body, "#"))
+			line = strings.Repeat("#", min(n+level, 6)) + body[n:]
 		}
 		b.WriteString(line)
 	}
