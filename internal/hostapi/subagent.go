@@ -991,7 +991,6 @@ func (h *Host) openAgents() error {
 		return err
 	}
 	defs := h.agentDefs()
-	sortBySource(defs, func(d AgentDef) lua.Origin { return d.Source })
 	runs := h.agentRunItems()
 	sel := 0
 	if len(runs) > 0 && runs[0].(map[string]any)["section"] == "Running" { // runs list running first

@@ -170,7 +170,7 @@ func (h *Host) bashChanges(dir string) func() (note, diff string, paths []string
 	s.open++
 	s.mixed = s.mixed || s.open > 1
 	s.state.Unlock()
-	jobs := h.jobsRunning()
+	jobs := h.jobsRunningCount() > 0
 	root, env, before := h.snapshot(dir)
 	mid := h.turnMsgID()
 	return func() (string, string, []string) {
@@ -179,7 +179,7 @@ func (h *Host) bashChanges(dir string) func() (note, diff string, paths []string
 		// belong to no later prompt's rewind
 		ckpt := mid != "" && mid == h.turnMsgID()
 		s.state.Lock()
-		mixed, wrote := s.mixed || jobs || h.jobsRunning(), s.wrote
+		mixed, wrote := s.mixed || jobs || h.jobsRunningCount() > 0, s.wrote
 		if s.open--; s.open == 0 {
 			s.mixed, s.wrote = false, nil
 		}
@@ -190,8 +190,6 @@ func (h *Host) bashChanges(dir string) func() (note, diff string, paths []string
 		return h.treeDiff(root, env, before, after, mixed, ckpt, wrote)
 	}
 }
-
-func (h *Host) jobsRunning() bool { return h.jobsRunningCount() > 0 }
 
 func (h *Host) jobsRunningCount() int {
 	if h.jobs == nil {

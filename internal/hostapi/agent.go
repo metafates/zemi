@@ -1117,12 +1117,18 @@ func toolStatus(name string, ok bool, output string, cancelled bool) CallStatus 
 func (s *streamAdapter) StreamDone(u fantasy.Usage) {
 	ag := s.h.agents
 	ag.mu.Lock()
-	sid, model := ag.sessionID, ag.turnModel
+	sid, model := ag.sessionID, s.h.turnModelID()
 	ag.mu.Unlock()
-	if model == "" {
-		model = s.h.currentModelID(nil) // a turn the host did not start (tests)
-	}
 	s.h.bill(sid, model, u)
+}
+
+// turnModelID is the model the running turn bills to (ag.mu held); a turn
+// the host did not start (tests) bills to the chat role.
+func (h *Host) turnModelID() string {
+	if m := h.agents.turnModel; m != "" {
+		return m
+	}
+	return h.currentModelID(nil)
 }
 
 // StepDone counts the step for the todo nag unless a todos call ran in it.
@@ -1130,12 +1136,9 @@ func (s *streamAdapter) StepDone(st agent.Step) {
 	h := s.h
 	ag := h.agents
 	ag.mu.Lock()
-	sid, model, touched := ag.sessionID, ag.turnModel, ag.todoTouched
+	sid, model, touched := ag.sessionID, h.turnModelID(), ag.todoTouched
 	ag.todoTouched = false
 	ag.mu.Unlock()
-	if model == "" {
-		model = h.currentModelID(nil)
-	}
 	h.emitStep(sid, model, st)
 	if !touched {
 		h.maybeNagTodos()
@@ -1173,12 +1176,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		usage, ag.cutUsage = addUsage(usage, ag.cutUsage), fantasy.Usage{}
 	}
 	ag.holdCut = false
-	model := ag.turnModel
-	ag.mu.Unlock()
-	if model == "" {
-		model = h.currentModelID(nil) // a turn the host did not start (tests)
-	}
-	ag.mu.Lock()
+	model := h.turnModelID()
 	text, tools := ag.textBuf, ag.tools
 	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: time.Now().Unix()}
 	if !ag.turnStart.IsZero() {
@@ -2472,10 +2470,10 @@ func (h *Host) ProfileNames() []string {
 // plan can return to it (approvePlan).
 func (h *Host) SetProfile(name string) error {
 	name = cmp.Or(name, "default") // resolveProfile reads "" as the active one
-	if _, err := h.resolveProfile(name); err != nil {
+	next, err := h.resolveProfile(name)
+	if err != nil {
 		return Usagef("unknown profile %q (want %s)", name, strings.Join(h.ProfileNames(), ", "))
 	}
-	next, _ := h.resolveProfile(name)
 	if next != nil && next.ReadOnly && !h.readOnly() {
 		h.modes.mu.Lock()
 		h.modes.prePlanProfile = h.Settings.Str("agent.profile")
@@ -2537,7 +2535,9 @@ func (h *Host) nudgesPlan(p *Profile) bool {
 // never the UI one.
 func (h *Host) planFollowup(runner *agent.Runner, nudge bool) {
 	if msg := h.takePlanApproved(); msg != "" {
-		h.startImplementation(msg)
+		if err := h.AgentSend(msg); err != nil {
+			h.Log.Error("implementation send failed", "origin", "agent", "error", err)
+		}
 		return
 	}
 	if !nudge || plainTextEnd(runner) == "" {
@@ -2556,13 +2556,6 @@ func (h *Host) planFollowup(runner *agent.Runner, nudge bool) {
 	}
 	if err := h.AgentSend(planNudge); err != nil {
 		h.Log.Error("plan nudge send failed", "origin", "agent", "error", err)
-	}
-}
-
-// startImplementation sends the approved-plan handoff to the restored agent.
-func (h *Host) startImplementation(msg string) {
-	if err := h.AgentSend(msg); err != nil {
-		h.Log.Error("implementation send failed", "origin", "agent", "error", err)
 	}
 }
 
