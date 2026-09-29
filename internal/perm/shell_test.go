@@ -39,6 +39,7 @@ func TestRowsCoverShells(t *testing.T) {
 		"(cd sub && make) | tee log >/dev/null",
 		"sudo -u root rm s; timeout 5 rm t",
 		"rm u\\",
+		"ls &>log rm v",
 	}
 	stubs := t.TempDir()
 	names := map[string]bool{}

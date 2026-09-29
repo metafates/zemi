@@ -179,6 +179,7 @@ func TestNormalizeSegments(t *testing.T) {
 		{"echo `rm -rf x`", "echo `rm -rf x`|rm -rf x"},
 		{"if make; then ls; fi; for f in a b; do cat $f; done", "make|ls|cat $f"},
 		{"[[ a > b ]] && ((ls))", "[[ a > b ]]|[[ a ]]|ls"},
+		{"ls &>log rm -rf .", "ls rm -rf .|ls|rm -rf ."},
 		{`echo "$(rm -rf x)"`, "echo $(rm -rf x)|rm -rf x"},
 		{"echo \"`rm -rf x`\"", "echo `rm -rf x`|rm -rf x"},
 	} {

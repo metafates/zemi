@@ -42,6 +42,9 @@ type Normalized struct {
 	// shell cannot parse it, or a redirect has no target.
 	Fail string
 	rows []row
+	// amps are where a &> or &>> starts in the text, which dash reads as
+	// & then >: ls &>log rm -rf . runs rm there
+	amps []uint
 	// expands: the shell substitutes something somewhere in the text: a
 	// parameter, a command, arithmetic, a glob, a brace list or a tilde
 	expands bool
@@ -120,7 +123,13 @@ func Normalize(cmd string) Normalized {
 	if strings.ContainsRune(cmd, '\r') {
 		n.doubtful("a carriage return, which sh reads as part of a word")
 	}
-	p := normalize(cmd, syntax.LangPOSIX)
+	// the POSIX parser refuses &>, which dash runs as & then >: a ; there
+	// runs the same commands
+	dash := []byte(cmd)
+	for _, at := range n.amps {
+		dash[at] = ';'
+	}
+	p := normalize(string(dash), syntax.LangPOSIX)
 	for _, r := range p.rows {
 		if !slices.ContainsFunc(n.rows, r.same) {
 			n.rows = append(n.rows, r)
@@ -507,6 +516,9 @@ func (w *walker) redirect(r *syntax.Redirect, reader []string) {
 		}
 		w.docs = append(w.docs, d)
 		return
+	}
+	if r.Op == syntax.RdrAll || r.Op == syntax.AppAll {
+		w.n.amps = append(w.n.amps, r.OpPos.Offset())
 	}
 	target := w.word(r.Word)
 	op := r.Op.String()

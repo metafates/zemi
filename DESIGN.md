@@ -1974,7 +1974,8 @@ provenance string.
   as `cat .env`, dash keeps the backslash): every simple command
   either reading runs is a segment, so an allow needs both readings. The
   POSIX reading keeps the statements that parse before its first error,
-  which is what dash runs before it stops; a bash parse error fails the
+  which is what dash runs before it stops, and reads `&>` as dash does, `&`
+  then `>` (`ls &>log rm -rf .` runs `rm` there); a bash parse error fails the
   call with the parser's line, column and message, which a model can act
   on. Text a shell reads otherwise than both grammars asks, and
   `Destructive` and the program list (§8) cannot vouch for it: a carriage
@@ -1988,7 +1989,9 @@ provenance string.
   while sh runs `x` in `!(x)`. The parser also reads a backslash ending a
   comment as a line continuation, which no shell does; that backslash is
   blanked before the parse. Known ceilings: a `sh` that is neither (zsh in
-  sh emulation, busybox ash, mksh) is judged by these two readings, and a
+  sh emulation, busybox ash, mksh) is judged by these two readings, the
+  POSIX reading stops at a construct the parser calls bash-only where dash
+  may go on (`$[1]`), and a
   program word holding an expansion (`$X`, `rm$() -rf x`) names no program,
   so no deny rule and no `Destructive` check sees what it runs; the sandbox
   is the limit there. A segment is a simple command's words as the program receives
