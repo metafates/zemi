@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -141,18 +142,18 @@ func (r *taskReg) flow(id string) *flowRun {
 	return r.flows[id]
 }
 
-// flowsOf returns the workflows parent started, newest first.
-func (r *taskReg) flowsOf(parent string) []*flowRun {
+// flowList returns every workflow run this process holds, newest first.
+func (r *taskReg) flowList() []*flowRun {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var out []*flowRun
-	for _, f := range r.flows {
-		if f.parent == parent {
-			out = append(out, f)
-		}
-	}
+	out := slices.Collect(maps.Values(r.flows))
 	slices.SortFunc(out, func(a, b *flowRun) int { return b.started.Compare(a.started) })
 	return out
+}
+
+// flowsOf returns the workflows parent started, newest first.
+func (r *taskReg) flowsOf(parent string) []*flowRun {
+	return slices.DeleteFunc(r.flowList(), func(f *flowRun) bool { return f.parent != parent })
 }
 
 // add registers a run; a background run past maxBackgroundAgents is
@@ -619,7 +620,11 @@ func (h *Host) ViewedAgent() string {
 // ViewAgent shows a run's transcript in the chat in place of the session's;
 // "" shows the session again. A run this process no longer holds (an
 // earlier zemi, or evicted) is read from its child session.
-func (h *Host) ViewAgent(id string) error {
+func (h *Host) ViewAgent(id string) error { return h.ViewAgentFrom(id, "") }
+
+// ViewAgentFrom is ViewAgent from a screen: back is the command that
+// reopens it, which LeaveAgentView hands the esc that leaves the run.
+func (h *Host) ViewAgentFrom(id, back string) error {
 	if _, err := h.Screen(); err != nil {
 		return err
 	}
@@ -634,11 +639,21 @@ func (h *Host) ViewAgent(id string) error {
 		id = run.id
 	}
 	h.tMu.Lock()
-	h.view = id
+	h.view, h.viewBack = id, back
 	h.tMu.Unlock()
 	h.scroll(ScrollBottom, "")
 	h.refresh()
 	return nil
+}
+
+// LeaveAgentView shows the session again and returns the command that
+// reopens the screen the run was opened from, "" for none.
+func (h *Host) LeaveAgentView() string {
+	h.tMu.Lock()
+	back := h.viewBack
+	h.tMu.Unlock()
+	_ = h.ViewAgent("")
+	return back
 }
 
 // viewedRun is the run the chat shows, nil for the session.
@@ -707,8 +722,9 @@ func (h *Host) agentRunItems() []any {
 		v := f.view()
 		flows = append(flows, map[string]any{
 			"text":    f.description,
-			"desc":    fmt.Sprintf("%s · %d/%d agents · %s", statusCol(string(v.status)), v.done, len(v.agents), fmtDuration(v.took)),
+			"desc":    fmt.Sprintf("%s · %d/%d agents · %s", statusCol(flowWord(v)), v.done, len(v.agents), fmtDuration(v.took)),
 			"section": "Workflows",
+			"run":     "workflows view " + f.id,
 		})
 	}
 	for _, run := range h.tasks.list(sid) {

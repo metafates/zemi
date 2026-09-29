@@ -292,7 +292,9 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		// box, and one press too many must not kill the turn.
 		if a.host.ViewedAgent() != "" {
 			a.armed = armed{}
-			_ = a.host.ViewAgent("")
+			if back := a.host.LeaveAgentView(); back != "" {
+				a.runCommand(hostapi.SplitCommand(back))
+			}
 		} else if _, _, busy := a.host.BusyNow(); (a.host.AgentActive() || busy) && a.arm(key) {
 			a.host.CancelBusy()
 			a.interrupt()

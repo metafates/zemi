@@ -41,8 +41,9 @@ local live_tools = 0
 -- rows and markdown reply stay together, identical while streaming and
 -- after, so nothing jumps when a reply lands. Reasoning collapses to one
 -- line unless ctx.show_reasoning (ctrl+o). The widget wraps. A click on a
--- reasoning line toggles it; one on an agent's row shows that run; one on a
--- tool row expands it (a file tool's diff is always shown regardless).
+-- reasoning line toggles it; one on an agent's row shows that run, one on a
+-- workflow's opens its view; one on a tool row expands it (a file tool's
+-- diff is always shown regardless).
 zemi.ui.widget.add({
 	id = "chat",
 	region = "chat",
@@ -50,9 +51,11 @@ zemi.ui.widget.add({
 	wrap = true,
 	---@param ev zemi.WidgetClick
 	on_click = function(ev)
-		local run = ev.id:match("^agent:(.+)")
+		local run, flow = ev.id:match("^agent:(.+)"), ev.id:match("^workflow:(.+)")
 		if run then
 			assert(zemi.command.run("agents", "view " .. run))
+		elseif flow then
+			assert(zemi.command.run("workflows", "view " .. flow))
 		elseif ev.id == "reasoning" then
 			zemi.ui.reasoning.toggle()
 		else
@@ -274,9 +277,11 @@ zemi.ui.widget.add({
 					and (open or label == "")
 					and zemi.ui.highlight(open and body or fit(input, width - fmt.cells(verb) - 13), "bash")
 				or nil
-			-- an agent's rows open its transcript (ids must differ between adjacent rows),
-			-- every other row (file tools included) expands the call
-			local click = (t.run or "") ~= "" and ("agent:" .. t.run) or ("tool:" .. idx)
+			-- an agent's rows open its transcript and a workflow's its view (ids must
+			-- differ between adjacent rows), every other row (file tools included)
+			-- expands the call
+			local click = (t.run or "") ~= "" and ((name == "workflow" and "workflow:" or "agent:") .. t.run)
+				or ("tool:" .. idx)
 			local head =
 				{ mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = "AgentToolName" } }
 			if code and label == "" then

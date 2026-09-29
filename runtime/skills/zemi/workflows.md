@@ -7,6 +7,7 @@ Run a workflow inline: pass the script to the `workflow` tool, whose description
 - Every run keeps its script and a journal in the session's scratchpad as `workflow-<id>.lua` and `.jsonl`; the result names the script. To change a run, edit that file (or pass `script` with it) and pass `run` with action `rerun`: agent calls identical to its finished ones (same agent, model and prompt) answer at once from the journal, in order, even when the files they read changed since.
 - `agent(prompt, { schema = s })` asks for a JSON object matching `s` (`type = "object"` with `properties`, and `required` naming only those) and returns it as a table; a reply that does not match is asked for again twice, then the call fails. Required fields and types are checked, not every keyword (`enum`, bounds).
 - `agent` and `parallel` cannot run inside `pcall`, `table.sort` or `string.gsub` callbacks.
+- The user watches and steers runs in `/workflows`: the runs (running, then this session's earlier ones) and the saved workflows; `v` on a run shows its agents by phase, where `p` pauses or resumes and `+` and `-` change how many run at once, and an agent's detail views its transcript, restarts or stops it. `/workflows run <name> [args]` and `/review [ref]` start a saved one without a model call; its result arrives as a report.
 
 ## Saved workflows (`workflows/<name>.lua`)
 

@@ -1595,11 +1595,13 @@ provenance string.
   same keys, the list's footer names them. `j`, `k`, `/`, `y` and `Y` are
   the list's own and cannot be hotkeys. A
   screen that manages things (`/skills`, `/mcp`, `/lsp`, `/permissions`,
-  `/plugins`) is a toggle list, so an action returns to it rebuilt, and
-  `/mcp`, `/lsp` and `/plugins` also rebuild in place when a server or a
-  slow action changes their state off the key loop (`Overlay.Refresh`);
-  `/sessions`, `/agents` and `/workflows` close on an action instead: resume,
-  a run and an agent's transcript move to another screen, which a rebuilt
+  `/plugins`, `/workflows` and a workflow's view) is a toggle list, so an
+  action returns to it rebuilt, and `/mcp`, `/lsp`, `/plugins`, `/workflows`
+  and a workflow's view also rebuild in place when a server, a run or a
+  slow action changes their state off the key loop (`Overlay.Refresh`, for
+  a run from a 1 s ticker that lives only as long as the run), a detail open
+  over them too; `/sessions` and `/agents` close on an action instead: a resume
+  and an agent's transcript move to another screen, which a rebuilt
   list would cover. A row's binary state (a skill or plugin on or off, a
   picked option of a multi-select) is one 5-cell switch in the key column,
   `■ on ` in Ok, `□ off` or a locked `  on ` in Hint, so a toggle never
@@ -1753,7 +1755,7 @@ provenance string.
   servers, language servers, Lua runtime),
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
-  `/skills`, `/reflect`, `/agents`, `/workflow`, `/review`, `/mcp`,
+  `/skills`, `/reflect`, `/agents`, `/workflows`, `/review`, `/mcp`,
   `/lsp`, `/plugins`, `/win`) and `/trust` (§5). Enter on a help command row runs it, or
   fills the composer when the command needs an argument.
   In `zemi run` a command that opens a screen fails with "/<name> needs the TUI".

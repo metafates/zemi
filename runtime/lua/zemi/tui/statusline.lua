@@ -94,7 +94,8 @@ zemi.ui.widget.add({
 		if flows > 0 then parts[#parts + 1] = fmt.count(flows, "workflow", "workflows") end
 		if agents > 0 then parts[#parts + 1] = fmt.count(agents, "agent", "agents") end
 		if jobs > 0 then parts[#parts + 1] = fmt.count(jobs, "job", "jobs") end
-		return { fmt.hint("⧗ " .. table.concat(parts, ", "), "/agents", "agents") }
+		local cmd = flows > 0 and "workflows" or "agents"
+		return { fmt.hint("⧗ " .. table.concat(parts, ", "), "/" .. cmd, cmd) }
 	end,
 })
 

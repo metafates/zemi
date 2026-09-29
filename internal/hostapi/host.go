@@ -344,9 +344,10 @@ type Host struct {
 
 	rendering atomic.Bool
 
-	tMu     sync.Mutex
-	session *Session
-	view    string // the agent run the chat shows instead of the session, "" for none
+	tMu      sync.Mutex
+	session  *Session
+	view     string // the agent run the chat shows instead of the session, "" for none
+	viewBack string // the command that reopens the screen view came from
 
 	// trEpoch changes whenever the transcript is replaced (new, resume,
 	// rewind), so the chat widget can cache the rows of settled messages.

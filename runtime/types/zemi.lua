@@ -1726,7 +1726,7 @@ function zemi.agent.run(spec, on_done) end
 ---@field concurrency? integer Agents at once, 1-16 (default 5).
 
 ---@class zemi.WorkflowHandle: zemi.RunHandle
----@field id string The run's id, as /agents shows it.
+---@field id string The run's id, as /workflows shows it.
 
 ---@class zemi.WorkflowAgentOpts
 ---@field agent? string Agent definition, default "general".

@@ -353,6 +353,20 @@ func TestWorkflowControl(t *testing.T) {
 			want: "a!",
 		},
 		{
+			name:   "a restart in a paused run reads as queued until resumed",
+			script: `return wf.agent("a")`,
+			drive: func(c ctl) {
+				running(1)(c)
+				act(c, actPause, 0, "")
+				act(c, actRestart, 0, c.f.view().agents[0].id)
+				tick(c, func(v flowView) bool { return v.agents[0].status == "queued" })
+				act(c, actResume, 0, "")
+				running(1)(c)
+				c.m.release <- struct{}{}
+			},
+			want: "a!",
+		},
+		{
 			name:   "stop cancels the run",
 			script: `return wf.agent("a")`,
 			drive: func(c ctl) {
@@ -656,6 +670,53 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 	waitIdle(t, h)
 }
 
+// TestWorkflowUserStart: /workflows run starts the saved workflow with no
+// model call first, and its report reaches the model: detached in the TUI,
+// on the claimed agent headless, which zemi run waits on.
+func TestWorkflowUserStart(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		ui   bool
+		want []string // the transcript rows' texts, in order
+	}{
+		{"the TUI runs it detached and says so", true, []string{"Started workflow count ", "Workflow ", "ok"}},
+		{"headless it holds the agent until the report's turn ends", false, []string{"Workflow ", "ok"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			if c.ui {
+				h.SetUIHooks(&fakeUI{})
+			}
+			h.modelFn = func() (fantasy.LanguageModel, error) {
+				return &scriptModel{script: func(string, string, bool) []fantasy.StreamPart { return textParts("ok") }}, nil
+			}
+			h.Dirs.ConfigHome = t.TempDir()
+			dir := filepath.Join(h.Dirs.ConfigHome, "workflows")
+			if err := os.MkdirAll(dir, 0o755); err != nil || os.WriteFile(filepath.Join(dir, "count.lua"), []byte(`return zemi.workflow.agent("x")`), 0o644) != nil {
+				t.Fatal(err)
+			}
+			if err := h.workflowCommands()[0].GoFn(h, "run count"); err != nil {
+				t.Fatal(err)
+			}
+			waitFor(t, func() error {
+				var got []string
+				for _, m := range h.Session().Transcript {
+					for _, w := range c.want[len(got):min(len(got)+1, len(c.want))] {
+						if strings.HasPrefix(m.Text, w) {
+							got = append(got, m.Text)
+						}
+					}
+				}
+				if len(got) != len(c.want) {
+					return fmt.Errorf("rows %q, want %q", got, c.want)
+				}
+				return nil
+			})
+			waitIdle(t, h)
+		})
+	}
+}
+
 // TestWorkflowCancel: cancelling the context stops a script that is
 // waiting on agents or spinning in Lua.
 func TestWorkflowCancel(t *testing.T) {
@@ -717,7 +778,7 @@ func TestSavedWorkflows(t *testing.T) {
 		t.Fatal(err)
 	}
 	acts := fmt.Sprint(ui.opened[0].Items[0].(map[string]any)["actions"])
-	if acts != "[map[hotkey:r run:workflow review text:Run] map[fill:/workflow review  hotkey:a text:Run with arguments]]" {
+	if acts != "[map[hotkey:r run:workflows run review text:Run] map[fill:/workflows run review  hotkey:a text:Run with arguments] map[hotkey:o run:workflows open review text:Open in the editor]]" {
 		t.Fatalf("workflow actions: %s", acts)
 	}
 

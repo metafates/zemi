@@ -50,7 +50,6 @@ func TestCommandSendsTypedLine(t *testing.T) {
 	m := reflectStub(t, h, "ok")
 	h.SetUIHooks(&fakeUI{})
 	h.RecordError("lua", "boom")
-	review := h.workflowCommands()[1].GoFn
 	for _, c := range []struct {
 		typed string
 		send  func() error
@@ -59,7 +58,6 @@ func TestCommandSendsTypedLine(t *testing.T) {
 		{"/plugins new show cost", func() error { return h.pluginsCommand("new show cost") }},
 		{"/agents new reviews my diffs", func() error { return h.agentsCommands()[0].GoFn(h, "new reviews my diffs") }},
 		{"/errors ask lua: boom", func() error { return h.OpenErrors("ask 0") }},
-		{"/review", func() error { return review(h, "") }},
 	} {
 		sent := m.streams.Load()
 		if err := c.send(); err != nil {

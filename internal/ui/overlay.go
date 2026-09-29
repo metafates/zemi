@@ -269,7 +269,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		// zemi.ui.overlay.open raised on a Lua item's wrong type; a Go screen's
 		// or a select's item keeps the fields that parse
 		r, _ := hostapi.ParseOverlayItem(item)
-		r.Desc, r.Key, r.Section, r.Verb = sanitize.Line(r.Desc), sanitize.Line(r.Key), sanitize.Line(r.Section), sanitize.Line(r.Verb)
+		// a desc keeps its runs of spaces: padded columns (a status word) stay put
+		r.Desc, r.Key, r.Section, r.Verb = oneLine.Replace(sanitize.String(r.Desc)), sanitize.Line(r.Key), sanitize.Line(r.Section), sanitize.Line(r.Verb)
 		r.Hotkey = sanitize.Line(r.Hotkey)
 		r.Fill, r.Copy, r.Preview = sanitize.String(r.Fill), sanitize.String(r.Copy), sanitize.String(r.Preview) // Detail is the detail view's Body, sanitized there
 		if o.Origin != lua.OriginBuiltin && o.Origin != lua.OriginUser {

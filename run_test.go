@@ -300,7 +300,7 @@ func TestRunScreenCommands(t *testing.T) {
 		{"/skills open zemi", "", "zemi: /skills needs the TUI\n", 1},
 		{"/agents", "", "zemi: /agents needs the TUI\n", 1},
 		{"/agents view x", "", "zemi: /agents needs the TUI\n", 1},
-		{"/workflow", "", "zemi: /workflow needs the TUI\n", 1},
+		{"/workflows", "", "zemi: /workflows needs the TUI\n", 1},
 		{"/mcp", "", "zemi: /mcp needs the TUI\n", 1},
 		{"/lsp", "", "zemi: /lsp needs the TUI\n", 1},
 		{"/btw why", "why", "", 0},
