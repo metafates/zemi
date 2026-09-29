@@ -327,7 +327,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	if proc.Dash() {
 		add(HealthOK, "shell", "the model's commands run in "+proc.Shell())
 	} else {
-		add(HealthOK, "shell", "no dash on PATH, so the model's commands run in "+proc.Shell()+", which may be bash; each is read as bash and as POSIX sh, and text the two read otherwise asks")
+		add(HealthOK, "shell", "the model's commands run in "+proc.Shell()+"; install dash for fewer asks and bash-only syntax named before it runs")
 	}
 
 	switch style, why := h.NotifyStyle(); {
