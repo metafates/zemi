@@ -473,8 +473,9 @@ registered the way zemi runs it: `run`, `keys`, `tool` (through the
 adapter the model's call runs), `render`, `click`, `emit` (to the plugin's
 own handlers, `tool.post` as tasks and vetoable events with their
 deadline), `complete` (a command's completer and the plugin's
-`zemi.composer.complete` sources, as the palette asks them), `overlay` and
-`answer`, each refusing another origin's target, a Go command and a host
+`zemi.composer.complete` sources, as the palette asks them), `overlay`,
+`answer` and `set` (one of the plugin's settings, as `/config` writes it),
+each refusing another origin's target, a Go command and a host
 action, and a driver at a file's top level raises. `eq`, `neq`,
 `contains` and `raises` assert, `eq` naming the first difference (the line,
 in a multi-line string). The zemi does

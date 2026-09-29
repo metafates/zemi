@@ -116,7 +116,7 @@ func (t *PluginTest) Step() lua.BootStep {
 		g.L.Pop(1)
 		for name, fn := range map[string]glua.LGFunction{
 			"run": t.runCmd, "keys": t.keys, "tool": t.tool, "render": t.render, "click": t.click,
-			"emit": t.emit, "answer": t.answer, "advance": t.advance, "complete": t.complete,
+			"emit": t.emit, "answer": t.answer, "advance": t.advance, "complete": t.complete, "set": t.set,
 		} {
 			tb.RawSetString(name, lua.Suspending(g.L, g.L.NewFunction(func(L *glua.LState) int {
 				if t.h.RT.Booting() {
@@ -505,6 +505,18 @@ func (t *PluginTest) runCmd(L *glua.LState) int {
 	c, args := t.command(L, "run", strings.TrimPrefix(L.CheckString(1), "/")), L.OptString(2, "")
 	return t.drive(L, "run", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		return nil, errText(t.h.RunCommand(ctx, c.Name, args))
+	})
+}
+
+// set is test.set(path, value): one of the plugin's settings changed as the
+// user changes it in /config, its watches firing.
+func (t *PluginTest) set(L *glua.LState) int {
+	s := own(t, L, "set", "setting", L.CheckString(1), t.h.Settings.Schema(), func(s config.Setting) (string, bool) {
+		return s.Path, strings.HasPrefix(s.Path, "plugins."+t.plugin+".")
+	})
+	v := luaToGoChecked(L, 2, "test.set")
+	return t.drive(L, "set", "", func(context.Context) (func(*glua.LState) []glua.LValue, error) {
+		return nil, t.h.SetConfig(s.Path, v)
 	})
 }
 

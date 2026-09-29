@@ -29,9 +29,21 @@ zemi.ui.widget.add({
 	render = function(ctx) return { { string.format("%d cents", ctx.usage.cost * 100) } } end,
 })
 
+zemi.config.add({
+	path = "plugins.demo.interval",
+	kind = "int",
+	default = 30000,
+	desc = "how often the branch is read, in ms",
+})
+
+-- read once zemi is ready: the user's init.lua sets it after this file runs
 zemi.event.on("app.ready", function()
 	zemi.timer.after(0, poll) -- an event handler has 50 ms, a timer callback 1 s
-	zemi.timer.every(30000, poll)
+	local tick = zemi.timer.every(zemi.config.get("plugins.demo.interval"), poll)
+	zemi.config.watch("plugins.demo.interval", function(ms)
+		tick:stop()
+		tick = zemi.timer.every(ms, poll)
+	end)
 end)
 
 local function names(prefix)

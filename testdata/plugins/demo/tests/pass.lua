@@ -202,3 +202,11 @@ test("the command and the # source complete snippet names", function()
 	test.eq(test.complete("#rev"), { "review" })
 	test.raises(function() test.complete("see @x") end, "@ is not a completion trigger of plugin demo; it registered #")
 end)
+
+test("the interval setting moves the poll", function()
+	assert(test.set("plugins.demo.interval", 10000))
+	branch = "fix-login"
+	test.advance(10000)
+	test.eq(test.render("demo.branch"), { "fix-login" })
+	test.raises(function() test.set("ui.mouse", false) end, "ui.mouse is not a setting of plugin demo")
+end)

@@ -18,13 +18,13 @@ There is no manifest: the version is the checked-out `vX.Y.Z` tag, the source th
 `/plugins new` and `/plugins modify` send you here, or the user asked for a plugin or a change to one. A plugin is checked by its tests, never by trying it in this session.
 
 1. New: unless the request already says, ask with the `question` tool what the plugin should do and where it shows up (a command, a key, a statusline widget, a tool the model calls, an event handler, a theme), and whether anything that runs on its own (a timer, an event handler that acts, a network call, a message to the agent) should be on from the start. In one Lua tool script, check that zemi does not do it already: `zemi.config.schema()`, `zemi.command.list()`, `zemi.keymap.list()`, `zemi.ui.widget.list()` (id, region, priority) and `zemi.tool.list()`. If a setting, a command, a prompt command (`commands/<name>.md`) or a workflow does the job, offer that instead. A change: read the plugin's files first (the prompt names its directory) and ask only if the request is unclear.
-2. Say in one message what you will write. A new plugin takes a name nothing registers yet and is `init.lua`, `lua/<name>/init.lua`, `tests/<topic>.lua`, a `README.md` naming its commands, keys, `setup` options and every rule it needs, and `stylua.toml` (below). Write `init.lua` first: that write creates the plugin and is the one the user approves, so it shows them the code.
+2. Say in one message what you will write. A new plugin takes a name nothing registers yet and is `init.lua`, `lua/<name>/init.lua`, `tests/<topic>.lua`, a `README.md` naming its commands, keys, settings and every rule it needs, and `stylua.toml` (below). Write `init.lua` first: that write creates the plugin and is the one the user approves, so it shows them the code.
 3. Write the code and its tests together, indented with tabs: each thing the user can see gets a case, and a fix starts with the case that fails without it. Read `lua.md` only for API you do not know (waiting on a job, HTTP or a model, a permission rule); for what a widget's render gets, grep `@class zemi.WidgetCtx` in the types file and read that block.
 4. Run `zemi plugins test <name>` with bash and fix until it passes. Name the plugin, not its path: with a sandbox, auto mode runs that without asking. The tests are the check: do not try the plugin in this session (`zemi.command.run`, keys, `zemi.ui.screenshot()`, widget listings) unless the user asks, and write the tests even then.
 5. Then, once, `return zemi.errors.list()` in a Lua tool script: the tool reloads the changed plugin first and its result starts with what failed to load. Only this shows a clash with the user's own config (a key or an id they hold). Fix a `plugin <name>:` error and go back to 4.
 6. Tell the user what it registered or what changed, that `/plugins` turns it off, and which README lines they may add to init.lua. Do not add them yourself.
 
-`init.lua` registers what the plugin is for, with defaults, so it works the moment it loads with no line in the user's init.lua: its commands, its widgets (rendering `{}` until they have something to say), its tool, and keys only where `zemi.keymap.get(key)` is nil. What the user did not ask for stays off until `setup(opts)` turns it on: timers and polling beyond what its own widgets need, event handlers that act (sending to the agent, vetoing a submit or a tool call), network calls, a key someone else holds. Keep `setup` safe to call again, and start gated calls on `app.ready`: the user's allow rules are added after the plugin's init.lua runs.
+`init.lua` registers what the plugin is for, with defaults, so it works the moment it loads with no line in the user's init.lua: its commands, its widgets (rendering `{}` until they have something to say), its tool, its settings, and keys only where `zemi.keymap.get(key)` is nil. Every option that is a bool, a number, a string or one of a list is a setting, `zemi.config.add({ path = "plugins.<name>.<key>", kind, default, desc, choices })`, which /config lists under Plugins and keeps across starts, and the user's init.lua sets with `zemi.config.set`. What the user did not ask for stays off behind a bool setting that defaults to false, which the user turns on in /config: timers and polling beyond what its own widgets need, event handlers that act (sending to the agent, vetoing a submit or a tool call), network calls, a key someone else holds. Plugins load before the user's init.lua, so read a setting where it is used (the timer tick, the handler, `app.ready`), or watch it (`zemi.config.watch`) to start and stop what it controls; a value read at load misses init.lua's. A plugin never writes its settings. `setup(opts)` is only for what a setting cannot hold: a function, a table, or a key the user passes from `zemi.env.get`. Start gated calls on `app.ready`: the user's allow rules are added after the plugin's init.lua runs.
 
 `init.lua`:
 
@@ -36,15 +36,7 @@ require("branch")
 `lua/branch/init.lua`:
 
 ```lua
-local M = { opts = { interval = 30000 } }
 local branch = ""
-
-function M.setup(opts)
-	for k, v in pairs(opts or {}) do
-		M.opts[k] = v
-	end
-end
-
 local missing -- the rule line while zemi.job is not allowed yet
 
 local function poll()
@@ -67,15 +59,24 @@ zemi.ui.widget.add({
 	render = function() return branch == "" and {} or { { { text = branch, hl = "Dim" } } } end,
 })
 
+zemi.config.add({
+	path = "plugins.branch.interval",
+	kind = "int",
+	default = 30000,
+	desc = "how often the branch is read, in ms",
+})
+
 zemi.event.on("app.ready", function()
 	zemi.timer.after(0, poll) -- an event handler has 50 ms, a timer callback 1 s
-	zemi.timer.every(M.opts.interval, poll)
+	local tick = zemi.timer.every(zemi.config.get("plugins.branch.interval"), poll)
+	zemi.config.watch("plugins.branch.interval", function(ms)
+		tick:stop()
+		tick = zemi.timer.every(ms, poll)
+	end)
 end)
-
-return M
 ```
 
-The README lists what the user may add to their init.lua: the rule a gated call needs and the `setup` options. You never add them yourself unless the user asks:
+The README lists its settings and what the user may add to their init.lua: the rule a gated call needs. You never add it yourself unless the user asks:
 
 ```lua
 zemi.permission.rule.add({
@@ -85,7 +86,6 @@ zemi.permission.rule.add({
 	match = "git rev-parse --abbrev-ref HEAD",
 	principal = "plugin:branch",
 })
-require("branch").setup({ interval = 10000 })
 ```
 
 `stylua.toml`, the same in every plugin, so the user's editor formats it the way zemi's own Lua is:
@@ -110,7 +110,7 @@ enabled = false
 
 ## Identity and permissions
 
-Identity: a plugin's code runs as the plugin wherever it is called from, its `setup()` in the user's init.lua included. A command, keymap, widget, theme, tool, completion source or health row another plugin registered first (by name) is refused, with both named in `/errors`, and a user or builtin one always wins, so prefix ids with the plugin name and bind only keys nothing else uses. Its `zemi.state` keys are its own (stored under `plugin:<name>:`) and go when it is deleted or installed again. Only it answers `require("<name>...")`, and another plugin gets its modules read-only.
+Identity: a plugin's code runs as the plugin wherever it is called from, its `setup()` in the user's init.lua included. A command, keymap, widget, theme, tool, completion source or health row another plugin registered first (by name) is refused, with both named in `/errors`, and a user or builtin one always wins, so prefix ids with the plugin name and bind only keys nothing else uses. Its `zemi.state` keys are its own (stored under `plugin:<name>:`) and go when it is deleted or installed again, like the settings the user picked for it; turned off, it keeps both, and init.lua's `zemi.config.set` lines for its settings do nothing. Only it answers `require("<name>...")`, and another plugin gets its modules read-only.
 
 Permissions: a job, an HTTP request, a `zemi.fs` write, a model call (`zemi.model.ask`) or a message to the agent (`zemi.agent.send`) raises until the user's init.lua allows it; the error carries the rule line to paste, with `principal = "plugin:<name>"` so it covers that plugin alone. A plugin tool asks the user on every call outside yolo until the user allows `tool.<name>`. List every rule the plugin needs in its README. A missing rule is a state the plugin reports, not a crash: call the gated API under `pcall`, draw nothing while it fails, and put the rule line in a `zemi.health.add` row, so the plugin loads clean and `/health` says what to paste. Show the user that line and ask before adding it to their init.lua. Prefer a design that needs no rule: a tool the model calls asks the user itself, and a widget can read the render `ctx` instead of running a job. A plugin cannot edit the composer, change settings, the theme, the layout, the model or the mode, add allow rules, or read secret-shaped env vars: a key comes through `setup({ key = zemi.env.get("NAME") })` in the user's init.lua.
 
@@ -126,7 +126,7 @@ So a plugin looks like zemi: colors are theme groups (`Accent`, `Dim`, `Ok`, `Wa
 - zemi reloads within a second of an edit once no turn runs, and the Lua tool reloads before its script. A load error is in `zemi.errors.list()` (`plugin <name>: ...`), and the plugin's `/plugins` row reads `failed` with the error in its detail.
 - zemi writes the plugin's `.luarc.json` (editor types, with this machine's paths): never write it, and add it to `.gitignore` when publishing. With lua-language-server installed, a write to a plugin file reports the errors zemi's types find: an unknown global, a missing field, a wrong type or argument count.
 - The sandbox hides a plugin's `.git`, so git there needs `sandbox: false`, which asks each time outside yolo.
-- Moving a feature out of the config dir is the one plugin task that edits init.lua: say which lines leave it and which stay, and wait for the user's yes. Then put its registrations in `local/<name>/init.lua` and its modules in `lua/<name>/`, leave `require("<name>").setup(...)` in the user's init.lua, and keep there what only user config may do (replacing a shipped widget, `hl.set`, layout, settings). Its allow rules keep working (a rule with no `principal` covers every caller); add the principal to narrow them. Its old `zemi.state` keys stay behind.
+- Moving a feature out of the config dir is the one plugin task that edits init.lua: say which lines leave it and which stay, and wait for the user's yes. Then put its registrations in `local/<name>/init.lua` and its modules in `lua/<name>/`, turn its options into settings (`zemi.config.add`) whose values the user's init.lua sets with `zemi.config.set`, leave `require("<name>").setup(...)` there only for a function or a key, and keep there what only user config may do (replacing a shipped widget, `hl.set`, layout, settings). Its allow rules keep working (a rule with no `principal` covers every caller); add the principal to narrow them. Its old `zemi.state` keys stay behind.
 
 ## Testing
 
@@ -145,6 +145,7 @@ test.complete(line)             the rows the plugin's completion offers for a dr
 test.overlay()                  the top overlay { id, title, body, items, input }, or nil
 test.answer(choice, action?)    enter on an item (index or text) or its action; nil is esc
 test.advance(ms)                move the clock, firing due timers
+test.set(path, value)           one of the plugin's settings, as /config changes it
 test.stub(subject, pattern?, reply?) -> requests
                                 answer lua.http.<method>, lua.job.start, lua.model.ask,
                                 lua.agent.send or lua.fs.write; false refuses like a missing rule
@@ -165,6 +166,13 @@ end)
 test("a checkout shows on the next poll", function()
 	test.stub("lua.job.start", "git rev-parse *", { stdout = "fix-login\n" })
 	test.advance(30000)
+	test.eq(test.render("branch"), { "fix-login" })
+end)
+
+test("the interval setting moves the poll", function()
+	assert(test.set("plugins.branch.interval", 10000))
+	test.stub("lua.job.start", "git rev-parse *", { stdout = "fix-login\n" })
+	test.advance(10000)
 	test.eq(test.render("branch"), { "fix-login" })
 end)
 ```

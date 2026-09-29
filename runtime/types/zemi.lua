@@ -2453,7 +2453,7 @@ function zemi.project.root() end
 --- boot has `zemi.test`; reading it anywhere else raises. Each case runs in
 --- a fresh zemi holding only the plugin, after the file's top level (where
 --- init.lua would run) and `app.ready`, on a clock at 2026-01-01 00:00 UTC
---- that only `advance` moves. Drivers (run, keys, tool, render, click, emit,
+--- that only `advance` moves. Drivers (run, keys, tool, render, click, emit, set,
 --- complete, answer, advance) run only inside a case, never under `pcall`
 --- or `raises`; one returns once zemi is quiet, and an error zemi logs
 --- meanwhile (a callback, a timer) fails the case at its call. A job, HTTP
@@ -2485,4 +2485,5 @@ function zemi.project.root() end
 ---@field answer fun(choice: integer|string|nil, action?: string): true|nil, string? Enter on an item (its index or text) or its detail action, type an input's text, or esc for nil; a row no callback takes runs its `run`, a command of the plugin. `assert(test.answer("review"))`
 ---@field stub fun(subject: string, pattern?: string, reply?: table|string|false|fun(req: table): (table|string|false)): table[] Answer the calls matching pattern ("*"): reply's fields, a function returning them, or false to refuse the call the way a missing rule does. The newest match answers; returns the requests it answered. `local gets = test.stub("lua.http.get", "https://api.github.com/*", { body = '{"stargazers_count":5}' })`
 ---@field advance fun(ms: number) Move the clock, firing due timers in order. `test.advance(30000)`
+---@field set fun(path: string, value: any): true|nil, string? Change one of the plugin's settings as the user does in /config, its watches firing. `assert(test.set("plugins.demo.interval", 10000))`
 zemi.test = {}
