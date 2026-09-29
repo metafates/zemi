@@ -170,7 +170,7 @@ func TestReadCommandPathCheck(t *testing.T) {
 	}{
 		{"cat .env", false},
 		// bash drops the backslash ending the text and reads .env
-		{"cat .env\\", false},
+		{sh("cat .env\\"), false},
 		{"cat main.go", true},
 		{"cat ſecrets.yml", false},
 		{"cat .ssh/id_rſa", false},
@@ -211,7 +211,7 @@ func TestReadCommandPathCheck(t *testing.T) {
 		{"grep -r KEY # internal", false},
 		{"grep -r KEY\t# internal", false},
 	} {
-		if got := Normalize(c.cmd).ReadCommand(notSecret); got != c.safe {
+		if got := read(c.cmd).ReadCommand(notSecret); got != c.safe {
 			t.Errorf("ReadCommand(%q) = %v, want %v", c.cmd, got, c.safe)
 		}
 	}
@@ -379,7 +379,7 @@ func TestDestructive(t *testing.T) {
 		{"$SHELL <<'EOF'\nrm -rf *\n`\nEOF", true},
 		{"cat > Makefile <<'EOF'\na;; b:\n\trm -rf .\nEOF\nmake", true},
 		// bash 3.2 ends the $( ) at the body's ) and runs rm z
-		{"echo $(cat <<EOF\n) ; rm z\nEOF\n)", true},
+		{sh("echo $(cat <<EOF\n) ; rm z\nEOF\n)"), true},
 		{"git commit -m \"$(cat <<'EOF'\n1) fix x\nEOF\n)\"", false},
 		{`echo "\$(rm -rf .)"`, false},
 		{"echo $(true)#'\nrm -rf victim #'", false},
@@ -387,18 +387,18 @@ func TestDestructive(t *testing.T) {
 		{`x="$(case a in (a) echo ;; esac)"`, false},
 		{"mv a b && cp -r b c", false},
 		{`git log --format="%h %s" -5`, false},
-		{"cut -f2 -d $'\\t' data.tsv", false},
+		{sh("cut -f2 -d $'\\t' data.tsv"), false},
 		{"go test ./... 2>&1 | tail -20", false},
 		{"make clean build", false},
 		{"python3 - <<'EOF'\nprint(1)\nEOF", false},
 		{"FOO=1 npm run build > out.log", false},
 		// dash parses these and fails only when it expands them
-		{"echo ${x//a/b} ${x:0:7} ${x^^} ${!x} && ls &>/dev/null", false},
-		{"a=(1 2); for ((i=0;i<2;i++)); do echo ${a[i]}; done", false},
+		{sh("echo ${x//a/b} ${x:0:7} ${x^^} ${!x} && ls &>/dev/null"), false},
+		{sh("a=(1 2); for ((i=0;i<2;i++)); do echo ${a[i]}; done"), false},
 		// dash reads {fd} as a word and runs what follows
 		{"ls {fd}>o", true},
 	} {
-		if got := Normalize(strings.ReplaceAll(c.cmd, "PAD", pad)).Destructive(pad) != ""; got != c.asks {
+		if got := read(strings.ReplaceAll(c.cmd, "PAD", pad)).Destructive(pad) != ""; got != c.asks {
 			t.Errorf("Destructive(%q) = %v, want %v", c.cmd, got, c.asks)
 		}
 	}
@@ -544,7 +544,7 @@ func TestPrograms(t *testing.T) {
 		{"unknown lead option", "npm -w web test", "", "npm"},
 		{"same name, strongest mark", "rm a; rm -rf b", "", "rm!deletes"},
 		{"no-ops only", "set -e; true; :", "", ""},
-		{"test syntax runs arithmetic", "[[ -f go.mod ]] && ls", "", "[[ ls"},
+		{"test syntax runs arithmetic", sh("[[ -f go.mod ]] && ls"), "", "[[ ls"},
 		{"trap body", "trap 'rm -rf x' EXIT", "", "trap!runs code"},
 		{"fd redirect first", ">&2 echo oops", "", "echo"},
 		{"quoted substitution", `echo "$(rm -rf x)"`, "", "echo rm!deletes"},
@@ -577,7 +577,7 @@ func TestPrograms(t *testing.T) {
 		{"gated assignment", "PATH=./x ls", "", "-"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			ps := Normalize(c.cmd).Programs(c.pad)
+			ps := read(c.cmd).Programs(c.pad)
 			got := "-"
 			if ps != nil {
 				var words []string

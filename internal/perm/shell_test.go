@@ -8,11 +8,16 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // TestRowsCoverShells runs each command under every sh, dash and bash found,
 // in an empty dir with a PATH of stubs that log their argv, and checks that
-// each program a shell ran is a row: the parse never hides a command.
+// each program a shell ran is a row of every reading judging text that
+// shell runs: the parse never hides a command. Under dash that is the
+// fallback's two readings, dash's own, and the fallback's POSIX half alone,
+// which must stop where dash stops (dashStops).
 func TestRowsCoverShells(t *testing.T) {
 	t.Parallel()
 	cmds := []string{
@@ -45,6 +50,19 @@ func TestRowsCoverShells(t *testing.T) {
 		"true || echo ${y:1}\ncat $'\\' ; rm -rf y ; #'",
 		"sh <<EOF\necho \\`rm -rf z\\`\nEOF",
 		"alias l=rm\nl -rf aa",
+		// bash 3.2 ends the $( ) at the body's ), dash at the last
+		"echo $(cat <<EOF\n) ; rm ab\nEOF\n)",
+		"echo \"$(cat <<EOF\n) \" ; rm ac ; \"\nEOF\n)\"",
+		// where dash stops, keeping the lines before
+		"true\nx=(1 2); rm ad",
+		"true\nfor ((i=0;i<1;i++)); do rm ae; done",
+		"true\nfor i in a; { rm af; }",
+		"true\necho !(x); rm ag",
+		"true\nlocal a=(1); rm ah",
+		"true\necho ${x:1}; rm ai",
+		// where dash reads on
+		"true\nls {fd}>o; rm aj",
+		"function f { rm ak; }\nf",
 	}
 	stubs := t.TempDir()
 	names := map[string]bool{}
@@ -79,11 +97,18 @@ func TestRowsCoverShells(t *testing.T) {
 			cmd.Dir, cmd.Env = dir, []string{"PATH=" + stubs, "HOME=" + dir, "ZLOG=" + log}
 			cmd.Run()
 			b, _ := os.ReadFile(log)
-			n := Normalize(c)
-			for rec := range strings.SplitSeq(strings.TrimSuffix(string(b), "\x1e"), "\x1e") {
-				argv := strings.Split(strings.TrimSuffix(rec, "\x1f"), "\x1f")
-				if rec != "" && n.doubt == "" && !slices.ContainsFunc(n.Args, func(row []string) bool { return runs(row, argv) }) {
-					t.Errorf("%s ran %q, which no row of %q names: %q", sh, argv, c, n.Args)
+			readings := map[string]Normalized{"sh": normalizeAll(c, false, map[string]Normalized{})}
+			if sh == "/bin/dash" {
+				readings["dash"] = normalizeAll(c, true, map[string]Normalized{})
+				readings["posix"] = normalize(c, syntax.LangPOSIX, false, map[string]Normalized{})
+			}
+			for name, n := range readings {
+				for rec := range strings.SplitSeq(strings.TrimSuffix(string(b), "\x1e"), "\x1e") {
+					argv := strings.Split(strings.TrimSuffix(rec, "\x1f"), "\x1f")
+					// a call that fails never runs
+					if rec != "" && n.doubt == "" && n.Fail == "" && !slices.ContainsFunc(n.rows, func(r row) bool { return runs(r.args, argv) }) {
+						t.Errorf("%s ran %q, which no row of the %s reading of %q names: %v", sh, argv, name, c, n.rows)
+					}
 				}
 			}
 		}

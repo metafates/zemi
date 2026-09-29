@@ -327,17 +327,22 @@ command plus the redirect and env-assignment gates; heavily table-tested, extend
 touching it), and `perm.Store.CheckCommandFor`, the predicates on `perm.Normalized`, the ask hook
 and `alwaysChoice` (per segment, `Normalized.Rows`) all judge that one parse (`Request.Command`); a
 nested `sh -c` body, `eval` text or a heredoc body a shell may run is parsed again. The command
-is parsed as bash and as POSIX sh and every command either reading runs is judged, since `sh` is
-bash 3.2 on macOS and dash on Debian (DESIGN §9); text either shell reads otherwise than both
-parses (a carriage return, an undecoded `$'..'` escape, a `$( )` bash 3.2 closes early at a `)`
-in a heredoc body, an extended glob: sh runs `x` in `!(x)`, an `alias`, which sh expands in later
-lines, a bash-only construct the POSIX parser refuses where dash reads on, unlike those
-`dashStops` names) is
-`Normalized.doubtful`: it asks, and `Destructive` and `Programs` do not vouch for it. The POSIX
-reading parses a `;` for the `&` of `&>` and a bash-only `${...}` as a plain one, patched in
-place (`parse`), since dash reads them so. Each body is read once per top-level call (`walker.inner`),
-since both readings reach it. `TestRowsCoverShells` runs a sample under every sh, dash and bash found with a PATH of
-stubs and checks each program they ran is a segment. A heredoc body is commands unless every
+is read as the shell that runs it reads it (DESIGN §9). Where `proc.Shell` is dash it is parsed
+once as POSIX sh, and any parse error fails the call (`bashism`, naming the POSIX form of the
+bash-only syntax models write most, `posixForms`), as do `$'..'` (dash versions disagree on it),
+`[[` and `source`. Where it is sh, which may be bash, and for every body another shell runs, the
+text is parsed as bash and as POSIX sh (`normalizeAll` with `dash` false) and every command either
+reading runs is judged; text either shell reads otherwise than both parses (an undecoded `$'..'`
+escape, a `$( )` bash 3.2 closes early at a `)` in a heredoc body, an extended glob: sh runs `x`
+in `!(x)`, a bash-only construct the POSIX parser refuses where dash reads on, unlike those
+`dashStops` names) is `Normalized.doubtful`, and so, in every reading, are a carriage return and
+an `alias`, which sh expands in later lines: it asks, and `Destructive` and `Programs` do not
+vouch for it. The fallback's POSIX reading parses a `;` for the `&` of `&>` and a bash-only
+`${...}` as a plain one, patched in place (`parse`), since dash reads them so. Each body is read
+once per top-level call (`walker.inner`), since both readings reach it. `TestRowsCoverShells` runs
+a sample under every sh, dash and bash found with a PATH of stubs and checks each program they
+ran is a segment of every reading that judges text for that shell (under dash: the two readings,
+dash's own and the POSIX half alone). A heredoc body is commands unless every
 program in the command runs none of it (`inert`: a `dataReader` or a plain git builtin), and
 an unquoted one is read with the backslashes the shell drops removed; leading assignments' values
 are read in place of `$NAME` where the words render (never into a heredoc delimiter). An assignment
