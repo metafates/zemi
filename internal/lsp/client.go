@@ -301,6 +301,8 @@ func (c *Client) syncFile(key, uri, languageID string) (int, error) {
 	// rust-analyzer (1.89 at least) panics and exits on a save of a file it
 	// opened while it scans the workspace, and checks the whole workspace once
 	// it is quiescent again anyway, so a loading server gets no save.
+	// NOTE: this is the last status the reader saw, so a save racing a new
+	// not-quiescent status still goes out; the startup scan's comes hundreds of ms early.
 	if !c.loading.Load() {
 		_ = c.notify("textDocument/didSave", map[string]any{"textDocument": map[string]any{"uri": uri}})
 	}

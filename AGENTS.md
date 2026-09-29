@@ -861,10 +861,10 @@ lua-language-server is installed.
   rust-analyzer reports nothing until one exists; without a backend it (`RunsCode`) does not
   start at all. A `.lua` file of the user's config or a local plugin gets lua-language-server
   (`zemiLua`, DESIGN §9) in any project; it is ready only once a symbol request answers, since it
-  never checks a file opened while it loads. rust-analyzer gets no save while its
-  `experimental/serverStatus` says it is not quiescent: it exits on the save of a file
-  opened during its workspace scan, and checks the whole workspace once quiescent. A file
-  outside the repository goes to no other server.
+  never checks a file opened while it loads. A file outside the repository goes to no other
+  server. rust-analyzer gets no save while its `experimental/serverStatus` says it is not
+  quiescent: it exits on the save of a file opened during its workspace scan, and checks the
+  whole workspace once quiescent.
   A reload stops only the servers whose definition it changed or dropped or whose start failed (`lspStopChanged`), like
   the MCP replay, so a write to config or a plugin leaves them warm. The `diagnostics` and `lsp` tools leave the tool set when `lspDefs` is empty,
   so an untrusted project does not carry their schemas every step. A server re-reads a file

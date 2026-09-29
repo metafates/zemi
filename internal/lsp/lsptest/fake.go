@@ -3,8 +3,7 @@
 // every known document is republished on each change (as servers do for a
 // package), and before publishing the server asks the client for its
 // configuration. Like rust-analyzer, it reports itself loading through
-// experimental/serverStatus until a document changes, and exits on a save
-// that arrives while it loads.
+// experimental/serverStatus until a document changes.
 package lsptest
 
 import (
@@ -254,9 +253,6 @@ func Serve(in io.Reader, out io.Writer) {
 		case "exit":
 			return
 		case "textDocument/didSave":
-			if loading {
-				return
-			}
 			saves++
 		case "fake/saves":
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": saves})
