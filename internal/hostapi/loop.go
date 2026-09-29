@@ -145,8 +145,7 @@ func (h *Host) fireLoop(l *Loop) {
 	cmd := strings.HasPrefix(l.Prompt, "/")
 	var scope *turnScope
 	if !cmd {
-		ag.active = true
-		scope = h.beginScope()
+		scope = h.claim()
 	}
 	ag.mu.Unlock()
 	h.refresh()

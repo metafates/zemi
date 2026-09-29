@@ -192,8 +192,7 @@ func TestPlanFollowupNudgesOnce(t *testing.T) {
 	}
 	// a submit that claimed the agent first is left alone
 	h.agents.mu.Lock()
-	h.agents.active = true
-	scope := h.beginScope()
+	scope := h.claim()
 	h.agents.mu.Unlock()
 	h.planFollowup(runner, h.nudgesPlan(planner))
 	h.endScope(scope)
@@ -284,8 +283,7 @@ func TestNextTurnHandsOffApprovedPlan(t *testing.T) {
 		}}, nil
 	}
 	h.agents.mu.Lock()
-	h.agents.active = true
-	scope := h.beginScope()
+	scope := h.claim()
 	h.agents.mu.Unlock()
 	h.setPlanApproved(implementNow)
 	if next, text := h.nextTurn(scope, nil); next != nil || text != "" {

@@ -531,16 +531,14 @@ func (h *Host) AgentSend(text string) error {
 	}
 	// Held from here on: building the prompt waits on the interpreter, and a
 	// send arriving meanwhile must queue instead of starting a second turn.
-	ag.active = true
-	scope := h.beginScope()
+	scope := h.claim()
 	ag.mu.Unlock()
 	return h.sendClaimed(scope, text)
 }
 
 // drainQueue starts a turn for what a background agent's report left queued
 // (it arrived under a claim that ran no turn, the plan popup's) once none is
-// left and no turn holds the agent. Runs on the run's goroutine: the send
-// waits on the interpreter.
+// left and no turn holds the agent.
 func (h *Host) drainQueue() {
 	ag := h.agents
 	ag.mu.Lock()
@@ -548,14 +546,9 @@ func (h *Host) drainQueue() {
 		ag.mu.Unlock()
 		return
 	}
-	text := joinQueue(ag.steering)
-	ag.steering = nil
-	ag.active = true
-	scope := h.beginScope()
+	scope := h.claim()
 	ag.mu.Unlock()
-	if err := h.sendClaimed(scope, text); err != nil {
-		h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
-	}
+	h.handOff(scope)
 }
 
 // sendClaimed starts a turn for text on an agent already claimed with scope.
@@ -607,22 +600,28 @@ func (h *Host) sendClaimed(scope *turnScope, text string) error {
 	return nil
 }
 
-// beginScope starts a turn scope (ag.mu held). It is stored when the agent
-// is claimed, so a cancel arriving before the turn goroutine runs is kept.
-func (h *Host) beginScope() *turnScope {
+// claim holds the agent with a fresh turn scope (ag.mu held). The scope is
+// stored with the claim, so a cancel arriving before the turn goroutine runs
+// is kept.
+func (h *Host) claim() *turnScope {
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &turnScope{ctx: ctx, cancel: cancel}
+	h.agents.active = true
 	h.turn.Store(t)
 	return t
 }
 
+// release lets the agent go idle (ag.mu held).
+func (h *Host) release() {
+	h.agents.active = false
+	h.turn.Store(nil)
+}
+
 // endScope releases the agent claimed with scope.
 func (h *Host) endScope(scope *turnScope) {
-	ag := h.agents
-	ag.mu.Lock()
-	ag.active = false
-	h.turn.Store(nil)
-	ag.mu.Unlock()
+	h.agents.mu.Lock()
+	h.release()
+	h.agents.mu.Unlock()
 	scope.cancel()
 }
 
@@ -638,8 +637,7 @@ func (h *Host) handOff(scope *turnScope) {
 		ag.steering = nil
 	}
 	if queued == "" {
-		ag.active = false
-		h.turn.Store(nil)
+		h.release()
 	}
 	ag.mu.Unlock()
 	if queued == "" {
@@ -740,14 +738,13 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	var next *turnScope
 	switch {
 	case text == "" && goal == nil:
-		ag.active = false
-		h.turn.Store(nil)
+		h.release()
 	case handoff:
-		next = h.beginScope() // sendClaimed begins the turn
+		next = h.claim() // sendClaimed begins the turn
 	default:
 		ag.beginTurn()
 		ag.checkingGoal = goal != nil
-		next = h.beginScope()
+		next = h.claim()
 	}
 	ag.mu.Unlock()
 	done.cancel()
@@ -796,8 +793,7 @@ func (h *Host) continueGoal(next *turnScope, g *Goal) (*turnScope, string) {
 		ag.goalRuns++
 	}
 	if note == "" {
-		ag.active = false
-		h.turn.Store(nil)
+		h.release()
 	} else {
 		ag.beginTurn()
 	}
@@ -1642,9 +1638,8 @@ func (h *Host) Btw(question string) error {
 			ag.mu.Unlock()
 			return errors.New("a turn is running; ask after it")
 		}
-		ag.active = true
 		ag.beginTurn()
-		scope := h.beginScope()
+		scope := h.claim()
 		ag.mu.Unlock()
 		h.GoSafe("btw", func() {
 			defer h.endTurnAfterPanic()

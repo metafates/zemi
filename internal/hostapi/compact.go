@@ -238,9 +238,8 @@ func (h *Host) CompactNow(focus string) error {
 		h.Notify(slog.LevelWarn, "Nothing to compact yet", "")
 		return nil
 	}
-	ag.active = true
 	ag.beginTurn()
-	scope := h.beginScope() // esc stops the summary call
+	scope := h.claim() // esc stops the summary call
 	ag.mu.Unlock()
 	h.refresh()
 	h.GoSafe("compaction", func() {

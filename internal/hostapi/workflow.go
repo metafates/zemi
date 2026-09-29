@@ -1643,8 +1643,7 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) error {
 		ag.mu.Unlock()
 		return errors.New("a turn is running; start the workflow after it")
 	}
-	ag.active = true
-	scope := h.beginScope()
+	scope := h.claim()
 	ag.mu.Unlock()
 	h.GoSafe("workflow", func() {
 		defer h.endTurnAfterPanic()

@@ -570,8 +570,7 @@ func TestSteeringQueue(t *testing.T) {
 	claim := func() *turnScope {
 		h.agents.mu.Lock()
 		defer h.agents.mu.Unlock()
-		h.agents.active = true
-		return h.beginScope()
+		return h.claim()
 	}
 	scope := claim()
 
@@ -1023,7 +1022,10 @@ func TestTodoNag(t *testing.T) {
 		seedSession(t, h)
 		set(h, both)
 		engage(h, todoNagAfter) // a StopTurn step (a dismissed question) past the threshold
-		if next, text := h.nextTurn(h.beginScope(), nil); next != nil || text != "" || h.AgentActive() {
+		h.agents.mu.Lock()
+		scope := h.claim()
+		h.agents.mu.Unlock()
+		if next, text := h.nextTurn(scope, nil); next != nil || text != "" || h.AgentActive() {
 			t.Fatalf("the nag started a turn: %q", text)
 		}
 		if got := takeNag(h); got != "" {

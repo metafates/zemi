@@ -113,8 +113,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 		return 0, Usagef("a turn is running; esc twice interrupts it")
 	}
 	// claimed like a turn, so no send starts on the history being cut
-	ag.active = true
-	sid, scope := ag.sessionID, h.beginScope()
+	sid, scope := ag.sessionID, h.claim()
 	ag.mu.Unlock()
 	defer h.handOff(scope)
 	// a detached run writing files would undo the restore right after it
