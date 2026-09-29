@@ -164,7 +164,8 @@ sandbox probe included. The test zemi runs on a fake `lua.Clock` only `test.adva
 `WholeTasks` so a driver waits for what it started, and is quiet when no `GoSafe` goroutine runs
 (`goes`) and no timer is due. `luaGate` asks `PluginTest.reply` first about a call that does IO:
 only a `test.stub` reply passes, standing in for the transport at the call site, and a `false`
-reply raises the missing-rule error whatever rules exist. `zemi.test` exists only there
+reply raises the missing-rule error whatever rules exist. The assertions are the builtin module
+`zemi.test.assert`. `zemi.test` exists only there
 (`TestNamespaceVersion`); `TestPluginsTest` runs it over `testdata/plugins/demo`.
 
 A first run writes a fully commented starter `init.lua` (`config.Dirs.Ensure`), and a TUI

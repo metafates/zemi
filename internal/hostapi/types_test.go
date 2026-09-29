@@ -227,7 +227,7 @@ func typesSource(t *testing.T) string {
 func bootedNamespaces(t *testing.T, other bool) map[string][]string {
 	t.Helper()
 	log := slog.New(slog.DiscardHandler)
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
 	var out map[string][]string
 	capture := lua.BootStep{Name: "capture", Run: func(_ context.Context, _ *lua.Runtime, g *lua.Generation) error {

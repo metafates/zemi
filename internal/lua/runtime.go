@@ -525,7 +525,7 @@ func (r *Runtime) installRequire(gen *Generation) {
 	L := gen.L
 	gen.SB.SetRequire(L.NewClosure(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		val, err := r.requireModule(gen, L, name)
+		val, err := r.Require(gen, L, name)
 		if err != nil {
 			L.RaiseError("require: %v", err)
 			return 0
@@ -535,8 +535,9 @@ func (r *Runtime) installRequire(gen *Generation) {
 	}))
 }
 
-// L is the thread calling require, whose stack names the requiring file.
-func (r *Runtime) requireModule(gen *Generation, L *glua.LState, name string) (glua.LValue, error) {
+// Require is require(name) called on thread L, whose stack names the
+// requiring file.
+func (r *Runtime) Require(gen *Generation, L *glua.LState, name string) (glua.LValue, error) {
 	if ns := gen.SB.LookupPath(name); ns != glua.LNil {
 		return ns, nil
 	}
@@ -838,7 +839,7 @@ func RequireStep(module string) BootStep {
 	return BootStep{
 		Name: "require " + module,
 		Run: func(ctx context.Context, r *Runtime, g *Generation) error {
-			_, err := r.requireModule(g, g.L, module)
+			_, err := r.Require(g, g.L, module)
 			return err
 		},
 	}
