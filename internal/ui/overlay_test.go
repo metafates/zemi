@@ -972,6 +972,25 @@ func TestOverlaySegmentLabel(t *testing.T) {
 	}
 }
 
+// TestOverlayTailLabel: a tail row too wide for the box keeps its end, with
+// its desc beside or under it, at every width.
+func TestOverlayTailLabel(t *testing.T) {
+	path := "~/some very/long/parent/directory/names/that/go/on/and/on/alpha"
+	for _, w := range []int{40, 80, 120} {
+		app, _ := bootAgentApp(t, w, 20)
+		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Items: []any{
+			map[string]any{"text": path, "tail": true, "desc": "undecided · 1 session · 5m ago", "key": "current"},
+		}})
+		var text string
+		for _, r := range app.overlayBox(&app.overlays[0], w, 20) {
+			text += plainSegs(r) + "\n"
+		}
+		if !strings.Contains(text, "…") || !strings.Contains(text, "on/alpha") || !strings.Contains(text, "5m ago") {
+			t.Fatalf("at %d cells:\n%s", w, text)
+		}
+	}
+}
+
 // TestOverlayBodyLines: a body of lines keeps its highlights and nothing
 // else, y copies its text, and markdown reaches the detail views.
 func TestOverlayBodyLines(t *testing.T) {
@@ -996,14 +1015,14 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", body = { 1 } }), "a body that
 func TestOverlayItemFields(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 16)
 	runLua(t, app, `zemi.ui.overlay.open({ id = "f", items = { { text = "t", desc = "d", key = "k", section = "s", detail = "x", verb = "v",
-  hotkey = "h", fill = "f", copy = "c", run = "r", id = "i", danger = true, on = false, locked = true, actions = { "a" }, fields = { { "a", "b" } } } } })
-for _, bad in ipairs({ { text = 1 }, { on = "yes" }, { actions = "x" }, { actions = { { id = 1 } } }, { fields = { "x" } }, { danger = "yes" } }) do
+  hotkey = "h", fill = "f", copy = "c", run = "r", id = "i", danger = true, tail = true, on = false, locked = true, actions = { "a" }, fields = { { "a", "b" } } } } })
+for _, bad in ipairs({ { text = 1 }, { on = "yes" }, { actions = "x" }, { actions = { { id = 1 } } }, { fields = { "x" } }, { danger = "yes" }, { tail = 1 } }) do
   assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { bad } }), "a field of the wrong type must raise")
 end
 assert(pcall(zemi.ui.overlay.open, { id = "x", items = { { id = 1 } } }), "a list item's id is its own data")`)
 	want := hostapi.OverlayItem{
 		Text: "t", Desc: "d", Key: "k", Section: "s", Detail: "x", Verb: "v", Hotkey: "h", Fill: "f", Copy: "c",
-		Run: "r", ID: "i", Danger: true, Switch: true, Locked: true, Actions: []any{"a"}, Fields: []hostapi.Field{{Name: "a", Value: "b"}},
+		Run: "r", ID: "i", Danger: true, Tail: true, Switch: true, Locked: true, Actions: []any{"a"}, Fields: []hostapi.Field{{Name: "a", Value: "b"}},
 	}
 	if got := app.overlays[0].items[0].row; !reflect.DeepEqual(got, want) {
 		t.Fatalf("row %+v", got)

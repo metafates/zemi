@@ -313,7 +313,6 @@ func (h *Host) openProjects(ui UIHooks, refresh bool, confirm string) {
 	ui.OpenOverlay(Overlay{
 		ID: "projects", Title: "Projects", Origin: lua.OriginBuiltin, Items: items, Selected: sel,
 		Anchor: OverlayBottomLeft, Refresh: refresh, Confirm: confirm,
-		Empty: "No projects yet. Start zemi in a repository and it appears here.",
 	})
 }
 
@@ -329,12 +328,7 @@ func (h *Host) projectItems() (items []any, sel int) {
 		if !p.Opened.IsZero() {
 			desc = append(desc, ago(p.Opened.UnixMilli()))
 		}
-		// a long path keeps its tail, where the name that tells rows apart is
-		path := []rune(sanitize.String(TildePath(p.Root)))
-		if len(path) > 60 {
-			path = append([]rune("…"), path[len(path)-59:]...)
-		}
-		item := map[string]any{"text": string(path), "desc": strings.Join(desc, " · "), "fields": h.projectFields(p)}
+		item := map[string]any{"text": sanitize.String(TildePath(p.Root)), "tail": true, "desc": strings.Join(desc, " · "), "fields": h.projectFields(p)}
 		switch {
 		case p.Root == h.trustRoot():
 			item["key"] = "current"
@@ -389,6 +383,6 @@ func (h *Host) projectFields(p Project) []any {
 	if p.StatsErr != nil {
 		errText = p.StatsErr.Error()
 	}
-	return fieldList("trust", p.TrustWord(), "sessions", sessions, "memories", memories, "recipes", recipes,
+	return fieldList("path", sanitize.String(TildePath(p.Root)), "trust", p.TrustWord(), "sessions", sessions, "memories", memories, "recipes", recipes,
 		"allowed", strings.Join(allowed, ", "), "data", TildePath(state), "error", errText)
 }

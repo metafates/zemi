@@ -972,6 +972,7 @@ function zemi.event.stats() end
 ---@field on? boolean draws the on/off switch in the tag's place
 ---@field locked? boolean draws the switch on with nothing to switch
 ---@field danger? boolean cannot be undone: drawn in Danger, and the first enter only arms it (never the open of a row with a detail view); the footer then says to press it again, and any other key disarms
+---@field tail? boolean a text too wide for its column is cut from the left, keeping its end: a path's name
 ---@field section? string a change of section starts with a header row; the filter matches it too
 ---@field detail? string body of the detail view
 ---@field fields? zemi.OverlayField[] the detail view's facts, set as a table above detail

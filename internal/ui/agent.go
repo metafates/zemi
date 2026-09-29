@@ -406,6 +406,19 @@ func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	return out
 }
 
+// tailSegs cuts segs wider than w cells from the left behind an ellipsis,
+// keeping the end, where a path's name is.
+func tailSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
+	sw := hostapi.SegsWidth(segs)
+	if w < 2 || sw <= w {
+		return truncateSegs(segs, w)
+	}
+	out := dropCells(segs, sw-w+1)
+	dots := out[0]
+	dots.Text = "…"
+	return append([]hostapi.Segment{dots}, out...)
+}
+
 // listItem is one selectable entry of a list.
 type listItem struct {
 	label, desc string
@@ -459,10 +472,13 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 	// rows at maxW cells; the width depends on the bar, which the row count
 	// decides, so a list that overflows is built again a cell narrower
 	build := func(maxW int) {
-		labelW, keyW := 0, 0
+		labelW, keyW, tailDesc := 0, 0, 0
 		for _, it := range all {
 			if it.desc != "" { // a row with no description needs no column
 				labelW = max(labelW, ansi.StringWidth(it.label))
+			}
+			if it.desc != "" && it.row.Tail {
+				tailDesc = max(tailDesc, ansi.StringWidth(it.desc))
 			}
 			if it.key.Text != "" {
 				keyW = max(keyW, 2+ansi.StringWidth(it.key.Text))
@@ -474,6 +490,9 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 		if maxW > 0 {
 			// the marker and the gap before a description take 2 cells each
 			labelW = max(min(labelW, maxW-4-keyW), 1)
+			if tailDesc > 0 { // a tail label cut further keeps its name, so it gives way first
+				labelW = max(min(labelW, maxW-4-keyW-tailDesc), min(labelW, 20))
+			}
 		}
 		rows, selTop, bandTop, selEnd = nil, 0, 0, 0
 		section := ""
@@ -515,9 +534,17 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 				}
 				row = styled(matchSegs(row, it.match, i == sel))
 				descW := -1 // no cut
-				if maxW > 0 && it.desc != "" && !under {
-					row = ellipsizeSegs(row, labelW)
-					descW = maxW - 4 - labelW - map[bool]int{true: 2 + ansi.StringWidth(it.key.Text)}[it.key.Text != ""]
+				kw := map[bool]int{true: 2 + ansi.StringWidth(it.key.Text)}[it.key.Text != ""]
+				cut := ellipsizeSegs
+				if it.row.Tail {
+					cut = tailSegs
+				}
+				switch {
+				case maxW > 0 && it.desc != "" && !under:
+					row = cut(row, labelW)
+					descW = maxW - 4 - labelW - kw
+				case maxW > 0 && it.row.Tail:
+					row = tailSegs(row, maxW-2-kw) // before the row's cut, which keeps the start
 				}
 				if it.desc != "" && !under && (descW < 0 || descW > 2) {
 					desc := []hostapi.Segment{{Text: it.desc, HL: "Host:Hint"}}
