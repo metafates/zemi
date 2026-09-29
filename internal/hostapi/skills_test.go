@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"charm.land/fantasy"
@@ -232,21 +233,21 @@ func TestSkillCommands(t *testing.T) {
 				lua.LoadFileStep("init", filepath.Join(h.Dirs.ConfigHome, "init.lua"), lua.OriginUser),
 				h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
 			}
+			var reloads atomic.Int32
+			h.SetReload(func() error {
+				defer reloads.Add(1)
+				return h.ForceReload(context.Background(), steps)
+			}, nil)
 			if err := r.Boot(context.Background(), steps); err != nil {
 				t.Fatal(err)
 			}
-			ui := &fakeUI{onReload: func() {
-				if err := h.ForceReload(context.Background(), steps); err != nil {
-					t.Error(err)
-				}
-			}}
-			h.SetUIHooks(ui)
+			h.SetUIHooks(&fakeUI{})
 			for i, on := range c.toggle {
 				if err := h.setSkillEnabled("x", on); err != nil {
 					t.Fatal(err)
 				}
 				waitFor(t, func() error {
-					if n := ui.reloads.Load(); n != int32(i+1) {
+					if n := reloads.Load(); n != int32(i+1) {
 						return fmt.Errorf("reloads=%d", n)
 					}
 					return nil
