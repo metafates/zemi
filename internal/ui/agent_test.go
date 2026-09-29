@@ -108,17 +108,35 @@ func BenchmarkStreamingFrame(b *testing.B) {
 	}
 }
 
-// TestColdChatRender: the first chat render of a long resumed session shows
-// its latest messages and leaves the rest to the renders it asks for, each
-// of which renders at least one message, so none nears the 1s ceiling that
-// cancels a UI handler.
-func TestColdChatRender(t *testing.T) {
-	app, host := bootAgentApp(t, 140, 40)
-	const turns = 500
+// seedResumedChat is a long session whose units take the chat's budget to
+// render.
+func seedResumedChat(host *hostapi.Host, turns int) {
 	for i := range turns {
 		host.AppendMessage("user", fmt.Sprintf("question %d", i))
 		appendReply(host, strings.Repeat(fmt.Sprintf("A paragraph of reply %d with `code` and **bold** that wraps across the chat width.\n\n", i), 28), hostapi.TurnStat{})
 	}
+}
+
+// BenchmarkColdChatRender is the first chat render of a long resumed
+// session, which the chat's budget bounds.
+func BenchmarkColdChatRender(b *testing.B) {
+	app, host := bootAgentApp(b, 140, 40)
+	seedResumedChat(host, 500)
+	chat := host.Widgets.Get("chat")
+	for b.Loop() {
+		host.ToggleReasoning() // every unit renders again
+		if _, _, err := host.RenderWidget(b.Context(), chat, 138, 30, app.uiState()); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// TestColdChatRender: the first chat render of a long resumed session shows
+// its latest message and leaves the rest to the renders it asks for.
+func TestColdChatRender(t *testing.T) {
+	app, host := bootAgentApp(t, 140, 40)
+	const turns = 500
+	seedResumedChat(host, turns)
 	chat := host.Widgets.Get("chat")
 	var lines [][]hostapi.Segment
 	for n := 0; n == 0 || !strings.Contains(plainSegs(lines[0]), "question 0"); n++ {
@@ -129,6 +147,11 @@ func TestColdChatRender(t *testing.T) {
 		}
 		if len(lines) == 0 || n == 0 && !more || n > 2*turns {
 			t.Fatalf("render %d: %d lines, more %v", n, len(lines), more)
+		}
+		for _, latest := range []string{"question 499", "reply 499 "} {
+			if n == 0 && !slices.ContainsFunc(lines, func(l []hostapi.Segment) bool { return strings.Contains(plainSegs(l), latest) }) {
+				t.Fatalf("the first render leaves out %q", latest)
+			}
 		}
 	}
 
