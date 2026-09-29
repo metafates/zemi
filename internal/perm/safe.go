@@ -432,7 +432,7 @@ func safeArgs(args []string, pathOK func(pos int, flag, a string) bool) bool {
 func (n Normalized) ReadsSecret(secret func(path string) bool) bool {
 	found := false
 	for _, f := range n.Args {
-		if len(f) == 0 || !readOnlyPrograms[filepath.Base(f[0])] {
+		if len(f) == 0 || !readOnlyPrograms[ProgramName(f[0])] {
 			continue
 		}
 		use, _, _ := argUses(f)
@@ -757,8 +757,14 @@ func globOperand(args []string) bool {
 // runner reports a program Destructive looks past: a wrapper, or find and
 // fd, whose -exec runs what follows.
 func runner(prog string) bool {
-	prog = strings.ToLower(filepath.Base(prog))
+	prog = ProgramName(prog)
 	return WrapperPrograms[prog] || prog == "find" || prog == "fd"
+}
+
+// ProgramName is the name a command word is judged by: its base, lowercased,
+// since /bin/RM runs rm on a case-folding filesystem.
+func ProgramName(word string) string {
+	return strings.ToLower(filepath.Base(word))
 }
 
 // reserved are the shell words a segment may start with before its program:
@@ -829,7 +835,7 @@ var subcommandWord = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 // program, when the word there is shaped like one; -1 otherwise.
 func SubcommandAt(f []string) int {
 	i := Subcommand(f)
-	if len(f) == 0 || !SubcommandPrograms[strings.ToLower(filepath.Base(f[0]))] || i < 0 || !subcommandWord.MatchString(f[i]) {
+	if len(f) == 0 || !SubcommandPrograms[ProgramName(f[0])] || i < 0 || !subcommandWord.MatchString(f[i]) {
 		return -1
 	}
 	return i
@@ -854,7 +860,7 @@ var plainFlags = map[string][]string{
 // +toolchain or a flag known to take none. An unknown option may take the
 // next word (npm -w web test), which Subcommand then calls the subcommand.
 func LeadKnown(f []string, i int) bool {
-	plain := plainFlags[strings.ToLower(filepath.Base(f[0]))]
+	plain := plainFlags[ProgramName(f[0])]
 	for j := 1; j < i; j++ {
 		switch a := f[j]; {
 		case subcommandValues[a]:
@@ -891,7 +897,7 @@ func (n Normalized) GitWrites() string {
 			}
 		}
 		// xargs, find and fd hand git arguments nothing here sees
-		for len(f) > 1 && runner(f[0]) && !slices.Contains([]string{"xargs", "find", "fd"}, filepath.Base(f[0])) {
+		for len(f) > 1 && runner(f[0]) && !slices.Contains([]string{"xargs", "find", "fd"}, ProgramName(f[0])) {
 			if g, ok := stepRunner(f); ok {
 				f = g
 			} else {
@@ -899,7 +905,7 @@ func (n Normalized) GitWrites() string {
 			}
 		}
 		i := Subcommand(f)
-		if len(f) == 0 || filepath.Base(f[0]) != "git" || i < 0 {
+		if len(f) == 0 || ProgramName(f[0]) != "git" || i < 0 {
 			continue
 		}
 		sub, rest := f[i], f[i+1:]
@@ -1053,7 +1059,7 @@ func padOperands(args []string, pad string) bool {
 // repeats are the runners that run what they are handed once per input,
 // so a bare rm in their shell body deletes in bulk.
 func repeats(prog string) bool {
-	switch strings.ToLower(filepath.Base(prog)) {
+	switch ProgramName(prog) {
 	case "xargs", "find", "fd", "parallel":
 		return true
 	}
@@ -1087,7 +1093,7 @@ func (n Normalized) destructive(repeated bool, pad string) string {
 			if i > 0 && !runner(f[0]) {
 				break
 			}
-			name, rest := filepath.Base(w), f[i+1:]
+			name, rest := ProgramName(w), f[i+1:]
 			switch {
 			case name == "eval":
 				if why := Normalize(strings.Join(rest, " ")).destructive(repeated, ""); why != "" {
@@ -1192,8 +1198,7 @@ func segmentPrograms(f []string) (_ []Program, ok bool) {
 		f = f[1:]
 	}
 	for len(f) > 0 {
-		w, base := f[0], filepath.Base(f[0])
-		name := strings.ToLower(base)
+		w, base, name := f[0], filepath.Base(f[0]), ProgramName(f[0])
 		_, runs := runnerOpts[name]
 		switch {
 		case ShellWords[w]:

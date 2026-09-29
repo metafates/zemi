@@ -2,7 +2,6 @@ package perm
 
 import (
 	"path"
-	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -104,7 +103,7 @@ var runnerOpts = map[string][]string{
 
 // canonical is a segment as the program it runs: leading reserved words
 // dropped, runner prefixes (env, sudo, timeout 5, ...) stepped past, the
-// program by its base name and without the options before its first
+// program by its ProgramName and without the options before its first
 // operand, so "git push" also names "/usr/bin/git -C . push".
 // NOTE: best effort: a git alias (git -c alias.p=push p), a runner option
 // missing from runnerOpts or a program picked at run time still slips past.
@@ -117,14 +116,14 @@ func canonical(argv []string) string {
 	if i < 0 {
 		i = 1
 	}
-	return strings.Join(append([]string{filepath.Base(f[0])}, f[i:]...), " ")
+	return strings.Join(append([]string{ProgramName(f[0])}, f[i:]...), " ")
 }
 
 // stepRunner steps past the runnerOpts runner f starts with and the options
 // and values it takes (timeout 5, nice -n 5); ok is false when f starts with
-// none. The name folds like isShell's: Sudo runs sudo where names fold.
+// none.
 func stepRunner(f []string) (_ []string, ok bool) {
-	opts, ok := runnerOpts[strings.ToLower(filepath.Base(f[0]))]
+	opts, ok := runnerOpts[ProgramName(f[0])]
 	if !ok {
 		return f, false
 	}

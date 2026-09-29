@@ -368,8 +368,10 @@ and the stricter verdict holds (`cleanDotDot`), so `cat docs/*` does not allow i
 the shell could still expand into a climb (`{`, `$`, a glob after a leading dot) turns an allow
 into an ask (`expandsToDotDot`). A deny, ask or not_match rule also meets the segment's `perm.canonical` form
 (reserved words and runner prefixes like `env`, `sudo`, `timeout 5` stepped past, the program
-by base name, its leading options dropped), so `git -C . push` meets a `git push*` rule; an
-allow is judged as written, and a git alias still slips past (NOTE in the code).
+by `perm.ProgramName`, its leading options dropped), so `git -C . push` meets a `git push*` rule; an
+allow is judged as written, and a git alias still slips past (NOTE in the code). Every
+program lookup in perm and the always answer goes through `perm.ProgramName`, the base name
+lowercased, since `/bin/RM` runs rm on a case-folding filesystem.
 
 File tools (internal/tools/fs_tools.go): `write` and `edit` refuse a file the
 model has not read (outside the scratchpad), or one whose mtime moved since (`Pipeline.Seen`, per session; subagents get

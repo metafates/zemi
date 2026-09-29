@@ -3,7 +3,6 @@ package perm
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -641,11 +640,11 @@ func (n *Normalized) eat(sc *scanner) {
 	}
 }
 
-// program is the program a segment's words run, past reserved words and
+// program is the ProgramName a segment's words run, past reserved words and
 // runners (sudo tee), "" when none is named yet.
 func program(seg []string) string {
 	if f := stepRunners(ProgramWords(seg)); len(f) > 0 {
-		return f[0]
+		return ProgramName(f[0])
 	}
 	return ""
 }
@@ -798,10 +797,8 @@ func (n *Normalized) absorb(at int, inner Normalized) {
 	n.hidden = n.hidden || inner.hidden
 }
 
-// isShell judges a command word by its lowercased base: `/bin/bash` and,
-// on a case-folding filesystem, `BASH` run the same shell.
 func isShell(word string) bool {
-	switch strings.ToLower(filepath.Base(word)) {
+	switch ProgramName(word) {
 	case "sh", "bash", "zsh", "dash", "ksh", "ash":
 		return true
 	}

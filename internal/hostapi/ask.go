@@ -491,7 +491,7 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 		if !known {
 			words = f[i:]
 		}
-		if slices.ContainsFunc(words, func(w string) bool { return wrapperSubcommands[programName(f[0])+" "+w] }) {
+		if slices.ContainsFunc(words, func(w string) bool { return wrapperSubcommands[perm.ProgramName(f[0])+" "+w] }) {
 			return nil, false
 		}
 	}
@@ -500,13 +500,13 @@ func bashAlwaysPatterns(seg string) (patterns []string, ok bool) {
 	// command has no write path to re-ask on
 	// [[ and a builtin that sets variables by name evaluate a quoted
 	// subscript, where $(...) runs: "[[ *" would run any of those
-	if destructiveProgram(programName(f[0])) || f[0] == "[[" || perm.ShellState[f[0]] || perm.Normalize(seg).Destructive("") != "" {
+	if destructiveProgram(perm.ProgramName(f[0])) || f[0] == "[[" || perm.ShellState[f[0]] || perm.Normalize(seg).Destructive("") != "" {
 		return []string{seg}, true
 	}
 	p := commandPrefix(seg)
 	switch {
 	case p != "" && known:
-	case perm.SubcommandPrograms[programName(f[0])]:
+	case perm.SubcommandPrograms[perm.ProgramName(f[0])]:
 		// git --version and a bare git have no subcommand, and npm -w web test
 		// has none for sure; `git *` or `npm -w web *` would allow every one
 		return []string{seg}, true
@@ -587,13 +587,7 @@ var wrapperSubcommands = map[string]bool{
 }
 
 func wrapperProgram(prog string) bool {
-	return perm.WrapperPrograms[programName(prog)]
-}
-
-// programName is the name a command word is judged by: the pattern keeps
-// the word as written, so `/usr/bin/git push` still allows only git push.
-func programName(word string) string {
-	return strings.ToLower(filepath.Base(word))
+	return perm.WrapperPrograms[perm.ProgramName(prog)]
 }
 
 // destructivePrograms are programs that, with one more argument, can delete

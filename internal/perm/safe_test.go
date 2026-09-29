@@ -259,6 +259,7 @@ func TestDestructive(t *testing.T) {
 		{"rm -rf build", true},
 		{"rm -f x", true},
 		{"/bin/rm --recursive x", true},
+		{"RM -rf .", true},
 		{"cd x && git clean -fdx", true},
 		{"git -C sub clean -n", true},
 		{"find . -name '*.tmp' -delete", true},
@@ -384,6 +385,7 @@ func TestGitWrites(t *testing.T) {
 		writes bool
 	}{
 		{"git commit -m 'a\n\nb'", true},
+		{"GIT commit", true},
 		{"git -C sub add .", true},
 		{"cd x && git checkout -b f", true},
 		{"git stash", true},
@@ -526,6 +528,7 @@ func TestPrograms(t *testing.T) {
 		{"data heredoc runs its substitutions", "cat > n.txt <<EOF\nby $(whoami)\nEOF\ngo vet ./...", "", "cat whoami go vet"},
 		{"shell heredoc", "bash <<'EOF'\nrm -rf x\nEOF", "", "bash!runs code rm!deletes"},
 		{"data heredoc piped to a shell", "cat <<'EOF' | bash\nrm -rf x\nEOF", "", "cat bash!runs code rm!deletes"},
+		{"data heredoc piped to a shell in capitals", "cat <<'EOF' | BASH\nrm -rf x\nEOF", "", "cat BASH!runs code rm!deletes"},
 		{"data heredoc a shell runs later", "cat > x.sh <<'EOF'\nrm -rf x\nEOF\nbash x.sh", "", "cat rm!deletes bash!runs code"},
 		{"data heredoc piped to another language", "cat <<'EOF' | python3\nimport shutil\nEOF", "", "-"},
 		{"assigned substitution", "v=$(git rev-parse HEAD); echo $v", "", "git rev-parse echo"},
