@@ -1093,7 +1093,7 @@ func segmentPrograms(f []string) (_ []Program, ok bool) {
 		switch {
 		case ShellWords[w]:
 			return out, true
-		case w != "[[" && strings.ContainsAny(w, "$`*?[{"):
+		case w != "[[" && (strings.ContainsAny(w, "$`*?[{") || strings.Contains(w, "<(") || strings.Contains(w, ">(")):
 			return nil, false
 		case isShell(w) || name == "eval":
 			body, ok := shellBody(f[1:])

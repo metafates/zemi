@@ -1983,11 +1983,15 @@ provenance string.
   versions decode differently and which can spell any name), and a `$( )`
   or `<( )` bash 3.2 closes elsewhere (it finds the `)` by counting parens
   past quotes and comments, blind to heredoc bodies and case patterns, so
-  macOS sh runs `rm z` in `echo $(cat <<EOF` / `) ; rm z` / `EOF` / `)`).
-  The parser also reads a backslash ending a comment as a line
-  continuation, which no shell does; that backslash is blanked before the
-  parse. Known ceiling: a `sh` that is neither (zsh in sh emulation,
-  busybox ash, mksh) is judged by these two readings. A segment is a simple command's words as the program receives
+  macOS sh runs `rm z` in `echo $(cat <<EOF` / `) ; rm z` / `EOF` / `)`),
+  and an extended glob, which the parser reads whatever `extglob` says
+  while sh runs `x` in `!(x)`. The parser also reads a backslash ending a
+  comment as a line continuation, which no shell does; that backslash is
+  blanked before the parse. Known ceilings: a `sh` that is neither (zsh in
+  sh emulation, busybox ash, mksh) is judged by these two readings, and a
+  program word holding an expansion (`$X`, `rm$() -rf x`) names no program,
+  so no deny rule and no `Destructive` check sees what it runs; the sandbox
+  is the limit there. A segment is a simple command's words as the program receives
   them where they are static (quotes removed, `$'..'` decoded), an
   expansion kept as written; syntax (`if`, `do`, `done`, a function's
   name) is no segment; a command in a loop body or a while condition is

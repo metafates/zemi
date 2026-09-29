@@ -372,6 +372,7 @@ func TestDestructive(t *testing.T) {
 		{"rm -v x", false},
 		{"grep -rn rm Makefile", false},
 		{"echo rm -rf x", false},
+		{"!(rm -rf .)", true},
 		// a shell runs the lines before the one that does not parse
 		{"$SHELL <<'EOF'\nrm -rf *\n`\nEOF", true},
 		{"cat > Makefile <<'EOF'\na;; b:\n\trm -rf .\nEOF\nmake", true},
@@ -552,6 +553,7 @@ func TestPrograms(t *testing.T) {
 		{"assigned substitution", "v=$(git rev-parse HEAD); echo $v", "", "git rev-parse echo"},
 		{"dynamic program", "for c in ls pwd; do $c; done", "", "-"},
 		{"substitution as program", "$(which rm) -rf x", "", "-"},
+		{"process substitution in the program word", "bash -c 'rm<() -rf x'", "", "-"},
 		{"substitution behind a runner", "cat list | xargs $(which rm)", "", "-"},
 		{"substitution behind runner options", "timeout 5 $(echo rm) ; ls", "", "-"},
 		{"substitution as an argument", "sudo ls $(pwd)", "", "sudo ls pwd"},

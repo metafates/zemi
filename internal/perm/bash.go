@@ -939,7 +939,9 @@ func (w *walker) scan(s *syntax.Stmt) {
 			quoted = q
 			return false
 		case *syntax.ExtGlob:
+			// the parser reads one whatever extglob says: sh runs x in !(x)
 			n.expands = true
+			n.doubtful("an extended glob, which sh without extglob reads otherwise")
 		case *syntax.ArithmExp, *syntax.ArithmCmd, *syntax.LetClause, *syntax.CStyleLoop:
 			n.expands = true
 			w.arith(x)

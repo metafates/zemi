@@ -330,7 +330,7 @@ nested `sh -c` body, `eval` text or a heredoc body a shell may run is parsed aga
 is parsed as bash and as POSIX sh and every command either reading runs is judged, since `sh` is
 bash 3.2 on macOS and dash on Debian (DESIGN §9); text either shell reads otherwise than both
 parses (a carriage return, an undecoded `$'..'` escape, a `$( )` bash 3.2 closes early at a `)`
-in a heredoc body) is `Normalized.doubtful`: it asks, and `Destructive` and `Programs` do not vouch
+in a heredoc body, an extended glob: sh runs `x` in `!(x)`) is `Normalized.doubtful`: it asks, and `Destructive` and `Programs` do not vouch
 for it. `TestRowsCoverShells` runs a sample under every sh, dash and bash found with a PATH of
 stubs and checks each program they ran is a segment. A heredoc body is commands unless every
 program in the command runs none of it (`inert`: a `dataReader` or a plain git builtin), and
