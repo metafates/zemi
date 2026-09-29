@@ -1872,7 +1872,9 @@ provenance string.
   chrome (overlays and prompts) draws over everything,
   as do the completion and palette popups, which are not modal; while a
   modal is open everything outside the top box, plugin overlays and widget
-  regions too, is dimmed in a fixed host color; at any other time a plugin
+  regions too, is dimmed in a fixed host color, and a centered box keeps a
+  blank gutter column of its own each side plus one more, so no text
+  outside it runs up to its border; at any other time a plugin
   overlay carries a Go-stamped origin badge (`plugin:<name>`, `project:<file>`). While a box
   stays open its width and height only grow (a filter narrowing a menu,
   a question batch's tabs, a detail view, which opens at its list's size,
