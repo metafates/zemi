@@ -126,7 +126,7 @@ func (t *PluginTest) Step() lua.BootStep {
 				return fn(L)
 			})))
 		}
-		if err := g.SB.RegisterNamespace("zemi.test", tb, g.L.NewFunction(t.declare)); err != nil || t.file == "" {
+		if err := g.SB.RegisterNamespace("zemi.test", tb, callable(g.L, t.declare)); err != nil || t.file == "" {
 			return err
 		}
 		return r.EvalFileInline(ctx, g.L, t.file, lua.OriginPlugin)
@@ -205,7 +205,7 @@ func (t *PluginTest) Rel(s string) string {
 
 // declare is zemi.test(name, fn).
 func (t *PluginTest) declare(L *glua.LState) int {
-	name, fn := L.CheckString(2), L.CheckFunction(3)
+	name, fn := L.CheckString(1), L.CheckFunction(2)
 	if !t.h.RT.Booting() {
 		L.RaiseError("zemi.test: declare cases at the top level of the test file")
 	}

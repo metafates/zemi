@@ -29,6 +29,14 @@ func waitHandle(L *glua.LState, api string, done <-chan struct{}, timeout time.D
 	})
 }
 
+// callable is fn as a namespace's __call, which passes the table first.
+func callable(L *glua.LState, fn glua.LGFunction) *glua.LFunction {
+	return L.NewFunction(func(L *glua.LState) int {
+		L.Remove(1)
+		return fn(L)
+	})
+}
+
 // luaToGoChecked marshals the value at arg idx, raising a Lua error tagged
 // with the calling API on failure.
 func luaToGoChecked(L *glua.LState, idx int, api string) any {

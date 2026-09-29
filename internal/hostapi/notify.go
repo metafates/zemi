@@ -37,16 +37,6 @@ func (h *Host) notifyNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-func (h *Host) notifyCall(L *glua.LState) *glua.LFunction {
-	inner := h.notifyFn(slog.LevelInfo)
-	return L.NewFunction(func(L *glua.LState) int {
-		// __call passes the callable table first; drop it so the spec is
-		// argument 1.
-		L.Remove(1)
-		return inner(L)
-	})
-}
-
 func (h *Host) notifyFn(level slog.Level) glua.LGFunction {
 	return func(L *glua.LState) int {
 		v := luaToGoChecked(L, 1, "zemi.notify")

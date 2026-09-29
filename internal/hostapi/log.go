@@ -15,15 +15,15 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
-// logNamespace builds the zemi.log member table; logCall is the __call
-// dispatch so `zemi.log(msg)` = `zemi.log.info(msg)` (DESIGN §6.1).
+// logNamespace builds the zemi.log member table; zemi.log(msg) is
+// zemi.log.info(msg) (DESIGN §6.1).
 func (h *Host) logNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
-	tb.RawSetString("debug", L.NewFunction(h.logFn(slog.LevelDebug, 1)))
-	tb.RawSetString("info", L.NewFunction(h.logFn(slog.LevelInfo, 1)))
-	tb.RawSetString("warn", L.NewFunction(h.logFn(slog.LevelWarn, 1)))
-	tb.RawSetString("error", L.NewFunction(h.logFn(slog.LevelError, 1)))
+	tb.RawSetString("debug", L.NewFunction(h.logFn(slog.LevelDebug)))
+	tb.RawSetString("info", L.NewFunction(h.logFn(slog.LevelInfo)))
+	tb.RawSetString("warn", L.NewFunction(h.logFn(slog.LevelWarn)))
+	tb.RawSetString("error", L.NewFunction(h.logFn(slog.LevelError)))
 
 	// list() is the /messages ring: the log file is per launch and outside
 	// the read jails, so a widget reads the recent lines from here.
@@ -41,17 +41,12 @@ func (h *Host) logNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// logCall skips the table, which __call passes as the first argument.
-func (h *Host) logCall(L *glua.LState) *glua.LFunction {
-	return L.NewFunction(h.logFn(slog.LevelInfo, 2))
-}
-
-// logFn logs the message at arg first with an optional context table after it.
-func (h *Host) logFn(level slog.Level, first int) glua.LGFunction {
+// logFn logs the message with an optional context table after it.
+func (h *Host) logFn(level slog.Level) glua.LGFunction {
 	return func(L *glua.LState) int {
-		msg := L.CheckString(first)
+		msg := L.CheckString(1)
 		origin := string(h.RT.CurrentOrigin(L))
-		h.Log.Log(context.Background(), level, msg, logArgs(L, origin, first+1)...)
+		h.Log.Log(context.Background(), level, msg, logArgs(L, origin, 2)...)
 		h.RecordMessage(origin+" "+strings.ToLower(level.String()), msg)
 		return 0
 	}
