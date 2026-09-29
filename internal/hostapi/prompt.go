@@ -75,7 +75,8 @@ Most requests are small: find the code, read the part that matters, make the cha
 - Deliver the whole of what was asked, and in existing code nothing more: no cleanup around a fix, no features, abstractions, options, comments or docs nobody asked for. Match the style and libraries already here; confirm a library is used before using it.
 - Something new (a page, a demo, a document) is the opposite: make it complete and good-looking, in the form its name implies (a landing page is a web page, not a README section), with a real visual direction and the details a person would expect without asking.
 - Fix root causes. Read the whole error before changing approach, never repeat an identical failing call, and do not drop a sound approach after one failure. Do not fix unrelated bugs and failing tests; name one in a line if it matters.
-- Verify with the narrowest check that covers the change, from the project instructions or build files, and stop once it passes. Add no tooling the project lacks and no tests for a trivial change.
+- Verify with the one narrowest check that covers the change, from the project instructions or build files, and stop once it passes: no vet, lint or format run on top, no second run. Add no tooling the project lacks and no tests for a trivial change.
+- A question needs only the code that answers it: answer once you have read it, without surveying callers or related code.
 - Report results as they are: say so when a check failed or did not run. Never invent output or file contents, and never end a turn by promising to do something.
 
 # Asking the user
@@ -529,11 +530,17 @@ func (h *Host) environmentPrompt() string {
 	// the run's own pad goes in {Scratch}: a subagent's may be another
 	// session's
 	h.ensureScratch()
-	b.WriteString("{Project}{Scratch}")
+	b.WriteString("{Project}" + topLevel(h.Dirs.ProjectDir) + "{Scratch}")
 	if dir := h.recipesDir(); dir != "" && h.ProjectTrusted() {
 		fmt.Fprintf(&b, "Recipes: %s\n{Recipes}", dir)
 	}
-	b.WriteString(h.gitStatus())
+	status := h.gitStatus()
+	if !h.ProjectTrusted() {
+		// commit subjects are the repository's free text, which steers the model
+		// like its instruction files
+		status, _, _ = strings.Cut(status, recentCommits)
+	}
+	b.WriteString(status)
 	env = b.String()
 	ag.mu.Lock()
 	ag.env = env
@@ -541,7 +548,34 @@ func (h *Host) environmentPrompt() string {
 	return env
 }
 
-// gitStatusSection is the working tree listing for the environment prompt.
+const recentCommits = "\nRecent commits:\n"
+
+// topLevel lists the working directory's entries, so a session's first call
+// is not an ls: directories end in a slash, dot entries and secret-shaped
+// names are left out.
+func topLevel(dir string) string {
+	entries, _ := os.ReadDir(dir)
+	var names []string
+	for _, e := range entries {
+		if name := e.Name(); !strings.HasPrefix(name, ".") && !perm.PathIsStrictSecret(name) {
+			if e.IsDir() {
+				name += "/"
+			}
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	more := ""
+	if extra := len(names) - 40; extra > 0 {
+		more, names = fmt.Sprintf(" and %d more", extra), names[:40]
+	}
+	return "Top level: " + strings.Join(names, " ") + more + "\n"
+}
+
+// gitStatusSection is the working tree listing and the latest commits for
+// the environment prompt.
 // h.gitStatus memoizes it for the process and boot warms it in the
 // background: run from the send it would cost the first token whatever
 // git status costs in this repository.
@@ -554,7 +588,11 @@ func (h *Host) gitStatusSection(dir string) string {
 	if len(lines) > 21 {
 		lines = append(lines[:21], fmt.Sprintf("... and %d more", len(lines)-21))
 	}
-	return "Git status at startup (may be outdated):\n" + strings.Join(lines, "\n")
+	status := "Git status at startup (may be outdated):\n" + strings.Join(lines, "\n")
+	if log, err := h.git(dir, "log", "--oneline", "--no-decorate", "-5"); err == nil && log != "" {
+		status += recentCommits + strings.TrimRight(log, "\n")
+	}
+	return status
 }
 
 // instructionSent reports whether this session already carried p, and
