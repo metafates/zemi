@@ -1819,7 +1819,9 @@ provenance string.
   marked names first, two rows at most and the rest counted as `+N more`; when
   the parse cannot vouch for the list (a program a substitution or a variable
   picks, a heredoc another language reads) it says `unknown: read the command`;
-  a heredoc `cat`, `tee` or another data reader reads adds only its substitutions.
+  a heredoc `cat`, `tee` or another data reader reads adds only its substitutions
+  when no shell or interpreter in the command could run it (`cat <<EOF | sh`
+  lists the body's programs, `cat <<EOF | python3` is `unknown`).
   Then the command, diff or input, then the choices, a vertical list with their
   keys, each label saying how long and a dim column saying what it allows:
   `Yes` (`y`, or `o`), `Yes, this session` (`a`, only

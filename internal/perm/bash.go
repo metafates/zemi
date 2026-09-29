@@ -40,12 +40,13 @@ type Normalized struct {
 	// hidden marks a program no segment names, so Programs lists none: one a
 	// substitution's output or a gated assignment picks, words after a
 	// substitution inside one word, arithmetic, an array, a heredoc body a
-	// program other than a shell or a dataReader reads, or quoting the
-	// scanner cannot place.
+	// program other than a shell or a dataReader reads (a dataReader's too
+	// when another language runs in the command), or quoting the scanner
+	// cannot place.
 	hidden bool
 	// shown are the rows Programs lists when a heredoc makes them differ
-	// from Args: a dataReader's body runs only its substitutions, though
-	// the rules judge it as commands.
+	// from Args: a dataReader's body runs only its substitutions while
+	// nothing in the command runs code, though the rules judge it as commands.
 	shown [][]string
 }
 
@@ -574,7 +575,8 @@ func readRedirectOp(rs []rune, i int) (string, int) {
 // unquoted one's substitutions run. Its segments go where the body is.
 // NOTE: the command is judged whole, so one other program (bash x.sh) makes
 // every body a script, and a body with an open quote then fails the call.
-// Programs names what runs by the body's reader instead (shown).
+// Programs names what runs by the body's reader instead (shown), while no
+// shell or interpreter in the command could run a data reader's body.
 func (n *Normalized) eat(sc *scanner) {
 	var seg []string
 	type doc struct {
@@ -623,6 +625,13 @@ func (n *Normalized) eat(sc *scanner) {
 		n.Fail = "a quote or parenthesis is not closed"
 	}
 	shell := n.readsScript()
+	// a data reader's body is data only while nothing in the command can run
+	// it: cat <<EOF | sh, or cat > x.sh <<EOF then bash x.sh
+	code := slices.ContainsFunc(n.Args, func(f []string) bool { return WrapperPrograms[program(f)] })
+	foreign := slices.ContainsFunc(n.Args, func(f []string) bool {
+		p := program(f)
+		return p != "" && !slices.Contains(dataReaders, p) && !isShell(p)
+	})
 	if len(docs) > 0 {
 		n.shown = slices.Clone(n.Args)
 	}
@@ -635,11 +644,14 @@ func (n *Normalized) eat(sc *scanner) {
 			body = substitutions(d.text)
 		}
 		show := body
+		data := slices.Contains(dataReaders, d.reader)
 		switch {
 		case isShell(d.reader):
-		case slices.Contains(dataReaders, d.reader) && d.quoted:
+		case data && code: // listed as the script it may be, unless another language reads it
+			show.hidden = foreign
+		case data && d.quoted:
 			show = Normalized{}
-		case slices.Contains(dataReaders, d.reader):
+		case data:
 			show = substitutions(d.text)
 		default: // a body another program reads (python3 - <<EOF) is its code
 			show.hidden = true
