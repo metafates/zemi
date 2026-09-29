@@ -432,7 +432,7 @@ and never the shared system temp dir, `GOCACHE` per trust root, the project writ
 it is trusted, outside zemi's own dirs and on a backend that can protect paths inside it
 (`Backend.EnforcesProtect`), `.git`, `.agents` and every `PATH` dir under a write root read-only
 because zemi runs git, sh and servers unconfined by name, home credential paths hidden (`homes`),
-the pad outside the secret shapes (`Policy.Pad`), and a local plugin's code readable back
+the secret shapes hidden in the pad too (a command can move a directory there), and a local plugin's code readable back
 (`plugin.Code`, `Policy.Read`, `Policy.List`) so `zemi plugins test` runs confined. The
 repo's `.agents/worktrees` (`Dirs.WorktreesDir`) is a write root of its own, ignored by the `/*`
 in its own `.gitignore` (`Dirs.WorktreesIgnore`, written only when missing), with each
@@ -780,7 +780,7 @@ lua-language-server is installed.
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. It is `TMPDIR`, `TMP` and
   `TEMP` in every command the model starts, confined or not (`Pipeline.childEnv`; the user's
   `!command` keeps the user's). `Pipeline.Check` allows reads and writes there that no rule
-  decided, a read-only agent's included, a secret-shaped name too; `write`
+  decided, a read-only agent's included, but a secret-shaped name (`tools.PadSecret`); `write`
   and `edit` need no prior read there (the stale check stays), a pad write is never
   checkpointed, and `Destructive` lets an `rm` whose every operand is below the pad
   (`$TMPDIR/...` or its literal path) settle. A file tool path starting with `$`, `~` or

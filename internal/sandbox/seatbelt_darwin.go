@@ -169,11 +169,7 @@ func profile(p Policy) (string, []string) {
 			fmt.Fprintf(&b, "(deny file-write* (require-all (subpath %s) %s))\n", param("NESTED", i, w), nestedShapes(w))
 		}
 	}
-	if p.Pad != "" {
-		fmt.Fprintf(&b, "(deny file-read* file-write* (require-all (require-not (subpath %s)) %s))\n", param("PAD", 0, p.Pad), secretShapes)
-	} else {
-		b.WriteString("(deny file-read* file-write* " + secretShapes + ")\n")
-	}
+	b.WriteString("(deny file-read* file-write* " + secretShapes + ")\n")
 	if p.Network { // CA bundles end in .pem
 		b.WriteString(`(allow file-read* (subpath "/private/etc/ssl") (regex #"/certifi/cacert\.pem$" #"^/(opt/homebrew|usr/local)/etc/(ca-certificates|openssl@3)/cert\.pem$"))` + "\n")
 	}

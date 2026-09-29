@@ -625,7 +625,7 @@ func TestEditSafety(t *testing.T) {
 
 // TestScratchpad: the pad needs no rule, no prior read and no write access
 // to the project, keeps the stale check, stays out of checkpoints and is a
-// command's $TMPDIR whoever allowed it, a secret-shaped name there included;
+// command's $TMPDIR whoever allowed it; a secret-shaped name there asks, and
 // a path a shell would expand is refused naming the real one.
 func TestScratchpad(t *testing.T) {
 	pad, proj := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
@@ -652,7 +652,7 @@ func TestScratchpad(t *testing.T) {
 			os.WriteFile(filepath.Join(pad, "stale.txt"), []byte("b\n"), 0o644)
 			os.Chtimes(filepath.Join(pad, "stale.txt"), later, later)
 		}, "changed since", false},
-		{"secret-shaped name", ToolWrite, `{"path":"PAD/cert.pem","content":"x"}`, nil, "wrote", false},
+		{"secret-shaped name", ToolWrite, `{"path":"PAD/cert.pem","content":"x"}`, nil, "give it another name", true},
 		{"$TMPDIR", ToolWrite, `{"path":"$TMPDIR/n.md","content":"x"}`, nil, `directory called "$TMPDIR" in the project. Write the absolute path: the scratchpad, $TMPDIR in commands, is PAD.`, false},
 		{"~", ToolRead, `{"path":"~/n.md","limit":0}`, nil, "home is", false},
 		{"%TEMP%", ToolWrite, `{"path":"%TEMP%\\n.md","content":"x"}`, nil, "not expanded", false},

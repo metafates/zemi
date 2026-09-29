@@ -118,7 +118,7 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 		},
 		{
 			"secret", "cat: PROJ/.env: Operation not permitted", false, false, false, false, !b.HidesSecretFiles,
-			"secret-shaped files (.env, *.pem, *.key) are unreadable to commands outside $TMPDIR; if the command needs one, call it again with sandbox: false (needs approval).",
+			"secret-shaped files (.env, *.pem, *.key) are unreadable to commands, in $TMPDIR too: if the file holds no secret, give it another name; if the command needs a real one, call it again with sandbox: false (needs approval).",
 		},
 		{
 			".agents", "mkdir: .agents/workflows: Operation not permitted", false, false, false, false, false,

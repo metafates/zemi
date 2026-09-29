@@ -85,6 +85,13 @@ func act(verb, arg string) error {
 		return err
 	case "rename":
 		return os.Rename(arg, arg+".moved")
+	case "moveread":
+		src, dst, _ := strings.Cut(arg, "|")
+		if err := os.Rename(src, dst); err != nil {
+			return err
+		}
+		_, err := os.ReadFile(filepath.Join(dst, ".env"))
+		return err
 	case "renameonto":
 		if err := os.MkdirAll(arg+".src", 0o755); err != nil {
 			return err
@@ -165,7 +172,7 @@ func TestPolicy(t *testing.T) {
 	t.Log("backend:", b.Name)
 	root, outside, hide, state := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	scratch, cache := filepath.Join(state, "scratch"), filepath.Join(state, "sandbox-cache", "k", "go-build")
-	for _, d := range []string{filepath.Join(root, ".git"), filepath.Join(root, "agents-real"), scratch, cache} {
+	for _, d := range []string{filepath.Join(root, ".git"), filepath.Join(root, "agents-real"), filepath.Join(root, "backend"), scratch, cache} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -177,9 +184,9 @@ func TestPolicy(t *testing.T) {
 		}
 	}
 	for _, f := range []string{
-		filepath.Join(root, "plain.txt"), filepath.Join(root, ".env"), filepath.Join(hide, "id"), filepath.Join(state, "zemi.db"),
+		filepath.Join(root, "plain.txt"), filepath.Join(root, ".env"), filepath.Join(root, "backend", ".env"), filepath.Join(hide, "id"), filepath.Join(state, "zemi.db"),
 		filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua", "p", "init.lua"), filepath.Join(plugin, ".git", "config"),
-		filepath.Join(plugin, "lua", "p", ".git", "config"), filepath.Join(scratch, "key.pem"), filepath.Join(cache, "x.env"),
+		filepath.Join(plugin, "lua", "p", ".git", "config"),
 	} {
 		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
@@ -194,7 +201,6 @@ func TestPolicy(t *testing.T) {
 		Hide:     []string{hide, state, filepath.Join(plugin, "lua", "p", ".git")},
 		Read:     []string{filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua")},
 		List:     []string{plugin},
-		Pad:      scratch,
 		Loopback: true,
 		Env:      map[string]string{"ZEMI_SANDBOX_TEST": "on"},
 	}
@@ -250,9 +256,8 @@ func TestPolicy(t *testing.T) {
 		{"read a Hide inside a Read tree", "read", filepath.Join(plugin, "lua", "p", ".git", "config"), false, false},
 		{"write what Read opens", "write", filepath.Join(plugin, "init.lua"), false, false},
 		{"read .env", "read", filepath.Join(root, ".env"), false, !b.HidesSecretFiles},
-		{"read a secret-shaped name in the pad", "read", filepath.Join(scratch, "key.pem"), true, false},
-		{"write a secret-shaped name in the pad", "write", filepath.Join(scratch, ".env"), true, false},
-		{"read a secret-shaped name in another root", "read", filepath.Join(cache, "x.env"), false, !b.HidesSecretFiles},
+		// the shapes match names, so no write root may be exempt from them
+		{"read a .env moved into the scratchpad", "moveread", filepath.Join(root, "backend") + "|" + filepath.Join(scratch, "b"), false, !b.HidesSecretFiles},
 		{"dial a unix socket outside", "unix", sock.Addr().String(), false, false},
 		{"write /dev/shm", "write", shm, true, runtime.GOOS != "linux"},
 		{"chmod a file in a root", "chmod", filepath.Join(root, "plain.txt"), true, false},

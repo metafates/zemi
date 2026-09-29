@@ -2176,15 +2176,9 @@ provenance string.
   layered dirs, reads back with the names in the plugin dirs, so
   `zemi plugins test` runs confined, while its `.git` and a dot entry in
   its code stay hidden) and, on
-  macOS, the strict secret file shapes outside the scratchpad
-  (`Policy.Pad`), where only the session's own commands put files, so a
-  test suite's `.env` or `key.pem` fixture in `$TMPDIR` works confined; a
-  confined command cannot read a user's secret to stage it there, and an
-  unconfined one the user approved could have printed it directly. The
-  residual risk: `$TMPDIR` is the pad for unconfined commands too, so a
-  key an approved command copies there without printing it (a CLI's temp
-  `.pem` during a login) a later confined command or the `read` tool
-  reads with no ask; writable are the pipeline's scratchpad, also
+  macOS, the strict secret file shapes (in the scratchpad too: they match
+  names, and a command can move a project directory there whole; a hint
+  names another file name as the way through); writable are the pipeline's scratchpad, also
   its temp dir (`TMPDIR`, `TMP` and `TEMP`, which every model command gets, confined or not, so
   the file tools read what a command left there without asking; the shared system temp dir and `/tmp`
   are not writable, since macOS keeps the `xcrun_db` there that picks what
@@ -2257,7 +2251,7 @@ provenance string.
   directory, which is also all a sandboxed command may write (`zemi.ui.edit` alone reaches the
   whole trusted repository: the user does that writing); the per-session scratchpad
   (`<state>/scratch/<id prefix>`, §5, every model command's `$TMPDIR`) is outside it but
-  is the one path the model's file tools read and write by default
+  is the one path the model's file tools read and write by default, secret-shaped names aside
   (`Pipeline.Check` on the pad the pipeline was bound to, so a run that outlives its session
   keeps it; `zemi.fs` cannot write there), and user config's `zemi.fs` also
   reaches `<data>/lua` (`zemi.fs.data_dir(name)`, outside the watched config

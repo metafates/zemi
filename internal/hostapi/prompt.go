@@ -451,8 +451,8 @@ func (h *Host) instructionFile(p string) bool {
 // whoever approved a command. scratchOwn names a subagent run's own
 // directory in its task, since per run it would bust the cached prompt.
 const (
-	scratchUse   = "It is $TMPDIR in every command you run. Keep temporary files here, not in /tmp or the project: nothing here is part of the project. Reading, writing and editing here needs no approval, even for a read-only agent, and deleting here asks only where any command would.\n"
-	scratchWrite = "Keep notes and drafts here, not in the project: nothing here is part of the project. Reading, writing and editing here needs no approval, even for a read-only agent.\n"
+	scratchUse   = "It is $TMPDIR in every command you run. Keep temporary files here, not in /tmp or the project: nothing here is part of the project. Reading, writing and editing here needs no approval, even for a read-only agent, and deleting here asks only where any command would. Secret-shaped names (.env, *.pem, *.key) ask even here: use another name.\n"
+	scratchWrite = "Keep notes and drafts here, not in the project: nothing here is part of the project. Reading, writing and editing here needs no approval, even for a read-only agent. Secret-shaped names (.env, *.pem, *.key) ask even here: use another name.\n"
 	scratchRead  = "Other agents keep temporary files here; reading them needs no approval.\n"
 	scratchOwn   = "Other agents share the scratchpad: keep your own files in %s."
 	recipesUse   = "A procedure for this repository that took you many steps to find goes in <name>/SKILL.md there: yaml frontmatter with name (the directory's) and description (when to use it), then the exact steps. The skill tool loads it at once. Fix a stale step in place and date the fix. Never write a secret there; name the env var that holds it.\n"

@@ -170,7 +170,7 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 	// TMPDIR: its temp writes fail and the hint names no fix
 	p.Env = map[string]string{}
 	if pad != "" && os.MkdirAll(pad, 0o700) == nil {
-		p.Write, p.Pad = append(p.Write, pad), pad
+		p.Write = append(p.Write, pad)
 		p.Env["TMPDIR"], p.Env["TMP"], p.Env["TEMP"] = pad, pad, pad
 	}
 	if d.StateHome != "" {
@@ -238,7 +238,7 @@ func (h *Host) sandboxPrompt(readOnly, escapes bool, pad string) string {
 	}
 	b.WriteString("credential dirs (~/.ssh, ~/.aws and the like)")
 	if backend.HidesSecretFiles {
-		b.WriteString(" and secret-shaped files (.env, *.pem, *.key) outside $TMPDIR")
+		b.WriteString(" and secret-shaped files (.env, *.pem, *.key), in $TMPDIR too")
 	}
 	b.WriteString(".")
 	if len(zemi) > 0 {

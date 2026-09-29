@@ -443,10 +443,13 @@ func (p *Pipeline) Check(req Request) Verdict {
 	} else {
 		o = p.Store.Evaluate(req.Subject, written, p.Principal)
 	}
-	// the pad is neither project nor zemi dir, and only this session's own
-	// commands put files there: what no rule decided there allows, a
-	// secret-shaped name included (DESIGN §9)
+	// the pad is neither project nor zemi dir: what no rule decided there
+	// allows, a secret-shaped name aside, which the sandbox refuses there too
 	if pad && !o.Ruled() {
+		if p.Secret != nil && p.Secret(written) {
+			req.Reason = strings.TrimPrefix(req.Reason+"; "+PadSecret, "; ")
+			return p.resolveAsk(req, PadSecret)
+		}
 		o = perm.Outcome{Decision: perm.Allow, Reason: "inside the scratchpad"}
 	}
 	switch o.Decision {
@@ -542,7 +545,7 @@ func (p *Pipeline) sandboxHint(pol *sandbox.Policy, out string, err error) strin
 	case b.HidesSecretFiles && has(func(l limit) bool {
 		return perm.PathIsStrictSecret(l.path) || strings.HasPrefix(filepath.Base(l.path), ".env.")
 	}):
-		line = "secret-shaped files (.env, *.pem, *.key) are unreadable to commands outside $TMPDIR" + or(all, "; if the command needs one, call it again with sandbox: false (needs approval)")
+		line = "secret-shaped files (.env, *.pem, *.key) are unreadable to commands, in $TMPDIR too: if the file holds no secret, give it another name" + or(all, "; if the command needs a real one, call it again with sandbox: false (needs approval)")
 	case has(is(protected)):
 		line = workRel(l.root) + " is read-only to commands"
 		switch {
@@ -602,6 +605,10 @@ func limitOf(pol *sandbox.Policy, path string) limit {
 	try(pol.Hide, hidden)
 	return best
 }
+
+// PadSecret is why a secret-shaped name in the scratchpad asks: a command can
+// move a project directory into the pad, and the shapes match names only.
+const PadSecret = "a secret-shaped name (.env, *.pem, *.key) asks even in the scratchpad; if the file holds no secret, give it another name"
 
 // networkProp is the middle tier: the sandbox stays, the command gets
 // sockets. It is the answer to almost every sandbox denial, since the file

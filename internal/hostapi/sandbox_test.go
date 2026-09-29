@@ -634,7 +634,7 @@ func TestSandboxPrompt(t *testing.T) {
 			"They write only the project, $TMPDIR and $GOCACHE.\n",
 			".git and .agents are read-only to them: write .agents files with the write tool",
 			"Hidden from them: zemi's own dirs (", "Read zemi's files with the read tool.",
-			"secret-shaped files (.env, *.pem, *.key) outside $TMPDIR",
+			"secret-shaped files (.env, *.pem, *.key), in $TMPDIR too",
 			"Network: localhost only. network: true adds the network, sandbox: false drops every limit",
 		}, []string{"read-only while planning"}},
 		{"planning", true, true, true, true, []string{
