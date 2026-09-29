@@ -1,6 +1,6 @@
 # Keys and UI
 
-Everything on screen but the composer and the Go-drawn prompts is a Lua widget. The shipped UI is readable source in the tui directory the system prompt names: `theme.lua`, `layout.lua`, `keymaps.lua`, and the widgets in `statusline.lua`, `working.lua`, `chat.lua` and `splash.lua`. Read the one you change. Restyling the shipped UI (a replaced widget, `hl.set`, a theme pick, the layout) is user config, in init.lua.
+Everything on screen but the composer and the Go-drawn prompts is a Lua widget. The shipped UI is readable source in the tui directory the system prompt names: `theme.lua`, `layout.lua`, `keymaps.lua`, the widgets in `statusline.lua`, `working.lua`, `chat.lua`, `splash.lua` and `exit.lua`, and the helpers they share in `text.lua` and `snail.lua`. Read the one you change. Restyling the shipped UI (a replaced widget, `hl.set`, a theme pick, the layout) is user config, in init.lua.
 
 ## Keys
 

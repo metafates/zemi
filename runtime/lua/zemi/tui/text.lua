@@ -1,4 +1,4 @@
--- Formatting helpers the default widgets share:
+-- Helpers the default widgets share:
 -- require("zemi.tui.text").
 ---@class zemi.tui.text
 local M = {}
