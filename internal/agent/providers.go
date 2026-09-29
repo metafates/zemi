@@ -706,8 +706,8 @@ func (e ModelError) As(target any) bool {
 }
 
 func final(err error) bool {
-	var dns *net.DNSError
-	return errors.Is(err, syscall.ECONNREFUSED) || errors.As(err, &dns)
+	_, dns := errors.AsType[*net.DNSError](err)
+	return dns || errors.Is(err, syscall.ECONNREFUSED)
 }
 
 // modelIdleTimeout is how long a model call may make no progress. The

@@ -359,11 +359,11 @@ func (c *fakeClock) due(until time.Time) (func(), bool) {
 // ---------------------------------------------------------------------------
 // drivers
 
-// raiseErr is an act's error that fails the case at the driver's call
+// raiseError is an act's error that fails the case at the driver's call
 // instead of reaching it as nil, err.
-type raiseErr string
+type raiseError string
 
-func (e raiseErr) Error() string { return string(e) }
+func (e raiseError) Error() string { return string(e) }
 
 // none is a driver's result with no values.
 func none(*glua.LState) []glua.LValue { return nil }
@@ -396,7 +396,7 @@ func (t *PluginTest) drive(L *glua.LState, name, own string, act func(ctx contex
 		if t.settle(ctx, t.clock.Now()) != nil {
 			return none // timed out: the case does not resume
 		}
-		r, raised := errors.AsType[raiseErr](err)
+		r, raised := errors.AsType[raiseError](err)
 		t.mu.Lock()
 		if err != nil && !raised {
 			t.log = append(t.log, "test."+name+" at "+site+" returned: "+t.Rel(err.Error()))
@@ -585,7 +585,7 @@ func (t *PluginTest) render(L *glua.LState) int {
 	return t.drive(L, "render", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		lines, _, err := t.h.renderWidget(ctx, w, width, height, UIState{Time: t.h.now().Format(ClockLayout)}, over)
 		if err != nil {
-			return nil, raiseErr("render " + w.ID + ": " + luaErrText(err))
+			return nil, raiseError("render " + w.ID + ": " + luaErrText(err))
 		}
 		return func(L *glua.LState) []glua.LValue {
 			text := make([]string, len(lines))

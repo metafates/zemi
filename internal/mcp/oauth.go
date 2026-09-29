@@ -513,7 +513,7 @@ func listenCallback(fixed int) (net.Listener, error) {
 
 func randomString(n int) string {
 	b := make([]byte, n)
-	_, _ = rand.Read(b)
+	rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 

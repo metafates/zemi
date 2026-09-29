@@ -276,8 +276,8 @@ var imagesRejected sync.Map
 // imagesRefused reports a provider 400 about image input; the wording is
 // the provider's, so this is a text match like maxTokensRefused.
 func imagesRefused(err error) bool {
-	var pe *fantasy.ProviderError
-	if !errors.As(err, &pe) || pe.StatusCode != http.StatusBadRequest {
+	pe, ok := errors.AsType[*fantasy.ProviderError](err)
+	if !ok || pe.StatusCode != http.StatusBadRequest {
 		return false
 	}
 	s := strings.ToLower(pe.Message)
@@ -287,8 +287,8 @@ func imagesRefused(err error) bool {
 // imageTooLarge is an imagesRefused refusal of one image's size, not of
 // images: the model still takes them.
 func imageTooLarge(err error) bool {
-	var pe *fantasy.ProviderError
-	if !imagesRefused(err) || !errors.As(err, &pe) {
+	pe, ok := errors.AsType[*fantasy.ProviderError](err)
+	if !ok || !imagesRefused(err) {
 		return false
 	}
 	s := strings.ToLower(pe.Message)

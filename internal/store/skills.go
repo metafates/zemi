@@ -55,10 +55,15 @@ func (s *DB) SetSkillEnabled(name string, enabled bool) error {
 // discovered skills are inserted enabled or have their path and source
 // refreshed, keeping the stored enabled choice; rows for skills no longer
 // on disk are deleted.
-func (s *DB) SyncSkills(discovered []*Skill) error {
+func (s *DB) SyncSkills(discovered []*Skill) (err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("store: sync skills: %w", err)
+		}
+	}()
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("store: sync skills: %w", err)
+		return err
 	}
 	defer tx.Rollback()
 	names := make([]string, len(discovered))
@@ -68,11 +73,11 @@ func (s *DB) SyncSkills(discovered []*Skill) error {
 			VALUES (?, ?, ?, 1, ?)
 			ON CONFLICT(name) DO UPDATE SET path = excluded.path, source = excluded.source`,
 			sk.Name, sk.Path, sk.Source, now()); err != nil {
-			return fmt.Errorf("store: sync skills: %w", err)
+			return err
 		}
 	}
 	if _, err := tx.Exec(`DELETE FROM skills WHERE name NOT IN (SELECT value FROM json_each(?))`, jsonList(names)); err != nil {
-		return fmt.Errorf("store: sync skills: %w", err)
+		return err
 	}
 	return tx.Commit()
 }

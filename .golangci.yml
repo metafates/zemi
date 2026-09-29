@@ -22,12 +22,14 @@ linters:
     - intrange
     - nolintlint
     - perfsprint
+    - errname
   settings:
     govet:
       enable-all: true
       disable: [fieldalignment, shadow]
     errcheck:
       exclude-functions:
+        - crypto/rand.Read
         - (io.Closer).Close
         - (*os.File).Close
         - (*database/sql.Tx).Rollback

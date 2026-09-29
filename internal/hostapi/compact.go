@@ -142,8 +142,8 @@ func (h *Host) compactFailed(cause string) bool {
 // contextTooLarge also matches Anthropic's "input length and `max_tokens`
 // exceed context limit", which fantasy does not flag.
 func contextTooLarge(err error) bool {
-	var pe *fantasy.ProviderError
-	return errors.As(err, &pe) && (pe.IsContextTooLarge() || strings.Contains(pe.Message, "exceed context limit"))
+	pe, ok := errors.AsType[*fantasy.ProviderError](err)
+	return ok && (pe.IsContextTooLarge() || strings.Contains(pe.Message, "exceed context limit"))
 }
 
 // sendCompacting runs one turn inside the context window: a turn Full cut

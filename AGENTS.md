@@ -110,7 +110,7 @@ alike, so `/review` works from a git hook); a prompt whose first word names a ze
 after `--`, and a lone word a near miss of one is refused (`options.finish`), since it would pay
 for a model call on a typo. Exit status 2 is anything that fails before the root's
 `PersistentPreRunE`, which cobra runs once flags and arguments passed; after it a command's
-error is 1, and one that printed its own diagnostic returns `exitStatus`. That hook runs `-C
+error is 1, and one that printed its own diagnostic returns `exitError`. That hook runs `-C
 dir` (`enterDir`: `PWD` follows) before anything else, and a switch from `/projects` is an exec
 of `zemi -C <dir>` and nothing else (`relaunch`), so no flag of this run widens to another
 project. Piped stdin (1 MiB at most) is attached

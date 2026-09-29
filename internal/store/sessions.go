@@ -177,7 +177,12 @@ func (s *DB) AddCompaction(sessionID string, summary *Message, tail []*Message) 
 // its tool calls and its subagents' (on the first message: the fork has no
 // children, and the calls gate memory autonomy), in one transaction so a
 // failure leaves no half-copied fork.
-func (s *DB) ForkSession(src *Session, id, title string) error {
+func (s *DB) ForkSession(src *Session, id, title string) (err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("store: fork session: %w", err)
+		}
+	}()
 	msgs, err := s.Messages(src.ID)
 	if err != nil {
 		return err
@@ -192,7 +197,7 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 		return c, err
 	})
 	if err != nil {
-		return fmt.Errorf("store: fork session: %w", err)
+		return err
 	}
 	rows, err = s.db.Query(`SELECT t.message_id, t.tool, t.ok, t.created_at
 		FROM tool_calls t JOIN messages m ON m.id = t.message_id
@@ -206,11 +211,11 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 		return c, err
 	})
 	if err != nil {
-		return fmt.Errorf("store: fork session: %w", err)
+		return err
 	}
 	todos, err := s.Todos(src.ID)
 	if err != nil {
-		return fmt.Errorf("store: fork session: %w", err)
+		return err
 	}
 	// every row is read before the transaction: one connection serves both
 	tx, err := s.db.Begin()
@@ -221,7 +226,7 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 	t := now()
 	if _, err := tx.Exec(`INSERT INTO sessions (id, title, profile, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		id, title, src.Profile, t, t); err != nil {
-		return fmt.Errorf("store: fork session: %w", err)
+		return err
 	}
 	ids := make(map[string]string, len(msgs))
 	for _, m := range msgs {
@@ -235,7 +240,7 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 		if mid, ok := ids[c.mid]; ok {
 			if _, err := tx.Exec(`INSERT INTO checkpoints (message_id, session_id, path, existed, link, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 				mid, id, c.Path, c.Existed, c.Link, c.Content, t); err != nil {
-				return fmt.Errorf("store: fork session: %w", err)
+				return err
 			}
 		}
 	}
@@ -249,11 +254,11 @@ func (s *DB) ForkSession(src *Session, id, title string) error {
 		}
 		if _, err := tx.Exec(`INSERT INTO tool_calls (message_id, tool, ok, created_at) VALUES (?, ?, ?, ?)`,
 			mid, c.Tool, c.OK, c.at); err != nil {
-			return fmt.Errorf("store: fork session: %w", err)
+			return err
 		}
 	}
 	if err := setTodos(tx, id, todos); err != nil {
-		return fmt.Errorf("store: fork session: %w", err)
+		return err
 	}
 	return tx.Commit()
 }

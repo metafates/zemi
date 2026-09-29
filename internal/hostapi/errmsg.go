@@ -23,10 +23,10 @@ import (
 // advice is "" when the raw error is all there is. The raw error still
 // goes to the log and /errors.
 func (h *Host) explain(err error) (cause, advice string) {
-	var pe *fantasy.ProviderError
-	var dns *net.DNSError
-	var ne net.Error
-	var garbled *json.SyntaxError
+	pe, _ := errors.AsType[*fantasy.ProviderError](err)
+	dns, _ := errors.AsType[*net.DNSError](err)
+	ne, _ := errors.AsType[net.Error](err)
+	_, garbled := errors.AsType[*json.SyntaxError](err)
 	key := "check api_key in init.lua"
 	if me, ok := errors.AsType[agent.ModelError](err); ok {
 		key = "check api_key for " + me.Provider + " in init.lua"
@@ -39,7 +39,7 @@ func (h *Host) explain(err error) (cause, advice string) {
 		return "", ""
 	case errors.Is(err, context.Canceled):
 		return "interrupted", ""
-	case errors.As(err, &pe) && pe.IsContextTooLarge():
+	case pe != nil && pe.IsContextTooLarge():
 		return "the conversation no longer fits the model's context", "/compact or /new"
 	case pe != nil && (pe.AuthError || pe.StatusCode == http.StatusUnauthorized || pe.StatusCode == http.StatusForbidden):
 		return "the provider rejected the API key", key
@@ -51,15 +51,15 @@ func (h *Host) explain(err error) (cause, advice string) {
 		return fmt.Sprintf("the provider is having trouble (%d)", pe.StatusCode), "try again shortly"
 	case pe != nil && pe.StatusCode >= 400:
 		return fmt.Sprintf("the provider refused the request (%d): %s", pe.StatusCode, pe.Message), ""
-	case errors.As(err, &dns):
+	case dns != nil:
 		return "network: cannot resolve " + dns.Name, "check your connection or VPN"
 	case errors.Is(err, syscall.ECONNREFUSED):
 		return "network: connection refused" + hostOf(err), "is the endpoint up?"
 	case errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, syscall.ECONNRESET):
 		return "network: the connection dropped mid-reply", "send again"
-	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
+	case errors.Is(err, context.DeadlineExceeded), ne != nil && ne.Timeout():
 		return "network: the provider timed out", "check your connection and send again"
-	case errors.As(err, &garbled):
+	case garbled:
 		return "the provider sent a reply zemi could not read", "send again"
 	}
 	return err.Error(), ""

@@ -57,16 +57,16 @@ type options struct {
 	trust            *bool  // --trust for this run; nil when not given
 }
 
-// exitStatus is the error of a command that printed its own diagnostic.
-type exitStatus int
+// exitError is the error of a command that printed its own diagnostic.
+type exitError int
 
-func (e exitStatus) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+func (e exitError) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
 
 func status(code int) error {
 	if code == 0 {
 		return nil
 	}
-	return exitStatus(code)
+	return exitError(code)
 }
 
 // execute runs the command line and returns the exit status. launch opens
@@ -91,7 +91,7 @@ func execute(args []string, stdout, stderr io.Writer, launch func(options) int) 
 	root.SetErr(stderr)
 	polish(root) // after SetOut: cobra's completion command keeps the writer it is made with
 	c, err := root.ExecuteC()
-	if s, ok := errors.AsType[exitStatus](err); ok {
+	if s, ok := errors.AsType[exitError](err); ok {
 		return int(s)
 	}
 	switch {
@@ -316,7 +316,7 @@ func pluginsCommand() *cobra.Command {
 	run := func(c *cobra.Command, args []string) error {
 		// asked before the signal context, so ctrl+c at the prompt ends zemi
 		if c.Name() == "delete" && !yes && !confirm(c, "Delete the plugin "+args[0]+" and its files?") {
-			return exitStatus(1)
+			return exitError(1)
 		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -333,7 +333,7 @@ func pluginsCommand() *cobra.Command {
 			err = plugins.Run(ctx, dirs, append([]string{c.Name()}, args...), c.OutOrStdout())
 		}
 		if ctx.Err() != nil {
-			return exitStatus(130)
+			return exitError(130)
 		}
 		return err
 	}
@@ -484,7 +484,7 @@ func modelsCommand() *cobra.Command {
 			ids := h.ModelIDs()
 			if len(ids) == 0 {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no models yet;", h.NoModelHint())
-				return exitStatus(1)
+				return exitError(1)
 			}
 			fmt.Fprintln(c.OutOrStdout(), strings.Join(ids, "\n"))
 			return nil
@@ -506,7 +506,7 @@ func modelsCommand() *cobra.Command {
 			cat, changed, err := agent.UpdateCatalog(ctx, agent.CatalogURL, dirs.DataHome, os.Getenv)
 			switch {
 			case ctx.Err() != nil:
-				return exitStatus(130)
+				return exitError(130)
 			case err != nil:
 				return err
 			case changed:

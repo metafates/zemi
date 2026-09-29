@@ -378,8 +378,8 @@ func (r *Runtime) sandboxOf(L *glua.LState) (*Sandbox, error) {
 // EOF" for an unclosed block), and a traceback that holds only the main
 // chunk and Go frames is dropped: it says nothing the message does not.
 func chunkErr(rel, src string, origin Origin, err error) error {
-	var api *glua.ApiError
-	if !errors.As(err, &api) {
+	api, ok := errors.AsType[*glua.ApiError](err)
+	if !ok {
 		if strings.Contains(err.Error(), rel) {
 			return err
 		}

@@ -313,7 +313,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	stops = append(stops, fantasy.FinishReasonIs(fantasy.FinishReasonStop), func(steps []fantasy.StepResult) bool {
 		switch {
 		case len(steps) >= maxSteps:
-			stopErr = ErrStepLimit
+			stopErr = errStepLimit
 		case repeatsToolCalls(steps):
 			stopErr = ErrToolLoop
 		}
@@ -554,7 +554,7 @@ var pollingTools = map[string]bool{"job_read": true, "job_list": true}
 var maxRetries = 5
 
 var (
-	ErrStepLimit = fmt.Errorf("stopped after %d steps: send a message to continue", maxSteps)
+	errStepLimit = fmt.Errorf("stopped after %d steps: send a message to continue", maxSteps)
 	ErrToolLoop  = errors.New("stopped: the agent kept repeating the same tool calls with the same results")
 )
 

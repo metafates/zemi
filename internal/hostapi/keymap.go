@@ -120,7 +120,7 @@ func (h *Host) resolveRHS(s string) (RHS, error) {
 		return RHS{}, nil // unknown: empty RHS marks it
 	}
 	if fn == nil {
-		return RHS{}, ErrReserved
+		return RHS{}, errReserved
 	}
 	return RHS{API: s}, nil
 }

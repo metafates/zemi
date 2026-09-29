@@ -368,7 +368,7 @@ func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) (err error) {
 		name, args, _ := strings.Cut(rhs.API, " ")
 		fn, ok := h.hostActions[name]
 		if !ok || fn == nil {
-			return ErrReserved
+			return errReserved
 		}
 		return fn(h, args)
 	}

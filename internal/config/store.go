@@ -2,6 +2,7 @@ package config
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -176,7 +177,7 @@ func (s *Store) SetQuiet(path string, val any) ([]WatchFired, error) {
 	def, ok := s.schema[path]
 	if !ok {
 		s.mu.Unlock()
-		return nil, &ErrUnknownKey{Path: path}
+		return nil, fmt.Errorf("unknown config key: %s", path)
 	}
 	val, err := checkKind(def, val)
 	if err != nil {
@@ -202,7 +203,7 @@ func (s *Store) Check(path string, val any) (any, error) {
 	def, ok := s.schema[path]
 	s.mu.RUnlock()
 	if !ok {
-		return nil, &ErrUnknownKey{Path: path}
+		return nil, fmt.Errorf("unknown config key: %s", path)
 	}
 	return checkKind(def, val)
 }
@@ -230,7 +231,7 @@ func (s *Store) AddWatch(w Watcher) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.schema[w.Path]; !ok {
-		return 0, &ErrUnknownKey{Path: w.Path}
+		return 0, fmt.Errorf("unknown config key: %s", w.Path)
 	}
 	s.watchSeq++
 	w.ID = s.watchSeq
@@ -251,6 +252,21 @@ func (s *Store) RemoveWatch(id int) bool {
 	return false
 }
 
+// BadValueError means the value has the wrong kind or is outside the key's
+// choices; Got, set for a refused choice, is echoed back.
+type BadValueError struct {
+	Path string
+	Want string
+	Got  any
+}
+
+func (e *BadValueError) Error() string {
+	if e.Got != nil {
+		return fmt.Sprintf("config key %s expects %s, not %q", e.Path, e.Want, e.Got)
+	}
+	return fmt.Sprintf("config key %s expects %s", e.Path, e.Want)
+}
+
 // checkKind validates val and returns it in stored form: ints as int, so
 // readers can assert int whether Lua (float64) or Go handed it in.
 func checkKind(def Setting, val any) (any, error) {
@@ -261,14 +277,14 @@ func checkKind(def Setting, val any) (any, error) {
 		s, ok = val.(string)
 		// a models.* key holds an id, never a role name: roles never nest
 		if ok && strings.HasPrefix(def.Path, "models.") && s != "" && !strings.Contains(s, "/") {
-			return nil, &ErrBadValue{Path: def.Path, Want: `a provider/model id or ""`}
+			return nil, &BadValueError{Path: def.Path, Want: `a provider/model id or ""`}
 		}
 		if ok && def.Choices != nil && !slices.Contains(def.Choices, s) {
 			// "default" names a "" choice, as /config shows it
 			if s == "default" && slices.Contains(def.Choices, "") {
 				return "", nil
 			}
-			return nil, &ErrBadValue{Path: def.Path, Want: choiceList(def.Choices), Got: s}
+			return nil, &BadValueError{Path: def.Path, Want: choiceList(def.Choices), Got: s}
 		}
 	case KindInt:
 		switch v := val.(type) {
@@ -286,9 +302,9 @@ func checkKind(def Setting, val any) (any, error) {
 	}
 	if !ok {
 		if def.Choices != nil {
-			return nil, &ErrBadValue{Path: def.Path, Want: choiceList(def.Choices)}
+			return nil, &BadValueError{Path: def.Path, Want: choiceList(def.Choices)}
 		}
-		return nil, &ErrBadValue{Path: def.Path, Want: string(def.Kind)}
+		return nil, &BadValueError{Path: def.Path, Want: string(def.Kind)}
 	}
 	return val, nil
 }

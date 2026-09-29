@@ -317,9 +317,7 @@ func (s *DB) sweep() error {
 // NewID returns a random 128-bit id, hex encoded.
 func NewID() string {
 	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic("store: entropy unavailable: " + err.Error())
-	}
+	rand.Read(b[:]) // crashes the process rather than fail
 	return hex.EncodeToString(b[:])
 }
 

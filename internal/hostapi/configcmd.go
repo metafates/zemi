@@ -132,7 +132,7 @@ func (h *Host) SetConfig(path string, val any) error {
 		return h.SetTheme(s)
 	}
 	err := h.setWatched(path, val)
-	if _, bad := errors.AsType[*config.ErrBadValue](err); bad {
+	if _, bad := errors.AsType[*config.BadValueError](err); bad {
 		return usageError{err}
 	}
 	return err
