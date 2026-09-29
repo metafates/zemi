@@ -68,7 +68,7 @@ zemi.ui.widget.add({
 })
 
 zemi.event.on("app.ready", function()
-	poll()
+	zemi.timer.after(0, poll) -- an event handler has 50 ms, a timer callback 1 s
 	zemi.timer.every(M.opts.interval, poll)
 end)
 
