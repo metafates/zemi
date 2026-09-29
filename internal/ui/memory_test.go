@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -191,17 +192,30 @@ func TestMemoryReviewEdit(t *testing.T) {
 	<-done
 }
 
-// TestMemoryReviewDropAccepted: a suggestion kept and then dropped was
-// never stored, so it goes back as a rejection, not a delete of a memory
-// that does not exist.
-func TestMemoryReviewDropAccepted(t *testing.T) {
-	app, _ := bootAgentApp(t, 70, 16)
-	done := openReview(t, app, []hostapi.MemoryRow{{ID: "m1", Scope: "project", Origin: "learned", Text: "note", Queued: true}})
-	app.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if got := reviewAnswer(t, done); got["m1"] != "reject project" {
-		t.Fatalf("decisions = %v", got)
+// TestMemoryReviewAnswers: what the screen hands back once the keys ran
+// and esc closed it.
+func TestMemoryReviewAnswers(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		rows []hostapi.MemoryRow
+		keys []string
+		want map[string]string
+	}{
+		{"a suggestion kept, then dropped, was never stored: rejected", []hostapi.MemoryRow{{ID: "m1", Scope: "project", Origin: "learned", Text: "note", Queued: true}}, []string{"a", "d"}, map[string]string{"m1": "reject project"}},
+		{"s leaves a forget suggestion in its memory's scope", []hostapi.MemoryRow{
+			{ID: "f1", Scope: "project", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
+			{ID: "s1", Scope: "project", Origin: "learned", Text: "idea", Queued: true},
+		}, []string{"s", "j", "s", "j"}, map[string]string{"s1": " user"}},
+		{"undoing every action decides nothing", []hostapi.MemoryRow{{ID: "m1", Scope: "project", Origin: "user", Text: "note"}}, []string{"d", "u"}, map[string]string{}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, _ := bootAgentApp(t, 70, 16)
+			done := openReview(t, app, c.rows)
+			pressKeys(app, append(c.keys, "esc")...)
+			if got := reviewAnswer(t, done); !maps.Equal(got, c.want) || app.memReview != nil {
+				t.Fatalf("answer = %v, want %v", got, c.want)
+			}
+		})
 	}
 }
 
@@ -262,36 +276,6 @@ func TestMemoryReviewScopeToggle(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if got := reviewAnswer(t, done); len(got) != 1 || got["m2"] != "accept user" {
 		t.Fatalf("answer = %v", got)
-	}
-}
-
-// TestMemoryReviewScopeFixed: s leaves a suggestion that forgets a memory
-// in that memory's scope.
-func TestMemoryReviewScopeFixed(t *testing.T) {
-	app, _ := bootAgentApp(t, 60, 20)
-	done := openReview(t, app, []hostapi.MemoryRow{
-		{ID: "f1", Scope: "project", Origin: "learned", Text: "forget: note", Queued: true, Forget: true},
-		{ID: "s1", Scope: "project", Origin: "learned", Text: "idea", Queued: true},
-	})
-	for range 2 {
-		app.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
-		app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	}
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if got := reviewAnswer(t, done); len(got) != 1 || got["s1"] != " user" {
-		t.Fatalf("answer = %v", got)
-	}
-}
-
-// TestMemoryReviewUndoAll: undoing every action closes with no decisions.
-func TestMemoryReviewUndoAll(t *testing.T) {
-	app, _ := bootAgentApp(t, 70, 16)
-	done := openReview(t, app, []hostapi.MemoryRow{{ID: "m1", Scope: "project", Origin: "user", Text: "note"}})
-	app.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
-	app.Update(tea.KeyPressMsg{Code: 'u', Text: "u"})
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if got := reviewAnswer(t, done); len(got) != 0 || app.memReview != nil {
-		t.Fatalf("cancel returned %v", got)
 	}
 }
 

@@ -367,6 +367,11 @@ func TestPermissionBoxFits(t *testing.T) {
 			[]string{"█", "ctrl+d/u scroll", "esc deny", "[t] No, and tell"},
 		},
 		{
+			"narrow and short", 60, 16,
+			hostapi.PermRequest{Subject: "tool.bash", Arg: "go test ./internal/ui/... -run X\necho a\necho b\necho c", Always: "allow go test and 3 more"},
+			[]string{"enter pick", "█"},
+		},
+		{
 			"one hidden line shows", 80, 24,
 			hostapi.PermRequest{Subject: "tool.bash", Arg: "cat > notes.txt <<EOT\nfirst line\nsecond line\nEOT"},
 			[]string{"EOT ", "enter pick · esc deny"},
@@ -1479,23 +1484,5 @@ func TestPermTitle(t *testing.T) {
 		if title, target := permTitle(c.req), strings.Join(words, " "); title != c.title || target != c.target {
 			t.Errorf("%+v: %q %q", c.req, title, target)
 		}
-	}
-}
-
-// TestPermBoxFitsShortScreen: the choices and the hint always fit, so a
-// wrapped choice and a preview too tall for the screen cannot cut the box's
-// bottom border or the row that says how to answer and scroll.
-func TestPermBoxFitsShortScreen(t *testing.T) {
-	app, host := bootAgentApp(t, 60, 16)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 4 * time.Second})
-	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{
-		Tool: "bash", Subject: "tool.bash",
-		Arg:    "go test ./internal/ui/... -run X\necho a\necho b\necho c",
-		Always: "allow go test and 3 more",
-	}}
-	app.renderSync(t)
-	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "enter pick") || !strings.Contains(frame, "└") || !strings.Contains(frame, "█") {
-		t.Fatalf("the prompt is cut:\n%s", frame)
 	}
 }
