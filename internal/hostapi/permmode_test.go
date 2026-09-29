@@ -167,7 +167,7 @@ func TestUntrustedModes(t *testing.T) {
 		if ok != c.want {
 			t.Errorf("%s trusted=%v live=%v %s %q: got %v", c.mode, c.trusted, c.live, c.subject, c.arg, ok)
 		}
-		if untrusted := "this project is not trusted (--trust)"; c.mode == "auto" && !c.trusted && !ok && why != untrusted {
+		if untrusted := "this project is not trusted (zemi run --trust)"; c.mode == "auto" && !c.trusted && !ok && why != untrusted {
 			t.Errorf("%s %q: ask reason %q", c.subject, c.arg, why)
 		}
 	}

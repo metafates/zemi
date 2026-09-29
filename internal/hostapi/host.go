@@ -714,7 +714,7 @@ func (h *Host) hooks() UIHooks {
 // a headless run.
 func (h *Host) trustHint() string {
 	if h.hooks() == nil {
-		return "--trust"
+		return "zemi run --trust"
 	}
 	return "/trust"
 }
