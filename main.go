@@ -33,6 +33,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sandbox"
+	"github.com/metafates/zemi/internal/tools"
 	"github.com/metafates/zemi/internal/ui"
 	zemiRuntime "github.com/metafates/zemi/runtime"
 )
@@ -153,8 +154,10 @@ func launch(o options) int {
 
 	_, err = p.Run()
 	// Children run in their own sessions (internal/proc), so the terminal
-	// closing does not reach them: stop them here. Exit even if some cleanup
-	// hangs.
+	// closing does not reach them: stop them here, and start none after (a
+	// reload, an MCP retry, a plugin's job), which would outlive zemi. Exit
+	// even if some cleanup hangs.
+	proc.Refuse()
 	proc.KillAll()
 	// hand the terminal its normal pointer back (hover sets OSC 22); an error
 	// that is not ErrProgramKilled means the program never started
@@ -179,14 +182,15 @@ func launch(o options) int {
 // switch is a restart, never a change in place; an exec keeps the PID, so the
 // shell's wait and the terminal's foreground group do not change. The one
 // start of a program outside internal/proc besides the editor and the sandbox
-// probes: the children are gone (proc.KillAll) and the terminal restored.
+// probes: the children are reaped (proc.Reaped) and the terminal restored.
 // NOTE: Windows has no exec; there it names the command to run instead.
 func relaunch(dir string) error {
+	proc.Reaped()
 	exe, err := os.Executable()
 	if err == nil {
 		err = syscall.Exec(exe, []string{os.Args[0], "-C", dir}, os.Environ())
 	}
-	return fmt.Errorf("could not start zemi in %s (%w): run zemi -C %s", dir, err, dir)
+	return fmt.Errorf("could not start zemi in %s (%w): run zemi -C %s", dir, err, tools.ShellQuote(dir))
 }
 
 // newHost builds the runtime and host over dirs, and the trust gate their

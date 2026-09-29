@@ -1180,7 +1180,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   here is a bug (a cancelled `sh -c` pipeline once hung the turn forever), with three exceptions:
   the user's editor (ui/editor.go, which needs the controlling terminal `Setsid` drops),
   the sandbox backend probes, and main's `relaunch`, the exec that replaces zemi with
-  `zemi -C <dir>` once the TUI restored the terminal and `proc.KillAll` ended the children.
+  `zemi -C <dir>` once the TUI restored the terminal, `proc.Refuse` held further starts and
+  the children `proc.KillAll` killed were reaped (`proc.Reaped`: on darwin an exec racing the
+  reaping crashes the new image).
 - **The key loop never waits on Lua.** Keymap right-hand sides, Lua commands, completion
   sources and a toggle list's `Overlay.Reload` run in order on one worker goroutine
   (`App.background`); Go commands stay inline. Keymaps, clicks, one-shot timers and async

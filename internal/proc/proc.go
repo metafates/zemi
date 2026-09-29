@@ -137,6 +137,20 @@ func KillAll() {
 	}
 }
 
+// Reaped waits, at most waitDelay, until every child Start started was reaped
+// by its Wait: on darwin an exec while a waiter is still reaping can crash the
+// new image at its first instruction.
+func Reaped() {
+	for deadline := time.Now().Add(waitDelay); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		mu.Lock()
+		n := len(live)
+		mu.Unlock()
+		if n == 0 {
+			return
+		}
+	}
+}
+
 // Buffer keeps the first and last Max/2 bytes of what is written, so a
 // command that floods output cannot exhaust memory and the end of a failing
 // build still shows.
