@@ -135,7 +135,7 @@ func TestUnsettled(t *testing.T) {
 	for _, r := range rules {
 		h.Perm.Add(r)
 	}
-	o := h.Perm.CheckCommand("curl https://x.example -o /tmp/x", "model")
+	o := h.Perm.CheckCommandFor(perm.SubjectBash, perm.Normalize("curl https://x.example -o /tmp/x"), "model")
 	if o.Decision != perm.Allow || o.Rule == nil || !o.Rule.Network {
 		t.Fatalf("network rule lookup: %+v", o)
 	}

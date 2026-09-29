@@ -1278,7 +1278,7 @@ func TestAlwaysChoice(t *testing.T) {
 	for _, r := range rules {
 		s.Add(r)
 	}
-	if o := s.CheckCommand("ls -R src", "model"); o.Decision != perm.Allow {
+	if o := s.CheckCommandFor(perm.SubjectBash, perm.Normalize("ls -R src"), "model"); o.Decision != perm.Allow {
 		t.Errorf("ls -R src after allow `ls` = %v, want allow", o)
 	}
 	// a deleter's exact rule does not cover another target
@@ -1287,7 +1287,7 @@ func TestAlwaysChoice(t *testing.T) {
 	for _, r := range del {
 		s2.Add(r)
 	}
-	if o := s2.CheckCommand("rm src.orig", "model"); o.Decision == perm.Allow {
+	if o := s2.CheckCommandFor(perm.SubjectBash, perm.Normalize("rm src.orig"), "model"); o.Decision == perm.Allow {
 		t.Errorf("rm src.orig after allow `rm build.tmp` must ask, got %v", o)
 	}
 	// a read deep in a tree also offers the whole repository

@@ -6,17 +6,12 @@ import (
 	"strings"
 )
 
-// CheckCommand decides a bash call (DESIGN §9): the whole call asks when
-// the assignment gate or a heredoc fires, fails when it does not parse, and
-// is allowed only when every segment and every redirect target matches an
-// allow rule and it reads no value the rules never see (Assign).
-func (s *Store) CheckCommand(cmd, principal string) Outcome {
-	return s.CheckCommandFor(SubjectBash, Normalize(cmd), principal)
-}
-
-// CheckCommandFor is CheckCommand on a parsed command, with the segments
-// matched under subject (lua.job.start gates Lua-started programs the same
-// way).
+// CheckCommandFor decides a bash call (DESIGN §9), its segments matched
+// under subject (lua.job.start gates Lua-started programs the same way): the
+// whole call asks when the assignment gate or a heredoc fires, fails when it
+// does not parse, and is allowed only when every segment and every redirect
+// target matches an allow rule and it reads no value the rules never see
+// (Assign).
 func (s *Store) CheckCommandFor(subject string, n Normalized, principal string) Outcome {
 	if n.Fail != "" {
 		return Outcome{Decision: Deny, Reason: "the command does not parse: " + n.Fail}

@@ -1404,7 +1404,7 @@ func changePreview(in map[string]any) string {
 }
 
 // bashRequests routes the whole command through the tool.bash subject;
-// the store's CheckCommand splits it into segments and gates.
+// the store's CheckCommandFor judges it by segment.
 func bashRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
 	return []Request{{
 		Subject: perm.SubjectBash, Arg: str(in["command"]), Description: str(in["about"]),

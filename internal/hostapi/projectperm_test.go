@@ -40,7 +40,7 @@ python x.py
 		}
 	}
 	step()
-	if h.Perm.CheckCommand("make all", "").Decision == perm.Allow {
+	if h.Perm.CheckCommandFor(perm.SubjectBash, perm.Normalize("make all"), "").Decision == perm.Allow {
 		t.Error("an untrusted project must not load its permissions file")
 	}
 	h.SetProjectTrusted(true)
@@ -56,8 +56,8 @@ python x.py
 		{"curl https://example.com", false},
 	}
 	for _, c := range want {
-		if got := h.Perm.CheckCommand(c.cmd, "").Decision == perm.Allow; got != c.allow {
-			t.Errorf("CheckCommand(%q) allow=%v, want %v", c.cmd, got, c.allow)
+		if got := h.Perm.CheckCommandFor(perm.SubjectBash, perm.Normalize(c.cmd), "").Decision == perm.Allow; got != c.allow {
+			t.Errorf("CheckCommandFor(%q) allow=%v, want %v", c.cmd, got, c.allow)
 		}
 	}
 }

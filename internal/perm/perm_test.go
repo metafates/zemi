@@ -40,10 +40,10 @@ func TestEvaluateDecisions(t *testing.T) {
 	// a command segment is already split at unquoted newlines, so a quoted
 	// one is one argument the approved pattern covers
 	s.Add(Rule{Subject: "tool.bash", Pattern: "git commit *", Decision: Allow})
-	if o := s.CheckCommand("git commit -m 'title\n\nbody'", ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectBash, Normalize("git commit -m 'title\n\nbody'"), ""); o.Decision != Allow {
 		t.Fatalf("a quoted newline under an allowed prefix, got %v (%s)", o.Decision, o.Reason)
 	}
-	if o := s.CheckCommand("git commit -m x\nrm -rf /", ""); o.Decision != Ask {
+	if o := s.CheckCommandFor(SubjectBash, Normalize("git commit -m x\nrm -rf /"), ""); o.Decision != Ask {
 		t.Fatalf("an unquoted newline is a second segment, got %v", o.Decision)
 	}
 	if o := s.Evaluate("fs.write", "/tmp/../etc/passwd", ""); o.Decision != Ask {
@@ -116,7 +116,7 @@ func TestDenyMeetsEverySpelling(t *testing.T) {
 		{"env ſſh host", Deny},
 	} {
 		// an ask must stay ruled, or a mode settles it as a default ask
-		if o := s.CheckCommand(c.cmd, ""); o.Decision != c.want || o.Decision == Ask && !o.Ruled() {
+		if o := s.CheckCommandFor(SubjectBash, Normalize(c.cmd), ""); o.Decision != c.want || o.Decision == Ask && !o.Ruled() {
 			t.Errorf("%q: got %v (%s, ruled %v), want %v", c.cmd, o.Decision, o.Reason, o.Ruled(), c.want)
 		}
 	}
@@ -239,7 +239,7 @@ func TestHiddenCommandsAsk(t *testing.T) {
 		{"git log `git log \\`rm -rf x\\``", Ask},
 		{"cat > n <<'EOF'\nit's\nEOF", Ask},
 	} {
-		if got := s.CheckCommand(c.cmd, "model").Decision; got != c.want {
+		if got := s.CheckCommandFor(SubjectBash, Normalize(c.cmd), "model").Decision; got != c.want {
 			t.Errorf("%s: got %v, want %v", c.cmd, got, c.want)
 		}
 	}
@@ -306,7 +306,7 @@ func TestAssignmentGate(t *testing.T) {
 		"export $'PATH'=/tmp/x; make",
 		`export $"PATH"=/tmp/x; make`,
 	} {
-		if o := store(t, Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow}).CheckCommand(cmd, ""); o.Decision != Ask {
+		if o := store(t, Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectBash, Normalize(cmd), ""); o.Decision != Ask {
 			t.Fatalf("%q must ask, got %v", cmd, o.Decision)
 		}
 	}
@@ -329,7 +329,7 @@ func TestAssignmentPrefixNeverAllows(t *testing.T) {
 		{`sh -c "LESSOPEN=./evil git log -p"`, Ask},
 		{"FOO=1 rm -rf x", Deny},
 	} {
-		if o := s.CheckCommand(c.cmd, ""); o.Decision != c.want {
+		if o := s.CheckCommandFor(SubjectBash, Normalize(c.cmd), ""); o.Decision != c.want {
 			t.Fatalf("%q: got %v (%s), want %v", c.cmd, o.Decision, o.Reason, c.want)
 		}
 	}
@@ -337,13 +337,13 @@ func TestAssignmentPrefixNeverAllows(t *testing.T) {
 
 func TestCompoundRidesNoBroadAllow(t *testing.T) {
 	s := store(t, Rule{Subject: "tool.bash", Pattern: "ls*", Decision: Allow})
-	if o := s.CheckCommand("ls; rm -rf x", ""); o.Decision != Ask {
+	if o := s.CheckCommandFor(SubjectBash, Normalize("ls; rm -rf x"), ""); o.Decision != Ask {
 		t.Fatalf("compound needs every segment allowed, got %v", o.Decision)
 	}
-	if o := s.CheckCommand("ls -la", ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectBash, Normalize("ls -la"), ""); o.Decision != Allow {
 		t.Fatalf("plain ls should allow: %v (%s)", o.Decision, o.Reason)
 	}
-	if o := s.CheckCommand("ls && ls", ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectBash, Normalize("ls && ls"), ""); o.Decision != Allow {
 		t.Fatalf("two allowed segments: %v", o.Decision)
 	}
 }
@@ -353,29 +353,29 @@ func TestRedirectGates(t *testing.T) {
 		Rule{Subject: "tool.bash", Pattern: "ls*", Decision: Allow},
 		Rule{Subject: "fs.write", Pattern: "/tmp/*", Decision: Allow},
 	)
-	if o := s.CheckCommand("ls > /tmp/out", ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectBash, Normalize("ls > /tmp/out"), ""); o.Decision != Allow {
 		t.Fatalf("allowed write target: %v (%s)", o.Decision, o.Reason)
 	}
-	if o := s.CheckCommand("ls > /etc/hosts", ""); o.Decision != Ask {
+	if o := s.CheckCommandFor(SubjectBash, Normalize("ls > /etc/hosts"), ""); o.Decision != Ask {
 		t.Fatalf("redirect write gates fs.write: %v", o.Decision)
 	}
-	if o := s.CheckCommand("ls 2>&1", ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectBash, Normalize("ls 2>&1"), ""); o.Decision != Allow {
 		t.Fatalf("fd dup gates nothing: %v (%s)", o.Decision, o.Reason)
 	}
-	if o := s.CheckCommand("ls > /dev/null", ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectBash, Normalize("ls > /dev/null"), ""); o.Decision != Allow {
 		t.Fatalf("/dev/null exempt: %v", o.Decision)
 	}
-	if o := s.CheckCommand("cat < /etc/passwd", ""); o.Decision != Ask {
+	if o := s.CheckCommandFor(SubjectBash, Normalize("cat < /etc/passwd"), ""); o.Decision != Ask {
 		t.Fatalf("input redirect gates fs.read: %v", o.Decision)
 	}
-	if o := s.CheckCommand("ls >> /tmp/a 2>&1", ""); o.Decision != Allow {
+	if o := s.CheckCommandFor(SubjectBash, Normalize("ls >> /tmp/a 2>&1"), ""); o.Decision != Allow {
 		t.Fatalf("mixed: %v (%s)", o.Decision, o.Reason)
 	}
 }
 
 func TestUnbalancedFails(t *testing.T) {
 	for _, cmd := range []string{`echo "unterminated`, `echo $(unclosed`, `echo (x`, `echo "$(ls"`, "echo \"`ls\""} {
-		if o := store(t, Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow}).CheckCommand(cmd, ""); o.Decision != Deny {
+		if o := store(t, Rule{Subject: "tool.bash", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectBash, Normalize(cmd), ""); o.Decision != Deny {
 			t.Fatalf("%q must fail closed, got %v", cmd, o.Decision)
 		}
 	}
@@ -546,7 +546,7 @@ func TestDotDotRidesNoDirectoryAllow(t *testing.T) {
 		{"rm /tmp/../etc/hosts", Deny},
 		{"ls a/../b", Deny}, // a deny the raw spelling meets holds
 	} {
-		if o := s.CheckCommand(c.cmd, ""); o.Decision != c.want {
+		if o := s.CheckCommandFor(SubjectBash, Normalize(c.cmd), ""); o.Decision != c.want {
 			t.Errorf("%q: got %v (%s), want %v", c.cmd, o.Decision, o.Reason, c.want)
 		}
 	}
