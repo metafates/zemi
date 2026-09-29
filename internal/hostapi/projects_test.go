@@ -1,17 +1,132 @@
 package hostapi
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/logging"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 )
+
+// TestProjectsCommand runs /projects verbs in order over one state tree:
+// this project, another with a session, its files and a decision, and a
+// third a store handle holds open, as another zemi would.
+func TestProjectsCommand(t *testing.T) {
+	tmp, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cur, other, held := filepath.Join(tmp, "cur"), filepath.Join(tmp, "other"), filepath.Join(tmp, "held")
+	dirs := config.Dirs{ProjectDir: cur, StateHome: filepath.Join(tmp, "state"), DataHome: filepath.Join(tmp, "data"), CacheHome: filepath.Join(tmp, "cache")}
+	for _, root := range []string{cur, other, held} {
+		os.MkdirAll(root, 0o755)
+		if root == cur {
+			continue // the host opens it
+		}
+		g, p, err := store.OpenForDirs(dirs.StateHome, root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g.Close()
+		if root == held {
+			defer p.Close()
+			continue
+		}
+		p.CreateSession("sid-other", "", "fix the flaky test", "")
+		p.Close()
+	}
+	if err := dirs.WriteTrust(map[string]string{other: "trusted"}); err != nil {
+		t.Fatal(err)
+	}
+	key := trustKey(other)
+	files := []string{
+		filepath.Join(dirs.StateHome, "scratch", "sid-other"),
+		filepath.Join(dirs.DataHome, "plans", "sid-other.md"),
+		filepath.Join(dirs.StateHome, "sandbox-cache", key, "go-build"),
+		filepath.Join(dirs.CacheHome, "lsp", key, "gopls"),
+		filepath.Join(projectState(dirs.StateHome, other), "permissions"),
+	}
+	for _, f := range files {
+		os.MkdirAll(filepath.Dir(f), 0o755)
+		os.WriteFile(f, []byte("go test ./...\n"), 0o600)
+	}
+	log := logging.New(t.TempDir())
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	h := NewHost(r, log, config.NewStore(), dirs)
+	ui := &pluginsUI{opened: make(chan Overlay, 4), notes: make(chan string, 4)}
+	h.SetUIHooks(ui)
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, args string
+		err        string   // a usage error, which opens nothing
+		want, not  []string // in the list it opens and the toasts
+		gone       bool     // the other project's files are deleted
+	}{
+		{
+			name: "the list", args: "",
+			want: []string{
+				"key:current", "trusted · 1 session · now", "[sessions 1 · latest now: fix the flaky test]", "[allowed go test ./...]",
+				"hotkey:f run:projects forget " + other, "danger:true hotkey:x run:projects delete " + other + " --yes", "Selected:1",
+			},
+		},
+		{name: "forget this project", args: "forget " + cur, err: "/trust changes its trust"},
+		{name: "delete this project", args: "delete " + cur + " --yes", err: "delete its data from another project"},
+		{name: "an unknown dir", args: "forget " + filepath.Join(tmp, "nope"), err: "zemi keeps nothing for"},
+		{name: "delete asks first", args: "delete " + other, want: []string{"Confirm:projects delete " + other + " --yes"}},
+		{name: "forget drops the decision", args: "forget " + other, want: []string{"Trust decision forgotten", "undecided"}, not: []string{"Forget trust"}},
+		{name: "delete a store another zemi holds", args: "delete " + held + " --yes", want: []string{"open in another window", "text:" + held}},
+		{name: "delete", args: "delete " + other + " --yes", want: []string{"Project data deleted"}, not: []string{"text:" + other}, gone: true},
+	} {
+		if err := h.RunCommand(t.Context(), "projects", c.args); c.err != "" {
+			if err == nil || !strings.Contains(err.Error(), c.err) || len(ui.opened) > 0 {
+				t.Fatalf("%s: err %v, %d lists opened", c.name, err, len(ui.opened))
+			}
+			continue
+		} else if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		var list Overlay
+		select {
+		case list = <-ui.opened:
+		case <-time.After(30 * time.Second):
+			t.Fatalf("%s: no list opened", c.name)
+		}
+		got := fmt.Sprintf("%v Selected:%d Confirm:%s", list.Items, list.Selected, list.Confirm)
+		for len(ui.notes) > 0 {
+			got += "\n" + <-ui.notes
+		}
+		for _, w := range c.want {
+			if !strings.Contains(got, w) {
+				t.Errorf("%s: no %q in\n%s", c.name, w, got)
+			}
+		}
+		for _, n := range c.not {
+			if strings.Contains(got, n) {
+				t.Errorf("%s: %q in\n%s", c.name, n, got)
+			}
+		}
+		for _, f := range files {
+			if _, err := os.Stat(f); c.gone != errors.Is(err, os.ErrNotExist) {
+				t.Errorf("%s: %s: %v", c.name, f, err)
+			}
+		}
+	}
+	h.SetUIHooks(nil)
+	if err := h.RunCommand(t.Context(), "projects", ""); !errors.Is(err, ErrNeedsTUI) {
+		t.Fatalf("headless: %v", err)
+	}
+}
 
 // TestListProjects: every root with a checked root file or a trust decision
 // is listed, the last opened first, with its trust word and session count.

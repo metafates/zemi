@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -188,8 +189,7 @@ func (h *Host) DeleteSession(id string, yes bool) error {
 			return err
 		}
 		h.recentStale.Store(true)
-		// "" when there is no state dir, which RemoveAll ignores
-		_ = os.RemoveAll(h.scratchFor(id))
+		h.removeSessionFiles(id)
 		h.Notify(logging.Info, "Session deleted", s.Title)
 		return nil
 	}
@@ -202,6 +202,23 @@ func (h *Host) DeleteSession(id string, yes bool) error {
 		}
 	})
 	return nil
+}
+
+// removeSessionFiles removes what a session keeps outside its store: its
+// scratchpad and its approved plan.
+func (h *Host) removeSessionFiles(sid string) {
+	// "" when there is no state or data dir, which RemoveAll ignores
+	_ = os.RemoveAll(h.scratchFor(sid))
+	_ = os.RemoveAll(h.planPath(sid))
+}
+
+// planPath is where a session's approved plan is saved, "" with no session
+// or data dir.
+func (h *Host) planPath(sid string) string {
+	if sid == "" || h.Dirs.DataHome == "" {
+		return ""
+	}
+	return filepath.Join(h.Dirs.DataHome, "plans", sid+".md")
 }
 
 // InputHistory returns the last limit messages the user typed in this

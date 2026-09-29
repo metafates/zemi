@@ -263,7 +263,11 @@ dotfiles repo is nobody's root; a linked worktree maps to its main checkout by r
 `.git` file, never by running git) and saved in `<state>/trust.json`. Order: a decision held
 for this process (`--trust`, a Later answer, `/trust` where saving is impossible), the saved
 one, then the Go-owned prompt. `$HOME` and `/` are never asked about or saved
-(`hostapi.TrustUnsaved`). `/trust` reopens the prompt off the UI goroutine, saves, and calls `Host.Retrust`, which sets
+(`hostapi.TrustUnsaved`). `/projects` (hostapi/projects.go) lists every root zemi keeps state
+for (`ListProjects`: `trust.json` plus each state dir's checked `root` file), forgets another
+project's decision without opening it, never granting one, and deletes another project's data
+(`deleteProject`: its state dir, its sessions' pads and plans, its caches and decision;
+`store.ClaimForDelete` refuses while another zemi has the store open). `/trust` reopens the prompt off the UI goroutine, saves, and calls `Host.Retrust`, which sets
 the decision and reloads when it changed (a reload that fails before the trust step must not
 leave the old decision in force) under the watcher's lock, so the watcher does not reload first
 for the tree the change moved. `Host.ProjectTrusted()` gates project

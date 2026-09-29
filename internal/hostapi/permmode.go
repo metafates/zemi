@@ -295,8 +295,7 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 		return tools.PlanVerdict{}, false
 	}
 	var v tools.PlanVerdict
-	if sid := h.AgentSessionID(); sid != "" && h.Dirs.DataHome != "" {
-		path := filepath.Join(h.Dirs.DataHome, "plans", sid+".md")
+	if path := h.planPath(h.AgentSessionID()); path != "" {
 		if os.MkdirAll(filepath.Dir(path), 0o700) == nil && os.WriteFile(path, []byte(plan+"\n"), 0o600) == nil {
 			v.Path = path
 		}

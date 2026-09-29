@@ -349,6 +349,9 @@ move the cursor, enter picks it, a click answers a row. `--trust` or `--trust=fa
 decides one run without saving; a headless run with nothing saved is
 untrusted and says so on stderr. The home directory and `/` are never
 asked about or saved (their prompt says it applies to this run only).
+`/projects` lists every root zemi keeps state for, forgets another
+project's decision (the next start there asks again) and deletes its data; it
+never grants trust.
 `/trust` reopens the prompt at any time, showing the current decision (Later keeps
 it), saves the answer, applies it
 before the reload it triggers when the decision changed, so a revoke holds
@@ -1759,7 +1762,8 @@ provenance string.
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/workflows`, `/review`, `/mcp`,
-  `/lsp`, `/plugins`, `/win`) and `/trust` (§5). Enter on a help command row runs it, or
+  `/lsp`, `/plugins`, `/projects` (the projects zemi keeps state for), `/win`)
+  and `/trust` (§5). Enter on a help command row runs it, or
   fills the composer when the command needs an argument.
   In `zemi run` a command that opens a screen fails with "/<name> needs the TUI".
   The menus share one list: a row that only a closer look should act on
