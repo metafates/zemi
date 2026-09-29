@@ -4,6 +4,7 @@
 // several separated by spaces or newlines. A paste made only of existing
 // paths becomes attachment tokens (hostapi.AttachPath); anything else stays
 // text. ctrl+v reads an image from the system clipboard, or its text.
+
 package ui
 
 import (

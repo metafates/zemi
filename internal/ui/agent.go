@@ -2,6 +2,7 @@
 // prompt, working row, and the shared box and list renderers.
 // Their chrome uses fixed "Host:*" styles no theme group can restyle, and
 // no Lua participates in drawing or answering them.
+
 package ui
 
 import (

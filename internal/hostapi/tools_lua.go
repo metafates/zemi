@@ -1,6 +1,7 @@
 // tools_lua.go bridges Lua-registered tools and overrides into the tool
 // pipeline (DESIGN §6.4): the zemi.tool namespace, the tool.pre hook
 // with the full decision contract, and the model-facing tool set.
+
 package hostapi
 
 import (

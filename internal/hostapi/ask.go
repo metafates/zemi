@@ -1,5 +1,6 @@
 // ask.go is the permission gate for model tool calls: the ask hook and
 // the "always" rules it offers.
+
 package hostapi
 
 import (

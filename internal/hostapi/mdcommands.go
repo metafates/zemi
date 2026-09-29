@@ -3,6 +3,7 @@
 // trusted repository's .agents (project origin). Running /<name> args sends the body to the agent with $ARGUMENTS
 // and $1..$9 filled in, behind the typed "/<name> args". Files are read at boot; /reload picks up changes.
 // The step also registers the /<name> commands of skills that ask for one.
+
 package hostapi
 
 import (

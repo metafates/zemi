@@ -6,6 +6,7 @@
 // a script that names anything else asks once up front, and so does every
 // run in an untrusted project or by a read-only agent. The tool.pre events always run
 // so user hooks can deny or halt a script.
+
 package hostapi
 
 import (

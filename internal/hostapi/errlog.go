@@ -1,6 +1,7 @@
 // errlog.go keeps the recent runtime errors behind the statusline badge
 // (DESIGN §11): widget renders, keymaps and event handlers record here,
 // and /errors lists them newest first and clears the badge.
+
 package hostapi
 
 import (

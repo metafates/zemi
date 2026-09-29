@@ -2,6 +2,7 @@
 // plus the native clipboard tool); a click without a drag acts on what is
 // under it: prompt choices, list rows, widget click ids, the thought line.
 // Hovering lights what a click would act on.
+
 package ui
 
 import (

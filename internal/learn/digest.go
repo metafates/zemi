@@ -1,5 +1,6 @@
 // digest.go renders the §10.7 memory section: every live memory, newest
 // first per scope, under a byte budget per scope.
+
 package learn
 
 import (

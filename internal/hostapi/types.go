@@ -3,6 +3,7 @@
 // completion and type checking the way vim.* does in Neovim. The file is
 // a description of the API, never part of it: nothing requires it and the
 // interpreter never sees it.
+
 package hostapi
 
 import (

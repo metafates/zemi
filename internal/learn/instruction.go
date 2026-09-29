@@ -2,6 +2,7 @@
 // (DESIGN §10.4): imperative verbs, second person and instruction-override
 // phrasings. The heuristic is deliberately recall-biased: a false positive
 // costs one review click, a missed "curl ... | sh" convention costs more.
+
 package learn
 
 import "regexp"

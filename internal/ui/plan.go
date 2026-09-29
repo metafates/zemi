@@ -3,6 +3,7 @@
 // (a), asks to change (e, then type), or dismisses (esc). The agent to return to
 // on approval is remembered when the read-only agent started, so approval
 // never asks which agent or mode.
+
 package ui
 
 import (

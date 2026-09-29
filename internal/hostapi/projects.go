@@ -1,5 +1,6 @@
 // projects.go is what zemi knows of other projects: every root it keeps
 // state for, from the trust file and the root files of <state>/projects.
+
 package hostapi
 
 import (

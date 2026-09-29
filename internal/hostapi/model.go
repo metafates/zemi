@@ -1,5 +1,6 @@
 // model.go resolves models and reads their catalog entries: image support,
 // prices, context window and output cap.
+
 package hostapi
 
 import (

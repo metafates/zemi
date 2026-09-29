@@ -3,6 +3,7 @@
 // on-demand SKILL.md loading. They reach the host through pipeline hooks;
 // a nil hook is a result the model can act on (no user to ask), never a
 // panic.
+
 package tools
 
 import (

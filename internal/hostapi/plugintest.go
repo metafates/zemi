@@ -2,6 +2,7 @@
 // registers (DESIGN §5): one throwaway zemi per case, on a fake clock, whose
 // gated calls only test.stub answers, and drivers that run what the plugin
 // registered the way zemi runs it.
+
 package hostapi
 
 import (

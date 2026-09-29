@@ -3,6 +3,7 @@
 // picking options or typing an answer on the last row. A batch shows the
 // questions as tabs plus a review tab, so answers can be changed before
 // they are submitted together.
+
 package ui
 
 import (

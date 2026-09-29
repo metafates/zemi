@@ -5,6 +5,7 @@
 // o closes the screen to edit a row in the user's editor. Enter opens a row
 // with those actions as buttons. A key acts at once and u undoes; the
 // edited rows reach the host when the screen closes.
+
 package ui
 
 import (

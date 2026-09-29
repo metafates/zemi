@@ -1,6 +1,7 @@
 // memory.go is the memory store (DESIGN §7): user-scope memory lives in
 // the global DB, project-scope in the project DB. Every live row reaches
 // the prompt, so there is no search; superseded rows stay for the trail.
+
 package store
 
 import (

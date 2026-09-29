@@ -1396,7 +1396,7 @@ func luaShape(v any) string {
 	return "an unexpected value"
 }
 
-// oneLine wraps the two returns that mean one line and used to be errors:
+// oneLine wraps the two returns that mean one line:
 // a lone string, and a line handed back without its enclosing list. A list
 // of several strings is both a line and a line each, so it stays an error.
 func oneLine(v any) (any, error) {

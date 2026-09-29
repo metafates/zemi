@@ -4,6 +4,7 @@
 // write and edit without asking, plan mode included. A pipeline binds it
 // once (tools.Pipeline.Pad). Pads live in <state>/scratch, outside every
 // repository, and are removed once unused for scratchTTL.
+
 package hostapi
 
 import (

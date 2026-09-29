@@ -1,5 +1,6 @@
 // snapshot.go shows what a bash call changed: a git tree of the working
 // directory before and after it, and the diff between the two.
+
 package hostapi
 
 import (

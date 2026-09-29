@@ -1,5 +1,6 @@
 // prompt.go assembles the agent's system prompt: the shipped text,
 // instruction files, the environment and the pinned digest.
+
 package hostapi
 
 import (

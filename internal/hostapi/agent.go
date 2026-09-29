@@ -1,6 +1,7 @@
 // agent.go is the agent core in the host (DESIGN §6.3): the
 // provider/model/agent/permission/session namespaces, profile resolution,
 // turn streaming into the UI, message persistence and the steering queue.
+
 package hostapi
 
 import (

@@ -2,6 +2,7 @@
 // live session and starts clean, /sessions lists recent ones and deletes one, /resume
 // rebuilds the model history and the transcript from the store. Closing a
 // session is the reflector's session-close trigger.
+
 package hostapi
 
 import (

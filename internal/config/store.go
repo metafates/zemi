@@ -149,7 +149,7 @@ func (s *Store) Get(path string) (any, bool) {
 	return v, ok
 }
 
-// Str, Bool and Int read a schema key in its kind. Every schema key holds
+// Str reads a string schema key; Bool and Int read the other two kinds. Every schema key holds
 // its default until someone sets it, so only a key outside the schema reads
 // as the zero value, and under go test it panics, so a mistyped key fails
 // the suite.

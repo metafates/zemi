@@ -2,6 +2,7 @@
 // zemi.memory namespace, the Go-owned /memory command, the
 // proposal queue behind the autonomy gate, and the §10.7 digest. Proposals
 // persist in their scope's store until the user accepts or rejects them.
+
 package hostapi
 
 import (

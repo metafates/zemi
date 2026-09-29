@@ -1,6 +1,7 @@
 // safe.go keeps a panic in a host goroutine from killing zemi: the
 // goroutines the host starts recover, log the stack to the run's log file,
 // and surface the panic in /errors while the app keeps running.
+
 package hostapi
 
 import (

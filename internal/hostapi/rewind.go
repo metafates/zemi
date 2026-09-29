@@ -5,6 +5,7 @@
 // list, and hands its text back to the composer. A bash call's changes are
 // rewound only for repository files git does not ignore and the sandbox does
 // not hide, at most snapCheckpoints of them per call.
+
 package hostapi
 
 import (

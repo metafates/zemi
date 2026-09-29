@@ -5,6 +5,7 @@
 // that the permission store allows reading attach; a file that is too big,
 // not text or not allowed gets a note saying so in place of its content, so
 // the model knows to reach for it with its tools.
+
 package hostapi
 
 import (

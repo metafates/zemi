@@ -2,6 +2,7 @@
 // timer/fs/http/job. Every side-effectful call passes a `lua.<ns.call>`
 // permission gate at the Lua boundary; asks fail closed (host-API calls
 // from Lua never open the interactive overlay, §6.5).
+
 package hostapi
 
 import (

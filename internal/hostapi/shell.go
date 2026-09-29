@@ -1,6 +1,7 @@
 // shell.go runs `!command` lines from the composer: the user's own shell
 // command in the project directory, shown in the transcript and handed to
 // the model with the next message so it can use the output.
+
 package hostapi
 
 import (

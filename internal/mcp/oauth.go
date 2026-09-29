@@ -4,6 +4,7 @@
 // client registration (RFC 7591), and the authorization code flow with
 // PKCE through a localhost callback. Grants persist per server and refresh
 // on their own.
+
 package mcp
 
 import (

@@ -3,6 +3,7 @@
 // its failed tool calls, the instruction files and the whole memory index,
 // and proposes memories (DESIGN §10.3). Each goes through intake and the
 // autonomy gate like one the live agent writes.
+
 package hostapi
 
 import (

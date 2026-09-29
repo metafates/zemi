@@ -2,6 +2,7 @@
 // autonomy mode: sanitize and cap the text and the quote, scrub secrets,
 // require provenance and origin, and flag instruction-shaped text for the
 // review queue.
+
 package learn
 
 import (

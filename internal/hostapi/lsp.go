@@ -4,6 +4,7 @@
 // first matching file: the builtin set when its binary is installed and the
 // project has its marker file (lsp.auto), plus servers user config adds with
 // zemi.lsp.add, and lua-language-server for zemi's own Lua (zemiLua).
+
 package hostapi
 
 import (

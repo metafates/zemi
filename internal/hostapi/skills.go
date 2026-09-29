@@ -3,6 +3,7 @@
 // hooks (user skills run in the boot window after user init), and the
 // /skills command. Enable/disable require a user or builtin origin: a
 // plugin-registered keymap cannot flip a skill.
+
 package hostapi
 
 import (

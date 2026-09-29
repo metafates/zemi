@@ -3,6 +3,7 @@
 // workflows share. A subagent is a fresh runner with its own history and a
 // restricted tool set; its tool calls pass the same permission pipeline as
 // the main agent's, and only its final message returns to the caller.
+
 package hostapi
 
 import (

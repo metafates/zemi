@@ -2,6 +2,7 @@
 // counted and the recent ones kept whether or not anything listened
 // (zemi.event.log, zemi.event.stats), and the recent notifications are
 // listed (zemi.notify.list), so a widget can show a session's activity.
+
 package hostapi
 
 import (

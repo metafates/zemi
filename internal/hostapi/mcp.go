@@ -4,6 +4,7 @@
 // mcp_<server>_<tool>. Calls run tool.pre and the permission gate under
 // subject mcp.<server> with the tool name as argument (ask by default).
 // Descriptions are labeled with their server: they are third-party text.
+
 package hostapi
 
 import (

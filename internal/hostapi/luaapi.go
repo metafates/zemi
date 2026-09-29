@@ -1,5 +1,6 @@
 // luaapi.go holds the smaller zemi.* surfaces: zemi.json, zemi.composer,
 // the session list/switch helpers and the agent.assemble prompt hook.
+
 package hostapi
 
 import (

@@ -1,6 +1,7 @@
 // editor.go hands a file to the user's editor (DESIGN §8): bubbletea's
 // tea.ExecProcess releases the terminal and runs the editor fullscreen over
 // zemi, then restores the TUI when it exits.
+
 package ui
 
 import (

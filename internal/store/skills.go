@@ -2,6 +2,7 @@
 // enabled-state store for discovered skills. Skills are user-scope: they
 // live in the global DB. Discovery (internal/skills) drives which rows
 // exist; SyncSkills reconciles the table with the filesystem.
+
 package store
 
 import (

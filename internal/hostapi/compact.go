@@ -5,6 +5,7 @@
 // messages stay verbatim. A prompt the provider refuses as too long takes
 // the same path once. The summary and a copy of the kept messages are stored
 // after the rows they replace, so /resume starts from the summary.
+
 package hostapi
 
 import (

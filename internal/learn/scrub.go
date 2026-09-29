@@ -2,6 +2,7 @@
 // shapes, key=value assignments and spans above an entropy threshold are
 // replaced with a "[redacted n chars]" marker. Text that is one secret
 // blob after scrubbing is refused, not stored.
+
 package learn
 
 import (

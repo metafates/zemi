@@ -1,6 +1,8 @@
-// zemi: a self-improving, Lua-extensible AI agent harness (DESIGN.md).
 // main.go is wiring only: resolve dirs, build the runtime + host + UI,
 // assemble the boot steps, run the bubbletea program.
+
+// Command zemi is a self-improving, Lua-extensible AI agent harness for the
+// terminal (DESIGN.md).
 package main
 
 import (

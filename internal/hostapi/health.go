@@ -1,6 +1,7 @@
 // health.go is /health (after neovim's :checkhealth): one row per check,
 // so a piece failing quietly (no API key, a missing sandbox, a
 // reflector that keeps erroring) is visible in one place.
+
 package hostapi
 
 import (

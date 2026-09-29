@@ -3,6 +3,7 @@
 // the live session's runs and the chat can show one in place of the session.
 // A background run's report joins the conversation as a message when it
 // finishes (steering a running turn, or starting one).
+
 package hostapi
 
 import (

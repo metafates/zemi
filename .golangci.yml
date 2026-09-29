@@ -55,7 +55,7 @@ linters:
       strconcat: false
       concat-loop: false
     staticcheck:
-      checks: ["all", "-ST1000", "-ST1003", "-ST1020", "-ST1021", "-ST1022", "-QF1001", "-QF1008"]
+      checks: ["all", "-QF1001", "-QF1008"]
     usestdlibvars:
       time-layout: true
     nolintlint:

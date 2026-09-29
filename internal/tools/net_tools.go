@@ -3,6 +3,7 @@
 // http/https URLs only, refuse userinfo, and every connect is checked
 // against the denied-address set on the resolved IP (per hop), so DNS
 // rebinding cannot slip past a hostname rule.
+
 package tools
 
 import (
