@@ -1776,7 +1776,8 @@ provenance string.
   native scrollback), and `alt+up`/`alt+down` jump to the previous or next
   prompt; in lists `ctrl+d`/`ctrl+u` move half a page, and
   scroll a box's text when it overflows, which the footer names as
-  `ctrl+d/u scroll`. A typed line keeps `ctrl+u` for its text, and the
+  `ctrl+d/u scroll`. A typed line keeps `ctrl+u` for its text, so neither
+  half-page key scrolls the prompt text above it, and the
   composer popups keep `home` and `end` for the draft too, so while a line
   types the footer names no scroll keys. A scrolled-back viewport is anchored on the rows it
   shows, not on a row number, so a resize, an expanded thought or a new

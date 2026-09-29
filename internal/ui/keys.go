@@ -407,6 +407,10 @@ func listMove(key string) int {
 // which the line keeps: home, end and ctrl+u, which deletes to its start.
 func lineKey(key string) bool { return key == "home" || key == "end" || key == "ctrl+u" }
 
+// typedKey reports whether a typed line keeps key from scrolling the text
+// above it: lineKey's keys, and ctrl+d, so neither half-page key scrolls.
+func typedKey(key string) bool { return lineKey(key) || key == "ctrl+d" }
+
 // typing reports whether the keys go to a line being typed: the draft, a
 // filter, an input overlay or a typed answer.
 func (a *App) typing(top modal) bool {
@@ -620,9 +624,7 @@ func (a *App) pasteChrome(text string) bool {
 		}
 	case modalPlan:
 		p := a.planAsk
-		if !p.typing {
-			p.typing, p.input = true, composerState{}
-		}
+		p.typing = true
 		p.input.insert(line)
 	case modalOverlay:
 		st := &a.overlays[len(a.overlays)-1]

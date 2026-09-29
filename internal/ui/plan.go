@@ -63,7 +63,7 @@ func (a *App) finishPlan(v tools.PlanVerdict, ok bool) {
 func (a *App) planKey(key, text string) {
 	p := a.planAsk
 	defer a.bump()
-	if !(p.typing && lineKey(key)) && scrollKey(&p.view, key, false) || !p.typing && moveSel(&p.sel, 2, 2, key) {
+	if !(p.typing && typedKey(key)) && scrollKey(&p.view, key, false) || !p.typing && moveSel(&p.sel, 2, 2, key) {
 		return
 	}
 	if p.typing {
@@ -86,7 +86,7 @@ func (a *App) planKey(key, text string) {
 	case "a":
 		a.finishPlan(tools.PlanVerdict{Approved: true}, true)
 	case "e": // edit: every key, j/k included, types from here on
-		p.typing, p.input = true, composerState{}
+		p.typing = true
 	case "esc":
 		a.finishPlan(tools.PlanVerdict{}, false)
 	}

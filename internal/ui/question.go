@@ -127,7 +127,7 @@ func (a *App) questionKey(key, text string) {
 		return
 	}
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
-	if !(st.typing && lineKey(key)) && st.ask.overflows() && scrollKey(&st.ask, key, false) {
+	if !(st.typing && typedKey(key)) && st.ask.overflows() && scrollKey(&st.ask, key, false) {
 		return
 	}
 	if st.typing {
