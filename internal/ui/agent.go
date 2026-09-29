@@ -890,9 +890,9 @@ func permTitle(req hostapi.PermRequest) string {
 		return "Fetch this URL?"
 	case mcp:
 		return "Use " + req.Arg + " from " + server + "?"
-	case req.Subject == "tool.lua":
+	case req.Subject == perm.SubjectLua:
 		return "Run Lua inside zemi?"
-	case req.Subject == "tool.workflow":
+	case req.Subject == perm.SubjectWorkflow:
 		return "Run this workflow?"
 	case req.Subject == "tool."+req.Tool:
 		return "Use the " + req.Tool + " tool?"
@@ -957,7 +957,7 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 	switch arg := req.Arg; {
 	case req.Subject == perm.SubjectShell:
 		return "", nil
-	case tools.PathSubject(req.Subject), req.Subject == "tool.lua" && arg != "script":
+	case tools.PathSubject(req.Subject), req.Subject == perm.SubjectLua && arg != "script":
 		if rel, ok := perm.Under(root, arg); ok && root != "" && filepath.IsAbs(arg) {
 			arg = rel
 		}
@@ -969,7 +969,7 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 			return "url", slices.Concat([]hostapi.Segment{{Text: before, HL: hostapi.ChromeValue}, {Text: u.Host, HL: hostapi.ChromeBold}}, parts(after))
 		}
 		return "url", parts(arg)
-	case req.Subject == "tool.workflow" && arg != "script":
+	case req.Subject == perm.SubjectWorkflow && arg != "script":
 		return "workflow", []hostapi.Segment{{Text: arg, HL: hostapi.ChromeValue}}
 	case strings.HasPrefix(req.Subject, "mcp."), req.Subject == "tool."+req.Tool, req.Subject == "memory.write", arg == "script":
 		return "", nil

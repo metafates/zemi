@@ -481,7 +481,7 @@ func (h *Host) autoLocal(req tools.Request) bool {
 		return (h.ProjectTrusted() && h.inJail(req.Arg, h.writeJails()...) || h.madePlugin(req.Arg)) && !h.secretPath(req.Arg) && !h.protectedWrite(req.Arg)
 	case perm.SubjectShell:
 		return h.unsettled(req) == ""
-	case "tool.workflow":
+	case perm.SubjectWorkflow:
 		return true // the script is sandboxed and each agent it starts is gated
 	}
 	if server, ok := strings.CutPrefix(req.Subject, "mcp."); ok {

@@ -2870,7 +2870,7 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 // toolSubjects are the tool.* subjects a request can carry: the tools that
 // ask as themselves and the Lua tools added so far.
 func (h *Host) toolSubjects() []string {
-	subjects := []string{"tool.*", perm.SubjectShell, "tool.lua", "tool.workflow"}
+	subjects := []string{"tool.*", perm.SubjectShell, perm.SubjectLua, perm.SubjectWorkflow}
 	for _, t := range h.luaTools.list() {
 		subjects = append(subjects, "tool."+t.Name)
 	}

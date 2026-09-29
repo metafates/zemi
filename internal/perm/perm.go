@@ -32,9 +32,11 @@ const (
 // The subjects zemi's own tools ask about; the set is open (net.<host>,
 // lua.<ns.call>, mcp.<server>).
 const (
-	SubjectShell = "tool.shell"
-	SubjectRead  = "fs.read"
-	SubjectWrite = "fs.write"
+	SubjectShell    = "tool.shell"
+	SubjectLua      = "tool.lua"
+	SubjectWorkflow = "tool.workflow"
+	SubjectRead     = "fs.read"
+	SubjectWrite    = "fs.write"
 )
 
 // PrincipalModel scopes a rule to the model's calls, like an always answer.
