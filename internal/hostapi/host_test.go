@@ -329,14 +329,15 @@ func TestKeymapFromLua(t *testing.T) {
 		local a = zemi.keymap.get("ctrl+j", { list = true })
 		assert(a and a.list and a.action == "down" and zemi.keymap.get("ctrl+j") == nil, "a list alias is its own binding")
 		for _, bad in ipairs({
-			{ "ctrl+x j", "down", { list = true } }, -- a sequence
-			{ "d", "down", { list = true } }, -- a letter
-			{ "ctrl+k", "help", { list = true } }, -- not a move
-			{ "ctrl+k", function() end, { list = true } },
-			{ "ctrl+k", "down", { list = true, focus = "sidebar" } },
-			{ "enter", "down", { list = true } }, -- a key the lists answer with
+			{ "ctrl+x j", "down", { list = true }, "one key" },
+			{ "d", "down", { list = true }, "printable keys filter" },
+			{ "ctrl+k", "help", { list = true }, "is a move" },
+			{ "ctrl+k", function() end, { list = true }, "is a move" },
+			{ "ctrl+k", "down", { list = true, focus = "sidebar" }, "do not combine" },
+			{ "enter", "down", { list = true }, "lists answer with" },
 		}) do
-			assert(not pcall(zemi.keymap.set, bad[1], bad[2], bad[3]), "bound the alias " .. bad[1])
+			local ok, err = pcall(zemi.keymap.set, bad[1], bad[2], bad[3])
+			assert(not ok and tostring(err):find(bad[4], 1, true), "alias " .. bad[1] .. ": " .. tostring(err))
 		end
 		assert(zemi.keymap.del("ctrl+j", { list = true }) and zemi.keymap.get("ctrl+j", { list = true }) == nil, "del an alias")
 	`)
