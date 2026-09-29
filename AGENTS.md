@@ -688,7 +688,9 @@ lua-language-server is installed.
   model - a profile, an agent definition, a workflow - takes a role name or a
   `provider/model` id (`modelRef`). `/health` checks each distinct role model.
 - **One ledger.** Every model call is billed through `Host.bill`: the session row, and the
-  live tally when that session is still open. Calls outside a runner (summary, title,
+  live tally when that session is still open. A runner's call counts as its stream
+  finishes (`StreamHooks.StreamDone`), before its tools run, so the tally and a subagent's
+  row move during a slow tool; a subagent's run bills once, at its end. Calls outside a runner (summary, title,
   reflector) go through `Host.generate`, which bills them and sends the provider's body fields
   without the effort; the reflector bills the session it read, closed or not.
 - **The active profile is a config key.** `agent.profile` names what `resolveProfile("")`

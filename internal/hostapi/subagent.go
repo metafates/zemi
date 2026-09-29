@@ -587,15 +587,16 @@ func (s *subagentHooks) Retrying(err error, delay time.Duration) {
 	s.report(fmt.Sprintf("%s · retrying in %s", s.def.Name, fmtDuration(delay)))
 }
 
-// StepDone counts the step on the run's row and emits agent.step: a
-// subagent's whole run bills once at TurnDone.
-func (s *subagentHooks) StepDone(st agent.Step) {
+// StreamDone counts a model call on the run's row as its stream finishes:
+// a subagent's whole run bills once at TurnDone.
+func (s *subagentHooks) StreamDone(u fantasy.Usage) {
 	s.run.mu.Lock()
-	s.run.tokens += billedInput(st.Usage) + st.Usage.OutputTokens
-	s.run.cost += s.h.turnCost(s.modelID, st.Usage)
+	s.run.tokens += billedInput(u) + u.OutputTokens
+	s.run.cost += s.h.turnCost(s.modelID, u)
 	s.run.mu.Unlock()
-	s.h.emitStep(s.sid, s.modelID, st)
 }
+
+func (s *subagentHooks) StepDone(st agent.Step) { s.h.emitStep(s.sid, s.modelID, st) }
 
 func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h

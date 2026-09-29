@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
-
-	"github.com/metafates/zemi/internal/agent"
 )
 
 // TestTurnCost: prices registered from Lua price a turn, cache writes and
@@ -49,7 +47,7 @@ func TestAgentFinishUsage(t *testing.T) {
 		end)`)
 	for range 2 {
 		u := fantasy.Usage{InputTokens: 1_000_000, CacheReadTokens: 5, OutputTokens: 500_000}
-		h.streamHooks().(*streamAdapter).StepDone(agent.Step{Usage: u})
+		h.streamHooks().StreamDone(u)
 		h.streamHooks().TurnDone(nil, u)
 	}
 	want := `"` + sid + ` p/m 1000005 500000 1500005 2 4 3000010 0"`
@@ -69,7 +67,7 @@ func TestUsageCountsCache(t *testing.T) {
 	sid := seedSession(t, h)
 	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
 	u := fantasy.Usage{InputTokens: 1, CacheReadTokens: 10, CacheCreationTokens: 100, OutputTokens: 5}
-	h.streamHooks().(*streamAdapter).StepDone(agent.Step{Usage: u})
+	h.streamHooks().StreamDone(u)
 	(&subagentHooks{h: h, def: builtinAgents[0], run: run}).TurnDone(nil, u)
 	if got := h.AgentStream().SessionIn; got != 222 {
 		t.Errorf("live input tally = %d, want 222", got)
@@ -85,13 +83,19 @@ func TestUsageCountsCache(t *testing.T) {
 	}
 }
 
-// TestStepBillsLiveTally: each completed step's usage lands in the session
-// tally immediately, before any TurnDone, so the statusline token count moves
-// during the turn instead of only when it ends.
-func TestStepBillsLiveTally(t *testing.T) {
+// TestStreamBillsLiveTally: a model call's usage lands in the session tally
+// and on a subagent run's row as its stream finishes, before its tools run,
+// so a count moves during the turn instead of only when it ends.
+func TestStreamBillsLiveTally(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
-	h.streamHooks().(*streamAdapter).StepDone(agent.Step{Usage: fantasy.Usage{InputTokens: 10, OutputTokens: 5, CacheReadTokens: 3}})
+	u := fantasy.Usage{InputTokens: 10, OutputTokens: 5, CacheReadTokens: 3}
+	h.streamHooks().StreamDone(u)
+	run, _ := h.newRun(context.Background(), builtinAgents[0], "d", "p", false)
+	(&subagentHooks{h: h, def: builtinAgents[0], run: run}).StreamDone(u)
+	if tok, _ := run.usage(); tok != 18 {
+		t.Fatalf("run tokens after one call = %d, want 18", tok)
+	}
 	if got := h.AgentStream().SessionIn; got != 13 {
 		t.Fatalf("live input tally after one step = %d, want 13", got)
 	}

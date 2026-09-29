@@ -86,7 +86,6 @@ type recHooks struct {
 	mu       sync.Mutex
 	text     strings.Builder
 	tools    []string
-	steps    int
 	doneErr  error
 	usage    fantasy.Usage
 	doneWait chan struct{}
@@ -134,15 +133,13 @@ func (h *recHooks) ToolCallEnd(id, name string, ok bool, output, _ string) {
 	h.mu.Unlock()
 }
 
-func (h *recHooks) StepDone(st Step) {
-	usage := st.Usage
+func (h *recHooks) StreamDone(fantasy.Usage) {
 	h.mu.Lock()
-	h.steps++
-	h.usage.InputTokens += usage.InputTokens
-	h.usage.OutputTokens += usage.OutputTokens
-	h.usage.TotalTokens += usage.TotalTokens
+	h.tools = append(h.tools, "usage")
 	h.mu.Unlock()
 }
+
+func (h *recHooks) StepDone(Step) {}
 
 func (h *recHooks) TurnDone(err error, usage fantasy.Usage) {
 	h.mu.Lock()
@@ -248,7 +245,7 @@ func TestSteerJoinsAtStepBoundary(t *testing.T) {
 
 // TestToolRowOpensAtInputStart: the row exists while the model is still
 // streaming the call's arguments (a write's file body takes seconds), not
-// only once they are complete.
+// only once they are complete, and a call's usage arrives before its tools run.
 func TestToolRowOpensAtInputStart(t *testing.T) {
 	m := &mockModel{steps: [][]fantasy.StreamPart{
 		{
@@ -270,7 +267,7 @@ func TestToolRowOpensAtInputStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitDone(t, hooks)
-	if got := strings.Join(hooks.tools, ","); got != "pending:echo,start:echo,running,end:echo" {
+	if got := strings.Join(hooks.tools, ","); got != "pending:echo,usage,start:echo,running,end:echo,usage" {
 		t.Fatalf("hook order: %s", got)
 	}
 }

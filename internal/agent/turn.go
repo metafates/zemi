@@ -36,8 +36,11 @@ type StreamHooks interface {
 	// StepStart marks the start of a model call; after Retrying the call
 	// streams again from its first delta.
 	StepStart()
-	// StepDone reports a completed step, so the session token tally can
-	// move during the turn instead of only at TurnDone.
+	// StreamDone is a model call's usage as its stream finishes, before its
+	// tools run: the one place a turn's spend is counted, so a tally moves
+	// while a slow tool runs.
+	StreamDone(u fantasy.Usage)
+	// StepDone reports a completed step, its tools run.
 	StepDone(s Step)
 	// Retrying reports a provider retry (rate limit, overload) before the
 	// backoff delay.
@@ -323,6 +326,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	// the tool whose arguments the step was streaming: a reply cut there
 	// may leave no tool call behind for closeToolCalls to answer
 	pending := ""
+	var usage fantasy.Usage // every finished stream's, a step that failed after it too
 	var stepStart time.Time
 	var firstToken time.Duration
 	token := func() {
@@ -361,6 +365,17 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 			// fires for a call fantasy refused to run too, which Run never releases
 			tools.CallDone(tctx, res.ToolCallID)
 			hooks.ToolCallEnd(res.ToolCallID, res.ToolName, !isErrResult(res), ToolOutput(res.Result), res.ClientMetadata)
+			return nil
+		},
+		OnStreamFinish: func(u fantasy.Usage, _ fantasy.FinishReason, _ fantasy.ProviderMetadata) error {
+			usage.InputTokens += u.InputTokens
+			usage.OutputTokens += u.OutputTokens
+			usage.TotalTokens += u.TotalTokens
+			// cache reads and writes are billed apart from input, and providers
+			// report them apart: keep them for the price
+			usage.CacheReadTokens += u.CacheReadTokens
+			usage.CacheCreationTokens += u.CacheCreationTokens
+			hooks.StreamDone(u)
 			return nil
 		},
 		OnRetry: func(_ *fantasy.ProviderError, delay time.Duration) {
@@ -454,16 +469,6 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	// Completed steps (assistant content, tool results, steered user
 	// messages) join history in the order the model saw them, also after an
 	// error; the step that failed is dropped whole, so no call lacks its result.
-	var usage fantasy.Usage
-	for _, s := range steps {
-		usage.InputTokens += s.Usage.InputTokens
-		usage.OutputTokens += s.Usage.OutputTokens
-		usage.TotalTokens += s.Usage.TotalTokens
-		// cache reads and writes are billed apart from input, and providers
-		// report them apart: keep them for the price
-		usage.CacheReadTokens += s.Usage.CacheReadTokens
-		usage.CacheCreationTokens += s.Usage.CacheCreationTokens
-	}
 	r.mu.Lock()
 	r.cut = cut && err == nil
 	r.History = append(r.History, interleave(nil, stepMessages(steps), steered)...)

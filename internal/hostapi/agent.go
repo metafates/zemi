@@ -1115,9 +1115,20 @@ func toolStatus(name string, ok bool, output string, cancelled bool) CallStatus 
 	return CallErr
 }
 
-// StepDone bills a completed step's usage to the live session tally, so the
-// token count moves during the turn instead of only at TurnDone, and counts
-// the step for the todo nag unless a todos call ran in it.
+// StreamDone bills a model call as its stream finishes, so the token count
+// moves during the turn instead of only at TurnDone.
+func (s *streamAdapter) StreamDone(u fantasy.Usage) {
+	ag := s.h.agents
+	ag.mu.Lock()
+	sid, model := ag.sessionID, ag.turnModel
+	ag.mu.Unlock()
+	if model == "" {
+		model = s.h.currentModelID(nil) // a turn the host did not start (tests)
+	}
+	s.h.bill(sid, model, u)
+}
+
+// StepDone counts the step for the todo nag unless a todos call ran in it.
 func (s *streamAdapter) StepDone(st agent.Step) {
 	h := s.h
 	ag := h.agents
@@ -1126,9 +1137,8 @@ func (s *streamAdapter) StepDone(st agent.Step) {
 	ag.todoTouched = false
 	ag.mu.Unlock()
 	if model == "" {
-		model = h.currentModelID(nil) // a turn the host did not start (tests)
+		model = h.currentModelID(nil)
 	}
-	h.bill(sid, model, st.Usage)
 	h.emitStep(sid, model, st)
 	if !touched {
 		h.maybeNagTodos()
