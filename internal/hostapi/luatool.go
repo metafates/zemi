@@ -247,22 +247,21 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	// the script sees what is on disk, and the result says whether it loaded
 	note := h.ReloadIfChanged()
 	out, err := h.runModelLua(ctx, src, rel)
-	if err == nil && out == "" {
-		out = "(no output)"
-	}
-	if note != "" {
-		out = note + "\n" + out
-	}
-	if err != nil {
+	switch {
+	case err != nil:
 		msg := err.Error()
 		if in.Path != "" {
 			// the chunk keeps its tool name, which the sandbox guard reads;
 			// the error names the file the model can edit
 			msg = strings.ReplaceAll(msg, rel+":", in.Path+":")
 		}
-		return fantasy.NewTextErrorResponse(h.truncOutput(t.pipe.Pad, "lua", strings.TrimSpace(out+"\nerror: "+msg))), nil
+		out = strings.TrimSpace(out + "\nerror: " + msg)
+	case out == "":
+		out = "(no output)"
 	}
-	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "lua", out)), nil
+	reply = fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "lua", strings.TrimSpace(note+"\n"+out)))
+	reply.IsError = err != nil
+	return reply, nil
 }
 
 // runModelLua runs src as a user-origin chunk named rel (the model can do

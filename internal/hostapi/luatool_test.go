@@ -264,6 +264,9 @@ func TestLuaToolReloads(t *testing.T) {
 			h.RecordError("render", "not the reload's")
 			return nil
 		}, "(zemi reloaded the changed config; 1 error)\nerror: boot plugins: plugin x: init.lua:3: boom\nreturn: true"},
+		{"a replay that stopped says why", true, func(*Host) error {
+			return errors.New("config: boom")
+		}, "(zemi reloaded the changed config; 1 error)\nerror: boot step config: config: boom\nerror: zemi: lua runtime is hot, reload required"},
 		{
 			"a reload that kept the generation says the old config runs", true, nil,
 			"(the changed config did not load; the old one still runs)\nerror: init.lua:3: unexpected symbol\nreturn: true",

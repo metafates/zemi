@@ -16,16 +16,25 @@ import (
 )
 
 // TestLuaToolAfterReload: a runner built before a reload still holds the old
-// generation's tool, which must refuse instead of calling into it (DESIGN §4).
+// generation's tool, which runs the one the reload registered under its
+// name and refuses when there is none, never calling into the old
+// generation (DESIGN §4).
 func TestLuaToolAfterReload(t *testing.T) {
-	h, r := newTestHost(t)
-	h.Perm.Add(perm.Rule{Subject: "tool.weather", Pattern: "*", Decision: perm.Allow})
-	runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
-	tool := h.luaFantasyTools(h.PipelineFor())[0]
-	h.gen.Add(1)
-	resp, err := tool.Run(context.Background(), fantasy.ToolCall{Input: "{}"})
-	if err != nil || !resp.IsError || !strings.Contains(resp.Content, "reload") {
-		t.Fatalf("resp = %+v, %v", resp, err)
+	for _, c := range []struct{ reloaded, want string }{
+		{`zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "rain" end })`, "rain"},
+		{"", "weather: the tool is gone after a config reload"},
+	} {
+		h, r := newTestHost(t)
+		h.Perm.Add(perm.Rule{Subject: "tool.weather", Pattern: "*", Decision: perm.Allow})
+		runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
+		tool := h.luaFantasyTools(h.PipelineFor())[0]
+		if err := h.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+			t.Fatal(err)
+		}
+		runUser(t, r, c.reloaded)
+		if resp, err := tool.Run(context.Background(), fantasy.ToolCall{Input: "{}"}); err != nil || resp.Content != c.want {
+			t.Errorf("reloaded %q: %+v, %v", c.reloaded, resp, err)
+		}
 	}
 }
 

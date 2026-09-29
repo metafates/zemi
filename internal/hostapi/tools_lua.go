@@ -73,6 +73,12 @@ func (r *toolReg) add(t *luaTool) error {
 	return nil
 }
 
+func (r *toolReg) get(name string) *luaTool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.byName[name]
+}
+
 func (r *toolReg) list() []*luaTool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -316,12 +322,17 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 // raised error reaches the model without its traceback, which names the
 // user's config paths; /errors keeps it.
 func (h *Host) runLuaTool(ctx context.Context, t *luaTool, callID string, input map[string]any) (string, error) {
+	// a turn's runner keeps the tools of the generation it started in: run
+	// what a reload since registered under the name
+	if cur := h.luaTools.get(t.Name); cur != nil {
+		t = cur
+	}
 	ctx, cancel := context.WithTimeoutCause(ctx, t.Timeout, fmt.Errorf("timed out after %s", t.Timeout))
 	defer cancel()
 	res, err := h.RT.RunTask(ctx, lua.Task{
 		Class: lua.ClassAgent, Ceiling: t.Timeout, Origin: t.Origin, Path: t.Path,
 		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
-			// a turn keeps the tools it started with: never call into a dropped generation
+			// never call into a dropped generation
 			if h.currentGen() != t.Gen {
 				return nil, nil, errors.New("the tool is gone after a config reload")
 			}

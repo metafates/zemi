@@ -2001,10 +2001,15 @@ func (h *Host) ReloadIfChanged() string {
 		return ""
 	}
 	t, gen := h.now(), h.currentGen()
-	if err := h.reload(); err != nil && h.currentGen() == gen {
+	err := h.reload()
+	if err != nil && h.currentGen() == gen {
 		return "(the changed config did not load; the old one still runs)\nerror: " + Headline(err.Error())
 	}
 	errs := h.errorsSince(t, "boot ")
+	// a failed step records itself; a replay that stopped may name no step
+	if err != nil && !slices.ContainsFunc(errs, func(e string) bool { return strings.HasSuffix(e, ": "+Headline(err.Error())) }) {
+		errs = append(errs, "error: "+Headline(err.Error()))
+	}
 	if len(errs) == 0 {
 		return "(zemi reloaded the changed config)"
 	}
