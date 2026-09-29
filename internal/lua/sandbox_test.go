@@ -185,7 +185,7 @@ func TestSandboxProtectedGlobals(t *testing.T) {
 	sb := newTestSandbox(t)
 	ns := sb.L.NewTable()
 	ns.RawSetString("hello", glua.LString("world"))
-	if err := sb.RegisterNamespace("zemi.ui", ns); err != nil {
+	if err := sb.RegisterNamespace("zemi.ui", ns, nil); err != nil {
 		t.Fatal(err)
 	}
 	want := "assignment to protected global"
@@ -214,7 +214,7 @@ func TestSandboxDeepNamespaceProtection(t *testing.T) {
 	widget := sb.L.NewTable()
 	widget.RawSetString("add", sb.L.NewFunction(func(L *glua.LState) int { return 0 }))
 	ui.RawSetString("widget", widget)
-	if err := sb.RegisterNamespace("zemi.ui", ui); err != nil {
+	if err := sb.RegisterNamespace("zemi.ui", ui, nil); err != nil {
 		t.Fatal(err)
 	}
 	mustRun(t, sb, `
@@ -248,7 +248,7 @@ func TestSandboxCallableNamespace(t *testing.T) {
 		got = append(got, "call:"+L.CheckString(2))
 		return 0
 	})
-	if err := sb.RegisterCallableNamespace("zemi.log", tbl, call); err != nil {
+	if err := sb.RegisterNamespace("zemi.log", tbl, call); err != nil {
 		t.Fatal(err)
 	}
 	mustRun(t, sb, `
@@ -282,23 +282,23 @@ func TestSandboxRegisterNamespaceRules(t *testing.T) {
 	sb := newTestSandbox(t)
 	tbl := sb.L.NewTable()
 	tbl.RawSetString("fn", sb.L.NewFunction(func(L *glua.LState) int { return 0 }))
-	if err := sb.RegisterNamespace("zemi.ui", tbl); err != nil {
+	if err := sb.RegisterNamespace("zemi.ui", tbl, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := sb.RegisterNamespace("zemi.ui", sb.L.NewTable()); err == nil {
+	if err := sb.RegisterNamespace("zemi.ui", sb.L.NewTable(), nil); err == nil {
 		t.Fatal("duplicate namespace accepted")
 	}
-	if err := sb.RegisterNamespace("config", sb.L.NewTable()); err == nil {
+	if err := sb.RegisterNamespace("config", sb.L.NewTable(), nil); err == nil {
 		t.Fatal("non-zemi namespace accepted")
 	}
-	if err := sb.RegisterNamespace("zemi.", sb.L.NewTable()); err == nil {
+	if err := sb.RegisterNamespace("zemi.", sb.L.NewTable(), nil); err == nil {
 		t.Fatal("trailing-dot namespace accepted")
 	}
 	// A namespace colliding with an existing non-table path is refused.
 	if err := sb.RegisterProtectedValue("zemi.seal", glua.LString("x")); err != nil {
 		t.Fatal(err)
 	}
-	if err := sb.RegisterNamespace("zemi.seal.deep", sb.L.NewTable()); err == nil {
+	if err := sb.RegisterNamespace("zemi.seal.deep", sb.L.NewTable(), nil); err == nil {
 		t.Fatal("namespace under a non-table path accepted")
 	}
 	if err := sb.CheckIntegrity(); err != nil {
@@ -310,7 +310,7 @@ func TestSandboxLookupPath(t *testing.T) {
 	sb := newTestSandbox(t)
 	ns := sb.L.NewTable()
 	ns.RawSetString("hello", glua.LString("world"))
-	if err := sb.RegisterNamespace("zemi.ui", ns); err != nil {
+	if err := sb.RegisterNamespace("zemi.ui", ns, nil); err != nil {
 		t.Fatal(err)
 	}
 	got := sb.LookupPath("zemi.ui")
@@ -475,7 +475,7 @@ func BenchmarkCheckIntegrity(b *testing.B) {
 		for j := range 8 {
 			tbl.RawSetString(fmt.Sprintf("fn%d", j), sb.L.NewFunction(func(*glua.LState) int { return 0 }))
 		}
-		if err := sb.RegisterNamespace(fmt.Sprintf("zemi.ns%d", i), tbl); err != nil {
+		if err := sb.RegisterNamespace(fmt.Sprintf("zemi.ns%d", i), tbl, nil); err != nil {
 			b.Fatal(err)
 		}
 	}

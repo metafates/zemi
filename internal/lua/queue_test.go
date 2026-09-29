@@ -420,7 +420,7 @@ func TestQueueIntegrityGoesHot(t *testing.T) {
 	step := BootStep{Name: "ns", Run: func(ctx context.Context, rt *Runtime, g *Generation) error {
 		ns = g.L.NewTable()
 		ns.RawSetString("fn", g.L.NewFunction(func(*glua.LState) int { return 0 }))
-		return g.SB.RegisterNamespace("zemi.ui", ns)
+		return g.SB.RegisterNamespace("zemi.ui", ns, nil)
 	}}
 	if err := r.Boot(context.Background(), []BootStep{step}); err != nil {
 		t.Fatalf("Boot: %v", err)
@@ -450,7 +450,7 @@ func TestEval(t *testing.T) {
 	step := BootStep{Name: "ns", Run: func(ctx context.Context, rt *Runtime, g *Generation) error {
 		tbl := g.L.NewTable()
 		tbl.RawSetString("fn", g.L.NewFunction(func(*glua.LState) int { return 0 }))
-		return g.SB.RegisterNamespace("zemi.ui", tbl)
+		return g.SB.RegisterNamespace("zemi.ui", tbl, nil)
 	}}
 	if err := r.Boot(context.Background(), []BootStep{step}); err != nil {
 		t.Fatalf("Boot: %v", err)

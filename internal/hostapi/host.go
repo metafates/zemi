@@ -1995,12 +1995,6 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 	}
 
 	g.SB.SetGuard(h.guardLua)
-	register := func(name string, tbl *glua.LTable, call *glua.LFunction) error {
-		if call != nil {
-			return g.SB.RegisterCallableNamespace(name, tbl, call)
-		}
-		return g.SB.RegisterNamespace(name, tbl)
-	}
 	pairs := []struct {
 		name string
 		tbl  *glua.LTable
@@ -2038,7 +2032,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.project", h.projectNamespace(L), nil},
 	}
 	for _, p := range pairs {
-		if err := register(p.name, p.tbl, p.call); err != nil {
+		if err := g.SB.RegisterNamespace(p.name, p.tbl, p.call); err != nil {
 			return err
 		}
 	}

@@ -126,7 +126,7 @@ func (t *PluginTest) Step() lua.BootStep {
 				return fn(L)
 			})))
 		}
-		if err := g.SB.RegisterCallableNamespace("zemi.test", tb, g.L.NewFunction(t.declare)); err != nil || t.file == "" {
+		if err := g.SB.RegisterNamespace("zemi.test", tb, g.L.NewFunction(t.declare)); err != nil || t.file == "" {
 			return err
 		}
 		return r.EvalFileInline(ctx, g.L, t.file, lua.OriginPlugin)

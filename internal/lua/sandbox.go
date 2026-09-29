@@ -207,7 +207,7 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 	})
 	frozen.RawSetString("_G", glua.LNil)
 	s.frozen = frozen
-	s.freezeTable(frozen, "stdlib surface")
+	s.FreezeTable(frozen, "stdlib surface")
 	// The zemi binding itself is write-guarded from the start (DESIGN §5):
 	// namespace registrations mark their dotted names, but the root name is
 	// protected even before any namespace exists.
@@ -505,11 +505,11 @@ func (s *Sandbox) SetRequire(fn *glua.LFunction) {
 	s.protected["require"] = struct{}{}
 }
 
-// freezeTable locks a shared table: writes through it raise, setmetatable
+// FreezeTable locks a shared table: writes through it raise, setmetatable
 // on it is refused via the __metatable lock, and Lua cannot get at the real
 // metatable to swap events. Used for the frozen surface itself; shared leaf
 // tables get protectTable instead (see below).
-func (s *Sandbox) freezeTable(tb *glua.LTable, what string) {
+func (s *Sandbox) FreezeTable(tb *glua.LTable, what string) {
 	s.L.SetMetatable(tb, s.lockedMeta(what))
 }
 
@@ -641,24 +641,11 @@ func rawLookup(tb *glua.LTable, key string) glua.LValue {
 	return realTableOf(tb).RawGetString(key)
 }
 
-// FreezeTable locks a shared table from outside the package (hostapi uses
-// it for nested namespace tables like zemi.ui.widget; RegisterNamespace
-// additionally wraps the whole subtree in protected proxies).
-func (s *Sandbox) FreezeTable(tb *glua.LTable, what string) { s.freezeTable(tb, what) }
-
 // RegisterNamespace installs a Go-backed zemi.* table: frozen, integrity
 // checked on every request class, and visible through the chunk env chain.
-func (s *Sandbox) RegisterNamespace(name string, tbl *glua.LTable) error {
-	return s.registerNamespace(name, tbl, nil)
-}
-
-// RegisterCallableNamespace installs a zemi.* callable table (zemi.log,
-// zemi.notify): `tbl(...)` dispatches to call, members stay frozen.
-func (s *Sandbox) RegisterCallableNamespace(name string, tbl *glua.LTable, call *glua.LFunction) error {
-	return s.registerNamespace(name, tbl, call)
-}
-
-func (s *Sandbox) registerNamespace(name string, tbl *glua.LTable, call *glua.LFunction) error {
+// A non-nil call makes it callable (zemi.log, zemi.notify): `tbl(...)`
+// dispatches to call.
+func (s *Sandbox) RegisterNamespace(name string, tbl *glua.LTable, call *glua.LFunction) error {
 	if !strings.HasPrefix(name, "zemi.") || strings.HasSuffix(name, ".") {
 		return fmt.Errorf("namespace %q must be a dotted zemi.* name", name)
 	}
@@ -675,7 +662,7 @@ func (s *Sandbox) registerNamespace(name string, tbl *glua.LTable, call *glua.LF
 	if call != nil && call.IsG {
 		call = guardFunc(s.L, call, short, guard)
 	}
-	s.freezeTable(tbl, "namespace "+name)
+	s.FreezeTable(tbl, "namespace "+name)
 	s.deepProtect(tbl, name)
 	proxy := s.protectNamespace(tbl, "namespace "+name, name)
 	if call != nil {
@@ -742,7 +729,7 @@ func (s *Sandbox) RegisterProtectedValue(path string, v glua.LValue) error {
 		return fmt.Errorf("protected value %q already registered", path)
 	}
 	if tb, ok := v.(*glua.LTable); ok {
-		s.freezeTable(tb, "protected value "+path)
+		s.FreezeTable(tb, "protected value "+path)
 		s.deepProtect(tb, path)
 		v = s.protectNamespace(tb, "protected value "+path, path)
 	}

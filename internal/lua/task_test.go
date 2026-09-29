@@ -51,7 +51,7 @@ func TestTask(t *testing.T) {
 						}
 					})
 				})))
-				return g.SB.RegisterNamespace("zemi.t", tb)
+				return g.SB.RegisterNamespace("zemi.t", tb, nil)
 			}}}
 			r := NewRuntime(RuntimeOptions{})
 			if err := r.Boot(context.Background(), steps); err != nil {
