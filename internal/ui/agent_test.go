@@ -1169,6 +1169,7 @@ func TestPermissionChoices(t *testing.T) {
 		{"down down enter denies", "allow go test", []tea.KeyPressMsg{down, down, enter}, false, "user"},
 		{"up stays on yes", "allow go test", []tea.KeyPressMsg{up, enter}, true, "user:once"},
 		{"a takes always", "allow go test", []tea.KeyPressMsg{{Code: 'a', Text: "a"}}, true, "user:always"},
+		{"n denies", "allow go test", []tea.KeyPressMsg{{Code: 'n', Text: "n"}}, false, "user"},
 		{"without always, down enter denies", "", []tea.KeyPressMsg{down, enter}, false, "user"},
 		{"without always, a does nothing", "", []tea.KeyPressMsg{{Code: 'a', Text: "a"}, {Code: 'o', Text: "o"}}, true, "user:once"},
 	} {

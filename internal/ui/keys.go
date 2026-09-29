@@ -132,19 +132,19 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if pa.view.overflows() && scrollKey(&pa.view, key, false) || moveSel(&pa.sel, len(choices), len(choices), key) {
 			return nil
 		}
-		// any single-letter choice key answers directly (y, a, r, t; "o" is
-		// "y"), so a new one-letter choice needs no new case here
-		switch {
-		case key == "enter":
+		// a choice's key answers directly ("o" is "y"), so a new choice needs
+		// no case here
+		switch key {
+		case "enter":
 			a.choosePerm(choices[pa.sel])
-		case len(key) == 1 && key != "n":
+		case "esc":
+			a.answerPerm(false, tools.ByUser)
+		default:
 			for _, c := range choices {
 				if c.key == key || key == "o" && c.key == "y" {
 					a.choosePerm(c)
 				}
 			}
-		case key == "n" || key == "esc":
-			a.answerPerm(false, tools.ByUser)
 		}
 	case modalMemReview:
 		mr := a.memReview
