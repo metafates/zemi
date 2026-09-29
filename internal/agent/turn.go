@@ -75,6 +75,12 @@ type Runner struct {
 	// MaxOutputTokens caps each reply; 0 leaves the provider default.
 	MaxOutputTokens int64
 
+	// Context is a user message every request sends right after the system
+	// prompt and before the history: what varies by session or project, so
+	// that the system prompt and the tools are one cached prefix for all of
+	// a user's sessions. It never joins History.
+	Context string
+
 	// ProviderOptions ride on every call (reasoning effort).
 	ProviderOptions fantasy.ProviderOptions
 	// Headers ride every call (SessionHeaders).
@@ -503,6 +509,9 @@ func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text stri
 
 // baseCall is what every request of the runner carries.
 func (r *Runner) baseCall(msgs []fantasy.Message) fantasy.AgentStreamCall {
+	if r.Context != "" {
+		msgs = append([]fantasy.Message{UserMessage(r.Context)}, msgs...)
+	}
 	call := fantasy.AgentStreamCall{
 		Messages: msgs, Temperature: r.Temperature, MaxRetries: &maxRetries,
 		ProviderOptions: r.ProviderOptions, Headers: r.Headers,
@@ -616,10 +625,15 @@ func withCacheControl(o fantasy.ProviderOptions) fantasy.ProviderOptions {
 // messages) changed: Anthropic, openrouter and vercel refuse it. Every request
 // passes here, so this one check covers every history edit.
 func (r *Runner) signed(msgs []fantasy.Message, active []string, record bool) []fantasy.Message {
-	var sys []fantasy.Message
+	// the prefix: the system prompt and the Context message baseCall put after it
+	n := 0
 	if len(msgs) > 0 && msgs[0].Role == fantasy.MessageRoleSystem {
-		sys, msgs = msgs[:1], msgs[1:]
+		n = 1
 	}
+	if r.Context != "" && len(msgs) > n {
+		n++
+	}
+	sys, msgs := msgs[:n], msgs[n:]
 	var key strings.Builder
 	for _, m := range sys {
 		for _, p := range m.Content {

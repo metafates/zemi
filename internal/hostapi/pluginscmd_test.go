@@ -235,7 +235,7 @@ func TestPluginsSend(t *testing.T) {
 				return nil
 			})
 			waitIdle(t, h)
-			msgs, err := h.DB.Messages(h.AgentSessionID())
+			msgs, err := h.DB.UserMessages(1)
 			if err != nil || len(msgs) == 0 {
 				t.Fatalf("messages %v, %v", msgs, err)
 			}

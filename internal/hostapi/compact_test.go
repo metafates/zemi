@@ -95,8 +95,8 @@ func TestCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	send("two")
-	if n := m.lastPrompt.Load(); n != 4 {
-		t.Fatalf("compacted prompt has %d messages, want 4 (system, summary, ok, two)", n)
+	if n := m.lastPrompt.Load(); n != 5 {
+		t.Fatalf("compacted prompt has %d messages, want 5 (system, context, summary, ok, two)", n)
 	}
 	summary := h.agents.runner.History[0]
 	if prev, _ := summaryOf(summary); !strings.Contains(concatText(summary.Content), "- [pending] ship") || strings.Contains(prev, "ship") {
@@ -126,8 +126,8 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("resumed transcript shows %d replies, want 2", oks)
 	}
 	send("three")
-	if n := m.lastPrompt.Load(); n != 6 {
-		t.Fatalf("resumed prompt has %d messages, want 6 (system, summary, ok, two, ok, three)", n)
+	if n := m.lastPrompt.Load(); n != 7 {
+		t.Fatalf("resumed prompt has %d messages, want 7 (system, context, summary, ok, two, ok, three)", n)
 	}
 }
 
@@ -158,9 +158,9 @@ func TestCompactionOnCachedPrefix(t *testing.T) {
 			m.mu.Lock()
 			p := m.prompts[1]
 			m.mu.Unlock()
-			if len(p) != 4 || concatText(p[0].Content) != sys || concatText(p[1].Content) != big || concatText(p[2].Content) != "ok" ||
-				!strings.HasPrefix(concatText(p[3].Content), compactNote) || !strings.Contains(concatText(p[3].Content), "except its last 1 message,") {
-				t.Fatalf("the compaction call is not system, whole history, note naming the tail: %d messages", len(p))
+			if len(p) != 5 || concatText(p[0].Content) != sys || concatText(p[2].Content) != big || concatText(p[3].Content) != "ok" ||
+				!strings.HasPrefix(concatText(p[4].Content), compactNote) || !strings.Contains(concatText(p[4].Content), "except its last 1 message,") {
+				t.Fatalf("the compaction call is not system, context, whole history, note naming the tail: %d messages", len(p))
 			}
 			if s, _ := summaryOf(h.agents.runner.History[0]); s != "ok" {
 				t.Fatalf("summary %q", s)
@@ -222,8 +222,8 @@ func TestCompactionMidTurn(t *testing.T) {
 				t.Fatalf("TurnDone ran %d times, want 1", n)
 			}
 			if c.summaryErr == nil {
-				if n := m.lastPrompt.Load(); n != 2 {
-					t.Fatalf("continued prompt has %d messages, want 2 (system, summary)", n)
+				if n := m.lastPrompt.Load(); n != 3 {
+					t.Fatalf("continued prompt has %d messages, want 3 (system, context, summary)", n)
 				}
 			}
 			var kinds []string
@@ -256,9 +256,9 @@ func TestOverflowRecovery(t *testing.T) {
 		prompt   int32
 		wantErr  bool
 	}{
-		{"recovers", false, 1, 2, false},
-		{"reports the second refusal", false, 2, 2, true},
-		{"keeps the request verbatim", true, 1, 3, false},
+		{"recovers", false, 1, 3, false},
+		{"reports the second refusal", false, 2, 3, true},
+		{"keeps the request verbatim", true, 1, 4, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
@@ -276,7 +276,7 @@ func TestOverflowRecovery(t *testing.T) {
 				t.Fatalf("model streamed %d times, want 2", n)
 			}
 			if n := m.lastPrompt.Load(); n != c.prompt {
-				t.Fatalf("resent prompt has %d messages, want %d (system, summary, then the request when a turn came before it)", n, c.prompt)
+				t.Fatalf("resent prompt has %d messages, want %d (system, context, summary, then the request when a turn came before it)", n, c.prompt)
 			}
 			errRow := false
 			for _, row := range h.Session().Transcript {

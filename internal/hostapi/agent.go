@@ -7,6 +7,8 @@ package hostapi
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +16,7 @@ import (
 	"maps"
 	"math"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -155,6 +158,9 @@ type agentHost struct {
 	// until its key moves or a drop point clears it; pinDrops counts drops.
 	pin      promptPin
 	pinDrops int
+	// ctx is the context message the live session last stored: a resume
+	// loads it, a drop point clears it
+	ctx contextRow
 
 	// reasoningShown is the session-scoped expansion override for finished
 	// reasoning blocks (nil = follow ui.reasoning config).
@@ -394,9 +400,9 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	}
 	_, loaded := h.sessionLogs()
 	toolset, active := h.deferMCP(all, loaded)
-	toolset, sys, parts := h.pinPrompt(p, toolset)
+	toolset, sys, ctxMsg, parts := h.pinPrompt(p, toolset)
 	r := agent.NewRunner(model, toolset, sys)
-	r.ActiveTools = active
+	r.Context, r.ActiveTools = ctxMsg, active
 	sent := toolset
 	if active != nil {
 		sent, _ = filterTools(toolset, active(), nil)
@@ -429,15 +435,46 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 // sections and each tool's Info, and the instruction file versions messages
 // carried since (instructionEdits).
 type promptPin struct {
-	key, text string
-	parts     promptParts
-	infos     map[string]fantasy.ToolInfo
-	sent      map[string]time.Time
+	key, text, context string
+	parts              promptParts
+	infos              map[string]fantasy.ToolInfo
+	sent               map[string]time.Time
 }
 
 // dropPin makes the next send build the prompt again. The text stays for
 // /prompt and for the rest of a running turn, which still sends it. ag.mu held.
-func (ag *agentHost) dropPin() { ag.pin.key, ag.pinDrops = "", ag.pinDrops+1 }
+func (ag *agentHost) dropPin() { ag.pin.key, ag.pinDrops, ag.ctx = "", ag.pinDrops+1, contextRow{} }
+
+// contextRole marks a stored context message (agent.Runner.Context): the
+// bytes a session sent, so its resume sends them again and the provider's
+// cache of the conversation holds. No transcript reader looks at the role.
+const contextRole = "context"
+
+// contextRow is a stored context message: key is contextKey's for the prompt
+// it was built with, files the instruction file versions it holds.
+type contextRow struct {
+	Key   string               `json:"key"`
+	Text  string               `json:"text"`
+	Files map[string]time.Time `json:"files,omitempty"`
+}
+
+// contextKey is what a stored context message is valid for: the pin key,
+// and the working directory and scratchpad it names (a fork has its own).
+func (h *Host) contextKey(pinKey string) string {
+	sum := sha256.Sum256([]byte(pinKey + "\x00" + h.Dirs.ProjectDir + "\x00" + h.ScratchDir()))
+	return hex.EncodeToString(sum[:])
+}
+
+// contextIn is the context message the session stored last.
+func contextIn(rows []*store.Message) contextRow {
+	var c contextRow
+	for _, row := range slices.Backward(rows) {
+		if row.Role == contextRole && json.Unmarshal([]byte(row.PartsJSON), &c) == nil {
+			return c
+		}
+	}
+	return contextRow{}
+}
 
 // pinnedTool sends the Info the pin was built with, so a description read
 // from files (agent definitions, saved workflows) cannot move the prefix.
@@ -456,7 +493,7 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 // agent.assemble output wait for a drop point (closeSession, compactDone,
 // deleteRecipe). A reload drops nothing: the config watcher reloads on any
 // config-tree write, the model's own skill writes included.
-func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) ([]fantasy.AgentTool, string, promptParts) {
+func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy.AgentTool, system, ctxMsg string, parts promptParts) {
 	id := h.currentModelID(p)
 	key := []string{"", id, strconv.FormatBool(h.ProjectTrusted()), h.permModeDef().Prompt, strconv.FormatBool(h.takesImages(id))}
 	if p != nil {
@@ -476,22 +513,45 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) ([]fantasy.Age
 	ag.mu.Unlock()
 	if pin.key != k {
 		pin = promptPin{key: k, infos: map[string]fantasy.ToolInfo{}}
-		pin.text, pin.parts = h.buildSystemParts(p, toolset)
+		pin.text, pin.context, pin.parts = h.buildSystemParts(p, toolset)
 		for _, info := range infos {
 			pin.infos[info.Name] = info
 		}
+		ctxKey, mine := h.contextKey(k), filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
+		var stored *contextRow
 		ag.mu.Lock()
 		// a drop during the build means it may have read what the drop replaced
 		if ag.pinDrops == drops {
+			if ag.ctx.Key == ctxKey {
+				// a resumed session: the system prompt is the user's as it is
+				// now, the context what the session sent
+				pin.context = ag.ctx.Text
+				for f, mt := range ag.ctx.Files {
+					if f != mine {
+						pin.parts.files[f] = mt
+					}
+				}
+			} else {
+				row := contextRow{Key: ctxKey, Text: pin.context, Files: pin.parts.files}
+				ag.ctx, stored = row, &row
+			}
 			ag.pin = pin
 		}
+		sid := ag.sessionID
 		ag.mu.Unlock()
+		if stored != nil && sid != "" && h.DB != nil {
+			if data, err := json.Marshal(stored); err == nil {
+				if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: contextRole, PartsJSON: string(data)}); err != nil {
+					h.Log.Warn("context not stored", "origin", "agent", "error", err)
+				}
+			}
+		}
 	}
-	out := make([]fantasy.AgentTool, len(toolset))
+	out = make([]fantasy.AgentTool, len(toolset))
 	for i, t := range toolset {
 		out[i] = pinnedTool{t, pin.infos[infos[i].Name]}
 	}
-	return out, pin.text, pin.parts
+	return out, pin.text, pin.context, pin.parts
 }
 
 // promptPart is one named section of the fixed prompt, in characters.
@@ -527,16 +587,19 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 	}
 }
 
-// SystemPrompt is the pinned system prompt the last send carried, "" before
-// the first one. /usage measures it; this is the text, so a profile, an
-// assemble handler or an instruction file the budget cut can be read
-// instead of guessed at. It is never rebuilt here: assembling it runs Lua
+// SystemPrompt is the pinned system prompt and context message the last
+// send carried, "" before the first one. /usage measures it; this is the
+// text, so a profile, an assemble handler or an instruction file the budget
+// cut can be read instead of guessed at. It is never rebuilt here: assembling it runs Lua
 // handlers on the interpreter, which a Lua caller would deadlock on.
 func (h *Host) SystemPrompt() string {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	return ag.pin.text
+	if ag.pin.context == "" {
+		return ag.pin.text
+	}
+	return ag.pin.text + "\n\n" + ag.pin.context
 }
 
 // promptBreakdown is the fixed prompt the last runner build measured, in
@@ -2724,7 +2787,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	// prompt() is the pinned system prompt the last send carried, "" before the
+	// prompt() is the pinned system prompt and context message the last send carried, "" before the
 	// first one; it is never rebuilt here (see SystemPrompt).
 	tb.RawSetString("prompt", L.NewFunction(func(L *glua.LState) int {
 		L.Push(glua.LString(h.SystemPrompt()))

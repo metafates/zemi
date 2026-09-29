@@ -26,7 +26,7 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 - A feature with logic of its own (a tool, a new widget, a command and its handlers): a local plugin, which the user can share, update and turn off on its own (`plugins.md`).
 - Agents, prompt commands, skills and saved workflows: files in the user config directory (every project) or in the repository's `.agents/` (shared through git, loaded once the user trusts the project). Ask which when unsure.
 
-The system prompt names the exact user config, project config and local plugins directories. Also: `~/.agents/skills/` (skills other agents read too), `<data>/types/zemi.lua` (the whole Lua API with its docs, rewritten every start) and `<state>/` (logs, databases, trust decisions, and per project its `permissions` file and recipes). `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`, `ZEMI_STATE_HOME` and `ZEMI_CACHE_HOME` move the roots (default `~/.config/zemi`, `~/.local/share/zemi`, `~/.local/state/zemi`, `~/.cache/zemi`).
+The prompt names the exact user config, project config and local plugins directories. Also: `~/.agents/skills/` (skills other agents read too), `<data>/types/zemi.lua` (the whole Lua API with its docs, rewritten every start) and `<state>/` (logs, databases, trust decisions, and per project its `permissions` file and recipes). `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`, `ZEMI_STATE_HOME` and `ZEMI_CACHE_HOME` move the roots (default `~/.config/zemi`, `~/.local/share/zemi`, `~/.local/state/zemi`, `~/.cache/zemi`).
 
 ## Rules for every change
 

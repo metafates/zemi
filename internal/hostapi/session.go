@@ -113,7 +113,7 @@ func (h *Host) ResumeSession(id string) error {
 		// the prompt so the context readout and compactDue see the window it
 		// had until the next step reports a real count.
 		ag.lastIn = estTokens(history...) + ag.promptTokens
-		ag.digest, ag.env = digest, ""
+		ag.digest, ag.env, ag.ctx = digest, "", contextIn(rows)
 		ag.goal = goalIn(rows)
 	})
 	if err != nil {
@@ -375,6 +375,9 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	pending := map[string]telemetry{}
 	reasoning := -1 // the transcript index of the latest reasoning row
 	for _, row := range rows {
+		if row.Role == contextRole {
+			continue
+		}
 		if row.Role == goalRole {
 			var g goalRow
 			if json.Unmarshal([]byte(row.PartsJSON), &g) == nil {

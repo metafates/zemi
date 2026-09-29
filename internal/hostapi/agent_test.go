@@ -698,7 +698,7 @@ func TestSteeringQueue(t *testing.T) {
 
 // TestHistoryCarriesAcrossTurns is the regression for the runner rebuilt
 // on every send: the second turn's prompt must carry the first exchange
-// (system, user, assistant, user), and both turns land in the transcript.
+// (system, context, user, assistant, user), and both turns land in the transcript.
 func TestHistoryCarriesAcrossTurns(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")
@@ -708,8 +708,8 @@ func TestHistoryCarriesAcrossTurns(t *testing.T) {
 		}
 		waitIdle(t, h)
 	}
-	if n := m.lastPrompt.Load(); n != 4 {
-		t.Fatalf("second turn prompt has %d messages, want 4", n)
+	if n := m.lastPrompt.Load(); n != 5 {
+		t.Fatalf("second turn prompt has %d messages, want 5", n)
 	}
 	if tr := h.Session().Transcript; len(tr) != 4 {
 		t.Fatalf("transcript = %+v", tr)

@@ -111,8 +111,8 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	send("two")
 	second := h.AgentSessionID()
-	if n := m.lastPrompt.Load(); n != 2 {
-		t.Fatalf("fresh session prompt has %d messages, want 2", n)
+	if n := m.lastPrompt.Load(); n != 3 {
+		t.Fatalf("fresh session prompt has %d messages, want 3 (system, context, user)", n)
 	}
 
 	// a bare /resume from the latest session goes to the one before it
@@ -128,8 +128,13 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatal("resume left the context estimate at 0")
 	}
 	send("three")
-	if n := m.lastPrompt.Load(); n != 4 {
-		t.Fatalf("resumed prompt has %d messages, want 4", n)
+	if n := m.lastPrompt.Load(); n != 5 {
+		t.Fatalf("resumed prompt has %d messages, want 5", n)
+	}
+	// the resumed session sends the context message it stored, and stores no other
+	rows, _ := h.DB.Messages(first)
+	if n := len(slices.DeleteFunc(rows, func(r *store.Message) bool { return r.Role != contextRole })); n != 1 {
+		t.Fatalf("the session stored %d context messages, want 1", n)
 	}
 	// The composer history spans sessions, oldest first.
 	if got := h.InputHistory(10); len(got) != 3 || got[0] != "one" || got[1] != "two" || got[2] != "three" {

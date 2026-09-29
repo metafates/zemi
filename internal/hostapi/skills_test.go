@@ -533,7 +533,7 @@ func TestRecipes(t *testing.T) {
 	written := []string{"late", "rig", "tok"}
 	pinned := func() string {
 		toolset, _ := h.profileTools(nil)
-		_, sys, _ := h.pinPrompt(nil, toolset)
+		_, sys, _, _ := h.pinPrompt(nil, toolset)
 		return sys
 	}
 

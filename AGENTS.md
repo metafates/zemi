@@ -953,13 +953,19 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   Lua reads the composer through a snapshot the UI publishes and
   edits it through `UIHooks.ComposerEdit`, applied on the UI goroutine.
 - **System prompt** (prompt.go): `basePrompt` + `delegationPrompt` for the default profile,
-  then `zemiPrompt`, the read-only agent's plan section, instruction files
-  under `# Project instructions` (the repository's files share a 32 KB budget spent deepest
-  file first, so a huge root `AGENTS.md` cannot squeeze out the package's own; the user's
-  `<config>/AGENTS.md` gets its own budget), skills, Lua sections (`agent.assemble`, then the
-  `prompt` of each Lua tool in the tool set), the per-session pinned `environmentPrompt`,
-  digest: most stable first, so a provider that caches any shared prefix (OpenAI, DeepSeek,
-  Gemini) shares the instructions across sessions. It is built from the
+  then `zemiPrompt`, the read-only agent's plan section, skills, the user's `<config>/AGENTS.md`
+  under `# User instructions` and Lua sections (`agent.assemble`, then the `prompt` of each Lua
+  tool in the tool set). It holds nothing that varies by project or session, so a provider that
+  caches a shared prefix (DeepSeek, OpenAI, Gemini, Anthropic's breakpoints) keeps it and the
+  tools after it for every session of the user. What varies is the context message
+  (`agent.Runner.Context`), a user message every request sends after the system prompt and never
+  in `History`: the repository's instruction files under `# Project instructions` (a 32 KB budget
+  spent deepest file first, so a huge root `AGENTS.md` cannot squeeze out the package's own; the
+  user's file gets its own budget), the per-session pinned `environmentPrompt` and the digest.
+  The main agent stores it as a `context` row (`contextRow`, which no transcript reader reads)
+  whenever the pin is built anew, and a resume sends the stored one again while `contextKey`
+  (the pin key, working directory and scratchpad) holds, so the provider's cache of the whole
+  conversation holds too; `dropPin` forgets it. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
   `delegationPrompt`, no `skill` tool drops the skills index, no `read`
   drops its "Using tools" line, and a read-only agent without the `plan` tool

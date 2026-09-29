@@ -102,11 +102,11 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		{"no read", &Profile{Tools: []string{"-read"}}, nil, []string{"offset and limit"}, nil},
 	} {
 		toolset, _ := h.profileTools(c.p)
-		text, _ := h.buildSystemParts(c.p, toolset)
+		text := h.buildSystem(c.p)
 		if i := slices.IndexFunc(defs, func(d AgentDef) bool { return d.Name == c.name }); i >= 0 {
 			def := defs[i]
 			toolset, _ = filterTools(tools.All(h.PipelineFor()), def.Tools, h.toolSkip(subagentExcluded))
-			text = h.systemWith(h.subagentSystem(def, toolset, def.ReadOnly), toolset, h.ScratchDir(), def.ReadOnly)
+			text = h.systemText(h.subagentSystem(def, toolset, def.ReadOnly), toolset, h.ScratchDir(), def.ReadOnly)
 		}
 		for _, tool := range toolset {
 			text += fmt.Sprintf("\n%q %s", tool.Info().Name, tool.Info().Description)
@@ -137,7 +137,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 			name := dropped.Info().Name
 			p := &Profile{ReadOnly: ro, Tools: []string{"-" + name}}
 			toolset, _ := h.profileTools(p)
-			text, _ := h.buildSystemParts(p, toolset)
+			text := h.buildSystem(p)
 			for _, tool := range toolset {
 				schema, _ := json.Marshal(tool.Info().Parameters)
 				text += "\n" + tool.Info().Description + string(schema)
@@ -241,7 +241,7 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte(strings.Repeat("a", contextBudget+100)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got := h.systemWith("base", nil, "", false)
+	got := h.systemText("base", nil, "", false)
 	if !strings.Contains(got, "my rules") {
 		t.Fatal("the repository file evicted the user's own instructions")
 	}
@@ -271,7 +271,7 @@ func TestSendPrepCheap(t *testing.T) {
 	start := cpu()
 	for range 5 {
 		toolset, _ := h.profileTools(nil)
-		_, parts := h.buildSystemParts(nil, toolset)
+		_, _, parts := h.buildSystemParts(nil, toolset)
 		promptSizes(parts, toolset)
 	}
 	if d := cpu() - start; d > 200*time.Millisecond {
@@ -419,8 +419,14 @@ zemi.event.on("agent.assemble", function() n = n + 1; return "build " .. n end)`
 // (capped; DESIGN §6.3 context.files).
 func (h *Host) buildSystem(p *Profile) string {
 	toolset, _ := h.profileTools(p)
-	sys, _ := h.buildSystemParts(p, toolset)
-	return sys
+	sys, ctx, _ := h.buildSystemParts(p, toolset)
+	return sys + "\n\n" + ctx
+}
+
+// systemText is what systemWith sends before the conversation, joined.
+func (h *Host) systemText(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool) string {
+	sys, ctx := h.systemWith(sys, toolset, pad, readOnly)
+	return sys + "\n\n" + ctx
 }
 
 // TestPromptBudget: what the default request carries before the first
@@ -440,7 +446,8 @@ func TestPromptBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	toolset, _ := h.profileTools(nil)
-	sys, parts := h.buildSystemParts(nil, toolset)
+	sys, ctx, parts := h.buildSystemParts(nil, toolset)
+	sys += ctx
 	if !strings.Contains(sys, "# Skills") || !strings.Contains(sys, "Sandbox (auto mode)") {
 		t.Fatal("no skills index or Sandbox block: the count would be less than users get")
 	}

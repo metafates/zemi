@@ -1730,7 +1730,7 @@ function zemi.agent.cancel() end
 ---@return zemi.AgentUsage
 function zemi.agent.usage() end
 
---- The pinned system prompt the last send carried, "" before the first one.
+---- The pinned system prompt and context message the last send carried, "" before the first one.
 --- `/prompt` shows the same text.
 ---@return string
 function zemi.agent.prompt() end

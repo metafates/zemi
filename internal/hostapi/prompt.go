@@ -105,13 +105,8 @@ Help with defensive security, authorized testing, CTFs and security education; r
 // zemiPrompt joins every main-agent prompt, a profile's own included: the
 // exact config directories config-writing relies on.
 func (h *Host) zemiPrompt() string {
-	pdir := h.Dirs.ProjectConfigDir()
-	if !h.ProjectTrusted() {
-		// so the model does not write config that never loads
-		pdir += " (not loaded: the project is not trusted; the user runs " + h.trustHint() + ")"
-	}
 	return "\n\n# zemi\nYou run inside zemi. To change how zemi behaves for the user, use config, never its source." +
-		" User config directory: " + h.Dirs.ConfigHome + " (this exact path, not ~/.config/zemi). Project config directory: " + pdir + "." +
+		" User config directory: " + h.Dirs.ConfigHome + " (this exact path, not ~/.config/zemi); the project's is under Environment." +
 		" Local plugins directory: " + h.localPlugins() + "." +
 		" Reading the user config needs no approval; writing it does, so say first what you will write." +
 		" The shipped Lua UI is readable in " + filepath.Join(h.TypesDir(), "zemi", "tui") + "."
@@ -143,9 +138,10 @@ type promptParts struct {
 	files        map[string]time.Time // instruction file, or where one would load, -> its mtime as read, zero when missing
 }
 
-// buildSystemParts takes the run's tool set so the prompt names no tool the
+// buildSystemParts gives the system prompt and the context message (see
+// systemFor). It takes the run's tool set so the prompt names no tool the
 // model does not have.
-func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (string, promptParts) {
+func (h *Host) buildSystemParts(p *Profile, toolset []fantasy.AgentTool) (system, ctxMsg string, parts promptParts) {
 	sys := h.defaultSystemPrompt(toolset)
 	if hasTool(toolset, tools.ToolAgent) {
 		sys += delegationPrompt
@@ -202,18 +198,19 @@ const planAssuming = `
 2. What only the user can decide (goal, scope, behavior, tradeoffs) goes in the plan as a stated assumption.
 3. Then call the plan tool, and end every turn with it, never plain text.`
 
-// systemWith appends the instruction files, the skills index, the
-// environment with the run's scratchpad pad and sandbox (readOnly: a
-// read-only agent's) and the session digest to a base prompt.
-func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool) string {
-	out, _ := h.systemFor(sys, nil, toolset, pad, readOnly)
-	return out
+// systemWith appends the skills index and the user's instruction file to a
+// base prompt, and gives the context message: the repository's instruction
+// files, the environment with the run's scratchpad pad and sandbox
+// (readOnly: a read-only agent's) and the session digest.
+func (h *Host) systemWith(sys string, toolset []fantasy.AgentTool, pad string, readOnly bool) (system, ctxMsg string) {
+	system, ctxMsg, _ = h.systemFor(sys, nil, toolset, pad, readOnly)
+	return system, ctxMsg
 }
 
 // systemFor is systemWith with the section sizes it assembled. files names
 // explicit project files (a profile's context.files); nil means
 // instructionFiles.
-func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool, pad string, readOnly bool) (string, promptParts) {
+func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool, pad string, readOnly bool) (system, ctxMsg string, parts promptParts) {
 	// a profile's files are repository content too
 	var tracked []string
 	if len(files) == 0 || !h.ProjectTrusted() {
@@ -242,20 +239,32 @@ func (h *Host) systemFor(sys string, files []string, toolset []fantasy.AgentTool
 	if len(files) > 0 && h.Dirs.ConfigHome != "" && files[0] == filepath.Join(h.Dirs.ConfigHome, "AGENTS.md") {
 		mine, files = files[:1], files[1:]
 	}
-	sections := h.instructionSections(mine, contextBudget) + h.instructionSections(files, contextBudget)
-	if sections != "" {
-		sections = "\n\n# Project instructions\nFrom the user and the repository, already loaded: do not read them again. They override the default rules above; a deeper directory's file wins over a shallower one, and the user's messages win over every file." + sections
+	user, project := h.instructionSections(mine, contextBudget), h.instructionSections(files, contextBudget)
+	if user != "" {
+		user = "\n\n# User instructions\nThe user's own, for every project, already loaded: do not read them again. They override the default rules above, and the user's messages win over them." + user
+	}
+	if project != "" {
+		project = "\n\n# Project instructions\nFrom the repository, already loaded: do not read them again. They override the default rules and the user's instructions; a deeper directory's file wins over a shallower one, and the user's messages win over every file." + project
 	}
 	env, luaSections, index := h.environmentFor(toolset, pad, readOnly), h.assembleSections()+h.toolSections(toolset), ""
 	if hasTool(toolset, tools.ToolSkill) {
 		index = h.skillsIndexPrompt()
 	}
-	// Most stable first: providers that cache any shared prefix then share
-	// the instructions across sessions; env and the digest are per session.
-	out := h.withDigest(sys + sections + index + luaSections + env)
-	parts := promptParts{base: len(sys) + len(env), instructions: len(sections), lua: len(luaSections), skills: len(index), files: mtimes}
-	parts.digest = len(out) - parts.base - parts.instructions - parts.lua - parts.skills
-	return out, parts
+	ag := h.agents
+	ag.mu.Lock()
+	digest := ag.digest
+	ag.mu.Unlock()
+	if digest != "" {
+		digest = "\n\n" + digest
+	}
+	// The system prompt is the same for every session of the user, so the
+	// provider caches it with the tools once; what varies by project or
+	// session rides the context message after it.
+	system = sys + index + user + luaSections
+	ctxMsg = "<context>\nzemi's notes for this session, not the user's words." + project + env + digest + "\n</context>"
+	parts = promptParts{instructions: len(user) + len(project), lua: len(luaSections), skills: len(index), digest: len(digest), files: mtimes}
+	parts.base = len(system) + len(ctxMsg) - parts.instructions - parts.lua - parts.skills - parts.digest
+	return system, ctxMsg, parts
 }
 
 // instructionSections renders instruction files as "## Instructions: <name>"
@@ -496,7 +505,12 @@ func (h *Host) environmentFor(toolset []fantasy.AgentTool, pad string, readOnly 
 			recipes = strings.Replace(recipes, " The skill tool loads it at once.", "", 1)
 		}
 	}
-	return strings.NewReplacer("{Scratch}", scratch, "{Recipes}", recipes).Replace(h.environmentPrompt())
+	pdir := h.Dirs.ProjectConfigDir()
+	if !h.ProjectTrusted() {
+		// so the model does not write config that never loads
+		pdir += " (not loaded: the project is not trusted; the user runs " + h.trustHint() + ")"
+	}
+	return strings.NewReplacer("{Project}", "Project config directory: "+pdir+"\n", "{Scratch}", scratch, "{Recipes}", recipes).Replace(h.environmentPrompt())
 }
 
 // environmentPrompt describes the machine and repository. It is pinned per
@@ -515,7 +529,7 @@ func (h *Host) environmentPrompt() string {
 	// the run's own pad goes in {Scratch}: a subagent's may be another
 	// session's
 	h.ensureScratch()
-	b.WriteString("{Scratch}")
+	b.WriteString("{Project}{Scratch}")
 	if dir := h.recipesDir(); dir != "" && h.ProjectTrusted() {
 		fmt.Fprintf(&b, "Recipes: %s\n{Recipes}", dir)
 	}
@@ -541,19 +555,6 @@ func (h *Host) gitStatusSection(dir string) string {
 		lines = append(lines[:21], fmt.Sprintf("... and %d more", len(lines)-21))
 	}
 	return "Git status at startup (may be outdated):\n" + strings.Join(lines, "\n")
-}
-
-// withDigest appends the session digest, pinned so provider prompt caches
-// stay warm (§10.7).
-func (h *Host) withDigest(sys string) string {
-	ag := h.agents
-	ag.mu.Lock()
-	digest := ag.digest
-	ag.mu.Unlock()
-	if digest == "" {
-		return sys
-	}
-	return sys + "\n\n" + digest
 }
 
 // instructionSent reports whether this session already carried p, and
