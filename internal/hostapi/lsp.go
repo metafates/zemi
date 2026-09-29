@@ -289,8 +289,9 @@ func (h *Host) lspKnown() []lspDef {
 }
 
 // lspStopChanged stops each running server whose definition a reload
-// changed or dropped, so a reload leaves the others warm: a cold server's
-// first check finds nothing, and every write to config or a plugin reloads.
+// changed or dropped, or whose start failed, so the reload retries it. The
+// others stay warm: every write to config or a plugin reloads, and a restart
+// reloads the workspace.
 func (h *Host) lspStopChanged() {
 	known := h.lspKnown()
 	h.lsp.mu.Lock()
@@ -306,6 +307,11 @@ func (h *Host) lspStopChanged() {
 			}
 		} else if i := slices.IndexFunc(known, func(d lspDef) bool { return d.Name == name }); i >= 0 {
 			want, ok = known[i], true
+		}
+		select {
+		case <-p.ready:
+			ok = ok && p.err == nil
+		default:
 		}
 		if ok && reflect.DeepEqual(want, p.def) {
 			continue
@@ -446,7 +452,7 @@ func (h *Host) lspSync() {
 }
 
 // lspClient returns the running server for def, starting it once; a failed
-// start is remembered until /lsp restart.
+// start is remembered until /lsp restart or a reload.
 func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 	h.lsp.mu.Lock()
 	p, ok := h.lsp.running[def.Name]
@@ -488,7 +494,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 				h.Log.Warn("server failed to start", "origin", "lsp", "server", def.Name, "error", p.err)
 			} else if isLuals(def) {
 				// It never checks a file opened while it loads the workspace, and
-				// answers a symbol request only once loaded; the file needs not exist.
+				// answers a symbol request only once loaded; the file need not exist.
 				probe := lsp.DocumentURI(filepath.Join(cfg.Root, "zemi-ready.lua"))
 				_ = p.client.Call(sctx, "textDocument/documentSymbol", map[string]any{"textDocument": map[string]any{"uri": probe}}, nil)
 			}

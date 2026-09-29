@@ -850,7 +850,7 @@ lua-language-server is installed.
   start at all. A `.lua` file of the user's config or a local plugin gets lua-language-server
   (`zemiLua`, DESIGN §9) in any project; it is ready only once a symbol request answers, since it
   never checks a file opened while it loads. A file outside the repository goes to no other server.
-  A reload stops only the servers whose definition it changed or dropped (`lspStopChanged`), like
+  A reload stops only the servers whose definition it changed or dropped or whose start failed (`lspStopChanged`), like
   the MCP replay, so a write to config or a plugin leaves them warm. The `diagnostics` and `lsp` tools leave the tool set when `lspDefs` is empty,
   so an untrusted project does not carry their schemas every step. A server re-reads a file
   only when told, so `lspSync` diffs two `git status` listings and sends

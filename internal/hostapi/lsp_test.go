@@ -316,8 +316,8 @@ func TestLSPZemiLua(t *testing.T) {
 }
 
 // TestLSPReload: a reload stops only the servers whose definition it
-// changed or dropped, so the reload a config or plugin write causes leaves
-// the rest warm.
+// changed or dropped, or whose start failed, so the reload a config or
+// plugin write causes leaves the rest warm and retries the broken one.
 func TestLSPReload(t *testing.T) {
 	t.Parallel()
 	cfg, _ := filepath.EvalSymlinks(t.TempDir())
@@ -337,24 +337,27 @@ func TestLSPReload(t *testing.T) {
 	add := func(name, ft, args string) string {
 		return fmt.Sprintf("zemi.lsp.add(%q, { command = %q, args = { %s }, env = { ZEMI_LSP_FAKE = \"1\" }, filetypes = { %q } })\n", name, os.Args[0], args, ft)
 	}
-	files := []string{filepath.Join(h.Dirs.ProjectDir, "a.txt"), initLua}
+	broken := fmt.Sprintf("zemi.lsp.add(\"broken\", { command = %q, filetypes = { \"bad\" } })\n", filepath.Join(cfg, "missing"))
+	files := []string{filepath.Join(h.Dirs.ProjectDir, "a.txt"), initLua, filepath.Join(h.Dirs.ProjectDir, "a.bad")}
 	for _, c := range []struct {
 		name, init string
 		keep       []bool // by files
 	}{
-		{"the same config", add("fake", "txt", "") + add("luals", "lua", ""), []bool{true, true}},
-		{"changed args", add("fake", "txt", `"-v"`) + add("luals", "lua", ""), []bool{false, true}},
-		{"dropped", add("fake", "txt", ""), []bool{true, false}},
+		{"the same config", add("fake", "txt", "") + add("luals", "lua", "") + broken, []bool{true, true, false}},
+		{"changed args", add("fake", "txt", `"-v"`) + add("luals", "lua", "") + broken, []bool{false, true, false}},
+		{"dropped", add("fake", "txt", ""), []bool{true, false, false}},
 	} {
-		reload(add("fake", "txt", "") + add("luals", "lua", ""))
+		reload(add("fake", "txt", "") + add("luals", "lua", "") + broken)
 		var before []*lspProc
 		for _, f := range files {
 			def, _ := h.lspFor(f)
-			p, err := h.lspClient(t.Context(), def)
-			if err != nil {
-				t.Fatal(err)
+			_, err := h.lspClient(t.Context(), def)
+			if (err != nil) != (def.Name == "broken") {
+				t.Fatalf("%s: %v", def.Name, err)
 			}
-			before = append(before, p)
+			h.lsp.mu.Lock()
+			before = append(before, h.lsp.running[def.Name])
+			h.lsp.mu.Unlock()
 		}
 		reload(c.init)
 		for i, p := range before {
