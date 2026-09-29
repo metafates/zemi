@@ -30,7 +30,7 @@ func nestedShapes(root string) string {
 	if strings.ContainsAny(root, "\"\n") {
 		anchor = "" // unquotable: match anywhere, which only denies more
 	}
-	return `(regex #"` + anchor + `(/.*)?/\.([gG][iI][tT]|[aA][gG][eE][nN][tT][sS])(/|$)")`
+	return `(regex #"` + anchor + foldCase(`(/.*)?/\.(git|agents)(/|$)`) + `")`
 }
 
 // gitCode is what of a git dir git runs or follows (gitrepository-layout):
@@ -198,11 +198,9 @@ func profile(p Policy) (string, []string) {
 	// A git dir is writable again but for what git runs or follows, in it and
 	// in each linked worktree's admin dir (DESIGN §9): matched by name, so a
 	// part created or moved there is caught too, and no symlink may redirect one.
-	for i, g := range p.Git {
-		if strings.ContainsAny(g, "\"\n") {
-			continue // unquotable: it stays protected
-		}
-		name := param("GIT", i, g)
+	// An unquotable one stays protected.
+	if g := p.Git; g != "" && !strings.ContainsAny(g, "\"\n") {
+		name := param("GIT", 0, g)
 		fmt.Fprintf(&b, "(allow file-write* (subpath %s))\n", name)
 		q := regexp.QuoteMeta(g)
 		fmt.Fprintf(&b, "(deny file-write* (literal %s) (regex #\"^%s/(%s)(/|$)\" #\"^%s/(%s)$\"))\n", name, q, gitCode, q, gitParents)

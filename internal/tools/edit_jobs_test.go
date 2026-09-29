@@ -200,7 +200,7 @@ func TestSandboxHintFollowsPolicy(t *testing.T) {
 				Env:     map[string]string{"TMPDIR": "/pad/s1", "TMP": "/pad/s1", "GOCACHE": "/cache/go-build"},
 			}
 			if c.gitOpen {
-				pol.Git = []string{filepath.Join(proj, ".git")}
+				pol.Git = filepath.Join(proj, ".git")
 			}
 			if c.noPad {
 				p.Pad, pol.Write = "", slices.Delete(pol.Write, 1, 2)

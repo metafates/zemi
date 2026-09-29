@@ -211,7 +211,7 @@ func TestPolicy(t *testing.T) {
 	p := Policy{
 		Write:    []string{root, scratch, cache},
 		Protect:  []string{filepath.Join(root, ".git"), filepath.Join(root, ".agents"), state},
-		Git:      []string{filepath.Join(root, ".git")},
+		Git:      filepath.Join(root, ".git"),
 		Hide:     []string{hide, state, filepath.Join(plugin, "lua", "p", ".git")},
 		Read:     []string{filepath.Join(plugin, "init.lua"), filepath.Join(plugin, "lua")},
 		List:     []string{plugin},

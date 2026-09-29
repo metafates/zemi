@@ -556,7 +556,7 @@ func (h *Host) unsettled(req tools.Request) string {
 		// a git write that can only fail confined asks first, which saves the
 		// failed run and the sandbox: false retry
 		if why := n.GitWrites(false); why != "" {
-			if why = n.GitWrites(len(h.policyWalk(false, req.Pad, false).Git) > 0); why != "" {
+			if why = n.GitWrites(h.policyWalk(false, req.Pad, false).Git != ""); why != "" {
 				return why
 			}
 		}

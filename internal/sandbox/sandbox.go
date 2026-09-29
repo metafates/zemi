@@ -39,7 +39,7 @@ func DispatchHelper() {
 type Policy struct {
 	Write    []string          // writable roots
 	Protect  []string          // read-only even inside Write
-	Git      []string          // git dirs in Protect writable again but for what git runs or follows; seatbelt only
+	Git      string            // a git dir in Protect writable again but for what git runs or follows; seatbelt only
 	Hide     []string          // neither readable nor writable
 	Read     []string          // readable inside Hide, with all they hold but a deeper Hide
 	List     []string          // directories inside Hide whose names are readable, not what they hold
@@ -107,7 +107,10 @@ func Wrap(cmd *exec.Cmd, p Policy) error {
 			}
 		}
 	}
-	p.Write, p.Protect, p.Git, p.Hide, p.Read, p.List = real(p.Write), protect, real(p.Git), real(p.Hide), real(p.Read), real(p.List)
+	p.Write, p.Protect, p.Hide, p.Read, p.List = real(p.Write), protect, real(p.Hide), real(p.Read), real(p.List)
+	if p.Git != "" {
+		p.Git = cmp.Or(perm.RealPath(p.Git), p.Git)
+	}
 	return wrap(cmd, p)
 }
 

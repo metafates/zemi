@@ -162,7 +162,7 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 		// rest of .git opens; a .git file's git dir (a linked worktree) stays shut
 		if gd := filepath.Join(d.ProjectDir, ".git"); backend.Name == "seatbelt" {
 			if fi, err := os.Lstat(gd); err == nil && fi.IsDir() {
-				p.Git = []string{gd}
+				p.Git = gd
 			}
 		}
 		// the one part of .agents a command may write; a real dir, since the
@@ -234,7 +234,7 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 	switch {
 	case slices.Contains(pol.Write, d.ProjectDir):
 		ro := ".git and .agents are"
-		if len(pol.Git) > 0 {
+		if pol.Git != "" {
 			ro = ".agents and .git's config and hooks are"
 		}
 		fmt.Fprintf(&b, "- They write only %s.\n- %s read-only to them", pol.WriteNames(d.ProjectDir), ro)
@@ -246,7 +246,7 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 		if hasTool(toolset, tools.ToolWrite) {
 			b.WriteString(": write .agents files with the write tool")
 		}
-		if len(pol.Git) > 0 {
+		if pol.Git != "" {
 			b.WriteString("; git commit and checkout run, git config, remote, push and fetch " + ask + ".\n")
 		} else {
 			b.WriteString("; git commands that change .git " + ask + ".\n")

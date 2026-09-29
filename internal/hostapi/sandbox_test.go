@@ -486,7 +486,7 @@ func TestSandboxPolicy(t *testing.T) {
 		} else if err := os.RemoveAll(gd); err != nil || os.WriteFile(gd, []byte("gitdir: "+t.TempDir()), 0o644) != nil {
 			t.Fatal(err)
 		}
-		if p := h.sandboxPolicy(false, h.ScratchDir()); slices.Equal(p.Git, []string{gd}) != dir || !slices.Contains(p.Protect, gd) {
+		if p := h.sandboxPolicy(false, h.ScratchDir()); (p.Git == gd) != dir || !slices.Contains(p.Protect, gd) {
 			t.Errorf(".git a dir %v: git %v, protect %v", dir, p.Git, p.Protect)
 		}
 	}
