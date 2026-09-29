@@ -1,5 +1,6 @@
 -- What zemi prints to the shell when it quits: the snail, the session's title
 -- and the command that resumes it. A session with no messages prints nothing.
+-- A printed run (zemi run) opens with its prompt row, so it gets no banner.
 local fmt = require("zemi.tui.text")
 local snail = require("zemi.tui.snail")
 
@@ -10,29 +11,32 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		if ctx.resume == "" then return {} end
-		local title = zemi.session.title()
-		-- "zemi" is an untitled session's placeholder (the auto title had not landed)
-		if title == "zemi" then title = "" end
-		-- a viewed agent run's transcript is the run's, not the session's
-		if title == "" and not ctx.view then
-			for _, r in ipairs(ctx.transcript) do
-				if r.role == "user" and r.kind == "" then
-					title = r.text:match("^%s*([^\n]*)")
-					break
-				end
-			end
-		end
-		local blank, mark = { { text = "" } }, { text = "@zemi", hl = "Title" }
+		local blank = { { text = "" } }
 		---@type zemi.Line[]
 		local rows = { blank }
-		if ctx.width >= 36 then
-			for _, r in ipairs(snail.block({ mark, { text = fmt.clip(title, ctx.width - snail.MARK_COL - 4) } })) do
-				rows[#rows + 1] = r
+		if not ctx.headless then
+			local title = zemi.session.title()
+			-- "zemi" is an untitled session's placeholder (the auto title had not landed)
+			if title == "zemi" then title = "" end
+			-- a viewed agent run's transcript is the run's, not the session's
+			if title == "" and not ctx.view then
+				for _, r in ipairs(ctx.transcript) do
+					if r.role == "user" and r.kind == "" then
+						title = r.text:match("^%s*([^\n]*)")
+						break
+					end
+				end
 			end
-		else
-			rows[#rows + 1] = { mark, { text = "  " .. fmt.clip(title, ctx.width - 11) } }
+			local mark = { text = "@zemi", hl = "Title" }
+			if ctx.width >= 36 then
+				for _, r in ipairs(snail.block({ mark, { text = fmt.clip(title, ctx.width - snail.MARK_COL - 4) } })) do
+					rows[#rows + 1] = r
+				end
+			else
+				rows[#rows + 1] = { mark, { text = "  " .. fmt.clip(title, ctx.width - 11) } }
+			end
+			rows[#rows + 1] = blank
 		end
-		rows[#rows + 1] = blank
 		rows[#rows + 1] = { { text = "resume   ", hl = "Comment" }, { text = ctx.resume, hl = "SplashKey" } }
 		local cost = fmt.cost(ctx.usage.cost)
 		if cost then rows[#rows + 1] = { { text = "cost     ", hl = "Comment" }, { text = cost } } end

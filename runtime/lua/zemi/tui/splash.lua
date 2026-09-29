@@ -199,7 +199,7 @@ zemi.ui.widget.add({
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
-		if ctx.transcript_count > 0 or ctx.agent_active then return {} end
+		if ctx.headless or ctx.transcript_count > 0 or ctx.agent_active then return {} end
 		return M.render(ctx)
 	end,
 })

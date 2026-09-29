@@ -1483,8 +1483,8 @@ provenance string.
   label naming the current activity, interrupt key, queue depth, elapsed
   time, the ticking part keeping the cells it grows to, so the block is
   centered once and the label never slides; it reads `ctx.frame`, `ctx.ended`,
-  `ctx.cancelling`, `interrupt_armed`, `view`, `editing`, `waiting` and
-  `agent.retry`/`compacting`),
+  `ctx.cancelling`, `interrupt_armed`, `view`, `editing`, `waiting`,
+  `headless` and `agent.retry`/`compacting`),
   the statusline below. The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
   Statusline

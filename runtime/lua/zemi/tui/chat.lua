@@ -450,7 +450,11 @@ zemi.ui.widget.add({
 			lines, prev = {}, first > 1 and "above" or nil
 			if m.kind == "reasoning" then
 				gap("activity")
-				add_reasoning(thought(m.thought or 0), (hinted and not ctx.show_reasoning) and HINT or nil, m.text)
+				add_reasoning(
+					thought(m.thought or 0),
+					(hinted and not ctx.show_reasoning and not ctx.headless) and HINT or nil,
+					m.text
+				)
 			elseif m.kind == "tool" then
 				local i = first
 				while i <= last do
@@ -589,7 +593,11 @@ zemi.ui.widget.add({
 				if text == "" and #tools == 0 then
 					add_reasoning("Thinking", nil, ag.reasoning, 3, true)
 				else
-					add_reasoning(thought(ag.thought or 0), not ctx.show_reasoning and HINT or nil, ag.reasoning)
+					add_reasoning(
+						thought(ag.thought or 0),
+						not ctx.show_reasoning and not ctx.headless and HINT or nil,
+						ag.reasoning
+					)
 				end
 			end
 			local ti = 1

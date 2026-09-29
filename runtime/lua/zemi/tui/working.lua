@@ -33,12 +33,12 @@ zemi.ui.widget.add({
 		local parts = {}
 		local label, state = "", "idle"
 		local busy = ctx.busy and ctx.busy.elapsed >= 0.3 and ctx.busy or nil
+		-- a printed run takes no key but the shell's interrupt
+		local stop = ctx.headless and "ctrl+c stop" or ctx.interrupt_armed and "esc again" or "esc interrupt"
 		if not ctx.agent_active then
 			if busy then
 				label, state = busy.label, "working"
-				if busy.cancellable and not ctx.view then
-					parts[1] = { ctx.interrupt_armed and "esc again" or "esc interrupt", 6, 13 }
-				end
+				if busy.cancellable and not ctx.view then parts[1] = { stop, 6, 13 } end
 				parts[#parts + 1] = { fmt.duration(busy.elapsed, true), 5, 7 }
 			elseif ctx.ended == "ok" then
 				state = "done"
@@ -93,7 +93,7 @@ zemi.ui.widget.add({
 				if ctx.cancelling then
 					parts[#parts + 1] = { "ctrl+c quit", 6, 13 }
 				elseif not ctx.view then
-					parts[#parts + 1] = { ctx.interrupt_armed and "esc again" or "esc interrupt", 6, 13 }
+					parts[#parts + 1] = { stop, 6, 13 }
 				end
 				local queued = #ag.steering - ag.reports
 				if queued > 0 then parts[#parts + 1] = { queued .. " queued · up edit", 1 } end

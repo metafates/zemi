@@ -1482,6 +1482,15 @@ type UIState struct {
 	Editing        string  // title of the file open in the editor
 	Waiting        Waiting // while a prompt holds the turn
 	Focus          string  // the drawn layout node taking keys, "" for the composer
+	Printed        *Printed
+}
+
+// Printed is set when zemi run prints the frame to a shell: Rows stand in
+// for the transcript, never cached, and Live for the live turn (nil: none,
+// and no todos).
+type Printed struct {
+	Rows []ChatMessage
+	Live *StreamSnapshot
 }
 
 // TildePath shortens the home directory, or a path under it, to ~.
@@ -1499,7 +1508,17 @@ func TildePath(p string) string {
 // render returned, so a ctx kept in an upvalue pins nothing. done ends it.
 func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) (tb *glua.LTable, done func()) {
 	sess, stream := h.liveView()
-	tb = L.CreateTable(0, 32)
+	printed := state.Printed
+	if printed != nil {
+		sess.Transcript = printed.Rows
+		if printed.Live != nil {
+			stream = *printed.Live
+		} else {
+			stream.Active, stream.Text, stream.Reasoning, stream.Tools, stream.Steering, stream.Reports = false, "", "", nil, nil, 0
+		}
+	}
+	tb = L.CreateTable(0, 33)
+	tb.RawSetString("headless", glua.LBool(printed != nil))
 	tb.RawSetString("width", glua.LNumber(width))
 	tb.RawSetString("time", glua.LString(state.Time))
 	tb.RawSetString("frame", glua.LNumber(state.Frame))
@@ -1562,7 +1581,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	// 0 while an agent run is shown: its rows mutate in place as the run
 	// goes, so the chat widget must not cache them.
 	epoch := h.trEpoch.Load()
-	if run != nil {
+	if run != nil || printed != nil {
 		epoch = 0
 	}
 	tb.RawSetString("transcript_epoch", glua.LNumber(epoch))
@@ -1570,7 +1589,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	lazy := map[string]func(L *glua.LState) glua.LValue{
 		"todos": func(L *glua.LState) glua.LValue {
 			todos := L.NewTable()
-			if run != nil {
+			if run != nil || printed != nil && printed.Live == nil {
 				return todos
 			}
 			for _, td := range h.todoSnapshot() {
@@ -1948,7 +1967,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.102.0"))
+	api.RawSetString("version", glua.LString("0.103.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

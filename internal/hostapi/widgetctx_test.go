@@ -65,6 +65,50 @@ func BenchmarkWidgetCtx(b *testing.B) {
 	}
 }
 
+// TestPrintedRender: a frame zemi run prints draws the rows it is handed
+// and no pointer at a key or a click; the splash stays out of it.
+func TestPrintedRender(t *testing.T) {
+	h := newTestHostUI(t)
+	rows := []ChatMessage{
+		{Role: "assistant", Kind: RowReasoning, Text: "hmm", Stat: &TurnStat{ThoughtMS: 1200}},
+		{Role: "assistant", Kind: RowTool, Tool: "bash", Text: "go test", Status: CallErr, Output: "FAIL\nexit status 1"},
+		{Role: "assistant", Text: "it fails"},
+	}
+	h.setTranscript("t", rows)
+	chat := func(state UIState) string {
+		var b strings.Builder
+		for _, w := range h.Widgets.InRegion("chat") {
+			lines, _, err := h.RenderWidget(t.Context(), w, 80, 30, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, l := range lines {
+				for _, s := range l {
+					b.WriteString(s.Text)
+				}
+				b.WriteString("\n")
+			}
+		}
+		return b.String()
+	}
+	for _, c := range []struct {
+		name  string
+		state UIState
+		hint  bool
+	}{
+		{"the TUI points at ctrl+o", UIState{}, true},
+		{"a printed frame does not", UIState{Printed: &Printed{Rows: rows}}, false},
+	} {
+		got := chat(c.state)
+		if strings.Contains(got, "ctrl+o") != c.hint || !strings.Contains(got, "exit status 1") || !strings.Contains(got, "it fails") {
+			t.Errorf("%s:\n%s", c.name, got)
+		}
+	}
+	if got := chat(UIState{Printed: &Printed{}}); strings.TrimSpace(got) != "" {
+		t.Errorf("a printed frame with no rows draws:\n%s", got)
+	}
+}
+
 // TestWidgetCtxLazy: the built-on-read fields work inside render, and a
 // ctx kept past it keeps what render read and reads nil for the rest.
 func TestWidgetCtxLazy(t *testing.T) {

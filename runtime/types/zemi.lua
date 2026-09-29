@@ -879,6 +879,7 @@ function zemi.event.stats() end
 ---@field editing string Title of the file open in the user's editor, else "".
 ---@field waiting zemi.Waiting|"" The prompt holding the turn, else "".
 ---@field focus string Id of the layout node that has the keys, "" while the composer has them.
+---@field headless boolean `zemi run` prints the frame to a shell: nothing is clicked, ctrl+c is the only key, and only the live tail redraws.
 
 --- `render` returns a list of lines. A bare string or a single line is taken
 --- as one line; a list of several strings raises, since it could mean one
