@@ -863,23 +863,36 @@ func fieldRows(fields []hostapi.Field, w int) [][]hostapi.Segment {
 			hl = statusHL[hostapi.ServiceStatus(f.Value)]
 		}
 		name := f.Name
-		for i, l := range strings.Split(f.Value, "\n") {
+		for l := range strings.SplitSeq(f.Value, "\n") {
+			val := []hostapi.Segment{{Text: l, HL: hl}}
 			if w-kw < 20 {
-				segs := []hostapi.Segment{{Text: l, HL: hl}}
-				if i == 0 {
-					segs = append([]hostapi.Segment{{Text: name + ": ", HL: "Host:Hint"}}, segs...)
-				}
-				rows = append(rows, hostapi.WrapSegs(segs, w)...)
-				continue
+				rows = append(rows, fieldLine(name, val, w)...)
+			} else {
+				rows = append(rows, fieldRow(name, kw, hostapi.WrapSegs(val, w-kw))...)
 			}
-			for _, r := range hostapi.WrapSegs([]hostapi.Segment{{Text: l, HL: hl}}, w-kw) {
-				// under a name the column is blank, and a copy rejoins the value
-				rows = append(rows, append([]hostapi.Segment{{Text: fmt.Sprintf("%-*s", kw, name), HL: "Host:Hint", NoCopy: name == ""}}, r...))
-				name = ""
-			}
+			name = ""
 		}
 	}
 	return rows
+}
+
+// fieldRow sets a field's value rows beside its name in a column kw wide;
+// under the name the column is blank, and a copy rejoins the value.
+func fieldRow(name string, kw int, rows [][]hostapi.Segment) [][]hostapi.Segment {
+	for i, r := range rows {
+		rows[i] = append([]hostapi.Segment{{Text: fmt.Sprintf("%-*s", kw, name), HL: "Host:Hint", NoCopy: name == ""}}, r...)
+		name = ""
+	}
+	return rows
+}
+
+// fieldLine is a field too narrow for the name column: "name: value"
+// wrapped to w, or the value alone under a name already drawn.
+func fieldLine(name string, val []hostapi.Segment, w int) [][]hostapi.Segment {
+	if name != "" {
+		val = append([]hostapi.Segment{{Text: name + ": ", HL: "Host:Hint"}}, val...)
+	}
+	return hostapi.WrapSegs(val, w)
 }
 
 // spliceBox composites box rows centered over the chat area; what the box

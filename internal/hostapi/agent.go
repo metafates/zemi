@@ -54,18 +54,15 @@ type PermRequest struct {
 	// Wider is a second session-long choice covering more than Always (a
 	// read's whole repository), "" when there is none
 	Wider string
-	// Project is a persistent choice covering Always's scope but written to
-	// the project's permissions file (a trusted bash command), "" when none
-	Project string
+	// Project offers Always's scope written to the project's permissions
+	// file (a trusted bash command)
+	Project bool
 	Subject string
 	Arg     string
 	Reason  string
 	Preview string // a file tool's unified diff, a script, a memory's text
 	// Description is the model's summary of a command, not checked against it
 	Description string
-	// Outside means this bash command escapes the sandbox and can reach the
-	// whole machine; the prompt shows a warning band for it
-	Outside bool
 	// Agent is the subagent asking, as the prompt names it ("explore
 	// agent"), "" for the main agent
 	Agent string

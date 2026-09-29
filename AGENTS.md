@@ -1018,7 +1018,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   drawn as a notice row by `reportHeads`):
   a question or a report is not a plan, so the text is never presented for approval.
 - **Go-owned prompts** (permission, trust, question) share one renderer in ui/agent.go
-  (`promptBox`, `choiceRows`); Lua reads the composer through a snapshot the UI publishes and
+  (`promptBox`, `choiceRows`), and the permission prompt's facts table sets its rows with a
+  detail view's `fieldRow`. The permission prompt reads only typed fields (`PermRequest.Where`,
+  `Runs`, `Agent`, `Owner`), never meaning parsed back out of a reason or preview string.
+  Lua reads the composer through a snapshot the UI publishes and
   edits it through `UIHooks.ComposerEdit`, applied on the UI goroutine.
 - **System prompt** (prompt.go): `basePrompt` + `delegationPrompt` for the default profile,
   then `zemiPrompt`, the read-only agent's plan section, instruction files

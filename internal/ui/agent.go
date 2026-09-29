@@ -5,9 +5,12 @@
 package ui
 
 import (
+	"bytes"
 	"cmp"
+	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -39,26 +42,28 @@ type permAskPrompt struct {
 // message should not approve a command by accident.
 const permGrace = 400 * time.Millisecond
 
-// permChoice is one answer of the permission prompt.
+// permChoice is one answer of the permission prompt: the label says how
+// long, desc what it allows.
 type permChoice struct {
-	label, key string
-	by         string
-	ok         bool
-	tell       bool // deny and stop the turn so the user can say what to do instead
+	label, desc, key string
+	by               string
+	ok               bool
+	tell             bool // deny and stop the turn so the user can say what to do instead
 }
 
 func (pa *permAskPrompt) choices() []permChoice {
-	out := []permChoice{{"Yes", "y", "user:once", true, false}}
+	out := []permChoice{{"Yes", "", "y", "user:once", true, false}}
 	if pa.req.Always != "" {
-		out = append(out, permChoice{"Yes, and " + pa.req.Always + " for this session", "a", "user:always", true, false})
+		out = append(out, permChoice{"Yes, this session", pa.req.Always, "a", "user:always", true, false})
 	}
 	if pa.req.Wider != "" {
-		out = append(out, permChoice{"Yes, and " + pa.req.Wider + " for this session", "r", "user:wider", true, false})
+		out = append(out, permChoice{"Yes, this session", pa.req.Wider, "r", "user:wider", true, false})
 	}
-	if pa.req.Project != "" {
-		out = append(out, permChoice{"Yes, and " + pa.req.Project + " for this project", "p", "user:project", true, false})
+	if pa.req.Project {
+		out = append(out, permChoice{"Yes, this project", "the same, saved for this project", "p", "user:project", true, false})
 	}
-	return append(out, permChoice{"No", "n", tools.ByUser, false, false}, permChoice{"No, and tell zemi what to do instead", "t", tools.ByUser, false, true})
+	return append(out, permChoice{"No", "", "n", tools.ByUser, false, false},
+		permChoice{"No, and tell zemi", "stop the turn and say what to do instead", "t", tools.ByUser, false, true})
 }
 
 // choosePerm answers the prompt with c. Telling zemi what to do also denies
@@ -101,7 +106,16 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	req.Subject, req.Arg = sanitize.String(req.Subject), sanitize.String(req.Arg)
 	req.Reason, req.Preview = sanitize.String(req.Reason), sanitize.String(req.Preview)
 	req.Description, req.Always = sanitize.String(req.Description), sanitize.String(req.Always)
-	req.Wider, req.Project = sanitize.String(req.Wider), sanitize.String(req.Project)
+	req.Wider, req.Agent, req.Owner = sanitize.String(req.Wider), sanitize.Line(req.Agent), sanitize.Line(req.Owner)
+	req.Runs = slices.Clone(req.Runs)
+	for i := range req.Runs {
+		req.Runs[i].Name = sanitize.Line(req.Runs[i].Name)
+	}
+	// a tool's input reads as its fields, one per line
+	var indented bytes.Buffer
+	if strings.HasPrefix(req.Preview, "{") && json.Indent(&indented, []byte(req.Preview), "", "  ") == nil {
+		req.Preview = indented.String()
+	}
 	ch := make(chan permAnswer, 1)
 	a.await(func() tea.Cmd {
 		p := &permAskPrompt{req: req, answer: ch, opened: a.now()}
@@ -109,8 +123,7 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 			p.size = a.permAsk.size
 		}
 		a.permAsk = p
-		title, _ := permTitle(req, a.host.Dirs.ProjectDir)
-		return a.notifyIfAway("zemi: " + title)
+		return a.notifyIfAway("zemi: " + permTitle(req))
 	})
 	ans := <-ch
 	return ans.ok, ans.by
@@ -677,40 +690,19 @@ func (a *App) shimmer(seg hostapi.Segment, ms int, animate bool) []hostapi.Segme
 	return out
 }
 
-// permBox draws the permission prompt: what the tool wants to do, the
-// command or the diff it would apply, the model's own words and the choices.
+// permBox draws the permission prompt: the question, the facts table
+// (what it acts on, why it asked, the model's own words), the command or
+// the diff it would apply, and the answers. Read down the left edge it
+// answers what, where and why before the keys.
 func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	req := pa.req
-	isDiff := strings.HasPrefix(req.Preview, "--- ")
+	isDiff := req.Subject == perm.SubjectWrite && req.Preview != ""
 	maxW := 96
 	if isDiff {
 		maxW = 120
 	}
 	inner := max(min(w-4, maxW)-4, 1)
-
-	title, target := permTitle(req, a.host.Dirs.ProjectDir)
-	// a command that escapes the sandbox gets a red band above everything,
-	// so it cannot be missed; the title already says where it runs
-	var banner [][]hostapi.Segment
-	if req.Outside {
-		banner = codePanel("can reach the whole machine, unconfined", "Host:DangerPanel", inner)
-	}
-	var head [][]hostapi.Segment
-	// the whole target, wrapped at its slashes: a path's file name and a
-	// URL's query are what the user approves
-	if target != "" {
-		var segs []hostapi.Segment
-		for _, part := range strings.SplitAfter(target, "/") {
-			segs = append(segs, hostapi.Segment{Text: part, HL: "Host:Value"})
-		}
-		head = hostapi.WrapSegs(segs, inner)
-		// a target of thousands of characters keeps its first and last rows,
-		// so the choices below still fit
-		if n := max(h/3, 3); len(head) > n {
-			more := []hostapi.Segment{{Text: hostapi.MoreLines(len(head) - n + 1), HL: "Host:Hint"}}
-			head = append(append(head[:n-2:n-2], more), head[len(head)-1])
-		}
-	}
+	target, why, says := permFacts(req, a.host.Dirs.ProjectDir, inner, h)
 	build := func(w int) [][]hostapi.Segment {
 		switch {
 		case req.Subject == perm.SubjectBash:
@@ -729,39 +721,40 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		return nil
 	}
 	content := build(inner)
-	// the model's words sit apart from the chrome, quoted, never in the
-	// title, and a few rows at most so they cannot push the command away
-	var said [][]hostapi.Segment
-	if req.Description != "" {
-		said = append(said, capRows(wrapText(`"`+req.Description+`"`, "Host:Hint", inner), 3, inner)...)
-	}
-	// the banner carries the sandbox escape, so the dim reason note is skipped
-	if note := permNote(req.Reason); note != "" && !req.Outside {
-		said = append(said, capRows(wrapText(note, "Host:Hint", inner), 3, inner)...)
-	}
 	choices := pa.choices()
 	btns := make([]promptChoice, 0, len(choices))
 	for _, c := range choices {
-		btns = append(btns, promptChoice{key: c.key, label: c.label})
+		btns = append(btns, promptChoice{key: c.key, label: c.label, desc: c.desc})
 	}
 	hints := []hintPair{pickHint, {"esc", "deny"}}
 	placeholder := oneRow
 	if len(content) == 0 {
 		placeholder = nil
 	}
-	var list, words [][]hostapi.Segment
+	var list [][]hostapi.Segment
 	var tight bool
+	nWhy, nSays := len(why), len(says)
 	fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight, list = level > 0, choiceRows(btns, pa.sel, inner, level > 1)
-		// the rows the preview and the words share; the words give way
-		// first, down to two rows of the preview
-		room := h - 2 - len(stack(tight, banner, head, placeholder, list, oneRow)) + len(placeholder)
-		gap := map[bool]int{true: 0, false: 1}[tight]
-		words = capRows(said, room-min(len(content), 2)-gap, inner)
-		left := room - len(words) - map[bool]int{true: gap}[len(words) > 0]
-		pa.view.viewH = max(left, 1)
-		return nil, left < min(len(content), 2) || len(words) < len(said)
+		// the panel keeps two rows before the model's words give way, then
+		// the reason; the target, the answers and the hint never do
+		room := h - 2 - len(stack(tight, placeholder, list, oneRow)) + len(placeholder)
+		left := func() int {
+			facts := len(target) + nWhy + nSays
+			return room - facts - map[bool]int{true: 1}[facts > 0 && !tight]
+		}
+		keep := min(len(content), 2)
+		nWhy, nSays = len(why), len(says)
+		for nSays > 0 && left() < keep {
+			nSays--
+		}
+		for nWhy > 0 && left() < keep {
+			nWhy--
+		}
+		pa.view.viewH = max(left(), 1)
+		return nil, left() < keep || nWhy < len(why) || nSays < len(says)
 	})
+	facts := slices.Concat(target, capRows(why, nWhy, inner), capRows(says, nSays, inner))
 	if pa.answer == nil {
 		dimRows(list) // answered: no longer a target
 	}
@@ -776,10 +769,10 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	if len(content) > pa.view.viewH {
 		bar = 1 // a scrolled panel's text keeps its cells beside the bar
 	}
-	for _, r := range slices.Concat(content, banner) {
+	for _, r := range content {
 		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " "))+bar)
 	}
-	for _, r := range slices.Concat(head, words, list, [][]hostapi.Segment{hintRow}) {
+	for _, r := range slices.Concat(facts, list, [][]hostapi.Segment{hintRow}) {
 		fit = max(fit, hostapi.SegsWidth(r))
 	}
 	fit = min(fit, inner)
@@ -791,16 +784,14 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		content[i] = padPanel(content[i], panelW)
 	}
 	content = pa.view.window(content, fit)
-	for i := range banner {
-		banner[i] = padPanel(banner[i], fit)
-	}
-	// an upper bound: a waiting ask may settle without a prompt
-	badge := ""
+	// who asks, whose code runs, and how many asks wait (an upper bound: a
+	// waiting ask may settle without a prompt)
+	badge := []string{req.Agent, req.Owner}
 	if n := a.host.AsksWaiting(); n > 1 {
-		badge = fmt.Sprintf("1 of %d", n)
+		badge = append(badge, fmt.Sprintf("1 of %d", n))
 	}
-	body := stack(tight, banner, head, content, words, list, [][]hostapi.Segment{hintRow})
-	return promptBox(title, badge, body, w, h, maxW, &pa.size)
+	body := stack(tight, facts, content, list, [][]hostapi.Segment{hintRow})
+	return promptBox(permTitle(req), strings.Join(slices.DeleteFunc(badge, func(s string) bool { return s == "" }), " · "), body, w, h, maxW, &pa.size)
 }
 
 // capRows keeps the first n of wrapped rows, ending the last kept one in
@@ -832,57 +823,168 @@ func padPanel(r []hostapi.Segment, width int) []hostapi.Segment {
 	return r
 }
 
-// permTitle asks what the request would do, and names what it acts on.
-func permTitle(req hostapi.PermRequest, root string) (title, target string) {
-	title, target = "Allow "+req.Subject+"?", req.Arg
-	switch {
-	case req.Subject == perm.SubjectBash:
-		if req.Outside {
-			return "Run this command outside the sandbox?", ""
-		}
-		return "Run this command?", ""
-	case req.Tool == "write":
-		title = "Write this file?"
-	case req.Tool == "edit":
-		title = "Edit this file?"
-	case req.Subject == perm.SubjectWrite:
-		title = "Change this file?"
-	case req.Subject == perm.SubjectRead:
-		title = "Read this file?"
-	case strings.HasPrefix(req.Subject, "net."):
-		title = "Fetch this URL?"
-	case strings.HasPrefix(req.Subject, "mcp."):
-		title = "Use a " + strings.TrimPrefix(req.Subject, "mcp.") + " tool?"
-	case req.Subject == "tool.workflow":
-		title = "Run this workflow?"
-	case req.Subject == "tool.lua":
-		title = "Run Lua inside zemi?"
-	case req.Subject == "memory.write":
-		title = "Change a memory?"
-	}
-	if target == "script" { // an inline script, shown below
-		target = ""
-	}
-	if rel, ok := perm.Under(root, target); ok && root != "" && filepath.IsAbs(target) {
-		target = rel
-	}
-	return title, target
+// runsTitle asks about a command where a yes runs it.
+//
+//exhaustive:enforce
+var runsTitle = map[hostapi.RunsIn]string{
+	hostapi.RunsOutside:   "Run this command outside the sandbox?",
+	hostapi.RunsNoSandbox: "Run this command?",
+	hostapi.RunsNetwork:   "Run this command in the sandbox, with the network?",
+	hostapi.RunsConfined:  "Run this command in the sandbox?",
 }
 
-// permNote is the line a request's reason reads as under the title: a
-// subagent's reason says which agent asked.
-func permNote(reason string) string {
-	if !strings.HasPrefix(reason, "agent ") {
-		return reason
+// permTitle is the question a request asks, from its typed fields.
+func permTitle(req hostapi.PermRequest) string {
+	switch server, mcp := strings.CutPrefix(req.Subject, "mcp."); {
+	case req.Subject == perm.SubjectBash:
+		return cmp.Or(runsTitle[req.Where], "Run this command?")
+	case req.Subject == perm.SubjectRead && req.Tool == tools.ToolSkill:
+		return "Load this skill?"
+	case req.Subject == perm.SubjectRead:
+		return "Read this file?"
+	case req.Tool == tools.ToolWrite:
+		return "Write this file?"
+	case req.Tool == tools.ToolEdit:
+		return "Edit this file?"
+	case req.Subject == perm.SubjectWrite:
+		return "Change this file?"
+	case strings.HasPrefix(req.Subject, "net.") && req.Tool == tools.ToolWebSearch:
+		return "Search the web?"
+	case strings.HasPrefix(req.Subject, "net."):
+		return "Fetch this URL?"
+	case mcp:
+		return "Use " + req.Arg + " from " + server + "?"
+	case req.Subject == "tool.lua":
+		return "Run Lua inside zemi?"
+	case req.Subject == "tool.workflow":
+		return "Run this workflow?"
+	case req.Subject == "tool."+req.Tool:
+		return "Use the " + req.Tool + " tool?"
+	case req.Subject == "memory.write":
+		return "Forget this memory?"
 	}
-	// "agent <name>: <its reason>; <why it asked>"
-	head, why, _ := strings.Cut(strings.TrimPrefix(reason, "agent "), "; ")
-	who, own, _ := strings.Cut(head, ": ")
-	note := "asked by the " + who + " agent"
-	if rest := strings.Trim(strings.Join([]string{own, why}, "; "), "; "); rest != "" {
-		note += ": " + rest
+	return "Allow " + req.Subject + "?"
+}
+
+// permFacts is the facts table under the prompt's title, three blocks
+// sharing one name column: the target (the programs a command runs, a file,
+// a URL), why zemi asked, and the model's own words, quoted and last since
+// nothing checked them. why and says take two rows at most, a target a
+// third of the screen, keeping its first and last rows.
+func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, says [][]hostapi.Segment) {
+	name, val := permTarget(req, root)
+	kw := 0
+	for n, on := range map[string]bool{name: val != nil, "why": req.Reason != "", "says": req.Description != ""} {
+		if on {
+			kw = max(kw, ansi.StringWidth(n)+2)
+		}
 	}
-	return note
+	fact := func(name string, val []hostapi.Segment) [][]hostapi.Segment {
+		if w-kw < 20 {
+			return fieldLine(name, val, w)
+		}
+		return fieldRow(name, kw, hostapi.WrapSegs(val, w-kw))
+	}
+	switch {
+	case val != nil && req.Subject == perm.SubjectBash && w-kw >= 20:
+		target = fieldRow(name, kw, runsRows(req.Runs, w-kw))
+	case val != nil:
+		target = fact(name, val)
+		if n := max(h/3, 3); len(target) > n {
+			more := fieldRow("", kw, [][]hostapi.Segment{{{Text: hostapi.MoreLines(len(target) - n + 1), HL: "Host:Hint"}}})
+			target = slices.Concat(target[:n-2], more, target[len(target)-1:])
+		}
+	}
+	if req.Reason != "" {
+		why = capRows(fact("why", []hostapi.Segment{{Text: sanitize.Line(req.Reason), HL: "Host:Value"}}), 2, w)
+	}
+	if req.Description != "" {
+		says = capRows(fact("says", []hostapi.Segment{{Text: `"` + sanitize.Line(req.Description) + `"`, HL: "Host:Hint"}}), 2, w)
+	}
+	return target, why, says
+}
+
+// permTarget is the facts table's first row: what a request acts on, as
+// its name and value; no value when the title names it (a tool, a memory).
+func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment) {
+	// a path or URL wraps at its slashes: its file name and its query are
+	// what the user approves
+	parts := func(s string) []hostapi.Segment {
+		var segs []hostapi.Segment
+		for _, p := range strings.SplitAfter(s, "/") {
+			segs = append(segs, hostapi.Segment{Text: p, HL: "Host:Value"})
+		}
+		return segs
+	}
+	switch arg := req.Arg; {
+	case req.Subject == perm.SubjectBash && req.Runs != nil && len(req.Runs) == 0:
+		return "", nil // only shell syntax (set -e; true)
+	case req.Subject == perm.SubjectBash:
+		return "runs", slices.Concat(runsRows(req.Runs, 1<<20)...)
+	case tools.PathSubject(req.Subject), req.Subject == "tool.lua" && arg != "script":
+		if rel, ok := perm.Under(root, arg); ok && root != "" && filepath.IsAbs(arg) {
+			arg = rel
+		}
+		return "file", parts(arg)
+	case strings.HasPrefix(req.Subject, "net."):
+		// the host is what the session answer allows and where a look-alike hides
+		if u, err := url.Parse(arg); err == nil && u.Host != "" {
+			before, after, _ := strings.Cut(arg, u.Host)
+			return "url", slices.Concat([]hostapi.Segment{{Text: before, HL: "Host:Value"}, {Text: u.Host, HL: "Host:Bold"}}, parts(after))
+		}
+		return "url", parts(arg)
+	case req.Subject == "tool.workflow" && arg != "script":
+		return "workflow", []hostapi.Segment{{Text: arg, HL: "Host:Value"}}
+	case strings.HasPrefix(req.Subject, "mcp."), req.Subject == "tool."+req.Tool, req.Subject == "memory.write", arg == "script":
+		return "", nil
+	}
+	return "arg", parts(req.Arg)
+}
+
+// riskRank and riskHL order and color the marks of the runs row.
+var (
+	riskRank = map[perm.Risk]int{perm.RiskDeletes: 2, perm.RiskCode: 1}
+	riskHL   = map[perm.Risk]string{perm.RiskDeletes: "Host:Danger", perm.RiskCode: "Host:Warn"}
+)
+
+// runsRows lays out what a command runs in at most two rows w wide, each
+// name whole: marked names first (deletes in Danger, runs code in Warn), so
+// a cut never hides one, and the names that do not fit counted as "+N
+// more". nil runs is a list the parse could not vouch for.
+func runsRows(runs []perm.Program, w int) [][]hostapi.Segment {
+	if runs == nil {
+		return [][]hostapi.Segment{{{Text: "unknown: read the command", HL: "Host:Warn"}}}
+	}
+	runs = slices.Clone(runs)
+	slices.SortStableFunc(runs, func(a, b perm.Program) int { return riskRank[b.Risk] - riskRank[a.Risk] })
+	items := make([]hostapi.Segment, len(runs))
+	for i, p := range runs {
+		items[i] = hostapi.Segment{Text: p.Name, HL: "Host:Value"}
+		if p.Risk != "" {
+			items[i] = hostapi.Segment{Text: p.Name + " (" + string(p.Risk) + ")", HL: riskHL[p.Risk]}
+		}
+	}
+	for n := len(items); ; n-- {
+		shown := items[:n]
+		if n < len(items) {
+			shown = append(slices.Clone(shown), hostapi.Segment{Text: fmt.Sprintf("+%d more", len(items)-n), HL: "Host:Hint"})
+		}
+		var rows [][]hostapi.Segment
+		var row []hostapi.Segment
+		for _, it := range shown {
+			switch {
+			case len(row) == 0:
+			case hostapi.SegsWidth(row)+3+ansi.StringWidth(it.Text) <= w:
+				row = append(row, hostapi.Segment{Text: " · ", HL: "Host:Hint"})
+			default:
+				rows, row = append(rows, row), nil
+			}
+			row = append(row, it)
+		}
+		if rows = append(rows, row); len(rows) <= 2 || n == 0 {
+			return rows
+		}
+	}
 }
 
 // hintPair is one key of a footer hint and the verb it does.

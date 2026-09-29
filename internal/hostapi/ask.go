@@ -216,9 +216,8 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 	wider, wideRules := h.repoChoice(req)
 	project, projectRules := h.projectChoice(req, label, rules)
 	pr := PermRequest{
-		Tool: req.Tool, Always: label, Wider: wider, Project: project, Subject: req.Subject, Arg: h.shownArg(req),
-		Reason: req.Reason, Preview: req.Preview, Description: req.Description, Outside: req.Unsandboxed && req.Subject == perm.SubjectBash,
-		Agent: req.Agent, Owner: req.Owner, Where: h.runsIn(req),
+		Tool: req.Tool, Always: label, Wider: wider, Project: project != "", Subject: req.Subject, Arg: h.shownArg(req),
+		Reason: req.Reason, Preview: req.Preview, Description: req.Description, Agent: req.Agent, Owner: req.Owner, Where: h.runsIn(req),
 	}
 	if req.Subject == perm.SubjectBash {
 		pr.Runs = req.Command().Programs(req.Pad)

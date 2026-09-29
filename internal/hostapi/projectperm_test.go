@@ -88,7 +88,7 @@ func TestProjectAskPersists(t *testing.T) {
 	if v.Decision != perm.Allow || v.DecidedBy != "user:project" {
 		t.Fatalf("project bash: %v by %q", v.Decision, v.DecidedBy)
 	}
-	if len(ui.asked) != 1 || ui.asked[0].Project != "allow this exact command outside the sandbox" {
+	if len(ui.asked) != 1 || !ui.asked[0].Project || ui.asked[0].Always != "allow this exact command outside the sandbox" {
 		t.Fatalf("asked: %+v", ui.asked)
 	}
 

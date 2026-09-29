@@ -1789,14 +1789,28 @@ provenance string.
   at a time, in arrival order, each waiter judged again (rules, mode,
   trust) before its overlay opens, so an answer that covers it settles it
   with no prompt; the answered box stays drawn until the next replaces it
-  in place. The title asks what the call would do ("Run this
-  command?"), and the model's description sits quoted on its own line,
-  never in the title. The choices are a vertical list with their keys:
-  `Yes` (`y`, or `o`), `Yes, and allow <what> for this session` (`a`, only
-  when the request has an always choice; a command's `<what>` ends in where the
+  in place. The title asks what the call would do, built from the
+  request's typed fields, and for a command says where a yes runs it ("Run
+  this command outside the sandbox?", "in the sandbox, with the network?",
+  "in the sandbox?" for a read-only agent's, and "Run this command?" with no
+  backend). The badge names the subagent asking, whose code a Lua tool runs
+  (`plugin:<name>`) and the queue ("1 of 3"). Under the title a facts table,
+  dim names beside their values like a detail view's fields: the target (`runs`
+  for a command, `file`, `url`, `workflow`), `why` zemi asked, and `says`, the
+  model's own description, quoted and last since nothing checked it. `runs`
+  lists what the command runs from the gate's one parse (`perm.Normalized.Programs`),
+  a program marked `(deletes)` in Danger when `Destructive` would ask about its
+  segment and `(runs code)` in Warn when it runs code the list cannot see,
+  marked names first, two rows at most and the rest counted as `+N more`; when
+  the parse cannot vouch for the list (a program a substitution or a variable
+  picks, a heredoc another language reads) it says `unknown: read the command`.
+  Then the command, diff or input, then the choices, a vertical list with their
+  keys, each label saying how long and a dim column saying what it allows:
+  `Yes` (`y`, or `o`), `Yes, this session` (`a`, only
+  when the request has an always choice; a command's scope ends in where the
   rule runs it, `outside the sandbox` or `with the network`; plus a wider read choice `r` and,
-  for a trusted project's safe bash command, a `for this project` choice
-  `p`), `No` (`n` or `esc`), and `No, and tell zemi what to do instead`
+  for a trusted project's safe bash command, `Yes, this project`
+  `p`), `No` (`n` or `esc`), and `No, and tell zemi`
   (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
   down move, enter picks the highlighted one. Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
