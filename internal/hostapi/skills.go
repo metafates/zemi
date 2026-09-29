@@ -153,7 +153,7 @@ func (h *Host) skillIndex() []tools.SkillInfo {
 	var out []tools.SkillInfo
 	// recipes are read live: one written this session loads at once, while
 	// the pinned prompt keeps the list it was built with
-	for _, s := range h.enabledSkills() {
+	for _, s := range h.modelSkills() {
 		out = append(out, tools.SkillInfo{Name: s.Name, Path: s.Dir})
 	}
 	return out
@@ -163,6 +163,12 @@ func (h *Host) skillIndex() []tools.SkillInfo {
 func (h *Host) enabledSkills() []skills.Skill {
 	enabled := slices.DeleteFunc(h.skillsReg.list(), func(s skills.Skill) bool { return !h.skillsReg.isEnabled(s.Name) })
 	return append(enabled, h.projectOnlySkills()...)
+}
+
+// modelSkills is what the model may load: the enabled skills but the ones
+// kept for the user (disable-model-invocation).
+func (h *Host) modelSkills() []skills.Skill {
+	return slices.DeleteFunc(h.enabledSkills(), func(s skills.Skill) bool { return s.DisableModelInvocation })
 }
 
 // recipesDir holds a project's recipes: skills private to this machine, kept
@@ -275,10 +281,10 @@ func (h *Host) projectOnlySkills() []skills.Skill {
 }
 
 // skillsIndexPrompt renders the §10.7 skills index section: one line per
-// enabled skill, description capped: the prompt carries the index only,
-// bodies load on demand through the skill tool.
+// skill the model may load, description capped: the prompt carries the index
+// only, bodies load on demand through the skill tool.
 func (h *Host) skillsIndexPrompt() string {
-	enabled := h.enabledSkills()
+	enabled := h.modelSkills()
 	if len(enabled) == 0 {
 		return ""
 	}

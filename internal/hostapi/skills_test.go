@@ -167,6 +167,37 @@ func TestSkillsUserHooksStep(t *testing.T) {
 	}
 }
 
+// TestSkillCommands: the invocation fields decide whether the model sees a
+// skill; a recipe takes neither.
+func TestSkillCommands(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		write   func(h *Host) // the skill named "x"
+		indexed bool
+	}{
+		{"plain", func(h *Host) { writeSkill(t, h.userSkillsDir(), "x", "d", "") }, true},
+		{"hidden from the model", func(h *Host) { writeSkill(t, h.userSkillsDir(), "x", "d\ndisable-model-invocation: true", "") }, false},
+		{"a recipe takes neither field", func(h *Host) {
+			writeSkill(t, h.recipesDir(), "x", "d\ndisable-model-invocation: true\nuser-invocable: true", "")
+		}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, r := newTestHostSkillsNoBoot(t)
+			h.SetProjectTrusted(true)
+			c.write(h)
+			if err := r.Boot(context.Background(), []lua.BootStep{
+				h.NamespacesStep(), h.BuiltinCommandsStep(), h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
+			}); err != nil {
+				t.Fatal(err)
+			}
+			indexed := slices.ContainsFunc(h.skillIndex(), func(s tools.SkillInfo) bool { return s.Name == "x" })
+			if prompt := strings.Contains(h.skillsIndexPrompt(), "- x: "); indexed != c.indexed || prompt != c.indexed {
+				t.Fatalf("skill tool %v, prompt %v, want %v", indexed, prompt, c.indexed)
+			}
+		})
+	}
+}
+
 // TestLearnListAndDecide covers the §6.7 surface: list mirrors
 // the memory queue, decide accepts or rejects, and only a user or builtin
 // origin may decide.

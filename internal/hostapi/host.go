@@ -1666,7 +1666,7 @@ func (h *Host) includedData() included {
 	mems, err := h.memoryList(false)
 	inc.memories = len(mems)
 	// the builtin zemi skill ships with every install: counting it is noise
-	inc.skills = len(slices.DeleteFunc(h.enabledSkills(), func(s skills.Skill) bool { return s.Source == skills.Builtin }))
+	inc.skills = len(slices.DeleteFunc(h.modelSkills(), func(s skills.Skill) bool { return s.Source == skills.Builtin }))
 	if err == nil { // a short count from a failed read is not cached
 		h.included = inc
 	}
