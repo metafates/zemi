@@ -1361,15 +1361,12 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 		spec.src, arg = src, in.Name
 	case rerun:
 		spec.from = in.Run
-		if spec.src == "" { // read once: what the user approves is what runs
-			if _, err := readJournal(t.pipe.Pad, in.Run); err != nil {
-				return fantasy.NewTextErrorResponse(err.Error()), nil
-			}
-			src, err := readPadFile(t.pipe.Pad, flowFile(in.Run, ".lua"))
+		if spec.src == "" {
+			src, err := flowSource(t.pipe.Pad, in.Run)
 			if err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
-			spec.src = string(src)
+			spec.src = src
 		}
 	}
 	if strings.TrimSpace(spec.src) == "" {
@@ -1403,6 +1400,30 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 		return fantasy.NewTextErrorResponse(h.truncOutput(t.pipe.Pad, "workflow", report)), nil
 	}
 	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "workflow", report)), nil
+}
+
+// flowSource reads run id's script from pad once: a sandboxed command or the
+// model's file tools may rewrite the file, so what is approved is what runs.
+func flowSource(pad, id string) (string, error) {
+	if _, err := readJournal(pad, id); err != nil {
+		return "", err
+	}
+	src, err := readPadFile(pad, flowFile(id, ".lua"))
+	return string(src), err
+}
+
+// approveRerun is the script of run id the user reruns, asked about as the
+// tool's script is: the model may have rewritten it since the user saw it.
+func (h *Host) approveRerun(id string) (string, error) {
+	pipe := h.PipelineFor()
+	src, err := flowSource(pipe.Pad, id)
+	if err != nil {
+		return "", err
+	}
+	if v := pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: "tool.workflow", Arg: id, Description: "rerun " + id, Preview: src}); v.Decision != perm.Allow {
+		return "", errors.New(tools.DeniedText(v, "workflow "+id))
+	}
+	return src, nil
 }
 
 // control runs a control action on a run of this session.
@@ -1532,7 +1553,23 @@ func (h *Host) workflowCommands() []*Command {
 			case "restart":
 				return say(h.flowControl(id, actRestart, 0, arg(2)))
 			case "rerun":
-				return h.startUserFlow(flowSpec{from: id}, "/workflows rerun "+id, attached)
+				rerun := func() error {
+					src, err := h.approveRerun(id)
+					if err != nil {
+						return err
+					}
+					return h.startUserFlow(flowSpec{from: id, src: src}, "/workflows rerun "+id, attached)
+				}
+				if h.hooks() == nil {
+					return rerun()
+				}
+				// its ask blocks, and a Go command runs on the key loop
+				h.GoSafe("workflows rerun", func() {
+					if err := rerun(); err != nil {
+						h.CommandFailed("workflows", err)
+					}
+				})
+				return nil
 			case "save":
 				path, err := h.saveFlow(id, arg(2))
 				return say("Saved as "+TildePath(path), err)

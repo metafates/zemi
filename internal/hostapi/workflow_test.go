@@ -639,6 +639,11 @@ func TestWorkflowToolInput(t *testing.T) {
 			}
 		})
 	}
+	// the user's rerun asks about the file as the model's does
+	n := len(ui.asked)
+	if src, err := h.approveRerun(id); err != nil || src != "-- Count to two\nreturn 3" || len(ui.asked) != n+1 || ui.asked[n].Preview != src {
+		t.Fatalf("the user's rerun = %q, %v; asked %+v", src, err, ui.asked[n:])
+	}
 	h.SetUIHooks(nil)
 	info := h.workflowTool(h.PipelineFor()).Info()
 	if _, bg := info.Parameters["background"]; bg || fmt.Sprint(info.Parameters["action"].(map[string]any)["enum"]) != "[status rerun]" {

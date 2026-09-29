@@ -857,7 +857,8 @@ lua-language-server is installed.
   `ViewAgentFrom`, so esc (`LeaveAgentView`) reopens the view. While any run lives, one
   `watchFlows` ticker rebuilds whichever of the two is open once a second
   (`UIHooks.RefreshOverlay`, which builds nothing for a closed one), and a control from them
-  rebuilds them at once, keys and body too, and toasts. The user starts a saved one with `/workflows run` or `/review`
+  rebuilds them at once, keys and body too, and toasts. A rerun the user starts asks about
+  the pad's script as the tool's does (`approveRerun`), since the model can rewrite it. The user starts a saved one with `/workflows run` or `/review`
   (`startUserFlow`: detached in the TUI with a live notice row; headless on the claimed agent,
   as `/btw`), no model call before the work.
 - **Agent runs** (tasks.go): every `runSubagent` (tool, background, workflow, Lua) registers an
