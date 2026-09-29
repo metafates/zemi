@@ -570,9 +570,10 @@ func (o *options) readStdin(stdin *os.File) error {
 	fi, err := stdin.Stat()
 	dash := o.prompt == "-"
 	switch {
-	case (err != nil || fi.Mode()&os.ModeCharDevice != 0) && dash:
+	case dash && (err != nil || term.IsTerminal(stdin.Fd())):
 		return errors.New("- reads the prompt from stdin, which is a terminal")
-	case err != nil || fi.Mode()&os.ModeCharDevice != 0:
+	// the TUI opens /dev/tty when stdin is </dev/null
+	case !dash && (err != nil || fi.Mode()&os.ModeCharDevice != 0):
 		return nil
 	case !o.run:
 		return errors.New("stdin is not a terminal; zemi run answers from a pipe")

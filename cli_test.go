@@ -159,14 +159,16 @@ func TestCLI(t *testing.T) {
 func TestReadStdin(t *testing.T) {
 	for _, c := range []struct {
 		name, prompt, stdin string
-		tui                 bool
+		tui, null           bool // null reads /dev/null, a character device
 		want, err           string
 	}{
 		{name: "attached", prompt: "review", stdin: "diff\n", want: "review" + agent.Attached("stdin", "diff")},
 		{name: "dash is the prompt", prompt: "-", stdin: "/fix it\n", want: "/fix it"},
 		{name: "dash with nothing", prompt: "-", err: "which is empty"},
+		{name: "dash with /dev/null", prompt: "-", null: true, err: "which is empty"},
 		{name: "over the cap", stdin: strings.Repeat("x", 1<<20+1), err: "over 1 MiB"},
 		{name: "the tui refuses a pipe", tui: true, stdin: "x", err: "zemi run answers from a pipe"},
+		{name: "the tui takes /dev/null", tui: true, null: true},
 	} {
 		r, w, err := os.Pipe()
 		if err != nil {
@@ -176,6 +178,12 @@ func TestReadStdin(t *testing.T) {
 			w.WriteString(c.stdin)
 			w.Close()
 		}()
+		if c.null {
+			r.Close()
+			if r, err = os.Open(os.DevNull); err != nil {
+				t.Fatal(err)
+			}
+		}
 		o := options{run: !c.tui, prompt: c.prompt}
 		err = o.readStdin(r)
 		r.Close()
