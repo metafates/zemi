@@ -895,9 +895,12 @@ func (h *Host) agentsCommands() []*Command {
 			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, view <id>, stop [id], kill <job id>)", sub)
 		},
 		GoComplete: SubcommandCompleter([]string{"new", "open", "view", "stop", "kill"}, func(h *Host, sub string) []string {
+			if sub != "open" {
+				return nil
+			}
 			var names []string
 			for _, d := range h.agentDefs() {
-				if sub == "open" && d.Path != "" {
+				if d.Path != "" {
 					names = append(names, d.Name)
 				}
 			}
@@ -912,12 +915,15 @@ func (h *Host) openAgentFile(name string) error {
 	if err != nil {
 		return err
 	}
+	if name == "" { // agentDef reads "" as the default agent
+		return Usagef("/agents open <name>")
+	}
 	d, err := h.agentDef(name)
 	switch {
 	case err != nil:
 		return Usagef("%v", err)
 	case d.Path == "":
-		return Usagef("%s is builtin, its prompt is in zemi: agents/%s.md in %s replaces it", name, name, TildePath(h.Dirs.ConfigHome))
+		return Usagef("%s is builtin: agents/%s.md in %s replaces it", name, name, TildePath(h.Dirs.ConfigHome))
 	}
 	// the editor blocks and a Go command runs on the key loop
 	h.GoSafe("agents open", func() {
@@ -956,12 +962,12 @@ func (h *Host) openAgents() error {
 		items = append(items, item)
 	}
 	for _, d := range defs {
-		model, tools, access := cmp.Or(d.Model, "agents"), "every tool a subagent may use", "can change files"
+		model, tools, readOnly := cmp.Or(d.Model, "agents"), "every tool a subagent may use", "no"
 		if d.Tools != nil {
 			tools = strings.Join(d.Tools, ", ")
 		}
 		if d.ReadOnly {
-			access = "read only"
+			readOnly = "yes"
 		}
 		item := map[string]any{
 			"text":    d.Name,
@@ -974,7 +980,7 @@ func (h *Host) openAgents() error {
 			fields = append(fields, "path", TildePath(d.Path))
 			item["actions"] = []any{map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "agents open " + d.Name}}
 		}
-		item["fields"] = fieldList(append(fields, "model", model, "tools", tools, "access", access)...)
+		item["fields"] = fieldList(append(fields, "model", model, "tools", tools, "read only", readOnly)...)
 		items = append(items, item)
 	}
 	ui.OpenOverlay(Overlay{ID: "agents", Title: "Agents", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "open"})

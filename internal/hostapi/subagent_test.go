@@ -522,7 +522,7 @@ func TestSubagentMemoryKeepsItsSession(t *testing.T) {
 
 // TestAgentsList: /agents leads with New agent, shows a model's background
 // job with its output and stops it through the [s] Stop action's command,
-// and details each agent, opening the ones that are files.
+// and details each agent, the user's first, opening the ones that are files.
 func TestAgentsList(t *testing.T) {
 	h, r := newTestHost(t)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
@@ -557,15 +557,18 @@ func TestAgentsList(t *testing.T) {
 	if first := fmt.Sprint(ui.opened[0].Items[0]); !strings.Contains(first, "fill:/agents new ") || !strings.Contains(first, "text:New agent") {
 		t.Errorf("first row = %s", first)
 	}
+	if s := ui.opened[0].Items[2].(map[string]any)["section"]; s != "User agents" { // under the job
+		t.Errorf("first agent section %v, want User agents", s)
+	}
 	for _, c := range []struct {
 		row  string
 		want []string
 		not  []string
 	}{
 		{id, []string{"up", "hotkey:s run:agents kill " + id}, nil},
-		{"reviewer", []string{"[path ", "reviewer.md]", "[access read only]", "run:agents open reviewer"}, nil},
-		{"general", []string{"[access can change files]"}, []string{"[path ", "actions:"}},
-		{"explore", []string{"[access read only]"}, []string{"actions:"}},
+		{"reviewer", []string{"[path ", "reviewer.md]", "[read only yes]", "run:agents open reviewer"}, nil},
+		{"general", []string{"[read only no]"}, []string{"[path ", "actions:"}},
+		{"explore", []string{"[read only yes]"}, []string{"actions:"}},
 	} {
 		for _, w := range c.want {
 			if !strings.Contains(rows[c.row], w) {
