@@ -88,6 +88,7 @@ type Client struct {
 	pubSeq  map[string]int          // seq of the last publish by path
 	synced  map[string]int          // seq when the path was last synced
 	wake    chan struct{}           // closed and replaced on every publish
+	loading atomic.Bool             // the server's status says it is not quiescent
 
 	done     chan struct{}
 	endOnce  sync.Once
@@ -152,6 +153,8 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 			// one encoding only, so every server answers in the units
 			// Offset and Pos count
 			"general": map[string]any{"positionEncodings": []string{"utf-16"}},
+			// rust-analyzer's experimental/serverStatus, which syncFile reads
+			"experimental": map[string]any{"serverStatusNotification": true},
 			"textDocument": map[string]any{
 				"synchronization":    map[string]any{"didSave": true},
 				"publishDiagnostics": map[string]any{"versionSupport": true},
@@ -295,7 +298,12 @@ func (c *Client) syncFile(key, uri, languageID string) (int, error) {
 	if err != nil {
 		return before, err
 	}
-	_ = c.notify("textDocument/didSave", map[string]any{"textDocument": map[string]any{"uri": uri}})
+	// rust-analyzer (1.89 at least) panics and exits on a save of a file it
+	// opened while it scans the workspace, and checks the whole workspace once
+	// it is quiescent again anyway, so a loading server gets no save.
+	if !c.loading.Load() {
+		_ = c.notify("textDocument/didSave", map[string]any{"textDocument": map[string]any{"uri": uri}})
+	}
 	return before, nil
 }
 
@@ -706,6 +714,13 @@ func (c *Client) read(r *bufio.Reader) {
 			go func() { _ = c.send(reply) }()
 		case m.Method == "textDocument/publishDiagnostics":
 			c.publish(m.Params)
+		case m.Method == "experimental/serverStatus":
+			var s struct {
+				Quiescent bool `json:"quiescent"`
+			}
+			if json.Unmarshal(m.Params, &s) == nil {
+				c.loading.Store(!s.Quiescent)
+			}
 		case m.Method == "":
 			var id int64
 			if json.Unmarshal(m.ID, &id) != nil {

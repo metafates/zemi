@@ -213,6 +213,35 @@ func TestTouch(t *testing.T) {
 	}
 }
 
+// TestSaveAfterLoad: a server whose status says it is loading gets no save,
+// which would end it, and saves resume once it says it is quiescent.
+func TestSaveAfterLoad(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c := start(t, ctx, root)
+	path := filepath.Join(root, "a.txt")
+	touch := func(text string) (saves int) {
+		t.Helper()
+		os.WriteFile(path, []byte(text), 0o644)
+		if _, err := c.Touch(ctx, path, "plaintext"); err != nil {
+			t.Fatalf("%q: %v", text, err)
+		}
+		if err := c.Call(ctx, "fake/saves", nil, &saves); err != nil {
+			t.Fatal(err)
+		}
+		return saves
+	}
+	if n := touch("BROKEN"); n != 0 {
+		t.Fatalf("%d saves reached the loading server", n)
+	}
+	touch("fixed") // a change ends the fake's load
+	if n := touch("BROKEN again"); n == 0 {
+		t.Fatal("no save once the server is quiescent")
+	}
+}
+
 // TestTouchSymlinkSpellings: a file touched through a symlink, which the
 // server answers about by its canonical path, and then by its real path is
 // one document to the server.

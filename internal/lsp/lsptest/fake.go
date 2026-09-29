@@ -2,7 +2,9 @@
 // changed document gets one "broken" error per line containing BROKEN,
 // every known document is republished on each change (as servers do for a
 // package), and before publishing the server asks the client for its
-// configuration.
+// configuration. Like rust-analyzer, it reports itself loading through
+// experimental/serverStatus until a document changes, and exits on a save
+// that arrives while it loads.
 package lsptest
 
 import (
@@ -46,7 +48,8 @@ func Serve(in io.Reader, out io.Writer) {
 	// publish carries the regression so the client's last read sees it.
 	seen := map[string]int{}
 	texts := map[string]string{}
-	regressed, hung := false, false
+	regressed, hung, loading := false, false, false
+	saves := 0
 	for {
 		body, err := lsp.ReadMessage(r)
 		if err != nil {
@@ -67,8 +70,13 @@ func Serve(in io.Reader, out io.Writer) {
 				Position struct {
 					Line, Character int
 				} `json:"position"`
-				NewName string `json:"newName"`
-				Query   string `json:"query"`
+				NewName      string `json:"newName"`
+				Query        string `json:"query"`
+				Capabilities struct {
+					Experimental struct {
+						ServerStatusNotification bool
+					}
+				} `json:"capabilities"`
 				Changes []struct {
 					URI  string `json:"uri"`
 					Type int    `json:"type"`
@@ -92,6 +100,9 @@ func Serve(in io.Reader, out io.Writer) {
 				write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "error": map[string]any{"code": -32601, "message": "method not found"}})
 			}
 		case "initialize":
+			if loading = m.Params.Capabilities.Experimental.ServerStatusNotification; loading {
+				write(map[string]any{"jsonrpc": "2.0", "method": "experimental/serverStatus", "params": map[string]any{"health": "ok", "quiescent": false}})
+			}
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": map[string]any{"capabilities": map[string]any{"textDocumentSync": 1}}})
 		case "initialized":
 			// the way gopls does it: ask the client to report .txt changes
@@ -242,7 +253,18 @@ func Serve(in io.Reader, out io.Writer) {
 			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": nil})
 		case "exit":
 			return
+		case "textDocument/didSave":
+			if loading {
+				return
+			}
+			saves++
+		case "fake/saves":
+			write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": saves})
 		case "textDocument/didOpen", "textDocument/didChange":
+			if loading && m.Method == "textDocument/didChange" {
+				loading = false
+				write(map[string]any{"jsonrpc": "2.0", "method": "experimental/serverStatus", "params": map[string]any{"health": "ok", "quiescent": true}})
+			}
 			// A .hang document wedges the server: it reads on and answers nothing.
 			if strings.HasSuffix(m.Params.TextDocument.URI, ".hang") {
 				hung = true
