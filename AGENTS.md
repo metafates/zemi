@@ -639,9 +639,10 @@ value upper-cased) and the alias that types the fields taking one (`TestTypesEnu
 other closed set Lua sees (a Go `type X string` with a slice of its values: `RowKind`, `CallStatus`,
 `HealthLevel`, ...) as a multi-line `---|` alias, the layout kinds as the `kind` literals of the
 `zemi.LayoutNode` classes (`TestTypesLayoutKinds`). A member whose call shape its signature
-does not tell (a callback and its return, a handle to wait on, a surprising spec field, a
-string grammar, a call order) carries a fenced ```` ```lua ```` example of one to four real
-lines before its `---@param`s, never a getter or a `list()`; `TestTypesExamples` parses each
+and description do not tell (a callback and its return, a handle to wait on, a surprising spec
+field, a string grammar, a return shape unlike its siblings, a call order) carries a fenced
+```` ```lua ```` example of one to four real lines before its `---@param`s, and one whose
+signature tells it carries none; `TestTypesExamples` parses each
 and checks every `zemi.*` and `test.*` name it calls is registered. It
 also carries `---@deprecated` stubs for the globals the sandbox strips, since the `.luarc.json`
 files turn off LuaLS's own libraries and it flags a deprecated global only when every

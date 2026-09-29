@@ -2689,10 +2689,6 @@ function zemi.test.contains(s, sub) end
 function zemi.test.raises(fn, sub) end
 
 --- Run the plugin's command as typed.
----
---- ```lua
---- assert(test.run("demo", "add review Review the diff"))
---- ```
 ---@param name string
 ---@param args? string
 ---@return true|nil ok
@@ -2700,10 +2696,6 @@ function zemi.test.raises(fn, sub) end
 function zemi.test.run(name, args) end
 
 --- Run what the plugin bound a global key sequence to.
----
---- ```lua
---- assert(test.keys("ctrl+x d"))
---- ```
 ---@param seq string
 ---@return true|nil ok
 ---@return string? err
@@ -2736,10 +2728,6 @@ function zemi.test.tool(name, input) end
 function zemi.test.render(id, ctx) end
 
 --- Run the widget's on_click for a segment's click id.
----
---- ```lua
---- assert(test.click("demo.branch", "branch"))
---- ```
 ---@param id string
 ---@param click string
 ---@return true|nil ok
@@ -2769,10 +2757,6 @@ function zemi.test.emit(name, ev) end
 function zemi.test.complete(line) end
 
 --- The top open overlay, or nil.
----
---- ```lua
---- test.eq(test.overlay().items, { "review" })
---- ```
 ---@return { id: string, title: string, body: string, items: string[], input: boolean }?
 function zemi.test.overlay() end
 
