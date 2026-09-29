@@ -209,7 +209,8 @@ func (a *App) overlayIndex(id string) int {
 // its row wherever the rebuild moved it, else at its place.
 func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	old := a.overlays[i]
-	sel := "" // read before apply, which reuses old.visible's array
+	// read before apply, which reuses old.visible's array
+	sel, was := "", old.selectedRow()
 	if old.selected < len(old.visible) {
 		sel = itemKey(old.o.Items[old.visible[old.selected]])
 	}
@@ -224,7 +225,22 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	if n := slices.IndexFunc(st.visible, func(idx int) bool { return sel != "" && itemKey(st.o.Items[idx]) == sel }); n >= 0 {
 		st.selected = n
 	}
+	st.armed = old.armed && sameDanger(was, st.selectedRow())
 	a.overlays[i] = st
+}
+
+// selectedRow is the selected row's fields, zero when nothing is selected.
+func (st *overlayState) selectedRow() hostapi.OverlayItem {
+	if st.selected >= len(st.visible) {
+		return hostapi.OverlayItem{}
+	}
+	return st.items[st.visible[st.selected]].row
+}
+
+// sameDanger reports whether the selected row n is still the danger row o,
+// so a rebuild keeps the press it waits for.
+func sameDanger(o, n hostapi.OverlayItem) bool {
+	return n.Danger && n.Run == o.Run && cmp.Or(n.ID, n.Text) == cmp.Or(o.ID, o.Text)
 }
 
 // refreshDetail rebuilds the detail view open over list i from its item
@@ -244,6 +260,7 @@ func (a *App) refreshDetail(i int) {
 	}
 	n := a.detailState(&a.overlays[i], idx)
 	n.selected, n.view, n.body = min(d.selected, max(0, len(n.visible)-1)), d.view, d.body
+	n.armed = d.armed && sameDanger(d.selectedRow(), n.selectedRow())
 	a.overlays[j] = n
 }
 

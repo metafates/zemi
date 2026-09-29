@@ -559,6 +559,30 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
+			"a refresh keeps an armed danger press while the same action sits under it",
+			hostapi.Overlay{ID: "p", Items: []any{map[string]any{"text": "run", "detail": "d", "actions": []any{"Open", map[string]any{"text": "Stop", "hotkey": "x", "danger": true, "run": "stop 1"}}}}},
+			[]string{"x"},
+			func(a *App) string {
+				item := func(run string) hostapi.Overlay {
+					return hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Refresh: true, Items: []any{map[string]any{"text": "run", "detail": "d2", "actions": []any{"Open", map[string]any{"text": "Stop", "hotkey": "x", "danger": true, "run": run}}}}}
+				}
+				if a.openOverlay(item("stop 1")); !a.overlays[1].armed {
+					return "the detail's arm was dropped"
+				}
+				a.openOverlay(item("stop 2"))
+				return map[bool]string{false: "an arm outlived its action"}[!a.overlays[1].armed]
+			},
+		},
+		{
+			"a refresh keeps an armed danger row of the list itself",
+			hostapi.Overlay{ID: "p", Items: []any{map[string]any{"text": "Stop", "danger": true, "run": "stop 1"}}},
+			[]string{"enter"},
+			func(a *App) string {
+				a.openOverlay(hostapi.Overlay{ID: "p", Origin: lua.OriginBuiltin, Refresh: true, Items: []any{map[string]any{"text": "Stop", "danger": true, "run": "stop 1"}}})
+				return map[bool]string{false: "the list's arm was dropped"}[a.overlays[0].armed]
+			},
+		},
+		{
 			"a Go screen's list key runs its command, a plugin list's none",
 			hostapi.Overlay{ID: "p", Items: []any{"x"}, Keys: []hostapi.OverlayKey{{Key: "p", Desc: "pause", Run: "zz pause"}}},
 			nil,
