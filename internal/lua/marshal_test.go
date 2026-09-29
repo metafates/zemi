@@ -75,86 +75,52 @@ func TestToGoArrayDetection(t *testing.T) {
 	}
 }
 
-func TestToGoCycleRefused(t *testing.T) {
+// TestToGoRefusals: cycles, nesting past the cap, oversize strings and
+// functions are refused; a table shared by siblings and a chain or string at
+// the cap marshal, and userdata passes through as is.
+func TestToGoRefusals(t *testing.T) {
 	L := newTestSandbox(t).L
-	tb := L.NewTable()
-	tb.RawSetString("self", tb)
-	if _, err := ToGo(tb); !errors.Is(err, ErrCycle) {
-		t.Fatalf("self-referencing table: err = %v, want ErrCycle", err)
+	chain := func(n int) *glua.LTable {
+		top := L.NewTable()
+		for cur, i := top, 0; i < n; i++ {
+			next := L.NewTable()
+			cur.RawSetInt(1, next)
+			cur = next
+		}
+		return top
 	}
-
-	// Two tables in a cycle (a -> b -> a); shared non-cyclic refs are fine.
+	self := L.NewTable()
+	self.RawSetString("self", self)
 	a, b := L.NewTable(), L.NewTable()
 	a.RawSetString("b", b)
 	b.RawSetString("a", a)
-	if _, err := ToGo(a); !errors.Is(err, ErrCycle) {
-		t.Fatalf("two-table cycle: err = %v, want ErrCycle", err)
+	leaf, dag := L.NewTable(), L.NewTable()
+	dag.RawSetString("x", leaf)
+	dag.RawSetString("y", leaf)
+	for _, c := range []struct {
+		name string
+		v    glua.LValue
+		err  error // nil: it marshals
+	}{
+		{"self cycle", self, ErrCycle},
+		{"two-table cycle", a, ErrCycle},
+		{"shared table", dag, nil},
+		{"past the depth cap", chain(MaxTableDepth + 2), ErrTooDeep},
+		{"at the depth cap", chain(MaxTableDepth - 1), nil},
+		{"past the string cap", glua.LString(strings.Repeat("x", MaxStringBytes+1)), ErrTooLarge},
+		{"at the string cap", glua.LString(strings.Repeat("x", MaxStringBytes)), nil},
+	} {
+		if _, err := ToGo(c.v); !errors.Is(err, c.err) {
+			t.Errorf("%s: err = %v, want %v", c.name, err, c.err)
+		}
 	}
 
-	shared := glua.LString("leaf")
-	dag := L.NewTable()
-	x, y := L.NewTable(), L.NewTable()
-	x.RawSetString("s", shared)
-	y.RawSetString("s", shared)
-	dag.RawSetString("x", x)
-	dag.RawSetString("y", y)
-	if _, err := ToGo(dag); err != nil {
-		t.Fatalf("shared acyclic reference must marshal: %v", err)
+	if _, err := ToGo(L.NewFunction(func(*glua.LState) int { return 0 })); err == nil || !strings.Contains(err.Error(), "cannot marshal") {
+		t.Fatalf("function refusal = %v", err)
 	}
-}
-
-func TestToGoDepthCap(t *testing.T) {
-	L := newTestSandbox(t).L
-	deep := L.NewTable()
-	cursor := deep
-	for range MaxTableDepth + 2 {
-		next := L.NewTable()
-		cursor.RawSetInt(1, next)
-		cursor = next
-	}
-	if _, err := ToGo(deep); !errors.Is(err, ErrTooDeep) {
-		t.Fatalf("depth %d+ chain: err = %v, want ErrTooDeep", MaxTableDepth, err)
-	}
-
-	okDepth := L.NewTable()
-	cursor = okDepth
-	for range MaxTableDepth - 1 {
-		next := L.NewTable()
-		cursor.RawSetInt(1, next)
-		cursor = next
-	}
-	if _, err := ToGo(okDepth); err != nil {
-		t.Fatalf("depth %d chain must marshal: %v", MaxTableDepth-1, err)
-	}
-}
-
-func TestToGoStringCap(t *testing.T) {
-	big := strings.Repeat("x", MaxStringBytes+1)
-	if _, err := ToGo(glua.LString(big)); !errors.Is(err, ErrTooLarge) {
-		t.Fatalf("oversize string: err = %v, want ErrTooLarge", err)
-	}
-	if _, err := ToGo(glua.LString(strings.Repeat("x", MaxStringBytes))); err != nil {
-		t.Fatalf("string at cap must marshal: %v", err)
-	}
-}
-
-func TestToGoRefusals(t *testing.T) {
-	L := newTestSandbox(t).L
-
-	if _, err := ToGo(L.NewFunction(func(*glua.LState) int { return 0 })); err == nil {
-		t.Fatal("function must be refused")
-	} else if !strings.Contains(err.Error(), "cannot marshal") {
-		t.Fatalf("function refusal message = %v", err)
-	}
-
 	ud := L.NewUserData()
-	ud.Value = 123
-	got, err := ToGo(ud)
-	if err != nil {
-		t.Fatalf("userdata must pass through opaque: %v", err)
-	}
-	if got != ud {
-		t.Fatalf("userdata passthrough = %v, want identity", got)
+	if got, err := ToGo(ud); err != nil || got != ud {
+		t.Fatalf("userdata passthrough = %v, %v", got, err)
 	}
 }
 
@@ -223,55 +189,43 @@ func TestFromGoContainers(t *testing.T) {
 	}
 }
 
-func TestFromGoCycleRefused(t *testing.T) {
+// TestFromGoRefusals: cycles, nesting past the cap, oversize strings and
+// types outside the plain set raise; a map shared by siblings is no cycle.
+func TestFromGoRefusals(t *testing.T) {
 	L := newTestSandbox(t).L
-
 	cyclic := map[string]any{}
 	cyclic["self"] = cyclic
-	assertFromGoRaises(t, L, cyclic, "cyclic")
-
 	cyclicSlice := make([]any, 1)
 	cyclicSlice[0] = cyclicSlice
-	assertFromGoRaises(t, L, cyclicSlice, "cyclic")
-
-	// Two maps referencing each other are also a cycle.
-	a := map[string]any{}
-	b := map[string]any{"a": a}
-	a["b"] = b
-	assertFromGoRaises(t, L, a, "cyclic")
-
-	// The same map appearing twice as siblings is a DAG, not a cycle.
-	leaf := map[string]any{"v": "leaf"}
-	dag := map[string]any{"x": leaf, "y": leaf}
-	tb, ok := FromGo(L, dag).(*glua.LTable)
-	if !ok {
-		t.Fatal("acyclic shared reference must marshal")
-	}
-	if len(tb.RawGetString("x").(*glua.LTable).RawGetString("v").(glua.LString)) == 0 {
-		t.Fatal("shared leaf content missing")
-	}
-}
-
-func TestFromGoDepthCap(t *testing.T) {
-	L := newTestSandbox(t).L
-	deep := any(map[string]any{})
-	cursor := deep.(map[string]any)
-	for range MaxTableDepth + 2 {
+	pair := map[string]any{}
+	pair["b"] = map[string]any{"a": pair}
+	deep := map[string]any{}
+	for cursor, i := deep, 0; i < MaxTableDepth+2; i++ {
 		next := map[string]any{}
-		cursor["n"] = next
-		cursor = next
+		cursor["n"], cursor = next, next
 	}
-	assertFromGoRaises(t, L, deep, "depth cap")
-}
-
-func TestFromGoUnsupportedRefused(t *testing.T) {
-	L := newTestSandbox(t).L
-	assertFromGoRaises(t, L, struct{ X int }{1}, "cannot marshal")
-	assertFromGoRaises(t, L, make(chan int), "cannot marshal")
-	assertFromGoRaises(t, L, map[int]string{1: "no"}, "cannot marshal")
 	big := strings.Repeat("x", MaxStringBytes+1)
-	assertFromGoRaises(t, L, []string{big}, "size cap")
-	assertFromGoRaises(t, L, map[string]string{"k": big}, "size cap")
+	for _, c := range []struct {
+		v    any
+		want string
+	}{
+		{cyclic, "cyclic"},
+		{cyclicSlice, "cyclic"},
+		{pair, "cyclic"},
+		{deep, "depth cap"},
+		{struct{ X int }{1}, "cannot marshal"},
+		{make(chan int), "cannot marshal"},
+		{map[int]string{1: "no"}, "cannot marshal"},
+		{[]string{big}, "size cap"},
+		{map[string]string{"k": big}, "size cap"},
+	} {
+		assertFromGoRaises(t, L, c.v, c.want)
+	}
+	leaf := map[string]any{"v": "leaf"}
+	tb, ok := FromGo(L, map[string]any{"x": leaf, "y": leaf}).(*glua.LTable)
+	if !ok || tb.RawGetString("y").(*glua.LTable).RawGetString("v") != glua.LString("leaf") {
+		t.Fatal("an acyclic shared reference must marshal")
+	}
 }
 
 // assertFromGoRaises runs FromGo with recovery: RaiseError panics outside a
