@@ -48,28 +48,28 @@ func (a *App) fresh(opened time.Time) bool {
 	return a.program != nil && a.now().Sub(opened) < permGrace
 }
 
-// permChoice is one answer of the permission prompt: the label says how
-// long, desc what it allows.
+// permChoice is one answer of the permission prompt: its button, whose
+// label says how long and desc what it allows, and the answer it gives.
 type permChoice struct {
-	label, desc, key string
-	by               string
-	ok               bool
-	tell             bool // deny and stop the turn so the user can say what to do instead
+	promptChoice
+	by   string
+	ok   bool
+	tell bool // deny and stop the turn so the user can say what to do instead
 }
 
 func (pa *permAskPrompt) choices() []permChoice {
-	out := []permChoice{{"Yes", "", "y", "user:once", true, false}}
+	out := []permChoice{{key: "y", label: "Yes", by: "user:once", ok: true}}
 	if pa.req.Always != "" {
-		out = append(out, permChoice{"Yes, this session", pa.req.Always, "a", "user:always", true, false})
+		out = append(out, permChoice{key: "a", label: "Yes, this session", desc: pa.req.Always, by: "user:always", ok: true})
 	}
 	if pa.req.Wider != "" {
-		out = append(out, permChoice{"Yes, this session", pa.req.Wider, "r", "user:wider", true, false})
+		out = append(out, permChoice{key: "r", label: "Yes, this session", desc: pa.req.Wider, by: "user:wider", ok: true})
 	}
 	if pa.req.Project {
-		out = append(out, permChoice{"Yes, this project", "the same, kept after zemi exits", "p", "user:project", true, false})
+		out = append(out, permChoice{key: "p", label: "Yes, this project", desc: "the same, kept after zemi exits", by: "user:project", ok: true})
 	}
-	return append(out, permChoice{"No", "", "n", tools.ByUser, false, false},
-		permChoice{"No, and tell zemi", "stop the turn and say what to do instead", "t", tools.ByUser, false, true})
+	return append(out, permChoice{key: "n", label: "No", by: tools.ByUser},
+		permChoice{key: "t", label: "No, and tell zemi", desc: "stop the turn and say what to do instead", by: tools.ByUser, tell: true})
 }
 
 // choosePerm answers the prompt with c. Telling zemi what to do also denies
@@ -754,10 +754,9 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		return nil
 	}
 	content := build(inner)
-	choices := pa.choices()
-	btns := make([]promptChoice, 0, len(choices))
-	for _, c := range choices {
-		btns = append(btns, promptChoice{key: c.key, label: c.label, desc: c.desc})
+	var btns []promptChoice
+	for _, c := range pa.choices() {
+		btns = append(btns, c.promptChoice)
 	}
 	hints := []hintPair{pickHint, {"esc", "deny"}}
 	placeholder := oneRow
