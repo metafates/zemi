@@ -104,7 +104,7 @@ stdout, `--full` as `/export full`; `projectStore` opens the store through `stor
 sweeps nothing and takes no lock a running zemi waits on), `models` (and `models update`),
 `plugins`, `health`, cobra's `completion` and `help` are subcommands, each declaring its
 `Args` (cobra checks positionals only on the root). A prompt argument is sent as
-the first message, or run as a command when it names one (`sendPrompt`, TUI and `zemi run`
+the first message, or run as a command when it names one (`Host.SendPrompt`, TUI and `zemi run`
 alike, so `/review` works from a git hook); a prompt whose first word names a zemi command goes
 after `--`, and a lone word a near miss of one is refused (`options.finish`), since it would pay
 for a model call on a typo. Exit status 2 is anything that fails before the root's

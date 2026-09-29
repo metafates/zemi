@@ -369,13 +369,13 @@ func TestSendPromptRunsCommands(t *testing.T) {
 		{"/note" + stdin, stdin},
 	} {
 		got = "unset"
-		if err := sendPrompt(context.Background(), h, c.prompt); err != nil || got != c.args {
+		if err := h.SendPrompt(c.prompt); err != nil || got != c.args {
 			t.Errorf("%q: ran with %q, %v", c.prompt, got, err)
 		}
 	}
 	// no such command: the text is the model's, and this host has no model
 	got = "unset"
-	if err := sendPrompt(context.Background(), h, "/notes please"); err == nil || got != "unset" {
+	if err := h.SendPrompt("/notes please"); err == nil || got != "unset" {
 		t.Fatalf("an unknown command must reach the agent: %v, ran %q", err, got)
 	}
 }
@@ -414,7 +414,7 @@ func TestHeadlessNotices(t *testing.T) {
 			return r.ExecuteChunk(context.Background(), `zemi.notify.warn("w")`, "init.lua", lua.OriginUser)
 		}},
 		{"screen command", "", func() error {
-			if err := sendPrompt(context.Background(), h, "/screen"); err == nil || err.Error() != "/screen needs the TUI" {
+			if err := h.SendPrompt("/screen"); err == nil || err.Error() != "/screen needs the TUI" {
 				return fmt.Errorf("got %w", err)
 			}
 			return nil

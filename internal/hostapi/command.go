@@ -255,6 +255,21 @@ func (h *Host) CommandFailed(name string, err error) {
 	h.Notify(logging.Error, "Could not run /"+name, err.Error())
 }
 
+// SendPrompt sends a prompt as the composer would: one naming a registered
+// command runs it with its attachment, so /review, /workflow and the
+// markdown commands reach a script or a git hook; anything else is
+// a message for the model.
+func (h *Host) SendPrompt(prompt string) error {
+	typed, attached := agent.CutAttached(prompt)
+	if rest, ok := strings.CutPrefix(typed, "/"); ok {
+		name, args := SplitCommand(rest)
+		if h.Commands.Lookup(name) != nil {
+			return h.RunCommand(context.Background(), name, args+attached)
+		}
+	}
+	return h.AgentSend(prompt)
+}
+
 // RunCommand runs a command by name as if typed.
 func (h *Host) RunCommand(ctx context.Context, name, argString string) error {
 	cmd := h.Commands.Lookup(name)

@@ -634,21 +634,12 @@ func printHealth(h *hostapi.Host, stdout io.Writer) int {
 	return code
 }
 
-// sendPrompt starts a turn from a command-line prompt. A prompt naming a
-// registered command runs it, as the composer would, so /review, /workflow
-// and the markdown commands reach a script or a git hook; anything else is
-// a message for the model. Its one send builds the tool set, so MCP servers
-// still starting get to finish first, unless ctx ends the wait.
+// sendPrompt sends a command-line prompt (Host.SendPrompt) once no MCP
+// server is starting, since its one send builds the tool set, unless ctx
+// ends the wait.
 func sendPrompt(ctx context.Context, h *hostapi.Host, prompt string) error {
 	if h.WaitMCP(ctx); ctx.Err() != nil {
 		return ctx.Err()
 	}
-	typed, attached := agent.CutAttached(prompt)
-	if rest, ok := strings.CutPrefix(typed, "/"); ok {
-		name, args := hostapi.SplitCommand(rest)
-		if h.Commands.Lookup(name) != nil {
-			return h.RunCommand(context.Background(), name, args+attached)
-		}
-	}
-	return h.AgentSend(prompt)
+	return h.SendPrompt(prompt)
 }
