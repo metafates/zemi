@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -104,23 +105,30 @@ func TestSkillsEnabledDefaults(t *testing.T) {
 }
 
 // TestSkillItemsShowTheBody: /skills offers the instructions and the file
-// itself.
+// itself, but for a builtin skill, whose file zemi rewrites on every start.
 func TestSkillItemsShowTheBody(t *testing.T) {
 	h, _ := newTestHostSkills(t)
 	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
 	h.syncSkills()
+	seen := map[string]bool{}
 	for _, it := range h.skillItems() {
 		m := it.(map[string]any)
-		if m["text"] != "local-run" {
+		name, actions := m["text"].(string), fmt.Sprint(m["actions"])
+		if name != "local-run" && name != "zemi" {
 			continue
 		}
-		actions := fmt.Sprint(m["actions"])
-		if !strings.Contains(actions, "Body.") || !strings.Contains(actions, "skills open local-run") {
-			t.Fatalf("no read or open action: %v", m["actions"])
+		seen[name] = true
+		if !strings.Contains(actions, "Read it") || strings.Contains(actions, "skills open "+name) != (name == "local-run") {
+			t.Errorf("%s: actions %v", name, m["actions"])
 		}
-		return
 	}
-	t.Fatal("the skill is not listed")
+	if !seen["local-run"] || !seen["zemi"] {
+		t.Fatalf("listed %v", seen)
+	}
+	h.SetUIHooks(&fakeUI{})
+	if err := h.skillsCommand("open zemi"); !errors.Is(err, ErrUsage) {
+		t.Fatalf("/skills open zemi: %v", err)
+	}
 }
 
 // TestSkillsEnableGate covers the origin gate: user origin flips the

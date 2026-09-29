@@ -466,6 +466,9 @@ func (h *Host) openSkillFile(name string) error {
 		if s.Name != name {
 			continue
 		}
+		if s.Source == skill.Builtin {
+			return Usagef("%s ships with zemi, which rewrites it on every start; its row's Read it shows it", name)
+		}
 		h.openInEditor(ui, skillFile(s), "the skill")
 		return nil
 	}
@@ -577,11 +580,11 @@ func (h *Host) skillItems() []any {
 		if h.hasSkillCommand(s) {
 			use = "/" + s.Name + " "
 		}
-		item["actions"] = append(actions,
-			map[string]any{"text": "Read it", "hotkey": "r", "detail": body},
-			map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "skills open " + s.Name},
-			map[string]any{"text": "Use now", "hotkey": "u", "fill": use},
-		)
+		actions = append(actions, map[string]any{"text": "Read it", "hotkey": "r", "detail": body})
+		if s.Source != skill.Builtin { // zemi rewrites its own on every start
+			actions = append(actions, map[string]any{"text": "Open in the editor", "hotkey": "o", "run": "skills open " + s.Name})
+		}
+		item["actions"] = append(actions, map[string]any{"text": "Use now", "hotkey": "u", "fill": use})
 		if s.Source == skill.Recipe {
 			item["actions"] = append(item["actions"].([]any), map[string]any{"text": "Delete", "hotkey": "x", "danger": true, "run": "skills delete " + s.Name + " --yes"})
 		}
@@ -614,10 +617,12 @@ func (h *Host) skillsCommands() []*Command {
 	return []*Command{{
 		Name: "skills", NArgs: NArgsAny, Desc: "turn skills on or off, or use one",
 		GoFn: func(h *Host, args string) error { return h.skillsCommand(args) },
-		GoComplete: SubcommandCompleter([]string{"enable", "disable", "use", "open", "delete"}, func(h *Host, _ string) []string {
+		GoComplete: SubcommandCompleter([]string{"enable", "disable", "use", "open", "delete"}, func(h *Host, sub string) []string {
 			var names []string
 			for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
-				names = append(names, s.Name)
+				if !(sub == "open" && s.Source == skill.Builtin) && !(sub == "delete" && s.Source != skill.Recipe) {
+					names = append(names, s.Name)
+				}
 			}
 			return names
 		}),

@@ -2593,7 +2593,7 @@ share, whose `zemi-skill.lua` never runs since installers write there)
 over builtin (zemi's own `zemi` skill, whose SKILL.md routes to
 reference files beside it that the model reads on demand, embedded
 under `runtime/skills/`, rewritten to `<data>/builtin-skills/` on every
-sync) over plugin (each enabled plugin's `skills/`, by plugin name, body
+sync, so `/skills` offers it no editor) over plugin (each enabled plugin's `skills/`, by plugin name, body
 only: its `zemi-skill.lua` never runs). All start enabled and toggle; a
 plugin skill's flag goes with the plugin when it is turned off. The model sees name +
 description in context and the full body on demand through the `skill`
