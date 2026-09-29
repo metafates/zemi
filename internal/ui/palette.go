@@ -11,9 +11,10 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// cmdPalette is the composer's slash-command popup (DESIGN §6.6): what is
-// highlighted is what enter runs, but the exact "/reload", the Go-reserved
-// force reload, which no row claims (DESIGN §4).
+// cmdPalette is the composer's slash-command popup (DESIGN §6.6): enter runs
+// the typed line, with the highlighted command in place of a typed name that
+// names none or that the user moved off; an exact "/reload", the Go-reserved
+// force reload, never reaches the registry (DESIGN §4).
 type cmdPalette struct {
 	open     bool
 	matches  []*hostapi.Command
