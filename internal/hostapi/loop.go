@@ -212,15 +212,15 @@ func (h *Host) openLoop() error {
 	if !ok {
 		return Usagef("no loop; /loop 5m <prompt> or /loop <prompt> starts one")
 	}
-	every := "every " + fmtEvery(l.Every)
+	pace := "every " + fmtEvery(l.Every)
 	if l.Every == 0 {
-		every = "paced by the model"
+		pace = "when the model says"
 	}
 	stops := l.Started.Add(loopExpiry)
 	ui.OpenOverlay(Overlay{
 		ID: "loop", Title: "Loop", Origin: lua.OriginBuiltin, Fields: []Field{
 			{"prompt", l.Prompt},
-			{"every", every + ", next at " + l.Next.Format(ClockLayout)},
+			{"next", l.Next.Format(ClockLayout) + ", then " + pace},
 			{"ran", fmt.Sprintf("%d %s since %s, stops at %s", l.Runs, plural(l.Runs, "time", "times"), l.Started.Format(ClockLayout), stops.Format(ClockLayout+" on Jan 2"))},
 			{"spent", h.spentSince(l.Tokens, l.Cost)},
 		},
