@@ -78,7 +78,7 @@ func TestProjectsCommand(t *testing.T) {
 		{
 			name: "the list", args: "",
 			want: []string{
-				"key:current", "trusted · 1 session · now", "[sessions 1 · latest now: fix the flaky test]", "[allowed go test ./...]",
+				"key:current", "trusted   · 1 session · now", "[sessions 1 · latest now: fix the flaky test]", "[allowed go test ./...]",
 				"hotkey:s run:projects switch " + other, "hotkey:f run:projects forget " + other, "danger:true hotkey:x run:projects delete " + other + " --yes", "Selected:1",
 			},
 		},

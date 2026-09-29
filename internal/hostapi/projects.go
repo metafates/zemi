@@ -321,7 +321,7 @@ func (h *Host) openProjects(ui UIHooks, refresh bool, confirm string) {
 func (h *Host) projectItems() (items []any, sel int) {
 	sel = -1
 	for i, p := range ListProjects(h.Dirs, true) {
-		desc := []string{p.TrustWord()}
+		desc := []string{statusCol(p.TrustWord())} // padded, so the columns after it line up
 		if p.Sessions > 0 {
 			desc = append(desc, fmt.Sprintf("%d %s", p.Sessions, plural(p.Sessions, "session", "sessions")))
 		}
