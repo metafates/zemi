@@ -1082,7 +1082,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   as `@drop:<name>`; `expandAttachments` resolves `drop:` only inside that directory, so a
   forged reference cannot attach other files.
 - **gopher-lua multiple assignment**: `a[#a + 1], b = b, x` stores `x` in `a`. Split any
-  assignment whose right side names a left-side target (this once garbled wrapped text).
+  assignment whose right side names a left-side target (this once garbled wrapped text). In a
+  generic-for header, a method call on a parenthesized `c and x or y` (`(s:sub(-1) == "\n" and
+  s or s .. "\n"):gmatch(...)`) gets the wrong receiver: compute it into a local first.
 - **Handles vs snapshots**: host resources (job, http, timer, session) are handle
   tables with colon methods, everything else a snapshot copy; marshaling caps string size and
   depth and refuses cycles.

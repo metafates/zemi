@@ -55,7 +55,8 @@ end
 -- lines splits s at "\n"; a trailing newline ends the last line
 local function lines(s)
 	local out = {}
-	for l in (s:sub(-1) == "\n" and s or s .. "\n"):gmatch("(.-)\n") do
+	if s:sub(-1) ~= "\n" then s = s .. "\n" end
+	for l in s:gmatch("(.-)\n") do
 		out[#out + 1] = l
 	end
 	return out

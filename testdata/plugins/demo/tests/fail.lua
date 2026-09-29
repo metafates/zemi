@@ -40,7 +40,7 @@ test("eq on an error naming a file", function()
 	test.eq(err, "lua.http.get https://example.com/: no test.stub answers it")
 end)
 
-test("eq on lines", function() test.eq("one\ntwo\nthree\n", "one\ntwo\nthree!\n") end)
+test("eq on lines", function() test.eq("one\ntwo\nthree", "one\ntwo\nthree!") end)
 
 test("contains", function() test.contains(test.render("demo.cost", { usage = { cost = 0.5 } })[1], "dollars") end)
 
