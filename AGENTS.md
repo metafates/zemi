@@ -928,7 +928,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   runtime + namespaces step with temp dirs; `runUser(t, r, luaSrc)` runs a chunk as user origin
   **with a 30s guard so an interpreter deadlock fails loudly instead of hanging the binary**
   (and a 30s slice ceiling, which load does not reach) - reuse it for any test that runs Lua.
-- The Lua API surface is pinned by `TestTypesCoverAPI` and `TestTypesDeclareNothingExtra` against the types file, its version by `TestNamespaceVersion`, the rendered UI by the golden files.
+- The Lua API surface is pinned by `TestTypesCoverAPI`, `TestTypesDeclareNothingExtra` and `TestTypesEnums` against the types file, its version by `TestNamespaceVersion`, the rendered UI by the golden files.
 - Drive behavior through Lua where the Lua contract is the thing being pinned; Go-internal
   units (perm normalizer, learn intake, store) get table tests.
 - Skills tests: `newTestHostSkills(t)` boots namespaces + skills steps;

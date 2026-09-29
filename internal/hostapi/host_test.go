@@ -93,8 +93,8 @@ func waitFor(t *testing.T, cond func() error) {
 }
 
 // TestNamespaceVersion pins zemi.api's version and keeps zemi.test to a
-// plugin test boot; TestTypesCoverAPI and TestTypesDeclareNothingExtra pin
-// every member.
+// plugin test boot; TestTypesCoverAPI, TestTypesDeclareNothingExtra and
+// TestTypesEnums pin every member.
 func TestNamespaceVersion(t *testing.T) {
 	_, r := newTestHost(t)
 	runUser(t, r, `

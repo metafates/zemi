@@ -269,9 +269,11 @@ func TestTypesEventNames(t *testing.T) {
 }
 
 // TestTypesEnums: each enum table's class, keyed upper-cased, and each
-// alias that types the fields taking one list exactly the Go values.
+// alias that types the fields taking one list exactly the Go values; each
+// booted table holds exactly the class's keys.
 func TestTypesEnums(t *testing.T) {
 	reConst := regexp.MustCompile(`(?m)^---@field ([A-Z_]+) "([^"]+)"$`)
+	booted := bootedNamespaces(t, false)
 	for _, c := range []struct {
 		alias, table string
 		live         []string
@@ -310,14 +312,22 @@ func TestTypesEnums(t *testing.T) {
 		if c.table == "" {
 			continue
 		}
-		var vals []string
+		var keys, vals, live []string
 		for _, m := range reConst.FindAllStringSubmatch(annotatedClass(t, c.table), -1) {
 			if m[1] != strings.ToUpper(m[2]) {
 				t.Errorf("%s.%s is %q", c.table, m[1], m[2])
 			}
-			vals = append(vals, m[2])
+			keys, vals = append(keys, m[1]), append(vals, m[2])
 		}
 		assertSameNames(t, c.table, vals, slices.Clone(c.live))
+		for ns, members := range booted {
+			for _, m := range members {
+				if k, ok := strings.CutPrefix(ns+"."+m, c.table+"."); ok {
+					live = append(live, k)
+				}
+			}
+		}
+		assertSameNames(t, c.table+" booted", keys, live)
 	}
 }
 
