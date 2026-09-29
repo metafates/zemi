@@ -500,13 +500,11 @@ func (h *Host) deliverReport(parent, id, agentName, status, description, report 
 }
 
 // reportHead is the one line the user sees of a background report; a
-// workflow's agent attribute is "workflow" or "workflow:<saved name>".
-func reportHead(id, agent, status string) string {
+// workflow's agent attribute is "workflow" or "workflow:<saved name>", and
+// its description names it, since runs of one script differ by no name.
+func reportHead(id, agent, status, description string) string {
 	if agent == "workflow" || strings.HasPrefix(agent, "workflow:") {
-		if name := strings.TrimPrefix(strings.TrimPrefix(agent, "workflow"), ":"); name != "" {
-			return fmt.Sprintf("Workflow %s (%s) %s", id, name, status)
-		}
-		return fmt.Sprintf("Workflow %s %s", id, status)
+		return fmt.Sprintf("Workflow %s (%s) %s", id, clipRunes(sanitize.Line(description), 60), status)
 	}
 	return fmt.Sprintf("Background agent %s (%s) %s", id, agent, status)
 }
@@ -547,7 +545,7 @@ func (h *Host) notifyReport(id, agentName, status, description, report string) {
 	if status == "finished" {
 		level = logging.Info
 	}
-	h.Notify(level, reportHead(id, agentName, status), description+"\n"+clipRunes(strings.TrimPrefix(report, reportFailed), 300))
+	h.Notify(level, reportHead(id, agentName, status, description), description+"\n"+clipRunes(strings.TrimPrefix(report, reportFailed), 300))
 }
 
 var reportBody = regexp.MustCompile(`(?s)<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")>\n(.*?)\n</agent-report>`)
@@ -562,7 +560,7 @@ func (h *Host) notifyReports(queued []string) {
 	}
 }
 
-var reportAttrs = regexp.MustCompile(`<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)"`)
+var reportAttrs = regexp.MustCompile(`<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")`)
 
 // pluginSent is a zemi.agent.send from a plugin, with its first line: a tag
 // right behind agent.AttachMarker (the tail starts past the first one), so a
@@ -580,7 +578,8 @@ var loopRun = regexp.MustCompile(`(?:\A|` + regexp.QuoteMeta(agent.AttachMarker)
 func reportHeads(tail string) []string {
 	var heads []string
 	for _, m := range reportAttrs.FindAllStringSubmatch(tail, -1) {
-		heads = append(heads, reportHead(m[1], m[2], m[3]))
+		desc, _ := strconv.Unquote(m[4])
+		heads = append(heads, reportHead(m[1], m[2], m[3], desc))
 	}
 	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
 		heads = append(heads, m[1]+": "+clipRunes(sanitize.String(m[2]), 200))

@@ -656,13 +656,13 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 	}
 	seedSession(t, h)
 	resp, err := h.workflowTool(h.PipelineFor()).Run(context.Background(),
-		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"script":"return zemi.workflow.agent('x')","background":true}`})
+		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"script":"return zemi.workflow.agent('x')","background":true,"description":"scan six parts"}`})
 	if err != nil || toolStatus(tools.ToolWorkflow, !resp.IsError, resp.Content, false) != CallBG {
 		t.Fatalf("background start = %+v, %v", resp, err)
 	}
 	id := strings.Fields(strings.TrimPrefix(resp.Content, bgWorkflowStarted))[0]
 	waitFor(t, func() error {
-		if tr := h.Session().Transcript; !slices.ContainsFunc(tr, func(m ChatMessage) bool { return m.Text == "Workflow "+id+" finished" }) {
+		if tr := h.Session().Transcript; !slices.ContainsFunc(tr, func(m ChatMessage) bool { return m.Text == "Workflow "+id+" (scan six parts) finished" }) {
 			return fmt.Errorf("no report row in %+v", tr)
 		}
 		return nil
@@ -736,6 +736,24 @@ func TestWorkflowCancel(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("workflow ignored cancellation")
+	}
+}
+
+// TestWorkflowPanicEnds: a panic under the scheduler ends the run as failed,
+// so it holds back no rewind or queued report.
+func TestWorkflowPanicEnds(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	echoAgents(h)
+	var f *flowRun
+	func() {
+		defer func() { _ = recover() }()
+		f, _ = h.startFlow(context.Background(), flowSpec{src: `return zemi.workflow.agent("x")`, progress: func(r *flowRun) {
+			f = r
+			panic("boom")
+		}})
+	}()
+	if f == nil || f.isRunning() || h.tasks.runningFor(f.parent) != 0 {
+		t.Fatalf("a panicked run is still live: %+v", f)
 	}
 }
 

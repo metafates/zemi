@@ -829,7 +829,7 @@ lua-language-server is installed.
   `TestPromptBudget` counts it. The tool takes one of `script`, `name` or `run` (`script` joins
   `run` for action `rerun`); `run` with an action is `flowControl`, `background` delivers the
   result like a background agent's report (`deliverFlow` through `deliverReport`, whose head
-  reads `Workflow <id> finished`), and a failed run's result says how to rerun it. A workflow
+  reads `Workflow <id> (<description>) finished`), and a failed run's result says how to rerun it. A workflow
   agent's asks name the workflow and the agent. `agent`'s `schema` asks in the task for a JSON
   object and `runAgent` checks the reply's outermost `{...}` with `tools.Validate`, asking again
   at most twice (`schemaReport`); the script gets a table, and the journal keeps the object.
@@ -846,7 +846,7 @@ lua-language-server is installed.
   `O_EXCL` through `perm.Lresolve` (no link at the name or above it) with the journal's fd held,
   and read back no-follow, regular and capped (`readPadFile`), since a sandboxed command can
   write the pad. A rerun (`flowSpec.from`) runs that script file, edited or not, and answers
-  each call identical to a finished one (`agentKey`: agent, model, prompt) from the journal in
+  each call identical to a finished one (`agentKey`: agent, model, schema, prompt) from the journal in
   order, starting no agent; `loadFlow` reads a run back for the screens, `flowAgentIDs` keeps a
   workflow's stored agents out of /agents, and `saveFlow` copies a script to `workflows/`.
   `/workflows` (`workflowsOverlay`) lists the runs, live ones of every session first, then this

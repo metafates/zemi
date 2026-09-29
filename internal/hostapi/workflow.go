@@ -1,6 +1,6 @@
 // workflow.go runs workflows: Lua scripts that coordinate subagents. The
 // model writes them through the workflow tool, users save them under
-// workflows/ and run them with /workflow or zemi.workflow.run.
+// workflows/ and run them with /workflows run or zemi.workflow.run.
 //
 // A script never runs on the interpreter goroutine (DESIGN §4): it waits on
 // agents for minutes and is model-authored, so it gets its own small Lua
@@ -228,8 +228,10 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	}
 	if err := h.tasks.addFlow(f); err != nil {
 		cancel()
-		if f.journal != nil {
+		if f.journal != nil { // a run that never ran leaves no files for /workflows to list
 			f.journal.Close()
+			os.Remove(f.script)
+			os.Remove(filepath.Join(pad, flowFile(f.id, ".jsonl")))
 		}
 		return nil, err
 	}
@@ -240,6 +242,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 		return f, nil
 	}
 	h.GoSafe("workflow", func() {
+		defer h.drainQueue() // this run no longer holds a queued report back
 		h.runFlow(ctx, f, spec)
 		if spec.done != nil {
 			spec.done(f)
@@ -297,10 +300,16 @@ type wfRun struct {
 	over      bool
 }
 
-// runFlow runs f's script to its end and records how it ended.
+// runFlow runs f's script to its end and records how it ended, a panic's
+// end too: a flow left running would block rewind until zemi exits.
 func (h *Host) runFlow(ctx context.Context, f *flowRun, spec flowSpec) {
-	defer f.cancel()
-	val, err := h.runScript(ctx, f, spec)
+	val, err := "", errors.New("the workflow crashed")
+	defer func() { f.end(val, err) }()
+	val, err = h.runScript(ctx, f, spec)
+}
+
+func (f *flowRun) end(val string, err error) {
+	f.cancel()
 	f.mu.Lock()
 	f.result, f.err, f.finished = val, err, time.Now()
 	switch {
@@ -825,8 +834,10 @@ func (f *flowRun) view() flowView {
 		default:
 			v.done++
 		}
-		v.tokens += a.tokens
-		v.cost += a.cost
+		if !a.reused { // an earlier run spent it
+			v.tokens += a.tokens
+			v.cost += a.cost
+		}
 	}
 	return v
 }
@@ -1322,8 +1333,11 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 		return fantasy.NewTextErrorResponse("action acts on a run: pass its id as run"), nil
 	case in.Run != "" && !rerun:
 		act := flowAction(in.Action)
-		if act == "" {
-			act = map[bool]flowAction{true: actConcurrency, false: actStatus}[in.Concurrency > 0]
+		switch {
+		case act == "" && in.Concurrency > 0:
+			act = actConcurrency
+		case act == "":
+			act = actStatus
 		}
 		out, err := t.control(in.Run, act, in.Concurrency)
 		if err != nil {
@@ -1421,13 +1435,25 @@ func (f *flowRun) report() (string, bool) {
 // deliverFlow hands a background run's report to the session that started
 // it, as a background agent's; a stopped one has none.
 func (h *Host) deliverFlow(f *flowRun) {
-	defer h.drainQueue()
 	if errors.Is(f.err, context.Canceled) {
 		return
 	}
+	attr, status, report := f.reportAs()
+	h.deliverReport(f.parent, f.id, attr, status, f.description, report)
+}
+
+// reportAs is an ended run's report with the agent attribute and status it
+// goes to the model under.
+func (f *flowRun) reportAs() (attr, status, report string) {
+	attr, status = "workflow", "finished"
+	if f.name != "" {
+		attr += ":" + f.name
+	}
 	report, ok := f.report()
-	status := map[bool]string{true: "finished", false: "failed"}[ok]
-	h.deliverReport(f.parent, f.id, strings.TrimSuffix("workflow:"+f.name, ":"), status, f.description, report)
+	if !ok {
+		status = "failed"
+	}
+	return attr, status, report
 }
 
 // truncOutput cuts a host tool's output to what a result may carry and
@@ -1587,9 +1613,8 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) error {
 			h.handOff(scope)
 			return
 		}
-		report, ok := f.report()
-		status := map[bool]string{true: "finished", false: "failed"}[ok]
-		msg := h.reportMessage(h.scratchFor(f.parent), f.id, strings.TrimSuffix("workflow:"+f.name, ":"), status, f.description, report)
+		attr, status, report := f.reportAs()
+		msg := h.reportMessage(h.scratchFor(f.parent), f.id, attr, status, f.description, report)
 		if err := h.sendClaimed(scope, line+msg+attached); err != nil {
 			h.Log.Warn("workflows", "report not sent", map[string]any{"error": err.Error()})
 		}

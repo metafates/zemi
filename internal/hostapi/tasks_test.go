@@ -114,7 +114,7 @@ func TestReportNoticeWhereRead(t *testing.T) {
 		t.Fatalf("delivered %d messages", len(msgs))
 	}
 	tr := h.Session().Transcript
-	if n := len(tr); n < 2 || tr[n-2].Text != "so far" || tr[n-1].Kind != "notice" || tr[n-1].Text != reportHead("r1", "explore", "finished") {
+	if n := len(tr); n < 2 || tr[n-2].Text != "so far" || tr[n-1].Kind != "notice" || tr[n-1].Text != reportHead("r1", "explore", "finished", "x") {
 		t.Fatalf("transcript tail: %+v", tr)
 	}
 }
@@ -356,7 +356,7 @@ func TestReportStoredWhenSessionMoved(t *testing.T) {
 	if err := h.ResumeSession(parent); err != nil {
 		t.Fatal(err)
 	}
-	if tr := h.Session().Transcript; len(tr) == 0 || tr[len(tr)-1].Text != reportHead(id, "explore", "finished") {
+	if tr := h.Session().Transcript; len(tr) == 0 || tr[len(tr)-1].Text != reportHead(id, "explore", "finished", "") {
 		t.Fatalf("resume lacks the report: %+v", tr)
 	}
 	if err := h.AgentSend("next"); err != nil {
