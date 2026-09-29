@@ -136,18 +136,20 @@ func TestBumpWakesIdleTick(t *testing.T) {
 }
 
 // TestFrameClock: a tick lands on the next frame boundary, from the timer
-// and from a wake alike, so the spinner and the eyes step one glyph per
-// tick.
+// and from a wake that cuts an idle sleep short alike, so the spinner and the
+// eyes step one glyph per tick.
 func TestFrameClock(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		a := &App{wake: make(chan struct{}, 1)}
 		time.Sleep(frameInterval / 3) // off a boundary
 		last := time.Now().UnixMilli() / frameMS
 		for i := range 6 {
+			d := frameInterval
 			if i%2 == 1 {
+				d = idleInterval
 				a.wakeTick()
 			}
-			a.frameTickCmd(frameInterval)()
+			a.frameTickCmd(d)()
 			f := time.Now().UnixMilli() / frameMS
 			if f != last+1 || time.Now().UnixMilli()%frameMS != 0 {
 				t.Fatalf("tick %d ran at %v, after one in frame %d", i, time.Now(), last)
