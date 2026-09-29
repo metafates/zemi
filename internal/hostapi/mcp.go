@@ -1,4 +1,4 @@
-// mcp.go bridges MCP servers (DESIGN §13, M5). User config adds them with
+// mcp.go bridges MCP servers (DESIGN §11). User config adds them with
 // zemi.mcp.add; each starts in the background, and every tool it lists
 // becomes a model tool named mcp_<server>_<tool>, gated as subject
 // mcp.<server> with the tool name as argument. Descriptions are labeled

@@ -1,4 +1,4 @@
-// Package mcp is a small Model Context Protocol client (DESIGN §13, M5):
+// Package mcp is a small Model Context Protocol client (DESIGN §11):
 // JSON-RPC over a child process's stdio or over streamable HTTP, with the
 // calls zemi needs: initialize, tools/list and tools/call.
 package mcp

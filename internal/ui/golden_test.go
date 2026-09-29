@@ -35,7 +35,7 @@ func tempConfig(t testing.TB) string {
 	return cfg
 }
 
-// The M0 exit test (DESIGN §13): user init.lua rebinds a default key and
+// User init.lua rebinds a default key and
 // adds a statusline segment; the composed frame is pinned as a golden.
 func TestGoldenM0Frame(t *testing.T) {
 	ctx := context.Background()

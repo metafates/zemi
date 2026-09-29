@@ -26,15 +26,15 @@ neovim's Lua architecture, pi, opencode, codex, hermes-agent.
    capabilities its origin denylist withholds (§5, §10).
 2. **Every side effect is permissioned.** Filesystem, network, subprocess, and
    memory writes all flow through one gate, used by both model-invoked tools
-   and Lua code. Learned rules may tighten permissions automatically but never
-   loosen them without explicit approval.
+   and Lua code. Nothing the agent learns changes a permission.
 3. **Configuration is code.** `~/.config/zemi` holds Lua and markdown the
    user owns; zemi never commits to it, and versioning it is the user's
    choice. Structural changes are file edits, reviewed as diffs through the
    permission gate.
-4. **Learning is typed and reviewable.** The agent stores facts, procedures,
-   and structural changes as distinct, inspectable objects with provenance.
-   No opaque "the model got better" hand-waving.
+4. **Learning is typed and reviewable.** The agent stores facts (memories)
+   and procedures (recipes) as distinct, inspectable objects with
+   provenance; a structural change is a config file edit under the
+   permission gate.
 5. **Boring concurrency model.** One Lua interpreter thread (an actor),
    bubbletea on the main goroutine, agent streams and I/O on workers. All
    Lua access funnels through one queue.
@@ -49,7 +49,7 @@ neovim's Lua architecture, pi, opencode, codex, hermes-agent.
 | `github.com/yuin/gopher-lua` | The embedded Lua 5.1 VM: interpreter thread, sandbox, `require`, coroutines |
 | `github.com/goccy/go-yaml` | SKILL.md and `agents/*.md` frontmatter parsing |
 
-Added since: `modernc.org/sqlite` (pure-Go SQLite, keeps
+Also: `modernc.org/sqlite` (pure-Go SQLite, keeps
 `CGO_ENABLED=0`; the schema is one const of `CREATE TABLE IF NOT
 EXISTS` stamped with `PRAGMA user_version`; no migrations before the
 first release, so no migration library came with it), `charm.land/glamour/v2`
@@ -85,7 +85,7 @@ returns the same lines.
    lua/**  (user code)  |  | Lua host  |<--->| host API (zemi.*)|   |
                         |  | (1 thread)|     | internal/hostapi |   |
    plugins ------------>|  +-----------+     +--------+---------+   |
-   skills (*.lua)       |        ^  |                |             |
+   skills (SKILL.md)    |        ^  |                |             |
                         |        |  v                v             |
                         |  +-----------+     +------------------+   |
                         |  | bubbletea |     | agent core       |   |
@@ -116,9 +116,10 @@ Layers and ownership:
 - **Learn** (`internal/learn`): the memory intake policy (caps, provenance,
   the secret scrubber), the near-duplicate check and the digest. The
   reflector and the skill manager live in `internal/hostapi`.
-- **Store** (`internal/store`): SQLite (sessions, messages, memory, skills,
-  checkpoints, proposals, config revisions, telemetry), one schema const; a
-  schema change bumps `schemaVersion` and an older store is refused, to delete.
+- **Store** (`internal/store`): SQLite (sessions, messages, todos, tool-call
+  telemetry, checkpoints, memory, proposals, skills, kv; §7), one schema
+  const; a schema change bumps `schemaVersion` and an older store is
+  refused, to delete.
 
 ## 4. Concurrency model
 
@@ -265,12 +266,7 @@ Contracts that make this safe:
   members (`luaReadOnly`) other than `zemi.fs.*` and a handle's `wait`;
   the sandbox guard (`guardLua`) raises on any other call, naming it
   (caught, logged, widget keeps its last-good lines). Go caches rendered
-  lines keyed by `(widget id, width, height, generation)`; the generation
-  is a global frame counter bumped at most once per renderer tick, so in
-  v1 "invalidated" means any generation change: each visible widget
-  renders once per frame and the cache only dedupes repeat `View` calls
-  within a frame (per-widget dependency invalidation is a later
-  optimization, §8).
+  lines by `(widget id, width, height, generation)` (§8).
 - **Deltas are not batched.** `agent.text_delta` and
   `agent.reasoning_delta` are emitted once per streamed chunk, each its own
   async request, and carry the incremental chunk only, so a subscriber
@@ -317,7 +313,7 @@ Directories (XDG):
   drops/                  files dropped in from outside the project (@drop:<name>)
   plans/<session id>.md   plans approved from a read-only agent
 ~/.local/state/zemi/      state
-  zemi.db                 global store (user memory, skills, kv, revisions)
+  zemi.db                 global store (user memory and its proposals, skills, kv)
   scratch/<id prefix>/    per-session scratchpad, every model command's $TMPDIR (§9 write root)
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
   projects/<hash>/root    the trust root the dir belongs to; its mtime is the last start there
@@ -606,10 +602,11 @@ Sandbox (what userland gets):
   its overlay badge (plugin code with no file of its plugin on the stack,
   such as a user module a plugin required, called from user code, has no
   name, and the calls that need one raise), and two plugins cannot replace each other's command,
-  keymap, widget, theme, tool, completion source or health row (the
-  first by name keeps it; within one plugin the last writer wins).
+  keymap, widget, theme, event handler, tool, completion source, health
+  row or config watch (the first by name keeps it; within one plugin the
+  last writer wins).
 - Boundary caps: values crossing the Lua <-> Go marshal are capped (string
-  16 MB, table depth 64; configurable), cycles are refused with an error,
+  16 MB, table depth 64), cycles are refused with an error,
   and every Go function exposed to Lua runs under `recover`, so a Go panic
   becomes a catchable Lua error logged as a zemi bug.
 
@@ -623,10 +620,8 @@ cannot reach into a blocked Go call (covered by the watchdog, §4).
 
 ## 6. The host API (`zemi.*`)
 
-All namespaces are preloaded Go-backed tables (plus a small Lua stdlib).
-This is the full v1 surface (v1 = M0-M4; M5-only APIs are marked); the
-binary version is `zemi.api.version`, and §13 says which namespaces land
-in which milestone.
+All namespaces are preloaded Go-backed tables (plus a small Lua stdlib);
+the binary's API version is `zemi.api.version`.
 
 ### 6.0 Conventions
 
@@ -734,11 +729,8 @@ answer are scoped to the `model` principal, so a model tool call cannot
 ride a rule meant for the user. Every rule lives
 in memory until zemi exits; a rule meant to last is a line in `init.lua`,
 which adds it again on every boot and a reload replays. There is no rule
-file: an earlier `scope = "permanent"` dumped rules to a generated
-`permissions.lua` and committed it to a config git repo, but nothing ever
-removed a dumped rule, so an allow rule deleted from `init.lua` stayed in
-force. That scope now raises with a pointer to `init.lua`, and a leftover
-`permissions.lua` is not read. Origins: user config may add any rule;
+file, since a dumped rule deleted from `init.lua` would stay in force:
+`scope = "permanent"` raises with a pointer to `init.lua`. Origins: user config may add any rule;
 plugin and project origins may add only deny/ask rules. Overlay `always` answers (§8) append session rules to
 the same store, so rules never live in `zemi.state` or the DB, and no
 Lua can forge one. Only the user's own config and `always` answers
@@ -991,6 +983,35 @@ report says how many messages it never read. A finished run is not gone:
 or its child session's rows), so a follow-up question costs no fresh
 exploration. It keeps the run's model, and a run another session started
 refuses it.
+
+A workflow is a Lua script that starts subagents: `zemi.workflow.agent`,
+`parallel`, `pipeline` (Lua over `parallel`), `phase`, `log` and `args`,
+nothing else of zemi but `zemi.json`; a bare `agent` or `print` raises
+naming its `zemi.workflow` spelling. The `workflow` tool takes one of
+`script`, `name` or `run` (`script` joins `run` for action `rerun`); `run`
+with an action reports its status, pauses it (no new dispatch, running
+agents finish), resumes or stops it (cancels the run), and `concurrency`
+with `run` sets a running one's limit (1-16, at the next dispatch);
+`/workflows restart` cancels one running agent and queues the same call
+again, counting toward the 100-agent cap. `background` delivers the result
+like a background agent's report, and a failed run's result says how to
+rerun it. `agent`'s `schema`
+asks in the task for a JSON object and the reply's outermost `{...}` is
+validated, asking again at most twice; the script gets a table. A run
+writes its script and a journal (a header, one line per agent that ended,
+an end line) into the pad of the session that started it; a rerun runs
+that script file, edited or not, and answers each call identical to a
+finished one (agent, model, schema, prompt) from the journal in order,
+starting no agent. `/workflows` lists the runs, live ones of every session
+first, then this session's earlier ones, then the saved workflows; a run's
+detail pauses, stops, reruns, opens or saves it (to `workflows/`), and `v`
+opens its view: its fields, its agents under their phases, `p`, `+` and
+`-` (relative, so a second press before the view rebuilds still counts),
+and an agent's transcript, from which esc comes back. While any run lives
+one ticker rebuilds whichever of the two is open once a second. The user
+starts a saved one with `/workflows run` or `/review`, with no model call
+before the work: detached in the TUI with a live notice row, and headless
+on the claimed agent, as `/btw`.
 
 Builtin providers come from catwalk's embedded catalog, or the one
 `/model update` or `zemi models update` fetched from catwalk.charm.land and saved in the data
@@ -1459,7 +1480,6 @@ those rows back from Lua),
 `phase`, `log` and `args` instead), `zemi.lsp` (`add`, `disable`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
 and `zemi.permission.mode` (`add`, `del`, `set` user config only, §9; `get`, `list`).
-There is no `zemi.eval`: the eval harness was never built (§10.6).
 
 `zemi.learn.decide` and `zemi.skills.enable` require a user or builtin
 registration origin: the model can propose, but a
@@ -1695,11 +1715,9 @@ provenance string.
   runs again next frame, that widget alone: the chat fills a long resumed
   session that way, latest messages first, 30 ms at a time, and a region
   scrolled up keeps the last whole render until the new one is whole, so
-  the reader's rows do not move; `View`
-  asks each visible region for its cached widget lines; Lua `render` runs
-  only when invalidated: v1 re-renders on every generation change (cheap:
-  render is pure and cached by `(id, width, height, generation)`), plus resize
-  dependency-declared invalidation is opt-in later.
+  the reader's rows do not move. `View`
+  asks each visible region for its cached widget lines; a generation change
+  renders every shown widget again, a resize the ones whose size moved.
 - **Chat transcript**: messages are stored as content blocks (text, tool
   call, tool result, reasoning); tool output is sanitized before render
   (see below); the default chat widget maps blocks to
@@ -1770,7 +1788,7 @@ provenance string.
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/workflows`, `/review`, `/mcp`,
-  `/lsp`, `/plugins`, `/projects` (the projects zemi keeps state for; switch restarts zemi there), `/win`)
+  `/lsp`, `/plugins`, `/projects` (the projects zemi keeps state for; switch restarts zemi there))
   and `/trust` (§5). Enter on a help command row runs it, or
   fills the composer when the command needs an argument.
   In `zemi run` a command that opens a screen fails with "/<name> needs the TUI".
@@ -1783,7 +1801,7 @@ provenance string.
   item index; widget segments carry their `click` id (§6.6) and are
   targets only while their widget has `on_click` and no modal chrome is
   open, which takes every click. The shipped statusline is clickable from
-  `tui/statusline.lua`: the mode and the always-visible agent pill open their
+  `tui/statusline.lua`: the mode and the profile open their
   pickers, the project path `/projects`, the model the model
   picker, the context and cost `/usage`, pending reviews `/memory`,
   running agents `/agents`. The chat widget marks a reasoning line
@@ -2033,8 +2051,8 @@ provenance string.
   survive the rules above and the `permission.request` veto (§6.2), and
   it can never overrule a `deny`. An ask a rule asked for (an `ask` rule, a
   `not_match` exclusion; `Request.Explicit`) is the user's under `auto`,
-  so a project or plugin rule can tighten it. Two ship: `auto` and `yolo` (every surviving ask allows, an explicit one too). A read-only agent
-  (the shipped `planner` profile, `Profile.ReadOnly`) is the old `plan` in the agent axis:
+  so a project or plugin rule can tighten it. Two ship: `auto` and `yolo` (every surviving ask allows, an explicit one too). In a read-only agent
+  (the shipped `planner` profile, `Profile.ReadOnly`)
   `fs.write` is denied even under an allow rule, bash and `mcp.*` allows flip to `ask` unless
   the bash command is a `perm.Normalized.ReadCommand`, and commands run sandboxed with the project
   unwritable, which is what keeps a planning session read-only. `auto` settles
@@ -2109,8 +2127,7 @@ provenance string.
   chunk name of its own, which the guard passes until the run ends, so a
   callback it registered keeps only the read-only calls afterwards. A new
   member is guarded until it is added to the list. Only user config may add modes (`zemi.permission.mode.add`) or set the
-  current one; `tab` cycles them, and an unknown value reads as
-  `auto`, the default. A mode's `decide` that answers neither `allow` nor
+  current one, and an unknown value reads as `auto`, the default. A mode's `decide` that answers neither `allow` nor
   `deny` sends the ask to the user whatever its base settles, so a mode
   whose `decide` answers nothing is how a user gets every ask.
 - Sandbox (`internal/sandbox`, hostapi `sandbox.go`): a `tool.bash`
@@ -2298,13 +2315,14 @@ provenance string.
   `*.localhost`) before its ask, since no answer to it could permit one. Userinfo in URLs is a hard
   error; host rules match the final connected host.
 - Secrets: the env denylist is a case-insensitive substring match on the
-  variable's name (`TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`,
-  `API_KEY`, `PRIVATE_KEY`), so `OPENAI_API_KEY` is denied and
-  `OPENAI_KEY` is not. `zemi.env.get` refuses a matching name for every
+  variable's name (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`,
+  `PASSPHRASE`, `CREDENTIAL`, and `_PWD` or `_PASS` as a suffix;
+  `perm.EnvIsSecret`). `zemi.env.get` refuses a matching name for every
   origin but user and builtin; providers read their keys in Go, out of
   Lua's reach. Every child process runs with `perm.ChildEnv`: zemi's own
-  environment minus the matching names, plus only the extras the caller
-  passed (a secret-shaped or environment-affecting extra name is refused
+  environment minus the matching names the user did not keep
+  (`permissions.env_keep`), plus only the extras the caller passed (a
+  secret-shaped or environment-affecting extra name is refused
   outright). The bash tool, `job_*`, Lua jobs, and the MCP and LSP
   server processes all start from it.
 - There is no turn-scoped resource budget: per-turn caps on bash
@@ -2563,38 +2581,7 @@ leaves a repository's own procedure to the live agent's recipe.
 
 ### 10.6 Evals
 
-None of this is built. There is no `zemi.eval`, no mock provider, no
-headless eval run and no CI gate; the auto-apply paths that read an eval verdict below never
-get one. What follows is the intended shape (M4, §13).
-
-- Suites live in `~/.config/zemi/evals/*.lua` and register cases:
-
-```lua
-zemi.eval.suite("core", {
-	{ id = "greets", prompt = "say hi",
-		expect = function(transcript) return transcript.text:find("hi") ~= nil end },
-	{ id = "uses_todos", prompt = "plan 3 tasks", tools = mock.tools(),
-		expect = function(t) return #t.tool_calls("todos") > 0 end },
-})
-```
-
-`mock.tools({ bash = function(input) return "ok" end })` replaces the named
-built-ins with scripted stubs; `expect` receives a transcript object
-(`{ text = <full assistant text>, tool_calls = function(name) -> count }`).
-
-- Headless run: `zemi --headless --eval core` with a `mock` provider
-  (scripted turns; deterministic), real pipeline in fail-closed mode
-  (a matched `ask` auto-denies and is recorded; every non-mocked subject
-  denies regardless of allow rules, so a session allow rule cannot turn
-  an eval run into real bash in CI; every side-effectful
-  built-in is stubbed unless the suite explicitly mocks it), real store
-  in a temp dir. Used for: config revision verification, regression after
-  Go changes, and as CI gate. An eval file proposed by the reflector or
-  added by a revision is routed to the mandatory review path (§10.4);
-  eval code never auto-applies.
-- The reflector may propose eval cases too ("I keep failing at X, add a
-  regression case"), but eval files are code in the config dir: same review
-  path.
+There are none: no eval harness, mock provider or CI gate.
 
 ### 10.7 Context assembly (how learning reaches the model)
 
@@ -2644,7 +2631,7 @@ index, or the untrusted-content framing.
 - Never modifies Go behavior; if something needs Go, that is a zemi feature
   request, not a self-modification.
 - Never loosens permissions, never widens the sandbox, never disables
-  eval/telemetry, never edits its own proposals after review begins.
+  telemetry, never edits its own proposals after review begins.
 - Never writes outside its two homes (memory store, skills dir). Anything else is a normal tool call under normal permissions.
 - Only user config raises `memory.autonomy`; no Lua path edits the env
   deny-list or widens the fs jail. Auto autonomy never applies a memory
@@ -2677,7 +2664,7 @@ the host-only proposal channel (§10.3), the user-only config.set and allow rule
   profile, a user command, or the shipped chat widget. Command names
   collide case-insensitively: a registration whose name differs from an
   existing command only by case is refused, so `/reload`/`/RELOAD`
-  cannot shadow the reserved `/reload`. MCP tools (M5) are named
+  cannot shadow the reserved `/reload`. MCP tools are named
   `mcp_<server>_<tool>` (64 chars max) and gated per call as
   `mcp.<server>`; servers come from user config only. When two tools map
   to one name, the first server's tool is kept and the rest are skipped
@@ -2686,8 +2673,8 @@ the host-only proposal channel (§10.3), the user-only config.set and allow rule
   description a catalog of names by server) and the tools a search loaded,
   at most five per search, kept per session and per subagent run.
 - Logs: `zemi.log` to file + optional in-app pane; tool calls (each with
-  its decision's source: rule, hook, user, overlay, or default), decisions,
-  memory writes, revisions all logged with IDs so the reflector and the user
+  its decision's source: rule, hook, user, overlay, or default), decisions
+  and memory writes are all logged with IDs, so the reflector and the user
   can audit the loop end to end.
 
 ## 12. Repository layout
@@ -2726,64 +2713,7 @@ runtime/skills/zemi/        zemi's own skill; runtime/workflows/, the builtin on
 runtime/types/              the LuaLS `---@meta` description of the whole zemi.* API
 ```
 
-## 13. Milestones
-
-Status: M0-M3 shipped, and M3's config revision pipeline was later dropped (the
-reflector proposes memories only). M4 was never built: no eval harness, no mock
-provider, no eval CI, no `zemi.eval`. M3's permanent rule scope, its
-`permissions.lua` dump and the config git repo were dropped too (§6.1). M5
-shipped in part: subagents, workflows, the MCP client, the LSP client and the
-plugin manager (§5) are in; embeddings-backed search is not. Shipped outside
-every milestone: permission modes (§9), workflows, rewind and checkpoints,
-per-session scratchpads, background agents with the `/agents` transcript view,
-the `lua` tool, markdown commands and `agents/*.md`, headless `zemi run`
-and `zemi health`, and the `zemi.health`, `zemi.composer` and `zemi.json`
-namespaces.
-
-- **M0, walk before running**: bubbletea shell, Lua host, sandbox, init.lua
-  + plugins loading; the concurrency core starts here (actor queue with
-  priority classes, cancellation, watchdog, hot mode, force-reload);
-  namespaces `zemi.config`, `zemi.keymap`,
-  `zemi.command`, `zemi.event`, `zemi.notify`, `zemi.log`,
-  `zemi.ui` (widget + theme + overlay); default keymaps (`enter`,
-  `ctrl+o`) present and rebindable; the Go-reserved cancel trigger ships too
-  (§6.2) and nothing rebinds it; one widget in Lua; golden test harness
-  (`x/exp/golden`, `-update`). Exit: `init.lua` rebinds a key and adds a
-  statusline segment.
-- **M1, chat that codes**: providers (anthropic, openai, openai_compat, google),
-  `zemi.model.pick` over the registered models, sessions + messages in
-  SQLite, streaming into chat widget, composer,
-  bash/read/write/edit/glob/grep tools, permission overlays,
-  `:` commands, themes in Lua.
-  Namespaces: `zemi.env`, `zemi.state`, `zemi.timer`, `zemi.fs`,
-  `zemi.http`, `zemi.job`, `zemi.tool`, `zemi.model`, `zemi.provider`,
-  `zemi.agent` (profile/send/current/cancel), `zemi.session`,
-  `zemi.permission` (session-scope rules; overlays need them).
-  Concurrency-core exit tests: a stuck Lua tool trips the watchdog and
-  marks the runtime hot; force-reload recovers; a veto deadline is
-  honored under load; a rewrite re-entry terminates.
-- **M2, remember**: context files, memory store + digest injection,
-  reflector v1 (memory only, Go-driven), `/remember`,
-  `/reflect`, session summaries; remaining built-in tools (`fetch`,
-  `todos`, `question`, `web_search`, `job_*`, `skill`). Namespace:
-  `zemi.memory`.
-- **M3, learn to act**: skills (user), config
-  revision pipeline with diff review + git, validation (smoke-load),
-  autonomy knobs, permanent-scope rules + `permissions.lua` (session
-  rules ship in M1). Namespaces: `zemi.skills`, `zemi.learn`.
-- **M4, prove it**: eval harness + mock provider + headless CI, auto-apply
-  path with eval gate, rollback UX, telemetry dashboards (local, reading
-  the `tool_calls`/`messages` tables).
-  Namespace: `zemi.eval`.
-- **M5, platform**: subagents (`zemi.agent.run` and the `agent` tool,
-  §6.3), LSP client + tools, MCP client (bridged as tools and as
-  `zemi.mcp`, tools named as in §11: their tool descriptions render to the model as fenced
-  untrusted data in the §6.2 style, and the server process itself sits
-  outside the §9 net gate like any user-installed binary), plugin
-  manager (`/plugins`, `zemi plugins install <git url>`, §5),
-  embeddings-backed memory search.
-
-## 14. Open questions
+## 13. Open questions
 
 - Credential storage and auth flow (keys read with `zemi.env.get` today).
 - Streaming render cost: a long transcript re-renders per generation
