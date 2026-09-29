@@ -82,6 +82,18 @@ func textParts(texts ...string) []fantasy.StreamPart {
 	return out
 }
 
+// callStep is a model call that asks for one echo call with input.
+func callStep(input string) []fantasy.StreamPart {
+	return []fantasy.StreamPart{
+		{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: input},
+		{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
+	}
+}
+
+var echo = fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	return fantasy.NewTextResponse("ok"), nil
+})
+
 type recHooks struct {
 	mu       sync.Mutex
 	text     strings.Builder
@@ -205,15 +217,9 @@ func TestTurnStreamsAndPersists(t *testing.T) {
 // the tool result and the final reply.
 func TestSteerJoinsAtStepBoundary(t *testing.T) {
 	m := &mockModel{steps: [][]fantasy.StreamPart{
-		{
-			{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
-			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
-		},
+		callStep("{}"),
 		textParts("done"),
 	}}
-	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		return fantasy.NewTextResponse("ok"), nil
-	})
 	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
 	r.Hooks = newRecHooks()
 	var roles []string
@@ -257,9 +263,6 @@ func TestToolRowOpensAtInputStart(t *testing.T) {
 		},
 		textParts("done"),
 	}}
-	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		return fantasy.NewTextResponse("ok"), nil
-	})
 	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
 	hooks := newRecHooks()
 	r.Hooks = hooks
@@ -283,9 +286,6 @@ func TestFailedTurnKeepsCompletedSteps(t *testing.T) {
 		},
 		{{Type: fantasy.StreamPartTypeError, Error: errors.New("boom")}},
 	}}
-	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		return fantasy.NewTextResponse("ok"), nil
-	})
 	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
 	hooks := newRecHooks()
 	r.Hooks = hooks
@@ -399,27 +399,28 @@ func TestCutOffToolCallGetsResult(t *testing.T) {
 	}
 }
 
-// TestToolLoopEndsTurn: the same tool call with the same result, step after
-// step, ends the turn on its sixth repeat with ErrToolLoop; a failing poll
-// whose error text moves is progress.
+// TestToolLoopEndsTurn: the same block of calls with the same results, step
+// after step, ends the turn with ErrToolLoop on its sixth step, a two-step
+// cycle as much as one repeated call; a failing poll whose error text moves
+// is progress.
 func TestToolLoopEndsTurn(t *testing.T) {
+	same := func(int) fantasy.ToolResponse { return fantasy.NewTextResponse("same") }
 	for _, c := range []struct {
-		name string
-		res  func(n int) fantasy.ToolResponse
-		loop bool
+		name   string
+		inputs []string // the calls one cycle makes
+		res    func(n int) fantasy.ToolResponse
+		loop   bool
 	}{
-		{"same result", func(int) fantasy.ToolResponse { return fantasy.NewTextResponse("same") }, true},
-		{"error text moves", func(n int) fantasy.ToolResponse {
+		{"same result", []string{"{}"}, same, true},
+		{"two-step cycle", []string{`{"a":1}`, `{"b":2}`}, same, true},
+		{"error text moves", []string{"{}"}, func(n int) fantasy.ToolResponse {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("jobs done: %d/9", n))
 		}, false},
 	} {
 		// the text reply is the fallback: without it a missed loop would hang
 		m := &mockModel{parts: textParts("done")}
-		for range loopMinSteps {
-			m.steps = append(m.steps, []fantasy.StreamPart{
-				{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: "{}"},
-				{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
-			})
+		for i := range loopMinSteps {
+			m.steps = append(m.steps, callStep(c.inputs[i%len(c.inputs)]))
 		}
 		n := 0
 		echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
@@ -434,31 +435,6 @@ func TestToolLoopEndsTurn(t *testing.T) {
 		if n := len(r.History); c.loop && n != 1+2*loopMinSteps {
 			t.Errorf("%s: history has %d messages, want the user message and %d steps", c.name, n, loopMinSteps)
 		}
-	}
-}
-
-// TestToolLoopCatchesTwoStepCycle: a model alternating two calls that never
-// change anything (the same edit, the same failing check) is as stuck as one
-// repeating a single call.
-func TestToolLoopCatchesTwoStepCycle(t *testing.T) {
-	step := func(input string) []fantasy.StreamPart {
-		return []fantasy.StreamPart{
-			{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "echo", ToolCallInput: input},
-			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
-		}
-	}
-	// the text reply is the fallback: without it a missed loop would hang
-	m := &mockModel{parts: textParts("done")}
-	for range 4 {
-		m.steps = append(m.steps, step(`{"a":1}`), step(`{"b":2}`))
-	}
-	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		return fantasy.NewTextResponse("same"), nil
-	})
-	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
-	r.Hooks = newRecHooks()
-	if err := r.Send(context.Background(), "hi"); !errors.Is(err, ErrToolLoop) {
-		t.Fatalf("err = %v, want ErrToolLoop", err)
 	}
 }
 
