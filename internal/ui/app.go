@@ -77,12 +77,12 @@ type App struct {
 	trust    *trustPrompt
 	toasts   []toast
 
-	// Go-owned agent chrome (DESIGN §6.3, §8): the permission overlay and
-	// the memory review overlay.
+	// Go-owned agent chrome (DESIGN §6.3, §8)
 	permAsk   *permAskPrompt
 	memReview *memReviewPrompt
 	memEdited string // the row the next memory screen opens on
 	planAsk   *planAskPrompt
+	question  *questionPrompt
 
 	mouse          mouseSel
 	press          mousePress
@@ -100,7 +100,6 @@ type App struct {
 	// work runs Lua-backed keymaps and commands in order off the key loop
 	work     chan func()
 	workOnce sync.Once
-	question *questionPrompt
 	editing  string // the editor handoff in progress, shown in the working row
 
 	prefixes   map[string]string // styled segment prefixes, rebuilt each frame

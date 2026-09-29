@@ -1,5 +1,5 @@
-// agent.go is the Go-owned agent chrome (DESIGN §6.3, §8): permission
-// prompt, working row, and the shared box and list renderers.
+// agent.go is the Go-owned agent chrome (DESIGN §6.3, §8): the permission
+// prompt, the shimmer effect, and the shared box and list renderers.
 // Their chrome uses fixed "Host:*" styles no theme group can restyle, and
 // no Lua participates in drawing or answering them.
 
