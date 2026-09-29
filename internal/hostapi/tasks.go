@@ -479,21 +479,33 @@ func (h *Host) startBackgroundAgent(def AgentDef, description, prompt string) (s
 		if err != nil {
 			report = strings.TrimSpace(reportFailed + h.friendlyError(err) + "\n\n" + text)
 		}
-		status := map[bool]string{true: "finished", false: "failed"}[err == nil]
-		if h.AgentSessionID() != run.parent {
-			// the user moved on; do not drop the report into another conversation
-			h.notifyReport(run.id, def.Name, status, description, report)
-			return
-		}
-		if err := h.AgentSend(h.reportMessage(h.scratchFor(run.parent), run.id, def.Name, status, description, report)); err != nil {
-			h.Notify(logging.Error, "Could not send the report of "+run.id, h.friendlyError(err))
-		}
+		h.deliverReport(run.parent, run.id, def.Name, map[bool]string{true: "finished", false: "failed"}[err == nil], description, report)
 	})
 	return run.id, nil
 }
 
-// reportHead is the one line the user sees of a background report.
+// deliverReport hands a detached run's report to the session that started
+// it: to the model when that session is live, else stored there and toasted.
+func (h *Host) deliverReport(parent, id, agentName, status, description, report string) {
+	if h.AgentSessionID() != parent {
+		// the user moved on; do not drop the report into another conversation
+		h.notifyReport(id, agentName, status, description, report)
+		return
+	}
+	if err := h.AgentSend(h.reportMessage(h.scratchFor(parent), id, agentName, status, description, report)); err != nil {
+		h.Notify(logging.Error, "Could not send the report of "+id, h.friendlyError(err))
+	}
+}
+
+// reportHead is the one line the user sees of a background report; a
+// workflow's agent attribute is "workflow" or "workflow:<saved name>".
 func reportHead(id, agent, status string) string {
+	if agent == "workflow" || strings.HasPrefix(agent, "workflow:") {
+		if name := strings.TrimPrefix(strings.TrimPrefix(agent, "workflow"), ":"); name != "" {
+			return fmt.Sprintf("Workflow %s (%s) %s", id, name, status)
+		}
+		return fmt.Sprintf("Workflow %s %s", id, status)
+	}
 	return fmt.Sprintf("Background agent %s (%s) %s", id, agent, status)
 }
 
@@ -514,10 +526,16 @@ const reportFailed = "the agent failed: "
 // read, and stores it in the session that started the run, where a resume
 // hands it to the model.
 func (h *Host) notifyReport(id, agentName, status, description, report string) {
-	if run := h.tasks.find(id); run != nil && run.parent != "" && h.DB != nil {
-		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(h.scratchFor(run.parent), id, agentName, status, description, report)))
+	parent := ""
+	if run := h.tasks.find(id); run != nil {
+		parent = run.parent
+	} else if f := h.tasks.flow(id); f != nil {
+		parent = f.parent
+	}
+	if parent != "" && h.DB != nil {
+		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(h.scratchFor(parent), id, agentName, status, description, report)))
 		if err == nil {
-			err = h.DB.AddMessage(&store.Message{SessionID: run.parent, Role: string(fantasy.MessageRoleUser), PartsJSON: string(parts)})
+			err = h.DB.AddMessage(&store.Message{SessionID: parent, Role: string(fantasy.MessageRoleUser), PartsJSON: string(parts)})
 		}
 		if err != nil {
 			h.Log.Warn("agents", "report not stored", map[string]any{"run": id, "error": err.Error()})

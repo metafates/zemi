@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,6 +16,9 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // echoAgents stubs every subagent to answer "<prompt>!", recording the
@@ -532,6 +536,84 @@ func TestWorkflowRerun(t *testing.T) {
 	if got, _ := os.ReadFile(victim); string(got) != "keep" {
 		t.Fatalf("the link's target was written: %q", got)
 	}
+}
+
+// TestWorkflowToolInput: which fields go together, what a rerun asks
+// about, and what headless leaves out.
+func TestWorkflowToolInput(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.agents.sessionID = "s1"
+	ui := &fakeUI{askAllowed: true}
+	h.SetUIHooks(ui)
+	h.Perm.Add(perm.Rule{Subject: "tool.workflow", Pattern: "*", Decision: perm.Ask})
+	tool := h.workflowTool(h.PipelineFor())
+	call := func(input string) (string, bool) {
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "workflow", Input: input})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp.Content, resp.IsError
+	}
+	out, failed := call(`{"script":"-- Count to two\nreturn 2"}`)
+	id, _, _ := strings.Cut(strings.TrimPrefix(out, "[workflow "), " ")
+	if failed || !strings.HasSuffix(out, "\n\n2") || h.tasks.flow(id).description != "Count to two" {
+		t.Fatalf("a run with no description: %q", out)
+	}
+	for _, c := range []struct {
+		name, input, want string
+		failed            bool
+		preview           string // what the ask showed, when it asks
+	}{
+		{name: "two sources name the three", input: `{"script":"return 1","name":"review"}`, want: "exactly one of script, name or run", failed: true},
+		{name: "an action needs its run", input: `{"script":"return 1","action":"stop"}`, want: "pass its id as run", failed: true},
+		{name: "a run alone answers its status", input: `{"run":"` + id + `"}`, want: "workflow " + id + " Count to two: done"},
+		{name: "a control on an ended run says so", input: `{"run":"` + id + `","action":"pause"}`, want: "is not running", failed: true},
+		{name: "a rerun asks about the script file as it is", input: `{"run":"` + id + `","action":"rerun"}`, want: "\n\n3", preview: "-- Count to two\nreturn 3"},
+		{name: "a script with the rerun replaces it", input: `{"run":"` + id + `","action":"rerun","script":"return 4"}`, want: "\n\n4", preview: "return 4"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if err := os.WriteFile(filepath.Join(h.scratchFor("s1"), flowFile(id, ".lua")), []byte("-- Count to two\nreturn 3"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			n := len(ui.asked)
+			out, failed := call(c.input)
+			if failed != c.failed || !strings.Contains(out, c.want) {
+				t.Fatalf("= %q (error %v), want %q", out, failed, c.want)
+			}
+			if c.preview != "" && (len(ui.asked) != n+1 || ui.asked[n].Arg != "script" || ui.asked[n].Preview != c.preview) {
+				t.Fatalf("asked %+v, want the script %q", ui.asked[n:], c.preview)
+			}
+		})
+	}
+	h.SetUIHooks(nil)
+	info := h.workflowTool(h.PipelineFor()).Info()
+	if _, bg := info.Parameters["background"]; bg || fmt.Sprint(info.Parameters["action"].(map[string]any)["enum"]) != "[status rerun]" {
+		t.Fatalf("headless schema: %v", info.Parameters)
+	}
+}
+
+// TestWorkflowBackgroundReports: a background run answers at once, its row
+// reads as still running, and its result reaches the model as a report.
+func TestWorkflowBackgroundReports(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart { return textParts("ok") }}, nil
+	}
+	seedSession(t, h)
+	resp, err := h.workflowTool(h.PipelineFor()).Run(context.Background(),
+		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"script":"return zemi.workflow.agent('x')","background":true}`})
+	if err != nil || toolStatus(tools.ToolWorkflow, !resp.IsError, resp.Content, false) != CallBG {
+		t.Fatalf("background start = %+v, %v", resp, err)
+	}
+	id := strings.Fields(strings.TrimPrefix(resp.Content, bgWorkflowStarted))[0]
+	waitFor(t, func() error {
+		if tr := h.Session().Transcript; !slices.ContainsFunc(tr, func(m ChatMessage) bool { return m.Text == "Workflow "+id+" finished" }) {
+			return fmt.Errorf("no report row in %+v", tr)
+		}
+		return nil
+	})
+	waitIdle(t, h)
 }
 
 // TestWorkflowCancel: cancelling the context stops a script that is

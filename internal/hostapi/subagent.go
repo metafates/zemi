@@ -273,8 +273,12 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		return h.memoryTool(p, parent, scope, text, quote, replaces)
 	}
 	if ask := pipe.Ask; ask != nil {
+		who := "agent " + def.Name
+		if f := h.tasks.flow(run.workflow); f != nil {
+			who = "workflow " + f.description + " · " + run.description + " (" + def.Name + ")"
+		}
 		pipe.Ask = func(req tools.Request) (bool, string, string) {
-			req.Reason = strings.TrimSuffix("agent "+def.Name+": "+req.Reason, ": ")
+			req.Reason = strings.TrimSuffix(who+": "+req.Reason, ": ")
 			return ask(req)
 		}
 	}

@@ -209,7 +209,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	f := &flowRun{
-		id: store.NewID()[:runIDLen], name: spec.name, description: cmp.Or(spec.description, spec.name, "workflow"),
+		id: store.NewID()[:runIDLen], name: spec.name, description: cmp.Or(spec.description, spec.name, clipRunes(leadingComment(spec.src), 60), "workflow"),
 		parent: parent, background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), progress: spec.progress,
 		status: RunRunning, limit: limit, started: time.Now(), restart: map[string]bool{},
 	}
@@ -1194,11 +1194,47 @@ func (h *Host) workflowTool(pipe *tools.Pipeline) fantasy.AgentTool {
 	return &workflowTool{h: h, pipe: pipe, saved: h.workflows()}
 }
 
-const workflowToolDesc = `Run a Lua script that coordinates subagents when code has to sit between them: stages that feed each other, loops, checking results. Independent tasks need no workflow. Pass a saved workflow's name, or a new script after reading the zemi skill's workflows.md for the API.`
+// workflowToolDesc carries the whole script API: a model that must load a
+// skill first writes a file instead of passing the script.
+const workflowToolDesc = `Run a Lua script that coordinates subagents with code between them: stages that feed each other, fan-out over a list, loops, checks. For independent tasks send several agent calls at once instead.
+
+The script gets Lua's string, table and math, zemi.json and zemi.workflow:
+agent(prompt, {agent, description, phase, model}) -> report, or nil, err; the prompt must stand alone
+parallel({fn, ...}) -> results, errs: runs the functions at once
+pipeline(items, stage, ...) -> results, errs: each item through the stages, stage(prev, item, i), items independent
+phase(name) groups the agents after it; log(...) tells the user; args is the input's args
+The script's return value is the result.
+
+local wf = zemi.workflow
+local notes = wf.pipeline(wf.args, function(dir) return wf.agent("Summarize " .. dir .. ", citing file:line.", { agent = "explore" }) end)
+return wf.agent("Write a design note from:\n" .. table.concat(notes, "\n"))
+
+The result names the run's script file. To change a run, edit that file and pass run with action rerun: agent calls identical to its finished ones answer at once.`
+
+// bgWorkflowStarted opens the result of a workflow call that went on in the
+// background, whose row reads as still running (toolStatus).
+const bgWorkflowStarted = "Started workflow "
 
 func (t *workflowTool) Info() fantasy.ToolInfo {
+	tui := t.h.hooks() != nil
 	var desc strings.Builder
 	desc.WriteString(workflowToolDesc)
+	actions := []string{string(actStatus), "rerun"}
+	params := map[string]any{
+		"script":      map[string]any{"type": "string", "description": "Lua source"},
+		"name":        map[string]any{"type": "string", "description": "a saved workflow to run"},
+		"args":        map[string]any{"description": "the script's zemi.workflow.args"},
+		"description": map[string]any{"type": "string", "description": "3-6 word label shown to the user"},
+		"concurrency": map[string]any{"type": "integer", "description": fmt.Sprintf("agents running at once, 1-%d (default %d); with run, changes a running workflow's", workflowMaxConcurrency, workflowConcurrency)},
+		"run":         map[string]any{"type": "string", "description": "id of a workflow run in this session to act on"},
+	}
+	// a detached run outlives a headless turn, which would throw its result away
+	if tui {
+		desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; send_to on the agent tool messages one of its agents (status lists them).")
+		actions = []string{string(actStatus), string(actPause), string(actResume), string(actStop), "rerun"}
+		params["background"] = map[string]any{"type": "boolean", "description": "run detached; the result arrives later as a message"}
+	}
+	params["action"] = map[string]any{"type": "string", "enum": actions, "description": "what to do to run"}
 	if len(t.saved) > 0 {
 		desc.WriteString("\n\nSaved workflows (pass name instead of script):")
 		for _, w := range t.saved {
@@ -1208,23 +1244,22 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
 		Name:        tools.ToolWorkflow,
 		Description: desc.String(),
-		Parameters: map[string]any{
-			"description": map[string]any{"type": "string", "description": "3-6 word label shown to the user"},
-			"script":      map[string]any{"type": "string", "description": "Lua source"},
-			"name":        map[string]any{"type": "string", "description": "saved workflow to run instead of a script"},
-			"args":        map[string]any{"description": "value exposed to the script as args"},
-		},
-		Required: []string{"description"},
+		Parameters:  params,
+		Required:    []string{},
 	}
 }
 
 func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h := t.h
 	var in struct {
-		Description string `json:"description"`
 		Script      string `json:"script"`
 		Name        string `json:"name"`
 		Args        any    `json:"args"`
+		Description string `json:"description"`
+		Concurrency int    `json:"concurrency"`
+		Background  bool   `json:"background"`
+		Run         string `json:"run"`
+		Action      string `json:"action"`
 	}
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -1233,43 +1268,120 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 		return resp, nil
 	}
 	defer h.postNotify(ctx, t.pipe.Pad, "workflow", call.Input, &reply, time.Now())
-	src, arg := in.Script, "script"
-	if in.Name != "" {
-		s, err := h.workflowSource(in.Name)
+	rerun := in.Run != "" && in.Action == "rerun"
+	switch n := len(slices.DeleteFunc([]string{in.Script, in.Name, in.Run}, func(s string) bool { return s == "" })); {
+	case n != 1 && !(n == 2 && rerun && in.Name == ""):
+		return fantasy.NewTextErrorResponse("pass exactly one of script, name or run; script goes with run only for action rerun"), nil
+	case in.Action != "" && in.Run == "":
+		return fantasy.NewTextErrorResponse("action acts on a run: pass its id as run"), nil
+	case in.Run != "" && !rerun:
+		act := flowAction(in.Action)
+		if act == "" {
+			act = map[bool]flowAction{true: actConcurrency, false: actStatus}[in.Concurrency > 0]
+		}
+		out, err := t.control(in.Run, act, in.Concurrency)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
-		src, arg = s, in.Name
+		return fantasy.NewTextResponse(out), nil
 	}
-	if strings.TrimSpace(src) == "" {
-		return fantasy.NewTextErrorResponse("pass script or name"), nil
+	spec := flowSpec{name: in.Name, description: in.Description, src: in.Script, args: in.Args, concurrency: in.Concurrency, background: in.Background && h.hooks() != nil}
+	arg := "script"
+	switch {
+	case in.Name != "":
+		src, err := h.workflowSource(in.Name)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		spec.src, arg = src, in.Name
+	case rerun:
+		spec.from = in.Run
+		if spec.src == "" { // read once: what the user approves is what runs
+			if _, err := readJournal(t.pipe.Pad, in.Run); err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			src, err := readPadFile(t.pipe.Pad, flowFile(in.Run, ".lua"))
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			spec.src = string(src)
+		}
+	}
+	if strings.TrimSpace(spec.src) == "" {
+		return fantasy.NewTextErrorResponse("the script is empty"), nil
 	}
 	// The script decides how many agents run and what they are told, so the
 	// user sees it before it starts (tools inside stay gated one by one).
-	if v := t.pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: "tool.workflow", Arg: arg, Description: in.Description, Preview: src}); v.Decision != perm.Allow {
+	if v := t.pipe.CheckDenied(tools.Request{Tool: "workflow", Subject: "tool.workflow", Arg: arg, Description: in.Description, Preview: spec.src}); v.Decision != perm.Allow {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "workflow "+arg)), nil
 	}
-	f, err := h.startFlow(ctx, flowSpec{name: in.Name, description: in.Description, src: src, args: in.Args, progress: func(f *flowRun) {
-		h.setToolDetail(call.ID, f.summary())
-	}})
+	if spec.background {
+		spec.done = h.deliverFlow
+		f, err := h.startFlow(ctx, spec)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		h.setToolDetail(call.ID, "background "+f.id+" (/agents)")
+		where := ""
+		if f.script != "" {
+			where = " (" + f.script + ")"
+		}
+		return fantasy.NewTextResponse(bgWorkflowStarted + f.id + where + ". Its result arrives as a message when it finishes; do not wait for it."), nil
+	}
+	spec.progress = func(f *flowRun) { h.setToolDetail(call.ID, f.summary()) }
+	f, err := h.startFlow(ctx, spec)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	out := f.result
+	report, ok := f.report()
+	if !ok {
+		return fantasy.NewTextErrorResponse(h.truncOutput(t.pipe.Pad, "workflow", report)), nil
+	}
+	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "workflow", report)), nil
+}
+
+// control runs a control action on a run of this session.
+func (t *workflowTool) control(id string, act flowAction, n int) (string, error) {
+	if f := t.h.tasks.flow(id); f != nil && f.parent != t.h.AgentSessionID() {
+		return "", Usagef("workflow %s belongs to another session", id)
+	}
+	return t.h.flowControl(id, act, n, "")
+}
+
+// report is what the model reads of an ended run: its value and log,
+// headed by the run and its script, or the failure and how to rerun.
+func (f *flowRun) report() (string, bool) {
+	var log string
 	if len(f.log) > 0 {
-		out += "\n\nlog:\n" + strings.Join(f.log, "\n")
+		log = "\n\nlog:\n" + strings.Join(f.log, "\n")
 	}
+	where := "workflow " + f.id
 	if f.err != nil {
-		msg := "workflow failed: " + f.err.Error()
+		msg := where + " failed: " + f.err.Error()
 		if errors.Is(f.err, context.Canceled) {
-			msg = "workflow cancelled"
+			msg = where + ": the user stopped it; do not start it again unless they ask"
 		}
-		return fantasy.NewTextErrorResponse(h.truncOutput(t.pipe.Pad, "workflow", strings.TrimSpace(msg+"\n"+out))), nil
+		if f.script != "" {
+			log += "\n\nEdit the script if needed and pass run=" + f.id + " with action rerun: the agents that finished answer at once."
+		}
+		return msg + log, false
 	}
-	if strings.TrimSpace(out) == "" {
-		out = "(the workflow returned nothing)"
+	if f.script != "" {
+		where += " · " + f.script
 	}
-	return fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "workflow", out)), nil
+	return "[" + where + "]\n\n" + cmp.Or(strings.TrimSpace(f.result), "(the workflow returned nothing)") + log, true
+}
+
+// deliverFlow hands a background run's report to the session that started
+// it, as a background agent's; a stopped one has none.
+func (h *Host) deliverFlow(f *flowRun) {
+	defer h.drainQueue()
+	if errors.Is(f.err, context.Canceled) {
+		return
+	}
+	report, ok := f.report()
+	status := map[bool]string{true: "finished", false: "failed"}[ok]
+	h.deliverReport(f.parent, f.id, strings.TrimSuffix("workflow:"+f.name, ":"), status, f.description, report)
 }
 
 // truncOutput cuts a host tool's output to what a result may carry and

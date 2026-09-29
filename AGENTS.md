@@ -147,8 +147,8 @@ terminal both streams share; `-q` and `--json` keep stderr to diagnostics, `--re
 switches `ui.reasoning`'s view on. An ask no UI can answer is denied as `tools.ByNobody` and
 recorded (`Host.HeadlessDenials`, subagents' too), and stderr ends with the list and the one
 change that lets them through (`deniedHint`). It also drops what needs a user (`headlessExcluded`), the
-agent tool's `background` and `send_to` (a detached report would outlive the run), and the
-prompt lines naming them, and a plugin's `zemi.agent.send` raises there (nothing would bound
+agent tool's `background` and `send_to` (a detached report would outlive the run), the workflow
+tool's `background` and every `action` but `status` and `rerun`, and the prompt lines naming them, and a plugin's `zemi.agent.send` raises there (nothing would bound
 its chain of turns). A headless run with no saved trust decision runs untrusted and says
 so. With no UI `Host.Notify` prints a warning or an error to `Host.Stderr` as "zemi: <title>:
 <body>", so `zemi run` never swallows one. A command that opens a screen gets `Host.Screen`'s
@@ -825,7 +825,12 @@ lua-language-server is installed.
   `agent` or `print` raises naming its `zemi.workflow` spelling);
   `agent`/`parallel` are `lua.Suspending` wrappers, and both refuse under `pcall` or a library
   callback (`lua.InGoCall`), where a yield would unwind the Go call. The tool's description
-  points at the zemi skill's workflows.md for the API, which every request would otherwise pay for.
+  carries the whole script API, inline first (a model sent to a skill wrote a file instead);
+  `TestPromptBudget` counts it. The tool takes one of `script`, `name` or `run` (`script` joins
+  `run` for action `rerun`); `run` with an action is `flowControl`, `background` delivers the
+  result like a background agent's report (`deliverFlow` through `deliverReport`, whose head
+  reads `Workflow <id> finished`), and a failed run's result says how to rerun it. A workflow
+  agent's asks name the workflow and the agent.
   A run (`flowRun`, `startFlow`, registered in `taskReg.flows`) is live work until its script
   ends, paused or between agents too: `taskReg.live` counts it, and not its agents, for rewind,
   fork, session delete, the queue drain and the statusline, and `stillRunning` names where to

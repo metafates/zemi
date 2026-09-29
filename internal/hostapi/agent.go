@@ -1085,6 +1085,7 @@ func (s *streamAdapter) ToolCallEnd(id, name string, ok bool, output, changed st
 func toolStatus(name string, ok bool, output string, cancelled bool) CallStatus {
 	switch {
 	case name == tools.ToolAgent && strings.HasPrefix(output, bgAgentStarted),
+		name == tools.ToolWorkflow && strings.HasPrefix(output, bgWorkflowStarted),
 		name == tools.ToolBash && strings.Contains(output, "so it "+tools.JobHandoff),
 		name == tools.ToolJobStart && ok:
 		return CallBG

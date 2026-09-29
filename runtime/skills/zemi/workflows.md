@@ -1,6 +1,15 @@
 # Workflows
 
-A workflow is a Lua script that coordinates subagents. Pass it inline to the `workflow` tool; a saved one lives in `workflows/<name>.lua` (here or in `.agents/`), whose leading `--` lines are its description, and runs by `/workflow <name> [args]` or the tool's `name`. It runs in its own sandbox with Lua's string, table and math, `zemi.json` and `zemi.workflow`, nothing else of zemi.
+Run a workflow inline: pass the script to the `workflow` tool, whose description is the API. Nothing needs saving first. The script runs in its own sandbox with Lua's string, table and math, `zemi.json` and `zemi.workflow`, nothing else of zemi; a bare `agent` or `print` raises naming the `zemi.workflow` spelling.
+
+- `concurrency` (1-16, default 5) is how many agents run at once; 100 start at most per run. `background` runs it detached, and its result arrives as a message.
+- `run` with `action` acts on a run of this session: `status` lists its agents by phase with their ids, `pause` lets running agents finish and starts no more, `resume`, `stop`, `concurrency` with a number changes it while it runs. The agent tool's `send_to` messages one of its agents.
+- Every run keeps its script and a journal in the session's scratchpad as `workflow-<id>.lua` and `.jsonl`; the result names the script. To change a run, edit that file (or pass `script` with it) and pass `run` with action `rerun`: agent calls identical to its finished ones (same agent, model and prompt) answer at once from the journal, in order, even when the files they read changed since.
+- `agent` and `parallel` cannot run inside `pcall`, `table.sort` or `string.gsub` callbacks.
+
+## Saved workflows (`workflows/<name>.lua`)
+
+Save one only when the user wants it by name: copy the run's script with the write tool to `workflows/<name>.lua` in the user config directory or the repository's `.agents/` (commands cannot write `.agents`). The file's leading `--` lines are its description, and the tool's `name` runs it with `args`.
 
 ```lua
 -- Summarize this branch for a PR description.
@@ -15,9 +24,3 @@ if not diff then return "failed: " .. err end
 wf.phase("write")
 return wf.agent("Write a PR description (motivation, changes, how to test) from:\n" .. diff, { agent = "explore" })
 ```
-
-- `agent(prompt, { agent, description, phase, model })` returns the report or `nil, err`; the agent defaults to `general`. The prompt must stand alone: agents do not see the conversation.
-- `parallel({ fn, ... })` returns `results, errs`; 5 agents run at once, 100 at most per run.
-- `pipeline(items, stage, ...)` runs each item through the stages, `stage(prev, item, i)`, items independent; a stage's `nil` ends that item, its `nil, err` lands in `errs`.
-- `phase(name)` groups the agents after it, `log(...)` adds a line the user sees and the result carries, `args` is the run's args.
-- `agent` and `parallel` cannot run inside `pcall`, `table.sort` or `string.gsub` callbacks.

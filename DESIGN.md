@@ -1137,8 +1137,9 @@ question or a report is no plan to approve),
 `diagnostics` (language
 server errors and warnings for any file), `lsp` (definition, implementation,
 references, rename, file symbols and project-wide symbol search by name), `skill` (loads a SKILL.md body on demand), plus the
-three the host adds: `agent` (delegate to a subagent), `workflow` (write
-or run a workflow script), and `lua` (run Lua inside zemi, main agent only, as user origin:
+three the host adds: `agent` (delegate to a subagent), `workflow` (run a
+workflow script inline or by name, in the background too, rerun an edited one,
+and pause, resume or stop a background one), and `lua` (run Lua inside zemi, main agent only, as user origin:
 full access to toggle skills and anything else user Lua can do; it asks
 in an untrusted project or read-only agent, and before a call that widens what
 zemi allows or starts a program outside the sandbox, §9).
