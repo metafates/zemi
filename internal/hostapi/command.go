@@ -144,7 +144,7 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		}
 		defer h.RT.PushFrame(L, cmd.Origin, cmd.Path)()
 		L.Push(cmd.Fn)
-		L.Push(commandArgs(L, args))
+		L.Push(lua.FromGo(L, commandArgs(args)))
 		return luaResult(L, L.PCall(1, 0, nil))
 	}))
 
@@ -295,15 +295,7 @@ func AskFirst(line, shell string, open func(confirm string) error) error {
 // task suspends, so the worker runs the next key before its rest; zemi run waits
 // for the whole command.
 func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string) error {
-	t := lua.Task{
-		Class: lua.ClassUI, Origin: cmd.Origin, Path: cmd.Path,
-		Start: func(L *glua.LState) (*glua.LFunction, []glua.LValue, error) {
-			if h.currentGen() != cmd.Gen {
-				return nil, nil, lua.ErrReloaded
-			}
-			return cmd.Fn, []glua.LValue{commandArgs(L, argString)}, nil
-		},
-	}
+	t := h.luaTask(lua.ClassUI, luaCaller{gen: cmd.Gen, origin: cmd.Origin, path: cmd.Path}, cmd.Fn, commandArgs(argString))
 	if h.hooks() == nil {
 		_, err := h.RT.RunTask(ctx, t)
 		return err
@@ -317,16 +309,9 @@ func (h *Host) runLuaCommand(ctx context.Context, cmd *Command, argString string
 }
 
 // commandArgs is a command handler's argument: { args = raw, list = words }.
-func commandArgs(L *glua.LState, argString string) *glua.LTable {
-	args := L.NewTable()
-	args.RawSetString("args", glua.LString(argString))
-	list := L.NewTable()
+func commandArgs(argString string) map[string]any {
 	typed, _ := agent.CutAttached(argString)
-	for i, f := range strings.Fields(typed) {
-		list.RawSetInt(i+1, glua.LString(f))
-	}
-	args.RawSetString("list", list)
-	return args
+	return map[string]any{"args": argString, "list": strings.Fields(typed)}
 }
 
 // RunRHS executes a keymap right-hand side on the ui class, a function as a
