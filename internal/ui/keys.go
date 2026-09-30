@@ -216,7 +216,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		a.submitComposer()
 		return nil
-	case "shift+enter", "alt+enter", "ctrl+enter", "ctrl+j":
+	case "shift+enter", "alt+enter", "ctrl+enter":
 		if !a.multiline() {
 			return nil
 		}
@@ -391,8 +391,8 @@ func (a *App) focusedNode() string {
 }
 
 // listMove maps list navigation keys (arrows, k/j, ctrl+p/n) to -1 or 1;
-// 0 means the key is not a move. ctrl+k and ctrl+j stay the composer's
-// unless a list alias takes them.
+// 0 means the key is not a move. ctrl+j and ctrl+k scroll the chat, so a
+// list takes them only through a list alias.
 func listMove(key string) int {
 	switch key {
 	case "up", "k", "ctrl+p":

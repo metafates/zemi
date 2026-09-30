@@ -85,7 +85,7 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.mouse", Kind: KindBool, Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
 		{Path: "ui.notify", Kind: KindString, Default: "auto", Choices: []string{"auto", "osc", "native", "bell", "off"}, Desc: "how zemi alerts while its window is unfocused, as a turn ends or a prompt waits: osc (a terminal notification), native (osascript or notify-send), bell, off; auto picks per terminal (/health names it)"},
 		{Path: "ui.progress", Kind: KindBool, Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
-		{Path: "ui.composer.multiline", Kind: KindBool, Default: true, Desc: "composer accepts embedded newlines (shift+enter, alt+enter, ctrl+j)"},
+		{Path: "ui.composer.multiline", Kind: KindBool, Default: true, Desc: "composer accepts embedded newlines (shift+enter, alt+enter)"},
 		{Path: "ui.composer.history", Kind: KindNumber, Default: 50.0, Desc: "composer history entries kept (0 disables)"},
 		{Path: "ui.completion.files", Kind: KindBool, Default: true, Desc: "complete file paths after @ in the composer"},
 		{Path: "ui.completion.max_items", Kind: KindNumber, Default: 10.0, Desc: "completion popup rows"},

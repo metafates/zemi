@@ -892,7 +892,7 @@ func (h *Host) AppendChat(m ChatMessage) {
 // are not Lua keymaps, so /help would list none of them.
 var goKeys = [][2]string{
 	{"enter", "send the message"},
-	{"shift+enter, alt+enter, ctrl+j", "newline"},
+	{"shift+enter, alt+enter", "newline"},
 	{"esc", "back, or twice to interrupt"},
 	{"ctrl+c", "interrupt, clear the draft, quit"},
 	{"ctrl+g", "edit the draft in your editor"},
@@ -902,7 +902,7 @@ var goKeys = [][2]string{
 	{"ctrl+z", "undo in the composer"},
 	{"ctrl+a, ctrl+e", "line start, line end"},
 	{"alt+left, alt+right", "move by word"},
-	{"ctrl+u, ctrl+k", "delete to line start, to line end"},
+	{"ctrl+u", "delete to line start"},
 	{"ctrl+w", "delete the word before the cursor"},
 	{"/", "command palette"},
 	{"@", "attach a project file"},

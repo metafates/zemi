@@ -1837,7 +1837,7 @@ provenance string.
   (cached per block id and width; a frame never re-runs glamour). The
   view word-wraps (the widget sets `wrap`) and is bottom-anchored: long
   lines stay visible instead of truncating. Scrollback (`pgup`/`pgdown`,
-  `shift+up`/`shift+down`, `ctrl+home`/`ctrl+end`, mouse wheel) moves the viewport
+  `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j`, `ctrl+home`/`ctrl+end`, mouse wheel) moves the viewport
   off the tail;
   a scrolled view stays anchored while new lines fill underneath, and
   sending a message (or a `!command`) snaps back to the tail, a slash
@@ -1878,7 +1878,7 @@ provenance string.
   <n>`, `/copy code` and `/copy reply`), so no widget can hide what the
   model actually received.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
-  bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+j` newline
+  bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.
   A prompt glyph marks the first row and a gutter aligns the rest, so a
   multi-line draft reads as one block. The composer stays editable during
@@ -1890,10 +1890,10 @@ provenance string.
   view goes back; idle, `ctrl+c` moves a draft into the history, and on an
   empty composer twice within 2s quits), `ctrl+o` flips `ui.reasoning`
   between the thinking inline and the thinking pane (a runtime pick, §6.1),
-  `pgup`/`pgdown`, `shift+up`/`shift+down` and `ctrl+home`/`ctrl+end` scroll the
-  transcript (the wheel too: mouse cell motion is captured because the altscreen has no
-  native scrollback), and `alt+up`/`alt+down` jump to the previous or next
-  prompt; in lists `ctrl+d`/`ctrl+u` move half a page, and
+  `pgup`/`pgdown`, `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j` and `ctrl+home`/`ctrl+end`
+  scroll the transcript (the wheel too: mouse cell motion is captured because the
+  altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or
+  next prompt; in lists `ctrl+d`/`ctrl+u` move half a page, and
   scroll a box's text when it overflows, which the footer names as
   `ctrl+d/u scroll`. A typed line keeps `ctrl+u` for its text, so neither
   half-page key scrolls the prompt text above it, and the

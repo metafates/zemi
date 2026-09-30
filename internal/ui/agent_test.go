@@ -599,7 +599,7 @@ func TestGoldenAgentStream(t *testing.T) {
 // and ctrl+c drops it.
 func TestInterruptKeys(t *testing.T) {
 	esc, ctrlC, up := tea.KeyPressMsg{Code: tea.KeyEscape}, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: tea.KeyUp}
-	ctrlK, x := tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: 'x', Text: "x"}
+	ctrlE, x := tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: 'x', Text: "x"}
 	var wait tea.KeyPressMsg          // advances the clock 3s
 	view := tea.KeyPressMsg{Code: -1} // opens an agent view
 	for _, c := range []struct {
@@ -617,16 +617,16 @@ func TestInterruptKeys(t *testing.T) {
 		{"ctrl+c interrupts at once", true, false, "", []tea.KeyPressMsg{ctrlC}, true, "also this", "Cancelling"},
 		{"ctrl+c clears a draft, up restores it", false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, "draft", ""},
 		{"ctrl+c on an empty composer arms quit", false, false, "", []tea.KeyPressMsg{ctrlC}, false, "", "ctrl+c quit"},
-		{"a broken prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlK, x}, false, "x", ""},
-		{"a timed out prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlK, wait}, false, "", ""},
-		{"ctrl+c drops a held prefix", false, false, "abc", []tea.KeyPressMsg{ctrlK, ctrlC}, false, "", ""},
+		{"a broken prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, "abcx", ""},
+		{"a timed out prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlE, wait, x}, false, "abcx", ""},
+		{"ctrl+c drops a held prefix", false, false, "abc", []tea.KeyPressMsg{ctrlE, ctrlC}, false, "", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, 90, 16)
 			clock := time.UnixMilli(1000)
 			agentID := store.ShortID()
 			app.now = func() time.Time { return clock }
-			runLua(t, app, `zemi.keymap.set("ctrl+k s", "zemi.ui.help")`)
+			runLua(t, app, `zemi.keymap.set("ctrl+e s", "zemi.ui.help")`)
 			if c.active {
 				host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: time.Second, Steering: []string{"also this"}})
 			}

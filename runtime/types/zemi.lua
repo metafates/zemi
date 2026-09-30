@@ -380,12 +380,12 @@ zemi.keymap = {}
 --- the keys its bindings come first, then the global ones, unless a more
 --- trusted global binding holds the key. It may not take a key a more
 --- trusted global binding holds. The composer's own editing keys (ctrl+a,
---- ctrl+e, ctrl+k, ctrl+u, ctrl+w, home, end) bind like any other, and the
---- composer then no longer gets them.
+--- ctrl+e, ctrl+u, ctrl+w, home, end) bind like any other, and the composer
+--- then no longer gets them.
 ---
 --- With `opts.list` the key moves in every list, popup and prompt, and stays
 --- what it was elsewhere: `zemi.keymap.set("ctrl+j", "down", { list = true })`
---- (ctrl+j is still the composer's newline). While a line types, an alias to
+--- (ctrl+j still scrolls the chat). While a line types, an alias to
 --- home, end or ctrl+u keeps the key's own meaning, since the line edits with
 --- those. enter, esc, tab, shift+tab, space and backspace raise.
 ---

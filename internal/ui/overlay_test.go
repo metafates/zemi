@@ -833,8 +833,8 @@ func TestListAlias(t *testing.T) {
 		}, "ctrl+j", func(a *App) string {
 			return map[bool]string{false: "not moved"}[a.palette.open && a.palette.selected == 1]
 		}},
-		{"ctrl+j on the bare composer is still a newline", func(a *App) { pressKeys(a, "hi") }, "ctrl+j", func(a *App) string {
-			return map[bool]string{false: fmt.Sprintf("composer %q", a.composer.text)}[a.composer.text == "hi\n"]
+		{"ctrl+j on the bare composer scrolls the chat", func(a *App) { pressKeys(a, "hi") }, "ctrl+j", func(a *App) string {
+			return map[bool]string{false: fmt.Sprintf("composer %q", a.composer.text)}[a.composer.text == "hi"]
 		}},
 		{"an alias of ctrl+d moves half a page", func(a *App) {
 			a.openOverlay(hostapi.Overlay{ID: "o", Origin: lua.OriginBuiltin, Items: many})
