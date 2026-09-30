@@ -513,7 +513,7 @@ local function builder(ctx, width)
 				i = i + 1
 			elseif t.kind == "reasoning" then
 				local s = t.thought or 0
-				if o.open or s > 5 or s >= 1 and (i == last or list[i + 1].kind == "reasoning") then
+				if o.open or s > 5 or fmt.told(s) and (i == last or list[i + 1].kind == "reasoning") then
 					B.thought(s, fold or ("thought:" .. idx), (o.open or unrolled[idx]) and t.text or nil)
 					secs = nil
 				else
@@ -872,7 +872,7 @@ zemi.ui.widget.add({
 				if text == "" and #tools == 0 then
 					B.gap("activity")
 					B.thinking(not M.pane and reasoning or nil)
-				elseif ctx.show_reasoning or thought > 5 or #tools == 0 and thought >= 1 then
+				elseif ctx.show_reasoning or thought > 5 or #tools == 0 and fmt.told(thought) then
 					B.gap("activity")
 					B.thought(thought, "reasoning", ctx.show_reasoning and reasoning or nil)
 				else
