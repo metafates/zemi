@@ -695,9 +695,9 @@ func TestSteeringQueue(t *testing.T) {
 	h.AgentCancel() // no runner: must not panic
 }
 
-// TestHistoryCarriesAcrossTurns is the regression for the runner rebuilt
-// on every send: the second turn's prompt must carry the first exchange
-// (system, context, user, assistant, user), and both turns land in the transcript.
+// TestHistoryCarriesAcrossTurns: the runner is rebuilt on every send, and the
+// second turn's prompt still carries the first exchange (system, context,
+// user, assistant, user), and both turns land in the transcript.
 func TestHistoryCarriesAcrossTurns(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "ok")

@@ -422,14 +422,13 @@ type Host struct {
 		steps []func() error
 	}
 
-	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3);
-	// modelFn stubs the agent and reflector model in tests.
+	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3)
 	reflectMu sync.Mutex
 	// cutMu orders a rewind's cut against a reflector run's writes, so a run
 	// never stores what it read from rows a rewind removed.
 	cutMu    sync.Mutex
-	initFail atomic.Pointer[string] // headline of the user init.lua failure this boot recorded
-	modelFn  func() (fantasy.LanguageModel, error)
+	initFail atomic.Pointer[string]                // headline of the user init.lua failure this boot recorded
+	modelFn  func() (fantasy.LanguageModel, error) // stubs every model in tests
 
 	busyMu sync.Mutex
 	busy   []*busyJob // user-visible jobs that are not a turn, oldest first
@@ -514,7 +513,7 @@ type Host struct {
 	luaRuns     atomic.Int64
 
 	// turn is the scope of the turn runTurns is on: cancelling it stops
-	// compaction, the model, tools and auto-mode screening.
+	// compaction, the model and tools.
 	turn atomic.Pointer[turnScope]
 
 	modes modeReg // permission modes in cycle order
@@ -1271,10 +1270,9 @@ func (h *Host) renderWidget(ctx context.Context, w *Widget, width, height int, s
 		if w.Gen != h.currentGen() {
 			return nil, lua.ErrReloaded
 		}
-		// The purity guard is raised on the interpreter goroutine, only
-		// while render runs: raised before Do, it also refused Lua that ran
-		// while this render merely waited in the queue (boot code behind
-		// the trust prompt).
+		// the purity guard holds only while render runs, not while this
+		// request waits in the queue behind other Lua (boot code behind the
+		// trust prompt)
 		h.rendering.Store(true)
 		defer h.rendering.Store(false)
 		defer h.RT.PushFrame(L, w.Origin, w.Path)()

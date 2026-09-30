@@ -53,9 +53,7 @@ func newTestHostUI(t *testing.T) *Host {
 // runUser executes src as a user-origin chunk and fails the test on error.
 // A slice gets 30s, not the interpreter's 1s ceiling, which a loaded machine
 // reaches on a chunk that starts processes. The select guard turns an
-// interpreter deadlock into a loud failure instead of a hung test binary
-// (the watch-delivery regression in TestConfigWatchNoDeadlock used to wedge
-// the queue permanently).
+// interpreter deadlock into a loud failure instead of a hung test binary.
 func runUser(t *testing.T, r *lua.Runtime, src string) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -617,12 +615,10 @@ func TestLuaLiteral(t *testing.T) {
 	}
 }
 
-// TestConfigWatchNoDeadlock is the regression for the watch-delivery
-// deadlock: a Lua config.set inside a running interpreter request used to
-// deliver watches via a blocking RT.Do on the same (busy) queue, wedging
-// the interpreter forever. The set must deliver the watch inline, the
-// callback must run attributed to its registration origin (its own
-// zemi.config.set would otherwise be refused), and the chunk must finish.
+// TestConfigWatchNoDeadlock: a Lua config.set inside a running interpreter
+// request delivers the watch inline, since a blocking RT.Do on the busy queue
+// would wedge it; the callback runs as its registration origin (its own
+// zemi.config.set would otherwise be refused), and the chunk finishes.
 func TestConfigWatchNoDeadlock(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `

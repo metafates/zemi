@@ -285,10 +285,10 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 }
 
 // TestSendPrepCheap: everything a send does before the provider request is
-// in-memory work once the process is warm. environmentPrompt used to run
-// git status on the first send of every session, which costs seconds in a
-// large repository and lands on time to first token; a subprocess or a disk
-// walk back on this path blows this budget by orders of magnitude. The
+// in-memory work once the process is warm: git status on a send costs
+// seconds in a large repository and lands on time to first token, and a
+// subprocess or a disk walk on this path blows this budget by orders of
+// magnitude. The
 // budget is CPU time, the process's and its children's, which a loaded
 // machine does not stretch like the clock; the test runs alone (no
 // t.Parallel), so the process's CPU is the builds'.
