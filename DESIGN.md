@@ -53,7 +53,11 @@ for TUI output), `aymanbagabas/go-udiff` (edit previews), `creack/pty`
 (sandbox tests), `sahilm/fuzzy` (the one list filter, §6.6),
 `lucasb-eyer/go-colorful` (OKLCH for the 16-color fallback, §6.6;
 already pulled in by `x/ansi`), `go-readability` with `html-to-markdown` (the `fetch` tool: the article
-out of a page, as markdown the model can read), and `spf13/cobra` (the command line: subcommands, help, and bash, zsh and fish completion with values from the project store and an inert boot, `Host.Inert`; kong was weighed and lost on completion). Tool input validation is a small hand-written
+out of a page, as markdown the model can read), `mvdan.cc/sh/v3` (its
+`syntax` parser alone reads the model's shell commands, §9), `golang.org/x/text`
+(the case folding APFS does, for paths and program names),
+`golang.org/x/sys` (openat, Landlock and seccomp), `golang.org/x/mod` (plugin
+release tags and the build's version), and `spf13/cobra` (the command line: subcommands, help, and bash, zsh and fish completion with values from the project store and an inert boot, `Host.Inert`; kong was weighed and lost on completion). Tool input validation is a small hand-written
 schema check, not a JSON Schema library. `charm.land/catwalk` is taken
 for its embedded provider catalog and its client (§6.3): no network at
 boot, an update only when the user asks, the user's own
