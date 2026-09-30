@@ -112,17 +112,22 @@ zemi.ui.widget.add({
 			end
 			return n
 		end
+		-- with the thinking pane drawn the block centers over the chat, off the
+		-- cell where the pane's separator meets this rule (after its corner)
+		local span = ctx.width
+		local rects = ctx.regions.thinking and zemi.ui.layout.rects() or {}
+		if rects.thinking and rects.composer then span = math.min(span, rects.thinking.x - rects.composer.x - 2) end
 		-- the snail keeps 8 cells of rule; the label gives way down to 16 cells
 		-- before a part goes, then clips into what the parts leave
 		local keep = math.min(zemi.ui.width(label), 16)
-		while #parts > 0 and keep + room() + 10 > ctx.width do
+		while #parts > 0 and keep + room() + 10 > span do
 			local least = 1
 			for i, p in ipairs(parts) do
 				if p[2] < parts[least][2] then least = i end
 			end
 			table.remove(parts, least)
 		end
-		label = fmt.clip(label, ctx.width - 10 - room())
+		label = fmt.clip(label, span - 10 - room())
 		---@type string[]
 		local texts = {}
 		for i, p in ipairs(parts) do
@@ -133,7 +138,7 @@ zemi.ui.widget.add({
 		if state ~= shown then
 			shown, since = state, ctx.frame
 		end
-		local left = text > 0 and math.floor((ctx.width - text) / 2) or ctx.width
+		local left = text > 0 and math.floor((span - text) / 2) or ctx.width
 		local row = snail.rule(state, ctx.frame - since, left)
 		if text > 0 then
 			row[#row + 1] = { text = " " .. label, hl = "Dim", effect = "shimmer" }
