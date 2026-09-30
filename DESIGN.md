@@ -1413,9 +1413,9 @@ UI extensibility contract:
   refuses one, and `/theme` picks one with the list open, enter on a row
   repainting the screen in it as the preview. The groups are defined once, for every theme, by the shipped
   `theme.lua` through `zemi.ui.hl.set`, and user config's `hl.set` replaces
-  one. The `Normal` group's `bg` is the
-  app's canvas, which every group without a fill of its own sits on and
-  which OSC 11 gives the terminal too (reset on every exit); every box
+  one. The palette's `bg` is the app's canvas, which every group without a
+  fill of its own sits on and which OSC 11 gives the terminal too
+  (reset on every exit), while a `bg` on `Normal` recolors its text alone; every box
   (overlays, prompts, toasts, popups) and the composer sit on `panel`, a
   box's selected row on `band`. A group names a role, hex or an ANSI color,
   or `link`s to another group (neovim's `link`, followed

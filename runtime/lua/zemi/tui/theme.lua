@@ -7,9 +7,8 @@
 -- string or number in code, danger a failure, warn a warning, ok done.
 
 local groups = {
-	-- Normal carries the app background: the resolver fills groups that
-	-- have no bg of their own with it, so zemi paints its own canvas and
-	-- the terminal's background never shows through.
+	-- the canvas is the palette's bg, which every group without a bg of its
+	-- own sits on; a bg set here recolors Normal text alone
 	Normal = { fg = "fg", bg = "bg" },
 	Accent = { fg = "accent" },
 	Dim = { fg = "dim" },

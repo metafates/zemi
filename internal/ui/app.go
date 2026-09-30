@@ -1590,7 +1590,7 @@ func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	if pad <= 0 {
 		return segs
 	}
-	// Normal carries the app background (theme.lua), so a fill cell paints
-	// the canvas instead of leaving the terminal's background showing.
+	// a Normal fill cell sits on the canvas, the palette's bg, instead of
+	// leaving the terminal's background showing
 	return append(append([]hostapi.Segment{}, segs...), hostapi.Segment{Text: strings.Repeat(" ", pad), HL: "Normal"})
 }
