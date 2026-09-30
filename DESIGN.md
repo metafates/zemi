@@ -1764,8 +1764,9 @@ provenance string.
   stage node, or the whole screen when it is under 40 by 12; the live toasts (five at
   most) are one tray of a fixed width at the stage's top right, newest first, a section
   per level and title with one row per toast, each leaving when its own time runs out
-  (4 s for info, 8 s for a warning or an error); completion popups stand on the
-  composer's top rule at the stage's bottom when the stage is above the composer, else go
+  (4 s for info, 8 s for a warning or an error); completion popups end at the stage's
+  bottom, standing on the composer frame's top rule when it has one, when the stage is
+  above the composer, else go
   beside the composer on the side with room; Lua floats never cover the composer or the alarm
   pills, and without a bar the pills float at the bottom-left. A scrolled region
   keeps its last column for a thin scrollbar and a blank before it, and its widgets
