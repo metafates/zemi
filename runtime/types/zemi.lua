@@ -1228,8 +1228,8 @@ function zemi.ui.redraw() end
 ---| "sticky_down" # to the next header below it, else the tail
 
 --- Scroll a layout node, or the stage's scrolled region (the chat) without
---- `id`, as the zemi.ui.scroll.* host actions do: for a click. Raises inside
---- render.
+--- `id`, as the zemi.ui.scroll.* host actions do: for a click or a handler.
+--- User or builtin origin only; raises inside render.
 ---@param action zemi.ScrollAction
 ---@param id? string
 function zemi.ui.scroll(action, id) end

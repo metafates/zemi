@@ -435,6 +435,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 
 	// scroll(action, id?) is the zemi.ui.scroll.* host actions for a click.
 	tb.RawSetString("scroll", L.NewFunction(func(L *glua.LState) int {
+		h.refuseBelowUser(L, "ui.scroll")
 		kind := ScrollAction(L.CheckString(1))
 		if !slices.Contains(scrollActions, kind) {
 			L.ArgError(1, strings.Join(strs(scrollActions), ", "))

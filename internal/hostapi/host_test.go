@@ -400,6 +400,7 @@ func TestRenderAllowlist(t *testing.T) {
 		{`zemi.memory.add("x")`, "memory.add"},
 		{`zemi.skills.enable("x")`, "skills.enable"},
 		{`zemi.config.watch("ui.mouse", function() end)`, "config.watch"},
+		{`zemi.ui.scroll("bottom")`, "ui.scroll"},
 		{`zemi.fs.read("x")`, "fs.read"},
 		{`job:wait(1000)`, "job:wait"},
 	}
@@ -658,7 +659,7 @@ func TestSetModelFiresWatches(t *testing.T) {
 
 // TestReasoningToggle: ctrl+o flips ui.reasoning between its two choices,
 // fires its watches and keeps the pick, which the default forgets; code
-// below user may not flip it.
+// below user may neither flip it nor scroll the user's screen.
 func TestReasoningToggle(t *testing.T) {
 	h, r := newTestHostDB(t)
 	h.KeepPicks.Store(true)
@@ -680,9 +681,14 @@ func TestReasoningToggle(t *testing.T) {
 		}
 	}
 	for _, o := range []lua.Origin{lua.OriginPlugin, lua.OriginProject} {
-		if err := r.ExecuteChunk(t.Context(), `zemi.ui.reasoning.toggle()`, "x.lua", o); err == nil || !strings.Contains(err.Error(), "only user config") {
-			t.Errorf("%s code flipped ui.reasoning: %v", o, err)
+		for _, call := range []string{`zemi.ui.reasoning.toggle()`, `zemi.ui.scroll("bottom")`} {
+			if err := r.ExecuteChunk(t.Context(), call, "x.lua", o); err == nil || !strings.Contains(err.Error(), "only user config") {
+				t.Errorf("%s code ran %s: %v", o, call, err)
+			}
 		}
+	}
+	if err := r.ExecuteChunk(t.Context(), `zemi.ui.scroll("bottom", "thinking")`, "x.lua", lua.OriginBuiltin); err != nil {
+		t.Fatal(err)
 	}
 }
 
