@@ -122,12 +122,13 @@ the `LState`.**
 
 1. **Main goroutine**: bubbletea program. `Update` normalizes input, applies
    Go-side state, enqueues Lua work, schedules `View`.
-2. **Lua host goroutine (actor)**: owns the `LState`. A separate
-   dispatcher goroutine owns the queue, the priority classes, and the hot
-   flag, so callers enqueue (or get the fail-fast "hot" answer) without
-   ever touching a wedged interpreter. Requests: UI callbacks (keymap,
+2. **Lua host goroutine (actor)**: owns the `LState` and runs the
+   requests it pops from its generation's queue, a locked heap ordered by
+   priority class. Callers enqueue under the lock, and the hot flag is
+   read before that, so they get the fail-fast "hot" answer without ever
+   touching a wedged interpreter. Requests: UI callbacks (keymap,
    widget render, events), tool executions, config loading. Each request
-   is `(fn, args, reply chan, ctx)`. Callers
+   is `(fn, class, reply chan, ctx)`. Callers
    block on `reply`; `ctx` cancellation preempts the Lua request itself:
    the host installs it with `LState.SetContext(ctx)`, gopher-lua checks
    `ctx.Done()` before every opcode and raises a catchable Lua error
