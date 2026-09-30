@@ -2080,23 +2080,19 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.provider.add: only user config may register providers")
-			return 0
 		}
 		spec, err := providerSpecFromLua(L, 1)
 		if err != nil {
 			L.RaiseError("zemi.provider.add: %v", err)
-			return 0
 		}
 		if err := h.Providers.Register(spec, rawString(L, L.CheckTable(1), "api_key")); err != nil {
 			L.RaiseError("zemi.provider.add: %v", err)
-			return 0
 		}
 		return 0
 	}))
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
 		if h.RT.CurrentOrigin(L) != lua.OriginUser {
 			L.RaiseError("zemi.provider.del: only user config may remove providers")
-			return 0
 		}
 		h.Providers.Delete(L.CheckString(1))
 		return 0
@@ -2214,7 +2210,6 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		id := L.CheckString(1)
 		if err := h.modelSetErr("chat", id); err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
-			return 0
 		}
 		if h.cfgReplayed("models.chat", id) {
 			return 0
@@ -2222,7 +2217,6 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		fired, err := h.writeSetting("models.chat", id)
 		if err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
-			return 0
 		}
 		h.deliverFired(L, fired)
 		h.warnUnlisted(id)
@@ -2235,7 +2229,6 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 		role := L.OptString(1, "")
 		if role != "" && !isRole(role) {
 			L.RaiseError("zemi.model.pick: unknown role %q; roles: %s", role, strings.Join(roleNames(), ", "))
-			return 0
 		}
 		_ = h.OpenModelPicker(role) // headless there is nothing to pick with
 		return 0
@@ -2753,7 +2746,6 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 		spec, ok := L.Get(2).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.agent.profile.add: spec must be a table")
-			return 0
 		}
 		h.refuseBelowUser(L, "agent.profile.add")
 		p := &Profile{Name: name, Model: rawString(L, spec, "model"), System: rawString(L, spec, "system"), ReadOnly: rawBool(L, spec, "read_only")}
@@ -2872,7 +2864,6 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 		spec, ok := L.Get(1).(*glua.LTable)
 		if !ok {
 			L.RaiseError("zemi.permission.rule.add: rule must be a table")
-			return 0
 		}
 		r := perm.Rule{
 			Subject:  rawString(L, spec, "subject"),
@@ -2893,24 +2884,20 @@ func (h *Host) permissionNamespace(L *glua.LState) *glua.LTable {
 		if origin := h.RT.CurrentOrigin(L); origin != lua.OriginUser {
 			if r.Decision == perm.Allow {
 				L.RaiseError("zemi.permission.rule.add: allow rules may only come from user config")
-				return 0
 			}
 			if rawString(L, spec, "principal") != "" {
 				L.RaiseError("zemi.permission.rule.add: only user config scopes a rule to a principal")
-				return 0
 			}
 			r.Source = string(origin)
 		}
 		if p := rawString(L, spec, "principal"); p != "" {
 			if name, ok := perm.CutPluginPrincipal(p); !ok || name == "" {
 				L.RaiseError(`zemi.permission.rule.add: principal must be "plugin:<name>", got %q`, p)
-				return 0
 			}
 			r.Principal = p
 		}
 		if err := h.validateRule(&r, rawString(L, spec, "match"), rawString(L, spec, "not_match_example")); err != nil {
 			L.RaiseError("zemi.permission.rule.add: %v", err)
-			return 0
 		}
 		h.addPermissionRule(r)
 		return 0

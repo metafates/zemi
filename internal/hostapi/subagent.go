@@ -1055,12 +1055,10 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		prompt := rawString(L, spec, "prompt")
 		if strings.TrimSpace(prompt) == "" {
 			L.RaiseError("zemi.agent.run: prompt is required")
-			return 0
 		}
 		def, err := h.agentDef(rawString(L, spec, "agent"))
 		if err != nil {
 			L.RaiseError("zemi.agent.run: %v", err)
-			return 0
 		}
 		desc := rawString(L, spec, "description")
 		if desc == "" {
