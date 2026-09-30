@@ -544,7 +544,7 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: name, Text: toolSummary(name, input), Label: toolLabel(input), Status: CallWait, Diff: diff})
 	run.mu.Unlock()
 	// one line: the widget wraps, and a long command would push the chat around
-	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, plural(n, "call", "calls"), name,
+	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, Plural(n, "call", "calls"), name,
 		clipRunes(strings.Join(strings.Fields(toolSummary(name, input)), " "), 60)))
 	s.h.refreshViewed(run)
 }
@@ -611,15 +611,8 @@ func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	}
 	_, n, _, _ := s.run.state()
 	n -= s.base
-	s.report(fmt.Sprintf("%s · %d tool %s", s.def.Name, n, plural(n, "call", "calls")))
+	s.report(fmt.Sprintf("%s · %d tool %s", s.def.Name, n, Plural(n, "call", "calls")))
 	h.refresh()
-}
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return one
-	}
-	return many
 }
 
 // filterTools keeps the tools named in want (nil keeps all) minus skip, and

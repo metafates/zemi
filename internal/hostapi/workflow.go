@@ -890,7 +890,7 @@ func (f *flowRun) summary() string {
 		}
 		return strings.Join(parts, " · ")
 	}
-	parts = append(parts, fmt.Sprintf("%d %s", len(v.agents), plural(len(v.agents), "agent", "agents")))
+	parts = append(parts, fmt.Sprintf("%d %s", len(v.agents), Plural(len(v.agents), "agent", "agents")))
 	if v.cost > 0 {
 		parts = append(parts, fmtCost(v.cost))
 	}
@@ -922,7 +922,7 @@ func (f *flowRun) statusText() string {
 		for _, a := range by[p] {
 			fmt.Fprintf(&b, "\n  %s %s %s: %s", cmp.Or(a.id, "-"), a.def, a.description, a.status)
 			if a.status != "queued" {
-				fmt.Fprintf(&b, ", %d %s, %s", a.calls, plural(a.calls, "call", "calls"), fmtDuration(a.took))
+				fmt.Fprintf(&b, ", %d %s, %s", a.calls, Plural(a.calls, "call", "calls"), fmtDuration(a.took))
 			}
 		}
 	}
@@ -1927,7 +1927,7 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) map[string]
 		desc = word + " · reused"
 	}
 	if a.status != "queued" {
-		desc += fmt.Sprintf(" · %d %s · %s tok · %s", a.calls, plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
+		desc += fmt.Sprintf(" · %d %s · %s tok · %s", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
 	}
 	item := map[string]any{"id": strconv.Itoa(a.call), "text": a.description, "desc": desc, "section": section, "mark": RunMarks[string(a.status)]}
 	// a queued row opens too, so starting it moves no footer text
@@ -1940,7 +1940,7 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) map[string]
 	if run != nil && run.model != "" {
 		def += " · " + run.model
 	}
-	usage, detail := fmt.Sprintf("%d %s · %s tok", a.calls, plural(a.calls, "call", "calls"), fmtTokens(a.tokens)), ""
+	usage, detail := fmt.Sprintf("%d %s · %s tok", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens)), ""
 	if a.cost > 0 {
 		usage += " · " + fmtCost(a.cost)
 	}

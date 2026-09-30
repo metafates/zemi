@@ -472,7 +472,7 @@ func (h *Host) summarizeAside(ctx context.Context, runner *agent.Runner, tail in
 	note := compactNote
 	if tail > 0 {
 		note += fmt.Sprintf("\n\nYour summary replaces the conversation above except its last %d %s, kept verbatim after it: summarize only what comes before.",
-			tail, plural(tail, "message", "messages"))
+			tail, Plural(tail, "message", "messages"))
 	}
 	if focus != "" {
 		note += "\n\nAdditional focus: " + focus

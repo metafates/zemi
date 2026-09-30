@@ -760,7 +760,7 @@ func (h *Host) mcpItems() []any {
 		s.mu.Unlock()
 		desc := string(status)
 		if status == StatusReady {
-			desc = fmt.Sprintf("ready · %d %s", len(tools), plural(len(tools), "tool", "tools"))
+			desc = fmt.Sprintf("ready · %d %s", len(tools), Plural(len(tools), "tool", "tools"))
 			if len(tools) < all {
 				desc = fmt.Sprintf("ready · %d of %d tools", len(tools), all)
 			}

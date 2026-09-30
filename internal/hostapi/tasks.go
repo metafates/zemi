@@ -262,15 +262,15 @@ func (r *taskReg) stillRunning(keep func(parent string) bool) error {
 	a, f := r.live(keep)
 	var what, where []string
 	if a > 0 {
-		what, where = append(what, fmt.Sprintf("%d background %s", a, plural(a, "agent", "agents"))), append(where, "/agents")
+		what, where = append(what, fmt.Sprintf("%d background %s", a, Plural(a, "agent", "agents"))), append(where, "/agents")
 	}
 	if f > 0 {
-		what, where = append(what, fmt.Sprintf("%d %s", f, plural(f, "workflow", "workflows"))), append(where, "/workflows")
+		what, where = append(what, fmt.Sprintf("%d %s", f, Plural(f, "workflow", "workflows"))), append(where, "/workflows")
 	}
 	if what == nil {
 		return nil
 	}
-	return Usagef("%s still running; stop %s from %s first", strings.Join(what, " and "), plural(a+f, "it", "them"), strings.Join(where, " or "))
+	return Usagef("%s still running; stop %s from %s first", strings.Join(what, " and "), Plural(a+f, "it", "them"), strings.Join(where, " or "))
 }
 
 // find looks a run up by its id, which is its child session's id too.
@@ -746,14 +746,14 @@ func (h *Host) agentRunItems() []any {
 		status, calls, took, runSID := run.state()
 		held[runSID] = true
 		if run.workflow == "" {
-			row(run.id, status, run.agent, took, run.description, fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
+			row(run.id, status, run.agent, took, run.description, fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")))
 		}
 	}
 	// a run another session started (/new leaves a background run behind)
 	// still writes files and blocks /rewind, so it is listed, named by that session
 	for _, run := range slices.DeleteFunc(h.tasks.runList(), func(x *agentRun) bool { return x.parent == sid || x.workflow != "" || !x.isRunning() }) {
 		status, calls, took, _ := run.state()
-		row(run.id, status, run.agent, took, run.description+h.fromSession(run.parent), fmt.Sprintf(" · %d tool %s", calls, plural(calls, "call", "calls")))
+		row(run.id, status, run.agent, took, run.description+h.fromSession(run.parent), fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")))
 	}
 	if h.DB != nil && sid != "" {
 		children, _ := h.DB.ChildSessions(sid)

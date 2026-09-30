@@ -154,7 +154,7 @@ func (h *Host) RewindTo(id string) (int, error) {
 		h.Notify(slog.LevelWarn, "Files not restored", "their snapshots for that turn have aged out; only the conversation is cut")
 	case aged > 0:
 		h.Notify(slog.LevelWarn, "Some files not restored", fmt.Sprintf("snapshots older than %d days have aged out (%d of those %s); files changed then may not go back",
-			int(store.CheckpointTTL.Hours()/24), aged, plural(aged, "turn", "turns")))
+			int(store.CheckpointTTL.Hours()/24), aged, Plural(aged, "turn", "turns")))
 	}
 	var failed []string
 	if len(cps) > 0 {
@@ -316,9 +316,9 @@ func (h *Host) OpenRewind() error {
 		}
 		desc, restore := ago(row.CreatedAt), ""
 		if n := len(restored); n > 0 {
-			files := fmt.Sprintf("%d %s", n, plural(n, "file", "files"))
+			files := fmt.Sprintf("%d %s", n, Plural(n, "file", "files"))
 			desc += " · " + files
-			restore = ", restores " + files + " to " + plural(n, "how it was", "how they were") + " before it,"
+			restore = ", restores " + files + " to " + Plural(n, "how it was", "how they were") + " before it,"
 		}
 		effect := "Rewinding removes this prompt and everything after it" + restore + " and puts the prompt back in the composer. Files a command changed go back too when they are in the repository, not ignored and not secret-shaped."
 		first, _, _ := strings.Cut(text, "\n")

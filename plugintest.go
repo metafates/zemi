@@ -164,14 +164,14 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	case ctx.Err() != nil:
 		return 130
 	case failed == 0 && ran == 0:
-		fmt.Fprintf(stdout, "no case matches %q (%d %s in %d %s)\n", pattern, cases, plural(cases, "case", "cases"), len(files), plural(len(files), "file", "files"))
+		fmt.Fprintf(stdout, "no case matches %q (%d %s in %d %s)\n", pattern, cases, hostapi.Plural(cases, "case", "cases"), len(files), hostapi.Plural(len(files), "file", "files"))
 		return 1
 	}
 	summary := fmt.Sprintf("%d passed", passed)
 	if failed > 0 {
 		summary += fmt.Sprintf(", %d failed", failed)
 	}
-	fmt.Fprintf(stdout, "%s (%d %s, %.2fs)\n", summary, len(files), plural(len(files), "file", "files"), time.Since(start).Seconds())
+	fmt.Fprintf(stdout, "%s (%d %s, %.2fs)\n", summary, len(files), hostapi.Plural(len(files), "file", "files"), time.Since(start).Seconds())
 	if failed > 0 {
 		return 1
 	}

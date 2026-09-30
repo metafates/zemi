@@ -1428,7 +1428,7 @@ func toolLabel(input string) string {
 			}
 		}
 		if heads == nil {
-			return plural(n, "a question", fmt.Sprintf("%d questions", n))
+			return Plural(n, "a question", fmt.Sprintf("%d questions", n))
 		}
 		return cleanLabel(strings.Join(heads, ", "))
 	}

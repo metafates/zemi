@@ -357,7 +357,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	}
 
 	if mem := h.pendingMemory.Load(); mem > 0 {
-		add(HealthWarn, "learning", fmt.Sprintf("%d %s to review in /memory", mem, plural(int(mem), "memory", "memories")))
+		add(HealthWarn, "learning", fmt.Sprintf("%d %s to review in /memory", mem, Plural(int(mem), "memory", "memories")))
 		out[len(out)-1].Run = "memory"
 	} else {
 		add(HealthOK, "learning", "nothing to review")
@@ -403,7 +403,7 @@ func (h *Host) goHealthRows() []HealthRow {
 			failed++
 		}
 	}
-	switch n := fmt.Sprintf("%d %s", len(loads), plural(len(loads), "plugin", "plugins")); {
+	switch n := fmt.Sprintf("%d %s", len(loads), Plural(len(loads), "plugin", "plugins")); {
 	case len(loads) == 0:
 		add(HealthOK, "plugins", "none on")
 	case failed == 0:
@@ -456,7 +456,7 @@ func (h *Host) goHealthRows() []HealthRow {
 	case len(servers) == 0:
 		add(HealthOK, "mcp", "no servers added")
 	case counts[StatusReady] == len(servers):
-		add(HealthOK, "mcp", fmt.Sprintf("%d %s ready", len(servers), plural(len(servers), "server", "servers")))
+		add(HealthOK, "mcp", fmt.Sprintf("%d %s ready", len(servers), Plural(len(servers), "server", "servers")))
 	default:
 		var parts []string
 		for _, st := range slices.Sorted(maps.Keys(counts)) {
@@ -466,7 +466,7 @@ func (h *Host) goHealthRows() []HealthRow {
 		if counts[StatusReady]+counts[StatusStarting] == len(servers) {
 			level = HealthOK
 		}
-		add(level, "mcp", fmt.Sprintf("%d %s: %s", len(servers), plural(len(servers), "server", "servers"), strings.Join(parts, ", ")))
+		add(level, "mcp", fmt.Sprintf("%d %s: %s", len(servers), Plural(len(servers), "server", "servers"), strings.Join(parts, ", ")))
 	}
 	if len(servers) > 0 {
 		out[len(out)-1].Run = "mcp"

@@ -92,7 +92,7 @@ func copyPicker(blocks []codeBlock) Overlay {
 			n++
 		}
 		var desc strings.Builder
-		fmt.Fprintf(&desc, "%d %s", n, plural(n, "line", "lines"))
+		fmt.Fprintf(&desc, "%d %s", n, Plural(n, "line", "lines"))
 		for l := range strings.Lines(b.text) {
 			if first := strings.TrimSpace(l); first != "" {
 				desc.WriteString(" · " + first)

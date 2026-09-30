@@ -434,11 +434,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			}
 			n, err := h.RewindTo(args)
 			if err == nil {
-				files := "files"
-				if n == 1 {
-					files = "file"
-				}
-				h.Notify(slog.LevelInfo, "Session rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, files))
+				h.Notify(slog.LevelInfo, "Session rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, hostapi.Plural(n, "file", "files")))
 			}
 			return err
 		}},

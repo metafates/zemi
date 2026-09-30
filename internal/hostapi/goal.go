@@ -158,7 +158,7 @@ func (h *Host) openGoal() error {
 	}
 	running := fmtDuration(time.Since(g.Since))
 	if g.Turns > 0 {
-		running += fmt.Sprintf(", checked after %d %s", g.Turns, plural(g.Turns, "turn", "turns"))
+		running += fmt.Sprintf(", checked after %d %s", g.Turns, Plural(g.Turns, "turn", "turns"))
 	}
 	ui.OpenOverlay(Overlay{
 		ID: "goal", Title: "Goal", Origin: lua.OriginBuiltin,
@@ -214,7 +214,7 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	ag.mu.Unlock()
 	row := goalRow{Event: ev, Text: reason}
 	if ev == goalMet {
-		row.Detail = fmt.Sprintf("%d %s, %s, %s", g.Turns, plural(g.Turns, "turn", "turns"), fmtDuration(time.Since(g.Since)), h.spentSince(g.Tokens, g.Cost))
+		row.Detail = fmt.Sprintf("%d %s, %s, %s", g.Turns, Plural(g.Turns, "turn", "turns"), fmtDuration(time.Since(g.Since)), h.spentSince(g.Tokens, g.Cost))
 	}
 	h.recordGoal(sid, row)
 	if ev != goalNotYet {

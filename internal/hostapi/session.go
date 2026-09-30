@@ -153,7 +153,7 @@ func (h *Host) OpenSessions(confirm string) error {
 		desc, count, prompt := []string{ago(s.UpdatedAt)}, "", firstUserLine(p.FirstJSON)
 		if p.Count > 0 {
 			count = strconv.Itoa(p.Count)
-			desc = append(desc, fmt.Sprintf("%d %s", p.Count, plural(p.Count, "message", "messages")))
+			desc = append(desc, fmt.Sprintf("%d %s", p.Count, Plural(p.Count, "message", "messages")))
 		}
 		if strings.EqualFold(prompt, s.Title) {
 			prompt = ""

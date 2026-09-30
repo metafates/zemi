@@ -344,7 +344,7 @@ func printDenied(w io.Writer, width int, denied []hostapi.Denial, trusted bool) 
 	if len(denied) == 0 {
 		return
 	}
-	fmt.Fprintf(w, "zemi: %d %s nobody could answer in a headless run:\n", len(denied), plural(len(denied), "ask", "asks"))
+	fmt.Fprintf(w, "zemi: %d %s nobody could answer in a headless run:\n", len(denied), hostapi.Plural(len(denied), "ask", "asks"))
 	shown := denied[:min(len(denied), 5)]
 	clip := func(s string, n int) string { return ansi.Truncate(strings.Join(strings.Fields(s), " "), n, "…") }
 	toolW, argW := 0, 0
@@ -359,13 +359,6 @@ func printDenied(w io.Writer, width int, denied []hostapi.Denial, trusted bool) 
 		fmt.Fprintf(w, "  … %d more\n", n)
 	}
 	fmt.Fprintf(w, "  %s;\n  an allow rule (zemi.permission.rule.add in init.lua) lets a call through\n", deniedHint(denied, trusted))
-}
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return one
-	}
-	return many
 }
 
 // deniedHint says what would let zemi run's denied calls through.

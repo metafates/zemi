@@ -332,7 +332,7 @@ func (h *Host) projectItems() (items []any, sel int) {
 		// moves only its own row's age
 		sessions := ""
 		if p.Sessions > 0 {
-			sessions = fmt.Sprintf(" · %d %s", p.Sessions, plural(p.Sessions, "session", "sessions"))
+			sessions = fmt.Sprintf(" · %d %s", p.Sessions, Plural(p.Sessions, "session", "sessions"))
 		}
 		desc := fmt.Sprintf("%-24s", fmt.Sprintf("%-9s%s", h.trustWord(p), sessions))
 		if !p.Used.IsZero() {

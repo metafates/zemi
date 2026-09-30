@@ -134,7 +134,7 @@ func (h *Host) fireLoop(l *Loop) {
 		return
 	case h.RT.Clock().Now().Sub(l.Started) >= loopExpiry:
 		ag.mu.Unlock()
-		_ = h.stopLoop(l, fmt.Sprintf("loop stopped after %s (%d %s)", fmtEvery(loopExpiry), l.Runs, plural(l.Runs, "run", "runs")))
+		_ = h.stopLoop(l, fmt.Sprintf("loop stopped after %s (%d %s)", fmtEvery(loopExpiry), l.Runs, Plural(l.Runs, "run", "runs")))
 		return
 	case ag.active:
 		h.armLoop(l, loopRetry, true)
@@ -192,7 +192,7 @@ func (h *Host) loopTurnEnded(runner *agent.Runner, text string, err error, cance
 	if !own || cancelled || l == nil || l != run {
 		return
 	}
-	runs := fmt.Sprintf("%d %s", l.Runs, plural(l.Runs, "run", "runs"))
+	runs := fmt.Sprintf("%d %s", l.Runs, Plural(l.Runs, "run", "runs"))
 	switch {
 	case err != nil:
 		_ = h.stopLoop(l, "loop stopped: the run failed ("+runs+")")
@@ -223,7 +223,7 @@ func (h *Host) loopInterrupted() {
 	}
 	ag.mu.Unlock()
 	if l != nil {
-		_ = h.stopLoop(l, fmt.Sprintf("loop stopped: interrupted (%d %s)", n, plural(n, "run", "runs")))
+		_ = h.stopLoop(l, fmt.Sprintf("loop stopped: interrupted (%d %s)", n, Plural(n, "run", "runs")))
 	}
 }
 
@@ -262,7 +262,7 @@ func (h *Host) openLoop() error {
 		ID: "loop", Title: "Loop", Origin: lua.OriginBuiltin, Fields: []Field{
 			{"prompt", l.Prompt},
 			{"next", l.Next.Format(ClockLayout) + ", then " + pace},
-			{"ran", fmt.Sprintf("%d %s since %s, stops at %s", l.Runs, plural(l.Runs, "time", "times"), l.Started.Format(ClockLayout), stops.Format(ClockLayout+" on Jan 2"))},
+			{"ran", fmt.Sprintf("%d %s since %s, stops at %s", l.Runs, Plural(l.Runs, "time", "times"), l.Started.Format(ClockLayout), stops.Format(ClockLayout+" on Jan 2"))},
 			{"spent", h.spentSince(l.Tokens, l.Cost)},
 		},
 		Items: []any{map[string]any{"text": "Stop the loop", "run": "loop stop", "verb": "stop"}},

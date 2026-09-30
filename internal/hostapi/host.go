@@ -280,9 +280,17 @@ type ChatMessage struct {
 
 var cutLines = regexp.MustCompile(`^\.\.\. \(lines (\d+)-(\d+) of \d+ cut\) \.\.\.$`)
 
+// Plural is one when n is 1, else many.
+func Plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 // MoreLines is the one wording of what a cut left out: "… 3 more lines".
 func MoreLines(n int) string {
-	return fmt.Sprintf("… %d more %s", n, plural(n, "line", "lines"))
+	return fmt.Sprintf("… %d more %s", n, Plural(n, "line", "lines"))
 }
 
 // rowOutput is a tool result as its transcript row shows it, else
@@ -2123,7 +2131,7 @@ func (h *Host) ReloadIfChanged() string {
 	if len(errs) == 0 {
 		return "(zemi reloaded the changed config)"
 	}
-	return fmt.Sprintf("(zemi reloaded the changed config; %d %s)\n%s", len(errs), plural(len(errs), "error", "errors"), strings.Join(errs, "\n"))
+	return fmt.Sprintf("(zemi reloaded the changed config; %d %s)\n%s", len(errs), Plural(len(errs), "error", "errors"), strings.Join(errs, "\n"))
 }
 
 // ForceReload replays the boot steps on a fresh generation (DESIGN §4).
