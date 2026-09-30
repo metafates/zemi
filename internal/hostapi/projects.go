@@ -387,7 +387,7 @@ func (h *Host) projectFields(p Project) []any {
 	sessions, memories, recipes, errText := "", "", "", ""
 	if p.Latest != nil {
 		sessions = fmt.Sprintf("%d · latest %s", p.Sessions, ago(p.Latest.UpdatedAt))
-		if t := strings.Join(strings.Fields(sanitize.String(p.Latest.Title)), " "); t != "" {
+		if t := sanitize.Line(p.Latest.Title); t != "" {
 			sessions += ": " + clipRunes(t, 60) // as /sessions draws it
 		}
 	}

@@ -367,7 +367,7 @@ func (h *Host) toolRun(L *glua.LState, t *luaTool, callID string) *glua.LTable {
 	run.RawSetString("name", glua.LString(t.Name))
 	run.RawSetString("origin", glua.LString(t.Origin))
 	run.RawSetString("progress", L.NewFunction(func(L *glua.LState) int {
-		line := strings.Join(strings.Fields(sanitize.String(L.CheckString(2))), " ")
+		line := sanitize.Line(L.CheckString(2))
 		h.setToolDetail(callID, clipRunes(line, 120))
 		return 0
 	}))

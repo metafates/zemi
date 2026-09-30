@@ -250,7 +250,7 @@ func completeSessions(c *cobra.Command, args []string, _ string) ([]cobra.Comple
 	defer db.Close()
 	list, _ := db.ListSessions(-1)
 	for _, s := range list {
-		title := []rune(sessionTitle(s))
+		title := []rune(sanitize.Line(s.Title))
 		out = append(out, cobra.CompletionWithDesc(s.ID, string(title[:min(len(title), 60)])))
 	}
 	return out, cobra.ShellCompDirectiveNoFileComp
@@ -444,10 +444,10 @@ func sessionsCommand() *cobra.Command {
 						Title   string    `json:"title"`
 						Updated time.Time `json:"updated"`
 						CostUSD float64   `json:"cost_usd"`
-					}{s.ID, sessionTitle(s), updated, s.Cost})
+					}{s.ID, sanitize.Line(s.Title), updated, s.Cost})
 					continue
 				}
-				fmt.Fprintf(out, "%s  %s  %s\n", paint(p, "hint", s.ID), paint(p, "hint", updated.Format(hostapi.StampLayout)), cmp.Or(sessionTitle(s), "(untitled)"))
+				fmt.Fprintf(out, "%s  %s  %s\n", paint(p, "hint", s.ID), paint(p, "hint", updated.Format(hostapi.StampLayout)), cmp.Or(sanitize.Line(s.Title), "(untitled)"))
 			}
 			return err
 		},
@@ -661,11 +661,6 @@ func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 		}
 		fmt.Fprintln(w, pad(p, roles[0], r[0], width[0])+pad(p, roles[1], r[1], width[1])+pad(p, roles[2], r[2], width[2])+paint(p, roles[3], r[3]))
 	}
-}
-
-// sessionTitle is a session's title on one line.
-func sessionTitle(s *store.Session) string {
-	return strings.Join(strings.Fields(sanitize.String(s.Title)), " ")
 }
 
 // confirm asks on stderr and reads the answer from stdin; only y or yes is

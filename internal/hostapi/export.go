@@ -249,7 +249,7 @@ func exportMarkdown(b *strings.Builder, tr []ChatMessage, level int, full bool) 
 				b.WriteString(strings.TrimRight("> "+l, " \n") + "\n")
 			}
 		case m.Kind == RowTool && full:
-			head := strings.Join(strings.Fields(sanitize.String(m.Label)), " ")
+			head := sanitize.Line(m.Label)
 			if head == "" && !strings.Contains(text, "\n") {
 				head, text = text, ""
 			}
@@ -270,7 +270,7 @@ func exportMarkdown(b *strings.Builder, tr []ChatMessage, level int, full bool) 
 			if !list {
 				b.WriteString("\n")
 			}
-			fmt.Fprintf(b, "- `%s` %s%s\n", sanitize.String(m.Tool), sanitize.String(clipRunes(strings.Join(strings.Fields(cmp.Or(m.Label, m.Text)), " "), 120)), callEnd(m.Status))
+			fmt.Fprintf(b, "- `%s` %s%s\n", sanitize.String(m.Tool), clipRunes(sanitize.Line(cmp.Or(m.Label, m.Text)), 120), callEnd(m.Status))
 		case m.Kind == RowNotice, m.Kind == RowCompact:
 			fmt.Fprintf(b, "\n_%s_\n", text)
 		default:

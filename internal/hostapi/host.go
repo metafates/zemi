@@ -305,7 +305,7 @@ func rowOutput(tool, out string) string {
 		}
 	case tools.ToolQuestion:
 		if qa := tools.QuestionAnswers(out); qa != nil {
-			line := func(s string) string { return sanitize.String(clipRunes(strings.Join(strings.Fields(s), " "), 300)) }
+			line := func(s string) string { return clipRunes(sanitize.Line(s), 300) }
 			rows := make([]string, len(qa))
 			for i, p := range qa {
 				rows[i] = line(p[0]) + "\t" + cmp.Or(line(p[1]), "not answered") + "\t" + line(p[2])

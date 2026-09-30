@@ -1850,7 +1850,7 @@ func (h *Host) recap(ctx context.Context) {
 	}
 	answer, err := h.aside(ctx, recapPrompt)
 	lines := slices.DeleteFunc(strings.Split(answer, "\n"), func(l string) bool { return strings.TrimSpace(l) == "" })
-	text := sanitize.String(clipRunes(strings.Join(strings.Fields(strings.Join(lines[:min(2, len(lines))], " ")), " "), 300))
+	text := clipRunes(sanitize.Line(strings.Join(lines[:min(2, len(lines))], " ")), 300)
 	if err != nil || text == "" {
 		h.Log.Debug("no recap", "origin", "session", "error", fmt.Sprint(err))
 		return
