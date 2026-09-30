@@ -25,8 +25,8 @@ type Theme struct {
 }
 
 // Palette is a theme's colors by role, each set: what the spec leaves out
-// is derived and every text role meets its contrast floor on Bg, so no
-// theme can hide a prompt's text.
+// is derived, Panel and Band stay near Bg, and every text role meets its
+// contrast floor on all three, so no theme can hide a prompt's text.
 type Palette struct {
 	Bg, Fg, Accent, Literal, Ok, Warn, Danger, Dim, Rule, Panel, Band, AddBg, DelBg color.Color
 }
@@ -113,7 +113,12 @@ var mixes = [...]struct {
 	{"delbg", "bg", "danger", 0.16},
 }
 
-// floors are the WCAG contrast on bg each text role is clamped to.
+// surfaceSpan is how far in OKLCH lightness panel and band may sit from bg,
+// a spec's own included: a box stays a box, and text reads on it.
+const surfaceSpan = 0.13
+
+// floors are the WCAG contrast each text role is clamped to on bg, panel
+// and band, the surfaces text draws on.
 var floors = [...]struct {
 	role string
 	min  float64
@@ -124,8 +129,8 @@ var floors = [...]struct {
 	{"literal", 4.5},
 	{"ok", 4.5},
 	{"danger", 4.5},
-	// NOTE: whorl-light's amber is 3.85:1 (APCA Lc 64); a darker one reads
-	// as danger to deuteranopes.
+	// NOTE: under 4.5, since a light theme's amber darker than it must be
+	// reads as danger to deuteranopes.
 	{"warn", 3.5},
 }
 
@@ -185,7 +190,8 @@ func parseHex(s string) (colorful.Color, error) {
 	return colorful.Hex(s)
 }
 
-// derive fills the roles p leaves out and clamps every text role to its floor.
+// derive fills the roles p leaves out, keeps the surfaces near bg and
+// clamps every text role to its floor on each surface.
 func derive(p *Palette) {
 	if p.Literal == nil {
 		// each scheme's own orange: halfway between its red and its yellow
@@ -199,9 +205,15 @@ func derive(p *Palette) {
 			*dst = Mix(*p.role(m.from), *p.role(m.to), m.t)
 		}
 	}
+	lbg, _, _ := col(p.Bg).OkLch()
+	for _, s := range []*color.Color{&p.Panel, &p.Band} {
+		l, c, h := col(*s).OkLch()
+		*s = inGamut(min(max(l, lbg-surfaceSpan), lbg+surfaceSpan), c, h)
+	}
+	on := []colorful.Color{col(p.Bg), col(p.Panel), col(p.Band)}
 	for _, f := range floors {
 		dst := p.role(f.role)
-		*dst = clampContrast(col(*dst), col(p.Bg), f.min)
+		*dst = clampContrast(col(*dst), on, f.min)
 	}
 }
 
@@ -221,25 +233,32 @@ func luminance(c colorful.Color) float64 {
 	return 0.2126*r + 0.7152*g + 0.0722*b
 }
 
-// clampContrast moves c along OKLCH lightness away from bg until it has
-// floor contrast on bg, keeping its hue and cutting chroma only to stay in
-// gamut; as far as it goes when no lightness reaches the floor.
-func clampContrast(c, bg colorful.Color, floor float64) color.Color {
-	if Contrast(c, bg) >= floor {
+// clampContrast moves c along OKLCH lightness away from the surfaces until
+// it has floor contrast on each, keeping its hue and cutting chroma only to
+// stay in gamut; as far as it goes when no lightness reaches the floor.
+func clampContrast(c colorful.Color, on []colorful.Color, floor float64) color.Color {
+	least := func(c color.Color) float64 {
+		r := math.Inf(1)
+		for _, s := range on {
+			r = min(r, Contrast(c, s))
+		}
+		return r
+	}
+	if least(c) >= floor {
 		return rgb(c)
 	}
 	l, ch, h := c.OkLch()
 	end := 1.0
-	if Contrast(colorful.Color{}, bg) > Contrast(colorful.Color{R: 1, G: 1, B: 1}, bg) {
+	if least(colorful.Color{}) > least(colorful.Color{R: 1, G: 1, B: 1}) {
 		end = 0
 	}
 	at := func(l float64) color.Color { return inGamut(l, ch, h) }
-	if Contrast(at(end), bg) < floor {
+	if least(at(end)) < floor {
 		return at(end)
 	}
 	lo, hi := l, end // lo fails the floor, hi meets it
 	for range 24 {
-		if mid := (lo + hi) / 2; Contrast(at(mid), bg) >= floor {
+		if mid := (lo + hi) / 2; least(at(mid)) >= floor {
 			hi = mid
 		} else {
 			lo = mid

@@ -38,7 +38,7 @@ func TestANSI16(t *testing.T) {
 }
 
 // TestThemes: every shipped theme keeps each text role over its contrast
-// floor on bg and the literal apart in hue from warn and danger, whorl its
+// floor on bg, panel and band and the literal apart in hue from warn and danger, whorl its
 // diff tints apart at 256 colors, and the Go chrome draws in the colors of
 // the groups it stands for.
 func TestThemes(t *testing.T) {
@@ -75,8 +75,10 @@ func TestThemes(t *testing.T) {
 			t.Fatalf("%s: %s draws", th.Name, host.ActiveTheme().Name)
 		}
 		for role, floor := range floors {
-			if r := hostapi.Contrast(th.Color(role), th.Palette.Bg); r < floor {
-				t.Errorf("%s: %s is %.2f:1 on bg, under %.1f", th.Name, role, r, floor)
+			for _, on := range []string{"bg", "panel", "band"} {
+				if r := hostapi.Contrast(th.Color(role), th.Color(on)); r < floor {
+					t.Errorf("%s: %s is %.2f:1 on %s, under %.1f", th.Name, role, r, on, floor)
+				}
 			}
 		}
 		for _, other := range []string{"warn", "danger"} {

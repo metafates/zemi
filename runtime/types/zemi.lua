@@ -961,8 +961,8 @@ function zemi.event.stats() end
 ---@field literal? string Text quoted as written; derived halfway between danger and warn.
 ---@field dim? string
 ---@field rule? string
----@field panel? string The surface of every box and the composer.
----@field band? string A box's selected row.
+---@field panel? string The surface of every box and the composer, kept near bg in lightness.
+---@field band? string A box's selected row, kept near bg in lightness.
 ---@field addbg? string
 ---@field delbg? string
 

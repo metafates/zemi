@@ -1397,8 +1397,10 @@ UI extensibility contract:
   terminal's 16 `ansi` colors in their place, and derives the rest once in Go
   (OkLab mixes: dim is fg toward bg, rule and panel bg toward fg, band the
   panel toward the accent, the diff tints bg toward ok and danger; the literal
-  the OKLCH midpoint of danger and warn, each scheme's own orange). Every text
-  role is then moved along OKLCH lightness, hue kept, to a WCAG floor on bg
+  the OKLCH midpoint of danger and warn, each scheme's own orange).
+  `panel` and `band`, a spec's own included, are kept within 0.13 of bg's
+  OKLCH lightness, and every text role is then moved along OKLCH lightness,
+  hue kept, to a WCAG floor on the least contrasting of bg, panel and band
   (fg 7, warn 3.5, the rest 4.5), so no theme, a plugin's included, can hide
   prompt text. The shipped ones are whorl (and whorl-light) plus ports of
   Ghostty's catppuccin, tokyonight, gruvbox, nord, dracula, solarized,
