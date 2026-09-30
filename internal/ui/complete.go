@@ -251,7 +251,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	case f.count() == 0 && f.partial:
 		return [][]hostapi.Segment{partial}
 	case f.count() == 0:
-		return [][]hostapi.Segment{note("No matches.")}
+		return emptyRows("No matches.", maxW)
 	case f.partial:
 		room--
 	}
