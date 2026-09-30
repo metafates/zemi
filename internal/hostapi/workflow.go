@@ -1887,7 +1887,7 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 		ID: "workflow:" + f.id, Title: "Workflows / " + f.description, Origin: lua.OriginBuiltin, Items: items, Wide: true, Phases: true,
 		Mark: RunMarks[flowWord(v)],
 		// one row, so a long one never pushes the list down
-		Body: clipRunes(strings.Join(strings.Fields(f.about), " "), 76), Empty: "No agent has started yet.",
+		Body: clipLine(f.about, 76), Empty: "No agent has started yet.",
 		Reload: func() ([]any, [][]Segment) { return h.flowOverlay(f).Items, nil },
 	}
 	for kv := flowFields(f, v); len(kv) > 0; kv = kv[2:] {

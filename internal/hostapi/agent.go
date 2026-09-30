@@ -425,7 +425,7 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
 	r.Steer = h.deliverSteering
-	r.TextOnly = !h.takesImages(h.currentModelID(p))
+	r.TextOnly = !h.takesImages(id)
 	r.Compose = func(text string) fantasy.Message { return h.composeUserMessage(text, !r.TextOnly) }
 	r.Full = h.contextFull
 	return r, nil
@@ -1423,20 +1423,16 @@ func toolLabel(input string) string {
 	if n := len(in.Questions); n > 0 {
 		var heads []string
 		for _, q := range in.Questions {
-			if h := cleanLabel(q.Header); h != "" {
+			if h := clipLine(q.Header, 80); h != "" {
 				heads = append(heads, listDesc(h))
 			}
 		}
 		if heads == nil {
 			return Plural(n, "a question", fmt.Sprintf("%d questions", n))
 		}
-		return cleanLabel(strings.Join(heads, ", "))
+		return clipLine(strings.Join(heads, ", "), 80)
 	}
-	return cleanLabel(in.About)
-}
-
-func cleanLabel(s string) string {
-	return clipRunes(strings.Join(strings.Fields(s), " "), 80)
+	return clipLine(in.About, 80)
 }
 
 // aboutArg is a call's leading "about" argument in input that is still streaming.
@@ -1456,7 +1452,7 @@ func (s *streamAdapter) ToolInputDelta(id, delta string) {
 	t.partial += delta
 	var label string
 	if m := aboutArg.FindStringSubmatch(t.partial); m != nil && json.Unmarshal([]byte(m[1]), &label) == nil {
-		t.Label = cleanLabel(label)
+		t.Label = clipLine(label, 80)
 	}
 	labelled := t.Label != ""
 	ag.mu.Unlock()
@@ -1543,7 +1539,7 @@ func toolSummary(tool, input string) string {
 			return d
 		}
 		prompt, _ := m["prompt"].(string)
-		return strings.TrimSuffix(a+": "+clipRunes(strings.Join(strings.Fields(prompt), " "), 80), ": ")
+		return strings.TrimSuffix(a+": "+clipLine(prompt, 80), ": ")
 	}
 	for _, k := range []string{"path", "file_path", "pattern", "url", "query", "question", "name", "text", "description", "id"} {
 		if s, ok := m[k].(string); ok && s != "" {

@@ -545,7 +545,7 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run.mu.Unlock()
 	// one line: the widget wraps, and a long command would push the chat around
 	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, Plural(n, "call", "calls"), name,
-		clipRunes(strings.Join(strings.Fields(toolSummary(name, input)), " "), 60)))
+		clipLine(toolSummary(name, input), 60)))
 	s.h.refreshViewed(run)
 }
 

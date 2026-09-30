@@ -496,6 +496,11 @@ func clipRunes(s string, n int) string {
 	return s
 }
 
+// clipLine is s on one line, its runs of space made one, cut as clipRunes cuts.
+func clipLine(s string, n int) string {
+	return clipRunes(strings.Join(strings.Fields(s), " "), n)
+}
+
 // parseReflectProposal extracts the JSON object from the model output
 // (prose and fences tolerated) and schema-decodes it.
 // errNoProposal is a reflector reply that is not the JSON document asked
