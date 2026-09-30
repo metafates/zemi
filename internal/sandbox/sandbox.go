@@ -58,11 +58,7 @@ type Backend struct {
 	EnforcesProtect bool
 }
 
-var probed struct {
-	once sync.Once
-	b    Backend
-	err  error
-}
+var probeOnce = sync.OnceValues(probe)
 
 // Probe reports the backend this machine supports, checked once processes
 // may start (proc.Refuse).
@@ -70,8 +66,7 @@ func Probe() (Backend, error) {
 	if err := proc.Refused(); err != nil {
 		return Backend{}, err
 	}
-	probed.once.Do(func() { probed.b, probed.err = probe() })
-	return probed.b, probed.err
+	return probeOnce()
 }
 
 // Wrap rewrites cmd to run under p. Dir, Env and SysProcAttr carry over,
