@@ -169,20 +169,20 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 			approval +
 			" For calls not named here read " + filepath.Join(t.h.builtinSkillsDir(), "zemi", "lua.md") + "; a member a namespace lacks raises with the list it has.",
 		Parameters: map[string]any{
-			"description": map[string]any{"type": "string", "description": "what the script does in 3-6 words, shown to the user"},
-			"script":      map[string]any{"type": "string", "description": "Lua source"},
-			"path":        map[string]any{"type": "string", "description": "a .lua file to run instead of script"},
+			"about":  map[string]any{"type": "string", "description": "what the script does in 3-6 words, shown to the user"},
+			"script": map[string]any{"type": "string", "description": "Lua source"},
+			"path":   map[string]any{"type": "string", "description": "a .lua file to run instead of script"},
 		},
-		Required: []string{"description"},
+		Required: []string{"about"},
 	}
 }
 
 func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h := t.h
 	var in struct {
-		Description string `json:"description"`
-		Script      string `json:"script"`
-		Path        string `json:"path"`
+		About  string `json:"about"`
+		Script string `json:"script"`
+		Path   string `json:"path"`
 	}
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -238,7 +238,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		if in.Path != "" {
 			arg = in.Path
 		}
-		req := tools.Request{Tool: "lua", Subject: perm.SubjectLua, Arg: arg, Description: in.Description, Preview: src}
+		req := tools.Request{Tool: "lua", Subject: perm.SubjectLua, Arg: arg, Description: in.About, Preview: src}
 		if len(unlisted) > 0 {
 			req.Unsandboxed = true
 			req.Reason = "uses " + strings.Join(unlisted, ", ") + ", which can change zemi or start programs outside the sandbox"

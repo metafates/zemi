@@ -85,7 +85,7 @@ func TestPadBoundPerPipeline(t *testing.T) {
 	if err := os.MkdirAll(pad, 0o700); err != nil || os.WriteFile(script, []byte(`print("ran")`), 0o600) != nil {
 		t.Fatal(err)
 	}
-	if resp, err := h.luaEvalTool(old).Run(t.Context(), fantasy.ToolCall{Input: `{"description":"d","path":"` + script + `"}`}); err != nil || resp.Content != "ran" {
+	if resp, err := h.luaEvalTool(old).Run(t.Context(), fantasy.ToolCall{Input: `{"about":"d","path":"` + script + `"}`}); err != nil || resp.Content != "ran" {
 		t.Errorf("a lua script in the bound pad: %q %v", resp.Content, err)
 	}
 	for _, c := range []struct {

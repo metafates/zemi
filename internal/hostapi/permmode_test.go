@@ -212,7 +212,7 @@ func TestUntrustedModes(t *testing.T) {
 			h.SetProfile("default")
 		}
 		h.SetProjectTrusted(c.trusted)
-		resp, err := lua.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: `{"description":"x","script":"return 1"}`})
+		resp, err := lua.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: `{"about":"x","script":"return 1"}`})
 		if err != nil || strings.Contains(resp.Content, "return: 1") != c.ran {
 			t.Errorf("Lua %s trusted=%v readOnly=%v: %q %v", c.mode, c.trusted, c.readOnly, resp.Content, err)
 		}

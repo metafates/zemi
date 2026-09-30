@@ -1512,6 +1512,10 @@ func toolSummary(tool, input string) string {
 		}
 		return cmp.Or(str("action"), string(actStatus)) + " " + str("run")
 	}
+	if tool == tools.ToolLua { // the about is its label, and a script reads as nothing short
+		path, _ := m["path"].(string)
+		return path
+	}
 	// the lsp tool names what it does in "action"; without it a row would
 	// read as the whole body of what it is about to show
 	if action, ok := m["action"].(string); ok && action != "" {

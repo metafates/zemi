@@ -290,6 +290,8 @@ func TestToolSummary(t *testing.T) {
 		{tools.ToolWorkflow, `{"run":"abc123","action":"rerun","description":"slow scan again"}`, "slow scan again"},
 		{tools.ToolWorkflow, `{"run":"abc123","action":"stop"}`, "stop abc123"},
 		{tools.ToolWorkflow, `{"run":"abc123"}`, "status abc123"},
+		{tools.ToolLua, `{"about":"Check the plugin","script":"return 1"}`, ""},
+		{tools.ToolLua, `{"about":"Run the check","path":"x.lua"}`, "x.lua"},
 	} {
 		if got := toolSummary(c.tool, c.in); got != c.want {
 			t.Errorf("toolSummary(%s, %s) = %q, want %q", c.tool, c.in, got, c.want)
