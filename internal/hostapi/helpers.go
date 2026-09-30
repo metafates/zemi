@@ -127,6 +127,12 @@ func rawStringMap(L *glua.LState, tb *glua.LTable, key string) map[string]string
 	return out
 }
 
+// appendLast appends v and keeps the newest n: the recent-entry logs.
+func appendLast[T any](s []T, v T, n int) []T {
+	s = append(s, v)
+	return s[max(0, len(s)-n):]
+}
+
 // luaErrText is a Lua error's message without its traceback.
 func luaErrText(err error) string {
 	if ae, ok := errors.AsType[*glua.ApiError](err); ok {

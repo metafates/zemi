@@ -72,10 +72,7 @@ type msgLog struct {
 func (h *Host) RecordMessage(source, text string) {
 	l := &h.msgs
 	l.mu.Lock()
-	l.entries = append(l.entries, msgEntry{h.now(), source, sanitize.String(text)})
-	if len(l.entries) > msgLogMax {
-		l.entries = l.entries[len(l.entries)-msgLogMax:]
-	}
+	l.entries = appendLast(l.entries, msgEntry{h.now(), source, sanitize.String(text)}, msgLogMax)
 	l.mu.Unlock()
 }
 
