@@ -67,10 +67,10 @@ func ipDenied(ip net.IP) bool {
 }
 
 // SafeClient builds an HTTP client whose dialer refuses denied IPs at
-// connect time (after resolution) and whose redirect follow is driven by
-// the caller through onHop. allowPrivate skips the address check: the §9
-// localhost development opt-in, which only an explicit user allow rule for
-// the named host earns.
+// connect time (after resolution) and whose redirects, each a URL
+// ParseNetURL takes, the caller follows through onHop. allowPrivate skips
+// the address check: the §9 localhost development opt-in, which only an
+// explicit user allow rule for the named host earns.
 func SafeClient(onHop func(u *url.URL) error, allowPrivate bool) *http.Client {
 	d := &net.Dialer{Timeout: 10 * time.Second}
 	d.Control = func(_, address string, _ syscall.RawConn) error {
@@ -98,6 +98,9 @@ func SafeClient(onHop func(u *url.URL) error, allowPrivate bool) *http.Client {
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
 				return fmt.Errorf("stopped after 5 redirects")
+			}
+			if _, err := ParseNetURL(req.URL.String()); err != nil {
+				return fmt.Errorf("redirect: %w", err)
 			}
 			return onHop(req.URL)
 		},
@@ -175,15 +178,7 @@ func runFetch(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	// §9 localhost development opt-in: a rule the user wrote in config for
 	// this host, never a session "always" answer (principal model)
 	allowPrivate := p.verdict.Rule != nil && p.verdict.Rule.Principal == ""
-	client := SafeClient(func(hop *url.URL) error {
-		if hop.Scheme != "http" && hop.Scheme != "https" {
-			return fmt.Errorf("redirect to non-http scheme refused")
-		}
-		if hop.User != nil {
-			return fmt.Errorf("redirect with userinfo refused")
-		}
-		return netGate(p, hop, "fetch redirect")
-	}, allowPrivate)
+	client := SafeClient(func(hop *url.URL) error { return netGate(p, hop, "fetch redirect") }, allowPrivate)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil

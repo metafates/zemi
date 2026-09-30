@@ -811,9 +811,6 @@ func (h *Host) httpFetch(ctx context.Context, subject, principal string, allowPr
 		return nil, err
 	}
 	client := tools.SafeClient(func(hop *url.URL) error {
-		if _, err := tools.ParseNetURL(hop.String()); err != nil {
-			return err
-		}
 		if o := h.Perm.Evaluate(subject, hop.String(), principal); o.Decision != perm.Allow {
 			return fmt.Errorf("redirect to %s refused by the permission gate", hop)
 		}
