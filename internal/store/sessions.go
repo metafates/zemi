@@ -54,12 +54,6 @@ func (s *DB) GetSession(id string) (*Session, error) {
 	return one(s.db.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE id = ?`, id), scanSession)
 }
 
-// FindSession loads the session whose id starts with prefix: a subagent
-// run's id heads its child session's id.
-func (s *DB) FindSession(prefix string) (*Session, error) {
-	return one(s.db.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE substr(id, 1, ?) = ? LIMIT 1`, len(prefix), prefix), scanSession)
-}
-
 // ListSessions returns top-level sessions (subagent runs excluded) ordered
 // by most recent activity.
 func (s *DB) ListSessions(limit int) ([]*Session, error) {

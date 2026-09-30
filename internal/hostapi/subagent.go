@@ -318,9 +318,9 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		// a run this process forgot: its rows are the history
 		runner.History, _ = historyFrom(rows)
 	case h.DB != nil:
-		// the run id heads the session id, so send_to finds the rows of a
-		// run the process no longer holds (a resume, or one past maxKeptRuns)
-		sid = run.id + store.NewID()[len(run.id):]
+		// the run id is the session id, so send_to finds the rows of a run
+		// the process no longer holds (a resume, or one past maxKeptRuns)
+		sid = run.id
 		if err := h.DB.CreateSession(sid, parent, run.description, def.Name); err != nil {
 			h.Log.Warn("subagent session not recorded", "origin", "agents", "error", err)
 			sid = ""

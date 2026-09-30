@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base32"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -301,11 +303,28 @@ func (s *DB) sweep() error {
 	return nil
 }
 
-// NewID returns a random 128-bit id, hex encoded.
+// NewID returns a random 128-bit id, hex encoded, for rows nobody types.
 func NewID() string {
 	var b [16]byte
 	rand.Read(b[:]) // crashes the process rather than fail
 	return hex.EncodeToString(b[:])
+}
+
+// shortEnc is lowercase Crockford base32: no i, l, o or u, the same name on a
+// case-folding disk, and never a leading '-'.
+var shortEnc = base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
+
+// IDShape is what ShortID makes, the one check for a file name read back as an id.
+var IDShape = regexp.MustCompile(`^[0-9a-hjkmnp-tv-z]{8}$`)
+
+// ShortID returns a random 40-bit id in 8 characters, for the ids people and
+// the model read and type: sessions, agent and workflow runs, memories.
+// NOTE: a collision is a refused primary key insert, about n^2/2^41 over n rows
+// of one table (1e-3 at 50k); widen to 10 characters if stores grow past that.
+func ShortID() string {
+	var b [5]byte
+	rand.Read(b[:])
+	return shortEnc.EncodeToString(b[:])
 }
 
 func now() int64 { return time.Now().UnixMilli() }

@@ -20,10 +20,10 @@ import (
 // time says.
 func TestScratchSweep(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	h.agents.sessionID = store.NewID()
+	h.agents.sessionID = store.ShortID()
 	live := h.ScratchDir()
-	if len(filepath.Base(live)) != padIDLen {
-		t.Fatalf("pad %q is not named by %d characters of the id", live, padIDLen)
+	if filepath.Base(live) != h.agents.sessionID {
+		t.Fatalf("pad %q is not named by the session id", live)
 	}
 	root, old := filepath.Dir(live), time.Now().Add(-2*scratchTTL)
 	cases := []struct {

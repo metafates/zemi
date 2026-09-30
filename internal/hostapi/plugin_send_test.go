@@ -57,7 +57,7 @@ func TestPluginText(t *testing.T) {
 			if c.rewrite {
 				ctx, marked := context.Background(), sid
 				if c.inRun {
-					marked = store.NewID()
+					marked = store.ShortID()
 					if err := h.DB.CreateSession(marked, "", "run", ""); err != nil {
 						t.Fatal(err)
 					}

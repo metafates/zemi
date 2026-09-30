@@ -66,7 +66,7 @@ func TestGoldenWorkflows(t *testing.T) {
 		]] })`, srv.URL+"/v1"))
 
 	// durations tick while the test runs; each is under 10s, so one width
-	elapsed, runID := regexp.MustCompile(`\d\.\ds`), regexp.MustCompile(`run +([0-9a-f]{8})`)
+	elapsed, runID := regexp.MustCompile(`\d\.\ds`), regexp.MustCompile(`run +([0-9a-hjkmnp-tv-z]{8})`)
 	frame := func() string {
 		t.Helper()
 		for app.Pump() {

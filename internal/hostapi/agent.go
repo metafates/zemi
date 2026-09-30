@@ -1700,7 +1700,7 @@ func (h *Host) ensureSession(p *Profile, firstText string) error {
 		ag.mu.Unlock()
 		return fmt.Errorf("agent: %w", errNoStore)
 	}
-	sid := store.NewID()
+	sid := store.ShortID()
 	name := ""
 	if p != nil {
 		name = p.Name

@@ -592,7 +592,7 @@ func TestInterruptKeys(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, 90, 16)
 			clock := time.UnixMilli(1000)
-			agentID := store.NewID()
+			agentID := store.ShortID()
 			app.now = func() time.Time { return clock }
 			runLua(t, app, `zemi.keymap.set("ctrl+k s", "zemi.ui.help")`)
 			if c.active {
@@ -605,7 +605,7 @@ func TestInterruptKeys(t *testing.T) {
 				}
 				t.Cleanup(func() { db.Close() })
 				host.DB, clock = db, clock.Add(time.Hour)
-				if err := db.CreateSession(agentID, store.NewID(), "run", "explore"); err != nil {
+				if err := db.CreateSession(agentID, store.ShortID(), "run", "explore"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -1402,7 +1402,7 @@ func todoRows(t *testing.T, h int, want []string) {
 	}
 	t.Cleanup(func() { db.Close() })
 	host.DB = db
-	sid := store.NewID()
+	sid := store.ShortID()
 	if err := host.DB.CreateSession(sid, "", "t", ""); err != nil {
 		t.Fatal(err)
 	}

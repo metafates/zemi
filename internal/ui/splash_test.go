@@ -246,7 +246,7 @@ func TestFarewell(t *testing.T) {
 			t.Cleanup(func() { db.Close() })
 			host.DB = db
 			if c.send {
-				sid := store.NewID()
+				sid := store.ShortID()
 				if err := db.CreateSession(sid, "", c.title, ""); err != nil {
 					t.Fatal(err)
 				}

@@ -308,7 +308,7 @@ Directories (XDG):
   plans/<session id>.md   plans approved from a read-only agent
 ~/.local/state/zemi/      state
   zemi.db                 global store (user memory and its proposals, skills, kv)
-  scratch/<id prefix>/    per-session scratchpad, every model command's $TMPDIR (§9 write root)
+  scratch/<session id>/   per-session scratchpad, every model command's $TMPDIR (§9 write root)
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
   projects/<hash>/root    the trust root the dir belongs to; its mtime is the last use there
   projects/<hash>/skills/<name>/SKILL.md  recipes: the project's private skills (§10.5)
@@ -1536,6 +1536,12 @@ skills(name, path, source, enabled, created_at)                 -- source: user|
 kv(key, value_json, updated_at)                                 -- zemi.state
 ```
 
+Ids people and the model type (sessions, forks, agent and workflow runs)
+are 8 lowercase Crockford base32 characters, 40 random bits
+(`store.ShortID`); a subagent run's id is its child session's id, so
+`send_to` and `/agents` reach a run the process forgot by an exact lookup.
+Message ids are 128-bit hex, since nobody types them.
+
 One file per scope: global DB at `~/.local/state/zemi/zemi.db`, per-project
 DBs at `~/.local/state/zemi/projects/<hash of trust root>/zemi.db`, named in
 the dir's `root` file (read only when it hashes to the dir's name), the same
@@ -2435,7 +2441,7 @@ provenance string.
   outside the jail ask (model tools) or are refused (`zemi.fs`). The write root is the launch
   directory, which is also all a sandboxed command may write (`zemi.ui.edit` alone reaches the
   whole trusted repository: the user does that writing); the per-session scratchpad
-  (`<state>/scratch/<id prefix>`, §5, every model command's `$TMPDIR`) is outside it but
+  (`<state>/scratch/<session id>`, §5, every model command's `$TMPDIR`) is outside it but
   is the one path the model's file tools read and write by default, secret-shaped names aside
   (`Pipeline.Check` on the pad the pipeline was bound to, so a run that outlives its session
   keeps it; `zemi.fs` cannot write there), and user config's `zemi.fs` also

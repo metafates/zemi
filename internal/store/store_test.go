@@ -10,6 +10,24 @@ import (
 	"time"
 )
 
+// TestShortID: a pad file name is trusted as an id only through IDShape, so
+// the generator and the regexp must agree.
+func TestShortID(t *testing.T) {
+	seen := map[string]bool{}
+	for range 500 {
+		id := ShortID()
+		if !IDShape.MatchString(id) || seen[id] {
+			t.Fatalf("ShortID() = %q, shape %v, repeat %v", id, IDShape.MatchString(id), seen[id])
+		}
+		seen[id] = true
+	}
+	for _, bad := range []string{"0123456", "0123456i", "0123456L", "../01234", "012345678"} {
+		if IDShape.MatchString(bad) {
+			t.Errorf("IDShape matches %q", bad)
+		}
+	}
+}
+
 func openTest(t *testing.T) *DB {
 	t.Helper()
 	db, err := Open(filepath.Join(t.TempDir(), "zemi.db"))

@@ -214,7 +214,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	f := &flowRun{
-		id: store.NewID()[:runIDLen], name: spec.name, description: cmp.Or(flowLabel(spec.description, spec.name, spec.src), "workflow"),
+		id: store.ShortID(), name: spec.name, description: cmp.Or(flowLabel(spec.description, spec.name, spec.src), "workflow"),
 		parent: parent, background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), progress: spec.progress, src: spec.src,
 		status: RunRunning, limit: limit, started: time.Now(), restart: map[string]bool{},
 	}
@@ -1032,8 +1032,6 @@ func agentKey(def, model string, schema map[string]any, prompt string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-var flowIDShape = regexp.MustCompile(`^[0-9a-f]{8}$`)
-
 func flowFile(id, ext string) string { return "workflow-" + id + ext }
 
 // padOpen opens name in pad as a sandboxed command would attack it: the pad
@@ -1117,7 +1115,7 @@ type journal struct {
 // readJournal reads run id's journal from pad. Everything in it is model
 // grade: a sandboxed command may have written it.
 func readJournal(pad, id string) (journal, error) {
-	if !flowIDShape.MatchString(id) {
+	if !store.IDShape.MatchString(id) {
 		return journal{}, Usagef("%q is not a workflow run id", id)
 	}
 	if pad == "" {
@@ -1189,7 +1187,7 @@ func (h *Host) padFlows(sid string) []string {
 	ents, _ := os.ReadDir(h.scratchFor(sid))
 	var ids []string
 	for _, e := range ents {
-		if id, ok := strings.CutSuffix(strings.TrimPrefix(e.Name(), "workflow-"), ".jsonl"); ok && flowIDShape.MatchString(id) {
+		if id, ok := strings.CutSuffix(strings.TrimPrefix(e.Name(), "workflow-"), ".jsonl"); ok && store.IDShape.MatchString(id) {
 			ids = append(ids, id)
 		}
 	}
@@ -1715,7 +1713,7 @@ func (h *Host) openFlowScript(id string) error {
 	if err != nil {
 		return err
 	}
-	if flowIDShape.MatchString(id) {
+	if store.IDShape.MatchString(id) {
 		pad := h.ScratchDir()
 		if _, err := readPadFile(pad, flowFile(id, ".lua")); err != nil { // no link the editor would follow
 			return err

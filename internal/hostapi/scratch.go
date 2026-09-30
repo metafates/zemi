@@ -14,13 +14,7 @@ import (
 	"time"
 )
 
-const (
-	scratchTTL = 7 * 24 * time.Hour
-	// padIDLen is how much of the session id names its pad: 48 random bits
-	// cannot collide within a week, and the short path leaves a unix socket
-	// under it room below macOS's 104 bytes.
-	padIDLen = 12
-)
+const scratchTTL = 7 * 24 * time.Hour
 
 // ScratchDir is the live session's scratchpad, "" before the first send.
 func (h *Host) ScratchDir() string { return h.scratchFor(h.AgentSessionID()) }
@@ -29,7 +23,8 @@ func (h *Host) scratchFor(sid string) string {
 	if sid == "" || h.Dirs.StateHome == "" {
 		return ""
 	}
-	return filepath.Join(h.Dirs.StateHome, "scratch", sid[:min(len(sid), padIDLen)])
+	// the id is short, so a unix socket under the pad fits macOS's 104 bytes
+	return filepath.Join(h.Dirs.StateHome, "scratch", sid)
 }
 
 // ensureScratch creates the live session's pad and marks it used; the sweep

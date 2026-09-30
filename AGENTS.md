@@ -778,7 +778,7 @@ lua-language-server is installed.
   `general` and `plan` (a read-only architect the planner delegates drafting to), plus `agents/*.md` (user over builtin over plugin over a trusted
   repo's `.agents`; a file's `read_only: true` makes a read-only agent like `explore`).
   They never get `agent`, `workflow`, `todos`, `question`,
-  `plan` or `lua` (nesting depth 1). A run is a child session (`parent_id`);
+  `plan` or `lua` (nesting depth 1). A run is a child session (`parent_id`) named by the run's id;
   `ListSessions` hides children. They have no summarizer: `sendPruning` clears their own old
   tool output when the window fills and, with none left to clear, drops the middle of the
   history once, keeping the task and a recent tail. The delegation guidance lives in
@@ -820,8 +820,8 @@ lua-language-server is installed.
   does the status field of its detail and of a run's view (`Overlay.Mark`), and a run's view
   heads each phase with its rows' combined mark (`Overlay.Phases`); an agent its run never
   started reads cancelled once the run ended.
-- **Scratchpad** (scratch.go): `<state>/scratch/<first 12 of the session id>`, short so a unix
-  socket path under it fits macOS's 104 bytes. A pipeline binds it once (`Pipeline.Pad`,
+- **Scratchpad** (scratch.go): `<state>/scratch/<session id>`, 8 characters (`store.ShortID`),
+  so a unix socket path under it fits macOS's 104 bytes. A pipeline binds it once (`Pipeline.Pad`,
   `Request.Pad`): `PipelineFor` the live session's, a subagent run its parent session's, so a run
   that outlives `/new` or `/resume` keeps the pad its prompt names, and a host tool's cut
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. It is `TMPDIR`, `TMP` and

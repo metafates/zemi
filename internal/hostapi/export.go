@@ -159,7 +159,7 @@ func (h *Host) ExportSession(path string, full bool) (string, error) {
 		return "", Usagef("no session to export")
 	}
 	if path == "" {
-		path = filepath.Join(h.Dirs.ProjectDir, "zemi-"+sid[:min(8, len(sid))]+".md")
+		path = filepath.Join(h.Dirs.ProjectDir, "zemi-"+sid+".md")
 	} else if !filepath.IsAbs(path) {
 		path = filepath.Join(h.Dirs.ProjectDir, path)
 	}
@@ -211,7 +211,7 @@ func SessionMarkdown(db *store.DB, sid string, full bool) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			fmt.Fprintf(&b, "\n## Agent run %s (%s): %s\n", run.ID[:min(runIDLen, len(run.ID))], sanitize.String(run.Profile), sanitize.String(run.Title))
+			fmt.Fprintf(&b, "\n## Agent run %s (%s): %s\n", run.ID, sanitize.String(run.Profile), sanitize.String(run.Title))
 			_, tr := historyFrom(rows)
 			exportMarkdown(&b, tr, 3, true)
 		}
@@ -348,7 +348,7 @@ func (h *Host) ForkSession() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	id := store.NewID()
+	id := store.ShortID()
 	if err := h.DB.ForkSession(sess, id, strings.TrimSuffix(sess.Title, " (fork)")+" (fork)"); err != nil {
 		return "", err
 	}

@@ -36,10 +36,6 @@ const maxBackgroundAgents = 4
 // still reads their transcripts from the store.
 const maxKeptRuns = 50
 
-// runIDLen is what the model sees of a run's id: 32 bits are plenty for
-// one project's runs and cheap to repeat in a send_to.
-const runIDLen = 8
-
 // RunStatus is where an agent run stands.
 type RunStatus string
 
@@ -277,19 +273,11 @@ func (r *taskReg) stillRunning(keep func(parent string) bool) error {
 	return Usagef("%s still running; stop %s from %s first", strings.Join(what, " and "), plural(a+f, "it", "them"), strings.Join(where, " or "))
 }
 
-// find looks a run up by its id or its child session id.
+// find looks a run up by its id, which is its child session's id too.
 func (r *taskReg) find(id string) *agentRun {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if x := r.runs[id]; x != nil || id == "" {
-		return x
-	}
-	for _, x := range r.runs {
-		if _, _, _, sid := x.state(); sid == id {
-			return x
-		}
-	}
-	return nil
+	return r.runs[id]
 }
 
 // newRun starts tracking a run of def; the returned context is cancelled
@@ -297,7 +285,7 @@ func (r *taskReg) find(id string) *agentRun {
 func (h *Host) newRun(ctx context.Context, def AgentDef, description, prompt string, background bool) (*agentRun, context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &agentRun{
-		id: store.NewID()[:runIDLen], agent: def.Name, description: description, parent: h.AgentSessionID(), model: def.Model,
+		id: store.ShortID(), agent: def.Name, description: description, parent: h.AgentSessionID(), model: def.Model,
 		background: background, started: time.Now(), cancel: cancel, status: RunRunning,
 		tr: []ChatMessage{{Role: fantasy.MessageRoleUser, Text: prompt}}, rows: map[string]int{},
 	}, ctx
@@ -705,26 +693,24 @@ func (h *Host) refreshViewed(run *agentRun) {
 	}
 }
 
-// loadRun rebuilds a finished run from its child session, named by the
-// session id or the run id that heads it.
+// loadRun rebuilds a finished run from its child session.
 func (h *Host) loadRun(id string) (*agentRun, error) {
 	if h.DB == nil {
 		return nil, errNoStore
 	}
-	sess, err := h.DB.FindSession(id)
+	sess, err := h.DB.GetSession(id)
 	if err != nil || sess.ParentID == "" {
 		return nil, Usagef("no agent run %q", id)
 	}
-	sid := sess.ID
-	rows, err := h.DB.Messages(sid)
+	rows, err := h.DB.Messages(id)
 	if err != nil {
 		return nil, err
 	}
 	_, tr := historyFrom(rows)
 	run := &agentRun{
-		id: sid[:runIDLen], agent: sess.Profile, description: sess.Title, parent: sess.ParentID, cancel: func() {},
+		id: id, agent: sess.Profile, description: sess.Title, parent: sess.ParentID, cancel: func() {},
 		started: time.UnixMilli(sess.CreatedAt), finished: time.UnixMilli(sess.UpdatedAt),
-		sessionID: sid, status: RunDone, tr: tr,
+		sessionID: id, status: RunDone, tr: tr,
 	}
 	_ = h.tasks.add(run)
 	return run, nil
@@ -773,7 +759,7 @@ func (h *Host) agentRunItems() []any {
 		children, _ := h.DB.ChildSessions(sid)
 		inFlows := h.flowAgentIDs(sid)
 		for _, c := range children {
-			if !held[c.ID] && !inFlows[c.ID[:min(len(c.ID), runIDLen)]] {
+			if !held[c.ID] && !inFlows[c.ID] {
 				row(c.ID, RunDone, c.Profile, time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Title, "")
 			}
 		}

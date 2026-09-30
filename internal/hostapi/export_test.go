@@ -35,7 +35,7 @@ func TestExportAndFork(t *testing.T) {
 		t.Fatalf("export:\n%s", md)
 	}
 	// full follows with each subagent run's transcript
-	run := "a1b2c3d4" + strings.Repeat("0", 24)
+	run := "a1b2c3d4"
 	h.DB.CreateSession(run, h.AgentSessionID(), "look around", "explore")
 	addText(t, h, run, "user", "find the widget")
 	if path, err = h.ExportSession(path, true); err != nil {
@@ -49,7 +49,7 @@ func TestExportAndFork(t *testing.T) {
 	if _, err := h.ExportSession("", false); err != nil {
 		t.Fatal(err)
 	}
-	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.body != "saved to zemi-"+h.AgentSessionID()[:8]+".md" {
+	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.body != "saved to zemi-"+h.AgentSessionID()+".md" {
 		t.Fatalf("export toast: %q", n.body)
 	}
 

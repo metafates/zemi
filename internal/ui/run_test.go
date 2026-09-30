@@ -59,7 +59,7 @@ func TestRunView(t *testing.T) {
 			}
 			t.Cleanup(func() { db.Close() })
 			h.DB = db
-			const sid = "5c0e9d1f8a4b4e2f9a3c7d6e1b2f4a8c"
+			const sid = "7hq2m4xk"
 			if err := db.CreateSession(sid, "", "t", ""); err != nil {
 				t.Fatal(err)
 			}

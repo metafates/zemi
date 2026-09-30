@@ -22,7 +22,7 @@ import (
 // provenance and the digest pins.
 func seedSession(t *testing.T, h *Host) string {
 	t.Helper()
-	sid := store.NewID()
+	sid := store.ShortID()
 	if err := h.DB.CreateSession(sid, "", "test", ""); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -426,7 +426,7 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 			h.Settings.SetQuiet("memory.autonomy", "auto")
 			h.SetProjectTrusted(!tc.untrusted)
 			sid := seedSession(t, h)
-			child := store.NewID()
+			child := store.ShortID()
 			if err := h.DB.CreateSession(child, sid, "sub", "web"); err != nil {
 				t.Fatal(err)
 			}
