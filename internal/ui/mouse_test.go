@@ -496,7 +496,8 @@ func TestToolRowClickExpands(t *testing.T) {
 	}
 }
 
-// TestScrollbarDrag: a box's bar drags like the chat's, to either end.
+// TestScrollbarDrag: a box's bar drags like the chat's, to either end, and
+// the chat's own while a popup it does not hold is open.
 func TestScrollbarDrag(t *testing.T) {
 	for name, c := range map[string]struct {
 		open func(*App, *hostapi.Host)
@@ -506,6 +507,15 @@ func TestScrollbarDrag(t *testing.T) {
 		"chat": {
 			func(_ *App, host *hostapi.Host) { fillChat(host) }, false,
 			func(app *App) bool { return app.scrolls["chat"].top == 0 },
+		},
+		"chat beside the palette": {
+			func(app *App, host *hostapi.Host) {
+				fillChat(host)
+				for _, r := range "/he" {
+					app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+				}
+			}, false,
+			func(app *App) bool { return app.scrolls["chat"].top == 0 && app.palette.selected == 0 },
 		},
 		"help list": {
 			func(_ *App, host *hostapi.Host) { host.OpenHelp() }, true,

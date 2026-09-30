@@ -199,7 +199,9 @@ func (a *App) barAt(x, y int) barHold {
 	for bar(b.top + b.h) {
 		b.h++
 	}
-	if _, _, _, box := a.boxScroll(); !box {
+	// a bar is the box's only inside it: a popup dims nothing, so the bars of
+	// the regions beside it stay live
+	if p := (uv.Position{X: x, Y: y}); !p.In(a.chromeRect) && !p.In(a.popRect) {
 		b.region = a.scrollAt(x, y)
 	}
 	return b
