@@ -180,7 +180,7 @@ func TestColdChatRender(t *testing.T) {
 			chat := host.Widgets.Get("chat")
 			var lines [][]hostapi.Segment
 			has := func(s string) bool {
-				return slices.ContainsFunc(lines, func(l []hostapi.Segment) bool { return strings.Contains(plainSegs(l)+" ", s+" ") })
+				return slices.ContainsFunc(lines, func(l []hostapi.Segment) bool { return strings.Contains(hostapi.SegsText(l)+" ", s+" ") })
 			}
 			for n, more := 0, true; more; n++ {
 				var err error
@@ -194,8 +194,8 @@ func TestColdChatRender(t *testing.T) {
 					t.Fatalf("the first render has %q %v, %q %v, %q %v", c.has[0], has(c.has[0]), c.has[1], has(c.has[1]), c.hasNot, has(c.hasNot))
 				}
 			}
-			if !strings.Contains(plainSegs(lines[0]), "question 0") || !has("reply 0") {
-				t.Fatalf("the fill ends without the first exchange: %d lines from %q", len(lines), plainSegs(lines[0]))
+			if !strings.Contains(hostapi.SegsText(lines[0]), "question 0") || !has("reply 0") {
+				t.Fatalf("the fill ends without the first exchange: %d lines from %q", len(lines), hostapi.SegsText(lines[0]))
 			}
 		})
 	}
@@ -1339,7 +1339,7 @@ func TestFileRowClickIDs(t *testing.T) {
 	_ = app.Frame() // compose fills lastRows
 	click := map[string]string{}
 	for _, row := range app.lastRows {
-		text := strings.Join(strings.Fields(plainSegs(row)), " ")
+		text := strings.Join(strings.Fields(hostapi.SegsText(row)), " ")
 		for _, s := range row {
 			if s.Click != "" {
 				click[text] = s.Click
@@ -1587,7 +1587,7 @@ func TestPermTitle(t *testing.T) {
 		rows, _, _ := permFacts(c.req, "/p", 200, 40)
 		var words []string
 		for _, r := range rows {
-			words = append(words, strings.Fields(plainSegs(r))...)
+			words = append(words, strings.Fields(hostapi.SegsText(r))...)
 		}
 		if title, target := permTitle(c.req), strings.Join(words, " "); title != c.title || target != c.target {
 			t.Errorf("%+v: %q %q", c.req, title, target)

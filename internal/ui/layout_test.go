@@ -114,8 +114,8 @@ func TestViewport(t *testing.T) {
 			out := v.window(lines, c.width)
 			bar := false
 			for i, r := range out {
-				if j := v.top + i; j >= 0 && !strings.HasPrefix(plainSegs(r), lines[j][0].Text) {
-					t.Fatalf("row %d cut: %q", j, plainSegs(r))
+				if j := v.top + i; j >= 0 && !strings.HasPrefix(hostapi.SegsText(r), lines[j][0].Text) {
+					t.Fatalf("row %d cut: %q", j, hostapi.SegsText(r))
 				}
 				bar = bar || len(r) > 0 && strings.HasPrefix(r[len(r)-1].HL, "Scrollbar")
 			}
@@ -227,7 +227,7 @@ func TestJoin(t *testing.T) {
 		(&App{}).join(rows, w)
 		got := make([]string, len(rows))
 		for i, r := range rows {
-			got[i] = plainSegs(r)
+			got[i] = hostapi.SegsText(r)
 		}
 		if !slices.Equal(got, c.want) {
 			t.Errorf("%s:\n%s\nwant\n%s", c.name, strings.Join(got, "\n"), strings.Join(c.want, "\n"))

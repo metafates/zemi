@@ -552,7 +552,7 @@ func (a *App) pinAt(x, y int, under hostapi.Segment) (string, cellSpan) {
 		if own := dropCells(st.first, x-st.rect.Min.X); len(own) == 0 || own[0].HL != under.HL || !strings.HasPrefix(own[0].Text, under.Text) {
 			continue
 		}
-		text := strings.TrimRight(plainSegs(st.first), " ")
+		text := strings.TrimRight(hostapi.SegsText(st.first), " ")
 		if sp := (cellSpan{y, st.rect.Min.X, st.rect.Min.X + ansi.StringWidth(text)}); sp.lo <= x && x < sp.hi {
 			return id, sp
 		}
@@ -615,14 +615,6 @@ func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 		}
 	}
 	return spans
-}
-
-func plainSegs(segs []hostapi.Segment) string {
-	var b strings.Builder
-	for _, s := range segs {
-		b.WriteString(s.Text)
-	}
-	return b.String()
 }
 
 // clickWidget runs the on_click of the widget that drew s on the background

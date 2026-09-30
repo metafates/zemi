@@ -917,6 +917,15 @@ func SegsWidth(segs []Segment) int {
 	return n
 }
 
+// SegsText is a segment run's text, unstyled.
+func SegsText(segs []Segment) string {
+	var b strings.Builder
+	for _, s := range segs {
+		b.WriteString(s.Text)
+	}
+	return b.String()
+}
+
 // SGRStyle decodes the params of an "sgr:" hl. They go through the SGR
 // parser, so hostile params can only ever yield a style.
 func SGRStyle(params string) uv.Style {

@@ -571,19 +571,11 @@ func (t *PluginTest) render(L *glua.LState) int {
 		return func(L *glua.LState) []glua.LValue {
 			text := make([]string, len(lines))
 			for i, line := range lines {
-				text[i] = segText(line)
+				text[i] = SegsText(line)
 			}
 			return []glua.LValue{lua.FromGo(L, text), linesTable(L, lines)}
 		}, nil
 	})
-}
-
-func segText(segs []Segment) string {
-	var b strings.Builder
-	for _, s := range segs {
-		b.WriteString(s.Text)
-	}
-	return b.String()
 }
 
 // click is test.click(id, click): the widget's on_click for a segment's
@@ -674,7 +666,7 @@ func itemTexts(o Overlay) []string {
 	texts := make([]string, len(o.Items))
 	for i, item := range o.Items {
 		if i < len(o.ItemText) && o.ItemText[i] != nil {
-			texts[i] = segText(o.ItemText[i])
+			texts[i] = SegsText(o.ItemText[i])
 		} else {
 			p, _ := ParseOverlayItem(item)
 			texts[i] = p.Text

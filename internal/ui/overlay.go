@@ -333,7 +333,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 			for _, seg := range o.ItemText[i] {
 				it.segs = append(it.segs, hostapi.Segment{Text: oneLine.Replace(sanitize.String(seg.Text)), HL: hostapi.UserHL(seg.HL)})
 			}
-			it.label = plainSegs(it.segs) // spaces kept: a filter's offsets index the segments
+			it.label = hostapi.SegsText(it.segs) // spaces kept: a filter's offsets index the segments
 		} else if r.Danger {
 			it.segs = []hostapi.Segment{{Text: it.label, HL: hostapi.ChromeDanger}}
 		}

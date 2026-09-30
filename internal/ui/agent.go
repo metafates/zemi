@@ -432,7 +432,7 @@ func cutBar(r []hostapi.Segment) (row, bar []hostapi.Segment) {
 // ellipsizeSegs cuts a row to w cells ending in "…", at a word boundary
 // when one is close. Trailing blanks are padding and cut without one.
 func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
-	if w < 2 || ansi.StringWidth(strings.TrimRight(plainSegs(segs), " ")) <= w {
+	if w < 2 || ansi.StringWidth(strings.TrimRight(hostapi.SegsText(segs), " ")) <= w {
 		return truncateSegs(segs, w)
 	}
 	out := truncateSegs(segs, w-1)
@@ -830,7 +830,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	// counts by its text, other rows whole as hostBox counts them
 	fit := listBoxW
 	for _, r := range content {
-		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " ")))
+		fit = max(fit, ansi.StringWidth(strings.TrimRight(hostapi.SegsText(r), " ")))
 	}
 	for _, r := range slices.Concat(facts, list, [][]hostapi.Segment{hintRow}) {
 		fit = max(fit, hostapi.SegsWidth(r))
@@ -1137,7 +1137,7 @@ func scrolls(views ...viewport) []hintPair {
 func codePanel(text string, width int) [][]hostapi.Segment {
 	rows := wrapText(text, "", width-2)
 	for i, r := range rows {
-		line := plainSegs(r)
+		line := hostapi.SegsText(r)
 		rows[i] = []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, width-2-ansi.StringWidth(line))) + " ", HL: hostapi.ChromeValue, Fill: hostapi.FillCanvas}}
 	}
 	return rows

@@ -183,7 +183,7 @@ func TestStaleRenderKeepsNewerLines(t *testing.T) {
 	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "new"}}}, height: 19, gen: 7, seq: 2}})
 	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "old"}}}, height: 20, gen: 7, seq: 1}})
 	app.Update(widgetsRenderedMsg{{id: "w", height: 20, gen: 7, seq: 1, err: errors.New("old")}})
-	if c := app.caches["w"]; plainSegs(c.lines[0]) != "new" || c.height != 19 || c.err != "" || app.pending["w"].gen != 8 {
+	if c := app.caches["w"]; hostapi.SegsText(c.lines[0]) != "new" || c.height != 19 || c.err != "" || app.pending["w"].gen != 8 {
 		t.Fatalf("cache %+v, pending %v", c, app.pending)
 	}
 }
@@ -257,18 +257,18 @@ func TestToastCap(t *testing.T) {
 	app.pushToast(slog.LevelError, "Could not run ctrl+t", body)
 	var rows []string
 	for _, r := range toastTray(app.toasts, 80, 24) {
-		rows = append(rows, strings.TrimSpace(plainSegs(r)))
+		rows = append(rows, strings.TrimSpace(hostapi.SegsText(r)))
 	}
 	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Could not run ctrl+t ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasPrefix(rows[toastRows], "│ … 5 more lines /errors ") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
 		t.Fatalf("toast rows: %q", rows)
 	}
 	app.pushToast(slog.LevelWarn, "", "line one\nline two\nline three\nline four\nline five")
-	if r := plainSegs(toastTray(app.toasts[1:], 80, 24)[toastRows]); !strings.HasPrefix(strings.TrimSpace(r), "│ … 3 more lines ") || strings.Contains(r, "/errors") {
+	if r := hostapi.SegsText(toastTray(app.toasts[1:], 80, 24)[toastRows]); !strings.HasPrefix(strings.TrimSpace(r), "│ … 3 more lines ") || strings.Contains(r, "/errors") {
 		t.Fatalf("multi-line cut: %q", r)
 	}
 	// an untitled failure still says it is one
 	app.pushToast(slog.LevelError, "", "x")
-	if top := plainSegs(toastTray(app.toasts[2:], 80, 24)[0]); !strings.HasPrefix(top, "┌ Error ─") {
+	if top := hostapi.SegsText(toastTray(app.toasts[2:], 80, 24)[0]); !strings.HasPrefix(top, "┌ Error ─") {
 		t.Fatalf("untitled error toast: %q", top)
 	}
 	for _, c := range []struct {
@@ -278,7 +278,7 @@ func TestToastCap(t *testing.T) {
 		app.pushToast(slog.LevelInfo, c.title, c.body)
 		box := toastTray(app.toasts[len(app.toasts)-1:], 80, 24)
 		lone := c.title == "" || c.body == ""
-		if inner := plainSegs(box[1]); len(box) != c.rows || !strings.Contains(inner, cmp.Or(c.body, c.title)) || lone != strings.HasPrefix(plainSegs(box[0]), "┌─") {
+		if inner := hostapi.SegsText(box[1]); len(box) != c.rows || !strings.Contains(inner, cmp.Or(c.body, c.title)) || lone != strings.HasPrefix(hostapi.SegsText(box[0]), "┌─") {
 			t.Errorf("toast %q %q: %d rows, %q; want %d rows with the lone text inside", c.title, c.body, len(box), inner, c.rows)
 		}
 	}
@@ -302,7 +302,7 @@ func TestFitClusters(t *testing.T) {
 		{3, "au…|"},
 	} {
 		l, r := fitClusters(left, right, c.w)
-		if got := plainSegs(l) + "|" + plainSegs(r); got != c.want {
+		if got := hostapi.SegsText(l) + "|" + hostapi.SegsText(r); got != c.want {
 			t.Errorf("w %d: %q, want %q", c.w, got, c.want)
 		}
 	}

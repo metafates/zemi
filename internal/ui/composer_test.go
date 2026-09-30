@@ -189,8 +189,8 @@ func TestComposerHiddenRows(t *testing.T) {
 	for cursor, want := range map[int]string{0: "  … 2 more lines", len(app.composer.text): "  … 2 more lines above"} {
 		app.composer.cursor = cursor
 		rows := app.composerRows(40, "")
-		if len(rows) != composerMaxRows+1 || plainSegs(rows[len(rows)-1]) != want {
-			t.Fatalf("cursor %d: rows %d, last %q", cursor, len(rows), plainSegs(rows[len(rows)-1]))
+		if len(rows) != composerMaxRows+1 || hostapi.SegsText(rows[len(rows)-1]) != want {
+			t.Fatalf("cursor %d: rows %d, last %q", cursor, len(rows), hostapi.SegsText(rows[len(rows)-1]))
 		}
 	}
 }
@@ -223,7 +223,7 @@ func TestComposerPlaceholder(t *testing.T) {
 			}
 			col += ansi.StringWidth(s.Text)
 		}
-		if got := strings.TrimRight(plainSegs(segs), " "); got != c.want || cursor != c.cursor {
+		if got := strings.TrimRight(hostapi.SegsText(segs), " "); got != c.want || cursor != c.cursor {
 			t.Errorf("%s: row %q, cursor at %d; want %q at %d", c.name, got, cursor, c.want, c.cursor)
 		}
 	}
@@ -387,13 +387,13 @@ func TestCompletionListWidth(t *testing.T) {
 	}
 	app.onFilesScanned(filesScannedMsg{gen: app.completion.walkGen, files: files})
 	first := hostapi.SegsWidth(app.completionRows(76, 10, 0)[0])
-	if row := strings.TrimSpace(plainSegs(app.completionRows(30, 10, 0)[0])); !strings.Contains(row, "_here.txt") {
+	if row := strings.TrimSpace(hostapi.SegsText(app.completionRows(30, 10, 0)[0])); !strings.Contains(row, "_here.txt") {
 		t.Fatalf("a cut path lost its name: %q", row)
 	}
 	app.completion.selected = app.completion.count() - 1
 	rows := app.completionRows(76, 10, 0)
-	if w := hostapi.SegsWidth(rows[0]); w != first || app.completion.count() != listMaxFiles || !strings.Contains(plainSegs(rows[len(rows)-1]), "more files") {
-		t.Fatalf("width %d then %d, %d items, last row %q", first, w, app.completion.count(), plainSegs(rows[len(rows)-1]))
+	if w := hostapi.SegsWidth(rows[0]); w != first || app.completion.count() != listMaxFiles || !strings.Contains(hostapi.SegsText(rows[len(rows)-1]), "more files") {
+		t.Fatalf("width %d then %d, %d items, last row %q", first, w, app.completion.count(), hostapi.SegsText(rows[len(rows)-1]))
 	}
 }
 

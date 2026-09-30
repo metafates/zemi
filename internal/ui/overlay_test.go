@@ -446,8 +446,8 @@ func TestOverlayNavigation(t *testing.T) {
 			[]string{"enter"},
 			func(a *App) string {
 				list, detail := a.overlayBox(&a.overlays[0], 120, 20), a.overlayBox(&a.overlays[1], 120, 20)
-				if len(detail) >= len(list) || hostapi.SegsWidth(detail[0]) <= hostapi.SegsWidth(list[0]) || strings.Contains(plainSegs(detail[0]), "…") {
-					return fmt.Sprintf("list %d rows %d wide, detail %d rows %q", len(list), hostapi.SegsWidth(list[0]), len(detail), plainSegs(detail[0]))
+				if len(detail) >= len(list) || hostapi.SegsWidth(detail[0]) <= hostapi.SegsWidth(list[0]) || strings.Contains(hostapi.SegsText(detail[0]), "…") {
+					return fmt.Sprintf("list %d rows %d wide, detail %d rows %q", len(list), hostapi.SegsWidth(list[0]), len(detail), hostapi.SegsText(detail[0]))
 				}
 				return ""
 			},
@@ -460,7 +460,7 @@ func TestOverlayNavigation(t *testing.T) {
 				body := func(w int) string {
 					var out []string
 					for _, r := range a.overlayBox(&a.overlays[1], w, 20) {
-						out = append(out, plainSegs(r))
+						out = append(out, hostapi.SegsText(r))
 					}
 					return strings.Join(out, "\n")
 				}
@@ -678,7 +678,7 @@ func TestOverlayNavigation(t *testing.T) {
 				if a.overlayKey("x", "x"); ran != "" || len(a.overlays) != 1 {
 					return "the first press ran " + ran
 				}
-				if foot := plainSegs(a.overlayBox(&a.overlays[0], 80, 20)[3]); !strings.Contains(foot, "x again to stop workflow") {
+				if foot := hostapi.SegsText(a.overlayBox(&a.overlays[0], 80, 20)[3]); !strings.Contains(foot, "x again to stop workflow") {
 					return "footer " + foot
 				}
 				o.Refresh = true
@@ -734,8 +734,8 @@ func TestOverlayNavigation(t *testing.T) {
 			nil,
 			func(a *App) string {
 				for _, row := range a.overlayBox(&a.overlays[0], 80, 20) {
-					if strings.Contains(plainSegs(row), "\n") {
-						return fmt.Sprintf("row %q holds a newline", plainSegs(row))
+					if strings.Contains(hostapi.SegsText(row), "\n") {
+						return fmt.Sprintf("row %q holds a newline", hostapi.SegsText(row))
 					}
 				}
 				return ""
@@ -779,7 +779,7 @@ func TestOverlayHints(t *testing.T) {
 		if len(box) > 20 {
 			t.Errorf("%d rows do not fit 20", len(box))
 		}
-		return plainSegs(box[len(box)-2])
+		return hostapi.SegsText(box[len(box)-2])
 	}
 	for _, c := range []struct {
 		o      hostapi.Overlay
@@ -895,7 +895,7 @@ func TestHintOrder(t *testing.T) {
 		{40, "enter open · a keep · d drop · esc close"},
 		{5, "enter open · esc close"},
 	} {
-		if got := plainSegs(hint(c.w, pairs...)); got != c.want {
+		if got := hostapi.SegsText(hint(c.w, pairs...)); got != c.want {
 			t.Errorf("%d cells: %q, want %q", c.w, got, c.want)
 		}
 	}
@@ -915,7 +915,7 @@ func TestOverlayFilterKeepsSize(t *testing.T) {
 	if !strings.Contains(fmt.Sprint(box), "item 14") {
 		t.Fatalf("a tall screen still scrolls: %v", box)
 	}
-	col := func(box [][]hostapi.Segment) int { return strings.Index(plainSegs(box[2]), "about") }
+	col := func(box [][]hostapi.Segment) int { return strings.Index(hostapi.SegsText(box[2]), "about") }
 	for _, q := range []string{"item", "xxx"} {
 		st.active, st.query = true, q
 		st.apply()
@@ -957,7 +957,7 @@ func TestOverlayRowsBuiltOnce(t *testing.T) {
 			t.Errorf("%s: rows built %v, want %v", c.name, built, c.built)
 		}
 	}
-	if got := plainSegs(st.rows[0]); !strings.Contains(got, "item 04") {
+	if got := hostapi.SegsText(st.rows[0]); !strings.Contains(got, "item 04") {
 		t.Errorf("filtered list starts with %q", got)
 	}
 }
@@ -998,7 +998,7 @@ func TestListDescUnderLabel(t *testing.T) {
 	items := []listItem{{label: "shift+enter, alt+enter, ctrl+j", desc: "newline"}, {label: "esc", desc: "back, or twice to interrupt"}}
 	var got []string
 	for _, row := range listRows(items, 0, nil, 10, 30) {
-		got = append(got, strings.TrimRight(plainSegs(row), " "))
+		got = append(got, strings.TrimRight(hostapi.SegsText(row), " "))
 	}
 	if want := "› shift+enter, alt+enter…|  newline|  esc|  back, or twice to interrupt"; strings.Join(got, "|") != want {
 		t.Fatalf("rows %q", got)
@@ -1025,7 +1025,7 @@ func TestListDescColumn(t *testing.T) {
 	} {
 		col := -1
 		for i, row := range listRows(c.items, 0, nil, 10, 52) {
-			text, it := plainSegs(row), c.items[i]
+			text, it := hostapi.SegsText(row), c.items[i]
 			if !strings.Contains(text, it.label) || !strings.HasSuffix(text, it.key.Text) || strings.Contains(text, "·…") || strings.Contains(text, ".…") {
 				t.Errorf("%s: row %q", c.name, text)
 			}
@@ -1098,7 +1098,7 @@ func TestOverlaySegmentLabel(t *testing.T) {
 	if first[2].HL != "ToastErr" || first[2].Click != "" || first[3].HL != "Host:Value" {
 		t.Fatalf("first row: %+v", first)
 	}
-	if !strings.Contains(plainSegs(second), "…") || second[2].HL != "Title" {
+	if !strings.Contains(hostapi.SegsText(second), "…") || second[2].HL != "Title" {
 		t.Fatalf("selected row: %+v", second)
 	}
 }
@@ -1114,7 +1114,7 @@ func TestOverlayTailLabel(t *testing.T) {
 		}})
 		var text string
 		for _, r := range app.overlayBox(&app.overlays[0], w, 20) {
-			text += plainSegs(r) + "\n"
+			text += hostapi.SegsText(r) + "\n"
 		}
 		if !strings.Contains(text, "…") || !strings.Contains(text, "on/alpha") || !strings.Contains(text, "5m ago") {
 			t.Fatalf("at %d cells:\n%s", w, text)
@@ -1136,7 +1136,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", body = { 1 } }), "a body that
 		t.Fatalf("body %q, row %+v", st.o.Body, row)
 	}
 	pressKeys(app, "enter")
-	if d := app.overlays[1]; !d.o.BodyMD || strings.Contains(plainSegs(app.overlayBox(&d, 60, 16)[1]), "*") {
+	if d := app.overlays[1]; !d.o.BodyMD || strings.Contains(hostapi.SegsText(app.overlayBox(&d, 60, 16)[1]), "*") {
 		t.Fatalf("detail: %+v", d.o)
 	}
 }
@@ -1173,7 +1173,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { esc = { fn = functio
 assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { e = { desc = "no fn" } } }), "a key with no fn must raise")
 assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function() end } } }), "a key the list takes itself must raise")`)
 	box := app.overlayBox(&app.overlays[0], 60, 16)
-	if hint := plainSegs(box[len(box)-2]); !strings.Contains(hint, "y copy · e edit · esc close") {
+	if hint := hostapi.SegsText(box[len(box)-2]); !strings.Contains(hint, "y copy · e edit · esc close") {
 		t.Fatalf("footer: %q", hint)
 	}
 	for _, c := range []struct{ keys, want string }{
@@ -1227,7 +1227,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", keys = { y = { fn = function(
 	}
 	footer := func() string {
 		box := app.overlayBox(&app.overlays[len(app.overlays)-1], 60, 16)
-		return plainSegs(box[len(box)-2])
+		return hostapi.SegsText(box[len(box)-2])
 	}
 	armed := func() bool { return app.overlays[len(app.overlays)-1].armed }
 	for _, c := range []struct {
@@ -1459,7 +1459,7 @@ func TestFieldRows(t *testing.T) {
 	} {
 		var got []string
 		for _, r := range fieldRows(c.fields, c.mark, c.w) {
-			row := plainSegs(r)
+			row := hostapi.SegsText(r)
 			for _, s := range r[1:] {
 				if s.HL != "" {
 					row += " " + s.HL
@@ -1493,7 +1493,7 @@ func TestListPreview(t *testing.T) {
 		pressKeys(app, c.keys...)
 		box := app.overlayBox(&app.overlays[0], 60, 30)
 		// the pane's first row stays put above the footer, a filter or not
-		pane, top := plainSegs(slices.Concat(box[len(box)-6:len(box)-3]...)), strings.TrimLeft(plainSegs(box[len(box)-6]), "│ ")
+		pane, top := hostapi.SegsText(slices.Concat(box[len(box)-6:len(box)-3]...)), strings.TrimLeft(hostapi.SegsText(box[len(box)-6]), "│ ")
 		name := strings.Join(c.keys, " ")
 		if len(box) != rows {
 			t.Errorf("%q: %d rows, want %d", name, len(box), rows)

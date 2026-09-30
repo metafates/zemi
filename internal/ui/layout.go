@@ -575,12 +575,12 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	rows := st.window(lines, w-1) // the bar keeps the region's last column
 	st.anchor, st.anchorOff = nil, 0
 	for i := max(st.top, 0); i < len(lines) && i < st.top+h; i++ {
-		if strings.TrimSpace(plainSegs(lines[i])) == "" {
+		if strings.TrimSpace(hostapi.SegsText(lines[i])) == "" {
 			continue
 		}
 		st.anchorOff = i - st.top
 		for j := i; j < len(lines) && j < i+anchorRows; j++ {
-			st.anchor = append(st.anchor, plainSegs(lines[j]))
+			st.anchor = append(st.anchor, hostapi.SegsText(lines[j]))
 		}
 		break
 	}
@@ -719,7 +719,7 @@ func anchoredAt(lines [][]hostapi.Segment, i int, want []string) bool {
 		return false
 	}
 	for k, s := range want {
-		if plainSegs(lines[i+k]) != s {
+		if hostapi.SegsText(lines[i+k]) != s {
 			return false
 		}
 	}

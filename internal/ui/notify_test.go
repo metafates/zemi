@@ -206,7 +206,7 @@ func TestToastTray(t *testing.T) {
 		app.pruneToasts(time.Now().Add(c.after))
 		var got []string
 		for _, r := range toastTray(app.toasts, c.w, c.h) {
-			got = append(got, plainSegs(r))
+			got = append(got, hostapi.SegsText(r))
 		}
 		if !slices.Equal(got, c.want) {
 			t.Errorf("%s:\n%s\nwant\n%s", c.name, strings.Join(got, "\n"), strings.Join(c.want, "\n"))

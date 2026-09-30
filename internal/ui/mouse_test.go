@@ -310,11 +310,11 @@ func TestClickScrolledListOpensSameItem(t *testing.T) {
 // which draws in the border.
 func TestBoxEllipsisOnlyOnLongRows(t *testing.T) {
 	box := hostBox("", "", "", listRows([]listItem{{label: "short"}, {label: strings.Repeat("long ", 20)}}, 0, nil, 10, 0), 40, 100, 0)
-	if short, long := plainSegs(box[1]), plainSegs(box[2]); strings.Contains(short, "…") || !strings.Contains(long, "…") {
+	if short, long := hostapi.SegsText(box[1]), hostapi.SegsText(box[2]); strings.Contains(short, "…") || !strings.Contains(long, "…") {
 		t.Fatalf("short %q, long %q", short, long)
 	}
 	barred := hostBox("", "", "", [][]hostapi.Segment{{{Text: strings.Repeat("long ", 20)}, {Text: "█", Bar: true}}}, 40, 100, 0)
-	if row := plainSegs(barred[1]); !strings.Contains(row, "…") || !strings.HasSuffix(row, " █") {
+	if row := hostapi.SegsText(barred[1]); !strings.Contains(row, "…") || !strings.HasSuffix(row, " █") {
 		t.Fatalf("barred %q", row)
 	}
 }
@@ -334,8 +334,8 @@ func TestListWindowEndsAfterWholeItem(t *testing.T) {
 		{"multi-line item", []listItem{{label: "x"}, {more: more}}, 4, "m1"},
 	} {
 		rows := listRows(c.items, 0, &viewport{}, c.limit, 0)
-		if len(rows) != c.limit || strings.Contains(plainSegs(slices.Concat(rows...)), c.hidden) {
-			t.Errorf("%s: %q", c.name, plainSegs(slices.Concat(rows...)))
+		if len(rows) != c.limit || strings.Contains(hostapi.SegsText(slices.Concat(rows...)), c.hidden) {
+			t.Errorf("%s: %q", c.name, hostapi.SegsText(slices.Concat(rows...)))
 		}
 	}
 	// scrolling down, every window starts on an item's first row
@@ -343,8 +343,8 @@ func TestListWindowEndsAfterWholeItem(t *testing.T) {
 	for _, limit := range []int{4, 6, 7} {
 		v := viewport{}
 		for sel := range items {
-			if rows := listRows(items, sel, &v, limit, 0); !strings.Contains(plainSegs(rows[0]), "item") {
-				t.Errorf("limit %d, selection %d: window starts on %q", limit, sel, plainSegs(rows[0]))
+			if rows := listRows(items, sel, &v, limit, 0); !strings.Contains(hostapi.SegsText(rows[0]), "item") {
+				t.Errorf("limit %d, selection %d: window starts on %q", limit, sel, hostapi.SegsText(rows[0]))
 			}
 		}
 	}

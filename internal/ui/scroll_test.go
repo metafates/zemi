@@ -273,7 +273,7 @@ func TestChatScrollAnchorsThroughFill(t *testing.T) {
 	// the text on screen: the bar's thumb shrinks as the rows land
 	text := func() string { return strings.ReplaceAll(ansi.Strip(app.Frame()), "█", "│") }
 	// the first pass draws the last three turns
-	first := slices.IndexFunc(full, func(l []hostapi.Segment) bool { return strings.Contains(plainSegs(l), "message 28") })
+	first := slices.IndexFunc(full, func(l []hostapi.Segment) bool { return strings.Contains(hostapi.SegsText(l), "message 28") })
 	fill(full[first:], true)
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgUp})
 	want, below := text(), app.rowsBelow()
@@ -299,7 +299,9 @@ func TestChatStickyPrompt(t *testing.T) {
 	app.Frame()
 	st := app.scrolls["chat"]
 	y := st.rect.Min.Y
-	row := func() string { return strings.TrimRight(plainSegs(app.lastRows[y][:len(app.lastRows[y])-1]), " ") }
+	row := func() string {
+		return strings.TrimRight(hostapi.SegsText(app.lastRows[y][:len(app.lastRows[y])-1]), " ")
+	}
 	if !st.follow || !strings.HasPrefix(row(), "▌ fix the flaky") || !strings.HasSuffix(row(), "…") {
 		t.Fatalf("following, the top row is %q", row())
 	}
