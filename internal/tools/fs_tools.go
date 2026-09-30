@@ -1052,8 +1052,8 @@ func runGlob(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.To
 	// the gate saw only root, so an absolute pattern may not reach past it
 	if filepath.IsAbs(pattern) {
 		abs, _ := filepath.Abs(root)
-		rel, err := filepath.Rel(abs, pattern)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+		rel, ok := perm.Under(abs, pattern)
+		if !ok {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is not under %s: pass its directory as path and a pattern relative to it", pattern, root)), nil
 		}
 		pattern = filepath.ToSlash(rel)
