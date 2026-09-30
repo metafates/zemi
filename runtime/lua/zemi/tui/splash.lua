@@ -149,11 +149,12 @@ function M.render(ctx)
 	groups[#groups + 1] = tips
 
 	-- a little below the middle, near the composer, and placed as if the tip
-	-- were one row, so a tip that wraps moves nothing above it
+	-- were one row, so a tip that wraps moves nothing above it: its second row
+	-- takes the one left blank under it (flow gives it two at most)
 	local top = math.floor((fit - n + #tips - 1) / 2) + 2
 	---@type zemi.Line[]
 	local out = {}
-	for _ = 1, math.min(top, fit - n - 1) do
+	for _ = 1, math.min(top, fit - n + #tips - 2) do
 		out[#out + 1] = { { text = "" } }
 	end
 	for g, rows in ipairs(groups) do

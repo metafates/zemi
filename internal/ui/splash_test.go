@@ -98,12 +98,10 @@ zemi.ui.widget.add({
 
 // TestSplashTip: the splash ends with the first tip that applies, the long
 // no-model hint wrapped to a second row under its text, and a tip that wraps
-// moves nothing above it.
+// moves nothing above it, on a short chat too.
 func TestSplashTip(t *testing.T) {
-	app, _ := bootAgentApp(t, 100, 30)
 	hint := "export ANTHROPIC_API_KEY and start zemi again, or add a provider to ~/.config/zemi/init.lua"
-	logo := [2]int{-1, -1}
-	for _, c := range []struct {
+	cases := []struct {
 		name, ctx, want, fill string
 		moved                 bool // the logo moved: the listed rows changed
 	}{
@@ -114,8 +112,12 @@ func TestSplashTip(t *testing.T) {
 		{"no instruction file", `instructions = {}`, "● Tip  /init writes an AGENTS.md, so zemi knows this project", "/init", false},
 		{"other projects", `projects = { { path = "~/p", root = "/p", ago = "now" } }`, "● Tip  /projects switches to one, or type to stay here", "", false},
 		{"a first session", `recent = {}`, `● Tip  try "make the snail green": zemi configures itself`, "make the snail green", true},
-	} {
-		runLua(t, app, `
+	}
+	for _, h := range []int{30, 17} {
+		app, _ := bootAgentApp(t, 100, h)
+		logo := [2]int{-1, -1}
+		for _, c := range cases {
+			runLua(t, app, `
 local default = require("zemi.tui")
 zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5, on_click = require("zemi.tui.text").run_click,
@@ -128,29 +130,30 @@ zemi.ui.widget.add({
     return default.splash(ctx)
   end,
 })`)
-		app.frameGen++
-		app.renderSync(t)
-		var rows []string
-		for r := range strings.SplitSeq(ansi.Strip(app.Frame()), "\n") {
-			rows = append(rows, strings.TrimSpace(r))
-		}
-		if frame := strings.Join(rows, "\n"); !strings.Contains(frame, c.want) {
-			t.Errorf("%s: want %q\n%s", c.name, c.want, frame)
-		}
-		if x, y := findCell(t, app, "╭────╮"); logo[0] == -1 {
-			logo = [2]int{x, y}
-		} else if logo != [2]int{x, y} != c.moved {
-			t.Errorf("%s: the logo moved from %v to %d,%d", c.name, logo, x, y)
-		}
-		if c.fill != "" {
-			x, y := findCell(t, app, c.fill)
-			clickAt(app, x, y)
-			for app.Pump() {
+			app.frameGen++
+			app.renderSync(t)
+			var rows []string
+			for r := range strings.SplitSeq(ansi.Strip(app.Frame()), "\n") {
+				rows = append(rows, strings.TrimSpace(r))
 			}
-			if app.composer.text != c.fill {
-				t.Errorf("%s: a click on the tip left the composer %q", c.name, app.composer.text)
+			if frame := strings.Join(rows, "\n"); !strings.Contains(frame, c.want) {
+				t.Errorf("%d rows, %s: want %q\n%s", h, c.name, c.want, frame)
 			}
-			app.composer.text = ""
+			if x, y := findCell(t, app, "╭────╮"); logo[0] == -1 {
+				logo = [2]int{x, y}
+			} else if logo != [2]int{x, y} != c.moved {
+				t.Errorf("%d rows, %s: the logo moved from %v to %d,%d", h, c.name, logo, x, y)
+			}
+			if c.fill != "" {
+				x, y := findCell(t, app, c.fill)
+				clickAt(app, x, y)
+				for app.Pump() {
+				}
+				if app.composer.text != c.fill {
+					t.Errorf("%s: a click on the tip left the composer %q", c.name, app.composer.text)
+				}
+				app.composer.text = ""
+			}
 		}
 	}
 }
