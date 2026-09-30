@@ -266,9 +266,12 @@ func (d Dirs) PluginsRoot() string {
 }
 
 // WriteFileAtomic replaces path with data through a temp file in its
-// directory, so a reader or a crash never sees half a file and two zemi
-// windows writing at once never share a temp file.
+// directory, made owner-only when missing, so a reader or a crash never sees
+// half a file and two zemi windows writing at once never share a temp file.
 func WriteFileAtomic(path string, data []byte, mode fs.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
 	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return err

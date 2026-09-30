@@ -306,9 +306,6 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 	if err != nil {
 		return Catalog{}, false, err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return Catalog{}, false, err
-	}
 	if err := config.WriteFileAtomic(filepath.Join(dir, catalogFile), data, 0o600); err != nil {
 		return Catalog{}, false, err
 	}

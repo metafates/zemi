@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -96,9 +95,6 @@ func (a *Auth) load() *Token {
 // save writes the grant owner-only. The caller holds mu.
 func (a *Auth) save(t *Token) error {
 	a.tok, a.loaded = t, true
-	if err := os.MkdirAll(filepath.Dir(a.Path), 0o700); err != nil {
-		return err
-	}
 	b, err := json.MarshalIndent(t, "", "  ")
 	if err != nil {
 		return err
