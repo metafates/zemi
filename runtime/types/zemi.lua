@@ -916,7 +916,7 @@ function zemi.event.stats() end
 ---@field id string
 ---@field region zemi.Region
 ---@field render fun(ctx: zemi.WidgetCtx): zemi.Line[], boolean?
----@field priority? integer Lower draws first within a region; `statusline.right` draws from its right edge, and a statusline too short for its widgets drops the highest first.
+---@field priority? integer Within a region lower sits first: top to bottom, and in the statusline from the outer edge inward (`statusline.right` from its right edge leftward), so one above a shipped widget's priority sits just inside it. A short statusline drops the highest first.
 ---@field wrap? boolean Word-wrap instead of truncating.
 ---@field on_click? fun(ev: zemi.WidgetClick) Runs under the widget's origin when a segment with a `click` id is clicked.
 

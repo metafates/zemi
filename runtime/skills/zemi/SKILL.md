@@ -12,7 +12,7 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 | settings, providers and models, permission rules and modes, the sandbox, MCP and language servers, trust, the command line, what a slash command or key does | `config.md` |
 | Lua in init.lua or the lua tool: the API, origins, events, what may wait | `lua.md` |
 | keymaps, widgets, the statusline, themes and colors, layout | `ui.md`, then `lua.md` for API |
-| a plugin: new, changed, tested, published | `plugins.md`, which says when `lua.md` is needed |
+| a plugin: new, changed, tested, published | `plugins.md` (and `ui.md` for a widget or key), which says when `lua.md` is needed |
 | a subagent or a profile | `agents.md` |
 | a skill or a prompt command | `skills.md` |
 | a workflow: controlling a run, rerunning or saving one | `workflows.md` |
