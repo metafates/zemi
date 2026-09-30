@@ -683,29 +683,27 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 			h.ToggleReasoning()
 			return nil
 		},
-		"zemi.ui.scroll.up":          func(h *Host, id string) error { h.scroll(ScrollUp, id); return nil },
-		"zemi.ui.scroll.down":        func(h *Host, id string) error { h.scroll(ScrollDown, id); return nil },
-		"zemi.ui.scroll.top":         func(h *Host, id string) error { h.scroll(ScrollTop, id); return nil },
-		"zemi.ui.scroll.bottom":      func(h *Host, id string) error { h.scroll(ScrollBottom, id); return nil },
-		"zemi.ui.scroll.line_up":     func(h *Host, id string) error { h.scroll(ScrollLineUp, id); return nil },
-		"zemi.ui.scroll.line_down":   func(h *Host, id string) error { h.scroll(ScrollLineDown, id); return nil },
-		"zemi.ui.scroll.sticky_up":   func(h *Host, id string) error { h.scroll(ScrollStickyUp, id); return nil },
-		"zemi.ui.scroll.sticky_down": func(h *Host, id string) error { h.scroll(ScrollStickyDown, id); return nil },
-		"zemi.model.pick":            func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
-		"zemi.composer.submit":       composerAction(ComposerSubmit),
-		"zemi.composer.insert":       composerAction(ComposerInsert),
-		"zemi.composer.history_prev": composerAction(ComposerHistoryPrev),
-		"zemi.composer.history_next": composerAction(ComposerHistoryNext),
-		"zemi.composer.paste":        composerAction(ComposerPaste),
-		"zemi.composer.edit":         composerAction(ComposerEditor),
-		"zemi.ui.focus.set":          func(h *Host, id string) error { return h.focusNode(id) },
-		"zemi.ui.focus.next":         func(h *Host, _ string) error { return h.cycleFocus(1) },
-		"zemi.ui.focus.prev":         func(h *Host, _ string) error { return h.cycleFocus(-1) },
-		"zemi.permission.mode.next":  func(h *Host, _ string) error { return h.cyclePermMode(1) },
-		"zemi.permission.mode.prev":  func(h *Host, _ string) error { return h.cyclePermMode(-1) },
-		"zemi.agent.profile.next":    func(h *Host, _ string) error { return h.cycleProfile(1) },
-		"zemi.agent.profile.prev":    func(h *Host, _ string) error { return h.cycleProfile(-1) },
-		"zemi.reload":                nil, // Go-reserved; never dispatched here
+		"zemi.model.pick":           func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
+		"zemi.ui.focus.set":         func(h *Host, id string) error { return h.focusNode(id) },
+		"zemi.ui.focus.next":        func(h *Host, _ string) error { return h.cycleFocus(1) },
+		"zemi.ui.focus.prev":        func(h *Host, _ string) error { return h.cycleFocus(-1) },
+		"zemi.permission.mode.next": func(h *Host, _ string) error { return h.cyclePermMode(1) },
+		"zemi.permission.mode.prev": func(h *Host, _ string) error { return h.cyclePermMode(-1) },
+		"zemi.agent.profile.next":   func(h *Host, _ string) error { return h.cycleProfile(1) },
+		"zemi.agent.profile.prev":   func(h *Host, _ string) error { return h.cycleProfile(-1) },
+		"zemi.reload":               nil, // Go-reserved; never dispatched here
+	}
+	for _, a := range scrollActions {
+		h.hostActions["zemi.ui.scroll."+string(a)] = func(h *Host, id string) error { h.scroll(a, id); return nil }
+	}
+	// insert takes the text after the action's name
+	for _, op := range []ComposerOp{ComposerSubmit, ComposerInsert, ComposerHistoryPrev, ComposerHistoryNext, ComposerPaste, ComposerEditor} {
+		h.hostActions["zemi.composer."+string(op)] = func(h *Host, args string) error {
+			if ui := h.hooks(); ui != nil {
+				ui.ComposerEdit(op, args, 0)
+			}
+			return nil
+		}
 	}
 	h.refreshPending()
 	h.recentStale.Store(true)
@@ -716,17 +714,6 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	b, err := sandbox.Probe()
 	h.sandbox.Store(&sandboxProbe{b, err})
 	return h
-}
-
-// composerAction is a zemi.composer.* host action: op, with the text after
-// the action's name for insert.
-func composerAction(op ComposerOp) func(h *Host, args string) error {
-	return func(h *Host, args string) error {
-		if ui := h.hooks(); ui != nil {
-			ui.ComposerEdit(op, args, 0)
-		}
-		return nil
-	}
 }
 
 // now is the time Lua sees (lua.Clock): a toast's, a log line's, a render's.
