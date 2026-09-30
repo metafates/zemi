@@ -1013,3 +1013,46 @@ func TestFindSymbol(t *testing.T) {
 		}
 	}
 }
+
+func TestChangeDiff(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.go")
+	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := ChangeDiff("edit", map[string]any{"path": path, "old_string": "two", "new_string": "TWO"})
+	for _, want := range []string{"@@ -1,3 +1,3 @@", " one", "-two", "+TWO", " three"} {
+		if !strings.Contains(d, want) {
+			t.Fatalf("diff misses %q:\n%s", want, d)
+		}
+	}
+	if d := ChangeDiff("edit", map[string]any{"path": path, "old_string": "1\n3", "new_string": "2"}); d != "--- "+path+"\n+++ "+path+"\n@@\n-1\n-3\n+2" {
+		t.Fatalf("fallback = %q", d)
+	}
+	if d := ChangeDiff("write", map[string]any{"path": os.DevNull, "content": "a\nb\n"}); d != "--- "+os.DevNull+"\n+++ "+os.DevNull+"\n@@\n+a\n+b" {
+		t.Fatalf("device fallback = %q", d)
+	}
+}
+
+func TestFileToolsRefuseSymlink(t *testing.T) {
+	p, _ := testPipeline(t, false, perm.Rule{Subject: "fs.write", Pattern: "*", Decision: perm.Allow})
+	all := All(p)
+	dir := perm.RealPath(t.TempDir())
+	target, link := filepath.Join(dir, "real.txt"), filepath.Join(dir, "link.txt")
+	os.WriteFile(target, []byte("one\n"), 0o644)
+	os.Symlink(target, link)
+	want := link + " is a symbolic link to " + target + "; edit " + target + " instead"
+	for _, c := range []struct {
+		tool  fantasy.AgentTool
+		input string
+	}{
+		{all[2], `{"path":"` + link + `","content":"x"}`},
+		{all[3], `{"path":"` + link + `","old_string":"one","new_string":"x"}`},
+	} {
+		if resp := call(t, c.tool, c.input); !resp.IsError || resp.Content != want {
+			t.Errorf("%s: %+v", c.tool.Info().Name, resp)
+		}
+	}
+	if data, _ := os.ReadFile(target); string(data) != "one\n" {
+		t.Errorf("target changed: %q", data)
+	}
+}
