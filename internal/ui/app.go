@@ -1497,6 +1497,7 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill) uv.Style {
 			fg = apart(st.Fg, st.Bg, b)
 		}
 		st.Fg, st.Bg = fg, bg
+	default: // truecolor draws as given, and bubbletea drops color where none shows
 	}
 	return st
 }

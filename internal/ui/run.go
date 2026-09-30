@@ -35,6 +35,7 @@ func printLines(w io.Writer, t themeResolver, p colorprofile.Profile, lines [][]
 				st.Fg = ansi256(st.Fg)
 			case colorprofile.ANSI:
 				st.Fg = ansi16(st.Fg)
+			default: // ConvertStyle below drops what the terminal cannot show
 			}
 			st = uv.ConvertStyle(st, p)
 			b.WriteString(st.Styled(s.Text))
