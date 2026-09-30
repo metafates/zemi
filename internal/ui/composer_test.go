@@ -108,33 +108,22 @@ func TestComposerLineMoves(t *testing.T) {
 }
 
 func TestComposerHistory(t *testing.T) {
-	c := &composerState{}
-	if c.histPrev() {
-		t.Fatal("empty history moved")
+	c := &composerState{text: "draft"}
+	c.histPrev()
+	if c.text != "draft" {
+		t.Fatalf("an empty history recalled %q", c.text)
 	}
 	for _, s := range []string{"one", "two"} {
 		c.pushHistory(s, 50)
 	}
-	c.text, c.cursor = "draft", 5
-	c.histPrev()
-	if c.text != "two" {
-		t.Fatalf("histPrev: %q", c.text)
-	}
-	c.histPrev()
-	if c.text != "one" {
-		t.Fatalf("histPrev again: %q", c.text)
-	}
-	if c.histPrev() {
-		t.Fatal("histPrev past oldest moved")
-	}
-	if !c.histNext() || c.text != "two" {
-		t.Fatalf("histNext: %q", c.text)
-	}
-	if !c.histNext() || c.text != "draft" {
-		t.Fatalf("histNext to draft: %q", c.text)
-	}
-	if c.histNext() {
-		t.Fatal("histNext past draft moved")
+	// past either end a recall stays put
+	for i, step := range []struct {
+		recall func()
+		want   string
+	}{{c.histPrev, "two"}, {c.histPrev, "one"}, {c.histPrev, "one"}, {c.histNext, "two"}, {c.histNext, "draft"}, {c.histNext, "draft"}} {
+		if step.recall(); c.text != step.want {
+			t.Fatalf("step %d: %q, want %q", i, c.text, step.want)
+		}
 	}
 	// Cap and duplicate suppression.
 	c2 := &composerState{}

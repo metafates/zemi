@@ -240,7 +240,7 @@ func (a *App) sendMessage(text string) {
 	if err := a.host.AgentSend(text); err != nil {
 		a.pushToast(slog.LevelError, "Could not send", err.Error())
 		a.composer.text = draft
-		a.composer.cursor = len(a.composer.runes())
+		a.composer.moveEnd()
 		a.publishComposer()
 	}
 }

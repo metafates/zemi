@@ -62,12 +62,7 @@ func (c *composerState) runes() []rune { return []rune(c.text) }
 func (c *composerState) empty() bool { return strings.TrimSpace(c.text) == "" }
 
 // insert places s at the cursor and moves past it.
-func (c *composerState) insert(s string) {
-	r := c.runes()
-	at := c.cursor
-	c.text = string(r[:at]) + s + string(r[at:])
-	c.cursor = at + len([]rune(s))
-}
+func (c *composerState) insert(s string) { c.replace(c.cursor, s) }
 
 // pasteToken matches a paste token ending at the cursor.
 var pasteToken = regexp.MustCompile(`\[Pasted text #\d+ [^\]]+\]$`)
@@ -118,13 +113,11 @@ func (c *composerState) backspace() {
 	if c.cursor == 0 {
 		return
 	}
-	r := c.runes()
 	n := 1
-	if tok := pasteToken.FindString(string(r[:c.cursor])); c.pastes[tok] != "" {
+	if tok := pasteToken.FindString(string(c.runes()[:c.cursor])); c.pastes[tok] != "" {
 		n = len([]rune(tok))
 	}
-	c.text = string(r[:c.cursor-n]) + string(r[c.cursor:])
-	c.cursor -= n
+	c.replace(c.cursor-n, "")
 }
 
 func (c *composerState) delete() {
@@ -276,15 +269,12 @@ func (c *composerState) delWord() {
 			i--
 		}
 	}
-	c.text = string(r[:i]) + string(r[c.cursor:])
-	c.cursor = i
+	c.replace(i, "")
 }
 
 func (c *composerState) delToLineStart() {
 	start, _ := c.lineSpan()
-	r := c.runes()
-	c.text = string(r[:start]) + string(r[c.cursor:])
-	c.cursor = start
+	c.replace(start, "")
 }
 
 func (c *composerState) delToLineEnd() {
@@ -293,9 +283,7 @@ func (c *composerState) delToLineEnd() {
 	c.text = string(r[:c.cursor]) + string(r[end:])
 }
 
-func (c *composerState) moveEnd() {
-	c.cursor = len(c.runes())
-}
+func (c *composerState) moveEnd() { c.cursor = len(c.runes()) }
 
 // multiline reports whether newline insertion is allowed.
 func (a *App) multiline() bool { return a.host.Settings.Bool("ui.composer.multiline") }
@@ -341,26 +329,23 @@ func (a *App) seedHistory() {
 	c.histIdx = len(c.history)
 }
 
-// histPrev recalls the older entry, saving the live draft; reports whether
-// it moved.
-func (c *composerState) histPrev() bool {
+// histPrev recalls the older entry, saving the live draft.
+func (c *composerState) histPrev() {
 	if c.histIdx == 0 {
-		return false
+		return
 	}
 	if c.histIdx == len(c.history) {
 		c.draft = c.text
 	}
 	c.histIdx--
 	c.text = c.history[c.histIdx]
-	c.cursor = len(c.runes())
-	return true
+	c.moveEnd()
 }
 
-// histNext recalls the newer entry or restores the draft; reports whether
-// it moved.
-func (c *composerState) histNext() bool {
+// histNext recalls the newer entry or restores the draft.
+func (c *composerState) histNext() {
 	if c.histIdx >= len(c.history) {
-		return false
+		return
 	}
 	c.histIdx++
 	if c.histIdx == len(c.history) {
@@ -368,8 +353,7 @@ func (c *composerState) histNext() bool {
 	} else {
 		c.text = c.history[c.histIdx]
 	}
-	c.cursor = len(c.runes())
-	return true
+	c.moveEnd()
 }
 
 const composerMaxRows = 8
