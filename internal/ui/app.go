@@ -1084,7 +1084,8 @@ func dimRows(rows [][]hostapi.Segment) {
 	for i, r := range rows {
 		out := make([]hostapi.Segment, len(r))
 		for j, s := range r {
-			out[j] = hostapi.Segment{Text: s.Text, HL: hostapi.ChromeDim}
+			// the edge fade stays under a modal, so the backdrop keeps its depth
+			out[j] = hostapi.Segment{Text: s.Text, HL: hostapi.ChromeDim, Fade: s.Fade}
 			if strings.ContainsRune(s.Text, kitty.Placeholder) {
 				out[j] = s
 			}

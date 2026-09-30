@@ -1080,8 +1080,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   scrolled region pins, top down: a turn's prompt, then its opened run's digest down to the
   run's last row) and `Line` (a chrome line `App.join` meets with the
   lines it touches, after all placement: text, Lua content and the snail art never join); only
-  `dimRows` drops them, because dimmed rows are not targets and the backdrop joins before it
-  dims, so no dimmed line joins the top box. Overlays (internal/ui/overlay.go) are data
+  `dimRows` drops them (keeping `Fade`, so the edge fade stays under a modal), because dimmed
+  rows are not targets and the backdrop joins before it dims, so no dimmed line joins the top box. Overlays (internal/ui/overlay.go) are data
   (DESIGN §8 has the detail views, `danger` arming and `AskFirst`); `BodySegs` is sanitized like
   `Body`, which stays what `y` copies. Opening the id of an open overlay replaces it in place
   (`replaceOverlay`, keeping the filter and the selection on its row; only an origin that may close it), a detail
