@@ -455,22 +455,6 @@ func (t *PluginTest) note(line string) {
 	}
 }
 
-// luaErrText is a Lua error's message without its traceback.
-func luaErrText(err error) string {
-	if ae, ok := errors.AsType[*glua.ApiError](err); ok {
-		return ae.Object.String()
-	}
-	return err.Error()
-}
-
-// errText drops a Lua error's traceback, which names Go and temp frames.
-func errText(err error) error {
-	if err == nil {
-		return nil
-	}
-	return errors.New(luaErrText(err))
-}
-
 func (t *PluginTest) mine(path string) bool { return t.h.PluginOf(path) == t.plugin }
 
 // own is what of all the plugin registered under name, key naming each

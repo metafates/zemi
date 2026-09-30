@@ -332,12 +332,12 @@ func (h *Host) runLuaTool(ctx context.Context, t *luaTool, callID string, input 
 			return []any{v}, err
 		},
 	})
-	switch ae, raised := errors.AsType[*glua.ApiError](err); {
+	switch _, raised := errors.AsType[*glua.ApiError](err); {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		err = context.Cause(ctx)
 	case raised:
 		h.RecordError("tool "+t.Name, err.Error())
-		err = errors.New(ae.Object.String())
+		err = errText(err)
 	}
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", t.Name, err)

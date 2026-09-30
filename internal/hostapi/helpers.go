@@ -127,6 +127,22 @@ func rawStringMap(L *glua.LState, tb *glua.LTable, key string) map[string]string
 	return out
 }
 
+// luaErrText is a Lua error's message without its traceback.
+func luaErrText(err error) string {
+	if ae, ok := errors.AsType[*glua.ApiError](err); ok {
+		return ae.Object.String()
+	}
+	return err.Error()
+}
+
+// errText drops a Lua error's traceback, which names Go and temp frames.
+func errText(err error) error {
+	if err == nil {
+		return nil
+	}
+	return errors.New(luaErrText(err))
+}
+
 // luaLiteral writes a string with only the escapes Lua 5.1 reads; other
 // bytes, UTF-8 included, stay as they are. A number is written whole, 1000000
 // and never 1e+06.
