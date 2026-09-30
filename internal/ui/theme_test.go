@@ -2,12 +2,21 @@ package ui
 
 import (
 	"image/color"
+	"math"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/lucasb-eyer/go-colorful"
+
+	"github.com/metafates/zemi/internal/hostapi"
 )
+
+func rgb(v uint32) ansi.RGBColor {
+	return ansi.RGBColor{R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v)}
+}
 
 // TestANSI16: a 16-color terminal keeps a warning yellow and a hint dimmer
 // than text, where the stock table draws amber red and #828282 as fg.
@@ -28,58 +37,14 @@ func TestANSI16(t *testing.T) {
 	}
 }
 
-// A light terminal background switches both the fixed chrome and the theme
-// to their light variant, a dark one switches back, and the chrome follows
-// the light theme picked in a dark terminal.
-func TestLightBackground(t *testing.T) {
+// TestThemes: every shipped theme keeps each text role over its contrast
+// floor on bg and the literal apart in hue from warn and danger, whorl its
+// diff tints apart at 256 colors, and the Go chrome draws in the colors of
+// the groups it stands for.
+func TestThemes(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
-	darkTitle, darkFg := app.hlStyle("Host:Title"), app.thm.style("Normal").Fg
-
-	app.Update(tea.BackgroundColorMsg{Color: rgb(0xfafafa)})
-	if !app.thm.light {
-		t.Fatal("a light background did not switch the chrome")
-	}
-	lightTitle := app.hlStyle("Host:Title")
-	if lightTitle == darkTitle {
-		t.Fatal("the fixed chrome kept its dark accent")
-	}
-	if fg := app.thm.style("Normal").Fg; fg == darkFg {
-		t.Fatalf("the theme kept its dark foreground: %v", fg)
-	}
-
-	app.Update(tea.BackgroundColorMsg{Color: rgb(0x141414)})
-	if app.thm.light {
-		t.Fatal("a dark background did not switch back")
-	}
-	// the light theme picked in a dark terminal paints a light canvas
-	if err := host.SetTheme("whorl-light"); err != nil {
-		t.Fatal(err)
-	}
-	if app.hlStyle("Host:Title") != lightTitle {
-		t.Fatal("the fixed chrome kept its dark accent on the light theme's canvas")
-	}
-}
-
-// TestDiffTintsApart: an added and a removed row keep different tints on a
-// 256-color terminal, in the theme and in the fixed chrome, dark and light.
-func TestDiffTintsApart(t *testing.T) {
-	app, _ := bootAgentApp(t, 80, 24)
-	for _, bg := range []uint32{0x141414, 0xfafafa} {
-		app.Update(tea.BackgroundColorMsg{Color: rgb(bg)})
-		for _, pair := range [][2]string{{"DiffAdd", "DiffDel"}, {"Host:DiffAdd", "Host:DiffDel"}} {
-			add, del := app.hlStyle(pair[0]).Bg, app.hlStyle(pair[1]).Bg
-			if add == nil || colorprofile.ANSI256.Convert(add) == colorprofile.ANSI256.Convert(del) {
-				t.Errorf("bg %06x: %s and %s are one cell at 256 colors", bg, pair[0], pair[1])
-			}
-		}
-	}
-}
-
-// TestChromeIsWhorl: the host chrome's copy of the palette draws each
-// Host: style in the colors of the whorl group it stands for, dark and light.
-func TestChromeIsWhorl(t *testing.T) {
-	app, _ := bootAgentApp(t, 80, 24)
-	pairs := [][2]string{
+	floors := map[string]float64{"fg": 7, "dim": 4.5, "accent": 4.5, "literal": 4.5, "ok": 4.5, "danger": 4.5, "warn": 3.5}
+	chrome := [][2]string{
 		{"Host:Value", "Normal"},
 		{"Host:Hint", "Dim"},
 		{"Host:HintKey", "Accent"},
@@ -93,13 +58,73 @@ func TestChromeIsWhorl(t *testing.T) {
 		{"Host:DiffDel", "DiffDel"},
 		{"Host:DiffDelNum", "DiffDelNum"},
 	}
-	for _, bg := range []uint32{0x141414, 0xfafafa} {
-		app.Update(tea.BackgroundColorMsg{Color: rgb(bg)})
-		for _, p := range pairs {
-			host, group := app.hlStyle(p[0]), app.hlStyle(p[1])
-			if !sameColor(host.Fg, group.Fg) || !sameColor(host.Bg, group.Bg) {
-				t.Errorf("bg %06x: %s is %v on %v, %s %v on %v", bg, p[0], host.Fg, host.Bg, p[1], group.Fg, group.Bg)
+	themes := host.Themes.List()
+	if len(themes) < 21 {
+		t.Fatalf("%d themes", len(themes))
+	}
+	hue := func(c color.Color) float64 {
+		v, _ := colorful.MakeColor(c)
+		_, _, h := v.OkLch()
+		return h
+	}
+	for _, th := range themes {
+		if _, err := host.Settings.SetQuiet("ui.theme", th.Name); err != nil {
+			t.Fatal(err)
+		}
+		if host.ActiveTheme() != th {
+			t.Fatalf("%s: %s draws", th.Name, host.ActiveTheme().Name)
+		}
+		for role, floor := range floors {
+			if r := hostapi.Contrast(th.Color(role), th.Palette.Bg); r < floor {
+				t.Errorf("%s: %s is %.2f:1 on bg, under %.1f", th.Name, role, r, floor)
 			}
 		}
+		for _, other := range []string{"warn", "danger"} {
+			d := math.Abs(hue(th.Palette.Literal) - hue(th.Color(other)))
+			if d = min(d, 360-d); d < 15 {
+				t.Errorf("%s: literal %s is %.0f degrees from %s", th.Name, hostapi.Hex(th.Palette.Literal), d, other)
+			}
+		}
+		if strings.HasPrefix(th.Name, "whorl") && colorprofile.ANSI256.Convert(th.Palette.AddBg) == colorprofile.ANSI256.Convert(th.Palette.DelBg) {
+			t.Errorf("%s: an added and a removed row are one tint at 256 colors", th.Name)
+		}
+		for _, p := range chrome {
+			h, g := app.hlStyle(p[0]), app.hlStyle(p[1])
+			if !sameColor(h.Fg, g.Fg) || !sameColor(h.Bg, g.Bg) {
+				t.Errorf("%s: %s is %v on %v, %s %v on %v", th.Name, p[0], h.Fg, h.Bg, p[1], g.Fg, g.Bg)
+			}
+		}
+	}
+}
+
+// TestActiveTheme: a light terminal draws the theme's light twin, chrome
+// included, a dark one the theme itself, and a name no theme answers to
+// draws whorl and is named in /errors.
+func TestActiveTheme(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	title := func() color.Color { return app.hlStyle("Host:Title").Fg }
+	whorl, light := host.Themes.Get("whorl"), host.Themes.Get("whorl-light")
+	for _, c := range []struct {
+		name  string
+		bg    uint32
+		theme string
+		want  *hostapi.Theme
+	}{
+		{"light terminal", 0xfafafa, "whorl", light},
+		{"dark terminal", 0x141414, "whorl", whorl},
+		{"light theme on a dark terminal", 0x141414, "whorl-light", light},
+		{"unknown name", 0x141414, "gone", whorl},
+	} {
+		app.Update(tea.BackgroundColorMsg{Color: rgb(c.bg)})
+		if _, err := host.Settings.SetQuiet("ui.theme", c.theme); err != nil {
+			t.Fatal(err)
+		}
+		if got := host.ActiveTheme(); got != c.want || !sameColor(title(), c.want.Palette.Accent) {
+			t.Errorf("%s: %s draws, title %v", c.name, got.Name, title())
+		}
+	}
+	host.CheckTheme()
+	if !host.Recorded(`ui.theme "gone" names no theme, so whorl draws; /theme lists them`) {
+		t.Error("a stale ui.theme is not in /errors")
 	}
 }

@@ -204,16 +204,19 @@ func TestKeySequences(t *testing.T) {
 	}
 }
 
-// TestHighlightOverride: zemi.ui.hl changes one group of the active theme
-// and leaves the others as the theme defines them; links resolve through
-// overrides and the theme, a cycle resolves to nothing, and hl.get reads
-// the resolved group.
+// TestHighlightOverride: zemi.ui.hl defines a group for every theme, a
+// later set replaces it, links resolve, a cycle resolves to nothing, and
+// hl.get reads the group with its roles in the active theme's colors. A
+// theme takes only the palette roles and ansi.
 func TestHighlightOverride(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.ui.theme.add("t", { palette = { accent = "#123456" }, hl = { Title = { fg = "accent" }, Comment = { fg = "#777777" }, Link = { link = "Title", fg = "#000000" } } })
-		zemi.ui.theme.set("t")
-		assert(zemi.ui.hl.get("Link").fg == "#123456", "a theme link to a palette color")
+		zemi.ui.theme.add("t", { bg = "#101010", fg = "#e0e0e0", accent = "#8899ff", ok = "#88dd88", warn = "#dddd66", danger = "#ee6666" })
+		zemi.config.set("ui.theme", "t")
+		zemi.ui.hl.set("Title", { fg = "accent" })
+		zemi.ui.hl.set("Dim", { fg = "#777777" })
+		zemi.ui.hl.set("Link", { link = "Title", fg = "#000000" })
+		assert(zemi.ui.hl.get("Link").fg == "#8899ff", "a link to a role")
 		zemi.ui.hl.set("Title", { fg = "#ffffff", bold = true })
 		zemi.ui.hl.set("Mine", { link = "Link" })
 		local mine = zemi.ui.hl.get("Mine")
@@ -223,7 +226,7 @@ func TestHighlightOverride(t *testing.T) {
 		assert(zemi.ui.hl.get("A") == nil and zemi.ui.hl.get("Nope") == nil, "a cycle or an unset group")
 		zemi.ui.hl.set("Hover", { underline = "curl", sp = "accent", bold = false, brighten = 0.3, replace = true })
 		local hv = zemi.ui.hl.get("Hover")
-		assert(hv.underline == "curl" and hv.sp == "#123456" and hv.bold == false and hv.italic == nil
+		assert(hv.underline == "curl" and hv.sp == "#8899ff" and hv.bold == false and hv.italic == nil
 			and hv.brighten == 0.3 and hv.replace, zemi.json.encode(hv))
 		zemi.ui.hl.set("U", { underline = false })
 		assert(zemi.ui.hl.get("U").underline == false, "underline = false reads back")
@@ -236,19 +239,23 @@ func TestHighlightOverride(t *testing.T) {
 		assert(not pcall(zemi.ui.hl.set, "X", "blue") and not pcall(zemi.ui.hl.set, "X"), "a spec that is not a table raises")
 		assert(not pcall(zemi.ui.theme.add, "bogus", "nope"), "a theme that is not a table raises")
 		local ok, err = pcall(zemi.ui.hl.set, "X", { fg = "salmon" })
-		assert(not ok and tostring(err):find("palette key", 1, true), "err=" .. tostring(err))
+		assert(not ok and tostring(err):find("palette role", 1, true), "err=" .. tostring(err))
 		assert(not pcall(zemi.ui.hl.set, "X", { bg = "#gg0000" }), "a bad hex color raises")
-		assert(not pcall(zemi.ui.theme.add, "p", { palette = { accent = "salmon" } }), "a palette name as a color raises")
-		assert(not pcall(zemi.ui.theme.add, "q", { palette = { a = "#111111" }, hl = { T = { fg = "b" } } }),
-			"a theme group naming a color its palette lacks raises")
 		assert(zemi.ui.hl.get("X") == nil, "a refused spec sets nothing")
+		for _, bad in ipairs({
+			{ bg = "#000000", fg = "#ffffff", accent = "salmon", ok = "#00ff00", warn = "#ffff00", danger = "#ff0000" },
+			{ fg = "#ffffff", accent = "#0000ff", ok = "#00ff00", warn = "#ffff00", danger = "#ff0000" },
+			{ bg = "#000000", fg = "#ffffff" },
+			{ bg = "#000000", fg = "#ffffff", ansi = { "#000000" } },
+		}) do
+			assert(not pcall(zemi.ui.theme.add, "bad", bad), zemi.json.encode(bad))
+		end
+		local ok2, err2 = pcall(zemi.ui.theme.add, "bad", { bg = "#000000", fg = "#ffffff", hl = {} })
+		assert(not ok2 and tostring(err2):find('unknown key "hl"', 1, true), tostring(err2))
+		assert(not pcall(zemi.config.set, "ui.theme", "bad"), "a theme nothing added is refused")
 	`)
-	theme := h.Themes.Get("t")
-	if s, _ := h.Themes.Group(theme, "Title"); s.Fg != "#ffffff" || s.Bold == nil || !*s.Bold {
+	if s, _ := h.Themes.Group("Title"); s.Fg != "#ffffff" || s.Bold == nil || !*s.Bold {
 		t.Fatalf("Title = %+v", s)
-	}
-	if s, _ := h.Themes.Group(theme, "Comment"); s.Fg != "#777777" {
-		t.Fatalf("Comment = %+v", s)
 	}
 }
 

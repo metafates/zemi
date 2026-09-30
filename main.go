@@ -696,7 +696,7 @@ func (tg *trustGate) command() func() {
 
 // readyStep drops the builtin providers when init.lua turned them off
 // (config has run by now, and a replay re-seeds them first), names the
-// rules and overrides no tool answers to, and emits app.ready. Only the TUI reflects at startup: zemi run and zemi health
+// rules and overrides no tool answers to and a ui.theme no theme does, and emits app.ready. Only the TUI reflects at startup: zemi run and zemi health
 // exit before it could finish.
 func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	// once per process: a reload replays the step
@@ -708,6 +708,7 @@ func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 				h.Providers.DropBuiltin()
 			}
 			h.CheckToolNames()
+			h.CheckTheme()
 			h.EmitOnState(g.L, "app.ready", nil)
 			// idle sessions are reflected in the background at startup,
 			// so quitting never waits on the reflector (DESIGN §10.3)

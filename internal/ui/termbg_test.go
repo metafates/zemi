@@ -15,33 +15,25 @@ import (
 // only on a terminal that answered OSC 11 and shows the color, and the host
 // chrome sits on the same canvas, whatever the theme sets it to.
 func TestTerminalBackground(t *testing.T) {
-	app, _ := bootAgentApp(t, 80, 24)
-	if _, err := app.host.Themes.Add(&hostapi.Theme{Name: "bare", HL: map[string]hostapi.HLSpec{"Normal": {Fg: "#d8d8d8"}}}); err != nil {
-		t.Fatal(err)
-	}
-	canvas := rgb(0x141414)
+	app, host := bootAgentApp(t, 80, 24)
+	canvas := host.Themes.Get("whorl").Palette.Bg
 	hint := hostapi.Segment{Text: " ", HL: "Host:Hint"}
 	for _, c := range []struct {
 		name    string
 		answer  bool
 		profile colorprofile.Profile
-		theme   string
 		wantBG  bool // the terminal is painted with the canvas
 	}{
-		{"no answer", false, colorprofile.TrueColor, "whorl", false},
-		{"truecolor", true, colorprofile.TrueColor, "whorl", true},
-		{"256 colors", true, colorprofile.ANSI256, "whorl", true},
-		{"no color", true, colorprofile.Ascii, "whorl", false},
-		{"theme without bg", true, colorprofile.TrueColor, "bare", false},
+		{"no answer", false, colorprofile.TrueColor, false},
+		{"truecolor", true, colorprofile.TrueColor, true},
+		{"256 colors", true, colorprofile.ANSI256, true},
+		{"no color", true, colorprofile.Ascii, false},
 	} {
 		app.termBG = nil
 		if c.answer {
-			app.Update(tea.BackgroundColorMsg{Color: canvas})
+			app.Update(tea.BackgroundColorMsg{Color: rgb(0x141414)})
 		}
 		app.Update(tea.ColorProfileMsg{Profile: c.profile})
-		if _, err := app.host.Settings.SetQuiet("ui.theme", c.theme); err != nil {
-			t.Fatal(err)
-		}
 		got := app.View().BackgroundColor
 		if c.wantBG != sameColor(got, canvas) || (!c.wantBG && got != nil) {
 			t.Fatalf("%s: terminal bg = %v, painted %v", c.name, got, c.wantBG)
@@ -68,8 +60,8 @@ func TestRuleAt16Colors(t *testing.T) {
 		bright  bool
 	}{{colorprofile.ANSI, true}, {colorprofile.ANSI256, false}} {
 		app.Update(tea.ColorProfileMsg{Profile: c.profile})
-		for _, hl := range []string{"Rule", "Host:Rule", "Host:Dim", "NearBlack", "DiffDelNum", "Host:DiffAddNum"} {
-			if got := app.segStyle(hl, "", false).Fg == ansi.BrightBlack; got != c.bright {
+		for _, hl := range []string{"Rule", "Host:Rule", "Host:Dim", "NearBlack", "DiffDelNum", "Host:DiffDelNum"} {
+			if got := app.segStyle(hl, "", hostapi.FillAuto).Fg == ansi.BrightBlack; got != c.bright {
 				t.Errorf("%v %s: bright black %v, want %v", c.profile, hl, got, c.bright)
 			}
 		}

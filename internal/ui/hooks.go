@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"image/color"
 	"log/slog"
 	"path/filepath"
 	"slices"
@@ -9,68 +8,12 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 )
-
-func rgb(v uint32) ansi.RGBColor {
-	return ansi.RGBColor{R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v)}
-}
-
-// chrome is the host chrome's palette, whorl's own values (TestChromeIsWhorl
-// keeps them equal): no theme can restyle a prompt, and it still looks like
-// zemi. The canvas is the theme's (hlStyle fills it). The selected row's band
-// is the canvas tinted toward the accent (faintly: 256 colors round a bluer
-// tint to navy, not grey).
-type chrome struct{ fg, dim, rule, accent, panel, add, del, ok, warn, danger, band color.Color }
-
-var (
-	darkChrome = chrome{
-		rgb(0xd8d8d8), rgb(0x828282), rgb(0x3a3a3a), rgb(0x9aa5f2), rgb(0x1e1e1e),
-		rgb(0x183018), rgb(0x361010), rgb(0x82d2a8), rgb(0xf0d680), rgb(0xe97170),
-		rgb(0x28292f),
-	}
-	lightChrome = chrome{
-		rgb(0x1b1b1b), rgb(0x737373), rgb(0xcfcfcf), rgb(0x6169c8), rgb(0xf0f0f0),
-		rgb(0xe7f2e2), rgb(0xfae7e7), rgb(0x2a7d57), rgb(0xa97500), rgb(0xc72d2e),
-		rgb(0xe9eaf6),
-	}
-	// keyed by "the canvas is light" (hlStyle)
-	hostStyles = map[bool]map[string]uv.Style{false: chromeStyles(darkChrome), true: chromeStyles(lightChrome)}
-)
-
-// chromeStyles are the fixed styles of the permission prompt and other Go
-// chrome: no theme can restyle them, so nothing can dress up a prompt.
-func chromeStyles(c chrome) map[string]uv.Style {
-	return map[string]uv.Style{
-		hostapi.ChromeBold:       {Fg: c.fg, Attrs: uv.AttrBold},
-		hostapi.ChromeTitle:      {Fg: c.accent, Attrs: uv.AttrBold},
-		hostapi.ChromeRule:       {Fg: c.rule},
-		hostapi.ChromeCursor:     {Attrs: uv.AttrReverse},
-		hostapi.ChromeValue:      {Fg: c.fg},
-		hostapi.ChromeHint:       {Fg: c.dim},
-		hostapi.ChromeHintKey:    {Fg: c.accent},
-		hostapi.ChromeWarn:       {Fg: c.warn},
-		hostapi.ChromeOk:         {Fg: c.ok},
-		hostapi.ChromeDanger:     {Fg: c.danger},
-		hostapi.ChromePanel:      {Fg: c.fg, Bg: c.panel},
-		hostapi.ChromeDiffAdd:    {Fg: c.fg, Bg: c.add},
-		hostapi.ChromeDiffAddNum: {Fg: c.ok, Bg: c.add},
-		hostapi.ChromeDiffDel:    {Fg: c.fg, Bg: c.del},
-		hostapi.ChromeDiffDelNum: {Fg: c.danger, Bg: c.del},
-		hostapi.ChromeDiffCtx:    {Fg: c.fg},
-		hostapi.ChromeDiffCtxNum: {Fg: c.dim},
-		hostapi.ChromeSelection:  {Attrs: uv.AttrReverse},
-		hostapi.ChromeHover:      {Underline: uv.UnderlineSingle},
-		hostapi.ChromeDim:        {Fg: c.rule},
-		hostapi.ChromeBand:       {Bg: c.band},
-	}
-}
 
 // trustPrompt is the Go-owned project trust overlay (DESIGN §5, §8): the
 // first start in a project with no saved decision, or /trust. Its chrome is

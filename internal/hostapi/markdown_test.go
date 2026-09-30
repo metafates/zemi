@@ -358,15 +358,14 @@ func TestMarkdownTheme(t *testing.T) {
 		theme string
 	}{{false, "whorl"}, {true, "whorl-light"}} {
 		h.SetLightTerminal(c.light)
-		theme := h.Themes.Get(h.ActiveThemeName())
+		theme := h.ActiveTheme()
 		if theme == nil || theme.Name != c.theme {
 			t.Fatalf("light=%v: theme %v, want %s", c.light, theme, c.theme)
 		}
 		palette := map[string]bool{}
-		for _, hex := range theme.Palette {
-			if v, err := strconv.ParseUint(strings.TrimPrefix(hex, "#"), 16, 32); err == nil {
-				palette[fmt.Sprintf("%d;%d;%d", v>>16, v>>8&0xff, v&0xff)] = true
-			}
+		for _, role := range Roles {
+			r, g, b, _ := theme.Color(role).RGBA()
+			palette[fmt.Sprintf("%d;%d;%d", r>>8, g>>8, b>>8)] = true
 		}
 		var blank, quote int
 		prevBlank := false

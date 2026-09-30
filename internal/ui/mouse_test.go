@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 	"slices"
@@ -123,12 +124,12 @@ func TestMouseHover(t *testing.T) {
 	x, y := findCell(t, app, "No ")
 	app.Update(tea.MouseMotionMsg{X: x + 1, Y: y})
 	app.renderSync(t)
-	if !strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: "No", HL: "Host:Hover"}}, 80)) {
+	if !strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: "No", HL: "Host:Hover", Fill: hostapi.FillPanel}}, 80)) {
 		t.Fatal("hovered choice not lit")
 	}
 	app.Update(tea.MouseMotionMsg{X: 0, Y: 0})
 	app.renderSync(t)
-	if strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: "No", HL: "Host:Hover"}}, 80)) {
+	if strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: "No", HL: "Host:Hover", Fill: hostapi.FillPanel}}, 80)) {
 		t.Fatal("hover stayed after the pointer left")
 	}
 	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
@@ -371,11 +372,11 @@ func TestHoverStyle(t *testing.T) {
 		{"replace drops the base", "Hover", &hostapi.HLSpec{Replace: true, Fg: "#ffffff"}, uv.Style{Fg: rgb(0xffffff)}},
 		{
 			"brighten mixes the text's fg toward white", "Hover", &hostapi.HLSpec{Brighten: 0.5},
-			uv.Style{Fg: rgb(0xc8ccd0), Bg: base.Bg, Attrs: uv.AttrBold},
+			uv.Style{Fg: hostapi.Mix(base.Fg, color.White, 0.5), Bg: base.Bg, Attrs: uv.AttrBold},
 		},
 		{
 			"brighten darkens text on a lighter fill", "Hover", &hostapi.HLSpec{Brighten: 0.5, Bg: "#ffffff"},
-			uv.Style{Fg: rgb(0x484c50), Bg: rgb(0xffffff), Attrs: uv.AttrBold},
+			uv.Style{Fg: hostapi.Mix(base.Fg, color.Black, 0.5), Bg: rgb(0xffffff), Attrs: uv.AttrBold},
 		},
 		{
 			"a theme without the group still underlines", "HoverNope", nil,

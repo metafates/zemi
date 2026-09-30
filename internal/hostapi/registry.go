@@ -491,49 +491,36 @@ const (
 
 var underlines = []Underline{UnderlineNone, UnderlineSingle, UnderlineDouble, UnderlineCurl, UnderlineDotted, UnderlineDashed}
 
-// Theme is a palette + highlight group set registered from Lua.
-type Theme struct {
-	Name    string
-	Palette map[string]string
-	HL      map[string]HLSpec
-	Origin  lua.Origin
-	Path    string
-	Gen     Gen
-}
-
-// ThemeRegistry stores themes by name; same rules as widgets.
+// ThemeRegistry stores themes by name, same rules as widgets, and the
+// highlight groups every theme draws with.
 type ThemeRegistry struct {
-	mu        sync.RWMutex
-	themes    map[string]*Theme
-	overrides map[string]HLSpec        // zemi.ui.hl.set: groups set on top of any theme
-	owner     func(path string) string // Host.PluginOf, see mayReplace
+	mu     sync.RWMutex
+	themes map[string]*Theme
+	groups map[string]HLSpec        // zemi.ui.hl.set: the shipped ones, then user config's over them
+	owner  func(path string) string // Host.PluginOf, see mayReplace
 }
 
-// SetHL overrides one highlight group on top of every theme.
+// SetHL defines one highlight group.
 func (r *ThemeRegistry) SetHL(group string, spec HLSpec) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.overrides == nil {
-		r.overrides = map[string]HLSpec{}
+	if r.groups == nil {
+		r.groups = map[string]HLSpec{}
 	}
-	r.overrides[group] = spec
+	r.groups[group] = spec
 }
 
 // maxHLLinks bounds a chain of linked groups, so a cycle resolves to nothing.
 const maxHLLinks = 8
 
-// Group resolves a highlight group, following links: an override first,
-// then the theme's (t may be nil). The first link's bold and italic apply
-// over the group it draws as.
-func (r *ThemeRegistry) Group(t *Theme, group string) (HLSpec, bool) {
+// Group resolves a highlight group, following links. The first link's
+// bold and italic apply over the group it draws as.
+func (r *ThemeRegistry) Group(group string) (HLSpec, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var over HLSpec
 	for i := range maxHLLinks {
-		s, ok := r.overrides[group]
-		if !ok && t != nil {
-			s, ok = t.HL[group]
-		}
+		s, ok := r.groups[group]
 		if !ok || s.Link == "" {
 			s.Bold, s.Italic = cmp.Or(over.Bold, s.Bold), cmp.Or(over.Italic, s.Italic)
 			return s, ok
@@ -579,18 +566,6 @@ func (r *ThemeRegistry) List() []*Theme {
 
 func (r *ThemeRegistry) Purge() {
 	r.mu.Lock()
-	r.themes, r.overrides = map[string]*Theme{}, nil
+	r.themes, r.groups = map[string]*Theme{}, nil
 	r.mu.Unlock()
-}
-
-// Palettes merges every registered theme's palette: a zemi.ui.hl override
-// outlives the theme that is active when it is set.
-func (r *ThemeRegistry) Palettes() map[string]string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	out := map[string]string{}
-	for _, t := range r.themes {
-		maps.Copy(out, t.Palette)
-	}
-	return out
 }

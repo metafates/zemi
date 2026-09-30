@@ -71,7 +71,7 @@ non-tty stdin). `--profile`, `--mode` and `-m` apply after `init.lua`.
 Colors: a pane gets 256 colors, since a detached tmux has no client to report RGB and
 `COLORTERM` is ignored under `TERM=tmux*`. For the theme's exact hues start the pane's command
 with `env TERM=xterm-256color COLORTERM=truecolor`; `capture-pane -e` then shows `38;2;r;g;b`.
-For the light palette add `zemi.ui.theme.set("whorl-light")` to the tree's `init.lua`.
+For the light palette add `zemi.config.set("ui.theme", "whorl-light")` to the tree's `init.lua`.
 
 ## 4. Reading a screen
 

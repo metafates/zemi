@@ -48,8 +48,10 @@ call.
 Safety comes from the sandbox, not from nagging. Auto mode does not ask for what the sandbox
 already confines, only for what is destructive or leaves it. Never fail open.
 
-The UI has one identity: greys, one periwinkle accent, one apricot for text quoted as written,
-square corners joined where two lines touch, and the `@` snail whose state lives in its eyes, plain eye color in every state.
+The UI has one identity in every theme: neutrals from its fg and bg, one accent (whorl's
+periwinkle), one literal for text quoted as written (whorl's apricot), the chat on the canvas and
+every box and the composer on the panel, square corners joined where two lines touch, and the `@`
+snail whose state lives in its eyes, plain eye color in every state.
 Widgets use the semantic theme groups (`Accent`, `Dim`, `Rule`, `Title`, `Selected`, `Button`,
 `Literal`, `Danger`, `Warn`, `Ok`). No state change may
 add or remove a row or shift text. Hover in the chat is minimal: body rows get none, a header
@@ -196,7 +198,7 @@ an untrusted project's `.agents` is not in it, a trusted one's is, `worktrees` a
 baseline every reload moves. Once a second while no turn is active the watcher calls
 `Host.ReloadIfChanged`, which reloads when the fingerprint moved; `zemi run` has no watcher. A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`, which `zemi.config.set` and the setters with
-a key of their own, `zemi.ui.theme.set`, `zemi.permission.mode.set` and `zemi.model.set`, all
+a key of their own, `zemi.permission.mode.set` and `zemi.model.set`, all
 run a valid value through) and a key the new config writes fewer
 times is settled to its last value (`cfgSettle`), so `/model`, `/effort`, `/profile`, the mode
 cycle and the flags survive a reload until the config changes that key. A key the config stopped
@@ -218,8 +220,9 @@ applies it, and `sweepPluginState` drops a deleted or reinstalled plugin's rows.
 `saved`, `default` or `this run`) and value. A key changes on a screen of its own, its picker or
 `/config edit` (its choices, else a one-line prompt whose `Overlay.Run`, Go-only, runs `config set`
 with the text), which closes back onto the rebuilt list. `/config` and `/effort` write through
-`Host.SetConfig`, which sends `models.*`, `permissions.mode`, `agent.profile` and `ui.theme`
-through their own setters. A key's `Choices` refuse any other value in `config.checkKind`,
+`Host.SetConfig`, which sends `models.*`, `permissions.mode` and `agent.profile` through their
+own setters and refuses a `ui.theme` no theme answers to (`checkTheme`, which `zemi.config.set`
+runs too). A key's `Choices` refuse any other value in `config.checkKind`,
 which also takes `default` for a "" choice, `zemi.config.set` included; every runtime write,
 those setters included, fires the key's watches through `setWatched`. zemi never edits
 init.lua. Under `zemi run` only `config set` runs.
@@ -1071,10 +1074,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   also why `Host.Markdown` renders glamour unwrapped (tables aside) and wraps it itself. A
   click acts on `Segment.Hit` (chrome rows) or `Segment.Click`/`Segment.Widget` (a widget's
   `on_click`, run on the background worker); a click id with no widget is a Go statusline pill
-  naming its command. Helpers that rebuild segments must copy those fields, `Band` (the
-  selected row's background) and `Line` (a chrome line `App.join` meets with the lines it
-  touches, after all placement: text, Lua content and the snail art never join); only `dimRows`
-  drops the first ones, because dimmed rows are not targets, and it keeps `Line`. Overlays (internal/ui/overlay.go) are data
+  naming its command. Helpers that rebuild segments must copy those fields, `Fill` (the
+  surface under it, a selected row's band) and `Line` (a chrome line `App.join` meets with the
+  lines it touches, after all placement: text, Lua content and the snail art never join); only
+  `dimRows` drops the first ones, because dimmed rows are not targets, and it keeps `Line`. Overlays (internal/ui/overlay.go) are data
   (DESIGN §8 has the detail views, `danger` arming and `AskFirst`); `BodySegs` is sanitized like
   `Body`, which stays what `y` copies. Opening the id of an open overlay replaces it in place
   (`replaceOverlay`, keeping the filter and the selection on its row; only an origin that may close it), a detail
@@ -1134,8 +1137,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   turn's end (the `ui.notify` alert, the done eyes, the recap timer) applies once per chain of
   turns, on the first frame that reads the agent idle (`onFrame`). OSC 9;4 progress and the OSC
   11 background go through `tea.View.ProgressBar` and `tea.View.BackgroundColor`, so bubbletea
-  resets them on every exit, a signal included. Host chrome has no canvas of its own:
-  `hlStyle` fills it from Normal.bg like any group.
+  resets them on every exit, a signal included. Host chrome draws in the active palette's
+  roles (`chromeStyles`, built again when the theme changes), and a segment's `Fill` says
+  what it sits on: `hostBox` and the composer frame put theirs on the panel, where a
+  style that paints the canvas takes the panel instead (`segStyle`).
 - **Drag and drop is a paste.** `ui/drop.go` turns a paste made only of existing paths into
   attachment tokens. Files from outside the project are copied to `<data>/drops` and referenced
   as `@drop:<name>`; `expandAttachments` resolves `drop:` only inside that directory, so a

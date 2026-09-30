@@ -838,7 +838,7 @@ Event catalogue (each emitted on the interpreter thread):
 - stream: `agent.text_delta`, `agent.reasoning_delta`
 - tools: `tool.pre` (vetoable: `deny|rewrite|halt`), `tool.post`, `tool.denied`
 - permission: `permission.request` (vetoable), `permission.resolved`
-- ui: `ui.resize`, `ui.theme`, `composer.change`, `composer.submit` (vetoable)
+- ui: `ui.resize`, `composer.change`, `composer.submit` (vetoable)
 - learn: `memory.written`, `reflector.start`,
   `reflector.done` (counts, or `error` on failure)
 - io: `job.exit`, `lsp.request`
@@ -1316,14 +1316,11 @@ zemi.ui.select(zemi.model.list(), {
 	format_item = function(m) return m.display end,
 }, function(m) if m then zemi.model.set(m.id) end end)
 
--- Themes: palettes + highlight groups resolved by Go (colorprofile-aware)
-zemi.ui.theme.add("tokyonight", {
-	palette = { bg = "#1a1b26", fg = "#a9b1d6" },
-	hl = { Comment = { fg = "fg", italic = true },
-	       StatusLine = { bg = "bg", fg = "fg" },
-	       DiffAdd = { fg = "#9ece6a" } },
-})
-zemi.ui.theme.set("tokyonight")
+-- Themes: a palette of roles, the rest derived; groups name roles and are
+-- defined once for every theme (Go resolves them, colorprofile-aware)
+zemi.ui.theme.add("mine", { bg = "#1a1b26", fg = "#c0caf5", ansi = { --[[ 16 colors ]] } })
+zemi.ui.hl.set("Dim", { fg = "dim", italic = true })
+zemi.config.set("ui.theme", "mine")
 ```
 
 UI extensibility contract:
@@ -1394,11 +1391,28 @@ UI extensibility contract:
   spinner stepping every 200 ms while a turn runs, `?` while a prompt waits on
   the user, `✓` or `✗` after a turn that ended while the window was unfocused,
   until it is focused again. An idle zemi writes no title.
-- Themes: palettes map names to colors; the `Normal` group's `bg` is the
+- Themes: a theme is a palette of fixed roles (`bg`, `fg`, `accent`,
+  `literal`, `ok`, `warn`, `danger`, `dim`, `rule`, `panel`, `band`, `addbg`,
+  `delbg`); `zemi.ui.theme.add` takes `bg`, `fg` and the four hues, or a
+  terminal's 16 `ansi` colors in their place, and derives the rest once in Go
+  (OkLab mixes: dim is fg toward bg, rule and panel bg toward fg, band the
+  panel toward the accent, the diff tints bg toward ok and danger; the literal
+  the OKLCH midpoint of danger and warn, each scheme's own orange). Every text
+  role is then moved along OKLCH lightness, hue kept, to a WCAG floor on bg
+  (fg 7, warn 3.5, the rest 4.5), so no theme, a plugin's included, can hide
+  prompt text. The shipped ones are whorl (and whorl-light) plus ports of
+  Ghostty's catppuccin, tokyonight, gruvbox, nord, dracula, solarized,
+  rose-pine, kanagawa, one, everforest and github, most with a `-light`
+  twin; `ui.theme` names one, a name no theme answers to draws whorl and is an
+  `/errors` entry, and `/theme` picks one with the list open, repainting as
+  the preview. The groups are defined once, for every theme, by the shipped
+  `theme.lua` through `zemi.ui.hl.set`, and user config's `hl.set` replaces
+  one. The `Normal` group's `bg` is the
   app's canvas, which every group without a fill of its own sits on and
-  which OSC 11 gives the terminal too (reset on every exit), so the host's
-  chrome and the terminal's own background are one; `hl` groups reference palette
-  names or raw hex, or `link` to another group (neovim's `link`, followed
+  which OSC 11 gives the terminal too (reset on every exit); every box
+  (overlays, prompts, toasts, popups) and the composer sit on `panel`, a
+  box's selected row on `band`. A group names a role, hex or an ANSI color,
+  or `link`s to another group (neovim's `link`, followed
   8 deep, a cycle draws unstyled); a group takes `fg`, `bg`, `sp` (underline
   color), `bold`, `italic`, `reverse` and `underline` (`true` or a kind: `double`,
   `curl`, `dotted`, `dashed`). Hover draws the theme's `Hover` (widget click
@@ -1410,15 +1424,15 @@ UI extensibility contract:
   without the group underlines. A segment marked `hover = false` takes neither
   group: a clickable body row (a diff line, a tool's detail, reasoning) says a
   click acts with the pointer shape alone, so hovering one restyles nothing. The trust and permission prompts' choices keep
-  the fixed `Host:Hover` (§8); `Host:` is Go's own, so a Lua segment naming
+  `Host:Hover` (§8); `Host:` is Go's own, so a Lua segment naming
   one draws unstyled and cannot forge prompt chrome. Go resolves to the terminal's colorprofile
   (truecolor/256/16, downgrading as needed); on a 16-color terminal a
   foreground takes the ANSI color its OKLCH lightness (a grey) or hue falls
   in, bright when light. `zemi.ui.hl.get(group)` reads
   a group back resolved, and `zemi.ui.widget.del(id)` removes a widget
   (same or less trusted origin), shipped ones included. `zemi.ui.hl.set` and
-  `zemi.ui.theme.set` are user or shipped code only: an override and the
-  active theme sit above every other theme, the user's own included.
+  `ui.theme` are user or shipped code only: any origin may add a theme, but
+  only those pick one or restyle a group.
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks,
   question and plan prompts) -> the topmost overlay (Lua, or Go-built
@@ -1480,8 +1494,8 @@ UI extensibility contract:
   rank a file name the token begins first, then by the score of the name,
   or of the path when only the path matches. Every list draws the matched
   runes of a label in the accent (`listRowsW`, `matchSegs`), bold on the
-  selected row. The selection is its own channel: a band (`Segment.Band`,
-  `Host:Band`) under the row, the accent `›` and bold text, in every list
+  selected row. The selection is its own channel: a band (`Segment.Fill`,
+  the palette's `band`) under the row, the accent `›` and bold text, in every list
   and every prompt's buttons, so a match and the selection never share a
   color. It changes only colors, never a row's width, and never underlines:
   that means a click acts. Model-facing lookups
@@ -1938,10 +1952,11 @@ provenance string.
   answer (`p`): it appends the command to the project's `permissions` file in its state
   dir (§5) and registers its rules un-scoped, so a trusted project re-reads them on every
   boot. The overlay
-  is Go-owned and non-replaceable: a plugin cannot whitelist itself; Lua
-  may restyle the frame via theme groups only. The security-relevant
-  chrome (answer keys, subject, badge) renders in fixed host colors no
-  theme group can change; Go draws it itself and Lua text never renders
+  is Go-owned and non-replaceable: a plugin cannot whitelist itself. Its
+  chrome (frame, answer keys, subject, badge) renders in the active
+  palette's roles through `Host:` styles no group or `hl.set` reaches, and
+  every palette meets its contrast floors when it registers (§6.6), so a
+  theme can recolor the prompt but not hide it; Go draws it itself and Lua text never renders
   inside that chrome, so a widget cannot fake a permission prompt. Modal
   chrome (overlays and prompts) draws over everything,
   as do the completion and palette popups, which are not modal; while a

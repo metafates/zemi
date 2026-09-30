@@ -324,7 +324,10 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 				row = slices.Concat([]hostapi.Segment{{Text: strings.Repeat(" ", kw+5)}}, r)
 			}
 			for k := range row {
-				row[k].Hit, row[k].Band = i+1, i == sel
+				row[k].Hit = i + 1
+				if i == sel {
+					row[k].Fill = hostapi.FillBand
+				}
 			}
 			rows = append(rows, row)
 		}
@@ -395,12 +398,27 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 			row = append(row, s)
 		}
 		// a selected row's band runs to the box's edge, however wide its text
-		band := len(line) > 0 && line[len(line)-1].Band
-		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, bw-4-hostapi.SegsWidth(line))), NoCopy: true, Band: band})
+		fill := hostapi.FillAuto
+		if len(line) > 0 && line[len(line)-1].Fill == hostapi.FillBand {
+			fill = hostapi.FillBand
+		}
+		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, bw-4-hostapi.SegsWidth(line))), NoCopy: true, Fill: fill})
 		box = append(box, append(row, edge...))
 	}
 	box = append(box, []hostapi.Segment{{Text: "└" + strings.Repeat("─", bw-2) + "┘", HL: hostapi.ChromeRule, NoCopy: true, Line: true}})
-	return box
+	return onPanel(box)
+}
+
+// onPanel puts rows on the panel, all but what sets a surface of its own.
+func onPanel(rows [][]hostapi.Segment) [][]hostapi.Segment {
+	for _, r := range rows {
+		for i := range r {
+			if r[i].Fill == hostapi.FillAuto {
+				r[i].Fill = hostapi.FillPanel
+			}
+		}
+	}
+	return rows
 }
 
 // cutBar splits a viewport row from the bar cell window put after it.
@@ -643,8 +661,10 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 		} else {
 			rows[y] = append(r, hostapi.Segment{Text: strings.Repeat(" ", widest-hostapi.SegsWidth(r)), NoCopy: true})
 		}
-		for k := range rows[y] {
-			rows[y][k].Band = y >= bandTop && y < selEnd
+		if y >= bandTop && y < selEnd {
+			for k := range rows[y] {
+				rows[y][k].Fill = hostapi.FillBand
+			}
 		}
 	}
 	if !v.overflows() {
@@ -726,16 +746,14 @@ func (a *App) shimmer(seg hostapi.Segment, ms int, animate bool) []hostapi.Segme
 	const band = 3.0
 	runes := []rune(seg.Text)
 	pos := float64(ms%2000)/2000*(float64(len(runes))+2*band) - band
-	dr, dg, db, _ := dim.RGBA()
-	fr, fgn, fb, _ := fg.RGBA()
 	out := make([]hostapi.Segment, 0, len(runes))
 	for i, r := range runes {
 		k := 0.0
 		if d := math.Abs(float64(i) - pos); d < band {
 			k = math.Round((1+math.Cos(math.Pi*d/band))/2*8) / 8
 		}
-		mix := func(x, y uint32) int { return int((float64(x)*(1-k) + float64(y)*k) / 257) }
-		hl := fmt.Sprintf("%s38;2;%d;%d;%d", hostapi.SGRPrefix, mix(dr, fr), mix(dg, fgn), mix(db, fb))
+		cr, cg, cb, _ := hostapi.Mix(dim, fg, k).RGBA()
+		hl := fmt.Sprintf("%s38;2;%d;%d;%d", hostapi.SGRPrefix, cr>>8, cg>>8, cb>>8)
 		out = append(out, hostapi.Segment{Text: string(r), HL: hl})
 	}
 	return out
@@ -1115,12 +1133,12 @@ func scrolls(views ...viewport) []hintPair {
 	return nil
 }
 
-// codePanel shows text on the chrome panel, wrapped to width.
+// codePanel shows text in a well of the canvas inside the box, wrapped to width.
 func codePanel(text string, width int) [][]hostapi.Segment {
 	rows := wrapText(text, "", width-2)
 	for i, r := range rows {
 		line := plainSegs(r)
-		rows[i] = []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, width-2-ansi.StringWidth(line))) + " ", HL: hostapi.ChromePanel}}
+		rows[i] = []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, width-2-ansi.StringWidth(line))) + " ", HL: hostapi.ChromeValue, Fill: hostapi.FillCanvas}}
 	}
 	return rows
 }

@@ -476,7 +476,7 @@ func (a *App) composerFrame(n *hostapi.LayoutNode, w int) [][]hostapi.Segment {
 	}
 	// the corners, the space beside each cluster and one cell of rule between
 	left, right := a.statusClusters(max(w-7, 1), n.Left, n.Right)
-	return append(rows, rule("└", "┘", hl, spaced(left), spaced(right), w))
+	return onPanel(append(rows, rule("└", "┘", hl, spaced(left), spaced(right), w)))
 }
 
 // rule draws one side of the composer frame across w cells: the corners, the

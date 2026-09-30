@@ -11,13 +11,16 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
-// themeResolver turns highlight-group names into ultraviolet styles using
-// the active theme's palette (DESIGN §6.6: palettes map names to colors, hl
-// groups reference palette names or raw hex; Go resolves them).
+// themeResolver turns highlight-group names into ultraviolet styles in the
+// active theme's palette (DESIGN §6.6: groups name palette roles, hex or
+// ANSI colors; Go resolves them).
 type themeResolver struct {
-	host  *hostapi.Host
-	sgr   map[string]uv.Style // decoded "sgr:" hls; compose runs on the UI goroutine only
-	light bool                // the terminal reported a light background
+	host *hostapi.Host
+	sgr  map[string]uv.Style // decoded "sgr:" hls; compose runs on the UI goroutine only
+	// the Host: styles in the palette of chromeOf, built again when the
+	// active theme changes
+	chromeOf *hostapi.Theme
+	chrome   map[string]uv.Style
 }
 
 func (t themeResolver) style(hl string) uv.Style {
@@ -41,41 +44,75 @@ func (t themeResolver) style(hl string) uv.Style {
 	return st
 }
 
-// canvas is the active theme's background, the "bg" of its Normal group.
-// Every group without a fill of its own sits on it, so the app paints one
-// canvas and the terminal's background never shows through a gap.
+// canvas is the active theme's bg. Every group without a fill of its own
+// sits on it, so the app paints one canvas and the terminal's background
+// never shows through a gap.
 func (t themeResolver) canvas() color.Color {
-	theme := t.active()
-	if theme == nil {
-		return nil
+	if theme := t.active(); theme != nil {
+		return theme.Palette.Bg
 	}
-	spec, ok := t.host.Themes.Group(theme, "Normal")
-	if !ok || spec.Bg == "" {
-		return nil
-	}
-	return colorValue(spec.Bg, theme)
+	return nil
 }
 
-// active resolves the theme in force; nil when no theme is set.
+// active resolves the theme in force; nil when no theme is registered.
 func (t themeResolver) active() *hostapi.Theme {
 	if t.host == nil {
 		return nil
 	}
-	return t.host.Themes.Get(t.host.ActiveThemeName())
+	return t.host.ActiveTheme()
 }
 
-// group is the active theme's spec for a group. On a light terminal a
-// theme's "-light" variant is used when it registered one.
+// group is a group's spec and the theme its roles resolve in.
 func (t themeResolver) group(hl string) (hostapi.HLSpec, *hostapi.Theme, bool) {
 	if hl == "" || t.host == nil {
 		return hostapi.HLSpec{}, nil, false
 	}
+	spec, ok := t.host.Themes.Group(hl)
+	return spec, t.active(), ok
+}
+
+// chromeStyle is a Host: style in the active palette, on the canvas where
+// it sets no fill; false for any other name.
+func (t *themeResolver) chromeStyle(hl string) (uv.Style, bool) {
 	theme := t.active()
 	if theme == nil {
-		return hostapi.HLSpec{}, nil, false
+		return uv.Style{}, false
 	}
-	spec, ok := t.host.Themes.Group(theme, hl)
-	return spec, theme, ok
+	if t.chromeOf != theme {
+		t.chromeOf, t.chrome = theme, chromeStyles(&theme.Palette)
+	}
+	st, ok := t.chrome[hl]
+	if ok && st.Bg == nil {
+		st.Bg = theme.Palette.Bg
+	}
+	return st, ok
+}
+
+// chromeStyles are the styles of the permission prompt and other Go
+// chrome, in the palette's roles: no group or hl.set reaches them, so
+// nothing can dress up a prompt, and every theme's contrast floors hold.
+func chromeStyles(p *hostapi.Palette) map[string]uv.Style {
+	return map[string]uv.Style{
+		hostapi.ChromeBold:       {Fg: p.Fg, Attrs: uv.AttrBold},
+		hostapi.ChromeTitle:      {Fg: p.Accent, Attrs: uv.AttrBold},
+		hostapi.ChromeRule:       {Fg: p.Rule},
+		hostapi.ChromeCursor:     {Attrs: uv.AttrReverse},
+		hostapi.ChromeValue:      {Fg: p.Fg},
+		hostapi.ChromeHint:       {Fg: p.Dim},
+		hostapi.ChromeHintKey:    {Fg: p.Accent},
+		hostapi.ChromeWarn:       {Fg: p.Warn},
+		hostapi.ChromeOk:         {Fg: p.Ok},
+		hostapi.ChromeDanger:     {Fg: p.Danger},
+		hostapi.ChromeDiffAdd:    {Fg: p.Fg, Bg: p.AddBg},
+		hostapi.ChromeDiffAddNum: {Fg: p.Ok, Bg: p.AddBg},
+		hostapi.ChromeDiffDel:    {Fg: p.Fg, Bg: p.DelBg},
+		hostapi.ChromeDiffDelNum: {Fg: p.Danger, Bg: p.DelBg},
+		hostapi.ChromeDiffCtx:    {Fg: p.Fg},
+		hostapi.ChromeDiffCtxNum: {Fg: p.Dim},
+		hostapi.ChromeSelection:  {Attrs: uv.AttrReverse},
+		hostapi.ChromeHover:      {Underline: uv.UnderlineSingle},
+		hostapi.ChromeDim:        {Fg: p.Rule},
+	}
 }
 
 // hover draws a hover group ("Hover", "HoverItem") over base, the text's
@@ -99,7 +136,11 @@ func (t themeResolver) hover(base uv.Style, group string) uv.Style {
 			if st.Bg != nil && luma(st.Bg) > luma(fg) { // dark text on a light fill: brighter reads as darker
 				k = -k
 			}
-			st.Fg = brighten(fg, k)
+			to := color.Color(color.White)
+			if k < 0 {
+				to, k = color.Black, -k
+			}
+			st.Fg = hostapi.Mix(fg, to, k)
 		}
 	}
 	return st
@@ -112,7 +153,7 @@ func drawOver(st uv.Style, spec hostapi.HLSpec, theme *hostapi.Theme) uv.Style {
 		case ref == "NONE":
 			*dst = nil
 		case ref != "":
-			if c := colorValue(ref, theme); c != nil {
+			if c := theme.Color(ref); c != nil {
 				*dst = c
 			}
 		}
@@ -159,19 +200,6 @@ func sameColor(a, b color.Color) bool {
 	return ar == br && ag == bg && ab == bb
 }
 
-// brighten mixes c by k toward white, or toward black when k is negative.
-func brighten(c color.Color, k float64) color.Color {
-	r, g, b, _ := c.RGBA()
-	mix := func(v uint32) uint8 {
-		x := float64(v >> 8)
-		if k > 0 {
-			return uint8(x + (255-x)*k + 0.5)
-		}
-		return uint8(x*(1+k) + 0.5)
-	}
-	return ansi.RGBColor{R: mix(r), G: mix(g), B: mix(b)}
-}
-
 // sgrStyle decodes inline SGR params (zemi.ui.markdown output), cached
 // because compose runs every frame.
 func (t themeResolver) sgrStyle(params string) uv.Style {
@@ -186,23 +214,6 @@ func (t themeResolver) sgrStyle(params string) uv.Style {
 		t.sgr[params] = st
 	}
 	return st
-}
-
-// colorValue resolves a theme color reference: raw hex, a palette name, or
-// an ANSI color name the user's terminal decides.
-func colorValue(ref string, theme *hostapi.Theme) color.Color {
-	if !strings.HasPrefix(ref, "#") {
-		if c, ok := hostapi.ANSIColors[ref]; ok {
-			return c
-		}
-		ref = theme.Palette[ref]
-	}
-	col, err := colorful.Hex(ref)
-	if err != nil {
-		return nil
-	}
-	r, g, b := col.RGB255()
-	return ansi.RGBColor{R: r, G: g, B: b}
 }
 
 // ansi16 is what a 16-color terminal shows for a foreground: a grey by its

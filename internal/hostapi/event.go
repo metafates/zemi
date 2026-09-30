@@ -20,7 +20,7 @@ var eventCatalogue = map[string]bool{
 	"agent.text_delta": true, "agent.reasoning_delta": true, "agent.step": true,
 	"tool.pre": true, "tool.post": true, "tool.denied": true,
 	"permission.request": true, "permission.resolved": true,
-	"ui.resize": true, "ui.theme": true, "composer.change": true, "composer.submit": true,
+	"ui.resize": true, "composer.change": true, "composer.submit": true,
 	"memory.written":  true,
 	"reflector.start": true, "reflector.done": true,
 	"job.exit":    true,

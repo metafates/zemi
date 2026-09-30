@@ -506,7 +506,6 @@ function zemi.command.list() end
 ---| "permission.request"
 ---| "permission.resolved"
 ---| "ui.resize"
----| "ui.theme"
 ---| "composer.change"
 ---| "composer.submit"
 ---| "memory.written"
@@ -592,9 +591,6 @@ function zemi.command.list() end
 ---@field width integer
 ---@field height integer
 
----@class zemi.ev.Theme: zemi.Event
----@field theme string
-
 ---@class zemi.ev.ComposerChange: zemi.Event
 ---@field text string
 ---@field cursor integer
@@ -673,7 +669,6 @@ zemi.event = {}
 ---@overload fun(name: "permission.resolved", fn: (fun(ev: zemi.ev.PermissionResolved): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "app.quit", fn: (fun(ev: zemi.Event): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "ui.resize", fn: (fun(ev: zemi.ev.Resize): any), opts?: zemi.EventOpts): string
----@overload fun(name: "ui.theme", fn: (fun(ev: zemi.ev.Theme): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "composer.change", fn: (fun(ev: zemi.ev.ComposerChange): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "composer.submit", fn: (fun(ev: zemi.ev.ComposerSubmit): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "memory.written", fn: (fun(ev: zemi.ev.MemoryWritten): any), opts?: zemi.EventOpts): string
@@ -943,7 +938,7 @@ function zemi.event.stats() end
 --- over the text's own style: keys left out keep it, false and "NONE" clear it.
 ---@class zemi.HLSpec
 ---@field link? string Draw as this group instead; of the other fields only bold and italic then apply, over it. Chains longer than 8 or cycles draw unstyled.
----@field fg? string Hex ("#9aa5f2"), a palette name, an ANSI color name ("red", "green", ...), or "NONE".
+---@field fg? string A palette role ("accent", see zemi.ThemeSpec), hex ("#a2adfd"), an ANSI color name ("red", "green", ...), or "NONE".
 ---@field bg? string
 ---@field sp? string Underline color.
 ---@field bold? boolean
@@ -953,9 +948,23 @@ function zemi.event.stats() end
 ---@field brighten? number Hover groups: mix the fg this far (-1..1) toward white, or toward black on a lighter background.
 ---@field replace? boolean Hover groups: draw as this group alone instead of over the text's style.
 
+--- A theme's palette, each role #rrggbb. What it leaves out is derived,
+--- and every text role is moved in lightness until it reads on bg.
 ---@class zemi.ThemeSpec
----@field palette? table<string, string>
----@field hl? table<string, zemi.HLSpec>
+---@field bg string
+---@field fg string
+---@field ansi? string[] The terminal's 16 colors, black to bright white: red, green, yellow and blue stand in for a missing danger, ok, warn and accent.
+---@field accent? string Required without ansi.
+---@field ok? string Required without ansi.
+---@field warn? string Required without ansi.
+---@field danger? string Required without ansi.
+---@field literal? string Text quoted as written; derived halfway between danger and warn.
+---@field dim? string
+---@field rule? string
+---@field panel? string The surface of every box and the composer.
+---@field band? string A box's selected row.
+---@field addbg? string
+---@field delbg? string
 
 --- One overlay row. Enter on an item with `detail` or `actions` opens a
 --- detail view (never on_select); otherwise it fills, runs or selects the
@@ -1245,16 +1254,19 @@ function zemi.ui.focus.prev() end
 ---@class zemi.ui.theme
 zemi.ui.theme = {}
 
+--- Register a palette; every highlight group and the Go chrome draw in it
+--- once `ui.theme` names it. A "<name>-light" theme draws on a light terminal.
+---
+--- ```lua
+--- zemi.ui.theme.add("mine", { bg = "#1e1e2e", fg = "#cdd6f4", accent = "#89b4fa", ok = "#a6e3a1", warn = "#f9e2af", danger = "#f38ba8" })
+--- zemi.config.set("ui.theme", "mine")
+--- ```
 ---@param name string
 ---@param spec zemi.ThemeSpec
 function zemi.ui.theme.add(name, spec) end
 
---- Make a registered theme the active one. User or builtin origin only.
----@param name string
-function zemi.ui.theme.set(name) end
-
---- The theme drawing now: the set one, or its "-light" variant on a light
---- terminal when one is registered.
+--- The theme drawing now: the set one (whorl when that names none), or its
+--- "-light" variant on a light terminal when one is registered.
 ---@return string
 function zemi.ui.theme.get() end
 
@@ -1333,14 +1345,14 @@ function zemi.ui.edit(path, opts, on_done) end
 ---@class zemi.ui.hl
 zemi.ui.hl = {}
 
---- Change one highlight group on top of the active theme, and any theme
---- set later. `zemi.ui.theme.add` builds a whole theme instead.
+--- Define one highlight group for every theme, replacing the shipped
+--- definition: its colors name palette roles, so it follows a theme switch.
 --- User or builtin origin only.
 ---@param group string
 ---@param spec zemi.HLSpec
 function zemi.ui.hl.set(group, spec) end
 
---- How a group draws under the active theme: links followed, palette names
+--- How a group draws under the active theme: links followed, roles
 --- resolved to hex, keys the group leaves unset left out. Nil when
 --- nothing defines the group.
 ---@param group string

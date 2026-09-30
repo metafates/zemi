@@ -335,13 +335,13 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 		ImageText:      gansi.StylePrimitive{Format: "Image: {{.text}}"},
 		CodeBlock:      gansi.StyleCodeBlock{StyleBlock: gansi.StyleBlock{Margin: &margin}},
 	}
-	theme := h.Themes.Get(h.ActiveThemeName())
+	theme := h.ActiveTheme()
 	var key strings.Builder
 	if theme != nil {
 		key.WriteString(theme.Name)
 	}
 	apply := func(p *gansi.StylePrimitive, group string) {
-		spec, ok := h.Themes.Group(theme, group)
+		spec, ok := h.Themes.Group(group)
 		if !ok {
 			return
 		}
@@ -494,20 +494,13 @@ func highlight(text, lang string) [][]Segment {
 	return rows[:min(len(rows), strings.Count(text, "\n")+1)]
 }
 
-// color resolves a color reference for glamour: raw hex, a palette name, or
-// an ANSI color name as its number, which is how lipgloss takes one. "" when
-// nothing resolves.
+// color resolves a color reference for glamour: hex, or an ANSI color name
+// as its number, which is how lipgloss takes one. "" when nothing resolves.
 func (t *Theme) color(ref string) string {
-	if strings.HasPrefix(ref, "#") {
-		return ref
-	}
 	if c, ok := ANSIColors[ref]; ok {
 		return strconv.Itoa(int(c))
 	}
-	if t == nil || !strings.HasPrefix(t.Palette[ref], "#") {
-		return ""
-	}
-	return t.Palette[ref]
+	return Hex(t.Color(ref))
 }
 
 // styledLines parses glamour's ANSI output into segments: runs of equal

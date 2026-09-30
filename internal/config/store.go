@@ -71,7 +71,7 @@ func (s *Store) defineDefaults() {
 		{Path: "providers.builtin", Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
 		{Path: "permissions.mode", Kind: KindString, Default: "auto", Desc: "the permission mode zemi starts in: auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
 		{Path: "permissions.env_keep", Kind: KindString, Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},
-		{Path: "ui.theme", Kind: KindString, Default: "whorl", Desc: "theme name: whorl (the shipped one; whorl-light is picked on a light terminal) or one zemi.ui.theme.add registers"},
+		{Path: "ui.theme", Kind: KindString, Default: "whorl", Desc: "theme name (/theme picks one): whorl, catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest, github, or one zemi.ui.theme.add registers; a <name>-light twin draws on a light terminal"},
 		{Path: "ui.animations", Kind: KindBool, Default: true, Desc: "animate the working indicator (false keeps it static)"},
 		{Path: "agent.effort", Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
 		{Path: "agent.profile", Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, planner, or a name defined with zemi.agent.profile.add"},

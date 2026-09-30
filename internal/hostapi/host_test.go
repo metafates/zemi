@@ -506,6 +506,47 @@ func TestConfigSetGating(t *testing.T) {
 	}
 }
 
+// TestThemeCommand: /theme <name> sets a theme and refuses one nothing
+// added; bare, it lists the families, each light twin in its row, and the
+// list stays open over a pick with the current row moved.
+func TestThemeCommand(t *testing.T) {
+	h := newTestHostUI(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	theme := h.configCommands()[1]
+	for _, c := range []struct{ args, want, err string }{
+		{"nord", "nord", ""},
+		{"nope", "nord", "unknown theme"},
+		{"", "nord", ""},
+	} {
+		err := theme.GoFn(h, c.args)
+		if c.err == "" && err != nil || c.err != "" && (err == nil || !strings.Contains(err.Error(), c.err)) || h.Settings.Str("ui.theme") != c.want {
+			t.Fatalf("/theme %s: %v, ui.theme %q", c.args, err, h.Settings.Str("ui.theme"))
+		}
+	}
+	opened := ui.overlays()
+	if len(opened) != 1 || opened[0].Reload == nil {
+		t.Fatalf("opened %d overlays, want the pick as a toggle list", len(opened))
+	}
+	row := func(items []any, name string) map[string]any {
+		i := slices.IndexFunc(items, func(it any) bool { return it.(map[string]any)["text"] == name })
+		if i < 0 {
+			return nil
+		}
+		return items[i].(map[string]any)
+	}
+	items := opened[0].Items
+	if row(items, "catppuccin-light") != nil || row(items, "catppuccin")["desc"] != "light: catppuccin-light" || row(items, "nord")["key"] != "current" {
+		t.Fatalf("rows: %v", items)
+	}
+	if err := h.configCommand("set ui.theme dracula"); err != nil {
+		t.Fatal(err)
+	}
+	if items, _ := opened[0].Reload(); row(items, "dracula")["key"] != "current" || row(items, "nord")["key"] != nil {
+		t.Fatalf("after a pick: %v", items)
+	}
+}
+
 // TestConfigSet: /config set takes the words /config and the pickers show
 // for a value, and /config lua writes a number as typed.
 func TestConfigSet(t *testing.T) {
@@ -588,13 +629,13 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 		zemi.config.watch("ui.completion.files", function(nv, ov)
 			assert(ov == true, "old=" .. tostring(ov))
 			assert(nv == false, "new=" .. tostring(nv))
-			zemi.config.set("ui.theme", "watched")
+			zemi.config.set("editor.command", "watched")
 		end)
 		zemi.config.set("ui.completion.files", false)
 		assert(not pcall(zemi.config.watch, "agent.mdoel", function() end), "a watch on an unknown key must raise")
 	`)
-	if v, ok := h.Settings.Get("ui.theme"); !ok || v != "watched" {
-		t.Fatalf("watch callback side effect missing: ui.theme = %v, want watched", v)
+	if v, ok := h.Settings.Get("editor.command"); !ok || v != "watched" {
+		t.Fatalf("watch callback side effect missing: editor.command = %v, want watched", v)
 	}
 }
 

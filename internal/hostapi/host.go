@@ -1228,13 +1228,24 @@ type Segment struct {
 	// scrolled region pins it while it is above the view
 	Sticky bool
 	Bar    bool // Go only: a viewport's scrollbar cell, which a box draws in its right border
-	// Band is Go only: the selected row of a list or prompt, drawn on
-	// Host:Band's background. A field, since hover rewrites Over and HL.
-	Band bool
+	// Fill is Go only: the surface under the segment where its style paints
+	// the canvas. A field, since hover rewrites Over and HL.
+	Fill Fill
 	// Line is Go only: a chrome border, rule or separator, its runes light box
 	// lines or blanks one cell each; lines that touch join (ui.join)
 	Line bool
 }
+
+// Fill is a surface of the active palette (DESIGN §6.6): the chat sits on
+// the canvas, every box on the panel, a box's selected row on the band.
+type Fill uint8
+
+const (
+	FillAuto   Fill = iota // the canvas, or the panel inside a box
+	FillPanel              // a box: overlays, prompts, toasts, popups, the composer
+	FillBand               // a list's or a prompt's selected row, over any background
+	FillCanvas             // the canvas even inside a box: a well, such as a prompt's command
+)
 
 // RenderWidget runs a widget's Lua render at the cells its layout node gives
 // it and returns sanitized segment lines (DESIGN §6.6, §8). more is render's
@@ -1405,8 +1416,9 @@ func (h *Host) ClickWidget(ctx context.Context, id string, ev map[string]any) er
 	return err
 }
 
-// Chrome groups are the fixed Go styles of prompts and other host chrome
-// (ui.chromeStyles); no theme restyles them and UserHL drops them from Lua.
+// Chrome groups are the Go styles of prompts and other host chrome
+// (ui.chromeStyles), in the active palette's roles: no group or hl.set
+// reaches them and UserHL drops them from Lua.
 const (
 	ChromePrefix     = "Host:"
 	ChromeBold       = ChromePrefix + "Bold"
@@ -1419,7 +1431,6 @@ const (
 	ChromeWarn       = ChromePrefix + "Warn"
 	ChromeOk         = ChromePrefix + "Ok"
 	ChromeDanger     = ChromePrefix + "Danger"
-	ChromePanel      = ChromePrefix + "Panel"
 	ChromeDiffAdd    = ChromePrefix + "DiffAdd"
 	ChromeDiffAddNum = ChromePrefix + "DiffAddNum"
 	ChromeDiffDel    = ChromePrefix + "DiffDel"
@@ -1429,11 +1440,10 @@ const (
 	ChromeSelection  = ChromePrefix + "Selection"
 	ChromeHover      = ChromePrefix + "Hover"
 	ChromeDim        = ChromePrefix + "Dim"
-	ChromeBand       = ChromePrefix + "Band"
 )
 
-// UserHL drops a "Host:*" style from a Lua segment: those are the fixed
-// Go chrome styles (internal/ui/hooks.go), so a widget or overlay row
+// UserHL drops a "Host:*" style from a Lua segment: those are the Go
+// chrome styles (internal/ui/theme.go), so a widget or overlay row
 // could otherwise paint itself as a permission prompt.
 func UserHL(hl string) string {
 	if strings.HasPrefix(hl, ChromePrefix) {

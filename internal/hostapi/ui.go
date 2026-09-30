@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -78,49 +77,22 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	theme := L.NewTable()
 	theme.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
-		m := tableArg(L, 2, "zemi.ui.theme.add")
-		t := &Theme{
-			Name:    name,
-			Palette: map[string]string{},
-			HL:      map[string]HLSpec{},
-			Origin:  h.RT.CurrentOrigin(L),
-			Path:    h.RT.CurrentPath(L),
-			Gen:     h.currentGen(),
+		p, err := parsePalette(tableArg(L, 2, "zemi.ui.theme.add"))
+		if err != nil {
+			L.RaiseError("zemi.ui.theme.add: %v", err)
 		}
-		if pal, ok := m["palette"].(map[string]any); ok {
-			for k, v := range pal {
-				s, _ := v.(string)
-				if !isHexColor(s) {
-					L.RaiseError("zemi.ui.theme.add: palette %s = %q is not #rrggbb; a palette holds colors, not names", k, s)
-				}
-				t.Palette[k] = s
-			}
-		}
-		if hl, ok := m["hl"].(map[string]any); ok {
-			for k, v := range hl {
-				if spec, ok := v.(map[string]any); ok {
-					t.HL[k] = hlSpec(L, "zemi.ui.theme.add", spec, t.Palette)
-				}
-			}
-		}
+		t := &Theme{Name: name, Palette: p, Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L), Gen: h.currentGen()}
 		if _, err := h.Themes.Add(t); err != nil {
 			L.RaiseError("zemi.ui.theme.add: %v", err)
 		}
 		return 0
 	}))
-	theme.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		h.refuseBelowUser(L, "ui.theme.set") // it also writes the user-only ui.theme setting
-		name := L.CheckString(1)
-		if h.Themes.Get(name) != nil && h.cfgReplayed("ui.theme", name) {
-			return 0
-		}
-		if err := h.SetTheme(name); err != nil {
-			L.RaiseError("zemi.ui.theme.set: %v", err)
-		}
-		return 0
-	}))
 	theme.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		L.Push(glua.LString(h.ActiveThemeName()))
+		name := ""
+		if t := h.ActiveTheme(); t != nil {
+			name = t.Name
+		}
+		L.Push(glua.LString(name))
 		return 1
 	}))
 	theme.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
@@ -368,36 +340,31 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	hl := L.NewTable()
-	// hl.set(group, spec) changes one highlight group on top of the active
-	// theme (and any theme set later): { fg, bg, sp, bold, italic, underline,
-	// reverse, brighten, replace }, colors as hex or palette names, or
-	// { link = "Group" }. theme.add builds a whole theme.
+	// hl.set(group, spec) defines one highlight group for every theme:
+	// { fg, bg, sp, bold, italic, underline, reverse, brighten, replace },
+	// colors as palette roles, hex or ANSI names, or { link = "Group" }.
 	hl.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		// an override sits above every theme, the user's own included
+		// the groups draw the shipped UI, so only it and the user define them
 		h.refuseBelowUser(L, "ui.hl.set")
 		group := L.CheckString(1)
-		// an override outlives the theme active when it is set, so any
-		// registered theme's palette may name the color
-		h.Themes.SetHL(group, hlSpec(L, "zemi.ui.hl.set", tableArg(L, 2, "zemi.ui.hl.set"), h.Themes.Palettes()))
+		h.Themes.SetHL(group, hlSpec(L, "zemi.ui.hl.set", tableArg(L, 2, "zemi.ui.hl.set")))
 		h.refresh()
 		return 0
 	}))
 
 	// hl.get(group) is how the group draws under the active theme, links
-	// followed and palette names resolved to hex (an ANSI color name is the
+	// followed and roles resolved to hex (an ANSI color name is the
 	// terminal's, so it stays a name), or nil when nothing sets it.
 	hl.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		theme := h.Themes.Get(h.ActiveThemeName())
-		spec, ok := h.Themes.Group(theme, L.CheckString(1))
+		theme := h.ActiveTheme()
+		spec, ok := h.Themes.Group(L.CheckString(1))
 		if !ok {
 			L.Push(glua.LNil)
 			return 1
 		}
 		color := func(ref string) any {
-			if theme != nil {
-				if v := theme.Palette[ref]; v != "" {
-					ref = v // an ANSI color name has none and stays as written
-				}
+			if _, ok := ANSIColors[ref]; !ok && ref != "NONE" {
+				ref = Hex(theme.Color(ref))
 			}
 			if ref == "" {
 				return nil
@@ -534,24 +501,23 @@ var ANSIColors = map[string]ansi.BasicColor{
 }
 
 // checkColor refuses a color that can never resolve: a name outside the
-// palette would draw as nothing, and a CSS color name is the first thing
+// roles would draw as nothing, and a CSS color name is the first thing
 // anyone writes (DESIGN §6.0).
-func checkColor(L *glua.LState, where, field, ref string, palette map[string]string) {
+func checkColor(L *glua.LState, where, field, ref string) {
 	_, isANSI := ANSIColors[ref]
 	switch {
-	case ref == "" || ref == "NONE" || isANSI || palette[ref] != "":
+	case ref == "" || ref == "NONE" || isANSI || slices.Contains(Roles, ref):
 	case strings.HasPrefix(ref, "#") && isHexColor(ref):
 	case strings.HasPrefix(ref, "#"):
 		L.RaiseError("%s: %s %q is not a hex color; write #rrggbb", where, field, ref)
 	default:
-		L.RaiseError("%s: %s %q is not #rrggbb, an ANSI color name, or a palette key (%s)",
-			where, field, ref, strings.Join(slices.Sorted(maps.Keys(palette)), ", "))
+		L.RaiseError("%s: %s %q is not #rrggbb, an ANSI color name, or a palette role (%s)",
+			where, field, ref, strings.Join(Roles, ", "))
 	}
 }
 
-// hlSpec reads a group table; misuse raises (DESIGN §6.0). palette is what
-// its colors may name.
-func hlSpec(L *glua.LState, where string, m map[string]any, palette map[string]string) HLSpec {
+// hlSpec reads a group table; misuse raises (DESIGN §6.0).
+func hlSpec(L *glua.LState, where string, m map[string]any) HLSpec {
 	flag := func(key string) *bool {
 		if b, ok := m[key].(bool); ok {
 			return &b
@@ -559,7 +525,7 @@ func hlSpec(L *glua.LState, where string, m map[string]any, palette map[string]s
 		return nil
 	}
 	for _, f := range []string{"fg", "bg", "sp"} {
-		checkColor(L, where, f, strField(m, f), palette)
+		checkColor(L, where, f, strField(m, f))
 	}
 	spec := HLSpec{
 		Link: strField(m, "link"),
@@ -819,26 +785,38 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 	})
 }
 
-// SetTheme makes a registered theme the active one.
-func (h *Host) SetTheme(name string) error {
-	if h.Themes.Get(name) == nil {
-		return Usagef("unknown theme %q", name)
+// checkTheme refuses a ui.theme value no theme answers to.
+func (h *Host) checkTheme(name string) error {
+	if h.Themes.Get(name) != nil {
+		return nil
 	}
-	if err := h.setWatched("ui.theme", name); err != nil {
-		return err
+	var names []string
+	for _, t := range h.Themes.List() {
+		names = append(names, t.Name)
 	}
-	h.EmitAsync("ui.theme", map[string]any{"theme": name})
-	return nil
+	return Usagef("unknown theme %q: themes are %s", name, strings.Join(names, ", "))
 }
 
-// ActiveThemeName returns the configured theme, or its "-light" variant
-// when the terminal is light and the theme registered one.
-func (h *Host) ActiveThemeName() string {
-	name := cmp.Or(h.Settings.Str("ui.theme"), "whorl")
-	if h.lightTerm.Load() && h.Themes.Get(name+"-light") != nil {
-		return name + "-light"
+// CheckTheme records a ui.theme no theme answers to once boot is done: a
+// typo, or a pick of a removed plugin's theme, draws whorl instead.
+func (h *Host) CheckTheme() {
+	if name := h.Settings.Str("ui.theme"); h.Themes.Get(name) == nil {
+		h.RecordErrorOnce("ui.theme", fmt.Sprintf("ui.theme %q names no theme, so whorl draws; /theme lists them", name))
 	}
-	return name
+}
+
+// ActiveTheme is the theme drawing now: the configured one, whorl when
+// that names none, and its "-light" variant on a light terminal when one
+// is registered. nil before any theme is.
+func (h *Host) ActiveTheme() *Theme {
+	name := h.Settings.Str("ui.theme")
+	if h.Themes.Get(name) == nil {
+		name = "whorl"
+	}
+	if t := h.Themes.Get(name + "-light"); t != nil && h.lightTerm.Load() {
+		return t
+	}
+	return h.Themes.Get(name)
 }
 
 // SetLightTerminal records whether the terminal's background is light.

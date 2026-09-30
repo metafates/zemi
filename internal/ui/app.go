@@ -393,8 +393,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		// The answer picks the light variant and means the terminal replies
 		// to OSC 11, so its own background can be repainted to match the theme.
 		a.termBG = msg.Color
-		a.thm.light = msg.Color != nil && luma(msg.Color) > 1<<15
-		a.host.SetLightTerminal(a.thm.light)
+		a.host.SetLightTerminal(msg.Color != nil && luma(msg.Color) > 1<<15)
 		a.bump()
 	case tea.FocusMsg, tea.BlurMsg:
 		if _, a.focused = msg.(tea.FocusMsg); a.focused {
@@ -1438,30 +1437,29 @@ func toastBox(t toast, w int) [][]hostapi.Segment {
 // segment helpers
 
 // hlStyle resolves a highlight name. "Host:*" names are Go-owned security
-// chrome (DESIGN §8): they resolve to fixed styles and never consult the theme.
+// chrome (DESIGN §8): they resolve in the palette's roles, never through a group.
 func (a *App) hlStyle(hl string) uv.Style {
-	// chrome sits on the theme's canvas like any group, so it takes the
-	// canvas's shade: whorl-light picked in a dark terminal paints a light one
-	canvas, light := a.thm.canvas(), a.thm.light
-	if canvas != nil {
-		light = luma(canvas) > 1<<15
+	if st, ok := a.thm.chromeStyle(hl); ok {
+		return st
 	}
-	st, ok := hostStyles[light][hl]
-	if !ok {
-		st = a.thm.style(hl)
-	} else if st.Bg == nil {
-		st.Bg = canvas
-	}
-	return st
+	return a.thm.style(hl)
 }
 
-func (a *App) segStyle(hl, over string, band bool) uv.Style {
+func (a *App) segStyle(hl, over string, fill hostapi.Fill) uv.Style {
 	st := a.hlStyle(hl)
 	if over != "" {
 		st = a.thm.hover(st, over)
 	}
-	if band {
-		st.Bg = a.hlStyle(hostapi.ChromeBand).Bg
+	if theme := a.thm.active(); theme != nil {
+		switch fill {
+		case hostapi.FillBand:
+			st.Bg = theme.Palette.Band
+		case hostapi.FillPanel:
+			if sameColor(st.Bg, theme.Palette.Bg) {
+				st.Bg = theme.Palette.Panel
+			}
+		case hostapi.FillAuto, hostapi.FillCanvas:
+		}
 	}
 	if a.colors != colorprofile.ANSI {
 		return st
@@ -1483,18 +1481,18 @@ func (a *App) segStyle(hl, over string, band bool) uv.Style {
 // terminal's own. It is cached for the frame: compose styles thousands of
 // segments and building the sequence for each is the biggest cost of
 // drawing one.
-func (a *App) sgrPrefix(hl, over string, band bool) string {
-	key := hl // no highlight name holds a NUL, and hover and the band are the rare cases
+func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill) string {
+	key := hl // no highlight name holds a NUL, and hover and a fill are the rare cases
 	if over != "" {
 		key = hl + "\x00" + over
 	}
-	if band {
-		key += "\x00b"
+	if fill != hostapi.FillAuto {
+		key += "\x00" + string(rune('0'+fill))
 	}
 	if p, ok := a.prefixes[key]; ok {
 		return p
 	}
-	st := a.segStyle(hl, over, band)
+	st := a.segStyle(hl, over, fill)
 	p := ""
 	if !st.IsZero() {
 		p = st.String()
@@ -1506,8 +1504,8 @@ func (a *App) sgrPrefix(hl, over string, band bool) string {
 // renderSegs styles and joins segments, truncating to w visible cells.
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 	var b strings.Builder
-	write := func(text, hl, over string, band bool) {
-		p := a.sgrPrefix(hl, over, band)
+	write := func(text, hl, over string, fill hostapi.Fill) {
+		p := a.sgrPrefix(hl, over, fill)
 		if p == "" {
 			b.WriteString(text)
 			return
@@ -1523,7 +1521,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 		switch s.Effect {
 		case "shimmer":
 			for _, r := range a.shimmer(s, a.frame()*frameMS, a.host.Settings.Bool("ui.animations")) {
-				write(r.Text, r.HL, s.Over, s.Band)
+				write(r.Text, r.HL, s.Over, s.Fill)
 			}
 			continue
 		case "spin":
@@ -1531,7 +1529,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 			s.Text = hostapi.Spinner[a.frame()%len(hostapi.Spinner)] + s.Text[n:]
 			a.spun = a.spun || a.frame() != 0
 		}
-		write(s.Text, s.HL, s.Over, s.Band)
+		write(s.Text, s.HL, s.Over, s.Fill)
 	}
 	out := b.String()
 	if ansi.StringWidth(out) > w {

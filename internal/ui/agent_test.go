@@ -738,7 +738,7 @@ func TestMatchLook(t *testing.T) {
 			var segs []string
 			for _, s := range row {
 				if strings.TrimSpace(s.Text) != "" {
-					segs = append(segs, s.Text+"/"+s.HL+map[bool]string{true: "^"}[s.Band])
+					segs = append(segs, s.Text+"/"+s.HL+map[bool]string{true: "^"}[s.Fill == hostapi.FillBand])
 				}
 			}
 			if segs != nil {

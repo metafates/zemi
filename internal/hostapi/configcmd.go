@@ -29,6 +29,25 @@ func (h *Host) configCommands() []*Command {
 			}
 			return paths
 		}),
+	}, {
+		Name: "theme", NArgs: NArgsOptional, Desc: "pick the theme; the screen repaints in it as you pick",
+		GoFn: func(h *Host, args string) error {
+			if args = strings.TrimSpace(args); args != "" {
+				return h.SetConfig("ui.theme", args)
+			}
+			ui, err := h.Screen()
+			if err != nil {
+				return err
+			}
+			return h.openConfigEdit(ui, "ui.theme")
+		},
+		GoComplete: func(h *Host, _, _ string) []string {
+			var names []string
+			for _, t := range h.Themes.List() {
+				names = append(names, t.Name)
+			}
+			return names
+		},
 	}}
 }
 
@@ -122,7 +141,9 @@ func (h *Host) SetConfig(path string, val any) error {
 	case "agent.profile":
 		return h.SetProfile(s)
 	case "ui.theme":
-		return h.SetTheme(s)
+		if err := h.checkTheme(s); err != nil {
+			return err
+		}
 	}
 	err := h.setWatched(path, val)
 	if _, bad := errors.AsType[*config.BadValueError](err); bad {
@@ -206,6 +227,8 @@ func configPicker(path string) string {
 		return "mode"
 	case path == "agent.profile":
 		return "profile"
+	case path == "ui.theme":
+		return "theme"
 	}
 	return "config edit " + path
 }
@@ -227,18 +250,19 @@ func (h *Host) configChoices(path string) []string {
 	return s.Choices
 }
 
-// openConfigEdit lists path's choices, or prompts for its value; either
-// sets it before it closes, which rebuilds /config under it.
+// openConfigEdit prompts for path's value, or lists its choices, where
+// enter sets one and keeps the list open, so a theme repaints the screen,
+// the list's own box included, as its preview. Closing either rebuilds
+// /config under it.
 func (h *Host) openConfigEdit(ui UIHooks, path string) error {
 	s, err := h.setting(path)
 	if err != nil {
 		return err
 	}
-	choices := h.configChoices(path)
 	switch {
 	case s.Kind == config.KindBool:
 		return Usagef("%s is on or off; /config toggle %s", path, path)
-	case choices == nil:
+	case h.configChoices(path) == nil:
 		v, _ := h.Settings.Get(path)
 		text, ok := v.(string)
 		if !ok {
@@ -247,17 +271,28 @@ func (h *Host) openConfigEdit(ui UIHooks, path string) error {
 		ui.OpenOverlay(Overlay{ID: "config edit", Title: path, Origin: lua.OriginBuiltin, Input: true, Default: text, Run: "config set " + path})
 		return nil
 	}
-	cur, sel := h.Settings.Str(path), 0
-	var items []any
-	for i, c := range choices {
+	items, sel := h.pickItems(path)
+	ui.OpenOverlay(Overlay{
+		ID: "config edit", Title: path, Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "pick",
+		Reload: func() ([]any, [][]Segment) { items, _ := h.pickItems(path); return items, nil },
+	})
+	return nil
+}
+
+// pickItems are path's choices as rows, the current one keyed and its index.
+func (h *Host) pickItems(path string) (items []any, sel int) {
+	cur := h.Settings.Str(path)
+	for i, c := range h.configChoices(path) {
 		item := map[string]any{"text": cmp.Or(c, "default"), "run": "config set " + path + " " + c}
 		if c == cur {
 			item["key"], sel = "current", i
 		}
+		if path == "ui.theme" && h.Themes.Get(c+"-light") != nil {
+			item["desc"] = "light: " + c + "-light"
+		}
 		items = append(items, item)
 	}
-	ui.OpenOverlay(Overlay{ID: "config edit", Title: path, Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "pick"})
-	return nil
+	return items, sel
 }
 
 // configLua is every setting off its default as the line init.lua sets it
