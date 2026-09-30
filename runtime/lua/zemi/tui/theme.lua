@@ -1,10 +1,11 @@
 -- The highlight groups every theme draws with, and the shipped themes.
 --
 -- Widgets reach for the semantic groups - Accent, Dim, Rule, Title,
--- Literal, Danger, Warn, Ok - and everything else links to one of them. A
--- group names a palette role, never a color, so a theme is one line of
--- colors: the accent is zemi and what acts, the literal inline code and a
--- string or number in code, danger a failure, warn a warning, ok done.
+-- Literal, Danger, Warn, Ok - and everything else links to one of them
+-- or names a palette role as they do. A group names a role, never a color,
+-- so a theme is one line of colors: the accent is zemi and what acts, the
+-- literal inline code and a string or number in code, danger a failure,
+-- warn a warning, ok done.
 
 local groups = {
 	-- the canvas is the palette's bg, which every group without a bg of its

@@ -54,7 +54,7 @@ func (a *App) answerTrust(answer string) {
 // gives answer i.
 var trustAnswers = []string{"trust", "untrust", "later"}
 
-// trustBox draws the Go-owned trust prompt (DESIGN §5, §8) in fixed host
+// trustBox draws the Go-owned trust prompt (DESIGN §5, §8) in host
 // styles, with no Lua text inside. The cursor starts on Later, so an enter
 // typed by habit trusts nothing. On a short screen what trusting means
 // scrolls, so the answers stay visible.

@@ -280,7 +280,7 @@ func waitPrompt(t *testing.T, app *App, cond func() bool) {
 }
 
 // TestGoldenPermission pins the Go-owned permission ask (DESIGN §6.2, §8):
-// fixed chrome, the title saying where a command runs, the facts table, the
+// Go chrome, the title saying where a command runs, the facts table, the
 // badge, the answers, and the always answer delivered to the asker.
 func TestGoldenPermission(t *testing.T) {
 	script := "set -e; for pkg in $(go list ./internal/...); do go test -count=1 -run TestGolden \"$pkg\" 2>&1 | tee -a \"$TMPDIR/golden.log\"; done; grep -c FAIL \"$TMPDIR/golden.log\" || true; rm -rf ~/.cache/zemi-golden && git stash list | head -5"

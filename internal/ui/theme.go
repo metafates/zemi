@@ -118,7 +118,7 @@ func chromeStyles(p *hostapi.Palette) map[string]uv.Style {
 }
 
 // hover draws a hover group ("Hover", "HoverItem") over base, the text's
-// own style. A theme without the group still underlines, so a target
+// own style. With the group undefined it still underlines, so a target
 // never goes unmarked.
 func (t themeResolver) hover(base uv.Style, group string) uv.Style {
 	spec, theme, ok := t.group(group)

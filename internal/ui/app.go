@@ -1068,9 +1068,9 @@ func (a *App) Screenshot() string {
 	return b.String()
 }
 
-// dimRows repaints rows in one fixed color, as text that joins no line. It
-// copies each row: rows share slices with widget caches. Image placeholders
-// keep their color, which names the image.
+// dimRows repaints rows in the one Host:Dim style, as text that joins no
+// line. It copies each row: rows share slices with widget caches. Image
+// placeholders keep their color, which names the image.
 func dimRows(rows [][]hostapi.Segment) {
 	for i, r := range rows {
 		out := make([]hostapi.Segment, len(r))

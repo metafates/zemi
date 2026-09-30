@@ -1421,13 +1421,13 @@ UI extensibility contract:
   or `link`s to another group (neovim's `link`, followed
   8 deep, a cycle draws unstyled); a group takes `fg`, `bg`, `sp` (underline
   color), `bold`, `italic`, `reverse` and `underline` (`true` or a kind: `double`,
-  `curl`, `dotted`, `dashed`). Hover draws the theme's `Hover` (widget click
+  `curl`, `dotted`, `dashed`). Hover draws the `Hover` group (widget click
   segments, statusline pills) or `HoverItem` (list rows,
   menus, memory items; the shipped one underlines, so a hovered row keeps
   its selection's and matches' accent apart) over the text's own style: keys a hover group leaves out
   keep that style, `false` and `"NONE"` clear it, `brighten` lifts the text's fg
-  (toward black on a lighter fill) and `replace` draws the group alone. A theme
-  without the group underlines. A segment marked `hover = false` takes neither
+  (toward black on a lighter fill) and `replace` draws the group alone. With neither
+  group defined, a target underlines. A segment marked `hover = false` takes neither
   group: a clickable body row (a diff line, a tool's detail, reasoning) says a
   click acts with the pointer shape alone, so hovering one restyles nothing. The trust and permission prompts' choices keep
   `Host:Hover` (§8); `Host:` is Go's own, so a Lua segment naming
@@ -1976,7 +1976,7 @@ provenance string.
   chrome (overlays and prompts) draws over everything,
   as do the completion and palette popups, which are not modal; while a
   modal is open everything outside the top box, plugin overlays and widget
-  regions too, is dimmed in a fixed host color, and a centered box keeps a
+  regions too, is dimmed in the palette's rule color through a `Host:` style, and a centered box keeps a
   blank gutter column of its own each side plus one more, so no text
   outside it runs up to its border; at any other time a plugin
   overlay carries a Go-stamped origin badge (`plugin:<name>`, `project:<file>`). While a box
