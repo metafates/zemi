@@ -1407,9 +1407,11 @@ UI extensibility contract:
   rose-pine, kanagawa, one, everforest and github, most with a `-light`
   twin, which draws on a light terminal when an origin that could replace the
   theme itself added it, so no less trusted code swaps what the user picked;
-  `ui.theme` names one, a name no theme answers to draws whorl and is an
-  `/errors` entry, and `/theme` picks one with the list open, repainting as
-  the preview. The groups are defined once, for every theme, by the shipped
+  `ui.theme` names one: `zemi.config.set` takes any name, since a plugin's
+  or the project's theme may be added after it, and a name no theme answers
+  to once boot is done draws whorl and is an `/errors` entry; `/config`
+  refuses one, and `/theme` picks one with the list open, enter on a row
+  repainting the screen in it as the preview. The groups are defined once, for every theme, by the shipped
   `theme.lua` through `zemi.ui.hl.set`, and user config's `hl.set` replaces
   one. The `Normal` group's `bg` is the
   app's canvas, which every group without a fill of its own sits on and

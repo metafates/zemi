@@ -411,11 +411,6 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		if v, err = h.Settings.Check(path, v); err != nil {
 			L.RaiseError("zemi.config.set: %v (zemi.config.schema() lists every key and its type)", err)
 		}
-		if path == "ui.theme" {
-			if err := h.checkTheme(v.(string)); err != nil {
-				L.RaiseError("zemi.config.set: %v", err)
-			}
-		}
 		// a replay writing what the last load wrote keeps what /model, the
 		// mode cycle, /effort or a flag picked since; an edited value wins
 		if h.cfgReplayed(path, v) {

@@ -207,7 +207,8 @@ func TestKeySequences(t *testing.T) {
 // TestHighlightOverride: zemi.ui.hl defines a group for every theme, a
 // later set replaces it, links resolve, a cycle resolves to nothing, and
 // hl.get reads the group with its roles in the active theme's colors. A
-// theme takes only the palette roles and ansi.
+// theme takes only the palette roles and ansi, and ui.theme may name one
+// before it is added.
 func TestHighlightOverride(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
@@ -252,10 +253,14 @@ func TestHighlightOverride(t *testing.T) {
 		end
 		local ok2, err2 = pcall(zemi.ui.theme.add, "bad", { bg = "#000000", fg = "#ffffff", hl = {} })
 		assert(not ok2 and tostring(err2):find('unknown key "hl"', 1, true), tostring(err2))
-		assert(not pcall(zemi.config.set, "ui.theme", "bad"), "a theme nothing added is refused")
+		zemi.config.set("ui.theme", "later") -- a theme added after the set line still draws
+		zemi.ui.theme.add("later", { bg = "#101010", fg = "#e0e0e0", accent = "#8899ff", ok = "#88dd88", warn = "#dddd66", danger = "#ee6666" })
 	`)
 	if s, _ := h.Themes.Group("Title"); s.Fg != "#ffffff" || s.Bold == nil || !*s.Bold {
 		t.Fatalf("Title = %+v", s)
+	}
+	if th := h.ActiveTheme(); th.Name != "later" {
+		t.Fatalf("%s draws", th.Name)
 	}
 }
 
