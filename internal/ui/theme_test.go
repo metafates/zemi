@@ -12,6 +12,7 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/lua"
 )
 
 func rgb(v uint32) ansi.RGBColor {
@@ -100,12 +101,15 @@ func TestThemes(t *testing.T) {
 }
 
 // TestActiveTheme: a light terminal draws the theme's light twin, chrome
-// included, a dark one the theme itself, and a name no theme answers to
-// draws whorl and is named in /errors.
+// included, unless less trusted code added the twin, a dark one the theme
+// itself, and a name no theme answers to draws whorl and is named in /errors.
 func TestActiveTheme(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	title := func() color.Color { return app.hlStyle("Host:Title").Fg }
-	whorl, light := host.Themes.Get("whorl"), host.Themes.Get("whorl-light")
+	whorl, light, nord := host.Themes.Get("whorl"), host.Themes.Get("whorl-light"), host.Themes.Get("nord")
+	if _, err := host.Themes.Add(&hostapi.Theme{Name: "nord-light", Palette: light.Palette, Origin: lua.OriginProject}); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct {
 		name  string
 		bg    uint32
@@ -115,6 +119,7 @@ func TestActiveTheme(t *testing.T) {
 		{"light terminal", 0xfafafa, "whorl", light},
 		{"dark terminal", 0x141414, "whorl", whorl},
 		{"light theme on a dark terminal", 0x141414, "whorl-light", light},
+		{"a project's twin of a shipped theme", 0xfafafa, "nord", nord},
 		{"unknown name", 0x141414, "gone", whorl},
 	} {
 		app.Update(tea.BackgroundColorMsg{Color: rgb(c.bg)})

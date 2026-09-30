@@ -239,8 +239,8 @@ func (h *Host) configChoices(path string) []string {
 	case "ui.theme":
 		var names []string
 		for _, t := range h.Themes.List() {
-			// a light variant draws by itself on a light terminal
-			if base, ok := strings.CutSuffix(t.Name, "-light"); !ok || h.Themes.Get(base) == nil {
+			// a light twin draws by itself on a light terminal
+			if base := h.Themes.Get(strings.TrimSuffix(t.Name, "-light")); base == nil || h.Themes.Light(base) != t {
 				names = append(names, t.Name)
 			}
 		}
@@ -287,8 +287,10 @@ func (h *Host) pickItems(path string) (items []any, sel int) {
 		if c == cur {
 			item["key"], sel = "current", i
 		}
-		if path == "ui.theme" && h.Themes.Get(c+"-light") != nil {
-			item["desc"] = "light: " + c + "-light"
+		if t := h.Themes.Get(c); path == "ui.theme" && t != nil {
+			if light := h.Themes.Light(t); light != nil {
+				item["desc"] = "light: " + light.Name
+			}
 		}
 		items = append(items, item)
 	}

@@ -1255,7 +1255,8 @@ function zemi.ui.focus.prev() end
 zemi.ui.theme = {}
 
 --- Register a palette; every highlight group and the Go chrome draw in it
---- once `ui.theme` names it. A "<name>-light" theme draws on a light terminal.
+--- once `ui.theme` names it. A "<name>-light" theme draws on a light terminal
+--- when the same or a more trusted origin (the same plugin) added it.
 ---
 --- ```lua
 --- zemi.ui.theme.add("mine", { bg = "#1e1e2e", fg = "#cdd6f4", accent = "#89b4fa", ok = "#a6e3a1", warn = "#f9e2af", danger = "#f38ba8" })
@@ -1266,7 +1267,7 @@ zemi.ui.theme = {}
 function zemi.ui.theme.add(name, spec) end
 
 --- The theme drawing now: the set one (whorl when that names none), or its
---- "-light" variant on a light terminal when one is registered.
+--- "-light" twin on a light terminal.
 ---@return string
 function zemi.ui.theme.get() end
 

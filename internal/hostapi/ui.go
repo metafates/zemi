@@ -806,17 +806,17 @@ func (h *Host) CheckTheme() {
 }
 
 // ActiveTheme is the theme drawing now: the configured one, whorl when
-// that names none, and its "-light" variant on a light terminal when one
-// is registered. nil before any theme is.
+// that names none, and its light twin on a light terminal. nil before any
+// theme is.
 func (h *Host) ActiveTheme() *Theme {
-	name := h.Settings.Str("ui.theme")
-	if h.Themes.Get(name) == nil {
-		name = "whorl"
+	t := h.Themes.Get(h.Settings.Str("ui.theme"))
+	if t == nil {
+		t = h.Themes.Get("whorl")
 	}
-	if t := h.Themes.Get(name + "-light"); t != nil && h.lightTerm.Load() {
+	if t == nil || !h.lightTerm.Load() {
 		return t
 	}
-	return h.Themes.Get(name)
+	return cmp.Or(h.Themes.Light(t), t)
 }
 
 // SetLightTerminal records whether the terminal's background is light.

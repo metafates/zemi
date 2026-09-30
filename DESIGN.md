@@ -1405,7 +1405,9 @@ UI extensibility contract:
   prompt text. The shipped ones are whorl (and whorl-light) plus ports of
   Ghostty's catppuccin, tokyonight, gruvbox, nord, dracula, solarized,
   rose-pine, kanagawa, one, everforest and github, most with a `-light`
-  twin; `ui.theme` names one, a name no theme answers to draws whorl and is an
+  twin, which draws on a light terminal when an origin that could replace the
+  theme itself added it, so no less trusted code swaps what the user picked;
+  `ui.theme` names one, a name no theme answers to draws whorl and is an
   `/errors` entry, and `/theme` picks one with the list open, repainting as
   the preview. The groups are defined once, for every theme, by the shipped
   `theme.lua` through `zemi.ui.hl.set`, and user config's `hl.set` replaces

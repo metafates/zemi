@@ -558,6 +558,16 @@ func (r *ThemeRegistry) Get(name string) *Theme {
 	return r.themes[name]
 }
 
+// Light is base's "<name>-light" twin, nil unless its origin could replace
+// base itself: less trusted code must not pick what a light terminal draws.
+func (r *ThemeRegistry) Light(base *Theme) *Theme {
+	t := r.Get(base.Name + "-light")
+	if t == nil || mayReplace(r.owner, "", base.Origin, base.Path, t.Origin, t.Path) != nil {
+		return nil
+	}
+	return t
+}
+
 func (r *ThemeRegistry) List() []*Theme {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
