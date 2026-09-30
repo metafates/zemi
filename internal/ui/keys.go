@@ -582,10 +582,12 @@ func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 	case modalPlan:
 		text = &a.planAsk.view
 	case modalQuestion:
-		if qp := a.question; !qp.reviewing() {
-			text = &qp.states[qp.at].ask
+		if qp := a.question; qp.reviewing() {
+			text = &qp.review
+		} else {
+			st := &qp.states[qp.at]
+			text, sel, n = &st.ask, &st.sel, qp.qs[qp.at].ListRows()
 		}
-		sel, n = a.question.sel()
 	case modalOverlay:
 		if st := &a.overlays[len(a.overlays)-1]; !st.o.Input {
 			text, sel, n = &st.body, &st.selected, len(st.visible)

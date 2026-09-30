@@ -1184,7 +1184,9 @@ nearest instruction file not already in the prompt, once per session),
 `fetch` (readability picks the article out of the
 page, converted to markdown),
 `todos`, `question` (1-4 questions in one overlay, options or a typed
-answer), `plan` (shows the plan in its own scrollable popup for approval; for a
+answer, and a note the user may add to a pick; the result is one JSON
+document, each answer a string, a multi-select's array, or null when left
+open, which its `open` field tells the model to decide), `plan` (shows the plan in its own scrollable popup for approval; for a
 read-only agent the agent and mode active before it are remembered at its start,
 and approval returns to them - the turn ends there because the read-only
 pipeline cannot implement, and its follow-up is a fresh send as the
@@ -1692,8 +1694,8 @@ provenance string.
   `@` popup), `run` a command (the palette, `/help`), `toggle` a toggle
   list's row, `fill` the composer, `copy`; a prompt's footer says `pick`
   for its buttons, whichever is highlighted, and `send` for typed text
-  (`zemi.ui.input`, a typed answer, a multi-select's picks, a plan's
-  changes, the question review's last row, whose question rows `open`):
+  (`zemi.ui.input`, a typed answer or note, a multi-select's picks, a plan's
+  changes, a question batch's Submit tab, whose digits `change` a question):
   four letters each, so starting to type or moving the highlight never
   shifts the footer. The footer's pairs sit in one order: moving keys,
   enter, space, copy, the screen's own keys (a Lua list's `keys`,
@@ -1916,8 +1918,10 @@ provenance string.
   (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
   down move, enter picks the highlighted one. Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer
-  last, a yes/no one's `y` and `n`, an overlay's detail view; a multi-select stays a list of
-  switches) draws its buttons through one renderer, which puts
+  last, and under them its one field, a note on the pick that `n` focuses or the typed
+  answer, drawn always so focusing it moves nothing; a batch's Submit tab, whose one
+  button stays pinned under the scrolling summary; an overlay's detail view; a
+  multi-select stays a list of switches) draws its buttons through one renderer, which puts
   each answer's key in brackets beside its label, the selected answer marked like a selected list row, the band under the accent `›`. The session `always` and `wider`
   answers write allow rules to the rule store (§6.1),
   scoped to the `model` principal, with the prefix-glob patterns §6.2 lists; they last

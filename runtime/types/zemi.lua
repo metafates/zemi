@@ -763,7 +763,7 @@ function zemi.event.stats() end
 ---@field label string The model's description of the call; a question call's headers.
 ---@field elapsed number
 ---@field diff string
----@field output string Last lines of the result; a plan call's verdict; an answered question call's rows, each `question\tanswer`.
+---@field output string Last lines of the result; a plan call's verdict; an answered question call's rows, each `question\tanswer\tnote`.
 
 ---@alias zemi.Role
 ---| "user"
@@ -789,7 +789,7 @@ function zemi.event.stats() end
 ---@field detail string Tool rows: subagent and workflow progress; notice rows: a hint drawn after the text, never copied.
 ---@field run string Agent calls: the run id, else "".
 ---@field diff string
----@field output string Last lines of a tool result; a plan call's verdict ("approved", "changes requested: ..."); an answered question call's rows, each `question\tanswer` ("not answered" when left open).
+---@field output string Last lines of a tool result; a plan call's verdict ("approved", "changes requested: ..."); an answered question call's rows, each `question\tanswer\tnote` ("not answered" when left open, the note "" when none).
 ---@field ["in"] integer Prompt tokens.
 ---@field out integer Completion tokens.
 ---@field thought number

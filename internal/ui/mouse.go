@@ -468,15 +468,30 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		return spans, func() { a.planKey(key, "") }, ok
 	case top == modalQuestion:
 		qp := a.question
-		if !qp.reviewing() && qp.states[qp.at].typing {
-			return nil, nil, false // the row is an input, not a choice
+		if qp.reviewing() { // a summary row opens its question, the button submits
+			n := len(qp.qs)
+			spans, ok := item(n + 1)
+			return spans, func() {
+				if hit > n {
+					a.finishQuestion(true)
+				} else {
+					qp.at = hit - 1
+				}
+			}, ok
 		}
-		sel, n := qp.sel()
-		if !qp.reviewing() && !qp.qs[qp.at].Multi() { // buttons: a click answers
+		q, st := qp.qs[qp.at], &qp.states[qp.at]
+		n := q.ListRows()
+		switch {
+		case st.typing:
+			return nil, nil, false // the field is an input, not a choice
+		case hit == n+1:
+			spans, ok := item(n + 1)
+			return spans, func() { st.typing = true }, ok
+		case !q.Multi(): // buttons: a click answers
 			spans, ok := item(n)
-			return spans, func() { *sel = hit - 1; a.questionKey("enter", "") }, ok
+			return spans, func() { st.sel = hit - 1; a.questionKey("enter", "") }, ok
 		}
-		return list(n, sel, func() { a.questionKey("enter", "") })
+		return list(n, &st.sel, func() { a.questionKey("enter", "") })
 	case top == modalOverlay:
 		st := &a.overlays[len(a.overlays)-1]
 		var open func()

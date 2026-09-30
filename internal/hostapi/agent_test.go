@@ -839,11 +839,11 @@ func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 
 func (f *fakeUI) Screenshot() string { return f.screenshot }
 
-func (f *fakeUI) AskQuestion(qs []tools.Question) ([]string, bool) {
+func (f *fakeUI) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
 	f.qAsked = append(f.qAsked, qs...)
-	answers := make([]string, len(qs))
+	answers := make([]tools.Answer, len(qs))
 	for i := range answers {
-		answers[i] = f.qAnswer
+		answers[i] = tools.Answer{Picked: []string{f.qAnswer}}
 	}
 	return answers, f.qOK
 }
@@ -941,7 +941,7 @@ func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 		}
 		break
 	}
-	if resp.IsError || !strings.Contains(resp.Content, `"Ship it?": proceed`) {
+	if resp.IsError || !strings.Contains(resp.Content, `"answer":"proceed"`) {
 		t.Fatalf("question through pipeline: %+v", resp)
 	}
 	if len(ui.qAsked) != 1 || ui.qAsked[0].Question != "Ship it?" || len(ui.qAsked[0].Options) != 2 {

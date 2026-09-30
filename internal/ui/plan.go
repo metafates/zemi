@@ -111,7 +111,7 @@ func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 		}
 		return emptyRows("The plan is empty.", w)
 	})
-	body := scrollChoiceBody(h, inner, &p.view, md, planW, func(bool) [][]hostapi.Segment { return act }, p.typing, hints...)
+	body := scrollChoiceBody(h, inner, nil, &p.view, md, planW, func(bool) [][]hostapi.Segment { return act }, p.typing, hints...)
 	badge := ""
 	if p.mode != "" {
 		badge = "back to " + p.mode + " on approve"

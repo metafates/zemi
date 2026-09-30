@@ -65,7 +65,7 @@ type UIHooks interface {
 	// Screenshot is the last drawn frame as plain text, "" before the
 	// first one; safe from any goroutine.
 	Screenshot() string
-	AskQuestion(qs []tools.Question) (answers []string, ok bool)
+	AskQuestion(qs []tools.Question) (answers []tools.Answer, ok bool)
 	// AskPlan shows a plan for approval (restore is the agent to return to on
 	// approval, "" when none); ok is false when the user dismisses it.
 	AskPlan(plan, restore string) (tools.PlanVerdict, bool)
@@ -287,7 +287,7 @@ func MoreLines(n int) string {
 
 // rowOutput is a tool result as its transcript row shows it, else
 // shortOutput: a plan's verdict and an answered question call's
-// "question\tanswer" lines, since their results are written for the model.
+// "question\tanswer\tnote" lines, since their results are written for the model.
 func rowOutput(tool, out string) string {
 	switch tool {
 	case tools.ToolPlan:
@@ -300,7 +300,7 @@ func rowOutput(tool, out string) string {
 			line := func(s string) string { return sanitize.String(clipRunes(strings.Join(strings.Fields(s), " "), 300)) }
 			rows := make([]string, len(qa))
 			for i, p := range qa {
-				rows[i] = line(p[0]) + "\t" + cmp.Or(line(p[1]), "not answered")
+				rows[i] = line(p[0]) + "\t" + cmp.Or(line(p[1]), "not answered") + "\t" + line(p[2])
 			}
 			return strings.Join(rows, "\n")
 		}

@@ -16,12 +16,12 @@ import (
 )
 
 type questionResult struct {
-	answers []string
+	answers []tools.Answer
 	ok      bool
 }
 
 // askAsync opens the question overlay from a tool goroutine, as the
-// question and plan tools do.
+// question tool does.
 func askAsync(t *testing.T, app *App, qs ...tools.Question) chan questionResult {
 	t.Helper()
 	done := make(chan questionResult, 1)
@@ -70,13 +70,13 @@ func pressKeys(app *App, keys ...string) {
 }
 
 // TestGoldenQuestionOverlay pins the Go-owned question overlay (DESIGN
-// §8): a batch shows tabs, answering moves on to the review tab, and the
-// answers come back in order.
+// §8): a batch shows tabs, answering moves on to the Submit tab, whose
+// summary shows a note, and the answers come back in order.
 func TestGoldenQuestionOverlay(t *testing.T) {
 	app, _ := bootAgentApp(t, 70, 18)
 	done := askAsync(t, app,
 		tools.Question{Type: tools.TypeSingle, Question: "Apply the mined rules to this project?", Header: "Rules", Options: []tools.QuestionOption{
-			{Label: "apply (Recommended)", Description: "store both as project memories"},
+			{Label: "apply", Description: "store both as project memories", Recommended: true},
 			{Label: "skip", Description: "leave the proposals unapplied"},
 		}},
 		tools.Question{Type: tools.TypeMulti, Question: "Which checks run before commit?", Header: "Checks", Options: []tools.QuestionOption{
@@ -86,7 +86,7 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 
-	// every tab, typing and the review draw in the one box: its top row and height
+	// every tab, the field focused and the Submit tab draw in the one box: its top row and height
 	box := func() string {
 		app.renderSync(t)
 		f := ansi.Strip(app.Frame())
@@ -94,7 +94,7 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 		return fmt.Sprint(strings.Count(f[:top], "\n"), strings.Count(f[top:top+strings.Index(f[top:], "┘")], "\n"))
 	}
 	want := box()
-	// starting to type and moving over the review keep the footer's keys in place
+	// focusing the field and scrolling the summary keep the footer's keys in place
 	escAt := func() int {
 		app.renderSync(t)
 		f := ansi.Strip(app.Frame())
@@ -108,36 +108,41 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 		pressKeys(app, back...)
 	}
 	footer([]string{"j", "j", "enter"}, []string{"esc", "k", "k"})
-	for _, keys := range [][]string{{"j", "enter"}, {"j", "j", "j", "enter"}, {"esc", "k", "k", "k", "space", "j", "j", "space", "enter"}} {
+	footer([]string{"n"}, []string{"esc"})
+	for _, keys := range [][]string{{"j", "n", "only in this repo", "enter"}, {"j", "j", "j", "enter"}, {"esc", "k", "k", "k", "space", "j", "j", "space", "enter"}} {
 		if pressKeys(app, keys...); box() != want {
 			t.Fatalf("after %v the box moved from %s to %s:\n%s", keys, want, box(), ansi.Strip(app.Frame()))
 		}
 	}
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "Submit answers") || !strings.Contains(frame, "tests, lint") {
-		t.Fatalf("review tab missing:\n%s", frame)
+	t.Run("submit", func(t *testing.T) { golden.RequireEqual(t, app.Frame()) })
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "[s] Submit answers") || !strings.Contains(frame, "tests, lint") || !strings.Contains(frame, "note: only in this repo") {
+		t.Fatalf("Submit tab missing:\n%s", frame)
 	}
 	footer([]string{"k"}, []string{"j"})
 	pressKeys(app, "enter")
-	if r := awaitAnswer(t, app, done); !r.ok || fmt.Sprint(r.answers) != "[skip tests, lint]" {
-		t.Fatalf("answers %q ok=%v", r.answers, r.ok)
+	if r := awaitAnswer(t, app, done); !r.ok || fmt.Sprint(r.answers) != "[{[skip]  only in this repo} {[tests lint]  }]" {
+		t.Fatalf("answers %+v ok=%v", r.answers, r.ok)
 	}
 }
 
 func TestQuestionAnswers(t *testing.T) {
 	yes := tools.Question{Type: tools.TypeSingle, Question: "Proceed?", Options: []tools.QuestionOption{{Label: "yes"}}}
+	two := tools.Question{Type: tools.TypeSingle, Question: "Pick?", Options: []tools.QuestionOption{{Label: "one"}, {Label: "two"}}}
 	for _, c := range []struct {
 		name string
 		q    tools.Question
 		keys []string
 		want questionResult
 	}{
-		{"typed answer on the last row", yes, []string{"j", "enter", "use a flag", "enter"}, questionResult{[]string{"use a flag"}, true}},
-		{"typing on the last row starts the answer, a digit too", yes, []string{"j", "2weeks", "enter"}, questionResult{[]string{"2weeks"}, true}},
-		{"open question types at once", tools.Question{Type: tools.TypeFreeText, Question: "Name?"}, []string{"zemi", "enter"}, questionResult{[]string{"zemi"}, true}},
-		{"yes_no answered by n, as every prompt answers no", tools.Question{Type: tools.TypeYesNo, Question: "Go?", Options: []tools.QuestionOption{{Label: "Yes"}, {Label: "No"}}}, []string{"n"}, questionResult{[]string{"No"}, true}},
-		{"digit picks a single choice", tools.Question{Type: tools.TypeSingle, Question: "Pick?", Options: []tools.QuestionOption{{Label: "one"}, {Label: "two"}}}, []string{"2"}, questionResult{[]string{"two"}, true}},
+		{"typed answer on the last row", yes, []string{"j", "enter", "use a flag", "enter"}, questionResult{[]tools.Answer{{Typed: "use a flag"}}, true}},
+		{"typing on the last row starts the answer, n too", yes, []string{"j", "n2 weeks", "enter"}, questionResult{[]tools.Answer{{Typed: "n2 weeks"}}, true}},
+		{"open question types at once", tools.Question{Type: tools.TypeFreeText, Question: "Name?"}, []string{"zemi", "enter"}, questionResult{[]tools.Answer{{Typed: "zemi"}}, true}},
+		{"digit picks a single choice", two, []string{"2"}, questionResult{[]tools.Answer{{Picked: []string{"two"}}}, true}},
+		{"n on an option writes a note, enter sends pick and note", two, []string{"j", "n", "if it builds", "enter"}, questionResult{[]tools.Answer{{Picked: []string{"two"}, Note: "if it builds"}}, true}},
+		{"a digit after writing a note carries it", two, []string{"n", "later", "esc", "2"}, questionResult{[]tools.Answer{{Picked: []string{"two"}, Note: "later"}}, true}},
+		{"a multi-select sends its marks with the note", tools.Question{Type: tools.TypeMulti, Question: "Which?", Options: two.Options}, []string{"space", "j", "space", "n", "both", "enter"}, questionResult{[]tools.Answer{{Picked: []string{"one", "two"}, Note: "both"}}, true}},
 		{"esc leaves typing, second esc dismisses", yes, []string{"j", "enter", "x", "esc", "esc"}, questionResult{nil, false}},
-		{"the typed answer's digit starts it", yes, []string{"2", "no", "enter"}, questionResult{[]string{"no"}, true}},
+		{"the typed answer's digit starts it", yes, []string{"2", "no", "enter"}, questionResult{[]tools.Answer{{Typed: "no"}}, true}},
 		{"esc out of an open question's input dismisses, enter after is safe", tools.Question{Type: tools.TypeFreeText, Question: "Name?"}, []string{"enter", "esc", "enter"}, questionResult{nil, false}},
 		{"ctrl+c dismisses", yes, []string{"ctrl+c"}, questionResult{nil, false}},
 	} {
@@ -146,7 +151,7 @@ func TestQuestionAnswers(t *testing.T) {
 			done := askAsync(t, app, c.q)
 			pressKeys(app, c.keys...)
 			if r := awaitAnswer(t, app, done); r.ok != c.want.ok || fmt.Sprint(r.answers) != fmt.Sprint(c.want.answers) {
-				t.Fatalf("got %q ok=%v, want %q ok=%v", r.answers, r.ok, c.want.answers, c.want.ok)
+				t.Fatalf("got %+v ok=%v, want %+v ok=%v", r.answers, r.ok, c.want.answers, c.want.ok)
 			}
 		})
 	}
@@ -168,13 +173,15 @@ func TestQuestionBatch(t *testing.T) {
 		keys []any // string key names for pressKeys, or a tea.KeyPressMsg
 		want questionResult
 	}{
-		{"answers lead to review, enter submits", []any{"enter", "j", "enter", "enter"}, questionResult{[]string{"a", "b2"}, true}},
-		{"a question can be changed from review", []any{"enter", "enter", "k", "k", "enter", "j", "enter", "enter"}, questionResult{[]string{"a2", "b"}, true}},
-		{"tab skips a question, it submits unanswered", []any{tab, "enter", "enter"}, questionResult{[]string{"", "b"}, true}},
-		{"going back keeps the typed answer", []any{"j", "j", "hi", "enter", back, " there", "enter", tab, "enter"}, questionResult{[]string{"hi there", ""}, true}},
-		{"marks count when tab leaves the question", []any{tab, "space", "j", "space", tab, "enter"}, questionResult{[]string{"", "b, b2"}, true}},
-		{"unmarking everything unanswers it", []any{tab, "space", "space", tab, "enter"}, questionResult{[]string{"", ""}, true}},
-		{"esc on review dismisses", []any{"enter", "enter", "esc"}, questionResult{nil, false}},
+		{"answers lead to the Submit tab, enter submits", []any{"enter", "j", "enter", "enter"}, questionResult{[]tools.Answer{{Picked: []string{"a"}}, {Picked: []string{"b2"}}}, true}},
+		{"s submits a partial batch from the Submit tab", []any{"enter", tab, "s"}, questionResult{[]tools.Answer{{Picked: []string{"a"}}, {}}, true}},
+		{"a question's digit changes it from the Submit tab", []any{"enter", "enter", "1", "j", "enter", "enter"}, questionResult{[]tools.Answer{{Picked: []string{"a2"}}, {Picked: []string{"b"}}}, true}},
+		{"a note edited after answering counts", []any{"enter", back, "n", "first", "esc", tab, tab, "enter"}, questionResult{[]tools.Answer{{Picked: []string{"a"}, Note: "first"}, {}}, true}},
+		{"a note with no pick is dropped", []any{"n", "why", "esc", tab, tab, "enter"}, questionResult{[]tools.Answer{{}, {}}, true}},
+		{"going back keeps the typed answer", []any{"j", "j", "hi", "enter", back, " there", "enter", tab, "enter"}, questionResult{[]tools.Answer{{Typed: "hi there"}, {}}, true}},
+		{"marks count when tab leaves the question", []any{tab, "space", "j", "space", tab, "enter"}, questionResult{[]tools.Answer{{}, {Picked: []string{"b", "b2"}}}, true}},
+		{"unmarking everything unanswers it", []any{tab, "space", "space", tab, "enter"}, questionResult{[]tools.Answer{{}, {}}, true}},
+		{"esc on the Submit tab dismisses", []any{"enter", "enter", "esc"}, questionResult{nil, false}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, _ := bootAgentApp(t, 70, 20)
@@ -187,7 +194,7 @@ func TestQuestionBatch(t *testing.T) {
 				}
 			}
 			if r := awaitAnswer(t, app, done); r.ok != c.want.ok || fmt.Sprint(r.answers) != fmt.Sprint(c.want.answers) {
-				t.Fatalf("got %q ok=%v, want %q ok=%v", r.answers, r.ok, c.want.answers, c.want.ok)
+				t.Fatalf("got %+v ok=%v, want %+v ok=%v", r.answers, r.ok, c.want.answers, c.want.ok)
 			}
 		})
 	}
@@ -197,7 +204,7 @@ func TestQuestionBatch(t *testing.T) {
 	done := askAsync(t, app, qs[0], tools.Question{Type: tools.TypeFreeText, Question: "Name?"})
 	pressKeys(app, "enter", "enter", "esc", "enter")
 	if r := awaitAnswer(t, app, done); r.ok {
-		t.Fatalf("got %q, want the batch dismissed", r.answers)
+		t.Fatalf("got %+v, want the batch dismissed", r.answers)
 	}
 }
 
@@ -249,7 +256,7 @@ func TestQuestionBoxScrolls(t *testing.T) {
 func TestQuestionOptionsWrap(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 20)
 	askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Which storage?", Options: []tools.QuestionOption{
-		{Label: "SQLite with write-ahead logging and a busy timeout (Recommended)", Description: "one file, no server"},
+		{Label: "SQLite with write-ahead logging and a busy timeout", Description: "one file, no server", Recommended: true},
 		{Label: "Postgres", Description: "a server to run"},
 	}})
 	app.renderSync(t)

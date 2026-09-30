@@ -240,7 +240,7 @@ type Pipeline struct {
 
 	// Question asks the user and returns one answer per question; false =
 	// dismissed. nil = nobody can answer (headless).
-	Question func(qs []Question) (answers []string, ok bool)
+	Question func(qs []Question) (answers []Answer, ok bool)
 	// ApprovePlan shows a plan and asks the user to approve it; false =
 	// dismissed. nil = nobody can answer (headless).
 	ApprovePlan func(plan string) (PlanVerdict, bool)
@@ -1218,7 +1218,7 @@ Chain dependent steps with &&.`,
 				"questions": map[string]any{"type": "array", "items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"type":        map[string]any{"type": "string", "enum": questionTypes, "description": "yes_no gets Yes and No; multi_choice lets the user mark several; free_text is typed"},
+						"type":        map[string]any{"type": "string", "enum": questionTypes, "description": "multi_choice lets the user mark several; free_text is typed"},
 						"question":    map[string]any{"type": "string", "description": "the complete question, ending with a question mark"},
 						"description": map[string]any{"type": "string", "description": "markdown shown under the question"},
 						"header":      map[string]any{"type": "string", "description": "a 1-3 word label, e.g. Auth method"},

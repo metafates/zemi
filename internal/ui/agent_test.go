@@ -1366,7 +1366,7 @@ func TestToolRows(t *testing.T) {
 		// answer: on one line when it fits, the answer under it when not
 		{Name: "question", Input: "Which auth method?", Label: "auth method", Status: "ok", Output: "Which auth method?\tOAuth"},
 		{Name: "question", Input: longQ, Label: "branch cleanup", Status: "ok", Output: longQ + "\tYes, delete them"},
-		{Name: "question", Input: "Which store? +1 more", Label: "store, cache size", Status: "ok", Output: "Which store?\tsqlite\nHow large may the cache grow?\tnot answered"},
+		{Name: "question", Input: "Which store? +1 more", Label: "store, cache size", Status: "ok", Output: "Which store?\tsqlite\tonly for now\nHow large may the cache grow?\tnot answered\t"},
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
@@ -1381,7 +1381,7 @@ func TestToolRows(t *testing.T) {
 		"■ Write b.go", "  ⎿ denied by you", "  ⎿ approved, saved to /data/plans/s1.md", "  ⎿ changes requested: use go",
 		"■ Ask name", "  ⎿ Name?", "    dismissed by you",
 		"✓ Ask auth method", "  ⎿ Which auth method?  OAuth", "✓ Ask branch cleanup", "    Yes, delete them",
-		"✓ Ask store, cache size", "  ⎿ Which store?  sqlite", "    How large may the cache grow?  not answered",
+		"✓ Ask store, cache size", "  ⎿ Which store?  sqlite", "    note: only for now", "    How large may the cache grow?  not answered",
 	} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)

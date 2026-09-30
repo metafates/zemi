@@ -102,22 +102,26 @@ func TestQuestionAndPlanTools(t *testing.T) {
 	const two = `{"questions":[{"type":"single_choice","question":"Which path?","options":[{"label":"A (Recommended)","description":"first"},{"label":"B"}]},
 		{"type":"multi_choice","question":"Checks?","options":[{"label":"tests"},{"label":"vet"}]}]}`
 	var asked []Question
-	answer := func(ans []string, ok bool) func([]Question) ([]string, bool) {
-		return func(qs []Question) ([]string, bool) { asked = qs; return ans, ok }
+	answer := func(ans []Answer, ok bool) func([]Question) ([]Answer, bool) {
+		return func(qs []Question) ([]Answer, bool) { asked = qs; return ans, ok }
 	}
 	verdict := func(v PlanVerdict, ok bool) func(string) (PlanVerdict, bool) {
 		return func(string) (PlanVerdict, bool) { return v, ok }
 	}
 	for _, c := range []struct {
 		name, tool, input string
-		question          func([]Question) ([]string, bool)
+		question          func([]Question) ([]Answer, bool)
 		plan              func(string) (PlanVerdict, bool)
 		want              string
 		isErr, stop       bool
 	}{
 		{
-			"answers in order", "question", two, answer([]string{"A (Recommended)", "tests, vet"}, true), nil,
-			"The user answered:\n- \"Which path?\": A\n- \"Checks?\": tests, vet", false, false,
+			"answers in order, a note kept", "question", two, answer([]Answer{{Picked: []string{"A"}, Note: "only here"}, {Picked: []string{"tests", "vet"}}}, true), nil,
+			`{"answers":[{"question":"Which path?","answer":"A","note":"only here"},{"question":"Checks?","answer":["tests","vet"]}]}`, false, false,
+		},
+		{
+			"an open answer is null and explained", "question", two, answer([]Answer{{Typed: "C"}, {}}, true), nil,
+			`{"answers":[{"question":"Which path?","answer":"C"},{"question":"Checks?","answer":null}],"open":"a null answer is yours`, false, false,
 		},
 		{"dismissal ends the turn", "question", two, answer(nil, false), nil, "dismissed", true, true},
 		{"no user: decide and continue", "question", two, nil, nil, "No user is available", false, false},
@@ -141,7 +145,7 @@ func TestQuestionAndPlanTools(t *testing.T) {
 			}
 		})
 	}
-	if len(asked) != 2 || asked[1].Type != TypeMulti || asked[0].Options[0].Description != "first" {
+	if o := asked[0].Options; len(asked) != 2 || asked[1].Type != TypeMulti || o[0] != (QuestionOption{"A", "first", true}) || o[1].Recommended {
 		t.Fatalf("question plumbing: %+v", asked)
 	}
 }
@@ -167,53 +171,29 @@ func TestPlanOutcome(t *testing.T) {
 	}
 }
 
-// TestQuestionAnswers: a question row reads each question and answer back
-// out of the result the question tool writes for the model.
+// TestQuestionAnswers: a question row reads each question, answer and note
+// back out of the result the question tool writes for the model.
 func TestQuestionAnswers(t *testing.T) {
 	for _, c := range []struct {
 		name    string
-		answers []string
+		answers []Answer
 		ok      bool
-		want    [][2]string
+		want    [][3]string
 	}{
-		{"quotes, a newline and an open one", []string{"say \"hi\"", ""}, true, [][2]string{{"Name \"it\"?\nor not", `say "hi"`}, {"Checks?", ""}}},
+		{
+			"quotes, a newline, marks, a note and an open one",
+			[]Answer{{Typed: `say "hi"`}, {Picked: []string{"tests", "a, b"}, Note: "only <here>"}, {}},
+			true,
+			[][3]string{{"Name \"it\"?\nor not", `say "hi"`, ""}, {"Checks?", "tests, a, b", "only <here>"}, {"Why?", "", ""}},
+		},
 		{"dismissed", nil, false, nil},
 	} {
 		p, _ := testPipeline(t, false)
-		p.Question = func([]Question) ([]string, bool) { return c.answers, c.ok }
-		resp := call(t, toolNamed(t, "question", p), `{"questions":[{"type":"free_text","question":"Name \"it\"?\nor not"},{"type":"free_text","question":"Checks?"}]}`)
+		p.Question = func([]Question) ([]Answer, bool) { return c.answers, c.ok }
+		resp := call(t, toolNamed(t, "question", p), `{"questions":[{"type":"free_text","question":"Name \"it\"?\nor not"},{"type":"multi_choice","question":"Checks?","options":[{"label":"tests"},{"label":"a, b"}]},{"type":"free_text","question":"Why?"}]}`)
 		if got := QuestionAnswers(resp.Content); !slices.Equal(got, c.want) {
 			t.Errorf("%s: %q from %q", c.name, got, resp.Content)
 		}
-	}
-}
-
-// TestYesNoOptions: explicit options are kept as given (not doubled by the
-// Yes/No default), and omitted options fall back to Yes/No.
-func TestYesNoOptions(t *testing.T) {
-	p, _ := testPipeline(t, false)
-	var asked []Question
-	p.Question = func(qs []Question) ([]string, bool) { asked = qs; return []string{"yes"}, true }
-	tool := toolNamed(t, "question", p)
-	for _, c := range []struct {
-		name, input string
-		want        []string
-	}{
-		{"explicit options kept", `{"questions":[{"type":"yes_no","question":"x","options":[{"label":"Sure"},{"label":"Never"}]}]}`, []string{"Sure", "Never"}},
-		{"defaults when omitted", `{"questions":[{"type":"yes_no","question":"x"}]}`, []string{"Yes", "No"}},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			if resp := call(t, tool, c.input); resp.IsError {
-				t.Fatalf("error: %+v", resp)
-			}
-			labels := make([]string, len(asked[0].Options))
-			for i, o := range asked[0].Options {
-				labels[i] = o.Label
-			}
-			if !slices.Equal(labels, c.want) {
-				t.Fatalf("options: %v, want %v", labels, c.want)
-			}
-		})
 	}
 }
 

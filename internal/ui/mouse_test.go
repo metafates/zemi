@@ -426,27 +426,39 @@ func TestSelectionRejoinsWrappedText(t *testing.T) {
 }
 
 // TestMouseQuestion: the question overlay answers to the mouse like the
-// permission prompt - the first click selects a row, the second picks it.
+// permission prompt - a click on an option picks it, one on the field
+// focuses it, one on a Submit tab row opens its question, and one on the
+// button submits.
 func TestMouseQuestion(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 20)
-	done := make(chan []string, 1)
-	go func() {
-		ans, _ := app.AskQuestion([]tools.Question{{Type: tools.TypeSingle, Question: "apply the proposals?", Options: []tools.QuestionOption{{Label: "apply"}, {Label: "skip"}}}})
-		done <- ans
-	}()
-	waitPrompt(t, app, func() bool { return app.question != nil })
-	app.renderSync(t)
-	x, y := findCell(t, app, "skip")
-	clickAt(app, x+1, y)
-	app.renderSync(t)
-	clickAt(app, x+1, y)
-	select {
-	case ans := <-done:
-		if len(ans) != 1 || ans[0] != "skip" {
-			t.Fatalf("answered %q", ans)
+	opts := func(labels ...string) []tools.QuestionOption {
+		var o []tools.QuestionOption
+		for _, l := range labels {
+			o = append(o, tools.QuestionOption{Label: l})
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("clicking an option never answered")
+		return o
+	}
+	done := askAsync(t, app,
+		tools.Question{Type: tools.TypeSingle, Question: "apply the proposals?", Header: "Apply", Options: opts("apply", "skip")},
+		tools.Question{Type: tools.TypeSingle, Question: "keep the flag?", Header: "Flag", Options: opts("keep", "drop")},
+	)
+	click := func(text string) {
+		app.renderSync(t)
+		x, y := findCell(t, app, text)
+		clickAt(app, x+1, y)
+	}
+	click("skip")
+	click("add a note")
+	pressKeys(app, "why", "enter")
+	click("[1] Apply")
+	if app.question.at != 0 {
+		t.Fatalf("a summary row should open its question, at %d", app.question.at)
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	app.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	click("Submit answers")
+	if r := awaitAnswer(t, app, done); !r.ok || fmt.Sprint(r.answers) != "[{[skip]  } {[keep]  why}]" {
+		t.Fatalf("answered %+v ok=%v", r.answers, r.ok)
 	}
 }
 

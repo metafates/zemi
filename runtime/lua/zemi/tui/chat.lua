@@ -304,8 +304,8 @@ zemi.ui.widget.add({
 				lines[#lines + 1] = row
 				corner = false
 			end
-			-- an answered question's output holds "question\tanswer" lines, which
-			-- take the place of the question under its header
+			-- an answered question's output holds "question\tanswer\tnote" lines,
+			-- which take the place of the question under its header
 			local output = t.output or ""
 			local answered = name == "question" and output:find("\t") ~= nil
 			-- the command a description stands for, then progress, then the job
@@ -373,14 +373,15 @@ zemi.ui.widget.add({
 				local more = "… " .. fmt.count(hidden, "more line", "more lines")
 				if hidden > 0 and first > 1 then detail(more, "Comment") end
 				for i = first, last do
-					local q, a = out[i]:match("^(.-)\t(.*)$")
+					local q, a, note = out[i]:match("^([^\t]*)\t([^\t]*)\t?(.*)$")
 					if answered and q then
 						if fmt.cells(q) + 2 + fmt.cells(a) <= width - 4 then
-							detail({ { text = q, hl = "Comment" }, { text = "  " .. a, hl = "Normal" } }, "Comment")
+							detail({ { text = q, hl = "Dim" }, { text = "  " .. a, hl = "Normal" } }, "Dim")
 						else
-							detail(q, "Comment")
+							detail(q, "Dim")
 							detail(a, "Normal")
 						end
+						if note ~= "" then detail("note: " .. note, "Dim") end
 					else
 						detail(out[i], err and i == (tail and #out or 1) and "Danger" or "Comment")
 					end

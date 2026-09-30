@@ -8,11 +8,11 @@ package tools
 
 import (
 	"context"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 
 	"charm.land/fantasy"
@@ -186,8 +186,9 @@ func endTurn(text string) fantasy.ToolResponse {
 
 // QuestionOption is one answer choice for a question ask.
 type QuestionOption struct {
-	Label       string
+	Label       string // without the " (Recommended)" the model marks its pick with
 	Description string
+	Recommended bool
 }
 
 // QuestionType is how a question is asked; runQuestion maps it onto the
@@ -195,18 +196,17 @@ type QuestionOption struct {
 type QuestionType string
 
 const (
-	TypeYesNo    QuestionType = "yes_no"
 	TypeSingle   QuestionType = "single_choice"
 	TypeMulti    QuestionType = "multi_choice"
 	TypeFreeText QuestionType = "free_text"
 )
 
-var questionTypes = []QuestionType{TypeYesNo, TypeSingle, TypeMulti, TypeFreeText}
+var questionTypes = []QuestionType{TypeSingle, TypeMulti, TypeFreeText}
 
 // Question is one structured ask to the user, drawn by a Go-owned overlay.
-// Type must be one of the four: yes_no and single_choice ask one option,
-// multi_choice marks several, free_text answers on a typed row. Options may
-// carry a short Description shown under their label.
+// single_choice picks one option, multi_choice marks several, free_text
+// answers on a typed row. Options may carry a short Description shown
+// beside their label.
 type Question struct {
 	Type        QuestionType
 	Question    string
@@ -218,17 +218,23 @@ type Question struct {
 func (q Question) Multi() bool { return q.Type == TypeMulti }
 
 // ListRows is how many rows the selection list shows: the options plus a
-// "type your own" tail row for the choice types; yes_no and free_text have
-// no tail (yes_no is its two options, free_text only the typed row).
+// "type your own" tail row for the choice types; free_text has only the
+// typed row.
 func (q Question) ListRows() int {
-	if q.Type == TypeYesNo {
-		return len(q.Options)
-	}
 	if q.Type == TypeFreeText {
 		return 0
 	}
 	return len(q.Options) + 1
 }
+
+// Answer is the user's answer to one Question; the zero value leaves it open.
+type Answer struct {
+	Picked []string // option labels
+	Typed  string   // the user's own answer instead of a pick
+	Note   string   // the user's note on the picks
+}
+
+func (a Answer) Open() bool { return len(a.Picked) == 0 && a.Typed == "" }
 
 const maxQuestions = 4
 
@@ -250,7 +256,7 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 			Header:      str(m["header"]),
 		}
 		if !slices.Contains(questionTypes, q.Type) {
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: type must be yes_no, single_choice, multi_choice or free_text", i+1)), nil
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: type must be single_choice, multi_choice or free_text", i+1)), nil
 		}
 		if q.Type == TypeFreeText {
 			qs = append(qs, q)
@@ -262,10 +268,8 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 			if str(om["label"]) == "" {
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d, option %d: label is required", i+1, j+1)), nil
 			}
-			q.Options = append(q.Options, QuestionOption{Label: str(om["label"]), Description: str(om["description"])})
-		}
-		if q.Type == TypeYesNo && len(q.Options) == 0 {
-			q.Options = []QuestionOption{{Label: "Yes"}, {Label: "No"}}
+			label, rec := strings.CutSuffix(str(om["label"]), " (Recommended)")
+			q.Options = append(q.Options, QuestionOption{Label: label, Description: str(om["description"]), Recommended: rec})
 		}
 		qs = append(qs, q)
 	}
@@ -276,45 +280,60 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 	if !ok || len(answers) != len(qs) {
 		return stopTurn("The user dismissed the questions. Stop and wait for them to say how to proceed."), nil
 	}
-	var b strings.Builder
-	b.WriteString(questionAnswered)
+	res := questionResult{Answers: make([]questionAnswer, len(qs))}
 	for i, q := range qs {
-		ans := strings.ReplaceAll(answers[i], " (Recommended)", "")
-		if ans == "" {
-			ans = questionOpen
+		a := answers[i]
+		res.Answers[i] = questionAnswer{Question: q.Question, Note: a.Note}
+		switch {
+		case a.Typed != "":
+			res.Answers[i].Answer = a.Typed
+		case a.Open():
+			res.Open = "a null answer is yours to decide: take the option you recommended, or your best judgment if you gave none"
+		case q.Multi():
+			res.Answers[i].Answer = a.Picked
+		default:
+			res.Answers[i].Answer = a.Picked[0]
 		}
-		fmt.Fprintf(&b, "\n- %q: %s", q.Question, ans)
 	}
-	return fantasy.NewTextResponse(b.String()), nil
+	out, err := json.Marshal(res)
+	if err != nil {
+		return fantasy.ToolResponse{}, err
+	}
+	return fantasy.NewTextResponse(string(out)), nil
 }
 
-// The question result QuestionAnswers reads back.
-const (
-	questionAnswered = "The user answered:"
-	questionOpen     = "(not answered: use your recommended option, or your best judgment if you gave none)"
-)
+// questionResult is the question tool's result: each answer a string, a
+// multi_choice's marks, or null when left open, which Open explains.
+type questionResult struct {
+	Answers []questionAnswer `json:"answers"`
+	Open    string           `json:"open,omitempty"`
+}
 
-// QuestionAnswers is each question and its answer in a question result,
-// which is written for the model, for its row to show: "" for a question the
-// user left open. Any other result is nil.
-func QuestionAnswers(output string) [][2]string {
-	lines := strings.Split(output, "\n")
-	if lines[0] != questionAnswered || len(lines) < 2 {
+type questionAnswer struct {
+	Question string `json:"question"`
+	Answer   any    `json:"answer"`
+	Note     string `json:"note,omitempty"`
+}
+
+// QuestionAnswers is each question, its answer ("" when left open, marks
+// joined with ", ") and its note in a question result, for its row to
+// show. Any other result is nil.
+func QuestionAnswers(output string) [][3]string {
+	var res questionResult
+	if json.Unmarshal([]byte(output), &res) != nil || len(res.Answers) == 0 {
 		return nil
 	}
-	qa := make([][2]string, 0, len(lines)-1)
-	for _, l := range lines[1:] {
-		l, dash := strings.CutPrefix(l, "- ")
-		quoted, err := strconv.QuotedPrefix(l)
-		ans, colon := strings.CutPrefix(l[len(quoted):], ": ")
-		if !dash || err != nil || !colon {
-			return nil
+	qa := make([][3]string, len(res.Answers))
+	for i, a := range res.Answers {
+		ans, _ := a.Answer.(string)
+		if marks, ok := a.Answer.([]any); ok {
+			labels := make([]string, len(marks))
+			for j, m := range marks {
+				labels[j], _ = m.(string)
+			}
+			ans = strings.Join(labels, ", ")
 		}
-		q, _ := strconv.Unquote(quoted)
-		if ans == questionOpen {
-			ans = ""
-		}
-		qa = append(qa, [2]string{q, ans})
+		qa[i] = [3]string{a.Question, ans, a.Note}
 	}
 	return qa
 }
