@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -370,7 +371,8 @@ func TestChatStickyPrompt(t *testing.T) {
 // digest's pin puts the digest itself under the prompt's.
 // TestChatFade: the rows under the pins sink toward the canvas while rows lie
 // scrolled above them, and the last rows while rows lie below, deepest at the
-// edge; the pins and an edge with nothing past it do not.
+// edge and easing off as the last rows come into view; the pins, the bar and
+// an edge with nothing past it do not.
 func TestChatFade(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24) // a chat over 12 rows fades its full 4
 	host.AppendMessage("user", "look around")
@@ -402,6 +404,18 @@ func TestChatFade(t *testing.T) {
 	app.scrollRows("chat", -st.top)
 	if top, bottom := fades(); !none(top) || slices.Equal(bottom, make([]float64, 6)) {
 		t.Fatalf("at the top only the bottom fades: %v %v", top, bottom)
+	}
+	// one row past the bottom edge: the ramp at a quarter of its depth
+	app.scrollRows("chat", st.rows-st.top-st.viewH-1)
+	if _, bottom := fades(); math.Abs(bottom[5]-0.2) > 1e-9 || math.Abs(bottom[2]-0.05) > 1e-9 {
+		t.Fatalf("the fade does not ease off near the edge: %v", bottom)
+	}
+	// the bar cell keeps its color
+	app.Frame()
+	for _, row := range app.lastRows[st.rect.Min.Y : st.rect.Min.Y+3] {
+		if last := row[len(row)-1]; last.Bar && last.Fade != 0 {
+			t.Fatalf("the bar fades: %+v", last)
+		}
 	}
 }
 

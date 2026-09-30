@@ -593,15 +593,18 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	rows := st.window(lines, w-1) // the bar keeps the region's last column
 	// the rows at an edge that content lies past sink toward the canvas,
 	// deepest at the edge: under the pins at the top, and at the bottom while
-	// scrolled up, so each edge says there is more
+	// scrolled up, so each edge says there is more. The sink eases off as
+	// the last rows come into view, in step with how many lie past the edge.
 	if fade := min(n.Fade, h/3); fade > 0 {
+		depth := func(past int) float64 { return min(1, float64(past)/float64(fade)) }
+		above, below := depth(st.top), depth(st.rows-st.top-h)
 		for k := range fade {
 			t := float64(fade-k) / float64(fade+1)
-			if i := len(st.pins) + k; st.top > 0 && i < len(rows) {
-				rows[i] = faded(rows[i], t)
+			if i := len(st.pins) + k; above > 0 && i < len(rows) {
+				rows[i] = faded(rows[i], t*above)
 			}
-			if i := len(rows) - 1 - k; st.top+h < st.rows && i >= len(st.pins) {
-				rows[i] = faded(rows[i], t)
+			if i := len(rows) - 1 - k; below > 0 && i >= len(st.pins) {
+				rows[i] = faded(rows[i], t*below)
 			}
 		}
 	}
@@ -622,11 +625,14 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	return rows
 }
 
-// faded is row with every segment sunk toward the canvas by t.
+// faded is row with every segment but its scrollbar cell sunk toward the
+// canvas by t.
 func faded(row []hostapi.Segment, t float64) []hostapi.Segment {
 	out := make([]hostapi.Segment, len(row))
 	for i, s := range row {
-		s.Fade = t
+		if !s.Bar {
+			s.Fade = t
+		}
 		out[i] = s
 	}
 	return out
