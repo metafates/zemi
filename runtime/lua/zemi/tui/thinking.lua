@@ -1,7 +1,8 @@
 -- The thinking pane right of the chat (ui.reasoning = "pane", DESIGN §8): a
--- header row, then the turn's thinking as it streams, following the tail
--- until the wheel moves it. A click on a digest in the chat shows that run
--- here instead, every row open; tui/chat.lua keeps which run that is.
+-- header row, then the turn's thoughts, each under its own "✻ thought 4.2s",
+-- following the tail while they stream and read from the top once the turn
+-- ends. A click on a digest in the chat shows that run here instead, every
+-- row open; tui/chat.lua keeps which run that is.
 local fmt = require("zemi.tui.text")
 local chat = require("zemi.tui.chat")
 
@@ -11,7 +12,7 @@ local chat = require("zemi.tui.chat")
 ---@class zemi.tui.PaneTurn
 ---@field key string
 ---@field head string The header between turns, or of the inspected run.
----@field texts string[] The last turn's thinking, one entry per thought.
+---@field thoughts { text: string, secs: number }[] The last turn's thinking.
 ---@field first integer? The inspected run's first row.
 ---@field rows zemi.TranscriptRow[]
 ---@field body { key: string, lines: zemi.Line[] }?
@@ -31,7 +32,7 @@ local function read(ctx)
 	local first = chat.inspected
 	if first and not chat.activity(tr[first] or {}) then first = nil end
 	---@type zemi.tui.PaneTurn
-	local t = { key = key, head = "", texts = {}, first = first, rows = tr }
+	local t = { key = key, head = "", thoughts = {}, first = first, rows = tr }
 	if first then
 		local digest = fmt.digest(tr, first, chat.last(tr, first))
 		t.head = digest ~= "" and "turn · " .. digest or "turn"
@@ -44,7 +45,7 @@ local function read(ctx)
 				start = i + 1
 				break
 			end
-			if m.kind == "reasoning" then table.insert(t.texts, 1, m.text) end
+			if m.kind == "reasoning" then table.insert(t.thoughts, 1, { text = m.text, secs = m.thought or 0 }) end
 		end
 		local digest = #tr > 0 and fmt.digest(tr, start, #tr) or ""
 		t.head = #tr == 0 and "thinking shows here" or (digest ~= "" and "last turn · " .. digest or "last turn")
@@ -53,11 +54,15 @@ local function read(ctx)
 	return t
 end
 
--- The pane follows the new turn, whatever it inspected.
+-- The pane follows the new turn, whatever it inspected, and reads an ended
+-- or a resumed one from the top.
 zemi.event.on("agent.start", function()
 	chat.inspected = nil
 	zemi.ui.scroll("bottom", "thinking")
 end)
+for _, ev in ipairs({ "agent.finish", "agent.error", "session.open" }) do
+	zemi.event.on(ev, function() zemi.ui.scroll("top", "thinking") end)
+end
 
 zemi.ui.widget.add({
 	id = "thinking.head",
@@ -110,10 +115,15 @@ zemi.ui.widget.add({
 	render = function(ctx)
 		local t = read(ctx)
 		local width = ctx.width or 34
+		-- a thought under its heading, a blank row after the one before it
+		---@param head string
 		---@param text string
 		---@param into zemi.Line[]
-		local function wrap(text, into)
-			if #into > 0 then into[#into + 1] = { { text = "" } } end
+		local function thought(head, text, into)
+			if #into > 1 then into[#into + 1] = { { text = "" } } end
+			local m = zemi.ui.marks.thought
+			into[#into + 1] =
+				{ GUTTER, { text = m.glyph .. " ", hl = m.hl, copy = false }, { text = head, hl = "Dim" } }
 			for _, segs in ipairs(zemi.ui.wrap((text:gsub("%s+$", "")), width - 1)) do
 				for _, sg in ipairs(segs) do
 					sg.hl = "AgentReason"
@@ -124,13 +134,17 @@ zemi.ui.widget.add({
 		end
 		local key = table.concat({ width, zemi.ui.theme.get() }, "|")
 		if not t.body or t.body.key ~= key then
+			-- one blank row under the header
 			---@type zemi.Line[]
-			local lines = {}
+			local lines = { { { text = "" } } }
 			if t.first then
-				lines = chat.run(ctx, t.rows, t.first, width)
+				for _, l in ipairs(chat.run(ctx, t.rows, t.first, width - 1)) do
+					table.insert(l, 1, GUTTER)
+					lines[#lines + 1] = l
+				end
 			else
-				for _, text in ipairs(t.texts) do
-					wrap(text, lines)
+				for _, th in ipairs(t.thoughts) do
+					thought(fmt.thought(th.secs), th.text, lines)
 				end
 			end
 			t.body = { key = key, lines = lines }
@@ -143,7 +157,9 @@ zemi.ui.widget.add({
 			lines[i] = l
 		end
 		-- the thought streaming now, under the turn's earlier ones
-		if not t.first and ctx.agent_active and (ag.reasoning or "") ~= "" then wrap(ag.reasoning, lines) end
+		if not t.first and ctx.agent_active and (ag.reasoning or "") ~= "" then
+			thought("thinking", ag.reasoning, lines)
+		end
 		-- the region is bottom-anchored: trailing blanks keep short text at the
 		-- top, and once it overflows the tail follows
 		for _ = #lines + 1, ctx.height or 0 do

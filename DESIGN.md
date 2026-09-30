@@ -1851,17 +1851,25 @@ provenance string.
   failures, questions, plans, agent runs, workflows, background jobs and
   commands with a diff keep their own rows. The live turn, a printed run and
   an agent run's view draw the rail instead, one row per step with no blank
-  rows between: a step's look-around calls as one row, the model's label
-  first and the counts after it, the thought before the step as its suffix,
-  a thought over 5 s a `✻ thought 8s` row of its own. While the model thinks
-  its last lines show under a `thinking` row, unless the thinking pane draws
-  them: in `ui.reasoning` pane mode, on a screen 100 columns or wider, a pane
-  right of the chat (`tui/thinking.lua`) streams the turn's thinking and
-  follows its tail until the wheel moves it. A click on a digest unfolds its
-  run in place, every row open, with the rest of the transcript untouched;
-  with the pane drawn it shows the run there instead, and a second click, or
-  the next turn, goes back to the live thinking. A click on any other row
-  opens that one row, command, diff and output.
+  rows between, a continuous bar in column 0 with every mark in column 2
+  (`│ ✓ edit`, `│ ⠋ running label`, `│ ✻ thought 8s`) and nested text in
+  column 4, a wrapped row keeping the bar: a step's look-around calls as one
+  row, the model's label first and the counts after it, the thought before
+  the step as its suffix, a thought over 5 s, or from a second with no step
+  after it, a row of its own. While the model thinks its last lines show
+  under a `│ ⠋ thinking` row, unless the thinking pane draws them: in
+  `ui.reasoning` pane mode, on a screen 100 columns or wider, a pane right of
+  the chat (`tui/thinking.lua`) streams the turn's thoughts, each under its
+  own `✻ thought 4.2s`, and follows the tail until the wheel moves it; an
+  ended turn and an inspected run read from the top. A click on a digest opens
+  its run's rail under it, the digest staying as the run's header, whose
+  second click folds it back, with the rest of the transcript untouched;
+  with the pane drawn it shows the run there instead, every row and thought
+  open, and a second click, or the next turn, goes back to the live
+  thinking. A thought row's click unrolls its text at most 80 cells wide, a
+  bar-only row above and below text of two or more lines; a step row's opens
+  its calls. A click on any other row opens that one row, command, diff and
+  output.
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it;
@@ -1929,8 +1937,9 @@ provenance string.
   pickers, the project path `/projects`, the model the model
   picker, the context and cost `/usage`, pending reviews `/memory`,
   running agents `/agents`. The chat widget marks a digest (`turn:<first
-  index>`, unfolds the run or shows it in the thinking pane), a rail's step
-  and thought rows (`step:<idx>`, `thought:<idx>`), the live thinking row
+  index>`, opens or folds the run under it or shows it in the thinking pane),
+  a rail's step and thought rows (`step:<idx>`, `thought:<idx>`, which with
+  the pane drawn show their run there), the live thinking row
   (`zemi.ui.reasoning.toggle()`), an agent tool row (`agent:<run id>`,
   from the row's `run` field, opens that run's transcript) and a tool row
   (`tool:<idx>`, expands that row); the splash's rows resume a session or

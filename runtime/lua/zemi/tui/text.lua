@@ -166,6 +166,9 @@ function M.counts(calls, short)
 	return table.concat(parts, short and " · " or ", ")
 end
 
+--- The widest thinking text runs, in cells: dim prose reads better narrow.
+M.PROSE = 80
+
 --- How long a thought took, as a digest or a thought row says it.
 ---@param secs number
 ---@return string

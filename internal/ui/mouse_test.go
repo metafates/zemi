@@ -68,11 +68,17 @@ func TestMouseClicks(t *testing.T) {
 	host.AppendMessage("user", "why?")
 	appendReasoning(host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
 	app.renderSync(t)
-	x, y := findCell(t, app, "thought 1.0s")
-	clickAt(app, x+1, y)
+	x, y := findCell(t, app, "· thought 1.0s")
+	clickAt(app, x+2, y)
 	app.renderSync(t)
-	if !strings.Contains(ansi.Strip(app.Frame()), "│   first idea") {
-		t.Fatal("clicking the digest should unfold the thought")
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "· thought 1.0s") || !strings.Contains(frame, "│ ✻ thought 1.0s") || strings.Contains(frame, "first idea") {
+		t.Fatalf("clicking the digest should open its run under it:\n%s", frame)
+	}
+	x, y = findCell(t, app, "│ ✻ thought 1.0s")
+	clickAt(app, x+4, y)
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "│   first idea") {
+		t.Fatalf("clicking the thought should unroll its text:\n%s", frame)
 	}
 
 	ran := make(chan string, 1)
@@ -493,6 +499,13 @@ func TestToolRowClickExpands(t *testing.T) {
 	app.renderSync(t)
 	if strings.Contains(ansi.Strip(app.Frame()), "-race") {
 		t.Fatal("a second click should collapse the row again")
+	}
+	// a thought row opens its own text alone
+	x, y = findCell(t, app, "thought 1.0s")
+	clickAt(app, x+1, y)
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "│   first idea") || strings.Contains(frame, "-race") {
+		t.Fatalf("clicking a thought row should unroll its text alone:\n%s", frame)
 	}
 }
 

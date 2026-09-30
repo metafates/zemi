@@ -9,10 +9,11 @@ local util = require("zemi.util")
 ---@alias zemi.tui.Tool zemi.TranscriptRow|zemi.ToolCall
 
 -- How a run of activity rows draws: its digest and the rows that keep their
--- own (settled), a rail of one row per step (the live turn, a printed run, an
--- agent run's view), or the rail with every row open (an unfolded digest, the
--- pane's inspector, zemi run --reasoning).
----@alias zemi.tui.RunMode "fold"|"rail"|"open"
+-- own (settled), its digest over its rail (a digest clicked open), a rail of
+-- one row per step (the live turn, a printed run, an agent run's view), or
+-- the rail with every row and thought open (the pane's inspector, zemi run
+-- --reasoning).
+---@alias zemi.tui.RunMode "fold"|"unfold"|"rail"|"open"
 
 -- The settled transcript is rendered in units, a message or a run of
 -- activity rows, kept across frames by the index of their first message:
@@ -45,7 +46,8 @@ local live_tools = 0
 ---@class zemi.tui.chat
 ---@field inspected integer? The run the thinking pane shows, by its first transcript index; nil for the live turn.
 ---@field pane boolean Whether the last chat render saw the thinking pane drawn.
-local M = { pane = false }
+---@field active boolean Whether the last chat render saw a turn running.
+local M = { pane = false, active = false }
 
 -- How a finished row's status marks it. A call running or not started yet
 -- spins, unless the open prompt asks about it: that one waits on the user,
@@ -64,10 +66,14 @@ local function mark(kind, click)
 	return { text = m.glyph .. " ", hl = m.hl, copy = false, hover = false, effect = effect, click = click }
 end
 
--- The rail a turn's activity stands on while it runs.
+-- The rail a turn's activity stands on: column 0, its rows' marks and text
+-- from column 2.
 ---@param pad string?
 ---@return zemi.Segment
 local function bar(pad) return { text = "│ " .. (pad or ""), hl = "ThinkingBar", copy = false, hover = false } end
+-- A rail row with only the bar: air around prose on the rail.
+---@return zemi.Line
+local function air() return { { text = "│", hl = "ThinkingBar", copy = false, hover = false } } end
 
 --- Whether a row is thinking or a call: a run of them is one unit, a
 --- digest once settled.
@@ -172,32 +178,46 @@ local function builder(ctx, width)
 		end
 	end
 
-	-- Thinking text on the rail, its last tail lines when tail is set.
+	-- Thinking text on the rail at column 4, prose wide at most, its last
+	-- tail lines when tail is set; a blank line keeps only the bar. Its rows
+	-- are body: no hover, but a click acts as the row above them.
 	---@param text string
 	---@param tail integer?
-	function B.reasoning(text, tail)
-		local body = zemi.ui.wrap((text:gsub("%s+$", "")), math.max(width - 4, 20))
-		for n = tail and math.max(1, #body - tail + 1) or 1, #body do
-			local row = { bar("  ") }
+	---@param click string?
+	---@return integer rows
+	function B.reasoning(text, tail, click)
+		local body = zemi.ui.wrap((text:gsub("%s+$", "")), math.max(math.min(width - 4, fmt.PROSE), 20))
+		local from = tail and math.max(1, #body - tail + 1) or 1
+		for n = from, #body do
+			local row, blank = { bar("  ") }, true
 			for _, sg in ipairs(body[n]) do
-				sg.hl = "AgentReason"
+				sg.hl, sg.click, sg.hover = "AgentReason", click, false
 				row[#row + 1] = sg
+				blank = blank and sg.text == ""
 			end
-			push(row)
+			push(blank and air() or row)
 		end
+		return #body - from + 1
 	end
-	-- "✻ thought 8s", with the text under it when given.
+	-- "│ ✻ thought 8s", with the text under it when given: a bar-only row
+	-- above and below text of two or more lines, so the prose breathes and
+	-- the rail stays whole.
 	---@param secs number
 	---@param click string
 	---@param text string?
 	function B.thought(secs, click, text)
-		push({ mark("thought", click), { text = fmt.thought(secs), hl = "Dim", click = click } })
-		if text then B.reasoning(text) end
+		push({ bar(), mark("thought", click), { text = fmt.thought(secs), hl = "Dim", click = click } })
+		if not text then return end
+		local at = #B.lines + 1
+		if B.reasoning(text, nil, click) > 1 then
+			table.insert(B.lines, at, air())
+			push(air())
+		end
 	end
 	-- The model thinking now; a click opens or closes the thinking pane.
 	---@param tail string? The thinking so far, whose last lines show under it.
 	function B.thinking(tail)
-		push({ mark("spin", "reasoning"), { text = "thinking", hl = "Dim", click = "reasoning" } })
+		push({ bar(), mark("spin", "reasoning"), { text = "thinking", hl = "Dim", click = "reasoning" } })
 		if tail then B.reasoning(tail, 4) end
 	end
 
@@ -280,8 +300,10 @@ local function builder(ctx, width)
 		-- NOTE: every running row reads as asked about while a prompt is open,
 		-- a parallel call that runs on meanwhile included.
 		local asked = t.status == "run" and (ctx.waiting or "") ~= ""
-		-- a finished row stands on the rail; a running one leads with its spinner
-		local barred = o.rail and MARK_OF[t.status] ~= nil
+		-- on the rail a row's mark stands at column 2, and a running one reads
+		-- Dim beside its spinner until it ends
+		local barred = o.rail or false
+		local dim = barred and not asked and MARK_OF[t.status] == nil
 		local inner = width - (barred and 2 or 0)
 		local input = relpath(t.text or t.input or "")
 		-- a collapsed row is one line; an open one keeps a heredoc's lines
@@ -318,6 +340,7 @@ local function builder(ctx, width)
 		local code = name == "shell"
 				and input ~= ""
 				and (open or label == "")
+				and not dim
 				and zemi.ui.highlight(open and body or fit(input, room - 1), "bash")
 			or nil
 		-- an agent's rows open its transcript and a workflow's its view (ids must
@@ -325,14 +348,16 @@ local function builder(ctx, width)
 		local click = (t.run or "") ~= "" and ((name == "workflow" and "workflow:" or "agent:") .. t.run)
 			or o.click
 			or ("tool:" .. idx)
-		local head = { mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = "AgentToolName" } }
+		-- a call that only looked around reads as its step's row, no bold verb
+		local vhl = dim and "Dim" or barred and fmt.looks(t) and "Normal" or "AgentToolName"
+		local head = { mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = vhl } }
 		if code and label == "" then
 			head[3] = { text = " ", hl = "Normal" }
 			for _, sg in ipairs(code[1] or {}) do
 				head[#head + 1] = sg
 			end
 		elseif rest ~= "" then
-			head[3] = { text = fit(rest, room), hl = "Normal" }
+			head[3] = { text = fit(rest, room), hl = dim and "Dim" or "Normal" }
 		end
 		for _, sg in ipairs(head) do
 			sg.click = click
@@ -451,11 +476,13 @@ local function builder(ctx, width)
 	end
 
 	-- A settled run of activity rows: the digest of what folds (thinking and
-	-- the calls that only looked around), then the rows that keep their own.
+	-- the calls that only looked around), then the rows that keep their own,
+	-- or, opened, the run's rail under the digest, whose click folds it back.
 	---@param list zemi.TranscriptRow[]
 	---@param first integer
 	---@param last integer
-	function B.fold(list, first, last)
+	---@param opened boolean
+	function B.fold(list, first, last, opened)
 		local digest = fmt.digest(list, first, last)
 		if digest ~= "" then
 			local click = "turn:" .. first
@@ -464,6 +491,10 @@ local function builder(ctx, width)
 				{ text = fmt.clip(digest, width - 2), hl = "Dim", click = click },
 			})
 		end
+		if opened then
+			B.rail(list, first, last, {})
+			return
+		end
 		for i = first, last do
 			if list[i].kind ~= "reasoning" and not fmt.looks(list[i]) then B.tool(list[i], i, {}) end
 		end
@@ -471,27 +502,25 @@ local function builder(ctx, width)
 
 	-- A run of activity rows as a rail, one row per step: a step's
 	-- look-around calls as one row carrying the thought before it, a thought
-	-- over 5 s as its own row, every other call as its own row.
+	-- over 5 s, or from a second with no step after it, as its own row, every
+	-- other call as its own row. A thought row's click unrolls its text.
 	-- NOTE: a step is the calls between two thoughts, so a model that does not
 	-- think runs its steps together into one row.
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { open: boolean?, live: boolean?, run: integer?, secs: number? } run: the settled run's first index, whose digest a click folds back.
+	---@param o { open: boolean?, live: boolean?, run: integer?, secs: number? } open: every row and thought open, for the run starting at run, whose rows a click leaves.
 	function B.rail(list, first, last, o)
 		local secs = o.secs
 		local fold = o.open and o.run and "turn:" .. o.run or nil
-		-- with the thinking pane drawn, a settled run's step or thought shows
-		-- the run there
-		local inspect = M.pane and o.run and "turn:" .. o.run or nil
 		local i = first
 		while i <= last do
 			local t = list[i]
 			local idx = o.live and -i or i
 			if t.kind == "reasoning" then
 				local s = t.thought or 0
-				if o.open or s > 5 or i == last or list[i + 1].kind == "reasoning" then
-					B.thought(s, fold or inspect or ("thought:" .. idx), (o.open or expanded[idx]) and t.text or nil)
+				if o.open or s > 5 or s >= 1 and (i == last or list[i + 1].kind == "reasoning") then
+					B.thought(s, fold or ("thought:" .. idx), (o.open or expanded[idx]) and t.text or nil)
 					secs = nil
 				else
 					secs = s
@@ -512,11 +541,11 @@ local function builder(ctx, width)
 							open = true,
 							rail = true,
 							secs = k == 1 and secs or nil,
-							click = fold or inspect or ("step:" .. idx),
+							click = fold or ("step:" .. idx),
 						})
 					end
 				else
-					B.group(group, inspect or ("step:" .. idx), secs)
+					B.group(group, "step:" .. idx, secs)
 				end
 				secs = nil
 				i = i + #group
@@ -531,13 +560,13 @@ local function builder(ctx, width)
 end
 
 --- Show a run in the thinking pane, by its first transcript index; the same
---- run again, or nil, goes back to the live turn. The pane follows the tail
---- either way: a short region cannot pin its top before the rows arrive.
+--- run again, or nil, goes back to the live turn. A run and an idle pane read
+--- from the top, a turn that runs follows its tail.
 ---@param first integer?
 function M.inspect(first)
 	if first == M.inspected then first = nil end
 	M.inspected = first
-	zemi.ui.scroll("bottom", "thinking")
+	zemi.ui.scroll((first or not M.active) and "top" or "bottom", "thinking")
 end
 
 --- The last row of the activity run that starts at rows[first].
@@ -566,10 +595,11 @@ function M.run(ctx, rows, first, width)
 end
 
 --- A click on the chat's rows, or on the thinking pane's, which draws the
---- same ones: on a digest it unfolds the run (with the thinking pane drawn,
---- shows it there), on a step or a thought row opens it, on an agent's row
---- shows that run, on a workflow's its view, on any other call's row expands
---- that call, and on the live thinking row opens or closes the thinking pane.
+--- same ones: on a digest it opens the run under it or folds it back (with
+--- the thinking pane drawn, shows the run there), on a step or a thought row
+--- opens it (with the pane, shows its run), on an agent's row shows that
+--- run, on a workflow's its view, on any other call's row expands that call,
+--- and on the live thinking row opens or closes the thinking pane.
 ---@param ev zemi.WidgetClick
 function M.click(ev)
 	local run, flow = ev.id:match("^agent:(.+)"), ev.id:match("^workflow:(.+)")
@@ -583,17 +613,24 @@ function M.click(ev)
 		local kind, id = ev.id:match("^(%a+):(-?%d+)$")
 		local n = tonumber(id)
 		if not n then return end
-		-- with the pane, a digest shows its run there, and a live step or
-		-- thought the live turn; an unfolded digest folds back in place
+		---@type integer?
+		local holder
+		for first, u in pairs(units) do
+			if first <= n and n < u.next then
+				holder = first
+				units[first] = nil
+			end
+		end
+		settled = nil
+		-- with the pane, a digest shows its run there, and a step or a
+		-- thought the run it is in (a live one the live turn); an opened
+		-- digest folds back in place
 		if M.pane and kind ~= "tool" and not (kind == "turn" and unfolded[n]) then
-			return M.inspect(kind == "turn" and n or nil)
+			M.inspect(kind == "turn" and n or n > 0 and holder or nil)
+			return
 		end
 		local set = kind == "turn" and unfolded or expanded
 		set[n] = not set[n] or nil
-		for first, u in pairs(units) do
-			if first <= n and n < u.next then units[first] = nil end
-		end
-		settled = nil
 	end
 end
 
@@ -610,7 +647,7 @@ zemi.ui.widget.add({
 	---@return boolean more
 	render = function(ctx)
 		local width = ctx.width or 80
-		M.pane = (ctx.regions or {}).thinking or false
+		M.pane, M.active = (ctx.regions or {}).thinking or false, ctx.agent_active or false
 		local count = ctx.transcript_count or 0
 		if count == 0 and not ctx.agent_active then
 			return {} -- the splash widget fills the empty chat
@@ -642,13 +679,13 @@ zemi.ui.widget.add({
 		local function unit(tr, first, last, mode)
 			local m = tr[first]
 			B.lines, B.prev = {}, first > 1 and block_of(tr[first - 1]) or nil
-			if mode == "fold" then
+			if mode == "fold" or mode == "unfold" then
 				-- a run with nothing to say (a thought under a second) draws no row
 				-- and so takes no gap
 				local n = #B.lines
 				B.gap("activity")
 				local g = #B.lines
-				B.fold(tr, first, last)
+				B.fold(tr, first, last, mode == "unfold")
 				if #B.lines == g then
 					for i = g, n + 1, -1 do
 						B.lines[i] = nil
@@ -746,7 +783,7 @@ zemi.ui.widget.add({
 				if not activity(tr[first]) then return "" end
 				if ctx.show_reasoning then return "open" end
 				if epoch == 0 or active and first > last_user then return "rail" end
-				return unfolded[first] and "open" or "fold"
+				return unfolded[first] and "unfold" or "fold"
 			end
 			local deadline = epoch ~= 0 and os.clock() + 0.03
 			---@type zemi.tui.ChatUnit[]
@@ -816,7 +853,7 @@ zemi.ui.widget.add({
 				if text == "" and #tools == 0 then
 					B.gap("activity")
 					B.thinking(not M.pane and reasoning or nil)
-				elseif ctx.show_reasoning or thought > 5 or #tools == 0 then
+				elseif ctx.show_reasoning or thought > 5 or #tools == 0 and thought >= 1 then
 					B.gap("activity")
 					B.thought(thought, "reasoning", ctx.show_reasoning and reasoning or nil)
 				else
