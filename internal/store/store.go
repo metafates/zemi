@@ -240,7 +240,7 @@ CREATE INDEX IF NOT EXISTS memory_scope_updated ON memory(scope, updated_at);
 // schemaVersion stamps every store. zemi keeps no migrations before its
 // first release: a schema change bumps this, and a store another version made
 // is refused with its path, for the developer to delete.
-const schemaVersion = 4
+const schemaVersion = 5
 
 func (s *DB) migrate() error {
 	// one transaction, so a second process opening the same file waits and

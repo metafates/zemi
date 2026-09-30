@@ -138,12 +138,11 @@ type memoryOutcome struct {
 func (o memoryOutcome) String() string {
 	switch {
 	case o.ID != "":
-		return "saved as " + learn.Truncate(o.ID, 8) + "; shows from the next session"
+		return "saved as " + o.ID + "; shows from the next session"
 	case o.Duplicate != nil && o.DupQueued:
-		return fmt.Sprintf("already queued for the user's review as %s: %q", learn.Truncate(o.Duplicate.ID, 8), o.Duplicate.Text)
+		return fmt.Sprintf("already queued for the user's review as %s: %q", o.Duplicate.ID, o.Duplicate.Text)
 	case o.Duplicate != nil:
-		id := learn.Truncate(o.Duplicate.ID, 8)
-		return fmt.Sprintf("near-duplicate of %s (%s): %q; to keep both facts, pass replaces=%s with one line that says both", id, o.Duplicate.Scope, o.Duplicate.Text, id)
+		return fmt.Sprintf("near-duplicate of %[1]s (%s): %q; to keep both facts, pass replaces=%[1]s with one line that says both", o.Duplicate.ID, o.Duplicate.Scope, o.Duplicate.Text)
 	case o.Dropped:
 		return "dropped: quote not found in this session's messages"
 	case o.Queued != "":
