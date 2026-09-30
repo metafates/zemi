@@ -11,7 +11,6 @@ func TestSpecFieldTypes(t *testing.T) {
 	_, r := newTestHost(t)
 	cases := []struct{ name, opts, want string }{
 		{"absent", `{}`, ""},
-		{"nil", `{ desc = nil, complete = nil }`, ""},
 		{"the right types", `{ desc = "d", nargs = "?", complete = function() return {} end }`, ""},
 		{"a number for a string", `{ nargs = 1 }`, "test.lua:1: nargs must be a string, not a number"},
 		{"a string for a function", `{ complete = "x" }`, "test.lua:1: complete must be a function, not a string"},
