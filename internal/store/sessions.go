@@ -321,7 +321,6 @@ type Todo struct {
 	Content    string
 	Status     TodoStatus
 	ActiveForm string
-	Ord        int
 }
 
 // SetTodos replaces a session's todo list.
@@ -347,10 +346,10 @@ func setTodos(tx *sql.Tx, sessionID string, todos []Todo) error {
 
 // Todos returns a session's todo list in order.
 func (s *DB) Todos(sessionID string) ([]Todo, error) {
-	rows, err := s.db.Query(`SELECT content, status, active_form, ord
+	rows, err := s.db.Query(`SELECT content, status, active_form
 		FROM todos WHERE session_id = ? ORDER BY ord`, sessionID)
 	return collect(rows, err, func(r scanner) (td Todo, err error) {
-		err = r.Scan(&td.Content, &td.Status, &td.ActiveForm, &td.Ord)
+		err = r.Scan(&td.Content, &td.Status, &td.ActiveForm)
 		return td, err
 	})
 }

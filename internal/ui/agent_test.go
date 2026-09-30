@@ -1471,10 +1471,10 @@ func todoRows(t *testing.T, h int, want []string) {
 	}
 	var todos []store.Todo
 	for i := range 13 {
-		todos = append(todos, store.Todo{Content: fmt.Sprintf("step %02d", i+1), Status: "done", Ord: i})
+		todos = append(todos, store.Todo{Content: fmt.Sprintf("step %02d", i+1), Status: "done"})
 	}
 	todos[12].Status = "in_progress"
-	todos = append(todos, store.Todo{Content: "step 14", Status: "pending", Ord: 13})
+	todos = append(todos, store.Todo{Content: "step 14", Status: "pending"})
 	if err := host.PipelineFor().TodosWrite(todos); err != nil {
 		t.Fatal(err)
 	}

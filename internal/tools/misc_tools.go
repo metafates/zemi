@@ -92,7 +92,7 @@ func ParseTodos(input map[string]any) (out []store.Todo, cancelled int, ok bool,
 		if !slices.Contains(store.TodoStatuses, status) {
 			return nil, 0, true, fmt.Errorf("todo %d: status must be pending, in_progress or done", i+1)
 		}
-		out = append(out, store.Todo{Content: content, Status: status, ActiveForm: str(m["active_form"]), Ord: len(out)})
+		out = append(out, store.Todo{Content: content, Status: status, ActiveForm: str(m["active_form"])})
 	}
 	return out, cancelled, ok, nil
 }

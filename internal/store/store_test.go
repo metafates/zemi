@@ -447,7 +447,7 @@ func TestTodosReplace(t *testing.T) {
 	if err != nil || len(out) != 2 {
 		t.Fatalf("todos: %v %v", out, err)
 	}
-	if out[1].Content != "b" || out[1].Ord != 1 {
+	if out[1].Content != "b" {
 		t.Fatalf("order wrong: %+v", out)
 	}
 }

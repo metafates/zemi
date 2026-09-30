@@ -56,7 +56,7 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	if resp.IsError || resp.Content != "updated todos: 1/2 done" {
 		t.Fatalf("write acks with a count: %+v", resp)
 	}
-	if len(stored) != 2 || stored[1].ActiveForm != "finishing second" || stored[1].Ord != 1 {
+	if len(stored) != 2 || stored[1].ActiveForm != "finishing second" {
 		t.Fatalf("stored todos: %+v", stored)
 	}
 
@@ -69,7 +69,7 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 		t.Fatalf("two in_progress: stored %d, %+v", len(stored), resp)
 	}
 	resp = call(t, todos, `{"todos":[{"content":"a","status":"cancelled"},{"content":"b","status":"pending"}]}`)
-	if resp.IsError || len(stored) != 1 || stored[0].Ord != 0 || resp.Content != "updated todos: 0/1 done; dropped 1 cancelled" {
+	if resp.IsError || len(stored) != 1 || stored[0].Content != "b" || resp.Content != "updated todos: 0/1 done; dropped 1 cancelled" {
 		t.Fatalf("cancelled items drop: stored %+v, %+v", stored, resp)
 	}
 
