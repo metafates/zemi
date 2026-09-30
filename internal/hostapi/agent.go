@@ -2032,7 +2032,7 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	} else {
 		ag.turnStart = time.Time{}
 	}
-	ag.steering = append([]string(nil), s.Steering...)
+	ag.steering = slices.Clone(s.Steering)
 	ag.retries, ag.retryAt, ag.compacting = s.Retries, time.Time{}, s.Compacting
 	if s.Retrying {
 		ag.retryAt = time.Now().Add(s.RetryIn)

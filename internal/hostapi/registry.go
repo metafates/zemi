@@ -418,7 +418,7 @@ func (r *EventRegistry) Add(h *EventHandler) (*EventHandler, error) {
 func (r *EventRegistry) Handlers(event string) []*EventHandler {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return append([]*EventHandler(nil), r.handlers[event]...)
+	return slices.Clone(r.handlers[event])
 }
 
 // Remove drops the handler with id when the caller may replace it

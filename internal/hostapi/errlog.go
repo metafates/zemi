@@ -105,7 +105,7 @@ func (h *Host) errorsNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		l := &h.errs
 		l.mu.Lock()
-		entries := append([]errEntry(nil), l.entries...)
+		entries := slices.Clone(l.entries)
 		l.mu.Unlock()
 		rows := make([]any, 0, len(entries))
 		for i, e := range slices.Backward(entries) { // newest first, like /errors
@@ -141,7 +141,7 @@ func (h *Host) OpenErrors(args string) error {
 	}
 	l := &h.errs
 	l.mu.Lock()
-	entries := append([]errEntry(nil), l.entries...)
+	entries := slices.Clone(l.entries)
 	l.unseen = false
 	l.mu.Unlock()
 	h.refresh()

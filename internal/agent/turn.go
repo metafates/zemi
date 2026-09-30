@@ -291,7 +291,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	if r.TextOnly {
 		r.History = stripImages(r.History, noImages)
 	}
-	history := append([]fantasy.Message(nil), r.History...)
+	history := slices.Clone(r.History)
 	r.mu.Unlock()
 
 	// Full goes first: fantasy stops at the first condition that holds, and
@@ -762,7 +762,7 @@ func stepMessages(steps []fantasy.StepResult) []fantasy.Message {
 // interleave returns head + resp with each steered message placed before
 // the response message at its offset.
 func interleave(head, resp []fantasy.Message, steered []steeredMsg) []fantasy.Message {
-	out := append([]fantasy.Message(nil), head...)
+	out := slices.Clone(head)
 	i := 0
 	for n, m := range resp {
 		for ; i < len(steered) && steered[i].at <= n; i++ {

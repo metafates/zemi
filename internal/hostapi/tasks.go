@@ -334,7 +334,7 @@ func (run *agentRun) state() (status RunStatus, calls int, took time.Duration, s
 func (run *agentRun) transcript() []ChatMessage {
 	run.mu.Lock()
 	defer run.mu.Unlock()
-	tr := append([]ChatMessage(nil), run.tr...)
+	tr := slices.Clone(run.tr)
 	if strings.TrimSpace(run.text) != "" {
 		tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: run.text})
 	}

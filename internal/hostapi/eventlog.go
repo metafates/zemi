@@ -83,7 +83,7 @@ func (h *Host) eventLogFn(L *glua.LState) int {
 	}
 	l := &h.evlog
 	l.mu.Lock()
-	entries := append([]eventEntry(nil), l.entries...)
+	entries := slices.Clone(l.entries)
 	l.mu.Unlock()
 	rows := make([]any, 0, min(limit, len(entries)))
 	for _, e := range slices.Backward(entries) {
@@ -116,7 +116,7 @@ func (h *Host) eventStatsFn(L *glua.LState) int {
 func (h *Host) notifyListFn(L *glua.LState) int {
 	l := &h.evlog
 	l.mu.Lock()
-	notes := append([]notifyEntry(nil), l.notes...)
+	notes := slices.Clone(l.notes)
 	l.mu.Unlock()
 	rows := make([]any, 0, len(notes))
 	for _, n := range slices.Backward(notes) {
