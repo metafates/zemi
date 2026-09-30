@@ -27,15 +27,16 @@ summaries and the learning pass can each run on a cheaper model (`/model roles`)
 
 ## On its own, or with a question
 
-| runs on its own             | asks first                       |
-| --------------------------- | -------------------------------- |
-| reads and edits the project | `rm -rf` and friends             |
-| builds, tests, scripts      | `git commit`, anything in `.git` |
-| read-only MCP tools         | the network, leaving the sandbox |
+| runs on its own             | asks first                          |
+| --------------------------- | ----------------------------------- |
+| reads and edits the project | `rm -rf` and friends                |
+| builds, tests, scripts      | `git push`, a rebase, `.git/config` |
+| read-only MCP tools         | the network, leaving the sandbox    |
 
 Seatbelt on macOS, Landlock on Linux. Keys and shell history are hidden.
-Commands are read as POSIX sh, and bash-only syntax gets the POSIX form
-before it runs.
+On macOS a commit, a branch or a stash runs confined; on Linux every git
+write asks. Commands are read as POSIX sh, and bash-only syntax fails with
+its POSIX form before it runs.
 `ctrl+y` is yolo. `ctrl+t` is the planner: it reads and proposes, you approve.
 
 ## The UI is Lua
