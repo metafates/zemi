@@ -2294,7 +2294,7 @@ provenance string.
   at that tree, in any project: it is the user's own code, zemi writes the
   tree's `.luarc.json` first (`zemiLua`), and the server, which runs a
   workspace's Lua only when the client agrees and zemi's never does,
-  also reads zemi's types and that `.luarc.json` (a config tree's `.git`
+  also reads that `.luarc.json` (a config tree's `.git`
   stays hidden). The `.luarc.json` raises the diagnostics that are
   near-certain bugs (an unknown global, a missing field, a wrong type or
   argument count) to errors, which is what a write reports; the reload a
@@ -2312,7 +2312,9 @@ provenance string.
   the account's home when `HOME` was moved), zemi's config,
   data and state dirs (sessions, logs, keys in `init.lua`; not when they
   hold the project, and the write roots inside them stay usable; of the
-  data dir a local plugin's code, its `.lua` files and `lua`, `tests` and
+  data dir the types and builtin skills (`shippedDirs`: rewritten from the
+  embedded runtime every start, nothing of the user's, so the read tool
+  and a command read the same) and a local plugin's code, its `.lua` files and `lua`, `tests` and
   layered dirs, reads back with the names in the plugin dirs, so
   `zemi plugins test` runs confined, while its `.git` and a dot entry in
   its code stay hidden) and, on
@@ -2413,7 +2415,8 @@ provenance string.
   command that exits 0; this is how a browser or GUI app dies once
   seatbelt denies the window server and the other mach services it
   needs, printing no path; never a hangup, so git's usage exit 129 is
-  none, nor a job `job_kill` or `/agents kill` stopped)
+  none, nor a job `job_kill` or `/agents kill` stopped), or that exits 0
+  with a denial naming a path, which a pipe (`| head`) hides the same way
   (`sandbox.LikelyDenied`, a heuristic, over a job's whole retained tail)
   gets one line naming the limit the denied path hit and the one next step:
   a signal (if the program needs a system service, `sandbox: false`, where
@@ -2451,7 +2454,8 @@ provenance string.
   user did not approve); the read jail is wider: project
   roots, the config dir, the project's `.agents`, both skills dirs, that
   scratchpad and `<data>/types` (the API annotations
-  and shipped Lua UI) and, for the model's file tools alone, the plugins
+  and shipped Lua UI; it and the builtin skills are `shippedDirs`, which
+  commands read too) and, for the model's file tools alone, the plugins
   minus `.git` (`<data>/plugins`, whose skills the skill tool loads; a
   clone's remote URL may carry a token; not a `zemi.fs`
   root, so no plugin reads another's source). The plugins and the rest of the data and state dirs are

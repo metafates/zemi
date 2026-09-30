@@ -543,7 +543,8 @@ func TestLikelyDenied(t *testing.T) {
 		err  error
 		want bool
 	}{
-		{"success", "open x: operation not permitted", nil, false},
+		{"success naming no path", "open x: operation not permitted", nil, false},
+		{"a denial a pipe hid", "grep: /x/y: Operation not permitted\n", nil, true},
 		{"go write denied", "open x: operation not permitted", exit(1), true},
 		{"go cache write denied", "open /Users/u/Library/Caches/go-build/7f/7fe2-d: operation not permitted\nFAIL\te2e [setup failed]", exit(1), true},
 		{"python denied", "PermissionError: [Errno 1] Operation not permitted: 'out.txt'", exit(1), true},

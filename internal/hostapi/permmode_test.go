@@ -256,10 +256,10 @@ func TestAutoModeReadCommands(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	fakeSandbox(h, false)
 	h.SetProjectTrusted(true)
-	h.Dirs.ConfigHome = t.TempDir()
+	h.Dirs.ConfigHome, h.Dirs.DataHome = t.TempDir(), t.TempDir()
 	h.agents.sessionID = "s1"
 	pad, root := h.ScratchDir(), h.Dirs.ProjectDir
-	for _, d := range []string{pad, filepath.Join(root, "internal"), filepath.Join(root, "sub")} {
+	for _, d := range []string{pad, filepath.Join(root, "internal"), filepath.Join(root, "sub"), h.TypesDir()} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -268,6 +268,7 @@ func TestAutoModeReadCommands(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "internal", "x.go"), []byte("package x"), 0o600)
 	os.WriteFile(filepath.Join(pad, "out.txt"), []byte("hi"), 0o600)
 	os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "init.lua"), []byte("-- cfg"), 0o600)
+	os.WriteFile(filepath.Join(h.TypesDir(), "zemi.lua"), []byte("---@meta"), 0o600)
 	if err := os.Symlink(filepath.Join(root, ".env"), filepath.Join(root, "sub", "notes")); err != nil {
 		t.Fatal(err)
 	}
@@ -305,6 +306,9 @@ func TestAutoModeReadCommands(t *testing.T) {
 		{"cat " + filepath.Join(h.Dirs.ConfigHome, "init.lua"), true},
 		{"grep -rn zemi " + h.Dirs.ConfigHome, true},
 		{"cd " + pad + " && cat out.txt", false},
+		{"grep -n -B15 'function zemi.ui' " + filepath.Join(h.TypesDir(), "zemi.lua"), true},
+		{"cd " + h.TypesDir() + " && cat zemi.lua", false},
+		{"cat " + filepath.Join(h.Dirs.DataHome, "catwalk.json"), false},
 		{"grep -rn foo internal/", true},
 		{"rg -n foo internal", true},
 		{"diff -r internal internal", true},

@@ -136,6 +136,9 @@ func (h *Host) policyWalk(readOnly bool, pad string, walk bool) sandbox.Policy {
 	var hide []string
 	p.Read, p.List, hide = localPluginCode(d)
 	p.Hide = append(p.Hide, hide...)
+	if d.DataHome != "" {
+		p.Read = append(p.Read, h.shippedDirs()...)
+	}
 	nested := slices.ContainsFunc(zemiDirs, func(z string) bool { return h.inJail(z, d.ProjectDir) }) || h.inJail(d.ProjectDir, zemiDirs...) ||
 		// Landlock rules only add access: a write root opens every hidden path inside it
 		backend.Name != "seatbelt" && slices.ContainsFunc(p.Hide, func(z string) bool { return h.inJail(z, d.ProjectDir) })
@@ -274,7 +277,7 @@ func (h *Host) sandboxPrompt(toolset []fantasy.AgentTool, readOnly bool, pad str
 	if len(zemi) > 0 {
 		fmt.Fprintf(&b, "zemi's own dirs (%s", strings.Join(zemi, ", "))
 		if len(pol.Read) > 0 {
-			b.WriteString("; a local plugin's code aside")
+			b.WriteString("; its types, builtin skills and local plugins' code aside")
 		}
 		b.WriteString("), ")
 	}
@@ -373,8 +376,8 @@ func trustKey(root string) string {
 // (build.rs, proc macros) the model may have written: it reads what a
 // sandboxed command reads and writes only <cache>/lsp/<trust key>/<name>,
 // which the cache, build, temp and lua-language-server's log and meta
-// variables point at. A zemi tree's server (Root) also reads zemi's types
-// and the tree's .luarc.json.
+// variables point at. A zemi tree's server (Root) also reads the tree's
+// .luarc.json.
 // NOTE: nothing sweeps it; a rust target dir there can be large.
 func (h *Host) serverPolicy(def lspDef) sandbox.Policy {
 	p := h.sandboxPolicy(true, "")
@@ -383,10 +386,10 @@ func (h *Host) serverPolicy(def lspDef) sandbox.Policy {
 	case "":
 	case h.Dirs.ConfigHome:
 		// the read tool reads it too; its .git may hold tokens
-		p.Read = append(p.Read, h.TypesDir(), def.Root)
+		p.Read = append(p.Read, def.Root)
 		p.Hide = append(p.Hide, filepath.Join(def.Root, ".git"))
 	default: // a local plugin, whose code sandboxPolicy already reads
-		p.Read = append(p.Read, h.TypesDir(), filepath.Join(def.Root, ".luarc.json"))
+		p.Read = append(p.Read, filepath.Join(def.Root, ".luarc.json"))
 	}
 	if h.Dirs.CacheHome == "" {
 		return p

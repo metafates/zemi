@@ -86,18 +86,20 @@ func (h *Host) inJail(path string, roots ...string) bool {
 	return false
 }
 
+// shippedDirs are the data dirs every tool and command may read: the builtin
+// skills and the types (API annotations, shipped Lua UI), rewritten from the
+// embedded runtime every start and holding nothing of the user's. The rest of
+// the data dir is not: MCP and LSP server stderr is logged as written and may
+// carry tokens.
+func (h *Host) shippedDirs() []string {
+	return []string{h.builtinSkillsDir(), h.TypesDir()}
+}
+
 func (h *Host) readJails() []string {
-	// Builtin skill bodies live under the data dir; reading them must not ask.
-	// The log dir is not: MCP and LSP server stderr is logged as written and
-	// may carry tokens. The types dir holds the API annotations and the
-	// shipped Lua UI, which the agent reads before restyling or extending it.
 	// UserTrees: a symlinked one (skills -> ~/.agents/skills) resolves
 	// outside the config home, so it needs its own root.
-	roots := append([]string{
-		h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(),
-		h.builtinSkillsDir(), h.ScratchDir(), h.TypesDir(),
-	},
-		h.Dirs.UserTrees()...)
+	roots := slices.Concat([]string{h.Dirs.ProjectDir, h.Dirs.ConfigHome, h.Dirs.ProjectConfigDir(), h.ScratchDir()},
+		h.shippedDirs(), h.Dirs.UserTrees())
 	if h.ProjectTrusted() {
 		// the decision covers the repository, so starting in a subdirectory
 		// must not ask for every sibling package the task reaches

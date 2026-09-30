@@ -123,13 +123,14 @@ var denied = regexp.MustCompile(`(?i)[:\]] (?:` + deniedErrnos + `)|could not re
 // deniedTail is how much of the output end LikelyDenied reads.
 const deniedTail = 8 << 10
 
-// LikelyDenied guesses from a failed command's output whether the sandbox
-// stopped it.
+// LikelyDenied guesses from a command's output whether the sandbox stopped
+// it. With no error only a crash or a denial naming a path counts, which a
+// pipe (| head) leaves in the output of a command that exits 0.
 // NOTE: a heuristic: a denial earlier than the last 8KB of output is missed,
 // and a program's own EPERM reads as denied.
 func LikelyDenied(out string, err error) bool {
 	if err == nil {
-		return Killed(out, nil)
+		return Killed(out, nil) || len(DeniedPaths(out)) > 0
 	}
 	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 		switch code := ee.ExitCode(); {

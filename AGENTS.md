@@ -464,8 +464,9 @@ it is trusted, outside zemi's own dirs and on a backend that can protect paths i
 because zemi runs git, the shell and servers unconfined by name (on seatbelt a repository root's
 `.git` opens but for what git runs or follows, `Policy.Git`, whose rules and the whys are in
 DESIGN §9 and `seatbelt_darwin.go`'s `gitCode`), home credential paths hidden (`homes`),
-the secret shapes hidden in the pad too (a command can move a directory there), and a local plugin's code readable back
-(`plugin.Code`, `Policy.Read`, `Policy.List`) so `zemi plugins test` runs confined. The
+the secret shapes hidden in the pad too (a command can move a directory there), zemi's types and builtin skills readable
+back (`shippedDirs`, which the read jail and `safeCommandPath` share: the embedded runtime rewrites them every start), and a
+local plugin's code (`plugin.Code`, `Policy.Read`, `Policy.List`) so `zemi plugins test` runs confined. The
 repo's `.agents/worktrees` (`Dirs.WorktreesDir`) is a write root of its own, ignored by the `/*`
 in its own `.gitignore` (`Dirs.WorktreesIgnore`, written only when missing), with each
 checkout's own `.git` and `.agents` protected and nothing loaded from it. The namespace
@@ -484,7 +485,7 @@ argument must pass `safeCommandPath` (inside the project and not secret-shaped -
 matches the resolved path too, so a symlink cannot hide one, and every home path the sandbox
 hides (`secretDirs`: `~/.kube`, `~/.config/gh`, shell histories), whose names say nothing, so
 one list drives the sandbox, the re-ask and auto's read check; a plain read may also reach the
-request's scratchpad, zemi's config tree and the local plugins, but `cd` may not enter them). Readers keep their
+request's scratchpad, zemi's config tree, the local plugins and `shippedDirs`, but `cd` may not enter them). Readers keep their
 `refusedFlags` and script checks, and `perm.ArgUse` says how an argument is used: a search
 pattern is no path, and a recursive search settles only over a tree with no secret-shaped file
 in it and, unless it skips hidden entries like a plain `rg`, no `.git` directory (`grep -r`

@@ -609,8 +609,8 @@ func inDirNamed(p string, names ...string) bool {
 
 // safeCommandPath passes a settled command's argument when, read as a path
 // from the project root, it stays in the project and is not secret-shaped.
-// Plain reads may also use pad, zemi's config and the local plugins, which
-// the read tool reads without asking either; cd may not enter them, since
+// Plain reads may also use pad, zemi's config, the local plugins and the
+// shipped dirs, which the read tool reads without asking either; cd may not enter them, since
 // an unconfined command from there could run what the model wrote to the
 // pad without asking.
 func (h *Host) safeCommandPath(pad string) func(arg string, use perm.ArgUse) bool {
@@ -625,7 +625,7 @@ func (h *Host) safeCommandPath(pad string) func(arg string, use perm.ArgUse) boo
 		}
 		roots := []string{h.Dirs.ProjectDir}
 		if use != perm.ArgRun {
-			roots = append(append(roots, pad, h.Dirs.ConfigHome, h.localPlugins()), h.Dirs.UserTrees()...)
+			roots = slices.Concat(roots, []string{pad, h.Dirs.ConfigHome, h.localPlugins()}, h.shippedDirs(), h.Dirs.UserTrees())
 		}
 		walk := use == perm.ArgWalk || use == perm.ArgSearch
 		// .git/config may hold tokens

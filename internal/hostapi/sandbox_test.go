@@ -404,6 +404,7 @@ func TestSandboxPolicy(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.StateHome = t.TempDir()
 	h.Dirs.ConfigHome = t.TempDir()
+	h.Dirs.DataHome = t.TempDir()
 	h.agents.sessionID = "s1"
 	project := h.Dirs.ProjectDir
 	for _, c := range []struct {
@@ -459,8 +460,12 @@ func TestSandboxPolicy(t *testing.T) {
 			if got := slices.Contains(p.Write, h.Dirs.ProjectDir); got != c.want {
 				t.Errorf("project writable %v, want %v: %v", got, c.want, p.Write)
 			}
-			if !slices.Contains(p.Hide, h.Dirs.StateHome) || slices.Contains(p.Hide, h.Dirs.ConfigHome) == c.projectInConfig {
+			if !slices.Contains(p.Hide, h.Dirs.StateHome) || !slices.Contains(p.Hide, h.Dirs.DataHome) || slices.Contains(p.Hide, h.Dirs.ConfigHome) == c.projectInConfig {
 				t.Errorf("hide %v", p.Hide)
+			}
+			// what the embedded runtime rewrites every start reads back
+			if !slices.Contains(p.Read, h.TypesDir()) || !slices.Contains(p.Read, h.builtinSkillsDir()) {
+				t.Errorf("read %v", p.Read)
 			}
 			// HOME moved: the account's own credentials stay hidden too
 			if u, err := user.Current(); c.secretInside != "" && (err != nil || !slices.Contains(p.Hide, filepath.Join(u.HomeDir, ".ssh"))) {
@@ -522,6 +527,10 @@ func TestSandboxPolicy(t *testing.T) {
 		if st, err := os.Stat(server.Env[k]); err != nil || !st.IsDir() || !strings.HasPrefix(server.Env[k], dir) {
 			t.Errorf("server %s %q: %v", k, server.Env[k], err)
 		}
+	}
+	lls := h.serverPolicy(lspDef{Name: "lua-language-server", Root: h.Dirs.ConfigHome})
+	if !slices.Contains(lls.Read, h.TypesDir()) || !slices.Contains(lls.Read, h.Dirs.ConfigHome) || !slices.Contains(lls.Hide, filepath.Join(h.Dirs.ConfigHome, ".git")) {
+		t.Errorf("config tree server policy %+v", lls)
 	}
 	a := h.sandboxPolicy(false, h.ScratchDir()).Env["GOCACHE"]
 	h.Dirs.ProjectDir = t.TempDir()
