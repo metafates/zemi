@@ -226,6 +226,20 @@ func TestSandboxDeepNamespaceProtection(t *testing.T) {
 	// a typo names the members instead of "attempt to call a nil value"
 	wantRaise(t, sb, `zemi.ui.widget.adds()`, `zemi.ui.widget has no member "adds" (add)`)
 	wantRaise(t, sb, `local x = zemi.iu`, `zemi has no member "iu" (ui)`)
+	// pairs lists members as an index reads them, never the real table
+	mustRun(t, sb, `
+		local names = {}
+		for k, v in pairs(zemi.ui) do names[#names + 1] = k .. "=" .. type(v) end
+		assert(table.concat(names, ",") == "widget=table", table.concat(names, ","))
+		for k in pairs(zemi) do assert(k == "ui", k) end
+		local _, state = pairs(zemi.ui)
+		assert(state == zemi.ui and next(state) == nil, "pairs handed out the real table")
+		local plain = setmetatable({ a = 1 }, { __index = { b = 2 } })
+		for k in pairs(plain) do assert(k == "a", k) end
+	`)
+	wantRaise(t, sb, `local _, s = pairs(zemi.ui); s.widget = 1`, "cannot modify frozen")
+	wantRaise(t, sb, `for _, w in pairs(zemi.ui) do w.add = 1 end`, "cannot modify frozen")
+	wantRaise(t, sb, `local f = pairs(zemi.ui); local _, w = f(); w.add = 1`, "cannot modify frozen")
 	mustRun(t, sb, `
 		assert(type(zemi.ui.widget.add) == "function",
 			"nested member changed despite refused write")

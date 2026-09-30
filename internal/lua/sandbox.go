@@ -175,6 +175,35 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 	}
 
 	global.RawSetString("setmetatable", L.NewFunction(s.setMetatable))
+	next := global.RawGetString("next")
+	global.RawSetString("pairs", L.NewFunction(func(L *glua.LState) int {
+		tb := L.CheckTable(1)
+		var real *glua.LTable
+		if mt, ok := tb.Metatable.(*glua.LTable); ok {
+			real, _ = mt.RawGetString(realKey).(*glua.LTable)
+		}
+		if real == nil {
+			L.Push(next)
+			L.Push(tb)
+			L.Push(glua.LNil)
+			return 3
+		}
+		// a namespace proxy is empty; its members come from a Go iterator, so
+		// the real table, which raw writes would reach, never does
+		L.Push(L.NewFunction(func(L *glua.LState) int {
+			k, v := real.Next(L.Get(2))
+			if k == glua.LNil {
+				L.Push(glua.LNil)
+				return 1
+			}
+			L.Push(k)
+			L.Push(v)
+			return 2
+		}))
+		L.Push(tb)
+		L.Push(glua.LNil)
+		return 3
+	}))
 
 	// load/loadstring stay (Lua source only, DESIGN §5) but the base
 	// versions bind compiled chunks to the interpreter's environment; the
@@ -540,9 +569,8 @@ func (s *Sandbox) protectTable(tb *glua.LTable, what string) *glua.LTable {
 }
 
 // protectNamespace is protectTable for a zemi.* namespace: reading a member
-// it does not have raises and lists the ones it does. A frozen namespace
-// yields nothing to pairs, so a typo would otherwise be an "attempt to call
-// a nil value" with no way to recover (DESIGN §6.0).
+// it does not have raises and lists the ones it does, and pairs lists them
+// through the sandbox's own pairs.
 func (s *Sandbox) protectNamespace(tb *glua.LTable, what, path string) *glua.LTable {
 	mt := s.lockedMeta(what)
 	// realTableOf reads it: __index is a function here, not the table
