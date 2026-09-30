@@ -1230,6 +1230,8 @@ function zemi.ui.redraw() end
 
 --- Scroll a layout node, or the stage's scrolled region (the chat) without
 --- `id`, as the zemi.ui.scroll.* host actions do: for a click or a handler.
+--- A "top" or "bottom" issued before the node's rows arrive applies after the
+--- next layout, and "top" holds until the node scrolls again.
 --- User or builtin origin only; raises inside render.
 ---@param action zemi.ScrollAction
 ---@param id? string

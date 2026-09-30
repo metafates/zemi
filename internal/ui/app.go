@@ -67,6 +67,10 @@ type App struct {
 	scrolls   map[string]*scrollState
 	scrollDef string
 	scrollIDs []string
+	// pendingScroll is an edge a region goes to at its next paint, when the
+	// rows a scroll was issued for may not have arrived yet: "top" stays
+	// parked there until the region is scrolled again, "bottom" applies once.
+	pendingScroll map[string]hostapi.ScrollAction
 	// focusables are the focusable nodes the last frame drew, floats last
 	focusables []string
 
@@ -191,6 +195,8 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		now:      time.Now,
 		focused:  true,
 		hooks:    make(chan tea.Msg, hookQueueSize),
+
+		pendingScroll: map[string]hostapi.ScrollAction{},
 	}
 }
 
@@ -1178,6 +1184,7 @@ func (a *App) scrollAt(x, y int) string {
 // older). Scrolling down re-arms tail follow at the bottom of a "bottom"
 // region; while scrolled up the view stays anchored as new lines arrive.
 func (a *App) scrollRows(id string, n int) {
+	delete(a.pendingScroll, id)
 	st := a.scrolls[id]
 	if st == nil || n > 0 && st.follow {
 		return
@@ -1189,6 +1196,7 @@ func (a *App) scrollRows(id string, n int) {
 
 // followStage pins the default scrolled region back to its tail (a submit).
 func (a *App) followStage() {
+	delete(a.pendingScroll, a.scrollDef)
 	if st := a.scrolls[a.scrollDef]; st != nil && st.bottom {
 		st.follow = true
 	}
@@ -1197,10 +1205,14 @@ func (a *App) followStage() {
 // applyScroll maps the zemi.ui.scroll.* host actions onto a scrolled
 // region, the default one when id is "": up and down move a page with a
 // one-row overlap, top and bottom go to the ends, line_up and line_down a
-// row.
+// row. An edge also holds as the region's pending target, so it lands on
+// rows that arrive after it or a region not drawn yet.
 func (a *App) applyScroll(kind hostapi.ScrollAction, id string) {
 	id = cmp.Or(id, a.scrollDef)
 	st := a.scrolls[id]
+	if kind == hostapi.ScrollTop || kind == hostapi.ScrollBottom {
+		defer func() { a.pendingScroll[id] = kind }()
+	}
 	if st == nil {
 		return
 	}

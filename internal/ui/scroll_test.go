@@ -362,3 +362,43 @@ func TestChatStickyPrompt(t *testing.T) {
 		t.Fatalf("after a report, the top row is %q", row())
 	}
 }
+
+// TestScrollPendingEdge: an edge issued before a region is drawn, or before
+// the rows it was meant for arrive, lands on them: "top" stays parked on the
+// first row until the region scrolls again, "bottom" follows the tail.
+func TestScrollPendingEdge(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 14)
+	app.applyScroll(hostapi.ScrollTop, "pad")
+	runLua(t, app, `
+zemi.ui.widget.add({ id = "pad", region = "pad", render = function()
+  local s, rows = zemi.state.get("pad") or { tag = "", n = 0 }, {}
+  for i = 1, s.n do rows[i] = { { text = s.tag .. " row " .. i } } end
+  return rows
+end })
+zemi.ui.layout.set({ root = { kind = "box", dir = "col", children = {
+  { kind = "region", id = "pad", region = "pad", scroll = "bottom", size = "fill" },
+  { kind = "composer" },
+} } })`)
+	rows := func(tag string, n int) (*scrollState, string) {
+		t.Helper()
+		runLua(t, app, fmt.Sprintf(`zemi.state.set("pad", { tag = %q, n = %d })`, tag, n))
+		app.renderSync(t)
+		frame := ansi.Strip(app.Frame())
+		return app.scrolls["pad"], frame
+	}
+	if st, frame := rows("a", 40); st.top != 0 || st.follow || !strings.Contains(frame, "a row 1 ") {
+		t.Fatalf("a top before the region drew: top %d, follow %v\n%s", st.top, st.follow, frame)
+	}
+	if st, frame := rows("b", 60); st.top != 0 || !strings.Contains(frame, "b row 1 ") {
+		t.Fatalf("new rows under a parked top: top %d\n%s", st.top, frame)
+	}
+	app.scrollRows("pad", 3)
+	app.Frame()
+	if st, _ := rows("b", 61); st.top != 3 {
+		t.Fatalf("a scroll leaves the park: top %d", st.top)
+	}
+	app.applyScroll(hostapi.ScrollBottom, "pad")
+	if st, frame := rows("c", 70); !st.follow || !strings.Contains(frame, "c row 70") {
+		t.Fatalf("a bottom follows the tail: follow %v\n%s", st.follow, frame)
+	}
+}

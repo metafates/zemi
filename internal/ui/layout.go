@@ -574,6 +574,14 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	if !st.follow && prevRows > 0 && st.rows != prevRows {
 		st.top = reanchor(lines, st, prevRows)
 	}
+	switch a.pendingScroll[n.ID] {
+	case hostapi.ScrollTop:
+		st.top, st.follow = 0, false
+	case hostapi.ScrollBottom:
+		st.top, st.follow = st.rows, st.bottom
+		delete(a.pendingScroll, n.ID)
+	default: // applyScroll holds only the edges
+	}
 	st.filling = false
 	for _, wgt := range a.host.Widgets.InRegion(n.Region) {
 		if c := a.caches[wgt.ID]; c != nil && c.partial {
