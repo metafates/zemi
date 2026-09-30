@@ -466,19 +466,19 @@ local function builder(ctx, width)
 	-- that only looked around and the thinking) over the run's rail, which
 	-- folded keeps only the rows that keep their own; a run with nothing to
 	-- fold is its rail alone. The digest's click opens or folds its run, and
-	-- an opened digest heads its rail: the chat pins it down to the rail's
-	-- last row, as it pins a prompt.
+	-- an opened digest heads its rail: the chat pins it under the prompt
+	-- down to the rail's last row.
 	---@param list zemi.TranscriptRow[]
 	---@param first integer
 	---@param last integer
 	---@param opened boolean
 	function B.fold(list, first, last, opened)
 		local digest = fmt.digest(list, first, last)
-		local head = digest ~= "" and opened
+		local head = digest ~= "" and opened and "section" or nil
 		if digest ~= "" then
 			local click = "turn:" .. first
 			push({
-				{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = head or nil },
+				{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = head },
 				{ text = fmt.clip(digest, width - 2), hl = "Dim", click = click },
 			})
 		end

@@ -128,25 +128,32 @@ func TestViewport(t *testing.T) {
 
 func TestPinned(t *testing.T) {
 	for _, c := range []struct {
-		name, rows string // s a sticky row, e an end mark, . any other
-		top, want  int
+		name, rows string // t a turn header row, s a section header, e an end mark, . any other
+		top        int
+		want       []int
 	}{
-		{"top of content", "s . . . .", 0, -1},
-		{"header at top", ". s . . .", 1, -1},
-		{"header close under", "s . . . s .", 2, -1},
-		{"header three under", "s . . . . s", 2, 0},
-		{"block above", ". s s . . . .", 4, 1},
-		{"no header above", ". . . . . . s", 2, -1},
-		{"inside a nested scope", "s . . s . . e . . .", 6, 3},
-		{"an end cancels its header only", "s . . s . . e . . . .", 9, 0},
-		{"a wrapped end counts once", "s . s . e e . . . .", 8, 0},
+		{"top of content", "t . . . .", 0, nil},
+		{"header at top", ". t . . .", 1, nil},
+		{"header close under", "t . . . t .", 2, nil},
+		{"header three under", "t . . . . t", 2, []int{0}},
+		{"block above", ". t t . . . .", 4, []int{1}},
+		{"no header above", ". . . . . . t", 2, nil},
+		{"a section under its turn pins both, in order", "t . s . . . e . .", 4, []int{0, 2}},
+		{"a section on its pin's row draws as itself", "t . . s . . . e .", 2, []int{0}},
+		{"a section above its pin's row pins", "t . . s . . . e .", 3, []int{0, 3}},
+		{"the section's end on its pin's row ends it", "t . s . . e . . . .", 4, []int{0}},
+		{"a second section after the first's end", "t . s . e . s . . . .", 8, []int{0, 6}},
+		{"a new turn resets", "t . s . . . t . . . . .", 10, []int{6}},
+		{"a wrapped end drops one section", "t . s . s . e e . . . .", 10, []int{0, 2}},
+		{"sections without a turn", ". s . . . .", 3, []int{1}},
 	} {
 		var lines [][]hostapi.Segment
+		pins := map[string]hostapi.Pin{"t": hostapi.PinTurn, "s": hostapi.PinSection, "e": hostapi.PinEnd}
 		for f := range strings.FieldsSeq(c.rows) {
-			lines = append(lines, []hostapi.Segment{{Text: f, Sticky: f == "s", PinEnd: f == "e"}})
+			lines = append(lines, []hostapi.Segment{{Text: f, Pin: pins[f]}})
 		}
-		if got := pinned(lines, c.top); got != c.want {
-			t.Errorf("%s: %d, want %d", c.name, got, c.want)
+		if got := pinned(nil, lines, c.top); !slices.Equal(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
 		}
 	}
 }
@@ -157,15 +164,16 @@ func TestPinned(t *testing.T) {
 func BenchmarkPin(b *testing.B) {
 	lines := make([][]hostapi.Segment, 2000)
 	for i := range lines {
-		lines[i] = []hostapi.Segment{{Text: "▌ ", Sticky: i == 0}, {Text: "a row of text"}}
+		lines[i] = []hostapi.Segment{{Text: "▌ "}, {Text: "a row of text"}}
 	}
+	lines[0][0].Pin = hostapi.PinTurn
 	for _, top := range []int{0, len(lines) - 10} {
 		b.Run(strconv.Itoa(top), func(b *testing.B) {
 			st := &scrollState{top: top}
-			st.pinRow(lines, 80)
+			st.pinRows(lines, 80)
 			b.ReportAllocs()
 			for b.Loop() {
-				st.pinRow(lines, 80)
+				st.pinRows(lines, 80)
 			}
 		})
 	}

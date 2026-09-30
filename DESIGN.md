@@ -1841,13 +1841,15 @@ provenance string.
   off the tail;
   a scrolled view stays anchored while new lines fill underneath, and
   sending a message (or a `!command`) snaps back to the tail, a slash
-  command does not. While a turn's prompt, or an opened run's digest, is
-  above the view its first row stays pinned over the chat's top row (a
-  segment's `sticky`) as chrome, dimmed (`Pinned`) on the panel, ending in `…`
-  when the prompt has more rows; the nearest one pins, a digest only down to
-  its run's last row (`sticky = "end"`), past which the prompt pins again. A
-  click on the pin scrolls back to its row, and `alt+up`/`alt+down` move
-  between prompts and opened runs.
+  command does not. While a turn's prompt is above the view its first row
+  stays pinned over the chat's top row (a segment's `sticky`) as chrome,
+  dimmed (`Pinned`) on the panel, ending in `…` when the prompt has more rows,
+  and an opened run's digest of that turn (`sticky = "section"`) pins on the
+  row under it once it scrolls past that row, until its run's last row
+  (`sticky = "end"`) reaches it: the pins stack as one header block, a turn at
+  a time, and the next prompt starts the stack anew. A click on a pin scrolls
+  back to its row, which lands under the pins above it, and `alt+up`/`alt+down`
+  move between prompts and opened runs.
   A settled turn folds each run's calls that only looked around (reads,
   searches, fetches, commands that changed nothing, and the like, gone well)
   and its thinking into one dim digest row, `· 6 files, 8 commands · thought

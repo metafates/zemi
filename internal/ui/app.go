@@ -1244,9 +1244,11 @@ func (a *App) applyScroll(kind hostapi.ScrollAction, id string) {
 	}
 }
 
-// headerAt says row i starts a header: it is sticky and the row above is not.
+// headerAt says row i starts a header: a turn's or a section's, which the
+// row above does not continue.
 func headerAt(lines [][]hostapi.Segment, i int) bool {
-	return sticky(lines[i]) && (i == 0 || !sticky(lines[i-1]))
+	p := pinOf(lines[i])
+	return (p == hostapi.PinTurn || p == hostapi.PinSection) && (i == 0 || pinOf(lines[i-1]) != p)
 }
 
 func (a *App) regionLines(region string, width int) [][]hostapi.Segment {

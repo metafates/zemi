@@ -446,7 +446,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			}
 		}, true
 	}
-	pinID, pinSpan := a.pinAt(x, y, under)
+	pinID, pinK, pinSpan := a.pinAt(x, y, under)
 	switch top := a.topChrome(); {
 	case top == modalPerm:
 		pa := a.permAsk
@@ -511,10 +511,11 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		return spans, func() { p.selected = hit - 1; a.acceptPalette() }, ok
 	case top == noModal && pinSpan.hi > 0:
 		// found by where it is: a Hit would light it as a list row, and a
-		// Click with no widget runs a command
+		// Click with no widget runs a command. The header lands on its own
+		// row of the pins, under the ones above it.
 		return []cellSpan{pinSpan}, func() {
-			if st := a.scrolls[pinID]; st != nil {
-				a.scrollRows(pinID, st.pin-st.top)
+			if st := a.scrolls[pinID]; st != nil && pinK < len(st.pin) {
+				a.scrollRows(pinID, st.pin[pinK]-pinK-st.top)
 			}
 		}, true
 	case top == noModal && under.Click != "":
@@ -539,25 +540,31 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 	return nil, nil, false
 }
 
-// pinAt is the scrolled region whose pinned row's text holds (x, y), and
-// those cells; a zero span when there is none. The cell under the pointer
-// must be the pin's own (under), not a toast's drawn over it; a box placed
-// over the pin cuts its segment, so under may be a prefix of the pin's.
-func (a *App) pinAt(x, y int, under hostapi.Segment) (string, cellSpan) {
+// pinAt is the scrolled region whose pinned row's text holds (x, y), which
+// of its pins that is, and those cells; a zero span when there is none. The
+// cell under the pointer must be the pin's own (under), not a toast's drawn
+// over it; a box placed over the pin cuts its segment, so under may be a
+// prefix of the pin's.
+func (a *App) pinAt(x, y int, under hostapi.Segment) (string, int, cellSpan) {
 	for _, id := range a.scrollIDs {
 		st := a.scrolls[id]
-		if st == nil || st.first == nil || st.rect.Min.Y != y {
+		if st == nil {
 			continue
 		}
-		if own := dropCells(st.first, x-st.rect.Min.X); len(own) == 0 || own[0].HL != under.HL || !strings.HasPrefix(own[0].Text, under.Text) {
+		k := y - st.rect.Min.Y
+		if k < 0 || k >= len(st.pins) {
 			continue
 		}
-		text := strings.TrimRight(hostapi.SegsText(st.first), " ")
+		pin := st.pins[k]
+		if own := dropCells(pin, x-st.rect.Min.X); len(own) == 0 || own[0].HL != under.HL || !strings.HasPrefix(own[0].Text, under.Text) {
+			continue
+		}
+		text := strings.TrimRight(hostapi.SegsText(pin), " ")
 		if sp := (cellSpan{y, st.rect.Min.X, st.rect.Min.X + ansi.StringWidth(text)}); sp.lo <= x && x < sp.hi {
-			return id, sp
+			return id, k, sp
 		}
 	}
-	return "", cellSpan{}
+	return "", 0, cellSpan{}
 }
 
 // painted is true of a segment filled with something other than the app's

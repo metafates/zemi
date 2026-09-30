@@ -310,8 +310,8 @@ func TestChatStickyPrompt(t *testing.T) {
 	}
 	// the process-wide malloc count AllocsPerRun reads moves with the app's
 	// other goroutines, so the copy's identity says it was not made again
-	first := &st.first[0]
-	if st.pinRow(st.lines, st.rect.Dx()); &st.first[0] != first {
+	first := &st.pins[0][0]
+	if st.pinRows(st.lines, st.rect.Dx()); &st.pins[0][0] != first {
 		t.Fatal("an unchanged pin copies its row again")
 	}
 	// a toast over the pin takes its own cells and cuts the pin's short
@@ -344,7 +344,7 @@ func TestChatStickyPrompt(t *testing.T) {
 	} {
 		jump()
 		frame := ansi.Strip(app.Frame())
-		if st.follow || !headerAt(st.lines, st.top) || st.first != nil || strings.Count(frame, "fix the flaky") != 1 {
+		if st.follow || !headerAt(st.lines, st.top) || len(st.pins) != 0 || strings.Count(frame, "fix the flaky") != 1 {
 			t.Fatalf("the jump left top %d (follow %v):\n%s", st.top, st.follow, frame)
 		}
 		press(t, app, tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModAlt})
@@ -364,9 +364,10 @@ func TestChatStickyPrompt(t *testing.T) {
 	}
 }
 
-// TestChatStickyDigest: an opened run's digest pins over the chat's top row
-// on the panel while the view is inside the run; past the run's last row,
-// or with the run folded, the prompt pins again.
+// TestChatStickyDigest: inside an opened run the prompt and the run's digest
+// pin over the chat's top rows, in that order, on the panel; from the run's
+// last row on, or with the run folded, the prompt pins alone. A click on the
+// digest's pin puts the digest itself under the prompt's.
 func TestChatStickyDigest(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 	host.AppendMessage("user", "look around")
@@ -377,48 +378,62 @@ func TestChatStickyDigest(t *testing.T) {
 	for i := range 12 {
 		appendReply(host, fmt.Sprintf("answer %d", i), hostapi.TurnStat{})
 	}
-	// pin scrolls the chat so the first row at matches tops the view, and
-	// reads the pin drawn over it, whose panel runs on to the bar
-	pin := func(at func([]hostapi.Segment) bool) string {
+	const prompt, digest = "▌ look around", "· 12 commands"
+	var st *scrollState
+	// pins scrolls the chat so the first row holding at tops the view, and
+	// reads the pins drawn over it, each on the panel running on to the bar
+	pins := func(at string) []string {
 		app.renderSync(t)
 		app.Frame()
-		st := app.scrolls["chat"]
-		i := slices.IndexFunc(st.lines, at)
+		st = app.scrolls["chat"]
+		i := slices.IndexFunc(st.lines, func(r []hostapi.Segment) bool { return strings.Contains(hostapi.SegsText(r), at) })
 		if i < 0 {
 			t.Fatal("no such row")
 		}
 		app.scrollRows("chat", i-st.top)
 		app.Frame()
-		row := app.lastRows[st.rect.Min.Y]
-		if row[0].HL != "Pinned" || row[0].Fill != hostapi.FillPanel || row[len(row)-2].Fill != hostapi.FillPanel {
-			t.Fatalf("the top row is no pin on the panel: %+v", row)
+		var out []string
+		for _, row := range app.lastRows[st.rect.Min.Y:] {
+			if row[0].HL != "Pinned" {
+				break
+			}
+			if row[0].Fill != hostapi.FillPanel || row[len(row)-2].Fill != hostapi.FillPanel {
+				t.Fatalf("a pin off the panel: %+v", row)
+			}
+			out = append(out, hostapi.SegsText(row))
 		}
-		return hostapi.SegsText(row)
-	}
-	text := func(s string) func([]hostapi.Segment) bool {
-		return func(r []hostapi.Segment) bool { return strings.Contains(hostapi.SegsText(r), s) }
+		return out
 	}
 	app.renderSync(t) // the first render forgets what was opened before it
 	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:2"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {
-		at   func([]hostapi.Segment) bool
-		want string
+		at   string
+		want []string
 	}{
-		{text("list dir 5"), "· 12 commands"},
-		{text("list dir 11"), "· 12 commands"},
-		{text("answer 2"), "▌ look around"},
+		{"list dir 5", []string{prompt, digest}},
+		{"list dir 9", []string{prompt, digest}},
+		{"list dir 10", []string{prompt}},
+		{"answer 2", []string{prompt}},
 	} {
-		if got := pin(c.at); !strings.HasPrefix(got, c.want) {
-			t.Fatalf("the pin reads %q, want %q", got, c.want)
+		if got := pins(c.at); !slices.EqualFunc(got, c.want, strings.HasPrefix) {
+			t.Fatalf("at %q the pins read %q, want %q", c.at, got, c.want)
 		}
 	}
+
+	pins("list dir 5")
+	clickAt(app, 5, st.rect.Min.Y+1)
+	app.Frame()
+	if row := app.lastRows[st.rect.Min.Y+1]; row[0].HL == "Pinned" || !strings.HasPrefix(hostapi.SegsText(row), digest) || !headerAt(st.lines, st.top+1) {
+		t.Fatalf("the click on the digest's pin left top %d with %q under the prompt", st.top, hostapi.SegsText(row))
+	}
+
 	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:2"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := pin(text("answer 2")); !strings.HasPrefix(got, "▌ look around") {
-		t.Fatalf("with the run folded the pin reads %q", got)
+	if got := pins("answer 2"); !slices.EqualFunc(got, []string{prompt}, strings.HasPrefix) {
+		t.Fatalf("with the run folded the pins read %q", got)
 	}
 }
 

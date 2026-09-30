@@ -1197,14 +1197,10 @@ type Segment struct {
 	// Soft ends a row that wraps onto the next: a copy joins the two rows
 	// without a newline and drops the row's cells after this segment
 	Soft bool
-	// Sticky on a row's first segment makes the row head what follows: a
-	// scrolled region pins it while it is above the view
-	Sticky bool
-	// PinEnd (Lua's sticky = "end") on a row's first segment ends the scope
-	// of the nearest header above it: once the row is above the view, that
-	// header pins no more
-	PinEnd bool
-	Bar    bool // Go only: a viewport's scrollbar cell, which a box draws in its right border
+	// Pin on a row's first segment is its part in the header stack a
+	// scrolled region pins over its first rows (Lua's sticky)
+	Pin Pin
+	Bar bool // Go only: a viewport's scrollbar cell, which a box draws in its right border
 	// Fill is Go only: the surface under the segment where its style paints
 	// the canvas. A field, since hover rewrites Over and HL.
 	Fill Fill
@@ -1212,6 +1208,16 @@ type Segment struct {
 	// lines or blanks one cell each; lines that touch join (ui.join)
 	Line bool
 }
+
+// Pin is a row's part in a scrolled region's pinned header stack.
+type Pin uint8
+
+const (
+	PinNone    Pin = iota
+	PinTurn        // sticky = true: heads a turn and starts the stack anew
+	PinSection     // sticky = "section": heads a part of the turn, pinned under it
+	PinEnd         // sticky = "end": the last row of the nearest open section
+)
 
 // Fill is a surface of the active palette (DESIGN §6.6): the chat sits on
 // the canvas, every box on the panel, a box's selected row on the band.
@@ -1365,8 +1371,14 @@ func segment(field func(string) any, widget string) Segment {
 	seg.NoCopy = field("copy") == false
 	seg.NoHover = field("hover") == false
 	seg.Soft = field("soft_wrap") == true
-	seg.Sticky = field("sticky") == true
-	seg.PinEnd = field("sticky") == "end"
+	switch field("sticky") {
+	case true:
+		seg.Pin = PinTurn
+	case "section":
+		seg.Pin = PinSection
+	case "end":
+		seg.Pin = PinEnd
+	}
 	if id, ok := field("click").(string); ok && id != "" {
 		seg.Click, seg.Widget = id, widget
 	}

@@ -420,7 +420,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 type viewport struct {
 	top, rows, viewH int
 	follow           bool
-	first            []hostapi.Segment // drawn in place of the first row shown, when set
+	pins             [][]hostapi.Segment // drawn in place of the first rows shown
 }
 
 func (v *viewport) clamp() {
@@ -481,8 +481,8 @@ func (v *viewport) window(lines [][]hostapi.Segment, width int) [][]hostapi.Segm
 		}
 		var row []hostapi.Segment
 		switch {
-		case i == 0 && v.first != nil:
-			row = v.first
+		case i < len(v.pins):
+			row = v.pins[i]
 		case j >= 0:
 			row = lines[j]
 		}
@@ -545,8 +545,8 @@ type scrollState struct {
 	// the last paint's rows, shared with the widget cache, which replaces
 	// rows whole and never writes them in place
 	lines  [][]hostapi.Segment
-	pin    int    // the row drawn over the first one shown (pinned), -1 for none
-	pinned pinKey // what first was copied from, so an unchanged pin allocates nothing
+	pin    []int    // the header rows drawn over the first rows shown (pinned)
+	pinned []pinKey // what each of pins was copied from, so an unchanged pin allocates nothing
 }
 
 // pinKey names a pinned row's copy: the row by its first segment, which the
@@ -589,7 +589,7 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		}
 	}
 	st.clamp()
-	st.pinRow(lines, w)
+	st.pinRows(lines, w)
 	rows := st.window(lines, w-1) // the bar keeps the region's last column
 	st.anchor, st.anchorOff = nil, 0
 	for i := max(st.top, 0); i < len(lines) && i < st.top+h; i++ {
@@ -608,55 +608,72 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	return rows
 }
 
-func sticky(row []hostapi.Segment) bool { return len(row) > 0 && row[0].Sticky }
-
-func pinEnd(row []hostapi.Segment) bool { return len(row) > 0 && row[0].PinEnd }
-
-// pinned is the row a view scrolled to top draws over its first one: the
-// first row of the nearest header (a run of sticky rows) above top, or -1
-// when none is, or when a header is within the first three rows shown, so
-// the pin never stacks two headers with a gap row and a stats line between.
-// Each end mark (a run of PinEnd rows, as a wrapped row carries it down)
-// above top cancels the next header up: a header nested in another's scope
-// pins down to its own last row, then the outer one pins again.
-// NOTE: a scan back to the header per painted frame of a view below one,
-// following a turn included: a few hundred bool reads in a long turn.
-func pinned(lines [][]hostapi.Segment, top int) int {
-	if top <= 0 {
-		return -1
+func pinOf(row []hostapi.Segment) hostapi.Pin {
+	if len(row) == 0 {
+		return hostapi.PinNone
 	}
-	for i := top; i < min(top+3, len(lines)); i++ {
-		if sticky(lines[i]) {
-			return -1
-		}
-	}
-	ends := 0
-	for i := min(top, len(lines)) - 1; i >= 0; i-- {
-		switch {
-		case pinEnd(lines[i]) && (i == 0 || !pinEnd(lines[i-1])):
-			ends++
-		case !headerAt(lines, i):
-		case ends == 0:
-			return i
-		default:
-			ends--
-		}
-	}
-	return -1
+	return row[0].Pin
 }
 
-// pinRow sets the row pinned over the first one shown and its copy, made
-// again only when the pinned row, whether more header rows follow it, or the
-// width changed.
-func (st *scrollState) pinRow(lines [][]hostapi.Segment, width int) {
-	st.lines, st.pin = lines, pinned(lines, st.top)
-	if st.pin < 0 {
-		st.first, st.pinned = nil, pinKey{}
-		return
+// pinned is dst holding the header rows a view scrolled to top draws over
+// its first rows, top down: the nearest turn header above top, then each
+// section header of that turn that has passed the row it pins on, until its
+// end mark (a run of PinEnd rows, as a wrapped row carries it down) reaches
+// that row. Nothing pins while a turn header is within the first three rows
+// shown, so the pins never stack two turns with a gap row and a stats line
+// between.
+// NOTE: a scan back to the turn header per painted frame of a view below
+// one, following a turn included: a few hundred reads in a long turn.
+func pinned(dst []int, lines [][]hostapi.Segment, top int) []int {
+	dst = dst[:0]
+	if top <= 0 {
+		return dst
 	}
-	k := pinKey{&lines[st.pin][0], st.pin+1 < len(lines) && sticky(lines[st.pin+1]), width}
-	if k != st.pinned {
-		st.first, st.pinned = pinCopy(lines[st.pin], k.more, width), k
+	for i := top; i < min(top+3, len(lines)); i++ {
+		if pinOf(lines[i]) == hostapi.PinTurn {
+			return dst
+		}
+	}
+	from := 0
+	for i := min(top, len(lines)) - 1; i > 0; i-- {
+		if pinOf(lines[i]) == hostapi.PinTurn && headerAt(lines, i) {
+			from = i
+			break
+		}
+	}
+	// the next header pins on row len(dst) of the view, and an end mark
+	// drops the section pinned on row len(dst)-1
+	for i := from; i < min(top+len(dst), len(lines)); i++ {
+		switch p := pinOf(lines[i]); {
+		case p == hostapi.PinEnd && (i == 0 || pinOf(lines[i-1]) != p):
+			if n := len(dst); n > 0 && pinOf(lines[dst[n-1]]) == hostapi.PinSection {
+				dst = dst[:n-1]
+			}
+		case !headerAt(lines, i):
+		case p == hostapi.PinTurn:
+			dst = append(dst[:0], i)
+		default:
+			dst = append(dst, i)
+		}
+	}
+	return dst
+}
+
+// pinRows sets the rows pinned over the first ones shown and their copies,
+// each made again only when its row, whether more header rows follow it, or
+// the width changed.
+func (st *scrollState) pinRows(lines [][]hostapi.Segment, width int) {
+	st.lines, st.pin = lines, pinned(st.pin, lines, st.top)
+	n := min(len(st.pinned), len(st.pin))
+	st.pins, st.pinned = st.pins[:n], st.pinned[:n]
+	for k, i := range st.pin {
+		key := pinKey{&lines[i][0], i+1 < len(lines) && pinOf(lines[i+1]) == pinOf(lines[i]), width}
+		switch {
+		case k == len(st.pinned):
+			st.pins, st.pinned = append(st.pins, pinCopy(lines[i], key.more, width)), append(st.pinned, key)
+		case st.pinned[k] != key:
+			st.pins[k], st.pinned[k] = pinCopy(lines[i], key.more, width), key
+		}
 	}
 }
 

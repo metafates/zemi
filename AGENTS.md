@@ -1076,7 +1076,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   click acts on `Segment.Hit` (chrome rows) or `Segment.Click`/`Segment.Widget` (a widget's
   `on_click`, run on the background worker); a click id with no widget is a Go statusline pill
   naming its command. Helpers that rebuild segments must copy those fields, `Fill` (the
-  surface under it, a selected row's band) and `Line` (a chrome line `App.join` meets with the
+  surface under it, a selected row's band), `Pin` (a row's part in the header stack a
+  scrolled region pins, top down: a turn's prompt, then its opened run's digest down to the
+  run's last row) and `Line` (a chrome line `App.join` meets with the
   lines it touches, after all placement: text, Lua content and the snail art never join); only
   `dimRows` drops them, because dimmed rows are not targets and the backdrop joins before it
   dims, so no dimmed line joins the top box. Overlays (internal/ui/overlay.go) are data
