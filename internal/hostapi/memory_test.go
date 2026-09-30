@@ -450,7 +450,7 @@ func TestMemoryAutoQueuesOutsideText(t *testing.T) {
 }
 
 // TestMemoryDelOriginGate pins the review guard: model and plugin
-// origins may never delete through Lua; user origin may, by id prefix.
+// origins may never delete through Lua; user origin may.
 func TestMemoryDelOriginGate(t *testing.T) {
 	h, r := newTestHostDB(t)
 	seedSession(t, h)

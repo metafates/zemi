@@ -184,8 +184,8 @@ function M.render(ctx)
 	return out
 end
 
--- Register a widget with id "splash" in init.lua to replace it (ctx carries
--- version, model, cwd, instructions, recent, projects, width and height).
+-- Register a widget with id "splash" in init.lua to replace it (its ctx is a
+-- zemi.WidgetCtx).
 zemi.ui.widget.add({
 	id = "splash",
 	region = "chat",
