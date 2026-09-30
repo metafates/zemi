@@ -9,7 +9,7 @@ local M = {}
 ---@param w integer
 ---@return string
 local function tail(path, w)
-	if fmt.cells(path) <= w or w <= 1 then return path end
+	if zemi.ui.width(path) <= w or w <= 1 then return path end
 	---@type string[]
 	local chars = {}
 	for ch in path:gmatch(fmt.UTF8_CHAR) do
@@ -30,7 +30,7 @@ local function flow(segs, room, indent)
 	local w = indent
 	for _, s in ipairs(segs) do
 		for word in s.text:gmatch("%s*%S+%s*") do
-			if w > indent and w + fmt.cells((word:gsub("%s+$", ""))) > room then
+			if w > indent and w + zemi.ui.width((word:gsub("%s+$", ""))) > room then
 				if #rows == 2 then
 					local last = rows[2][#rows[2]]
 					last.text = last.text:gsub("%s+$", "") .. "…"
@@ -42,7 +42,7 @@ local function flow(segs, room, indent)
 			end
 			local row = rows[#rows]
 			row[#row + 1] = { text = word, hl = s.hl, click = s.click }
-			w = w + fmt.cells(word)
+			w = w + zemi.ui.width(word)
 		end
 	end
 	return rows
@@ -90,7 +90,7 @@ end
 local function cells(line)
 	local w = 0
 	for _, s in ipairs(line) do
-		w = w + fmt.cells(s.text)
+		w = w + zemi.ui.width(s.text)
 	end
 	return w
 end
@@ -122,7 +122,7 @@ function M.render(ctx)
 
 	if version ~= "" then
 		logo[#logo + 1] = {
-			{ text = string.rep(" ", math.max(cells(logo[1]) - fmt.cells(version), 0)), copy = false },
+			{ text = string.rep(" ", math.max(cells(logo[1]) - zemi.ui.width(version), 0)), copy = false },
 			{ text = version, hl = "Dim" },
 		}
 	end
@@ -134,13 +134,13 @@ function M.render(ctx)
 		---@type zemi.Line[]
 		local rows = {}
 		for _, r in ipairs(recent) do
-			local ago = fmt.cells(r.ago)
+			local ago = zemi.ui.width(r.ago)
 			local label = ctx.projects and tail(r.path, w - ago - 2) or (r.title ~= "" and r.title) or "(untitled)"
 			label = fmt.clip(label, w - ago - 2)
 			local click = ctx.projects and ("projects switch " .. r.root) or ("resume " .. r.id)
 			rows[#rows + 1] = {
 				{ text = label, hl = "Normal", click = click },
-				{ text = string.rep(" ", w - fmt.cells(label) - ago), copy = false },
+				{ text = string.rep(" ", w - zemi.ui.width(label) - ago), copy = false },
 				{ text = r.ago, hl = "Dim" },
 			}
 		end
@@ -173,7 +173,7 @@ function M.render(ctx)
 				if used >= room then break end
 				local text = fmt.clip(s.text, room - used)
 				line[#line + 1] = { text = text, hl = s.hl, click = s.click, copy = s.copy }
-				used = used + fmt.cells(text)
+				used = used + zemi.ui.width(text)
 			end
 			out[#out + 1] = line
 		end

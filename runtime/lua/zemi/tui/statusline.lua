@@ -32,7 +32,7 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		local p = ctx.project or ctx.cwd or ""
-		if fmt.cells(p) > math.floor((ctx.width or 80) / 4) then p = p:match("([^/]+)/*$") or p end
+		if zemi.ui.width(p) > math.floor((ctx.width or 80) / 4) then p = p:match("([^/]+)/*$") or p end
 		---@type zemi.Line
 		local line = { { text = p, hl = "Dim", click = "projects" } }
 		if ctx.trusted == false then

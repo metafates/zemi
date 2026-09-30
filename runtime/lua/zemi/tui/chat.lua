@@ -268,7 +268,7 @@ zemi.ui.widget.add({
 			local code = name == "shell"
 					and input ~= ""
 					and (open or label == "")
-					and zemi.ui.highlight(open and body or fit(input, width - fmt.cells(verb) - 13), "bash")
+					and zemi.ui.highlight(open and body or fit(input, width - zemi.ui.width(verb) - 13), "bash")
 				or nil
 			-- an agent's rows open its transcript and a workflow's its view (ids must
 			-- differ between adjacent rows), every other row (file tools included)
@@ -283,7 +283,7 @@ zemi.ui.widget.add({
 					head[#head + 1] = sg
 				end
 			elseif rest ~= "" then
-				head[3] = { text = fit(rest, width - fmt.cells(verb) - 12), hl = "Normal" }
+				head[3] = { text = fit(rest, width - zemi.ui.width(verb) - 12), hl = "Normal" }
 			end
 			if t.status == "run" and not asked and (t.elapsed or 0) >= 1 then
 				head[#head + 1] = { text = " · " .. fmt.duration(t.elapsed, true), hl = "Dim" }
@@ -375,7 +375,7 @@ zemi.ui.widget.add({
 				for i = first, last do
 					local q, a, note = out[i]:match("^([^\t]*)\t([^\t]*)\t(.*)$")
 					if answered and q then
-						if fmt.cells(q) + 2 + fmt.cells(a) <= width - 4 then
+						if zemi.ui.width(q) + 2 + zemi.ui.width(a) <= width - 4 then
 							detail({ { text = q, hl = "Dim" }, { text = "  " .. a, hl = "Normal" } }, "Dim")
 						else
 							detail(q, "Dim")

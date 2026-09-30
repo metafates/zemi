@@ -155,11 +155,6 @@ function M.relpath(s, cwd, home)
 	return (s:gsub(cwd:gsub("%p", "%%%0") .. "/", ""))
 end
 
---- Display width of a string in terminal cells.
----@param s string
----@return integer
-function M.cells(s) return zemi.ui.width(s) end
-
 --- A pattern matching one UTF-8 character.
 ---@type string
 M.UTF8_CHAR = "[%z\1-\127\194-\244][\128-\191]*"
@@ -170,13 +165,13 @@ M.UTF8_CHAR = "[%z\1-\127\194-\244][\128-\191]*"
 ---@param room integer
 ---@return string
 function M.clip(text, room)
-	if M.cells(text) <= room then return text end
+	if zemi.ui.width(text) <= room then return text end
 	if room < 1 then return "" end
 	---@type string[]
 	local chars = {}
 	local w = 0
 	for ch in text:gmatch(M.UTF8_CHAR) do
-		local cw = M.cells(ch)
+		local cw = zemi.ui.width(ch)
 		if w + cw > room - 1 then break end
 		chars[#chars + 1] = ch
 		w = w + cw

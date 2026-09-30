@@ -108,13 +108,13 @@ zemi.ui.widget.add({
 		local function room()
 			local n = 0
 			for _, p in ipairs(parts) do
-				n = n + 3 + math.max(fmt.cells(p[1]), p[3] or 0)
+				n = n + 3 + math.max(zemi.ui.width(p[1]), p[3] or 0)
 			end
 			return n
 		end
 		-- the snail keeps 8 cells of rule; the label gives way down to 16 cells
 		-- before a part goes, then clips into what the parts leave
-		local keep = math.min(fmt.cells(label), 16)
+		local keep = math.min(zemi.ui.width(label), 16)
 		while #parts > 0 and keep + room() + 10 > ctx.width do
 			local least = 1
 			for i, p in ipairs(parts) do
@@ -129,7 +129,7 @@ zemi.ui.widget.add({
 			texts[i] = p[1]
 		end
 		local after = #texts > 0 and " · " .. table.concat(texts, " · ") or ""
-		local text = label .. after ~= "" and fmt.cells(label) + room() + 2 or 0
+		local text = label .. after ~= "" and zemi.ui.width(label) + room() + 2 or 0
 		if state ~= shown then
 			shown, since = state, ctx.frame
 		end
@@ -139,7 +139,7 @@ zemi.ui.widget.add({
 			row[#row + 1] = { text = " " .. label, hl = "Dim", effect = "shimmer" }
 			row[#row + 1] = { text = after .. " ", hl = "Dim" }
 			row[#row + 1] = {
-				text = string.rep("─", ctx.width - left - fmt.cells(label .. after) - 2),
+				text = string.rep("─", ctx.width - left - zemi.ui.width(label .. after) - 2),
 				hl = "Rule",
 				copy = false,
 			}
