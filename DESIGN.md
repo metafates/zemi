@@ -1617,10 +1617,11 @@ provenance string.
   pending key sequence (`key_seq`) and the rows below a scrolled chat
   (`rows_below`); only the boot failed, stuck and errors pills are Go-drawn; the
   shipped right widgets (`statusline.profile`, `model`, `context`, `percent`,
-  `cost`) show the model, the session token tally, the
+  `cost`, `hints`) show the model, the session token tally, the
   session cost when the model spec carries prices (`cost_per_1m_in` /
-  `cost_per_1m_out`), and
-  the context-window percent, warning colors past 80%/95%).
+  `cost_per_1m_out`),
+  the context-window percent, warning colors past 80%/95%, and, innermost
+  until the first message, the `/` and `@` keys).
   Overlays float, centered or anchored (`anchor = "bottom-left"` or
   `"bottom-right"`: over the statusline, the border in line with the
   composer frame on the side of the pill that opened it: `/mode` left,
