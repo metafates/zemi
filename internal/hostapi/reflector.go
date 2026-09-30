@@ -389,7 +389,7 @@ func (h *Host) reflectPrompt(sid string) (string, []*store.Message, error) {
 			budgetUse(used[store.ScopeProject]), budgetUse(used[store.ScopeUser]))
 		now := time.Now()
 		for _, m := range mems {
-			fmt.Fprintf(&b, "- [%s %s %s%s] %s\n", m.ID[:8], m.Scope, m.Origin, learn.Age(m.UpdatedAt, now), m.Text)
+			fmt.Fprintf(&b, "- [%s %s %s%s] %s\n", m.ID, m.Scope, m.Origin, learn.Age(m.UpdatedAt, now), m.Text)
 			if m.Quote != "" {
 				fmt.Fprintf(&b, "  quote: %q\n", m.Quote)
 			}
@@ -551,7 +551,6 @@ func (h *Host) applyReflectProposal(sid string, p *reflectProposal) (stored, que
 			h.Log.Debug("memory skipped by intake", "origin", "reflector", "error", err)
 			continue
 		}
-		// the index shows the 8-character prefix; the gate compares full ids
 		if pm.Replaces != "" {
 			_, old, err := h.locateMemory(pm.Replaces)
 			if err != nil {

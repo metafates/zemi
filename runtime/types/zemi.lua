@@ -2478,7 +2478,7 @@ function zemi.json.decode(s) end
 ---@class zemi.MemoryOpts
 ---@field scope? zemi.Scope "project" by default; "user" holds in every project.
 ---@field quote? string The user's exact words from this session, at most 160 characters.
----@field replaces? string The memory this one rewrites: its id, the first 8 characters or more.
+---@field replaces? string The memory this one rewrites, by its id.
 
 ---@class zemi.MemoryAddResult
 ---@field stored? boolean Written straight away under auto autonomy.
@@ -2512,7 +2512,7 @@ function zemi.memory.add(text, opts) end
 ---@return string|nil err
 function zemi.memory.list(include_superseded) end
 
---- Delete a memory by id (an 8-character prefix works). User or builtin
+--- Delete a memory by id. User or builtin
 --- origin only.
 ---@param id string
 ---@return true|nil ok

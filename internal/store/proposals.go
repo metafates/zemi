@@ -11,7 +11,7 @@ type Proposal struct {
 
 func (s *DB) AddProposal(p *Proposal) error {
 	if p.ID == "" {
-		p.ID = NewID()
+		p.ID = ShortID()
 	}
 	if p.CreatedAt == 0 {
 		p.CreatedAt = now()

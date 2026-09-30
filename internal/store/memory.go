@@ -61,7 +61,7 @@ func scanMemory(row scanner) (*Memory, error) {
 func (s *DB) AddMemory(m *Memory) error {
 	defer s.memGen.Add(1)
 	if m.ID == "" {
-		m.ID = NewID()
+		m.ID = ShortID()
 	}
 	if m.Scope == "" || m.Text == "" || m.Origin == "" {
 		return errors.New("store: memory needs scope, text and origin")

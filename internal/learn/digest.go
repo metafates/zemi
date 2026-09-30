@@ -48,7 +48,7 @@ func Digest(rows []*store.Memory, at time.Time, budget int) string {
 				b.WriteString("\n\n" + sc.title)
 				first = false
 			}
-			fmt.Fprintf(&b, "\n- [%s %s%s] %s", Truncate(m.ID, 8), m.Origin, Age(m.UpdatedAt, at), m.Text)
+			fmt.Fprintf(&b, "\n- [%s %s%s] %s", m.ID, m.Origin, Age(m.UpdatedAt, at), m.Text)
 		}
 	}
 	if b.Len() == 0 {

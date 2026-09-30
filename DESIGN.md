@@ -1536,11 +1536,12 @@ skills(name, path, source, enabled, created_at)                 -- source: user|
 kv(key, value_json, updated_at)                                 -- zemi.state
 ```
 
-Ids people and the model type (sessions, forks, agent and workflow runs)
-are 8 lowercase Crockford base32 characters, 40 random bits
-(`store.ShortID`); a subagent run's id is its child session's id, so
-`send_to` and `/agents` reach a run the process forgot by an exact lookup.
-Message ids are 128-bit hex, since nobody types them.
+Ids people and the model type (sessions, forks, agent and workflow runs,
+memories and their proposals) are 8 lowercase Crockford base32
+characters, 40 random bits (`store.ShortID`); a subagent run's id is its
+child session's id, so `send_to` and `/agents` reach a run the process
+forgot by an exact lookup. Message ids are 128-bit hex, since nobody types
+them.
 
 One file per scope: global DB at `~/.local/state/zemi/zemi.db`, per-project
 DBs at `~/.local/state/zemi/projects/<hash of trust root>/zemi.db`, named in

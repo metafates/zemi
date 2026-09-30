@@ -205,10 +205,10 @@ func TestDigestBudget(t *testing.T) {
 		return &store.Memory{ID: id, Scope: scope, Text: text, Origin: origin, UpdatedAt: at.Add(-age).UnixMilli()}
 	}
 	rows := []*store.Memory{
-		mem("project", "aaaa0000ffffffff", "newest project fact", store.OriginLearned, 0),
-		mem("project", "cccc0000ffffffff", "older project fact", store.OriginUser, 72*time.Hour),
-		mem("project", "dddd0000ffffffff", "oldest project fact, past the budget", store.OriginUser, 96*time.Hour),
-		mem("user", "eeee0000ffffffff", "the user prefers short replies", store.OriginUser, 0),
+		mem("project", "aaaa0000", "newest project fact", store.OriginLearned, 0),
+		mem("project", "cccc0000", "older project fact", store.OriginUser, 72*time.Hour),
+		mem("project", "dddd0000", "oldest project fact, past the budget", store.OriginUser, 96*time.Hour),
+		mem("user", "eeee0000", "the user prefers short replies", store.OriginUser, 0),
 	}
 	budget := LineSize("newest project fact") + LineSize("older project fact")
 	want := digestHeader + `

@@ -1306,7 +1306,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 				"text":     map[string]any{"type": "string"},
 				"scope":    map[string]any{"type": "string", "enum": []store.Scope{store.ScopeProject, store.ScopeUser}, "description": "project (default): this repository only; user: holds in every project"},
 				"quote":    map[string]any{"type": "string", "description": "the user's exact words from this session that this memory rests on"},
-				"replaces": map[string]any{"type": "string", "description": "the memory to rewrite, or to drop when text is empty: its id from # Memory, the first 8 characters or more"},
+				"replaces": map[string]any{"type": "string", "description": "the memory to rewrite, or to drop when text is empty: its id from # Memory"},
 			},
 			[]string{"text"},
 			nil,

@@ -245,9 +245,9 @@ func TestReflectApply(t *testing.T) {
 		{name: "a user preference without a quote queues", doc: `{"memories":[{"scope":"user","text":"the user wants short replies"}]}`, queued: 1},
 		{name: "a quote the user never wrote drops the memory", doc: `{"memories":[{"scope":"user","text":"the user wants short replies","quote":"long replies please"}]}`},
 		{
-			name: "replaces by the index's id prefix supersedes the old memory, near-duplicate or not",
+			name: "replaces by the index's id supersedes the old memory, near-duplicate or not",
 			seed: func(t *testing.T, h *Host, sid string) string {
-				return learnedMemory(t, h, "project", "the deploy script requires the labels sequence bumped", "")[:8]
+				return learnedMemory(t, h, "project", "the deploy script requires the labels sequence bumped", "")
 			},
 			doc: `{"memories":[{"scope":"project","text":"` + fact + `","replaces":"OLD"}]}`, stored: 1,
 			check: func(t *testing.T, h *Host, sid string) {
@@ -476,7 +476,7 @@ func TestReflectForgetThroughReview(t *testing.T) {
 		if err := h.DB.AddMemory(old); err != nil {
 			t.Fatal(err)
 		}
-		reflectStub(t, h, `{"memories":[{"text":"","replaces":"`+old.ID[:8]+`"},{"text":" ","replaces":"`+old.ID+`"},{"text":"","replaces":"ghost123"}]}`)
+		reflectStub(t, h, `{"memories":[{"text":"","replaces":"`+old.ID+`"},{"text":" ","replaces":"`+old.ID+`"},{"text":"","replaces":"ghost123"}]}`)
 		if _, err := h.reflectSession(t.Context(), sid); err != nil {
 			t.Fatal(err)
 		}

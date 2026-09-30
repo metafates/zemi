@@ -391,7 +391,7 @@ func TestMemoryGate(t *testing.T) {
 				t.Fatalf("answer %q (err %v), want %q", msg, err, tc.want)
 			}
 			if strings.HasSuffix(tc.want, "one of ") {
-				if live, _ := h.DB.ListMemory("project", false); !strings.Contains(msg, live[len(live)-1].ID[:8]) {
+				if live, _ := h.DB.ListMemory("project", false); !strings.Contains(msg, live[len(live)-1].ID) {
 					t.Fatalf("the oldest id is not named: %q", msg)
 				}
 			}
@@ -465,7 +465,7 @@ func TestMemoryDelOriginGate(t *testing.T) {
 	runUser(t, r, `
 		local ok, err = zemi.memory.del("nope")
 		assert(ok == nil and err:find("no such memory"), tostring(err))
-		assert(zemi.memory.del("`+m.ID[:8]+`"))
+		assert(zemi.memory.del("`+m.ID+`"))
 	`)
 	if _, err := h.DB.GetMemory(m.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("forget: %v", err)
@@ -702,19 +702,19 @@ func TestMemoryCommandsRegistered(t *testing.T) {
 	// typed, a forget asks first: headless it names the --yes form, and with
 	// a screen /memory opens on that memory
 	id := projectMemories(t, h)[0].ID
-	if err := h.memoryCommand("forget " + id[:8]); err == nil || !strings.Contains(err.Error(), "/memory forget "+id+" --yes runs it without asking") {
+	if err := h.memoryCommand("forget " + id); err == nil || !strings.Contains(err.Error(), "/memory forget "+id+" --yes runs it without asking") {
 		t.Fatalf("a headless forget: %v", err)
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if err := h.memoryCommand("forget " + id[:8]); err != nil {
+	if err := h.memoryCommand("forget " + id); err != nil {
 		t.Fatal(err)
 	}
 	confirm := "memory forget " + id + " --yes"
 	if o := ui.overlays(); len(o) != 1 || o[0].Confirm != confirm || !strings.Contains(fmt.Sprint(o[0].Items), confirm) || len(projectMemories(t, h)) != 1 {
 		t.Fatalf("a typed forget: %+v, %d memories", o, len(projectMemories(t, h)))
 	}
-	if err := h.memoryCommand("forget " + id[:8] + " --yes"); err != nil {
+	if err := h.memoryCommand("forget " + id + " --yes"); err != nil {
 		t.Fatal(err)
 	}
 	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.title != "Memory forgotten" || n.body != "deploy by hand" {

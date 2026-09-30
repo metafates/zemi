@@ -69,7 +69,7 @@ func (h *Host) queueProposal(res *learn.Result) bool {
 // addProposal persists a proposal in its scope's store as it is.
 func (h *Host) addProposal(p memoryProposal) error {
 	if p.ID == "" {
-		p.ID = store.NewID()
+		p.ID = store.ShortID()
 	}
 	db := h.memoryDB(p.Scope)
 	if db == nil {
@@ -793,28 +793,6 @@ func moveAndEdit(m store.Memory, forget bool) []any {
 // locateMemory finds a memory id across both scopes and returns the DB
 // owning it.
 func (h *Host) locateMemory(id string) (*store.DB, *store.Memory, error) {
-	if len(id) >= 6 && len(id) < 32 {
-		// the digest shows 8-character id prefixes
-		// NOTE: scans every memory; fine for the hundreds of rows memories reach.
-		all, err := h.memoryList(true)
-		if err != nil {
-			return nil, nil, err
-		}
-		var hits []string
-		for _, m := range all {
-			if strings.HasPrefix(m.ID, id) {
-				hits = append(hits, m.ID)
-			}
-		}
-		switch len(hits) {
-		case 0:
-			return nil, nil, fmt.Errorf("%w %q", errNoMemory, id)
-		case 1:
-			id = hits[0]
-		default:
-			return nil, nil, fmt.Errorf("memory id %q matches %d memories; pass more of it", id, len(hits))
-		}
-	}
 	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
 		if db == nil {
 			continue
@@ -993,23 +971,22 @@ func (h *Host) forgetMemory(p *tools.Pipeline, sid, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	short := m.ID[:8]
 	switch {
 	case m.Origin == store.OriginUser:
-		req := tools.Request{Tool: tools.ToolMemory, Subject: "memory.write", Arg: short, Reason: "the user saved it", Preview: m.Text, Unsandboxed: true}
+		req := tools.Request{Tool: tools.ToolMemory, Subject: "memory.write", Arg: m.ID, Reason: "the user saved it", Preview: m.Text, Unsandboxed: true}
 		if v := p.CheckDenied(req); v.Decision != perm.Allow {
-			return "", fmt.Errorf("permission denied (%s): forget memory %s", v.DecidedBy, short)
+			return "", fmt.Errorf("permission denied (%s): forget memory %s", v.DecidedBy, m.ID)
 		}
 	case !h.memoryAuto(sid):
 		if _, err := h.queueForget(sid, m.ID); err != nil {
 			return "", err
 		}
-		return "forget of " + short + " queued for the user's review", nil
+		return "forget of " + m.ID + " queued for the user's review", nil
 	}
 	if err := db.DeleteMemory(m.ID); err != nil {
 		return "", err
 	}
-	return short + " dropped", nil
+	return m.ID + " dropped", nil
 }
 
 // gateMemory is the autonomy gate (DESIGN §10.4): a near-duplicate is
@@ -1075,7 +1052,7 @@ func (h *Host) scopeOver(res *learn.Result) (oldest []string, over bool) {
 		return nil, false
 	}
 	for i := len(live) - 1; i >= 0 && len(oldest) < 3; i-- {
-		oldest = append(oldest, live[i].ID[:8])
+		oldest = append(oldest, live[i].ID)
 	}
 	return oldest, true
 }
