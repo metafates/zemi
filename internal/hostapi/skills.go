@@ -336,7 +336,7 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 	if h.GlobalDB == nil {
 		return errors.New("skills store unavailable")
 	}
-	if _, err := h.GlobalDB.GetSkill(name); err != nil {
+	if err := h.GlobalDB.SetSkillEnabled(name, enabled); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			// project skills are not stored, so there is no flag to flip
 			if slices.ContainsFunc(h.projectOnlySkills(), func(s skill.Skill) bool { return s.Name == name }) {
@@ -344,9 +344,6 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 			}
 			return Usagef("no such skill %q", name)
 		}
-		return err
-	}
-	if err := h.GlobalDB.SetSkillEnabled(name, enabled); err != nil {
 		return err
 	}
 	h.skillsReg.setEnabledFlag(name, enabled)

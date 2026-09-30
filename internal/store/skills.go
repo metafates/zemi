@@ -12,31 +12,25 @@ import (
 
 // Skill is one discovered skill's row; a new row starts enabled.
 type Skill struct {
-	Name      string
-	Path      string
-	Source    string // user | builtin | plugin
-	Enabled   bool
-	CreatedAt int64
+	Name    string
+	Path    string
+	Source  string // user | builtin | plugin
+	Enabled bool
 }
 
 func scanSkill(row scanner) (*Skill, error) {
 	var sk Skill
 	var enabled int
-	if err := row.Scan(&sk.Name, &sk.Path, &sk.Source, &enabled, &sk.CreatedAt); err != nil {
+	if err := row.Scan(&sk.Name, &sk.Path, &sk.Source, &enabled); err != nil {
 		return nil, err
 	}
 	sk.Enabled = enabled != 0
 	return &sk, nil
 }
 
-// GetSkill returns one skill row by name.
-func (s *DB) GetSkill(name string) (*Skill, error) {
-	return one(s.db.QueryRow(`SELECT name, path, source, enabled, created_at FROM skills WHERE name = ?`, name), scanSkill)
-}
-
 // ListSkills returns all skill rows ordered by name.
 func (s *DB) ListSkills() ([]*Skill, error) {
-	rows, err := s.db.Query(`SELECT name, path, source, enabled, created_at FROM skills ORDER BY name`)
+	rows, err := s.db.Query(`SELECT name, path, source, enabled FROM skills ORDER BY name`)
 	return collect(rows, err, scanSkill)
 }
 

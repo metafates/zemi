@@ -56,13 +56,9 @@ func TestSyncSkillsAndEnabledState(t *testing.T) {
 		if !strings.HasPrefix(r.Path, "/b/") {
 			t.Fatalf("path not refreshed: %+v", r)
 		}
-	}
-	sk, err := db.GetSkill("builtin-one")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sk.Enabled {
-		t.Fatal("resync must keep the enabled choice")
+		if r.Enabled != (r.Name == "user-one") {
+			t.Fatalf("resync must keep the enabled choice: %+v", r)
+		}
 	}
 
 	// Syncing with an empty set wipes the table.
