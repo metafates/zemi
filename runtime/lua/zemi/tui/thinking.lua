@@ -17,6 +17,8 @@ local chat = require("zemi.tui.chat")
 ---@field body { key: string, lines: zemi.Line[] }?
 ---@type zemi.tui.PaneTurn?
 local turn
+-- one cell between the separator and the text
+local GUTTER = { text = " ", copy = false }
 
 ---@param ctx zemi.WidgetCtx
 ---@return zemi.tui.PaneTurn
@@ -34,16 +36,18 @@ local function read(ctx)
 		local digest = fmt.digest(tr, first, chat.last(tr, first))
 		t.head = digest ~= "" and "turn · " .. digest or "turn"
 	else
-		local secs, thought = 0, false
+		-- the last turn: its thinking, and its digest as the idle header
+		local start = 1
 		for i = #tr, 1, -1 do
 			local m = tr[i]
-			if (m.kind or "") == "" and m.role == "user" then break end
-			if m.kind == "reasoning" then
-				table.insert(t.texts, 1, m.text)
-				secs, thought = secs + (m.thought or 0), true
+			if (m.kind or "") == "" and m.role == "user" then
+				start = i + 1
+				break
 			end
+			if m.kind == "reasoning" then table.insert(t.texts, 1, m.text) end
 		end
-		t.head = thought and fmt.thought(secs) .. " · last turn" or ""
+		local digest = #tr > 0 and fmt.digest(tr, start, #tr) or ""
+		t.head = #tr == 0 and "thinking shows here" or (digest ~= "" and "last turn · " .. digest or "last turn")
 	end
 	turn = t
 	return t
@@ -67,15 +71,16 @@ zemi.ui.widget.add({
 		if t.first then
 			-- a click goes back to the live turn
 			local click = "turn:" .. t.first
-			return { { { text = fmt.clip(t.head, width), hl = "Dim", click = click } } }
+			return { { GUTTER, { text = fmt.clip(t.head, width - 1), hl = "Dim", click = click } } }
 		end
 		local ag = ctx.agent or {}
-		if not ctx.agent_active then return { { { text = fmt.clip(t.head, width), hl = "Dim" } } } end
+		if not ctx.agent_active then return { { GUTTER, { text = fmt.clip(t.head, width - 1), hl = "Dim" } } } end
 		local tools = ag.tools or {}
 		if (ag.reasoning or "") ~= "" and (ag.text or "") == "" and #tools == 0 then
 			local m = zemi.ui.marks.spin
 			return {
 				{
+					GUTTER,
 					{ text = m.glyph .. " ", hl = m.hl, copy = false, effect = "spin" },
 					{ text = "thinking · " .. fmt.duration(ag.thought or 0), hl = "Dim" },
 				},
@@ -91,7 +96,7 @@ zemi.ui.widget.add({
 				break
 			end
 		end
-		return { { { text = fmt.clip(label, width), hl = "Dim" } } }
+		return { { GUTTER, { text = fmt.clip(label, width - 1), hl = "Dim" } } }
 	end,
 })
 
@@ -109,10 +114,11 @@ zemi.ui.widget.add({
 		---@param into zemi.Line[]
 		local function wrap(text, into)
 			if #into > 0 then into[#into + 1] = { { text = "" } } end
-			for _, segs in ipairs(zemi.ui.wrap((text:gsub("%s+$", "")), width)) do
+			for _, segs in ipairs(zemi.ui.wrap((text:gsub("%s+$", "")), width - 1)) do
 				for _, sg in ipairs(segs) do
 					sg.hl = "AgentReason"
 				end
+				table.insert(segs, 1, GUTTER)
 				into[#into + 1] = segs
 			end
 		end
@@ -130,15 +136,19 @@ zemi.ui.widget.add({
 			t.body = { key = key, lines = lines }
 		end
 		local ag = ctx.agent or {}
-		if t.first or not ctx.agent_active or (ag.reasoning or "") == "" then return t.body.lines end
-		-- the thought streaming now, under the turn's earlier ones; the cached
-		-- lines are shared, never appended to
+		-- the cached lines are shared, never appended to
 		---@type zemi.Line[]
 		local lines = {}
 		for i, l in ipairs(t.body.lines) do
 			lines[i] = l
 		end
-		wrap(ag.reasoning, lines)
+		-- the thought streaming now, under the turn's earlier ones
+		if not t.first and ctx.agent_active and (ag.reasoning or "") ~= "" then wrap(ag.reasoning, lines) end
+		-- the region is bottom-anchored: trailing blanks keep short text at the
+		-- top, and once it overflows the tail follows
+		for _ = #lines + 1, ctx.height or 0 do
+			lines[#lines + 1] = { { text = "" } }
+		end
 		return lines
 	end,
 })

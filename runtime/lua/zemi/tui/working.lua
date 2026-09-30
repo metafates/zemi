@@ -46,7 +46,7 @@ zemi.ui.widget.add({
 				state = "error"
 			end
 		elseif (ag.elapsed or 0) >= 0.3 or ctx.cancelling then
-			label, state = "Working", "working"
+			label, state = "working", "working"
 			-- the first: serial calls run in call order, and a parallel batch
 			-- starts together
 			for _, t in ipairs(ag.tools or {}) do
@@ -55,18 +55,18 @@ zemi.ui.widget.add({
 					-- is converted only when read, since this runs every frame
 					local input = t.label == "" and (fmt.relpath(t.input, ctx.cwd, ctx.home):gsub("%s+", " ")) or ""
 					local verb, rest = fmt.head(t.name, t.label, input)
-					label = verb .. rest
+					label = fmt.lower(verb) .. rest
 					if READS[t.name] then state = "reading" end
 					break
 				end
 			end
-			if label == "Working" and ag.reasoning ~= "" and ag.text == "" then
-				label, state = "Thinking", "thinking"
+			if label == "working" and ag.reasoning ~= "" and ag.text == "" then
+				label, state = "thinking", "thinking"
 			end
 			---@type { [1]: string, [2]: integer, [3]: integer }?
 			local tick = { fmt.duration(ag.elapsed, true), 5, 7 }
 			if ag.compacting then
-				label, state = "Compacting", "reading"
+				label, state = "compacting", "reading"
 			end
 			if ag.checking_goal then
 				label, state = "Checking the goal", "reading"

@@ -1245,9 +1245,9 @@ func TestWorkingRowMascot(t *testing.T) {
 	short := row(500)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 605 * time.Second})
 	r := row(500)
-	const status = " Working · esc interrupt · 10m 05s "
+	const status = " working · esc interrupt · 10m 05s "
 	at := strings.Index(r, status)
-	if at < 0 || at != strings.Index(short, "Working")-1 {
+	if at < 0 || at != strings.Index(short, "working")-1 {
 		t.Fatalf("the status slid: %q then %q", short, r)
 	}
 	if pre, post := len([]rune(r[:at])), len([]rune(r[at+len(status):])); abs(pre-post) > 1 {
@@ -1287,7 +1287,7 @@ func TestWorkingRowMascot(t *testing.T) {
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Steering: []string{"x"}})
 	app.Update(tea.WindowSizeMsg{Width: 45, Height: 16})
 	app.renderSync(t)
-	if r := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 45)); !strings.Contains(r, " Working · esc interrupt · 20s ─") {
+	if r := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 45)); !strings.Contains(r, " working · esc interrupt · 20s ─") {
 		t.Fatalf("the narrow rule lost the interrupt key: %q", r)
 	}
 }

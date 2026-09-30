@@ -193,7 +193,8 @@ function M.digest(rows, first, last)
 	---@type string[]
 	local parts = {}
 	if #calls > 0 then parts[1] = M.counts(calls) end
-	if thought then parts[#parts + 1] = M.thought(secs) end
+	-- a thought under a second says nothing
+	if thought and secs >= 1 then parts[#parts + 1] = M.thought(secs) end
 	return table.concat(parts, " · ")
 end
 

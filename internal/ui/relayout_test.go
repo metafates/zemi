@@ -139,8 +139,7 @@ func TestThinkingPane(t *testing.T) {
 	runLua(t, app, `
 zemi.ui.widget.add({ id = "probe", region = "header", render = function(ctx)
   return { { { text = ctx.regions.thinking and "pane on" or "pane off" } } }
-end })
-zemi.ui.widget.add({ id = "pane", region = "thinking", render = function() return { { { text = "thought" } } } end })`)
+end })`)
 	pane := `local l = zemi.ui.layout.get()
 l.root.children[2].max = 157
 l.root.children[2].children[2].children[2].hidden = false
@@ -167,7 +166,7 @@ zemi.ui.layout.set(l)`
 		rows := strings.Split(frame, "\r\n")
 		rects := app.LayoutRects()
 		th, drawn := rects["thinking"]
-		if drawn != c.drawn || rects["chat"].X != c.chatX || drawn && th.X != c.paneX || strings.Contains(frame, "pane on") != c.drawn || strings.Contains(frame, "thought") != c.drawn {
+		if drawn != c.drawn || rects["chat"].X != c.chatX || drawn && th.X != c.paneX || strings.Contains(frame, "pane on") != c.drawn || strings.Contains(frame, "thinking shows here") != c.drawn {
 			t.Fatalf("%s: rects %+v:\n%s", c.name, rects, frame)
 		}
 		top := rows[rects["composer"].Y]

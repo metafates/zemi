@@ -643,8 +643,17 @@ zemi.ui.widget.add({
 			local m = tr[first]
 			B.lines, B.prev = {}, first > 1 and block_of(tr[first - 1]) or nil
 			if mode == "fold" then
+				-- a run with nothing to say (a thought under a second) draws no row
+				-- and so takes no gap
+				local n = #B.lines
 				B.gap("activity")
+				local g = #B.lines
 				B.fold(tr, first, last)
+				if #B.lines == g then
+					for i = g, n + 1, -1 do
+						B.lines[i] = nil
+					end
+				end
 			elseif mode ~= "" then
 				B.gap("activity")
 				B.rail(tr, first, last, { open = mode == "open", run = first })

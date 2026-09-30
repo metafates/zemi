@@ -4,11 +4,11 @@ zemi: warning: tick
 ⠋ run the flush tests
   ⎿ go test ./internal/hostapi
 
-@··────────────────────── Run the flush tests · ctrl+c stop · 6s ─────────────────────────────────[?2026l[?2026h[5A[J▌ why does TestFlushOrder fail?
+@··────────────────────── run the flush tests · ctrl+c stop · 6s ─────────────────────────────────[?2026l[?2026h[5A[J▌ why does TestFlushOrder fail?
 [?25l
 ⠋ run the flush tests
   ⎿ go test ./internal/hostapi
 
-@··────────────────────── Run the flush tests · ctrl+c stop · 6s ─────────────────────────────────[?2026l[4A[J[?25h
+@··────────────────────── run the flush tests · ctrl+c stop · 6s ─────────────────────────────────[?2026l[4A[J[?25h
   resume   zemi -r 7hq2m4xk
 

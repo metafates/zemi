@@ -992,12 +992,18 @@ func (a *App) compose(w, h int) string {
 	// The toasts are one tray at the top right of the stage, over the dimmed
 	// rows but under the top box: a toast is not dimmed, and its text never
 	// covers the chrome the user answers.
+	// With the thinking pane drawn the tray docks into it instead, as wide as
+	// the pane, so it never stands beside the pane's separator.
 	toasts := func() {
-		if tray := toastTray(a.toasts, stage.Dx(), stage.Dy()); len(tray) > 0 {
+		at, room := stage, stage.Dx()
+		if head, ok := lay.rects["thinking.head"]; ok && head.Dx() >= 16 {
+			at, room = uv.Rect(head.Min.X, head.Min.Y, head.Dx(), stage.Max.Y-head.Min.Y), head.Dx()
+		}
+		if tray := toastTray(a.toasts, room, at.Dy()); len(tray) > 0 {
 			for i, line := range tray {
 				tray[i] = margined(line)
 			}
-			placeBox(rows, tray, max(stage.Min.X, stage.Max.X-hostapi.SegsWidth(tray[0])), stage.Min.Y, w)
+			placeBox(rows, tray, max(at.Min.X, at.Max.X-hostapi.SegsWidth(tray[0])), at.Min.Y, w)
 		}
 	}
 	for i, place := range modals {

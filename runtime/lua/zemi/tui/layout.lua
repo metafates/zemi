@@ -61,7 +61,7 @@ local layout = {
 								collapse = true,
 								hidden = true,
 								children = {
-									{ kind = "region", region = "thinking.head" },
+									{ kind = "region", id = "thinking.head", region = "thinking.head" },
 									{
 										kind = "region",
 										id = "thinking",
