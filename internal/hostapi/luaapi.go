@@ -1,5 +1,5 @@
 // luaapi.go holds the smaller zemi.* surfaces: zemi.json, zemi.composer,
-// the session list/switch helpers and the agent.assemble prompt hook.
+// zemi.session's list, switch and todo members and the agent.assemble prompt hook.
 
 package hostapi
 
@@ -105,7 +105,7 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 // ---------------------------------------------------------------------------
 // zemi.session additions
 
-// sessionExtraFns adds list, new, open and todos to zemi.session. Switching
+// sessionExtraFns adds list, new, resume, rewind and todos to zemi.session. Switching
 // sessions is a runtime operation: it returns nil, err (a turn is running,
 // no such session) instead of raising.
 func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
@@ -206,7 +206,7 @@ func (h *Host) assembleSections() string {
 }
 
 func (h *Host) callAssembleHandler(L *glua.LState, hd *EventHandler) (title, text string) {
-	ev := map[string]any{"name": "agent.assemble", "from": "host", "cwd": h.Dirs.ProjectDir}
+	ev := eventTable("agent.assemble", "host", map[string]any{"cwd": h.Dirs.ProjectDir})
 	ret, timedOut, err := h.callEvent(L, hd, ev)
 	switch {
 	case timedOut:
