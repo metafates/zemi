@@ -350,7 +350,6 @@ func (h *Host) setSkillEnabled(name string, enabled bool) error {
 		return err
 	}
 	h.skillsReg.setEnabledFlag(name, enabled)
-	h.includedStale.Store(true)
 	if s, ok := h.skillsReg.get(name); ok && s.UserInvocable {
 		// the markdown commands step builds /<name> or puts back the command the
 		// skill displaced; booting, it has yet to run, and zemi run has no TUI
@@ -474,7 +473,6 @@ func (h *Host) deleteRecipe(name string, yes bool) error {
 		h.agents.mu.Lock()
 		h.agents.dropPin()
 		h.agents.mu.Unlock()
-		h.includedStale.Store(true)
 		h.Notify(slog.LevelInfo, "Recipe deleted", name)
 		return nil
 	}

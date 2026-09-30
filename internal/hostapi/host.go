@@ -487,9 +487,9 @@ type Host struct {
 	splash      []Project
 	splashStale atomic.Bool
 
-	includedMu    sync.Mutex
-	included      included
-	includedStale atomic.Bool
+	instrMu    sync.Mutex // guards instr, instructionsCached's cache
+	instr      []string
+	instrStale atomic.Bool
 
 	mcp   *mcpReg  // MCP servers and their tools
 	tasks *taskReg // subagent runs
@@ -583,7 +583,7 @@ func (h *Host) SetProjectTrusted(ok bool) {
 		found = h.discoverProjectSkills()
 	}
 	h.projectSkills.Store(&found)
-	h.includedStale.Store(true)
+	h.instrStale.Store(true)
 }
 
 // TrustUnsaved reports a trust root no decision is saved for: the home
@@ -703,7 +703,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	h.refreshPending()
 	h.recentStale.Store(true)
 	h.splashStale.Store(true)
-	h.includedStale.Store(true)
+	h.instrStale.Store(true)
 	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
 	// sync: the first turn's tool schema and zemi health read it (the probe is fast)
 	b, err := sandbox.Probe()
@@ -1695,8 +1695,18 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		},
 		"agent":      func(L *glua.LState) glua.LValue { return agentTable(L, stream) },
 		"transcript": func(L *glua.LState) glua.LValue { return transcriptTable(L, transcript) },
-		"included":   func(L *glua.LState) glua.LValue { return h.includedTable(L) },
-		"trustable":  func(L *glua.LState) glua.LValue { return glua.LBool(!TrustUnsaved(h.trustRoot())) },
+		"instructions": func(L *glua.LState) glua.LValue {
+			files := h.instructionsCached()
+			if files == nil {
+				return glua.LNil
+			}
+			tb := L.CreateTable(len(files), 0)
+			for _, p := range files {
+				tb.Append(glua.LString(p))
+			}
+			return tb
+		},
+		"trustable": func(L *glua.LState) glua.LValue { return glua.LBool(!TrustUnsaved(h.trustRoot())) },
 		"resume": func(L *glua.LState) glua.LValue {
 			if id := h.AgentSessionID(); id != "" {
 				return glua.LString(ResumeCommand(h.ResumeDir, id))
@@ -1751,34 +1761,21 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	return tb, func() { live = false }
 }
 
-// included is what ctx.included reads from disk and the store.
-type included struct {
-	instructions []string // nil where project files cannot load
-	memories     int
-	skills       int
-	memGen       uint64 // the memory generation the counts were read at
-}
-
-// includedData is cached, since the splash renders every frame while a job
-// runs: rebuilt after a reload, a trust change, a session close, a skill
-// toggle or recipe delete, and a memory write through this process.
-// NOTE: a file written outside zemi, or a memory another zemi process writes
-// to the shared store, waits for one of those.
-func (h *Host) includedData() included {
-	var gen uint64
-	for _, db := range []*store.DB{h.GlobalDB, h.DB} {
-		if db != nil {
-			gen += db.MemoryGen()
-		}
+// instructionsCached is ctx.instructions: the project's instruction files,
+// repo-relative, nil where project files cannot load (untrusted, or $HOME and
+// /, which are nobody's project). Cached, since the splash renders every
+// frame while a job runs: rebuilt after a reload, a trust change and a
+// session close.
+// NOTE: a file written outside zemi waits for one of those.
+func (h *Host) instructionsCached() []string {
+	h.instrMu.Lock()
+	defer h.instrMu.Unlock()
+	if !h.instrStale.Swap(false) {
+		return h.instr
 	}
-	h.includedMu.Lock()
-	defer h.includedMu.Unlock()
-	if !h.includedStale.Swap(false) && h.included.memGen == gen {
-		return h.included
-	}
-	inc := included{memGen: gen}
+	h.instr = nil
 	if root := h.Dirs.RepoRoot(); h.ProjectTrusted() && !TrustUnsaved(root) {
-		inc.instructions = []string{}
+		h.instr = []string{}
 		mine := filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
 		for _, p := range h.instructionFiles() {
 			if p == mine {
@@ -1787,45 +1784,10 @@ func (h *Host) includedData() included {
 			if rel, err := filepath.Rel(root, p); err == nil {
 				p = rel
 			}
-			inc.instructions = append(inc.instructions, p)
+			h.instr = append(h.instr, p)
 		}
 	}
-	mems, err := h.memoryList(false)
-	inc.memories = len(mems)
-	// the builtin zemi skill ships with every install: counting it is noise
-	inc.skills = len(slices.DeleteFunc(h.modelSkills(), func(s skill.Skill) bool { return s.Source == skill.Builtin }))
-	if err == nil { // a short count from a failed read is not cached
-		h.included = inc
-	}
-	return inc
-}
-
-// includedTable is ctx.included: what a send carries besides the
-// conversation. instructions is nil where project files cannot load:
-// untrusted, or $HOME and /, which are nobody's project.
-func (h *Host) includedTable(L *glua.LState) *glua.LTable {
-	inc := h.includedData()
-	tb := L.CreateTable(0, 5)
-	if inc.instructions != nil {
-		files := L.CreateTable(len(inc.instructions), 0)
-		for _, p := range inc.instructions {
-			files.Append(glua.LString(p))
-		}
-		tb.RawSetString("instructions", files)
-	}
-	tb.RawSetString("memories", glua.LNumber(inc.memories))
-	tb.RawSetString("skills", glua.LNumber(inc.skills))
-	tb.RawSetString("mcp", glua.LNumber(len(h.mcp.list())))
-	plugins := 0
-	if p := h.pluginLoads.Load(); p != nil {
-		for _, l := range *p {
-			if l.err == nil {
-				plugins++
-			}
-		}
-	}
-	tb.RawSetString("plugins", glua.LNumber(plugins))
-	return tb
+	return h.instr
 }
 
 // agentTable is ctx.agent: the live turn.
@@ -2308,7 +2270,7 @@ func (h *Host) PurgeGeneration() {
 	h.stops.purge()
 	h.mcp.park()
 	h.lsp.forget()
-	h.includedStale.Store(true)
+	h.instrStale.Store(true)
 	// An overlay left open would keep drawing with callbacks that are now
 	// dropped (staleOverlay), which reads as a frozen picker.
 	if ui := h.hooks(); ui != nil {

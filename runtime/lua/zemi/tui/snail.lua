@@ -41,24 +41,23 @@ function M.rule(state, frame, room)
 	}
 end
 
---- The column `block` sets its `beside` segments at, right of the head.
-M.MARK_COL = 13
-
---- The four-line snail at rest, for the splash and the exit banner.
----@param beside? zemi.Segment[] Up to two segments set beside the head, on its last two rows.
+--- The snail at rest and "zemi" in heavy line glyphs, the shell making the
+--- "@": four rows of 25 cells. Below 29 cells of room, one "@zemi" row.
+---@param room integer
 ---@return zemi.Line[]
-function M.block(beside)
+function M.logo(room)
+	if room < 29 then return { { { text = "@zemi", hl = "Title" } } } end
 	local shell = { "╭────╮", "│╭──╮│", "│╰──╯│", "╰────╯" }
-	local head = { "", "  ╷╷", "╭─┴┴╮", "╯   ╵" }
+	local rest = {
+		"                  ·",
+		"  ╷╷  ━━┓ ┏━┓ ┏┳┓ ╻",
+		"╭─┴┴╮ ┏━┛ ┣━┛ ┃┃┃ ┃",
+		"╯   ╵ ┗━━ ┗━━ ╹╹╹ ╹",
+	}
 	---@type zemi.Line[]
 	local rows = {}
 	for i = 1, #shell do
-		rows[i] = { { text = shell[i], hl = "Snail" }, { text = head[i], hl = "Normal" } }
-		local seg = (beside or {})[i - 2]
-		if seg then
-			rows[i][3] = { text = string.rep(" ", M.MARK_COL - zemi.ui.width(shell[i] .. head[i])), copy = false }
-			rows[i][4] = seg
-		end
+		rows[i] = { { text = shell[i], hl = "Snail" }, { text = rest[i], hl = "Normal" } }
 	end
 	return rows
 end

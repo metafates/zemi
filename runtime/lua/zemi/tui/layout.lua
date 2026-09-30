@@ -37,6 +37,7 @@ local layout = {
 					-- one, so no agent state adds or removes a row
 					{
 						kind = "composer",
+						placeholder = "Ask anything...",
 						frame = true,
 						top = "working",
 						left = "statusline.left",

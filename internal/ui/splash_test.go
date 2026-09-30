@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,9 +26,8 @@ zemi.ui.widget.add({
   render = function(ctx)
     local rows = default.splash(ctx)
     for i, row in ipairs(rows) do
-      if row[#row].text == "@zemi" then
-        table.insert(rows, i + 1, { row[1], { text = "hack the planet", hl = "Title" } })
-        break
+      if row[2] and row[2].text == "● Tip  " then
+        rows[i] = { row[1], row[2], { text = "hack the planet", hl = "Dim" } }
       end
     end
     return rows
@@ -58,15 +56,24 @@ assert(require("zemi.tui") == d, "view not cached")`
 }
 
 // TestSplashFitsShortChat: a short chat drops the recent sessions, then
-// the mascot, then the context row, instead of cutting the block's top rows.
+// the version, then the logo's art, and always keeps the tip.
 func TestSplashFitsShortChat(t *testing.T) {
-	for h, want := range map[int]string{11: "@zemi", 14: "context  ", 15: "╭────╮", 21: "3m ago"} {
-		app, _ := bootAgentApp(t, 80, h)
+	for _, c := range []struct {
+		h         int
+		want, not []string
+	}{
+		{16, []string{"3m ago", "v1", "╭────╮", "● Tip"}, nil},
+		{15, []string{"v1", "╭────╮", "● Tip"}, []string{"3m ago"}},
+		{11, []string{"╭────╮", "● Tip"}, []string{"v1"}},
+		{10, []string{"@zemi", "● Tip"}, []string{"╭────╮"}},
+	} {
+		app, _ := bootAgentApp(t, 80, c.h)
 		runLua(t, app, `
 local default = require("zemi.tui")
 zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
+    ctx.version = "v1"
     ctx.recent = { { id = "a", ago = "1m ago", title = "a" }, { id = "b", ago = "2m ago", title = "b" }, { id = "c", ago = "3m ago", title = "c" } }
     return default.splash(ctx)
   end,
@@ -75,143 +82,96 @@ zemi.ui.widget.add({
 		app.Frame() // lays out the chat, so the next render knows its height
 		app.frameGen++
 		app.renderSync(t)
-		if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, want) || strings.Contains(frame, "╭────╮") != (h > 14) {
-			t.Fatalf("%d rows: want %q\n%s", h, want, frame)
+		frame := ansi.Strip(app.Frame())
+		for _, w := range c.want {
+			if !strings.Contains(frame, w) {
+				t.Errorf("%d rows: no %q\n%s", c.h, w, frame)
+			}
+		}
+		for _, n := range c.not {
+			if strings.Contains(frame, n) {
+				t.Errorf("%d rows: %q\n%s", c.h, n, frame)
+			}
 		}
 	}
 }
 
-// TestSplashWrapsModelHint: the no-model hint names the fix, so it wraps
-// under its label instead of losing its end, and picking a model leaves the
-// block where it was.
-func TestSplashWrapsModelHint(t *testing.T) {
-	app, _ := bootAgentApp(t, 120, 30)
-	col := -1
-	for _, model := range []string{"", "a/b"} {
+// TestSplashTip: the splash ends with the first tip that applies, the long
+// no-model hint wrapped to a second row under its text, and a tip that wraps
+// moves nothing above it.
+func TestSplashTip(t *testing.T) {
+	app, _ := bootAgentApp(t, 100, 30)
+	hint := "export ANTHROPIC_API_KEY and start zemi again, or add a provider to ~/.config/zemi/init.lua"
+	logo := [2]int{-1, -1}
+	for _, c := range []struct {
+		name, ctx, want, fill string
+		moved                 bool // the logo moved: the listed rows changed
+	}{
+		{"init.lua failed", `init_error = "/cfg/init.lua:12: boom", model = ""`, "● Tip  init.lua:12 failed: /errors", "", false},
+		{"no model", `model = ""`, "● Tip  No model yet: export ANTHROPIC_API_KEY and start zemi again, or\nadd a provider to ~/.config/zemi/init.lua", "", false},
+		{"untrusted", `trusted = false`, "● Tip  /trust lets zemi read this repo's AGENTS.md and run its builds", "", false},
+		{"at home", `trusted = false, trustable = false`, "● Tip  /resume picks up the latest session", "", false},
+		{"no instruction file", `instructions = {}`, "● Tip  /init writes an AGENTS.md, so zemi knows this project", "/init", false},
+		{"other projects", `projects = { { path = "~/p", root = "/p", ago = "now" } }`, "● Tip  /projects switches to one, or type to stay here", "", false},
+		{"a first session", `recent = {}`, `● Tip  try "make the snail green": zemi configures itself`, "make the snail green", true},
+	} {
 		runLua(t, app, `
 local default = require("zemi.tui")
 zemi.ui.widget.add({
-  id = "splash", region = "chat", priority = 5,
+  id = "splash", region = "chat", priority = 5, on_click = require("zemi.tui.text").run_click,
   render = function(ctx)
-    ctx.model, ctx.model_hint = "`+model+`", "export ANTHROPIC_API_KEY and start zemi again, or add a provider to ~/.config/zemi/init.lua"
+    ctx.init_error, ctx.model, ctx.model_hint, ctx.trusted, ctx.trustable = "", "a/b", "`+hint+`", true, true
+    ctx.instructions, ctx.recent, ctx.projects = { "AGENTS.md" }, { { id = "a", ago = "1m ago", title = "a" } }, nil
+    for k, v in pairs({ `+c.ctx+` }) do
+      ctx[k] = v
+    end
     return default.splash(ctx)
   end,
 })`)
 		app.frameGen++
 		app.renderSync(t)
-		frame := ansi.Strip(app.Frame())
-		if model == "" && (!strings.Contains(frame, "none yet: export ANTHROPIC_API_KEY and start zemi again, or") || !strings.Contains(frame, "         add a provider to ~/.config/zemi/init.lua")) {
-			t.Fatalf("hint cut:\n%s", frame)
+		var rows []string
+		for r := range strings.SplitSeq(ansi.Strip(app.Frame()), "\n") {
+			rows = append(rows, strings.TrimSpace(r))
 		}
-		before, _, _ := strings.Cut(frame, "@zemi")
-		if c := len(before) - strings.LastIndex(before, "\n"); col == -1 {
-			col = c
-		} else if c != col {
-			t.Fatalf("model %q moved @zemi:\n%s", model, frame)
+		if frame := strings.Join(rows, "\n"); !strings.Contains(frame, c.want) {
+			t.Errorf("%s: want %q\n%s", c.name, c.want, frame)
 		}
-	}
-}
-
-// TestSplashContext: the context row names what a send carries; /init is
-// offered only in a trusted project with no instruction file, $HOME is
-// nobody's project, and a zero count is left out.
-func TestSplashContext(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 30)
-	proj := t.TempDir()
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []struct {
-		name      string
-		dir       string
-		trusted   bool
-		file      string
-		memory    bool
-		want, not string
-	}{
-		// the app boots with no project, so /trust has nothing to turn on; the
-		// golden frame pins an untrusted project's "instructions off until /trust"
-		{"no project", "", false, "", false, "context  no project instructions", "off until"},
-		{"no sessions", proj, true, "", false, `try      "explain this project"`, ""},
-		{"trusted", proj, true, "", false, "context  /init writes AGENTS.md", ""},
-		{"has CLAUDE.md", proj, true, "CLAUDE.md", false, "context  CLAUDE.md", "writes AGENTS.md"},
-		{"trusted home", home, true, "", false, "context  no project instructions", ""},
-		{"one memory", proj, true, "CLAUDE.md", true, "context  CLAUDE.md · 1 memory", "skill"},
-	} {
-		host.Dirs.ProjectDir = c.dir
-		host.SetProjectTrusted(c.trusted)
-		if c.file != "" {
-			if err := os.WriteFile(filepath.Join(c.dir, c.file), []byte("x"), 0o644); err != nil {
-				t.Fatal(err)
+		if x, y := findCell(t, app, "╭────╮"); logo[0] == -1 {
+			logo = [2]int{x, y}
+		} else if logo != [2]int{x, y} != c.moved {
+			t.Errorf("%s: the logo moved from %v to %d,%d", c.name, logo, x, y)
+		}
+		if c.fill != "" {
+			x, y := findCell(t, app, c.fill)
+			clickAt(app, x, y)
+			for app.Pump() {
 			}
-		}
-		if c.memory {
-			if err := host.GlobalDB.AddMemory(&store.Memory{Scope: store.ScopeUser, Text: "prefers tabs", ProvenanceSessionID: "seed", Origin: store.OriginUser}); err != nil {
-				t.Fatal(err)
+			if app.composer.text != c.fill {
+				t.Errorf("%s: a click on the tip left the composer %q", c.name, app.composer.text)
 			}
-		}
-		app.frameGen++
-		app.renderSync(t)
-		frame := ansi.Strip(app.Frame())
-		if !strings.Contains(frame, c.want) || c.not != "" && strings.Contains(frame, c.not) {
-			t.Errorf("%s: want %q, not %q\n%s", c.name, c.want, c.not, frame)
+			app.composer.text = ""
 		}
 	}
 }
 
 // TestSplashProjects: with another project known the splash lists it where
-// recent sessions go, a click on its path switches there, and with none it
-// offers what to try, which a click puts in the composer.
+// recent sessions go, and a click on its path switches there.
 func TestSplashProjects(t *testing.T) {
-	for _, c := range []struct {
-		name      string
-		other     bool
-		want, not []string
-	}{
-		{"no other project", false, []string{`try      "explain this project"`}, []string{"projects"}},
-		{"another project", true, []string{"projects", "now      ", "/projects switches, or type to stay here"}, []string{"try"}},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			app, host := bootAgentApp(t, 100, 30)
-			root := t.TempDir()
-			if c.other {
-				g, p, err := store.OpenForDirs(host.Dirs.StateHome, root)
-				if err != nil {
-					t.Fatal(err)
-				}
-				g.Close()
-				p.Close()
-				c.want = append(c.want, root[len(root)-20:]) // a long path keeps its tail
-			}
-			app.frameGen++
-			app.renderSync(t)
-			frame := ansi.Strip(app.Frame())
-			for _, w := range c.want {
-				if !strings.Contains(frame, w) {
-					t.Errorf("no %q in\n%s", w, frame)
-				}
-			}
-			for _, n := range c.not {
-				if strings.Contains(frame, n) {
-					t.Errorf("%q in\n%s", n, frame)
-				}
-			}
-			if c.other {
-				x, y := findCell(t, app, root[len(root)-20:])
-				if seg := dropCells(app.lastRows[y], x)[0]; seg.Click != "projects switch "+root || seg.Widget != "splash" {
-					t.Fatalf("the path's segment: %+v", seg)
-				}
-				return
-			}
-			x, y := findCell(t, app, "make the snail green")
-			clickAt(app, x, y)
-			for app.Pump() {
-			}
-			if app.composer.text != "make the snail green" {
-				t.Fatalf("a click on a suggestion left the composer %q", app.composer.text)
-			}
-		})
+	app, host := bootAgentApp(t, 100, 30)
+	root := t.TempDir()
+	g, p, err := store.OpenForDirs(host.Dirs.StateHome, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Close()
+	p.Close()
+	app.frameGen++
+	app.renderSync(t)
+	// a long path keeps its tail
+	x, y := findCell(t, app, root[len(root)-20:])
+	if seg := dropCells(app.lastRows[y], x)[0]; seg.Click != "projects switch "+root || seg.Widget != "splash" {
+		t.Fatalf("the path's segment: %+v", seg)
 	}
 }
 
@@ -230,9 +190,9 @@ func TestFarewell(t *testing.T) {
 		{"no messages", 80, colorprofile.TrueColor, "t", 0, false, false, nil, []string{"zemi"}},
 		// a quit during the trust prompt: that boot step never returns
 		{"booting", 80, colorprofile.TrueColor, "t", 0, false, true, nil, []string{"zemi"}},
-		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, false, []string{"@zemi", "Fix the flaky test", "╭────╮", "cost     $0.42"}, []string{"\x1b"}},
+		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, false, []string{"┗━━ ┗━━ ╹╹╹ ╹\n  Fix the flaky test\n", "╭────╮", "cost     $0.42"}, []string{"\x1b", "@zemi"}},
 		{"color", 80, colorprofile.TrueColor, "t", 0, true, false, []string{"\x1b[38;"}, []string{"[48;", ";48;2;"}},
-		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, false, []string{"  @zemi  t\n"}, []string{"╭────╮"}},
+		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, false, []string{"  @zemi\n  t\n"}, []string{"╭────╮"}},
 		{"untitled", 80, colorprofile.NoTTY, "zemi", 0, true, false, []string{"fix the build"}, []string{"more", "cost"}},
 		{"control chars", 80, colorprofile.TrueColor, "a\x1b]52;c;x\x07b", 0, true, false, []string{"  ab\n"}, []string{"\x1b]52"}},
 	} {

@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"modernc.org/sqlite"
@@ -29,13 +28,7 @@ import (
 type DB struct {
 	db   *sql.DB
 	path string // named in errors: there is a global and a per-project one
-	// memGen moves after every memory write, so a cache over the rows knows
-	// to reload without each writer marking it
-	memGen atomic.Uint64
 }
-
-// MemoryGen changes whenever a memory row was written.
-func (s *DB) MemoryGen() uint64 { return s.memGen.Load() }
 
 // Open creates the parent directory if needed and opens the database with
 // WAL journalling. Every transaction takes the write lock at BEGIN, so one

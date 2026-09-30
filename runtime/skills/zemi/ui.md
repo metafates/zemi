@@ -20,7 +20,7 @@ Lists, popups and prompts keep their keys (`/help` lists them): up, down, j, k, 
 
 A widget registered with a shipped id replaces it; a new id adds one.
 
-Shipped ids: `splash` and `chat` (region `chat`); `working` (the composer frame's top rule: the mascot and the turn status); in `statusline.left` `statusline.mode`, `statusline.quit`, `statusline.cwd`, `statusline.goal`, `statusline.loop`, `statusline.agents`, `statusline.view`, `statusline.learn`, `statusline.keys`, `statusline.scroll`; in `statusline.right` `statusline.profile`, `statusline.model`, `statusline.context`, `statusline.percent`, `statusline.cost`; `exit` (region `exit`, which no layout draws: printed to the shell on quit, foreground colors only, and only user config adds to it; `zemi.ui.widget.del("exit")` turns it off, `ctx.resume` is the command that reopens the session). zemi draws a separator between the statusline widgets that draw, so each returns its text alone. Each side fills from its outer edge inward in rising priority (the right side from the right edge), and a short row drops the highest first. So a lasting widget takes a low priority and one that comes and goes a high one, where it moves nothing, and a widget one above a shipped one's priority (`zemi.ui.widget.list()` has them) sits just inside it.
+Shipped ids: `splash` and `chat` (region `chat`); `working` (the composer frame's top rule: the mascot and the turn status); in `statusline.left` `statusline.mode`, `statusline.quit`, `statusline.cwd`, `statusline.goal`, `statusline.loop`, `statusline.agents`, `statusline.view`, `statusline.learn`, `statusline.keys`, `statusline.scroll`; in `statusline.right` `statusline.profile`, `statusline.model`, `statusline.context`, `statusline.percent`, `statusline.cost`, `statusline.hints` (the `/` and `@` keys, until the first message); `exit` (region `exit`, which no layout draws: printed to the shell on quit, foreground colors only, and only user config adds to it; `zemi.ui.widget.del("exit")` turns it off, `ctx.resume` is the command that reopens the session). zemi draws a separator between the statusline widgets that draw, so each returns its text alone. Each side fills from its outer edge inward in rising priority (the right side from the right edge), and a short row drops the highest first. So a lasting widget takes a low priority and one that comes and goes a high one, where it moves nothing, and a widget one above a shipped one's priority (`zemi.ui.widget.list()` has them) sits just inside it.
 
 Rules for `render(ctx)`:
 
@@ -33,7 +33,7 @@ Rules for `render(ctx)`:
 - A replacement statusline widget keeps its click with `on_click = function(ev) zemi.command.run(ev.id) end`. A replacement chat keeps reasoning toggles (`zemi.ui.reasoning.toggle()`), agent rows (`zemi.command.run("agents", "view " .. row.run)`) and tool output folding (keyed by the row's `tool:<idx>` click id).
 
 ```lua
--- a line under the default splash's tagline
+-- a tip of your own in place of the default splash's
 local default = require("zemi.tui")
 zemi.ui.widget.add({
 	id = "splash",
@@ -43,14 +43,8 @@ zemi.ui.widget.add({
 		if ctx.transcript_count > 0 or ctx.agent_active then return {} end
 		local rows = default.splash(ctx)
 		for i, row in ipairs(rows) do
-			if row[#row].text == "@zemi" then
-				local indent = 0
-				for j = 2, #row - 1 do
-					indent = indent + zemi.ui.width(row[j].text)
-				end
-				local line = { row[1], { text = string.rep(" ", indent), copy = false }, { text = "hack the planet", hl = "Title" } }
-				table.insert(rows, i + 2, line)
-				break
+			if row[2] and row[2].text == "● Tip  " then
+				rows[i] = { row[1], row[2], { text = "hack the planet", hl = "Dim" } }
 			end
 		end
 		return rows
@@ -90,7 +84,7 @@ Keep such state in a local, not `zemi.state`: that store is shared by every proj
 
 ## Layout
 
-`zemi.ui.layout.set({ root, floats })` in init.lua replaces `layout.lua` whole (the types file has every field). A `box` (`dir = "row"` or `"col"`, `sep`) holds `region`s, the one `composer` (with `frame = true` its square frame's `top`, `left` and `right` rules hold regions: the shipped layout keeps the mascot and the statusline there), a statusline `bar` and `spacer`s. Each is sized in cells, `"N%"`, `"fill"` (with `weight`) or `"content"`, with `min`, `max`, `hidden` and `collapse`. `stage = true` marks where prompts, overlays and toasts go; `floats` draw a region over the tree.
+`zemi.ui.layout.set({ root, floats })` in init.lua replaces `layout.lua` whole (the types file has every field). A `box` (`dir = "row"` or `"col"`, `sep`) holds `region`s, the one `composer` (with `frame = true` its square frame's `top`, `left` and `right` rules hold regions: the shipped layout keeps the mascot and the statusline there; `placeholder` is the dim text an empty draft shows), a statusline `bar` and `spacer`s. Each is sized in cells, `"N%"`, `"fill"` (with `weight`) or `"content"`, with `min`, `max`, `hidden` and `collapse`. `stage = true` marks where prompts, overlays and toasts go; `floats` draw a region over the tree.
 
 ```lua
 -- statusline on top, a todo sidebar left of the chat

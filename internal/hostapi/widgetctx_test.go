@@ -3,6 +3,7 @@ package hostapi
 import (
 	"context"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/store"
 )
 
 // TestRelpath: a chat row writes a path under the working directory
@@ -229,32 +229,26 @@ func TestTableSegments(t *testing.T) {
 	}
 }
 
-// TestIncludedCached: ctx.included reads the recipes dir and the store once,
-// not per render, and again after a memory write through this host.
-func TestIncludedCached(t *testing.T) {
+// TestInstructionsCached: ctx.instructions reads the instruction files once,
+// not per render, and again after a trust change.
+func TestInstructionsCached(t *testing.T) {
 	h, r := newTestHostSkills(t)
 	h.SetProjectTrusted(true)
 	runUser(t, r, `zemi.ui.widget.add({ id = "inc", region = "header", render = function(ctx)
-		return { { { text = ctx.included.memories .. " " .. ctx.included.skills } } }
+		return { { { text = table.concat(ctx.instructions, ",") } } }
 	end })`)
 	for _, c := range []struct {
 		name string
 		do   func()
 		want string
 	}{
-		{"first render", func() {}, "0 0"},
-		{"a recipe or another handle's memory is not reread", func() {
-			writeSkill(t, h.recipesDir(), "rig", "recipe rig", "")
-			other, err := store.Open(filepath.Join(h.Dirs.StateHome, "zemi.db"))
-			if err != nil {
+		{"first render", func() {}, ""},
+		{"a file written since is not reread", func() {
+			if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("x"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			defer other.Close()
-			if err := other.AddMemory(&store.Memory{Scope: store.ScopeUser, Text: "the user works late", ProvenanceSessionID: "seed", Origin: store.OriginLearned}); err != nil {
-				t.Fatal(err)
-			}
-		}, "0 0"},
-		{"a memory write reads again", func() { learnedMemory(t, h, store.ScopeUser, "the user prefers short replies", "") }, "2 1"},
+		}, ""},
+		{"a trust change reads again", func() { h.SetProjectTrusted(true) }, "AGENTS.md"},
 	} {
 		c.do()
 		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("inc"), 20, 1, UIState{})
@@ -262,7 +256,7 @@ func TestIncludedCached(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got := lines[0][0].Text; got != c.want {
-			t.Fatalf("%s: memories and skills %q, want %q", c.name, got, c.want)
+			t.Fatalf("%s: instructions %q, want %q", c.name, got, c.want)
 		}
 	}
 }

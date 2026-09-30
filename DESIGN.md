@@ -1733,7 +1733,8 @@ provenance string.
   over plain data, Go validates it once and solves it every frame on the Update
   goroutine, so the screen never waits on the interpreter. Boxes (row or col, optional
   separators) hold leaves: a widget region (optionally scrolled, by node id), the
-  composer (exactly one, never hidden, optionally framed with a region in each rule),
+  composer (exactly one, never hidden, optionally framed with a region in each rule,
+  with a `placeholder` an empty draft shows dim under the cursor),
   the statusline bar, a spacer.
   Each child claims cells, a percent, its content rows or a weighted fill share,
   clamped to min and max; a box too small takes cells from fill first, then percent,
@@ -1764,8 +1765,8 @@ provenance string.
   bump it when they return, and `zemi.ui.redraw()` bumps it on demand (a
   repeating timer calls it itself, so an idle tick costs nothing). A
   widget a message resized renders on that message instead, so no frame
-  draws lines rendered for another size. A render's ctx builds `transcript`, `agent`, `todos`, `recent` and
-  `included` on first read: over a 500-row transcript a widget that reads only scalars renders
+  draws lines rendered for another size. A render's ctx builds `transcript`, `agent`, `todos`, `recent`,
+  `projects` and `instructions` on first read: over a 500-row transcript a widget that reads only scalars renders
   in under 20 µs instead of 1 ms (`BenchmarkWidgetCtx`). A line table a
   widget returned is never changed by it: Go converts one it saw in the last
   render only once and wraps it only once per width, so a frame of a
@@ -1869,7 +1870,7 @@ provenance string.
   (`zemi.ui.reasoning.toggle()`), an agent tool row (`agent:<run id>`,
   from the row's `run` field, opens that run's transcript) and a tool row
   (`tool:<idx>`, expands that row); the splash's rows resume a session or
-  switch to a project, and its suggestions fill the composer (a `fill
+  switch to a project, and its tip's keys run their command or fill the composer (a `fill
   <text>` click id, which `zemi.tui.text`'s `run_click` puts there). The boot
   failed, stuck and errors pills stay Go-drawn, since they report a broken
   Lua layer that could not draw its own alarm; a click on boot failed or

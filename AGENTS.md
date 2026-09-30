@@ -625,7 +625,7 @@ and drops the pinned prompt. Invariants:
 - **Invocation**: `user-invocable` registers `/<name>` last in `MarkdownCommandsStep`, never
   over a builtin or same-origin command and over a less trusted one by `mayReplace`
   (`addSkillCommand`; a toggle reloads config to rebuild it); `disable-model-invocation` leaves
-  `modelSkills`, which feeds the index, the skill tool and `ctx.included`; recipes ignore both.
+  `modelSkills`, which feeds the index and the skill tool; recipes ignore both.
 
 ### Type annotations (internal/hostapi/types.go, runtime/types/zemi.lua)
 
@@ -1105,10 +1105,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   `App.bump`, which wakes it, and all stale widgets render as one message; a widget a message
   resized (a composer newline, a resize) renders on that message, so no frame draws lines
   rendered for another size. A render's ctx
-  builds `transcript`, `agent`, `todos`, `recent`, `projects` and `included` on first read (`widgetCtxTable`,
+  builds `transcript`, `agent`, `todos`, `recent`, `projects` and `instructions` on first read (`widgetCtxTable`,
   `BenchmarkWidgetCtx`): keep new expensive fields lazy, and cache one that reads disk or the
-  store (`recentSessions`, `splashProjects`, `includedData`, which a memory write moves through
-  `store.DB.MemoryGen`). A widget never changes a line table
+  store (`recentSessions`, `splashProjects`, `instructionsCached`). A widget never changes a line table
   it returned: `Widget.tableSegments` converts one it saw last render only once and
   `widgetCache.lineRows` wraps it once per width, and `Host.Session` shares the transcript
   rows, which are appended or replaced whole, never written in place. A render returning

@@ -257,3 +257,26 @@ for _, part in ipairs(right) do
 		end,
 	})
 end
+
+-- The two keys worth knowing, on an empty session only; innermost, so the
+-- first send takes them away without moving the model or the cost, and the
+-- first to go on a short row.
+zemi.ui.widget.add({
+	id = "statusline.hints",
+	region = "statusline.right",
+	priority = 130,
+	on_click = fmt.run_click,
+	---@param ctx zemi.WidgetCtx
+	---@return zemi.Line[]
+	render = function(ctx)
+		if ctx.transcript_count > 0 or ctx.agent_active then return {} end
+		return {
+			{
+				{ text = "/", hl = "SplashKey", click = "help" },
+				{ text = " commands  ", hl = "Dim", click = "help" },
+				{ text = "@", hl = "SplashKey" },
+				{ text = " files", hl = "Dim" },
+			},
+		}
+	end,
+})

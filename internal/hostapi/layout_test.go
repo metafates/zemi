@@ -31,6 +31,7 @@ func TestLayoutSetRefusesBadLayouts(t *testing.T) {
 		{"two stages", `{ root = { kind = "box", dir = "col", stage = true, children = { { kind = "composer", stage = true } } } }`, "one node may be the stage"},
 		{"scroll without an id", `{ root = { kind = "box", dir = "col", children = { { kind = "composer" }, { kind = "region", region = "x", scroll = "top" } } } }`, "needs an id"},
 		{"focusable without an id", `{ root = { kind = "box", dir = "col", children = { { kind = "composer" }, { kind = "region", region = "x", focusable = true } } } }`, "needs an id"},
+		{"a placeholder off the composer", `{ root = { kind = "box", dir = "col", children = { { kind = "composer" }, { kind = "region", region = "x", placeholder = "hi" } } } }`, `unknown field "placeholder"`},
 		{"a focusable box", `{ root = { kind = "box", dir = "col", id = "b", focusable = true, children = { { kind = "composer" } } } }`, `unknown field "focusable"`},
 		{"a focusable float without an id", `{ root = { kind = "box", dir = "col", children = { { kind = "composer" } } }, floats = { { region = "x", focusable = true } } }`, "needs an id"},
 		{"a float relative to nothing", `{ root = { kind = "box", dir = "col", children = { { kind = "composer" } } }, floats = { { region = "x", relative = "nope" } } }`, `relative "nope"`},

@@ -4,32 +4,6 @@ local snail = require("zemi.tui.snail")
 ---@class zemi.tui.splash
 local M = {}
 
---- Appends whole items to line, joined by sep, as many as fit in room cells.
----@param line zemi.Line
----@param items zemi.Segment[][]
----@param sep zemi.Segment
----@param room integer
----@return integer used cells of line
-local function fill(line, items, sep, room)
-	local used = 0
-	for _, s in ipairs(line) do
-		used = used + fmt.cells(s.text)
-	end
-	for i, item in ipairs(items) do
-		local w = i > 1 and fmt.cells(sep.text) or 0
-		for _, s in ipairs(item) do
-			w = w + fmt.cells(s.text)
-		end
-		if used + w > room then break end
-		used = used + w
-		if i > 1 then line[#line + 1] = sep end
-		for _, s in ipairs(item) do
-			line[#line + 1] = s
-		end
-	end
-	return used
-end
-
 --- Cuts a path that is wider than w cells to its tail, where its name is.
 ---@param path string
 ---@param w integer
@@ -44,174 +18,173 @@ local function tail(path, w)
 	return "…" .. table.concat(chars, "", #chars - w + 2)
 end
 
---- The splash rows: the mascot and wordmark, what zemi will run with, recent sessions
---- to pick up and the keys worth knowing, centered in ctx.width by ctx.height.
+--- Flows segments after an indent cells wide into at most two rows of room
+--- cells, breaking between words; the second row starts at the indent too.
+---@param segs zemi.Segment[]
+---@param room integer
+---@param indent integer
+---@return zemi.Line[]
+local function flow(segs, room, indent)
+	---@type zemi.Line[]
+	local rows = { {} }
+	local w = indent
+	for _, s in ipairs(segs) do
+		for word in s.text:gmatch("%s*%S+%s*") do
+			if w > indent and w + fmt.cells((word:gsub("%s+$", ""))) > room then
+				if #rows == 2 then
+					local last = rows[2][#rows[2]]
+					last.text = last.text:gsub("%s+$", "") .. "…"
+					return rows
+				end
+				rows[2] = { { text = string.rep(" ", indent), copy = false } }
+				w = indent
+				word = word:gsub("^%s+", "")
+			end
+			local row = rows[#rows]
+			row[#row + 1] = { text = word, hl = s.hl, click = s.click }
+			w = w + fmt.cells(word)
+		end
+	end
+	return rows
+end
+
+--- The one tip the splash ends with: the first that applies of a failed
+--- init.lua, no model, an untrusted repository, no instruction file, a
+--- first session, else how to go on.
+---@param ctx zemi.WidgetCtx
+---@param listed boolean Recent sessions or projects are listed.
+---@return zemi.Segment[]
+local function tip(ctx, listed)
+	---@param text string
+	---@param click string
+	---@return zemi.Segment
+	local function key(text, click) return { text = text, hl = "SplashKey", click = click } end
+	---@param text string
+	---@return zemi.Segment
+	local function dim(text) return { text = text, hl = "Dim" } end
+	if ctx.init_error ~= "" then
+		local at = ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua"
+		return { { text = at .. " failed: ", hl = "Danger" }, key("/errors", "errors") }
+	elseif ctx.model == "" then
+		return { dim("No model yet: " .. ctx.model_hint) }
+	elseif not ctx.trusted and ctx.trustable then
+		return { key("/trust", "trust"), dim(" lets zemi read this repo's AGENTS.md and run its builds") }
+	elseif ctx.instructions and #ctx.instructions == 0 then
+		return { key("/init", "fill /init"), dim(" writes an AGENTS.md, so zemi knows this project") }
+	elseif not listed then
+		-- zemi is configured by asking it, which no other screen says
+		return {
+			dim("try "),
+			key('"make the snail green"', "fill make the snail green"),
+			dim(": zemi configures itself"),
+		}
+	elseif ctx.projects then
+		return { key("/projects", "projects"), dim(" switches to one, or type to stay here") }
+	end
+	return { key("/resume", "resume"), dim(" picks up the latest session") }
+end
+
+--- Cells of a line.
+---@param line zemi.Line
+---@return integer
+local function cells(line)
+	local w = 0
+	for _, s in ipairs(line) do
+		w = w + fmt.cells(s.text)
+	end
+	return w
+end
+
+--- The splash rows: the logo, recent sessions to pick up and one tip, each
+--- group centered in ctx.width and the whole a little below the middle of
+--- ctx.height, near the composer.
 ---@param ctx zemi.WidgetCtx
 ---@return zemi.Line[]
 function M.render(ctx)
-	-- the block is at most 72 cells wide and keeps a 2-cell gutter, so long
-	-- paths clip instead of pushing the logo against the edge
-	---@type integer, zemi.Line[]
-	local width, rows = ctx.width or 80, {}
-	local maxw = math.min(width - 4, 72)
-	---@param segs zemi.Line
-	local function row(segs) rows[#rows + 1] = segs end
-	local ver = (ctx.version or "") ~= "" and (ctx.version .. " · ") or ""
-	local mark = { text = "@zemi", hl = "Title" }
-	local tag = { text = ver .. "context included", hl = "Comment" }
-	---@type zemi.Line
-	local tip = {}
-	local tipw = fill(tip, {
-		{ { text = "/", hl = "SplashKey" }, { text = " commands", hl = "Comment" } },
-		{ { text = "@", hl = "SplashKey" }, { text = " attach or drop files", hl = "Comment" } },
-		{ { text = "!", hl = "SplashKey" }, { text = " shell", hl = "Comment" } },
-		{ { text = "/help", hl = "SplashKey" }, { text = " keys", hl = "Comment" } },
-	}, { text = "   " }, maxw)
-	-- centered on the static rows (the wordmark beside the snail, the tips)
-	-- with every value row clipped to the room right of them, so no value
-	-- change (a model pick, a count, a title) moves the block
-	local pad =
-		math.max(0, math.floor((width - math.min(maxw, math.max(tipw, snail.MARK_COL + fmt.cells(tag.text)))) / 2))
-	local room = math.min(maxw, width - pad - 2)
-
-	-- a short chat drops the recent sessions first, then the mascot, then the
-	-- context row, so the bottom-anchored chat never cuts the block's first
-	-- rows (it shows height - 1 of them)
+	local width = ctx.width or 80
+	-- the chat is bottom-anchored and shows height - 1 of these rows
+	local fit = (ctx.height or 0) - 1
+	local room = math.max(math.min(width - 4, 72), 1)
 	-- where zemi is rarely the pick (~, /, a new dir outside a repository) Go
-	-- sets projects to switch to, which take the recent block's place and shape
-	local projects = ctx.projects
-	local recent, fit = projects or ctx.recent or {}, (ctx.height or 0) > 0 and ctx.height - 1 or math.huge
-	-- taken before the fit check empties recent: a project with sessions never shows it
-	local try = #recent == 0
-	-- the no-model hint names its fix, so it wraps under its label instead of clipping
-	local models = zemi.ui.wrap(ctx.model ~= "" and ctx.model or ("none yet: " .. ctx.model_hint), room - 9)
-	if ctx.init_error ~= "" then
-		models = {
-			{ { text = (ctx.init_error:match("([^/%s:]+:%d+):") or "init.lua") .. " failed: /errors", hl = "Danger" } },
+	-- sets projects to switch to, which take the recent sessions' place
+	local recent = ctx.projects or ctx.recent or {}
+	local tips = flow(tip(ctx, #recent > 0), room, 7)
+	table.insert(tips[1], 1, { text = "● Tip  ", hl = "Accent", copy = false })
+	local version = ctx.version or ""
+
+	-- a short chat drops the recent rows, then the version, then the logo's art
+	local logo = snail.logo(room)
+	local function count() return #logo + (version ~= "" and 1 or 0) + (#recent > 0 and #recent + 1 or 0) + 1 + #tips end
+	if count() > fit then recent = {} end
+	if count() > fit then version = "" end
+	if count() > fit then logo = snail.logo(0) end
+	local n = count()
+
+	if version ~= "" then
+		logo[#logo + 1] = {
+			{ text = string.rep(" ", math.max(cells(logo[1]) - fmt.cells(version), 0)), copy = false },
+			{ text = version, hl = "Dim" },
 		}
 	end
-	local base = 9 + #models
-	local extra = #recent > 0 and #recent + 3 or 1
-	if base + extra > fit then
-		recent, try, extra = {}, false, 0
-	end
-	local mascot, showctx = width >= 36 and base + extra <= fit, base - 2 <= fit
-	if mascot then
-		for _, r in ipairs(snail.block({ mark, tag })) do
-			row(r)
-		end
-	else
-		row({ mark })
-		row({ tag })
-	end
-	row({ { text = "" } })
-	for i, segs in ipairs(models) do
-		table.insert(segs, 1, fmt.label(i == 1 and "model" or ""))
-		row(segs)
-	end
-	row({ fmt.label("project"), { text = tail(ctx.cwd or "", room - 10), hl = "Normal" } })
-	-- built only when shown: ctx.included reads the store when its cache went stale
-	if showctx then
-		local inc = ctx.included
-		---@type zemi.Segment[][]
-		local parts = {}
-		-- the first part is always there, so no count change adds or removes the row
-		local files = inc.instructions
-		if not files and not ctx.trusted and ctx.trustable then
-			parts[1] = { { text = "instructions off until ", hl = "Comment" }, { text = "/trust", hl = "SplashKey" } }
-		elseif not files then
-			parts[1] = { { text = "no project instructions", hl = "Comment" } }
-		elseif #files == 0 then
-			parts[1] = { { text = "/init", hl = "SplashKey" }, { text = " writes AGENTS.md", hl = "Comment" } }
-		else
-			parts[1] = {
-				{
-					text = #files == 1 and files[1] or fmt.count(#files, "instruction file", "instruction files"),
-					hl = "Normal",
-				},
+	---@type zemi.Line[][]
+	local groups = { logo }
+	if #recent > 0 then
+		-- titles left, ages right, across one width
+		local w = math.min(room, 56)
+		---@type zemi.Line[]
+		local rows = {}
+		for _, r in ipairs(recent) do
+			local ago = fmt.cells(r.ago)
+			local label = ctx.projects and tail(r.path, w - ago - 2) or (r.title ~= "" and r.title) or "(untitled)"
+			label = fmt.clip(label, w - ago - 2)
+			local click = ctx.projects and ("projects switch " .. r.root) or ("resume " .. r.id)
+			rows[#rows + 1] = {
+				{ text = label, hl = "Normal", click = click },
+				{ text = string.rep(" ", w - fmt.cells(label) - ago), copy = false },
+				{ text = r.ago, hl = "Dim" },
 			}
 		end
-		for _, c in ipairs({
-			{ inc.memories, "memory", "memories" },
-			{ inc.skills, "skill", "skills" },
-			{ inc.mcp, "mcp server", "mcp servers" },
-			{ inc.plugins, "plugin", "plugins" },
-		}) do
-			if c[1] > 0 then parts[#parts + 1] = { { text = fmt.count(c[1], c[2], c[3]), hl = "Normal" } } end
-		end
-		---@type zemi.Line
-		local context = { fmt.label("context") }
-		fill(context, parts, { text = " · ", hl = "Comment" }, room)
-		row(context)
+		groups[#groups + 1] = rows
 	end
-	if try then
-		-- zemi is configured by asking it, which no other screen says
-		---@type zemi.Line
-		local line = { fmt.label("try") }
-		---@type zemi.Segment[][]
-		local tries = {}
-		for _, s in ipairs({ "explain this project", "make the snail green" }) do
-			tries[#tries + 1] = { { text = '"' .. s .. '"', hl = "Normal", click = "fill " .. s } }
-		end
-		fill(line, tries, { text = " · ", hl = "Comment" }, room)
-		row(line)
-	end
-	if #recent > 0 then
-		row({ { text = "" } })
-		row({ { text = projects and "projects" or "recent", hl = "Title" } })
-		for _, r in ipairs(recent) do
-			local label = projects and tail(r.path, room - 11) or (r.title ~= "" and r.title) or "(untitled)"
-			local click = projects and ("projects switch " .. r.root) or ("resume " .. r.id)
-			row({
-				{ text = string.format("  %-8s ", r.ago), hl = "Comment" },
-				{ text = label, hl = "Normal", click = click },
-			})
-		end
-		if projects then
-			row({
-				{ text = "  /projects", hl = "SplashKey" },
-				{ text = " switches, or type to stay here", hl = "Comment" },
-			})
-		else
-			row({
-				{ text = "  /resume", hl = "SplashKey" },
-				{ text = " continues the latest, ", hl = "Comment" },
-				{ text = "/sessions", hl = "SplashKey" },
-				{ text = " lists them", hl = "Comment" },
-			})
-		end
-	end
-	row({ { text = "" } })
-	row(tip)
+	groups[#groups + 1] = tips
 
-	-- rows stay left-aligned to each other, clipped so a narrow window never wraps the logo
+	-- a little below the middle, near the composer, and placed as if the tip
+	-- were one row, so a tip that wraps moves nothing above it
+	local top = math.floor((fit - n + #tips - 1) / 2) + 2
 	---@type zemi.Line[]
 	local out = {}
-	local top = math.max(0, math.floor(((ctx.height or 0) - #rows) / 2))
-	for _ = 1, top do
+	for _ = 1, math.min(top, fit - n - 1) do
 		out[#out + 1] = { { text = "" } }
 	end
-	for _, r in ipairs(rows) do
-		---@type integer, zemi.Line
-		local n, clipped = 0, { { text = string.rep(" ", pad), copy = false } }
-		for _, seg in ipairs(r) do
-			local left = room - n
-			if left <= 0 then break end
-			local text = fmt.clip(seg.text, left)
-			clipped[#clipped + 1] = { text = text, hl = seg.hl, click = seg.click }
-			n = n + fmt.cells(text)
+	for g, rows in ipairs(groups) do
+		if g > 1 then out[#out + 1] = { { text = "" } } end
+		-- each group centered whole, its rows left-aligned to each other
+		local w = 0
+		for _, r in ipairs(rows) do
+			w = math.max(w, cells(r))
 		end
-		out[#out + 1] = clipped
+		local pad = { text = string.rep(" ", math.max(0, math.floor((width - math.min(w, room)) / 2))), copy = false }
+		for _, r in ipairs(rows) do
+			-- clipped so a narrow window never wraps a row
+			---@type integer, zemi.Line
+			local used, line = 0, { pad }
+			for _, s in ipairs(r) do
+				if used >= room then break end
+				local text = fmt.clip(s.text, room - used)
+				line[#line + 1] = { text = text, hl = s.hl, click = s.click, copy = s.copy }
+				used = used + fmt.cells(text)
+			end
+			out[#out + 1] = line
+		end
 	end
-	-- the chat is bottom-anchored: trailing rows keep the block centered
-	for _ = 1, math.max(0, (ctx.height or 0) - top - #rows - 1) do
+	for _ = #out + 1, fit do
 		out[#out + 1] = { { text = "" } }
 	end
 	return out
 end
 
 -- Register a widget with id "splash" in init.lua to replace it (ctx carries
--- version, model, cwd, included, recent, projects, width and height).
+-- version, model, cwd, instructions, recent, projects, width and height).
 zemi.ui.widget.add({
 	id = "splash",
 	region = "chat",

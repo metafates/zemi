@@ -806,14 +806,6 @@ function zemi.event.stats() end
 ---@field root string The project root, absolute: what `/projects switch` takes.
 ---@field ago string When zemi was last used there: "now", "5m ago", "2d ago".
 
---- What a send carries besides the conversation.
----@class zemi.Included
----@field instructions? string[] The project's instruction files, repo-relative; empty when it has none (what /init writes), nil when untrusted or at $HOME or /.
----@field memories integer Live memories of both scopes.
----@field skills integer Enabled skills other than the builtin ones.
----@field mcp integer MCP servers configured.
----@field plugins integer Plugins that loaded without an error.
-
 ---@alias zemi.TodoStatus
 ---| "pending"
 ---| "in_progress"
@@ -855,7 +847,7 @@ function zemi.event.stats() end
 --- render must be pure and finish in about 10 ms: only the read-only
 --- `zemi.*` calls other than `zemi.fs.*` and a handle's `wait` work inside
 --- it, any other raises. `transcript`, `agent`, `todos`, `recent`, `projects` and
---- `included` are built on first read, so a widget that does
+--- `instructions` are built on first read, so a widget that does
 --- not read them does not pay for them; kept past the render, a ctx reads
 --- nil for the ones render did not read.
 ---@class zemi.WidgetCtx
@@ -887,7 +879,7 @@ function zemi.event.stats() end
 ---@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
 ---@field projects? zemi.RecentProject[] The three projects zemi started in last besides this one, newest first; only while the transcript is empty and zemi runs in ~, / or outside a repository with no session here.
 ---@field resume string The shell command that reopens this session: from its project, or with the -C dir this run started with; "" before the first send.
----@field included zemi.Included What a send carries. Cached: rebuilt after a boot or reload, a trust change, a new session, a skill toggle or recipe delete, and a memory write.
+---@field instructions? string[] The project's instruction files, repo-relative; empty when it has none (what /init writes), nil when untrusted or at $HOME or /. Cached: read again after a boot or reload, a trust change and a new session.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean
@@ -1139,6 +1131,7 @@ function zemi.ui.widget.list() end
 ---@field top? string Region name; needs `frame`. Drawn flush from the left corner at `ctx.width` cells, the whole rule: a widget fills it with its own "─" in `Rule`, or leaves the rest to zemi.
 ---@field left? string Region name; needs `frame`.
 ---@field right? string Region name; needs `frame`.
+---@field placeholder? string Drawn dim under the cursor while the draft is empty; the first key typed replaces it.
 
 ---@class zemi.LayoutSpacer: zemi.LayoutBase
 ---@field kind "spacer"

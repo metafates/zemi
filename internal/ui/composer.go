@@ -377,8 +377,9 @@ const composerMaxRows = 8
 // composerRows renders the composer as visual rows wrapped to width w:
 // "> " on the first row, "  " on continuations, the cursor cell placed in
 // the cursor row. At most composerMaxRows rows are shown, scrolled to keep the
-// cursor row visible.
-func (a *App) composerRows(w int) [][]hostapi.Segment {
+// cursor row visible. An empty draft shows placeholder dim under the cursor,
+// where typing replaces it without moving a cell.
+func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 	// one cell stays free for the cursor mark at the end of a full row
 	cursorRow, cursorCol, rows, soft := a.wrapComposer(w - 3)
 	start := max(0, cursorRow-composerMaxRows+1)
@@ -405,9 +406,20 @@ func (a *App) composerRows(w int) [][]hostapi.Segment {
 			p, hl = prefix, promptHL
 		}
 		segs := []hostapi.Segment{{Text: p, HL: hl, NoCopy: true}}
-		if i == cursorRow && a.focusedNode() == "" { // no cursor while a node has the keys
+		focused := a.focusedNode() != "" // no cursor while a node has the keys
+		switch {
+		case a.composer.text == "" && placeholder != "":
+			hint := []hostapi.Segment{{Text: placeholder, HL: "Dim"}}
+			if !focused {
+				hint = cursorSegs([]rune(placeholder), 0, "Dim")
+			}
+			for j := range hint {
+				hint[j].NoCopy = true
+			}
+			segs = append(segs, hint...)
+		case i == cursorRow && !focused:
 			segs = append(segs, cursorSegs(rows[i], min(cursorCol, len(rows[i])), "Normal")...)
-		} else {
+		default:
 			segs = append(segs, hostapi.Segment{Text: string(rows[i]), HL: "Normal"})
 		}
 		segs[len(segs)-1].Soft = soft[i] // a wrapped row copies as one line
@@ -457,7 +469,7 @@ func (a *App) composerFrame(n *hostapi.LayoutNode, w int) [][]hostapi.Segment {
 		}
 	}
 	rows := [][]hostapi.Segment{rule("┌", "┐", hl, top, nil, w)}
-	for _, r := range a.composerRows(inner) {
+	for _, r := range a.composerRows(inner, n.Placeholder) {
 		row := append([]hostapi.Segment{{Text: "│ ", HL: hl, NoCopy: true}}, truncateSegs(r, inner)...)
 		rows = append(rows, append(padSegs(row, w-2), hostapi.Segment{Text: " │", HL: hl, NoCopy: true}))
 	}

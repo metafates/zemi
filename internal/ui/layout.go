@@ -284,9 +284,9 @@ func (a *App) measure(n *hostapi.LayoutNode, width int) int {
 		return len(a.regionLines(n.Region, regionWidth(n, width)))
 	case hostapi.LayoutComposer:
 		if n.Frame {
-			return len(a.composerRows(frameInner(width))) + 2
+			return len(a.composerRows(frameInner(width), n.Placeholder)) + 2
 		}
-		return len(a.composerRows(width))
+		return len(a.composerRows(width, n.Placeholder))
 	case hostapi.LayoutBar:
 		return 1
 	case hostapi.LayoutBox, hostapi.LayoutSpacer:
@@ -391,7 +391,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	case n.Kind == hostapi.LayoutComposer && n.Frame:
 		rows = a.composerFrame(n, w)
 	case n.Kind == hostapi.LayoutComposer:
-		rows = a.composerRows(w)
+		rows = a.composerRows(w, n.Placeholder)
 	case n.Kind == hostapi.LayoutBar:
 		rows = [][]hostapi.Segment{a.statusRow(w, n.Left, n.Right)}
 	}

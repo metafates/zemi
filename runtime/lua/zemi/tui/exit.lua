@@ -1,4 +1,4 @@
--- What zemi prints to the shell when it quits: the snail, the session's title
+-- What zemi prints to the shell when it quits: the logo, the session's title
 -- and the command that resumes it. A session with no messages prints nothing.
 -- A printed run (zemi run) opens with its prompt row, so it gets no banner.
 local fmt = require("zemi.tui.text")
@@ -27,14 +27,10 @@ zemi.ui.widget.add({
 					end
 				end
 			end
-			local mark = { text = "@zemi", hl = "Title" }
-			if ctx.width >= 36 then
-				for _, r in ipairs(snail.block({ mark, { text = fmt.clip(title, ctx.width - snail.MARK_COL - 4) } })) do
-					rows[#rows + 1] = r
-				end
-			else
-				rows[#rows + 1] = { mark, { text = "  " .. fmt.clip(title, ctx.width - 11) } }
+			for _, r in ipairs(snail.logo(ctx.width - 4)) do
+				rows[#rows + 1] = r
 			end
+			if title ~= "" then rows[#rows + 1] = { { text = fmt.clip(title, ctx.width - 4) } } end
 			rows[#rows + 1] = blank
 		end
 		rows[#rows + 1] = { fmt.label("resume"), { text = ctx.resume, hl = "SplashKey" } }

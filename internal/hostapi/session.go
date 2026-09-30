@@ -285,7 +285,7 @@ func (h *Host) closeSession(open func()) error {
 	}
 	prev, reports := ag.sessionID, ag.steering
 	h.recentStale.Store(true)
-	h.includedStale.Store(true) // the session may have written instructions or recipes
+	h.instrStale.Store(true) // the session may have written instructions
 	// turnMsgID too: a write arriving late would checkpoint against a
 	// message of the session just closed
 	ag.sessionID, ag.runner, ag.steering, ag.turnMsgID = "", nil, nil, ""

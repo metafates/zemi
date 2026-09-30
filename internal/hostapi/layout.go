@@ -10,6 +10,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/sanitize"
 )
 
 // SizeKind is how a layout node claims cells along its parent box's axis.
@@ -91,8 +92,9 @@ type LayoutNode struct {
 	Focusable   bool       // region: can take keys (zemi.ui.focus), by its id
 	Left, Right string     // bar, framed composer: the regions of its left and right clusters
 
-	Frame bool   // composer: a square frame around it, two rows taller
-	Top   string // framed composer: the region drawn in its top rule
+	Frame       bool   // composer: a square frame around it, two rows taller
+	Top         string // framed composer: the region drawn in its top rule
+	Placeholder string // composer: drawn dim while the draft is empty
 
 	Stage    bool // prompts, overlays, toasts, popups and centered floats go over this node
 	Hidden   bool
@@ -178,7 +180,7 @@ var DefaultLayout = &Layout{Root: &LayoutNode{Kind: LayoutBox, Dir: DirRow, Sep:
 			{ID: "chat", Kind: LayoutRegion, Region: "chat", Scroll: EdgeBottom, Size: Size{Kind: SizeFill}, Min: 3},
 		}},
 		{Kind: LayoutSpacer, Size: Size{Kind: SizeCells, N: 1}},
-		{Kind: LayoutComposer, Frame: true, Top: "working", Left: "statusline.left", Right: "statusline.right"},
+		{Kind: LayoutComposer, Placeholder: "Ask anything...", Frame: true, Top: "working", Left: "statusline.left", Right: "statusline.right"},
 	}},
 }}}
 
@@ -495,8 +497,9 @@ func (p *layoutParser) node(v any, at string, depth int, dir LayoutDir, hiddenAb
 		}
 		n.Left, n.Right = str("left"), str("right")
 	case LayoutComposer:
-		err = onlyKeys(m, at, append(common, "frame", "top", "left", "right")...)
+		err = onlyKeys(m, at, append(common, "frame", "top", "left", "right", "placeholder")...)
 		n.Frame, n.Top, n.Left, n.Right = flag("frame"), str("top"), str("left"), str("right")
+		n.Placeholder = sanitize.String(str("placeholder"))
 		p.composers++
 		switch {
 		case err != nil:

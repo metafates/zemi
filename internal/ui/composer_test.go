@@ -188,9 +188,43 @@ func TestComposerHiddenRows(t *testing.T) {
 	app.composer.text = strings.Repeat("line\n", 9) + "end"
 	for cursor, want := range map[int]string{0: "  … 2 more lines", len(app.composer.text): "  … 2 more lines above"} {
 		app.composer.cursor = cursor
-		rows := app.composerRows(40)
+		rows := app.composerRows(40, "")
 		if len(rows) != composerMaxRows+1 || plainSegs(rows[len(rows)-1]) != want {
 			t.Fatalf("cursor %d: rows %d, last %q", cursor, len(rows), plainSegs(rows[len(rows)-1]))
+		}
+	}
+}
+
+// TestComposerPlaceholder: an empty draft shows the placeholder dim under
+// the cursor and left out of a copy; the first typed rune takes the cell the
+// cursor was on.
+func TestComposerPlaceholder(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.focusables = []string{"side"}
+	for _, c := range []struct {
+		name, text, focus, want string
+		cursor                  int // the cursor cell's column, -1 for none
+	}{
+		{"empty", "", "", "> Ask anything", 2},
+		{"typed", "h", "", "> h", 3},
+		{"command draft", "/", "", "/", 2},
+		{"a node has the keys", "", "side", "> Ask anything", -1},
+	} {
+		app.composer.text, app.composer.cursor = c.text, len(c.text)
+		app.host.SetFocus(c.focus)
+		segs := app.composerRows(40, "Ask anything")[0]
+		cursor, col := -1, 0
+		for i, s := range segs {
+			if s.HL == hostapi.ChromeCursor {
+				cursor = col
+			}
+			if i > 0 && c.text == "" && (!s.NoCopy || s.HL != "Dim" && s.HL != hostapi.ChromeCursor) {
+				t.Errorf("%s: placeholder segment %+v copies or reads as text", c.name, s)
+			}
+			col += ansi.StringWidth(s.Text)
+		}
+		if got := strings.TrimRight(plainSegs(segs), " "); got != c.want || cursor != c.cursor {
+			t.Errorf("%s: row %q, cursor at %d; want %q at %d", c.name, got, cursor, c.want, c.cursor)
 		}
 	}
 }
@@ -200,12 +234,12 @@ func TestComposerHiddenRows(t *testing.T) {
 func TestComposerGutter(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.composer.text = "one\ntwo"
-	rows := app.composerRows(40)
+	rows := app.composerRows(40, "")
 	if len(rows) != 2 || rows[0][0].Text != "> " || rows[1][0].Text != "│ " {
 		t.Fatalf("rows %+v", rows)
 	}
 	app.composer.text = "!ls"
-	if got := app.composerRows(40)[0][0]; got.Text != "! " || got.HL != "PromptShell" {
+	if got := app.composerRows(40, "")[0][0]; got.Text != "! " || got.HL != "PromptShell" {
 		t.Fatalf("shell prompt %+v", got)
 	}
 }
