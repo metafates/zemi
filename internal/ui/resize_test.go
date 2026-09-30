@@ -190,7 +190,8 @@ func TestStaleRenderKeepsNewerLines(t *testing.T) {
 
 // TestModeSwitchQuiet: a mode switch only changes the pill, and a
 // picker opens by the statusline instead of mid-chat, its border in line
-// with the composer frame on the side of the pill that opened it.
+// with the composer frame on the side of the pill that opened it, standing
+// on the frame's top rule.
 func TestModeSwitchQuiet(t *testing.T) {
 	a := newTestApp(t, t.TempDir())
 	a.Update(tea.WindowSizeMsg{Width: 100, Height: 16})
@@ -206,13 +207,13 @@ func TestModeSwitchQuiet(t *testing.T) {
 		rows := strings.Split(ansi.Strip(a.Frame()), "\r\n")
 		edge := func(row string) bool {
 			if anchor == hostapi.OverlayBottomLeft {
-				return strings.HasPrefix(row, "┌ Permission mode") || strings.HasPrefix(row, "└─")
+				return strings.HasPrefix(row, "┌ Permission mode") || strings.HasPrefix(row, "├─")
 			}
-			return strings.HasSuffix(row, "┐") || strings.HasSuffix(row, "─┘")
+			return strings.HasSuffix(row, "┐") || strings.HasSuffix(row, "┤")
 		}
 		top := slices.IndexFunc(rows, func(row string) bool { return strings.Contains(row, "Permission mode") })
-		if last := a.stage.Max.Y - 1; top < 0 || !edge(rows[top]) || !edge(rows[last]) {
-			t.Fatalf("%s: picker rows %d and %d not in line with the composer frame:\n%s", anchor, top, last, strings.Join(rows, "\n"))
+		if rule := a.LayoutRects()["composer"].Y; top < 0 || !edge(rows[top]) || !edge(rows[rule]) {
+			t.Fatalf("%s: picker rows %d and %d not in line with the composer frame:\n%s", anchor, top, rule, strings.Join(rows, "\n"))
 		}
 		a.closeOverlayByID("mode")
 	}

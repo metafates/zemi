@@ -1610,7 +1610,8 @@ provenance string.
   Overlays float, centered or anchored (`anchor = "bottom-left"` or
   `"bottom-right"`: over the statusline, the border in line with the
   composer frame on the side of the pill that opened it: `/mode` left,
-  `/profile`, `/model` and `/usage` right). A Lua overlay has
+  `/profile`, `/model` and `/usage` right; the box stands on the frame,
+  whose top rule is its bottom border). A Lua overlay has
   every field a Go-built menu uses (`anchor`, `selected`, a `body` of
   styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
@@ -1746,9 +1747,10 @@ provenance string.
   hide what they show). `/reload` keeps drawing the old layout until the replay sets
   one; a replay that sets none draws the Go copy of the default (`hostapi.DefaultLayout`).
   Go keeps the §8 chrome whatever the tree says: prompts and overlays center over the
-  stage node, or the whole screen when it is under 40 by 12; toasts stack in the stage;
-  completion popups go over the stage's bottom when it is above the composer, else beside
-  the composer on the side with room; Lua floats never cover the composer or the alarm
+  stage node, or the whole screen when it is under 40 by 12; toasts stack in the stage,
+  each top border the bottom one of the toast above; completion popups stand on the
+  composer's top rule at the stage's bottom when the stage is above the composer, else go
+  beside the composer on the side with room; Lua floats never cover the composer or the alarm
   pills, and without a bar the pills float at the bottom-left. A scrolled region
   keeps its last column for a thin scrollbar and a blank before it, and its widgets
   render two cells narrower, so the bar appearing covers and rewraps nothing and chat

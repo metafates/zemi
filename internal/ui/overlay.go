@@ -1044,24 +1044,32 @@ func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hos
 
 // anchorBottom lays box over the bottom rows of area with its border in
 // line with frame's left or right edge: the composer frame whose
-// statusline pill opened it. What it does not cover stays visible, one
-// cell off its inner side. It reports the cells the box took.
+// statusline pill opened it. Where the frame's top rule is at most a row
+// under area and wider than the box, the box stands on it: the rule is its
+// bottom border, joined at its edges (App.join). What it does not cover
+// stays visible, one cell off its inner side. It reports the cells the box
+// took, that border included.
 func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, right bool, w int) ([][]hostapi.Segment, uv.Rectangle) {
-	bottom := min(area.Max.Y, len(rows))
-	y0 := max(area.Min.Y, bottom-len(box))
 	bw := hostapi.SegsWidth(box[0])
 	x := frame.Min.X
 	if right {
 		x = max(frame.Max.X-bw, 0)
 	}
-	for i := y0; i < bottom; i++ {
+	end, drawn := min(area.Max.Y, len(rows)), len(box)
+	if gap := frame.Min.Y - area.Max.Y; gap >= 0 && gap <= 1 && frame.Min.Y < len(rows) && x >= frame.Min.X && x+bw <= frame.Max.X &&
+		slices.ContainsFunc(rows[frame.Min.Y], func(s hostapi.Segment) bool { return s.Line }) {
+		// NOTE: an edge that lands on the rule's text (the working label) ends there with no junction
+		end, drawn = frame.Min.Y+1, len(box)-1
+	}
+	y0 := max(area.Min.Y, end-len(box))
+	for i := y0; i < end && i-y0 < drawn; i++ {
 		if right {
 			rows = placeBox(rows, [][]hostapi.Segment{append([]hostapi.Segment{{Text: " "}}, box[i-y0]...)}, x-1, i, w)
 		} else {
 			rows = placeBox(rows, [][]hostapi.Segment{append(slices.Clip(box[i-y0]), hostapi.Segment{Text: " "})}, x, i, w)
 		}
 	}
-	return rows, uv.Rect(x, y0, bw, max(bottom-y0, 0))
+	return rows, uv.Rect(x, y0, bw, max(end-y0, 0))
 }
 
 // margined holds what a box does not cover one cell off each border, so it

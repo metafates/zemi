@@ -944,13 +944,8 @@ func (a *App) compose(w, h int) string {
 	a.focusables = slices.DeleteFunc(lay.focusable, func(id string) bool { _, ok := lay.rects[id]; return !ok })
 
 	var pop uv.Rectangle
-	var popup [][]hostapi.Segment
-	var popX int
 	if a.focusedNode() == "" { // the composer's popups follow its keys
-		popup, popX, pop = a.floatPopup(lay, len(rows))
-	}
-	for i, line := range popup {
-		placeBox(rows, [][]hostapi.Segment{line}, popX, pop.Min.Y+i, w)
+		pop = a.floatPopup(rows, lay, w)
 	}
 	if pills := a.pills(); !lay.bar && len(pills) > 0 {
 		// without a statusline the alarms still show
@@ -995,21 +990,27 @@ func (a *App) compose(w, h int) string {
 		splice(a.permBox(a.permAsk, area.Dx(), area.Dy()))
 	}
 	// Toasts stack down from the top of the stage, newest highest,
-	// right-aligned over the rows they cover, one blank row apart. They go
-	// over the dimmed rows but under the top box: a toast is not dimmed, and
-	// its text never covers the chrome the user answers.
+	// right-aligned over the rows they cover, each top border the bottom one
+	// of the toast above. They go over the dimmed rows but under the top box:
+	// a toast is not dimmed, and its text never covers the chrome the user
+	// answers.
 	toasts := func() {
-		y := stage.Min.Y
+		y, above := stage.Min.Y, stage.Max.X
 		for _, v := range slices.Backward(a.toasts) {
-			for _, line := range toastBox(v, stage.Dx()) {
+			box := toastBox(v, stage.Dx())
+			x0 := max(stage.Min.X, stage.Max.X-hostapi.SegsWidth(box[0])-2)
+			for i, line := range box {
 				if y >= stage.Max.Y {
-					break
+					return
 				}
-				x0 := max(stage.Min.X, stage.Max.X-hostapi.SegsWidth(line)-2)
-				rows = placeBox(rows, [][]hostapi.Segment{margined(line)}, x0, y, w)
+				line, x := margined(line), x0
+				if i == 0 && x0 > above {
+					line, x = line[1:], x0+1 // the wider border above runs into it
+				}
+				rows = placeBox(rows, [][]hostapi.Segment{line}, x, y, w)
 				y++
 			}
-			y++
+			y, above = y-1, x0
 		}
 	}
 	for i, place := range modals {
@@ -1094,13 +1095,14 @@ func dimRows(rows [][]hostapi.Segment) {
 	}
 }
 
-// floatPopup frames the open composer popup, the palette or the
-// completion list, for the bottom rows of the stage, left-aligned with it,
-// when the stage is above the composer; otherwise beside the composer on
-// the side with more rows, aligned with it. It covers only its own cells,
-// keeps its size while it stays open and ends in its hint row. It returns
-// the rows to draw, their left column and the cells they cover.
-func (a *App) floatPopup(lay screenLayout, h int) ([][]hostapi.Segment, int, uv.Rectangle) {
+// floatPopup draws the open composer popup, the palette or the completion
+// list, over rows: standing on the composer frame like an anchored overlay
+// (anchorBottom), in the bottom rows of the stage when the stage is above the
+// composer, else beside the composer on the side with more rows. It covers
+// only its own cells, keeps its size while it stays open and ends in its
+// hint row. It returns the cells it covers.
+func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.Rectangle {
+	h := len(rows)
 	var render func(maxW, room, minW int) [][]hostapi.Segment
 	var size *boxSize
 	var hints []hintPair
@@ -1116,7 +1118,7 @@ func (a *App) floatPopup(lay screenLayout, h int) ([][]hostapi.Segment, int, uv.
 			hints = hints[1:]
 		}
 	default:
-		return nil, 0, uv.Rectangle{}
+		return uv.Rectangle{}
 	}
 	stage, c := lay.stage, lay.rects["composer"]
 	x, width, top, bottom := stage.Min.X, stage.Dx(), stage.Min.Y, min(stage.Max.Y, h)
@@ -1129,20 +1131,19 @@ func (a *App) floatPopup(lay screenLayout, h int) ([][]hostapi.Segment, int, uv.
 	}
 	// the borders, and the blank row and hint under the list
 	if bottom-top < 5 {
-		return nil, 0, uv.Rectangle{}
+		return uv.Rectangle{}
 	}
 	maxW := boxInner(width)
 	size.w = max(size.w, listBoxW)
-	rows := append(render(maxW, bottom-top-4, size.w), nil, hint(maxW, hints...))
-	box := promptBox("", "", rows, width, bottom-top, 100, size)
+	body := append(render(maxW, bottom-top-4, size.w), nil, hint(maxW, hints...))
+	box := promptBox("", "", body, width, bottom-top, 100, size)
 	if up {
-		top = max(top, bottom-len(box))
+		_, r := anchorBottom(rows, box, uv.Rect(x, top, width, bottom-top), uv.Rect(x, c.Min.Y, width, c.Dy()), false, w)
+		return r
 	}
-	bw := 0
-	for _, row := range box {
-		bw = max(bw, hostapi.SegsWidth(row))
-	}
-	return box, x, uv.Rect(x, top, bw, len(box))
+	// NOTE: below the composer the popup does not stand on the statusline rule
+	placeBox(rows, box, x, top, w)
+	return uv.Rect(x, top, hostapi.SegsWidth(box[0]), len(box))
 }
 
 // rowsBelow counts the rows under the default scrolled region's viewport
