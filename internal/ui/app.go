@@ -841,9 +841,12 @@ type toast struct {
 	recorded    bool // its caller recorded the whole error in /errors
 }
 
-// toastRows caps a toast's body: a long error or a stack trace would cover
-// the transcript.
-const toastRows = 3
+// toastRows caps a toast's body and toastsLive the toasts shown at once: a
+// long error, a stack trace or a burst of them would cover the transcript.
+const (
+	toastRows  = 3
+	toastsLive = 5
+)
 
 // boxArea is what a modal box centers over: the stage, or the w by h screen
 // when the stage is too small for a prompt.
@@ -866,15 +869,12 @@ func (a *App) pushToast(level slog.Level, title, body string) {
 	short, _, _ := strings.Cut(body, "stack traceback:")
 	t.body = hostapi.ShortChunk(strings.TrimRight(short, " \t\n"))
 	t.recorded = level == slog.LevelError && a.host.Recorded(body)
-	// the same failure again (a second send with no model) restarts the
-	// toast instead of stacking a twin under it
-	if n := len(a.toasts); n > 0 && a.toasts[n-1].level == level && a.toasts[n-1].title == title && a.toasts[n-1].body == t.body {
-		a.toasts[n-1] = t
-		return
-	}
+	// the same notice again (a second send with no model) restarts its row
+	// instead of adding a twin
+	a.toasts = slices.DeleteFunc(a.toasts, func(o toast) bool { return o.level == level && o.title == title && o.body == t.body })
 	a.toasts = append(a.toasts, t)
-	if len(a.toasts) > 3 {
-		a.toasts = a.toasts[len(a.toasts)-3:]
+	if len(a.toasts) > toastsLive {
+		a.toasts = a.toasts[len(a.toasts)-toastsLive:]
 	}
 }
 
@@ -988,28 +988,15 @@ func (a *App) compose(w, h int) string {
 	if a.permAsk != nil {
 		splice(a.permBox(a.permAsk, area.Dx(), area.Dy()))
 	}
-	// Toasts stack down from the top of the stage, newest highest,
-	// right-aligned over the rows they cover, each top border the bottom one
-	// of the toast above. They go over the dimmed rows but under the top box:
-	// a toast is not dimmed, and its text never covers the chrome the user
-	// answers.
+	// The toasts are one tray at the top right of the stage, over the dimmed
+	// rows but under the top box: a toast is not dimmed, and its text never
+	// covers the chrome the user answers.
 	toasts := func() {
-		y, above := stage.Min.Y, stage.Max.X
-		for _, v := range slices.Backward(a.toasts) {
-			box := toastBox(v, stage.Dx())
-			x0 := max(stage.Min.X, stage.Max.X-hostapi.SegsWidth(box[0])-2)
-			for i, line := range box {
-				if y >= stage.Max.Y {
-					return
-				}
-				line, x := margined(line), x0
-				if i == 0 && x0 > above {
-					line, x = line[1:], x0+1 // the wider border above runs into it
-				}
-				rows = placeBox(rows, [][]hostapi.Segment{line}, x, y, w)
-				y++
+		if tray := toastTray(a.toasts, stage.Dx(), stage.Dy()); len(tray) > 0 {
+			for i, line := range tray {
+				tray[i] = margined(line)
 			}
-			y, above = y-1, x0
+			rows = placeBox(rows, tray, max(stage.Min.X, stage.Max.X-hostapi.SegsWidth(tray[0])), stage.Min.Y, w)
 		}
 	}
 	for i, place := range modals {
@@ -1401,36 +1388,66 @@ func (a *App) statusItems(region string) []statusItem {
 	return out
 }
 
-// toastBox lays a toast out in the frame every other box uses, the title in
-// the top rule in the level's color, the body word-wrapped under it. A lone
-// title or body sits inside the box in the level's color, under an empty rule.
-func toastBox(t toast, w int) [][]hostapi.Segment {
-	var level string
-	switch t.level {
-	case slog.LevelWarn:
-		level = "ToastWarn"
-	case slog.LevelError:
-		level = "ToastErr"
-	default:
-		level = "ToastInfo"
+// toastTray lays the toasts out in one box of a fixed width at most h rows
+// tall, newest first: toasts of one level and title are one section, the
+// title in the rule that opens it and each body word-wrapped under it. A
+// lone title or body is a row in the level's color under an untitled rule.
+func toastTray(ts []toast, w, h int) [][]hostapi.Segment {
+	type section struct {
+		level slog.Level
+		title string
+		rows  [][]hostapi.Segment
 	}
-	inner := max(min(w-2, 60)-4, 1)
-	// a lone title or body sits inside the box, so no toast is an empty frame
-	if (t.title == "") != (t.body == "") {
-		return hostBox("", level, "", wrapText(t.title+t.body, level, inner), w, 60, 0)
-	}
-	var rows [][]hostapi.Segment
-	if t.body != "" {
-		rows = wrapText(t.body, "Normal", inner)
-	}
-	if len(rows) > toastRows {
-		more := []hostapi.Segment{{Text: hostapi.MoreLines(len(rows) - toastRows + 1), HL: hostapi.ChromeHint}}
-		if t.recorded {
-			more = append(more, hostapi.Segment{Text: " /errors", HL: hostapi.ChromeHint})
+	inner := max(min(44, w-6), 12)
+	var secs []section
+	for _, t := range slices.Backward(ts) {
+		title, text, hl := t.title, t.body, "Normal"
+		if (t.title == "") != (t.body == "") {
+			title, text, hl = "", t.title+t.body, toastHL(t.level)
 		}
-		rows = append(rows[:toastRows-1], more)
+		rows := wrapText(text, hl, inner)
+		if len(rows) > toastRows {
+			more := []hostapi.Segment{{Text: hostapi.MoreLines(len(rows) - toastRows + 1), HL: hostapi.ChromeHint}}
+			if t.recorded {
+				more = append(more, hostapi.Segment{Text: " /errors", HL: hostapi.ChromeHint})
+			}
+			rows = append(rows[:toastRows-1], more)
+		}
+		i := slices.IndexFunc(secs, func(s section) bool { return s.level == t.level && s.title == title })
+		if i < 0 {
+			i, secs = len(secs), append(secs, section{level: t.level, title: title})
+		}
+		secs[i].rows = append(secs[i].rows, rows...)
 	}
-	return hostBox(t.title, level, "", rows, w, 60, 0)
+	var tray [][]hostapi.Segment
+	for i, s := range secs {
+		box := hostBox(s.title, toastHL(s.level), "", s.rows, inner+8, inner+4, inner)
+		if i > 0 {
+			// the section's rule closes the one above
+			top := box[0]
+			top[0].Text, top[len(top)-1].Text = "├", "┤"
+			tray = tray[:len(tray)-1]
+		}
+		tray = append(tray, box...)
+	}
+	if len(tray) > h {
+		if h < 2 {
+			return nil
+		}
+		tray = append(tray[:h-1], tray[len(tray)-1])
+	}
+	return tray
+}
+
+func toastHL(level slog.Level) string {
+	switch level {
+	case slog.LevelWarn:
+		return "ToastWarn"
+	case slog.LevelError:
+		return "ToastErr"
+	default:
+		return "ToastInfo"
+	}
 }
 
 // ---------------------------------------------------------------------------

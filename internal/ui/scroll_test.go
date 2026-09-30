@@ -315,7 +315,7 @@ func TestChatStickyPrompt(t *testing.T) {
 	if _, _, onToast := app.target(70, y); onToast {
 		t.Fatal("a toast over the pin acts as the pin")
 	}
-	if _, _, beside := app.target(60, y); !beside {
+	if _, _, beside := app.target(20, y); !beside {
 		t.Fatal("the pin beside a toast does not act")
 	}
 	app.toasts = nil

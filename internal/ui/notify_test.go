@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"log/slog"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,6 +169,47 @@ func TestWindowTitle(t *testing.T) {
 		}
 		if got := app.windowTitle(); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestToastTray: live toasts draw as one box of a fixed width, a section per
+// level and title, newest first; a twin restarts its row, an expired toast's
+// rows leave, and a short stage cuts the tray with its frame closed.
+func TestToastTray(t *testing.T) {
+	log := slog.New(slog.DiscardHandler)
+	app := NewApp(hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{}), log)
+	type push struct {
+		level       slog.Level
+		title, body string
+	}
+	signIn := func(server string) push { return push{slog.LevelWarn, "Sign-in needed", server + "; open /mcp"} }
+	for _, c := range []struct {
+		name   string
+		pushes []push
+		after  time.Duration // pruned this long after the pushes
+		w, h   int
+		want   []string
+	}{
+		{"one toast", []push{{slog.LevelInfo, "Copied", "12 bytes"}}, 0, 30, 24, []string{"┌ Copied ──────────────────┐", "│ 12 bytes                 │", "└──────────────────────────┘"}},
+		{"a wide stage keeps the width", []push{{slog.LevelInfo, "Copied", "12 bytes"}}, 0, 100, 24, []string{"┌ Copied ──────────────────────────────────────┐", "│ 12 bytes                                     │", "└──────────────────────────────────────────────┘"}},
+		{"two titles are two sections", []push{{slog.LevelInfo, "Copied", "12 bytes"}, signIn("jit")}, 0, 30, 24, []string{"┌ Sign-in needed ──────────┐", "│ jit; open /mcp           │", "├ Copied ──────────────────┤", "│ 12 bytes                 │", "└──────────────────────────┘"}},
+		{"one title is one section, newest first", []push{signIn("chatzone"), signIn("jit"), signIn("confluence")}, 0, 30, 24, []string{"┌ Sign-in needed ──────────┐", "│ confluence; open /mcp    │", "│ jit; open /mcp           │", "│ chatzone; open /mcp      │", "└──────────────────────────┘"}},
+		{"a twin restarts its row", []push{signIn("jit"), signIn("chatzone"), signIn("jit")}, 0, 30, 24, []string{"┌ Sign-in needed ──────────┐", "│ jit; open /mcp           │", "│ chatzone; open /mcp      │", "└──────────────────────────┘"}},
+		{"an expired toast leaves", []push{signIn("jit"), {slog.LevelInfo, "Copied", "12 bytes"}}, 5 * time.Second, 30, 24, []string{"┌ Sign-in needed ──────────┐", "│ jit; open /mcp           │", "└──────────────────────────┘"}},
+		{"a short stage cuts the tray", []push{{slog.LevelInfo, "Copied", "12 bytes"}, signIn("jit")}, 0, 30, 3, []string{"┌ Sign-in needed ──────────┐", "│ jit; open /mcp           │", "└──────────────────────────┘"}},
+	} {
+		app.toasts = nil
+		for _, p := range c.pushes {
+			app.pushToast(p.level, p.title, p.body)
+		}
+		app.pruneToasts(time.Now().Add(c.after))
+		var got []string
+		for _, r := range toastTray(app.toasts, c.w, c.h) {
+			got = append(got, plainSegs(r))
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%s:\n%s\nwant\n%s", c.name, strings.Join(got, "\n"), strings.Join(c.want, "\n"))
 		}
 	}
 }

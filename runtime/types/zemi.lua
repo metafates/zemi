@@ -1459,7 +1459,8 @@ function zemi.ui.reasoning.toggle() end
 --- The title says what happened, in sentence case with no period: "<Kind>
 --- <past participle>" with the name in the body, "Could not <verb> <object>"
 --- with the cause in the body, "Nothing to <verb> [yet]" with a reason only
---- when it is not obvious. A lone title or body sits inside the box.
+--- when it is not obvious. A lone title or body sits inside the box. Live
+--- toasts of one level and title share a section: the title once, a row per body.
 ---@class zemi.notify
 ---@overload fun(spec: zemi.NotifySpec)
 ---@overload fun(body: string, title?: string)

@@ -192,12 +192,12 @@ func TestJoin(t *testing.T) {
 			[]string{"┌──┐   ", "│ab│   ", "├──┴──┐"},
 		},
 		{
-			"a narrower toast under a wider one shares its border", false,
+			"a narrower box under a wider one shares its border", false,
 			[]string{"┌─────┐", "│abcde│", "└─┌───┐", "  │abc│", "  └───┘"},
 			[]string{"┌─────┐", "│abcde│", "└─┬───┤", "  │abc│", "  └───┘"},
 		},
 		{
-			"a wider toast under a narrower one shares its border", false,
+			"a wider box under a narrower one shares its border", false,
 			[]string{"  ┌───┐", "  │abc│", "┌─────┐", "│abcde│", "└─────┘"},
 			[]string{"  ┌───┐", "  │abc│", "┌─┴───┤", "│abcde│", "└─────┘"},
 		},

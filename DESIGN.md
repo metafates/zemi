@@ -1761,8 +1761,10 @@ provenance string.
   hide what they show). `/reload` keeps drawing the old layout until the replay sets
   one; a replay that sets none draws the Go copy of the default (`hostapi.DefaultLayout`).
   Go keeps the §8 chrome whatever the tree says: prompts and overlays center over the
-  stage node, or the whole screen when it is under 40 by 12; toasts stack in the stage,
-  each top border the bottom one of the toast above; completion popups stand on the
+  stage node, or the whole screen when it is under 40 by 12; the live toasts (five at
+  most) are one tray of a fixed width at the stage's top right, newest first, a section
+  per level and title with one row per toast, each leaving when its own time runs out
+  (4 s for info, 8 s for a warning or an error); completion popups stand on the
   composer's top rule at the stage's bottom when the stage is above the composer, else go
   beside the composer on the side with room; Lua floats never cover the composer or the alarm
   pills, and without a bar the pills float at the bottom-left. A scrolled region
@@ -2883,7 +2885,7 @@ the host-only proposal channel (§10.3), the user-only config.set and allow rule
   recorded there instead of toasting. Lua code and runtime failures are
   recorded by their callers under a slug source (`command boom`, `keymap
   ctrl+t`); a command error that is how it was asked (`ErrUsage`: a bad
-  argument, nothing to act on) is a warn toast only. Toasts show
+  argument, nothing to act on) is a warn toast only. A toast shows
   at most three body rows and never a stack trace; a cut body ends in
   "… N more lines", and "/errors" after it when the error is recorded
   there. With no UI a warning or an error prints to stderr as

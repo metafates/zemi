@@ -247,19 +247,19 @@ func TestToastCap(t *testing.T) {
 	host.RecordError("keymap ctrl+t", body)
 	app.pushToast(slog.LevelError, "Could not run ctrl+t", body)
 	var rows []string
-	for _, r := range toastBox(app.toasts[0], 80) {
+	for _, r := range toastTray(app.toasts, 80, 24) {
 		rows = append(rows, strings.TrimSpace(plainSegs(r)))
 	}
-	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Could not run ctrl+t ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasPrefix(rows[toastRows], "│ … 4 more lines /errors ") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
+	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Could not run ctrl+t ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasPrefix(rows[toastRows], "│ … 5 more lines /errors ") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
 		t.Fatalf("toast rows: %q", rows)
 	}
 	app.pushToast(slog.LevelWarn, "", "line one\nline two\nline three\nline four\nline five")
-	if r := plainSegs(toastBox(app.toasts[1], 80)[toastRows]); !strings.HasPrefix(strings.TrimSpace(r), "│ … 3 more lines ") || strings.Contains(r, "/errors") {
+	if r := plainSegs(toastTray(app.toasts[1:], 80, 24)[toastRows]); !strings.HasPrefix(strings.TrimSpace(r), "│ … 3 more lines ") || strings.Contains(r, "/errors") {
 		t.Fatalf("multi-line cut: %q", r)
 	}
 	// an untitled failure still says it is one
 	app.pushToast(slog.LevelError, "", "x")
-	if top := plainSegs(toastBox(app.toasts[2], 80)[0]); !strings.HasPrefix(top, "┌ Error ─") {
+	if top := plainSegs(toastTray(app.toasts[2:], 80, 24)[0]); !strings.HasPrefix(top, "┌ Error ─") {
 		t.Fatalf("untitled error toast: %q", top)
 	}
 	for _, c := range []struct {
@@ -267,7 +267,7 @@ func TestToastCap(t *testing.T) {
 		rows        int
 	}{{"Config reloaded", "", 3}, {"", "saved", 3}, {"Session exported", "saved to x", 3}} {
 		app.pushToast(slog.LevelInfo, c.title, c.body)
-		box := toastBox(app.toasts[len(app.toasts)-1], 80)
+		box := toastTray(app.toasts[len(app.toasts)-1:], 80, 24)
 		lone := c.title == "" || c.body == ""
 		if inner := plainSegs(box[1]); len(box) != c.rows || !strings.Contains(inner, cmp.Or(c.body, c.title)) || lone != strings.HasPrefix(plainSegs(box[0]), "┌─") {
 			t.Errorf("toast %q %q: %d rows, %q; want %d rows with the lone text inside", c.title, c.body, len(box), inner, c.rows)
