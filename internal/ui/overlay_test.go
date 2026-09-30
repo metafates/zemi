@@ -990,8 +990,6 @@ func TestOverlayClosesOnOutsideClick(t *testing.T) {
 	app.answerPerm(false, "user")
 }
 
-// TestListDescColumn: descriptions start in one column, and a row that
-// does not fit gives way from its description, never its label or key.
 // TestListDescUnderLabel: a list too narrow for its description column
 // puts each description under its label instead of dropping them all.
 func TestListDescUnderLabel(t *testing.T) {
@@ -1005,6 +1003,8 @@ func TestListDescUnderLabel(t *testing.T) {
 	}
 }
 
+// TestListDescColumn: descriptions start in one column, and a row that
+// does not fit gives way from its description, never its label or key.
 func TestListDescColumn(t *testing.T) {
 	for _, c := range []struct {
 		name  string
