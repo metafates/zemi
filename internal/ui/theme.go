@@ -25,21 +25,15 @@ type themeResolver struct {
 	chrome   map[string]uv.Style
 }
 
+// style resolves hl; what sets no fill, an unstyled span (a draft's typed
+// text) included, sits on the canvas.
 func (t themeResolver) style(hl string) uv.Style {
+	var st uv.Style
 	if params, ok := strings.CutPrefix(hl, hostapi.SGRPrefix); ok {
-		st := t.sgrStyle(params)
-		if st.Bg == nil {
-			st.Bg = t.canvas() // a raw span without a fill sits on the canvas
-		}
-		return st
+		st = t.sgrStyle(params)
+	} else if spec, theme, ok := t.group(hl); ok {
+		st = drawOver(st, spec, theme)
 	}
-	spec, theme, ok := t.group(hl)
-	if !ok {
-		// an unstyled span (a draft's typed text) still sits on the canvas
-		// with the terminal's own foreground
-		return uv.Style{Bg: t.canvas()}
-	}
-	st := drawOver(uv.Style{}, spec, theme)
 	if st.Bg == nil {
 		st.Bg = t.canvas()
 	}
