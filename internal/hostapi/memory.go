@@ -27,7 +27,7 @@ import (
 )
 
 // memoryAutoApplyCap bounds model-proposed memories stored without review
-// per session, mirroring the auto-applied-rules cap (DESIGN §10.4).
+// per session (DESIGN §10.4).
 const memoryAutoApplyCap = 20
 
 // memoryDB returns the store owning a scope: user scope in the global DB,
