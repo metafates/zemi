@@ -806,16 +806,17 @@ func WrapSegs(line []Segment, w int) [][]Segment {
 	if indent >= w/2 {
 		indent = 0
 	}
-	// a leading bar (a quote's, the chat's rail) goes down the rows the line
-	// wraps to, but not a bullet or a mark after it
-	hang := []Segment{{Text: strings.Repeat(" ", indent), NoCopy: true}}
-	if before, _, ok := strings.CutLast(line[0].Text, "│"); ok && indent > 0 && line[0].NoCopy {
-		bar, lead := line[0], ansi.StringWidth(line[0].Text)
-		bar.Text, bar.Soft = before+"│"+strings.Repeat(" ", lead-ansi.StringWidth(before+"│")), false
-		hang = []Segment{bar}
-		if indent > lead {
-			hang = append(hang, Segment{Text: strings.Repeat(" ", indent-lead), NoCopy: true})
+	// the leading decoration up to its last bar (a quote's, the chat's rail)
+	// goes down the rows the line wraps to, but not a bullet or a mark after it
+	var hang []Segment
+	for i := 0; indent > 0 && i < len(line) && line[i].NoCopy; i++ {
+		if before, _, ok := strings.CutLast(line[i].Text, "│"); ok {
+			hang = slices.Clone(line[:i+1])
+			hang[i].Text, hang[i].Soft = before+"│", false
 		}
+	}
+	if lead := SegsWidth(hang); indent > lead {
+		hang = append(hang, Segment{Text: strings.Repeat(" ", indent-lead), NoCopy: true})
 	}
 	var rows [][]Segment
 	var row []Segment
