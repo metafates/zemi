@@ -501,27 +501,36 @@ func TestConfigSetGating(t *testing.T) {
 
 		zemi.config.set("ui.composer.history", 42)
 	`)
-	if v, ok := h.Settings.Get("ui.composer.history"); !ok || v != 42 {
+	if v, ok := h.Settings.Get("ui.composer.history"); !ok || v != 42.0 {
 		t.Fatalf("ui.composer.history = %v, want 42", v)
 	}
 }
 
 // TestConfigSet: /config set takes the words /config and the pickers show
-// for a value.
+// for a value, and /config lua writes a number as typed.
 func TestConfigSet(t *testing.T) {
 	h, _ := newTestHost(t)
 	for _, c := range []struct {
-		path, value, want, err string
+		path  string
+		from  any
+		value string
+		want  string // the value after, as /config lua writes it
+		err   string
 	}{
-		{"agent.effort", "default", "", ""},
-		{"agent.effort", "turbo", "high", `config key agent.effort expects low, medium, high or default, not "turbo"`},
-		{"agent.profile", "", "default", ""},
+		{"agent.effort", "high", "default", `""`, ""},
+		{"agent.effort", "high", "turbo", `"high"`, `config key agent.effort expects low, medium, high or default, not "turbo"`},
+		{"agent.profile", "high", "", `"default"`, ""},
+		{"agent.context_window", 0.0, "1000000", "1000000", ""},
+		{"agent.context_window", 0.0, "84.5", "84.5", ""},
+		{"agent.context_window", 0.0, "abc", "0", "agent.context_window is a number"},
+		{"agent.context_window", 0.0, "NaN", "0", "config key agent.context_window expects number"},
 	} {
-		h.Settings.SetQuiet(c.path, "high")
+		h.Settings.SetQuiet(c.path, c.from)
 		// a refused value is a usage hint, not an error
 		err := h.configSet(c.path, c.value)
-		if fmt.Sprint(err) != cmp.Or(c.err, "<nil>") || err != nil && !errors.Is(err, ErrUsage) || h.Settings.Str(c.path) != c.want {
-			t.Errorf("%s %q: %q, %v; want %q, %q", c.path, c.value, h.Settings.Str(c.path), err, c.want, c.err)
+		got, _ := h.Settings.Get(c.path)
+		if fmt.Sprint(err) != cmp.Or(c.err, "<nil>") || err != nil && !errors.Is(err, ErrUsage) || luaLiteral(got) != c.want {
+			t.Errorf("%s %q: %s, %v; want %s, %q", c.path, c.value, luaLiteral(got), err, c.want, c.err)
 		}
 	}
 	// a bool row draws its switch after its source, and its description is

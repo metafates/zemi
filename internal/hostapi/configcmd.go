@@ -84,8 +84,8 @@ func (h *Host) setting(path string) (config.Setting, error) {
 	return config.Setting{}, Usagef("no setting is named %q; /config lists them", path)
 }
 
-// configSet parses value in path's kind: on or off, a whole number, or the
-// rest of the line as a string.
+// configSet parses value in path's kind: on or off, a number, or the rest
+// of the line as a string.
 func (h *Host) configSet(path, value string) error {
 	s, err := h.setting(path)
 	if err != nil {
@@ -99,9 +99,9 @@ func (h *Host) configSet(path, value string) error {
 			return Usagef("%s is on or off", path)
 		}
 		v = b
-	case config.KindInt:
-		if v, err = strconv.Atoi(value); err != nil {
-			return Usagef("%s is a whole number", path)
+	case config.KindNumber:
+		if v, err = strconv.ParseFloat(value, 64); err != nil {
+			return Usagef("%s is a number", path)
 		}
 	case config.KindString:
 	}
@@ -196,7 +196,7 @@ func showSetting(v any) string {
 	case string:
 		return cmp.Or(v, "empty")
 	}
-	return fmt.Sprint(v)
+	return luaLiteral(v)
 }
 
 // configPicker is the command that picks path's value from a list, "" for

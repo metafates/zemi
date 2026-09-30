@@ -704,7 +704,7 @@ init.lua; `/config lua` shows the settings as lines to copy, and the agent edits
 config files through the permission-gated file tools. zemi makes no commits.
 
 A plugin's options are settings of its own: `zemi.config.add(key, spec)`
-registers a key (a string, an int, a bool, or one of a list) with its
+registers a key (a string, a number, a bool, or one of a list) with its
 default, from the plugin's init.lua while it loads. The plugin names it by
 the bare key; zemi derives the plugin from the calling file, as it does for
 `zemi.state`, and stores it as `plugins.<name>.<key>`, the name the user sets

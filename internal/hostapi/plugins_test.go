@@ -318,7 +318,7 @@ func TestPluginsStep(t *testing.T) {
 func TestPluginSettings(t *testing.T) {
 	const (
 		key    = "plugins.br.interval"
-		reg    = `zemi.config.add("interval", { kind = "int", default = 30000, desc = "How often the branch is read, in ms." })`
+		reg    = `zemi.config.add("interval", { kind = "number", default = 30000, desc = "How often the branch is read, in ms." })`
 		regStr = `zemi.config.add("interval", { kind = "string", default = "x", desc = "d" })`
 		off    = "off" // the plugin turned off; "-" deletes it
 	)
@@ -355,8 +355,8 @@ func TestPluginSettings(t *testing.T) {
 		},
 		{
 			name:   "a runtime pick outlives a restart",
-			phases: []phase{{plugin: reg, pick: 5000}, {plugin: reg, restart: true}},
-			want:   []string{"value 5000 saved", "config:plugins.br.interval\n"},
+			phases: []phase{{plugin: reg, pick: 84.5}, {plugin: reg, restart: true}},
+			want:   []string{"value 84.5 saved", "config:plugins.br.interval\n"},
 		},
 		{
 			name: "a replay with init.lua unchanged keeps the pick",
@@ -395,19 +395,22 @@ func TestPluginSettings(t *testing.T) {
 		{
 			name: "only a plugin registers, its own keys, while it loads, a default the kind and choices take",
 			phases: []phase{{
-				plugin: `print(pcall(zemi.config.add, { path = "plugins.br.x", kind = "int", default = 1, desc = "d" }))
+				plugin: `print(pcall(zemi.config.add, { path = "plugins.br.x", kind = "number", default = 1, desc = "d" }))
 					print(pcall(zemi.config.add, "ui.theme", { kind = "string", default = "x", desc = "d" }))
 					print(pcall(zemi.config.add, "Interval", { kind = "string", default = "x", desc = "d" }))
 					print(pcall(zemi.config.add, "units", { kind = "string", default = "kelvin", choices = { "metric" }, desc = "d" }))
-					print(pcall(zemi.config.add, "n", { kind = "int", default = "1", desc = "d" }))
-					zemi.command.add("late", function() print(pcall(zemi.config.add, "late", { kind = "int", default = 1, desc = "d" })) end, {})`,
-				user:  `print(pcall(zemi.config.add, "x", { kind = "int", default = 1, desc = "d" }))`,
+					print(pcall(zemi.config.add, "n", { kind = "number", default = "1", desc = "d" }))
+					print(pcall(zemi.config.add, "nan", { kind = "number", default = 0/0, desc = "d" }))
+					print(pcall(zemi.config.add, "i", { kind = "int", default = 1, desc = "d" }))
+					zemi.command.add("late", function() print(pcall(zemi.config.add, "late", { kind = "number", default = 1, desc = "d" })) end, {})`,
+				user:  `print(pcall(zemi.config.add, "x", { kind = "number", default = 1, desc = "d" }))`,
 				after: `zemi.command.run("late")`,
 			}},
 			want: []string{
 				"bad argument #1 to (anonymous) (string expected, got table)",
 				`zemi.config.add: key "ui.theme" must be a lowercase letter`, `key "Interval" must be`,
-				"plugins.br.units expects metric", "plugins.br.n expects int",
+				"plugins.br.units expects metric", "plugins.br.n expects number", "plugins.br.nan expects number",
+				"kind must be string, number or bool",
 				"zemi.config.add: only a plugin registers settings",
 				"zemi.config.add: register settings when the plugin loads",
 			},

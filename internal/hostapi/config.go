@@ -301,7 +301,7 @@ func (h *Host) addSetting(L *glua.LState, key string, spec *glua.LTable) {
 	case !settingKey.MatchString(key):
 		L.RaiseError("zemi.config.add: key %q must be a lowercase letter, then up to 31 lowercase letters, digits and _", key)
 	case !slices.Contains(config.Kinds, def.Kind):
-		L.RaiseError("zemi.config.add: kind must be string, int or bool")
+		L.RaiseError("zemi.config.add: kind must be string, number or bool")
 	case def.Choices != nil && def.Kind != config.KindString:
 		L.RaiseError("zemi.config.add: only a string key takes choices")
 	case def.Desc == "":
@@ -407,7 +407,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 		if h.settingOff(path) {
 			return 0
 		}
-		// the stored form, so a Lua number matches the int it becomes
+		// the stored form, so a replay compares what the store holds
 		if v, err = h.Settings.Check(path, v); err != nil {
 			L.RaiseError("zemi.config.set: %v (zemi.config.schema() lists every key and its type)", err)
 		}

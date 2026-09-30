@@ -30,7 +30,7 @@ zemi.ui.widget.add({
 })
 
 zemi.config.add("interval", {
-	kind = "int",
+	kind = "number",
 	default = 30000,
 	desc = "how often the branch is read, in ms",
 })

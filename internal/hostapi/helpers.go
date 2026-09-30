@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -127,9 +128,13 @@ func rawStringMap(L *glua.LState, tb *glua.LTable, key string) map[string]string
 }
 
 // luaLiteral writes a string with only the escapes Lua 5.1 reads; other
-// bytes, UTF-8 included, stay as they are.
+// bytes, UTF-8 included, stay as they are. A number is written whole, 1000000
+// and never 1e+06.
 func luaLiteral(v any) string {
 	s, ok := v.(string)
+	if f, isNum := v.(float64); isNum {
+		return strconv.FormatFloat(f, 'f', -1, 64)
+	}
 	if !ok {
 		return fmt.Sprint(v)
 	}

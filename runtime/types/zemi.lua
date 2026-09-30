@@ -239,7 +239,7 @@ zemi.api = {}
 
 ---@alias zemi.SettingKind
 ---| "string"
----| "int"
+---| "number"
 ---| "bool"
 
 ---@class zemi.SettingSpec
@@ -286,7 +286,7 @@ function zemi.config.set(path, value) end
 --- `zemi.env.get` in the user's init.lua.
 ---
 --- ```lua
---- zemi.config.add("interval", { kind = "int", default = 30000, desc = "how often the branch is read, in ms" })
+--- zemi.config.add("interval", { kind = "number", default = 30000, desc = "how often the branch is read, in ms" })
 --- ```
 ---@param key string
 ---@param spec zemi.SettingSpec

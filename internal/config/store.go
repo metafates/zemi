@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"strings"
 	"sync"
@@ -15,11 +16,11 @@ type Kind string
 
 const (
 	KindString Kind = "string"
-	KindInt    Kind = "int"
+	KindNumber Kind = "number"
 	KindBool   Kind = "bool"
 )
 
-var Kinds = []Kind{KindString, KindInt, KindBool}
+var Kinds = []Kind{KindString, KindNumber, KindBool}
 
 // Setting describes one config key.
 type Setting struct {
@@ -76,7 +77,7 @@ func (s *Store) defineDefaults() {
 		{Path: "agent.profile", Kind: KindString, Default: "default", Desc: "the profile the main conversation runs as: default, planner, or a name defined with zemi.agent.profile.add"},
 		{Path: "session.auto_title", Kind: KindBool, Default: true, Desc: "name new sessions from their first exchange with a short model call"},
 		{Path: "session.recap", Kind: KindBool, Default: true, Desc: "after a turn with tool calls, if there is no input for 3 minutes, add a one-line recap from a short model call on the cached conversation (billed to the session)"},
-		{Path: "agent.context_window", Kind: KindInt, Default: 0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
+		{Path: "agent.context_window", Kind: KindNumber, Default: 0.0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
 		{Path: "ui.reasoning", Kind: KindBool, Default: false, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
 		{Path: "lsp.auto", Kind: KindBool, Default: true, Desc: "start installed language servers for files with their marker in a trusted project, and lua-language-server for the Lua of your config and local plugins"},
 		{Path: "editor.command", Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
@@ -85,9 +86,9 @@ func (s *Store) defineDefaults() {
 		{Path: "ui.notify", Kind: KindString, Default: "auto", Choices: []string{"auto", "osc", "native", "bell", "off"}, Desc: "how zemi alerts while its window is unfocused, as a turn ends or a prompt waits: osc (a terminal notification), native (osascript or notify-send), bell, off; auto picks per terminal (/health names it)"},
 		{Path: "ui.progress", Kind: KindBool, Default: true, Desc: "report a running turn to the terminal with OSC 9;4, which taskbars and tab bars draw as progress"},
 		{Path: "ui.composer.multiline", Kind: KindBool, Default: true, Desc: "composer accepts embedded newlines (shift+enter, alt+enter, ctrl+j)"},
-		{Path: "ui.composer.history", Kind: KindInt, Default: 50, Desc: "composer history entries kept (0 disables)"},
+		{Path: "ui.composer.history", Kind: KindNumber, Default: 50.0, Desc: "composer history entries kept (0 disables)"},
 		{Path: "ui.completion.files", Kind: KindBool, Default: true, Desc: "complete file paths after @ in the composer"},
-		{Path: "ui.completion.max_items", Kind: KindInt, Default: 10, Desc: "completion popup rows"},
+		{Path: "ui.completion.max_items", Kind: KindNumber, Default: 10.0, Desc: "completion popup rows"},
 		{Path: "memory.autonomy", Kind: KindString, Default: "auto", Choices: []string{"auto", "ask"}, Desc: "memories the model or the reflector propose: auto stores policy-clean ones at once, ask queues them for /memory; auto also queues in an untrusted project or after fetch, web_search, lua or a non-builtin tool"},
 	}
 	for _, def := range defaults {
@@ -145,13 +146,14 @@ func (s *Store) Get(path string) (any, bool) {
 	return v, ok
 }
 
-// Str reads a string schema key; Bool and Int read the other two kinds. Every schema key holds
+// Str reads a string schema key; Bool and Int read the other two kinds, Int
+// truncating a fraction. Every schema key holds
 // its default until someone sets it, so only a key outside the schema reads
 // as the zero value, and under go test it panics, so a mistyped key fails
 // the suite.
 func (s *Store) Str(path string) string { return s.value[string](path) }
 func (s *Store) Bool(path string) bool  { return s.value[bool](path) }
-func (s *Store) Int(path string) int    { return s.value[int](path) }
+func (s *Store) Int(path string) int    { return int(s.value[float64](path)) }
 
 func (s *Store) value[T any](path string) T {
 	s.mu.RLock()
@@ -257,8 +259,9 @@ func (e *BadValueError) Error() string {
 	return fmt.Sprintf("config key %s expects %s", e.Path, e.Want)
 }
 
-// checkKind validates val and returns it in stored form: ints as int, so
-// readers can assert int whether Lua (float64) or Go handed it in.
+// checkKind validates val and returns it in stored form: a number as
+// float64, as Lua hands every number in; NaN and Inf are refused, since no
+// reader means them and the kept pick could not be written as JSON.
 func checkKind(def Setting, val any) (any, error) {
 	ok := true
 	switch def.Kind {
@@ -276,17 +279,18 @@ func checkKind(def Setting, val any) (any, error) {
 			}
 			return nil, &BadValueError{Path: def.Path, Want: choiceList(def.Choices), Got: s}
 		}
-	case KindInt:
+	case KindNumber:
+		var f float64
 		switch v := val.(type) {
 		case int:
-		case int64:
-			val = int(v)
+			f = float64(v)
 		case float64:
-			ok = v == float64(int64(v))
-			val = int(v)
+			f = v
 		default:
 			ok = false
 		}
+		ok = ok && !math.IsNaN(f) && !math.IsInf(f, 0)
+		val = f
 	case KindBool:
 		_, ok = val.(bool)
 	}
