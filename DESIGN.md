@@ -1627,6 +1627,8 @@ provenance string.
   items, run with `on_select` on the UI worker after enter or space while
   the list stays open, and again when an overlay stacked on it closes, a
   detail view only after it ran something, so a picker opened from it shows its pick at once,
+  as does a Go screen's one-line prompt (`/config edit`), whose command runs with the typed
+  text before it closes,
   and after a reload; a row that fills the composer closes the list, which would keep
   the keys); Go still draws the box, the origin badge, the
   filter and the hints, where a list's own `keys` are named. Opening the id

@@ -211,7 +211,9 @@ A plugin key's row waits unchecked in `picked` until `zemi.config.add` registers
 applies it, and `sweepPluginState` drops a deleted or reinstalled plugin's rows.
 
 `/config` (hostapi/configcmd.go) lists every schema key with its `cfgSource` (`init.lua`,
-`saved`, `default` or `this run`) and value. `/config` and `/effort` write through
+`saved`, `default` or `this run`) and value. A key changes on a screen of its own, its picker or
+`/config edit` (its choices, else a one-line prompt whose `Overlay.Run`, Go-only, runs `config set`
+with the text), which closes back onto the rebuilt list. `/config` and `/effort` write through
 `Host.SetConfig`, which sends `models.*`, `permissions.mode`, `agent.profile` and `ui.theme`
 through their own setters. A key's `Choices` refuse any other value in `config.checkKind`,
 which also takes `default` for a "" choice, `zemi.config.set` included; every runtime write,

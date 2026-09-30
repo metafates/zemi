@@ -533,6 +533,15 @@ func TestConfigSet(t *testing.T) {
 			t.Errorf("%s %q: %s, %v; want %s, %q", c.path, c.value, luaLiteral(got), err, c.want, c.err)
 		}
 	}
+	// every other row changes on a screen of its own, which /config edit is
+	// unless the key has a picker
+	for path, run := range map[string]string{"editor.command": "config edit editor.command", "ui.theme": "config edit ui.theme", "models.chat": "model chat"} {
+		items := h.configItems()
+		row := items[slices.IndexFunc(items, func(it any) bool { return it.(map[string]any)["text"] == path })].(map[string]any)
+		if act := row["actions"].([]any)[0].(map[string]any); act["run"] != run || act["text"] != "Change" {
+			t.Errorf("%s: first action %v, want Change running %q", path, act, run)
+		}
+	}
 	// a bool row draws its switch after its source, and its description is
 	// the preview
 	h.cfgNow = map[string][]any{"ui.animations": {false}}

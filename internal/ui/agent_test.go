@@ -1164,6 +1164,43 @@ func TestLuaInput(t *testing.T) {
 	}
 }
 
+// TestConfigEdit: /config edit prompts with the key's value; enter sets it
+// and leaves /config open, its row rebuilt, and a refused value toasts and
+// changes nothing.
+func TestConfigEdit(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	if err := host.ForceReload(t.Context(), []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui")}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		path, prefill, typed, desc, toast string
+	}{
+		{"editor.command", "", "vim", "this run  vim", ""},
+		{"ui.composer.history", "50", "x", "default   50", "ui.composer.history is a number"},
+	} {
+		app.runCommand("config", "")
+		app.runCommand("config", "edit "+c.path)
+		for app.Pump() {
+		}
+		if st := app.overlays[len(app.overlays)-1]; !st.o.Input || st.input.text != c.prefill {
+			t.Fatalf("%s: prompt %+v, text %q", c.path, st.o, st.input.text)
+		}
+		for _, r := range c.typed {
+			app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		}
+		app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		toast := lastToast(app)
+		if len(app.overlays) != 1 || app.overlays[0].o.ID != "config" {
+			t.Fatalf("%s: overlays after enter: %d", c.path, len(app.overlays))
+		}
+		i := slices.IndexFunc(app.overlays[0].o.Items, func(it any) bool { return it.(map[string]any)["text"] == c.path })
+		if desc := app.overlays[0].o.Items[i].(map[string]any)["desc"]; desc != c.desc || c.toast != "" && !strings.Contains(toast, c.toast) {
+			t.Errorf("%s: row %q, toast %q; want %q, %q", c.path, desc, toast, c.desc, c.toast)
+		}
+		app.cancelOverlay(app.overlays[0].o)
+	}
+}
+
 // TestKeySequence: ctrl+x then t runs a <leader>t binding without typing
 // the t; a key that breaks the sequence reaches the composer.
 func TestKeySequence(t *testing.T) {

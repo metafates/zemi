@@ -130,9 +130,11 @@ type Overlay struct {
 	Phases bool
 
 	// Input makes the overlay a one-line text prompt (zemi.ui.input) that
-	// starts with Default; OnSelect receives the text.
+	// starts with Default; OnSelect receives the text. A Go screen's prompt
+	// sets Run instead, a command the text is appended to; Lua never sets it.
 	Input   bool
 	Default string
+	Run     string
 
 	// Reload makes a list a toggle list: enter and space run the row's "run"
 	// command or on_select and rebuild the items, keeping the overlay open.

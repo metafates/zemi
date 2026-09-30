@@ -684,13 +684,19 @@ func (st *overlayState) value(i int) string {
 	return strings.TrimSpace(st.items[i].label + "  " + st.items[i].desc)
 }
 
-// inputKey edits an input overlay's line; enter submits, esc cancels.
+// inputKey edits an input overlay's line; enter submits, esc cancels. A Go
+// prompt's command runs before the close, so a list under it rebuilds with
+// what it changed.
 func (a *App) inputKey(st *overlayState, key, text string) {
 	in := &st.input
 	switch key {
 	case "enter":
 		o, value := st.o, in.text
-		a.background(func() { a.host.SubmitOverlayInput(context.Background(), o, value) })
+		if o.Run != "" {
+			a.runCommand(hostapi.SplitCommand(o.Run + " " + value))
+		} else {
+			a.background(func() { a.host.SubmitOverlayInput(context.Background(), o, value) })
+		}
 		a.closeOverlayByID(o.ID)
 	case "esc":
 		a.cancelOverlay(st.o)
