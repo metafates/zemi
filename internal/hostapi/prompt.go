@@ -111,7 +111,7 @@ func (h *Host) zemiPrompt() string {
 		" User config directory: " + h.Dirs.ConfigHome + " (this exact path, not ~/.config/zemi); the project's is under Environment." +
 		" Local plugins directory: " + h.localPlugins() + "." +
 		" Reading the user config needs no approval; writing it does, so say first what you will write." +
-		" The shipped Lua UI is readable in " + filepath.Join(h.TypesDir(), "zemi", "tui") + "."
+		" zemi's Lua API and shipped UI source, readable by every tool: " + filepath.Join(h.TypesDir(), "zemi.lua") + " and " + filepath.Join(h.TypesDir(), "zemi", "tui") + "."
 }
 
 // delegationPrompt tells the main agent when subagents and workflows pay

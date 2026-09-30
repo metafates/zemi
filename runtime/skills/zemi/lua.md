@@ -34,7 +34,7 @@ Its description covers what comes back, the 10 s ceiling between waits and which
 
 ## The API
 
-Every member, with its parameters, is one grep of the types file (`<data>/types/zemi.lua`, named in SKILL.md): `^function zemi\.` lists all of them, `function zemi.lsp.` one namespace. The `---` lines above a hit are its rules: who may call it, what it returns, when it raises; the `---@class` a parameter names holds its fields. `zemi.notify` and `zemi.log` are also callable, and `zemi.api.version` is the API version string. `memory.md` has `zemi.memory`, `zemi.learn` and `zemi.skills` with examples.
+Every member, with its parameters, is one shell grep of the types file (the system prompt names it): `grep -n '^function zemi\.'` lists all of them, `grep -n -B20 'function zemi.lsp.'` one namespace with the `---` lines above each hit, which are its rules: who may call it, what it returns, when it raises. `grep -n -A20 '@class zemi.<Name>'` gives the fields of the class a parameter names. `zemi.notify` and `zemi.log` are also callable, and `zemi.api.version` is the API version string. `memory.md` has `zemi.memory`, `zemi.learn` and `zemi.skills` with examples.
 
 The verbs are regular: `add` registers, `set` writes a value, `get` and `list` read back, and `del` removes: `grep '^function zemi\..*\.del('` over the types file lists what can be removed. A tool or health row goes with the reload that no longer adds it. `event.on` and `config.watch` hand back the id their `off` and `unwatch` take.
 

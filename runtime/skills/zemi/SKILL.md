@@ -26,7 +26,7 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 - A feature with logic of its own (a tool, a new widget, a command and its handlers): a local plugin, which the user can share, update and turn off on its own (`plugins.md`).
 - Agents, prompt commands, skills and saved workflows: files in the user config directory (every project) or in the repository's `.agents/` (shared through git, loaded once the user trusts the project). Ask which when unsure.
 
-The prompt names the exact user config, project config and local plugins directories. Also: `~/.agents/skills/` (skills other agents read too), `<data>/types/zemi.lua` (the whole Lua API with its docs, rewritten every start) and `<state>/` (logs, databases, trust decisions, and per project its `permissions` file and recipes). `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`, `ZEMI_STATE_HOME` and `ZEMI_CACHE_HOME` move the roots (default `~/.config/zemi`, `~/.local/share/zemi`, `~/.local/state/zemi`, `~/.cache/zemi`).
+The prompt names the exact user config, project config and local plugins directories and the types file (the whole Lua API with its docs, rewritten every start). Also: `~/.agents/skills/` (skills other agents read too) and `<state>/` (logs, databases, trust decisions, and per project its `permissions` file and recipes). `ZEMI_CONFIG_HOME`, `ZEMI_DATA_HOME`, `ZEMI_STATE_HOME` and `ZEMI_CACHE_HOME` move the roots (default `~/.config/zemi`, `~/.local/share/zemi`, `~/.local/state/zemi`, `~/.cache/zemi`).
 
 ## Rules for every change
 
@@ -34,7 +34,7 @@ The prompt names the exact user config, project config and local plugins directo
 - Never write an API key into a file: config reads it with `zemi.env.get("NAME")`.
 - zemi reloads within a second of a config file change once no turn runs, and the Lua tool reloads before a script whenever a config or plugin file changed, so a script always sees what is on disk and its result starts with what failed to load. A reload drops what earlier scripts registered.
 - The system prompt is pinned per session: the listed skills, agents and workflows, a profile's text and `agent.assemble` sections change after `/new` or `/compact`. A new agent or workflow still loads by name at once, a new skill after the next reload, and an edited AGENTS.md reaches the model with the next message.
-- For the Lua API, grep the types file, never read it whole: `^function zemi\.` lists every member with its parameters, and `function zemi.<namespace>.` finds one namespace, whose doc comments above each hit hold its rules. The shipped Lua UI is readable source in the directory the system prompt names.
+- For the Lua API, grep the types file in the shell, never read it whole: `grep -n '^function zemi\.'` lists every member with its parameters, `grep -n -B20 'function zemi.config.add('` one member with the rules and `---@return` above it, and `grep -n -A20 '@class zemi.WidgetSpec'` (or `@alias zemi.SettingKind`) one type with its fields.
 
 ## Check a change
 
