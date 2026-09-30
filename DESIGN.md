@@ -1290,7 +1290,7 @@ a child inherits the parent env minus the §9 secret denylist; extra vars
 are opt-in per job (`env = { ... }`, Lua-supplied values only, never
 looked up from the parent by name); every `env`-extras key runs the §9
 environment gates: a secret-shaped or environment-affecting name is
-refused when the job starts (`perm.ChildEnv`); model `job_start` takes
+refused when the job starts (`perm.Store.ChildEnv`); model `job_start` takes
 none, since its shell line sets them (`FOO=1 cmd`); jobs never inherit the
 controlling tty (each runs in its own session through `internal/proc`;
 stdin is closed unless the job asks for a pipe with `stdin = true`).
@@ -1520,7 +1520,7 @@ UI extensibility contract:
 
 ```lua
 zemi.session.id(); zemi.session.title(); zemi.session.rename("...")
-zemi.session.messages()                -- { id, role, json } per stored message
+zemi.session.messages()                -- { id, role, text, json } per stored message
 zemi.session.todos()                   -- this session's todo list
 zemi.session.list(); zemi.session.new(); zemi.session.resume(id)
 zemi.session.rewind(message_id)        -- restore files, then truncate (§8)
@@ -1543,7 +1543,7 @@ commands and `!shell` and a paste reads the clipboard; the same actions are
 whose rows join the Go checks in `/health` and `zemi health`, and `list`, which reads
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`; inside a workflow script `agent`, `parallel`, `pipeline`,
-`phase`, `log` and `args` instead), `zemi.lsp` (`add`, `disable`, `list`),
+`phase`, `log` and `args` instead), `zemi.lsp` (`add`, `del`, `list`),
 `zemi.mcp` (`add`, `list`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
 and `zemi.permission.mode` (`add`, `del`, `set` user config only, §9; `get`, `list`).
 
@@ -1883,10 +1883,10 @@ provenance string.
   it holds, §6.3; alone, what it spent; `stop` drops it), `/loop [interval] <prompt>`
   (§6.3; alone, what it ran; `stop` stops it), `/btw <question>` (a side question
   answered in an overlay, on stdout in `zemi run`, from the conversation so far,
-  never stored), `/health` (one row per check, problems first: store, model
-  key, context window, git,
-  reflector, pending reviews, skills, recent errors, project trust, MCP
-  servers, language servers, Lua runtime),
+  never stored), `/health` (one row per check, problems first: store,
+  providers, catalog, model, context window, git, sandbox, shell, notify,
+  project trust, skills, plugins, MCP servers, language servers, reflector,
+  pending reviews, recent errors, layout, Lua runtime, and the rows Lua adds),
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/memory`,
   `/skills`, `/reflect`, `/agents`, `/workflows`, `/review`, `/mcp`,
@@ -2251,7 +2251,7 @@ provenance string.
   every operand is below the scratchpad, as `$TMPDIR/...` or its literal
   path with no climb, settles while nothing in the command can have
   changed `$TMPDIR`; and any command a shell may read otherwise than
-  both parses, above, since the list cannot vouch for it),
+  the parse, above, since the list cannot vouch for it),
   a git command that writes what the sandbox keeps read-only in `.git`
   (`perm.Normalized.GitWrites`: with the git dir open, below, config,
   remotes, worktrees, submodules and rebase state; with it shut, any write), reaches
@@ -2561,7 +2561,7 @@ provenance string.
   `PASSPHRASE`, `CREDENTIAL`, and `_PWD` or `_PASS` as a suffix;
   `perm.EnvIsSecret`). `zemi.env.get` refuses a matching name for every
   origin but user and builtin; providers read their keys in Go, out of
-  Lua's reach. Every child process runs with `perm.ChildEnv`: zemi's own
+  Lua's reach. Every child process runs with `perm.Store.ChildEnv`: zemi's own
   environment minus the matching names the user did not keep
   (`permissions.env_keep`), plus only the extras the caller passed (a
   secret-shaped or environment-affecting extra name is refused
@@ -2707,7 +2707,7 @@ by the next startup sweep, since the session still has unseen messages.
   instructions") is flagged by a recall-biased heuristic pass (imperative
   verbs, second person, instruction-override phrasings) and routes to the
   review queue even under `memory.autonomy = auto`; false positives only
-  cost a review click. Auto-applied memories are capped per session. A
+  cost a review click. Auto-applied memories are capped at 20 per session. A
   near-duplicate of a live memory or a pending proposal in either scope
   (`learn.Similar`: 75% of the content tokens shared) is refused with the id
   and text it repeats, so the model merges the two through `replaces` (a
