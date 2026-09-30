@@ -185,6 +185,7 @@ var DefaultLayout = &Layout{Root: &LayoutNode{Kind: LayoutBox, Dir: DirRow, Size
 			{Kind: LayoutBox, Dir: DirCol, Size: Size{Kind: SizeFill, N: 1}, Min: 36, Max: 56, Collapse: true, Hidden: true, Children: []*LayoutNode{
 				{Kind: LayoutRegion, Region: "thinking.head"},
 				{ID: "thinking", Kind: LayoutRegion, Region: "thinking", Scroll: EdgeBottom, Size: Size{Kind: SizeFill}},
+				{Kind: LayoutSpacer, Size: Size{Kind: SizeCells, N: 1}},
 			}},
 		}},
 		{Kind: LayoutComposer, Placeholder: "Ask anything...", Frame: true, Top: "working", Left: "statusline.left", Right: "statusline.right"},

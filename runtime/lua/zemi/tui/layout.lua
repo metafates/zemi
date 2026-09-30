@@ -18,8 +18,8 @@ local layout = {
 				max = 100,
 				children = {
 					{ kind = "region", region = "header" },
-					-- the chat and the thinking pane: the spacer sits in the chat
-					-- column, so the separator meets the composer's top rule;
+					-- the chat and the thinking pane, each a spacer above the
+					-- composer, so the separator meets the composer's top rule;
 					-- prompts, overlays, toasts and completion popups go over the stage
 					{
 						kind = "box",
@@ -62,6 +62,7 @@ local layout = {
 										scroll = "bottom",
 										size = "fill",
 									},
+									{ kind = "spacer" },
 								},
 							},
 						},
