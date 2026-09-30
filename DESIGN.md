@@ -1563,8 +1563,8 @@ memory(id, scope, text, quote, provenance_session_id,
 checkpoints(message_id, session_id, path, existed, link, content, created_at)
                                                                 -- pre-turn file content (a link's target) for rewind (§8)
 proposals(id, payload, created_at)                              -- pending, until reviewed
-skills(name, path, source, enabled, created_at)                 -- source: user|builtin
-kv(key, value_json, updated_at)                                 -- zemi.state
+skills(name, path, source, enabled, created_at)                 -- source: user|builtin|plugin
+kv(key, value_json, updated_at)                                 -- zemi.state, saved config picks, reflector marks
 ```
 
 Ids people and the model type (sessions, forks, agent and workflow runs,
@@ -1579,10 +1579,9 @@ DBs at `~/.local/state/zemi/projects/<hash of trust root>/zemi.db`, named in
 the dir's `root` file (read only when it hashes to the dir's name), the same
 repository identity trust uses, so a subdirectory or a linked worktree opens
 the same sessions and project memory rather than a blank store. The
-global DB holds user-scope memory, skills and kv; a project DB
-holds its
-sessions, messages, todos, tool_calls, checkpoints, proposals, and
-project-scope memory. Opening a store sweeps checkpoints older than 30
+global DB holds user-scope memory and proposals, skills and kv; a
+project DB holds its sessions, messages, todos, tool_calls, checkpoints,
+project-scope memory and proposals, and the reflector's kv marks. Opening a store sweeps checkpoints older than 30
 days; sessions are never swept (zemi deletes a
 session only when the user says to: Delete in `/sessions` removes it and its subagent
 runs, then VACUUMs and truncates the WAL so the text leaves the disk).
