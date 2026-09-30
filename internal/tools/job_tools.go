@@ -211,9 +211,8 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 		note := j.after()
 		j.mu.Lock()
 		j.werr, j.note = err, note
-		var exit *exec.ExitError
-		switch {
-		case errors.As(err, &exit):
+		switch exit, ok := errors.AsType[*exec.ExitError](err); {
+		case ok:
 			j.code = exit.ExitCode()
 		case err != nil && !errors.Is(err, exec.ErrWaitDelay):
 			j.err = err.Error()

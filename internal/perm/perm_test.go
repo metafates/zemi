@@ -445,13 +445,11 @@ func TestUnbalancedFails(t *testing.T) {
 func TestGlobConcurrentAndRunes(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range 8 {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+		wg.Go(func() {
 			for j := range 50 {
 				globRegexp(string(rune('a'+i)) + "*" + string(rune('a'+j%26)))
 			}
-		}(i)
+		})
 	}
 	wg.Wait()
 	if n := literalPrefix("\u00e9*"); n != 1 {
