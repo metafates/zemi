@@ -466,21 +466,26 @@ local function builder(ctx, width)
 	-- A settled run of activity rows: the digest of what folds (thinking and
 	-- the calls that only looked around), then the rows that keep their own,
 	-- or, opened, the run's rail under the digest, whose click folds it back.
+	-- An opened run's digest heads its rail: the chat pins it down to the
+	-- rail's last row, as it pins a prompt.
 	---@param list zemi.TranscriptRow[]
 	---@param first integer
 	---@param last integer
 	---@param opened boolean
 	function B.fold(list, first, last, opened)
 		local digest = fmt.digest(list, first, last)
+		local head = digest ~= "" and opened
 		if digest ~= "" then
 			local click = "turn:" .. first
 			push({
-				{ text = "· ", hl = "Dim", copy = false, hover = false, click = click },
+				{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = head or nil },
 				{ text = fmt.clip(digest, width - 2), hl = "Dim", click = click },
 			})
 		end
 		if opened then
+			local at = #B.lines
 			B.rail(list, first, last, {})
+			if head and #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 			return
 		end
 		for i = first, last do

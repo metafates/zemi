@@ -363,6 +363,64 @@ func TestChatStickyPrompt(t *testing.T) {
 	}
 }
 
+// TestChatStickyDigest: an opened run's digest pins over the chat's top row
+// on the panel while the view is inside the run; past the run's last row,
+// or with the run folded, the prompt pins again.
+func TestChatStickyDigest(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 14)
+	host.AppendMessage("user", "look around")
+	appendReasoning(host, "where", hostapi.TurnStat{ThoughtMS: 8000})
+	for i := range 12 {
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "ls", Label: fmt.Sprintf("list dir %d", i), Status: "ok"})
+	}
+	for i := range 12 {
+		appendReply(host, fmt.Sprintf("answer %d", i), hostapi.TurnStat{})
+	}
+	// pin scrolls the chat so the first row at matches tops the view, and
+	// reads the pin drawn over it, whose panel runs on to the bar
+	pin := func(at func([]hostapi.Segment) bool) string {
+		app.renderSync(t)
+		app.Frame()
+		st := app.scrolls["chat"]
+		i := slices.IndexFunc(st.lines, at)
+		if i < 0 {
+			t.Fatal("no such row")
+		}
+		app.scrollRows("chat", i-st.top)
+		app.Frame()
+		row := app.lastRows[st.rect.Min.Y]
+		if row[0].HL != "Pinned" || row[0].Fill != hostapi.FillPanel || row[len(row)-2].Fill != hostapi.FillPanel {
+			t.Fatalf("the top row is no pin on the panel: %+v", row)
+		}
+		return hostapi.SegsText(row)
+	}
+	text := func(s string) func([]hostapi.Segment) bool {
+		return func(r []hostapi.Segment) bool { return strings.Contains(hostapi.SegsText(r), s) }
+	}
+	app.renderSync(t) // the first render forgets what was opened before it
+	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:2"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		at   func([]hostapi.Segment) bool
+		want string
+	}{
+		{text("list dir 5"), "· 12 commands"},
+		{text("list dir 11"), "· 12 commands"},
+		{text("answer 2"), "▌ look around"},
+	} {
+		if got := pin(c.at); !strings.HasPrefix(got, c.want) {
+			t.Fatalf("the pin reads %q, want %q", got, c.want)
+		}
+	}
+	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:2"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := pin(text("answer 2")); !strings.HasPrefix(got, "▌ look around") {
+		t.Fatalf("with the run folded the pin reads %q", got)
+	}
+}
+
 // TestScrollPendingEdge: an edge issued before a region is drawn, or before
 // the rows it was meant for arrive, lands on them: "top" stays parked on the
 // first row until the region scrolls again, "bottom" follows the tail.

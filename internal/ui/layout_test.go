@@ -128,7 +128,7 @@ func TestViewport(t *testing.T) {
 
 func TestPinned(t *testing.T) {
 	for _, c := range []struct {
-		name, rows string // s a sticky row, . any other
+		name, rows string // s a sticky row, e an end mark, . any other
 		top, want  int
 	}{
 		{"top of content", "s . . . .", 0, -1},
@@ -137,10 +137,13 @@ func TestPinned(t *testing.T) {
 		{"header three under", "s . . . . s", 2, 0},
 		{"block above", ". s s . . . .", 4, 1},
 		{"no header above", ". . . . . . s", 2, -1},
+		{"inside a nested scope", "s . . s . . e . . .", 6, 3},
+		{"an end cancels its header only", "s . . s . . e . . . .", 9, 0},
+		{"a wrapped end counts once", "s . s . e e . . . .", 8, 0},
 	} {
 		var lines [][]hostapi.Segment
 		for f := range strings.FieldsSeq(c.rows) {
-			lines = append(lines, []hostapi.Segment{{Text: f, Sticky: f == "s"}})
+			lines = append(lines, []hostapi.Segment{{Text: f, Sticky: f == "s", PinEnd: f == "e"}})
 		}
 		if got := pinned(lines, c.top); got != c.want {
 			t.Errorf("%s: %d, want %d", c.name, got, c.want)

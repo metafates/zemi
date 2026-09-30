@@ -1200,6 +1200,10 @@ type Segment struct {
 	// Sticky on a row's first segment makes the row head what follows: a
 	// scrolled region pins it while it is above the view
 	Sticky bool
+	// PinEnd (Lua's sticky = "end") on a row's first segment ends the scope
+	// of the nearest header above it: once the row is above the view, that
+	// header pins no more
+	PinEnd bool
 	Bar    bool // Go only: a viewport's scrollbar cell, which a box draws in its right border
 	// Fill is Go only: the surface under the segment where its style paints
 	// the canvas. A field, since hover rewrites Over and HL.
@@ -1362,6 +1366,7 @@ func segment(field func(string) any, widget string) Segment {
 	seg.NoHover = field("hover") == false
 	seg.Soft = field("soft_wrap") == true
 	seg.Sticky = field("sticky") == true
+	seg.PinEnd = field("sticky") == "end"
 	if id, ok := field("click").(string); ok && id != "" {
 		seg.Click, seg.Widget = id, widget
 	}

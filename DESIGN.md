@@ -1841,11 +1841,13 @@ provenance string.
   off the tail;
   a scrolled view stays anchored while new lines fill underneath, and
   sending a message (or a `!command`) snaps back to the tail, a slash
-  command does not. While a turn's prompt is above the view its first row
-  stays pinned over the chat's top row (a segment's `sticky`) as chrome,
-  dimmed (`Pinned`), ending in `…` when
-  the prompt has more rows; a click on it scrolls back to the prompt,
-  and `alt+up`/`alt+down` move between prompts.
+  command does not. While a turn's prompt, or an opened run's digest, is
+  above the view its first row stays pinned over the chat's top row (a
+  segment's `sticky`) as chrome, dimmed (`Pinned`) on the panel, ending in `…`
+  when the prompt has more rows; the nearest one pins, a digest only down to
+  its run's last row (`sticky = "end"`), past which the prompt pins again. A
+  click on the pin scrolls back to its row, and `alt+up`/`alt+down` move
+  between prompts and opened runs.
   A settled turn folds each run of thinking and calls that only looked around
   (reads, searches, fetches, commands that changed nothing, and the like, gone
   well) into one dim digest row, `· 6 files, 8 commands · thought 8s`; edits,
@@ -1897,7 +1899,7 @@ provenance string.
   `pgup`/`pgdown`, `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j` and `ctrl+home`/`ctrl+end`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or
-  next prompt; in lists `ctrl+d`/`ctrl+u` move half a page, and
+  next prompt or opened run; in lists `ctrl+d`/`ctrl+u` move half a page, and
   scroll a box's text when it overflows, which the footer names as
   `ctrl+d/u scroll`. A typed line keeps `ctrl+u` for its text, so neither
   half-page key scrolls the prompt text above it, and the

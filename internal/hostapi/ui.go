@@ -848,6 +848,9 @@ func linesTable(L *glua.LState, lines [][]Segment) *glua.LTable {
 			if s.Sticky {
 				seg.RawSetString("sticky", glua.LTrue)
 			}
+			if s.PinEnd {
+				seg.RawSetString("sticky", glua.LString("end"))
+			}
 			if s.Click != "" {
 				seg.RawSetString("click", glua.LString(s.Click))
 			}

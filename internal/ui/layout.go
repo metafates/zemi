@@ -610,10 +610,15 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 
 func sticky(row []hostapi.Segment) bool { return len(row) > 0 && row[0].Sticky }
 
+func pinEnd(row []hostapi.Segment) bool { return len(row) > 0 && row[0].PinEnd }
+
 // pinned is the row a view scrolled to top draws over its first one: the
 // first row of the nearest header (a run of sticky rows) above top, or -1
 // when none is, or when a header is within the first three rows shown, so
 // the pin never stacks two headers with a gap row and a stats line between.
+// Each end mark (a run of PinEnd rows, as a wrapped row carries it down)
+// above top cancels the next header up: a header nested in another's scope
+// pins down to its own last row, then the outer one pins again.
 // NOTE: a scan back to the header per painted frame of a view below one,
 // following a turn included: a few hundred bool reads in a long turn.
 func pinned(lines [][]hostapi.Segment, top int) int {
@@ -625,14 +630,19 @@ func pinned(lines [][]hostapi.Segment, top int) int {
 			return -1
 		}
 	}
-	i := min(top, len(lines)) - 1
-	for i >= 0 && !sticky(lines[i]) {
-		i--
+	ends := 0
+	for i := min(top, len(lines)) - 1; i >= 0; i-- {
+		switch {
+		case pinEnd(lines[i]) && (i == 0 || !pinEnd(lines[i-1])):
+			ends++
+		case !headerAt(lines, i):
+		case ends == 0:
+			return i
+		default:
+			ends--
+		}
 	}
-	for i > 0 && sticky(lines[i-1]) {
-		i--
-	}
-	return i
+	return -1
 }
 
 // pinRow sets the row pinned over the first one shown and its copy, made
@@ -651,13 +661,14 @@ func (st *scrollState) pinRow(lines [][]hostapi.Segment, width int) {
 }
 
 // pinCopy is row as the pin draws it, chrome rather than content: all in
-// Pinned (dimmed), nothing in it
-// copying or acting but the pin's own click, and ending in an ellipsis when
-// the header has more rows.
+// Pinned (dimmed) on the panel, which runs on to the bar and sets it off
+// the text under it, nothing in it copying or acting but the pin's own
+// click, and ending in an ellipsis when the header has more rows.
 func pinCopy(row []hostapi.Segment, more bool, width int) []hostapi.Segment {
 	row = slices.Clone(row)
 	for i := range row {
 		row[i].HL, row[i].Effect, row[i].NoCopy, row[i].Soft, row[i].Click, row[i].Widget = "Pinned", "", true, false, "", ""
+		row[i].Fill = hostapi.FillPanel
 	}
 	if more {
 		for len(row) > 0 {
@@ -667,7 +678,7 @@ func pinCopy(row []hostapi.Segment, more bool, width int) []hostapi.Segment {
 			}
 			row = row[:len(row)-1]
 		}
-		row = append(truncateSegs(row, barText(width)-1), hostapi.Segment{Text: "…", HL: "Pinned", NoCopy: true})
+		row = append(truncateSegs(row, barText(width)-1), hostapi.Segment{Text: "…", HL: "Pinned", NoCopy: true, Fill: hostapi.FillPanel})
 	}
 	return row
 }

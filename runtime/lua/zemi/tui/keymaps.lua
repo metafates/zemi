@@ -33,5 +33,5 @@ zemi.keymap.set("shift+up", "zemi.ui.scroll.line_up", { desc = "scroll chat up a
 zemi.keymap.set("shift+down", "zemi.ui.scroll.line_down", { desc = "scroll chat down a line" })
 zemi.keymap.set("ctrl+k", "zemi.ui.scroll.line_up", { desc = "scroll chat up a line" })
 zemi.keymap.set("ctrl+j", "zemi.ui.scroll.line_down", { desc = "scroll chat down a line" })
-zemi.keymap.set("alt+up", "zemi.ui.scroll.sticky_up", { desc = "scroll chat to the previous prompt" })
-zemi.keymap.set("alt+down", "zemi.ui.scroll.sticky_down", { desc = "scroll chat to the next prompt" })
+zemi.keymap.set("alt+up", "zemi.ui.scroll.sticky_up", { desc = "scroll chat to the previous prompt or opened run" })
+zemi.keymap.set("alt+down", "zemi.ui.scroll.sticky_down", { desc = "scroll chat to the next prompt or opened run" })

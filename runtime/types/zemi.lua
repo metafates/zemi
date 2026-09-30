@@ -220,7 +220,7 @@ function debug.traceback(msg) end
 ---@field copy? boolean `false` marks decoration (a gutter bar, a bullet, a border, a line number): a selection neither lights nor copies it.
 ---@field hover? boolean `false` marks a clickable body row (a diff line, a detail line): the pointer still shows a click acts, but hovering it restyles nothing.
 ---@field soft_wrap? boolean The line continues on the next one: a copy joins the two and drops what follows this segment on the row. Go's own wrapping sets it.
----@field sticky? boolean On a row's first segment: rows that set it form a header. While a scrolled region's first rows come after a whole header, the header's first row is drawn over the region's first row as chrome, in the `Pinned` group across the view's width, and a click on it scrolls back there. Example: `{ text = "> ", sticky = true }`.
+---@field sticky? boolean|"end" On a row's first segment: rows that set it form a header. While a scrolled region's first rows come after a whole header, the header's first row is drawn over the region's first row as chrome, in the `Pinned` group on the panel across the view's width, and a click on it scrolls back there. `"end"` marks the last row of the nearest header's scope: once it is above the view, that header pins no more and the one above it pins again. Example: `{ text = "> ", sticky = true }`.
 
 --- A widget row: the segments it is drawn from, left to right.
 ---@alias zemi.Line zemi.Segment[]
