@@ -1543,7 +1543,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 		}
 		switch s.Effect {
 		case "shimmer":
-			for _, r := range a.shimmer(s, a.frame()*frameMS, a.host.Settings.Bool("ui.animations")) {
+			for _, r := range a.shimmer(s) {
 				write(r.Text, r.HL, s.Over, s.Fill)
 			}
 			continue

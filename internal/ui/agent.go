@@ -738,14 +738,14 @@ func matchSegs(segs []hostapi.Segment, pos []int, sel bool) []hostapi.Segment {
 // text every 2s, each rune blending the segment's color toward Normal by
 // its distance to the band center. Blends are quantized to 8 steps so the
 // sgr style cache stays small.
-func (a *App) shimmer(seg hostapi.Segment, ms int, animate bool) []hostapi.Segment {
+func (a *App) shimmer(seg hostapi.Segment) []hostapi.Segment {
 	dim, fg := a.thm.style(seg.HL).Fg, a.thm.style("Normal").Fg
-	if !animate || dim == nil || fg == nil {
+	if !a.host.Settings.Bool("ui.animations") || dim == nil || fg == nil {
 		return []hostapi.Segment{{Text: seg.Text, HL: seg.HL}}
 	}
 	const band = 3.0
 	runes := []rune(seg.Text)
-	pos := float64(ms%2000)/2000*(float64(len(runes))+2*band) - band
+	pos := float64(a.frame()*frameMS%2000)/2000*(float64(len(runes))+2*band) - band
 	out := make([]hostapi.Segment, 0, len(runes))
 	for i, r := range runes {
 		k := 0.0
