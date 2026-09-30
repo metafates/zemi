@@ -59,19 +59,19 @@ var SubjectPrefixes = []string{"tool.", "fs.", "net.", "lua.", "mcp.", "memory."
 // optional runtime exclusion: an argument matching Pattern but also
 // NotMatch falls through to the next rule.
 type Rule struct {
-	Subject   string   `json:"subject"`   // tool.shell, fs.read, net.host, lua.fs.read
-	Pattern   string   `json:"pattern"`   // glob
-	Decision  Decision `json:"decision"`  // allow | ask | deny
-	NotMatch  string   `json:"not_match"` // optional exclusion glob
-	Principal string   `json:"principal"` // empty = any principal
+	Subject   string   // tool.shell, fs.read, net.host, lua.fs.read
+	Pattern   string   // glob
+	Decision  Decision // allow | ask | deny
+	NotMatch  string   // optional exclusion glob
+	Principal string   // empty = any principal
 	// Source is where a principal-less rule came from, so /permissions can
 	// say what to edit: "" for user config, "permissions" for a project's
 	// permissions file, else the Lua origin that added it
-	Source string `json:"source,omitempty"`
+	Source string
 	// Network marks a session rule written from a network: true ask: a
 	// command it allows keeps the sandbox and gets sockets, as the ask said,
 	// instead of running unconfined like other rule-allowed commands
-	Network bool `json:"network,omitempty"`
+	Network bool
 }
 
 // Store holds rules in evaluation order; lookups re-sort by specificity.
