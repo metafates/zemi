@@ -562,10 +562,10 @@ func (a *App) wheel(x, y, step int) {
 	}
 	switch {
 	case !ok:
-		a.scrollRows(a.scrollAt(x, y), step*chatWheelStep)
+		a.scrollRows(a.scrollAt(x, y), step)
 		return
 	case text != nil && text.overflows() && !(sel != nil && onRow):
-		text.scroll(step * chatWheelStep)
+		text.scroll(step)
 	case sel != nil:
 		*sel = max(0, min(*sel+step, n-1))
 	}

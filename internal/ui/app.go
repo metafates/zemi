@@ -42,7 +42,6 @@ const (
 	doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
 	recapDelay       = 3 * time.Minute        // idle after a turn before a recap: inside Anthropic's 5-minute cache
 	hookQueueSize    = 64
-	chatWheelStep    = 1
 )
 
 // App is the root bubbletea model. It implements hostapi.UIHooks.

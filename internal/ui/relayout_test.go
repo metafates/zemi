@@ -106,7 +106,7 @@ func TestRelayout(t *testing.T) {
 		t.Fatalf("ctrl+j should scroll the sidebar alone:\n%s", ansi.Strip(frame))
 	}
 	app.Update(tea.MouseWheelMsg{X: 2, Y: 5, Button: tea.MouseWheelUp})
-	if side := app.scrolls["side"]; side.top != side.rows-side.viewH-chatWheelStep || !app.scrolls["chat"].follow {
+	if side := app.scrolls["side"]; side.top != side.rows-side.viewH-1 || !app.scrolls["chat"].follow {
 		t.Fatalf("the wheel over the sidebar should scroll it: side top %d", app.scrolls["side"].top)
 	}
 

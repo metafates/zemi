@@ -134,7 +134,7 @@ func (qp *questionPrompt) switchTab(d int) {
 // row, n focuses it as a note, and in the field enter answers with it.
 func (a *App) questionKey(key, text string) {
 	qp := a.question
-	defer func() { a.bump() }()
+	defer a.bump()
 	switch key {
 	case "tab":
 		qp.switchTab(1)
