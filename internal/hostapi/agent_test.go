@@ -1551,12 +1551,12 @@ func TestProfileSwitch(t *testing.T) {
 		wantErr string
 	}{
 		{"unknown profile", func() error { return h.SetProfile("nope") }, "want default, planner, cheap"},
-		{"model under default", func() error { return h.SetModel("a/cheap", true) }, ""},
-		{"unregistered provider", func() error { return h.SetModel("nope/m", true) }, `provider "nope" is not registered: add a provider to `},
+		{"model under default", func() error { return h.SetModel("a/cheap") }, ""},
+		{"unregistered provider", func() error { return h.SetModel("nope/m") }, `provider "nope" is not registered: add a provider to `},
 		{"unlisted model under a registered provider is taken and warned about, mid-turn too", func() error {
 			h.agents.active, h.agents.turnModel = true, "a/main"
 			defer func() { h.agents.active, h.agents.turnModel = false, "" }()
-			if err := h.SetModel("a/nope", true); err != nil {
+			if err := h.SetModel("a/nope"); err != nil {
 				return err
 			}
 			runUser(t, r, `local n = zemi.notify.list()[1]; assert(n.title == "Model not listed" and n.body:match("^a/nope: not in the provider's models list"), tostring(n and n.body))`)
@@ -1566,10 +1566,10 @@ func TestProfileSwitch(t *testing.T) {
 			if err := h.SetProfile("onchat"); err != nil {
 				return err
 			}
-			return h.SetModel("a/main", true)
+			return h.SetModel("a/main")
 		}, ""},
 		{"switch", func() error { return h.SetProfile("cheap") }, ""},
-		{"model under a profile with one", func() error { return h.SetModel("a/main", true) }, "profile cheap sets its model"},
+		{"model under a profile with one", func() error { return h.SetModel("a/main") }, "profile cheap sets its model"},
 		{"zemi.model.set under it", func() error {
 			return r.ExecuteChunk(context.Background(), `zemi.model.set("a/main")`, "test.lua", lua.OriginUser)
 		}, "profile cheap sets its model"},

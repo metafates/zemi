@@ -525,7 +525,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			return h.Btw(args)
 		}},
 		{Name: "model", NArgs: hostapi.NArgsAny, Desc: "choose the model, or one per role", GoFn: func(h *hostapi.Host, args string) error {
-			return h.SetModel(args, true)
+			return h.SetModel(args)
 		}, GoComplete: (*hostapi.Host).CompleteModel},
 		{Name: "permissions", NArgs: hostapi.NArgsAny, Desc: "see the rules and delete one you allowed", GoFn: func(h *hostapi.Host, args string) error {
 			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "forget "); ok {

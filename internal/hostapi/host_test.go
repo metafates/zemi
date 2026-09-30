@@ -648,7 +648,7 @@ func TestSetModelFiresWatches(t *testing.T) {
 			return nil
 		})
 	}
-	if err := h.SetModel("p/m", true); err != nil {
+	if err := h.SetModel("p/m"); err != nil {
 		t.Fatal(err)
 	}
 	check("p/m")

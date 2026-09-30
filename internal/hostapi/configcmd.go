@@ -133,7 +133,7 @@ func (h *Host) configSet(path, value string) error {
 func (h *Host) SetConfig(path string, val any) error {
 	s, _ := val.(string)
 	if role, ok := strings.CutPrefix(path, "models."); ok {
-		return h.SetModel(role+" "+cmp.Or(s, "chat"), true)
+		return h.SetModel(role + " " + cmp.Or(s, "chat"))
 	}
 	switch path {
 	case "permissions.mode":

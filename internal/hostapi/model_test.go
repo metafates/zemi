@@ -76,7 +76,7 @@ func TestSetModelArgs(t *testing.T) {
 		{"titles a/big more", "", "", "", "usage: /model"},
 	} {
 		n := len(ui.opened)
-		err := h.SetModel(c.args, false)
+		err := h.SetModel(c.args)
 		switch {
 		case c.err != "":
 			if err == nil || !strings.Contains(err.Error(), c.err) {

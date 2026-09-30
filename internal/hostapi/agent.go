@@ -2391,9 +2391,8 @@ func modelDesc(id string, m agent.Model) string {
 // list, "roles" the role list, "update" fetches the catalog, a role its
 // list, an id sets chat, and a role with an id, or "chat" to follow it,
 // sets that role. The config watches it fires run later on the interpreter
-// queue. warn toasts an id the provider does not list; zemi health leaves
-// that to its model row.
-func (h *Host) SetModel(args string, warn bool) error {
+// queue. An id the provider does not list is set and toasted.
+func (h *Host) SetModel(args string) error {
 	f := strings.Fields(args)
 	picker := func(role string) error {
 		err := h.OpenModelPicker(role)
@@ -2431,7 +2430,7 @@ func (h *Host) SetModel(args string, warn bool) error {
 		o.Refresh = true
 		ui.OpenOverlay(o)
 	}
-	if warn && id != "" {
+	if id != "" {
 		h.warnUnlisted(id)
 	}
 	return nil

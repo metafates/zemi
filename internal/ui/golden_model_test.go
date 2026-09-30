@@ -22,7 +22,7 @@ func TestGoldenModelRoles(t *testing.T) {
 	// main.go owns /model
 	host.Commands.Add(&hostapi.Command{
 		Name: "model", NArgs: "*", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-		GoFn: func(h *hostapi.Host, args string) error { return h.SetModel(args, false) },
+		GoFn: func(h *hostapi.Host, args string) error { return h.SetModel(args) },
 	})
 	frame := func(name string) {
 		for app.Pump() {
