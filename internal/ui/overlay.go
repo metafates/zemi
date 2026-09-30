@@ -881,7 +881,7 @@ func (a *App) overlayBox(st *overlayState, w, h int) [][]hostapi.Segment {
 		var body [][]hostapi.Segment
 		if bodyN > 0 {
 			st.body.viewH = max(room-len(list), 1)
-			body = st.body.window(st.body.wrap(buildBody, bodyW), bodyW)
+			body = st.body.window(buildBody(bodyW), bodyW)
 		}
 		// y says nothing enter does not
 		if (bodyN > 0 || len(st.visible) > 0) && !enterCopies {

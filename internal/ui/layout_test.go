@@ -99,13 +99,12 @@ func TestViewport(t *testing.T) {
 		{"reveal taller than the view shows its top", viewport{viewH: 5}, 20, 12, func(v *viewport) { v.reveal(6, 16) }, 6, 5, true},
 		{"follow bottom-anchors short content", viewport{viewH: 5, follow: true}, 3, 12, nil, -2, 5, false},
 		{"scrolling up leaves the tail", viewport{viewH: 5, follow: true}, 20, 12, func(v *viewport) { v.scroll(-3) }, 12, 5, true},
-		{"under 8 cells draws no bar", viewport{viewH: 5}, 20, 7, nil, 0, 5, false},
+		{"under 7 cells draws no bar", viewport{viewH: 5}, 20, 6, nil, 0, 5, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			// the widest content window takes beside the bar
 			lines := make([][]hostapi.Segment, c.rows)
 			for i := range lines {
-				lines[i] = []hostapi.Segment{{Text: fmt.Sprintf("%0*d", barInner(c.width), i)}}
+				lines[i] = []hostapi.Segment{{Text: fmt.Sprintf("%0*d", c.width, i)}}
 			}
 			v := c.v
 			v.window(lines, c.width) // a frame drew it
@@ -169,27 +168,6 @@ func BenchmarkPin(b *testing.B) {
 	}
 }
 
-// TestViewportWrapGap: text beside an overflowing view's bar keeps a blank
-// cell before it, as a list does, so its widest row never touches it.
-func TestViewportWrapGap(t *testing.T) {
-	full := func(w int) [][]hostapi.Segment {
-		return [][]hostapi.Segment{{{Text: strings.Repeat("x", w)}}, {{Text: strings.Repeat("y", w)}}, {{Text: "z"}}}
-	}
-	for name, lines := range map[string]func(v *viewport) [][]hostapi.Segment{
-		"box body": func(v *viewport) [][]hostapi.Segment { return v.wrap(full, 12) },
-		"scrolled region": func(*viewport) [][]hostapi.Segment {
-			return full(regionWidth(&hostapi.LayoutNode{Scroll: "bottom"}, 12))
-		},
-	} {
-		v := viewport{viewH: 2}
-		for _, r := range v.window(lines(&v), 12) {
-			if row := []rune(plainSegs(r)); len(row) != 12 || row[10] != ' ' {
-				t.Fatalf("%s: row %q: want a blank cell before the bar", name, string(row))
-			}
-		}
-	}
-}
-
 func TestJoin(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -200,15 +178,18 @@ func TestJoin(t *testing.T) {
 	}{
 		{
 			"a box on the composer rule joins at its corner and its edge", false,
-			[]string{"┌──┐   ", "│ab│   ", "┌─────┐"}, []string{"┌──┐   ", "│ab│   ", "├──┴──┐"},
+			[]string{"┌──┐   ", "│ab│   ", "┌─────┐"},
+			[]string{"┌──┐   ", "│ab│   ", "├──┴──┐"},
 		},
 		{
 			"a right-anchored box joins at the rule's other corner", false,
-			[]string{"   ┌──┐", "   │ab│", "┌─────┐"}, []string{"   ┌──┐", "   │ab│", "┌──┴──┤"},
+			[]string{"   ┌──┐", "   │ab│", "┌─────┐"},
+			[]string{"   ┌──┐", "   │ab│", "┌──┴──┤"},
 		},
 		{
 			"dimmed rows still join", true,
-			[]string{"┌──┐   ", "│ab│   ", "┌─────┐"}, []string{"┌──┐   ", "│ab│   ", "├──┴──┐"},
+			[]string{"┌──┐   ", "│ab│   ", "┌─────┐"},
+			[]string{"┌──┐   ", "│ab│   ", "├──┴──┐"},
 		},
 		{
 			"a narrower toast under a wider one shares its border", false,

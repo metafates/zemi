@@ -446,36 +446,19 @@ func (v viewport) overflows() bool { return v.rows > v.viewH }
 // pageItems is how many items of an n-item list a page holds.
 func (v viewport) pageItems(n int) int { return max(v.viewH*n/max(v.rows, 1), 1) }
 
-// barInner is what a row of a width-cell viewport may use once the bar's
-// column is reserved; a viewport under 8 cells draws no bar.
-func barInner(width int) int {
-	if width >= 8 {
-		return width - 1
-	}
-	return width
-}
-
-// barText is what text may use beside a bar: its column and a blank before it.
+// barText is what a scrolled region's text may use: its last column keeps
+// the bar and the one before it a blank. A region under 8 cells draws no bar.
 func barText(width int) int {
-	if barInner(width) < width {
+	if width >= 8 {
 		return width - 2
 	}
 	return width
 }
 
-// wrap builds content at width, again at barText when it overflows the view,
-// so the widest row never touches the bar. viewH must be set.
-func (v *viewport) wrap(build func(width int) [][]hostapi.Segment, width int) [][]hostapi.Segment {
-	lines := build(width)
-	if len(lines) > v.viewH && barText(width) < width {
-		lines = build(barText(width))
-	}
-	return lines
-}
-
-// window is the rows of lines the view shows, each with its bar cell while
-// the content overflows; rows before the content (a bottom-anchored tail)
-// are nil. lines must fit barInner(width) when they overflow.
+// window is the rows of lines the view shows, each padded to width cells
+// and followed by its bar cell while the content overflows, which a box
+// draws in its border; rows before the content (a bottom-anchored tail) are
+// nil.
 func (v *viewport) window(lines [][]hostapi.Segment, width int) [][]hostapi.Segment {
 	v.rows = len(lines)
 	v.clamp()
@@ -494,7 +477,7 @@ func (v *viewport) window(lines [][]hostapi.Segment, width int) [][]hostapi.Segm
 			row = lines[j]
 		}
 		if bar.on() {
-			row = bar.row(padSegs(truncateSegs(row, barInner(width)), barInner(width)), i)
+			row = bar.row(padSegs(truncateSegs(row, width), width), i)
 		}
 		out = append(out, row)
 	}
@@ -585,7 +568,7 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	}
 	st.clamp()
 	st.pinRow(lines, w)
-	rows := st.window(lines, w)
+	rows := st.window(lines, w-1) // the bar keeps the region's last column
 	st.anchor, st.anchorOff = nil, 0
 	for i := max(st.top, 0); i < len(lines) && i < st.top+h; i++ {
 		if strings.TrimSpace(plainSegs(lines[i])) == "" {
@@ -662,7 +645,7 @@ func pinCopy(row []hostapi.Segment, more bool, width int) []hostapi.Segment {
 			}
 			row = row[:len(row)-1]
 		}
-		row = append(truncateSegs(row, barInner(width)-1), hostapi.Segment{Text: "…", HL: "Pinned", NoCopy: true})
+		row = append(truncateSegs(row, barText(width)-1), hostapi.Segment{Text: "…", HL: "Pinned", NoCopy: true})
 	}
 	return row
 }
@@ -670,14 +653,14 @@ func pinCopy(row []hostapi.Segment, more bool, width int) []hostapi.Segment {
 // scrollbar is the one-cell bar down the right edge of a viewport showing
 // rows [top, top+h) of total: the thumb's size and offset say how much
 // shows and where. It is decoration, so it never copies, and it draws
-// nothing while everything fits.
+// nothing while everything fits. width is the text beside it, under 7
+// cells too narrow for one.
 type scrollbar struct{ h, top, total, width int }
 
-func (b scrollbar) on() bool { return b.h >= 2 && b.total > b.h && barInner(b.width) < b.width }
+func (b scrollbar) on() bool { return b.h >= 2 && b.total > b.h && b.width >= 7 }
 
 // row appends the bar cell for viewport row i to a row already padded to
-// barInner cells. A box pads the row before its bar, so the bar keeps to
-// the box's right inner edge.
+// width cells.
 func (b scrollbar) row(row []hostapi.Segment, i int) []hostapi.Segment {
 	if !b.on() {
 		return row

@@ -229,7 +229,7 @@ func scrollChoiceBody(h, w int, head [][]hostapi.Segment, v *viewport, text func
 		tight := level > 0
 		list := act(level > 1)
 		v.viewH = max(h-2-len(stack(tight, head, oneRow, list, oneRow))+1, 1)
-		rows := v.window(v.wrap(text, textW), textW)
+		rows := v.window(text(textW), textW)
 		pairs := hints
 		if !typing {
 			pairs = slices.Concat(hints, scrolls(*v))
@@ -335,7 +335,7 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 // choiceView is choiceRows in v, whose viewH the caller sets, scrolled to
 // keep the selected answer in view.
 func choiceView(choices []promptChoice, sel int, v *viewport, w int, short bool) [][]hostapi.Segment {
-	list := v.wrap(func(w int) [][]hostapi.Segment { return choiceRows(choices, sel, w, short) }, w)
+	list := choiceRows(choices, sel, w, short)
 	v.rows = len(list)
 	top, end := len(list), 0
 	for y, r := range list {
@@ -361,6 +361,7 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 	}
 	bw := max(3+ansi.StringWidth(label(title, 999)+label(badge, 999)), minW+4)
 	for _, r := range body {
+		r, _ = cutBar(r)
 		bw = max(bw, hostapi.SegsWidth(r)+4)
 	}
 	// wide boxes read badly; long rows end in an ellipsis instead
@@ -376,11 +377,17 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 		{Text: "┐", HL: hostapi.ChromeRule, NoCopy: true, Line: true},
 	}}
 	for _, r := range body {
-		var bar []hostapi.Segment
-		if n := len(r); n > 0 && r[n-1].Bar {
-			r, bar = r[:n-1], r[n-1:]
+		r, bar := cutBar(r)
+		edge := []hostapi.Segment{{Text: " │", HL: hostapi.ChromeRule, NoCopy: true, Line: true}}
+		if len(bar) > 0 {
+			// the bar draws in the border: the thumb over it, the track the border itself
+			b := bar[0]
+			if b.Text == "│" {
+				b.HL, b.Line = hostapi.ChromeRule, true
+			}
+			edge = []hostapi.Segment{{Text: " ", NoCopy: true}, b}
 		}
-		line := ellipsizeSegs(r, bw-4-len(bar))
+		line := ellipsizeSegs(r, bw-4)
 		row := make([]hostapi.Segment, 0, len(line)+4)
 		row = append(row, hostapi.Segment{Text: "│ ", HL: hostapi.ChromeRule, NoCopy: true, Line: true})
 		for _, s := range line {
@@ -389,12 +396,19 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 		}
 		// a selected row's band runs to the box's edge, however wide its text
 		band := len(line) > 0 && line[len(line)-1].Band
-		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, bw-4-hostapi.SegsWidth(line)-len(bar))), NoCopy: true, Band: band})
-		row = append(append(row, bar...), hostapi.Segment{Text: " │", HL: hostapi.ChromeRule, NoCopy: true, Line: true})
-		box = append(box, row)
+		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, bw-4-hostapi.SegsWidth(line))), NoCopy: true, Band: band})
+		box = append(box, append(row, edge...))
 	}
 	box = append(box, []hostapi.Segment{{Text: "└" + strings.Repeat("─", bw-2) + "┘", HL: hostapi.ChromeRule, NoCopy: true, Line: true}})
 	return box
+}
+
+// cutBar splits a viewport row from the bar cell window put after it.
+func cutBar(r []hostapi.Segment) (row, bar []hostapi.Segment) {
+	if n := len(r); n > 0 && r[n-1].Bar {
+		return r[:n-1], r[n-1:]
+	}
+	return r, nil
 }
 
 // ellipsizeSegs cuts a row to w cells ending in "…", at a word boundary
@@ -483,145 +497,131 @@ func listRows(items []listItem, sel int, v *viewport, room, maxW int) [][]hostap
 // label is cut.
 func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
-	var keys map[int]hostapi.Segment // row -> key column
-	var cut, starts map[int]bool     // rows a scrolled window may end after, and start at
+	keys := map[int]hostapi.Segment{}             // row -> key column
+	cut, starts := map[int]bool{}, map[int]bool{} // rows a scrolled window may end after, and start at
 	var selTop, bandTop, selEnd int
-	// rows at maxW cells; the width depends on the bar, which the row count
-	// decides, so a list that overflows is built again a cell narrower
-	build := func(maxW int) {
-		labelW, keyW, tailDesc := 0, 0, 0
-		for _, it := range all {
-			if it.desc != "" { // a row with no description needs no column
-				labelW = max(labelW, ansi.StringWidth(it.mark.Text+it.label))
-			}
-			if it.desc != "" && it.row.Tail {
-				tailDesc = max(tailDesc, ansi.StringWidth(it.desc))
-			}
-			if it.key.Text != "" {
-				keyW = max(keyW, 2+ansi.StringWidth(it.key.Text))
-			}
+	labelW, keyW, tailDesc := 0, 0, 0
+	for _, it := range all {
+		if it.desc != "" { // a row with no description needs no column
+			labelW = max(labelW, ansi.StringWidth(it.mark.Text+it.label))
 		}
-		// too narrow for a description column beside the widest label, every
-		// description goes under its label instead of giving way
-		under := maxW > 0 && labelW > maxW-7
-		if maxW > 0 {
-			// the marker and the gap before a description take 2 cells each
-			labelW = max(min(labelW, maxW-4-keyW), 1)
-			if tailDesc > 0 { // a tail label cut further keeps its name, so it gives way first
-				labelW = max(min(labelW, maxW-4-keyW-tailDesc), min(labelW, 20))
-			}
+		if it.desc != "" && it.row.Tail {
+			tailDesc = max(tailDesc, ansi.StringWidth(it.desc))
 		}
-		rows, selTop, bandTop, selEnd = nil, 0, 0, 0
-		section := ""
-		keys, cut, starts = map[int]hostapi.Segment{}, map[int]bool{}, map[int]bool{}
-		for i, it := range items {
-			if len(rows) > 0 && (it.section != section || len(it.more) > 0 || len(items[i-1].more) > 0) {
-				rows = append(rows, nil)
-			}
-			start := len(rows)
-			starts[start] = true
-			if it.section != section && it.section != "" {
-				head := []hostapi.Segment{{Text: it.section, HL: hostapi.ChromeTitle}}
-				if it.head.Text != "" {
-					head = append([]hostapi.Segment{it.head}, head...)
-				}
-				rows = append(rows, head)
-			}
-			top := len(rows)
-			section = it.section
-			hit, hl, marker := i+1, hostapi.ChromeValue, hostapi.Segment{Text: "  "}
-			if i == sel {
-				hl, marker = hostapi.ChromeBold, hostapi.Segment{Text: "› ", HL: hostapi.ChromeTitle}
-			}
-			// segments without hl take the row's, and inline colors bold with it
-			styled := func(r []hostapi.Segment) []hostapi.Segment {
-				row := make([]hostapi.Segment, 0, len(r))
-				for _, s := range r {
-					switch {
-					case s.HL == "":
-						s.HL = hl
-					case i == sel && strings.HasPrefix(s.HL, hostapi.SGRPrefix):
-						s.HL += ";1" // markdown text is colored inline: bold it the same way
-					}
-					row = append(row, s)
-				}
-				return row
-			}
-			var itemRows [][]hostapi.Segment
-			if it.label != "" || len(it.more) == 0 {
-				row := it.segs
-				if row == nil {
-					row = []hostapi.Segment{{Text: it.label}}
-				}
-				row = styled(matchSegs(row, it.match, i == sel))
-				if it.mark.Text != "" {
-					row = append([]hostapi.Segment{it.mark}, row...)
-				}
-				descW := -1 // no cut
-				kw := map[bool]int{true: 2 + ansi.StringWidth(it.key.Text)}[it.key.Text != ""]
-				cut := ellipsizeSegs
-				if it.row.Tail {
-					cut = tailSegs
-				}
-				switch {
-				case maxW > 0 && it.desc != "" && !under:
-					row = cut(row, labelW)
-					descW = maxW - 4 - labelW - kw
-				case maxW > 0 && it.row.Tail:
-					row = tailSegs(row, maxW-2-kw) // before the row's cut, which keeps the start
-				}
-				if it.desc != "" && !under && (descW < 0 || descW > 2) {
-					desc := []hostapi.Segment{{Text: it.desc, HL: hostapi.ChromeHint}}
-					if descW > 0 {
-						desc = ellipsizeSegs(desc, descW)
-					}
-					row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, labelW-hostapi.SegsWidth(row))+2)})
-					row = append(row, desc...)
-				}
-				if it.key.Text != "" {
-					it.key.Hit = hit
-					keys[len(rows)] = it.key
-				}
-				itemRows = append(itemRows, row)
-				if under && it.desc != "" {
-					itemRows = append(itemRows, ellipsizeSegs([]hostapi.Segment{{Text: it.desc, HL: hostapi.ChromeHint}}, maxW-2))
-				}
-			}
-			for _, r := range it.more {
-				itemRows = append(itemRows, styled(r))
-			}
-			for j, r := range itemRows {
-				g := hostapi.Segment{Text: "  "}
-				if j == 0 {
-					g = marker
-				}
-				row := append([]hostapi.Segment{g}, r...)
-				for k := range row {
-					row[k].Hit = hit
-				}
-				rows = append(rows, row)
-			}
-			cut[len(rows)-1] = true
-			if i == sel {
-				selTop, bandTop, selEnd = start, top, len(rows)
-			}
+		if it.key.Text != "" {
+			keyW = max(keyW, 2+ansi.StringWidth(it.key.Text))
 		}
 	}
-	build(maxW)
+	// too narrow for a description column beside the widest label, every
+	// description goes under its label instead of giving way
+	under := maxW > 0 && labelW > maxW-7
+	if maxW > 0 {
+		// the marker and the gap before a description take 2 cells each
+		labelW = max(min(labelW, maxW-4-keyW), 1)
+		if tailDesc > 0 { // a tail label cut further keeps its name, so it gives way first
+			labelW = max(min(labelW, maxW-4-keyW-tailDesc), min(labelW, 20))
+		}
+	}
+	section := ""
+	for i, it := range items {
+		if len(rows) > 0 && (it.section != section || len(it.more) > 0 || len(items[i-1].more) > 0) {
+			rows = append(rows, nil)
+		}
+		start := len(rows)
+		starts[start] = true
+		if it.section != section && it.section != "" {
+			head := []hostapi.Segment{{Text: it.section, HL: hostapi.ChromeTitle}}
+			if it.head.Text != "" {
+				head = append([]hostapi.Segment{it.head}, head...)
+			}
+			rows = append(rows, head)
+		}
+		top := len(rows)
+		section = it.section
+		hit, hl, marker := i+1, hostapi.ChromeValue, hostapi.Segment{Text: "  "}
+		if i == sel {
+			hl, marker = hostapi.ChromeBold, hostapi.Segment{Text: "› ", HL: hostapi.ChromeTitle}
+		}
+		// segments without hl take the row's, and inline colors bold with it
+		styled := func(r []hostapi.Segment) []hostapi.Segment {
+			row := make([]hostapi.Segment, 0, len(r))
+			for _, s := range r {
+				switch {
+				case s.HL == "":
+					s.HL = hl
+				case i == sel && strings.HasPrefix(s.HL, hostapi.SGRPrefix):
+					s.HL += ";1" // markdown text is colored inline: bold it the same way
+				}
+				row = append(row, s)
+			}
+			return row
+		}
+		var itemRows [][]hostapi.Segment
+		if it.label != "" || len(it.more) == 0 {
+			row := it.segs
+			if row == nil {
+				row = []hostapi.Segment{{Text: it.label}}
+			}
+			row = styled(matchSegs(row, it.match, i == sel))
+			if it.mark.Text != "" {
+				row = append([]hostapi.Segment{it.mark}, row...)
+			}
+			descW := -1 // no cut
+			kw := map[bool]int{true: 2 + ansi.StringWidth(it.key.Text)}[it.key.Text != ""]
+			cut := ellipsizeSegs
+			if it.row.Tail {
+				cut = tailSegs
+			}
+			switch {
+			case maxW > 0 && it.desc != "" && !under:
+				row = cut(row, labelW)
+				descW = maxW - 4 - labelW - kw
+			case maxW > 0 && it.row.Tail:
+				row = tailSegs(row, maxW-2-kw) // before the row's cut, which keeps the start
+			}
+			if it.desc != "" && !under && (descW < 0 || descW > 2) {
+				desc := []hostapi.Segment{{Text: it.desc, HL: hostapi.ChromeHint}}
+				if descW > 0 {
+					desc = ellipsizeSegs(desc, descW)
+				}
+				row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, labelW-hostapi.SegsWidth(row))+2)})
+				row = append(row, desc...)
+			}
+			if it.key.Text != "" {
+				it.key.Hit = hit
+				keys[len(rows)] = it.key
+			}
+			itemRows = append(itemRows, row)
+			if under && it.desc != "" {
+				itemRows = append(itemRows, ellipsizeSegs([]hostapi.Segment{{Text: it.desc, HL: hostapi.ChromeHint}}, maxW-2))
+			}
+		}
+		for _, r := range it.more {
+			itemRows = append(itemRows, styled(r))
+		}
+		for j, r := range itemRows {
+			g := hostapi.Segment{Text: "  "}
+			if j == 0 {
+				g = marker
+			}
+			row := append([]hostapi.Segment{g}, r...)
+			for k := range row {
+				row[k].Hit = hit
+			}
+			rows = append(rows, row)
+		}
+		cut[len(rows)-1] = true
+		if i == sel {
+			selTop, bandTop, selEnd = start, top, len(rows)
+		}
+	}
 	if v == nil {
 		v = &viewport{}
 	}
 	v.rows, v.viewH = len(rows), max(room, 1)
-	bar := 0 // the scrollbar's column and a gap before it, so the widest row never touches it
-	if v.overflows() && barText(maxW) < maxW {
-		bar, maxW = maxW-barText(maxW), barText(maxW)
-		build(maxW)
-	} else if v.overflows() && maxW == 0 {
-		bar = 2
-	}
 	// Every row pads to the widest of the whole list, so a box sized from
 	// the visible window keeps its width while scrolling.
-	widest := max(minW-bar, 0)
+	widest := minW
 	if maxW > 0 { // a width remembered from a wider screen
 		widest = min(widest, maxW)
 	}
@@ -673,7 +673,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			win = append(win, nil) // the last item pushed the window past the end
 		}
 	}
-	return v.window(win, widest+bar)
+	return v.window(win, widest)
 }
 
 // matchSegs draws the runes at byte offsets pos of a row's text, a filter's
@@ -754,24 +754,20 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	}
 	inner := max(min(w-4, maxW)-4, 1)
 	target, why, says := permFacts(req, a.host.Dirs.ProjectDir, inner, h)
-	build := func(w int) [][]hostapi.Segment {
-		switch {
-		case req.Subject == perm.SubjectShell:
-			return codePanel(req.Arg, w)
-		case isDiff:
-			rows := hostapi.DiffRows(req.Preview, w)
-			for _, r := range rows {
-				for i := range r {
-					r[i].HL = hostapi.ChromePrefix + r[i].HL // the fixed chrome's Diff* styles
-				}
+	var content [][]hostapi.Segment
+	switch {
+	case req.Subject == perm.SubjectShell:
+		content = codePanel(req.Arg, inner)
+	case isDiff:
+		content = hostapi.DiffRows(req.Preview, inner)
+		for _, r := range content {
+			for i := range r {
+				r[i].HL = hostapi.ChromePrefix + r[i].HL // the fixed chrome's Diff* styles
 			}
-			return rows
-		case req.Preview != "":
-			return codePanel(req.Preview, w)
 		}
-		return nil
+	case req.Preview != "":
+		content = codePanel(req.Preview, inner)
 	}
-	content := build(inner)
 	var btns []promptChoice
 	for _, c := range pa.choices() {
 		btns = append(btns, c.promptChoice)
@@ -809,29 +805,21 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		dimRows(list) // answered: no longer a target
 	}
 	if len(content) > pa.view.viewH {
-		content = build(barInner(inner)) // the bar's column
 		hints = append(hints, scrollHint)
 	}
 	hintRow := hint(inner, hints...)
 	// panels span the box, and the box fits its content: a padded panel
 	// counts by its text, other rows whole as hostBox counts them
-	fit, bar := listBoxW, 0
-	if len(content) > pa.view.viewH {
-		bar = 1 // a scrolled panel's text keeps its cells beside the bar
-	}
+	fit := listBoxW
 	for _, r := range content {
-		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " "))+bar)
+		fit = max(fit, ansi.StringWidth(strings.TrimRight(plainSegs(r), " ")))
 	}
 	for _, r := range slices.Concat(facts, list, [][]hostapi.Segment{hintRow}) {
 		fit = max(fit, hostapi.SegsWidth(r))
 	}
 	fit = min(fit, inner)
-	panelW := fit
-	if len(content) > pa.view.viewH {
-		panelW = barInner(fit)
-	}
 	for i := range content {
-		content[i] = padPanel(content[i], panelW)
+		content[i] = padPanel(content[i], fit)
 	}
 	content = pa.view.window(content, fit)
 	// who asks, whose code runs, and how many asks wait (an upper bound: a

@@ -1755,8 +1755,10 @@ provenance string.
   keeps its last column for a thin scrollbar and a blank before it, and its widgets
   render two cells narrower, so the bar appearing covers and rewraps nothing and chat
   text lines up with the composer's; every other scrolling box (overlay
-  bodies and lists, prompts, popups) scrolls through the same viewport and bar, and every
-  bar drags, found by its cells in the last frame. Go's chrome lines (box borders, the
+  bodies and lists, prompts, popups) scrolls through the same viewport and draws the bar
+  in its right border, the track the border line itself, so its text keeps every column
+  and never rewraps when the bar appears. Every bar drags, found by its cells in the last
+  frame. Go's chrome lines (box borders, the
   composer frame and its plain rule runs, box separators) join where they touch once
   everything is placed (`App.join`): a line end facing a line becomes a T and a crossing a
   `┼`, in the cell's own color; text, Lua content and the snail art never join.

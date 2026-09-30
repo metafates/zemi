@@ -1227,7 +1227,7 @@ type Segment struct {
 	// Sticky on a row's first segment makes the row head what follows: a
 	// scrolled region pins it while it is above the view
 	Sticky bool
-	Bar    bool // Go only: a viewport's scrollbar cell, kept to a box's right edge
+	Bar    bool // Go only: a viewport's scrollbar cell, which a box draws in its right border
 	// Band is Go only: the selected row of a list or prompt, drawn on
 	// Host:Band's background. A field, since hover rewrites Over and HL.
 	Band bool
