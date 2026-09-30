@@ -186,8 +186,8 @@ end)
 
 -- Statusline right, read left to right: "$0.12 · 45% · 24.5k/200k ctx
 -- · planner · model"; the lowest priority (model) sits at the right edge. The
--- context meter falling back to the session token total when
--- the model's context window is unknown. The percent colors by threshold:
+-- context meter falls back to the session token total when the model's
+-- context window is unknown. The percent colors by threshold:
 -- muted, warn at 80%, err at 95%. A click on the model opens the model
 -- picker, on the profile the profile picker, on the rest /usage. One widget
 -- per part, so config can replace or delete any of them.
