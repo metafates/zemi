@@ -841,8 +841,8 @@ function zemi.event.stats() end
 --- What a widget's render function is given. Everything is a snapshot:
 --- render must be pure and finish in about 10 ms: only the read-only
 --- `zemi.*` calls other than `zemi.fs.*` and a handle's `wait` work inside
---- it, any other raises. `transcript`, `agent`, `todos`, `recent`, `projects` and
---- `instructions` are built on first read, so a widget that does
+--- it, any other raises. `transcript`, `agent`, `todos`, `recent`, `projects`,
+--- `regions` and `instructions` are built on first read, so a widget that does
 --- not read them does not pay for them; kept past the render, a ctx reads
 --- nil for the ones render did not read.
 ---@class zemi.WidgetCtx
@@ -878,6 +878,7 @@ function zemi.event.stats() end
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field show_reasoning boolean `zemi run --reasoning` prints every thought and call whole; always false in the TUI.
+---@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.thinking` says whether the thinking pane is on screen. Empty in a printed run.
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
 ---@field ended zemi.TurnEnd|"" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
 ---@field busy? { label: string, elapsed: number, cancellable: boolean } The newest job the user waits on that is not a turn (/btw, a plugin install, the reflector): its label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.

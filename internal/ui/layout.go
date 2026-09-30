@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -313,14 +314,19 @@ type shownWidget struct {
 }
 
 // shownWidgets lists the widgets of every region the layout draws; widgets
-// of other regions cost no render.
+// of other regions cost no render. It keeps those regions for ctx.regions:
+// a set that moved changes the UI state, so every widget renders again.
 func (a *App) shownWidgets() []shownWidget {
 	if a.width <= 0 || a.height <= 0 {
 		return nil
 	}
 	s := a.layout(a.width, a.height)
 	var out []shownWidget
+	regions := map[string]bool{}
 	add := func(region string, w, h int) {
+		if region != "" {
+			regions[region] = true
+		}
 		for _, wg := range a.host.Widgets.InRegion(region) {
 			out = append(out, shownWidget{wg, w, h})
 		}
@@ -348,6 +354,10 @@ func (a *App) shownWidgets() []shownWidget {
 	walk(s.root)
 	for _, f := range s.floats {
 		add(f.f.Region, f.width, f.height)
+	}
+	if a.regions == nil || !maps.Equal(regions, *a.regions) {
+		a.regions = &regions
+		a.wakeTick()
 	}
 	return out
 }

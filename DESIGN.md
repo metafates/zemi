@@ -1769,12 +1769,20 @@ provenance string.
   Each child claims cells, a percent, its content rows or a weighted fill share,
   clamped to min and max; a box too small takes cells from fill first, then percent,
   content and cells, the last child first, down to min and then to 0, and hides its last
-  `collapse` child while the mins do not fit. The solver is integer arithmetic and never
+  `collapse` child while the mins do not fit. A hidden or collapsed child takes no
+  separator. The solver is integer arithmetic and never
   fails. Floats place a region like a neovim float (relative node, anchor corner,
-  row/col, size) in list order. The shipped `tui/layout.lua` sets the default;
-  user config may replace it, plugin and project code may not (a layout can
+  row/col, size) in list order. A render's `ctx.regions` names the regions this
+  frame's solve draws, so a widget knows whether another is on screen. The shipped
+  `tui/layout.lua` sets the default: the main column centered past 100 cells (157 with
+  the thinking pane), and in it the chat beside the thinking pane (regions
+  `thinking.head` and `thinking`, 36 to 56 cells), whose separator meets the
+  composer's top rule; the pane is hidden unless `ui.reasoning` is `pane` and
+  collapses under 100 columns. User config may replace the layout, plugin and
+  project code may not (a layout can
   hide what they show). `/reload` keeps drawing the old layout until the replay sets
-  one; a replay that sets none draws the Go copy of the default (`hostapi.DefaultLayout`).
+  one; a replay that sets none draws the Go copy of the default as it boots
+  (`hostapi.DefaultLayout`).
   Go keeps the §8 chrome whatever the tree says: prompts and overlays center over the
   stage node, or the whole screen when it is under 40 by 12; the live toasts (five at
   most) are one tray of a fixed width at the stage's top right, newest first, a section

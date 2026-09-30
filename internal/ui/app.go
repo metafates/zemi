@@ -115,6 +115,7 @@ type App struct {
 	looping    bool             // what onFrame last saw of the session's /loop
 	unseen     hostapi.TurnEnd  // how the last turn ended while the window was away, "" once seen
 	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
+	regions    *map[string]bool // the regions the last solve drew (ctx.regions)
 	now        func() time.Time // animation clock; tests pin it
 	cancelling bool             // interrupt sent, turn not finished yet
 	progress   bool             // the view reports a running turn (OSC 9;4)
@@ -679,7 +680,7 @@ func (a *App) uiState() hostapi.UIState {
 	st := hostapi.UIState{
 		Time: a.timeStr, Frame: a.frame(),
 		QuitArmed: a.isArmed("ctrl+c"), InterruptArmed: a.isArmed("esc"), RowsBelow: a.rowsBelow(),
-		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(),
+		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(), Regions: a.regions,
 	}
 	if !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger {
 		st.Ended = a.turnEnded

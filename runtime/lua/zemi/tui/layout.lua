@@ -6,33 +6,73 @@ local layout = {
 	root = {
 		kind = "box",
 		dir = "row",
-		sep = true,
 		children = {
-			-- the main column
+			{ kind = "spacer", size = "fill" },
+			-- the main column, centered past its max
 			{
 				kind = "box",
 				dir = "col",
+				size = "fill",
+				weight = 1000,
 				min = 30,
+				max = 100,
 				children = {
 					{ kind = "region", region = "header" },
-					-- prompts, overlays, toasts and completion popups go over the stage
+					-- the chat and the thinking pane: the spacer sits in the chat
+					-- column, so the separator meets the composer's top rule
 					{
 						kind = "box",
-						dir = "col",
-						stage = true,
-						min = 1,
+						dir = "row",
+						sep = true,
 						children = {
 							{
-								kind = "region",
-								id = "chat",
-								region = "chat",
-								scroll = "bottom",
-								size = "fill",
-								min = 3,
+								kind = "box",
+								dir = "col",
+								weight = 1000,
+								min = 63,
+								max = 100,
+								children = {
+									-- prompts, overlays, toasts and completion popups go over the stage
+									{
+										kind = "box",
+										dir = "col",
+										stage = true,
+										min = 1,
+										children = {
+											{
+												kind = "region",
+												id = "chat",
+												region = "chat",
+												scroll = "bottom",
+												size = "fill",
+												min = 3,
+											},
+										},
+									},
+									{ kind = "spacer" },
+								},
+							},
+							{
+								kind = "box",
+								dir = "col",
+								weight = 1,
+								min = 36,
+								max = 56,
+								collapse = true,
+								hidden = true,
+								children = {
+									{ kind = "region", region = "thinking.head" },
+									{
+										kind = "region",
+										id = "thinking",
+										region = "thinking",
+										scroll = "bottom",
+										size = "fill",
+									},
+								},
 							},
 						},
 					},
-					{ kind = "spacer" },
 					-- the mascot lives on the top rule and the statusline on the bottom
 					-- one, so no agent state adds or removes a row
 					{
@@ -45,6 +85,7 @@ local layout = {
 					},
 				},
 			},
+			{ kind = "spacer", size = "fill" },
 		},
 	},
 }

@@ -130,6 +130,53 @@ func TestRelayout(t *testing.T) {
 	}
 }
 
+// TestThinkingPane: the shipped layout centers its column, and in pane mode
+// draws the thinking pane beside the chat from 100 columns, its separator
+// meeting the composer's top rule; hidden or collapsed, the pane takes no
+// separator, and ctx.regions says whether it draws.
+func TestThinkingPane(t *testing.T) {
+	app, _ := bootAgentApp(t, 140, 24)
+	runLua(t, app, `
+zemi.ui.widget.add({ id = "probe", region = "header", render = function(ctx)
+  return { { { text = ctx.regions.thinking and "pane on" or "pane off" } } }
+end })
+zemi.ui.widget.add({ id = "pane", region = "thinking", render = function() return { { { text = "thought" } } } end })`)
+	pane := `local l = zemi.ui.layout.get()
+l.root.children[2].max = 157
+l.root.children[2].children[2].children[2].hidden = false
+zemi.ui.layout.set(l)`
+	for _, c := range []struct {
+		name         string
+		pane         bool
+		width        int
+		chatX, paneX int // the left edges of the chat and the drawn pane
+		drawn        bool
+	}{
+		{"inline centers the column", false, 140, 20, 0, false},
+		{"the pane draws beside the chat", true, 140, 0, 101, true},
+		{"and grows to its max", true, 200, 22, 123, true},
+		{"it collapses under 100 columns", true, 99, 0, 0, false},
+		{"and draws at 100", true, 100, 0, 64, true},
+	} {
+		if c.pane {
+			runLua(t, app, pane)
+		}
+		app.Update(tea.WindowSizeMsg{Width: c.width, Height: 24})
+		app.renderSync(t)
+		frame := ansi.Strip(app.Frame())
+		rows := strings.Split(frame, "\r\n")
+		rects := app.LayoutRects()
+		th, drawn := rects["thinking"]
+		if drawn != c.drawn || rects["chat"].X != c.chatX || drawn && th.X != c.paneX || strings.Contains(frame, "pane on") != c.drawn || strings.Contains(frame, "thought") != c.drawn {
+			t.Fatalf("%s: rects %+v:\n%s", c.name, rects, frame)
+		}
+		top := rows[rects["composer"].Y]
+		if strings.Contains(top, "┴") != c.drawn || drawn && ansi.Cut(top, th.X-1, th.X) != "┴" || drawn && ansi.Cut(rows[th.Y], th.X-1, th.X) != "│" {
+			t.Fatalf("%s: the separator does not meet the composer rule at column %d:\n%s", c.name, th.X-1, frame)
+		}
+	}
+}
+
 // TestRelayoutComposerOnTop: with the composer on the first row and no
 // statusline, completion opens below the composer, a float over the
 // composer leaves it visible, and the alarm pills still show.

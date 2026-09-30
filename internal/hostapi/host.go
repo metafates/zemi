@@ -1550,6 +1550,9 @@ type UIState struct {
 	Waiting        Waiting // while a prompt holds the turn
 	Focus          string  // the drawn layout node taking keys, "" for the composer
 	Printed        *Printed
+	// Regions are the regions the layout draws this frame, replaced whole
+	// when the set moves, so comparing two states sees it
+	Regions *map[string]bool
 }
 
 // Printed is set when zemi run prints the frame to a shell: Rows stand in
@@ -1678,6 +1681,15 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 				todos.Append(row)
 			}
 			return todos
+		},
+		"regions": func(L *glua.LState) glua.LValue {
+			out := L.NewTable()
+			if state.Regions != nil {
+				for r := range *state.Regions {
+					out.RawSetString(r, glua.LTrue)
+				}
+			}
+			return out
 		},
 		"agent":      func(L *glua.LState) glua.LValue { return agentTable(L, stream) },
 		"transcript": func(L *glua.LState) glua.LValue { return transcriptTable(L, transcript) },
