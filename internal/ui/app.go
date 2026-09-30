@@ -960,6 +960,7 @@ func (a *App) compose(w, h int) string {
 	if frame.Empty() {
 		frame = area
 	}
+	framed := ruleAt(rows, frame)
 	var modals []func()
 	a.chromeRect = uv.Rectangle{}
 	splice := func(box [][]hostapi.Segment) {
@@ -971,7 +972,7 @@ func (a *App) compose(w, h int) string {
 		}
 		if ov := &a.overlays[i]; ov.o.Anchor != "" {
 			box, right := a.overlayBox(ov, area.Dx(), area.Dy()), ov.o.Anchor == hostapi.OverlayBottomRight
-			modals = append(modals, func() { rows, a.chromeRect = anchorBottom(rows, box, area, frame, right, w) })
+			modals = append(modals, func() { rows, a.chromeRect = anchorBottom(rows, box, area, frame, framed, right, w) })
 		} else {
 			splice(a.overlayBox(ov, area.Dx(), area.Dy()))
 		}
@@ -1001,6 +1002,8 @@ func (a *App) compose(w, h int) string {
 	}
 	for i, place := range modals {
 		if i == len(modals)-1 {
+			// the backdrop joins before it dims, so no dimmed line joins the top box
+			a.join(rows, w)
 			dimRows(rows)
 			toasts()
 		}
@@ -1065,14 +1068,14 @@ func (a *App) Screenshot() string {
 	return b.String()
 }
 
-// dimRows repaints rows in one fixed color. It copies each row: rows share
-// slices with widget caches. Image placeholders keep their color, which
-// names the image.
+// dimRows repaints rows in one fixed color, as text that joins no line. It
+// copies each row: rows share slices with widget caches. Image placeholders
+// keep their color, which names the image.
 func dimRows(rows [][]hostapi.Segment) {
 	for i, r := range rows {
 		out := make([]hostapi.Segment, len(r))
 		for j, s := range r {
-			out[j] = hostapi.Segment{Text: s.Text, HL: hostapi.ChromeDim, Line: s.Line}
+			out[j] = hostapi.Segment{Text: s.Text, HL: hostapi.ChromeDim}
 			if strings.ContainsRune(s.Text, kitty.Placeholder) {
 				out[j] = s
 			}
@@ -1124,7 +1127,9 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 	body := append(render(maxW, bottom-top-4, size.w), nil, hint(maxW, hints...))
 	box := promptBox("", "", body, width, bottom-top, 100, size)
 	if up {
-		_, r := anchorBottom(rows, box, uv.Rect(x, top, width, bottom-top), uv.Rect(x, c.Min.Y, width, c.Dy()), false, w)
+		// in line with the stage, standing only on the composer's own rule
+		frame := uv.Rect(x, c.Min.Y, min(width, c.Max.X-x), c.Dy())
+		_, r := anchorBottom(rows, box, uv.Rect(x, top, width, bottom-top), frame, ruleAt(rows, c) && x >= c.Min.X, false, w)
 		return r
 	}
 	// NOTE: below the composer the popup does not stand on the statusline rule

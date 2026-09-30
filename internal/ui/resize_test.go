@@ -212,8 +212,17 @@ func TestModeSwitchQuiet(t *testing.T) {
 			return strings.HasSuffix(row, "┐") || strings.HasSuffix(row, "┤")
 		}
 		top := slices.IndexFunc(rows, func(row string) bool { return strings.Contains(row, "Permission mode") })
-		if rule := a.LayoutRects()["composer"].Y; top < 0 || !edge(rows[top]) || !edge(rows[rule]) {
-			t.Fatalf("%s: picker rows %d and %d not in line with the composer frame:\n%s", anchor, top, rule, strings.Join(rows, "\n"))
+		c := a.LayoutRects()["composer"]
+		if top < 0 || !edge(rows[top]) || !edge(rows[c.Y]) {
+			t.Fatalf("%s: picker rows %d and %d not in line with the composer frame:\n%s", anchor, top, c.Y, strings.Join(rows, "\n"))
+		}
+		// the corner it stands on is its own border on its panel, not the dimmed backdrop
+		x := c.X
+		if anchor == hostapi.OverlayBottomRight {
+			x += c.Width - 1
+		}
+		if s := dropCells(a.lastRows[c.Y], x)[0]; s.HL != hostapi.ChromeRule || s.Fill != hostapi.FillPanel {
+			t.Errorf("%s: its corner is %q %s on fill %d", anchor, s.Text, s.HL, s.Fill)
 		}
 		a.closeOverlayByID("mode")
 	}

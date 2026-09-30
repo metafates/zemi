@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -1044,22 +1045,30 @@ func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hos
 
 // anchorBottom lays box over the bottom rows of area with its border in
 // line with frame's left or right edge: the composer frame whose
-// statusline pill opened it. Where the frame's top rule is at most a row
-// under area and wider than the box, the box stands on it: the rule is its
-// bottom border, joined at its edges (App.join). What it does not cover
-// stays visible, one cell off its inner side. It reports the cells the box
-// took, that border included.
-func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, right bool, w int) ([][]hostapi.Segment, uv.Rectangle) {
+// statusline pill opened it. Where the frame is drawn (framed, see ruleAt)
+// and its top rule is at most a row under area and wider than the box, the
+// box stands on it: the rule's cells under the box are its bottom border,
+// joined at its edges (App.join). What it does not cover stays visible, one
+// cell off its inner side. It reports the cells the box took, that border
+// included.
+func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, framed, right bool, w int) ([][]hostapi.Segment, uv.Rectangle) {
 	bw := hostapi.SegsWidth(box[0])
 	x := frame.Min.X
 	if right {
 		x = max(frame.Max.X-bw, 0)
 	}
 	end, drawn := min(area.Max.Y, len(rows)), len(box)
-	if gap := frame.Min.Y - area.Max.Y; gap >= 0 && gap <= 1 && frame.Min.Y < len(rows) && x >= frame.Min.X && x+bw <= frame.Max.X &&
-		slices.ContainsFunc(rows[frame.Min.Y], func(s hostapi.Segment) bool { return s.Line }) {
+	if gap := frame.Min.Y - area.Max.Y; framed && gap >= 0 && gap <= 1 && x >= frame.Min.X && x+bw <= frame.Max.X {
 		// NOTE: an edge that lands on the rule's text (the working label) ends there with no junction
 		end, drawn = frame.Min.Y+1, len(box)-1
+		// the rule lies dimmed under a modal: its runs there are the box's own
+		// border again, and its text sits on the box's panel
+		rows[frame.Min.Y] = restyle(rows[frame.Min.Y], x, x+bw, func(s *hostapi.Segment) {
+			s.Fill = hostapi.FillPanel
+			if strings.IndexFunc(s.Text, func(r rune) bool { return armsOf(r) == 0 }) < 0 {
+				s.HL, s.Line = hostapi.ChromeRule, true
+			}
+		})
 	}
 	y0 := max(area.Min.Y, end-len(box))
 	for i := y0; i < end && i-y0 < drawn; i++ {
@@ -1070,6 +1079,21 @@ func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, right
 		}
 	}
 	return rows, uv.Rect(x, y0, bw, max(end-y0, 0))
+}
+
+// ruleAt reports whether frame's top-left cell is a drawn corner: a framed
+// composer's rule, which a box can stand on, and not a separator or text
+// beside an unframed one.
+func ruleAt(rows [][]hostapi.Segment, frame uv.Rectangle) bool {
+	if frame.Min.Y < 0 || frame.Min.Y >= len(rows) {
+		return false
+	}
+	c := dropCells(rows[frame.Min.Y], frame.Min.X)
+	if len(c) == 0 || !c[0].Line {
+		return false
+	}
+	r, _ := utf8.DecodeRuneInString(c[0].Text)
+	return armsOf(r)&(armR|armD) == armR|armD
 }
 
 // margined holds what a box does not cover one cell off each border, so it

@@ -1777,7 +1777,9 @@ provenance string.
   frame. Go's chrome lines (box borders, the
   composer frame and its plain rule runs, box separators) join where they touch once
   everything is placed (`App.join`): a line end facing a line becomes a T and a crossing a
-  `┼`, in the cell's own color; text, Lua content and the snail art never join.
+  `┼`, in the cell's own color; text, Lua content and the snail art never join. Under a
+  modal the backdrop joins before it is dimmed, and a dimmed line joins nothing placed
+  over it, so the top box's border meets only its own lines and the rule it stands on.
   Widgets render at their node's width and height; a content-sized node gets
   the most rows it could take (its max or the box's cells), not its last height, which
   would never let it shrink.

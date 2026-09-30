@@ -269,6 +269,22 @@ func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 	}
 }
 
+// TestTopBoxJoinsAlone: the sides of a dimmed box running into the top
+// box's borders do not join them.
+func TestTopBoxJoinsAlone(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 24)
+	items := make([]any, 14)
+	for i := range items {
+		items[i] = fmt.Sprintf("item %d", i)
+	}
+	app.openOverlay(hostapi.Overlay{ID: "list", Title: "List", Items: items})
+	app.openOverlay(hostapi.Overlay{ID: "in", Title: strings.Repeat("a long title ", 6), Input: true})
+	app.renderSync(t)
+	if f := ansi.Strip(app.Frame()); strings.ContainsAny(f, "┬┴├┤┼") {
+		t.Fatalf("the top box joined the dimmed one under it:\n%s", f)
+	}
+}
+
 // TestModalDimsBackground: a modal dims what lies under it; a toast and
 // the palette are not modal and do not.
 func TestModalDimsBackground(t *testing.T) {

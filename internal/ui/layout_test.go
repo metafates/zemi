@@ -187,9 +187,9 @@ func TestJoin(t *testing.T) {
 			[]string{"   ┌──┐", "   │ab│", "┌──┴──┤"},
 		},
 		{
-			"dimmed rows still join", true,
+			"dimmed rows join nothing", true,
 			[]string{"┌──┐   ", "│ab│   ", "┌─────┐"},
-			[]string{"┌──┐   ", "│ab│   ", "├──┴──┐"},
+			[]string{"┌──┐   ", "│ab│   ", "┌─────┐"},
 		},
 		{
 			"a narrower box under a wider one shares its border", false,
