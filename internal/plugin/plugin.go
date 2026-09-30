@@ -159,11 +159,11 @@ func Install(ctx context.Context, d config.Dirs, url, name string) (Plugin, erro
 	return load(ctx, filepath.Join(dir, name), false, true), nil
 }
 
-// Update fetches a plugin and checks out its highest semver tag of the same
+// update fetches a plugin and checks out its highest semver tag of the same
 // major when it is on a tag already; a branch moves to the highest tag ahead
 // of it, or else fast-forward. A dirty checkout makes git refuse, and that
 // error is returned as is.
-func Update(ctx context.Context, d config.Dirs, name string) (Plugin, error) {
+func update(ctx context.Context, d config.Dirs, name string) (Plugin, error) {
 	dir, err := clone(d, name)
 	if err != nil {
 		return Plugin{}, err
@@ -224,9 +224,9 @@ func Check(ctx context.Context, d config.Dirs) ([]Plugin, error) {
 	return ps, errors.Join(errs...)
 }
 
-// Delete removes the installed clone of that name, else the local plugin. A
+// remove deletes the installed clone of that name, else the local plugin. A
 // symlink in local/ loses the link only.
-func Delete(d config.Dirs, name string) error {
+func remove(d config.Dirs, name string) error {
 	dir, err := clone(d, name)
 	if errors.Is(err, errLocal) {
 		dir, err = filepath.Join(d.PluginsRoot(), "local", name), nil
@@ -292,7 +292,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 		var errs []error
 		moved := false
 		for _, name := range rest {
-			p, err := Update(ctx, d, name)
+			p, err := update(ctx, d, name)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", name, err))
 			} else if p.Version != was[name] {
@@ -320,7 +320,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 	case (verb == "enable" || verb == "disable") && len(rest) == 1:
 		return SetEnabled(d, rest[0], verb == "enable")
 	case verb == "delete" && len(rest) == 1:
-		return Delete(d, rest[0])
+		return remove(d, rest[0])
 	}
 	return ErrUsage
 }
