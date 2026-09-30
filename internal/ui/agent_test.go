@@ -1387,8 +1387,8 @@ func TestToolRows(t *testing.T) {
 		{Name: "plan", Input: "# Plan", Status: "ok", Output: "changes requested: use go"},
 		// an answered question reads its header, then each question with its
 		// answer: on one line when it fits, the answer under it when not
-		{Name: "question", Input: "Which auth method?", Label: "auth method", Status: "ok", Output: "Which auth method?\tOAuth"},
-		{Name: "question", Input: longQ, Label: "branch cleanup", Status: "ok", Output: longQ + "\tYes, delete them"},
+		{Name: "question", Input: "Which auth method?", Label: "auth method", Status: "ok", Output: "Which auth method?\tOAuth\t"},
+		{Name: "question", Input: longQ, Label: "branch cleanup", Status: "ok", Output: longQ + "\tYes, delete them\t"},
 		{Name: "question", Input: "Which store? +1 more", Label: "store, cache size", Status: "ok", Output: "Which store?\tsqlite\tonly for now\nHow large may the cache grow?\tnot answered\t"},
 	}})
 	app.renderSync(t)

@@ -373,7 +373,7 @@ zemi.ui.widget.add({
 				local more = "… " .. fmt.count(hidden, "more line", "more lines")
 				if hidden > 0 and first > 1 then detail(more, "Dim") end
 				for i = first, last do
-					local q, a, note = out[i]:match("^([^\t]*)\t([^\t]*)\t?(.*)$")
+					local q, a, note = out[i]:match("^([^\t]*)\t([^\t]*)\t(.*)$")
 					if answered and q then
 						if fmt.cells(q) + 2 + fmt.cells(a) <= width - 4 then
 							detail({ { text = q, hl = "Dim" }, { text = "  " .. a, hl = "Normal" } }, "Dim")
