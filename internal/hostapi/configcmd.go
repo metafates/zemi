@@ -272,8 +272,12 @@ func (h *Host) openConfigEdit(ui UIHooks, path string) error {
 		return nil
 	}
 	items, sel := h.pickItems(path)
+	title := path
+	if path == "ui.theme" { // /theme opens it
+		title = "Theme"
+	}
 	ui.OpenOverlay(Overlay{
-		ID: "config edit", Title: path, Origin: lua.OriginBuiltin, Items: items, Selected: sel,
+		ID: "config edit", Title: title, Origin: lua.OriginBuiltin, Items: items, Selected: sel,
 		Reload: func() ([]any, [][]Segment) { items, _ := h.pickItems(path); return items, nil },
 	})
 	return nil
