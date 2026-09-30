@@ -273,7 +273,7 @@ func (h *Host) openConfigEdit(ui UIHooks, path string) error {
 	}
 	items, sel := h.pickItems(path)
 	ui.OpenOverlay(Overlay{
-		ID: "config edit", Title: path, Origin: lua.OriginBuiltin, Items: items, Selected: sel, Verb: "pick",
+		ID: "config edit", Title: path, Origin: lua.OriginBuiltin, Items: items, Selected: sel,
 		Reload: func() ([]any, [][]Segment) { items, _ := h.pickItems(path); return items, nil },
 	})
 	return nil
@@ -283,7 +283,7 @@ func (h *Host) openConfigEdit(ui UIHooks, path string) error {
 func (h *Host) pickItems(path string) (items []any, sel int) {
 	cur := h.Settings.Str(path)
 	for i, c := range h.configChoices(path) {
-		item := map[string]any{"text": cmp.Or(c, "default"), "run": "config set " + path + " " + c}
+		item := map[string]any{"text": cmp.Or(c, "default"), "run": "config set " + path + " " + c, "verb": "pick"}
 		if c == cur {
 			item["key"], sel = "current", i
 		}
