@@ -434,7 +434,7 @@ func sessionsCommand() *cobra.Command {
 			}
 			out, p := c.OutOrStdout(), colorprofile.Detect(c.OutOrStdout(), os.Environ())
 			if !*asJSON && p != colorprofile.NoTTY {
-				fmt.Fprintln(out, paint(p, "title", fmt.Sprintf("%-32s  %-16s  %s", "session", "updated", "title")))
+				fmt.Fprintln(out, paint(p, "title", fmt.Sprintf("%-8s  %-16s  %s", "session", "updated", "title")))
 			}
 			for _, s := range list {
 				updated := time.UnixMilli(s.UpdatedAt)
@@ -583,7 +583,6 @@ func projectStore(dirs config.Dirs) (*store.DB, error) {
 	return store.OpenRead(store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot()))
 }
 
-// sessionTitle is a session's title on one line.
 // jsonFlag adds --json to a listing command: JSON Lines on stdout, one
 // object per item, as zemi run --json prints its events.
 func jsonFlag(c *cobra.Command) *bool {
@@ -664,6 +663,7 @@ func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
 	}
 }
 
+// sessionTitle is a session's title on one line.
 func sessionTitle(s *store.Session) string {
 	return strings.Join(strings.Fields(sanitize.String(s.Title)), " ")
 }
