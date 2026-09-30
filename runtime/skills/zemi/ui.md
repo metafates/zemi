@@ -1,6 +1,6 @@
 # Keys and UI
 
-Everything on screen but the composer and the Go-drawn prompts is a Lua widget. The shipped UI is readable source in the tui directory the system prompt names: `theme.lua`, `layout.lua`, `keymaps.lua`, the widgets in `statusline.lua`, `working.lua`, `chat.lua`, `splash.lua` and `exit.lua`, and the helpers they share in `text.lua` and `snail.lua`. Read the one you change. Restyling the shipped UI (a replaced widget, `hl.set`, a theme pick, the layout) is user config, in init.lua.
+Everything on screen but the composer and the Go-drawn prompts is a Lua widget. The shipped UI is readable source in the tui directory the system prompt names: `theme.lua`, `layout.lua`, `keymaps.lua`, the widgets in `statusline.lua`, `working.lua`, `chat.lua`, `thinking.lua`, `splash.lua` and `exit.lua`, and the helpers they share in `text.lua` and `snail.lua`. Read the one you change. Restyling the shipped UI (a replaced widget, `hl.set`, a theme pick, the layout) is user config, in init.lua.
 
 ## Keys
 
@@ -20,7 +20,7 @@ Lists, popups and prompts keep their keys (`/help` lists them): up, down, j, k, 
 
 A widget registered with a shipped id replaces it; a new id adds one.
 
-Shipped ids: `splash` and `chat` (region `chat`); `working` (the composer frame's top rule: the mascot and the turn status); in `statusline.left` `statusline.mode`, `statusline.quit`, `statusline.cwd`, `statusline.goal`, `statusline.loop`, `statusline.agents`, `statusline.view`, `statusline.learn`, `statusline.keys`, `statusline.scroll`; in `statusline.right` `statusline.profile`, `statusline.model`, `statusline.context`, `statusline.percent`, `statusline.cost`, `statusline.hints` (the `/` and `@` keys, until the first message); `exit` (region `exit`, which no layout draws: printed to the shell on quit, foreground colors only, and only user config adds to it; `zemi.ui.widget.del("exit")` turns it off, `ctx.resume` is the command that reopens the session). zemi draws a separator between the statusline widgets that draw, so each returns its text alone. Each side fills from its outer edge inward in rising priority (the right side from the right edge), and a short row drops the highest first. So a lasting widget takes a low priority and one that comes and goes a high one, where it moves nothing, and a widget one above a shipped one's priority (`zemi.ui.widget.list()` has them) sits just inside it.
+Shipped ids: `splash` and `chat` (region `chat`); `thinking.head` and `thinking` (the thinking pane's regions of those names); `working` (the composer frame's top rule: the mascot and the turn status); in `statusline.left` `statusline.mode`, `statusline.quit`, `statusline.cwd`, `statusline.goal`, `statusline.loop`, `statusline.agents`, `statusline.view`, `statusline.learn`, `statusline.keys`, `statusline.scroll`; in `statusline.right` `statusline.profile`, `statusline.model`, `statusline.context`, `statusline.percent`, `statusline.cost`, `statusline.hints` (the `/` and `@` keys, until the first message); `exit` (region `exit`, which no layout draws: printed to the shell on quit, foreground colors only, and only user config adds to it; `zemi.ui.widget.del("exit")` turns it off, `ctx.resume` is the command that reopens the session). zemi draws a separator between the statusline widgets that draw, so each returns its text alone. Each side fills from its outer edge inward in rising priority (the right side from the right edge), and a short row drops the highest first. So a lasting widget takes a low priority and one that comes and goes a high one, where it moves nothing, and a widget one above a shipped one's priority (`zemi.ui.widget.list()` has them) sits just inside it.
 
 Rules for `render(ctx)`:
 
@@ -30,7 +30,7 @@ Rules for `render(ctx)`:
 - A widget redraws only when something else does. One that changes on its own calls `zemi.ui.redraw` from `zemi.timer.every`.
 - Returning the same line table again is free; never change one after returning it. With more work than fits, return what is ready and `true` as a second result, and zemi renders it again next frame (the chat fills a long session this way, 30 ms a render at most).
 - Colors are theme groups: `Accent`, `Dim`, `Rule`, `Title`, `Literal`, `Danger`, `Warn`, `Ok`, and the rest in `theme.lua`, each linking to one of them or naming a palette role.
-- A replacement statusline widget keeps its click with `on_click = function(ev) zemi.command.run(ev.id) end`. A replacement chat keeps reasoning toggles (`zemi.ui.reasoning.toggle()`), agent rows (`zemi.command.run("agents", "view " .. row.run)`) and tool output folding (keyed by the row's `tool:<idx>` click id).
+- A replacement statusline widget keeps its click with `on_click = function(ev) zemi.command.run(ev.id) end`. A replacement chat keeps the thinking pane toggle (`zemi.ui.reasoning.toggle()`), agent rows (`zemi.command.run("agents", "view " .. row.run)`) and the folding: `require("zemi.tui.chat").click` is the shipped chat's `on_click`, keyed by its click ids (`turn:<idx>` a digest, `step:<idx>`, `thought:<idx>`, `tool:<idx>`).
 
 ```lua
 -- a tip of your own in place of the default splash's

@@ -107,6 +107,96 @@ M.VERB = {
 	lsp = "Look up",
 }
 
+--- A call that only looks around, as the chat counts it: its verb, then its
+--- noun, one and many, and the short forms a row's suffix uses; a verb alone
+--- never counts. Every other call keeps a row of its own.
+---@type table<string, { [1]: string, [2]: string?, [3]: string?, [4]: string?, [5]: string? }>
+M.COUNT = {
+	read = { "read", "file", "files" },
+	glob = { "searched for", "pattern", "patterns" },
+	grep = { "searched for", "pattern", "patterns" },
+	web_search = { "searched the web for", "query", "queries" },
+	shell = { "ran", "command", "commands", "cmd", "cmds" },
+	fetch = { "fetched", "page", "pages" },
+	skill = { "loaded", "skill", "skills" },
+	memory = { "saved", "memory", "memories" },
+	diagnostics = { "checked", "file", "files" },
+	job_read = { "checked", "job", "jobs" },
+	job_list = { "listed jobs" },
+	job_kill = { "stopped", "job", "jobs" },
+	todos = { "updated todos" },
+}
+
+--- A transcript row's or a live call's tool name.
+---@param t zemi.TranscriptRow|zemi.ToolCall
+---@return string
+function M.tool(t) return t.tool or t.name or "?" end
+
+--- Whether a call folds into its turn's digest: it only looked around, went
+--- well and changed nothing (a command's diff is news).
+---@param t zemi.TranscriptRow|zemi.ToolCall
+---@return boolean
+function M.looks(t)
+	return (t.kind or "tool") == "tool" and t.status == "ok" and M.COUNT[M.tool(t)] ~= nil and (t.diff or "") == ""
+end
+
+--- Calls counted by noun, first seen first: "2 files, 1 command", or short
+--- for a row's suffix, "2 files · 1 cmd".
+---@param calls (zemi.TranscriptRow|zemi.ToolCall)[]
+---@param short boolean?
+---@return string
+function M.counts(calls, short)
+	---@type string[], table<string, integer>, table<string, string[]>
+	local order, n, c = {}, {}, {}
+	for _, t in ipairs(calls) do
+		local k = M.COUNT[M.tool(t)]
+		local key = k[2] or k[1]
+		if not n[key] then
+			order[#order + 1] = key
+			n[key], c[key] = 0, k
+		end
+		n[key] = n[key] + 1
+	end
+	---@type string[]
+	local parts = {}
+	for i, key in ipairs(order) do
+		local k = c[key]
+		parts[i] = not k[2] and k[1] or short and k[4] and M.count(n[key], k[4], k[5]) or M.count(n[key], k[2], k[3])
+	end
+	return table.concat(parts, short and " · " or ", ")
+end
+
+--- How long a thought took, as a digest or a thought row says it.
+---@param secs number
+---@return string
+function M.thought(secs) return secs >= 0.05 and "thought " .. M.duration(secs) or "thought" end
+
+--- What rows[first..last] of a turn fold into, the chat's digest and the
+--- thinking pane's header: "6 files, 8 commands · thought 8s"; "" when
+--- nothing there folds.
+---@param rows zemi.TranscriptRow[]
+---@param first integer
+---@param last integer
+---@return string
+function M.digest(rows, first, last)
+	---@type zemi.TranscriptRow[]
+	local calls = {}
+	local secs, thought = 0, false
+	for i = first, last do
+		local m = rows[i]
+		if m.kind == "reasoning" then
+			secs, thought = secs + (m.thought or 0), true
+		elseif M.looks(m) then
+			calls[#calls + 1] = m
+		end
+	end
+	---@type string[]
+	local parts = {}
+	if #calls > 0 then parts[1] = M.counts(calls) end
+	if thought then parts[#parts + 1] = M.thought(secs) end
+	return table.concat(parts, " · ")
+end
+
 --- A tool name as words for a row with no verb of its own: underscores
 --- split, the first word capitalized, and an MCP tool's mcp_ dropped
 --- ("mcp_tracker_list_issues" -> "Tracker list issues").

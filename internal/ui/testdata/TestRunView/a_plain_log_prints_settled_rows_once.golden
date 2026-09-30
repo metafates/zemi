@@ -1,11 +1,11 @@
 ▌ why does TestFlushOrder fail?
 
-✻ Thought for 2.4s
+✻ thought 2.4s
 
-✗ Run the flush tests
-  ⎿ go test ./internal/hostapi
-    --- FAIL: TestFlushOrder
-    exit status 1
+│ ✗ run the flush tests
+│   ⎿ go test ./internal/hostapi
+│     --- FAIL: TestFlushOrder
+│     exit status 1
 
   It fails because the reply lands first.
 

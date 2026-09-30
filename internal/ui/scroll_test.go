@@ -207,7 +207,7 @@ func TestChatScrollShortContent(t *testing.T) {
 }
 
 // TestChatScrollAnchorsThroughRelayout: a narrower chat rewraps the lines
-// above the viewport and ctrl+o expands the thoughts among them; both
+// above the viewport and a click unfolds a digest among them; both
 // change how many rows sit above it, and it must keep showing the content
 // it showed, not the row number it showed.
 func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
@@ -241,10 +241,12 @@ func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
 		t.Fatalf("resize moved the view from %q to %q", want, got)
 	}
 
-	host.ToggleReasoning()
+	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:2"}); err != nil {
+		t.Fatal(err)
+	}
 	app.renderSync(t)
 	if got := visible(app.Frame()); got != want {
-		t.Fatalf("expanding the thoughts moved the view from %q to %q", want, got)
+		t.Fatalf("unfolding a digest moved the view from %q to %q", want, got)
 	}
 }
 

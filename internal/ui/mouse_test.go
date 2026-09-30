@@ -68,10 +68,11 @@ func TestMouseClicks(t *testing.T) {
 	host.AppendMessage("user", "why?")
 	appendReasoning(host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
 	app.renderSync(t)
-	x, y := findCell(t, app, "Thought for")
+	x, y := findCell(t, app, "thought 1.0s")
 	clickAt(app, x+1, y)
-	if got := host.Settings.Str("ui.reasoning"); got != "pane" {
-		t.Fatalf("clicking the thought line should open the thinking pane, ui.reasoning = %q", got)
+	app.renderSync(t)
+	if !strings.Contains(ansi.Strip(app.Frame()), "│   first idea") {
+		t.Fatal("clicking the digest should unfold the thought")
 	}
 
 	ran := make(chan string, 1)
@@ -238,9 +239,9 @@ func TestHoverTargets(t *testing.T) {
 		{"a choice's key button answers it too", perm, "No ", -3, 1, "Host:Hover"},
 		{"the padding right of a choice is not a target", perm, "No ", 30, 0, ""},
 		// a chat body row acts on a click and keeps its own groups; a header hovers
-		{"thought line text is a target", thought, "Thought for", 1, 1, "Hover"},
+		{"digest text is a target", thought, "thought 1.0s", 1, 1, "Hover"},
 		{"a quiet click id takes no hover style", widgets, "quiet", 1, 1, ""},
-		{"right of the thought line is not a target", thought, "Thought for", 60, 0, ""},
+		{"right of the digest is not a target", thought, "thought 1.0s", 60, 0, ""},
 		{"a widget click id with a handler is a target", widgets, "clickme", 1, 1, "Hover"},
 		{"a widget click id without a handler is not", widgets, "noclick", 1, 0, ""},
 		{"the space right of a widget click id is not", widgets, "clickme", 7, 0, ""},
@@ -477,7 +478,7 @@ func TestToolRowClickExpands(t *testing.T) {
 	if strings.Contains(ansi.Strip(app.Frame()), "-race") {
 		t.Fatal("the collapsed row should not show the command")
 	}
-	x, y := findCell(t, app, "Ran 1 command")
+	x, y := findCell(t, app, "run the hostapi tests")
 	clickAt(app, x+1, y)
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
@@ -487,7 +488,7 @@ func TestToolRowClickExpands(t *testing.T) {
 	if strings.Contains(frame, "first idea") {
 		t.Fatalf("one row expanded the whole transcript:\n%s", frame)
 	}
-	x, y = findCell(t, app, "Run the hostapi tests")
+	x, y = findCell(t, app, "run the hostapi tests")
 	clickAt(app, x+1, y)
 	app.renderSync(t)
 	if strings.Contains(ansi.Strip(app.Frame()), "-race") {

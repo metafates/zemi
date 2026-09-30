@@ -132,7 +132,7 @@ func TestResizeSweep(t *testing.T) {
 			toolRows = append(toolRows, row)
 		}
 	}
-	if len(toolRows) != 1 || !strings.Contains(toolRows[0], "Run ёж") || !strings.HasSuffix(strings.TrimRight(toolRows[0], " "), "…") {
+	if len(toolRows) != 1 || !strings.Contains(toolRows[0], " run ёж") || !strings.HasSuffix(strings.TrimRight(toolRows[0], " "), "…") {
 		t.Fatalf("tool row must be one truncated row, got %q", toolRows)
 	}
 	app.pushToast(slog.LevelWarn, "a rather long toast title that must truncate", "line one of the body\nline two which is long enough to need wrapping at small widths")

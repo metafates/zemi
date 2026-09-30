@@ -234,7 +234,7 @@ func TestRunHeadless(t *testing.T) {
 		{name: "escapes are stripped", prompt: "say \x1b]52;c;SGk=\a\x1b[31mhi", stdout: "hi", stderr: "resume   zemi -r ", notStdout: "\x1b", notErr: "\x1b"},
 		{name: "a deny rule's call is a failed row", prompt: `call shell {"command":"ls -la"}`, setup: func(h *hostapi.Host) {
 			h.Perm.Add(perm.Rule{Subject: "tool.shell", Pattern: "ls*", Decision: perm.Deny})
-		}, stderr: "✗ Run ls -la", notErr: "nobody could answer"},
+		}, stderr: "✗ run ls -la", notErr: "nobody could answer"},
 		{name: "the planner does not write", prompt: `call write {"path":"x.txt","content":"x"}`, setup: func(h *hostapi.Host) {
 			if err := h.SetProfile("planner"); err != nil {
 				t.Fatal(err)

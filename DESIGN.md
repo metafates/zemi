@@ -1845,11 +1845,23 @@ provenance string.
   dimmed (`Pinned`), ending in `…` when
   the prompt has more rows; a click on it scrolls back to the prompt,
   and `alt+up`/`alt+down` move between prompts.
-  Reasoning blocks
-  collapse to one `✻ Thought for Xs` line unless shown
-  (default keymaps below); a finished tool call collapses the same way and a
-  click on its row opens that one row, command and output, with the rest of
-  the transcript untouched.
+  A settled turn folds each run of thinking and calls that only looked around
+  (reads, searches, fetches, commands that changed nothing, and the like, gone
+  well) into one dim digest row, `· 6 files, 8 commands · thought 8s`; edits,
+  failures, questions, plans, agent runs, workflows, background jobs and
+  commands with a diff keep their own rows. The live turn, a printed run and
+  an agent run's view draw the rail instead, one row per step with no blank
+  rows between: a step's look-around calls as one row, the model's label
+  first and the counts after it, the thought before the step as its suffix,
+  a thought over 5 s a `✻ thought 8s` row of its own. While the model thinks
+  its last lines show under a `thinking` row, unless the thinking pane draws
+  them: in `ui.reasoning` pane mode, on a screen 100 columns or wider, a pane
+  right of the chat (`tui/thinking.lua`) streams the turn's thinking and
+  follows its tail until the wheel moves it. A click on a digest unfolds its
+  run in place, every row open, with the rest of the transcript untouched;
+  with the pane drawn it shows the run there instead, and a second click, or
+  the next turn, goes back to the live thinking. A click on any other row
+  opens that one row, command, diff and output.
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it;
@@ -1916,7 +1928,9 @@ provenance string.
   `tui/statusline.lua`: the mode and the profile open their
   pickers, the project path `/projects`, the model the model
   picker, the context and cost `/usage`, pending reviews `/memory`,
-  running agents `/agents`. The chat widget marks a reasoning line
+  running agents `/agents`. The chat widget marks a digest (`turn:<first
+  index>`, unfolds the run or shows it in the thinking pane), a rail's step
+  and thought rows (`step:<idx>`, `thought:<idx>`), the live thinking row
   (`zemi.ui.reasoning.toggle()`), an agent tool row (`agent:<run id>`,
   from the row's `run` field, opens that run's transcript) and a tool row
   (`tool:<idx>`, expands that row); the splash's rows resume a session or

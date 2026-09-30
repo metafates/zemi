@@ -65,8 +65,8 @@ func BenchmarkWidgetCtx(b *testing.B) {
 	}
 }
 
-// TestPrintedRender: a frame zemi run prints draws the rows it is handed
-// and no pointer at a key or a click, the thought whole only with
+// TestPrintedRender: a frame zemi run prints draws the rows it is handed on
+// the rail, never folded into a digest, the thought whole only with
 // --reasoning; the splash stays out of it.
 func TestPrintedRender(t *testing.T) {
 	h := newTestHostUI(t)
@@ -93,16 +93,16 @@ func TestPrintedRender(t *testing.T) {
 		return b.String()
 	}
 	for _, c := range []struct {
-		name          string
-		state         UIState
-		hint, thought bool
+		name            string
+		state           UIState
+		digest, thought bool
 	}{
-		{"the TUI points at ctrl+o", UIState{}, true, false},
-		{"a printed frame does not", UIState{Printed: &Printed{Rows: rows}}, false, false},
+		{"the TUI folds the thought into a digest", UIState{}, true, false},
+		{"a printed frame keeps the rail", UIState{Printed: &Printed{Rows: rows}}, false, false},
 		{"--reasoning prints the thought", UIState{Printed: &Printed{Rows: rows, Reasoning: true}}, false, true},
 	} {
 		got := chat(c.state)
-		if strings.Contains(got, "ctrl+o") != c.hint || strings.Contains(got, "hmm") != c.thought || !strings.Contains(got, "exit status 1") || !strings.Contains(got, "it fails") {
+		if strings.Contains(got, "· thought") != c.digest || strings.Contains(got, "hmm") != c.thought || !strings.Contains(got, "exit status 1") || !strings.Contains(got, "it fails") {
 			t.Errorf("%s:\n%s", c.name, got)
 		}
 	}

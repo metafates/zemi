@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -169,6 +170,42 @@ func TestGoldenReasoningCollapse(t *testing.T) {
 		In: 12340, Out: 1234, ThoughtMS: 4200, ElapsedMS: 38000, Ended: 1_700_000_000,
 	})
 
+	app.renderSync(t)
+	golden.RequireEqual(t, app.Frame())
+}
+
+// TestGoldenThinkingPane pins the thinking pane at 120 columns: a settled
+// turn folded into its digest, the live turn's rail beside the pane that
+// streams its thought, the separator meeting the composer's top rule.
+func TestGoldenThinkingPane(t *testing.T) {
+	app, host := bootAgentApp(t, 120, 30)
+	if err := host.ToggleReasoning(); err != nil {
+		t.Fatal(err)
+	}
+	waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Hidden })
+	const diff = "--- a/load.go\n+++ b/load.go\n@@ -1,2 +1,2 @@\n package catalog\n-const path = \"old\"\n+const path = \"gen\"\n"
+	tool := func(name, text, label string, status hostapi.CallStatus, diff, out string) {
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: name, Text: text, Label: label, Status: status, Diff: diff, Output: out})
+	}
+	host.AppendMessage("user", "why do the generated catalogs not load?")
+	appendReasoning(host, "Start with the loader.", hostapi.TurnStat{ThoughtMS: 1200})
+	tool("read", "internal/catalog/load.go", "", "ok", "", "")
+	tool("read", "internal/catalog/gen.go", "", "ok", "", "")
+	appendReasoning(host, "It reads the old path.", hostapi.TurnStat{ThoughtMS: 8000})
+	tool("edit", "internal/catalog/load.go", "", "ok", diff, "")
+	tool("shell", "go test ./...", "", "err", "", "--- FAIL: TestLoad\nfixture path moved\nexit status 1")
+	appendReply(host, "The loader still reads the pre-generation path.", hostapi.TurnStat{Out: 1200, ElapsedMS: 38000, Ended: 1_700_000_000})
+	host.AppendMessage("user", "fix the fixture too")
+	appendReasoning(host, "The fixture lives under testdata.", hostapi.TurnStat{ThoughtMS: 900})
+	tool("glob", "testdata/**", "", "ok", "", "")
+	tool("shell", "ls testdata", "list the fixtures", "ok", "", "")
+	host.SeedStream(hostapi.StreamSnapshot{
+		Active:    true,
+		Reasoning: "The fixture names the old path in its header, so the\ntest reads it before the loader runs. Rename it and\nupdate the golden that pins it.",
+		Thought:   4200 * time.Millisecond,
+		Elapsed:   12 * time.Second,
+	})
+	app.AgentStream()
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())
 }
