@@ -716,6 +716,29 @@ func lastToast(app *App) string {
 	return app.toasts[len(app.toasts)-1].body
 }
 
+// TestBandToTheEdge: a selected choice's band reaches the box's border
+// whether or not its list scrolls.
+func TestBandToTheEdge(t *testing.T) {
+	choices := make([]promptChoice, 10)
+	for i := range choices {
+		choices[i] = promptChoice{label: fmt.Sprint("opt", i)}
+	}
+	for _, viewH := range []int{20, 4} {
+		box := hostBox("", "", "", choiceView(choices, 1, &viewport{viewH: viewH}, 30, true), 40, 40, 30)
+		band := 0
+		for _, row := range box {
+			for _, s := range row {
+				if s.Fill == hostapi.FillBand {
+					band += ansi.StringWidth(s.Text)
+				}
+			}
+		}
+		if want := hostapi.SegsWidth(box[0]) - 4; band != want {
+			t.Errorf("view of %d rows: the band takes %d cells, want %d", viewH, band, want)
+		}
+	}
+}
+
 // TestMatchLook: a match is the accent on every row, bold on the selected
 // one, and the selection is its own channel, the band (^), which a section
 // header never takes.

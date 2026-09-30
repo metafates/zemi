@@ -477,7 +477,11 @@ func (v *viewport) window(lines [][]hostapi.Segment, width int) [][]hostapi.Segm
 			row = lines[j]
 		}
 		if bar.on() {
-			row = bar.row(padSegs(truncateSegs(row, width), width), i)
+			p := padSegs(truncateSegs(row, width), width)
+			if n := len(row); n > 0 && len(p) > n {
+				p[n].Fill = row[n-1].Fill // a band runs on to the border
+			}
+			row = bar.row(p, i)
 		}
 		out = append(out, row)
 	}
