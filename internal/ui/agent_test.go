@@ -1264,64 +1264,30 @@ func TestPermissionChoices(t *testing.T) {
 		return ok, by
 	}
 	down, up, enter := tea.KeyPressMsg{Code: tea.KeyDown}, tea.KeyPressMsg{Code: tea.KeyUp}, tea.KeyPressMsg{Code: tea.KeyEnter}
-	shell := hostapi.PermRequest{Tool: "shell", Subject: "tool.shell", Arg: "go test ./...", Always: "allow go test"}
+	letter := func(r rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: r, Text: string(r)} }
+	shell := func(always string) hostapi.PermRequest {
+		return hostapi.PermRequest{Tool: "shell", Subject: "tool.shell", Arg: "go test ./...", Always: always}
+	}
 	for _, c := range []struct {
-		name   string
-		always string
-		keys   []tea.KeyPressMsg
-		ok     bool
-		by     string
+		name string
+		req  hostapi.PermRequest
+		keys []tea.KeyPressMsg
+		ok   bool
+		by   string
 	}{
-		{"down enter takes always", "allow go test", []tea.KeyPressMsg{down, enter}, true, "user:always"},
-		{"down down enter denies", "allow go test", []tea.KeyPressMsg{down, down, enter}, false, "user"},
-		{"up stays on yes", "allow go test", []tea.KeyPressMsg{up, enter}, true, "user:once"},
-		{"a takes always", "allow go test", []tea.KeyPressMsg{{Code: 'a', Text: "a"}}, true, "user:always"},
-		{"n denies", "allow go test", []tea.KeyPressMsg{{Code: 'n', Text: "n"}}, false, "user"},
-		{"without always, down enter denies", "", []tea.KeyPressMsg{down, enter}, false, "user"},
-		{"without always, a does nothing", "", []tea.KeyPressMsg{{Code: 'a', Text: "a"}, {Code: 'o', Text: "o"}}, true, "user:once"},
+		{"down enter takes always", shell("allow go test"), []tea.KeyPressMsg{down, enter}, true, "user:always"},
+		{"down down enter denies", shell("allow go test"), []tea.KeyPressMsg{down, down, enter}, false, "user"},
+		{"up stays on yes", shell("allow go test"), []tea.KeyPressMsg{up, enter}, true, "user:once"},
+		{"a takes always", shell("allow go test"), []tea.KeyPressMsg{letter('a')}, true, "user:always"},
+		{"n denies", shell("allow go test"), []tea.KeyPressMsg{letter('n')}, false, "user"},
+		{"without always, down enter denies", shell(""), []tea.KeyPressMsg{down, enter}, false, "user"},
+		{"without always, a does nothing", shell(""), []tea.KeyPressMsg{letter('a'), letter('o')}, true, "user:once"},
+		{"p takes this project", hostapi.PermRequest{Subject: "tool.shell", Arg: "git push", Always: "allow git push", Project: true}, []tea.KeyPressMsg{letter('p')}, true, "user:project"},
+		{"r takes the repo-wide read", hostapi.PermRequest{Subject: "fs.read", Arg: "/repo/pkg/file.go", Always: "allow reads in /repo/pkg/ and below", Wider: "allow reads anywhere in /repo/"}, []tea.KeyPressMsg{letter('r')}, true, "user:wider"},
 	} {
-		shell.Always = c.always
-		if ok, by := ask(shell, c.keys...); ok != c.ok || by != c.by {
+		if ok, by := ask(c.req, c.keys...); ok != c.ok || by != c.by {
 			t.Errorf("%s: %v %q", c.name, ok, by)
 		}
-	}
-}
-
-// TestPermissionProjectKey: the "for this project" choice ("p") answers
-// directly into user:project.
-func TestPermissionProjectKey(t *testing.T) {
-	app, _ := bootAgentApp(t, 100, 30)
-	done := make(chan struct{})
-	var ok bool
-	var by string
-	go func() {
-		ok, by = app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "git push", Always: "allow git push", Project: true})
-		close(done)
-	}()
-	waitPrompt(t, app, func() bool { return app.permAsk != nil })
-	app.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
-	<-done
-	if !ok || by != "user:project" {
-		t.Fatalf("ok=%v by=%q, want user:project", ok, by)
-	}
-}
-
-// TestPermissionWidthKey: the repo-wide read choice ("r") answers directly,
-// like the other one-letter choice keys.
-func TestPermissionWidthKey(t *testing.T) {
-	app, _ := bootAgentApp(t, 100, 30)
-	done := make(chan struct{})
-	var ok bool
-	var by string
-	go func() {
-		ok, by = app.AskPermission(hostapi.PermRequest{Subject: "fs.read", Arg: "/repo/pkg/file.go", Always: "allow reads in /repo/pkg/ and below", Wider: "allow reads anywhere in /repo/"})
-		close(done)
-	}()
-	waitPrompt(t, app, func() bool { return app.permAsk != nil })
-	app.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
-	<-done
-	if !ok || by != "user:wider" {
-		t.Fatalf("r: ok=%v by=%q", ok, by)
 	}
 }
 
