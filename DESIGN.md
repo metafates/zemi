@@ -666,7 +666,7 @@ the binary's API version is `zemi.api.version`.
   a `tool.pre` or `permission.request` handler returning something that is
   not a `zemi.Veto` denies.
 - **Frozen namespaces**: all `zemi.*` tables are read-only; the API only
-  grows through versioned Go changes, visible in `zemi.api.version`.
+  changes through versioned Go changes, visible in `zemi.api.version`.
   `pairs` lists a namespace's members through an iterator Go owns (the
   table Lua holds is an empty proxy, and the real one never reaches Lua),
   and reading a member it does not have raises and lists the members it does.

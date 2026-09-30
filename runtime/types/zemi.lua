@@ -231,7 +231,7 @@ zemi = {}
 -- zemi.api
 
 ---@class zemi.api
----@field version string The API version, bumped whenever the surface grows.
+---@field version string The API version, bumped whenever the surface changes.
 zemi.api = {}
 
 -- ---------------------------------------------------------------------------
@@ -1572,7 +1572,7 @@ function zemi.log.list() end
 ---| "agents"   # subagents
 ---| "titles"   # session titles
 ---| "compact"  # summaries
----| "memory"   # memory review
+---| "memory"   # the reflector
 
 ---@class zemi.ModelInfo
 ---@field id string "provider/model".
@@ -2042,8 +2042,9 @@ zemi.permission.rule = {}
 ---@param spec zemi.RuleSpec
 function zemi.permission.rule.add(spec) end
 
---- The rules in force, in evaluation order. There is no `del`: a session
---- rule dies with the session and config rules are declarative file state.
+--- The rules in force, in evaluation order. There is no `del`: an "always"
+--- answer's rule lasts until zemi exits (`/permissions` deletes one) and
+--- config rules are declarative file state.
 ---@return zemi.Rule[]
 function zemi.permission.rule.list() end
 
