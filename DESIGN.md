@@ -1878,12 +1878,13 @@ provenance string.
   digest opens its run's rail under it, the digest staying as the run's header,
   whose second click folds it back and closes what was opened in it, with the
   rest of the transcript untouched;
-  with the pane drawn it shows the run there instead, every row and thought
-  open, and a second click, or the next turn, goes back to the live
-  thinking. A thought row's click unrolls its text at most 80 cells wide, a
-  bar-only row above and below text of two or more lines; a step row's opens
-  one row per call. A click on any other row opens that one row, command, diff
-  and output.
+  with the pane drawn the opened run also reads there, every row and thought
+  open, and folding it, or the next turn, goes back to the live thinking. A
+  thought row's click unrolls its text at most 80 cells wide, a bar-only row
+  above and below text of two or more lines (with the pane, it shows the run
+  there instead); a step row's opens its calls nested two cells under it,
+  the step's row staying as their head, and closes them again. A click on any
+  other row opens that one row, command, diff and output.
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it;
