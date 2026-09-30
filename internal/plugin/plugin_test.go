@@ -1,7 +1,8 @@
 package plugin
 
 import (
-	"errors"
+	"cmp"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,11 +66,11 @@ func TestPlugins(t *testing.T) {
 	for _, c := range []struct {
 		name   string
 		before func()
-		args   []string // nil lists with Table
+		args   []string // nil lists: name, version, enabled, source
 		want   string   // in the output (words joined by one space, a newline on each end), or in the error when err
 		err    bool
 	}{
-		{name: "local only", args: nil, want: "loc local on " + local},
+		{name: "local only", args: nil, want: "loc true " + local},
 		{name: "install takes the highest tag", args: []string{"install", "file://" + tagged}, want: "\nx v1.0.0\n"},
 		{name: "install a branch under a name", args: []string{"install", filepath.Join(tmp, "src", "y.git"), "why"}, want: "\nwhy "},
 		{name: "a taken name", args: []string{"install", "file://" + tagged}, want: "already named x", err: true},
@@ -107,7 +108,7 @@ func TestPlugins(t *testing.T) {
 		},
 		{name: "a branch moves to the first tag", args: []string{"update", "why"}, want: " -> v0.1.0\n"},
 		{name: "disable", args: []string{"disable", "x"}},
-		{name: "list", args: nil, want: "x v0.10.0 off file://" + tagged},
+		{name: "list", args: nil, want: "x v0.10.0 false file://" + tagged},
 		{name: "disable an unknown name", args: []string{"disable", "nope"}, want: "no plugin is named", err: true},
 		{
 			name:   "delete a local plugin",
@@ -156,7 +157,9 @@ func TestPlugins(t *testing.T) {
 		var out strings.Builder
 		ps, err := List(t.Context(), d)
 		if c.args == nil {
-			err = errors.Join(err, Table(&out, ps))
+			for _, p := range ps {
+				fmt.Fprintln(&out, p.Name, p.Version, p.Enabled, cmp.Or(p.URL, p.Dir))
+			}
 		} else {
 			err = Run(t.Context(), d, c.args, &out)
 		}

@@ -16,6 +16,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/colorprofile"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 	"golang.org/x/mod/module"
@@ -171,6 +174,7 @@ and stderr lists them at the end.`,
 	run.Flags().BoolVarP(&o.quiet, "quiet", "q", false, "show no run on stderr, only what went wrong")
 	run.Flags().BoolVar(&o.reasoning, "reasoning", false, "show reasoning and every call, as ctrl+o does")
 
+	var healthJSON *bool
 	health := &cobra.Command{
 		Use:   "health",
 		Short: "run the /health checks; 1 if any failed",
@@ -181,9 +185,10 @@ and stderr lists them at the end.`,
 				return err
 			}
 			defer done()
-			return status(printHealth(h, c.OutOrStdout()))
+			return status(printHealth(h, c.OutOrStdout(), *healthJSON))
 		},
 	}
+	healthJSON = jsonFlag(health)
 
 	root.AddCommand(run, sessionsCommand(), projectsCommand(), pluginsCommand(), modelsCommand(), health)
 	return root
@@ -329,6 +334,7 @@ func nargs(maxN int) cobra.PositionalArgs {
 // works beside a running TUI, whose config watcher reloads on the change.
 func pluginsCommand() *cobra.Command {
 	yes := false
+	var asJSON *bool
 	// git clones and fetches: an interrupt stops them and exits with 130
 	run := func(c *cobra.Command, args []string) error {
 		// asked before the signal context, so ctrl+c at the prompt ends zemi
@@ -346,7 +352,7 @@ func pluginsCommand() *cobra.Command {
 			if ps, err = plugin.List(ctx, dirs); err == nil && len(ps) == 0 {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no plugins yet; zemi plugins install <git url> adds one")
 			}
-			err = errors.Join(err, plugin.Table(c.OutOrStdout(), ps))
+			printPlugins(c.OutOrStdout(), ps, *asJSON)
 		default:
 			err = plugin.Run(ctx, dirs, append([]string{c.Name()}, args...), c.OutOrStdout())
 		}
@@ -361,6 +367,7 @@ func pluginsCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE:  run,
 	}
+	asJSON = jsonFlag(cmd)
 	for _, v := range []struct {
 		use, short string
 		args       cobra.PositionalArgs
@@ -405,6 +412,7 @@ func pluginsCommand() *cobra.Command {
 }
 
 func sessionsCommand() *cobra.Command {
+	var asJSON *bool
 	cmd := &cobra.Command{
 		Use:   "sessions",
 		Short: "list this project's sessions, newest first",
@@ -424,13 +432,27 @@ func sessionsCommand() *cobra.Command {
 				fmt.Fprintf(c.ErrOrStderr(), "zemi: no sessions in %s yet\n", perm.TildePath(dirs.TrustRoot()))
 				return nil
 			}
+			out, p := c.OutOrStdout(), colorprofile.Detect(c.OutOrStdout(), os.Environ())
+			if !*asJSON && p != colorprofile.NoTTY {
+				fmt.Fprintln(out, paint(p, "title", fmt.Sprintf("%-32s  %-16s  %s", "session", "updated", "title")))
+			}
 			for _, s := range list {
-				title := cmp.Or(sessionTitle(s), "(untitled)")
-				fmt.Fprintf(c.OutOrStdout(), "%s  %s  %s\n", s.ID, time.UnixMilli(s.UpdatedAt).Format(hostapi.StampLayout), title)
+				updated := time.UnixMilli(s.UpdatedAt)
+				if *asJSON {
+					writeJSON(out, struct {
+						ID      string    `json:"id"`
+						Title   string    `json:"title"`
+						Updated time.Time `json:"updated"`
+						CostUSD float64   `json:"cost_usd"`
+					}{s.ID, sessionTitle(s), updated, s.Cost})
+					continue
+				}
+				fmt.Fprintf(out, "%s  %s  %s\n", paint(p, "hint", s.ID), paint(p, "hint", updated.Format(hostapi.StampLayout)), cmp.Or(sessionTitle(s), "(untitled)"))
 			}
 			return err
 		},
 	}
+	asJSON = jsonFlag(cmd)
 	full := false
 	export := &cobra.Command{
 		Use:               "export <id>",
@@ -463,7 +485,8 @@ func sessionsCommand() *cobra.Command {
 // projectsCommand is zemi projects: one line per project, the path last and
 // absolute at column 36, so cut -c36- hands it to zemi -C.
 func projectsCommand() *cobra.Command {
-	return &cobra.Command{
+	var asJSON *bool
+	cmd := &cobra.Command{
 		Use:   "projects",
 		Short: "list the projects zemi keeps state for, last used first",
 		Args:  cobra.NoArgs,
@@ -476,16 +499,32 @@ func projectsCommand() *cobra.Command {
 			if len(ps) == 0 {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no projects yet")
 			}
+			out, cp := c.OutOrStdout(), colorprofile.Detect(c.OutOrStdout(), os.Environ())
+			if !*asJSON && cp != colorprofile.NoTTY && len(ps) > 0 {
+				fmt.Fprintln(out, paint(cp, "title", fmt.Sprintf("%-16s  %-9s  %4s  %s", "used", "trust", "sess", "root")))
+			}
 			for _, p := range ps {
+				if *asJSON {
+					writeJSON(out, struct {
+						Root     string    `json:"root"`
+						Trust    string    `json:"trust"`
+						Used     time.Time `json:"used,omitzero"`
+						Sessions int       `json:"sessions"`
+						Memories int       `json:"memories"`
+					}{p.Root, p.TrustWord(), p.Used, p.Sessions, p.Memories})
+					continue
+				}
 				used := "-"
 				if !p.Used.IsZero() {
 					used = p.Used.Format(hostapi.StampLayout)
 				}
-				fmt.Fprintf(c.OutOrStdout(), "%-16s  %-9s  %4d  %s\n", used, p.TrustWord(), p.Sessions, p.Root)
+				fmt.Fprintf(out, "%s  %s  %4d  %s\n", pad(cp, "hint", used, 16), pad(cp, statusRole[p.TrustWord()], p.TrustWord(), 9), p.Sessions, p.Root)
 			}
 			return nil
 		},
 	}
+	asJSON = jsonFlag(cmd)
+	return cmd
 }
 
 func modelsCommand() *cobra.Command {
@@ -545,6 +584,86 @@ func projectStore(dirs config.Dirs) (*store.DB, error) {
 }
 
 // sessionTitle is a session's title on one line.
+// jsonFlag adds --json to a listing command: JSON Lines on stdout, one
+// object per item, as zemi run --json prints its events.
+func jsonFlag(c *cobra.Command) *bool {
+	return c.Flags().Bool("json", false, "print one JSON object per line")
+}
+
+// roleStyles are the CLI's colors: basic ANSI ones, so the terminal's own
+// palette reads on a light or a dark ground. Any other role is plain.
+var roleStyles = map[string]uv.Style{
+	"ok":     {Fg: ansi.Green},
+	"warn":   {Fg: ansi.Yellow},
+	"danger": {Fg: ansi.Red},
+	"hint":   {Fg: ansi.BrightBlack},
+	"title":  {Fg: ansi.Blue, Attrs: uv.AttrBold},
+}
+
+// statusRole is the role of each status word the CLI prints.
+var statusRole = map[string]string{
+	"ok": "ok", "on": "ok", "trusted": "ok",
+	"warn": "warn", "undecided": "warn",
+	"error": "danger", "missing": "danger",
+	"off": "hint", "untrusted": "hint",
+}
+
+// paint styles text in role for the output p describes: unchanged off a
+// terminal, bold alone under NO_COLOR.
+func paint(p colorprofile.Profile, role, text string) string {
+	st := uv.ConvertStyle(roleStyles[role], p)
+	return st.Styled(text)
+}
+
+// pad is text painted in role and padded to w cells by its visible width,
+// so a column lines up with the escapes around it.
+func pad(p colorprofile.Profile, role, text string, w int) string {
+	return paint(p, role, text) + strings.Repeat(" ", max(w-ansi.StringWidth(text), 0))
+}
+
+// printPlugins writes one aligned line per plugin, the free-text source
+// last so cut and awk read the name, and a header only on a terminal.
+func printPlugins(w io.Writer, ps []plugin.Plugin, asJSON bool) {
+	p := colorprofile.Detect(w, os.Environ())
+	var rows [][4]string
+	if !asJSON && p != colorprofile.NoTTY && len(ps) > 0 {
+		rows = append(rows, [4]string{"name", "version", "on", "source"})
+	}
+	for _, pl := range ps {
+		version, source, on := pl.Version, pl.URL, "on"
+		if pl.Local {
+			version, source = "local", pl.Dir
+		}
+		if !pl.Enabled {
+			on = "off"
+		}
+		if asJSON {
+			writeJSON(w, struct {
+				Name    string `json:"name"`
+				Version string `json:"version"`
+				Local   bool   `json:"local"`
+				Enabled bool   `json:"enabled"`
+				Source  string `json:"source"`
+			}{pl.Name, pl.Version, pl.Local, pl.Enabled, source})
+			continue
+		}
+		rows = append(rows, [4]string{pl.Name, version, on, source})
+	}
+	var width [3]int
+	for _, r := range rows {
+		for i := range width {
+			width[i] = max(width[i], ansi.StringWidth(r[i])+2)
+		}
+	}
+	for i, r := range rows {
+		roles := [4]string{"", "hint", statusRole[r[2]], "hint"}
+		if i == 0 && len(rows) > len(ps) {
+			roles = [4]string{"title", "title", "title", "title"}
+		}
+		fmt.Fprintln(w, pad(p, roles[0], r[0], width[0])+pad(p, roles[1], r[1], width[1])+pad(p, roles[2], r[2], width[2])+paint(p, roles[3], r[3]))
+	}
+}
+
 func sessionTitle(s *store.Session) string {
 	return strings.Join(strings.Fields(sanitize.String(s.Title)), " ")
 }
@@ -665,18 +784,26 @@ func applyOptions(h *hostapi.Host, o options) error {
 // printHealth writes the /health checks for a headless run; any failed
 // check makes the exit status 1, so a script can gate on it. MCP servers
 // settle first, so their row says what a run would get.
-func printHealth(h *hostapi.Host, stdout io.Writer) int {
+func printHealth(h *hostapi.Host, stdout io.Writer, asJSON bool) int {
 	ctx, stop := signalContext()
 	defer stop()
 	if h.WaitMCP(ctx); ctx.Err() != nil {
 		return 130
 	}
-	code := 0
+	code, p := 0, colorprofile.Detect(stdout, os.Environ())
 	for _, r := range h.HealthRows() {
 		if r.Level == hostapi.HealthError {
 			code = 1
 		}
-		fmt.Fprintf(stdout, "%-5s %-12s %s\n", r.Level, r.Name, r.Detail)
+		if asJSON {
+			writeJSON(stdout, struct {
+				Level  hostapi.HealthLevel `json:"level"`
+				Name   string              `json:"name"`
+				Detail string              `json:"detail"`
+			}{r.Level, r.Name, r.Detail})
+			continue
+		}
+		fmt.Fprintf(stdout, "%s %s %s\n", pad(p, statusRole[string(r.Level)], string(r.Level), 5), pad(p, "", r.Name, 12), r.Detail)
 	}
 	return code
 }

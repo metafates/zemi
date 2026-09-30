@@ -106,7 +106,11 @@ stdout, `--full` as `/export full`; `projectStore` opens the store through `stor
 sweeps nothing and takes no lock a running zemi waits on), `projects` (`hostapi.ListProjects` with its
 stores read the same way, one line each, the absolute root at column 36 for `cut -c36-`), `models` (and `models update`),
 `plugins`, `health`, cobra's `completion` and `help` are subcommands, each declaring its
-`Args` (cobra checks positionals only on the root). A prompt argument is sent as
+`Args` (cobra checks positionals only on the root). The listing ones (`sessions`, `projects`,
+`plugins`, `health`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
+`zemi run --json` uses too. Their plain lines are colored only on a terminal (`paint` and `pad`
+over `colorprofile.Detect`, basic ANSI colors and no Lua theme, which they never boot), with a
+header row there only, so a pipe reads the same bytes as always. A prompt argument is sent as
 the first message, or run as a command when it names one (`Host.SendPrompt`, TUI and `zemi run`
 alike, so `/review` works from a git hook); a prompt whose first word names a zemi command goes
 after `--`, and a lone word a near miss of one is refused (`options.finish`), since it would pay

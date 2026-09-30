@@ -121,6 +121,17 @@ can take it back, one model step later, so narration can follow the next
 call's `tool_start`. A subagent or a workflow is one call; its own calls are
 not events.
 
+`sessions`, `projects`, `plugins` and `health` take `--json` too: one object
+per line, nothing for an empty list. On a terminal their columns are colored
+and headed; through a pipe they are plain, so `cut` and `awk` read them as is.
+
+| command | fields |
+|---|---|
+| `sessions` | `id`, `title` (`""` untitled), `updated` (RFC 3339), `cost_usd` |
+| `projects` | `root`, `trust` (`trusted`, `untrusted`, `undecided`, `missing`), `used` (RFC 3339, left out when unknown), `sessions`, `memories` |
+| `plugins` | `name`, `version`, `local`, `enabled`, `source` (the git URL, or the dir of a local one) |
+| `health` | `level` (`ok`, `warn`, `error`), `name`, `detail` |
+
 Shell completion, with session ids, plugin names, models, profiles and modes:
 
 ```sh

@@ -21,7 +21,6 @@ import (
 	"slices"
 	"strings"
 	"syscall"
-	"text/tabwriter"
 	"time"
 
 	"golang.org/x/mod/semver"
@@ -257,23 +256,6 @@ func SetEnabled(d config.Dirs, name string, on bool) error {
 
 // UpToDate is what check and update print when no plugin has news.
 const UpToDate = "Plugins up to date"
-
-// Table writes one aligned line per plugin, no header, the free-text source
-// last, so cut and awk read the name.
-func Table(out io.Writer, ps []Plugin) error {
-	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	for _, p := range ps {
-		version, source, on := p.Version, p.URL, "on"
-		if p.Local {
-			version, source = "local", p.Dir
-		}
-		if !p.Enabled {
-			on = "off"
-		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.Name, version, on, source)
-	}
-	return w.Flush()
-}
 
 // Run runs one verb of the zemi plugins CLI, which /plugins shares; each
 // prints plain lines a toast can show.

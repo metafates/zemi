@@ -12,6 +12,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/charmbracelet/colorprofile"
+
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -102,16 +104,20 @@ func TestCLI(t *testing.T) {
 		{name: "complete a mode", args: []string{"__complete", "--mode", ""}, stdout: "yolo\n"},
 		{name: "a failure is 1", args: []string{"sessions", "export", "nope"}, code: 1, stderr: `zemi: sessions export: no session "nope"`},
 		{name: "sessions lists", args: []string{"sessions"}, stdout: sid + "  "},
+		{name: "sessions as JSON", args: []string{"sessions", "--json"}, stdout: `{"id":"` + sid + `","title":"fix the failing test","updated":"`},
+		{name: "no sessions as JSON", args: []string{"-C", dir, "sessions", "--json"}, notStdout: "{"},
 		{name: "export prints markdown", args: []string{"sessions", "export", sid}, stdout: "# fix the failing test\n"},
 		{name: "export full", args: []string{"sessions", "export", "--full", sid}, stdout: "# fix the failing test\n"},
 		{name: "no store, no sessions", args: []string{"-C", dir, "sessions"}, stderr: "zemi: no sessions in "},
 		// the path at column 36, for cut -c36-
 		{name: "projects lists", args: []string{"projects"}, stdout: "  undecided     1  " + dirs.TrustRoot() + "\n"},
+		{name: "projects as JSON", args: []string{"projects", "--json"}, stdout: `"trust":"undecided",`},
 		{name: "plugins arity", args: []string{"plugins", "enable"}, code: 2, stderr: "zemi: plugins enable takes <name>\n"},
 		{name: "a range of args", args: []string{"plugins", "install", "a", "b", "c"}, code: 2, stderr: "zemi: plugins install takes <git url> [name]\n"},
 		{name: "completion help in zemi's words", args: []string{"completion", "--help"}, stdout: "print the bash completion script", notStdout: "Generate"},
 		{name: "delete off a terminal", args: []string{"plugins", "delete", "zzq"}, code: 2, stderr: "pass --yes to delete zzq"},
-		{name: "plugins lists", args: []string{"plugins"}, stdout: "zzq"},
+		{name: "plugins lists", args: []string{"plugins"}, stdout: "rub  local  on  "},
+		{name: "plugins as JSON", args: []string{"plugins", "--json"}, stdout: `{"name":"rub","version":"","local":true,"enabled":true,"source":"`},
 		{name: "delete with yes", args: []string{"plugins", "delete", "--yes", "zzq"}},
 		{name: "the delete took", args: []string{"plugins"}, stdout: "rub", notStdout: "zzq"},
 		{name: "completion script", args: []string{"completion", "fish"}, stdout: "complete -c zemi"},
@@ -442,5 +448,24 @@ func BenchmarkConfigFingerprint(b *testing.B) {
 	_ = os.WriteFile(filepath.Join(dir, "local", "y", "init.lua"), []byte("-- one"), 0o644)
 	for b.Loop() {
 		configFingerprint("", pluginRoots(dir)...)
+	}
+}
+
+// TestPaint: the CLI paints only on a terminal, keeps bold alone under
+// NO_COLOR, and pads a column by the text it shows, not its escapes.
+func TestPaint(t *testing.T) {
+	for _, c := range []struct {
+		p          colorprofile.Profile
+		role, want string
+	}{
+		{colorprofile.NoTTY, "title", "on  "},
+		{colorprofile.Ascii, "title", "\x1b[1mon\x1b[m  "},
+		{colorprofile.Ascii, "ok", "on  "},
+		{colorprofile.ANSI, "ok", "\x1b[32mon\x1b[m  "},
+		{colorprofile.ANSI, "plain", "on  "},
+	} {
+		if got := pad(c.p, c.role, "on", 4); got != c.want {
+			t.Errorf("%v %s: %q, want %q", c.p, c.role, got, c.want)
+		}
 	}
 }

@@ -193,18 +193,18 @@ func failureLine(tool, output string) string {
 // reading --json gets the done line it parses.
 func runFailed(err error, jsonOut bool, stdout, stderr io.Writer) int {
 	if jsonOut {
-		writeEvent(stdout, doneEvent{Type: "done", IsError: true, Error: err.Error()})
+		writeJSON(stdout, doneEvent{Type: "done", IsError: true, Error: err.Error()})
 		return 1
 	}
 	fmt.Fprintln(stderr, "zemi:", hostapi.Headline(err.Error()))
 	return 1
 }
 
-// writeEvent writes one line. A byte that is not UTF-8 becomes U+FFFD, so
-// no event is dropped; the fixed event types leave Marshal nothing else to
-// refuse.
-func writeEvent(w io.Writer, ev any) {
-	b, _ := json.Marshal(ev, jsontext.AllowInvalidUTF8(true))
+// writeJSON writes v as one JSON Lines line, what every --json prints. A
+// byte that is not UTF-8 becomes U+FFFD, so no line is dropped; the fixed
+// struct types leave Marshal nothing else to refuse.
+func writeJSON(w io.Writer, v any) {
+	b, _ := json.Marshal(v, jsontext.AllowInvalidUTF8(true))
 	_, _ = w.Write(append(b, '\n'))
 }
 
@@ -226,7 +226,7 @@ func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer)
 	began, before, asked := time.Now(), h.AgentStream(), len(h.HeadlessDenials())
 	f, emit := newFollower(), func(ev any) {}
 	if o.json {
-		emit = func(ev any) { writeEvent(stdout, ev) }
+		emit = func(ev any) { writeJSON(stdout, ev) }
 	}
 	sendCtx, cancelSend := context.WithCancel(context.Background())
 	defer cancelSend()
