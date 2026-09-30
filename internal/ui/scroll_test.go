@@ -368,6 +368,43 @@ func TestChatStickyPrompt(t *testing.T) {
 // pin over the chat's top rows, in that order, on the panel; from the run's
 // last row on, or with the run folded, the prompt pins alone. A click on the
 // digest's pin puts the digest itself under the prompt's.
+// TestChatFade: the rows under the pins sink toward the canvas while rows lie
+// scrolled above them, and the last rows while rows lie below, deepest at the
+// edge; the pins and an edge with nothing past it do not.
+func TestChatFade(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24) // a chat over 12 rows fades its full 4
+	host.AppendMessage("user", "look around")
+	for i := range 30 {
+		appendReply(host, fmt.Sprintf("answer %d", i), hostapi.TurnStat{})
+	}
+	app.renderSync(t)
+	app.Frame()
+	st := app.scrolls["chat"]
+	// the top six rows and the bottom six, top down
+	fades := func() (top, bottom []float64) {
+		app.Frame()
+		for _, row := range app.lastRows[st.rect.Min.Y : st.rect.Min.Y+6] {
+			top = append(top, row[0].Fade)
+		}
+		for _, row := range app.lastRows[st.rect.Max.Y-6 : st.rect.Max.Y] {
+			bottom = append(bottom, row[0].Fade)
+		}
+		return top, bottom
+	}
+	none := func(f []float64) bool { return !slices.ContainsFunc(f, func(x float64) bool { return x != 0 }) }
+	if top, bottom := fades(); !slices.Equal(top, []float64{0, 0.8, 0.6, 0.4, 0.2, 0}) || !none(bottom) {
+		t.Fatalf("at the tail only the top fades, pin aside: %v %v", top, bottom)
+	}
+	app.scrollRows("chat", -30)
+	if top, bottom := fades(); !slices.Equal(top, []float64{0, 0.8, 0.6, 0.4, 0.2, 0}) || !slices.Equal(bottom, []float64{0, 0, 0.2, 0.4, 0.6, 0.8}) {
+		t.Fatalf("both edges fade, pin aside: %v %v", top, bottom)
+	}
+	app.scrollRows("chat", -st.top)
+	if top, bottom := fades(); !none(top) || slices.Equal(bottom, make([]float64, 6)) {
+		t.Fatalf("at the top only the bottom fades: %v %v", top, bottom)
+	}
+}
+
 func TestChatStickyDigest(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 	host.AppendMessage("user", "look around")

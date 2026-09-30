@@ -39,6 +39,8 @@ local layout = {
 										id = "chat",
 										region = "chat",
 										scroll = "bottom",
+										-- rows scrolled past fade in under the pinned headers
+										fade = 4,
 										size = "fill",
 										min = 3,
 									},
@@ -60,6 +62,7 @@ local layout = {
 										id = "thinking",
 										region = "thinking",
 										scroll = "bottom",
+										fade = 4,
 										size = "fill",
 									},
 									{ kind = "spacer" },

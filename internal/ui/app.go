@@ -14,6 +14,7 @@ import (
 	"image/color"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1482,7 +1483,7 @@ func (a *App) hlStyle(hl string) uv.Style {
 	return a.thm.style(hl)
 }
 
-func (a *App) segStyle(hl, over string, fill hostapi.Fill) uv.Style {
+func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64) uv.Style {
 	st := a.hlStyle(hl)
 	if over != "" {
 		st = a.thm.hover(st, over)
@@ -1496,6 +1497,17 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill) uv.Style {
 				st.Bg = theme.Palette.Panel
 			}
 		case hostapi.FillAuto, hostapi.FillCanvas:
+		}
+		// a faded segment sinks toward the canvas, its fill included, before
+		// the colors are quantized
+		if fade > 0 {
+			st.Fg = hostapi.Mix(cmp.Or(st.Fg, theme.Palette.Fg), theme.Palette.Bg, fade)
+			if st.Bg != nil {
+				st.Bg = hostapi.Mix(st.Bg, theme.Palette.Bg, fade)
+			}
+			if st.UnderlineColor != nil {
+				st.UnderlineColor = hostapi.Mix(st.UnderlineColor, theme.Palette.Bg, fade)
+			}
 		}
 	}
 	switch a.colors {
@@ -1521,18 +1533,21 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill) uv.Style {
 // terminal's own. It is cached for the frame: compose styles thousands of
 // segments and building the sequence for each is the biggest cost of
 // drawing one.
-func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill) string {
-	key := hl // no highlight name holds a NUL, and hover and a fill are the rare cases
+func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64) string {
+	key := hl // no highlight name holds a NUL, and hover, a fill and a fade are the rare cases
 	if over != "" {
 		key = hl + "\x00" + over
 	}
 	if fill != hostapi.FillAuto {
 		key += "\x00" + string(rune('0'+fill))
 	}
+	if fade > 0 {
+		key += "\x00" + strconv.FormatFloat(fade, 'f', 3, 64)
+	}
 	if p, ok := a.prefixes[key]; ok {
 		return p
 	}
-	st := a.segStyle(hl, over, fill)
+	st := a.segStyle(hl, over, fill, fade)
 	p := ""
 	if !st.IsZero() {
 		p = st.String()
@@ -1544,8 +1559,8 @@ func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill) string {
 // renderSegs styles and joins segments, truncating to w visible cells.
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 	var b strings.Builder
-	write := func(text, hl, over string, fill hostapi.Fill) {
-		p := a.sgrPrefix(hl, over, fill)
+	write := func(text, hl, over string, fill hostapi.Fill, fade float64) {
+		p := a.sgrPrefix(hl, over, fill, fade)
 		if p == "" {
 			b.WriteString(text)
 			return
@@ -1561,7 +1576,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 		switch s.Effect {
 		case "shimmer":
 			for _, r := range a.shimmer(s) {
-				write(r.Text, r.HL, s.Over, s.Fill)
+				write(r.Text, r.HL, s.Over, s.Fill, s.Fade)
 			}
 			continue
 		case "spin":
@@ -1569,7 +1584,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 			s.Text = hostapi.Spinner[a.frame()%len(hostapi.Spinner)] + s.Text[n:]
 			a.spun = a.spun || a.frame() != 0
 		}
-		write(s.Text, s.HL, s.Over, s.Fill)
+		write(s.Text, s.HL, s.Over, s.Fill, s.Fade)
 	}
 	out := b.String()
 	if ansi.StringWidth(out) > w {

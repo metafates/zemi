@@ -2077,6 +2077,10 @@ provenance string.
 - **Golden tests**: headless mode renders the frame's segment rows to a string;
   golden files per widget and per full frame via `charmbracelet/x/exp/golden`
   (`go test ./internal/ui/... -update` regenerates).
+  A scrolled region with `fade` set (the shipped chat and pane use 4) sinks
+  that many rows toward the canvas at an edge content lies past, deepest at
+  the edge: under the pins while rows are scrolled above, and at the bottom
+  while scrolled up, so each edge says there is more; the pins never fade.
 
 ## 9. Permissions and safety
 

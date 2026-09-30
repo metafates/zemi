@@ -72,7 +72,7 @@ func TestSurfacesAt16Colors(t *testing.T) {
 		{colorprofile.ANSI256, "Host:Value", hostapi.FillPanel, ansi.IndexedColor(254), ansi.IndexedColor(235)},
 	} {
 		app.Update(tea.ColorProfileMsg{Profile: c.profile})
-		if st := app.segStyle(c.hl, "", c.fill); st.Fg != c.fg || st.Bg != c.bg {
+		if st := app.segStyle(c.hl, "", c.fill, 0); st.Fg != c.fg || st.Bg != c.bg {
 			t.Errorf("%v %s: %v on %v, want %v on %v", c.profile, c.hl, st.Fg, st.Bg, c.fg, c.bg)
 		}
 	}

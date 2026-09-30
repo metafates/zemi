@@ -1207,6 +1207,9 @@ type Segment struct {
 	// Line is Go only: a chrome border, rule or separator, its runes light box
 	// lines or blanks one cell each; lines that touch join (ui.join)
 	Line bool
+	// Fade is Go only: how far (0 to 1) the segment's colors sink toward the
+	// canvas, on a scrolled region's first rows under its pins (layout fade)
+	Fade float64
 }
 
 // Pin is a row's part in a scrolled region's pinned header stack.

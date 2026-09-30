@@ -1121,6 +1121,7 @@ function zemi.ui.widget.list() end
 ---@field region zemi.Region
 ---@field scroll? zemi.LayoutScroll Scrollable (needs an id): the wheel over it and the zemi.ui.scroll.* actions move it.
 ---@field focusable? boolean Can take the keys (needs an id): zemi.ui.focus, a click on it, and keymaps with `focus` set to its id.
+---@field fade? integer Rows under the pinned headers that fade toward the canvas while content lies scrolled above (needs scroll); the shipped chat and pane use 4.
 
 --- One row: the first line of each widget in `left`, then Go's pills (boot
 --- failed, stuck, errors), then `right` aligned to the right edge, truncated

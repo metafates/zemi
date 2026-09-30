@@ -90,6 +90,7 @@ type LayoutNode struct {
 	Region      string     // region: the widgets drawn in it
 	Scroll      ScrollEdge // region: makes it scrollable
 	Focusable   bool       // region: can take keys (zemi.ui.focus), by its id
+	Fade        int        // region: the rows under its pins that fade toward the canvas while content lies above
 	Left, Right string     // bar, framed composer: the regions of its left and right clusters
 
 	Frame       bool   // composer: a square frame around it, two rows taller
@@ -179,12 +180,12 @@ var DefaultLayout = &Layout{Root: &LayoutNode{Kind: LayoutBox, Dir: DirRow, Size
 		{Kind: LayoutRegion, Region: "header"},
 		{Kind: LayoutBox, Dir: DirRow, Sep: true, Stage: true, Size: Size{Kind: SizeFill}, Children: []*LayoutNode{
 			{Kind: LayoutBox, Dir: DirCol, Size: Size{Kind: SizeFill, N: 1000}, Min: 63, Max: 100, Children: []*LayoutNode{
-				{ID: "chat", Kind: LayoutRegion, Region: "chat", Scroll: EdgeBottom, Size: Size{Kind: SizeFill}, Min: 3},
+				{ID: "chat", Kind: LayoutRegion, Region: "chat", Scroll: EdgeBottom, Fade: 4, Size: Size{Kind: SizeFill}, Min: 3},
 				{Kind: LayoutSpacer, Size: Size{Kind: SizeCells, N: 1}},
 			}},
 			{Kind: LayoutBox, Dir: DirCol, Size: Size{Kind: SizeFill, N: 1}, Min: 36, Max: 56, Collapse: true, Hidden: true, Children: []*LayoutNode{
 				{Kind: LayoutRegion, Region: "thinking.head"},
-				{ID: "thinking", Kind: LayoutRegion, Region: "thinking", Scroll: EdgeBottom, Size: Size{Kind: SizeFill}},
+				{ID: "thinking", Kind: LayoutRegion, Region: "thinking", Scroll: EdgeBottom, Fade: 4, Size: Size{Kind: SizeFill}},
 				{Kind: LayoutSpacer, Size: Size{Kind: SizeCells, N: 1}},
 			}},
 		}},
@@ -487,10 +488,13 @@ func (p *layoutParser) node(v any, at string, depth int, dir LayoutDir, hiddenAb
 			err = fmt.Errorf("%s: dir must be one of %s", at, strings.Join(strs(layoutDirs), ", "))
 		}
 	case LayoutRegion:
-		if err = onlyKeys(m, at, append(common, "region", "scroll", "focusable")...); err == nil {
+		if err = onlyKeys(m, at, append(common, "region", "scroll", "focusable", "fade")...); err == nil {
 			err = region("region")
 		}
-		n.Region, n.Scroll, n.Focusable = str("region"), ScrollEdge(str("scroll")), flag("focusable")
+		n.Region, n.Scroll, n.Focusable, n.Fade = str("region"), ScrollEdge(str("scroll")), flag("focusable"), cells("fade")
+		if n.Fade > 0 && n.Scroll == "" {
+			return nil, fmt.Errorf("%s: fade needs scroll", at)
+		}
 		switch {
 		case err != nil:
 		case n.Scroll != "" && !slices.Contains(scrollEdges, n.Scroll):
