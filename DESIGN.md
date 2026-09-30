@@ -1883,7 +1883,10 @@ provenance string.
   thought row's click unrolls its text at most 80 cells wide, a bar-only row
   above and below text of two or more lines (with the pane, it shows the run
   there instead); a step row's opens its calls nested two cells under it,
-  the step's row staying as their head, and closes them again. A click on any
+  the step's row staying as their head, and closes them again. A rail of more
+  than six rows keeps its last six and folds the earlier ones behind one dim
+  row, `… 8 earlier`, whose click shows the whole run and then folds it back
+  (a printed run and the pane's inspector list everything). A click on any
   other row opens that one row, command, diff and output.
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via

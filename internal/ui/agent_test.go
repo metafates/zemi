@@ -225,6 +225,50 @@ func TestColdChatRender(t *testing.T) {
 }
 
 // TestChatExpandSettledRow: a settled turn folds what it looked at into one
+// TestRailWindow: a long rail keeps its last six entries and folds the earlier
+// ones behind one row, which a click opens and closes. A printed run lists
+// everything.
+func TestRailWindow(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	host.AppendMessage("user", "look around")
+	for i := range 10 {
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "ls", Label: fmt.Sprintf("list dir %d", i), Status: "ok"})
+	}
+	appendReply(host, "done", hostapi.TurnStat{})
+	rows := func() []string {
+		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]string, 0, len(lines))
+		for _, l := range lines {
+			out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
+		}
+		return out
+	}
+	click := func(id string) []string {
+		if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
+			t.Fatal(err)
+		}
+		return rows()
+	}
+	rows() // the first render forgets what was opened before it
+	// the opened run shows its last six entries behind one for the rest
+	got := click("turn:2")
+	if !slices.Contains(got, "│ … 4 earlier") || slices.Contains(got, "│ list dir 3") || !slices.Contains(got, "│ list dir 4") || !slices.Contains(got, "│ list dir 9") {
+		t.Fatalf("the rail is not windowed:\n%s", strings.Join(got, "\n"))
+	}
+	if got = click("more:2"); !slices.Contains(got, "│ … show the last 6") || !slices.Contains(got, "│ list dir 0") {
+		t.Fatalf("the window does not open:\n%s", strings.Join(got, "\n"))
+	}
+	if got = click("more:2"); !slices.Contains(got, "│ … 4 earlier") {
+		t.Fatalf("the window does not close:\n%s", strings.Join(got, "\n"))
+	}
+	if printed := printedChat(t, host, 98); strings.Contains(printed, "earlier") || !strings.Contains(printed, "list dir 0") {
+		t.Fatalf("a printed run is windowed:\n%s", printed)
+	}
+}
+
 // digest row, and a click on it opens that run's rail under the digest, the
 // rest of the transcript coming from the chat's cache. A thought row's click
 // unrolls its text at the prose measure with a bar-only row above and below,
@@ -1621,6 +1665,11 @@ func TestToolRows(t *testing.T) {
 		{Name: "shell", Input: "make again", Label: "Compile again", Status: "run"},
 	}})
 	app.renderSync(t)
+	// a rail this long shows its last six entries; every row is under test
+	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "more:0"}); err != nil {
+		t.Fatal(err)
+	}
+	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
 	// the rail keeps every row's mark at column 2: nothing but the bar starts
 	// a row (the composer's last three aside)
@@ -1838,5 +1887,50 @@ func TestPermTitle(t *testing.T) {
 		if title, target := permTitle(c.req), strings.Join(words, " "); title != c.title || target != c.target {
 			t.Errorf("%+v: %q %q", c.req, title, target)
 		}
+	}
+}
+
+// TestPaneInspectsEarlierTurn: with the pane drawn, a click on an earlier
+// turn's thought row shows that run in the pane, also when the pane already
+// shows it; only the digest's fold returns the pane to the live turn.
+func TestPaneInspectsEarlierTurn(t *testing.T) {
+	app, host := bootAgentApp(t, 120, 30)
+	if err := host.ToggleReasoning(); err != nil {
+		t.Fatal(err)
+	}
+	waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Hidden })
+	host.AppendMessage("user", "first")
+	appendReasoning(host, "alpha thinking", hostapi.TurnStat{ThoughtMS: 1500})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
+	appendReasoning(host, "alpha two", hostapi.TurnStat{ThoughtMS: 2500})
+	appendReply(host, "one", hostapi.TurnStat{})
+	host.AppendMessage("user", "second")
+	appendReasoning(host, "beta thinking", hostapi.TurnStat{ThoughtMS: 1500})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "b.go", Status: "ok"})
+	appendReply(host, "two", hostapi.TurnStat{})
+	app.renderSync(t)
+	click := func(text string) string {
+		// in the chat, left of the pane
+		lines := strings.Split(ansi.Strip(app.Frame()), "\r\n")
+		x, y := -1, -1
+		for i, l := range lines {
+			if j := strings.Index(ansi.Cut(l, 0, 80), text); j >= 0 {
+				x, y = j, i
+				break
+			}
+		}
+		if x < 0 {
+			t.Fatalf("no %q in the chat", text)
+		}
+		clickAt(app, x+2, y)
+		for app.Pump() {
+		}
+		app.renderSync(t)
+		return ansi.Strip(app.Frame())
+	}
+	click("· 1 file · thought 4.0s") // open turn 1, which the pane then shows
+	// a thought inside that run: the pane keeps showing the run
+	if frame := click("✻ thought 2.5s"); !strings.Contains(frame, "alpha two") || strings.Contains(frame, "last turn") {
+		t.Fatalf("turn 1's thought did not open in the pane:\n%s", frame)
 	}
 }

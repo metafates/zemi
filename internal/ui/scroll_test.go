@@ -462,9 +462,11 @@ func TestChatStickyDigest(t *testing.T) {
 		}
 		return out
 	}
-	app.renderSync(t) // the first render forgets what was opened before it
-	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:2"}); err != nil {
-		t.Fatal(err)
+	app.renderSync(t)                                 // the first render forgets what was opened before it
+	for _, id := range []string{"turn:2", "more:2"} { // the run open, and whole
+		if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, c := range []struct {
 		at   string

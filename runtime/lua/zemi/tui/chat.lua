@@ -44,6 +44,11 @@ local steps = {}
 local unrolled = {}
 ---@type table<integer, true>
 local unfolded = {}
+-- runs shown whole, by first index (0 the live turn): a rail keeps its last
+-- RAIL_KEEP rows and folds the earlier ones into one row until clicked
+---@type table<integer, true>
+local whole = {}
+local RAIL_KEEP = 6
 local expanded_epoch = 0
 local live_tools = 0
 
@@ -501,6 +506,41 @@ local function builder(ctx, width)
 	---@param last integer
 	---@param o { open: boolean?, live: boolean?, run: integer?, secs: number?, folded: boolean? } open: every row and thought open, for the run starting at run, whose rows a click leaves; folded: only the rows that keep their own, under the digest of the rest.
 	function B.rail(list, first, last, o)
+		local at = #B.lines
+		B.heads = {}
+		B.steps(list, first, last, o)
+		-- a long rail keeps its last entries in view, each with the rows under
+		-- it, the earlier ones behind one row that a click opens or closes; a
+		-- printed run and the pane's inspector list everything
+		local key = o.live and 0 or o.run or first
+		local n = #B.heads - RAIL_KEEP
+		if o.open or ctx.headless or n < 2 then return end
+		local click = "more:" .. key
+		if whole[key] then
+			table.insert(
+				B.lines,
+				at + 1,
+				{ bar(), { text = "… show the last " .. RAIL_KEEP, hl = "Dim", click = click } }
+			)
+			return
+		end
+		for _ = at + 1, B.heads[n + 1] - 1 do
+			table.remove(B.lines, at + 1)
+		end
+		table.insert(B.lines, at + 1, { bar(), { text = "… " .. n .. " earlier", hl = "Dim", click = click } })
+	end
+
+	-- the rows a rail's entries start at: a thought, a step or a call, with
+	-- what nests under it
+	---@type integer[]
+	B.heads = {}
+	local function head() B.heads[#B.heads + 1] = #B.lines + 1 end
+
+	---@param list zemi.tui.Tool[]
+	---@param first integer
+	---@param last integer
+	---@param o { open: boolean?, live: boolean?, run: integer?, secs: number?, folded: boolean? }
+	function B.steps(list, first, last, o)
 		local secs = o.secs
 		local fold = o.open and o.run and "turn:" .. o.run or nil
 		---@param t zemi.tui.Tool
@@ -514,6 +554,7 @@ local function builder(ctx, width)
 			elseif t.kind == "reasoning" then
 				local s = t.thought or 0
 				if o.open or s > 5 or fmt.told(s) and (i == last or list[i + 1].kind == "reasoning") then
+					head()
 					B.thought(s, fold or ("thought:" .. idx), (o.open or unrolled[idx]) and t.text or nil)
 					secs = nil
 				else
@@ -528,6 +569,7 @@ local function builder(ctx, width)
 				end
 				-- the step's row heads its calls, nested two cells in, and its
 				-- click closes them again
+				head()
 				B.group(group, "step:" .. idx, secs)
 				if o.open or steps[idx] then
 					for k, g in ipairs(group) do
@@ -538,6 +580,7 @@ local function builder(ctx, width)
 				secs = nil
 				i = i + #group
 			else
+				head()
 				B.tool(t, idx, { open = o.open, rail = true, secs = secs, click = fold })
 				secs = nil
 				i = i + 1
@@ -547,12 +590,12 @@ local function builder(ctx, width)
 	return B
 end
 
---- Show a run in the thinking pane, by its first transcript index; the same
---- run again, or nil, goes back to the live turn (exact skips that toggle). A run and an idle pane read
+--- Show a run in the thinking pane, by its first transcript index, or nil
+--- for the live turn; a thought's click shows its run whatever the pane held,
+--- and only its digest's fold goes back to live. A run and an idle pane read
 --- from the top, a turn that runs follows its tail.
 ---@param first integer?
-function M.inspect(first, exact)
-	if not exact and first == M.inspected then first = nil end
+function M.inspect(first)
 	M.inspected = first
 	zemi.ui.scroll((first or not M.active) and "top" or "bottom", "thinking")
 end
@@ -620,14 +663,15 @@ function M.click(ev)
 		local set = kind == "turn" and unfolded
 			or kind == "step" and steps
 			or kind == "thought" and unrolled
+			or kind == "more" and whole
 			or expanded
 		set[n] = not set[n] or nil
 		-- a digest opens or folds its run in place either way; with the pane
 		-- the opened run also reads there, and folding it goes back to live
-		if M.pane and kind == "turn" then M.inspect(set[n] and n or nil, true) end
+		if M.pane and kind == "turn" then M.inspect(set[n] and n or nil) end
 		-- what was opened in a folded run has no row left to close it by
 		if kind == "turn" and not set[n] and stop then
-			for _, s in ipairs({ expanded, steps, unrolled }) do
+			for _, s in ipairs({ expanded, steps, unrolled, whole }) do
 				for i = n, stop - 1 do
 					s[i] = nil
 				end
@@ -662,7 +706,7 @@ zemi.ui.widget.add({
 		-- only the session's settled rows are cached.
 		local epoch = ctx.transcript_epoch or 0
 		if epoch ~= expanded_epoch then
-			expanded, steps, unrolled, unfolded, expanded_epoch, M.inspected = {}, {}, {}, {}, epoch, nil
+			expanded, steps, unrolled, unfolded, whole, expanded_epoch, M.inspected = {}, {}, {}, {}, {}, epoch, nil
 		end
 		-- The live turn's calls are keyed by negative index and the host restarts
 		-- that list every turn, so a shorter list means those keys now stand for
@@ -674,6 +718,7 @@ zemi.ui.widget.add({
 					if n < 0 then set[n] = nil end
 				end
 			end
+			whole[0] = nil
 		end
 		live_tools = ntools
 		local active = ctx.agent_active or false
