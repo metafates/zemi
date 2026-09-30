@@ -16,9 +16,24 @@ import (
 )
 
 // TestSplashExtends: user config can wrap the default splash through
-// require("zemi.tui").splash (the zemi skill's ui.md example).
+// require("zemi.tui").splash (the zemi skill's ui.md example), and a
+// replaced tip leaves nothing of a default one that wrapped.
 func TestSplashExtends(t *testing.T) {
-	app, _ := bootAgentApp(t, 80, 30)
+	app, _ := bootAgentApp(t, 44, 30)
+	after := func() string {
+		app.renderSync(t)
+		lines := strings.Split(ansi.Strip(app.Frame()), "\n")
+		for i, l := range lines[:len(lines)-1] {
+			if strings.Contains(l, "● Tip") {
+				return strings.TrimSpace(lines[i+1])
+			}
+		}
+		t.Fatalf("no tip:\n%s", app.Frame())
+		return ""
+	}
+	if after() == "" {
+		t.Fatal("the default tip does not wrap at this width")
+	}
 	runLua(t, app, `
 local default = require("zemi.tui")
 zemi.ui.widget.add({
@@ -28,14 +43,15 @@ zemi.ui.widget.add({
     for i, row in ipairs(rows) do
       if row[2] and row[2].text == "● Tip  " then
         rows[i] = { row[1], row[2], { text = "hack the planet", hl = "Dim" } }
+        if rows[i + 1] and rows[i + 1][2] then rows[i + 1] = { { text = "" } } end
+        break
       end
     end
     return rows
   end,
 })`)
-	app.renderSync(t)
-	if frame := app.Frame(); !strings.Contains(frame, "hack the planet") || !strings.Contains(frame, "╰────╯") {
-		t.Fatalf("splash not extended:\n%s", frame)
+	if next := after(); next != "" || !strings.Contains(app.Frame(), "hack the planet") || !strings.Contains(app.Frame(), "╰────╯") {
+		t.Fatalf("splash not extended, or the default tip's rest %q left:\n%s", next, app.Frame())
 	}
 }
 

@@ -45,6 +45,9 @@ zemi.ui.widget.add({
 		for i, row in ipairs(rows) do
 			if row[2] and row[2].text == "● Tip  " then
 				rows[i] = { row[1], row[2], { text = "hack the planet", hl = "Dim" } }
+				-- a default tip that wraps goes on in the next row: blank it, keeping the row
+				if rows[i + 1] and rows[i + 1][2] then rows[i + 1] = { { text = "" } } end
+				break
 			end
 		end
 		return rows
