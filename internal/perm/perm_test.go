@@ -10,22 +10,6 @@ import (
 	"testing"
 )
 
-// sh marks a case pinning how the fallback sh, which may be bash, reads
-// text dash reads otherwise; TestDashReading pins dash's reading of it.
-// NUL keeps the mark out of any command, since Normalize fails on one.
-func sh(cmd string) string { return shMark + cmd }
-
-const shMark = "\x00sh "
-
-// readings are dash's reading of cmd and the fallback's, whichever shell
-// this machine has, or the fallback's alone for a case sh marked.
-func readings(cmd string) map[string]Normalized {
-	if c, ok := strings.CutPrefix(cmd, shMark); ok {
-		return map[string]Normalized{"sh": readBoth(c)}
-	}
-	return map[string]Normalized{"dash": normalizeAll(cmd, true, map[string]Normalized{}), "sh": readBoth(cmd)}
-}
-
 func store(t *testing.T, rules ...Rule) *Store {
 	t.Helper()
 	s := new(Store)
@@ -132,10 +116,9 @@ func TestDenyMeetsEverySpelling(t *testing.T) {
 		{"env ſſh host", Deny},
 	} {
 		// an ask must stay ruled, or a mode settles it as a default ask
-		for name, n := range readings(c.cmd) {
-			if o := s.CheckCommandFor(SubjectShell, n, ""); o.Decision != c.want || o.Decision == Ask && !o.Ruled() {
-				t.Errorf("%s %q: got %v (%s, ruled %v), want %v", name, c.cmd, o.Decision, o.Reason, o.Ruled(), c.want)
-			}
+		n := Normalize(c.cmd)
+		if o := s.CheckCommandFor(SubjectShell, n, ""); o.Decision != c.want || o.Decision == Ask && !o.Ruled() {
+			t.Errorf("%q: got %v (%s, ruled %v), want %v", c.cmd, o.Decision, o.Reason, o.Ruled(), c.want)
 		}
 	}
 }
@@ -196,15 +179,12 @@ func TestNormalizeSegments(t *testing.T) {
 		{"echo $(rm -rf x)", "echo $(rm -rf x)|rm -rf x"},
 		{"echo `rm -rf x`", "echo `rm -rf x`|rm -rf x"},
 		{"if make; then ls; fi; for f in a b; do cat $f; done", "make|ls|cat $f"},
-		{sh("[[ a > b ]] && ((ls))"), "[[ a > b ]]|[[ a ]]|ls"},
-		{sh("ls &>log rm -rf ."), "ls rm -rf .|ls|rm -rf ."},
 		{`echo "$(rm -rf x)"`, "echo $(rm -rf x)|rm -rf x"},
 		{"echo \"`rm -rf x`\"", "echo `rm -rf x`|rm -rf x"},
 	} {
-		for name, n := range readings(c.cmd) {
-			if got := strings.Join(n.Segments, "|"); got != c.want {
-				t.Errorf("%s %q: got %q, want %q", name, c.cmd, got, c.want)
-			}
+		n := Normalize(c.cmd)
+		if got := strings.Join(n.Segments, "|"); got != c.want {
+			t.Errorf("%q: got %q, want %q", c.cmd, got, c.want)
 		}
 	}
 	if Normalize("PATH=/evil; ls").ForceAsk == "" {
@@ -254,15 +234,14 @@ func TestHiddenCommandsAsk(t *testing.T) {
 		// bash runs the first two lines, then fails on the quote left open
 		{"git log $'\\''\nrm -rf x\n'", Deny},
 		// bash reads one word, dash ends the quote at \' and runs rm
-		{sh("git log $'\\' ; rm -rf x ; #'"), Ask},
+		{"git log $'\\' ; rm -rf x ; #'", Deny},
 		{"git log x\ry", Ask},
 		{"git log `git log \\`rm -rf x\\``", Ask},
 		{"cat > n <<'EOF'\nit's\nEOF", Ask},
 	} {
-		for name, n := range readings(c.cmd) {
-			if got := s.CheckCommandFor(SubjectShell, n, "model").Decision; got != c.want {
-				t.Errorf("%s %q: got %v, want %v", name, c.cmd, got, c.want)
-			}
+		n := Normalize(c.cmd)
+		if got := s.CheckCommandFor(SubjectShell, n, "model").Decision; got != c.want {
+			t.Errorf("%q: got %v, want %v", c.cmd, got, c.want)
 		}
 	}
 }
@@ -280,13 +259,11 @@ func TestNormalizeHeredoc(t *testing.T) {
 		{"echo \"$(cat <<'EOF'\n1) a\nEOF\n)\"", "echo $(cat <<'EOF'\n1) a\nEOF\n)|cat", false, false},
 		{"cat <<-EOF\n\tx\n\tEOF\necho after", "cat|echo after", false, false},
 		{"cat <<EOF\nno end", "", true, true},
-		{sh("cat <<< text"), "cat", false, false},
 		{"bash <<EOF\necho hi\nEOF", "bash|echo hi", false, false},
 		{"sh <<'EOF'\nrm -rf /\nEOF", "sh|rm -rf /", false, true},
 		{"cat <<'EOF' | sh\nrm -rf /\nEOF", "cat|sh|rm -rf /", false, true},
 		{"cat <<EOF\n$(rm -rf /)\nEOF", "cat|rm -rf /", false, true},
 		{"sudo sh <<'EOF'\nrm -rf .\nEOF", "sudo sh|rm -rf .", false, true},
-		{sh("source /dev/stdin <<'EOF'\nrm -rf .\nEOF"), "source /dev/stdin|rm -rf .", false, true},
 		{"eval \"$(cat <<'EOF'\nrm -rf .\nEOF\n)\"", "eval $(cat <<'EOF'\nrm -rf .\nEOF\n)|cat|rm -rf .", false, true},
 		{"for f in a b; do sh <<EOF\nrm $f\nEOF\ndone", "sh|rm $f", false, true},
 		{"make -f - <<'EOF'\nall:\n\trm -rf .\nEOF", "make -f -|all:|rm -rf .", false, true},
@@ -295,6 +272,10 @@ func TestNormalizeHeredoc(t *testing.T) {
 		{"A=Z; cat <<$A\nit's\n$A\nrm -rf ~\nZ\n", "", true, true},
 		{"mkdir -p d && cat > d/a.md <<'EOF'\nDon't panic\nEOF", "mkdir -p d|cat", false, false},
 		{"python3 - <<'EOF'\nprint('it\\'s')\nEOF", "python3 -", false, false},
+		{"python3 - <<'EOF'\nx = {1,2}\nEOF", "python3 -|x = {1,2}", false, false},
+		// make runs the recipe in sh, which may be bash: the line shows no row
+		{"make -f - <<'EOF'\nall:\n\trm -rf . &>/dev/null\nEOF", "make -f -|all:", false, true},
+		{"busybox sh <<'EOF'\n$'\\x72m' -rf .\nEOF", "busybox sh|$\\x72m -rf .", false, true},
 		{"cat > x.sh <<'EOF'\necho it's\nEOF\nbash x.sh", "cat|bash x.sh", true, true},
 		{"git add -A && git commit -F - <<'EOF'\nrm -rf . is gone\nEOF", "git add -A|git commit -F -", false, false},
 		{"git -c alias.x='!sh' x <<'EOF'\nrm -rf .\nEOF", "git -c alias.x=!sh x|rm -rf .", false, true},
@@ -305,36 +286,52 @@ func TestNormalizeHeredoc(t *testing.T) {
 		{"cat <<", "", true, true},
 		{"cat <<'EOF\nx", "", true, true},
 	} {
-		for name, n := range readings(c.cmd) {
-			if got := strings.Join(n.Segments, "|"); got != c.segs || (n.Fail != "") != c.fail || n.Fail == "" && n.ForceAsk == "" ||
-				(n.Destructive("") != "") != c.destructive {
-				t.Errorf("%s %q: segments %q, fail %q, ask %q, destructive %q", name, c.cmd, got, n.Fail, n.ForceAsk, n.Destructive(""))
-			}
+		n := Normalize(c.cmd)
+		if got := strings.Join(n.Segments, "|"); got != c.segs || (n.Fail != "") != c.fail || n.Fail == "" && n.ForceAsk == "" ||
+			(n.Destructive("") != "") != c.destructive {
+			t.Errorf("%q: segments %q, fail %q, ask %q, destructive %q", c.cmd, got, n.Fail, n.ForceAsk, n.Destructive(""))
 		}
 	}
 }
 
-// TestDashReading: dash's own reading fails bash-only syntax with the POSIX
-// form to write, keeps what bash would drop, and has no bash-only doubt;
-// the bodies another shell runs keep both readings.
-func TestDashReading(t *testing.T) {
+// TestBashismFails: text any sh reads otherwise than the POSIX parse fails
+// with the POSIX form to write, a body another shell runs included; with
+// fail empty the text runs as the segments say, with no doubt.
+func TestBashismFails(t *testing.T) {
 	for _, c := range []struct{ cmd, segs, fail string }{
-		{"ls &>/dev/null", "", "(`&>` redirects): sh here is dash, so use >file 2>&1"},
+		{"ls &>/dev/null", "", "bash-only syntax (`&>` redirects): the shell is POSIX sh, so use >file 2>&1"},
+		{"ls &>>log", "", "use >>file 2>&1"},
+		{"ls |& cat", "", "(|&)"},
 		{"x=(1 2); echo $x", "", "(arrays)"},
-		{"diff <(ls a) <(ls b)", "", "use a file in $TMPDIR"},
-		{"git log $'\\' ; rm -rf x ; #'", "", "($'..')"},
-		{`echo \$'a'`, "echo $a", ""},
+		{"PATH[0]=/tmp/x; make", "", "(`+=` and `a[i]=` assignments)"},
+		{"x+=1 rm -rf .", "", "(`+=` and `a[i]=` assignments)"},
+		{"diff <(ls a) <(ls b)", "", "pipe one in as -"},
+		// bash decodes these, so a deny rule would never see rm
+		{"$'\\x72m' -rf .", "", "($'..')"},
+		{"export $'PATH'=/tmp/x; make", "", "($'..')"},
+		{`$"rm" -rf .`, "", `($"..")`},
+		{"{rm,-rf,.}", "", "({a,b})"},
+		{"mkdir -p a/{b,c}", "", "({a,b}): the shell is POSIX sh, so write each word out"},
+		{"for i in {1..3}; do echo $i; done", "", "$(seq 1 3)"},
 		{"[[ -f go.mod ]] && ls", "", "use [ ] (test)"},
 		{"source .venv/bin/activate && pytest", "", "use . file"},
-		{"echo ${x:1}", "", "(slicing): sh here is dash, so write it in POSIX sh or run bash -c"},
-		{"mkdir -p a/{b,c}", "", "({a,b}): sh here is dash, so write each word out"},
-		{"for i in {1..3}; do echo $i; done", "", "$(seq 1 3)"},
+		{"builtin let 'x=a[$(rm -rf .)]'", "", "(let)"},
+		{"((n > 1)) && ls", "", "(arithmetic commands)"},
+		{"echo ${x:1}", "", "(slicing)"},
+		{"cat <<< x", "", "(herestrings)"},
+		{"for ((i=0;i<3;i++)); do ls; done", "", "(c-style fors)"},
+		{"function f { ls; }", "", "write it in POSIX sh"},
+		{"ls !(x)", "", "(extended globs)"},
+		{"ls {fd}>o", "", "redirects"},
+		// bash drops the backslash and reads .env
+		{"cat .env\\", "", "ends in a backslash"},
+		{"rm \\", "", "ends in a backslash"},
+		{"bash -c '[[ -f x ]] && ls'", "", "in the bash -c text: bash-only syntax ([[)"},
+		{`echo \$'a'`, "echo $a", ""},
 		{"find . -exec ls {} + && git show HEAD@{1} && echo \\{a,b} '{a,b}'", "find . -exec ls {} +|git show HEAD@{1}|echo {a,b} {a,b}", ""},
 		{"echo $(cat <<EOF\n) ; rm z\nEOF\n)", "echo $(cat <<EOF\n) ; rm z\nEOF\n)|cat", ""},
-		{"cat .env\\", "cat .env\\", ""},
-		{"bash -c '[[ -f x ]] && ls &>/dev/null'", "[[ -f x ]]|ls", ""},
 	} {
-		n := normalizeAll(c.cmd, true, map[string]Normalized{})
+		n := Normalize(c.cmd)
 		if got := strings.Join(n.Segments, "|"); c.fail == "" && (got != c.segs || n.Fail != "" || n.doubt != "") || !strings.Contains(n.Fail, c.fail) {
 			t.Errorf("%q: segments %q, fail %q, doubt %q", c.cmd, got, n.Fail, n.doubt)
 		}
@@ -350,16 +347,12 @@ func TestAssignmentGate(t *testing.T) {
 		"GIT_SSH_COMMAND=/tmp/x git fetch",
 		`sh -c "export PATH=/tmp; ls"`,
 		"PATH=.:+= make",
-		"PATH[0]=/tmp/x; make",
 		"printf -v PATH %s /tmp/x; make",
 		"for PATH in /tmp/x; do make; done",
-		sh("export $'PATH'=/tmp/x; make"),
-		`export $"PATH"=/tmp/x; make`,
 	} {
-		for name, n := range readings(cmd) {
-			if o := store(t, Rule{Subject: "tool.shell", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectShell, n, ""); o.Decision != Ask {
-				t.Errorf("%s %q must ask, got %v", name, cmd, o.Decision)
-			}
+		n := Normalize(cmd)
+		if o := store(t, Rule{Subject: "tool.shell", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectShell, n, ""); o.Decision != Ask {
+			t.Errorf("%q must ask, got %v", cmd, o.Decision)
 		}
 	}
 }
@@ -381,10 +374,9 @@ func TestAssignmentPrefixNeverAllows(t *testing.T) {
 		{`sh -c "LESSOPEN=./evil git log -p"`, Ask},
 		{"FOO=1 rm -rf x", Deny},
 	} {
-		for name, n := range readings(c.cmd) {
-			if o := s.CheckCommandFor(SubjectShell, n, ""); o.Decision != c.want {
-				t.Errorf("%s %q: got %v (%s), want %v", name, c.cmd, o.Decision, o.Reason, c.want)
-			}
+		n := Normalize(c.cmd)
+		if o := s.CheckCommandFor(SubjectShell, n, ""); o.Decision != c.want {
+			t.Errorf("%q: got %v (%s), want %v", c.cmd, o.Decision, o.Reason, c.want)
 		}
 	}
 }
@@ -440,10 +432,9 @@ func TestUnbalancedFails(t *testing.T) {
 		{"git status\nsh <<'EOF'\nls\necho 'it\nEOF", "in the heredoc body from line 3: the command does not parse: line 2 col 6: "},
 		{`echo x > ""`, "a redirect has no target"},
 	} {
-		for name, n := range readings(c.cmd) {
-			if o := store(t, Rule{Subject: "tool.shell", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectShell, n, ""); o.Decision != Deny || !strings.HasPrefix(o.Reason, c.reason) {
-				t.Errorf("%s %q: %v %q, want deny %q", name, c.cmd, o.Decision, o.Reason, c.reason)
-			}
+		n := Normalize(c.cmd)
+		if o := store(t, Rule{Subject: "tool.shell", Pattern: "*", Decision: Allow}).CheckCommandFor(SubjectShell, n, ""); o.Decision != Deny || !strings.HasPrefix(o.Reason, c.reason) {
+			t.Errorf("%q: %v %q, want deny %q", c.cmd, o.Decision, o.Reason, c.reason)
 		}
 	}
 }
@@ -601,10 +592,10 @@ func TestDotDotRidesNoDirectoryAllow(t *testing.T) {
 		{"cat docs/./../.env", Ask},
 		{"cat docs/..", Ask},
 		{"sh -c 'cat docs/../.env'", Ask},
-		{sh("cat docs/{..,a}/.env"), Ask}, // bash expands these after the rules saw them
+		{"cat docs/{..,a}/.env", Deny}, // bash expands these after the rules saw them
 		{"cat docs/.?/.env", Ask},
 		{"cat docs/.*/.env", Ask},
-		{sh("cat docs/a{/.,}./.env"), Ask},
+		{"cat docs/a{/.,}./.env", Deny},
 		{"cat docs/$X/.env", Ask},
 		{"cat docs/*.md", Allow},
 		{"rm /etc/{a,b}", Deny},
@@ -613,10 +604,9 @@ func TestDotDotRidesNoDirectoryAllow(t *testing.T) {
 		{"rm /tmp/../etc/hosts", Deny},
 		{"ls a/../b", Deny}, // a deny the raw spelling meets holds
 	} {
-		for name, n := range readings(c.cmd) {
-			if o := s.CheckCommandFor(SubjectShell, n, ""); o.Decision != c.want {
-				t.Errorf("%s %q: got %v (%s), want %v", name, c.cmd, o.Decision, o.Reason, c.want)
-			}
+		n := Normalize(c.cmd)
+		if o := s.CheckCommandFor(SubjectShell, n, ""); o.Decision != c.want {
+			t.Errorf("%q: got %v (%s), want %v", c.cmd, o.Decision, o.Reason, c.want)
 		}
 	}
 }

@@ -23,7 +23,6 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -1187,11 +1186,6 @@ func TestAlwaysChoice(t *testing.T) {
 	t.Chdir(h.Dirs.ProjectDir)
 	proj := perm.RealPath(h.Dirs.ProjectDir) // rules name the resolved dir
 	home := perm.RealPath(os.Getenv("HOME"))
-	// [[ reaches an ask only where sh may be bash: dash's reading fails it first
-	bracket, bracketRules := "", []string(nil)
-	if !proc.Dash() {
-		bracket, bracketRules = "allow ls and 1 more", []string{"[[ -f go.mod ]]", "ls", "ls *"}
-	}
 	for _, c := range []struct {
 		req      tools.Request
 		label    string
@@ -1209,9 +1203,8 @@ func TestAlwaysChoice(t *testing.T) {
 		{tools.Request{Subject: "tool.shell", Arg: "for f in $(ls); do rm $f; done"}, "", nil},
 		// syntax is named when nothing else is, so the label says what the rules allow
 		{tools.Request{Subject: "tool.shell", Arg: "set -e"}, "allow set", []string{"set", "set *"}},
-		// [[ and let evaluate a quoted subscript, which can run $(...): exact
-		{tools.Request{Subject: "tool.shell", Arg: "[[ -f go.mod ]] && ls"}, bracket, bracketRules},
-		{tools.Request{Subject: "tool.shell", Arg: "let n=1"}, "allow this exact command", []string{"let n=1"}},
+		// read evaluates a quoted subscript, which can run $(...): exact
+		{tools.Request{Subject: "tool.shell", Arg: "read n"}, "allow this exact command", []string{"read n"}},
 		// a deleter stays exact: the rule runs unconfined and has no write path to ask on
 		{tools.Request{Subject: "tool.shell", Arg: "rm build.tmp"}, "allow this exact command", []string{"rm build.tmp"}},
 		{tools.Request{Subject: "tool.shell", Arg: "git status && rm -rf build && rm -f x"}, "allow rm (exact) and git status", []string{"git status", "git status *", "rm -rf build", "rm -f x"}},

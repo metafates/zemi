@@ -1979,61 +1979,55 @@ provenance string.
   same jail as `fs.read`, again at the Lua boundary). Decisions
   `allow|ask|deny`; patterns are globs over the operation argument (path,
   url; commands match a normalized form: the command is parsed with
-  mvdan.cc/sh's `syntax` package (no hand scanner) as the shell that runs
-  it reads it. Where `proc.Shell` is dash (macOS since 10.15, Debian,
-  Ubuntu) the command is parsed once, as POSIX sh, which is how dash reads
-  it, and any parse error fails the call before it runs, before any ask
-  too, the tool's result being the reason alone: bash-only syntax
-  fails naming the POSIX form to write (`&>` is `>file 2>&1` there,
-  `<( )` a file or a pipe), and so do `$'..'`, which an older dash reads
-  as `$` and a quote and a newer one decodes, `[[` and `source`,
-  which dash lacks, and a word bash would brace-expand (`mkdir a/{b,c}`,
-  `{1..3}`), which dash runs as written. Where no dash is installed (Fedora, Arch, Alpine,
-  whose sh is bash or busybox ash) zemi runs `sh -c`, and there, and for
-  every body another shell runs (a `sh -c`, `bash -c` or `zsh -c` text,
-  one `xargs`, `find -exec` or `sudo` hands a shell, `eval` text, a
-  heredoc a shell reads), the text is parsed twice, as bash and as POSIX
-  sh, since the grammars read `$'..'`, `[[ ]]`, `(( ))`, `&>` and arrays
-  differently (dash runs `rm` in `echo $'\' ; rm -rf x ; #'`, bash only
-  `echo`; bash reads `cat .env\` as `cat .env`, dash keeps the
-  backslash): every simple command either reading runs is a segment, so
-  an allow needs both readings. The
-  POSIX reading reads `&>` as dash does, `&` then `>` (`ls &>log rm -rf .`
-  runs `rm` there), and a `${...}` the parser calls bash-only (`${x:1}`,
-  `${x//a/b}`, `${!x}`) as a plain parameter, since dash parses one and
-  fails only if it expands it. It stops where dash stops too, at a
-  herestring, an array, a c-style or braced `for`, an extended glob or a
-  `(` after a builtin's words, keeping the statements before it, which
-  are what dash runs; any other construct the parser calls bash-only
-  (`{fd}>x`, and `function f {`, which dash runs as a command before
-  reading on) asks like the doubtful text below. A bash parse error fails
-  the call with the parser's line, column and message, which a model can
-  act on; one in a `sh -c` text or a heredoc body says which
-  (`in the bash -c text: ...`, `in the heredoc body from line 3: ...`),
-  its position counted from there. Text a shell reads otherwise than the
-  parse asks, and `Destructive` and the program list (§8) cannot vouch for it: a carriage
-  return (the parser reads it as a blank, sh as a character) and an
-  `alias`, which sh expands in the lines after it (`alias l=rm` then
-  `l -rf .` runs `rm`), in every reading, and where bash may run the
-  text a `$'..'` escape zemi does not decode (`\x`, octal, `\u`, `\c`,
-  which bash versions decode differently and which can spell any name),
-  a `$( )` or `<( )` bash 3.2 closes elsewhere (it finds the `)` by
-  counting parens past quotes and comments, blind to heredoc bodies and
-  case patterns, so macOS sh runs `rm z` in `echo $(cat <<EOF` /
-  `) ; rm z` / `EOF` / `)`), and an extended glob, which the parser
-  reads whatever `extglob` says while sh runs `x` in `!(x)`. The parser
-  also reads a backslash ending a comment as a line continuation, which no shell does; that backslash is
-  blanked before the parse. Known ceilings: a `sh` that is neither (zsh in
-  sh emulation, busybox ash, mksh) is judged by the two readings, and a
-  program word holding an expansion (`$X`, `rm$() -rf x`) names no program,
-  so no deny rule and no `Destructive` check sees what it runs; the sandbox
-  is the limit there. A segment is a simple command's words as the program receives
-  them where they are static (quotes removed, `$'..'` decoded), an
-  expansion kept as written; syntax (`if`, `do`, `done`, a function's
+  mvdan.cc/sh's `syntax` package (no hand scanner) once, as POSIX sh,
+  whichever sh runs it: `proc.Shell` is dash where it is installed
+  (macOS since 10.15, Debian, Ubuntu), else sh, which may be bash
+  (Fedora, Arch) or busybox ash (Alpine), and every body another shell
+  runs (a `sh -c`, `bash -c` or `zsh -c` text, one `xargs`, `find -exec`
+  or `sudo` hands a shell, `eval` text, a heredoc a shell reads) is
+  parsed the same way. So zemi accepts only the grammar every sh reads
+  alike: any parse error fails the call before it runs, before any ask
+  too, the tool's result being the reason alone, bash-only syntax naming
+  the POSIX form to write (`&>` is `>file 2>&1`, `<( )` a file or a
+  pipe), and so does text the POSIX parse accepts that bash reads
+  otherwise: `$'..'` and `$".."`, which bash decodes and an older dash
+  reads as `$` and a quote (bash runs `rm` in `$'\x72m' -rf .`), `[[`,
+  `source` and `let`, which bash runs as a test, a script and arithmetic
+  and dash lacks, a `((` opening a statement, arithmetic to bash and
+  nested subshells to sh, `x+=1` or `a[0]=1` as a command's first word,
+  which bash assigns and sh runs (`x+=1 rm -rf .` runs `rm` in bash
+  only), a word bash would brace-expand (`{rm,-rf,.}`,
+  `mkdir a/{b,c}`, `{1..3}`), which dash runs as written, and a
+  backslash ending the text, which bash drops (`cat .env\` reads `.env`)
+  and dash keeps. A parse error names the parser's line, column and
+  message, which a model can act on; one in a `sh -c` text or a heredoc
+  body says which (`in the bash -c text: ...`, `in the heredoc body from
+  line 3: ...`), its position counted from there. Text a shell reads
+  otherwise than the parse asks, and `Destructive` and the program list
+  (§8) cannot vouch for it: a carriage return (the parser reads it as a
+  blank, sh as a character), an `alias`, which sh expands in the lines
+  after it (`alias l=rm` then `l -rf .` runs `rm`), and, in a body
+  another shell runs, a heredoc inside a `$( )`, which bash 3.2 (macOS
+  sh) ends at a `)` in the body (it runs `rm z` in `echo $(cat <<EOF` /
+  `) ; rm z` / `EOF` / `)`); that misreading, which also garbles commit
+  messages, is why `proc.Shell` prefers dash. A heredoc body with
+  bash-only syntax fails the call only where a shell reads it; for any
+  other reader but an interpreter (`$SHELL`, `make`, `busybox sh`) the
+  line it fails on shows no row, so it asks. The parser also reads a
+  backslash ending a comment as a line continuation, which no shell
+  does; that backslash is blanked before the parse. Known ceilings, the
+  sandbox the limit for each: where sh is bash, `declare -i`,
+  `typeset -i` and `$[..]` evaluate arithmetic the POSIX rows show as
+  words, which runs a `$(...)` in a value planted earlier in the text; a
+  bash builtin that repoints a name (`hash -p /x rm`, `enable -f`); a zsh
+  or fish `-c` body judged as POSIX; and a program word holding an
+  expansion (`$X`, `rm$() -rf x`), which names no program, so no deny
+  rule and no `Destructive` check sees what it runs. A segment is a
+  simple command's words as the program receives them where they are
+  static (quotes removed), an expansion kept as written; syntax (`if`, `do`, `done`, a function's
   name) is no segment; a command in a loop body, a while condition or a
   function body (which each call runs again) is marked as repeated; a substitution's commands, quoted or not, a
-  function's body, a `time` or `coproc` command (as `time cmd`, how sh
-  reads it) and a `sh -c`/`bash -c`/`zsh -c` body (parsed again the same
+  function's body, a `time` command (as `time cmd`) and a `sh -c`/`bash -c`/`zsh -c` body (parsed again the same
   way, the assignment gate included) are segments of their own. Before
   the walk, leading literal assignments (`D=/long/path; ls $D`, also
   joined by `&&`) are read in place of `$NAME` and `${NAME}` where the

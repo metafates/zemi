@@ -27,8 +27,9 @@ func BenchmarkNormalize(b *testing.B) {
 	}
 }
 
-// TestNormalizeNestedCheap: both readings reach every heredoc body, which
-// must not double the work per level of nesting. The budget is the
+// TestNormalizeNestedCheap: a rewalk after a reassignment and a failed
+// body's line by line reads reach a heredoc body again, which must not
+// multiply the work per level of nesting. The budget is the
 // process's CPU time; the test runs alone (no t.Parallel).
 func TestNormalizeNestedCheap(t *testing.T) {
 	cpu := func() time.Duration {

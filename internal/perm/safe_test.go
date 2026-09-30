@@ -153,10 +153,9 @@ func TestReadCommand(t *testing.T) {
 		{"bin/ls", false},
 		{"/bin/ls", false},
 	} {
-		for name, n := range readings(c.cmd) {
-			if got := n.ReadCommand(nil); got != c.safe {
-				t.Errorf("%s ReadCommand(%q) = %v, want %v", name, c.cmd, got, c.safe)
-			}
+		n := Normalize(c.cmd)
+		if got := n.ReadCommand(nil); got != c.safe {
+			t.Errorf("ReadCommand(%q) = %v, want %v", c.cmd, got, c.safe)
 		}
 	}
 }
@@ -171,8 +170,8 @@ func TestReadCommandPathCheck(t *testing.T) {
 		safe bool
 	}{
 		{"cat .env", false},
-		// bash drops the backslash ending the text and reads .env
-		{sh("cat .env\\"), false},
+		// bash drops a backslash ending the text and reads .env
+		{"cat .env\\", false},
 		{"cat main.go", true},
 		{"cat ſecrets.yml", false},
 		{"cat .ssh/id_rſa", false},
@@ -213,10 +212,9 @@ func TestReadCommandPathCheck(t *testing.T) {
 		{"grep -r KEY # internal", false},
 		{"grep -r KEY\t# internal", false},
 	} {
-		for name, n := range readings(c.cmd) {
-			if got := n.ReadCommand(notSecret); got != c.safe {
-				t.Errorf("%s ReadCommand(%q) = %v, want %v", name, c.cmd, got, c.safe)
-			}
+		n := Normalize(c.cmd)
+		if got := n.ReadCommand(notSecret); got != c.safe {
+			t.Errorf("ReadCommand(%q) = %v, want %v", c.cmd, got, c.safe)
 		}
 	}
 }
@@ -397,8 +395,6 @@ W="$TMPDIR/check"; rm -rf "$W"; mkdir -p "$W"`, false},
 		// a shell runs the lines before the one that does not parse
 		{"$SHELL <<'EOF'\nrm -rf *\n`\nEOF", true},
 		{"cat > Makefile <<'EOF'\na;; b:\n\trm -rf .\nEOF\nmake", true},
-		// bash 3.2 ends the $( ) at the body's ) and runs rm z
-		{sh("echo $(cat <<EOF\n) ; rm z\nEOF\n)"), true},
 		{"git commit -m \"$(cat <<'EOF'\n1) fix x\nEOF\n)\"", false},
 		{`echo "\$(rm -rf .)"`, false},
 		{"echo $(true)#'\nrm -rf victim #'", false},
@@ -406,24 +402,19 @@ W="$TMPDIR/check"; rm -rf "$W"; mkdir -p "$W"`, false},
 		{`x="$(case a in (a) echo ;; esac)"`, false},
 		{"mv a b && cp -r b c", false},
 		{`git log --format="%h %s" -5`, false},
-		{sh("cut -f2 -d $'\\t' data.tsv"), false},
 		{"go test ./... 2>&1 | tail -20", false},
 		{"make clean build", false},
 		{"python3 - <<'EOF'\nprint(1)\nEOF", false},
 		{"FOO=1 npm run build > out.log", false},
-		// dash parses these and fails only when it expands them
-		{sh("echo ${x//a/b} ${x:0:7} ${x^^} ${!x} && ls &>/dev/null"), false},
-		{sh("a=(1 2); for ((i=0;i<2;i++)); do echo ${a[i]}; done"), false},
 		// dash reads {fd} as a word and runs what follows
 		{"ls {fd}>o", true},
 		// sh or bash runs a body a runner hands it, whatever runs the line
 		{"xargs sh -c 'echo $(cat <<EOF\n) ; rm -rf z\nEOF\n)'", true},
 		{"sudo bash -c 'echo $(cat <<EOF\n) ; rm -rf z\nEOF\n)'", true},
 	} {
-		for name, n := range readings(strings.ReplaceAll(c.cmd, "PAD", pad)) {
-			if got := n.Destructive(pad) != ""; got != c.asks {
-				t.Errorf("%s Destructive(%q) = %v, want %v", name, c.cmd, got, c.asks)
-			}
+		n := Normalize(strings.ReplaceAll(c.cmd, "PAD", pad))
+		if got := n.Destructive(pad) != ""; got != c.asks {
+			t.Errorf("Destructive(%q) = %v, want %v", c.cmd, got, c.asks)
 		}
 	}
 }
@@ -503,13 +494,12 @@ func TestGitWrites(t *testing.T) {
 		{"bash -lc 'git status'", false, false},
 		{"go build ./...", false, false},
 	} {
-		for name, n := range readings(c.cmd) {
-			if got := n.GitWrites(false) != ""; got != c.writes {
-				t.Errorf("%s GitWrites(%q) = %v, want %v", name, c.cmd, got, c.writes)
-			}
-			if got := n.GitWrites(true) != ""; got != c.asks {
-				t.Errorf("%s GitWrites(%q) with the git dir open = %v, want %v", name, c.cmd, got, c.asks)
-			}
+		n := Normalize(c.cmd)
+		if got := n.GitWrites(false) != ""; got != c.writes {
+			t.Errorf("GitWrites(%q) = %v, want %v", c.cmd, got, c.writes)
+		}
+		if got := n.GitWrites(true) != ""; got != c.asks {
+			t.Errorf("GitWrites(%q) with the git dir open = %v, want %v", c.cmd, got, c.asks)
 		}
 	}
 }
@@ -543,10 +533,9 @@ func TestPluginTest(t *testing.T) {
 		{"zemi plugins install https://x/y", false},
 		{"zemi -p 'plugins test stars'", false},
 	} {
-		for name, n := range readings(c.cmd) {
-			if got := n.PluginTest("/opt/zemi/bin/zemi"); got != c.want {
-				t.Errorf("%s PluginTest(%q) = %v, want %v", name, c.cmd, got, c.want)
-			}
+		n := Normalize(c.cmd)
+		if got := n.PluginTest("/opt/zemi/bin/zemi"); got != c.want {
+			t.Errorf("PluginTest(%q) = %v, want %v", c.cmd, got, c.want)
 		}
 	}
 }
@@ -597,7 +586,6 @@ func TestPrograms(t *testing.T) {
 		{"unknown lead option", "npm -w web test", "", "npm"},
 		{"same name, strongest mark", "rm a; rm -rf b", "", "rm!deletes"},
 		{"no-ops only", "set -e; true; :", "", ""},
-		{"test syntax runs arithmetic", sh("[[ -f go.mod ]] && ls"), "", "[[ ls"},
 		{"trap body", "trap 'rm -rf x' EXIT", "", "trap!runs code"},
 		{"body another shell runs", "xargs sh -c 'echo $(cat <<EOF\n) ; rm -rf z\nEOF\n)'", "", "-"},
 		{"fd redirect first", ">&2 echo oops", "", "echo"},
@@ -631,18 +619,17 @@ func TestPrograms(t *testing.T) {
 		{"gated assignment", "PATH=./x ls", "", "-"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			for name, n := range readings(c.cmd) {
-				got := "-"
-				if ps := n.Programs(c.pad); ps != nil {
-					var words []string
-					for _, p := range ps {
-						words = append(words, strings.TrimSuffix(p.Name+"!"+string(p.Risk), "!"))
-					}
-					got = strings.Join(words, " ")
+			n := Normalize(c.cmd)
+			got := "-"
+			if ps := n.Programs(c.pad); ps != nil {
+				var words []string
+				for _, p := range ps {
+					words = append(words, strings.TrimSuffix(p.Name+"!"+string(p.Risk), "!"))
 				}
-				if got != c.want {
-					t.Errorf("%s Programs(%q) = %q, want %q", name, c.cmd, got, c.want)
-				}
+				got = strings.Join(words, " ")
+			}
+			if got != c.want {
+				t.Errorf("Programs(%q) = %q, want %q", c.cmd, got, c.want)
 			}
 		})
 	}

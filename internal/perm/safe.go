@@ -831,7 +831,7 @@ func (n Normalized) GitWrites(gitDir bool) string {
 	}
 	for _, f := range n.Args {
 		for _, body := range shellBodies(f) {
-			if why := readBoth(body).GitWrites(gitDir); why != "" {
+			if why := shellText(body).GitWrites(gitDir); why != "" {
 				return why
 			}
 		}
@@ -1017,7 +1017,7 @@ func (n Normalized) destructive(repeated bool, pad string) string {
 		f := r.args
 		repeated := repeated || r.loop
 		for _, body := range shellBodies(f) {
-			if why := readBoth(body).destructive(repeated || len(f) > 0 && repeats(f[0]), ""); why != "" {
+			if why := shellText(body).destructive(repeated || len(f) > 0 && repeats(f[0]), ""); why != "" {
 				return why
 			}
 		}
@@ -1028,7 +1028,7 @@ func (n Normalized) destructive(repeated bool, pad string) string {
 			name, rest := ProgramName(w), f[i+1:]
 			switch {
 			case name == "eval":
-				if why := readBoth(strings.Join(rest, " ")).destructive(repeated, ""); why != "" {
+				if why := shellText(strings.Join(rest, " ")).destructive(repeated, ""); why != "" {
 					return why
 				}
 				continue
@@ -1132,7 +1132,7 @@ func segmentPrograms(f []string) (_ []Program, ok bool) {
 		switch {
 		case ShellWords[w]:
 			return out, true
-		case w != "[[" && (strings.ContainsAny(w, "$`*?[{") || strings.Contains(w, "<(") || strings.Contains(w, ">(")):
+		case strings.ContainsAny(w, "$`*?[{"):
 			return nil, false
 		case isShell(w) || name == "eval":
 			body, ok := shellBody(f[1:])
@@ -1142,7 +1142,7 @@ func segmentPrograms(f []string) (_ []Program, ok bool) {
 			if !ok {
 				return append(out, Program{Name: base, Risk: RiskCode}), true
 			}
-			inner := readBoth(body).Programs("")
+			inner := shellText(body).Programs("")
 			if inner == nil {
 				return nil, false
 			}

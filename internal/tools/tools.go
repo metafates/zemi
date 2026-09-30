@@ -1101,7 +1101,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 
 	return []fantasy.AgentTool{
-		mk(ToolShell, `Run a command with sh -c. Every call starts in the working directory: never cd to it. The shell is POSIX sh, not bash: write [ ] not [[ ]], >file 2>&1 not &>, . not source, printf not $'..', a file or a pipe not <( ), each word written out not {a,b} or {1..3}, and no arrays; for pipefail or a bash script run bash -c '...'. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
+		mk(ToolShell, `Run a command with sh -c. Every call starts in the working directory: never cd to it. The shell is POSIX sh, not bash: write [ ] not [[ ]], >file 2>&1 not &>, . not source, printf not $'..', a file or a pipe not <( ), each word written out not {a,b} or {1..3}, and no arrays. A bash -c body is POSIX sh too: write a bash script to a file and run bash file. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
 Not for what does not exit on its own (npm run dev, tsc -w, tail -f): what a command leaves running is stopped when it returns. Not for reading, searching or editing a file, but one perl -pi command makes the same substitution across many files.
 Chain dependent steps with &&.`,
 			false,

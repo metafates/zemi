@@ -324,11 +324,7 @@ func (h *Host) goHealthRows() []HealthRow {
 		add(HealthOK, "git", "found")
 	}
 
-	if proc.Dash() {
-		add(HealthOK, "shell", "the model's commands run in "+proc.Shell())
-	} else {
-		add(HealthOK, "shell", "the model's commands run in "+proc.Shell()+"; install dash for fewer asks and bash-only syntax named before it runs")
-	}
+	add(HealthOK, "shell", "the model's commands run in "+proc.Shell())
 
 	switch style, why := h.NotifyStyle(); {
 	case style == "off":

@@ -499,10 +499,10 @@ func shellAlwaysPatterns(row perm.Normalized) (patterns []string, ok bool) {
 	// a program or subcommand that can delete or overwrite must not broaden
 	// to arbitrary later targets: the rule runs unconfined, and such a
 	// command has no write path to re-ask on
-	// [[ and a builtin that sets variables by name evaluate a quoted
-	// subscript, where $(...) runs: "[[ *" would run any of those. An
-	// expansion is no exact text: rm $f deletes what a loop hands it
-	if f[0] == "[[" || perm.ShellState[f[0]] || deletes(row) {
+	// a builtin that sets variables by name evaluates a quoted subscript,
+	// where $(...) runs. An expansion is no exact text: rm $f deletes what a
+	// loop hands it
+	if perm.ShellState[f[0]] || deletes(row) {
 		if strings.ContainsAny(seg, "$`") {
 			return nil, false
 		}

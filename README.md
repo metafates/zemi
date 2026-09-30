@@ -34,8 +34,8 @@ summaries and the learning pass can each run on a cheaper model (`/model roles`)
 | read-only MCP tools         | the network, leaving the sandbox |
 
 Seatbelt on macOS, Landlock on Linux. Keys and shell history are hidden.
-Commands run in dash where it is installed (macOS, Debian, Ubuntu), and
-bash-only syntax gets the POSIX form before it runs.
+Commands are read as POSIX sh, and bash-only syntax gets the POSIX form
+before it runs.
 `ctrl+y` is yolo. `ctrl+t` is the planner: it reads and proposes, you approve.
 
 ## The UI is Lua
