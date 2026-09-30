@@ -38,7 +38,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 			Gen:    h.currentGen(),
 		}
 		if n, ok := opt[glua.LNumber](L, tb, "priority"); ok {
-			w.Priority = int(n)
+			w.Priority = float64(n)
 		}
 		// the exit region prints to the shell, outside zemi's chrome, beside the
 		// resume command a user copies

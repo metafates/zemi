@@ -276,7 +276,7 @@ func (r *CommandRegistry) Purge() {
 type Widget struct {
 	ID       string
 	Region   string
-	Priority int
+	Priority float64
 	Render   *glua.LFunction
 	OnClick  *glua.LFunction
 	Wrap     bool

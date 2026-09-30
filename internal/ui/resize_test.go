@@ -277,7 +277,7 @@ func TestToastCap(t *testing.T) {
 // TestFitClusters: a short statusline drops the highest priority widget
 // first, whichever side it is on, and the lasting ones stay outermost.
 func TestFitClusters(t *testing.T) {
-	item := func(text string, pri int) statusItem { return statusItem{[]hostapi.Segment{{Text: text}}, pri} }
+	item := func(text string, pri float64) statusItem { return statusItem{[]hostapi.Segment{{Text: text}}, pri} }
 	left := []statusItem{item("auto", 5), item("proj", 10), item("viewing explore · esc back", 120)}
 	right := []statusItem{item("fake/m", 8), item("96%", 40), item("1.1k/128k ctx", 41), item("$0.12", 42)}
 	for _, c := range []struct {

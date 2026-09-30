@@ -1339,7 +1339,7 @@ func (a *App) statusRow(w int, leftRegion, rightRegion string) []hostapi.Segment
 // statusItem is one statusline widget's row and its priority.
 type statusItem struct {
 	segs []hostapi.Segment
-	pri  int
+	pri  float64
 }
 
 // statusClusters are the statusline's two sides fitted into w cells, each

@@ -176,12 +176,12 @@ func TestWidgetRegistry(t *testing.T) {
 		}
 	}
 	// InRegion orders by priority ascending, ties by id, stable across calls.
-	for id, p := range map[string]int{"clock": 1, "lo": 2, "hi": 9, "a.tie": 9} {
+	for id, p := range map[string]float64{"clock": 1, "lo": 2, "mid": 2.5, "hi": 9, "a.tie": 9} {
 		r.Add(&Widget{ID: id, Region: "statusline.left", Render: noopFn, Priority: p})
 	}
 	for range 20 {
 		inRegion := r.InRegion("statusline.left")
-		if len(inRegion) != 4 || inRegion[0].ID != "clock" || inRegion[1].ID != "lo" || inRegion[2].ID != "a.tie" || inRegion[3].ID != "hi" {
+		if len(inRegion) != 5 || inRegion[0].ID != "clock" || inRegion[1].ID != "lo" || inRegion[2].ID != "mid" || inRegion[3].ID != "a.tie" || inRegion[4].ID != "hi" {
 			t.Fatalf("InRegion order = %+v", inRegion)
 		}
 	}
