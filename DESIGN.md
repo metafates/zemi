@@ -1869,8 +1869,9 @@ provenance string.
   the chat (`tui/thinking.lua`), its text two cells in from the separator and
   a blank short of its scroll bar, streams the turn's thoughts under a header whose
   state words are a `Title` over a blank row, each thought under its own
-  `✻ thought 4.2s`, and follows the tail until the wheel moves it; an ended
-  turn and an inspected run read from the top. Turning the pane on closes the
+  `✻ thought 4.2s`, and follows the tail until the wheel moves it; a turn's end
+  moves it nowhere, and an inspected run, drawn without the rail's bars, reads
+  from the top. Turning the pane on closes the
   thoughts unrolled in the chat, and turning it off reopens none. A click on a
   digest opens its run's rail under it, the digest staying as the run's header,
   whose second click folds it back and closes what was opened in it, with the

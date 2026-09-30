@@ -1215,12 +1215,13 @@ func TestReasoningPane(t *testing.T) {
 			if c.pane {
 				// the inspector reads from the top under its header, whose state
 				// word is a Title over a blank row that stays when the body
-				// scrolls, then the run's rail with the thought's text under its row
+				// scrolls, then the run's rows without their rail: the pane's
+				// separator is the only vertical line
 				var pane []string
 				for row := range strings.SplitSeq(frame, "\r\n") {
 					pane = append(pane, strings.TrimRight(ansi.Cut(row, th.X, th.X+th.Width), " "))
 				}
-				if want := []string{"  turn · 1 file · thought 1.2s", "", "  │ ✻ thought 1.2s", "  │   where to start", "  │ read a.go"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
+				if want := []string{"  turn · 1 file · thought 1.2s", "", "  ✻ thought 1.2s", "  where to start", "  read a.go"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
 					t.Fatalf("the inspector:\n%s", strings.Join(pane, "\n"))
 				}
 				if i := slices.IndexFunc(app.lastRows[th.Y-2], func(s hostapi.Segment) bool { return s.Text == "turn" }); i < 0 || app.lastRows[th.Y-2][i].HL != "Title" {

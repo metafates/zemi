@@ -72,15 +72,14 @@ local function read(ctx)
 	return t
 end
 
--- The pane follows the new turn, whatever it inspected, and reads an ended
--- or a resumed one from the top.
+-- The pane follows the new turn, whatever it inspected, and reads a resumed
+-- session's last turn from the top.
 zemi.event.on("agent.start", function()
 	chat.inspected = nil
 	zemi.ui.scroll("bottom", "thinking")
 end)
-for _, ev in ipairs({ "agent.finish", "agent.error", "session.open" }) do
-	zemi.event.on(ev, function() zemi.ui.scroll("top", "thinking") end)
-end
+-- a turn's end moves nothing: a pane following the tail keeps following
+zemi.event.on("session.open", function() zemi.ui.scroll("top", "thinking") end)
 
 zemi.ui.widget.add({
 	id = "thinking.head",
@@ -153,8 +152,11 @@ zemi.ui.widget.add({
 			---@type zemi.Line[]
 			local lines = {}
 			if t.first then
+				-- the run's rows without their rail: the pane's separator is the
+				-- only vertical line here, and an air row is a blank
 				for _, l in ipairs(chat.run(ctx, t.rows, t.first, width - 2)) do
-					table.insert(l, 1, GUTTER)
+					if l[1] and l[1].hl == "ThinkingBar" then table.remove(l, 1) end
+					if #l > 0 then table.insert(l, 1, GUTTER) end
 					lines[#lines + 1] = l
 				end
 			else

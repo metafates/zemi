@@ -741,13 +741,24 @@ zemi.ui.widget.add({
 			else
 				B.gap("text")
 				B.markdown(m.text)
+				-- the stats close a turn: only its last reply carries them, a
+				-- sentence between two runs none
+				local final = true
+				for i = last + 1, #tr do
+					local r = tr[i]
+					if (r.kind or "") == "" and r.role == "user" then break end
+					if (r.kind or "") == "" then
+						final = false
+						break
+					end
+				end
 				---@type string[]
 				local parts = {}
 				local tout = fmt.tokens(m.out)
 				if (m.elapsed or 0) > 0 then parts[#parts + 1] = fmt.duration(m.elapsed) end
 				if tout then parts[#parts + 1] = tout .. " out" end
 				if (m.ended or 0) > 0 then parts[#parts + 1] = fmt.clock(m.ended) end
-				if #parts > 0 then
+				if final and #parts > 0 then
 					B.gap("stats")
 					B.lines[#B.lines + 1] =
 						{ { text = "  ", copy = false }, { text = table.concat(parts, " · "), hl = "Dim" } }
