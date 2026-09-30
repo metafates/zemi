@@ -1374,8 +1374,9 @@ UI extensibility contract:
   `-light` variant on a light terminal; its output is parsed back into segments whose `hl`
   is `sgr:<params>`, an inline SGR style that only ever decodes to
   colors and attributes, never other escapes. `effect = "shimmer"` asks Go
-  to sweep a bright band across the text every frame (widgets render at
-  about 8/s, the effect needs 30), blending `hl` toward `Normal`, and
+  to sweep a bright band across the text every frame (Go applies it when
+  it paints, so the band moves every 50 ms with no render), blending `hl`
+  toward `Normal`, and
   `effect = "spin"` steps a segment's first glyph through the running
   spinner; `ui.animations = false` keeps both static. The state marks
   (`zemi.ui.marks`: running, done, failed, stopped, waiting, ...) are
