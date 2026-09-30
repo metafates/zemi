@@ -775,7 +775,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	var content [][]hostapi.Segment
 	switch {
 	case req.Subject == perm.SubjectShell:
-		content = codePanel(req.Arg, inner)
+		content = a.codePanel(req.Arg, "bash", inner)
 	case isDiff:
 		content = hostapi.DiffRows(req.Preview, inner)
 		for _, r := range content {
@@ -784,7 +784,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 			}
 		}
 	case req.Preview != "":
-		content = codePanel(req.Preview, inner)
+		content = a.codePanel(req.Preview, previewLang(req), inner)
 	}
 	var btns []promptChoice
 	for _, c := range pa.choices() {
@@ -1133,12 +1133,38 @@ func scrolls(views ...viewport) []hintPair {
 	return nil
 }
 
-// codePanel shows text in a well of the canvas inside the box, wrapped to width.
-func codePanel(text string, width int) [][]hostapi.Segment {
-	rows := wrapText(text, "", width-2)
-	for i, r := range rows {
-		line := hostapi.SegsText(r)
-		rows[i] = []hostapi.Segment{{Text: " " + line + strings.Repeat(" ", max(0, width-2-ansi.StringWidth(line))) + " ", HL: hostapi.ChromeValue, Fill: hostapi.FillCanvas}}
+// previewLang is the language a request's preview is written in: what the
+// model will run, as the chat's rows highlight it; "" for prose.
+func previewLang(req hostapi.PermRequest) string {
+	switch {
+	case req.Subject == perm.SubjectLua || req.Subject == perm.SubjectWorkflow:
+		return "lua"
+	case strings.HasPrefix(req.Subject, "mcp.") || strings.HasPrefix(req.Subject, "tool."):
+		return "json" // a call's input
 	}
-	return rows
+	return ""
+}
+
+// codePanel shows text in a well of the canvas inside the box, wrapped to
+// width and highlighted as lang when it names one.
+func (a *App) codePanel(text, lang string, width int) [][]hostapi.Segment {
+	var rows [][]hostapi.Segment
+	if lang != "" {
+		rows = a.host.Highlight(text, lang, width-2)
+	} else {
+		rows = wrapText(text, "", width-2)
+	}
+	out := make([][]hostapi.Segment, len(rows))
+	for i, r := range rows {
+		row := make([]hostapi.Segment, 0, len(r)+2)
+		row = append(row, hostapi.Segment{Text: " ", Fill: hostapi.FillCanvas})
+		w := 0
+		for _, sg := range r {
+			w += ansi.StringWidth(sg.Text)
+			row = append(row, hostapi.Segment{Text: sg.Text, HL: cmp.Or(sg.HL, hostapi.ChromeValue), Fill: hostapi.FillCanvas})
+		}
+		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, width-2-w)) + " ", Fill: hostapi.FillCanvas})
+		out[i] = row
+	}
+	return out
 }
