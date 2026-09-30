@@ -980,11 +980,11 @@ func (a *App) compose(w, h int) string {
 	if a.trust != nil {
 		splice(trustBox(a.trust, area.Dx(), area.Dy()))
 	}
-	if a.planAsk != nil {
-		splice(a.planBox(a.planAsk, area.Dx(), area.Dy()))
-	}
 	if a.question != nil {
 		splice(a.questionBox(a.question, area.Dx(), area.Dy()))
+	}
+	if a.planAsk != nil {
+		splice(a.planBox(a.planAsk, area.Dx(), area.Dy()))
 	}
 	if a.permAsk != nil {
 		splice(a.permBox(a.permAsk, area.Dx(), area.Dy()))

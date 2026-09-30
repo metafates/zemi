@@ -532,7 +532,7 @@ const (
 )
 
 // topChrome is the prompt drawn on top. It mirrors the splice order in
-// compose: perm over question, trust, then Lua overlays.
+// compose: perm over plan, question, trust, then Lua overlays.
 func (a *App) topChrome() modal {
 	switch {
 	case a.permAsk != nil:
