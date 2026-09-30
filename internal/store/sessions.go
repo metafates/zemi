@@ -23,7 +23,6 @@ type Session struct {
 	Cost             float64
 }
 
-// CreateSession inserts a new session row.
 func (s *DB) CreateSession(id, parentID, title, profile string) error {
 	t := now()
 	_, err := s.db.Exec(`INSERT INTO sessions
@@ -49,7 +48,6 @@ func scanSession(row scanner) (*Session, error) {
 	return &s, nil
 }
 
-// GetSession loads one session by id.
 func (s *DB) GetSession(id string) (*Session, error) {
 	return one(s.db.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE id = ?`, id), scanSession)
 }
@@ -135,7 +133,6 @@ func insertMessage(ex execer, m *Message) error {
 	return nil
 }
 
-// AddMessage inserts a message row.
 func (s *DB) AddMessage(m *Message) error { return insertMessage(s.db, m) }
 
 // AddCompaction stores a compaction's summary row, the verbatim tail copies
@@ -405,7 +402,6 @@ func (s *DB) GetKV(key string) (string, error) {
 	return one(s.db.QueryRow(`SELECT value_json FROM kv WHERE key = ?`, key), scanString)
 }
 
-// SetKV writes a json value by key.
 func (s *DB) SetKV(key, valueJSON string) error {
 	_, err := s.db.Exec(`INSERT INTO kv (key, value_json, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,

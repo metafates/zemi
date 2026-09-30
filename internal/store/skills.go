@@ -28,13 +28,11 @@ func scanSkill(row scanner) (*Skill, error) {
 	return &sk, nil
 }
 
-// ListSkills returns all skill rows ordered by name.
 func (s *DB) ListSkills() ([]*Skill, error) {
 	rows, err := s.db.Query(`SELECT name, path, source, enabled FROM skills ORDER BY name`)
 	return collect(rows, err, scanSkill)
 }
 
-// SetSkillEnabled flips the enabled flag of one skill row.
 func (s *DB) SetSkillEnabled(name string, enabled bool) error {
 	return s.execOne("set skill enabled", `UPDATE skills SET enabled = ? WHERE name = ?`, enabled, name)
 }

@@ -142,7 +142,6 @@ func (s *DB) checkVersion(version int) error {
 	return nil
 }
 
-// Close releases the handle.
 func (s *DB) Close() error { return s.db.Close() }
 
 const schema = `

@@ -52,7 +52,6 @@ type Job struct {
 	mu     sync.Mutex
 }
 
-// Running reports whether the process is still running.
 func (j *Job) Running() bool {
 	select {
 	case <-j.done:
@@ -226,7 +225,6 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 	return j.ID
 }
 
-// Get returns one job by id.
 func (m *Jobs) Get(id string) (*Job, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -263,7 +261,6 @@ func (m *Jobs) Running() int {
 	return n
 }
 
-// Kill terminates one job's process.
 func (m *Jobs) Kill(id string) error {
 	j, err := m.Get(id)
 	if err != nil {
