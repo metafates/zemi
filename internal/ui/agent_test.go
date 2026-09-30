@@ -1062,7 +1062,7 @@ func TestReasoningExpanded(t *testing.T) {
 	// a thought too short to count says no time
 	appendReasoning(host, "quick", hostapi.TurnStat{ThoughtMS: 20})
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "0.0s") || !strings.Contains(frame, "· thought 4.2s") {
+	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "0.0s") || !strings.Contains(frame, "│ ✻ thought 4.2s") {
 		t.Fatalf("a zero thought time:\n%s", frame)
 	}
 }
@@ -1117,7 +1117,8 @@ func TestReasoningLiveTail(t *testing.T) {
 // TestRailFoldsWhenTheTurnEnds: the live turn stands on the rail, a
 // step's reads one row with the short thought before it as its suffix, a
 // long thought a row of its own and a trailing one under a second none; the
-// ended turn folds into its digest.
+// ended turn folds into its digest, over the edit it keeps in the cells it
+// drew live, and draws none of the thoughts the digest totals.
 func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "look around")
@@ -1126,6 +1127,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "b.go", Status: "ok"})
 	appendReasoning(host, "a long one", hostapi.TurnStat{ThoughtMS: 8000})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "ls", Label: "list the data", Status: "ok"})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -1 +1 @@\n-old\n+new"})
 	appendReasoning(host, "that is all", hostapi.TurnStat{ThoughtMS: 400})
 	rows := func() []string {
 		app.renderSync(t)
@@ -1138,12 +1140,12 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		return out[:len(out)-3] // the composer
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	live := []string{"▌ look around", "│ read 2 files 1.2s", "│ ✻ thought 8.0s", "│ list the data"}
+	live := []string{"▌ look around", "│ read 2 files 1.2s", "│ ✻ thought 8.0s", "│ list the data", "│ ✓ edit a.go +1 -1"}
 	if got := rows(); !slices.Equal(got, live) {
 		t.Fatalf("live rail:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(live, "\n"))
 	}
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if got, want := rows(), []string{"▌ look around", "· 2 files, 1 command · thought 9.6s"}; !slices.Equal(got, want) {
+	if got, want := rows(), []string{"▌ look around", "· 2 files, 1 command · thought 9.6s", "│ ✓ edit a.go +1 -1"}; !slices.Equal(got, want) {
 		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
 	}
 }
@@ -1218,7 +1220,7 @@ func TestReasoningPane(t *testing.T) {
 				for row := range strings.SplitSeq(frame, "\r\n") {
 					pane = append(pane, strings.TrimRight(ansi.Cut(row, th.X, th.X+th.Width), " "))
 				}
-				if want := []string{" turn · 1 file · thought 1.2s", "", " │ ✻ thought 1.2s", " │   where to start", " │ read a.go"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
+				if want := []string{"  turn · 1 file · thought 1.2s", "", "  │ ✻ thought 1.2s", "  │   where to start", "  │ read a.go"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
 					t.Fatalf("the inspector:\n%s", strings.Join(pane, "\n"))
 				}
 				if i := slices.IndexFunc(app.lastRows[th.Y-2], func(s hostapi.Segment) bool { return s.Text == "turn" }); i < 0 || app.lastRows[th.Y-2][i].HL != "Title" {

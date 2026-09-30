@@ -97,7 +97,7 @@ func TestPrintedRender(t *testing.T) {
 		state           UIState
 		digest, thought bool
 	}{
-		{"the TUI folds the thought into a digest", UIState{}, true, false},
+		{"the TUI keeps a run with nothing to fold on its rail", UIState{}, false, false},
 		{"a printed frame keeps the rail", UIState{Printed: &Printed{Rows: rows}}, false, false},
 		{"--reasoning prints the thought", UIState{Printed: &Printed{Rows: rows, Reasoning: true}}, false, true},
 	} {

@@ -158,9 +158,9 @@ func TestGoldenComposerCompletion(t *testing.T) {
 	golden.RequireEqual(t, app.Frame())
 }
 
-// TestGoldenReasoningCollapse pins the persisted thinking block (§8): the
-// reasoning survives the turn as a collapsible transcript entry, collapsed
-// by default to a one-line summary between the user message and the reply.
+// TestGoldenReasoningCollapse pins the persisted thinking block (§8): a
+// thought alone keeps its rail row between the user message and the reply,
+// its text one click away.
 func TestGoldenReasoningCollapse(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 
@@ -175,7 +175,7 @@ func TestGoldenReasoningCollapse(t *testing.T) {
 }
 
 // TestGoldenThinkingPane pins the thinking pane at 120 columns: a settled
-// turn folded into its digest, the live turn's rail beside the pane that
+// turn folded into its digest over its kept rows, the live turn's rail beside the pane that
 // streams its thought, the separator meeting the composer's top rule.
 func TestGoldenThinkingPane(t *testing.T) {
 	app, host := bootAgentApp(t, 120, 30)

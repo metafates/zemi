@@ -1848,12 +1848,15 @@ provenance string.
   its run's last row (`sticky = "end"`), past which the prompt pins again. A
   click on the pin scrolls back to its row, and `alt+up`/`alt+down` move
   between prompts and opened runs.
-  A settled turn folds each run of thinking and calls that only looked around
-  (reads, searches, fetches, commands that changed nothing, and the like, gone
-  well) into one dim digest row, `· 6 files, 8 commands · thought 8s`; edits,
-  failures, questions, plans, agent runs, workflows, background jobs and
-  commands with a diff keep their own rows. The live turn, a printed run and
-  an agent run's view draw the rail instead, one row per step with no blank
+  A settled turn folds each run's calls that only looked around (reads,
+  searches, fetches, commands that changed nothing, and the like, gone well)
+  and its thinking into one dim digest row, `· 6 files, 8 commands · thought
+  8s`, which exists only when such a call folds: thinking alone is never a
+  digest. Edits, failures, questions, plans, agent runs, workflows, background
+  jobs and commands with a diff keep their own rows on the rail under it, as
+  they drew live, and a run with nothing to fold keeps its whole rail. The
+  live turn, a printed run and an agent run's view draw the whole rail, one
+  row per step with no blank
   rows between, a continuous bar in column 0 with every mark in column 2
   (`│ ✓ edit`, `│ ⠋ running label`, `│ ✻ thought 8s`) and nested text in
   column 4, a wrapped row keeping the bar: a step's unlabelled look-around
@@ -1863,7 +1866,8 @@ provenance string.
   of its own. While the model thinks its last lines show
   under a `│ ⠋ thinking` row, unless the thinking pane draws them: in
   `ui.reasoning` pane mode, on a screen 100 columns or wider, a pane right of
-  the chat (`tui/thinking.lua`) streams the turn's thoughts under a header whose
+  the chat (`tui/thinking.lua`), its text two cells in from the separator and
+  a blank short of its scroll bar, streams the turn's thoughts under a header whose
   state words are a `Title` over a blank row, each thought under its own
   `✻ thought 4.2s`, and follows the tail until the wheel moves it; an ended
   turn and an inspected run read from the top. Turning the pane on closes the

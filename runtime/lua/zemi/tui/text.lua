@@ -100,9 +100,6 @@ M.VERB = {
 	question = "Ask",
 	plan = "Plan",
 	skill = "Load skill",
-	agent = "Agent",
-	workflow = "Workflow",
-	lua = "Run Lua",
 	tool_search = "Find tools",
 	lsp = "Look up",
 }
@@ -173,8 +170,8 @@ M.PROSE = 80
 function M.thought(secs) return secs >= 0.05 and "thought " .. M.duration(secs) or "thought" end
 
 --- What rows[first..last] of a turn fold into, the chat's digest and the
---- thinking pane's header: "6 files, 8 commands · thought 8s"; "" when
---- nothing there folds.
+--- thinking pane's header: "6 files, 8 commands · thought 8s"; "" when no
+--- call there only looked around, since thinking alone keeps its rail rows.
 ---@param rows zemi.TranscriptRow[]
 ---@param first integer
 ---@param last integer
@@ -182,21 +179,18 @@ function M.thought(secs) return secs >= 0.05 and "thought " .. M.duration(secs) 
 function M.digest(rows, first, last)
 	---@type zemi.TranscriptRow[]
 	local calls = {}
-	local secs, thought = 0, false
+	local secs = 0
 	for i = first, last do
 		local m = rows[i]
 		if m.kind == "reasoning" then
-			secs, thought = secs + (m.thought or 0), true
+			secs = secs + (m.thought or 0)
 		elseif M.looks(m) then
 			calls[#calls + 1] = m
 		end
 	end
-	---@type string[]
-	local parts = {}
-	if #calls > 0 then parts[1] = M.counts(calls) end
+	if #calls == 0 then return "" end
 	-- a thought under a second says nothing
-	if thought and secs >= 1 then parts[#parts + 1] = M.thought(secs) end
-	return table.concat(parts, " · ")
+	return M.counts(calls) .. (secs >= 1 and " · " .. M.thought(secs) or "")
 end
 
 --- A tool name as words for a row with no verb of its own: underscores

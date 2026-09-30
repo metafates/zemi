@@ -18,8 +18,9 @@ local chat = require("zemi.tui.chat")
 ---@field body { key: string, lines: zemi.Line[] }?
 ---@type zemi.tui.PaneTurn?
 local turn
--- one cell between the separator and the text
-local GUTTER = { text = " ", copy = false }
+-- two cells between the separator and the text, which ends a blank short of
+-- the body's scroll bar
+local GUTTER = { text = "  ", copy = false }
 
 -- The header row: its state words (before the first " · ", else the first
 -- word) in Title and the rest in Dim, then a blank row, which the head region
@@ -30,7 +31,7 @@ local GUTTER = { text = " ", copy = false }
 ---@param lead zemi.Segment? The spinner ahead of the text.
 ---@return zemi.Line[]
 local function header(text, width, click, lead)
-	text = fmt.clip(text, width - 1 - (lead and zemi.ui.width(lead.text) or 0))
+	text = fmt.clip(text, width - 4 - (lead and zemi.ui.width(lead.text) or 0))
 	local cut = text:find(" · ", 1, true) or text:find(" ", 1, true) or #text + 1
 	local row = { GUTTER, lead }
 	row[#row + 1] = { text = text:sub(1, cut - 1), hl = "Title", click = click }
@@ -139,7 +140,7 @@ zemi.ui.widget.add({
 			local m = zemi.ui.marks.thought
 			into[#into + 1] =
 				{ GUTTER, { text = m.glyph .. " ", hl = m.hl, copy = false }, { text = head, hl = "Dim" } }
-			for _, segs in ipairs(zemi.ui.wrap((text:gsub("%s+$", "")), width - 1)) do
+			for _, segs in ipairs(zemi.ui.wrap((text:gsub("%s+$", "")), width - 2)) do
 				for _, sg in ipairs(segs) do
 					sg.hl = "AgentReason"
 				end
@@ -152,7 +153,7 @@ zemi.ui.widget.add({
 			---@type zemi.Line[]
 			local lines = {}
 			if t.first then
-				for _, l in ipairs(chat.run(ctx, t.rows, t.first, width - 1)) do
+				for _, l in ipairs(chat.run(ctx, t.rows, t.first, width - 2)) do
 					table.insert(l, 1, GUTTER)
 					lines[#lines + 1] = l
 				end

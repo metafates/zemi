@@ -68,13 +68,10 @@ func TestMouseClicks(t *testing.T) {
 	host.AppendMessage("user", "why?")
 	appendReasoning(host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
 	app.renderSync(t)
-	x, y := findCell(t, app, "· thought 1.0s")
-	clickAt(app, x+2, y)
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "· thought 1.0s") || !strings.Contains(frame, "│ ✻ thought 1.0s") || strings.Contains(frame, "first idea") {
-		t.Fatalf("clicking the digest should open its run under it:\n%s", frame)
+	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "first idea") {
+		t.Fatalf("a settled thought shows its text before a click:\n%s", frame)
 	}
-	x, y = findCell(t, app, "│ ✻ thought 1.0s")
+	x, y := findCell(t, app, "│ ✻ thought 1.0s")
 	clickAt(app, x+4, y)
 	app.renderSync(t)
 	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "│   first idea") {
@@ -245,9 +242,9 @@ func TestHoverTargets(t *testing.T) {
 		{"a choice's key button answers it too", perm, "No ", -3, 1, "Host:Hover"},
 		{"the padding right of a choice is not a target", perm, "No ", 30, 0, ""},
 		// a chat body row acts on a click and keeps its own groups; a header hovers
-		{"digest text is a target", thought, "thought 1.0s", 1, 1, "Hover"},
+		{"a thought row's text is a target", thought, "thought 1.0s", 1, 1, "Hover"},
 		{"a quiet click id takes no hover style", widgets, "quiet", 1, 1, ""},
-		{"right of the digest is not a target", thought, "thought 1.0s", 60, 0, ""},
+		{"right of a thought row is not a target", thought, "thought 1.0s", 60, 0, ""},
 		{"a widget click id with a handler is a target", widgets, "clickme", 1, 1, "Hover"},
 		{"a widget click id without a handler is not", widgets, "noclick", 1, 0, ""},
 		{"the space right of a widget click id is not", widgets, "clickme", 7, 0, ""},

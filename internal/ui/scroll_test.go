@@ -227,6 +227,7 @@ func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
 	for i := 1; i <= 20; i++ {
 		host.AppendMessage("user", fmt.Sprintf("message %d", i))
 		appendReasoning(host, fmt.Sprintf("thought %d line one\nthought %d line two\n", i, i), hostapi.TurnStat{ThoughtMS: 4200})
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
 		appendReply(host, fmt.Sprintf("reply %d", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
 	}
 	app.renderSync(t)
