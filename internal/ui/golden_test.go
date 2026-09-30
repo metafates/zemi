@@ -206,7 +206,11 @@ func TestGoldenThinkingPane(t *testing.T) {
 		Elapsed:   12 * time.Second,
 	})
 	app.AgentStream()
-	app.renderSync(t)
+	// the pane's head sizes the body under it, so the body renders at its
+	// height on the second pass, as on a running zemi's next frame
+	for range 2 {
+		app.renderSync(t)
+	}
 	golden.RequireEqual(t, app.Frame())
 }
 

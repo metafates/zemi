@@ -1,8 +1,8 @@
 -- The thinking pane right of the chat (ui.reasoning = "pane", DESIGN §8): a
--- header row, then the turn's thoughts, each under its own "✻ thought 4.2s",
--- following the tail while they stream and read from the top once the turn
--- ends. A click on a digest in the chat shows that run here instead, every
--- row open; tui/chat.lua keeps which run that is.
+-- header row over a blank one, then the turn's thoughts, each under its own
+-- "✻ thought 4.2s", following the tail while they stream and read from the
+-- top once the turn ends. A click on a digest in the chat shows that run here
+-- instead, every row open; tui/chat.lua keeps which run that is.
 local fmt = require("zemi.tui.text")
 local chat = require("zemi.tui.chat")
 
@@ -20,6 +20,23 @@ local chat = require("zemi.tui.chat")
 local turn
 -- one cell between the separator and the text
 local GUTTER = { text = " ", copy = false }
+
+-- The header row: its state words (before the first " · ", else the first
+-- word) in Title and the rest in Dim, then a blank row, which the head region
+-- holds so it stays while the body scrolls.
+---@param text string
+---@param width integer
+---@param click string?
+---@param lead zemi.Segment? The spinner ahead of the text.
+---@return zemi.Line[]
+local function header(text, width, click, lead)
+	text = fmt.clip(text, width - 1 - (lead and zemi.ui.width(lead.text) or 0))
+	local cut = text:find(" · ", 1, true) or text:find(" ", 1, true) or #text + 1
+	local row = { GUTTER, lead }
+	row[#row + 1] = { text = text:sub(1, cut - 1), hl = "Title", click = click }
+	if cut <= #text then row[#row + 1] = { text = text:sub(cut), hl = "Dim", click = click } end
+	return { row, { { text = "" } } }
+end
 
 ---@param ctx zemi.WidgetCtx
 ---@return zemi.tui.PaneTurn
@@ -75,21 +92,19 @@ zemi.ui.widget.add({
 		local width = ctx.width or 36
 		if t.first then
 			-- a click goes back to the live turn
-			local click = "turn:" .. t.first
-			return { { GUTTER, { text = fmt.clip(t.head, width - 1), hl = "Dim", click = click } } }
+			return header(t.head, width, "turn:" .. t.first)
 		end
 		local ag = ctx.agent or {}
-		if not ctx.agent_active then return { { GUTTER, { text = fmt.clip(t.head, width - 1), hl = "Dim" } } } end
+		if not ctx.agent_active then return header(t.head, width) end
 		local tools = ag.tools or {}
 		if (ag.reasoning or "") ~= "" and (ag.text or "") == "" and #tools == 0 then
 			local m = zemi.ui.marks.spin
-			return {
-				{
-					GUTTER,
-					{ text = m.glyph .. " ", hl = m.hl, copy = false, effect = "spin" },
-					{ text = "thinking · " .. fmt.duration(ag.thought or 0), hl = "Dim" },
-				},
-			}
+			return header(
+				"thinking · " .. fmt.duration(ag.thought or 0),
+				width,
+				nil,
+				{ text = m.glyph .. " ", hl = m.hl, copy = false, effect = "spin" }
+			)
 		end
 		-- between thoughts, the step: the call running, as the working rule says it
 		local label = "working"
@@ -101,7 +116,7 @@ zemi.ui.widget.add({
 				break
 			end
 		end
-		return { { GUTTER, { text = fmt.clip(label, width - 1), hl = "Dim" } } }
+		return header(label, width)
 	end,
 })
 
@@ -120,7 +135,7 @@ zemi.ui.widget.add({
 		---@param text string
 		---@param into zemi.Line[]
 		local function thought(head, text, into)
-			if #into > 1 then into[#into + 1] = { { text = "" } } end
+			if #into > 0 then into[#into + 1] = { { text = "" } } end
 			local m = zemi.ui.marks.thought
 			into[#into + 1] =
 				{ GUTTER, { text = m.glyph .. " ", hl = m.hl, copy = false }, { text = head, hl = "Dim" } }
@@ -134,9 +149,8 @@ zemi.ui.widget.add({
 		end
 		local key = table.concat({ width, zemi.ui.theme.get() }, "|")
 		if not t.body or t.body.key ~= key then
-			-- one blank row under the header
 			---@type zemi.Line[]
-			local lines = { { { text = "" } } }
+			local lines = {}
 			if t.first then
 				for _, l in ipairs(chat.run(ctx, t.rows, t.first, width - 1)) do
 					table.insert(l, 1, GUTTER)

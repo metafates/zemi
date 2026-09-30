@@ -108,15 +108,15 @@ M.VERB = {
 }
 
 --- A call that only looks around, as the chat counts it: its verb, then its
---- noun, one and many, and the short forms a row's suffix uses; a verb alone
---- never counts. Every other call keeps a row of its own.
----@type table<string, { [1]: string, [2]: string?, [3]: string?, [4]: string?, [5]: string? }>
+--- noun, one and many; a verb alone never counts. Every other call keeps a
+--- row of its own.
+---@type table<string, { [1]: string, [2]: string?, [3]: string? }>
 M.COUNT = {
 	read = { "read", "file", "files" },
 	glob = { "searched for", "pattern", "patterns" },
 	grep = { "searched for", "pattern", "patterns" },
 	web_search = { "searched the web for", "query", "queries" },
-	shell = { "ran", "command", "commands", "cmd", "cmds" },
+	shell = { "ran", "command", "commands" },
 	fetch = { "fetched", "page", "pages" },
 	skill = { "loaded", "skill", "skills" },
 	memory = { "saved", "memory", "memories" },
@@ -140,12 +140,10 @@ function M.looks(t)
 	return (t.kind or "tool") == "tool" and t.status == "ok" and M.COUNT[M.tool(t)] ~= nil and (t.diff or "") == ""
 end
 
---- Calls counted by noun, first seen first: "2 files, 1 command", or short
---- for a row's suffix, "2 files · 1 cmd".
+--- Calls counted by noun, first seen first: "2 files, 1 command".
 ---@param calls (zemi.TranscriptRow|zemi.ToolCall)[]
----@param short boolean?
 ---@return string
-function M.counts(calls, short)
+function M.counts(calls)
 	---@type string[], table<string, integer>, table<string, string[]>
 	local order, n, c = {}, {}, {}
 	for _, t in ipairs(calls) do
@@ -161,9 +159,9 @@ function M.counts(calls, short)
 	local parts = {}
 	for i, key in ipairs(order) do
 		local k = c[key]
-		parts[i] = not k[2] and k[1] or short and k[4] and M.count(n[key], k[4], k[5]) or M.count(n[key], k[2], k[3])
+		parts[i] = not k[2] and k[1] or M.count(n[key], k[2], k[3])
 	end
-	return table.concat(parts, short and " · " or ", ")
+	return table.concat(parts, ", ")
 end
 
 --- The widest thinking text runs, in cells: dim prose reads better narrow.

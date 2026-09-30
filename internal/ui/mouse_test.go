@@ -479,6 +479,8 @@ func TestToolRowClickExpands(t *testing.T) {
 	long := "go test ./internal/hostapi -run TestSomethingWithAVeryLongName -count=1 -race"
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
 		{ID: "1", Name: "shell", Label: "run the hostapi tests", Input: long, Status: "ok", Output: "ok  github.com/metafates/zemi/internal/hostapi"},
+		{ID: "2", Name: "read", Input: "a.go", Status: "ok"},
+		{ID: "3", Name: "read", Input: "b.go", Status: "ok"},
 	}})
 	app.renderSync(t)
 	if strings.Contains(ansi.Strip(app.Frame()), "-race") {
@@ -506,6 +508,21 @@ func TestToolRowClickExpands(t *testing.T) {
 	app.renderSync(t)
 	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "│   first idea") || strings.Contains(frame, "-race") {
 		t.Fatalf("clicking a thought row should unroll its text alone:\n%s", frame)
+	}
+	// an opened step's calls are rows of their own: hovering one lights it alone
+	x, y = findCell(t, app, "read 2 files")
+	clickAt(app, x+1, y)
+	app.renderSync(t)
+	_, first := findCell(t, app, "read a.go")
+	x, y = findCell(t, app, "read b.go")
+	app.Update(tea.MouseMotionMsg{X: x + 1, Y: y})
+	app.renderSync(t)
+	app.Frame()
+	lit := func(row []hostapi.Segment) bool {
+		return slices.ContainsFunc(row, func(s hostapi.Segment) bool { return s.Over == "Hover" })
+	}
+	if !lit(app.lastRows[y]) || lit(app.lastRows[first]) {
+		t.Fatalf("hovering the second call lights %v, the first %v", lit(app.lastRows[y]), lit(app.lastRows[first]))
 	}
 }
 

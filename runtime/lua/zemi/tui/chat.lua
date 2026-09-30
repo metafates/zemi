@@ -31,12 +31,17 @@ local units_key = ""
 local settled
 
 -- Rows the user opened, by transcript index (negative for the live turn's
--- calls), and digests, by their run's first index: a click shows that one
--- row or run whole and leaves the rest of the transcript alone. Cleared when
--- the transcript is replaced, and the negative half when a new turn starts,
--- since the indexes are then someone else's.
+-- calls), steps and thoughts, by their first index, and digests, by their
+-- run's first index: a click shows that one row or run whole and leaves the
+-- rest of the transcript alone. Cleared when the transcript is replaced, and
+-- the negative half when a new turn starts, since the indexes are then
+-- someone else's. A step has its own table: its first call has its index.
 ---@type table<integer, true>
 local expanded = {}
+---@type table<integer, true>
+local steps = {}
+---@type table<integer, true>
+local unrolled = {}
 ---@type table<integer, true>
 local unfolded = {}
 local expanded_epoch = 0
@@ -259,33 +264,15 @@ local function builder(ctx, width)
 		parts[#parts + 1] = ran
 		return table.concat(parts, ", ")
 	end
-	-- A step's look-around calls as one rail row: the first label the model
-	-- gave one with the counts after it, else what they did.
+	-- A step's unlabelled look-around calls as one rail row saying what they
+	-- did, the thought before them at the right.
 	---@param group zemi.tui.Tool[]
 	---@param click string
 	---@param secs number? The thought before the step.
 	function B.group(group, click, secs)
-		---@type string?
-		local label
-		for _, t in ipairs(group) do
-			if (t.label or "") ~= "" then
-				label = fmt.lower(t.label)
-				break
-			end
-		end
-		---@type string[]
-		local parts = {}
-		if label then parts[1] = fmt.counts(group, true) end
-		if secs and secs >= 0.05 then parts[#parts + 1] = fmt.duration(secs) end
-		local suffix = table.concat(parts, " · ")
+		local suffix = secs and secs >= 0.05 and fmt.duration(secs) or ""
 		local room = width - 2 - (suffix ~= "" and zemi.ui.width(suffix) + 2 or 0)
-		push(
-			suffixed(
-				{ bar(), { text = fmt.clip(label or said(group), room), hl = "Normal", click = click } },
-				suffix,
-				click
-			)
-		)
+		push(suffixed({ bar(), { text = fmt.clip(said(group), room), hl = "Normal", click = click } }, suffix, click))
 	end
 
 	-- One call as its own row: the verb and the label or input, what it
@@ -390,7 +377,8 @@ local function builder(ctx, width)
 		-- a timed-out command went on as (the phrase is tools.JobHandoff)
 		if answered then
 			more = {}
-		elseif label ~= "" and input ~= "" then
+		elseif label ~= "" and input ~= "" and (open or not (barred and fmt.looks(t))) then
+			-- a labelled look-around call on the rail shows its command once opened
 			detail(code and code[1] or fit(input, inner - 6), "Dim")
 		end
 		for i, l in ipairs(more) do
@@ -500,10 +488,11 @@ local function builder(ctx, width)
 		end
 	end
 
-	-- A run of activity rows as a rail, one row per step: a step's
-	-- look-around calls as one row carrying the thought before it, a thought
-	-- over 5 s, or from a second with no step after it, as its own row, every
-	-- other call as its own row. A thought row's click unrolls its text.
+	-- A run of activity rows as a rail, one row per step: a step's unlabelled
+	-- look-around calls as one row carrying the thought before it, whose click
+	-- opens one row per call, a thought over 5 s, or from a second with no
+	-- step after it, as its own row, every other call as its own row: a label
+	-- tells what its call did. A thought row's click unrolls its text.
 	-- NOTE: a step is the calls between two thoughts, so a model that does not
 	-- think runs its steps together into one row.
 	---@param list zemi.tui.Tool[]
@@ -513,6 +502,8 @@ local function builder(ctx, width)
 	function B.rail(list, first, last, o)
 		local secs = o.secs
 		local fold = o.open and o.run and "turn:" .. o.run or nil
+		---@param t zemi.tui.Tool
+		local function grouped(t) return fmt.looks(t) and (t.label or "") == "" end
 		local i = first
 		while i <= last do
 			local t = list[i]
@@ -520,29 +511,26 @@ local function builder(ctx, width)
 			if t.kind == "reasoning" then
 				local s = t.thought or 0
 				if o.open or s > 5 or s >= 1 and (i == last or list[i + 1].kind == "reasoning") then
-					B.thought(s, fold or ("thought:" .. idx), (o.open or expanded[idx]) and t.text or nil)
+					B.thought(s, fold or ("thought:" .. idx), (o.open or unrolled[idx]) and t.text or nil)
 					secs = nil
 				else
 					secs = s
 				end
 				i = i + 1
-			elseif fmt.looks(t) then
+			elseif grouped(t) then
 				---@type zemi.tui.Tool[]
 				local group = {}
-				while i + #group <= last and fmt.looks(list[i + #group]) do
+				while i + #group <= last and grouped(list[i + #group]) do
 					group[#group + 1] = list[i + #group]
 				end
-				-- one click id for the whole step: it opens every call of it and a
-				-- click on any of those closes it again
-				if o.open or expanded[idx] then
+				if o.open or steps[idx] then
 					for k, g in ipairs(group) do
 						local n = i + k - 1
-						B.tool(g, o.live and -n or n, {
-							open = true,
-							rail = true,
-							secs = k == 1 and secs or nil,
-							click = fold or ("step:" .. idx),
-						})
+						B.tool(
+							g,
+							o.live and -n or n,
+							{ open = o.open, rail = true, secs = k == 1 and secs or nil, click = fold }
+						)
 					end
 				else
 					B.group(group, "step:" .. idx, secs)
@@ -595,10 +583,11 @@ function M.run(ctx, rows, first, width)
 end
 
 --- A click on the chat's rows, or on the thinking pane's, which draws the
---- same ones: on a digest it opens the run under it or folds it back (with
---- the thinking pane drawn, shows the run there), on a step or a thought row
---- opens it (with the pane, shows its run), on an agent's row shows that
---- run, on a workflow's its view, on any other call's row expands that call,
+--- same ones: on a digest it opens the run under it or folds it back, closing
+--- what was opened in it (with the thinking pane drawn, shows the run there),
+--- on a step row opens one row per call and on a thought row unrolls it (with
+--- the pane, shows its run), on an agent's row shows that run, on a
+--- workflow's its view, on any other call's row opens or closes that call,
 --- and on the live thinking row opens or closes the thinking pane.
 ---@param ev zemi.WidgetClick
 function M.click(ev)
@@ -613,11 +602,11 @@ function M.click(ev)
 		local kind, id = ev.id:match("^(%a+):(-?%d+)$")
 		local n = tonumber(id)
 		if not n then return end
-		---@type integer?
-		local holder
+		---@type integer?, integer?
+		local holder, stop
 		for first, u in pairs(units) do
 			if first <= n and n < u.next then
-				holder = first
+				holder, stop = first, u.next
 				units[first] = nil
 			end
 		end
@@ -629,8 +618,19 @@ function M.click(ev)
 			M.inspect(kind == "turn" and n or n > 0 and holder or nil)
 			return
 		end
-		local set = kind == "turn" and unfolded or expanded
+		local set = kind == "turn" and unfolded
+			or kind == "step" and steps
+			or kind == "thought" and unrolled
+			or expanded
 		set[n] = not set[n] or nil
+		-- what was opened in a folded run has no row left to close it by
+		if kind == "turn" and not set[n] and stop then
+			for _, s in ipairs({ expanded, steps, unrolled }) do
+				for i = n, stop - 1 do
+					s[i] = nil
+				end
+			end
+		end
 	end
 end
 
@@ -647,7 +647,11 @@ zemi.ui.widget.add({
 	---@return boolean more
 	render = function(ctx)
 		local width = ctx.width or 80
-		M.pane, M.active = (ctx.regions or {}).thinking or false, ctx.agent_active or false
+		local pane = (ctx.regions or {}).thinking or false
+		-- thought text lives in the pane once it is drawn: turning it on closes
+		-- the unrolled thoughts, turning it off reopens none
+		if pane and not M.pane then unrolled = {} end
+		M.pane, M.active = pane, ctx.agent_active or false
 		local count = ctx.transcript_count or 0
 		if count == 0 and not ctx.agent_active then
 			return {} -- the splash widget fills the empty chat
@@ -656,15 +660,17 @@ zemi.ui.widget.add({
 		-- only the session's settled rows are cached.
 		local epoch = ctx.transcript_epoch or 0
 		if epoch ~= expanded_epoch then
-			expanded, unfolded, expanded_epoch, M.inspected = {}, {}, epoch, nil
+			expanded, steps, unrolled, unfolded, expanded_epoch, M.inspected = {}, {}, {}, {}, epoch, nil
 		end
 		-- The live turn's calls are keyed by negative index and the host restarts
 		-- that list every turn, so a shorter list means those keys now stand for
 		-- another turn's rows.
 		local ntools = #((ctx.agent or {}).tools or {})
 		if ntools < live_tools then
-			for n in pairs(expanded) do
-				if n < 0 then expanded[n] = nil end
+			for _, set in ipairs({ expanded, steps }) do
+				for n in pairs(set) do
+					if n < 0 then set[n] = nil end
+				end
 			end
 		end
 		live_tools = ntools

@@ -275,8 +275,16 @@ func TestChatExpandSettledRow(t *testing.T) {
 			t.Fatalf("a thought row off the rail or past the measure: %q", r)
 		}
 	}
+	if step := click("step:3"); !slices.Contains(step, "│ run make") || slices.Contains(step, "│ ran 1 command: make") {
+		t.Fatalf("the step does not open into its call:\n%s", strings.Join(step, "\n"))
+	}
 	if folded := click("turn:2"); !slices.Equal(folded, closed) {
 		t.Fatalf("a second click does not fold the run:\n%s", strings.Join(folded, "\n"))
+	}
+	// what was opened in the run has no row left to close it by, so folding
+	// closed it
+	if reopened := click("turn:2"); !slices.Equal(reopened, open) {
+		t.Fatalf("the run reopens with its step and thought still open:\n%s", strings.Join(reopened, "\n"))
 	}
 }
 
@@ -1130,7 +1138,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		return out[:len(out)-3] // the composer
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	live := []string{"▌ look around", "│ read 2 files 1.2s", "│ ✻ thought 8.0s", "│ list the data 1 cmd"}
+	live := []string{"▌ look around", "│ read 2 files 1.2s", "│ ✻ thought 8.0s", "│ list the data"}
 	if got := rows(); !slices.Equal(got, live) {
 		t.Fatalf("live rail:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(live, "\n"))
 	}
@@ -1203,14 +1211,18 @@ func TestReasoningPane(t *testing.T) {
 				t.Fatalf("a digest clicked:\n%s", frame)
 			}
 			if c.pane {
-				// the inspector reads from the top, a blank under its header,
-				// then the run's rail with the thought's text under its row
+				// the inspector reads from the top under its header, whose state
+				// word is a Title over a blank row that stays when the body
+				// scrolls, then the run's rail with the thought's text under its row
 				var pane []string
 				for row := range strings.SplitSeq(frame, "\r\n") {
 					pane = append(pane, strings.TrimRight(ansi.Cut(row, th.X, th.X+th.Width), " "))
 				}
-				if want := []string{"", " │ ✻ thought 1.2s", " │   where to start", " │ read a.go"}; !slices.Equal(pane[th.Y:th.Y+4], want) {
+				if want := []string{" turn · 1 file · thought 1.2s", "", " │ ✻ thought 1.2s", " │   where to start", " │ read a.go"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
 					t.Fatalf("the inspector:\n%s", strings.Join(pane, "\n"))
+				}
+				if i := slices.IndexFunc(app.lastRows[th.Y-2], func(s hostapi.Segment) bool { return s.Text == "turn" }); i < 0 || app.lastRows[th.Y-2][i].HL != "Title" {
+					t.Fatalf("the header's state word is not a Title: %+v", app.lastRows[th.Y-2])
 				}
 				clickAt(app, x+2, y)
 				app.renderSync(t)
@@ -1220,6 +1232,48 @@ func TestReasoningPane(t *testing.T) {
 			}
 		})
 	}
+	// thought text lives in the pane: turning it on closes a thought unrolled
+	// in the chat, its opened run staying open, and turning it off reopens none
+	t.Run("toggle", func(t *testing.T) {
+		app, host := bootAgentApp(t, 120, 30)
+		host.AppendMessage("user", "look around")
+		appendReasoning(host, "deep thought text", hostapi.TurnStat{ThoughtMS: 8000})
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
+		appendReply(host, "done", hostapi.TurnStat{})
+		chat := func() string {
+			app.renderSync(t)
+			frame := ansi.Strip(app.Frame())
+			th, drawn := app.LayoutRects()["thinking"]
+			var b strings.Builder
+			for row := range strings.SplitSeq(frame, "\r\n") {
+				if drawn {
+					row = ansi.Cut(row, 0, th.X-1)
+				}
+				b.WriteString(row + "\n")
+			}
+			return b.String()
+		}
+		for _, text := range []string{"· 1 file · thought 8.0s", "✻ thought 8.0s"} {
+			chat()
+			x, y := findCell(t, app, text)
+			clickAt(app, x+2, y)
+			for app.Pump() {
+			}
+		}
+		if got := chat(); !strings.Contains(got, "deep thought text") {
+			t.Fatalf("the thought did not unroll:\n%s", got)
+		}
+		for _, on := range []bool{true, false} {
+			if err := host.ToggleReasoning(); err != nil {
+				t.Fatal(err)
+			}
+			waitPrompt(t, app, func() bool { return host.Layout().Root.Children[1].Children[1].Children[1].Hidden != on })
+			chat()
+			if got := chat(); strings.Contains(got, "deep thought text") || !strings.Contains(got, "✻ thought 8.0s") {
+				t.Fatalf("pane %v: the thought should stay closed in its open run:\n%s", on, got)
+			}
+		}
+	})
 }
 
 // TestWorkingRowRetry: a waiting provider retry replaces the elapsed time
@@ -1467,7 +1521,8 @@ func TestPermissionChoices(t *testing.T) {
 }
 
 // TestFileRowClickIDs: an opened edit's rows, its diff rows included, carry
-// the id that folds it, and a step's look-around calls carry the step's.
+// the id that folds it, and a step's grouped row carries the step's, which
+// opens one row per call, each carrying its own.
 func TestFileRowClickIDs(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
 	host.AppendMessage("user", "look first")
@@ -1477,42 +1532,51 @@ func TestFileRowClickIDs(t *testing.T) {
 	appendReasoning(host, "how", hostapi.TurnStat{ThoughtMS: 6000})
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
 		{Name: "edit", Input: "/w/a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -7,2 +7,2 @@\n-old\n+new\n keep"},
-		{Name: "shell", Input: "go test", Status: "ok"},
+		{Name: "read", Input: "c.go", Status: "ok"},
+		{Name: "read", Input: "d.go", Status: "ok"},
 	}})
-	app.renderSync(t)
-	x, y := findCell(t, app, "edit /w/a.go")
-	clickAt(app, x, y)
-	app.renderSync(t)
-	_ = app.Frame() // compose fills lastRows
-	click := map[string]string{}
-	for _, row := range app.lastRows {
-		text := strings.Join(strings.Fields(hostapi.SegsText(row)), " ")
-		for _, s := range row {
-			if s.Click != "" {
-				click[text] = s.Click
+	for _, c := range []struct {
+		open string
+		want map[string]string
+	}{
+		{"edit /w/a.go", map[string]string{
+			"· 1 file":               "turn:2",
+			"│ ✻ thought 6.0s":       "thought:5",
+			"│ ✓ edit /w/a.go +1 -1": "tool:-1",
+			"│ 7 - old":              "tool:-1",
+			"│ 7 + new":              "tool:-1",
+			"│ 8 keep":               "tool:-1",
+			"│ read 2 files":         "step:-2",
+		}},
+		{"read 2 files", map[string]string{"│ read c.go": "tool:-2", "│ read d.go": "tool:-3"}},
+	} {
+		app.renderSync(t)
+		x, y := findCell(t, app, c.open)
+		clickAt(app, x, y)
+		app.renderSync(t)
+		_ = app.Frame() // compose fills lastRows
+		click := map[string]string{}
+		for _, row := range app.lastRows {
+			text := strings.Join(strings.Fields(hostapi.SegsText(row)), " ")
+			for _, s := range row {
+				if s.Click != "" {
+					click[text] = s.Click
+				}
 			}
 		}
-	}
-	for text, want := range map[string]string{
-		"· 1 file":                 "turn:2",
-		"│ ✻ thought 6.0s":         "thought:5",
-		"│ ✓ edit /w/a.go +1 -1":   "tool:-1",
-		"│ 7 - old":                "tool:-1",
-		"│ 7 + new":                "tool:-1",
-		"│ 8 keep":                 "tool:-1",
-		"│ ran 1 command: go test": "step:-2",
-	} {
-		if click[text] != want {
-			t.Errorf("%q = %q, want %q (rows: %v)", text, click[text], want, click)
+		for text, want := range c.want {
+			if click[text] != want {
+				t.Errorf("%q = %q, want %q (rows: %v)", text, click[text], want, click)
+			}
 		}
 	}
 }
 
-// TestToolRows: on the live rail a step's calls that only looked around are
-// one row, the label first and the counts after it, while edits and failures
-// keep their rows, every mark at column 2 behind the bar; a command shows the
-// model's description with the command under it, and --reasoning shows every
-// call.
+// TestToolRows: on the live rail a step's unlabelled calls that only looked
+// around are one row saying what they did, a labelled one its own row with
+// no command under it, while edits and failures keep their rows, every mark
+// at column 2 behind the bar; a kept command shows the model's description
+// with the command under it, and --reasoning shows every call.
 func TestToolRows(t *testing.T) {
 	longQ := "Delete the 8 leftover worktree-agent-* branches too? They are all merged into main, so their commits stay reachable and nothing is lost."
 	app, host := bootAgentApp(t, 100, 80)
@@ -1559,7 +1623,7 @@ func TestToolRows(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"│ vet the code", "2 files · 1 cmd", "│ searched for 1 pattern", "│ ⧗ build it", "│     running as job-1", "│ ⧗ start dev server", "│     running as job-2",
+		"│ read 2 files", "│ vet the code", "│ searched for 1 pattern", "│ ⧗ build it", "│     running as job-1", "│ ⧗ start dev server", "│     running as job-2",
 		"│     … 27 more lines", "│     l4", "│     l6", "│ ✓ edit a.go", "+1 -1", "│ ✗ run the unit tests", "│   ⎿ go test ./...", "│     --- FAIL: TestX",
 		"│   ⎿ cat > n.txt <<EOT first line EOT", "│ ✗ run printf a printf b",
 		"│ ■ write b.go", "│   ⎿ denied by you", "│   ⎿ approved, saved to /data/plans/s1.md", "│   ⎿ changes requested: use go",
@@ -1571,7 +1635,7 @@ func TestToolRows(t *testing.T) {
 			t.Fatalf("missing %q:\n%s", want, frame)
 		}
 	}
-	if strings.Contains(frame, "vet clean") || strings.Contains(frame, "7 - old") || strings.Contains(frame, "    e1") || strings.Index(frame, "… 27 more lines") > strings.Index(frame, "    l4") || strings.Contains(frame, "it asked because") || strings.Contains(frame, "Stop and wait") || strings.Contains(frame, "Implement it now") {
+	if strings.Contains(frame, "vet clean") || strings.Contains(frame, "go vet ./...") || strings.Contains(frame, "7 - old") || strings.Contains(frame, "    e1") || strings.Index(frame, "… 27 more lines") > strings.Index(frame, "    l4") || strings.Contains(frame, "it asked because") || strings.Contains(frame, "Stop and wait") || strings.Contains(frame, "Implement it now") {
 		t.Fatalf("command output shows only with --reasoning, a verdict row shows only the verdict:\n%s", frame)
 	}
 	// a call that only looked around reads as its step, a kept row keeps its
