@@ -52,7 +52,7 @@ function M.clock(t) return os.date("%H:%M", t) end
 function M.count(n, one, many) return n .. " " .. (n == 1 and one or many) end
 
 --- A pointer to what deals with something: the noun in Title (hl overrides
---- it, Danger for a failure), then the command or key in Comment ("errors
+--- it, Danger for a failure), then the command or key in Dim ("errors
 --- /errors", "↓ 25 ctrl+end"). Both segments click as click.
 ---@param noun string
 ---@param cmd string
@@ -60,7 +60,7 @@ function M.count(n, one, many) return n .. " " .. (n == 1 and one or many) end
 ---@param hl string?
 ---@return zemi.Line
 function M.hint(noun, cmd, click, hl)
-	return { { text = noun, hl = hl or "Title", click = click }, { text = " " .. cmd, hl = "Comment", click = click } }
+	return { { text = noun, hl = hl or "Title", click = click }, { text = " " .. cmd, hl = "Dim", click = click } }
 end
 
 --- The on_click of a widget whose click ids are a command and its
@@ -77,7 +77,7 @@ end
 --- The label a splash or exit row leads with, padded so the values line up.
 ---@param name string
 ---@return zemi.Segment
-function M.label(name) return { text = string.format("%-9s", name), hl = "Comment" } end
+function M.label(name) return { text = string.format("%-9s", name), hl = "Dim" } end
 
 --- What a tool call does, as its row and the working rule say it.
 ---@type table<string, string>

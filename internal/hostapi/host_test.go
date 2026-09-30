@@ -410,7 +410,7 @@ func TestRenderAllowlist(t *testing.T) {
 		src += fmt.Sprintf("zemi.ui.widget.add({ id = %q, region = \"header\", render = function() %s return {} end })\n", strconv.Itoa(i), c.call)
 	}
 	src += `zemi.ui.widget.add({ id = "clean", region = "header", render = function()
-		return {{{text = "a\27[31mb", hl = "Comment"}, {text = "chrome", hl = "Host:BtnSel"}}}
+		return {{{text = "a\27[31mb", hl = "Dim"}, {text = "chrome", hl = "Host:BtnSel"}}}
 	end })`
 	runUser(t, r, src)
 	widgets := map[string]*Widget{}
@@ -439,8 +439,8 @@ func TestRenderAllowlist(t *testing.T) {
 	if seg.Text != "ab" || strings.ContainsRune(seg.Text, '\x1b') {
 		t.Fatalf("segment text = %q (escape not sanitized)", seg.Text)
 	}
-	if seg.HL != "Comment" {
-		t.Fatalf("segment hl = %q, want Comment", seg.HL)
+	if seg.HL != "Dim" {
+		t.Fatalf("segment hl = %q, want Dim", seg.HL)
 	}
 }
 

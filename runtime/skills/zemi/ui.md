@@ -29,7 +29,7 @@ Rules for `render(ctx)`:
 - It is pure and fast: only read-only calls (`config.get`, `state.get`, `ui.width`, `session.messages`, ...) work in it, and not `zemi.fs` or a handle's `wait`; anything else raises, and it has about 10 ms. Slow work runs in a `zemi.job` or `zemi.timer` callback that sets a local the render reads; job, http and one-shot timer callbacks redraw when they return.
 - A widget redraws only when something else does. One that changes on its own calls `zemi.ui.redraw` from `zemi.timer.every`.
 - Returning the same line table again is free; never change one after returning it. With more work than fits, return what is ready and `true` as a second result, and zemi renders it again next frame (the chat fills a long session this way, 30 ms a render at most).
-- Colors are theme groups: `Accent`, `Dim`, `Rule`, `Title`, `Selected`, `Button`, `Literal`, `Danger`, `Warn`, `Ok`, and the rest in `theme.lua`.
+- Colors are theme groups: `Accent`, `Dim`, `Rule`, `Title`, `Literal`, `Danger`, `Warn`, `Ok`, and the rest in `theme.lua`, which link to one of them.
 - A replacement statusline widget keeps its click with `on_click = function(ev) zemi.command.run(ev.id) end`. A replacement chat keeps reasoning toggles (`zemi.ui.reasoning.toggle()`), agent rows (`zemi.command.run("agents", "view " .. row.run)`) and tool output folding (keyed by the row's `tool:<idx>` click id).
 
 ```lua

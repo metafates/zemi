@@ -216,7 +216,7 @@ func TestHoverTargets(t *testing.T) {
 		zemi.ui.widget.add({ id = "b", region = "statusline.left", priority = 91,
 			render = function() return {{{ text = "noclick", click = "go" }}} end })
 		zemi.ui.widget.add({ id = "c", region = "statusline.left", priority = 89, on_click = function() end,
-			render = function() return {{{ text = "quiet", hl = "Comment", click = "go", hover = false }}} end })`
+			render = function() return {{{ text = "quiet", hl = "Dim", click = "go", hover = false }}} end })`
 		if err := app.host.RT.ExecuteChunk(context.Background(), src, "w.lua", lua.OriginUser); err != nil {
 			t.Fatal(err)
 		}

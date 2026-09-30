@@ -136,8 +136,8 @@ zemi.ui.widget.add({
 		local left = text > 0 and math.floor((ctx.width - text) / 2) or ctx.width
 		local row = snail.rule(state, ctx.frame - since, left)
 		if text > 0 then
-			row[#row + 1] = { text = " " .. label, hl = "Comment", effect = "shimmer" }
-			row[#row + 1] = { text = after .. " ", hl = "Comment" }
+			row[#row + 1] = { text = " " .. label, hl = "Dim", effect = "shimmer" }
+			row[#row + 1] = { text = after .. " ", hl = "Dim" }
 			row[#row + 1] = {
 				text = string.rep("─", ctx.width - left - fmt.cells(label .. after) - 2),
 				hl = "Rule",

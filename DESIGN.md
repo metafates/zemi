@@ -1297,7 +1297,7 @@ stdin is closed unless the job asks for a pipe with `stdin = true`).
 zemi.ui.widget.add({
 	id = "clock", region = "statusline.right", priority = 10,
 	render = function(ctx)   -- ctx: { width, session, agent, time, ... }
-		return { { { text = ctx.time, hl = "Comment" } } }  -- lines of segments
+		return { { { text = ctx.time, hl = "Dim" } } }  -- lines of segments
 	end,
 })
 

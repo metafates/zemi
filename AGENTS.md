@@ -52,8 +52,8 @@ The UI has one identity in every theme: neutrals from its fg and bg, one accent 
 periwinkle), one literal for text quoted as written (whorl's apricot), the chat on the canvas and
 every box and the composer on the panel, square corners joined where two lines touch, and the `@`
 snail whose state lives in its eyes, plain eye color in every state.
-Widgets use the semantic theme groups (`Accent`, `Dim`, `Rule`, `Title`, `Selected`, `Button`,
-`Literal`, `Danger`, `Warn`, `Ok`). No state change may
+Widgets use the semantic theme groups (`Accent`, `Dim`, `Rule`, `Title`, `Literal`, `Danger`,
+`Warn`, `Ok`), which every other group links to. No state change may
 add or remove a row or shift text. Hover in the chat is minimal: body rows get none, a header
 only changes foreground. A popup covers only its own cells. Polished UI must be easy to build
 from Lua and ugly UI hard, so what Go draws comes from the layout and widget API rather than

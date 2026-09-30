@@ -1313,7 +1313,7 @@ func expandTabs(lines [][]hostapi.Segment) [][]hostapi.Segment {
 func (a *App) pills() []statusItem {
 	var out []statusItem
 	pill := func(noun, cmd string) {
-		out = append(out, statusItem{segs: []hostapi.Segment{{Text: noun, HL: "Danger", Click: cmd}, {Text: " /" + cmd, HL: "Comment", Click: cmd}}})
+		out = append(out, statusItem{segs: []hostapi.Segment{{Text: noun, HL: "Danger", Click: cmd}, {Text: " /" + cmd, HL: "Dim", Click: cmd}}})
 	}
 	// a failed boot step also leaves the runtime hot: one pill is enough
 	if a.bootErr != nil {
@@ -1388,7 +1388,7 @@ func joinItems(items []statusItem, reverse bool) []hostapi.Segment {
 	return out
 }
 
-var statusDot = hostapi.Segment{Text: " · ", HL: "Comment", NoCopy: true}
+var statusDot = hostapi.Segment{Text: " · ", HL: "Dim", NoCopy: true}
 
 // statusItems are the widgets of region that draw, by priority.
 func (a *App) statusItems(region string) []statusItem {

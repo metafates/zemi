@@ -134,7 +134,7 @@ zemi.ui.widget.add({
 		---@param spin boolean? Animate the mark with the spinner (live only).
 		local function add_reasoning(label, hint, text, tail, spin)
 			local head = { mark(spin and "spin" or "thought"), { text = label, hl = "AgentReason" } }
-			if hint then head[3] = { text = "  " .. hint, hl = "Comment" } end
+			if hint then head[3] = { text = "  " .. hint, hl = "Dim" } end
 			for _, sg in ipairs(head) do
 				sg.click = "reasoning"
 			end
@@ -264,7 +264,7 @@ zemi.ui.widget.add({
 			local function fit(text, room) return open and text or fmt.clip(text, room) end
 			local verb, rest = fmt.head(name, label, input)
 			-- a command is highlighted where it is what the row reads, the head and
-			-- an opened row; collapsed under its label it stays a Comment detail
+			-- an opened row; collapsed under its label it stays a Dim detail
 			local code = name == "shell"
 					and input ~= ""
 					and (open or label == "")
@@ -286,7 +286,7 @@ zemi.ui.widget.add({
 				head[3] = { text = fit(rest, width - fmt.cells(verb) - 12), hl = "Normal" }
 			end
 			if t.status == "run" and not asked and (t.elapsed or 0) >= 1 then
-				head[#head + 1] = { text = " · " .. fmt.duration(t.elapsed, true), hl = "Comment" }
+				head[#head + 1] = { text = " · " .. fmt.duration(t.elapsed, true), hl = "Dim" }
 			end
 			for _, sg in ipairs(head) do
 				sg.click = click
@@ -297,7 +297,7 @@ zemi.ui.widget.add({
 			---@param text string|zemi.Line
 			---@param hl string
 			local function detail(text, hl)
-				local row = { { text = corner and "  ⎿ " or "    ", hl = "Comment", copy = false } }
+				local row = { { text = corner and "  ⎿ " or "    ", hl = "Dim", copy = false } }
 				for _, sg in ipairs(type(text) == "table" and text or { { text = text, hl = hl } }) do
 					row[#row + 1] = { text = sg.text, hl = sg.hl, click = click, hover = false }
 				end
@@ -313,18 +313,18 @@ zemi.ui.widget.add({
 			if answered then
 				more = {}
 			elseif label ~= "" and input ~= "" then
-				detail(code and code[1] or fit(input, width - 6), "Comment")
+				detail(code and code[1] or fit(input, width - 6), "Dim")
 			end
 			for i, l in ipairs(more) do
-				detail(code and code[i + 1] or l, "Comment")
+				detail(code and code[i + 1] or l, "Dim")
 			end
-			if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), width - 6), "Comment") end
+			if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), width - 6), "Dim") end
 			local job = t.status == "bg"
 				and (
 					(t.output or ""):match("moved to the background as (job%-%d+)")
 					or (t.output or ""):match("^started (job%-%d+)")
 				)
-			if job then detail("running as " .. job, "Comment") end
+			if job then detail("running as " .. job, "Dim") end
 			-- File tools show what they changed as numbered, tinted rows, four
 			-- cells in; a diff row is body: no hover, but the click expands like the head
 			for _, row in ipairs(zemi.ui.diff(t.diff or "", width - 4)) do
@@ -371,7 +371,7 @@ zemi.ui.widget.add({
 					if i < first or i > last then hidden = hidden + (n and tonumber(n) or 1) end
 				end
 				local more = "… " .. fmt.count(hidden, "more line", "more lines")
-				if hidden > 0 and first > 1 then detail(more, "Comment") end
+				if hidden > 0 and first > 1 then detail(more, "Dim") end
 				for i = first, last do
 					local q, a, note = out[i]:match("^([^\t]*)\t([^\t]*)\t?(.*)$")
 					if answered and q then
@@ -383,10 +383,10 @@ zemi.ui.widget.add({
 						end
 						if note ~= "" then detail("note: " .. note, "Dim") end
 					else
-						detail(out[i], err and i == (tail and #out or 1) and "Danger" or "Comment")
+						detail(out[i], err and i == (tail and #out or 1) and "Danger" or "Dim")
 					end
 				end
-				if hidden > 0 and first == 1 then detail(more, "Comment") end
+				if hidden > 0 and first == 1 then detail(more, "Dim") end
 			end
 		end
 		-- rows from i on: a collapsed group or one call; returns the next index
@@ -469,14 +469,12 @@ zemi.ui.widget.add({
 					{ text = m.text, hl = "Normal" },
 				}
 				for _, ol in ipairs(util.split(m.detail or "", "\n")) do
-					lines[#lines + 1] = { { text = "  ", copy = false }, { text = ol, hl = "Comment" } }
+					lines[#lines + 1] = { { text = "  ", copy = false }, { text = ol, hl = "Dim" } }
 				end
 			elseif m.kind == "compact" or m.kind == "notice" then
 				gap("activity")
-				local row = { mark("note"), { text = m.text, hl = "Comment" } }
-				if (m.detail or "") ~= "" then
-					row[3] = { text = " (" .. m.detail .. ")", hl = "Comment", copy = false }
-				end
+				local row = { mark("note"), { text = m.text, hl = "Dim" } }
+				if (m.detail or "") ~= "" then row[3] = { text = " (" .. m.detail .. ")", hl = "Dim", copy = false } end
 				lines[#lines + 1] = row
 			elseif m.kind == "error" then
 				-- the headline, then the raw error as its detail
@@ -486,12 +484,12 @@ zemi.ui.widget.add({
 					if n == 1 then
 						lines[#lines + 1] = {
 							mark(cancelled and "stop" or "err"),
-							{ text = text, hl = cancelled and "Comment" or "Danger" },
+							{ text = text, hl = cancelled and "Dim" or "Danger" },
 						}
 					else
 						lines[#lines + 1] = {
-							{ text = n == 2 and "  ⎿ " or "    ", hl = "Comment", copy = false },
-							{ text = text, hl = "Comment" },
+							{ text = n == 2 and "  ⎿ " or "    ", hl = "Dim", copy = false },
+							{ text = text, hl = "Dim" },
 						}
 					end
 				end
@@ -511,7 +509,7 @@ zemi.ui.widget.add({
 				if #parts > 0 then
 					gap("stats")
 					lines[#lines + 1] =
-						{ { text = "  ", copy = false }, { text = table.concat(parts, " · "), hl = "Comment" } }
+						{ { text = "  ", copy = false }, { text = table.concat(parts, " · "), hl = "Dim" } }
 				end
 			end
 			return { lines = lines, next = last + 1, hint = hinted }
@@ -643,7 +641,7 @@ zemi.ui.widget.add({
 			-- a short meter of one cell per item
 			local head = {
 				{ text = "Todos ", hl = "TodoTitle" },
-				{ text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Comment" },
+				{ text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Dim" },
 			}
 			for n, td in ipairs(todos) do
 				if n > 12 then break end
@@ -679,19 +677,19 @@ zemi.ui.widget.add({
 					if done == hidden then
 						lines[#lines + 1] = {
 							{ text = "  ✓ ", hl = "TodoDone", copy = false },
-							{ text = done .. " done", hl = "Comment" },
+							{ text = done .. " done", hl = "Dim" },
 						}
 					else
 						lines[#lines + 1] = {
-							{ text = "  … ", hl = "Comment", copy = false },
-							{ text = fmt.count(hidden, "more todo", "more todos"), hl = "Comment" },
+							{ text = "  … ", hl = "Dim", copy = false },
+							{ text = fmt.count(hidden, "more todo", "more todos"), hl = "Dim" },
 						}
 					end
 					break
 				end
 				local mark, mhl, hl, item = "  ○ ", "Rule", "Normal", td.content
 				if td.status == "done" then
-					mark, mhl, hl = "  ✓ ", "TodoDone", "Comment"
+					mark, mhl, hl = "  ✓ ", "TodoDone", "Dim"
 				elseif td.status == "in_progress" then
 					mark, mhl, hl = "  ▸ ", "TodoMark", "TodoActive"
 					if (td.active_form or "") ~= "" then item = td.active_form end

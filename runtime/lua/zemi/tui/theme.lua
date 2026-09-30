@@ -22,9 +22,6 @@ local groups = {
 	Danger = { fg = "danger" },
 	Warn = { fg = "warn" },
 	Ok = { fg = "ok" },
-	Comment = { link = "Dim" },
-	Selected = { fg = "accent", bold = true },
-	Button = { fg = "accent" },
 
 	-- the snail's shell, zemi's mark: hl.set("Snail", ...) recolors it alone
 	Snail = { link = "Accent" },

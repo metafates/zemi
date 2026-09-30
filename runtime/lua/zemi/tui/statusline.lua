@@ -34,9 +34,9 @@ zemi.ui.widget.add({
 		local p = ctx.project or ctx.cwd or ""
 		if fmt.cells(p) > math.floor((ctx.width or 80) / 4) then p = p:match("([^/]+)/*$") or p end
 		---@type zemi.Line
-		local line = { { text = p, hl = "Comment", click = "projects" } }
+		local line = { { text = p, hl = "Dim", click = "projects" } }
 		if ctx.trusted == false then
-			line = p == "" and {} or { line[1], { text = " · ", hl = "Comment" } }
+			line = p == "" and {} or { line[1], { text = " · ", hl = "Dim" } }
 			for _, seg in ipairs(fmt.hint("untrusted", "/trust", "trust")) do
 				line[#line + 1] = seg
 			end
@@ -148,7 +148,7 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		if not ctx.quit_armed then return {} end
-		return { { { text = "ctrl+c quit", hl = "Comment" } } }
+		return { { { text = "ctrl+c quit", hl = "Dim" } } }
 	end,
 })
 
@@ -162,7 +162,7 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		if not ctx.view then return {} end
-		return { { { text = "viewing " .. ctx.view.agent, hl = "Title" }, { text = " · esc back", hl = "Comment" } } }
+		return { { { text = "viewing " .. ctx.view.agent, hl = "Title" }, { text = " · esc back", hl = "Dim" } } }
 	end,
 })
 
@@ -198,7 +198,7 @@ local right = {
 		8,
 		function(ctx)
 			if (ctx.model or "") == "" then return end
-			return ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Comment", "model"
+			return ctx.model .. ((ctx.effort or "") ~= "" and (" " .. ctx.effort) or ""), "Dim", "model"
 		end,
 	},
 	-- the shipped profile goes unsaid
@@ -207,7 +207,7 @@ local right = {
 		20,
 		function(ctx)
 			if ctx.profile_read_only then return ctx.profile, "ModePlan", "profile" end
-			if ctx.profile ~= "default" then return ctx.profile, "Comment", "profile" end
+			if ctx.profile ~= "default" then return ctx.profile, "Dim", "profile" end
 		end,
 	},
 	-- how much of the window is in use, not the running session total: the
@@ -253,7 +253,7 @@ for _, part in ipairs(right) do
 		render = function(ctx)
 			local text, hl, click = part[3](ctx)
 			if not text then return {} end
-			return { { { text = text, hl = hl or "Comment", click = click or "usage" } } }
+			return { { { text = text, hl = hl or "Dim", click = click or "usage" } } }
 		end,
 	})
 end

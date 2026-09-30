@@ -387,7 +387,7 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 	// with its own glyph, since it never reaches the model.
 	prefix, promptHL := "> ", map[string]string{"auto": "ModeAuto", "yolo": "ModeYolo"}[a.modeBase()]
 	if promptHL == "" {
-		promptHL = "Comment"
+		promptHL = "Dim"
 	}
 	if glyph, hl, _ := a.draftMode(); glyph != "" && len(rows) > 0 && len(rows[0]) > 0 {
 		// the glyph stands for the draft's own first character, so the row leaves it out
@@ -401,7 +401,7 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 	for i := start; i < len(rows) && len(out) < composerMaxRows; i++ {
 		// a gutter down the rows after the first, brighter than the frame's
 		// own rule so the two do not read as a double border
-		p, hl := "│ ", "Comment"
+		p, hl := "│ ", "Dim"
 		if i == 0 {
 			p, hl = prefix, promptHL
 		}
@@ -427,9 +427,9 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 	}
 	// the lines below the view, else those above it: the side the cursor left
 	if below := len(rows) - start - len(out); below > 0 {
-		out = append(out, []hostapi.Segment{{Text: "  " + hostapi.MoreLines(below), HL: "Comment", NoCopy: true}})
+		out = append(out, []hostapi.Segment{{Text: "  " + hostapi.MoreLines(below), HL: "Dim", NoCopy: true}})
 	} else if start > 0 {
-		out = append(out, []hostapi.Segment{{Text: "  " + hostapi.MoreLines(start) + " above", HL: "Comment", NoCopy: true}})
+		out = append(out, []hostapi.Segment{{Text: "  " + hostapi.MoreLines(start) + " above", HL: "Dim", NoCopy: true}})
 	}
 	return out
 }
@@ -504,7 +504,7 @@ func (c *composerState) inputRow(width int) []hostapi.Segment {
 	if over := 2 + hostapi.SegsWidth(segs[:2]) - (width - 1); over > 0 {
 		segs = dropCells(segs, over)
 	}
-	return padSegs(append([]hostapi.Segment{{Text: "> ", HL: "Comment", NoCopy: true}}, segs...), 40)
+	return padSegs(append([]hostapi.Segment{{Text: "> ", HL: "Dim", NoCopy: true}}, segs...), 40)
 }
 
 // cursorSegs draws r with a block cursor on the rune at cursor, or on a
