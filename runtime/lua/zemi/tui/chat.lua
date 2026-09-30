@@ -302,7 +302,8 @@ local function builder(ctx, width)
 		if t.status == "run" and not asked and (t.elapsed or 0) >= 1 then
 			parts[#parts + 1] = fmt.duration(t.elapsed, true)
 		end
-		if o.secs and o.secs >= 0.05 then parts[#parts + 1] = fmt.duration(o.secs) end
+		-- the thought before the call, once its own clock stops
+		if o.secs and o.secs >= 0.05 and t.status ~= "run" then parts[#parts + 1] = fmt.duration(o.secs) end
 		local suffix = table.concat(parts, " · ")
 		local verb, rest = fmt.head(name, label, input)
 		verb = fmt.lower(verb)
