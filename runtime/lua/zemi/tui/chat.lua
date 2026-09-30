@@ -279,7 +279,7 @@ local function builder(ctx, width)
 	-- Open, a row shows the whole command, the diff and a command's output.
 	---@param t zemi.tui.Tool
 	---@param idx integer Transcript index, negative for a live-turn call.
-	---@param o { open: boolean?, rail: boolean?, secs: number?, click: string? }
+	---@param o { open: boolean?, rail: boolean?, nest: boolean?, secs: number?, click: string? }
 	function B.tool(t, idx, o)
 		local name = fmt.tool(t)
 		local open = o.open or expanded[idx] or false
@@ -289,8 +289,10 @@ local function builder(ctx, width)
 		-- on the rail a row's mark stands at column 2, and a running one reads
 		-- Dim beside its spinner until it ends
 		local barred = o.rail or false
+		-- a call nested under its step's row sits two cells in behind the bar
+		local pad = o.nest and "  " or nil
 		local dim = barred and not asked and MARK_OF[t.status] == nil
-		local inner = width - (barred and 2 or 0)
+		local inner = width - (barred and 2 or 0) - (pad and 2 or 0)
 		local input = relpath(t.text or t.input or "")
 		-- a collapsed row is one line; an open one keeps a heredoc's lines
 		---@type string[]
@@ -350,9 +352,9 @@ local function builder(ctx, width)
 		end
 		-- on the rail an ok look-around call has no mark, as its step's row
 		if barred and fmt.looks(t) then
-			head[1] = bar()
+			head[1] = bar(pad)
 		elseif barred then
-			table.insert(head, 1, bar())
+			table.insert(head, 1, bar(pad))
 		end
 		local first = #B.lines + 1
 		push(suffixed(head, suffix, click))
@@ -457,7 +459,7 @@ local function builder(ctx, width)
 		end
 		if barred then
 			for n = first + 1, #B.lines do
-				table.insert(B.lines[n], 1, bar())
+				table.insert(B.lines[n], 1, bar(pad))
 			end
 		end
 	end
@@ -524,17 +526,14 @@ local function builder(ctx, width)
 				while i + #group <= last and grouped(list[i + #group]) do
 					group[#group + 1] = list[i + #group]
 				end
+				-- the step's row heads its calls, nested two cells in, and its
+				-- click closes them again
+				B.group(group, "step:" .. idx, secs)
 				if o.open or steps[idx] then
 					for k, g in ipairs(group) do
 						local n = i + k - 1
-						B.tool(
-							g,
-							o.live and -n or n,
-							{ open = o.open, rail = true, secs = k == 1 and secs or nil, click = fold }
-						)
+						B.tool(g, o.live and -n or n, { open = o.open, rail = true, nest = true, click = fold })
 					end
-				else
-					B.group(group, "step:" .. idx, secs)
 				end
 				secs = nil
 				i = i + #group
@@ -549,11 +548,11 @@ local function builder(ctx, width)
 end
 
 --- Show a run in the thinking pane, by its first transcript index; the same
---- run again, or nil, goes back to the live turn. A run and an idle pane read
+--- run again, or nil, goes back to the live turn (exact skips that toggle). A run and an idle pane read
 --- from the top, a turn that runs follows its tail.
 ---@param first integer?
-function M.inspect(first)
-	if first == M.inspected then first = nil end
+function M.inspect(first, exact)
+	if not exact and first == M.inspected then first = nil end
 	M.inspected = first
 	zemi.ui.scroll((first or not M.active) and "top" or "bottom", "thinking")
 end
@@ -585,9 +584,9 @@ end
 
 --- A click on the chat's rows, or on the thinking pane's, which draws the
 --- same ones: on a digest it opens the run under it or folds it back, closing
---- what was opened in it (with the thinking pane drawn, shows the run there),
---- on a step row opens one row per call and on a thought row unrolls it (with
---- the pane, shows its run), on an agent's row shows that run, on a
+--- what was opened in it (with the thinking pane drawn, the opened run reads
+--- there too), on a step row opens its calls nested under it or closes them,
+--- on a thought row unrolls it (with the pane, shows its run), on an agent's row shows that run, on a
 --- workflow's its view, on any other call's row opens or closes that call,
 --- and on the live thinking row opens or closes the thinking pane.
 ---@param ev zemi.WidgetClick
@@ -612,11 +611,10 @@ function M.click(ev)
 			end
 		end
 		settled = nil
-		-- with the pane, a digest shows its run there, and a step or a
-		-- thought the run it is in (a live one the live turn); an opened
-		-- digest folds back in place
-		if M.pane and kind ~= "tool" and not (kind == "turn" and unfolded[n]) then
-			M.inspect(kind == "turn" and n or n > 0 and holder or nil)
+		-- with the pane, a thought's text reads there: its row shows the run it
+		-- is in (a live one the live turn) and unrolls nothing
+		if M.pane and kind == "thought" then
+			M.inspect(n > 0 and holder or nil)
 			return
 		end
 		local set = kind == "turn" and unfolded
@@ -624,6 +622,9 @@ function M.click(ev)
 			or kind == "thought" and unrolled
 			or expanded
 		set[n] = not set[n] or nil
+		-- a digest opens or folds its run in place either way; with the pane
+		-- the opened run also reads there, and folding it goes back to live
+		if M.pane and kind == "turn" then M.inspect(set[n] and n or nil, true) end
 		-- what was opened in a folded run has no row left to close it by
 		if kind == "turn" and not set[n] and stop then
 			for _, s in ipairs({ expanded, steps, unrolled }) do

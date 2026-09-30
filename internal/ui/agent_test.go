@@ -275,8 +275,12 @@ func TestChatExpandSettledRow(t *testing.T) {
 			t.Fatalf("a thought row off the rail or past the measure: %q", r)
 		}
 	}
-	if step := click("step:3"); !slices.Contains(step, "│ run make") || slices.Contains(step, "│ ran 1 command: make") {
-		t.Fatalf("the step does not open into its call:\n%s", strings.Join(step, "\n"))
+	// a step opens its calls nested under its own row, which stays as their head
+	if step := click("step:3"); !slices.Contains(step, "│   run make") || !slices.Contains(step, "│ ran 1 command: make") {
+		t.Fatalf("the step does not open its call under it:\n%s", strings.Join(step, "\n"))
+	}
+	if step := click("step:3"); slices.Contains(step, "│   run make") {
+		t.Fatalf("a second click does not close the step:\n%s", strings.Join(step, "\n"))
 	}
 	if folded := click("turn:2"); !slices.Equal(folded, closed) {
 		t.Fatalf("a second click does not fold the run:\n%s", strings.Join(folded, "\n"))
@@ -1208,8 +1212,9 @@ func TestReasoningPane(t *testing.T) {
 			}
 			app.renderSync(t)
 			frame = ansi.Strip(app.Frame())
+			// the run opens in the chat either way; with the pane it reads there too
 			if strings.Contains(frame, "turn · 1 file · thought 1.2s") != c.pane || strings.Contains(frame, "where to start") != c.pane ||
-				strings.Contains(chat(frame), "│ read 1 file") == c.pane || !strings.Contains(chat(frame), "· 1 file · thought 1.2s") {
+				!strings.Contains(chat(frame), "│ read 1 file") || !strings.Contains(chat(frame), "· 1 file · thought 1.2s") {
 				t.Fatalf("a digest clicked:\n%s", frame)
 			}
 			if c.pane {
@@ -1221,16 +1226,21 @@ func TestReasoningPane(t *testing.T) {
 				for row := range strings.SplitSeq(frame, "\r\n") {
 					pane = append(pane, strings.TrimRight(ansi.Cut(row, th.X, th.X+th.Width), " "))
 				}
-				if want := []string{"  turn · 1 file · thought 1.2s", "", "  ✻ thought 1.2s", "  where to start", "  read a.go"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
+				if want := []string{"  turn · 1 file · thought 1.2s", "", "  ✻ thought 1.2s", "  where to start", "  read 1 file"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
 					t.Fatalf("the inspector:\n%s", strings.Join(pane, "\n"))
 				}
 				if i := slices.IndexFunc(app.lastRows[th.Y-2], func(s hostapi.Segment) bool { return s.Text == "turn" }); i < 0 || app.lastRows[th.Y-2][i].HL != "Title" {
 					t.Fatalf("the header's state word is not a Title: %+v", app.lastRows[th.Y-2])
 				}
+				// the second click folds the run and returns the pane to live (the
+				// opened rows moved the bottom-anchored digest up, so find it again)
+				x, y = findCell(t, app, "· 1 file · thought 1.2s")
 				clickAt(app, x+2, y)
+				for app.Pump() {
+				}
 				app.renderSync(t)
-				if frame = ansi.Strip(app.Frame()); strings.Contains(frame, "turn · ") || strings.Contains(frame, "│ read a.go") {
-					t.Fatalf("the digest clicked again stays inspected:\n%s", frame)
+				if frame = ansi.Strip(app.Frame()); strings.Contains(frame, "turn · ") || strings.Contains(chat(frame), "│ read 1 file") {
+					t.Fatalf("the digest clicked again stays open:\n%s", frame)
 				}
 			}
 		})
@@ -1655,7 +1665,8 @@ func TestToolRows(t *testing.T) {
 		t.Fatalf("verbs: read %q, edit %q, compile %q", hl["read"], hl["edit"], hl["compile"])
 	}
 	frame = printedChat(t, host, 98)
-	if !strings.Contains(frame, "│ read b.go") || strings.Contains(frame, "2 files") || !strings.Contains(frame, "vet clean") || !strings.Contains(frame, "7 + new") {
+	// every call, nested under its step's row
+	if !strings.Contains(frame, "│   read b.go") || !strings.Contains(frame, "│ read 2 files") || !strings.Contains(frame, "vet clean") || !strings.Contains(frame, "7 + new") {
 		t.Fatalf("--reasoning must list every call:\n%s", frame)
 	}
 	// an open row keeps a multi-line command's lines, each a detail row
@@ -1667,13 +1678,14 @@ func TestToolRows(t *testing.T) {
 			t.Fatalf("%q not under %q:\n%s", c.next, c.first, frame)
 		}
 	}
-	// an expanded long input wraps instead of ending in an ellipsis
+	// an expanded long input wraps instead of ending in an ellipsis (the step's
+	// own row above it says "1 pattern" once)
 	var words int
 	for row := range strings.SplitSeq(frame, "\r\n") {
 		words += strings.Count(row, "pattern")
 	}
-	if words != 30 {
-		t.Fatalf("expanded input shows %d of 30 words:\n%s", words, frame)
+	if words != 31 {
+		t.Fatalf("expanded input shows %d of 30 words:\n%s", words-1, frame)
 	}
 }
 
