@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -48,22 +49,31 @@ func TestTerminalBackground(t *testing.T) {
 	}
 }
 
-// TestRuleAt16Colors: at 16 colors a rule, the host frame and the dim
-// behind a popup take bright black, never the dark canvas's black, and so
-// do a near-black group on that canvas and a diff's number, never red on its
-// red row; at 256 each keeps its own.
-func TestRuleAt16Colors(t *testing.T) {
+// TestSurfacesAt16Colors: at 16 colors whorl's canvas, panel and band are
+// greys by lightness (the stock table paints a dark tint like dracula's blue),
+// and a fg that would land on its own color steps to the grey past it: a
+// near-black group on the black canvas, dim on the band. A diff's number
+// keeps its red on the grey row. At 256 each keeps a color of its own.
+func TestSurfacesAt16Colors(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 24)
 	app.host.Themes.SetHL("NearBlack", hostapi.HLSpec{Fg: "#202020"})
 	for _, c := range []struct {
 		profile colorprofile.Profile
-		bright  bool
-	}{{colorprofile.ANSI, true}, {colorprofile.ANSI256, false}} {
+		hl      string
+		fill    hostapi.Fill
+		fg, bg  color.Color
+	}{
+		{colorprofile.ANSI, "Rule", hostapi.FillAuto, ansi.BrightBlack, ansi.Black},
+		{colorprofile.ANSI, "Host:Dim", hostapi.FillAuto, ansi.BrightBlack, ansi.Black},
+		{colorprofile.ANSI, "NearBlack", hostapi.FillAuto, ansi.BrightBlack, ansi.Black},
+		{colorprofile.ANSI, "Dim", hostapi.FillBand, ansi.White, ansi.BrightBlack},
+		{colorprofile.ANSI, "Host:DiffDelNum", hostapi.FillAuto, ansi.BrightRed, ansi.Black},
+		{colorprofile.ANSI256, "Rule", hostapi.FillAuto, ansi.IndexedColor(239), ansi.IndexedColor(234)},
+		{colorprofile.ANSI256, "Host:Value", hostapi.FillPanel, ansi.IndexedColor(254), ansi.IndexedColor(235)},
+	} {
 		app.Update(tea.ColorProfileMsg{Profile: c.profile})
-		for _, hl := range []string{"Rule", "Host:Rule", "Host:Dim", "NearBlack", "DiffDelNum", "Host:DiffDelNum"} {
-			if got := app.segStyle(hl, "", hostapi.FillAuto).Fg == ansi.BrightBlack; got != c.bright {
-				t.Errorf("%v %s: bright black %v, want %v", c.profile, hl, got, c.bright)
-			}
+		if st := app.segStyle(c.hl, "", c.fill); st.Fg != c.fg || st.Bg != c.bg {
+			t.Errorf("%v %s: %v on %v, want %v on %v", c.profile, c.hl, st.Fg, st.Bg, c.fg, c.bg)
 		}
 	}
 }

@@ -3,11 +3,9 @@ package ui
 import (
 	"image/color"
 	"math"
-	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
 
@@ -39,9 +37,9 @@ func TestANSI16(t *testing.T) {
 }
 
 // TestThemes: every shipped theme keeps each text role over its contrast
-// floor on bg, panel and band and the literal apart in hue from warn and danger, whorl its
-// diff tints apart at 256 colors, and the Go chrome draws in the colors of
-// the groups it stands for.
+// floor on bg, panel and band, the literal apart in hue from warn and
+// danger, its surfaces, rule and dim apart and danger a hue at 256 colors,
+// and the Go chrome draws in the colors of the groups it stands for.
 func TestThemes(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	floors := map[string]float64{"fg": 7, "dim": 4.5, "accent": 4.5, "literal": 4.5, "ok": 4.5, "danger": 4.5, "warn": 3.5}
@@ -88,8 +86,13 @@ func TestThemes(t *testing.T) {
 				t.Errorf("%s: literal %s is %.0f degrees from %s", th.Name, hostapi.Hex(th.Palette.Literal), d, other)
 			}
 		}
-		if strings.HasPrefix(th.Name, "whorl") && colorprofile.ANSI256.Convert(th.Palette.AddBg) == colorprofile.ANSI256.Convert(th.Palette.DelBg) {
-			t.Errorf("%s: an added and a removed row are one tint at 256 colors", th.Name)
+		for _, p := range [][2]string{{"band", "panel"}, {"rule", "panel"}, {"fg", "dim"}} {
+			if ansi256(th.Color(p[0])) == ansi256(th.Color(p[1])) {
+				t.Errorf("%s: %s and %s are one color at 256 colors", th.Name, p[0], p[1])
+			}
+		}
+		if e := xterm[ansi256(th.Palette.Danger).(ansi.IndexedColor)]; math.Hypot(e[1], e[2]) < 1e-3 {
+			t.Errorf("%s: danger is a grey at 256 colors", th.Name)
 		}
 		for _, p := range chrome {
 			h, g := app.hlStyle(p[0]), app.hlStyle(p[1])

@@ -125,7 +125,7 @@ type App struct {
 	keySeq     []string         // keys of a bound sequence typed so far
 	keySeqAt   time.Time
 	armed      armed                // a key whose second press acts (ctrl+c quit, esc interrupt)
-	colors     colorprofile.Profile // what the terminal can show; bubbletea downsamples cells, not OSC 11
+	colors     colorprofile.Profile // what the terminal can show: segStyle quantizes cells to it, never OSC 11
 
 	// an idle recap: when one is due (zero for none), and the stop of one in flight
 	recapAt   time.Time
@@ -1483,18 +1483,20 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill) uv.Style {
 		case hostapi.FillAuto, hostapi.FillCanvas:
 		}
 	}
-	if a.colors != colorprofile.ANSI {
-		return st
-	}
-	st.Fg = ansi16(st.Fg)
-	fg, ok := st.Fg.(ansi.BasicColor)
-	if !ok || st.Bg == nil {
-		return st
-	}
-	// a fg on its own color would vanish: near black on a black canvas, or a
-	// diff's red number on its red row, since a hue and its bright twin read as one
-	if bg, ok := a.colors.Convert(st.Bg).(ansi.BasicColor); ok && (fg == bg || fg%8 == bg%8 && fg%8 != ansi.Black && fg%8 != ansi.White) {
-		st.Fg = ansi.BrightBlack
+	switch a.colors {
+	case colorprofile.ANSI256:
+		st.Fg, st.Bg = ansi256(st.Fg), ansi256(st.Bg)
+	case colorprofile.ANSI:
+		fg, bg := ansi16(st.Fg), surface16(st.Bg)
+		// a fg on its own color would vanish: dim on a band both bright
+		// black, or red on a group's red fill, since a hue and its bright
+		// twin read as one
+		f, ok1 := fg.(ansi.BasicColor)
+		b, ok2 := bg.(ansi.BasicColor)
+		if ok1 && ok2 && (f == b || f%8 == b%8 && f%8 != ansi.Black && f%8 != ansi.White) {
+			fg = apart(st.Fg, st.Bg, b)
+		}
+		st.Fg, st.Bg = fg, bg
 	}
 	return st
 }

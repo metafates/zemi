@@ -97,10 +97,9 @@ var ansiRoles = [...]struct {
 
 // mixes derive the rest, each role mixed from one toward another in OkLab.
 // The band tints the panel, since only a box draws it.
-// NOTE: on a greyish bg (nord, one, solarized) the two faint diff tints
-// round to one grey at 256 colors; the diff's colored numbers still tell
-// the rows apart. Tints strong enough to survive the rounding look loud in
-// true color.
+// NOTE: the two faint diff tints round to one grey at 256 colors on most
+// themes; the diff's colored numbers still tell the rows apart. Tints
+// strong enough to survive the rounding look loud in true color.
 var mixes = [...]struct {
 	role, from, to string
 	t              float64

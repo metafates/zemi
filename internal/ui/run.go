@@ -30,7 +30,10 @@ func printLines(w io.Writer, t themeResolver, p colorprofile.Profile, lines [][]
 			if sameColor(st.Fg, normal) {
 				st.Fg = nil
 			}
-			if p == colorprofile.ANSI {
+			switch p {
+			case colorprofile.ANSI256:
+				st.Fg = ansi256(st.Fg)
+			case colorprofile.ANSI:
 				st.Fg = ansi16(st.Fg)
 			}
 			st = uv.ConvertStyle(st, p)

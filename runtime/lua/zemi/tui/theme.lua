@@ -106,10 +106,9 @@ zemi.ui.theme.add("whorl-light", {
 	accent = "#5458c8",
 	literal = "#ab5819",
 	ok = "#007f52",
-	-- NOTE: 3.85:1 on white (APCA Lc 64); a darker amber reads as danger to
-	-- deuteranopes.
+	-- NOTE: 3.85:1 on white (APCA Lc 64), which the 3.5 floor on the band
+	-- darkens to 4.8:1 on bg; a darker amber reads as danger to deuteranopes.
 	warn = "#a97500",
-	-- #c92f30 would round to grey at 256 colors
 	danger = "#c72d2e",
 })
 

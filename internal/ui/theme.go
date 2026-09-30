@@ -2,6 +2,8 @@ package ui
 
 import (
 	"image/color"
+	"math"
+	"slices"
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -216,6 +218,90 @@ func (t themeResolver) sgrStyle(params string) uv.Style {
 	return st
 }
 
+// xterm is the OkLab color of each of the 240 fixed 256-color entries.
+var xterm = func() (t [256][3]float64) {
+	for i := 16; i < 256; i++ {
+		c, _ := colorful.MakeColor(ansi.IndexedColor(i))
+		t[i][0], t[i][1], t[i][2] = c.OkLab()
+	}
+	return t
+}()
+
+// ansi256 is what a 256-color terminal shows: a near grey the neutral entry
+// nearest in lightness, anything else the entry nearest in OkLab. The stock
+// table picks by HSLuv, which turns a near grey lavender, navy or teal.
+func ansi256(c color.Color) color.Color {
+	switch c.(type) {
+	case nil, ansi.BasicColor, ansi.IndexedColor:
+		return c
+	}
+	col, ok := colorful.MakeColor(c)
+	if !ok {
+		return c
+	}
+	l, a, b := col.OkLab()
+	grey := math.Hypot(a, b) < 0.03
+	best, dist := 16, math.Inf(1)
+	for i := 16; i < 256; i++ {
+		e := xterm[i]
+		d := (l - e[0]) * (l - e[0])
+		switch {
+		case !grey:
+			d += (a-e[1])*(a-e[1]) + (b-e[2])*(b-e[2])
+		case math.Hypot(e[1], e[2]) > 1e-3:
+			continue
+		}
+		if d < dist {
+			best, dist = i, d
+		}
+	}
+	return ansi.IndexedColor(best)
+}
+
+// greys16 are the 16-color greys, dark to light.
+var greys16 = [...]ansi.BasicColor{ansi.Black, ansi.BrightBlack, ansi.White, ansi.BrightWhite}
+
+// grey16 is the 16-color grey for an OKLCH lightness.
+func grey16(l float64) ansi.BasicColor {
+	switch {
+	case l < 0.3:
+		return ansi.Black
+	case l < 0.72:
+		return ansi.BrightBlack
+	case l < 0.93:
+		return ansi.White
+	}
+	return ansi.BrightWhite
+}
+
+// surface16 is what a 16-color terminal shows for a background: a grey by
+// its lightness, since the stock table paints a dark tint blue or cyan.
+func surface16(c color.Color) color.Color {
+	if _, basic := c.(ansi.BasicColor); basic || c == nil {
+		return c
+	}
+	col, ok := colorful.MakeColor(c)
+	if !ok {
+		return c
+	}
+	l, _, _ := col.OkLch()
+	return grey16(l)
+}
+
+// apart is the grey next to bg16 on the side fg sits of bg, for a
+// foreground that would vanish on it; a hue bg stands in for the grey
+// it is near.
+func apart(fg, bg color.Color, bg16 ansi.BasicColor) ansi.BasicColor {
+	i := slices.Index(greys16[:], bg16)
+	if i < 0 {
+		i = 1 + int(bg16/8)
+	}
+	if luma(fg) > luma(bg) && i < len(greys16)-1 || i == 0 {
+		return greys16[i+1]
+	}
+	return greys16[i-1]
+}
+
 // ansi16 is what a 16-color terminal shows for a foreground: a grey by its
 // lightness, a hue by the ANSI hue its OKLCH hue falls in, bright when light.
 // The stock 256-to-16 table draws amber and apricot red and splits greys
@@ -230,15 +316,7 @@ func ansi16(c color.Color) color.Color {
 	}
 	l, ch, h := col.OkLch()
 	if ch < 0.04 {
-		switch {
-		case l < 0.3:
-			return ansi.Black
-		case l < 0.72:
-			return ansi.BrightBlack
-		case l < 0.93:
-			return ansi.White
-		}
-		return ansi.BrightWhite
+		return grey16(l)
 	}
 	for _, r := range [...]struct {
 		upTo float64
