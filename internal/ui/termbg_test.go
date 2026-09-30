@@ -67,7 +67,7 @@ func TestSurfacesAt16Colors(t *testing.T) {
 		{colorprofile.ANSI, "Host:Dim", hostapi.FillAuto, ansi.BrightBlack, ansi.Black},
 		{colorprofile.ANSI, "NearBlack", hostapi.FillAuto, ansi.BrightBlack, ansi.Black},
 		{colorprofile.ANSI, "Dim", hostapi.FillBand, ansi.White, ansi.BrightBlack},
-		{colorprofile.ANSI, "Host:DiffDelNum", hostapi.FillAuto, ansi.BrightRed, ansi.Black},
+		{colorprofile.ANSI, "Host:DiffDelNum", hostapi.FillAuto, ansi.BrightRed, ansi.BrightBlack},
 		{colorprofile.ANSI256, "Rule", hostapi.FillAuto, ansi.IndexedColor(239), ansi.IndexedColor(234)},
 		{colorprofile.ANSI256, "Host:Value", hostapi.FillPanel, ansi.IndexedColor(254), ansi.IndexedColor(235)},
 	} {

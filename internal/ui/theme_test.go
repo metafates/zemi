@@ -3,6 +3,7 @@ package ui
 import (
 	"image/color"
 	"math"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -38,8 +39,9 @@ func TestANSI16(t *testing.T) {
 
 // TestThemes: every shipped theme keeps each text role over its contrast
 // floor on bg, panel and band, the literal apart in hue from warn and
-// danger, its surfaces, rule and dim apart and danger a hue at 256 colors,
-// and the Go chrome draws in the colors of the groups it stands for.
+// danger, its surfaces, rule and dim apart, danger a hue and whorl's diff
+// tints apart at 256 colors, and the Go chrome draws in the colors of the
+// groups it stands for.
 func TestThemes(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	floors := map[string]float64{"fg": 7, "dim": 4.5, "accent": 4.5, "literal": 4.5, "ok": 4.5, "danger": 4.5, "warn": 3.5}
@@ -90,6 +92,9 @@ func TestThemes(t *testing.T) {
 			if ansi256(th.Color(p[0])) == ansi256(th.Color(p[1])) {
 				t.Errorf("%s: %s and %s are one color at 256 colors", th.Name, p[0], p[1])
 			}
+		}
+		if strings.HasPrefix(th.Name, "whorl") && ansi256(th.Palette.AddBg) == ansi256(th.Palette.DelBg) {
+			t.Errorf("%s: an added and a removed row are one color at 256 colors", th.Name)
 		}
 		if e := xterm[ansi256(th.Palette.Danger).(ansi.IndexedColor)]; math.Hypot(e[1], e[2]) < 1e-3 {
 			t.Errorf("%s: danger is a grey at 256 colors", th.Name)

@@ -97,9 +97,10 @@ var ansiRoles = [...]struct {
 
 // mixes derive the rest, each role mixed from one toward another in OkLab.
 // The band tints the panel, since only a box draws it.
-// NOTE: the two faint diff tints round to one grey at 256 colors on most
-// themes; the diff's colored numbers still tell the rows apart. Tints
-// strong enough to survive the rounding look loud in true color.
+// The diff tints are mixed far enough to keep an OKLCH chroma over the
+// 256-color quantizer's grey cut (0.03) on whorl and whorl-light.
+// NOTE: on a greyish bg they may still round to one grey at 256 colors
+// (everforest, kanagawa, one); the diff's colored numbers tell the rows apart.
 var mixes = [...]struct {
 	role, from, to string
 	t              float64
@@ -108,8 +109,8 @@ var mixes = [...]struct {
 	{"rule", "bg", "fg", 0.28},
 	{"panel", "bg", "fg", 0.05},
 	{"band", "panel", "accent", 0.16},
-	{"addbg", "bg", "ok", 0.16},
-	{"delbg", "bg", "danger", 0.16},
+	{"addbg", "bg", "ok", 0.28},
+	{"delbg", "bg", "danger", 0.28},
 }
 
 // surfaceSpan is how far in OKLCH lightness panel and band may sit from bg,
