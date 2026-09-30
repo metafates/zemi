@@ -170,6 +170,7 @@ func TestWrapSegs(t *testing.T) {
 		{"segments wrap apart", []Segment{{Text: "one two "}, {Text: "three", HL: "B"}}, 7, "one |two |three", ""},
 		{"gutter hangs", []Segment{{Text: "  ✗ "}, {Text: "network: cannot resolve the gateway host"}}, 22, "  ✗ network: cannot |    resolve the |    gateway host", ""},
 		{"decoration hangs", []Segment{{Text: "▌ ", NoCopy: true}, {Text: "a user message that wraps"}}, 12, "▌ a user |  message |  that wraps", ""},
+		{"a bar goes down, its mark not", []Segment{{Text: "│ ", NoCopy: true}, {Text: "✗ ", NoCopy: true}, {Text: "a failed call that wraps"}}, 14, "│ ✗ a failed |│   call that |│   wraps", ""},
 		{"a space run at a break is kept", []Segment{{Text: "aaaa bbbb cccc      dddd"}}, 15, "aaaa bbbb cccc |     dddd", ""},
 	} {
 		rows := WrapSegs(c.line, c.w)

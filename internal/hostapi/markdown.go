@@ -160,20 +160,7 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 			}
 		} else {
 			for _, row := range c.glamour(*cfg, styleKey, chunk.text, 0) {
-				wrapped := WrapSegs(row, width)
-				// a quote keeps its bar on every row it wraps to, but not the
-				// bullet or number of a list inside it
-				if len(row) > 0 && row[0].NoCopy && strings.Contains(row[0].Text, "│") {
-					bar := row[0].Text[:min(strings.LastIndex(row[0].Text, "│")+len("│ "), len(row[0].Text))]
-					w := SegsWidth(row[:1])
-					for _, r := range wrapped[1:] {
-						if r[0].NoCopy && SegsWidth(r[:1]) == w {
-							r[0] = row[0]
-							r[0].Text = bar + strings.Repeat(" ", w-ansi.StringWidth(bar))
-						}
-					}
-				}
-				rows = append(rows, wrapped...)
+				rows = append(rows, WrapSegs(row, width)...)
 			}
 		}
 		for len(rows) > 0 && len(rows[0]) == 0 {
@@ -788,8 +775,8 @@ func fenceRun(t string) string {
 // WrapSegs word-wraps one logical line into rows of at most w cells,
 // keeping each piece's fields; words longer than w are hard-split. Every
 // row but the last ends in a Soft segment, and continuation rows hang past
-// the line's leading decoration (NoCopy) or a short gutter segment ("  - ")
-// behind a NoCopy indent, so a copy gives back the line.
+// the line's leading decoration (NoCopy), its bar kept, or a short gutter
+// segment ("  - ") behind a NoCopy indent, so a copy gives back the line.
 func WrapSegs(line []Segment, w int) [][]Segment {
 	w = max(w, 1)
 	// a tab measures and draws as no cell, so the words around it would
@@ -819,6 +806,17 @@ func WrapSegs(line []Segment, w int) [][]Segment {
 	if indent >= w/2 {
 		indent = 0
 	}
+	// a leading bar (a quote's, the chat's rail) goes down the rows the line
+	// wraps to, but not a bullet or a mark after it
+	hang := []Segment{{Text: strings.Repeat(" ", indent), NoCopy: true}}
+	if before, _, ok := strings.CutLast(line[0].Text, "│"); ok && indent > 0 && line[0].NoCopy {
+		bar, lead := line[0], ansi.StringWidth(line[0].Text)
+		bar.Text, bar.Soft = before+"│"+strings.Repeat(" ", lead-ansi.StringWidth(before+"│")), false
+		hang = []Segment{bar}
+		if indent > lead {
+			hang = append(hang, Segment{Text: strings.Repeat(" ", indent-lead), NoCopy: true})
+		}
+	}
 	var rows [][]Segment
 	var row []Segment
 	width := 0
@@ -829,7 +827,7 @@ func WrapSegs(line []Segment, w int) [][]Segment {
 		rows = append(rows, row)
 		row, width = nil, 0
 		if indent > 0 {
-			row, width = []Segment{{Text: strings.Repeat(" ", indent), NoCopy: true}}, indent
+			row, width = slices.Clone(hang), indent
 		}
 	}
 	// place appends a piece, merged into the row's last one when only
