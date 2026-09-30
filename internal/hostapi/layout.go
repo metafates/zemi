@@ -499,7 +499,7 @@ func (p *layoutParser) node(v any, at string, depth int, dir LayoutDir, hiddenAb
 	case LayoutComposer:
 		err = onlyKeys(m, at, append(common, "frame", "top", "left", "right", "placeholder")...)
 		n.Frame, n.Top, n.Left, n.Right = flag("frame"), str("top"), str("left"), str("right")
-		n.Placeholder = sanitize.String(str("placeholder"))
+		n.Placeholder = sanitize.Line(str("placeholder"))
 		p.composers++
 		switch {
 		case err != nil:

@@ -416,7 +416,7 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 			for j := range hint {
 				hint[j].NoCopy = true
 			}
-			segs = append(segs, hint...)
+			segs = append(segs, truncateSegs(hint, w-2)...)
 		case i == cursorRow && !focused:
 			segs = append(segs, cursorSegs(rows[i], min(cursorCol, len(rows[i])), "Normal")...)
 		default:

@@ -40,6 +40,36 @@ zemi.keymap.set("ctrl+j", "zemi.ui.scroll.down side")
 zemi.command.add("hello", function() end, { desc = "says hello" })
 `
 
+// TestUnframedComposer: beside a separator an unframed composer keeps its
+// cells, its placeholder cut to them, and a popup over it keeps its bottom
+// border, since there is no frame to stand on.
+func TestUnframedComposer(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 20)
+	runLua(t, app, `zemi.ui.layout.set({ root = { kind = "box", dir = "row", sep = true, children = {
+  { kind = "box", dir = "col", stage = true, size = 40, children = {
+    { kind = "region", id = "chat", region = "chat", scroll = "bottom", size = "fill" },
+    { kind = "composer", placeholder = "Ask anything at all,\nzemi answers what it can" },
+  } },
+  { kind = "region", id = "side", region = "side" },
+} } })`)
+	app.renderSync(t)
+	app.Frame()
+	c := app.LayoutRects()["composer"]
+	for _, key := range []string{"", "/"} {
+		if key != "" {
+			app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
+		}
+		app.renderSync(t)
+		rows := strings.Split(ansi.Strip(app.Frame()), "\r\n")
+		if len(rows) != 20 || ansi.Cut(rows[c.Y], c.X+c.Width, c.X+c.Width+1) != "│" {
+			t.Fatalf("after %q the separator left column %d:\n%s", key, c.X+c.Width, strings.Join(rows, "\n"))
+		}
+		if key == "/" && (app.popRect.Max.Y > c.Y || !strings.HasPrefix(rows[app.popRect.Max.Y-1], "└")) {
+			t.Fatalf("the palette at %v lost its bottom border over the composer at %+v:\n%s", app.popRect, c, strings.Join(rows, "\n"))
+		}
+	}
+}
+
 // TestRelayout: a user layout moves every piece and the UI keeps working
 // in it: widget clicks and hover, scrolling a region by id and by wheel,
 // popups, prompts and windows land over the stage, and a narrow screen

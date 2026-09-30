@@ -1140,7 +1140,7 @@ function zemi.ui.widget.list() end
 ---@field top? string Region name; needs `frame`. Drawn flush from the left corner at `ctx.width` cells, the whole rule: a widget fills it with its own "─" in `Rule`, or leaves the rest to zemi.
 ---@field left? string Region name; needs `frame`.
 ---@field right? string Region name; needs `frame`.
----@field placeholder? string Drawn dim under the cursor while the draft is empty; the first key typed replaces it.
+---@field placeholder? string Drawn dim under the cursor while the draft is empty, on one row cut to the composer; the first key typed replaces it.
 
 ---@class zemi.LayoutSpacer: zemi.LayoutBase
 ---@field kind "spacer"
