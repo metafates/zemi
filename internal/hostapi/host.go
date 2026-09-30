@@ -678,11 +678,8 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		h.loadPicks()
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
-		"zemi.ui.help": func(h *Host, _ string) error { return h.OpenHelp() },
-		"zemi.ui.reasoning.toggle": func(h *Host, _ string) error {
-			h.ToggleReasoning()
-			return nil
-		},
+		"zemi.ui.help":              func(h *Host, _ string) error { return h.OpenHelp() },
+		"zemi.ui.reasoning.toggle":  func(h *Host, _ string) error { return h.ToggleReasoning() },
 		"zemi.model.pick":           func(h *Host, _ string) error { return h.OpenModelPicker("chat") },
 		"zemi.ui.focus.set":         func(h *Host, id string) error { return h.focusNode(id) },
 		"zemi.ui.focus.next":        func(h *Host, _ string) error { return h.cycleFocus(1) },
@@ -983,32 +980,14 @@ func describeRHS(rhs RHS) string {
 	}
 }
 
-// ToggleReasoning flips the session-scoped reasoning expansion override
-// (ctrl+o, §8): finished thinking blocks collapse to a one-line summary by
-// default and this shows them in full, or hides them again.
-func (h *Host) ToggleReasoning() {
-	ag := h.agents
-	ag.mu.Lock()
-	ag.reasoningShown = new(!h.reasoningShown())
-	ag.mu.Unlock()
-	h.refresh()
-}
-
-// ReasoningShown reports whether finished reasoning blocks render expanded:
-// the session toggle wins, then the ui.reasoning config knob.
-func (h *Host) ReasoningShown() bool {
-	ag := h.agents
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	return h.reasoningShown()
-}
-
-// reasoningShown reads the effective expansion state (agents.mu held).
-func (h *Host) reasoningShown() bool {
-	if h.agents.reasoningShown != nil {
-		return *h.agents.reasoningShown
+// ToggleReasoning flips ui.reasoning between the thinking inline and the
+// thinking pane (ctrl+o, §8), kept like any runtime pick.
+func (h *Host) ToggleReasoning() error {
+	next := "pane"
+	if h.Settings.Str("ui.reasoning") == "pane" {
+		next = "inline"
 	}
-	return h.Settings.Bool("ui.reasoning")
+	return h.setWatched("ui.reasoning", next)
 }
 
 // ---------------------------------------------------------------------------
@@ -1577,8 +1556,9 @@ type UIState struct {
 // for the transcript, never cached, and Live for the live turn (nil: none,
 // and no todos).
 type Printed struct {
-	Rows []ChatMessage
-	Live *StreamSnapshot
+	Rows      []ChatMessage
+	Live      *StreamSnapshot
+	Reasoning bool // zemi run --reasoning: every thought and call drawn whole
 }
 
 // widgetCtxTable builds a render's ctx. The fields that copy the transcript,
@@ -1629,7 +1609,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	mode := h.permModeDef()
 	tb.RawSetString("permission_mode", glua.LString(mode.Name))
 	tb.RawSetString("permission_mode_base", glua.LString(mode.Base))
-	tb.RawSetString("show_reasoning", glua.LBool(h.ReasoningShown()))
+	tb.RawSetString("show_reasoning", glua.LBool(printed != nil && printed.Reasoning))
 	if label, elapsed, cancellable := h.BusyNow(); label != "" {
 		b := L.CreateTable(0, 3)
 		b.RawSetString("label", glua.LString(label))
@@ -2036,7 +2016,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.112.0"))
+	api.RawSetString("version", glua.LString("0.113.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

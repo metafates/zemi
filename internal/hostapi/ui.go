@@ -403,7 +403,10 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 
 	reasoning := L.NewTable()
 	reasoning.RawSetString("toggle", L.NewFunction(func(L *glua.LState) int {
-		h.ToggleReasoning()
+		h.refuseBelowUser(L, "ui.reasoning.toggle")
+		if err := h.ToggleReasoning(); err != nil {
+			L.RaiseError("zemi.ui.reasoning.toggle: %v", err)
+		}
 		return 0
 	}))
 	tb.RawSetString("reasoning", reasoning)

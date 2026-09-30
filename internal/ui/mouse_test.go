@@ -70,9 +70,8 @@ func TestMouseClicks(t *testing.T) {
 	app.renderSync(t)
 	x, y := findCell(t, app, "Thought for")
 	clickAt(app, x+1, y)
-	app.renderSync(t)
-	if !strings.Contains(ansi.Strip(app.Frame()), "│ first idea") {
-		t.Fatal("clicking the thought line should expand it")
+	if got := host.Settings.Str("ui.reasoning"); got != "pane" {
+		t.Fatalf("clicking the thought line should open the thinking pane, ui.reasoning = %q", got)
 	}
 
 	ran := make(chan string, 1)

@@ -877,7 +877,7 @@ function zemi.event.stats() end
 ---@field instructions? string[] The project's instruction files, repo-relative; empty when it has none (what /init writes), nil when untrusted or at $HOME or /. Cached: read again after a boot or reload, a trust change and a new session.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
----@field show_reasoning boolean
+---@field show_reasoning boolean `zemi run --reasoning` prints every thought and call whole; always false in the TUI.
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence. Always 0 with animations off, which leaves every animation on its first frame.
 ---@field ended zemi.TurnEnd|"" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
 ---@field busy? { label: string, elapsed: number, cancellable: boolean } The newest job the user waits on that is not a turn (/btw, a plugin install, the reflector): its label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
@@ -1445,7 +1445,9 @@ function zemi.ui.help() end
 ---@class zemi.ui.reasoning
 zemi.ui.reasoning = {}
 
---- Show or hide finished reasoning and every tool call (ctrl+o).
+--- Flip `ui.reasoning` between the thinking inline and the thinking pane
+--- (ctrl+o), kept for the next start like /config. User or builtin origin
+--- only.
 function zemi.ui.reasoning.toggle() end
 
 -- ---------------------------------------------------------------------------

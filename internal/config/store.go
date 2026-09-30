@@ -78,7 +78,7 @@ func (s *Store) defineDefaults() {
 		{Path: "session.auto_title", Kind: KindBool, Default: true, Desc: "name new sessions from their first exchange with a short model call"},
 		{Path: "session.recap", Kind: KindBool, Default: true, Desc: "after a turn with tool calls, if there is no input for 3 minutes, add a one-line recap from a short model call on the cached conversation (billed to the session)"},
 		{Path: "agent.context_window", Kind: KindNumber, Default: 0.0, Desc: "context window in tokens, overriding the model's context_window (0 uses the model's); drives the context percent and auto compaction"},
-		{Path: "ui.reasoning", Kind: KindBool, Default: false, Desc: "show finished reasoning blocks expanded (ctrl+o toggles for the session)"},
+		{Path: "ui.reasoning", Kind: KindString, Default: "inline", Choices: []string{"inline", "pane"}, Desc: "where the model's thinking shows: inline, its tail under the live turn, or pane, a pane right of the chat on a screen 100 columns or wider (ctrl+o flips it)"},
 		{Path: "lsp.auto", Kind: KindBool, Default: true, Desc: "start installed language servers for files with their marker in a trusted project, and lua-language-server for the Lua of your config and local plugins"},
 		{Path: "editor.command", Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
 		{Path: "keymap.leader", Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},

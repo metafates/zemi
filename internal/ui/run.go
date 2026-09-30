@@ -62,10 +62,11 @@ type RunView struct {
 
 	// the run loop's alone: renders wait on the Lua actor, which may be
 	// writing a diagnostic, so none runs under mu
-	h       *hostapi.Host
-	thm     themeResolver
-	printed bool // settled rows went out, so the next batch starts with a gap
-	dead    bool // a render failed or Close ran: the view draws nothing more
+	h         *hostapi.Host
+	thm       themeResolver
+	printed   bool // settled rows went out, so the next batch starts with a gap
+	reasoning bool // --reasoning
+	dead      bool // a render failed or Close ran: the view draws nothing more
 
 	mu   sync.Mutex // held over each write to w
 	tail string     // the tail on screen, "" for none
@@ -86,10 +87,11 @@ func NewRunView(f *os.File, quiet bool) *RunView {
 	return v
 }
 
-// Start draws h's run from now on; before it the view only forwards writes.
-// Start, On, Show and Close run on the run loop only.
-func (v *RunView) Start(h *hostapi.Host) {
-	v.h, v.thm = h, themeResolver{host: h, sgr: map[string]uv.Style{}}
+// Start draws h's run from now on, every thought and call whole with
+// reasoning; before it the view only forwards writes. Start, On, Show and
+// Close run on the run loop only.
+func (v *RunView) Start(h *hostapi.Host, reasoning bool) {
+	v.h, v.thm, v.reasoning = h, themeResolver{host: h, sgr: map[string]uv.Style{}}, reasoning
 }
 
 // On reports whether the view draws (not quiet, started, no render failed
@@ -111,7 +113,7 @@ func (v *RunView) Show(fr hostapi.RunFrame, cancelling bool) {
 	width, height := v.dims()
 	var b strings.Builder
 	if len(fr.Settled) > 0 {
-		lines, err := v.region("chat", width, height, hostapi.UIState{Printed: &hostapi.Printed{Rows: fr.Settled}})
+		lines, err := v.region("chat", width, height, hostapi.UIState{Printed: &hostapi.Printed{Rows: fr.Settled, Reasoning: v.reasoning}})
 		if err != nil {
 			v.fail(err)
 			return
@@ -145,7 +147,7 @@ func (v *RunView) Show(fr hostapi.RunFrame, cancelling bool) {
 // not wrap to a row the next erase would miss.
 func (v *RunView) drawTail(fr hostapi.RunFrame, cancelling bool, width, height int) (string, error) {
 	width -= 2
-	state := hostapi.UIState{Printed: &hostapi.Printed{Rows: fr.Pending, Live: &fr.Stream}, Cancelling: cancelling}
+	state := hostapi.UIState{Printed: &hostapi.Printed{Rows: fr.Pending, Live: &fr.Stream, Reasoning: v.reasoning}, Cancelling: cancelling}
 	if v.h.Settings.Bool("ui.animations") {
 		state.Frame = int(v.now().UnixMilli() / frameMS)
 	}

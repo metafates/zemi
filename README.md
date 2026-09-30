@@ -90,8 +90,8 @@ zemi run -q "write the commit message for the staged diff" | git commit -F -
 `zemi run` puts the answer on stdout and nothing else: the run's last message,
 plain. stderr shows the run as the chat draws it, live on a terminal and as
 plain lines in a log; where both streams are one terminal the answer is drawn
-once. `-q` keeps stderr to what went wrong, and `--reasoning` shows what ctrl+o
-shows. Nobody can approve a call, so one the mode leaves to the user is denied,
+once. `-q` keeps stderr to what went wrong, and `--reasoning` prints every
+thought and call whole. Nobody can approve a call, so one the mode leaves to the user is denied,
 and stderr ends with those asks and what would let them through. The first
 ctrl+c stops the turn, the second leaves. Exit status: 0 done, 1 the send or
 the turn failed, 2 usage, 130 interrupted.

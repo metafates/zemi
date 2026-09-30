@@ -689,7 +689,7 @@ Config values from `init.lua` merge with the defaults in Go's schema.
 runtime pick, kept like one, below), and accepts only keys in the schema; anything else is refused with an
 error. A reload
 replays it, but a call that writes the value the last boot wrote is skipped,
-so a runtime pick (`/model`, `/effort`, `/profile`, the mode cycle, `-m`) is not reverted
+so a runtime pick (`/model`, `/effort`, `/profile`, the mode cycle, ctrl+o, `-m`) is not reverted
 by an unrelated config edit; replaying `agent.profile` over a read-only agent
 pick would loosen its read-only plan silently, so a pick is settled to its last value too.
 A key whose `set` line was deleted returns to its saved pick, else its default, on that reload, unless a runtime pick moved it since.
@@ -1859,7 +1859,8 @@ provenance string.
   Go-reserved cancel and reload triggers, §6.2): `enter` sends, `esc`
   twice within 2s or `ctrl+c` once interrupts the turn (`esc` in an agent
   view goes back; idle, `ctrl+c` moves a draft into the history, and on an
-  empty composer twice within 2s quits), `ctrl+o` toggle reasoning,
+  empty composer twice within 2s quits), `ctrl+o` flips `ui.reasoning`
+  between the thinking inline and the thinking pane (a runtime pick, §6.1),
   `pgup`/`pgdown`, `shift+up`/`shift+down` and `ctrl+home`/`ctrl+end` scroll the
   transcript (the wheel too: mouse cell motion is captured because the altscreen has no
   native scrollback), and `alt+up`/`alt+down` jump to the previous or next

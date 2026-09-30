@@ -982,15 +982,31 @@ func TestLuaUtil(t *testing.T) {
 	`)
 }
 
-// TestReasoningExpanded: ctrl+o shows a finished thought as one header with
-// the text under a thin bar.
+// printedChat is the chat as zemi run --reasoning prints the session.
+func printedChat(t *testing.T, host *hostapi.Host, width int) string {
+	t.Helper()
+	live := host.AgentStream()
+	st := hostapi.UIState{Printed: &hostapi.Printed{Rows: host.Session().Transcript, Live: &live, Reasoning: true}}
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), width, 0, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := make([]string, len(lines))
+	for i, l := range lines {
+		for _, seg := range l {
+			rows[i] += seg.Text
+		}
+	}
+	return strings.Join(rows, "\r\n")
+}
+
+// TestReasoningExpanded: --reasoning shows a finished thought as one header
+// with the text under a thin bar.
 func TestReasoningExpanded(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	host.AppendMessage("user", "why?")
 	appendReasoning(host, "first idea\nsecond idea\n", hostapi.TurnStat{ThoughtMS: 4200})
-	host.ToggleReasoning()
-	app.renderSync(t)
-	frame := ansi.Strip(app.Frame())
+	frame := printedChat(t, host, 78)
 	if !strings.Contains(frame, "✻ Thought for 4.2s") {
 		t.Fatalf("thought header missing:\n%s", frame)
 	}
@@ -1327,7 +1343,7 @@ func TestFileRowClickIDs(t *testing.T) {
 
 // TestToolRows: finished calls that only look around collapse into one
 // line, edits and failures keep their rows, a command shows the model's
-// description with the command under it, and ctrl+o shows every call.
+// description with the command under it, and --reasoning shows every call.
 func TestToolRows(t *testing.T) {
 	longQ := "Delete the 8 leftover worktree-agent-* branches too? They are all merged into main, so their commits stay reachable and nothing is lost."
 	app, host := bootAgentApp(t, 100, 80)
@@ -1377,13 +1393,11 @@ func TestToolRows(t *testing.T) {
 		}
 	}
 	if strings.Contains(frame, "vet clean") || strings.Contains(frame, "    e1") || strings.Index(frame, "… 27 more lines") > strings.Index(frame, "    l4") || strings.Contains(frame, "it asked because") || strings.Contains(frame, "Stop and wait") || strings.Contains(frame, "Implement it now") {
-		t.Fatalf("command output shows only with ctrl+o, a verdict row shows only the verdict:\n%s", frame)
+		t.Fatalf("command output shows only with --reasoning, a verdict row shows only the verdict:\n%s", frame)
 	}
-	host.ToggleReasoning()
-	app.renderSync(t)
-	frame = ansi.Strip(app.Frame())
+	frame = printedChat(t, host, 98)
 	if !strings.Contains(frame, "✓ Read b.go") || strings.Contains(frame, "Read 2 files") || !strings.Contains(frame, "vet clean") {
-		t.Fatalf("ctrl+o must list every call:\n%s", frame)
+		t.Fatalf("--reasoning must list every call:\n%s", frame)
 	}
 	// an open row keeps a multi-line command's lines, each a detail row
 	rows := strings.Split(frame, "\r\n")
@@ -1460,20 +1474,15 @@ func todoRows(t *testing.T, h int, want []string) {
 // TestReasoningWrapKeepsWords: an expanded thought longer than the chat
 // width wraps without losing or repeating words.
 func TestReasoningWrapKeepsWords(t *testing.T) {
-	app, host := bootAgentApp(t, 60, 40)
+	_, host := bootAgentApp(t, 60, 40)
 	var words []string
 	for i := range 40 {
 		words = append(words, fmt.Sprintf("w%02d", i))
 	}
 	host.AppendMessage("user", "why?")
 	appendReasoning(host, strings.Join(words, " ")+"\n\nsecond paragraph", hostapi.TurnStat{ThoughtMS: 1000})
-	host.ToggleReasoning()
-	app.renderSync(t)
 	var got []string
-	for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
-		if strings.HasPrefix(row, "┌") {
-			break // the composer frame below, whose rows carry the same gutter
-		}
+	for row := range strings.SplitSeq(printedChat(t, host, 58), "\r\n") {
 		if _, body, ok := strings.Cut(row, "│ "); ok {
 			got = append(got, strings.Fields(body)...)
 		}

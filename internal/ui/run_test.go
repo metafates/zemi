@@ -84,7 +84,7 @@ func TestRunView(t *testing.T) {
 					return 100, 30
 				})
 			}
-			v.Start(h)
+			v.Start(h, false)
 			for _, fr := range c.frames {
 				v.Show(fr, false)
 			}

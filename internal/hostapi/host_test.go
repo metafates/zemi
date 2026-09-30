@@ -96,7 +96,7 @@ func waitFor(t *testing.T, cond func() error) {
 func TestNamespaceVersion(t *testing.T) {
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(zemi.api.version == "0.112.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.113.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugins test")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")
@@ -654,6 +654,36 @@ func TestSetModelFiresWatches(t *testing.T) {
 	check("p/m")
 	runUser(t, r, `zemi.model.set("p/o")`)
 	check("p/o")
+}
+
+// TestReasoningToggle: ctrl+o flips ui.reasoning between its two choices,
+// fires its watches and keeps the pick, which the default forgets; code
+// below user may not flip it.
+func TestReasoningToggle(t *testing.T) {
+	h, r := newTestHostDB(t)
+	h.KeepPicks.Store(true)
+	runUser(t, r, `zemi.config.watch("ui.reasoning", function(nv) zemi.state.set("seen", nv) end)
+		assert(not pcall(zemi.config.set, "ui.reasoning", true), "ui.reasoning takes only its choices")`)
+	for _, want := range []string{"pane", "inline"} {
+		if err := h.hostActions["zemi.ui.reasoning.toggle"](h, ""); err != nil {
+			t.Fatal(err)
+		}
+		waitFor(t, func() error {
+			if v, _ := h.GlobalDB.GetKV("seen"); v != `"`+want+`"` {
+				return fmt.Errorf("the ui.reasoning watch never saw %q", want)
+			}
+			return nil
+		})
+		row, err := h.GlobalDB.GetKV("config:ui.reasoning")
+		if want == "pane" && row != `"pane"` || want == "inline" && !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("%s: kept row %q (%v)", want, row, err)
+		}
+	}
+	for _, o := range []lua.Origin{lua.OriginPlugin, lua.OriginProject} {
+		if err := r.ExecuteChunk(t.Context(), `zemi.ui.reasoning.toggle()`, "x.lua", o); err == nil || !strings.Contains(err.Error(), "only user config") {
+			t.Errorf("%s code flipped ui.reasoning: %v", o, err)
+		}
+	}
 }
 
 // TestEventLogFromLua: emissions are logged and counted with no handler

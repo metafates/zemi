@@ -162,10 +162,6 @@ type agentHost struct {
 	// loads it, a drop point clears it
 	ctx contextRow
 
-	// reasoningShown is the session-scoped expansion override for finished
-	// reasoning blocks (nil = follow ui.reasoning config).
-	reasoningShown *bool
-
 	// turn timing: turnStart pins the wall clock at AgentSend, thinking
 	// tracks the open reasoning block, thought accumulates closed ones
 	// since the last flush and stepThinking those of the current step.

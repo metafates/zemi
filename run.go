@@ -212,14 +212,11 @@ func writeJSON(w io.Writer, v any) {
 // stdout the last message or, with --json, the events. It returns the exit
 // status: 1 when the send or the turn failed, 130 on a signal.
 func runHeadless(h *hostapi.Host, view *ui.RunView, o options, stdout io.Writer) int {
-	if o.reasoning && !h.ReasoningShown() {
-		h.ToggleReasoning()
-	}
 	// the first signal stops the turn, the second or 5s later leaves
 	sig := make(chan os.Signal, 2)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(sig)
-	view.Start(h)
+	view.Start(h, o.reasoning)
 	defer view.Close()
 
 	sid, next := h.AgentSessionID(), len(h.Session().Transcript)
