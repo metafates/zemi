@@ -901,8 +901,8 @@ func (a *App) join(rows [][]hostapi.Segment, w int) {
 	}
 }
 
-// placeBox writes box at x0, y0 over rows, clipped to the frame.
-func placeBox(rows, box [][]hostapi.Segment, x0, y0, w int) [][]hostapi.Segment {
+// placeBox writes box at x0, y0 over rows in place, clipped to the frame.
+func placeBox(rows, box [][]hostapi.Segment, x0, y0, w int) {
 	for i, line := range box {
 		y := y0 + i
 		if y < 0 || y >= len(rows) {
@@ -915,5 +915,4 @@ func placeBox(rows, box [][]hostapi.Segment, x0, y0, w int) [][]hostapi.Segment 
 		row = append(row, dropCells(under, x0+bw)...)
 		rows[y] = padSegs(truncateSegs(row, w), w)
 	}
-	return rows
 }

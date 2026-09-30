@@ -1022,14 +1022,14 @@ func fieldLine(name string, val []hostapi.Segment, w int) [][]hostapi.Segment {
 // spliceBox composites box rows centered over the chat area; what the box
 // does not cover stays visible. It reports the box's own cells, which a
 // click outside closes it on and a drag inside selects in.
-func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hostapi.Segment, uv.Rectangle) {
+func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) uv.Rectangle {
 	if len(rows) == 0 || len(box) == 0 {
-		return rows, uv.Rectangle{}
+		return uv.Rectangle{}
 	}
 	bottom := min(area.Max.Y, len(rows))
 	bh := min(len(box), bottom-area.Min.Y)
 	if bh <= 0 {
-		return rows, uv.Rectangle{}
+		return uv.Rectangle{}
 	}
 	y0 := area.Min.Y + (bottom-area.Min.Y-bh)/2
 	lo, hi := w, 0
@@ -1037,10 +1037,10 @@ func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hos
 		// a blank gutter column each side is part of the box (the rect reports
 		// it); one more blank column outside keeps chat text off it
 		x0 := area.Min.X + max((area.Dx()-hostapi.SegsWidth(box[i]))/2, 2)
-		rows = placeBox(rows, [][]hostapi.Segment{margined(margined(box[i]))}, x0-2, y0+i, w)
+		placeBox(rows, [][]hostapi.Segment{margined(margined(box[i]))}, x0-2, y0+i, w)
 		lo, hi = min(lo, x0-1), max(hi, x0+hostapi.SegsWidth(box[i])+1)
 	}
-	return rows, uv.Rect(lo, y0, max(hi-lo, 0), bh)
+	return uv.Rect(lo, y0, max(hi-lo, 0), bh)
 }
 
 // anchorBottom lays box over the bottom rows of area with its border in
@@ -1051,7 +1051,7 @@ func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) ([][]hos
 // joined at its edges (App.join). What it does not cover stays visible, one
 // cell off its inner side. It reports the cells the box took, that border
 // included.
-func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, framed, right bool, w int) ([][]hostapi.Segment, uv.Rectangle) {
+func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, framed, right bool, w int) uv.Rectangle {
 	bw := hostapi.SegsWidth(box[0])
 	x := frame.Min.X
 	if right {
@@ -1073,12 +1073,12 @@ func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, frame
 	y0 := max(area.Min.Y, end-len(box))
 	for i := y0; i < end && i-y0 < drawn; i++ {
 		if right {
-			rows = placeBox(rows, [][]hostapi.Segment{append([]hostapi.Segment{{Text: " "}}, box[i-y0]...)}, x-1, i, w)
+			placeBox(rows, [][]hostapi.Segment{append([]hostapi.Segment{{Text: " "}}, box[i-y0]...)}, x-1, i, w)
 		} else {
-			rows = placeBox(rows, [][]hostapi.Segment{append(slices.Clip(box[i-y0]), hostapi.Segment{Text: " "})}, x, i, w)
+			placeBox(rows, [][]hostapi.Segment{append(slices.Clip(box[i-y0]), hostapi.Segment{Text: " "})}, x, i, w)
 		}
 	}
-	return rows, uv.Rect(x, y0, bw, max(end-y0, 0))
+	return uv.Rect(x, y0, bw, max(end-y0, 0))
 }
 
 // ruleAt reports whether frame's top-left cell is a drawn corner: a framed

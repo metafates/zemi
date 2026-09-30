@@ -948,7 +948,7 @@ func (a *App) compose(w, h int) string {
 	}
 	if pills := a.pills(); !lay.bar && len(pills) > 0 {
 		// without a statusline the alarms still show
-		rows = placeBox(rows, [][]hostapi.Segment{joinItems(pills, false)}, 0, h-1, w)
+		placeBox(rows, [][]hostapi.Segment{joinItems(pills, false)}, 0, h-1, w)
 	}
 
 	// Modal chrome goes over everything: Lua overlays, then the Go-owned
@@ -964,7 +964,7 @@ func (a *App) compose(w, h int) string {
 	var modals []func()
 	a.chromeRect = uv.Rectangle{}
 	splice := func(box [][]hostapi.Segment) {
-		modals = append(modals, func() { rows, a.chromeRect = spliceBox(rows, box, area, w) })
+		modals = append(modals, func() { a.chromeRect = spliceBox(rows, box, area, w) })
 	}
 	for i := range a.overlays {
 		if i+1 < len(a.overlays) && a.overlays[i+1].back {
@@ -972,7 +972,7 @@ func (a *App) compose(w, h int) string {
 		}
 		if ov := &a.overlays[i]; ov.o.Anchor != "" {
 			box, right := a.overlayBox(ov, area.Dx(), area.Dy()), ov.o.Anchor == hostapi.OverlayBottomRight
-			modals = append(modals, func() { rows, a.chromeRect = anchorBottom(rows, box, area, frame, framed, right, w) })
+			modals = append(modals, func() { a.chromeRect = anchorBottom(rows, box, area, frame, framed, right, w) })
 		} else {
 			splice(a.overlayBox(ov, area.Dx(), area.Dy()))
 		}
@@ -997,7 +997,7 @@ func (a *App) compose(w, h int) string {
 			for i, line := range tray {
 				tray[i] = margined(line)
 			}
-			rows = placeBox(rows, tray, max(stage.Min.X, stage.Max.X-hostapi.SegsWidth(tray[0])), stage.Min.Y, w)
+			placeBox(rows, tray, max(stage.Min.X, stage.Max.X-hostapi.SegsWidth(tray[0])), stage.Min.Y, w)
 		}
 	}
 	for i, place := range modals {
@@ -1129,8 +1129,7 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 	if up {
 		// in line with the stage, standing only on the composer's own rule
 		frame := uv.Rect(x, c.Min.Y, min(width, c.Max.X-x), c.Dy())
-		_, r := anchorBottom(rows, box, uv.Rect(x, top, width, bottom-top), frame, ruleAt(rows, c) && x >= c.Min.X, false, w)
-		return r
+		return anchorBottom(rows, box, uv.Rect(x, top, width, bottom-top), frame, ruleAt(rows, c) && x >= c.Min.X, false, w)
 	}
 	// NOTE: below the composer the popup does not stand on the statusline rule
 	placeBox(rows, box, x, top, w)
