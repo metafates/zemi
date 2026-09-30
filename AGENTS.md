@@ -49,7 +49,7 @@ Safety comes from the sandbox, not from nagging. Auto mode does not ask for what
 already confines, only for what is destructive or leaves it. Never fail open.
 
 The UI has one identity: greys, one periwinkle accent, one apricot for text quoted as written,
-square corners, and the `@` snail whose state lives in its eyes, plain eye color in every state.
+square corners joined where two lines touch, and the `@` snail whose state lives in its eyes, plain eye color in every state.
 Widgets use the semantic theme groups (`Accent`, `Dim`, `Rule`, `Title`, `Selected`, `Button`,
 `Literal`, `Danger`, `Warn`, `Ok`). No state change may
 add or remove a row or shift text. Hover in the chat is minimal: body rows get none, a header
@@ -1071,8 +1071,10 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   also why `Host.Markdown` renders glamour unwrapped (tables aside) and wraps it itself. A
   click acts on `Segment.Hit` (chrome rows) or `Segment.Click`/`Segment.Widget` (a widget's
   `on_click`, run on the background worker); a click id with no widget is a Go statusline pill
-  naming its command. Helpers that rebuild segments must copy those fields and `Band` (the
-  selected row's background); only `dimRows` drops them, because dimmed rows are not targets. Overlays (internal/ui/overlay.go) are data
+  naming its command. Helpers that rebuild segments must copy those fields, `Band` (the
+  selected row's background) and `Line` (a chrome line `App.join` meets with the lines it
+  touches, after all placement: text, Lua content and the snail art never join); only `dimRows`
+  drops the first ones, because dimmed rows are not targets, and it keeps `Line`. Overlays (internal/ui/overlay.go) are data
   (DESIGN §8 has the detail views, `danger` arming and `AskFirst`); `BodySegs` is sanitized like
   `Body`, which stays what `y` copies. Opening the id of an open overlay replaces it in place
   (`replaceOverlay`, keeping the filter and the selection on its row; only an origin that may close it), a detail

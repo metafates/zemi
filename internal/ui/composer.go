@@ -461,17 +461,18 @@ func (a *App) composerFrame(n *hostapi.LayoutNode, w int) [][]hostapi.Segment {
 	}
 	inner := frameInner(w)
 	// the top region draws its rule corner to corner; its "Rule" cells take
-	// the frame's tint
+	// the frame's tint, and its plain rule runs join what stands on them
 	top := truncateSegs(joinItems(a.statusItems(n.Top), false), w-2)
 	for i := range top {
 		if top[i].HL == "Rule" {
 			top[i].HL = hl
+			top[i].Line = strings.Trim(top[i].Text, "─") == ""
 		}
 	}
 	rows := [][]hostapi.Segment{rule("┌", "┐", hl, top, nil, w)}
 	for _, r := range a.composerRows(inner, n.Placeholder) {
-		row := append([]hostapi.Segment{{Text: "│ ", HL: hl, NoCopy: true}}, truncateSegs(r, inner)...)
-		rows = append(rows, append(padSegs(row, w-2), hostapi.Segment{Text: " │", HL: hl, NoCopy: true}))
+		row := append([]hostapi.Segment{{Text: "│ ", HL: hl, NoCopy: true, Line: true}}, truncateSegs(r, inner)...)
+		rows = append(rows, append(padSegs(row, w-2), hostapi.Segment{Text: " │", HL: hl, NoCopy: true, Line: true}))
 	}
 	// the corners, the space beside each cluster and one cell of rule between
 	left, right := a.statusClusters(max(w-7, 1), n.Left, n.Right)
@@ -482,9 +483,9 @@ func (a *App) composerFrame(n *hostapi.LayoutNode, w int) [][]hostapi.Segment {
 // clusters at either end, "─" between them.
 func rule(l, r, hl string, left, right []hostapi.Segment, w int) []hostapi.Segment {
 	fill := max(w-2-hostapi.SegsWidth(left)-hostapi.SegsWidth(right), 0)
-	out := append([]hostapi.Segment{{Text: l, HL: hl, NoCopy: true}}, left...)
-	out = append(out, hostapi.Segment{Text: strings.Repeat("─", fill), HL: hl, NoCopy: true})
-	return append(append(out, right...), hostapi.Segment{Text: r, HL: hl, NoCopy: true})
+	out := append([]hostapi.Segment{{Text: l, HL: hl, NoCopy: true, Line: true}}, left...)
+	out = append(out, hostapi.Segment{Text: strings.Repeat("─", fill), HL: hl, NoCopy: true, Line: true})
+	return append(append(out, right...), hostapi.Segment{Text: r, HL: hl, NoCopy: true, Line: true})
 }
 
 // spaced sets a cluster off from the rule around it.

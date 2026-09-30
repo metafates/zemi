@@ -369,11 +369,11 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 	title = label(title, bw-3-ansi.StringWidth(badge))
 	fill := bw - 2 - ansi.StringWidth(title) - ansi.StringWidth(badge)
 	box := [][]hostapi.Segment{{
-		{Text: "┌", HL: hostapi.ChromeRule, NoCopy: true},
+		{Text: "┌", HL: hostapi.ChromeRule, NoCopy: true, Line: true},
 		{Text: title, HL: titleHL},
-		{Text: strings.Repeat("─", fill), HL: hostapi.ChromeRule, NoCopy: true},
+		{Text: strings.Repeat("─", fill), HL: hostapi.ChromeRule, NoCopy: true, Line: true},
 		{Text: badge, HL: hostapi.ChromeHint},
-		{Text: "┐", HL: hostapi.ChromeRule, NoCopy: true},
+		{Text: "┐", HL: hostapi.ChromeRule, NoCopy: true, Line: true},
 	}}
 	for _, r := range body {
 		var bar []hostapi.Segment
@@ -382,7 +382,7 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 		}
 		line := ellipsizeSegs(r, bw-4-len(bar))
 		row := make([]hostapi.Segment, 0, len(line)+4)
-		row = append(row, hostapi.Segment{Text: "│ ", HL: hostapi.ChromeRule, NoCopy: true})
+		row = append(row, hostapi.Segment{Text: "│ ", HL: hostapi.ChromeRule, NoCopy: true, Line: true})
 		for _, s := range line {
 			s.HL = cmp.Or(s.HL, hostapi.ChromeValue)
 			row = append(row, s)
@@ -390,10 +390,10 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 		// a selected row's band runs to the box's edge, however wide its text
 		band := len(line) > 0 && line[len(line)-1].Band
 		row = append(row, hostapi.Segment{Text: strings.Repeat(" ", max(0, bw-4-hostapi.SegsWidth(line)-len(bar))), NoCopy: true, Band: band})
-		row = append(append(row, bar...), hostapi.Segment{Text: " │", HL: hostapi.ChromeRule, NoCopy: true})
+		row = append(append(row, bar...), hostapi.Segment{Text: " │", HL: hostapi.ChromeRule, NoCopy: true, Line: true})
 		box = append(box, row)
 	}
-	box = append(box, []hostapi.Segment{{Text: "└" + strings.Repeat("─", bw-2) + "┘", HL: hostapi.ChromeRule, NoCopy: true}})
+	box = append(box, []hostapi.Segment{{Text: "└" + strings.Repeat("─", bw-2) + "┘", HL: hostapi.ChromeRule, NoCopy: true, Line: true}})
 	return box
 }
 

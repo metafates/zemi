@@ -3,8 +3,10 @@ package ui
 import (
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
 )
@@ -362,7 +364,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 		for _, k := range l.kids {
 			if k.sep {
 				for j := range joined {
-					joined[j] = slices.Concat(padSegs(joined[j], x), []hostapi.Segment{{Text: "│", HL: "Rule", NoCopy: true}})
+					joined[j] = slices.Concat(padSegs(joined[j], x), []hostapi.Segment{{Text: "│", HL: "Rule", NoCopy: true, Line: true}})
 				}
 				x++
 			}
@@ -375,7 +377,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	case n.Kind == hostapi.LayoutBox:
 		for i, k := range l.kids {
 			if i > 0 && n.Sep {
-				rows = append(rows, []hostapi.Segment{{Text: strings.Repeat("─", w), HL: "Rule", NoCopy: true}})
+				rows = append(rows, []hostapi.Segment{{Text: strings.Repeat("─", w), HL: "Rule", NoCopy: true, Line: true}})
 			}
 			rows = append(rows, a.paint(k)...)
 		}
@@ -826,6 +828,89 @@ func (a *App) paintFloats(rows [][]hostapi.Segment, s *screenLayout, w, h int) {
 	}
 	for _, k := range keep {
 		placeBox(rows, [][]hostapi.Segment{k.segs}, k.x, k.y, w)
+	}
+}
+
+// The arms of a light box glyph: the sides of its cell its lines run to.
+const (
+	armU = 1 << iota
+	armR
+	armD
+	armL
+)
+
+// lightBox is the square light glyph of each set of arms. All 16 exist, so a
+// union of arms always draws.
+var lightBox = [16]string{" ", "╵", "╶", "└", "╷", "│", "┌", "├", "╴", "┘", "─", "┴", "┐", "┤", "┬", "┼"}
+
+// boxArms is lightBox inverted over the box drawing block, U+2500 on.
+var boxArms = func() (t [0x80]uint8) {
+	for a, s := range lightBox[1:] {
+		r, _ := utf8.DecodeRuneInString(s)
+		t[r-0x2500] = uint8(a + 1)
+	}
+	return t
+}()
+
+func armsOf(r rune) uint8 {
+	if r < 0x2500 || r >= 0x2580 {
+		return 0
+	}
+	return boxArms[r-0x2500]
+}
+
+// join makes the chrome lines of a composed frame (Segment.Line) meet where
+// they touch: a line cell gains the arms its neighbours point at it with, so
+// a box standing on a rule draws ├ ┴ ┤ there. It only adds arms, so text,
+// parallel lines and lines that end facing none stay as drawn, and a changed
+// cell keeps its own style and click. An unchanged frame allocates nothing.
+func (a *App) join(rows [][]hostapi.Segment, w int) {
+	n := w * len(rows)
+	if cap(a.arms) < n {
+		a.arms = make([]uint8, n)
+	}
+	g := a.arms[:n]
+	clear(g)
+	for y, row := range rows {
+		if !slices.ContainsFunc(row, func(s hostapi.Segment) bool { return s.Line }) {
+			continue
+		}
+		x := 0
+		for i := range row {
+			s := &row[i]
+			if !s.Line {
+				x += ansi.StringWidth(s.Text)
+				continue
+			}
+			for _, r := range s.Text {
+				if x < w {
+					g[y*w+x] = armsOf(r)
+				}
+				x++
+			}
+		}
+	}
+	for i, c := range g {
+		if c == 0 {
+			continue
+		}
+		y, x := i/w, i%w
+		want := c
+		if y > 0 && g[i-w]&armD != 0 {
+			want |= armU
+		}
+		if y+1 < len(rows) && g[i+w]&armU != 0 {
+			want |= armD
+		}
+		if x > 0 && g[i-1]&armR != 0 {
+			want |= armL
+		}
+		if x+1 < w && g[i+1]&armL != 0 {
+			want |= armR
+		}
+		if want != c {
+			rows[y] = restyle(rows[y], x, x+1, func(s *hostapi.Segment) { s.Text = lightBox[want] })
+		}
 	}
 }
 

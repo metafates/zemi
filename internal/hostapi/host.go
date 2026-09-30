@@ -1231,6 +1231,9 @@ type Segment struct {
 	// Band is Go only: the selected row of a list or prompt, drawn on
 	// Host:Band's background. A field, since hover rewrites Over and HL.
 	Band bool
+	// Line is Go only: a chrome border, rule or separator, its runes light box
+	// lines or blanks one cell each; lines that touch join (ui.join)
+	Line bool
 }
 
 // RenderWidget runs a widget's Lua render at the cells its layout node gives

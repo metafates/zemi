@@ -94,6 +94,7 @@ type App struct {
 	stage          uv.Rectangle        // where the last frame's stage was
 	popRect        uv.Rectangle        // the cells a completion popup took on the last frame
 	chromeRect     uv.Rectangle        // the cells the topmost modal box took
+	arms           []uint8             // join's grid, kept so a frame allocates none
 	barDrag        barHold             // the scrollbar the pointer holds, h 0 for none
 
 	// work runs Lua-backed keymaps and commands in order off the key loop
@@ -1022,6 +1023,7 @@ func (a *App) compose(w, h int) string {
 		toasts()
 	}
 
+	a.join(rows, w)
 	a.lastRows, a.stage, a.popRect, a.panes = rows, stage, pop, lay.panes
 	a.highlightSelection(rows, w)
 	a.highlightHover(rows)
@@ -1083,7 +1085,7 @@ func dimRows(rows [][]hostapi.Segment) {
 	for i, r := range rows {
 		out := make([]hostapi.Segment, len(r))
 		for j, s := range r {
-			out[j] = hostapi.Segment{Text: s.Text, HL: hostapi.ChromeDim}
+			out[j] = hostapi.Segment{Text: s.Text, HL: hostapi.ChromeDim, Line: s.Line}
 			if strings.ContainsRune(s.Text, kitty.Placeholder) {
 				out[j] = s
 			}

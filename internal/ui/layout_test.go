@@ -189,3 +189,67 @@ func TestViewportWrapGap(t *testing.T) {
 		}
 	}
 }
+
+func TestJoin(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		dim  bool
+		// a row starting with "!" is content, no Line; elsewhere every light
+		// box rune is a Line cell
+		rows, want []string
+	}{
+		{
+			"a box on the composer rule joins at its corner and its edge", false,
+			[]string{"┌──┐   ", "│ab│   ", "┌─────┐"}, []string{"┌──┐   ", "│ab│   ", "├──┴──┐"},
+		},
+		{
+			"a right-anchored box joins at the rule's other corner", false,
+			[]string{"   ┌──┐", "   │ab│", "┌─────┐"}, []string{"   ┌──┐", "   │ab│", "┌──┴──┤"},
+		},
+		{
+			"dimmed rows still join", true,
+			[]string{"┌──┐   ", "│ab│   ", "┌─────┐"}, []string{"┌──┐   ", "│ab│   ", "├──┴──┐"},
+		},
+		{
+			"a narrower toast under a wider one shares its border", false,
+			[]string{"┌─────┐", "│abcde│", "└─┌───┐", "  │abc│", "  └───┘"},
+			[]string{"┌─────┐", "│abcde│", "└─┬───┤", "  │abc│", "  └───┘"},
+		},
+		{
+			"a wider toast under a narrower one shares its border", false,
+			[]string{"  ┌───┐", "  │abc│", "┌─────┐", "│abcde│", "└─────┘"},
+			[]string{"  ┌───┐", "  │abc│", "┌─┴───┤", "│abcde│", "└─────┘"},
+		},
+		{"a rule ending at a separator", false, []string{"a│c", "─│c", "b│c"}, []string{"a│c", "─┤c", "b│c"}},
+		{"rules on both sides of a separator cross it", false, []string{"a│c", "─│─", "b│c"}, []string{"a│c", "─┼─", "b│c"}},
+		{"parallel lines stay", false, []string{"││", "└┘", "┌┐"}, []string{"││", "└┘", "┌┐"}},
+		{"text and the snail's art beside a line stay", false, []string{"─x─╭"}, []string{"─x─╭"}},
+		{"content lines under a border stay", false, []string{"┌─┐", "!│a│"}, []string{"┌─┐", "│a│"}},
+	} {
+		w := 0
+		rows := make([][]hostapi.Segment, len(c.rows))
+		for i, r := range c.rows {
+			r, content := strings.CutPrefix(r, "!")
+			for _, ch := range r {
+				line := !content && armsOf(ch) != 0
+				if n := len(rows[i]); n > 0 && rows[i][n-1].Line == line {
+					rows[i][n-1].Text += string(ch)
+				} else {
+					rows[i] = append(rows[i], hostapi.Segment{Text: string(ch), Line: line})
+				}
+			}
+			w = max(w, len([]rune(r)))
+		}
+		if c.dim {
+			dimRows(rows)
+		}
+		(&App{}).join(rows, w)
+		got := make([]string, len(rows))
+		for i, r := range rows {
+			got[i] = plainSegs(r)
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%s:\n%s\nwant\n%s", c.name, strings.Join(got, "\n"), strings.Join(c.want, "\n"))
+		}
+	}
+}
