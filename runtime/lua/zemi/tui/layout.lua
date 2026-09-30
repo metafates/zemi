@@ -90,4 +90,17 @@ local layout = {
 	},
 }
 
-zemi.ui.layout.set(layout)
+local column = layout.root.children[2]
+local pane = column.children[2].children[2]
+
+-- ui.reasoning = "pane" draws the thinking pane, and the column grows by
+-- what the pane takes
+local function set()
+	local on = zemi.config.get("ui.reasoning") == "pane"
+	column.max, pane.hidden = on and 157 or 100, not on
+	zemi.ui.layout.set(layout)
+end
+set()
+-- a layout user config set owns the screen, and setting this one over it
+-- raises
+zemi.config.watch("ui.reasoning", function() pcall(set) end)
