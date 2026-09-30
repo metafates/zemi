@@ -1777,19 +1777,20 @@ provenance string.
   `tui/layout.lua` sets the default: the main column centered past 100 cells (157 with
   the thinking pane), and in it the chat beside the thinking pane (regions
   `thinking.head` and `thinking`, 36 to 56 cells), whose separator meets the
-  composer's top rule; the pane is hidden unless `ui.reasoning` is `pane` and
-  collapses under 100 columns. User config may replace the layout, plugin and
+  composer's top rule, the row holding both the stage; the pane is hidden unless
+  `ui.reasoning` is `pane` and collapses under 100 columns. User config may replace the layout, plugin and
   project code may not (a layout can
   hide what they show). `/reload` keeps drawing the old layout until the replay sets
   one; a replay that sets none draws the Go copy of the default as it boots
   (`hostapi.DefaultLayout`).
   Go keeps the §8 chrome whatever the tree says: prompts and overlays center over the
   stage node, or the whole screen when it is under 40 by 12; the live toasts (five at
-  most) are one tray of a fixed width at the stage's top right, newest first, a section
+  most) are one tray of a fixed width at the stage's top, hugging its right edge (four
+  cells over it, the rest in the margin, inside the screen), newest first, a section
   per level and title with one row per toast, each leaving when its own time runs out
-  (4 s for info, 8 s for a warning or an error); completion popups end at the stage's
-  bottom, standing on the composer frame's top rule when it has one, when the stage is
-  above the composer, else go
+  (4 s for info, 8 s for a warning or an error); completion popups stand in line with
+  the composer, ending at the stage's bottom when the stage is above the composer,
+  on the composer frame's top rule when it has one, in the draft's rule tint, else go
   beside the composer on the side with room; Lua floats never cover the composer or the alarm
   pills, and without a bar the pills float at the bottom-left. A scrolled region
   keeps its last column for a thin scrollbar and a blank before it, and its widgets

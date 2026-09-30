@@ -1049,9 +1049,17 @@ func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) uv.Recta
 // and its top rule is at most a row under area and wider than the box, the
 // box stands on it: the rule's cells under the box are its bottom border,
 // joined at its edges (App.join). What it does not cover stays visible, one
-// cell off its inner side. It reports the cells the box took, that border
-// included.
-func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, framed, right bool, w int) uv.Rectangle {
+// cell off its inner side. Its lines, and the rule cells it stands on, take
+// the rule group: a composer popup's is the draft's tint of that rule. It
+// reports the cells the box took, that border included.
+func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, framed, right bool, rule string, w int) uv.Rectangle {
+	for _, row := range box {
+		for i := range row {
+			if row[i].Line && row[i].HL == hostapi.ChromeRule {
+				row[i].HL = rule
+			}
+		}
+	}
 	bw := hostapi.SegsWidth(box[0])
 	x := frame.Min.X
 	if right {
@@ -1066,7 +1074,7 @@ func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, frame
 		rows[frame.Min.Y] = restyle(rows[frame.Min.Y], x, x+bw, func(s *hostapi.Segment) {
 			s.Fill = hostapi.FillPanel
 			if strings.IndexFunc(s.Text, func(r rune) bool { return armsOf(r) == 0 }) < 0 {
-				s.HL, s.Line = hostapi.ChromeRule, true
+				s.HL, s.Line = rule, true
 			}
 		})
 	}

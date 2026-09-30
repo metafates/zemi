@@ -19,11 +19,13 @@ local layout = {
 				children = {
 					{ kind = "region", region = "header" },
 					-- the chat and the thinking pane: the spacer sits in the chat
-					-- column, so the separator meets the composer's top rule
+					-- column, so the separator meets the composer's top rule;
+					-- prompts, overlays, toasts and completion popups go over the stage
 					{
 						kind = "box",
 						dir = "row",
 						sep = true,
+						stage = true,
 						children = {
 							{
 								kind = "box",
@@ -32,22 +34,13 @@ local layout = {
 								min = 63,
 								max = 100,
 								children = {
-									-- prompts, overlays, toasts and completion popups go over the stage
 									{
-										kind = "box",
-										dir = "col",
-										stage = true,
-										min = 1,
-										children = {
-											{
-												kind = "region",
-												id = "chat",
-												region = "chat",
-												scroll = "bottom",
-												size = "fill",
-												min = 3,
-											},
-										},
+										kind = "region",
+										id = "chat",
+										region = "chat",
+										scroll = "bottom",
+										size = "fill",
+										min = 3,
 									},
 									{ kind = "spacer" },
 								},
@@ -61,7 +54,7 @@ local layout = {
 								collapse = true,
 								hidden = true,
 								children = {
-									{ kind = "region", id = "thinking.head", region = "thinking.head" },
+									{ kind = "region", region = "thinking.head" },
 									{
 										kind = "region",
 										id = "thinking",

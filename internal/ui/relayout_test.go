@@ -1,12 +1,15 @@
 package ui
 
 import (
+	"log/slog"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
+
+	"github.com/metafates/zemi/internal/hostapi"
 )
 
 // sidebarConfig is a user init.lua that rebuilds the screen: the statusline
@@ -72,8 +75,8 @@ func TestUnframedComposer(t *testing.T) {
 
 // TestRelayout: a user layout moves every piece and the UI keeps working
 // in it: widget clicks and hover, scrolling a region by id and by wheel,
-// popups, prompts and windows land over the stage, and a narrow screen
-// collapses the sidebar.
+// prompts and windows land over the stage, popups too, in line with the
+// composer, and a narrow screen collapses the sidebar.
 func TestRelayout(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 24)
 	host.AppendMessage("user", "hello from the middle")
@@ -112,8 +115,8 @@ func TestRelayout(t *testing.T) {
 
 	app.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	app.Frame()
-	if stage := app.stage; app.popRect.Empty() || app.popRect.Min.X != stage.Min.X || app.popRect.Max.Y != stage.Max.Y {
-		t.Fatalf("palette at %v, want the bottom of the stage %v", app.popRect, stage)
+	if stage, c := app.stage, rects["composer"]; app.popRect.Empty() || app.popRect.Min.X != c.X || app.popRect.Max.Y != stage.Max.Y {
+		t.Fatalf("palette at %v, want the bottom of the stage %v in line with the composer %+v", app.popRect, stage, c)
 	}
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 
@@ -173,6 +176,55 @@ zemi.ui.layout.set(l)`
 		if strings.Contains(top, "┴") != c.drawn || drawn && ansi.Cut(top, th.X-1, th.X) != "┴" || drawn && ansi.Cut(rows[th.Y], th.X-1, th.X) != "│" {
 			t.Fatalf("%s: the separator does not meet the composer rule at column %d:\n%s", c.name, th.X-1, frame)
 		}
+	}
+}
+
+// TestFloatsOverTheColumn: the shipped stage is the row of chat and pane,
+// so a modal centers on the column, pane or not, and the toast tray hugs the
+// column's right edge, three border cells over it and the rest in the
+// margin, or stands flush right inside the screen where no margin fits it.
+func TestFloatsOverTheColumn(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		width int
+		pane  bool
+		modal bool
+		want  func(stage hostapi.Rect, w int) int // the modal's center column, else the tray's corner
+	}{
+		{"a modal centers on the column with the pane", 140, true, true, func(hostapi.Rect, int) int { return 70 }},
+		{"the tray stands inside a narrow screen", 100, false, false, func(_ hostapi.Rect, w int) int { return w - 49 }},
+		{"the tray hugs the column", 220, false, false, func(s hostapi.Rect, _ int) int { return s.X + s.Width - 3 }},
+		{"the tray hugs the column with the pane", 260, true, false, func(s hostapi.Rect, _ int) int { return s.X + s.Width - 3 }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, host := bootAgentApp(t, c.width, 24)
+			if c.pane {
+				if err := host.ToggleReasoning(); err != nil {
+					t.Fatal(err)
+				}
+				waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Hidden })
+			}
+			if c.modal {
+				runLua(t, app, `zemi.ui.select({ "alpha", "beta" }, { prompt = "Pick" }, function() end)`)
+			} else {
+				app.pushToast(slog.LevelInfo, "saved", "")
+			}
+			app.renderSync(t)
+			frame := ansi.Strip(app.Frame())
+			rects := app.LayoutRects()
+			stage, th := rects["stage"], rects["thinking"]
+			if c.pane && (stage.X > rects["chat"].X || stage.X+stage.Width < th.X+th.Width) {
+				t.Fatalf("the stage %+v does not span the chat %+v and the pane %+v", stage, rects["chat"], th)
+			}
+			got := app.chromeRect.Min.X + app.chromeRect.Dx()/2
+			if !c.modal {
+				row := strings.Split(frame, "\r\n")[stage.Y]
+				got = ansi.StringWidth(row[:strings.LastIndex(row, "┌")])
+			}
+			if want := c.want(stage, c.width); got < want-1 || got > want+1 || !c.modal && got != want {
+				t.Fatalf("at column %d, want %d (stage %+v):\n%s", got, want, stage, frame)
+			}
+		})
 	}
 }
 

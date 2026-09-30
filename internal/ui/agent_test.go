@@ -446,7 +446,7 @@ func TestPermissionBoxFits(t *testing.T) {
 			[]string{"█", "ctrl+d/u scroll", "esc deny", "[t] No, and tell"},
 		},
 		{
-			"narrow and short", 60, 16,
+			"narrow and short", 60, 15,
 			hostapi.PermRequest{Subject: "tool.shell", Arg: "go test ./internal/ui/... -run X\necho a\necho b\necho c", Always: "allow go test and 3 more"},
 			[]string{"enter pick", "█"},
 		},

@@ -854,8 +854,9 @@ const (
 	toastsLive = 5
 )
 
-// boxArea is what a modal box centers over: the stage, or the w by h screen
-// when the stage is too small for a prompt.
+// boxArea is what a modal box centers over: the stage (the shipped layout's
+// is the row holding chat and pane, so a box centers on the column), or the
+// w by h screen when the stage is too small for a prompt.
 func boxArea(stage uv.Rectangle, w, h int) uv.Rectangle {
 	if stage.Dx() < 40 || stage.Dy() < 8 {
 		// NOTE: no box fits a stage under 8 rows, so it covers the screen, composer included
@@ -978,7 +979,7 @@ func (a *App) compose(w, h int) string {
 		}
 		if ov := &a.overlays[i]; ov.o.Anchor != "" {
 			box, right := a.overlayBox(ov, area.Dx(), area.Dy()), ov.o.Anchor == hostapi.OverlayBottomRight
-			modals = append(modals, func() { a.chromeRect = anchorBottom(rows, box, area, frame, framed, right, w) })
+			modals = append(modals, func() { a.chromeRect = anchorBottom(rows, box, area, frame, framed, right, hostapi.ChromeRule, w) })
 		} else {
 			splice(a.overlayBox(ov, area.Dx(), area.Dy()))
 		}
@@ -995,21 +996,16 @@ func (a *App) compose(w, h int) string {
 	if a.permAsk != nil {
 		splice(a.permBox(a.permAsk, area.Dx(), area.Dy()))
 	}
-	// The toasts are one tray at the top right of the stage, over the dimmed
-	// rows but under the top box: a toast is not dimmed, and its text never
-	// covers the chrome the user answers.
-	// With the thinking pane drawn the tray docks into it instead, as wide as
-	// the pane, so it never stands beside the pane's separator.
+	// The toasts are one tray at the top of the stage, over the dimmed rows
+	// but under the top box: a toast is not dimmed, and its text never covers
+	// the chrome the user answers. It hugs the stage's right edge, four cells
+	// over it, the rest in the margin, and stays inside the screen.
 	toasts := func() {
-		at, room := stage, stage.Dx()
-		if head, ok := lay.rects["thinking.head"]; ok && head.Dx() >= 16 {
-			at, room = uv.Rect(head.Min.X, head.Min.Y, head.Dx(), stage.Max.Y-head.Min.Y), head.Dx()
-		}
-		if tray := toastTray(a.toasts, room, at.Dy()); len(tray) > 0 {
+		if tray := toastTray(a.toasts, stage.Dx(), stage.Dy()); len(tray) > 0 {
 			for i, line := range tray {
 				tray[i] = margined(line)
 			}
-			placeBox(rows, tray, max(at.Min.X, at.Max.X-hostapi.SegsWidth(tray[0])), at.Min.Y, w)
+			placeBox(rows, tray, max(min(stage.Max.X-4, w-hostapi.SegsWidth(tray[0])), 0), stage.Min.Y, w)
 		}
 	}
 	for i, place := range modals {
@@ -1097,11 +1093,12 @@ func dimRows(rows [][]hostapi.Segment) {
 }
 
 // floatPopup draws the open composer popup, the palette or the completion
-// list, over rows: standing on the composer frame like an anchored overlay
-// (anchorBottom), in the bottom rows of the stage when the stage is above the
-// composer, else beside the composer on the side with more rows. It covers
-// only its own cells, keeps its size while it stays open and ends in its
-// hint row. It returns the cells it covers.
+// list, over rows, in line with the composer: standing on its frame like an
+// anchored overlay (anchorBottom) in the draft's rule tint, in the bottom
+// rows of the stage when the stage is above the composer, else beside the
+// composer on the side with more rows. It covers only its own cells, keeps
+// its size while it stays open and ends in its hint row. It returns the
+// cells it covers.
 func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.Rectangle {
 	h := len(rows)
 	var render func(maxW, room, minW int) [][]hostapi.Segment
@@ -1122,10 +1119,10 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 		return uv.Rectangle{}
 	}
 	stage, c := lay.stage, lay.rects["composer"]
-	x, width, top, bottom := stage.Min.X, stage.Dx(), stage.Min.Y, min(stage.Max.Y, h)
+	x, width, top, bottom := c.Min.X, c.Dx(), stage.Min.Y, min(stage.Max.Y, h)
 	up := true
 	if stage.Max.Y > c.Min.Y {
-		x, width, top, bottom = c.Min.X, c.Dx(), 0, c.Min.Y
+		top, bottom = 0, c.Min.Y
 		if up = c.Min.Y >= h-c.Max.Y; !up {
 			top, bottom = c.Max.Y, h
 		}
@@ -1139,9 +1136,8 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 	body := append(render(maxW, bottom-top-4, size.w), nil, hint(maxW, hints...))
 	box := promptBox("", "", body, width, bottom-top, 100, size)
 	if up {
-		// in line with the stage, standing only on the composer's own rule
-		frame := uv.Rect(x, c.Min.Y, min(width, c.Max.X-x), c.Dy())
-		return anchorBottom(rows, box, uv.Rect(x, top, width, bottom-top), frame, ruleAt(rows, c) && x >= c.Min.X, false, w)
+		_, _, rule := a.draftMode()
+		return anchorBottom(rows, box, uv.Rect(x, top, width, bottom-top), c, ruleAt(rows, c), false, cmp.Or(rule, hostapi.ChromeRule), w)
 	}
 	// NOTE: below the composer the popup does not stand on the statusline rule
 	placeBox(rows, box, x, top, w)

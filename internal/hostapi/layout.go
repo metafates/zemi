@@ -177,15 +177,13 @@ var DefaultLayout = &Layout{Root: &LayoutNode{Kind: LayoutBox, Dir: DirRow, Size
 	{Kind: LayoutSpacer, Size: Size{Kind: SizeFill}},
 	{Kind: LayoutBox, Dir: DirCol, Size: Size{Kind: SizeFill, N: 1000}, Min: 30, Max: 100, Children: []*LayoutNode{
 		{Kind: LayoutRegion, Region: "header"},
-		{Kind: LayoutBox, Dir: DirRow, Sep: true, Size: Size{Kind: SizeFill}, Children: []*LayoutNode{
+		{Kind: LayoutBox, Dir: DirRow, Sep: true, Stage: true, Size: Size{Kind: SizeFill}, Children: []*LayoutNode{
 			{Kind: LayoutBox, Dir: DirCol, Size: Size{Kind: SizeFill, N: 1000}, Min: 63, Max: 100, Children: []*LayoutNode{
-				{Kind: LayoutBox, Dir: DirCol, Stage: true, Size: Size{Kind: SizeFill}, Min: 1, Children: []*LayoutNode{
-					{ID: "chat", Kind: LayoutRegion, Region: "chat", Scroll: EdgeBottom, Size: Size{Kind: SizeFill}, Min: 3},
-				}},
+				{ID: "chat", Kind: LayoutRegion, Region: "chat", Scroll: EdgeBottom, Size: Size{Kind: SizeFill}, Min: 3},
 				{Kind: LayoutSpacer, Size: Size{Kind: SizeCells, N: 1}},
 			}},
 			{Kind: LayoutBox, Dir: DirCol, Size: Size{Kind: SizeFill, N: 1}, Min: 36, Max: 56, Collapse: true, Hidden: true, Children: []*LayoutNode{
-				{ID: "thinking.head", Kind: LayoutRegion, Region: "thinking.head"},
+				{Kind: LayoutRegion, Region: "thinking.head"},
 				{ID: "thinking", Kind: LayoutRegion, Region: "thinking", Scroll: EdgeBottom, Size: Size{Kind: SizeFill}},
 			}},
 		}},
