@@ -233,7 +233,7 @@ func (h *Host) loadPicks() {
 		if err == nil {
 			err = json.Unmarshal([]byte(raw), &v)
 		}
-		if _, known := h.Settings.Get(path); err == nil && !known && strings.HasPrefix(path, "plugins.") {
+		if _, known := h.Settings.Get(path); err == nil && !known && settingPlugin(path) != "" {
 			h.picked[path] = v // zemi.config.add checks and applies it
 			continue
 		}
@@ -256,11 +256,34 @@ func (h *Host) loadPicks() {
 
 var settingKey = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 
-// addSetting is zemi.config.add: a plugin registers its own
-// plugins.<name>.<key> settings while it loads, so the schema changes only
-// with a load. A new or changed key takes its kept pick; one the new spec
-// refuses is forgotten.
-func (h *Host) addSetting(L *glua.LState, spec *glua.LTable) {
+// settingPath is the key path names: plugin code names its own settings by
+// the bare key. Every builtin key has a section, so a bare name is no builtin
+// one, and a plugin still reads any other key by its full path.
+func (h *Host) settingPath(L *glua.LState, path string) string {
+	if strings.Contains(path, ".") || h.RT.CurrentOrigin(L) != lua.OriginPlugin {
+		return path
+	}
+	if name := h.PluginOf(h.RT.CurrentPath(L)); name != "" {
+		return "plugins." + name + "." + path
+	}
+	return path
+}
+
+// settingPlugin is the plugin that registered path, "" for a builtin key.
+func settingPlugin(path string) string {
+	rest, ok := strings.CutPrefix(path, "plugins.")
+	if !ok {
+		return ""
+	}
+	name, _, _ := strings.Cut(rest, ".")
+	return name
+}
+
+// addSetting is zemi.config.add: a plugin registers its own settings by bare
+// key while it loads, stored as plugins.<name>.<key>, so the schema changes
+// only with a load. A new or changed key takes its kept pick; one the new
+// spec refuses is forgotten.
+func (h *Host) addSetting(L *glua.LState, key string, spec *glua.LTable) {
 	if h.RT.CurrentOrigin(L) != lua.OriginPlugin {
 		L.RaiseError("zemi.config.add: only a plugin registers settings; user config sets values with zemi.config.set")
 	}
@@ -269,13 +292,14 @@ func (h *Host) addSetting(L *glua.LState, spec *glua.LTable) {
 	}
 	name := h.PluginOf(h.RT.CurrentPath(L))
 	def := config.Setting{
-		Path: rawString(L, spec, "path"), Kind: config.Kind(rawString(L, spec, "kind")),
+		Path: "plugins." + name + "." + key, Kind: config.Kind(rawString(L, spec, "kind")),
 		Desc: listDesc(rawString(L, spec, "desc")), Choices: rawStrings(L, spec, "choices"),
 	}
-	key, ok := strings.CutPrefix(def.Path, "plugins."+name+".")
 	switch {
-	case name == "" || !ok || !settingKey.MatchString(key):
-		L.RaiseError("zemi.config.add: path %q must be plugins.%s.<key>, the key a lowercase letter, then up to 31 lowercase letters, digits and _", def.Path, name)
+	case name == "":
+		L.RaiseError("zemi.config.add: plugin code running with no file of its plugin on the stack registers no settings")
+	case !settingKey.MatchString(key):
+		L.RaiseError("zemi.config.add: key %q must be a lowercase letter, then up to 31 lowercase letters, digits and _", key)
 	case !slices.Contains(config.Kinds, def.Kind):
 		L.RaiseError("zemi.config.add: kind must be string, int or bool")
 	case def.Choices != nil && def.Kind != config.KindString:
@@ -317,11 +341,10 @@ func (h *Host) addSetting(L *glua.LState, spec *glua.LTable) {
 // plugin is off, gone or failed to load, so init.lua's line for it does
 // nothing; for a plugin that loaded it is a typo, which raises.
 func (h *Host) settingOff(path string) bool {
-	rest, ok := strings.CutPrefix(path, "plugins.")
-	if _, known := h.Settings.Get(path); !ok || known {
+	name := settingPlugin(path)
+	if _, known := h.Settings.Get(path); name == "" || known {
 		return false
 	}
-	name, _, _ := strings.Cut(rest, ".")
 	if p := h.pluginLoads.Load(); p != nil && slices.ContainsFunc(*p, func(l pluginLoad) bool { return l.name == name && l.err == nil }) {
 		return false
 	}
@@ -348,7 +371,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		v, _ := h.Settings.Get(L.CheckString(1))
+		v, _ := h.Settings.Get(h.settingPath(L, L.CheckString(1)))
 		L.Push(lua.FromGo(L, v))
 		return 1
 	}))
@@ -368,7 +391,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		h.addSetting(L, L.CheckTable(1))
+		h.addSetting(L, L.CheckString(1), L.CheckTable(2))
 		return 0
 	}))
 
@@ -402,7 +425,7 @@ func (h *Host) configNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("watch", L.NewFunction(func(L *glua.LState) int {
-		path := L.CheckString(1)
+		path := h.settingPath(L, L.CheckString(1))
 		fn := L.CheckFunction(2)
 		if h.settingOff(path) {
 			return 0

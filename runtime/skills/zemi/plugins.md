@@ -24,7 +24,7 @@ There is no manifest: the version is the checked-out `vX.Y.Z` tag, the source th
 5. Then, once, `return zemi.errors.list()` in a Lua tool script: the tool reloads the changed plugin first and its result starts with what failed to load. Only this shows a clash with the user's own config (a key or an id they hold). Fix a `plugin <name>:` error and go back to 4.
 6. Tell the user what it registered or what changed, that `/plugins` turns it off, and which README lines they may add to init.lua. Do not add them yourself.
 
-`init.lua` registers what the plugin is for, with defaults, so it works the moment it loads with no line in the user's init.lua: its commands, its widgets (rendering `{}` until they have something to say), its tool, its settings, and keys only where `zemi.keymap.get(key)` is nil. Every option that is a bool, a number, a string or one of a list is a setting, `zemi.config.add({ path = "plugins.<name>.<key>", kind, default, desc, choices })`, which /config lists under Plugins and keeps across starts, and the user's init.lua sets with `zemi.config.set`. What the user did not ask for stays off behind a bool setting that defaults to false, which the user turns on in /config: timers and polling beyond what its own widgets need, event handlers that act (sending to the agent, vetoing a submit or a tool call), network calls, a key someone else holds. Plugins load before the user's init.lua, so read a setting where it is used (the timer tick, the handler, `app.ready`), or watch it (`zemi.config.watch`) to start and stop what it controls; a value read at load misses init.lua's. A plugin never writes its settings. A setting never holds a secret (a token, a password): the store keeps it in plain text and any code and the model can read it. `setup(opts)` is only for what a setting cannot hold: a function, a table, or a key the user passes from `zemi.env.get`. Start gated calls on `app.ready`: the user's allow rules are added after the plugin's init.lua runs.
+`init.lua` registers what the plugin is for, with defaults, so it works the moment it loads with no line in the user's init.lua: its commands, its widgets (rendering `{}` until they have something to say), its tool, its settings, and keys only where `zemi.keymap.get(key)` is nil. Every option that is a bool, a number, a string or one of a list is a setting, `zemi.config.add(key, { kind, default, desc, choices })`, which /config lists under the plugin's name and keeps across starts. The plugin's code reads and watches it by the bare key; the user's init.lua sets it as `plugins.<name>.<key>` with `zemi.config.set`. What the user did not ask for stays off behind a bool setting that defaults to false, which the user turns on in /config: timers and polling beyond what its own widgets need, event handlers that act (sending to the agent, vetoing a submit or a tool call), network calls, a key someone else holds. Plugins load before the user's init.lua, so read a setting where it is used (the timer tick, the handler, `app.ready`), or watch it (`zemi.config.watch`) to start and stop what it controls; a value read at load misses init.lua's. A plugin never writes its settings. A setting never holds a secret (a token, a password): the store keeps it in plain text and any code and the model can read it. `setup(opts)` is only for what a setting cannot hold: a function, a table, or a key the user passes from `zemi.env.get`. Start gated calls on `app.ready`: the user's allow rules are added after the plugin's init.lua runs.
 
 `init.lua`:
 
@@ -59,8 +59,7 @@ zemi.ui.widget.add({
 	render = function() return branch == "" and {} or { { { text = branch, hl = "Dim" } } } end,
 })
 
-zemi.config.add({
-	path = "plugins.branch.interval",
+zemi.config.add("interval", {
 	kind = "int",
 	default = 30000,
 	desc = "how often the branch is read, in ms",
@@ -68,8 +67,8 @@ zemi.config.add({
 
 zemi.event.on("app.ready", function()
 	zemi.timer.after(0, poll) -- an event handler has 50 ms, a timer callback 1 s
-	local tick = zemi.timer.every(zemi.config.get("plugins.branch.interval"), poll)
-	zemi.config.watch("plugins.branch.interval", function(ms)
+	local tick = zemi.timer.every(zemi.config.get("interval"), poll)
+	zemi.config.watch("interval", function(ms)
 		tick:stop()
 		tick = zemi.timer.every(ms, poll)
 	end)
@@ -145,7 +144,7 @@ test.complete(line)             the rows the plugin's completion offers for a dr
 test.overlay()                  the top overlay { id, title, body, items, input }, or nil
 test.answer(choice, action?)    enter on an item (index or text) or its action; nil is esc
 test.advance(ms)                move the clock, firing due timers
-test.set(path, value)           one of the plugin's settings, as /config changes it
+test.set(key, value)            one of the plugin's settings, as /config changes it
 test.stub(subject, pattern?, reply?) -> requests
                                 answer lua.http.<method>, lua.job.start, lua.model.ask,
                                 lua.agent.send or lua.fs.write; false refuses like a missing rule
@@ -170,7 +169,7 @@ test("a checkout shows on the next poll", function()
 end)
 
 test("the interval setting moves the poll", function()
-	assert(test.set("plugins.branch.interval", 10000))
+	assert(test.set("interval", 10000))
 	test.stub("lua.job.start", "git rev-parse *", { stdout = "fix-login\n" })
 	test.advance(10000)
 	test.eq(test.render("branch"), { "fix-login" })

@@ -478,7 +478,8 @@ adapter the model's call runs), `render`, `click`, `emit` (to the plugin's
 own handlers, `tool.post` as tasks and vetoable events with their
 deadline), `complete` (a command's completer and the plugin's
 `zemi.composer.complete` sources, as the palette asks them), `overlay`,
-`answer` and `set` (one of the plugin's settings, as `/config` writes it),
+`answer` and `set` (one of the plugin's settings by its bare key, as
+`/config` writes it),
 each refusing another origin's target, a Go command and a host
 action, and a driver at a file's top level raises. `eq`, `neq`,
 `contains` and `raises` assert, `eq` naming the first difference (the line,
@@ -702,11 +703,15 @@ zemi, in any repository, allowing what the rules do not deny. zemi never edits
 init.lua; `/config lua` shows the settings as lines to copy, and the agent edits
 config files through the permission-gated file tools. zemi makes no commits.
 
-A plugin's options are settings of its own: `zemi.config.add` registers
-`plugins.<name>.<key>` keys (a string, an int, a bool, or one of a list) with
-their defaults, from the plugin's init.lua while it loads, and only under its
-own name. They are schema rows like the builtin ones, so `/config` lists them
-under Plugins and every layer above applies unchanged; a kept pick waits in
+A plugin's options are settings of its own: `zemi.config.add(key, spec)`
+registers a key (a string, an int, a bool, or one of a list) with its
+default, from the plugin's init.lua while it loads. The plugin names it by
+the bare key; zemi derives the plugin from the calling file, as it does for
+`zemi.state`, and stores it as `plugins.<name>.<key>`, the name the user sets
+and /config shows. The plugin's `get` and `watch` of a bare key resolve the
+same way, and since every builtin key has a section, a bare name is never a
+builtin one. They are schema rows like the builtin ones, so `/config` lists
+them under a section per plugin and every layer above applies unchanged; a kept pick waits in
 the store until its key registers (checked then, forgotten when the new spec
 refuses it). A replay that registers a key again with the same spec keeps its
 value; a key the replay did not register (the plugin is off, gone, or stopped

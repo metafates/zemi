@@ -147,6 +147,10 @@ func (h *Host) configItems() []any {
 			desc = source // the switch in the key column draws the value
 		}
 		section, _, _ := strings.Cut(s.Path, ".")
+		section = sourceSection(section)
+		if name := settingPlugin(s.Path); name != "" {
+			section = "Plugin " + name
+		}
 		base, set := h.cfgBase(s.Path)
 		note := ""
 		if set && source == "this run" {
@@ -156,7 +160,7 @@ func (h *Host) configItems() []any {
 		// holds its switch; one width, so a change moves no text. The key's
 		// description is the preview, whole under the list.
 		item := map[string]any{
-			"text": s.Path, "desc": desc, "preview": s.Desc, "section": sourceSection(section),
+			"text": s.Path, "desc": desc, "preview": s.Desc, "section": section,
 			"fields": fieldList("kind", string(s.Kind), "default", showSetting(s.Default), "value", showSetting(v), "source", source),
 			"detail": s.Desc + note,
 		}

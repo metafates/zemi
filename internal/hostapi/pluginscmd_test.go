@@ -47,7 +47,7 @@ func TestPluginsCommand(t *testing.T) {
 	dirs := config.Dirs{ProjectDir: tmp, DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
 	src := filepath.Join(tmp, "src", "x")
 	for p, text := range map[string]string{
-		filepath.Join(dirs.PluginsRoot(), "local", "a", "init.lua"): "-- a todo list\nzemi.command.add('todo', function() end, {})\nzemi.config.add({ path = 'plugins.a.live', kind = 'bool', default = true, desc = 'live' })",
+		filepath.Join(dirs.PluginsRoot(), "local", "a", "init.lua"): "-- a todo list\nzemi.command.add('todo', function() end, {})\nzemi.config.add('live', { kind = 'bool', default = true, desc = 'live' })",
 		filepath.Join(dirs.PluginsRoot(), "local", "b", "init.lua"): "error('broken')",
 		filepath.Join(src, "init.lua"):                              "-- the x plugin\n",
 	} {

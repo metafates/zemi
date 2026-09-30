@@ -1030,6 +1030,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   `memory.autonomy` is user config only.
 - **Config store** (`internal/config/store.go`): dotted-path keys from a Go-owned schema plus
   the `plugins.<name>.*` keys a plugin registers while it loads (`zemi.config.add`, `Store.Add`;
+  plugin code names its own by the bare key, `settingPath`;
   `dropPluginKeys` takes the ones a replay did not register again, and `settingOff` makes a
   `set` or `watch` of one whose plugin did not load do nothing); only
   user config sets them, and a read of a key outside it panics under `go test`. Providers ship

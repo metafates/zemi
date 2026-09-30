@@ -204,7 +204,7 @@ test("the command and the # source complete snippet names", function()
 end)
 
 test("the interval setting moves the poll", function()
-	assert(test.set("plugins.demo.interval", 10000))
+	assert(test.set("interval", 10000))
 	branch = "fix-login"
 	test.advance(10000)
 	test.eq(test.render("demo.branch"), { "fix-login" })

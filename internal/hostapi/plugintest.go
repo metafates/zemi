@@ -505,11 +505,12 @@ func (t *PluginTest) runCmd(L *glua.LState) int {
 	})
 }
 
-// set is test.set(path, value): one of the plugin's settings changed as the
-// user changes it in /config, its watches firing.
+// set is test.set(key, value): one of the plugin's settings, named as its
+// code names it, changed as the user changes it in /config, its watches
+// firing.
 func (t *PluginTest) set(L *glua.LState) int {
-	s := t.own(L, "set", "setting", L.CheckString(1), t.h.Settings.Schema(), func(s config.Setting) (string, bool) {
-		return s.Path, strings.HasPrefix(s.Path, "plugins."+t.plugin+".")
+	s := t.own(L, "set", "setting", t.h.settingPath(L, L.CheckString(1)), t.h.Settings.Schema(), func(s config.Setting) (string, bool) {
+		return s.Path, settingPlugin(s.Path) == t.plugin
 	})
 	v := luaToGoChecked(L, 2, "test.set")
 	return t.drive(L, "set", "", func(context.Context) (func(*glua.LState) []glua.LValue, error) {

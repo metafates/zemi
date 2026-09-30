@@ -242,17 +242,20 @@ zemi.api = {}
 ---| "int"
 ---| "bool"
 
----@class zemi.SettingSchema
----@field path string Dotted key, e.g. "ui.theme"; a plugin's are "plugins.<name>.<key>".
+---@class zemi.SettingSpec
 ---@field kind zemi.SettingKind
 ---@field default any
 ---@field desc string What /config shows: a lowercase fragment.
 ---@field choices? string[] The only values a string key takes; nil takes any. `zemi.config.set` also takes "default" for a "" choice.
 
+---@class zemi.SettingSchema: zemi.SettingSpec
+---@field path string Dotted key, e.g. "ui.theme"; a plugin's are "plugins.<name>.<key>".
+
 ---@class zemi.config
 zemi.config = {}
 
---- Read a setting, or nil when it is not set and has no default.
+--- Read a setting, or nil when it is not set and has no default. Plugin
+--- code names its own settings by the bare key.
 ---@param path string
 ---@return any
 function zemi.config.get(path) end
@@ -270,31 +273,32 @@ function zemi.config.get(path) end
 function zemi.config.set(path, value) end
 
 --- Register one of the calling plugin's settings, from its init.lua. The
---- path is `plugins.<plugin>.<key>`, the key a lowercase letter, then up to
---- 31 lowercase letters, digits and `_`. It shows in /config, keeps a pick
---- across starts, takes `zemi.config.set` from the user's init.lua, and
---- leaves when the plugin is turned off. Plugins load before the user's
---- init.lua, so read it with `zemi.config.get` where it is used, or watch
---- it, never once at load. Plugin origin only; raises past load, for another
---- plugin's path, or for a default the kind or choices refuse. Never a
---- secret: /config shows it, the store keeps it in plain text and any code,
---- the model's Lua included, reads it; a key comes from the environment
---- through `zemi.env.get` in the user's init.lua.
+--- key is a lowercase letter, then up to 31 lowercase letters, digits and
+--- `_`; the plugin's own code reads and watches it by that key, and the user
+--- sets it as `plugins.<plugin>.<key>`. It shows in /config under the
+--- plugin, keeps a pick across starts, takes `zemi.config.set` from the
+--- user's init.lua, and leaves when the plugin is turned off. Plugins load
+--- before the user's init.lua, so read it with `zemi.config.get` where it is
+--- used, or watch it, never once at load. Plugin origin only; raises past
+--- load, or for a default the kind or choices refuse. Never a secret:
+--- /config shows it, the store keeps it in plain text and any code, the
+--- model's Lua included, reads it; a key comes from the environment through
+--- `zemi.env.get` in the user's init.lua.
 ---
 --- ```lua
---- zemi.config.add({ path = "plugins.branch.interval", kind = "int", default = 30000,
---- 	desc = "how often the branch is read, in ms" })
+--- zemi.config.add("interval", { kind = "int", default = 30000, desc = "how often the branch is read, in ms" })
 --- ```
----@param spec zemi.SettingSchema
-function zemi.config.add(spec) end
+---@param key string
+---@param spec zemi.SettingSpec
+function zemi.config.add(key, spec) end
 
 --- Call fn whenever a setting changes. A path outside the schema raises,
 --- except a setting of a plugin that is off or failed to load, which
---- returns nil.
+--- returns nil. Plugin code names its own settings by the bare key.
 ---
 --- ```lua
---- local tick = zemi.timer.every(zemi.config.get("plugins.demo.interval"), poll)
---- zemi.config.watch("plugins.demo.interval", function(ms)
+--- local tick = zemi.timer.every(zemi.config.get("interval"), poll)
+--- zemi.config.watch("interval", function(ms)
 --- 	tick:stop()
 --- 	tick = zemi.timer.every(ms, poll)
 --- end)
@@ -2917,14 +2921,14 @@ function zemi.test.stub(subject, pattern, reply) end
 ---@param ms number
 function zemi.test.advance(ms) end
 
---- Change one of the plugin's settings as the user does in /config, its
---- watches firing.
+--- Change one of the plugin's settings, named by its bare key, as the user
+--- does in /config, its watches firing.
 ---
 --- ```lua
---- assert(test.set("plugins.demo.interval", 10000))
+--- assert(test.set("interval", 10000))
 --- ```
----@param path string
+---@param key string
 ---@param value any
 ---@return true|nil ok
 ---@return string? err
-function zemi.test.set(path, value) end
+function zemi.test.set(key, value) end

@@ -85,7 +85,7 @@ for i = 1, 300 do test("case " .. i, function() end) end
 `},
 		{name: "an unstubbed call", args: []string{"<plugin>", "no stub"}, code: 1, want: `FAIL tests/fail.lua:14: a call no stub answers
   tests/fail.lua:14: got nil, want "Oslo: 21C, Sunny"
-  test.tool at tests/fail.lua:14 returned: weather_now: lua/demo/init.lua:92: lua.http.get https://wttr.in/Oslo?format=j1: no test.stub answers it; add test.stub("lua.http.get", "https://wttr.in/*", { status = 200, body = "..." })
+  test.tool at tests/fail.lua:14 returned: weather_now: lua/demo/init.lua:91: lua.http.get https://wttr.in/Oslo?format=j1: no test.stub answers it; add test.stub("lua.http.get", "https://wttr.in/*", { status = 200, body = "..." })
 0 passed, 1 failed (2 files, (T))
 `},
 		{name: "a callback fails", args: []string{"<plugin>", "callback"}, code: 1, want: `FAIL tests/fail.lua:16: a callback that fails
@@ -99,7 +99,7 @@ for i = 1, 300 do test("case " .. i, function() end) end
 `},
 		{name: "a reply field nothing reads", args: []string{"<plugin>", "misspelled"}, code: 1, want: `FAIL tests/fail.lua:32: a reply function with a misspelled field
   tests/fail.lua:34: got nil, want "Oslo: 21C, Sunny"
-  test.tool at tests/fail.lua:34 returned: weather_now: lua/demo/init.lua:92: test.stub reply: bdy is not a field of a http reply, which takes body, error, headers, status
+  test.tool at tests/fail.lua:34 returned: weather_now: lua/demo/init.lua:91: test.stub reply: bdy is not a field of a http reply, which takes body, error, headers, status
 0 passed, 1 failed (2 files, (T))
 `},
 		{name: "eq on an error naming a file", args: []string{"<plugin>", "naming a file"}, code: 1, want: `FAIL tests/fail.lua:37: eq on an error naming a file

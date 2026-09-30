@@ -318,8 +318,8 @@ func TestPluginsStep(t *testing.T) {
 func TestPluginSettings(t *testing.T) {
 	const (
 		key    = "plugins.br.interval"
-		reg    = `zemi.config.add({ path = "plugins.br.interval", kind = "int", default = 30000, desc = "How often the branch is read, in ms." })`
-		regStr = `zemi.config.add({ path = "plugins.br.interval", kind = "string", default = "x", desc = "d" })`
+		reg    = `zemi.config.add("interval", { kind = "int", default = 30000, desc = "How often the branch is read, in ms." })`
+		regStr = `zemi.config.add("interval", { kind = "string", default = "x", desc = "d" })`
 		off    = "off" // the plugin turned off; "-" deletes it
 	)
 	type phase struct {
@@ -336,7 +336,17 @@ func TestPluginSettings(t *testing.T) {
 		{
 			name: "a registered key reads its default and lists in schema()", phases: []phase{{plugin: reg, user: `
 				for _, s in ipairs(zemi.config.schema()) do if s.path == "plugins.br.interval" then print(s.desc) end end`}},
-			want: []string{"value 30000 default", "user|how often the branch is read, in ms\n"},
+			want: []string{"value 30000 default", "section Plugin br\n", "user|how often the branch is read, in ms\n"},
+		},
+		{
+			name: "the plugin reads and watches its own key bare, user code does not",
+			phases: []phase{{
+				plugin: reg + `
+					zemi.config.watch("interval", function(v) print("watched", v) end)
+					zemi.command.add("rd", function() print("got", zemi.config.get("interval")) end, {})`,
+				after: `zemi.config.set("plugins.br.interval", 10000) zemi.command.run("rd") print("bare", zemi.config.get("interval"))`,
+			}},
+			want: []string{"plugin|watched 10000\n", "plugin|got 10000\n", "user|bare nil\n"},
 		},
 		{
 			name:   "init.lua sets it",
@@ -385,16 +395,18 @@ func TestPluginSettings(t *testing.T) {
 		{
 			name: "only a plugin registers, its own keys, while it loads, a default the kind and choices take",
 			phases: []phase{{
-				plugin: `print(pcall(zemi.config.add, { path = "plugins.other.x", kind = "int", default = 1, desc = "d" }))
-					print(pcall(zemi.config.add, { path = "ui.theme", kind = "string", default = "x", desc = "d" }))
-					print(pcall(zemi.config.add, { path = "plugins.br.units", kind = "string", default = "kelvin", choices = { "metric" }, desc = "d" }))
-					print(pcall(zemi.config.add, { path = "plugins.br.n", kind = "int", default = "1", desc = "d" }))
-					zemi.command.add("late", function() print(pcall(zemi.config.add, { path = "plugins.br.late", kind = "int", default = 1, desc = "d" })) end, {})`,
-				user:  `print(pcall(zemi.config.add, { path = "plugins.br.x", kind = "int", default = 1, desc = "d" }))`,
+				plugin: `print(pcall(zemi.config.add, { path = "plugins.br.x", kind = "int", default = 1, desc = "d" }))
+					print(pcall(zemi.config.add, "ui.theme", { kind = "string", default = "x", desc = "d" }))
+					print(pcall(zemi.config.add, "Interval", { kind = "string", default = "x", desc = "d" }))
+					print(pcall(zemi.config.add, "units", { kind = "string", default = "kelvin", choices = { "metric" }, desc = "d" }))
+					print(pcall(zemi.config.add, "n", { kind = "int", default = "1", desc = "d" }))
+					zemi.command.add("late", function() print(pcall(zemi.config.add, "late", { kind = "int", default = 1, desc = "d" })) end, {})`,
+				user:  `print(pcall(zemi.config.add, "x", { kind = "int", default = 1, desc = "d" }))`,
 				after: `zemi.command.run("late")`,
 			}},
 			want: []string{
-				`zemi.config.add: path "plugins.other.x" must be plugins.br.<key>`, `path "ui.theme" must be plugins.br.<key>`,
+				"bad argument #1 to (anonymous) (string expected, got table)",
+				`zemi.config.add: key "ui.theme" must be a lowercase letter`, `key "Interval" must be`,
 				"plugins.br.units expects metric", "plugins.br.n expects int",
 				"zemi.config.add: only a plugin registers settings",
 				"zemi.config.add: register settings when the plugin loads",
@@ -459,6 +471,11 @@ func TestPluginSettings(t *testing.T) {
 			}
 			v, _ := h.Settings.Get(key)
 			fmt.Fprintf(&out, "value %v %s\n", cmp.Or(fmt.Sprint(v), "<nil>"), h.cfgSource(key))
+			for _, it := range h.configItems() {
+				if m := it.(map[string]any); m["text"] == key {
+					fmt.Fprintf(&out, "section %s\n", m["section"])
+				}
+			}
 			keys, _ := h.GlobalDB.KeysKV("config:")
 			for _, k := range keys {
 				fmt.Fprintf(&out, "%s\n", k)
