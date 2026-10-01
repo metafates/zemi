@@ -102,9 +102,11 @@ local function block_of(m)
 	return activity(m) and "activity" or "note"
 end
 
--- "+4 -1": the lines a diff adds and removes.
+-- "+4 -1": the lines a diff adds and removes, in the colors a diff marks the
+-- same counts with (Ok adds, Danger removes). A zero stays Dim: it reports
+-- nothing, and the sign alone would read as one.
 ---@param diff string
----@return string
+---@return zemi.Line
 local function diffstat(diff)
 	local add, del = 0, 0
 	for l in diff:gmatch("[^\n]+") do
@@ -114,7 +116,10 @@ local function diffstat(diff)
 			del = del + 1
 		end
 	end
-	return "+" .. add .. " -" .. del
+	return {
+		{ text = "+" .. add, hl = add > 0 and "Ok" or "Dim" },
+		{ text = " -" .. del, hl = del > 0 and "Danger" or "Dim" },
+	}
 end
 
 -- The row builders one render uses, drawing at width into B.lines.
@@ -136,20 +141,27 @@ local function builder(ctx, width)
 	---@param s string
 	---@return string
 	local function relpath(s) return fmt.relpath(s, ctx.cwd, ctx.home) end
-	-- row ending in suffix, flush with the right edge
-	---@param row zemi.Line
-	---@param suffix string
-	---@param click string?
-	---@return zemi.Line
-	local function suffixed(row, suffix, click)
-		if suffix == "" then return row end
+	-- the cells a line of segments takes
+	---@param segs zemi.Line
+	---@return integer
+	local function segw(segs)
 		local w = 0
-		for _, sg in ipairs(row) do
+		for _, sg in ipairs(segs) do
 			w = w + zemi.ui.width(sg.text)
 		end
-		local sw = zemi.ui.width(suffix)
-		row[#row + 1] = { text = string.rep(" ", math.max(2, width - w - sw)) }
-		row[#row + 1] = { text = suffix, hl = "Dim", click = click }
+		return w
+	end
+	-- row ending in tail, a line of segments, flush with the right edge
+	---@param row zemi.Line
+	---@param tail zemi.Line
+	---@param click string?
+	---@return zemi.Line
+	local function suffixed(row, tail, click)
+		if #tail == 0 then return row end
+		row[#row + 1] = { text = string.rep(" ", math.max(2, width - segw(row) - segw(tail))) }
+		for _, sg in ipairs(tail) do
+			row[#row + 1] = { text = sg.text, hl = sg.hl, click = click }
+		end
 		return row
 	end
 
@@ -274,9 +286,9 @@ local function builder(ctx, width)
 	---@param click string
 	---@param secs number? The thought before the step.
 	function B.group(group, click, secs)
-		local suffix = secs and secs >= 0.05 and fmt.duration(secs) or ""
-		local room = width - 2 - (suffix ~= "" and zemi.ui.width(suffix) + 2 or 0)
-		push(suffixed({ bar(), { text = fmt.clip(said(group), room), hl = "Normal", click = click } }, suffix, click))
+		local tail = secs and secs >= 0.05 and { { text = fmt.duration(secs), hl = "Dim" } } or {}
+		local room = width - 2 - (#tail > 0 and segw(tail) + 2 or 0)
+		push(suffixed({ bar(), { text = fmt.clip(said(group), room), hl = "Normal", click = click } }, tail, click))
 	end
 
 	-- One call as its own row: the verb and the label or input, what it
@@ -311,18 +323,21 @@ local function builder(ctx, width)
 			input = (input:gsub("%s+", " "))
 		end
 		local label = t.label or ""
-		---@type string[]
-		local parts = {}
-		if (t.diff or "") ~= "" then parts[1] = diffstat(t.diff) end
-		if t.status == "run" and not asked and (t.elapsed or 0) >= 1 then
-			parts[#parts + 1] = fmt.duration(t.elapsed, true)
+		-- the row's right-aligned tail: what it changed, then how long it ran
+		---@type zemi.Line
+		local tail = (t.diff or "") ~= "" and diffstat(t.diff) or {}
+		---@param text string
+		local function add(text)
+			if #tail > 0 then tail[#tail + 1] = { text = " · ", hl = "Dim" } end
+			tail[#tail + 1] = { text = text, hl = "Dim" }
 		end
+		if t.status == "run" and not asked and (t.elapsed or 0) >= 1 then add(fmt.duration(t.elapsed, true)) end
 		-- the thought before the call, once its own clock stops
-		if o.secs and o.secs >= 0.05 and t.status ~= "run" then parts[#parts + 1] = fmt.duration(o.secs) end
-		local suffix = table.concat(parts, " · ")
+		if o.secs and o.secs >= 0.05 and t.status ~= "run" then add(fmt.duration(o.secs)) end
+		local sw = segw(tail)
 		local verb, rest = fmt.head(name, label, input)
 		verb = fmt.lower(verb)
-		local room = inner - 2 - zemi.ui.width(verb) - (suffix ~= "" and zemi.ui.width(suffix) + 2 or 1)
+		local room = inner - 2 - zemi.ui.width(verb) - (sw > 0 and sw + 2 or 1)
 		-- expanded rows wrap (the widget wraps), collapsed ones stay one line
 		---@param text string
 		---@param n integer
@@ -362,7 +377,7 @@ local function builder(ctx, width)
 			table.insert(head, 1, bar(pad))
 		end
 		local first = #B.lines + 1
-		push(suffixed(head, suffix, click))
+		push(suffixed(head, tail, click))
 		-- under the head one corner, every later row four cells in
 		local corner = true
 		---@param text string|zemi.Line
