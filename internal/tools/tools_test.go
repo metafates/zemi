@@ -1056,3 +1056,44 @@ func TestFileToolsRefuseSymlink(t *testing.T) {
 		t.Errorf("target changed: %q", data)
 	}
 }
+
+// TestCmdOutScript: a call a lua script drives comes back whole (the script
+// reads it and says what of it the model gets), where a direct call gets the
+// cut and the spill file.
+func TestCmdOutScript(t *testing.T) {
+	raw := strings.Repeat("a line\n", 5000)
+	pad := t.TempDir()
+	cases := []struct {
+		name string
+		p    Pipeline
+		cut  bool
+	}{
+		{"the model's own call", Pipeline{Pad: pad}, true},
+		{"a script's call", Pipeline{Pad: pad, Script: "lua-tool#1"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := c.p.cmdOut("shell", raw, 0)
+			if cut := strings.Contains(out, "output saved to"); cut != c.cut {
+				t.Fatalf("cut %v, want %v: %q", cut, c.cut, trunc(out, 120))
+			}
+			if c.cut && len(out) > cmdMaxOut+200 {
+				t.Fatalf("the cut kept %d bytes", len(out))
+			}
+			if !c.cut && out != cmdText(raw) {
+				t.Fatalf("a script's call lost %d bytes", len(raw)-len(out))
+			}
+			// what the buffer dropped is named either way
+			if out := c.p.cmdOut("shell", raw, 42); !strings.Contains(out, "42 more bytes") {
+				t.Fatalf("dropped bytes: %q", trunc(out, 120))
+			}
+		})
+	}
+}
+
+func trunc(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
+}

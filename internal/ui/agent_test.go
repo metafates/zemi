@@ -527,6 +527,11 @@ func TestPermissionBoxFits(t *testing.T) {
 			[]string{"Run this command outside the sandbox?", "runs  unknown: read the command"},
 		},
 		{
+			"a script's ask says so", 80, 24,
+			hostapi.PermRequest{Subject: "tool.shell", Arg: "go test ./...", Script: "lua script"},
+			[]string{"lua script"},
+		},
+		{
 			"title beats a long badge", 80, 24,
 			hostapi.PermRequest{Subject: "tool.shell", Arg: "rm -rf build", Where: hostapi.RunsOutside, Owner: "plugin:" + strings.Repeat("x", 80), Agent: "workflow 7c25f526 · general agent"},
 			[]string{"Run this command outside the sandbox? ", "workflow 7c2"},

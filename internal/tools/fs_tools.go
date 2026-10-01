@@ -144,7 +144,7 @@ func runShell(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.T
 	// the count goes with the text: job_read resumes exactly after it
 	raw, written := buf.Snapshot()
 	var b strings.Builder
-	b.WriteString(CmdOut(p.Pad, "shell", raw, written-int64(buf.Max)))
+	b.WriteString(p.cmdOut("shell", raw, written-int64(buf.Max)))
 	if timedOut {
 		if b.Len() > 0 {
 			b.WriteString("\n")
@@ -330,6 +330,20 @@ func CmdOut(dir, name, raw string, lost int64) string {
 		cut += fmt.Sprintf("\n(%d more bytes in the middle were not kept)", lost)
 	}
 	return cut
+}
+
+// cmdOut is CmdOut for this run: a call a lua script drives keeps the whole
+// text the buffer held, since the script reads it and says what of it the
+// model gets; one the model called gets the cut and the spill.
+func (p *Pipeline) cmdOut(name, raw string, lost int64) string {
+	if p.Script == "" {
+		return CmdOut(p.Pad, name, raw, lost)
+	}
+	out := cmdText(raw)
+	if lost > 0 {
+		out += fmt.Sprintf("\n(%d more bytes in the middle were not kept)", lost)
+	}
+	return out
 }
 
 // Spill saves output too long for a result under dir and names the file,

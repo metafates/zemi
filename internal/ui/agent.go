@@ -842,7 +842,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	content = pa.view.window(content, fit)
 	// who asks, whose code runs, and how many asks wait (an upper bound: a
 	// waiting ask may settle without a prompt)
-	badge := []string{req.Agent, req.Owner}
+	badge := []string{req.Agent, req.Owner, req.Script}
 	if n := a.host.AsksWaiting(); n > 1 {
 		badge = append(badge, fmt.Sprintf("1 of %d", n))
 	}

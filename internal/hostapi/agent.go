@@ -73,6 +73,9 @@ type PermRequest struct {
 	// Owner is whose code a Lua tool runs, as an overlay badge names it
 	// ("plugin:jira"), "" for the user's and zemi's own
 	Owner string
+	// Script names the lua tool script a nested call came from, as the badge
+	// says it ("lua script"), "" for a call the model made itself
+	Script string
 	// Runs is what a command runs, nil when the parse cannot say
 	Runs []perm.Program
 	// Where is where a command runs once allowed, "" for any other request
@@ -355,6 +358,22 @@ func (h *Host) webOff() bool {
 	return !slices.ContainsFunc(h.Perm.Rules(), allows) && (def.Rules == nil || !slices.ContainsFunc(def.Rules.Rules(), allows))
 }
 
+// toolBuilder builds the tool set for a given pipeline: builtin, Lua and MCP
+// tools, filtered by the profile. The lua tool builds its scripts' nested
+// calls through it, under a pipeline copy that carries the script, so a script
+// reaches exactly the tools the run has (a profile's filter holds) and a
+// read-only agent's set stays read-only.
+func (h *Host) toolBuilder(p *Profile, skip map[string]bool) func(*tools.Pipeline) ([]fantasy.AgentTool, []string) {
+	var want []string
+	if p != nil {
+		want = p.Tools
+	}
+	return func(pipe *tools.Pipeline) ([]fantasy.AgentTool, []string) {
+		all := append(append(h.builtinTools(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
+		return filterTools(all, want, skip)
+	}
+}
+
 // profileTools selects the tool set: a profile's names filter the builtin,
 // Lua and MCP tools alike. A kept name nothing answers to is recorded, so
 // one misspelling does not leave the agent toolless; a "-name" one fails,
@@ -370,12 +389,18 @@ func (h *Host) profileTools(p *Profile) ([]fantasy.AgentTool, error) {
 	}
 	skip = h.toolSkip(skip)
 	pipe := h.PipelineFor()
+	build := h.toolBuilder(p, skip)
 	// the model this set is built for, which read's description, its image
 	// check and the pin key all judge; a running turn's may be another
 	id := h.currentModelID(p)
 	pipe.Images = func() bool { return h.takesImages(id) }
-	all := append(append(h.builtinTools(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
-	out, unknown := filterTools(all, want, skip)
+	out, unknown := build(pipe)
+	// the lua tool reaches the same set from a script (luaEvalTool.build)
+	for _, t := range out {
+		if lt, ok := t.(*luaEvalTool); ok {
+			lt.build = build
+		}
+	}
 	if dropped := slices.DeleteFunc(slices.Clone(unknown), func(n string) bool { return !slices.Contains(want, "-"+n) }); len(dropped) > 0 {
 		return nil, fmt.Errorf("profile %s drops %s, which no tool is named", p.Name, strings.Join(dropped, ", "))
 	}

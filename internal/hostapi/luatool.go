@@ -6,6 +6,12 @@
 // a script that names anything else asks once up front, and so does every
 // run in an untrusted project or by a read-only agent. The tool.pre events always run
 // so user hooks can deny or halt a script.
+//
+// A script also drives the model's other tools: zemi.tool.call runs one of
+// the run's tools through the same pipeline a direct call takes, off the
+// interpreter, and its wait suspends the script (see luaToolCall). Those
+// calls are gated one by one, so a script that only drives tools needs no
+// approval of its own (luaDelegated).
 
 package hostapi
 
@@ -19,6 +25,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"charm.land/fantasy"
@@ -28,6 +35,7 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -35,8 +43,18 @@ import (
 // var so a test can hit it without waiting.
 var luaToolCeiling = 10 * time.Second
 
-// luaToolChunk names the tool's chunks; an approved run appends "#<n>".
+// luaToolChunk names the tool's chunks; every run appends "#<n>", and an
+// approved one is what guardLua looks up.
 const luaToolChunk = "lua-tool"
+
+// luaToolCallsMax is how many of one script's tool calls run at once; the
+// rest wait for a slot. A script that maps a directory listing
+// to a command per file would otherwise start them all together.
+const luaToolCallsMax = 8
+
+// luaToolCallWait bounds one nested call's wait; the tool's own timeout ends
+// the call first, and a canceled turn or a reload ends the wait.
+const luaToolCallWait = time.Hour
 
 // luaReadOnly is what the model's Lua tool may call without the user's
 // approval: members that only read zemi's state, and pure helpers. Every
@@ -56,10 +74,17 @@ var luaReadOnly = map[string]bool{
 	"model.list": true, "notify.list": true,
 	"permission.mode.get": true, "permission.mode.list": true, "permission.rule.list": true, "project.root": true, "project.trusted": true, "provider.list": true,
 	"session.id": true, "session.list": true, "session.messages": true, "session.title": true, "session.todos": true,
-	"skills.list": true, "state.get": true, "tool.list": true,
+	"skills.list": true, "state.get": true, "tool.describe": true, "tool.list": true,
 	"ui.focus.get": true, "ui.hl.get": true, "ui.layout.get": true, "ui.layout.rects": true, "ui.markdown": true, "ui.highlight": true, "ui.diff": true, "ui.wrap": true, "ui.width": true, "ui.screenshot": true, "ui.theme.get": true, "ui.theme.list": true, "ui.widget.list": true,
-	"workflow.list": true, "job:wait": true, "http:wait": true,
+	"workflow.list": true, "job:wait": true, "http:wait": true, "tool:wait": true,
 }
+
+// luaDelegated is what a script may call without the user's approval of the
+// script itself, since the call decides for itself: zemi.tool.call reaches a
+// tool through the gate a direct call goes through, one gate per call, and
+// nothing else of zemi. A render still refuses it (only luaReadOnly passes
+// there).
+var luaDelegated = map[string]bool{"tool.call": true}
 
 // luaReadMethods are the method calls the text scan lets through: string
 // methods and the read-only handle methods.
@@ -135,7 +160,7 @@ func luaUnlisted(src string) []string {
 			// own, and a function read into a variable still meets the guard.
 			// zemi itself with no path is the aliasing route, always listed.
 			called := i+1 < len(toks) && (toks[i+1].Type == '(' || toks[i+1].Type == parse.TString || toks[i+1].Type == '{')
-			if name := strings.Join(path, "."); len(path) == 0 || called && !luaReadOnly[name] {
+			if name := strings.Join(path, "."); len(path) == 0 || called && !luaReadOnly[name] && !luaDelegated[name] {
 				add(strings.TrimSuffix("zemi."+name, "."))
 			}
 		}
@@ -143,10 +168,14 @@ func luaUnlisted(src string) []string {
 	return out
 }
 
+// luaEvalTool is the model's lua tool. build is profileTools' tool builder,
+// set on the instance the runner holds: the script's zemi.tool.call builds
+// its callable set through it, under its own pipeline copy.
 type luaEvalTool struct {
 	tools.NoProviderOptions
-	h    *Host
-	pipe *tools.Pipeline
+	h     *Host
+	pipe  *tools.Pipeline
+	build func(*tools.Pipeline) ([]fantasy.AgentTool, []string)
 }
 
 func (h *Host) luaEvalTool(pipe *tools.Pipeline) fantasy.AgentTool {
@@ -166,6 +195,7 @@ func (t *luaEvalTool) Info() fantasy.ToolInfo {
 		Name: tools.ToolLua,
 		Description: "Run Lua 5.1 inside zemi to read or change its live state: this session, agent runs, settings, keymaps, widgets, skills, errors." +
 			" What the chunk prints and returns (as JSON) comes back. It runs on the interpreter the UI draws with, 10s at most between waits: no busy loops." +
+			" A script also drives this run's tools: `zemi.tool.call(name, args)` starts one (independent calls run beside each other) and `local out, err = h:wait()` gives its output or why it failed; their output stays in the script, so filter it there. `zemi.tool.describe(name)` gives a tool's parameters; lua.md has the rest." +
 			approval +
 			" For calls not named here read " + filepath.Join(t.h.builtinSkillsDir(), "zemi", "lua.md") + "; a member a namespace lacks raises with the list it has.",
 		Parameters: map[string]any{
@@ -227,7 +257,9 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	if strings.TrimSpace(src) == "" {
 		return fantasy.NewTextErrorResponse("pass script or path"), nil
 	}
-	rel := luaToolChunk
+	// every run gets its own chunk name: guardLua tags an approved one, and a
+	// script's tool calls are keyed by it (h.scripts)
+	rel := fmt.Sprintf("%s#%d", luaToolChunk, h.luaRuns.Add(1))
 	// the script can do anything user config can, so it asks where the
 	// model's text is less trusted or the user wants nothing changed, and
 	// before any call that is not a read: no mode may settle that, since
@@ -247,10 +279,31 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, "Lua "+arg)), nil
 		}
 		if len(unlisted) > 0 {
-			rel = fmt.Sprintf("%s#%d", luaToolChunk, h.luaRuns.Add(1))
 			h.luaApproved.Store(rel, true)
 			defer h.luaApproved.Delete(rel)
 		}
+	}
+	// what zemi.tool.call reaches while this runs; dropped with the run, so a
+	// callback the script registered cannot drive tools later, and so a call
+	// still running when the script ends stops with it
+	if t.build != nil {
+		pipe := h.PipelineFor()
+		pipe.Script = rel
+		// a nested call's progress (a command's last line) shows on the lua
+		// tool's own row: the model never made a row for it
+		pipe.Progress = func(_, line string) { h.setToolDetail(call.ID, sanitize.String(line)) }
+		set, _ := t.build(pipe)
+		sctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		script := &luaScript{ctx: sctx, id: call.ID, tools: map[string]fantasy.AgentTool{}, calls: newLuaCalls(luaToolCallsMax)}
+		for _, tool := range set {
+			// a script cannot start another script
+			if name := tool.Info().Name; name != tools.ToolLua {
+				script.tools[name] = tool
+			}
+		}
+		h.scripts.Store(rel, script)
+		defer h.scripts.Delete(rel)
 	}
 	// the script sees what is on disk, and the result says whether it loaded
 	note := h.ReloadIfChanged()
@@ -295,14 +348,14 @@ func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error)
 }
 
 // guardLua is the sandbox guard every Go function exposed to Lua runs
-// through: code from an unapproved Lua tool run may call only luaReadOnly,
-// and a widget render, which runs every frame, only the luaReadOnly members
-// other than fs.* and a handle's wait.
+// through: code from an unapproved Lua tool run may call only luaReadOnly and
+// luaDelegated, and a widget render, which runs every frame, only the
+// luaReadOnly members other than fs.* and a handle's wait.
 func (h *Host) guardLua(L *glua.LState, member string) {
 	if h.rendering.Load() && (!luaReadOnly[member] || strings.HasPrefix(member, "fs.") || strings.HasSuffix(member, ":wait")) {
 		L.RaiseError("zemi.%s is not allowed during widget render (render must be pure)", member)
 	}
-	if luaReadOnly[member] {
+	if luaReadOnly[member] || luaDelegated[member] {
 		return
 	}
 	if tool, approved := h.modelLuaRun(L); tool && !approved {
@@ -315,13 +368,23 @@ func (h *Host) guardLua(L *glua.LState, member string) {
 // the user approved that run. The innermost tool function decides: an
 // approved run calling code an earlier run defined does not approve it.
 func (h *Host) modelLuaRun(L *glua.LState) (tool, approved bool) {
-	isApproved := func(name string) bool {
-		_, ok := h.luaApproved.Load(name)
-		return ok
+	name := h.modelLuaScript(L)
+	if name == "" {
+		return false, false
 	}
+	_, approved = h.luaApproved.Load(name)
+	return true, approved
+}
+
+// modelLuaScript names the model's Lua tool run that decides what a call on L
+// may do: the innermost one, so a run calling code an earlier run defined is
+// judged as that earlier run. "" when the caller is not a script's.
+func (h *Host) modelLuaScript(L *glua.LState) string {
 	path := h.RT.CurrentPath(L)
-	if strings.HasPrefix(path, luaToolChunk) && !isApproved(path) {
-		return true, false
+	if strings.HasPrefix(path, luaToolChunk) {
+		if _, approved := h.luaApproved.Load(path); !approved {
+			return path
+		}
 	}
 	for lvl := 0; ; lvl++ {
 		dbg, ok := L.GetStack(lvl)
@@ -336,8 +399,174 @@ func (h *Host) modelLuaRun(L *glua.LState) (tool, approved bool) {
 		// load and loadstring tag chunks with the running origin, so only
 		// user code can name one like the tool's
 		if name, ok := strings.CutPrefix(f.Proto.SourceName, lua.OriginUser.ChunkName("")); ok && strings.HasPrefix(name, luaToolChunk) {
-			return true, isApproved(name)
+			return name
 		}
 	}
-	return strings.HasPrefix(path, luaToolChunk), isApproved(path)
+	if strings.HasPrefix(path, luaToolChunk) {
+		return path
+	}
+	return ""
+}
+
+// luaScript is what one running lua-tool script drives: the tools its
+// zemi.tool.call reaches, the cap and the order their calls run under, and
+// where their progress shows.
+type luaScript struct {
+	id    string // the model's tool call id, the row a call reports on
+	ctx   context.Context
+	tools map[string]fantasy.AgentTool
+	calls *luaCalls
+
+	mu sync.Mutex
+	n  int // calls started, for their ids and their order
+}
+
+// luaCalls caps one script's calls: at most limit run at once, the rest wait
+// for a slot. A waiting call holds nothing another call can wait on, so the cap
+// cannot deadlock. NOTE: unlike the model's own calls, a script's calls do not
+// enter tools.CallStart, so two it starts at once for one file land in either
+// order; a script that edits a file twice waits on the first (the file tools'
+// own lock keeps them from corrupting it, and the second reports the file
+// changed since it was read).
+type luaCalls struct{ slots chan struct{} }
+
+func newLuaCalls(limit int) *luaCalls { return &luaCalls{slots: make(chan struct{}, limit)} }
+
+// enter waits for a free slot and reports the release; false once ctx ends, so
+// a script that ended leaves nothing of its own waiting.
+func (c *luaCalls) enter(ctx context.Context) (func(), bool) {
+	select {
+	case c.slots <- struct{}{}:
+		return func() { <-c.slots }, true
+	case <-ctx.Done():
+		return nil, false
+	}
+}
+
+// luaToolCall is zemi.tool.call(name, args): it starts one of the run's tools
+// through the pipeline a direct call takes (tool.pre, the gate, tool.post),
+// off the interpreter, and returns the handle whose wait() suspends the
+// script until the call ends. Only a script the lua tool is running reaches
+// it, and only while that run lives, so a callback the script registered
+// cannot drive tools later.
+func (h *Host) luaToolCall(L *glua.LState) int {
+	name := L.CheckString(1)
+	v, ok := h.scripts.Load(h.modelLuaScript(L))
+	if !ok {
+		return luaResult(L, errors.New("zemi.tool.call is for the lua tool's own script, while it runs"))
+	}
+	s := v.(*luaScript)
+	tool, ok := s.tools[name]
+	if !ok {
+		return luaResult(L, fmt.Errorf("no tool %q in this run; zemi.tool.list() names the tools, the prompt the rest", name))
+	}
+	args := L.Get(2)
+	body := "{}"
+	if args != glua.LNil {
+		tb, ok := args.(*glua.LTable)
+		if !ok {
+			return luaResult(L, errors.New("zemi.tool.call: args must be a table"))
+		}
+		in, err := lua.ToGo(tb)
+		if err != nil {
+			return luaResult(L, fmt.Errorf("zemi.tool.call: args: %w", err))
+		}
+		data, err := json.Marshal(in)
+		if err != nil {
+			return luaResult(L, fmt.Errorf("zemi.tool.call: args: %w", err))
+		}
+		if string(data) != "null" {
+			body = string(data)
+		}
+	}
+	s.mu.Lock()
+	s.n++
+	n := s.n
+	s.mu.Unlock()
+	id := fmt.Sprintf("%s/%d", s.id, n)
+	hnd := &luaToolHandle{done: make(chan struct{})}
+	// the call's context ends with the script's run, so what is still queued or
+	// running when the script ends stops with it
+	callCtx, cancel := context.WithCancel(s.ctx)
+	hnd.cancel = cancel
+	stopID := h.stops.add(cancel)
+	h.GoSafe("lua tool call", func() {
+		defer close(hnd.done)
+		defer h.stops.remove(stopID)
+		defer cancel()
+		leave, ok := s.calls.enter(callCtx)
+		if !ok {
+			hnd.err = "the script ended before this call ran"
+			return
+		}
+		defer leave()
+		h.setToolDetail(s.id, luaCallDetail(name, body))
+		resp, err := tool.Run(callCtx, fantasy.ToolCall{ID: id, Name: name, Input: body})
+		switch {
+		case err != nil:
+			hnd.err = err.Error()
+		case resp.IsError:
+			// a failed call is nil, err like every other zemi call; the text
+			// zemi's tools fail with carries their output
+			hnd.err = resp.Content
+		default:
+			hnd.out = resp.Content
+		}
+	})
+	handle := L.NewTable()
+	handle.RawSetString("wait", lua.Suspending(L, L.NewFunction(func(L *glua.LState) int {
+		lua.CheckWait(L, "zemi.tool.call")
+		return waitHandle(L, "tool:wait", hnd.done, luaToolCallWait, hnd.cancel, func(L *glua.LState, err error) []glua.LValue {
+			if err != nil {
+				hnd.cancel()
+				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
+			}
+			if hnd.err != "" {
+				return []glua.LValue{glua.LNil, glua.LString(hnd.err)}
+			}
+			return []glua.LValue{glua.LString(hnd.out)}
+		})
+	})))
+	lua.GuardFuncs(L, handle, "tool:", h.guardLua)
+	L.Push(handle)
+	return 1
+}
+
+// luaToolHandle is one nested call's handle: wait() suspends the script until
+// the call ends, and cancel stops the call when the wait ends first.
+type luaToolHandle struct {
+	done   chan struct{}
+	out    string
+	err    string
+	cancel context.CancelFunc
+}
+
+// luaToolDescribe is zemi.tool.describe(name): the declaration of one of the
+// run's tools, nil when the run has none of that name. A script reads it for
+// a tool the prompt does not declare (a deferred MCP one) or to check a
+// parameter it means to pass.
+func (h *Host) luaToolDescribe(L *glua.LState) int {
+	name := L.CheckString(1)
+	v, ok := h.scripts.Load(h.modelLuaScript(L))
+	if !ok {
+		return luaResult(L, errors.New("zemi.tool.describe is for the lua tool's own script, while it runs"))
+	}
+	tool, ok := v.(*luaScript).tools[name]
+	if !ok {
+		L.Push(glua.LNil)
+		return 1
+	}
+	info := tool.Info()
+	L.Push(lua.FromGo(L, map[string]any{
+		"name": info.Name, "description": info.Description,
+		"input": info.Parameters, "required": info.Required,
+	}))
+	return 1
+}
+
+// luaCallDetail is what a running nested call shows on the lua tool's row:
+// the tool and the argument a person reads first, as a direct call's row does.
+func luaCallDetail(name, input string) string {
+	line := sanitize.Line(name + ": " + toolSummary(name, input))
+	return clipRunes(line, 120)
 }

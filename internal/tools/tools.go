@@ -74,6 +74,10 @@ type Request struct {
 	// widens what zemi allows, or a model memory edit zemi does not apply on
 	// its own: no mode settles the request, the user answers it
 	Unsandboxed bool
+	// Script is the lua tool call this one came from (Pipeline.Script), "" for
+	// a call the model made itself: the ask is shown as the script's, and the
+	// tool's output goes to the script whole
+	Script string
 	// Network is the model's network: true, which keeps the sandbox and adds
 	// outbound sockets. The URL is the model's, so no mode settles it either.
 	Network bool
@@ -316,6 +320,11 @@ type Pipeline struct {
 	// Sandboxed is this run's policy, set on the per-run copy once the gate
 	// settled a command by mode; nil = unconfined.
 	Sandboxed *sandbox.Policy
+	// Script is the lua tool call a run driven by a script came from, set on
+	// the copy the tool's nested calls run under: it labels their asks and
+	// keeps their output whole (a tool the model called gets the cut). "" for
+	// every call the model made itself.
+	Script string
 	// Path is a file tool's path input as the gate checked it, set on the
 	// per-run copy. NOTE: the tool opens it, never input["path"]: resolving
 	// the string again would follow a symlink swapped in after the check.
@@ -390,7 +399,7 @@ func (p *Pipeline) Check(req Request) Verdict {
 		req.Arg = cmp.Or(perm.RealPath(req.Arg), req.Arg)
 	}
 	plan := p.Plan != nil && p.Plan()
-	req.ReadOnly, req.Pad = plan, p.Pad
+	req.ReadOnly, req.Pad, req.Script = plan, p.Pad, p.Script
 	if req.Subject == perm.SubjectShell && req.cmd == nil {
 		n := perm.Normalize(req.Arg)
 		req.cmd = &n

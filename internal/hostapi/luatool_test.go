@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"charm.land/fantasy"
@@ -161,7 +162,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 	var members []string
 	for ns, ms := range bootedNamespaces(t, false) {
 		for _, m := range ms {
-			if name := strings.TrimPrefix(ns, "zemi.") + "." + m; !luaReadOnly[name] {
+			if name := strings.TrimPrefix(ns, "zemi.") + "." + m; !luaReadOnly[name] && !luaDelegated[name] {
 				members = append(members, fmt.Sprintf("%q", name))
 			}
 		}
@@ -197,14 +198,16 @@ func TestLuaToolCeiling(t *testing.T) {
 	for _, c := range []struct {
 		script, want string
 		ceiling      time.Duration
+		named        bool // the error names the chunk the run got
 	}{
-		{"while true do end", "error: stopped after its 50ms ceiling", 50 * time.Millisecond},
-		{"error({ code = 1 })", `error: lua-tool: {"code":1}`, old},
+		{"while true do end", "error: stopped after its 50ms ceiling", 50 * time.Millisecond, false},
+		{"error({ code = 1 })", `: {"code":1}`, old, true},
 	} {
 		luaToolCeiling = c.ceiling
 		input, _ := json.Marshal(map[string]string{"about": "x", "script": c.script})
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
-		if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) || strings.Contains(resp.Content, "context canceled") {
+		if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) ||
+			(c.named && !strings.Contains(resp.Content, "error: "+luaToolChunk+"#")) || strings.Contains(resp.Content, "context canceled") {
 			t.Errorf("%s: %+v (%v)", c.script, resp, err)
 		}
 	}
@@ -295,4 +298,144 @@ func TestLuaToolReloads(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestLuaToolDrivesTools: a script calls the run's own tools through the
+// pipeline a direct call takes, only what the script prints comes back, and a
+// script that only drives tools asks nobody.
+func TestLuaToolDrivesTools(t *testing.T) {
+	h, _ := newTestHost(t)
+	h.SetProjectTrusted(true)
+	fakeSandbox(h, true)
+	if err := h.SetPermMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(h.Dirs.ProjectDir, "a.txt")
+	if err := os.WriteFile(file, []byte("hello\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ui := &fakeUI{askAllowed: false, askBy: "user"}
+	h.SetUIHooks(ui)
+	set, err := h.profileTools(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tool fantasy.AgentTool
+	for _, c := range set {
+		if c.Info().Name == tools.ToolLua {
+			tool = c
+		}
+	}
+	if tool == nil {
+		t.Fatal("the set has no lua tool")
+	}
+	run := func(script string) string {
+		t.Helper()
+		input, _ := json.Marshal(map[string]string{"about": "x", "script": script})
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: tools.ToolLua, Input: string(input)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp.Content
+	}
+	// the read runs, its output is the script's to keep, and the script itself
+	// asked nobody: the call decides for itself
+	read := `"` + file + `", limit = 0`
+	if out := run(`local o, e = zemi.tool.call("read", { path = ` + read + ` }):wait() print(e or o)`); !strings.Contains(out, "hello") || len(ui.asked) != 0 {
+		t.Fatalf("read through a script: %q, asked %+v", out, ui.asked)
+	}
+	// a nested read nobody prints stays out of the model's context
+	if out := run(`zemi.tool.call("read", { path = ` + read + ` }):wait()`); out != "(no output)" {
+		t.Fatalf("unprinted output reached the model: %q", out)
+	}
+	// a shell command runs, and its output comes back whole
+	if out := run(`local o, e = zemi.tool.call("shell", { command = "cat ` + file + `" }):wait() print(e or o)`); !strings.Contains(out, "hello") || len(ui.asked) != 0 {
+		t.Fatalf("shell through a script: %q, asked %+v", out, ui.asked)
+	}
+	// a call the gate asks about asks once, says the script asked, and denies
+	// the script's wait when the user says no
+	out := run(`local o, e = zemi.tool.call("shell", { command = "rm -rf build" }):wait() print(e or o)`)
+	if len(ui.asked) != 1 || ui.asked[0].Script != "lua script" || ui.asked[0].Subject != perm.SubjectShell {
+		t.Fatalf("nested ask: %+v", ui.asked)
+	}
+	if !strings.Contains(out, "permission denied") || strings.Contains(out, "rm -rf") {
+		t.Fatalf("denied call: %q", out)
+	}
+	// an unknown tool and unusable arguments come back as nil, err; nothing runs
+	ui.asked = nil
+	if out := run(`local h, e = zemi.tool.call("nope", {}) print(h == nil, e ~= nil)`); out != "true\ttrue" {
+		t.Fatalf("unknown tool: %q", out)
+	}
+	if out := run(`local h, e = zemi.tool.call("read", "not a table") print(h == nil, e ~= nil)`); out != "true\ttrue" || len(ui.asked) != 0 {
+		t.Fatalf("bad args: %q, asked %+v", out, ui.asked)
+	}
+	// describe names a tool of this run, and nothing for one it has not
+	if out := run(`local d = zemi.tool.describe("read") return d.name, d.input.path ~= nil, zemi.tool.describe("nope") == nil`); !strings.Contains(out, `"read",true,true`) {
+		t.Fatalf("describe: %q", out)
+	}
+	// a lua tool is not in the set: no script starts another script
+	if out := run(`local h, e = zemi.tool.call("lua", { about = "x", script = "print(1)" }) print(h == nil, e ~= nil)`); out != "true\ttrue" {
+		t.Fatalf("nested lua tool: %q", out)
+	}
+	// outside a running script the member refuses, so config and callbacks
+	// cannot drive tools
+	if out, err := h.runModelLua(t.Context(), `print(zemi.tool.call("read", { path = "x" }))`, luaToolChunk); err != nil || !strings.Contains(out, "while it runs") {
+		t.Fatalf("call outside a script: %q %v", out, err)
+	}
+}
+
+// TestLuaCallsCap: at most the cap's calls run at once, a call waiting for a
+// slot enters as soon as one frees, and one a canceled script waits on never
+// enters.
+func TestLuaCallsCap(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		c := newLuaCalls(2)
+		first, ok := c.enter(t.Context())
+		if !ok || first == nil {
+			t.Fatal("the first call did not enter")
+		}
+		second, ok := c.enter(t.Context())
+		if !ok || second == nil {
+			t.Fatal("the second call did not enter")
+		}
+		entered := make(chan struct{})
+		go func() {
+			if leave, ok := c.enter(t.Context()); ok {
+				close(entered)
+				leave()
+			}
+		}()
+		synctest.Wait() // the cap is full: it waits, and stays there
+		select {
+		case <-entered:
+			t.Fatal("a call entered past the cap")
+		default:
+		}
+		first()
+		select {
+		case <-entered:
+		case <-time.After(10 * time.Second): // virtual: only a bug reaches it
+			t.Fatal("a waiting call did not enter after a slot freed")
+		}
+		second()
+		// a canceled script's waiting call does not enter
+		ctx, cancel := context.WithCancel(t.Context())
+		heldA, okA := c.enter(ctx)
+		heldB, okB := c.enter(ctx)
+		if !okA || !okB {
+			t.Fatal("the cap did not take both calls")
+		}
+		waiting := make(chan bool, 1)
+		go func() {
+			_, ok := c.enter(ctx)
+			waiting <- ok
+		}()
+		synctest.Wait()
+		cancel()
+		if ok := <-waiting; ok {
+			t.Fatal("a call entered after the script was canceled")
+		}
+		heldA()
+		heldB()
+	})
 }

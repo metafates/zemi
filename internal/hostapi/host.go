@@ -508,9 +508,11 @@ type Host struct {
 	todosStale atomic.Bool
 
 	// luaApproved holds the chunk names of Lua tool runs the user approved
-	// (guardLua); luaRuns numbers them.
+	// (guardLua); luaRuns numbers every run. scripts holds what a running
+	// script's zemi.tool.call reaches: run chunk name -> *luaScript.
 	luaApproved sync.Map
 	luaRuns     atomic.Int64
+	scripts     sync.Map
 
 	// turn is the scope of the turn runTurns is on: cancelling it stops
 	// compaction, the model and tools.
@@ -2048,7 +2050,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.113.0"))
+	api.RawSetString("version", glua.LString("0.114.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

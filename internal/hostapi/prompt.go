@@ -28,7 +28,7 @@ const contextBudget = 32 << 10
 
 // defaultSystemPrompt is the shipped prompt (no profile configured).
 func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
-	ask, read, care, denied := askingPrompt, readPrompt, carePrompt, deniedPrompt
+	ask, read, care, denied, code := askingPrompt, readPrompt, carePrompt, deniedPrompt, ""
 	if h.hooks() == nil {
 		ask, care, denied = headlessAskingPrompt, headlessCarePrompt, headlessDeniedPrompt
 	}
@@ -38,7 +38,10 @@ func (h *Host) defaultSystemPrompt(toolset []fantasy.AgentTool) string {
 	if !hasTool(toolset, tools.ToolRead) {
 		read = ""
 	}
-	return strings.NewReplacer("{Asking}", ask, "{Care}", care, "{Denied}", denied, "{Batch}", batchPrompt, "{Read}", read, "{Rules}", toolRules).Replace(basePrompt)
+	if hasTool(toolset, tools.ToolLua) {
+		code = codePrompt
+	}
+	return strings.NewReplacer("{Asking}", ask, "{Care}", care, "{Denied}", denied, "{Batch}", batchPrompt, "{Read}", read, "{Code}", code, "{Rules}", toolRules).Replace(basePrompt)
 }
 
 // carePrompt and deniedPrompt fill basePrompt's {Care} and {Denied}; a
@@ -61,6 +64,12 @@ const toolRules = `- When a tool refuses, do exactly what its message says; neve
 // readPrompt fills basePrompt's {Read} for a run that has the tool.
 const readPrompt = `
 - Every tool result stays in context until compaction: locate with grep, then read that region with offset and limit; one large window beats many small ones.`
+
+// codePrompt fills basePrompt's {Code} for a run that has the lua tool: a
+// script drives the same calls a step would, several at once, and only what it
+// prints or returns costs context.
+const codePrompt = `
+- When one shape of call repeats, or its output is far larger than what you need of it, drive the calls from one lua script and filter there, instead of a call per step.`
 
 // askingPrompt fills basePrompt's {Asking}. A headless run has no user and
 // no question, plan or ! tool (headlessExcluded), so telling it to ask
@@ -88,7 +97,7 @@ Do the work without asking: infer what the request leaves out from the code, and
 Editing files and running tests need no confirmation. {Care} Never bypass a safety check (--no-verify, deleting a test) to make an error go away. Unfamiliar files or branches may be the user's work in progress. {Denied}
 
 # Using tools
-{Batch}{Read}
+{Batch}{Read}{Code}
 {Rules}
 
 # Git

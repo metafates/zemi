@@ -2193,6 +2193,46 @@ function zemi.tool.override(name, spec) end
 ---@return zemi.ToolInfo[]
 function zemi.tool.list() end
 
+--- What `zemi.tool.call` returns: `wait()` suspends the script until the call
+--- ends and gives the tool's output, or `nil` and why it failed (the text zemi's
+--- tools fail with carries their output).
+---@class zemi.ToolCallHandle
+---@field wait fun(self: zemi.ToolCallHandle): string?, string?
+
+--- One of this run's tools, as `zemi.tool.describe` reports it.
+---@class zemi.ToolDecl
+---@field name string
+---@field description string
+---@field input table The parameters by name, each a JSON Schema.
+---@field required string[]
+
+--- Start one of the tools of this run, as if you had called it yourself: it
+--- runs through the same permission gate, `tool.pre` and `tool.post` a direct
+--- call goes through, and off the interpreter, so the script keeps running.
+--- Start the independent calls first and `wait()` on each. `wait()` gives the
+--- tool's output, or `nil` and why it failed, like every other zemi call; a
+--- tool that failed reports its output as the error. Only the lua tool's own
+--- script reaches this, and only while it runs. What the calls return stays in
+--- the script: print or return what should reach you.
+---
+--- ```lua
+--- local a = zemi.tool.call("read", { path = "a.go" })
+--- local b = zemi.tool.call("read", { path = "b.go" })
+--- local out, err = a:wait()
+--- print(err or out)
+--- ```
+---@param name string A tool of this run; `zemi.tool.list()` and `zemi.tool.describe` name them.
+---@param args? table The tool's arguments.
+---@return zemi.ToolCallHandle? handle Nothing when the tool is unknown or `args` is unusable, with the reason in `err`.
+---@return string? err
+function zemi.tool.call(name, args) end
+
+--- The declaration of one of this run's tools, for one the prompt does not
+--- show (a deferred MCP tool) or a parameter to check before calling.
+---@param name string
+---@return zemi.ToolDecl? decl Nil when this run has no such tool.
+function zemi.tool.describe(name) end
+
 -- ---------------------------------------------------------------------------
 -- zemi.fs
 

@@ -333,6 +333,14 @@ MCP and Lua tools) call the gate themselves and run the events through `preCheck
 refuses a rewrite with an error result), `postNotify` and `Pipeline.CheckDenied`. A command a
 permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`).
 
+The lua tool's script can drive the run's own tools: `zemi.tool.call(name, args)`
+(hostapi/luatool.go) starts one through that same pipeline off the interpreter, capped at 8
+at once, and only the script's print and return values reach the model, so it
+batches and filters what would otherwise be a step per call. Its output comes back whole
+(`Pipeline.Script` on the per-call pipeline copy, which `tools.(*Pipeline).cmdOut` reads),
+and only the running script reaches it, so a script that only drives tools needs no approval
+of its own: its calls are gated as the model's own are.
+
 The shell tool is special: `Pipeline.Check` normalizes the command once (`perm.Normalize`, internal/perm/bash.go:
 mvdan.cc/sh's `syntax` parser, never `interp` or `expand`, walked into one segment per simple
 command plus the redirect and env-assignment gates; heavily table-tested, extend those tables when

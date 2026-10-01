@@ -1223,6 +1223,17 @@ model call -> schema validation
            -> result -> fantasy ToolResponse
 ```
 
+A lua script also drives the model's tools: `zemi.tool.call(name, args)`
+starts one of the run's own tools off the interpreter, through that same
+pipeline, one gate per call, and returns a handle whose `wait()` suspends the
+script. Only the script's print and return values reach the model, so a script
+batches, parallelizes and filters what would otherwise be a step per call
+(the tool result carries the whole output, `Pipeline.Script`, not the cut a
+direct call gets). Only the running script reaches it, the set is the run's own
+(profile filter included), and a script that only drives tools needs no
+approval of its own: `zemi.tool.call` is the one member `luaDelegated` lets an
+unapproved run call, since what it reaches is gated anyway.
+
 A `rewrite` re-enters the pipeline at schema validation and the permission
 gate; it never skips them. On re-entry the `tool.pre` handlers run again
 in deny-only mode (deny decisions are re-checked against the rewritten

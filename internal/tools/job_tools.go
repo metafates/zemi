@@ -346,7 +346,7 @@ func runJobRead(ctx context.Context, p *Pipeline, input map[string]any) (fantasy
 		if both {
 			b.WriteString(c.label)
 		}
-		b.WriteString(CmdOut(p.Pad, "job", c.text, c.lost) + "\n")
+		b.WriteString(p.cmdOut("job", c.text, c.lost) + "\n")
 	}
 	if running && out.text == "" && errOut.text == "" {
 		b.WriteString("(no new output)")
