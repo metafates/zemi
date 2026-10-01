@@ -718,7 +718,9 @@ lua-language-server is installed.
   messages are re-inserted every step. Leftovers become one follow-up turn, and `active` stays
   held across that handoff (`nextTurn`) so a submit cannot jump the queue; `/compact` and
   rewind claim `active` and a `turnScope` together for the same reason. With nothing left, a
-  set goal's continuation is the other follow-up `nextTurn` starts under the claim.
+  set goal's continuation is the other follow-up `nextTurn` starts under the claim. `release`
+  settles the todo list on the way out, and `ResumeSession` settles it too: a leftover
+  `in_progress` goes back to `pending`, so no item reads as work in hand while no turn runs.
 - **Goals.** `/goal <condition>` (goal.go, `Host.SetGoal`, DESIGN §6.3) sends the typed line with
   a brief behind `agent.Attached("goal")`; `persistMessage` sets `ag.goal` only when it stores a
   user row carrying the brief `SetGoal` last sent (`ag.goalPending`, `setGoalFrom`), so attached
@@ -747,8 +749,10 @@ lua-language-server is installed.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips
   anything that does not decode as a fantasy message, and reads a file tool's or a shell call's
-  diff, an agent call's run and summary line and a step's thought time back from the
-  telemetry rows that carry them (a resume could not rebuild them).
+  diff, an agent call's run and summary line, a step's thought time and the turn's own tokens
+  and duration back from the telemetry rows that carry them (a resume could not rebuild them;
+  the turn's rides one row written after its messages, which the resume gives to the reply
+  those rows left).
 - **Live equals settled.** The live turn holds one stretch in stream order (reasoning, calls,
   reply); `flushOutput` moves it into the transcript whenever the next part would break that
   order (reasoning after a call or a reply, a call after a reply), so a step's reasoning lands

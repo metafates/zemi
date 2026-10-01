@@ -123,6 +123,8 @@ func (h *Host) ResumeSession(id string) error {
 	_, loaded := h.sessionLogs()
 	seedLoaded(loaded, history)
 	h.setTranscript(sess.Title, tr)
+	// a list left in progress settles here: nothing runs on a resumed session
+	h.settleTodos()
 	h.EmitAsync("session.open", map[string]any{"id": id, "title": sess.Title})
 	return nil
 }
@@ -357,7 +359,8 @@ func resumeRows(rows []*store.Message) []*store.Message {
 
 // historyFrom decodes stored messages into model history and transcript
 // rows, the rows the live turn drew. Rows that are not fantasy messages
-// are tool telemetry: a call's diff, run and summary, a step's thought time.
+// are tool telemetry: a call's diff, run and summary, a step's thought time,
+// a turn's tokens and duration.
 func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	var history []fantasy.Message
 	var tr []ChatMessage
@@ -365,6 +368,10 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	type telemetry struct {
 		ID, Diff, Run, Detail string
 		ThoughtMS             int64 `json:"thought_ms"`
+		TurnMS                int64 `json:"turn_ms"`
+		In                    int64 `json:"in"`
+		Out                   int64 `json:"out"`
+		Ended                 int64 `json:"ended"`
 	}
 	// A call's telemetry is stored as its tool ends, before the step's
 	// messages, so a call takes the nearest one before it: a provider may
@@ -374,6 +381,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	// the id could take it.
 	pending := map[string]telemetry{}
 	reasoning := -1 // the transcript index of the latest reasoning row
+	reply := -1     // and of the latest reply, which a turn's stat belongs to
 	for _, row := range rows {
 		if row.Role == contextRole {
 			continue
@@ -397,6 +405,11 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				tr[reasoning].Stat.ThoughtMS += tc.ThoughtMS
 				continue
 			}
+			// a turn's readout, kept whole: the message rows carry no usage
+			if tc.Ended > 0 && reply >= 0 {
+				tr[reply].Stat = &TurnStat{In: tc.In, Out: tc.Out, ElapsedMS: tc.TurnMS, Ended: tc.Ended}
+				continue
+			}
 		}
 		if row.Role == string(fantasy.MessageRoleUser) {
 			clear(pending)
@@ -412,9 +425,10 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		var text strings.Builder
 		// text streamed before a call is a row of its own above it, as the
 		// live turn flushed it; reasoning never cuts a reply (ReasoningDelta)
-		reply := func() {
+		replyText := func() {
 			if s := strings.TrimSpace(text.String()); s != "" {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s, Stat: &TurnStat{Ended: row.CreatedAt / 1000}})
+				reply = len(tr) - 1
 				text.Reset()
 			}
 		}
@@ -434,7 +448,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 					tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: p.Text, Stat: &TurnStat{}})
 				}
 			case fantasy.ToolCallPart:
-				reply()
+				replyText()
 				toolRow[p.ToolCallID] = len(tr)
 				tc := pending[p.ToolCallID]
 				delete(pending, p.ToolCallID)
@@ -465,6 +479,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 		}
 		if s = strings.TrimSpace(s); s != "" {
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s})
+			reply = len(tr) - 1
 		}
 	}
 	return history, tr

@@ -83,6 +83,41 @@ assistant/   "done"
 	}
 }
 
+// TestResumeKeepsTurnStats: the readout under a turn's reply - how long it
+// ran, what it spent, when it ended - matches the live one after a resume,
+// which the stored message rows alone cannot carry.
+func TestResumeKeepsTurnStats(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			parts := textParts("done")
+			parts[len(parts)-1].Usage = fantasy.Usage{InputTokens: 100, OutputTokens: 20, TotalTokens: 120}
+			return parts
+		}}, nil
+	}
+	if err := h.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	live := h.Session().Transcript
+	last := live[len(live)-1]
+	if last.Stat == nil || last.Stat.Out != 20 {
+		t.Fatalf("live stat = %+v", last.Stat)
+	}
+	rows, err := h.DB.Messages(h.AgentSessionID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tr := historyFrom(rows)
+	got := tr[len(tr)-1]
+	if got.Text != "done" || got.Stat == nil {
+		t.Fatalf("resumed rows: %+v", got)
+	}
+	if *got.Stat != *last.Stat {
+		t.Fatalf("resumed stat = %+v, live %+v", got.Stat, last.Stat)
+	}
+}
+
 // TestSessionLifecycle: /new starts clean, /resume rebuilds the transcript
 // and the model history from the store, in order, and a stored session
 // can be deleted.
@@ -118,9 +153,17 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatalf("fresh session prompt has %d messages, want 3 (system, context, user)", n)
 	}
 
+	// a list the session was left with in progress settles on resume: nothing
+	// is running while the agent is idle
+	if err := h.DB.SetTodos(first, []store.Todo{{Content: "left over", Status: store.TodoInProgress}}); err != nil {
+		t.Fatal(err)
+	}
 	// a bare /resume from the latest session goes to the one before it
 	if err := h.ResumeSession(""); err != nil {
 		t.Fatalf("resume: %v", err)
+	}
+	if todos, err := h.DB.Todos(first); err != nil || len(todos) != 1 || todos[0].Status != store.TodoPending {
+		t.Fatalf("resumed list = %+v %v", todos, err)
 	}
 	if tr := h.Session().Transcript; len(tr) != 2 || tr[0].Text != "one" || tr[1].Text != "ok" {
 		t.Fatalf("resumed transcript = %+v", tr)

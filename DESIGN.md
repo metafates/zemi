@@ -1188,7 +1188,8 @@ nearest instruction file not already in the prompt, once per session),
 `glob`, `grep` (both over `git ls-files` with a Go walker fallback, §2),
 `fetch` (readability picks the article out of the
 page, converted to markdown),
-`todos`, `question` (1-4 questions in one overlay, options or a typed
+`todos` (a list the user watches: an item left `in_progress` when the claim ends
+goes back to `pending`, so nothing reads as running while the agent is idle), `question` (1-4 questions in one overlay, options or a typed
 answer, and a note the user may add to a pick; the result is one JSON
 document, each answer a string, a multi-select's array, or null when left
 open, which its `open` field tells the model to decide), `plan` (shows the plan in its own scrollable popup for approval; for a
@@ -1560,7 +1561,7 @@ origins that may not register.
 ```
 sessions(id, parent_id, title, profile, created_at, updated_at,
          prompt_tokens, completion_tokens, cost)
-messages(id, session_id, role, parts_json, created_at)          -- fantasy messages, tool telemetry,
+messages(id, session_id, role, parts_json, created_at)          -- fantasy messages, tool and turn telemetry,
                                                                 -- compaction tails, goal events
 todos(id, session_id, content, status, active_form, ord, created_at)
 tool_calls(id, message_id, tool, ok, created_at)                -- per-tool counts for the reflector

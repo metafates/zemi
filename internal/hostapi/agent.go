@@ -714,10 +714,63 @@ func (h *Host) claim() *turnScope {
 	return t
 }
 
+// persistTurnStat keeps a turn's readout for a resume. The stored messages
+// hold no usage (fantasy.Message has none) and the reply's row only its time,
+// so the stat rides a telemetry row after them, which historyFrom attaches to
+// the turn's own reply.
+func (h *Host) persistTurnStat(sid string, stat TurnStat) {
+	if h.DB == nil || sid == "" {
+		return
+	}
+	parts, err := json.Marshal(map[string]any{
+		"turn_ms": stat.ElapsedMS, "in": stat.In, "out": stat.Out, "ended": stat.Ended,
+	})
+	if err != nil {
+		return
+	}
+	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}); err != nil {
+		h.Log.Warn("turn stat not kept", "origin", "agent", "error", err)
+	}
+}
+
 // release lets the agent go idle (ag.mu held).
 func (h *Host) release() {
 	h.agents.active = false
 	h.turn.Store(nil)
+	// on its own goroutine: this runs under ag.mu, which no store call may
+	// wait on while it holds the one connection
+	h.GoSafe("settle todos", h.settleTodos)
+}
+
+// settleTodos closes the list the claim leaves behind: in_progress means a
+// turn is doing that item, so with the agent idle it goes back to pending,
+// where the next turn's write picks it up. The model's list is kept as it
+// wrote it otherwise.
+func (h *Host) settleTodos() {
+	sid := h.AgentSessionID()
+	if h.DB == nil || sid == "" {
+		return
+	}
+	todos, err := h.DB.Todos(sid)
+	if err != nil {
+		h.Log.Warn("todo list not read", "origin", "agent", "error", err)
+		return
+	}
+	if !slices.ContainsFunc(todos, func(td store.Todo) bool { return td.Status == store.TodoInProgress }) {
+		return
+	}
+	for i := range todos {
+		if todos[i].Status == store.TodoInProgress {
+			todos[i].Status = store.TodoPending
+		}
+	}
+	if err := h.DB.SetTodos(sid, todos); err != nil {
+		h.Log.Warn("todo list not settled", "origin", "agent", "error", err)
+		return
+	}
+	h.todosStale.Store(true)
+	h.resetTodoNag(todos)
+	h.refresh()
 }
 
 // endScope releases the agent claimed with scope.
@@ -1302,6 +1355,11 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	h.refresh()
 	if hold {
 		return
+	}
+	// the readout rides a telemetry row, and only a turn that ended on text
+	// has a reply row for a resume to attach it to
+	if strings.TrimSpace(text) != "" {
+		h.persistTurnStat(sid, stat)
 	}
 	ui := h.hooks()
 	if ui != nil {

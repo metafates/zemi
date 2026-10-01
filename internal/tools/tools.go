@@ -1195,7 +1195,7 @@ Chain dependent steps with &&.`,
 			},
 			runFetch),
 
-		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, with exactly one item in_progress while work remains, and mark an item done in the same response as the next step's first calls. Do not repeat the list in your reply.",
+		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, with exactly one item in_progress while work remains, and mark an item done in the same response as the next step's first calls. An item left in_progress when the turn ends goes back to pending, so mark the next one in_progress to pick it up. Do not repeat the list in your reply.",
 			false,
 			map[string]any{
 				"todos": map[string]any{"type": "array", "items": map[string]any{

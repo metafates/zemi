@@ -1180,6 +1180,50 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 	}
 }
 
+// TestTurnEndSettlesTodos: an item left in_progress when the claim ends goes
+// back to pending, so no row of the list reads as running while the agent is
+// idle; the rest of the model's list is kept as it wrote it.
+func TestTurnEndSettlesTodos(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	wrote := []store.Todo{
+		{Content: "a", Status: store.TodoDone},
+		{Content: "b", Status: store.TodoInProgress, ActiveForm: "doing b"},
+		{Content: "c", Status: store.TodoPending},
+	}
+	if err := h.PipelineFor().TodosWrite(wrote); err != nil {
+		t.Fatal(err)
+	}
+	h.agents.mu.Lock()
+	scope := h.claim()
+	h.agents.mu.Unlock()
+	if next, text := h.nextTurn(scope, nil); next != nil || text != "" || h.AgentActive() {
+		t.Fatalf("an idle agent started a turn: %q", text)
+	}
+	waitFor(t, func() error {
+		todos, err := h.DB.Todos(sid)
+		if err != nil {
+			return err
+		}
+		if slices.ContainsFunc(todos, func(td store.Todo) bool { return td.Status == store.TodoInProgress }) {
+			return errors.New("an item is still in progress")
+		}
+		return nil
+	})
+	todos, err := h.DB.Todos(sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []store.Todo{
+		{Content: "a", Status: store.TodoDone},
+		{Content: "b", Status: store.TodoPending, ActiveForm: "doing b"},
+		{Content: "c", Status: store.TodoPending},
+	}
+	if !slices.Equal(todos, want) {
+		t.Fatalf("settled list = %+v, want %+v", todos, want)
+	}
+}
+
 func TestAlwaysChoice(t *testing.T) {
 	h, _ := newTestHost(t)
 	fakeSandbox(h, false) // the effect cases below settle it
