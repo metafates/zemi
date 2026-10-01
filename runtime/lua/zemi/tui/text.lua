@@ -164,12 +164,6 @@ end
 --- The widest thinking text runs, in cells: dim prose reads better narrow.
 M.PROSE = 80
 
---- Whether a thought is worth a row or a digest part: its label rounds to
---- a second or more ("thought 1.0s"), so what the pane shows the chat shows.
----@param secs number
----@return boolean
-function M.told(secs) return secs >= 0.95 end
-
 --- How long a thought took, as a digest or a thought row says it.
 ---@param secs number
 ---@return string
@@ -195,8 +189,7 @@ function M.digest(rows, first, last)
 		end
 	end
 	if #calls == 0 then return "" end
-	-- a thought under a second says nothing
-	return M.counts(calls) .. (M.told(secs) and " · " .. M.thought(secs) or "")
+	return M.counts(calls) .. (secs >= 0.05 and " · " .. M.thought(secs) or "")
 end
 
 --- A tool name as words for a row with no verb of its own: underscores

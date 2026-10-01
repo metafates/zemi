@@ -1867,7 +1867,7 @@ provenance string.
   column 4, a wrapped row keeping the bar: a step's unlabelled look-around
   calls as one row saying what they did, the thought before the step as its
   suffix, a labelled call a row of its own, its label (its command shows once
-  opened), a thought over 5 s, or from a second with no step after it, a row
+  opened), a thought over 5 s, or the run's last one, a row
   of its own. While the model thinks its last lines show
   under a `│ ⠋ thinking` row, unless the thinking pane draws them: in
   `ui.reasoning` pane mode, on a screen 100 columns or wider, a pane right of

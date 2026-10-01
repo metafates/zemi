@@ -496,8 +496,8 @@ local function builder(ctx, width)
 
 	-- A run of activity rows as a rail, one row per step: a step's unlabelled
 	-- look-around calls as one row carrying the thought before it, whose click
-	-- opens one row per call, a thought over 5 s, or from a second with no
-	-- step after it, as its own row, every other call as its own row: a label
+	-- opens one row per call, a thought over 5 s, or the run's last one, as
+	-- its own row, every other call as its own row: a label
 	-- tells what its call did. A thought row's click unrolls its text.
 	-- NOTE: a step is the calls between two thoughts, so a model that does not
 	-- think runs its steps together into one row.
@@ -553,7 +553,7 @@ local function builder(ctx, width)
 				i = i + 1
 			elseif t.kind == "reasoning" then
 				local s = t.thought or 0
-				if o.open or s > 5 or fmt.told(s) and (i == last or list[i + 1].kind == "reasoning") then
+				if o.open or s > 5 or i == last or list[i + 1].kind == "reasoning" then
 					head()
 					B.thought(s, fold or ("thought:" .. idx), (o.open or unrolled[idx]) and t.text or nil)
 					secs = nil
@@ -733,17 +733,8 @@ zemi.ui.widget.add({
 			local m = tr[first]
 			B.lines, B.prev = {}, first > 1 and block_of(tr[first - 1]) or nil
 			if mode == "fold" or mode == "unfold" then
-				-- a run with nothing to say (a thought under a second) draws no row
-				-- and so takes no gap
-				local n = #B.lines
 				B.gap("activity")
-				local g = #B.lines
 				B.fold(tr, first, last, mode == "unfold")
-				if #B.lines == g then
-					for i = g, n + 1, -1 do
-						B.lines[i] = nil
-					end
-				end
 			elseif mode ~= "" then
 				B.gap("activity")
 				B.rail(tr, first, last, { open = mode == "open", run = first })
@@ -917,7 +908,7 @@ zemi.ui.widget.add({
 				if text == "" and #tools == 0 then
 					B.gap("activity")
 					B.thinking(not M.pane and reasoning or nil)
-				elseif ctx.show_reasoning or thought > 5 or #tools == 0 and fmt.told(thought) then
+				elseif ctx.show_reasoning or thought > 5 or #tools == 0 then
 					B.gap("activity")
 					B.thought(thought, "reasoning", ctx.show_reasoning and reasoning or nil)
 				else

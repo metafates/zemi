@@ -302,11 +302,11 @@ func TestChatExpandSettledRow(t *testing.T) {
 	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.Contains(r, "make") }) {
 		t.Fatalf("the settled turn does not fold into its digest:\n%s", strings.Join(closed, "\n"))
 	}
-	// the digest stays as the run's header over the long thought and the
-	// step; the trailing thought under a second has no row
+	// the digest stays as the run's header over the long thought, the step
+	// and the trailing thought, which has its own row too
 	open := click("turn:2")
 	at := slices.Index(open, digest)
-	if len(open) != len(closed)+2 || at < 0 || open[at+1] != "│ ✻ thought 6.0s" || open[at+2] != "│ ran 1 command: make" {
+	if len(open) != len(closed)+3 || at < 0 || open[at+1] != "│ ✻ thought 6.0s" || open[at+2] != "│ ran 1 command: make" {
 		t.Fatalf("%d rows closed, %d open:\n%s", len(closed), len(open), strings.Join(open, "\n"))
 	}
 	text := click("thought:2")
@@ -1164,7 +1164,7 @@ func TestReasoningLiveTail(t *testing.T) {
 
 // TestRailFoldsWhenTheTurnEnds: the live turn stands on the rail, a
 // step's reads one row with the short thought before it as its suffix, a
-// long thought a row of its own and a trailing one under a second none; the
+// long thought a row of its own and a trailing one its own too; the
 // ended turn folds into its digest, over the edit it keeps in the cells it
 // drew live, and draws none of the thoughts the digest totals.
 func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
@@ -1188,7 +1188,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		return out[:len(out)-3] // the composer
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	live := []string{"▌ look around", "│ read 2 files 1.2s", "│ ✻ thought 8.0s", "│ list the data", "│ ✓ edit a.go +1 -1"}
+	live := []string{"▌ look around", "│ read 2 files 1.2s", "│ ✻ thought 8.0s", "│ list the data", "│ ✓ edit a.go +1 -1", "│ ✻ thought 0.4s"}
 	if got := rows(); !slices.Equal(got, live) {
 		t.Fatalf("live rail:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(live, "\n"))
 	}
