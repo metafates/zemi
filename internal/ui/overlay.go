@@ -591,7 +591,9 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			// a detail view whose only action it is states the effect and holds
 			// nothing a stray key hits: it is the confirmation
 			st.armed = true
-		case verb == "copy":
+		case verb == "copy" && r.Copy != "":
+			// a verb only names the hint: a copy list's rows run a command
+			// that copies for them
 			return a.copied(st.value(idx))
 		case st.back:
 			a.detailAction(idx)

@@ -360,6 +360,23 @@ func TestOverlayNavigation(t *testing.T) {
 			},
 		},
 		{
+			"enter on a copy list's row runs the form it names, not the hint's word",
+			hostapi.Overlay{ID: "copy", Origin: lua.OriginBuiltin, Verb: "copy", Items: []any{map[string]any{"text": "Whole reply", "run": "copy reply"}}},
+			nil,
+			func(a *App) string {
+				ran := ""
+				a.host.Commands.Add(&hostapi.Command{
+					Name: "copy", NArgs: "?", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+					GoFn: func(_ *hostapi.Host, args string) error { ran = args; return nil },
+				})
+				a.overlayKey("enter", "")
+				if ran != "reply" || len(a.overlays) != 0 {
+					return fmt.Sprintf("ran %q, overlays=%d", ran, len(a.overlays))
+				}
+				return ""
+			},
+		},
+		{
 			"an empty overlay shows its empty line and enter does nothing",
 			hostapi.Overlay{Empty: "Nothing to see."},
 			[]string{"enter"},
@@ -791,6 +808,7 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "detail": "x"}}, Verb: "pick"}, "", "enter open · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, "", "enter pick · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{map[string]any{"text": "a", "run": "x", "verb": "open"}}, Verb: "pick", Reload: reload}, "", "enter open · y copy · esc close"},
+		{hostapi.Overlay{Items: run, Verb: "copy"}, "", "enter copy · esc close"},
 		{hostapi.Overlay{Items: run}, "", "enter run · y copy · esc close"},
 		{hostapi.Overlay{Items: []any{"a"}, OnSelect: &glua.LFunction{}}, "", "enter pick · y copy · esc close"},
 		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle · y copy · esc close"},
