@@ -8,10 +8,10 @@
 <style>
 :root {
   color-scheme: light dark;
-  --bg: #fafafa; --fg: #1b1b1b; --dim: #737373; --rule: #cfcfcf; --accent: #6169c8;
+  --bg: #fafafc; --fg: #202127; --dim: #696b78; --rule: #bcbdc6; --panel: #eff0f3; --accent: #5458c8; --literal: #ab5819;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #141414; --fg: #d8d8d8; --dim: #828282; --rule: #3a3a3a; --accent: #9aa5f2; }
+  :root { --bg: #17181e; --fg: #e7e7ec; --dim: #898b98; --rule: #4b4c58; --panel: #202128; --accent: #a2adfd; --literal: #f9b379; }
 }
 * { box-sizing: border-box; }
 body {
@@ -27,9 +27,10 @@ a:hover, a:focus-visible { color: var(--accent); }
 a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 code, kbd, pre { font: inherit; }
 pre { margin: 0; white-space: pre; overflow-x: auto; }
-kbd { color: var(--accent); }
+code, kbd { color: var(--literal); }
 .dim { color: var(--dim); }
 .accent { color: var(--accent); }
+.literal { color: var(--literal); }
 
 /* the snail at rest, the splash's four rows drawn as strokes */
 .snail { display: block; width: 210px; height: auto; margin: 0 0 1.6rem -6px; }
@@ -51,7 +52,7 @@ h2 { font-size: inherit; font-weight: 400; margin: 0 0 1rem; display: flex; alig
 h2::before { content: ""; width: 2ch; border-top: 1px solid var(--rule); margin-right: 1ch; }
 h2::after { content: ""; flex: 1; border-top: 1px solid var(--rule); margin-left: 1ch; }
 
-.cmd { padding: .7rem 1ch; border: 1px solid var(--rule); margin: 0 0 1.1rem; }
+.cmd { padding: .7rem 1ch; border: 1px solid var(--rule); background: var(--panel); margin: 0 0 1.1rem; }
 .cmd .dim { user-select: none; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: .2em 3ch; margin: 0 0 1.2em; }
 .two ul { list-style: none; margin: 0; padding: 0; }
@@ -127,7 +128,7 @@ footer { margin-top: 3rem; color: var(--dim); }
 
 <section class="sec">
 <h2>the UI is Lua</h2>
-<div class="cmd"><pre>zemi.keymap.set(<span class="accent">"ctrl+t"</span>, <span class="accent">"zemi.agent.profile.next"</span>)</pre></div>
+<div class="cmd"><pre>zemi.keymap.set(<span class="literal">"ctrl+t"</span>, <span class="literal">"zemi.agent.profile.next"</span>)</pre></div>
 <p>Keys, commands, widgets, layout, permission rules: one file, reloaded on save, like Neovim. Or ask zemi to edit it.</p>
 </section>
 

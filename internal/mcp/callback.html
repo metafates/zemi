@@ -8,10 +8,10 @@
 <style>
 :root {
   color-scheme: light dark;
-  --bg: #fafafa; --fg: #1b1b1b; --dim: #737373; --rule: #cfcfcf; --accent: #6169c8;
+  --bg: #fafafc; --fg: #202127; --dim: #696b78; --rule: #bcbdc6; --panel: #eff0f3; --accent: #5458c8; --literal: #ab5819;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #141414; --fg: #d8d8d8; --dim: #828282; --rule: #3a3a3a; --accent: #9aa5f2; }
+  :root { --bg: #17181e; --fg: #e7e7ec; --dim: #898b98; --rule: #4b4c58; --panel: #202128; --accent: #a2adfd; --literal: #f9b379; }
 }
 * { box-sizing: border-box; }
 body {
@@ -37,7 +37,7 @@ h1 { font-size: 1.5em; font-weight: 600; margin: 0 0 .3em; line-height: 1.2; }
 h2 { font-size: inherit; font-weight: 400; margin: 0 0 1rem; display: flex; align-items: center; }
 h2::before { content: ""; width: 2ch; border-top: 1px solid var(--rule); margin-right: 1ch; }
 h2::after { content: ""; flex: 1; border-top: 1px solid var(--rule); margin-left: 1ch; }
-.cmd { padding: .7rem 1ch; border: 1px solid var(--rule); margin: 0 0 1.1rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+.cmd { padding: .7rem 1ch; border: 1px solid var(--rule); background: var(--panel); margin: 0 0 1.1rem; overflow-wrap: anywhere; white-space: pre-wrap; }
 </style>
 </head>
 <body>
