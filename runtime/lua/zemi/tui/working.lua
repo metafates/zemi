@@ -112,11 +112,7 @@ zemi.ui.widget.add({
 			end
 			return n
 		end
-		-- with the thinking pane drawn the block centers over the chat, off the
-		-- cell where the pane's separator meets this rule (after its corner)
 		local span = ctx.width
-		local rects = ctx.regions.thinking and zemi.ui.layout.rects() or {}
-		if rects.thinking and rects.composer then span = math.min(span, rects.thinking.x - rects.composer.x - 2) end
 		-- the snail keeps 8 cells of rule; the label gives way down to 16 cells
 		-- before a part goes, then clips into what the parts leave
 		local keep = math.min(zemi.ui.width(label), 16)

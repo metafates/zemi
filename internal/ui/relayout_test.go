@@ -133,10 +133,10 @@ func TestRelayout(t *testing.T) {
 	}
 }
 
-// TestThinkingPane: the shipped layout centers its column, and in pane mode
-// draws the thinking pane beside the chat from 100 columns, its separator
-// meeting the composer's top rule; hidden or collapsed, the pane takes no
-// separator, and ctx.regions says whether it draws.
+// TestThinkingPane: the shipped layout centers its column, the stage inside
+// it, and in pane mode draws the thinking pane beside the chat from 100
+// columns, its separator meeting the composer's top rule; hidden or
+// collapsed, the pane takes no separator, and ctx.regions says whether it draws.
 func TestThinkingPane(t *testing.T) {
 	app, _ := bootAgentApp(t, 140, 24)
 	runLua(t, app, `
@@ -144,8 +144,9 @@ zemi.ui.widget.add({ id = "probe", region = "header", render = function(ctx)
   return { { { text = ctx.regions.thinking and "pane on" or "pane off" } } }
 end })`)
 	pane := `local l = zemi.ui.layout.get()
-l.root.children[2].max = 157
-l.root.children[2].children[2].children[2].hidden = false
+l.root.children[2].max = 181
+l.root.children[2].children[2].children[2].max = 157
+l.root.children[2].children[2].children[2].children[2].hidden = false
 zemi.ui.layout.set(l)`
 	for _, c := range []struct {
 		name         string
@@ -202,7 +203,7 @@ func TestFloatsOverTheColumn(t *testing.T) {
 				if err := host.ToggleReasoning(); err != nil {
 					t.Fatal(err)
 				}
-				waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Hidden })
+				waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Children[1].Hidden })
 			}
 			if c.modal {
 				runLua(t, app, `zemi.ui.select({ "alpha", "beta" }, { prompt = "Pick" }, function() end)`)

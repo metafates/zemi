@@ -182,7 +182,7 @@ func TestGoldenThinkingPane(t *testing.T) {
 	if err := host.ToggleReasoning(); err != nil {
 		t.Fatal(err)
 	}
-	waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Hidden })
+	waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Children[1].Hidden })
 	const diff = "--- a/load.go\n+++ b/load.go\n@@ -1,2 +1,2 @@\n package catalog\n-const path = \"old\"\n+const path = \"gen\"\n"
 	tool := func(name, text, label string, status hostapi.CallStatus, diff, out string) {
 		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: name, Text: text, Label: label, Status: status, Diff: diff, Output: out})

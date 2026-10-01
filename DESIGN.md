@@ -1774,10 +1774,13 @@ provenance string.
   fails. Floats place a region like a neovim float (relative node, anchor corner,
   row/col, size) in list order. A render's `ctx.regions` names the regions this
   frame's solve draws, so a widget knows whether another is on screen. The shipped
-  `tui/layout.lua` sets the default: the main column centered past 100 cells (157 with
-  the thinking pane), and in it the chat beside the thinking pane (regions
-  `thinking.head` and `thinking`, 36 to 56 cells), whose separator meets the
-  composer's top rule, the row holding both the stage; the pane is hidden unless
+  `tui/layout.lua` sets the default: the main column, the composer's frame, centered
+  past 124 cells (181 with the thinking pane), and in it the chat beside the thinking
+  pane (regions `thinking.head` and `thinking`, 36 to 56 cells), the row holding both
+  the stage, centered past 100 cells (157 with the pane), whose separator meets the
+  composer's top rule, the composer's rules running wider than the stage so their
+  widgets fit; the working label centers on the composer's rule, whatever the pane
+  does; the pane is hidden unless
   `ui.reasoning` is `pane` and collapses under 100 columns. User config may replace the layout, plugin and
   project code may not (a layout can
   hide what they show). `/reload` keeps drawing the old layout until the replay sets

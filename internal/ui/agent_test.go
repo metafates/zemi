@@ -1223,7 +1223,7 @@ func TestReasoningPane(t *testing.T) {
 				t.Fatal(err)
 			}
 			// the shipped layout's config watch sets the pane's layout
-			waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Hidden })
+			waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Children[1].Hidden })
 			host.AppendMessage("user", "look around")
 			appendReasoning(host, "where to start", hostapi.TurnStat{ThoughtMS: 1200})
 			host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
@@ -1324,7 +1324,7 @@ func TestReasoningPane(t *testing.T) {
 			if err := host.ToggleReasoning(); err != nil {
 				t.Fatal(err)
 			}
-			waitPrompt(t, app, func() bool { return host.Layout().Root.Children[1].Children[1].Children[1].Hidden != on })
+			waitPrompt(t, app, func() bool { return host.Layout().Root.Children[1].Children[1].Children[1].Children[1].Hidden != on })
 			chat()
 			if got := chat(); strings.Contains(got, "deep thought text") || !strings.Contains(got, "✻ thought 8.0s") {
 				t.Fatalf("pane %v: the thought should stay closed in its open run:\n%s", on, got)
@@ -1898,7 +1898,7 @@ func TestPaneInspectsEarlierTurn(t *testing.T) {
 	if err := host.ToggleReasoning(); err != nil {
 		t.Fatal(err)
 	}
-	waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Hidden })
+	waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Children[1].Hidden })
 	host.AppendMessage("user", "first")
 	appendReasoning(host, "alpha thinking", hostapi.TurnStat{ThoughtMS: 1500})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
