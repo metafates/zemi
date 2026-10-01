@@ -222,8 +222,7 @@ func (h *Host) ask(req tools.Request, held bool) (bool, string, string) {
 		Tool: req.Tool, Always: label, Wider: wider, Project: project != "", Subject: req.Subject, Arg: h.shownArg(req),
 		Reason: req.Reason, Preview: req.Preview, Description: req.Description, Agent: req.Agent, Owner: req.Owner, Where: h.runsIn(req),
 	}
-	// a call a lua tool's script drives: the user read the script, so name it
-	// as who is asking
+	// a call a lua tool's script drove: the user read the script, so name it
 	if req.Script != "" {
 		pr.Script = "lua script"
 	}

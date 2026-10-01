@@ -245,9 +245,8 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	// the lua tool's own script drives the run's tools with these (luatool.go)
+	// the lua tool's own running script drives the run's tools with these
 	tb.RawSetString("call", L.NewFunction(h.luaToolCall))
-
 	tb.RawSetString("describe", L.NewFunction(h.luaToolDescribe))
 
 	return tb

@@ -543,7 +543,7 @@ func TestPromptBudget(t *testing.T) {
 	// is 10k tokens. The ceiling is today's size rounded up to the next 500,
 	// so any real growth is a decision; raise it only with a reason.
 	// 22500: the lua tool's description and the code-mode guideline (447 chars)
-	// say a script can drive the run's tools, which is what makes one script
+	// say a script drives the run's tools, which is what makes one script
 	// cheaper than a step per call.
 	const ceiling = 22500
 	if n > ceiling {

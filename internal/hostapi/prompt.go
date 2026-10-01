@@ -65,9 +65,8 @@ const toolRules = `- When a tool refuses, do exactly what its message says; neve
 const readPrompt = `
 - Every tool result stays in context until compaction: locate with grep, then read that region with offset and limit; one large window beats many small ones.`
 
-// codePrompt fills basePrompt's {Code} for a run that has the lua tool: a
-// script drives the same calls a step would, several at once, and only what it
-// prints or returns costs context.
+// codePrompt fills basePrompt's {Code} for a run that has the lua tool: one
+// script drives the calls a step would, and only what it prints costs context.
 const codePrompt = `
 - When one shape of call repeats, or its output is far larger than what you need of it, drive the calls from one lua script and filter there, instead of a call per step.`
 

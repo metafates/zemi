@@ -333,8 +333,8 @@ func CmdOut(dir, name, raw string, lost int64) string {
 }
 
 // cmdOut is CmdOut for this run: a call a lua script drives keeps the whole
-// text the buffer held, since the script reads it and says what of it the
-// model gets; one the model called gets the cut and the spill.
+// text the buffer held, since the script reads it and says what of it the model
+// gets; one the model called gets the cut and the spill.
 func (p *Pipeline) cmdOut(name, raw string, lost int64) string {
 	if p.Script == "" {
 		return CmdOut(p.Pad, name, raw, lost)

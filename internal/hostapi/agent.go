@@ -358,11 +358,10 @@ func (h *Host) webOff() bool {
 	return !slices.ContainsFunc(h.Perm.Rules(), allows) && (def.Rules == nil || !slices.ContainsFunc(def.Rules.Rules(), allows))
 }
 
-// toolBuilder builds the tool set for a given pipeline: builtin, Lua and MCP
-// tools, filtered by the profile. The lua tool builds its scripts' nested
-// calls through it, under a pipeline copy that carries the script, so a script
-// reaches exactly the tools the run has (a profile's filter holds) and a
-// read-only agent's set stays read-only.
+// toolBuilder builds the run's tool set for a given pipeline: builtin, Lua and
+// MCP tools, filtered by the profile. The lua tool builds its scripts' calls
+// through it, so a script reaches exactly what the run has, a profile's filter
+// included.
 func (h *Host) toolBuilder(p *Profile, skip map[string]bool) func(*tools.Pipeline) ([]fantasy.AgentTool, []string) {
 	var want []string
 	if p != nil {
@@ -395,7 +394,7 @@ func (h *Host) profileTools(p *Profile) ([]fantasy.AgentTool, error) {
 	id := h.currentModelID(p)
 	pipe.Images = func() bool { return h.takesImages(id) }
 	out, unknown := build(pipe)
-	// the lua tool reaches the same set from a script (luaEvalTool.build)
+	// the lua tool reaches the same set from a script
 	for _, t := range out {
 		if lt, ok := t.(*luaEvalTool); ok {
 			lt.build = build
