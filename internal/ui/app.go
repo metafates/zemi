@@ -961,8 +961,8 @@ func (a *App) compose(w, h int) string {
 
 	// Modal chrome goes over everything: Lua overlays, then the Go-owned
 	// prompts, bottom to top (topChrome must match this order so input
-	// reaches the box drawn on top). What lies under the top box is dimmed,
-	// so no text beside it can pass for its chrome (DESIGN §8).
+	// reaches the box drawn on top). What lies under the top box sinks toward
+	// the canvas, so nothing beside it passes for its chrome (DESIGN §8).
 	area := boxArea(stage, w, h)
 	frame := lay.rects["composer"]
 	if frame.Empty() {
@@ -1011,9 +1011,9 @@ func (a *App) compose(w, h int) string {
 	}
 	for i, place := range modals {
 		if i == len(modals)-1 {
-			// the backdrop joins before it dims, so no dimmed line joins the top box
+			// the backdrop joins before it fades, so no faded line joins the top box
 			a.join(rows, w)
-			dimRows(rows)
+			fadeRows(rows)
 			toasts()
 		}
 		place()
@@ -1088,6 +1088,34 @@ func dimRows(rows [][]hostapi.Segment) {
 			out[j] = hostapi.Segment{Text: s.Text, HL: hostapi.ChromeDim, Fade: s.Fade}
 			if strings.ContainsRune(s.Text, kitty.Placeholder) {
 				out[j] = s
+			}
+		}
+		rows[i] = out
+	}
+}
+
+// modalFade is how far the backdrop under a box sinks toward the canvas: its
+// content stays readable as a shape, and no color of it competes with the box.
+const modalFade = 0.7
+
+// fadeRows sinks rows toward the canvas for the backdrop of a modal box: a
+// cell keeps its text, style and effect, so a spinner behind the box keeps
+// stepping, and nothing that acts or joins, so no backdrop row answers the
+// box's prompt, no backdrop line joins its border and no backdrop bar takes a
+// drag. It copies each row: rows share slices with widget caches. Image
+// placeholders keep their color, which names the image.
+func fadeRows(rows [][]hostapi.Segment) {
+	for i, r := range rows {
+		out := make([]hostapi.Segment, len(r))
+		for j, s := range r {
+			if strings.ContainsRune(s.Text, kitty.Placeholder) {
+				out[j] = s
+				continue
+			}
+			out[j] = hostapi.Segment{
+				Text: s.Text, HL: s.HL, Over: s.Over, Effect: s.Effect,
+				NoCopy: s.NoCopy, NoHover: s.NoHover, Soft: s.Soft, Pin: s.Pin,
+				Fill: s.Fill, Fade: max(s.Fade, modalFade),
 			}
 		}
 		rows[i] = out

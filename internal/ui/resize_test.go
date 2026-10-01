@@ -228,6 +228,41 @@ func TestModeSwitchQuiet(t *testing.T) {
 	}
 }
 
+// TestAnchoredBoxBottomBorder: the rule an anchored box stands on carries the
+// working label and the snail art, and the cells the box covers are its own
+// bottom border: no backdrop text cuts it.
+func TestAnchoredBoxBottomBorder(t *testing.T) {
+	for _, anchor := range []hostapi.OverlayAnchor{hostapi.OverlayBottomLeft, hostapi.OverlayBottomRight} {
+		app, host := bootAgentApp(t, 100, 20)
+		host.SeedStream(hostapi.StreamSnapshot{
+			Active: true, Elapsed: 20 * time.Second,
+			Tools: []hostapi.StreamTool{{Name: "workflow", Status: "run", Label: "Final RISK-29198 council"}},
+		})
+		app.renderSync(t)
+		if label := ansi.Strip(app.Frame()); !strings.Contains(label, "workflow final RISK-29198 council · esc interrupt") {
+			t.Fatalf("%s: no working label on the rule to cut:\n%s", anchor, label)
+		}
+		app.openOverlay(hostapi.Overlay{ID: "usage", Title: "Usage", Items: []any{"row one"}, Anchor: anchor})
+		app.renderSync(t)
+		frame := ansi.Strip(app.Frame())
+		r := app.chromeRect
+		mid := truncateSegs(dropCells(app.lastRows[r.Max.Y-1], r.Min.X), r.Dx())
+		if hostapi.SegsWidth(mid) != r.Dx() {
+			t.Fatalf("%s: the box's bottom row is %d cells, want %d:\n%s", anchor, hostapi.SegsWidth(mid), r.Dx(), frame)
+		}
+		for _, s := range mid {
+			if !s.Line || s.HL != hostapi.ChromeRule || s.Fill != hostapi.FillPanel || s.Fade != 0 {
+				t.Fatalf("%s: the box's bottom border is %+v:\n%s", anchor, s, frame)
+			}
+			for _, rune := range s.Text {
+				if armsOf(rune) == 0 {
+					t.Fatalf("%s: %q cuts the box's bottom border:\n%s", anchor, rune, frame)
+				}
+			}
+		}
+	}
+}
+
 // TestProfileSegment: the statusline names a profile other than default.
 func TestProfileSegment(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)

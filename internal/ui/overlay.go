@@ -1049,11 +1049,12 @@ func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) uv.Recta
 // line with frame's left or right edge: the composer frame whose
 // statusline pill opened it. Where the frame is drawn (framed, see ruleAt)
 // and its top rule is at most a row under area and wider than the box, the
-// box stands on it: the rule's cells under the box are its bottom border,
-// joined at its edges (App.join). What it does not cover stays visible, one
-// cell off its inner side. Its lines, and the rule cells it stands on, take
-// the rule group: a composer popup's is the draft's tint of that rule. It
-// reports the cells the box took, that border included.
+// box stands on it: the rule's cells under the box become its bottom border,
+// joined at its edges (App.join), and the label that rule carries gives way
+// to it. What it does not cover stays visible, one cell off its inner side.
+// Its lines, and the rule cells it stands on, take the rule group: a composer
+// popup's is the draft's tint of that rule. It reports the cells the box
+// took, that border included.
 func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, framed, right bool, rule string, w int) uv.Rectangle {
 	for _, row := range box {
 		for i := range row {
@@ -1069,15 +1070,21 @@ func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, frame
 	}
 	end, drawn := min(area.Max.Y, len(rows)), len(box)
 	if gap := frame.Min.Y - area.Max.Y; framed && gap >= 0 && gap <= 1 && x >= frame.Min.X && x+bw <= frame.Max.X {
-		// NOTE: an edge that lands on the rule's text (the working label) ends there with no junction
 		end, drawn = frame.Min.Y+1, len(box)-1
-		// the rule lies dimmed under a modal: its runs there are the box's own
-		// border again, and its text sits on the box's panel
+		// the rule is the box's bottom border: within its span nothing else
+		// draws, so what lies under it (the working label, the snail) gives way
+		// cell for cell rather than cutting the border
 		rows[frame.Min.Y] = restyle(rows[frame.Min.Y], x, x+bw, func(s *hostapi.Segment) {
-			s.Fill = hostapi.FillPanel
-			if strings.IndexFunc(s.Text, func(r rune) bool { return armsOf(r) == 0 }) < 0 {
-				s.HL, s.Line = rule, true
+			s.Line, s.HL, s.Fill, s.Fade, s.Effect = true, rule, hostapi.FillPanel, 0, ""
+			var b strings.Builder
+			for _, r := range s.Text {
+				if armsOf(r) != 0 {
+					b.WriteRune(r)
+					continue
+				}
+				b.WriteString(strings.Repeat("─", max(ansi.StringWidth(string(r)), 1)))
 			}
+			s.Text = b.String()
 		})
 	}
 	y0 := max(area.Min.Y, end-len(box))

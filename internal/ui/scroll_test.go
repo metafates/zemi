@@ -410,11 +410,12 @@ func TestChatFade(t *testing.T) {
 	if _, bottom := fades(); math.Abs(bottom[5]-0.2) > 1e-9 || math.Abs(bottom[2]-0.05) > 1e-9 {
 		t.Fatalf("the fade does not ease off near the edge: %v", bottom)
 	}
-	// a modal dims the backdrop but keeps its fade
+	// a modal sinks the backdrop toward the canvas and keeps its own styles
+	was := app.lastRows[st.rect.Max.Y-1][0].HL
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Body: "x"})
 	app.Frame()
-	if row := app.lastRows[st.rect.Max.Y-1]; row[0].HL != hostapi.ChromeDim || math.Abs(row[0].Fade-0.2) > 1e-9 {
-		t.Fatalf("the fade under a modal: %+v", row[0])
+	if row := app.lastRows[st.rect.Max.Y-1]; row[0].HL != was || math.Abs(row[0].Fade-modalFade) > 1e-9 {
+		t.Fatalf("the backdrop under a modal: %+v, want %s at fade %v", row[0], was, modalFade)
 	}
 	app.closeOverlayByID("t")
 	// the bar cell keeps its color

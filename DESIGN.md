@@ -1640,7 +1640,8 @@ provenance string.
   `"bottom-right"`: over the statusline, the border in line with the
   composer frame on the side of the pill that opened it: `/mode` left,
   `/profile`, `/model` and `/usage` right; the box stands on the frame,
-  whose top rule is its bottom border). A Lua overlay has
+  whose top rule is its bottom border, the label that rule carries giving
+  way to it cell for cell). A Lua overlay has
   every field a Go-built menu uses (`anchor`, `selected`, a `body` of
   styled lines or `markdown`, `render_item`
   rows of `{ text, hl }` segments; a `click` or `effect` there is dropped,
@@ -1806,8 +1807,9 @@ provenance string.
   composer frame and its plain rule runs, box separators) join where they touch once
   everything is placed (`App.join`): a line end facing a line becomes a T and a crossing a
   `┼`, in the cell's own color; text, Lua content and the snail art never join. Under a
-  modal the backdrop joins before it is dimmed, and a dimmed line joins nothing placed
-  over it, so the top box's border meets only its own lines and the rule it stands on.
+  modal the backdrop joins before it fades toward the canvas, and a faded line joins
+  nothing placed over it, so the top box's border meets only its own lines - and the rule
+  it stands on, whose cells under it become that border whatever the rule carried there.
   Widgets render at their node's width and height; a content-sized node gets
   the most rows it could take (its max or the box's cells), not its last height, which
   would never let it shrink.
@@ -2035,7 +2037,8 @@ provenance string.
   chrome (overlays and prompts) draws over everything,
   as do the completion and palette popups, which are not modal; while a
   modal is open everything outside the top box, plugin overlays and widget
-  regions too, is dimmed in the palette's rule color through a `Host:` style, and a centered box keeps a
+  regions too, keeps its own styles sunk toward the canvas to the same
+  ambient depth (`modalFade`), and a centered box keeps a
   blank gutter column of its own each side plus one more, so no text
   outside it runs up to its border; at any other time a plugin
   overlay carries a Go-stamped origin badge (`plugin:<name>`, `project:<file>`). While a box

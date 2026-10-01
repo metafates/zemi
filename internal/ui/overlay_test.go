@@ -285,36 +285,36 @@ func TestTopBoxJoinsAlone(t *testing.T) {
 	}
 }
 
-// TestModalDimsBackground: a modal dims what lies under it; a toast and
-// the palette are not modal and do not.
+// TestModalDimsBackground: a modal sinks what lies under it toward the
+// canvas; a toast and the palette are not modal and do not.
 func TestModalDimsBackground(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 	host.AppendMessage("user", "hello there")
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"a"}})
 	app.pushToast(slog.LevelInfo, "Copied to the clipboard", "")
-	hl := func(text string) string {
+	seg := func(text string) hostapi.Segment {
 		app.renderSync(t)
 		app.Frame()
 		for _, row := range app.lastRows {
 			for _, s := range row {
 				if strings.Contains(s.Text, text) {
-					return s.HL
+					return s
 				}
 			}
 		}
 		t.Fatalf("%q not on screen", text)
-		return ""
+		return hostapi.Segment{}
 	}
-	if got := hl("hello"); got != "Host:Dim" {
-		t.Fatalf("under an overlay: %q", got)
+	if s := seg("hello"); s.Fade != modalFade || s.HL == hostapi.ChromeDim {
+		t.Fatalf("under an overlay: %+v", s)
 	}
-	if got := hl("Copied"); got == "Host:Dim" {
-		t.Fatal("the overlay dimmed a toast")
+	if s := seg("Copied"); s.Fade != 0 {
+		t.Fatalf("the overlay faded a toast: %+v", s)
 	}
 	app.overlays = nil
 	app.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
-	if got := hl("untrusted"); got == "Host:Dim" {
-		t.Fatal("the palette dimmed the screen")
+	if s := seg("untrusted"); s.Fade != 0 {
+		t.Fatalf("the palette faded the screen: %+v", s)
 	}
 }
 

@@ -1115,6 +1115,26 @@ func TestReasoningExpanded(t *testing.T) {
 	}
 }
 
+// thoughtHead is the line carrying the live thinking mark, "" for a frame
+// without one.
+func thoughtHead(frame string) string {
+	for l := range strings.SplitSeq(frame, "\n") {
+		if strings.HasSuffix(strings.TrimRight(l, " \r"), " thinking") {
+			return l
+		}
+	}
+	return ""
+}
+
+// spinOf splits the mark's spinner glyph off a thought head, which stands at
+// column 2 behind the bar.
+func spinOf(head string) (mark, rest string) {
+	if r := []rune(head); len(r) > 2 {
+		return string(r[2]), string(r[:2]) + string(r[3:])
+	}
+	return "", head
+}
+
 // TestReasoningLiveTail: while the model thinks, only its last lines show, and
 // the live mark animates (a braille spinner) without moving the header or tail.
 func TestReasoningLiveTail(t *testing.T) {
@@ -1135,22 +1155,9 @@ func TestReasoningLiveTail(t *testing.T) {
 	}
 	// the spinner cycles a frameMS apart while the header and tail stay put
 	a, b := render(500), render(750)
-	headOf := func(s string) string {
-		for l := range strings.SplitSeq(s, "\n") {
-			if strings.HasSuffix(strings.TrimRight(l, " \r"), " thinking") {
-				return l
-			}
-		}
-		return ""
-	}
-	// the spinner stands at column 2, behind the bar
-	spin := func(h string) (string, string) {
-		r := []rune(h)
-		return string(r[2]), string(r[:2]) + string(r[3:])
-	}
-	headA, headB := headOf(a), headOf(b)
-	spinA, restA := spin(headA)
-	spinB, restB := spin(headB)
+	headA, headB := thoughtHead(a), thoughtHead(b)
+	spinA, restA := spinOf(headA)
+	spinB, restB := spinOf(headB)
 	if !strings.HasPrefix(headA, "│ ") || spinA == spinB {
 		t.Fatalf("live mark does not animate on the rail:\n%s", a)
 	}
@@ -1159,6 +1166,29 @@ func TestReasoningLiveTail(t *testing.T) {
 	}
 	if strings.Replace(a, headA, "", 1) != strings.Replace(b, headB, "", 1) {
 		t.Fatalf("tail moved while animating:\n%s\n%s", a, b)
+	}
+}
+
+// TestReasoningSpinsBehindModal: the backdrop of an open box keeps its
+// effects, so the live mark keeps stepping and the tick stays on the frame
+// clock while the box waits for the reader.
+func TestReasoningSpinsBehindModal(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 16)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\ntwo\n"})
+	app.openOverlay(hostapi.Overlay{ID: "usage", Title: "Usage", Body: "x"})
+	render := func(ms int64) string {
+		app.now = func() time.Time { return time.UnixMilli(ms) }
+		app.renderSync(t)
+		return ansi.Strip(app.Frame())
+	}
+	a, b := render(500), render(750)
+	spinA, _ := spinOf(thoughtHead(a))
+	spinB, _ := spinOf(thoughtHead(b))
+	if spinA == "" || spinA == spinB {
+		t.Fatalf("the live mark froze behind a box:\n%s", a)
+	}
+	if !app.spun || app.tickInterval() != frameInterval {
+		t.Fatalf("a spinner behind a box ticks %v (spun %v)", app.tickInterval(), app.spun)
 	}
 }
 
