@@ -320,13 +320,13 @@ func TestToastCap(t *testing.T) {
 // first, whichever side it is on, and the lasting ones stay outermost.
 func TestFitClusters(t *testing.T) {
 	item := func(text string, pri float64) statusItem { return statusItem{[]hostapi.Segment{{Text: text}}, pri} }
-	left := []statusItem{item("auto", 5), item("proj", 10), item("viewing explore · esc back", 120)}
+	left := []statusItem{item("auto", 5), item("proj", 10), item("ctrl+c quit", 110)}
 	right := []statusItem{item("fake/m", 8), item("96%", 40), item("1.1k/128k ctx", 41), item("$0.12", 42)}
 	for _, c := range []struct {
 		w    int
 		want string
 	}{
-		{80, "auto · proj · viewing explore · esc back|$0.12 · 1.1k/128k ctx · 96% · fake/m"},
+		{80, "auto · proj · ctrl+c quit|$0.12 · 1.1k/128k ctx · 96% · fake/m"},
 		{45, "auto · proj|1.1k/128k ctx · 96% · fake/m"},
 		{20, "auto · proj|fake/m"},
 		{15, "auto|fake/m"},

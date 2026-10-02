@@ -10,7 +10,8 @@ local READS = { read = true, grep = true, glob = true, fetch = true, web_search 
 -- grow to, so the block is anchored once and the key never slides. The block
 -- stays away for the first 300ms so instant turns do not flash it, and the
 -- eyes say how the turn ended for a few seconds after. A busy job shows the
--- same way while idle.
+-- same way while idle; an agent view names the run it shows and leaves on esc
+-- where the interrupt key stands.
 
 -- the state the eyes last showed and the frame it began on: an eye cycle
 -- starts with its state, whatever the clock read
@@ -27,17 +28,44 @@ zemi.ui.widget.add({
 		local ag = ctx.agent or {}
 		-- each part with its worth: a narrow rule sheds the least worth first;
 		-- a ticking part also has the cells it grows to, drawn as rule after it
-		---@type { [1]: string, [2]: integer, [3]: integer? }[]
+		---@type { [1]: zemi.Line, [2]: integer, [3]: integer? }[]
 		local parts = {}
+		---@param text string
+		---@param hl string?
+		---@return zemi.Line
+		local function plain(text, hl) return { { text = text, hl = hl or "Dim" } } end
+		---@param l zemi.Line
+		---@return integer
+		local function cells(l)
+			local n = 0
+			for _, sg in ipairs(l) do
+				n = n + zemi.ui.width(sg.text)
+			end
+			return n
+		end
 		local state = "idle"
 		local busy = ctx.busy and ctx.busy.elapsed >= 0.3 and ctx.busy or nil
 		-- a printed run takes no key but the shell's interrupt
-		local stop = ctx.headless and "ctrl+c stop" or ctx.interrupt_armed and "esc again" or "esc interrupt"
+		local key, verb = "esc", "interrupt"
+		if ctx.headless then
+			key, verb = "ctrl+c", "stop"
+		elseif ctx.interrupt_armed then
+			verb = "again to interrupt"
+		end
+		-- the run the chat shows, whose it is, how it stands, and the key that
+		-- leaves it, which is what esc means there: a rule with nothing else to
+		-- say draws them alone; a status word that changes width (a run ending)
+		-- moves the name before it, not the key after it
+		if ctx.view then
+			parts[#parts + 1] = { plain("viewing " .. ctx.view.agent, "Title"), 5 }
+			parts[#parts + 1] = { plain(ctx.view.status, ctx.view.status == "failed" and "Danger" or "Dim"), 4 }
+			parts[#parts + 1] = { fmt.hint("esc", "back"), 6, 13 }
+		end
 		if not ctx.agent_active then
 			if busy then
 				state = "working"
-				if busy.cancellable and not ctx.view then parts[1] = { stop, 6, 13 } end
-				parts[#parts + 1] = { fmt.duration(busy.elapsed, true), 5, 7 }
+				if busy.cancellable and not ctx.view then parts[#parts + 1] = { fmt.hint(key, verb), 6, 13 } end
+				parts[#parts + 1] = { plain(fmt.duration(busy.elapsed, true)), 5, 7 }
 			elseif ctx.ended == "ok" then
 				state = "done"
 			elseif ctx.ended == "error" then
@@ -57,29 +85,32 @@ zemi.ui.widget.add({
 			end
 			if not running and ag.reasoning ~= "" and ag.text == "" then state = "thinking" end
 			if ag.compacting or ag.checking_goal then state = "reading" end
-			---@type { [1]: string, [2]: integer, [3]: integer }?
-			local tick = { fmt.duration(ag.elapsed, true), 5, 7 }
+			---@type { [1]: zemi.Line, [2]: integer, [3]: integer }?
+			local tick = { plain(fmt.duration(ag.elapsed, true)), 5, 7 }
 			if ag.retry then
 				state = "error"
 				tick = {
-					ag.retry.next_in > 0 and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true)
-						or "retrying now",
+					plain(
+						ag.retry.next_in > 0 and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true)
+							or "retrying now"
+					),
 					5,
 					18,
 				}
 			end
 			if ctx.editing ~= "" then
 				state, tick = "idle", nil
-				parts = { { "save and close the editor to continue", 5 } }
+				parts = { { plain("save and close the editor to continue"), 5 } }
 			end
 			-- the open prompt says what answers it, so the rule shrinks to the
-			-- mascot alone rather than repeating it; in an agent view esc goes back
+			-- mascot alone rather than repeating it; in a view the back key is
+			-- already on the rule
 			if ctx.waiting ~= "" then
 				state, parts, tick = "asking", {}, nil
 			elseif ctx.cancelling then
-				parts[#parts + 1] = { "ctrl+c quit", 6, 13 }
+				parts[#parts + 1] = { fmt.hint("ctrl+c", "quit"), 6, 13 }
 			elseif not ctx.view then
-				parts[#parts + 1] = { stop, 6, 13 }
+				parts[#parts + 1] = { fmt.hint(key, verb), 6, 13 }
 			end
 			-- last, where its changing width moves nothing
 			if tick then parts[#parts + 1] = tick end
@@ -88,7 +119,7 @@ zemi.ui.widget.add({
 		local function room()
 			local n = 0
 			for _, p in ipairs(parts) do
-				n = n + 3 + math.max(zemi.ui.width(p[1]), p[3] or 0)
+				n = n + 3 + math.max(cells(p[1]), p[3] or 0)
 			end
 			return n
 		end
@@ -101,13 +132,17 @@ zemi.ui.widget.add({
 			end
 			table.remove(parts, least)
 		end
-		---@type string[]
-		local texts = {}
+		-- the parts join as a footer joins its keys, each in the highlight it
+		-- draws in, a space either side
+		---@type zemi.Line
+		local after = {}
 		for i, p in ipairs(parts) do
-			texts[i] = p[1]
+			if i > 1 then after[#after + 1] = { text = " · ", hl = "Dim" } end
+			for _, sg in ipairs(p[1]) do
+				after[#after + 1] = sg
+			end
 		end
-		local after = #texts > 0 and " " .. table.concat(texts, " · ") .. " " or ""
-		local block = zemi.ui.width(after)
+		local block = cells(after) + (#after > 0 and 2 or 0)
 		if state ~= shown then
 			shown, since = state, ctx.frame
 		end
@@ -116,7 +151,11 @@ zemi.ui.widget.add({
 		local left = block > 0 and ctx.width - room() - 2 or ctx.width
 		local row = snail.rule(state, ctx.frame - since, left)
 		if block > 0 then
-			row[#row + 1] = { text = after, hl = "Dim" }
+			row[#row + 1] = { text = " ", hl = "Dim" }
+			for _, sg in ipairs(after) do
+				row[#row + 1] = sg
+			end
+			row[#row + 1] = { text = " ", hl = "Dim" }
 			row[#row + 1] = {
 				text = string.rep("─", ctx.width - left - block),
 				hl = "Rule",

@@ -1554,6 +1554,49 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 }
 
+// TestWorkingRowAgentView: an agent view names the run the chat shows and the
+// key that leaves it on the rule, alone while nothing runs, and keeps that key
+// once the name is dropped for width.
+func TestWorkingRowAgentView(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 16)
+	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	host.DB = db
+	id := store.ShortID()
+	if err := db.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.ViewAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	row := func(w int) string {
+		app.Update(tea.WindowSizeMsg{Width: w, Height: 16})
+		app.renderSync(t)
+		segs := app.widgetLines("working")[0]
+		if got := hostapi.SegsWidth(segs); got != w-2 {
+			t.Fatalf("the rule is %d cells at %d wide, want %d", got, w, w-2)
+		}
+		return ansi.Strip(app.renderSegs(segs, w))
+	}
+	// idle: the run and its status, where the rule was bare before
+	if r := row(80); !strings.Contains(r, " viewing explore · done · esc back ") {
+		t.Fatalf("the idle rule does not name the viewed run: %q", r)
+	}
+	// a running turn takes the interrupt key, not the one that leaves the view
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
+	if r := row(80); !strings.Contains(r, "esc back") || strings.Contains(r, "esc interrupt") || !strings.Contains(r, "20s") {
+		t.Fatalf("a turn in a view does not read back: %q", r)
+	}
+	// width sheds the name and the status first, never the key
+	host.SeedStream(hostapi.StreamSnapshot{})
+	if r := row(26); !strings.Contains(r, "esc back") || strings.Contains(r, "viewing") || strings.Contains(r, "done") {
+		t.Fatalf("the narrow rule lost the back key or kept the name: %q", r)
+	}
+}
+
 // TestLuaInput drives zemi.ui.input: typing edits the prefilled line, enter
 // hands the text to on_confirm, esc hands it nil.
 func TestLuaInput(t *testing.T) {

@@ -1633,7 +1633,9 @@ provenance string.
   tools run, `??` while the user is asked, then for a few seconds `^^`
   when the turn finished ok, `><` when it failed and idle eyes when it was
   cancelled; at the right end of the rule the interrupt key
-  with the elapsed time, the ticking part keeping the cells it grows to, so
+  with the elapsed time, and while the chat shows an agent run's transcript
+  that run's name and status with `esc back` in its place, drawn on an idle
+  rule too, the ticking part keeping the cells it grows to, so
   the block is anchored once and the key never slides; the running call names
   no cell of it, which the chat row already says. It reads `ctx.frame`,
   `ctx.ended`, `ctx.cancelling`, `interrupt_armed`, `view`, `editing`,

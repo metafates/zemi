@@ -152,20 +152,6 @@ zemi.ui.widget.add({
 	end,
 })
 
--- While the chat shows an agent run's transcript (/agents, or a click on its
--- row), whose it is and how to get back. The first to go on a short row.
-zemi.ui.widget.add({
-	id = "statusline.view",
-	region = "statusline.left",
-	priority = 120,
-	---@param ctx zemi.WidgetCtx
-	---@return zemi.Line[]
-	render = function(ctx)
-		if not ctx.view then return {} end
-		return { { { text = "viewing " .. ctx.view.agent, hl = "Title" }, { text = " · esc back", hl = "Dim" } } }
-	end,
-})
-
 zemi.event.on("reflector.done", function(ev)
 	if ev.error then return end
 	---@type string[]
