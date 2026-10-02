@@ -1878,13 +1878,14 @@ provenance string.
   back to its row, which lands under the pins above it, and `alt+up`/`alt+down`
   move between prompts and opened runs.
   A settled turn folds each run of activity into one dim digest row, `· 6
-  files, 8 commands · thought 8s`, and nothing else: the rail of steps under
+  files, 8 commands · thought 8s` or, holding thinking alone, `· thought 3.3s`,
+  and nothing else: the rail of steps under
   it, its thinking, and the edits, failures, questions, plans, agent runs,
   workflows, background jobs and commands with a diff it holds are a click
-  away, drawn as they drew live. The digest exists only when a call that only
-  looked around (a read, a search, a fetch, a command that changed nothing,
-  gone well) folds into it: thinking alone is never a digest, and a run with
-  nothing to fold keeps its whole rail. A run a
+  away, drawn as they drew live. The digest exists only when the run holds a
+  call that only looked around (a read, a search, a fetch, a command that
+  changed nothing, gone well) or a thought to name: a run with neither keeps
+  its whole rail. A run a
   reply has closed folds this way while the turn still runs, and the run the
   turn is working in keeps its whole rail even under the reply it streamed
   after it. The

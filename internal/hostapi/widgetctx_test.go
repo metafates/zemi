@@ -95,16 +95,24 @@ func TestPrintedRender(t *testing.T) {
 	for _, c := range []struct {
 		name            string
 		state           UIState
-		digest, thought bool
+		digest, thought bool // the digest row, and the thought's text
+		rail            bool // the run's own rows, the failed call's output among them
 	}{
-		{"the TUI keeps a run with nothing to fold on its rail", UIState{}, false, false},
-		{"a printed frame keeps the rail", UIState{Printed: &Printed{Rows: rows}}, false, false},
-		{"--reasoning prints the thought", UIState{Printed: &Printed{Rows: rows, Reasoning: true}}, false, true},
+		{"the TUI folds the thinking alone", UIState{}, true, false, false},
+		{"a printed frame keeps the rail", UIState{Printed: &Printed{Rows: rows}}, false, false, true},
+		{"--reasoning prints the thought", UIState{Printed: &Printed{Rows: rows, Reasoning: true}}, false, true, true},
 	} {
 		got := chat(c.state)
-		if strings.Contains(got, "· thought") != c.digest || strings.Contains(got, "hmm") != c.thought || !strings.Contains(got, "exit status 1") || !strings.Contains(got, "it fails") {
+		if strings.Contains(got, "· thought") != c.digest || strings.Contains(got, "hmm") != c.thought ||
+			strings.Contains(got, "exit status 1") != c.rail || !strings.Contains(got, "it fails") {
 			t.Errorf("%s:\n%s", c.name, got)
 		}
+	}
+	// a run holding neither a look-around call nor a thought has no digest: its
+	// rail is all there is to draw
+	h.setTranscript("t", []ChatMessage{{Role: "assistant", Kind: RowTool, Tool: "edit", Text: "a.go", Status: CallOK, Diff: "--- a.go\n+++ a.go\n@@ -1 +1 @@\n-a\n+b"}})
+	if got := chat(UIState{}); strings.Contains(got, "· ") || !strings.Contains(got, "edit a.go") {
+		t.Errorf("a run with nothing to fold folded:\n%s", got)
 	}
 	if got := chat(UIState{Printed: &Printed{}}); strings.TrimSpace(got) != "" {
 		t.Errorf("a printed frame with no rows draws:\n%s", got)

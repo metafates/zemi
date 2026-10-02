@@ -1100,7 +1100,8 @@ func printedLines(t *testing.T, host *hostapi.Host, width int) [][]hostapi.Segme
 }
 
 // TestReasoningExpanded: --reasoning shows a finished thought as one header
-// with the text under a thin bar.
+// with the text under a thin bar. A thought too short to count says no time,
+// and thinking alone folds into its own digest.
 func TestReasoningExpanded(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	host.AppendMessage("user", "why?")
@@ -1115,7 +1116,7 @@ func TestReasoningExpanded(t *testing.T) {
 	// a thought too short to count says no time
 	appendReasoning(host, "quick", hostapi.TurnStat{ThoughtMS: 20})
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "0.0s") || !strings.Contains(frame, "│ ✻ thought 4.2s") {
+	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "0.0s") || !strings.Contains(frame, "· thought 4.2s") {
 		t.Fatalf("a zero thought time:\n%s", frame)
 	}
 }

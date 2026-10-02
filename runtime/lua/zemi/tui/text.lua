@@ -170,8 +170,8 @@ M.PROSE = 80
 function M.thought(secs) return secs >= 0.05 and "thought " .. M.duration(secs) or "thought" end
 
 --- What rows[first..last] of a turn fold into, the chat's digest and the
---- thinking pane's header: "6 files, 8 commands · thought 8s"; "" when no
---- call there only looked around, since thinking alone keeps its rail rows.
+--- thinking pane's header: "6 files, 8 commands · thought 8s", a run holding
+--- thinking alone as "thought 8s"; "" when it holds neither, so its rail stays.
 ---@param rows zemi.TranscriptRow[]
 ---@param first integer
 ---@param last integer
@@ -188,8 +188,11 @@ function M.digest(rows, first, last)
 			calls[#calls + 1] = m
 		end
 	end
-	if #calls == 0 then return "" end
-	return M.counts(calls) .. (secs >= 0.05 and " · " .. M.thought(secs) or "")
+	---@type string[]
+	local parts = {}
+	if #calls > 0 then parts[#parts + 1] = M.counts(calls) end
+	if secs >= 0.05 then parts[#parts + 1] = M.thought(secs) end
+	return table.concat(parts, " · ")
 end
 
 --- A tool name as words for a row with no verb of its own: underscores
