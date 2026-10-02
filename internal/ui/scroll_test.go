@@ -427,6 +427,61 @@ func TestChatFade(t *testing.T) {
 	}
 }
 
+// TestThinkingFade: the live thinking tail sinks at its top while it hides
+// lines above, over the chat's own four-row ramp and easing off as the hidden
+// lines come back; a tail that fits keeps its colors, the rail bar never
+// sinks, and a widget's deeper sink outlives the region's.
+func TestThinkingFade(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	host.AppendMessage("user", "look around")
+	tail := func(reasoning string) []float64 {
+		host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: reasoning})
+		app.renderSync(t)
+		app.Frame()
+		st := app.scrolls["chat"]
+		head := slices.IndexFunc(st.lines, func(r []hostapi.Segment) bool {
+			return strings.HasSuffix(strings.TrimSpace(hostapi.SegsText(r)), "thinking")
+		})
+		if head < 0 {
+			t.Fatal("no thinking row")
+		}
+		var out []float64
+		for i := head + 1; i <= head+4 && i < len(st.lines); i++ {
+			row := app.lastRows[st.rect.Min.Y+i-st.top]
+			if row[0].Fade != 0 {
+				t.Fatalf("the rail bar sinks: %+v", row[0])
+			}
+			out = append(out, row[1].Fade)
+		}
+		return out
+	}
+	for _, c := range []struct {
+		name string
+		text string
+		want []float64
+	}{
+		{"a tail that fits keeps its colors", "one line of thought", []float64{0}},
+		{"one hidden line eases the ramp", "a\nb\nc\nd\ne", []float64{0.2, 0.15, 0.1, 0.05}},
+		{"four hidden lines sink it fully", "a\nb\nc\nd\ne\nf\ng\nh", []float64{0.8, 0.6, 0.4, 0.2}},
+		{"more hidden lines sink no deeper", strings.Repeat("a line of thought\n", 12), []float64{0.8, 0.6, 0.4, 0.2}},
+	} {
+		got := tail(c.text)
+		if len(got) != len(c.want) {
+			t.Fatalf("%s: %d rows, want %d: %v", c.name, len(got), len(c.want), got)
+		}
+		for i := range c.want {
+			if math.Abs(got[i]-c.want[i]) > 1e-9 {
+				t.Fatalf("%s: %v, want %v", c.name, got, c.want)
+			}
+		}
+	}
+	// a row the widget sank deeper keeps its sink: the region's edge is shallower
+	row := faded([]hostapi.Segment{{Text: "a", Fade: 0.9}, {Text: "b", Bar: true}}, 0.4)
+	if row[0].Fade != 0.9 || row[1].Fade != 0 {
+		t.Fatalf("the region brightened a sunk row: %+v", row)
+	}
+}
+
 func TestChatStickyDigest(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 	host.AppendMessage("user", "look around")

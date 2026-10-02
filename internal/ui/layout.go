@@ -627,12 +627,12 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 }
 
 // faded is row with every segment but its scrollbar cell sunk toward the
-// canvas by t.
+// canvas by t, keeping a deeper sink a widget set itself.
 func faded(row []hostapi.Segment, t float64) []hostapi.Segment {
 	out := make([]hostapi.Segment, len(row))
 	for i, s := range row {
 		if !s.Bar {
-			s.Fade = t
+			s.Fade = max(s.Fade, t)
 		}
 		out[i] = s
 	}

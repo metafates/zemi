@@ -1896,7 +1896,8 @@ provenance string.
   suffix, a labelled call a row of its own, its label (its command shows once
   opened), a thought over 5 s, or the run's last one, a row
   of its own. While the model thinks its last lines show
-  under a `│ ⠋ thinking` row, unless the thinking pane draws them: in
+  under a `│ ⠋ thinking` row, their top sinking toward the canvas while it
+  hides lines above them, unless the thinking pane draws them: in
   `ui.reasoning` pane mode, on a screen 100 columns or wider, a pane right of
   the chat (`tui/thinking.lua`), its text two cells in from the separator and
   a blank short of its scroll bar, streams the turn's thoughts under a header whose
@@ -2117,7 +2118,9 @@ provenance string.
   that many rows toward the canvas at an edge content lies past, deepest at
   the edge: under the pins while rows are scrolled above, and at the bottom
   while scrolled up, so each edge says there is more; it eases off as the
-  last rows come into view, and the pins and the bar never fade.
+  last rows come into view, and the pins and the bar never fade. A widget may
+  sink a block it clips itself by setting `fade` on those rows (a segment
+  field), over the same four rows: the deeper of the two sinks holds.
 
 ## 9. Permissions and safety
 

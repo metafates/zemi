@@ -85,6 +85,17 @@ local function bar(pad) return { text = "│ " .. (pad or ""), hl = "ThinkingBar
 ---@return zemi.Line
 local function air() return { { text = "│", hl = "ThinkingBar", copy = false, hover = false } } end
 
+-- A clipped block sinks at its top the way a scrolled region's edge does: its
+-- first SINK rows, deepest first, easing off as the hidden rows come back.
+local SINK = 4
+---@param k integer Row's place in the block, 0 the top.
+---@param past integer Rows the block hides above it.
+---@return number
+local function sink(k, past)
+	if k >= SINK or past == 0 then return 0 end
+	return (SINK - k) / (SINK + 1) * math.min(1, past / SINK)
+end
+
 --- Whether a row is thinking or a call: a run of them is one unit.
 ---@param m zemi.TranscriptRow
 ---@return boolean
@@ -201,8 +212,9 @@ local function builder(ctx, width)
 	end
 
 	-- Thinking text on the rail at column 4, prose wide at most, its last
-	-- tail lines when tail is set; a blank line keeps only the bar. Its rows
-	-- are body: no hover, but a click acts as the row above them.
+	-- tail lines when tail is set, sunk at the top while lines are hidden
+	-- above; a blank line keeps only the bar. Its rows are body: no hover,
+	-- but a click acts as the row above them.
 	---@param text string
 	---@param tail integer?
 	---@param click string?
@@ -212,8 +224,9 @@ local function builder(ctx, width)
 		local from = tail and math.max(1, #body - tail + 1) or 1
 		for n = from, #body do
 			local row, blank = { bar("  ") }, true
+			local sunk = sink(n - from, from - 1)
 			for _, sg in ipairs(body[n]) do
-				sg.hl, sg.click, sg.hover = "AgentReason", click, false
+				sg.hl, sg.click, sg.hover, sg.fade = "AgentReason", click, false, sunk
 				row[#row + 1] = sg
 				blank = blank and sg.text == ""
 			end

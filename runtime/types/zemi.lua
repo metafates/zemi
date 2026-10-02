@@ -219,6 +219,7 @@ function debug.traceback(msg) end
 ---@field effect? "shimmer"|"spin" `shimmer`: a bright band sweeps across the text every frame, blending `hl` toward Normal. `spin`: the first glyph steps through the running spinner, `zemi.ui.marks.spin`'s. Both static with ui.animations off.
 ---@field copy? boolean `false` marks decoration (a gutter bar, a bullet, a border, a line number): a selection neither lights nor copies it.
 ---@field hover? boolean `false` marks a clickable body row (a diff line, a detail line): the pointer still shows a click acts, but hovering it restyles nothing.
+---@field fade? number 0 to 1: how far the segment's colors sink toward the canvas. A scrolled region fades its own first rows under its pins; a widget sets this where it clips a block itself, as the chat does to a thinking tail rolling up.
 ---@field soft_wrap? boolean The line continues on the next one: a copy joins the two and drops what follows this segment on the row. Go's own wrapping sets it.
 ---@field sticky? boolean|"section"|"end" On a row's first segment: rows that set it form a header. While a scrolled region's first rows come after a whole header, the header's first row is drawn over the region's first rows as chrome, in the `Pinned` group on the panel across the view's width, and a click on it scrolls back there. `true` heads a turn and starts the pinned stack anew, `"section"` heads a part of that turn and pins under it, and `"end"` marks the section's last row, where its pin ends. Example: `{ text = "> ", sticky = true }`.
 

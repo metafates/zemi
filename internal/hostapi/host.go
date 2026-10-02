@@ -1209,8 +1209,9 @@ type Segment struct {
 	// Line is Go only: a chrome border, rule or separator, its runes light box
 	// lines or blanks one cell each; lines that touch join (ui.join)
 	Line bool
-	// Fade is Go only: how far (0 to 1) the segment's colors sink toward the
-	// canvas, on a scrolled region's first rows under its pins (layout fade)
+	// Fade is how far (0 to 1) the segment's colors sink toward the canvas: a
+	// scrolled region's first rows under its pins, or a widget's own clipped
+	// block, which sets it on the segments it cuts
 	Fade float64
 }
 
@@ -1346,6 +1347,8 @@ func (w *Widget) tableSegments(v glua.LValue) (out [][]Segment, ok bool) {
 							return string(f)
 						case glua.LBool:
 							return bool(f)
+						case glua.LNumber:
+							return float64(f)
 						}
 						return nil
 					}, w.ID))
@@ -1372,6 +1375,9 @@ func segment(field func(string) any, widget string) Segment {
 	}
 	if e, ok := field("effect").(string); ok {
 		seg.Effect = e
+	}
+	if f, ok := field("fade").(float64); ok {
+		seg.Fade = min(max(f, 0), 1)
 	}
 	seg.NoCopy = field("copy") == false
 	seg.NoHover = field("hover") == false
@@ -2050,7 +2056,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.114.0"))
+	api.RawSetString("version", glua.LString("0.115.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
