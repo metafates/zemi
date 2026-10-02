@@ -1893,7 +1893,8 @@ provenance string.
   rows between, a continuous bar in column 0 with every mark in column 2
   (`│ ✓ edit`, `│ ⠋ running label`, `│ ✻ thought 8s`) and nested text in
   column 4, a wrapped row keeping the bar: a step's unlabelled look-around
-  calls as one row saying what they did, the thought before the step as its
+  calls, two or more of them, as one row saying what they did, a lone one as
+  its own row, the thought before the step as its
   suffix, a labelled call a row of its own, its label (its command shows once
   opened), a thought over 5 s, or the run's last one, a row
   of its own. While the model thinks its last lines show

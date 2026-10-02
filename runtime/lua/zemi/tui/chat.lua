@@ -525,8 +525,9 @@ local function builder(ctx, width)
 	end
 
 	-- A run of activity rows as a rail, one row per step: a step's unlabelled
-	-- look-around calls as one row carrying the thought before it, whose click
-	-- opens one row per call, a thought over 5 s, or the run's last one, as
+	-- look-around calls, two or more of them, as one row carrying the thought
+	-- before it, whose click opens one row per call, a lone one as its own row,
+	-- a thought over 5 s, or the run's last one, as
 	-- its own row, every other call as its own row: a label
 	-- tells what its call did. A thought row's click unrolls its text.
 	-- NOTE: a step is the calls between two thoughts, so a model that does not
@@ -579,6 +580,9 @@ local function builder(ctx, width)
 		while i <= last do
 			local t = list[i]
 			local idx = o.live and -i or i
+			-- a look-around call with no sibling is its own row: a "read 1 file"
+			-- row over it would hide which file
+			local lone = grouped(t) and not grouped(list[i + 1] or {})
 			if t.kind == "reasoning" then
 				local s = t.thought or 0
 				if o.open or s > 5 or i == last or list[i + 1].kind == "reasoning" then
@@ -589,7 +593,7 @@ local function builder(ctx, width)
 					secs = s
 				end
 				i = i + 1
-			elseif grouped(t) then
+			elseif grouped(t) and not lone then
 				---@type zemi.tui.Tool[]
 				local group = {}
 				while i + #group <= last and grouped(list[i + #group]) do
