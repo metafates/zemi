@@ -1955,7 +1955,7 @@ provenance string.
   there instead); a step row's opens its calls nested two cells under it,
   the step's row staying as their head, and closes them again. A rail of eight or
   more rows keeps its last six and folds the earlier ones behind one dim
-  row, `… 8 earlier`, whose click shows the whole run and then folds it back
+  row, `… 2 earlier`, whose click shows the whole run and then folds it back
   (a printed run and the pane's inspector list everything). A click on any
   other row opens that one row, command, diff and output. The reply that ends an
   exchange carries its readout: how long its turn ran, its tokens out and the

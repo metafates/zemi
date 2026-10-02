@@ -330,6 +330,28 @@ func TestModalDimsBackground(t *testing.T) {
 	}
 }
 
+// TestToastOverBox: the tray draws over every window, a box included: on a
+// screen too short for one the box is the whole screen, so the tray lands on
+// the box's own rows and must still be the text drawn there.
+func TestToastOverBox(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 10)
+	app.openOverlay(hostapi.Overlay{ID: "list", Title: "List", Origin: lua.OriginBuiltin, Items: []any{"a", "b", "c"}})
+	app.pushToast(slog.LevelInfo, "Copied to the clipboard", "")
+	app.renderSync(t)
+	app.Frame()
+	y := slices.IndexFunc(app.lastRows, func(row []hostapi.Segment) bool {
+		return strings.Contains(hostapi.SegsText(row), "Copied to the clipboard")
+	})
+	if y < 0 {
+		t.Fatalf("the box drew over the tray:\n%s", ansi.Strip(app.Frame()))
+	}
+	// the rows of boxArea's screen box, which the tray must sit inside for the
+	// check above to mean anything
+	if r := app.chromeRect; y < r.Min.Y || y >= r.Max.Y {
+		t.Fatalf("the box %v does not reach the tray's row %d", r, y)
+	}
+}
+
 // TestBootFailedBox: a boot that failed leaves a runtime with no theme, no
 // widgets and no Lua at all, where the only screen left is Go's. The box
 // states the error and the log, the composer gives way to it, `c` copies the
