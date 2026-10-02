@@ -392,6 +392,9 @@ type Host struct {
 	// trEpoch changes whenever the transcript is replaced (new, resume,
 	// rewind), so the chat widget can cache the rows of settled messages.
 	trEpoch atomic.Int64
+	// trEdit changes when a settled row's text grew in place, which re-renders
+	// that row alone: the rows the reader opened keep their place.
+	trEdit atomic.Int64
 
 	watches *watchReg
 	// cfgPrev and cfgNow hold, per key, the values zemi.config.set wrote
@@ -1596,6 +1599,9 @@ type Printed struct {
 // over a long session renders 50 times faster), and read nil once the
 // render returned, so a ctx kept in an upvalue pins nothing. done ends it.
 func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) (tb *glua.LTable, done func()) {
+	// the edit counter before the rows: a join landing between them would move it
+	// past a snapshot without the chunk, and nothing moves it again
+	edit := h.trEdit.Load()
 	sess, stream := h.liveView()
 	printed := state.Printed
 	if printed != nil {
@@ -1692,6 +1698,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		epoch = 0
 	}
 	tb.RawSetString("transcript_epoch", glua.LNumber(epoch))
+	tb.RawSetString("transcript_edit", glua.LNumber(edit))
 
 	lazy := map[string]func(L *glua.LState) glua.LValue{
 		"todos": func(L *glua.LState) glua.LValue {
@@ -2053,7 +2060,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.116.0"))
+	api.RawSetString("version", glua.LString("0.117.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

@@ -1172,9 +1172,12 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 	if slices.ContainsFunc(ag.tools, func(t StreamTool) bool { return t.Status != CallRun && t.Status != CallWait }) {
 		s.h.flushOutput(TurnStat{})
 	}
-	ag.beginThinking()
+	// reasonBuf first: with a thought open the chunk is its own, not a late one
+	if ag.reasonBuf != "" || !s.h.joinReasoning(text) {
+		ag.beginThinking()
+		ag.reasonBuf += text
+	}
 	ag.retryAt = time.Time{}
-	ag.reasonBuf += text
 	ag.mu.Unlock()
 	s.h.agentStream()
 	s.h.EmitAsync("agent.reasoning_delta", map[string]any{"text": text})
@@ -1236,9 +1239,9 @@ func (s *streamAdapter) openToolRow(row StreamTool) {
 	ag.mu.Lock()
 	ag.endThinking()
 	ag.retryAt = time.Time{}
-	if strings.TrimSpace(ag.textBuf) != "" {
-		s.h.flushOutput(TurnStat{})
-	}
+	// the thought the call closes belongs above it, with the call rather than
+	// later with the run's digest
+	s.h.flushOutput(TurnStat{})
 	ag.tools = append(ag.tools, row)
 	ag.mu.Unlock()
 	s.h.agentStream()
@@ -1451,6 +1454,26 @@ func (h *Host) flushOutput(stat TurnStat) {
 	h.tMu.Lock()
 	h.session.Transcript = append(h.session.Transcript, rows...)
 	h.tMu.Unlock()
+}
+
+// joinReasoning appends a late reasoning chunk to the row the thought it
+// continues settled as: a provider sends a thought's last token after the call
+// that interrupted it started. It joins only a transcript whose tail row is
+// that thought; a row settled after it makes the chunk a thought of its own.
+func (h *Host) joinReasoning(text string) bool {
+	h.tMu.Lock()
+	defer h.tMu.Unlock()
+	n := len(h.session.Transcript)
+	if n == 0 || h.session.Transcript[n-1].Kind != RowReasoning {
+		return false
+	}
+	tr := slices.Clone(h.session.Transcript)
+	tr[n-1].Text += text
+	// replaced whole, like setTranscript: readers share the old array and the
+	// chat widget caches rows by index
+	h.session.Transcript = tr
+	h.trEdit.Add(1)
+	return true
 }
 
 // appendAfterLive adds m to the transcript where the turn has got to: after

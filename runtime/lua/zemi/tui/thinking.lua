@@ -43,7 +43,7 @@ end
 ---@return zemi.tui.PaneTurn
 local function read(ctx)
 	local epoch = ctx.transcript_epoch or 0
-	local key = table.concat({ epoch, ctx.transcript_count or 0, chat.inspected or 0 }, "|")
+	local key = table.concat({ epoch, ctx.transcript_count or 0, ctx.transcript_edit or 0, chat.inspected or 0 }, "|")
 	-- an agent run's view changes its rows in place and reports epoch 0
 	if turn and epoch ~= 0 and turn.key == key then return turn end
 	local tr = ctx.transcript or {}
