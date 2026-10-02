@@ -518,6 +518,31 @@ func (h *Host) deliverReport(parent, id, agentName, status, description, report,
 	}
 }
 
+// updateStatus is the status an update reaches the user under: it names the
+// run's line and keeps its toast off the warning level.
+const updateStatus = "update"
+
+// deliverUpdate hands a running agent's own line to the session that started
+// it, as deliverReport hands a finished run's report: onto the turn in
+// progress, which reads it at its next step boundary, else stored there and
+// toasted.
+func (h *Host) deliverUpdate(run *agentRun, text string) {
+	if h.AgentSessionID() != run.parent {
+		h.notifyReport(run.id, run.agent, updateStatus, run.description, text)
+		return
+	}
+	if err := h.AgentSend(h.updateMessage(h.scratchFor(run.parent), run.id, run.agent, text)); err != nil {
+		h.Notify(slog.LevelError, "Could not send the update of "+run.id, h.friendlyError(err))
+	}
+}
+
+// updateMessage is the user message an update reaches the model as, behind
+// the marker where @ refs do not attach: a report's shape under a tag of its
+// own, so the chat draws the update's line rather than the user's words.
+func (h *Host) updateMessage(pad, id, agentName, text string) string {
+	return agent.AttachMarker + fmt.Sprintf("\n<agent-update run=%q agent=%q>\n", id, agentName) + h.truncOutput(pad, "agent", text) + "\n</agent-update>\n</attached-files>"
+}
+
 // reportHead is the one line the user sees of a background report; a
 // workflow's agent attribute is "workflow" or "workflow:<saved name>", and
 // its description names it, since runs of one script differ by no name.
@@ -561,7 +586,7 @@ func (h *Host) notifyReport(id, agentName, status, description, report string) {
 		}
 	}
 	level := slog.LevelWarn
-	if status == "finished" {
+	if status != "failed" {
 		level = slog.LevelInfo
 	}
 	h.Notify(level, reportHead(id, agentName, status, description), description+"\n"+clipRunes(strings.TrimPrefix(report, reportFailed), 300))
@@ -581,6 +606,8 @@ var (
 	// a zemi.agent.send from a plugin, with its first line
 	pluginSent = regexp.MustCompile(attachedTag + `(plugin:[^>\s]+)>\n([^\n]*)`)
 	loopSent   = regexp.MustCompile(attachedTag + `loop>\nRun (\d+) of: ([^\n]*)`)
+	// a running agent's own line, with its first
+	updateSent = regexp.MustCompile(attachedTag + `agent-update run="([^"]*)" agent="([^"]*)">\n([^\n]*)`)
 )
 
 // notifyReports tells the user of the queued reports a closing session drops.
@@ -608,6 +635,9 @@ func reportHeads(tail string) []string {
 	}
 	for _, m := range loopSent.FindAllStringSubmatch(tail, -1) {
 		heads = append(heads, "loop run "+m[1]+": "+clipRunes(sanitize.String(m[2]), 200))
+	}
+	for _, m := range updateSent.FindAllStringSubmatch(tail, -1) {
+		heads = append(heads, "Agent "+m[1]+" ("+m[2]+"): "+clipRunes(sanitize.String(m[3]), 200))
 	}
 	if strings.Contains(tail, planNudgeText) {
 		heads = append(heads, "Asked the planner to end with the plan or question tool.")

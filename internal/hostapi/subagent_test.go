@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -663,5 +664,139 @@ func TestHaltKeepsTheStep(t *testing.T) {
 		if !strings.Contains(got, "w1") || !strings.Contains(got, "halted by hook: stop") || strings.Contains(got, "went on") {
 			t.Errorf("%s lost the step or ran past the halt: %s", name, got)
 		}
+	}
+}
+
+// pinState is the pinned prefix the provider caches: which key built it, the
+// system prompt it holds and the tools' schemas, as bytes.
+func pinState(h *Host) string {
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	b, _ := json.Marshal(h.agents.pin.infos, json.Deterministic(true))
+	return h.agents.pin.key + "\x00" + h.agents.pin.text + "\x00" + string(b)
+}
+
+// TestAgentUpdateReachesTheCaller: what a running agent sends with the update
+// tool joins the caller's turn at its next step boundary, drawn as a notice
+// row of its own rather than as something the user typed, and leaves the
+// pinned prompt and tools, which the provider caches, alone.
+func TestAgentUpdateReachesTheCaller(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	seedSession(t, h)
+	var marks [2]string // the pinned prefix at the child's call, and at the caller's next step
+	saw := ""
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			switch {
+			case strings.Contains(system, "a subagent of zemi"):
+				if strings.HasPrefix(last, "look") {
+					marks[0] = pinState(h)
+					// a child that finds something the task waits on says so at once
+					return toolCallParts("t1", "update", `{"text":"the flaky test is in x_test.go"}`)
+				}
+				return textParts("child done")
+			case strings.Contains(last, "<agent-update "):
+				marks[1], saw = pinState(h), last
+				return textParts("read it")
+			}
+			return toolCallParts("c1", "agent", `{"description":"d","prompt":"look","agent":"general"}`)
+		}}, nil
+	}
+	if err := h.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	if !strings.Contains(saw, "the flaky test is in x_test.go") {
+		t.Fatalf("the caller never read the update: %q", saw)
+	}
+	notices, typed := 0, 0
+	for _, m := range h.Session().Transcript {
+		switch {
+		case m.Kind == RowNotice && strings.HasPrefix(m.Text, "Agent ") && strings.Contains(m.Text, "the flaky test is in x_test.go"):
+			notices++
+		case m.Role == fantasy.MessageRoleUser && strings.Contains(m.Text, "flaky test"):
+			typed++
+		}
+	}
+	if notices != 1 || typed != 0 {
+		t.Fatalf("the update drew %d notice rows and %d user rows: %+v", notices, typed, h.Session().Transcript)
+	}
+	if marks[0] == "" || marks[0] != marks[1] {
+		t.Fatalf("the pinned prefix moved: %q -> %q", marks[0], marks[1])
+	}
+}
+
+// TestAgentMessageKeepsThePin: a caller's steer on a running agent rides the
+// child's queue, never the pinned prefix.
+func TestAgentMessageKeepsThePin(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{}) // a detached run is a TUI feature
+	sid := seedSession(t, h)
+	release := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			switch {
+			case strings.Contains(system, "a subagent of zemi"):
+				<-release
+				return textParts("child done")
+			case toolResult:
+				return textParts("started it")
+			case strings.Contains(last, "<agent-report "):
+				return textParts("got the report")
+			}
+			return toolCallParts("c1", "agent", `{"description":"d","prompt":"look","agent":"general","background":true}`)
+		}}, nil
+	}
+	if err := h.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	runs := h.tasks.runsOf(sid)
+	if len(runs) != 1 {
+		t.Fatalf("runs = %v", runs)
+	}
+	before := pinState(h)
+	if err := h.MessageAgent(runs[0].id, "also check y"); err != nil {
+		t.Fatal(err)
+	}
+	if q := runs[0].queued(); len(q) != 1 || q[0] != "also check y" {
+		t.Fatalf("queue = %q", q)
+	}
+	if after := pinState(h); after != before {
+		t.Fatalf("a steer moved the pinned prefix: %q -> %q", before, after)
+	}
+	close(release)
+	waitIdle(t, h)
+}
+
+// TestSubagentUpdatePrompt: a child is told to send updates only when its
+// tool set holds the tool: an agent file's allowlist that omits it takes both
+// the tool and the instruction away.
+func TestSubagentUpdatePrompt(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	def := AgentDef{Name: "general"}
+	for _, c := range []struct {
+		name  string
+		tools []string
+		said  bool
+	}{
+		{name: "the full set", said: true},
+		{name: "an allowlist without it", tools: []string{"read"}, said: false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			pipe := h.PipelineFor()
+			all := append(tools.All(pipe), &updateTool{h: h, pipe: pipe})
+			kept, unknown := filterTools(all, c.tools, h.toolSkip(subagentExcluded))
+			if len(unknown) > 0 {
+				t.Fatalf("unknown tools %q", unknown)
+			}
+			sys := h.subagentSystem(def, kept, false)
+			if got := strings.Contains(sys, "update tool"); got != c.said {
+				t.Fatalf("prompt tells the child about updates = %v, want %v", got, c.said)
+			}
+			if got := hasTool(kept, tools.ToolUpdate); got != c.said {
+				t.Fatalf("tool set holds update = %v, want %v", got, c.said)
+			}
+		})
 	}
 }

@@ -231,6 +231,16 @@ func (h *Host) runSubagent(ctx context.Context, def AgentDef, description, promp
 // main agent's calls belong to the live session.
 type runSessionKey struct{}
 
+// runKey carries the run itself, so a tool of that run can reach its caller
+// (the update tool).
+type runKey struct{}
+
+// runOf is the subagent run a tool call belongs to, nil for the main agent's.
+func runOf(ctx context.Context) *agentRun {
+	run, _ := ctx.Value(runKey{}).(*agentRun)
+	return run
+}
+
 // runAgent runs a registered run, recorded as a child session of the
 // session that started it.
 func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt string, progress func(string)) (text string, err error) {
@@ -283,7 +293,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 			return ask(req)
 		}
 	}
-	all := append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
+	all := append(append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...), &updateTool{h: h, pipe: pipe})
 	kept, unknown := filterTools(all, def.Tools, h.toolSkip(subagentExcluded))
 	if len(unknown) > 0 {
 		return "", fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
@@ -333,6 +343,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	runner.ProviderOptions, runner.Headers = h.Providers.CallOptions(modelID, h.Effort(modelID), sid), agent.SessionHeaders(sid)
 	seedLoaded(loaded, runner.History)
 	ctx = context.WithValue(ctx, runSessionKey{}, sid)
+	ctx = context.WithValue(ctx, runKey{}, run)
 	hooks := &subagentHooks{h: h, def: def, run: run, modelID: modelID, progress: progress, sid: sid, ctx: ctx, base: base}
 	runner.Hooks = hooks
 	if sid != "" {
@@ -426,16 +437,19 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 }
 
 func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool, readOnly bool) string {
-	read, readOnlyLine := "", ""
+	read, readOnlyLine, update := "", "", ""
 	if hasTool(toolset, tools.ToolRead) {
 		read = readPrompt
 	}
 	if readOnly {
 		readOnlyLine = "\n\nYou are read-only: you change no project file, only files in the scratchpad, and commands run with the project unwritable. Report a change instead of making it."
 	}
+	if hasTool(toolset, tools.ToolUpdate) {
+		update = "\n\nUse the update tool when your caller should not wait for the run's end to hear something: a finding it asked for, a blocker, a question. One or two lines is enough. It reads the line while you run and may steer you on it, so read what comes back and follow it."
+	}
 	return "You are " + def.Name + ", a subagent of zemi. The caller sees only your final message, not your work:" +
 		" end with a complete, concise report of what it needs, citing path:line where it matters," +
-		" and say plainly what you did not find or could not verify.\n\n" + def.System + readOnlyLine +
+		" and say plainly what you did not find or could not verify.\n\n" + def.System + readOnlyLine + update +
 		"\n\n# Using tools\n" + batchPrompt + read + "\n" + toolRules
 }
 
@@ -727,6 +741,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	var b strings.Builder
 	b.WriteString("Start a subagent on a self-contained task. It cannot see this conversation, so the prompt carries everything it needs," +
 		" what to report and how to verify. Only its final report comes back, and the user does not see it: relay what matters." +
+		" A long run sends you lines with the update tool as it goes, which you read at your next step." +
 		" Calls sent together run at once.")
 	// a detached run outlives a headless turn, which exits as soon as the
 	// main agent is idle, so its report would be thrown away
@@ -863,6 +878,52 @@ func (t *agentTool) foreground(ctx context.Context, callID string, run *agentRun
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
 	return fantasy.NewTextResponse("[run " + run.id + "]\n\n" + t.h.truncOutput(t.pipe.Pad, "agent", text)), nil
+}
+
+// the update tool
+
+// updateTool lets a subagent tell its caller something before the run ends.
+// The line goes to the caller's turn like a report does, so a caller that is
+// waiting on the run reads it at its next step and can steer on it.
+type updateTool struct {
+	tools.NoProviderOptions
+	h    *Host
+	pipe *tools.Pipeline
+}
+
+func (t *updateTool) Info() fantasy.ToolInfo {
+	return fantasy.ToolInfo{
+		Name: tools.ToolUpdate,
+		Description: "Tell your caller one or two lines it should not wait for the run's end to read: a finding it asked for, a blocker, a question." +
+			" The caller may steer you in answer, so read what comes back. Keep it to one or two lines, and do not repeat what you already sent.",
+		Parameters: map[string]any{"text": map[string]any{"type": "string", "description": "one or two lines: the finding, the blocker or the question"}},
+		Required:   []string{"text"},
+		Parallel:   true,
+	}
+}
+
+func (t *updateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
+	var in struct {
+		Text string `json:"text"`
+	}
+	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	text := strings.TrimSpace(in.Text)
+	if text == "" {
+		return fantasy.NewTextErrorResponse("text is required"), nil
+	}
+	if resp, stop := t.h.preCheck(tools.ToolUpdate, call.Input); stop {
+		return resp, nil
+	}
+	run := runOf(ctx)
+	if run == nil {
+		return fantasy.NewTextErrorResponse("there is no caller to update"), nil
+	}
+	reply = fantasy.NewTextResponse("Sent to the caller.")
+	defer t.h.postNotify(ctx, t.pipe.Pad, tools.ToolUpdate, call.Input, &reply, time.Now())
+	t.h.deliverUpdate(run, text)
+	return reply, nil
 }
 
 // decodeInput validates a host tool's input against its schema, so a wrong

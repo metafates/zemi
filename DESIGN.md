@@ -1006,9 +1006,13 @@ A running subagent takes messages like the main agent's steering queue
 (§4): the main agent calls `agent` with `send_to` set to a background
 run's id, and the user submits while the chat shows that run. A message
 joins the run at its next step boundary, or starts one more turn of it
-when its last step already began, and is stored in its child session. A
-run that fails or is cancelled cannot read what is still queued, so its
-report says how many messages it never read. A finished run is not gone:
+when its last step already began, and is stored in its child session. It
+talks back the same way: the run's `update` tool sends its caller a line
+mid-run, which joins the caller's turn at its next step boundary and
+draws a notice row naming the run, so a caller blocked on the run reads
+it there and can steer on it. A run that fails or is cancelled cannot
+read what is still queued, so its report says how many messages it never
+read. A finished run is not gone:
 `send_to` runs it once more on the history it ended with (its kept runner,
 or its child session's rows), so a follow-up question costs no fresh
 exploration. It keeps the run's model, and a run another session started
@@ -1211,14 +1215,17 @@ question or a report is no plan to approve),
 `diagnostics` (language
 server errors and warnings for any file), `lsp` (definition, implementation,
 references, rename, file symbols and project-wide symbol search by name), `skill` (loads a SKILL.md body on demand), plus the
-three the host adds: `agent` (delegate to a subagent), `workflow` (run a
+four the host adds: `agent` (delegate to a subagent), `workflow` (run a
 workflow script inline or by name, in the background too, rerun an edited one,
-and pause, resume or stop a background one), and `lua` (run Lua inside zemi, main agent only, as user origin:
+and pause, resume or stop a background one), `lua` (run Lua inside zemi, main agent only, as user origin:
 full access to toggle skills and anything else user Lua can do; it asks
 in an untrusted project or read-only agent, and before a call that widens what
-zemi allows or starts a program outside the sandbox, §9).
+zemi allows or starts a program outside the sandbox, §9), and `update` (what
+a subagent tells its caller mid-run, §6.3; only a subagent holds it).
 Subagents never get `agent`, `workflow`, `todos`, `question`, `plan` or
-`lua` (§6.3). Every tool, Go or Lua, passes through the same pipeline:
+`lua` (§6.3), and an agent file's `tools` allowlist takes `update` away too,
+since it picks from the same set. Every tool, Go or Lua, passes through the
+same pipeline:
 
 ```
 model call -> schema validation

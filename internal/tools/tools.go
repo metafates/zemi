@@ -57,6 +57,7 @@ const (
 	ToolAgent    = "agent"
 	ToolWorkflow = "workflow"
 	ToolLua      = "lua"
+	ToolUpdate   = "update"
 	ToolSearch   = "tool_search"
 )
 

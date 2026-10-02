@@ -545,7 +545,10 @@ func TestPromptBudget(t *testing.T) {
 	// 22500: the lua tool's description and the code-mode guideline (447 chars)
 	// say a script drives the run's tools, which is what makes one script
 	// cheaper than a step per call.
-	const ceiling = 22500
+	// 23000: the agent tool's description says a child sends its caller lines
+	// with the update tool while it runs, which the caller reads at its next
+	// step (89 chars).
+	const ceiling = 23000
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}
