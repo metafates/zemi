@@ -214,6 +214,18 @@ local function builder(ctx, width)
 		end
 	end
 
+	-- A subagent's or a plugin's message waiting for the turn's next step
+	-- boundary: the notice row it becomes when the model reads it, tagged
+	-- while it waits.
+	---@param text string
+	function B.queued(text)
+		B.lines[#B.lines + 1] = {
+			mark("note"),
+			{ text = " queued ", hl = "Queued", copy = false },
+			{ text = text, hl = "Dim" },
+		}
+	end
+
 	-- Thinking text on the rail at column 4, prose wide at most, its last
 	-- tail lines when tail is set, sunk at the top while lines are hidden
 	-- above; a blank line keeps only the bar. Its rows are body: no hover,
@@ -980,11 +992,16 @@ zemi.ui.widget.add({
 				B.gap("text")
 				B.markdown(text)
 			end
-			-- queued messages are the user's own words waiting their turn, apart
-			-- from the agent's rows above
+			-- what waits for the turn's next step boundary: the user's own words
+			-- as typed, and a subagent's message as the head line the model
+			-- reads it by, apart from the agent's rows above
 			for _, q in ipairs(queued) do
 				B.gap("queued")
-				B.user(q, "queued")
+				if q.notice then
+					B.queued(q.text)
+				else
+					B.user(q.text, "queued")
+				end
 			end
 		end
 		local lines = B.lines

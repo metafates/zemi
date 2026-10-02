@@ -655,7 +655,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		jobs:      tools.NewJobs(),
 		skillsReg: &skillReg{},
 		mcp:       newMCPReg(),
-		tasks:     newTaskReg(),
+		tasks:     newTaskReg(settings),
 		lsp:       newLSPReg(),
 	}
 	h.Builtin.Store(&agent.Catalog{})
@@ -1610,7 +1610,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		if printed.Live != nil {
 			stream = *printed.Live
 		} else {
-			stream.Active, stream.Text, stream.Reasoning, stream.Tools, stream.Steering, stream.Reports = false, "", "", nil, nil, 0
+			stream.Active, stream.Text, stream.Reasoning, stream.Tools, stream.Steering = false, "", "", nil, nil
 		}
 	}
 	tb = L.CreateTable(0, 33)
@@ -1687,7 +1687,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		v.RawSetString("status", glua.LString(status))
 		tb.RawSetString("view", v)
 		transcript = run.transcript()
-		stream.Text, stream.Reasoning, stream.Tools, stream.Steering, stream.Reports = "", "", nil, run.queued(), 0
+		stream.Text, stream.Reasoning, stream.Tools, stream.Steering = "", "", nil, queuedRows(run.queued())
 	}
 	tb.RawSetString("usage", usageTable(L, stream))
 	tb.RawSetString("context", contextTable(L, stream))
@@ -1832,12 +1832,14 @@ func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
 	at.RawSetString("thinking", glua.LBool(stream.Thinking))
 	steering := L.CreateTable(len(stream.Steering), 0)
 	for _, s := range stream.Steering {
-		steering.Append(glua.LString(s))
+		q := L.CreateTable(0, 2)
+		q.RawSetString("text", glua.LString(s.Text))
+		q.RawSetString("notice", glua.LBool(s.Notice))
+		steering.Append(q)
 	}
 	at.RawSetString("steering", steering)
 	at.RawSetString("thought", glua.LNumber(stream.Thought.Seconds()))
 	at.RawSetString("elapsed", glua.LNumber(stream.Elapsed.Seconds()))
-	at.RawSetString("reports", glua.LNumber(stream.Reports))
 	at.RawSetString("compacting", glua.LBool(stream.Compacting))
 	at.RawSetString("checking_goal", glua.LBool(stream.CheckingGoal))
 	if stream.Retrying {
@@ -2061,7 +2063,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.117.0"))
+	api.RawSetString("version", glua.LString("0.118.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

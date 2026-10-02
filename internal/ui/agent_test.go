@@ -18,6 +18,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -656,9 +657,10 @@ func TestGoldenModelPicker(t *testing.T) {
 
 // TestGoldenAgentStream pins the live stream block in the chat widget
 // (DESIGN §6.3): transcript, tool call lines with status marks, dim
-// reasoning, the streaming reply, and the steering depth indicator.
+// reasoning, the streaming reply, and the queued messages under the turn: the
+// user's own words, and a background report as a notice waiting its step.
 func TestGoldenAgentStream(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 20)
+	app, host := bootAgentApp(t, 80, 22)
 
 	// the user's own text is plain; a reply keeps a generic that is no HTML
 	host.AppendMessage("user", "why does Vec<String> in __init__ fail?")
@@ -675,7 +677,6 @@ func TestGoldenAgentStream(t *testing.T) {
 			{Name: "shell", Input: "go test ./... 2>&1 | tail -5", Status: "run"},
 			{Name: "read", Input: "go.mod", Status: "wait"},
 		},
-		Steering:   []string{"also check go.mod"},
 		Model:      "anthropic/claude-sonnet-4-5",
 		Thought:    4 * time.Second,
 		Elapsed:    12 * time.Second,
@@ -684,6 +685,14 @@ func TestGoldenAgentStream(t *testing.T) {
 		LastIn:     24500,
 		CtxWindow:  200000,
 	})
+	// what waits for the next step boundary: the user's words, and a background
+	// report as the head line the model will read it by
+	if err := host.AgentSend("also check go.mod"); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.AgentSend(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"d\">\nfound it\n</agent-report>\n</attached-files>"); err != nil {
+		t.Fatal(err)
+	}
 	// A stream event lands through the hook path, bumping the frame.
 	app.AgentStream()
 
@@ -731,7 +740,10 @@ func TestInterruptKeys(t *testing.T) {
 			app.now = func() time.Time { return clock }
 			runLua(t, app, `zemi.keymap.set("ctrl+e s", "zemi.ui.help")`)
 			if c.active {
-				host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: time.Second, Steering: []string{"also this"}})
+				host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: time.Second})
+				if err := host.AgentSend("also this"); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if c.view {
 				db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))

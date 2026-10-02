@@ -1953,7 +1953,10 @@ provenance string.
   A prompt glyph marks the first row and a gutter aligns the rest, so a
   multi-line draft reads as one block. The composer stays editable during
   a turn: a submit while the turn runs queues as steering (§4) instead of
-  spawning a second turn, and the queued messages show above it.
+  spawning a second turn, and the queued messages the user typed show above it.
+  A background report or a plugin send waiting in that queue draws a notice
+  row naming it rather than the user's own words, since the whole of it is the
+  model's.
 - **Default keymaps** (all rebindable by user config except the
   Go-reserved cancel and reload triggers, §6.2): `enter` sends, `esc`
   twice within 2s or `ctrl+c` once interrupts the turn (`esc` in an agent

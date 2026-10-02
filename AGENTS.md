@@ -835,10 +835,15 @@ lua-language-server is installed.
   the session's, and a submit while it runs goes to it through `MessageAgent`. A run's queue is
   its `Runner.Steer`; what arrives after its last step boundary becomes one more `Send`
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a
-  message is never accepted and then dropped. Background runs report through `AgentSend` behind
-  `agent.AttachMarker`, which the live transcript and resume cut off; the notice row is drawn from
-  the message wherever the model reads it (`appendUserRows`: a new turn, a step boundary, a
-  drained queue, a resume), so it sits under the rows of the turn it arrived in. A report a
+  message is never accepted and then dropped. A background run past `agent.max_background`
+  (4 by default, workflows counted with agents) is refused (`taskReg.detached`). What the chat
+  draws of a queue is one row per message (`queuedRows`): the user's own words as typed, and a
+  subagent's report, update or plugin send as a notice row naming it, since the whole of that
+  message is the model's. Background runs report through
+  `AgentSend` behind `agent.AttachMarker`, which the live transcript and resume cut off; the
+  notice row is drawn from the message wherever the model reads it (`appendUserRows`: a new
+  turn, a step boundary, a drained queue, a resume), so it sits under the rows of the turn it
+  arrived in. A report a
   closing session drops (`/new`, `/resume`) is stored in its own session and toasted
   (`notifyReport`). `/agents` lists the live session's runs and, under Running and Workflows, the live runs and
   workflows of every other session (`agentRunItems`, the desc ending in that session's title,

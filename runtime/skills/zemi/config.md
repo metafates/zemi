@@ -47,7 +47,7 @@ Roles: `models.chat` runs the conversation, `/btw`, the goal check, the idle rec
 - `keymap.leader`: what `<leader>` stands for in keymaps (`ui.md`).
 - `permissions.mode`, `permissions.env_keep`: under Permissions. `lsp.auto`: under MCP and language servers.
 
-The schema's description covers `session.auto_title`, `session.recap`, `ui.theme`, `ui.animations`, `ui.mouse`, `ui.progress`, `ui.reasoning`, `ui.composer.multiline`, `ui.composer.history`, `ui.completion.files` and `ui.completion.max_items`.
+The schema's description covers `agent.max_background`, `session.auto_title`, `session.recap`, `ui.theme`, `ui.animations`, `ui.mouse`, `ui.progress`, `ui.reasoning`, `ui.composer.multiline`, `ui.composer.history`, `ui.completion.files` and `ui.completion.max_items`.
 
 ## Permissions
 

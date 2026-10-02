@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,12 +16,13 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 )
 
 // TestTaskRegEviction: a full registry forgets its oldest finished run, never
 // the one being added, however old that one is.
 func TestTaskRegEviction(t *testing.T) {
-	reg := newTaskReg()
+	reg := newTaskReg(config.NewStore())
 	for i := range maxKeptRuns {
 		reg.add(&agentRun{id: strconv.Itoa(i), status: "done", started: time.Now()})
 	}
@@ -28,6 +30,52 @@ func TestTaskRegEviction(t *testing.T) {
 	reg.add(old)
 	if reg.find("old") != old || len(reg.runs) != maxKeptRuns {
 		t.Fatalf("added run evicted, or nothing was: %d runs", len(reg.runs))
+	}
+}
+
+// TestBackgroundCap: agent.max_background is the cap on detached runs, read
+// at the check, and counted across background agents and workflows alike.
+func TestBackgroundCap(t *testing.T) {
+	settings := config.NewStore()
+	if _, err := settings.SetQuiet("agent.max_background", 2.0); err != nil {
+		t.Fatal(err)
+	}
+	run := func(id string) *agentRun { return &agentRun{id: id, background: true, status: RunRunning} }
+
+	// a workflow and a background agent count toward one cap
+	reg := newTaskReg(settings)
+	if err := reg.addFlow(&flowRun{id: "f1", background: true, status: RunRunning}); err != nil {
+		t.Fatalf("background workflow refused: %v", err)
+	}
+	if err := reg.add(run("r1")); err != nil {
+		t.Fatalf("background run refused: %v", err)
+	}
+	err := reg.add(run("r2"))
+	if err == nil || !strings.Contains(err.Error(), "2 background agents and workflows are already running") {
+		t.Fatalf("a run past the cap = %v", err)
+	}
+	// the cap is read at the check, not copied at boot
+	if _, err := settings.SetQuiet("agent.max_background", 3.0); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.add(run("r2")); err != nil {
+		t.Fatalf("a raised cap still refused: %v", err)
+	}
+	// below one still leaves the one that fits, and what is refused is the
+	// count, not the cap
+	if _, err := settings.SetQuiet("agent.max_background", 0.0); err != nil {
+		t.Fatal(err)
+	}
+	err = reg.add(run("r4"))
+	if err == nil || !strings.Contains(err.Error(), "3 background agents and workflows are already running") {
+		t.Fatalf("a run under a lowered cap = %v", err)
+	}
+	one := newTaskReg(settings)
+	if err := one.add(run("r5")); err != nil {
+		t.Fatalf("a cap of 0 refused the first run: %v", err)
+	}
+	if err := one.add(run("r6")); err == nil || !strings.Contains(err.Error(), "1 background agent or workflow is already running") {
+		t.Fatalf("a second run under a cap of 0 = %v", err)
 	}
 }
 
@@ -116,6 +164,64 @@ func TestReportNoticeWhereRead(t *testing.T) {
 	tr := h.Session().Transcript
 	if n := len(tr); n < 2 || tr[n-2].Text != "so far" || tr[n-1].Kind != "notice" || tr[n-1].Text != reportHead("r1", "explore", "finished", "x") {
 		t.Fatalf("transcript tail: %+v", tr)
+	}
+}
+
+// TestReportHeadsNameTheLine: a plugin send, an update or a loop note is named
+// by its first line that has something in it, and one that has none is not
+// named at all, so no row is ever drawn with nothing after its tag.
+func TestReportHeadsNameTheLine(t *testing.T) {
+	for _, c := range []struct {
+		name, tail string
+		want       []string
+	}{
+		{
+			name: "a report", tail: agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="d"`, "found it"),
+			want: []string{"Background agent r1 (explore) finished"},
+		},
+		{name: "a command's attachment is the user's", tail: agent.Attached("command", "body"), want: nil},
+		{
+			name: "a plugin send after blank lines", tail: agent.Attached("plugin:demo", "\n\nreal line"),
+			want: []string{"plugin:demo: real line"},
+		},
+		{name: "a plugin send with nothing in it", tail: agent.Attached("plugin:demo", ""), want: nil},
+		{
+			name: "an update after a blank line", tail: agent.Attached(`agent-update run="r1" agent="explore"`, "\nkept going"),
+			want: []string{"Agent r1 (explore): kept going"},
+		},
+		{name: "a loop note", tail: agent.Attached("loop", "Run 1 of: check a"), want: []string{"Loop run 1: check a"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := reportHeads(c.tail); !slices.Equal(got, c.want) {
+				t.Fatalf("heads = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestMixedMessageRows: a message carrying the user's own words and an agent's
+// markup draws a row of each, and taking the queue back returns the typed line
+// while the markup stays queued for the model.
+func TestMixedMessageRows(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	markup := agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="d"`, "found")
+	h.agents.mu.Lock()
+	h.agents.active = true
+	h.agents.steering = []string{"look at this" + markup}
+	h.agents.mu.Unlock()
+
+	want := []Queued{{Text: "look at this"}, {Text: "Background agent r1 (explore) finished", Notice: true}}
+	if st := h.AgentStream(); !slices.Equal(st.Steering, want) {
+		t.Fatalf("rows = %+v, want %+v", st.Steering, want)
+	}
+	if q := h.AgentTakeQueue(); len(q) != 1 || q[0] != "look at this" {
+		t.Fatalf("handed back = %q", q)
+	}
+	h.agents.mu.Lock()
+	left := slices.Clone(h.agents.steering)
+	h.agents.mu.Unlock()
+	if len(left) != 1 || !strings.Contains(left[0], "<agent-report ") {
+		t.Fatalf("queue after taking it back = %q", left)
 	}
 }
 

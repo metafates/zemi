@@ -18,6 +18,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -945,7 +946,7 @@ func TestFlowViewIDs(t *testing.T) {
 // TestWatchFlows: one ticker claims the views, and it lets go only once no
 // run lives.
 func TestWatchFlows(t *testing.T) {
-	r := newTaskReg()
+	r := newTaskReg(config.NewStore())
 	if !r.watch() || r.watch() {
 		t.Fatal("watch claimed the ticker twice or not at all")
 	}

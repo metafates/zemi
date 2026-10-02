@@ -636,6 +636,11 @@ func (h *Host) promptBreakdown() ([]promptPart, int64) {
 // it starts a turn; during a turn it queues, and the queue joins the
 // running turn at its next step boundary. Safe from any goroutine.
 func (h *Host) AgentSend(text string) error {
+	if strings.TrimSpace(text) == "" {
+		// a provider refuses an empty user message, and where it landed would
+		// be the middle of a turn
+		return errors.New("nothing to send")
+	}
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.active {
@@ -863,12 +868,13 @@ func (h *Host) startTurn(text string) {
 // then the notice row of each background report behind agent.AttachMarker,
 // the same cut a resumed transcript makes. Reports whether anything was typed.
 func (h *Host) appendUserRows(text string) bool {
-	shown, tail, _ := strings.Cut(text, agent.AttachMarker)
+	head, tail, _ := strings.Cut(text, agent.AttachMarker)
+	shown := shownText(head)
 	if shown != "" {
 		h.AppendMessage(fantasy.MessageRoleUser, shown)
 	}
-	for _, head := range reportHeads(tail) {
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: head})
+	for _, line := range reportHeads(tail) {
+		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: line})
 	}
 	return shown != ""
 }
@@ -1014,19 +1020,23 @@ func (h *Host) deliverSteering() []string {
 }
 
 // AgentTakeQueue removes and returns the messages still waiting for a step
-// boundary, so the UI can hand them back to the composer.
+// boundary, so the UI can hand them back to the composer. What is the model's
+// (a report, an update, a plugin send) stays queued for the next turn, and a
+// message carrying both keeps its markup and gives back the typed line.
 func (h *Host) AgentTakeQueue() []string {
 	ag := h.agents
 	ag.mu.Lock()
-	var q, reports []string
+	var q, waiting []string
 	for _, m := range ag.steering {
-		if shown, report := queuedReport(m); report {
-			reports = append(reports, m)
-		} else {
+		head, tail, _ := strings.Cut(m, agent.AttachMarker)
+		if len(reportHeads(tail)) > 0 {
+			waiting = append(waiting, agent.AttachMarker+tail)
+		}
+		if shown := shownText(head); shown != "" {
 			q = append(q, shown)
 		}
 	}
-	ag.steering = reports
+	ag.steering = waiting
 	ag.mu.Unlock()
 	if len(q) > 0 {
 		h.refresh()
@@ -1034,25 +1044,55 @@ func (h *Host) AgentTakeQueue() []string {
 	return q
 }
 
-// queuedReport cuts a queued message at agent.AttachMarker and says whether
-// it is a report or a plugin send, which is for the model and waits for the
-// next turn; a command's attachment goes back with its typed line.
-func queuedReport(m string) (shown string, report bool) {
-	shown, tail, _ := strings.Cut(m, agent.AttachMarker)
-	return shown, len(reportHeads(tail)) > 0
+// shownText is the user's own words ahead of agent.AttachMarker, "" when they
+// hold nothing: a message whose text is all the model's, or the whitespace
+// joining such messages leaves.
+func shownText(head string) string {
+	if strings.TrimSpace(head) == "" {
+		return ""
+	}
+	return head
+}
+
+// Queued is one message waiting in the steering queue, as the chat draws it: a
+// Notice is an agent's or a plugin's message, which the model reads whole
+// behind agent.AttachMarker, so the chat shows the head line of it instead.
+type Queued struct {
+	Text   string
+	Notice bool
+}
+
+// queuedRows is what the chat draws of a queue, in the order the model reads
+// it: the user's own words, and a notice per head the message carries
+// (`reportHeads`), which wait for the next step boundary. A message with
+// neither draws no row.
+func queuedRows(msgs []string) []Queued {
+	var out []Queued
+	for _, m := range msgs {
+		head, tail, _ := strings.Cut(m, agent.AttachMarker)
+		if shown := shownText(head); shown != "" {
+			out = append(out, Queued{Text: shown})
+		}
+		for _, h := range reportHeads(tail) {
+			out = append(out, Queued{Text: h, Notice: true})
+		}
+	}
+	return out
 }
 
 // joinQueue makes queued messages one message with every shown part ahead
 // of the first agent.AttachMarker, where each reader cuts the text.
 func joinQueue(msgs []string) string {
-	shown := make([]string, len(msgs))
+	var shown []string
 	var tails strings.Builder
-	for i, m := range msgs {
-		s, tail, ok := strings.Cut(m, agent.AttachMarker)
+	for _, m := range msgs {
+		head, tail, ok := strings.Cut(m, agent.AttachMarker)
 		if ok {
 			tails.WriteString(agent.AttachMarker + tail)
 		}
-		shown[i] = s
+		if s := shownText(head); s != "" {
+			shown = append(shown, s)
+		}
 	}
 	return strings.Join(shown, "\n\n") + tails.String()
 }
@@ -1999,8 +2039,7 @@ type StreamSnapshot struct {
 	Tools      []StreamTool
 	Model      string
 	Profile    string
-	Steering   []string      // queued messages as shown (cut at agent.AttachMarker), oldest first
-	Reports    int           // background reports in Steering, which AgentTakeQueue leaves queued
+	Steering   []Queued      // what waits for the turn's next step boundary, oldest first
 	Thought    time.Duration // wall time spent in reasoning blocks
 	Elapsed    time.Duration // whole-turn wall time (0 outside a turn)
 	Retrying   bool          // a provider retry waits or is under way
@@ -2098,13 +2137,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 	if out.CtxWindow == 0 {
 		out.CtxWindow = h.contextWindow(out.Model)
 	}
-	for _, m := range ag.steering {
-		shown, report := queuedReport(m)
-		out.Steering = append(out.Steering, shown)
-		if report {
-			out.Reports++
-		}
-	}
+	out.Steering = queuedRows(ag.steering)
 	out.Tools = append(out.Tools, ag.tools...)
 	out.Retries, out.Compacting, out.CheckingGoal, out.SessionCost = ag.retries, ag.compacting, ag.checkingGoal, ag.sessCost
 	if !ag.retryAt.IsZero() {
@@ -2115,7 +2148,8 @@ func (h *Host) streamLocked() StreamSnapshot {
 
 // SeedStream installs a stream snapshot directly (no turn runs). It backs
 // golden tests and UI development: the next AgentStream read returns the
-// seeded state until a real turn resets it.
+// seeded state until a real turn resets it. A queued message is not seeded
+// with it: a test queues one with AgentSend, which a seeded active turn takes.
 func (h *Host) SeedStream(s StreamSnapshot) {
 	ag := h.agents
 	ag.mu.Lock()
@@ -2142,7 +2176,6 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	} else {
 		ag.turnStart = time.Time{}
 	}
-	ag.steering = slices.Clone(s.Steering)
 	ag.retries, ag.retryAt, ag.compacting = s.Retries, time.Time{}, s.Compacting
 	if s.Retrying {
 		ag.retryAt = time.Now().Add(s.RetryIn)

@@ -607,6 +607,9 @@ func TestSteeringQueue(t *testing.T) {
 		return h.claim()
 	}
 	scope := claim()
+	if err := h.AgentSend(""); err == nil {
+		t.Fatal("a message with nothing in it was queued")
+	}
 
 	send := func(msgs ...string) {
 		for _, m := range msgs {
@@ -640,8 +643,8 @@ func TestSteeringQueue(t *testing.T) {
 	// command as its typed line
 	scope = claim()
 	send("c", "/init"+agent.Attached("command", "x"))
-	if st := h.AgentStream(); st.Reports != 0 {
-		t.Fatalf("a queued command counts as a report: %d", st.Reports)
+	if st := h.AgentStream(); len(st.Steering) != 2 || st.Steering[0].Text != "c" || st.Steering[1].Text != "/init" || st.Steering[0].Notice {
+		t.Fatalf("a queued command shows as typed: %+v", st.Steering)
 	}
 	h.AgentCancel()
 	if next, text := h.nextTurn(scope, nil); next != nil || text != "" || h.AgentActive() {
@@ -651,20 +654,27 @@ func TestSteeringQueue(t *testing.T) {
 		t.Fatalf("queue after a cancel = %q", q)
 	}
 
-	// a report's markup stays out of the composer, and joined messages keep
-	// every typed part ahead of the marker readers cut at
-	report := "Background agent x finished." + agent.AttachMarker + "\n<agent-report run=\"x\" agent=\"explore\" status=\"finished\" description=\"d\">\nr\n</agent-report>\n</attached-files>"
+	// a report's markup stays out of the composer and draws a notice row of its
+	// own; joining keeps every typed part ahead of the marker readers cut at
+	report := func(run string) string {
+		return agent.AttachMarker + "\n<agent-report run=\"" + run + "\" agent=\"explore\" status=\"finished\" description=\"d\">\nr\n</agent-report>\n</attached-files>"
+	}
 	scope = claim()
-	send(report, "d")
-	if st := h.AgentStream(); len(st.Steering) != 2 || st.Steering[0] != "Background agent x finished." || st.Reports != 1 {
-		t.Fatalf("shown queue with a report = %q, reports = %d", st.Steering, st.Reports)
+	send(report("x"), "d", report("y"))
+	want := []Queued{
+		{Text: "Background agent x (explore) finished", Notice: true},
+		{Text: "d"},
+		{Text: "Background agent y (explore) finished", Notice: true},
+	}
+	if st := h.AgentStream(); !slices.Equal(st.Steering, want) {
+		t.Fatalf("queued rows = %+v, want %+v", st.Steering, want)
 	}
 	if q := h.AgentTakeQueue(); len(q) != 1 || q[0] != "d" {
 		t.Fatalf("queue with a report = %q", q)
 	}
 	send("e")
-	if _, text := h.nextTurn(scope, nil); !strings.HasPrefix(text, "Background agent x finished.\n\ne"+agent.AttachMarker) || !strings.Contains(text, "<agent-report run=") {
-		t.Fatalf("follow-up with a report = %q", text)
+	if _, text := h.nextTurn(scope, nil); !strings.HasPrefix(text, "e"+agent.AttachMarker) || !strings.Contains(text, "run=\"x\"") || !strings.Contains(text, "run=\"y\"") {
+		t.Fatalf("follow-up with reports = %q", text)
 	}
 
 	// a report a cancel leaves queued is announced at once, and a closing
@@ -693,6 +703,39 @@ func TestSteeringQueue(t *testing.T) {
 	}
 
 	h.AgentCancel() // no runner: must not panic
+}
+
+// TestJoinedReportsDrawHeads: reports a turn ends with wait as one message of
+// markup alone, so the chat draws a notice row per head and the model's message
+// leaves no blank user row in the transcript.
+func TestJoinedReportsDrawHeads(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	headless := func(run string) string {
+		return agent.AttachMarker + "\n<agent-report run=\"" + run + "\" agent=\"explore\" status=\"finished\" description=\"d\">\nfound it\n</agent-report>\n</attached-files>"
+	}
+	h.agents.mu.Lock()
+	scope := h.claim()
+	h.agents.mu.Unlock()
+	for _, m := range []string{headless("a2"), headless("a3")} {
+		if err := h.AgentSend(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := len(h.Session().Transcript)
+	if _, text := h.nextTurn(scope, nil); text == "" {
+		t.Fatal("the queued reports started no turn")
+	}
+	var heads []string
+	for _, row := range h.Session().Transcript[before:] {
+		if row.Kind != RowNotice {
+			t.Fatalf("a report drew a row of the user's: %+v", row)
+		}
+		heads = append(heads, row.Text)
+	}
+	want := []string{"Background agent a2 (explore) finished", "Background agent a3 (explore) finished"}
+	if !slices.Equal(heads, want) {
+		t.Fatalf("notice rows = %q, want %q", heads, want)
+	}
 }
 
 // TestHistoryCarriesAcrossTurns: the runner is rebuilt on every send, and the

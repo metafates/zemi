@@ -24,13 +24,10 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
-
-// NOTE: a fixed cap keeps a model from fanning out without bound; make it
-// a config knob if people run bigger batches.
-const maxBackgroundAgents = 4
 
 // NOTE: finished runs past maxKeptRuns are forgotten oldest first; /agents
 // still reads their transcripts from the store.
@@ -88,18 +85,26 @@ type agentRun struct {
 
 type taskReg struct {
 	mu       sync.Mutex
+	settings *config.Store // reads agent.max_background
 	runs     map[string]*agentRun
 	flows    map[string]*flowRun
 	watching bool // a watchFlows ticker runs
 }
 
-func newTaskReg() *taskReg {
-	return &taskReg{runs: map[string]*agentRun{}, flows: map[string]*flowRun{}}
+func newTaskReg(settings *config.Store) *taskReg {
+	return &taskReg{settings: settings, runs: map[string]*agentRun{}, flows: map[string]*flowRun{}}
 }
 
-// detached refuses one more detached run past maxBackgroundAgents, agents
+// maxBackground is agent.max_background: how many detached runs may live at
+// once. A value below one would refuse every one of them.
+func (r *taskReg) maxBackground() int {
+	return max(r.settings.Int("agent.max_background"), 1)
+}
+
+// detached refuses one more detached run past maxBackground, agents
 // and workflows alike (r.mu held).
 func (r *taskReg) detached() error {
+	limit := r.maxBackground()
 	n := 0
 	for _, x := range r.runs {
 		if x.background && x.isRunning() {
@@ -111,8 +116,9 @@ func (r *taskReg) detached() error {
 			n++
 		}
 	}
-	if n >= maxBackgroundAgents {
-		return fmt.Errorf("%d background agents and workflows are already running; wait for one or run this one in the foreground", maxBackgroundAgents)
+	if n >= limit {
+		return fmt.Errorf("%d %s; wait for one, run this one in the foreground, or raise agent.max_background", n,
+			Plural(n, "background agent or workflow is already running", "background agents and workflows are already running"))
 	}
 	return nil
 }
@@ -192,8 +198,8 @@ func (r *taskReg) flowsOf(parent string) []*flowRun {
 	return slices.DeleteFunc(r.flowList(), func(f *flowRun) bool { return f.parent != parent })
 }
 
-// add registers a run; a background run past maxBackgroundAgents is
-// refused. Counting and inserting share one lock: parallel tool calls race here.
+// add registers a run; a background run past the cap is refused (detached).
+// Counting and inserting share one lock: parallel tool calls race here.
 func (r *taskReg) add(run *agentRun) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -603,12 +609,23 @@ var attachedTag = `(?:\A|` + regexp.QuoteMeta(agent.AttachMarker) + `)\n<`
 var (
 	reportAttrs = regexp.MustCompile(reportTag)
 	reportBody  = regexp.MustCompile(`(?s)` + reportTag + `>\n(.*?)\n</agent-report>`)
-	// a zemi.agent.send from a plugin, with its first line
-	pluginSent = regexp.MustCompile(attachedTag + `(plugin:[^>\s]+)>\n([^\n]*)`)
-	loopSent   = regexp.MustCompile(attachedTag + `loop>\nRun (\d+) of: ([^\n]*)`)
+	// a zemi.agent.send from a plugin, with its first line that has something in
+	// it: an element whose text opens with blank lines has no line to name it by
+	pluginSent = regexp.MustCompile(attachedTag + `(plugin:[^>\s]+)>\n(?s:(.*?))\n</`)
+	loopSent   = regexp.MustCompile(attachedTag + `loop>\nRun (\d+) of: (?s:(.*?))\n</`)
 	// a running agent's own line, with its first
-	updateSent = regexp.MustCompile(attachedTag + `agent-update run="([^"]*)" agent="([^"]*)">\n([^\n]*)`)
+	updateSent = regexp.MustCompile(attachedTag + `agent-update run="([^"]*)" agent="([^"]*)">\n(?s:(.*?))\n</`)
 )
+
+// headLine is the first line of body with something in it, "" for none.
+func headLine(body string) string {
+	for line := range strings.SplitSeq(body, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			return line
+		}
+	}
+	return ""
+}
 
 // notifyReports tells the user of the queued reports a closing session drops.
 func (h *Host) notifyReports(queued []string) {
@@ -631,13 +648,19 @@ func reportHeads(tail string) []string {
 		heads = append(heads, reportHead(m[1], m[2], m[3], desc))
 	}
 	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
-		heads = append(heads, m[1]+": "+clipRunes(sanitize.String(m[2]), 200))
+		if line := headLine(m[2]); line != "" {
+			heads = append(heads, m[1]+": "+clipRunes(sanitize.String(line), 200))
+		}
 	}
 	for _, m := range loopSent.FindAllStringSubmatch(tail, -1) {
-		heads = append(heads, "Loop run "+m[1]+": "+clipRunes(sanitize.String(m[2]), 200))
+		if line := headLine(m[2]); line != "" {
+			heads = append(heads, "Loop run "+m[1]+": "+clipRunes(sanitize.String(line), 200))
+		}
 	}
 	for _, m := range updateSent.FindAllStringSubmatch(tail, -1) {
-		heads = append(heads, "Agent "+m[1]+" ("+m[2]+"): "+clipRunes(sanitize.String(m[3]), 200))
+		if line := headLine(m[3]); line != "" {
+			heads = append(heads, "Agent "+m[1]+" ("+m[2]+"): "+clipRunes(sanitize.String(line), 200))
+		}
 	}
 	if strings.Contains(tail, planNudgeText) {
 		heads = append(heads, "Asked the planner to end with the plan or question tool.")

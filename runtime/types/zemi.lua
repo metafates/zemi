@@ -719,6 +719,11 @@ function zemi.event.stats() end
 ---@field next integer When the next run fires, in unix seconds.
 ---@field runs integer Runs so far.
 
+--- One message waiting for the turn's next step boundary.
+---@class zemi.QueuedMessage
+---@field text string What the user typed, or the head line of a subagent's report, update or plugin send.
+---@field notice boolean True for a subagent's or a plugin's message, which the model reads whole and the chat shows as a notice row instead of the user's own.
+
 --- The live turn, as the chat widget sees it.
 ---@class zemi.AgentCtx
 ---@field active boolean
@@ -727,10 +732,9 @@ function zemi.event.stats() end
 ---@field reasoning string Thinking text so far.
 ---@field thinking boolean A reasoning block is open: the model is thinking right now, and the text above is that of the open block.
 ---@field tools zemi.ToolCall[]
----@field steering string[] Messages queued mid-turn; while ctx.view is set, the ones queued for that agent run.
+---@field steering zemi.QueuedMessage[] Messages waiting for the turn's next step boundary, oldest first; while ctx.view is set, the ones queued for that agent run.
 ---@field thought number Seconds spent reasoning.
 ---@field elapsed number Seconds since the turn started.
----@field reports integer Background agent reports among steering; they stay queued, so the rule does not count them as queued.
 ---@field compacting boolean History is being summarized.
 ---@field checking_goal boolean The goal is being checked after a turn (/goal); the agent stays active.
 ---@field retry? { attempt: integer, why: string, next_in: number } Set while a provider retry waits or is under way (next_in 0).
