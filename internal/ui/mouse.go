@@ -80,9 +80,8 @@ func clamp(r uv.Rectangle, x, y int) (int, int) {
 
 // selClip is where a drag pressed at (x, y) may select: the top modal's
 // text, a composer popup's, else the layout pane under it; nothing outside
-// a modal, whose backdrop is dimmed, or on a separator or spacer.
-// NOTE: a toast is not a pane, so a drag under one copies its cells too;
-// recording toast rects in compose is the fix if that matters.
+// a modal, whose backdrop is dimmed, or on a separator or spacer. A toast's
+// cells are NoCopy, so a drag under one takes the box's text alone.
 func (a *App) selClip(x, y int) uv.Rectangle {
 	p := uv.Position{X: x, Y: y}
 	switch {

@@ -213,3 +213,30 @@ func TestToastTray(t *testing.T) {
 		}
 	}
 }
+
+// TestToastNotCopied: a drag over a box a toast stands on copies the box's own
+// text, never the toast's words, which would paste two boxes as one.
+func TestToastNotCopied(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 20)
+	go app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "rm -rf build && go test ./..."})
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	// three sections: the tray reaches the ask's first text row, where the
+	// oldest one shares its row with the ask's own facts
+	for _, who := range []string{"a", "b", "c"} {
+		app.pushToast(slog.LevelError, "background agent "+who+" failed", "the tool was denied")
+	}
+	app.renderSync(t)
+	_, y := findCell(t, app, "background agent a failed")
+	text := boxText(app.chromeRect)
+	if y < text.Min.Y || y >= text.Max.Y {
+		t.Fatalf("the toast's row %d is not among the box's text rows %v", y, text)
+	}
+	dragTo(app, text.Min.X, y, text.Max.X-1, y)
+	got := app.selectionText()
+	if strings.Contains(got, "failed") || strings.Contains(got, "denied") {
+		t.Fatalf("the drag copied the toast: %q", got)
+	}
+	if !strings.Contains(got, "runs") { // the box's own text on that row
+		t.Fatalf("the drag copied nothing of the box: %q", got)
+	}
+}
