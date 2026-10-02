@@ -1454,10 +1454,11 @@ func TestReasoningPane(t *testing.T) {
 // running call nowhere: that is the chat row's job.
 func TestWorkingRowRetry(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
+	// the block ends the rule, so the corner follows it whatever it says
 	for _, c := range []struct {
 		in   time.Duration
 		want string
-	}{{0, ` esc interrupt · retrying now ─`}, {4 * time.Second, ` esc interrupt · next try in \ds ─`}} {
+	}{{0, ` esc interrupt · retrying now┐`}, {4 * time.Second, ` esc interrupt · next try in \ds┐`}} {
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Retrying: true, RetryIn: c.in, Retries: 1})
 		app.renderSync(t)
 		if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(c.want).MatchString(frame) {
@@ -1510,19 +1511,17 @@ func TestWorkingRowMascot(t *testing.T) {
 	if a, b := row(0), row(800); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@..─") {
 		t.Fatalf("the eyes do not read: %q then %q", a, b)
 	}
-	// the key and the clock end the rule, and the key keeps its column as the
-	// clock gains digits, its reserved cells going into the margin
+	// the block ends the rule: its right end stays put whatever the clock
+	// reads, the digits it gains eating into the rule on its left
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 5 * time.Second})
 	short := row(500)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 605 * time.Second})
 	r := row(500)
-	const status = " esc interrupt · 10m 05s "
-	at := strings.Index(r, status)
-	if at <= len(r)/2 || at != strings.Index(short, " esc interrupt · 5s") {
-		t.Fatalf("the status is not pinned to the right end: %q then %q", short, r)
+	if at := strings.Index(r, " esc interrupt · 10m 05s"); at <= len(r)/2 {
+		t.Fatalf("the status does not end the rule: %q", r)
 	}
-	if !strings.HasSuffix(r, "10m 05s ───") || !strings.HasSuffix(short, "5s ────────") {
-		t.Fatalf("the block does not end the rule: %q then %q", short, r)
+	if !strings.HasSuffix(short, "esc interrupt · 5s") || !strings.HasSuffix(r, "esc interrupt · 10m 05s") {
+		t.Fatalf("the block does not end the rule as the clock reads: %q then %q", short, r)
 	}
 	// the open prompt says what answers it, so the rule shrinks to the snail
 	// alone: no esc, which the prompt takes
@@ -1593,18 +1592,20 @@ func TestWorkingRowAgentView(t *testing.T) {
 		}
 		return ansi.Strip(app.renderSegs(segs, w))
 	}
-	// idle: the run and the key that leaves it, where the rule was bare before
-	if r := row(80); !strings.Contains(r, " viewing explore · esc back ") {
+	// idle: the run and the key that leaves it, where the rule was bare before,
+	// both ending the rule so nothing at the right ever moves
+	if r := row(80); !strings.HasSuffix(r, " viewing explore · esc back") {
 		t.Fatalf("the idle rule does not name the viewed run: %q", r)
 	}
-	// a running turn takes the interrupt key, not the one that leaves the view
+	// a running turn takes the interrupt key, not the one that leaves the view,
+	// and the clock it adds still ends the rule
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if r := row(80); !strings.Contains(r, "esc back") || strings.Contains(r, "esc interrupt") || !strings.Contains(r, "20s") {
+	if r := row(80); !strings.HasSuffix(r, "viewing explore · esc back · 20s") || strings.Contains(r, "esc interrupt") {
 		t.Fatalf("a turn in a view does not read back: %q", r)
 	}
 	// width sheds the name first, never the key
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if r := row(26); !strings.Contains(r, "esc back") || strings.Contains(r, "viewing") {
+	if r := row(26); !strings.HasSuffix(r, " esc back") || strings.Contains(r, "viewing") {
 		t.Fatalf("the narrow rule lost the back key or kept the name: %q", r)
 	}
 }

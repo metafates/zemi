@@ -6,12 +6,12 @@ local READS = { read = true, grep = true, glob = true, fetch = true, web_search 
 
 -- The composer frame's top rule, all ctx.width cells of it: the mascot in the
 -- left corner in the state of the turn and, at the right end of the rule, the
--- interrupt key and the elapsed time. A part that ticks keeps the cells it can
--- grow to, so the block is anchored once and the key never slides. The block
--- stays away for the first 300ms so instant turns do not flash it, and the
--- eyes say how the turn ended for a few seconds after. A busy job shows the
--- same way while idle; an agent view names the run it shows and leaves on esc
--- where the interrupt key stands.
+-- interrupt key and the elapsed time. The block ends the rule, so nothing to
+-- its right ever moves and the cells a part grows into come out of the rule on
+-- its left. The block stays away for the first 300ms so instant turns do not
+-- flash it, and the eyes say how the turn ended for a few seconds after. A
+-- busy job shows the same way while idle; an agent view names the run it shows
+-- and leaves on esc where the interrupt key stands.
 
 -- the state the eyes last showed and the frame it began on: an eye cycle
 -- starts with its state, whatever the clock read
@@ -26,8 +26,9 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		local ag = ctx.agent or {}
-		-- each part with its worth: a narrow rule sheds the least worth first;
-		-- a ticking part also has the cells it grows to, drawn as rule after it
+		-- each part with its worth and the cells it grows to: a narrow rule
+		-- sheds the least worth first, sized by what a part grows to, so a
+		-- ticking clock never sheds one mid-turn
 		---@type { [1]: zemi.Line, [2]: integer, [3]: integer? }[]
 		local parts = {}
 		---@param text string
@@ -105,7 +106,8 @@ zemi.ui.widget.add({
 			elseif not ctx.view then
 				parts[#parts + 1] = { fmt.hint(key, verb), 6, 13 }
 			end
-			-- last, where its changing width moves nothing
+			-- last: the block ends on the clock, its digits eating the rule on
+			-- the left
 			if tick then parts[#parts + 1] = tick end
 		end
 		---@return integer
@@ -126,7 +128,7 @@ zemi.ui.widget.add({
 			table.remove(parts, least)
 		end
 		-- the parts join as a footer joins its keys, each in the highlight it
-		-- draws in, a space either side
+		-- draws in, a space between the block and the rule
 		---@type zemi.Line
 		local after = {}
 		for i, p in ipairs(parts) do
@@ -135,25 +137,19 @@ zemi.ui.widget.add({
 				after[#after + 1] = sg
 			end
 		end
-		local block = fmt.cells(after) + (#after > 0 and 2 or 0)
+		-- the block ends the rule: its last cell is the rule's last, so the
+		-- key and the clock keep their right end whatever the clock reads and
+		-- whatever a view adds to the left
+		local block = #after > 0 and fmt.cells(after) + 1 or 0
 		if state ~= shown then
 			shown, since = state, ctx.frame
 		end
-		-- the block ends the rule: its own reserved cells grow into the margin,
-		-- so the key keeps its column whatever the clock reads
-		local left = block > 0 and ctx.width - room() - 2 or ctx.width
-		local row = snail.rule(state, ctx.frame - since, left)
+		local row = snail.rule(state, ctx.frame - since, span - block)
 		if block > 0 then
 			row[#row + 1] = { text = " ", hl = "Dim" }
 			for _, sg in ipairs(after) do
 				row[#row + 1] = sg
 			end
-			row[#row + 1] = { text = " ", hl = "Dim" }
-			row[#row + 1] = {
-				text = string.rep("─", ctx.width - left - block),
-				hl = "Rule",
-				copy = false,
-			}
 		end
 		return { row }
 	end,

@@ -1642,8 +1642,10 @@ provenance string.
   cancelled; at the right end of the rule the interrupt key
   with the elapsed time, and while the chat shows an agent run's transcript
   that run's name and status with `esc back` in its place, drawn on an idle
-  rule too, the ticking part keeping the cells it grows to, so
-  the block is anchored once and the key never slides; the running call names
+  rule too. The block ends the rule, flush with the corner, so nothing to its
+  right ever moves and the cells a part grows into come out of the rule on its
+  left; a narrow rule sheds the least worth first, sized by the cells a part
+  can grow to; the running call names
   no cell of it, which the chat row already says. It reads `ctx.frame`,
   `ctx.ended`, `ctx.cancelling`, `interrupt_armed`, `view`, `editing`,
   `waiting`, `headless` and `agent.retry`/`compacting`/`checking_goal`),
