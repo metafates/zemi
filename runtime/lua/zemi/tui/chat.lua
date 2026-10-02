@@ -103,8 +103,8 @@ local function block_of(m)
 end
 
 -- "+4 -1": the lines a diff adds and removes, in the colors a diff marks the
--- same counts with (Ok adds, Danger removes). A zero stays Dim: it reports
--- nothing, and the sign alone would read as one.
+-- same counts with (Ok adds, Danger removes). A count of zero is left out: the
+-- sign alone would report nothing.
 ---@param diff string
 ---@return zemi.Line
 local function diffstat(diff)
@@ -116,10 +116,11 @@ local function diffstat(diff)
 			del = del + 1
 		end
 	end
-	return {
-		{ text = "+" .. add, hl = add > 0 and "Ok" or "Dim" },
-		{ text = " -" .. del, hl = del > 0 and "Danger" or "Dim" },
-	}
+	---@type zemi.Line
+	local out = {}
+	if add > 0 then out[#out + 1] = { text = "+" .. add, hl = "Ok" } end
+	if del > 0 then out[#out + 1] = { text = (add > 0 and " -" or "-") .. del, hl = "Danger" } end
+	return out
 end
 
 -- The row builders one render uses, drawing at width into B.lines.
