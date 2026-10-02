@@ -81,6 +81,13 @@ func TestUsageCountsCache(t *testing.T) {
 	if s := h.AgentStream(); s.CacheRead != 0 || s.CacheBilled != 0 {
 		t.Errorf("cache share after /new = %d/%d, want 0/0", s.CacheRead, s.CacheBilled)
 	}
+	// a resume restores the session's tally, the cache share included
+	if err := h.ResumeSession(sid); err != nil {
+		t.Fatal(err)
+	}
+	if s := h.AgentStream(); s.SessionIn != 222 || s.CacheRead != 20 || s.CacheBilled != 222 {
+		t.Errorf("resumed tally = in %d, cache %d/%d; want 222 and 20/222", s.SessionIn, s.CacheRead, s.CacheBilled)
+	}
 }
 
 // TestStreamBillsLiveTally: a model call's usage lands in the session tally

@@ -21,6 +21,10 @@ type Session struct {
 	PromptTokens     int64
 	CompletionTokens int64
 	Cost             float64
+	// cache tokens of the input above: what the provider read from its prompt
+	// cache, over the input billed alongside them
+	CacheRead   int64
+	CacheBilled int64
 }
 
 func (s *DB) CreateSession(id, parentID, title, profile string) error {
@@ -36,13 +40,14 @@ func (s *DB) CreateSession(id, parentID, title, profile string) error {
 }
 
 const sessionCols = `id, COALESCE(parent_id, ''), title, profile, created_at, updated_at,
-	prompt_tokens, completion_tokens, cost`
+	prompt_tokens, completion_tokens, cost, cache_read_tokens, cache_billed_tokens`
 
 func scanSession(row scanner) (*Session, error) {
 	var s Session
 	if err := row.Scan(&s.ID, &s.ParentID, &s.Title, &s.Profile,
 		&s.CreatedAt, &s.UpdatedAt,
-		&s.PromptTokens, &s.CompletionTokens, &s.Cost); err != nil {
+		&s.PromptTokens, &s.CompletionTokens, &s.Cost,
+		&s.CacheRead, &s.CacheBilled); err != nil {
 		return nil, err
 	}
 	return &s, nil
@@ -90,12 +95,14 @@ func (s *DB) DeleteSession(id string) error {
 // AddUsage accumulates token counts and cost onto a session. Unknown ids are
 // ErrNotFound: silently dropping a turn's tokens and cost is worse than a
 // caller seeing the miss.
-func (s *DB) AddUsage(id string, prompt, completion int64, cost float64) error {
+func (s *DB) AddUsage(id string, prompt, completion, cacheRead, cacheBilled int64, cost float64) error {
 	return s.execOne("add usage", `UPDATE sessions SET
 		prompt_tokens = prompt_tokens + ?,
 		completion_tokens = completion_tokens + ?,
+		cache_read_tokens = cache_read_tokens + ?,
+		cache_billed_tokens = cache_billed_tokens + ?,
 		cost = cost + ?
-		WHERE id = ?`, prompt, completion, cost, id)
+		WHERE id = ?`, prompt, completion, cacheRead, cacheBilled, cost, id)
 }
 
 // Message is one persisted message: role plus fantasy content parts as JSON.

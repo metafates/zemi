@@ -154,6 +154,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 	updated_at INTEGER NOT NULL,
 	prompt_tokens INTEGER NOT NULL DEFAULT 0,
 	completion_tokens INTEGER NOT NULL DEFAULT 0,
+	cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+	cache_billed_tokens INTEGER NOT NULL DEFAULT 0,
 	cost REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS sessions_parent ON sessions(parent_id);
@@ -239,7 +241,7 @@ CREATE INDEX IF NOT EXISTS memory_scope_updated ON memory(scope, updated_at);
 // schemaVersion stamps every store. zemi keeps no migrations before its
 // first release: a schema change bumps this, and a store another version made
 // is refused with its path, for the developer to delete.
-const schemaVersion = 5
+const schemaVersion = 6
 
 func (s *DB) migrate() error {
 	// one transaction, so a second process opening the same file waits and

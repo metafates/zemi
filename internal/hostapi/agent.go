@@ -1999,9 +1999,9 @@ type StreamSnapshot struct {
 	LastIn      int64
 	CtxWindow   int64
 	SessionCost float64
-	// prompt cache tokens read, over the input billed alongside them. Both
-	// count this process only (a resumed session's earlier turns are not in
-	// the store), so the share stays honest.
+	// prompt cache tokens read, over the input billed alongside them: the
+	// session's own, restored with its stored rows so a resume shows the same
+	// share
 	CacheRead   int64
 	CacheBilled int64
 }

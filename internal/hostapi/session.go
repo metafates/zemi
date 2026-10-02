@@ -109,6 +109,7 @@ func (h *Host) ResumeSession(id string) error {
 		// runner it builds for the next turn.
 		ag.runner, ag.turnModel = &agent.Runner{History: history}, ""
 		ag.sessIn, ag.sessOut, ag.sessCost = sess.PromptTokens, sess.CompletionTokens, sess.Cost
+		ag.cacheRead, ag.cacheBilled = sess.CacheRead, sess.CacheBilled
 		// lastIn is the current-context estimate; seed it from the history and
 		// the prompt so the context readout and compactDue see the window it
 		// had until the next step reports a real count.

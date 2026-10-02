@@ -203,7 +203,7 @@ func TestSessionLifecycle(t *testing.T) {
 	if err := db.RenameSession("s1", "renamed"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AddUsage("s1", 10, 20, 0.5); err != nil {
+	if err := db.AddUsage("s1", 10, 20, 0, 0, 0.5); err != nil {
 		t.Fatal(err)
 	}
 	s, _ = db.GetSession("s1")
@@ -213,7 +213,7 @@ func TestSessionLifecycle(t *testing.T) {
 	// a vanished session must report the miss, not swallow the update
 	for _, err := range []error{
 		db.RenameSession("ghost", "x"),
-		db.AddUsage("ghost", 1, 1, 1),
+		db.AddUsage("ghost", 1, 1, 0, 0, 1),
 	} {
 		if !errors.Is(err, ErrNotFound) {
 			t.Fatalf("want ErrNotFound, got %v", err)
@@ -221,7 +221,7 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	// only a message makes a session recent: a late bill for a closed one must not
 	db.db.Exec(`UPDATE sessions SET updated_at = 1 WHERE id = 's1'`)
-	_ = db.AddUsage("s1", 1, 1, 0)
+	_ = db.AddUsage("s1", 1, 1, 0, 0, 0)
 	if s, _ = db.GetSession("s1"); s.UpdatedAt != 1 {
 		t.Fatalf("usage bumped updated_at to %d", s.UpdatedAt)
 	}
@@ -635,7 +635,7 @@ func TestUsageSince(t *testing.T) {
 		if err := db.CreateSession(s.id, s.parent, s.id, ""); err != nil {
 			t.Fatal(err)
 		}
-		if err := db.AddUsage(s.id, 100, 10, 0.5); err != nil {
+		if err := db.AddUsage(s.id, 100, 10, 0, 0, 0.5); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -229,7 +229,7 @@ func TestFarewell(t *testing.T) {
 				if err := db.CreateSession(sid, "", c.title, ""); err != nil {
 					t.Fatal(err)
 				}
-				if err := db.AddUsage(sid, 0, 0, c.cost); err != nil {
+				if err := db.AddUsage(sid, 0, 0, 0, 0, c.cost); err != nil {
 					t.Fatal(err)
 				}
 				if err := host.ResumeSession(sid); err != nil {

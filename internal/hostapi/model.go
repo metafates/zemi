@@ -215,7 +215,7 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 	}
 	ag.mu.Unlock()
 	if sid != "" && h.DB != nil {
-		_ = h.DB.AddUsage(sid, billedInput(u), u.OutputTokens, cost)
+		_ = h.DB.AddUsage(sid, billedInput(u), u.OutputTokens, u.CacheReadTokens, billedInput(u), cost)
 	}
 }
 
