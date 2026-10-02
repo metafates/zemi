@@ -1106,7 +1106,7 @@ function zemi.ui.widget.list() end
 ---@field max? integer
 ---@field hidden? boolean Takes no cells and draws nothing.
 ---@field collapse? boolean Hidden when its box cannot give every child its `min` (the last collapsing child first), instead of squeezing them.
----@field stage? boolean Prompts, overlays, toasts and completion popups go over this node (the screen when none, or when it is under 40 by 12 cells). At most one.
+---@field stage? boolean Prompts, overlays, toasts and completion popups go over this node (the screen when none, or when it is under 40 by 8 cells). At most one.
 
 --- Children laid out left to right ("row") or top to bottom ("col").
 ---@class zemi.LayoutBox: zemi.LayoutBase
