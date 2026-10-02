@@ -1200,8 +1200,8 @@ func TestReasoningSpinsBehindModal(t *testing.T) {
 // TestRailFoldsWhenTheTurnEnds: the live turn stands on the rail, a
 // step's reads one row with the short thought before it as its suffix, a
 // long thought a row of its own and a trailing one its own too; the
-// ended turn folds into its digest, over the edit it keeps in the cells it
-// drew live, and draws none of the thoughts the digest totals. A run the
+// ended turn folds into its digest alone, its rail a click away, and draws
+// none of the thoughts the digest totals. A run the
 // model closed with a reply folds while the turn still runs; the run it is
 // working in stays open under the reply it streamed after it.
 func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
@@ -1238,14 +1238,14 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	// the call after the reply opens a new run: that reply folds the one before it
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "c.go", Status: "ok"})
 	closed := []string{
-		"▌ look around", "· 2 files, 1 command · thought 9.6s", "│ ✓ edit a.go +1 -1",
+		"▌ look around", "· 2 files, 1 command · thought 9.6s",
 		"now the next one", "│ read 1 file",
 	}
 	if got := rows(); !slices.Equal(got, closed) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if got, want := rows(), append(closed[:4:4], "· 1 file"); !slices.Equal(got, want) {
+	if got, want := rows(), append(closed[:3:3], "· 1 file"); !slices.Equal(got, want) {
 		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
 	}
 }

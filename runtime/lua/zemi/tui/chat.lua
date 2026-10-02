@@ -1,18 +1,17 @@
 -- The chat widget: the transcript, the live turn and the todo list. A turn's
 -- activity (thinking and tool calls) reads as a rail, which once settled
--- folds what only looked around into one digest row over it; tui/thinking.lua
--- draws the same rows for a turn it inspects.
+-- folds what only looked around into one digest row, its rail a click away;
+-- tui/thinking.lua draws the same rows for a turn it inspects.
 local fmt = require("zemi.tui.text")
 local util = require("zemi.util")
 
 -- A tool row: a settled transcript row or a call of the live turn.
 ---@alias zemi.tui.Tool zemi.TranscriptRow|zemi.ToolCall
 
--- How a run of activity rows draws: its kept rows on the rail under the
--- digest of what folds (settled), its digest over its whole rail (a digest
--- clicked open), a rail of one row per step (the live turn, a printed run,
--- an agent run's view), or the rail with every row and thought open (the
--- pane's inspector, zemi run --reasoning).
+-- How a run of activity rows draws: its digest alone (settled), that digest
+-- over its whole rail (a digest clicked open), a rail of one row per step
+-- (the live turn, a printed run, an agent run's view), or the rail with every
+-- row and thought open (the pane's inspector, zemi run --reasoning).
 ---@alias zemi.tui.RunMode "fold"|"unfold"|"rail"|"open"
 
 -- The settled transcript is rendered in units, a message or a run of
@@ -498,29 +497,31 @@ local function builder(ctx, width)
 		end
 	end
 
-	-- A settled run of activity rows: the digest of what folds (the calls
-	-- that only looked around and the thinking) over the run's rail, which
-	-- folded keeps only the rows that keep their own; a run with nothing to
-	-- fold is its rail alone. The digest's click opens or folds its run, and
-	-- an opened digest heads its rail: the chat pins it under the prompt
-	-- down to the rail's last row.
+	-- A folded run is its digest alone, a click away from its whole rail: the
+	-- calls that only looked around and the thinking, which no rail row shows;
+	-- a run with nothing to fold is its rail alone, with no digest to open.
+	-- An opened digest heads its rail: the chat pins it under the prompt down
+	-- to the rail's last row.
 	---@param list zemi.TranscriptRow[]
 	---@param first integer
 	---@param last integer
 	---@param opened boolean
 	function B.fold(list, first, last, opened)
 		local digest = fmt.digest(list, first, last)
-		local head = digest ~= "" and opened and "section" or nil
-		if digest ~= "" then
-			local click = "turn:" .. first
-			push({
-				{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = head },
-				{ text = fmt.clip(digest, width - 2), hl = "Dim", click = click },
-			})
+		if digest == "" then
+			B.rail(list, first, last, {})
+			return
 		end
+		local head = opened and "section" or nil
+		local click = "turn:" .. first
+		push({
+			{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = head },
+			{ text = fmt.clip(digest, width - 2), hl = "Dim", click = click },
+		})
+		if not opened then return end
 		local at = #B.lines
-		B.rail(list, first, last, { folded = digest ~= "" and not opened })
-		if head and #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
+		B.rail(list, first, last, {})
+		if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 	end
 
 	-- A run of activity rows as a rail, one row per step: a step's unlabelled
@@ -533,7 +534,7 @@ local function builder(ctx, width)
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { open: boolean?, live: boolean?, run: integer?, secs: number?, folded: boolean? } open: every row and thought open, for the run starting at run, whose rows a click leaves; folded: only the rows that keep their own, under the digest of the rest.
+	---@param o { open: boolean?, live: boolean?, run: integer?, secs: number? } open: every row and thought open, for the run starting at run, whose rows a click leaves.
 	function B.rail(list, first, last, o)
 		local at = #B.lines
 		B.heads = {}
@@ -568,7 +569,7 @@ local function builder(ctx, width)
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { open: boolean?, live: boolean?, run: integer?, secs: number?, folded: boolean? }
+	---@param o { open: boolean?, live: boolean?, run: integer?, secs: number? }
 	function B.steps(list, first, last, o)
 		local secs = o.secs
 		local fold = o.open and o.run and "turn:" .. o.run or nil
@@ -578,9 +579,7 @@ local function builder(ctx, width)
 		while i <= last do
 			local t = list[i]
 			local idx = o.live and -i or i
-			if o.folded and (t.kind == "reasoning" or fmt.looks(t)) then
-				i = i + 1
-			elseif t.kind == "reasoning" then
+			if t.kind == "reasoning" then
 				local s = t.thought or 0
 				if o.open or s > 5 or i == last or list[i + 1].kind == "reasoning" then
 					head()
