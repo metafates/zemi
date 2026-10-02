@@ -700,7 +700,10 @@ func (h *Host) stopRun(id string) error {
 func (h *Host) ViewedAgent() string {
 	h.tMu.Lock()
 	defer h.tMu.Unlock()
-	return h.view
+	if h.view == nil {
+		return ""
+	}
+	return h.view.id
 }
 
 // ViewAgent shows a run's transcript in the chat in place of the session's;
@@ -714,18 +717,18 @@ func (h *Host) ViewAgentFrom(id, back string) error {
 	if _, err := h.Screen(); err != nil {
 		return err
 	}
+	var run *agentRun
 	if id != "" {
-		run := h.tasks.find(id)
+		run = h.tasks.find(id)
 		if run == nil {
 			var err error
 			if run, err = h.loadRun(id); err != nil {
 				return err
 			}
 		}
-		id = run.id
 	}
 	h.tMu.Lock()
-	h.view, h.viewBack = id, back
+	h.view, h.viewBack = run, back
 	h.tMu.Unlock()
 	h.scroll(ScrollBottom, "")
 	h.refresh()
@@ -742,12 +745,13 @@ func (h *Host) LeaveAgentView() string {
 	return back
 }
 
-// viewedRun is the run the chat shows, nil for the session.
+// viewedRun is the run the chat shows, nil for the session. The host holds the
+// run itself: the registry forgets a finished run past maxKeptRuns and the chat
+// goes on showing it.
 func (h *Host) viewedRun() *agentRun {
-	if id := h.ViewedAgent(); id != "" {
-		return h.tasks.find(id)
-	}
-	return nil
+	h.tMu.Lock()
+	defer h.tMu.Unlock()
+	return h.view
 }
 
 // refreshViewed redraws only when the run is on screen: runs stream while

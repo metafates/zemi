@@ -724,9 +724,10 @@ function zemi.event.stats() end
 ---@field text string What the user typed, or the head line of a subagent's report, update or plugin send.
 ---@field notice boolean True for a subagent's or a plugin's message, which the model reads whole and the chat shows as a notice row instead of the user's own.
 
---- The live turn, as the chat widget sees it.
+--- The live turn, as the chat widget sees it: while ctx.view is set, the shown
+--- agent run in its place.
 ---@class zemi.AgentCtx
----@field active boolean
+---@field active boolean True while the turn runs; while ctx.view is set, while that run does.
 ---@field model string
 ---@field text string Reply text so far.
 ---@field reasoning string Thinking text so far.
@@ -734,7 +735,7 @@ function zemi.event.stats() end
 ---@field tools zemi.ToolCall[]
 ---@field steering zemi.QueuedMessage[] Messages waiting for the turn's next step boundary, oldest first; while ctx.view is set, the ones queued for that agent run.
 ---@field thought number Seconds spent reasoning.
----@field elapsed number Seconds since the turn started.
+---@field elapsed number Seconds since the turn started; while ctx.view is set, since that run did.
 ---@field compacting boolean History is being summarized.
 ---@field checking_goal boolean The goal is being checked after a turn (/goal); the agent stays active.
 ---@field retry? { attempt: integer, why: string, next_in: number } Set while a provider retry waits or is under way (next_in 0).
@@ -863,7 +864,7 @@ function zemi.event.stats() end
 ---@field effort string The reasoning level `model` runs at: the /effort pick fitted to the model, or its catalog default; "" sends none.
 ---@field permission_mode string
 ---@field permission_mode_base string
----@field agent_active boolean
+---@field agent_active boolean True while the live turn runs; while `view` is set, while that run does.
 ---@field agent zemi.AgentCtx
 ---@field view? { id: string, agent: string, description: string, status: zemi.RunStatus } The agent run the chat shows instead of the session; a submit messages it while it is running.
 ---@field transcript zemi.TranscriptRow[]
