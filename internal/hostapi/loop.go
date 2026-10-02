@@ -195,7 +195,7 @@ func (h *Host) loopTurnEnded(runner *agent.Runner, text string, err error, cance
 	runs := fmt.Sprintf("%d %s", l.Runs, Plural(l.Runs, "run", "runs"))
 	switch {
 	case err != nil:
-		_ = h.stopLoop(l, "Loop stopped: the run failed ("+runs+")")
+		_ = h.stopLoop(l, "Loop stopped: "+h.friendlyError(err)+" ("+runs+")")
 	case l.Every == 0:
 		d, done, ok := parseNext(plainTextEnd(runner))
 		if done {

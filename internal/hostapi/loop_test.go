@@ -50,7 +50,7 @@ func TestLoop(t *testing.T) {
 		},
 		{
 			name: "a failed run stops it", args: "5m check it", reply: "fail", steps: []step{{runs: 1}},
-			notices: []string{"Loop run 1: check it", "Loop stopped: the run failed (1 run)"},
+			notices: []string{"Loop run 1: check it", "Loop stopped: boom (1 run)"},
 		},
 		{name: "an interrupted run stops it", args: "5m check it", reply: "hang", steps: []step{{runs: 1, next: 5 * time.Minute, held: true}, {do: func(h *Host) {
 			h.AgentCancel()
