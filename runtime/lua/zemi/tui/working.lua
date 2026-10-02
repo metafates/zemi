@@ -34,15 +34,6 @@ zemi.ui.widget.add({
 		---@param hl string?
 		---@return zemi.Line
 		local function plain(text, hl) return { { text = text, hl = hl or "Dim" } } end
-		---@param l zemi.Line
-		---@return integer
-		local function cells(l)
-			local n = 0
-			for _, sg in ipairs(l) do
-				n = n + zemi.ui.width(sg.text)
-			end
-			return n
-		end
 		local state = "idle"
 		local busy = ctx.busy and ctx.busy.elapsed >= 0.3 and ctx.busy or nil
 		-- a printed run takes no key but the shell's interrupt
@@ -63,6 +54,9 @@ zemi.ui.widget.add({
 		if not ctx.agent_active then
 			if busy then
 				state = "working"
+				-- what the job is, worth least of the three parts: a narrow rule
+				-- keeps the key that stops it and the clock that shows it alive
+				parts[#parts + 1] = { plain(fmt.lower(busy.label)), 4 }
 				if busy.cancellable and not ctx.view then parts[#parts + 1] = { fmt.hint(key, verb), 6, 13 } end
 				parts[#parts + 1] = { plain(fmt.duration(busy.elapsed, true)), 5, 7 }
 			elseif ctx.ended == "ok" then
@@ -118,7 +112,7 @@ zemi.ui.widget.add({
 		local function room()
 			local n = 0
 			for _, p in ipairs(parts) do
-				n = n + 3 + math.max(cells(p[1]), p[3] or 0)
+				n = n + 3 + math.max(fmt.cells(p[1]), p[3] or 0)
 			end
 			return n
 		end
@@ -141,7 +135,7 @@ zemi.ui.widget.add({
 				after[#after + 1] = sg
 			end
 		end
-		local block = cells(after) + (#after > 0 and 2 or 0)
+		local block = fmt.cells(after) + (#after > 0 and 2 or 0)
 		if state ~= shown then
 			shown, since = state, ctx.frame
 		end

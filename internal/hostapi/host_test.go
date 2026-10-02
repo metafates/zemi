@@ -861,3 +861,28 @@ func TestOverlayCallbackErrorsRecorded(t *testing.T) {
 		}
 	}
 }
+
+// TestWorkingRuleNamesTheBusyJob: the composer rule names the newest job the
+// user waits on, and a narrow one drops that name before the key that stops it
+// and the clock that shows it alive.
+func TestWorkingRuleNamesTheBusyJob(t *testing.T) {
+	h := newTestHostUI(t)
+	defer h.Busy("Reflecting", func() {})()
+	// the rule keeps its block away for the first 300ms of a job
+	h.busyMu.Lock()
+	h.busy[0].start = h.busy[0].start.Add(-4 * time.Second)
+	h.busyMu.Unlock()
+	row := func(w int) string {
+		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("working"), w, 3, UIState{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return SegsText(lines[0])
+	}
+	if got := row(80); !strings.Contains(got, "reflecting · esc interrupt · 4s") {
+		t.Errorf("the rule does not name the busy job: %q", got)
+	}
+	if got := row(34); strings.Contains(got, "reflecting") || !strings.Contains(got, "esc interrupt · 4s") {
+		t.Errorf("the narrow rule lost the key or the clock: %q", got)
+	}
+}

@@ -53,13 +53,15 @@ function M.count(n, one, many) return n .. " " .. (n == 1 and one or many) end
 
 --- A pointer to what deals with something: the noun in Title (hl overrides
 --- it, Danger for a failure), then the command or key in Dim ("errors
---- /errors", "↓ 25 ctrl+end"). Both segments click as click.
+--- /errors", "↓ 25 ctrl+end"). Both segments click as click, a command's own
+--- name when click is left out.
 ---@param noun string
 ---@param cmd string
 ---@param click string?
 ---@param hl string?
 ---@return zemi.Line
 function M.hint(noun, cmd, click, hl)
+	click = click or cmd:match("^/(%S+)$")
 	return { { text = noun, hl = hl or "Title", click = click }, { text = " " .. cmd, hl = "Dim", click = click } }
 end
 
@@ -218,15 +220,12 @@ function M.digest(rows, first, last)
 	return table.concat(parts, " · ")
 end
 
---- A tool name as words for a row with no verb of its own: underscores
---- split, the first word capitalized, and an MCP tool's mcp_ dropped
---- ("mcp_tracker_list_issues" -> "Tracker list issues").
+--- A tool name as words for a row with no verb of its own: underscores split,
+--- an MCP tool's mcp_ dropped, and no capital, which the row's M.lower would
+--- take back ("mcp_tracker_list_issues" -> "tracker list issues").
 ---@param name string
 ---@return string
-function M.title(name)
-	local s = name:gsub("^mcp_", ""):gsub("_", " ")
-	return s:sub(1, 1):upper() .. s:sub(2)
-end
+function M.title(name) return (name:gsub("^mcp_", ""):gsub("_", " ")) end
 
 --- The calls the turn waits on: their work is another agent loop, so nothing
 --- streams until they end and their row says what holds the turn.
@@ -236,7 +235,8 @@ M.WAIT = { agent = true, workflow = true }
 --- A call's headline as a verb and the rest: "Read", " a.go". A command's
 --- about is itself a verb phrase ("Run the tests"), so its first word is the
 --- verb; an unlabelled call reads as its input; a call the turn waits on says
---- so in place of its verb ("waiting on workflow review").
+--- so in place of its verb ("waiting on workflow review"). A row lowercases
+--- the verb with M.lower, so nothing here is capitalized.
 ---@param name string
 ---@param label string The model's description of the call, or "".
 ---@param input string The call's input as the row shows it, or "".
@@ -246,10 +246,7 @@ M.WAIT = { agent = true, workflow = true }
 function M.head(name, label, input, status)
 	local rest = label ~= "" and " " .. M.lower(label) or input ~= "" and " " .. input or ""
 	if status == "run" and M.WAIT[name] then return "waiting on " .. name, rest end
-	if name == "shell" and label ~= "" then
-		local verb, tail = label:match("^(%S+)(.*)$")
-		return verb:sub(1, 1):upper() .. verb:sub(2), tail
-	end
+	if name == "shell" and label ~= "" then return label:match("^(%S+)(.*)$") end
 	return M.VERB[name] or M.title(name), rest
 end
 
@@ -272,6 +269,17 @@ function M.relpath(s, cwd, home)
 	if home and home ~= "" and home ~= "/" then s = s:gsub(home:gsub("%p", "%%%0") .. "/", "~/") end
 	if not cwd or cwd == "" then return s end
 	return (s:gsub(cwd:gsub("%p", "%%%0") .. "/", ""))
+end
+
+--- The cells a line of segments takes.
+---@param segs zemi.Line
+---@return integer
+function M.cells(segs)
+	local w = 0
+	for _, sg in ipairs(segs) do
+		w = w + zemi.ui.width(sg.text)
+	end
+	return w
 end
 
 --- A pattern matching one UTF-8 character.

@@ -84,17 +84,6 @@ local function tip(ctx, listed)
 	return { key("/resume", "resume"), dim(" picks up the latest session") }
 end
 
---- Cells of a line.
----@param line zemi.Line
----@return integer
-local function cells(line)
-	local w = 0
-	for _, s in ipairs(line) do
-		w = w + zemi.ui.width(s.text)
-	end
-	return w
-end
-
 --- The splash rows: the logo, recent sessions to pick up and one tip, each
 --- group centered in ctx.width and the whole a little below the middle of
 --- ctx.height, near the composer.
@@ -122,7 +111,7 @@ function M.render(ctx)
 
 	if version ~= "" then
 		logo[#logo + 1] = {
-			{ text = string.rep(" ", math.max(cells(logo[1]) - zemi.ui.width(version), 0)), copy = false },
+			{ text = string.rep(" ", math.max(fmt.cells(logo[1]) - zemi.ui.width(version), 0)), copy = false },
 			{ text = version, hl = "Dim" },
 		}
 	end
@@ -162,7 +151,7 @@ function M.render(ctx)
 		-- each group centered whole, its rows left-aligned to each other
 		local w = 0
 		for _, r in ipairs(rows) do
-			w = math.max(w, cells(r))
+			w = math.max(w, fmt.cells(r))
 		end
 		local pad = { text = string.rep(" ", math.max(0, math.floor((width - math.min(w, room)) / 2))), copy = false }
 		for _, r in ipairs(rows) do

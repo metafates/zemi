@@ -37,7 +37,7 @@ zemi.ui.widget.add({
 		local line = { { text = p, hl = "Dim", click = "projects" } }
 		if ctx.trusted == false then
 			line = p == "" and {} or { line[1], { text = " · ", hl = "Dim" } }
-			for _, seg in ipairs(fmt.hint("untrusted", "/trust", "trust")) do
+			for _, seg in ipairs(fmt.hint("untrusted", "/trust")) do
 				line[#line + 1] = seg
 			end
 		end
@@ -55,7 +55,7 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		if not ctx.goal then return {} end
-		return { fmt.hint("⚑ goal", "/goal", "goal") }
+		return { fmt.hint("⚑ goal", "/goal") }
 	end,
 })
 
@@ -70,7 +70,7 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		if not ctx.loop then return {} end
-		return { fmt.hint("↻ " .. fmt.clock(ctx.loop.next), "/loop", "loop") }
+		return { fmt.hint("↻ " .. fmt.clock(ctx.loop.next), "/loop") }
 	end,
 })
 
@@ -91,7 +91,7 @@ zemi.ui.widget.add({
 		if agents > 0 then parts[#parts + 1] = fmt.count(agents, "agent", "agents") end
 		if jobs > 0 then parts[#parts + 1] = fmt.count(jobs, "job", "jobs") end
 		local cmd = flows > 0 and "workflows" or "agents"
-		return { fmt.hint("⧗ " .. table.concat(parts, ", "), "/" .. cmd, cmd) }
+		return { fmt.hint("⧗ " .. table.concat(parts, ", "), "/" .. cmd) }
 	end,
 })
 
@@ -106,7 +106,7 @@ zemi.ui.widget.add({
 	render = function(ctx)
 		local n = ctx.pending_memory or 0
 		if n == 0 then return {} end
-		return { fmt.hint(fmt.count(n, "memory", "memories") .. " to review", "/memory", "memory") }
+		return { fmt.hint(fmt.count(n, "memory", "memories") .. " to review", "/memory") }
 	end,
 })
 
@@ -125,7 +125,8 @@ zemi.ui.widget.add({
 
 -- While the chat is scrolled up, how many rows are below and the key that
 -- goes back: the bar shows only where the reader is, not what a running turn
--- added under them or how a keyboard gets back. A click goes back too.
+-- added under them or how a keyboard gets back. A click goes back too: its id
+-- is the scroll target, not a command's name.
 zemi.ui.widget.add({
 	id = "statusline.scroll",
 	region = "statusline.left",

@@ -168,16 +168,6 @@ local function builder(ctx, width)
 	---@param s string
 	---@return string
 	local function relpath(s) return fmt.relpath(s, ctx.cwd, ctx.home) end
-	-- the cells a line of segments takes
-	---@param segs zemi.Line
-	---@return integer
-	local function segw(segs)
-		local w = 0
-		for _, sg in ipairs(segs) do
-			w = w + zemi.ui.width(sg.text)
-		end
-		return w
-	end
 	-- row ending in tail, a line of segments, flush with the right edge
 	---@param row zemi.Line
 	---@param tail zemi.Line
@@ -185,7 +175,7 @@ local function builder(ctx, width)
 	---@return zemi.Line
 	local function suffixed(row, tail, click)
 		if #tail == 0 then return row end
-		row[#row + 1] = { text = string.rep(" ", math.max(2, width - segw(row) - segw(tail))) }
+		row[#row + 1] = { text = string.rep(" ", math.max(2, width - fmt.cells(row) - fmt.cells(tail))) }
 		for _, sg in ipairs(tail) do
 			row[#row + 1] = { text = sg.text, hl = sg.hl, click = click }
 		end
@@ -365,7 +355,7 @@ local function builder(ctx, width)
 			tail[#tail + 1] = { text = text, hl = "Dim" }
 		end
 		if t.status == "run" and not asked and (t.elapsed or 0) >= 1 then add(fmt.duration(t.elapsed, true)) end
-		local sw = segw(tail)
+		local sw = fmt.cells(tail)
 		local verb, rest = fmt.head(name, label, input, t.status)
 		verb = fmt.lower(verb)
 		local room = inner - 2 - zemi.ui.width(verb) - (sw > 0 and sw + 2 or 1)
