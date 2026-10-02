@@ -113,10 +113,15 @@ local function block_of(m)
 end
 
 -- The lines a diff adds and removes: its "+++"/"---" headers are not changes.
+-- Counted once per diff text, since a render asks for each of the turn's diffs
+-- again and again while the turn streams.
+local counts = {}
 ---@param diff string
 ---@return integer add
 ---@return integer del
 local function diffLines(diff)
+	local c = counts[diff]
+	if c then return c[1], c[2] end
 	local add, del = 0, 0
 	for l in diff:gmatch("[^\n]+") do
 		if l:match("^%+") and not l:match("^%+%+%+ ") then
@@ -125,6 +130,7 @@ local function diffLines(diff)
 			del = del + 1
 		end
 	end
+	counts[diff] = { add, del }
 	return add, del
 end
 
@@ -890,7 +896,9 @@ zemi.ui.widget.add({
 			{ epoch, width, tostring(ctx.show_reasoning), tostring(M.pane), ctx.cwd or "", zemi.ui.theme.get() },
 			"|"
 		)
-		if key ~= units_key or epoch == 0 then
+		local reset = key ~= units_key
+		if reset then counts = {} end
+		if reset or epoch == 0 then
 			units, units_key, settled = {}, key, nil
 		end
 		-- A long session resumed, a new width or a new theme leave every unit
