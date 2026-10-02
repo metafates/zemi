@@ -427,6 +427,18 @@ func TestChatFade(t *testing.T) {
 	}
 }
 
+// TestScrollbarSurface: the bar cell keeps the surface of the cell beside it,
+// so a banded row's band runs to the box's edge instead of stopping a cell
+// short of the bar drawn over it.
+func TestScrollbarSurface(t *testing.T) {
+	b := scrollbar{h: 10, top: 0, total: 40, width: 20}
+	row := []hostapi.Segment{{Text: strings.Repeat(" ", 19), Fill: hostapi.FillBand}}
+	got := b.row(row, 0)
+	if last := got[len(got)-1]; !last.Bar || last.Fill != hostapi.FillBand {
+		t.Fatalf("the bar cell %+v does not keep the row's surface", last)
+	}
+}
+
 // TestPaneDivider: with the thinking pane open the chat's scrollbar and the
 // pane's divider are one line. The chat draws its bar in its own last cell,
 // its border, so the separator column stands down for it while the chat

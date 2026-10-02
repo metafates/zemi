@@ -850,7 +850,12 @@ func TestBandToTheEdge(t *testing.T) {
 				}
 			}
 		}
-		if want := hostapi.SegsWidth(box[0]) - 4; band != want {
+		if want := hostapi.SegsWidth(box[0]) - 4; viewH < len(choices) {
+			// the list scrolls: its bar cell is part of the band too
+			if band != want+1 {
+				t.Errorf("view of %d rows: the band takes %d cells, want %d", viewH, band, want+1)
+			}
+		} else if band != want {
 			t.Errorf("view of %d rows: the band takes %d cells, want %d", viewH, band, want)
 		}
 	}

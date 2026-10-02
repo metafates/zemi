@@ -755,7 +755,8 @@ type scrollbar struct{ h, top, total, width int }
 func (b scrollbar) on() bool { return b.h >= 2 && b.total > b.h && b.width >= 7 }
 
 // row appends the bar cell for viewport row i to a row already padded to
-// width cells.
+// width cells. The cell keeps the surface of the one beside it, so a banded
+// row's band runs under the bar instead of stopping a cell short of it.
 func (b scrollbar) row(row []hostapi.Segment, i int) []hostapi.Segment {
 	if !b.on() {
 		return row
@@ -766,9 +767,13 @@ func (b scrollbar) row(row []hostapi.Segment, i int) []hostapi.Segment {
 	if i >= pos && i < pos+size {
 		mark, hl = "█", "ScrollbarThumb"
 	}
+	fill := hostapi.FillAuto
+	if n := len(row); n > 0 {
+		fill = row[n-1].Fill
+	}
 	out := make([]hostapi.Segment, len(row), len(row)+1)
 	copy(out, row)
-	return append(out, hostapi.Segment{Text: mark, HL: hl, NoCopy: true, Bar: true})
+	return append(out, hostapi.Segment{Text: mark, HL: hl, NoCopy: true, Bar: true, Fill: fill})
 }
 
 // reanchor puts the viewport back on the content it was showing after the
