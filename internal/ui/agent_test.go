@@ -1883,6 +1883,33 @@ func TestStreamEventsCoalesce(t *testing.T) {
 	}
 }
 
+// TestReasoningPaneAirRows: a run whose thought wraps to two lines draws air
+// rows in its rail, whose bar the pane strips: they keep a segment, since an
+// empty widget line is an error.
+func TestReasoningPaneAirRows(t *testing.T) {
+	app, host := bootAgentApp(t, 120, 30)
+	if err := host.ToggleReasoning(); err != nil {
+		t.Fatal(err)
+	}
+	waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Children[1].Hidden })
+	host.AppendMessage("user", "look around")
+	appendReasoning(host, "where to start\nand where to go", hostapi.TurnStat{ThoughtMS: 1200})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
+	appendReply(host, "done", hostapi.TurnStat{})
+	app.renderSync(t)
+	x, y := findCell(t, app, "· 1 file · thought 1.2s")
+	clickAt(app, x+2, y)
+	for app.Pump() {
+	}
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "and where to go") {
+		t.Fatalf("the pane did not draw the inspected run:\n%s", frame)
+	}
+	if err := host.RT.ExecuteChunk(t.Context(), `local n = #zemi.errors.list(); assert(n == 0, "errors: " .. n)`, "t.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestWidgetErrorRecordedOnce: a widget whose render raises is recorded in
 // /errors once, not once per frame.
 func TestWidgetErrorRecordedOnce(t *testing.T) {

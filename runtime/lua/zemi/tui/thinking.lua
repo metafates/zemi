@@ -153,10 +153,10 @@ zemi.ui.widget.add({
 			local lines = {}
 			if t.first then
 				-- the run's rows without their rail: the pane's separator is the
-				-- only vertical line here, and an air row is a blank
+				-- only vertical line here, and an air row keeps its gutter as a blank
 				for _, l in ipairs(chat.run(ctx, t.rows, t.first, width - 2)) do
 					if l[1] and l[1].hl == "ThinkingBar" then table.remove(l, 1) end
-					if #l > 0 then table.insert(l, 1, GUTTER) end
+					table.insert(l, 1, GUTTER)
 					lines[#lines + 1] = l
 				end
 			else
