@@ -1203,10 +1203,17 @@ func (a *App) scrolledUp(widget string) bool {
 	return false
 }
 
-// scrollAt is the scrolled region drawn under (x, y), else the default one.
+// scrollAt is the scrolled region drawn under (x, y), else the default one. A
+// bar in the separator beside a region is that region's own, one cell out of
+// its rect.
 func (a *App) scrollAt(x, y int) string {
 	for _, id := range a.scrollIDs {
-		if st := a.scrolls[id]; st != nil && (uv.Position{X: x, Y: y}).In(st.rect) {
+		st := a.scrolls[id]
+		if st == nil {
+			continue
+		}
+		if (uv.Position{X: x, Y: y}).In(st.rect) ||
+			x == st.rect.Max.X && y >= st.rect.Min.Y && y < st.rect.Max.Y {
 			return id
 		}
 	}

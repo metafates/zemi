@@ -439,11 +439,11 @@ func TestScrollbarSurface(t *testing.T) {
 	}
 }
 
-// TestPaneDivider: with the thinking pane open the chat's scrollbar and the
-// pane's divider are one line. The chat draws its bar in its own last cell,
-// its border, so the separator column stands down for it while the chat
-// scrolls and separates the pane itself when it does not; the bar stays inside
-// the chat's rect, where a drag finds it.
+// TestPaneDivider: with the thinking pane open the chat's scrollbar is the
+// divider, one column: the cell left of the pane carries the bar on the chat's
+// rows and the separator's own rule where the chat does not scroll, that rule
+// meeting the composer's in a T. The pane's text stands its gutter's two cells
+// in from it, no row's band reaches past it, and a drag on it finds the chat.
 func TestPaneDivider(t *testing.T) {
 	for _, c := range []struct {
 		name    string
@@ -473,18 +473,55 @@ func TestPaneDivider(t *testing.T) {
 				}
 				return hostapi.Segment{}
 			}
-			y := pane.Y + 1
-			cell, bar := at(y, pane.X-1), at(y, chat.X+chat.Width-1)
-			if bar.Bar != c.bar {
-				t.Fatalf("the chat's last cell %+v, want it a bar: %v", bar, c.bar)
+			div := pane.X - 1
+			// the divider is one column: on every row of the chat's view it
+			// carries the bar, which never spills into the cell beside it, and the
+			// band a pinned row draws stops at it instead of the pane's gutter
+			banded := false
+			for y := chat.Y; y < chat.Y+chat.Height; y++ {
+				cell, prev := at(y, div), at(y, div-1)
+				if cell.Bar != c.bar {
+					t.Fatalf("y=%d: the divider %+v, want a bar: %v", y, cell, c.bar)
+				}
+				if c.bar && cell.HL != "ScrollbarThumb" && cell.HL != "ScrollbarTrack" {
+					t.Fatalf("y=%d: the bar cell %+v", y, cell)
+				}
+				if prev.Bar {
+					t.Fatalf("y=%d: the bar spans two columns: %+v %+v", y, prev, cell)
+				}
+				band := at(y, chat.X).Fill == hostapi.FillPanel
+				banded = banded || band
+				for x := pane.X; x <= pane.X+1; x++ {
+					if f := at(y, x).Fill; band && f != hostapi.FillAuto {
+						t.Fatalf("y=%d: the pinned band reaches x=%d: %+v", y, x, at(y, x))
+					}
+				}
 			}
-			// the divider is the line either way, and never a second one: the
-			// separator stands down where the chat's bar is the border
-			if cell.Line != !c.bar {
-				t.Fatalf("divider %+v beside the chat's %+v, want a bar: %v", cell, bar, c.bar)
+			if c.bar && !banded {
+				t.Fatal("the seeded chat pins no banded row")
+			}
+			// under the chat's view sits its one-cell spacer: the rule there,
+			// which the composer's rule below turns into a T
+			last := chat.Y + chat.Height
+			if cell, join := at(last, div), at(last+1, div); !cell.Line || cell.Text != "│" || join.Text != "┴" {
+				t.Fatalf("the divider under the chat %+v on %+v, want a rule meeting the composer's", cell, join)
+			}
+			// the pane's text stands the gutter's two cells in from the divider
+			text := func() (x, y int) {
+				for y := range app.lastRows {
+					for x := pane.X; x < pane.X+pane.Width; x++ {
+						if s := at(y, x); strings.TrimSpace(s.Text) != "" {
+							return x, y
+						}
+					}
+				}
+				return -1, -1
+			}
+			if x, y := text(); x != pane.X+2 {
+				t.Fatalf("the pane's text starts %d cells in from the divider at y=%d, want 2", x-div, y)
 			}
 			if c.bar {
-				if region := app.barAt(chat.X+chat.Width-1, y).region; region != "chat" {
+				if region := app.barAt(div, pane.Y+1).region; region != "chat" {
 					t.Fatalf("the chat's bar is where a drag finds %q", region)
 				}
 			}

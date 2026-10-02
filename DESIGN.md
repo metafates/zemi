@@ -1819,7 +1819,8 @@ provenance string.
   on the composer frame's top rule when it has one, in the draft's rule tint, else go
   beside the composer on the side with room; Lua floats never cover the composer or the alarm
   pills, and without a bar the pills float at the bottom-left. A scrolled region
-  keeps its last column for a thin scrollbar and a blank before it, and its widgets
+  keeps its last column for a thin scrollbar and a blank before it, or draws the bar in the
+  separator column beside it, its own last cell left blank; its widgets
   render two cells narrower, so the bar appearing covers and rewraps nothing and chat
   text lines up with the composer's; every other scrolling box (overlay
   bodies and lists, prompts, popups) scrolls through the same viewport and draws the bar

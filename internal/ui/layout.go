@@ -380,14 +380,15 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 		x := 0
 		for _, k := range l.kids {
 			if k.sep {
-				// a viewport draws its scrollbar in its own last cell, its border, so
-				// this column stands down for it rather than doubling the line
+				// a viewport draws its scrollbar in its own last cell: that cell is
+				// this column, and the blank before the bar is what it leaves behind
 				for j := range joined {
 					row := joined[j]
 					cell := hostapi.Segment{Text: "│", HL: "Rule", NoCopy: true, Line: true}
 					if n := len(row); lastBar(row) && n > 1 {
-						// the band's blank, one cell: the bar beside it is the border
-						cell = hostapi.Segment{Text: " ", HL: row[n-2].HL, Fill: row[n-2].Fill}
+						cell = row[n-1]
+						row = slices.Concat(row[:n-1],
+							[]hostapi.Segment{{Text: " ", HL: row[n-2].HL, Fill: row[n-2].Fill}})
 					}
 					joined[j] = slices.Concat(padSegs(row, x), []hostapi.Segment{cell})
 				}

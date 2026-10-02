@@ -94,6 +94,11 @@ func TestRelayout(t *testing.T) {
 	if clock := rects["clock"]; clock.X+clock.Width != 100 || clock.Y != rects["stage"].Y {
 		t.Fatalf("clock float at %+v, stage %+v", clock, rects["stage"])
 	}
+	// the sidebar's bar is the separator beside it, one cell out of its own
+	// rect: a drag there scrolls the sidebar, not the stage's chat
+	if region := app.barAt(rects["side"].X+rects["side"].Width, rects["side"].Y+1).region; region != "side" {
+		t.Fatalf("the sidebar's bar is where a drag finds %q", region)
+	}
 
 	x, y := findCell(t, app, "item 3")
 	app.hover(x+1, y)
