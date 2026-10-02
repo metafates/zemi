@@ -695,7 +695,6 @@ func (h *Host) checkModelID(id string) error {
 	return fmt.Errorf("unknown model %q; roles: %s; configured models: %s", id, strings.Join(roleNames(), ", "), strings.Join(h.ModelIDs(), ", "))
 }
 
-// ---------------------------------------------------------------------------
 // the agent tool
 
 // agentTool is the model's entry point to subagents. Parallel: several
@@ -915,7 +914,6 @@ func fmtDuration(d time.Duration) string {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // /agents and zemi.agent.run
 
 // newAgentPrompt rides behind /agents new and takes zemiSkillDir, where the

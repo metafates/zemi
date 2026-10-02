@@ -843,7 +843,6 @@ func (h *Host) memoryCommands() []*Command {
 	}}
 }
 
-// ---------------------------------------------------------------------------
 // zemi.memory namespace
 
 func (h *Host) memoryNamespace(L *glua.LState) *glua.LTable {

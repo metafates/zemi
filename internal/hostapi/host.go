@@ -992,7 +992,6 @@ func (h *Host) ToggleReasoning() error {
 	return h.setWatched("ui.reasoning", next)
 }
 
-// ---------------------------------------------------------------------------
 // host -> Lua event plumbing
 
 // emitSync runs the handlers synchronously on the given interpreter state;
@@ -1176,7 +1175,6 @@ func (h *Host) logHandlerError(hd *EventHandler, err error) {
 	h.RecordError("event "+hd.Event, err.Error())
 }
 
-// ---------------------------------------------------------------------------
 // widget rendering
 
 // Segment is one styled run of text.
@@ -1912,7 +1910,6 @@ func contextTable(L *glua.LState, s StreamSnapshot) *glua.LTable {
 	return c
 }
 
-// ---------------------------------------------------------------------------
 // overlay actions from the UI
 
 // SelectOverlay runs the overlay's on_select with the chosen item. The UI
@@ -1988,7 +1985,6 @@ func (h *Host) refuseBelowUser(L *glua.LState, what string, hint ...string) {
 	L.RaiseError("%s", msg)
 }
 
-// ---------------------------------------------------------------------------
 // boot step: register all zemi.* namespaces on a fresh generation
 
 func (h *Host) NamespacesStep() lua.BootStep {

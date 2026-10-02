@@ -994,7 +994,6 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 	return fmt.Sprintf("Workflow %s runs %d agents at once", id, n), nil
 }
 
-// ---------------------------------------------------------------------------
 // the run's files: its script and journal in the parent session's pad
 
 // journalLine is one line of a run's journal: the header (Workflow set),
@@ -1255,7 +1254,6 @@ func (h *Host) saveFlow(id, name string) (string, error) {
 	return path, err
 }
 
-// ---------------------------------------------------------------------------
 // the workflow tool
 
 type workflowTool struct {
@@ -1507,7 +1505,6 @@ func (h *Host) truncOutput(pad, name, s string) string {
 	return cut + tools.Spill(pad, name, s)
 }
 
-// ---------------------------------------------------------------------------
 // /workflows and zemi.workflow
 
 var workflowVerbs = []string{"run", "view", "pause", "resume", "stop", "rerun", "concurrency", "restart", "save", "open"}

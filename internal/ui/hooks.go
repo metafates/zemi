@@ -147,8 +147,6 @@ func (a *App) copyBootError() {
 // the program returned, when no update runs.
 func (a *App) BootError() error { return a.bootErr }
 
-// ---------------------------------------------------------------------------
-// hostapi.UIHooks
 // Notify shows a toast from any goroutine. Title and body are sanitized
 // here.
 func (a *App) Notify(level slog.Level, title, body string) {

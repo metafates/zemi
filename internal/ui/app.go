@@ -289,7 +289,6 @@ func (a *App) Farewell() string {
 	return b.String()
 }
 
-// ---------------------------------------------------------------------------
 // messages
 
 type frameTickMsg struct{}
@@ -340,7 +339,6 @@ type permAnswer struct {
 // hookMsg wraps a message posted from a non-UI goroutine.
 type hookMsg struct{ inner tea.Msg }
 
-// ---------------------------------------------------------------------------
 // tea.Model
 
 func (a *App) Init() tea.Cmd {
@@ -545,7 +543,6 @@ func (a *App) Frame() string {
 	return a.compose(a.width, a.height)
 }
 
-// ---------------------------------------------------------------------------
 // frame loop and widget rendering
 
 // bump invalidates the frame. It also wakes the tick, so a change never
@@ -838,7 +835,6 @@ func (a *App) widgetLines(id string) [][]hostapi.Segment {
 	return c.lines
 }
 
-// ---------------------------------------------------------------------------
 // toasts
 
 // toast is a transient notification (zemi.notify, DESIGN §6.1).
@@ -891,7 +887,6 @@ func (a *App) pruneToasts(now time.Time) {
 	a.toasts = slices.DeleteFunc(a.toasts, func(t toast) bool { return !now.Before(t.expires) })
 }
 
-// ---------------------------------------------------------------------------
 // hook plumbing (drained by a persistent cmd when a program is attached)
 
 // dispatch drops msg when the queue is full, so a caller on the Update
@@ -935,7 +930,6 @@ func (a *App) drainHooksCmd() tea.Cmd {
 	return func() tea.Msg { return hookMsg{inner: <-a.hooks} }
 }
 
-// ---------------------------------------------------------------------------
 // compose (pure: reads caches and Go-side state only)
 
 func (a *App) compose(w, h int) string {
@@ -1515,7 +1509,6 @@ func toastHL(level slog.Level) string {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // segment helpers
 
 // hlStyle resolves a highlight name. "Host:*" names are Go-owned security

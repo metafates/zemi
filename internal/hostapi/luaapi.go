@@ -15,7 +15,6 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// ---------------------------------------------------------------------------
 // zemi.json
 
 // jsonNamespace is zemi.json, in config Lua and in a workflow script.
@@ -44,7 +43,6 @@ func (h *Host) jsonNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// ---------------------------------------------------------------------------
 // zemi.composer
 
 // SetComposerSnapshot records the draft after the UI changed it, so
@@ -102,7 +100,6 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// ---------------------------------------------------------------------------
 // zemi.session additions
 
 // sessionExtraFns adds list, new, resume, rewind and todos to zemi.session. Switching
@@ -161,7 +158,6 @@ func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
 	}))
 }
 
-// ---------------------------------------------------------------------------
 // agent.assemble
 
 const (

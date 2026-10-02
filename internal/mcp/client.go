@@ -381,7 +381,6 @@ func (c *Client) handle(data []byte) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // stdio
 
 type stdioTransport struct {
@@ -451,7 +450,6 @@ func (t *stdioTransport) close() error {
 	return err
 }
 
-// ---------------------------------------------------------------------------
 // streamable HTTP
 
 type httpTransport struct {

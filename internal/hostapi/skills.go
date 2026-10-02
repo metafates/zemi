@@ -650,7 +650,6 @@ func (h *Host) skillsCommands() []*Command {
 	}}
 }
 
-// ---------------------------------------------------------------------------
 // zemi.skills namespace
 
 func (h *Host) skillsNamespace(L *glua.LState) *glua.LTable {

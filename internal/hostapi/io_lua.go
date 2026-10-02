@@ -236,7 +236,6 @@ func allowLine(subject, pattern, match, principal string) string {
 		luaLiteral(subject), luaLiteral(pattern), luaLiteral(match), scope)
 }
 
-// ---------------------------------------------------------------------------
 // zemi.env
 
 func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
@@ -261,7 +260,6 @@ func (h *Host) envNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// ---------------------------------------------------------------------------
 // zemi.state (persisted kv, global scope)
 
 // principal names the calling code for permission rules and state: its
@@ -362,7 +360,6 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// ---------------------------------------------------------------------------
 // zemi.timer
 
 // timerHandle is one zemi.timer on the runtime's clock (lua.Clock).
@@ -483,7 +480,6 @@ func (h *Host) timerNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// ---------------------------------------------------------------------------
 // zemi.fs
 
 // fsNamespace is zemi.fs. Paths resolve inside the jails, reads pass the
@@ -681,7 +677,6 @@ func (h *Host) jailedGrep(ctx context.Context, re *regexp.Regexp) ([]tools.Hit, 
 	return tools.Grep(ctx, root, files, re, math.MaxInt, nil)
 }
 
-// ---------------------------------------------------------------------------
 // zemi.http
 
 func (h *Host) httpNamespace(L *glua.LState) *glua.LTable {
@@ -896,7 +891,6 @@ func (h *Host) callbackDone(what string, err error) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // zemi.job
 
 type jobHandle struct {

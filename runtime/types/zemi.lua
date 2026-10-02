@@ -13,7 +13,6 @@
 --- raises; a runtime failure of a synchronous call returns `nil, err`;
 --- asynchronous work reports through its callback or handle.
 
--- ---------------------------------------------------------------------------
 -- The sandboxed standard library. The .luarc.json zemi writes turns off
 -- LuaLS's own basic, io, os and debug libraries, so these are the globals an
 -- editor offers; string, table, math, coroutine and require are LuaLS's.
@@ -228,14 +227,12 @@ function debug.traceback(msg) end
 
 zemi = {}
 
--- ---------------------------------------------------------------------------
 -- zemi.api
 
 ---@class zemi.api
 ---@field version string The API version, bumped whenever the surface changes.
 zemi.api = {}
 
--- ---------------------------------------------------------------------------
 -- zemi.config
 
 ---@alias zemi.SettingKind
@@ -318,7 +315,6 @@ function zemi.config.unwatch(id) end
 ---@return zemi.SettingSchema[]
 function zemi.config.schema() end
 
--- ---------------------------------------------------------------------------
 -- zemi.keymap
 
 ---@class zemi.KeymapOpts
@@ -425,7 +421,6 @@ function zemi.keymap.get(key, opts) end
 ---@return zemi.Keymap[]
 function zemi.keymap.list() end
 
--- ---------------------------------------------------------------------------
 -- zemi.command
 
 --- What a command handler receives: the raw argument string, with piped
@@ -482,7 +477,6 @@ function zemi.command.run(name, args) end
 ---@return zemi.Command[]
 function zemi.command.list() end
 
--- ---------------------------------------------------------------------------
 -- zemi.event
 
 ---@alias zemi.EventName
@@ -710,7 +704,6 @@ function zemi.event.log(opts) end
 ---@return table<string, integer>
 function zemi.event.stats() end
 
--- ---------------------------------------------------------------------------
 -- zemi.ui
 
 --- The session's goal (/goal).
@@ -1455,7 +1448,6 @@ zemi.ui.reasoning = {}
 --- only.
 function zemi.ui.reasoning.toggle() end
 
--- ---------------------------------------------------------------------------
 -- zemi.notify and zemi.log
 
 ---@class zemi.NotifySpec
@@ -1537,7 +1529,6 @@ function zemi.log.error(message, fields) end
 ---@return zemi.LogEntry[]
 function zemi.log.list() end
 
--- ---------------------------------------------------------------------------
 -- zemi.provider and zemi.model
 
 ---@class zemi.ModelSpec
@@ -1683,7 +1674,6 @@ function zemi.model.ask(spec) end
 ---@param role? zemi.ModelRole
 function zemi.model.pick(role) end
 
--- ---------------------------------------------------------------------------
 -- zemi.agent
 
 ---@class zemi.ProfileSpec
@@ -1770,7 +1760,6 @@ function zemi.agent.list() end
 ---@return zemi.RunHandle
 function zemi.agent.run(spec, on_done) end
 
--- ---------------------------------------------------------------------------
 -- zemi.workflow: run() and list() in config Lua; the rest exist only inside
 -- a workflow script, which also has zemi.json and nothing else of zemi.
 
@@ -1849,7 +1838,6 @@ function zemi.workflow.phase(name) end
 ---@param ... any
 function zemi.workflow.log(...) end
 
--- ---------------------------------------------------------------------------
 -- zemi.session
 
 ---@class zemi.SessionInfo
@@ -1907,7 +1895,6 @@ function zemi.session.todos() end
 ---@return string|nil err
 function zemi.session.rewind(message_id) end
 
--- ---------------------------------------------------------------------------
 -- zemi.composer
 
 ---@class zemi.ComposerState
@@ -1976,7 +1963,6 @@ function zemi.composer.paste() end
 --- it). User or builtin origin only.
 function zemi.composer.edit() end
 
--- ---------------------------------------------------------------------------
 -- zemi.permission
 
 ---@alias zemi.Decision
@@ -2095,7 +2081,6 @@ function zemi.permission.mode.get() end
 ---@return zemi.PermMode[]
 function zemi.permission.mode.list() end
 
--- ---------------------------------------------------------------------------
 -- zemi.tool
 
 ---@class zemi.ToolSpec
@@ -2234,7 +2219,6 @@ function zemi.tool.call(name, args) end
 ---@return zemi.ToolDecl? decl Nil when this run has no such tool.
 function zemi.tool.describe(name) end
 
--- ---------------------------------------------------------------------------
 -- zemi.fs
 
 ---@class zemi.DirEntry
@@ -2318,7 +2302,6 @@ function zemi.fs.glob(pattern) end
 ---@return zemi.GrepHit[]
 function zemi.fs.grep(pattern) end
 
--- ---------------------------------------------------------------------------
 -- zemi.http
 
 ---@class zemi.HTTPSpec
@@ -2381,7 +2364,6 @@ function zemi.http.request(spec) end
 ---@return zemi.HTTPHandle
 function zemi.http.get(url, opts) end
 
--- ---------------------------------------------------------------------------
 -- zemi.job
 
 ---@class zemi.JobSpec
@@ -2443,7 +2425,6 @@ function zemi.job.start(spec) end
 ---@return string|nil err
 function zemi.job.wait(spec) end
 
--- ---------------------------------------------------------------------------
 -- zemi.timer
 
 ---@class zemi.TimerHandle
@@ -2466,7 +2447,6 @@ function zemi.timer.after(ms, fn) end
 ---@return zemi.TimerHandle
 function zemi.timer.every(ms, fn) end
 
--- ---------------------------------------------------------------------------
 -- zemi.state and zemi.env
 
 --- A persisted key-value store, global to zemi. Values round-trip as JSON.
@@ -2509,7 +2489,6 @@ zemi.env = {}
 ---@return string?
 function zemi.env.get(name) end
 
--- ---------------------------------------------------------------------------
 -- zemi.json
 
 ---@class zemi.json
@@ -2524,7 +2503,6 @@ function zemi.json.encode(value) end
 ---@return string|nil err
 function zemi.json.decode(s) end
 
--- ---------------------------------------------------------------------------
 -- zemi.memory, zemi.learn, zemi.skills
 
 ---@class zemi.Memory
@@ -2635,7 +2613,6 @@ function zemi.skills.enable(name) end
 ---@return string|nil err
 function zemi.skills.disable(name) end
 
--- ---------------------------------------------------------------------------
 -- zemi.mcp and zemi.lsp
 
 ---@class zemi.MCPSpec
@@ -2723,7 +2700,6 @@ function zemi.lsp.del(name) end
 ---@return zemi.LSPInfo[]
 function zemi.lsp.list() end
 
--- ---------------------------------------------------------------------------
 -- zemi.health and zemi.errors
 
 --- What a /health check returns; no level reads as "ok", and any other
@@ -2787,7 +2763,6 @@ function zemi.project.trusted() end
 ---@return string
 function zemi.project.root() end
 
--- ---------------------------------------------------------------------------
 -- zemi.test
 
 --- A plugin's tests: each top-level file in its `tests/` is a test file

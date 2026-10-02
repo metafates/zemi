@@ -229,7 +229,6 @@ func (t *PluginTest) declare(L *glua.LState) int {
 	return 0
 }
 
-// ---------------------------------------------------------------------------
 // quiet and the clock
 
 // settle fires the timers due by until in order, waiting after each until
@@ -358,7 +357,6 @@ func (c *fakeClock) due(until time.Time) (func(), bool) {
 	return t.f, true
 }
 
-// ---------------------------------------------------------------------------
 // drivers
 
 // raiseError is an act's error that fails the case at the driver's call
@@ -781,7 +779,6 @@ func (t *PluginTest) complete(L *glua.LState) int {
 	})
 }
 
-// ---------------------------------------------------------------------------
 // stubs
 
 var httpSubject = regexp.MustCompile(`^lua\.http\.[a-z]+$`)
@@ -957,7 +954,6 @@ func stubLine(kind, subject, arg string, req map[string]any) string {
 	return "test.stub(" + luaLiteral(subject) + ")"
 }
 
-// ---------------------------------------------------------------------------
 // the test zemi's UI
 
 // testUI is the UIHooks of a test zemi: it keeps the overlays for

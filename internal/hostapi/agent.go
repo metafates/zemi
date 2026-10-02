@@ -255,7 +255,6 @@ func newAgentHost() *agentHost {
 	return &agentHost{profiles: map[string]*Profile{}}
 }
 
-// ---------------------------------------------------------------------------
 // host wiring
 
 // Effort is the reasoning level modelID runs at under the agent.effort pick.
@@ -2139,7 +2138,6 @@ func (ag *agentHost) endThinking() {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // namespaces
 
 // enumTable is a table of constants keyed by each value upper-cased, like
@@ -3146,7 +3144,6 @@ func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// ---------------------------------------------------------------------------
 // permission gate for model tool calls
 
 // readLog is the live session's record of the files the model read. It

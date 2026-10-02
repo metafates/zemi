@@ -304,7 +304,6 @@ func (w serverLogWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// ---------------------------------------------------------------------------
 // tools
 
 var mcpNameUnsafe = regexp.MustCompile(`[^A-Za-z0-9_-]`)
@@ -632,7 +631,6 @@ func mcpMedia(text string, data []byte, mime string, images func() bool) fantasy
 	return fantasy.NewTextResponse(text + "\n(the " + kind + " is not shown: " + err.Error() + ")")
 }
 
-// ---------------------------------------------------------------------------
 // zemi.mcp and /mcp
 
 func (h *Host) mcpNamespace(L *glua.LState) *glua.LTable {

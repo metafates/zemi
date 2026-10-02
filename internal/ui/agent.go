@@ -157,7 +157,6 @@ func (a *App) dropAnsweredPerm() {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // chrome
 
 // boxInner is the widest row a hostBox on a w-cell screen shows whole.
