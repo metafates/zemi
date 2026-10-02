@@ -1915,7 +1915,7 @@ provenance string.
   agent run's view folds it the same way, so what a run shows behaves like the
   session's chat. Consecutive notice rows (a background report's head, an
   agent's update line, a plugin's or a loop's send) draw as one block with no
-  blank row between them, and a burst past three keeps its three newest with
+  blank row between them, and a burst past four keeps its three newest with
   the older ones behind one dim `… N earlier` row a click opens and folds back,
   so a fleet of agents reporting at once never takes the chat over; an error or
   compaction row is a block of its own. The
@@ -1954,7 +1954,7 @@ provenance string.
   above and below text of two or more lines (with the pane, it shows the run
   there instead); a step row's opens its calls nested two cells under it,
   the step's row staying as their head, and closes them again. A rail of more
-  than six rows keeps its last six and folds the earlier ones behind one dim
+  than seven rows keeps its last six and folds the earlier ones behind one dim
   row, `… 8 earlier`, whose click shows the whole run and then folds it back
   (a printed run and the pane's inspector list everything). A click on any
   other row opens that one row, command, diff and output. The reply that ends an
@@ -2035,7 +2035,8 @@ provenance string.
   a rail's step and thought rows (`step:<idx>`, `thought:<idx>`, which with
   the pane drawn show their run there; an opened step's rows are each
   `tool:<idx>`), the live thinking row
-  (`zemi.ui.reasoning.toggle()`), an agent tool row (`agent:<run id>`,
+  (`zemi.ui.reasoning.toggle()`), a fold row (`more:<idx>`, the `… N earlier`
+  a long rail or a notice burst keeps), an agent tool row (`agent:<run id>`,
   from the row's `run` field, opens that run's transcript) and a tool row
   (`tool:<idx>`, expands that row); the splash's rows resume a session or
   switch to a project, and its tip's keys run their command or fill the composer (a `fill
