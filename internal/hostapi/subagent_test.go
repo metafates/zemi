@@ -94,6 +94,14 @@ func toolCallParts(id, name, input string) []fantasy.StreamPart {
 	}
 }
 
+func reasoningParts(text string) []fantasy.StreamPart {
+	return []fantasy.StreamPart{
+		{Type: fantasy.StreamPartTypeReasoningStart, ID: "r"},
+		{Type: fantasy.StreamPartTypeReasoningDelta, ID: "r", Delta: text},
+		{Type: fantasy.StreamPartTypeReasoningEnd, ID: "r"},
+	}
+}
+
 // TestAgentToolRunsSubagent drives one parent turn that launches a
 // subagent: its report returns as the tool result, the tool row keeps the
 // progress detail, and the run is a child session hidden from the list.

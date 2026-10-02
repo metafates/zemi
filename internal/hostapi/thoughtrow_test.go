@@ -14,13 +14,6 @@ import (
 // is a row of the rail while the turn runs, not one step later with the reply.
 func TestThoughtRowLandsWhenItsCallStarts(t *testing.T) {
 	h := newTestHostUI(t)
-	think := func(text string) []fantasy.StreamPart {
-		return []fantasy.StreamPart{
-			{Type: fantasy.StreamPartTypeReasoningStart, ID: "r"},
-			{Type: fantasy.StreamPartTypeReasoningDelta, ID: "r", Delta: text},
-			{Type: fantasy.StreamPartTypeReasoningEnd, ID: "r"},
-		}
-	}
 	var calls atomic.Int64
 	var park, unpark sync.Once
 	reached, release := make(chan struct{}), make(chan struct{})
@@ -30,9 +23,9 @@ func TestThoughtRowLandsWhenItsCallStarts(t *testing.T) {
 		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
 			switch calls.Add(1) {
 			case 1:
-				return append(think("first"), toolCallParts("c1", "glob", `{"pattern":"*.go"}`)...)
+				return append(reasoningParts("first"), toolCallParts("c1", "glob", `{"pattern":"*.go"}`)...)
 			case 2:
-				return append(think("second"), toolCallParts("c2", "glob", `{"pattern":"*.go"}`)...)
+				return append(reasoningParts("second"), toolCallParts("c2", "glob", `{"pattern":"*.go"}`)...)
 			}
 			park.Do(func() { close(reached) })
 			<-release

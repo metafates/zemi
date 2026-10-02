@@ -35,19 +35,12 @@ func waitIdle(t *testing.T, h *Host) {
 // riding the typed message draws under it.
 func TestResumeDrawsLiveRows(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	think := func(text string) []fantasy.StreamPart {
-		return []fantasy.StreamPart{
-			{Type: fantasy.StreamPartTypeReasoningStart, ID: "r"},
-			{Type: fantasy.StreamPartTypeReasoningDelta, ID: "r", Delta: text},
-			{Type: fantasy.StreamPartTypeReasoningEnd, ID: "r"},
-		}
-	}
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
 			if toolResult {
-				return append(think("now answer"), textParts("done")...)
+				return append(reasoningParts("now answer"), textParts("done")...)
 			}
-			step := append(think("look first"), textParts("I will look first.")[:3]...)
+			step := append(reasoningParts("look first"), textParts("I will look first.")[:3]...)
 			return append(step, toolCallParts("c1", "glob", `{"pattern":"*.go"}`)...)
 		}}, nil
 	}
