@@ -668,19 +668,19 @@ func TestInterruptKeys(t *testing.T) {
 		active, view  bool
 		draft         string
 		keys          []tea.KeyPressMsg
-		cancel        bool
+		cancel, armed bool
 		composer, row string
 	}{
-		{"esc arms", true, false, "", []tea.KeyPressMsg{esc}, false, "", "esc again"},
-		{"esc esc interrupts", true, false, "", []tea.KeyPressMsg{esc, esc}, true, "also this", "Cancelling"},
-		{"esc arms again after 3s", true, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, "", "esc again"},
-		{"esc in an agent view goes back and disarms", true, true, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, "", "esc again"},
-		{"ctrl+c interrupts at once", true, false, "", []tea.KeyPressMsg{ctrlC}, true, "also this", "Cancelling"},
-		{"ctrl+c clears a draft, up restores it", false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, "draft", ""},
-		{"ctrl+c on an empty composer arms quit", false, false, "", []tea.KeyPressMsg{ctrlC}, false, "", "ctrl+c quit"},
-		{"a broken prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, "abcx", ""},
-		{"a timed out prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlE, wait, x}, false, "abcx", ""},
-		{"ctrl+c drops a held prefix", false, false, "abc", []tea.KeyPressMsg{ctrlE, ctrlC}, false, "", ""},
+		{"esc arms", true, false, "", []tea.KeyPressMsg{esc}, false, false, "", "esc again"},
+		{"esc esc interrupts", true, false, "", []tea.KeyPressMsg{esc, esc}, true, false, "also this", "ctrl+c quit"},
+		{"esc arms again after 3s", true, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", "esc again"},
+		{"esc in an agent view goes back and disarms", true, true, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, false, "", "esc again"},
+		{"ctrl+c interrupts at once", true, false, "", []tea.KeyPressMsg{ctrlC}, true, false, "also this", "ctrl+c quit"},
+		{"ctrl+c clears a draft, up restores it", false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, false, "draft", ""},
+		{"ctrl+c on an empty composer arms quit", false, false, "", []tea.KeyPressMsg{ctrlC}, false, true, "", "ctrl+c quit"},
+		{"a broken prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, false, "abcx", ""},
+		{"a timed out prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlE, wait, x}, false, false, "abcx", ""},
+		{"ctrl+c drops a held prefix", false, false, "abc", []tea.KeyPressMsg{ctrlE, ctrlC}, false, false, "", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, 90, 16)
@@ -719,7 +719,7 @@ func TestInterruptKeys(t *testing.T) {
 			}
 			app.renderSync(t)
 			frame := ansi.Strip(app.Frame())
-			if app.cancelling != c.cancel || app.composer.text != c.composer || !strings.Contains(frame, c.row) || host.ViewedAgent() != "" || app.isArmed("ctrl+c") != strings.HasSuffix(c.row, "quit") || len(app.keySeq) > 0 {
+			if app.cancelling != c.cancel || app.composer.text != c.composer || !strings.Contains(frame, c.row) || host.ViewedAgent() != "" || app.isArmed("ctrl+c") != c.armed || len(app.keySeq) > 0 {
 				t.Fatalf("cancelling=%v composer=%q view=%q frame:\n%s", app.cancelling, app.composer.text, host.ViewedAgent(), frame)
 			}
 		})
@@ -1369,27 +1369,24 @@ func TestReasoningPane(t *testing.T) {
 }
 
 // TestWorkingRowRetry: a waiting provider retry replaces the elapsed time
-// with a countdown so the turn does not look stuck.
+// with a countdown so the turn does not look stuck, and the rule names the
+// running call nowhere: that is the chat row's job.
 func TestWorkingRowRetry(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
 	for _, c := range []struct {
 		in   time.Duration
 		want string
-	}{{0, ` Retrying · attempt 2 · esc interrupt · retrying now ─`}, {4 * time.Second, ` Retrying · attempt 2 · esc interrupt · next try in \ds ─`}} {
+	}{{0, ` esc interrupt · retrying now ─`}, {4 * time.Second, ` esc interrupt · next try in \ds ─`}} {
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Retrying: true, RetryIn: c.in, Retries: 1})
 		app.renderSync(t)
 		if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(c.want).MatchString(frame) {
 			t.Fatalf("retry row missing %q:\n%s", c.want, frame)
 		}
 	}
-	// the label shimmers: every rune gets its own color
-	segs := app.widgetLines("working")[0]
-	i := slices.IndexFunc(segs, func(s hostapi.Segment) bool { return s.Effect == "shimmer" })
-	if i < 0 {
-		t.Fatalf("no shimmering label on the working row: %v", segs)
-	}
-	if row := app.renderSegs(segs[i:i+1], 80); strings.Count(row, "\x1b[") < len("Retrying") {
-		t.Fatalf("label does not shimmer: %q", row)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: []hostapi.StreamTool{{Name: "shell", Status: "run", Label: "run the tests"}}})
+	app.renderSync(t)
+	if row := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 80)); strings.Contains(row, "run the tests") || strings.Contains(row, "shell") {
+		t.Fatalf("the working row names the running call: %q", row)
 	}
 }
 
@@ -1432,21 +1429,22 @@ func TestWorkingRowMascot(t *testing.T) {
 	if a, b := row(0), row(800); !strings.HasPrefix(a, "@··─") || !strings.HasPrefix(b, "@..─") {
 		t.Fatalf("the eyes do not read: %q then %q", a, b)
 	}
-	// the status is centered and the label stays put as the clock gains digits
+	// the key and the clock end the rule, and the key keeps its column as the
+	// clock gains digits, its reserved cells going into the margin
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 5 * time.Second})
 	short := row(500)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 605 * time.Second})
 	r := row(500)
-	const status = " working · esc interrupt · 10m 05s "
+	const status = " esc interrupt · 10m 05s "
 	at := strings.Index(r, status)
-	if at < 0 || at != strings.Index(short, "working")-1 {
-		t.Fatalf("the status slid: %q then %q", short, r)
+	if at <= len(r)/2 || at != strings.Index(short, " esc interrupt · 5s") {
+		t.Fatalf("the status is not pinned to the right end: %q then %q", short, r)
 	}
-	if pre, post := len([]rune(r[:at])), len([]rune(r[at+len(status):])); abs(pre-post) > 1 {
-		t.Fatalf("the status is not centered: %q", r)
+	if !strings.HasSuffix(r, "10m 05s ───") || !strings.HasSuffix(short, "5s ────────") {
+		t.Fatalf("the block does not end the rule: %q then %q", short, r)
 	}
 	// the open prompt says what answers it, so the rule shrinks to the snail
-	// alone: no label, and no esc, which the prompt takes
+	// alone: no esc, which the prompt takes
 	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.shell", Arg: "make"}}
 	if r := row(1000); r != "@??"+strings.Repeat("─", 75) {
 		t.Fatalf("the snail does not ask while the user is asked: %q", r)
@@ -1475,11 +1473,11 @@ func TestWorkingRowMascot(t *testing.T) {
 	if a, b := row(3210), row(3610); !strings.HasPrefix(a, "@.?") || !strings.HasPrefix(b, "@?.") {
 		t.Fatalf("the thinking eyes do not change: %q then %q", a, b)
 	}
-	// a narrow rule drops the queue depth before the interrupt key
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Steering: []string{"x"}})
-	app.Update(tea.WindowSizeMsg{Width: 45, Height: 16})
+	// a narrow rule drops the clock before the interrupt key
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
+	app.Update(tea.WindowSizeMsg{Width: 26, Height: 16})
 	app.renderSync(t)
-	if r := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 45)); !strings.Contains(r, " working · esc interrupt · 20s ─") {
+	if r := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 24)); !strings.Contains(r, "esc interrupt") || strings.Contains(r, "20s") {
 		t.Fatalf("the narrow rule lost the interrupt key: %q", r)
 	}
 }

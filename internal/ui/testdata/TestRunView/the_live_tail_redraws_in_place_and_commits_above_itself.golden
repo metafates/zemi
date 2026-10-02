@@ -3,12 +3,12 @@
 │ ⠋ run the flush tests
 │   ⎿ go test ./internal/hostapi
 
-@··────────────────────── run the flush tests · ctrl+c stop · 6s ─────────────────────────────────[?2026l[?2026h[5A[J▌ why does TestFlushOrder fail?
+@··─────────────────────────────────────────────────────────────────── ctrl+c stop · 6s ──────────[?2026l[?2026h[5A[J▌ why does TestFlushOrder fail?
 [?25l
 │ ⠋ run the flush tests
 │   ⎿ go test ./internal/hostapi
 
-@··────────────────────── run the flush tests · ctrl+c stop · 6s ─────────────────────────────────[?2026l[?2026h[4A[J
+@··─────────────────────────────────────────────────────────────────── ctrl+c stop · 6s ──────────[?2026l[?2026h[4A[J
 │ ✗ run the flush tests                                                                         2.4s
 │   ⎿ go test ./internal/hostapi
 │     --- FAIL: TestFlushOrder

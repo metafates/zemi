@@ -229,18 +229,15 @@ func TestModeSwitchQuiet(t *testing.T) {
 }
 
 // TestAnchoredBoxBottomBorder: the rule an anchored box stands on carries the
-// working label and the snail art, and the cells the box covers are its own
+// working rule's key and clock, and the cells the box covers are its own
 // bottom border: no backdrop text cuts it.
 func TestAnchoredBoxBottomBorder(t *testing.T) {
 	for _, anchor := range []hostapi.OverlayAnchor{hostapi.OverlayBottomLeft, hostapi.OverlayBottomRight} {
 		app, host := bootAgentApp(t, 100, 20)
-		host.SeedStream(hostapi.StreamSnapshot{
-			Active: true, Elapsed: 20 * time.Second,
-			Tools: []hostapi.StreamTool{{Name: "workflow", Status: "run", Label: "Final RISK-29198 council"}},
-		})
+		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
 		app.renderSync(t)
-		if label := ansi.Strip(app.Frame()); !strings.Contains(label, "workflow final RISK-29198 council · esc interrupt") {
-			t.Fatalf("%s: no working label on the rule to cut:\n%s", anchor, label)
+		if label := ansi.Strip(app.Frame()); !strings.Contains(label, "esc interrupt · 20s") {
+			t.Fatalf("%s: no working key and clock on the rule to cut:\n%s", anchor, label)
 		}
 		app.openOverlay(hostapi.Overlay{ID: "usage", Title: "Usage", Items: []any{"row one"}, Anchor: anchor})
 		app.renderSync(t)

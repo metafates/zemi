@@ -1626,12 +1626,12 @@ provenance string.
   rule, the state in its eyes alone: swapping while the model thinks or
   tools run, `??` while the user is asked, then for a few seconds `^^`
   when the turn finished ok, `><` when it failed and idle eyes when it was
-  cancelled; centered on the rule a shimmering
-  label naming the current activity, interrupt key, queue depth, elapsed
-  time, the ticking part keeping the cells it grows to, so the block is
-  centered once and the label never slides; it reads `ctx.frame`, `ctx.ended`,
-  `ctx.cancelling`, `interrupt_armed`, `view`, `editing`, `waiting`,
-  `headless` and `agent.retry`/`compacting`),
+  cancelled; at the right end of the rule the interrupt key
+  with the elapsed time, the ticking part keeping the cells it grows to, so
+  the block is anchored once and the key never slides; the running call names
+  no cell of it, which the chat row already says. It reads `ctx.frame`,
+  `ctx.ended`, `ctx.cancelling`, `interrupt_armed`, `view`, `editing`,
+  `waiting`, `headless` and `agent.retry`/`compacting`/`checking_goal`),
   the statusline below. The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
   Statusline
@@ -1792,7 +1792,7 @@ provenance string.
   pane (regions `thinking.head` and `thinking`, 36 to 56 cells), the row holding both
   the stage, centered past 100 cells (157 with the pane), whose separator meets the
   composer's top rule, the composer's rules running wider than the stage so their
-  widgets fit; the working label centers on the composer's rule, whatever the pane
+  widgets fit; the working rule's key and clock sit at its right end, whatever the pane
   does; the pane is hidden unless
   `ui.reasoning` is `pane` and collapses under 100 columns. User config may replace the layout, plugin and
   project code may not (a layout can

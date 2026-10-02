@@ -5,13 +5,12 @@ local snail = require("zemi.tui.snail")
 local READS = { read = true, grep = true, glob = true, fetch = true, web_search = true, skill = true }
 
 -- The composer frame's top rule, all ctx.width cells of it: the mascot in the
--- left corner in the state of the turn and, centered on the rule, a shimmering
--- label naming what the agent does, the interrupt key, the queue depth and
--- the elapsed time. A part that ticks or flips keeps the cells it can grow
--- to, so the block is centered once and the label never slides. The label
+-- left corner in the state of the turn and, at the right end of the rule, the
+-- interrupt key and the elapsed time. A part that ticks keeps the cells it can
+-- grow to, so the block is anchored once and the key never slides. The block
 -- stays away for the first 300ms so instant turns do not flash it, and the
 -- eyes say how the turn ended for a few seconds after. A busy job shows the
--- same way while idle, and as the first part to go during a turn.
+-- same way while idle.
 
 -- the state the eyes last showed and the frame it began on: an eye cycle
 -- starts with its state, whatever the clock read
@@ -27,17 +26,16 @@ zemi.ui.widget.add({
 	render = function(ctx)
 		local ag = ctx.agent or {}
 		-- each part with its worth: a narrow rule sheds the least worth first;
-		-- a ticking or flipping part also has the cells it grows to, drawn as
-		-- rule after the last part
+		-- a ticking part also has the cells it grows to, drawn as rule after it
 		---@type { [1]: string, [2]: integer, [3]: integer? }[]
 		local parts = {}
-		local label, state = "", "idle"
+		local state = "idle"
 		local busy = ctx.busy and ctx.busy.elapsed >= 0.3 and ctx.busy or nil
 		-- a printed run takes no key but the shell's interrupt
 		local stop = ctx.headless and "ctrl+c stop" or ctx.interrupt_armed and "esc again" or "esc interrupt"
 		if not ctx.agent_active then
 			if busy then
-				label, state = busy.label, "working"
+				state = "working"
 				if busy.cancellable and not ctx.view then parts[1] = { stop, 6, 13 } end
 				parts[#parts + 1] = { fmt.duration(busy.elapsed, true), 5, 7 }
 			elseif ctx.ended == "ok" then
@@ -46,35 +44,23 @@ zemi.ui.widget.add({
 				state = "error"
 			end
 		elseif (ag.elapsed or 0) >= 0.3 or ctx.cancelling then
-			label, state = "working", "working"
-			-- the first: serial calls run in call order, and a parallel batch
-			-- starts together
+			state = "working"
+			-- the eyes read the running call: serial calls run in call order, and
+			-- a parallel batch starts together
+			local running = false
 			for _, t in ipairs(ag.tools or {}) do
 				if t.status == "run" then
-					-- as its row reads: the verb, then the label or the input, which
-					-- is converted only when read, since this runs every frame
-					local input = t.label == "" and (fmt.relpath(t.input, ctx.cwd, ctx.home):gsub("%s+", " ")) or ""
-					local verb, rest = fmt.head(t.name, t.label, input)
-					label = fmt.lower(verb) .. rest
+					running = true
 					if READS[t.name] then state = "reading" end
 					break
 				end
 			end
-			if label == "working" and ag.reasoning ~= "" and ag.text == "" then
-				label, state = "thinking", "thinking"
-			end
+			if not running and ag.reasoning ~= "" and ag.text == "" then state = "thinking" end
+			if ag.compacting or ag.checking_goal then state = "reading" end
 			---@type { [1]: string, [2]: integer, [3]: integer }?
 			local tick = { fmt.duration(ag.elapsed, true), 5, 7 }
-			if ag.compacting then
-				label, state = "compacting", "reading"
-			end
-			if ag.checking_goal then
-				label, state = "Checking the goal", "reading"
-			end
 			if ag.retry then
-				label, state = "Retrying", "error"
-				parts = { { "attempt " .. ag.retry.attempt, 3 } }
-				if ag.retry.why ~= "" then parts[#parts + 1] = { ag.retry.why, 2 } end
+				state = "error"
 				tick = {
 					ag.retry.next_in > 0 and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true)
 						or "retrying now",
@@ -82,24 +68,18 @@ zemi.ui.widget.add({
 					18,
 				}
 			end
-			if ctx.cancelling then label = "Cancelling" end
 			if ctx.editing ~= "" then
-				label, state, tick = "Editing " .. ctx.editing, "idle", nil
+				state, tick = "idle", nil
 				parts = { { "save and close the editor to continue", 5 } }
 			end
 			-- the open prompt says what answers it, so the rule shrinks to the
 			-- mascot alone rather than repeating it; in an agent view esc goes back
 			if ctx.waiting ~= "" then
-				label, state, parts, tick = "", "asking", {}, nil
-			else
-				if ctx.cancelling then
-					parts[#parts + 1] = { "ctrl+c quit", 6, 13 }
-				elseif not ctx.view then
-					parts[#parts + 1] = { stop, 6, 13 }
-				end
-				local queued = #ag.steering - ag.reports
-				if queued > 0 then parts[#parts + 1] = { queued .. " queued · up edit", 1 } end
-				if busy then parts[#parts + 1] = { busy.label, 0 } end
+				state, parts, tick = "asking", {}, nil
+			elseif ctx.cancelling then
+				parts[#parts + 1] = { "ctrl+c quit", 6, 13 }
+			elseif not ctx.view then
+				parts[#parts + 1] = { stop, 6, 13 }
 			end
 			-- last, where its changing width moves nothing
 			if tick then parts[#parts + 1] = tick end
@@ -113,34 +93,32 @@ zemi.ui.widget.add({
 			return n
 		end
 		local span = ctx.width
-		-- the snail keeps 8 cells of rule; the label gives way down to 16 cells
-		-- before a part goes, then clips into what the parts leave
-		local keep = math.min(zemi.ui.width(label), 16)
-		while #parts > 0 and keep + room() + 10 > span do
+		-- the snail keeps six cells of rule before a part goes
+		while #parts > 0 and room() + 6 > span do
 			local least = 1
 			for i, p in ipairs(parts) do
 				if p[2] < parts[least][2] then least = i end
 			end
 			table.remove(parts, least)
 		end
-		label = fmt.clip(label, span - 10 - room())
 		---@type string[]
 		local texts = {}
 		for i, p in ipairs(parts) do
 			texts[i] = p[1]
 		end
-		local after = #texts > 0 and " · " .. table.concat(texts, " · ") or ""
-		local text = label .. after ~= "" and zemi.ui.width(label) + room() + 2 or 0
+		local after = #texts > 0 and " " .. table.concat(texts, " · ") .. " " or ""
+		local block = zemi.ui.width(after)
 		if state ~= shown then
 			shown, since = state, ctx.frame
 		end
-		local left = text > 0 and math.floor((span - text) / 2) or ctx.width
+		-- the block ends the rule: its own reserved cells grow into the margin,
+		-- so the key keeps its column whatever the clock reads
+		local left = block > 0 and ctx.width - room() - 2 or ctx.width
 		local row = snail.rule(state, ctx.frame - since, left)
-		if text > 0 then
-			row[#row + 1] = { text = " " .. label, hl = "Dim", effect = "shimmer" }
-			row[#row + 1] = { text = after .. " ", hl = "Dim" }
+		if block > 0 then
+			row[#row + 1] = { text = after, hl = "Dim" }
 			row[#row + 1] = {
-				text = string.rep("─", ctx.width - left - zemi.ui.width(label .. after) - 2),
+				text = string.rep("─", ctx.width - left - block),
 				hl = "Rule",
 				copy = false,
 			}
