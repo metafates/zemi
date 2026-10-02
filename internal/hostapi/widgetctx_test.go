@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	glua "github.com/yuin/gopher-lua"
 
@@ -31,6 +32,49 @@ for _, c in ipairs({
   assert(got == c[4], c[1] .. " reads " .. got .. ", want " .. c[4])
 end
 `)
+}
+
+// TestViewedRunIsTheLiveOne: while an agent run is shown the ctx reports that
+// run's own state, not the session's, so the chat draws its last activity run
+// live and the working rule clocks it; the session's stream stays out of it.
+func TestViewedRunIsTheLiveOne(t *testing.T) {
+	h := newTestHostUI(t)
+	h.SetUIHooks(&fakeUI{}) // ViewAgent opens a screen
+	const src = `(ctx.agent_active and ((ctx.agent or {}).elapsed or 0) > 60) and "run" or "session"`
+	if err := h.RT.ExecuteChunk(context.Background(),
+		`zemi.ui.widget.add({ id = "probe", region = "statusline.right", render = function(ctx) return { { { text = `+src+` } } } end })`,
+		"probe.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	probe := func() string {
+		t.Helper()
+		lines, _, err := h.RenderWidget(context.Background(), h.Widgets.Get("probe"), 60, 1, UIState{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return SegsText(lines[0])
+	}
+	if got := probe(); got != "session" {
+		t.Fatalf("the session's ctx reads %q", got)
+	}
+	// a run of this process, started a minute and a half ago
+	run, _ := h.newRun(context.Background(), AgentDef{Name: "explore"}, "d", "look", true)
+	run.started = time.Now().Add(-90 * time.Second)
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ViewAgent(run.id); err != nil {
+		t.Fatal(err)
+	}
+	if got := probe(); got != "run" {
+		t.Fatalf("the viewed running run reads %q, want its own active state and clock", got)
+	}
+	if err := h.ViewAgent(""); err != nil {
+		t.Fatal(err)
+	}
+	if got := probe(); got != "session" {
+		t.Fatalf("leaving the view reads %q", got)
+	}
 }
 
 // BenchmarkWidgetCtx renders a statusline-like widget that reads one field

@@ -1272,7 +1272,7 @@ func TestTurnClockIsTheHostClock(t *testing.T) {
 	h.SetUIHooks(&fakeUI{})
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
-			if s := h.AgentStream(); s.Elapsed < 0 {
+			if s := h.AgentStream(); s.Elapsed < 0 || s.Elapsed > time.Minute {
 				t.Errorf("a live turn on a clock behind the wall one counts %v", s.Elapsed)
 			}
 			return textParts("done")
@@ -1283,7 +1283,7 @@ func TestTurnClockIsTheHostClock(t *testing.T) {
 	}
 	waitIdle(t, h)
 	tr := h.Session().Transcript
-	if last := tr[len(tr)-1]; last.Stat != nil && last.Stat.ElapsedMS < 0 {
+	if last := tr[len(tr)-1]; last.Stat != nil && (last.Stat.ElapsedMS < 0 || last.Stat.ElapsedMS > 60_000) {
 		t.Fatalf("the settled turn counts %d ms", last.Stat.ElapsedMS)
 	}
 }

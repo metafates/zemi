@@ -21,6 +21,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -695,6 +696,18 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 		return nil
 	})
 	waitIdle(t, h)
+
+	// the model's own detached start is refused with the advice it can act on:
+	// it can call the tool again without background, a user's or Lua's cannot
+	h.Settings.SetQuiet("agent.max_background", 1)
+	if err := h.tasks.addFlow(&flowRun{id: store.ShortID(), parent: h.AgentSessionID(), background: true, status: RunRunning}, waitAdvice); err != nil {
+		t.Fatal(err)
+	}
+	resp, err = h.workflowTool(h.PipelineFor()).Run(context.Background(),
+		fantasy.ToolCall{ID: "2", Name: "workflow", Input: `{"script":"return 1","background":true}`})
+	if err != nil || !strings.Contains(resp.Content, foregroundAdvice) {
+		t.Fatalf("a refused background start = %q, %v, want %q", resp.Content, err, foregroundAdvice)
+	}
 }
 
 // TestWorkflowUserStart: /workflows run starts the saved workflow with no

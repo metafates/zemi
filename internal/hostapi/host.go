@@ -1611,6 +1611,24 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 			stream.Active, stream.Text, stream.Reasoning, stream.Tools, stream.Steering = false, "", "", nil, nil
 		}
 	}
+	// Showing an agent run, the chat renders its transcript alone and the run
+	// reports its own state: the session's turn, todos and stream stay out of
+	// it. Before the ctx writes below, which read stream.
+	run := h.viewedRun()
+	transcript := sess.Transcript
+	var view *glua.LTable
+	if run != nil {
+		status, _, took, _ := run.state()
+		v := L.NewTable()
+		v.RawSetString("id", glua.LString(run.id))
+		v.RawSetString("agent", glua.LString(run.agent))
+		v.RawSetString("description", glua.LString(sanitize.String(run.description)))
+		v.RawSetString("status", glua.LString(status))
+		stream.Active, stream.Elapsed = status == RunRunning, took
+		transcript = run.transcript()
+		stream.Text, stream.Reasoning, stream.Tools, stream.Steering = "", "", nil, queuedRows(run.queued())
+		view = v
+	}
 	tb = L.CreateTable(0, 33)
 	tb.RawSetString("headless", glua.LBool(printed != nil))
 	tb.RawSetString("width", glua.LNumber(width))
@@ -1672,27 +1690,12 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		lt.RawSetString("runs", glua.LNumber(l.Runs))
 		tb.RawSetString("loop", lt)
 	}
-	// Showing an agent run, the chat renders its transcript alone: the
-	// session's live turn and todos stay out of it.
-	run := h.viewedRun()
-	transcript := sess.Transcript
-	if run != nil {
-		status, _, _, _ := run.state()
-		v := L.NewTable()
-		v.RawSetString("id", glua.LString(run.id))
-		v.RawSetString("agent", glua.LString(run.agent))
-		v.RawSetString("description", glua.LString(sanitize.String(run.description)))
-		v.RawSetString("status", glua.LString(status))
-		tb.RawSetString("view", v)
-		// the run on screen is the one that runs: the chat draws its last
-		// activity run live, and the session's turn is not on screen at all
-		stream.Active = status == RunRunning
-		transcript = run.transcript()
-		stream.Text, stream.Reasoning, stream.Tools, stream.Steering = "", "", nil, queuedRows(run.queued())
-	}
 	tb.RawSetString("usage", usageTable(L, stream))
 	tb.RawSetString("context", contextTable(L, stream))
 	tb.RawSetString("transcript_count", glua.LNumber(len(transcript)))
+	if view != nil { // absent while the session shows
+		tb.RawSetString("view", view)
+	}
 	// 0 while an agent run is shown: its rows mutate in place as the run
 	// goes, so the chat widget must not cache them.
 	epoch := h.trEpoch.Load()

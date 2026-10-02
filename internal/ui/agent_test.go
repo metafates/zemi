@@ -1831,11 +1831,11 @@ func TestWorkingRowAgentView(t *testing.T) {
 	if r := row(80); !strings.HasSuffix(r, " viewing explore · esc back") {
 		t.Fatalf("the idle rule does not name the viewed run: %q", r)
 	}
-	// a running turn takes the interrupt key, not the one that leaves the view,
-	// and the clock it adds still ends the rule
+	// the rule reports the run on screen, never the session's turn: a running
+	// session moves neither the clock nor the key while a finished run shows
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if r := row(80); !strings.HasSuffix(r, "viewing explore · esc back · 20s") || strings.Contains(r, "esc interrupt") {
-		t.Fatalf("a turn in a view does not read back: %q", r)
+	if r := row(80); !strings.HasSuffix(r, "viewing explore · esc back") || strings.Contains(r, "20s") || strings.Contains(r, "esc interrupt") {
+		t.Fatalf("a session turn leaks into the view's rule: %q", r)
 	}
 	// width sheds the name first, never the key
 	host.SeedStream(hostapi.StreamSnapshot{})

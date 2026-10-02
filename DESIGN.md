@@ -1649,8 +1649,8 @@ provenance string.
   when the turn finished ok, `><` when it failed and idle eyes when it was
   cancelled; at the right end of the rule the interrupt key
   with the elapsed time, and while the chat shows an agent run's transcript
-  that run's name and status with `esc back` in its place, drawn on an idle
-  rule too. The block ends the rule, flush with the corner, so nothing to its
+  that run's agent with `esc back` in its place, both on an idle
+  rule too, and that run's own clock while it runs. The block ends the rule, flush with the corner, so nothing to its
   right ever moves and the cells a part grows into come out of the rule on its
   left; a narrow rule sheds the least worth first, sized by the cells a part
   can grow to; the running call names

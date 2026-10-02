@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	glua "github.com/yuin/gopher-lua"
 
@@ -289,6 +290,26 @@ func TestTopBoxJoinsAlone(t *testing.T) {
 
 // TestModalDimsBackground: a modal sinks what lies under it toward the
 // canvas; a toast and the palette are not modal and do not.
+// TestBoxAreaFallsBackToTheScreen: a box centers on the stage, or on the
+// whole screen when the stage cannot give it 40 columns and 8 rows, which is
+// what a prompt on a small terminal stands on.
+func TestBoxAreaFallsBackToTheScreen(t *testing.T) {
+	screen := uv.Rect(0, 0, 120, 30)
+	for _, c := range []struct {
+		name        string
+		stage, want uv.Rectangle
+	}{
+		{"room", uv.Rect(4, 2, 110, 20), uv.Rect(4, 2, 110, 20)},
+		{"the least that fits", uv.Rect(4, 2, 40, 8), uv.Rect(4, 2, 40, 8)},
+		{"too narrow", uv.Rect(4, 2, 39, 20), screen},
+		{"too few rows", uv.Rect(4, 2, 110, 7), screen},
+	} {
+		if got := boxArea(c.stage, 120, 30); got != c.want {
+			t.Errorf("%s: boxArea = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestModalDimsBackground(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
 	host.AppendMessage("user", "hello there")
