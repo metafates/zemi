@@ -1821,6 +1821,7 @@ func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
 	at.RawSetString("model", glua.LString(stream.Model))
 	at.RawSetString("text", glua.LString(stream.Text))
 	at.RawSetString("reasoning", glua.LString(stream.Reasoning))
+	at.RawSetString("thinking", glua.LBool(stream.Thinking))
 	steering := L.CreateTable(len(stream.Steering), 0)
 	for _, s := range stream.Steering {
 		steering.Append(glua.LString(s))
@@ -2052,7 +2053,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.115.0"))
+	api.RawSetString("version", glua.LString("0.116.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

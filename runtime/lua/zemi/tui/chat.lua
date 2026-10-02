@@ -255,25 +255,24 @@ local function builder(ctx, width)
 		end
 		return #body - from + 1
 	end
-	-- "│ ✻ thought 8s", with the text under it when given: a bar-only row above
-	-- and below prose of two or more lines, so it breathes and the rail stays
-	-- whole. A thought is listed plainly once it is done, without the framings a
-	-- running entry carries.
+	-- "│ ✻ thought 8s", with the text under it when given: a bar-only row frames
+	-- the thought above and below, once it is done as well as while it runs, and
+	-- one between the header and prose of two or more lines so it breathes.
 	---@param secs number
 	---@param click string
 	---@param text string?
 	function B.thought(secs, click, text)
+		frame()
 		push({ bar(), mark("thought", click), { text = fmt.thought(secs), hl = "Dim", click = click } })
-		if not text then return end
-		local at = #B.lines + 1
-		if B.reasoning(text, nil, click) > 1 then
-			table.insert(B.lines, at, air())
-			push(air())
+		if not text then
+			frame()
+			return
 		end
+		local at = #B.lines + 1
+		if B.reasoning(text, nil, click) > 1 then table.insert(B.lines, at, air()) end
+		frame()
 	end
-	-- The model thinking now: a bar-only row above and below frames the running
-	-- entry, every finished thought a plain rail row instead. A click opens or
-	-- closes the thinking pane.
+	-- The model thinking now; a click opens or closes the thinking pane.
 	---@param tail string? The thinking so far, whose last lines show under it.
 	function B.thinking(tail)
 		frame()
@@ -841,47 +840,40 @@ zemi.ui.widget.add({
 			else
 				B.gap("text")
 				B.markdown(m.text)
-				-- the stats close a turn: only its last reply carries them, a
-				-- sentence between two runs none
-				local final = true
-				for i = last + 1, #tr do
-					local r = tr[i]
-					if (r.kind or "") == "" and r.role == "user" then break end
-					if (r.kind or "") == "" then
-						final = false
-						break
-					end
-				end
-				-- The turn's stats: how long it ran, what it wrote, what it changed
-				-- (every call's diff in the turn, never the session), and when it
-				-- ended. The changed lines print as a diffstat does.
+				-- The turn's readout rides the reply that closes it: how long it ran,
+				-- what it wrote, what it changed (every call's diff in that turn,
+				-- never the session, printed as a diffstat) and when it ended. A
+				-- sentence the model says mid-turn carries no stat, so it shows
+				-- none of it.
 				---@type zemi.Line
 				local stats = {}
-				---@param text string
-				local function stat(text)
-					if #stats > 0 then stats[#stats + 1] = { text = " · ", hl = "Dim" } end
-					stats[#stats + 1] = { text = text, hl = "Dim" }
-				end
-				local tout = fmt.tokens(m.out)
-				if (m.elapsed or 0) > 0 then stat(fmt.duration(m.elapsed)) end
-				if tout then stat(tout .. " out") end
-				local plus, minus = 0, 0
-				local start = first
-				while start > 1 and block_of(tr[start - 1]) ~= "user" do
-					start = start - 1
-				end
-				for i = start, first - 1 do
-					local a, d = diffLines(tr[i].diff or "")
-					plus, minus = plus + a, minus + d
-				end
-				if plus + minus > 0 then
-					if #stats > 0 then stats[#stats + 1] = { text = " · ", hl = "Dim" } end
-					for _, sg in ipairs(diffstat(plus, minus)) do
-						stats[#stats + 1] = sg
+				if (m.elapsed or 0) > 0 or (m.out or 0) > 0 or (m.ended or 0) > 0 then
+					---@param text string
+					local function stat(text)
+						if #stats > 0 then stats[#stats + 1] = { text = " · ", hl = "Dim" } end
+						stats[#stats + 1] = { text = text, hl = "Dim" }
 					end
+					local tout = fmt.tokens(m.out)
+					if (m.elapsed or 0) > 0 then stat(fmt.duration(m.elapsed)) end
+					if tout then stat(tout .. " out") end
+					local plus, minus = 0, 0
+					local start = first
+					while start > 1 and block_of(tr[start - 1]) ~= "user" do
+						start = start - 1
+					end
+					for i = start, first - 1 do
+						local a, d = diffLines(tr[i].diff or "")
+						plus, minus = plus + a, minus + d
+					end
+					if plus + minus > 0 then
+						if #stats > 0 then stats[#stats + 1] = { text = " · ", hl = "Dim" } end
+						for _, sg in ipairs(diffstat(plus, minus)) do
+							stats[#stats + 1] = sg
+						end
+					end
+					if (m.ended or 0) > 0 then stat(fmt.clock(m.ended)) end
 				end
-				if (m.ended or 0) > 0 then stat(fmt.clock(m.ended)) end
-				if final and #stats > 0 then
+				if #stats > 0 then
 					B.gap("stats")
 					local row = { { text = "  ", copy = false } }
 					for _, sg in ipairs(stats) do
@@ -1006,9 +998,11 @@ zemi.ui.widget.add({
 		-- the reply. With the thinking pane drawn, the thinking shows there.
 		local tools, text, queued = ag.tools or {}, ag.text or "", ag.steering or {}
 		if ag.active or #tools > 0 or text ~= "" or #queued > 0 then
-			-- the thinking shows while the model thinks, framed by a bar-only row
-			-- above and below; each thought it finishes is a rail row of its own
-			if (ag.reasoning or "") ~= "" and text == "" then
+			-- the thinking shows while the model thinks: a reasoning block of its own
+			-- is open, so a thought that ended does not go on spinning over the
+			-- calls that follow it. Each finished thought is a rail row of its own,
+			-- framed by a bar-only row above and below like the running entry.
+			if ag.thinking and (ag.reasoning or "") ~= "" and text == "" then
 				B.gap("activity")
 				B.thinking(not M.pane and ag.reasoning or nil)
 			end

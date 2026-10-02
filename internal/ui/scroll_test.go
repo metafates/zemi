@@ -488,7 +488,7 @@ func TestThinkingFade(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "look around")
 	tail := func(reasoning string) []float64 {
-		host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: reasoning})
+		host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: reasoning, Thinking: true})
 		app.renderSync(t)
 		app.Frame()
 		st := app.scrolls["chat"]

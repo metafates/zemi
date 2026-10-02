@@ -1896,11 +1896,13 @@ provenance string.
   it behind a `├` or `└`, the bar kept under a `├` for the rows that follow it
   and a gap under the last, its output behind the `⎿` under that, a lone one
   as its own row, a labelled call a row of its own, its label (its command shows
-  once opened), a thought a row of its own. A running entry, a call or the
-  thinking, is framed by a bar-only row above and below while it runs, and
-  listed plainly once it ends. While the model thinks its last lines show
+  once opened), a thought a row of its own, framed by a bar-only row above and
+  below whether it is running or done, as a call is framed only while it runs
+  and listed plainly once it ends. While the model thinks its last lines show
   under a `│ ⠋ thinking` row, their top sinking toward the canvas while it
-  hides lines above them, unless the thinking pane draws them: in
+  hides lines above them, and only while its own reasoning block is open, so a
+  thought that ended does not go on spinning over the calls that follow it,
+  unless the thinking pane draws them: in
   `ui.reasoning` pane mode, on a screen 100 columns or wider, a pane right of
   the chat (`tui/thinking.lua`), its text two cells in from the separator (the
   chat's scrollbar where the chat has one) and a blank short of its scroll bar,
@@ -1922,9 +1924,10 @@ provenance string.
   than six rows keeps its last six and folds the earlier ones behind one dim
   row, `… 8 earlier`, whose click shows the whole run and then folds it back
   (a printed run and the pane's inspector list everything). A click on any
-  other row opens that one row, command, diff and output. The last reply of a
-  turn carries its stats: the time it ran, its tokens out, the lines its calls
-  changed (`+14 -4`, that turn's alone) and the clock.
+  other row opens that one row, command, diff and output. The reply that closes
+  a turn carries its stats: the time it ran, its tokens out, the lines its calls
+  changed (`+14 -4`, that turn's alone) and the clock; a sentence the model
+  says mid-turn carries no stat, and so shows none of it.
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it;

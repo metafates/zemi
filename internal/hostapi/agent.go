@@ -1972,6 +1972,7 @@ type StreamSnapshot struct {
 	Active     bool
 	Text       string
 	Reasoning  string
+	Thinking   bool // a reasoning block is open: the model thinks right now
 	Tools      []StreamTool
 	Model      string
 	Profile    string
@@ -2060,7 +2061,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 		elapsed = time.Since(ag.turnStart)
 	}
 	out := StreamSnapshot{
-		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf,
+		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf, Thinking: ag.thinking,
 		Profile: h.Settings.Str("agent.profile"),
 		Thought: thought, Elapsed: elapsed,
 		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
@@ -2103,7 +2104,12 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	ag.tools = s.Tools
 	ag.modelSeed = s.Model
 	ag.thought = s.Thought
-	ag.thinking = false
+	ag.thinking = s.Thinking
+	// an open block counts from now, so the stream reads the seeded total
+	ag.thinkStart = time.Time{}
+	if s.Thinking {
+		ag.thinkStart = time.Now()
+	}
 	ag.sessIn = s.SessionIn
 	ag.sessOut = s.SessionOut
 	ag.lastIn = s.LastIn

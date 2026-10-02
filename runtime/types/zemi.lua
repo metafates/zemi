@@ -725,6 +725,7 @@ function zemi.event.stats() end
 ---@field model string
 ---@field text string Reply text so far.
 ---@field reasoning string Thinking text so far.
+---@field thinking boolean A reasoning block is open: the model is thinking right now, and the text above is that of the open block.
 ---@field tools zemi.ToolCall[]
 ---@field steering string[] Messages queued mid-turn; while ctx.view is set, the ones queued for that agent run.
 ---@field thought number Seconds spent reasoning.

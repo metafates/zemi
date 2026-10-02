@@ -302,11 +302,11 @@ func TestChatExpandSettledRow(t *testing.T) {
 	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.Contains(r, "make") }) {
 		t.Fatalf("the settled turn does not fold into its digest:\n%s", strings.Join(closed, "\n"))
 	}
-	// the digest stays as the run's header over a rail of plain rows: a thought
-	// is listed like anything else once it is done
+	// the digest stays as the run's header over a rail whose thought rows are
+	// framed above and below, running or done
 	open := click("turn:2")
 	at := slices.Index(open, digest)
-	rail := []string{"│ ✻ thought 6.0s", "│ run make", "│ ✻ thought 0.4s"}
+	rail := []string{"│", "│ ✻ thought 6.0s", "│", "│ run make", "│", "│ ✻ thought 0.4s", "│"}
 	if at < 0 || !slices.Equal(open[at+1:at+1+len(rail)], rail) {
 		t.Fatalf("the opened run:\n%s", strings.Join(open, "\n"))
 	}
@@ -650,7 +650,7 @@ func TestGoldenAgentStream(t *testing.T) {
 	host.SeedStream(hostapi.StreamSnapshot{
 		Active:    true,
 		Text:      "The test binary exits 1 because\nthe fixture path moved.",
-		Reasoning: "checked go.mod, then the fixture dir",
+		Reasoning: "checked go.mod, then the fixture dir", Thinking: true,
 		Tools: []hostapi.StreamTool{
 			{Name: "read", Input: "internal/fixtures/paths.go", Status: "ok"},
 			{Name: "shell", Input: "go vet ./...", Label: "Vet the packages", Status: "ok"},
@@ -1169,7 +1169,7 @@ func spinOf(head string) (mark, rest string) {
 // the live mark animates (a braille spinner) without moving the header or tail.
 func TestReasoningLiveTail(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\ntwo\nthree\nfour\nfive\n"})
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\ntwo\nthree\nfour\nfive\n", Thinking: true})
 	render := func(ms int64) string {
 		app.now = func() time.Time { return time.UnixMilli(ms) }
 		app.renderSync(t)
@@ -1204,7 +1204,7 @@ func TestReasoningLiveTail(t *testing.T) {
 // clock while the box waits for the reader.
 func TestReasoningSpinsBehindModal(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\n"})
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\n", Thinking: true})
 	app.openOverlay(hostapi.Overlay{ID: "usage", Title: "Usage", Body: "x"})
 	render := func(ms int64) string {
 		app.now = func() time.Time { return time.UnixMilli(ms) }
@@ -1250,7 +1250,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		return out[:len(out)-3] // the composer
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	live := []string{"▌ look around", "│ ✻ thought 1.2s", "│ read 2 files", "│ ✻ thought 8.0s", "│ list the data", "│ ✓ edit a.go +1 -1", "│ ✻ thought 0.4s"}
+	live := []string{"▌ look around", "│", "│ ✻ thought 1.2s", "│", "│ read 2 files", "│", "│ ✻ thought 8.0s", "│", "│ list the data", "│ ✓ edit a.go +1 -1", "│", "│ ✻ thought 0.4s", "│"}
 	if got := rows(); !slices.Equal(got, live) {
 		t.Fatalf("live rail:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(live, "\n"))
 	}
@@ -1260,16 +1260,17 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	if got := rows(); !slices.Equal(got, closed) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
-	// its row settles, and the call after it opens a new run
+	// its row settles, and the call after it opens a new run; the mid-turn
+	// sentence carries no stat, so no diff of its own shows under it
 	appendReply(host, "now the next one", hostapi.TurnStat{})
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "c.go", Status: "ok"})
-	closed = append(closed, "+1 -1", "│ read c.go")
+	closed = append(closed, "│ read c.go")
 	if got := rows(); !slices.Equal(got, closed) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if got, want := rows(), append(closed[:4:4], "· 1 file"); !slices.Equal(got, want) {
+	if got, want := rows(), append(closed[:3:3], "· 1 file"); !slices.Equal(got, want) {
 		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
 	}
 }
@@ -1304,7 +1305,7 @@ func TestReasoningPane(t *testing.T) {
 			appendReasoning(host, "where to start", hostapi.TurnStat{ThoughtMS: 1200})
 			host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
 			host.AppendMessage("user", "and now?")
-			host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: strings.Join(thought, "\n"), Thought: 4200 * time.Millisecond})
+			host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: strings.Join(thought, "\n"), Thought: 4200 * time.Millisecond, Thinking: true})
 			app.renderSync(t)
 			frame := ansi.Strip(app.Frame())
 			th, drawn := app.LayoutRects()["thinking"]
@@ -1346,7 +1347,7 @@ func TestReasoningPane(t *testing.T) {
 				for row := range strings.SplitSeq(frame, "\r\n") {
 					pane = append(pane, strings.TrimRight(ansi.Cut(row, th.X, th.X+th.Width), " "))
 				}
-				if want := []string{"  turn · 1 file · thought 1.2s", "", "  ✻ thought 1.2s", "  where to start", "  read a.go"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
+				if want := []string{"  turn · 1 file · thought 1.2s", "", "", "  ✻ thought 1.2s", "  where to start"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
 					t.Fatalf("the inspector:\n%s", strings.Join(pane, "\n"))
 				}
 				if i := slices.IndexFunc(app.lastRows[th.Y-2], func(s hostapi.Segment) bool { return s.Text == "turn" }); i < 0 || app.lastRows[th.Y-2][i].HL != "Title" {
@@ -1510,7 +1511,7 @@ func TestWorkingRowMascot(t *testing.T) {
 		}
 	}
 	// thinking blinks in place, its cycle starting with the state
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Reasoning: "hm"})
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Reasoning: "hm", Thinking: true})
 	if a, b := row(3210), row(3610); !strings.HasPrefix(a, "@.?") || !strings.HasPrefix(b, "@?.") {
 		t.Fatalf("the thinking eyes do not change: %q then %q", a, b)
 	}

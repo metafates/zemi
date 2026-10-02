@@ -97,7 +97,7 @@ zemi.ui.widget.add({
 		local ag = ctx.agent or {}
 		if not ctx.agent_active then return header(t.head, width) end
 		local tools = ag.tools or {}
-		if (ag.reasoning or "") ~= "" and (ag.text or "") == "" and #tools == 0 then
+		if ag.thinking and (ag.reasoning or "") ~= "" and (ag.text or "") == "" then
 			local m = zemi.ui.marks.spin
 			return header(
 				"thinking · " .. fmt.duration(ag.thought or 0),

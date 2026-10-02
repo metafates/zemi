@@ -201,6 +201,7 @@ func TestGoldenThinkingPane(t *testing.T) {
 	tool("shell", "ls testdata", "list the fixtures", "ok", "", "")
 	host.SeedStream(hostapi.StreamSnapshot{
 		Active:    true,
+		Thinking:  true,
 		Reasoning: "The fixture names the old path in its header, so the\ntest reads it before the loader runs. Rename it and\nupdate the golden that pins it.",
 		Thought:   4200 * time.Millisecond,
 		Elapsed:   12 * time.Second,
