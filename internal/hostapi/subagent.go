@@ -669,8 +669,6 @@ func childTools(h *Host, pipe *tools.Pipeline, want []string) (kept []fantasy.Ag
 	want = slices.DeleteFunc(want, func(n string) bool { return strings.TrimPrefix(n, "-") == tools.ToolUpdate })
 	all := append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
 	kept, unknown = filterTools(all, want, h.toolSkip(subagentExcluded))
-	// the tool lands below whatever the filter did, so a name for it is known
-	unknown = slices.DeleteFunc(unknown, func(n string) bool { return n == tools.ToolUpdate })
 	return append(kept, &updateTool{h: h, pipe: pipe}), unknown
 }
 

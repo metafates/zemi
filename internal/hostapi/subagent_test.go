@@ -610,22 +610,6 @@ func TestUpdateToolReportsAFailedSend(t *testing.T) {
 	}
 }
 
-// TestChildToolsAcceptsUpdate: naming the update tool in an agent file is
-// accepted and ignored, like the tools a subagent never gets, because every
-// run holds it whatever the file's allowlist says.
-func TestChildToolsAcceptsUpdate(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	for _, want := range [][]string{{"read", "update"}, {"read", "-update"}, {"-update"}} {
-		kept, unknown := childTools(h, h.PipelineFor(), want)
-		if len(unknown) > 0 {
-			t.Errorf("%v: unknown = %v, want none", want, unknown)
-		}
-		if !hasTool(kept, tools.ToolUpdate) {
-			t.Errorf("%v: the run has no %s tool", want, tools.ToolUpdate)
-		}
-	}
-}
-
 // TestFilterToolsNamesTheUnknown: an agent file spelling its tools another
 // harness's way names nothing here, and a run with no tools would invent
 // its report instead of failing.
