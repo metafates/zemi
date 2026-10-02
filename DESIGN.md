@@ -1829,7 +1829,7 @@ provenance string.
   one; a replay that sets none draws the Go copy of the default as it boots
   (`hostapi.DefaultLayout`).
   Go keeps the §8 chrome whatever the tree says: prompts and overlays center over the
-  stage node, or the whole screen when it is under 40 by 12; the live toasts (five at
+  stage node, or the whole screen when it is under 40 columns or 8 rows; the live toasts (five at
   most) are one tray of a fixed width at the stage's top, hugging its right edge (four
   cells over it, the rest in the margin, inside the screen), newest first, a section
   per level and title with one row per toast, each leaving when its own time runs out

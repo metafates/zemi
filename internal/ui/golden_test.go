@@ -178,7 +178,9 @@ func TestGoldenReasoningCollapse(t *testing.T) {
 // turn folded into its digest over its kept rows, the live turn's rail beside the pane that
 // streams its thought, the separator meeting the composer's top rule.
 func TestGoldenThinkingPane(t *testing.T) {
-	app, host := bootAgentApp(t, 120, 30)
+	// a frozen clock: the pane's head and the working rule count the seeded
+	// turn from now, so a moving clock would draw different seconds each run
+	app, host := bootAgentAppOn(t, 120, 30, frozenClock{at: time.UnixMilli(1_700_000_000_000)})
 	if err := host.ToggleReasoning(); err != nil {
 		t.Fatal(err)
 	}

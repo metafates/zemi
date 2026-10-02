@@ -345,8 +345,8 @@ func TestToastOverBox(t *testing.T) {
 	if y < 0 {
 		t.Fatalf("the box drew over the tray:\n%s", ansi.Strip(app.Frame()))
 	}
-	// the rows of boxArea's screen box, which the tray must sit inside for the
-	// check above to mean anything
+	// the box's own rows, which the tray must sit inside for the check above
+	// to mean anything
 	if r := app.chromeRect; y < r.Min.Y || y >= r.Max.Y {
 		t.Fatalf("the box %v does not reach the tray's row %d", r, y)
 	}

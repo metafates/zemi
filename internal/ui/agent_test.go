@@ -142,6 +142,16 @@ func BenchmarkColdChatRender(b *testing.B) {
 
 // lagClock is a machine so slow or loaded that every read of the clock is
 // a second after the last: each render budget is spent before it starts.
+// frozenClock is one instant that never moves: a golden pinning a duration a
+// seeded turn counts from now reads the same seconds on every run.
+type frozenClock struct{ at time.Time }
+
+func (c frozenClock) Now() time.Time { return c.at }
+
+func (c frozenClock) AfterFunc(d time.Duration, f func()) func() bool {
+	return time.AfterFunc(d, f).Stop
+}
+
 type lagClock struct{ s atomic.Int64 }
 
 func (c *lagClock) Now() time.Time { return time.Unix(c.s.Add(1), 0) }
@@ -274,6 +284,133 @@ func TestAgentViewFolds(t *testing.T) {
 	}
 	if open := rows(); !slices.Contains(open, "│ ✻ thought") || !slices.Contains(open, "│ read main.go") {
 		t.Fatalf("the digest's click does not open the rail:\n%s", strings.Join(open, "\n"))
+	}
+}
+
+// TestAgentViewSwitchForgetsOpenedRows: an opened digest belongs to the run
+// it was opened in, so showing another run draws folded rows again.
+func TestAgentViewSwitchForgetsOpenedRows(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	host.DB = db
+	ids := make([]string, 2)
+	for i := range ids {
+		ids[i] = store.ShortID()
+		if err := db.CreateSession(ids[i], store.ShortID(), fmt.Sprintf("run %d", i), "explore"); err != nil {
+			t.Fatal(err)
+		}
+		// one step, then the run's report: the step folds into a digest
+		addRunMessage(t, db, ids[i], fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+			fantasy.ReasoningPart{Text: "weigh it"},
+			fantasy.ToolCallPart{ToolCallID: "t1", ToolName: "read", Input: `{"file_path":"main.go"}`},
+		}})
+		addRunMessage(t, db, ids[i], fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+			fantasy.TextPart{Text: "it reads fine"},
+		}})
+	}
+	rows := func() []string {
+		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]string, 0, len(lines))
+		for _, l := range lines {
+			out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
+		}
+		return out
+	}
+	if err := host.ViewAgent(ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	rows() // the first render drops what an earlier case opened
+	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:1"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := rows(); !slices.Contains(got, "│ ✻ thought") {
+		t.Fatalf("the first run's digest did not open:\n%s", strings.Join(got, "\n"))
+	}
+	if err := host.ViewAgent(ids[1]); err != nil {
+		t.Fatal(err)
+	}
+	if got := rows(); slices.ContainsFunc(got, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
+		t.Fatalf("the second run drew the first run's opened rows:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+// TestReplyReadoutBehindANotice: the readout rides the reply that ends an
+// exchange, and a notice row arriving after it does not swallow it.
+func TestReplyReadoutBehindANotice(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	host.AppendMessage("user", "go")
+	appendReply(host, "done", hostapi.TurnStat{Out: 200, ElapsedMS: 1500, Ended: 1_700_000_000})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: "Background agent a1 (explore) finished"})
+	app.AgentStream()
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var readouts []string
+	for _, l := range lines {
+		if row := strings.TrimRight(hostapi.SegsText(l), " "); strings.Contains(row, "200 out") {
+			readouts = append(readouts, row)
+		}
+	}
+	if len(readouts) != 1 || !strings.Contains(readouts[0], "1.5s · 200 out") {
+		t.Fatalf("the reply's readout is %q, want one row naming 1.5s and 200 out", readouts)
+	}
+}
+
+// TestWaitingNoticesAreOneBlock: reports waiting for a step boundary draw as
+// one block, as the same rows do once the model has read them.
+func TestWaitingNoticesAreOneBlock(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	host.AppendMessage("user", "go")
+	host.SeedStream(hostapi.StreamSnapshot{Active: true})
+	for _, id := range []string{"a1", "a2"} {
+		report := agent.AttachMarker + fmt.Sprintf("\n<agent-report run=%q agent=\"explore\" status=\"finished\" description=\"d\">\nfound it\n</agent-report>\n</attached-files>", id)
+		if err := host.AgentSend(report); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app.AgentStream()
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := func(id string) int {
+		return slices.IndexFunc(lines, func(l []hostapi.Segment) bool {
+			return strings.Contains(hostapi.SegsText(l), "queued Background agent "+id)
+		})
+	}
+	if one, two := at("a1"), at("a2"); one < 0 || two-one != 1 {
+		t.Fatalf("the waiting reports are %d rows apart, want one block", two-one)
+	}
+}
+
+// TestPrintedRunFoldsNoNotice: a printed run has no click, so it lists every
+// notice row where the chat folds a long burst behind one.
+func TestPrintedRunFoldsNoNotice(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	rows := []hostapi.ChatMessage{{Role: "user", Text: "go"}}
+	for i := range 6 {
+		rows = append(rows, hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: fmt.Sprintf("Background agent a%d (explore) finished", i)})
+	}
+	st := app.uiState()
+	st.Printed = &hostapi.Printed{Rows: rows}
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
+	}
+	if !slices.Contains(out, "◦ Background agent a0 (explore) finished") || slices.ContainsFunc(out, func(r string) bool { return strings.Contains(r, "earlier") }) {
+		t.Fatalf("a printed run folded its notices:\n%s", strings.Join(out, "\n"))
 	}
 }
 

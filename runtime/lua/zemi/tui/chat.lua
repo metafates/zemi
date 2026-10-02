@@ -784,8 +784,8 @@ zemi.ui.widget.add({
 		-- An agent run's transcript mutates in place and reports epoch 0, so
 		-- only the session's settled rows are cached.
 		local epoch = ctx.transcript_epoch or 0
-		-- rows are keyed by transcript index, and every view reports epoch 0:
-		-- the run on screen names its own transcript there
+		-- rows are keyed by transcript index, and an agent view reports epoch 0
+		-- for whichever run it shows: that run is the identity instead
 		local ident = ctx.view and ctx.view.id or epoch
 		if ident ~= opened_in then
 			expanded, steps, unrolled, unfolded, whole, opened_in, M.inspected = {}, {}, {}, {}, {}, ident, nil

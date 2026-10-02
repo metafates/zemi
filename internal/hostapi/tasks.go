@@ -101,10 +101,16 @@ func (r *taskReg) maxBackground() int {
 	return max(r.settings.Int("agent.max_background"), 1)
 }
 
+// The two answers a refused detach can give. The model can run the same call
+// in the foreground; a user asking for a workflow, or a Lua caller, has no
+// foreground version of it to fall back on.
+const (
+	foregroundAdvice = "wait for one, run this one in the foreground, or raise agent.max_background"
+	waitAdvice       = "wait for one or raise agent.max_background"
+)
+
 // detached refuses one more detached run past maxBackground, agents
-// and workflows alike (r.mu held). advice is what the refused caller can
-// still do, which the caller names: a user's /workflows run has no
-// foreground left, the agent tool's own call does.
+// and workflows alike (r.mu held) with the advice its caller can act on.
 func (r *taskReg) detached(advice string) error {
 	limit := r.maxBackground()
 	n := 0
@@ -132,7 +138,7 @@ func (r *taskReg) detached(advice string) error {
 func (r *taskReg) canDetach() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.detached("wait for one or raise agent.max_background")
+	return r.detached(waitAdvice)
 }
 
 // addFlow registers a workflow run, as add does an agent run.
@@ -140,7 +146,7 @@ func (r *taskReg) addFlow(f *flowRun) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if f.background {
-		if err := r.detached("wait for one, run this one in the foreground, or raise agent.max_background"); err != nil {
+		if err := r.detached(foregroundAdvice); err != nil {
 			return err
 		}
 	}
@@ -208,7 +214,7 @@ func (r *taskReg) add(run *agentRun) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if run.background {
-		if err := r.detached("wait for one, run this one in the foreground, or raise agent.max_background"); err != nil {
+		if err := r.detached(foregroundAdvice); err != nil {
 			return err
 		}
 	}

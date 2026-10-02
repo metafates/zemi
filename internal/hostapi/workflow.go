@@ -2042,6 +2042,11 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		}
 		n, _ := opt[glua.LNumber](L, spec, "concurrency")
 		at := h.callerOf(L)
+		// the Lua caller's own, refused past the cap with the advice it can
+		// act on, and never the foreground one the agent tool's call gets
+		if err := h.tasks.canDetach(); err != nil {
+			return luaResult(L, err)
+		}
 		stopID := make(chan int, 1) // a reload cancels the run, like a job
 		f, err := h.startFlow(context.Background(), flowSpec{name: rawString(L, spec, "name"), src: src, args: args, concurrency: int(n), background: true, done: func(f *flowRun) {
 			h.stops.remove(<-stopID)

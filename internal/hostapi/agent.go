@@ -2113,15 +2113,18 @@ func (h *Host) RunFrame(from int) RunFrame {
 // streamLocked is AgentStream with ag.mu held.
 func (h *Host) streamLocked() StreamSnapshot {
 	ag := h.agents
+	// the host's clock, never time.Now: a seeded stream, a golden included,
+	// must read the same seconds however loaded the machine is
+	now := h.now()
 	thought := ag.thought
 	if ag.thinking {
-		thought += time.Since(ag.thinkStart)
+		thought += now.Sub(ag.thinkStart)
 	}
 	// milliseconds, as the settled row stores it, so both read alike
 	thought = thought.Truncate(time.Millisecond)
 	var elapsed time.Duration
 	if ag.active && !ag.turnStart.IsZero() {
-		elapsed = time.Since(ag.turnStart)
+		elapsed = now.Sub(ag.turnStart)
 	}
 	out := StreamSnapshot{
 		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf, Thinking: ag.thinking,
@@ -2166,14 +2169,14 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	// an open block counts from now, so the stream reads the seeded total
 	ag.thinkStart = time.Time{}
 	if s.Thinking {
-		ag.thinkStart = time.Now()
+		ag.thinkStart = h.now()
 	}
 	ag.sessIn = s.SessionIn
 	ag.sessOut = s.SessionOut
 	ag.lastIn = s.LastIn
 	ag.ctxWin = s.CtxWindow
 	if s.Elapsed > 0 && s.Active {
-		ag.turnStart = time.Now().Add(-s.Elapsed)
+		ag.turnStart = h.now().Add(-s.Elapsed)
 	} else {
 		ag.turnStart = time.Time{}
 	}
