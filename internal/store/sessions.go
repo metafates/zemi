@@ -121,7 +121,7 @@ type execer interface {
 
 func insertMessage(ex execer, m *Message) error {
 	if m.ID == "" {
-		m.ID = NewID()
+		m.ID = newID()
 	}
 	if m.CreatedAt == 0 {
 		m.CreatedAt = now()
