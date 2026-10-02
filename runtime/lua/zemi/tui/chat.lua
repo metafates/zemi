@@ -48,6 +48,8 @@ local unfolded = {}
 ---@type table<integer, true>
 local whole = {}
 local RAIL_KEEP = 6
+-- notice rows of one burst kept in view, the older ones behind a fold row
+local NOTICES_KEEP = 3
 local expanded_epoch = 0
 local live_tools = 0
 
@@ -100,6 +102,11 @@ end
 ---@return boolean
 function M.activity(m) return m.kind == "reasoning" or m.kind == "tool" end
 local activity = M.activity
+
+--- Whether a row is a notice: a burst of them draws as one block.
+---@param m zemi.TranscriptRow
+---@return boolean
+local function notice(m) return m.kind == "notice" end
 
 -- The block a row belongs to: blocks are one blank row apart, activity rows
 -- stand together.
@@ -549,6 +556,32 @@ local function builder(ctx, width)
 		if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 	end
 
+	-- A burst of notice rows as one block, no blank row between them: reports
+	-- and updates arrive together, and the older ones of a long burst sit
+	-- behind one row a click opens, as a long rail's do.
+	---@param list zemi.TranscriptRow[]
+	---@param first integer
+	---@param last integer
+	function B.notices(list, first, last)
+		B.gap("note")
+		local hidden = last - first + 1 - NOTICES_KEEP
+		if hidden > 1 then
+			local click = "more:" .. first
+			local label = whole[first] and "… show the rest" or "… " .. hidden .. " earlier"
+			B.lines[#B.lines + 1] = {
+				{ text = "  ", copy = false, hover = false },
+				{ text = label, hl = "Dim", click = click },
+			}
+			if not whole[first] then first = last - NOTICES_KEEP + 1 end
+		end
+		for i = first, last do
+			local m = list[i]
+			local row = { mark("note"), { text = m.text, hl = "Dim" } }
+			if (m.detail or "") ~= "" then row[3] = { text = " (" .. m.detail .. ")", hl = "Dim", copy = false } end
+			B.lines[#B.lines + 1] = row
+		end
+	end
+
 	-- A run of activity rows as a rail, one row per entry: a step's unlabelled
 	-- counted calls, two or more of them, as one row whose click opens one
 	-- row per call, a lone one as its own row, a thought a row of its own, every
@@ -797,7 +830,9 @@ zemi.ui.widget.add({
 				for _, ol in ipairs(util.split(m.detail or "", "\n")) do
 					B.lines[#B.lines + 1] = { { text = "  ", copy = false }, { text = ol, hl = "Dim" } }
 				end
-			elseif m.kind == "compact" or m.kind == "notice" then
+			elseif notice(m) then
+				B.notices(tr, first, last)
+			elseif m.kind == "compact" then
 				B.gap("note")
 				local row = { mark("note"), { text = m.text, hl = "Dim" } }
 				if (m.detail or "") ~= "" then row[3] = { text = " (" .. m.detail .. ")", hl = "Dim", copy = false } end
@@ -905,7 +940,9 @@ zemi.ui.widget.add({
 			local function mode_of(first)
 				if not activity(tr[first]) then return "" end
 				if ctx.show_reasoning then return "open" end
-				if epoch == 0 or first == live_first then return "rail" end
+				-- the live turn's own run and a printed run read whole; every
+				-- other run folds, the one an agent view shows included
+				if ctx.headless or first == live_first then return "rail" end
 				return unfolded[first] and "unfold" or "fold"
 			end
 			local deadline = epoch ~= 0 and os.clock() + 0.03
@@ -926,8 +963,14 @@ zemi.ui.widget.add({
 			local last = #tr
 			while last >= 1 do
 				local first = last
-				while first > 1 and activity(tr[first]) and activity(tr[first - 1]) do
-					first = first - 1
+				if notice(tr[last]) then
+					while first > 1 and notice(tr[first - 1]) do
+						first = first - 1
+					end
+				else
+					while first > 1 and activity(tr[first]) and activity(tr[first - 1]) do
+						first = first - 1
+					end
 				end
 				if deadline and rendered > 0 and got >= ctx.height and stale(first, last) and os.clock() > deadline then
 					more = true

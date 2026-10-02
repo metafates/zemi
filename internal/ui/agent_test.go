@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/fantasy"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
 
@@ -222,6 +224,105 @@ func TestColdChatRender(t *testing.T) {
 	}
 	if st.top != top || !slices.Equal(st.anchor, anchor) {
 		t.Fatalf("view moved from row %d %q to row %d %q", top, anchor, st.top, st.anchor)
+	}
+}
+
+// TestAgentViewFolds: a run shown by an agent view folds its activity into
+// one digest row, exactly as the session's chat does, and the digest's click
+// opens the rail under it.
+func TestAgentViewFolds(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	db, err := store.Open(filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	host.DB = db
+	id := store.ShortID()
+	if err := db.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
+		t.Fatal(err)
+	}
+	// one step: a thought and a counted call, then the run's report
+	addRunMessage(t, db, id, fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+		fantasy.ReasoningPart{Text: "weigh it"},
+		fantasy.ToolCallPart{ToolCallID: "t1", ToolName: "read", Input: `{"file_path":"main.go"}`},
+	}})
+	addRunMessage(t, db, id, fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+		fantasy.TextPart{Text: "it reads fine"},
+	}})
+	if err := host.ViewAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	rows := func() []string {
+		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]string, 0, len(lines))
+		for _, l := range lines {
+			out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
+		}
+		return out
+	}
+	rows() // the first render forgets what was opened before it
+	closed := rows()
+	if !slices.Contains(closed, "· 1 file") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
+		t.Fatalf("the viewed run does not fold:\n%s", strings.Join(closed, "\n"))
+	}
+	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:1"}); err != nil {
+		t.Fatal(err)
+	}
+	if open := rows(); !slices.Contains(open, "│ ✻ thought") || !slices.Contains(open, "│ read main.go") {
+		t.Fatalf("the digest's click does not open the rail:\n%s", strings.Join(open, "\n"))
+	}
+}
+
+// addRunMessage stores one model message in a run's child session, which
+// loadRun reads back into transcript rows.
+func addRunMessage(t *testing.T, db *store.DB, session string, m fantasy.Message) {
+	t.Helper()
+	b, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AddMessage(&store.Message{SessionID: session, Role: string(m.Role), PartsJSON: string(b)}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestNoticeBurst: a burst of notice rows draws as one block, no blank row
+// between them, its oldest behind one row a click opens.
+func TestNoticeBurst(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	host.AppendMessage("user", "go")
+	for i := range 6 {
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: fmt.Sprintf("Background agent a%d (explore) finished", i)})
+	}
+	rows := func() []string {
+		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]string, 0, len(lines))
+		for _, l := range lines {
+			out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
+		}
+		return out
+	}
+	rows() // the first render forgets what was opened before it
+	got := rows()
+	newest, older := slices.Index(got, "◦ Background agent a5 (explore) finished"), slices.Index(got, "◦ Background agent a4 (explore) finished")
+	if newest < 0 || older < 0 || newest-older != 1 || !slices.Contains(got, "  … 3 earlier") {
+		t.Fatalf("the burst is not one block of the newest three:\n%s", strings.Join(got, "\n"))
+	}
+	if slices.Contains(got, "◦ Background agent a0 (explore) finished") {
+		t.Fatalf("the fold holds a row back:\n%s", strings.Join(got, "\n"))
+	}
+	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "more:2"}); err != nil {
+		t.Fatal(err)
+	}
+	if got = rows(); !slices.Contains(got, "◦ Background agent a0 (explore) finished") || !slices.Contains(got, "  … show the rest") {
+		t.Fatalf("the fold does not open:\n%s", strings.Join(got, "\n"))
 	}
 }
 
@@ -863,8 +964,9 @@ func lastToast(app *App) string {
 	return app.toasts[len(app.toasts)-1].body
 }
 
-// TestBandToTheEdge: a selected choice's band reaches the box's border
-// whether or not its list scrolls.
+// TestBandToTheEdge: a selected choice's band fills the box's inner width,
+// scrolling or not: the scrollbar's column is the box's border and the band
+// never reaches into it.
 func TestBandToTheEdge(t *testing.T) {
 	choices := make([]promptChoice, 10)
 	for i := range choices {
@@ -880,12 +982,7 @@ func TestBandToTheEdge(t *testing.T) {
 				}
 			}
 		}
-		if want := hostapi.SegsWidth(box[0]) - 4; viewH < len(choices) {
-			// the list scrolls: its bar cell is part of the band too
-			if band != want+1 {
-				t.Errorf("view of %d rows: the band takes %d cells, want %d", viewH, band, want+1)
-			}
-		} else if band != want {
+		if want := hostapi.SegsWidth(box[0]) - 4; band != want {
 			t.Errorf("view of %d rows: the band takes %d cells, want %d", viewH, band, want)
 		}
 	}

@@ -241,9 +241,9 @@ func TestGoldenSlashPalette(t *testing.T) {
 	golden.RequireEqual(t, app.Frame())
 }
 
-// TestPopupKeepsSize: both composer popups keep their size and hint row
-// while a query narrows them down to no match, where the hint names no key
-// that picks.
+// TestPopupKeepsSize: both composer popups keep their title, size and hint
+// row while a query narrows them down to no match, where the hint names no
+// key that picks.
 func TestPopupKeepsSize(t *testing.T) {
 	for _, c := range []struct{ open, narrow string }{{"/mo", "zz"}, {"@ap", "zzzq"}} {
 		app, host := bootAgentApp(t, 80, 14)
@@ -255,7 +255,7 @@ func TestPopupKeepsSize(t *testing.T) {
 			}
 			app.renderSync(t)
 			f := ansi.Strip(app.Frame())
-			return f[strings.Index(f, "┌─"):strings.Index(f, "┘")]
+			return f[strings.Index(f, "┌"):strings.Index(f, "┘")]
 		}
 		want := popup(c.open)
 		if got := popup(c.narrow); !strings.Contains(got, "No matches.") || !strings.Contains(got, "esc close") || strings.Contains(got, "complete") || strings.Contains(got, "pick") ||

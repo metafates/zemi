@@ -1686,6 +1686,9 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		v.RawSetString("description", glua.LString(sanitize.String(run.description)))
 		v.RawSetString("status", glua.LString(status))
 		tb.RawSetString("view", v)
+		// the run on screen is the one that runs: the chat draws its last
+		// activity run live, and the session's turn is not on screen at all
+		stream.Active = status == RunRunning
 		transcript = run.transcript()
 		stream.Text, stream.Reasoning, stream.Tools, stream.Steering = "", "", nil, queuedRows(run.queued())
 	}

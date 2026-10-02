@@ -998,7 +998,8 @@ is refused to every origin but user and builtin: an agent acts with the
 user's tools and permissions. The reflector is not a subagent (§10.3).
 `/agents new` has the main agent write a definition: it sends the typed
 line with a short prompt pointing at the New agent steps in the zemi skill.
-Each ready prompt (`/agents new`, `/plugins new` and `modify`, `/errors ask`)
+Each ready prompt (`/agents new`, `/workflows new`, `/plugins new` and
+`modify`, `/errors ask`)
 names its zemi skill files by path (`zemiSkillDir`), SKILL.md, whose rules
 every change follows, then the task's own, which the read tool opens
 with no ask, so it works with the skill switched off or no skill tool.
@@ -1036,7 +1037,11 @@ writes its script and a journal (a header, one line per agent that ended,
 an end line) into the pad of the session that started it; a rerun runs
 that script file, edited or not, and answers each call identical to a
 finished one (agent, model, schema, prompt) from the journal in order,
-starting no agent. `/workflows` lists the runs, live ones of every session
+starting no agent. `/workflows` heads with making one
+(`new <what it should do>` sends the line with a prompt pointing at the New
+workflow steps in the zemi skill, and the list's first row fills the command;
+a run in flight is what its keys act on by default), then the runs, live ones
+of every session
 first, then this session's earlier ones (another session's live run ends
 its desc with that session's title), then the saved workflows; enter on a
 run opens its view, at the one width every workflow screen takes: its
@@ -1521,7 +1526,10 @@ UI extensibility contract:
   the rows and caps them at 50, and shows them as the source matched them
   (by meaning, maybe), narrowing only the rows it keeps while an answer is
   pending. A trigger popup with nothing to offer is
-  not drawn and takes no keys, so prose with a `#` in it still submits.
+  not drawn and takes no keys, so prose with a `#` in it still submits. A
+  popup's top border names what it lists where zemi knows the name: `Files`
+  for `@`, `Commands` for the palette; a source's own trigger titles nothing,
+  since zemi cannot know what it means.
 - One matcher (`hostapi.Match`, over `sahilm/fuzzy`) filters every list a
   human narrows by typing: the palette, argument candidates, `@` files
   and overlays. Every word of the query must match a row: its
@@ -1825,7 +1833,9 @@ provenance string.
   most) are one tray of a fixed width at the stage's top, hugging its right edge (four
   cells over it, the rest in the margin, inside the screen), newest first, a section
   per level and title with one row per toast, each leaving when its own time runs out
-  (4 s for info, 8 s for a warning or an error); completion popups stand in line with
+  (4 s for info, 8 s for a warning or an error), drawn after every other layer: a
+  notification is the one thing that never sits behind a box, and it never joins a border
+  beside it; completion popups stand in line with
   the composer, ending at the stage's bottom when the stage is above the composer,
   on the composer frame's top rule when it has one, in the draft's rule tint, else go
   beside the composer on the side with room; Lua floats never cover the composer or the alarm
@@ -1836,7 +1846,8 @@ provenance string.
   text lines up with the composer's; every other scrolling box (overlay
   bodies and lists, prompts, popups) scrolls through the same viewport and draws the bar
   in its right border, the track the border line itself, so its text keeps every column
-  and never rewraps when the bar appears. Every bar drags, found by its cells in the last
+  and never rewraps when the bar appears; the band of a selected row stops at the cell
+  before it, never running into the border column. Every bar drags, found by its cells in the last
   frame. Go's chrome lines (box borders, the
   composer frame and its plain rule runs, box separators) join where they touch once
   everything is placed (`App.join`): a line end facing a line becomes a T and a crossing a
@@ -1900,8 +1911,15 @@ provenance string.
   server) or a thought to name: a run with neither keeps
   its whole rail. A run a reply has closed folds this
   way at once, while the reply still streams and after it settles, so only the
-  run the turn is working in, the one it thinks and calls in, stays open. The
-  live turn, a printed run and an agent run's view draw the whole rail, one
+  run the turn is working in, the one it thinks and calls in, stays open, and an
+  agent run's view folds it the same way, so what a run shows behaves like the
+  session's chat. Consecutive notice rows (a background report's head, an
+  agent's update line, a plugin's or a loop's send) draw as one block with no
+  blank row between them, and a burst past three keeps its three newest with
+  the older ones behind one dim `… N earlier` row a click opens and folds back,
+  so a fleet of agents reporting at once never takes the chat over; an error or
+  compaction row is a block of its own. The
+  live turn and a printed run draw the whole rail, one
   row per step, a continuous bar in column 0 with every mark in column 2
   (`│ ✓ edit`, `│ ⠋ running label`, `│ ⠋ waiting on workflow review` while the
   turn waits on a call whose work is another agent loop, `│ ✻ thought 8s`) and
@@ -1952,7 +1970,7 @@ provenance string.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
   bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.
-  A prompt glyph marks the first row and a gutter aligns the rest, so a
+  A prompt glyph opens every row, dimmed after the first, so a
   multi-line draft reads as one block. The composer stays editable during
   a turn: a submit while the turn runs queues as steering (§4) instead of
   spawning a second turn, and the queued messages the user typed show above it.
@@ -2087,7 +2105,7 @@ provenance string.
   every palette meets its contrast floors when it registers (§6.6), so a
   theme can recolor the prompt but not hide it; Go draws it itself and Lua text never renders
   inside that chrome, so a widget cannot fake a permission prompt. Modal
-  chrome (overlays and prompts) draws over everything,
+  chrome (overlays and prompts) draws over everything but the toast tray,
   as do the completion and palette popups, which are not modal; while a
   modal is open everything outside the top box, plugin overlays and widget
   regions too, keeps its own styles sunk toward the canvas to the same

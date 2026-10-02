@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -192,27 +193,28 @@ func TestLuaAgentsNeedUserConfig(t *testing.T) {
 	}
 }
 
-// TestBuiltinReviewWorkflow: the shipped review workflow is listed, loads
-// in the workflow sandbox and runs to a result.
-func TestBuiltinReviewWorkflow(t *testing.T) {
+// TestBuiltinWorkflows: every shipped workflow is listed, loads in the
+// workflow sandbox and runs to a result.
+func TestBuiltinWorkflows(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	var review *Workflow
-	for _, w := range h.workflows() {
-		if w.Name == "review" {
-			review = &w
-		}
-	}
-	if review == nil || review.Source != "builtin" || review.Description == "" {
-		t.Fatalf("review workflow = %+v", review)
-	}
-	src, err := h.workflowSource("review")
-	if err != nil {
-		t.Fatal(err)
-	}
 	echoAgents(h)
-	res, err := runFlow(context.Background(), h, src, nil)
-	if err != nil || !strings.HasPrefix(res, "Verify these review findings") {
-		t.Fatalf("review run = %q, %v", res, err)
+	for _, c := range []struct{ name, args, want string }{
+		{"review", "", "Verify these review findings"},
+		{"research", "what is a whorl", "Answer the question below"},
+		{"hunt", "the spinner never stops", "Decide the cause of this failure"},
+	} {
+		i := slices.IndexFunc(h.workflows(), func(w Workflow) bool { return w.Name == c.name })
+		if i < 0 || h.workflows()[i].Source != lua.OriginBuiltin || h.workflows()[i].Description == "" {
+			t.Fatalf("%s workflow = %+v", c.name, h.workflows())
+		}
+		src, err := h.workflowSource(c.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := runFlow(context.Background(), h, src, c.args)
+		if err != nil || !strings.HasPrefix(res, c.want) {
+			t.Fatalf("%s run = %q, %v", c.name, res, err)
+		}
 	}
 }
 

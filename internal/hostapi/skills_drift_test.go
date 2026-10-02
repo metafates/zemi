@@ -95,6 +95,7 @@ func TestBuiltinSkillReferences(t *testing.T) {
 		{"newPluginPrompt", newPluginPrompt},
 		{"modifyPluginPrompt", modifyPluginPrompt},
 		{"newAgentPrompt", newAgentPrompt},
+		{"newWorkflowPrompt", newWorkflowPrompt},
 		{"errorAskPrompt", errorAskPrompt},
 		{"workflowToolDesc", workflowToolDesc},
 		{"the lua tool", lua},

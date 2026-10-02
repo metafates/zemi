@@ -19,6 +19,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -821,9 +822,15 @@ func TestSavedWorkflows(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "review.lua"), []byte("-- Review the diff\n-- from three angles\nreturn 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// the user's file shadows the builtin one of the same name, the other
+	// builtins arriving beside it
 	list := h.workflows()
-	if len(list) != 1 || list[0].Name != "review" || list[0].Description != "Review the diff from three angles" {
+	i := slices.IndexFunc(list, func(w Workflow) bool { return w.Name == "review" })
+	if i < 0 || list[i].Description != "Review the diff from three angles" || list[i].Source != lua.OriginUser {
 		t.Fatalf("workflows = %+v", list)
+	}
+	if !slices.ContainsFunc(list, func(w Workflow) bool { return w.Name == "research" && w.Source == lua.OriginBuiltin }) {
+		t.Fatalf("workflows = %+v, want the builtin research beside it", list)
 	}
 	if _, err := h.workflowSource("nope"); err == nil || !strings.Contains(err.Error(), "have review") {
 		t.Fatalf("missing workflow err = %v", err)
@@ -833,7 +840,17 @@ func TestSavedWorkflows(t *testing.T) {
 	if err := h.openWorkflows(); err != nil {
 		t.Fatal(err)
 	}
-	acts := fmt.Sprint(ui.opened[0].Items[0].(map[string]any)["actions"])
+	row := func(name string) map[string]any {
+		j := slices.IndexFunc(ui.opened[0].Items, func(it any) bool { return it.(map[string]any)["text"] == name })
+		if j < 0 {
+			t.Fatalf("no %s row in %v", name, ui.opened[0].Items)
+		}
+		return ui.opened[0].Items[j].(map[string]any)
+	}
+	if ui.opened[0].Items[0].(map[string]any)["text"] != "New workflow" {
+		t.Fatalf("the list does not head with making one: %v", ui.opened[0].Items[0])
+	}
+	acts := fmt.Sprint(row("review")["actions"])
 	if acts != "[map[hotkey:r run:workflows run review text:Run] map[fill:/workflows run review  hotkey:a text:Run with arguments] map[hotkey:o run:workflows open review text:Open in the editor]]" {
 		t.Fatalf("workflow actions: %s", acts)
 	}

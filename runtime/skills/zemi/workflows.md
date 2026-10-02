@@ -8,7 +8,7 @@ Run a workflow inline: pass the script to the `workflow` tool, whose description
 - `agent(prompt)` runs `general`; pass `{ agent = "explore" }` for a read-only look.
 - `agent(prompt, { schema = s })` asks for a JSON object matching `s` (`type = "object"` with `properties`, and `required` naming only those) and returns it as a table; a reply that does not match is asked for again twice, then the call fails. Required fields and types are checked, not every keyword (`enum`, bounds).
 - `agent` and `parallel` cannot run inside `pcall`, `table.sort` or `string.gsub` callbacks.
-- The user watches and steers runs in `/workflows`: the runs (running, then this session's earlier ones) and the saved workflows; enter on a run shows its agents by phase, where `p` pauses or resumes, `+` and `-` change how many run at once, `x` stops it, `r` reruns an ended one, `o` opens its script and `s` saves one you wrote, and an agent's detail views its transcript, restarts or stops it. `/workflows run <name> [args]` and `/review [ref]` start a saved one without a model call; its result arrives as a report.
+- The user watches and steers runs in `/workflows`: the runs (running, then this session's earlier ones) and the saved workflows, which `new [what it should do]` has you write (see New workflow below); enter on a run shows its agents by phase, where `p` pauses or resumes, `+` and `-` change how many run at once, `x` stops it, `r` reruns an ended one, `o` opens its script and `s` saves one you wrote, and an agent's detail views its transcript, restarts or stops it. `/workflows run <name> [args]` and `/review [ref]` start a saved one without a model call; its result arrives as a report.
 
 ## Saved workflows (`workflows/<name>.lua`)
 
@@ -27,3 +27,11 @@ if not diff then return "failed: " .. err end
 wf.phase("write")
 return wf.agent("Write a PR description (motivation, changes, how to test) from:\n" .. diff, { agent = "explore" })
 ```
+
+New workflow (`/workflows new` sends you here, or the user asked for one):
+
+1. Unless the request already says, ask in one `question` call: what the workflow should do, what it needs from the user as `args` and what to do when it is missing, and where it lives: this repository (`.agents/workflows/`, shared through git, loaded while the project is trusted) or every project (the user config's `workflows/`). Recommend the repository for one about this code base and every project otherwise; outside a git repository offer only every project, and in a project the user has not trusted say that a repository workflow loads only after `/trust`. Without the `question` tool (`zemi run`) take the recommended answers and say which.
+2. The `workflow` tool's description lists every saved workflow, `review`, `research` and `hunt` among them. If one already does the job, say which and offer to run or change it instead. Pick a name nothing there uses.
+3. Write it in one write: the leading `--` lines are the description (what it does, and what `args` is), a `wf.phase` per stage, agents that do not depend on each other in one `wf.parallel`, one agent gathering what the others judge, and a `return` naming what went wrong when a step it needs fails. An angle that fails is a `wf.log`, not a lost run.
+4. Check it loaded with one Lua tool script: `zemi.workflow.list()` lists it with its description, and `zemi.errors.list()` has no `workflows` entry for it.
+5. Tell the user the path and that `/workflows run <name> [args]` runs it. Do not run it yourself unless they ask: every agent it starts is a model call on their bill.

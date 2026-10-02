@@ -995,9 +995,9 @@ func (a *App) compose(w, h int) string {
 	if a.permAsk != nil {
 		splice(a.permBox(a.permAsk, area.Dx(), area.Dy()))
 	}
-	// The toasts are one tray at the top of the stage, over the dimmed rows
-	// but under the top box: a toast is not dimmed, and its text never covers
-	// the chrome the user answers. It hugs the stage's right edge, four cells
+	// The toasts are one tray at the top of the stage, over every window: a
+	// notification is the one thing that must never sit behind a box, so it
+	// draws last and stays undimmed. It hugs the stage's right edge, four cells
 	// over it, the rest in the margin, and stays inside the screen.
 	toasts := func() {
 		tray := toastTray(a.toasts, stage.Dx(), stage.Dy())
@@ -1021,15 +1021,14 @@ func (a *App) compose(w, h int) string {
 			// the backdrop joins before it fades, so no faded line joins the top box
 			a.join(rows, w)
 			fadeRows(rows)
-			toasts()
 		}
 		place()
 	}
-	if len(modals) == 0 {
-		toasts()
-	}
-
+	// after the join: a box the tray stands beside must not bend its border
+	// into it, and the tray must not be joined into the box's
 	a.join(rows, w)
+	toasts()
+
 	a.lastRows, a.stage, a.popRect, a.panes = rows, stage, pop, lay.panes
 	a.highlightSelection(rows, w)
 	a.highlightHover(rows)
@@ -1141,14 +1140,15 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 	var render func(maxW, room, minW int) [][]hostapi.Segment
 	var size *boxSize
 	var hints []hintPair
+	var title string
 	switch {
 	case a.palette.open:
-		render, size, hints = a.paletteRows, &a.palette.size, []hintPair{{"enter", "run"}, {"tab", "complete"}, {"esc", "close"}}
+		render, size, hints, title = a.paletteRows, &a.palette.size, []hintPair{{"enter", "run"}, {"tab", "complete"}, {"esc", "close"}}, "Commands"
 		if a.palette.count() == 0 { // enter still runs the typed line
 			hints = slices.Delete(hints, 1, 2)
 		}
 	case a.completion.shown():
-		render, size, hints = a.completionRows, &a.completion.size, []hintPair{{"enter", "pick"}, {"esc", "close"}}
+		render, size, hints, title = a.completionRows, &a.completion.size, []hintPair{{"enter", "pick"}, {"esc", "close"}}, a.completion.title()
 		if a.completion.count() == 0 {
 			hints = hints[1:]
 		}
@@ -1171,7 +1171,7 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 	maxW := boxInner(width)
 	size.w = max(size.w, listBoxW)
 	body := append(render(maxW, bottom-top-4, size.w), nil, hint(maxW, hints...))
-	box := promptBox("", "", body, width, bottom-top, 100, size)
+	box := promptBox(title, "", body, width, bottom-top, 100, size)
 	if up {
 		_, _, rule := a.draftMode()
 		return anchorBottom(rows, box, uv.Rect(x, top, width, bottom-top), c, ruleAt(rows, c), false, cmp.Or(rule, hostapi.ChromeRule), w)

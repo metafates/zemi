@@ -351,7 +351,7 @@ func (c *composerState) histNext() {
 const composerMaxRows = 8
 
 // composerRows renders the composer as visual rows wrapped to width w:
-// "> " on the first row, "  " on continuations, the cursor cell placed in
+// "> " on every row, dimmed after the first, the cursor cell placed in
 // the cursor row. At most composerMaxRows rows are shown, scrolled to keep the
 // cursor row visible. An empty draft shows placeholder dim under the cursor,
 // where typing replaces it without moving a cell.
@@ -375,9 +375,9 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 	}
 	var out [][]hostapi.Segment
 	for i := start; i < len(rows) && len(out) < composerMaxRows; i++ {
-		// a gutter down the rows after the first, brighter than the frame's
-		// own rule so the two do not read as a double border
-		p, hl := "│ ", "Dim"
+		// a dim prompt down the rows after the first, reading as the same hold
+		// the first row's glyph does without a second border beside the frame's
+		p, hl := "> ", "Dim"
 		if i == 0 {
 			p, hl = prefix, promptHL
 		}

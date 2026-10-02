@@ -135,6 +135,15 @@ func (f *fileCompleter) count() int { return len(f.extra) + len(f.matches) }
 // trigger with nothing to offer stays out of the way of prose.
 func (f *fileCompleter) shown() bool { return f.open && (f.trigger == '@' || f.count() > 0) }
 
+// title names what the popup lists: the one trigger zemi knows the meaning
+// of; a Lua source's own trigger names nothing here.
+func (f *fileCompleter) title() string {
+	if f.trigger == '@' {
+		return "Files"
+	}
+	return ""
+}
+
 // rematch ranks the files the token matches, a file name it begins first.
 // A name it matches scores by the name alone, which a path's other elements
 // would only blur; a file matched across directories scores by its path.

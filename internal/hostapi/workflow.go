@@ -1507,12 +1507,16 @@ func (h *Host) truncOutput(pad, name, s string) string {
 
 // /workflows and zemi.workflow
 
-var workflowVerbs = []string{"run", "view", "pause", "resume", "stop", "rerun", "concurrency", "restart", "save", "open"}
+var workflowVerbs = []string{"run", "view", "pause", "resume", "stop", "rerun", "concurrency", "restart", "save", "open", "new"}
+
+// newWorkflowPrompt rides behind /workflows new and takes zemiSkillDir, where
+// the procedure lives.
+const newWorkflowPrompt = "I want a new zemi workflow that does what the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the New workflow steps in workflows.md there."
 
 // workflowCommands are /workflows and /review.
 func (h *Host) workflowCommands() []*Command {
 	return []*Command{{
-		Name: "workflows", NArgs: NArgsAny, Desc: "see workflow runs and saved workflows, and act on them",
+		Name: "workflows", NArgs: NArgsAny, Desc: "see workflow runs and saved workflows, act on them, or make one",
 		GoFn: func(h *Host, args string) error {
 			typed, attached := agent.CutAttached(args)
 			f := strings.Fields(typed)
@@ -1525,7 +1529,12 @@ func (h *Host) workflowCommands() []*Command {
 				}
 				return ""
 			}
-			verb, id := f[0], arg(1)
+			verb := f[0]
+			if verb == "new" {
+				// the line as typed, newlines included, with the prompt behind it
+				return h.AgentSend("/workflows " + strings.TrimSpace(typed) + agent.Attached("command", fmt.Sprintf(newWorkflowPrompt, h.zemiSkillDir())) + attached)
+			}
+			id := arg(1)
 			if id == "" {
 				return Usagef("/workflows %s needs a run id or a name: /workflows lists them", verb)
 			}
@@ -1604,6 +1613,9 @@ func (h *Host) workflowCommands() []*Command {
 			f := strings.Fields(rest)
 			if len(f) == 0 || len(f) == 1 && !strings.HasSuffix(rest, " ") {
 				return workflowVerbs
+			}
+			if f[0] == "new" { // what it should do is the user's own text
+				return nil
 			}
 			var out []string
 			if f[0] == "run" {
@@ -1768,7 +1780,15 @@ func (h *Host) workflowsOverlay() Overlay {
 	for _, f := range stored {
 		earlier = append(earlier, h.flowItem(f, "Earlier in this session"))
 	}
-	items := slices.Concat(running, earlier)
+	// making one heads the list, as it does in /agents and /plugins, and a run
+	// already in flight is what its keys act on by default
+	items := []any{map[string]any{"text": "New workflow", "verb": "fill", "fill": "/workflows new "}}
+	sel := 0
+	if len(running) > 0 {
+		sel = 1
+	}
+	items = append(items, running...)
+	items = append(items, earlier...)
 	// NOTE: while a run lives, an open list reads the saved files and the
 	// pad's journals each second; cache them if a large pad shows in a profile.
 	for _, w := range h.workflows() {
@@ -1791,7 +1811,7 @@ func (h *Host) workflowsOverlay() Overlay {
 		})
 	}
 	return Overlay{
-		ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items, Wide: true,
+		ID: "workflows", Title: "Workflows", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Wide: true,
 		Reload: func() ([]any, [][]Segment) { return h.workflowsOverlay().Items, nil },
 	}
 }

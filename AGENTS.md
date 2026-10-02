@@ -812,7 +812,10 @@ lua-language-server is installed.
   history once, keeping the task and a recent tail. The delegation guidance lives in
   `delegationPrompt`: without it models rarely delegate.
 - **Workflows** (workflow.go, DESIGN §6.3) are Lua scripts (model-written via the `workflow`
-  tool, saved under `workflows/`, builtin in `runtime/workflows/`, a plugin's after both). They
+  tool, saved under `workflows/`, builtin in `runtime/workflows/` - `review`, `research`,
+  `hunt` - a plugin's after both). `/workflows` heads with a `New workflow` fill row and
+  `new <what it should do>` sends the line with a prompt pointing at the New workflow steps
+  in `workflows.md`, as `/agents new` and `/plugins new` do. They
   run in their **own** gopher-lua state on a host goroutine, never on the interpreter (DESIGN
   §4): a coroutine per branch, `zemi.workflow.agent`/`parallel` yield and the scheduler resumes
   them as subagents finish. Invariants: the script sees only base/string/table/math,
@@ -843,7 +846,9 @@ lua-language-server is installed.
   `AgentSend` behind `agent.AttachMarker`, which the live transcript and resume cut off; the
   notice row is drawn from the message wherever the model reads it (`appendUserRows`: a new
   turn, a step boundary, a drained queue, a resume), so it sits under the rows of the turn it
-  arrived in. A report a
+  arrived in. Consecutive notice rows are one block in the chat (chat.lua `B.notices`), no
+  blank row between them and the older ones of a long burst behind one click-to-open row, so
+  a fleet of runs reporting at once cannot take the transcript over. A report a
   closing session drops (`/new`, `/resume`) is stored in its own session and toasted
   (`notifyReport`). `/agents` lists the live session's runs and, under Running and Workflows, the live runs and
   workflows of every other session (`agentRunItems`, the desc ending in that session's title,
@@ -940,7 +945,8 @@ plain data, safe across generations); `ForceReload` drops one the replay did not
 `DefaultLayout`, the Go copy of the shipped tree, draws. `span` sizes one box per frame from
 cells, percent, content and weighted fill, takes cells back from fill first when they do not
 fit, and never fails (`FuzzSpan`). The stage node is where prompts, overlays and toasts
-go. A content-sized node's height is the most rows it could get, never
+go, the toasts drawn last (`App.compose`, after the final join and fade) so nothing a box
+places can cover or dim one. A content-sized node's height is the most rows it could get, never
 its last draw, so a widget that pads to `ctx.height` can still shrink. Hit testing reads the
 painted segments, never the tree. No layout draws the `exit` region: `App.Farewell` renders
 it once after `p.Run` returns cleanly (nothing while a boot step waits, which no dispatcher

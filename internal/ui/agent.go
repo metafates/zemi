@@ -386,8 +386,11 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 		r, bar := cutBar(r)
 		edge := []hostapi.Segment{{Text: " │", HL: hostapi.ChromeRule, NoCopy: true, Line: true}}
 		if len(bar) > 0 {
-			// the bar draws in the border: the thumb over it, the track the border itself
+			// the bar draws in the border: the thumb over it, the track the border
+			// itself, on the box's own surface, so the band of a selected row stops
+			// at the cell before it instead of running into the border column
 			b := bar[0]
+			b.Fill = hostapi.FillAuto
 			if b.Text == "│" {
 				b.HL, b.Line = hostapi.ChromeRule, true
 			}

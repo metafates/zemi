@@ -217,13 +217,13 @@ func TestComposerPlaceholder(t *testing.T) {
 	}
 }
 
-// TestComposerGutter: rows after the first hang off a gutter, and a shell
-// draft says so with its own glyph.
+// TestComposerGutter: rows after the first carry the same prompt, dimmed, so
+// a tall draft hangs off one glyph; a shell draft says so with its own.
 func TestComposerGutter(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.composer.text = "one\ntwo"
 	rows := app.composerRows(40, "")
-	if len(rows) != 2 || rows[0][0].Text != "> " || rows[1][0].Text != "│ " {
+	if len(rows) != 2 || rows[0][0].Text != "> " || rows[1][0].Text != "> " || rows[1][0].HL != "Dim" {
 		t.Fatalf("rows %+v", rows)
 	}
 	app.composer.text = "!ls"

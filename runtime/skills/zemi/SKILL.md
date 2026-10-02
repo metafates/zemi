@@ -15,7 +15,7 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 | a plugin: new, changed, tested, published | `plugins.md` (and `ui.md` for a widget or key), which says when `lua.md` is needed |
 | a subagent or a profile | `agents.md` |
 | a skill or a prompt command | `skills.md` |
-| a workflow: controlling a run, rerunning or saving one | `workflows.md` |
+| a workflow: controlling a run, rerunning, saving or making one | `workflows.md` |
 | memories, the reflector, recipes | `memory.md` |
 | zemi misbehaves: an error, a silent model, config that does not load | `debug.md` |
 | several branches at once in git worktrees | `worktrees.md` |
