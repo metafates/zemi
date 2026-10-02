@@ -111,7 +111,7 @@ zemi.ui.widget.add({
 		for _, c in ipairs(tools) do
 			if c.status == "run" then
 				local input = c.label == "" and (fmt.relpath(c.input, ctx.cwd, ctx.home):gsub("%s+", " ")) or ""
-				local verb, rest = fmt.head(c.name, c.label, input)
+				local verb, rest = fmt.head(c.name, c.label, input, c.status)
 				label = fmt.lower(verb) .. rest
 				break
 			end

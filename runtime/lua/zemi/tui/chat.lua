@@ -1,6 +1,6 @@
 -- The chat widget: the transcript, the live turn and the todo list. A turn's
 -- activity (thinking and tool calls) reads as a rail, which once settled
--- folds what only looked around into one digest row, its rail a click away;
+-- folds the calls a family counts into one digest row, its rail a click away;
 -- tui/thinking.lua draws the same rows for a turn it inspects.
 local fmt = require("zemi.tui.text")
 local util = require("zemi.util")
@@ -275,7 +275,7 @@ local function builder(ctx, width)
 		frame()
 	end
 
-	-- What look-around calls did: "read 2 files, ran 1 command: go vet".
+	-- What counted calls did: "read 2 files, ran 1 command: go vet".
 	---@param group zemi.tui.Tool[]
 	---@return string
 	local function said(group)
@@ -284,7 +284,7 @@ local function builder(ctx, width)
 		---@type string[]
 		local commands = {}
 		for _, t in ipairs(group) do
-			local c = fmt.COUNT[fmt.tool(t)]
+			local c = assert(fmt.family(fmt.tool(t)))
 			local key = c[1] .. "|" .. (c[2] or "")
 			if not seen[key] then
 				seen[key] = { c = c, n = 0 }
@@ -313,7 +313,7 @@ local function builder(ctx, width)
 		parts[#parts + 1] = ran
 		return table.concat(parts, ", ")
 	end
-	-- A step's unlabelled look-around calls as one rail row saying what they
+	-- A step's unlabelled counted calls as one rail row saying what they
 	-- did.
 	---@param group zemi.tui.Tool[]
 	---@param click string
@@ -366,7 +366,7 @@ local function builder(ctx, width)
 		end
 		if t.status == "run" and not asked and (t.elapsed or 0) >= 1 then add(fmt.duration(t.elapsed, true)) end
 		local sw = segw(tail)
-		local verb, rest = fmt.head(name, label, input)
+		local verb, rest = fmt.head(name, label, input, t.status)
 		verb = fmt.lower(verb)
 		local room = inner - 2 - zemi.ui.width(verb) - (sw > 0 and sw + 2 or 1)
 		-- expanded rows wrap (the widget wraps), collapsed ones stay one line
@@ -387,7 +387,7 @@ local function builder(ctx, width)
 		local click = (t.run or "") ~= "" and ((name == "workflow" and "workflow:" or "agent:") .. t.run)
 			or o.click
 			or ("tool:" .. idx)
-		-- a call that only looked around reads as its step's row, no bold verb
+		-- a counted call reads as its step's row, no bold verb
 		local vhl = dim and "Dim" or barred and fmt.looks(t) and "Normal" or "AgentToolName"
 		local head = { mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = vhl } }
 		if code and label == "" then
@@ -401,7 +401,7 @@ local function builder(ctx, width)
 		for _, sg in ipairs(head) do
 			sg.click = click
 		end
-		-- on the rail an ok look-around call has no mark, as its step's row
+		-- on the rail an ok counted call has no mark, as its step's row
 		if barred and fmt.looks(t) then
 			head[1] = bar(pad)
 		elseif barred then
@@ -437,7 +437,7 @@ local function builder(ctx, width)
 		if answered then
 			more = {}
 		elseif label ~= "" and input ~= "" and (open or not (barred and fmt.looks(t))) then
-			-- a labelled look-around call on the rail shows its command once opened
+			-- a labelled counted call on the rail shows its command once opened
 			detail(code and code[1] or fit(input, inner - 6), "Dim")
 		end
 		for i, l in ipairs(more) do
@@ -550,7 +550,7 @@ local function builder(ctx, width)
 	end
 
 	-- A run of activity rows as a rail, one row per entry: a step's unlabelled
-	-- look-around calls, two or more of them, as one row whose click opens one
+	-- counted calls, two or more of them, as one row whose click opens one
 	-- row per call, a lone one as its own row, a thought a row of its own, every
 	-- other call as its own row: a label tells what its call did. A thought row's
 	-- click unrolls its text.
@@ -603,7 +603,7 @@ local function builder(ctx, width)
 		while i <= last do
 			local t = list[i]
 			local idx = o.live and -i or i
-			-- a look-around call with no sibling is its own row: a "read 1 file"
+			-- a counted call with no sibling is its own row: a "read 1 file"
 			-- row over it would hide which file
 			local lone = grouped(t) and not grouped(list[i + 1] or {})
 			if t.kind == "reasoning" then

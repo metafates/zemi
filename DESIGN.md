@@ -1883,18 +1883,21 @@ provenance string.
   A settled turn folds each run of activity into one dim digest row, `· 6
   files, 8 commands · thought 8s` or, holding thinking alone, `· thought 3.3s`,
   and nothing else: the rail of steps under
-  it, its thinking, and the edits, failures, questions, plans, agent runs,
-  workflows, background jobs and commands with a diff it holds are a click
+  it, its thinking, and the edits, failures, questions, plans, background jobs
+  and commands with a diff it holds are a click
   away, drawn as they drew live. The digest exists only when the run holds a
-  call that only looked around (a read, a search, a fetch, a command that
-  changed nothing, gone well) or a thought to name: a run with neither keeps
+  call a family counts (a read, a search, a fetch, a command that changed
+  nothing, gone well, an agent run, a workflow, a script, an MCP call under its
+  server) or a thought to name: a run with neither keeps
   its whole rail. A run a reply has closed folds this
   way at once, while the reply still streams and after it settles, so only the
   run the turn is working in, the one it thinks and calls in, stays open. The
   live turn, a printed run and an agent run's view draw the whole rail, one
   row per step, a continuous bar in column 0 with every mark in column 2
-  (`│ ✓ edit`, `│ ⠋ running label`, `│ ✻ thought 8s`) and nested text in
-  column 4, a wrapped row keeping the bar: a step's unlabelled look-around
+  (`│ ✓ edit`, `│ ⠋ running label`, `│ ⠋ waiting on workflow review` while the
+  turn waits on a call whose work is another agent loop, `│ ✻ thought 8s`) and
+  nested text in
+  column 4, a wrapped row keeping the bar: a step's unlabelled counted
   calls, two or more of them, as one row saying what they did, each hanging off
   it behind a `├` or `└`, the bar kept under a `├` for the rows that follow it
   and a gap under the last, its output behind the `⎿` under that, a lone one

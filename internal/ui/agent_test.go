@@ -1889,6 +1889,84 @@ func TestToolRows(t *testing.T) {
 	}
 }
 
+// TestRailWaitsOnNestedRun: a call whose work is another agent loop holds the
+// turn, so its row says what the turn waits on in place of its verb, its own
+// progress line under it unchanged; any other running call names its verb.
+func TestRailWaitsOnNestedRun(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 24)
+	host.AppendMessage("user", "review it")
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: []hostapi.StreamTool{
+		{Name: "workflow", Status: "run", Label: "review", Detail: "2/5 agents · paused · picking the diff apart"},
+		{Name: "agent", Status: "run", Label: "explore"},
+		{Name: "read", Status: "run", Input: "a.go"},
+	}})
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	for _, want := range []string{
+		"│ ⠋ waiting on workflow review",
+		"│   ⎿ 2/5 agents · paused · picking the diff apart",
+		"│ ⠋ waiting on agent explore",
+		"│ ⠋ read a.go",
+	} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("missing %q:\n%s", want, frame)
+		}
+	}
+}
+
+// TestDigestCountsEveryFamily: a turn of one family's calls folds into its
+// sentence, an MCP call counting under its server however many of its tools
+// ran; a row an MCP call keeps of its own still reads as its name in words.
+func TestDigestCountsEveryFamily(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 80)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
+		{Name: "mcp_gitlab_get_commit", Input: "abc123", Status: "run"},
+		{Name: "mcp_gitlab_get_commit", Input: "abc123", Status: "ok"},
+		{Name: "mcp_gitlab_list_issues", Input: "state=open", Status: "ok"},
+	}})
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	for _, want := range []string{"│ ⠋ gitlab get commit abc123", "│ called 2 gitlab tools"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("missing %q:\n%s", want, frame)
+		}
+	}
+	host.SeedStream(hostapi.StreamSnapshot{})
+	digests := func() []string {
+		app.renderSync(t)
+		var out []string
+		for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
+			if row = strings.TrimSpace(row); strings.HasPrefix(row, "· ") {
+				out = append(out, row)
+			}
+		}
+		return out
+	}
+	for _, c := range []struct {
+		name  string
+		tools []string
+		want  string
+	}{
+		{"mcp", []string{"mcp_gitlab_get_commit", "mcp_gitlab_list_issues"}, "2 gitlab tools"},
+		{"agent", []string{"agent"}, "1 agent run"},
+		{"workflow", []string{"workflow"}, "1 workflow"},
+		{"lua", []string{"lua"}, "1 script"},
+		{"tool_search", []string{"tool_search"}, "1 tool"},
+		{"lsp", []string{"lsp", "lsp"}, "2 symbols"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			host.AppendMessage("user", "go")
+			for _, tool := range c.tools {
+				host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tool, Text: "x", Status: "ok"})
+			}
+			appendReply(host, "done", hostapi.TurnStat{})
+			if got := digests(); !slices.Contains(got, "· "+c.want) {
+				t.Fatalf("no digest %q in %q", c.want, got)
+			}
+		})
+	}
+}
+
 // TestTodoRowsKeepTheLiveItem: a list longer than 12 items shows the item in
 // progress and the pending ones first, and folds the done tail into one row.
 func TestTodoRowsKeepTheLiveItem(t *testing.T) {

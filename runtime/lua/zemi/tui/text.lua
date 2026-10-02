@@ -104,9 +104,9 @@ M.VERB = {
 	lsp = "Look up",
 }
 
---- A call that only looks around, as the chat counts it: its verb, then its
---- noun, one and many; a verb alone never counts. Every other call keeps a
---- row of its own.
+--- A call family the chat counts: its verb, then its noun, one and many; a
+--- verb alone never counts. A call of any other name keeps a row of its own,
+--- and M.family adds the entry an MCP call counts under.
 ---@type table<string, { [1]: string, [2]: string?, [3]: string? }>
 M.COUNT = {
 	read = { "read", "file", "files" },
@@ -121,20 +121,44 @@ M.COUNT = {
 	job_read = { "checked", "job", "jobs" },
 	job_list = { "listed jobs" },
 	job_kill = { "stopped", "job", "jobs" },
+	job_start = { "started", "job", "jobs" },
 	todos = { "updated todos" },
+	agent = { "started", "agent run", "agent runs" },
+	workflow = { "ran", "workflow", "workflows" },
+	lua = { "ran", "script", "scripts" },
+	tool_search = { "looked for", "tool", "tools" },
+	lsp = { "looked up", "symbol", "symbols" },
 }
+
+-- An MCP call counts under its server: its name is mcp_<server>_<tool> and a
+-- server name holds no "_", so the entry built here is the server's, one per
+-- server however many of its tools ran.
+---@type table<string, { [1]: string, [2]: string, [3]: string }>
+local servers = {}
+
+--- The family a call counts as, nil for a call whose name has no entry.
+---@param name string
+---@return { [1]: string, [2]: string?, [3]: string? }?
+function M.family(name)
+	local f = M.COUNT[name]
+	if f then return f end
+	local server = name:match("^mcp_([^_]+)_")
+	if not server then return nil end
+	if not servers[server] then servers[server] = { "called", server .. " tool", server .. " tools" } end
+	return servers[server]
+end
 
 --- A transcript row's or a live call's tool name.
 ---@param t zemi.TranscriptRow|zemi.ToolCall
 ---@return string
 function M.tool(t) return t.tool or t.name or "?" end
 
---- Whether a call folds into its turn's digest: it only looked around, went
---- well and changed nothing (a command's diff is news).
+--- Whether a call folds into its turn's digest: a family counts it, it went
+--- well and it shows no diff of its own (a command's diff is news).
 ---@param t zemi.TranscriptRow|zemi.ToolCall
 ---@return boolean
 function M.looks(t)
-	return (t.kind or "tool") == "tool" and t.status == "ok" and M.COUNT[M.tool(t)] ~= nil and (t.diff or "") == ""
+	return (t.kind or "tool") == "tool" and t.status == "ok" and M.family(M.tool(t)) ~= nil and (t.diff or "") == ""
 end
 
 --- Calls counted by noun, first seen first: "2 files, 1 command".
@@ -144,7 +168,7 @@ function M.counts(calls)
 	---@type string[], table<string, integer>, table<string, string[]>
 	local order, n, c = {}, {}, {}
 	for _, t in ipairs(calls) do
-		local k = M.COUNT[M.tool(t)]
+		local k = assert(M.family(M.tool(t)))
 		local key = k[2] or k[1]
 		if not n[key] then
 			order[#order + 1] = key
@@ -205,20 +229,28 @@ function M.title(name)
 	return s:sub(1, 1):upper() .. s:sub(2)
 end
 
+--- The calls the turn waits on: their work is another agent loop, so nothing
+--- streams until they end and their row says what holds the turn.
+---@type table<string, boolean>
+M.WAIT = { agent = true, workflow = true }
+
 --- A call's headline as a verb and the rest: "Read", " a.go". A command's
 --- about is itself a verb phrase ("Run the tests"), so its first word is the
---- verb; an unlabelled call reads as its input.
+--- verb; an unlabelled call reads as its input; a call the turn waits on says
+--- so in place of its verb ("waiting on workflow review").
 ---@param name string
 ---@param label string The model's description of the call, or "".
 ---@param input string The call's input as the row shows it, or "".
+---@param status string? The call's status; "run" is a call running now.
 ---@return string verb
 ---@return string rest
-function M.head(name, label, input)
-	if name == "shell" and label ~= "" then
-		local verb, rest = label:match("^(%S+)(.*)$")
-		return verb:sub(1, 1):upper() .. verb:sub(2), rest
-	end
+function M.head(name, label, input, status)
 	local rest = label ~= "" and " " .. M.lower(label) or input ~= "" and " " .. input or ""
+	if status == "run" and M.WAIT[name] then return "waiting on " .. name, rest end
+	if name == "shell" and label ~= "" then
+		local verb, tail = label:match("^(%S+)(.*)$")
+		return verb:sub(1, 1):upper() .. verb:sub(2), tail
+	end
 	return M.VERB[name] or M.title(name), rest
 end
 
