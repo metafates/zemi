@@ -506,20 +506,15 @@ func switchSeg(on, locked bool) hostapi.Segment {
 	return hostapi.Segment{Text: "◇ off", HL: hostapi.ChromeHint}
 }
 
-// listRows is the one list renderer: the selected item gets "› ", bold text
+// listRowsW is the one list renderer: the selected item gets "› ", bold text
 // and the band; more rows, wrapped by the caller, follow the label; every row
 // carries its item's 1-based Hit. Past room rows it windows whole items in v
 // (nil keeps no position), which moves only when the selection leaves it.
-// Rows fit maxW cells when it is set, the bar included.
-func listRows(items []listItem, sel int, v *viewport, room, maxW int) [][]hostapi.Segment {
-	return listRowsW(items, items, sel, v, room, 0, maxW)
-}
-
-// listRowsW is listRows padded to at least minW cells, with a key column
-// always showing. Descriptions line up in one column after the widest
-// label that has one, set by all, the unfiltered list, so filtering never
-// moves it; when a row does not fit its description gives way before any
-// label is cut.
+// Rows fit maxW cells when it is set, the bar included, and pad to at least
+// minW, with a key column always showing. Descriptions line up in one column
+// after the widest label that has one, set by all, the unfiltered list, so
+// filtering never moves it; when a row does not fit its description gives way
+// before any label is cut.
 func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int) [][]hostapi.Segment {
 	var rows [][]hostapi.Segment
 	keys := map[int]hostapi.Segment{}             // row -> key column

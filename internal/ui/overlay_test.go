@@ -1076,7 +1076,7 @@ func TestOverlayClosesOnOutsideClick(t *testing.T) {
 func TestListDescUnderLabel(t *testing.T) {
 	items := []listItem{{label: "shift+enter, alt+enter, ctrl+j", desc: "newline"}, {label: "esc", desc: "back, or twice to interrupt"}}
 	var got []string
-	for _, row := range listRows(items, 0, nil, 10, 30) {
+	for _, row := range listRowsW(items, items, 0, nil, 10, 0, 30) {
 		got = append(got, strings.TrimRight(hostapi.SegsText(row), " "))
 	}
 	if want := "› shift+enter, alt+enter…|  newline|  esc|  back, or twice to interrupt"; strings.Join(got, "|") != want {
@@ -1105,7 +1105,7 @@ func TestListDescColumn(t *testing.T) {
 		}},
 	} {
 		col := -1
-		for i, row := range listRows(c.items, 0, nil, 10, 52) {
+		for i, row := range listRowsW(c.items, c.items, 0, nil, 10, 0, 52) {
 			text, it := hostapi.SegsText(row), c.items[i]
 			if !strings.Contains(text, it.label) || !strings.HasSuffix(text, it.key.Text) || strings.Contains(text, "·…") || strings.Contains(text, ".…") {
 				t.Errorf("%s: row %q", c.name, text)
@@ -1139,7 +1139,8 @@ func TestOverlaySwitch(t *testing.T) {
 		{map[string]any{"text": "a", "on": false, "key": "tag"}, "◇ off", "Host:Hint"},
 		{map[string]any{"text": "a", "locked": true}, "  on ", "Host:Hint"},
 	} {
-		row := listRows((&App{}).overlayState(hostapi.Overlay{Items: []any{c.item}}).items, 0, nil, 10, 0)[0]
+		its := (&App{}).overlayState(hostapi.Overlay{Items: []any{c.item}}).items
+		row := listRowsW(its, its, 0, nil, 10, 0, 0)[0]
 		if k := row[len(row)-1]; k.Text != c.sw || k.HL != c.hl {
 			t.Errorf("%v: switch %q in %s, want %q in %s", c.item, k.Text, k.HL, c.sw, c.hl)
 		}

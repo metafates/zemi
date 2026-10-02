@@ -315,7 +315,8 @@ func TestClickScrolledListOpensSameItem(t *testing.T) {
 // padded to its width does not, and a long row keeps its scrollbar cell,
 // which draws in the border.
 func TestBoxEllipsisOnlyOnLongRows(t *testing.T) {
-	box := hostBox("", "", "", listRows([]listItem{{label: "short"}, {label: strings.Repeat("long ", 20)}}, 0, nil, 10, 0), 40, 100, 0)
+	items := []listItem{{label: "short"}, {label: strings.Repeat("long ", 20)}}
+	box := hostBox("", "", "", listRowsW(items, items, 0, nil, 10, 0, 0), 40, 100, 0)
 	if short, long := hostapi.SegsText(box[1]), hostapi.SegsText(box[2]); strings.Contains(short, "…") || !strings.Contains(long, "…") {
 		t.Fatalf("short %q, long %q", short, long)
 	}
@@ -339,7 +340,7 @@ func TestListWindowEndsAfterWholeItem(t *testing.T) {
 		{"header", []listItem{{label: "a", section: "One"}, {label: "b", section: "One"}, {label: "c", section: "Two"}}, 5, "Two"},
 		{"multi-line item", []listItem{{label: "x"}, {more: more}}, 4, "m1"},
 	} {
-		rows := listRows(c.items, 0, &viewport{}, c.limit, 0)
+		rows := listRowsW(c.items, c.items, 0, &viewport{}, c.limit, 0, 0)
 		if len(rows) != c.limit || strings.Contains(hostapi.SegsText(slices.Concat(rows...)), c.hidden) {
 			t.Errorf("%s: %q", c.name, hostapi.SegsText(slices.Concat(rows...)))
 		}
@@ -349,7 +350,7 @@ func TestListWindowEndsAfterWholeItem(t *testing.T) {
 	for _, limit := range []int{4, 6, 7} {
 		v := viewport{}
 		for sel := range items {
-			if rows := listRows(items, sel, &v, limit, 0); !strings.Contains(hostapi.SegsText(rows[0]), "item") {
+			if rows := listRowsW(items, items, sel, &v, limit, 0, 0); !strings.Contains(hostapi.SegsText(rows[0]), "item") {
 				t.Errorf("limit %d, selection %d: window starts on %q", limit, sel, hostapi.SegsText(rows[0]))
 			}
 		}

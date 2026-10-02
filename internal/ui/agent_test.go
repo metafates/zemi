@@ -1006,7 +1006,7 @@ func TestMatchLook(t *testing.T) {
 		{"a selected row with a desc match keeps the band", 1, "[anthropic/Host:Title] [son/Host:Value net/Host:HintKey] [› /Host:Title^ opus/Host:Bold^ net/Host:Hint^] [openai/Host:Title] [g/Host:HintKey pt/Host:Value]"},
 	} {
 		var got []string
-		for _, row := range listRows(items, c.sel, nil, 20, 0) {
+		for _, row := range listRowsW(items, items, c.sel, nil, 20, 0, 0) {
 			var segs []string
 			for _, s := range row {
 				if strings.TrimSpace(s.Text) != "" {
