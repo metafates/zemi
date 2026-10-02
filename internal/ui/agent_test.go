@@ -302,19 +302,28 @@ func TestChatExpandSettledRow(t *testing.T) {
 	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.Contains(r, "make") }) {
 		t.Fatalf("the settled turn does not fold into its digest:\n%s", strings.Join(closed, "\n"))
 	}
-	// the digest stays as the run's header over the long thought, the call
-	// and the trailing thought, which has its own row too
+	// the digest stays as the run's header, and every row of the run is framed
+	// by the air a thought and the rail's own entries carry
 	open := click("turn:2")
 	at := slices.Index(open, digest)
-	if len(open) != len(closed)+3 || at < 0 || open[at+1] != "│ ✻ thought 6.0s" || open[at+2] != "│ run make" {
-		t.Fatalf("%d rows closed, %d open:\n%s", len(closed), len(open), strings.Join(open, "\n"))
+	framed := []string{"│", "│ ✻ thought 6.0s", "│", "│ run make", "│", "│ ✻ thought 0.4s", "│"}
+	if at < 0 || !slices.Equal(open[at+1:at+1+len(framed)], framed) {
+		t.Fatalf("the opened run:\n%s", strings.Join(open, "\n"))
 	}
+	// a thought's click unrolls its text between the air framing it, at the
+	// prose measure
 	text := click("thought:2")
-	body := text[at+2 : at+2+len(text)-len(open)]
-	if len(body) < 5 || body[0] != "│" || body[len(body)-1] != "│" || !slices.Contains(body[1:len(body)-1], "│") {
-		t.Fatalf("the thought's text without its air:\n%s", strings.Join(text, "\n"))
+	var body []string
+	for _, r := range text[at+3:] {
+		if r == "│" && len(body) > 0 {
+			break
+		}
+		body = append(body, r)
 	}
-	for _, r := range body[1 : len(body)-1] {
+	if len(body) < 3 {
+		t.Fatalf("the thought's text is not unrolled:\n%s", strings.Join(text, "\n"))
+	}
+	for _, r := range body[1:] {
 		if r != "│" && (!strings.HasPrefix(r, "│   ") || ansi.StringWidth(r) > 4+80) {
 			t.Fatalf("a thought row off the rail or past the measure: %q", r)
 		}
@@ -326,6 +335,28 @@ func TestChatExpandSettledRow(t *testing.T) {
 	// closed it
 	if reopened := click("turn:2"); !slices.Equal(reopened, open) {
 		t.Fatalf("the run reopens as it first opened:\n%s", strings.Join(reopened, "\n"))
+	}
+}
+
+// TestTurnStatsDiff: the stats row closing a turn sums the lines every call of
+// that turn changed, and only its own.
+func TestTurnStatsDiff(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	host.AppendMessage("user", "fix it")
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -1,2 +1,2 @@\n-old\n+new\n keep"})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "b.go", Status: "ok", Diff: "--- b.go\n+++ b.go\n@@ -1 +1 @@\n-x\n+y"})
+	appendReply(host, "done", hostapi.TurnStat{In: 100, Out: 100, ElapsedMS: 1500})
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	if !strings.Contains(frame, "1.5s · 100 out · +2 -2") {
+		t.Fatalf("the turn's diff is not in its stats:\n%s", frame)
+	}
+	// the turn after it changed nothing: its stats row carries no diff
+	host.AppendMessage("user", "and now?")
+	appendReply(host, "nothing", hostapi.TurnStat{In: 100, Out: 100, ElapsedMS: 1500})
+	app.renderSync(t)
+	if frame = ansi.Strip(app.Frame()); strings.Count(frame, "+2 -2") != 1 {
+		t.Fatalf("the diff is not the first turn's alone:\n%s", frame)
 	}
 }
 
@@ -1173,7 +1204,7 @@ func TestReasoningLiveTail(t *testing.T) {
 // clock while the box waits for the reader.
 func TestReasoningSpinsBehindModal(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\ntwo\n"})
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\n"})
 	app.openOverlay(hostapi.Overlay{ID: "usage", Title: "Usage", Body: "x"})
 	render := func(ms int64) string {
 		app.now = func() time.Time { return time.UnixMilli(ms) }
@@ -1219,7 +1250,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		return out[:len(out)-3] // the composer
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	live := []string{"▌ look around", "│ read 2 files 1.2s", "│ ✻ thought 8.0s", "│ list the data", "│ ✓ edit a.go +1 -1", "│ ✻ thought 0.4s"}
+	live := []string{"▌ look around", "│ read 2 files 1.2s", "│", "│ ✻ thought 8.0s", "│", "│ list the data", "│ ✓ edit a.go +1 -1", "│", "│ ✻ thought 0.4s", "│"}
 	if got := rows(); !slices.Equal(got, live) {
 		t.Fatalf("live rail:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(live, "\n"))
 	}
@@ -1233,12 +1264,12 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	appendReply(host, "now the next one", hostapi.TurnStat{})
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "c.go", Status: "ok"})
-	closed = append(closed, "│ read c.go")
+	closed = append(closed, "+1 -1", "│ read c.go")
 	if got := rows(); !slices.Equal(got, closed) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if got, want := rows(), append(closed[:3:3], "· 1 file"); !slices.Equal(got, want) {
+	if got, want := rows(), append(closed[:4:4], "· 1 file"); !slices.Equal(got, want) {
 		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
 	}
 }
@@ -1315,7 +1346,7 @@ func TestReasoningPane(t *testing.T) {
 				for row := range strings.SplitSeq(frame, "\r\n") {
 					pane = append(pane, strings.TrimRight(ansi.Cut(row, th.X, th.X+th.Width), " "))
 				}
-				if want := []string{"  turn · 1 file · thought 1.2s", "", "  ✻ thought 1.2s", "  where to start", "  read a.go"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
+				if want := []string{"  turn · 1 file · thought 1.2s", "", "", "  ✻ thought 1.2s", "  where to start"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
 					t.Fatalf("the inspector:\n%s", strings.Join(pane, "\n"))
 				}
 				if i := slices.IndexFunc(app.lastRows[th.Y-2], func(s hostapi.Segment) bool { return s.Text == "turn" }); i < 0 || app.lastRows[th.Y-2][i].HL != "Title" {
@@ -1648,7 +1679,7 @@ func TestFileRowClickIDs(t *testing.T) {
 			"│ 8 keep":               "tool:-1",
 			"│ read 2 files":         "step:-2",
 		}},
-		{"read 2 files", map[string]string{"│ read c.go": "tool:-2", "│ read d.go": "tool:-3"}},
+		{"read 2 files", map[string]string{"│ ├ read c.go": "tool:-2", "│ └ read d.go": "tool:-3"}},
 	} {
 		app.renderSync(t)
 		x, y := findCell(t, app, c.open)
@@ -1758,8 +1789,8 @@ func TestToolRows(t *testing.T) {
 		t.Fatalf("verbs: read %q, edit %q, compile %q", hl["read"], hl["edit"], hl["compile"])
 	}
 	frame = printedChat(t, host, 98)
-	// every call, nested under its step's row
-	if !strings.Contains(frame, "│   read b.go") || !strings.Contains(frame, "│ read 2 files") || !strings.Contains(frame, "vet clean") || !strings.Contains(frame, "7 + new") {
+	// every call, nested under its step's row behind its branch mark
+	if !strings.Contains(frame, "│ └ read b.go") || !strings.Contains(frame, "│ read 2 files") || !strings.Contains(frame, "vet clean") || !strings.Contains(frame, "7 + new") {
 		t.Fatalf("--reasoning must list every call:\n%s", frame)
 	}
 	// an open row keeps a multi-line command's lines, each a detail row

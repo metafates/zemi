@@ -112,12 +112,11 @@ local function block_of(m)
 	return activity(m) and "activity" or "note"
 end
 
--- "+4 -1": the lines a diff adds and removes, in the colors a diff marks the
--- same counts with (Ok adds, Danger removes). A count of zero is left out: the
--- sign alone would report nothing.
+-- The lines a diff adds and removes: its "+++"/"---" headers are not changes.
 ---@param diff string
----@return zemi.Line
-local function diffstat(diff)
+---@return integer add
+---@return integer del
+local function diffLines(diff)
 	local add, del = 0, 0
 	for l in diff:gmatch("[^\n]+") do
 		if l:match("^%+") and not l:match("^%+%+%+ ") then
@@ -126,6 +125,16 @@ local function diffstat(diff)
 			del = del + 1
 		end
 	end
+	return add, del
+end
+
+-- "+4 -1": those counts as a diffstat marks them, in the colors a diff marks the
+-- same counts with (Ok adds, Danger removes). A count of zero is left out: the
+-- sign alone would report nothing.
+---@param add integer
+---@param del integer
+---@return zemi.Line
+local function diffstat(add, del)
 	---@type zemi.Line
 	local out = {}
 	if add > 0 then out[#out + 1] = { text = "+" .. add, hl = "Ok" } end
@@ -233,26 +242,30 @@ local function builder(ctx, width)
 		end
 		return #body - from + 1
 	end
-	-- "│ ✻ thought 8s", with the text under it when given: a bar-only row
-	-- above and below text of two or more lines, so the prose breathes and
-	-- the rail stays whole.
+	-- "│ ✻ thought 8s", with the text under it when given: a bar-only row frames
+	-- the entry, and one between the header and prose of two or more lines, so
+	-- thinking stands apart on the rail and the prose breathes.
 	---@param secs number
 	---@param click string
 	---@param text string?
 	function B.thought(secs, click, text)
+		push(air())
 		push({ bar(), mark("thought", click), { text = fmt.thought(secs), hl = "Dim", click = click } })
-		if not text then return end
-		local at = #B.lines + 1
-		if B.reasoning(text, nil, click) > 1 then
-			table.insert(B.lines, at, air())
+		if not text then
 			push(air())
+			return
 		end
+		local at = #B.lines + 1
+		if B.reasoning(text, nil, click) > 1 then table.insert(B.lines, at, air()) end
+		push(air())
 	end
 	-- The model thinking now; a click opens or closes the thinking pane.
 	---@param tail string? The thinking so far, whose last lines show under it.
 	function B.thinking(tail)
+		push(air())
 		push({ bar(), mark("spin", "reasoning"), { text = "thinking", hl = "Dim", click = "reasoning" } })
 		if tail then B.reasoning(tail, 4) end
+		push(air())
 	end
 
 	-- What look-around calls did: "read 2 files, ran 1 command: go vet".
@@ -309,7 +322,7 @@ local function builder(ctx, width)
 	-- Open, a row shows the whole command, the diff and a command's output.
 	---@param t zemi.tui.Tool
 	---@param idx integer Transcript index, negative for a live-turn call.
-	---@param o { open: boolean?, rail: boolean?, nest: boolean?, secs: number?, click: string? }
+	---@param o { open: boolean?, rail: boolean?, nest: string?, secs: number?, click: string? } nest: the two cells a row hangs by, its branch mark.
 	function B.tool(t, idx, o)
 		local name = fmt.tool(t)
 		local open = o.open or expanded[idx] or false
@@ -319,8 +332,8 @@ local function builder(ctx, width)
 		-- on the rail a row's mark stands at column 2, and a running one reads
 		-- Dim beside its spinner until it ends
 		local barred = o.rail or false
-		-- a call nested under its step's row sits two cells in behind the bar
-		local pad = o.nest and "  " or nil
+		-- a call nested under its step's row hangs by its branch mark
+		local pad = o.nest
 		local dim = barred and not asked and MARK_OF[t.status] == nil
 		local inner = width - (barred and 2 or 0) - (pad and 2 or 0)
 		local input = relpath(t.text or t.input or "")
@@ -338,7 +351,11 @@ local function builder(ctx, width)
 		local label = t.label or ""
 		-- the row's right-aligned tail: what it changed, then how long it ran
 		---@type zemi.Line
-		local tail = (t.diff or "") ~= "" and diffstat(t.diff) or {}
+		local tail = {}
+		if (t.diff or "") ~= "" then
+			local plus, minus = diffLines(t.diff)
+			tail = diffstat(plus, minus)
+		end
 		---@param text string
 		local function add(text)
 			if #tail > 0 then tail[#tail + 1] = { text = " · ", hl = "Dim" } end
@@ -606,7 +623,12 @@ local function builder(ctx, width)
 				if o.open or steps[idx] then
 					for k, g in ipairs(group) do
 						local n = i + k - 1
-						B.tool(g, o.live and -n or n, { open = o.open, rail = true, nest = true, click = fold })
+						B.tool(g, o.live and -n or n, {
+							open = o.open,
+							rail = true,
+							nest = k == #group and "└ " or "├ ",
+							click = fold,
+						})
 					end
 				end
 				secs = nil
@@ -821,16 +843,42 @@ zemi.ui.widget.add({
 						break
 					end
 				end
-				---@type string[]
-				local parts = {}
+				-- The turn's stats: how long it ran, what it wrote, what it changed
+				-- (every call's diff in the turn, never the session), and when it
+				-- ended. The changed lines print as a diffstat does.
+				---@type zemi.Line
+				local stats = {}
+				---@param text string
+				local function stat(text)
+					if #stats > 0 then stats[#stats + 1] = { text = " · ", hl = "Dim" } end
+					stats[#stats + 1] = { text = text, hl = "Dim" }
+				end
 				local tout = fmt.tokens(m.out)
-				if (m.elapsed or 0) > 0 then parts[#parts + 1] = fmt.duration(m.elapsed) end
-				if tout then parts[#parts + 1] = tout .. " out" end
-				if (m.ended or 0) > 0 then parts[#parts + 1] = fmt.clock(m.ended) end
-				if final and #parts > 0 then
+				if (m.elapsed or 0) > 0 then stat(fmt.duration(m.elapsed)) end
+				if tout then stat(tout .. " out") end
+				local plus, minus = 0, 0
+				local start = first
+				while start > 1 and block_of(tr[start - 1]) ~= "user" do
+					start = start - 1
+				end
+				for i = start, first - 1 do
+					local a, d = diffLines(tr[i].diff or "")
+					plus, minus = plus + a, minus + d
+				end
+				if plus + minus > 0 then
+					if #stats > 0 then stats[#stats + 1] = { text = " · ", hl = "Dim" } end
+					for _, sg in ipairs(diffstat(plus, minus)) do
+						stats[#stats + 1] = sg
+					end
+				end
+				if (m.ended or 0) > 0 then stat(fmt.clock(m.ended)) end
+				if final and #stats > 0 then
 					B.gap("stats")
-					B.lines[#B.lines + 1] =
-						{ { text = "  ", copy = false }, { text = table.concat(parts, " · "), hl = "Dim" } }
+					local row = { { text = "  ", copy = false } }
+					for _, sg in ipairs(stats) do
+						row[#row + 1] = sg
+					end
+					B.lines[#B.lines + 1] = row
 				end
 			end
 			return { lines = B.lines, next = last + 1, mode = mode }

@@ -1893,11 +1893,13 @@ provenance string.
   rows between, a continuous bar in column 0 with every mark in column 2
   (`│ ✓ edit`, `│ ⠋ running label`, `│ ✻ thought 8s`) and nested text in
   column 4, a wrapped row keeping the bar: a step's unlabelled look-around
-  calls, two or more of them, as one row saying what they did, a lone one as
-  its own row, the thought before the step as its
+  calls, two or more of them, as one row saying what they did, each hanging off
+  it behind a `├` or `└` and its output behind the `⎿` under that, a lone one
+  as its own row, the thought before the step as its
   suffix, a labelled call a row of its own, its label (its command shows once
   opened), a thought over 5 s, or the run's last one, a row
-  of its own. While the model thinks its last lines show
+  of its own, each such thinking entry framed by a bar-only row above and
+  below. While the model thinks its last lines show
   under a `│ ⠋ thinking` row, their top sinking toward the canvas while it
   hides lines above them, unless the thinking pane draws them: in
   `ui.reasoning` pane mode, on a screen 100 columns or wider, a pane right of
@@ -1914,14 +1916,15 @@ provenance string.
   rest of the transcript untouched;
   with the pane drawn the opened run also reads there, every row and thought
   open, and folding it, or the next turn, goes back to the live thinking. A
-  thought row's click unrolls its text at most 80 cells wide, a bar-only row
-  above and below text of two or more lines (with the pane, it shows the run
+  thought row's click unrolls its text at most 80 cells wide (with the pane, it shows the run
   there instead); a step row's opens its calls nested two cells under it,
   the step's row staying as their head, and closes them again. A rail of more
   than six rows keeps its last six and folds the earlier ones behind one dim
   row, `… 8 earlier`, whose click shows the whole run and then folds it back
   (a printed run and the pane's inspector list everything). A click on any
-  other row opens that one row, command, diff and output.
+  other row opens that one row, command, diff and output. The last reply of a
+  turn carries its stats: the time it ran, its tokens out, the lines its calls
+  changed (`+14 -4`, that turn's alone) and the clock.
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it;

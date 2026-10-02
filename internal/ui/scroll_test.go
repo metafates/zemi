@@ -501,6 +501,9 @@ func TestThinkingFade(t *testing.T) {
 		var out []float64
 		for i := head + 1; i <= head+4 && i < len(st.lines); i++ {
 			row := app.lastRows[st.rect.Min.Y+i-st.top]
+			if strings.TrimSpace(hostapi.SegsText(row)) == "│" {
+				break // the air row framing the block ends it
+			}
 			if row[0].Fade != 0 {
 				t.Fatalf("the rail bar sinks: %+v", row[0])
 			}
