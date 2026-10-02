@@ -1002,11 +1002,20 @@ func (a *App) compose(w, h int) string {
 	// the chrome the user answers. It hugs the stage's right edge, four cells
 	// over it, the rest in the margin, and stays inside the screen.
 	toasts := func() {
-		if tray := toastTray(a.toasts, stage.Dx(), stage.Dy()); len(tray) > 0 {
-			for i, line := range tray {
-				tray[i] = margined(line)
+		tray := toastTray(a.toasts, stage.Dx(), stage.Dy())
+		if len(tray) == 0 {
+			return
+		}
+		x := max(min(stage.Max.X-4, w-hostapi.SegsWidth(tray[0])-2), 0)
+		for i, line := range tray {
+			y := stage.Min.Y + i
+			var row []hostapi.Segment
+			if y >= 0 && y < len(rows) {
+				row = rows[y]
 			}
-			placeBox(rows, tray, max(min(stage.Max.X-4, w-hostapi.SegsWidth(tray[0])), 0), stage.Min.Y, w)
+			placed := append(blanked(row, x, 1), line...)
+			placed = append(placed, blanked(row, x+1+hostapi.SegsWidth(line), 1)...)
+			placeBox(rows, [][]hostapi.Segment{placed}, x, y, w)
 		}
 	}
 	for i, place := range modals {

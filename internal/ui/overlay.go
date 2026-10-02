@@ -1039,8 +1039,12 @@ func spliceBox(rows, box [][]hostapi.Segment, area uv.Rectangle, w int) uv.Recta
 		// a blank gutter column each side is part of the box (the rect reports
 		// it); one more blank column outside keeps chat text off it
 		x0 := area.Min.X + max((area.Dx()-hostapi.SegsWidth(box[i]))/2, 2)
-		placeBox(rows, [][]hostapi.Segment{margined(margined(box[i]))}, x0-2, y0+i, w)
-		lo, hi = min(lo, x0-1), max(hi, x0+hostapi.SegsWidth(box[i])+1)
+		bw := hostapi.SegsWidth(box[i])
+		y := y0 + i
+		line := append(blanked(rows[y], x0-2, 2), box[i]...)
+		line = append(line, blanked(rows[y], x0+bw, 2)...)
+		placeBox(rows, [][]hostapi.Segment{line}, x0-2, y, w)
+		lo, hi = min(lo, x0-1), max(hi, x0+bw+1)
 	}
 	return uv.Rect(lo, y0, max(hi-lo, 0), bh)
 }
@@ -1090,9 +1094,9 @@ func anchorBottom(rows, box [][]hostapi.Segment, area, frame uv.Rectangle, frame
 	y0 := max(area.Min.Y, end-len(box))
 	for i := y0; i < end && i-y0 < drawn; i++ {
 		if right {
-			placeBox(rows, [][]hostapi.Segment{append([]hostapi.Segment{{Text: " "}}, box[i-y0]...)}, x-1, i, w)
+			placeBox(rows, [][]hostapi.Segment{append(blanked(rows[i], x-1, 1), box[i-y0]...)}, x-1, i, w)
 		} else {
-			placeBox(rows, [][]hostapi.Segment{append(slices.Clip(box[i-y0]), hostapi.Segment{Text: " "})}, x, i, w)
+			placeBox(rows, [][]hostapi.Segment{append(slices.Clip(box[i-y0]), blanked(rows[i], x+bw, 1)...)}, x, i, w)
 		}
 	}
 	return uv.Rect(x, y0, bw, max(end-y0, 0))
@@ -1113,10 +1117,29 @@ func ruleAt(rows [][]hostapi.Segment, frame uv.Rectangle) bool {
 	return armsOf(r)&(armR|armD) == armR|armD
 }
 
-// margined holds what a box does not cover one cell off each border, so it
-// does not read as part of the box.
-func margined(line []hostapi.Segment) []hostapi.Segment {
-	return append(append([]hostapi.Segment{{Text: " "}}, line...), hostapi.Segment{Text: " "})
+// blanked returns the n cells of row from x on with their text turned to
+// blanks and their style kept: what a box leaves uncovered beside itself stays
+// the backdrop's, so no stripe of the canvas runs down its side. A row shorter
+// than that pads with plain blanks, which the frame clips.
+func blanked(row []hostapi.Segment, x, n int) []hostapi.Segment {
+	var out []hostapi.Segment
+	used := 0
+	for _, s := range dropCells(row, x) {
+		if used >= n {
+			break
+		}
+		w := min(ansi.StringWidth(s.Text), n-used)
+		if w <= 0 {
+			continue
+		}
+		s.Text = strings.Repeat(" ", w)
+		out = append(out, s)
+		used += w
+	}
+	if used < n {
+		out = append(out, hostapi.Segment{Text: strings.Repeat(" ", n-used)})
+	}
+	return out
 }
 
 // dropCells removes the first n display cells of a row.

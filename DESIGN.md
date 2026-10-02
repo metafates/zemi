@@ -2054,7 +2054,9 @@ provenance string.
   regions too, keeps its own styles sunk toward the canvas to the same
   ambient depth (`modalFade`), and a centered box keeps a
   blank gutter column of its own each side plus one more, so no text
-  outside it runs up to its border; at any other time a plugin
+  outside it runs up to its border; a gutter column is the backdrop's own
+  cell with its text blanked, so no stripe of the terminal's background digs
+  into what the box stands over; at any other time a plugin
   overlay carries a Go-stamped origin badge (`plugin:<name>`, `project:<file>`). While a box
   stays open its width and height only grow (a filter narrowing a menu,
   a question batch's tabs, a detail view, the palette as you type), and a

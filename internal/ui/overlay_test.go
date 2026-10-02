@@ -308,6 +308,16 @@ func TestModalDimsBackground(t *testing.T) {
 	if s := seg("hello"); s.Fade != modalFade || s.HL == hostapi.ChromeDim {
 		t.Fatalf("under an overlay: %+v", s)
 	}
+	// the blank columns the box keeps beside itself keep the backdrop's style:
+	// a stripe of the terminal's own background there reads as a groove cut
+	// into the screen
+	r := app.chromeRect
+	for _, x := range []int{r.Min.X - 1, r.Min.X, r.Max.X - 1, r.Max.X} {
+		s := dropCells(app.lastRows[r.Min.Y+1], x)[0]
+		if s.HL == "" || s.Fade != modalFade || strings.TrimSpace(s.Text) != "" {
+			t.Fatalf("the gutter at column %d: %+v", x, s)
+		}
+	}
 	if s := seg("Copied"); s.Fade != 0 {
 		t.Fatalf("the overlay faded a toast: %+v", s)
 	}
