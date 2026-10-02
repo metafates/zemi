@@ -343,8 +343,11 @@ local function builder(ctx, width)
 		-- on the rail a row's mark stands at column 2, and a running one reads
 		-- Dim beside its spinner until it ends
 		local barred = o.rail or false
-		-- a call nested under its step's row hangs by its branch mark
+		-- a call nested under its step's row hangs by its branch mark, and the
+		-- rows under it keep a line in that mark's place: a bar while more
+		-- siblings follow, a gap under the last one, so the tree stays joined
 		local pad = o.nest
+		local below = pad and (pad == "└ " and "  " or "│ ") or nil
 		local dim = barred and not asked and MARK_OF[t.status] == nil
 		local inner = width - (barred and 2 or 0) - (pad and 2 or 0)
 		local input = relpath(t.text or t.input or "")
@@ -422,12 +425,14 @@ local function builder(ctx, width)
 		if running then frame() end
 		local first = #B.lines + 1
 		push(suffixed(head, tail, click))
-		-- under the head one corner, every later row four cells in
+		-- under the head one corner, every later row the same cells in, two less
+		-- when the row hangs off a branch mark, whose own cells come above it
+		local hang, indent = pad and "⎿ " or "  ⎿ ", pad and "  " or "    "
 		local corner = true
 		---@param text string|zemi.Line
 		---@param hl string
 		local function detail(text, hl)
-			local row = { { text = corner and "  ⎿ " or "    ", hl = "Dim", copy = false } }
+			local row = { { text = corner and hang or indent, hl = "Dim", copy = false } }
 			for _, sg in ipairs(type(text) == "table" and text or { { text = text, hl = hl } }) do
 				row[#row + 1] = { text = sg.text, hl = sg.hl, click = click, hover = false }
 			end
@@ -463,7 +468,7 @@ local function builder(ctx, width)
 				for _, sg in ipairs(row) do
 					sg.click, sg.hover = click, false
 				end
-				table.insert(row, 1, { text = "    ", copy = false, click = click, hover = false })
+				table.insert(row, 1, { text = indent, copy = false, click = click, hover = false })
 				push(row)
 			end
 		end
@@ -523,7 +528,7 @@ local function builder(ctx, width)
 		end
 		if barred then
 			for n = first + 1, #B.lines do
-				table.insert(B.lines[n], 1, bar(pad))
+				table.insert(B.lines[n], 1, bar(below))
 			end
 		end
 		if running then frame() end

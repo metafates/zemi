@@ -1893,7 +1893,8 @@ provenance string.
   (`│ ✓ edit`, `│ ⠋ running label`, `│ ✻ thought 8s`) and nested text in
   column 4, a wrapped row keeping the bar: a step's unlabelled look-around
   calls, two or more of them, as one row saying what they did, each hanging off
-  it behind a `├` or `└` and its output behind the `⎿` under that, a lone one
+  it behind a `├` or `└`, the bar kept under a `├` for the rows that follow it
+  and a gap under the last, its output behind the `⎿` under that, a lone one
   as its own row, a labelled call a row of its own, its label (its command shows
   once opened), a thought a row of its own. A running entry, a call or the
   thinking, is framed by a bar-only row above and below while it runs, and

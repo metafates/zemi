@@ -1663,7 +1663,7 @@ func TestFileRowClickIDs(t *testing.T) {
 	appendReasoning(host, "how", hostapi.TurnStat{ThoughtMS: 6000})
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
 		{Name: "edit", Input: "/w/a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -7,2 +7,2 @@\n-old\n+new\n keep"},
-		{Name: "read", Input: "c.go", Status: "ok"},
+		{Name: "read", Input: "c.go", Status: "ok", Output: "1\tpackage c"},
 		{Name: "read", Input: "d.go", Status: "ok"},
 	}})
 	for _, c := range []struct {
@@ -1680,6 +1680,8 @@ func TestFileRowClickIDs(t *testing.T) {
 			"│ read 2 files":         "step:-2",
 		}},
 		{"read 2 files", map[string]string{"│ ├ read c.go": "tool:-2", "│ └ read d.go": "tool:-3"}},
+		// a nested call's own rows keep the line under its branch mark
+		{"read c.go", map[string]string{"│ ├ read c.go": "tool:-2", "│ │ ⎿ 1 package c": "tool:-2"}},
 	} {
 		app.renderSync(t)
 		x, y := findCell(t, app, c.open)
