@@ -30,7 +30,7 @@ Rules for `render(ctx)`:
 - A widget redraws only when something else does. One that changes on its own calls `zemi.ui.redraw` from `zemi.timer.every`.
 - Returning the same line table again is free; never change one after returning it. With more work than fits, return what is ready and `true` as a second result, and zemi renders it again next frame (the chat fills a long session this way, 30 ms a render at most).
 - Colors are theme groups: `Accent`, `Dim`, `Rule`, `Title`, `Literal`, `Danger`, `Warn`, `Ok`, and the rest in `theme.lua`, each linking to one of them or naming a palette role.
-- A replacement statusline widget keeps its click with `on_click = function(ev) zemi.command.run(ev.id) end`. A replacement chat keeps the thinking pane toggle (`zemi.ui.reasoning.toggle()`), agent rows (`zemi.command.run("agents", "view " .. row.run)`) and the folding: `require("zemi.tui.chat").click` is the shipped chat's `on_click`, keyed by its click ids (`turn:<idx>` a digest, `step:<idx>`, `thought:<idx>`, `tool:<idx>`).
+- A replacement statusline widget keeps its click with `on_click = function(ev) zemi.command.run(ev.id) end`. A replacement chat keeps the thinking pane toggle (`zemi.ui.reasoning.toggle()`), agent rows (`zemi.command.run("agents", "view " .. row.run)`) and the folding: `require("zemi.tui.chat").click` is the shipped chat's `on_click`, keyed by its click ids (`turn:<idx>` a digest, `more:<idx>` what a fold row hides, `step:<idx>`, `thought:<idx>`, `tool:<idx>`).
 
 ```lua
 -- a tip of your own in place of the default splash's

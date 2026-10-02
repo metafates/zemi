@@ -50,7 +50,9 @@ local whole = {}
 local RAIL_KEEP = 6
 -- notice rows of one burst kept in view, the older ones behind a fold row
 local NOTICES_KEEP = 3
-local expanded_epoch = 0
+-- the transcript those tables belong to: its epoch, or the agent run on screen
+---@type integer|string
+local opened_in = 0
 local live_tools = 0
 
 -- What the thinking pane shares with the chat.
@@ -561,7 +563,8 @@ local function builder(ctx, width)
 	function B.notices(list, first, last)
 		B.gap("note")
 		local hidden = last - first + 1 - NOTICES_KEEP
-		if hidden > 1 then
+		-- a printed run lists every row: its fold row would have nothing to click
+		if hidden > 1 and not ctx.headless then
 			local click = "more:" .. first
 			local label = whole[first] and "… show the rest" or "… " .. hidden .. " earlier"
 			B.lines[#B.lines + 1] = {
@@ -781,8 +784,11 @@ zemi.ui.widget.add({
 		-- An agent run's transcript mutates in place and reports epoch 0, so
 		-- only the session's settled rows are cached.
 		local epoch = ctx.transcript_epoch or 0
-		if epoch ~= expanded_epoch then
-			expanded, steps, unrolled, unfolded, whole, expanded_epoch, M.inspected = {}, {}, {}, {}, {}, epoch, nil
+		-- rows are keyed by transcript index, and every view reports epoch 0:
+		-- the run on screen names its own transcript there
+		local ident = ctx.view and ctx.view.id or epoch
+		if ident ~= opened_in then
+			expanded, steps, unrolled, unfolded, whole, opened_in, M.inspected = {}, {}, {}, {}, {}, ident, nil
 		end
 		-- The live turn's calls are keyed by negative index and the host restarts
 		-- that list every turn, so a shorter list means those keys now stand for
@@ -856,14 +862,20 @@ zemi.ui.widget.add({
 			else
 				B.gap("text")
 				B.markdown(m.text)
-				-- The turn's readout rides the reply that ends the exchange: how
-				-- long it ran, what it wrote and when it ended, with nothing after
-				-- it but the next prompt. A sentence the model says between runs
-				-- carries none of it, and each call's own row shows what it changed.
+				-- The readout rides the reply that ends the exchange, and only the
+				-- next text row decides it: a call, notice or error after it changes
+				-- nothing, while another reply means a sentence between runs.
 				---@type zemi.Line
 				local stats = {}
-				local nxt = tr[last + 1]
-				if nxt == nil or ((nxt.kind or "") == "" and nxt.role == "user") then
+				local final = true
+				for i = last + 1, #tr do
+					local r = tr[i]
+					if (r.kind or "") == "" then
+						final = r.role == "user"
+						break
+					end
+				end
+				if final then
 					---@param text string
 					local function stat(text)
 						if #stats > 0 then stats[#stats + 1] = { text = " · ", hl = "Dim" } end
@@ -1032,9 +1044,12 @@ zemi.ui.widget.add({
 			end
 			-- what waits for the turn's next step boundary: the user's own words
 			-- as typed, and a subagent's message as the head line the model
-			-- reads it by, apart from the agent's rows above
+			-- reads it by, apart from the agent's rows above. Waiting notices that
+			-- arrive together draw as one block, as a settled burst does.
+			local note = false
 			for _, q in ipairs(queued) do
-				B.gap("queued")
+				if not (note and q.notice) then B.gap(q.notice and "note" or "queued") end
+				note = q.notice or false
 				if q.notice then
 					B.queued(q.text)
 				else
