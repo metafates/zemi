@@ -649,7 +649,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		watches:   newWatchReg(),
 		Providers: agent.NewRegistry(),
 		Perm:      new(perm.Store),
-		agents:    newAgentHost(),
+		agents:    newAgentHost(rt.Clock()),
 		luaTools:  newToolReg(),
 		stops:     newStopReg(),
 		jobs:      tools.NewJobs(),
@@ -1726,7 +1726,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 			}
 			return out
 		},
-		"agent":      func(L *glua.LState) glua.LValue { return agentTable(L, stream) },
+		"agent":      func(L *glua.LState) glua.LValue { return agentTable(L, stream, h.now()) },
 		"transcript": func(L *glua.LState) glua.LValue { return transcriptTable(L, transcript) },
 		"instructions": func(L *glua.LState) glua.LValue {
 			files := h.instructionsCached()
@@ -1823,8 +1823,9 @@ func (h *Host) instructionsCached() []string {
 	return h.instr
 }
 
-// agentTable is ctx.agent: the live turn.
-func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
+// agentTable is ctx.agent: the live turn. now is the host's clock, which
+// the tool stamps were taken on.
+func agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) *glua.LTable {
 	at := L.CreateTable(0, 12)
 	at.RawSetString("active", glua.LBool(stream.Active))
 	at.RawSetString("model", glua.LString(stream.Model))
@@ -1860,7 +1861,7 @@ func agentTable(L *glua.LState, stream StreamSnapshot) *glua.LTable {
 		row.RawSetString("run", glua.LString(t.Run))
 		row.RawSetString("label", glua.LString(sanitize.String(t.Label)))
 		if !t.Started.IsZero() {
-			row.RawSetString("elapsed", glua.LNumber(time.Since(t.Started).Seconds()))
+			row.RawSetString("elapsed", glua.LNumber(now.Sub(t.Started).Seconds()))
 		}
 		row.RawSetString("diff", glua.LString(sanitize.String(t.Diff)))
 		row.RawSetString("output", glua.LString(t.Output))

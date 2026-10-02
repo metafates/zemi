@@ -166,9 +166,12 @@ type agentHost struct {
 	// loads it, a drop point clears it
 	ctx contextRow
 
-	// turn timing: turnStart pins the wall clock at AgentSend, thinking
+	// turn timing: turnStart pins the clock at AgentSend, thinking
 	// tracks the open reasoning block, thought accumulates closed ones
 	// since the last flush and stepThinking those of the current step.
+	// clock is the host's, which the live snapshot reads: a stamp on one
+	// clock and a read on another measures the gap between them.
+	clock        lua.Clock
 	turnStart    time.Time
 	thinkStart   time.Time
 	thinking     bool
@@ -251,8 +254,8 @@ type agentHost struct {
 	env       string // pinned environment section (environmentPrompt)
 }
 
-func newAgentHost() *agentHost {
-	return &agentHost{profiles: map[string]*Profile{}}
+func newAgentHost(clock lua.Clock) *agentHost {
+	return &agentHost{profiles: map[string]*Profile{}, clock: clock}
 }
 
 // host wiring
@@ -1105,7 +1108,7 @@ func (ag *agentHost) beginTurn() {
 	// no step has started, so a retry before one (compact's) takes nothing
 	// back, the last turn's rows included
 	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought = "", "", nil, math.MaxInt, 0
-	ag.turnStart = time.Now()
+	ag.turnStart = ag.clock.Now()
 	ag.thinkStart, ag.thinking, ag.thought = time.Time{}, false, 0
 	ag.retryAt, ag.retries, ag.retryWhy = time.Time{}, 0, ""
 }
@@ -1175,7 +1178,7 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 	ag.textBuf, ag.reasonBuf, ag.tools, ag.thought, ag.thinking, ag.stepThinking = ag.stepText, ag.stepReason, ag.stepTools, ag.stepThought, false, 0
 	rows := ag.stepRows
 	ag.retries++
-	ag.retryAt = time.Now().Add(delay)
+	ag.retryAt = s.h.now().Add(delay)
 	ag.retryWhy, _ = s.h.explain(err) // the advice is to wait, which the countdown says
 	ag.mu.Unlock()
 	s.h.cutAssistantRows(rows)
@@ -1265,7 +1268,7 @@ func (s *streamAdapter) ToolCallRunning(id string) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	if i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id && t.Status == CallWait }); i >= 0 {
-		ag.tools[i].Status, ag.tools[i].Started = CallRun, time.Now()
+		ag.tools[i].Status, ag.tools[i].Started = CallRun, s.h.now()
 	}
 	ag.mu.Unlock()
 	s.h.agentStream()
@@ -1403,11 +1406,12 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		usage, ag.cutUsage = addUsage(usage, ag.cutUsage), fantasy.Usage{}
 	}
 	ag.holdCut = false
+	now := h.now()
 	model := h.turnModelID()
 	text, tools := ag.textBuf, ag.tools
-	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: time.Now().Unix()}
+	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: now.Unix()}
 	if !ag.turnStart.IsZero() {
-		stat.ElapsedMS = time.Since(ag.turnStart).Milliseconds()
+		stat.ElapsedMS = now.Sub(ag.turnStart).Milliseconds()
 	}
 	ag.turnStart = time.Time{}
 	// a call still open here was cut off: by the user, or by the error that
@@ -1738,7 +1742,7 @@ func (h *Host) persistMessage(msg fantasy.Message) error {
 		ag.mu.Lock()
 		d := ag.stepThinking
 		if ag.thinking {
-			d += time.Since(ag.thinkStart)
+			d += h.now().Sub(ag.thinkStart)
 		}
 		ag.mu.Unlock()
 		parts, _ := json.Marshal(map[string]any{"thought_ms": d.Milliseconds()}, json.Deterministic(true))
@@ -2145,7 +2149,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 	out.Tools = append(out.Tools, ag.tools...)
 	out.Retries, out.Compacting, out.CheckingGoal, out.SessionCost = ag.retries, ag.compacting, ag.checkingGoal, ag.sessCost
 	if !ag.retryAt.IsZero() {
-		out.Retrying, out.RetryIn, out.RetryWhy = true, max(time.Until(ag.retryAt), 0), ag.retryWhy
+		out.Retrying, out.RetryIn, out.RetryWhy = true, max(ag.retryAt.Sub(now), 0), ag.retryWhy
 	}
 	return out
 }
@@ -2182,7 +2186,7 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	}
 	ag.retries, ag.retryAt, ag.compacting = s.Retries, time.Time{}, s.Compacting
 	if s.Retrying {
-		ag.retryAt = time.Now().Add(s.RetryIn)
+		ag.retryAt = h.now().Add(s.RetryIn)
 	}
 }
 
@@ -2191,13 +2195,13 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 func (ag *agentHost) beginThinking() {
 	if !ag.thinking {
 		ag.thinking = true
-		ag.thinkStart = time.Now()
+		ag.thinkStart = ag.clock.Now()
 	}
 }
 
 func (ag *agentHost) endThinking() {
 	if ag.thinking {
-		d := time.Since(ag.thinkStart)
+		d := ag.clock.Now().Sub(ag.thinkStart)
 		ag.thought += d
 		ag.stepThinking += d
 		ag.thinking = false

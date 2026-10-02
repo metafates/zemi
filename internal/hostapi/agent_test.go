@@ -1258,6 +1258,36 @@ func TestTurnDoneRecordsStats(t *testing.T) {
 	}
 }
 
+// TestTurnClockIsTheHostClock: a turn's stamps and the snapshot that reads
+// them share one clock, so a zemi on a clock behind the wall one (a plugin
+// test's) counts no negative elapsed.
+func TestTurnClockIsTheHostClock(t *testing.T) {
+	log := slog.New(slog.DiscardHandler)
+	clock := &fakeClock{now: time.Unix(1_000_000_000, 0)}
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, Clock: clock})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir()})
+	if err := r.Boot(context.Background(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatal(err)
+	}
+	h.SetUIHooks(&fakeUI{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			if s := h.AgentStream(); s.Elapsed < 0 {
+				t.Errorf("a live turn on a clock behind the wall one counts %v", s.Elapsed)
+			}
+			return textParts("done")
+		}}, nil
+	}
+	if err := h.AgentSend("hi"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	tr := h.Session().Transcript
+	if last := tr[len(tr)-1]; last.Stat != nil && last.Stat.ElapsedMS < 0 {
+		t.Fatalf("the settled turn counts %d ms", last.Stat.ElapsedMS)
+	}
+}
+
 // TestTurnEndSettlesTodos: an item left in_progress when the claim ends goes
 // back to pending, so no row of the list reads as running while the agent is
 // idle; the rest of the model's list is kept as it wrote it.
