@@ -1889,17 +1889,15 @@ provenance string.
   way at once, while the reply still streams and after it settles, so only the
   run the turn is working in, the one it thinks and calls in, stays open. The
   live turn, a printed run and an agent run's view draw the whole rail, one
-  row per step with no blank
-  rows between, a continuous bar in column 0 with every mark in column 2
+  row per step, a continuous bar in column 0 with every mark in column 2
   (`│ ✓ edit`, `│ ⠋ running label`, `│ ✻ thought 8s`) and nested text in
   column 4, a wrapped row keeping the bar: a step's unlabelled look-around
   calls, two or more of them, as one row saying what they did, each hanging off
   it behind a `├` or `└` and its output behind the `⎿` under that, a lone one
-  as its own row, the thought before the step as its
-  suffix, a labelled call a row of its own, its label (its command shows once
-  opened), a thought over 5 s, or the run's last one, a row
-  of its own, each such thinking entry framed by a bar-only row above and
-  below. While the model thinks its last lines show
+  as its own row, a labelled call a row of its own, its label (its command shows
+  once opened), a thought a row of its own. A running entry, a call or the
+  thinking, is framed by a bar-only row above and below while it runs, and
+  listed plainly once it ends. While the model thinks its last lines show
   under a `│ ⠋ thinking` row, their top sinking toward the canvas while it
   hides lines above them, unless the thinking pane draws them: in
   `ui.reasoning` pane mode, on a screen 100 columns or wider, a pane right of
@@ -1916,7 +1914,8 @@ provenance string.
   rest of the transcript untouched;
   with the pane drawn the opened run also reads there, every row and thought
   open, and folding it, or the next turn, goes back to the live thinking. A
-  thought row's click unrolls its text at most 80 cells wide (with the pane, it shows the run
+  thought row's click unrolls its text at most 80 cells wide, a bar-only row
+  above and below text of two or more lines (with the pane, it shows the run
   there instead); a step row's opens its calls nested two cells under it,
   the step's row staying as their head, and closes them again. A rail of more
   than six rows keeps its last six and folds the earlier ones behind one dim

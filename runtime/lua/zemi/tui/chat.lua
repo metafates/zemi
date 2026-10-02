@@ -158,6 +158,13 @@ local function builder(ctx, width)
 	local B = { lines = {} }
 	---@param row zemi.Line
 	local function push(row) B.lines[#B.lines + 1] = row end
+	-- The bar-only row that frames a running entry: never two in a row, so two
+	-- entries that run at once share the one between them.
+	local function frame()
+		local prev = B.lines[#B.lines]
+		if prev and #prev == 1 and prev[1].text == "│" then return end
+		push(air())
+	end
 	function B.blank() push({ { text = "" } }) end
 	---@param block "user"|"activity"|"text"|"note"|"stats"|"queued"
 	function B.gap(block)
@@ -248,30 +255,31 @@ local function builder(ctx, width)
 		end
 		return #body - from + 1
 	end
-	-- "│ ✻ thought 8s", with the text under it when given: a bar-only row frames
-	-- the entry, and one between the header and prose of two or more lines, so
-	-- thinking stands apart on the rail and the prose breathes.
+	-- "│ ✻ thought 8s", with the text under it when given: a bar-only row above
+	-- and below prose of two or more lines, so it breathes and the rail stays
+	-- whole. A thought is listed plainly once it is done, without the framings a
+	-- running entry carries.
 	---@param secs number
 	---@param click string
 	---@param text string?
 	function B.thought(secs, click, text)
-		push(air())
 		push({ bar(), mark("thought", click), { text = fmt.thought(secs), hl = "Dim", click = click } })
-		if not text then
-			push(air())
-			return
-		end
+		if not text then return end
 		local at = #B.lines + 1
-		if B.reasoning(text, nil, click) > 1 then table.insert(B.lines, at, air()) end
-		push(air())
+		if B.reasoning(text, nil, click) > 1 then
+			table.insert(B.lines, at, air())
+			push(air())
+		end
 	end
-	-- The model thinking now; a click opens or closes the thinking pane.
+	-- The model thinking now: a bar-only row above and below frames the running
+	-- entry, every finished thought a plain rail row instead. A click opens or
+	-- closes the thinking pane.
 	---@param tail string? The thinking so far, whose last lines show under it.
 	function B.thinking(tail)
-		push(air())
+		frame()
 		push({ bar(), mark("spin", "reasoning"), { text = "thinking", hl = "Dim", click = "reasoning" } })
 		if tail then B.reasoning(tail, 4) end
-		push(air())
+		frame()
 	end
 
 	-- What look-around calls did: "read 2 files, ran 1 command: go vet".
@@ -313,14 +321,11 @@ local function builder(ctx, width)
 		return table.concat(parts, ", ")
 	end
 	-- A step's unlabelled look-around calls as one rail row saying what they
-	-- did, the thought before them at the right.
+	-- did.
 	---@param group zemi.tui.Tool[]
 	---@param click string
-	---@param secs number? The thought before the step.
-	function B.group(group, click, secs)
-		local tail = secs and secs >= 0.05 and { { text = fmt.duration(secs), hl = "Dim" } } or {}
-		local room = width - 2 - (#tail > 0 and segw(tail) + 2 or 0)
-		push(suffixed({ bar(), { text = fmt.clip(said(group), room), hl = "Normal", click = click } }, tail, click))
+	function B.group(group, click)
+		push({ bar(), { text = fmt.clip(said(group), width - 2), hl = "Normal", click = click } })
 	end
 
 	-- One call as its own row: the verb and the label or input, what it
@@ -328,7 +333,7 @@ local function builder(ctx, width)
 	-- Open, a row shows the whole command, the diff and a command's output.
 	---@param t zemi.tui.Tool
 	---@param idx integer Transcript index, negative for a live-turn call.
-	---@param o { open: boolean?, rail: boolean?, nest: string?, secs: number?, click: string? } nest: the two cells a row hangs by, its branch mark.
+	---@param o { open: boolean?, rail: boolean?, nest: string?, click: string? } nest: the two cells a row hangs by, its branch mark.
 	function B.tool(t, idx, o)
 		local name = fmt.tool(t)
 		local open = o.open or expanded[idx] or false
@@ -368,8 +373,6 @@ local function builder(ctx, width)
 			tail[#tail + 1] = { text = text, hl = "Dim" }
 		end
 		if t.status == "run" and not asked and (t.elapsed or 0) >= 1 then add(fmt.duration(t.elapsed, true)) end
-		-- the thought before the call, once its own clock stops
-		if o.secs and o.secs >= 0.05 and t.status ~= "run" then add(fmt.duration(o.secs)) end
 		local sw = segw(tail)
 		local verb, rest = fmt.head(name, label, input)
 		verb = fmt.lower(verb)
@@ -412,6 +415,11 @@ local function builder(ctx, width)
 		elseif barred then
 			table.insert(head, 1, bar(pad))
 		end
+		-- a call still running, or with its arguments still streaming, is framed
+		-- by a bar-only row above and below while it runs, and listed plainly
+		-- once it is done; a row waiting on the user is not one of them
+		local running = barred and not asked and (t.status == "run" or t.status == "wait")
+		if running then frame() end
 		local first = #B.lines + 1
 		push(suffixed(head, tail, click))
 		-- under the head one corner, every later row four cells in
@@ -518,13 +526,13 @@ local function builder(ctx, width)
 				table.insert(B.lines[n], 1, bar(pad))
 			end
 		end
+		if running then frame() end
 	end
 
-	-- A folded run is its digest alone, a click away from its whole rail: the
-	-- calls that only looked around and the thinking, which no rail row shows;
-	-- a run with nothing to fold is its rail alone, with no digest to open.
-	-- An opened digest heads its rail: the chat pins it under the prompt down
-	-- to the rail's last row.
+	-- A folded run is its digest alone, a click away from its whole rail: what
+	-- the run did, as one line; a digest of nothing folds nothing, and the rail
+	-- is drawn alone. An opened digest heads its rail: the chat pins it under the
+	-- prompt down to the rail's last row.
 	---@param list zemi.TranscriptRow[]
 	---@param first integer
 	---@param last integer
@@ -547,18 +555,17 @@ local function builder(ctx, width)
 		if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 	end
 
-	-- A run of activity rows as a rail, one row per step: a step's unlabelled
-	-- look-around calls, two or more of them, as one row carrying the thought
-	-- before it, whose click opens one row per call, a lone one as its own row,
-	-- a thought over 5 s, or the run's last one, as
-	-- its own row, every other call as its own row: a label
-	-- tells what its call did. A thought row's click unrolls its text.
+	-- A run of activity rows as a rail, one row per entry: a step's unlabelled
+	-- look-around calls, two or more of them, as one row whose click opens one
+	-- row per call, a lone one as its own row, a thought a row of its own, every
+	-- other call as its own row: a label tells what its call did. A thought row's
+	-- click unrolls its text.
 	-- NOTE: a step is the calls between two thoughts, so a model that does not
 	-- think runs its steps together into one row.
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { open: boolean?, live: boolean?, run: integer?, secs: number? } open: every row and thought open, for the run starting at run, whose rows a click leaves.
+	---@param o { open: boolean?, live: boolean?, run: integer? } o.open draws every row and thought of the run starting at run, whose rows a click leaves.
 	function B.rail(list, first, last, o)
 		local at = #B.lines
 		B.heads = {}
@@ -593,9 +600,8 @@ local function builder(ctx, width)
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { open: boolean?, live: boolean?, run: integer?, secs: number? }
+	---@param o { open: boolean?, live: boolean?, run: integer? }
 	function B.steps(list, first, last, o)
-		local secs = o.secs
 		local fold = o.open and o.run and "turn:" .. o.run or nil
 		---@param t zemi.tui.Tool
 		local function grouped(t) return fmt.looks(t) and (t.label or "") == "" end
@@ -607,14 +613,8 @@ local function builder(ctx, width)
 			-- row over it would hide which file
 			local lone = grouped(t) and not grouped(list[i + 1] or {})
 			if t.kind == "reasoning" then
-				local s = t.thought or 0
-				if o.open or s > 5 or i == last or list[i + 1].kind == "reasoning" then
-					head()
-					B.thought(s, fold or ("thought:" .. idx), (o.open or unrolled[idx]) and t.text or nil)
-					secs = nil
-				else
-					secs = s
-				end
+				head()
+				B.thought(t.thought or 0, fold or ("thought:" .. idx), (o.open or unrolled[idx]) and t.text or nil)
 				i = i + 1
 			elseif grouped(t) and not lone then
 				---@type zemi.tui.Tool[]
@@ -625,7 +625,7 @@ local function builder(ctx, width)
 				-- the step's row heads its calls, nested two cells in, and its
 				-- click closes them again
 				head()
-				B.group(group, "step:" .. idx, secs)
+				B.group(group, "step:" .. idx)
 				if o.open or steps[idx] then
 					for k, g in ipairs(group) do
 						local n = i + k - 1
@@ -637,12 +637,10 @@ local function builder(ctx, width)
 						})
 					end
 				end
-				secs = nil
 				i = i + #group
 			else
 				head()
-				B.tool(t, idx, { open = o.open, rail = true, secs = secs, click = fold })
-				secs = nil
+				B.tool(t, idx, { open = o.open, rail = true, click = fold })
 				i = i + 1
 			end
 		end
@@ -1003,23 +1001,15 @@ zemi.ui.widget.add({
 		-- the reply. With the thinking pane drawn, the thinking shows there.
 		local tools, text, queued = ag.tools or {}, ag.text or "", ag.steering or {}
 		if ag.active or #tools > 0 or text ~= "" or #queued > 0 then
-			local reasoning, thought = ag.reasoning or "", ag.thought or 0
-			---@type number?
-			local secs
-			if reasoning ~= "" then
-				if text == "" and #tools == 0 then
-					B.gap("activity")
-					B.thinking(not M.pane and reasoning or nil)
-				elseif ctx.show_reasoning or thought > 5 or #tools == 0 then
-					B.gap("activity")
-					B.thought(thought, "reasoning", ctx.show_reasoning and reasoning or nil)
-				else
-					secs = thought
-				end
+			-- the thinking shows while the model thinks, framed by a bar-only row
+			-- above and below; each thought it finishes is a rail row of its own
+			if (ag.reasoning or "") ~= "" and text == "" then
+				B.gap("activity")
+				B.thinking(not M.pane and ag.reasoning or nil)
 			end
 			if #tools > 0 then
 				B.gap("activity")
-				B.rail(tools, 1, #tools, { live = true, open = ctx.show_reasoning, secs = secs })
+				B.rail(tools, 1, #tools, { live = true, open = ctx.show_reasoning })
 			end
 			if text ~= "" then
 				B.gap("text")

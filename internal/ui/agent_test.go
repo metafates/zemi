@@ -302,12 +302,12 @@ func TestChatExpandSettledRow(t *testing.T) {
 	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.Contains(r, "make") }) {
 		t.Fatalf("the settled turn does not fold into its digest:\n%s", strings.Join(closed, "\n"))
 	}
-	// the digest stays as the run's header, and every row of the run is framed
-	// by the air a thought and the rail's own entries carry
+	// the digest stays as the run's header over a rail of plain rows: a thought
+	// is listed like anything else once it is done
 	open := click("turn:2")
 	at := slices.Index(open, digest)
-	framed := []string{"│", "│ ✻ thought 6.0s", "│", "│ run make", "│", "│ ✻ thought 0.4s", "│"}
-	if at < 0 || !slices.Equal(open[at+1:at+1+len(framed)], framed) {
+	rail := []string{"│ ✻ thought 6.0s", "│ run make", "│ ✻ thought 0.4s"}
+	if at < 0 || !slices.Equal(open[at+1:at+1+len(rail)], rail) {
 		t.Fatalf("the opened run:\n%s", strings.Join(open, "\n"))
 	}
 	// a thought's click unrolls its text between the air framing it, at the
@@ -1250,7 +1250,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		return out[:len(out)-3] // the composer
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	live := []string{"▌ look around", "│ read 2 files 1.2s", "│", "│ ✻ thought 8.0s", "│", "│ list the data", "│ ✓ edit a.go +1 -1", "│", "│ ✻ thought 0.4s", "│"}
+	live := []string{"▌ look around", "│ ✻ thought 1.2s", "│ read 2 files", "│ ✻ thought 8.0s", "│ list the data", "│ ✓ edit a.go +1 -1", "│ ✻ thought 0.4s"}
 	if got := rows(); !slices.Equal(got, live) {
 		t.Fatalf("live rail:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(live, "\n"))
 	}
@@ -1346,7 +1346,7 @@ func TestReasoningPane(t *testing.T) {
 				for row := range strings.SplitSeq(frame, "\r\n") {
 					pane = append(pane, strings.TrimRight(ansi.Cut(row, th.X, th.X+th.Width), " "))
 				}
-				if want := []string{"  turn · 1 file · thought 1.2s", "", "", "  ✻ thought 1.2s", "  where to start"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
+				if want := []string{"  turn · 1 file · thought 1.2s", "", "  ✻ thought 1.2s", "  where to start", "  read a.go"}; !slices.Equal(pane[th.Y-2:th.Y+3], want) {
 					t.Fatalf("the inspector:\n%s", strings.Join(pane, "\n"))
 				}
 				if i := slices.IndexFunc(app.lastRows[th.Y-2], func(s hostapi.Segment) bool { return s.Text == "turn" }); i < 0 || app.lastRows[th.Y-2][i].HL != "Title" {
