@@ -24,7 +24,7 @@ import (
 // repo, so a generated file never shows up in the user's config diff.
 func (h *Host) TypesDir() string { return joinIf(h.Dirs.DataHome, "types") }
 
-// syncTypes rewrites the annotations and the .luarc.json beside init.lua
+// syncTypes rewrites the annotations and the editor configs beside init.lua
 // and in each local plugin on every start, so an upgraded zemi replaces
 // them. Failures are logged: an editor convenience must never stop a boot.
 func (h *Host) syncTypes() {
@@ -36,20 +36,20 @@ func (h *Host) syncTypes() {
 		h.Log.Warn("annotations not written", "origin", "types", "error", err)
 		return
 	}
-	luarcs := []string{h.Dirs.ConfigHome}
+	trees := []string{h.Dirs.ConfigHome}
 	ps, err := plugin.Scan(h.Dirs)
 	if err != nil {
-		h.Log.Warn("plugins not scanned for luarc", "origin", "types", "error", err)
+		h.Log.Warn("plugins not scanned for editor configs", "origin", "types", "error", err)
 	}
 	for _, p := range ps {
 		// a clone is git's, and zemi does not load a symlinked dir
 		if fi, err := os.Lstat(p.Dir); p.Local && err == nil && fi.IsDir() {
-			luarcs = append(luarcs, p.Dir)
+			trees = append(trees, p.Dir)
 		}
 	}
-	for _, d := range luarcs {
-		if err := writeLuarc(d, dir); err != nil {
-			h.Log.Warn("luarc not written", "origin", "types", "dir", d, "error", err)
+	for _, d := range trees {
+		if err := writeEditorConfigs(d, dir); err != nil {
+			h.Log.Warn("editor config not written", "origin", "types", "dir", d, "error", err)
 		}
 	}
 }
@@ -122,16 +122,28 @@ func replaceDir(dir string, trees ...fs.FS) error {
 	})
 }
 
-// writeLuarc writes the lua-language-server settings zemi generates,
-// replacing an edited file: the settings describe zemi's sandbox, and a
-// stale copy costs the user diagnostics on every line. It writes only when
-// the content moved: an open editor reloads its workspace on each write.
-func writeLuarc(dir, typesDir string) error {
+// writeEditorConfigs writes the settings zemi generates for the two editors
+// that read the annotations, each in its own dialect, replacing an edited
+// file: the settings describe zemi's sandbox, and a stale copy costs the user
+// diagnostics on every line.
+func writeEditorConfigs(dir, typesDir string) error {
 	if dir == "" {
 		return nil
 	}
-	path := filepath.Join(dir, ".luarc.json")
-	data, err := json.Marshal(map[string]any{
+	for _, f := range []struct {
+		name string
+		doc  map[string]any
+	}{{".luarc.json", luarcSettings(typesDir)}, {".emmyrc.json", emmyrcSettings(typesDir)}} {
+		if err := writeConfig(filepath.Join(dir, f.name), f.doc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// luarcSettings is lua-language-server's dialect, in the file it reads.
+func luarcSettings(typesDir string) map[string]any {
+	return map[string]any{
 		"$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
 		// the sandbox's own basic, os and debug are described in zemi.lua
 		"runtime": map[string]any{"version": "Lua 5.1", "builtin": map[string]string{
@@ -145,7 +157,28 @@ func writeLuarc(dir, typesDir string) error {
 			"missing-parameter": "Error!", "redundant-parameter": "Error!",
 		}},
 		"telemetry": map[string]any{"enable": false},
-	}, jsontext.WithIndent("  "), json.Deterministic(true))
+	}
+}
+
+// emmyrcSettings is EmmyLua's dialect, in the file of its own that it reads
+// first: it takes a lua-language-server severity for an unknown value and then
+// drops the whole config, this library included, leaving zemi.* undefined.
+func emmyrcSettings(typesDir string) map[string]any {
+	return map[string]any{
+		"$schema":   "https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json",
+		"runtime":   map[string]any{"version": "Lua5.1"},
+		"workspace": map[string]any{"library": []string{typesDir}},
+		"diagnostics": map[string]any{"severity": map[string]string{
+			"undefined-global": "error", "missing-fields": "error", "assign-type-mismatch": "error",
+			"missing-parameter": "error", "redundant-parameter": "error",
+		}},
+	}
+}
+
+// writeConfig writes doc, indented and newline-terminated, only when the
+// content moved: an open editor reloads its workspace on each write.
+func writeConfig(path string, doc map[string]any) error {
+	data, err := json.Marshal(doc, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return err
 	}

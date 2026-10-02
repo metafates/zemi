@@ -307,6 +307,7 @@ Directories (XDG):
   plugins/installed/<name>/  plugins zemi cloned (git); init.lua loaded, lua/<name>/ require()-able,
                           skills|agents|commands|workflows/ as in the config dir
   plugins/local/<name>/   plugins developed in place, the same shape; zemi writes only their .luarc.json
+                          and .emmyrc.json
   plugins/disabled        names turned off, one per line
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
   drops/                  files dropped in from outside the project (@drop:<name>)
@@ -2434,14 +2435,17 @@ provenance string.
   A `.lua` file of the user's config or a local plugin gets
   lua-language-server (`luals`, or the user's server of that name) rooted
   at that tree, in any project: it is the user's own code, zemi writes the
-  tree's `.luarc.json` first (`zemiLua`), and the server, which runs a
+  tree's editor configs first (`zemiLua`), and the server, which runs a
   workspace's Lua only when the client agrees and zemi's never does,
-  also reads that `.luarc.json` (a config tree's `.git`
+  also reads them (a config tree's `.git`
   stays hidden). The `.luarc.json` raises the diagnostics that are
   near-certain bugs (an unknown global, a missing field, a wrong type or
-  argument count) to errors, which is what a write reports; the reload a
-  write to the tree causes stops only a server whose definition changed,
-  so the next write finds it warm. A file outside
+  argument count) to errors, which is what a write reports; EmmyLua reads
+  a lua-language-server severity as an unknown value, drops the whole
+  config and reports every `zemi.*` as undefined, so its own
+  `.emmyrc.json` beside it carries those severities in its dialect. The
+  reload a write to the tree causes stops only a server whose definition
+  changed, so the next write finds it warm. A file outside
   the repository goes to no project server. The backend (seatbelt through
   `/usr/bin/sandbox-exec` on macOS; on Linux the `zemi __sandbox` helper
   with Landlock plus user, network and mount namespaces where the kernel

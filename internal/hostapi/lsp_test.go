@@ -265,7 +265,7 @@ func TestLSPBuiltins(t *testing.T) {
 
 // TestLSPZemiLua: a .lua file of the user's config or a local plugin gets
 // lua-language-server rooted at that tree, trusted project or not, with
-// zemi's .luarc.json written first; an installed clone, a switched-off
+// zemi's editor configs written first; an installed clone, a switched-off
 // server and a file outside the repository get none, and the project's Lua
 // gets the builtin only when trusted, like any builtin.
 func TestLSPZemiLua(t *testing.T) {
@@ -305,12 +305,15 @@ func TestLSPZemiLua(t *testing.T) {
 			runUser(t, r, `zemi.config.set("lsp.auto", true) `+c.lua)
 			h.SetProjectTrusted(c.trusted)
 			os.RemoveAll(filepath.Join(c.root, ".luarc.json"))
+			os.RemoveAll(filepath.Join(c.root, ".emmyrc.json"))
 			d, ok := h.lspFor(c.path)
 			if ok != (c.want != "") || d.Name != c.want || d.Root != c.root {
 				t.Fatalf("lspFor = %q rooted at %q (%v), want %q at %q", d.Name, d.Root, ok, c.want, c.root)
 			}
-			if _, err := os.Stat(filepath.Join(c.root, ".luarc.json")); c.root != "" && err != nil {
-				t.Errorf("no .luarc.json before the server starts: %v", err)
+			for _, name := range []string{".luarc.json", ".emmyrc.json"} {
+				if _, err := os.Stat(filepath.Join(c.root, name)); c.root != "" && err != nil {
+					t.Errorf("no %s before the server starts: %v", name, err)
+				}
 			}
 		})
 	}

@@ -40,7 +40,9 @@ Every member, with its parameters, is one shell grep of the types file (the syst
 
 The verbs are regular: `add` registers, `set` writes a value, `get` and `list` read back, and `del` removes: `grep '^function zemi\..*\.del('` over the types file lists what can be removed. A tool or health row goes with the reload that no longer adds it. `event.on` and `config.watch` hand back the id their `off` and `unwatch` take.
 
-The types file is LuaLS annotations, and zemi writes a `.luarc.json` pointing at it in the user config dir and in each local plugin, so an editor checks config as it is written. Each event's payload is a `zemi.ev.*` class that `zemi.event.on` picks by name, and the globals the sandbox strips (`setfenv`, `rawset`, `dofile`, ...) are marked deprecated. Do not edit it: the next start overwrites it. `types/zemi/util.lua` beside it is the `zemi.util` source.
+The types file is LuaLS annotations, and zemi writes a `.luarc.json` (and EmmyLua's `.emmyrc.json`,
+which drops a config it cannot parse whole, zemi's library included) pointing at it in the user
+config dir and in each local plugin, so an editor checks config as it is written. Each event's payload is a `zemi.ev.*` class that `zemi.event.on` picks by name, and the globals the sandbox strips (`setfenv`, `rawset`, `dofile`, ...) are marked deprecated. Do not edit it: the next start overwrites it. `types/zemi/util.lua` beside it is the `zemi.util` source.
 
 ## Examples
 

@@ -65,7 +65,7 @@ var builtinLSP = []lspDef{
 	// it, and it never publishes an unchanged result again (lspCheck).
 	{
 		Name: "luals", Command: "lua-language-server", Exts: []string{".lua"},
-		Markers: []string{".luarc.json", ".luarc.jsonc", ".stylua.toml", "stylua.toml", "selene.toml", ".luacheckrc"},
+		Markers: []string{".luarc.json", ".luarc.jsonc", ".emmyrc.json", ".stylua.toml", "stylua.toml", "selene.toml", ".luacheckrc"},
 		Config:  map[string]any{"Lua": map[string]any{"diagnostics": map[string]any{"workspaceDelay": -1}}},
 	},
 }
@@ -183,7 +183,7 @@ func (h *Host) lspFor(path string) (lspDef, bool) {
 
 // zemiLua is the lua-language-server for a .lua file of the user's config
 // or a local plugin, rooted at that tree whatever the project's trust: it is
-// the user's own code, and zemi writes the .luarc.json there, first, so a
+// the user's own code, and zemi writes the editor configs there, first, so a
 // plugin made this turn has zemi's types when its server starts. A user
 // zemi.lsp.add("luals", ...) replaces the builtin, and zemi.lsp.del or
 // lsp.auto off without one leaves the file without.
@@ -206,8 +206,8 @@ func (h *Host) zemiLua(path string) (lspDef, bool) {
 	if !ok {
 		return lspDef{}, false
 	}
-	if err := writeLuarc(root, h.TypesDir()); err != nil {
-		h.Log.Warn("luarc not written", "origin", "lsp", "dir", root, "error", err)
+	if err := writeEditorConfigs(root, h.TypesDir()); err != nil {
+		h.Log.Warn("editor config not written", "origin", "lsp", "dir", root, "error", err)
 	}
 	def.Name, def.Root = "luals ("+label+")", root
 	return def, true

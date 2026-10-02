@@ -192,8 +192,9 @@ network at boot. Each builtin is on only while its key is exported, one without 
 `Registry.Missing` so the no-model hint (`NoModelHint`) can name the variable, and
 `Registry.Reset` seeds every generation before `init.lua` (DESIGN §6.3).
 Config reload is not fsnotify: main hands the host its reload and a fingerprint of the config
-trees (`setReload`, `Host.SetReload`; past dot-directories, `node_modules` and `.luarc.json`,
-plus the local plugins, the plugins' `disabled` file and each clone's git index, `pluginRoots`;
+trees (`setReload`, `Host.SetReload`; past dot-directories, `node_modules` and the editor configs
+zemi writes itself, `.luarc.json` and `.emmyrc.json`, plus the local plugins, the plugins'
+`disabled` file and each clone's git index, `pluginRoots`;
 an untrusted project's `.agents` is not in it, a trusted one's is, `worktrees` aside), whose
 baseline every reload moves. Once a second while no turn is active the watcher calls
 `Host.ReloadIfChanged`, which reloads when the fingerprint moved; `zemi run` has no watcher. A replay that writes a key the
@@ -647,9 +648,11 @@ and drops the pinned prompt. Invariants:
 
 `runtime/types/zemi.lua` is the LuaLS (`---@meta`) description of the whole `zemi.*` API, never
 loaded by the interpreter. `syncTypes` rewrites it plus a copy of `runtime/lua/` to
-`<data>/types/` on every start, and the `.luarc.json` in `<config>` and in each local plugin whenever
-its content moved (an editor reloads on each write; the config watcher skips it), as `/workflows`
-does in `<state>/scratch` before it opens a run's script. `TestTypes*` keep it
+`<data>/types/` on every start, and the `.luarc.json` and `.emmyrc.json` in `<config>` and in each
+local plugin whenever their content moved (an editor reloads on each write; the config watcher
+skips them): the second is EmmyLua's, which reads a lua-language-server severity as an unknown
+value and drops the whole config, zemi's library included. `/workflows` writes both in
+`<state>/scratch` before it opens a run's script. `TestTypes*` keep it
 honest: every API member annotated, nothing annotated that zemi dropped, and the
 `zemi.EventName`, `zemi.HostAction` and `zemi.WidgetCtx` aliases pinned to their Go sources, like
 each constant table (`enumTable`, keyed by the value upper-cased) and the alias that types the

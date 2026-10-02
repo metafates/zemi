@@ -169,8 +169,9 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- 	match = "git push origin main",
 -- })
 
--- zemi writes type annotations for the whole zemi.* API and a .luarc.json
--- beside this file, so lua-language-server completes and checks it.
+-- zemi writes type annotations for the whole zemi.* API and the editor
+-- configs (.luarc.json, .emmyrc.json) beside this file, so your editor
+-- completes and checks it.
 
 -- /help lists the keys and commands, /health says what is missing.
 `

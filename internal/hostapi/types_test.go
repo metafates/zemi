@@ -86,15 +86,14 @@ func TestTypesDeclareNothingExtra(t *testing.T) {
 	}
 }
 
-// TestSyncTypesWritesAnnotations: a start leaves the annotations and a
-// lua-language-server pointed at them, in the config dir and in each local
-// plugin (never a clone or a symlinked plugin), drops a module zemi no
-// longer ships, replaces an edited .luarc.json, and leaves the file alone
-// when it already says that or is a link, whose target is not zemi's.
+// TestSyncTypesWritesAnnotations: a start leaves the annotations and an
+// editor pointed at them, in the config dir and in each local plugin (never a
+// clone or a symlinked plugin), drops a module zemi no longer ships, replaces
+// an edited editor config, and leaves the file alone when it already says that
+// or is a link, whose target is not zemi's.
 func TestSyncTypesWritesAnnotations(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.Dirs.DataHome, h.Dirs.ConfigHome = t.TempDir(), t.TempDir()
-	luarc := filepath.Join(h.Dirs.ConfigHome, ".luarc.json")
 	root, elsewhere := h.Dirs.PluginsRoot(), t.TempDir()
 	for _, d := range []string{"local/mine", "local/shipped", "installed/clone"} {
 		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
@@ -109,6 +108,9 @@ func TestSyncTypesWritesAnnotations(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(victim, filepath.Join(root, "local", "shipped", ".luarc.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(root, "local", "shipped", ".emmyrc.json")); err != nil {
 		t.Fatal(err)
 	}
 	gone := filepath.Join(h.TypesDir(), "zemi", "gone.lua")
@@ -128,37 +130,42 @@ func TestSyncTypesWritesAnnotations(t *testing.T) {
 	if _, err := os.Stat(gone); err == nil {
 		t.Error("a module zemi no longer ships is still in the types dir")
 	}
-	data, err := os.ReadFile(luarc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), h.TypesDir()) || !strings.Contains(string(data), `"undefined-global": "Error!"`) {
-		t.Fatalf(".luarc.json does not point at the types dir or raise the bug diagnostics:\n%s", data)
-	}
-	for dir, want := range map[string]bool{filepath.Join(root, "local", "mine"): true, filepath.Join(root, "installed", "clone"): false, elsewhere: false} {
-		got, err := os.ReadFile(filepath.Join(dir, ".luarc.json"))
-		if (err == nil) != want || want && string(got) != string(data) {
-			t.Errorf("%s/.luarc.json written = %v, want %v", dir, err == nil, want)
+	for _, c := range []struct{ name, severity string }{
+		{".luarc.json", `"undefined-global": "Error!"`}, // lua-language-server's dialect
+		{".emmyrc.json", `"undefined-global": "error"`}, // EmmyLua's, which takes no "Error!"
+	} {
+		data, err := os.ReadFile(filepath.Join(h.Dirs.ConfigHome, c.name))
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	if got, _ := os.ReadFile(victim); string(got) != "keep" {
-		t.Errorf("a linked .luarc.json wrote through to its target: %q", got)
-	}
+		if !strings.Contains(string(data), h.TypesDir()) || !strings.Contains(string(data), c.severity) {
+			t.Fatalf("%s does not point at the types dir or raise the bug diagnostics:\n%s", c.name, data)
+		}
+		for dir, want := range map[string]bool{filepath.Join(root, "local", "mine"): true, filepath.Join(root, "installed", "clone"): false, elsewhere: false} {
+			got, err := os.ReadFile(filepath.Join(dir, c.name))
+			if (err == nil) != want || want && string(got) != string(data) {
+				t.Errorf("%s/%s written = %v, want %v", dir, c.name, err == nil, want)
+			}
+		}
+		if got, _ := os.ReadFile(victim); string(got) != "keep" {
+			t.Errorf("a linked %s wrote through to its target: %q", c.name, got)
+		}
 
-	if err := os.WriteFile(luarc, []byte("{}"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	h.syncTypes()
-	if got, _ := os.ReadFile(luarc); string(got) != string(data) {
-		t.Fatalf("an edited .luarc.json was not replaced: %s", got)
-	}
-	info, err := os.Stat(luarc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.syncTypes()
-	if again, err := os.Stat(luarc); err != nil || !again.ModTime().Equal(info.ModTime()) {
-		t.Fatalf("an unchanged .luarc.json was rewritten: %v", err)
+		if err := os.WriteFile(filepath.Join(h.Dirs.ConfigHome, c.name), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		h.syncTypes()
+		if got, _ := os.ReadFile(filepath.Join(h.Dirs.ConfigHome, c.name)); string(got) != string(data) {
+			t.Fatalf("an edited %s was not replaced: %s", c.name, got)
+		}
+		info, err := os.Stat(filepath.Join(h.Dirs.ConfigHome, c.name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.syncTypes()
+		if again, err := os.Stat(filepath.Join(h.Dirs.ConfigHome, c.name)); err != nil || !again.ModTime().Equal(info.ModTime()) {
+			t.Fatalf("an unchanged %s was rewritten: %v", c.name, err)
+		}
 	}
 }
 

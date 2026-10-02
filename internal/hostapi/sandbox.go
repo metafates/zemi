@@ -377,7 +377,7 @@ func trustKey(root string) string {
 // sandboxed command reads and writes only <cache>/lsp/<trust key>/<name>,
 // which the cache, build, temp and lua-language-server's log and meta
 // variables point at. A zemi tree's server (Root) also reads the tree's
-// .luarc.json.
+// editor configs.
 // NOTE: nothing sweeps it; a rust target dir there can be large.
 func (h *Host) serverPolicy(def lspDef) sandbox.Policy {
 	p := h.sandboxPolicy(true, "")
@@ -389,7 +389,7 @@ func (h *Host) serverPolicy(def lspDef) sandbox.Policy {
 		p.Read = append(p.Read, def.Root)
 		p.Hide = append(p.Hide, filepath.Join(def.Root, ".git"))
 	default: // a local plugin, whose code sandboxPolicy already reads
-		p.Read = append(p.Read, filepath.Join(def.Root, ".luarc.json"))
+		p.Read = append(p.Read, filepath.Join(def.Root, ".luarc.json"), filepath.Join(def.Root, ".emmyrc.json"))
 	}
 	if h.Dirs.CacheHome == "" {
 		return p
