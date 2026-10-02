@@ -49,8 +49,6 @@ local unfolded = {}
 local whole = {}
 local RAIL_KEEP = 6
 local expanded_epoch = 0
--- the row set's last edit (ctx.transcript_edit); -1 so the first render sees none
-local edited = -1
 local live_tools = 0
 
 -- What the thinking pane shares with the chat.
@@ -746,13 +744,6 @@ zemi.ui.widget.add({
 		if epoch ~= expanded_epoch then
 			expanded, steps, unrolled, unfolded, whole, expanded_epoch, M.inspected = {}, {}, {}, {}, {}, epoch, nil
 		end
-		-- A settled row's text grew in place (a joined reasoning chunk): every unit
-		-- re-renders, and the rows the reader opened keep their place.
-		local edit = ctx.transcript_edit or 0
-		if edit ~= edited then
-			edited = edit
-			settled, units = nil, {}
-		end
 		-- The live turn's calls are keyed by negative index and the host restarts
 		-- that list every turn, so a shorter list means those keys now stand for
 		-- another turn's rows.
@@ -854,11 +845,18 @@ zemi.ui.widget.add({
 		end
 
 		-- markdown and code carry the theme's colors: a light terminal's
-		-- variant renders them anew
-		local key = table.concat(
-			{ epoch, width, tostring(ctx.show_reasoning), tostring(M.pane), ctx.cwd or "", zemi.ui.theme.get() },
-			"|"
-		)
+		-- variant renders them anew. A settled row whose text grew in place (a
+		-- joined reasoning chunk) re-renders every unit, which the 30 ms budget
+		-- bounds; the rows the reader opened keep their place.
+		local key = table.concat({
+			epoch,
+			width,
+			tostring(ctx.show_reasoning),
+			tostring(M.pane),
+			ctx.cwd or "",
+			zemi.ui.theme.get(),
+			tostring(ctx.transcript_edit or 0),
+		}, "|")
 		local reset = key ~= units_key
 		if reset then counts = {} end
 		if reset or epoch == 0 then
