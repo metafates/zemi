@@ -33,6 +33,30 @@ func TestTaskRegEviction(t *testing.T) {
 	}
 }
 
+// TestViewedRunOutlivesTheRegistry: the view holds the run it shows, so the
+// host and the ctx go on reporting it after the registry forgets it past
+// maxKeptRuns.
+func TestViewedRunOutlivesTheRegistry(t *testing.T) {
+	h := newTestHostUI(t)
+	h.SetUIHooks(&fakeUI{}) // ViewAgent opens a screen
+	shown := &agentRun{id: "shown", agent: "explore", status: "done", started: time.Now()}
+	if err := h.tasks.add(shown); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ViewAgent(shown.id); err != nil {
+		t.Fatal(err)
+	}
+	for i := range maxKeptRuns {
+		h.tasks.add(&agentRun{id: "later" + strconv.Itoa(i), status: "done", started: time.Now()})
+	}
+	if h.tasks.find(shown.id) != nil {
+		t.Fatal("the registry kept the viewed run, so nothing was evicted")
+	}
+	if got := h.viewedRun(); got != shown || h.ViewedAgent() != shown.id {
+		t.Fatalf("the view reads %v, %q", got, h.ViewedAgent())
+	}
+}
+
 // TestBackgroundCap: agent.max_background is the cap on detached runs, read
 // at the check, and counted across background agents and workflows alike.
 func TestBackgroundCap(t *testing.T) {

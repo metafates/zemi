@@ -330,9 +330,9 @@ rewritten input **re-enters at the permission gate** (per-run pipeline copy with
 `RewriteLoosened`, so a non-user rewrite can't ride a pre-existing allow glob); an ask with no
 overlay available fails closed; a denied result says who decided and why; errors become
 tool-error responses, not panics. Host-implemented tools (`agent`, `workflow`, `lua`,
-MCP and Lua tools) call the gate themselves and run the events through `preCheck` (which
-refuses a rewrite with an error result), `postNotify` and `Pipeline.CheckDenied`. A command a
-permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`).
+`update`, MCP and Lua tools) call the gate themselves and run the events through `preCheck`
+(which refuses a rewrite with an error result), `postNotify` and `Pipeline.CheckDenied`.
+A command a permission mode settled runs sandboxed (per-run `Pipeline.Sandboxed`).
 
 The lua tool's script can drive the run's own tools: `zemi.tool.call(name, args)`
 (hostapi/luatool.go) starts one through that same pipeline off the interpreter, capped at 8

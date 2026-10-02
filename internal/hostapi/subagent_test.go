@@ -818,6 +818,8 @@ func TestSubagentUpdatePrompt(t *testing.T) {
 	}{
 		{name: "the full set"},
 		{name: "an allowlist without it", tools: []string{"read"}},
+		{name: "an allowlist naming it", tools: []string{"read", "update"}},
+		{name: "an allowlist removing it", tools: []string{"-update"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			kept, unknown := childTools(h, h.PipelineFor(), c.tools)

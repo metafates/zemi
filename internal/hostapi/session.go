@@ -327,7 +327,7 @@ func (h *Host) closeSession(open func()) error {
 // tail: a place scrolled to in the old one means nothing in the new.
 func (h *Host) setTranscript(title string, tr []ChatMessage) {
 	h.tMu.Lock()
-	h.session.Title, h.session.Transcript, h.view = title, tr, ""
+	h.session.Title, h.session.Transcript, h.view = title, tr, nil
 	h.trEpoch.Add(1)
 	h.tMu.Unlock()
 	h.scroll(ScrollBottom, "")

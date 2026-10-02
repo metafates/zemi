@@ -1502,6 +1502,13 @@ func toastTray(ts []toast, w, h int) [][]hostapi.Segment {
 		}
 		tray = append(tray[:h-1], tray[len(tray)-1])
 	}
+	// a toast sits over a box the user may be reading, so a drag across it
+	// copies the box's own text and never two boxes at once
+	for _, line := range tray {
+		for i := range line {
+			line[i].NoCopy = true
+		}
+	}
 	return tray
 }
 
