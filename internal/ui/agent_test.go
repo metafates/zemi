@@ -2024,6 +2024,16 @@ func TestFileRowClickIDs(t *testing.T) {
 			}
 		}
 	}
+	// the step is open from its own case: its second click closes the calls
+	app.renderSync(t)
+	x, y := findCell(t, app, "read 2 files")
+	clickAt(app, x, y)
+	for app.Pump() { // the click reaches the widget through Lua
+	}
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "├ read c.go") || !strings.Contains(frame, "│ read 2 files") {
+		t.Fatalf("a second click on the step does not close its calls:\n%s", frame)
+	}
 }
 
 // TestToolRows: on the live rail a step's unlabelled calls that only looked

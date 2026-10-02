@@ -664,7 +664,9 @@ func filterTools(all []fantasy.AgentTool, want []string, skip map[string]bool) (
 // childTools is a subagent run's tool set: the full set minus what a subagent
 // never gets, filtered by the definition's allowlist, then the update tool,
 // which lands after the filter so no allowlist takes the way back to its caller.
+// Naming update there, or -update, is accepted and ignored: every run holds it.
 func childTools(h *Host, pipe *tools.Pipeline, want []string) (kept []fantasy.AgentTool, unknown []string) {
+	want = slices.DeleteFunc(want, func(n string) bool { return strings.TrimPrefix(n, "-") == tools.ToolUpdate })
 	all := append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
 	kept, unknown = filterTools(all, want, h.toolSkip(subagentExcluded))
 	return append(kept, &updateTool{h: h, pipe: pipe}), unknown
@@ -931,7 +933,10 @@ func (t *updateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fant
 	}
 	reply = fantasy.NewTextResponse("Sent to the caller.")
 	defer t.h.postNotify(ctx, t.pipe.Pad, tools.ToolUpdate, call.Input, &reply, time.Now())
-	t.h.deliverUpdate(run, text)
+	// its own result is the only place a child learns the line never landed
+	if err := t.h.deliverUpdate(run, text); err != nil {
+		reply = fantasy.NewTextErrorResponse(err.Error())
+	}
 	return reply, nil
 }
 

@@ -596,6 +596,36 @@ func TestAgentsList(t *testing.T) {
 	}
 }
 
+// TestUpdateToolReportsAFailedSend: a child whose line never reached the
+// caller is told so, instead of reading "Sent to the caller." forever.
+func TestUpdateToolReportsAFailedSend(t *testing.T) {
+	h, _ := newTestHostDB(t) // no model: the parent's send refuses
+	h.SetUIHooks(&fakeUI{})
+	run, _ := h.newRun(context.Background(), AgentDef{Name: "general"}, "d", "look", true)
+	tool := &updateTool{h: h, pipe: h.PipelineFor()}
+	ctx := context.WithValue(context.Background(), runKey{}, run)
+	resp, err := tool.Run(ctx, fantasy.ToolCall{ID: "1", Name: tools.ToolUpdate, Input: `{"text":"found it"}`})
+	if err != nil || !resp.IsError || !strings.Contains(resp.Content, "did not reach the caller") {
+		t.Fatalf("a failed update = %+v, %v", resp, err)
+	}
+}
+
+// TestChildToolsAcceptsUpdate: naming the update tool in an agent file is
+// accepted and ignored, like the tools a subagent never gets, because every
+// run holds it whatever the file's allowlist says.
+func TestChildToolsAcceptsUpdate(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	for _, want := range [][]string{{"read", "update"}, {"read", "-update"}, {"-update"}} {
+		kept, unknown := childTools(h, h.PipelineFor(), want)
+		if len(unknown) > 0 {
+			t.Errorf("%v: unknown = %v, want none", want, unknown)
+		}
+		if !hasTool(kept, tools.ToolUpdate) {
+			t.Errorf("%v: the run has no %s tool", want, tools.ToolUpdate)
+		}
+	}
+}
+
 // TestFilterToolsNamesTheUnknown: an agent file spelling its tools another
 // harness's way names nothing here, and a run with no tools would invent
 // its report instead of failing.

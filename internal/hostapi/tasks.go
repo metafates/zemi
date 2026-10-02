@@ -543,14 +543,16 @@ const updateStatus = "update"
 // it, as deliverReport hands a finished run's report: onto the turn in
 // progress, which reads it at its next step boundary, else stored there and
 // toasted.
-func (h *Host) deliverUpdate(run *agentRun, text string) {
+func (h *Host) deliverUpdate(run *agentRun, text string) error {
 	if h.AgentSessionID() != run.parent {
 		h.notifyReport(run.id, run.agent, updateStatus, run.description, text)
-		return
+		return nil
 	}
 	if err := h.AgentSend(h.updateMessage(h.scratchFor(run.parent), run.id, run.agent, text)); err != nil {
 		h.Notify(slog.LevelError, "Could not send the update of "+run.id, h.friendlyError(err))
+		return fmt.Errorf("the update did not reach the caller: %s", h.friendlyError(err))
 	}
+	return nil
 }
 
 // updateMessage is the user message an update reaches the model as, behind
