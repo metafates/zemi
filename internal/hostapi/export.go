@@ -498,7 +498,8 @@ func (h *Host) OpenUsage() error {
 		// a broken cache prefix (a per-turn system section, a model switch) has
 		// no other symptom than the bill
 		if i == 0 && s.CacheBilled > 0 { // the live session
-			row = append(row, text(ChromeHint, fmt.Sprintf("   %d%% cached", s.CacheRead*100/s.CacheBilled)))
+			share := float64(s.CacheRead) * 100 / float64(s.CacheBilled)
+			row = append(row, text(ChromeHint, fmt.Sprintf("   %.1f%% cached", share)))
 		}
 		rows = append(rows, row)
 	}

@@ -337,11 +337,11 @@ func TestUsageBreaksThePromptDown(t *testing.T) {
 	if strings.Contains(body, "cached") {
 		t.Fatalf("no turn ran, so nothing is cached:\n%s", body)
 	}
-	h.agents.cacheRead, h.agents.cacheBilled = 780, 1000
+	h.agents.cacheRead, h.agents.cacheBilled = 9989, 10000
 	if err := h.OpenUsage(); err != nil {
 		t.Fatal(err)
 	}
-	if body := ui.opened[1].Body; !strings.Contains(body, "78% cached") {
+	if body := ui.opened[1].Body; !strings.Contains(body, "99.9% cached") {
 		t.Fatalf("no cache share in the usage body:\n%s", body)
 	}
 }
