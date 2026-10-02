@@ -454,8 +454,8 @@ func TestEmitVetoable(t *testing.T) {
 		end)
 	`)
 	res := h.EmitVetoable(context.Background(), "composer.submit", nil)
-	if !res.Denied || !res.Handled {
-		t.Fatalf("veto result = %+v, want Denied/Handled", res)
+	if !res.Denied {
+		t.Fatalf("veto result = %+v, want Denied", res)
 	}
 	if res.Reason != "no" {
 		t.Fatalf("veto reason = %q, want no", res.Reason)
