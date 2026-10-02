@@ -75,6 +75,10 @@ type Runner struct {
 	// MaxOutputTokens caps each reply; 0 leaves the provider default.
 	MaxOutputTokens int64
 
+	// MaxSteps caps the steps one turn may take before it stops and hands
+	// back; 0 leaves the default.
+	MaxSteps int
+
 	// Context is a user message every request sends right after the system
 	// prompt and before the history: what varies by session or project, so
 	// that the system prompt and the tools are one cached prefix for all of
@@ -311,10 +315,11 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	// A turn stuck repeating one tool interaction, or out of steps, ends with
 	// stopErr instead of running on unattended.
 	var stopErr error
+	limit := r.stepLimit()
 	stops = append(stops, fantasy.FinishReasonIs(fantasy.FinishReasonStop), func(steps []fantasy.StepResult) bool {
 		switch {
-		case len(steps) >= maxSteps:
-			stopErr = errStepLimit
+		case len(steps) >= limit:
+			stopErr = errStepLimit(limit)
 		case repeatsToolCalls(steps):
 			stopErr = ErrToolLoop
 		}
@@ -530,6 +535,7 @@ func (inertTool) Run(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, e
 }
 
 const (
+	// maxSteps bounds one turn when agent.max_steps says nothing.
 	maxSteps = 200
 	// A loop is the same block of steps repeated: loopPeriod bounds how
 	// long that block may be, and a run counts once it covers loopMinSteps
@@ -548,10 +554,23 @@ var pollingTools = map[string]bool{"job_read": true, "job_list": true}
 // gives up on an overloaded provider inside a minute.
 var maxRetries = 5
 
-var (
-	errStepLimit = fmt.Errorf("stopped after %d steps: send a message to continue", maxSteps)
-	ErrToolLoop  = errors.New("stopped: the agent kept repeating the same tool calls with the same results")
-)
+// ErrToolLoop ends a turn the model has wedged: see repeatsToolCalls.
+var ErrToolLoop = errors.New("stopped: the agent kept repeating the same tool calls with the same results")
+
+// errStepLimit is how a turn ends once it has taken limit steps: it names the
+// setting, so the user knows which knob stopped it.
+func errStepLimit(limit int) error {
+	return fmt.Errorf("stopped at the %d-step limit (agent.max_steps): send a message to continue", limit)
+}
+
+// stepLimit is the steps one turn may take: what the host configured, else
+// the default, so a long unattended run cannot go on forever.
+func (r *Runner) stepLimit() int {
+	if r.MaxSteps > 0 {
+		return r.MaxSteps
+	}
+	return maxSteps
+}
 
 // repeatsToolCalls reports whether the latest tool steps repeat one block of
 // calls with the same results (see repeatsCycle). Stuck models repeat

@@ -439,6 +439,7 @@ func (h *Host) ensureRunner(p *Profile) (*agent.Runner, error) {
 	sid := h.AgentSessionID()
 	r.ProviderOptions, r.Headers = h.Providers.CallOptions(id, h.Effort(id), sid), agent.SessionHeaders(sid)
 	r.MaxOutputTokens = h.maxOutput(id)
+	r.MaxSteps = int(h.Settings.Int("agent.max_steps"))
 	if p != nil {
 		r.Temperature = p.Temperature
 	}

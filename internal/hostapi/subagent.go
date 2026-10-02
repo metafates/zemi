@@ -303,6 +303,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	runner := agent.NewRunner(model, kept, sys)
 	runner.Context, runner.ActiveTools = ctxMsg, active
 	runner.MaxOutputTokens = h.maxOutput(modelID)
+	runner.MaxSteps = int(h.Settings.Int("agent.max_steps"))
 	window := h.contextWindow(modelID)
 	runner.Full = func(used int64) bool { return window > 0 && used >= compactThreshold(window) }
 

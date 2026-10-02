@@ -439,6 +439,34 @@ func TestToolLoopEndsTurn(t *testing.T) {
 	}
 }
 
+// TestStepLimit: a turn stops at the configured step cap and says the count,
+// where the default is 200; the results move, so no loop ends it first.
+func TestStepLimit(t *testing.T) {
+	m := &mockModel{parts: textParts("done")}
+	for range 8 {
+		m.steps = append(m.steps, callStep("{}"))
+	}
+	n := 0
+	echo := fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		n++
+		return fantasy.NewTextResponse(fmt.Sprintf("step %d", n)), nil
+	})
+	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	r.Hooks, r.MaxSteps = newRecHooks(), 3
+	err := r.Send(context.Background(), "hi")
+	if err == nil || err.Error() != "stopped at the 3-step limit (agent.max_steps): send a message to continue" {
+		t.Fatalf("err = %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("ran %d calls, want the 3 the cap allows", n)
+	}
+	// nothing set: the default cap
+	r = NewRunner(&mockModel{parts: textParts("done")}, nil, "")
+	if got := r.stepLimit(); got != maxSteps {
+		t.Fatalf("default step limit = %d, want %d", got, maxSteps)
+	}
+}
+
 // TestFullCutsAtStepBoundary: Full sees each step's own context (cache reads
 // included, not a sum over steps), a full context ends the turn after the
 // tool result, an empty Send continues without a second user message, and a

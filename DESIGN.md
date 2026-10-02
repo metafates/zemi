@@ -2710,7 +2710,8 @@ provenance string.
   server processes all start from it.
 - There is no turn-scoped resource budget: per-turn caps on shell
   commands, files touched, tokens spent, or Lua host-API calls are not
-  implemented. What bounds a turn is the step limit (200 steps) and the
+  implemented. What bounds a turn is the step limit (`agent.max_steps`,
+  200 steps out of the box) and the
   doom-loop stop: a block of up to three tool steps (same calls, same
   results) repeating over six steps or three cycles ends the turn with an
   error the user can continue from, with `job_read` and `job_list` steps
