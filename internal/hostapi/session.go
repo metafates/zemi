@@ -8,7 +8,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -366,12 +366,15 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	var tr []ChatMessage
 	toolRow := map[string]int{} // tool call id -> transcript index
 	type telemetry struct {
-		ID, Diff, Run, Detail string
-		ThoughtMS             int64 `json:"thought_ms"`
-		TurnMS                int64 `json:"turn_ms"`
-		In                    int64 `json:"in"`
-		Out                   int64 `json:"out"`
-		Ended                 int64 `json:"ended"`
+		ID        string `json:"id"`
+		Diff      string `json:"diff"`
+		Run       string `json:"run"`
+		Detail    string `json:"detail"`
+		ThoughtMS int64  `json:"thought_ms"`
+		TurnMS    int64  `json:"turn_ms"`
+		In        int64  `json:"in"`
+		Out       int64  `json:"out"`
+		Ended     int64  `json:"ended"`
 	}
 	// A call's telemetry is stored as its tool ends, before the step's
 	// messages, so a call takes the nearest one before it: a provider may

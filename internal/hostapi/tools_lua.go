@@ -7,7 +7,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -357,7 +357,7 @@ func (h *Host) runLuaTool(ctx context.Context, t *luaTool, callID string, input 
 			return out, nil
 		}
 	}
-	b, err := json.Marshal(res[0])
+	b, err := json.Marshal(res[0], json.Deterministic(true))
 	if err != nil {
 		return "", fmt.Errorf("%s: the result is not JSON: %w", t.Name, err)
 	}

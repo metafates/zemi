@@ -10,7 +10,7 @@ package hostapi
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -399,7 +399,7 @@ func (h *Host) storeCompaction(summary fantasy.Message, tail []fantasy.Message) 
 		return nil
 	}
 	row := func(m fantasy.Message, role string) (*store.Message, error) {
-		parts, err := json.Marshal(m)
+		parts, err := json.Marshal(m, json.Deterministic(true))
 		if err != nil {
 			return nil, err
 		}

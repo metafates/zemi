@@ -204,7 +204,7 @@ func runFailed(err error, jsonOut bool, stdout, stderr io.Writer) int {
 // byte that is not UTF-8 becomes U+FFFD, so no line is dropped; the fixed
 // struct types leave Marshal nothing else to refuse.
 func writeJSON(w io.Writer, v any) {
-	b, _ := json.Marshal(v, jsontext.AllowInvalidUTF8(true))
+	b, _ := json.Marshal(v, jsontext.AllowInvalidUTF8(true), json.Deterministic(true))
 	_, _ = w.Write(append(b, '\n'))
 }
 

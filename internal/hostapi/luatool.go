@@ -330,7 +330,7 @@ func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error)
 		if len(vals) == 1 {
 			ret = vals[0]
 		}
-		data, jerr := json.Marshal(ret)
+		data, jerr := json.Marshal(ret, json.Deterministic(true))
 		if jerr != nil {
 			data = []byte(fmt.Sprint(ret))
 		}
@@ -455,7 +455,7 @@ func (h *Host) luaToolCall(L *glua.LState) int {
 		if err != nil {
 			return luaResult(L, fmt.Errorf("zemi.tool.call: args: %w", err))
 		}
-		data, err := json.Marshal(in)
+		data, err := json.Marshal(in, json.Deterministic(true))
 		if err != nil {
 			return luaResult(L, fmt.Errorf("zemi.tool.call: args: %w", err))
 		}

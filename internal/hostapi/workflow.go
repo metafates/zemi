@@ -17,7 +17,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -420,7 +421,7 @@ func (r *wfRun) agentDone(d wfDone) {
 	case d.err != nil:
 		line.Err = r.h.friendlyError(d.err)
 	case d.req.schema != nil: // runAgent checked it is the object asked for
-		line.Result = json.RawMessage(d.text)
+		line.Result = jsontext.Value(d.text)
 	default:
 		line.Result = jsonString(d.text)
 	}
@@ -434,7 +435,7 @@ func (r *wfRun) agentDone(d wfDone) {
 
 // answer is an agent's journaled result as the script gets it: the report,
 // or a table for a schema call. A line zemi did not write answers nil.
-func answer(L *glua.LState, result json.RawMessage) glua.LValue {
+func answer(L *glua.LState, result jsontext.Value) glua.LValue {
 	var v any
 	_ = json.Unmarshal(result, &v)
 	return lua.FromGo(L, v)
@@ -475,7 +476,7 @@ func luaResultString(v glua.LValue) string {
 	if err != nil {
 		return v.String()
 	}
-	b, err := json.MarshalIndent(g, "", "  ")
+	b, err := json.Marshal(g, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return v.String()
 	}
@@ -622,7 +623,7 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	r.f.agents = append(r.f.agents, a)
 	r.f.mu.Unlock()
 	if schema != nil { // in the task, never the system prompt, which runs share
-		b, _ := json.Marshal(schema)
+		b, _ := json.Marshal(schema, json.Deterministic(true))
 		prompt += "\n\nEnd with only a JSON object matching this JSON Schema, no prose and no code fences:\n" + string(b)
 	}
 	t.req = &wfAgentReq{def: def, prompt: prompt, key: key, schema: schema, agent: a}
@@ -999,35 +1000,35 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 // journalLine is one line of a run's journal: the header (Workflow set),
 // an agent that ended (Agent set), or the end.
 type journalLine struct {
-	Workflow    string          `json:"workflow,omitempty"`
-	Name        string          `json:"name,omitempty"`
-	About       string          `json:"about,omitempty"`
-	Args        any             `json:"args,omitempty"`
-	Concurrency int             `json:"concurrency,omitzero"`
-	Started     int64           `json:"started,omitzero"`
-	Agent       string          `json:"agent,omitempty"`
-	Key         string          `json:"key,omitempty"`
-	Def         string          `json:"def,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Phase       string          `json:"phase,omitempty"`
-	Status      RunStatus       `json:"status,omitempty"`
-	Reused      bool            `json:"reused,omitzero"`
-	Calls       int             `json:"calls,omitzero"`
-	Tokens      int64           `json:"tokens,omitzero"`
-	Cost        float64         `json:"cost,omitzero"`
-	MS          int64           `json:"ms,omitzero"`
-	Result      json.RawMessage `json:"result,omitempty"`
-	Err         string          `json:"err,omitempty"`
+	Workflow    string         `json:"workflow,omitempty"`
+	Name        string         `json:"name,omitempty"`
+	About       string         `json:"about,omitempty"`
+	Args        any            `json:"args,omitempty"`
+	Concurrency int            `json:"concurrency,omitzero"`
+	Started     int64          `json:"started,omitzero"`
+	Agent       string         `json:"agent,omitempty"`
+	Key         string         `json:"key,omitempty"`
+	Def         string         `json:"def,omitempty"`
+	Description string         `json:"description,omitempty"`
+	Phase       string         `json:"phase,omitempty"`
+	Status      RunStatus      `json:"status,omitempty"`
+	Reused      bool           `json:"reused,omitzero"`
+	Calls       int            `json:"calls,omitzero"`
+	Tokens      int64          `json:"tokens,omitzero"`
+	Cost        float64        `json:"cost,omitzero"`
+	MS          int64          `json:"ms,omitzero"`
+	Result      jsontext.Value `json:"result,omitempty"`
+	Err         string         `json:"err,omitempty"`
 }
 
-func jsonString(s string) json.RawMessage {
-	b, _ := json.Marshal(s)
+func jsonString(s string) jsontext.Value {
+	b, _ := json.Marshal(s, json.Deterministic(true))
 	return b
 }
 
 // agentKey is what makes two agent calls identical for a rerun.
 func agentKey(def, model string, schema map[string]any, prompt string) string {
-	s, _ := json.Marshal(schema) // map keys sort: one schema, one text
+	s, _ := json.Marshal(schema, json.Deterministic(true)) // map keys sort: one schema, one text
 	sum := sha256.Sum256([]byte(def + "\x00" + model + "\x00" + string(s) + "\x00" + prompt))
 	return hex.EncodeToString(sum[:])
 }
@@ -1067,7 +1068,7 @@ func openJournal(pad, id, src string, head journalLine) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	b, _ := json.Marshal(head)
+	b, _ := json.Marshal(head, json.Deterministic(true))
 	if _, err := j.Write(append(b, '\n')); err != nil {
 		j.Close()
 		return nil, err
@@ -1081,7 +1082,7 @@ func (f *flowRun) note(l journalLine) {
 	if f.journal == nil {
 		return
 	}
-	b, _ := json.Marshal(l)
+	b, _ := json.Marshal(l, json.Deterministic(true))
 	_, _ = f.journal.Write(append(b, '\n'))
 }
 

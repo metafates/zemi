@@ -8,7 +8,8 @@ package lsptest
 
 import (
 	"bufio"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"io"
 	"maps"
 	"os"
@@ -40,7 +41,7 @@ func wordAt(text string, line, char int) string {
 func Serve(in io.Reader, out io.Writer) {
 	r := bufio.NewReader(in)
 	write := func(v any) {
-		b, _ := json.Marshal(v)
+		b, _ := json.Marshal(v, json.Deterministic(true))
 		_ = lsp.WriteMessage(out, b)
 	}
 	// Document versions must arrive in order; once they do not, every later
@@ -55,8 +56,8 @@ func Serve(in io.Reader, out io.Writer) {
 			return
 		}
 		var m struct {
-			ID     json.RawMessage `json:"id"`
-			Method string          `json:"method"`
+			ID     jsontext.Value `json:"id"`
+			Method string         `json:"method"`
 			Params struct {
 				TextDocument struct {
 					URI     string `json:"uri"`
@@ -67,14 +68,15 @@ func Serve(in io.Reader, out io.Writer) {
 					Text string `json:"text"`
 				} `json:"contentChanges"`
 				Position struct {
-					Line, Character int
+					Line      int `json:"line"`
+					Character int `json:"character"`
 				} `json:"position"`
 				NewName      string `json:"newName"`
 				Query        string `json:"query"`
 				Capabilities struct {
 					Experimental struct {
-						ServerStatusNotification bool
-					}
+						ServerStatusNotification bool `json:"serverStatusNotification"`
+					} `json:"experimental"`
 				} `json:"capabilities"`
 				Changes []struct {
 					URI  string `json:"uri"`
@@ -84,9 +86,12 @@ func Serve(in io.Reader, out io.Writer) {
 					URI   string `json:"uri"`
 					Name  string `json:"name"`
 					Range struct {
-						Start struct{ Line, Character int }
+						Start struct {
+							Line      int `json:"line"`
+							Character int `json:"character"`
+						} `json:"start"`
 					} `json:"range"`
-					SelectionRange json.RawMessage `json:"selectionRange"`
+					SelectionRange jsontext.Value `json:"selectionRange"`
 				} `json:"item"`
 			} `json:"params"`
 		}

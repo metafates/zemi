@@ -3,7 +3,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -2195,7 +2195,7 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 				fantasy.ReasoningPart{Text: " summary."},
 				fantasy.TextPart{Text: "'s it"},
 			}}
-			raw, err := json.Marshal(m)
+			raw, err := json.Marshal(m, json.Deterministic(true))
 			if err != nil {
 				t.Fatal(err)
 			}

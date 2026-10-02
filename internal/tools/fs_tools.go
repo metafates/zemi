@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"image"
@@ -674,7 +674,9 @@ func CallStart(ctx context.Context, id, tool, input string) bool {
 	if tool != ToolWrite && tool != ToolEdit {
 		return false
 	}
-	var in struct{ Path string }
+	var in struct {
+		Path string `json:"path"`
+	}
 	if json.Unmarshal([]byte(input), &in) != nil || in.Path == "" {
 		return false
 	}

@@ -6,7 +6,8 @@ package lsp
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -61,10 +62,10 @@ func SeverityName(s int) string {
 }
 
 type message struct {
-	ID     json.RawMessage `json:"id,omitempty"`
-	Method string          `json:"method,omitempty"`
-	Params json.RawMessage `json:"params,omitempty"`
-	Result json.RawMessage `json:"result,omitempty"`
+	ID     jsontext.Value `json:"id,omitempty"`
+	Method string         `json:"method,omitempty"`
+	Params jsontext.Value `json:"params,omitempty"`
+	Result jsontext.Value `json:"result,omitempty"`
 	Error  *struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
@@ -406,15 +407,15 @@ func (c *Client) watched(path string, typ int) bool {
 
 // register keeps a server's workspace/didChangeWatchedFiles registration;
 // unregister drops it by id. Other capabilities are accepted and ignored.
-func (c *Client) register(raw json.RawMessage, on bool) {
+func (c *Client) register(raw jsontext.Value, on bool) {
 	var p struct {
 		Registrations []struct {
 			ID     string `json:"id"`
 			Method string `json:"method"`
 			Opts   struct {
 				Watchers []struct {
-					Pattern json.RawMessage `json:"globPattern"`
-					Kind    *int            `json:"kind"`
+					Pattern jsontext.Value `json:"globPattern"`
+					Kind    *int           `json:"kind"`
 				} `json:"watchers"`
 			} `json:"registerOptions"`
 		} `json:"registrations"`
@@ -442,8 +443,8 @@ func (c *Client) register(raw json.RawMessage, on bool) {
 		for _, w := range r.Opts.Watchers {
 			pattern, base := "", c.root
 			var rp struct {
-				BaseURI json.RawMessage `json:"baseUri"`
-				Pattern string          `json:"pattern"`
+				BaseURI jsontext.Value `json:"baseUri"`
+				Pattern string         `json:"pattern"`
 			}
 			if json.Unmarshal(w.Pattern, &pattern) != nil && json.Unmarshal(w.Pattern, &rp) == nil {
 				pattern = rp.Pattern
@@ -606,7 +607,7 @@ func (c *Client) end(err error) {
 }
 
 func (c *Client) send(v any) error {
-	b, err := json.Marshal(v)
+	b, err := json.Marshal(v, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -742,7 +743,7 @@ func (c *Client) read(r *bufio.Reader) {
 	}
 }
 
-func (c *Client) publish(raw json.RawMessage) {
+func (c *Client) publish(raw jsontext.Value) {
 	var p struct {
 		URI         string `json:"uri"`
 		Version     *int   `json:"version"`

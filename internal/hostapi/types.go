@@ -8,7 +8,8 @@ package hostapi
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -130,7 +131,7 @@ func writeLuarc(dir, typesDir string) error {
 		return nil
 	}
 	path := filepath.Join(dir, ".luarc.json")
-	data, err := json.MarshalIndent(map[string]any{
+	data, err := json.Marshal(map[string]any{
 		"$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
 		// the sandbox's own basic, os and debug are described in zemi.lua
 		"runtime": map[string]any{"version": "Lua 5.1", "builtin": map[string]string{
@@ -144,7 +145,7 @@ func writeLuarc(dir, typesDir string) error {
 			"missing-parameter": "Error!", "redundant-parameter": "Error!",
 		}},
 		"telemetry": map[string]any{"enable": false},
-	}, "", "  ")
+	}, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return err
 	}

@@ -3,7 +3,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -160,7 +160,7 @@ func seedTranscript(t *testing.T, h *Host, sid string) {
 // addText stores a text message the way persistMessage does.
 func addText(t *testing.T, h *Host, sid, role, text string) {
 	t.Helper()
-	parts, err := json.Marshal(fantasy.Message{Role: fantasy.MessageRole(role), Content: []fantasy.MessagePart{fantasy.TextPart{Text: text}}})
+	parts, err := json.Marshal(fantasy.Message{Role: fantasy.MessageRole(role), Content: []fantasy.MessagePart{fantasy.TextPart{Text: text}}}, json.Deterministic(true))
 	if err == nil {
 		err = h.DB.AddMessage(&store.Message{SessionID: sid, Role: role, PartsJSON: string(parts)})
 	}
@@ -189,7 +189,7 @@ func addToolResult(t *testing.T, h *Host, sid, name, text, errText string) {
 		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.ToolCallPart{ToolCallID: "c-" + name, ToolName: name, Input: "{}"}}},
 		{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{fantasy.ToolResultPart{ToolCallID: "c-" + name, Output: out}}},
 	} {
-		parts, err := json.Marshal(m)
+		parts, err := json.Marshal(m, json.Deterministic(true))
 		if err == nil {
 			err = h.DB.AddMessage(&store.Message{SessionID: sid, Role: string(m.Role), PartsJSON: string(parts)})
 		}
@@ -388,7 +388,7 @@ func TestReflectPrompt(t *testing.T) {
 			for _, m := range msgs[len(msgs)-2:] {
 				tail = append(tail, &store.Message{Role: compactTailRole, PartsJSON: m.PartsJSON})
 			}
-			parts, _ := json.Marshal(agent.UserMessage(compactPrefix + "the gist" + compactSuffix))
+			parts, _ := json.Marshal(agent.UserMessage(compactPrefix+"the gist"+compactSuffix), json.Deterministic(true))
 			if err := h.DB.AddCompaction(sid, &store.Message{Role: "user", PartsJSON: string(parts)}, tail); err != nil {
 				t.Fatal(err)
 			}

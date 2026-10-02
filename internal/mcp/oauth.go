@@ -15,7 +15,8 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"html/template"
@@ -95,7 +96,7 @@ func (a *Auth) load() *Token {
 // save writes the grant owner-only. The caller holds mu.
 func (a *Auth) save(t *Token) error {
 	a.tok, a.loaded = t, true
-	b, err := json.MarshalIndent(t, "", "  ")
+	b, err := json.Marshal(t, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -405,7 +406,7 @@ func getJSON(ctx context.Context, u string, out any) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("http %d", resp.StatusCode)
 	}
-	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out)
+	return json.UnmarshalRead(io.LimitReader(resp.Body, 1<<20), out)
 }
 
 // register asks the authorization server for a client id (RFC 7591), as a
@@ -418,7 +419,7 @@ func register(ctx context.Context, endpoint, redirect string) (id, secret string
 		"response_types":             []string{"code"},
 		"token_endpoint_auth_method": "none",
 		"application_type":           "native",
-	})
+	}, json.Deterministic(true))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return "", "", err
@@ -434,7 +435,7 @@ func register(ctx context.Context, endpoint, redirect string) (id, secret string
 		ClientID     string `json:"client_id"`
 		ClientSecret string `json:"client_secret"`
 	}
-	if resp.StatusCode/100 != 2 || json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r) != nil || r.ClientID == "" {
+	if resp.StatusCode/100 != 2 || json.UnmarshalRead(io.LimitReader(resp.Body, 1<<20), &r) != nil || r.ClientID == "" {
 		// name the endpoint: a 404 here usually means discovery found no
 		// metadata and this URL was the spec's guess
 		return "", "", fmt.Errorf("registering zemi at %s failed (http %d); the server may not support dynamic client registration, so either register an app with it yourself and pass client_id (and client_secret, callback_port when its redirect URI has a fixed port) to zemi.mcp.add, or set an Authorization header in its config", endpoint, resp.StatusCode)
@@ -472,7 +473,7 @@ func tokenRequest(ctx context.Context, t *Token, form url.Values) (*Token, error
 		Error        string `json:"error"`
 		Description  string `json:"error_description"`
 	}
-	_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r)
+	_ = json.UnmarshalRead(io.LimitReader(resp.Body, 1<<20), &r)
 	if resp.StatusCode != http.StatusOK || r.AccessToken == "" {
 		why := cmp.Or(r.Description, r.Error, fmt.Sprintf("http %d", resp.StatusCode))
 		return nil, fmt.Errorf("%w: the server refused the token request: %.200s", ErrAuthRequired, why)

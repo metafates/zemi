@@ -3,7 +3,7 @@ package lua
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -391,7 +391,7 @@ func chunkErr(rel, src string, origin Origin, err error) error {
 	if _, ok := api.Object.(*glua.LTable); ok {
 		// error({ code = 1 }) prints as its address otherwise
 		if v, err := ToGo(api.Object); err == nil {
-			if data, err := json.Marshal(v); err == nil {
+			if data, err := json.Marshal(v, json.Deterministic(true)); err == nil {
 				msg = string(data)
 			}
 		}

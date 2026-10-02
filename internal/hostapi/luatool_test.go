@@ -88,7 +88,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 	run := func(script string, allow bool) (*fakeUI, string) {
 		ui := &fakeUI{askAllowed: allow, askBy: "user", screenshot: "screen"}
 		h.SetUIHooks(ui)
-		input, _ := json.Marshal(map[string]string{"about": "x", "script": strings.ReplaceAll(script, "MARKER", marker)})
+		input, _ := json.Marshal(map[string]string{"about": "x", "script": strings.ReplaceAll(script, "MARKER", marker)}, json.Deterministic(true))
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 		if err != nil {
 			t.Fatal(err)
@@ -204,7 +204,7 @@ func TestLuaToolCeiling(t *testing.T) {
 		{"error({ code = 1 })", `: {"code":1}`, old, true},
 	} {
 		luaToolCeiling = c.ceiling
-		input, _ := json.Marshal(map[string]string{"about": "x", "script": c.script})
+		input, _ := json.Marshal(map[string]string{"about": "x", "script": c.script}, json.Deterministic(true))
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 		if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) ||
 			(c.named && !strings.Contains(resp.Content, "error: "+luaToolChunk+"#")) || strings.Contains(resp.Content, "context canceled") {
@@ -240,7 +240,7 @@ func TestLuaToolPath(t *testing.T) {
 	} {
 		ui := &fakeUI{askBy: "user"}
 		h.SetUIHooks(ui)
-		input, _ := json.Marshal(map[string]string{"about": "x", "path": c.path})
+		input, _ := json.Marshal(map[string]string{"about": "x", "path": c.path}, json.Deterministic(true))
 		resp, _ := h.luaEvalTool(h.PipelineFor()).Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 		if !strings.HasPrefix(resp.Content, c.want) || len(ui.asked) != c.asks {
 			t.Errorf("%s: %q, %d asks", c.path, resp.Content, len(ui.asked))
@@ -291,7 +291,7 @@ func TestLuaToolReloads(t *testing.T) {
 				step := lua.BootStep{Name: "config", Run: func(context.Context, *lua.Runtime, *lua.Generation) error { return c.step(h) }}
 				return h.ForceReload(context.Background(), []lua.BootStep{h.NamespacesStep(), step})
 			}, func() bool { return changed })
-			input, _ := json.Marshal(map[string]string{"about": "x", "script": `return zemi.config.get("ui.mouse")`})
+			input, _ := json.Marshal(map[string]string{"about": "x", "script": `return zemi.config.get("ui.mouse")`}, json.Deterministic(true))
 			resp, err := h.luaEvalTool(h.PipelineFor()).Run(context.Background(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 			if err != nil || resp.Content != c.want || changed {
 				t.Fatalf("%q (%v), still changed %v", resp.Content, err, changed)
@@ -331,7 +331,7 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	}
 	run := func(script string) string {
 		t.Helper()
-		input, _ := json.Marshal(map[string]string{"about": "x", "script": script})
+		input, _ := json.Marshal(map[string]string{"about": "x", "script": script}, json.Deterministic(true))
 		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: tools.ToolLua, Input: string(input)})
 		if err != nil {
 			t.Fatal(err)

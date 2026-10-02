@@ -9,7 +9,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -322,7 +322,7 @@ func (h *Host) stateNamespace(L *glua.LState) *glua.LTable {
 		if h.GlobalDB == nil {
 			return luaResult(L, errNoStateStore)
 		}
-		b, err := json.Marshal(v)
+		b, err := json.Marshal(v, json.Deterministic(true))
 		if err != nil {
 			L.RaiseError("zemi.state.set: %v", err)
 		}

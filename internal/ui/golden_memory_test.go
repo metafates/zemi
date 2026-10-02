@@ -2,7 +2,7 @@ package ui
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -60,7 +60,7 @@ func TestGoldenMemory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	payload, _ := json.Marshal(map[string]any{"ID": "p1", "Scope": "project", "Text": "run make check before every commit", "Origin": "learned", "ProvenanceSessionID": "seed"})
+	payload, _ := json.Marshal(map[string]any{"ID": "p1", "Scope": "project", "Text": "run make check before every commit", "Origin": "learned", "ProvenanceSessionID": "seed"}, json.Deterministic(true))
 	if err := host.DB.AddProposal(&store.Proposal{ID: "p1", Payload: string(payload)}); err != nil {
 		t.Fatal(err)
 	}

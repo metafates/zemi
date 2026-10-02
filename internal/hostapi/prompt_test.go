@@ -2,7 +2,7 @@ package hostapi
 
 import (
 	"cmp"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"os"
@@ -162,7 +162,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 			toolset, _ := h.profileTools(p)
 			text := h.buildSystem(p)
 			for _, tool := range toolset {
-				schema, _ := json.Marshal(tool.Info().Parameters)
+				schema, _ := json.Marshal(tool.Info().Parameters, json.Deterministic(true))
 				text += "\n" + tool.Info().Description + string(schema)
 			}
 			for _, ref := range []string{name + " tool", "(use " + name + ")", name + ` "`} {
@@ -368,7 +368,7 @@ func TestPromptPinned(t *testing.T) {
 				{"edit", map[string]any{"path": agentsMD(h), "old_string": "test", "new_string": "check"}},
 			} {
 				i := slices.IndexFunc(all, func(a fantasy.AgentTool) bool { return a.Info().Name == call.name })
-				input, _ := json.Marshal(call.in)
+				input, _ := json.Marshal(call.in, json.Deterministic(true))
 				if resp, err := all[i].Run(t.Context(), fantasy.ToolCall{ID: "t", Name: call.name, Input: string(input)}); err != nil || resp.IsError {
 					t.Fatalf("%s: %v %s", call.name, err, resp.Content)
 				}
@@ -431,8 +431,8 @@ zemi.event.on("agent.assemble", function() n = n + 1; return "build " .. n end)`
 			send("two")
 			m.mu.Lock()
 			first, last := m.prompts[0], m.prompts[len(m.prompts)-1]
-			tools0, _ := json.Marshal(m.tools[0])
-			tools1, _ := json.Marshal(m.tools[len(m.tools)-1])
+			tools0, _ := json.Marshal(m.tools[0], json.Deterministic(true))
+			tools1, _ := json.Marshal(m.tools[len(m.tools)-1], json.Deterministic(true))
 			m.mu.Unlock()
 			sys0, sys1 := concatText(first[0].Content), concatText(last[0].Content)
 			if rebuilt := strings.Contains(sys1, "build 2"); rebuilt != c.rebuilt {
@@ -492,7 +492,7 @@ func TestPromptSameAcrossProjects(t *testing.T) {
 		for _, tool := range out {
 			info = append(info, tool.Info())
 		}
-		b, _ := json.Marshal(info)
+		b, _ := json.Marshal(info, json.Deterministic(true))
 		sys[i], ctx[i], infos[i] = s, c, string(b)
 	}
 	if sys[0] != sys[1] || infos[0] != infos[1] {
@@ -534,7 +534,7 @@ func TestPromptBudget(t *testing.T) {
 	// the machine's: each counts as a fixed short one, so TMPDIR moves nothing
 	text := sys
 	for _, tool := range toolset {
-		schema, _ := json.Marshal(tool.Info().Parameters)
+		schema, _ := json.Marshal(tool.Info().Parameters, json.Deterministic(true))
 		text += tool.Info().Description + string(schema)
 	}
 	root, exe := filepath.Dir(h.Dirs.ProjectDir), must(os.Executable())

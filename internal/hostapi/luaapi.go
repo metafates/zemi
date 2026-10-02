@@ -6,7 +6,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"time"
 
@@ -26,7 +26,7 @@ func (h *Host) jsonNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.json.encode: %v", err)
 		}
-		b, err := json.Marshal(v)
+		b, err := json.Marshal(v, json.Deterministic(true))
 		if err != nil {
 			L.RaiseError("zemi.json.encode: %v", err)
 		}

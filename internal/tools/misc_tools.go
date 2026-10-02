@@ -295,7 +295,7 @@ func runQuestion(ctx context.Context, p *Pipeline, input map[string]any) (fantas
 			res.Answers[i].Answer = a.Picked[0]
 		}
 	}
-	out, err := json.Marshal(res)
+	out, err := json.Marshal(res, json.Deterministic(true))
 	if err != nil {
 		return fantasy.ToolResponse{}, err
 	}

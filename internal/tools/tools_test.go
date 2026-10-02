@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"image"
 	"image/color"
@@ -68,7 +68,7 @@ func TestResolveSchemaRefs(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			b, _ := json.Marshal(got)
+			b, _ := json.Marshal(got, json.Deterministic(true))
 			if string(b) != c.want {
 				t.Fatalf("got %s, want %s", b, c.want)
 			}
@@ -542,7 +542,7 @@ func TestEditSafety(t *testing.T) {
 	all := All(p)
 	read, edit := all[1], all[3]
 	dir := t.TempDir()
-	js := func(m map[string]any) string { b, _ := json.Marshal(m); return string(b) }
+	js := func(m map[string]any) string { b, _ := json.Marshal(m, json.Deterministic(true)); return string(b) }
 	for _, c := range []struct {
 		name, file   string
 		unread       bool
@@ -812,7 +812,7 @@ func TestValidationErrors(t *testing.T) {
 		m, err := ParseInput(info, c.input, c.open)
 		got := fmt.Sprint(err)
 		if err == nil && strings.HasPrefix(c.want, "{") {
-			b, _ := json.Marshal(m)
+			b, _ := json.Marshal(m, json.Deterministic(true))
 			got = string(b)
 		} else if err == nil {
 			got = ""

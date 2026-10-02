@@ -208,7 +208,7 @@ func (h *Host) keepPick(path string) {
 	if reflect.DeepEqual(live, base) {
 		delete(h.picked, path)
 		_, err = h.GlobalDB.DelKV("config:" + path)
-	} else if b, jerr := json.Marshal(live); jerr != nil {
+	} else if b, jerr := json.Marshal(live, json.Deterministic(true)); jerr != nil {
 		err = jerr
 	} else if err = h.GlobalDB.SetKV("config:"+path, string(b)); err == nil {
 		h.picked[path] = live

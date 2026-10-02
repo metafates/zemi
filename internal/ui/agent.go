@@ -6,9 +6,8 @@
 package ui
 
 import (
-	"bytes"
 	"cmp"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"math"
 	"net/url"
@@ -118,9 +117,10 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 		req.Runs[i].Name = sanitize.Line(req.Runs[i].Name)
 	}
 	// a tool's input reads as its fields, one per line
-	var indented bytes.Buffer
-	if strings.HasPrefix(req.Preview, "{") && json.Indent(&indented, []byte(req.Preview), "", "  ") == nil {
-		req.Preview = indented.String()
+	if strings.HasPrefix(req.Preview, "{") {
+		if out, err := jsontext.AppendFormat(nil, req.Preview, jsontext.WithIndent("  ")); err == nil {
+			req.Preview = string(out)
+		}
 	}
 	ch := make(chan permAnswer, 1)
 	a.await(func() tea.Cmd {

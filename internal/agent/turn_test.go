@@ -2,7 +2,8 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -735,7 +736,7 @@ func TestOpenAIResponses(t *testing.T) {
 			r := NewRunner(rec, nil, "sys")
 			r.History, r.Hooks, r.ProviderOptions = history, newRecHooks(), reg.CallOptions(c.model, "", "")
 			r.Persist = func(msg fantasy.Message) error {
-				b, err := json.Marshal(msg)
+				b, err := json.Marshal(msg, json.Deterministic(true))
 				stored = append(stored, string(b))
 				return err
 			}
@@ -833,7 +834,7 @@ func TestCacheBreakpoints(t *testing.T) {
 		return fantasy.ToolResponse{}, nil
 	}
 	tools := []fantasy.AgentTool{fantasy.NewAgentTool("one", "one", noop), fantasy.NewAgentTool("two", "two", noop)}
-	marks := func(list []json.RawMessage) string {
+	marks := func(list []jsontext.Value) string {
 		out := ""
 		for _, v := range list {
 			out += map[bool]string{true: "+", false: "-"}[strings.Contains(string(v), "cache_control")]
@@ -853,7 +854,11 @@ func TestCacheBreakpoints(t *testing.T) {
 		r.History = []fantasy.Message{UserMessage("a"), {Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "b"}}}}
 		_ = r.Send(t.Context(), "c") // the server refuses; only the request matters
 		mu.Lock()
-		var req struct{ System, Messages, Tools []json.RawMessage }
+		var req struct {
+			System   []jsontext.Value `json:"system"`
+			Messages []jsontext.Value `json:"messages"`
+			Tools    []jsontext.Value `json:"tools"`
+		}
 		err = json.Unmarshal([]byte(body), &req)
 		gotURL, gotAffinity := sent, affinity
 		mu.Unlock()

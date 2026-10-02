@@ -8,7 +8,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -528,7 +528,7 @@ func (t *PluginTest) tool(L *glua.LState) int {
 	if input == nil {
 		input = map[string]any{}
 	}
-	raw, err := json.Marshal(input)
+	raw, err := json.Marshal(input, json.Deterministic(true))
 	if err != nil {
 		raise(L, "test.tool: input: %v", err)
 	}

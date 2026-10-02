@@ -6,7 +6,7 @@ package tools
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -867,7 +867,7 @@ func ParseInput(info fantasy.ToolInfo, input string, open bool) (map[string]any,
 	if strings.TrimSpace(input) == "" {
 		input = "{}"
 	}
-	var typeErr *json.UnmarshalTypeError
+	var typeErr *json.SemanticError
 	switch err := json.Unmarshal([]byte(input), &m); {
 	case errors.As(err, &typeErr):
 		return nil, errors.New("input must be a JSON object")

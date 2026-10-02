@@ -3,7 +3,8 @@ package tools
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -65,7 +66,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("%s: %s %v", server, action, err)), nil
 	}
 	if action == "symbols" {
-		var raw json.RawMessage
+		var raw jsontext.Value
 		if err := c.Call(ctx, "textDocument/documentSymbol", map[string]any{"textDocument": doc}, &raw); err != nil {
 			return fail(err)
 		}
@@ -112,7 +113,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 	params := map[string]any{"textDocument": doc, "position": lsp.Pos(string(text), off)}
 	switch action {
 	case "definition", "implementation":
-		var raw json.RawMessage
+		var raw jsontext.Value
 		if err := c.Call(ctx, "textDocument/"+action, params, &raw); err != nil {
 			return fail(err)
 		}
@@ -123,7 +124,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		return fantasy.NewTextResponse(formatLocations(locs, 20) + note), nil
 	case "references":
 		params["context"] = map[string]any{"includeDeclaration": true}
-		var raw json.RawMessage
+		var raw jsontext.Value
 		if err := c.Call(ctx, "textDocument/references", params, &raw); err != nil {
 			return fail(err)
 		}
@@ -145,7 +146,7 @@ func runLSP(ctx context.Context, p *Pipeline, input map[string]any) (fantasy.Too
 		// (its data field is opaque, selectionRange required), so round-trip
 		// it untouched
 		var b strings.Builder
-		var prepared []json.RawMessage
+		var prepared []jsontext.Value
 		if err := c.Call(ctx, "textDocument/prepareCallHierarchy", params, &prepared); err != nil {
 			return fail(err)
 		}
@@ -305,7 +306,7 @@ func commentLine(text string, off int) bool {
 	return false
 }
 
-func decodeLocations(raw json.RawMessage) []lsp.Location {
+func decodeLocations(raw jsontext.Value) []lsp.Location {
 	var one lsp.Location
 	if json.Unmarshal(raw, &one) == nil && one.URI != "" {
 		return []lsp.Location{one}
@@ -375,20 +376,20 @@ func symbolKind(k int) string {
 }
 
 // formatSymbols renders a documentSymbol result, hierarchical or flat.
-func formatSymbols(raw json.RawMessage) string {
+func formatSymbols(raw jsontext.Value) string {
 	type sym struct {
-		Name     string `json:"name"`
-		Detail   string `json:"detail"`
-		Kind     int    `json:"kind"`
-		Range    lsp.Range
+		Name     string    `json:"name"`
+		Detail   string    `json:"detail"`
+		Kind     int       `json:"kind"`
+		Range    lsp.Range `json:"range"`
 		Location struct {
 			Range lsp.Range `json:"range"`
 		} `json:"location"`
-		Children []json.RawMessage `json:"children"`
+		Children []jsontext.Value `json:"children"`
 	}
 	var b strings.Builder
-	var walk func(items []json.RawMessage, depth int)
-	walk = func(items []json.RawMessage, depth int) {
+	var walk func(items []jsontext.Value, depth int)
+	walk = func(items []jsontext.Value, depth int) {
 		for _, it := range items {
 			var s sym
 			// fields and properties are the file's noise, not its shape
@@ -411,7 +412,7 @@ func formatSymbols(raw json.RawMessage) string {
 			walk(s.Children, depth+1)
 		}
 	}
-	var items []json.RawMessage
+	var items []jsontext.Value
 	_ = json.Unmarshal(raw, &items)
 	walk(items, 0)
 	return strings.TrimRight(b.String(), "\n")

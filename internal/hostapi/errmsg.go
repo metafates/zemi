@@ -2,7 +2,7 @@ package hostapi
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -26,7 +26,7 @@ func (h *Host) explain(err error) (cause, advice string) {
 	pe, _ := errors.AsType[*fantasy.ProviderError](err)
 	dns, _ := errors.AsType[*net.DNSError](err)
 	ne, _ := errors.AsType[net.Error](err)
-	_, garbled := errors.AsType[*json.SyntaxError](err)
+	_, garbled := errors.AsType[*jsontext.SyntacticError](err)
 	key := "check api_key in init.lua"
 	if me, ok := errors.AsType[agent.ModelError](err); ok {
 		key = "check api_key for " + me.Provider + " in init.lua"

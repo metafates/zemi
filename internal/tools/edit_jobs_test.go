@@ -4,7 +4,7 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -344,7 +344,7 @@ func TestFileToolsSymlinkRace(t *testing.T) {
 		byName[tl.Info().Name] = tl
 	}
 	run := func(name string, in map[string]any) string {
-		b, _ := json.Marshal(in)
+		b, _ := json.Marshal(in, json.Deterministic(true))
 		res, _ := byName[name].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: name, Input: string(b)})
 		return res.Content
 	}

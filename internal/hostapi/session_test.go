@@ -1,7 +1,7 @@
 package hostapi
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -366,11 +366,11 @@ func TestSeedReadsUsesTheRowThatReadIt(t *testing.T) {
 	}
 	call, err := json.Marshal(fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
 		fantasy.ToolCallPart{ToolCallID: "c1", ToolName: "read", Input: `{"path":"` + p + `"}`},
-	}})
+	}}, json.Deterministic(true))
 	if err != nil {
 		t.Fatal(err)
 	}
-	later, err := json.Marshal(agent.UserMessage("and then some"))
+	later, err := json.Marshal(agent.UserMessage("and then some"), json.Deterministic(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +388,7 @@ func TestForkKeepsTodos(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	h.reflectMu.Lock() // no detached reflect run racing the teardown
 	defer h.reflectMu.Unlock()
-	parts, _ := json.Marshal(fantasy.NewUserMessage("plan it"))
+	parts, _ := json.Marshal(fantasy.NewUserMessage("plan it"), json.Deterministic(true))
 	h.DB.CreateSession("s", "", "t", "")
 	h.DB.AddMessage(&store.Message{SessionID: "s", Role: "user", PartsJSON: string(parts)})
 	h.DB.SetTodos("s", []store.Todo{{Content: "a", Status: "pending"}})
@@ -425,7 +425,7 @@ func TestPlanRowOutput(t *testing.T) {
 				{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.ToolCallPart{ToolCallID: "c1", ToolName: tools.ToolPlan, Input: `{"plan":"x"}`}}},
 				{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{fantasy.ToolResultPart{ToolCallID: "c1", Output: fantasy.ToolResultOutputContentText{Text: raw}}}},
 			} {
-				parts, err := json.Marshal(m)
+				parts, err := json.Marshal(m, json.Deterministic(true))
 				if err != nil {
 					t.Fatal(err)
 				}

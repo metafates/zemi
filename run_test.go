@@ -3,7 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -117,13 +117,13 @@ func TestDeniedHint(t *testing.T) {
 // instead of hanging it), and a tool result gets "done".
 func fakeOpenAI(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Stream   bool
+		Stream   bool `json:"stream"`
 		Messages []struct {
-			Role    string
-			Content any
-		}
+			Role    string `json:"role"`
+			Content any    `json:"content"`
+		} `json:"messages"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	_ = json.UnmarshalRead(r.Body, &body)
 	last := body.Messages[len(body.Messages)-1]
 	text, _ := last.Content.(string)
 	if parts, ok := last.Content.([]any); ok {
@@ -135,10 +135,10 @@ func fakeOpenAI(w http.ResponseWriter, r *http.Request) {
 	}
 	usage := map[string]int{"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}
 	if !body.Stream {
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"id": "c", "object": "chat.completion", "model": "m", "usage": usage,
 			"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": "done"}, "finish_reason": "stop"}},
-		})
+		}, json.Deterministic(true))
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -146,7 +146,7 @@ func fakeOpenAI(w http.ResponseWriter, r *http.Request) {
 		b, _ := json.Marshal(map[string]any{
 			"id": "c", "object": "chat.completion.chunk", "model": "m", "usage": usage,
 			"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": fin}},
-		})
+		}, json.Deterministic(true))
 		fmt.Fprintf(w, "data: %s\n\n", b)
 		w.(http.Flusher).Flush()
 	}

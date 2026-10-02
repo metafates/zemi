@@ -8,7 +8,8 @@ package agent
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -285,7 +286,7 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 	ps, info := loadCatalog(dir)
 	// the server tags its indented JSON and the client returns no etag, so
 	// the catalog in use is tagged the same way
-	body, err := json.MarshalIndent(ps, "", "  ")
+	body, err := json.Marshal(ps, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return Catalog{}, false, err
 	}
@@ -302,7 +303,7 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 		return Catalog{}, false, errors.New("the fetched catalog has no provider zemi supports")
 	}
 	c.Info.Version, c.Info.Fetched = info.Version, time.Now().UTC().Truncate(time.Second)
-	data, err := json.Marshal(savedCatalog{c.Info.Version, c.Info.Fetched, fresh})
+	data, err := json.Marshal(savedCatalog{c.Info.Version, c.Info.Fetched, fresh}, json.Deterministic(true))
 	if err != nil {
 		return Catalog{}, false, err
 	}

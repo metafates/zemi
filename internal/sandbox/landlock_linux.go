@@ -3,7 +3,7 @@ package sandbox
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -118,7 +118,7 @@ func wrap(cmd *exec.Cmd, p Policy) error {
 	if err != nil {
 		return err
 	}
-	pol, err := json.Marshal(p)
+	pol, err := json.Marshal(p, json.Deterministic(true))
 	if err != nil {
 		return err
 	}

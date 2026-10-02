@@ -9,7 +9,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -337,7 +337,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	runner.Hooks = hooks
 	if sid != "" {
 		runner.Persist = func(msg fantasy.Message) error {
-			parts, err := json.Marshal(msg)
+			parts, err := json.Marshal(msg, json.Deterministic(true))
 			if err != nil {
 				return err
 			}

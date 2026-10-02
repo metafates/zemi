@@ -6,7 +6,8 @@ package mcptest
 
 import (
 	"bufio"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 )
@@ -14,8 +15,8 @@ import (
 // Respond answers one JSON-RPC message; notifications get nil.
 func Respond(line []byte) []byte {
 	var m struct {
-		ID     json.RawMessage `json:"id"`
-		Method string          `json:"method"`
+		ID     jsontext.Value `json:"id"`
+		Method string         `json:"method"`
 		Params struct {
 			Cursor    string         `json:"cursor"`
 			Name      string         `json:"name"`
@@ -63,7 +64,7 @@ func Respond(line []byte) []byte {
 	default:
 		resp["error"] = map[string]any{"code": -32601, "message": "method not found"}
 	}
-	b, _ := json.Marshal(resp)
+	b, _ := json.Marshal(resp, json.Deterministic(true))
 	return b
 }
 

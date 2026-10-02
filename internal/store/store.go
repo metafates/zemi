@@ -7,7 +7,7 @@ import (
 	"database/sql"
 	"encoding/base32"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -335,7 +335,7 @@ func jsonList(s []string) string {
 	if len(s) == 0 {
 		return "[]"
 	}
-	b, _ := json.Marshal(s)
+	b, _ := json.Marshal(s, json.Deterministic(true))
 	return string(b)
 }
 

@@ -9,7 +9,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -552,7 +552,7 @@ func (h *Host) notifyReport(id, agentName, status, description, report string) {
 		parent = f.parent
 	}
 	if parent != "" && h.DB != nil {
-		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(h.scratchFor(parent), id, agentName, status, description, report)))
+		parts, err := json.Marshal(agent.UserMessage(h.reportMessage(h.scratchFor(parent), id, agentName, status, description, report)), json.Deterministic(true))
 		if err == nil {
 			err = h.DB.AddMessage(&store.Message{SessionID: parent, Role: string(fantasy.MessageRoleUser), PartsJSON: string(parts)})
 		}

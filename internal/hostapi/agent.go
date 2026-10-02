@@ -9,7 +9,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -524,7 +525,7 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy
 	for i, t := range toolset {
 		infos[i] = t.Info()
 		// Parallel is in the key: fantasy reads it per step, not the provider
-		schema, _ := json.Marshal([]any{infos[i].Parameters, infos[i].Required, infos[i].Parallel})
+		schema, _ := json.Marshal([]any{infos[i].Parameters, infos[i].Required, infos[i].Parallel}, json.Deterministic(true))
 		key = append(key, infos[i].Name, string(schema))
 	}
 	k := strings.Join(key, "\x00")
@@ -561,7 +562,7 @@ func (h *Host) pinPrompt(p *Profile, toolset []fantasy.AgentTool) (out []fantasy
 		sid := ag.sessionID
 		ag.mu.Unlock()
 		if stored != nil && sid != "" && h.DB != nil {
-			if data, err := json.Marshal(stored); err == nil {
+			if data, err := json.Marshal(stored, json.Deterministic(true)); err == nil {
 				if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: contextRole, PartsJSON: string(data)}); err != nil {
 					h.Log.Warn("context not stored", "origin", "agent", "error", err)
 				}
@@ -589,7 +590,7 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 	builtin, mcp := 0, 0
 	for _, t := range toolset {
 		info := t.Info()
-		schema, _ := json.Marshal(info.Parameters)
+		schema, _ := json.Marshal(info.Parameters, json.Deterministic(true))
 		n := len(info.Name) + len(info.Description) + len(schema)
 		if strings.HasPrefix(info.Name, mcpToolPrefix) || info.Name == tools.ToolSearch {
 			mcp += n
@@ -748,7 +749,7 @@ func (h *Host) persistTurnStat(sid string, stat TurnStat) {
 	}
 	parts, err := json.Marshal(map[string]any{
 		"turn_ms": stat.ElapsedMS, "in": stat.In, "out": stat.Out, "ended": stat.Ended,
-	})
+	}, json.Deterministic(true))
 	if err != nil {
 		return
 	}
@@ -1630,11 +1631,14 @@ func toolSummary(tool, input string) string {
 	}
 	// any other tool (an MCP one): its first string argument, in the order
 	// the model wrote them
-	dec := json.NewDecoder(strings.NewReader(input))
-	_, _ = dec.Token() // the object's opening brace
-	for dec.More() {
+	dec := jsontext.NewDecoder(strings.NewReader(input))
+	_, _ = dec.ReadToken() // the object's opening brace
+	for dec.PeekKind() != jsontext.Kind('}') {
+		if _, err := dec.ReadToken(); err != nil {
+			break
+		}
 		var v any
-		if _, err := dec.Token(); err != nil || dec.Decode(&v) != nil {
+		if err := json.UnmarshalDecode(dec, &v); err != nil {
 			break
 		}
 		if s, ok := v.(string); ok && s != "" {
@@ -1656,7 +1660,7 @@ func (h *Host) persistMessage(msg fantasy.Message) error {
 	if h.DB == nil || sid == "" {
 		return nil
 	}
-	parts, err := json.Marshal(msg)
+	parts, err := json.Marshal(msg, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -1674,7 +1678,7 @@ func (h *Host) persistMessage(msg fantasy.Message) error {
 			d += time.Since(ag.thinkStart)
 		}
 		ag.mu.Unlock()
-		parts, _ := json.Marshal(map[string]any{"thought_ms": d.Milliseconds()})
+		parts, _ := json.Marshal(map[string]any{"thought_ms": d.Milliseconds()}, json.Deterministic(true))
 		if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}); err != nil {
 			return err
 		}
@@ -1702,7 +1706,7 @@ func (h *Host) recordToolCall(sid string, t StreamTool, ok bool) {
 	if t.Diff != "" || t.Run != "" {
 		row["id"], row["diff"], row["run"], row["detail"] = t.ID, t.Diff, t.Run, t.Detail
 	}
-	parts, _ := json.Marshal(row)
+	parts, _ := json.Marshal(row, json.Deterministic(true))
 	msg := &store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}
 	if err := h.DB.AddToolCall(msg, &store.ToolCall{Tool: t.Name, OK: ok}); err != nil {
 		h.Log.Warn("tool call persist failed", "origin", "agent", "error", err)

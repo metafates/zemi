@@ -9,7 +9,8 @@ import (
 	"cmp"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -107,7 +108,7 @@ func (r *Result) Text() string {
 		}
 	}
 	if len(parts) == 0 && r.Structured != nil {
-		b, _ := json.Marshal(r.Structured)
+		b, _ := json.Marshal(r.Structured, json.Deterministic(true))
 		return string(b)
 	}
 	return strings.Join(parts, "\n")
@@ -139,10 +140,10 @@ type rpcError struct {
 func (e *rpcError) Error() string { return fmt.Sprintf("mcp error %d: %s", e.Code, e.Message) }
 
 type message struct {
-	ID     json.RawMessage `json:"id,omitempty"`
-	Method string          `json:"method,omitempty"`
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  *rpcError       `json:"error,omitempty"`
+	ID     jsontext.Value `json:"id,omitempty"`
+	Method string         `json:"method,omitempty"`
+	Result jsontext.Value `json:"result,omitempty"`
+	Error  *rpcError      `json:"error,omitempty"`
 }
 
 type transport interface {
@@ -269,7 +270,7 @@ func (c *Client) end(err error) {
 }
 
 func (c *Client) send(ctx context.Context, v any) error {
-	b, err := json.Marshal(v)
+	b, err := json.Marshal(v, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -336,7 +337,7 @@ func (c *Client) handle(data []byte) {
 		return
 	}
 	if data[0] == '[' {
-		var batch []json.RawMessage
+		var batch []jsontext.Value
 		if json.Unmarshal(data, &batch) == nil {
 			for _, m := range batch {
 				c.handle(m)

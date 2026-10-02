@@ -3,7 +3,8 @@ package config
 
 import (
 	"cmp"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -305,7 +306,7 @@ func (d Dirs) ReadTrust() map[string]string {
 // NOTE: callers read, change and write, so two windows writing at once can
 // lose one decision, which the next start asks again.
 func (d Dirs) WriteTrust(m map[string]string) error {
-	data, err := json.MarshalIndent(m, "", "  ")
+	data, err := json.Marshal(m, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return err
 	}

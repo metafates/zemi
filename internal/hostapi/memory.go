@@ -8,7 +8,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -75,7 +75,7 @@ func (h *Host) addProposal(p memoryProposal) error {
 	if db == nil {
 		return errNoMemoryStore
 	}
-	payload, err := json.Marshal(p)
+	payload, err := json.Marshal(p, json.Deterministic(true))
 	if err == nil {
 		err = db.AddProposal(&store.Proposal{ID: p.ID, Payload: string(payload)})
 	}

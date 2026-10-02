@@ -239,7 +239,7 @@ func (h *Host) storeGoal(sid string, row goalRow) {
 	if h.DB == nil || sid == "" {
 		return
 	}
-	parts, _ := json.Marshal(row)
+	parts, _ := json.Marshal(row, json.Deterministic(true))
 	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: goalRole, PartsJSON: string(parts)}); err != nil {
 		h.Log.Warn("event not stored", "origin", "goal", "error", err)
 	}

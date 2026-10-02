@@ -3,7 +3,7 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -672,7 +672,7 @@ func TestMoveMergeKeepsUserOrigin(t *testing.T) {
 func TestAcceptProposalKeepsItOnStoreError(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	// no origin: the store refuses the row, after the proposal was taken
-	payload, _ := json.Marshal(memoryProposal{ID: "p1", Scope: "project", Text: "unstorable"})
+	payload, _ := json.Marshal(memoryProposal{ID: "p1", Scope: "project", Text: "unstorable"}, json.Deterministic(true))
 	if err := h.DB.AddProposal(&store.Proposal{ID: "p1", Payload: string(payload)}); err != nil {
 		t.Fatal(err)
 	}

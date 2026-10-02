@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -37,7 +37,7 @@ func TestOAuthSignIn(t *testing.T) {
 	writeJSON := func(w http.ResponseWriter, code int, v any) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(code)
-		_ = json.NewEncoder(w).Encode(v)
+		_ = json.MarshalWrite(w, v, json.Deterministic(true))
 	}
 	mux := http.NewServeMux()
 	mcpHandler := mcptest.Handler()
@@ -166,12 +166,12 @@ func TestOAuthRefreshRotation(t *testing.T) {
 		defer mu.Unlock()
 		if r.Form.Get("refresh_token") != fmt.Sprint("r", n) {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid_grant"})
+			_ = json.MarshalWrite(w, map[string]any{"error": "invalid_grant"}, json.Deterministic(true))
 			return
 		}
 		n++
 		// expiring at once, so every call refreshes
-		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": fmt.Sprint("a", n), "refresh_token": fmt.Sprint("r", n), "expires_in": 1})
+		_ = json.MarshalWrite(w, map[string]any{"access_token": fmt.Sprint("a", n), "refresh_token": fmt.Sprint("r", n), "expires_in": 1}, json.Deterministic(true))
 	}))
 	defer srv.Close()
 	path := filepath.Join(t.TempDir(), "grant.json")
@@ -198,10 +198,10 @@ func TestOAuthPreRegisteredClient(t *testing.T) {
 	var srv *httptest.Server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/oauth-authorization-server/mcp", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"authorization_endpoint": srv.URL + "/authorize",
 			"token_endpoint":         srv.URL + "/token", "registration_endpoint": srv.URL + "/register",
-		})
+		}, json.Deterministic(true))
 	})
 	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	mux.HandleFunc("/authorize", func(w http.ResponseWriter, r *http.Request) {
@@ -213,7 +213,7 @@ func TestOAuthPreRegisteredClient(t *testing.T) {
 		http.Redirect(w, r, q.Get("redirect_uri")+"?code=abc&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "t1", "expires_in": 3600})
+		_ = json.MarshalWrite(w, map[string]any{"access_token": "t1", "expires_in": 3600}, json.Deterministic(true))
 	})
 	srv = httptest.NewServer(mux)
 	defer srv.Close()
@@ -288,10 +288,10 @@ func TestDiscoverChecksResource(t *testing.T) {
 	)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"resource": resource.Load(), "authorization_servers": []string{srv.URL + "/as"}})
+		_ = json.MarshalWrite(w, map[string]any{"resource": resource.Load(), "authorization_servers": []string{srv.URL + "/as"}}, json.Deterministic(true))
 	})
 	mux.HandleFunc("/.well-known/oauth-authorization-server/as", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"authorization_endpoint": srv.URL + "/as/authorize", "token_endpoint": srv.URL + "/as/token"})
+		_ = json.MarshalWrite(w, map[string]any{"authorization_endpoint": srv.URL + "/as/authorize", "token_endpoint": srv.URL + "/as/token"}, json.Deterministic(true))
 	})
 	srv = httptest.NewServer(mux)
 	defer srv.Close()
@@ -328,10 +328,10 @@ func TestDiscoverWithoutAuthServers(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	})
 	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"resource": srv.URL + "/mcp", "scopes_supported": []string{"read", "write"}})
+		_ = json.MarshalWrite(w, map[string]any{"resource": srv.URL + "/mcp", "scopes_supported": []string{"read", "write"}}, json.Deterministic(true))
 	})
 	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"authorization_endpoint": srv.URL + "/authorize", "token_endpoint": srv.URL + "/token"})
+		_ = json.MarshalWrite(w, map[string]any{"authorization_endpoint": srv.URL + "/authorize", "token_endpoint": srv.URL + "/token"}, json.Deterministic(true))
 	})
 	srv = httptest.NewServer(mux)
 	defer srv.Close()

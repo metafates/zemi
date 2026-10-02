@@ -2,7 +2,7 @@ package hostapi
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -44,7 +44,7 @@ func TestLSPDiagnostics(t *testing.T) {
 			if tool == "write" {
 				in["content"] = content
 			}
-			input, _ := json.Marshal(in)
+			input, _ := json.Marshal(in, json.Deterministic(true))
 			resp, err := byName[tool].Run(context.Background(), fantasy.ToolCall{ID: "1", Name: tool, Input: string(input)})
 			if err != nil {
 				t.Fatal(err)

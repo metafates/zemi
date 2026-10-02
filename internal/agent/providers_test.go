@@ -2,7 +2,8 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"net"
 	"net/http"
@@ -286,7 +287,7 @@ func TestLoadCatalog(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
 			if c.file != nil {
-				data, _ := json.Marshal(c.file)
+				data, _ := json.Marshal(c.file, json.Deterministic(true))
 				if s, ok := c.file.(string); ok {
 					data = []byte(s)
 				}
@@ -327,7 +328,7 @@ func TestUpdateCatalog(t *testing.T) {
 		{name: "not modified", feed: soloCatalog},
 		{name: "no supported provider", feed: []catwalk.Provider{}, err: true},
 	} {
-		body, _ = json.MarshalIndent(c.feed, "", "  ")
+		body, _ = json.Marshal(c.feed, jsontext.WithIndent("  "), json.Deterministic(true))
 		cat, changed, err := UpdateCatalog(t.Context(), srv.URL, dir, soloEnv)
 		if (err != nil) != c.err || changed != c.changed || !c.err && (cat.Info.Providers != 1 || cat.Info.Fetched.IsZero()) {
 			t.Fatalf("%s: changed %v, %+v, %v", c.name, changed, cat.Info, err)

@@ -1,7 +1,7 @@
 package hostapi
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
@@ -112,7 +112,7 @@ func TestPlanApprovalSwitchesBack(t *testing.T) {
 			t.Fatalf("handoff shown as the user's message: %q", m.Text)
 		}
 	}
-	parts, _ := json.Marshal(fantasy.NewUserMessage(got))
+	parts, _ := json.Marshal(fantasy.NewUserMessage(got), json.Deterministic(true))
 	if _, ok := userText(&store.Message{Role: "user", PartsJSON: string(parts)}); ok {
 		t.Fatal("handoff would be recalled from the store as typed input")
 	}

@@ -1,7 +1,7 @@
 package hostapi
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -114,7 +114,7 @@ func TestRewind(t *testing.T) {
 	}
 	h.DB.SupersedeMemory(old.ID, learned.ID)
 	for _, at := range []int64{last, last + 1} {
-		payload, _ := json.Marshal(memoryProposal{Scope: "project", Text: strconv.FormatInt(at, 10), Origin: "learned", ProvenanceSessionID: sid})
+		payload, _ := json.Marshal(memoryProposal{Scope: "project", Text: strconv.FormatInt(at, 10), Origin: "learned", ProvenanceSessionID: sid}, json.Deterministic(true))
 		if err := h.DB.AddProposal(&store.Proposal{Payload: string(payload), CreatedAt: at}); err != nil {
 			t.Fatal(err)
 		}
@@ -214,7 +214,7 @@ func TestRewindSnapshotEdges(t *testing.T) {
 			}
 			var ids []string
 			for i, text := range []string{"first", "second"} {
-				parts, _ := json.Marshal(fantasy.NewUserMessage(text))
+				parts, _ := json.Marshal(fantasy.NewUserMessage(text), json.Deterministic(true))
 				m := &store.Message{SessionID: "s", Role: "user", PartsJSON: string(parts)}
 				if i == 0 && c.firstAge > 0 {
 					m.CreatedAt = time.Now().Add(-c.firstAge).UnixMilli()
@@ -316,7 +316,7 @@ func TestRewindShellSymlink(t *testing.T) {
 				}
 			}
 			h.DB.CreateSession("s", "", "s", "")
-			parts, _ := json.Marshal(fantasy.NewUserMessage("go"))
+			parts, _ := json.Marshal(fantasy.NewUserMessage("go"), json.Deterministic(true))
 			m := &store.Message{SessionID: "s", Role: "user", PartsJSON: string(parts)}
 			h.DB.AddMessage(m)
 			if err := h.ResumeSession("s"); err != nil {
