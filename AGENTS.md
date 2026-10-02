@@ -766,8 +766,10 @@ lua-language-server is installed.
   those rows left).
 - **Live equals settled.** The live turn holds one stretch in stream order (reasoning, calls,
   reply); `flushOutput` moves it into the transcript whenever the next part would break that
-  order (reasoning after a call or a reply, a call after a reply), so a step's reasoning lands
-  under the calls before it. It moves only the calls that finished, so none settles early, and
+  order (reasoning after a call or a reply, a call after a reply), and at every tool call that
+  starts, so a step's reasoning is a row of its own before the call that follows it rather than
+  waiting for the next step or the turn's end with the run's digest. It moves only the calls that
+  finished, so none settles early, and
   moves both sides under `ag.mu`, which the widget ctx reads them under (`liveView`), so no
   frame draws a row twice or not at all; `TurnDone` settles a call still open as stopped after
   an interrupt and as failed after an error. `historyFrom` splits text and merges reasoning the
