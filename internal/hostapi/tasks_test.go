@@ -179,7 +179,11 @@ func TestReportHeadsNameTheLine(t *testing.T) {
 			name: "a report", tail: agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="d"`, "found it"),
 			want: []string{"Background agent r1 (explore) finished"},
 		},
-		{name: "a command's attachment is the user's", tail: agent.Attached("command", "body"), want: nil},
+		// an element quoted in a body is still the user's text: only one
+		// right behind the marker is a report
+		{name: "a command's attachment is the user's", tail: agent.Attached("command", `see this: <agent-report run="r9" agent="explore" status="finished" description="d">
+not a report
+</agent-report>`), want: nil},
 		{
 			name: "a plugin send after blank lines", tail: agent.Attached("plugin:demo", "\n\nreal line"),
 			want: []string{"plugin:demo: real line"},

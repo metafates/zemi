@@ -18,6 +18,8 @@ import (
 	"charm.land/fantasy"
 	"charm.land/fantasy/providers/anthropic"
 	"charm.land/fantasy/providers/openai"
+
+	"github.com/metafates/zemi/internal/config"
 )
 
 // mockModel replays scripted stream parts; steps, when set, scripts one
@@ -460,10 +462,11 @@ func TestStepLimit(t *testing.T) {
 	if n != 3 {
 		t.Fatalf("ran %d calls, want the 3 the cap allows", n)
 	}
-	// nothing set: the default cap
+	// nothing on the runner: the default cap, which is the schema's
+	// agent.max_steps, so the two cannot drift
 	r = NewRunner(&mockModel{parts: textParts("done")}, nil, "")
-	if got := r.stepLimit(); got != maxSteps {
-		t.Fatalf("default step limit = %d, want %d", got, maxSteps)
+	if got, want := r.stepLimit(), config.NewStore().Int("agent.max_steps"); got != want {
+		t.Fatalf("default step limit = %d, want the schema's %d", got, want)
 	}
 }
 

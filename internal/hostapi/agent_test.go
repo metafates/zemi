@@ -117,6 +117,40 @@ func runExpectErr(t *testing.T, r *lua.Runtime, src string, want ...string) {
 	}
 }
 
+// TestMaxStepsSetting: agent.max_steps reaches both runners the host builds,
+// the send's own and every run's, so one low value stops a subagent too.
+func TestMaxStepsSetting(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	reflectStub(t, h, "")
+	if _, err := h.Settings.SetQuiet("agent.max_steps", 7.0); err != nil {
+		t.Fatal(err)
+	}
+	runner, err := h.ensureRunner(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runner.MaxSteps != 7 {
+		t.Fatalf("a send's runner caps at %d steps, want the 7 agent.max_steps set", runner.MaxSteps)
+	}
+
+	// a subagent's runner reads the same key, so its run stops at the cap
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			return toolCallParts("c1", "read", `{"file_path":"/nope"}`)
+		}}, nil
+	}
+	if _, err := h.Settings.SetQuiet("agent.max_steps", 1.0); err != nil {
+		t.Fatal(err)
+	}
+	def, err := h.agentDef("explore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := h.runSubagent(context.Background(), def, "d", "look"); err == nil || !strings.Contains(err.Error(), "stopped at the 1-step limit (agent.max_steps)") {
+		t.Fatalf("a subagent run past its step limit = %v", err)
+	}
+}
+
 func TestProfileTemperatureReachesRunner(t *testing.T) {
 	h, r := newTestHost(t)
 	reflectStub(t, h, "")

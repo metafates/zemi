@@ -102,8 +102,10 @@ func (r *taskReg) maxBackground() int {
 }
 
 // detached refuses one more detached run past maxBackground, agents
-// and workflows alike (r.mu held).
-func (r *taskReg) detached() error {
+// and workflows alike (r.mu held). advice is what the refused caller can
+// still do, which the caller names: a user's /workflows run has no
+// foreground left, the agent tool's own call does.
+func (r *taskReg) detached(advice string) error {
 	limit := r.maxBackground()
 	n := 0
 	for _, x := range r.runs {
@@ -117,18 +119,20 @@ func (r *taskReg) detached() error {
 		}
 	}
 	if n >= limit {
-		return fmt.Errorf("%d %s; wait for one, run this one in the foreground, or raise agent.max_background", n,
-			Plural(n, "background agent or workflow is already running", "background agents and workflows are already running"))
+		return fmt.Errorf("%d %s; %s", n,
+			Plural(n, "background agent or workflow is already running", "background agents and workflows are already running"), advice)
 	}
 	return nil
 }
 
-// canDetach is detached for a check before the start. NOTE: a run started
-// in between makes the start refuse after the caller acted on the check.
+// canDetach is detached for a check before the start; the run it refuses is
+// the user's own, with no foreground version of it to fall back on. NOTE: a
+// run started in between makes the start refuse after the caller acted on
+// the check.
 func (r *taskReg) canDetach() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.detached()
+	return r.detached("wait for one or raise agent.max_background")
 }
 
 // addFlow registers a workflow run, as add does an agent run.
@@ -136,7 +140,7 @@ func (r *taskReg) addFlow(f *flowRun) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if f.background {
-		if err := r.detached(); err != nil {
+		if err := r.detached("wait for one, run this one in the foreground, or raise agent.max_background"); err != nil {
 			return err
 		}
 	}
@@ -204,7 +208,7 @@ func (r *taskReg) add(run *agentRun) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if run.background {
-		if err := r.detached(); err != nil {
+		if err := r.detached("wait for one, run this one in the foreground, or raise agent.max_background"); err != nil {
 			return err
 		}
 	}
@@ -598,8 +602,9 @@ func (h *Host) notifyReport(id, agentName, status, description, report string) {
 	h.Notify(level, reportHead(id, agentName, status, description), description+"\n"+clipRunes(strings.TrimPrefix(report, reportFailed), 300))
 }
 
-// reportTag is a report's opening tag up to its closing bracket.
-const reportTag = `<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")`
+// reportTag is a report's opening tag, its element name up to its closing
+// bracket: the patterns below open it with attachedTag.
+const reportTag = `agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")`
 
 // attachedTag opens an element right behind agent.AttachMarker (the tail
 // starts past the first one), so a stray line in a file or a send draws no row.
@@ -607,8 +612,8 @@ const reportTag = `<agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" 
 var attachedTag = `(?:\A|` + regexp.QuoteMeta(agent.AttachMarker) + `)\n<`
 
 var (
-	reportAttrs = regexp.MustCompile(reportTag)
-	reportBody  = regexp.MustCompile(`(?s)` + reportTag + `>\n(.*?)\n</agent-report>`)
+	reportAttrs = regexp.MustCompile(attachedTag + reportTag)
+	reportBody  = regexp.MustCompile(`(?s)` + attachedTag + reportTag + `>\n(.*?)\n</agent-report>`)
 	// a zemi.agent.send from a plugin, with its first line that has something in
 	// it: an element whose text opens with blank lines has no line to name it by
 	pluginSent = regexp.MustCompile(attachedTag + `(plugin:[^>\s]+)>\n(?s:(.*?))\n</`)
