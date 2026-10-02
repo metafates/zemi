@@ -297,8 +297,8 @@ func (s *DB) sweep() error {
 	return nil
 }
 
-// NewID returns a random 128-bit id, hex encoded, for rows nobody types.
-func NewID() string {
+// newID returns a random 128-bit id, hex encoded, for rows nobody types.
+func newID() string {
 	var b [16]byte
 	rand.Read(b[:]) // crashes the process rather than fail
 	return hex.EncodeToString(b[:])
