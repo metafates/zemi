@@ -363,6 +363,12 @@ func (a *App) shownWidgets() []shownWidget {
 	return out
 }
 
+// lastBar is whether a painted row ends in a scrollbar cell: that cell is the
+// pane's border, which a separator column behind it must not double.
+func lastBar(row []hostapi.Segment) bool {
+	return len(row) > 0 && row[len(row)-1].Bar
+}
+
 // paint draws a solved node: exactly one row per cell of height, a row box
 // joining its children's rows left to right.
 func (a *App) paint(l laid) [][]hostapi.Segment {
@@ -374,8 +380,16 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 		x := 0
 		for _, k := range l.kids {
 			if k.sep {
+				// a viewport draws its scrollbar in its own last cell, its border, so
+				// this column stands down for it rather than doubling the line
 				for j := range joined {
-					joined[j] = slices.Concat(padSegs(joined[j], x), []hostapi.Segment{{Text: "│", HL: "Rule", NoCopy: true, Line: true}})
+					row := joined[j]
+					cell := hostapi.Segment{Text: "│", HL: "Rule", NoCopy: true, Line: true}
+					if n := len(row); lastBar(row) && n > 1 {
+						// the band's blank, one cell: the bar beside it is the border
+						cell = hostapi.Segment{Text: " ", HL: row[n-2].HL, Fill: row[n-2].Fill}
+					}
+					joined[j] = slices.Concat(padSegs(row, x), []hostapi.Segment{cell})
 				}
 				x++
 			}

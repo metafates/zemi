@@ -1200,7 +1200,7 @@ type Segment struct {
 	// Pin on a row's first segment is its part in the header stack a
 	// scrolled region pins over its first rows (Lua's sticky)
 	Pin Pin
-	Bar bool // Go only: a viewport's scrollbar cell, which a box draws in its right border
+	Bar bool // Go only: a viewport's scrollbar cell, drawn in the viewport's right border, a separator column behind it standing down
 	// Fill is Go only: the surface under the segment where its style paints
 	// the canvas. A field, since hover rewrites Over and HL.
 	Fill Fill

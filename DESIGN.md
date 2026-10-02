@@ -1901,8 +1901,9 @@ provenance string.
   under a `│ ⠋ thinking` row, their top sinking toward the canvas while it
   hides lines above them, unless the thinking pane draws them: in
   `ui.reasoning` pane mode, on a screen 100 columns or wider, a pane right of
-  the chat (`tui/thinking.lua`), its text two cells in from the separator and
-  a blank short of its scroll bar, streams the turn's thoughts under a header whose
+  the chat (`tui/thinking.lua`), its text two cells in from the separator (the
+  chat's scrollbar where the chat has one) and a blank short of its scroll bar,
+  streams the turn's thoughts under a header whose
   state words are a `Title` over a blank row, each thought under its own
   `✻ thought 4.2s`, and follows the tail until the wheel moves it; a turn's end
   moves it nowhere, and an inspected run, drawn without the rail's bars, reads

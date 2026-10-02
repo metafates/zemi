@@ -427,6 +427,59 @@ func TestChatFade(t *testing.T) {
 	}
 }
 
+// TestPaneDivider: with the thinking pane open the chat's scrollbar and the
+// pane's divider are one line. The chat draws its bar in its own last cell,
+// its border, so the separator column stands down for it while the chat
+// scrolls and separates the pane itself when it does not; the bar stays inside
+// the chat's rect, where a drag finds it.
+func TestPaneDivider(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		replies int
+		bar     bool // the chat scrolls, so its bar is the divider
+	}{
+		{"a chat taller than its view draws its bar", 40, true},
+		{"a chat that fits leaves the divider to the separator", 1, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			app, host := bootAgentApp(t, 120, 30)
+			if err := host.ToggleReasoning(); err != nil {
+				t.Fatal(err)
+			}
+			waitPrompt(t, app, func() bool { return !host.Layout().Root.Children[1].Children[1].Children[1].Children[1].Hidden })
+			host.AppendMessage("user", "look around")
+			for i := range c.replies {
+				appendReply(host, fmt.Sprintf("answer %d", i), hostapi.TurnStat{})
+			}
+			app.renderSync(t)
+			app.Frame()
+			chat, pane := app.LayoutRects()["chat"], app.LayoutRects()["thinking"]
+			// the cell at a screen column: a row is runs of segments, not cells
+			at := func(y, x int) hostapi.Segment {
+				if rest := dropCells(app.lastRows[y], x); len(rest) > 0 {
+					return rest[0]
+				}
+				return hostapi.Segment{}
+			}
+			y := pane.Y + 1
+			cell, bar := at(y, pane.X-1), at(y, chat.X+chat.Width-1)
+			if bar.Bar != c.bar {
+				t.Fatalf("the chat's last cell %+v, want it a bar: %v", bar, c.bar)
+			}
+			// the divider is the line either way, and never a second one: the
+			// separator stands down where the chat's bar is the border
+			if cell.Line != !c.bar {
+				t.Fatalf("divider %+v beside the chat's %+v, want a bar: %v", cell, bar, c.bar)
+			}
+			if c.bar {
+				if region := app.barAt(chat.X+chat.Width-1, y).region; region != "chat" {
+					t.Fatalf("the chat's bar is where a drag finds %q", region)
+				}
+			}
+		})
+	}
+}
+
 // TestThinkingFade: the live thinking tail sinks at its top while it hides
 // lines above, over the chat's own four-row ramp and easing off as the hidden
 // lines come back; a tail that fits keeps its colors, the rail bar never
