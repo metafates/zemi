@@ -103,6 +103,17 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	// Go-owned chrome and Lua overlays capture all keys (§8, §10.4).
 	switch top {
+	case modalBoot:
+		// the shipped Lua layer failed: nothing else on this screen acts
+		if scrollKey(&a.bootView, key, false) {
+			return nil
+		}
+		switch key {
+		case "c":
+			a.copyBootError()
+		case "q":
+			a.Quit()
+		}
 	case modalTrust:
 		if a.fresh(a.trust.opened) {
 			return nil
@@ -524,6 +535,7 @@ type modal int
 
 const (
 	noModal modal = iota
+	modalBoot
 	modalPerm
 	modalPlan
 	modalQuestion
@@ -532,9 +544,11 @@ const (
 )
 
 // topChrome is the prompt drawn on top. It mirrors the splice order in
-// compose: perm over plan, question, trust, then Lua overlays.
+// compose: boot over the modals, then perm over plan, question, trust.
 func (a *App) topChrome() modal {
 	switch {
+	case a.bootErr != nil:
+		return modalBoot
 	case a.permAsk != nil:
 		return modalPerm
 	case a.planAsk != nil:
@@ -594,6 +608,8 @@ func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 		}
 	case modalTrust:
 		text = &a.trust.view
+	case modalBoot:
+		text = &a.bootView
 	default:
 		switch {
 		case a.popRect.Empty():
@@ -635,7 +651,7 @@ func (a *App) pasteChrome(text string) bool {
 		} else if st.filterable {
 			st.edit("", line)
 		}
-	case modalPerm, modalTrust: // no text input: swallowed
+	case modalPerm, modalTrust, modalBoot: // no text input: swallowed
 	}
 	a.bump()
 	return true

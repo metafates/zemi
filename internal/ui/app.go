@@ -140,6 +140,7 @@ type App struct {
 	reflectAt time.Time
 
 	bootErr        error
+	bootView       viewport      // the boot-failure box's error text
 	streamPending  atomic.Bool   // a stream agentStreamMsg is queued
 	wake           chan struct{} // a bump while the frame tick sleeps idle
 	refreshPending atomic.Bool   // a Refresh is queued
@@ -988,6 +989,9 @@ func (a *App) compose(w, h int) string {
 	if a.trust != nil {
 		splice(trustBox(a.trust, area.Dx(), area.Dy()))
 	}
+	if a.bootErr != nil {
+		splice(a.bootBox(area.Dx(), area.Dy()))
+	}
 	if a.question != nil {
 		splice(a.questionBox(a.question, area.Dx(), area.Dy()))
 	}
@@ -1357,14 +1361,16 @@ func expandTabs(lines [][]hostapi.Segment) [][]hostapi.Segment {
 // (DESIGN §8), each a pointer to the command that deals with it. They sit
 // innermost in the left cluster and go last when the row is short.
 func (a *App) pills() []statusItem {
+	// a failed boot leaves no composer to stand them on, and no Lua to run
+	// the command a pill names: the boot box says it instead
+	if a.bootErr != nil {
+		return nil
+	}
 	var out []statusItem
 	pill := func(noun, cmd string) {
 		out = append(out, statusItem{segs: []hostapi.Segment{{Text: noun, HL: "Danger", Click: cmd}, {Text: " /" + cmd, HL: "Dim", Click: cmd}}})
 	}
-	// a failed boot step also leaves the runtime hot: one pill is enough
-	if a.bootErr != nil {
-		pill("boot failed", "errors")
-	} else if a.host.RT.IsHot() {
+	if a.host.RT.IsHot() {
 		pill("stuck", "reload")
 	}
 	if a.host.HasUnseenErrors() {

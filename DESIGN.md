@@ -394,7 +394,12 @@ user `init.lua` -> user skills' enable hooks -> a trusted project's
 `.agents/init.lua` -> markdown commands (user, then each plugin's, then a
 trusted repo's `.agents`, then the skills that ask for one, §10.5) ->
 `app.ready`. Boot runs on its own goroutine, so it may block on the
-trust prompt without holding the UI. Agents and workflows are read when
+trust prompt without holding the UI. The host's own steps (namespaces, builtin
+commands, the shipped UI, markdown commands, `app.ready`) are hard: the first
+failure stops the boot, the runtime goes hot and the screen is the Go-drawn
+boot box (§8). Everything a user owns (trust, project permissions, plugins,
+`init.lua`, skill hooks, project `init.lua`) is a soft step: its error is
+recorded for `/errors` and the boot goes on. Agents and workflows are read when
 used: the user's, then the builtin ones, then each plugin's, then the
 project's under the current decision; the first of a name wins. Project config loads late with
 flagged reduced trust: its registrations are tagged `origin = "project"`
@@ -1641,7 +1646,11 @@ provenance string.
   overflow drops the highest priority first; the
   shipped left widgets also show an armed quit (`ctx.quit_armed`), a
   pending key sequence (`key_seq`) and the rows below a scrolled chat
-  (`rows_below`); only the boot failed, stuck and errors pills are Go-drawn; the
+  (`rows_below`); only the stuck and errors pills are Go-drawn. A boot that
+  failed leaves the runtime hot, so no widget, theme, config text or composer
+  exists at all: the whole screen left is Go's, and the boot box states the
+  error, the log that holds the whole traceback, and the two keys that work
+  there, `c` to copy the error and `q` to quit. The
   shipped right widgets (`statusline.profile`, `model`, `context`, `percent`,
   `cost`, `hints`) show the model, the session token tally, the
   session cost when the model spec carries prices (`cost_per_1m_in` /
@@ -1982,9 +1991,9 @@ provenance string.
   from the row's `run` field, opens that run's transcript) and a tool row
   (`tool:<idx>`, expands that row); the splash's rows resume a session or
   switch to a project, and its tip's keys run their command or fill the composer (a `fill
-  <text>` click id, which `zemi.tui.text`'s `run_click` puts there). The boot
-  failed, stuck and errors pills stay Go-drawn, since they report a broken
-  Lua layer that could not draw its own alarm; a click on boot failed or
+  <text>` click id, which `zemi.tui.text`'s `run_click` puts there). The stuck
+  and errors pills stay Go-drawn, since they report a broken
+  Lua layer that could not draw its own alarm; a click on
   errors opens `/errors`, on stuck reloads. A drag selects inside the pane
   or box it starts in: a modal's text, a popup's, a layout leaf or a
   float; pulling past an edge selects to it, and a drag outside a modal

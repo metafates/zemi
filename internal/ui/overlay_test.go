@@ -3,6 +3,7 @@ package ui
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/perm"
 )
 
 // TestToggleOverlayStaysOpen: in a Reload overlay (skills) space and enter
@@ -325,6 +327,57 @@ func TestModalDimsBackground(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	if s := seg("untrusted"); s.Fade != 0 {
 		t.Fatalf("the palette faded the screen: %+v", s)
+	}
+}
+
+// TestBootFailedBox: a boot that failed leaves a runtime with no theme, no
+// widgets and no Lua at all, where the only screen left is Go's. The box
+// states the error and the log, the composer gives way to it, `c` copies the
+// error, and a boot that succeeds takes it away.
+func TestBootFailedBox(t *testing.T) {
+	app, host := bootAgentApp(t, 90, 24)
+	host.PurgeGeneration() // what a failed boot leaves behind: no theme, no widgets
+	app.SignalBoot(errors.New("boot step zemi.tui: zemi/tui/init.lua:12: attempt to call a nil value (global 'pending')"))
+	for app.Pump() {
+	}
+	app.renderSync(t)
+	frame := ansi.Strip(app.Frame())
+	for _, want := range []string{"Boot failed", "boot step zemi.tui:", "The whole traceback is in the log", "c copy the error", "q quit"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("the box does not say %q:\n%s", want, frame)
+		}
+	}
+	// the log path wraps across the box's rows, its border between them, so the
+	// screen is read flat
+	flat := strings.NewReplacer("\r", "", "\n", "", " ", "", "│", "").Replace(frame)
+	if !strings.Contains(flat, perm.TildePath(host.Dirs.LogDir())) {
+		t.Fatalf("the box names no log:\n%s", frame)
+	}
+	// the screen is the box: no composer stands under it, and no key reaches one
+	if strings.Contains(frame, "Ask anything") {
+		t.Fatalf("the composer is still drawn:\n%s", frame)
+	}
+	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if app.composer.text != "" {
+		t.Fatalf("a key reached the composer under the boot box: %q", app.composer.text)
+	}
+	app.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	for app.Pump() {
+	}
+	if len(app.toasts) == 0 || !strings.Contains(app.toasts[len(app.toasts)-1].title, "Copied") {
+		t.Fatalf("copying the error: %+v", app.toasts)
+	}
+	// a boot that succeeds takes the box away and gives the screen back
+	app.SignalBoot(nil)
+	for app.Pump() {
+	}
+	app.renderSync(t)
+	if f := ansi.Strip(app.Frame()); strings.Contains(f, "Boot failed") || !strings.Contains(f, "Ask anything") {
+		t.Fatalf("the screen after a good boot:\n%s", f)
+	}
+	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if app.composer.text != "x" {
+		t.Fatalf("the composer is still captured after a good boot: %q", app.composer.text)
 	}
 }
 

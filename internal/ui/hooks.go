@@ -111,9 +111,44 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 	return promptBox("Trust this "+what+"?", "", body, w, h, 100, &tp.size)
 }
 
+// bootBox draws the screen a failed boot leaves (DESIGN §8): the shipped Lua
+// layer never loaded, so the runtime is hot and no theme, widget or
+// config-driven text exists. Everything here is Go's, and it reads on a
+// terminal with no theme at all. The two keys are the ones that work in that
+// state: copy the error for a report, or quit.
+func (a *App) bootBox(w, h int) [][]hostapi.Segment {
+	width := min(boxInner(w), textBoxW-4)
+	text := func(width int) [][]hostapi.Segment {
+		rows := wrapText("zemi's own Lua layer did not load: no theme, widgets, config or model ran, and this is not your config's doing.", hostapi.ChromeHint, width)
+		head, rest, _ := strings.Cut(a.bootErr.Error(), "\n")
+		rows = append(append(rows, nil), wrapText(head, hostapi.ChromeDanger, width)...)
+		if rest != "" {
+			rows = append(rows, wrapText(rest, hostapi.ChromeHint, width)...)
+		}
+		rows = append(append(rows, nil), wrapText("The whole traceback is in the log: "+perm.TildePath(a.host.Dirs.LogDir()), hostapi.ChromeHint, width)...)
+		return rows
+	}
+	var size boxSize
+	body := scrollChoiceBody(h, width, nil, &a.bootView, text, width, nil, false, hintPair{"c", "copy the error"}, hintPair{"q", "quit"})
+	return promptBox("Boot failed", "", body, w, h, textBoxW, &size)
+}
+
+// copyBootError puts the boot failure and its log line on the clipboard, for
+// a report: the box's only answer besides quitting.
+func (a *App) copyBootError() {
+	if a.bootErr == nil {
+		return
+	}
+	text := a.bootErr.Error()
+	a.dispatch(uiFunc(func() tea.Cmd { return a.copied(text) }))
+}
+
+// BootError is why the boot failed, nil when it did not: main reads it once
+// the program returned, when no update runs.
+func (a *App) BootError() error { return a.bootErr }
+
 // ---------------------------------------------------------------------------
 // hostapi.UIHooks
-
 // Notify shows a toast from any goroutine. Title and body are sanitized
 // here.
 func (a *App) Notify(level slog.Level, title, body string) {

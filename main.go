@@ -177,6 +177,10 @@ func launch(o options) int {
 	}
 	// before a relaunch too: the scrollback keeps how to resume this session
 	fmt.Print(app.Farewell())
+	// and the boot failure, which the TUI showed on a screen that is gone now
+	if bootErr := app.BootError(); bootErr != nil {
+		fmt.Fprintln(os.Stderr, "zemi: boot failed: "+bootErr.Error())
+	}
 	if dir := app.RelaunchDir(); dir != "" {
 		closeLog() // an exec runs no defers
 		return fail(relaunch(dir))

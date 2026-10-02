@@ -222,12 +222,16 @@ var oneRow = [][]hostapi.Segment{nil}
 
 // scrollChoiceBody is a prompt's body fit to h rows: the head rows (a tab
 // strip), text scrolled in v at textW, the choice rows act draws (compact
-// once the box squeezes), and a hint row w wide with the page keys while the
-// text overflows and no line types, since a typed line keeps ctrl+u.
+// once the box squeezes; nil for a prompt whose keys ride the hint row), and
+// a hint row w wide with the page keys while the text overflows and no line
+// types, since a typed line keeps ctrl+u.
 func scrollChoiceBody(h, w int, head [][]hostapi.Segment, v *viewport, text func(int) [][]hostapi.Segment, textW int, act func(compact bool) [][]hostapi.Segment, typing bool, hints ...hintPair) [][]hostapi.Segment {
 	return fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight := level > 0
-		list := act(level > 1)
+		var list [][]hostapi.Segment
+		if act != nil {
+			list = act(level > 1)
+		}
 		v.viewH = max(h-2-len(stack(tight, head, oneRow, list, oneRow))+1, 1)
 		rows := v.window(text(textW), textW)
 		pairs := hints

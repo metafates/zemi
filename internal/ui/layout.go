@@ -224,7 +224,8 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 	}
 	var items []*hostapi.LayoutNode
 	for _, c := range n.Children {
-		if !c.Hidden {
+		// a failed boot draws a screen of its own, with no composer to type in
+		if !c.Hidden && !(a.bootErr != nil && c.Kind == hostapi.LayoutComposer) {
 			items = append(items, c)
 		}
 	}
