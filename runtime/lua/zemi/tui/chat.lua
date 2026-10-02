@@ -840,12 +840,14 @@ zemi.ui.widget.add({
 		if not done then
 			-- ctx.transcript copies every row into Lua, so only a miss reads it
 			local tr = ctx.transcript or {}
-			-- the runs after the last prompt are the live turn's while it runs
-			local last_user = 0
-			for n = #tr, 1, -1 do
-				if block_of(tr[n]) == "user" and tr[n].kind ~= "shell" then
-					last_user = n
-					break
+			-- The run the turn is working in is the transcript's last one, and
+			-- only while it reaches the tail: a run a reply already closed folds
+			-- mid-turn as it does once the turn ends.
+			local live_first = 0
+			if active and #tr > 0 and activity(tr[#tr]) then
+				live_first = #tr
+				while live_first > 1 and activity(tr[live_first - 1]) do
+					live_first = live_first - 1
 				end
 			end
 			---@param first integer
@@ -853,7 +855,7 @@ zemi.ui.widget.add({
 			local function mode_of(first)
 				if not activity(tr[first]) then return "" end
 				if ctx.show_reasoning then return "open" end
-				if epoch == 0 or active and first > last_user then return "rail" end
+				if epoch == 0 or first == live_first then return "rail" end
 				return unfolded[first] and "unfold" or "fold"
 			end
 			local deadline = epoch ~= 0 and os.clock() + 0.03
