@@ -1884,8 +1884,9 @@ provenance string.
   digest. Edits, failures, questions, plans, agent runs, workflows, background
   jobs and commands with a diff keep their own rows on the rail under it, as
   they drew live, and a run with nothing to fold keeps its whole rail. A run a
-  reply already closed folds this way while the turn still runs, so only the
-  run the turn is working in stays open. The
+  reply has closed folds this way while the turn still runs, and the run the
+  turn is working in keeps its whole rail even under the reply it streamed
+  after it. The
   live turn, a printed run and an agent run's view draw the whole rail, one
   row per step with no blank
   rows between, a continuous bar in column 0 with every mark in column 2

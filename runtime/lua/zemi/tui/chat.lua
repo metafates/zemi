@@ -840,12 +840,15 @@ zemi.ui.widget.add({
 		if not done then
 			-- ctx.transcript copies every row into Lua, so only a miss reads it
 			local tr = ctx.transcript or {}
-			-- The run the turn is working in is the transcript's last one, and
-			-- only while it reaches the tail: a run a reply already closed folds
-			-- mid-turn as it does once the turn ends.
+			-- The last activity run is the one the turn is working in; the reply it
+			-- streamed may follow it, and closes only the runs before it.
 			local live_first = 0
-			if active and #tr > 0 and activity(tr[#tr]) then
-				live_first = #tr
+			if active then
+				local i = #tr
+				while i > 0 and not activity(tr[i]) do
+					i = i - 1
+				end
+				live_first = i
 				while live_first > 1 and activity(tr[live_first - 1]) do
 					live_first = live_first - 1
 				end
