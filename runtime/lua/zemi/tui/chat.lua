@@ -333,23 +333,21 @@ local function builder(ctx, width)
 	-- Open, a row shows the whole command, the diff and a command's output.
 	---@param t zemi.tui.Tool
 	---@param idx integer Transcript index, negative for a live-turn call.
-	---@param o { open: boolean?, rail: boolean?, nest: string?, click: string? } nest: the two cells a row hangs by, its branch mark.
+	---@param o { open: boolean?, nest: string?, click: string? } nest: the two cells a row hangs by, its branch mark.
 	function B.tool(t, idx, o)
 		local name = fmt.tool(t)
 		local open = o.open or expanded[idx] or false
 		-- NOTE: every running row reads as asked about while a prompt is open,
 		-- a parallel call that runs on meanwhile included.
 		local asked = t.status == "run" and (ctx.waiting or "") ~= ""
-		-- on the rail a row's mark stands at column 2, and a running one reads
-		-- Dim beside its spinner until it ends
-		local barred = o.rail or false
 		-- a call nested under its step's row hangs by its branch mark, and the
 		-- rows under it keep a line in that mark's place: a bar while more
 		-- siblings follow, a gap under the last one, so the tree stays joined
 		local pad = o.nest
 		local below = pad and (pad == "└ " and "  " or "│ ") or nil
-		local dim = barred and not asked and MARK_OF[t.status] == nil
-		local inner = width - (barred and 2 or 0) - (pad and 2 or 0)
+		-- a running row reads Dim beside its spinner until it ends
+		local dim = not asked and MARK_OF[t.status] == nil
+		local inner = width - 2 - (pad and 2 or 0)
 		local input = relpath(t.text or t.input or "")
 		-- a collapsed row is one line; an open one keeps a heredoc's lines
 		---@type string[]
@@ -395,7 +393,7 @@ local function builder(ctx, width)
 			or o.click
 			or ("tool:" .. idx)
 		-- a counted call reads as its step's row, no bold verb
-		local vhl = dim and "Dim" or barred and fmt.looks(t) and "Normal" or "AgentToolName"
+		local vhl = dim and "Dim" or fmt.looks(t) and "Normal" or "AgentToolName"
 		local head = { mark(asked and "wait" or MARK_OF[t.status] or "spin"), { text = verb, hl = vhl } }
 		if code and label == "" then
 			head[3] = { text = " ", hl = "Normal" }
@@ -408,16 +406,16 @@ local function builder(ctx, width)
 		for _, sg in ipairs(head) do
 			sg.click = click
 		end
-		-- on the rail an ok counted call has no mark, as its step's row
-		if barred and fmt.looks(t) then
+		-- an ok counted call has no mark, as its step's row
+		if fmt.looks(t) then
 			head[1] = bar(pad)
-		elseif barred then
+		else
 			table.insert(head, 1, bar(pad))
 		end
 		-- a call still running, or with its arguments still streaming, is framed
 		-- by a bar-only row above and below while it runs, and listed plainly
 		-- once it is done; a row waiting on the user is not one of them
-		local running = barred and not asked and (t.status == "run" or t.status == "wait")
+		local running = not asked and (t.status == "run" or t.status == "wait")
 		if running then frame() end
 		local first = #B.lines + 1
 		push(suffixed(head, tail, click))
@@ -443,7 +441,7 @@ local function builder(ctx, width)
 		-- a timed-out command went on as (the phrase is tools.JobHandoff)
 		if answered then
 			more = {}
-		elseif label ~= "" and input ~= "" and (open or not (barred and fmt.looks(t))) then
+		elseif label ~= "" and input ~= "" and (open or not fmt.looks(t)) then
 			-- a labelled counted call on the rail shows its command once opened
 			detail(code and code[1] or fit(input, inner - 6), "Dim")
 		end
@@ -522,10 +520,8 @@ local function builder(ctx, width)
 			end
 			if hidden > 0 and from == 1 then detail(cut, "Dim") end
 		end
-		if barred then
-			for n = first + 1, #B.lines do
-				table.insert(B.lines[n], 1, bar(below))
-			end
+		for n = first + 1, #B.lines do
+			table.insert(B.lines[n], 1, bar(below))
 		end
 		if running then frame() end
 	end
@@ -654,7 +650,6 @@ local function builder(ctx, width)
 						local n = i + k - 1
 						B.tool(g, o.live and -n or n, {
 							open = o.open,
-							rail = true,
 							nest = k == #group and "└ " or "├ ",
 							click = fold,
 						})
@@ -663,7 +658,7 @@ local function builder(ctx, width)
 				i = i + #group
 			else
 				head()
-				B.tool(t, idx, { open = o.open, rail = true, click = fold })
+				B.tool(t, idx, { open = o.open, click = fold })
 				i = i + 1
 			end
 		end
