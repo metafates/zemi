@@ -1885,10 +1885,9 @@ provenance string.
   away, drawn as they drew live. The digest exists only when the run holds a
   call that only looked around (a read, a search, a fetch, a command that
   changed nothing, gone well) or a thought to name: a run with neither keeps
-  its whole rail. A run a
-  reply has closed folds this way while the turn still runs, and the run the
-  turn is working in keeps its whole rail even under the reply it streamed
-  after it. The
+  its whole rail. A run a reply has closed folds this
+  way at once, while the reply still streams and after it settles, so only the
+  run the turn is working in, the one it thinks and calls in, stays open. The
   live turn, a printed run and an agent run's view draw the whole rail, one
   row per step with no blank
   rows between, a continuous bar in column 0 with every mark in column 2

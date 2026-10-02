@@ -26,7 +26,7 @@ local util = require("zemi.util")
 ---@type table<integer, zemi.tui.ChatUnit>
 local units = {}
 local units_key = ""
----@type { count: integer, lines: zemi.Line[], n: integer, active: boolean, block: string? }?
+---@type { count: integer, lines: zemi.Line[], n: integer, active: boolean, replying: boolean, block: string? }?
 local settled
 
 -- Rows the user opened, by transcript index (negative for the live turn's
@@ -848,19 +848,21 @@ zemi.ui.widget.add({
 		-- whole; the header above them, the prompt the view pins, goes on top.
 		local more = false
 		local ag = ctx.agent or {}
-		local done = settled and settled.count == count and settled.active == active and settled
+		-- A reply closes the run it follows at once, streaming or settled: the run
+		-- the turn is working in is its last activity run, while that reaches the
+		-- tail and the turn is not answering.
+		local replying = (ag.text or "") ~= ""
+		local done = settled
+			and settled.count == count
+			and settled.active == active
+			and settled.replying == replying
+			and settled
 		if not done then
 			-- ctx.transcript copies every row into Lua, so only a miss reads it
 			local tr = ctx.transcript or {}
-			-- The last activity run is the one the turn is working in; the reply it
-			-- streamed may follow it, and closes only the runs before it.
 			local live_first = 0
-			if active then
-				local i = #tr
-				while i > 0 and not activity(tr[i]) do
-					i = i - 1
-				end
-				live_first = i
+			if active and not replying and #tr > 0 and activity(tr[#tr]) then
+				live_first = #tr
 				while live_first > 1 and activity(tr[live_first - 1]) do
 					live_first = live_first - 1
 				end
@@ -920,7 +922,14 @@ zemi.ui.widget.add({
 					all[#all + 1] = l
 				end
 			end
-			done = { count = count, lines = all, n = #all, active = active, block = tr[#tr] and block_of(tr[#tr]) }
+			done = {
+				count = count,
+				lines = all,
+				n = #all,
+				active = active,
+				replying = replying,
+				block = tr[#tr] and block_of(tr[#tr]),
+			}
 			settled = not more and done or nil
 		end
 		-- the live turn's lines go after the settled ones in the same list
