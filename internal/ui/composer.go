@@ -203,8 +203,6 @@ func (c *composerState) editKey(key string) bool {
 		c.lineStart()
 	case "end", "ctrl+e":
 		c.lineEnd()
-	case "ctrl+u":
-		c.delToLineStart()
 	case "ctrl+w", "alt+backspace":
 		c.delWord()
 	default:
@@ -268,11 +266,6 @@ func (c *composerState) delWord() {
 		}
 	}
 	c.replace(i, "")
-}
-
-func (c *composerState) delToLineStart() {
-	start, _ := c.lineSpan()
-	c.replace(start, "")
 }
 
 func (c *composerState) moveEnd() { c.cursor = len(c.runes()) }

@@ -245,6 +245,17 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		if !c.down() {
 			c.histNext()
 		}
+	case "ctrl+d", "ctrl+u":
+		// Half a view, the step a list and a box prompt move on the same keys:
+		// the pair scrolls wherever it lands, the draft included.
+		if st := a.scrolls[a.scrollDef]; st != nil {
+			step := max(st.viewH/2, 1)
+			if key == "ctrl+u" {
+				step = -step
+			}
+			a.scrollRows(a.scrollDef, step)
+		}
+		return nil
 	case "ctrl+p":
 		a.seedHistory()
 		c.histPrev()
@@ -415,12 +426,9 @@ func listMove(key string) int {
 }
 
 // lineKey reports whether a list move is a key a typed line edits with,
-// which the line keeps: home, end and ctrl+u, which deletes to its start.
-func lineKey(key string) bool { return key == "home" || key == "end" || key == "ctrl+u" }
-
-// typedKey reports whether a typed line keeps key from scrolling the text
-// above it: lineKey's keys, and ctrl+d, so neither half-page key scrolls.
-func typedKey(key string) bool { return lineKey(key) || key == "ctrl+d" }
+// which the line keeps: home and end. ctrl+d and ctrl+u are never the line's,
+// so the half-page pair scrolls whatever stands above it, typed or not.
+func lineKey(key string) bool { return key == "home" || key == "end" }
 
 // typing reports whether the keys go to a line being typed: the draft, a
 // filter, an input overlay or a typed answer.

@@ -106,8 +106,6 @@ func (f *listFilter) edit(key, text string) bool {
 	case key == "ctrl+w" || key == "alt+backspace":
 		q.delWord()
 		f.set(q.text)
-	case key == "ctrl+u":
-		f.set("")
 	case text != "":
 		f.set(f.query + text)
 	default:

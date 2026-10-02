@@ -53,7 +53,6 @@ func TestComposerEdit(t *testing.T) {
 	run("word", func(c *composerState) { c.insert("one two"); c.delWord() }, "one ", 4)
 	run("word-punct", func(c *composerState) { c.insert("x.ts add"); c.delWord() }, "x.ts ", 5)
 	run("word-to-newline", func(c *composerState) { c.insert("a\nb"); c.delWord() }, "a\n", 2)
-	run("del-start", func(c *composerState) { c.insert("one\ntwo"); c.cursor = 6; c.delToLineStart() }, "one\no", 4)
 	run("word-left", func(c *composerState) { c.insert("one two  "); c.wordLeft() }, "one two  ", 4)
 	run("word-right", func(c *composerState) { c.insert("one two"); c.cursor = 0; c.wordRight(); c.wordRight() }, "one two", 7)
 }

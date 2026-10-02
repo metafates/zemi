@@ -190,7 +190,6 @@ func TestFilterKeys(t *testing.T) {
 	for _, c := range []struct{ query, key, want string }{
 		{"foo bar", "ctrl+w", "foo "},
 		{"foo bar", "alt+backspace", "foo "},
-		{"foo bar", "ctrl+u", ""},
 		{"foo", "backspace", "fo"},
 	} {
 		f := listFilter{active: true, query: c.query, labels: []string{"a"}}

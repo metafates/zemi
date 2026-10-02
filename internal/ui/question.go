@@ -149,7 +149,7 @@ func (a *App) questionKey(key, text string) {
 	}
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
 	tail := st.sel == len(q.Options)
-	if !(st.typing && typedKey(key)) && st.ask.overflows() && scrollKey(&st.ask, key, false) {
+	if !(st.typing && lineKey(key)) && st.ask.overflows() && scrollKey(&st.ask, key, false) {
 		return
 	}
 	if st.typing {
@@ -342,7 +342,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 			return rows
 		}
 		hints := slices.Concat(moves, []hintPair{sendHint, {fmt.Sprintf("1-%d", n), "change"}, {"esc", "dismiss"}})
-		return scrollChoiceBody(h, inner, tabs, &qp.review, qp.reviewRows, inner, act, false, hints...)
+		return scrollChoiceBody(h, inner, tabs, &qp.review, qp.reviewRows, inner, act, hints...)
 	}
 
 	q, st := qp.qs[qp.at], &qp.states[qp.at]
@@ -397,10 +397,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 			st.view.viewH = max(room-len(ask), 1)
 			opts = choiceView(choices, st.sel, &st.view, inner, level > 1)
 		}
-		var views []viewport
-		if !st.typing { // the typed line keeps ctrl+u, so the footer names no scroll keys
-			views = []viewport{st.ask, st.view}
-		}
+		views := []viewport{st.ask, st.view} // the half-page pair scrolls a typed line's text too
 		body := stack(tight, tabs, ask, opts, field, [][]hostapi.Segment{hint(inner, slices.Concat(hints, scrolls(views...))...)})
 		return body, st.ask.viewH < min(askN, 3) || len(items) > 0 && st.view.viewH < min(st.view.rows, 3)
 	})

@@ -803,8 +803,8 @@ A binding with `{ list = true }` is a list alias: while a list, a
 composer popup or a prompt has the keys, its key makes the move its action
 names (`down`, `ctrl+d`, ...), swapped in Go before the list sees it, so a
 list never waits on Lua; while a line types (the draft under a popup, a
-filter, a typed answer) a move the line edits with, `home`, `end` or
-`ctrl+u`, is not swapped and the key keeps its own meaning. It is one
+filter, a typed answer) a move the line edits with, `home` or
+`end`, is not swapped and the key keeps its own meaning. It is one
 non-printable key other than the ones lists answer with (enter, esc, tab,
 shift+tab, space, backspace), and only user config binds one, since it
 reaches the permission prompt. This is neovim's `pumvisible()` mapping as
@@ -1987,12 +1987,13 @@ provenance string.
   `pgup`/`pgdown`, `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j` and `ctrl+home`/`ctrl+end`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or
-  next prompt or opened run; in lists `ctrl+d`/`ctrl+u` move half a page, and
-  scroll a box's text when it overflows, which the footer names as
-  `ctrl+d/u scroll`. A typed line keeps `ctrl+u` for its text, so neither
-  half-page key scrolls the prompt text above it, and the
-  composer popups keep `home` and `end` for the draft too, so while a line
-  types the footer names no scroll keys. A scrolled-back viewport is anchored on the rows it
+  next prompt or opened run; `ctrl+d`/`ctrl+u` scroll it half a view, the one step
+  a list moves on them and a box's text takes as it overflows, which the footer
+  names as `ctrl+d/u scroll`. The pair is never the typed line's, so a prompt's
+  line keeps its text and the pair scrolls the text above it, the draft under a
+  popup included, and only the
+  composer popups keep `home` and `end` for the draft, so a line that types still
+  names the scroll keys. A scrolled-back viewport is anchored on the rows it
   shows, not on a row number, so a resize, an expanded thought or a new
   turn leaves the same content in view.
   Commands are slash commands: `/quit`, `/help`, `/model`, `/mode`,

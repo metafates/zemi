@@ -96,8 +96,8 @@ func TestPlanScroll(t *testing.T) {
 		{"ctrl+d scrolls half the view", []string{"ctrl+d"}, 0, 1, 0, ""},
 		{"ctrl+u goes back", []string{"ctrl+d", "ctrl+d", "ctrl+u"}, 0, 1, 0, ""},
 		{"j moves the button, not the text", []string{"j"}, 0, 0, 1, ""},
-		{"ctrl+u while typing changes edits the input", []string{"e", "xy", "ctrl+u", "z"}, 0, 0, 0, "z"},
-		{"ctrl+d while typing changes leaves the view", []string{"e", "x", "ctrl+d"}, 0, 0, 0, "x"},
+		{"ctrl+u while typing changes scrolls the text", []string{"e", "xy", "ctrl+d", "ctrl+d", "ctrl+u", "z"}, 0, 1, 0, "xyz"},
+		{"ctrl+d while typing changes scrolls the text", []string{"e", "x", "ctrl+d"}, 0, 1, 0, "x"},
 		{"esc then e keeps the draft", []string{"e", "x", "esc", "e", "y"}, 0, 0, 0, "xy"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

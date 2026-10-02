@@ -36,8 +36,9 @@ func press(t *testing.T, app *App, key tea.KeyPressMsg) {
 }
 
 // TestChatScrollKeys drives the default scroll bindings end to end:
-// pgup/pgdown page through the transcript, ctrl+home/ctrl+end jump to the
-// ends, and reaching the bottom re-arms tail follow.
+// pgup/pgdown page through the transcript, ctrl+d/ctrl+u move half a view like
+// a list does, ctrl+home/ctrl+end jump to the ends, and reaching the bottom
+// re-arms tail follow.
 func TestChatScrollKeys(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 14)
 	fillChat(host)
@@ -65,6 +66,31 @@ func TestChatScrollKeys(t *testing.T) {
 	}
 	if !strings.Contains(app.Frame(), "reply 30") {
 		t.Fatalf("follow should show the tail again")
+	}
+
+	// the pair a list moves half a page with: up leaves the tail by half a
+	// view and down comes back to it
+	ctrlU, ctrlD := tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}
+	press(t, app, ctrlU)
+	st := app.scrolls["chat"]
+	if half := max(st.viewH/2, 1); st.follow || st.top != st.rows-st.viewH-half {
+		t.Fatalf("ctrl+u left the view at %d of %d rows, want half a view up", st.top, st.rows)
+	}
+	press(t, app, ctrlD)
+	if !st.follow {
+		t.Fatalf("ctrl+d should come back to the tail")
+	}
+	// the pair is the chat's whatever the draft holds: a drafted line keeps
+	// its text and the view still moves
+	app.composer.text, app.composer.cursor = "one\ntwo", len("one\ntwo")
+	press(t, app, ctrlU)
+	if app.composer.text != "one\ntwo" || st.follow {
+		t.Fatalf("ctrl+u over a drafted line: %q, follow %v", app.composer.text, st.follow)
+	}
+	app.composer.text, app.composer.cursor = "", 0
+	press(t, app, ctrlD)
+	if !st.follow {
+		t.Fatalf("ctrl+d should come back to the tail")
 	}
 
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome, Mod: tea.ModCtrl})

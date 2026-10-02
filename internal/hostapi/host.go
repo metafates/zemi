@@ -908,7 +908,7 @@ var goKeys = [][2]string{
 	{"ctrl+z", "undo in the composer"},
 	{"ctrl+a, ctrl+e", "line start, line end"},
 	{"alt+left, alt+right", "move by word"},
-	{"ctrl+u", "delete to line start"},
+	{"ctrl+d, ctrl+u", "scroll the chat half a view"},
 	{"ctrl+w", "delete the word before the cursor"},
 	{"/", "command palette"},
 	{"@", "attach a project file"},
