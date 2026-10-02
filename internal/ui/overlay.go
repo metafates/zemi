@@ -929,10 +929,10 @@ func pressArmed(armed *bool, key string, button func() string) (confirmed, swall
 }
 
 // armedHint is the footer of a press that waits for a second one: what the
-// next press does, in the danger color.
+// next press does, in the danger color, with the keys drawn as keys.
 func armedHint(w int, key, label string) []hostapi.Segment {
 	foot := hint(w, hintPair{key, "again to " + strings.ToLower(label)}, hintPair{"esc", "cancel"})
-	foot[0].HL, foot[1].HL = hostapi.ChromeDanger, hostapi.ChromeDanger
+	foot[1].HL = hostapi.ChromeDanger
 	return foot
 }
 

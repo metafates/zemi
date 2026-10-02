@@ -1223,8 +1223,8 @@ in an untrusted project or read-only agent, and before a call that widens what
 zemi allows or starts a program outside the sandbox, §9), and `update` (what
 a subagent tells its caller mid-run, §6.3; only a subagent holds it).
 Subagents never get `agent`, `workflow`, `todos`, `question`, `plan` or
-`lua` (§6.3), and an agent file's `tools` allowlist takes `update` away too,
-since it picks from the same set. Every tool, Go or Lua, passes through the
+`lua` (§6.3); `update` joins their set after the `tools` allowlist is read,
+so no agent file can take away the way back to its caller. Every tool, Go or Lua, passes through the
 same pipeline:
 
 ```
@@ -1714,7 +1714,7 @@ provenance string.
   which the next "always" answer undoes, nor `/memory`'s actions, which `u`
   undoes) draws in the danger color, and its
   first enter or key only arms it: the footer turns to `x again to delete ·
-  esc cancel` in that color, the same key, enter or space runs it, esc disarms and
+  esc cancel`, the verb in that color and the keys drawn as keys, the same key, enter or space runs it, esc disarms and
   stays, and any other key, or a click or wheel that moves the selection,
   disarms and then acts; a screen's own danger key (a workflow view's `x`)
   waits the same way, and any click or wheel drops it. A detail view whose only action it is (`/rewind`'s)
@@ -1749,7 +1749,7 @@ provenance string.
   and an agent's transcript move to another screen, which a rebuilt
   list would cover. A row's binary state (a skill or plugin on or off, a
   picked option of a multi-select) is one 5-cell switch in the key column,
-  `■ on ` in Ok, `□ off` or a locked `  on ` in Hint, so a toggle never
+  `◆ on ` in Ok, `◇ off` or a locked `  on ` in Hint, so a toggle never
   moves text; a tag there (`current`, `follows chat`) names, in the accent.
   Enter's hint names its act in one word shared by every list: `open` a
   detail or another screen, `pick` a value (a picker, `zemi.ui.select`, the
@@ -2803,7 +2803,7 @@ by the next startup sweep, since the session still has unseen messages.
   each section title counting its rows and a scope's naming its share of
   the budget; a row is one line, and the preview pane and the detail hold
   the whole text, its quote, origin and age. A row's keys act at once: `a`
-  accepts a proposal, `d` rejects one or forgets a stored memory, `s` moves
+  accepts a proposal, `d` drops one, `f` forgets a stored memory, `s` moves
   one between this project and everywhere (a stored memory is added to the
   other store before it is deleted from its own), `o` edits one in the
   user's editor (the saved text passes intake again as user origin with

@@ -514,7 +514,7 @@ func (r *ThemeRegistry) SetHL(group string, spec HLSpec) {
 const maxHLLinks = 8
 
 // Group resolves a highlight group, following links. The first link's
-// bold and italic apply over the group it draws as.
+// bold, italic and underline apply over the group it draws as.
 func (r *ThemeRegistry) Group(group string) (HLSpec, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -523,6 +523,7 @@ func (r *ThemeRegistry) Group(group string) (HLSpec, bool) {
 		s, ok := r.groups[group]
 		if !ok || s.Link == "" {
 			s.Bold, s.Italic = cmp.Or(over.Bold, s.Bold), cmp.Or(over.Italic, s.Italic)
+			s.Underline = cmp.Or(over.Underline, s.Underline)
 			return s, ok
 		}
 		if i == 0 {

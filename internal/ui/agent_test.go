@@ -258,7 +258,7 @@ func TestRailWindow(t *testing.T) {
 	if !slices.Contains(got, "│ … 4 earlier") || slices.Contains(got, "│ list dir 3") || !slices.Contains(got, "│ list dir 4") || !slices.Contains(got, "│ list dir 9") {
 		t.Fatalf("the rail is not windowed:\n%s", strings.Join(got, "\n"))
 	}
-	if got = click("more:2"); !slices.Contains(got, "│ … show the last 6") || !slices.Contains(got, "│ list dir 0") {
+	if got = click("more:2"); !slices.Contains(got, "│ … show the rest") || !slices.Contains(got, "│ list dir 0") {
 		t.Fatalf("the window does not open:\n%s", strings.Join(got, "\n"))
 	}
 	if got = click("more:2"); !slices.Contains(got, "│ … 4 earlier") {
@@ -719,7 +719,7 @@ func TestInterruptKeys(t *testing.T) {
 		{"esc in an agent view goes back and disarms", true, true, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, false, "", "esc again"},
 		{"ctrl+c interrupts at once", true, false, "", []tea.KeyPressMsg{ctrlC}, true, false, "also this", "ctrl+c quit"},
 		{"ctrl+c clears a draft, up restores it", false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, false, "draft", ""},
-		{"ctrl+c on an empty composer arms quit", false, false, "", []tea.KeyPressMsg{ctrlC}, false, true, "", "ctrl+c quit"},
+		{"ctrl+c on an empty composer arms quit", false, false, "", []tea.KeyPressMsg{ctrlC}, false, true, "", "ctrl+c again to quit"},
 		{"a broken prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, false, "abcx", ""},
 		{"a timed out prefix replays", false, false, "abc", []tea.KeyPressMsg{ctrlE, wait, x}, false, false, "abcx", ""},
 		{"ctrl+c drops a held prefix", false, false, "abc", []tea.KeyPressMsg{ctrlE, ctrlC}, false, false, "", ""},
@@ -1581,8 +1581,8 @@ func TestWorkingRowAgentView(t *testing.T) {
 		}
 		return ansi.Strip(app.renderSegs(segs, w))
 	}
-	// idle: the run and its status, where the rule was bare before
-	if r := row(80); !strings.Contains(r, " viewing explore · done · esc back ") {
+	// idle: the run and the key that leaves it, where the rule was bare before
+	if r := row(80); !strings.Contains(r, " viewing explore · esc back ") {
 		t.Fatalf("the idle rule does not name the viewed run: %q", r)
 	}
 	// a running turn takes the interrupt key, not the one that leaves the view
@@ -1590,9 +1590,9 @@ func TestWorkingRowAgentView(t *testing.T) {
 	if r := row(80); !strings.Contains(r, "esc back") || strings.Contains(r, "esc interrupt") || !strings.Contains(r, "20s") {
 		t.Fatalf("a turn in a view does not read back: %q", r)
 	}
-	// width sheds the name and the status first, never the key
+	// width sheds the name first, never the key
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if r := row(26); !strings.Contains(r, "esc back") || strings.Contains(r, "viewing") || strings.Contains(r, "done") {
+	if r := row(26); !strings.Contains(r, "esc back") || strings.Contains(r, "viewing") {
 		t.Fatalf("the narrow rule lost the back key or kept the name: %q", r)
 	}
 }

@@ -865,7 +865,7 @@ function zemi.event.stats() end
 ---@field transcript zemi.TranscriptRow[]
 ---@field transcript_count integer Rows in `transcript`, without building it.
 ---@field transcript_epoch integer Changes when the transcript is replaced; 0 while an agent run is shown, so rows are worth caching only when it is stable.
----@field transcript_edit integer Changes when a settled row's text grew in place, which redraws that row alone.
+---@field transcript_edit integer Changes when a settled row's text grew in place: every unit redraws, unlike `transcript_epoch`, whose bump also drops the rows the reader opened.
 ---@field todos zemi.Todo[]
 ---@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
 ---@field projects? zemi.RecentProject[] The three projects zemi started in last besides this one, newest first; only while the transcript is empty and zemi runs in ~, / or outside a repository with no session here.

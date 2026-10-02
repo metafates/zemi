@@ -52,6 +52,14 @@ type watcher struct {
 	path string
 }
 
+// The builtin permission modes' one-line descriptions: the mode list
+// (hostapi's builtinModes) and the permissions.mode setting's help both read
+// them, so a screen and the config name a mode the same way.
+const (
+	PermModeAutoDesc = "safe actions run on their own, risky ones ask"
+	PermModeYoloDesc = "everything runs without asking"
+)
+
 func NewStore() *Store {
 	s := &Store{
 		values: map[string]any{},
@@ -69,7 +77,7 @@ func (s *Store) defineDefaults() {
 		{Path: "models.compact", Kind: KindString, Default: "", Desc: "the model that writes compaction summaries (provider/model; empty follows models.chat)"},
 		{Path: "models.memory", Kind: KindString, Default: "", Desc: "the model the reflector reviews sessions for memories on (provider/model; empty follows models.chat)"},
 		{Path: "providers.builtin", Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
-		{Path: "permissions.mode", Kind: KindString, Default: "auto", Desc: "the permission mode zemi starts in: auto (safe actions run, risky ones ask), yolo (allow everything), or a mode added with zemi.permission.mode.add"},
+		{Path: "permissions.mode", Kind: KindString, Default: "auto", Desc: "the permission mode zemi starts in: auto (" + PermModeAutoDesc + "), yolo (" + PermModeYoloDesc + "), or a mode added with zemi.permission.mode.add"},
 		{Path: "permissions.env_keep", Kind: KindString, Default: "", Desc: "env var names a child process keeps although they look secret-shaped (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*, ...), comma separated, such as an NPM_TOKEN a build needs"},
 		{Path: "ui.theme", Kind: KindString, Default: "whorl", Desc: "theme name (/theme picks one): whorl, catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest, github, or one zemi.ui.theme.add registers; a <name>-light twin draws on a light terminal"},
 		{Path: "ui.animations", Kind: KindBool, Default: true, Desc: "animate the working indicator (false keeps it static)"},

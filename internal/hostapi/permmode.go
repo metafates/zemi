@@ -17,6 +17,7 @@ import (
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -41,8 +42,8 @@ type PermModeDef struct {
 }
 
 var builtinModes = []PermModeDef{
-	{Name: "auto", Base: "auto", Description: "safe actions run on their own, risky ones ask"},
-	{Name: "yolo", Base: "yolo", Description: "everything runs without asking"},
+	{Name: "auto", Base: "auto", Description: config.PermModeAutoDesc},
+	{Name: "yolo", Base: "yolo", Description: config.PermModeYoloDesc},
 }
 
 // modeReg is the mode list in cycle order: the builtins until user config

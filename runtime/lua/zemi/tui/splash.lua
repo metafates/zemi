@@ -68,7 +68,7 @@ local function tip(ctx, listed)
 	elseif ctx.model == "" then
 		return { dim("No model yet: " .. ctx.model_hint) }
 	elseif not ctx.trusted and ctx.trustable then
-		return { key("/trust", "trust"), dim(" lets zemi read this repo's AGENTS.md and run its builds") }
+		return { key("/trust", "trust"), dim(" lets zemi read this project's AGENTS.md and run its builds") }
 	elseif ctx.instructions and #ctx.instructions == 0 then
 		return { key("/init", "fill /init"), dim(" writes an AGENTS.md, so zemi knows this project") }
 	elseif not listed then

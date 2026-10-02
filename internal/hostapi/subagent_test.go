@@ -769,33 +769,28 @@ func TestAgentMessageKeepsThePin(t *testing.T) {
 	waitIdle(t, h)
 }
 
-// TestSubagentUpdatePrompt: a child is told to send updates only when its
-// tool set holds the tool: an agent file's allowlist that omits it takes both
-// the tool and the instruction away.
+// TestSubagentUpdatePrompt: every child holds the update tool and is told about
+// it, so an agent file's allowlist cannot take the way back to its caller away.
 func TestSubagentUpdatePrompt(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	def := AgentDef{Name: "general"}
 	for _, c := range []struct {
 		name  string
 		tools []string
-		said  bool
 	}{
-		{name: "the full set", said: true},
-		{name: "an allowlist without it", tools: []string{"read"}, said: false},
+		{name: "the full set"},
+		{name: "an allowlist without it", tools: []string{"read"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			pipe := h.PipelineFor()
-			all := append(tools.All(pipe), &updateTool{h: h, pipe: pipe})
-			kept, unknown := filterTools(all, c.tools, h.toolSkip(subagentExcluded))
+			kept, unknown := childTools(h, h.PipelineFor(), c.tools)
 			if len(unknown) > 0 {
 				t.Fatalf("unknown tools %q", unknown)
 			}
-			sys := h.subagentSystem(def, kept, false)
-			if got := strings.Contains(sys, "update tool"); got != c.said {
-				t.Fatalf("prompt tells the child about updates = %v, want %v", got, c.said)
+			if sys := h.subagentSystem(def, kept, false); !strings.Contains(sys, "update tool") {
+				t.Fatal("the prompt does not tell the child about updates")
 			}
-			if got := hasTool(kept, tools.ToolUpdate); got != c.said {
-				t.Fatalf("tool set holds update = %v, want %v", got, c.said)
+			if !hasTool(kept, tools.ToolUpdate) {
+				t.Fatal("the tool set lost the update tool")
 			}
 		})
 	}

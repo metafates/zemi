@@ -293,8 +293,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 			return ask(req)
 		}
 	}
-	all := append(append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...), &updateTool{h: h, pipe: pipe})
-	kept, unknown := filterTools(all, def.Tools, h.toolSkip(subagentExcluded))
+	kept, unknown := childTools(h, pipe, def.Tools)
 	if len(unknown) > 0 {
 		return "", fmt.Errorf("agent %s: no tool is named %s", def.Name, strings.Join(unknown, ", "))
 	}
@@ -659,6 +658,15 @@ func filterTools(all []fantasy.AgentTool, want []string, skip map[string]bool) (
 		}
 	}
 	return kept, unknown
+}
+
+// childTools is a subagent run's tool set: the full set minus what a subagent
+// never gets, filtered by the definition's allowlist, then the update tool,
+// which lands after the filter so no allowlist takes the way back to its caller.
+func childTools(h *Host, pipe *tools.Pipeline, want []string) (kept []fantasy.AgentTool, unknown []string) {
+	all := append(append(tools.All(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
+	kept, unknown = filterTools(all, want, h.toolSkip(subagentExcluded))
+	return append(kept, &updateTool{h: h, pipe: pipe}), unknown
 }
 
 func hasTool(toolset []fantasy.AgentTool, name string) bool {

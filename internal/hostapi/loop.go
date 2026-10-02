@@ -83,7 +83,7 @@ func (h *Host) SetLoop(args string) error {
 	case prompt == "" && every == 0:
 		return h.openLoop()
 	case prompt == "stop" && every == 0:
-		return h.stopLoop(nil, "loop stopped")
+		return h.stopLoop(nil, "Loop stopped")
 	case prompt == "":
 		return Usagef("/loop 5m <prompt> runs it every 5m; /loop <prompt> lets the model pace it")
 	case strings.HasPrefix(prompt, "/") && (name == "loop" || name == "goal"):
@@ -134,7 +134,7 @@ func (h *Host) fireLoop(l *Loop) {
 		return
 	case h.RT.Clock().Now().Sub(l.Started) >= loopExpiry:
 		ag.mu.Unlock()
-		_ = h.stopLoop(l, fmt.Sprintf("loop stopped after %s (%d %s)", fmtEvery(loopExpiry), l.Runs, Plural(l.Runs, "run", "runs")))
+		_ = h.stopLoop(l, fmt.Sprintf("Loop stopped after %s (%d %s)", fmtEvery(loopExpiry), l.Runs, Plural(l.Runs, "run", "runs")))
 		return
 	case ag.active:
 		h.armLoop(l, loopRetry, true)
@@ -160,7 +160,7 @@ func (h *Host) fireLoop(l *Loop) {
 		err = h.sendClaimed(scope, note)
 	}
 	if err != nil {
-		_ = h.stopLoop(l, "loop stopped: "+h.friendlyError(err))
+		_ = h.stopLoop(l, "Loop stopped: "+h.friendlyError(err))
 	}
 }
 
@@ -195,11 +195,11 @@ func (h *Host) loopTurnEnded(runner *agent.Runner, text string, err error, cance
 	runs := fmt.Sprintf("%d %s", l.Runs, Plural(l.Runs, "run", "runs"))
 	switch {
 	case err != nil:
-		_ = h.stopLoop(l, "loop stopped: the run failed ("+runs+")")
+		_ = h.stopLoop(l, "Loop stopped: the run failed ("+runs+")")
 	case l.Every == 0:
 		d, done, ok := parseNext(plainTextEnd(runner))
 		if done {
-			_ = h.stopLoop(l, "loop done after "+runs)
+			_ = h.stopLoop(l, "Loop done after "+runs)
 			return
 		}
 		ag.mu.Lock()
@@ -223,7 +223,7 @@ func (h *Host) loopInterrupted() {
 	}
 	ag.mu.Unlock()
 	if l != nil {
-		_ = h.stopLoop(l, fmt.Sprintf("loop stopped: interrupted (%d %s)", n, Plural(n, "run", "runs")))
+		_ = h.stopLoop(l, fmt.Sprintf("Loop stopped: interrupted (%d %s)", n, Plural(n, "run", "runs")))
 	}
 }
 

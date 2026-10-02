@@ -736,24 +736,19 @@ func (h *Host) memoryItems() []any {
 			}
 		}
 		item := memoryItem(p.Memory, label, fmt.Sprintf("Suggested by zemi (%d)", len(props)), scopeWords[p.Scope], replaces)
-		acts := []any{
-			map[string]any{"text": "Keep", "hotkey": "a", "run": "memory accept " + p.ID + " --yes"},
+		// accept or drop the proposal, whatever it suggests: a forget one says
+		// so in its label, so no letter carries two meanings
+		item["actions"] = append([]any{
+			map[string]any{"text": "Accept", "hotkey": "a", "run": "memory accept " + p.ID + " --yes"},
 			map[string]any{"text": "Drop", "hotkey": "d", "run": "memory reject " + p.ID + " --yes"},
-		}
-		if p.Forget {
-			acts = []any{
-				map[string]any{"text": "Forget", "hotkey": "a", "run": "memory accept " + p.ID + " --yes"},
-				map[string]any{"text": "Keep", "hotkey": "d", "run": "memory reject " + p.ID + " --yes"},
-			}
-		}
-		item["actions"] = append(acts, moveAndEdit(p.Memory, p.Forget)...)
+		}, moveAndEdit(p.Memory, p.Forget)...)
 		items = append(items, item)
 	}
 	for _, m := range live {
 		desc := map[store.Origin]string{store.OriginUser: "by you", store.OriginLearned: "learned"}[m.Origin] + " · " + ago(m.UpdatedAt)
 		section := fmt.Sprintf("%s (%d) · %.1f/%d KB", sourceSection(scopeWords[m.Scope]), count[m.Scope], float64(used[m.Scope])/1024, learn.ScopeBudget/1024)
 		item := memoryItem(*m, m.Text, section, desc, "")
-		item["actions"] = append([]any{map[string]any{"text": "Forget", "hotkey": "d", "run": "memory forget " + m.ID + " --yes"}}, moveAndEdit(*m, false)...)
+		item["actions"] = append([]any{map[string]any{"text": "Forget", "hotkey": "f", "run": "memory forget " + m.ID + " --yes"}}, moveAndEdit(*m, false)...)
 		items = append(items, item)
 	}
 	return items

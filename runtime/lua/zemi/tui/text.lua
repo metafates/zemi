@@ -121,7 +121,6 @@ M.COUNT = {
 	job_read = { "checked", "job", "jobs" },
 	job_list = { "listed jobs" },
 	job_kill = { "stopped", "job", "jobs" },
-	job_start = { "started", "job", "jobs" },
 	todos = { "updated todos" },
 	agent = { "started", "agent run", "agent runs" },
 	workflow = { "ran", "workflow", "workflows" },

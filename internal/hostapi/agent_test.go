@@ -2099,7 +2099,7 @@ func TestRecap(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := reflectStub(t, h, "fixing the build;\n\n  next: run  make check\nignored")
-	const recap = "recap: fixing the build; next: run make check"
+	const recap = "Recap: fixing the build; next: run make check"
 	turn := func(tools bool) func() {
 		return func() {
 			if tools {

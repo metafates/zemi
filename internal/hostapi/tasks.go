@@ -634,7 +634,7 @@ func reportHeads(tail string) []string {
 		heads = append(heads, m[1]+": "+clipRunes(sanitize.String(m[2]), 200))
 	}
 	for _, m := range loopSent.FindAllStringSubmatch(tail, -1) {
-		heads = append(heads, "loop run "+m[1]+": "+clipRunes(sanitize.String(m[2]), 200))
+		heads = append(heads, "Loop run "+m[1]+": "+clipRunes(sanitize.String(m[2]), 200))
 	}
 	for _, m := range updateSent.FindAllStringSubmatch(tail, -1) {
 		heads = append(heads, "Agent "+m[1]+" ("+m[2]+"): "+clipRunes(sanitize.String(m[3]), 200))

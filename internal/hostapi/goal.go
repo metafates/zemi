@@ -247,12 +247,12 @@ func (h *Host) storeGoal(sid string, row goalRow) {
 
 // goalNotice is a goal event's row, live and resumed alike; a set row has none.
 func goalNotice(row goalRow) (ChatMessage, bool) {
-	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "goal " + string(row.Event), Detail: row.Detail}
+	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "Goal " + string(row.Event), Detail: row.Detail}
 	switch row.Event {
 	case goalSet:
 		return m, false
 	case goalNotYet:
-		m.Text = "goal not met yet"
+		m.Text = "Goal not met yet"
 	case goalBlocked:
 		m.Detail = "/goal stop drops it"
 	case goalMet, goalPaused, goalStopped:

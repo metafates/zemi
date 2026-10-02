@@ -755,7 +755,7 @@ lua-language-server is installed.
   tool choice changes, with every tool refusing to run. Billed, never persisted.
   `Host.aside` is that call, the goal check another; the idle recap (`Host.Recap`, `session.recap`) is one more: the UI
   calls it `recapDelay` (3 min, inside Anthropic's 5-minute cache) after a turn that ended well
-  with no input since, and its live-only `recap: ...` notice row is dropped when the transcript
+  with no input since, and its live-only `Recap: ...` notice row is dropped when the transcript
   moved during the call.
 - **Store order.** `Messages` orders by `rowid`: a turn persists several rows in one
   millisecond and ids are random. Tool telemetry rows share the table; `historyFrom` skips

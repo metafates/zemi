@@ -1963,7 +1963,7 @@ func (h *Host) recap(ctx context.Context) {
 		return
 	}
 	// the first recap ever names its /config key
-	row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "recap: " + text}
+	row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "Recap: " + text}
 	if h.GlobalDB != nil {
 		if _, err := h.GlobalDB.GetKV("recap.hinted"); errors.Is(err, store.ErrNotFound) {
 			row.Detail = "off in /config"

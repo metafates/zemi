@@ -392,8 +392,9 @@ type Host struct {
 	// trEpoch changes whenever the transcript is replaced (new, resume,
 	// rewind), so the chat widget can cache the rows of settled messages.
 	trEpoch atomic.Int64
-	// trEdit changes when a settled row's text grew in place, which re-renders
-	// that row alone: the rows the reader opened keep their place.
+	// trEdit changes when a settled row's text grew in place (a joined
+	// reasoning chunk), which re-renders every cached unit: trEpoch would also
+	// drop the rows the reader opened.
 	trEdit atomic.Int64
 
 	watches *watchReg

@@ -246,7 +246,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	if f.count() == 0 && f.scanning && len(f.files) == 0 {
 		return [][]hostapi.Segment{note("scanning files…")}
 	}
-	partial := note("more files than the list holds - type more of the path")
+	partial := note("more files than the list holds · type more of the path")
 	switch {
 	case f.count() == 0 && f.partial:
 		return [][]hostapi.Segment{partial}

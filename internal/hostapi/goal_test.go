@@ -21,7 +21,7 @@ import (
 // interrupt of the goal's own work stops a loop too; one of a typed turn
 // does not.
 func TestGoalLoop(t *testing.T) {
-	paused := append(slices.Repeat([]string{"goal not met yet: x"}, goalMaxRuns), "goal paused: after 20 turns without you; send a message to go on")
+	paused := append(slices.Repeat([]string{"Goal not met yet: x"}, goalMaxRuns), "Goal paused: after 20 turns without you; send a message to go on")
 	for _, c := range []struct {
 		name    string
 		verdict func(h *Host, check int) string // the judge's reply to the check-th check, from 0
@@ -36,14 +36,14 @@ func TestGoalLoop(t *testing.T) {
 	}{
 		{name: "met after two not yet", verdict: func(_ *Host, n int) string {
 			return []string{"NOT YET: a", "**NOT YET**: b", "Checked.\nMET: done"}[n]
-		}, turns: 3, notices: []string{"goal not met yet: a", "goal not met yet: b", "goal met: done"}, saw: "Not met yet: b"},
+		}, turns: 3, notices: []string{"Goal not met yet: a", "Goal not met yet: b", "Goal met: done"}, saw: "Not met yet: b"},
 		{
 			name: "blocked keeps the goal", verdict: func(*Host, int) string { return "BLOCKED: needs a token" }, turns: 1, goal: true,
-			notices: []string{"goal blocked: needs a token"},
+			notices: []string{"Goal blocked: needs a token"},
 		},
 		{
 			name: "no verdict pauses", verdict: func(*Host, int) string { return "sure" }, turns: 1, goal: true,
-			notices: []string{"goal paused: the check gave no verdict"},
+			notices: []string{"Goal paused: the check gave no verdict"},
 		},
 		{name: "the cap pauses", turns: goalMaxRuns + 1, goal: true, notices: paused},
 		{name: "a failed turn is not checked", fail: true, turns: 1, goal: true},
@@ -61,7 +61,7 @@ func TestGoalLoop(t *testing.T) {
 				return "NOT YET: a"
 			}
 			return "MET: done"
-		}, turns: 2, notices: []string{"goal not met yet: a", "goal met: done"}, saw: "also this"},
+		}, turns: 2, notices: []string{"Goal not met yet: a", "Goal met: done"}, saw: "also this"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
@@ -152,7 +152,7 @@ func TestGoalLoop(t *testing.T) {
 func goalRows(tr []ChatMessage) []string {
 	var out []string
 	for _, m := range tr {
-		if m.Kind == RowNotice && strings.HasPrefix(m.Text, "goal ") {
+		if m.Kind == RowNotice && strings.HasPrefix(m.Text, "Goal ") {
 			out = append(out, m.Text)
 		}
 	}

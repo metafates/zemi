@@ -130,15 +130,20 @@ zemi.ui.widget.add({
 	render = function(ctx)
 		local t = read(ctx)
 		local width = ctx.width or 34
-		-- a thought under its heading, a blank row after the one before it
+		-- a thought under its heading, a blank row after the one before it; one
+		-- still streaming spins with the running mark
 		---@param head string
 		---@param text string
 		---@param into zemi.Line[]
-		local function thought(head, text, into)
+		---@param running boolean?
+		local function thought(head, text, into, running)
 			if #into > 0 then into[#into + 1] = { { text = "" } } end
-			local m = zemi.ui.marks.thought
-			into[#into + 1] =
-				{ GUTTER, { text = m.glyph .. " ", hl = m.hl, copy = false }, { text = head, hl = "Dim" } }
+			local m = running and zemi.ui.marks.spin or zemi.ui.marks.thought
+			into[#into + 1] = {
+				GUTTER,
+				{ text = m.glyph .. " ", hl = m.hl, copy = false, effect = running and "spin" or nil },
+				{ text = head, hl = "Dim" },
+			}
 			for _, segs in ipairs(zemi.ui.wrap((text:gsub("%s+$", "")), width - 2)) do
 				for _, sg in ipairs(segs) do
 					sg.hl = "AgentReason"
@@ -175,7 +180,7 @@ zemi.ui.widget.add({
 		end
 		-- the thought streaming now, under the turn's earlier ones
 		if not t.first and ctx.agent_active and (ag.reasoning or "") ~= "" then
-			thought("thinking", ag.reasoning, lines)
+			thought("thinking", ag.reasoning, lines, true)
 		end
 		-- the region is bottom-anchored: trailing blanks keep short text at the
 		-- top, and once it overflows the tail follows

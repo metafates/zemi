@@ -490,16 +490,17 @@ func markSeg(kind string) hostapi.Segment {
 func tagSeg(s string) hostapi.Segment { return hostapi.Segment{Text: s, HL: hostapi.ChromeHintKey} }
 
 // switchSeg is the one on/off switch: 5 cells in every state, so a toggle
-// never moves text, and a filled or hollow square and the word read without
-// color. Locked is on with nothing to switch.
+// never moves text, and a filled or hollow diamond and the word read without
+// color, square shapes being the state marks'. Locked is on with nothing to
+// switch.
 func switchSeg(on, locked bool) hostapi.Segment {
 	switch {
 	case locked:
 		return hostapi.Segment{Text: "  on ", HL: hostapi.ChromeHint}
 	case on:
-		return hostapi.Segment{Text: "■ on ", HL: hostapi.ChromeOk}
+		return hostapi.Segment{Text: "◆ on ", HL: hostapi.ChromeOk}
 	}
-	return hostapi.Segment{Text: "□ off", HL: hostapi.ChromeHint}
+	return hostapi.Segment{Text: "◇ off", HL: hostapi.ChromeHint}
 }
 
 // listRows is the one list renderer: the selected item gets "› ", bold text
@@ -1012,7 +1013,7 @@ var (
 
 // runsRows lays out what a command runs in at most two rows w wide, each
 // name whole: marked names first (deletes in Danger, runs code in Warn), so
-// a cut never hides one, and the names that do not fit counted as "+N
+// a cut never hides one, and the names that do not fit counted as "… N
 // more". nil runs is a list the parse could not vouch for.
 func runsRows(runs []perm.Program, w int) [][]hostapi.Segment {
 	if runs == nil {
@@ -1030,7 +1031,7 @@ func runsRows(runs []perm.Program, w int) [][]hostapi.Segment {
 	for n := len(items); ; n-- {
 		shown := items[:n]
 		if n < len(items) {
-			shown = append(slices.Clone(shown), hostapi.Segment{Text: fmt.Sprintf("+%d more", len(items)-n), HL: hostapi.ChromeHint})
+			shown = append(slices.Clone(shown), hostapi.Segment{Text: fmt.Sprintf("… %d more", len(items)-n), HL: hostapi.ChromeHint})
 		}
 		var rows [][]hostapi.Segment
 		var row []hostapi.Segment

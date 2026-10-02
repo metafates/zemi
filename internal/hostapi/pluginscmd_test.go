@@ -204,7 +204,7 @@ func TestPluginsSend(t *testing.T) {
 				h.SetUIHooks(&fakeUI{})
 			}
 			items := fmt.Sprint(h.pluginItems())
-			if !strings.Contains(items, "fill:/plugins new  text:New plugin verb:fill") || strings.Count(items, "Modify with the agent") != 1 {
+			if !strings.Contains(items, "fill:/plugins new  text:New plugin verb:fill") || strings.Count(items, "Modify with zemi") != 1 {
 				t.Fatalf("items: %s", items)
 			}
 			if got := fmt.Sprint(h.pluginsCommands()[0].GoComplete(h, "", "/plugins modify ")); got != "[mine]" {

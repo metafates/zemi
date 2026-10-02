@@ -52,13 +52,12 @@ zemi.ui.widget.add({
 		elseif ctx.interrupt_armed then
 			verb = "again to interrupt"
 		end
-		-- the run the chat shows, whose it is, how it stands, and the key that
-		-- leaves it, which is what esc means there: a rule with nothing else to
-		-- say draws them alone; a status word that changes width (a run ending)
-		-- moves the name before it, not the key after it
+		-- the run the chat shows, whose it is, and the key that leaves it, which
+		-- is what esc means there: a rule with nothing else to say draws them
+		-- alone, and the key is worth more than the name so a narrow rule keeps
+		-- the way out
 		if ctx.view then
 			parts[#parts + 1] = { plain("viewing " .. ctx.view.agent, "Title"), 5 }
-			parts[#parts + 1] = { plain(ctx.view.status, ctx.view.status == "failed" and "Danger" or "Dim"), 4 }
 			parts[#parts + 1] = { fmt.hint("esc", "back"), 6, 13 }
 		end
 		if not ctx.agent_active then

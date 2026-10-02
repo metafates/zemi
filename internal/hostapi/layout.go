@@ -194,7 +194,7 @@ var DefaultLayout = &Layout{Root: &LayoutNode{Kind: LayoutBox, Dir: DirRow, Size
 			}},
 			{Kind: LayoutSpacer, Size: Size{Kind: SizeFill}},
 		}},
-		{Kind: LayoutComposer, Placeholder: "Ask anything...", Frame: true, Top: "working", Left: "statusline.left", Right: "statusline.right"},
+		{Kind: LayoutComposer, Placeholder: "Ask anything…", Frame: true, Top: "working", Left: "statusline.left", Right: "statusline.right"},
 	}},
 	{Kind: LayoutSpacer, Size: Size{Kind: SizeFill}},
 }}}

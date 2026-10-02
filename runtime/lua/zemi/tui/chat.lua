@@ -572,11 +572,7 @@ local function builder(ctx, width)
 		if o.open or ctx.headless or n < 2 then return end
 		local click = "more:" .. key
 		if whole[key] then
-			table.insert(
-				B.lines,
-				at + 1,
-				{ bar(), { text = "… show the last " .. RAIL_KEEP, hl = "Dim", click = click } }
-			)
+			table.insert(B.lines, at + 1, { bar(), { text = "… show the rest", hl = "Dim", click = click } })
 			return
 		end
 		for _ = at + 1, B.heads[n + 1] - 1 do
@@ -1020,7 +1016,7 @@ zemi.ui.widget.add({
 			for n, td in ipairs(todos) do
 				if n > 12 then break end
 				head[#head + 1] = {
-					text = "━",
+					text = td.status == "done" and "█" or "░",
 					hl = td.status == "done" and "TodoDone" or td.status == "in_progress" and "TodoMark" or "Rule",
 					copy = false,
 				}

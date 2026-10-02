@@ -148,7 +148,7 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		if not ctx.quit_armed then return {} end
-		return { { { text = "ctrl+c quit", hl = "Dim" } } }
+		return { fmt.hint("ctrl+c", "again to quit") }
 	end,
 })
 

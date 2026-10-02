@@ -38,7 +38,7 @@ func (h *Host) CopyReply(args string) error {
 	}
 	sid := h.AgentSessionID()
 	if sid == "" || h.DB == nil {
-		h.Notify(slog.LevelWarn, "Nothing to copy", "")
+		h.Notify(slog.LevelWarn, "Nothing to copy yet", "")
 		return nil
 	}
 	rows, err := h.DB.Messages(sid)
@@ -48,7 +48,7 @@ func (h *Host) CopyReply(args string) error {
 	history, _ := historyFrom(rows)
 	text := sanitize.String(lastAssistantText(history))
 	if text == "" {
-		h.Notify(slog.LevelWarn, "Nothing to copy", "")
+		h.Notify(slog.LevelWarn, "Nothing to copy yet", "")
 		return nil
 	}
 	blocks := codeBlocks(text)
@@ -429,9 +429,9 @@ func (h *Host) OpenUsage() error {
 	if s.CtxWindow > 0 && s.LastIn > 0 { // a resumed session has no estimate before its first turn
 		pct := s.LastIn * 100 / s.CtxWindow
 		hl := ChromeHintKey
-		if pct >= 90 {
+		if pct >= 95 {
 			hl = ChromeDanger
-		} else if pct >= 70 {
+		} else if pct >= 80 {
 			hl = ChromeWarn
 		}
 		section("Context", "")

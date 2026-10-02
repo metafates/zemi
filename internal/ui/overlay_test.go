@@ -1135,8 +1135,8 @@ func TestOverlaySwitch(t *testing.T) {
 		item   map[string]any
 		sw, hl string
 	}{
-		{map[string]any{"text": "a", "on": true}, "■ on ", "Host:Ok"},
-		{map[string]any{"text": "a", "on": false, "key": "tag"}, "□ off", "Host:Hint"},
+		{map[string]any{"text": "a", "on": true}, "◆ on ", "Host:Ok"},
+		{map[string]any{"text": "a", "on": false, "key": "tag"}, "◇ off", "Host:Hint"},
 		{map[string]any{"text": "a", "locked": true}, "  on ", "Host:Hint"},
 	} {
 		row := listRows((&App{}).overlayState(hostapi.Overlay{Items: []any{c.item}}).items, 0, nil, 10, 0)[0]

@@ -2,7 +2,9 @@
 --
 -- Widgets reach for the semantic groups - Accent, Dim, Rule, Title,
 -- Literal, Danger, Warn, Ok - and everything else links to one of them
--- or names a palette role as they do. A group names a role, never a color,
+-- or names a palette role as they do. A group that draws as another is an
+-- alias: it exists so hl.set("Snail", ...) restyles that one part alone. A
+-- group names a role, never a color,
 -- so a theme is one line of colors: the accent is zemi and what acts, the
 -- literal inline code and a string or number in code, danger a failure,
 -- warn a warning, ok done.
@@ -33,7 +35,7 @@ local groups = {
 	-- an inline span reads by its color: a filled background would hang
 	-- off the text as a stray block where it wraps
 	MarkdownCode = { link = "Literal" },
-	MarkdownLink = { fg = "accent", underline = true },
+	MarkdownLink = { link = "Accent", underline = true },
 	MarkdownQuote = { fg = "dim", italic = true },
 	AgentReason = { link = "Dim" },
 	ThinkingMark = { link = "Accent" },

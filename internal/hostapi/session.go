@@ -71,7 +71,7 @@ func (h *Host) ResumeSession(id string) error {
 		}
 		i := slices.IndexFunc(list, func(s *store.Session) bool { return s.ID != live })
 		if i < 0 {
-			h.Notify(slog.LevelWarn, "Nothing to resume", "no other session in this project yet")
+			h.Notify(slog.LevelWarn, "Nothing to resume yet", "no other session in this project")
 			return nil
 		}
 		id = list[i].ID
@@ -165,7 +165,7 @@ func (h *Host) OpenSessions(confirm string) error {
 			desc = append(desc, clipRunes(prompt, 60))
 		}
 		// a list gives its labels room before descriptions: a whole title would hide the age
-		item := map[string]any{"text": cmp.Or(clipRunes(s.Title, 60), "Untitled"), "desc": strings.Join(desc, " · ")}
+		item := map[string]any{"text": cmp.Or(clipRunes(s.Title, 60), "(untitled)"), "desc": strings.Join(desc, " · ")}
 		if s.ID == current {
 			item["key"] = "current"
 			item["detail"] = "zemi runs this session: /new leaves it, and then it can be resumed or deleted here."
