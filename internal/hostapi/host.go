@@ -1041,7 +1041,6 @@ type VetoResult struct {
 	Denied   bool
 	Reason   string
 	TimedOut bool
-	Handled  bool
 }
 
 // EmitVetoable runs handlers synchronously on the interpreter, each bounded
@@ -1097,7 +1096,7 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 	}
 	if err != nil && name == "permission.request" {
 		// a hot runtime cannot run the deny hooks: fail closed
-		return VetoResult{Denied: true, Handled: true, Reason: "permission.request hooks could not run (lua runtime unavailable, /reload): " + err.Error()}
+		return VetoResult{Denied: true, Reason: "permission.request hooks could not run (lua runtime unavailable, /reload): " + err.Error()}
 	}
 	res := VetoResult{}
 	for _, o := range outcomes {
@@ -1107,7 +1106,6 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		if o.denied && !res.Denied {
 			res.Denied = true
 			res.Reason = o.reason
-			res.Handled = true
 		}
 	}
 	if res.Denied {
