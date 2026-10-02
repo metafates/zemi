@@ -112,39 +112,31 @@ local function block_of(m)
 	return activity(m) and "activity" or "note"
 end
 
--- The lines a diff adds and removes: its "+++"/"---" headers are not changes.
--- Counted once per diff text, since a render asks for each of the turn's diffs
--- again and again while the turn streams.
+-- "+4 -1": the lines a diff adds and removes, in the colors a diff marks the
+-- same counts with (Ok adds, Danger removes). A count of zero is left out: the
+-- sign alone would report nothing, and the "+++"/"---" headers are no changes.
+-- Counted once per diff text: a render asks for a row's diff again and again.
 local counts = {}
 ---@param diff string
----@return integer add
----@return integer del
-local function diffLines(diff)
-	local c = counts[diff]
-	if c then return c[1], c[2] end
-	local add, del = 0, 0
-	for l in diff:gmatch("[^\n]+") do
-		if l:match("^%+") and not l:match("^%+%+%+ ") then
-			add = add + 1
-		elseif l:match("^%-") and not l:match("^%-%-%- ") then
-			del = del + 1
-		end
-	end
-	counts[diff] = { add, del }
-	return add, del
-end
-
--- "+4 -1": those counts as a diffstat marks them, in the colors a diff marks the
--- same counts with (Ok adds, Danger removes). A count of zero is left out: the
--- sign alone would report nothing.
----@param add integer
----@param del integer
 ---@return zemi.Line
-local function diffstat(add, del)
+local function diffstat(diff)
+	local c = counts[diff]
+	if not c then
+		local add, del = 0, 0
+		for l in diff:gmatch("[^\n]+") do
+			if l:match("^%+") and not l:match("^%+%+%+ ") then
+				add = add + 1
+			elseif l:match("^%-") and not l:match("^%-%-%- ") then
+				del = del + 1
+			end
+		end
+		c = { add, del }
+		counts[diff] = c
+	end
 	---@type zemi.Line
 	local out = {}
-	if add > 0 then out[#out + 1] = { text = "+" .. add, hl = "Ok" } end
-	if del > 0 then out[#out + 1] = { text = (add > 0 and " -" or "-") .. del, hl = "Danger" } end
+	if c[1] > 0 then out[#out + 1] = { text = "+" .. c[1], hl = "Ok" } end
+	if c[2] > 0 then out[#out + 1] = { text = (c[1] > 0 and " -" or "-") .. c[2], hl = "Danger" } end
 	return out
 end
 
@@ -364,11 +356,7 @@ local function builder(ctx, width)
 		local label = t.label or ""
 		-- the row's right-aligned tail: what it changed, then how long it ran
 		---@type zemi.Line
-		local tail = {}
-		if (t.diff or "") ~= "" then
-			local plus, minus = diffLines(t.diff)
-			tail = diffstat(plus, minus)
-		end
+		local tail = (t.diff or "") ~= "" and diffstat(t.diff) or {}
 		---@param text string
 		local function add(text)
 			if #tail > 0 then tail[#tail + 1] = { text = " · ", hl = "Dim" } end
@@ -840,14 +828,14 @@ zemi.ui.widget.add({
 			else
 				B.gap("text")
 				B.markdown(m.text)
-				-- The turn's readout rides the reply that closes it: how long it ran,
-				-- what it wrote, what it changed (every call's diff in that turn,
-				-- never the session, printed as a diffstat) and when it ended. A
-				-- sentence the model says mid-turn carries no stat, so it shows
-				-- none of it.
+				-- The turn's readout rides the reply that ends the exchange: how
+				-- long it ran, what it wrote and when it ended, with nothing after
+				-- it but the next prompt. A sentence the model says between runs
+				-- carries none of it, and each call's own row shows what it changed.
 				---@type zemi.Line
 				local stats = {}
-				if (m.elapsed or 0) > 0 or (m.out or 0) > 0 or (m.ended or 0) > 0 then
+				local nxt = tr[last + 1]
+				if nxt == nil or ((nxt.kind or "") == "" and nxt.role == "user") then
 					---@param text string
 					local function stat(text)
 						if #stats > 0 then stats[#stats + 1] = { text = " · ", hl = "Dim" } end
@@ -856,21 +844,6 @@ zemi.ui.widget.add({
 					local tout = fmt.tokens(m.out)
 					if (m.elapsed or 0) > 0 then stat(fmt.duration(m.elapsed)) end
 					if tout then stat(tout .. " out") end
-					local plus, minus = 0, 0
-					local start = first
-					while start > 1 and block_of(tr[start - 1]) ~= "user" do
-						start = start - 1
-					end
-					for i = start, first - 1 do
-						local a, d = diffLines(tr[i].diff or "")
-						plus, minus = plus + a, minus + d
-					end
-					if plus + minus > 0 then
-						if #stats > 0 then stats[#stats + 1] = { text = " · ", hl = "Dim" } end
-						for _, sg in ipairs(diffstat(plus, minus)) do
-							stats[#stats + 1] = sg
-						end
-					end
 					if (m.ended or 0) > 0 then stat(fmt.clock(m.ended)) end
 				end
 				if #stats > 0 then

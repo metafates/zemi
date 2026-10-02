@@ -338,25 +338,43 @@ func TestChatExpandSettledRow(t *testing.T) {
 	}
 }
 
-// TestTurnStatsDiff: the stats row closing a turn sums the lines every call of
-// that turn changed, and only its own.
-func TestTurnStatsDiff(t *testing.T) {
+// TestTurnStats: the readout rides only the reply that ends the exchange, and
+// each call counts its own diff.
+func TestTurnStats(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
+	rows := func() []string {
+		app.renderSync(t)
+		var out []string
+		for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
+			if row != "" && strings.TrimSpace(row) != "" {
+				out = append(out, strings.Join(strings.Fields(row), " "))
+			}
+		}
+		return out[:len(out)-3] // the composer
+	}
 	host.AppendMessage("user", "fix it")
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -1,2 +1,2 @@\n-old\n+new\n keep"})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "b.go", Status: "ok", Diff: "--- b.go\n+++ b.go\n@@ -1 +1 @@\n-x\n+y"})
-	appendReply(host, "done", hostapi.TurnStat{In: 100, Out: 100, ElapsedMS: 1500})
-	app.renderSync(t)
-	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "1.5s · 100 out · +2 -2") {
-		t.Fatalf("the turn's diff is not in its stats:\n%s", frame)
+	// a sentence between two runs, with a readout of its own stored on it
+	appendReply(host, "a check for it:", hostapi.TurnStat{In: 100, Out: 100, ElapsedMS: 900, Ended: 1_700_000_000})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "go test", Status: "ok"})
+	appendReply(host, "done", hostapi.TurnStat{In: 100, Out: 200, ElapsedMS: 1500, Ended: 1_700_000_000})
+	host.SeedStream(hostapi.StreamSnapshot{})
+	app.AgentStream()
+	ended := rows()
+	for _, want := range []string{"│ ✓ edit a.go +1 -1", "│ ✓ edit b.go +1 -1"} {
+		if !slices.Contains(ended, want) {
+			t.Fatalf("missing %q, each call counts its own:\n%s", want, strings.Join(ended, "\n"))
+		}
 	}
-	// the turn after it changed nothing: its stats row carries no diff
-	host.AppendMessage("user", "and now?")
-	appendReply(host, "nothing", hostapi.TurnStat{In: 100, Out: 100, ElapsedMS: 1500})
-	app.renderSync(t)
-	if frame = ansi.Strip(app.Frame()); strings.Count(frame, "+2 -2") != 1 {
-		t.Fatalf("the diff is not the first turn's alone:\n%s", frame)
+	if slices.ContainsFunc(ended, func(r string) bool { return strings.Contains(r, "+2") || strings.Contains(r, "-2") }) {
+		t.Fatalf("a summed diff shows:\n%s", strings.Join(ended, "\n"))
+	}
+	if n := strings.Count(strings.Join(ended, "\n"), "0.9s"); n != 0 {
+		t.Fatalf("a sentence between runs carries a readout:\n%s", strings.Join(ended, "\n"))
+	}
+	if n := strings.Count(strings.Join(ended, "\n"), "1.5s · 200 out · "); n != 1 {
+		t.Fatalf("the reply that ends the exchange carries the readout:\n%s", strings.Join(ended, "\n"))
 	}
 }
 
@@ -1255,6 +1273,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		return out[:len(out)-3] // the composer
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
+	app.AgentStream()
 	live := []string{"▌ look around", "│", "│ ✻ thought 1.2s", "│", "│ read 2 files", "│", "│ ✻ thought 8.0s", "│", "│ list the data", "│ ✓ edit a.go +1 -1", "│", "│ ✻ thought 0.4s", "│"}
 	if got := rows(); !slices.Equal(got, live) {
 		t.Fatalf("live rail:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(live, "\n"))
@@ -1269,12 +1288,14 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	// sentence carries no stat, so no diff of its own shows under it
 	appendReply(host, "now the next one", hostapi.TurnStat{})
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
+	app.AgentStream()
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "c.go", Status: "ok"})
 	closed = append(closed, "│ read c.go")
 	if got := rows(); !slices.Equal(got, closed) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
 	host.SeedStream(hostapi.StreamSnapshot{})
+	t.Logf("active=%v", host.AgentActive())
 	if got, want := rows(), append(closed[:3:3], "· 1 file"); !slices.Equal(got, want) {
 		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
 	}
@@ -1331,6 +1352,7 @@ func TestReasoningPane(t *testing.T) {
 			}
 
 			host.SeedStream(hostapi.StreamSnapshot{})
+			t.Logf("active=%v", host.AgentActive())
 			app.renderSync(t)
 			x, y := findCell(t, app, "· 1 file · thought 1.2s")
 			clickAt(app, x+2, y)
@@ -1498,6 +1520,7 @@ func TestWorkingRowMascot(t *testing.T) {
 	}
 	app.permAsk = nil
 	host.SeedStream(hostapi.StreamSnapshot{})
+	t.Logf("active=%v", host.AgentActive())
 	if r := row(2500); !strings.HasPrefix(r, "@··─") {
 		t.Fatalf("a turn with no outcome (/compact) bows: %q", r)
 	}
@@ -1507,9 +1530,11 @@ func TestWorkingRowMascot(t *testing.T) {
 	}{{turnDoneMsg{}, "@^^─"}, {turnDoneMsg{err: "boom"}, "@><─"}, {turnDoneMsg{stopped: true}, "@··─"}} {
 		// the host can still read active a frame after the turn reported
 		host.SeedStream(hostapi.StreamSnapshot{Active: true})
+		app.AgentStream()
 		app.Update(c.msg)
 		app.Update(frameTickMsg{})
 		host.SeedStream(hostapi.StreamSnapshot{})
+		t.Logf("active=%v", host.AgentActive())
 		app.Update(frameTickMsg{})
 		if r := row(2500); !strings.HasPrefix(r, c.eyes) {
 			t.Fatalf("after %+v the snail reads %q, want %q", c.msg, r, c.eyes)

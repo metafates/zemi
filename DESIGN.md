@@ -1924,10 +1924,10 @@ provenance string.
   than six rows keeps its last six and folds the earlier ones behind one dim
   row, `… 8 earlier`, whose click shows the whole run and then folds it back
   (a printed run and the pane's inspector list everything). A click on any
-  other row opens that one row, command, diff and output. The reply that closes
-  a turn carries its stats: the time it ran, its tokens out, the lines its calls
-  changed (`+14 -4`, that turn's alone) and the clock; a sentence the model
-  says mid-turn carries no stat, and so shows none of it.
+  other row opens that one row, command, diff and output. The reply that ends an
+  exchange carries its readout: how long its turn ran, its tokens out and the
+  clock; a sentence the model says between runs carries none of it, and each
+  call counts its own change on its row (`+4 -1`).
   The rendered view is derived from host-held blocks: the raw message JSON
   is always in the store (and in the log), reachable via
   `zemi.session.messages` and `/copy` (the last reply as the model wrote it;
