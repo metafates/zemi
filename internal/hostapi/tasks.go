@@ -141,12 +141,13 @@ func (r *taskReg) canDetach() error {
 	return r.detached(waitAdvice)
 }
 
-// addFlow registers a workflow run, as add does an agent run.
-func (r *taskReg) addFlow(f *flowRun) error {
+// addFlow registers a workflow run, as add does an agent run. advice is
+// what a refusal past the cap tells its caller it can still do.
+func (r *taskReg) addFlow(f *flowRun, advice string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if f.background {
-		if err := r.detached(foregroundAdvice); err != nil {
+		if err := r.detached(advice); err != nil {
 			return err
 		}
 	}

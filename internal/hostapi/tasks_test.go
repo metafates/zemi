@@ -44,7 +44,7 @@ func TestBackgroundCap(t *testing.T) {
 
 	// a workflow and a background agent count toward one cap
 	reg := newTaskReg(settings)
-	if err := reg.addFlow(&flowRun{id: "f1", background: true, status: RunRunning}); err != nil {
+	if err := reg.addFlow(&flowRun{id: "f1", background: true, status: RunRunning}, foregroundAdvice); err != nil {
 		t.Fatalf("background workflow refused: %v", err)
 	}
 	if err := reg.add(run("r1")); err != nil {
@@ -76,6 +76,18 @@ func TestBackgroundCap(t *testing.T) {
 	}
 	if err := one.add(run("r6")); err == nil || !strings.Contains(err.Error(), "1 background agent or workflow is already running") {
 		t.Fatalf("a second run under a cap of 0 = %v", err)
+	}
+	// the refusal names what the caller can still do: the model can run its
+	// call in the foreground, a user's or a Lua caller's run has no such
+	// version of it
+	if err := one.canDetach(); err == nil || !strings.Contains(err.Error(), waitAdvice) {
+		t.Fatalf("a check past the cap = %v, want the wait advice", err)
+	}
+	if err := one.add(run("r7")); err == nil || !strings.Contains(err.Error(), foregroundAdvice) {
+		t.Fatalf("a background run past the cap = %v, want the foreground advice", err)
+	}
+	if err := one.addFlow(&flowRun{id: "f2", background: true, status: RunRunning}, waitAdvice); err == nil || !strings.Contains(err.Error(), waitAdvice) {
+		t.Fatalf("a user's background flow past the cap = %v, want the wait advice", err)
 	}
 }
 
@@ -376,7 +388,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	// a paused workflow of that session is one row, its agent none
-	if err := h.tasks.addFlow(&flowRun{id: "0000000f", description: "slow scan", parent: "other", status: RunRunning, paused: true, limit: 1, started: time.Now()}); err != nil {
+	if err := h.tasks.addFlow(&flowRun{id: "0000000f", description: "slow scan", parent: "other", status: RunRunning, paused: true, limit: 1, started: time.Now()}, foregroundAdvice); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.tasks.add(&agentRun{id: "agent-8", agent: "general", description: "scan part1", parent: "other", workflow: "0000000f", status: "running", started: time.Now(), cancel: func() {}}); err != nil {

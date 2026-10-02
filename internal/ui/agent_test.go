@@ -140,8 +140,6 @@ func BenchmarkColdChatRender(b *testing.B) {
 	}
 }
 
-// lagClock is a machine so slow or loaded that every read of the clock is
-// a second after the last: each render budget is spent before it starts.
 // frozenClock is one instant that never moves: a golden pinning a duration a
 // seeded turn counts from now reads the same seconds on every run.
 type frozenClock struct{ at time.Time }
@@ -152,6 +150,8 @@ func (c frozenClock) AfterFunc(d time.Duration, f func()) func() bool {
 	return time.AfterFunc(d, f).Stop
 }
 
+// lagClock is a machine so slow or loaded that every read of the clock is
+// a second after the last: each render budget is spent before it starts.
 type lagClock struct{ s atomic.Int64 }
 
 func (c *lagClock) Now() time.Time { return time.Unix(c.s.Add(1), 0) }

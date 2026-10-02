@@ -181,6 +181,7 @@ type flowSpec struct {
 	concurrency            int // 0 is workflowConcurrency
 	background             bool
 	from                   string // a run of this session whose journal answers identical calls
+	advice                 string // a refusal past the cap: the caller's own, "" the model's foreground one
 	progress               func(*flowRun)
 	done                   func(*flowRun) // a background run's end
 
@@ -231,7 +232,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 		}
 		f.script = filepath.Join(pad, flowFile(f.id, ".lua"))
 	}
-	if err := h.tasks.addFlow(f); err != nil {
+	if err := h.tasks.addFlow(f, cmp.Or(spec.advice, foregroundAdvice)); err != nil {
 		cancel()
 		if f.journal != nil { // a run that never ran leaves no files for /workflows to list
 			f.journal.Close()
@@ -1669,6 +1670,9 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, erro
 		return "", err
 	}
 	if h.hooks() != nil {
+		// the user has no foreground version of this run to fall back on,
+		// here and at the late refusal in addFlow
+		spec.advice = waitAdvice
 		if err := h.tasks.canDetach(); err != nil {
 			return "", err
 		}
@@ -2048,7 +2052,7 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 			return luaResult(L, err)
 		}
 		stopID := make(chan int, 1) // a reload cancels the run, like a job
-		f, err := h.startFlow(context.Background(), flowSpec{name: rawString(L, spec, "name"), src: src, args: args, concurrency: int(n), background: true, done: func(f *flowRun) {
+		f, err := h.startFlow(context.Background(), flowSpec{name: rawString(L, spec, "name"), src: src, args: args, concurrency: int(n), background: true, advice: waitAdvice, done: func(f *flowRun) {
 			h.stops.remove(<-stopID)
 			switch {
 			case onDone == nil:
