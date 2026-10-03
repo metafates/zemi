@@ -1109,7 +1109,8 @@ const modalFade = 0.7
 // stepping, and nothing that acts or joins, so no backdrop row answers the
 // box's prompt, no backdrop line joins its border and no backdrop bar takes a
 // drag. It copies each row: rows share slices with widget caches. Image
-// placeholders keep their color, which names the image.
+// placeholders keep their color, which names the image. A row a box drew on
+// its panel sinks to the canvas with the rest: the backdrop is one surface.
 func fadeRows(rows [][]hostapi.Segment) {
 	for i, r := range rows {
 		out := make([]hostapi.Segment, len(r))
@@ -1534,7 +1535,7 @@ func (a *App) hlStyle(hl string) uv.Style {
 	return a.thm.style(hl)
 }
 
-func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64) uv.Style {
+func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64, panel bool) uv.Style {
 	st := a.hlStyle(hl)
 	if over != "" {
 		st = a.thm.hover(st, over)
@@ -1549,15 +1550,19 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64) uv.Styl
 			}
 		case hostapi.FillAuto, hostapi.FillCanvas:
 		}
-		// a faded segment sinks toward the canvas, its fill included, before
-		// the colors are quantized
+		// a faded segment sinks toward the surface it sits on, its fill
+		// included, before the colors are quantized
 		if fade > 0 {
-			st.Fg = hostapi.Mix(cmp.Or(st.Fg, theme.Palette.Fg), theme.Palette.Bg, fade)
+			to := theme.Palette.Bg
+			if panel {
+				to = theme.Palette.Panel
+			}
+			st.Fg = hostapi.Mix(cmp.Or(st.Fg, theme.Palette.Fg), to, fade)
 			if st.Bg != nil {
-				st.Bg = hostapi.Mix(st.Bg, theme.Palette.Bg, fade)
+				st.Bg = hostapi.Mix(st.Bg, to, fade)
 			}
 			if st.UnderlineColor != nil {
-				st.UnderlineColor = hostapi.Mix(st.UnderlineColor, theme.Palette.Bg, fade)
+				st.UnderlineColor = hostapi.Mix(st.UnderlineColor, to, fade)
 			}
 		}
 	}
@@ -1584,7 +1589,7 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64) uv.Styl
 // terminal's own. It is cached for the frame: compose styles thousands of
 // segments and building the sequence for each is the biggest cost of
 // drawing one.
-func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64) string {
+func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64, panel bool) string {
 	key := hl // no highlight name holds a NUL, and hover, a fill and a fade are the rare cases
 	if over != "" {
 		key = hl + "\x00" + over
@@ -1594,11 +1599,14 @@ func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64) string
 	}
 	if fade > 0 {
 		key += "\x00" + strconv.FormatFloat(fade, 'f', 3, 64)
+		if panel {
+			key += "p"
+		}
 	}
 	if p, ok := a.prefixes[key]; ok {
 		return p
 	}
-	st := a.segStyle(hl, over, fill, fade)
+	st := a.segStyle(hl, over, fill, fade, panel)
 	p := ""
 	if !st.IsZero() {
 		p = st.String()
@@ -1610,8 +1618,8 @@ func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64) string
 // renderSegs styles and joins segments, truncating to w visible cells.
 func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 	var b strings.Builder
-	write := func(text, hl, over string, fill hostapi.Fill, fade float64) {
-		p := a.sgrPrefix(hl, over, fill, fade)
+	write := func(text, hl, over string, fill hostapi.Fill, fade float64, panel bool) {
+		p := a.sgrPrefix(hl, over, fill, fade, panel)
 		if p == "" {
 			b.WriteString(text)
 			return
@@ -1627,7 +1635,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 		switch s.Effect {
 		case "shimmer":
 			for _, r := range a.shimmer(s) {
-				write(r.Text, r.HL, s.Over, s.Fill, s.Fade)
+				write(r.Text, r.HL, s.Over, s.Fill, s.Fade, s.OnPanel)
 			}
 			continue
 		case "spin":
@@ -1635,7 +1643,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 			s.Text = hostapi.Spinner[a.frame()%len(hostapi.Spinner)] + s.Text[n:]
 			a.spun = a.spun || a.frame() != 0
 		}
-		write(s.Text, s.HL, s.Over, s.Fill, s.Fade)
+		write(s.Text, s.HL, s.Over, s.Fill, s.Fade, s.OnPanel)
 	}
 	out := b.String()
 	if ansi.StringWidth(out) > w {

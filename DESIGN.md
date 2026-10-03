@@ -1845,7 +1845,8 @@ provenance string.
   separator column beside it, its own last cell left blank; its widgets
   render two cells narrower, so the bar appearing covers and rewraps nothing and chat
   text lines up with the composer's; every other scrolling box (overlay
-  bodies and lists, prompts, popups) scrolls through the same viewport and draws the bar
+  bodies and lists, prompts, popups) scrolls through the same viewport, fades
+  its edge rows toward the panel it draws them on and draws the bar
   in its right border, the track the border line itself, so its text keeps every column
   and never rewraps when the bar appears; the band of a selected row stops at the cell
   before it, never running into the border column. Every bar drags, found by its cells in the last
@@ -2162,13 +2163,18 @@ provenance string.
 - **Golden tests**: headless mode renders the frame's segment rows to a string;
   golden files per widget and per full frame via `charmbracelet/x/exp/golden`
   (`go test ./internal/ui/... -update` regenerates).
-  A scrolled region with `fade` set (the shipped chat and pane use 4) sinks
-  that many rows toward the canvas at an edge content lies past, deepest at
-  the edge: under the pins while rows are scrolled above, and at the bottom
-  while scrolled up, so each edge says there is more; it eases off as the
-  last rows come into view, and the pins and the bar never fade. A widget may
-  sink a block it clips itself by setting `fade` on those rows (a segment
-  field), over the same four rows: the deeper of the two sinks holds.
+  A scrolled view sinks the rows at an edge content lies past toward the
+  surface it sits on: a region's toward the canvas, a box's toward its panel,
+  which the fill a box puts its rows on carries. A region fades the `fade`
+  rows its layout node sets (the shipped chat and pane use 4), a box two, and
+  neither more than a third of the view; deepest at the edge - under the pins
+  while rows are scrolled above, and at the bottom while scrolled up - so each
+  edge says there is more, easing off as the last rows come into view. The
+  pins, the bar and the rows a window left empty never fade, and a list
+  reveals its selection a fade's rows clear of the window's edge, so the ramp
+  never covers the selected row. A widget may sink a block it clips itself by
+  setting `fade` on those rows (a segment field): the deeper of the two sinks
+  holds.
 
 ## 9. Permissions and safety
 

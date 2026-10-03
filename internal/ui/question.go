@@ -388,7 +388,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 		// screen; the rest goes to the options
 		room := h - 2 - len(stack(tight, tabs, oneRow, optsPH, field, oneRow)) + 1 + len(optsPH)
 		st.ask.viewH = max(room-min(len(items), 4), 1)
-		ask := st.ask.window(askText(inner), inner)
+		ask := st.ask.window(askText(inner), inner, boxFade)
 		var opts [][]hostapi.Segment
 		switch {
 		case q.Multi():

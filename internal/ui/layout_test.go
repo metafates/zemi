@@ -107,11 +107,11 @@ func TestViewport(t *testing.T) {
 				lines[i] = []hostapi.Segment{{Text: fmt.Sprintf("%0*d", c.width, i)}}
 			}
 			v := c.v
-			v.window(lines, c.width) // a frame drew it
+			v.window(lines, c.width, boxFade) // a frame drew it
 			if c.move != nil {
 				c.move(&v)
 			}
-			out := v.window(lines, c.width)
+			out := v.window(lines, c.width, boxFade)
 			bar := false
 			for i, r := range out {
 				if j := v.top + i; j >= 0 && !strings.HasPrefix(hostapi.SegsText(r), lines[j][0].Text) {

@@ -484,8 +484,8 @@ func barText(width int) int {
 // window is the rows of lines the view shows, each padded to width cells
 // and followed by its bar cell while the content overflows, which a box
 // draws in its border; rows before the content (a bottom-anchored tail) are
-// nil.
-func (v *viewport) window(lines [][]hostapi.Segment, width int) [][]hostapi.Segment {
+// nil. fade sinks the rows at an edge content lies past; see edgeFade.
+func (v *viewport) window(lines [][]hostapi.Segment, width, fade int) [][]hostapi.Segment {
 	v.rows = len(lines)
 	v.clamp()
 	bar := scrollbar{h: v.viewH, top: v.top, total: v.rows, width: width}
@@ -511,7 +511,44 @@ func (v *viewport) window(lines [][]hostapi.Segment, width int) [][]hostapi.Segm
 		}
 		out = append(out, row)
 	}
+	v.edgeFade(out, fade)
 	return out
+}
+
+// boxFade is how many rows a box's scrolled view sinks at an edge: the
+// chat's four would ghost away half a menu, so a box ramps two, eased off by
+// how much lies past it.
+const boxFade = 2
+
+// edgeFade sinks the rows at a window's edges while content lies past them,
+// deepest at the edge: the rows under the pins at the top and the last rows
+// at the bottom while scrolled up, so each edge says there is more. The sink
+// eases off as the last rows come into view, in step with how many lie past
+// the edge, and is at most a third of the view. The pins and the bar never
+// fade, and the rows a window left empty - a list cut to whole items pads
+// past its content with nil - take no step of the ramp.
+func (v *viewport) edgeFade(rows [][]hostapi.Segment, fade int) {
+	if fade = min(fade, v.viewH/3); fade <= 0 {
+		return
+	}
+	depth := func(past int) float64 { return min(1, float64(past)/float64(fade)) }
+	above, below := depth(v.top), depth(v.rows-v.top-v.viewH)
+	first, last := len(v.pins), len(rows)-1
+	for first < len(rows) && len(rows[first]) == 0 {
+		first++
+	}
+	for last >= first && len(rows[last]) == 0 {
+		last--
+	}
+	for k := range fade {
+		t := float64(fade-k) / float64(fade+1)
+		if i := first + k; above > 0 && i <= last {
+			rows[i] = faded(rows[i], t*above)
+		}
+		if i := last - k; below > 0 && i >= len(v.pins) {
+			rows[i] = faded(rows[i], t*below)
+		}
+	}
 }
 
 // scrollKey applies a scroll key to a text viewport: shift+up/down a line,
@@ -606,24 +643,7 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	}
 	st.clamp()
 	st.pinRows(lines, w)
-	rows := st.window(lines, w-1) // the bar keeps the region's last column
-	// the rows at an edge that content lies past sink toward the canvas,
-	// deepest at the edge: under the pins at the top, and at the bottom while
-	// scrolled up, so each edge says there is more. The sink eases off as
-	// the last rows come into view, in step with how many lie past the edge.
-	if fade := min(n.Fade, h/3); fade > 0 {
-		depth := func(past int) float64 { return min(1, float64(past)/float64(fade)) }
-		above, below := depth(st.top), depth(st.rows-st.top-h)
-		for k := range fade {
-			t := float64(fade-k) / float64(fade+1)
-			if i := len(st.pins) + k; above > 0 && i < len(rows) {
-				rows[i] = faded(rows[i], t*above)
-			}
-			if i := len(rows) - 1 - k; below > 0 && i >= len(st.pins) {
-				rows[i] = faded(rows[i], t*below)
-			}
-		}
-	}
+	rows := st.window(lines, w-1, n.Fade) // the bar keeps the region's last column
 	st.anchor, st.anchorOff = nil, 0
 	for i := max(st.top, 0); i < len(lines) && i < st.top+h; i++ {
 		if strings.TrimSpace(hostapi.SegsText(lines[i])) == "" {
@@ -642,7 +662,7 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 }
 
 // faded is row with every segment but its scrollbar cell sunk toward the
-// canvas by t, keeping a deeper sink a widget set itself.
+// surface it sits on by t, keeping a deeper sink a widget set itself.
 func faded(row []hostapi.Segment, t float64) []hostapi.Segment {
 	out := make([]hostapi.Segment, len(row))
 	for i, s := range row {

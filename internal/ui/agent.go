@@ -232,7 +232,7 @@ func scrollChoiceBody(h, w int, head [][]hostapi.Segment, v *viewport, text func
 			list = act(level > 1)
 		}
 		v.viewH = max(h-2-len(stack(tight, head, oneRow, list, oneRow))+1, 1)
-		rows := v.window(text(textW), textW)
+		rows := v.window(text(textW), textW, boxFade)
 		hintRow := hint(w, slices.Concat(hints, scrolls(*v))...)
 		return stack(tight, head, rows, list, [][]hostapi.Segment{hintRow}), v.viewH < min(v.rows, 3)
 	})
@@ -335,7 +335,7 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 }
 
 // choiceView is choiceRows in v, whose viewH the caller sets, scrolled to
-// keep the selected answer in view.
+// keep the selected answer in view, a fade's rows clear of the edge.
 func choiceView(choices []promptChoice, sel int, v *viewport, w int, short bool) [][]hostapi.Segment {
 	list := choiceRows(choices, sel, w, short)
 	v.rows = len(list)
@@ -345,8 +345,8 @@ func choiceView(choices []promptChoice, sel int, v *viewport, w int, short bool)
 			top, end = min(top, y), y+1
 		}
 	}
-	v.reveal(top, end)
-	return v.window(list, w)
+	v.reveal(top-boxFade, end+boxFade)
+	return v.window(list, w, boxFade)
 }
 
 // hostBox draws a chrome box at most maxW wide whose rows pad to at least
@@ -411,13 +411,15 @@ func hostBox(title, titleHL, badge string, body [][]hostapi.Segment, w, maxW, mi
 	return onPanel(box)
 }
 
-// onPanel puts rows on the panel, all but what sets a surface of its own.
+// onPanel puts rows on the panel, all but what sets a surface of its own: a
+// well of the canvas inside a box stays on the canvas, its fade included.
 func onPanel(rows [][]hostapi.Segment) [][]hostapi.Segment {
 	for _, r := range rows {
 		for i := range r {
 			if r[i].Fill == hostapi.FillAuto {
 				r[i].Fill = hostapi.FillPanel
 			}
+			r[i].OnPanel = r[i].Fill != hostapi.FillCanvas
 		}
 	}
 	return rows
@@ -669,7 +671,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 		v.top = 0
 		return rows
 	}
-	v.reveal(selTop, selEnd)
+	v.reveal(selTop-boxFade, selEnd+boxFade)
 	for v.top < selTop && !starts[v.top] {
 		v.top++
 	}
@@ -691,7 +693,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			win = append(win, nil) // the last item pushed the window past the end
 		}
 	}
-	return v.window(win, widest)
+	return v.window(win, widest, boxFade)
 }
 
 // matchSegs draws the runes at byte offsets pos of a row's text, a filter's
@@ -837,7 +839,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	for i := range content {
 		content[i] = padPanel(content[i], fit)
 	}
-	content = pa.view.window(content, fit)
+	content = pa.view.window(content, fit, boxFade)
 	// who asks, whose code runs, and how many asks wait (an upper bound: a
 	// waiting ask may settle without a prompt)
 	badge := []string{req.Agent, req.Owner, req.Script}

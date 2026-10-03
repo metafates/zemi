@@ -344,6 +344,19 @@ func TestModalDimsBackground(t *testing.T) {
 	if s := seg("Copied"); s.Fade != 0 {
 		t.Fatalf("the overlay faded a toast: %+v", s)
 	}
+	// a box behind the modal sinks to the canvas with the rest of the backdrop
+	app.overlays = nil
+	under := make([]any, 30)
+	for i := range under {
+		under[i] = fmt.Sprintf("under %02d", i)
+	}
+	app.openOverlay(hostapi.Overlay{ID: "under", Title: "U", Origin: lua.OriginBuiltin, Items: under})
+	app.renderSync(t)
+	app.Frame()
+	app.openOverlay(hostapi.Overlay{ID: "t2", Title: "T", Origin: lua.OriginBuiltin, Items: []any{"a"}})
+	if s := seg("under 00"); s.OnPanel || s.Fade != modalFade {
+		t.Fatalf("a box behind the modal: %+v", s)
+	}
 	app.overlays = nil
 	app.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	if s := seg("untrusted"); s.Fade != 0 {

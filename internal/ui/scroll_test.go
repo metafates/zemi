@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"log/slog"
 	"math"
 	"slices"
@@ -12,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // fillChat appends 30 user/reply pairs to the transcript.
@@ -449,6 +451,122 @@ func TestChatFade(t *testing.T) {
 	for _, row := range app.lastRows[st.rect.Min.Y : st.rect.Min.Y+3] {
 		if last := row[len(row)-1]; last.Bar && last.Fade != 0 {
 			t.Fatalf("the bar fades: %+v", last)
+		}
+	}
+}
+
+// TestBoxFade: a box's scrolled view sinks the rows at an edge content lies
+// past toward the panel, the surface it sits on and not the canvas, deepest
+// at the edge; a list keeps its selected row clear of the ramp.
+func TestBoxFade(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 24)
+	items := make([]any, 30)
+	for i := range items {
+		items[i] = fmt.Sprintf("row %02d", i)
+	}
+	app.openOverlay(hostapi.Overlay{ID: "l", Title: "List", Origin: lua.OriginBuiltin, Items: items})
+	st := &app.overlays[0]
+	at := func(i int) float64 {
+		if row := st.rows[i]; len(row) > 0 {
+			return row[0].Fade
+		}
+		t.Fatalf("row %d of the list is empty", i)
+		return 0
+	}
+	near := func(got, want float64) bool { return math.Abs(got-want) < 1e-9 }
+	// at the top the selection is the first row and only the rows below fade,
+	// the last of them deepest
+	app.Frame()
+	n := len(st.rows)
+	if n < 4 || st.selected != 0 || app.chromeRect.Empty() {
+		t.Fatalf("the list opened showing %d rows, selected %d, box %v", n, st.selected, app.chromeRect)
+	}
+	if !near(at(n-1), 2.0/3) || !near(at(n-2), 1.0/3) || at(n-3) != 0 {
+		t.Fatalf("the bottom ramp is %v %v %v, want 0, 1/3, 2/3", at(n-3), at(n-2), at(n-1))
+	}
+	// every row of the box is on the panel, so a fade of its own sinks there
+	for y := app.chromeRect.Min.Y; y < app.chromeRect.Max.Y; y++ {
+		for _, s := range app.lastRows[y] {
+			if strings.TrimSpace(s.Text) != "" && !s.OnPanel {
+				t.Fatalf("the box's row %d is not on the panel: %+v", y, s)
+			}
+		}
+	}
+	// scrolled to the middle both edges fade, and the selected row stays off
+	// the ramp: the rows the list left below it take it
+	for range 15 {
+		app.overlayKey("down", "")
+	}
+	app.Frame()
+	n = len(st.rows)
+	if st.view.top == 0 || !near(at(0), 2.0/3) || !near(at(1), 1.0/3) {
+		t.Fatalf("at top %d the top ramp is %v %v, want 2/3, 1/3", st.view.top, at(0), at(1))
+	}
+	if !near(at(n-2), 1.0/3) || !near(at(n-1), 2.0/3) {
+		t.Fatalf("the bottom ramp is %v %v, want 1/3, 2/3", at(n-2), at(n-1))
+	}
+	sel := -1
+	for i, row := range st.rows {
+		if len(row) == 0 || row[0].Hit != st.selected+1 {
+			continue
+		}
+		sel = i
+		if row[0].Fade > 0 {
+			t.Fatalf("the selected row %d of %d is on the ramp: %+v", i, n, row[0])
+		}
+	}
+	if sel < 2 || sel > n-3 {
+		t.Fatalf("the selected row %d of %d sits on the edge", sel, n)
+	}
+	// the ramp steps over the rows a window left empty: a list cut to whole
+	// items pads past its content with nil, and the last row that shows
+	// something is still the deepest
+	v := viewport{viewH: 6, rows: 20}
+	rows := [][]hostapi.Segment{{{Text: "a"}}, {{Text: "b"}}, nil, nil, nil, nil}
+	v.edgeFade(rows, 2)
+	if !near(rows[0][0].Fade, 1.0/3) || !near(rows[1][0].Fade, 2.0/3) {
+		t.Fatalf("the padded ramp is %v %v, want 1/3, 2/3", rows[0][0].Fade, rows[1][0].Fade)
+	}
+	// an overlay's body text scrolls through the same viewport, so it fades
+	// at the top once rows lie above it
+	app.overlays = nil
+	app.openOverlay(hostapi.Overlay{ID: "b", Title: "Body", Origin: lua.OriginBuiltin, Body: strings.Repeat("line\n", 40)})
+	app.Frame()
+	for range 5 {
+		app.overlayKey("ctrl+d", "")
+	}
+	app.Frame()
+	cell := hostapi.Segment{}
+	for _, s := range app.lastRows[app.chromeRect.Min.Y+1] {
+		if s.OnPanel && !s.Line && strings.TrimSpace(s.Text) != "" {
+			cell = s
+			break
+		}
+	}
+	if !near(cell.Fade, 2.0/3) {
+		t.Fatalf("the body's first row is not on the ramp: %+v", cell)
+	}
+}
+
+// TestFadeGround: a faded segment sinks toward the surface it sits on, the
+// canvas or a box's panel.
+func TestFadeGround(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 24)
+	theme := app.thm.active()
+	if theme == nil {
+		t.Fatal("no theme")
+	}
+	fg, bg, panel := theme.Palette.Fg, theme.Palette.Bg, theme.Palette.Panel
+	for _, c := range []struct {
+		name  string
+		panel bool
+		want  color.Color
+	}{
+		{"the canvas", false, hostapi.Mix(fg, bg, 0.5)},
+		{"a box's panel", true, hostapi.Mix(fg, panel, 0.5)},
+	} {
+		if got := app.segStyle("Normal", "", hostapi.FillPanel, 0.5, c.panel).Fg; got != c.want {
+			t.Fatalf("%s: fg = %v, want %v", c.name, got, c.want)
 		}
 	}
 }

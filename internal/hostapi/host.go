@@ -1206,12 +1206,16 @@ type Segment struct {
 	// Fill is Go only: the surface under the segment where its style paints
 	// the canvas. A field, since hover rewrites Over and HL.
 	Fill Fill
+	// OnPanel is Go only: a box drew the segment on its panel, so its Fade
+	// sinks toward the panel and not the canvas. Fill cannot say it: a band
+	// lies over either surface.
+	OnPanel bool
 	// Line is Go only: a chrome border, rule or separator, its runes light box
 	// lines or blanks one cell each; lines that touch join (ui.join)
 	Line bool
-	// Fade is how far (0 to 1) the segment's colors sink toward the canvas: a
-	// scrolled region's first rows under its pins, or a widget's own clipped
-	// block, which sets it on the segments it cuts
+	// Fade is how far (0 to 1) the segment's colors sink toward the surface it
+	// sits on: a scrolled view's rows at an edge content lies past, or a
+	// widget's own clipped block, which sets it on the segments it cuts
 	Fade float64
 }
 

@@ -90,7 +90,7 @@ type LayoutNode struct {
 	Region      string     // region: the widgets drawn in it
 	Scroll      ScrollEdge // region: makes it scrollable
 	Focusable   bool       // region: can take keys (zemi.ui.focus), by its id
-	Fade        int        // region: the rows under its pins that fade toward the canvas while content lies above
+	Fade        int        // region: the rows at an edge content lies past that fade toward the canvas
 	Left, Right string     // bar, framed composer: the regions of its left and right clusters
 
 	Frame       bool   // composer: a square frame around it, two rows taller
